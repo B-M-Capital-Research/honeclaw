@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./resources/hone_page.png" alt="Hone honepage - Your Financial Assistant" width="100%">
+  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="100%">
 </p>
 
 ---
@@ -29,12 +29,12 @@ Why the name Hone:
 Honeclaw (or simply Hone) is an open-source personal investment research assistant written in Rust. Unlike the “chatbots” on the market that are accustomed to agreeing with users, Honeclaw is designed as a co-pilot for investment research that is capable of calm thinking, objective judgment, and disciplined restraint.
 
 <p align="center">
-  <a href="./resources/hone_solution.png" target="_blank">
-    <img src="./resources/hone_solution.png" alt="Hone Solutions" width="400">
+  <a href="./resources/hone_solution.jpg" target="_blank">
+    <img src="./resources/hone_solution.jpg" alt="Hone Solutions" width="400">
   </a>
   &nbsp;&nbsp;
-  <a href="./resources/hone_introduction.png" target="_blank">
-    <img src="./resources/hone_introduction.png" alt="Hone Introduction" width="400">
+  <a href="./resources/hone_introduction.jpg" target="_blank">
+    <img src="./resources/hone_introduction.jpg" alt="Hone Introduction" width="400">
   </a>
 </p>
 
@@ -52,12 +52,12 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 -  ⚡ Extreme Performance: Built entirely in Rust at the core, with very low memory usage and exceptionally strong concurrent processing capabilities, ensuring millisecond-level responsiveness for messages across multiple platforms.
 
 <p align="center">
-  <a href="./resources/hone_channels.png" target="_blank">
-    <img src="./resources/hone_channels.png" alt="Hone Channels" width="400">
+  <a href="./resources/hone_channels.jpg" target="_blank">
+    <img src="./resources/hone_channels.jpg" alt="Hone Channels" width="400">
   </a>
   &nbsp;&nbsp;
-  <a href="./resources/hone_work.png" target="_blank">
-    <img src="./resources/hone_work.png" alt="Hone Work" width="400">
+  <a href="./resources/hone_work.jpg" target="_blank">
+    <img src="./resources/hone_work.jpg" alt="Hone Work" width="400">
   </a>
 </p>
 
@@ -120,7 +120,7 @@ After the app is up, configure the **brain** for the Agent system.
 <th align="center">3. Scheduled briefings</th>
 </tr>
 <tr>
-<td valign="top" align="center"><img src="./resources/example1.png" alt="Honeclaw example screenshot 1" width="260"/></td>
+<td valign="top" align="center"><img src="./resources/example1.jpg" alt="Honeclaw example screenshot 1" width="260"/></td>
 <td valign="top" align="center"><img src="./resources/example2.jpg" alt="Honeclaw example screenshot 2" width="260"/></td>
 <td valign="top" align="center"><img src="./resources/example3.jpg" alt="Honeclaw example screenshot 3" width="260"/></td>
 </tr>
@@ -146,7 +146,7 @@ If you are interested in accessing these capabilities, feel free to reach out to
 
 1. - [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93) — follow for investment research content
 
-![BM YTB](./resources/bm_youtube.png)
+![BM YTB](./resources/bm_youtube.jpg)
 
 
 2. - [Discord](https://discord.gg/TyDNfYXDGF): see the invite link (https://discord.gg/TyDNfYXDGF) to join our community channel
