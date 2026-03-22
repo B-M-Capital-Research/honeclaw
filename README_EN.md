@@ -78,50 +78,57 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 ## Installation and Launch
 
 1. Clone the repository
-2. 
 
 ```shell 
 git clone https://github.com/B-M-Capital-Research/honeclaw.git
 cd honeclaw
 ```
 
-3. One-click launch
+2. One-click launch
 
-The system includes a built-in launch script that will automatically compile and start the service:
+The repo ships with a launch script that compiles and starts the full local stack:
 
 ```shell
 chmod +x launch.sh
 ./launch.sh --desktop
 ```
 
-**🧠 What happens during startup?**
+### What the first startup does
 
-The launch script is more than a one-liner—it **orchestrates the full stack**. On the **first** run it performs the steps below in order (about **10 minutes** end-to-end):
+Running `./launch.sh --desktop` walks through **environment prep → builds → process bring-up** in order. The **first** full run usually takes about **10 minutes** (depends on network and CPU).
 
-- **Environment detection & sync**: Detects required runtimes such as `bun` and `rustup`, and syncs dependencies.
-- **Full build**:
-  - **Backend (Rust)**: Builds the desktop shell (`hone-desktop`), core API (`hone-web-api`), and per-channel sidecars.
-  - **Frontend (SolidJS / Vite)**: Builds and hot-loads the desktop UI.
-- **Service bring-up**: Starts the local web stack and embedded database layer under a supervisor, and opens the desktop window.
+1. **Runtimes & dependencies**: Ensures tools like `bun` and `rustup` are available and installs/syncs project dependencies.
+2. **Build**
+   - **Rust backend**: `hone-desktop` (shell), `hone-web-api` (core API), and per-channel **sidecars**.
+   - **Frontend**: SolidJS + Vite desktop UI, loaded by the shell.
+3. **Bring-up**: Starts the local web stack and data layer under a supervisor and **opens** the desktop window.
 
-**Configuring models and the inference engine**
+### After the window opens: choose the Agent’s inference backend
 
-After the app is up, configure the **brain** for the Agent system.
+You now decide whether the Agent uses a **local CLI** or an **OpenAI-compatible cloud API**.
 
-1. **Open Settings**: Click **⚙️ Settings** in the lower-left of the main window.
-2. **Agent basics**: Choose how inference should run:
-   - **Local engine (zero config)**: If `gemini cli` or `codex` is already installed and running, Hone can auto-discover it—pick it from the dropdown, no extra wiring.
-   - **Cloud (recommended)**: If you prefer not to run a local engine, point Hone at any **OpenAI-compatible** HTTP API.
-     - **Suggested pairing**: `OpenRouter` + `Gemini 3.1 Pro/Flash`.
-     - **Why**: In our testing, this combo offers the best balance of reasoning depth, latency, and context throughput.
+1. Click **⚙️ Settings** in the lower-left of the main window.
+2. In the **Agent / inference** section, pick one path:
+   - **Local engine (zero config)**: If `gemini cli` or `codex` is installed and running, Hone can discover it—select it from the dropdown; usually no extra fields.
+   - **Cloud API (recommended)**: Otherwise, configure any **OpenAI-compatible** HTTP API (base URL, API key, etc., per provider).
+     - **Suggested pairing**: `OpenRouter` + `Gemini 3.1 Pro` or `Gemini 3.1 Flash`.
+     - **Note**: In our testing, this pairing balances reasoning depth, latency, and context throughput well.
+
+The next section’s screenshots show the full **model and channel** setup.
 
 
 ## After startup, configure models and channels in the client app settings
 
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="70%">
+  <img src="./resources/hone_page.jpg" alt="Desktop app home: start a conversation" width="100%">
+  <br>
+  <em>Desktop app home: main chat surface—start talking to Hone right away.</em>
 </p>
-
+<p align="center">
+  <img src="./resources/hone_setting.jpg" alt="Settings: models and channels" width="100%">
+  <br>
+  <em>Settings: choose the inference backend (cloud or local) and connect channels such as Feishu, Discord, Telegram, and iMessage.</em>
+</p>
 ---
 
 # 4. 🌰 Examples
