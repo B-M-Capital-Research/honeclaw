@@ -34,7 +34,7 @@ Honeclaw (or simply Hone) is an open-source personal investment research assista
 
 It integrates into your daily workflow across multiple platforms, helping you track developments at companies you hold, enforce strict investment discipline, run scheduled monitoring tasks, and counter emotional trading impulses with rational data and logic.
 
-
+**Architecture**: [Interactive system architecture (HTML)](./resources/architecture.html) — after cloning the repo, open this file in a browser locally to view the diagram.
 
 # 2. ✨ Key Features
 
@@ -67,13 +67,21 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 - **Basic Env**: A basic Unix/Linux environment (macOS / Ubuntu recommended) 
 - **Rust**: Edition 2021+
 
+### Supported channels
+
+- Mac app (macOS)
+- Feishu (Lark)
+- Discord
+- Telegram
+- iMessage
+
 ## Installation and Launch
 
 1. Clone the repository
 2. 
 
 ```shell 
-git clone https://github.com/your-username/honeclaw.git
+git clone https://github.com/B-M-Capital-Research/honeclaw.git
 cd honeclaw
 ```
 
@@ -108,6 +116,14 @@ After the app is up, configure the **brain** for the Agent system.
      - **Why**: In our testing, this combo offers the best balance of reasoning depth, latency, and context throughput.
 
 
+## After startup, configure models and channels in the client app settings
+
+<p align="center">
+  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="70%">
+</p>
+
+---
+
 # 4. 🌰 Examples
 
 <table>
@@ -129,7 +145,7 @@ These screenshots are illustrative only—Honeclaw supports **many more workflow
 
 # 5. 💡 A Note from the Maintainer
 
-“The market is full of noise, and greed and fear are the investor’s greatest enemies. I hope Honeclaw can become your calmest anchor in the trading market.”
+> “The market is full of noise, and greed and fear are the investor’s greatest enemies. I hope Honeclaw can become your calmest anchor in the trading market.”
 
 To comply with open-source licensing requirements, a number of **professional valuation tools, investment research workflows, and proprietary knowledge bases** are not included in this public repository.
 
