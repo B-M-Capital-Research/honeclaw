@@ -238,8 +238,12 @@ config.local.yaml
 # Runtime / generated data (sessions, portfolio, cron jobs, reports)
 sessions/
 
-# Ephemeral one-off scripts (see docs/invariants.md)
+# Ephemeral one-off scripts (see AGENTS.md)
 scripts/tmp/
+
+# docs/: local working notes; only docs/README.md is tracked
+/docs/*
+!/docs/README.md
 
 # IDE (local only; do not commit)
 .idea/
