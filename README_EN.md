@@ -22,17 +22,11 @@ Why the name Hone:
 
 Honeclaw (or simply Hone) is an open-source personal investment research assistant written in Rust. Unlike the “chatbots” on the market that are accustomed to agreeing with users, Honeclaw is designed as a co-pilot for investment research that is capable of calm thinking, objective judgment, and disciplined restraint.
 
-<p align="center">
-  <a href="./resources/hone_solution.jpg" target="_blank">
-    <img src="./resources/hone_solution.jpg" alt="Hone Solutions" width="400">
-  </a>
-  &nbsp;&nbsp;
-  <a href="./resources/hone_introduction.jpg" target="_blank">
-    <img src="./resources/hone_introduction.jpg" alt="Hone Introduction" width="400">
-  </a>
-</p>
-
 It integrates into your daily workflow across multiple platforms, helping you track developments at companies you hold, enforce strict investment discipline, run scheduled monitoring tasks, and counter emotional trading impulses with rational data and logic.
+
+<p align="center">
+  <img src="./resources/hone_introduction_zh" alt="Hone Introduction - Your Financial Assistant" width="80%">
+</p>
 
 **Architecture**: [Interactive system architecture (HTML)](./resources/architecture.html) — after cloning the repo, open this file in a browser locally to view the diagram.
 
@@ -50,8 +44,8 @@ It integrates into your daily workflow across multiple platforms, helping you tr
     <img src="./resources/hone_channels.jpg" alt="Hone Channels" width="400">
   </a>
   &nbsp;&nbsp;
-  <a href="./resources/hone_work.jpg" target="_blank">
-    <img src="./resources/hone_work.jpg" alt="Hone Work" width="400">
+  <a href="./resources/hone_solution.jpg" target="_blank">
+    <img src="./resources/hone_solution.jpg" alt="Hone Solution" width="400">
   </a>
 </p>
 
