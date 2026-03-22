@@ -11,11 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>简体中文</strong> | <a href="./README_EN.md">English</a> 
-</p>
-
-<p align="center">
-  <strong>💬 社群:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a> 
+  <strong>简体中文</strong> | <a href="./README_EN.md">English</a>  | <strong>💬 社群:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a> 
 </p>
 
 ---

@@ -13,11 +13,7 @@ Why the name Hone:
 </p>
 
 <p align="center">
-  <strong>English</strong> | <a href="./readme.md">简体中文</a> 
-</p>
-
-<p align="center">
-  <strong>💬 Community:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a> 
+  <strong>English</strong> | <a href="./readme.md">简体中文</a>  | <strong>💬 Community:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a> 
 </p>
 
 ---
