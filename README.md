@@ -110,15 +110,20 @@ chmod +x launch.sh
 ## 启动后，在端侧APP的设置，进行模型和渠道配置
 
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="端侧 App 首页：对话入口" width="100%">
-  <br>
-  <em>端侧 App 首页：主对话界面，可直接开始与 Hone 对话。</em>
+  <a href="./resources/hone_page.jpg" target="_blank">
+    <img src="./resources/hone_page.jpg" alt="端侧 App 首页：对话入口" width="400">
+  </a>
+  &nbsp;&nbsp;
+  <a href="./resources/hone_setting.jpg" target="_blank">
+    <img src="./resources/hone_setting.jpg" alt="设置页：模型与渠道" width="400">
+  </a>
 </p>
 <p align="center">
-  <img src="./resources/hone_setting.jpg" alt="设置页：模型与渠道" width="100%">
-  <br>
-  <em>设置页：配置推理模型（云端 / 本地）以及飞书、Discord、Telegram、iMessage 等各接入渠道。</em>
+  <em>左：端侧 App 首页，主对话界面，可直接开始与 Hone 对话。</em>
+  &nbsp;&nbsp;
+  <em>右：设置页，可配置推理模型（云端 / 本地）以及飞书、Discord、Telegram、iMessage 等各接入渠道。</em>
 </p>
+
 ---
 
 # 4. 🌰 一些案例

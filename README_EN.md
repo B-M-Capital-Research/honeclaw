@@ -114,14 +114,18 @@ The next section’s screenshots show the full **model and channel** setup.
 ## After startup, configure models and channels in the client app settings
 
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="Desktop app home: start a conversation" width="100%">
-  <br>
-  <em>Desktop app home: main chat surface—start talking to Hone right away.</em>
+  <a href="./resources/hone_page.jpg" target="_blank">
+    <img src="./resources/hone_page.jpg" alt="Desktop app home: start a conversation" width="400">
+  </a>
+  &nbsp;&nbsp;
+  <a href="./resources/hone_setting.jpg" target="_blank">
+    <img src="./resources/hone_setting.jpg" alt="Settings: models and channels" width="400">
+  </a>
 </p>
 <p align="center">
-  <img src="./resources/hone_setting.jpg" alt="Settings: models and channels" width="100%">
-  <br>
-  <em>Settings: choose the inference backend (cloud or local) and connect channels such as Feishu, Discord, Telegram, and iMessage.</em>
+  <em>Left: desktop home—main chat surface, start talking to Hone right away.</em>
+  &nbsp;&nbsp;
+  <em>Right: Settings—inference backend (cloud or local) and channels such as Feishu, Discord, Telegram, and iMessage.</em>
 </p>
 ---
 
