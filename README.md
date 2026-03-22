@@ -1,10 +1,9 @@
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="100%">
+  <img src="./resources/logo.svg" alt="Hone honepage - Your Financial Assistant" width="100%">
 </p>
 
----
-
 <p align="center">
+  <strong> Hone 磨刀石 </strong><br>
   <strong>“并非迎合你的聊天玩具，而是你投资纪律的无情捍卫者。”</strong><br>
   HoneClaw专注于成为懂你的，专业投资助手。<br><br>
   <strong>为什么取名Hone：</strong><br>
@@ -105,6 +104,9 @@ chmod +x launch.sh
      - **推荐组合**：`OpenRouter` + `Gemini 3.1 Pro/Flash`。
      - **原因**：根据我们的大量性能测试，该方案在逻辑推理深度、响应延迟以及 Context 吞吐量上表现最为均衡。
 
+<p align="center">
+  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="100%">
+</p>
 
 # 4. 🌰 一些案例
 

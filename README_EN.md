@@ -1,10 +1,8 @@
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="100%">
+  <img src="./resources/logo.svg" alt="Hone honepage - Your Financial Assistant" width="100%">
 </p>
-
----
-
 <p align="center">
+  <strong> Hone </strong><br>
   <strong>“Not a chat toy designed to indulge you, but a ruthless defender of your investment discipline.”</strong><br>
   <em>HoneClaw is dedicated to being a professional investment assistant that truly understands you.</em>
 
@@ -61,6 +59,9 @@ It integrates into your daily workflow across multiple platforms, helping you tr
   </a>
 </p>
 
+<p align="center">
+  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="100%">
+</p>
 
 # 3. 🏗️ Getting Started
 
