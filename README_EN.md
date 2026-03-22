@@ -25,7 +25,7 @@ Honeclaw (or simply Hone) is an open-source personal investment research assista
 It integrates into your daily workflow across multiple platforms, helping you track developments at companies you hold, enforce strict investment discipline, run scheduled monitoring tasks, and counter emotional trading impulses with rational data and logic.
 
 <p align="center">
-  <img src="./resources/hone_introduction_zh" alt="Hone Introduction - Your Financial Assistant" width="80%">
+  <img src="./resources/hone_introduction.jpg" alt="Hone Introduction - Your Financial Assistant" width="80%">
 </p>
 
 **Architecture**: [Interactive system architecture (HTML)](./resources/architecture.html) — after cloning the repo, open this file in a browser locally to view the diagram.
