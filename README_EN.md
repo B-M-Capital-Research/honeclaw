@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./resources/logo.svg" alt="Hone honepage - Your Financial Assistant" width="100%">
+  <img src="./resources/logo.svg" alt="Hone honepage - Your Financial Assistant" width="30%">
 </p>
 <p align="center">
   <strong> Hone </strong><br>
