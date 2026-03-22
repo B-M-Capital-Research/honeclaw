@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hone Financial",
+  "version": "0.1.0",
+  "identifier": "com.hone.financial",
+  "build": {
+    "beforeDevCommand": "bun run dev:web",
+    "beforeBuildCommand": "bun run build:web && bun run tauri:prep:build",
+    "devUrl": "http://127.0.0.1:3000",
+    "frontendDist": "../../packages/app/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Hone Console",
+        "width": 1440,
+        "height": 960,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/hone-imessage",
+      "binaries/hone-discord",
+      "binaries/hone-feishu",
+      "binaries/hone-telegram"
+    ],
+    "resources": [
+      "../../config.example.yaml",
+      "../../soul.md",
+      "../../skills"
+    ]
+  }
+}

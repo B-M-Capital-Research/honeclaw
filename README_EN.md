@@ -58,8 +58,15 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 
 ## Prerequisites
 
-- **Basic Env**: A basic Unix/Linux environment (macOS / Ubuntu recommended) 
-- **Rust**: Edition 2021+
+- **Environment**: A Unix-like system (**macOS** or **Ubuntu** recommended).
+- **Rust**: Toolchain **Edition 2021** or newer.
+
+### Tech stack
+
+- **System core**: Rust  
+- **Backend**: Rust  
+- **Client** (desktop): Rust  
+- **Frontend**: TypeScript
 
 ### Supported channels
 

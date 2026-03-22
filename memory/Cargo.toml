@@ -1,0 +1,15 @@
+[package]
+name = "hone-memory"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hone-core = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }

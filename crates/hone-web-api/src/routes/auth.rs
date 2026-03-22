@@ -1,0 +1,95 @@
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use axum::Json;
+use axum::body::Body;
+use axum::extract::State;
+use axum::http::{Request, StatusCode};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
+use serde_json::json;
+
+use crate::routes::json_error;
+use crate::state::AppState;
+use crate::types::SseTicketResponse;
+
+const SSE_TICKET_TTL_SECS: u64 = 300;
+
+pub(crate) async fn handle_sse_ticket(State(state): State<Arc<AppState>>) -> Response {
+    if state.auth.bearer_token.is_none() {
+        return json_error(StatusCode::BAD_REQUEST, "当前 backend 未启用 token 鉴权");
+    }
+
+    let ticket = uuid::Uuid::new_v4().to_string();
+    let expires_at = Instant::now() + Duration::from_secs(SSE_TICKET_TTL_SECS);
+    state
+        .auth
+        .sse_tickets
+        .lock()
+        .unwrap()
+        .insert(ticket.clone(), expires_at);
+
+    Json(json!(SseTicketResponse {
+        ticket,
+        expires_at: chrono::Utc::now()
+            .checked_add_signed(chrono::Duration::seconds(SSE_TICKET_TTL_SECS as i64))
+            .unwrap_or_else(chrono::Utc::now)
+            .to_rfc3339(),
+    }))
+    .into_response()
+}
+
+pub(crate) async fn require_api_auth(
+    State(state): State<Arc<AppState>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    if request_has_valid_auth(&state, &request) {
+        next.run(request).await
+    } else {
+        json_error(StatusCode::UNAUTHORIZED, "缺少或无效的 Bearer token")
+    }
+}
+
+fn has_valid_ticket(state: &AppState, ticket: &str) -> bool {
+    let now = Instant::now();
+    let mut tickets = state.auth.sse_tickets.lock().unwrap();
+    tickets.retain(|_, expires_at| *expires_at > now);
+    tickets
+        .get(ticket)
+        .is_some_and(|expires_at| *expires_at > now)
+}
+
+fn query_param(uri: &axum::http::Uri, name: &str) -> Option<String> {
+    let query = uri.query()?;
+    for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
+        if k == name {
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+fn request_has_valid_auth(state: &AppState, request: &Request<Body>) -> bool {
+    let Some(expected) = state.auth.bearer_token.as_deref() else {
+        return state.deployment_mode == "local";
+    };
+
+    if let Some(value) = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Some(token) = value.strip_prefix("Bearer ") {
+            if token == expected {
+                return true;
+            }
+        }
+    }
+
+    if let Some(ticket) = query_param(request.uri(), "sse_ticket") {
+        return has_valid_ticket(state, &ticket);
+    }
+
+    false
+}

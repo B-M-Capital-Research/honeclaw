@@ -1,0 +1,18 @@
+[package]
+name = "hone-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hone-cli"
+path = "src/main.rs"
+
+[dependencies]
+hone-core = { workspace = true }
+hone-channels = { workspace = true }
+hone-memory = { workspace = true }
+hone-agent = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+crossterm = "0.28"
+ratatui = "0.29"

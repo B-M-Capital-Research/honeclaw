@@ -1,0 +1,29 @@
+[package]
+name = "hone-feishu"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hone-feishu"
+path = "src/main.rs"
+
+[dependencies]
+hone-core = { workspace = true }
+hone-channels = { workspace = true }
+hone-scheduler = { workspace = true }
+hone-memory = { workspace = true }
+hone-integrations = { workspace = true }
+hone-agent-gemini-cli = { workspace = true }
+hone-tools = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+axum = { workspace = true }
+uuid = { workspace = true }
+reqwest = { workspace = true }
+feishu-sdk = { version = "0.1", features = ["websocket", "server"] }
+mime = "0.3"
+rustls = { version = "0.23", features = ["ring"] }
+async-trait = { workspace = true }

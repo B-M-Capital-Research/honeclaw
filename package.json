@@ -1,0 +1,27 @@
+{
+  "name": "hone-financial",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "bun@1.3.9",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "bun --filter @hone-financial/app dev",
+    "build:web": "bun --filter @hone-financial/app build",
+    "typecheck:web": "bun --filter @hone-financial/app typecheck",
+    "test:web": "bun --filter @hone-financial/app test",
+    "test:e2e:web": "bun --filter @hone-financial/app test:e2e",
+    "tauri:prep:dev": "bash scripts/prepare_tauri_sidecar.sh debug",
+    "tauri:prep:build": "bash scripts/prepare_tauri_sidecar.sh release",
+    "dev:desktop": "bun run tauri:prep:dev && bunx tauri dev --config bins/hone-desktop/tauri.conf.json",
+    "build:desktop": "bun run tauri:prep:build && bunx tauri build --config bins/hone-desktop/tauri.conf.json"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.59.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

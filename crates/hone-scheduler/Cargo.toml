@@ -1,0 +1,17 @@
+[package]
+name = "hone-scheduler"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hone-core = { workspace = true }
+hone-agent = { workspace = true }
+hone-memory = { workspace = true }
+hone-tools = { workspace = true }
+hone-llm = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

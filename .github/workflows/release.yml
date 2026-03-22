@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binaries
+        run: cargo build --release --workspace --bins --target ${{ matrix.target }}
+
+      - name: Package binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG_NAME="hone-financial-${{ github.ref_name }}-${{ matrix.target }}"
+          BIN_DIR="target/${{ matrix.target }}/release"
+          mkdir -p dist/"${PKG_NAME}"
+          for bin in hone-cli hone-imessage hone-imessage-web-test hone-telegram hone-discord; do
+            if [ -f "${BIN_DIR}/${bin}" ]; then
+              cp "${BIN_DIR}/${bin}" dist/"${PKG_NAME}"/
+            fi
+          done
+          cp README.md dist/"${PKG_NAME}"/
+          cp config.example.yaml dist/"${PKG_NAME}"/
+          cp LICENSE dist/"${PKG_NAME}"/
+          cp CONTRIBUTING.md dist/"${PKG_NAME}"/
+          cp SECURITY.md dist/"${PKG_NAME}"/
+          cp CODE_OF_CONDUCT.md dist/"${PKG_NAME}"/
+          cp .editorconfig dist/"${PKG_NAME}"/
+          cp .gitattributes dist/"${PKG_NAME}"/
+          tar -czf "dist/${PKG_NAME}.tar.gz" -C dist "${PKG_NAME}"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz

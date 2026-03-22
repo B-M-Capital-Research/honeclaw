@@ -1,0 +1,33 @@
+[package]
+name = "hone-channels"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hone-core = { workspace = true }
+hone-agent = { workspace = true }
+hone-agent-gemini-cli = { workspace = true }
+hone-agent-codex-cli = { workspace = true }
+hone-memory = { workspace = true }
+hone-tools = { workspace = true }
+hone-llm = { workspace = true }
+hone-integrations = { workspace = true }
+hone-scheduler = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+regex = "1"
+chrono.workspace = true
+flate2 = "1"
+tar = "0.4"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+pdf-extract = "0.10.0"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff"] }
+
+[dev-dependencies]
+uuid = { workspace = true }

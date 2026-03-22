@@ -1,0 +1,15 @@
+[package]
+name = "hone-agent-codex-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hone-core = { workspace = true }
+hone-tools = { workspace = true }
+hone-llm = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

@@ -1,0 +1,9 @@
+[package]
+name = "hone-console-page"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hone-web-api = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

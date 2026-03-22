@@ -1,0 +1,17 @@
+[package]
+name = "hone-agent"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hone-core = { workspace = true }
+hone-llm = { workspace = true }
+hone-tools = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = "0.1"
+tracing = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }

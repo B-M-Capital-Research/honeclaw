@@ -1,0 +1,79 @@
+# Invariants
+
+Last updated: 2026-03-22
+
+## Source of Truth and Document Priority
+
+- Code and tests take priority over explanatory documents
+- `README.md`, workspace manifests, and `config.example.yaml` are the primary implementation-level docs
+- `docs/repo-map.md`, `docs/decisions.md`, and `docs/adr/*.md` hold long-lived context
+- `docs/current-plan.md` is the dynamic index, and `docs/current-plans/*.md` carries the state of individual tasks that still need tracking; neither file should carry long-term rules
+
+## Definition of Done
+
+- Relevant verification must be completed before a task is closed
+- Any affected context documents must be updated before a task is closed
+- Cross-module long-lived behavior changes or architecture decisions must be recorded in `docs/decisions.md`, with ADRs added when needed
+- At the end of a medium-or-greater task, if the task needs handoff, pause-and-resume support, or explicit retention of follow-up risk, a handoff must be left behind
+
+## Planning and Handoff Constraints
+
+- Parallel tasks must not share the same detailed plan; each task should use its own `docs/current-plans/*.md`
+- `docs/current-plan.md` only tracks active task links, status, and links
+- `docs/current-plan.md` and `docs/current-plans/*.md` are opt-in: they only record cross-turn, cross-module, behavior / structure / workflow changes, or tasks that need parallel collaboration, handoff, or blocker management
+- Low-value one-off tasks such as a single commit / sync / rebase, small script or config fixes, no-behavior-change patches, and pure copy or formatting changes should not be mechanically written into the dynamic plan docs
+- For the same topic, prefer reusing the original handoff instead of adding fragmented files on the same day or in the same phase
+- A handoff is not a logbook; keep only the goal, result, verification, risk, and unfinished items needed by the next person
+- Small pure-execution tasks do not require a new handoff unless the user asks for one, the task needs asynchronous follow-up, or the task changes the workflow / structure / risk surface
+
+## Testing and Script Constraints
+
+- Rust unit tests should live next to the implementation in `#[cfg(test)] mod tests`
+- Rust integration tests should live under `tests/integration/`
+- CI-safe regression scripts should live under `tests/regression/ci/`
+- Regression scripts that depend on an external account, an external CLI, or local machine state should live under `tests/regression/manual/`
+- One-off troubleshooting scripts should live under `scripts/tmp/` and must not enter CI
+
+## Security and Environment Constraints
+
+- Do not hardcode secrets in docs, scripts, or tests
+- Do not add flows that depend on external account credentials to the default CI gate
+- Diagnostic scripts should avoid mutating business data
+- Treat iMessage features as local privileged capabilities; do not assume they can run in generic environments
+- Tool calls must go through a security guard that blocks risky command fragments by default
+- Knowledge-base queries should default to actor / session isolation to avoid cross-user retrieval
+- Non-local Web console deployments must enable a Bearer token
+- `ChatMode` describes only the message shape (`direct` / `group`) and does not determine session ownership; shared group context must explicitly go through `SessionIdentity`
+- `ActorIdentity` and `SessionIdentity` must stay separate: the former is for permissions, quota, sandbox, and private-data isolation, while the latter is for context recovery and session persistence
+- Global finance-domain constraints are injected at runtime by `crates/hone-channels/src/prompt.rs`: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short. Do not override these core rules only in a single channel or in a local config.
+- `config.yaml` is a read-only seed template. Runtime writes must go to `data/runtime/config_runtime.overrides.yaml`, and startup/reset paths must keep `config_runtime.yaml` as the effective base without rewriting the seed file
+
+## Agent Runtime Constraints
+
+- Use `agent.runner` as the single source for runner selection; channels and the Web UI should not branch `gemini_cli`, `function_calling`, or `codex_cli` execution paths on their own
+- `AgentSession` exposes `run()` as the only public entry point; its responsibilities should stay limited to session orchestration, persistence, and listener dispatch. When adding a new execution path, prefer extending the unified runner contract instead of adding a new `run_xxx` branch.
+- Runner selection and provider / CLI differences belong in `HoneBotCore::create_runner()` and `crates/hone-channels/src/runners/`; do not reintroduce provider-specific checks in channel entrypoints or `AgentSession`
+- A channel actor's local file visibility must stay inside a repo-external actor sandbox; the default root lives under `hone-agent-sandboxes/` in the system temp directory and can be overridden with `HONE_AGENT_SANDBOX_DIR`
+- Channel attachments must be written to `uploads/<session_id>/` inside the actor sandbox; do not point the underlying runner `cwd` back at the repo root or at a shared upload directory inside the repo
+- `gemini_acp` currently uses `gemini --experimental-acp` over stdio / JSON-RPC; startup must verify `gemini >= 0.30.0`. Authentication should prefer the local `gemini-cli` login state; if an environment variable such as `GEMINI_API_KEY` is present, prefer the explicit API key.
+- `gemini_cli` in channel runtime must default to sandboxed execution and `approval-mode=plan`; it must no longer default to `yolo`
+- `gemini_acp` in channel runtime must also default to `approval-mode=plan`, but it must not force `--sandbox` right now: local Gemini CLI 0.33.1 exits before `initialize` when run with `--experimental-acp --sandbox`
+- `codex_acp` currently uses `codex-acp` over stdio / JSON-RPC; startup must verify the local runtime version first. The currently validated combination is `codex >= 0.115.0` and `codex-acp == 0.9.5`; otherwise fail fast with a clear upgrade command.
+- `codex_acp` and `codex_cli` workspace-write mode may still read repo files outside the sandbox. The repo explicitly allows that for production channels today, so if they are used as the default runner, treat that out-of-bounds read risk as accepted and avoid mixing sensitive files with the channel runtime environment.
+- `opencode_acp` currently uses `opencode acp` over stdio / JSON-RPC; the ACP session id must be written back into Hone session metadata so a new ACP session is not created on every turn
+- If `agent.opencode.model` is non-empty, Hone must call ACP `session/set_model` before `session/prompt`; `agent.opencode.variant` should be appended to `modelId` through the same call (for example `openrouter/openai/gpt-5.4/medium`) instead of relying on temporary selection state in the local opencode UI
+- Before Hone has its own ACP permission negotiation layer, `opencode_acp` must deny one `session/request_permission` request by default and must not silently allow file writes or terminal execution; the channel runtime must also inject the minimal opencode config that rejects `external_directory`
+- The system prompt must stay layered:
+  - Static system instructions live in the prefix
+  - Session-fixed context is concatenated separately
+  - Mutable content such as summaries must not be written back into the static system prefix
+- ACP runners must receive the Hone-assembled system prompt explicitly; they must not rely on the underlying CLI discovering `AGENTS.md` or `GEMINI.md` from the repo `cwd`
+- Session time context is frozen per session; do not inject a fresh timestamp on every turn and break prefix caching
+- Session summaries must be stored in the explicit `summary` field instead of relying on a fake `system` summary message
+
+## Change Constraints
+
+- When directory responsibilities, entrypoints, or major data flows change, update `docs/repo-map.md`
+- When workflows, testing contracts, or collaboration rules change, update `AGENTS.md` or this file
+- When release or runtime strategy changes, update the matching docs and script notes
+- When config layering changes, keep the runtime seed / overlay split intact and preserve the reset path that rebuilds `config_runtime.yaml` while clearing sibling overrides

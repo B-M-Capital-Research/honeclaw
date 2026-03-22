@@ -1,0 +1,150 @@
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use hone_memory::cron_job::CronJob;
+
+#[derive(Deserialize)]
+pub struct UserIdQuery {
+    pub channel: Option<String>,
+    pub user_id: Option<String>,
+    pub channel_scope: Option<String>,
+    pub session_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ChatRequest {
+    pub channel: String,
+    pub user_id: String,
+    pub channel_scope: Option<String>,
+    pub message: Option<String>,
+    pub attachments: Option<Vec<String>>,
+}
+
+#[derive(Serialize)]
+pub struct HistoryMsg {
+    pub role: String,
+    pub content: String,
+    pub attachments: Vec<HistoryAttachment>,
+}
+
+#[derive(Serialize)]
+pub struct HistoryAttachment {
+    pub path: String,
+    pub name: String,
+    pub kind: String,
+}
+
+#[derive(Deserialize)]
+pub struct ImageQuery {
+    pub path: Option<String>,
+}
+
+/// GET /api/users 响应体中的单条用户信息
+#[derive(Serialize)]
+pub struct UserInfo {
+    pub channel: String,
+    pub user_id: String,
+    pub channel_scope: Option<String>,
+    pub session_id: String,
+    pub session_kind: String,
+    pub session_label: String,
+    pub actor_user_id: Option<String>,
+    pub last_message: String,
+    pub last_role: String,
+    pub last_time: String,
+    pub message_count: usize,
+}
+
+/// GET /api/skills 响应体中的单条技能信息
+#[derive(Serialize)]
+pub struct SkillInfo {
+    pub id: String,
+    pub display_name: String,
+    pub description: String,
+    pub aliases: Vec<String>,
+    pub tools: Vec<String>,
+    pub guide: String,
+}
+
+#[derive(Serialize)]
+pub struct MetaInfo {
+    pub name: String,
+    pub version: String,
+    pub channel: String,
+    pub supports_imessage: bool,
+    pub api_version: String,
+    pub capabilities: Vec<String>,
+    pub deployment_mode: String,
+}
+
+#[derive(Serialize)]
+pub struct SseTicketResponse {
+    pub ticket: String,
+    pub expires_at: String,
+}
+
+#[derive(Serialize)]
+pub struct CronJobRecord {
+    pub channel: String,
+    pub user_id: String,
+    pub channel_scope: Option<String>,
+    #[serde(flatten)]
+    pub job: CronJob,
+}
+
+#[derive(Deserialize)]
+pub struct CronJobUpsertRequest {
+    pub channel: Option<String>,
+    pub user_id: Option<String>,
+    pub channel_scope: Option<String>,
+    pub name: Option<String>,
+    pub hour: Option<u32>,
+    pub minute: Option<u32>,
+    pub repeat: Option<String>,
+    pub weekday: Option<u32>,
+    pub task_prompt: Option<String>,
+    pub push: Option<Value>,
+    pub enabled: Option<bool>,
+    pub channel_target: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PortfolioHoldingRequest {
+    pub channel: Option<String>,
+    pub user_id: Option<String>,
+    pub channel_scope: Option<String>,
+    pub symbol: Option<String>,
+    pub asset_type: Option<String>,
+    pub shares: Option<f64>,
+    pub avg_cost: Option<f64>,
+    pub quantity: Option<f64>,
+    pub cost_basis: Option<f64>,
+    pub underlying: Option<String>,
+    pub option_type: Option<String>,
+    pub strike_price: Option<f64>,
+    pub expiration_date: Option<String>,
+    pub contract_multiplier: Option<f64>,
+    pub notes: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct PortfolioSummary {
+    pub channel: String,
+    pub user_id: String,
+    pub channel_scope: Option<String>,
+    pub holdings_count: usize,
+    pub total_shares: f64,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ChannelStatusInfo {
+    pub id: String,
+    pub label: String,
+    pub enabled: bool,
+    pub running: bool,
+    pub status: String,
+    pub pid: Option<u32>,
+    pub last_heartbeat_at: Option<String>,
+    pub detail: String,
+}

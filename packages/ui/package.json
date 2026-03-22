@@ -1,0 +1,32 @@
+{
+  "name": "@hone-financial/ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./badge": "./src/components/badge.tsx",
+    "./button": "./src/components/button.tsx",
+    "./empty-state": "./src/components/empty-state.tsx",
+    "./input": "./src/components/input.tsx",
+    "./logo": "./src/components/logo.tsx",
+    "./markdown": "./src/components/markdown.tsx",
+    "./skeleton": "./src/components/skeleton.tsx",
+    "./textarea": "./src/components/textarea.tsx",
+    "./context/dialog": "./src/context/dialog.tsx",
+    "./context/marked": "./src/context/marked.tsx",
+    "./context/toast": "./src/context/toast.tsx",
+    "./theme": "./src/context/theme.tsx",
+    "./styles": "./src/styles/index.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.5",
+    "marked": "^15.0.7",
+    "shiki": "^3.3.0",
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

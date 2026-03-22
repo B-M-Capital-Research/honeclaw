@@ -1,0 +1,10 @@
+title = "Hone-Financial secret scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Private staging repo keeps an internal seed config.yaml."
+paths = [
+  '''(^|/)config\.yaml$''',
+]

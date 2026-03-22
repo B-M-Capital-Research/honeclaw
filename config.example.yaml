@@ -1,0 +1,370 @@
+# Hone configuration example
+#
+# Usage:
+# 1) Copy this file to config.yaml
+# 2) Fill in or adjust the values as needed; all API tokens are read from config.yaml
+
+# iMessage config
+imessage:
+  enabled: false
+  # Leave empty to listen to all users; otherwise only the specified user is tracked
+  target_handle: ""
+  db_path: "~/Library/Messages/chat.db"
+  poll_interval: 2 # polling interval in seconds
+
+
+# Feishu channel config (Rust business process + Go official SDK facade)
+feishu:
+  enabled: false
+  # Feishu credentials are read from config.yaml
+  app_id: ""
+  app_secret: ""
+  # Internal allowlist of email addresses; empty means allow all; supports "*"
+  allow_emails: []
+  # Internal allowlist of mobile numbers; accepts "+8613800138000" or "13800138000"
+  allow_mobiles: []
+  # Fallback allowlist: when the contact API cannot provide an email or mobile number, allow the open_id directly
+  allow_open_ids: []
+  # Phase 1 is direct messages only; group-chat events are ignored by the facade
+  dm_only: true
+  # Maximum length of a single message; longer messages are split on the Rust side
+  max_message_length: 3500
+  # Local JSON-RPC address from Rust to the Go facade
+  facade_url: "http://127.0.0.1:18115/rpc"
+  # Listener address for callback events from the Go facade to Rust
+  callback_addr: "127.0.0.1:18116"
+  # The Go facade's own listener address; launch.sh uses it for health checks
+  facade_addr: "127.0.0.1:18115"
+  # Timeout, in seconds, for waiting on the facade long connection at startup
+  startup_timeout_seconds: 20
+
+
+# Telegram Bot config (DM is implemented; group / channel support is kept but not yet implemented)
+telegram:
+  enabled: false
+  # Telegram Bot token
+  bot_token: "REPLACE_ME"
+  # Allowed user ID list; empty means allow all; supports "*"
+  allow_from: []
+  # Only process direct messages (DM). Group and channel messages are ignored.
+  dm_only: true
+  # Maximum length of a single message (Telegram sendMessage limit is about 4096)
+  max_message_length: 3500
+
+
+# Discord Bot config (DM is implemented; Guild channel support is kept but not yet implemented)
+discord:
+  enabled: false
+  # Discord Bot token
+  bot_token: ""
+  # Allowed user ID list; empty means allow all; supports "*"
+  allow_from: []
+  # Only process direct messages (DM). Guild channel messages are ignored.
+  dm_only: true
+  # Maximum length of a single message (Discord limit is 2000)
+  max_message_length: 1800
+  group_reply:
+    enabled: true
+    # mention_only | mention_or_question | all
+    trigger_mode: "mention_or_question"
+    # Fixed channel scope for this release
+    queue_scope: "channel"
+    # Group-chat aggregation window in seconds
+    window_seconds: 45
+    # Fast-trigger delay after an @ mention, in seconds
+    mention_fast_delay_seconds: 3
+    # Per-channel message queue capacity
+    queue_capacity_per_channel: 200
+    # Maximum number of messages handled in one batch; overflow triggers backlog fallback
+    max_batch_messages: 12
+    # Keep the latest N messages when overloaded
+    backlog_keep_latest: 8
+    # Maximum characters to keep in the backlog summary
+    backlog_summary_max_chars: 600
+    # adaptive | always | never
+    reply_mention_mode: "adaptive"
+    # Whether to enable question-signal triggering
+    question_signal_enabled: true
+
+# Group-chat shared session / context compression policy
+group_context:
+  # Whether group-context governance is enabled
+  enabled: true
+  # Whether each group shares one session
+  shared_session_enabled: true
+  # Number of recent valid messages to restore for a shared group session
+  recent_context_limit: 18
+  # Trigger compression after the shared session exceeds this number of messages
+  compress_threshold_messages: 24
+  # Trigger compression after the shared session exceeds this many bytes
+  compress_threshold_bytes: 49152
+  # Keep the latest N messages after compression
+  retain_recent_after_compress: 8
+
+
+# Discord channel watcher (for cron: poll channel messages -> append locally -> speak or warn when needed)
+discord_watch:
+  enabled: false
+  # Channel IDs to watch; can also be specified on the command line with --channel-id (higher priority)
+  channel_ids: []
+  # Run mode: true = long-running loop; false = one-shot run (suitable for cron)
+  loop: true
+  # Whether to print verbose logs (also prints on ticks with no new messages)
+  verbose: false
+  # Whether to print decision traces (why it stayed silent / why it joined)
+  log_decisions: true
+  # Whether to persist structured decision traces (JSONL) for postmortem review
+  decision_log_enabled: true
+  # Poll interval in seconds for loop mode; only used when --loop is set
+  poll_interval_seconds: 30
+  # Log and state files are written under storage.base_path
+  log_dir: "discord_channel_logs"
+  state_dir: "discord_channel_watch"
+  decision_log_dir: "discord_channel_decisions"
+  # Pull the last N messages at startup as context (record only; do not speak or warn)
+  bootstrap_limit: 50
+  moderation:
+    enabled: true
+    # Minimum interval between warnings of the same type, to avoid spam
+    warning_cooldown_seconds: 60
+  participation:
+    enabled: true
+    # Participation window after an @ mention or scheduled trigger, in minutes
+    window_minutes: 15
+    # Scheduled participation interval in minutes; only fires when a question / opinion signal is present
+    schedule_minutes: 30
+    # Cooldown between two scheduled participations, in minutes; @ mentions ignore this limit
+    cooldown_minutes: 90
+    # Minimum reply interval inside the window, in seconds
+    reply_min_interval_seconds: 240
+    # Follow-up grace period after the bot replies, for the same user's continued question or intent, in seconds
+    same_user_followup_grace_seconds: 900
+    # Grace period for one quick non-@ follow-up question after an @ mention, in seconds
+    mention_followup_grace_seconds: 120
+    # Whether to send an immediate "seen it" acknowledgement after an @ mention (disabled by default; go straight to the full reply)
+    mention_immediate_ack: false
+    # Immediate acknowledgement text
+    mention_ack_text: "Got it, let me take a look."
+    # Cooldown for the immediate acknowledgement, in seconds; 0 means acknowledge every @ mention
+    mention_ack_cooldown_seconds: 0
+    # Only reply when the input contains a question / help / opinion-seeking signal
+    require_question_like: true
+
+
+
+# X (Twitter) publishing config
+x:
+  enabled: false
+  # Dry-run switch: true means simulate publishing only, without actually posting
+  dry_run: false
+  # Number of images to attach automatically (0 means text only; max 4)
+  default_image_count: 3
+  timeout_seconds: 30
+  api_base_url: "https://api.twitter.com"
+  upload_base_url: "https://upload.twitter.com"
+  oauth1:
+    # Fill these directly in config.yaml instead of relying on environment variables
+    consumer_key: ""
+    consumer_secret: ""
+    access_token: ""
+    access_token_secret: ""
+
+
+# Nano Banana Pro image generation config
+nano_banana:
+  enabled: true
+  # Single implementation: use the OpenRouter image generation API (modalities=["image","text"])
+  base_url: "https://openrouter.ai/api/v1"
+  model: "google/gemini-3-pro-image-preview"
+  default_image_count: 3
+  timeout_seconds: 90
+  download_timeout_seconds: 30
+  # API key is read from llm.openrouter.api_key
+  max_retries: 2
+  max_tokens: 2048
+  temperature: 0.7
+  http_referrer: "https://openrouter.ai"
+  x_title: "Hone-Financial"
+  download_dir: "gen_images"
+  extra_params: {}
+
+
+# Financial Modeling Prep API config
+fmp:
+  # Financial Modeling Prep API key
+  api_key: ""
+  base_url: "https://financialmodelingprep.com/api"
+  timeout: 30
+
+
+llm:
+  provider: openrouter
+  openrouter:
+    # OpenRouter API key
+    api_key: ""
+    model: "moonshotai/kimi-k2.5"
+    timeout: 120
+    max_retries: 3
+    max_tokens: 32768
+
+
+storage:
+  base_path: "./data"
+  sessions_dir: "./data/sessions"
+  conversation_quota_dir: "./data/conversation_quota"
+  llm_audit_db_path: "./data/llm_audit.sqlite3"
+  llm_audit_retention_days: 30
+  llm_audit_enabled: true
+  portfolio_dir: "./data/portfolio"
+  reports_dir: "./data/reports"
+  cron_jobs_dir: "./data/cron_jobs"
+  x_drafts_dir: "./data/x_drafts"
+  kb_dir: "./data/kb"
+
+logging:
+  level: "INFO"
+  console: true
+  colorize: true
+  enqueue: true
+  file: "./data/logs/hone.log"
+  rotation: "20 MB"
+  retention: "14 days"
+  compression: "zip"
+
+
+admins:
+  # iMessage admin handle list (phone number or Apple ID)
+  # These users have admin privileges in the iMessage channel (they can modify code and restart Hone)
+  imessage_handles:
+    - "" # example: "+13234567890" or "admin@example.com"
+  # Feishu admin email list
+  feishu_emails:
+    - "" # example: "admin@example.com"
+  # Feishu admin mobile list
+  feishu_mobiles:
+    - "" # example: "+8613800138000"
+  # Feishu admin open_id list
+  feishu_open_ids:
+    - "" # example: "ou_xxx"
+  # Discord admin user ID list (Discord numeric IDs)
+  discord_user_ids:
+    - "" # example: "123456789012345678"
+
+
+web:
+  # Bearer token for the Web console (recommended for remote deployments; can be left empty locally)
+  auth_token: ""
+  # Research report API
+  research_api_base: "https://research.example.com"
+  research_api_key: ""
+
+
+security:
+  # Whether KB queries are isolated by actor/session (recommended to avoid cross-user retrieval)
+  kb_actor_isolation: true
+  tool_guard:
+    enabled: true
+    # block | audit (audit only records the warning and does not block)
+    mode: "block"
+    # Tool matching rules to apply (supports "*" and "!<pattern>" exclusions)
+    apply_tools:
+      - "*"
+      - "!web_search"
+      - "!data_fetch"
+      - "!kb_search"
+    # High-risk fragments that trigger blocking (matched in lowercase)
+    deny_patterns:
+      - "rm -rf"
+      - "rm -fr"
+      - "rm -r /"
+      - "rm -rf /"
+      - "rm -fr /"
+      - "mkfs"
+      - "dd if=/dev/zero"
+      - "dd if=/dev/random"
+      - "shutdown -h"
+      - "shutdown -r"
+      - "reboot"
+      - "poweroff"
+      - "halt"
+      - ":(){ :|:& };:"
+      - "del /s /q"
+      - "rd /s /q"
+      - "format c:"
+      - "curl | sh"
+      - "wget | sh"
+
+
+agent:
+  # Optional: function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp
+  runner: "codex_cli"
+  # Only used when provider=codex_cli; empty means use the codex-cli default model
+  codex_model: "gpt-5.3-codex"
+  max_iterations: 100
+  # Verbose logging: print the model name, each iteration, and redacted summaries of tool-call inputs / outputs
+  debug_log: false
+
+  system_prompt_path: "./soul.md"
+  gemini_acp:
+    command: "gemini"
+    args: ["--experimental-acp", "--sandbox", "--approval-mode", "plan"]
+    # Optional; if unset, reuse the local gemini-cli login state
+    api_key_env: "GEMINI_API_KEY"
+    # Optional; empty uses the gemini CLI default model
+    model: "gemini-2.5-pro"
+    startup_timeout_seconds: 15
+    request_timeout_seconds: 300
+  codex_acp:
+    command: "codex-acp"
+    args: []
+    # Startup checks: codex >= 0.115.0 and codex-acp == 0.9.5; otherwise fail with an upgrade or switch-version hint
+    codex_command: "codex"
+    # Explicit ACP session model; empty uses the codex-acp default model
+    model: "gpt-5.4"
+    # Reasoning variant can be set separately; for example low|medium|high|xhigh
+    variant: "medium"
+    # Recommended: keep workspace-write + never, and let Hone run inside the actor sandbox
+    sandbox_mode: "workspace-write"
+    approval_policy: "never"
+    dangerously_bypass_approvals_and_sandbox: false
+    sandbox_permissions: []
+    extra_config_overrides: []
+    startup_timeout_seconds: 15
+    request_timeout_seconds: 300
+  opencode:
+    command: "opencode"
+    args: ["acp"]
+    # Explicit ACP session model; empty uses opencode's own default config
+    model: "openrouter/openai/gpt-5.4"
+    # Reasoning variant can be set separately; for example none|minimal|low|medium|high|xhigh
+    variant: "medium"
+    startup_timeout_seconds: 15
+    request_timeout_seconds: 300
+
+search:
+  provider: tavily
+  # Tavily API key pool with failover support
+  api_keys:
+    - ""
+  search_depth: "basic"
+  topic: "general"
+  max_results: 5
+
+
+tools:
+  web_search:
+    enabled: true
+
+  portfolio:
+    enabled: true
+
+  x_draft:
+    enabled: true
+
+  x_publish:
+    enabled: true
+
+
+server:
+  host: "127.0.0.1"
+  port: 8000

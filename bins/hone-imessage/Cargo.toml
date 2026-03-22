@@ -1,0 +1,27 @@
+[package]
+name = "hone-imessage"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hone-imessage"
+path = "src/main.rs"
+
+[dependencies]
+hone-core = { workspace = true }
+hone-channels = { workspace = true }
+hone-scheduler = { workspace = true }
+hone-memory = { workspace = true }
+hone-tools = { workspace = true }
+hone-agent-gemini-cli = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+rusqlite = { workspace = true }
+chrono = { workspace = true }
+serde_json.workspace = true
+serde_yaml = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+reqwest = { workspace = true }
+axum = { workspace = true }
+async-trait = { workspace = true }

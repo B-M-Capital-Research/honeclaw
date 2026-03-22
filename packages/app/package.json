@@ -1,0 +1,39 @@
+{
+  "name": "@hone-financial/app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 3000",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test --preload ./happydom.ts ./src",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@hone-financial/ui": "workspace:*",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.3",
+    "@tauri-apps/api": "^2.0.0",
+    "solid-js": "^1.9.5",
+    "virtua": "^0.48.6",
+    "marked": "^15.0.8",
+    "dompurify": "^3.2.4",
+    "highlight.js": "^11.11.1",
+    "mermaid": "^11.4.1",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.12",
+    "@types/dompurify": "^3.0.5",
+    "@types/html2canvas": "^1.0.0",
+    "@happy-dom/global-registrator": "^20.0.10",
+    "@playwright/test": "^1.51.1",
+    "@tailwindcss/vite": "^4.1.3",
+    "tailwindcss": "^4.1.3",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0",
+    "vite-plugin-solid": "^2.11.2"
+  }
+}

@@ -1,0 +1,33 @@
+[package]
+name = "hone-web-api"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "hone_web_api"
+path = "src/lib.rs"
+
+[dependencies]
+hone-core      = { workspace = true }
+hone-channels  = { workspace = true }
+hone-memory    = { workspace = true }
+hone-agent     = { workspace = true }
+hone-scheduler = { workspace = true }
+hone-tools     = { workspace = true }
+tokio          = { workspace = true }
+tokio-stream   = { workspace = true }
+tracing        = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "registry"] }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+serde_yaml     = { workspace = true }
+axum           = { workspace = true }
+chrono         = { workspace = true }
+tower-http     = { workspace = true }
+uuid           = { workspace = true }
+reqwest        = { workspace = true }
+async-trait    = { workspace = true }
+url            = "2"
+
+[dev-dependencies]
+tower = "0.5"

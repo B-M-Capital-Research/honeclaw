@@ -1,0 +1,24 @@
+[package]
+name = "hone-discord"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hone-discord"
+path = "src/main.rs"
+
+[dependencies]
+hone-core = { workspace = true }
+hone-channels = { workspace = true }
+hone-scheduler = { workspace = true }
+hone-memory = { workspace = true }
+hone-tools = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+serenity = { version = "0.12", features = ["client", "gateway", "model", "cache"] }
+flate2 = "1"
+tar = "0.4"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+pdf-extract = "0.10.0"

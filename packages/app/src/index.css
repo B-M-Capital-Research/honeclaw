@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@source "../../ui/src";
+@import "@hone-financial/ui/styles";
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
