@@ -173,8 +173,9 @@ If you are interested in accessing these capabilities, feel free to reach out to
 
 ![BM YTB](./resources/bm_youtube.jpg)
 
+2. - [BiliBili: 巴芒投资](https://space.bilibili.com/224670487)  — follow for investment research content
 
-2. - [Discord](https://discord.gg/TyDNfYXDGF): see the invite link (https://discord.gg/TyDNfYXDGF) to join our community channel
+3. - [Discord](https://discord.gg/TyDNfYXDGF): see the invite link (https://discord.gg/TyDNfYXDGF) to join our community channel
 
 
 # 6. 🤝 Contributing
@@ -189,4 +190,4 @@ Contributors:
 
 📄 License
 
-This project is open-sourced under the Apache-2.0 license.
+This project is open-sourced under the MIT license.
