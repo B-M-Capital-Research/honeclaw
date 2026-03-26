@@ -42,7 +42,7 @@ pub struct HoneBotCore {
 impl HoneBotCore {
     /// 从配置创建
     pub fn new(config: HoneConfig) -> Self {
-        let session_storage = SessionStorage::new(&config.storage.sessions_dir);
+        let session_storage = SessionStorage::from_storage_config(&config.storage);
         let conversation_quota_storage =
             ConversationQuotaStorage::new(&config.storage.conversation_quota_dir)
                 .expect("failed to initialize conversation quota storage");
@@ -164,7 +164,7 @@ impl HoneBotCore {
             tracing::info!(
                 "[Startup/{channel}] session.compression.engine=llm provider={} model={} threshold=40 retain_recent=4",
                 printable_or_default(llm_provider, "<empty>"),
-                llm_model
+                printable_or_default(self.config.llm.openrouter.auxiliary_model(), "<empty>")
             );
         } else {
             tracing::warn!(
@@ -181,6 +181,13 @@ impl HoneBotCore {
         } else {
             tracing::warn!("[Startup/{channel}] llm.audit=disabled");
         }
+
+        tracing::info!(
+            "[Startup/{channel}] session.runtime_backend={} session.shadow_sqlite.enabled={} session.shadow_sqlite.path={}",
+            self.config.storage.session_runtime_backend,
+            self.config.storage.session_sqlite_shadow_write_enabled,
+            self.config.storage.session_sqlite_db_path
+        );
     }
 
     /// 创建 LLM Provider
@@ -510,6 +517,15 @@ impl HoneBotCore {
         system_prompt: &str,
         tool_registry: ToolRegistry,
     ) -> Result<Box<dyn AgentRunner>, String> {
+        self.create_runner_with_model_override(system_prompt, tool_registry, None)
+    }
+
+    pub fn create_runner_with_model_override(
+        &self,
+        system_prompt: &str,
+        tool_registry: ToolRegistry,
+        model_override: Option<&str>,
+    ) -> Result<Box<dyn AgentRunner>, String> {
         let runner = self.config.agent.runner.trim();
         match runner {
             "gemini_cli" => Ok(Box::new(GeminiCliRunner::new(
@@ -544,6 +560,11 @@ impl HoneBotCore {
             }
             "opencode_acp" => {
                 let mut opencode_config = self.config.agent.opencode.clone();
+                if let Some(model_override) = model_override.filter(|value| !value.trim().is_empty())
+                {
+                    opencode_config.model = model_override.trim().to_string();
+                    opencode_config.variant = String::new();
+                }
                 // 优先使用 config_runtime.yaml 中配置的 OpenRouter API key（取第一个有效 key）
                 let pool = self.config.llm.openrouter.effective_key_pool();
                 if let Some(key) = pool.first() {
@@ -715,7 +736,8 @@ impl HoneBotCore {
 
         let started = std::time::Instant::now();
         let request_payload = serde_json::json!({ "messages": msgs.clone() });
-        let (new_summary_content, usage) = match llm.chat(&msgs, None).await {
+        let auxiliary_model = self.config.llm.openrouter.auxiliary_model().to_string();
+        let (new_summary_content, usage) = match llm.chat(&msgs, Some(&auxiliary_model)).await {
             Ok(result) => (result.content, result.usage),
             Err(e) => {
                 self.record_llm_audit(LlmAuditRecord {
@@ -736,7 +758,7 @@ impl HoneBotCore {
                         "core.session_compression",
                         "chat",
                         self.config.llm.provider.clone(),
-                        Some(self.config.llm.openrouter.model.clone()),
+                        Some(auxiliary_model.clone()),
                         request_payload.clone(),
                     )
                 });
@@ -764,7 +786,7 @@ impl HoneBotCore {
                 "core.session_compression",
                 "chat",
                 self.config.llm.provider.clone(),
-                Some(self.config.llm.openrouter.model.clone()),
+                Some(auxiliary_model),
                 request_payload,
             )
         });

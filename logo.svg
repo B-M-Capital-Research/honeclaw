@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="stoneTop" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffaf45"/>
+      <stop offset="100%" stop-color="#ff6b00"/>
+    </linearGradient>
+
+    <linearGradient id="stoneLeft" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e85d04"/>
+      <stop offset="100%" stop-color="#9d3c00"/>
+    </linearGradient>
+
+    <linearGradient id="stoneRight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a4047"/>
+      <stop offset="100%" stop-color="#1d2024"/>
+    </linearGradient>
+
+    <linearGradient id="knifeTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffb703"/>
+      <stop offset="100%" stop-color="#f46000"/>
+    </linearGradient>
+
+    <linearGradient id="knifeBlade" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5a636e"/>
+      <stop offset="50%" stop-color="#2c3136"/>
+      <stop offset="100%" stop-color="#16191d"/>
+    </linearGradient>
+  </defs>
+
+  <g id="logo-mark">
+    <path d="M 175 220 L 265 110 L 325 140 L 235 250 Z" fill="url(#stoneTop)" />
+    <path d="M 175 220 L 175 250 L 235 280 L 235 250 Z" fill="url(#stoneLeft)" />
+    <path d="M 235 250 L 235 280 L 325 170 L 325 140 Z" fill="url(#stoneRight)" />
+
+    <path d="M 175 140 L 335 210 L 325 220 L 165 150 Z" fill="url(#knifeTop)" />
+    <path d="M 165 150 L 325 220 L 325 245 L 165 190 Z" fill="url(#knifeBlade)" />
+  </g>
+
+  <g id="logo-text" fill="#2C3136">
+    <path d="M 112 310 L 112 370 L 127 370 L 127 348 L 152 348 L 152 370 L 167 370 L 167 310 L 152 310 L 152 335 L 127 335 L 127 310 Z" />
+    
+    <path d="M 212 308 C 237 308 247 325 247 340 C 247 355 237 372 212 372 C 187 372 177 355 177 340 C 177 325 187 308 212 308 Z M 212 322 C 200 322 193 330 193 340 C 193 350 200 358 212 358 C 224 358 231 350 231 340 C 231 330 224 322 212 322 Z" fill-rule="evenodd" />
+    
+    <path d="M 262 310 L 262 370 L 277 370 L 277 330 L 307 370 L 322 370 L 322 310 L 307 310 L 307 350 L 277 310 Z" />
+    
+    <path d="M 337 310 L 337 370 L 387 370 L 387 356 L 352 356 L 352 346 L 382 346 L 382 333 L 352 333 L 352 324 L 387 324 L 387 310 Z" />
+  </g>
+</svg>

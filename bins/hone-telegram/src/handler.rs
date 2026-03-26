@@ -11,7 +11,8 @@ use hone_channels::attachments::{
 };
 use hone_channels::channel_download_dir;
 use hone_channels::ingress::{
-    ActorScopeResolver, GroupTrigger, IncomingEnvelope, MessageDeduplicator, SessionLockRegistry,
+    ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope, MessageDeduplicator,
+    SessionLockRegistry, persist_buffered_group_messages,
 };
 use hone_channels::outbound::{run_session_with_outbound, split_segments};
 use hone_channels::prompt::PromptOptions;
@@ -122,6 +123,10 @@ pub(crate) async fn run() {
         dedup: MessageDeduplicator::new(Duration::from_secs(120), 2048),
         session_locks: SessionLockRegistry::new(),
         scope_resolver: ActorScopeResolver::new("telegram"),
+        pretrigger: hone_channels::ingress::GroupPretriggerWindowRegistry::new(
+            core.config.group_context.pretrigger_window_max_messages,
+            Duration::from_secs(core.config.group_context.pretrigger_window_max_age_seconds),
+        ),
         media_groups: MediaGroupBuffer::new(),
     });
 
@@ -301,17 +306,6 @@ async fn handle_message(
         return Ok(());
     }
 
-    if !is_private && !direct_mention {
-        info!(
-            chat_id = msg.chat.id.0,
-            message_id = msg.id.0,
-            text = raw_text.as_str(),
-            bot_username = bot_username.as_str(),
-            "telegram inbound ignored: group message without direct mention"
-        );
-        return Ok(());
-    }
-
     process_telegram_message_batch(bot, core, bot_username, bot_id, app_state, vec![msg]).await
 }
 
@@ -349,19 +343,6 @@ async fn process_telegram_message_batch(
         .any(|message| is_reply_to_bot(message, bot_id));
     let raw_text = collect_message_text(&messages);
     let media_group_id = first_msg.media_group_id().map(str::to_string);
-
-    if !is_private && !direct_mention {
-        info!(
-            chat_id = first_msg.chat.id.0,
-            message_id = first_msg.id.0,
-            text = raw_text.as_str(),
-            media_group_id = media_group_id.as_deref().unwrap_or(""),
-            bot_username = bot_username.as_str(),
-            "telegram inbound ignored: group message without direct mention"
-        );
-        return Ok(());
-    }
-
     let text = raw_text.trim();
 
     let (actor, target, chat_mode) = if is_private {
@@ -382,6 +363,79 @@ async fn process_telegram_message_batch(
     let session_identity = SessionIdentity::from_actor(&actor)
         .expect("telegram actor should always map to a session identity");
     let session_id = session_identity.session_id();
+    let speaker_label = telegram_speaker_label(&user);
+    let is_triggered = is_private || direct_mention || reply_to_bot;
+
+    if !is_triggered {
+        if !text.is_empty() && core.config.group_context.pretrigger_window_enabled {
+            app_state
+                .pretrigger
+                .push(
+                    &session_id,
+                    BufferedGroupMessage::new(
+                        "telegram",
+                        first_msg.id.0.to_string(),
+                        speaker_label,
+                        text.to_string(),
+                    ),
+                )
+                .await;
+            info!(
+                chat_id = first_msg.chat.id.0,
+                message_id = first_msg.id.0,
+                session_id = session_id,
+                media_group_id = media_group_id.as_deref().unwrap_or(""),
+                "telegram group message buffered for pretrigger window"
+            );
+        } else {
+            info!(
+                chat_id = first_msg.chat.id.0,
+                message_id = first_msg.id.0,
+                text = raw_text.as_str(),
+                media_group_id = media_group_id.as_deref().unwrap_or(""),
+                bot_username = bot_username.as_str(),
+                "telegram inbound ignored: group message without explicit trigger"
+            );
+        }
+        return Ok(());
+    }
+
+    let _session_guard = app_state.session_locks.lock(&session_id).await;
+    if core
+        .session_storage
+        .load_session(&session_id)
+        .map_err(|err| {
+            error!("[Telegram] 加载 session 失败 session_id={session_id}: {err}");
+            err
+        })
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        let _ = core
+            .session_storage
+            .create_session_for_identity(&session_identity, Some(&actor));
+    }
+    let buffered_messages = if !is_private && core.config.group_context.pretrigger_window_enabled {
+        app_state
+            .pretrigger
+            .take_recent(&session_id, Some(&first_msg.id.0.to_string()))
+            .await
+    } else {
+        Vec::new()
+    };
+    let buffered_count = match persist_buffered_group_messages(
+        &core.session_storage,
+        &session_id,
+        &buffered_messages,
+    ) {
+        Ok(count) => count,
+        Err(err) => {
+            error!("[Telegram] 预触发窗口写入 session 失败 session_id={session_id}: {err}");
+            0
+        }
+    };
+
     let raw_attachments = collect_raw_attachments(&bot, &messages).await;
     let attachments = ingest_raw_attachments(
         core.as_ref(),
@@ -393,12 +447,12 @@ async fn process_telegram_message_batch(
         },
     )
     .await;
-    if text.is_empty() && attachments.is_empty() {
+    if text.is_empty() && attachments.is_empty() && buffered_count == 0 {
         info!(
             chat_id = first_msg.chat.id.0,
             message_id = first_msg.id.0,
             media_group_id = media_group_id.as_deref().unwrap_or(""),
-            "telegram inbound ignored: empty text"
+            "telegram inbound ignored: empty trigger without buffered context"
         );
         return Ok(());
     }
@@ -421,8 +475,11 @@ async fn process_telegram_message_batch(
             },
         );
     }
-    let speaker_label = telegram_speaker_label(&user);
-    let normalized = build_user_input(text, &attachments);
+    let normalized = if text.is_empty() && attachments.is_empty() {
+        "@bot".to_string()
+    } else {
+        build_user_input(text, &attachments)
+    };
     let input_text = if is_private {
         normalized
     } else {
@@ -446,7 +503,6 @@ async fn process_telegram_message_batch(
         session_metadata: None,
         message_metadata: MessageMetadata::default(),
     };
-    let _session_guard = app_state.session_locks.lock(&session_id).await;
 
     info!(
         chat_id = first_msg.chat.id.0,
@@ -454,6 +510,7 @@ async fn process_telegram_message_batch(
         session_id = session_id,
         chat_mode = ?envelope.chat_mode,
         attachments = attachments.len(),
+        buffered_messages = buffered_count,
         media_group_id = media_group_id.as_deref().unwrap_or(""),
         "telegram inbound accepted"
     );
@@ -558,6 +615,13 @@ async fn handle_scheduler_events(
         let core_clone = core.clone();
         tokio::spawn(async move {
             let response = run_scheduled_task(&core_clone, &event).await;
+            if response.trim().is_empty() {
+                info!(
+                    "[Telegram] 心跳任务未命中，本轮不发送: job={} target={}",
+                    event.job_name, event.channel_target
+                );
+                return;
+            }
             let chat_id: i64 = match event.channel_target.parse() {
                 Ok(id) => id,
                 Err(_) => {
@@ -583,20 +647,17 @@ async fn run_scheduled_task(
     event: &SchedulerEvent,
 ) -> String {
     let prompt_options = PromptOptions::default();
-    let result = scheduler::run_scheduled_task(
+    let result = scheduler::execute_scheduler_event(
         core.clone(),
         event,
         prompt_options,
         AgentRunOptions::default(),
     )
     .await;
-    if result.response.success {
-        result.response.content
+    if result.should_deliver {
+        result.error.unwrap_or(result.content)
     } else {
-        result
-            .response
-            .error
-            .unwrap_or_else(|| "定时任务执行失败".to_string())
+        String::new()
     }
 }
 
@@ -903,6 +964,10 @@ mod tests {
             dedup: MessageDeduplicator::new(Duration::from_secs(120), 2048),
             session_locks: SessionLockRegistry::new(),
             scope_resolver: ActorScopeResolver::new("telegram"),
+            pretrigger: hone_channels::ingress::GroupPretriggerWindowRegistry::new(
+                core.config.group_context.pretrigger_window_max_messages,
+                Duration::from_secs(core.config.group_context.pretrigger_window_max_age_seconds),
+            ),
             media_groups: MediaGroupBuffer::new(),
         });
         let msg = build_private_message(

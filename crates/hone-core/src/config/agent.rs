@@ -36,6 +36,8 @@ pub struct OpenRouterConfig {
     pub api_key_env: String,
     #[serde(default = "default_model")]
     pub model: String,
+    #[serde(default = "default_sub_model")]
+    pub sub_model: String,
     #[serde(default = "default_timeout")]
     pub timeout: u64,
     #[serde(default = "default_max_retries")]
@@ -51,6 +53,7 @@ impl Default for OpenRouterConfig {
             api_keys: Vec::new(),
             api_key_env: default_api_key_env(),
             model: default_model(),
+            sub_model: default_sub_model(),
             timeout: default_timeout(),
             max_retries: default_max_retries(),
             max_tokens: default_max_tokens(),
@@ -63,12 +66,24 @@ impl OpenRouterConfig {
     pub fn effective_key_pool(&self) -> crate::api_key_pool::ApiKeyPool {
         crate::api_key_pool::ApiKeyPool::merged(&self.api_key, &self.api_keys)
     }
+
+    pub fn auxiliary_model(&self) -> &str {
+        let sub_model = self.sub_model.trim();
+        if sub_model.is_empty() {
+            self.model.trim()
+        } else {
+            sub_model
+        }
+    }
 }
 
 fn default_api_key_env() -> String {
     "OPENROUTER_API_KEY".to_string()
 }
 fn default_model() -> String {
+    "moonshotai/kimi-k2.5".to_string()
+}
+fn default_sub_model() -> String {
     "moonshotai/kimi-k2.5".to_string()
 }
 fn default_timeout() -> u64 {

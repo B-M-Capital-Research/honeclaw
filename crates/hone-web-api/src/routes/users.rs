@@ -9,30 +9,14 @@ use crate::types::UserInfo;
 
 /// GET /api/users — 列出所有有会话记录的 session，按最后活跃时间降序
 pub(crate) async fn handle_users(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let sessions_dir = &state.core.config.storage.sessions_dir;
     let mut users: Vec<UserInfo> = Vec::new();
-
-    let entries = match std::fs::read_dir(sessions_dir) {
-        Ok(e) => e,
+    let sessions = match state.core.session_storage.list_sessions() {
+        Ok(sessions) => sessions,
         Err(_) => return Json(serde_json::json!([])),
     };
 
-    for entry in entries.flatten() {
-        let fname = entry.file_name().to_string_lossy().to_string();
-        if !fname.ends_with(".json") {
-            continue;
-        }
-
-        let session_id = fname.trim_end_matches(".json").to_string();
-
-        let content = match std::fs::read_to_string(entry.path()) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let session: hone_memory::session::Session = match serde_json::from_str(&content) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
+    for session in sessions {
+        let session_id = session.id.clone();
         let session_identity = session.session_identity.clone().or_else(|| {
             session
                 .actor

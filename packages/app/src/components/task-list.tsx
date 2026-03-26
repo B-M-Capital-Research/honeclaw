@@ -4,10 +4,14 @@ import { Skeleton } from "@hone-financial/ui/skeleton"
 import { For, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useTasks } from "@/context/tasks"
+import type { CronJobInfo } from "@/lib/types"
 
 export function TaskList() {
     const navigate = useNavigate()
     const tasks = useTasks()
+
+    const isHeartbeatJob = (job: CronJobInfo) =>
+        job.schedule.repeat === "heartbeat" || (job.tags || []).includes("heartbeat")
 
     const formatNextRunAt = (dateString?: string) => {
         if (!dateString) return "未调度"
@@ -79,15 +83,21 @@ export function TaskList() {
                                                             {job.name}
                                                         </div>
                                                         <div class="text-[11px] text-[color:var(--text-muted)]">
-                                                            {job.schedule.hour.toString().padStart(2, "0")}:
-                                                            {job.schedule.minute.toString().padStart(2, "0")}
+                                                            {isHeartbeatJob(job)
+                                                                ? "每30分钟"
+                                                                : `${job.schedule.hour.toString().padStart(2, "0")}:${job.schedule.minute.toString().padStart(2, "0")}`}
                                                         </div>
                                                     </div>
+                                                    <Show when={isHeartbeatJob(job)}>
+                                                        <div class="mt-1 inline-flex rounded-full border border-[color:var(--accent)]/30 bg-[color:var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
+                                                            心跳检测
+                                                        </div>
+                                                    </Show>
                                                     <div class="mt-0.5 line-clamp-1 text-xs leading-5 text-[color:var(--text-secondary)]">
                                                         {job.task_prompt}
                                                     </div>
                                                     <div class="mt-2 text-[11px] text-[color:var(--text-muted)]">
-                                                        下一次: {formatNextRunAt(job.next_run_at)}
+                                                        下一次: {isHeartbeatJob(job) ? "每 30 分钟检查一次" : formatNextRunAt(job.next_run_at)}
                                                     </div>
                                                 </div>
                                             </div>

@@ -86,6 +86,7 @@ pub struct AgentRunOptions {
     pub timeout: Option<Duration>,
     pub segmenter: Option<Arc<dyn Fn(&str) -> Vec<String> + Send + Sync>>,
     pub quota_mode: AgentRunQuotaMode,
+    pub model_override: Option<String>,
 }
 
 impl Default for AgentRunOptions {
@@ -94,6 +95,7 @@ impl Default for AgentRunOptions {
             timeout: None,
             segmenter: None,
             quota_mode: AgentRunQuotaMode::UserConversation,
+            model_override: None,
         }
     }
 }
@@ -395,6 +397,12 @@ impl AgentSession {
     }
 
     fn resolve_prompt_input(&self, session_id: &str, user_input: &str) -> (String, String) {
+        let mut prompt_options = self.prompt_options.clone();
+        if self.allow_cron {
+            prompt_options.extra_sections.push(
+                crate::prompt::DEFAULT_CRON_TASK_POLICY.to_string(),
+            );
+        }
         let prompt_state = self
             .core
             .session_storage
@@ -408,7 +416,7 @@ impl AgentSession {
             &self.actor.channel,
             session_id,
             &prompt_state,
-            &self.prompt_options,
+            &prompt_options,
         );
         (
             bundle.system_prompt(),
@@ -692,7 +700,11 @@ impl AgentSession {
             &self.channel_target,
             self.allow_cron,
         );
-        let runner = match self.core.create_runner(&system_prompt, tool_registry) {
+        let runner = match self.core.create_runner_with_model_override(
+            &system_prompt,
+            tool_registry,
+            options.model_override.as_deref(),
+        ) {
             Ok(r) => r,
             Err(err) => {
                 tracing::error!("[AgentSession] create_runner 失败: {}", err);
@@ -731,7 +743,6 @@ impl AgentSession {
                     .await;
             }
         };
-
 
         self.core.log_message_step(
             &self.actor.channel,
@@ -781,7 +792,17 @@ impl AgentSession {
                 .session_storage
                 .update_metadata(&session_id, runner_result.session_metadata_updates.clone());
         }
-        let response = runner_result.response;
+        let mut response = runner_result.response;
+        if response.success && response_leaks_system_prompt(&response.content) {
+            tracing::error!(
+                "[AgentSession] blocked echoed system prompt runner={} session_id={}",
+                runner_name,
+                session_id
+            );
+            response.success = false;
+            response.error = Some("agent returned leaked system instructions".to_string());
+            response.content.clear();
+        }
         let elapsed_ms = started.elapsed().as_millis();
 
         if response.success {
@@ -895,6 +916,11 @@ fn sanitize_prompt_audit_path(value: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn response_leaks_system_prompt(content: &str) -> bool {
+    let trimmed = content.trim_start_matches(char::is_whitespace);
+    trimmed.starts_with("### System Instructions ###")
 }
 
 /// Restore recent messages into AgentContext.
@@ -1131,6 +1157,14 @@ mod tests {
         assert_eq!(ctx.actor_identity(), Some(actor));
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn response_leaks_system_prompt_detects_prefixed_echo() {
+        assert!(response_leaks_system_prompt(
+            "\n### System Instructions ###\nsecret"
+        ));
+        assert!(!response_leaks_system_prompt("正常回复"));
     }
 
     #[tokio::test]

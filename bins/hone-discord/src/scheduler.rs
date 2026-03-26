@@ -34,22 +34,23 @@ pub(crate) async fn handle_scheduler_events(
                 timeout: Some(Duration::from_secs(timeout_secs)),
                 segmenter: None,
                 quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
+                model_override: None,
             };
-            let result = channel_scheduler::run_scheduled_task(
+            let result = channel_scheduler::execute_scheduler_event(
                 core_clone.clone(),
                 &event,
                 prompt_options,
                 run_options,
             )
             .await;
-            let response = if result.response.success {
-                result.response.content
-            } else {
-                result
-                    .response
-                    .error
-                    .unwrap_or_else(|| "定时任务执行失败".to_string())
-            };
+            if !result.should_deliver {
+                info!(
+                    "[Discord] 心跳任务未命中，本轮不发送: job={} target={}",
+                    event.job_name, event.channel_target
+                );
+                return;
+            }
+            let response = result.error.unwrap_or(result.content);
 
             let channel_id = match parse_channel_id_from_target(&event.channel_target) {
                 Some(id) => id,

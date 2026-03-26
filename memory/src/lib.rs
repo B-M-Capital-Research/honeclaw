@@ -8,6 +8,7 @@ pub mod llm_audit;
 pub mod portfolio;
 pub mod quota;
 pub mod session;
+pub mod session_sqlite;
 
 pub use cron_job::CronJobStorage;
 pub use kb::{KbEntry, KbSaveRequest, KbStorage, RelatedFileRef, StockRow, StockTableStorage};

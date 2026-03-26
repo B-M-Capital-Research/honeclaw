@@ -40,7 +40,32 @@ export function defaultBackendConfig(): BackendConfig {
 }
 
 export function isTauriRuntime() {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window as unknown as Record<string, unknown>)
+  if (typeof window === "undefined") return false
+  const globalObject = globalThis as typeof globalThis & {
+    isTauri?: boolean
+    __TAURI__?: unknown
+  }
+  const windowObject = window as typeof window & {
+    __TAURI_INTERNALS__?: unknown
+    __TAURI__?: unknown
+  }
+  return Boolean(
+    globalObject.isTauri ||
+      windowObject.__TAURI_INTERNALS__ ||
+      windowObject.__TAURI__ ||
+      globalObject.__TAURI__,
+  )
+}
+
+export async function detectTauriRuntime() {
+  if (isTauriRuntime()) return true
+  if (typeof window === "undefined") return false
+  try {
+    const { isTauri } = await import("@tauri-apps/api/core")
+    return isTauri()
+  } catch {
+    return false
+  }
 }
 
 export function supportsApiVersion(version: string) {
@@ -134,9 +159,6 @@ export async function createEventSource(path: string) {
 }
 
 export async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {
-  if (!isTauriRuntime()) {
-    throw new Error("desktop runtime unavailable")
-  }
   const { invoke } = await import("@tauri-apps/api/core")
   return invoke<T>(command, args)
 }

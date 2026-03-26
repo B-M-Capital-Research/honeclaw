@@ -1,7 +1,8 @@
-import { Show, createContext, onMount, useContext, type ParentProps } from "solid-js"
+import { Show, createContext, createEffect, onCleanup, onMount, useContext, type ParentProps } from "solid-js"
 import { createStore } from "solid-js/store"
 import {
   connectDesktopBackend,
+  detectTauriRuntime,
   defaultBackendConfig,
   isTauriRuntime,
   loadDesktopChannelSettings,
@@ -21,6 +22,25 @@ import type {
   DesktopChannelSettingsUpdateResult,
   MetaInfo,
 } from "@/lib/types"
+
+type LegacyMetaInfo = MetaInfo & {
+  api_version?: string
+  deployment_mode?: MetaInfo["deploymentMode"]
+  supports_imessage?: boolean
+}
+
+type LegacyBackendStatusInfo = BackendStatusInfo & {
+  resolved_base_url?: string
+  last_error?: string
+  meta?: LegacyMetaInfo
+  diagnostics?: BackendStatusInfo["diagnostics"] & {
+    config_dir?: string
+    data_dir?: string
+    logs_dir?: string
+    desktop_log?: string
+    sidecar_log?: string
+  }
+}
 
 type BackendContextValue = ReturnType<typeof createBackendState>
 
@@ -48,11 +68,11 @@ function createBackendState() {
     connected: boolean
     error?: string
   }) => {
-    const compatible = input.meta ? supportsApiVersion(input.meta.api_version) : true
+    const compatible = input.meta ? supportsApiVersion(input.meta.apiVersion) : true
     const error =
       input.error ||
       (input.meta && !compatible
-        ? `不支持的后端 API 版本：${input.meta.api_version}（当前仅支持 ${SUPPORTED_VERSION_LABEL}）`
+        ? `不支持的后端 API 版本：${input.meta.apiVersion}（当前仅支持 ${SUPPORTED_VERSION_LABEL}）`
         : "")
 
     setBackendRuntime({
@@ -74,14 +94,37 @@ function createBackendState() {
     })
   }
 
-  const applyDesktopStatus = (status: BackendStatusInfo) => {
+  const normalizeMeta = (meta?: LegacyMetaInfo): MetaInfo | undefined => {
+    if (!meta) return undefined
+    return {
+      ...meta,
+      apiVersion: meta.apiVersion ?? meta.api_version ?? "",
+      deploymentMode: meta.deploymentMode ?? meta.deployment_mode ?? "local",
+      supportsImessage: meta.supportsImessage ?? meta.supports_imessage ?? false,
+    }
+  }
+
+  const normalizeDiagnostics = (diagnostics?: LegacyBackendStatusInfo["diagnostics"]) => {
+    if (!diagnostics) return undefined
+    return {
+      ...diagnostics,
+      configDir: diagnostics.configDir ?? diagnostics.config_dir ?? "",
+      dataDir: diagnostics.dataDir ?? diagnostics.data_dir ?? "",
+      logsDir: diagnostics.logsDir ?? diagnostics.logs_dir ?? "",
+      desktopLog: diagnostics.desktopLog ?? diagnostics.desktop_log ?? "",
+      sidecarLog: diagnostics.sidecarLog ?? diagnostics.sidecar_log ?? "",
+    }
+  }
+
+  const applyDesktopStatus = (status: LegacyBackendStatusInfo) => {
+    const meta = normalizeMeta(status.meta)
     applyConnection({
       config: status.config,
-      resolvedBaseUrl: status.resolved_base_url || resolveBaseUrl(status.config),
-      meta: status.meta,
-      diagnostics: status.diagnostics,
+      resolvedBaseUrl: status.resolvedBaseUrl ?? status.resolved_base_url ?? resolveBaseUrl(status.config),
+      meta,
+      diagnostics: normalizeDiagnostics(status.diagnostics),
       connected: status.connected,
-      error: status.last_error,
+      error: status.lastError ?? status.last_error,
     })
   }
 
@@ -129,11 +172,30 @@ function createBackendState() {
   }
 
   onMount(() => {
-    if (state.isDesktop) {
-      void initDesktop()
-      return
-    }
-    void initBrowser()
+    void (async () => {
+      const desktop = await detectTauriRuntime()
+      setState("isDesktop", desktop)
+      if (desktop) {
+        await initDesktop()
+        return
+      }
+      await initBrowser()
+    })()
+  })
+
+  createEffect(() => {
+    if (!state.isDesktop || state.initializing || state.connected || state.saving) return
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const status = await connectDesktopBackend()
+          applyDesktopStatus(status)
+        } catch {
+          // Keep the existing error message; this retry is only for transient startup races.
+        }
+      })()
+    }, 1200)
+    onCleanup(() => window.clearTimeout(timer))
   })
 
   return {

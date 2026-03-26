@@ -236,23 +236,12 @@ __MACOSX/
 config.local.yaml
 
 # Runtime / generated data (sessions, portfolio, cron jobs, reports)
+data/
 sessions/
-
-# Ephemeral one-off scripts (see AGENTS.md)
-scripts/tmp/
-
-# docs/: local working notes; only docs/README.md is tracked
-/docs/*
-!/docs/README.md
-
-# IDE (local only; do not commit)
-.idea/
-
-# Root-level duplicate of resources/logo.svg
-/logo.svg
 
 # macOS launchd / login items temp
 *.icloud
+node_modules/
 packages/app/dist/
 playwright-report/
 bins/hone-desktop/binaries/

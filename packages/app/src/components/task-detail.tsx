@@ -13,6 +13,9 @@ export function TaskDetail() {
     const isNew = () => tasks.state.currentTaskId === "new"
     const currentJob = () => tasks.currentTask()
 
+    const isHeartbeatDraft = () =>
+        tasks.state.draft.repeat === "heartbeat" || (tasks.state.draft.tags || []).includes("heartbeat")
+
     const handleSubmit = async (e: Event) => {
         e.preventDefault()
         // Validation is mostly handled by HTML5, but we need numeric conversions
@@ -23,12 +26,13 @@ export function TaskDetail() {
             task_prompt: draft.task_prompt,
             user_id: draft.user_id,
             channel_scope: draft.channel_scope,
-            hour: Number(draft.hour),
-            minute: Number(draft.minute),
+            hour: isHeartbeatDraft() ? undefined : Number(draft.hour),
+            minute: isHeartbeatDraft() ? undefined : Number(draft.minute),
             repeat: draft.repeat,
             weekday: draft.weekday !== undefined && !isNaN(Number(draft.weekday)) ? Number(draft.weekday) : undefined,
             enabled: draft.enabled,
             channel_target: draft.channel_target,
+            tags: draft.tags,
         })
     }
 
@@ -126,10 +130,11 @@ export function TaskDetail() {
                                     type="number"
                                     min="0"
                                     max="23"
-                                    required
+                                    required={!isHeartbeatDraft()}
                                     value={tasks.state.draft.hour ?? ""}
                                     onInput={(e) => tasks.setDraft("hour", parseInt(e.currentTarget.value, 10))}
                                     placeholder="0 - 23"
+                                    disabled={isHeartbeatDraft()}
                                 />
                             </div>
 
@@ -139,10 +144,11 @@ export function TaskDetail() {
                                     type="number"
                                     min="0"
                                     max="59"
-                                    required
+                                    required={!isHeartbeatDraft()}
                                     value={tasks.state.draft.minute ?? ""}
                                     onInput={(e) => tasks.setDraft("minute", parseInt(e.currentTarget.value, 10))}
                                     placeholder="0 - 59"
+                                    disabled={isHeartbeatDraft()}
                                 />
                             </div>
 
@@ -152,9 +158,15 @@ export function TaskDetail() {
                                     class="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm placeholder:text-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
                                     value={tasks.state.draft.repeat || "daily"}
                                     onChange={(e) => {
-                                        tasks.setDraft("repeat", e.currentTarget.value)
-                                        if (e.currentTarget.value !== "weekly") {
+                                        const repeat = e.currentTarget.value
+                                        tasks.setDraft("repeat", repeat)
+                                        if (repeat !== "weekly") {
                                             tasks.setDraft("weekday", undefined)
+                                        }
+                                        if (repeat === "heartbeat") {
+                                            tasks.setDraft("tags", ["heartbeat"])
+                                        } else {
+                                            tasks.setDraft("tags", (tasks.state.draft.tags || []).filter((tag) => tag !== "heartbeat"))
                                         }
                                     }}
                                 >
@@ -164,7 +176,13 @@ export function TaskDetail() {
                                     <option value="trading_day">交易日 (Trading Day)</option>
                                     <option value="holiday">节假日 (Holiday)</option>
                                     <option value="weekly">每周 (Weekly)</option>
+                                    <option value="heartbeat">心跳检测 (Heartbeat)</option>
                                 </select>
+                                <Show when={isHeartbeatDraft()}>
+                                    <p class="text-[11px] text-[color:var(--text-muted)] mt-1">
+                                        心跳任务会每 30 分钟检查一次条件，不需要指定具体时刻。
+                                    </p>
+                                </Show>
                             </div>
 
                             <Show when={tasks.state.draft.repeat === "weekly"}>

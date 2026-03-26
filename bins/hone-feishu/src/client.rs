@@ -343,19 +343,12 @@ impl FeishuApiClient {
             ));
         }
 
-        let user_list = batch_resp
-            .data
-            .and_then(|mut d| d.get_mut("user_list").map(|v| v.take()));
-        if let Some(serde_json::Value::Array(mut list)) = user_list {
-            if let Some(first) = list.pop() {
-                if let Some(user_id) = first.get("user_id").and_then(|v| v.as_str()) {
-                    return Ok(FeishuResolvedUser {
-                        email: email.to_string(),
-                        mobile: String::new(),
-                        open_id: user_id.to_string(),
-                    });
-                }
-            }
+        if let Some(user_id) = first_batch_get_open_id(batch_resp.data) {
+            return Ok(FeishuResolvedUser {
+                email: email.to_string(),
+                mobile: String::new(),
+                open_id: user_id,
+            });
         }
 
         Err(format!("No user found for email {}", email))
@@ -397,19 +390,12 @@ impl FeishuApiClient {
             ));
         }
 
-        let user_list = batch_resp
-            .data
-            .and_then(|mut d| d.get_mut("user_list").map(|v| v.take()));
-        if let Some(serde_json::Value::Array(mut list)) = user_list {
-            if let Some(first) = list.pop() {
-                if let Some(user_id) = first.get("user_id").and_then(|v| v.as_str()) {
-                    return Ok(FeishuResolvedUser {
-                        mobile: mobile.to_string(),
-                        email: String::new(),
-                        open_id: user_id.to_string(),
-                    });
-                }
-            }
+        if let Some(user_id) = first_batch_get_open_id(batch_resp.data) {
+            return Ok(FeishuResolvedUser {
+                mobile: mobile.to_string(),
+                email: String::new(),
+                open_id: user_id,
+            });
         }
 
         Err(format!("No user found for mobile {}", mobile))
@@ -668,5 +654,45 @@ impl FeishuApiClient {
             mobile,
             open_id: open_id.to_string(),
         })
+    }
+}
+
+fn first_batch_get_open_id(data: Option<serde_json::Value>) -> Option<String> {
+    data.and_then(|data| data.get("user_list").cloned())
+        .and_then(|value| value.as_array().cloned())
+        .and_then(|list| {
+            list.into_iter().next().and_then(|entry| {
+                entry
+                    .get("user_id")
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+            })
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::first_batch_get_open_id;
+    use serde_json::json;
+
+    #[test]
+    fn first_batch_get_open_id_prefers_first_match() {
+        let open_id = first_batch_get_open_id(Some(json!({
+            "user_list": [
+                { "user_id": "ou_first" },
+                { "user_id": "ou_second" }
+            ]
+        })));
+        assert_eq!(open_id.as_deref(), Some("ou_first"));
+    }
+
+    #[test]
+    fn first_batch_get_open_id_returns_none_for_missing_user_id() {
+        let open_id = first_batch_get_open_id(Some(json!({
+            "user_list": [
+                { "name": "alice" }
+            ]
+        })));
+        assert!(open_id.is_none());
     }
 }

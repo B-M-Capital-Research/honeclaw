@@ -11,8 +11,10 @@ pub(crate) struct AppState {
     pub(crate) core: Arc<HoneBotCore>,
     pub(crate) facade: FeishuApiClient,
     pub(crate) dedup: MessageDeduplicator,
+    pub(crate) scheduled_dedup: MessageDeduplicator,
     pub(crate) session_locks: SessionLockRegistry,
     pub(crate) scope_resolver: ActorScopeResolver,
+    pub(crate) pretrigger: hone_channels::ingress::GroupPretriggerWindowRegistry,
 }
 
 pub(crate) struct FeishuEventHandler {

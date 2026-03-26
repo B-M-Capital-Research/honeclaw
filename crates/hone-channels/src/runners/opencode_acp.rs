@@ -89,8 +89,12 @@ pub(crate) fn configured_opencode_model_id(config: &OpencodeAcpConfig) -> Option
 
     // 只要 API Key 像是 OpenRouter 的，或者 URL 包含 openrouter，就强制补全前缀
     // 同时也支持用户手动带入前缀
-    let is_openrouter = config.api_base_url.contains("openrouter.ai") 
-        || config.openrouter_api_key.as_ref().map(|k| k.starts_with("sk-or-")).unwrap_or(false)
+    let is_openrouter = config.api_base_url.contains("openrouter.ai")
+        || config
+            .openrouter_api_key
+            .as_ref()
+            .map(|k| k.starts_with("sk-or-"))
+            .unwrap_or(false)
         || config.api_key.starts_with("sk-or-");
 
     let model = if is_openrouter && !model.starts_with("openrouter/") {
@@ -113,7 +117,9 @@ pub(crate) fn configured_opencode_model_id(config: &OpencodeAcpConfig) -> Option
 
     tracing::info!(
         "[AgentRunner/opencode] configured_model_id: input_model='{}', base_url='{}', final_model='{}'",
-        config.model, config.api_base_url, final_model
+        config.model,
+        config.api_base_url,
+        final_model
     );
 
     Some(final_model)
@@ -140,6 +146,9 @@ pub(crate) fn effective_opencode_args(
 }
 
 pub(crate) fn isolated_opencode_config(config: &OpencodeAcpConfig) -> String {
+    // 注意：opencode 的 provider.openrouter 不支持 apiKey 字段（会导致 ConfigInvalidError 崩溃）。
+    // API Key 通过 spawn 时设置 OPENROUTER_API_KEY 环境变量传递。
+    let _ = config; // config 在此函数中仅用于 model/variant，api_key 不写入 JSON
     let mut payload = serde_json::json!({
         "$schema": "https://opencode.ai/config.json",
         "permission": {
@@ -251,8 +260,8 @@ async fn run_opencode_acp(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-
-    // 若 config_runtime.yaml 中配置了 OpenRouter API key，优先注入（覆盖环境变量）
+    // 通过环境变量传递 OpenRouter API Key（opencode 的 provider.openrouter 配置不支持 apiKey 字段）
+    // 若 config_runtime.yaml 中配置了 OpenRouter API key，会在此处生效并覆盖环境变量
     if let Some(ref api_key) = config.openrouter_api_key {
         let trimmed = api_key.trim();
         if !trimmed.is_empty() {

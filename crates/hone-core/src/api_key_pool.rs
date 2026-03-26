@@ -7,7 +7,7 @@
 //!
 //! ## 使用方式
 //!
-//! ```rust
+//! ```ignore
 //! let pool = ApiKeyPool::merged(&config.fmp.api_key, &config.fmp.api_keys);
 //! if pool.is_empty() {
 //!     return Ok(json!({ "error": "未配置 API Key" }));

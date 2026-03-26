@@ -87,12 +87,6 @@ pub(crate) async fn handle_create_cron_job(
         Ok(task_prompt) => task_prompt,
         Err(error) => return error,
     };
-    let Some(hour) = req.hour else {
-        return json_error(StatusCode::BAD_REQUEST, "缺少 hour");
-    };
-    let Some(minute) = req.minute else {
-        return json_error(StatusCode::BAD_REQUEST, "缺少 minute");
-    };
     let repeat = req.repeat.unwrap_or_else(|| "daily".to_string());
     let channel_target = req.channel_target.unwrap_or_else(|| actor.user_id.clone());
     let enabled = req.enabled.unwrap_or(true);
@@ -102,14 +96,15 @@ pub(crate) async fn handle_create_cron_job(
     let result = storage.add_job(
         &actor,
         &name,
-        hour,
-        minute,
+        req.hour,
+        req.minute,
         &repeat,
         &task_prompt,
         &channel_target,
         req.weekday,
         req.push,
         enabled,
+        req.tags,
         admin_bypass,
     );
     if result["success"] != true {
@@ -205,6 +200,7 @@ pub(crate) async fn handle_update_cron_job(
         push: req.push,
         enabled: req.enabled,
         channel_target: normalize_optional_string(req.channel_target),
+        tags: req.tags,
     };
 
     let admin_bypass = state.core.is_admin_actor(&resolved_actor);

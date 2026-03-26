@@ -82,6 +82,9 @@ pub(crate) async fn handle_scheduler_events(
         let state_clone = state.clone();
         tokio::spawn(async move {
             let response = run_scheduled_task(&state_clone, &event).await;
+            if response.trim().is_empty() {
+                return;
+            }
 
             // 1. 推送到 Web 控制台 SSE（供控制台页面实时展示）
             let _ = state_clone.push_tx.send(PushEvent {
@@ -174,19 +177,22 @@ async fn run_scheduled_task(state: &Arc<AppState>, event: &SchedulerEvent) -> St
         timeout: Some(Duration::from_secs(timeout_secs)),
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
+        model_override: None,
     };
     let result =
-        scheduler::run_scheduled_task(state.core.clone(), event, prompt_options, run_options).await;
-    let response = result.response;
-    if response.success {
-        info!(
-            "⏰ [{}] 定时任务完成，迭代 {} 次",
-            actor.user_id, response.iterations
-        );
-        response.content
-    } else {
-        let err = response.error.unwrap_or_else(|| "未知错误".to_string());
+        scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options)
+            .await;
+    if !result.should_deliver {
+        info!("⏰ [{}] 心跳任务未命中，跳过发送", actor.user_id);
+        String::new()
+    } else if let Some(err) = result.error {
         error!("⏰ [{}] 定时任务执行失败: {}", actor.user_id, err);
         format!("定时任务「{}」执行出错，请稍后重试。", event.job_name)
+    } else {
+        info!(
+            "⏰ [{}] 定时任务完成",
+            actor.user_id
+        );
+        result.content
     }
 }
