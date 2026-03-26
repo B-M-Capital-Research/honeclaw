@@ -116,7 +116,7 @@ chat_resp=$(curl -s --connect-timeout 20 --max-time 60 \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -H "HTTP-Referer: https://openrouter.ai" \
-  -H "X-Title: Hone-Financial" \
+  -H "X-Title: Honeclaw" \
   -d "{
     \"model\": \"$MODEL\",
     \"messages\": [{\"role\": \"user\", \"content\": \"hi\"}],

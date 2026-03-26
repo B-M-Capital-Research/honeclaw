@@ -3,10 +3,8 @@
 //! 使用 serenity 监听 Discord 消息并调用 Hone Agent 回复。
 
 mod attachments;
-mod group_reply;
 mod handlers;
 mod scheduler;
-mod types;
 mod utils;
 
 use std::sync::Arc;
@@ -15,7 +13,6 @@ use hone_channels::{ActorScopeResolver, MessageDeduplicator, SessionLockRegistry
 use serenity::all::{Client, GatewayIntents};
 use tracing::{error, info, warn};
 
-use crate::group_reply::GroupReplyCoordinator;
 use crate::handlers::DiscordHandler;
 use crate::scheduler::handle_scheduler_events;
 
@@ -59,11 +56,16 @@ async fn main() {
 
     let core = Arc::new(core);
     let handler = DiscordHandler {
-        group_reply: GroupReplyCoordinator::new(core.clone()),
         core: core.clone(),
         dedup: MessageDeduplicator::new(std::time::Duration::from_secs(120), 2048),
         session_locks: SessionLockRegistry::new(),
         scope_resolver: ActorScopeResolver::new("discord"),
+        pretrigger: hone_channels::GroupPretriggerWindowRegistry::new(
+            core.config.group_context.pretrigger_window_max_messages,
+            std::time::Duration::from_secs(
+                core.config.group_context.pretrigger_window_max_age_seconds,
+            ),
+        ),
     };
 
     let mut client = match Client::builder(token, intents).event_handler(handler).await {

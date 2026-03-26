@@ -9,6 +9,7 @@ pub(crate) struct TelegramAppState {
     pub(crate) dedup: hone_channels::ingress::MessageDeduplicator,
     pub(crate) session_locks: hone_channels::ingress::SessionLockRegistry,
     pub(crate) scope_resolver: hone_channels::ingress::ActorScopeResolver,
+    pub(crate) pretrigger: hone_channels::ingress::GroupPretriggerWindowRegistry,
     pub(crate) media_groups: MediaGroupBuffer,
 }
 

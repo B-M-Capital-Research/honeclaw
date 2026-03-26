@@ -16,12 +16,13 @@ use hone_channels::attachments::{
 };
 use hone_channels::channel_download_dir;
 use hone_channels::ingress::{
-    ActorScopeResolver, GroupTrigger, IncomingEnvelope, MessageDeduplicator, SessionLockRegistry,
+    ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope, MessageDeduplicator,
+    SessionLockRegistry, persist_buffered_group_messages,
 };
 use hone_channels::outbound::attach_stream_activity_probe;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
-use hone_core::SessionIdentity;
+use hone_core::{ActorIdentity, SessionIdentity};
 use hone_scheduler::SchedulerEvent;
 use serde_json::{Value, json};
 use tracing::{error, info, warn};
@@ -34,6 +35,12 @@ use super::types::{AppState, FeishuEventHandler, FeishuIncomingAttachment, Feish
 
 const THINKING_PLACEHOLDER_TEXT: &str = "正在思考中...";
 const FEISHU_GROUP_PRIVACY_GUARD: &str = "【群聊隐私约束】\n1. 禁止在群聊索取或引导补全持仓明细（股数、成本、成交价、交易单等）。\n2. 禁止在群聊查询或确认用户个人持仓；用户问“我现在持有哪些”时，直接提示转私聊处理。\n3. 只提供通用信息与私聊引导，不给出任何个人资产判断或推断。";
+
+#[derive(Clone)]
+struct SendIdempotency {
+    dedup_key: String,
+    uuid_seed: String,
+}
 
 fn feishu_speaker_label(open_id: &str, email: Option<&str>, mobile: Option<&str>) -> String {
     email
@@ -122,8 +129,13 @@ pub(crate) async fn run() {
         core: core.clone(),
         facade: facade.clone(),
         dedup: MessageDeduplicator::new(Duration::from_secs(60), 4096),
+        scheduled_dedup: MessageDeduplicator::new(Duration::from_secs(15 * 60), 8192),
         session_locks: SessionLockRegistry::new(),
         scope_resolver: ActorScopeResolver::new("feishu"),
+        pretrigger: hone_channels::ingress::GroupPretriggerWindowRegistry::new(
+            core.config.group_context.pretrigger_window_max_messages,
+            Duration::from_secs(core.config.group_context.pretrigger_window_max_age_seconds),
+        ),
     });
 
     let event_config = EventDispatcherConfig::new();
@@ -161,16 +173,10 @@ pub(crate) async fn run() {
 
 async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessage) {
     let chat_type = msg.chat_type.as_deref().unwrap_or("p2p");
+    let is_group = chat_type != "p2p";
     if state.core.config.feishu.dm_only && chat_type != "p2p" {
         warn!(
             "[Feishu] 忽略非私聊消息: chat_type={} chat_id={}",
-            chat_type, msg.chat_id
-        );
-        return;
-    }
-    if chat_type != "p2p" && !msg.has_mention {
-        warn!(
-            "[Feishu] 群聊消息未@触发已忽略: chat_type={} chat_id={}",
             chat_type, msg.chat_id
         );
         return;
@@ -245,6 +251,39 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     let session_identity = SessionIdentity::from_actor(&actor)
         .expect("feishu actor should always map to a session identity");
     let session_id = session_identity.session_id();
+    let speaker_label = feishu_speaker_label(
+        &msg.open_id,
+        normalized_email.as_deref(),
+        normalized_mobile.as_deref(),
+    );
+
+    if is_group && !msg.has_mention {
+        if !text.is_empty() && state.core.config.group_context.pretrigger_window_enabled {
+            state
+                .pretrigger
+                .push(
+                    &session_id,
+                    BufferedGroupMessage::new(
+                        "feishu",
+                        msg.message_id.clone(),
+                        speaker_label,
+                        text.to_string(),
+                    ),
+                )
+                .await;
+            info!(
+                "[Feishu] 群聊消息已写入预触发窗口: chat_id={} message_id={} session_id={}",
+                msg.chat_id, msg.message_id, session_id
+            );
+        } else {
+            warn!(
+                "[Feishu] 群聊消息未@触发已忽略: chat_type={} chat_id={}",
+                chat_type, msg.chat_id
+            );
+        }
+        return;
+    }
+
     if state.core.try_intercept_admin_registration(&actor, text) {
         if let Err(err) = send_plain_text(
             &state.facade,
@@ -268,9 +307,6 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         },
     )
     .await;
-    if text.is_empty() && attachments.is_empty() {
-        return;
-    }
     if !attachments.is_empty() {
         spawn_attachment_persist_pipeline(
             state.core.clone(),
@@ -284,24 +320,58 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     }
 
     let _session_guard = state.session_locks.lock(&session_id).await;
+    if state
+        .core
+        .session_storage
+        .load_session(&session_id)
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        let _ = state
+            .core
+            .session_storage
+            .create_session_for_identity(&session_identity, Some(&actor));
+    }
+    let buffered_messages = if is_group && state.core.config.group_context.pretrigger_window_enabled
+    {
+        state
+            .pretrigger
+            .take_recent(&session_id, Some(&msg.message_id))
+            .await
+    } else {
+        Vec::new()
+    };
+    let buffered_count = persist_buffered_group_messages(
+        &state.core.session_storage,
+        &session_id,
+        &buffered_messages,
+    )
+    .unwrap_or(0);
+
+    if text.is_empty() && attachments.is_empty() && buffered_count == 0 {
+        return;
+    }
 
     let recv_extra = if attachments.is_empty() {
-        None
+        if buffered_count > 0 {
+            Some(format!("buffered_messages={buffered_count}"))
+        } else {
+            None
+        }
     } else {
-        Some(format!("attachments={}", attachments.len()))
+        Some(format!(
+            "attachments={} buffered_messages={buffered_count}",
+            attachments.len()
+        ))
     };
 
-    let speaker_label = feishu_speaker_label(
-        &msg.open_id,
-        normalized_email.as_deref(),
-        normalized_mobile.as_deref(),
-    );
-
     let user_input = if attachments.is_empty() {
+        let content = if text.is_empty() { "@bot" } else { text };
         if matches!(chat_mode, ChatMode::Group) {
-            build_group_user_input_with_speaker(&speaker_label, text)
+            build_group_user_input_with_speaker(&speaker_label, content)
         } else {
-            text.to_string()
+            content.to_string()
         }
     } else {
         let content = build_user_input(text, &attachments);
@@ -491,6 +561,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         timeout: Some(Duration::from_secs(timeout_secs)),
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::UserConversation,
+        model_override: None,
     };
     let result = session.run(&user_input, run_options).await;
 
@@ -572,6 +643,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             &final_text,
             state.core.config.feishu.max_message_length,
             placeholder_message_id.as_deref(),
+            None,
         )
         .await
         {
@@ -606,6 +678,13 @@ async fn handle_scheduler_events(
         let state_clone = state.clone();
         tokio::spawn(async move {
             let response = run_scheduled_task(&state_clone, &event).await;
+            if response.trim().is_empty() {
+                info!(
+                    "[Feishu] 心跳任务未命中，本轮不发送: job={} target={}",
+                    event.job_name, event.channel_target
+                );
+                return;
+            }
             let receive_id =
                 match resolve_receive_id(&state_clone.facade, &event.channel_target).await {
                     Ok(id) => id,
@@ -617,6 +696,26 @@ async fn handle_scheduler_events(
                         return;
                     }
                 };
+            if let Err(err) =
+                validate_scheduler_receive_id(&event.actor, &event.channel_target, &receive_id)
+            {
+                error!(
+                    "[Feishu] 定时任务目标校验失败: job={} target={} receive_id={} err={}",
+                    event.job_name, event.channel_target, receive_id, err
+                );
+                return;
+            }
+            let idempotency = scheduled_send_idempotency(&event, &receive_id, &response, "open_id");
+            if state_clone
+                .scheduled_dedup
+                .is_duplicate(&idempotency.dedup_key)
+            {
+                warn!(
+                    "[Feishu] 已拦截重复定时任务投递: job={} delivery_key={} target={}",
+                    event.job_name, event.delivery_key, receive_id
+                );
+                return;
+            }
 
             if let Err(err) = send_rendered_messages(
                 &state_clone.facade,
@@ -625,6 +724,7 @@ async fn handle_scheduler_events(
                 &response,
                 state_clone.core.config.feishu.max_message_length,
                 None,
+                Some(&idempotency.uuid_seed),
             )
             .await
             {
@@ -649,16 +749,23 @@ async fn run_scheduled_task(state: &Arc<AppState>, event: &SchedulerEvent) -> St
         timeout: Some(Duration::from_secs(timeout_secs)),
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
+        model_override: None,
     };
     let result =
-        scheduler::run_scheduled_task(state.core.clone(), event, prompt_options, run_options).await;
-    let response = result.response;
-    if response.success {
-        response.content
+        scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options)
+            .await;
+    if result.should_deliver {
+        if let Some(error) = result.error {
+            if result.content.trim().is_empty() {
+                error
+            } else {
+                result.content
+            }
+        } else {
+            result.content
+        }
     } else {
-        response
-            .error
-            .unwrap_or_else(|| "定时任务执行失败".to_string())
+        String::new()
     }
 }
 
@@ -1064,6 +1171,24 @@ fn looks_like_mobile(target: &str) -> bool {
     !normalized.is_empty() && normalized.chars().filter(|ch| ch.is_ascii_digit()).count() >= 7
 }
 
+fn validate_scheduler_receive_id(
+    actor: &ActorIdentity,
+    channel_target: &str,
+    receive_id: &str,
+) -> hone_core::HoneResult<()> {
+    let target = channel_target.trim();
+    if actor.channel_scope.is_none()
+        && (target.contains('@') || looks_like_mobile(target))
+        && receive_id != actor.user_id
+    {
+        return Err(hone_core::HoneError::Integration(format!(
+            "resolved receive_id {receive_id} does not match actor {} for direct task target {target}",
+            actor.user_id
+        )));
+    }
+    Ok(())
+}
+
 async fn send_plain_text(
     facade: &FeishuApiClient,
     receive_id: &str,
@@ -1227,6 +1352,7 @@ async fn send_rendered_messages(
     markdown: &str,
     max_message_length: usize,
     placeholder_message_id: Option<&str>,
+    uuid_seed: Option<&str>,
 ) -> hone_core::HoneResult<usize> {
     let messages = render_outbound_messages(markdown, max_message_length);
     if messages.is_empty() {
@@ -1298,7 +1424,8 @@ async fn send_rendered_messages(
             }
         }
 
-        let request_uuid = uuid::Uuid::new_v4().to_string();
+        let request_uuid =
+            stable_message_uuid(uuid_seed, index, message.msg_type, &message.content);
         let sent = if let Some(parent_id) = previous_message_id.as_deref() {
             facade
                 .reply_message(
@@ -1333,9 +1460,53 @@ async fn send_rendered_messages(
     Ok(total)
 }
 
+fn scheduled_send_idempotency(
+    event: &SchedulerEvent,
+    receive_id: &str,
+    markdown: &str,
+    receive_id_type: &str,
+) -> SendIdempotency {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    markdown.hash(&mut hasher);
+    let content_hash = hasher.finish();
+    let dedup_key = format!(
+        "scheduled:{}:{}:{}:{}:{content_hash}",
+        event.delivery_key, event.job_id, receive_id_type, receive_id
+    );
+    let uuid_seed = format!(
+        "{}:{}:{}:{}:{content_hash}",
+        event.delivery_key, event.job_id, receive_id_type, receive_id
+    );
+    SendIdempotency {
+        dedup_key,
+        uuid_seed,
+    }
+}
+
+fn stable_message_uuid(
+    uuid_seed: Option<&str>,
+    index: usize,
+    msg_type: &str,
+    content: &str,
+) -> String {
+    if let Some(seed) = uuid_seed {
+        use std::hash::{Hash, Hasher};
+
+        let composed = format!("{seed}:{index}:{msg_type}:{content}");
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        composed.hash(&mut hasher);
+        format!("sched_{:016x}", hasher.finish())
+    } else {
+        uuid::Uuid::new_v4().to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hone_core::ActorIdentity;
 
     #[test]
     fn allow_list_empty_means_allow_all() {
@@ -1400,5 +1571,34 @@ mod tests {
             &[],
             &[],
         ));
+    }
+
+    #[test]
+    fn scheduler_delivery_rejects_mismatched_direct_contact_resolution() {
+        let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
+        let err = validate_scheduler_receive_id(&actor, "alice@example.com", "ou_other")
+            .expect_err("should reject mismatched direct delivery");
+        assert!(err.to_string().contains("does not match actor"));
+    }
+
+    #[test]
+    fn scheduler_delivery_allows_matching_direct_contact_resolution() {
+        let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
+        assert!(validate_scheduler_receive_id(&actor, "alice@example.com", "ou_creator").is_ok());
+    }
+
+    #[test]
+    fn scheduler_delivery_allows_group_tasks_even_if_receive_id_differs() {
+        let actor = ActorIdentity::new("feishu", "ou_creator", Some("chat:42")).expect("actor");
+        assert!(validate_scheduler_receive_id(&actor, "alice@example.com", "ou_other").is_ok());
+    }
+
+    #[test]
+    fn stable_message_uuid_is_deterministic_for_seeded_messages() {
+        let first = stable_message_uuid(Some("delivery-1"), 0, "interactive", "hello");
+        let second = stable_message_uuid(Some("delivery-1"), 0, "interactive", "hello");
+        let third = stable_message_uuid(Some("delivery-1"), 1, "interactive", "hello");
+        assert_eq!(first, second);
+        assert_ne!(first, third);
     }
 }

@@ -204,6 +204,12 @@ fn default_tool_guard_patterns() -> Vec<String> {
 pub struct StorageConfig {
     #[serde(default = "default_sessions_dir")]
     pub sessions_dir: String,
+    #[serde(default = "default_session_sqlite_db_path")]
+    pub session_sqlite_db_path: String,
+    #[serde(default)]
+    pub session_sqlite_shadow_write_enabled: bool,
+    #[serde(default = "default_session_runtime_backend")]
+    pub session_runtime_backend: String,
     #[serde(
         default = "default_conversation_quota_dir",
         alias = "conversation_quota_db_path"
@@ -231,6 +237,12 @@ pub struct StorageConfig {
 
 fn default_sessions_dir() -> String {
     "./data/sessions".to_string()
+}
+fn default_session_sqlite_db_path() -> String {
+    "./data/sessions.sqlite3".to_string()
+}
+fn default_session_runtime_backend() -> String {
+    "json".to_string()
 }
 fn default_conversation_quota_dir() -> String {
     "./data/conversation_quota".to_string()

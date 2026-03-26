@@ -106,6 +106,7 @@ pub struct CronJobUpsertRequest {
     pub push: Option<Value>,
     pub enabled: Option<bool>,
     pub channel_target: Option<String>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]

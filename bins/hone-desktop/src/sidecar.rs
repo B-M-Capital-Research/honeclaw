@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -88,6 +89,9 @@ pub(crate) struct AgentSettings {
     /// OpenAI 协议渠道模型名（agent.opencode.model）
     #[serde(default)]
     openai_model: String,
+    /// OpenRouter 子模型（llm.openrouter.sub_model），用于心跳/压缩等辅助链路
+    #[serde(default)]
+    openai_sub_model: String,
     /// OpenAI 协议渠道 API Key（agent.opencode.api_key）
     #[serde(default)]
     openai_api_key: String,
@@ -134,6 +138,42 @@ struct MetaInfo {
     api_version: String,
     capabilities: Vec<String>,
     deployment_mode: String,
+}
+
+fn desktop_meta_from_config(config: &HoneConfig, deployment_mode: &str) -> MetaInfo {
+    let mut capabilities = vec![
+        "channels".to_string(),
+        "users".to_string(),
+        "history".to_string(),
+        "chat".to_string(),
+        "sse.events".to_string(),
+        "logs".to_string(),
+        "skills".to_string(),
+        "cron_jobs".to_string(),
+        "portfolio".to_string(),
+        "research".to_string(),
+        "llm_audit".to_string(),
+    ];
+
+    if deployment_mode == "local" {
+        capabilities.push("local_file_proxy".to_string());
+    }
+
+    if cfg!(target_os = "macos") && config.imessage.enabled {
+        capabilities.push("imessage".to_string());
+    }
+
+    capabilities.sort();
+
+    MetaInfo {
+        name: "Hone".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        channel: "imessage".to_string(),
+        supports_imessage: cfg!(target_os = "macos"),
+        api_version: API_VERSION.to_string(),
+        capabilities,
+        deployment_mode: deployment_mode.to_string(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -531,6 +571,34 @@ impl DesktopBackendManager {
     }
 }
 
+struct ScopedEnvVar {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl ScopedEnvVar {
+    fn remove(key: &'static str) -> Self {
+        let previous = env::var(key).ok();
+        unsafe {
+            env::remove_var(key);
+        }
+        Self { key, previous }
+    }
+}
+
+impl Drop for ScopedEnvVar {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => unsafe {
+                env::set_var(self.key, value);
+            },
+            None => unsafe {
+                env::remove_var(self.key);
+            },
+        }
+    }
+}
+
 async fn probe_meta(base_url: &str, bearer_token: &str) -> Result<MetaInfo, String> {
     let mut headers = HeaderMap::new();
     if !bearer_token.trim().is_empty() {
@@ -810,7 +878,10 @@ async fn connect_backend_inner(
             let config_path_str = runtime.config_path.to_string_lossy().to_string();
             let data_dir = runtime.data_dir.clone();
             let skills_dir = runtime.skills_dir.clone();
+            let runtime_config =
+                HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
 
+            let _hone_web_port_guard = ScopedEnvVar::remove("HONE_WEB_PORT");
             match hone_web_api::start_server(
                 &config_path_str,
                 Some(&data_dir),
@@ -821,55 +892,30 @@ async fn connect_backend_inner(
             {
                 Ok((_web_state, port)) => {
                     let base_url = format!("http://127.0.0.1:{port}");
-
-                    // 服务已在进程内绑定，直接 probe 一次即可
-                    match probe_meta(&base_url, "").await.and_then(validate_meta) {
-                        Ok(meta) => {
-                            {
-                                let mut guard = desktop.inner.lock().unwrap();
-                                guard.resolved_base_url = Some(base_url.clone());
-                                guard.meta = Some(meta);
-                                guard.last_error = None;
-                                guard.diagnostics = Some(diagnostics.clone());
-                            }
-
-                            // 启动 channel sidecars
-                            let mut guard = desktop.inner.lock().unwrap();
-                            if let Err(e) = start_enabled_channels(
-                                app,
-                                &mut guard,
-                                &runtime,
-                                &diagnostics,
-                                &base_url,
-                            ) {
-                                log_desktop(
-                                    app,
-                                    "ERROR",
-                                    format!("channel sidecar startup failed: {e}"),
-                                );
-                            }
-
-                            log_desktop(
-                                app,
-                                "INFO",
-                                format!("embedded web server ready: {base_url}"),
-                            );
-                            Ok(backend_status_snapshot(&guard))
-                        }
-                        Err(error) => {
-                            let mut guard = desktop.inner.lock().unwrap();
-                            guard.resolved_base_url = Some(base_url.clone());
-                            guard.meta = None;
-                            guard.last_error = Some(error.clone());
-                            guard.diagnostics = Some(diagnostics);
-                            log_desktop(
-                                app,
-                                "ERROR",
-                                format!("embedded backend probe failed: {error}"),
-                            );
-                            Ok(backend_status_snapshot(&guard))
-                        }
+                    let meta = desktop_meta_from_config(&runtime_config, "local");
+                    {
+                        let mut guard = desktop.inner.lock().unwrap();
+                        guard.resolved_base_url = Some(base_url.clone());
+                        guard.meta = Some(meta);
+                        guard.last_error = None;
+                        guard.diagnostics = Some(diagnostics.clone());
                     }
+
+                    // 对于同进程内嵌服务，绑定成功本身已经足够说明 API 已就绪；
+                    // 继续自 probe 反而会把短暂的启动抖动放大成误报。
+                    let mut guard = desktop.inner.lock().unwrap();
+                    if let Err(e) =
+                        start_enabled_channels(app, &mut guard, &runtime, &diagnostics, &base_url)
+                    {
+                        log_desktop(app, "ERROR", format!("channel sidecar startup failed: {e}"));
+                    }
+
+                    log_desktop(
+                        app,
+                        "INFO",
+                        format!("embedded web server ready: {base_url}"),
+                    );
+                    Ok(backend_status_snapshot(&guard))
                 }
                 Err(error) => {
                     let mut guard = desktop.inner.lock().unwrap();
@@ -1034,6 +1080,7 @@ pub(crate) fn get_agent_settings_impl(app: AppHandle) -> Result<AgentSettings, S
         codex_model: config.agent.codex_model,
         openai_url: config.agent.opencode.api_base_url,
         openai_model: config.agent.opencode.model,
+        openai_sub_model: config.llm.openrouter.sub_model,
         openai_api_key: config.agent.opencode.api_key,
     })
 }
@@ -1049,6 +1096,7 @@ pub(crate) async fn set_agent_settings_impl(
         config.agent.codex_model = settings.codex_model.clone();
         config.agent.opencode.api_base_url = settings.openai_url.clone();
         config.agent.opencode.model = settings.openai_model.clone();
+        config.llm.openrouter.sub_model = settings.openai_sub_model.clone();
         config.agent.opencode.api_key = settings.openai_api_key.clone();
     })?;
     log_desktop(

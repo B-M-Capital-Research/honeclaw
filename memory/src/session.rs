@@ -1,6 +1,7 @@
 //! 会话存储 — JSON 文件
 
 use chrono::{DateTime, FixedOffset};
+use crate::session_sqlite::SqliteSessionMirror;
 use hone_core::agent::ToolCallMade;
 use hone_core::{ActorIdentity, SessionIdentity, beijing_now};
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,41 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// 会话存储管理器
 pub struct SessionStorage {
     data_dir: PathBuf,
+    sqlite_storage: Option<SqliteSessionMirror>,
+    runtime_backend: SessionRuntimeBackend,
+    shadow_sqlite_enabled: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionStorageOptions {
+    pub shadow_sqlite_db_path: Option<PathBuf>,
+    pub shadow_sqlite_enabled: bool,
+    pub runtime_backend: SessionRuntimeBackend,
+}
+
+impl Default for SessionStorageOptions {
+    fn default() -> Self {
+        Self {
+            shadow_sqlite_db_path: None,
+            shadow_sqlite_enabled: false,
+            runtime_backend: SessionRuntimeBackend::Json,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionRuntimeBackend {
+    Json,
+    Sqlite,
+}
+
+impl SessionRuntimeBackend {
+    fn from_config_value(value: &str) -> Self {
+        match value.trim() {
+            "sqlite" => Self::Sqlite,
+            _ => Self::Json,
+        }
+    }
 }
 
 /// 全局共享的会话锁注册表，以防止并发修改同一 session_id 引起的 Last Writer Wins 数据覆盖问题
@@ -168,9 +204,51 @@ pub fn restore_tool_message(
 
 impl SessionStorage {
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
+        Self::with_options(data_dir, SessionStorageOptions::default())
+    }
+
+    pub fn with_options(data_dir: impl AsRef<Path>, options: SessionStorageOptions) -> Self {
         let dir = data_dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&dir).ok();
-        Self { data_dir: dir }
+        let sqlite_storage = if options.shadow_sqlite_enabled
+            || matches!(options.runtime_backend, SessionRuntimeBackend::Sqlite)
+        {
+            options
+                .shadow_sqlite_db_path
+                .as_ref()
+                .and_then(|path| match SqliteSessionMirror::new(path) {
+                    Ok(storage) => Some(storage),
+                    Err(err) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            "failed to initialize session shadow sqlite: {err}"
+                        );
+                        None
+                    }
+                })
+        } else {
+            None
+        };
+
+        Self {
+            data_dir: dir,
+            sqlite_storage,
+            runtime_backend: options.runtime_backend,
+            shadow_sqlite_enabled: options.shadow_sqlite_enabled,
+        }
+    }
+
+    pub fn from_storage_config(config: &hone_core::config::StorageConfig) -> Self {
+        Self::with_options(
+            &config.sessions_dir,
+            SessionStorageOptions {
+                shadow_sqlite_db_path: Some(PathBuf::from(&config.session_sqlite_db_path)),
+                shadow_sqlite_enabled: config.session_sqlite_shadow_write_enabled,
+                runtime_backend: SessionRuntimeBackend::from_config_value(
+                    &config.session_runtime_backend,
+                ),
+            },
+        )
     }
 
     /// 创建新会话
@@ -212,10 +290,7 @@ impl SessionStorage {
             summary: None,
         };
 
-        let path = self.data_dir.join(format!("{id}.json"));
-        let content = serde_json::to_string_pretty(&session)
-            .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
-        std::fs::write(&path, content)?;
+        self.write_session(&id, &session)?;
 
         Ok(id)
     }
@@ -242,14 +317,22 @@ impl SessionStorage {
 
     /// 加载会话
     pub fn load_session(&self, session_id: &str) -> hone_core::HoneResult<Option<Session>> {
-        let path = self.data_dir.join(format!("{session_id}.json"));
-        if !path.exists() {
-            return Ok(None);
+        match self.runtime_backend {
+            SessionRuntimeBackend::Json => self.load_session_from_json(session_id),
+            SessionRuntimeBackend::Sqlite => {
+                if let Some(storage) = &self.sqlite_storage {
+                    if let Some(session) = storage.load_session(session_id)? {
+                        return Ok(Some(session));
+                    }
+                }
+
+                let fallback = self.load_session_from_json(session_id)?;
+                if let Some(session) = &fallback {
+                    let _ = self.write_session_to_sqlite(&self.session_json_path(session_id), session);
+                }
+                Ok(fallback)
+            }
         }
-        let content = std::fs::read_to_string(&path)?;
-        let session: Session = serde_json::from_str(&content)
-            .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
-        Ok(Some(session))
     }
 
     /// 添加消息
@@ -275,11 +358,7 @@ impl SessionStorage {
             metadata,
         });
         session.updated_at = hone_core::beijing_now_rfc3339();
-
-        let path = self.data_dir.join(format!("{session_id}.json"));
-        let json = serde_json::to_string_pretty(&session)
-            .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
-        std::fs::write(&path, json)?;
+        self.write_session(session_id, &session)?;
 
         Ok(true)
     }
@@ -308,6 +387,21 @@ impl SessionStorage {
         };
 
         Ok(messages)
+    }
+
+    pub fn list_sessions(&self) -> hone_core::HoneResult<Vec<Session>> {
+        match self.runtime_backend {
+            SessionRuntimeBackend::Json => self.list_sessions_from_json(),
+            SessionRuntimeBackend::Sqlite => {
+                if let Some(storage) = &self.sqlite_storage {
+                    let sessions = storage.list_sessions()?;
+                    if !sessions.is_empty() {
+                        return Ok(sessions);
+                    }
+                }
+                self.list_sessions_from_json()
+            }
+        }
     }
 
     /// 获取或初始化 session 级 prompt 状态。
@@ -400,11 +494,100 @@ impl SessionStorage {
     }
 
     fn write_session(&self, session_id: &str, session: &Session) -> hone_core::HoneResult<()> {
-        let path = self.data_dir.join(format!("{session_id}.json"));
+        let path = self.session_json_path(session_id);
         let json = serde_json::to_string_pretty(session)
             .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
         std::fs::write(&path, json)?;
+
+        match self.runtime_backend {
+            SessionRuntimeBackend::Json => self.shadow_write_session(&path, session),
+            SessionRuntimeBackend::Sqlite => self.write_session_to_sqlite(&path, session)?,
+        }
         Ok(())
+    }
+
+    fn session_json_path(&self, session_id: &str) -> PathBuf {
+        self.data_dir.join(format!("{session_id}.json"))
+    }
+
+    fn load_session_from_json(&self, session_id: &str) -> hone_core::HoneResult<Option<Session>> {
+        let path = self.session_json_path(session_id);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let content = std::fs::read_to_string(&path)?;
+        let session: Session = serde_json::from_str(&content)
+            .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
+        Ok(Some(session))
+    }
+
+    fn list_sessions_from_json(&self) -> hone_core::HoneResult<Vec<Session>> {
+        let mut sessions = Vec::new();
+        let entries = match std::fs::read_dir(&self.data_dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+
+            let content = match std::fs::read_to_string(&path) {
+                Ok(content) => content,
+                Err(_) => continue,
+            };
+            let session: Session = match serde_json::from_str(&content) {
+                Ok(session) => session,
+                Err(_) => continue,
+            };
+            sessions.push(session);
+        }
+
+        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        Ok(sessions)
+    }
+
+    fn write_session_to_sqlite(
+        &self,
+        path: &Path,
+        session: &Session,
+    ) -> hone_core::HoneResult<()> {
+        let Some(sqlite_storage) = &self.sqlite_storage else {
+            self.shadow_write_session(path, session);
+            return Ok(());
+        };
+
+        if let Err(err) = sqlite_storage.upsert_session(path, session) {
+            tracing::error!(
+                session_id = %session.id,
+                path = %path.display(),
+                "failed to write session into sqlite runtime backend: {err}"
+            );
+            return Err(err);
+        }
+
+        Ok(())
+    }
+
+    fn shadow_write_session(&self, path: &Path, session: &Session) {
+        if !self.shadow_sqlite_enabled {
+            return;
+        }
+
+        let Some(shadow_sqlite) = &self.sqlite_storage else {
+            return;
+        };
+
+        if let Err(err) = shadow_sqlite.upsert_session(path, session) {
+            tracing::warn!(
+                session_id = %session.id,
+                path = %path.display(),
+                "failed to shadow-write session into sqlite: {err}"
+            );
+        }
     }
 }
 
@@ -725,6 +908,71 @@ mod tests {
             )
             .expect("update");
         assert!(!ok);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shadow_sqlite_writes_without_affecting_json_flow() {
+        let root = make_temp_dir("hone_memory_test_shadow_sqlite");
+        let db_path = root.join("sessions.sqlite3");
+        let storage = SessionStorage::with_options(
+            root.join("sessions"),
+            SessionStorageOptions {
+                shadow_sqlite_db_path: Some(db_path.clone()),
+                shadow_sqlite_enabled: true,
+                runtime_backend: SessionRuntimeBackend::Json,
+            },
+        );
+
+        let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
+        let session_id = storage.create_session_for_actor(&actor).expect("create");
+        storage
+            .add_message(&session_id, "user", "hello shadow", None)
+            .expect("append");
+
+        let conn = rusqlite::Connection::open(&db_path).expect("sqlite");
+        let session_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .expect("session count");
+        let message_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM session_messages WHERE session_id = ?1", [&session_id], |row| row.get(0))
+            .expect("message count");
+
+        assert_eq!(session_count, 1);
+        assert_eq!(message_count, 1);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn sqlite_runtime_backend_reads_from_sqlite() {
+        let root = make_temp_dir("hone_memory_test_sqlite_runtime");
+        let db_path = root.join("sessions.sqlite3");
+        let storage = SessionStorage::with_options(
+            root.join("sessions"),
+            SessionStorageOptions {
+                shadow_sqlite_db_path: Some(db_path.clone()),
+                shadow_sqlite_enabled: true,
+                runtime_backend: SessionRuntimeBackend::Sqlite,
+            },
+        );
+
+        let actor = ActorIdentity::new("feishu", "bob", None::<String>).expect("actor");
+        let session_id = storage.create_session_for_actor(&actor).expect("create");
+        storage
+            .add_message(&session_id, "user", "hello sqlite", None)
+            .expect("append");
+
+        std::fs::remove_file(root.join("sessions").join(format!("{session_id}.json")))
+            .expect("remove json fallback");
+
+        let session = storage
+            .load_session(&session_id)
+            .expect("load")
+            .expect("session");
+        assert_eq!(session.messages.len(), 1);
+        assert_eq!(session.messages[0].content, "hello sqlite");
+
         let _ = std::fs::remove_dir_all(root);
     }
 }

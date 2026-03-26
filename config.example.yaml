@@ -25,7 +25,7 @@ feishu:
   allow_mobiles: []
   # Fallback allowlist: when the contact API cannot provide an email or mobile number, allow the open_id directly
   allow_open_ids: []
-  # Phase 1 is direct messages only; group-chat events are ignored by the facade
+  # When true, only process direct messages. Set to false to enable group-chat explicit-trigger mode.
   dm_only: true
   # Maximum length of a single message; longer messages are split on the Rust side
   max_message_length: 3500
@@ -39,52 +39,33 @@ feishu:
   startup_timeout_seconds: 20
 
 
-# Telegram Bot config (DM is implemented; group / channel support is kept but not yet implemented)
+# Telegram Bot config
 telegram:
   enabled: false
   # Telegram Bot token
   bot_token: "REPLACE_ME"
   # Allowed user ID list; empty means allow all; supports "*"
   allow_from: []
-  # Only process direct messages (DM). Group and channel messages are ignored.
+  # Only process direct messages (DM). Set to false to enable group-chat explicit-trigger mode.
   dm_only: true
   # Maximum length of a single message (Telegram sendMessage limit is about 4096)
   max_message_length: 3500
 
 
-# Discord Bot config (DM is implemented; Guild channel support is kept but not yet implemented)
+# Discord Bot config
 discord:
   enabled: false
   # Discord Bot token
   bot_token: ""
   # Allowed user ID list; empty means allow all; supports "*"
   allow_from: []
-  # Only process direct messages (DM). Guild channel messages are ignored.
+  # Only process direct messages (DM). Set to false to enable group-chat explicit-trigger mode.
   dm_only: true
   # Maximum length of a single message (Discord limit is 2000)
   max_message_length: 1800
   group_reply:
+    # Whether explicit-trigger group replies are enabled
     enabled: true
-    # mention_only | mention_or_question | all
-    trigger_mode: "mention_or_question"
-    # Fixed channel scope for this release
-    queue_scope: "channel"
-    # Group-chat aggregation window in seconds
-    window_seconds: 45
-    # Fast-trigger delay after an @ mention, in seconds
-    mention_fast_delay_seconds: 3
-    # Per-channel message queue capacity
-    queue_capacity_per_channel: 200
-    # Maximum number of messages handled in one batch; overflow triggers backlog fallback
-    max_batch_messages: 12
-    # Keep the latest N messages when overloaded
-    backlog_keep_latest: 8
-    # Maximum characters to keep in the backlog summary
-    backlog_summary_max_chars: 600
-    # adaptive | always | never
-    reply_mention_mode: "adaptive"
-    # Whether to enable question-signal triggering
-    question_signal_enabled: true
 
 # Group-chat shared session / context compression policy
 group_context:
@@ -92,6 +73,12 @@ group_context:
   enabled: true
   # Whether each group shares one session
   shared_session_enabled: true
+  # Whether untriggered group text should be buffered for the next explicit trigger
+  pretrigger_window_enabled: true
+  # Maximum buffered group messages to carry into the next explicit trigger
+  pretrigger_window_max_messages: 10
+  # Only keep buffered group messages from the latest N seconds
+  pretrigger_window_max_age_seconds: 300
   # Number of recent valid messages to restore for a shared group session
   recent_context_limit: 18
   # Trigger compression after the shared session exceeds this number of messages
@@ -184,7 +171,7 @@ nano_banana:
   max_tokens: 2048
   temperature: 0.7
   http_referrer: "https://openrouter.ai"
-  x_title: "Hone-Financial"
+  x_title: "Honeclaw"
   download_dir: "gen_images"
   extra_params: {}
 
@@ -203,6 +190,8 @@ llm:
     # OpenRouter API key
     api_key: ""
     model: "moonshotai/kimi-k2.5"
+    # Cheap auxiliary model for heartbeats / session compression / other background checks
+    sub_model: "moonshotai/kimi-k2.5"
     timeout: 120
     max_retries: 3
     max_tokens: 32768
@@ -211,6 +200,9 @@ llm:
 storage:
   base_path: "./data"
   sessions_dir: "./data/sessions"
+  session_sqlite_db_path: "./data/sessions.sqlite3"
+  session_sqlite_shadow_write_enabled: false
+  session_runtime_backend: "json"
   conversation_quota_dir: "./data/conversation_quota"
   llm_audit_db_path: "./data/llm_audit.sqlite3"
   llm_audit_retention_days: 30

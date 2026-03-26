@@ -6,7 +6,8 @@ use hone_channels::attachments::{
     ingest_raw_attachments, spawn_attachment_persist_pipeline,
 };
 use hone_channels::ingress::{
-    ActorScopeResolver, GroupTrigger, IncomingEnvelope, MessageDeduplicator, SessionLockRegistry,
+    ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope, MessageDeduplicator,
+    SessionLockRegistry, persist_buffered_group_messages,
 };
 use hone_channels::outbound::run_session_with_outbound;
 use hone_channels::prompt::{DEFAULT_GROUP_PRIVACY_GUARD, PromptOptions};
@@ -20,13 +21,10 @@ use serenity::all::{
 use tracing::{error, info};
 
 use crate::attachments::{build_dm_user_input, build_group_user_input, collect_raw_attachments};
-use crate::group_reply::GroupReplyCoordinator;
-use crate::types::{ChannelKey, GroupQueuedMessage};
 use crate::utils::{
     DISCORD_SKILL_COMMAND, DiscordOutboundAdapter, build_skill_command_input,
-    build_skill_slash_command, configured_skill_dirs, discord_actor, has_question_signal,
-    is_allowed_author, is_direct_mention_message, slash_option_string, split_into_segments,
-    truncate_chars,
+    build_skill_slash_command, configured_skill_dirs, discord_actor, is_allowed_author,
+    is_direct_mention_message, slash_option_string, split_into_segments, truncate_chars,
 };
 
 const MAX_DISCORD_AUTOCOMPLETE_CHOICES: usize = 25;
@@ -37,10 +35,10 @@ fn build_group_user_input_with_speaker(label: &str, text: &str) -> String {
 
 pub(crate) struct DiscordHandler {
     pub(crate) core: Arc<hone_channels::HoneBotCore>,
-    pub(crate) group_reply: GroupReplyCoordinator,
     pub(crate) dedup: MessageDeduplicator,
     pub(crate) session_locks: SessionLockRegistry,
     pub(crate) scope_resolver: ActorScopeResolver,
+    pub(crate) pretrigger: hone_channels::GroupPretriggerWindowRegistry,
 }
 
 #[serenity::async_trait]
@@ -52,12 +50,17 @@ impl EventHandler for DiscordHandler {
             self.core.config.discord.dm_only, self.core.config.discord.max_message_length
         );
         info!(
-            "   group_reply.enabled={} trigger_mode={} window={}s mention_fast={}s queue_capacity={}",
-            self.group_reply.cfg().enabled,
-            self.core.config.discord.group_reply.trigger_mode,
-            self.group_reply.cfg().window_seconds,
-            self.group_reply.cfg().mention_fast_delay_seconds,
-            self.group_reply.cfg().queue_capacity_per_channel
+            "   group_reply.enabled={} pretrigger_window.enabled={} max_messages={} max_age={}s",
+            self.core.config.discord.group_reply.enabled,
+            self.core.config.group_context.pretrigger_window_enabled,
+            self.core
+                .config
+                .group_context
+                .pretrigger_window_max_messages,
+            self.core
+                .config
+                .group_context
+                .pretrigger_window_max_age_seconds
         );
 
         match Command::set_global_commands(&ctx.http, vec![build_skill_slash_command()]).await {
@@ -142,11 +145,11 @@ impl DiscordHandler {
             return Ok(());
         }
 
-        if msg.guild_id.is_some() && self.group_reply.enabled() {
+        if msg.guild_id.is_some() && self.core.config.discord.group_reply.enabled {
             return self.handle_group_message(ctx, msg, &author_id).await;
         }
 
-        self.handle_immediate_message(ctx, msg, &author_id).await
+        self.handle_direct_message(ctx, msg, &author_id).await
     }
 
     async fn handle_skill_autocomplete(
@@ -383,16 +386,57 @@ impl DiscordHandler {
         msg: &Message,
         author_id: &str,
     ) -> hone_core::HoneResult<()> {
-        let Some(channel_key) = ChannelKey::from_message(msg) else {
+        let Some(guild_id) = msg.guild_id else {
             return Ok(());
         };
-        let target = format!(
-            "guild:{}:channel:{}",
-            channel_key.guild_id, channel_key.channel_id
-        );
-        let (actor, channel_target, chat_mode) =
-            self.scope_resolver
-                .group(author_id, channel_key.scope(), target.clone())?;
+        let target = format!("guild:{}:channel:{}", guild_id.get(), msg.channel_id.get());
+        let (actor, channel_target, chat_mode) = self.scope_resolver.group(
+            author_id,
+            format!("g:{}:c:{}", guild_id.get(), msg.channel_id.get()),
+            target,
+        )?;
+        let session_identity = SessionIdentity::from_actor(&actor)
+            .expect("discord group actor should always map to a session identity");
+        let session_id = session_identity.session_id();
+        let bot_user_id = ctx.cache.current_user().id.get();
+        let explicit_trigger = is_direct_mention_message(msg, bot_user_id);
+        let group_text = msg.content.trim();
+        if !explicit_trigger {
+            if !group_text.is_empty() && self.core.config.group_context.pretrigger_window_enabled {
+                self.pretrigger
+                    .push(
+                        &session_id,
+                        BufferedGroupMessage::new(
+                            "discord",
+                            msg.id.get().to_string(),
+                            msg.author.name.clone(),
+                            group_text.to_string(),
+                        ),
+                    )
+                    .await;
+                self.core.log_message_step(
+                    "discord",
+                    author_id,
+                    &session_id,
+                    "group.pretrigger",
+                    "buffered",
+                    None,
+                    None,
+                );
+            } else {
+                self.core.log_message_step(
+                    "discord",
+                    author_id,
+                    &session_id,
+                    "ignore",
+                    "group_message_not_explicitly_triggered",
+                    None,
+                    None,
+                );
+            }
+            return Ok(());
+        }
+
         if self
             .core
             .try_intercept_admin_registration(&actor, msg.content.trim())
@@ -403,31 +447,36 @@ impl DiscordHandler {
                 .map_err(|err| hone_core::HoneError::Channel(err.to_string()))?;
             return Ok(());
         }
-        let session_identity = SessionIdentity::from_actor(&actor)
-            .expect("discord group actor should always map to a session identity");
-        let session_id = session_identity.session_id();
 
-        let bot_user_id = ctx.cache.current_user().id.get();
-        let direct_mention = is_direct_mention_message(msg, bot_user_id);
-        let question_signal = self.group_reply.cfg().question_signal_enabled
-            && has_question_signal(msg.content.trim());
         let trigger = GroupTrigger {
-            direct_mention,
+            direct_mention: explicit_trigger,
             reply_to_bot: false,
-            question_signal,
+            question_signal: false,
         };
-        if !self.group_reply.cfg().trigger_mode.should_trigger(&trigger) {
-            self.core.log_message_step(
-                "discord",
-                author_id,
-                &session_id,
-                "ignore",
-                "group_message_not_triggered",
-                None,
-                None,
-            );
-            return Ok(());
+        let _session_guard = self.session_locks.lock(&session_id).await;
+        if self
+            .core
+            .session_storage
+            .load_session(&session_id)?
+            .is_none()
+        {
+            let _ = self
+                .core
+                .session_storage
+                .create_session_for_identity(&session_identity, Some(&actor));
         }
+        let buffered_messages = if self.core.config.group_context.pretrigger_window_enabled {
+            self.pretrigger
+                .take_recent(&session_id, Some(&msg.id.get().to_string()))
+                .await
+        } else {
+            Vec::new()
+        };
+        let buffered_count = persist_buffered_group_messages(
+            &self.core.session_storage,
+            &session_id,
+            &buffered_messages,
+        )?;
 
         let raw_attachments = collect_raw_attachments(msg).await;
         let attachments = ingest_raw_attachments(
@@ -452,9 +501,8 @@ impl DiscordHandler {
             );
         }
 
-        let normalized = build_group_user_input(msg.content.trim(), &attachments);
-        let input = build_group_user_input_with_speaker(&msg.author.name, &normalized);
-        if input.trim().is_empty() {
+        let mut normalized = build_group_user_input(group_text, &attachments);
+        if normalized.trim().is_empty() && attachments.is_empty() && buffered_count == 0 {
             self.core.log_message_step(
                 "discord",
                 author_id,
@@ -466,21 +514,14 @@ impl DiscordHandler {
             );
             return Ok(());
         }
-
+        if normalized.trim().is_empty() {
+            normalized = "@bot".to_string();
+        }
+        let input = build_group_user_input_with_speaker(&msg.author.name, &normalized);
         let recv_extra = format!(
-            "group_queue=channel attachments={} direct_mention={} question_signal={}",
+            "attachments={} buffered_messages={} explicit_trigger=true",
             attachments.len(),
-            direct_mention,
-            question_signal
-        );
-        self.core.log_message_received(
-            "discord",
-            author_id,
-            &channel_target,
-            &session_id,
-            &input,
-            Some(&recv_extra),
-            None,
+            buffered_count
         );
         let envelope = IncomingEnvelope {
             message_id: Some(msg.id.get().to_string()),
@@ -496,70 +537,95 @@ impl DiscordHandler {
             session_metadata: None,
             message_metadata: Default::default(),
         };
-
-        let queued = GroupQueuedMessage {
-            channel_key,
-            author_id: author_id.to_string(),
-            author_name: msg.author.name.clone(),
-            author_mention: format!("<@{}>", msg.author.id.get()),
-            direct_mention: envelope.trigger.direct_mention,
-            question_signal: envelope.trigger.question_signal,
-            user_input: envelope.text,
+        let is_admin = self.core.is_admin_actor(&envelope.actor);
+        let mut prompt_options = PromptOptions {
+            is_admin,
+            ..PromptOptions::default()
         };
-        self.group_reply.enqueue(queued, ctx.http.clone()).await;
-        self.core.log_message_step(
-            "discord",
-            author_id,
-            &session_id,
-            "group.enqueue",
-            "queued",
-            None,
-            None,
-        );
+        prompt_options.privacy_guard = Some(DEFAULT_GROUP_PRIVACY_GUARD.to_string());
+        let mut session = AgentSession::new(
+            self.core.clone(),
+            envelope.actor.clone(),
+            envelope.channel_target.clone(),
+        )
+        .with_session_identity(envelope.session_identity.clone())
+        .with_message_id(envelope.message_id.clone())
+        .with_prompt_options(prompt_options)
+        .with_recv_extra(envelope.recv_extra.clone())
+        .with_message_metadata(envelope.message_metadata.clone())
+        .with_cron_allowed(false);
+
+        let reply_prefix = Some(format!("<@{}>", msg.author.id.get()));
+        let placeholder_body = if envelope.attachments.is_empty() {
+            "正在思考中...".to_string()
+        } else {
+            build_attachment_ack_message(&envelope.attachments)
+        };
+        let placeholder_text =
+            crate::utils::prepend_reply_prefix(reply_prefix.as_deref(), &placeholder_body);
+        let adapter = DiscordOutboundAdapter {
+            http: ctx.http.clone(),
+            channel_id: msg.channel_id,
+            max_len: self.core.config.discord.max_message_length,
+            reply_prefix,
+            show_reasoning: false,
+        };
+
+        let summary = run_session_with_outbound(
+            &mut session,
+            adapter,
+            &envelope.text,
+            &placeholder_text,
+            AgentRunOptions::default(),
+        )
+        .await;
+
+        if summary.placeholder_sent {
+            self.core.log_message_step(
+                "discord",
+                author_id,
+                &session_id,
+                "reply.placeholder",
+                "sent",
+                None,
+                None,
+            );
+        } else {
+            self.core.log_message_step(
+                "discord",
+                author_id,
+                &session_id,
+                "reply.placeholder",
+                "failed",
+                None,
+                None,
+            );
+        }
+
+        if summary.result.response.success {
+            self.core.log_message_step(
+                "discord",
+                author_id,
+                &session_id,
+                "reply.send",
+                &format!("segments.sent={}", summary.sent_segments),
+                None,
+                None,
+            );
+        }
+
         Ok(())
     }
 
-    async fn handle_immediate_message(
+    async fn handle_direct_message(
         &self,
         ctx: &Context,
         msg: &Message,
         author_id: &str,
     ) -> hone_core::HoneResult<()> {
-        if msg.guild_id.is_some() {
-            let bot_user_id = ctx.cache.current_user().id.get();
-            if !is_direct_mention_message(msg, bot_user_id) {
-                self.core.log_message_step(
-                    "discord",
-                    author_id,
-                    "-",
-                    "ignore",
-                    "group_message_not_triggered_no_mention",
-                    None,
-                    None,
-                );
-                return Ok(());
-            }
-        }
-
-        let target = msg
-            .guild_id
-            .map(|id| format!("guild:{}:channel:{}", id.get(), msg.channel_id.get()))
-            .unwrap_or_else(|| format!("dm:{}", msg.channel_id.get()));
-        let trigger = GroupTrigger {
-            direct_mention: msg.guild_id.is_some()
-                && is_direct_mention_message(msg, ctx.cache.current_user().id.get()),
-            reply_to_bot: false,
-            question_signal: false,
-        };
-        let (actor, channel_target, chat_mode) = if let Some(guild_id) = msg.guild_id {
-            self.scope_resolver.group(
-                author_id,
-                format!("g:{}:c:{}", guild_id.get(), msg.channel_id.get()),
-                target.clone(),
-            )?
-        } else {
-            self.scope_resolver.direct(author_id, target.clone())?
-        };
+        let target = format!("dm:{}", msg.channel_id.get());
+        let (actor, channel_target, chat_mode) =
+            self.scope_resolver.direct(author_id, target.clone())?;
         let envelope = IncomingEnvelope {
             message_id: Some(msg.id.get().to_string()),
             actor: actor.clone(),
@@ -572,7 +638,7 @@ impl DiscordHandler {
             chat_mode,
             text: msg.content.trim().to_string(),
             attachments: Vec::new(),
-            trigger,
+            trigger: GroupTrigger::default(),
             recv_extra: None,
             session_metadata: None,
             message_metadata: Default::default(),
@@ -613,12 +679,7 @@ impl DiscordHandler {
             );
         }
 
-        let input = if envelope.is_group() {
-            let normalized = build_group_user_input(&envelope.text, &attachments);
-            build_group_user_input_with_speaker(&msg.author.name, &normalized)
-        } else {
-            build_dm_user_input(&envelope.text, &attachments)
-        };
+        let input = build_dm_user_input(&envelope.text, &attachments);
         if input.trim().is_empty() {
             self.core.log_message_step(
                 "discord",
@@ -634,13 +695,10 @@ impl DiscordHandler {
 
         let recv_extra = format!("attachments={}", attachments.len());
         let is_admin = self.core.is_admin_actor(&envelope.actor);
-        let mut prompt_options = PromptOptions {
+        let prompt_options = PromptOptions {
             is_admin,
             ..PromptOptions::default()
         };
-        if envelope.is_group() {
-            prompt_options.privacy_guard = Some(DEFAULT_GROUP_PRIVACY_GUARD.to_string());
-        }
         let mut session = AgentSession::new(
             self.core.clone(),
             envelope.actor.clone(),

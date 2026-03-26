@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
 use hone_channels::outbound::{OutboundAdapter, split_segments};
 use hone_core::ActorIdentity;
 use serenity::all::{
@@ -10,10 +9,7 @@ use serenity::all::{
     CreateCommandOption, CreateMessage, EditMessage, Message, ResolvedValue,
 };
 use serenity::http::Http;
-use tokio::sync::Mutex;
 use tracing::warn;
-
-use crate::types::{ChannelKey, GroupTriggerMode};
 
 pub(crate) const DISCORD_SKILL_COMMAND: &str = "skill";
 
@@ -78,94 +74,9 @@ impl OutboundAdapter for DiscordOutboundAdapter {
     }
 }
 
-pub(crate) struct DiscordReasoningListener {
-    pub(crate) http: Arc<Http>,
-    pub(crate) channel_id: ChannelId,
-    pub(crate) placeholder: Arc<Mutex<Option<Message>>>,
-    pub(crate) progress: Arc<Mutex<DiscordProgressTranscript>>,
-    pub(crate) max_len: usize,
-    pub(crate) show_reasoning: bool,
-}
-
-#[derive(Clone)]
-pub(crate) struct DiscordProgressTranscript {
-    base_text: String,
-    entries: Vec<String>,
-}
-
-impl DiscordProgressTranscript {
-    pub(crate) fn new(base_text: &str) -> Self {
-        Self {
-            base_text: base_text.trim().to_string(),
-            entries: Vec::new(),
-        }
-    }
-
-    pub(crate) fn push(&mut self, entry: &str) -> Option<String> {
-        let normalized = entry.trim();
-        if normalized.is_empty() {
-            return None;
-        }
-        if self.entries.iter().any(|existing| existing == normalized) {
-            return None;
-        }
-        self.entries.push(normalized.to_string());
-        Some(self.render())
-    }
-
-    fn render(&self) -> String {
-        let mut lines = Vec::new();
-        if !self.base_text.is_empty() {
-            lines.push(self.base_text.clone());
-        }
-        lines.extend(self.entries.iter().map(|entry| format!("- {entry}")));
-        lines.join("\n")
-    }
-}
-
-#[async_trait]
-impl AgentSessionListener for DiscordReasoningListener {
-    async fn on_event(&self, event: AgentSessionEvent) {
-        let AgentSessionEvent::ToolStatus {
-            status, reasoning, ..
-        } = event
-        else {
-            return;
-        };
-        if !self.show_reasoning {
-            return;
-        }
-        if status != "start" {
-            return;
-        }
-        let Some(text) = reasoning.filter(|value| !value.trim().is_empty()) else {
-            return;
-        };
-        let Some(content) = self.progress.lock().await.push(&text) else {
-            return;
-        };
-        let content = truncate_chars(&content, self.max_len);
-        let mut guard = self.placeholder.lock().await;
-        if let Some(msg) = guard.as_mut() {
-            if let Err(e) = msg
-                .edit(&self.http, EditMessage::new().content(&content))
-                .await
-            {
-                warn!("[Discord] 编辑占位消息失败: {}", e);
-            }
-        } else {
-            let _ = self.channel_id.say(&self.http, &content).await;
-        }
-    }
-}
-
-pub(crate) fn discord_actor(author_id: &str, channel_key: Option<ChannelKey>) -> ActorIdentity {
-    hone_channels::HoneBotCore::create_actor(
-        "discord",
-        author_id,
-        channel_key.as_ref().map(ChannelKey::scope).as_deref(),
-    )
-    .expect("discord actor should be valid")
+pub(crate) fn discord_actor(author_id: &str, channel_scope: Option<&str>) -> ActorIdentity {
+    hone_channels::HoneBotCore::create_actor("discord", author_id, channel_scope)
+        .expect("discord actor should be valid")
 }
 
 pub(crate) fn parse_channel_id_from_target(target: &str) -> Option<u64> {
@@ -192,19 +103,6 @@ pub(crate) fn parse_channel_id_from_target(target: &str) -> Option<u64> {
     }
 
     None
-}
-
-#[allow(dead_code)]
-pub(crate) fn should_trigger_by_mode(
-    mode: GroupTriggerMode,
-    direct_mention: bool,
-    question_signal: bool,
-) -> bool {
-    mode.should_trigger(&hone_channels::ingress::GroupTrigger {
-        direct_mention,
-        reply_to_bot: false,
-        question_signal,
-    })
 }
 
 pub(crate) fn build_skill_slash_command() -> CreateCommand {
@@ -306,37 +204,6 @@ pub(crate) fn prepend_reply_prefix(prefix: Option<&str>, text: &str) -> String {
     } else {
         format!("{prefix} {body}")
     }
-}
-
-pub(crate) fn has_question_signal(content: &str) -> bool {
-    let text = content.trim();
-    if text.is_empty() {
-        return false;
-    }
-    if text.contains('?') || text.contains('？') {
-        return true;
-    }
-
-    let lower = text.to_lowercase();
-    const QUESTION_SIGNALS_ZH: &[&str] = &[
-        "请问",
-        "怎么看",
-        "怎么处理",
-        "能不能",
-        "可以吗",
-        "帮我看",
-        "给个建议",
-        "分析下",
-        "分析一下",
-        "有啥看法",
-        "有何建议",
-    ];
-    const QUESTION_SIGNALS_EN: &[&str] = &[
-        "what", "why", "how", "which", "should", "could", "can i", "advice", "opinion",
-    ];
-
-    QUESTION_SIGNALS_ZH.iter().any(|kw| text.contains(kw))
-        || QUESTION_SIGNALS_EN.iter().any(|kw| lower.contains(kw))
 }
 
 pub(crate) fn split_into_segments(text: &str, max_segment_size: usize) -> Vec<String> {
@@ -507,21 +374,8 @@ mod tests {
     }
 
     #[test]
-    fn question_signal_detection_works() {
-        assert!(has_question_signal("请问这个怎么看"));
-        assert!(has_question_signal("what do you think"));
-        assert!(has_question_signal("这可以吗？"));
-        assert!(!has_question_signal("收到，已处理"));
-    }
-
-    #[test]
     fn group_session_id_is_channel_scoped() {
-        let key = ChannelKey {
-            guild_id: 123,
-            channel_id: 456,
-        };
-        assert_eq!(key.scope(), "g:123:c:456");
-        let actor = discord_actor("alice", Some(key));
+        let actor = discord_actor("alice", Some("g:123:c:456"));
         assert!(actor.session_id().contains("g_3a123_3ac_3a456"));
     }
 

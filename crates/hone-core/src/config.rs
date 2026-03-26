@@ -88,20 +88,6 @@ impl HoneConfig {
         }
         Ok(config)
     }
-
-    /// 获取 LLM provider 的主 API key（向后兼容，优先返回第一个有效 key）
-    pub fn resolve_llm_api_key(&self) -> String {
-        match self.llm.provider.as_str() {
-            "kimi" => self.llm.kimi.api_key.clone(),
-            _ => self
-                .llm
-                .openrouter
-                .effective_key_pool()
-                .first()
-                .unwrap_or("")
-                .to_string(),
-        }
-    }
 }
 
 /// 计算与给定配置文件同目录的覆盖层路径。
@@ -264,6 +250,7 @@ mod tests {
         let config = HoneConfig::default();
         assert_eq!(config.llm.provider, "openrouter");
         assert_eq!(config.llm.openrouter.model, "moonshotai/kimi-k2.5");
+        assert_eq!(config.llm.openrouter.sub_model, "moonshotai/kimi-k2.5");
         assert_eq!(config.llm.openrouter.timeout, 120);
         assert_eq!(config.llm.openrouter.max_tokens, 32768);
     }
@@ -278,6 +265,7 @@ llm:
 "#;
         let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.llm.openrouter.model, "test-model");
+        assert_eq!(config.llm.openrouter.sub_model, "moonshotai/kimi-k2.5");
         assert_eq!(config.llm.openrouter.timeout, 120); // default
     }
 
@@ -584,30 +572,19 @@ admins:
     #[test]
     fn test_deserialize_discord_group_reply() {
         let yaml = r#"
+group_context:
+  pretrigger_window_enabled: false
+  pretrigger_window_max_messages: 6
+  pretrigger_window_max_age_seconds: 45
 discord:
   group_reply:
     enabled: true
-    trigger_mode: mention_only
-    window_seconds: 30
-    mention_fast_delay_seconds: 2
-    queue_capacity_per_channel: 123
-    max_batch_messages: 9
-    backlog_keep_latest: 5
-    backlog_summary_max_chars: 300
-    reply_mention_mode: always
-    question_signal_enabled: false
 "#;
         let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!config.group_context.pretrigger_window_enabled);
+        assert_eq!(config.group_context.pretrigger_window_max_messages, 6);
+        assert_eq!(config.group_context.pretrigger_window_max_age_seconds, 45);
         let gr = &config.discord.group_reply;
         assert!(gr.enabled);
-        assert_eq!(gr.trigger_mode, "mention_only");
-        assert_eq!(gr.window_seconds, 30);
-        assert_eq!(gr.mention_fast_delay_seconds, 2);
-        assert_eq!(gr.queue_capacity_per_channel, 123);
-        assert_eq!(gr.max_batch_messages, 9);
-        assert_eq!(gr.backlog_keep_latest, 5);
-        assert_eq!(gr.backlog_summary_max_chars, 300);
-        assert_eq!(gr.reply_mention_mode, "always");
-        assert!(!gr.question_signal_enabled);
     }
 }

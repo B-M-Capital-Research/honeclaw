@@ -2,11 +2,13 @@
 //!
 //! 管理按 actor（channel + user_id + channel_scope）隔离的定时任务持久化存储。
 
-use chrono::{Datelike, FixedOffset, NaiveDate, Utc};
+use chrono::{Datelike, FixedOffset, NaiveDate, Timelike, Utc};
 use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use tracing::warn;
 use uuid::Uuid;
 
 /// 北京时间偏移（+8h）
@@ -40,6 +42,7 @@ pub struct CronJobUpdate {
     pub push: Option<Value>,
     pub enabled: Option<bool>,
     pub channel_target: Option<String>,
+    pub tags: Option<Vec<String>>,
 }
 
 /// Cron 任务数据
@@ -71,6 +74,8 @@ pub struct CronJob {
     pub channel_scope: Option<String>,
     #[serde(default)]
     pub channel_target: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -125,7 +130,8 @@ impl CronJobStorage {
                 continue;
             }
 
-            let content = match std::fs::read_to_string(entry.path()) {
+            let path = entry.path();
+            let content = match std::fs::read_to_string(&path) {
                 Ok(content) => content,
                 Err(_) => continue,
             };
@@ -134,27 +140,17 @@ impl CronJobStorage {
                 Err(_) => continue,
             };
 
-            // 兼容旧格式：actor 字段缺失时，从 user_id + 各 job 的 channel 字段重建
-            let actor = match data.actor {
-                Some(actor) => actor,
-                None => {
-                    if data.user_id.is_empty() {
-                        continue;
-                    }
-                    // 从第一个 job 的 channel 字段推断渠道，默认 imessage
-                    let channel = data
-                        .jobs
-                        .first()
-                        .map(|j| j.channel.clone())
-                        .filter(|c| !c.is_empty())
-                        .unwrap_or_else(|| "imessage".to_string());
-                    let scope = data.jobs.first().and_then(|j| j.channel_scope.clone());
-                    match ActorIdentity::new(channel, data.user_id.clone(), scope) {
-                        Ok(actor) => actor,
-                        Err(_) => continue,
-                    }
-                }
+            let Some(actor) = actor_from_cron_data(&data) else {
+                continue;
             };
+            if !cron_file_matches_actor(&path, &actor) {
+                warn!(
+                    "skipping mismatched cron file path={} actor={}",
+                    path.display(),
+                    actor.storage_key()
+                );
+                continue;
+            }
 
             jobs.extend(data.jobs.into_iter().map(|job| (actor.clone(), job)));
         }
@@ -216,14 +212,15 @@ impl CronJobStorage {
         &self,
         actor: &ActorIdentity,
         name: &str,
-        hour: u32,
-        minute: u32,
+        hour: Option<u32>,
+        minute: Option<u32>,
         repeat: &str,
         task_prompt: &str,
         channel_target: &str,
         weekday: Option<u32>,
         push: Option<Value>,
         enabled: bool,
+        tags: Option<Vec<String>>,
         bypass_limits: bool,
     ) -> Value {
         let mut data = self.load_jobs(actor);
@@ -236,7 +233,17 @@ impl CronJobStorage {
             });
         }
 
-        if let Err(error) = validate_schedule(hour, minute, repeat, weekday) {
+        let tags = normalized_tags(tags.unwrap_or_default(), repeat);
+        let is_heartbeat = is_heartbeat_repeat_or_tags(repeat, &tags);
+        let hour = hour.unwrap_or(0);
+        let minute = minute.unwrap_or(0);
+
+        if let Err(error) = validate_schedule(
+            if is_heartbeat { None } else { Some(hour) },
+            if is_heartbeat { None } else { Some(minute) },
+            repeat,
+            weekday,
+        ) {
             return serde_json::json!({"success": false, "error": error});
         }
 
@@ -264,6 +271,7 @@ impl CronJobStorage {
             } else {
                 channel_target.to_string()
             },
+            tags,
             created_at: Some(now),
             last_run_at: None,
         };
@@ -305,13 +313,14 @@ impl CronJobStorage {
             }
             if let Some(schedule) = updates.schedule.clone() {
                 validate_schedule(
-                    schedule.hour,
-                    schedule.minute,
+                    Some(schedule.hour),
+                    Some(schedule.minute),
                     &schedule.repeat,
                     schedule.weekday,
                 )
                 .map_err(hone_core::HoneError::Tool)?;
                 job.schedule = schedule;
+                job.tags = normalized_tags(job.tags.clone(), &job.schedule.repeat);
             }
             if let Some(task_prompt) = updates.task_prompt.clone() {
                 job.task_prompt = task_prompt;
@@ -324,6 +333,9 @@ impl CronJobStorage {
             }
             if let Some(channel_target) = updates.channel_target.clone() {
                 job.channel_target = channel_target;
+            }
+            if let Some(tags) = updates.tags.clone() {
+                job.tags = normalized_tags(tags, &job.schedule.repeat);
             }
             Ok(())
         })
@@ -397,6 +409,7 @@ impl CronJobStorage {
         channels: &[&str],
     ) -> Vec<(ActorIdentity, CronJob)> {
         let mut due = Vec::new();
+        let mut seen_due_keys = HashSet::new();
         let now = Utc::now().with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).unwrap());
         let current_day = now.date_naive();
         let current_total = current_hour * 60 + current_minute;
@@ -412,7 +425,8 @@ impl CronJobStorage {
                 continue;
             }
 
-            let content = match std::fs::read_to_string(entry.path()) {
+            let path = entry.path();
+            let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
@@ -421,26 +435,17 @@ impl CronJobStorage {
                 Err(_) => continue,
             };
 
-            // 兼容旧格式：actor 字段缺失时，从 user_id + 各 job 的 channel 字段重建
-            let actor = match data.actor {
-                Some(actor) => actor,
-                None => {
-                    if data.user_id.is_empty() {
-                        continue;
-                    }
-                    let channel = data
-                        .jobs
-                        .first()
-                        .map(|j| j.channel.clone())
-                        .filter(|c| !c.is_empty())
-                        .unwrap_or_else(|| "imessage".to_string());
-                    let scope = data.jobs.first().and_then(|j| j.channel_scope.clone());
-                    match ActorIdentity::new(channel, data.user_id.clone(), scope) {
-                        Ok(actor) => actor,
-                        Err(_) => continue,
-                    }
-                }
+            let Some(actor) = actor_from_cron_data(&data) else {
+                continue;
             };
+            if !cron_file_matches_actor(&path, &actor) {
+                warn!(
+                    "skipping mismatched cron file path={} actor={}",
+                    path.display(),
+                    actor.storage_key()
+                );
+                continue;
+            }
 
             for job in &data.jobs {
                 if !job.enabled {
@@ -454,12 +459,22 @@ impl CronJobStorage {
                 }
 
                 let job_total = (job.schedule.hour as i32) * 60 + (job.schedule.minute as i32);
-                if !(current_total - DUE_WINDOW_MINUTES <= job_total && job_total <= current_total)
+                let is_heartbeat = job.is_heartbeat();
+                if is_heartbeat {
+                    let slot_minute = (current_total / 30) * 30;
+                    if !(slot_minute <= current_total
+                        && current_total <= slot_minute + DUE_WINDOW_MINUTES)
+                    {
+                        continue;
+                    }
+                } else if !(current_total - DUE_WINDOW_MINUTES <= job_total
+                    && job_total <= current_total)
                 {
                     continue;
                 }
 
-                match job.schedule.repeat.as_str() {
+                let repeat_kind = normalized_repeat(&job.schedule.repeat, &job.tags);
+                match repeat_kind {
                     "weekly" => {
                         if job.schedule.weekday != Some(current_weekday) {
                             continue;
@@ -486,7 +501,15 @@ impl CronJobStorage {
                 if let Some(ref last_run) = job.last_run_at
                     && let Ok(last_dt) = chrono::DateTime::parse_from_rfc3339(last_run)
                 {
-                    let already_ran = match job.schedule.repeat.as_str() {
+                    let already_ran = match repeat_kind {
+                        "heartbeat" => {
+                            let current_slot_start_minute = (current_total / 30) * 30;
+                            let current_slot_hour = current_slot_start_minute / 60;
+                            let current_slot_minute = current_slot_start_minute % 60;
+                            last_dt.date_naive() == now.date_naive()
+                                && last_dt.hour() as i32 == current_slot_hour
+                                && (last_dt.minute() as i32 / 30) == (current_slot_minute / 30)
+                        }
                         "weekly" => {
                             last_dt.iso_week() == now.iso_week() && last_dt.year() == now.year()
                         }
@@ -496,6 +519,17 @@ impl CronJobStorage {
                     if already_ran {
                         continue;
                     }
+                }
+
+                let dedup_key = format!("{}:{}:{}", job.channel, job.id, job.channel_target);
+                if !seen_due_keys.insert(dedup_key) {
+                    warn!(
+                        "skipping duplicate due cron job actor={} job_id={} target={}",
+                        actor.storage_key(),
+                        job.id,
+                        job.channel_target
+                    );
+                    continue;
                 }
 
                 due.push((actor.clone(), job.clone()));
@@ -583,17 +617,65 @@ impl CronJobStorage {
     }
 }
 
+impl CronJob {
+    pub fn is_heartbeat(&self) -> bool {
+        is_heartbeat_repeat_or_tags(&self.schedule.repeat, &self.tags)
+    }
+}
+
+fn actor_from_cron_data(data: &CronJobData) -> Option<ActorIdentity> {
+    match data.actor.clone() {
+        Some(actor) => Some(actor),
+        None => {
+            if data.user_id.is_empty() {
+                return None;
+            }
+            let channel = data
+                .jobs
+                .first()
+                .map(|j| j.channel.clone())
+                .filter(|c| !c.is_empty())
+                .unwrap_or_else(|| "imessage".to_string());
+            let scope = data.jobs.first().and_then(|j| j.channel_scope.clone());
+            ActorIdentity::new(channel, data.user_id.clone(), scope).ok()
+        }
+    }
+}
+
+fn cron_file_matches_actor(path: &Path, actor: &ActorIdentity) -> bool {
+    cron_filename_storage_key(path).is_none_or(|key| key == actor.storage_key())
+}
+
+fn cron_filename_storage_key(path: &Path) -> Option<String> {
+    let file_name = path.file_name()?.to_str()?;
+    Some(
+        file_name
+            .strip_prefix("cron_jobs_")?
+            .strip_suffix(".json")?
+            .to_string(),
+    )
+}
+
 fn validate_schedule(
-    hour: u32,
-    minute: u32,
+    hour: Option<u32>,
+    minute: Option<u32>,
     repeat: &str,
     weekday: Option<u32>,
 ) -> Result<(), String> {
-    if hour > 23 {
-        return Err(format!("小时须在 0-23 之间，收到 {hour}"));
-    }
-    if minute > 59 {
-        return Err(format!("分钟须在 0-59 之间，收到 {minute}"));
+    let normalized_repeat = normalized_repeat(repeat, &[]);
+    if normalized_repeat != "heartbeat" {
+        let Some(hour) = hour else {
+            return Err("缺少 hour".to_string());
+        };
+        let Some(minute) = minute else {
+            return Err("缺少 minute".to_string());
+        };
+        if hour > 23 {
+            return Err(format!("小时须在 0-23 之间，收到 {hour}"));
+        }
+        if minute > 59 {
+            return Err(format!("分钟须在 0-59 之间，收到 {minute}"));
+        }
     }
 
     let valid_repeats = [
@@ -603,17 +685,45 @@ fn validate_schedule(
         "workday",
         "trading_day",
         "holiday",
+        "heartbeat",
     ];
-    if !valid_repeats.contains(&repeat) {
+    if !valid_repeats.contains(&normalized_repeat) {
         return Err(format!(
-            "repeat 须为 daily/weekly/once/workday/trading_day/holiday，收到 {repeat}"
+            "repeat 须为 daily/weekly/once/workday/trading_day/holiday/heartbeat，收到 {repeat}"
         ));
     }
-    if repeat == "weekly" && (weekday.is_none() || weekday.unwrap_or(7) > 6) {
+    if normalized_repeat == "weekly" && (weekday.is_none() || weekday.unwrap_or(7) > 6) {
         return Err("weekly 类型须指定 weekday (0-6)".to_string());
     }
 
     Ok(())
+}
+
+fn normalized_tags(tags: Vec<String>, repeat: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for tag in tags {
+        let tag = tag.trim().to_ascii_lowercase();
+        if !tag.is_empty() && !out.contains(&tag) {
+            out.push(tag);
+        }
+    }
+    if repeat.trim().eq_ignore_ascii_case("heartbeat") && !out.iter().any(|t| t == "heartbeat") {
+        out.push("heartbeat".to_string());
+    }
+    out
+}
+
+fn is_heartbeat_repeat_or_tags(repeat: &str, tags: &[String]) -> bool {
+    repeat.trim().eq_ignore_ascii_case("heartbeat")
+        || tags.iter().any(|tag| tag.eq_ignore_ascii_case("heartbeat"))
+}
+
+fn normalized_repeat<'a>(repeat: &'a str, tags: &[String]) -> &'a str {
+    if is_heartbeat_repeat_or_tags(repeat, tags) {
+        "heartbeat"
+    } else {
+        repeat
+    }
 }
 
 fn is_workday(day: NaiveDate) -> bool {
@@ -717,14 +827,15 @@ mod tests {
         storage.add_job(
             actor,
             name,
-            9,
-            0,
+            Some(9),
+            Some(0),
             "daily",
             "task",
             &actor.user_id,
             None,
             None,
             true,
+            None,
             false,
         )
     }
@@ -736,21 +847,22 @@ mod tests {
         let actor = actor("imessage", "u1", None);
 
         let bad_hour = storage.add_job(
-            &actor, "bad hour", 24, 0, "daily", "task", "u1", None, None, true, false,
+            &actor, "bad hour", Some(24), Some(0), "daily", "task", "u1", None, None, true, None, false,
         );
         assert_eq!(bad_hour["success"], false);
 
         let bad_weekly = storage.add_job(
             &actor,
             "bad weekly",
-            9,
-            0,
+            Some(9),
+            Some(0),
             "weekly",
             "task",
             "u1",
             None,
             None,
             true,
+            None,
             false,
         );
         assert_eq!(bad_weekly["success"], false);
@@ -770,14 +882,15 @@ mod tests {
         let add = storage.add_job(
             &actor,
             "daily report",
-            hour,
-            minute,
+            Some(hour),
+            Some(minute),
             "daily",
             "send report",
             "u1",
             None,
             None,
             true,
+            None,
             false,
         );
         assert_eq!(add["success"], true);
@@ -804,6 +917,110 @@ mod tests {
     }
 
     #[test]
+    fn due_jobs_skip_mismatched_cron_file_actor() {
+        let dir = make_temp_dir("hone_cron_storage_mismatch");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("feishu", "ou_real", None);
+
+        let now_bj = chrono::Utc::now()
+            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"));
+        let hour = now_bj.hour() as u32;
+        let minute = now_bj.minute() as u32;
+
+        let data = CronJobData {
+            actor: Some(actor.clone()),
+            user_id: actor.user_id.clone(),
+            jobs: vec![CronJob {
+                id: "j_dup".to_string(),
+                name: "dup".to_string(),
+                schedule: CronSchedule {
+                    hour,
+                    minute,
+                    repeat: "daily".to_string(),
+                    weekday: None,
+                },
+                task_prompt: "task".to_string(),
+                push: serde_json::json!({"type": "analysis"}),
+                enabled: true,
+                channel: "feishu".to_string(),
+                channel_scope: None,
+                channel_target: "+86123".to_string(),
+                tags: Vec::new(),
+                created_at: None,
+                last_run_at: None,
+            }],
+            pending_updates: Vec::new(),
+        };
+
+        let bad_path = dir.join("cron_jobs_feishu__direct__ou_wrong.json");
+        std::fs::write(
+            &bad_path,
+            serde_json::to_string_pretty(&data).expect("encode"),
+        )
+        .expect("write");
+
+        let due = storage.get_due_jobs(
+            hour as i32,
+            minute as i32,
+            now_bj.weekday().num_days_from_monday(),
+            &["feishu"],
+        );
+        assert!(due.is_empty());
+    }
+
+    #[test]
+    fn due_jobs_dedup_same_job_id_across_files() {
+        let dir = make_temp_dir("hone_cron_storage_dup_files");
+        let storage = CronJobStorage::new(&dir);
+        let primary_actor = actor("feishu", "ou_real", None);
+        let other_actor = actor("feishu", "ou_other", None);
+
+        let now_bj = chrono::Utc::now()
+            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"));
+        let hour = now_bj.hour() as u32;
+        let minute = now_bj.minute() as u32;
+
+        let add = storage.add_job(
+            &primary_actor,
+            "daily report",
+            Some(hour),
+            Some(minute),
+            "daily",
+            "send report",
+            "+86123",
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+        let job: CronJob = serde_json::from_value(add["job"].clone()).expect("job");
+        let duplicate_data = CronJobData {
+            actor: Some(other_actor.clone()),
+            user_id: other_actor.user_id.clone(),
+            jobs: vec![CronJob {
+                channel_target: "+86123".to_string(),
+                ..job
+            }],
+            pending_updates: Vec::new(),
+        };
+        let duplicate_path = dir.join(format!("cron_jobs_{}.json", other_actor.storage_key()));
+        std::fs::write(
+            &duplicate_path,
+            serde_json::to_string_pretty(&duplicate_data).expect("encode"),
+        )
+        .expect("write");
+
+        let due = storage.get_due_jobs(
+            hour as i32,
+            minute as i32,
+            now_bj.weekday().num_days_from_monday(),
+            &["feishu"],
+        );
+        assert_eq!(due.len(), 1);
+    }
+
+    #[test]
     fn list_jobs_isolated_by_actor_scope() {
         let dir = make_temp_dir("hone_cron_storage_scope");
         let storage = CronJobStorage::new(&dir);
@@ -814,14 +1031,15 @@ mod tests {
             storage.add_job(
                 &actor_one,
                 "report one",
-                9,
-                0,
+                Some(9),
+                Some(0),
                 "daily",
                 "task one",
                 "alice",
                 None,
                 None,
                 true,
+                None,
                 false,
             )["success"],
             true
@@ -830,14 +1048,15 @@ mod tests {
             storage.add_job(
                 &actor_two,
                 "report two",
-                9,
-                30,
+                Some(9),
+                Some(30),
                 "daily",
                 "task two",
                 "alice",
                 None,
                 None,
                 true,
+                None,
                 false,
             )["success"],
             true
@@ -869,7 +1088,7 @@ mod tests {
         assert_eq!(rejected["error"], cron_enabled_limit_error());
 
         let disabled = storage.add_job(
-            &actor, "disabled", 9, 0, "daily", "task", "alice", None, None, false, false,
+            &actor, "disabled", Some(9), Some(0), "daily", "task", "alice", None, None, false, None, false,
         );
         assert_eq!(disabled["success"], true);
         assert_eq!(
@@ -891,7 +1110,7 @@ mod tests {
         }
 
         let disabled = storage.add_job(
-            &actor, "disabled", 9, 0, "daily", "task", "alice", None, None, false, false,
+            &actor, "disabled", Some(9), Some(0), "daily", "task", "alice", None, None, false, None, false,
         );
         let disabled_id = disabled["job"]["id"]
             .as_str()
@@ -925,5 +1144,51 @@ mod tests {
             .expect("toggle after freeing slot")
             .expect("job exists");
         assert!(enabled.1.enabled);
+    }
+
+    #[test]
+    fn heartbeat_jobs_run_once_per_half_hour_slot() {
+        let dir = make_temp_dir("hone_cron_storage_heartbeat");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("feishu", "ou_heartbeat", None);
+        let add = storage.add_job(
+            &actor,
+            "price watch",
+            None,
+            None,
+            "heartbeat",
+            "当闪迪低于 520 提醒我",
+            "ou_heartbeat",
+            None,
+            None,
+            true,
+            Some(vec!["heartbeat".to_string()]),
+            false,
+        );
+        assert_eq!(add["success"], true);
+        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+
+        let now_bj = chrono::Utc::now()
+            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"));
+        let due_first = storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
+        assert_eq!(due_first.len(), 1);
+        assert_eq!(due_first[0].1.id, job_id);
+        assert!(due_first[0].1.is_heartbeat());
+
+        let mut data = storage.load_jobs(&actor);
+        let slot_time = now_bj
+            .with_hour(10)
+            .and_then(|dt| dt.with_minute(30))
+            .and_then(|dt| dt.with_second(0))
+            .expect("slot time");
+        let job = data
+            .jobs
+            .iter_mut()
+            .find(|job| job.id == job_id)
+            .expect("job exists");
+        job.last_run_at = Some(slot_time.to_rfc3339());
+        storage.save_jobs(&actor, &data).expect("save");
+        let due_second = storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
+        assert!(due_second.is_empty());
     }
 }

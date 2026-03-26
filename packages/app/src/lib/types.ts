@@ -30,10 +30,10 @@ export type MetaInfo = {
   name: string;
   version: string;
   channel: string;
-  supports_imessage: boolean;
-  api_version: string;
+  supportsImessage: boolean;
+  apiVersion: string;
   capabilities: string[];
-  deployment_mode: "local" | "remote";
+  deploymentMode: "local" | "remote";
 };
 
 export type BackendConfig = {
@@ -44,16 +44,16 @@ export type BackendConfig = {
 
 export type BackendStatusInfo = {
   config: BackendConfig;
-  resolved_base_url?: string;
+  resolvedBaseUrl?: string;
   connected: boolean;
-  last_error?: string;
+  lastError?: string;
   meta?: MetaInfo;
   diagnostics?: {
-    config_dir: string;
-    data_dir: string;
-    logs_dir: string;
-    desktop_log: string;
-    sidecar_log: string;
+    configDir: string;
+    dataDir: string;
+    logsDir: string;
+    desktopLog: string;
+    sidecarLog: string;
   };
 };
 
@@ -87,6 +87,8 @@ export type AgentSettings = {
   openaiUrl: string;
   /** OpenAI 协议渠道模型名（agent.opencode.model） */
   openaiModel: string;
+  /** OpenRouter 子模型（llm.openrouter.sub_model），用于心跳/压缩等辅助任务 */
+  openaiSubModel: string;
   /** OpenAI 协议渠道 API Key（agent.opencode.api_key） */
   openaiApiKey: string;
 };
@@ -199,6 +201,7 @@ export type CronJobInfo = {
     repeat: string;
     weekday?: number;
   };
+  tags?: string[];
   push?: Record<string, unknown>;
   enabled: boolean;
   channel_target: string;
@@ -221,6 +224,7 @@ export type CronJobUpsertInput = {
   push?: Record<string, unknown>;
   enabled?: boolean;
   channel_target?: string;
+  tags?: string[];
 };
 
 export type HoldingInfo = {

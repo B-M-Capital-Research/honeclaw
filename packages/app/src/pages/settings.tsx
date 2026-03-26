@@ -47,6 +47,7 @@ export default function SettingsPage() {
     codexModel: "",
     openaiUrl: "https://openrouter.ai/api/v1",
     openaiModel: "google/gemini-2.5-pro-preview",
+    openaiSubModel: "moonshotai/kimi-k2.5",
     openaiApiKey: "",
   })
   const [agentDraft, setAgentDraft] = createSignal<AgentSettings>(defaultAgentSettings())
@@ -367,7 +368,7 @@ export default function SettingsPage() {
               {/* Model */}
               <div>
                 <label class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]" for="openai-model">
-                  Model
+                  主模型
                 </label>
                 <input
                   id="openai-model"
@@ -377,6 +378,23 @@ export default function SettingsPage() {
                   value={agentDraft().openaiModel}
                   onInput={(e) => setAgentDraft((prev) => ({ ...prev, openaiModel: e.currentTarget.value }))}
                 />
+              </div>
+
+              <div>
+                <label class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]" for="openai-sub-model">
+                  子模型
+                </label>
+                <input
+                  id="openai-sub-model"
+                  type="text"
+                  placeholder="moonshotai/kimi-k2.5"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                  value={agentDraft().openaiSubModel}
+                  onInput={(e) => setAgentDraft((prev) => ({ ...prev, openaiSubModel: e.currentTarget.value }))}
+                />
+                <p class="mt-1 text-[11px] text-[color:var(--text-muted)]">
+                  用于心跳检测、会话压缩等后台辅助链路，默认使用更省成本的模型。
+                </p>
               </div>
 
               {/* API Key */}
@@ -916,4 +934,3 @@ export default function SettingsPage() {
     </div>
   )
 }
-

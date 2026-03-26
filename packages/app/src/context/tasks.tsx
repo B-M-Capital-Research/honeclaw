@@ -57,6 +57,7 @@ function createTasksState() {
                     repeat: "daily",
                     enabled: true,
                     channel: "telegram",
+                    tags: [],
                 })
         } else {
             const existing = currentTask()
@@ -73,6 +74,7 @@ function createTasksState() {
                     enabled: existing.enabled,
                     channel: existing.channel,
                     channel_target: existing.channel_target,
+                    tags: existing.tags || [],
                 })
             }
         }

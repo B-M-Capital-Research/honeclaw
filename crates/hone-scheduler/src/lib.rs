@@ -19,7 +19,10 @@ pub struct SchedulerEvent {
     pub channel: String,
     pub channel_scope: Option<String>,
     pub channel_target: String,
+    pub delivery_key: String,
     pub push: serde_json::Value,
+    pub tags: Vec<String>,
+    pub heartbeat: bool,
 }
 
 /// 定时任务调度器
@@ -98,7 +101,10 @@ impl HoneScheduler {
                 channel: job.channel.clone(),
                 channel_scope: job.channel_scope.clone(),
                 channel_target: job.channel_target.clone(),
+                delivery_key: scheduled_delivery_key(&job, &now),
                 push: job.push.clone(),
+                tags: job.tags.clone(),
+                heartbeat: job.is_heartbeat(),
             };
 
             // 先发送事件，成功后再标记已执行；
@@ -117,4 +123,30 @@ impl HoneScheduler {
             }
         }
     }
+}
+
+fn scheduled_delivery_key(
+    job: &hone_memory::cron_job::CronJob,
+    now: &chrono::DateTime<chrono::FixedOffset>,
+) -> String {
+    if job.is_heartbeat() {
+        let total_minutes = (now.hour() as i32) * 60 + now.minute() as i32;
+        let slot_total = (total_minutes / 30) * 30;
+        let slot_hour = slot_total / 60;
+        let slot_minute = slot_total % 60;
+        return format!(
+            "{}:{}:{:02}:{:02}:heartbeat",
+            job.id,
+            now.date_naive().format("%Y-%m-%d"),
+            slot_hour,
+            slot_minute
+        );
+    }
+    format!(
+        "{}:{}:{:02}:{:02}",
+        job.id,
+        now.date_naive().format("%Y-%m-%d"),
+        job.schedule.hour,
+        job.schedule.minute
+    )
 }

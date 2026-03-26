@@ -45,7 +45,7 @@ impl Tool for CronJobTool {
     }
 
     fn description(&self) -> &str {
-        "管理定时任务（每日/每周/工作日/交易日定时执行）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。"
+        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -101,8 +101,17 @@ impl Tool for CronJobTool {
                     "workday".into(),
                     "trading_day".into(),
                     "holiday".into(),
+                    "heartbeat".into(),
                 ]),
                 items: None,
+            },
+            ToolParameter {
+                name: "tags".to_string(),
+                param_type: "array".to_string(),
+                description: "任务标签；heartbeat 任务建议包含 heartbeat 标签".to_string(),
+                required: false,
+                r#enum: None,
+                items: Some(serde_json::json!("string")),
             },
             ToolParameter {
                 name: "task_prompt".to_string(),
@@ -146,12 +155,21 @@ impl Tool for CronJobTool {
                     .get("name")
                     .and_then(|v| v.as_str())
                     .unwrap_or("未命名任务");
-                let hour = args.get("hour").and_then(|v| v.as_u64()).unwrap_or(9) as u32;
-                let minute = args.get("minute").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let hour = args.get("hour").and_then(|v| v.as_u64()).map(|v| v as u32);
+                let minute = args.get("minute").and_then(|v| v.as_u64()).map(|v| v as u32);
                 let repeat = args
                     .get("repeat")
                     .and_then(|v| v.as_str())
                     .unwrap_or("daily");
+                let tags = args
+                    .get("tags")
+                    .and_then(|v| v.as_array())
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                            .collect::<Vec<_>>()
+                    });
                 let task_prompt = args
                     .get("task_prompt")
                     .and_then(|v| v.as_str())
@@ -172,6 +190,7 @@ impl Tool for CronJobTool {
                     weekday,
                     None,
                     true,
+                    tags,
                     self.admin_bypass,
                 );
                 Ok(result)
@@ -235,6 +254,12 @@ impl Tool for CronJobTool {
                 if let Some(prompt) = args.get("task_prompt") {
                     updates.insert("task_prompt".into(), prompt.clone());
                 }
+                let tags = args.get("tags").and_then(|v| v.as_array()).map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                });
                 // Only treat `name` as a field to update when job_id is also provided;
                 // otherwise `name` is the search query.
                 let new_name: Option<String> = if !job_id.is_empty() {
@@ -303,6 +328,16 @@ impl Tool for CronJobTool {
                         }
                         if let Some(prompt) = updates.get("task_prompt").and_then(|v| v.as_str()) {
                             job.task_prompt = prompt.to_string();
+                        }
+                        if let Some(tags) = tags.clone() {
+                            job.tags = tags;
+                        }
+                        if job.schedule.repeat.eq_ignore_ascii_case("heartbeat") {
+                            if !job.tags.iter().any(|tag| tag.eq_ignore_ascii_case("heartbeat")) {
+                                job.tags.push("heartbeat".to_string());
+                            }
+                        } else if updates.contains_key("repeat") || tags.is_some() {
+                            job.tags.retain(|tag| !tag.eq_ignore_ascii_case("heartbeat"));
                         }
                         let job_val = serde_json::to_value(job.clone()).unwrap_or_default();
                         storage.save_jobs(actor, &data)?;

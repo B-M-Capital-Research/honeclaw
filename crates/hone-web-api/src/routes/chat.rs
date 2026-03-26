@@ -14,9 +14,7 @@ use hone_channels::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSession, AgentSessionEvent, AgentSessionListener,
 };
 use hone_channels::prompt::PromptOptions;
-use hone_channels::runtime::{
-    clean_msg_markers, should_skip_buffer,
-};
+use hone_channels::runtime::{clean_msg_markers, should_skip_buffer};
 
 use crate::state::AppState;
 use crate::types::ChatRequest;
@@ -209,6 +207,7 @@ pub(crate) async fn handle_chat(
             timeout: Some(Duration::from_secs(300)),
             segmenter: None,
             quota_mode: AgentRunQuotaMode::UserConversation,
+            model_override: None,
         };
         let result = session.run(&msg, run_options).await;
         if !result.response.success {
@@ -225,4 +224,3 @@ pub(crate) async fn handle_chat(
 
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
-

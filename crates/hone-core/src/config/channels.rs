@@ -7,6 +7,12 @@ pub struct GroupContextConfig {
     pub enabled: bool,
     #[serde(default = "default_true")]
     pub shared_session_enabled: bool,
+    #[serde(default = "default_true")]
+    pub pretrigger_window_enabled: bool,
+    #[serde(default = "default_group_context_pretrigger_window_max_messages")]
+    pub pretrigger_window_max_messages: usize,
+    #[serde(default = "default_group_context_pretrigger_window_max_age_seconds")]
+    pub pretrigger_window_max_age_seconds: u64,
     #[serde(default = "default_group_context_recent_context_limit")]
     pub recent_context_limit: usize,
     #[serde(default = "default_group_context_compress_threshold_messages")]
@@ -22,6 +28,10 @@ impl Default for GroupContextConfig {
         Self {
             enabled: true,
             shared_session_enabled: true,
+            pretrigger_window_enabled: true,
+            pretrigger_window_max_messages: default_group_context_pretrigger_window_max_messages(),
+            pretrigger_window_max_age_seconds:
+                default_group_context_pretrigger_window_max_age_seconds(),
             recent_context_limit: default_group_context_recent_context_limit(),
             compress_threshold_messages: default_group_context_compress_threshold_messages(),
             compress_threshold_bytes: default_group_context_compress_threshold_bytes(),
@@ -30,6 +40,12 @@ impl Default for GroupContextConfig {
     }
 }
 
+fn default_group_context_pretrigger_window_max_messages() -> usize {
+    10
+}
+fn default_group_context_pretrigger_window_max_age_seconds() -> u64 {
+    300
+}
 fn default_group_context_recent_context_limit() -> usize {
     18
 }
@@ -191,72 +207,12 @@ fn default_dc_max_msg_len() -> usize {
 pub struct DiscordGroupReplyConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default = "default_group_reply_trigger_mode")]
-    pub trigger_mode: String,
-    #[serde(default = "default_group_reply_queue_scope")]
-    pub queue_scope: String,
-    #[serde(default = "default_group_reply_window_seconds")]
-    pub window_seconds: u64,
-    #[serde(default = "default_group_reply_mention_fast_delay_seconds")]
-    pub mention_fast_delay_seconds: u64,
-    #[serde(default = "default_group_reply_queue_capacity")]
-    pub queue_capacity_per_channel: usize,
-    #[serde(default = "default_group_reply_max_batch_messages")]
-    pub max_batch_messages: usize,
-    #[serde(default = "default_group_reply_backlog_keep_latest")]
-    pub backlog_keep_latest: usize,
-    #[serde(default = "default_group_reply_backlog_summary_max_chars")]
-    pub backlog_summary_max_chars: usize,
-    #[serde(default = "default_group_reply_mention_mode")]
-    pub reply_mention_mode: String,
-    #[serde(default = "default_true")]
-    pub question_signal_enabled: bool,
 }
 
 impl Default for DiscordGroupReplyConfig {
     fn default() -> Self {
-        Self {
-            enabled: true,
-            trigger_mode: default_group_reply_trigger_mode(),
-            queue_scope: default_group_reply_queue_scope(),
-            window_seconds: default_group_reply_window_seconds(),
-            mention_fast_delay_seconds: default_group_reply_mention_fast_delay_seconds(),
-            queue_capacity_per_channel: default_group_reply_queue_capacity(),
-            max_batch_messages: default_group_reply_max_batch_messages(),
-            backlog_keep_latest: default_group_reply_backlog_keep_latest(),
-            backlog_summary_max_chars: default_group_reply_backlog_summary_max_chars(),
-            reply_mention_mode: default_group_reply_mention_mode(),
-            question_signal_enabled: true,
-        }
+        Self { enabled: true }
     }
-}
-
-fn default_group_reply_trigger_mode() -> String {
-    "mention_or_question".to_string()
-}
-fn default_group_reply_queue_scope() -> String {
-    "channel".to_string()
-}
-fn default_group_reply_window_seconds() -> u64 {
-    45
-}
-fn default_group_reply_mention_fast_delay_seconds() -> u64 {
-    3
-}
-fn default_group_reply_queue_capacity() -> usize {
-    200
-}
-fn default_group_reply_max_batch_messages() -> usize {
-    12
-}
-fn default_group_reply_backlog_keep_latest() -> usize {
-    8
-}
-fn default_group_reply_backlog_summary_max_chars() -> usize {
-    600
-}
-fn default_group_reply_mention_mode() -> String {
-    "adaptive".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

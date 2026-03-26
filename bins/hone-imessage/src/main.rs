@@ -677,6 +677,7 @@ async fn process_message_session(
         timeout: Some(Duration::from_secs(timeout_secs)),
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::UserConversation,
+        model_override: None,
     };
     let result = session.run(&envelope.text, run_options).await;
     let response = result.response;
