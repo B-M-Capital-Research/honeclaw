@@ -351,6 +351,19 @@ impl MessageDeduplicator {
 #[derive(Clone, Default)]
 pub struct SessionLockRegistry {
     inner: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
+    busy: Arc<Mutex<HashMap<String, ActiveSessionInfo>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveSessionInfo {
+    pub speaker_label: String,
+    pub message_id: Option<String>,
+}
+
+pub struct ActiveSessionGuard {
+    session_id: String,
+    busy: Arc<Mutex<HashMap<String, ActiveSessionInfo>>>,
+    _lock: tokio::sync::OwnedMutexGuard<()>,
 }
 
 impl SessionLockRegistry {
@@ -367,6 +380,50 @@ impl SessionLockRegistry {
                 .clone()
         };
         lock.lock_owned().await
+    }
+
+    pub fn try_begin_active(
+        &self,
+        session_id: &str,
+        active: ActiveSessionInfo,
+    ) -> Result<ActiveSessionGuard, ActiveSessionInfo> {
+        let lock = {
+            let mut guard = self.inner.lock().expect("session lock registry poisoned");
+            guard
+                .entry(session_id.to_string())
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+                .clone()
+        };
+        let active_for_busy = active.clone();
+        let lock_guard = match lock.try_lock_owned() {
+            Ok(guard) => guard,
+            Err(_) => {
+                let busy = self.busy.lock().expect("session busy registry poisoned");
+                return Err(
+                    busy.get(session_id)
+                        .cloned()
+                        .unwrap_or(active_for_busy),
+                );
+            }
+        };
+
+        {
+            let mut busy = self.busy.lock().expect("session busy registry poisoned");
+            busy.insert(session_id.to_string(), active);
+        }
+
+        Ok(ActiveSessionGuard {
+            session_id: session_id.to_string(),
+            busy: self.busy.clone(),
+            _lock: lock_guard,
+        })
+    }
+}
+
+impl Drop for ActiveSessionGuard {
+    fn drop(&mut self) {
+        let mut busy = self.busy.lock().expect("session busy registry poisoned");
+        busy.remove(&self.session_id);
     }
 }
 
@@ -430,6 +487,51 @@ mod tests {
             .map(|message| message.message_id.as_str())
             .collect();
         assert_eq!(ids, vec!["m2"]);
+    }
+
+    #[test]
+    fn active_session_guard_reports_busy_and_releases_on_drop() {
+        let registry = SessionLockRegistry::new();
+        let guard = registry
+            .try_begin_active(
+                "group:1",
+                ActiveSessionInfo {
+                    speaker_label: "alice".to_string(),
+                    message_id: Some("m1".to_string()),
+                },
+            )
+            .expect("first active session");
+
+        let busy = match registry.try_begin_active(
+            "group:1",
+            ActiveSessionInfo {
+                speaker_label: "bob".to_string(),
+                message_id: Some("m2".to_string()),
+            },
+        ) {
+            Ok(_) => panic!("second request should see busy state"),
+            Err(busy) => busy,
+        };
+        assert_eq!(
+            busy,
+            ActiveSessionInfo {
+                speaker_label: "alice".to_string(),
+                message_id: Some("m1".to_string()),
+            }
+        );
+
+        drop(guard);
+
+        let reopened = registry
+            .try_begin_active(
+                "group:1",
+                ActiveSessionInfo {
+                    speaker_label: "carol".to_string(),
+                    message_id: Some("m3".to_string()),
+                },
+            )
+            .expect("busy state should clear after drop");
+        drop(reopened);
     }
 
     #[test]

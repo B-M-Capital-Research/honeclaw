@@ -16,8 +16,8 @@ use hone_channels::attachments::{
 };
 use hone_channels::channel_download_dir;
 use hone_channels::ingress::{
-    ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope, MessageDeduplicator,
-    SessionLockRegistry, persist_buffered_group_messages,
+    ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
+    MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
 use hone_channels::outbound::attach_stream_activity_probe;
 use hone_channels::prompt::PromptOptions;
@@ -58,6 +58,10 @@ fn feishu_speaker_label(open_id: &str, email: Option<&str>, mobile: Option<&str>
 
 fn build_group_user_input_with_speaker(label: &str, text: &str) -> String {
     format!("[{label}] {}", text.trim())
+}
+
+fn build_group_busy_text(speaker_label: &str) -> String {
+    format!("正在处理 {speaker_label} 的消息，请等上一条完成后再 @ 我。")
 }
 
 #[async_trait]
@@ -174,11 +178,15 @@ pub(crate) async fn run() {
 async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessage) {
     let chat_type = msg.chat_type.as_deref().unwrap_or("p2p");
     let is_group = chat_type != "p2p";
-    if state.core.config.feishu.dm_only && chat_type != "p2p" {
+    if is_group && !state.core.config.feishu.chat_scope.allows_group() {
         warn!(
-            "[Feishu] 忽略非私聊消息: chat_type={} chat_id={}",
+            "[Feishu] chat_scope 拒绝群聊消息: chat_type={} chat_id={}",
             chat_type, msg.chat_id
         );
+        return;
+    }
+    if !is_group && !state.core.config.feishu.chat_scope.allows_direct() {
+        warn!("[Feishu] chat_scope 拒绝私聊消息: open_id={}", msg.open_id);
         return;
     }
 
@@ -319,7 +327,54 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         );
     }
 
-    let _session_guard = state.session_locks.lock(&session_id).await;
+    let _active_guard = if is_group {
+        match state.session_locks.try_begin_active(
+            &session_id,
+            ActiveSessionInfo {
+                speaker_label: speaker_label.clone(),
+                message_id: Some(msg.message_id.clone()),
+            },
+        ) {
+            Ok(guard) => Some(guard),
+            Err(active) => {
+                if !text.is_empty() && state.core.config.group_context.pretrigger_window_enabled {
+                    state
+                        .pretrigger
+                        .push(
+                            &session_id,
+                            BufferedGroupMessage::new(
+                                "feishu",
+                                msg.message_id.clone(),
+                                speaker_label.clone(),
+                                text.to_string(),
+                            ),
+                        )
+                        .await;
+                }
+                let busy_text = prepend_reply_prefix(
+                    reply_prefix.as_deref(),
+                    &build_group_busy_text(&active.speaker_label),
+                );
+                if let Err(err) = send_plain_text(
+                    &state.facade,
+                    &outbound_receive_id,
+                    outbound_receive_id_type,
+                    &busy_text,
+                )
+                .await
+                {
+                    warn!("[Feishu] 发送 busy 提示失败: {err}");
+                }
+                warn!(
+                    "[Feishu] 群聊触发命中 busy，已回提示并保留到预触发窗口: chat_id={} active_speaker={}",
+                    msg.chat_id, active.speaker_label
+                );
+                return;
+            }
+        }
+    } else {
+        None
+    };
     if state
         .core
         .session_storage

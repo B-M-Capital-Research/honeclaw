@@ -16,7 +16,7 @@ pub mod tool_event;
 pub use actor::{ActorIdentity, SessionIdentity, SessionKind};
 pub use api_key_pool::ApiKeyPool;
 pub use audit::{LlmAuditRecord, LlmAuditSink};
-pub use config::HoneConfig;
+pub use config::{ChatScope, HoneConfig};
 pub use error::{HoneError, HoneResult};
 pub use heartbeat::{
     HEARTBEAT_INTERVAL_SECS, HEARTBEAT_STALE_AFTER_SECS, ProcessHeartbeat,

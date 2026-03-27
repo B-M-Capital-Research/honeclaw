@@ -16,8 +16,8 @@ pub use agent::{
     OpenRouterConfig, OpencodeAcpConfig,
 };
 pub use channels::{
-    DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig, GroupContextConfig,
-    IMessageConfig, TelegramConfig, XConfig, XOAuth1Config,
+    ChatScope, DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig,
+    GroupContextConfig, IMessageConfig, TelegramConfig, XConfig, XOAuth1Config,
 };
 pub use server::{
     FmpConfig, LoggingConfig, NanoBananaConfig, SearchConfig, SecurityConfig, StorageConfig,
@@ -86,7 +86,15 @@ impl HoneConfig {
         if let Err(err) = apply_system_prompt_path(&mut config, path) {
             return Err(crate::HoneError::Config(err));
         }
+        config.validate()?;
         Ok(config)
+    }
+
+    pub fn validate(&self) -> crate::HoneResult<()> {
+        validate_channel_chat_scope("feishu", self.feishu.chat_scope)?;
+        validate_channel_chat_scope("telegram", self.telegram.chat_scope)?;
+        validate_channel_chat_scope("discord", self.discord.chat_scope)?;
+        Ok(())
     }
 }
 
@@ -210,6 +218,20 @@ fn apply_system_prompt_path(config: &mut HoneConfig, config_path: &Path) -> Resu
     Ok(())
 }
 
+fn validate_channel_chat_scope(channel: &str, chat_scope: ChatScope) -> crate::HoneResult<()> {
+    let raw = match chat_scope {
+        ChatScope::DmOnly => "DM_ONLY",
+        ChatScope::GroupchatOnly => "GROUPCHAT_ONLY",
+        ChatScope::All => "ALL",
+    };
+    if raw.trim().is_empty() {
+        return Err(crate::HoneError::Config(format!(
+            "{channel}.chat_scope 不能为空"
+        )));
+    }
+    Ok(())
+}
+
 impl Default for HoneConfig {
     fn default() -> Self {
         Self {
@@ -237,6 +259,7 @@ impl Default for HoneConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ChatScope;
 
     fn temp_test_dir(prefix: &str) -> PathBuf {
         let dir =
@@ -541,7 +564,7 @@ feishu:
   allow_emails: ["alice@example.com"]
   allow_mobiles: ["+8613800138000"]
   allow_open_ids: ["ou_abc"]
-  dm_only: true
+  chat_scope: GROUPCHAT_ONLY
   max_message_length: 2048
   facade_url: "http://127.0.0.1:19001/rpc"
   callback_addr: "127.0.0.1:19002"
@@ -559,6 +582,7 @@ admins:
         assert_eq!(config.feishu.allow_emails, vec!["alice@example.com"]);
         assert_eq!(config.feishu.allow_mobiles, vec!["+8613800138000"]);
         assert_eq!(config.feishu.allow_open_ids, vec!["ou_abc"]);
+        assert_eq!(config.feishu.chat_scope, ChatScope::GroupchatOnly);
         assert_eq!(config.feishu.max_message_length, 2048);
         assert_eq!(config.feishu.facade_url, "http://127.0.0.1:19001/rpc");
         assert_eq!(config.feishu.callback_addr, "127.0.0.1:19002");
@@ -586,5 +610,34 @@ discord:
         assert_eq!(config.group_context.pretrigger_window_max_age_seconds, 45);
         let gr = &config.discord.group_reply;
         assert!(gr.enabled);
+    }
+
+    #[test]
+    fn test_chat_scope_defaults_to_dm_only() {
+        let config = HoneConfig::default();
+        assert_eq!(config.feishu.chat_scope, ChatScope::DmOnly);
+        assert_eq!(config.telegram.chat_scope, ChatScope::DmOnly);
+        assert_eq!(config.discord.chat_scope, ChatScope::DmOnly);
+    }
+
+    #[test]
+    fn test_legacy_dm_only_false_maps_to_all() {
+        let yaml = r#"
+telegram:
+  dm_only: false
+"#;
+        let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.telegram.chat_scope, ChatScope::All);
+    }
+
+    #[test]
+    fn test_chat_scope_overrides_legacy_dm_only() {
+        let yaml = r#"
+discord:
+  chat_scope: GROUPCHAT_ONLY
+  dm_only: true
+"#;
+        let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.discord.chat_scope, ChatScope::GroupchatOnly);
     }
 }

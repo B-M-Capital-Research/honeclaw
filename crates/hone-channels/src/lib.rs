@@ -24,9 +24,9 @@ pub use agent_session::{
     restore_context,
 };
 pub use ingress::{
-    ActorScopeResolver, BufferedGroupMessage, ChatMode, GroupPretriggerWindowRegistry,
-    GroupTrigger, GroupTriggerMode, IncomingEnvelope, MessageDeduplicator, SessionLockRegistry,
-    persist_buffered_group_messages,
+    ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, ChatMode,
+    GroupPretriggerWindowRegistry, GroupTrigger, GroupTriggerMode, IncomingEnvelope,
+    MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
 pub use kb_analysis::run_kb_analysis;
 pub use outbound::{

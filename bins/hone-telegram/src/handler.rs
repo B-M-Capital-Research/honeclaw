@@ -11,8 +11,8 @@ use hone_channels::attachments::{
 };
 use hone_channels::channel_download_dir;
 use hone_channels::ingress::{
-    ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope, MessageDeduplicator,
-    SessionLockRegistry, persist_buffered_group_messages,
+    ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
+    MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
 use hone_channels::outbound::{run_session_with_outbound, split_segments};
 use hone_channels::prompt::PromptOptions;
@@ -28,7 +28,9 @@ use teloxide::utils::html;
 use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
 
-use super::listener::{TelegramOutboundAdapter, prepend_reply_prefix, send_segments};
+use super::listener::{
+    TelegramOutboundAdapter, prepend_reply_prefix, send_message_with_fallback, send_segments,
+};
 use super::markdown_v2::sanitize_telegram_html_public;
 use super::types::{MediaGroupBuffer, TelegramAppState};
 
@@ -62,6 +64,10 @@ fn telegram_speaker_label(user: &User) -> String {
 
 fn build_group_user_input_with_speaker(label: &str, text: &str) -> String {
     format!("[{label}] {}", text.trim())
+}
+
+fn build_group_busy_text(speaker_label: &str) -> String {
+    format!("正在处理 {speaker_label} 的消息，请等上一条完成后再 @ 我。")
 }
 
 pub(crate) async fn run() {
@@ -257,11 +263,19 @@ async fn handle_message(
         return Ok(());
     }
 
-    if core.config.telegram.dm_only && !is_private {
+    if !is_private && !core.config.telegram.chat_scope.allows_group() {
         info!(
             chat_id = msg.chat.id.0,
             message_id = msg.id.0,
-            "telegram inbound ignored: dm_only enabled"
+            "telegram inbound ignored: group chat blocked by chat_scope"
+        );
+        return Ok(());
+    }
+    if is_private && !core.config.telegram.chat_scope.allows_direct() {
+        info!(
+            chat_id = msg.chat.id.0,
+            message_id = msg.id.0,
+            "telegram inbound ignored: direct chat blocked by chat_scope"
         );
         return Ok(());
     }
@@ -400,7 +414,49 @@ async fn process_telegram_message_batch(
         return Ok(());
     }
 
-    let _session_guard = app_state.session_locks.lock(&session_id).await;
+    let _active_guard = if !is_private {
+        match app_state.session_locks.try_begin_active(
+            &session_id,
+            ActiveSessionInfo {
+                speaker_label: speaker_label.clone(),
+                message_id: Some(first_msg.id.0.to_string()),
+            },
+        ) {
+            Ok(guard) => Some(guard),
+            Err(active) => {
+                if !text.is_empty() && core.config.group_context.pretrigger_window_enabled {
+                    app_state
+                        .pretrigger
+                        .push(
+                            &session_id,
+                            BufferedGroupMessage::new(
+                                "telegram",
+                                first_msg.id.0.to_string(),
+                                speaker_label.clone(),
+                                text.to_string(),
+                            ),
+                        )
+                        .await;
+                }
+                let busy_text = sanitize_telegram_html_public(&prepend_reply_prefix(
+                    Some(&user_reply_prefix(&user)),
+                    &build_group_busy_text(&active.speaker_label),
+                ));
+                let _ =
+                    send_message_with_fallback(&bot, first_msg.chat.id, &busy_text, None).await;
+                info!(
+                    chat_id = first_msg.chat.id.0,
+                    message_id = first_msg.id.0,
+                    session_id = session_id,
+                    active_speaker = active.speaker_label,
+                    "telegram inbound busy: group trigger deferred to pretrigger window"
+                );
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
     if core
         .session_storage
         .load_session(&session_id)

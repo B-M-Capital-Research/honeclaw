@@ -1,3 +1,4 @@
+use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -100,32 +101,94 @@ fn default_poll_interval() -> u64 {
     2
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FeishuConfig {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ChatScope {
+    #[serde(rename = "DM_ONLY", alias = "dm_only")]
+    #[default]
+    DmOnly,
+    #[serde(rename = "GROUPCHAT_ONLY", alias = "groupchat_only")]
+    GroupchatOnly,
+    #[serde(rename = "ALL", alias = "all")]
+    All,
+}
+
+impl ChatScope {
+    pub fn allows_direct(self) -> bool {
+        matches!(self, Self::DmOnly | Self::All)
+    }
+
+    pub fn allows_group(self) -> bool {
+        matches!(self, Self::GroupchatOnly | Self::All)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct FeishuConfigWire {
     #[serde(default)]
-    pub enabled: bool,
+    enabled: bool,
     #[serde(default)]
-    pub app_id: String,
+    app_id: String,
     #[serde(default)]
-    pub app_secret: String,
+    app_secret: String,
     #[serde(default)]
-    pub allow_emails: Vec<String>,
+    allow_emails: Vec<String>,
     #[serde(default)]
-    pub allow_mobiles: Vec<String>,
+    allow_mobiles: Vec<String>,
     #[serde(default)]
-    pub allow_open_ids: Vec<String>,
-    #[serde(default = "default_true")]
-    pub dm_only: bool,
+    allow_open_ids: Vec<String>,
+    #[serde(default)]
+    chat_scope: Option<ChatScope>,
+    #[serde(default)]
+    dm_only: Option<bool>,
     #[serde(default = "default_feishu_max_msg_len")]
-    pub max_message_length: usize,
+    max_message_length: usize,
     #[serde(default = "default_feishu_facade_url")]
-    pub facade_url: String,
+    facade_url: String,
     #[serde(default = "default_feishu_callback_addr")]
-    pub callback_addr: String,
+    callback_addr: String,
     #[serde(default = "default_feishu_facade_addr")]
-    pub facade_addr: String,
+    facade_addr: String,
     #[serde(default = "default_feishu_startup_timeout")]
+    startup_timeout_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FeishuConfig {
+    pub enabled: bool,
+    pub app_id: String,
+    pub app_secret: String,
+    pub allow_emails: Vec<String>,
+    pub allow_mobiles: Vec<String>,
+    pub allow_open_ids: Vec<String>,
+    pub chat_scope: ChatScope,
+    pub max_message_length: usize,
+    pub facade_url: String,
+    pub callback_addr: String,
+    pub facade_addr: String,
     pub startup_timeout_seconds: u64,
+}
+
+impl<'de> Deserialize<'de> for FeishuConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = FeishuConfigWire::deserialize(deserializer)?;
+        Ok(Self {
+            enabled: wire.enabled,
+            app_id: wire.app_id,
+            app_secret: wire.app_secret,
+            allow_emails: wire.allow_emails,
+            allow_mobiles: wire.allow_mobiles,
+            allow_open_ids: wire.allow_open_ids,
+            chat_scope: resolve_chat_scope("feishu", wire.chat_scope, wire.dm_only),
+            max_message_length: wire.max_message_length,
+            facade_url: wire.facade_url,
+            callback_addr: wire.callback_addr,
+            facade_addr: wire.facade_addr,
+            startup_timeout_seconds: wire.startup_timeout_seconds,
+        })
+    }
 }
 
 impl Default for FeishuConfig {
@@ -137,7 +200,7 @@ impl Default for FeishuConfig {
             allow_emails: Vec::new(),
             allow_mobiles: Vec::new(),
             allow_open_ids: Vec::new(),
-            dm_only: true,
+            chat_scope: ChatScope::DmOnly,
             max_message_length: default_feishu_max_msg_len(),
             facade_url: default_feishu_facade_url(),
             callback_addr: default_feishu_callback_addr(),
@@ -163,44 +226,148 @@ fn default_feishu_startup_timeout() -> u64 {
     20
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct TelegramConfig {
+#[derive(Debug, Deserialize)]
+struct TelegramConfigWire {
     #[serde(default)]
-    pub enabled: bool,
+    enabled: bool,
     #[serde(default)]
-    pub bot_token: String,
+    bot_token: String,
     #[serde(default)]
-    pub allow_from: Vec<String>,
-    #[serde(default = "default_true")]
-    pub dm_only: bool,
+    allow_from: Vec<String>,
+    #[serde(default)]
+    chat_scope: Option<ChatScope>,
+    #[serde(default)]
+    dm_only: Option<bool>,
     #[serde(default = "default_tg_max_msg_len")]
+    max_message_length: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TelegramConfig {
+    pub enabled: bool,
+    pub bot_token: String,
+    pub allow_from: Vec<String>,
+    pub chat_scope: ChatScope,
     pub max_message_length: usize,
+}
+
+impl<'de> Deserialize<'de> for TelegramConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = TelegramConfigWire::deserialize(deserializer)?;
+        Ok(Self {
+            enabled: wire.enabled,
+            bot_token: wire.bot_token,
+            allow_from: wire.allow_from,
+            chat_scope: resolve_chat_scope("telegram", wire.chat_scope, wire.dm_only),
+            max_message_length: wire.max_message_length,
+        })
+    }
+}
+
+impl Default for TelegramConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_token: String::new(),
+            allow_from: Vec::new(),
+            chat_scope: ChatScope::DmOnly,
+            max_message_length: default_tg_max_msg_len(),
+        }
+    }
 }
 
 fn default_tg_max_msg_len() -> usize {
     3500
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct DiscordConfig {
+#[derive(Debug, Deserialize)]
+struct DiscordConfigWire {
     #[serde(default)]
-    pub enabled: bool,
+    enabled: bool,
     #[serde(default)]
-    pub bot_token: String,
+    bot_token: String,
     #[serde(default)]
-    pub allow_from: Vec<String>,
-    #[serde(default = "default_true")]
-    pub dm_only: bool,
+    allow_from: Vec<String>,
+    #[serde(default)]
+    chat_scope: Option<ChatScope>,
+    #[serde(default)]
+    dm_only: Option<bool>,
     #[serde(default = "default_dc_max_msg_len")]
+    max_message_length: usize,
+    #[serde(default)]
+    group_reply: DiscordGroupReplyConfig,
+    #[serde(default)]
+    watch: DiscordWatchConfig,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscordConfig {
+    pub enabled: bool,
+    pub bot_token: String,
+    pub allow_from: Vec<String>,
+    pub chat_scope: ChatScope,
     pub max_message_length: usize,
-    #[serde(default)]
     pub group_reply: DiscordGroupReplyConfig,
-    #[serde(default)]
     pub watch: DiscordWatchConfig,
+}
+
+impl<'de> Deserialize<'de> for DiscordConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = DiscordConfigWire::deserialize(deserializer)?;
+        Ok(Self {
+            enabled: wire.enabled,
+            bot_token: wire.bot_token,
+            allow_from: wire.allow_from,
+            chat_scope: resolve_chat_scope("discord", wire.chat_scope, wire.dm_only),
+            max_message_length: wire.max_message_length,
+            group_reply: wire.group_reply,
+            watch: wire.watch,
+        })
+    }
+}
+
+impl Default for DiscordConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_token: String::new(),
+            allow_from: Vec::new(),
+            chat_scope: ChatScope::DmOnly,
+            max_message_length: default_dc_max_msg_len(),
+            group_reply: DiscordGroupReplyConfig::default(),
+            watch: DiscordWatchConfig::default(),
+        }
+    }
 }
 
 fn default_dc_max_msg_len() -> usize {
     1800
+}
+
+fn resolve_chat_scope(
+    channel: &str,
+    chat_scope: Option<ChatScope>,
+    legacy_dm_only: Option<bool>,
+) -> ChatScope {
+    if chat_scope.is_some() && legacy_dm_only.is_some() {
+        tracing::warn!(
+            "[Config/{channel}] chat_scope and legacy dm_only are both set; chat_scope takes precedence"
+        );
+    }
+    if let Some(scope) = chat_scope {
+        return scope;
+    }
+    match legacy_dm_only {
+        Some(true) => ChatScope::DmOnly,
+        Some(false) => ChatScope::All,
+        None => ChatScope::DmOnly,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
