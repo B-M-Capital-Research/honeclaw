@@ -15,7 +15,7 @@ use crate::routes::{
     require_string,
 };
 use crate::state::AppState;
-use crate::types::{CronJobRecord, CronJobUpsertRequest, UserIdQuery};
+use crate::types::{CronJobDetailRecord, CronJobRecord, CronJobUpsertRequest, UserIdQuery};
 
 /// GET /api/cron-jobs — 列出某个用户或全局的定时任务
 pub(crate) async fn handle_cron_jobs(
@@ -59,7 +59,12 @@ pub(crate) async fn handle_cron_job(
 
     match storage.get_job(&job_id, actor.as_ref()) {
         Some((actor, job)) => Json(json!({
-            "job": serialize_cron_job(actor, job)
+            "job": CronJobDetailRecord {
+                job: serialize_cron_job(actor, job.clone()),
+                executions: storage
+                    .list_execution_records(&job.id, 50)
+                    .unwrap_or_default(),
+            }
         }))
         .into_response(),
         None => json_error(StatusCode::NOT_FOUND, format!("未找到任务 {job_id}")),
@@ -277,7 +282,7 @@ pub(crate) async fn handle_delete_cron_job(
 }
 
 fn cron_job_storage(state: &AppState) -> CronJobStorage {
-    CronJobStorage::new(&state.core.config.storage.cron_jobs_dir)
+    state.core.cron_job_storage()
 }
 
 fn serialize_cron_job(actor: ActorIdentity, job: CronJob) -> CronJobRecord {

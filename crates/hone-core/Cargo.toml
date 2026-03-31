@@ -16,3 +16,5 @@ async-trait = { workspace = true }
 uuid = { workspace = true }
 futures.workspace = true
 tokio = { workspace = true }
+reqwest = { workspace = true }
+fs2 = "0.4"

@@ -4,12 +4,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 
 use crate::config::HoneConfig;
 
 pub const HEARTBEAT_INTERVAL_SECS: u64 = 30;
 pub const HEARTBEAT_STALE_AFTER_SECS: u64 = 75;
+const HEARTBEAT_ENDPOINT_PATH: &str = "/api/runtime/heartbeat";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessHeartbeatSnapshot {
@@ -72,10 +74,20 @@ pub fn spawn_process_heartbeat(config: &HoneConfig, channel: &str) -> io::Result
         },
     )?;
 
+    let console_url = std::env::var("HONE_CONSOLE_URL")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty());
+    let console_token = std::env::var("HONE_CONSOLE_TOKEN")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
     let task_path = path.clone();
     let task = tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let http_client = heartbeat_http_client(console_token.as_deref());
 
         loop {
             ticker.tick().await;
@@ -94,6 +106,16 @@ pub fn spawn_process_heartbeat(config: &HoneConfig, channel: &str) -> io::Result
                     "failed to write heartbeat: {err}"
                 );
             }
+            if let (Some(base_url), Some(client)) = (console_url.as_deref(), http_client.as_ref()) {
+                if let Err(err) = post_remote_heartbeat(client, base_url, &snapshot).await {
+                    tracing::warn!(
+                        channel = %channel,
+                        pid,
+                        url = %base_url,
+                        "failed to post heartbeat: {err}"
+                    );
+                }
+            }
         }
     });
 
@@ -103,6 +125,38 @@ pub fn spawn_process_heartbeat(config: &HoneConfig, channel: &str) -> io::Result
 fn write_snapshot(path: &Path, snapshot: &ProcessHeartbeatSnapshot) -> io::Result<()> {
     let content = serde_json::to_vec_pretty(snapshot).map_err(io::Error::other)?;
     fs::write(path, content)
+}
+
+fn heartbeat_http_client(bearer_token: Option<&str>) -> Option<reqwest::Client> {
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    if let Some(token) = bearer_token {
+        let value = HeaderValue::from_str(&format!("Bearer {token}")).ok()?;
+        headers.insert(AUTHORIZATION, value);
+    }
+
+    reqwest::Client::builder()
+        // Heartbeat posts target the local desktop backend and should not be routed
+        // through system HTTP/SOCKS proxies such as Clash/Surge.
+        .no_proxy()
+        .timeout(Duration::from_secs(5))
+        .default_headers(headers)
+        .build()
+        .ok()
+}
+
+async fn post_remote_heartbeat(
+    client: &reqwest::Client,
+    base_url: &str,
+    snapshot: &ProcessHeartbeatSnapshot,
+) -> Result<(), reqwest::Error> {
+    client
+        .post(format!("{base_url}{HEARTBEAT_ENDPOINT_PATH}"))
+        .json(snapshot)
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(())
 }
 
 #[cfg(test)]

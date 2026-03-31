@@ -7,6 +7,36 @@ async fn main() {
     let data_dir = std::env::var("HONE_DATA_DIR").ok().map(PathBuf::from);
     let skills_dir = std::env::var("HONE_SKILLS_DIR").ok().map(PathBuf::from);
     let deployment_mode = hone_web_api::runtime::runtime_deployment_mode();
+    let runtime_dir = if let Some(data_dir) = data_dir.as_ref() {
+        data_dir.join("runtime")
+    } else {
+        match hone_core::HoneConfig::from_file(&config_path) {
+            Ok(config) => hone_core::runtime_heartbeat_dir(&config),
+            Err(error) => {
+                eprintln!("❌ hone-console-page 启动失败: 配置加载失败: {error}");
+                std::process::exit(1);
+            }
+        }
+    };
+    let _process_lock =
+        match hone_core::acquire_process_lock(&runtime_dir, hone_core::PROCESS_LOCK_CONSOLE_PAGE) {
+            Ok(lock) => lock,
+            Err(error) => {
+                eprintln!(
+                    "❌ hone-console-page 启动失败: {}",
+                    hone_core::format_lock_failure_message(
+                        hone_core::PROCESS_LOCK_CONSOLE_PAGE,
+                        &hone_core::process_lock_path(
+                            &runtime_dir,
+                            hone_core::PROCESS_LOCK_CONSOLE_PAGE
+                        ),
+                        &error,
+                        "Hone"
+                    )
+                );
+                std::process::exit(1);
+            }
+        };
 
     let (_, port) = match hone_web_api::start_server(
         &config_path,

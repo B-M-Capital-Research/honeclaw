@@ -587,19 +587,19 @@ fn build_attachment_strategy_note_from_refs(attachments: &[&ReceivedAttachment])
 
     if has_image {
         lines.push(
-            "- 图片：优先调用 load_skill(\"image_understanding\")，按截图/图表理解流程处理。"
+            "- 图片：优先调用 skill_tool(skill_name=\"image_understanding\")，按截图/图表理解流程处理。"
                 .to_string(),
         );
     }
     if has_pdf {
         lines.push(
-            "- PDF：优先调用 load_skill(\"pdf_understanding\")；先使用“PDF提取文本”中的内容作答。若文本缺失，明确说明可能是扫描件并引导用户提供可复制文本/OCR。"
+            "- PDF：优先调用 skill_tool(skill_name=\"pdf_understanding\")；先使用“PDF提取文本”中的内容作答。若文本缺失，明确说明可能是扫描件并引导用户提供可复制文本/OCR。"
                 .to_string(),
         );
     }
     if has_sheet {
         lines.push(
-            "- 表格：优先调用 load_skill(\"portfolio_management\")，提取结构化字段（代码、数量、价格、时间），给出统计与异常值提示。"
+            "- 表格：优先调用 skill_tool(skill_name=\"portfolio_management\")，提取结构化字段（代码、数量、价格、时间），给出统计与异常值提示。"
                 .to_string(),
         );
     }

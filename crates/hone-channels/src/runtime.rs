@@ -30,7 +30,9 @@ pub type StreamSendFn =
 /// 工具显示名称映射
 pub fn tool_display_map() -> HashMap<&'static str, (&'static str, bool)> {
     let mut map = HashMap::new();
-    map.insert("load_skill", ("加载技能", false));
+    map.insert("skill_tool", ("执行技能", false));
+    map.insert("discover_skills", ("检索技能", false));
+    map.insert("load_skill", ("兼容加载技能", false));
     map.insert("web_search", ("搜索信息", true));
     map.insert("data_fetch", ("获取数据", true));
     map.insert("portfolio", ("查询持仓", false));
@@ -90,8 +92,10 @@ pub fn clean_msg_markers(text: &str) -> String {
     cleaned = pipe_re.replace_all(&cleaned, "").to_string();
 
     // tool_name:N 标记
-    let tool_re =
-        Regex::new(r"\b(web_search|data_fetch|portfolio|load_skill|image_gen):\d+\s*").unwrap();
+    let tool_re = Regex::new(
+        r"\b(web_search|data_fetch|portfolio|load_skill|skill_tool|discover_skills|image_gen):\d+\s*",
+    )
+    .unwrap();
     cleaned = tool_re.replace_all(&cleaned, "").to_string();
 
     // JSON 工具参数
@@ -142,6 +146,8 @@ pub fn is_tool_call_content(text: &str) -> bool {
         "data_fetch:",
         "portfolio:",
         "load_skill:",
+        "skill_tool:",
+        "discover_skills:",
         "image_gen:",
         r#"{"image_type""#,
     ];

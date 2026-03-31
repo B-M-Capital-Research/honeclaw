@@ -1,79 +1,87 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 
-use hone_tools::LoadSkillTool;
+use hone_tools::SkillRuntime;
 
+use crate::routes::json_error;
 use crate::state::AppState;
-use crate::types::SkillInfo;
+use crate::types::{SkillDetailInfo, SkillInfo};
 
-/// GET /api/skills — 扫描 skills/ 目录，返回所有技能的元数据和 guide
 pub(crate) async fn handle_skills(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    Json(serde_json::to_value(collect_skill_infos(&state.core)).unwrap_or(serde_json::json!([])))
+    Json(
+        collect_skill_infos(&state.core)
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<Vec<_>>(),
+    )
 }
 
-fn configured_skill_dirs(core: &hone_channels::HoneBotCore) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    let system_dir = core
-        .config
-        .extra
-        .get("skills_dir")
-        .and_then(|v| v.as_str())
-        .unwrap_or("./skills");
-    dirs.push(PathBuf::from(system_dir));
-
-    let custom_dir = std::env::var("HONE_DATA_DIR")
-        .map(|root| PathBuf::from(root).join("custom_skills"))
-        .unwrap_or_else(|_| PathBuf::from("./data/custom_skills"));
-    if !dirs.iter().any(|dir| dir == &custom_dir) {
-        dirs.push(custom_dir);
+pub(crate) async fn handle_skill_detail(
+    State(state): State<Arc<AppState>>,
+    Path(skill_id): Path<String>,
+) -> impl IntoResponse {
+    match collect_skill_detail(&state.core, &skill_id) {
+        Some(skill) => Json(serde_json::to_value(skill).unwrap_or_default()).into_response(),
+        None => json_error(axum::http::StatusCode::NOT_FOUND, "skill not found").into_response(),
     }
-
-    dirs
 }
 
-fn collect_skill_infos(core: &hone_channels::HoneBotCore) -> Vec<SkillInfo> {
-    let tool = LoadSkillTool::new(configured_skill_dirs(core));
-    let mut skills = Vec::new();
+fn runtime(core: &hone_channels::HoneBotCore) -> SkillRuntime {
+    SkillRuntime::new(
+        core.configured_system_skills_dir(),
+        core.configured_custom_skills_dir(),
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+    )
+}
 
-    for meta in tool.list_skills_with_meta() {
-        skills.push(SkillInfo {
-            guide: read_skill_guide(core, &meta.name).unwrap_or_default(),
-            id: meta.name,
-            display_name: meta.display_name,
-            description: meta.description,
-            aliases: meta.aliases,
-            tools: meta.tools,
-        });
-    }
+fn collect_skill_infos(core: &hone_channels::HoneBotCore) -> Option<Vec<SkillInfo>> {
+    let mut skills = runtime(core)
+        .list_all_summaries()
+        .into_iter()
+        .map(|skill| SkillInfo {
+            id: skill.id,
+            display_name: skill.display_name,
+            description: skill.description,
+            when_to_use: skill.when_to_use,
+            aliases: skill.aliases,
+            allowed_tools: skill.allowed_tools,
+            user_invocable: skill.user_invocable,
+            context: skill.context.as_str().to_string(),
+            loaded_from: skill.loaded_from,
+            paths: skill.paths,
+        })
+        .collect::<Vec<_>>();
 
     skills.sort_by(|a, b| {
         a.display_name
             .cmp(&b.display_name)
             .then_with(|| a.id.cmp(&b.id))
     });
-    skills
+    Some(skills)
 }
 
-fn read_skill_guide(core: &hone_channels::HoneBotCore, skill_id: &str) -> Option<String> {
-    for dir in configured_skill_dirs(core) {
-        let Ok(content) = std::fs::read_to_string(dir.join(skill_id).join("SKILL.md")) else {
-            continue;
-        };
-        let Some(rest) = content
-            .strip_prefix("---\n")
-            .or_else(|| content.strip_prefix("---\r\n"))
-        else {
-            continue;
-        };
-        let Some(end) = rest.find("\n---\n").or_else(|| rest.find("\n---\r\n")) else {
-            continue;
-        };
-        let body_start = end + "\n---\n".len();
-        return Some(rest.get(body_start..).unwrap_or("").trim().to_string());
-    }
-    None
+fn collect_skill_detail(
+    core: &hone_channels::HoneBotCore,
+    skill_id: &str,
+) -> Option<SkillDetailInfo> {
+    let skill = runtime(core).load_skill(skill_id, &[]).ok()?;
+    Some(SkillDetailInfo {
+        summary: SkillInfo {
+            id: skill.id.clone(),
+            display_name: skill.display_name.clone(),
+            description: skill.description.clone(),
+            when_to_use: skill.when_to_use.clone(),
+            aliases: skill.aliases.clone(),
+            allowed_tools: skill.allowed_tools.clone(),
+            user_invocable: skill.user_invocable,
+            context: skill.context.as_str().to_string(),
+            loaded_from: skill.source.as_str().to_string(),
+            paths: skill.paths.clone(),
+        },
+        markdown: skill.body,
+        detail_path: skill.skill_path.to_string_lossy().to_string(),
+    })
 }

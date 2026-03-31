@@ -1,5 +1,6 @@
 import type {
   AgentSettings,
+  ChannelProcessCleanupResult,
   CliCheckResult,
   BackendConfig,
   BackendStatusInfo,
@@ -185,6 +186,10 @@ export async function loadDesktopChannelSettings() {
 
 export async function saveDesktopChannelSettings(settings: DesktopChannelSettingsInput) {
   return invokeDesktop<DesktopChannelSettingsUpdateResult>("set_channel_settings", { settings })
+}
+
+export async function cleanupDesktopChannelProcesses() {
+  return invokeDesktop<ChannelProcessCleanupResult>("cleanup_channel_processes")
 }
 
 // ── Agent 基础设置 ─────────────────────────────────────────────────────────

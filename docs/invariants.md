@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-03-26
+Last updated: 2026-03-31
 
 ## Source of Truth and Document Priority
 
@@ -77,6 +77,12 @@ Last updated: 2026-03-26
 - Session summaries must be stored in the explicit `summary` field instead of relying on a fake `system` summary message
 - SQLite-backed session persistence must preserve the original `session_id` and source JSON semantics; do not silently normalize historical `Actor_*`, `Session_*`, or `User_*` identities during mirror writes or cutover reads
 - Heartbeat tasks are first-class cron jobs: they must stay visible in the normal cron list, carry an explicit heartbeat marker, and poll on 30-minute slots without pretending to be a fixed daily time
+- Skill runtime stays two-phase:
+  - Turn-0 / discovery prompt text may expose only compact skill summaries
+  - Full `SKILL.md` bodies must be injected only when `skill_tool(...)` or a user slash skill actually invokes that skill
+- User slash skills and model `skill_tool(...)` calls must share the same prompt-expansion source of truth; do not let the Web/CLI path hand-maintain a divergent skill prompt template
+- Invoked skills that materially change the current turn prompt must be recoverable from session metadata after compaction / resume; do not rely only on persisted tool results for skill restoration
+- Skill frontmatter fields such as `allowed-tools`, `model`, `effort`, `context`, `paths`, `hooks`, `arguments`, and `shell` should be parsed from `SKILL.md` as the source of truth. If runner infrastructure does not yet enforce one of these fields, document that gap instead of silently dropping or misrepresenting it
 
 ## Change Constraints
 

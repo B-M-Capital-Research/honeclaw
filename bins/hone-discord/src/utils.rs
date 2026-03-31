@@ -163,7 +163,7 @@ pub(crate) fn slash_option_string(
 }
 
 pub(crate) fn build_skill_command_input(skill_name: &str, prompt: Option<&str>) -> String {
-    let mut parts = vec![format!("load_skill(\"{}\")", skill_name)];
+    let mut parts = vec![format!("/{}", skill_name)];
     if let Some(prompt) = prompt.map(str::trim).filter(|prompt| !prompt.is_empty()) {
         parts.push(prompt.to_string());
     }

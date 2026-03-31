@@ -1,9 +1,10 @@
-//! 定时任务存储 — JSON 文件
+//! 定时任务存储 — JSON 文件 + SQLite 执行记录
 //!
 //! 管理按 actor（channel + user_id + channel_scope）隔离的定时任务持久化存储。
 
-use chrono::{Datelike, FixedOffset, NaiveDate, Timelike, Utc};
+use chrono::{Datelike, NaiveDate, Timelike};
 use hone_core::ActorIdentity;
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -32,6 +33,7 @@ pub fn is_cron_enabled_limit_error(message: &str) -> bool {
 /// 定时任务存储管理器
 pub struct CronJobStorage {
     data_dir: PathBuf,
+    sqlite_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -105,11 +107,62 @@ pub struct PendingUpdate {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CronJobExecutionRecord {
+    pub run_id: i64,
+    pub job_id: String,
+    pub job_name: String,
+    pub channel: String,
+    pub user_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_scope: Option<String>,
+    pub channel_target: String,
+    pub heartbeat: bool,
+    pub executed_at: String,
+    pub execution_status: String,
+    pub message_send_status: String,
+    pub should_deliver: bool,
+    pub delivered: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_preview: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    #[serde(default)]
+    pub detail: Value,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CronJobExecutionInput {
+    pub execution_status: String,
+    pub message_send_status: String,
+    pub should_deliver: bool,
+    pub delivered: bool,
+    pub response_preview: Option<String>,
+    pub error_message: Option<String>,
+    pub detail: Value,
+}
+
 impl CronJobStorage {
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
         let data_dir = data_dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&data_dir).ok();
-        Self { data_dir }
+        Self {
+            data_dir,
+            sqlite_path: None,
+        }
+    }
+
+    pub fn with_sqlite(data_dir: impl AsRef<Path>, sqlite_path: impl AsRef<Path>) -> Self {
+        let data_dir = data_dir.as_ref().to_path_buf();
+        std::fs::create_dir_all(&data_dir).ok();
+        let storage = Self {
+            data_dir,
+            sqlite_path: Some(sqlite_path.as_ref().to_path_buf()),
+        };
+        if let Err(err) = storage.init_execution_schema() {
+            warn!("failed to initialize cron execution sqlite schema: {err}");
+        }
+        storage
     }
 
     fn get_actor_file(&self, actor: &ActorIdentity) -> PathBuf {
@@ -248,9 +301,7 @@ impl CronJobStorage {
         }
 
         let job_id = format!("j_{}", &Uuid::new_v4().to_string()[..8]);
-        let now = Utc::now()
-            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).unwrap())
-            .to_rfc3339();
+        let now = hone_core::beijing_now_rfc3339();
 
         let job = CronJob {
             id: job_id,
@@ -382,9 +433,7 @@ impl CronJobStorage {
     /// 标记任务已执行
     pub fn mark_job_run(&self, actor: &ActorIdentity, job_id: &str) {
         let mut data = self.load_jobs(actor);
-        let now = Utc::now()
-            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).unwrap())
-            .to_rfc3339();
+        let now = hone_core::beijing_now_rfc3339();
         for job in &mut data.jobs {
             if job.id == job_id {
                 job.last_run_at = Some(now.clone());
@@ -410,7 +459,7 @@ impl CronJobStorage {
     ) -> Vec<(ActorIdentity, CronJob)> {
         let mut due = Vec::new();
         let mut seen_due_keys = HashSet::new();
-        let now = Utc::now().with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).unwrap());
+        let now = hone_core::beijing_now();
         let current_day = now.date_naive();
         let current_total = current_hour * 60 + current_minute;
 
@@ -467,10 +516,14 @@ impl CronJobStorage {
                     {
                         continue;
                     }
-                } else if !(current_total - DUE_WINDOW_MINUTES <= job_total
-                    && job_total <= current_total)
-                {
-                    continue;
+                } else {
+                    let due_in_window = current_total - DUE_WINDOW_MINUTES <= job_total
+                        && job_total <= current_total;
+                    let due_by_catch_up =
+                        current_total > job_total && job_existed_before_slot(job, current_day);
+                    if !(due_in_window || due_by_catch_up) {
+                        continue;
+                    }
                 }
 
                 let repeat_kind = normalized_repeat(&job.schedule.repeat, &job.tags);
@@ -615,6 +668,183 @@ impl CronJobStorage {
         self.save_jobs(actor, &data)?;
         Ok(Some((actor.clone(), removed)))
     }
+
+    pub fn record_execution_event(
+        &self,
+        actor: &ActorIdentity,
+        job_id: &str,
+        job_name: &str,
+        channel_target: &str,
+        heartbeat: bool,
+        input: CronJobExecutionInput,
+    ) -> hone_core::HoneResult<()> {
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(());
+        };
+        let executed_at = hone_core::beijing_now_rfc3339();
+        let response_preview = input
+            .response_preview
+            .as_deref()
+            .map(|text| truncate_chars(text, 500));
+        let error_message = input
+            .error_message
+            .as_deref()
+            .map(|text| truncate_chars(text, 500));
+        let detail_json = serde_json::to_string(&input.detail)
+            .map_err(|err| hone_core::HoneError::Serialization(err.to_string()))?;
+        conn.execute(
+            "
+            INSERT INTO cron_job_runs (
+                job_id, job_name,
+                actor_channel, actor_user_id, actor_channel_scope,
+                channel_target, heartbeat,
+                executed_at, execution_status, message_send_status,
+                should_deliver, delivered, response_preview, error_message, detail_json
+            ) VALUES (
+                ?1, ?2,
+                ?3, ?4, ?5,
+                ?6, ?7,
+                ?8, ?9, ?10,
+                ?11, ?12, ?13, ?14, ?15
+            )
+            ",
+            params![
+                job_id,
+                job_name,
+                actor.channel,
+                actor.user_id,
+                actor.channel_scope,
+                channel_target,
+                if heartbeat { 1 } else { 0 },
+                executed_at,
+                input.execution_status,
+                input.message_send_status,
+                if input.should_deliver { 1 } else { 0 },
+                if input.delivered { 1 } else { 0 },
+                response_preview,
+                error_message,
+                detail_json,
+            ],
+        )
+        .map_err(sqlite_err)?;
+        Ok(())
+    }
+
+    pub fn list_execution_records(
+        &self,
+        job_id: &str,
+        limit: usize,
+    ) -> hone_core::HoneResult<Vec<CronJobExecutionRecord>> {
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(Vec::new());
+        };
+        let mut stmt = conn
+            .prepare(
+                "
+                SELECT
+                    run_id, job_id, job_name,
+                    actor_channel, actor_user_id, actor_channel_scope,
+                    channel_target, heartbeat,
+                    executed_at, execution_status, message_send_status,
+                    should_deliver, delivered, response_preview, error_message, detail_json
+                FROM cron_job_runs
+                WHERE job_id = ?1
+                ORDER BY executed_at DESC, run_id DESC
+                LIMIT ?2
+                ",
+            )
+            .map_err(sqlite_err)?;
+        let rows = stmt
+            .query_map(params![job_id, limit as i64], |row| {
+                let detail_raw: String = row.get(15)?;
+                let detail = serde_json::from_str(&detail_raw).unwrap_or(Value::Null);
+                Ok(CronJobExecutionRecord {
+                    run_id: row.get(0)?,
+                    job_id: row.get(1)?,
+                    job_name: row.get(2)?,
+                    channel: row.get(3)?,
+                    user_id: row.get(4)?,
+                    channel_scope: row.get(5)?,
+                    channel_target: row.get(6)?,
+                    heartbeat: row.get::<_, i64>(7)? != 0,
+                    executed_at: row.get(8)?,
+                    execution_status: row.get(9)?,
+                    message_send_status: row.get(10)?,
+                    should_deliver: row.get::<_, i64>(11)? != 0,
+                    delivered: row.get::<_, i64>(12)? != 0,
+                    response_preview: row.get(13)?,
+                    error_message: row.get(14)?,
+                    detail,
+                })
+            })
+            .map_err(sqlite_err)?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(sqlite_err)?);
+        }
+        Ok(out)
+    }
+
+    fn open_execution_conn(&self) -> hone_core::HoneResult<Option<Connection>> {
+        let Some(path) = &self.sqlite_path else {
+            return Ok(None);
+        };
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| hone_core::HoneError::Storage(err.to_string()))?;
+        }
+        let conn = Connection::open(path).map_err(sqlite_err)?;
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(sqlite_err)?;
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(sqlite_err)?;
+        conn.pragma_update(None, "busy_timeout", 5000)
+            .map_err(sqlite_err)?;
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(sqlite_err)?;
+        self.init_execution_schema_with_conn(&conn)?;
+        Ok(Some(conn))
+    }
+
+    fn init_execution_schema(&self) -> hone_core::HoneResult<()> {
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(());
+        };
+        self.init_execution_schema_with_conn(&conn)
+    }
+
+    fn init_execution_schema_with_conn(&self, conn: &Connection) -> hone_core::HoneResult<()> {
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS cron_job_runs (
+                run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL,
+                job_name TEXT NOT NULL,
+                actor_channel TEXT NOT NULL,
+                actor_user_id TEXT NOT NULL,
+                actor_channel_scope TEXT,
+                channel_target TEXT NOT NULL,
+                heartbeat INTEGER NOT NULL DEFAULT 0,
+                executed_at TEXT NOT NULL,
+                execution_status TEXT NOT NULL,
+                message_send_status TEXT NOT NULL,
+                should_deliver INTEGER NOT NULL DEFAULT 0,
+                delivered INTEGER NOT NULL DEFAULT 0,
+                response_preview TEXT,
+                error_message TEXT,
+                detail_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_cron_job_runs_job_time
+                ON cron_job_runs(job_id, executed_at DESC, run_id DESC);
+            CREATE INDEX IF NOT EXISTS idx_cron_job_runs_actor_time
+                ON cron_job_runs(actor_channel, actor_user_id, executed_at DESC);
+            ",
+        )
+        .map_err(sqlite_err)?;
+        Ok(())
+    }
 }
 
 impl CronJob {
@@ -742,6 +972,28 @@ fn is_holiday(day: NaiveDate) -> bool {
     !is_workday(day) || is_market_holiday(day)
 }
 
+fn beijing_slot_time(
+    day: NaiveDate,
+    hour: u32,
+    minute: u32,
+) -> chrono::DateTime<chrono::FixedOffset> {
+    day.and_hms_opt(hour, minute, 0)
+        .expect("valid cron slot time")
+        .and_local_timezone(chrono::FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"))
+        .single()
+        .expect("fixed offset slot")
+}
+
+fn job_existed_before_slot(job: &CronJob, day: NaiveDate) -> bool {
+    let Some(created_at) = job.created_at.as_deref() else {
+        return true;
+    };
+    let Ok(created_dt) = chrono::DateTime::parse_from_rfc3339(created_at) else {
+        return true;
+    };
+    created_dt <= beijing_slot_time(day, job.schedule.hour, job.schedule.minute)
+}
+
 fn observed_holiday(base: NaiveDate) -> NaiveDate {
     match base.weekday().num_days_from_monday() {
         5 => base - chrono::Duration::days(1), // Saturday → Friday
@@ -756,6 +1008,17 @@ fn nth_weekday(year: i32, month: u32, weekday: u32, n: u32) -> NaiveDate {
         current += chrono::Duration::days(1);
     }
     current + chrono::Duration::days(((n - 1) * 7) as i64)
+}
+
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    text.chars().take(max_chars).collect::<String>() + "..."
+}
+
+fn sqlite_err(err: rusqlite::Error) -> hone_core::HoneError {
+    hone_core::HoneError::Config(format!("Cron 执行记录 SQLite 操作失败: {err}"))
 }
 
 fn last_weekday(year: i32, month: u32, weekday: u32) -> NaiveDate {
@@ -806,6 +1069,7 @@ fn us_market_holidays(year: i32) -> Vec<NaiveDate> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::FixedOffset;
     use chrono::Timelike;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -847,7 +1111,18 @@ mod tests {
         let actor = actor("imessage", "u1", None);
 
         let bad_hour = storage.add_job(
-            &actor, "bad hour", Some(24), Some(0), "daily", "task", "u1", None, None, true, None, false,
+            &actor,
+            "bad hour",
+            Some(24),
+            Some(0),
+            "daily",
+            "task",
+            "u1",
+            None,
+            None,
+            true,
+            None,
+            false,
         );
         assert_eq!(bad_hour["success"], false);
 
@@ -1088,7 +1363,18 @@ mod tests {
         assert_eq!(rejected["error"], cron_enabled_limit_error());
 
         let disabled = storage.add_job(
-            &actor, "disabled", Some(9), Some(0), "daily", "task", "alice", None, None, false, None, false,
+            &actor,
+            "disabled",
+            Some(9),
+            Some(0),
+            "daily",
+            "task",
+            "alice",
+            None,
+            None,
+            false,
+            None,
+            false,
         );
         assert_eq!(disabled["success"], true);
         assert_eq!(
@@ -1110,7 +1396,18 @@ mod tests {
         }
 
         let disabled = storage.add_job(
-            &actor, "disabled", Some(9), Some(0), "daily", "task", "alice", None, None, false, None, false,
+            &actor,
+            "disabled",
+            Some(9),
+            Some(0),
+            "daily",
+            "task",
+            "alice",
+            None,
+            None,
+            false,
+            None,
+            false,
         );
         let disabled_id = disabled["job"]["id"]
             .as_str()
@@ -1170,7 +1467,8 @@ mod tests {
 
         let now_bj = chrono::Utc::now()
             .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"));
-        let due_first = storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
+        let due_first =
+            storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
         assert_eq!(due_first.len(), 1);
         assert_eq!(due_first[0].1.id, job_id);
         assert!(due_first[0].1.is_heartbeat());
@@ -1188,7 +1486,134 @@ mod tests {
             .expect("job exists");
         job.last_run_at = Some(slot_time.to_rfc3339());
         storage.save_jobs(&actor, &data).expect("save");
-        let due_second = storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
+        let due_second =
+            storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
         assert!(due_second.is_empty());
+    }
+
+    #[test]
+    fn daily_jobs_catch_up_after_missed_window_same_day() {
+        let dir = make_temp_dir("hone_cron_storage_catch_up");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("feishu", "ou_catch_up", None);
+
+        let add = storage.add_job(
+            &actor,
+            "daily report",
+            Some(9),
+            Some(30),
+            "daily",
+            "task",
+            "ou_catch_up",
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+        assert_eq!(add["success"], true);
+        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+
+        let mut data = storage.load_jobs(&actor);
+        let job = data
+            .jobs
+            .iter_mut()
+            .find(|job| job.id == job_id)
+            .expect("job exists");
+        job.created_at = Some("2026-03-29T08:00:00+08:00".to_string());
+        storage.save_jobs(&actor, &data).expect("save");
+
+        let due = storage.get_due_jobs(12, 0, 6, &["feishu"]);
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].1.id, job_id);
+    }
+
+    #[test]
+    fn daily_jobs_created_after_slot_do_not_backfill_immediately() {
+        let dir = make_temp_dir("hone_cron_storage_no_backfill_new_job");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("feishu", "ou_new_job", None);
+
+        let add = storage.add_job(
+            &actor,
+            "late daily report",
+            Some(9),
+            Some(30),
+            "daily",
+            "task",
+            "ou_new_job",
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+        assert_eq!(add["success"], true);
+        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+
+        let mut data = storage.load_jobs(&actor);
+        let job = data
+            .jobs
+            .iter_mut()
+            .find(|job| job.id == job_id)
+            .expect("job exists");
+        job.created_at = Some("2026-03-29T12:15:00+08:00".to_string());
+        storage.save_jobs(&actor, &data).expect("save");
+
+        let due = storage.get_due_jobs(12, 30, 6, &["feishu"]);
+        assert!(due.is_empty());
+    }
+
+    #[test]
+    fn execution_records_are_persisted_in_sqlite() {
+        let dir = make_temp_dir("hone_cron_storage_exec_records");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("feishu", "ou_exec", None);
+
+        let add = storage.add_job(
+            &actor,
+            "daily report",
+            Some(9),
+            Some(0),
+            "daily",
+            "task",
+            "ou_exec",
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+
+        storage
+            .record_execution_event(
+                &actor,
+                &job_id,
+                "daily report",
+                "ou_exec",
+                false,
+                CronJobExecutionInput {
+                    execution_status: "completed".to_string(),
+                    message_send_status: "sent".to_string(),
+                    should_deliver: true,
+                    delivered: true,
+                    response_preview: Some("hello world".to_string()),
+                    error_message: None,
+                    detail: serde_json::json!({"sent_segments": 1}),
+                },
+            )
+            .expect("record execution");
+
+        let records = storage
+            .list_execution_records(&job_id, 10)
+            .expect("list execution records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].job_id, job_id);
+        assert_eq!(records[0].execution_status, "completed");
+        assert_eq!(records[0].message_send_status, "sent");
+        assert!(records[0].delivered);
+        assert_eq!(records[0].detail["sent_segments"], 1);
     }
 }

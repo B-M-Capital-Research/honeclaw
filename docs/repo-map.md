@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-03-26
+Last updated: 2026-03-31
 
 ## Purpose
 
@@ -27,8 +27,8 @@ Last updated: 2026-03-26
 - `crates/`
   - `hone-core`: foundational capabilities such as the config façade / submodules, logging, errors, and agent context
   - `hone-llm`: model provider abstraction and OpenRouter integration
-  - `hone-tools`: tool traits, registry, and built-in tools
-  - `hone-integrations`: external integrations such as X, Feishu, XHS MCP, and image generation
+  - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, and a compatibility `load_skill` shim
+  - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
   - `hone-channels`: channel runtime, `HoneBotCore`, unified `agent_session` orchestration, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
 - `agents/`
@@ -39,13 +39,14 @@ Last updated: 2026-03-26
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
   - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
+  - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
   - `memory/src/quota.rs` stores `success_count` / `in_flight` in JSON files by `ActorIdentity` and by Beijing date
 - `bins/`
   - `hone-console-page`: Web console backend, static asset hosting, and API
   - `hone-cli`: local REPL
   - `hone-mcp`: local stdio MCP server that exposes Hone built-in tools to ACP runners
   - `hone-imessage`, `hone-telegram`, `hone-discord`, `hone-feishu`: channel entrypoints, with Feishu / Telegram now split into thin `main.rs` façades plus sibling modules
-  - `hone-desktop`: Tauri desktop host with a thin `main.rs` façade, command handlers in `commands.rs`, backend / sidecar lifecycle in `sidecar.rs`, tray extension points in `tray.rs`, and the desktop window packaging flow
+- `hone-desktop`: Tauri desktop host with a thin `main.rs` façade, command handlers in `commands.rs`, backend / sidecar lifecycle in `sidecar.rs`, tray extension points in `tray.rs`, and the desktop window packaging flow
 - `config.yaml` / `data/runtime/`
   - `config.yaml` is the read-only seed template and source of default comments / values
   - `data/runtime/config_runtime.yaml` is the effective runtime base created on first startup
@@ -54,7 +55,7 @@ Last updated: 2026-03-26
   - `app`: SolidJS web console
   - `ui`: shared UI components and context
 - `skills/`
-  - In-repo skill definitions
+  - In-repo skill definitions; runtime also supports `data/custom_skills/<id>/SKILL.md` and nested `.hone/skills/<id>/SKILL.md` with nearer dynamic directories taking precedence
 - `tests/regression/`
   - `ci/`: CI-safe
   - `manual/`: manual regression tests that depend on an external CLI or account
@@ -66,6 +67,7 @@ Last updated: 2026-03-26
 - CLI: `bins/hone-cli/src/main.rs`
 - Channel runtime export: `crates/hone-channels/src/lib.rs`
 - `AgentSession` abstraction: `crates/hone-channels/src/agent_session.rs`
+  - Owns turn-0 skill listing disclosure, related-skill hints, slash-skill expansion, and invoked-skill restoration after compaction
 - Shared ingress model: `crates/hone-channels/src/ingress.rs`
 - Shared outbound model: `crates/hone-channels/src/outbound.rs`
 - ACP MCP bridge: `crates/hone-channels/src/mcp_bridge.rs`
@@ -80,6 +82,7 @@ Last updated: 2026-03-26
 - Prompt layering: `crates/hone-channels/src/prompt.rs`
   - Injects the global finance-domain constraints in one place: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short
 - Tool registry entry point: `crates/hone-tools/src/lib.rs`
+- Skill runtime source of truth: `crates/hone-tools/src/skill_runtime.rs`
 - Config sample: `config.example.yaml`
 
 ## Main Flow
@@ -92,6 +95,8 @@ Last updated: 2026-03-26
 4. `hone-channels::runners` executes the chosen runtime based on `agent.runner` and maps provider / CLI events back into unified session events. ACP runners now include a local `hone-mcp` server so Hone built-in tools are exposed as MCP tools to the underlying agent. Channel runners default to a repo-external actor sandbox.
 5. `hone-channels::AgentSession::run()` stores parseable tool-call results returned by the runner into the session for future cross-turn recovery; `hone-channels::outbound` and each channel adapter consume the unified events and finish placeholder / reasoning / chunked / streaming responses according to platform capability
 6. `hone-tools` provides data, skills, search, scheduled-task, and other capabilities
+   - Skill disclosure is now two-phase: the model first sees a compact listing, and full `SKILL.md` bodies are only expanded into the turn after `skill_tool(...)` or a user slash skill is invoked
+   - Invoked skill prompts are persisted in session metadata so context restoration can re-inject them after compression instead of relying on historic tool results
 7. `memory` reads and writes local sessions, quotas, portfolios, and cron jobs
     - `memory/src/quota.rs` keeps a daily successful-reply quota for each user-initiated conversation
     - `memory/src/llm_audit.rs` uses SQLite to record LLM call audit logs archived by `ActorIdentity`
@@ -103,12 +108,21 @@ Last updated: 2026-03-26
 
 - The Tauri host lives in `bins/hone-desktop/`
 - `bins/hone-desktop/src/{main.rs,commands.rs,sidecar.rs,tray.rs}` now separates the builder façade, Tauri command handlers, backend lifecycle, and tray extension point
+- Desktop sidecars are prepared by `scripts/prepare_tauri_sidecar.mjs`, which detects the target triple, builds the supported channel bins plus `hone-mcp`, resolves/bundles macOS `opencode`, copies them into `bins/hone-desktop/binaries/`, and writes `bins/hone-desktop/tauri.generated.conf.json` for `bunx tauri dev/build`
+- The same script also supports target-override / skip-build self-checks, so macOS packaging expectations can be verified by regenerating config for `*-apple-darwin` without requiring a full build
+- Root `make_dmg_release.sh` is the macOS release entrypoint: it prepares bundled binaries for `aarch64-apple-darwin` and `x86_64-apple-darwin`, runs `tauri build --target`, and collects DMGs into `dist/dmg/`
+- Windows desktop packaging intentionally excludes `hone-imessage`; macOS packaging keeps it, and runtime support still uses `cfg!(target_os = "macos")` as the source of truth
+- `./launch.sh --desktop` is intentionally single-runtime: it starts Vite + Tauri dev only, and the desktop sidecar is responsible for starting the bundled `hone-console-page` plus enabled channel listeners. Do not start the external backend/channel set in parallel for desktop dev, or logs and incoming updates will split across duplicate processes
+- `./launch.sh --release` starts a release desktop binary without `tauri dev` hot reload. It is intended for long-running desktop verification when source edits should not automatically restart the desktop host. By default the launcher pins `HONE_DESKTOP_DATA_DIR` to the repo `data/` directory and `HONE_DESKTOP_CONFIG_DIR` to `data/runtime/desktop-config/` so the release desktop instance can reuse project-local runtime data instead of silently drifting to an app-specific config/data root
+- Desktop startup now uses per-process runtime lock files under `data/runtime/locks/` (or the app runtime dir in packaged mode). `hone-desktop` must hold its own lock, each standalone channel/backend binary must hold its own lock, and bundled desktop mode preflights the full `hone-console-page` + enabled-channel set before startup. When the conflict still points at a live matching Hone process, desktop startup now attempts one lock-targeted cleanup by pid and then retries before surfacing the blocking error.
 - The desktop app supports two backend modes:
   - `bundled`: Tauri starts the built-in `hone-console-page` sidecar and points the frontend API at a local loopback address
   - `remote`: Tauri does not start a local backend; the frontend connects directly to a remote HTTP base URL
 - Runtime configuration is layered: `config.yaml` seeds `data/runtime/config_runtime.yaml`, and writable changes are isolated in `data/runtime/config_runtime.overrides.yaml`; deleting the runtime base is the supported reset path
+- In packaged desktop mode, runtime data, locks, logs, and actor sandboxes live under the app sandbox data directory by default; the desktop host also hydrates key login-shell environment variables and exports bundled binary paths (`HONE_MCP_BIN`, bundled `opencode`, `HONE_AGENT_SANDBOX_DIR`) before starting the embedded backend or channel sidecars
 - Desktop agent settings now expose both the primary opencode/OpenRouter model and `llm.openrouter.sub_model`; the sub-model is reserved for cheaper background work such as heartbeat checks and session compression
-- In `bundled` mode, Tauri also starts or stops `hone-imessage` / `hone-discord` / `hone-feishu` / `hone-telegram` according to the layered runtime config in the application data directory; each channel process writes a `runtime/*.heartbeat.json` with its PID every 30 seconds, and the console backend uses that to determine runtime status
+- In `bundled` mode, Tauri also starts or stops `hone-imessage` / `hone-discord` / `hone-feishu` / `hone-telegram` according to the layered runtime config in the application data directory; each channel process now posts heartbeat snapshots carrying `channel + pid` back to the console backend via `HONE_CONSOLE_URL`, and `/api/channels` aggregates those live registrations into per-channel multi-process status. Desktop channel status also merges OS process scanning so duplicate listener processes are visible even when an older instance is not bound to the current backend heartbeat registry, and the desktop shell exposes a cleanup command that keeps only one process per channel. The legacy `runtime/*.heartbeat.json` files still exist as a compatibility fallback for non-desktop paths
+- Desktop log pages read from `/api/logs`; the backend route now merges the in-memory log ring with recent `data/runtime/logs/*.log` tails so bundled desktop mode can display channel/runtime logs even when they were written by sibling processes instead of the current web process
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`
 - `hone-console-page` `/api/meta` handles version and capability negotiation
 
@@ -126,6 +140,10 @@ Last updated: 2026-03-26
   - Change `crates/hone-tools/src/*`
   - Update `agents/function_calling` if needed
   - If the Web UI needs to show it, also update `bins/hone-console-page/src/main.rs` and the frontend pages
+- Adjusting the skill runtime:
+  - Start with `crates/hone-tools/src/skill_runtime.rs`, `crates/hone-tools/src/{skill_tool.rs,discover_skills.rs,load_skill.rs}`
+  - Then check `crates/hone-channels/src/{agent_session.rs,core.rs,prompt.rs,mcp_bridge.rs,runtime.rs}`
+  - If the Web UI is affected, also check `crates/hone-web-api/src/routes/skills.rs` and `packages/app/src/{context/skills.tsx,components/skill-*.tsx,lib/skill-command.ts}`
 - Adding a Web page or dashboard:
   - Change `packages/app/src/pages/*`
   - Change `packages/app/src/context/*` and / or `packages/app/src/lib/*`
@@ -158,10 +176,12 @@ Last updated: 2026-03-26
 - `docs/technical-spec.md` is aligned with the current Rust implementation, but if module boundaries or default wiring change again, it still needs to be kept in sync so it does not drift
 - Channel runners now start from a repo-external sandbox root by default; if a CLI starts reading higher-level repo rule files again, check `crates/hone-channels/src/sandbox.rs` and the runner `cwd` / config injection logic first
 - `ChatMode` only means "this message came from a direct chat or a group chat"; do not treat it as the source of truth for session ownership. Use `SessionIdentity` for shared group context.
-- Telegram / Discord / Feishu group chats now share one model: untriggered text is buffered in a short pretrigger window, and only an explicit `@bot` / reply-to-bot trigger flushes that buffered text into the shared group session before `AgentSession::run()`.
+- Telegram / Discord / Feishu now gate direct-vs-group ingress through per-channel `chat_scope` (`DM_ONLY | GROUPCHAT_ONLY | ALL`), while group chats still share one model: untriggered text is buffered in a short pretrigger window, and only an explicit `@bot` / reply-to-bot trigger flushes that buffered text into the shared group session before `AgentSession::run()`.
+- Group explicit triggers now expose a busy lifecycle: if one group session is still processing, the next explicit trigger gets an immediate “wait for the previous message” reply and its text is re-buffered into the pretrigger window instead of starting a second concurrent run.
 - Scripts in `tests/regression/manual/` depend on local environment state or external accounts and must not be promoted to default CI gates
 - iMessage capabilities depend on local macOS permissions and cannot be assumed to work in CI or on non-macOS environments
 - Desktop packaging depends on a local Rust + Tauri toolchain; if `cargo` or `bun` is missing, only static changes are possible, not a full compile verification
+- `cargo check -p hone-desktop` still depends on Tauri sidecar resources matching the active config. On Windows, direct `cargo check` against `tauri.conf.json` can fail before Rust type-checking if the default config still references missing packaged binaries; use the generated Tauri config / prepared sidecars path when validating desktop packaging.
 
 ## Suggested Reading Order
 

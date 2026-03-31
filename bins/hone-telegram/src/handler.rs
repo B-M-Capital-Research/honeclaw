@@ -1,9 +1,6 @@
-use std::fs::{self, File, OpenOptions};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use fs2::FileExt;
 use hone_channels::agent_session::{AgentRunOptions, AgentSession, MessageMetadata};
 use hone_channels::attachments::{
     AttachmentIngestRequest, AttachmentPersistRequest, RawAttachment, build_attachment_ack_message,
@@ -11,14 +8,16 @@ use hone_channels::attachments::{
 };
 use hone_channels::channel_download_dir;
 use hone_channels::ingress::{
-    ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope, MessageDeduplicator,
-    SessionLockRegistry, persist_buffered_group_messages,
+    ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
+    MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
 use hone_channels::outbound::{run_session_with_outbound, split_segments};
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
-use hone_core::{HoneConfig, SessionIdentity};
+use hone_core::SessionIdentity;
+use hone_memory::cron_job::CronJobExecutionInput;
 use hone_scheduler::SchedulerEvent;
+use serde_json::json;
 use teloxide::dispatching::UpdateFilterExt;
 use teloxide::net::Download;
 use teloxide::prelude::*;
@@ -28,7 +27,9 @@ use teloxide::utils::html;
 use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
 
-use super::listener::{TelegramOutboundAdapter, prepend_reply_prefix, send_segments};
+use super::listener::{
+    TelegramOutboundAdapter, prepend_reply_prefix, send_message_with_fallback, send_segments,
+};
 use super::markdown_v2::sanitize_telegram_html_public;
 use super::types::{MediaGroupBuffer, TelegramAppState};
 
@@ -64,6 +65,10 @@ fn build_group_user_input_with_speaker(label: &str, text: &str) -> String {
     format!("[{label}] {}", text.trim())
 }
 
+fn build_group_busy_text(speaker_label: &str) -> String {
+    format!("正在处理 {speaker_label} 的消息，请等上一条完成后再 @ 我。")
+}
+
 pub(crate) async fn run() {
     let (config, config_path) = match hone_channels::load_runtime_config() {
         Ok(value) => value,
@@ -83,14 +88,24 @@ pub(crate) async fn run() {
         return;
     }
 
-    let _telegram_lock = match acquire_telegram_lock(&core.config) {
+    let _process_lock = match hone_core::acquire_runtime_process_lock(
+        &core.config,
+        hone_core::PROCESS_LOCK_TELEGRAM,
+    ) {
         Ok(lock) => lock,
-        Err(err) => {
-            if err.kind() == std::io::ErrorKind::WouldBlock {
-                error!("检测到 Telegram Bot 已在本机运行，当前实例将退出。请先停止旧实例再重启。");
-            } else {
-                error!("无法创建 Telegram 锁文件，Telegram Bot 将退出: {err}");
-            }
+        Err(error) => {
+            error!(
+                "{}",
+                hone_core::format_lock_failure_message(
+                    hone_core::PROCESS_LOCK_TELEGRAM,
+                    &hone_core::process_lock_path(
+                        &hone_core::runtime_heartbeat_dir(&core.config),
+                        hone_core::PROCESS_LOCK_TELEGRAM
+                    ),
+                    &error,
+                    "Telegram"
+                )
+            );
             return;
         }
     };
@@ -169,29 +184,6 @@ pub(crate) async fn run() {
         .await;
 }
 
-fn acquire_telegram_lock(config: &HoneConfig) -> std::io::Result<File> {
-    let runtime_dir = telegram_runtime_dir(config);
-    fs::create_dir_all(&runtime_dir)?;
-    let lock_path = runtime_dir.join("telegram.lock");
-    let file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(&lock_path)?;
-    file.try_lock_exclusive()?;
-    Ok(file)
-}
-
-fn telegram_runtime_dir(config: &HoneConfig) -> PathBuf {
-    let path = PathBuf::from(config.storage.cron_jobs_dir.trim());
-    if let Some(parent) = path.parent() {
-        parent.join("runtime")
-    } else {
-        PathBuf::from("runtime")
-    }
-}
-
 async fn handle_message(
     bot: Bot,
     msg: Message,
@@ -257,11 +249,19 @@ async fn handle_message(
         return Ok(());
     }
 
-    if core.config.telegram.dm_only && !is_private {
+    if !is_private && !core.config.telegram.chat_scope.allows_group() {
         info!(
             chat_id = msg.chat.id.0,
             message_id = msg.id.0,
-            "telegram inbound ignored: dm_only enabled"
+            "telegram inbound ignored: group chat blocked by chat_scope"
+        );
+        return Ok(());
+    }
+    if is_private && !core.config.telegram.chat_scope.allows_direct() {
+        info!(
+            chat_id = msg.chat.id.0,
+            message_id = msg.id.0,
+            "telegram inbound ignored: direct chat blocked by chat_scope"
         );
         return Ok(());
     }
@@ -400,7 +400,48 @@ async fn process_telegram_message_batch(
         return Ok(());
     }
 
-    let _session_guard = app_state.session_locks.lock(&session_id).await;
+    let _active_guard = if !is_private {
+        match app_state.session_locks.try_begin_active(
+            &session_id,
+            ActiveSessionInfo {
+                speaker_label: speaker_label.clone(),
+                message_id: Some(first_msg.id.0.to_string()),
+            },
+        ) {
+            Ok(guard) => Some(guard),
+            Err(active) => {
+                if !text.is_empty() && core.config.group_context.pretrigger_window_enabled {
+                    app_state
+                        .pretrigger
+                        .push(
+                            &session_id,
+                            BufferedGroupMessage::new(
+                                "telegram",
+                                first_msg.id.0.to_string(),
+                                speaker_label.clone(),
+                                text.to_string(),
+                            ),
+                        )
+                        .await;
+                }
+                let busy_text = sanitize_telegram_html_public(&prepend_reply_prefix(
+                    Some(&user_reply_prefix(&user)),
+                    &build_group_busy_text(&active.speaker_label),
+                ));
+                let _ = send_message_with_fallback(&bot, first_msg.chat.id, &busy_text, None).await;
+                info!(
+                    chat_id = first_msg.chat.id.0,
+                    message_id = first_msg.id.0,
+                    session_id = session_id,
+                    active_speaker = active.speaker_label,
+                    "telegram inbound busy: group trigger deferred to pretrigger window"
+                );
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
     if core
         .session_storage
         .load_session(&session_id)
@@ -614,20 +655,69 @@ async fn handle_scheduler_events(
         let bot_clone = bot.clone();
         let core_clone = core.clone();
         tokio::spawn(async move {
-            let response = run_scheduled_task(&core_clone, &event).await;
-            if response.trim().is_empty() {
+            let storage = core_clone.cron_job_storage();
+            let result = run_scheduled_task(&core_clone, &event).await;
+            if !result.should_deliver {
                 info!(
                     "[Telegram] 心跳任务未命中，本轮不发送: job={} target={}",
                     event.job_name, event.channel_target
                 );
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "noop".to_string()
+                        },
+                        message_send_status: if result.error.is_some() {
+                            "skipped_error".to_string()
+                        } else {
+                            "skipped_noop".to_string()
+                        },
+                        should_deliver: false,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: result.error.clone(),
+                        detail: result.metadata.clone(),
+                    },
+                );
                 return;
             }
+            let response = result
+                .error
+                .clone()
+                .unwrap_or_else(|| result.content.clone());
             let chat_id: i64 = match event.channel_target.parse() {
                 Ok(id) => id,
                 Err(_) => {
                     error!(
                         "[Telegram] 定时任务目标解析失败: job={} target={} ",
                         event.job_name, event.channel_target
+                    );
+                    let _ = storage.record_execution_event(
+                        &event.actor,
+                        &event.job_id,
+                        &event.job_name,
+                        &event.channel_target,
+                        event.heartbeat,
+                        CronJobExecutionInput {
+                            execution_status: if result.error.is_some() {
+                                "execution_failed".to_string()
+                            } else {
+                                "completed".to_string()
+                            },
+                            message_send_status: "target_resolution_failed".to_string(),
+                            should_deliver: true,
+                            delivered: false,
+                            response_preview: Some(response.clone()),
+                            error_message: Some("Telegram 定时任务目标解析失败".to_string()),
+                            detail: result.metadata.clone(),
+                        },
                     );
                     return;
                 }
@@ -637,7 +727,36 @@ async fn handle_scheduler_events(
                 core_clone.config.telegram.max_message_length,
                 3500,
             );
-            let _ = send_segments(&bot_clone, ChatId(chat_id), segments, None).await;
+            let total_segments = segments.len();
+            let sent = send_segments(&bot_clone, ChatId(chat_id), segments, None).await;
+            let _ = storage.record_execution_event(
+                &event.actor,
+                &event.job_id,
+                &event.job_name,
+                &event.channel_target,
+                event.heartbeat,
+                CronJobExecutionInput {
+                    execution_status: if result.error.is_some() {
+                        "execution_failed".to_string()
+                    } else {
+                        "completed".to_string()
+                    },
+                    message_send_status: if sent > 0 {
+                        "sent".to_string()
+                    } else {
+                        "send_failed".to_string()
+                    },
+                    should_deliver: true,
+                    delivered: sent > 0,
+                    response_preview: Some(response),
+                    error_message: result.error.clone(),
+                    detail: json!({
+                        "sent_segments": sent,
+                        "total_segments": total_segments,
+                        "scheduler": result.metadata,
+                    }),
+                },
+            );
         });
     }
 }
@@ -645,20 +764,15 @@ async fn handle_scheduler_events(
 async fn run_scheduled_task(
     core: &Arc<hone_channels::HoneBotCore>,
     event: &SchedulerEvent,
-) -> String {
+) -> scheduler::ScheduledTaskExecution {
     let prompt_options = PromptOptions::default();
-    let result = scheduler::execute_scheduler_event(
+    scheduler::execute_scheduler_event(
         core.clone(),
         event,
         prompt_options,
         AgentRunOptions::default(),
     )
-    .await;
-    if result.should_deliver {
-        result.error.unwrap_or(result.content)
-    } else {
-        String::new()
-    }
+    .await
 }
 
 fn is_allowed_author(author_id: &str, allow_from: &[String]) -> bool {

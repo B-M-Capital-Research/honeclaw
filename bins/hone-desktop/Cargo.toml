@@ -17,3 +17,4 @@ reqwest      = { workspace = true }
 chrono       = { workspace = true }
 tauri        = { version = "2", features = [] }
 tauri-plugin-shell = "2"
+rfd = "0.15"

@@ -3,7 +3,9 @@ use hone_core::agent::AgentResponse;
 use hone_core::config::OpencodeAcpConfig;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::env;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -145,6 +147,152 @@ pub(crate) fn effective_opencode_args(
     args
 }
 
+fn is_executable_candidate(path: &Path) -> bool {
+    path.is_file()
+}
+
+fn bundled_command_path_from_env(command: &str) -> Option<PathBuf> {
+    if command != "opencode" {
+        return None;
+    }
+
+    env::var_os("HONE_BUNDLED_OPENCODE_BIN")
+        .map(PathBuf::from)
+        .filter(|path| is_executable_candidate(path))
+}
+
+fn current_exe_search_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let Ok(current_exe) = env::current_exe() else {
+        return dirs;
+    };
+    let Some(parent) = current_exe.parent() else {
+        return dirs;
+    };
+
+    dirs.push(parent.to_path_buf());
+    if parent.file_name().and_then(|value| value.to_str()) == Some("deps") {
+        if let Some(grandparent) = parent.parent() {
+            dirs.push(grandparent.to_path_buf());
+        }
+    }
+    if cfg!(target_os = "macos")
+        && parent.file_name().and_then(|value| value.to_str()) == Some("MacOS")
+    {
+        if let Some(contents) = parent.parent() {
+            let resources = contents.join("Resources");
+            dirs.push(resources.clone());
+            dirs.push(resources.join("binaries"));
+        }
+    }
+
+    dirs
+}
+
+fn bundled_command_names(command: &str) -> Vec<String> {
+    let mut names = vec![command.to_string()];
+    if let Some(triple) = current_target_triple() {
+        names.push(format!("{command}-{triple}"));
+    }
+    if cfg!(windows) {
+        let mut with_ext = Vec::with_capacity(names.len() * 2);
+        for name in names {
+            with_ext.push(format!("{name}.exe"));
+            with_ext.push(name);
+        }
+        return with_ext;
+    }
+    names
+}
+
+fn current_target_triple() -> Option<String> {
+    let arch = match env::consts::ARCH {
+        "aarch64" => "aarch64",
+        "x86_64" => "x86_64",
+        "x86" => "i686",
+        other => other,
+    };
+    let os = match env::consts::OS {
+        "macos" => "apple-darwin",
+        "linux" => "unknown-linux-gnu",
+        "windows" => "pc-windows-msvc",
+        _ => return None,
+    };
+    Some(format!("{arch}-{os}"))
+}
+
+fn bundled_command_path_from_current_exe(command: &str) -> Option<PathBuf> {
+    for dir in current_exe_search_dirs() {
+        for name in bundled_command_names(command) {
+            let candidate = dir.join(&name);
+            if is_executable_candidate(&candidate) {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn default_command_search_dirs(home_dir: Option<&Path>) -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+    ];
+
+    if let Some(home) = home_dir {
+        dirs.push(home.join(".local").join("bin"));
+        dirs.push(home.join(".cargo").join("bin"));
+        dirs.push(home.join(".bun").join("bin"));
+    }
+
+    dirs
+}
+
+pub(crate) fn resolve_command_path_with_env(
+    command: &str,
+    path_env: Option<&std::ffi::OsStr>,
+    home_dir: Option<&Path>,
+) -> PathBuf {
+    let command_path = Path::new(command);
+    if command_path.components().count() > 1 || command_path.is_absolute() {
+        return command_path.to_path_buf();
+    }
+
+    if let Some(bundled) = bundled_command_path_from_env(command) {
+        return bundled;
+    }
+
+    if let Some(path_env) = path_env {
+        for entry in env::split_paths(path_env) {
+            let candidate = entry.join(command);
+            if is_executable_candidate(&candidate) {
+                return candidate;
+            }
+        }
+    }
+
+    if let Some(bundled) = bundled_command_path_from_current_exe(command) {
+        return bundled;
+    }
+
+    for entry in default_command_search_dirs(home_dir) {
+        let candidate = entry.join(command);
+        if is_executable_candidate(&candidate) {
+            return candidate;
+        }
+    }
+
+    command_path.to_path_buf()
+}
+
+pub(crate) fn resolve_opencode_command_path(config: &OpencodeAcpConfig) -> PathBuf {
+    resolve_command_path_with_env(
+        &config.command,
+        env::var_os("PATH").as_deref(),
+        env::var_os("HOME").as_deref().map(Path::new),
+    )
+}
+
 pub(crate) fn isolated_opencode_config(config: &OpencodeAcpConfig) -> String {
     // 注意：opencode 的 provider.openrouter 不支持 apiKey 字段（会导致 ConfigInvalidError 崩溃）。
     // API Key 通过 spawn 时设置 OPENROUTER_API_KEY 环境变量传递。
@@ -250,7 +398,17 @@ async fn run_opencode_acp(
         request.session_id,
     );
 
-    let mut command = tokio::process::Command::new(&config.command);
+    let resolved_command = resolve_opencode_command_path(config);
+    if resolved_command != PathBuf::from(&config.command) {
+        tracing::info!(
+            "[AgentRunner/opencode] session={} resolved command '{}' -> '{}'",
+            request.session_id,
+            config.command,
+            resolved_command.display()
+        );
+    }
+
+    let mut command = tokio::process::Command::new(&resolved_command);
     command
         .args(effective_opencode_args(config, &request.working_directory))
         .current_dir(&request.working_directory)

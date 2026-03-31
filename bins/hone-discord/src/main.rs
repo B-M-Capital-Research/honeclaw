@@ -42,6 +42,28 @@ async fn main() {
         std::process::exit(1);
     };
 
+    let _process_lock = match hone_core::acquire_runtime_process_lock(
+        &core.config,
+        hone_core::PROCESS_LOCK_DISCORD,
+    ) {
+        Ok(lock) => lock,
+        Err(error) => {
+            error!(
+                "{}",
+                hone_core::format_lock_failure_message(
+                    hone_core::PROCESS_LOCK_DISCORD,
+                    &hone_core::process_lock_path(
+                        &hone_core::runtime_heartbeat_dir(&core.config),
+                        hone_core::PROCESS_LOCK_DISCORD
+                    ),
+                    &error,
+                    "Discord"
+                )
+            );
+            std::process::exit(1);
+        }
+    };
+
     let _heartbeat = match hone_core::spawn_process_heartbeat(&core.config, "discord") {
         Ok(heartbeat) => heartbeat,
         Err(err) => {

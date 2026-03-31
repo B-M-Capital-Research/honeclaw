@@ -1,11 +1,12 @@
 //! Agent session abstraction shared across channels.
 
 use async_trait::async_trait;
-use hone_core::agent::{AgentContext, AgentResponse};
+use hone_core::agent::{AgentContext, AgentResponse, ToolCallMade};
 use hone_core::{ActorIdentity, SessionIdentity, runtime_heartbeat_dir};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
-    build_tool_message_metadata, restore_tool_message, select_context_messages,
+    build_tool_message_metadata, invoked_skills_from_metadata, message_is_slash_skill,
+    restore_tool_message, select_context_messages,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -124,10 +125,63 @@ impl Default for GeminiStreamOptions {
     }
 }
 
-const DAILY_CONVERSATION_LIMIT: u32 = 20;
+const DAILY_CONVERSATION_LIMIT: u32 = 12;
 const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
     "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
+
+fn should_persist_tool_result(call: &ToolCallMade) -> bool {
+    if matches_skill_runtime_tool_name(&call.name) {
+        return false;
+    }
+    if call.name == "web_search" {
+        if call
+            .result
+            .get("status")
+            .and_then(|value| value.as_str())
+            .is_some_and(|status| status == "unavailable")
+        {
+            return false;
+        }
+        if call.result.get("error").is_some() {
+            return false;
+        }
+    }
+    true
+}
+
+fn matches_skill_runtime_tool_name(name: &str) -> bool {
+    matches!(
+        name.trim(),
+        "skill_tool"
+            | "load_skill"
+            | "discover_skills"
+            | "hone/skill_tool"
+            | "hone/load_skill"
+            | "hone/discover_skills"
+            | "Tool: hone/skill_tool"
+            | "Tool: hone/load_skill"
+            | "Tool: hone/discover_skills"
+    )
+}
+
+#[derive(Debug, Clone)]
+struct SlashSkillExpansion {
+    raw_input: String,
+    runtime_input: String,
+    skill_id: String,
+}
+
+fn merge_message_metadata(
+    base: Option<HashMap<String, Value>>,
+    extra: HashMap<String, Value>,
+) -> Option<HashMap<String, Value>> {
+    let mut merged = base.unwrap_or_default();
+    for (key, value) in extra {
+        merged.insert(key, value);
+    }
+    Some(merged)
+}
 
 pub struct AgentSessionResult {
     pub response: AgentResponse,
@@ -399,9 +453,50 @@ impl AgentSession {
     fn resolve_prompt_input(&self, session_id: &str, user_input: &str) -> (String, String) {
         let mut prompt_options = self.prompt_options.clone();
         if self.allow_cron {
-            prompt_options.extra_sections.push(
-                crate::prompt::DEFAULT_CRON_TASK_POLICY.to_string(),
-            );
+            prompt_options
+                .extra_sections
+                .push(crate::prompt::DEFAULT_CRON_TASK_POLICY.to_string());
+        }
+        let skill_runtime = hone_tools::SkillRuntime::new(
+            self.core.configured_system_skills_dir(),
+            self.core.configured_custom_skills_dir(),
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
+        let skill_listing = skill_runtime.build_skill_listing(4_000);
+        if !skill_listing.trim().is_empty() {
+            prompt_options.extra_sections.push(format!(
+                "【SkillTool】\n\
+                - 当用户任务明显匹配某个 skill 时，必须先调用 skill_tool，再继续回答。\n\
+                - 若当前 runner 通过 MCP 暴露 namespaced 工具名，则 `skill_tool` 对应 `hone/skill_tool`，`discover_skills` 对应 `hone/discover_skills`；必须调用真实暴露出的那个工具名，不要因为带前缀就误判“工具不存在”。\n\
+                - 用户可以直接输入 `/<skill-id>` 触发 user-invocable 技能；模型不要假装已经加载 skill，必须真的调用工具。\n\
+                - 如果当前任务发生中途转向，或现有技能不够覆盖，再调用 discover_skills / hone/discover_skills 检索相关技能。\n\
+                - turn-0 可用技能索引：\n{}",
+                skill_listing
+            ));
+        }
+        let related_skills =
+            skill_runtime.search(user_input, &extract_possible_file_paths(user_input), 5);
+        if !related_skills.is_empty() {
+            let listing = related_skills
+                .into_iter()
+                .map(|skill| {
+                    let mut line = format!("- {}: {}", skill.id, skill.description);
+                    if let Some(when_to_use) = skill
+                        .when_to_use
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                    {
+                        line.push_str(" - ");
+                        line.push_str(when_to_use.trim());
+                    }
+                    line
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            prompt_options.extra_sections.push(format!(
+                "【Skills relevant to your task】\n{}\n如这些技能已覆盖下一步，就直接用 skill_tool（或 MCP 下的 hone/skill_tool）；否则再调用 discover_skills（或 hone/discover_skills）。",
+                listing
+            ));
         }
         let prompt_state = self
             .core
@@ -424,6 +519,105 @@ impl AgentSession {
         )
     }
 
+    fn expand_slash_skill_input(
+        &self,
+        session_id: &str,
+        user_input: &str,
+    ) -> hone_core::HoneResult<Option<SlashSkillExpansion>> {
+        let trimmed = user_input.trim();
+        if !trimmed.starts_with('/') {
+            return Ok(None);
+        }
+
+        let runtime = hone_tools::SkillRuntime::new(
+            self.core.configured_system_skills_dir(),
+            self.core.configured_custom_skills_dir(),
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
+
+        if trimmed.strip_prefix("/skill").is_some() {
+            let lines = trimmed.lines().collect::<Vec<_>>();
+            let first_line = lines.first().copied().unwrap_or_default();
+            let query = first_line.trim_start_matches("/skill").trim();
+            if query.is_empty() {
+                return Ok(None);
+            }
+            if let Some(skill) =
+                runtime.resolve_skill_via_search(query, &extract_possible_file_paths(user_input))
+            {
+                let prompt = runtime.render_prompt(&skill, session_id, None);
+                let tail = lines.iter().skip(1).copied().collect::<Vec<_>>().join("\n");
+                let runtime_input = if tail.trim().is_empty() {
+                    prompt
+                } else {
+                    format!("{}\n\n【本轮用户输入补充】\n{}", prompt, tail.trim())
+                };
+                return Ok(Some(SlashSkillExpansion {
+                    raw_input: user_input.to_string(),
+                    runtime_input,
+                    skill_id: skill.id,
+                }));
+            }
+            return Ok(None);
+        }
+
+        let command = trimmed.trim_start_matches('/');
+        let mut parts = command.splitn(2, char::is_whitespace);
+        let skill_id = parts.next().unwrap_or_default();
+        let args = parts.next().map(str::trim);
+        if let Some(skill) = runtime.resolve_user_invocable_direct(skill_id) {
+            return Ok(Some(SlashSkillExpansion {
+                raw_input: user_input.to_string(),
+                runtime_input: runtime.render_prompt(&skill, session_id, args),
+                skill_id: skill.id,
+            }));
+        }
+
+        Ok(None)
+    }
+
+    fn persist_invoked_skill_prompt(
+        &self,
+        session_id: &str,
+        skill_id: &str,
+        prompt: &str,
+    ) -> hone_core::HoneResult<()> {
+        let existing = self
+            .core
+            .session_storage
+            .load_session(session_id)?
+            .map(|session| session.metadata)
+            .unwrap_or_default();
+        let mut invoked = invoked_skills_from_metadata(&existing)
+            .into_iter()
+            .filter(|skill| skill.skill_name != skill_id)
+            .collect::<Vec<_>>();
+        invoked.push(hone_memory::InvokedSkillRecord {
+            skill_name: skill_id.to_string(),
+            display_name: skill_id.to_string(),
+            path: format!("slash:{skill_id}"),
+            prompt: prompt.to_string(),
+            execution_context: "inline".to_string(),
+            allowed_tools: Vec::new(),
+            model: None,
+            effort: None,
+            agent: None,
+            loaded_from: "slash".to_string(),
+            updated_at: hone_core::beijing_now_rfc3339(),
+        });
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+            serde_json::to_value(invoked)
+                .map_err(|err| hone_core::HoneError::Serialization(err.to_string()))?,
+        );
+        let _ = self
+            .core
+            .session_storage
+            .update_metadata(session_id, metadata)?;
+        Ok(())
+    }
+
     fn audit_effective_prompt(&self, session_id: &str, system_prompt: &str, runtime_input: &str) {
         let runtime_dir = runtime_heartbeat_dir(&self.core.config);
         let audit_dir = runtime_dir
@@ -439,12 +633,12 @@ impl AgentSession {
             return;
         }
 
-        let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let timestamp = hone_core::beijing_now().format("%Y%m%d-%H%M%S").to_string();
         let session_slug = sanitize_prompt_audit_path(session_id);
         let prompt_path = audit_dir.join(format!("{timestamp}-{session_slug}.json"));
         let latest_path = audit_dir.join(format!("latest-{session_slug}.json"));
         let payload = serde_json::json!({
-            "created_at": chrono::Local::now().to_rfc3339(),
+            "created_at": hone_core::beijing_now_rfc3339(),
             "channel": self.actor.channel,
             "actor_user_id": self.actor.user_id,
             "session_id": session_id,
@@ -593,16 +787,60 @@ impl AgentSession {
 
         self.update_session_metadata();
 
+        let slash_skill = match self.expand_slash_skill_input(&session_id, user_input) {
+            Ok(value) => value,
+            Err(err) => {
+                if let Some(reservation) = quota_reservation.as_ref() {
+                    let _ = self
+                        .core
+                        .conversation_quota_storage
+                        .release_daily_conversation(reservation);
+                }
+                return self
+                    .fail_run(
+                        session_id,
+                        AgentSessionErrorKind::AgentFailed,
+                        err.to_string(),
+                    )
+                    .await;
+            }
+        };
+        let persisted_user_input = slash_skill
+            .as_ref()
+            .map(|skill| skill.raw_input.as_str())
+            .unwrap_or(user_input);
+        let runtime_user_input = slash_skill
+            .as_ref()
+            .map(|skill| skill.runtime_input.as_str())
+            .unwrap_or(user_input);
+        let user_metadata = if let Some(skill) = &slash_skill {
+            let mut extra = HashMap::new();
+            extra.insert(
+                hone_memory::SLASH_SKILL_METADATA_KEY.to_string(),
+                Value::String(skill.skill_id.clone()),
+            );
+            merge_message_metadata(self.message_metadata.user.clone(), extra)
+        } else {
+            self.message_metadata.user.clone()
+        };
+
         // ── Fast Persist: 立即写入用户消息 ──
         // 确保 ensureHistory 轮询时 DB 里已有此消息，避免前端因为竞态丢失消息显示
         let _ = self.core.session_storage.add_message(
             &session_id,
             "user",
-            user_input,
-            self.message_metadata.user.clone(),
+            persisted_user_input,
+            user_metadata,
         );
+        if let Some(skill) = &slash_skill {
+            let _ = self.persist_invoked_skill_prompt(
+                &session_id,
+                &skill.skill_id,
+                &skill.runtime_input,
+            );
+        }
         self.emit(AgentSessionEvent::UserMessage {
-            content: user_input.to_string(),
+            content: persisted_user_input.to_string(),
         })
         .await;
         self.core.log_message_step(
@@ -620,7 +858,7 @@ impl AgentSession {
             &self.actor.user_id,
             &self.channel_target,
             &session_id,
-            user_input,
+            persisted_user_input,
             self.recv_extra.as_deref(),
             self.message_id.as_deref(),
         );
@@ -666,7 +904,7 @@ impl AgentSession {
         // 因为已在 fast persist 阶段把用户消息写入 DB，restore_context 会把它加载进来。
         // 但 runtime_input 也会再次传给 runner（避免重复），所以这里把末尾的用户消息弹出。
         if let Some(last) = context.messages.last() {
-            if last.role == "user" && last.content.as_deref() == Some(user_input) {
+            if last.role == "user" && last.content.as_deref() == Some(persisted_user_input) {
                 context.messages.pop();
             }
         }
@@ -692,7 +930,8 @@ impl AgentSession {
                 .await;
         }
 
-        let (system_prompt, runtime_input) = self.resolve_prompt_input(&session_id, user_input);
+        let (system_prompt, runtime_input) =
+            self.resolve_prompt_input(&session_id, runtime_user_input);
         self.audit_effective_prompt(&session_id, &system_prompt, &runtime_input);
 
         let tool_registry = self.core.create_tool_registry(
@@ -821,6 +1060,9 @@ impl AgentSession {
                 }
             }
             for tool_call in &response.tool_calls_made {
+                if !should_persist_tool_result(tool_call) {
+                    continue;
+                }
                 let result_str =
                     serde_json::to_string(&tool_call.result).unwrap_or_else(|_| "{}".to_string());
                 let _ = self.core.session_storage.add_message(
@@ -943,7 +1185,11 @@ pub fn restore_context(
 
     for message in messages {
         match message.role.as_str() {
-            "user" => ctx.add_user_message(&message.content),
+            "user" => {
+                if !message_is_slash_skill(message.metadata.as_ref()) {
+                    ctx.add_user_message(&message.content);
+                }
+            }
             "assistant" => ctx.add_assistant_message(&message.content, None),
             "tool" => {
                 if let Some((tool_call_id, tool_name, result)) =
@@ -956,7 +1202,23 @@ pub fn restore_context(
         }
     }
 
+    for skill in invoked_skills_from_metadata(&session.metadata) {
+        if !skill.prompt.trim().is_empty() {
+            ctx.add_user_message(&skill.prompt);
+        }
+    }
+
     ctx
+}
+
+fn extract_possible_file_paths(input: &str) -> Vec<String> {
+    input
+        .split_whitespace()
+        .filter(|token| token.contains('/') || token.contains('\\'))
+        .map(|token| token.trim_matches(|ch: char| matches!(ch, '"' | '\'' | ',' | ')' | '(')))
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_string())
+        .collect()
 }
 
 #[cfg(test)]
@@ -1165,6 +1427,51 @@ mod tests {
             "\n### System Instructions ###\nsecret"
         ));
         assert!(!response_leaks_system_prompt("正常回复"));
+    }
+
+    #[test]
+    fn unavailable_web_search_results_are_not_persisted() {
+        let call = ToolCallMade {
+            name: "web_search".to_string(),
+            arguments: Value::Null,
+            result: serde_json::json!({
+                "status": "unavailable",
+                "results": [],
+            }),
+            tool_call_id: None,
+        };
+        assert!(!should_persist_tool_result(&call));
+    }
+
+    #[test]
+    fn successful_web_search_results_are_persisted() {
+        let call = ToolCallMade {
+            name: "web_search".to_string(),
+            arguments: Value::Null,
+            result: serde_json::json!({
+                "results": [{"title": "ok"}],
+            }),
+            tool_call_id: None,
+        };
+        assert!(should_persist_tool_result(&call));
+    }
+
+    #[test]
+    fn namespaced_skill_runtime_tool_results_are_not_persisted() {
+        for name in [
+            "hone/skill_tool",
+            "hone/load_skill",
+            "hone/discover_skills",
+            "Tool: hone/skill_tool",
+        ] {
+            let call = ToolCallMade {
+                name: name.to_string(),
+                arguments: Value::Null,
+                result: serde_json::json!({}),
+                tool_call_id: None,
+            };
+            assert!(!should_persist_tool_result(&call), "name={name}");
+        }
     }
 
     #[tokio::test]

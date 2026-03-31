@@ -42,7 +42,7 @@ export function SkillList() {
                       <div class="font-semibold text-[color:var(--text-primary)]">{skill.display_name}</div>
                       <div class="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">{skill.description}</div>
                       <div class="mt-3 flex flex-wrap gap-2">
-                        <For each={skill.tools}>{(tool) => <Badge>{tool}</Badge>}</For>
+                        <For each={skill.allowed_tools}>{(tool) => <Badge>{tool}</Badge>}</For>
                       </div>
                     </button>
                   )

@@ -4,16 +4,17 @@ use std::io;
 use std::path::PathBuf;
 
 const HONE_AGENT_SANDBOX_DIR_ENV: &str = "HONE_AGENT_SANDBOX_DIR";
+const HONE_DATA_DIR_ENV: &str = "HONE_DATA_DIR";
 
 pub(crate) fn sandbox_base_dir() -> PathBuf {
     std::env::var(HONE_AGENT_SANDBOX_DIR_ENV)
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("data")
-                .join("agent-sandboxes")
+        .or_else(|_| {
+            std::env::var(HONE_DATA_DIR_ENV)
+                .map(PathBuf::from)
+                .map(|path| path.join("agent-sandboxes"))
         })
+        .unwrap_or_else(|_| std::env::temp_dir().join("hone-agent-sandboxes"))
 }
 
 pub(crate) fn actor_sandbox_root(actor: &ActorIdentity) -> PathBuf {
@@ -99,6 +100,19 @@ mod tests {
         assert_eq!(dir, temp.join("downloads").join("telegram"));
         unsafe {
             std::env::remove_var("HONE_AGENT_SANDBOX_DIR");
+        }
+    }
+
+    #[test]
+    fn sandbox_base_dir_prefers_hone_data_dir_before_temp() {
+        let temp = std::env::temp_dir().join("hone_sandbox_data_root");
+        unsafe {
+            std::env::remove_var("HONE_AGENT_SANDBOX_DIR");
+            std::env::set_var("HONE_DATA_DIR", &temp);
+        }
+        assert_eq!(super::sandbox_base_dir(), temp.join("agent-sandboxes"));
+        unsafe {
+            std::env::remove_var("HONE_DATA_DIR");
         }
     }
 }

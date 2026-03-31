@@ -156,20 +156,20 @@ impl Tool for CronJobTool {
                     .and_then(|v| v.as_str())
                     .unwrap_or("未命名任务");
                 let hour = args.get("hour").and_then(|v| v.as_u64()).map(|v| v as u32);
-                let minute = args.get("minute").and_then(|v| v.as_u64()).map(|v| v as u32);
+                let minute = args
+                    .get("minute")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
                 let repeat = args
                     .get("repeat")
                     .and_then(|v| v.as_str())
                     .unwrap_or("daily");
-                let tags = args
-                    .get("tags")
-                    .and_then(|v| v.as_array())
-                    .map(|items| {
-                        items
-                            .iter()
-                            .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                            .collect::<Vec<_>>()
-                    });
+                let tags = args.get("tags").and_then(|v| v.as_array()).map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                });
                 let task_prompt = args
                     .get("task_prompt")
                     .and_then(|v| v.as_str())
@@ -333,11 +333,16 @@ impl Tool for CronJobTool {
                             job.tags = tags;
                         }
                         if job.schedule.repeat.eq_ignore_ascii_case("heartbeat") {
-                            if !job.tags.iter().any(|tag| tag.eq_ignore_ascii_case("heartbeat")) {
+                            if !job
+                                .tags
+                                .iter()
+                                .any(|tag| tag.eq_ignore_ascii_case("heartbeat"))
+                            {
                                 job.tags.push("heartbeat".to_string());
                             }
                         } else if updates.contains_key("repeat") || tags.is_some() {
-                            job.tags.retain(|tag| !tag.eq_ignore_ascii_case("heartbeat"));
+                            job.tags
+                                .retain(|tag| !tag.eq_ignore_ascii_case("heartbeat"));
                         }
                         let job_val = serde_json::to_value(job.clone()).unwrap_or_default();
                         storage.save_jobs(actor, &data)?;

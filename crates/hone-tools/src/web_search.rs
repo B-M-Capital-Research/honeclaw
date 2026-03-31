@@ -10,6 +10,12 @@ use serde_json::Value;
 
 use crate::base::{Tool, ToolParameter};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TavilyErrorKind {
+    KeyRejected,
+    TemporaryFailure,
+}
+
 /// WebSearchTool — 网络搜索（Tavily，多 Key fallback）
 pub struct WebSearchTool {
     /// 有效 API Key 列表（过滤空值后）
@@ -70,17 +76,54 @@ impl WebSearchTool {
 
         // Tavily 在 HTTP 200 时也可能返回错误
         if let Some(detail) = data.get("detail").and_then(|v| v.as_str()) {
-            let detail_lower = detail.to_lowercase();
-            if detail_lower.contains("invalid api key")
-                || detail_lower.contains("api key")
-                || detail_lower.contains("exceeded")
-                || detail_lower.contains("quota")
-            {
-                return Err(format!("Tavily API Key 被拒绝: {detail}"));
-            }
+            return Err(detail.to_string());
         }
 
         Ok(data)
+    }
+
+    fn classify_attempt_error(error: &str) -> TavilyErrorKind {
+        let lower = error.to_lowercase();
+        if lower.contains("invalid api key")
+            || lower.contains("api key")
+            || lower.contains("exceeded your plan")
+            || lower.contains("quota")
+            || lower.contains("rate limit")
+            || lower.contains("upgrade your plan")
+            || lower.contains("credits")
+        {
+            TavilyErrorKind::KeyRejected
+        } else {
+            TavilyErrorKind::TemporaryFailure
+        }
+    }
+
+    fn final_user_error_message(
+        &self,
+        key_rejected_count: usize,
+        temporary_failures: usize,
+    ) -> String {
+        if key_rejected_count > 0 && temporary_failures == 0 {
+            format!(
+                "Tavily 搜索当前不可用：已尝试 {} 个 API Key，但都因额度或鉴权被拒绝。请更新可用的 Tavily Key 后重试。",
+                self.keys.len()
+            )
+        } else if temporary_failures > 0 && key_rejected_count == 0 {
+            "Tavily 搜索当前暂时不可用，请稍后重试。".to_string()
+        } else {
+            format!(
+                "Tavily 搜索当前不可用：已尝试 {} 个 API Key，但未获得可用响应。请稍后重试或检查 Tavily Key 配置。",
+                self.keys.len()
+            )
+        }
+    }
+
+    fn unavailable_tool_result() -> Value {
+        serde_json::json!({
+            "status": "unavailable",
+            "results": [],
+            "answer": Value::Null
+        })
     }
 }
 
@@ -109,27 +152,43 @@ impl Tool for WebSearchTool {
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
 
         if self.keys.is_empty() {
-            return Ok(serde_json::json!({
-                "error": "未配置 Tavily API Key（请在 config.yaml 中设置 search.api_keys）"
-            }));
+            tracing::warn!(tool = "web_search", "tavily keys are empty");
+            return Ok(Self::unavailable_tool_result());
         }
 
-        let mut last_err = String::new();
+        let mut key_rejected_count = 0usize;
+        let mut temporary_failures = 0usize;
 
-        for key in &self.keys {
+        for (index, key) in self.keys.iter().enumerate() {
             match self.search_with_key(key, query).await {
                 Ok(data) => return Ok(data),
                 Err(e) => {
-                    last_err = e;
+                    match Self::classify_attempt_error(&e) {
+                        TavilyErrorKind::KeyRejected => key_rejected_count += 1,
+                        TavilyErrorKind::TemporaryFailure => temporary_failures += 1,
+                    }
+                    tracing::warn!(
+                        tool = "web_search",
+                        key_index = index + 1,
+                        key_count = self.keys.len(),
+                        "tavily request failed for current api key: {}",
+                        e
+                    );
                     // 继续尝试下一个 key
                 }
             }
         }
 
         // 所有 key 均失败
-        Ok(serde_json::json!({
-            "error": format!("所有 Tavily API Key 均失败（共 {} 个）。最后错误：{}", self.keys.len(), last_err)
-        }))
+        tracing::warn!(
+            tool = "web_search",
+            key_count = self.keys.len(),
+            key_rejected_count,
+            temporary_failures,
+            "{}",
+            self.final_user_error_message(key_rejected_count, temporary_failures)
+        );
+        Ok(Self::unavailable_tool_result())
     }
 }
 
@@ -164,5 +223,35 @@ mod tests {
     fn test_empty_keys() {
         let tool = WebSearchTool::new(vec![], 5);
         assert!(tool.keys.is_empty());
+    }
+
+    #[test]
+    fn classify_quota_error_as_key_rejected() {
+        let error = "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com";
+        assert_eq!(
+            WebSearchTool::classify_attempt_error(error),
+            TavilyErrorKind::KeyRejected
+        );
+    }
+
+    #[test]
+    fn final_error_message_hides_raw_tavily_text() {
+        let tool = WebSearchTool::new(vec!["key1".to_string(), "key2".to_string()], 5);
+        let message = tool.final_user_error_message(2, 0);
+        assert!(message.contains("已尝试 2 个 API Key"));
+        assert!(!message.contains("support@tavily.com"));
+        assert!(!message.contains("upgrade your plan"));
+    }
+
+    #[tokio::test]
+    async fn execute_with_empty_keys_returns_sanitized_unavailable_payload() {
+        let tool = WebSearchTool::new(vec![], 5);
+        let result = tool
+            .execute(serde_json::json!({"query": "oil"}))
+            .await
+            .expect("execute");
+        assert_eq!(result["status"], "unavailable");
+        assert!(result.get("error").is_none());
+        assert!(result["results"].as_array().is_some());
     }
 }

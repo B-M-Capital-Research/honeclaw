@@ -1,0 +1,4 @@
+interface:
+  display_name: "Open Source Sync"
+  short_description: "Safely sync internal changes into a divergent open-source repo"
+  default_prompt: "Use $sync-open-source-repo to sync selected internal changes into an open-source mirror without overwriting unrelated upstream work."

@@ -16,7 +16,10 @@ use hone_memory::{
     StockTableStorage, select_context_messages, session::SessionSummary,
 };
 use hone_scheduler::{HoneScheduler, SchedulerEvent};
-use hone_tools::{CronJobTool, DeepResearchTool, LoadSkillTool, ToolExecutionGuard, ToolRegistry};
+use hone_tools::{
+    CronJobTool, DeepResearchTool, DiscoverSkillsTool, LoadSkillTool, ToolExecutionGuard,
+    ToolRegistry,
+};
 use tokio::sync::mpsc;
 
 use crate::runners::{
@@ -404,25 +407,18 @@ impl HoneBotCore {
         let guard = ToolExecutionGuard::from_config(&self.config.security.tool_guard);
         let mut registry = ToolRegistry::new_with_guard(guard);
 
-        let skills_dir = self
-            .config
-            .extra
-            .get("skills_dir")
-            .and_then(|v| v.as_str())
-            .unwrap_or("./skills");
+        let skills_dir = self.configured_system_skills_dir();
+        let custom_skills_dir = self.configured_custom_skills_dir();
 
-        let custom_skills_dir = std::env::var("HONE_DATA_DIR")
-            .map(|root| std::path::PathBuf::from(root).join("custom_skills"))
-            .unwrap_or_else(|_| std::path::PathBuf::from("./data/custom_skills"));
-
-        let dirs = vec![
-            std::path::PathBuf::from(skills_dir),
-            custom_skills_dir.clone(),
-        ];
+        let dirs = vec![skills_dir.clone(), custom_skills_dir.clone()];
 
         registry.register(Box::new(LoadSkillTool::new(dirs)));
+        registry.register(Box::new(DiscoverSkillsTool::new(
+            skills_dir.clone(),
+            custom_skills_dir.clone(),
+        )));
         registry.register(Box::new(hone_tools::skill_tool::SkillTool::new(
-            std::path::PathBuf::from(skills_dir),
+            skills_dir,
             custom_skills_dir,
         )));
 
@@ -489,6 +485,21 @@ impl HoneBotCore {
         registry
     }
 
+    pub fn configured_system_skills_dir(&self) -> PathBuf {
+        self.config
+            .extra
+            .get("skills_dir")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("./skills"))
+    }
+
+    pub fn configured_custom_skills_dir(&self) -> PathBuf {
+        std::env::var("HONE_DATA_DIR")
+            .map(|root| PathBuf::from(root).join("custom_skills"))
+            .unwrap_or_else(|_| PathBuf::from("./data/custom_skills"))
+    }
+
     /// 创建调度器及其事件接收端。
     ///
     /// `channels`：本调度器负责的渠道列表，只触发 `job.channel` 在列表中的任务。
@@ -502,9 +513,16 @@ impl HoneBotCore {
         &self,
         channels: Vec<String>,
     ) -> (HoneScheduler, mpsc::Receiver<SchedulerEvent>) {
-        let storage = Arc::new(CronJobStorage::new(&self.config.storage.cron_jobs_dir));
+        let storage = Arc::new(self.cron_job_storage());
         let (tx, rx) = mpsc::channel(64);
         (HoneScheduler::new(storage, tx, channels), rx)
+    }
+
+    pub fn cron_job_storage(&self) -> CronJobStorage {
+        CronJobStorage::with_sqlite(
+            &self.config.storage.cron_jobs_dir,
+            &self.config.storage.session_sqlite_db_path,
+        )
     }
 
     /// 创建 Agent runner 实例。
@@ -560,7 +578,8 @@ impl HoneBotCore {
             }
             "opencode_acp" => {
                 let mut opencode_config = self.config.agent.opencode.clone();
-                if let Some(model_override) = model_override.filter(|value| !value.trim().is_empty())
+                if let Some(model_override) =
+                    model_override.filter(|value| !value.trim().is_empty())
                 {
                     opencode_config.model = model_override.trim().to_string();
                     opencode_config.variant = String::new();

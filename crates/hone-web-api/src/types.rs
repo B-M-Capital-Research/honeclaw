@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use hone_memory::cron_job::CronJob;
+use hone_memory::cron_job::{CronJob, CronJobExecutionRecord};
 
 #[derive(Deserialize)]
 pub struct UserIdQuery {
@@ -61,9 +61,21 @@ pub struct SkillInfo {
     pub id: String,
     pub display_name: String,
     pub description: String,
+    pub when_to_use: Option<String>,
     pub aliases: Vec<String>,
-    pub tools: Vec<String>,
-    pub guide: String,
+    pub allowed_tools: Vec<String>,
+    pub user_invocable: bool,
+    pub context: String,
+    pub loaded_from: String,
+    pub paths: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct SkillDetailInfo {
+    #[serde(flatten)]
+    pub summary: SkillInfo,
+    pub markdown: String,
+    pub detail_path: String,
 }
 
 #[derive(Serialize)]
@@ -90,6 +102,13 @@ pub struct CronJobRecord {
     pub channel_scope: Option<String>,
     #[serde(flatten)]
     pub job: CronJob,
+}
+
+#[derive(Serialize)]
+pub struct CronJobDetailRecord {
+    #[serde(flatten)]
+    pub job: CronJobRecord,
+    pub executions: Vec<CronJobExecutionRecord>,
 }
 
 #[derive(Deserialize)]
@@ -139,6 +158,16 @@ pub struct PortfolioSummary {
 }
 
 #[derive(Serialize)]
+pub struct ChannelProcessInfo {
+    pub pid: u32,
+    pub running: bool,
+    pub started_at: Option<String>,
+    pub last_heartbeat_at: Option<String>,
+    pub managed_by_desktop: Option<bool>,
+    pub source: Option<String>,
+}
+
+#[derive(Serialize)]
 pub struct ChannelStatusInfo {
     pub id: String,
     pub label: String,
@@ -148,4 +177,5 @@ pub struct ChannelStatusInfo {
     pub pid: Option<u32>,
     pub last_heartbeat_at: Option<String>,
     pub detail: String,
+    pub processes: Vec<ChannelProcessInfo>,
 }

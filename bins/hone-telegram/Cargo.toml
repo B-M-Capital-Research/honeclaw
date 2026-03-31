@@ -18,4 +18,3 @@ tracing = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }
 teloxide = { version = "0.13", features = ["macros"] }
-fs2 = "0.4"

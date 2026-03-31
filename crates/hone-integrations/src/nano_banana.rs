@@ -154,7 +154,7 @@ impl NanoBananaClient {
             .post(&url)
             .header("Authorization", format!("Bearer {api_key}"))
             .header("HTTP-Referer", "https://openrouter.ai")
-            .header("X-Title", "Honeclaw")
+            .header("X-Title", "Hone-Financial")
             .json(&body)
             .timeout(std::time::Duration::from_secs(self.timeout_seconds))
             .send()

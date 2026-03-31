@@ -1,7 +1,7 @@
 //! 会话存储 — JSON 文件
 
-use chrono::{DateTime, FixedOffset};
 use crate::session_sqlite::SqliteSessionMirror;
+use chrono::{DateTime, FixedOffset};
 use hone_core::agent::ToolCallMade;
 use hone_core::{ActorIdentity, SessionIdentity, beijing_now};
 use serde::{Deserialize, Serialize};
@@ -184,6 +184,43 @@ pub fn build_tool_message_metadata(call: &ToolCallMade) -> HashMap<String, Value
     metadata
 }
 
+pub const INVOKED_SKILLS_METADATA_KEY: &str = "skill_runtime.invoked_skills";
+pub const SLASH_SKILL_METADATA_KEY: &str = "skill_runtime.slash_skill";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct InvokedSkillRecord {
+    pub skill_name: String,
+    pub display_name: String,
+    pub path: String,
+    pub prompt: String,
+    pub execution_context: String,
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    pub loaded_from: String,
+    pub updated_at: String,
+}
+
+pub fn invoked_skills_from_metadata(metadata: &HashMap<String, Value>) -> Vec<InvokedSkillRecord> {
+    metadata
+        .get(INVOKED_SKILLS_METADATA_KEY)
+        .cloned()
+        .and_then(|value| serde_json::from_value::<Vec<InvokedSkillRecord>>(value).ok())
+        .unwrap_or_default()
+}
+
+pub fn message_is_slash_skill(metadata: Option<&HashMap<String, Value>>) -> bool {
+    metadata
+        .and_then(|items| items.get(SLASH_SKILL_METADATA_KEY))
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
 pub fn restore_tool_message(
     content: &str,
     metadata: Option<&HashMap<String, Value>>,
@@ -213,10 +250,8 @@ impl SessionStorage {
         let sqlite_storage = if options.shadow_sqlite_enabled
             || matches!(options.runtime_backend, SessionRuntimeBackend::Sqlite)
         {
-            options
-                .shadow_sqlite_db_path
-                .as_ref()
-                .and_then(|path| match SqliteSessionMirror::new(path) {
+            options.shadow_sqlite_db_path.as_ref().and_then(|path| {
+                match SqliteSessionMirror::new(path) {
                     Ok(storage) => Some(storage),
                     Err(err) => {
                         tracing::warn!(
@@ -225,7 +260,8 @@ impl SessionStorage {
                         );
                         None
                     }
-                })
+                }
+            })
         } else {
             None
         };
@@ -328,7 +364,8 @@ impl SessionStorage {
 
                 let fallback = self.load_session_from_json(session_id)?;
                 if let Some(session) = &fallback {
-                    let _ = self.write_session_to_sqlite(&self.session_json_path(session_id), session);
+                    let _ =
+                        self.write_session_to_sqlite(&self.session_json_path(session_id), session);
                 }
                 Ok(fallback)
             }
@@ -550,11 +587,7 @@ impl SessionStorage {
         Ok(sessions)
     }
 
-    fn write_session_to_sqlite(
-        &self,
-        path: &Path,
-        session: &Session,
-    ) -> hone_core::HoneResult<()> {
+    fn write_session_to_sqlite(&self, path: &Path, session: &Session) -> hone_core::HoneResult<()> {
         let Some(sqlite_storage) = &self.sqlite_storage else {
             self.shadow_write_session(path, session);
             return Ok(());
@@ -935,7 +968,11 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
             .expect("session count");
         let message_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM session_messages WHERE session_id = ?1", [&session_id], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
+                [&session_id],
+                |row| row.get(0),
+            )
             .expect("message count");
 
         assert_eq!(session_count, 1);

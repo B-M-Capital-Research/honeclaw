@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hone-Financial | Your AI Finance Research Assistant</title>
+    <style>
+        :root {
+            --primary-color: #4D53DF;
+            --bg-color: #FAFAFA;
+            --text-color: #1E1E2E;
+            --secondary-text: #6B7280;
+            --grid-color: rgba(77, 83, 223, 0.05);
+            --card-bg: #FFFFFF;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.5;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Background Grid */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(var(--grid-color) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 1.5rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            background: rgba(250, 250, 250, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--primary-color);
+            letter-spacing: -0.02em;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-color);
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary-color);
+        }
+
+        /* Hero Section */
+        section {
+            min-height: 100vh;
+            padding: 8rem 10% 4rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        .hero {
+            text-align: center;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: 5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 2rem;
+            letter-spacing: -0.04em;
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .hero h1.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .hero p {
+            font-size: 1.5rem;
+            color: var(--secondary-text);
+            margin-bottom: 3rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s;
+        }
+
+        .hero p.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 1rem 2.5rem;
+            background-color: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 100px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: transform 0.3s, box-shadow 0.3s;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .cta-button.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .cta-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(77, 83, 223, 0.3);
+        }
+
+        /* Feature Sections */
+        .feature-grid {
+            margin-top: 4rem;
+        }
+
+        .feature-row {
+            display: flex;
+            align-items: center;
+            gap: 4rem;
+            margin-bottom: 10rem;
+            opacity: 0;
+            transform: translateY(50px);
+            transition: all 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .feature-row.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .feature-row:nth-child(even) {
+            flex-direction: row-reverse;
+        }
+
+        .feature-content {
+            flex: 1;
+        }
+
+        .feature-tag {
+            color: var(--primary-color);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .feature-content h2 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .feature-content p {
+            font-size: 1.1rem;
+            color: var(--secondary-text);
+            margin-bottom: 2rem;
+        }
+
+        .feature-visual {
+            flex: 1.2;
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 2rem;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+            border: 1px solid rgba(0,0,0,0.05);
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Terminal UI Mockup */
+        .terminal {
+            background: #1E1E2E;
+            border-radius: 12px;
+            padding: 1.5rem;
+            font-family: "SF Mono", "Fira Code", monospace;
+            color: #D1D1E0;
+            font-size: 0.9rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .terminal-header {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 1rem;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .dot.red { background: #FF5F56; }
+        .dot.yellow { background: #FFBD2E; }
+        .dot.green { background: #27C93F; }
+
+        .terminal-line {
+            margin-bottom: 0.5rem;
+        }
+
+        .prompt { color: #4D53DF; font-weight: bold; }
+        .command { color: #FFFFFF; }
+        .response { color: #A5B4FC; }
+
+        /* iMessage UI Mockup */
+        .imessage {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 1rem;
+        }
+
+        .bubble {
+            max-width: 80%;
+            padding: 0.8rem 1.2rem;
+            border-radius: 20px;
+            font-size: 0.95rem;
+            position: relative;
+        }
+
+        .bubble.user {
+            align-self: flex-end;
+            background: var(--primary-color);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .bubble.hone {
+            align-self: flex-start;
+            background: #E9E9EB;
+            color: black;
+            border-bottom-left-radius: 4px;
+        }
+
+        /* Tech Specs Section */
+        .tech-specs {
+            background: white;
+            padding: 8rem 10%;
+            border-radius: 60px 60px 0 0;
+            box-shadow: 0 -20px 60px rgba(0,0,0,0.03);
+        }
+
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 3rem;
+            margin-top: 4rem;
+        }
+
+        .tech-card {
+            padding: 2.5rem;
+            border-radius: 24px;
+            background: var(--bg-color);
+            border: 1px solid rgba(0,0,0,0.05);
+            transition: transform 0.3s;
+        }
+
+        .tech-card:hover {
+            transform: translateY(-10px);
+        }
+
+        .tech-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+        }
+
+        .tech-card p {
+            color: var(--secondary-text);
+        }
+
+        /* Footer */
+        footer {
+            padding: 4rem 10%;
+            background: white;
+            border-top: 1px solid rgba(0,0,0,0.05);
+            text-align: center;
+        }
+
+        .footer-logo {
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .copyright {
+            color: var(--secondary-text);
+            font-size: 0.8rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 3rem; }
+            .feature-row { flex-direction: column !important; gap: 2rem; margin-bottom: 6rem; }
+            .nav-links { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+
+    <nav>
+        <div class="logo">Hone-Financial</div>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#tech">Technology</a>
+            <a href="#pricing">Pricing</a>
+            <a href="https://github.com">GitHub</a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <h1 id="hero-title">One message, investment-research-grade<br>financial insight</h1>
+        <p id="hero-desc">Hone-Financial is your personal AI finance specialist, powered by Kimi K2.5 and available in both terminal CLI and iMessage.</p>
+        <a href="#" class="cta-button" id="hero-cta">Get Started</a>
+    </section>
+
+    <section id="features">
+        <div class="feature-grid">
+            <!-- Feature 1 -->
+            <div class="feature-row">
+                <div class="feature-content">
+                    <span class="feature-tag">Quick Stock Q&A</span>
+                    <h2>Second-level response,<br>market awareness</h2>
+                    <p>Whether it's earnings dates, live PE ratios, or the latest news, Hone delivers precise data instantly. Tavily search keeps it fresh.</p>
+                </div>
+                <div class="feature-visual">
+                    <div class="terminal">
+                        <div class="terminal-header">
+                            <div class="dot red"></div>
+                            <div class="dot yellow"></div>
+                            <div class="dot green"></div>
+                        </div>
+                        <div class="terminal-line">
+                            <span class="prompt">hone></span> <span class="command">When does Tesla report earnings?</span>
+                        </div>
+                        <div class="terminal-line">
+                            <span class="response">Tesla (TSLA) is expected to report Q1 2026 earnings on April 22, 2026.</span>
+                        </div>
+                        <div class="terminal-line">
+                            <span class="prompt">hone></span> <span class="command">What is the latest news about NVIDIA?</span>
+                        </div>
+                        <div class="terminal-line">
+                            <span class="response">1. NVIDIA has announced a new Blackwell Ultra architecture chip...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 2 -->
+            <div class="feature-row">
+                <div class="feature-content">
+                    <span class="feature-tag">Deep Stock Analysis</span>
+                    <h2>Research-grade reports,<br>one command away</h2>
+                    <p>Trigger deep analysis with /analyze. Hone automatically aggregates financial statements, price action, market sentiment, and peer comparisons into a detailed investment brief.</p>
+                </div>
+                <div class="feature-visual">
+                    <div class="imessage">
+                        <div class="bubble user">/analyze MSFT</div>
+                        <div class="bubble hone">
+                            <strong>Microsoft (MSFT) Deep Analysis Report</strong><br><br>
+                            • <strong>Financial performance</strong>: Revenue grew 18% year over year, and cloud growth beat expectations.<br>
+                            • <strong>Technical view</strong>: Still in an uptrend with support at $420.<br>
+                            • <strong>Risk note</strong>: Valuation is near historical highs; watch the antitrust investigation.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 3 -->
+            <div class="feature-row">
+                <div class="feature-content">
+                    <span class="feature-tag">Portfolio Management</span>
+                    <h2>See your holdings<br>at a glance</h2>
+                    <p>Supports portfolio screenshot recognition and memory. Generate daily holding reports, check P/L in real time, and create polished gain/loss cards.</p>
+                </div>
+                <div class="feature-visual" style="background: #F3F4F6;">
+                    <div style="text-align: center; color: var(--primary-color); font-weight: bold; font-size: 1.2rem; margin-bottom: 1rem;">Daily Portfolio Report (2026-01-31)</div>
+                    <div style="display: flex; justify-content: space-around; margin-bottom: 2rem;">
+                        <div style="text-align: center;">
+                            <div style="color: var(--secondary-text); font-size: 0.8rem;">Total Value</div>
+                            <div style="font-size: 1.5rem; font-weight: 800;">$124,500.00</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="color: var(--secondary-text); font-size: 0.8rem;">Today P/L</div>
+                            <div style="font-size: 1.5rem; font-weight: 800; color: #10B981;">+$2,340.12</div>
+                        </div>
+                    </div>
+                    <div style="background: white; border-radius: 12px; padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>NVDA</span>
+                            <span style="color: #10B981;">+4.2%</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>AAPL</span>
+                            <span style="color: #EF4444;">-0.8%</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>TSLA</span>
+                            <span style="color: #10B981;">+1.5%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 4 -->
+            <div class="feature-row">
+                <div class="feature-content">
+                    <span class="feature-tag">Macro Analysis</span>
+                    <h2>See the bigger picture,<br>anticipate risk</h2>
+                    <p>Inflation data, Fed decisions, and geopolitics - Hone automatically analyzes how macro events affect your specific holdings and offers tailored hedging guidance.</p>
+                </div>
+                <div class="feature-visual">
+                    <div class="imessage">
+                        <div class="bubble user">How will tonight's Fed hike affect my holdings?</div>
+                        <div class="bubble hone">
+                            Based on your portfolio mix (60% tech, 20% consumer):<br><br>
+                            1. <strong>Tech pressure</strong>: Higher rates push up discount rates, so NVDA and MSFT may face a short-term valuation pullback.<br>
+                            2. <strong>Cash-flow strength</strong>: Your AAPL position has strong cash flow and a better ability to absorb risk.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="tech" class="tech-specs">
+        <h2 style="font-size: 3rem; font-weight: 800; text-align: center; margin-bottom: 1rem;">Core Tech Stack</h2>
+        <p style="text-align: center; color: var(--secondary-text); max-width: 600px; margin: 0 auto 4rem;">We use cutting-edge technology so your analysis stays fast and accurate.</p>
+        
+        <div class="tech-grid">
+            <div class="tech-card">
+                <h3>Kimi K2.5 LLM</h3>
+                <p>Powered by the latest Kimi K2.5 model with 128K long-context support, it can deeply interpret full research reports and earnings filings.</p>
+            </div>
+            <div class="tech-card">
+                <h3>Tavily Web Search</h3>
+                <p>Integrated with Tavily, a professional AI search engine, it pulls fresh financial news across the web so the data stays near real time.</p>
+            </div>
+            <div class="tech-card">
+                <h3>Multi-Channel</h3>
+                <p>Supports terminal CLI TUI interaction and native iMessage integration, so you can talk whether you're coding or on the move.</p>
+            </div>
+            <div class="tech-card">
+                <h3>Privacy First</h3>
+                <p>Built with a local-first architecture, your holdings and chat history stay in a local database under your control.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <span class="footer-logo">Hone-Financial</span>
+        <p style="margin-bottom: 2rem; color: var(--secondary-text);">Your AI finance research assistant</p>
+        <div class="nav-links" style="display: flex; justify-content: center; margin-bottom: 2rem;">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
+            <a href="#">Contact Us</a>
+        </div>
+        <p class="copyright">&copy; 2026 Hone-Financial. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // Intersection observer for scroll animations
+        const observerOptions = {
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+            // Hero elements
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                document.getElementById('hero-title').classList.add('visible');
+                document.getElementById('hero-desc').classList.add('visible');
+                document.getElementById('hero-cta').classList.add('visible');
+            }, 100);
+
+            // Feature rows
+            document.querySelectorAll('.feature-row').forEach(row => {
+                observer.observe(row);
+            });
+
+            // Tech cards
+            document.querySelectorAll('.tech-card').forEach(card => {
+                observer.observe(card);
+            });
+        });
+
+        // Parallax effect for the grid
+        window.addEventListener('scroll', () => {
+            const scrolled = window.pageYOffset;
+            document.querySelector('.bg-grid').style.transform = `translateY(${scrolled * 0.1}px)`;
+        });
+    </script>
+</body>
+</html>

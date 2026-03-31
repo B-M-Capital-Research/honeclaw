@@ -5,6 +5,7 @@ import { For, Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useTasks } from "@/context/tasks"
 import type { CronJobInfo } from "@/lib/types"
+import { formatShanghaiDateTime } from "@/lib/time"
 
 export function TaskList() {
     const navigate = useNavigate()
@@ -15,8 +16,13 @@ export function TaskList() {
 
     const formatNextRunAt = (dateString?: string) => {
         if (!dateString) return "未调度"
-        const date = new Date(dateString)
-        return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+        return formatShanghaiDateTime(dateString, {
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: undefined,
+        })
     }
 
     return (
@@ -25,7 +31,7 @@ export function TaskList() {
                 <div class="flex items-center justify-between">
                     <div>
                         <div class="text-sm font-semibold tracking-tight">任务中心</div>
-                        <div class="text-xs text-[color:var(--text-muted)]">管理定时触发的工作流</div>
+                        <div class="text-xs text-[color:var(--text-muted)]">管理定时触发的工作流（东八区）</div>
                     </div>
                     <Button
                         variant="ghost"
