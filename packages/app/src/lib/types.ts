@@ -16,9 +16,19 @@ export type SkillInfo = {
   id: string;
   display_name: string;
   description: string;
+  when_to_use?: string;
   aliases: string[];
-  tools: string[];
-  guide: string;
+  allowed_tools: string[];
+  user_invocable: boolean;
+  context: string;
+  loaded_from: string;
+  paths: string[];
+};
+
+export type SkillDetailInfo = {
+  summary: SkillInfo;
+  markdown: string;
+  detail_path: string;
 };
 
 export type HistoryMsg = {
@@ -128,6 +138,17 @@ export type DesktopChannelSettingsUpdateResult = {
   backendStatus?: BackendStatusInfo;
 };
 
+export type ChannelProcessCleanupEntry = {
+  channel: string;
+  keptPid?: number;
+  removedPids: number[];
+};
+
+export type ChannelProcessCleanupResult = {
+  entries: ChannelProcessCleanupEntry[];
+  message: string;
+};
+
 export type ChannelStatusInfo = {
   id: string;
   label: string;
@@ -137,6 +158,16 @@ export type ChannelStatusInfo = {
   pid?: number;
   last_heartbeat_at?: string;
   detail: string;
+  processes: ChannelProcessInfo[];
+};
+
+export type ChannelProcessInfo = {
+  pid: number;
+  running: boolean;
+  started_at?: string;
+  last_heartbeat_at?: string;
+  managed_by_desktop?: boolean;
+  source?: string;
 };
 
 export type ChatStreamEvent =
@@ -209,6 +240,30 @@ export type CronJobInfo = {
   updated_at: string;
   last_run_at?: string;
   next_run_at?: string;
+};
+
+export type CronJobExecutionInfo = {
+  run_id: number;
+  job_id: string;
+  job_name: string;
+  channel: string;
+  user_id: string;
+  channel_scope?: string;
+  channel_target: string;
+  heartbeat: boolean;
+  executed_at: string;
+  execution_status: string;
+  message_send_status: string;
+  should_deliver: boolean;
+  delivered: boolean;
+  response_preview?: string;
+  error_message?: string;
+  detail?: Record<string, unknown> | null;
+};
+
+export type CronJobDetailInfo = {
+  job: CronJobInfo;
+  executions: CronJobExecutionInfo[];
 };
 
 export type CronJobUpsertInput = {

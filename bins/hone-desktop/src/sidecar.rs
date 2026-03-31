@@ -6,12 +6,14 @@ use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
 use std::sync::Mutex;
 use std::time::Duration;
 
 use hone_core::HoneConfig;
 use hone_core::config::{diff_yaml_value, read_yaml_value, runtime_overlay_path};
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use rfd::{MessageButtons, MessageDialog, MessageLevel};
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime;
 use tauri::{AppHandle, Manager, State};
@@ -73,6 +75,21 @@ pub(crate) struct DesktopChannelSettingsUpdateResult {
     restarted_bundled_backend: bool,
     message: String,
     backend_status: Option<BackendStatusInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ChannelProcessCleanupEntry {
+    channel: String,
+    kept_pid: Option<u32>,
+    removed_pids: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ChannelProcessCleanupResult {
+    entries: Vec<ChannelProcessCleanupEntry>,
+    message: String,
 }
 
 /// Agent 基础设置（写入运行时覆盖层）
@@ -188,6 +205,7 @@ pub(crate) struct BackendStatusInfo {
 
 #[derive(Default)]
 pub(crate) struct DesktopState {
+    desktop_lock: Mutex<Option<hone_core::ProcessLockGuard>>,
     inner: Mutex<DesktopBackendManager>,
     transition_lock: tokio::sync::Mutex<()>,
 }
@@ -200,6 +218,8 @@ struct DesktopBackendManager {
     last_error: Option<String>,
     /// 内嵌 Axum 服务任务句柄（bundled 模式）
     web_server_task: Option<tokio::task::JoinHandle<()>>,
+    /// bundled 模式下的 hone-console-page 生命周期锁
+    bundled_web_lock: Option<hone_core::ProcessLockGuard>,
     /// 各 channel sidecar 子进程（imessage / discord / feishu / telegram）
     channel_children: BTreeMap<String, CommandChild>,
     diagnostics: Option<DiagnosticPaths>,
@@ -250,7 +270,7 @@ fn append_log(path: &PathBuf, level: &str, message: &str) {
 }
 
 fn diagnostic_paths(app: &AppHandle) -> Result<DiagnosticPaths, String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let config_dir = desktop_config_dir(app)?;
     // 与 ensure_runtime_paths 保持一致：优先使用 HONE_DESKTOP_DATA_DIR 覆盖
     let data_dir = if let Ok(override_dir) = std::env::var("HONE_DESKTOP_DATA_DIR") {
         PathBuf::from(override_dir)
@@ -278,9 +298,20 @@ fn log_desktop(app: &AppHandle, level: &str, message: impl AsRef<str>) {
     }
 }
 
-fn config_store_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn desktop_config_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(override_dir) = std::env::var("HONE_DESKTOP_CONFIG_DIR") {
+        let path = PathBuf::from(override_dir);
+        fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+        return Ok(path);
+    }
+
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn config_store_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = desktop_config_dir(app)?;
     Ok(dir.join("backend.json"))
 }
 
@@ -300,8 +331,188 @@ fn resource_or_repo_path(app: &AppHandle, resource: &str) -> PathBuf {
         .unwrap_or_else(|| repo_root().join(resource))
 }
 
+fn current_target_triple() -> Option<String> {
+    let arch = match env::consts::ARCH {
+        "aarch64" => "aarch64",
+        "x86_64" => "x86_64",
+        "x86" => "i686",
+        other => other,
+    };
+    let os = match env::consts::OS {
+        "macos" => "apple-darwin",
+        "linux" => "unknown-linux-gnu",
+        "windows" => "pc-windows-msvc",
+        _ => return None,
+    };
+    Some(format!("{arch}-{os}"))
+}
+
+fn bundled_binary_candidate_names(binary: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let base = if cfg!(windows) {
+        format!("{binary}.exe")
+    } else {
+        binary.to_string()
+    };
+    names.push(base);
+
+    if let Some(triple) = current_target_triple() {
+        let suffixed = if cfg!(windows) {
+            format!("{binary}-{triple}.exe")
+        } else {
+            format!("{binary}-{triple}")
+        };
+        names.push(suffixed);
+    }
+
+    names
+}
+
+fn bundled_binary_search_dirs(app: &AppHandle) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+
+    if let Ok(current_exe) = env::current_exe() {
+        if let Some(parent) = current_exe.parent() {
+            dirs.push(parent.to_path_buf());
+        }
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        dirs.push(resource_dir.clone());
+        dirs.push(resource_dir.join("binaries"));
+    }
+
+    dirs
+}
+
+fn resolve_bundled_binary(app: &AppHandle, binary: &str) -> Option<PathBuf> {
+    for dir in bundled_binary_search_dirs(app) {
+        for name in bundled_binary_candidate_names(binary) {
+            let candidate = dir.join(&name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn set_process_env(key: &str, value: impl AsRef<std::ffi::OsStr>) {
+    unsafe {
+        env::set_var(key, value);
+    }
+}
+
+fn prepend_path_entry(dir: &Path) {
+    let mut entries = vec![dir.to_path_buf()];
+    if let Some(existing) = env::var_os("PATH") {
+        entries.extend(env::split_paths(&existing));
+    }
+    if let Ok(joined) = env::join_paths(entries) {
+        set_process_env("PATH", joined);
+    }
+}
+
+fn should_import_shell_env_key(key: &str) -> bool {
+    matches!(
+        key,
+        "PATH"
+            | "HOME"
+            | "USER"
+            | "LOGNAME"
+            | "SHELL"
+            | "LANG"
+            | "TMPDIR"
+            | "TERM"
+            | "COLORTERM"
+            | "SSH_AUTH_SOCK"
+            | "SSL_CERT_FILE"
+            | "SSL_CERT_DIR"
+            | "HTTP_PROXY"
+            | "HTTPS_PROXY"
+            | "ALL_PROXY"
+            | "NO_PROXY"
+    ) || key.starts_with("LC_")
+        || key.starts_with("HOMEBREW_")
+        || key.starts_with("BUN_")
+        || key.starts_with("CARGO_")
+        || key.starts_with("RUSTUP_")
+        || key.starts_with("OPENAI_")
+        || key.starts_with("OPENROUTER_")
+        || key.starts_with("GEMINI_")
+        || key.starts_with("ANTHROPIC_")
+        || key.starts_with("NVM_")
+        || key.starts_with("VOLTA_")
+        || key.starts_with("ASDF_")
+}
+
+fn hydrate_login_shell_env(app: &AppHandle) {
+    let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let output = match StdCommand::new(&shell).args(["-lc", "env -0"]).output() {
+        Ok(output) => output,
+        Err(error) => {
+            log_desktop(
+                app,
+                "WARN",
+                format!("failed to hydrate login shell env via {shell}: {error}"),
+            );
+            return;
+        }
+    };
+
+    if !output.status.success() {
+        log_desktop(
+            app,
+            "WARN",
+            format!(
+                "login shell env command exited with status {}",
+                output.status
+            ),
+        );
+        return;
+    }
+
+    for pair in output.stdout.split(|byte| *byte == 0) {
+        if pair.is_empty() {
+            continue;
+        }
+        let Ok(rendered) = std::str::from_utf8(pair) else {
+            continue;
+        };
+        let Some((key, value)) = rendered.split_once('=') else {
+            continue;
+        };
+        if should_import_shell_env_key(key) {
+            set_process_env(key, value);
+        }
+    }
+}
+
+fn configure_desktop_runtime_env(app: &AppHandle, runtime: &RuntimePaths) {
+    hydrate_login_shell_env(app);
+
+    set_process_env("HONE_CONFIG_PATH", &runtime.config_path);
+    set_process_env("HONE_DATA_DIR", &runtime.data_dir);
+    set_process_env("HONE_RUNTIME_DIR", &runtime.runtime_dir);
+    set_process_env("HONE_SKILLS_DIR", &runtime.skills_dir);
+    set_process_env(
+        "HONE_AGENT_SANDBOX_DIR",
+        runtime.data_dir.join("agent-sandboxes"),
+    );
+
+    if let Some(mcp_path) = resolve_bundled_binary(app, "hone-mcp") {
+        set_process_env("HONE_MCP_BIN", &mcp_path);
+    }
+    if let Some(opencode_path) = resolve_bundled_binary(app, "opencode") {
+        if let Some(parent) = opencode_path.parent() {
+            prepend_path_entry(parent);
+        }
+        set_process_env("HONE_BUNDLED_OPENCODE_BIN", &opencode_path);
+    }
+}
+
 fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let config_dir = desktop_config_dir(app)?;
 
     let data_dir = if let Ok(override_dir) = std::env::var("HONE_DESKTOP_DATA_DIR") {
         // 显式覆盖（优先级最高）
@@ -318,9 +529,15 @@ fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, String> {
         }
     };
     let runtime_dir = data_dir.join("runtime");
+    let logs_dir = runtime_dir.join("logs");
+    let locks_dir = runtime_dir.join("locks");
+    let sandbox_dir = data_dir.join("agent-sandboxes");
     fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
     fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
     fs::create_dir_all(&runtime_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&locks_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&sandbox_dir).map_err(|e| e.to_string())?;
 
     // ── 运行时配置文件 ──────────────────────────────────────────────────
     // 实际运行中读写的是 data/runtime/config_runtime.yaml（不是项目根的 config.yaml）。
@@ -524,6 +741,95 @@ fn validate_meta(meta: MetaInfo) -> Result<MetaInfo, String> {
     }
 }
 
+pub(crate) fn show_startup_error_dialog(message: &str) {
+    let _ = MessageDialog::new()
+        .set_level(MessageLevel::Error)
+        .set_title("Hone Startup Blocked")
+        .set_description(message)
+        .set_buttons(MessageButtons::Ok)
+        .show();
+}
+
+fn bundled_process_lock_names(config: &HoneConfig) -> Vec<&'static str> {
+    let mut names = vec![hone_core::PROCESS_LOCK_CONSOLE_PAGE];
+    if cfg!(target_os = "macos") && config.imessage.enabled {
+        names.push(hone_core::PROCESS_LOCK_IMESSAGE);
+    }
+    if config.discord.enabled {
+        names.push(hone_core::PROCESS_LOCK_DISCORD);
+    }
+    if config.feishu.enabled {
+        names.push(hone_core::PROCESS_LOCK_FEISHU);
+    }
+    if config.telegram.enabled {
+        names.push(hone_core::PROCESS_LOCK_TELEGRAM);
+    }
+    names
+}
+
+fn bundled_lock_failure_message(error: &hone_core::ProcessLockError) -> String {
+    format!(
+        "检测到旧的 Hone bundled runtime 进程仍占用启动锁，桌面主进程不会继续启动相关 backend/listener。请先清理之前的进程后再重试。\n冲突组件: {}\n锁文件: {}",
+        error.process,
+        error.path.display()
+    )
+}
+
+fn preflight_bundled_runtime_locks(app: &AppHandle) -> Result<(), String> {
+    let runtime = ensure_runtime_paths(app)?;
+    let runtime_config = HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
+    let lock_names = bundled_process_lock_names(&runtime_config);
+    let mut cleanup_attempts = 0usize;
+
+    loop {
+        match hone_core::preflight_process_locks(&runtime.runtime_dir, &lock_names) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                if cleanup_attempts < lock_names.len()
+                    && try_cleanup_conflicting_process(app, &error)
+                {
+                    cleanup_attempts += 1;
+                    continue;
+                }
+                return Err(bundled_lock_failure_message(&error));
+            }
+        }
+    }
+}
+
+fn ensure_desktop_process_lock(app: &AppHandle) -> Result<(), String> {
+    let runtime = ensure_runtime_paths(app)?;
+    let desktop_lock_path =
+        hone_core::process_lock_path(&runtime.runtime_dir, hone_core::PROCESS_LOCK_DESKTOP);
+    let state = app.state::<DesktopState>();
+    let mut guard = state.desktop_lock.lock().unwrap();
+    if guard.is_some() {
+        return Ok(());
+    }
+
+    let lock =
+        hone_core::acquire_process_lock(&runtime.runtime_dir, hone_core::PROCESS_LOCK_DESKTOP)
+            .map_err(|error| {
+                hone_core::format_lock_failure_message(
+                    hone_core::PROCESS_LOCK_DESKTOP,
+                    &desktop_lock_path,
+                    &error,
+                    "Hone Desktop",
+                )
+            })?;
+    *guard = Some(lock);
+    Ok(())
+}
+
+fn preflight_startup_locks(app: &AppHandle) -> Result<(), String> {
+    ensure_desktop_process_lock(app)?;
+    let config = load_persisted_config(app).unwrap_or_default();
+    if config.mode != "bundled" {
+        return Ok(());
+    }
+    preflight_bundled_runtime_locks(app)
+}
+
 /// 停止内嵌 web 服务 task（abort）
 fn stop_web_server(manager: &mut DesktopBackendManager) {
     if let Some(handle) = manager.web_server_task.take() {
@@ -533,6 +839,7 @@ fn stop_web_server(manager: &mut DesktopBackendManager) {
 
 fn stop_managed_children(manager: &mut DesktopBackendManager) {
     stop_web_server(manager);
+    manager.bundled_web_lock = None;
     for (_, child) in std::mem::take(&mut manager.channel_children) {
         let _ = child.kill();
     }
@@ -557,6 +864,113 @@ fn clear_runtime_heartbeats(runtime_dir: &std::path::Path) {
     for channel in ["imessage", "discord", "feishu", "telegram"] {
         remove_runtime_heartbeat(runtime_dir, channel);
     }
+}
+
+fn read_lock_pid(path: &Path) -> Option<u32> {
+    let content = fs::read_to_string(path).ok()?;
+    content.lines().find_map(|line| {
+        line.strip_prefix("pid=")
+            .and_then(|raw| raw.trim().parse::<u32>().ok())
+    })
+}
+
+fn pid_command_line(pid: u32) -> Option<String> {
+    let output = StdCommand::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "args="])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let rendered = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if rendered.is_empty() {
+        None
+    } else {
+        Some(rendered)
+    }
+}
+
+fn pid_matches_expected_process(pid: u32, process: &str) -> bool {
+    let Some(command) = pid_command_line(pid) else {
+        return false;
+    };
+    let executable = command.split_whitespace().next().unwrap_or_default();
+    Path::new(executable)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value == process)
+        .unwrap_or(false)
+        || command.contains(process)
+}
+
+fn pid_is_alive(pid: u32) -> bool {
+    StdCommand::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "pid="])
+        .output()
+        .map(|output| {
+            output.status.success() && !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+        })
+        .unwrap_or(false)
+}
+
+fn wait_for_pid_exit(pid: u32, timeout_ms: u64) -> bool {
+    let polls = timeout_ms / 100;
+    for _ in 0..polls.max(1) {
+        if !pid_is_alive(pid) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    !pid_is_alive(pid)
+}
+
+fn terminate_pid_with_retry(pid: u32) -> bool {
+    let _ = StdCommand::new("kill")
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .status();
+    if wait_for_pid_exit(pid, 2_000) {
+        return true;
+    }
+    let _ = StdCommand::new("kill")
+        .arg("-KILL")
+        .arg(pid.to_string())
+        .status();
+    wait_for_pid_exit(pid, 1_500)
+}
+
+fn try_cleanup_conflicting_process(app: &AppHandle, error: &hone_core::ProcessLockError) -> bool {
+    let Some(pid) = read_lock_pid(&error.path) else {
+        return false;
+    };
+    if !pid_matches_expected_process(pid, &error.process) {
+        log_desktop(
+            app,
+            "WARN",
+            format!(
+                "startup lock conflict for {} has pid={} but command no longer matches expected process",
+                error.process, pid
+            ),
+        );
+        return false;
+    }
+
+    log_desktop(
+        app,
+        "WARN",
+        format!(
+            "attempting automatic cleanup for startup lock conflict process={} pid={} path={}",
+            error.process,
+            pid,
+            error.path.display()
+        ),
+    );
+
+    let stopped = terminate_pid_with_retry(pid);
+    if stopped {
+        let _ = fs::remove_file(&error.path);
+    }
+    stopped
 }
 
 impl DesktopBackendManager {
@@ -692,7 +1106,7 @@ fn start_logged_sidecar(
 }
 
 fn common_runtime_envs(runtime: &RuntimePaths) -> Vec<(&'static str, String)> {
-    vec![
+    let mut envs = vec![
         (
             "HONE_CONFIG_PATH",
             runtime.config_path.to_string_lossy().to_string(),
@@ -705,7 +1119,29 @@ fn common_runtime_envs(runtime: &RuntimePaths) -> Vec<(&'static str, String)> {
             "HONE_SKILLS_DIR",
             runtime.skills_dir.to_string_lossy().to_string(),
         ),
-    ]
+        (
+            "HONE_RUNTIME_DIR",
+            runtime.runtime_dir.to_string_lossy().to_string(),
+        ),
+        (
+            "HONE_AGENT_SANDBOX_DIR",
+            runtime
+                .data_dir
+                .join("agent-sandboxes")
+                .to_string_lossy()
+                .to_string(),
+        ),
+    ];
+
+    for key in ["HONE_MCP_BIN", "HONE_BUNDLED_OPENCODE_BIN"] {
+        if let Ok(value) = env::var(key) {
+            if !value.trim().is_empty() {
+                envs.push((key, value));
+            }
+        }
+    }
+
+    envs
 }
 
 fn start_enabled_channels(
@@ -733,9 +1169,24 @@ fn start_enabled_channels(
 
         let mut envs = common_runtime_envs(runtime);
         envs.push(("HONE_CONSOLE_URL", base_url.to_string()));
+        if !config.web.auth_token.trim().is_empty() {
+            envs.push((
+                "HONE_CONSOLE_TOKEN",
+                config.web.auth_token.trim().to_string(),
+            ));
+        }
         envs.extend(extra_envs);
 
         let child = start_logged_sidecar(app, binary, channel, envs, sidecar_log.clone())?;
+        std::thread::sleep(Duration::from_millis(400));
+        let still_running = hone_core::scan_channel_processes(channel)
+            .into_iter()
+            .any(|process| process.pid == child.pid());
+        if !still_running {
+            return Err(format!(
+                "{channel} exited during startup, likely because an older process still exists or the sidecar failed before acquiring its runtime lock"
+            ));
+        }
         manager.channel_children.insert(channel.to_string(), child);
         log_desktop(app, "INFO", format!("started managed channel {channel}"));
         Ok(())
@@ -771,6 +1222,72 @@ fn start_enabled_channels(
     )?;
 
     Ok(())
+}
+
+fn kill_pid(pid: u32) {
+    let _ = std::process::Command::new("kill")
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .status();
+}
+
+fn cleanup_duplicate_channel_processes_inner(
+    manager: &mut DesktopBackendManager,
+) -> ChannelProcessCleanupResult {
+    let mut entries = Vec::new();
+
+    for channel in ["imessage", "discord", "feishu", "telegram"] {
+        let mut observed = hone_core::scan_channel_processes(channel)
+            .into_iter()
+            .map(|process| process.pid)
+            .collect::<Vec<_>>();
+        observed.sort_unstable();
+        observed.dedup();
+
+        if observed.is_empty() {
+            entries.push(ChannelProcessCleanupEntry {
+                channel: channel.to_string(),
+                kept_pid: None,
+                removed_pids: Vec::new(),
+            });
+            continue;
+        }
+
+        let managed_pid = manager
+            .channel_children
+            .get(channel)
+            .map(|child| child.pid());
+        let keep_pid = managed_pid
+            .filter(|pid| observed.contains(pid))
+            .or_else(|| observed.iter().copied().max());
+
+        let removed_pids = observed
+            .into_iter()
+            .filter(|pid| Some(*pid) != keep_pid)
+            .collect::<Vec<_>>();
+
+        for pid in &removed_pids {
+            kill_pid(*pid);
+        }
+
+        entries.push(ChannelProcessCleanupEntry {
+            channel: channel.to_string(),
+            kept_pid: keep_pid,
+            removed_pids,
+        });
+    }
+
+    let removed_total = entries
+        .iter()
+        .map(|entry| entry.removed_pids.len())
+        .sum::<usize>();
+    let message = if removed_total == 0 {
+        "未发现需要清理的多余渠道进程".to_string()
+    } else {
+        format!("已清理 {removed_total} 个多余渠道进程，并为每个渠道保留 1 个实例")
+    };
+
+    ChannelProcessCleanupResult { entries, message }
 }
 
 async fn connect_backend_inner(
@@ -829,35 +1346,20 @@ async fn connect_backend_inner(
             }
         }
         _ => {
-            // ── bundled 模式：在主进程内启动 Axum HTTP 服务 ─────────────────
-            //
-            // 开发场景优化：若 HONE_WEB_PORT（默认 8077）已有后端在运行，
-            // 则直接切换为 remote 模式连接到该后端，避免重复启动嵌入式进程、
-            // 产生数据目录冲突以及日志/会话与 Web UI 不一致的问题。
-            {
-                let dev_port: u16 = std::env::var("HONE_WEB_PORT")
-                    .ok()
-                    .and_then(|p| p.parse().ok())
-                    .unwrap_or(8077);
-                let candidate = format!("http://127.0.0.1:{dev_port}");
-                if let Ok(meta) = probe_meta(&candidate, "").await.and_then(validate_meta) {
-                    let mut guard = desktop.inner.lock().unwrap();
-                    stop_managed_children(&mut guard);
-                    guard.resolved_base_url = Some(candidate.clone());
-                    guard.meta = Some(meta);
-                    guard.last_error = None;
-                    guard.diagnostics = diagnostic_paths(app).ok();
-                    log_desktop(
-                        app,
-                        "INFO",
-                        format!("existing backend detected at {candidate}, using remote mode"),
-                    );
-                    return Ok(backend_status_snapshot(&guard));
-                }
-            }
-
             let runtime = ensure_runtime_paths(app)?;
             let diagnostics = diagnostic_paths(app)?;
+            let runtime_config =
+                HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
+            if let Err(message) = preflight_bundled_runtime_locks(app) {
+                log_desktop(app, "ERROR", &message);
+                show_startup_error_dialog(&message);
+                let mut guard = desktop.inner.lock().unwrap();
+                stop_managed_children(&mut guard);
+                guard.meta = None;
+                guard.last_error = Some(message);
+                guard.diagnostics = Some(diagnostics);
+                return Ok(backend_status_snapshot(&guard));
+            }
 
             // 先停掉旧任务
             {
@@ -878,8 +1380,21 @@ async fn connect_backend_inner(
             let config_path_str = runtime.config_path.to_string_lossy().to_string();
             let data_dir = runtime.data_dir.clone();
             let skills_dir = runtime.skills_dir.clone();
-            let runtime_config =
-                HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
+            let web_lock = hone_core::acquire_process_lock(
+                &runtime.runtime_dir,
+                hone_core::PROCESS_LOCK_CONSOLE_PAGE,
+            )
+            .map_err(|error| {
+                hone_core::format_lock_failure_message(
+                    hone_core::PROCESS_LOCK_CONSOLE_PAGE,
+                    &hone_core::process_lock_path(
+                        &runtime.runtime_dir,
+                        hone_core::PROCESS_LOCK_CONSOLE_PAGE,
+                    ),
+                    &error,
+                    "Hone bundled runtime",
+                )
+            })?;
 
             let _hone_web_port_guard = ScopedEnvVar::remove("HONE_WEB_PORT");
             match hone_web_api::start_server(
@@ -899,6 +1414,7 @@ async fn connect_backend_inner(
                         guard.meta = Some(meta);
                         guard.last_error = None;
                         guard.diagnostics = Some(diagnostics.clone());
+                        guard.bundled_web_lock = Some(web_lock);
                     }
 
                     // 对于同进程内嵌服务，绑定成功本身已经足够说明 API 已就绪；
@@ -907,7 +1423,13 @@ async fn connect_backend_inner(
                     if let Err(e) =
                         start_enabled_channels(app, &mut guard, &runtime, &diagnostics, &base_url)
                     {
-                        log_desktop(app, "ERROR", format!("channel sidecar startup failed: {e}"));
+                        let message =
+                            format!("bundled channel sidecar startup failed, runtime aborted: {e}");
+                        log_desktop(app, "ERROR", &message);
+                        stop_managed_children(&mut guard);
+                        guard.meta = None;
+                        guard.last_error = Some(message);
+                        return Ok(backend_status_snapshot(&guard));
                     }
 
                     log_desktop(
@@ -981,6 +1503,19 @@ pub(crate) async fn connect_backend_impl(
     state: State<'_, DesktopState>,
 ) -> Result<BackendStatusInfo, String> {
     connect_backend_serialized(&app, &state).await
+}
+
+pub(crate) fn bootstrap_backend_on_startup(app: AppHandle) {
+    async_runtime::spawn(async move {
+        let state = app.state::<DesktopState>();
+        let _ = connect_backend_serialized(&app, &state).await;
+    });
+}
+
+pub(crate) fn prepare_desktop_startup(app: AppHandle) -> Result<(), String> {
+    let runtime = ensure_runtime_paths(&app)?;
+    configure_desktop_runtime_env(&app, &runtime);
+    preflight_startup_locks(&app)
 }
 
 pub(crate) async fn start_bundled_backend_impl(
@@ -1068,6 +1603,14 @@ pub(crate) fn backend_status_impl(
         guard.diagnostics = diagnostic_paths(&app).ok();
     }
     backend_status_snapshot(&guard)
+}
+
+pub(crate) async fn cleanup_channel_processes_impl(
+    state: State<'_, DesktopState>,
+) -> Result<ChannelProcessCleanupResult, String> {
+    let _guard = state.transition_lock.lock().await;
+    let mut guard = state.inner.lock().unwrap();
+    Ok(cleanup_duplicate_channel_processes_inner(&mut guard))
 }
 
 // ── Agent 基础设置 commands ─────────────────────────────────────────────────

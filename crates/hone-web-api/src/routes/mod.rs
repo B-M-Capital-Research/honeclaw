@@ -39,6 +39,7 @@ pub fn build_app(state: Arc<AppState>) -> Router {
     let api = Router::new()
         .route("/meta", get(meta::handle_meta))
         .route("/auth/sse-ticket", post(auth::handle_sse_ticket))
+        .route("/runtime/heartbeat", post(meta::handle_runtime_heartbeat))
         .route("/channels", get(meta::handle_channels))
         .route("/history", get(history::handle_history))
         .route("/events", get(events::handle_events))
@@ -46,6 +47,7 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .route("/file", get(files::handle_file))
         .route("/users", get(users::handle_users))
         .route("/skills", get(skills::handle_skills))
+        .route("/skills/{id}", get(skills::handle_skill_detail))
         .route("/chat", post(chat::handle_chat))
         .route(
             "/cron-jobs",

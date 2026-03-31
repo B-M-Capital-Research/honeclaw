@@ -12,6 +12,7 @@ use tracing::{error, info, warn};
 use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
+use hone_memory::cron_job::CronJobExecutionInput;
 use hone_scheduler::SchedulerEvent;
 
 use crate::routes::normalized_query_actor;
@@ -81,13 +82,43 @@ pub(crate) async fn handle_scheduler_events(
 
         let state_clone = state.clone();
         tokio::spawn(async move {
-            let response = run_scheduled_task(&state_clone, &event).await;
-            if response.trim().is_empty() {
+            let storage = state_clone.core.cron_job_storage();
+            let result = run_scheduled_task(&state_clone, &event).await;
+            if !result.should_deliver {
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "noop".to_string()
+                        },
+                        message_send_status: if result.error.is_some() {
+                            "skipped_error".to_string()
+                        } else {
+                            "skipped_noop".to_string()
+                        },
+                        should_deliver: false,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: result.error.clone(),
+                        detail: result.metadata.clone(),
+                    },
+                );
                 return;
             }
+            let response = if result.error.is_some() {
+                format!("定时任务「{}」执行出错，请稍后重试。", event.job_name)
+            } else {
+                result.content.clone()
+            };
 
             // 1. 推送到 Web 控制台 SSE（供控制台页面实时展示）
-            let _ = state_clone.push_tx.send(PushEvent {
+            let push_result = state_clone.push_tx.send(PushEvent {
                 channel: event.actor.channel.clone(),
                 user_id: event.actor.user_id.clone(),
                 channel_scope: event.actor.channel_scope.clone(),
@@ -100,6 +131,17 @@ pub(crate) async fn handle_scheduler_events(
             });
 
             // 2. 若是 iMessage 渠道，把结果通过 hone-imessage 内置 HTTP 服务投递给用户
+            let mut message_send_status = if push_result.is_ok() {
+                "sent".to_string()
+            } else {
+                "send_failed".to_string()
+            };
+            let mut delivered = push_result.is_ok();
+            let mut error_message = result.error.clone();
+            let mut detail = json!({
+                "scheduler": result.metadata,
+                "console_event_sent": push_result.is_ok(),
+            });
             if event.channel == "imessage" {
                 let url = format!(
                     "http://{}/api/send",
@@ -115,7 +157,7 @@ pub(crate) async fn handle_scheduler_events(
                 });
 
                 // 复用 AppState 中的 http_client，最多重试一次
-                let mut delivered = false;
+                delivered = false;
                 for attempt in 1u8..=2 {
                     match state_clone
                         .http_client
@@ -158,14 +200,48 @@ pub(crate) async fn handle_scheduler_events(
                         "⏰ [iMessage] 定时任务 2 次尝试均失败，消息未送达: handle={} job={}",
                         handle, job_name
                     );
+                    message_send_status = "send_failed".to_string();
+                    if error_message.is_none() {
+                        error_message = Some("iMessage 定时任务消息未送达".to_string());
+                    }
+                } else {
+                    message_send_status = "sent".to_string();
                 }
+                detail = json!({
+                    "scheduler": result.metadata,
+                    "console_event_sent": push_result.is_ok(),
+                    "imessage_http_delivery": delivered,
+                });
             }
+            let _ = storage.record_execution_event(
+                &event.actor,
+                &event.job_id,
+                &event.job_name,
+                &event.channel_target,
+                event.heartbeat,
+                CronJobExecutionInput {
+                    execution_status: if result.error.is_some() {
+                        "execution_failed".to_string()
+                    } else {
+                        "completed".to_string()
+                    },
+                    message_send_status,
+                    should_deliver: true,
+                    delivered,
+                    response_preview: Some(response),
+                    error_message,
+                    detail,
+                },
+            );
         });
     }
 }
 
 /// 以调度任务的 task_prompt 运行 Agent，返回完整响应文本
-async fn run_scheduled_task(state: &Arc<AppState>, event: &SchedulerEvent) -> String {
+async fn run_scheduled_task(
+    state: &Arc<AppState>,
+    event: &SchedulerEvent,
+) -> scheduler::ScheduledTaskExecution {
     let actor = &event.actor;
     let is_admin = state.core.is_admin_actor(actor);
     let prompt_options = PromptOptions {
@@ -184,15 +260,10 @@ async fn run_scheduled_task(state: &Arc<AppState>, event: &SchedulerEvent) -> St
             .await;
     if !result.should_deliver {
         info!("⏰ [{}] 心跳任务未命中，跳过发送", actor.user_id);
-        String::new()
-    } else if let Some(err) = result.error {
+    } else if let Some(err) = result.error.as_deref() {
         error!("⏰ [{}] 定时任务执行失败: {}", actor.user_id, err);
-        format!("定时任务「{}」执行出错，请稍后重试。", event.job_name)
     } else {
-        info!(
-            "⏰ [{}] 定时任务完成",
-            actor.user_id
-        );
-        result.content
+        info!("⏰ [{}] 定时任务完成", actor.user_id);
     }
+    result
 }

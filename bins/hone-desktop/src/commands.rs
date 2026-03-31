@@ -1,9 +1,9 @@
 use tauri::{AppHandle, State};
 
 use crate::sidecar::{
-    AgentSettings, BackendConfig, BackendStatusInfo, CliCheckResult, DesktopChannelSettings,
-    DesktopChannelSettingsInput, DesktopChannelSettingsUpdateResult, DesktopState, FmpSettings,
-    OpenRouterSettings, TavilySettings,
+    AgentSettings, BackendConfig, BackendStatusInfo, ChannelProcessCleanupResult, CliCheckResult,
+    DesktopChannelSettings, DesktopChannelSettingsInput, DesktopChannelSettingsUpdateResult,
+    DesktopState, FmpSettings, OpenRouterSettings, TavilySettings,
 };
 
 #[tauri::command]
@@ -63,6 +63,13 @@ pub(crate) async fn set_channel_settings(
 #[tauri::command]
 pub(crate) fn backend_status(app: AppHandle, state: State<'_, DesktopState>) -> BackendStatusInfo {
     crate::sidecar::backend_status_impl(app, state)
+}
+
+#[tauri::command]
+pub(crate) async fn cleanup_channel_processes(
+    state: State<'_, DesktopState>,
+) -> Result<ChannelProcessCleanupResult, String> {
+    crate::sidecar::cleanup_channel_processes_impl(state).await
 }
 
 #[tauri::command]
@@ -141,6 +148,14 @@ pub(crate) fn run_desktop_app() {
     tauri::Builder::default()
         .manage(DesktopState::default())
         .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            if let Err(error) = crate::sidecar::prepare_desktop_startup(app.handle().clone()) {
+                crate::sidecar::show_startup_error_dialog(&error);
+                return Err(std::io::Error::other(error).into());
+            }
+            crate::sidecar::bootstrap_backend_on_startup(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_backend_config,
             set_backend_config,
@@ -150,6 +165,7 @@ pub(crate) fn run_desktop_app() {
             get_channel_settings,
             set_channel_settings,
             backend_status,
+            cleanup_channel_processes,
             get_agent_settings,
             set_agent_settings,
             check_agent_cli,

@@ -3,6 +3,9 @@ use hone_core::config::{CodexAcpConfig, GeminiAcpConfig, OpencodeAcpConfig};
 use hone_memory::restore_tool_message;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
 
 use super::acp_common::{
     AcpPromptState, CliVersion, extract_finished_tool_calls, parse_cli_version,
@@ -15,7 +18,9 @@ use super::gemini_acp::{
 };
 use super::opencode_acp::{
     configured_opencode_model_id, effective_opencode_args, isolated_opencode_config,
+    resolve_command_path_with_env,
 };
+use uuid::Uuid;
 
 #[test]
 fn configured_model_id_appends_variant() {
@@ -70,6 +75,66 @@ fn isolated_opencode_config_denies_external_directory_and_bash() {
     assert_eq!(payload["permission"]["bash"], "deny");
     assert_eq!(payload["permission"]["external_directory"]["*"], "deny");
     assert_eq!(payload["model"], "openrouter/google/gemini-3.1-pro-preview");
+}
+
+fn make_temp_exec(dir: &Path, name: &str) -> PathBuf {
+    let path = dir.join(name);
+    fs::write(&path, "#!/bin/sh\nexit 0\n").expect("write temp executable");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut perms = fs::metadata(&path).expect("metadata").permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&path, perms).expect("set permissions");
+    }
+    path
+}
+
+#[test]
+fn resolve_opencode_command_prefers_existing_path_entry() {
+    let temp_root = std::env::temp_dir().join(format!("hone-opencode-path-{}", Uuid::new_v4()));
+    let bin_dir = temp_root.join("bin");
+    fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let command_name = format!("opencode-test-{}", Uuid::new_v4());
+    let binary = make_temp_exec(&bin_dir, &command_name);
+
+    let resolved = resolve_command_path_with_env(&command_name, Some(bin_dir.as_os_str()), None);
+    assert_eq!(resolved, binary);
+
+    let _ = fs::remove_dir_all(&temp_root);
+}
+
+#[test]
+fn resolve_opencode_command_falls_back_to_home_local_bin() {
+    let temp_home = std::env::temp_dir().join(format!("hone-opencode-home-{}", Uuid::new_v4()));
+    let local_bin = temp_home.join(".local").join("bin");
+    fs::create_dir_all(&local_bin).expect("create local bin");
+    let command_name = format!("opencode-test-{}", Uuid::new_v4());
+    let binary = make_temp_exec(&local_bin, &command_name);
+
+    let resolved = resolve_command_path_with_env(&command_name, None, Some(&temp_home));
+    assert_eq!(resolved, binary);
+
+    let _ = fs::remove_dir_all(&temp_home);
+}
+
+#[test]
+fn resolve_opencode_command_prefers_bundled_env_override() {
+    let temp_root = std::env::temp_dir().join(format!("hone-opencode-bundled-{}", Uuid::new_v4()));
+    fs::create_dir_all(&temp_root).expect("create temp root");
+    let binary = make_temp_exec(&temp_root, "opencode");
+
+    unsafe {
+        std::env::set_var("HONE_BUNDLED_OPENCODE_BIN", &binary);
+    }
+    let resolved = resolve_command_path_with_env("opencode", None, None);
+    assert_eq!(resolved, binary);
+    unsafe {
+        std::env::remove_var("HONE_BUNDLED_OPENCODE_BIN");
+    }
+
+    let _ = fs::remove_dir_all(&temp_root);
 }
 
 #[test]

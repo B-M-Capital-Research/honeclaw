@@ -17,6 +17,7 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
+serde_json = { workspace = true }
 serenity = { version = "0.12", features = ["client", "gateway", "model", "cache"] }
 flate2 = "1"
 tar = "0.4"

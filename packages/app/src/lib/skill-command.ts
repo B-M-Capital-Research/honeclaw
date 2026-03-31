@@ -74,7 +74,7 @@ function scoreSkill(skill: SkillInfo, query: string) {
     { value: skill.display_name, base: 120 },
     { value: skill.description, base: 40 },
     ...skill.aliases.map((value) => ({ value, base: 110 })),
-    ...skill.tools.map((value) => ({ value, base: 20 })),
+    ...skill.allowed_tools.map((value) => ({ value, base: 20 })),
   ]
 
   return fields.reduce((best, field) => Math.max(best, scoreField(field.value, query, field.base)), 0)

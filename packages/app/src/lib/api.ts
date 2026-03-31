@@ -3,10 +3,12 @@ import type {
   HistoryMsg,
   KbEntry,
   MetaInfo,
+  SkillDetailInfo,
   SkillInfo,
   StockRow,
   UserInfo,
   CronJobInfo,
+  CronJobDetailInfo,
   CronJobUpsertInput,
   PortfolioInfo,
   PortfolioSummary,
@@ -68,6 +70,11 @@ export async function getSkills() {
   return parseJson<SkillInfo[]>(response);
 }
 
+export async function getSkill(skillId: string) {
+  const response = await apiFetch(`/api/skills/${encodeURIComponent(skillId)}`);
+  return parseJson<SkillDetailInfo>(response);
+}
+
 export async function sendChat(actor: ActorRef, message: string, signal?: AbortSignal) {
   const response = await apiFetch("/api/chat", {
     method: "POST",
@@ -111,7 +118,7 @@ export async function getCronJob(id: string, actor?: ActorRef) {
     ? `/api/cron-jobs/${encodeURIComponent(id)}?${actorQuery(actor)}`
     : `/api/cron-jobs/${encodeURIComponent(id)}`;
   const response = await apiFetch(url);
-  const payload = await parseJson<{ job: CronJobInfo }>(response);
+  const payload = await parseJson<{ job: CronJobDetailInfo }>(response);
   return payload.job;
 }
 

@@ -162,7 +162,9 @@ impl SqliteSessionMirror {
             .map_err(|err| HoneError::Serialization(err.to_string()))?;
 
         let source_meta = std::fs::metadata(source_path)?;
-        let source_path = source_path.canonicalize().unwrap_or_else(|_| source_path.to_path_buf());
+        let source_path = source_path
+            .canonicalize()
+            .unwrap_or_else(|_| source_path.to_path_buf());
         let source_path_str = source_path.to_string_lossy().to_string();
         let imported_at = hone_core::beijing_now_rfc3339();
         let content_sha256 = sha256_hex(&source_json);
@@ -170,12 +172,21 @@ impl SqliteSessionMirror {
 
         let conn = self.conn.lock().map_err(lock_err)?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
-        tx.execute("DELETE FROM session_metadata WHERE session_id = ?1", params![session.id])
-            .map_err(sql_err)?;
-        tx.execute("DELETE FROM session_messages WHERE session_id = ?1", params![session.id])
-            .map_err(sql_err)?;
-        tx.execute("DELETE FROM sessions WHERE session_id = ?1", params![session.id])
-            .map_err(sql_err)?;
+        tx.execute(
+            "DELETE FROM session_metadata WHERE session_id = ?1",
+            params![session.id],
+        )
+        .map_err(sql_err)?;
+        tx.execute(
+            "DELETE FROM session_messages WHERE session_id = ?1",
+            params![session.id],
+        )
+        .map_err(sql_err)?;
+        tx.execute(
+            "DELETE FROM sessions WHERE session_id = ?1",
+            params![session.id],
+        )
+        .map_err(sql_err)?;
 
         tx.execute(
             "
@@ -426,10 +437,7 @@ mod tests {
                     metadata: None,
                 },
             ],
-            metadata: HashMap::from([(
-                "channel".to_string(),
-                Value::String("feishu".to_string()),
-            )]),
+            metadata: HashMap::from([("channel".to_string(), Value::String("feishu".to_string()))]),
             runtime: SessionRuntimeState::default(),
             summary: Some(SessionSummary {
                 content: "summary".to_string(),
@@ -440,10 +448,13 @@ mod tests {
 
     #[test]
     fn upsert_session_persists_rows() {
-        let root = std::env::temp_dir().join(format!("hone_session_sqlite_{}", uuid::Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("hone_session_sqlite_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("root");
         let db_path = root.join("sessions.sqlite3");
-        let source_path = root.join("sessions").join("Actor_feishu__direct__alice.json");
+        let source_path = root
+            .join("sessions")
+            .join("Actor_feishu__direct__alice.json");
         std::fs::create_dir_all(source_path.parent().expect("parent")).expect("sessions dir");
         let session = make_session();
         std::fs::write(
@@ -453,14 +464,18 @@ mod tests {
         .expect("write source");
 
         let mirror = SqliteSessionMirror::new(&db_path).expect("mirror");
-        mirror.upsert_session(&source_path, &session).expect("upsert");
+        mirror
+            .upsert_session(&source_path, &session)
+            .expect("upsert");
 
         let conn = sqlite3_connect(&db_path);
         let session_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
             .expect("session count");
         let message_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM session_messages", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM session_messages", [], |row| {
+                row.get(0)
+            })
             .expect("message count");
         assert_eq!(session_count, 1);
         assert_eq!(message_count, 2);

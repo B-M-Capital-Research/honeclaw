@@ -2,7 +2,7 @@ import { createContext, createEffect, createResource, useContext, type ParentPro
 import { createStore } from "solid-js/store"
 import { getCronJobs, getCronJob, createCronJob, updateCronJob, toggleCronJob, deleteCronJob } from "@/lib/api"
 import { actorFromJob } from "@/lib/actors"
-import type { CronJobInfo, CronJobUpsertInput } from "@/lib/types"
+import type { CronJobDetailInfo, CronJobInfo, CronJobUpsertInput } from "@/lib/types"
 import { useBackend } from "./backend"
 
 type TasksContextValue = ReturnType<typeof createTasksState>
@@ -40,10 +40,29 @@ function createTasksState() {
         },
     )
 
+    const [taskDetail, { refetch: refetchTaskDetail }] = createResource(
+        () => {
+            if (!backend.state.connected || !backend.hasCapability("cron_jobs")) return undefined
+            const taskId = state.currentTaskId
+            if (!taskId || taskId === "new") return undefined
+            return taskId
+        },
+        async (taskId): Promise<CronJobDetailInfo | undefined> => {
+            try {
+                return await getCronJob(taskId)
+            } catch (error) {
+                console.warn("getCronJob failed", error)
+                return undefined
+            }
+        },
+    )
+
     const currentTask = () => {
         if (!state.currentTaskId || state.currentTaskId === "new") return undefined
-        return jobs()?.find((j) => j.id === state.currentTaskId)
+        return taskDetail()?.job || jobs()?.find((j) => j.id === state.currentTaskId)
     }
+
+    const executionRecords = () => taskDetail()?.executions || []
 
     const selectTask = (taskId?: string) => {
         setState("currentTaskId", taskId)
@@ -60,7 +79,7 @@ function createTasksState() {
                     tags: [],
                 })
         } else {
-            const existing = currentTask()
+            const existing = taskDetail()?.job || currentTask()
             if (existing) {
                 setState("draft", {
                     user_id: existing.user_id,
@@ -83,7 +102,7 @@ function createTasksState() {
     createEffect(() => {
         // 如果我们尚未成功选中或者没有把数据赋予 draft，但实际已经 load 完毕了
         const cid = state.currentTaskId
-        if (cid && cid !== "new" && !state.draft.name && jobs()) {
+        if (cid && cid !== "new" && !state.draft.name && (taskDetail() || jobs())) {
             // 这个操作会在资源拉取完毕后把数据注入 draft 中解决刷新空白的问题
             selectTask(cid)
         }
@@ -99,11 +118,13 @@ function createTasksState() {
                 }
                 const newJob = await createCronJob(input)
                 await refetch()
+                await refetchTaskDetail()
                 selectTask(newJob.id)
             } else if (state.currentTaskId) {
                 const existing = currentTask()
                 await updateCronJob(state.currentTaskId, input, existing ? actorFromJob(existing) : undefined)
                 await refetch()
+                await refetchTaskDetail()
             }
         } finally {
             setState("submitting", false)
@@ -114,6 +135,9 @@ function createTasksState() {
         const existing = jobs()?.find((job) => job.id === taskId)
         await toggleCronJob(taskId, existing ? actorFromJob(existing) : undefined)
         await refetch()
+        if (state.currentTaskId === taskId) {
+            await refetchTaskDetail()
+        }
     }
 
     const removeTask = async (taskId: string) => {
@@ -128,8 +152,10 @@ function createTasksState() {
     return {
         state,
         jobs,
+        taskDetail,
         refetch,
         currentTask,
+        executionRecords,
         selectTask,
         saveTask,
         toggleTask,

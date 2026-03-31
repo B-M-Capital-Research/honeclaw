@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use feishu_sdk::core::{Config as FeishuConfig, noop_logger};
+use feishu_sdk::core::{Config as FeishuConfig, LogLevel as FeishuLogLevel, new_logger};
 use feishu_sdk::event::{Event, EventDispatcher, EventDispatcherConfig, EventHandler, EventResp};
 use feishu_sdk::ws::StreamClient;
 use hone_channels::ChatMode;
@@ -16,13 +16,14 @@ use hone_channels::attachments::{
 };
 use hone_channels::channel_download_dir;
 use hone_channels::ingress::{
-    ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope, MessageDeduplicator,
-    SessionLockRegistry, persist_buffered_group_messages,
+    ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
+    MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
 use hone_channels::outbound::attach_stream_activity_probe;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
 use hone_core::{ActorIdentity, SessionIdentity};
+use hone_memory::cron_job::CronJobExecutionInput;
 use hone_scheduler::SchedulerEvent;
 use serde_json::{Value, json};
 use tracing::{error, info, warn};
@@ -58,6 +59,10 @@ fn feishu_speaker_label(open_id: &str, email: Option<&str>, mobile: Option<&str>
 
 fn build_group_user_input_with_speaker(label: &str, text: &str) -> String {
     format!("[{label}] {}", text.trim())
+}
+
+fn build_group_busy_text(speaker_label: &str) -> String {
+    format!("正在处理 {speaker_label} 的消息，请等上一条完成后再 @ 我。")
 }
 
 #[async_trait]
@@ -106,6 +111,27 @@ pub(crate) async fn run() {
         return;
     }
 
+    let _process_lock =
+        match hone_core::acquire_runtime_process_lock(&core.config, hone_core::PROCESS_LOCK_FEISHU)
+        {
+            Ok(lock) => lock,
+            Err(error) => {
+                error!(
+                    "{}",
+                    hone_core::format_lock_failure_message(
+                        hone_core::PROCESS_LOCK_FEISHU,
+                        &hone_core::process_lock_path(
+                            &hone_core::runtime_heartbeat_dir(&core.config),
+                            hone_core::PROCESS_LOCK_FEISHU
+                        ),
+                        &error,
+                        "Feishu"
+                    )
+                );
+                std::process::exit(1);
+            }
+        };
+
     let _heartbeat = match hone_core::spawn_process_heartbeat(&core.config, "feishu") {
         Ok(heartbeat) => heartbeat,
         Err(err) => {
@@ -138,15 +164,18 @@ pub(crate) async fn run() {
         ),
     });
 
+    let sdk_logger = new_logger(FeishuLogLevel::Info);
     let event_config = EventDispatcherConfig::new();
-    let dispatcher = EventDispatcher::new(event_config, noop_logger());
+    let dispatcher = EventDispatcher::new(event_config, sdk_logger.clone());
     dispatcher
         .register_handler(Box::new(FeishuEventHandler {
             state: state.clone(),
         }))
         .await;
 
-    let feishu_config = FeishuConfig::builder(&app_id, &app_secret).build();
+    let feishu_config = FeishuConfig::builder(&app_id, &app_secret)
+        .log_level(FeishuLogLevel::Info)
+        .build();
     let stream_client = StreamClient::new(feishu_config, dispatcher)
         .expect("Failed to create feishu stream client");
 
@@ -164,8 +193,18 @@ pub(crate) async fn run() {
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {},
-        _ = stream_handle => {
-            error!("Feishu StreamClient background task exited unexpectedly");
+        result = stream_handle => {
+            match result {
+                Ok(Ok(())) => {
+                    error!("Feishu StreamClient stopped without an explicit error");
+                }
+                Ok(Err(err)) => {
+                    error!("Feishu StreamClient exited with error: {err}");
+                }
+                Err(err) => {
+                    error!("Feishu StreamClient join failed: {err}");
+                }
+            }
         }
     }
     info!("👋 Feishu 渠道已停止");
@@ -174,11 +213,15 @@ pub(crate) async fn run() {
 async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessage) {
     let chat_type = msg.chat_type.as_deref().unwrap_or("p2p");
     let is_group = chat_type != "p2p";
-    if state.core.config.feishu.dm_only && chat_type != "p2p" {
+    if is_group && !state.core.config.feishu.chat_scope.allows_group() {
         warn!(
-            "[Feishu] 忽略非私聊消息: chat_type={} chat_id={}",
+            "[Feishu] chat_scope 拒绝群聊消息: chat_type={} chat_id={}",
             chat_type, msg.chat_id
         );
+        return;
+    }
+    if !is_group && !state.core.config.feishu.chat_scope.allows_direct() {
+        warn!("[Feishu] chat_scope 拒绝私聊消息: open_id={}", msg.open_id);
         return;
     }
 
@@ -319,7 +362,54 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         );
     }
 
-    let _session_guard = state.session_locks.lock(&session_id).await;
+    let _active_guard = if is_group {
+        match state.session_locks.try_begin_active(
+            &session_id,
+            ActiveSessionInfo {
+                speaker_label: speaker_label.clone(),
+                message_id: Some(msg.message_id.clone()),
+            },
+        ) {
+            Ok(guard) => Some(guard),
+            Err(active) => {
+                if !text.is_empty() && state.core.config.group_context.pretrigger_window_enabled {
+                    state
+                        .pretrigger
+                        .push(
+                            &session_id,
+                            BufferedGroupMessage::new(
+                                "feishu",
+                                msg.message_id.clone(),
+                                speaker_label.clone(),
+                                text.to_string(),
+                            ),
+                        )
+                        .await;
+                }
+                let busy_text = prepend_reply_prefix(
+                    reply_prefix.as_deref(),
+                    &build_group_busy_text(&active.speaker_label),
+                );
+                if let Err(err) = send_plain_text(
+                    &state.facade,
+                    &outbound_receive_id,
+                    outbound_receive_id_type,
+                    &busy_text,
+                )
+                .await
+                {
+                    warn!("[Feishu] 发送 busy 提示失败: {err}");
+                }
+                warn!(
+                    "[Feishu] 群聊触发命中 busy，已回提示并保留到预触发窗口: chat_id={} active_speaker={}",
+                    msg.chat_id, active.speaker_label
+                );
+                return;
+            }
+        }
+    } else {
+        None
+    };
     if state
         .core
         .session_storage
@@ -677,14 +767,43 @@ async fn handle_scheduler_events(
 
         let state_clone = state.clone();
         tokio::spawn(async move {
-            let response = run_scheduled_task(&state_clone, &event).await;
-            if response.trim().is_empty() {
+            let storage = state_clone.core.cron_job_storage();
+            let result = run_scheduled_task(&state_clone, &event).await;
+            if !result.should_deliver {
                 info!(
                     "[Feishu] 心跳任务未命中，本轮不发送: job={} target={}",
                     event.job_name, event.channel_target
                 );
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "noop".to_string()
+                        },
+                        message_send_status: if result.error.is_some() {
+                            "skipped_error".to_string()
+                        } else {
+                            "skipped_noop".to_string()
+                        },
+                        should_deliver: false,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: result.error.clone(),
+                        detail: result.metadata.clone(),
+                    },
+                );
                 return;
             }
+            let response = result
+                .error
+                .clone()
+                .unwrap_or_else(|| result.content.clone());
             let receive_id =
                 match resolve_receive_id(&state_clone.facade, &event.channel_target).await {
                     Ok(id) => id,
@@ -692,6 +811,26 @@ async fn handle_scheduler_events(
                         error!(
                             "[Feishu] 定时任务目标解析失败: job={} target={} err={}",
                             event.job_name, event.channel_target, err
+                        );
+                        let _ = storage.record_execution_event(
+                            &event.actor,
+                            &event.job_id,
+                            &event.job_name,
+                            &event.channel_target,
+                            event.heartbeat,
+                            CronJobExecutionInput {
+                                execution_status: if result.error.is_some() {
+                                    "execution_failed".to_string()
+                                } else {
+                                    "completed".to_string()
+                                },
+                                message_send_status: "target_resolution_failed".to_string(),
+                                should_deliver: true,
+                                delivered: false,
+                                response_preview: Some(response.clone()),
+                                error_message: Some(err.to_string()),
+                                detail: result.metadata.clone(),
+                            },
                         );
                         return;
                     }
@@ -703,6 +842,26 @@ async fn handle_scheduler_events(
                     "[Feishu] 定时任务目标校验失败: job={} target={} receive_id={} err={}",
                     event.job_name, event.channel_target, receive_id, err
                 );
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "completed".to_string()
+                        },
+                        message_send_status: "target_resolution_failed".to_string(),
+                        should_deliver: true,
+                        delivered: false,
+                        response_preview: Some(response.clone()),
+                        error_message: Some(err.to_string()),
+                        detail: result.metadata.clone(),
+                    },
+                );
                 return;
             }
             let idempotency = scheduled_send_idempotency(&event, &receive_id, &response, "open_id");
@@ -713,6 +872,30 @@ async fn handle_scheduler_events(
                 warn!(
                     "[Feishu] 已拦截重复定时任务投递: job={} delivery_key={} target={}",
                     event.job_name, event.delivery_key, receive_id
+                );
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "completed".to_string()
+                        },
+                        message_send_status: "duplicate_suppressed".to_string(),
+                        should_deliver: true,
+                        delivered: false,
+                        response_preview: Some(response.clone()),
+                        error_message: result.error.clone(),
+                        detail: json!({
+                            "receive_id": receive_id,
+                            "delivery_key": event.delivery_key,
+                            "scheduler": result.metadata,
+                        }),
+                    },
                 );
                 return;
             }
@@ -732,12 +915,64 @@ async fn handle_scheduler_events(
                     "[Feishu] 定时任务投递失败: job={} target={} err={}",
                     event.job_name, event.channel_target, err
                 );
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "completed".to_string()
+                        },
+                        message_send_status: "send_failed".to_string(),
+                        should_deliver: true,
+                        delivered: false,
+                        response_preview: Some(response.clone()),
+                        error_message: Some(err.to_string()),
+                        detail: json!({
+                            "receive_id": receive_id,
+                            "delivery_key": event.delivery_key,
+                            "scheduler": result.metadata,
+                        }),
+                    },
+                );
+            } else {
+                let _ = storage.record_execution_event(
+                    &event.actor,
+                    &event.job_id,
+                    &event.job_name,
+                    &event.channel_target,
+                    event.heartbeat,
+                    CronJobExecutionInput {
+                        execution_status: if result.error.is_some() {
+                            "execution_failed".to_string()
+                        } else {
+                            "completed".to_string()
+                        },
+                        message_send_status: "sent".to_string(),
+                        should_deliver: true,
+                        delivered: true,
+                        response_preview: Some(response),
+                        error_message: result.error.clone(),
+                        detail: json!({
+                            "receive_id": receive_id,
+                            "delivery_key": event.delivery_key,
+                            "scheduler": result.metadata,
+                        }),
+                    },
+                );
             }
         });
     }
 }
 
-async fn run_scheduled_task(state: &Arc<AppState>, event: &SchedulerEvent) -> String {
+async fn run_scheduled_task(
+    state: &Arc<AppState>,
+    event: &SchedulerEvent,
+) -> scheduler::ScheduledTaskExecution {
     let actor = &event.actor;
     let is_admin = state.core.is_admin_actor(actor);
     let prompt_options = PromptOptions {
@@ -751,22 +986,7 @@ async fn run_scheduled_task(state: &Arc<AppState>, event: &SchedulerEvent) -> St
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
         model_override: None,
     };
-    let result =
-        scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options)
-            .await;
-    if result.should_deliver {
-        if let Some(error) = result.error {
-            if result.content.trim().is_empty() {
-                error
-            } else {
-                result.content
-            }
-        } else {
-            result.content
-        }
-    } else {
-        String::new()
-    }
+    scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options).await
 }
 
 fn preferred_extension_for_content_type(content_type: &str) -> Option<&'static str> {

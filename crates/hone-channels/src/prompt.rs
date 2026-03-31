@@ -87,7 +87,7 @@ pub fn default_admin_prompt(project_root: &str) -> String {
         \n2. 可调用 restart_hone(confirm=\"yes\") 工具重启 Hone（将重新编译并启动）\
         \n3. 如需人工排查源码，仓库根目录仍为：{project_root}\
         \n4. 管理员操作须谨慎，执行重启前应先确认影响范围\
-        \n如需使用管理员功能，请先 load_skill(\"hone_admin\") 获取详细操作指引。"
+        \n如需使用管理员技能，请先调用 skill_tool(skill_name=\"hone_admin\") 获取完整操作指引。"
     )
 }
 

@@ -3,7 +3,7 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 #[derive(Debug, Deserialize, Default)]
 pub struct AuditQueryFilter {
@@ -34,12 +34,16 @@ pub struct AuditRecordSummary {
     pub model: Option<String>,
     pub success: bool,
     pub latency_ms: Option<u128>,
+    pub prompt_tokens: Option<u32>,
+    pub completion_tokens: Option<u32>,
+    pub total_tokens: Option<u32>,
 }
 
 pub struct LlmAuditStorage {
     conn: Mutex<Connection>,
     retention_days: u32,
     write_count: AtomicU64,
+    has_token_columns: AtomicBool,
 }
 
 impl LlmAuditStorage {
@@ -60,8 +64,11 @@ impl LlmAuditStorage {
             conn: Mutex::new(conn),
             retention_days: retention_days.max(1),
             write_count: AtomicU64::new(0),
+            has_token_columns: AtomicBool::new(false),
         };
         storage.init_schema()?;
+        storage.migrate_schema()?;
+        storage.refresh_schema_flags()?;
         storage.prune_expired()?;
         Ok(storage)
     }
@@ -72,11 +79,13 @@ impl LlmAuditStorage {
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
         )
         .map_err(|e| HoneError::Config(format!("以只读模式打开 LLM 审计 SQLite 失败: {e}")))?;
+        let has_token_columns = detect_token_columns(&conn)?;
 
         Ok(Self {
             conn: Mutex::new(conn),
             retention_days: 0,
             write_count: AtomicU64::new(0),
+            has_token_columns: AtomicBool::new(has_token_columns),
         })
     }
 
@@ -117,6 +126,18 @@ impl LlmAuditStorage {
         Ok(())
     }
 
+    fn migrate_schema(&self) -> HoneResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        migrate_token_columns(&conn)
+    }
+
+    fn refresh_schema_flags(&self) -> HoneResult<()> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        self.has_token_columns
+            .store(detect_token_columns(&conn)?, Ordering::Relaxed);
+        Ok(())
+    }
+
     pub fn prune_expired(&self) -> HoneResult<()> {
         let cutoff = hone_core::beijing_now() - chrono::Duration::days(self.retention_days as i64);
         let conn = self.conn.lock().map_err(lock_err)?;
@@ -152,7 +173,14 @@ impl LlmAuditStorage {
         filter: &AuditQueryFilter,
     ) -> HoneResult<(Vec<AuditRecordSummary>, i64)> {
         let conn = self.conn.lock().map_err(lock_err)?;
-        let mut query = "SELECT id, created_at, session_id, actor_channel, actor_user_id, actor_scope, source, operation, provider, model, success, latency_ms FROM llm_audit_records WHERE 1=1".to_string();
+        let token_select = if self.has_token_columns.load(Ordering::Relaxed) {
+            "prompt_tokens, completion_tokens, total_tokens"
+        } else {
+            "NULL AS prompt_tokens, NULL AS completion_tokens, NULL AS total_tokens"
+        };
+        let mut query = format!(
+            "SELECT id, created_at, session_id, actor_channel, actor_user_id, actor_scope, source, operation, provider, model, success, latency_ms, {token_select} FROM llm_audit_records WHERE 1=1"
+        );
         let mut count_query = "SELECT COUNT(*) FROM llm_audit_records WHERE 1=1".to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         let mut param_idx = 1;
@@ -231,6 +259,9 @@ impl LlmAuditStorage {
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
                 let latency_i64: Option<i64> = row.get(11)?;
+                let prompt_tokens: Option<u32> = row.get(12)?;
+                let completion_tokens: Option<u32> = row.get(13)?;
+                let total_tokens: Option<u32> = row.get(14)?;
                 Ok(AuditRecordSummary {
                     id: row.get(0)?,
                     created_at: row.get(1)?,
@@ -244,6 +275,9 @@ impl LlmAuditStorage {
                     model: row.get(9)?,
                     success: row.get::<_, i32>(10)? != 0,
                     latency_ms: latency_i64.map(|v| v as u128),
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
                 })
             })
             .map_err(sql_err)?;
@@ -259,11 +293,16 @@ impl LlmAuditStorage {
     pub fn get_audit_record(&self, id: &str) -> HoneResult<Option<LlmAuditRecord>> {
         use hone_core::ActorIdentity;
         let conn = self.conn.lock().map_err(lock_err)?;
+        let token_select = if self.has_token_columns.load(Ordering::Relaxed) {
+            "prompt_tokens, completion_tokens, total_tokens"
+        } else {
+            "NULL AS prompt_tokens, NULL AS completion_tokens, NULL AS total_tokens"
+        };
         let mut stmt = conn
-            .prepare(
-                "SELECT id, created_at, session_id, actor_channel, actor_user_id, actor_scope, source, operation, provider, model, success, latency_ms, request_json, response_json, error_text, metadata_json, prompt_tokens, completion_tokens, total_tokens
-                 FROM llm_audit_records WHERE id = ?1",
-            )
+            .prepare(&format!(
+                "SELECT id, created_at, session_id, actor_channel, actor_user_id, actor_scope, source, operation, provider, model, success, latency_ms, request_json, response_json, error_text, metadata_json, {token_select}
+                 FROM llm_audit_records WHERE id = ?1"
+            ))
             .map_err(sql_err)?;
 
         let mut rows = stmt
@@ -379,6 +418,58 @@ impl LlmAuditSink for LlmAuditStorage {
         self.maybe_prune_after_write()?;
         Ok(())
     }
+}
+
+fn detect_token_columns(conn: &Connection) -> HoneResult<bool> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(llm_audit_records)")
+        .map_err(sql_err)?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(sql_err)?;
+
+    let mut prompt = false;
+    let mut completion = false;
+    let mut total = false;
+    for row in rows {
+        match row.map_err(sql_err)?.as_str() {
+            "prompt_tokens" => prompt = true,
+            "completion_tokens" => completion = true,
+            "total_tokens" => total = true,
+            _ => {}
+        }
+    }
+    Ok(prompt && completion && total)
+}
+
+fn migrate_token_columns(conn: &Connection) -> HoneResult<()> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(llm_audit_records)")
+        .map_err(sql_err)?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(sql_err)?;
+
+    let mut columns = Vec::new();
+    for row in rows {
+        columns.push(row.map_err(sql_err)?);
+    }
+
+    for (name, ty) in [
+        ("prompt_tokens", "INTEGER"),
+        ("completion_tokens", "INTEGER"),
+        ("total_tokens", "INTEGER"),
+    ] {
+        if !columns.iter().any(|column| column == name) {
+            conn.execute(
+                &format!("ALTER TABLE llm_audit_records ADD COLUMN {name} {ty}"),
+                [],
+            )
+            .map_err(sql_err)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn ensure_parent_dir(path: &Path) -> HoneResult<()> {
@@ -498,6 +589,7 @@ mod tests {
         assert_eq!(res.1, 1);
         assert_eq!(res.0[0].actor_channel.as_deref(), Some("feishu"));
         assert_eq!(res.0[0].latency_ms, Some(150));
+        assert_eq!(res.0[0].prompt_tokens, None);
 
         // 3. Test success boolean filtering
         let res_success = storage
@@ -527,6 +619,77 @@ mod tests {
 
         let missing = storage.get_audit_record("not-exist").unwrap();
         assert!(missing.is_none());
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn migrate_legacy_schema_and_persist_tokens() {
+        let root = std::env::temp_dir().join(format!("hone_llm_audit_{}", uuid::Uuid::new_v4()));
+        let db_path = root.join("audit.sqlite3");
+        ensure_parent_dir(&db_path).expect("parent dir");
+
+        let conn = Connection::open(&db_path).expect("legacy db");
+        conn.execute_batch(
+            "
+            CREATE TABLE llm_audit_records (
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                actor_channel TEXT,
+                actor_user_id TEXT,
+                actor_scope TEXT,
+                source TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT,
+                success INTEGER NOT NULL,
+                latency_ms INTEGER,
+                request_json TEXT NOT NULL,
+                response_json TEXT,
+                error_text TEXT,
+                metadata_json TEXT
+            );
+            ",
+        )
+        .expect("create legacy schema");
+        drop(conn);
+
+        let storage = LlmAuditStorage::new(&db_path, 30).expect("migrated storage");
+
+        let mut record = LlmAuditRecord::new(
+            "sess-legacy",
+            Some(ActorIdentity::new("discord", "alice", None::<String>).expect("actor")),
+            "agent.gemini_cli",
+            "chat",
+            "gemini_cli",
+            Some("gemini-2.5-pro".to_string()),
+            json!({"messages":[{"role":"user","content":"hi"}]}),
+        );
+        record.success = true;
+        record.response = Some(json!({"content":"hello"}));
+        record.prompt_tokens = Some(11);
+        record.completion_tokens = Some(7);
+        record.total_tokens = Some(18);
+        storage
+            .record(record.clone())
+            .expect("record after migration");
+
+        let detail = storage
+            .get_audit_record(&record.id)
+            .expect("detail query")
+            .expect("detail exists");
+        assert_eq!(detail.prompt_tokens, Some(11));
+        assert_eq!(detail.completion_tokens, Some(7));
+        assert_eq!(detail.total_tokens, Some(18));
+
+        let (records, total) = storage
+            .list_audit_records(&AuditQueryFilter::default())
+            .expect("list query");
+        assert_eq!(total, 1);
+        assert_eq!(records[0].prompt_tokens, Some(11));
+        assert_eq!(records[0].completion_tokens, Some(7));
+        assert_eq!(records[0].total_tokens, Some(18));
 
         let _ = std::fs::remove_dir_all(root);
     }

@@ -495,7 +495,7 @@ export function ChatView(props: { userId?: string }) {
                             <button
                               type="button"
                               onClick={() =>
-                                applySkillDraft(`/skill ${skill.id}`)
+                                applySkillDraft(`/${skill.id}`)
                               }
                               class="block w-full border-b border-[color:var(--border)] px-4 py-3 text-left transition last:border-b-0 hover:bg-black/5"
                             >

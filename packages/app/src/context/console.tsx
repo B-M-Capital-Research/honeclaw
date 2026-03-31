@@ -74,6 +74,7 @@ function createConsoleState() {
     },
     channels,
     channelError,
+    refreshChannels,
     setModule(module: StoredModule) {
       setState("module", module)
     },

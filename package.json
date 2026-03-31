@@ -13,10 +13,10 @@
     "typecheck:web": "bun --filter @hone-financial/app typecheck",
     "test:web": "bun --filter @hone-financial/app test",
     "test:e2e:web": "bun --filter @hone-financial/app test:e2e",
-    "tauri:prep:dev": "bash scripts/prepare_tauri_sidecar.sh debug",
-    "tauri:prep:build": "bash scripts/prepare_tauri_sidecar.sh release",
-    "dev:desktop": "bun run tauri:prep:dev && bunx tauri dev --config bins/hone-desktop/tauri.conf.json",
-    "build:desktop": "bun run tauri:prep:build && bunx tauri build --config bins/hone-desktop/tauri.conf.json"
+    "tauri:prep:dev": "bun scripts/prepare_tauri_sidecar.mjs debug",
+    "tauri:prep:build": "bun scripts/prepare_tauri_sidecar.mjs release",
+    "dev:desktop": "bun run tauri:prep:dev && bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json",
+    "build:desktop": "bun run tauri:prep:build && bunx tauri build --config bins/hone-desktop/tauri.generated.conf.json"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.59.0"

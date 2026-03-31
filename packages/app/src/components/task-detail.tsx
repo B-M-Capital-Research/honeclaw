@@ -5,6 +5,7 @@ import { Textarea } from "@hone-financial/ui/textarea"
 import { Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useTasks } from "@/context/tasks"
+import { formatShanghaiDateTime } from "@/lib/time"
 
 export function TaskDetail() {
     const navigate = useNavigate()
@@ -15,6 +16,38 @@ export function TaskDetail() {
 
     const isHeartbeatDraft = () =>
         tasks.state.draft.repeat === "heartbeat" || (tasks.state.draft.tags || []).includes("heartbeat")
+
+    const executionStatusLabel = (status: string) => {
+        switch (status) {
+            case "completed":
+                return "执行成功"
+            case "noop":
+                return "未命中"
+            case "execution_failed":
+                return "执行失败"
+            default:
+                return status || "未知"
+        }
+    }
+
+    const sendStatusLabel = (status: string) => {
+        switch (status) {
+            case "sent":
+                return "已发送"
+            case "skipped_noop":
+                return "未发送（未命中）"
+            case "skipped_error":
+                return "未发送（执行失败）"
+            case "send_failed":
+                return "发送失败"
+            case "target_resolution_failed":
+                return "目标解析失败"
+            case "duplicate_suppressed":
+                return "已拦截重复发送"
+            default:
+                return status || "未知"
+        }
+    }
 
     const handleSubmit = async (e: Event) => {
         e.preventDefault()
@@ -227,6 +260,86 @@ export function TaskDetail() {
                                 {tasks.state.submitting ? "保存中..." : "保存设置"}
                             </Button>
                         </div>
+
+                        <Show when={!isNew()}>
+                            <div class="space-y-3 border-t border-[color:var(--border)] pt-6">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div>
+                                        <div class="text-base font-semibold">执行记录</div>
+                                        <div class="text-xs text-[color:var(--text-muted)]">
+                                            所有时间统一按东八区（Asia/Shanghai）展示
+                                        </div>
+                                    </div>
+                                    <div class="text-xs text-[color:var(--text-muted)]">
+                                        最近 {tasks.executionRecords().length} 条
+                                    </div>
+                                </div>
+
+                                <div class="overflow-x-auto rounded-lg border border-[color:var(--border)]">
+                                    <Show
+                                        when={tasks.executionRecords().length > 0}
+                                        fallback={
+                                            <div class="px-4 py-8 text-center text-sm text-[color:var(--text-muted)]">
+                                                暂无执行记录
+                                            </div>
+                                        }
+                                    >
+                                        <table class="min-w-full divide-y divide-[color:var(--border)] text-sm">
+                                            <thead class="bg-black/5 text-left text-xs uppercase tracking-wide text-[color:var(--text-muted)]">
+                                                <tr>
+                                                    <th class="px-4 py-3 font-medium">时间</th>
+                                                    <th class="px-4 py-3 font-medium">执行状态</th>
+                                                    <th class="px-4 py-3 font-medium">发送结果</th>
+                                                    <Show when={isHeartbeatDraft()}>
+                                                        <th class="px-4 py-3 font-medium">命中条件</th>
+                                                        <th class="px-4 py-3 font-medium">已发送</th>
+                                                    </Show>
+                                                    <th class="px-4 py-3 font-medium">摘要</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-[color:var(--border)]">
+                                                {tasks.executionRecords().map((record) => (
+                                                    <tr class="align-top">
+                                                        <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-secondary)]">
+                                                            {formatShanghaiDateTime(record.executed_at)}
+                                                        </td>
+                                                        <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-primary)]">
+                                                            {executionStatusLabel(record.execution_status)}
+                                                        </td>
+                                                        <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-primary)]">
+                                                            {sendStatusLabel(record.message_send_status)}
+                                                        </td>
+                                                        <Show when={isHeartbeatDraft()}>
+                                                            <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-primary)]">
+                                                                {record.should_deliver ? "是" : "否"}
+                                                            </td>
+                                                            <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-primary)]">
+                                                                {record.delivered ? "是" : "否"}
+                                                            </td>
+                                                        </Show>
+                                                        <td class="max-w-[460px] px-4 py-3 text-[color:var(--text-secondary)]">
+                                                            <div class="space-y-1">
+                                                                <Show when={record.response_preview}>
+                                                                    <div class="line-clamp-3 break-words">{record.response_preview}</div>
+                                                                </Show>
+                                                                <Show when={record.error_message}>
+                                                                    <div class="break-words text-rose-500">{record.error_message}</div>
+                                                                </Show>
+                                                                <Show when={isHeartbeatDraft() && record.detail}>
+                                                                    <div class="text-[11px] text-[color:var(--text-muted)]">
+                                                                        parse_kind: {String(record.detail?.["parse_kind"] || "-")}
+                                                                    </div>
+                                                                </Show>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </Show>
+                                </div>
+                            </div>
+                        </Show>
                     </form>
                 </div>
             </div>

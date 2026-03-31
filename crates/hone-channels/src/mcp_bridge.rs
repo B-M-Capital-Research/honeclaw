@@ -2,6 +2,7 @@ use hone_core::ActorIdentity;
 use hone_tools::ToolRegistry;
 use serde_json::{Value, json};
 use std::env;
+use std::path::Path;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -26,6 +27,10 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
         json!({
             "name": "HONE_MCP_CHANNEL_TARGET",
             "value": request.channel_target,
+        }),
+        json!({
+            "name": "HONE_MCP_SESSION_ID",
+            "value": request.session_id,
         }),
         json!({
             "name": "HONE_MCP_ALLOW_CRON",
@@ -68,16 +73,10 @@ fn hone_mcp_command_path() -> Result<String, String> {
     let parent = current_exe
         .parent()
         .ok_or_else(|| format!("failed to resolve parent dir for {}", current_exe.display()))?;
-    let binary_name = if cfg!(windows) {
-        "hone-mcp.exe"
-    } else {
-        "hone-mcp"
-    };
-
-    let mut candidates = vec![parent.join(binary_name)];
+    let mut candidates = bundled_binary_candidates(parent, "hone-mcp");
     if parent.file_name().and_then(|value| value.to_str()) == Some("deps") {
         if let Some(grandparent) = parent.parent() {
-            candidates.push(grandparent.join(binary_name));
+            candidates.extend(bundled_binary_candidates(grandparent, "hone-mcp"));
         }
     }
 
@@ -93,6 +92,71 @@ fn hone_mcp_command_path() -> Result<String, String> {
             "hone-mcp binary not found near current executable; tried: {tried} (set HONE_MCP_BIN to override)"
         ))
     }
+}
+
+fn bundled_binary_candidates(base_dir: &Path, binary_stem: &str) -> Vec<PathBuf> {
+    let mut dirs = vec![base_dir.to_path_buf()];
+
+    if let Some(resources_dir) = macos_resources_dir(base_dir) {
+        dirs.push(resources_dir.clone());
+        dirs.push(resources_dir.join("binaries"));
+    }
+
+    let mut candidates = Vec::new();
+    for dir in dirs {
+        for name in bundled_binary_names(binary_stem) {
+            candidates.push(dir.join(&name));
+        }
+    }
+    candidates
+}
+
+fn bundled_binary_names(binary_stem: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let base = if cfg!(windows) {
+        format!("{binary_stem}.exe")
+    } else {
+        binary_stem.to_string()
+    };
+    names.push(base);
+
+    if let Some(triple) = current_target_triple() {
+        let suffixed = if cfg!(windows) {
+            format!("{binary_stem}-{triple}.exe")
+        } else {
+            format!("{binary_stem}-{triple}")
+        };
+        names.push(suffixed);
+    }
+
+    names
+}
+
+fn current_target_triple() -> Option<String> {
+    let arch = match env::consts::ARCH {
+        "aarch64" => "aarch64",
+        "x86_64" => "x86_64",
+        "x86" => "i686",
+        other => other,
+    };
+    let os = match env::consts::OS {
+        "macos" => "apple-darwin",
+        "linux" => "unknown-linux-gnu",
+        "windows" => "pc-windows-msvc",
+        _ => return None,
+    };
+    Some(format!("{arch}-{os}"))
+}
+
+fn macos_resources_dir(base_dir: &Path) -> Option<PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let macos_dir = base_dir.file_name()?.to_str()?;
+    if macos_dir != "MacOS" {
+        return None;
+    }
+    base_dir.parent().map(|contents| contents.join("Resources"))
 }
 
 pub async fn run_hone_mcp_stdio() -> Result<(), String> {

@@ -6,8 +6,8 @@ use hone_channels::attachments::{
     ingest_raw_attachments, spawn_attachment_persist_pipeline,
 };
 use hone_channels::ingress::{
-    ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope, MessageDeduplicator,
-    SessionLockRegistry, persist_buffered_group_messages,
+    ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
+    MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
 use hone_channels::outbound::run_session_with_outbound;
 use hone_channels::prompt::{DEFAULT_GROUP_PRIVACY_GUARD, PromptOptions};
@@ -33,6 +33,10 @@ fn build_group_user_input_with_speaker(label: &str, text: &str) -> String {
     format!("[{label}] {}", text.trim())
 }
 
+fn build_group_busy_text(speaker_label: &str) -> String {
+    format!("正在处理 {speaker_label} 的消息，请等上一条完成后再 @ 我。")
+}
+
 pub(crate) struct DiscordHandler {
     pub(crate) core: Arc<hone_channels::HoneBotCore>,
     pub(crate) dedup: MessageDeduplicator,
@@ -46,8 +50,8 @@ impl EventHandler for DiscordHandler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("✅ Discord 已登录: {} ({})", ready.user.name, ready.user.id);
         info!(
-            "   dm_only={} max_message_length={}",
-            self.core.config.discord.dm_only, self.core.config.discord.max_message_length
+            "   chat_scope={:?} max_message_length={}",
+            self.core.config.discord.chat_scope, self.core.config.discord.max_message_length
         );
         info!(
             "   group_reply.enabled={} pretrigger_window.enabled={} max_messages={} max_age={}s",
@@ -126,13 +130,25 @@ impl DiscordHandler {
         }
 
         let discord_cfg = &self.core.config.discord;
-        if discord_cfg.dm_only && msg.guild_id.is_some() {
+        if msg.guild_id.is_some() && !discord_cfg.chat_scope.allows_group() {
             self.core.log_message_step(
                 "discord",
                 &msg.author.id.get().to_string(),
                 "-",
                 "ignore",
-                "guild_message_blocked_by_dm_only",
+                "guild_message_blocked_by_chat_scope",
+                None,
+                None,
+            );
+            return Ok(());
+        }
+        if msg.guild_id.is_none() && !discord_cfg.chat_scope.allows_direct() {
+            self.core.log_message_step(
+                "discord",
+                &msg.author.id.get().to_string(),
+                "-",
+                "ignore",
+                "dm_message_blocked_by_chat_scope",
                 None,
                 None,
             );
@@ -199,12 +215,22 @@ impl DiscordHandler {
                 .respond_to_command_once(ctx, command, "你没有权限使用这个命令。", true)
                 .await;
         }
-        if self.core.config.discord.dm_only && command.guild_id.is_some() {
+        if command.guild_id.is_some() && !self.core.config.discord.chat_scope.allows_group() {
             return self
                 .respond_to_command_once(
                     ctx,
                     command,
-                    "当前配置为仅允许 DM 使用 Discord Bot。",
+                    "当前配置不允许在群聊中使用 Discord Bot。",
+                    true,
+                )
+                .await;
+        }
+        if command.guild_id.is_none() && !self.core.config.discord.chat_scope.allows_direct() {
+            return self
+                .respond_to_command_once(
+                    ctx,
+                    command,
+                    "当前配置不允许在私聊中使用 Discord Bot。",
                     true,
                 )
                 .await;
@@ -453,7 +479,50 @@ impl DiscordHandler {
             reply_to_bot: false,
             question_signal: false,
         };
-        let _session_guard = self.session_locks.lock(&session_id).await;
+        let _active_guard = match self.session_locks.try_begin_active(
+            &session_id,
+            ActiveSessionInfo {
+                speaker_label: msg.author.name.clone(),
+                message_id: Some(msg.id.get().to_string()),
+            },
+        ) {
+            Ok(guard) => guard,
+            Err(active) => {
+                if !group_text.is_empty()
+                    && self.core.config.group_context.pretrigger_window_enabled
+                {
+                    self.pretrigger
+                        .push(
+                            &session_id,
+                            BufferedGroupMessage::new(
+                                "discord",
+                                msg.id.get().to_string(),
+                                msg.author.name.clone(),
+                                group_text.to_string(),
+                            ),
+                        )
+                        .await;
+                }
+                let busy_text = crate::utils::prepend_reply_prefix(
+                    Some(&format!("<@{}>", msg.author.id.get())),
+                    &build_group_busy_text(&active.speaker_label),
+                );
+                msg.channel_id
+                    .say(&ctx.http, busy_text)
+                    .await
+                    .map_err(|err| hone_core::HoneError::Channel(err.to_string()))?;
+                self.core.log_message_step(
+                    "discord",
+                    author_id,
+                    &session_id,
+                    "group.busy",
+                    &format!("active_speaker={}", active.speaker_label),
+                    None,
+                    Some("busy"),
+                );
+                return Ok(());
+            }
+        };
         if self
             .core
             .session_storage

@@ -1,6 +1,6 @@
-# Honeclaw Technical Specification
+# Hone-Financial Technical Specification
 
-Last updated: 2026-03-22
+Last updated: 2026-03-31
 Status: Aligned with the current implementation
 
 ## 1. Document Purpose
@@ -17,7 +17,7 @@ Source-of-truth priority:
 
 ## 2. Product and Current Capabilities
 
-Honeclaw is a local-first AI research assistant. The current codebase has already been rewritten from the historical Python version into a Rust workspace.
+Hone-Financial is a local-first AI research assistant. The current codebase has already been rewritten from the historical Python version into a Rust workspace.
 
 Current capabilities:
 
@@ -25,14 +25,14 @@ Current capabilities:
 - Multiple agent execution modes: `function_calling`, `gemini_cli`, and `codex_cli`
 - Local JSON persistence for sessions, holdings, scheduled tasks, drafts, and generated files
 - Multi-channel actor isolation by `channel + user_id + channel_scope`
-- A skill system that dynamically loads skill definitions from `skills/` and `data/custom_skills/`
+- A Claude Code-style skill system that discloses compact skill listings first, then injects the full `SKILL.md` only when a skill is invoked
 - A Web console for session browsing, skill management, task management, holdings management, and research tasks
 - Scheduled tasks that poll every minute and run on Beijing time
 
 Current boundaries to keep in mind:
 
 - The Telegram binary and configuration already exist, but the message-delivery path is still a placeholder and should not be treated as a fully usable channel
-- The `hone-tools` crate already contains implementations such as `data_fetch`, `web_search`, and `portfolio`, but `HoneBotCore::create_tool_registry` currently registers only `load_skill`, `skill_tool`, `cron_job`, and the admin-only `restart_hone`
+- The `hone-tools` crate still contains implementations such as `data_fetch`, `web_search`, and `portfolio`, but the default registry currently focuses on the skill runtime (`skill_tool`, `discover_skills`, compatibility `load_skill`), `cron_job`, and the admin-only `restart_hone`
 
 ## 3. Technology Stack
 
@@ -66,7 +66,7 @@ Integrations and external capabilities:
 ### 4.1 Workspace Overview
 
 ```text
-Honeclaw/
+Hone-Financial/
 ├── crates/
 │   ├── hone-core
 │   ├── hone-llm
@@ -110,7 +110,7 @@ Honeclaw/
 #### `crates/hone-tools`
 
 - Defines the `Tool` trait and `ToolRegistry`
-- Implements `load_skill`, `skill_tool`, `cron_job`, and `restart_hone`
+- Implements `skill_runtime`, `skill_tool`, `discover_skills`, compatibility `load_skill`, `cron_job`, and `restart_hone`
 - Keeps `data_fetch`, `web_search`, and `portfolio` implementations around for future wiring and the skill system
 
 #### `crates/hone-integrations`
@@ -231,8 +231,9 @@ This rule is already applied to:
 
 Default registered tools:
 
-- `load_skill`
 - `skill_tool`
+- `discover_skills`
+- `load_skill` (compatibility shim)
 - `cron_job`
 - `restart_hone` (admin only)
 
@@ -250,9 +251,11 @@ That means:
 
 ### 5.6 Skill System
 
-Only one skill format is supported:
+The runtime skill format is:
 
 1. `skills/<name>/SKILL.md`
+2. `data/custom_skills/<name>/SKILL.md`
+3. A closer `.hone/skills/<name>/SKILL.md`
 
 If older environments still contain `skills/<name>.yaml|yml`, run the migration script first and then let runtime load the converted files.
 
@@ -260,23 +263,51 @@ Skill metadata includes:
 
 - `name`
 - `description`
-- `aliases`
-- `tools`
+- `when_to_use`
+- `allowed-tools`
+- `user-invocable`
+- `model`
+- `effort`
+- `context` (`inline` or `fork`)
+- `agent`
+- `paths`
+- `hooks`
+- `arguments`
+- `shell`
+- `aliases` and legacy `tools` are still parsed as migration fallbacks
 - Markdown prompt body
+
+Skill execution is two-phase:
+
+1. The system prompt and discovery text expose only a compact listing of available or relevant skills.
+2. `skill_tool(skill_name="...")` or a user slash command such as `/<skill-name>` injects the fully rendered skill body into the active turn, including `Base directory for this skill` and placeholder expansion for `${HONE_SKILL_DIR}` and `${HONE_SESSION_ID}`.
 
 At runtime, skills are aggregated from two places:
 
 - The in-repo `skills/` directory
 - The user-customizable `./data/custom_skills`
+- Nested `.hone/skills` directories discovered under the current workspace
 
-`skill_tool` allows runtime skill management:
+Precedence is:
 
-- List skills
-- Create custom skills
-- Update custom skills
-- Delete custom skills
+- closer dynamic `.hone/skills`
+- `data/custom_skills`
+- repo `skills/`
 
-System skills cannot be modified through the tool.
+`discover_skills` is the metadata/discovery entrypoint:
+
+- Search relevant skills for the current task
+- Respect `paths`-gated activation based on touched file paths
+- Return compact summaries suitable for prompt disclosure or UI index views
+
+`skill_tool` is the execution entrypoint:
+
+- Load one resolved skill
+- Return the full expanded prompt
+- Surface runtime metadata such as `allowed_tools`, `model`, `effort`, `context`, `agent`, `paths`, and `hooks`
+- Persist invoked skill prompt state into session metadata for compaction / resume recovery
+
+`load_skill` remains as a compatibility shim over the same runtime and should not be taught as the main path.
 
 ## 6. Storage and Data Model
 
@@ -346,6 +377,7 @@ Main routes:
 - `/api/chat`
 - `/api/events`
 - `/api/skills`
+- `/api/skills/{id}`
 - `/api/cron-jobs*`
 - `/api/portfolio*`
 - `/api/research/*`
@@ -514,7 +546,8 @@ Testing organization follows `AGENTS.md`:
 ## 12. Known Differences and Future Work
 
 - `docs/technical-spec.md` has been refreshed from the historical Python document to the current implementation, but it still needs to evolve with the code
-- Some skills in `skills/` depend on `data_fetch`, `web_search`, or `portfolio`, but not all of those tools are wired into the default registry yet
+- Some skills in `skills/` still mention older CRUD-style `skill_tool` or `load_skill` guidance and need continued migration to the execution-style runtime contract
+- Skill fields such as `hooks`, `allowed-tools`, `model`, and `effort` are now parsed and exposed, but strict runner-side enforcement is not fully implemented yet
 - Telegram still needs a real bot integration
 - Persistence is still local JSON-first; if a database is introduced later, `ActorIdentity` must remain the isolation source of truth
 

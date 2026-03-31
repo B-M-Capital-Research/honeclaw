@@ -178,6 +178,7 @@ pub async fn start_server(
             bearer_token,
             sse_tickets: Mutex::new(HashMap::new()),
         },
+        heartbeat_registry: Default::default(),
     });
 
     // ── UDP 日志接收（收集各 channel sidecar 的日志）────────────────
