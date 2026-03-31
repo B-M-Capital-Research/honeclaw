@@ -35,11 +35,19 @@ function stableHistoryId(index: number, role: string, content: string): string {
 }
 
 export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
-  return messages.map((message, index) => ({
-    id: stableHistoryId(index, message.role, message.content),
-    kind: message.role,
-    content: message.content,
-  }))
+  return messages
+    .filter(
+      (message) =>
+        message.subtype === "compact_boundary" || !message.transcript_only,
+    )
+    .map((message, index) => ({
+      id: stableHistoryId(index, message.role, message.content),
+      kind: message.role === "user" || message.role === "assistant" ? message.role : "system",
+      content: message.content,
+      subtype: message.subtype,
+      synthetic: message.synthetic,
+      transcriptOnly: message.transcript_only,
+    }))
 }
 
 export function parseMessageContent(text: string) {

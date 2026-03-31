@@ -56,6 +56,7 @@ Last updated: 2026-03-31
   - `ui`: shared UI components and context
 - `skills/`
   - In-repo skill definitions; runtime also supports `data/custom_skills/<id>/SKILL.md` and nested `.hone/skills/<id>/SKILL.md` with nearer dynamic directories taking precedence
+  - `SKILL.md` frontmatter now also supports an opt-in `script` entrypoint that `skill_tool(..., execute_script=true)` can run from the skill directory
 - `tests/regression/`
   - `ci/`: CI-safe
   - `manual/`: manual regression tests that depend on an external CLI or account
@@ -101,6 +102,8 @@ Last updated: 2026-03-31
     - `memory/src/quota.rs` keeps a daily successful-reply quota for each user-initiated conversation
     - `memory/src/llm_audit.rs` uses SQLite to record LLM call audit logs archived by `ActorIdentity`
     - Session persistence is controlled by `storage.session_runtime_backend`; `json` reads from local files, `sqlite` reads from `storage.session_sqlite_db_path`, and JSON can still be dual-written as a rollback mirror through `storage.session_sqlite_shadow_write_enabled`
+    - Session compaction is now boundary-based: compacted sessions write a `Conversation compacted` marker plus a compact summary message, and the active context window is restored from the most recent boundary forward
+    - `AgentSession::run()` now also supports explicit `/compact` requests, reusing the same compaction pipeline without charging user conversation quota or persisting the slash command as a normal transcript message
     - Heartbeat-style cron jobs are still stored in the same cron store; they are identified by `repeat=heartbeat` and a `heartbeat` tag, then polled every 30 minutes instead of a fixed clock time
 8. Responses are sent back to the originating channel; the Web console streams `run_started / assistant_delta / tool_call / run_error / run_finished` via v2 SSE events
 

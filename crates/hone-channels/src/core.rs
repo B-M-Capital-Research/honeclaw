@@ -13,7 +13,9 @@ use hone_core::{ActorIdentity, LlmAuditRecord, LlmAuditSink};
 use hone_llm::{LlmProvider, OpenRouterProvider};
 use hone_memory::{
     ConversationQuotaStorage, CronJobStorage, KbStorage, LlmAuditStorage, SessionStorage,
-    StockTableStorage, select_context_messages, session::SessionSummary,
+    StockTableStorage, build_compact_boundary_metadata, build_compact_skill_snapshot_metadata,
+    build_compact_summary_metadata, invoked_skills_from_metadata,
+    select_messages_after_compact_boundary, session::SessionSummary,
 };
 use hone_scheduler::{HoneScheduler, SchedulerEvent};
 use hone_tools::{
@@ -29,6 +31,14 @@ use crate::runners::{
 
 pub const REGISTER_ADMIN_INTERCEPT_TEXT: &str = "/register-admin AMM";
 pub const REGISTER_ADMIN_INTERCEPT_ACK: &str = "已将当前 identity 升级为管理员。";
+const POST_COMPACT_MAX_SKILL_SNAPSHOT_CHARS: usize = 12_000;
+const POST_COMPACT_MAX_SKILL_SNAPSHOTS: usize = 4;
+
+#[derive(Debug, Clone)]
+pub struct CompactSessionOutcome {
+    pub compacted: bool,
+    pub summary: Option<String>,
+}
 
 /// Bot 核心 — 持有所有共享依赖
 pub struct HoneBotCore {
@@ -622,11 +632,33 @@ impl HoneBotCore {
 
     /// 检查并压缩会话历史
     pub async fn maybe_compress_session(&self, session_id: &str) -> hone_core::HoneResult<()> {
+        let _ = self
+            .compact_session(session_id, "auto", false, None)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn compact_session(
+        &self,
+        session_id: &str,
+        trigger: &str,
+        force: bool,
+        user_instructions: Option<&str>,
+    ) -> hone_core::HoneResult<CompactSessionOutcome> {
         let Some(session) = self.session_storage.load_session(session_id)? else {
-            return Ok(());
+            return Ok(CompactSessionOutcome {
+                compacted: false,
+                summary: None,
+            });
         };
 
-        let active_messages = select_context_messages(&session.messages, None);
+        let active_messages = select_messages_after_compact_boundary(&session.messages, None);
+        if active_messages.is_empty() {
+            return Ok(CompactSessionOutcome {
+                compacted: false,
+                summary: None,
+            });
+        }
         let is_group_session = session
             .session_identity
             .as_ref()
@@ -654,11 +686,15 @@ impl HoneBotCore {
 
         let total_content_bytes: usize = active_messages.iter().map(|m| m.content.len()).sum();
 
-        let should_compress = active_messages.len() > compress_threshold
+        let should_compress = force
+            || active_messages.len() > compress_threshold
             || total_content_bytes > compress_byte_threshold;
 
         if !should_compress {
-            return Ok(());
+            return Ok(CompactSessionOutcome {
+                compacted: false,
+                summary: None,
+            });
         }
 
         tracing::info!(
@@ -674,23 +710,15 @@ impl HoneBotCore {
                 tracing::warn!(
                     "[HoneBotCore] No LLM provider available for compression. Please configure llm provider in config.yaml. Skipping compression."
                 );
-                return Ok(());
+                return Ok(CompactSessionOutcome {
+                    compacted: false,
+                    summary: None,
+                });
             }
         };
 
         // 构建供 LLM 总结的历史文本
         let mut history_text = String::new();
-        // 如果已经有历史总结了，也拼进去让它更新
-        if let Some(old_summ) = session
-            .summary
-            .as_ref()
-            .map(|summary| summary.content.as_str())
-        {
-            history_text.push_str("【以往对话总结】\n");
-            history_text.push_str(old_summ);
-            history_text.push_str("\n\n【最近的新增对话】\n");
-        }
-
         for m in &active_messages {
             history_text.push_str(&format!("{}: {}\n\n", m.role, m.content));
         }
@@ -718,9 +746,15 @@ impl HoneBotCore {
                 - 不要固化个人金融隐私，如持仓、成本、成交价、交易单等\n\
                 - 只保留对后续群讨论真正有帮助的信息\n\
                 - 不要寒暄，不要输出其它标题\n\
+                {}\n\
                 \n\
                 以下是待压缩的群历史：\n\
                 {}",
+                user_instructions
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!(" - 额外要求：{value}\n"))
+                    .unwrap_or_default(),
                 history_text
             )
         } else {
@@ -737,10 +771,16 @@ impl HoneBotCore {
                 2. **【历史对话总结】**\n\
                 在表下面，用1-2段话总结上面发生的核心交互和用户的偏好习惯信息。\n\
                 \n\
+                {}\n\
                 请保持纯净的 Markdown 输出，不要有多余的寒喧。\n\
                 \n\
                 以下是对话历史：\n\
                 {}",
+                user_instructions
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!("额外要求：{value}\n"))
+                    .unwrap_or_default(),
                 history_text
             )
         };
@@ -782,7 +822,10 @@ impl HoneBotCore {
                     )
                 });
                 tracing::error!("[HoneBotCore] LLM summarization failed: {}", e);
-                return Ok(());
+                return Ok(CompactSessionOutcome {
+                    compacted: false,
+                    summary: None,
+                });
             }
         };
 
@@ -794,7 +837,10 @@ impl HoneBotCore {
                 "kind": "session_compression",
                 "active_messages": active_messages.len(),
                 "retained_recent": retain_recent,
-                "is_group_session": is_group_session
+                "is_group_session": is_group_session,
+                "trigger": trigger,
+                "forced": force,
+                "custom_instructions": user_instructions
             }),
             prompt_tokens: usage.as_ref().and_then(|u| u.prompt_tokens),
             completion_tokens: usage.as_ref().and_then(|u| u.completion_tokens),
@@ -811,6 +857,37 @@ impl HoneBotCore {
         });
 
         let mut new_messages = Vec::new();
+        new_messages.push(hone_memory::session::SessionMessage {
+            role: "system".to_string(),
+            content: "Conversation compacted".to_string(),
+            timestamp: hone_core::beijing_now_rfc3339(),
+            metadata: Some(build_compact_boundary_metadata(
+                trigger,
+                active_messages.len().saturating_sub(retain_recent),
+                active_messages.len(),
+            )),
+        });
+        new_messages.push(hone_memory::session::SessionMessage {
+            role: "user".to_string(),
+            content: format!("【Compact Summary】\n{}", new_summary_content.trim()),
+            timestamp: hone_core::beijing_now_rfc3339(),
+            metadata: Some(build_compact_summary_metadata(trigger)),
+        });
+        for skill in invoked_skills_from_metadata(&session.metadata)
+            .into_iter()
+            .take(POST_COMPACT_MAX_SKILL_SNAPSHOTS)
+        {
+            let snapshot = truncate_chars(&skill.prompt, POST_COMPACT_MAX_SKILL_SNAPSHOT_CHARS);
+            if snapshot.trim().is_empty() {
+                continue;
+            }
+            new_messages.push(hone_memory::session::SessionMessage {
+                role: "user".to_string(),
+                content: snapshot,
+                timestamp: hone_core::beijing_now_rfc3339(),
+                metadata: Some(build_compact_skill_snapshot_metadata(&skill.skill_name)),
+            });
+        }
         // 保留最近的 N 条对话
         let retained: Vec<_> = active_messages
             .into_iter()
@@ -825,15 +902,18 @@ impl HoneBotCore {
         self.session_storage.replace_messages_with_summary(
             session_id,
             new_messages,
-            Some(SessionSummary::new(new_summary_content)),
+            Some(SessionSummary::new(&new_summary_content)),
         )?;
         tracing::info!(
-            "[HoneBotCore] Session {} compressed down to {} items.",
+            "[HoneBotCore] Session {} compacted to boundary + summary + {} retained items.",
             session_id,
             retain_recent
         );
 
-        Ok(())
+        Ok(CompactSessionOutcome {
+            compacted: true,
+            summary: Some(new_summary_content),
+        })
     }
 
     fn record_llm_audit(&self, record: LlmAuditRecord) {
@@ -843,6 +923,13 @@ impl HoneBotCore {
             }
         }
     }
+}
+
+fn truncate_chars(content: &str, max_chars: usize) -> String {
+    if max_chars == 0 || content.chars().count() <= max_chars {
+        return content.to_string();
+    }
+    content.chars().take(max_chars).collect::<String>()
 }
 
 pub fn runtime_config_path() -> String {

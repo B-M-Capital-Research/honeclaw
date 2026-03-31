@@ -5,8 +5,9 @@ use hone_core::agent::{AgentContext, AgentResponse, ToolCallMade};
 use hone_core::{ActorIdentity, SessionIdentity, runtime_heartbeat_dir};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
-    build_tool_message_metadata, invoked_skills_from_metadata, message_is_slash_skill,
-    restore_tool_message, select_context_messages,
+    build_tool_message_metadata, has_compact_skill_snapshot, invoked_skills_from_metadata,
+    message_is_compact_boundary, message_is_slash_skill, restore_tool_message,
+    select_messages_after_compact_boundary,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -168,8 +169,14 @@ fn matches_skill_runtime_tool_name(name: &str) -> bool {
 #[derive(Debug, Clone)]
 struct SlashSkillExpansion {
     raw_input: String,
+    invoked_prompt: String,
     runtime_input: String,
     skill_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct CompactCommand {
+    instructions: Option<String>,
 }
 
 fn merge_message_metadata(
@@ -545,15 +552,13 @@ impl AgentSession {
             if let Some(skill) =
                 runtime.resolve_skill_via_search(query, &extract_possible_file_paths(user_input))
             {
-                let prompt = runtime.render_prompt(&skill, session_id, None);
+                let invoked_prompt = runtime.render_invocation_prompt(&skill, session_id, None);
                 let tail = lines.iter().skip(1).copied().collect::<Vec<_>>().join("\n");
-                let runtime_input = if tail.trim().is_empty() {
-                    prompt
-                } else {
-                    format!("{}\n\n【本轮用户输入补充】\n{}", prompt, tail.trim())
-                };
+                let runtime_input =
+                    compose_invoked_skill_runtime_input(&invoked_prompt, Some(tail.trim()));
                 return Ok(Some(SlashSkillExpansion {
                     raw_input: user_input.to_string(),
+                    invoked_prompt,
                     runtime_input,
                     skill_id: skill.id,
                 }));
@@ -566,14 +571,28 @@ impl AgentSession {
         let skill_id = parts.next().unwrap_or_default();
         let args = parts.next().map(str::trim);
         if let Some(skill) = runtime.resolve_user_invocable_direct(skill_id) {
+            let invoked_prompt = runtime.render_invocation_prompt(&skill, session_id, args);
             return Ok(Some(SlashSkillExpansion {
                 raw_input: user_input.to_string(),
-                runtime_input: runtime.render_prompt(&skill, session_id, args),
+                invoked_prompt: invoked_prompt.clone(),
+                runtime_input: compose_invoked_skill_runtime_input(&invoked_prompt, args),
                 skill_id: skill.id,
             }));
         }
 
         Ok(None)
+    }
+
+    fn parse_compact_command(&self, user_input: &str) -> Option<CompactCommand> {
+        let trimmed = user_input.trim();
+        let compact = trimmed.strip_prefix("/compact")?;
+        if !compact.is_empty() && !compact.starts_with(char::is_whitespace) {
+            return None;
+        }
+        let instructions = compact.trim();
+        Some(CompactCommand {
+            instructions: (!instructions.is_empty()).then(|| instructions.to_string()),
+        })
     }
 
     fn persist_invoked_skill_prompt(
@@ -616,6 +635,117 @@ impl AgentSession {
             .session_storage
             .update_metadata(session_id, metadata)?;
         Ok(())
+    }
+
+    async fn run_manual_compact(
+        &self,
+        session_id: String,
+        raw_input: &str,
+        command: CompactCommand,
+    ) -> AgentSessionResult {
+        self.core.log_message_received(
+            &self.actor.channel,
+            &self.actor.user_id,
+            &self.channel_target,
+            &session_id,
+            raw_input,
+            self.recv_extra.as_deref(),
+            self.message_id.as_deref(),
+        );
+
+        self.emit(AgentSessionEvent::Progress {
+            stage: "session.compress",
+            detail: Some("start".to_string()),
+        })
+        .await;
+        let started = Instant::now();
+        let outcome = self
+            .core
+            .compact_session(&session_id, "manual", true, command.instructions.as_deref())
+            .await;
+
+        let response = match outcome {
+            Ok(outcome) => {
+                self.emit(AgentSessionEvent::Progress {
+                    stage: "session.compress",
+                    detail: Some("done".to_string()),
+                })
+                .await;
+                let content = if outcome.compacted {
+                    "Conversation compacted.".to_string()
+                } else {
+                    "未执行 compact：当前没有可压缩的会话内容，或压缩器暂不可用。".to_string()
+                };
+                AgentResponse {
+                    content,
+                    tool_calls_made: Vec::new(),
+                    iterations: 0,
+                    success: true,
+                    error: None,
+                }
+            }
+            Err(err) => {
+                tracing::error!("[AgentSession] manual compact failed: {}", err);
+                self.emit(AgentSessionEvent::Progress {
+                    stage: "session.compress",
+                    detail: Some("failed".to_string()),
+                })
+                .await;
+                AgentResponse {
+                    content: String::new(),
+                    tool_calls_made: Vec::new(),
+                    iterations: 0,
+                    success: false,
+                    error: Some(err.to_string()),
+                }
+            }
+        };
+        let elapsed_ms = started.elapsed().as_millis();
+
+        if response.success {
+            self.core.log_message_finished(
+                &self.actor.channel,
+                &self.actor.user_id,
+                &session_id,
+                &response,
+                elapsed_ms,
+                self.message_id.as_deref(),
+            );
+            self.emit(AgentSessionEvent::Done {
+                response: response.clone(),
+            })
+            .await;
+        } else {
+            let err = response
+                .error
+                .clone()
+                .unwrap_or_else(|| "manual compact failed".to_string());
+            self.core.log_message_failed(
+                &self.actor.channel,
+                &self.actor.user_id,
+                &session_id,
+                &err,
+                elapsed_ms,
+                self.message_id.as_deref(),
+            );
+            self.emit(AgentSessionEvent::Error {
+                error: AgentSessionError {
+                    kind: AgentSessionErrorKind::AgentFailed,
+                    message: err,
+                },
+            })
+            .await;
+            self.emit(AgentSessionEvent::Done {
+                response: response.clone(),
+            })
+            .await;
+        }
+
+        AgentSessionResult {
+            response,
+            elapsed_ms,
+            session_id,
+        }
     }
 
     fn audit_effective_prompt(&self, session_id: &str, system_prompt: &str, runtime_input: &str) {
@@ -756,6 +886,24 @@ impl AgentSession {
             let lock = get_session_run_lock(&session_id);
             lock.lock_owned().await
         };
+        if let Err(err) = self.ensure_session_exists() {
+            return self
+                .fail_run(
+                    session_id,
+                    AgentSessionErrorKind::AgentFailed,
+                    err.to_string(),
+                )
+                .await;
+        }
+
+        self.update_session_metadata();
+
+        if let Some(command) = self.parse_compact_command(user_input) {
+            return self
+                .run_manual_compact(session_id, user_input, command)
+                .await;
+        }
+
         let quota_reservation = match self.reserve_conversation_quota(options.quota_mode) {
             Ok(reservation) => reservation,
             Err(err) => {
@@ -768,24 +916,6 @@ impl AgentSession {
                     .await;
             }
         };
-
-        if let Err(err) = self.ensure_session_exists() {
-            if let Some(reservation) = quota_reservation.as_ref() {
-                let _ = self
-                    .core
-                    .conversation_quota_storage
-                    .release_daily_conversation(reservation);
-            }
-            return self
-                .fail_run(
-                    session_id,
-                    AgentSessionErrorKind::AgentFailed,
-                    err.to_string(),
-                )
-                .await;
-        }
-
-        self.update_session_metadata();
 
         let slash_skill = match self.expand_slash_skill_input(&session_id, user_input) {
             Ok(value) => value,
@@ -836,7 +966,7 @@ impl AgentSession {
             let _ = self.persist_invoked_skill_prompt(
                 &session_id,
                 &skill.skill_id,
-                &skill.runtime_input,
+                &skill.invoked_prompt,
             );
         }
         self.emit(AgentSessionEvent::UserMessage {
@@ -1181,7 +1311,16 @@ pub fn restore_context(
         ctx.set_actor_identity(actor);
     }
 
-    let messages = select_context_messages(&session.messages, max_messages);
+    let messages = select_messages_after_compact_boundary(&session.messages, max_messages);
+    let has_skill_snapshots = has_compact_skill_snapshot(&messages);
+    if !has_skill_snapshots {
+        for skill in invoked_skills_from_metadata(&session.metadata)
+            .into_iter()
+            .filter(|skill| !skill.prompt.trim().is_empty())
+        {
+            ctx.add_user_message(&skill.prompt);
+        }
+    }
 
     for message in messages {
         match message.role.as_str() {
@@ -1198,13 +1337,12 @@ pub fn restore_context(
                     ctx.add_tool_result(&tool_call_id, &tool_name, &result);
                 }
             }
+            "system" => {
+                if message_is_compact_boundary(message.metadata.as_ref()) {
+                    continue;
+                }
+            }
             _ => {}
-        }
-    }
-
-    for skill in invoked_skills_from_metadata(&session.metadata) {
-        if !skill.prompt.trim().is_empty() {
-            ctx.add_user_message(&skill.prompt);
         }
     }
 
@@ -1221,6 +1359,20 @@ fn extract_possible_file_paths(input: &str) -> Vec<String> {
         .collect()
 }
 
+fn compose_invoked_skill_runtime_input(
+    invoked_prompt: &str,
+    user_supplement: Option<&str>,
+) -> String {
+    if let Some(supplement) = user_supplement
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        format!("{invoked_prompt}\n\n【User Task After Invoking This Skill】\n{supplement}")
+    } else {
+        invoked_prompt.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1228,6 +1380,7 @@ mod tests {
     use futures::stream::{self, BoxStream};
     use hone_core::ActorIdentity;
     use hone_core::config::HoneConfig;
+    use hone_llm::provider::ChatResult;
     use hone_llm::{ChatResponse, LlmProvider, Message};
     use serde_json::Value;
     use std::env;
@@ -1250,18 +1403,51 @@ mod tests {
     }
 
     struct MockLlmState {
+        chat_calls: usize,
         chat_with_tools_calls: usize,
+        chat_responses: std::collections::VecDeque<ChatResult>,
         responses: std::collections::VecDeque<ChatResponse>,
     }
 
     impl MockLlmProvider {
-        fn with_tool_responses(responses: Vec<ChatResponse>) -> Self {
+        fn with_chat_and_tool_responses(
+            chat_responses: Vec<ChatResult>,
+            responses: Vec<ChatResponse>,
+        ) -> Self {
             Self {
                 state: Arc::new(Mutex::new(MockLlmState {
+                    chat_calls: 0,
                     chat_with_tools_calls: 0,
+                    chat_responses: chat_responses.into(),
                     responses: responses.into(),
                 })),
             }
+        }
+
+        fn with_chat_responses(responses: Vec<ChatResult>) -> Self {
+            Self {
+                state: Arc::new(Mutex::new(MockLlmState {
+                    chat_calls: 0,
+                    chat_with_tools_calls: 0,
+                    chat_responses: responses.into(),
+                    responses: Default::default(),
+                })),
+            }
+        }
+
+        fn with_tool_responses(responses: Vec<ChatResponse>) -> Self {
+            Self {
+                state: Arc::new(Mutex::new(MockLlmState {
+                    chat_calls: 0,
+                    chat_with_tools_calls: 0,
+                    chat_responses: Default::default(),
+                    responses: responses.into(),
+                })),
+            }
+        }
+
+        fn chat_calls(&self) -> usize {
+            self.state.lock().expect("mock llm lock").chat_calls
         }
 
         fn chat_with_tools_calls(&self) -> usize {
@@ -1279,9 +1465,12 @@ mod tests {
             _messages: &[Message],
             _model: Option<&str>,
         ) -> hone_core::HoneResult<hone_llm::provider::ChatResult> {
-            Err(hone_core::HoneError::Llm(
-                "chat should not be called in these tests".to_string(),
-            ))
+            let mut state = self.state.lock().expect("mock llm lock");
+            state.chat_calls += 1;
+            state
+                .chat_responses
+                .pop_front()
+                .ok_or_else(|| hone_core::HoneError::Llm("no more mock chat responses".to_string()))
         }
 
         async fn chat_with_tools(
@@ -1308,6 +1497,14 @@ mod tests {
     }
 
     fn make_test_core(root: &std::path::Path, llm: MockLlmProvider) -> Arc<HoneBotCore> {
+        make_test_core_with_config(root, llm, |_| {})
+    }
+
+    fn make_test_core_with_config(
+        root: &std::path::Path,
+        llm: MockLlmProvider,
+        configure: impl FnOnce(&mut HoneConfig),
+    ) -> Arc<HoneBotCore> {
         let mut config = HoneConfig::default();
         config.agent.runner = "function_calling".to_string();
         config.agent.max_iterations = 3;
@@ -1325,6 +1522,7 @@ mod tests {
         config.storage.x_drafts_dir = root.join("x_drafts").to_string_lossy().to_string();
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
         config.storage.kb_dir = root.join("kb").to_string_lossy().to_string();
+        configure(&mut config);
 
         let mut core = HoneBotCore::new(config);
         core.llm = Some(Arc::new(llm));
@@ -1430,6 +1628,15 @@ mod tests {
     }
 
     #[test]
+    fn compose_invoked_skill_runtime_input_keeps_user_supplement_outside_skill_context() {
+        let runtime_input =
+            compose_invoked_skill_runtime_input("SKILL_PROMPT", Some("finish the task"));
+        assert!(runtime_input.contains("SKILL_PROMPT"));
+        assert!(runtime_input.contains("【User Task After Invoking This Skill】"));
+        assert!(runtime_input.contains("finish the task"));
+    }
+
+    #[test]
     fn unavailable_web_search_results_are_not_persisted() {
         let call = ToolCallMade {
             name: "web_search".to_string(),
@@ -1472,6 +1679,221 @@ mod tests {
             };
             assert!(!should_persist_tool_result(&call), "name={name}");
         }
+    }
+
+    #[test]
+    fn restore_context_injects_invoked_skills_before_message_window() {
+        let root = make_temp_dir("hone_channels_restore_invoked_skills");
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+        let actor = ActorIdentity::new("discord", "bob", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        storage
+            .add_message(&session_id, "user", "hello", None)
+            .expect("add user");
+        storage
+            .add_message(&session_id, "assistant", "world", None)
+            .expect("add assistant");
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+            serde_json::json!([{
+                "skill_name": "alpha",
+                "display_name": "Alpha",
+                "path": "slash:alpha",
+                "prompt": "INVOKED_SKILL_PROMPT",
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "slash",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            }]),
+        );
+        storage
+            .update_metadata(&session_id, metadata)
+            .expect("metadata");
+
+        let ctx = restore_context(&storage, &session_id, Some(5));
+        let contents: Vec<_> = ctx
+            .messages
+            .iter()
+            .filter_map(|m| m.content.as_deref())
+            .collect();
+        assert_eq!(contents, vec!["INVOKED_SKILL_PROMPT", "hello", "world"]);
+    }
+
+    #[test]
+    fn restore_context_uses_only_messages_after_latest_compact_boundary() {
+        let root = make_temp_dir("hone_channels_restore_after_boundary");
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+        let actor = ActorIdentity::new("discord", "carol", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        storage
+            .add_message(&session_id, "user", "before-compact", None)
+            .expect("add old");
+        storage
+            .add_message(
+                &session_id,
+                "system",
+                "Conversation compacted",
+                Some(hone_memory::build_compact_boundary_metadata("auto", 4, 6)),
+            )
+            .expect("add boundary");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "【Compact Summary】\nsummary",
+                Some(hone_memory::build_compact_summary_metadata("auto")),
+            )
+            .expect("add summary");
+        storage
+            .add_message(&session_id, "assistant", "after-compact", None)
+            .expect("add assistant");
+
+        let ctx = restore_context(&storage, &session_id, Some(10));
+        let contents: Vec<_> = ctx
+            .messages
+            .iter()
+            .filter_map(|m| m.content.as_deref())
+            .collect();
+        assert_eq!(
+            contents,
+            vec!["【Compact Summary】\nsummary", "after-compact"]
+        );
+    }
+
+    #[test]
+    fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
+        let root = make_temp_dir("hone_channels_restore_skill_after_boundary");
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+        let actor = ActorIdentity::new("discord", "dana", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+            serde_json::json!([{
+                "skill_name": "alpha",
+                "display_name": "Alpha",
+                "path": "skill:alpha",
+                "prompt": "INVOKED_SKILL_PROMPT",
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "tool",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            }]),
+        );
+        storage
+            .update_metadata(&session_id, metadata)
+            .expect("update metadata");
+        storage
+            .add_message(
+                &session_id,
+                "system",
+                "Conversation compacted",
+                Some(hone_memory::build_compact_boundary_metadata("auto", 3, 5)),
+            )
+            .expect("add boundary");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "【Compact Summary】\nsummary",
+                Some(hone_memory::build_compact_summary_metadata("auto")),
+            )
+            .expect("add summary");
+
+        let ctx = restore_context(&storage, &session_id, Some(10));
+        let contents: Vec<_> = ctx
+            .messages
+            .iter()
+            .filter_map(|m| m.content.as_deref())
+            .collect();
+        assert_eq!(
+            contents,
+            vec!["INVOKED_SKILL_PROMPT", "【Compact Summary】\nsummary"]
+        );
+    }
+
+    #[test]
+    fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() {
+        let root = make_temp_dir("hone_channels_restore_skill_snapshot_dedup");
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+        let actor = ActorIdentity::new("discord", "erin", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+            serde_json::json!([{
+                "skill_name": "alpha",
+                "display_name": "Alpha",
+                "path": "skill:alpha",
+                "prompt": "INVOKED_SKILL_PROMPT",
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "tool",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            }]),
+        );
+        storage
+            .update_metadata(&session_id, metadata)
+            .expect("update metadata");
+        storage
+            .add_message(
+                &session_id,
+                "system",
+                "Conversation compacted",
+                Some(hone_memory::build_compact_boundary_metadata("auto", 3, 5)),
+            )
+            .expect("add boundary");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "【Compact Summary】\nsummary",
+                Some(hone_memory::build_compact_summary_metadata("auto")),
+            )
+            .expect("add summary");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "INVOKED_SKILL_PROMPT",
+                Some(hone_memory::build_compact_skill_snapshot_metadata("alpha")),
+            )
+            .expect("add skill snapshot");
+
+        let ctx = restore_context(&storage, &session_id, Some(10));
+        let contents: Vec<_> = ctx
+            .messages
+            .iter()
+            .filter_map(|m| m.content.as_deref())
+            .collect();
+        assert_eq!(
+            contents,
+            vec!["【Compact Summary】\nsummary", "INVOKED_SKILL_PROMPT"]
+        );
     }
 
     #[tokio::test]
@@ -1559,6 +1981,140 @@ mod tests {
             .expect("row");
         assert_eq!(snapshot.success_count, DAILY_CONVERSATION_LIMIT);
         assert_eq!(snapshot.in_flight, 0);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
+        let root = make_temp_dir("hone_channels_manual_compact");
+        std::fs::create_dir_all(&root).expect("create root");
+        let llm = MockLlmProvider::with_chat_responses(vec![ChatResult {
+            content: "summary".to_string(),
+            usage: None,
+        }]);
+        let core = make_test_core(&root, llm.clone());
+        let actor = ActorIdentity::new("discord", "frank", None::<String>).expect("actor");
+        let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+        core.session_storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        core.session_storage
+            .add_message(&actor.session_id(), "user", "hello", None)
+            .expect("seed user");
+        core.session_storage
+            .add_message(&actor.session_id(), "assistant", "world", None)
+            .expect("seed assistant");
+
+        let result = session
+            .run(
+                "/compact keep only the durable decisions",
+                AgentRunOptions::default(),
+            )
+            .await;
+
+        assert!(result.response.success, "{:?}", result.response.error);
+        assert_eq!(result.response.content, "Conversation compacted.");
+        assert_eq!(llm.chat_calls(), 1);
+
+        let today = hone_core::beijing_now().format("%F").to_string();
+        let snapshot = core
+            .conversation_quota_storage
+            .snapshot_for_date(&actor, &today)
+            .expect("snapshot");
+        assert!(snapshot.is_none());
+
+        let messages = core
+            .session_storage
+            .get_messages(&actor.session_id(), None)
+            .expect("messages");
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0].content, "Conversation compacted");
+        assert_eq!(messages[1].content, "【Compact Summary】\nsummary");
+        assert_eq!(messages[2].content, "hello");
+        assert_eq!(messages[3].content, "world");
+        assert!(
+            messages
+                .iter()
+                .all(|message| !message.content.contains("/compact"))
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn auto_compact_uses_low_group_threshold_and_keeps_recent_window() {
+        let root = make_temp_dir("hone_channels_auto_compact_low_threshold");
+        std::fs::create_dir_all(&root).expect("create root");
+        let llm = MockLlmProvider::with_chat_and_tool_responses(
+            vec![ChatResult {
+                content: "group-summary".to_string(),
+                usage: None,
+            }],
+            vec![ChatResponse {
+                content: "after-compact".to_string(),
+                tool_calls: None,
+                usage: None,
+            }],
+        );
+        let core = make_test_core_with_config(&root, llm.clone(), |config| {
+            config.group_context.compress_threshold_messages = 1;
+            config.group_context.compress_threshold_bytes = 1024;
+            config.group_context.retain_recent_after_compress = 1;
+            config.group_context.recent_context_limit = 6;
+        });
+        let actor =
+            ActorIdentity::new("discord", "gina", Some("room-1".to_string())).expect("actor");
+        let group_session =
+            SessionIdentity::group(&actor.channel, actor.channel_scope.clone().unwrap())
+                .expect("group session");
+        let session = AgentSession::new(core.clone(), actor.clone(), "room-1")
+            .with_session_identity(group_session.clone());
+        core.session_storage
+            .create_session_for_identity(&group_session, Some(&actor))
+            .expect("create session");
+        core.session_storage
+            .add_message(&group_session.session_id(), "user", "old-user", None)
+            .expect("seed user");
+        core.session_storage
+            .add_message(
+                &group_session.session_id(),
+                "assistant",
+                "old-assistant",
+                None,
+            )
+            .expect("seed assistant");
+
+        let result = session.run("new-user", AgentRunOptions::default()).await;
+
+        assert!(result.response.success, "{:?}", result.response.error);
+        assert_eq!(result.response.content, "after-compact");
+        assert_eq!(llm.chat_calls(), 1);
+        assert_eq!(llm.chat_with_tools_calls(), 1);
+
+        let messages = core
+            .session_storage
+            .get_messages(&group_session.session_id(), None)
+            .expect("messages");
+        let contents: Vec<_> = messages
+            .iter()
+            .map(|message| message.content.as_str())
+            .collect();
+        assert_eq!(
+            contents,
+            vec![
+                "Conversation compacted",
+                "【Compact Summary】\ngroup-summary",
+                "new-user",
+                "after-compact",
+            ]
+        );
+        assert!(hone_memory::message_is_compact_boundary(
+            messages[0].metadata.as_ref()
+        ));
+        assert!(hone_memory::message_is_compact_summary(
+            messages[1].metadata.as_ref()
+        ));
+
         let _ = std::fs::remove_dir_all(root);
     }
 

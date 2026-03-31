@@ -26,6 +26,7 @@ Current capabilities:
 - Local JSON persistence for sessions, holdings, scheduled tasks, drafts, and generated files
 - Multi-channel actor isolation by `channel + user_id + channel_scope`
 - A Claude Code-style skill system that discloses compact skill listings first, then injects the full `SKILL.md` only when a skill is invoked
+- Skills can optionally declare a default `script` entrypoint that `skill_tool` may execute explicitly inside the skill directory
 - A Web console for session browsing, skill management, task management, holdings management, and research tasks
 - Scheduled tasks that poll every minute and run on Beijing time
 
@@ -273,6 +274,7 @@ Skill metadata includes:
 - `paths`
 - `hooks`
 - `arguments`
+- `script`
 - `shell`
 - `aliases` and legacy `tools` are still parsed as migration fallbacks
 - Markdown prompt body
@@ -281,6 +283,17 @@ Skill execution is two-phase:
 
 1. The system prompt and discovery text expose only a compact listing of available or relevant skills.
 2. `skill_tool(skill_name="...")` or a user slash command such as `/<skill-name>` injects the fully rendered skill body into the active turn, including `Base directory for this skill` and placeholder expansion for `${HONE_SKILL_DIR}` and `${HONE_SESSION_ID}`.
+3. If the caller explicitly sets `execute_script=true`, `skill_tool` resolves the declared `script`, maps `script_arguments` according to frontmatter `arguments`, runs it with `${HONE_SKILL_DIR}` as cwd, and returns stdout/stderr plus exit status.
+
+Timing and restore semantics:
+
+- Full skill context is injected only at the actual invocation boundary, not during discovery/listing.
+- The persisted restore payload is the stable invoked skill context itself.
+- If a slash invocation also contains one-shot user instructions, those stay in the current turn input and are not persisted as long-lived skill context during compaction/resume.
+- Session compaction now follows a boundary model: a compacted session writes a `Conversation compacted` boundary plus a compact-summary message, and subsequent context restoration slices from the most recent boundary forward.
+- Active invoked skills are now materialized into post-compact skill snapshot messages inside the compacted window. Restore logic uses those snapshots when present and avoids re-injecting the same skill prompt again from metadata.
+- Manual `/compact` uses that same compaction path, accepts optional user instructions for the summarizer, does not consume conversation quota, and does not persist the slash command text as a normal transcript message.
+- History APIs may still return compact summaries and compact skill snapshots for debugging/recovery, but they are marked transcript-only so the primary chat timeline can hide them while preserving compact boundaries as visible separators.
 
 At runtime, skills are aggregated from two places:
 

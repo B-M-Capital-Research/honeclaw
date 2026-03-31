@@ -24,6 +24,12 @@ pub struct ChatRequest {
 pub struct HistoryMsg {
     pub role: String,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtype: Option<String>,
+    #[serde(default)]
+    pub synthetic: bool,
+    #[serde(default)]
+    pub transcript_only: bool,
     pub attachments: Vec<HistoryAttachment>,
 }
 

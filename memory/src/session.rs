@@ -186,6 +186,9 @@ pub fn build_tool_message_metadata(call: &ToolCallMade) -> HashMap<String, Value
 
 pub const INVOKED_SKILLS_METADATA_KEY: &str = "skill_runtime.invoked_skills";
 pub const SLASH_SKILL_METADATA_KEY: &str = "skill_runtime.slash_skill";
+pub const COMPACT_BOUNDARY_METADATA_KEY: &str = "session.compact_boundary";
+pub const COMPACT_SUMMARY_METADATA_KEY: &str = "session.compact_summary";
+pub const COMPACT_SKILL_SNAPSHOT_METADATA_KEY: &str = "session.compact_skill_snapshot";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct InvokedSkillRecord {
@@ -219,6 +222,97 @@ pub fn message_is_slash_skill(metadata: Option<&HashMap<String, Value>>) -> bool
         .and_then(|items| items.get(SLASH_SKILL_METADATA_KEY))
         .and_then(|value| value.as_str())
         .is_some_and(|value| !value.trim().is_empty())
+}
+
+pub fn message_is_compact_boundary(metadata: Option<&HashMap<String, Value>>) -> bool {
+    metadata
+        .and_then(|items| items.get(COMPACT_BOUNDARY_METADATA_KEY))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn message_is_compact_summary(metadata: Option<&HashMap<String, Value>>) -> bool {
+    metadata
+        .and_then(|items| items.get(COMPACT_SUMMARY_METADATA_KEY))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn message_is_compact_skill_snapshot(metadata: Option<&HashMap<String, Value>>) -> bool {
+    metadata
+        .and_then(|items| items.get(COMPACT_SKILL_SNAPSHOT_METADATA_KEY))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn build_compact_boundary_metadata(
+    trigger: &str,
+    messages_summarized: usize,
+    pre_summary_messages: usize,
+) -> HashMap<String, Value> {
+    let mut metadata = HashMap::new();
+    metadata.insert(COMPACT_BOUNDARY_METADATA_KEY.to_string(), Value::Bool(true));
+    metadata.insert("trigger".to_string(), Value::String(trigger.to_string()));
+    metadata.insert(
+        "messages_summarized".to_string(),
+        Value::Number(messages_summarized.into()),
+    );
+    metadata.insert(
+        "pre_summary_messages".to_string(),
+        Value::Number(pre_summary_messages.into()),
+    );
+    metadata
+}
+
+pub fn build_compact_summary_metadata(source: &str) -> HashMap<String, Value> {
+    let mut metadata = HashMap::new();
+    metadata.insert(COMPACT_SUMMARY_METADATA_KEY.to_string(), Value::Bool(true));
+    metadata.insert("source".to_string(), Value::String(source.to_string()));
+    metadata
+}
+
+pub fn build_compact_skill_snapshot_metadata(skill_name: &str) -> HashMap<String, Value> {
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        COMPACT_SKILL_SNAPSHOT_METADATA_KEY.to_string(),
+        Value::Bool(true),
+    );
+    metadata.insert(
+        "skill_name".to_string(),
+        Value::String(skill_name.to_string()),
+    );
+    metadata
+}
+
+pub fn find_last_compact_boundary_index(messages: &[SessionMessage]) -> Option<usize> {
+    messages
+        .iter()
+        .rposition(|message| message_is_compact_boundary(message.metadata.as_ref()))
+}
+
+pub fn select_messages_after_compact_boundary<'a>(
+    messages: &'a [SessionMessage],
+    limit: Option<usize>,
+) -> Vec<&'a SessionMessage> {
+    let sliced = if let Some(index) = find_last_compact_boundary_index(messages) {
+        &messages[index..]
+    } else {
+        messages
+    };
+    select_context_messages(sliced, limit)
+}
+
+pub fn latest_compact_summary(messages: &[SessionMessage]) -> Option<&SessionMessage> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| message_is_compact_summary(message.metadata.as_ref()))
+}
+
+pub fn has_compact_skill_snapshot(messages: &[&SessionMessage]) -> bool {
+    messages
+        .iter()
+        .any(|message| message_is_compact_skill_snapshot(message.metadata.as_ref()))
 }
 
 pub fn restore_tool_message(
@@ -873,6 +967,44 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn select_messages_after_compact_boundary_slices_to_latest_boundary() {
+        let messages = vec![
+            SessionMessage {
+                role: "user".to_string(),
+                content: "before".to_string(),
+                timestamp: hone_core::beijing_now_rfc3339(),
+                metadata: None,
+            },
+            SessionMessage {
+                role: "system".to_string(),
+                content: "Conversation compacted".to_string(),
+                timestamp: hone_core::beijing_now_rfc3339(),
+                metadata: Some(build_compact_boundary_metadata("auto", 3, 5)),
+            },
+            SessionMessage {
+                role: "user".to_string(),
+                content: "【Compact Summary】\nsummary".to_string(),
+                timestamp: hone_core::beijing_now_rfc3339(),
+                metadata: Some(build_compact_summary_metadata("auto")),
+            },
+            SessionMessage {
+                role: "assistant".to_string(),
+                content: "after".to_string(),
+                timestamp: hone_core::beijing_now_rfc3339(),
+                metadata: None,
+            },
+        ];
+
+        let selected = select_messages_after_compact_boundary(&messages, None);
+        let contents: Vec<_> = selected.iter().map(|m| m.content.as_str()).collect();
+        assert_eq!(contents, vec!["【Compact Summary】\nsummary", "after"]);
+        assert_eq!(
+            latest_compact_summary(&messages).map(|message| message.content.as_str()),
+            Some("【Compact Summary】\nsummary")
+        );
     }
 
     #[test]

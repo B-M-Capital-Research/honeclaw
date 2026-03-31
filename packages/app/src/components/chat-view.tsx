@@ -183,6 +183,12 @@ function PendingBubble(props: {
 function MessageBubble(props: { message: TimelineMessage }) {
   const scheduledLabel = () =>
     props.message.kind === "scheduled" ? props.message.jobName : undefined;
+  const isCompactBoundary = () =>
+    props.message.kind === "system" &&
+    props.message.subtype === "compact_boundary";
+  const isCompactSummary = () =>
+    props.message.kind === "system" &&
+    props.message.subtype === "compact_summary";
 
   const base =
     props.message.kind === "user"
@@ -193,11 +199,20 @@ function MessageBubble(props: { message: TimelineMessage }) {
           ? "mx-auto border border-[color:var(--border)] bg-black/5 text-[color:var(--text-secondary)]"
           : "bg-[color:var(--surface-strong)] text-[color:var(--text-primary)]";
 
+  if (isCompactBoundary()) {
+    return (
+      <div class="mx-auto py-2 text-center text-xs tracking-[0.14em] text-[color:var(--text-muted)]">
+        Conversation compacted
+      </div>
+    );
+  }
+
   return (
     <div
       class={[
         "max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-7 shadow-sm",
         base,
+        props.message.synthetic ? "opacity-80" : "",
       ].join(" ")}
     >
       <Show when={props.message.kind === "scheduled"}>
@@ -216,7 +231,9 @@ function MessageBubble(props: { message: TimelineMessage }) {
               />
             </Match>
             <Match when={part.type === "text"}>
-              <span class="whitespace-pre-wrap">{part.value}</span>
+              <span class={isCompactSummary() ? "whitespace-pre-wrap text-[color:var(--text-muted)]" : "whitespace-pre-wrap"}>
+                {part.value}
+              </span>
             </Match>
           </Switch>
         )}

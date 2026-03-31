@@ -32,8 +32,11 @@ export type SkillDetailInfo = {
 };
 
 export type HistoryMsg = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system" | string;
   content: string;
+  subtype?: "compact_boundary" | "compact_summary" | "compact_skill_snapshot" | string;
+  synthetic?: boolean;
+  transcript_only?: boolean;
 };
 
 export type MetaInfo = {
@@ -214,10 +217,10 @@ export type PushScheduledMessageEvent = {
 };
 
 export type TimelineMessage =
-  | { id: string; kind: "user"; content: string }
-  | { id: string; kind: "assistant"; content: string }
-  | { id: string; kind: "system"; content: string }
-  | { id: string; kind: "scheduled"; content: string; jobName?: string };
+  | { id: string; kind: "user"; content: string; subtype?: string; synthetic?: boolean; transcriptOnly?: boolean }
+  | { id: string; kind: "assistant"; content: string; subtype?: string; synthetic?: boolean; transcriptOnly?: boolean }
+  | { id: string; kind: "system"; content: string; subtype?: string; synthetic?: boolean; transcriptOnly?: boolean }
+  | { id: string; kind: "scheduled"; content: string; jobName?: string; synthetic?: boolean; transcriptOnly?: boolean };
 
 export type CronJobInfo = {
   id: string;

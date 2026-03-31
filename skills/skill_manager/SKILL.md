@@ -40,6 +40,7 @@ paths:
   - src/**/*.rs
 hooks: {}
 arguments: []
+script: optional default script path like scripts/run.sh
 shell: optional shell hint
 ---
 ```
@@ -49,6 +50,7 @@ Notes:
 - `allowed-tools` replaces legacy `tools` as the main runtime field.
 - `context` should usually be `inline`; use `fork` only when the skill should run in an isolated child runner.
 - `paths` hides the skill from the default listing until the active task touches matching files.
+- `script` declares the default executable entrypoint inside the skill directory. `skill_tool(..., execute_script=true)` can run it with `${HONE_SKILL_DIR}` as cwd.
 - Keep the Markdown body task-oriented and ready to inject as prompt text.
 
 ## How To Inspect Skills

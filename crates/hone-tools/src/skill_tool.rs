@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tokio::process::Command;
 
 use crate::base::{Tool, ToolParameter};
 use crate::skill_runtime::SkillRuntime;
@@ -64,6 +65,155 @@ impl SkillTool {
         let _ = storage.update_metadata(&session_id, metadata)?;
         Ok(())
     }
+
+    async fn maybe_execute_script(
+        &self,
+        runtime: &SkillRuntime,
+        skill: &crate::skill_runtime::SkillDefinition,
+        args: &Value,
+    ) -> Result<Option<Value>, String> {
+        let should_execute = args
+            .get("execute_script")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        if !should_execute {
+            return Ok(None);
+        }
+
+        let script_path = runtime
+            .resolve_script_path(skill, args.get("script").and_then(|value| value.as_str()))?;
+        let script_arguments = runtime.map_script_arguments(
+            skill,
+            args.get("script_arguments"),
+            args.get("args").and_then(|value| value.as_str()),
+        )?;
+
+        let mut command = if let Some(shell) = skill.shell.as_deref() {
+            let mut command = Command::new(shell);
+            command.arg(&script_path);
+            command
+        } else {
+            Command::new(&script_path)
+        };
+
+        command
+            .args(&script_arguments)
+            .current_dir(&skill.skill_dir)
+            .env("HONE_SKILL_DIR", &skill.skill_dir)
+            .env(
+                "HONE_SESSION_ID",
+                std::env::var("HONE_MCP_SESSION_ID").unwrap_or_default(),
+            );
+
+        let output = command
+            .output()
+            .await
+            .map_err(|err| format!("执行 skill script 失败: {err}"))?;
+        Ok(Some(serde_json::json!({
+            "script": script_path
+                .strip_prefix(&skill.skill_dir)
+                .unwrap_or(&script_path)
+                .to_string_lossy()
+                .replace('\\', "/"),
+            "cwd": skill.skill_dir.to_string_lossy().to_string(),
+            "shell": skill.shell.clone(),
+            "arguments": script_arguments,
+            "success": output.status.success(),
+            "exit_code": output.status.code(),
+            "stdout": String::from_utf8_lossy(&output.stdout).to_string(),
+            "stderr": String::from_utf8_lossy(&output.stderr).to_string(),
+        })))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::base::Tool;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_temp_dir(prefix: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{prefix}_{}_{}", std::process::id(), ts));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[tokio::test]
+    async fn execute_runs_declared_skill_script() {
+        let root = make_temp_dir("hone_skill_tool_script");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let skill_dir = system.join("alpha");
+        let scripts_dir = skill_dir.join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Alpha\n",
+                "description: executes script\n",
+                "arguments:\n",
+                "  - ticker\n",
+                "  - days\n",
+                "script: scripts/run.sh\n",
+                "shell: bash\n",
+                "---\n\n",
+                "body"
+            ),
+        )
+        .expect("skill");
+        fs::write(
+            scripts_dir.join("run.sh"),
+            concat!(
+                "printf 'cwd=%s\\n' \"$PWD\"\n",
+                "printf 'dir=%s\\n' \"$HONE_SKILL_DIR\"\n",
+                "printf 'session=%s\\n' \"$HONE_SESSION_ID\"\n",
+                "printf 'argv=%s,%s\\n' \"$1\" \"$2\"\n"
+            ),
+        )
+        .expect("script");
+
+        let tool = SkillTool::new(system, custom);
+        unsafe {
+            std::env::set_var("HONE_MCP_SESSION_ID", "session-script-test");
+        }
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "alpha",
+                "execute_script": true,
+                "script_arguments": {
+                    "days": 5,
+                    "ticker": "AAPL"
+                }
+            }))
+            .await
+            .expect("execute");
+
+        assert_eq!(result["success"], Value::Bool(true));
+        assert_eq!(
+            result["script"],
+            Value::String("scripts/run.sh".to_string())
+        );
+        assert_eq!(result["script_execution"]["success"], Value::Bool(true));
+        let stdout = result["script_execution"]["stdout"]
+            .as_str()
+            .expect("stdout");
+        let canonical_skill_dir = skill_dir.canonicalize().expect("canonical skill dir");
+        assert!(stdout.contains(&format!("cwd={}", canonical_skill_dir.to_string_lossy())));
+        assert!(stdout.contains(&format!("dir={}", skill_dir.to_string_lossy())));
+        assert!(stdout.contains("session=session-script-test"));
+        assert!(stdout.contains("argv=AAPL,5"));
+        unsafe {
+            std::env::remove_var("HONE_MCP_SESSION_ID");
+        }
+    }
 }
 
 fn resolve_sessions_dir() -> hone_core::HoneResult<PathBuf> {
@@ -100,7 +250,31 @@ impl Tool for SkillTool {
             ToolParameter {
                 name: "args".to_string(),
                 param_type: "string".to_string(),
-                description: "可选。传递给 skill 的附加参数文本。".to_string(),
+                description: "可选。传递给 skill 的附加参数文本；若 execute_script=true 且未提供 script_arguments，会作为单个脚本参数传入。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "execute_script".to_string(),
+                param_type: "boolean".to_string(),
+                description: "可选。为 true 时执行 skill frontmatter 声明的 script。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "script".to_string(),
+                param_type: "string".to_string(),
+                description: "可选。覆盖 skill 默认 script，必须是 skill 目录内的相对路径。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "script_arguments".to_string(),
+                param_type: "object".to_string(),
+                description: "可选。脚本参数。可传对象（按 SKILL.md arguments 顺序映射）、数组或标量。".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -145,11 +319,23 @@ impl Tool for SkillTool {
         match runtime.load_skill(skill_name, &file_paths) {
             Ok(skill) => {
                 let session_id = std::env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
-                let prompt = runtime.render_prompt(
+                let prompt = runtime.render_invocation_prompt(
                     &skill,
                     &session_id,
                     args.get("args").and_then(|value| value.as_str()),
                 );
+                let script_execution =
+                    match self.maybe_execute_script(&runtime, &skill, &args).await {
+                        Ok(result) => result,
+                        Err(error) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": error,
+                                "skill_name": skill.id,
+                                "script": skill.script,
+                            }));
+                        }
+                    };
                 let payload = serde_json::json!({
                     "skill_name": skill.id,
                     "display_name": skill.display_name,
@@ -160,6 +346,7 @@ impl Tool for SkillTool {
                     "model": skill.model,
                     "effort": skill.effort,
                     "agent": skill.agent,
+                    "script": skill.script,
                     "loaded_from": skill.source.as_str(),
                     "paths": skill.paths,
                     "updated_at": hone_core::beijing_now_rfc3339(),
@@ -175,12 +362,14 @@ impl Tool for SkillTool {
                     "model": payload["model"],
                     "effort": payload["effort"],
                     "agent": payload["agent"],
+                    "script": payload["script"],
                     "execution_context": payload["execution_context"],
                     "loaded_from": payload["loaded_from"],
                     "paths": payload["paths"],
                     "user_invocable": skill.user_invocable,
                     "hooks": skill.hooks,
                     "prompt": payload["prompt"],
+                    "script_execution": script_execution,
                     "reminder": "技能已完整展开。请继续围绕用户原始任务执行，不要忘记真正要解决的问题。"
                 }))
             }

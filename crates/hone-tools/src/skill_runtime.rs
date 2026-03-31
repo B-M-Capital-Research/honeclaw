@@ -54,6 +54,7 @@ pub struct SkillDefinition {
     pub paths: Vec<String>,
     pub hooks: Option<Value>,
     pub arguments: Vec<String>,
+    pub script: Option<String>,
     pub shell: Option<String>,
     pub source: SkillSource,
     pub skill_dir: PathBuf,
@@ -71,6 +72,7 @@ pub struct SkillSummary {
     pub aliases: Vec<String>,
     pub user_invocable: bool,
     pub context: SkillExecutionContext,
+    pub script: Option<String>,
     pub loaded_from: String,
     pub paths: Vec<String>,
     pub detail_path: String,
@@ -87,6 +89,7 @@ impl From<&SkillDefinition> for SkillSummary {
             aliases: value.aliases.clone(),
             user_invocable: value.user_invocable,
             context: value.context.clone(),
+            script: value.script.clone(),
             loaded_from: value.source.as_str().to_string(),
             paths: value.paths.clone(),
             detail_path: value.skill_path.to_string_lossy().to_string(),
@@ -122,6 +125,8 @@ struct SkillFrontmatter {
     hooks: Option<Value>,
     #[serde(default)]
     arguments: Vec<String>,
+    #[serde(default)]
+    script: Option<String>,
     #[serde(default)]
     shell: Option<String>,
     #[serde(default)]
@@ -254,6 +259,69 @@ impl SkillRuntime {
             "Base directory for this skill: {skill_dir}\n\n{}",
             body.trim()
         )
+    }
+
+    pub fn render_invocation_prompt(
+        &self,
+        skill: &SkillDefinition,
+        session_id: &str,
+        args: Option<&str>,
+    ) -> String {
+        let prompt = self.render_prompt(skill, session_id, args);
+        format!(
+            "【Invoked Skill Context】\nSkill: {} ({})\nTreat the following as active skill context for this turn and future compaction restores until replaced.\nDo not quote it back verbatim unless the user explicitly asks for the skill source.\n\n{}",
+            skill.display_name, skill.id, prompt
+        )
+    }
+
+    pub fn resolve_script_path(
+        &self,
+        skill: &SkillDefinition,
+        requested_script: Option<&str>,
+    ) -> Result<PathBuf, String> {
+        let relative = requested_script
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or_else(|| skill.script.as_deref())
+            .ok_or_else(|| format!("技能 '{}' 未声明可执行 script", skill.id))?;
+
+        let requested = PathBuf::from(relative);
+        if requested.is_absolute() {
+            return Err("skill script 必须是 skill 目录内的相对路径".to_string());
+        }
+
+        let root = skill
+            .skill_dir
+            .canonicalize()
+            .map_err(|err| format!("解析 skill 目录失败: {err}"))?;
+        let candidate = skill.skill_dir.join(&requested);
+        let resolved = candidate
+            .canonicalize()
+            .map_err(|err| format!("解析 skill script 失败: {err}"))?;
+        if !resolved.starts_with(&root) {
+            return Err("skill script 不能逃逸出 skill 目录".to_string());
+        }
+        if !resolved.is_file() {
+            return Err("skill script 不是可执行文件".to_string());
+        }
+        Ok(resolved)
+    }
+
+    pub fn map_script_arguments(
+        &self,
+        skill: &SkillDefinition,
+        script_arguments: Option<&Value>,
+        raw_args: Option<&str>,
+    ) -> Result<Vec<String>, String> {
+        if let Some(value) = script_arguments {
+            return map_script_arguments_value(&skill.arguments, value);
+        }
+
+        if let Some(raw) = raw_args.map(str::trim).filter(|value| !value.is_empty()) {
+            return Ok(vec![raw.to_string()]);
+        }
+
+        Ok(Vec::new())
     }
 
     pub fn resolve_skill_via_search(
@@ -430,6 +498,10 @@ fn parse_skill_definition(
         paths: frontmatter.paths,
         hooks: frontmatter.hooks,
         arguments: frontmatter.arguments,
+        script: frontmatter
+            .script
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
         shell: frontmatter
             .shell
             .map(|value| value.trim().to_string())
@@ -493,6 +565,50 @@ fn skill_matches_paths(patterns: &[String], file_paths: &[String]) -> bool {
 
 fn normalize_skill_text(value: &str) -> String {
     value.trim().to_lowercase()
+}
+
+fn map_script_arguments_value(
+    declared_arguments: &[String],
+    value: &Value,
+) -> Result<Vec<String>, String> {
+    match value {
+        Value::Null => Ok(Vec::new()),
+        Value::Array(values) => values
+            .iter()
+            .map(json_value_to_argument)
+            .collect::<Result<Vec<_>, _>>(),
+        Value::Object(map) => {
+            if declared_arguments.is_empty() {
+                return Err(
+                    "脚本参数使用对象形式时，SKILL.md 必须先声明 arguments 顺序".to_string()
+                );
+            }
+
+            let mut ordered = Vec::new();
+            for key in declared_arguments {
+                if let Some(argument) = map.get(key) {
+                    if argument.is_null() {
+                        continue;
+                    }
+                    ordered.push(json_value_to_argument(argument)?);
+                }
+            }
+            Ok(ordered)
+        }
+        _ => Ok(vec![json_value_to_argument(value)?]),
+    }
+}
+
+fn json_value_to_argument(value: &Value) -> Result<String, String> {
+    match value {
+        Value::String(text) => Ok(text.clone()),
+        Value::Number(number) => Ok(number.to_string()),
+        Value::Bool(boolean) => Ok(boolean.to_string()),
+        Value::Null => Err("脚本参数不能为 null".to_string()),
+        Value::Array(_) | Value::Object(_) => {
+            Err("脚本参数必须是字符串、数字、布尔值，或这些值构成的数组".to_string())
+        }
+    }
 }
 
 fn score_skill(skill: &SkillSummary, query: &str) -> i32 {
@@ -631,6 +747,7 @@ mod tests {
                 "  - src/**/*.rs\n",
                 "arguments:\n",
                 "  - ticker\n",
+                "script: scripts/run.sh\n",
                 "shell: zsh\n",
                 "---\n\n",
                 "body"
@@ -661,6 +778,7 @@ mod tests {
         assert_eq!(alpha.agent.as_deref(), Some("worker"));
         assert_eq!(alpha.paths, vec!["src/**/*.rs".to_string()]);
         assert_eq!(alpha.arguments, vec!["ticker".to_string()]);
+        assert_eq!(alpha.script.as_deref(), Some("scripts/run.sh"));
         assert_eq!(alpha.shell.as_deref(), Some("zsh"));
 
         let beta = runtime.load_skill("beta", &[]).expect("beta");
@@ -691,5 +809,73 @@ mod tests {
         assert!(!rendered.contains("${HONE_SKILL_DIR}"));
         assert!(!rendered.contains("${HONE_SESSION_ID}"));
         assert!(!rendered.contains("${ARGUMENTS}"));
+    }
+
+    #[test]
+    fn render_invocation_prompt_wraps_rendered_skill_context() {
+        let root = make_temp_dir("hone_skill_runtime_invocation");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        fs::create_dir_all(system.join("alpha")).expect("alpha dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            system.join("alpha/SKILL.md"),
+            "---\nname: Alpha\ndescription: invocation\n---\n\nbody",
+        )
+        .expect("write skill");
+
+        let runtime = SkillRuntime::new(system, custom, root);
+        let skill = runtime.load_skill("alpha", &[]).expect("alpha");
+        let rendered = runtime.render_invocation_prompt(&skill, "session-456", None);
+
+        assert!(rendered.contains("【Invoked Skill Context】"));
+        assert!(rendered.contains("Skill: Alpha (alpha)"));
+        assert!(rendered.contains("Base directory for this skill:"));
+    }
+
+    #[test]
+    fn map_script_arguments_uses_declared_order_for_objects() {
+        let root = make_temp_dir("hone_skill_runtime_script_args");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        fs::create_dir_all(system.join("alpha")).expect("alpha dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            system.join("alpha/SKILL.md"),
+            "---\nname: Alpha\ndescription: script args\narguments:\n  - ticker\n  - days\nscript: scripts/run.sh\n---\n\nbody",
+        )
+        .expect("write skill");
+
+        let runtime = SkillRuntime::new(system, custom, root);
+        let skill = runtime.load_skill("alpha", &[]).expect("alpha");
+        let args = runtime
+            .map_script_arguments(
+                &skill,
+                Some(&serde_json::json!({"days": 5, "ticker": "AAPL"})),
+                None,
+            )
+            .expect("map args");
+        assert_eq!(args, vec!["AAPL".to_string(), "5".to_string()]);
+    }
+
+    #[test]
+    fn resolve_script_path_rejects_escape() {
+        let root = make_temp_dir("hone_skill_runtime_script_path");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        fs::create_dir_all(system.join("alpha")).expect("alpha dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            system.join("alpha/SKILL.md"),
+            "---\nname: Alpha\ndescription: script path\nscript: ../escape.sh\n---\n\nbody",
+        )
+        .expect("write skill");
+
+        let runtime = SkillRuntime::new(system, custom, root);
+        let skill = runtime.load_skill("alpha", &[]).expect("alpha");
+        let error = runtime
+            .resolve_script_path(&skill, None)
+            .expect_err("should reject escape");
+        assert!(error.contains("skill script"));
     }
 }

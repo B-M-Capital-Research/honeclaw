@@ -19,6 +19,7 @@ pub struct SkillMeta {
     pub tools: Vec<String>,
     pub user_invocable: bool,
     pub context: String,
+    pub script: Option<String>,
     pub loaded_from: String,
     pub paths: Vec<String>,
 }
@@ -91,6 +92,7 @@ fn skill_summary_to_meta(skill: SkillSummary) -> SkillMeta {
         tools: skill.allowed_tools,
         user_invocable: skill.user_invocable,
         context: skill.context.as_str().to_string(),
+        script: skill.script,
         loaded_from: skill.loaded_from,
         paths: skill.paths,
     }
@@ -135,7 +137,7 @@ impl Tool for LoadSkillTool {
         match runtime.load_skill(skill_name, &[]) {
             Ok(skill) => {
                 let session_id = std::env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
-                let prompt = runtime.render_prompt(&skill, &session_id, None);
+                let prompt = runtime.render_invocation_prompt(&skill, &session_id, None);
                 Ok(serde_json::json!({
                     "success": true,
                     "skill_name": skill.id,
@@ -145,6 +147,7 @@ impl Tool for LoadSkillTool {
                     "available_tools": skill.allowed_tools,
                     "execution_context": skill.context.as_str(),
                     "user_invocable": skill.user_invocable,
+                    "script": skill.script,
                     "loaded_from": skill.source.as_str(),
                     "paths": skill.paths,
                     "prompt": prompt,

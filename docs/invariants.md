@@ -82,7 +82,12 @@ Last updated: 2026-03-31
   - Full `SKILL.md` bodies must be injected only when `skill_tool(...)` or a user slash skill actually invokes that skill
 - User slash skills and model `skill_tool(...)` calls must share the same prompt-expansion source of truth; do not let the Web/CLI path hand-maintain a divergent skill prompt template
 - Invoked skills that materially change the current turn prompt must be recoverable from session metadata after compaction / resume; do not rely only on persisted tool results for skill restoration
-- Skill frontmatter fields such as `allowed-tools`, `model`, `effort`, `context`, `paths`, `hooks`, `arguments`, and `shell` should be parsed from `SKILL.md` as the source of truth. If runner infrastructure does not yet enforce one of these fields, document that gap instead of silently dropping or misrepresenting it
+- Skill frontmatter fields such as `allowed-tools`, `model`, `effort`, `context`, `paths`, `hooks`, `arguments`, `script`, and `shell` should be parsed from `SKILL.md` as the source of truth. If runner infrastructure does not yet enforce one of these fields, document that gap instead of silently dropping or misrepresenting it
+- Skill script execution must stay opt-in. Loading or disclosing a skill may expand its prompt, but running a declared `script` must only happen through an explicit execution path such as `skill_tool(..., execute_script=true)`
+- Invoked skill context and per-turn user input must not be conflated. Only the stable invoked skill prompt may be persisted for restore/compaction; one-shot user supplements after a slash invocation belong only to the current turn
+- Session compaction must preserve an explicit boundary model. Post-compact restore should derive context from the last compact boundary forward, with the compact summary stored as part of the message stream rather than treated only as an out-of-band prompt field
+- Manual `/compact` must reuse the same boundary-based compaction path as automatic compression, must not consume daily conversation quota, and must not persist the slash command text as a normal user message
+- Compact summaries and compact skill snapshots may stay in the stored message stream as restore materials, but primary chat history views should treat them as transcript-only rather than ordinary user-visible dialogue
 
 ## Change Constraints
 

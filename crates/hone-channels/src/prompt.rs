@@ -173,8 +173,15 @@ pub fn build_prompt_bundle(
         .load_session(session_id)
         .ok()
         .flatten()
-        .and_then(|session| session.summary)
-        .map(|summary| format!("【历史会话总结】\n{}", summary.content.trim()))
+        .and_then(|session| {
+            hone_memory::latest_compact_summary(&session.messages)
+                .map(|message| message.content.trim().to_string())
+                .or_else(|| {
+                    session
+                        .summary
+                        .map(|summary| format!("【历史会话总结】\n{}", summary.content.trim()))
+                })
+        })
         .filter(|value| !value.trim().is_empty());
 
     PromptBundle {
