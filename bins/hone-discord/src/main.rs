@@ -33,7 +33,7 @@ async fn main() {
 
     if !core.config.discord.enabled {
         warn!("discord.enabled=false，Discord Bot 不会启动。");
-        return;
+        std::process::exit(hone_core::CHANNEL_DISABLED_EXIT_CODE);
     }
 
     let token = core.config.discord.bot_token.trim().to_string();

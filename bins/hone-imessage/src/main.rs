@@ -477,7 +477,7 @@ async fn main() {
 
     if !core.config.imessage.enabled {
         warn!("imessage.enabled=false，iMessage Bot 不会启动。");
-        return;
+        std::process::exit(hone_core::CHANNEL_DISABLED_EXIT_CODE);
     }
 
     let _process_lock = match hone_core::acquire_runtime_process_lock(

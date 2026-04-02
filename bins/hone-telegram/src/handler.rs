@@ -85,7 +85,7 @@ pub(crate) async fn run() {
 
     if !core.config.telegram.enabled {
         warn!("telegram.enabled=false，Telegram Bot 不会启动。");
-        return;
+        std::process::exit(hone_core::CHANNEL_DISABLED_EXIT_CODE);
     }
 
     let _process_lock = match hone_core::acquire_runtime_process_lock(
@@ -106,7 +106,7 @@ pub(crate) async fn run() {
                     "Telegram"
                 )
             );
-            return;
+            std::process::exit(1);
         }
     };
 
@@ -114,14 +114,14 @@ pub(crate) async fn run() {
         Ok(heartbeat) => heartbeat,
         Err(err) => {
             error!("无法启动 Telegram heartbeat: {err}");
-            return;
+            std::process::exit(1);
         }
     };
 
     let token = core.config.telegram.bot_token.trim().to_string();
     if token.is_empty() {
         warn!("⚠️  未设置 telegram.bot_token，请在 config.yaml 中配置");
-        return;
+        std::process::exit(1);
     }
 
     let bot = Bot::new(token);
@@ -129,7 +129,7 @@ pub(crate) async fn run() {
         Ok(me) => me,
         Err(e) => {
             error!("无法获取 Telegram Bot 信息: {e}");
-            return;
+            std::process::exit(1);
         }
     };
     let bot_id = me.user.id.0;

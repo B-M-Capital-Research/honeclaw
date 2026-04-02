@@ -108,7 +108,7 @@ pub(crate) async fn run() {
 
     if !core.config.feishu.enabled {
         warn!("feishu.enabled=false，Feishu 渠道不会启动。");
-        return;
+        std::process::exit(hone_core::CHANNEL_DISABLED_EXIT_CODE);
     }
 
     let _process_lock =

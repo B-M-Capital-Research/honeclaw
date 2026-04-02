@@ -125,6 +125,8 @@ build_desktop_release() {
   cargo build -p hone-mcp -p hone-desktop --release
 }
 
+CHANNEL_DISABLED_EXIT_CODE=20
+
 start_hone_bin() {
   local bin_name="$1"
   local service_name="$2"
@@ -147,6 +149,12 @@ start_hone_bin() {
   if ! pid_is_running "$pid"; then
     local status=0
     wait "$pid" || status=$?
+    if [[ "$status" -eq "$CHANNEL_DISABLED_EXIT_CODE" ]]; then
+      echo "[INFO] ${service_name} skipped by runtime config."
+      rm -f "$(pid_file "$service_name")"
+      printf -v "$pid_var" '%s' ""
+      return 0
+    fi
     echo "[FAIL] ${service_name} exited during startup (status=${status}). Clear previous Hone processes and retry."
     exit 1
   fi

@@ -15,6 +15,8 @@ pub mod process_lock;
 pub mod time;
 pub mod tool_event;
 
+pub const CHANNEL_DISABLED_EXIT_CODE: i32 = 20;
+
 pub use actor::{ActorIdentity, SessionIdentity, SessionKind};
 pub use api_key_pool::ApiKeyPool;
 pub use audit::{LlmAuditRecord, LlmAuditSink};
