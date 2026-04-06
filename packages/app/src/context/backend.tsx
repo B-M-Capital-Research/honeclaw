@@ -46,6 +46,28 @@ type BackendContextValue = ReturnType<typeof createBackendState>
 
 const BackendContext = createContext<BackendContextValue>()
 
+const DESKTOP_RUNTIME_DETECT_TIMEOUT_MS = 3000
+const DESKTOP_STATUS_TIMEOUT_MS = 4000
+const DESKTOP_CONNECT_TIMEOUT_MS = 12000
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: number | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => {
+          reject(new Error(`${label} 超时（>${timeoutMs}ms）`))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) {
+      window.clearTimeout(timer)
+    }
+  }
+}
+
 function createBackendState() {
   const [state, setState] = createStore({
     isDesktop: isTauriRuntime(),
@@ -128,6 +150,29 @@ function createBackendState() {
     })
   }
 
+  const applyDesktopStatusWithRemoteFallback = async (status: LegacyBackendStatusInfo) => {
+    const resolvedBaseUrl =
+      status.resolvedBaseUrl ?? status.resolved_base_url ?? resolveBaseUrl(status.config)
+
+    if (status.connected || status.config.mode !== "remote" || !resolvedBaseUrl) {
+      applyDesktopStatus(status)
+      return
+    }
+
+    try {
+      const meta = normalizeMeta(await probeBackendMeta(status.config, resolvedBaseUrl) as LegacyMetaInfo)
+      applyConnection({
+        config: status.config,
+        resolvedBaseUrl,
+        meta,
+        diagnostics: normalizeDiagnostics(status.diagnostics),
+        connected: true,
+      })
+    } catch {
+      applyDesktopStatus(status)
+    }
+  }
+
   const initBrowser = async () => {
     const config = defaultBackendConfig()
     try {
@@ -150,14 +195,25 @@ function createBackendState() {
     }
   }
 
+  const loadDesktopBackendStatusSafe = async () =>
+    withTimeout(loadDesktopBackendStatus(), DESKTOP_STATUS_TIMEOUT_MS, "读取 desktop backend 状态")
+
+  const connectDesktopBackendSafe = async () =>
+    withTimeout(connectDesktopBackend(), DESKTOP_CONNECT_TIMEOUT_MS, "连接 desktop backend")
+
   const initDesktop = async () => {
     try {
-      const initial = await loadDesktopBackendStatus()
+      const initial = await loadDesktopBackendStatusSafe()
       if (initial.connected) {
-        applyDesktopStatus(initial)
+        await applyDesktopStatusWithRemoteFallback(initial)
       } else {
-        const connected = await connectDesktopBackend()
-        applyDesktopStatus(connected)
+        try {
+          const connected = await connectDesktopBackendSafe()
+          await applyDesktopStatusWithRemoteFallback(connected)
+        } catch {
+          const refreshed = await loadDesktopBackendStatusSafe()
+          await applyDesktopStatusWithRemoteFallback(refreshed)
+        }
       }
     } catch (error) {
       applyConnection({
@@ -173,7 +229,16 @@ function createBackendState() {
 
   onMount(() => {
     void (async () => {
-      const desktop = await detectTauriRuntime()
+      let desktop = false
+      try {
+        desktop = await withTimeout(
+          detectTauriRuntime(),
+          DESKTOP_RUNTIME_DETECT_TIMEOUT_MS,
+          "检测 desktop runtime",
+        )
+      } catch {
+        desktop = isTauriRuntime()
+      }
       setState("isDesktop", desktop)
       if (desktop) {
         await initDesktop()
@@ -185,17 +250,17 @@ function createBackendState() {
 
   createEffect(() => {
     if (!state.isDesktop || state.initializing || state.connected || state.saving) return
-    const timer = window.setTimeout(() => {
+    const timer = window.setInterval(() => {
       void (async () => {
         try {
-          const status = await connectDesktopBackend()
-          applyDesktopStatus(status)
+          const status = await connectDesktopBackendSafe()
+          await applyDesktopStatusWithRemoteFallback(status)
         } catch {
           // Keep the existing error message; this retry is only for transient startup races.
         }
       })()
     }, 1200)
-    onCleanup(() => window.clearTimeout(timer))
+    onCleanup(() => window.clearInterval(timer))
   })
 
   return {
@@ -210,8 +275,8 @@ function createBackendState() {
       setState("saving", true)
       try {
         if (state.isDesktop) {
-          const status = await connectDesktopBackend()
-          applyDesktopStatus(status)
+          const status = await connectDesktopBackendSafe()
+          await applyDesktopStatusWithRemoteFallback(status)
         } else {
           await initBrowser()
         }
@@ -224,8 +289,8 @@ function createBackendState() {
       setState("saving", true)
       try {
         await saveDesktopBackendConfig(config)
-        const status = await connectDesktopBackend()
-        applyDesktopStatus(status)
+        const status = await connectDesktopBackendSafe()
+        await applyDesktopStatusWithRemoteFallback(status)
       } finally {
         setState("saving", false)
       }
@@ -244,7 +309,7 @@ function createBackendState() {
       try {
         const result = await saveDesktopChannelSettings(settings)
         if (result.backendStatus) {
-          applyDesktopStatus(result.backendStatus)
+          await applyDesktopStatusWithRemoteFallback(result.backendStatus)
         }
         return result
       } finally {

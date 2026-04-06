@@ -59,12 +59,6 @@ impl PromptBundle {
     pub fn compose_user_input(&self, user_input: &str) -> String {
         let mut sections = Vec::new();
 
-        if let Some(session_context) =
-            Some(self.session_context.trim()).filter(|value| !value.is_empty())
-        {
-            sections.push(session_context.to_string());
-        }
-
         if let Some(context) = self
             .conversation_context
             .as_ref()
@@ -75,6 +69,13 @@ impl PromptBundle {
         }
 
         sections.push(format!("【本轮用户输入】\n{}", user_input.trim()));
+
+        if let Some(session_context) =
+            Some(self.session_context.trim()).filter(|value| !value.is_empty())
+        {
+            sections.push(session_context.to_string());
+        }
+
         sections.join("\n\n")
     }
 }
@@ -96,10 +97,10 @@ pub fn build_prompt_bundle(
     storage: &SessionStorage,
     channel: &str,
     session_id: &str,
-    prompt_state: &SessionPromptState,
+    _prompt_state: &SessionPromptState,
     options: &PromptOptions,
 ) -> PromptBundle {
-    let frozen = prompt_state.frozen_datetime();
+    let now = hone_core::beijing_now();
     let mut static_system = config
         .agent
         .system_prompt
@@ -163,9 +164,9 @@ pub fn build_prompt_bundle(
 
     let session_context = format!(
         "【Session 上下文】\n当前时间：{} (北京时间)\n当前日期：{}\n当前年份：{}\n会话 ID：{}",
-        frozen.format("%Y-%m-%d %H:%M:%S"),
-        frozen.format("%Y-%m-%d"),
-        frozen.format("%Y"),
+        now.format("%Y-%m-%d %H:%M:%S"),
+        now.format("%Y-%m-%d"),
+        now.format("%Y"),
         session_id
     );
 
@@ -317,6 +318,75 @@ mod tests {
                 .compose_user_input("你好")
                 .contains("【本轮用户输入】")
         );
+
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn session_context_is_appended_after_current_turn_input() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-prompt-session-order-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&data_dir).expect("session storage dir should init");
+        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let mut config = HoneConfig::default();
+        config.agent.system_prompt = "你是 Hone。".to_string();
+
+        let bundle = build_prompt_bundle(
+            &config,
+            &storage,
+            "feishu",
+            "session-demo",
+            &SessionPromptState::default(),
+            &PromptOptions::default(),
+        );
+
+        let composed = bundle.compose_user_input("今天公布的非农数据怎么样");
+        let input_pos = composed
+            .find("【本轮用户输入】")
+            .expect("user input section");
+        let session_pos = composed
+            .find("【Session 上下文】")
+            .expect("session section");
+
+        assert!(input_pos < session_pos);
+
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn session_context_uses_current_time_instead_of_frozen_prompt_time() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-prompt-current-time-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&data_dir).expect("session storage dir should init");
+        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let mut config = HoneConfig::default();
+        config.agent.system_prompt = "你是 Hone。".to_string();
+        let prompt_state = SessionPromptState {
+            frozen_time_beijing: "2026-03-17T22:01:00+08:00".to_string(),
+        };
+
+        let bundle = build_prompt_bundle(
+            &config,
+            &storage,
+            "discord",
+            "session-demo",
+            &prompt_state,
+            &PromptOptions::default(),
+        );
+
+        let composed = bundle.compose_user_input("今天公布的非农数据怎么样");
+        assert!(!composed.contains("2026-03-17 22:01:00"));
+        assert!(composed.contains(&hone_core::beijing_now().format("%Y-%m-%d").to_string()));
 
         let _ = fs::remove_dir_all(&data_dir);
     }

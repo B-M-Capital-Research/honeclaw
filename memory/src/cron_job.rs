@@ -15,7 +15,7 @@ use uuid::Uuid;
 /// 北京时间偏移（+8h）
 const BEIJING_OFFSET: i32 = 8 * 3600;
 /// 每个 actor 同时启用中的最大定时任务数
-pub const MAX_ENABLED_JOBS_PER_ACTOR: usize = 5;
+pub const MAX_ENABLED_JOBS_PER_ACTOR: usize = 12;
 /// 容错窗口（分钟）— 向过去看 5 分钟，覆盖 LLM 处理时间导致的时间窗口错过
 const DUE_WINDOW_MINUTES: i32 = 5;
 

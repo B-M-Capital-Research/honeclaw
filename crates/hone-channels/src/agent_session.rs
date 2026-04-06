@@ -131,6 +131,17 @@ const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
     "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
 
+fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
+    // 失败直接返回；成功时只要有正文或工具调用，也视为已拿到有效结果。
+    //
+    // 注意：`streamed_output` 仅表示 runner 具备流式能力，不代表这次真的输出过内容。
+    // opencode_acp 会始终把它设为 true，因此不能再把它当成“已有输出”的依据，
+    // 否则空回复成功态会被直接放过，前端就可能一直停留在“思考中”。
+    !result.response.success
+        || !result.response.content.trim().is_empty()
+        || !result.response.tool_calls_made.is_empty()
+}
+
 fn should_persist_tool_result(call: &ToolCallMade) -> bool {
     if matches_skill_runtime_tool_name(&call.name) {
         return false;
@@ -230,11 +241,78 @@ fn get_session_run_lock(session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
 
 struct SessionEventEmitter {
     listeners: Vec<Arc<dyn AgentSessionListener>>,
+    channel: String,
+    user_id: String,
+    session_id: String,
+    message_id: Option<String>,
+}
+
+fn truncate_event_detail(detail: &str, max_chars: usize) -> String {
+    if detail.chars().count() <= max_chars {
+        return detail.to_string();
+    }
+    detail.chars().take(max_chars).collect::<String>() + "..."
 }
 
 #[async_trait]
 impl AgentRunnerEmitter for SessionEventEmitter {
     async fn emit(&self, event: AgentRunnerEvent) {
+        match &event {
+            AgentRunnerEvent::Progress { stage, detail } => {
+                tracing::info!(
+                    message_id = %self.message_id.as_deref().unwrap_or("-"),
+                    state = "runner_progress",
+                    "[MsgFlow/{}] runner.stage={} user={} session={} detail={}",
+                    self.channel,
+                    stage,
+                    self.user_id,
+                    self.session_id,
+                    detail
+                        .as_deref()
+                        .map(|value| truncate_event_detail(value, 280))
+                        .unwrap_or_else(|| "-".to_string())
+                );
+            }
+            AgentRunnerEvent::ToolStatus {
+                tool,
+                status,
+                message,
+                reasoning,
+            } => {
+                tracing::info!(
+                    message_id = %self.message_id.as_deref().unwrap_or("-"),
+                    state = "runner_tool",
+                    "[MsgFlow/{}] runner.tool user={} session={} tool={} status={} message={} reasoning={}",
+                    self.channel,
+                    self.user_id,
+                    self.session_id,
+                    tool,
+                    status,
+                    message
+                        .as_deref()
+                        .map(|value| truncate_event_detail(value, 200))
+                        .unwrap_or_else(|| "-".to_string()),
+                    reasoning
+                        .as_deref()
+                        .map(|value| truncate_event_detail(value, 200))
+                        .unwrap_or_else(|| "-".to_string())
+                );
+            }
+            AgentRunnerEvent::Error { error } => {
+                tracing::warn!(
+                    message_id = %self.message_id.as_deref().unwrap_or("-"),
+                    state = "runner_error",
+                    "[MsgFlow/{}] runner.error user={} session={} kind={:?} message=\"{}\"",
+                    self.channel,
+                    self.user_id,
+                    self.session_id,
+                    error.kind,
+                    truncate_event_detail(&error.message, 280)
+                );
+            }
+            AgentRunnerEvent::StreamDelta { .. } | AgentRunnerEvent::StreamThought { .. } => {}
+        }
+
         let mapped = match event {
             AgentRunnerEvent::Progress { stage, detail } => {
                 AgentSessionEvent::Progress { stage, detail }
@@ -274,14 +352,9 @@ impl AgentSession {
         let mut last_result = runner.run(request.clone(), self.runner_emitter()).await;
 
         for retry_idx in 0..EMPTY_SUCCESS_RETRY_LIMIT {
-            // 如果运行失败，或者内容不为空，或者已经产生了流式输出/工具调用，则不重试。
-            // 理由：agent 指令可能只包含工具调用而没有最终回复文本；
-            // 且如果已经有了流式输出，重试会导致前端看到重复的消息（Triple Message Bug）。
-            if !last_result.response.success
-                || !last_result.response.content.trim().is_empty()
-                || !last_result.response.tool_calls_made.is_empty()
-                || last_result.streamed_output
-            {
+            // 如果运行失败，或者已经拿到了正文/工具调用，则不重试。
+            // 对“支持流式但本次没有任何输出”的 runner，继续走空回复兜底逻辑。
+            if should_return_runner_result(&last_result) {
                 return last_result;
             }
 
@@ -505,19 +578,12 @@ impl AgentSession {
                 listing
             ));
         }
-        let prompt_state = self
-            .core
-            .session_storage
-            .ensure_prompt_state(session_id)
-            .ok()
-            .flatten()
-            .unwrap_or_default();
         let bundle = build_prompt_bundle(
             &self.core.config,
             &self.core.session_storage,
             &self.actor.channel,
             session_id,
-            &prompt_state,
+            &Default::default(),
             &prompt_options,
         );
         (
@@ -813,6 +879,10 @@ impl AgentSession {
     fn runner_emitter(&self) -> Arc<dyn AgentRunnerEmitter> {
         Arc::new(SessionEventEmitter {
             listeners: self.listeners.clone(),
+            channel: self.actor.channel.clone(),
+            user_id: self.actor.user_id.clone(),
+            session_id: self.session_id.clone(),
+            message_id: self.message_id.clone(),
         })
     }
 
@@ -1143,6 +1213,8 @@ impl AgentSession {
             gemini_stream: self.default_gemini_stream_options(options.timeout),
             session_metadata: self.load_session_metadata(&session_id),
             working_directory,
+            allowed_tools: None,
+            max_tool_calls: None,
         };
 
         let runner_result = self
@@ -1526,6 +1598,7 @@ mod tests {
 
         let mut core = HoneBotCore::new(config);
         core.llm = Some(Arc::new(llm));
+        core.auxiliary_llm = Some(Arc::new(MockLlmProvider::with_chat_responses(vec![])));
         Arc::new(core)
     }
 
@@ -1559,6 +1632,28 @@ mod tests {
         assert!(ctx.messages.is_empty());
         assert!(ctx.actor_identity().is_none());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn should_return_runner_result_ignores_streaming_flag_when_response_is_empty() {
+        let result = AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: Vec::new(),
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+        };
+
+        assert!(!should_return_runner_result(&result));
+
+        let mut with_content = result;
+        with_content.response.content = "hello".to_string();
+        assert!(should_return_runner_result(&with_content));
     }
 
     #[test]

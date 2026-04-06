@@ -26,7 +26,7 @@ Last updated: 2026-03-31
   - `open-source-prep.md`: allowlist / denylist and cleanup checklist before copying to a public repo
 - `crates/`
   - `hone-core`: foundational capabilities such as the config façade / submodules, logging, errors, and agent context
-  - `hone-llm`: model provider abstraction and OpenRouter integration
+- `hone-llm`: model provider abstraction, OpenRouter integration, and generic OpenAI-compatible provider plumbing used by the desktop `multi-agent` search stage
   - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, and a compatibility `load_skill` shim
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
@@ -35,9 +35,10 @@ Last updated: 2026-03-31
   - `function_calling`: function-calling agent core
   - `gemini_cli`, `codex_cli`: CLI agent adapters
   - `gemini_acp`, `codex_acp`, `opencode_acp`: agent runner adapters based on ACP stdio / JSON-RPC
+  - `multi-agent`: two-stage runner wiring that combines a direct function-calling search pass with an ACP answer pass
 - `memory/`
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
-  - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`
+  - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间"
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
   - `memory/src/quota.rs` stores `success_count` / `in_flight` in JSON files by `ActorIdentity` and by Beijing date
@@ -79,7 +80,7 @@ Last updated: 2026-03-31
   - `mod.rs`: runner exports
   - `types.rs`: shared runner trait / request / event / result types
   - `acp_common.rs`: shared helpers for ACP stdio / JSON-RPC
-  - `gemini_cli.rs`, `gemini_acp.rs`, `codex_acp.rs`, `opencode_acp.rs`: runner implementations
+  - `gemini_cli.rs`, `gemini_acp.rs`, `codex_acp.rs`, `opencode_acp.rs`, `multi_agent.rs`: runner implementations
 - Prompt layering: `crates/hone-channels/src/prompt.rs`
   - Injects the global finance-domain constraints in one place: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short
 - Tool registry entry point: `crates/hone-tools/src/lib.rs`
@@ -116,6 +117,7 @@ Last updated: 2026-03-31
 - Root `make_dmg_release.sh` is the macOS release entrypoint: it prepares bundled binaries for `aarch64-apple-darwin` and `x86_64-apple-darwin`, runs `tauri build --target`, and collects DMGs into `dist/dmg/`
 - Windows desktop packaging intentionally excludes `hone-imessage`; macOS packaging keeps it, and runtime support still uses `cfg!(target_os = "macos")` as the source of truth
 - `./launch.sh --desktop` is intentionally single-runtime: it starts Vite + Tauri dev only, and the desktop sidecar is responsible for starting the bundled `hone-console-page` plus enabled channel listeners. Do not start the external backend/channel set in parallel for desktop dev, or logs and incoming updates will split across duplicate processes
+- `./launch.sh --desktop --remote` is the dev mode to use when desktop/UI hot reload should not interrupt long-running backend or channel listeners: the launcher starts the normal external `hone-console-page` + channel set first, writes the desktop backend config to `remote`, and then starts Vite + Tauri dev against that remote base URL
 - `./launch.sh --release` starts a release desktop binary without `tauri dev` hot reload. It is intended for long-running desktop verification when source edits should not automatically restart the desktop host. By default the launcher pins `HONE_DESKTOP_DATA_DIR` to the repo `data/` directory and `HONE_DESKTOP_CONFIG_DIR` to `data/runtime/desktop-config/` so the release desktop instance can reuse project-local runtime data instead of silently drifting to an app-specific config/data root
 - Desktop startup now uses per-process runtime lock files under `data/runtime/locks/` (or the app runtime dir in packaged mode). `hone-desktop` must hold its own lock, each standalone channel/backend binary must hold its own lock, and bundled desktop mode preflights the full `hone-console-page` + enabled-channel set before startup. When the conflict still points at a live matching Hone process, desktop startup now attempts one lock-targeted cleanup by pid and then retries before surfacing the blocking error.
 - The desktop app supports two backend modes:
@@ -123,7 +125,7 @@ Last updated: 2026-03-31
   - `remote`: Tauri does not start a local backend; the frontend connects directly to a remote HTTP base URL
 - Runtime configuration is layered: `config.yaml` seeds `data/runtime/config_runtime.yaml`, and writable changes are isolated in `data/runtime/config_runtime.overrides.yaml`; deleting the runtime base is the supported reset path
 - In packaged desktop mode, runtime data, locks, logs, and actor sandboxes live under the app sandbox data directory by default; the desktop host also hydrates key login-shell environment variables and exports bundled binary paths (`HONE_MCP_BIN`, bundled `opencode`, `HONE_AGENT_SANDBOX_DIR`) before starting the embedded backend or channel sidecars
-- Desktop agent settings now expose both the primary opencode/OpenRouter model and `llm.openrouter.sub_model`; the sub-model is reserved for cheaper background work such as heartbeat checks and session compression
+- Desktop agent settings now expose the primary opencode/OpenRouter model, a dedicated `llm.auxiliary` OpenAI-compatible background route for heartbeat/session compression, and the nested `multi-agent` search/answer config. `llm.openrouter.sub_model` remains only as the legacy fallback model name for the auxiliary path; it is not reused as the `multi-agent` search model
 - In `bundled` mode, Tauri also starts or stops `hone-imessage` / `hone-discord` / `hone-feishu` / `hone-telegram` according to the layered runtime config in the application data directory; each channel process now posts heartbeat snapshots carrying `channel + pid` back to the console backend via `HONE_CONSOLE_URL`, and `/api/channels` aggregates those live registrations into per-channel multi-process status. Desktop channel status also merges OS process scanning so duplicate listener processes are visible even when an older instance is not bound to the current backend heartbeat registry, and the desktop shell exposes a cleanup command that keeps only one process per channel. The legacy `runtime/*.heartbeat.json` files still exist as a compatibility fallback for non-desktop paths
 - Desktop log pages read from `/api/logs`; the backend route now merges the in-memory log ring with recent `data/runtime/logs/*.log` tails so bundled desktop mode can display channel/runtime logs even when they were written by sibling processes instead of the current web process
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`

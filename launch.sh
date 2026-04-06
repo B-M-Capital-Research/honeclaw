@@ -7,6 +7,7 @@ set -euo pipefail
 #   ./launch.sh                    # start main backend + channel listeners
 #   ./launch.sh --web              # start backend + channel listeners + Vite frontend
 #   ./launch.sh --desktop          # start Tauri desktop dev (desktop manages bundled backend + channels)
+#   ./launch.sh --desktop --remote # start backend + channel listeners + Tauri dev (desktop connects to remote backend)
 #   ./launch.sh --release          # start desktop in release mode (no Rust hot reload)
 #   ./launch.sh --desktop --all    # same as above, but rebuild frontend dist first
 #   ./launch.sh stop               # stop launched processes
@@ -45,6 +46,7 @@ START_WEB="0"
 START_DESKTOP="0"
 START_RELEASE="0"
 REBUILD_ALL="0"
+DESKTOP_REMOTE="0"
 
 pid_file() {
   echo "$RUNTIME_DIR/$1.pid"
@@ -89,6 +91,23 @@ terminate_pid() {
   fi
 }
 
+ensure_port_available() {
+  local port="$1"
+  local label="$2"
+  local pids=""
+
+  if command -v lsof >/dev/null 2>&1; then
+    pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  fi
+
+  [[ -z "$pids" ]] && return 0
+
+  echo "[WARN] ${label} port ${port} is already occupied; cleaning stale listeners..."
+  for pid in $pids; do
+    terminate_pid "$pid" "${label}-port-${port}"
+  done
+}
+
 stop_pid_file() {
   local name="$1"
   local file
@@ -123,6 +142,31 @@ build_desktop_release() {
   build_frontend
   bun run tauri:prep:build
   cargo build -p hone-mcp -p hone-desktop --release
+}
+
+desktop_config_dir() {
+  echo "${HONE_DESKTOP_CONFIG_DIR:-$RUNTIME_DIR/desktop-config}"
+}
+
+write_desktop_backend_config_bundled() {
+  local config_dir
+  local config_file
+  config_dir="$(desktop_config_dir)"
+  config_file="$config_dir/backend.json"
+  mkdir -p "$config_dir"
+  printf '{\n  "mode": "bundled",\n  "baseUrl": "",\n  "bearerToken": ""\n}\n' > "$config_file"
+  echo "[INFO] desktop backend config -> bundled"
+}
+
+write_desktop_backend_config_remote() {
+  local backend_url="$1"
+  local config_dir
+  local config_file
+  config_dir="$(desktop_config_dir)"
+  config_file="$config_dir/backend.json"
+  mkdir -p "$config_dir"
+  printf '{\n  "mode": "remote",\n  "baseUrl": "%s",\n  "bearerToken": ""\n}\n' "$backend_url" > "$config_file"
+  echo "[INFO] desktop backend config -> remote (${backend_url})"
 }
 
 CHANNEL_DISABLED_EXIT_CODE=20
@@ -209,9 +253,10 @@ for arg in "$@"; do
     --web)       START_WEB="1" ;;
     --desktop)   START_DESKTOP="1" ;;
     --release)   START_RELEASE="1" ;;
+    --remote)    DESKTOP_REMOTE="1" ;;
     --all)       REBUILD_ALL="1" ;;
     *)
-      echo "Usage: ./launch.sh [--web|--desktop|--release] [--all] [stop]"
+      echo "Usage: ./launch.sh [--web|--desktop|--release] [--remote] [--all] [stop]"
       exit 1
       ;;
   esac
@@ -223,6 +268,11 @@ mode_count=0
 [[ "$START_RELEASE" == "1" ]] && mode_count=$((mode_count + 1))
 if (( mode_count > 1 )); then
   echo "[FAIL] --web, --desktop, and --release are mutually exclusive"
+  exit 1
+fi
+
+if [[ "$DESKTOP_REMOTE" == "1" && "$START_DESKTOP" != "1" ]]; then
+  echo "[FAIL] --remote currently only supports --desktop"
   exit 1
 fi
 
@@ -270,13 +320,45 @@ stop_all
 export HONE_DISABLE_AUTO_OPEN="1"
 export HONE_CONFIG_PATH="${HONE_CONFIG_PATH:-$RUNTIME_CONFIG}"
 export HONE_DATA_DIR="${HONE_DATA_DIR:-$PROJECT_ROOT/data}"
+export HONE_DESKTOP_DATA_DIR="${HONE_DESKTOP_DATA_DIR:-$HONE_DATA_DIR}"
 export HONE_SKILLS_DIR="${HONE_SKILLS_DIR:-$PROJECT_ROOT/skills}"
 export HONE_WEB_PORT="${HONE_WEB_PORT:-8077}"
+export HONE_DESKTOP_CONFIG_DIR="${HONE_DESKTOP_CONFIG_DIR:-$RUNTIME_DIR/desktop-config}"
 
 if [[ "$START_DESKTOP" == "1" ]]; then
-  echo "[INFO] desktop mode: external backend/channel listeners disabled; desktop will manage its bundled runtime."
+  if [[ "$DESKTOP_REMOTE" == "1" ]]; then
+    echo "[INFO] desktop remote mode: keeping backend/channel listeners outside the desktop host."
+    echo "[INFO] starting backend (hone-console-page)..."
+    start_hone_bin hone-console-page backend BACKEND_PID
+
+    echo "[INFO] waiting backend readiness..."
+    for _ in $(seq 1 60); do
+      if curl -fsS "http://127.0.0.1:${HONE_WEB_PORT}/api/meta" >/dev/null 2>&1; then
+        break
+      fi
+      if ! pid_is_running "$BACKEND_PID"; then
+        echo "[FAIL] backend exited unexpectedly."
+        exit 1
+      fi
+      sleep 0.5
+    done
+
+    echo "[INFO] backend ready: http://127.0.0.1:${HONE_WEB_PORT}"
+
+    echo "[INFO] starting channel listeners..."
+    start_hone_bin hone-imessage imessage IMESSAGE_PID
+    start_hone_bin hone-discord discord DISCORD_PID
+    start_hone_bin hone-feishu feishu FEISHU_PID
+    start_hone_bin hone-telegram telegram TELEGRAM_PID
+
+    write_desktop_backend_config_remote "http://127.0.0.1:${HONE_WEB_PORT}"
+  else
+    echo "[INFO] desktop mode: external backend/channel listeners disabled; desktop will manage its bundled runtime."
+    write_desktop_backend_config_bundled
+  fi
   echo "[INFO] preparing Tauri sidecar binaries..."
   bun run tauri:prep:dev -- --skip-dev-command
+  ensure_port_available 3000 "desktop-frontend"
   echo "[INFO] starting frontend (vite)..."
   bun run dev:web &
   FRONTEND_PID=$!
@@ -296,7 +378,11 @@ if [[ "$START_DESKTOP" == "1" ]]; then
     echo "[FAIL] frontend did not become ready on http://127.0.0.1:3000"
     exit 1
   fi
-  echo "[INFO] starting desktop app (tauri dev)..."
+  if [[ "$DESKTOP_REMOTE" == "1" ]]; then
+    echo "[INFO] starting desktop app (tauri dev, remote backend=http://127.0.0.1:${HONE_WEB_PORT})..."
+  else
+    echo "[INFO] starting desktop app (tauri dev)..."
+  fi
   bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json &
   DESKTOP_PID=$!
   echo "$DESKTOP_PID" > "$(pid_file desktop)"
@@ -309,6 +395,7 @@ elif [[ "$START_RELEASE" == "1" ]]; then
   export HONE_DESKTOP_DATA_DIR="${HONE_DESKTOP_DATA_DIR:-$HONE_DATA_DIR}"
   export HONE_DESKTOP_CONFIG_DIR="${HONE_DESKTOP_CONFIG_DIR:-$RUNTIME_DIR/desktop-config}"
   mkdir -p "$HONE_DESKTOP_CONFIG_DIR"
+  write_desktop_backend_config_bundled
   RELEASE_DESKTOP_BIN="$TARGET_DIR/release/hone-desktop"
   if [[ ! -x "$RELEASE_DESKTOP_BIN" ]]; then
     echo "[FAIL] missing desktop release binary: $RELEASE_DESKTOP_BIN"
@@ -346,6 +433,7 @@ elif [[ "$START_WEB" == "1" ]]; then
   start_hone_bin hone-feishu feishu FEISHU_PID
   start_hone_bin hone-telegram telegram TELEGRAM_PID
 
+  ensure_port_available 3000 "web-frontend"
   echo "[INFO] starting frontend (vite)..."
   bun run dev:web &
   FRONTEND_PID=$!

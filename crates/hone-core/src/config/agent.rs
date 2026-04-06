@@ -7,6 +7,8 @@ pub struct LlmConfig {
     #[serde(default)]
     pub openrouter: OpenRouterConfig,
     #[serde(default)]
+    pub auxiliary: AuxiliaryLlmConfig,
+    #[serde(default)]
     pub kimi: KimiConfig,
 }
 
@@ -15,6 +17,7 @@ impl Default for LlmConfig {
         Self {
             provider: default_provider(),
             openrouter: OpenRouterConfig::default(),
+            auxiliary: AuxiliaryLlmConfig::default(),
             kimi: KimiConfig::default(),
         }
     }
@@ -77,8 +80,71 @@ impl OpenRouterConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuxiliaryLlmConfig {
+    #[serde(default = "default_auxiliary_base_url")]
+    pub base_url: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default = "default_auxiliary_api_key_env")]
+    pub api_key_env: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+}
+
+impl Default for AuxiliaryLlmConfig {
+    fn default() -> Self {
+        Self {
+            base_url: default_auxiliary_base_url(),
+            api_key: String::new(),
+            api_key_env: default_auxiliary_api_key_env(),
+            model: String::new(),
+            timeout: default_timeout(),
+            max_retries: default_max_retries(),
+            max_tokens: default_max_tokens(),
+        }
+    }
+}
+
+impl AuxiliaryLlmConfig {
+    pub fn is_configured(&self) -> bool {
+        !self.base_url.trim().is_empty()
+            && !self.model.trim().is_empty()
+            && (!self.api_key.trim().is_empty() || !self.api_key_env.trim().is_empty())
+    }
+
+    pub fn resolved_api_key(&self) -> String {
+        let direct = self.api_key.trim();
+        if !direct.is_empty() {
+            return direct.to_string();
+        }
+
+        let env_name = self.api_key_env.trim();
+        if env_name.is_empty() {
+            return String::new();
+        }
+
+        std::env::var(env_name)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    }
+}
+
 fn default_api_key_env() -> String {
     "OPENROUTER_API_KEY".to_string()
+}
+fn default_auxiliary_base_url() -> String {
+    String::new()
+}
+fn default_auxiliary_api_key_env() -> String {
+    "MINIMAX_API_KEY".to_string()
 }
 fn default_model() -> String {
     "moonshotai/kimi-k2.5".to_string()
@@ -130,6 +196,80 @@ pub struct AgentConfig {
     pub codex_acp: CodexAcpConfig,
     #[serde(default)]
     pub opencode: OpencodeAcpConfig,
+    #[serde(default)]
+    pub multi_agent: MultiAgentConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiAgentConfig {
+    #[serde(default)]
+    pub search: MultiAgentSearchConfig,
+    #[serde(default)]
+    pub answer: MultiAgentAnswerConfig,
+}
+
+impl Default for MultiAgentConfig {
+    fn default() -> Self {
+        Self {
+            search: MultiAgentSearchConfig::default(),
+            answer: MultiAgentAnswerConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiAgentSearchConfig {
+    #[serde(default = "default_multi_agent_search_base_url")]
+    pub base_url: String,
+    #[serde(default = "default_multi_agent_search_api_key")]
+    pub api_key: String,
+    #[serde(default = "default_multi_agent_search_model")]
+    pub model: String,
+    #[serde(default = "default_multi_agent_search_max_iterations")]
+    pub max_iterations: u32,
+}
+
+impl Default for MultiAgentSearchConfig {
+    fn default() -> Self {
+        Self {
+            base_url: default_multi_agent_search_base_url(),
+            api_key: default_multi_agent_search_api_key(),
+            model: default_multi_agent_search_model(),
+            max_iterations: default_multi_agent_search_max_iterations(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiAgentAnswerConfig {
+    #[serde(default = "default_opencode_api_base_url")]
+    pub api_base_url: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub variant: String,
+    #[serde(default = "default_opencode_startup_timeout")]
+    pub startup_timeout_seconds: u64,
+    #[serde(default = "default_opencode_request_timeout")]
+    pub request_timeout_seconds: u64,
+    #[serde(default = "default_multi_agent_answer_max_tool_calls")]
+    pub max_tool_calls: u32,
+}
+
+impl Default for MultiAgentAnswerConfig {
+    fn default() -> Self {
+        Self {
+            api_base_url: default_opencode_api_base_url(),
+            api_key: String::new(),
+            model: String::new(),
+            variant: String::new(),
+            startup_timeout_seconds: default_opencode_startup_timeout(),
+            request_timeout_seconds: default_opencode_request_timeout(),
+            max_tool_calls: default_multi_agent_answer_max_tool_calls(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -274,6 +414,26 @@ fn default_max_iterations() -> u32 {
 }
 fn default_agent_runner() -> String {
     "function_calling".to_string()
+}
+
+fn default_multi_agent_search_base_url() -> String {
+    "https://api.minimaxi.com/v1".to_string()
+}
+
+fn default_multi_agent_search_api_key() -> String {
+    String::new()
+}
+
+fn default_multi_agent_search_model() -> String {
+    "MiniMax-M2.7-highspeed".to_string()
+}
+
+fn default_multi_agent_search_max_iterations() -> u32 {
+    8
+}
+
+fn default_multi_agent_answer_max_tool_calls() -> u32 {
+    1
 }
 
 fn default_opencode_command() -> String {

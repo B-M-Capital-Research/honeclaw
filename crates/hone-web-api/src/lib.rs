@@ -84,6 +84,12 @@ pub async fn start_server(
     if let Some(data) = data_dir {
         let base = data.to_string_lossy();
         config.storage.sessions_dir = data.join("sessions").to_string_lossy().to_string();
+        config.storage.session_sqlite_db_path =
+            data.join("sessions.sqlite3").to_string_lossy().to_string();
+        config.storage.conversation_quota_dir = data
+            .join("conversation_quota")
+            .to_string_lossy()
+            .to_string();
         config.storage.portfolio_dir = data.join("portfolio").to_string_lossy().to_string();
         config.storage.cron_jobs_dir = data.join("cron_jobs").to_string_lossy().to_string();
         config.storage.reports_dir = data.join("reports").to_string_lossy().to_string();

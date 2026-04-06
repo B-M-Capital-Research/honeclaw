@@ -15,6 +15,12 @@ type ChannelDef = {
 
 const CHANNELS: ChannelDef[] = [
   {
+    runner: "multi-agent",
+    name: "Multi-Agent",
+    desc: "MiniMax 搜索 + Gemini 回答",
+    icon: "∞",
+  },
+  {
     runner: "opencode_acp",
     name: "自定义 OpenAI 协议",
     desc: "OpenAI compatible / 推荐 OpenRouter",
@@ -36,6 +42,7 @@ const CHANNELS: ChannelDef[] = [
 
 const RUNNER_LABEL: Record<AgentProvider, string> = {
   opencode_acp: "自定义 OpenAI 协议",
+  "multi-agent": "Multi-Agent",
   gemini_cli: "Gemini CLI",
   gemini_acp: "Gemini ACP",
   codex_cli: "Codex CLI",

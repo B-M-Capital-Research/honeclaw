@@ -12,8 +12,9 @@ pub mod channels;
 pub mod server;
 
 pub use agent::{
-    AdminConfig, AgentConfig, CodexAcpConfig, GeminiAcpConfig, KimiConfig, LlmConfig,
-    OpenRouterConfig, OpencodeAcpConfig,
+    AdminConfig, AgentConfig, AuxiliaryLlmConfig, CodexAcpConfig, GeminiAcpConfig, KimiConfig,
+    LlmConfig, MultiAgentAnswerConfig, MultiAgentConfig, MultiAgentSearchConfig, OpenRouterConfig,
+    OpencodeAcpConfig,
 };
 pub use channels::{
     ChatScope, DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig,
@@ -274,6 +275,8 @@ mod tests {
         assert_eq!(config.llm.provider, "openrouter");
         assert_eq!(config.llm.openrouter.model, "moonshotai/kimi-k2.5");
         assert_eq!(config.llm.openrouter.sub_model, "moonshotai/kimi-k2.5");
+        assert_eq!(config.llm.auxiliary.api_key_env, "MINIMAX_API_KEY");
+        assert!(config.llm.auxiliary.base_url.is_empty());
         assert_eq!(config.llm.openrouter.timeout, 120);
         assert_eq!(config.llm.openrouter.max_tokens, 32768);
     }
@@ -289,6 +292,7 @@ llm:
         let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.llm.openrouter.model, "test-model");
         assert_eq!(config.llm.openrouter.sub_model, "moonshotai/kimi-k2.5");
+        assert!(config.llm.auxiliary.model.is_empty());
         assert_eq!(config.llm.openrouter.timeout, 120); // default
     }
 
@@ -552,6 +556,49 @@ agent:
             config.agent.codex_acp.extra_config_overrides,
             vec!["shell_environment_policy.inherit=all"]
         );
+    }
+
+    #[test]
+    fn test_deserialize_agent_multi_agent() {
+        let yaml = r#"
+agent:
+  runner: multi-agent
+  multi_agent:
+    search:
+      base_url: "https://api.minimaxi.com/v1"
+      api_key: "sk-cp-test"
+      model: "MiniMax-M2.7-highspeed"
+      max_iterations: 8
+    answer:
+      api_base_url: "https://openrouter.ai/api/v1"
+      api_key: "sk-or-test"
+      model: "google/gemini-3.1-pro-preview"
+      variant: "high"
+      max_tool_calls: 1
+"#;
+        let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.agent.runner, "multi-agent");
+        assert_eq!(
+            config.agent.multi_agent.search.base_url,
+            "https://api.minimaxi.com/v1"
+        );
+        assert_eq!(config.agent.multi_agent.search.api_key, "sk-cp-test");
+        assert_eq!(
+            config.agent.multi_agent.search.model,
+            "MiniMax-M2.7-highspeed"
+        );
+        assert_eq!(config.agent.multi_agent.search.max_iterations, 8);
+        assert_eq!(
+            config.agent.multi_agent.answer.api_base_url,
+            "https://openrouter.ai/api/v1"
+        );
+        assert_eq!(config.agent.multi_agent.answer.api_key, "sk-or-test");
+        assert_eq!(
+            config.agent.multi_agent.answer.model,
+            "google/gemini-3.1-pro-preview"
+        );
+        assert_eq!(config.agent.multi_agent.answer.variant, "high");
+        assert_eq!(config.agent.multi_agent.answer.max_tool_calls, 1);
     }
 
     #[test]

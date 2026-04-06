@@ -154,6 +154,9 @@ function createGeneratedConfig(rootDir, externalBins, options = {}) {
   if (skipBuildCommand && config.build) {
     config.build.beforeBuildCommand = "true";
   }
+  if (config.build) {
+    config.build.frontendDist = path.join(rootDir, "packages", "app", "dist");
+  }
 
   config.bundle = config.bundle ?? {};
   config.bundle.externalBin = externalBins.map((bin) => `binaries/${bin}`);

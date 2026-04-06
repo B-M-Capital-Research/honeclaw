@@ -10,7 +10,7 @@ use std::sync::RwLock;
 use hone_core::agent::AgentResponse;
 use hone_core::config::HoneConfig;
 use hone_core::{ActorIdentity, LlmAuditRecord, LlmAuditSink};
-use hone_llm::{LlmProvider, OpenRouterProvider};
+use hone_llm::{LlmProvider, OpenAiCompatibleProvider, OpenRouterProvider};
 use hone_memory::{
     ConversationQuotaStorage, CronJobStorage, KbStorage, LlmAuditStorage, SessionStorage,
     StockTableStorage, build_compact_boundary_metadata, build_compact_skill_snapshot_metadata,
@@ -26,7 +26,7 @@ use tokio::sync::mpsc;
 
 use crate::runners::{
     AgentRunner, CodexAcpRunner, CodexCliReasoningRunner, FunctionCallingReasoningRunner,
-    GeminiAcpRunner, GeminiCliRunner, OpencodeAcpRunner,
+    GeminiAcpRunner, GeminiCliRunner, MultiAgentRunner, OpencodeAcpRunner,
 };
 
 pub const REGISTER_ADMIN_INTERCEPT_TEXT: &str = "/register-admin AMM";
@@ -44,6 +44,7 @@ pub struct CompactSessionOutcome {
 pub struct HoneBotCore {
     pub config: HoneConfig,
     pub llm: Option<Arc<dyn LlmProvider>>,
+    pub auxiliary_llm: Option<Arc<dyn LlmProvider>>,
     pub llm_audit: Option<Arc<dyn LlmAuditSink>>,
     pub session_storage: SessionStorage,
     pub conversation_quota_storage: ConversationQuotaStorage,
@@ -62,11 +63,13 @@ impl HoneBotCore {
         let kb_storage = KbStorage::new(&config.storage.kb_dir);
         let stock_table = StockTableStorage::new(&config.storage.kb_dir);
         let llm = Self::create_llm_provider(&config);
+        let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);
         let llm_audit = Self::create_llm_audit_sink(&config);
 
         Self {
             config,
             llm,
+            auxiliary_llm,
             llm_audit,
             session_storage,
             conversation_quota_storage,
@@ -145,6 +148,19 @@ impl HoneBotCore {
                 printable_or_default(&self.config.agent.opencode.command, "opencode"),
                 self.config.agent.opencode.args
             ),
+            "multi-agent" => tracing::info!(
+                "[Startup/{channel}] dialog.engine=multi-agent search.base_url={} search.model={} answer.base_url={} answer.model={} answer.variant={} max_iterations={} max_tool_calls={}",
+                printable_or_default(&self.config.agent.multi_agent.search.base_url, "<empty>"),
+                printable_or_default(&self.config.agent.multi_agent.search.model, "<empty>"),
+                printable_or_default(
+                    &self.config.agent.multi_agent.answer.api_base_url,
+                    "<empty>"
+                ),
+                printable_or_default(&self.config.agent.multi_agent.answer.model, "<empty>"),
+                printable_or_default(&self.config.agent.multi_agent.answer.variant, "<empty>"),
+                self.config.agent.multi_agent.search.max_iterations,
+                self.config.agent.multi_agent.answer.max_tool_calls,
+            ),
             "codex_acp" => tracing::info!(
                 "[Startup/{channel}] dialog.engine=codex_acp transport=stdio-jsonrpc command={} args={:?} codex_command={} sandbox_mode={} approval_policy={} dangerous_bypass={} sandbox_permissions={:?} extra_config_overrides={:?}",
                 printable_or_default(&self.config.agent.codex_acp.command, "codex-acp"),
@@ -173,11 +189,12 @@ impl HoneBotCore {
             ),
         }
 
-        if self.llm.is_some() {
+        if self.auxiliary_llm.is_some() {
+            let (aux_provider, aux_model) = self.auxiliary_provider_hint();
             tracing::info!(
                 "[Startup/{channel}] session.compression.engine=llm provider={} model={} threshold=40 retain_recent=4",
-                printable_or_default(llm_provider, "<empty>"),
-                printable_or_default(self.config.llm.openrouter.auxiliary_model(), "<empty>")
+                printable_or_default(&aux_provider, "<empty>"),
+                printable_or_default(&aux_model, "<empty>")
             );
         } else {
             tracing::warn!(
@@ -216,6 +233,52 @@ impl HoneBotCore {
                     }
                 }
             }
+        }
+    }
+
+    fn create_auxiliary_llm_provider(config: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
+        if config.llm.auxiliary.is_configured() {
+            let api_key = config.llm.auxiliary.resolved_api_key();
+            if api_key.trim().is_empty() {
+                tracing::warn!("Failed to create auxiliary provider: auxiliary API key is empty");
+                return None;
+            }
+
+            return match OpenAiCompatibleProvider::new(
+                &api_key,
+                config.llm.auxiliary.base_url.trim(),
+                config.llm.auxiliary.model.trim(),
+                config.llm.auxiliary.timeout,
+                config.llm.auxiliary.max_tokens as u16,
+            ) {
+                Ok(provider) => Some(Arc::new(provider)),
+                Err(err) => {
+                    tracing::warn!("Failed to create auxiliary provider: {}", err);
+                    None
+                }
+            };
+        }
+
+        Self::create_llm_provider(config)
+    }
+
+    pub fn auxiliary_model_name(&self) -> String {
+        let configured = self.config.llm.auxiliary.model.trim();
+        if !configured.is_empty() {
+            configured.to_string()
+        } else {
+            self.config.llm.openrouter.auxiliary_model().to_string()
+        }
+    }
+
+    pub fn auxiliary_provider_hint(&self) -> (String, String) {
+        if self.config.llm.auxiliary.is_configured() {
+            ("openai-compatible".to_string(), self.auxiliary_model_name())
+        } else {
+            (
+                self.config.llm.provider.clone(),
+                self.auxiliary_model_name(),
+            )
         }
     }
 
@@ -601,6 +664,48 @@ impl HoneBotCore {
                 }
                 Ok(Box::new(OpencodeAcpRunner::new(opencode_config)))
             }
+            "multi-agent" => {
+                let pool = self.config.llm.openrouter.effective_key_pool();
+                let mut answer_config = self.config.agent.opencode.clone();
+                let multi_answer = &self.config.agent.multi_agent.answer;
+                if !multi_answer.api_base_url.trim().is_empty() {
+                    answer_config.api_base_url = multi_answer.api_base_url.trim().to_string();
+                }
+                if !multi_answer.api_key.trim().is_empty() {
+                    answer_config.api_key = multi_answer.api_key.trim().to_string();
+                }
+                if !multi_answer.model.trim().is_empty() {
+                    answer_config.model = multi_answer.model.trim().to_string();
+                }
+                if !multi_answer.variant.trim().is_empty() {
+                    answer_config.variant = multi_answer.variant.trim().to_string();
+                }
+                answer_config.startup_timeout_seconds = multi_answer.startup_timeout_seconds;
+                answer_config.request_timeout_seconds = multi_answer.request_timeout_seconds;
+                if let Some(model_override) =
+                    model_override.filter(|value| !value.trim().is_empty())
+                {
+                    answer_config.model = model_override.trim().to_string();
+                    answer_config.variant = String::new();
+                }
+                answer_config.openrouter_api_key =
+                    if multi_answer.api_key.trim().starts_with("sk-or-") {
+                        Some(multi_answer.api_key.trim().to_string())
+                    } else if answer_config.api_key.trim().starts_with("sk-or-") {
+                        Some(answer_config.api_key.trim().to_string())
+                    } else {
+                        pool.first().map(|value| value.to_string())
+                    };
+
+                Ok(Box::new(MultiAgentRunner::new(
+                    system_prompt.to_string(),
+                    self.config.agent.multi_agent.search.clone(),
+                    answer_config,
+                    self.config.agent.multi_agent.answer.max_tool_calls.max(1),
+                    Arc::new(tool_registry),
+                    self.llm_audit.clone(),
+                )))
+            }
             other => {
                 tracing::warn!(
                     "[HoneBotCore] unknown runner={}, fallback to function_calling",
@@ -704,7 +809,7 @@ impl HoneBotCore {
             total_content_bytes,
         );
 
-        let llm = match &self.llm {
+        let llm = match &self.auxiliary_llm {
             Some(provider) => provider.as_ref(),
             None => {
                 tracing::warn!(
@@ -795,7 +900,18 @@ impl HoneBotCore {
 
         let started = std::time::Instant::now();
         let request_payload = serde_json::json!({ "messages": msgs.clone() });
-        let auxiliary_model = self.config.llm.openrouter.auxiliary_model().to_string();
+        let auxiliary_model = self.auxiliary_model_name();
+        let (auxiliary_provider, _) = self.auxiliary_provider_hint();
+        tracing::info!(
+            "[SessionCompress] session={} provider={} model={} active_messages={} retained_recent={} force={} trigger={}",
+            session_id,
+            auxiliary_provider,
+            auxiliary_model,
+            active_messages.len(),
+            retain_recent,
+            force,
+            trigger,
+        );
         let (new_summary_content, usage) = match llm.chat(&msgs, Some(&auxiliary_model)).await {
             Ok(result) => (result.content, result.usage),
             Err(e) => {
@@ -816,7 +932,7 @@ impl HoneBotCore {
                         session.actor.clone(),
                         "core.session_compression",
                         "chat",
-                        self.config.llm.provider.clone(),
+                        auxiliary_provider.clone(),
                         Some(auxiliary_model.clone()),
                         request_payload.clone(),
                     )
@@ -850,11 +966,19 @@ impl HoneBotCore {
                 session.actor.clone(),
                 "core.session_compression",
                 "chat",
-                self.config.llm.provider.clone(),
+                auxiliary_provider.clone(),
                 Some(auxiliary_model),
                 request_payload,
             )
         });
+        tracing::info!(
+            "[SessionCompress] session={} provider={} model={} elapsed_ms={} summary_chars={}",
+            session_id,
+            auxiliary_provider,
+            self.auxiliary_model_name(),
+            started.elapsed().as_millis(),
+            new_summary_content.chars().count(),
+        );
 
         let mut new_messages = Vec::new();
         new_messages.push(hone_memory::session::SessionMessage {

@@ -51,6 +51,8 @@ pub struct AgentRunnerRequest {
     pub gemini_stream: GeminiStreamOptions,
     pub session_metadata: HashMap<String, Value>,
     pub working_directory: String,
+    pub allowed_tools: Option<Vec<String>>,
+    pub max_tool_calls: Option<u32>,
 }
 
 pub struct AgentRunnerResult {

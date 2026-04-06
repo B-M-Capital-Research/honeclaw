@@ -10,6 +10,14 @@ import { formatShanghaiDateTime } from "@/lib/time"
 export function TaskDetail() {
     const navigate = useNavigate()
     const tasks = useTasks()
+    const heartbeatParseKind = (detail?: unknown) => {
+        const root = (detail && typeof detail === "object" ? detail : {}) as Record<string, unknown>
+        const scheduler =
+            root["scheduler"] && typeof root["scheduler"] === "object"
+                ? (root["scheduler"] as Record<string, unknown>)
+                : {}
+        return String(root["parse_kind"] ?? scheduler["parse_kind"] ?? "-")
+    }
 
     const isNew = () => tasks.state.currentTaskId === "new"
     const currentJob = () => tasks.currentTask()
@@ -327,7 +335,7 @@ export function TaskDetail() {
                                                                 </Show>
                                                                 <Show when={isHeartbeatDraft() && record.detail}>
                                                                     <div class="text-[11px] text-[color:var(--text-muted)]">
-                                                                        parse_kind: {String(record.detail?.["parse_kind"] || "-")}
+                                                                        parse_kind: {heartbeatParseKind(record.detail)}
                                                                     </div>
                                                                 </Show>
                                                             </div>

@@ -50,8 +50,18 @@ export function ChannelStatusBadge() {
 
   const successCount = createMemo(() => channels().filter((c) => c.running).length)
   const failCount    = createMemo(() => channels().filter((c) => c.enabled && !c.running).length)
+  const totalListeningCount = createMemo(() => successCount())
+  const backendConnected = createMemo(() => backend.state.connected)
+  const frontendConnected = createMemo(() => true)
+  const backendLabel = createMemo(() => {
+    if (backend.state.initializing) return "后端连接中"
+    if (backendConnected()) return "后端正常连接中"
+    return "后端未连接"
+  })
+  const frontendLabel = createMemo(() => frontendConnected() ? "前端正常连接中" : "前端未连接")
 
   const dotColor = createMemo(() => {
+    if (!backendConnected() && !backend.state.initializing) return "bg-rose-500"
     if (channelError())         return "bg-amber-400"
     if (!hasData())             return "bg-[color:var(--text-muted)]"
     if (failCount() > 0)        return "bg-rose-500"
@@ -60,13 +70,45 @@ export function ChannelStatusBadge() {
   })
 
   const summaryText = createMemo(() => {
-    if (channelError()) return "状态获取失败"
-    if (!hasData())     return "渠道加载中…"
-    const parts: string[] = []
-    if (successCount() > 0) parts.push(`${successCount()} 个渠道监听成功`)
-    if (failCount() > 0)    parts.push(`${failCount()} 个渠道监听失败`)
-    if (parts.length === 0) return "无活跃渠道"
-    return parts.join("，")
+    const channelText = hasData() ? `${totalListeningCount()} 个渠道监听中` : "渠道加载中"
+    return [channelText, backendLabel(), frontendLabel()].join("，")
+  })
+
+  const backendStatus = createMemo(() => {
+    if (backend.state.initializing) {
+      return {
+        label: "后端",
+        detail: "正在建立连接…",
+        status: "degraded",
+      }
+    }
+    if (backend.state.connected) {
+      const target =
+        backend.state.resolvedBaseUrl ||
+        (backend.isRemote() ? backend.state.config.baseUrl : "bundled")
+      return {
+        label: "后端",
+        detail: backend.isRemote() ? `remote · ${target}` : `bundled · ${target}`,
+        status: "running",
+      }
+    }
+    return {
+      label: "后端",
+      detail: backend.state.error || "未连接",
+      status: "stopped",
+    }
+  })
+
+  const frontendStatus = createMemo(() => {
+    const target =
+      typeof window !== "undefined" && window.location?.origin && window.location.origin !== "null"
+        ? window.location.origin
+        : "desktop shell"
+    return {
+      label: "前端",
+      detail: backend.state.isDesktop ? `desktop · ${target}` : `browser · ${target}`,
+      status: frontendConnected() ? "running" : "stopped",
+    }
   })
 
   let containerRef: HTMLDivElement | undefined
@@ -111,10 +153,10 @@ export function ChannelStatusBadge() {
       <button
         type="button"
         onClick={toggle}
-        class="flex items-center gap-1.5 rounded-full border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] shadow-sm transition hover:bg-[color:var(--surface)] hover:text-[color:var(--text-primary)]"
+        class="flex max-w-[min(70vw,680px)] items-center gap-1.5 rounded-full border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] shadow-sm transition hover:bg-[color:var(--surface)] hover:text-[color:var(--text-primary)]"
       >
         <span class={["h-2 w-2 shrink-0 rounded-full", dotColor()].join(" ")} />
-        <span>{summaryText()}</span>
+        <span class="truncate">{summaryText()}</span>
         {/* 下箭头 */}
         <svg
           class={["h-3 w-3 shrink-0 transition-transform duration-150", open() ? "rotate-180" : ""].join(" ")}
@@ -129,7 +171,7 @@ export function ChannelStatusBadge() {
 
       {/* 下拉面板 */}
       <Show when={open()}>
-        <div class="absolute right-0 top-full mt-1.5 min-w-[200px] rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-3 shadow-xl">
+        <div class="absolute right-0 top-full mt-1.5 min-w-[320px] max-w-[420px] rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-3 shadow-xl">
           <Show when={backend.state.isDesktop}>
             <div class="mb-2.5 flex items-center justify-between gap-2">
               <div class="text-[10px] text-[color:var(--text-muted)]">
@@ -158,8 +200,40 @@ export function ChannelStatusBadge() {
             </div>
           </Show>
 
+          <div class="mb-3 flex flex-col gap-2">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
+              系统连接
+            </div>
+
+            <For each={[backendStatus(), frontendStatus()]}>
+              {(item) => (
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex min-w-0 items-center gap-1.5">
+                      <span class={["h-1.5 w-1.5 shrink-0 rounded-full", statusDotClass(item.status)].join(" ")} />
+                      <span class="truncate text-[12px] font-medium text-[color:var(--text-primary)]">
+                        {item.label}
+                      </span>
+                    </div>
+                    <div class="mt-1 break-all text-[10px] leading-4 text-[color:var(--text-muted)]">
+                      {item.detail}
+                    </div>
+                  </div>
+                  <span
+                    class={["shrink-0 text-[10px] font-semibold uppercase tracking-wide", statusTextClass(item.status)].join(" ")}
+                  >
+                    {statusLabel(item.status)}
+                  </span>
+                </div>
+              )}
+            </For>
+          </div>
+
           {/* 渠道列表 */}
           <div class="flex flex-col gap-2">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
+              渠道监听
+            </div>
             <For
               each={channels()}
               fallback={

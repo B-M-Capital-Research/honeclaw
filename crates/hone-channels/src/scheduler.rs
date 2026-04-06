@@ -11,7 +11,9 @@ use crate::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSessionResult, GeminiStreamOptions,
 };
 use crate::prompt::{PromptOptions, build_prompt_bundle};
-use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest};
+use crate::runners::{
+    AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, FunctionCallingReasoningRunner,
+};
 use crate::sandbox::ensure_actor_sandbox;
 use crate::{AgentSession, HoneBotCore};
 
@@ -33,7 +35,7 @@ enum HeartbeatParseKind {
     JsonTriggered,
     JsonUnknownStatus,
     JsonMalformed,
-    PlainText,
+    PlainTextSuppressed,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,18 +50,64 @@ fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> 
         return Some(parsed);
     }
 
-    let start = trimmed.find('{')?;
-    let end = trimmed.rfind('}')?;
-    if end <= start {
-        return None;
+    let mut candidates = Vec::new();
+    let mut depth = 0usize;
+    let mut start = None;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in trimmed.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => {
+                if depth == 0 {
+                    start = Some(idx);
+                }
+                depth += 1;
+            }
+            '}' => {
+                if depth == 0 {
+                    continue;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(start_idx) = start.take() {
+                        candidates.push(&trimmed[start_idx..=idx]);
+                    }
+                }
+            }
+            _ => {}
+        }
     }
-    serde_json::from_str::<HeartbeatJsonResponse>(&trimmed[start..=end]).ok()
+
+    candidates
+        .into_iter()
+        .rev()
+        .find_map(|candidate| serde_json::from_str::<HeartbeatJsonResponse>(candidate).ok())
 }
 
 fn heartbeat_internal_marker_prefix(text: &str) -> bool {
     let trimmed = text.trim_start();
     let upper = trimmed.to_ascii_uppercase();
     upper.starts_with(HEARTBEAT_INTERNAL_PREFIX)
+}
+
+fn heartbeat_internal_marker_present(text: &str) -> bool {
+    let upper = text.to_ascii_uppercase();
+    upper.contains(HEARTBEAT_NOOP_SENTINEL) || upper.contains(HEARTBEAT_INTERNAL_PREFIX)
 }
 
 fn truncate_for_log(text: &str, max_chars: usize) -> String {
@@ -74,7 +122,7 @@ fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseK
     if trimmed.is_empty() {
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::Empty);
     }
-    if trimmed == HEARTBEAT_NOOP_SENTINEL {
+    if trimmed == HEARTBEAT_NOOP_SENTINEL || heartbeat_internal_marker_present(trimmed) {
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::SentinelNoop);
     }
     if heartbeat_internal_marker_prefix(trimmed) {
@@ -96,20 +144,14 @@ fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseK
                 HeartbeatParseKind::JsonTriggered,
             );
         }
-        return (
-            HeartbeatOutcome::Deliver(content.to_string()),
-            HeartbeatParseKind::JsonUnknownStatus,
-        );
+        return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonUnknownStatus);
     }
 
-    if trimmed.contains('{') && trimmed.contains("\"status\"") {
+    if trimmed.starts_with('{') {
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonMalformed);
     }
 
-    (
-        HeartbeatOutcome::Deliver(content.to_string()),
-        HeartbeatParseKind::PlainText,
-    )
+    (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextSuppressed)
 }
 
 pub struct ScheduledTaskExecution {
@@ -132,6 +174,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 3. `message` 必须是一条可以直接发给用户的提醒消息，包含：满足的条件、关键数据、检查时间。\n\
 4. 不要创建新的定时任务，也不要修改现有任务。\n\
 5. 不要输出 Markdown 代码块，不要输出额外解释，不要暴露任何内部控制标记。\n\
+6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
 \n\
 以下是需要检查的用户条件：\n{}",
             event.job_name, HEARTBEAT_NOOP_SENTINEL, event.task_prompt
@@ -186,7 +229,7 @@ pub async fn execute_scheduler_event(
     }
 
     run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
-    run_options.model_override = Some(core.config.llm.openrouter.auxiliary_model().to_string());
+    run_options.model_override = Some(core.auxiliary_model_name());
     let heartbeat_model = run_options.model_override.clone().unwrap_or_default();
 
     match run_heartbeat_task(core, event, prompt_options, run_options).await {
@@ -208,7 +251,7 @@ pub async fn execute_scheduler_event(
             );
             if parse_kind == HeartbeatParseKind::JsonMalformed {
                 tracing::warn!(
-                    "[HeartbeatDiag] malformed heartbeat json delivered job_id={} job={} target={} preview=\"{}\"",
+                    "[HeartbeatDiag] malformed heartbeat json suppressed job_id={} job={} target={} preview=\"{}\"",
                     event.job_id,
                     event.job_name,
                     event.channel_target,
@@ -300,13 +343,17 @@ async fn run_heartbeat_task(
     let system_prompt = bundle.system_prompt();
     let runtime_input = bundle.compose_user_input(&build_scheduled_prompt(event));
     let tool_registry = core.create_tool_registry(Some(&event.actor), &event.channel_target, false);
-    let runner = core
-        .create_runner_with_model_override(
-            &system_prompt,
-            tool_registry,
-            run_options.model_override.as_deref(),
-        )
-        .map_err(|err| format!("heartbeat task create_runner failed: {err}"))?;
+    let runner = if let Some(llm) = core.auxiliary_llm.clone() {
+        Box::new(FunctionCallingReasoningRunner::new(
+            llm,
+            Arc::new(tool_registry),
+            system_prompt.to_string(),
+            6,
+            core.llm_audit.clone(),
+        )) as Box<dyn crate::runners::AgentRunner>
+    } else {
+        return Err("heartbeat task create_runner failed: auxiliary llm unavailable".to_string());
+    };
     let runner_name = runner.name();
 
     let working_directory = ensure_actor_sandbox(&event.actor)
@@ -335,6 +382,8 @@ async fn run_heartbeat_task(
         gemini_stream,
         session_metadata: std::collections::HashMap::new(),
         working_directory,
+        allowed_tools: None,
+        max_tool_calls: None,
     };
     tracing::info!(
         "[HeartbeatDiag] run_start job_id={} job={} target={} runner={} model_override={} timeout_secs={}",
@@ -446,11 +495,47 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_plain_text_alert_still_delivers() {
+    fn heartbeat_plain_text_is_suppressed() {
         assert_eq!(
-            inspect_heartbeat_result("闪迪股价已低于 520，当前 519.7（检查时间：09:30）").0,
-            HeartbeatOutcome::Deliver(
-                "闪迪股价已低于 520，当前 519.7（检查时间：09:30）".to_string()
+            inspect_heartbeat_result("闪迪股价已低于 520，当前 519.7（检查时间：09:30）"),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextSuppressed)
+        );
+    }
+
+    #[test]
+    fn heartbeat_think_wrapped_json_noop_is_suppressed() {
+        let content = "<think> 当前小米股价为30.88港元，高于30港元的触发线，所以条件未满足。根据规则，我应该输出 `{\"status\":\"noop\"}` 或 `[[HEARTBEAT_NOOP]]`。 </think>\n{\"status\":\"noop\"}";
+        assert_eq!(inspect_heartbeat_result(content).0, HeartbeatOutcome::Noop);
+    }
+
+    #[test]
+    fn heartbeat_think_wrapped_noop_marker_is_suppressed() {
+        let content = "<think>\n让我检查一下这个心跳检测任务的条件。\n\n当前北京时间：2026-04-05 08:30:00\n当前小时数：8\n当前分钟数：30\n\n用户条件：\n如果当前小时数是 0、3、6、9、12、15、18、21 其中之一\n并且当前分钟数小于 30 分钟\n当前小时数 8 不在 [0, 3, 6, 9, 12, 15, 18, 21] 这个列表中，所以条件不满足。\n\n按照规则，我应该保持静默，不输出任何内容。\n</think>\n\n[[HEARTBEAT_NOOP]]";
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::SentinelNoop)
+        );
+    }
+
+    #[test]
+    fn heartbeat_english_think_wrapped_noop_marker_is_suppressed() {
+        let content = "<think>\nLet me analyze this request carefully.\n\nThe user is asking me to check if a heartbeat condition has been met. Let me parse the condition:\nCheck if current hour (Beijing time) is one of: 0, 3, 6, 9, 12, 15, 18, 21\nAND current minute is less than 30\nCurrent time: 2026-04-05 07:30:00 (Beijing time)\nHour: 07 (7)\nMinute: 30\nIs 7 in [0, 3, 6, 9, 12, 15, 18, 21]? No.\nTherefore, the condition is NOT met.\n\n</think>\n\n[[HEARTBEAT_NOOP]]";
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::SentinelNoop)
+        );
+    }
+
+    #[test]
+    fn heartbeat_think_wrapped_triggered_json_delivers_message_only() {
+        let content = "<think> 先整理结果。最终应该输出 JSON。 </think>\n{\"status\":\"triggered\",\"message\":\"小米已跌破 30 港元，当前 29.88 港元（检查时间：22:33）\"}";
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (
+                HeartbeatOutcome::Deliver(
+                    "小米已跌破 30 港元，当前 29.88 港元（检查时间：22:33）".to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
             )
         );
     }
@@ -459,6 +544,28 @@ mod tests {
     fn heartbeat_malformed_json_is_detected() {
         let (outcome, parse_kind) = inspect_heartbeat_result(r#"{"status":"noop"#);
         assert_eq!(parse_kind, HeartbeatParseKind::JsonMalformed);
+        assert_eq!(outcome, HeartbeatOutcome::Noop);
+    }
+
+    #[test]
+    fn heartbeat_truncated_json_prefix_is_detected() {
+        let (outcome, parse_kind) = inspect_heartbeat_result(r#"{"status"#);
+        assert_eq!(parse_kind, HeartbeatParseKind::JsonMalformed);
+        assert_eq!(outcome, HeartbeatOutcome::Noop);
+    }
+
+    #[test]
+    fn heartbeat_single_brace_is_detected() {
+        let (outcome, parse_kind) = inspect_heartbeat_result("{");
+        assert_eq!(parse_kind, HeartbeatParseKind::JsonMalformed);
+        assert_eq!(outcome, HeartbeatOutcome::Noop);
+    }
+
+    #[test]
+    fn heartbeat_unknown_json_status_is_suppressed() {
+        let (outcome, parse_kind) =
+            inspect_heartbeat_result(r#"{"status":"maybe","message":"foo"}"#);
+        assert_eq!(parse_kind, HeartbeatParseKind::JsonUnknownStatus);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
     }
 }

@@ -207,6 +207,16 @@ llm:
     timeout: 120
     max_retries: 3
     max_tokens: 32768
+  auxiliary:
+    # Optional OpenAI-compatible auxiliary path for heartbeats / session compression.
+    # When configured, it overrides the legacy openrouter.sub_model route.
+    base_url: ""
+    api_key: ""
+    api_key_env: "MINIMAX_API_KEY"
+    model: ""
+    timeout: 120
+    max_retries: 3
+    max_tokens: 32768
 
 
 storage:

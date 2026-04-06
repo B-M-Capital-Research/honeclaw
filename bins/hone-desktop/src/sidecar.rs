@@ -55,8 +55,16 @@ pub(crate) struct DesktopChannelSettings {
     config_path: String,
     imessage_enabled: bool,
     feishu_enabled: bool,
+    #[serde(default)]
+    feishu_app_id: String,
+    #[serde(default)]
+    feishu_app_secret: String,
     telegram_enabled: bool,
+    #[serde(default)]
+    telegram_bot_token: String,
     discord_enabled: bool,
+    #[serde(default)]
+    discord_bot_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,8 +72,16 @@ pub(crate) struct DesktopChannelSettings {
 pub(crate) struct DesktopChannelSettingsInput {
     imessage_enabled: bool,
     feishu_enabled: bool,
+    #[serde(default)]
+    feishu_app_id: String,
+    #[serde(default)]
+    feishu_app_secret: String,
     telegram_enabled: bool,
+    #[serde(default)]
+    telegram_bot_token: String,
     discord_enabled: bool,
+    #[serde(default)]
+    discord_bot_token: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -95,8 +111,54 @@ pub(crate) struct ChannelProcessCleanupResult {
 /// Agent 基础设置（写入运行时覆盖层）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct MultiAgentSearchSettings {
+    #[serde(default)]
+    base_url: String,
+    #[serde(default)]
+    api_key: String,
+    #[serde(default)]
+    model: String,
+    #[serde(default)]
+    max_iterations: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MultiAgentAnswerSettings {
+    #[serde(default)]
+    base_url: String,
+    #[serde(default)]
+    api_key: String,
+    #[serde(default)]
+    model: String,
+    #[serde(default)]
+    variant: String,
+    #[serde(default)]
+    max_tool_calls: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MultiAgentSettings {
+    search: MultiAgentSearchSettings,
+    answer: MultiAgentAnswerSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AuxiliarySettings {
+    #[serde(default)]
+    base_url: String,
+    #[serde(default)]
+    api_key: String,
+    #[serde(default)]
+    model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSettings {
-    /// function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp
+    /// function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent
     runner: String,
     /// codex_cli 专用，其他 provider 忽略
     codex_model: String,
@@ -106,12 +168,13 @@ pub(crate) struct AgentSettings {
     /// OpenAI 协议渠道模型名（agent.opencode.model）
     #[serde(default)]
     openai_model: String,
-    /// OpenRouter 子模型（llm.openrouter.sub_model），用于心跳/压缩等辅助链路
-    #[serde(default)]
-    openai_sub_model: String,
     /// OpenAI 协议渠道 API Key（agent.opencode.api_key）
     #[serde(default)]
     openai_api_key: String,
+    #[serde(default)]
+    auxiliary: Option<AuxiliarySettings>,
+    #[serde(default)]
+    multi_agent: Option<MultiAgentSettings>,
 }
 
 /// CLI 联通检测结果
@@ -251,6 +314,18 @@ fn normalize_base_url(raw: &str) -> String {
     raw.trim().trim_end_matches('/').to_string()
 }
 
+fn bundled_runtime_ready(manager: &DesktopBackendManager) -> bool {
+    manager.last_error.is_none()
+        && manager.bundled_web_lock.is_some()
+        && manager.meta.is_some()
+        && manager.resolved_base_url.is_some()
+}
+
+fn mark_bundled_runtime_dirty(manager: &mut DesktopBackendManager, reason: &str) {
+    manager.meta = None;
+    manager.last_error = Some(reason.to_string());
+}
+
 fn timestamp_string() -> String {
     // GMT+8 (Asia/Shanghai) 可读格式，如 2026-03-15 10:30:00.123
     let tz = chrono::FixedOffset::east_opt(8 * 3600).expect("valid tz");
@@ -258,6 +333,97 @@ fn timestamp_string() -> String {
         .with_timezone(&tz)
         .format("%Y-%m-%d %H:%M:%S%.3f")
         .to_string()
+}
+
+fn seed_multi_agent_settings(config: &HoneConfig) -> MultiAgentSettings {
+    let search = MultiAgentSearchSettings {
+        base_url: if config.agent.multi_agent.search.base_url.trim().is_empty() {
+            "https://api.minimaxi.com/v1".to_string()
+        } else {
+            config.agent.multi_agent.search.base_url.clone()
+        },
+        api_key: if config.agent.multi_agent.search.api_key.trim().is_empty() {
+            config.llm.auxiliary.api_key.clone()
+        } else {
+            config.agent.multi_agent.search.api_key.clone()
+        },
+        model: if config.agent.multi_agent.search.model.trim().is_empty() {
+            "MiniMax-M2.7-highspeed".to_string()
+        } else {
+            config.agent.multi_agent.search.model.clone()
+        },
+        max_iterations: if config.agent.multi_agent.search.max_iterations == 0 {
+            8
+        } else {
+            config.agent.multi_agent.search.max_iterations
+        },
+    };
+
+    let answer = MultiAgentAnswerSettings {
+        base_url: if config
+            .agent
+            .multi_agent
+            .answer
+            .api_base_url
+            .trim()
+            .is_empty()
+        {
+            config.agent.opencode.api_base_url.clone()
+        } else {
+            config.agent.multi_agent.answer.api_base_url.clone()
+        },
+        api_key: if config.agent.multi_agent.answer.api_key.trim().is_empty() {
+            config.agent.opencode.api_key.clone()
+        } else {
+            config.agent.multi_agent.answer.api_key.clone()
+        },
+        model: if config.agent.multi_agent.answer.model.trim().is_empty() {
+            config.agent.opencode.model.clone()
+        } else {
+            config.agent.multi_agent.answer.model.clone()
+        },
+        variant: if config.agent.multi_agent.answer.variant.trim().is_empty() {
+            config.agent.opencode.variant.clone()
+        } else {
+            config.agent.multi_agent.answer.variant.clone()
+        },
+        max_tool_calls: if config.agent.multi_agent.answer.max_tool_calls == 0 {
+            1
+        } else {
+            config.agent.multi_agent.answer.max_tool_calls
+        },
+    };
+
+    MultiAgentSettings { search, answer }
+}
+
+fn seed_auxiliary_settings(config: &HoneConfig) -> AuxiliarySettings {
+    let multi_search = seed_multi_agent_settings(config).search;
+    let configured = &config.llm.auxiliary;
+
+    AuxiliarySettings {
+        base_url: if !configured.base_url.trim().is_empty() {
+            configured.base_url.clone()
+        } else if !multi_search.base_url.trim().is_empty() {
+            multi_search.base_url
+        } else {
+            "https://api.minimaxi.com/v1".to_string()
+        },
+        api_key: if !configured.api_key.trim().is_empty() {
+            configured.api_key.clone()
+        } else if !multi_search.api_key.trim().is_empty() {
+            multi_search.api_key
+        } else {
+            String::new()
+        },
+        model: if !configured.model.trim().is_empty() {
+            configured.model.clone()
+        } else if !multi_search.model.trim().is_empty() {
+            multi_search.model
+        } else {
+            config.llm.openrouter.auxiliary_model().to_string()
+        },
+    }
 }
 
 fn append_log(path: &PathBuf, level: &str, message: &str) {
@@ -517,16 +683,18 @@ fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, String> {
     let data_dir = if let Ok(override_dir) = std::env::var("HONE_DESKTOP_DATA_DIR") {
         // 显式覆盖（优先级最高）
         PathBuf::from(override_dir)
-    } else {
-        // 开发模式回退：若编译时的项目根目录下有 data/ 目录（说明当前在开发机上），
-        // 则直接使用项目的 ./data/，与 launch.sh 共享同一份数据。
-        // 打包分发后，用户机器上不存在该编译时路径，自动降级到 Tauri 默认数据目录。
+    } else if cfg!(debug_assertions) {
+        // 仅开发构建在本机仓库存在时复用项目 ./data/。
+        // Release / DMG 构建即使运行在开发机上，也必须强制走 app 自己的
+        // Application Support 目录，避免与仓库 data/runtime 的锁与配置互相污染。
         let dev_data = repo_root().join("data");
         if dev_data.is_dir() {
             dev_data
         } else {
             app.path().app_data_dir().map_err(|e| e.to_string())?
         }
+    } else {
+        app.path().app_data_dir().map_err(|e| e.to_string())?
     };
     let runtime_dir = data_dir.join("runtime");
     let logs_dir = runtime_dir.join("logs");
@@ -680,8 +848,12 @@ fn load_channel_settings(app: &AppHandle) -> Result<DesktopChannelSettings, Stri
         config_path: config_path.to_string_lossy().to_string(),
         imessage_enabled: config.imessage.enabled,
         feishu_enabled: config.feishu.enabled,
+        feishu_app_id: config.feishu.app_id,
+        feishu_app_secret: config.feishu.app_secret,
         telegram_enabled: config.telegram.enabled,
+        telegram_bot_token: config.telegram.bot_token,
         discord_enabled: config.discord.enabled,
+        discord_bot_token: config.discord.bot_token,
     })
 }
 
@@ -694,16 +866,24 @@ fn save_channel_settings(
     let config = save_runtime_config_overlay(&config_path, |config| {
         config.imessage.enabled = settings.imessage_enabled;
         config.feishu.enabled = settings.feishu_enabled;
+        config.feishu.app_id = settings.feishu_app_id.clone();
+        config.feishu.app_secret = settings.feishu_app_secret.clone();
         config.telegram.enabled = settings.telegram_enabled;
+        config.telegram.bot_token = settings.telegram_bot_token.clone();
         config.discord.enabled = settings.discord_enabled;
+        config.discord.bot_token = settings.discord_bot_token.clone();
     })?;
 
     Ok(DesktopChannelSettings {
         config_path: config_path.to_string_lossy().to_string(),
         imessage_enabled: config.imessage.enabled,
         feishu_enabled: config.feishu.enabled,
+        feishu_app_id: config.feishu.app_id,
+        feishu_app_secret: config.feishu.app_secret,
         telegram_enabled: config.telegram.enabled,
+        telegram_bot_token: config.telegram.bot_token,
         discord_enabled: config.discord.enabled,
+        discord_bot_token: config.discord.bot_token,
     })
 }
 
@@ -1025,19 +1205,22 @@ async fn probe_meta(base_url: &str, bearer_token: &str) -> Result<MetaInfo, Stri
         .timeout(Duration::from_secs(5))
         .default_headers(headers)
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("client build failed: {e}; debug={e:?}"))?;
 
     let response = client
         .get(format!("{}/api/meta", normalize_base_url(base_url)))
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("request send failed: {e}; debug={e:?}"))?;
 
     if !response.status().is_success() {
         return Err(format!("backend probe failed: {}", response.status()));
     }
 
-    response.json::<MetaInfo>().await.map_err(|e| e.to_string())
+    response
+        .json::<MetaInfo>()
+        .await
+        .map_err(|e| format!("response json failed: {e}; debug={e:?}"))
 }
 
 fn start_logged_sidecar(
@@ -1177,15 +1360,32 @@ fn start_enabled_channels(
         }
         envs.extend(extra_envs);
 
-        let child = start_logged_sidecar(app, binary, channel, envs, sidecar_log.clone())?;
+        let child = match start_logged_sidecar(app, binary, channel, envs, sidecar_log.clone()) {
+            Ok(child) => child,
+            Err(error) => {
+                remove_runtime_heartbeat(&runtime.runtime_dir, channel);
+                log_desktop(
+                    app,
+                    "WARN",
+                    format!("managed channel {channel} skipped because spawn failed: {error}"),
+                );
+                return Ok(());
+            }
+        };
         std::thread::sleep(Duration::from_millis(400));
         let still_running = hone_core::scan_channel_processes(channel)
             .into_iter()
             .any(|process| process.pid == child.pid());
         if !still_running {
-            return Err(format!(
-                "{channel} exited during startup, likely because an older process still exists or the sidecar failed before acquiring its runtime lock"
-            ));
+            remove_runtime_heartbeat(&runtime.runtime_dir, channel);
+            log_desktop(
+                app,
+                "WARN",
+                format!(
+                    "managed channel {channel} skipped because it exited during startup; an older process may still exist or the sidecar failed before acquiring its runtime lock"
+                ),
+            );
+            return Ok(());
         }
         manager.channel_children.insert(channel.to_string(), child);
         log_desktop(app, "INFO", format!("started managed channel {channel}"));
@@ -1304,7 +1504,6 @@ async fn connect_backend_inner(
 
     match config.mode.as_str() {
         "remote" => {
-            log_desktop(app, "INFO", "connecting remote backend");
             {
                 let mut guard = desktop.inner.lock().unwrap();
                 stop_managed_children(&mut guard);
@@ -1335,12 +1534,15 @@ async fn connect_backend_inner(
                 Err(error) => {
                     let mut guard = desktop.inner.lock().unwrap();
                     guard.meta = None;
+                    let should_log = guard.last_error.as_deref() != Some(error.as_str());
                     guard.last_error = Some(error.clone());
-                    log_desktop(
-                        app,
-                        "ERROR",
-                        format!("remote backend probe failed: {error}"),
-                    );
+                    if should_log {
+                        log_desktop(
+                            app,
+                            "ERROR",
+                            format!("remote backend probe failed url={resolved} error={error}"),
+                        );
+                    }
                     Ok(backend_status_snapshot(&guard))
                 }
             }
@@ -1350,6 +1552,14 @@ async fn connect_backend_inner(
             let diagnostics = diagnostic_paths(app)?;
             let runtime_config =
                 HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
+
+            {
+                let guard = desktop.inner.lock().unwrap();
+                if bundled_runtime_ready(&guard) {
+                    return Ok(backend_status_snapshot(&guard));
+                }
+            }
+
             if let Err(message) = preflight_bundled_runtime_locks(app) {
                 log_desktop(app, "ERROR", &message);
                 show_startup_error_dialog(&message);
@@ -1360,27 +1570,24 @@ async fn connect_backend_inner(
                 guard.diagnostics = Some(diagnostics);
                 return Ok(backend_status_snapshot(&guard));
             }
+            log_desktop(app, "INFO", "bundled runtime preflight locks passed");
 
             // 先停掉旧任务
             {
                 let mut guard = desktop.inner.lock().unwrap();
                 stop_managed_children(&mut guard);
             }
-
             log_desktop(
                 app,
                 "INFO",
-                format!(
-                    "starting embedded web server data_dir={}",
-                    runtime.data_dir.display()
-                ),
+                "bundled runtime previous managed children stopped",
             );
 
             // 启动 Axum 服务（port=0，OS 分配可用端口）
             let config_path_str = runtime.config_path.to_string_lossy().to_string();
             let data_dir = runtime.data_dir.clone();
             let skills_dir = runtime.skills_dir.clone();
-            let web_lock = hone_core::acquire_process_lock(
+            let web_lock = match hone_core::acquire_process_lock(
                 &runtime.runtime_dir,
                 hone_core::PROCESS_LOCK_CONSOLE_PAGE,
             )
@@ -1394,9 +1601,34 @@ async fn connect_backend_inner(
                     &error,
                     "Hone bundled runtime",
                 )
-            })?;
+            }) {
+                Ok(lock) => lock,
+                Err(message) => {
+                    log_desktop(app, "ERROR", &message);
+                    let mut guard = desktop.inner.lock().unwrap();
+                    guard.meta = None;
+                    guard.last_error = Some(message);
+                    guard.diagnostics = Some(diagnostics);
+                    return Ok(backend_status_snapshot(&guard));
+                }
+            };
+            log_desktop(app, "INFO", "bundled runtime console lock acquired");
+
+            log_desktop(
+                app,
+                "INFO",
+                format!(
+                    "starting embedded web server data_dir={}",
+                    runtime.data_dir.display()
+                ),
+            );
 
             let _hone_web_port_guard = ScopedEnvVar::remove("HONE_WEB_PORT");
+            log_desktop(
+                app,
+                "INFO",
+                "bundled runtime calling hone_web_api::start_server",
+            );
             match hone_web_api::start_server(
                 &config_path_str,
                 Some(&data_dir),
@@ -1406,6 +1638,11 @@ async fn connect_backend_inner(
             .await
             {
                 Ok((_web_state, port)) => {
+                    log_desktop(
+                        app,
+                        "INFO",
+                        format!("hone_web_api::start_server returned port={port}"),
+                    );
                     let base_url = format!("http://127.0.0.1:{port}");
                     let meta = desktop_meta_from_config(&runtime_config, "local");
                     {
@@ -1420,6 +1657,7 @@ async fn connect_backend_inner(
                     // 对于同进程内嵌服务，绑定成功本身已经足够说明 API 已就绪；
                     // 继续自 probe 反而会把短暂的启动抖动放大成误报。
                     let mut guard = desktop.inner.lock().unwrap();
+                    log_desktop(app, "INFO", "starting managed bundled channels");
                     if let Err(e) =
                         start_enabled_channels(app, &mut guard, &runtime, &diagnostics, &base_url)
                     {
@@ -1502,13 +1740,29 @@ pub(crate) async fn connect_backend_impl(
     app: AppHandle,
     state: State<'_, DesktopState>,
 ) -> Result<BackendStatusInfo, String> {
-    connect_backend_serialized(&app, &state).await
+    match connect_backend_serialized(&app, &state).await {
+        Ok(status) => Ok(status),
+        Err(error) => {
+            log_desktop(
+                &app,
+                "ERROR",
+                format!("connect_backend command failed: {error}"),
+            );
+            Err(error)
+        }
+    }
 }
 
 pub(crate) fn bootstrap_backend_on_startup(app: AppHandle) {
     async_runtime::spawn(async move {
         let state = app.state::<DesktopState>();
-        let _ = connect_backend_serialized(&app, &state).await;
+        if let Err(error) = connect_backend_serialized(&app, &state).await {
+            log_desktop(
+                &app,
+                "ERROR",
+                format!("startup backend bootstrap failed: {error}"),
+            );
+        }
     });
 }
 
@@ -1566,6 +1820,13 @@ pub(crate) async fn set_channel_settings_impl(
 
     let backend_config = load_persisted_config(&app).unwrap_or_default();
     if backend_config.mode == "bundled" {
+        {
+            let mut guard = state.inner.lock().unwrap();
+            mark_bundled_runtime_dirty(
+                &mut guard,
+                "channel settings updated; bundled runtime restart required",
+            );
+        }
         let status = connect_backend_serialized(&app, &state).await?;
         let message = if status.connected {
             "已保存到运行时覆盖层，并已重启内置后端".to_string()
@@ -1599,6 +1860,7 @@ pub(crate) fn backend_status_impl(
     state: State<'_, DesktopState>,
 ) -> BackendStatusInfo {
     let mut guard = state.inner.lock().unwrap();
+    guard.config = load_persisted_config(&app).unwrap_or_default();
     if guard.diagnostics.is_none() {
         guard.diagnostics = diagnostic_paths(&app).ok();
     }
@@ -1619,12 +1881,13 @@ pub(crate) fn get_agent_settings_impl(app: AppHandle) -> Result<AgentSettings, S
     let runtime = ensure_runtime_paths(&app)?;
     let config = HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
     Ok(AgentSettings {
-        runner: config.agent.runner,
-        codex_model: config.agent.codex_model,
-        openai_url: config.agent.opencode.api_base_url,
-        openai_model: config.agent.opencode.model,
-        openai_sub_model: config.llm.openrouter.sub_model,
-        openai_api_key: config.agent.opencode.api_key,
+        runner: config.agent.runner.clone(),
+        codex_model: config.agent.codex_model.clone(),
+        openai_url: config.agent.opencode.api_base_url.clone(),
+        openai_model: config.agent.opencode.model.clone(),
+        openai_api_key: config.agent.opencode.api_key.clone(),
+        auxiliary: Some(seed_auxiliary_settings(&config)),
+        multi_agent: Some(seed_multi_agent_settings(&config)),
     })
 }
 
@@ -1639,8 +1902,32 @@ pub(crate) async fn set_agent_settings_impl(
         config.agent.codex_model = settings.codex_model.clone();
         config.agent.opencode.api_base_url = settings.openai_url.clone();
         config.agent.opencode.model = settings.openai_model.clone();
-        config.llm.openrouter.sub_model = settings.openai_sub_model.clone();
         config.agent.opencode.api_key = settings.openai_api_key.clone();
+        if let Some(auxiliary) = &settings.auxiliary {
+            config.llm.auxiliary.base_url = auxiliary.base_url.clone();
+            config.llm.auxiliary.api_key = auxiliary.api_key.clone();
+            config.llm.auxiliary.api_key_env = "MINIMAX_API_KEY".to_string();
+            config.llm.auxiliary.model = auxiliary.model.clone();
+            config.llm.openrouter.sub_model = auxiliary.model.clone();
+        }
+        if let Some(multi_agent) = &settings.multi_agent {
+            config.agent.multi_agent.search.base_url = multi_agent.search.base_url.clone();
+            config.agent.multi_agent.search.api_key = multi_agent.search.api_key.clone();
+            config.agent.multi_agent.search.model = multi_agent.search.model.clone();
+            config.agent.multi_agent.search.max_iterations = multi_agent.search.max_iterations;
+
+            config.agent.multi_agent.answer.api_base_url = multi_agent.answer.base_url.clone();
+            config.agent.multi_agent.answer.api_key = multi_agent.answer.api_key.clone();
+            config.agent.multi_agent.answer.model = multi_agent.answer.model.clone();
+            config.agent.multi_agent.answer.variant = multi_agent.answer.variant.clone();
+            config.agent.multi_agent.answer.max_tool_calls = multi_agent.answer.max_tool_calls;
+
+            // mirror answer agent back into single-runner opencode config
+            config.agent.opencode.api_base_url = multi_agent.answer.base_url.clone();
+            config.agent.opencode.api_key = multi_agent.answer.api_key.clone();
+            config.agent.opencode.model = multi_agent.answer.model.clone();
+            config.agent.opencode.variant = multi_agent.answer.variant.clone();
+        }
     })?;
     log_desktop(
         &app,
@@ -1653,6 +1940,13 @@ pub(crate) async fn set_agent_settings_impl(
     // 内置后端模式下重启以立即生效
     let backend_config = load_persisted_config(&app).unwrap_or_default();
     if backend_config.mode == "bundled" {
+        {
+            let mut guard = state.inner.lock().unwrap();
+            mark_bundled_runtime_dirty(
+                &mut guard,
+                "agent settings updated; bundled runtime restart required",
+            );
+        }
         let _ = connect_backend_serialized(&app, &state).await;
     }
     Ok(())
@@ -1754,6 +2048,150 @@ mod tests {
             "backend transition should never run concurrently"
         );
     }
+
+    #[test]
+    fn seed_multi_agent_settings_prefers_existing_multi_agent_values() {
+        let mut config = HoneConfig::default();
+        config.agent.opencode.api_base_url = "https://openrouter.ai/api/v1".to_string();
+        config.agent.opencode.api_key = "sk-or-old".to_string();
+        config.agent.opencode.model = "google/gemini-3.1-pro-preview".to_string();
+        config.agent.opencode.variant = "high".to_string();
+        config.agent.multi_agent.search.base_url = "https://api.minimaxi.com/v1".to_string();
+        config.agent.multi_agent.search.api_key = "sk-cp-new".to_string();
+        config.agent.multi_agent.search.model = "MiniMax-M2.7-highspeed".to_string();
+        config.agent.multi_agent.search.max_iterations = 9;
+        config.agent.multi_agent.answer.api_base_url = "https://custom.example/v1".to_string();
+        config.agent.multi_agent.answer.api_key = "sk-answer".to_string();
+        config.agent.multi_agent.answer.model = "google/gemini-3.1-pro-preview".to_string();
+        config.agent.multi_agent.answer.variant = "xhigh".to_string();
+        config.agent.multi_agent.answer.max_tool_calls = 2;
+
+        let seeded = seed_multi_agent_settings(&config);
+        assert_eq!(seeded.search.api_key, "sk-cp-new");
+        assert_eq!(seeded.search.max_iterations, 9);
+        assert_eq!(seeded.answer.base_url, "https://custom.example/v1");
+        assert_eq!(seeded.answer.api_key, "sk-answer");
+        assert_eq!(seeded.answer.variant, "xhigh");
+        assert_eq!(seeded.answer.max_tool_calls, 2);
+    }
+
+    #[test]
+    fn seed_multi_agent_settings_falls_back_to_opencode_answer() {
+        let mut config = HoneConfig::default();
+        config.agent.opencode.api_base_url = "https://openrouter.ai/api/v1".to_string();
+        config.agent.opencode.api_key = "sk-or-fallback".to_string();
+        config.agent.opencode.model = "google/gemini-3.1-pro-preview".to_string();
+        config.agent.opencode.variant = "high".to_string();
+        config.agent.multi_agent.answer = hone_core::config::MultiAgentAnswerConfig::default();
+
+        let seeded = seed_multi_agent_settings(&config);
+        assert_eq!(seeded.answer.base_url, "https://openrouter.ai/api/v1");
+        assert_eq!(seeded.answer.api_key, "sk-or-fallback");
+        assert_eq!(seeded.answer.model, "google/gemini-3.1-pro-preview");
+        assert_eq!(seeded.answer.variant, "high");
+        assert_eq!(seeded.answer.max_tool_calls, 1);
+    }
+
+    #[test]
+    fn seed_auxiliary_settings_prefers_explicit_auxiliary_config() {
+        let mut config = HoneConfig::default();
+        config.llm.auxiliary.base_url = "https://api.minimaxi.com/v1".to_string();
+        config.llm.auxiliary.api_key = "sk-cp-aux".to_string();
+        config.llm.auxiliary.model = "MiniMax-M2.7-highspeed".to_string();
+        config.agent.multi_agent.search.api_key = "sk-cp-search".to_string();
+
+        let seeded = seed_auxiliary_settings(&config);
+        assert_eq!(seeded.base_url, "https://api.minimaxi.com/v1");
+        assert_eq!(seeded.api_key, "sk-cp-aux");
+        assert_eq!(seeded.model, "MiniMax-M2.7-highspeed");
+    }
+
+    #[test]
+    fn seed_auxiliary_settings_falls_back_to_multi_agent_search() {
+        let mut config = HoneConfig::default();
+        config.agent.multi_agent.search.base_url = "https://api.minimaxi.com/v1".to_string();
+        config.agent.multi_agent.search.api_key = "sk-cp-search".to_string();
+        config.agent.multi_agent.search.model = "MiniMax-M2.7".to_string();
+
+        let seeded = seed_auxiliary_settings(&config);
+        assert_eq!(seeded.base_url, "https://api.minimaxi.com/v1");
+        assert_eq!(seeded.api_key, "sk-cp-search");
+        assert_eq!(seeded.model, "MiniMax-M2.7");
+    }
+
+    #[test]
+    fn desktop_channel_settings_input_accepts_secret_fields_from_camel_case_payload() {
+        let input: DesktopChannelSettingsInput = serde_json::from_value(serde_json::json!({
+            "imessageEnabled": true,
+            "feishuEnabled": true,
+            "feishuAppId": "cli_test",
+            "feishuAppSecret": "secret-value",
+            "telegramEnabled": true,
+            "telegramBotToken": "tg-token",
+            "discordEnabled": true,
+            "discordBotToken": "discord-token"
+        }))
+        .expect("desktop channel payload should deserialize");
+
+        assert!(input.imessage_enabled);
+        assert!(input.feishu_enabled);
+        assert_eq!(input.feishu_app_id, "cli_test");
+        assert_eq!(input.feishu_app_secret, "secret-value");
+        assert!(input.telegram_enabled);
+        assert_eq!(input.telegram_bot_token, "tg-token");
+        assert!(input.discord_enabled);
+        assert_eq!(input.discord_bot_token, "discord-token");
+    }
+
+    #[test]
+    fn desktop_channel_settings_serializes_secret_fields_to_camel_case_payload() {
+        let settings = DesktopChannelSettings {
+            config_path: "/tmp/config.yaml".to_string(),
+            imessage_enabled: false,
+            feishu_enabled: true,
+            feishu_app_id: "cli_test".to_string(),
+            feishu_app_secret: "secret-value".to_string(),
+            telegram_enabled: true,
+            telegram_bot_token: "tg-token".to_string(),
+            discord_enabled: true,
+            discord_bot_token: "discord-token".to_string(),
+        };
+
+        let json =
+            serde_json::to_value(&settings).expect("desktop channel settings should serialize");
+        assert_eq!(json["feishuAppId"], "cli_test");
+        assert_eq!(json["feishuAppSecret"], "secret-value");
+        assert_eq!(json["telegramBotToken"], "tg-token");
+        assert_eq!(json["discordBotToken"], "discord-token");
+    }
+
+    #[test]
+    fn mark_bundled_runtime_dirty_clears_cached_meta_and_sets_restart_reason() {
+        let mut manager = DesktopBackendManager::default();
+        manager.resolved_base_url = Some("http://127.0.0.1:3000".to_string());
+        manager.meta = Some(MetaInfo {
+            name: "Hone".to_string(),
+            version: "0.1.0".to_string(),
+            channel: "imessage".to_string(),
+            supports_imessage: true,
+            api_version: API_VERSION.to_string(),
+            capabilities: vec!["chat".to_string()],
+            deployment_mode: "local".to_string(),
+        });
+        manager.last_error = None;
+
+        mark_bundled_runtime_dirty(&mut manager, "channel settings updated");
+
+        assert!(manager.meta.is_none());
+        assert_eq!(
+            manager.last_error.as_deref(),
+            Some("channel settings updated")
+        );
+        assert_eq!(
+            manager.resolved_base_url.as_deref(),
+            Some("http://127.0.0.1:3000")
+        );
+    }
 }
 
 /// 检测本地 CLI/ACP runner 是否可用（运行 --version）。
@@ -1763,6 +2201,7 @@ pub(crate) async fn check_agent_cli_impl(runner: String) -> Result<CliCheckResul
         "gemini_cli" | "gemini_acp" => "gemini",
         "codex_cli" => "codex",
         "codex_acp" => "codex-acp",
+        "opencode_acp" | "multi-agent" => "opencode",
         other => return Err(format!("不支持的 runner: {other}")),
     };
 
@@ -1837,6 +2276,13 @@ pub(crate) async fn set_openrouter_settings_impl(
     // 内置后端模式下重启以立即生效
     let backend_config = load_persisted_config(&app).unwrap_or_default();
     if backend_config.mode == "bundled" {
+        {
+            let mut guard = state.inner.lock().unwrap();
+            mark_bundled_runtime_dirty(
+                &mut guard,
+                "openrouter settings updated; bundled runtime restart required",
+            );
+        }
         let _ = connect_backend_serialized(&app, &state).await;
     }
     Ok(())
@@ -1875,6 +2321,13 @@ pub(crate) async fn set_fmp_settings_impl(
     );
     let backend_config = load_persisted_config(&app).unwrap_or_default();
     if backend_config.mode == "bundled" {
+        {
+            let mut guard = state.inner.lock().unwrap();
+            mark_bundled_runtime_dirty(
+                &mut guard,
+                "fmp settings updated; bundled runtime restart required",
+            );
+        }
         let _ = connect_backend_serialized(&app, &state).await;
     }
     Ok(())
@@ -1918,6 +2371,13 @@ pub(crate) async fn set_tavily_settings_impl(
     );
     let backend_config = load_persisted_config(&app).unwrap_or_default();
     if backend_config.mode == "bundled" {
+        {
+            let mut guard = state.inner.lock().unwrap();
+            mark_bundled_runtime_dirty(
+                &mut guard,
+                "tavily settings updated; bundled runtime restart required",
+            );
+        }
         let _ = connect_backend_serialized(&app, &state).await;
     }
     Ok(())

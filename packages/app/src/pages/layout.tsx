@@ -114,11 +114,6 @@ export default function ConsoleLayout(props: ParentProps) {
           {consoleState.state.module === "kb" ? <KbList /> : null}
           {/* logs / kb-detail 模块不需要侧边列表，main 区域全宽展示 */}
           <main class="min-h-0 min-w-0 flex-1 overflow-hidden p-3 md:p-4">
-            {backend.isRemote() && backend.state.connected ? (
-              <div class="mb-3 rounded-lg border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
-                当前连接远程 backend：{backend.state.resolvedBaseUrl}
-              </div>
-            ) : null}
             {!backend.state.connected && !backend.state.initializing ? (
               <div class="mb-3 rounded-lg border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
                 后端未连接：{backend.state.error || "请在设置页检查连接。"}

@@ -14,8 +14,8 @@ use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
 };
 
-struct RunnerToolObserver {
-    emitter: Arc<dyn AgentRunnerEmitter>,
+pub(crate) struct RunnerToolObserver {
+    pub(crate) emitter: Arc<dyn AgentRunnerEmitter>,
 }
 
 #[async_trait]

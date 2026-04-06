@@ -182,6 +182,8 @@ pub async fn run_kb_analysis(
                 gemini_stream: GeminiStreamOptions::default(),
                 session_metadata: HashMap::new(),
                 working_directory,
+                allowed_tools: None,
+                max_tool_calls: None,
             },
             Arc::new(NoopEmitter),
         )

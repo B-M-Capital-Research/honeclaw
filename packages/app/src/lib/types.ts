@@ -89,7 +89,34 @@ export type AgentProvider =
   | "gemini_acp"
   | "codex_cli"
   | "codex_acp"
-  | "opencode_acp";
+  | "opencode_acp"
+  | "multi-agent";
+
+export type MultiAgentSearchSettings = {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  maxIterations: number;
+};
+
+export type MultiAgentAnswerSettings = {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  variant: string;
+  maxToolCalls: number;
+};
+
+export type MultiAgentSettings = {
+  search: MultiAgentSearchSettings;
+  answer: MultiAgentAnswerSettings;
+};
+
+export type AuxiliarySettings = {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+};
 
 export type AgentSettings = {
   /** function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp */
@@ -100,10 +127,12 @@ export type AgentSettings = {
   openaiUrl: string;
   /** OpenAI 协议渠道模型名（agent.opencode.model） */
   openaiModel: string;
-  /** OpenRouter 子模型（llm.openrouter.sub_model），用于心跳/压缩等辅助任务 */
-  openaiSubModel: string;
   /** OpenAI 协议渠道 API Key（agent.opencode.api_key） */
   openaiApiKey: string;
+  /** OpenAI-compatible auxiliary 配置，用于心跳/压缩等后台任务 */
+  auxiliary?: AuxiliarySettings;
+  /** multi-agent 双阶段设置 */
+  multiAgent?: MultiAgentSettings;
 };
 
 export type CliCheckResult = {

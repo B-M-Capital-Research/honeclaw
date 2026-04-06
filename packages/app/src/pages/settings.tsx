@@ -47,8 +47,27 @@ export default function SettingsPage() {
     codexModel: "",
     openaiUrl: "https://openrouter.ai/api/v1",
     openaiModel: "google/gemini-2.5-pro-preview",
-    openaiSubModel: "moonshotai/kimi-k2.5",
     openaiApiKey: "",
+    auxiliary: {
+      baseUrl: "https://api.minimaxi.com/v1",
+      apiKey: "",
+      model: "MiniMax-M2.7-highspeed",
+    },
+    multiAgent: {
+      search: {
+        baseUrl: "https://api.minimaxi.com/v1",
+        apiKey: "",
+        model: "MiniMax-M2.7-highspeed",
+        maxIterations: 8,
+      },
+      answer: {
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "",
+        model: "google/gemini-2.5-pro-preview",
+        variant: "high",
+        maxToolCalls: 1,
+      },
+    },
   })
   const [agentDraft, setAgentDraft] = createSignal<AgentSettings>(defaultAgentSettings())
   const [agentSaving, setAgentSaving] = createSignal(false)
@@ -59,6 +78,14 @@ export default function SettingsPage() {
   const [openaiTestStatus, setOpenaiTestStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
   const [openaiTestMessage, setOpenaiTestMessage] = createSignal("")
   const [showOpenaiKey, setShowOpenaiKey] = createSignal(false)
+  const [auxiliaryTestStatus, setAuxiliaryTestStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
+  const [auxiliaryTestMessage, setAuxiliaryTestMessage] = createSignal("")
+  const [showAuxiliaryKey, setShowAuxiliaryKey] = createSignal(false)
+  const [showSearchKey, setShowSearchKey] = createSignal(false)
+  const [showAnswerKey, setShowAnswerKey] = createSignal(false)
+  const [showFeishuSecret, setShowFeishuSecret] = createSignal(false)
+  const [showTelegramToken, setShowTelegramToken] = createSignal(false)
+  const [showDiscordToken, setShowDiscordToken] = createSignal(false)
 
   // Gemini CLI 检测状态
   const [geminiCheckStatus, setGeminiCheckStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
@@ -67,6 +94,12 @@ export default function SettingsPage() {
   // Codex CLI 检测状态
   const [codexCheckStatus, setCodexCheckStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
   const [codexCheckMessage, setCodexCheckMessage] = createSignal("")
+  const [opencodeCheckStatus, setOpencodeCheckStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
+  const [opencodeCheckMessage, setOpencodeCheckMessage] = createSignal("")
+  const [searchTestStatus, setSearchTestStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
+  const [searchTestMessage, setSearchTestMessage] = createSignal("")
+  const [answerTestStatus, setAnswerTestStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
+  const [answerTestMessage, setAnswerTestMessage] = createSignal("")
 
   const [agentSettingsRes] = createResource(
     () => backend.state.isDesktop,
@@ -78,7 +111,14 @@ export default function SettingsPage() {
 
   createEffect(() => {
     const s = agentSettingsRes()
-    if (s) setAgentDraft(s)
+    if (s) {
+      setAgentDraft({
+        ...defaultAgentSettings(),
+        ...s,
+        auxiliary: s.auxiliary ?? defaultAgentSettings().auxiliary,
+        multiAgent: s.multiAgent ?? defaultAgentSettings().multiAgent,
+      })
+    }
   })
 
 
@@ -224,6 +264,24 @@ export default function SettingsPage() {
     }
   }
 
+  const handleTestAuxiliary = async () => {
+    setAuxiliaryTestStatus("checking")
+    setAuxiliaryTestMessage("")
+    try {
+      const auxiliary = agentDraft().auxiliary
+      const result = await testDesktopOpenAiChannel(
+        auxiliary?.baseUrl ?? "",
+        auxiliary?.model ?? "",
+        auxiliary?.apiKey ?? "",
+      )
+      setAuxiliaryTestStatus(result.ok ? "ok" : "error")
+      setAuxiliaryTestMessage(result.message)
+    } catch (e) {
+      setAuxiliaryTestStatus("error")
+      setAuxiliaryTestMessage(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   // ── Gemini CLI 检测 ──────────────────────────────────────────────────────────
   const handleCheckGemini = async () => {
     setGeminiCheckStatus("checking")
@@ -249,6 +307,55 @@ export default function SettingsPage() {
     } catch (e) {
       setCodexCheckStatus("error")
       setCodexCheckMessage(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const handleCheckOpencode = async () => {
+    setOpencodeCheckStatus("checking")
+    setOpencodeCheckMessage("")
+    try {
+      const result = await checkDesktopAgentCli("opencode_acp")
+      setOpencodeCheckStatus(result.ok ? "ok" : "error")
+      setOpencodeCheckMessage(result.message)
+    } catch (e) {
+      setOpencodeCheckStatus("error")
+      setOpencodeCheckMessage(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const handleTestMultiAgentSearch = async () => {
+    setSearchTestStatus("checking")
+    setSearchTestMessage("")
+    try {
+      const search = agentDraft().multiAgent?.search
+      const result = await testDesktopOpenAiChannel(
+        search?.baseUrl ?? "",
+        search?.model ?? "",
+        search?.apiKey ?? "",
+      )
+      setSearchTestStatus(result.ok ? "ok" : "error")
+      setSearchTestMessage(result.message)
+    } catch (e) {
+      setSearchTestStatus("error")
+      setSearchTestMessage(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const handleTestMultiAgentAnswer = async () => {
+    setAnswerTestStatus("checking")
+    setAnswerTestMessage("")
+    try {
+      const answer = agentDraft().multiAgent?.answer
+      const result = await testDesktopOpenAiChannel(
+        answer?.baseUrl ?? "",
+        answer?.model ?? "",
+        answer?.apiKey ?? "",
+      )
+      setAnswerTestStatus(result.ok ? "ok" : "error")
+      setAnswerTestMessage(result.message)
+    } catch (e) {
+      setAnswerTestStatus("error")
+      setAnswerTestMessage(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -326,6 +433,209 @@ export default function SettingsPage() {
 
         <fieldset disabled={!backend.state.isDesktop || agentSettingsRes.loading} class="mt-6 space-y-4 disabled:opacity-60">
 
+          {/* ── 卡片 0：Multi-Agent ── */}
+          <div
+            class={[
+              "rounded-xl border p-5 transition cursor-pointer",
+              agentDraft().runner === "multi-agent"
+                ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
+                : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
+            ].join(" ")}
+            onClick={() => void selectRunner("multi-agent")}
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-sm font-semibold text-[color:var(--text-primary)]">Multi-Agent</div>
+                <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+                  Search Agent 使用 MiniMax function calling，Answer Agent 使用 opencode ACP 收束回复
+                </div>
+              </div>
+              <Show when={agentDraft().runner === "multi-agent"}>
+                <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">当前</span>
+              </Show>
+            </div>
+
+            <div class="mt-4 grid gap-4 md:grid-cols-2" onClick={(e) => e.stopPropagation()}>
+              <div class="space-y-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+                <div class="text-xs font-semibold text-[color:var(--text-primary)]">Search Agent (MiniMax / OpenAI-compatible)</div>
+                <input
+                  type="url"
+                  placeholder="https://api.minimaxi.com/v1"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
+                  value={agentDraft().multiAgent?.search.baseUrl ?? ""}
+                  onInput={(e) => setAgentDraft((prev) => ({
+                    ...prev,
+                    multiAgent: {
+                      ...prev.multiAgent!,
+                      search: { ...prev.multiAgent!.search, baseUrl: e.currentTarget.value },
+                    },
+                  }))}
+                />
+                <input
+                  type="text"
+                  placeholder="MiniMax-M2.7-highspeed"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
+                  value={agentDraft().multiAgent?.search.model ?? ""}
+                  onInput={(e) => setAgentDraft((prev) => ({
+                    ...prev,
+                    multiAgent: {
+                      ...prev.multiAgent!,
+                      search: { ...prev.multiAgent!.search, model: e.currentTarget.value },
+                    },
+                  }))}
+                />
+                <div class="relative">
+                  <input
+                    type={showSearchKey() ? "text" : "password"}
+                    placeholder="sk-cp-..."
+                    class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm"
+                    value={agentDraft().multiAgent?.search.apiKey ?? ""}
+                    onInput={(e) => setAgentDraft((prev) => ({
+                      ...prev,
+                      multiAgent: {
+                        ...prev.multiAgent!,
+                        search: { ...prev.multiAgent!.search, apiKey: e.currentTarget.value },
+                      },
+                    }))}
+                  />
+                  <button
+                    type="button"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                    onClick={() => setShowSearchKey((v) => !v)}
+                  >
+                    {showSearchKey() ? "隐藏" : "显示"}
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
+                  value={agentDraft().multiAgent?.search.maxIterations ?? 8}
+                  onInput={(e) => setAgentDraft((prev) => ({
+                    ...prev,
+                    multiAgent: {
+                      ...prev.multiAgent!,
+                      search: { ...prev.multiAgent!.search, maxIterations: Number(e.currentTarget.value || 0) },
+                    },
+                  }))}
+                />
+                <button
+                  type="button"
+                  class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs"
+                  disabled={searchTestStatus() === "checking"}
+                  onClick={() => void handleTestMultiAgentSearch()}
+                >
+                  {searchTestStatus() === "checking" ? "测试中…" : "测试 Search Agent"}
+                </button>
+                <Show when={searchTestStatus() !== "idle"}>
+                  <div class="text-xs text-[color:var(--text-secondary)]">{searchTestMessage()}</div>
+                </Show>
+              </div>
+
+              <div class="space-y-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+                <div class="text-xs font-semibold text-[color:var(--text-primary)]">Answer Agent (OpenAI-compatible via opencode ACP)</div>
+                <input
+                  type="url"
+                  placeholder="https://openrouter.ai/api/v1"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
+                  value={agentDraft().multiAgent?.answer.baseUrl ?? ""}
+                  onInput={(e) => setAgentDraft((prev) => ({
+                    ...prev,
+                    multiAgent: {
+                      ...prev.multiAgent!,
+                      answer: { ...prev.multiAgent!.answer, baseUrl: e.currentTarget.value },
+                    },
+                  }))}
+                />
+                <input
+                  type="text"
+                  placeholder="google/gemini-3.1-pro-preview"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
+                  value={agentDraft().multiAgent?.answer.model ?? ""}
+                  onInput={(e) => setAgentDraft((prev) => ({
+                    ...prev,
+                    multiAgent: {
+                      ...prev.multiAgent!,
+                      answer: { ...prev.multiAgent!.answer, model: e.currentTarget.value },
+                    },
+                  }))}
+                />
+                <input
+                  type="text"
+                  placeholder="high"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
+                  value={agentDraft().multiAgent?.answer.variant ?? ""}
+                  onInput={(e) => setAgentDraft((prev) => ({
+                    ...prev,
+                    multiAgent: {
+                      ...prev.multiAgent!,
+                      answer: { ...prev.multiAgent!.answer, variant: e.currentTarget.value },
+                    },
+                  }))}
+                />
+                <div class="relative">
+                  <input
+                    type={showAnswerKey() ? "text" : "password"}
+                    placeholder="sk-or-..."
+                    class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm"
+                    value={agentDraft().multiAgent?.answer.apiKey ?? ""}
+                    onInput={(e) => setAgentDraft((prev) => ({
+                      ...prev,
+                      multiAgent: {
+                        ...prev.multiAgent!,
+                        answer: { ...prev.multiAgent!.answer, apiKey: e.currentTarget.value },
+                      },
+                    }))}
+                  />
+                  <button
+                    type="button"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                    onClick={() => setShowAnswerKey((v) => !v)}
+                  >
+                    {showAnswerKey() ? "隐藏" : "显示"}
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
+                  value={agentDraft().multiAgent?.answer.maxToolCalls ?? 1}
+                  onInput={(e) => setAgentDraft((prev) => ({
+                    ...prev,
+                    multiAgent: {
+                      ...prev.multiAgent!,
+                      answer: { ...prev.multiAgent!.answer, maxToolCalls: Number(e.currentTarget.value || 0) },
+                    },
+                  }))}
+                />
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs"
+                    disabled={answerTestStatus() === "checking"}
+                    onClick={() => void handleTestMultiAgentAnswer()}
+                  >
+                    {answerTestStatus() === "checking" ? "测试中…" : "测试 Answer Agent"}
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs"
+                    disabled={opencodeCheckStatus() === "checking"}
+                    onClick={() => void handleCheckOpencode()}
+                  >
+                    {opencodeCheckStatus() === "checking" ? "检测中…" : "检查 opencode"}
+                  </button>
+                </div>
+                <Show when={answerTestStatus() !== "idle"}>
+                  <div class="text-xs text-[color:var(--text-secondary)]">{answerTestMessage()}</div>
+                </Show>
+                <Show when={opencodeCheckStatus() !== "idle"}>
+                  <div class="text-xs text-[color:var(--text-secondary)]">{opencodeCheckMessage()}</div>
+                </Show>
+              </div>
+            </div>
+          </div>
+
           {/* ── 卡片 1：OpenAI 协议渠道 ── */}
           <div
             class={[
@@ -380,21 +690,70 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div>
-                <label class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]" for="openai-sub-model">
-                  子模型
-                </label>
-                <input
-                  id="openai-sub-model"
-                  type="text"
-                  placeholder="moonshotai/kimi-k2.5"
-                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
-                  value={agentDraft().openaiSubModel}
-                  onInput={(e) => setAgentDraft((prev) => ({ ...prev, openaiSubModel: e.currentTarget.value }))}
-                />
+              <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-soft)] p-3">
+                <p class="text-xs font-medium text-[color:var(--text-primary)]">Auxiliary 子模型链路</p>
                 <p class="mt-1 text-[11px] text-[color:var(--text-muted)]">
-                  用于心跳检测、会话压缩等后台辅助链路，默认使用更省成本的模型。
+                  用于心跳检测、会话压缩等后台辅助任务，支持独立的 OpenAI-compatible Base URL / API Key / Model。
                 </p>
+                <div class="mt-3 space-y-3">
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]" for="auxiliary-url">
+                      Auxiliary Base URL
+                    </label>
+                    <input
+                      id="auxiliary-url"
+                      type="url"
+                      placeholder="https://api.minimaxi.com/v1"
+                      class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                      value={agentDraft().auxiliary?.baseUrl ?? ""}
+                      onInput={(e) => setAgentDraft((prev) => ({
+                        ...prev,
+                        auxiliary: { ...(prev.auxiliary ?? { baseUrl: "", apiKey: "", model: "" }), baseUrl: e.currentTarget.value },
+                      }))}
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]" for="auxiliary-model">
+                      Auxiliary Model
+                    </label>
+                    <input
+                      id="auxiliary-model"
+                      type="text"
+                      placeholder="MiniMax-M2.7-highspeed"
+                      class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                      value={agentDraft().auxiliary?.model ?? ""}
+                      onInput={(e) => setAgentDraft((prev) => ({
+                        ...prev,
+                        auxiliary: { ...(prev.auxiliary ?? { baseUrl: "", apiKey: "", model: "" }), model: e.currentTarget.value },
+                      }))}
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]" for="auxiliary-apikey">
+                      Auxiliary API Key
+                    </label>
+                    <div class="relative">
+                      <input
+                        id="auxiliary-apikey"
+                        type={showAuxiliaryKey() ? "text" : "password"}
+                        placeholder="sk-cp-..."
+                        class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                        value={agentDraft().auxiliary?.apiKey ?? ""}
+                        onInput={(e) => setAgentDraft((prev) => ({
+                          ...prev,
+                          auxiliary: { ...(prev.auxiliary ?? { baseUrl: "", apiKey: "", model: "" }), apiKey: e.currentTarget.value },
+                        }))}
+                      />
+                      <button
+                        type="button"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                        onClick={() => setShowAuxiliaryKey((v) => !v)}
+                      >
+                        {showAuxiliaryKey() ? "隐藏" : "显示"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* API Key */}
@@ -455,6 +814,23 @@ export default function SettingsPage() {
                 </div>
               </Show>
 
+              <Show when={auxiliaryTestStatus() !== "idle"}>
+                <div
+                  class={[
+                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+                    auxiliaryTestStatus() === "checking"
+                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
+                      : auxiliaryTestStatus() === "ok"
+                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
+                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
+                  ].join(" ")}
+                >
+                  <span>
+                    {auxiliaryTestStatus() === "checking" ? "Auxiliary 连通测试中，请稍候…" : auxiliaryTestMessage()}
+                  </span>
+                </div>
+              </Show>
+
               {/* 反馈 */}
               {agentMessage() ? (
                 <div class="rounded-md border border-emerald-300/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
@@ -476,6 +852,14 @@ export default function SettingsPage() {
                   onClick={() => void handleTestOpenAi()}
                 >
                   {openaiTestStatus() === "checking" ? "测试中…" : "测试联通"}
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
+                  disabled={auxiliaryTestStatus() === "checking"}
+                  onClick={() => void handleTestAuxiliary()}
+                >
+                  {auxiliaryTestStatus() === "checking" ? "测试中…" : "测试 Auxiliary"}
                 </button>
                 <button
                   type="button"
@@ -809,13 +1193,22 @@ export default function SettingsPage() {
                     </div>
                     <div class="space-y-1">
                       <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">App Secret</label>
-                      <input
-                        type="password"
-                        placeholder="Secret"
-                        class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
-                        value={channelDraft().feishuAppSecret || ""}
-                        onInput={(e) => setChannelDraft(p => ({ ...p, feishuAppSecret: e.currentTarget.value }))}
-                      />
+                      <div class="relative">
+                        <input
+                          type={showFeishuSecret() ? "text" : "password"}
+                          placeholder="Secret"
+                          class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                          value={channelDraft().feishuAppSecret || ""}
+                          onInput={(e) => setChannelDraft(p => ({ ...p, feishuAppSecret: e.currentTarget.value }))}
+                        />
+                        <button
+                          type="button"
+                          class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                          onClick={() => setShowFeishuSecret((v) => !v)}
+                        >
+                          {showFeishuSecret() ? "隐藏" : "显示"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </Show>
@@ -845,13 +1238,22 @@ export default function SettingsPage() {
                 <Show when={channelDraft().discordEnabled}>
                   <div class="space-y-1 pt-2">
                     <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">Bot Token</label>
-                    <input
-                      type="password"
-                      placeholder="Discord Bot Token"
-                      class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
-                      value={channelDraft().discordBotToken || ""}
-                      onInput={(e) => setChannelDraft(p => ({ ...p, discordBotToken: e.currentTarget.value }))}
-                    />
+                    <div class="relative">
+                      <input
+                        type={showDiscordToken() ? "text" : "password"}
+                        placeholder="Discord Bot Token"
+                        class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                        value={channelDraft().discordBotToken || ""}
+                        onInput={(e) => setChannelDraft(p => ({ ...p, discordBotToken: e.currentTarget.value }))}
+                      />
+                      <button
+                        type="button"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                        onClick={() => setShowDiscordToken((v) => !v)}
+                      >
+                        {showDiscordToken() ? "隐藏" : "显示"}
+                      </button>
+                    </div>
                   </div>
                 </Show>
               </div>
@@ -880,13 +1282,22 @@ export default function SettingsPage() {
                 <Show when={channelDraft().telegramEnabled}>
                   <div class="space-y-1 pt-2">
                     <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">Bot Token</label>
-                    <input
-                      type="password"
-                      placeholder="Token"
-                      class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
-                      value={channelDraft().telegramBotToken || ""}
-                      onInput={(e) => setChannelDraft(p => ({ ...p, telegramBotToken: e.currentTarget.value }))}
-                    />
+                    <div class="relative">
+                      <input
+                        type={showTelegramToken() ? "text" : "password"}
+                        placeholder="Token"
+                        class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                        value={channelDraft().telegramBotToken || ""}
+                        onInput={(e) => setChannelDraft(p => ({ ...p, telegramBotToken: e.currentTarget.value }))}
+                      />
+                      <button
+                        type="button"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                        onClick={() => setShowTelegramToken((v) => !v)}
+                      >
+                        {showTelegramToken() ? "隐藏" : "显示"}
+                      </button>
+                    </div>
                   </div>
                 </Show>
               </div>

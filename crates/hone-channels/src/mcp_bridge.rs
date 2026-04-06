@@ -1,9 +1,11 @@
 use hone_core::ActorIdentity;
 use hone_tools::ToolRegistry;
 use serde_json::{Value, json};
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::HoneBotCore;
@@ -47,6 +49,18 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
         env_entries.push(json!({
             "name": "HONE_DATA_DIR",
             "value": data_dir,
+        }));
+    }
+    if let Some(allowed_tools) = &request.allowed_tools {
+        env_entries.push(json!({
+            "name": "HONE_MCP_ALLOWED_TOOLS",
+            "value": allowed_tools.join(","),
+        }));
+    }
+    if let Some(max_tool_calls) = request.max_tool_calls {
+        env_entries.push(json!({
+            "name": "HONE_MCP_MAX_TOOL_CALLS",
+            "value": max_tool_calls.to_string(),
         }));
     }
 
@@ -278,6 +292,28 @@ fn env_bool(name: &str) -> bool {
     )
 }
 
+fn allowed_tools_from_env() -> Option<HashSet<String>> {
+    let raw = env::var("HONE_MCP_ALLOWED_TOOLS").ok()?;
+    let set: HashSet<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    if set.is_empty() { None } else { Some(set) }
+}
+
+fn max_tool_calls_from_env() -> Option<u32> {
+    env::var("HONE_MCP_MAX_TOOL_CALLS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+}
+
+fn tool_call_counters() -> &'static Mutex<HashMap<String, u32>> {
+    static COUNTERS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
+    COUNTERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 fn handle_initialize(params: &Value) -> Value {
     let protocol_version = params
         .get("protocolVersion")
@@ -302,6 +338,18 @@ fn handle_tools_list(registry: &ToolRegistry) -> Value {
     let mut tools: Vec<Value> = registry
         .get_tools_schema()
         .into_iter()
+        .filter(|schema| {
+            let allowed_tools = allowed_tools_from_env();
+            if let Some(allowed) = allowed_tools {
+                schema
+                    .get("function")
+                    .and_then(|value| value.get("name"))
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|name| allowed.contains(name))
+            } else {
+                true
+            }
+        })
         .filter_map(openai_tool_schema_to_mcp)
         .collect();
     tools.sort_by(|a, b| {
@@ -319,6 +367,31 @@ async fn handle_tools_call(registry: &ToolRegistry, params: &Value) -> Value {
             "isError": true
         });
     };
+
+    if let Some(allowed_tools) = allowed_tools_from_env() {
+        if !allowed_tools.contains(name) {
+            return json!({
+                "content": [{ "type": "text", "text": format!("tool `{name}` is not allowed in this stage") }],
+                "isError": true
+            });
+        }
+    }
+
+    if let Some(limit) = max_tool_calls_from_env() {
+        let session_id = env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
+        if !session_id.trim().is_empty() {
+            let counters = tool_call_counters();
+            let mut guard = counters.lock().expect("tool_call_counters lock");
+            let entry = guard.entry(session_id).or_insert(0);
+            if *entry >= limit {
+                return json!({
+                    "content": [{ "type": "text", "text": format!("tool call limit reached ({limit})") }],
+                    "isError": true
+                });
+            }
+            *entry += 1;
+        }
+    }
 
     let arguments = params
         .get("arguments")

@@ -46,6 +46,7 @@ Last updated: 2026-03-31
 - `ChatMode` describes only the message shape (`direct` / `group`) and does not determine session ownership; shared group context must explicitly go through `SessionIdentity`
 - `ActorIdentity` and `SessionIdentity` must stay separate: the former is for permissions, quota, sandbox, and private-data isolation, while the latter is for context recovery and session persistence
 - Global finance-domain constraints are injected at runtime by `crates/hone-channels/src/prompt.rs`: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short. Do not override these core rules only in a single channel or in a local config.
+- Runtime prompt time anchoring is a core behavior contract: Hone must keep the session-provided current time as the source of truth for macro / news / event-driven analysis, must state the current time first on clearly time-sensitive macro answers, and must rewrite relative-time macro searches into absolute-date queries before calling search tools.
 - `config.yaml` is a read-only seed template. Runtime writes must go to `data/runtime/config_runtime.overrides.yaml`, and startup/reset paths must keep `config_runtime.yaml` as the effective base without rewriting the seed file
 - `storage.session_runtime_backend` decides the production session read path:
   - `json`: `data/sessions/*.json` is the source of truth
@@ -66,14 +67,14 @@ Last updated: 2026-03-31
 - `codex_acp` and `codex_cli` workspace-write mode may still read repo files outside the sandbox. The repo explicitly allows that for production channels today, so if they are used as the default runner, treat that out-of-bounds read risk as accepted and avoid mixing sensitive files with the channel runtime environment.
 - `opencode_acp` currently uses `opencode acp` over stdio / JSON-RPC; the ACP session id must be written back into Hone session metadata so a new ACP session is not created on every turn
 - If `agent.opencode.model` is non-empty, Hone must call ACP `session/set_model` before `session/prompt`; `agent.opencode.variant` should be appended to `modelId` through the same call (for example `openrouter/openai/gpt-5.4/medium`) instead of relying on temporary selection state in the local opencode UI
-- `llm.openrouter.sub_model` is reserved for lower-cost auxiliary work such as session compression and heartbeat-condition probing; it must not silently replace the main dialogue model selected through `agent.opencode.model`
+- The auxiliary heartbeat / session-compression path must stay separate from the main dialogue model. Prefer `llm.auxiliary` as the source of truth for that OpenAI-compatible background route; `llm.openrouter.sub_model` remains only as a legacy fallback and must not silently replace the main dialogue model selected through `agent.opencode.model`
 - Before Hone has its own ACP permission negotiation layer, `opencode_acp` must deny one `session/request_permission` request by default and must not silently allow file writes or terminal execution; the channel runtime must also inject the minimal opencode config that rejects `external_directory`
 - The system prompt must stay layered:
   - Static system instructions live in the prefix
   - Session-fixed context is concatenated separately
   - Mutable content such as summaries must not be written back into the static system prefix
 - ACP runners must receive the Hone-assembled system prompt explicitly; they must not rely on the underlying CLI discovering `AGENTS.md` or `GEMINI.md` from the repo `cwd`
-- Session time context is frozen per session; do not inject a fresh timestamp on every turn and break prefix caching
+- Session summaries and compacted restore materials may stay session-scoped, but the displayed current time in prompt session context must be recalculated from the live current Beijing time on every turn; do not reuse stale session creation time as "当前时间"
 - Session summaries must be stored in the explicit `summary` field instead of relying on a fake `system` summary message
 - SQLite-backed session persistence must preserve the original `session_id` and source JSON semantics; do not silently normalize historical `Actor_*`, `Session_*`, or `User_*` identities during mirror writes or cutover reads
 - Heartbeat tasks are first-class cron jobs: they must stay visible in the normal cron list, carry an explicit heartbeat marker, and poll on 30-minute slots without pretending to be a fixed daily time
