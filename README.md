@@ -181,7 +181,7 @@ Honeclaw is committed to becoming the most professional open-source personal inv
 
 Contributors:
 
-- [carlisle0615](https://github.com/carlisle0615)
+- [chet-zzz](https://github.com/chet-zzz)
 - [Finn-Fengming](https://github.com/Finn-Fengming)
 
 📄 License
