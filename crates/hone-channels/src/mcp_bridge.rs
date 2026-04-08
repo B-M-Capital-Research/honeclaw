@@ -490,7 +490,9 @@ mod tests {
 
     fn env_lock() -> MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock")
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
     }
 
     fn clear_test_env() {
@@ -523,7 +525,10 @@ mod tests {
             gemini_stream: GeminiStreamOptions::default(),
             session_metadata: HashMap::new(),
             working_directory: ".".to_string(),
-            allowed_tools: Some(vec!["discover_skills".to_string(), "skill_tool".to_string()]),
+            allowed_tools: Some(vec![
+                "discover_skills".to_string(),
+                "skill_tool".to_string(),
+            ]),
             max_tool_calls: Some(3),
         }
     }
@@ -619,7 +624,10 @@ mod tests {
         }))
         .expect("converted");
 
-        assert_eq!(converted.get("name").and_then(|v| v.as_str()), Some("skill_tool"));
+        assert_eq!(
+            converted.get("name").and_then(|v| v.as_str()),
+            Some("skill_tool")
+        );
         assert_eq!(
             converted.get("description").and_then(|v| v.as_str()),
             Some("run a skill")

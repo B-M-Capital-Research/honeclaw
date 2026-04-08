@@ -135,7 +135,11 @@ mod tests {
     #[test]
     fn disabled_guard_allows_calls() {
         let guard = ToolExecutionGuard::disabled();
-        assert!(guard.check("exec_command", &json!({"cmd": "rm -rf /"})).is_ok());
+        assert!(
+            guard
+                .check("exec_command", &json!({"cmd": "rm -rf /"}))
+                .is_ok()
+        );
     }
 
     #[test]
@@ -162,9 +166,11 @@ mod tests {
             deny_patterns: vec!["shutdown -r".to_string()],
         });
 
-        assert!(guard
-            .check("exec_command", &json!({"cmd": "shutdown -r now"}))
-            .is_ok());
+        assert!(
+            guard
+                .check("exec_command", &json!({"cmd": "shutdown -r now"}))
+                .is_ok()
+        );
     }
 
     #[test]
@@ -176,11 +182,15 @@ mod tests {
             deny_patterns: vec!["drop table".to_string()],
         });
 
-        assert!(guard
-            .check("web_search", &json!({"query": "drop table users"}))
-            .is_ok());
-        assert!(guard
-            .check("exec_command", &json!({"cmd": "drop table users"}))
-            .is_err());
+        assert!(
+            guard
+                .check("web_search", &json!({"query": "drop table users"}))
+                .is_ok()
+        );
+        assert!(
+            guard
+                .check("exec_command", &json!({"cmd": "drop table users"}))
+                .is_err()
+        );
     }
 }

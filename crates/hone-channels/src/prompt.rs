@@ -417,7 +417,10 @@ mod tests {
                 privacy_guard: Some(DEFAULT_GROUP_PRIVACY_GUARD.to_string()),
                 model_hint: Some("gpt-5.4".to_string()),
                 force_chinese: true,
-                extra_sections: vec!["【附加规则】先给结论再展开。".to_string(), "   ".to_string()],
+                extra_sections: vec![
+                    "【附加规则】先给结论再展开。".to_string(),
+                    "   ".to_string(),
+                ],
                 include_format_guidance: true,
             },
         );
