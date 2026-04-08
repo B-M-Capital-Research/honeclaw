@@ -490,8 +490,10 @@ mod tests {
 
     #[test]
     fn upsert_session_replaces_old_rows_and_stores_message_metadata_columns() {
-        let root =
-            std::env::temp_dir().join(format!("hone_session_sqlite_replace_{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!(
+            "hone_session_sqlite_replace_{}",
+            uuid::Uuid::new_v4()
+        ));
         std::fs::create_dir_all(&root).expect("root");
         let db_path = root.join("sessions.sqlite3");
         let source_path = root
@@ -507,7 +509,9 @@ mod tests {
             serde_json::to_string_pretty(&first).expect("json"),
         )
         .expect("write source");
-        mirror.upsert_session(&source_path, &first).expect("first upsert");
+        mirror
+            .upsert_session(&source_path, &first)
+            .expect("first upsert");
 
         let long_reply = "市场回顾 ".repeat(80);
         first.updated_at = "2026-03-26T09:20:00+08:00".to_string();
@@ -525,8 +529,14 @@ mod tests {
                 content: "{\"ok\":true}".to_string(),
                 timestamp: "2026-03-26T09:10:00+08:00".to_string(),
                 metadata: Some(HashMap::from([
-                    ("tool_name".to_string(), Value::String("web_search".to_string())),
-                    ("tool_call_id".to_string(), Value::String("call-1".to_string())),
+                    (
+                        "tool_name".to_string(),
+                        Value::String("web_search".to_string()),
+                    ),
+                    (
+                        "tool_call_id".to_string(),
+                        Value::String("call-1".to_string()),
+                    ),
                     ("message_id".to_string(), Value::String("msg-1".to_string())),
                 ])),
             },
@@ -546,7 +556,9 @@ mod tests {
             serde_json::to_string_pretty(&first).expect("json"),
         )
         .expect("rewrite source");
-        mirror.upsert_session(&source_path, &first).expect("second upsert");
+        mirror
+            .upsert_session(&source_path, &first)
+            .expect("second upsert");
 
         let conn = sqlite3_connect(&db_path);
         let message_count: i64 = conn
@@ -599,7 +611,10 @@ mod tests {
             .expect("load")
             .expect("loaded");
         assert_eq!(loaded.messages.len(), 2);
-        assert_eq!(loaded.summary.as_ref().map(|v| v.content.as_str()), Some("updated summary"));
+        assert_eq!(
+            loaded.summary.as_ref().map(|v| v.content.as_str()),
+            Some("updated summary")
+        );
     }
 
     #[test]
@@ -616,15 +631,27 @@ mod tests {
         older.id = "Actor_feishu__direct__older".to_string();
         older.updated_at = "2026-03-26T09:00:00+08:00".to_string();
         let older_path = sessions_dir.join("older.json");
-        std::fs::write(&older_path, serde_json::to_string_pretty(&older).expect("json")).expect("write older");
-        mirror.upsert_session(&older_path, &older).expect("upsert older");
+        std::fs::write(
+            &older_path,
+            serde_json::to_string_pretty(&older).expect("json"),
+        )
+        .expect("write older");
+        mirror
+            .upsert_session(&older_path, &older)
+            .expect("upsert older");
 
         let mut newer = make_session();
         newer.id = "Actor_feishu__direct__newer".to_string();
         newer.updated_at = "2026-03-26T10:00:00+08:00".to_string();
         let newer_path = sessions_dir.join("newer.json");
-        std::fs::write(&newer_path, serde_json::to_string_pretty(&newer).expect("json")).expect("write newer");
-        mirror.upsert_session(&newer_path, &newer).expect("upsert newer");
+        std::fs::write(
+            &newer_path,
+            serde_json::to_string_pretty(&newer).expect("json"),
+        )
+        .expect("write newer");
+        mirror
+            .upsert_session(&newer_path, &newer)
+            .expect("upsert newer");
 
         let sessions = mirror.list_sessions().expect("list sessions");
         assert_eq!(sessions.len(), 2);

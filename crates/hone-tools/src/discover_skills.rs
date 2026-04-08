@@ -225,7 +225,10 @@ mod tests {
         assert_eq!(result["success"], Value::Bool(true));
         assert_eq!(result["count"], Value::Number(1.into()));
         assert_eq!(result["query"], Value::String("stock".to_string()));
-        assert_eq!(result["skills"][0]["id"], Value::String("stock_alpha".to_string()));
+        assert_eq!(
+            result["skills"][0]["id"],
+            Value::String("stock_alpha".to_string())
+        );
         assert_eq!(
             result["skills"][0]["loaded_from"],
             Value::String("system".to_string())

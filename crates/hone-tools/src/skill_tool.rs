@@ -148,7 +148,9 @@ mod tests {
 
     fn env_lock() -> MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock")
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
     }
 
     fn clear_test_env() {
@@ -298,7 +300,9 @@ mod tests {
             .expect("invoked skills array");
         assert_eq!(invoked.len(), 1);
         assert_eq!(
-            invoked[0].get("skill_name").and_then(|value| value.as_str()),
+            invoked[0]
+                .get("skill_name")
+                .and_then(|value| value.as_str()),
             Some("alpha")
         );
         assert_eq!(
