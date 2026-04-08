@@ -1,6 +1,9 @@
 ---
 name: Position Advice
 description: OWCW position advice skill that combines market conditions, stock-specific developments, and the user's current holdings to provide professional position-adjustment suggestions
+aliases:
+  - OWCW
+  - rebalance advice
 tools:
   - portfolio
   - web_search

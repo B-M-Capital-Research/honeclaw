@@ -1,6 +1,9 @@
 ---
 name: Professional Valuation
 description: OWGZ professional valuation skill for analyzing a company's financial data and market performance
+aliases:
+  - OWGZ
+  - valuation
 tools:
   - web_search
   - data_fetch

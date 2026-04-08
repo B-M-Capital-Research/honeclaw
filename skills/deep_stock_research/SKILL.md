@@ -5,6 +5,7 @@ aliases:
   - OWDR
   - Deep Stock Research
   - Deep Research
+  - deep stock research
 tools:
   - deep_research
 admin_only: true
