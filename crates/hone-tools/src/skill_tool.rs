@@ -130,7 +130,10 @@ impl SkillTool {
 mod tests {
     use super::*;
     use crate::base::Tool;
+    use hone_memory::SessionStorage;
+    use serde_json::Value;
     use std::fs;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_temp_dir(prefix: &str) -> PathBuf {
@@ -143,8 +146,22 @@ mod tests {
         dir
     }
 
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock")
+    }
+
+    fn clear_test_env() {
+        unsafe {
+            std::env::remove_var("HONE_MCP_SESSION_ID");
+            std::env::remove_var("HONE_DATA_DIR");
+        }
+    }
+
     #[tokio::test]
     async fn execute_runs_declared_skill_script() {
+        let _guard = env_lock();
+        clear_test_env();
         let root = make_temp_dir("hone_skill_tool_script");
         let system = root.join("system");
         let custom = root.join("custom");
@@ -210,9 +227,96 @@ mod tests {
         assert!(stdout.contains(&format!("dir={}", skill_dir.to_string_lossy())));
         assert!(stdout.contains("session=session-script-test"));
         assert!(stdout.contains("argv=AAPL,5"));
+        clear_test_env();
+    }
+
+    #[tokio::test]
+    async fn execute_persists_invoked_skill_into_real_session_storage() {
+        let _guard = env_lock();
+        clear_test_env();
+        let root = make_temp_dir("hone_skill_tool_persist");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let data_dir = root.join("data");
+        let sessions_dir = data_dir.join("sessions");
+        let skill_dir = system.join("alpha");
+        fs::create_dir_all(&skill_dir).expect("skill dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::create_dir_all(&sessions_dir).expect("sessions dir");
+
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Alpha\n",
+                "description: persist invoked skill\n",
+                "allowed-tools:\n",
+                "  - discover_skills\n",
+                "  - data_fetch\n",
+                "---\n\n",
+                "Prompt body for ${HONE_SESSION_ID}"
+            ),
+        )
+        .expect("skill");
+
+        let storage = SessionStorage::new(&sessions_dir);
+        let session_id = storage
+            .create_session(Some("session-persist"), None, None)
+            .expect("create session");
+
+        let tool = SkillTool::new(system, custom);
         unsafe {
-            std::env::remove_var("HONE_MCP_SESSION_ID");
+            std::env::set_var("HONE_DATA_DIR", &data_dir);
+            std::env::set_var("HONE_MCP_SESSION_ID", &session_id);
         }
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "alpha",
+                "args": "AAPL"
+            }))
+            .await
+            .expect("execute");
+
+        assert_eq!(result["success"], Value::Bool(true));
+        assert_eq!(result["skill_name"], Value::String("alpha".to_string()));
+        assert_eq!(
+            result["allowed_tools"],
+            Value::Array(vec![
+                Value::String("discover_skills".to_string()),
+                Value::String("data_fetch".to_string()),
+            ])
+        );
+
+        let session = storage
+            .load_session(&session_id)
+            .expect("load session")
+            .expect("session exists");
+        let invoked = session
+            .metadata
+            .get(INVOKED_SKILLS_METADATA_KEY)
+            .and_then(|value| value.as_array())
+            .expect("invoked skills array");
+        assert_eq!(invoked.len(), 1);
+        assert_eq!(
+            invoked[0].get("skill_name").and_then(|value| value.as_str()),
+            Some("alpha")
+        );
+        assert_eq!(
+            invoked[0]
+                .get("allowed_tools")
+                .and_then(|value| value.as_array())
+                .and_then(|items| items.first())
+                .and_then(|value| value.as_str()),
+            Some("discover_skills")
+        );
+        assert!(
+            invoked[0]
+                .get("prompt")
+                .and_then(|value| value.as_str())
+                .is_some_and(|value| value.contains("Prompt body for session-persist"))
+        );
+
+        clear_test_env();
     }
 }
 

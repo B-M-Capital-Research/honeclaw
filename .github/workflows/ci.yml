@@ -53,3 +53,20 @@ jobs:
 
       - name: CI-safe regression scripts
         run: bash tests/regression/run_ci.sh
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Frontend unit tests
+        run: bun run test:web

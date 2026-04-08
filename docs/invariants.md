@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-03-31
+Last updated: 2026-04-08
 
 ## Source of Truth and Document Priority
 
@@ -33,6 +33,10 @@ Last updated: 2026-03-31
 - CI-safe regression scripts should live under `tests/regression/ci/`
 - Regression scripts that depend on an external account, an external CLI, or local machine state should live under `tests/regression/manual/`
 - One-off troubleshooting scripts should live under `scripts/tmp/` and must not enter CI
+- Open-source collaboration uses layered test coverage: prioritize core Rust logic, key cross-module paths, frontend state / data logic, and keep external integration verification split between local contract tests and manual regression
+- Coverage numbers are secondary to behavioral proof; do not introduce a repo-wide `90%+` hard gate or optimize for static UI line coverage
+- Default CI proof must cover Rust tests, frontend unit tests, and CI-safe regression scripts
+- High-risk logic changes must keep success-path, failure-path, and boundary-condition verification in automated tests whenever the behavior is CI-safe
 
 ## Security and Environment Constraints
 

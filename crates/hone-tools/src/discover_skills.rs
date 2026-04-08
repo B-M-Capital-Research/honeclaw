@@ -122,3 +122,117 @@ impl Tool for DiscoverSkillsTool {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::base::Tool;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_temp_dir(prefix: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{prefix}_{}_{}", std::process::id(), ts));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[tokio::test]
+    async fn execute_returns_error_for_empty_query() {
+        let root = make_temp_dir("hone_discover_skills_empty");
+        let tool = DiscoverSkillsTool::new(root.join("system"), root.join("custom"));
+
+        let result = tool
+            .execute(serde_json::json!({ "query": "   " }))
+            .await
+            .expect("execute");
+
+        assert_eq!(result["success"], Value::Bool(false));
+        assert_eq!(result["error"], Value::String("query 不能为空".to_string()));
+    }
+
+    #[tokio::test]
+    async fn execute_searches_real_skill_files_with_path_filter_and_limit() {
+        let root = make_temp_dir("hone_discover_skills_e2e");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        fs::create_dir_all(system.join("stock_alpha")).expect("alpha dir");
+        fs::create_dir_all(system.join("macro_beta")).expect("beta dir");
+        fs::create_dir_all(custom.join("portfolio_gamma")).expect("gamma dir");
+
+        fs::write(
+            system.join("stock_alpha/SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Stock Alpha\n",
+                "description: analyze stock momentum and setup\n",
+                "aliases:\n",
+                "  - alpha stock\n",
+                "allowed-tools:\n",
+                "  - data_fetch\n",
+                "paths:\n",
+                "  - src/**/*.rs\n",
+                "---\n\n",
+                "Use this skill for stock analysis."
+            ),
+        )
+        .expect("write alpha");
+        fs::write(
+            system.join("macro_beta/SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Macro Beta\n",
+                "description: track macro events\n",
+                "aliases:\n",
+                "  - macro\n",
+                "allowed-tools:\n",
+                "  - web_search\n",
+                "---\n\n",
+                "Use this skill for macro monitoring."
+            ),
+        )
+        .expect("write beta");
+        fs::write(
+            custom.join("portfolio_gamma/SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Portfolio Gamma\n",
+                "description: review portfolio concentration risk\n",
+                "aliases:\n",
+                "  - risk review\n",
+                "allowed-tools:\n",
+                "  - portfolio_tool\n",
+                "---\n\n",
+                "Use this skill for portfolio review."
+            ),
+        )
+        .expect("write gamma");
+
+        let tool = DiscoverSkillsTool::new(system, custom);
+
+        let result = tool
+            .execute(serde_json::json!({
+                "query": "stock",
+                "file_paths": ["src/main.rs", "   "],
+                "limit": 1
+            }))
+            .await
+            .expect("execute");
+
+        assert_eq!(result["success"], Value::Bool(true));
+        assert_eq!(result["count"], Value::Number(1.into()));
+        assert_eq!(result["query"], Value::String("stock".to_string()));
+        assert_eq!(result["skills"][0]["id"], Value::String("stock_alpha".to_string()));
+        assert_eq!(
+            result["skills"][0]["loaded_from"],
+            Value::String("system".to_string())
+        );
+        assert_eq!(
+            result["skills"][0]["allowed_tools"][0],
+            Value::String("data_fetch".to_string())
+        );
+    }
+}

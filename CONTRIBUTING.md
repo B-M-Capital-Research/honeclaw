@@ -21,9 +21,18 @@
 - `bash scripts/ci/check_fmt_changed.sh`
 - `cargo check --workspace --all-targets`
 - `cargo test --workspace --all-targets`
+- `bun run test:web`
 - `bash tests/regression/run_ci.sh`
 
 如果变更影响桌面端、渠道运行时或外部集成，再补充对应的手工回归脚本。
+
+## 测试期望
+
+- 这个仓库采用“分层覆盖”策略：优先保证核心逻辑和关键链路可验证，不追求全仓统一高覆盖率数字
+- 核心 Rust 逻辑优先补单元测试；跨模块关键行为优先补集成测试或 CI-safe 回归脚本
+- 前端优先测试 `packages/app/src/lib` 与状态 / 数据行为，不要求为大量静态页面细节补覆盖率
+- 新功能至少带 1 个自动化测试；bugfix 至少带 1 个回归测试；纯重构如果没有行为变化，可以不新增测试，但不要移除已有测试证明
+- 如果行为依赖外部账号、桌面权限、本机 CLI 或系统状态，请把验证沉淀到 `tests/regression/manual/`，不要让这类依赖阻塞默认 CI
 
 ## 提交建议
 

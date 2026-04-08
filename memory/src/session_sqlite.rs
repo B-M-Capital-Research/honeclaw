@@ -415,6 +415,7 @@ mod tests {
     use crate::session::{Session, SessionMessage, SessionRuntimeState, SessionSummary};
     use hone_core::{ActorIdentity, SessionIdentity};
     use std::collections::HashMap;
+
     fn make_session() -> Session {
         Session {
             version: 3,
@@ -485,6 +486,150 @@ mod tests {
             .expect("load")
             .expect("loaded");
         assert_eq!(loaded.messages.len(), 2);
+    }
+
+    #[test]
+    fn upsert_session_replaces_old_rows_and_stores_message_metadata_columns() {
+        let root =
+            std::env::temp_dir().join(format!("hone_session_sqlite_replace_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("root");
+        let db_path = root.join("sessions.sqlite3");
+        let source_path = root
+            .join("sessions")
+            .join("Actor_feishu__direct__alice.json");
+        std::fs::create_dir_all(source_path.parent().expect("parent")).expect("sessions dir");
+
+        let mirror = SqliteSessionMirror::new(&db_path).expect("mirror");
+
+        let mut first = make_session();
+        std::fs::write(
+            &source_path,
+            serde_json::to_string_pretty(&first).expect("json"),
+        )
+        .expect("write source");
+        mirror.upsert_session(&source_path, &first).expect("first upsert");
+
+        let long_reply = "市场回顾 ".repeat(80);
+        first.updated_at = "2026-03-26T09:20:00+08:00".to_string();
+        first.summary = Some(SessionSummary {
+            content: "updated summary".to_string(),
+            updated_at: "2026-03-26T09:20:00+08:00".to_string(),
+        });
+        first.metadata.insert(
+            "channel_scope".to_string(),
+            Value::String("chat-1".to_string()),
+        );
+        first.messages = vec![
+            SessionMessage {
+                role: "tool".to_string(),
+                content: "{\"ok\":true}".to_string(),
+                timestamp: "2026-03-26T09:10:00+08:00".to_string(),
+                metadata: Some(HashMap::from([
+                    ("tool_name".to_string(), Value::String("web_search".to_string())),
+                    ("tool_call_id".to_string(), Value::String("call-1".to_string())),
+                    ("message_id".to_string(), Value::String("msg-1".to_string())),
+                ])),
+            },
+            SessionMessage {
+                role: "assistant".to_string(),
+                content: long_reply.clone(),
+                timestamp: "2026-03-26T09:20:00+08:00".to_string(),
+                metadata: Some(HashMap::from([(
+                    "message_type".to_string(),
+                    Value::String("text".to_string()),
+                )])),
+            },
+        ];
+
+        std::fs::write(
+            &source_path,
+            serde_json::to_string_pretty(&first).expect("json"),
+        )
+        .expect("rewrite source");
+        mirror.upsert_session(&source_path, &first).expect("second upsert");
+
+        let conn = sqlite3_connect(&db_path);
+        let message_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
+                params![first.id.clone()],
+                |row| row.get(0),
+            )
+            .expect("message count");
+        let metadata_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_metadata WHERE session_id = ?1",
+                params![first.id.clone()],
+                |row| row.get(0),
+            )
+            .expect("metadata count");
+        let stored_summary: String = conn
+            .query_row(
+                "SELECT summary_json FROM sessions WHERE session_id = ?1",
+                params![first.id.clone()],
+                |row| row.get(0),
+            )
+            .expect("summary json");
+        let (tool_name, tool_call_id, message_id): (Option<String>, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT tool_name, tool_call_id, message_id FROM session_messages WHERE session_id = ?1 AND ordinal = 0",
+                params![first.id.clone()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("tool metadata row");
+        let last_preview: String = conn
+            .query_row(
+                "SELECT last_message_preview FROM sessions WHERE session_id = ?1",
+                params![first.id.clone()],
+                |row| row.get(0),
+            )
+            .expect("last preview");
+
+        assert_eq!(message_count, 2);
+        assert_eq!(metadata_count, 2);
+        assert!(stored_summary.contains("updated summary"));
+        assert_eq!(tool_name.as_deref(), Some("web_search"));
+        assert_eq!(tool_call_id.as_deref(), Some("call-1"));
+        assert_eq!(message_id.as_deref(), Some("msg-1"));
+        assert!(last_preview.ends_with('…'));
+        assert!(last_preview.chars().count() <= 160);
+
+        let loaded = mirror
+            .load_session("Actor_feishu__direct__alice")
+            .expect("load")
+            .expect("loaded");
+        assert_eq!(loaded.messages.len(), 2);
+        assert_eq!(loaded.summary.as_ref().map(|v| v.content.as_str()), Some("updated summary"));
+    }
+
+    #[test]
+    fn list_sessions_orders_by_updated_at_desc() {
+        let root =
+            std::env::temp_dir().join(format!("hone_session_sqlite_list_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("root");
+        let db_path = root.join("sessions.sqlite3");
+        let sessions_dir = root.join("sessions");
+        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
+        let mirror = SqliteSessionMirror::new(&db_path).expect("mirror");
+
+        let mut older = make_session();
+        older.id = "Actor_feishu__direct__older".to_string();
+        older.updated_at = "2026-03-26T09:00:00+08:00".to_string();
+        let older_path = sessions_dir.join("older.json");
+        std::fs::write(&older_path, serde_json::to_string_pretty(&older).expect("json")).expect("write older");
+        mirror.upsert_session(&older_path, &older).expect("upsert older");
+
+        let mut newer = make_session();
+        newer.id = "Actor_feishu__direct__newer".to_string();
+        newer.updated_at = "2026-03-26T10:00:00+08:00".to_string();
+        let newer_path = sessions_dir.join("newer.json");
+        std::fs::write(&newer_path, serde_json::to_string_pretty(&newer).expect("json")).expect("write newer");
+        mirror.upsert_session(&newer_path, &newer).expect("upsert newer");
+
+        let sessions = mirror.list_sessions().expect("list sessions");
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].id, "Actor_feishu__direct__newer");
+        assert_eq!(sessions[1].id, "Actor_feishu__direct__older");
     }
 
     fn sqlite3_connect(path: &Path) -> Connection {

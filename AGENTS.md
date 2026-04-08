@@ -106,12 +106,23 @@
 - 命名：`diagnose_<topic>.sh`
 - 规则：可长期保留；失败返回非 0；避免修改业务数据
 
+### 7. 开源共建测试覆盖目标
+
+- 本仓库采用“分层覆盖”策略，不追求全仓统一 `100%` 覆盖率，也不设置统一的 `90%+` 覆盖率门槛
+- 核心 Rust 纯逻辑模块必须保持系统化单元测试，重点覆盖配置解析、session / persistence、quota、scheduler、skill runtime、prompt 组装、消息流转，以及它们的正常路径、错误路径、边界值、历史兼容分支
+- 关键跨模块链路必须至少保留一条自动化证明，重点覆盖会话创建 / 恢复、存储切换或迁移、技能调用、定时任务触发、消息 ingress / outbound、关键 API 路径
+- 前端测试优先覆盖 `packages/app/src/lib` 与状态 / 数据变换逻辑；页面层只保留少量高价值 smoke / E2E，不为静态 UI 细节追求覆盖率数字
+- 外部集成与本机依赖能力（如 Feishu、Discord、Telegram、iMessage、CLI / ACP）优先使用本地 contract / unit 测试覆盖转换逻辑，再用 `tests/regression/manual/` 保留真实联通性验证；不要把这类检查提升为默认 CI 门禁
+- 覆盖率数字只作为辅助信号：核心纯逻辑模块目标约为 `70%` 到 `80%`；高风险决策模块按分支覆盖思路做到接近 `85%` 的有效覆盖即可
+- 每个新功能至少附带一个自动化测试；每个 bugfix 至少附带一个回归测试；纯重构如果没有行为变化，可以不新增测试，但不得削弱已有覆盖面或删除现有回归证明
+
 ## CI 契约
 
 - PR / push 默认门禁仅包含：
   - Rust 格式检查（仅改动文件，`bash scripts/ci/check_fmt_changed.sh`）
   - Rust 编译检查（`cargo check --workspace --all-targets`）
   - Rust 测试（`cargo test --workspace --all-targets`）
+  - 前端单元测试（`bun run test:web`）
   - CI-safe 回归脚本（`bash tests/regression/run_ci.sh`）
 - 任何需要外部账号凭证的检查都必须放到 `tests/regression/manual/`，不阻塞主干合并
 

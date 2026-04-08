@@ -477,3 +477,161 @@ fn jsonrpc_error(code: i64, message: &str) -> Value {
 pub fn hone_mcp_command_candidate() -> Option<PathBuf> {
     hone_mcp_command_path().ok().map(PathBuf::from)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::GeminiStreamOptions;
+    use hone_core::ActorIdentity;
+    use hone_core::agent::AgentContext;
+    use serde_json::json;
+    use std::sync::MutexGuard;
+    use std::time::Duration;
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock")
+    }
+
+    fn clear_test_env() {
+        for key in [
+            "HONE_MCP_BIN",
+            "HONE_MCP_ALLOWED_TOOLS",
+            "HONE_MCP_MAX_TOOL_CALLS",
+            "HONE_MCP_ACTOR_CHANNEL",
+            "HONE_MCP_ACTOR_USER_ID",
+            "HONE_MCP_ACTOR_SCOPE",
+            "HONE_MCP_SESSION_ID",
+            "HONE_DATA_DIR",
+        ] {
+            unsafe { env::remove_var(key) };
+        }
+    }
+
+    fn make_request() -> AgentRunnerRequest {
+        AgentRunnerRequest {
+            session_id: "session-1".to_string(),
+            actor_label: "feishu:alice".to_string(),
+            actor: ActorIdentity::new("feishu", "alice", Some("group-1")).expect("actor"),
+            channel_target: "feishu".to_string(),
+            allow_cron: true,
+            config_path: "/tmp/config_runtime.yaml".to_string(),
+            system_prompt: "system".to_string(),
+            runtime_input: "input".to_string(),
+            context: AgentContext::new("session-1".to_string()),
+            timeout: Some(Duration::from_secs(30)),
+            gemini_stream: GeminiStreamOptions::default(),
+            session_metadata: HashMap::new(),
+            working_directory: ".".to_string(),
+            allowed_tools: Some(vec!["discover_skills".to_string(), "skill_tool".to_string()]),
+            max_tool_calls: Some(3),
+        }
+    }
+
+    #[test]
+    fn hone_mcp_servers_prefers_explicit_binary_and_exports_request_env() {
+        let _guard = env_lock();
+        clear_test_env();
+        unsafe {
+            env::set_var("HONE_MCP_BIN", "/tmp/hone-mcp-custom");
+            env::set_var("HONE_DATA_DIR", "/tmp/hone-data");
+        }
+
+        let payload = hone_mcp_servers(&make_request()).expect("payload");
+        let server = payload
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("server entry");
+        let env_entries = server
+            .get("env")
+            .and_then(|value| value.as_array())
+            .expect("env entries");
+
+        assert_eq!(
+            server.get("command").and_then(|value| value.as_str()),
+            Some("/tmp/hone-mcp-custom")
+        );
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_MCP_ALLOWED_TOOLS")
+                && entry.get("value").and_then(|v| v.as_str()) == Some("discover_skills,skill_tool")
+        }));
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_MCP_MAX_TOOL_CALLS")
+                && entry.get("value").and_then(|v| v.as_str()) == Some("3")
+        }));
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_MCP_ACTOR_SCOPE")
+                && entry.get("value").and_then(|v| v.as_str()) == Some("group-1")
+        }));
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR")
+                && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp/hone-data")
+        }));
+    }
+
+    #[test]
+    fn actor_and_tool_limits_can_be_read_from_env() {
+        let _guard = env_lock();
+        clear_test_env();
+        unsafe {
+            env::set_var("HONE_MCP_ACTOR_CHANNEL", "discord");
+            env::set_var("HONE_MCP_ACTOR_USER_ID", "bob");
+            env::set_var("HONE_MCP_ACTOR_SCOPE", "room-9");
+            env::set_var("HONE_MCP_ALLOWED_TOOLS", "web_search, skill_tool ,, ");
+            env::set_var("HONE_MCP_MAX_TOOL_CALLS", "7");
+        }
+
+        let actor = actor_from_env().expect("actor parse").expect("actor");
+        let allowed = allowed_tools_from_env().expect("allowed tools");
+
+        assert_eq!(actor.channel, "discord");
+        assert_eq!(actor.user_id, "bob");
+        assert_eq!(actor.channel_scope.as_deref(), Some("room-9"));
+        assert!(allowed.contains("web_search"));
+        assert!(allowed.contains("skill_tool"));
+        assert_eq!(max_tool_calls_from_env(), Some(7));
+    }
+
+    #[test]
+    fn env_bool_accepts_common_truthy_values() {
+        let _guard = env_lock();
+        clear_test_env();
+        unsafe { env::set_var("HONE_MCP_ALLOW_CRON", "YES") };
+        assert!(env_bool("HONE_MCP_ALLOW_CRON"));
+        unsafe { env::set_var("HONE_MCP_ALLOW_CRON", "0") };
+        assert!(!env_bool("HONE_MCP_ALLOW_CRON"));
+    }
+
+    #[test]
+    fn openai_tool_schema_to_mcp_preserves_name_description_and_schema() {
+        let converted = openai_tool_schema_to_mcp(json!({
+            "type": "function",
+            "function": {
+                "name": "skill_tool",
+                "description": "run a skill",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "skill_name": { "type": "string" }
+                    }
+                }
+            }
+        }))
+        .expect("converted");
+
+        assert_eq!(converted.get("name").and_then(|v| v.as_str()), Some("skill_tool"));
+        assert_eq!(
+            converted.get("description").and_then(|v| v.as_str()),
+            Some("run a skill")
+        );
+        assert_eq!(
+            converted
+                .get("inputSchema")
+                .and_then(|v| v.get("properties"))
+                .and_then(|v| v.get("skill_name"))
+                .and_then(|v| v.get("type"))
+                .and_then(|v| v.as_str()),
+            Some("string")
+        );
+    }
+}
