@@ -125,3 +125,62 @@ impl Default for ToolExecutionGuard {
         Self::disabled()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hone_core::config::ToolGuardConfig;
+    use serde_json::json;
+
+    #[test]
+    fn disabled_guard_allows_calls() {
+        let guard = ToolExecutionGuard::disabled();
+        assert!(guard.check("exec_command", &json!({"cmd": "rm -rf /"})).is_ok());
+    }
+
+    #[test]
+    fn block_mode_rejects_matching_patterns_case_insensitively() {
+        let guard = ToolExecutionGuard::from_config(&ToolGuardConfig {
+            enabled: true,
+            mode: "block".to_string(),
+            apply_tools: vec!["exec".to_string()],
+            deny_patterns: vec!["RM -RF".to_string()],
+        });
+
+        let err = guard
+            .check("exec_command", &json!({"cmd": "sudo rm -rf /tmp/demo"}))
+            .expect_err("guard should block");
+        assert!(err.to_string().contains("pattern=rm -rf"));
+    }
+
+    #[test]
+    fn audit_mode_logs_but_allows_calls() {
+        let guard = ToolExecutionGuard::from_config(&ToolGuardConfig {
+            enabled: true,
+            mode: "audit".to_string(),
+            apply_tools: vec!["*".to_string()],
+            deny_patterns: vec!["shutdown -r".to_string()],
+        });
+
+        assert!(guard
+            .check("exec_command", &json!({"cmd": "shutdown -r now"}))
+            .is_ok());
+    }
+
+    #[test]
+    fn excluded_tools_override_wildcard_inclusions() {
+        let guard = ToolExecutionGuard::from_config(&ToolGuardConfig {
+            enabled: true,
+            mode: "block".to_string(),
+            apply_tools: vec!["*".to_string(), "!web_search".to_string()],
+            deny_patterns: vec!["drop table".to_string()],
+        });
+
+        assert!(guard
+            .check("web_search", &json!({"query": "drop table users"}))
+            .is_ok());
+        assert!(guard
+            .check("exec_command", &json!({"cmd": "drop table users"}))
+            .is_err());
+    }
+}

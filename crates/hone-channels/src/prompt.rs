@@ -390,4 +390,77 @@ mod tests {
 
         let _ = fs::remove_dir_all(&data_dir);
     }
+
+    #[test]
+    fn prompt_options_append_admin_language_and_extra_sections() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-prompt-options-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&data_dir).expect("session storage dir should init");
+        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let mut config = HoneConfig::default();
+        config.agent.system_prompt = "你是 Hone。".to_string();
+
+        let bundle = build_prompt_bundle(
+            &config,
+            &storage,
+            "discord",
+            "session-demo",
+            &SessionPromptState::default(),
+            &PromptOptions {
+                is_admin: true,
+                admin_prompt: Some("【管理员覆写】请先确认影响范围。".to_string()),
+                privacy_guard: Some(DEFAULT_GROUP_PRIVACY_GUARD.to_string()),
+                model_hint: Some("gpt-5.4".to_string()),
+                force_chinese: true,
+                extra_sections: vec!["【附加规则】先给结论再展开。".to_string(), "   ".to_string()],
+                include_format_guidance: true,
+            },
+        );
+
+        let system = bundle.system_prompt();
+        assert!(system.contains("【管理员覆写】请先确认影响范围。"));
+        assert!(system.contains(DEFAULT_GROUP_PRIVACY_GUARD));
+        assert!(system.contains("【基础模型】gpt-5.4。"));
+        assert!(system.contains("【语言要求】必须全程以中文回复"));
+        assert!(system.contains("【附加规则】先给结论再展开。"));
+        assert!(system.contains("【输出格式-Discord】"));
+
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn prompt_can_skip_channel_format_guidance() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-prompt-no-format-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&data_dir).expect("session storage dir should init");
+        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let mut config = HoneConfig::default();
+        config.agent.system_prompt = "你是 Hone。".to_string();
+
+        let bundle = build_prompt_bundle(
+            &config,
+            &storage,
+            "telegram",
+            "session-demo",
+            &SessionPromptState::default(),
+            &PromptOptions {
+                include_format_guidance: false,
+                ..PromptOptions::default()
+            },
+        );
+
+        assert!(!bundle.system_prompt().contains("【输出格式-Telegram】"));
+
+        let _ = fs::remove_dir_all(&data_dir);
+    }
 }
