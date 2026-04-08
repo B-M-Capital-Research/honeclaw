@@ -1597,8 +1597,9 @@ mod tests {
         configure(&mut config);
 
         let mut core = HoneBotCore::new(config);
-        core.llm = Some(Arc::new(llm));
-        core.auxiliary_llm = Some(Arc::new(MockLlmProvider::with_chat_responses(vec![])));
+        let shared_llm = Arc::new(llm);
+        core.llm = Some(shared_llm.clone());
+        core.auxiliary_llm = Some(shared_llm);
         Arc::new(core)
     }
 

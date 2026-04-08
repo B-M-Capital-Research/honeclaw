@@ -1520,10 +1520,16 @@ mod tests {
             .iter_mut()
             .find(|job| job.id == job_id)
             .expect("job exists");
-        job.created_at = Some("2026-03-29T08:00:00+08:00".to_string());
+        let today = hone_core::beijing_now().date_naive();
+        job.created_at = Some(beijing_slot_time(today, 8, 0).to_rfc3339());
         storage.save_jobs(&actor, &data).expect("save");
 
-        let due = storage.get_due_jobs(12, 0, 6, &["feishu"]);
+        let due = storage.get_due_jobs(
+            12,
+            0,
+            hone_core::beijing_now().weekday().num_days_from_monday(),
+            &["feishu"],
+        );
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].1.id, job_id);
     }
@@ -1557,10 +1563,16 @@ mod tests {
             .iter_mut()
             .find(|job| job.id == job_id)
             .expect("job exists");
-        job.created_at = Some("2026-03-29T12:15:00+08:00".to_string());
+        let today = hone_core::beijing_now().date_naive();
+        job.created_at = Some(beijing_slot_time(today, 12, 15).to_rfc3339());
         storage.save_jobs(&actor, &data).expect("save");
 
-        let due = storage.get_due_jobs(12, 30, 6, &["feishu"]);
+        let due = storage.get_due_jobs(
+            12,
+            30,
+            hone_core::beijing_now().weekday().num_days_from_monday(),
+            &["feishu"],
+        );
         assert!(due.is_empty());
     }
 
