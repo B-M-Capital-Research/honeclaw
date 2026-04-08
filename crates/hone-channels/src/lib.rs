@@ -5,15 +5,18 @@
 pub mod agent_session;
 pub mod attachments;
 pub mod core;
+pub(crate) mod execution;
 pub mod ingress;
 pub mod kb_analysis;
 pub mod mcp_bridge;
 pub mod outbound;
 pub mod prompt;
+pub(crate) mod prompt_audit;
 pub(crate) mod runners;
 pub mod runtime;
 pub(crate) mod sandbox;
 pub mod scheduler;
+pub(crate) mod session_compactor;
 
 pub use self::core::HoneBotCore;
 pub use self::core::load_runtime_config;

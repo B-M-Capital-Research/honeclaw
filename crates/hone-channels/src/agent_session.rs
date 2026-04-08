@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use hone_core::agent::{AgentContext, AgentResponse, ToolCallMade};
-use hone_core::{ActorIdentity, SessionIdentity, runtime_heartbeat_dir};
+use hone_core::{ActorIdentity, SessionIdentity};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
     build_tool_message_metadata, has_compact_skill_snapshot, invoked_skills_from_metadata,
@@ -11,14 +11,14 @@ use hone_memory::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::HoneBotCore;
+use crate::execution::{ExecutionMode, ExecutionRequest, ExecutionService};
 use crate::prompt::{PromptOptions, build_prompt_bundle};
+use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
-use crate::sandbox::ensure_actor_sandbox;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSessionErrorKind {
@@ -814,56 +814,6 @@ impl AgentSession {
         }
     }
 
-    fn audit_effective_prompt(&self, session_id: &str, system_prompt: &str, runtime_input: &str) {
-        let runtime_dir = runtime_heartbeat_dir(&self.core.config);
-        let audit_dir = runtime_dir
-            .join("prompt-audit")
-            .join(sanitize_prompt_audit_path(&self.actor.channel));
-        if let Err(err) = fs::create_dir_all(&audit_dir) {
-            tracing::warn!(
-                "[PromptAudit] failed to create audit dir for channel={} session_id={}: {}",
-                self.actor.channel,
-                session_id,
-                err
-            );
-            return;
-        }
-
-        let timestamp = hone_core::beijing_now().format("%Y%m%d-%H%M%S").to_string();
-        let session_slug = sanitize_prompt_audit_path(session_id);
-        let prompt_path = audit_dir.join(format!("{timestamp}-{session_slug}.json"));
-        let latest_path = audit_dir.join(format!("latest-{session_slug}.json"));
-        let payload = serde_json::json!({
-            "created_at": hone_core::beijing_now_rfc3339(),
-            "channel": self.actor.channel,
-            "actor_user_id": self.actor.user_id,
-            "session_id": session_id,
-            "session_identity": self.session_identity,
-            "message_id": self.message_id,
-            "system_prompt": system_prompt,
-            "runtime_input": runtime_input,
-        });
-
-        let content = match serde_json::to_vec_pretty(&payload) {
-            Ok(value) => value,
-            Err(err) => {
-                tracing::warn!(
-                    "[PromptAudit] failed to encode payload for channel={} session_id={}: {}",
-                    self.actor.channel,
-                    session_id,
-                    err
-                );
-                return;
-            }
-        };
-
-        for path in [prompt_path, latest_path] {
-            if let Err(err) = fs::write(&path, &content) {
-                tracing::warn!("[PromptAudit] failed to write {}: {}", path.display(), err);
-            }
-        }
-    }
-
     fn default_gemini_stream_options(&self, timeout: Option<Duration>) -> GeminiStreamOptions {
         let timeout_secs = timeout
             .unwrap_or_else(|| Duration::from_secs(self.core.config.llm.openrouter.timeout))
@@ -1132,54 +1082,41 @@ impl AgentSession {
 
         let (system_prompt, runtime_input) =
             self.resolve_prompt_input(&session_id, runtime_user_input);
-        self.audit_effective_prompt(&session_id, &system_prompt, &runtime_input);
-
-        let tool_registry = self.core.create_tool_registry(
-            Some(&self.actor),
-            &self.channel_target,
-            self.allow_cron,
-        );
-        let runner = match self.core.create_runner_with_model_override(
-            &system_prompt,
-            tool_registry,
-            options.model_override.as_deref(),
-        ) {
-            Ok(r) => r,
+        let execution = match ExecutionService::new(self.core.clone()).prepare(ExecutionRequest {
+            mode: ExecutionMode::PersistentConversation,
+            session_id: session_id.clone(),
+            actor: self.actor.clone(),
+            channel_target: self.channel_target.clone(),
+            allow_cron: self.allow_cron,
+            system_prompt,
+            runtime_input,
+            context,
+            timeout: options.timeout,
+            gemini_stream: self.default_gemini_stream_options(options.timeout),
+            session_metadata: self.load_session_metadata(&session_id),
+            model_override: options.model_override.clone(),
+            allowed_tools: None,
+            max_tool_calls: None,
+            prompt_audit: Some(PromptAuditMetadata {
+                session_identity: self.session_identity.clone(),
+                message_id: self.message_id.clone(),
+            }),
+        }) {
+            Ok(execution) => execution,
             Err(err) => {
-                tracing::error!("[AgentSession] create_runner 失败: {}", err);
+                tracing::error!("[AgentSession] execution prepare failed: {}", err);
                 if let Some(reservation) = quota_reservation.as_ref() {
                     let _ = self
                         .core
                         .conversation_quota_storage
                         .release_daily_conversation(reservation);
                 }
-                return self
-                    .fail_run(session_id, AgentSessionErrorKind::AgentFailed, err)
-                    .await;
-            }
-        };
-        let runner_name = runner.name();
-        let working_directory = match ensure_actor_sandbox(&self.actor) {
-            Ok(path) => path.to_string_lossy().to_string(),
-            Err(err) => {
-                tracing::error!(
-                    "[AgentSession] actor sandbox 初始化失败 actor={} err={}",
-                    self.actor.session_id(),
-                    err
-                );
-                if let Some(reservation) = quota_reservation.as_ref() {
-                    let _ = self
-                        .core
-                        .conversation_quota_storage
-                        .release_daily_conversation(reservation);
-                }
-                return self
-                    .fail_run(
-                        session_id,
-                        AgentSessionErrorKind::Io,
-                        format!("actor sandbox 初始化失败: {err}"),
-                    )
-                    .await;
+                let kind = if err.contains("sandbox") {
+                    AgentSessionErrorKind::Io
+                } else {
+                    AgentSessionErrorKind::AgentFailed
+                };
+                return self.fail_run(session_id, kind, err).await;
             }
         };
 
@@ -1194,35 +1131,17 @@ impl AgentSession {
         );
         self.emit(AgentSessionEvent::Progress {
             stage: "agent.run",
-            detail: Some(runner_name.to_string()),
+            detail: Some(execution.runner_name.to_string()),
         })
         .await;
         let started = Instant::now();
 
-        let runner_request = AgentRunnerRequest {
-            session_id: session_id.clone(),
-            actor_label: self.actor.user_id.clone(),
-            actor: self.actor.clone(),
-            channel_target: self.channel_target.clone(),
-            allow_cron: self.allow_cron,
-            config_path: crate::core::runtime_config_path(),
-            system_prompt,
-            runtime_input,
-            context,
-            timeout: options.timeout,
-            gemini_stream: self.default_gemini_stream_options(options.timeout),
-            session_metadata: self.load_session_metadata(&session_id),
-            working_directory,
-            allowed_tools: None,
-            max_tool_calls: None,
-        };
-
         let runner_result = self
             .run_runner_with_empty_success_retry(
-                runner.as_ref(),
-                runner_name,
+                execution.runner.as_ref(),
+                execution.runner_name,
                 &session_id,
-                runner_request,
+                execution.runner_request,
             )
             .await;
         let streamed_output = runner_result.streamed_output;
@@ -1237,7 +1156,7 @@ impl AgentSession {
         if response.success && response_leaks_system_prompt(&response.content) {
             tracing::error!(
                 "[AgentSession] blocked echoed system prompt runner={} session_id={}",
-                runner_name,
+                execution.runner_name,
                 session_id
             );
             response.success = false;
@@ -1342,23 +1261,6 @@ impl AgentSession {
             elapsed_ms,
             session_id,
         }
-    }
-}
-
-fn sanitize_prompt_audit_path(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
-            out.push(ch);
-        } else {
-            out.push('_');
-        }
-    }
-    let trimmed = out.trim_matches('_');
-    if trimmed.is_empty() {
-        "unknown".to_string()
-    } else {
-        trimmed.to_string()
     }
 }
 
