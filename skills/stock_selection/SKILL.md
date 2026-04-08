@@ -1,6 +1,9 @@
 ---
 name: Stock Selection
 description: OWXG stock-selection skill that filters U.S. stocks based on the user's criteria, whether fundamental or technical
+aliases:
+  - OWXG
+  - stock screener
 tools:
   - web_search
   - data_fetch

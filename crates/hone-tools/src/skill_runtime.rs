@@ -232,7 +232,7 @@ impl SkillRuntime {
 
         self.load_active_skills(file_paths)
             .into_iter()
-            .find(|skill| skill.id == normalized)
+            .find(|skill| skill_matches_reference(skill, normalized))
             .ok_or_else(|| format!("技能 '{normalized}' 不存在或当前未激活"))
     }
 
@@ -240,7 +240,7 @@ impl SkillRuntime {
         let normalized = command_name.trim().trim_start_matches('/');
         self.load_active_skills(&[])
             .into_iter()
-            .find(|skill| skill.user_invocable && skill.id == normalized)
+            .find(|skill| skill.user_invocable && skill_matches_reference(skill, normalized))
     }
 
     pub fn render_prompt(
@@ -513,6 +513,20 @@ fn parse_skill_definition(
     })
 }
 
+fn skill_matches_reference(skill: &SkillDefinition, reference: &str) -> bool {
+    let normalized = normalize_skill_text(reference);
+    if normalized.is_empty() {
+        return false;
+    }
+
+    normalize_skill_text(&skill.id) == normalized
+        || normalize_skill_text(&skill.display_name) == normalized
+        || skill
+            .aliases
+            .iter()
+            .any(|alias| normalize_skill_text(alias) == normalized)
+}
+
 fn parse_skill_md(content: &str) -> Result<(SkillFrontmatter, String), String> {
     let rest = content
         .strip_prefix("---\n")
@@ -783,6 +797,44 @@ mod tests {
 
         let beta = runtime.load_skill("beta", &[]).expect("beta");
         assert_eq!(beta.allowed_tools, vec!["web_search".to_string()]);
+    }
+
+    #[test]
+    fn load_skill_and_direct_invocation_accept_aliases() {
+        let root = make_temp_dir("hone_skill_runtime_aliases");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        fs::create_dir_all(system.join("one_sentence_memory")).expect("skill dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+
+        fs::write(
+            system.join("one_sentence_memory/SKILL.md"),
+            concat!(
+                "---\n",
+                "name: One-sentence Memory\n",
+                "description: alias resolution\n",
+                "aliases:\n",
+                "  - OWJY\n",
+                "  - memory write\n",
+                "---\n\n",
+                "body"
+            ),
+        )
+        .expect("write skill");
+
+        let runtime = SkillRuntime::new(system, custom, root);
+        let alias = runtime.load_skill("OWJY", &[]).expect("alias load");
+        assert_eq!(alias.id, "one_sentence_memory");
+
+        let display = runtime
+            .load_skill("One-sentence Memory", &[])
+            .expect("display load");
+        assert_eq!(display.id, "one_sentence_memory");
+
+        let direct = runtime
+            .resolve_user_invocable_direct("/OWJY")
+            .expect("direct alias");
+        assert_eq!(direct.id, "one_sentence_memory");
     }
 
     #[test]
