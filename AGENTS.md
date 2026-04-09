@@ -39,6 +39,14 @@
 - `opencode` 的安装、OpenRouter 鉴权、默认模型与 variant 配置，统一参考 `docs/runbooks/opencode-setup.md`
 - 如果任务涉及 `opencode_acp` 调试、换机、复现环境、让他人在新电脑上落地，默认先同步或引用 `docs/runbooks/opencode-setup.md`
 
+### Skill 目录边界
+
+- 仓库根 `./.agents/skills/<name>/` 用于 Codex 项目级 skills，供 Codex 在当前仓库上下文中自动发现和使用
+- 仓库根 `./skills/<name>/` 用于 Hone 应用自身的 runtime skills，由 Hone 的 `skill_runtime` / `skill_tool` 加载
+- 不要把 Codex skill 放进 `./skills/`，也不要把 Hone runtime skill 放进 `./.agents/skills/`
+- 若一个 skill 仅用于协助 Codex 执行仓库维护、开源同步、发布、代码审查等开发流程，它应放在 `./.agents/skills/`
+- 若一个 skill 需要出现在 Hone 的技能列表、被 `/skill` 或 `skill_tool(...)` 调用，或被 Web / CLI / channel runtime 暴露，它应放在 `./skills/`
+
 ### 动态文档治理
 
 - `docs/current-plan.md` 不再承载单个任务的详细 todo，只做“索引页”

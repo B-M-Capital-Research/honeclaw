@@ -55,8 +55,12 @@ Last updated: 2026-03-31
 - `packages/`
   - `app`: SolidJS web console
   - `ui`: shared UI components and context
+- `.agents/skills/`
+  - Repository-scoped Codex skills discovered by Codex for this workspace
+  - Use this directory for repo maintenance workflows that are for Codex itself rather than for Hone end users
 - `skills/`
-  - In-repo skill definitions; runtime also supports `data/custom_skills/<id>/SKILL.md` and nested `.hone/skills/<id>/SKILL.md` with nearer dynamic directories taking precedence
+  - In-repo Hone runtime skill definitions; runtime also supports `data/custom_skills/<id>/SKILL.md` and nested `.hone/skills/<id>/SKILL.md` with nearer dynamic directories taking precedence
+  - This directory is not the place for Codex project skills; keep Codex-only skills under `.agents/skills/`
   - `SKILL.md` frontmatter now also supports an opt-in `script` entrypoint that `skill_tool(..., execute_script=true)` can run from the skill directory
 - `tests/regression/`
   - `ci/`: CI-safe

@@ -23,6 +23,28 @@ pub struct FunctionCallingAgent {
 }
 
 impl FunctionCallingAgent {
+    fn sanitize_tool_call_arguments(&self, tool_call: hone_llm::ToolCall) -> hone_llm::ToolCall {
+        if serde_json::from_str::<Value>(&tool_call.function.arguments).is_ok() {
+            return tool_call;
+        }
+
+        self.dbg(&format!(
+            "[Agent] sanitizing invalid tool arguments for {}",
+            tool_call.function.name
+        ));
+
+        hone_llm::ToolCall {
+            function: hone_llm::FunctionCall {
+                name: tool_call.function.name,
+                arguments: serde_json::json!({
+                    "_hone_invalid_json_arguments": tool_call.function.arguments,
+                })
+                .to_string(),
+            },
+            ..tool_call
+        }
+    }
+
     pub fn new(
         llm: Arc<dyn LlmProvider>,
         tools: Arc<ToolRegistry>,
@@ -77,6 +99,7 @@ impl FunctionCallingAgent {
                 tool_calls: msg.tool_calls.as_ref().map(|tcs| {
                     tcs.iter()
                         .filter_map(|tc| serde_json::from_value(tc.clone()).ok())
+                        .map(|tc| self.sanitize_tool_call_arguments(tc))
                         .collect()
                 }),
                 tool_call_id: msg.tool_call_id.clone(),
@@ -589,6 +612,21 @@ mod tests {
         assert_eq!(tool_msgs.len(), 1);
         let tool_msg_content = tool_msgs[0].content.clone().unwrap_or_default();
         assert!(tool_msg_content.contains("参数解析失败"));
+
+        let rebuilt_messages = agent.build_messages(&context);
+        let assistant_tool_call = rebuilt_messages
+            .iter()
+            .find(|message| message.role == "assistant" && message.tool_calls.is_some())
+            .and_then(|message| message.tool_calls.as_ref())
+            .and_then(|tool_calls| tool_calls.first())
+            .expect("assistant tool call should be preserved");
+        let sanitized_arguments: Value =
+            serde_json::from_str(&assistant_tool_call.function.arguments)
+                .expect("sanitized arguments should be valid json");
+        assert_eq!(
+            sanitized_arguments,
+            json!({ "_hone_invalid_json_arguments": "{not json}" })
+        );
     }
 
     #[tokio::test]
