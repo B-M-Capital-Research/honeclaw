@@ -9,6 +9,9 @@
 - `docs/invariants.md`：不可轻易破坏的约束、真相源优先级、验证边界
 - `docs/open-source-prep.md`：公开仓库复制前的白名单 / 黑名单与清理清单
 - `docs/decisions.md` / `docs/adr/*.md`：长期有效的决策记录
+- `docs/deliverables.md`：重大交付物的留存范围、最小证据与链接约定
+- `docs/archive/index.md`：历史事项索引；按主题串联 plan / handoff / decision / PR / runbook
+- `docs/templates/*.md`：plan / handoff / decision 的统一模板
 - `docs/runbooks/*.md`：长期可复用的操作手册；涉及环境搭建、外部 CLI 安装/鉴权/模型配置时优先查对应 runbook
 
 ### 动态文档（任务接力）
@@ -16,6 +19,7 @@
 - `docs/current-plan.md`：动态任务索引页，记录当前活跃任务列表、状态与对应计划文件
 - `docs/current-plans/*.md`：单任务计划页；并行任务必须拆分到不同文件，避免共享一个 plan
 - `docs/handoffs/*.md`：单次任务结束后的交接摘要
+- `docs/archive/plans/*.md`：已完成计划页归档；从 `docs/current-plans/*.md` 移入，不在活跃索引中继续保留
 
 ### 真相源优先级
 
@@ -29,10 +33,12 @@
 - 改动模块边界、入口、主要数据流时，更新 `docs/repo-map.md`
 - 改动长期约束、测试流程、目录约定时，更新 `AGENTS.md` 或 `docs/invariants.md`
 - 新增或调整可复用的环境搭建 / 运维 / 外部工具接入流程时，更新对应 `docs/runbooks/*.md`
+- 新增或调整“重大交付物”留存规则时，更新 `docs/deliverables.md`
 - 只有满足“动态计划准入标准”的任务，才更新 `docs/current-plan.md`
 - 满足“动态计划准入标准”且需要单独跟踪时，才在 `docs/current-plans/` 下新增或复用对应任务文件，再更新 `docs/current-plan.md` 索引
 - 完成一个中等及以上且需要交接、暂停续做或存在后续风险的任务时，新增或更新一份 `docs/handoffs/*.md`
 - 涉及架构取舍、跨模块长期行为变化时，更新 `docs/decisions.md`，必要时补 ADR
+- 完成并移出活跃跟踪的任务，需同步更新 `docs/archive/index.md`；若原来有计划页，归档到 `docs/archive/plans/`
 
 ### 外部 CLI 与模型配置
 
@@ -42,22 +48,85 @@
 ### 动态文档治理
 
 - `docs/current-plan.md` 不再承载单个任务的详细 todo，只做“索引页”
-- `docs/current-plan.md` / `docs/current-plans/*.md` 只记录“需要持续跟踪”的任务；至少满足以下之一：跨回合或跨会话、涉及多模块或行为 / 结构 / 工作流变化、存在并行协作 / 交接 / 阻塞管理需求、用户明确要求留档
+- `docs/current-plan.md` / `docs/current-plans/*.md` 只记录“需要持续跟踪”的任务；必须满足以下任一硬条件：
+  - 预计跨回合或跨会话完成
+  - 涉及两个及以上模块，或存在模块边界变化
+  - 涉及行为变化、结构变化或工作流变化
+  - 存在明确阻塞、依赖、并行协作或交接需求
+  - 用户明确要求留档
 - 不满足准入标准的任务，不进入 `docs/current-plan.md` / `docs/current-plans/*.md`；在当前会话里保留简短 todo 即可
 - 明确不记录的典型小任务：单次 commit / sync / rebase、轻量脚本或配置修补、无行为变化的小补丁、纯文案 / 格式修正、一次性信息查询
 - 每个并行任务只能对应一个 `docs/current-plans/<topic>.md`
 - 同一任务的后续回合优先更新原计划文件，不要为同一主题重复开新计划页
-- `docs/handoffs/*.md` 只在任务完成、暂停交接、或需要显式留档给下一位执行者时写
+- `docs/handoffs/*.md` 只在满足以下任一条件时写：
+  - 任务完成，且产出了值得复用的交付物、验证结论或操作经验
+  - 任务暂停，需要交接给下一位执行者
+  - 存在已知风险、未决项、后续跟进建议
+  - 任务包含非显然的验证步骤、迁移步骤或回滚注意事项
 - 小型纯执行类任务（如一次性 git sync、轻量文案修正、无行为变化的小补丁）默认不单独新增 handoff，除非用户要求或该任务需要异步接力
-- 同一主题在同一天内多次推进时，优先更新既有 handoff，而不是新增第二份碎片文档
+- 同一主题在同一天内多次推进时，优先在既有 handoff 中追加新的阶段节点；不要覆盖旧结论，也不要新增第二份碎片文档
 - handoff 必须面向“接手者需要知道什么”，不要把过程性流水账、逐条命令回显、无风险的微小操作都写进去
+- 动态文档必须显式写出状态；推荐使用：`planned`、`in_progress`、`blocked`、`done`、`archived`
+
+### 历史归档与索引
+
+- `docs/current-plan.md` 只保留活跃任务；任务完成后应尽快移除对应索引
+- 已完成的 `docs/current-plans/*.md` 应移入 `docs/archive/plans/*.md`；原文件路径不再复用给其它主题
+- `docs/archive/index.md` 是历史检索入口；每个完成或暂停的重要任务至少追加一条索引，串联：
+  - 对应 plan / handoff / decision / ADR
+  - 关联 PR / commit / runbook / regression
+  - 当前结论、状态、后续入口
+- `docs/decisions.md` / `docs/adr/*.md` 若被新决策替代，必须显式标注 `superseded_by` 或在正文说明替代关系
+
+### 文档模板与最小字段
+
+- `docs/templates/plan.md`、`docs/templates/handoff.md`、`docs/templates/decision.md` 为默认模板；没有特殊理由时不要自定义格式
+- plan / handoff / decision 至少包含以下字段或同等语义小节：
+  - `title`
+  - `status`
+  - `created_at`
+  - `updated_at`
+  - `owner`
+  - `related_files`
+  - `verification`
+  - `risks`
+- 如存在替代关系、后续接续或关联交付，应补充：
+  - `related_prs`
+  - `related_docs`
+  - `supersedes`
+  - `superseded_by`
+
+### 交付物留存规则
+
+- “重大交付物”不只包含代码；凡是会影响后续维护、排障、迁移、发布或回归判断的证据，都应按 `docs/deliverables.md` 留存
+- 默认应保留或至少留链接的交付物包括：
+  - 数据迁移说明与回滚注意事项
+  - breaking change 摘要
+  - 验证命令与关键结果
+  - 回归脚本及其对应问题背景
+  - 关键性能基线或容量结论
+  - 关键接口输入 / 输出样例
+  - 发布说明、风险与操作前置条件
+
+### 文档同步触发矩阵
+
+- 改模块边界、入口、主数据流：更新 `docs/repo-map.md`
+- 改长期约束、目录约定、测试规则：更新 `AGENTS.md` 或 `docs/invariants.md`
+- 改架构取舍、跨模块长期行为：更新 `docs/decisions.md` 或 `docs/adr/*.md`
+- 改环境搭建、外部 CLI、运维流程：更新 `docs/runbooks/*.md`
+- 改“重大交付物”保留规则：更新 `docs/deliverables.md`
+- 任务跨回合 / 跨会话：更新 `docs/current-plan.md` 与对应 `docs/current-plans/*.md`
+- 任务完成 / 暂停 / 交接且具有后续价值：更新 `docs/handoffs/*.md`
+- 任务退出活跃态：更新 `docs/archive/index.md`，并视情况归档 `docs/archive/plans/*.md`
 
 ## Agent Workflow
 
 - 开始实现前，agent 必须先形成一个任务计划或 todo，至少包含：目标、涉及文件、验证步骤、文档同步步骤
 - 不允许直接跳过计划进入编码；简单任务也应至少有一个简短计划，但可只保留在当前会话，不必落盘到 `docs/current-plans/*.md`
 - todo 中必须显式包含“验证”和“更新上下文文档或说明无需更新的原因”
+- 若任务不满足动态计划准入标准，todo 中也必须明确写出“不落盘”的原因
 - 如果任务满足“动态计划准入标准”并影响行为、结构或工作流，todo 中的文档步骤必须指向具体文件，如 `docs/current-plan.md`、`docs/current-plans/*.md`、`docs/decisions.md`、`docs/handoffs/*.md`
+- 若任务结束时从活跃态转为完成态，todo 中必须包含归档或说明“无需归档”的步骤
 - 关闭任务前，agent 必须检查 todo 是否全部完成，尤其是验证和文档同步两项
 - 若任务中途范围变化，agent 应先更新 todo，再继续实施
 

@@ -1,7 +1,12 @@
 # ADR 0002: ACP-Aligned Agent Runtime Refactor
 
 Date: 2026-03-17
+Updated: 2026-04-09
 Status: Accepted
+Owner: shared
+Related docs: `docs/decisions.md`, `docs/current-plans/acp-runtime-refactor.md`, `docs/archive/index.md`
+Supersedes: N/A
+Superseded by: N/A
 
 ## Context
 
@@ -40,3 +45,8 @@ Status: Accepted
   - Real stdio / JSON-RPC implementation for `OpencodeAcpRunner`
   - Runner contract tests
   - An explicit session v1 to v2 migration script and verification
+
+## Verification / Adoption
+
+- The active follow-up for this ADR is tracked in `docs/current-plans/acp-runtime-refactor.md`
+- `docs/decisions.md` records the runtime convergence and dynamic plan policy decisions that frame the remaining work

@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-03-18
+Last updated: 2026-04-09
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -81,3 +81,10 @@ Last updated: 2026-03-18
 - Decision: `docs/current-plan.md` and `docs/current-plans/*.md` only track tasks that need ongoing follow-up; only medium-or-larger items, cross-turn / cross-module changes, behavior / structure / workflow changes, or tasks that need parallel collaboration, handoff, or blocker management should enter the dynamic plan docs
 - Impact: Small tasks such as a single commit / sync / rebase, light script or config fixes, no-behavior-change patches, and pure copy or formatting changes are no longer mechanically written into the dynamic plan docs; the simple task todo can stay in the delivery context
 - Note: The dynamic plan docs are meant to support handoff and parallel work, not to log every action
+
+## D-2026-04-09-01 Normalize Active Plans, Handoffs, and Archive Index
+
+- Status: Accepted
+- Decision: Keep `docs/current-plan.md` as an active-only index, require a concrete `docs/current-plans/*.md` file for every active tracked task, move completed plan pages into `docs/archive/plans/*.md`, and use `docs/archive/index.md` as the stable entry point for historical work. Standardize new plan / handoff / decision documents around the templates in `docs/templates/*.md`.
+- Impact: Agents can no longer leave active-task links dangling without backing files, and historical work no longer depends on `docs/current-plan.md` retaining a growing "recently completed" section. Future task closure should update the archive index and, when applicable, move the plan page into `docs/archive/plans/*.md`.
+- Note: Existing older documents may keep legacy formatting, but any touched or newly created task-tracking document should carry the minimal metadata and structure defined in `AGENTS.md`.

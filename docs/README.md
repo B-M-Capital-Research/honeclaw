@@ -1,6 +1,6 @@
 # `docs/` 目录说明
 
-本目录用于**本地工作笔记**（计划、交接、草稿等）。除本文件外，`docs/` 下其他内容**默认不纳入 Git**（见仓库根目录 `.gitignore`）。
+本目录用于仓库的**工程文档与协作上下文**，既包含长期规则，也包含任务计划、handoff、归档索引与 runbook。
 
 对外文档请以仓库根目录为准：
 
@@ -13,6 +13,14 @@
 
 # About `docs/`
 
-Use this folder for **local-only** notes. Everything here except this `README.md` is **ignored by Git** (see `.gitignore` at the repo root).
+Use this folder for **engineering docs and collaboration context**. It contains both durable project documentation and task-tracking materials such as plans, handoffs, archive indexes, and runbooks.
 
 Canonical public docs: root `README.md`, `README_ZH.md`, `resources/architecture.html`, `AGENTS.md`, and `CONTRIBUTING.md`.
+
+## Recommended structure
+
+- `repo-map.md`, `invariants.md`, `decisions.md`: durable project context
+- `runbooks/`: reusable operational procedures
+- `current-plan.md`, `current-plans/`, `handoffs/`: active task tracking
+- `archive/`: historical index and archived plan pages
+- `templates/`: default plan / handoff / decision templates
