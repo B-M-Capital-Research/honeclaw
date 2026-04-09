@@ -145,7 +145,6 @@ impl AgentSessionListener for FeishuStreamListener {
 mod tests {
     use super::FeishuProgressTranscript;
     use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
-    use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 
     #[test]
     fn feishu_progress_transcript_appends_entries() {
