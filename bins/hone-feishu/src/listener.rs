@@ -2,6 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
+use hone_channels::think::{ThinkStreamFormatter, append_compacted};
 
 use super::card::CardKitSession;
 use super::markdown::preprocess_markdown_for_feishu;
@@ -54,6 +55,7 @@ pub(crate) struct FeishuStreamListener {
     pub(crate) buffer: Arc<RwLock<String>>,
     pub(crate) cardkit: Option<Arc<CardKitSession>>,
     pub(crate) show_reasoning: bool,
+    pub(crate) think_formatter: Arc<RwLock<ThinkStreamFormatter>>,
 }
 
 #[async_trait]
@@ -61,11 +63,31 @@ impl AgentSessionListener for FeishuStreamListener {
     async fn on_event(&self, event: AgentSessionEvent) {
         match event {
             AgentSessionEvent::StreamDelta { content } => {
-                self.buffer.write().unwrap().push_str(&content);
+                let rendered = {
+                    let mut formatter = self.think_formatter.write().unwrap();
+                    formatter.push_chunk(&content)
+                };
+                if !rendered.is_empty() {
+                    append_compacted(&mut self.buffer.write().unwrap(), &rendered);
+                }
                 if let Some(ck) = &self.cardkit {
                     let text = self.buffer.read().unwrap().clone();
                     let processed = preprocess_markdown_for_feishu(&text, false);
                     ck.update(&processed).await;
+                }
+            }
+            AgentSessionEvent::Done { .. } => {
+                let trailing = {
+                    let mut formatter = self.think_formatter.write().unwrap();
+                    formatter.finish()
+                };
+                if !trailing.is_empty() {
+                    append_compacted(&mut self.buffer.write().unwrap(), &trailing);
+                    if let Some(ck) = &self.cardkit {
+                        let text = self.buffer.read().unwrap().clone();
+                        let processed = preprocess_markdown_for_feishu(&text, false);
+                        ck.update(&processed).await;
+                    }
                 }
             }
             AgentSessionEvent::ToolStatus {
@@ -122,6 +144,8 @@ impl AgentSessionListener for FeishuStreamListener {
 #[cfg(test)]
 mod tests {
     use super::FeishuProgressTranscript;
+    use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
+    use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 
     #[test]
     fn feishu_progress_transcript_appends_entries() {
@@ -141,5 +165,13 @@ mod tests {
         let mut transcript = FeishuProgressTranscript::new("正在思考中...");
         assert!(transcript.push("正在搜索公告").is_some());
         assert_eq!(transcript.push("正在搜索公告"), None);
+    }
+
+    #[test]
+    fn feishu_think_blocks_render_as_markdown_quotes() {
+        let rendered =
+            render_think_blocks("<think>foo</think>\nbar", ThinkRenderStyle::MarkdownQuote);
+        assert!(rendered.contains("> foo"));
+        assert!(rendered.ends_with("bar"));
     }
 }

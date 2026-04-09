@@ -144,14 +144,20 @@ fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseK
                 HeartbeatParseKind::JsonTriggered,
             );
         }
-        return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonUnknownStatus);
+        return (
+            HeartbeatOutcome::Noop,
+            HeartbeatParseKind::JsonUnknownStatus,
+        );
     }
 
     if trimmed.starts_with('{') {
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonMalformed);
     }
 
-    (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextSuppressed)
+    (
+        HeartbeatOutcome::Noop,
+        HeartbeatParseKind::PlainTextSuppressed,
+    )
 }
 
 pub struct ScheduledTaskExecution {
@@ -498,7 +504,10 @@ mod tests {
     fn heartbeat_plain_text_is_suppressed() {
         assert_eq!(
             inspect_heartbeat_result("闪迪股价已低于 520，当前 519.7（检查时间：09:30）"),
-            (HeartbeatOutcome::Noop, HeartbeatParseKind::PlainTextSuppressed)
+            (
+                HeartbeatOutcome::Noop,
+                HeartbeatParseKind::PlainTextSuppressed
+            )
         );
     }
 

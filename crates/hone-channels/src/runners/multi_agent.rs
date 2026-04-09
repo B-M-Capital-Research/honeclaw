@@ -28,8 +28,6 @@ pub struct MultiAgentRunner {
 }
 
 impl MultiAgentRunner {
-    const REQUIRED_SEARCH_TOOLS: [&'static str; 2] = ["web_search", "data_fetch"];
-
     pub fn new(
         system_prompt: String,
         search_config: MultiAgentSearchConfig,
@@ -142,18 +140,20 @@ Verified search tool transcript (JSON):\n{}",
         (context, removed)
     }
 
-    fn has_required_search_tool_call(&self, tool_calls: &[ToolCallMade]) -> bool {
-        tool_calls.iter().any(|call| {
-            Self::REQUIRED_SEARCH_TOOLS
-                .iter()
-                .any(|required| call.name == *required)
-        })
+    fn has_live_search_tool_call(&self, tool_calls: &[ToolCallMade]) -> bool {
+        tool_calls
+            .iter()
+            .any(|call| matches!(call.name.as_str(), "web_search" | "data_fetch"))
     }
 
-    fn build_forced_search_input(&self, runtime_input: &str) -> String {
+    fn build_search_input(&self, runtime_input: &str) -> String {
         format!(
-            "{runtime_input}\n\n[SEARCH STAGE REQUIREMENT]\nBefore you finish this search stage, you MUST call at least one of these tools: `web_search` or `data_fetch`.\nUse the tool result to ground your answer. Do not answer from memory alone."
+            "{runtime_input}\n\n[SEARCH STAGE GUIDANCE]\nDecide whether tool use is actually needed for this turn.\nUse `web_search` or `data_fetch` when the user asks for fresh external facts, live market data, recent news, or other time-sensitive information.\nDo not call tools just to satisfy workflow.\nGreetings, short meta-chat, and other low-cost turns may be answered directly without tools."
         )
+    }
+
+    fn should_return_search_response_directly(&self, search_response: &AgentResponse) -> bool {
+        search_response.success && search_response.tool_calls_made.is_empty()
     }
 }
 
@@ -234,62 +234,36 @@ impl AgentRunner for MultiAgentRunner {
             emitter
                 .emit(AgentRunnerEvent::Progress {
                     stage: "multi_agent.search.context_sanitized",
-                    detail: Some(format!(
-                        "removed_tool_messages={}",
-                        removed_tool_messages
-                    )),
+                    detail: Some(format!("removed_tool_messages={}", removed_tool_messages)),
                 })
                 .await;
         }
-        let mut search_runtime_input = request.runtime_input.clone();
-        let mut search_response = search_agent
+        let search_runtime_input = self.build_search_input(&request.runtime_input);
+        let search_response = search_agent
             .run(&search_runtime_input, &mut search_context)
             .await;
-        let mut forced_retry = false;
-        if search_response.success
-            && !self.has_required_search_tool_call(&search_response.tool_calls_made)
-        {
-            forced_retry = true;
-            tracing::warn!(
-                "[MultiAgent] session={} stage=search.missing_required_tool tools_seen={} required_tools={:?}",
-                request.session_id,
-                search_response
-                    .tool_calls_made
-                    .iter()
-                    .map(|call| call.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(","),
-                Self::REQUIRED_SEARCH_TOOLS,
-            );
-            emitter
-                .emit(AgentRunnerEvent::Progress {
-                    stage: "multi_agent.search.retry_required_tool",
-                    detail: Some("missing required search tool; retrying with forced web_search/data_fetch requirement".to_string()),
-                })
-                .await;
-            let (mut retry_context, _) = self.sanitize_search_context(request.context.clone());
-            search_runtime_input = self.build_forced_search_input(&request.runtime_input);
-            search_response = search_agent
-                .run(&search_runtime_input, &mut retry_context)
-                .await;
-        }
         let search_elapsed_ms = search_started.elapsed().as_millis();
+        let search_tool_calls = search_response.tool_calls_made.len();
+        let used_live_search_tool =
+            self.has_live_search_tool_call(&search_response.tool_calls_made);
         tracing::info!(
-            "[MultiAgent] session={} stage=search.done success={} iterations={} tool_calls={} elapsed_ms={}",
+            "[MultiAgent] session={} stage=search.done success={} iterations={} tool_calls={} live_search_tool={} elapsed_ms={}",
             request.session_id,
             search_response.success,
             search_response.iterations,
-            search_response.tool_calls_made.len(),
+            search_tool_calls,
+            used_live_search_tool,
             search_elapsed_ms,
         );
         emitter
             .emit(AgentRunnerEvent::Progress {
                 stage: "multi_agent.search.done",
                 detail: Some(format!(
-                    "success={} iterations={} tool_calls={} elapsed_ms={}",
+                    "success={} iterations={} tool_calls={} live_search_tool={} elapsed_ms={}",
                     search_response.success,
                     search_response.iterations,
-                    search_response.tool_calls_made.len(),
+                    search_tool_calls,
+                    used_live_search_tool,
                     search_elapsed_ms
                 )),
             })
@@ -315,7 +289,8 @@ impl AgentRunner for MultiAgentRunner {
             json!({
                 "kind": "multi_agent_search",
                 "removed_tool_messages": removed_tool_messages,
-                "forced_retry": forced_retry,
+                "tool_calls": search_tool_calls,
+                "used_live_search_tool": used_live_search_tool,
             }),
         );
 
@@ -328,31 +303,25 @@ impl AgentRunner for MultiAgentRunner {
             };
         }
 
-        if !self.has_required_search_tool_call(&search_response.tool_calls_made) {
-            let error_message =
-                "multi-agent search stage must call web_search or data_fetch before answering"
-                    .to_string();
-            tracing::error!(
-                "[MultiAgent] session={} stage=search.required_tool_missing_after_retry error=\"{}\"",
+        if self.should_return_search_response_directly(&search_response) {
+            tracing::info!(
+                "[MultiAgent] session={} stage=search.direct_return content_len={} elapsed_ms={}",
                 request.session_id,
-                error_message,
+                search_response.content.len(),
+                search_elapsed_ms,
             );
             emitter
-                .emit(AgentRunnerEvent::Error {
-                    error: crate::agent_session::AgentSessionError {
-                        kind: crate::agent_session::AgentSessionErrorKind::AgentFailed,
-                        message: error_message.clone(),
-                    },
+                .emit(AgentRunnerEvent::Progress {
+                    stage: "multi_agent.search.direct_return",
+                    detail: Some(format!(
+                        "tool_calls=0 content_len={} elapsed_ms={}",
+                        search_response.content.len(),
+                        search_elapsed_ms
+                    )),
                 })
                 .await;
             return AgentRunnerResult {
-                response: AgentResponse {
-                    content: String::new(),
-                    tool_calls_made: search_response.tool_calls_made,
-                    iterations: search_response.iterations,
-                    success: false,
-                    error: Some(error_message),
-                },
+                response: search_response,
                 streamed_output: false,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
@@ -469,7 +438,7 @@ impl AgentRunner for MultiAgentRunner {
 #[cfg(test)]
 mod tests {
     use super::MultiAgentRunner;
-    use hone_core::agent::{AgentContext, AgentMessage, ToolCallMade};
+    use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
     use hone_core::config::{MultiAgentSearchConfig, OpencodeAcpConfig};
     use hone_tools::ToolRegistry;
     use serde_json::json;
@@ -525,25 +494,69 @@ mod tests {
     }
 
     #[test]
-    fn required_search_tool_detection_only_accepts_web_search_or_data_fetch() {
+    fn live_search_tool_detection_is_telemetry_only_for_web_search_and_data_fetch() {
         let runner = make_runner();
-        assert!(!runner.has_required_search_tool_call(&[ToolCallMade {
+        assert!(!runner.has_live_search_tool_call(&[ToolCallMade {
             name: "kb_search".to_string(),
             arguments: json!({}),
             result: json!({}),
             tool_call_id: None,
         }]));
-        assert!(runner.has_required_search_tool_call(&[ToolCallMade {
+        assert!(runner.has_live_search_tool_call(&[ToolCallMade {
             name: "web_search".to_string(),
             arguments: json!({}),
             result: json!({}),
             tool_call_id: None,
         }]));
-        assert!(runner.has_required_search_tool_call(&[ToolCallMade {
+        assert!(runner.has_live_search_tool_call(&[ToolCallMade {
             name: "data_fetch".to_string(),
             arguments: json!({}),
             result: json!({}),
             tool_call_id: None,
         }]));
+    }
+
+    #[test]
+    fn search_input_guidance_allows_direct_replies_for_greetings() {
+        let runner = make_runner();
+        let input = runner.build_search_input("hi");
+        assert!(input.contains("Greetings, short meta-chat"));
+        assert!(input.contains("may be answered directly without tools"));
+        assert!(input.contains("Use `web_search` or `data_fetch`"));
+    }
+
+    #[test]
+    fn zero_tool_successful_search_response_can_return_directly() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "你好".to_string(),
+            tool_calls_made: Vec::new(),
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        assert!(runner.should_return_search_response_directly(&response));
+        assert!(!runner.has_live_search_tool_call(&response.tool_calls_made));
+    }
+
+    #[test]
+    fn tool_backed_search_response_does_not_skip_answer_stage() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "这是检索摘要".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "web_search".to_string(),
+                arguments: json!({"query": "Rocket Lab stock"}),
+                result: json!({"results": []}),
+                tool_call_id: None,
+            }],
+            iterations: 2,
+            success: true,
+            error: None,
+        };
+
+        assert!(!runner.should_return_search_response_directly(&response));
+        assert!(runner.has_live_search_tool_call(&response.tool_calls_made));
     }
 }
