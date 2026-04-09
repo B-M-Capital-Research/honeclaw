@@ -196,6 +196,12 @@
 - 任何需要外部账号凭证的检查都必须放到 `tests/regression/manual/`，不阻塞主干合并
 - `hone-desktop` 依赖桌面 sidecar 资源与打包环境，不属于默认 PR / push 逻辑门禁；相关检查保留在桌面构建或 release 流程中处理
 
+## 本地 Push 门禁
+
+- 本仓库通过 `.githooks/pre-push` 在本地 push 前运行 `gitleaks`
+- 当前 clone 初次启用时执行：`bash scripts/install_gitleaks.sh`
+- pre-push 只扫描“即将推送的 commits”，不扫描整个工作区；若命中疑似 secret，必须先清理或更新 allowlist，再重新 push
+
 ## CD 契约
 
 - 以 `v*` tag 触发 release 构建

@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ZERO_SHA="0000000000000000000000000000000000000000"
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+REMOTE_NAME="${1:-origin}"
+
+resolve_gitleaks() {
+  if command -v gitleaks >/dev/null 2>&1; then
+    command -v gitleaks
+    return
+  fi
+
+  if [ -x "$ROOT_DIR/.git-tools/gitleaks/current/gitleaks" ]; then
+    printf '%s\n' "$ROOT_DIR/.git-tools/gitleaks/current/gitleaks"
+    return
+  fi
+
+  if [ -x "$ROOT_DIR/.git-tools/gitleaks/gitleaks" ]; then
+    printf '%s\n' "$ROOT_DIR/.git-tools/gitleaks/gitleaks"
+    return
+  fi
+
+  cat >&2 <<'EOF'
+[pre-push:gitleaks] gitleaks is not installed for this clone.
+Run `bash scripts/install_gitleaks.sh` first, then retry the push.
+EOF
+  exit 1
+}
+
+join_log_opts() {
+  local IFS=' '
+  printf '%s' "$*"
+}
+
+scan_range() {
+  local label="$1"
+  shift
+
+  if [ "$#" -eq 0 ]; then
+    return 0
+  fi
+
+  if [ -z "$(git rev-list --max-count=1 "$@")" ]; then
+    return 0
+  fi
+
+  local log_opts
+  log_opts="$(join_log_opts "$@")"
+  local report_path
+  report_path="$(mktemp "${TMPDIR:-/tmp}/gitleaks-pre-push.XXXXXX")"
+
+  if ! "$GITLEAKS_BIN" detect \
+    --no-banner \
+    --config "$ROOT_DIR/gitleaks.toml" \
+    --gitleaks-ignore-path "$ROOT_DIR/.gitleaksignore" \
+    --source "$ROOT_DIR" \
+    --log-opts "$log_opts" \
+    --report-format json \
+    --report-path "$report_path" \
+    --redact=20 >/dev/null; then
+    printf '[pre-push:gitleaks] blocked push for %s\n' "$label" >&2
+    cat >&2 <<EOF
+[pre-push:gitleaks] Detected possible secrets in commits about to be pushed.
+[pre-push:gitleaks] log-opts: $log_opts
+[pre-push:gitleaks] report: $report_path
+EOF
+    cat "$report_path" >&2
+    exit 1
+  fi
+
+  rm -f "$report_path"
+}
+
+GITLEAKS_BIN="$(resolve_gitleaks)"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${local_ref:-}" ] && continue
+
+  if [ "$local_sha" = "$ZERO_SHA" ]; then
+    continue
+  fi
+
+  if [ "$remote_sha" = "$ZERO_SHA" ]; then
+    scan_range "$local_ref (new ref)" "$local_ref" "--not" "--remotes=$REMOTE_NAME"
+  else
+    scan_range "$local_ref -> $remote_ref" "${remote_sha}..${local_sha}"
+  fi
+done
+
+exit 0
