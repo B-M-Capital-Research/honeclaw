@@ -14,19 +14,22 @@ const INVOKED_SKILLS_METADATA_KEY: &str = "skill_runtime.invoked_skills";
 pub struct SkillTool {
     system_dir: PathBuf,
     custom_dir: PathBuf,
+    registry_path: PathBuf,
 }
 
 impl SkillTool {
-    pub fn new(system_dir: PathBuf, custom_dir: PathBuf) -> Self {
+    pub fn new(system_dir: PathBuf, custom_dir: PathBuf, registry_path: PathBuf) -> Self {
         Self {
             system_dir,
             custom_dir,
+            registry_path,
         }
     }
 
     fn runtime(&self) -> SkillRuntime {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         SkillRuntime::new(self.system_dir.clone(), self.custom_dir.clone(), cwd)
+            .with_registry_path(self.registry_path.clone())
     }
 
     fn persist_invoked_skill(&self, payload: &Value) -> hone_core::HoneResult<()> {
@@ -199,7 +202,11 @@ mod tests {
         )
         .expect("script");
 
-        let tool = SkillTool::new(system, custom);
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
         unsafe {
             std::env::set_var("HONE_MCP_SESSION_ID", "session-script-test");
         }
@@ -266,7 +273,11 @@ mod tests {
             .create_session(Some("session-persist"), None, None)
             .expect("create session");
 
-        let tool = SkillTool::new(system, custom);
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
         unsafe {
             std::env::set_var("HONE_DATA_DIR", &data_dir);
             std::env::set_var("HONE_MCP_SESSION_ID", &session_id);

@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-04-08
+Last updated: 2026-04-11
 
 ## Purpose
 
@@ -27,7 +27,7 @@ Last updated: 2026-04-08
 - `crates/`
   - `hone-core`: foundational capabilities such as the config façade / submodules, logging, errors, and agent context
   - `hone-llm`: model provider abstraction, OpenRouter integration, and generic OpenAI-compatible provider plumbing used by the desktop `multi-agent` search stage
-  - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, and a compatibility `load_skill` shim
+  - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, the `skill_registry` enabled/disabled override layer, and a compatibility `load_skill` shim
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
   - `hone-channels`: channel runtime, `HoneBotCore`, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
@@ -58,6 +58,8 @@ Last updated: 2026-04-08
 - `skills/`
   - In-repo skill definitions; runtime also supports `data/custom_skills/<id>/SKILL.md` and nested `.hone/skills/<id>/SKILL.md` with nearer dynamic directories taking precedence
   - `SKILL.md` frontmatter now also supports an opt-in `script` entrypoint that `skill_tool(..., execute_script=true)` can run from the skill directory
+- `data/runtime/skill_registry.json`
+  - Global skill enabled/disabled override layer for registered skills
 - `tests/regression/`
   - `ci/`: CI-safe
   - `manual/`: manual regression tests that depend on an external CLI or account
@@ -135,6 +137,7 @@ Last updated: 2026-04-08
 - Desktop log pages read from `/api/logs`; the backend route now merges the in-memory log ring with recent `data/runtime/logs/*.log` tails so bundled desktop mode can display channel/runtime logs even when they were written by sibling processes instead of the current web process
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`
 - `hone-console-page` `/api/meta` handles version and capability negotiation
+- `hone-console-page` `/api/skills*` serves the skill management surface: registered listing, detail view, enable/disable mutation, and reset
 
 ## Web Console Structure
 
@@ -151,7 +154,7 @@ Last updated: 2026-04-08
   - Update `agents/function_calling` if needed
   - If the Web UI needs to show it, also update `bins/hone-console-page/src/main.rs` and the frontend pages
 - Adjusting the skill runtime:
-  - Start with `crates/hone-tools/src/skill_runtime.rs`, `crates/hone-tools/src/{skill_tool.rs,discover_skills.rs,load_skill.rs}`
+  - Start with `crates/hone-tools/src/skill_runtime.rs`, `crates/hone-tools/src/{skill_registry.rs,skill_tool.rs,discover_skills.rs,load_skill.rs}`
   - Then check `crates/hone-channels/src/{agent_session.rs,core.rs,prompt.rs,mcp_bridge.rs,runtime.rs}`
   - If the Web UI is affected, also check `crates/hone-web-api/src/routes/skills.rs` and `packages/app/src/{context/skills.tsx,components/skill-*.tsx,lib/skill-command.ts}`
 - Adding a Web page or dashboard:

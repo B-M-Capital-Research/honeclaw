@@ -75,6 +75,24 @@ export async function getSkill(skillId: string) {
   return parseJson<SkillDetailInfo>(response);
 }
 
+export async function updateSkillState(skillId: string, enabled: boolean) {
+  const response = await apiFetch(`/api/skills/${encodeURIComponent(skillId)}/state`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ enabled }),
+  });
+  return parseJson<SkillInfo>(response);
+}
+
+export async function resetSkillRegistry() {
+  const response = await apiFetch("/api/skills/reset", {
+    method: "POST",
+  });
+  return parseJson<SkillInfo[]>(response);
+}
+
 export async function sendChat(actor: ActorRef, message: string, signal?: AbortSignal) {
   const response = await apiFetch("/api/chat", {
     method: "POST",

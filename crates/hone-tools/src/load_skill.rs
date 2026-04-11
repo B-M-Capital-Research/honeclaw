@@ -26,11 +26,20 @@ pub struct SkillMeta {
 
 pub struct LoadSkillTool {
     skills_dirs: Vec<PathBuf>,
+    registry_path: Option<PathBuf>,
 }
 
 impl LoadSkillTool {
     pub fn new(skills_dirs: Vec<PathBuf>) -> Self {
-        Self { skills_dirs }
+        Self {
+            skills_dirs,
+            registry_path: None,
+        }
+    }
+
+    pub fn with_registry_path(mut self, registry_path: PathBuf) -> Self {
+        self.registry_path = Some(registry_path);
+        self
     }
 
     fn runtime(&self) -> SkillRuntime {
@@ -45,12 +54,17 @@ impl LoadSkillTool {
             .cloned()
             .unwrap_or_else(|| PathBuf::from("./data/custom_skills"));
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        SkillRuntime::new(system_dir, custom_dir, cwd)
+        let runtime = SkillRuntime::new(system_dir, custom_dir, cwd);
+        if let Some(path) = &self.registry_path {
+            runtime.with_registry_path(path.clone())
+        } else {
+            runtime
+        }
     }
 
     fn list_skills(&self) -> Vec<String> {
         self.runtime()
-            .list_all_summaries()
+            .list_summaries()
             .into_iter()
             .map(|skill| skill.id)
             .collect()
@@ -58,7 +72,7 @@ impl LoadSkillTool {
 
     pub fn list_skills_with_meta(&self) -> Vec<SkillMeta> {
         self.runtime()
-            .list_all_summaries()
+            .list_summaries()
             .into_iter()
             .map(skill_summary_to_meta)
             .collect()
@@ -67,7 +81,7 @@ impl LoadSkillTool {
     pub fn search_skills_with_meta(&self, query: &str, limit: usize) -> Vec<SkillMeta> {
         let runtime = self.runtime();
         let skills = if query.trim().is_empty() {
-            runtime.list_all_summaries()
+            runtime.list_summaries()
         } else {
             runtime.search(query, &[], limit)
         };

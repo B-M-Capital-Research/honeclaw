@@ -12,6 +12,9 @@ const skills: SkillInfo[] = [
     user_invocable: true,
     context: "inline",
     loaded_from: "system",
+    enabled: true,
+    has_script: false,
+    has_path_gate: false,
     paths: [],
   },
   {
@@ -23,6 +26,23 @@ const skills: SkillInfo[] = [
     user_invocable: true,
     context: "inline",
     loaded_from: "system",
+    enabled: true,
+    has_script: false,
+    has_path_gate: false,
+    paths: [],
+  },
+  {
+    id: "disabled_skill",
+    display_name: "禁用技能",
+    description: "已被禁用",
+    aliases: ["disabled"],
+    allowed_tools: ["skill_tool"],
+    user_invocable: true,
+    context: "inline",
+    loaded_from: "system",
+    enabled: false,
+    has_script: false,
+    has_path_gate: false,
     paths: [],
   },
 ]
@@ -55,6 +75,11 @@ describe("skill slash command", () => {
   it("matches aliases", () => {
     const matches = searchSkillMatches(skills, "macro")
     expect(matches[0]?.id).toBe("macro_watch")
+  })
+
+  it("hides disabled skills from slash search", () => {
+    const matches = searchSkillMatches(skills, "disabled")
+    expect(matches).toEqual([])
   })
 
   it("returns null for unrelated slash commands", () => {

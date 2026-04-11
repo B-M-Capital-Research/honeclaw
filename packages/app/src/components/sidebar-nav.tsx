@@ -43,7 +43,7 @@ export function SidebarNav() {
       <div class="mt-10 space-y-2">
         <NavLink href="/start" label="开始" />
         <NavLink href="/sessions" label="会话" />
-        <Show when={backend.hasCapability("skills")}><NavLink href="/skills" label="技能库" /></Show>
+        <Show when={backend.hasCapability("skills")}><NavLink href="/skills" label="技能管理" /></Show>
         <Show when={backend.hasCapability("cron_jobs")}><NavLink href="/tasks" label="任务中心" /></Show>
         <NavLink href="/memory" label="记忆" also={["/portfolio"]} />
         <Show when={backend.hasCapability("research")}><NavLink href="/research" label="个股研究" /></Show>

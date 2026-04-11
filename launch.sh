@@ -199,7 +199,7 @@ start_hone_bin() {
       printf -v "$pid_var" '%s' ""
       return 0
     fi
-    echo "[FAIL] ${service_name} exited during startup (status=${status}). Clear previous Hone processes and retry."
+    echo "[FAIL] ${service_name} exited during startup (status=${status}). Check the error output above for the real cause (for example missing config/credentials, port or lock conflicts, or another startup failure)."
     exit 1
   fi
 }
