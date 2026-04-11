@@ -22,4 +22,4 @@ This is one of the core skills in the [US-stock specialist capability]. Activate
 
 ### Output Goal
 
-Return a recommendation list with tickers and explain in one or two sentences why each stock matches the screening criteria and what the current risk is
+Return a comparison shortlist with tickers, explain why each name matches the screen, summarize the main risk or caveat for each one, and note what extra diligence the user should do before acting.

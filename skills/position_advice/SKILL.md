@@ -17,8 +17,8 @@ This is one of the core skills in the [US-stock specialist capability]. Activate
 ### Workflow
 1. Use `portfolio(action="get")` first to fetch the user's current holdings.
 2. Combine `data_fetch(data_type="sector_performance")` with current sector strength, or use `web_search` directly on the user's concentrated holdings to find risk notes.
-3. Evaluate whether the position is too concentrated or whether the risk/reward is out of balance, then give a specific recommendation such as rebalance, trim, add, or hold.
+3. Evaluate concentration, liquidity, catalyst exposure, and downside scenarios, then explain what would need to happen for the user to consider reducing, maintaining, or restructuring exposure.
 
 ### Output Goal
 
-Give actionable, explicit advice: which stock should be trimmed on strength, which one should be held patiently, and whether the overall position size should be reduced.
+Provide a risk-management oriented assessment: where the portfolio is concentrated, which names carry elevated event risk, what trigger conditions deserve attention, and what position-sizing or hedging questions the user should review before making any change.

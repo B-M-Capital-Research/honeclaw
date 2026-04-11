@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-11
 
+### 金融自动化合同回归闭环
+
+- Status: done
+- Date: 2026-04-11
+- Plan: `docs/archive/plans/finance-automation-contract-loop.md`
+- Handoff: `docs/handoffs/2026-04-09-finance-automation-contract-loop-round1.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `bash tests/regression/ci/test_finance_automation_contracts.sh`, `bash tests/regression/run_ci.sh`
+- Current conclusion: finance 固定 9 样本合同切片已从 `success=5 review=1 fail=3` 收口到 `success=9 review=0 fail=0`；剩余 skill policy wording 漂移已全部修正
+- Next entry point: `docs/handoffs/2026-04-09-finance-automation-contract-loop-round1.md`
+
 ### 大文件物理拆分重构
 
 - Status: done

@@ -45,4 +45,4 @@ Reduce architecture drift by tightening oversized runtime, desktop, channel, and
 ## Risks / Open Questions
 
 - `bins/hone-desktop/src/sidecar.rs`, `bins/hone-feishu/src/handler.rs`, and `packages/app/src/pages/settings.tsx` are materially smaller in responsibility but still large; future splits should follow ownership seams, not line-count targets.
-- `bash tests/regression/run_ci.sh` exits successfully, but the finance automation contract sub-report still carries the pre-existing `success=5 / review=1 / fail=3` result tracked by `docs/current-plans/finance-automation-contract-loop.md`.
+- `bash tests/regression/run_ci.sh` exited successfully during this refactor round. The separate finance automation contract drift referenced at the time has since been closed and archived under `docs/archive/plans/finance-automation-contract-loop.md`.

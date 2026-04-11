@@ -16,7 +16,7 @@ This is one of the core skills in the [US-stock specialist capability]. Activate
 ### Workflow
 1. Fetch the company's financial statements, market cap, PE ratio, and similar data with `data_fetch(data_type="financials", ticker="...")`; add `quote` if needed
 2. Use `web_search` to fetch the latest operating updates or Wall Street research summaries
-3. Combine macroeconomics and industry context to produce a professional valuation summary, including a brief DCF view and relative-valuation comparison, and then give a judgment such as overvalued, fair, or undervalued
+3. Combine macroeconomics and industry context to produce a professional valuation summary, including a brief DCF view and relative-valuation comparison, and then explain which assumptions would make the stock look richer, more balanced, or more compelling relative to peers
 
 ### Note
 

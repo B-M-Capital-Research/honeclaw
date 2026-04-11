@@ -41,12 +41,12 @@ This round closed the active large-file architecture-tightening task by consolid
 - `cargo test --workspace --all-targets --exclude hone-desktop` passed.
 - `cargo test -p hone-telegram` passed after removing stale imports left by the scheduler extraction.
 - `bun install` restored missing workspace test dependencies locally, after which `bun run test:web` passed.
-- `bash tests/regression/run_ci.sh` passed; its finance automation contract sub-report still shows the existing `success=5 / review=1 / fail=3` status tracked by the separate finance regression task.
+- `bash tests/regression/run_ci.sh` passed. The finance automation contract drift referenced during this round was later resolved separately, and the fixed 9-sample slice now reports `success=9 / review=0 / fail=0`.
 
 ## Risks / Follow-ups
 
 - The remaining large files are now boundary-cleaner, but not all of them are small. Future extractions should only proceed when they create a stable ownership seam such as a distinct command surface or a separate protocol adapter.
-- The finance automation contract warnings are unrelated to this architecture round and should continue under `docs/current-plans/finance-automation-contract-loop.md`.
+- The finance automation contract drift was tracked and later closed separately under `docs/archive/plans/finance-automation-contract-loop.md`.
 
 ## Next Entry Point
 

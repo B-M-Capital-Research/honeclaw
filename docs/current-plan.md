@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-04-11
-状态：有 8 个活跃任务
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -44,7 +44,3 @@
   - 状态：`in_progress`
   - 计划：`docs/current-plans/desktop-startup-lock-ux-strategy.md`
   - 摘要：先输出不改代码的策略方案，目标是把“锁冲突直接报错”升级为自动接管、分层恢复和可解释降级的启动体验
-- **金融自动化合同回归闭环**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/finance-automation-contract-loop.md`
-  - 摘要：固定 9 个 finance 自动化合同样本，按轮次收口 skills、tools 与 runtime policy 的漂移；Round 1 已补齐 `data_fetch(snapshot)`，Round 2 已把 `earnings_calendar` 改为动态窗口并通过真实回放验证，当前回归结果为 success=5 / review=1 / fail=3
