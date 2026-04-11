@@ -479,17 +479,22 @@ impl HoneBotCore {
 
         let skills_dir = self.configured_system_skills_dir();
         let custom_skills_dir = self.configured_custom_skills_dir();
+        let skill_registry_path = self.configured_skill_registry_path();
 
         let dirs = vec![skills_dir.clone(), custom_skills_dir.clone()];
 
-        registry.register(Box::new(LoadSkillTool::new(dirs)));
+        registry.register(Box::new(
+            LoadSkillTool::new(dirs).with_registry_path(skill_registry_path.clone()),
+        ));
         registry.register(Box::new(DiscoverSkillsTool::new(
             skills_dir.clone(),
             custom_skills_dir.clone(),
+            skill_registry_path.clone(),
         )));
         registry.register(Box::new(hone_tools::skill_tool::SkillTool::new(
             skills_dir,
             custom_skills_dir,
+            skill_registry_path,
         )));
 
         if allow_cron {
@@ -565,9 +570,26 @@ impl HoneBotCore {
     }
 
     pub fn configured_custom_skills_dir(&self) -> PathBuf {
-        std::env::var("HONE_DATA_DIR")
-            .map(|root| PathBuf::from(root).join("custom_skills"))
-            .unwrap_or_else(|_| PathBuf::from("./data/custom_skills"))
+        self.configured_data_dir().join("custom_skills")
+    }
+
+    pub fn configured_data_dir(&self) -> PathBuf {
+        if let Ok(root) = std::env::var("HONE_DATA_DIR") {
+            return PathBuf::from(root);
+        }
+
+        PathBuf::from(&self.config.storage.sessions_dir)
+            .parent()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("./data"))
+    }
+
+    pub fn configured_runtime_dir(&self) -> PathBuf {
+        hone_core::runtime_heartbeat_dir(&self.config)
+    }
+
+    pub fn configured_skill_registry_path(&self) -> PathBuf {
+        self.configured_runtime_dir().join("skill_registry.json")
     }
 
     /// 创建调度器及其事件接收端。

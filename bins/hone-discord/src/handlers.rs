@@ -405,6 +405,7 @@ impl DiscordHandler {
 
     fn discord_skill_loader(&self) -> LoadSkillTool {
         LoadSkillTool::new(configured_skill_dirs(&self.core))
+            .with_registry_path(self.core.configured_skill_registry_path())
     }
 
     async fn handle_group_message(

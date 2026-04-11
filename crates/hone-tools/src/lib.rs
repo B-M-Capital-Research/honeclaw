@@ -13,6 +13,7 @@ pub mod load_skill;
 pub mod portfolio_tool;
 pub mod registry;
 pub mod restart_hone;
+pub mod skill_registry;
 pub mod skill_runtime;
 pub mod skill_tool;
 pub mod web_search;
@@ -28,6 +29,10 @@ pub use load_skill::LoadSkillTool;
 pub use portfolio_tool::PortfolioTool;
 pub use registry::ToolRegistry;
 pub use restart_hone::RestartHoneTool;
+pub use skill_registry::{
+    SkillRegistry, SkillRegistryEntry, default_skill_registry_path, load_skill_registry,
+    read_skill_registry, reset_skill_registry, set_skill_enabled, write_skill_registry,
+};
 pub use skill_runtime::{
     SkillDefinition, SkillExecutionContext, SkillRuntime, SkillSource, SkillSummary,
 };

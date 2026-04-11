@@ -73,15 +73,24 @@ pub struct SkillInfo {
     pub user_invocable: bool,
     pub context: String,
     pub loaded_from: String,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disabled_reason: Option<String>,
+    pub has_script: bool,
+    pub has_path_gate: bool,
     pub paths: Vec<String>,
 }
 
 #[derive(Serialize)]
 pub struct SkillDetailInfo {
-    #[serde(flatten)]
     pub summary: SkillInfo,
     pub markdown: String,
     pub detail_path: String,
+}
+
+#[derive(Deserialize)]
+pub struct SkillStateUpdateRequest {
+    pub enabled: Option<bool>,
 }
 
 #[derive(Serialize)]

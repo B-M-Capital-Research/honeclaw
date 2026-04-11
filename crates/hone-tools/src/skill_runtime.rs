@@ -6,6 +6,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
+use crate::skill_registry::{default_skill_registry_path, load_skill_registry};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkillSource {
     System,
@@ -57,6 +59,7 @@ pub struct SkillDefinition {
     pub script: Option<String>,
     pub shell: Option<String>,
     pub source: SkillSource,
+    pub enabled: bool,
     pub skill_dir: PathBuf,
     pub skill_path: PathBuf,
     pub body: String,
@@ -74,6 +77,7 @@ pub struct SkillSummary {
     pub context: SkillExecutionContext,
     pub script: Option<String>,
     pub loaded_from: String,
+    pub enabled: bool,
     pub paths: Vec<String>,
     pub detail_path: String,
 }
@@ -91,6 +95,7 @@ impl From<&SkillDefinition> for SkillSummary {
             context: value.context.clone(),
             script: value.script.clone(),
             loaded_from: value.source.as_str().to_string(),
+            enabled: value.enabled,
             paths: value.paths.clone(),
             detail_path: value.skill_path.to_string_lossy().to_string(),
         }
@@ -138,15 +143,23 @@ pub struct SkillRuntime {
     system_dir: PathBuf,
     custom_dir: PathBuf,
     cwd: PathBuf,
+    registry_path: PathBuf,
 }
 
 impl SkillRuntime {
     pub fn new(system_dir: PathBuf, custom_dir: PathBuf, cwd: PathBuf) -> Self {
+        let registry_path = default_skill_registry_path(&custom_dir);
         Self {
             system_dir,
             custom_dir,
             cwd,
+            registry_path,
         }
+    }
+
+    pub fn with_registry_path(mut self, registry_path: PathBuf) -> Self {
+        self.registry_path = registry_path;
+        self
     }
 
     pub fn list_summaries(&self) -> Vec<SkillSummary> {
@@ -156,8 +169,15 @@ impl SkillRuntime {
             .collect()
     }
 
+    pub fn list_registered_summaries(&self) -> Vec<SkillSummary> {
+        self.load_registered_skills()
+            .iter()
+            .map(SkillSummary::from)
+            .collect()
+    }
+
     pub fn list_all_summaries(&self) -> Vec<SkillSummary> {
-        self.load_all_skills()
+        self.load_registered_skills()
             .iter()
             .map(SkillSummary::from)
             .collect()
@@ -230,10 +250,32 @@ impl SkillRuntime {
             return Err("skill_name 不能为空".to_string());
         }
 
+        if let Some(skill) = self
+            .load_registered_skills()
+            .into_iter()
+            .find(|skill| skill_matches_reference(skill, normalized))
+        {
+            if !skill.enabled {
+                return Err(skill_disabled_error(normalized));
+            }
+        }
+
         self.load_active_skills(file_paths)
             .into_iter()
             .find(|skill| skill_matches_reference(skill, normalized))
             .ok_or_else(|| format!("技能 '{normalized}' 不存在或当前未激活"))
+    }
+
+    pub fn load_registered_skill(&self, skill_id: &str) -> Result<SkillDefinition, String> {
+        let normalized = skill_id.trim();
+        if normalized.is_empty() {
+            return Err("skill_name 不能为空".to_string());
+        }
+
+        self.load_registered_skills()
+            .into_iter()
+            .find(|skill| skill_matches_reference(skill, normalized))
+            .ok_or_else(|| format!("技能 '{normalized}' 不存在"))
     }
 
     pub fn resolve_user_invocable_direct(&self, command_name: &str) -> Option<SkillDefinition> {
@@ -349,9 +391,21 @@ impl SkillRuntime {
     }
 
     fn load_active_skills(&self, file_paths: &[String]) -> Vec<SkillDefinition> {
+        self.load_registered_skills()
+            .into_iter()
+            .filter(|skill| skill.enabled)
+            .filter(|skill| skill.paths.is_empty() || skill_matches_paths(&skill.paths, file_paths))
+            .collect()
+    }
+
+    fn load_registered_skills(&self) -> Vec<SkillDefinition> {
+        let registry = load_skill_registry(&self.registry_path);
         self.load_all_skills()
             .into_iter()
-            .filter(|skill| skill.paths.is_empty() || skill_matches_paths(&skill.paths, file_paths))
+            .map(|mut skill| {
+                skill.enabled = registry.is_enabled(&skill.id);
+                skill
+            })
             .collect()
     }
 
@@ -507,10 +561,15 @@ fn parse_skill_definition(
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
         source,
+        enabled: true,
         skill_dir: skill_dir.to_path_buf(),
         skill_path: skill_path.to_path_buf(),
         body,
     })
+}
+
+fn skill_disabled_error(skill_id: &str) -> String {
+    format!("技能 '{skill_id}' 已被管理员禁用")
 }
 
 fn skill_matches_reference(skill: &SkillDefinition, reference: &str) -> bool {
@@ -668,6 +727,7 @@ fn score_field(value: &str, query: &str, base: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::skill_registry::set_skill_enabled;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_temp_dir(prefix: &str) -> PathBuf {
@@ -731,6 +791,36 @@ mod tests {
         assert!(runtime.list_summaries().is_empty());
         let matches = runtime.search("alpha", &[String::from("src/lib.rs")], 5);
         assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn disabled_skill_is_hidden_from_active_runtime_and_returns_explicit_error() {
+        let root = make_temp_dir("hone_skill_runtime_disabled");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let registry_path = root.join("runtime").join("skill_registry.json");
+        fs::create_dir_all(system.join("alpha")).expect("alpha dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            system.join("alpha/SKILL.md"),
+            "---\nname: Alpha\ndescription: disabled test\n---\n\nbody",
+        )
+        .expect("write skill");
+
+        set_skill_enabled(&registry_path, "alpha", false).expect("disable alpha");
+
+        let runtime = SkillRuntime::new(system, custom, root).with_registry_path(registry_path);
+        let registered = runtime.list_registered_summaries();
+        assert_eq!(registered.len(), 1);
+        assert!(!registered[0].enabled);
+        assert!(runtime.list_summaries().is_empty());
+        assert!(runtime.search("alpha", &[], 5).is_empty());
+        let error = runtime.load_skill("alpha", &[]).expect_err("disabled");
+        assert!(error.contains("已被管理员禁用"));
+        let registered_skill = runtime
+            .load_registered_skill("alpha")
+            .expect("registered alpha");
+        assert!(!registered_skill.enabled);
     }
 
     #[test]

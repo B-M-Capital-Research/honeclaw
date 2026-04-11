@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::middleware;
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
@@ -47,7 +47,12 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .route("/file", get(files::handle_file))
         .route("/users", get(users::handle_users))
         .route("/skills", get(skills::handle_skills))
+        .route("/skills/reset", post(skills::handle_skill_registry_reset))
         .route("/skills/{id}", get(skills::handle_skill_detail))
+        .route(
+            "/skills/{id}/state",
+            patch(skills::handle_skill_state_update),
+        )
         .route("/chat", post(chat::handle_chat))
         .route(
             "/cron-jobs",

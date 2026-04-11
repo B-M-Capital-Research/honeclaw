@@ -22,6 +22,10 @@ export type SkillInfo = {
   user_invocable: boolean;
   context: string;
   loaded_from: string;
+  enabled: boolean;
+  disabled_reason?: string;
+  has_script: boolean;
+  has_path_gate: boolean;
   paths: string[];
 };
 

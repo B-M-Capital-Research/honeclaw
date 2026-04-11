@@ -8,19 +8,22 @@ use crate::skill_runtime::SkillRuntime;
 pub struct DiscoverSkillsTool {
     system_dir: PathBuf,
     custom_dir: PathBuf,
+    registry_path: PathBuf,
 }
 
 impl DiscoverSkillsTool {
-    pub fn new(system_dir: PathBuf, custom_dir: PathBuf) -> Self {
+    pub fn new(system_dir: PathBuf, custom_dir: PathBuf, registry_path: PathBuf) -> Self {
         Self {
             system_dir,
             custom_dir,
+            registry_path,
         }
     }
 
     fn runtime(&self) -> SkillRuntime {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         SkillRuntime::new(self.system_dir.clone(), self.custom_dir.clone(), cwd)
+            .with_registry_path(self.registry_path.clone())
     }
 }
 
@@ -143,7 +146,11 @@ mod tests {
     #[tokio::test]
     async fn execute_returns_error_for_empty_query() {
         let root = make_temp_dir("hone_discover_skills_empty");
-        let tool = DiscoverSkillsTool::new(root.join("system"), root.join("custom"));
+        let tool = DiscoverSkillsTool::new(
+            root.join("system"),
+            root.join("custom"),
+            root.join("runtime").join("skill_registry.json"),
+        );
 
         let result = tool
             .execute(serde_json::json!({ "query": "   " }))
@@ -211,7 +218,11 @@ mod tests {
         )
         .expect("write gamma");
 
-        let tool = DiscoverSkillsTool::new(system, custom);
+        let tool = DiscoverSkillsTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
 
         let result = tool
             .execute(serde_json::json!({

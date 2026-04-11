@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-04-08
+Last updated: 2026-04-11
 
 ## Source of Truth and Document Priority
 
@@ -88,8 +88,13 @@ Last updated: 2026-04-08
 - Skill runtime stays two-phase:
   - Turn-0 / discovery prompt text may expose only compact skill summaries
   - Full `SKILL.md` bodies must be injected only when `skill_tool(...)` or a user slash skill actually invokes that skill
+- Registered skills and enabled skills are separate truth domains:
+  - Registration still comes from `skills/`, `data/custom_skills/`, or `.hone/skills/`
+  - Runtime activation comes from the global `data/runtime/skill_registry.json` override layer
+  - When a skill is disabled there, it must disappear from discover/list/search surfaces and be hard-rejected by slash invocation and `skill_tool(...)` across all channels and runners
 - User slash skills and model `skill_tool(...)` calls must share the same prompt-expansion source of truth; do not let the Web/CLI path hand-maintain a divergent skill prompt template
 - Invoked skills that materially change the current turn prompt must be recoverable from session metadata after compaction / resume; do not rely only on persisted tool results for skill restoration
+- Session restore must respect current skill activation state. If a previously invoked skill is now disabled, its historical prompt may stay in stored metadata, but it must not be re-injected into the live runtime context on restore/compaction recovery
 - Skill frontmatter fields such as `allowed-tools`, `model`, `effort`, `context`, `paths`, `hooks`, `arguments`, `script`, and `shell` should be parsed from `SKILL.md` as the source of truth. If runner infrastructure does not yet enforce one of these fields, document that gap instead of silently dropping or misrepresenting it
 - Skill script execution must stay opt-in. Loading or disclosing a skill may expand its prompt, but running a declared `script` must only happen through an explicit execution path such as `skill_tool(..., execute_script=true)`
 - Invoked skill context and per-turn user input must not be conflated. Only the stable invoked skill prompt may be persisted for restore/compaction; one-shot user supplements after a slash invocation belong only to the current turn

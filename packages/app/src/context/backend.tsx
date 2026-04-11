@@ -176,7 +176,7 @@ function createBackendState() {
   const initBrowser = async () => {
     const config = defaultBackendConfig()
     try {
-      const meta = await probeBackendMeta(config)
+      const meta = normalizeMeta(await probeBackendMeta(config) as LegacyMetaInfo)
       applyConnection({
         config,
         resolvedBaseUrl: "",

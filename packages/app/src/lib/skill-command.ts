@@ -32,12 +32,13 @@ export function parseSkillSlashCommand(input: string): SkillSlashCommand | null 
 }
 
 export function searchSkillMatches(skills: SkillInfo[], query: string, limit = 6) {
+  const activeSkills = skills.filter((skill) => skill.enabled !== false)
   const normalizedQuery = normalizeSkillText(query)
   if (!normalizedQuery) {
-    return skills.slice(0, limit)
+    return activeSkills.slice(0, limit)
   }
 
-  return [...skills]
+  return [...activeSkills]
     .map((skill) => ({ skill, score: scoreSkill(skill, normalizedQuery) }))
     .filter((item) => item.score > 0)
     .sort((left, right) => {

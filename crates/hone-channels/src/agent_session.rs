@@ -543,7 +543,8 @@ impl AgentSession {
             self.core.configured_system_skills_dir(),
             self.core.configured_custom_skills_dir(),
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-        );
+        )
+        .with_registry_path(self.core.configured_skill_registry_path());
         let skill_listing = skill_runtime.build_skill_listing(4_000);
         if !skill_listing.trim().is_empty() {
             prompt_options.extra_sections.push(format!(
@@ -608,7 +609,8 @@ impl AgentSession {
             self.core.configured_system_skills_dir(),
             self.core.configured_custom_skills_dir(),
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-        );
+        )
+        .with_registry_path(self.core.configured_skill_registry_path());
 
         if trimmed.strip_prefix("/skill").is_some() {
             let lines = trimmed.lines().collect::<Vec<_>>();
@@ -1050,6 +1052,14 @@ impl AgentSession {
             &self.core.session_storage,
             &session_id,
             self.restore_max_messages,
+            Some(
+                &hone_tools::SkillRuntime::new(
+                    self.core.configured_system_skills_dir(),
+                    self.core.configured_custom_skills_dir(),
+                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+                )
+                .with_registry_path(self.core.configured_skill_registry_path()),
+            ),
         );
         context.set_actor_identity(&self.actor);
 
@@ -1277,6 +1287,7 @@ pub fn restore_context(
     storage: &SessionStorage,
     session_id: &str,
     max_messages: Option<usize>,
+    skill_runtime: Option<&hone_tools::SkillRuntime>,
 ) -> AgentContext {
     let mut ctx = AgentContext::new(session_id.to_string());
 
@@ -1294,6 +1305,16 @@ pub fn restore_context(
         for skill in invoked_skills_from_metadata(&session.metadata)
             .into_iter()
             .filter(|skill| !skill.prompt.trim().is_empty())
+            .filter(|skill| {
+                skill_runtime
+                    .map(|runtime| {
+                        runtime
+                            .load_registered_skill(&skill.skill_name)
+                            .map(|definition| definition.enabled)
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(true)
+            })
         {
             ctx.add_user_message(&skill.prompt);
         }
@@ -1534,7 +1555,7 @@ mod tests {
     fn restore_context_missing_session_returns_empty() {
         let root = make_temp_dir("hone_channels_restore_missing");
         let storage = SessionStorage::new(&root);
-        let ctx = restore_context(&storage, "missing", Some(5));
+        let ctx = restore_context(&storage, "missing", Some(5), None);
         assert!(ctx.messages.is_empty());
         assert!(ctx.actor_identity().is_none());
         let _ = std::fs::remove_dir_all(root);
@@ -1605,7 +1626,7 @@ mod tests {
             .add_message(&session_id, "assistant", "a2", None)
             .expect("add a2");
 
-        let ctx = restore_context(&storage, &session_id, Some(4));
+        let ctx = restore_context(&storage, &session_id, Some(4), None);
         let contents: Vec<_> = ctx
             .messages
             .iter()
@@ -1718,13 +1739,71 @@ mod tests {
             .update_metadata(&session_id, metadata)
             .expect("metadata");
 
-        let ctx = restore_context(&storage, &session_id, Some(5));
+        let ctx = restore_context(&storage, &session_id, Some(5), None);
         let contents: Vec<_> = ctx
             .messages
             .iter()
             .filter_map(|m| m.content.as_deref())
             .collect();
         assert_eq!(contents, vec!["INVOKED_SKILL_PROMPT", "hello", "world"]);
+    }
+
+    #[test]
+    fn restore_context_skips_invoked_skill_when_registry_disables_it() {
+        let root = make_temp_dir("hone_channels_restore_disabled_skill");
+        std::fs::create_dir_all(root.join("system/alpha")).expect("skill dir");
+        std::fs::create_dir_all(root.join("custom")).expect("custom dir");
+        std::fs::write(
+            root.join("system/alpha/SKILL.md"),
+            "---\nname: Alpha\ndescription: disabled restore\n---\n\nbody",
+        )
+        .expect("write skill");
+        hone_tools::set_skill_enabled(
+            &root.join("runtime").join("skill_registry.json"),
+            "alpha",
+            false,
+        )
+        .expect("disable alpha");
+
+        let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+        let actor = ActorIdentity::new("discord", "bob", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        storage
+            .add_message(&session_id, "assistant", "world", None)
+            .expect("add assistant");
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            hone_memory::INVOKED_SKILLS_METADATA_KEY.to_string(),
+            serde_json::json!([{
+                "skill_name": "alpha",
+                "display_name": "Alpha",
+                "path": "slash:alpha",
+                "prompt": "INVOKED_SKILL_PROMPT",
+                "execution_context": "inline",
+                "allowed_tools": [],
+                "model": null,
+                "effort": null,
+                "agent": null,
+                "loaded_from": "slash",
+                "updated_at": hone_core::beijing_now_rfc3339()
+            }]),
+        );
+        storage
+            .update_metadata(&session_id, metadata)
+            .expect("metadata");
+
+        let runtime =
+            hone_tools::SkillRuntime::new(root.join("system"), root.join("custom"), root.clone())
+                .with_registry_path(root.join("runtime").join("skill_registry.json"));
+        let ctx = restore_context(&storage, &session_id, Some(5), Some(&runtime));
+        let contents: Vec<_> = ctx
+            .messages
+            .iter()
+            .filter_map(|m| m.content.as_deref())
+            .collect();
+        assert_eq!(contents, vec!["world"]);
     }
 
     #[test]
@@ -1759,7 +1838,7 @@ mod tests {
             .add_message(&session_id, "assistant", "after-compact", None)
             .expect("add assistant");
 
-        let ctx = restore_context(&storage, &session_id, Some(10));
+        let ctx = restore_context(&storage, &session_id, Some(10), None);
         let contents: Vec<_> = ctx
             .messages
             .iter()
@@ -1818,7 +1897,7 @@ mod tests {
             )
             .expect("add summary");
 
-        let ctx = restore_context(&storage, &session_id, Some(10));
+        let ctx = restore_context(&storage, &session_id, Some(10), None);
         let contents: Vec<_> = ctx
             .messages
             .iter()
@@ -1885,7 +1964,7 @@ mod tests {
             )
             .expect("add skill snapshot");
 
-        let ctx = restore_context(&storage, &session_id, Some(10));
+        let ctx = restore_context(&storage, &session_id, Some(10), None);
         let contents: Vec<_> = ctx
             .messages
             .iter()
