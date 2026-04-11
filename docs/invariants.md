@@ -62,7 +62,9 @@ Last updated: 2026-04-08
 
 - Use `agent.runner` as the single source for runner selection; channels and the Web UI should not branch `gemini_cli`, `function_calling`, or `codex_cli` execution paths on their own
 - `AgentSession` exposes `run()` as the only public entry point; its responsibilities should stay limited to session orchestration, persistence, and listener dispatch. When adding a new execution path, prefer extending the unified runner contract instead of adding a new `run_xxx` branch.
+- Shared execution preparation belongs in `crates/hone-channels/src/execution.rs`; session flows and transient task flows should reuse it instead of each path rebuilding tool registry / runner / sandbox wiring on its own
 - Runner selection and provider / CLI differences belong in `HoneBotCore::create_runner()` and `crates/hone-channels/src/runners/`; do not reintroduce provider-specific checks in channel entrypoints or `AgentSession`
+- Heartbeat and other transient scheduler tasks may bypass transcript persistence, but they must still reuse the same execution-preparation path instead of directly instantiating concrete runner types inside `scheduler.rs`
 - A channel actor's local file visibility must stay inside a repo-external actor sandbox; the default root lives under `hone-agent-sandboxes/` in the system temp directory and can be overridden with `HONE_AGENT_SANDBOX_DIR`
 - Channel attachments must be written to `uploads/<session_id>/` inside the actor sandbox; do not point the underlying runner `cwd` back at the repo root or at a shared upload directory inside the repo
 - `gemini_acp` currently uses `gemini --experimental-acp` over stdio / JSON-RPC; startup must verify `gemini >= 0.30.0`. Authentication should prefer the local `gemini-cli` login state; if an environment variable such as `GEMINI_API_KEY` is present, prefer the explicit API key.

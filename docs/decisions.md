@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-04-09
+Last updated: 2026-04-11
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -81,6 +81,15 @@ Last updated: 2026-04-09
 - Decision: `docs/current-plan.md` and `docs/current-plans/*.md` only track tasks that need ongoing follow-up; only medium-or-larger items, cross-turn / cross-module changes, behavior / structure / workflow changes, or tasks that need parallel collaboration, handoff, or blocker management should enter the dynamic plan docs
 - Impact: Small tasks such as a single commit / sync / rebase, light script or config fixes, no-behavior-change patches, and pure copy or formatting changes are no longer mechanically written into the dynamic plan docs; the simple task todo can stay in the delivery context
 - Note: The dynamic plan docs are meant to support handoff and parallel work, not to log every action
+
+## D-2026-04-08-01 Reuse One Execution-Preparation Path for Session and Scheduler Runs
+
+- Status: Accepted
+- Decision: Keep `AgentSession` as the public session entrypoint, but move prompt-audit write, tool registry creation, runner creation, and actor-sandbox-backed request assembly into a shared `execution` layer inside `hone-channels`
+- Impact:
+  - Scheduler heartbeat / transient task flows must not instantiate concrete runners directly
+  - `AgentSession` stays focused on session semantics such as quota, slash skill handling, and transcript persistence
+  - Session compaction and prompt audit are now explicit support services rather than ad hoc logic inside the main orchestrator
 
 ## D-2026-04-09-01 Normalize Active Plans, Handoffs, and Archive Index
 

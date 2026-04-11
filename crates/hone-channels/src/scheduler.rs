@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hone_core::agent::AgentContext;
-use hone_memory::session::SessionPromptState;
 use hone_scheduler::SchedulerEvent;
 use serde::Deserialize;
 use serde_json::Value;
@@ -10,11 +8,11 @@ use serde_json::Value;
 use crate::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSessionResult, GeminiStreamOptions,
 };
-use crate::prompt::{PromptOptions, build_prompt_bundle};
-use crate::runners::{
-    AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, FunctionCallingReasoningRunner,
+use crate::execution::{
+    ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
 };
-use crate::sandbox::ensure_actor_sandbox;
+use crate::prompt::{PromptOptions, build_prompt_bundle};
+use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
 use crate::{AgentSession, HoneBotCore};
 
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
@@ -337,77 +335,59 @@ async fn run_heartbeat_task(
     run_options: AgentRunOptions,
 ) -> Result<String, String> {
     let transient_session_id = format!("heartbeat_probe::{}", event.job_id);
-    let prompt_state = SessionPromptState::default();
     let bundle = build_prompt_bundle(
         &core.config,
         &core.session_storage,
         &event.actor.channel,
         &transient_session_id,
-        &prompt_state,
+        &Default::default(),
         &prompt_options,
     );
-    let system_prompt = bundle.system_prompt();
-    let runtime_input = bundle.compose_user_input(&build_scheduled_prompt(event));
-    let tool_registry = core.create_tool_registry(Some(&event.actor), &event.channel_target, false);
-    let runner = if let Some(llm) = core.auxiliary_llm.clone() {
-        Box::new(FunctionCallingReasoningRunner::new(
-            llm,
-            Arc::new(tool_registry),
-            system_prompt.to_string(),
-            6,
-            core.llm_audit.clone(),
-        )) as Box<dyn crate::runners::AgentRunner>
-    } else {
-        return Err("heartbeat task create_runner failed: auxiliary llm unavailable".to_string());
-    };
-    let runner_name = runner.name();
-
-    let working_directory = ensure_actor_sandbox(&event.actor)
-        .map_err(|err| format!("heartbeat task sandbox init failed: {err}"))?
-        .to_string_lossy()
-        .to_string();
     let timeout = run_options.timeout;
-    let gemini_stream = timeout
-        .map(|duration| GeminiStreamOptions {
-            overall_timeout: duration,
-            per_line_timeout: std::time::Duration::from_secs(90),
-            ..GeminiStreamOptions::default()
-        })
-        .unwrap_or_default();
-    let request = AgentRunnerRequest {
+    let execution = ExecutionService::new(core.clone()).prepare(ExecutionRequest {
+        mode: ExecutionMode::TransientTask,
         session_id: transient_session_id.clone(),
-        actor_label: event.actor.session_id(),
         actor: event.actor.clone(),
         channel_target: event.channel_target.clone(),
         allow_cron: false,
-        config_path: crate::core::runtime_config_path(),
-        system_prompt,
-        runtime_input,
-        context: AgentContext::new(transient_session_id),
+        system_prompt: bundle.system_prompt(),
+        runtime_input: bundle.compose_user_input(&build_scheduled_prompt(event)),
+        context: hone_core::agent::AgentContext::new(transient_session_id),
         timeout,
-        gemini_stream,
+        gemini_stream: timeout
+            .map(|duration| GeminiStreamOptions {
+                overall_timeout: duration,
+                per_line_timeout: std::time::Duration::from_secs(90),
+                ..GeminiStreamOptions::default()
+            })
+            .unwrap_or_default(),
         session_metadata: std::collections::HashMap::new(),
-        working_directory,
+        model_override: run_options.model_override.clone(),
+        runner_selection: ExecutionRunnerSelection::AuxiliaryFunctionCalling { max_iterations: 6 },
         allowed_tools: None,
         max_tool_calls: None,
-    };
+        prompt_audit: None,
+    })?;
     tracing::info!(
         "[HeartbeatDiag] run_start job_id={} job={} target={} runner={} model_override={} timeout_secs={}",
         event.job_id,
         event.job_name,
         event.channel_target,
-        runner_name,
+        execution.runner_name,
         run_options.model_override.as_deref().unwrap_or(""),
         timeout.map(|duration| duration.as_secs()).unwrap_or(0),
     );
-    let result = runner.run(request, Arc::new(NoopEmitter)).await;
+    let result = execution
+        .runner
+        .run(execution.runner_request, Arc::new(NoopEmitter))
+        .await;
     if result.response.success {
         tracing::info!(
             "[HeartbeatDiag] run_finish job_id={} job={} target={} runner={} success=true content_chars={}",
             event.job_id,
             event.job_name,
             event.channel_target,
-            runner_name,
+            execution.runner_name,
             result.response.content.chars().count(),
         );
         Ok(result.response.content)
@@ -417,7 +397,7 @@ async fn run_heartbeat_task(
             event.job_id,
             event.job_name,
             event.channel_target,
-            runner_name,
+            execution.runner_name,
             truncate_for_log(
                 result
                     .response
