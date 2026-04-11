@@ -15,7 +15,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::HoneBotCore;
-use crate::execution::{ExecutionMode, ExecutionRequest, ExecutionService};
+use crate::execution::{
+    ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
+};
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
@@ -1095,6 +1097,7 @@ impl AgentSession {
             gemini_stream: self.default_gemini_stream_options(options.timeout),
             session_metadata: self.load_session_metadata(&session_id),
             model_override: options.model_override.clone(),
+            runner_selection: ExecutionRunnerSelection::Configured,
             allowed_tools: None,
             max_tool_calls: None,
             prompt_audit: Some(PromptAuditMetadata {

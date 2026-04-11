@@ -11,6 +11,7 @@ use hone_channels::ingress::{
 };
 use hone_channels::outbound::run_session_with_outbound;
 use hone_channels::prompt::{DEFAULT_GROUP_PRIVACY_GUARD, PromptOptions};
+use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 use hone_core::SessionIdentity;
 use hone_tools::LoadSkillTool;
 use serenity::all::{
@@ -393,7 +394,7 @@ impl DiscordHandler {
             let content = if response.content.trim().is_empty() {
                 "收到。".to_string()
             } else {
-                response.content.trim().to_string()
+                render_think_blocks(response.content.trim(), ThinkRenderStyle::MarkdownQuote)
             };
             Ok(content)
         } else {

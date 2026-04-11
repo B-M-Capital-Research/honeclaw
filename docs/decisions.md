@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-04-08
+Last updated: 2026-04-11
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -90,3 +90,10 @@ Last updated: 2026-04-08
   - Scheduler heartbeat / transient task flows must not instantiate concrete runners directly
   - `AgentSession` stays focused on session semantics such as quota, slash skill handling, and transcript persistence
   - Session compaction and prompt audit are now explicit support services rather than ad hoc logic inside the main orchestrator
+
+## D-2026-04-09-01 Normalize Active Plans, Handoffs, and Archive Index
+
+- Status: Accepted
+- Decision: Keep `docs/current-plan.md` as an active-only index, require a concrete `docs/current-plans/*.md` file for every active tracked task, move completed plan pages into `docs/archive/plans/*.md`, and use `docs/archive/index.md` as the stable entry point for historical work. Standardize new plan / handoff / decision documents around the templates in `docs/templates/*.md`.
+- Impact: Agents can no longer leave active-task links dangling without backing files, and historical work no longer depends on `docs/current-plan.md` retaining a growing "recently completed" section. Future task closure should update the archive index and, when applicable, move the plan page into `docs/archive/plans/*.md`.
+- Note: Existing older documents may keep legacy formatting, but any touched or newly created task-tracking document should carry the minimal metadata and structure defined in `AGENTS.md`.

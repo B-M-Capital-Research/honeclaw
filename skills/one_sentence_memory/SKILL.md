@@ -1,6 +1,9 @@
 ---
 name: One-sentence Memory
 description: OWJY one-sentence memory skill that stores core facts as short memory fragments to improve long-term understanding of the user
+aliases:
+  - OWJY
+  - write to memory
 tools:
   - web_search
 ---

@@ -26,11 +26,11 @@ Last updated: 2026-04-08
   - `open-source-prep.md`: allowlist / denylist and cleanup checklist before copying to a public repo
 - `crates/`
   - `hone-core`: foundational capabilities such as the config façade / submodules, logging, errors, and agent context
-- `hone-llm`: model provider abstraction, OpenRouter integration, and generic OpenAI-compatible provider plumbing used by the desktop `multi-agent` search stage
+  - `hone-llm`: model provider abstraction, OpenRouter integration, and generic OpenAI-compatible provider plumbing used by the desktop `multi-agent` search stage
   - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, and a compatibility `load_skill` shim
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
-- `hone-channels`: channel runtime, `HoneBotCore`, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
+  - `hone-channels`: channel runtime, `HoneBotCore`, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
 - `agents/`
   - `function_calling`: function-calling agent core
   - `gemini_cli`, `codex_cli`: CLI agent adapters

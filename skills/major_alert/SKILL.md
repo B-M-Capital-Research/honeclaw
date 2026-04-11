@@ -1,6 +1,9 @@
 ---
 name: Major Alert
 description: OWALERT major-alert skill that checks for upcoming earnings or other major events and schedules reminders
+aliases:
+  - OWALERT
+  - event alert
 tools:
   - data_fetch
   - cron_job

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use hone_channels::outbound::{OutboundAdapter, split_segments};
+use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 use hone_core::ActorIdentity;
 use serenity::all::{
     ChannelId, CommandInteraction, CommandOptionType, CreateAllowedMentions, CreateCommand,
@@ -43,7 +44,8 @@ impl OutboundAdapter for DiscordOutboundAdapter {
     }
 
     async fn send_response(&self, placeholder: Option<&Self::Placeholder>, text: &str) -> usize {
-        let content = prepend_reply_prefix(self.reply_prefix.as_deref(), text);
+        let rendered = render_think_blocks(text, ThinkRenderStyle::MarkdownQuote);
+        let content = prepend_reply_prefix(self.reply_prefix.as_deref(), &rendered);
         let segments = split_segments(&content, self.max_len, 1900);
         let mut owned = placeholder.cloned();
         let (sent, _) = send_or_edit_segments(

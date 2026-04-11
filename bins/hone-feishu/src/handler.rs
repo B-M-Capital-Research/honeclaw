@@ -22,6 +22,7 @@ use hone_channels::ingress::{
 use hone_channels::outbound::attach_stream_activity_probe;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
+use hone_channels::think::{ThinkRenderStyle, ThinkStreamFormatter, render_think_blocks};
 use hone_core::{ActorIdentity, SessionIdentity};
 use hone_memory::cron_job::CronJobExecutionInput;
 use hone_scheduler::SchedulerEvent;
@@ -601,6 +602,9 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         buffer: content_buf.clone(),
         cardkit: cardkit_session.clone(),
         show_reasoning: true,
+        think_formatter: Arc::new(std::sync::RwLock::new(ThinkStreamFormatter::new(
+            ThinkRenderStyle::MarkdownQuote,
+        ))),
     }));
     let stream_probe = attach_stream_activity_probe(&mut session);
 
@@ -662,7 +666,8 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
 
     let response = result.response;
     let saw_stream_delta = stream_probe.saw_stream_delta();
-    let mut final_text = response.content.trim().to_string();
+    let mut final_text =
+        render_think_blocks(response.content.trim(), ThinkRenderStyle::MarkdownQuote);
     if final_text.is_empty() {
         final_text = content_buf.read().unwrap().trim().to_string();
     }

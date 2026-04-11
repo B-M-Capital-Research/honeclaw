@@ -8,7 +8,9 @@ use serde_json::Value;
 use crate::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSessionResult, GeminiStreamOptions,
 };
-use crate::execution::{ExecutionMode, ExecutionRequest, ExecutionService};
+use crate::execution::{
+    ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
+};
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
 use crate::{AgentSession, HoneBotCore};
@@ -361,6 +363,7 @@ async fn run_heartbeat_task(
             .unwrap_or_default(),
         session_metadata: std::collections::HashMap::new(),
         model_override: run_options.model_override.clone(),
+        runner_selection: ExecutionRunnerSelection::AuxiliaryFunctionCalling { max_iterations: 6 },
         allowed_tools: None,
         max_tool_calls: None,
         prompt_audit: None,

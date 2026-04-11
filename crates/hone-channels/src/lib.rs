@@ -17,6 +17,7 @@ pub mod runtime;
 pub(crate) mod sandbox;
 pub mod scheduler;
 pub(crate) mod session_compactor;
+pub mod think;
 
 pub use self::core::HoneBotCore;
 pub use self::core::load_runtime_config;

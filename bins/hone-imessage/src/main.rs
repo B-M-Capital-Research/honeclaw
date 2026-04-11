@@ -20,6 +20,9 @@ use hone_channels::ingress::{
 use hone_channels::outbound::{attach_stream_activity_probe, split_segments};
 use hone_channels::prompt::PromptOptions;
 use hone_channels::runtime::DEFAULT_MAX_SEGMENT_SIZE;
+use hone_channels::think::{
+    ThinkRenderStyle, ThinkStreamFormatter, append_compacted, render_think_blocks,
+};
 use hone_core::SessionIdentity;
 use rusqlite::{Connection, OpenFlags};
 use tracing::{error, info, warn};
@@ -216,7 +219,7 @@ impl AgentSessionListener for ImessageConsoleListener {
                         &self.handle,
                         "imessage_assistant_message",
                         serde_json::json!({
-                            "text": response.content,
+                            "text": render_think_blocks(&response.content, ThinkRenderStyle::PlainText),
                             "iterations": response.iterations
                         }),
                     );
@@ -233,6 +236,7 @@ struct ImessageStreamListener {
     session_id: String,
     buffer: tokio::sync::Mutex<String>,
     sent_segments: tokio::sync::Mutex<usize>,
+    think_formatter: tokio::sync::Mutex<ThinkStreamFormatter>,
 }
 
 impl ImessageStreamListener {
@@ -276,10 +280,14 @@ impl AgentSessionListener for ImessageStreamListener {
     async fn on_event(&self, event: AgentSessionEvent) {
         match event {
             AgentSessionEvent::StreamDelta { content } => {
+                let rendered = {
+                    let mut formatter = self.think_formatter.lock().await;
+                    formatter.push_chunk(&content)
+                };
                 let mut segments = Vec::new();
                 {
                     let mut guard = self.buffer.lock().await;
-                    guard.push_str(&content);
+                    append_compacted(&mut guard, &rendered);
                     while guard.chars().count() >= 100 {
                         let cut = char_boundary_at(&guard, 100);
                         let segment = guard[..cut].to_string();
@@ -300,6 +308,14 @@ impl AgentSessionListener for ImessageStreamListener {
                 }
             }
             AgentSessionEvent::Done { .. } => {
+                let trailing = {
+                    let mut formatter = self.think_formatter.lock().await;
+                    formatter.finish()
+                };
+                if !trailing.is_empty() {
+                    let mut guard = self.buffer.lock().await;
+                    append_compacted(&mut guard, &trailing);
+                }
                 self.flush_buffer(false).await;
                 let sent = *self.sent_segments.lock().await;
                 if sent > 0 {
@@ -691,6 +707,9 @@ async fn process_message_session(
         session_id: session_id.clone(),
         buffer: tokio::sync::Mutex::new(String::new()),
         sent_segments: tokio::sync::Mutex::new(0),
+        think_formatter: tokio::sync::Mutex::new(ThinkStreamFormatter::new(
+            ThinkRenderStyle::PlainText,
+        )),
     }));
     let stream_probe = attach_stream_activity_probe(&mut session);
 
@@ -726,7 +745,7 @@ async fn process_message_session(
         let full = if response.content.trim().is_empty() {
             "收到。".to_string()
         } else {
-            response.content.trim().to_string()
+            render_think_blocks(response.content.trim(), ThinkRenderStyle::PlainText)
         };
         let segments = split_segments(&full, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_MAX_SEGMENT_SIZE);
         let total_segments = segments.len();

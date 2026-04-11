@@ -60,6 +60,6 @@ Users can configure scheduled push tasks. Hone will execute them automatically a
 ### Major Event Linkage
 
 If a scheduled task is a daily pre-market or after-market briefing, and in the current context you discover that one of the user's holdings has earnings or a product launch within the next 3 days:
-- You must invoke `OWALERT` with `skill_tool(skill_name="OWALERT")` so the full skill prompt is injected for this turn
+- You must invoke `major_alert` with `skill_tool(skill_name="major_alert")` so the full skill prompt is injected for this turn
 - You must automatically add a one-time reminder task with `cron_job(action="add")` (for example, set `repeat="once"` for earnings day and use a short prompt such as "remind the user that Apple reports earnings after the close today")
 - In that day's message, tell the user that the reminder task has already been scheduled
