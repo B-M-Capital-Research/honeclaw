@@ -33,31 +33,13 @@ pub fn runtime_disable_auto_open() -> bool {
 }
 
 pub fn apply_runtime_config_overrides(config: &mut HoneConfig) {
-    if let Ok(path) = std::env::var("HONE_CONFIG_PATH") {
-        config
-            .extra
-            .insert("config_path".to_string(), serde_yaml::Value::String(path));
-    }
-
-    if let Ok(skills_dir) = std::env::var("HONE_SKILLS_DIR") {
-        config.extra.insert(
-            "skills_dir".to_string(),
-            serde_yaml::Value::String(skills_dir),
-        );
-    }
+    let config_path = std::env::var_os("HONE_CONFIG_PATH").map(PathBuf::from);
+    let skills_dir = std::env::var_os("HONE_SKILLS_DIR").map(PathBuf::from);
+    config.apply_runtime_overrides(None, skills_dir.as_deref(), config_path.as_deref());
 }
 
 pub fn ensure_runtime_dirs(config: &HoneConfig) {
-    let _ = std::fs::create_dir_all(&config.storage.sessions_dir);
-    let _ = std::fs::create_dir_all(&config.storage.portfolio_dir);
-    let _ = std::fs::create_dir_all(&config.storage.cron_jobs_dir);
-    let _ = std::fs::create_dir_all(&config.storage.reports_dir);
-    let _ = std::fs::create_dir_all(&config.storage.x_drafts_dir);
-    let _ = std::fs::create_dir_all(&config.storage.gen_images_dir);
-    let _ = std::fs::create_dir_all(&config.storage.kb_dir);
-    if let Some(parent) = PathBuf::from(&config.storage.llm_audit_db_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
+    config.ensure_runtime_dirs();
 }
 
 pub fn web_index_path() -> PathBuf {

@@ -441,14 +441,13 @@ fn get_max_rowid(db_path: &PathBuf) -> i64 {
 
 #[tokio::main]
 async fn main() {
-    let (config, config_path) = match hone_channels::load_runtime_config() {
-        Ok(value) => value,
-        Err(e) => {
-            eprintln!("❌ 配置加载失败: {e}");
-            std::process::exit(1);
-        }
-    };
-    let core = Arc::new(hone_channels::HoneBotCore::new(config));
+    let runtime = hone_channels::bootstrap_channel_runtime(
+        "imessage",
+        "iMessage Bot",
+        hone_core::PROCESS_LOCK_IMESSAGE,
+        |config| config.imessage.enabled,
+    );
+    let core = runtime.core;
     let app_state = Arc::new(ImessageAppState {
         core: core.clone(),
         dedup: MessageDeduplicator::new(
@@ -458,8 +457,6 @@ async fn main() {
         session_locks: SessionLockRegistry::new(),
         scope_resolver: ActorScopeResolver::new("imessage"),
     });
-
-    hone_core::logging::setup_logging(&core.config.logging);
 
     // 确保 gemini CLI 可被子进程找到（安装在 ~/local/node/bin）
     if let Some(home) = dirs_fallback() {
@@ -489,42 +486,6 @@ async fn main() {
             "未配置（压缩功能不可用）"
         }
     );
-    core.log_startup_routing("imessage", &config_path);
-
-    if !core.config.imessage.enabled {
-        warn!("imessage.enabled=false，iMessage Bot 不会启动。");
-        std::process::exit(hone_core::CHANNEL_DISABLED_EXIT_CODE);
-    }
-
-    let _process_lock = match hone_core::acquire_runtime_process_lock(
-        &core.config,
-        hone_core::PROCESS_LOCK_IMESSAGE,
-    ) {
-        Ok(lock) => lock,
-        Err(error) => {
-            error!(
-                "{}",
-                hone_core::format_lock_failure_message(
-                    hone_core::PROCESS_LOCK_IMESSAGE,
-                    &hone_core::process_lock_path(
-                        &hone_core::runtime_heartbeat_dir(&core.config),
-                        hone_core::PROCESS_LOCK_IMESSAGE
-                    ),
-                    &error,
-                    "iMessage"
-                )
-            );
-            std::process::exit(1);
-        }
-    };
-
-    let _heartbeat = match hone_core::spawn_process_heartbeat(&core.config, "imessage") {
-        Ok(heartbeat) => heartbeat,
-        Err(err) => {
-            error!("无法启动 iMessage heartbeat: {err}");
-            std::process::exit(1);
-        }
-    };
 
     let imessage_cfg = &core.config.imessage;
     let db_path = expand_tilde(&imessage_cfg.db_path);

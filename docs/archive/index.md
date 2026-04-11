@@ -1,8 +1,22 @@
 # Archive Index
 
-Last updated: 2026-04-09
+Last updated: 2026-04-11
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
+
+## 2026-04-11
+
+### 大文件物理拆分重构
+
+- Status: done
+- Date: 2026-04-11
+- Plan: `docs/archive/plans/large-files-refactor.md`
+- Handoff: `docs/handoffs/2026-04-11-architecture-tightening-round1.md`
+- Decision / ADR: `docs/decisions.md`
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo check --workspace --all-targets --exclude hone-desktop`, `cargo test --workspace --all-targets --exclude hone-desktop`, `bun run test:web`, `bash tests/regression/run_ci.sh`
+- Current conclusion: runtime override和渠道启动已收口到共享层；desktop sidecar、Feishu / Telegram 渠道热点与前端 settings 纯状态逻辑已按职责拆开，验证矩阵已跑通
+- Next entry point: `docs/handoffs/2026-04-11-architecture-tightening-round1.md`
 
 ## 2026-03-31
 

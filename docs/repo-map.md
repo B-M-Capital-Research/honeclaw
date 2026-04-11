@@ -30,7 +30,7 @@ Last updated: 2026-04-11
   - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, the `skill_registry` enabled/disabled override layer, and a compatibility `load_skill` shim
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
-  - `hone-channels`: channel runtime, `HoneBotCore`, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
+  - `hone-channels`: channel runtime, `HoneBotCore`, shared channel startup bootstrap, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
 - `agents/`
   - `function_calling`: function-calling agent core
   - `gemini_cli`, `codex_cli`: CLI agent adapters
@@ -46,8 +46,8 @@ Last updated: 2026-04-11
   - `hone-console-page`: Web console backend, static asset hosting, and API
   - `hone-cli`: local REPL
   - `hone-mcp`: local stdio MCP server that exposes Hone built-in tools to ACP runners
-  - `hone-imessage`, `hone-telegram`, `hone-discord`, `hone-feishu`: channel entrypoints, with Feishu / Telegram now split into thin `main.rs` façades plus sibling modules
-- `hone-desktop`: Tauri desktop host with a thin `main.rs` façade, command handlers in `commands.rs`, backend / sidecar lifecycle in `sidecar.rs`, tray extension points in `tray.rs`, and the desktop window packaging flow
+  - `hone-imessage`, `hone-telegram`, `hone-discord`, `hone-feishu`: channel entrypoints, with shared startup in `hone-channels::bootstrap` and per-channel sibling modules for scheduler / outbound / handlers where the protocol layer needs local ownership
+- `hone-desktop`: Tauri desktop host with a thin `main.rs` façade, command handlers in `commands.rs`, backend / sidecar lifecycle in `sidecar.rs`, sidecar concern modules in `sidecar/{processes,runtime_env,settings}.rs`, tray extension points in `tray.rs`, and the desktop window packaging flow
 - `config.yaml` / `data/runtime/`
   - `config.yaml` is the read-only seed template and source of default comments / values
   - `data/runtime/config_runtime.yaml` is the effective runtime base created on first startup
@@ -70,12 +70,14 @@ Last updated: 2026-04-11
 - Web console frontend: `packages/app/src/app.tsx`
 - CLI: `bins/hone-cli/src/main.rs`
 - Channel runtime export: `crates/hone-channels/src/lib.rs`
+- Shared channel bootstrap: `crates/hone-channels/src/bootstrap.rs`
 - `AgentSession` abstraction: `crates/hone-channels/src/agent_session.rs`
   - Owns turn-0 skill listing disclosure, related-skill hints, slash-skill expansion, and invoked-skill restoration after compaction
 - Shared execution preparation: `crates/hone-channels/src/execution.rs`
   - Centralizes prompt-audit write, tool registry creation, runner creation, and actor-sandbox-backed `AgentRunnerRequest` assembly for both session and transient task flows
 - Shared ingress model: `crates/hone-channels/src/ingress.rs`
 - Shared outbound model: `crates/hone-channels/src/outbound.rs`
+- Runtime config override source of truth: `crates/hone-core/src/{config.rs,config/server.rs}`
 - ACP MCP bridge: `crates/hone-channels/src/mcp_bridge.rs`
 - Actor sandbox: `crates/hone-channels/src/sandbox.rs`
 - Attachment ingest / KB pipeline: `crates/hone-channels/src/attachments.rs` and `crates/hone-channels/src/attachments/{ingest,vision,vector_store}.rs`
@@ -91,6 +93,10 @@ Last updated: 2026-04-11
 - Prompt audit writer: `crates/hone-channels/src/prompt_audit.rs`
 - Tool registry entry point: `crates/hone-tools/src/lib.rs`
 - Skill runtime source of truth: `crates/hone-tools/src/skill_runtime.rs`
+- Desktop sidecar helpers: `bins/hone-desktop/src/sidecar/{processes,runtime_env,settings}.rs`
+- Feishu channel split: `bins/hone-feishu/src/{handler.rs,scheduler.rs,outbound.rs}`
+- Telegram scheduler split: `bins/hone-telegram/src/scheduler.rs`
+- Settings page pure state helpers: `packages/app/src/pages/settings-model.ts`
 - Config sample: `config.example.yaml`
 
 ## Main Flow
@@ -119,6 +125,7 @@ Last updated: 2026-04-11
 
 - The Tauri host lives in `bins/hone-desktop/`
 - `bins/hone-desktop/src/{main.rs,commands.rs,sidecar.rs,tray.rs}` now separates the builder façade, Tauri command handlers, backend lifecycle, and tray extension point
+- `bins/hone-desktop/src/sidecar/{processes,runtime_env,settings}.rs` keeps process supervision, runtime environment/path wiring, and persisted desktop settings / overlay writes out of the main Tauri command surface
 - Desktop sidecars are prepared by `scripts/prepare_tauri_sidecar.mjs`, which detects the target triple, builds the supported channel bins plus `hone-mcp`, resolves/bundles macOS `opencode`, copies them into `bins/hone-desktop/binaries/`, and writes `bins/hone-desktop/tauri.generated.conf.json` for `bunx tauri dev/build`
 - The same script also supports target-override / skip-build self-checks, so macOS packaging expectations can be verified by regenerating config for `*-apple-darwin` without requiring a full build
 - Root `make_dmg_release.sh` is the macOS release entrypoint: it prepares bundled binaries for `aarch64-apple-darwin` and `x86_64-apple-darwin`, runs `tauri build --target`, and collects DMGs into `dist/dmg/`
@@ -143,6 +150,7 @@ Last updated: 2026-04-11
 
 - Route entrypoint: `packages/app/src/app.tsx`
 - Pages: `packages/app/src/pages/`
+- Settings page state helpers: `packages/app/src/pages/settings-model.ts`
 - Domain state: `packages/app/src/context/`
 - Composite components: `packages/app/src/components/`
 - API access and data transformation: `packages/app/src/lib/`
@@ -163,10 +171,13 @@ Last updated: 2026-04-11
   - If the backend API is insufficient, add the Web bin API
 - Adjusting desktop backend switching or sidecar lifecycle:
   - Change `bins/hone-desktop/src/{main.rs,commands.rs,sidecar.rs,tray.rs}`
+  - If the change is process supervision, runtime env, or persisted overlay wiring, start with `bins/hone-desktop/src/sidecar/{processes,runtime_env,settings}.rs`
   - Change `packages/app/src/context/backend.tsx` and / or `packages/app/src/lib/backend.ts`
   - Update `bins/hone-console-page/src/main.rs` and the runtime config loading for the channel bins if needed
 - Adding channel behavior:
   - Change the matching `bins/*`
+  - If the change is startup / enable checks / heartbeat / process lock wiring, start with `crates/hone-channels/src/bootstrap.rs`
+  - Feishu scheduled delivery and outbound rendering now live in `bins/hone-feishu/src/{scheduler.rs,outbound.rs}`; Telegram scheduled delivery lives in `bins/hone-telegram/src/scheduler.rs`
   - Update `hone-channels`, `hone-core`, or `memory` if needed
   - If the change touches incoming envelopes, dedup, actor scope, placeholder / streaming delivery, or attachment persistence, start with `crates/hone-channels/src/ingress.rs`, `crates/hone-channels/src/outbound.rs`, and `crates/hone-channels/src/attachments/{ingest,vision,vector_store}.rs`
 - Adjusting persistence structure:

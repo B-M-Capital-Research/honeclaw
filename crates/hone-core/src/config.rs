@@ -97,6 +97,33 @@ impl HoneConfig {
         validate_channel_chat_scope("discord", self.discord.chat_scope)?;
         Ok(())
     }
+
+    pub fn apply_runtime_overrides(
+        &mut self,
+        data_dir: Option<&Path>,
+        skills_dir: Option<&Path>,
+        config_path: Option<&Path>,
+    ) {
+        if let Some(data_dir) = data_dir {
+            self.storage.apply_data_root(data_dir);
+        }
+        if let Some(skills_dir) = skills_dir {
+            self.extra.insert(
+                "skills_dir".to_string(),
+                serde_yaml::Value::String(skills_dir.to_string_lossy().to_string()),
+            );
+        }
+        if let Some(config_path) = config_path {
+            self.extra.insert(
+                "config_path".to_string(),
+                serde_yaml::Value::String(config_path.to_string_lossy().to_string()),
+            );
+        }
+    }
+
+    pub fn ensure_runtime_dirs(&self) {
+        self.storage.ensure_runtime_dirs();
+    }
 }
 
 /// 计算与给定配置文件同目录的覆盖层路径。

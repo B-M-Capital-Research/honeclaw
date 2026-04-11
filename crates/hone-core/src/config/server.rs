@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebConfig {
@@ -233,6 +234,42 @@ pub struct StorageConfig {
     pub gen_images_dir: String,
     #[serde(default = "default_kb_dir")]
     pub kb_dir: String,
+}
+
+impl StorageConfig {
+    pub fn apply_data_root(&mut self, root: impl AsRef<Path>) {
+        let root = root.as_ref();
+        self.sessions_dir = root.join("sessions").to_string_lossy().to_string();
+        self.session_sqlite_db_path = root.join("sessions.sqlite3").to_string_lossy().to_string();
+        self.conversation_quota_dir = root
+            .join("conversation_quota")
+            .to_string_lossy()
+            .to_string();
+        self.llm_audit_db_path = root.join("llm_audit.sqlite3").to_string_lossy().to_string();
+        self.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
+        self.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
+        self.reports_dir = root.join("reports").to_string_lossy().to_string();
+        self.x_drafts_dir = root.join("x_drafts").to_string_lossy().to_string();
+        self.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
+        self.kb_dir = root.join("kb").to_string_lossy().to_string();
+    }
+
+    pub fn ensure_runtime_dirs(&self) {
+        let _ = std::fs::create_dir_all(&self.sessions_dir);
+        let _ = std::fs::create_dir_all(&self.portfolio_dir);
+        let _ = std::fs::create_dir_all(&self.cron_jobs_dir);
+        let _ = std::fs::create_dir_all(&self.reports_dir);
+        let _ = std::fs::create_dir_all(&self.x_drafts_dir);
+        let _ = std::fs::create_dir_all(&self.gen_images_dir);
+        let _ = std::fs::create_dir_all(&self.kb_dir);
+        let _ = std::fs::create_dir_all(&self.conversation_quota_dir);
+        if let Some(parent) = PathBuf::from(&self.llm_audit_db_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Some(parent) = PathBuf::from(&self.session_sqlite_db_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
 }
 
 fn default_sessions_dir() -> String {

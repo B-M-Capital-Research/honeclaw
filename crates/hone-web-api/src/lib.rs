@@ -79,35 +79,8 @@ pub async fn start_server(
 ) -> Result<(Arc<InnerAppState>, u16), String> {
     let mut config =
         HoneConfig::from_file(config_path).map_err(|e| format!("配置加载失败: {e}"))?;
-
-    // 覆盖存储路径（当 Tauri 运行时路径与 config.yaml 中相对路径不同时）
-    if let Some(data) = data_dir {
-        let base = data.to_string_lossy();
-        config.storage.sessions_dir = data.join("sessions").to_string_lossy().to_string();
-        config.storage.session_sqlite_db_path =
-            data.join("sessions.sqlite3").to_string_lossy().to_string();
-        config.storage.conversation_quota_dir = data
-            .join("conversation_quota")
-            .to_string_lossy()
-            .to_string();
-        config.storage.portfolio_dir = data.join("portfolio").to_string_lossy().to_string();
-        config.storage.cron_jobs_dir = data.join("cron_jobs").to_string_lossy().to_string();
-        config.storage.reports_dir = data.join("reports").to_string_lossy().to_string();
-        config.storage.x_drafts_dir = data.join("x_drafts").to_string_lossy().to_string();
-        config.storage.gen_images_dir = data.join("gen_images").to_string_lossy().to_string();
-        config.storage.kb_dir = data.join("kb").to_string_lossy().to_string();
-        config.storage.llm_audit_db_path =
-            data.join("llm_audit.sqlite3").to_string_lossy().to_string();
-        let _ = base; // suppress unused warning
-    }
-    if let Some(sd) = skills_dir {
-        config.extra.insert(
-            "skills_dir".to_string(),
-            serde_yaml::Value::String(sd.to_string_lossy().to_string()),
-        );
-    }
-
-    runtime::ensure_runtime_dirs(&config);
+    config.apply_runtime_overrides(data_dir, skills_dir, Some(Path::new(config_path)));
+    config.ensure_runtime_dirs();
 
     let core = Arc::new(hone_channels::HoneBotCore::new(config));
 

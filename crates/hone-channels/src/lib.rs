@@ -4,6 +4,7 @@
 
 pub mod agent_session;
 pub mod attachments;
+pub mod bootstrap;
 pub mod core;
 pub(crate) mod execution;
 pub mod ingress;
@@ -21,6 +22,7 @@ pub mod think;
 
 pub use self::core::HoneBotCore;
 pub use self::core::load_runtime_config;
+pub use bootstrap::{ChannelRuntimeBootstrap, bootstrap_channel_runtime};
 pub use self::sandbox::channel_download_dir;
 pub use agent_session::{
     AgentRunOptions, AgentSession, AgentSessionError, AgentSessionErrorKind, AgentSessionEvent,

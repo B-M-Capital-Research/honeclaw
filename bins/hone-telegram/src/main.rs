@@ -5,6 +5,7 @@
 mod handler;
 mod listener;
 mod markdown_v2;
+mod scheduler;
 mod types;
 
 #[tokio::main]

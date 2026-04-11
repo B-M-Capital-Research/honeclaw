@@ -21,28 +21,24 @@ use hone_channels::ingress::{
 };
 use hone_channels::outbound::attach_stream_activity_probe;
 use hone_channels::prompt::PromptOptions;
-use hone_channels::scheduler;
 use hone_channels::think::{ThinkRenderStyle, ThinkStreamFormatter, render_think_blocks};
 use hone_core::{ActorIdentity, SessionIdentity};
-use hone_memory::cron_job::CronJobExecutionInput;
-use hone_scheduler::SchedulerEvent;
 use serde_json::{Value, json};
 use tracing::{error, info, warn};
 
+use super::outbound::{
+    feishu_user_mention, prepend_reply_prefix, send_placeholder_message, send_plain_text,
+    send_rendered_messages, update_or_send_plain_text,
+};
+use super::scheduler::handle_scheduler_events;
 use super::card::CardKitSession;
 use super::client::FeishuApiClient;
 use super::listener::FeishuStreamListener;
-use super::markdown::{preprocess_markdown_for_feishu, render_outbound_messages};
+use super::markdown::preprocess_markdown_for_feishu;
 use super::types::{AppState, FeishuEventHandler, FeishuIncomingAttachment, FeishuIncomingMessage};
 
 const THINKING_PLACEHOLDER_TEXT: &str = "正在思考中...";
 const FEISHU_GROUP_PRIVACY_GUARD: &str = "【群聊隐私约束】\n1. 禁止在群聊索取或引导补全持仓明细（股数、成本、成交价、交易单等）。\n2. 禁止在群聊查询或确认用户个人持仓；用户问“我现在持有哪些”时，直接提示转私聊处理。\n3. 只提供通用信息与私聊引导，不给出任何个人资产判断或推断。";
-
-#[derive(Clone)]
-struct SendIdempotency {
-    dedup_key: String,
-    uuid_seed: String,
-}
 
 fn feishu_speaker_label(open_id: &str, email: Option<&str>, mobile: Option<&str>) -> String {
     email
@@ -94,52 +90,13 @@ pub(crate) async fn run() {
         .install_default()
         .ok();
 
-    let (config, config_path) = match hone_channels::load_runtime_config() {
-        Ok(value) => value,
-        Err(e) => {
-            eprintln!("❌ 配置加载失败: {e}");
-            std::process::exit(1);
-        }
-    };
-    let core = hone_channels::HoneBotCore::new(config);
-
-    hone_core::logging::setup_logging(&core.config.logging);
-    info!("📨 Hone Feishu 渠道启动");
-    core.log_startup_routing("feishu", &config_path);
-
-    if !core.config.feishu.enabled {
-        warn!("feishu.enabled=false，Feishu 渠道不会启动。");
-        std::process::exit(hone_core::CHANNEL_DISABLED_EXIT_CODE);
-    }
-
-    let _process_lock =
-        match hone_core::acquire_runtime_process_lock(&core.config, hone_core::PROCESS_LOCK_FEISHU)
-        {
-            Ok(lock) => lock,
-            Err(error) => {
-                error!(
-                    "{}",
-                    hone_core::format_lock_failure_message(
-                        hone_core::PROCESS_LOCK_FEISHU,
-                        &hone_core::process_lock_path(
-                            &hone_core::runtime_heartbeat_dir(&core.config),
-                            hone_core::PROCESS_LOCK_FEISHU
-                        ),
-                        &error,
-                        "Feishu"
-                    )
-                );
-                std::process::exit(1);
-            }
-        };
-
-    let _heartbeat = match hone_core::spawn_process_heartbeat(&core.config, "feishu") {
-        Ok(heartbeat) => heartbeat,
-        Err(err) => {
-            error!("无法启动 Feishu heartbeat: {err}");
-            std::process::exit(1);
-        }
-    };
+    let runtime = hone_channels::bootstrap_channel_runtime(
+        "feishu",
+        "Feishu 渠道",
+        hone_core::PROCESS_LOCK_FEISHU,
+        |config| config.feishu.enabled,
+    );
+    let core = runtime.core;
 
     let app_id = core.config.feishu.app_id.trim().to_string();
     let app_secret = core.config.feishu.app_secret.trim().to_string();
@@ -149,7 +106,6 @@ pub(crate) async fn run() {
         std::process::exit(1);
     }
 
-    let core = Arc::new(core);
     let facade = FeishuApiClient::new(app_id.clone(), app_secret.clone());
 
     let state = Arc::new(AppState {
@@ -760,240 +716,6 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     }
 }
 
-async fn handle_scheduler_events(
-    state: Arc<AppState>,
-    mut event_rx: tokio::sync::mpsc::Receiver<SchedulerEvent>,
-) {
-    info!("⏰ 调度事件处理器已启动（渠道: feishu）");
-    while let Some(event) = event_rx.recv().await {
-        if event.channel != "feishu" {
-            continue;
-        }
-
-        let state_clone = state.clone();
-        tokio::spawn(async move {
-            let storage = state_clone.core.cron_job_storage();
-            let result = run_scheduled_task(&state_clone, &event).await;
-            if !result.should_deliver {
-                info!(
-                    "[Feishu] 心跳任务未命中，本轮不发送: job={} target={}",
-                    event.job_name, event.channel_target
-                );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "noop".to_string()
-                        },
-                        message_send_status: if result.error.is_some() {
-                            "skipped_error".to_string()
-                        } else {
-                            "skipped_noop".to_string()
-                        },
-                        should_deliver: false,
-                        delivered: false,
-                        response_preview: None,
-                        error_message: result.error.clone(),
-                        detail: result.metadata.clone(),
-                    },
-                );
-                return;
-            }
-            let response = result
-                .error
-                .clone()
-                .unwrap_or_else(|| result.content.clone());
-            let receive_id =
-                match resolve_receive_id(&state_clone.facade, &event.channel_target).await {
-                    Ok(id) => id,
-                    Err(err) => {
-                        error!(
-                            "[Feishu] 定时任务目标解析失败: job={} target={} err={}",
-                            event.job_name, event.channel_target, err
-                        );
-                        let _ = storage.record_execution_event(
-                            &event.actor,
-                            &event.job_id,
-                            &event.job_name,
-                            &event.channel_target,
-                            event.heartbeat,
-                            CronJobExecutionInput {
-                                execution_status: if result.error.is_some() {
-                                    "execution_failed".to_string()
-                                } else {
-                                    "completed".to_string()
-                                },
-                                message_send_status: "target_resolution_failed".to_string(),
-                                should_deliver: true,
-                                delivered: false,
-                                response_preview: Some(response.clone()),
-                                error_message: Some(err.to_string()),
-                                detail: result.metadata.clone(),
-                            },
-                        );
-                        return;
-                    }
-                };
-            if let Err(err) =
-                validate_scheduler_receive_id(&event.actor, &event.channel_target, &receive_id)
-            {
-                error!(
-                    "[Feishu] 定时任务目标校验失败: job={} target={} receive_id={} err={}",
-                    event.job_name, event.channel_target, receive_id, err
-                );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "completed".to_string()
-                        },
-                        message_send_status: "target_resolution_failed".to_string(),
-                        should_deliver: true,
-                        delivered: false,
-                        response_preview: Some(response.clone()),
-                        error_message: Some(err.to_string()),
-                        detail: result.metadata.clone(),
-                    },
-                );
-                return;
-            }
-            let idempotency = scheduled_send_idempotency(&event, &receive_id, &response, "open_id");
-            if state_clone
-                .scheduled_dedup
-                .is_duplicate(&idempotency.dedup_key)
-            {
-                warn!(
-                    "[Feishu] 已拦截重复定时任务投递: job={} delivery_key={} target={}",
-                    event.job_name, event.delivery_key, receive_id
-                );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "completed".to_string()
-                        },
-                        message_send_status: "duplicate_suppressed".to_string(),
-                        should_deliver: true,
-                        delivered: false,
-                        response_preview: Some(response.clone()),
-                        error_message: result.error.clone(),
-                        detail: json!({
-                            "receive_id": receive_id,
-                            "delivery_key": event.delivery_key,
-                            "scheduler": result.metadata,
-                        }),
-                    },
-                );
-                return;
-            }
-
-            if let Err(err) = send_rendered_messages(
-                &state_clone.facade,
-                &receive_id,
-                "open_id",
-                &response,
-                state_clone.core.config.feishu.max_message_length,
-                None,
-                Some(&idempotency.uuid_seed),
-            )
-            .await
-            {
-                error!(
-                    "[Feishu] 定时任务投递失败: job={} target={} err={}",
-                    event.job_name, event.channel_target, err
-                );
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "completed".to_string()
-                        },
-                        message_send_status: "send_failed".to_string(),
-                        should_deliver: true,
-                        delivered: false,
-                        response_preview: Some(response.clone()),
-                        error_message: Some(err.to_string()),
-                        detail: json!({
-                            "receive_id": receive_id,
-                            "delivery_key": event.delivery_key,
-                            "scheduler": result.metadata,
-                        }),
-                    },
-                );
-            } else {
-                let _ = storage.record_execution_event(
-                    &event.actor,
-                    &event.job_id,
-                    &event.job_name,
-                    &event.channel_target,
-                    event.heartbeat,
-                    CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
-                            "execution_failed".to_string()
-                        } else {
-                            "completed".to_string()
-                        },
-                        message_send_status: "sent".to_string(),
-                        should_deliver: true,
-                        delivered: true,
-                        response_preview: Some(response),
-                        error_message: result.error.clone(),
-                        detail: json!({
-                            "receive_id": receive_id,
-                            "delivery_key": event.delivery_key,
-                            "scheduler": result.metadata,
-                        }),
-                    },
-                );
-            }
-        });
-    }
-}
-
-async fn run_scheduled_task(
-    state: &Arc<AppState>,
-    event: &SchedulerEvent,
-) -> scheduler::ScheduledTaskExecution {
-    let actor = &event.actor;
-    let is_admin = state.core.is_admin_actor(actor);
-    let prompt_options = PromptOptions {
-        is_admin,
-        ..PromptOptions::default()
-    };
-    let timeout_secs = state.core.config.llm.openrouter.timeout.max(180);
-    let run_options = AgentRunOptions {
-        timeout: Some(Duration::from_secs(timeout_secs)),
-        segmenter: None,
-        quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
-        model_override: None,
-    };
-    scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options).await
-}
-
 fn preferred_extension_for_content_type(content_type: &str) -> Option<&'static str> {
     match content_type.to_lowercase().split(';').next()?.trim() {
         "image/jpeg" => Some(".jpg"),
@@ -1369,7 +1091,7 @@ fn normalize_mobile(raw: &str) -> String {
         .collect()
 }
 
-async fn resolve_receive_id(
+pub(crate) async fn resolve_receive_id(
     facade: &FeishuApiClient,
     channel_target: &str,
 ) -> hone_core::HoneResult<String> {
@@ -1396,7 +1118,7 @@ fn looks_like_mobile(target: &str) -> bool {
     !normalized.is_empty() && normalized.chars().filter(|ch| ch.is_ascii_digit()).count() >= 7
 }
 
-fn validate_scheduler_receive_id(
+pub(crate) fn validate_scheduler_receive_id(
     actor: &ActorIdentity,
     channel_target: &str,
     receive_id: &str,
@@ -1412,95 +1134,6 @@ fn validate_scheduler_receive_id(
         )));
     }
     Ok(())
-}
-
-async fn send_plain_text(
-    facade: &FeishuApiClient,
-    receive_id: &str,
-    receive_id_type: &str,
-    text: &str,
-) -> hone_core::HoneResult<usize> {
-    if receive_id_type == "chat_id" {
-        facade
-            .send_chat_message(
-                receive_id,
-                "text",
-                &json!({ "text": text }).to_string(),
-                None,
-            )
-            .await
-            .map_err(hone_core::HoneError::Integration)?;
-    } else {
-        facade
-            .send_message(
-                receive_id,
-                "text",
-                &json!({ "text": text }).to_string(),
-                None,
-            )
-            .await
-            .map_err(hone_core::HoneError::Integration)?;
-    }
-    Ok(1)
-}
-
-fn feishu_user_mention(open_id: &str) -> String {
-    format!("<at id=\"{open_id}\"></at>")
-}
-
-fn prepend_reply_prefix(prefix: Option<&str>, text: &str) -> String {
-    let Some(prefix) = prefix.map(str::trim).filter(|value| !value.is_empty()) else {
-        return text.to_string();
-    };
-
-    let body = text.trim_start();
-    if body.starts_with(prefix) {
-        text.to_string()
-    } else if body.is_empty() {
-        prefix.to_string()
-    } else {
-        format!("{prefix} {body}")
-    }
-}
-
-async fn send_placeholder_message(
-    facade: &FeishuApiClient,
-    receive_id: &str,
-    receive_id_type: &str,
-    text: &str,
-) -> hone_core::HoneResult<(String, Option<String>)> {
-    let request_uuid = uuid::Uuid::new_v4().to_string();
-    let card_content = json!({
-        "schema": "2.0",
-        "config": {"wide_screen_mode": true},
-        "body": {
-            "elements": [
-                {"tag": "markdown", "content": text, "text_size": "heading"}
-            ]
-        }
-    })
-    .to_string();
-    let result = if receive_id_type == "chat_id" {
-        facade
-            .send_chat_message(
-                receive_id,
-                "interactive",
-                &card_content,
-                Some(&request_uuid),
-            )
-            .await
-    } else {
-        facade
-            .send_message(
-                receive_id,
-                "interactive",
-                &card_content,
-                Some(&request_uuid),
-            )
-            .await
-    }
-    .map_err(hone_core::HoneError::Integration)?;
-    Ok((result.message_id, None))
 }
 
 fn collect_raw_attachments(msg: &FeishuIncomingMessage) -> Vec<RawAttachment> {
@@ -1522,210 +1155,6 @@ fn collect_raw_attachments(msg: &FeishuIncomingMessage) -> Vec<RawAttachment> {
         });
     }
     out
-}
-
-async fn update_or_send_plain_text(
-    facade: &FeishuApiClient,
-    receive_id: &str,
-    receive_id_type: &str,
-    placeholder_message_id: Option<&str>,
-    text: &str,
-) -> hone_core::HoneResult<usize> {
-    if let Some(message_id) = placeholder_message_id {
-        let processed = preprocess_markdown_for_feishu(text, true);
-        let card_content = json!({
-            "schema": "2.0",
-            "config": {"wide_screen_mode": true},
-            "body": {
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": processed,
-                        "text_size": "heading"
-                    }
-                ]
-            }
-        })
-        .to_string();
-        facade
-            .update_message(message_id, "interactive", &card_content)
-            .await
-            .map_err(hone_core::HoneError::Integration)?;
-        return Ok(1);
-    }
-
-    if receive_id_type == "chat_id" {
-        facade
-            .send_chat_message(
-                receive_id,
-                "text",
-                &json!({ "text": text }).to_string(),
-                None,
-            )
-            .await
-            .map_err(hone_core::HoneError::Integration)?;
-        Ok(1)
-    } else {
-        send_plain_text(facade, receive_id, receive_id_type, text).await
-    }
-}
-
-async fn send_rendered_messages(
-    facade: &FeishuApiClient,
-    receive_id: &str,
-    receive_id_type: &str,
-    markdown: &str,
-    max_message_length: usize,
-    placeholder_message_id: Option<&str>,
-    uuid_seed: Option<&str>,
-) -> hone_core::HoneResult<usize> {
-    let messages = render_outbound_messages(markdown, max_message_length);
-    if messages.is_empty() {
-        return Ok(0);
-    }
-
-    let total = messages.len();
-    let mut previous_message_id = None;
-    for (index, message) in messages.into_iter().enumerate() {
-        if index == 0 {
-            if let Some(message_id) = placeholder_message_id {
-                let card_content = if message.msg_type == "interactive" {
-                    message.content.clone()
-                } else if message.msg_type == "post" {
-                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&message.content)
-                    {
-                        if let Some(zh_cn) = parsed.get("zh_cn") {
-                            let mut text_lines = Vec::new();
-                            if let Some(title) = zh_cn.get("title").and_then(|t| t.as_str()) {
-                                if !title.is_empty() {
-                                    text_lines.push(format!("**{}**", title));
-                                }
-                            }
-                            if let Some(content) = zh_cn.get("content").and_then(|c| c.as_array()) {
-                                for row in content {
-                                    if let Some(elements) = row.as_array() {
-                                        let mut line_text = String::new();
-                                        for el in elements {
-                                            if let Some(text) =
-                                                el.get("text").and_then(|t| t.as_str())
-                                            {
-                                                line_text.push_str(text);
-                                            }
-                                        }
-                                        text_lines.push(line_text);
-                                    }
-                                }
-                            }
-                            json!({
-                                "schema": "2.0",
-                                "config": {"wide_screen_mode": true},
-                                "body": {
-                                    "elements": [
-                                        {
-                                            "tag": "markdown",
-                                            "content": preprocess_markdown_for_feishu(&text_lines.join("\n"), true),
-                                            "text_size": "heading"
-                                        }
-                                    ]
-                                }
-                            })
-                            .to_string()
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-                } else {
-                    continue;
-                };
-
-                facade
-                    .update_message(message_id, "interactive", &card_content)
-                    .await
-                    .map_err(hone_core::HoneError::Integration)?;
-                previous_message_id = Some(message_id.to_string());
-                continue;
-            }
-        }
-
-        let request_uuid =
-            stable_message_uuid(uuid_seed, index, message.msg_type, &message.content);
-        let sent = if let Some(parent_id) = previous_message_id.as_deref() {
-            facade
-                .reply_message(
-                    parent_id,
-                    message.msg_type,
-                    &message.content,
-                    Some(&request_uuid),
-                )
-                .await
-        } else if receive_id_type == "chat_id" {
-            facade
-                .send_chat_message(
-                    receive_id,
-                    message.msg_type,
-                    &message.content,
-                    Some(&request_uuid),
-                )
-                .await
-        } else {
-            facade
-                .send_message(
-                    receive_id,
-                    message.msg_type,
-                    &message.content,
-                    Some(&request_uuid),
-                )
-                .await
-        }
-        .map_err(hone_core::HoneError::Integration)?;
-        previous_message_id = Some(sent.message_id);
-    }
-    Ok(total)
-}
-
-fn scheduled_send_idempotency(
-    event: &SchedulerEvent,
-    receive_id: &str,
-    markdown: &str,
-    receive_id_type: &str,
-) -> SendIdempotency {
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    markdown.hash(&mut hasher);
-    let content_hash = hasher.finish();
-    let dedup_key = format!(
-        "scheduled:{}:{}:{}:{}:{content_hash}",
-        event.delivery_key, event.job_id, receive_id_type, receive_id
-    );
-    let uuid_seed = format!(
-        "{}:{}:{}:{}:{content_hash}",
-        event.delivery_key, event.job_id, receive_id_type, receive_id
-    );
-    SendIdempotency {
-        dedup_key,
-        uuid_seed,
-    }
-}
-
-fn stable_message_uuid(
-    uuid_seed: Option<&str>,
-    index: usize,
-    msg_type: &str,
-    content: &str,
-) -> String {
-    if let Some(seed) = uuid_seed {
-        use std::hash::{Hash, Hasher};
-
-        let composed = format!("{seed}:{index}:{msg_type}:{content}");
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        composed.hash(&mut hasher);
-        format!("sched_{:016x}", hasher.finish())
-    } else {
-        uuid::Uuid::new_v4().to_string()
-    }
 }
 
 #[cfg(test)]
@@ -1816,14 +1245,5 @@ mod tests {
     fn scheduler_delivery_allows_group_tasks_even_if_receive_id_differs() {
         let actor = ActorIdentity::new("feishu", "ou_creator", Some("chat:42")).expect("actor");
         assert!(validate_scheduler_receive_id(&actor, "alice@example.com", "ou_other").is_ok());
-    }
-
-    #[test]
-    fn stable_message_uuid_is_deterministic_for_seeded_messages() {
-        let first = stable_message_uuid(Some("delivery-1"), 0, "interactive", "hello");
-        let second = stable_message_uuid(Some("delivery-1"), 0, "interactive", "hello");
-        let third = stable_message_uuid(Some("delivery-1"), 1, "interactive", "hello");
-        assert_eq!(first, second);
-        assert_ne!(first, third);
     }
 }

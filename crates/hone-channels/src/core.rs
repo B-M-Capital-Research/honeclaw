@@ -782,49 +782,15 @@ pub fn runtime_config_path() -> String {
 pub fn load_runtime_config() -> hone_core::HoneResult<(HoneConfig, String)> {
     let config_path = runtime_config_path();
     let mut config = HoneConfig::from_file(&config_path)?;
-    apply_runtime_config_overrides(&mut config);
-    ensure_runtime_dirs(&config);
+    let data_dir = std::env::var_os("HONE_DATA_DIR").map(PathBuf::from);
+    let skills_dir = std::env::var_os("HONE_SKILLS_DIR").map(PathBuf::from);
+    config.apply_runtime_overrides(
+        data_dir.as_deref(),
+        skills_dir.as_deref(),
+        Some(PathBuf::from(&config_path).as_path()),
+    );
+    config.ensure_runtime_dirs();
     Ok((config, config_path))
-}
-
-fn apply_runtime_config_overrides(config: &mut HoneConfig) {
-    if let Ok(data_dir) = std::env::var("HONE_DATA_DIR") {
-        let root = PathBuf::from(data_dir);
-        config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
-        config.storage.conversation_quota_dir = root
-            .join("conversation_quota")
-            .to_string_lossy()
-            .to_string();
-        config.storage.llm_audit_db_path =
-            root.join("llm_audit.sqlite3").to_string_lossy().to_string();
-        config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
-        config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
-        config.storage.reports_dir = root.join("reports").to_string_lossy().to_string();
-        config.storage.x_drafts_dir = root.join("x_drafts").to_string_lossy().to_string();
-        config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
-        config.storage.kb_dir = root.join("kb").to_string_lossy().to_string();
-    }
-
-    if let Ok(skills_dir) = std::env::var("HONE_SKILLS_DIR") {
-        config.extra.insert(
-            "skills_dir".to_string(),
-            serde_yaml::Value::String(skills_dir),
-        );
-    }
-}
-
-fn ensure_runtime_dirs(config: &HoneConfig) {
-    let _ = std::fs::create_dir_all(&config.storage.sessions_dir);
-    let _ = std::fs::create_dir_all(&config.storage.portfolio_dir);
-    let _ = std::fs::create_dir_all(&config.storage.cron_jobs_dir);
-    let _ = std::fs::create_dir_all(&config.storage.reports_dir);
-    let _ = std::fs::create_dir_all(&config.storage.x_drafts_dir);
-    let _ = std::fs::create_dir_all(&config.storage.gen_images_dir);
-    let _ = std::fs::create_dir_all(&config.storage.kb_dir);
-    let _ = std::fs::create_dir_all(&config.storage.conversation_quota_dir);
-    if let Some(parent) = PathBuf::from(&config.storage.llm_audit_db_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
 }
 
 fn printable_or_default<'a>(value: &'a str, default: &'a str) -> &'a str {

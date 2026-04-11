@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-04-09
-状态：有 9 个活跃任务
+最后更新：2026-04-11
+状态：有 8 个活跃任务
 
 ## 说明
 
@@ -32,10 +32,6 @@
   - 状态：`in_progress`
   - 计划：`docs/current-plans/file-upload-tracking.md`
   - 摘要：继续评估上传文件追踪与 `pageIndex` 联动方案，待补实现范围与验证矩阵
-- **大文件物理拆分重构**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/large-files-refactor.md`
-  - 摘要：推进大文件按模块边界物理拆分，降低耦合与后续 agent 修改成本
 - **Desktop 渠道监听状态与多进程 PID 对齐**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/desktop-channel-status-multiprocess.md`

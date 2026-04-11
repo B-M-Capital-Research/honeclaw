@@ -11,19 +11,22 @@ import {
   saveDesktopTavilySettings,
 } from "@/lib/backend"
 import type { AgentProvider, AgentSettings, BackendConfig, DesktopChannelSettingsInput, FmpSettings, TavilySettings } from "@/lib/types"
-
-function defaultChannelDraft(): DesktopChannelSettingsInput {
-  return {
-    imessageEnabled: false,
-    feishuEnabled: false,
-    feishuAppId: "",
-    feishuAppSecret: "",
-    telegramEnabled: false,
-    telegramBotToken: "",
-    discordEnabled: false,
-    discordBotToken: "",
-  }
-}
+import {
+  appendApiKey,
+  appendMaskedKey,
+  defaultAgentSettings,
+  defaultChannelDraft,
+  defaultFmpSettings,
+  defaultTavilySettings,
+  hiddenApiKeys,
+  mergeAgentSettings,
+  normalizeApiKeys,
+  removeApiKey,
+  removeMaskedKey,
+  toChannelDraft,
+  toggleMaskedKey,
+  updateApiKeyList,
+} from "@/pages/settings-model"
 
 export default function SettingsPage() {
   const backend = useBackend()
@@ -42,33 +45,6 @@ export default function SettingsPage() {
     )
 
   // ── Agent 基础设置 ──────────────────────────────────────────────────────────
-  const defaultAgentSettings = (): AgentSettings => ({
-    runner: "opencode_acp",
-    codexModel: "",
-    openaiUrl: "https://openrouter.ai/api/v1",
-    openaiModel: "google/gemini-2.5-pro-preview",
-    openaiApiKey: "",
-    auxiliary: {
-      baseUrl: "https://api.minimaxi.com/v1",
-      apiKey: "",
-      model: "MiniMax-M2.7-highspeed",
-    },
-    multiAgent: {
-      search: {
-        baseUrl: "https://api.minimaxi.com/v1",
-        apiKey: "",
-        model: "MiniMax-M2.7-highspeed",
-        maxIterations: 8,
-      },
-      answer: {
-        baseUrl: "https://openrouter.ai/api/v1",
-        apiKey: "",
-        model: "google/gemini-2.5-pro-preview",
-        variant: "high",
-        maxToolCalls: 1,
-      },
-    },
-  })
   const [agentDraft, setAgentDraft] = createSignal<AgentSettings>(defaultAgentSettings())
   const [agentSaving, setAgentSaving] = createSignal(false)
   const [agentMessage, setAgentMessage] = createSignal("")
@@ -112,18 +88,12 @@ export default function SettingsPage() {
   createEffect(() => {
     const s = agentSettingsRes()
     if (s) {
-      setAgentDraft({
-        ...defaultAgentSettings(),
-        ...s,
-        auxiliary: s.auxiliary ?? defaultAgentSettings().auxiliary,
-        multiAgent: s.multiAgent ?? defaultAgentSettings().multiAgent,
-      })
+      setAgentDraft(mergeAgentSettings(s))
     }
   })
 
 
   // ── FMP API Keys 设置 ───────────────────────────────────────────────────────
-  const defaultFmpSettings = (): FmpSettings => ({ apiKeys: [""] })
   const [fmpDraft, setFmpDraft] = createSignal<FmpSettings>(defaultFmpSettings())
   const [fmpSaving, setFmpSaving] = createSignal(false)
   const [fmpMessage, setFmpMessage] = createSignal("")
@@ -141,9 +111,9 @@ export default function SettingsPage() {
   createEffect(() => {
     const s = fmpSettingsRes()
     if (s) {
-      const keys = s.apiKeys.length > 0 ? s.apiKeys : [""]
+      const keys = normalizeApiKeys(s.apiKeys)
       setFmpDraft({ apiKeys: keys })
-      setShowFmpKeys(keys.map(() => false))
+      setShowFmpKeys(hiddenApiKeys(keys))
     }
   })
 
@@ -163,7 +133,6 @@ export default function SettingsPage() {
   }
 
   // ── Tavily API Keys 设置 ────────────────────────────────────────────────────
-  const defaultTavilySettings = (): TavilySettings => ({ apiKeys: [""] })
   const [tavilyDraft, setTavilyDraft] = createSignal<TavilySettings>(defaultTavilySettings())
   const [tavilySaving, setTavilySaving] = createSignal(false)
   const [tavilyMessage, setTavilyMessage] = createSignal("")
@@ -181,9 +150,9 @@ export default function SettingsPage() {
   createEffect(() => {
     const s = tavilySettingsRes()
     if (s) {
-      const keys = s.apiKeys.length > 0 ? s.apiKeys : [""]
+      const keys = normalizeApiKeys(s.apiKeys)
       setTavilyDraft({ apiKeys: keys })
-      setShowTavilyKeys(keys.map(() => false))
+      setShowTavilyKeys(hiddenApiKeys(keys))
     }
   })
 
@@ -209,11 +178,7 @@ export default function SettingsPage() {
     index: number,
     value: string,
   ) {
-    setter((prev) => {
-      const keys = [...prev.apiKeys]
-      keys[index] = value
-      return { ...prev, apiKeys: keys }
-    })
+    setter((prev) => updateApiKeyList(prev, index, value))
   }
 
   /** 追加一个空 key 输入行 */
@@ -221,8 +186,8 @@ export default function SettingsPage() {
     setter: (fn: (prev: T) => T) => void,
     showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
   ) {
-    setter((prev) => ({ ...prev, apiKeys: [...prev.apiKeys, ""] }))
-    showSetter((prev) => [...prev, false])
+    setter((prev) => appendApiKey(prev))
+    showSetter((prev) => appendMaskedKey(prev))
   }
 
   /** 删除指定索引的 key */
@@ -231,14 +196,8 @@ export default function SettingsPage() {
     showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
     index: number,
   ) {
-    setter((prev) => {
-      const keys = prev.apiKeys.filter((_, i) => i !== index)
-      return { ...prev, apiKeys: keys.length > 0 ? keys : [""] }
-    })
-    showSetter((prev) => {
-      const next = prev.filter((_, i) => i !== index)
-      return next.length > 0 ? next : [false]
-    })
+    setter((prev) => removeApiKey(prev, index))
+    showSetter((prev) => removeMaskedKey(prev, index))
   }
 
   /** 切换指定索引的 key 显示/隐藏 */
@@ -246,7 +205,7 @@ export default function SettingsPage() {
     showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
     index: number,
   ) {
-    showSetter((prev) => prev.map((v, i) => (i === index ? !v : v)))
+    showSetter((prev) => toggleMaskedKey(prev, index))
   }
 
   // ── OpenAI 协议渠道测试 ──────────────────────────────────────────────────────
@@ -392,16 +351,7 @@ export default function SettingsPage() {
   createEffect(() => {
     const settings = desktopChannelSettings()
     if (!settings) return
-    setChannelDraft({
-      imessageEnabled: settings.imessageEnabled,
-      feishuEnabled: settings.feishuEnabled,
-      feishuAppId: settings.feishuAppId || "",
-      feishuAppSecret: settings.feishuAppSecret || "",
-      telegramEnabled: settings.telegramEnabled,
-      telegramBotToken: settings.telegramBotToken || "",
-      discordEnabled: settings.discordEnabled,
-      discordBotToken: settings.discordBotToken || "",
-    })
+    setChannelDraft(toChannelDraft(settings))
   })
 
   const submit = async (event: Event) => {

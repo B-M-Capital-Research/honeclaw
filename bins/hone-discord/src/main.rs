@@ -7,34 +7,22 @@ mod handlers;
 mod scheduler;
 mod utils;
 
-use std::sync::Arc;
-
 use hone_channels::{ActorScopeResolver, MessageDeduplicator, SessionLockRegistry};
 use serenity::all::{Client, GatewayIntents};
-use tracing::{error, info, warn};
+use tracing::error;
 
 use crate::handlers::DiscordHandler;
 use crate::scheduler::handle_scheduler_events;
 
 #[tokio::main]
 async fn main() {
-    let (config, config_path) = match hone_channels::load_runtime_config() {
-        Ok(value) => value,
-        Err(e) => {
-            eprintln!("❌ 配置加载失败: {e}");
-            std::process::exit(1);
-        }
-    };
-    let core = hone_channels::HoneBotCore::new(config);
-
-    hone_core::logging::setup_logging(&core.config.logging);
-    info!("🎮 Hone Discord Bot 启动");
-    core.log_startup_routing("discord", &config_path);
-
-    if !core.config.discord.enabled {
-        warn!("discord.enabled=false，Discord Bot 不会启动。");
-        std::process::exit(hone_core::CHANNEL_DISABLED_EXIT_CODE);
-    }
+    let runtime = hone_channels::bootstrap_channel_runtime(
+        "discord",
+        "Discord Bot",
+        hone_core::PROCESS_LOCK_DISCORD,
+        |config| config.discord.enabled,
+    );
+    let core = runtime.core;
 
     let token = core.config.discord.bot_token.trim().to_string();
     if token.is_empty() {
@@ -42,41 +30,9 @@ async fn main() {
         std::process::exit(1);
     };
 
-    let _process_lock = match hone_core::acquire_runtime_process_lock(
-        &core.config,
-        hone_core::PROCESS_LOCK_DISCORD,
-    ) {
-        Ok(lock) => lock,
-        Err(error) => {
-            error!(
-                "{}",
-                hone_core::format_lock_failure_message(
-                    hone_core::PROCESS_LOCK_DISCORD,
-                    &hone_core::process_lock_path(
-                        &hone_core::runtime_heartbeat_dir(&core.config),
-                        hone_core::PROCESS_LOCK_DISCORD
-                    ),
-                    &error,
-                    "Discord"
-                )
-            );
-            std::process::exit(1);
-        }
-    };
-
-    let _heartbeat = match hone_core::spawn_process_heartbeat(&core.config, "discord") {
-        Ok(heartbeat) => heartbeat,
-        Err(err) => {
-            error!("无法启动 Discord heartbeat: {err}");
-            std::process::exit(1);
-        }
-    };
-
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
-
-    let core = Arc::new(core);
     let handler = DiscordHandler {
         core: core.clone(),
         dedup: MessageDeduplicator::new(std::time::Duration::from_secs(120), 2048),

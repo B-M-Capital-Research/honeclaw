@@ -97,3 +97,12 @@ Last updated: 2026-04-11
 - Decision: Keep `docs/current-plan.md` as an active-only index, require a concrete `docs/current-plans/*.md` file for every active tracked task, move completed plan pages into `docs/archive/plans/*.md`, and use `docs/archive/index.md` as the stable entry point for historical work. Standardize new plan / handoff / decision documents around the templates in `docs/templates/*.md`.
 - Impact: Agents can no longer leave active-task links dangling without backing files, and historical work no longer depends on `docs/current-plan.md` retaining a growing "recently completed" section. Future task closure should update the archive index and, when applicable, move the plan page into `docs/archive/plans/*.md`.
 - Note: Existing older documents may keep legacy formatting, but any touched or newly created task-tracking document should carry the minimal metadata and structure defined in `AGENTS.md`.
+
+## D-2026-04-11-01 Centralize Runtime Overrides and Channel Bootstrap
+
+- Status: Accepted
+- Decision: Keep runtime data-root / skills-dir override logic in `hone-core::HoneConfig`, and keep channel startup scaffolding in `hone-channels::bootstrap_channel_runtime`. Entry binaries should only add channel-specific protocol wiring after these shared layers complete.
+- Impact:
+  - `hone-web-api` and channel binaries should not rewrite storage, session, or runtime directory paths ad hoc
+  - New channel entrypoints should reuse shared logging, enabled-check, process-lock, and heartbeat bootstrap instead of cloning startup logic
+  - Channel-local scheduler or outbound helpers should live beside the channel module instead of expanding the binary entry file
