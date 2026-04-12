@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "codex/**"
+      - "copilot/**"
   pull_request:
 
 concurrency:
