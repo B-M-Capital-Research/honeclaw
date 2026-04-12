@@ -25,7 +25,7 @@ const MIN_CODEX_VERSION: CliVersion = CliVersion {
     minor: 115,
     patch: 0,
 };
-const SUPPORTED_CODEX_ACP_VERSION: CliVersion = CliVersion {
+const MIN_CODEX_ACP_VERSION: CliVersion = CliVersion {
     major: 0,
     minor: 9,
     patch: 5,
@@ -160,9 +160,9 @@ pub(crate) fn validate_codex_version_matrix(
             "codex_acp requires codex >= {MIN_CODEX_VERSION}; found {codex_version}. Update with `npm install -g @openai/codex@latest`."
         ));
     }
-    if adapter_version != SUPPORTED_CODEX_ACP_VERSION {
+    if adapter_version < MIN_CODEX_ACP_VERSION {
         return Err(format!(
-            "codex_acp currently supports codex-acp {SUPPORTED_CODEX_ACP_VERSION}; found {adapter_version}. Install the validated adapter with `npm install -g @zed-industries/codex-acp@{SUPPORTED_CODEX_ACP_VERSION}`."
+            "codex_acp requires codex-acp >= {MIN_CODEX_ACP_VERSION}; found {adapter_version}. Update with `npm install -g @zed-industries/codex-acp@latest` or install the minimum validated version with `npm install -g @zed-industries/codex-acp@{MIN_CODEX_ACP_VERSION}`."
         ));
     }
 

@@ -406,7 +406,8 @@ fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
             notes: &[
                 "前置：本机可执行 `codex --version` 与 `codex-acp --help`。",
                 "可额外配置 model / variant / sandbox policy。",
-                "安装：先装 `codex`，再按 Hone 当前兼容版本安装 `npm install -g @zed-industries/codex-acp@0.9.5`。",
+                "安装：先装 `codex`，再装 `codex-acp`；Hone 当前最低要求是 `codex-acp >= 0.9.5`。",
+                "更新：`npm install -g @zed-industries/codex-acp@latest`。",
                 "官方说明：https://github.com/zed-industries/codex-acp",
             ],
         },

@@ -222,7 +222,7 @@ fn parse_cli_version_extracts_semver() {
 }
 
 #[test]
-fn codex_version_matrix_accepts_validated_pair() {
+fn codex_version_matrix_accepts_minimum_validated_pair() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
@@ -233,6 +233,23 @@ fn codex_version_matrix_accepts_validated_pair() {
             major: 0,
             minor: 9,
             patch: 5,
+        },
+    );
+    assert!(result.is_ok());
+}
+
+#[test]
+fn codex_version_matrix_accepts_newer_adapter() {
+    let result = validate_codex_version_matrix(
+        CliVersion {
+            major: 0,
+            minor: 115,
+            patch: 0,
+        },
+        CliVersion {
+            major: 0,
+            minor: 11,
+            patch: 1,
         },
     );
     assert!(result.is_ok());
@@ -260,7 +277,7 @@ fn codex_version_matrix_rejects_old_codex() {
 }
 
 #[test]
-fn codex_version_matrix_rejects_unvalidated_adapter() {
+fn codex_version_matrix_rejects_old_adapter() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
@@ -269,14 +286,14 @@ fn codex_version_matrix_rejects_unvalidated_adapter() {
         },
         CliVersion {
             major: 0,
-            minor: 10,
-            patch: 0,
+            minor: 9,
+            patch: 4,
         },
     );
     assert!(
         result
             .unwrap_err()
-            .contains("@zed-industries/codex-acp@0.9.5")
+            .contains("@zed-industries/codex-acp@latest")
     );
 }
 

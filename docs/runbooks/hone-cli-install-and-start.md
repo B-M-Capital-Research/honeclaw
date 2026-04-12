@@ -108,7 +108,10 @@ Runner install references shown by onboarding:
   - Update: `codex --upgrade`
   - Official guide: [OpenAI Codex CLI – Getting Started](https://help.openai.com/en/articles/11096431)
 - `Codex ACP`
-  - Install `codex` first, then install the ACP adapter version Hone currently validates: `npm install -g @zed-industries/codex-acp@0.9.5`
+  - Install `codex` first, then install `codex-acp`
+  - Minimum requirement: `codex-acp >= 0.9.5`
+  - Recommended update command: `npm install -g @zed-industries/codex-acp@latest`
+  - If you need to pin to the minimum validated floor: `npm install -g @zed-industries/codex-acp@0.9.5`
   - Official adapter repo: [zed-industries/codex-acp](https://github.com/zed-industries/codex-acp)
 - `OpenCode ACP`
   - Install: `curl -fsSL https://opencode.ai/install | bash`
