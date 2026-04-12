@@ -40,6 +40,11 @@ pub(crate) async fn handle_events(
                 let data = serde_json::to_string(&ev.data).unwrap_or_default();
                 Some(Ok(Event::default().event(ev.event).data(data)))
             }
+            Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                warn!("SSE /api/events: 客户端消费过慢，跳过了 {n} 条事件");
+                let data = serde_json::json!({ "skipped": n }).to_string();
+                Some(Ok(Event::default().event("events_lagged").data(data)))
+            }
             _ => None,
         }
     });

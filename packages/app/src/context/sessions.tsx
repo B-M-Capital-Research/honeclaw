@@ -93,6 +93,8 @@ function createSessionsState() {
   const activeSendingKeys = new Set<string>();
   /** 记录已经处理过的 prefill，防止在快速跳转中被触发多次 */
   const processedPrefills = new Set<string>();
+  /** 记录各会话历史轮询的连续失败次数，用于在持续失败时输出警告日志 */
+  const pollFailureCount = new Map<string, number>();
 
   const findUser = (key: string) =>
     state.users.find((user) => user.session_id === key);
@@ -451,8 +453,17 @@ function createSessionsState() {
           clearPending(key);
         }
       }
+      // 轮询成功，重置失败计数
+      pollFailureCount.delete(key);
     } catch {
-      // 轮询失败静默忽略
+      // 累计连续失败次数；连续 3 次后输出警告，但不中断轮询（瞬时网络抖动可自愈）
+      const failures = (pollFailureCount.get(key) ?? 0) + 1;
+      pollFailureCount.set(key, failures);
+      if (failures >= 3) {
+        console.warn(
+          `[sessions] 历史轮询连续失败 ${failures} 次 (key=${key})，后端可能暂时不可达`,
+        );
+      }
     } finally {
       refreshingKeys.delete(key);
     }
