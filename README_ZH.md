@@ -89,14 +89,13 @@ hone-cli start
 ### 方案 B：通过 Homebrew 安装同一份 CLI bundle
 
 ```shell
-brew tap B-M-Capital-Research/honeclaw https://github.com/B-M-Capital-Research/honeclaw
 brew install B-M-Capital-Research/honeclaw/honeclaw
 hone-cli doctor
 hone-cli onboard
 hone-cli start
 ```
 
-Homebrew tap 安装的也是同一份 GitHub release bundle，只是把运行时包装脚本放进 Homebrew 的 `bin`。首次执行时它会自动补齐 `~/.honeclaw/config.yaml`，因此后续 `hone-cli` / `doctor` / `start` 的行为会和 `curl | bash` 保持一致。
+标准 Homebrew tap（`B-M-Capital-Research/homebrew-honeclaw`）安装的也是同一份 GitHub release bundle，只是把运行时包装脚本放进 Homebrew 的 `bin`。首次执行时它会自动补齐 `~/.honeclaw/config.yaml`，因此后续 `hone-cli` / `doctor` / `start` 的行为会和 `curl | bash` 保持一致。
 
 ### 方案 C：克隆仓库用于开发
 

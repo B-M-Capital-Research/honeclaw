@@ -13,8 +13,30 @@ permissions:
   contents: write
 
 jobs:
+  ensure-release:
+    name: ensure-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ensure GitHub release exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
+
   build-and-release:
     name: build-and-release (${{ matrix.os }}, ${{ matrix.target }})
+    needs: ensure-release
     env:
       CARGO_INCREMENTAL: 0
       CARGO_TERM_COLOR: always
@@ -34,7 +56,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Linux build deps
         if: runner.os == 'Linux'
@@ -121,9 +143,14 @@ jobs:
         run: ${SCCACHE_PATH} --show-stats || true
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.tar.gz
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" dist/*.tar.gz \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
 
   publish-homebrew-formula:
     name: publish-homebrew-formula
@@ -132,10 +159,20 @@ jobs:
 
     steps:
       - name: Checkout default branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v5
+        with:
+          repository: B-M-Capital-Research/homebrew-honeclaw
+          ref: main
+          path: homebrew-tap
+          fetch-depth: 0
+          persist-credentials: false
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
 
       - name: Download release assets
         shell: bash
@@ -168,17 +205,29 @@ jobs:
             --version "${GITHUB_REF_NAME#v}" \
             --darwin-aarch64-sha "${darwin_aarch64_sha}" \
             --darwin-x86_64-sha "${darwin_x86_64_sha}" \
-            --linux-x86_64-sha "${linux_x86_64_sha}"
+            --linux-x86_64-sha "${linux_x86_64_sha}" \
+            --output "${GITHUB_WORKSPACE}/homebrew-tap/Formula/honeclaw.rb"
+
+      - name: Validate Homebrew formula
+        shell: bash
+        run: ruby -c homebrew-tap/Formula/honeclaw.rb
 
       - name: Upload checksum asset
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/SHASUMS256.txt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" dist/SHASUMS256.txt \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
 
       - name: Commit updated Homebrew formula
         shell: bash
         run: |
           set -euo pipefail
+          cd homebrew-tap
+
           if git diff --quiet -- Formula/honeclaw.rb; then
             exit 0
           fi
@@ -186,5 +235,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/honeclaw.rb
-          git commit -m "chore: update Homebrew formula for ${GITHUB_REF_NAME}"
+          git commit -m "chore: update Honeclaw formula for ${GITHUB_REF_NAME}"
           git push origin HEAD:main

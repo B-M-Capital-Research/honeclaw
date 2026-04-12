@@ -57,7 +57,9 @@ Last updated: 2026-04-12
 - `ActorIdentity` and `SessionIdentity` must stay separate: the former is for permissions, quota, sandbox, and private-data isolation, while the latter is for context recovery and session persistence
 - Global finance-domain constraints are injected at runtime by `crates/hone-channels/src/prompt.rs`: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short. Do not override these core rules only in a single channel or in a local config.
 - Runtime prompt time anchoring is a core behavior contract: Hone must keep the session-provided current time as the source of truth for macro / news / event-driven analysis, must state the current time first on clearly time-sensitive macro answers, and must rewrite relative-time macro searches into absolute-date queries before calling search tools.
-- `config.yaml` is a read-only seed template. Runtime writes must go to `data/runtime/config_runtime.overrides.yaml`, and startup/reset paths must keep `config_runtime.yaml` as the effective base without rewriting the seed file
+- `config.yaml` is the only long-lived user-writable config source
+- `data/runtime/effective-config.yaml` is the generated runtime input for child processes, and deleting `data/runtime/` must be a safe runtime reset that does not remove user config
+- No code path should read or write legacy `data/runtime/config_runtime.yaml` or sibling `.overrides.yaml` files anymore
 - `storage.session_runtime_backend` decides the production session read path:
   - `json`: `data/sessions/*.json` is the source of truth
   - `sqlite`: `storage.session_sqlite_db_path` is the source of truth

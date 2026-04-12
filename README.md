@@ -92,14 +92,13 @@ If you choose `opencode_acp` during onboarding, Hone now expects you to finish p
 ### Option B. Install the same CLI bundle with Homebrew
 
 ```shell
-brew tap B-M-Capital-Research/honeclaw https://github.com/B-M-Capital-Research/honeclaw
 brew install B-M-Capital-Research/honeclaw/honeclaw
 hone-cli doctor
 hone-cli onboard
 hone-cli start
 ```
 
-The Homebrew tap installs the same GitHub release bundle under Homebrew `libexec`, then exposes a `hone-cli` wrapper that seeds `~/.honeclaw/config.yaml` on first run so the runtime layout stays aligned with the `curl | bash` path.
+The standard Homebrew tap (`B-M-Capital-Research/homebrew-honeclaw`) installs the same GitHub release bundle under Homebrew `libexec`, then exposes a `hone-cli` wrapper that seeds `~/.honeclaw/config.yaml` on first run so the runtime layout stays aligned with the `curl | bash` path.
 
 ### Option C. Clone the repository for development
 

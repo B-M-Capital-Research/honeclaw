@@ -9,7 +9,8 @@ Usage:
     --version <version> \
     --darwin-aarch64-sha <sha256> \
     --darwin-x86_64-sha <sha256> \
-    --linux-x86_64-sha <sha256>
+    --linux-x86_64-sha <sha256> \
+    [--output <path>]
 EOF
   exit 1
 }
@@ -18,6 +19,7 @@ VERSION=""
 DARWIN_AARCH64_SHA=""
 DARWIN_X86_64_SHA=""
 LINUX_X86_64_SHA=""
+OUTPUT_PATH=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +39,10 @@ while [[ $# -gt 0 ]]; do
       LINUX_X86_64_SHA="${2:-}"
       shift 2
       ;;
+    --output)
+      OUTPUT_PATH="${2:-}"
+      shift 2
+      ;;
     *)
       usage
       ;;
@@ -48,7 +54,9 @@ if [[ -z "$VERSION" || -z "$DARWIN_AARCH64_SHA" || -z "$DARWIN_X86_64_SHA" || -z
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTPUT_PATH="$ROOT_DIR/Formula/honeclaw.rb"
+if [[ -z "$OUTPUT_PATH" ]]; then
+  OUTPUT_PATH="$ROOT_DIR/Formula/honeclaw.rb"
+fi
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 

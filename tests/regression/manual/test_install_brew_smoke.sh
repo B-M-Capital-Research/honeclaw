@@ -3,7 +3,6 @@
 set -euo pipefail
 
 TAP_NAME="${HONE_BREW_TAP_NAME:-B-M-Capital-Research/honeclaw}"
-TAP_REMOTE="${HONE_BREW_TAP_REMOTE:-https://github.com/B-M-Capital-Research/honeclaw}"
 FORMULA_REF="${HONE_BREW_FORMULA_REF:-$TAP_NAME/honeclaw}"
 TMP_HOME="$(mktemp -d "${TMPDIR:-/tmp}/hone-brew-smoke.XXXXXX")"
 BREW_BIN_DIR="$(brew --prefix)/bin"
@@ -19,9 +18,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[INFO] tapping $TAP_NAME from $TAP_REMOTE"
+echo "[INFO] tapping $TAP_NAME"
 brew untap "$TAP_NAME" >/dev/null 2>&1 || true
-HOMEBREW_NO_AUTO_UPDATE=1 brew tap --custom-remote "$TAP_NAME" "$TAP_REMOTE"
+if [[ -n "${HONE_BREW_TAP_REMOTE:-}" ]]; then
+  HOMEBREW_NO_AUTO_UPDATE=1 brew tap --custom-remote "$TAP_NAME" "$HONE_BREW_TAP_REMOTE"
+else
+  HOMEBREW_NO_AUTO_UPDATE=1 brew tap "$TAP_NAME"
+fi
 
 echo "[INFO] installing $FORMULA_REF"
 HOMEBREW_NO_AUTO_UPDATE=1 brew install "$FORMULA_REF"

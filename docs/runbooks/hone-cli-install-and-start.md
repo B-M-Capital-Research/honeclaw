@@ -41,11 +41,10 @@ The installer:
 ## Install With Homebrew
 
 ```bash
-brew tap B-M-Capital-Research/honeclaw https://github.com/B-M-Capital-Research/honeclaw
 brew install B-M-Capital-Research/honeclaw/honeclaw
 ```
 
-The Homebrew path installs the same GitHub release bundle under Homebrew `libexec`, then exposes a `hone-cli` wrapper in Homebrew `bin`.
+The standard Homebrew tap (`B-M-Capital-Research/homebrew-honeclaw`) installs the same GitHub release bundle under Homebrew `libexec`, then exposes a `hone-cli` wrapper in Homebrew `bin`.
 
 On first run, the wrapper:
 
@@ -159,10 +158,9 @@ The installed wrapper should point to `~/.honeclaw/config.yaml`.
 
 ### Homebrew install fails to resolve the formula
 
-Re-tap the repository, then install with the fully qualified formula name:
+If you previously tapped the wrong remote, untap it and install again:
 
 ```bash
 brew untap B-M-Capital-Research/honeclaw
-brew tap B-M-Capital-Research/honeclaw https://github.com/B-M-Capital-Research/honeclaw
 brew install B-M-Capital-Research/honeclaw/honeclaw
 ```
