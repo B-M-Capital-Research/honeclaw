@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-12
 
+### v0.1.9 Release 失败修复与补发
+
+- Status: done
+- Date: 2026-04-12
+- Plan: `docs/archive/plans/release-v0.1.9-publish-fix.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: `a505060` (`docs: restore v0.1.9 release notes`)
+- Related runbooks / regressions: `bash scripts/prepare_release_notes.sh v0.1.9 /tmp/release-notes-v0.1.9.md`, GitHub Actions `Release` run `24307695528`
+- Current conclusion: 已补齐 `docs/releases/v0.1.9.md` 并重推 `v0.1.9` tag；`ensure-release` 不再因缺失 release notes 失败，三套发布产物与 `SHASUMS256.txt` 已成功上传，Homebrew formula 同步发布完成
+- Next entry point: [v0.1.9 release](https://github.com/B-M-Capital-Research/honeclaw/releases/tag/v0.1.9)
+
 ### 公司画像与长期基本面追踪
 
 - Status: done

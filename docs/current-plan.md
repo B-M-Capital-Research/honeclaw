@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-04-12
-状态：有 10 个活跃任务
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -52,7 +52,3 @@
   - 状态：`in_progress`
   - 计划：`docs/current-plans/report-command-bridge.md`
   - 摘要：在主系统各渠道入口增加 `/report 公司名` 与 `/report 进度` 预拦截，桥接到本地 private workflow runner 的 `company_report` 启动与进度查询接口
-- **v0.1.9 Release 失败修复与补发**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/release-v0.1.9-publish-fix.md`
-  - 摘要：补齐缺失的 `docs/releases/v0.1.9.md`，验证 release notes 生成链路，并重新推送 `v0.1.9` tag 触发正式发布
