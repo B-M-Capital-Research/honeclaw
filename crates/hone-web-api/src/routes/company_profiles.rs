@@ -131,7 +131,10 @@ pub(crate) async fn handle_append_company_profile_event(
             changed_sections: req.changed_sections.unwrap_or_default(),
             refs: req.refs.unwrap_or_default(),
             what_happened: req.what_happened.unwrap_or_default(),
+            why_it_matters: req.why_it_matters.unwrap_or_default(),
             thesis_effect: req.thesis_effect.unwrap_or_default(),
+            evidence: req.evidence.unwrap_or_default(),
+            research_log: req.research_log.unwrap_or_default(),
             follow_up: req.follow_up.unwrap_or_default(),
         },
     ) {

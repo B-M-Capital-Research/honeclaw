@@ -32,7 +32,7 @@ impl Tool for CompanyProfileTool {
     }
 
     fn description(&self) -> &str {
-        "管理公司画像 Markdown 文档。支持 exists、create、get_profile、list_profiles、append_event、rewrite_sections、set_tracking，用于建立长期画像、追加事件时间线和回写主画像 section。"
+        "管理公司画像 Markdown 文档。支持 exists、create、get_profile、list_profiles、append_event、rewrite_sections、set_tracking，用于建立长期画像、维护 thesis、追加事件时间线，以及保存 why / evidence / research trail。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -187,6 +187,30 @@ impl Tool for CompanyProfileTool {
                 items: None,
             },
             ToolParameter {
+                name: "why_it_matters".to_string(),
+                param_type: "string".to_string(),
+                description: "为什么这件事重要，为什么值得写进长期画像。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "evidence".to_string(),
+                param_type: "string".to_string(),
+                description: "支撑判断的事实、引用摘要或证据说明。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "research_log".to_string(),
+                param_type: "string".to_string(),
+                description: "本轮研究路径，如看了哪些资料、用了哪些查询。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
                 name: "follow_up".to_string(),
                 param_type: "string".to_string(),
                 description: "后续需要继续跟踪的内容。".to_string(),
@@ -300,7 +324,12 @@ impl Tool for CompanyProfileTool {
                             refs: string_array(&args, "refs"),
                             what_happened: optional_string(&args, "what_happened")
                                 .unwrap_or_default(),
+                            why_it_matters: optional_string(&args, "why_it_matters")
+                                .unwrap_or_default(),
                             thesis_effect: optional_string(&args, "thesis_effect")
+                                .unwrap_or_default(),
+                            evidence: optional_string(&args, "evidence").unwrap_or_default(),
+                            research_log: optional_string(&args, "research_log")
                                 .unwrap_or_default(),
                             follow_up: optional_string(&args, "follow_up").unwrap_or_default(),
                         },

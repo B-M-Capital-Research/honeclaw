@@ -163,7 +163,10 @@ pub struct AppendEventInput {
     pub changed_sections: Vec<String>,
     pub refs: Vec<String>,
     pub what_happened: String,
+    pub why_it_matters: String,
     pub thesis_effect: String,
+    pub evidence: String,
+    pub research_log: String,
     pub follow_up: String,
 }
 
@@ -425,7 +428,10 @@ impl CompanyProfileStorage {
             return Ok(None);
         };
         if input.what_happened.trim().is_empty()
+            && input.why_it_matters.trim().is_empty()
             && input.thesis_effect.trim().is_empty()
+            && input.evidence.trim().is_empty()
+            && input.research_log.trim().is_empty()
             && input.follow_up.trim().is_empty()
         {
             return Err("事件内容不能为空".to_string());
@@ -699,12 +705,15 @@ fn render_event_markdown(
     let frontmatter =
         serde_yaml::to_string(metadata).unwrap_or_else(|_| "event_type: unknown\n".to_string());
     format!(
-        "---\n{}---\n\n# {}\n\n## 发生了什么\n{}\n\n## 影响哪些画像 section\n{}\n\n## 对 thesis 的影响\n{}\n\n## 需要继续跟踪什么\n{}\n",
+        "---\n{}---\n\n# {}\n\n## 发生了什么\n{}\n\n## 为什么重要\n{}\n\n## 影响哪些画像 section\n{}\n\n## 对 thesis 的影响\n{}\n\n## 证据与来源\n{}\n\n## 本轮研究路径\n{}\n\n## 需要继续跟踪什么\n{}\n",
         frontmatter,
         title.trim(),
         fallback_markdown(&input.what_happened),
+        fallback_markdown(&input.why_it_matters),
         render_list_or_placeholder(&input.changed_sections, "暂无"),
         fallback_markdown(&input.thesis_effect),
+        render_evidence_markdown(&input.evidence, &input.refs),
+        fallback_markdown(&input.research_log),
         fallback_markdown(&input.follow_up),
     )
 }
@@ -737,6 +746,26 @@ fn render_list_or_placeholder(values: &[String], placeholder: &str) -> String {
             .map(|value| format!("- {}", value.trim()))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+}
+
+fn render_evidence_markdown(evidence: &str, refs: &[String]) -> String {
+    let mut blocks = Vec::new();
+    if !evidence.trim().is_empty() {
+        blocks.push(evidence.trim().to_string());
+    }
+    if !refs.is_empty() {
+        blocks.push(
+            refs.iter()
+                .map(|value| format!("- {}", value.trim()))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
+    if blocks.is_empty() {
+        "暂无".to_string()
+    } else {
+        blocks.join("\n\n")
     }
 }
 
@@ -804,7 +833,11 @@ fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String, String)> {
     let mut sections = vec![
         (
             "投资主张".to_string(),
-            "待补充：这家公司值得长期跟踪的核心逻辑、最重要的判断依据，以及 thesis 失效条件。".to_string(),
+            "待补充：这家公司当前最核心的长期判断、为何值得跟踪，以及现阶段最重要的一句话结论。".to_string(),
+        ),
+        (
+            "Thesis".to_string(),
+            "待补充：当前多空要点、判断为什么成立、最关键的 3-5 个观察变量，以及什么事实会证伪或改写 thesis。".to_string(),
         ),
         (
             "商业模式".to_string(),
@@ -831,12 +864,16 @@ fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String, String)> {
             "待补充：分红、回购、并购、研发、产能投资、去杠杆等动作是否提升长期每股价值。".to_string(),
         ),
         (
+            "关键经营指标".to_string(),
+            template_operating_metrics_markdown(template),
+        ),
+        (
             "估值框架".to_string(),
             "待补充：估值方法、关键假设、敏感性、可比对象和当前估值区间。".to_string(),
         ),
         (
-            "核心风险".to_string(),
-            "待补充：监管、技术替代、客户集中、库存、地缘政治、融资或治理等关键风险。".to_string(),
+            "风险台账".to_string(),
+            "待补充：监管、技术替代、客户集中、库存、地缘政治、融资、治理失误或财务失真等风险，并单列 disconfirming evidence。".to_string(),
         ),
         (
             "关键跟踪清单".to_string(),
@@ -861,13 +898,39 @@ fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String, String)> {
 fn template_tracking_markdown(template: &IndustryTemplate) -> String {
     match template {
         IndustryTemplate::General => {
-            "- 重点跟踪商业模式变化\n- 重点跟踪护城河是否强化或弱化\n- 重点跟踪管理层可信度与资本配置\n- 重点跟踪关键指标是否出现拐点".to_string()
+            "- 季度至少 review 一次\n- 财报/业绩会后必更\n- 重大事件（管理层、监管、资本配置、行业格局变化）触发更新\n- 估值进入关键区间时重看 thesis / 赔率 / 风险回报".to_string()
         }
         IndustryTemplate::Saas => {
-            "- ARR\n- RPO / cRPO\n- NRR / 客户留存\n- 产品渗透与 seat expansion\n- deferred revenue".to_string()
+            "- 财报后核对 ARR / RPO / NRR / 留存 / deferred revenue 的方向是否改变 thesis\n- 观察 seat expansion、产品渗透与销售效率是否改善\n- 指引变化时同步检查估值假设与可持续增长判断".to_string()
         }
         IndustryTemplate::SemiconductorHardware => {
-            "- ASP\n- 良率\n- 产能与 capex\n- 库存天数 / 渠道库存\n- 设计 win 与产品 mix".to_string()
+            "- 跟踪 ASP、良率、产能利用率、库存周期与 capex\n- 设计 win / 产品 mix 变化若影响中期盈利能力，应更新 thesis\n- 行业景气和客户备货节奏变化时，重看估值框架和风险台账".to_string()
+        }
+        IndustryTemplate::Consumer => {
+            "- 跟踪同店、复购率、客单价、渠道库存、促销强度\n- 品牌溢价与新品表现若出现拐点，应检查护城河与管理层判断\n- 观察库存/折扣是否正在侵蚀长期盈利质量".to_string()
+        }
+        IndustryTemplate::IndustrialDefense => {
+            "- 跟踪订单、积压订单、book-to-bill、交付节奏、产能利用率\n- 大客户签约/流失、项目延误、预算变化应写入事件并重看 thesis\n- 若订单质量或兑现节奏恶化，更新风险台账与估值假设".to_string()
+        }
+        IndustryTemplate::Financials => {
+            "- 跟踪净息差、不良、拨备、资本充足率、负债成本\n- 若风险成本、资产质量或资本压力变化，应更新财务质量与 thesis\n- 利率环境或监管变化后，重看估值框架和核心风险".to_string()
+        }
+    }
+}
+
+fn template_operating_metrics_markdown(template: &IndustryTemplate) -> String {
+    match template {
+        IndustryTemplate::General => {
+            "待补充：列出这家公司真正决定长期判断的 3-7 个经营指标，并说明每个指标为什么重要。"
+                .to_string()
+        }
+        IndustryTemplate::Saas => {
+            "- ARR\n- RPO / cRPO\n- NRR / 客户留存\n- seat expansion / 产品渗透\n- deferred revenue"
+                .to_string()
+        }
+        IndustryTemplate::SemiconductorHardware => {
+            "- ASP\n- 良率\n- 产能与 capex\n- 库存天数 / 渠道库存\n- 设计 win 与产品 mix"
+                .to_string()
         }
         IndustryTemplate::Consumer => {
             "- 同店销售\n- 复购率\n- 客单价\n- 渠道库存\n- 品牌溢价与促销强度".to_string()
@@ -1003,6 +1066,8 @@ mod tests {
         assert!(created);
         assert_eq!(document.profile_id, "SNOW");
         assert!(document.markdown.contains("## 投资主张"));
+        assert!(document.markdown.contains("## Thesis"));
+        assert!(document.markdown.contains("## 关键经营指标"));
         assert!(document.markdown.contains("ARR"));
         assert!(dir.join("SNOW").join("profile.md").exists());
     }
@@ -1109,7 +1174,10 @@ mod tests {
             changed_sections: vec!["财务质量".to_string(), "关键跟踪清单".to_string()],
             refs: vec!["earnings-call".to_string()],
             what_happened: "毛利率承压，但储能业务增长延续。".to_string(),
+            why_it_matters: "汽车与储能盈利结构的分化，决定市场是否继续给予成长溢价。".to_string(),
             thesis_effect: "汽车业务压力仍需观察，储能继续改善长期结构。".to_string(),
+            evidence: "电话会确认管理层仍把储能和 AI 基础设施视作中期投入重点。".to_string(),
+            research_log: "- query: Tesla Q1 earnings margin storage\n- reviewed: earnings release, earnings call transcript, shareholder deck".to_string(),
             follow_up: "观察下一季交付和毛利率修复节奏。".to_string(),
         };
 
@@ -1128,6 +1196,8 @@ mod tests {
             .expect("load")
             .expect("profile exists");
         assert_eq!(loaded.events.len(), 1);
+        assert!(loaded.events[0].markdown.contains("## 为什么重要"));
+        assert!(loaded.events[0].markdown.contains("## 本轮研究路径"));
     }
 
     #[test]

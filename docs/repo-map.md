@@ -38,7 +38,7 @@ Last updated: 2026-04-12
   - `multi-agent`: two-stage runner wiring that combines a direct function-calling search pass with an ACP answer pass
 - `memory/`
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
-  - `memory/src/company_profile.rs` stores long-lived company portraits as Markdown (`profile.md`) plus append-only event files under `events/`
+  - `memory/src/company_profile.rs` stores long-lived company portraits as Markdown (`profile.md`) plus append-only event files under `events/`; the portrait defaults now emphasize Thesis / operating metrics / risk ledger, and event docs can retain why / evidence / research trail alongside the thesis delta
   - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间"
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
@@ -60,6 +60,7 @@ Last updated: 2026-04-12
 - `skills/`
   - In-repo skill definitions; runtime also supports `data/custom_skills/<id>/SKILL.md` and nested `.hone/skills/<id>/SKILL.md` with nearer dynamic directories taking precedence
   - `SKILL.md` frontmatter now also supports an opt-in `script` entrypoint that `skill_tool(..., execute_script=true)` can run from the skill directory
+  - `skills/company_portrait/` now follows a lighter Codex-style pattern: keep the trigger/workflow contract in `SKILL.md`, and move the detailed portrait framework / event template / research-trail guidance into `references/`
 - `data/runtime/skill_registry.json`
   - Global skill enabled/disabled override layer for registered skills
 - `tests/regression/`

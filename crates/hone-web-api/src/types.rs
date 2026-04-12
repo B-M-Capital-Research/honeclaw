@@ -231,7 +231,10 @@ pub struct CompanyProfileEventCreateRequest {
     pub changed_sections: Option<Vec<String>>,
     pub refs: Option<Vec<String>>,
     pub what_happened: Option<String>,
+    pub why_it_matters: Option<String>,
     pub thesis_effect: Option<String>,
+    pub evidence: Option<String>,
+    pub research_log: Option<String>,
     pub follow_up: Option<String>,
 }
 
