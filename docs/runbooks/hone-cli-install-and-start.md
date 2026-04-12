@@ -55,6 +55,38 @@ On first run, the wrapper:
 - Uses the same default `HONE_HOME`, `HONE_USER_CONFIG_PATH`, `HONE_DATA_DIR`, and `HONE_SKILLS_DIR` semantics as the `curl | bash` install
 - Lets `hone-cli start` reuse the bundled runtime binaries from the Homebrew cellar without requiring `./launch.sh` or `hone-desktop`
 
+## Uninstall
+
+Homebrew uninstall only removes the package files:
+
+```bash
+brew uninstall honeclaw
+```
+
+If the formula was installed via the fully qualified tap path, this also works:
+
+```bash
+brew uninstall B-M-Capital-Research/honeclaw/honeclaw
+```
+
+If you also want to remove local Hone config, runtime data, and downloaded bundles under `~/.honeclaw`, run cleanup first:
+
+```bash
+hone-cli cleanup
+```
+
+For non-interactive full cleanup:
+
+```bash
+hone-cli cleanup --all --yes
+```
+
+If you already uninstalled Homebrew and no longer have `hone-cli`, remove the install home manually:
+
+```bash
+rm -rf ~/.honeclaw
+```
+
 ## Installed Layout
 
 - Bundle root: `~/.honeclaw/current`

@@ -5,6 +5,7 @@ mod start;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
+use std::{env, fs};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use common::{load_cli_config, load_cli_core, resolve_runtime_paths};
@@ -31,6 +32,7 @@ enum Commands {
     Chat,
     #[command(visible_alias = "setup")]
     Onboard(OnboardArgs),
+    Cleanup(CleanupArgs),
     Config {
         #[command(subcommand)]
         command: ConfigCommands,
@@ -111,6 +113,16 @@ struct ConfigureArgs {
 
 #[derive(Args, Debug, Default)]
 struct OnboardArgs {}
+
+#[derive(Args, Debug, Default)]
+struct CleanupArgs {
+    #[arg(long)]
+    all: bool,
+    #[arg(long)]
+    yes: bool,
+    #[arg(long)]
+    home: Option<PathBuf>,
+}
 
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum ConfigureSection {
@@ -212,6 +224,23 @@ struct ChannelOnboardSpec {
     permission_notes: &'static [&'static str],
     required_fields: &'static [ChannelRequiredField],
     supports_chat_scope: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CleanupTargets {
+    home_dir: PathBuf,
+    config_path: PathBuf,
+    soul_path: PathBuf,
+    data_dir: PathBuf,
+    releases_dir: PathBuf,
+    current_link: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CleanupSelection {
+    remove_config_and_profile: bool,
+    remove_runtime_data: bool,
+    remove_release_bundles: bool,
 }
 
 #[derive(Args, Debug)]
@@ -662,6 +691,106 @@ fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
 
 fn non_empty(value: &str) -> bool {
     !value.trim().is_empty()
+}
+
+fn cleanup_home_dir(explicit_home: Option<&Path>) -> Result<PathBuf, String> {
+    if let Some(path) = explicit_home {
+        return Ok(if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(path)
+        });
+    }
+    if let Some(home) = env::var_os("HONE_HOME") {
+        let path = PathBuf::from(home);
+        return Ok(if path.is_absolute() {
+            path
+        } else {
+            env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(path)
+        });
+    }
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| "无法确定 HOME，请传入 `hone-cli cleanup --home <path>`。".to_string())?;
+    Ok(home.join(".honeclaw"))
+}
+
+fn cleanup_targets(home_dir: &Path) -> CleanupTargets {
+    CleanupTargets {
+        home_dir: home_dir.to_path_buf(),
+        config_path: home_dir.join("config.yaml"),
+        soul_path: home_dir.join("soul.md"),
+        data_dir: home_dir.join("data"),
+        releases_dir: home_dir.join("releases"),
+        current_link: home_dir.join("current"),
+    }
+}
+
+fn select_cleanup_targets(theme: &ColorfulTheme, args: &CleanupArgs) -> Result<CleanupSelection, String> {
+    if args.all {
+        return Ok(CleanupSelection {
+            remove_config_and_profile: true,
+            remove_runtime_data: true,
+            remove_release_bundles: true,
+        });
+    }
+    if args.yes {
+        return Ok(CleanupSelection {
+            remove_config_and_profile: false,
+            remove_runtime_data: true,
+            remove_release_bundles: true,
+        });
+    }
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return Err("`hone-cli cleanup` 在非交互环境下请显式传 `--yes` 或 `--all`。".to_string());
+    }
+    println!("Cleanup Hone local files");
+    println!("  - 默认只清 runtime 数据和已下载 bundle，不会删除用户 config。");
+    println!("  - 如果你连 `config.yaml` / `soul.md` 也想删除，请在下面确认。");
+    Ok(CleanupSelection {
+        remove_runtime_data: prompt_bool(theme, "Remove runtime data under HONE_HOME/data?", true)?,
+        remove_release_bundles: prompt_bool(
+            theme,
+            "Remove downloaded bundles and current symlink under HONE_HOME/releases and HONE_HOME/current?",
+            true,
+        )?,
+        remove_config_and_profile: prompt_bool(
+            theme,
+            "Also remove HONE_HOME/config.yaml and HONE_HOME/soul.md?",
+            false,
+        )?,
+    })
+}
+
+fn remove_path_if_exists(path: &Path) -> Result<bool, String> {
+    if !path.exists() && fs::symlink_metadata(path).is_err() {
+        return Ok(false);
+    }
+    let metadata = fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if metadata.file_type().is_symlink() || metadata.is_file() {
+        fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    } else if metadata.is_dir() {
+        fs::remove_dir_all(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    } else {
+        fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(true)
+}
+
+fn prune_empty_dir(path: &Path) -> Result<bool, String> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let mut entries = fs::read_dir(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if entries.next().is_some() {
+        return Ok(false);
+    }
+    fs::remove_dir(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(true)
 }
 
 fn binary_check(name: &str, help_arg: &str) -> BinaryStatus {
@@ -1569,6 +1698,59 @@ fn build_channel_onboard_mutations(
     Ok(mutations)
 }
 
+fn run_cleanup(args: CleanupArgs) -> Result<(), String> {
+    let home_dir = cleanup_home_dir(args.home.as_deref())?;
+    let targets = cleanup_targets(&home_dir);
+    let selection = select_cleanup_targets(&ColorfulTheme::default(), &args)?;
+
+    if !selection.remove_config_and_profile
+        && !selection.remove_runtime_data
+        && !selection.remove_release_bundles
+    {
+        println!("No cleanup selected. Nothing changed.");
+        return Ok(());
+    }
+
+    let mut removed = Vec::new();
+
+    if selection.remove_runtime_data && remove_path_if_exists(&targets.data_dir)? {
+        removed.push(targets.data_dir.display().to_string());
+    }
+    if selection.remove_release_bundles && remove_path_if_exists(&targets.releases_dir)? {
+        removed.push(targets.releases_dir.display().to_string());
+    }
+    if selection.remove_release_bundles && remove_path_if_exists(&targets.current_link)? {
+        removed.push(targets.current_link.display().to_string());
+    }
+    if selection.remove_config_and_profile && remove_path_if_exists(&targets.config_path)? {
+        removed.push(targets.config_path.display().to_string());
+    }
+    if selection.remove_config_and_profile && remove_path_if_exists(&targets.soul_path)? {
+        removed.push(targets.soul_path.display().to_string());
+    }
+
+    let home_removed = prune_empty_dir(&targets.home_dir)?;
+
+    if removed.is_empty() && !home_removed {
+        println!("No matching Hone files found under {}.", targets.home_dir.display());
+    } else {
+        println!("Removed:");
+        for path in removed {
+            println!("  - {path}");
+        }
+        if home_removed {
+            println!("  - {}", targets.home_dir.display());
+        }
+    }
+
+    println!();
+    println!("Homebrew uninstall only removes the package files.");
+    println!("If you installed via Homebrew, run one of:");
+    println!("  - `brew uninstall honeclaw`");
+    println!("  - `brew uninstall B-M-Capital-Research/honeclaw/honeclaw`");
+    Ok(())
+}
+
 fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> Result<(), String> {
     let (config, paths) = load_cli_config(config_path, true).map_err(|e| e.to_string())?;
     let theme = ColorfulTheme::default();
@@ -1884,6 +2066,7 @@ async fn run_cli() -> Result<(), String> {
             repl::run_chat(core, &paths.canonical_config_path.to_string_lossy()).await
         }
         Some(Commands::Onboard(args)) => run_onboard(cli.config.as_deref(), args).await,
+        Some(Commands::Cleanup(args)) => run_cleanup(args),
         Some(Commands::Config { command }) => match command {
             ConfigCommands::File => {
                 let paths = resolve_runtime_paths(cli.config.as_deref(), false)
@@ -2185,6 +2368,8 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn cli_parses_config_get_command() {
@@ -2228,6 +2413,18 @@ mod tests {
         let cli = Cli::try_parse_from(["hone-cli", "setup"]).unwrap();
         match cli.command {
             Some(Commands::Onboard(_)) => {}
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_cleanup_command() {
+        let cli = Cli::try_parse_from(["hone-cli", "cleanup", "--all", "--yes"]).unwrap();
+        match cli.command {
+            Some(Commands::Cleanup(args)) => {
+                assert!(args.all);
+                assert!(args.yes);
+            }
             other => panic!("unexpected command: {other:?}"),
         }
     }
@@ -2315,5 +2512,34 @@ mod tests {
             resolution,
             RequiredFieldResolution::Value("existing-secret".to_string())
         );
+    }
+
+    #[test]
+    fn select_cleanup_targets_defaults_to_runtime_and_bundles_for_yes() {
+        let selection = select_cleanup_targets(
+            &ColorfulTheme::default(),
+            &CleanupArgs {
+                yes: true,
+                ..CleanupArgs::default()
+            },
+        )
+        .unwrap();
+
+        assert!(selection.remove_runtime_data);
+        assert!(selection.remove_release_bundles);
+        assert!(!selection.remove_config_and_profile);
+    }
+
+    #[test]
+    fn remove_path_if_exists_handles_symlink() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        let link = dir.path().join("link.txt");
+        fs::write(&target, "hello").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(remove_path_if_exists(&link).unwrap());
+        assert!(!link.exists());
+        assert!(target.exists());
     }
 }

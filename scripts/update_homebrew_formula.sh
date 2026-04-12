@@ -122,6 +122,12 @@ class Honeclaw < Formula
     <<~EOS
       Hone stores user config in ~/.honeclaw/config.yaml and runtime data in ~/.honeclaw/data.
 
+      To remove local Hone data before uninstalling, run:
+        hone-cli cleanup
+
+      To uninstall the Homebrew package itself, run:
+        brew uninstall honeclaw
+
       Next steps:
         hone-cli doctor
         hone-cli onboard
