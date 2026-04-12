@@ -8,7 +8,6 @@ pub mod bootstrap;
 pub mod core;
 pub(crate) mod execution;
 pub mod ingress;
-pub mod kb_analysis;
 pub mod mcp_bridge;
 pub mod outbound;
 pub mod prompt;
@@ -22,7 +21,7 @@ pub mod think;
 
 pub use self::core::HoneBotCore;
 pub use self::core::load_runtime_config;
-pub use self::sandbox::channel_download_dir;
+pub use self::sandbox::{channel_download_dir, sandbox_base_dir};
 pub use agent_session::{
     AgentRunOptions, AgentSession, AgentSessionError, AgentSessionErrorKind, AgentSessionEvent,
     AgentSessionListener, AgentSessionResult, GeminiStreamOptions, MessageMetadata,
@@ -34,7 +33,6 @@ pub use ingress::{
     GroupPretriggerWindowRegistry, GroupTrigger, GroupTriggerMode, IncomingEnvelope,
     MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
-pub use kb_analysis::run_kb_analysis;
 pub use outbound::{
     OutboundAdapter, OutboundRunSummary, StreamActivityProbe, attach_stream_activity_probe,
     run_session_with_outbound,

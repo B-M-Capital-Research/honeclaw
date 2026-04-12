@@ -213,7 +213,6 @@ mod tests {
         config.storage.reports_dir = root.join("reports").to_string_lossy().to_string();
         config.storage.x_drafts_dir = root.join("x_drafts").to_string_lossy().to_string();
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
-        config.storage.kb_dir = root.join("kb").to_string_lossy().to_string();
 
         let mut core = HoneBotCore::new(config);
         if with_auxiliary_llm {

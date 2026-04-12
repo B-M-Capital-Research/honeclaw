@@ -3,13 +3,13 @@ import { Show } from "solid-js"
 import { useSearchParams } from "@solidjs/router"
 import { PortfolioList } from "@/components/portfolio-list"
 import { PortfolioDetail } from "@/components/portfolio-detail"
-import { KbStockTable } from "@/components/kb-stock-table"
 import { CompanyProfileList } from "@/components/company-profile-list"
 import { CompanyProfileDetail } from "@/components/company-profile-detail"
 import { useCompanyProfiles } from "@/context/company-profiles"
 import { useBackend } from "@/context/backend"
+import { parseActorKey } from "@/lib/actors"
 
-type MemoryTab = "portfolio" | "knowledge" | "profiles"
+type MemoryTab = "portfolio" | "profiles"
 
 function TabBtn(props: { label: string; active: boolean; onClick: () => void }) {
   return (
@@ -38,14 +38,17 @@ export default function MemoryPage() {
     const requested = typeof searchParams.tab === "string" ? searchParams.tab : undefined
     if (requested === "profiles") {
       setTab("profiles")
-    } else if (requested === "knowledge") {
-      setTab("knowledge")
     } else if (requested === "portfolio") {
       setTab("portfolio")
     }
 
     const profileId =
       typeof searchParams.profile === "string" ? searchParams.profile : undefined
+    const profileActorKey =
+      typeof searchParams.profile_actor === "string" ? searchParams.profile_actor : undefined
+    if (profileActorKey) {
+      companyProfiles.selectActor(parseActorKey(profileActorKey))
+    }
     if (profileId) {
       companyProfiles.selectProfile(profileId)
     }
@@ -59,11 +62,6 @@ export default function MemoryPage() {
           label="持仓记忆"
           active={tab() === "portfolio"}
           onClick={() => setTab("portfolio")}
-        />
-        <TabBtn
-          label="知识记忆"
-          active={tab() === "knowledge"}
-          onClick={() => setTab("knowledge")}
         />
         <Show when={backend.hasCapability("company_profiles")}>
           <TabBtn
@@ -81,13 +79,6 @@ export default function MemoryPage() {
           <div class="min-h-0 flex-1 overflow-hidden">
             <PortfolioDetail />
           </div>
-        </div>
-      </Show>
-
-      {/* 知识记忆 — 股票信息表（含跳转至知识库的链接） */}
-      <Show when={tab() === "knowledge"}>
-        <div class="min-h-0 flex-1 overflow-y-auto p-5">
-          <KbStockTable />
         </div>
       </Show>
 

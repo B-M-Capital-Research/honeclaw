@@ -6,7 +6,6 @@ pub(crate) mod events;
 pub(crate) mod files;
 pub(crate) mod history;
 pub(crate) mod imessage;
-pub(crate) mod kb;
 pub(crate) mod llm_audit;
 pub(crate) mod logs;
 pub(crate) mod meta;
@@ -21,7 +20,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::middleware;
-use axum::routing::{delete, get, patch, post, put};
+use axum::routing::{get, patch, post, put};
 use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
@@ -69,26 +68,17 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .route("/portfolio/actors", get(portfolio::handle_portfolio_actors))
         .route("/portfolio", get(portfolio::handle_portfolio))
         .route(
+            "/company-profiles/actors",
+            get(company_profiles::handle_company_profile_spaces),
+        )
+        .route(
             "/company-profiles",
-            get(company_profiles::handle_company_profiles)
-                .post(company_profiles::handle_create_company_profile),
+            get(company_profiles::handle_company_profiles),
         )
         .route(
             "/company-profiles/{id}",
             get(company_profiles::handle_company_profile_detail)
                 .delete(company_profiles::handle_delete_company_profile),
-        )
-        .route(
-            "/company-profiles/{id}/events",
-            post(company_profiles::handle_append_company_profile_event),
-        )
-        .route(
-            "/company-profiles/{id}/sections",
-            put(company_profiles::handle_update_company_profile_sections),
-        )
-        .route(
-            "/company-profiles/{id}/tracking",
-            put(company_profiles::handle_update_company_profile_tracking),
         )
         .route(
             "/portfolio/holdings",
@@ -116,16 +106,6 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .route("/llm-audit/{id}", get(llm_audit::handle_llm_audit_detail))
         .route("/logs", get(logs::handle_logs))
         .route("/logs/stream", get(logs::handle_logs_stream))
-        .route("/kb", get(kb::handle_kb_list))
-        .route("/kb/{id}", get(kb::handle_kb_detail))
-        .route("/kb-stock-table", get(kb::handle_kb_stock_table))
-        .route(
-            "/kb-stock-table/knowledge",
-            put(kb::handle_update_stock_knowledge),
-        )
-        .route("/kb/{id}/analyze", post(kb::handle_kb_analyze))
-        .route("/kb/{id}", delete(kb::handle_kb_delete))
-        .route("/kb/upload", post(kb::handle_kb_upload))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_api_auth,

@@ -98,13 +98,13 @@ fn file_proxy_roots(config: &hone_core::config::HoneConfig) -> Vec<PathBuf> {
         &config.storage.reports_dir,
         &config.storage.x_drafts_dir,
         &config.storage.gen_images_dir,
-        &config.storage.kb_dir,
-        &config.storage.company_profiles_dir,
     ];
 
     for dir in candidates {
         roots.push(PathBuf::from(dir));
     }
+
+    roots.push(hone_channels::sandbox_base_dir());
 
     roots
 }

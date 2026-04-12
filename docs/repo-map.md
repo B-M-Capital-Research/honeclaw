@@ -30,7 +30,7 @@ Last updated: 2026-04-12
   - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, the `skill_registry` enabled/disabled override layer, and a compatibility `load_skill` shim
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
-  - `hone-channels`: channel runtime, `HoneBotCore`, shared channel startup bootstrap, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, the cross-channel pre-session intercept layer for commands such as `/register-admin` and `/report`, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
+  - `hone-channels`: channel runtime, `HoneBotCore`, shared channel startup bootstrap, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, the cross-channel pre-session intercept layer for commands such as `/register-admin` and `/report`, plus shared attachment ingest / PDF preview helpers under `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
 - `agents/`
   - `function_calling`: function-calling agent core
   - `gemini_cli`, `codex_cli`: CLI agent adapters
@@ -38,7 +38,7 @@ Last updated: 2026-04-12
   - `multi-agent`: two-stage runner wiring that combines a direct function-calling search pass with an ACP answer pass
 - `memory/`
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
-  - `memory/src/company_profile.rs` stores long-lived company portraits as Markdown (`profile.md`) plus append-only event files under `events/`; the portrait defaults now emphasize Thesis / operating metrics / risk ledger, and event docs can retain why / evidence / research trail alongside the thesis delta
+  - `memory/src/company_profile.rs` scans long-lived company portraits from each actor sandbox under `company_profiles/<profile_id>/profile.md` plus append-only `events/*.md`; the portrait defaults now emphasize Thesis / operating metrics / risk ledger, and event docs can retain why / evidence / research trail alongside the thesis delta
   - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间"
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
@@ -53,7 +53,7 @@ Last updated: 2026-04-12
   - `config.yaml` is the read-only seed template and source of default comments / values
   - `data/runtime/config_runtime.yaml` is the effective runtime base created on first startup
   - `data/runtime/config_runtime.overrides.yaml` stores Desktop / automation overrides and is merged on load
-  - `data/company_profiles/<profile_id>/profile.md` plus `events/*.md` is the source of truth for company portraits and long-term fundamental tracking
+- Actor sandbox research docs live under `agent-sandboxes/<channel>/<scope__user>/company_profiles/<profile_id>/profile.md` plus `events/*.md`; this actor-local directory is the source of truth for company portraits and long-term fundamental tracking
 - `packages/`
   - `app`: SolidJS web console
   - `ui`: shared UI components and context
@@ -71,6 +71,7 @@ Last updated: 2026-04-12
 
 - Web console backend: `bins/hone-console-page/src/main.rs`
 - Web console frontend: `packages/app/src/app.tsx`
+  - 用户可见的长期研究记忆入口现只保留 `/memory` 下的公司画像视图；KB 页面与知识记忆 tab 已移除
 - CLI: `bins/hone-cli/src/main.rs`
   - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, and `start`; no-subcommand mode still drops into the local chat REPL
 - Channel runtime export: `crates/hone-channels/src/lib.rs`
@@ -84,8 +85,8 @@ Last updated: 2026-04-12
 - Runtime config override source of truth: `crates/hone-core/src/{config.rs,config/server.rs}`
 - ACP MCP bridge: `crates/hone-channels/src/mcp_bridge.rs`
 - Actor sandbox: `crates/hone-channels/src/sandbox.rs`
-- Attachment ingest / KB pipeline: `crates/hone-channels/src/attachments.rs` and `crates/hone-channels/src/attachments/{ingest,vision,vector_store}.rs`
-  - Enforces shared attachment gates across channels: 5 MB for generic attachments, 3 MB for images, plus rejection of extreme aspect ratio, resolution, or pixel-count cases. Rejected attachments never enter the prompt or KB.
+- Attachment ingest / preview helpers: `crates/hone-channels/src/attachments.rs` and `crates/hone-channels/src/attachments/{ingest,vision,vector_store}.rs`
+  - Enforces shared attachment gates across channels: 5 MB for generic attachments, 3 MB for images, plus rejection of extreme aspect ratio, resolution, or pixel-count cases. Rejected attachments never enter the prompt.
 - Runner contract and ACP / Gemini execution layer: `crates/hone-channels/src/runners/`
   - `mod.rs`: runner exports
   - `types.rs`: shared runner trait / request / event / result types
@@ -96,7 +97,6 @@ Last updated: 2026-04-12
 - Session compaction service: `crates/hone-channels/src/session_compactor.rs`
 - Prompt audit writer: `crates/hone-channels/src/prompt_audit.rs`
 - Tool registry entry point: `crates/hone-tools/src/lib.rs`
-- Company portrait tool: `crates/hone-tools/src/company_profile.rs`
 - Skill runtime source of truth: `crates/hone-tools/src/skill_runtime.rs`
 - Desktop sidecar helpers: `bins/hone-desktop/src/sidecar/{processes,runtime_env,settings}.rs`
 - Feishu channel split: `bins/hone-feishu/src/{handler.rs,scheduler.rs,outbound.rs}`
@@ -119,6 +119,7 @@ Last updated: 2026-04-12
 8. `hone-tools` provides data, skills, search, scheduled-task, and other capabilities
    - Skill disclosure is now two-phase: the model first sees a compact listing, and full `SKILL.md` bodies are only expanded into the turn after `skill_tool(...)` or a user slash skill is invoked
    - Invoked skill prompts are persisted in session metadata so context restoration can re-inject them after compression instead of relying on historic tool results
+   - 用户可见的研究记忆相关 skill 目前只保留 `company_portrait`
 9. `memory` reads and writes local sessions, quotas, portfolios, and cron jobs
     - `memory/src/quota.rs` keeps a daily successful-reply quota for each user-initiated conversation
     - `memory/src/llm_audit.rs` uses SQLite to record LLM call audit logs archived by `ActorIdentity`
@@ -157,7 +158,7 @@ Last updated: 2026-04-12
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`
 - `hone-console-page` `/api/meta` handles version and capability negotiation
 - `hone-console-page` `/api/skills*` serves the skill management surface: registered listing, detail view, enable/disable mutation, and reset
-- `hone-console-page` `/api/company-profiles*` serves company portrait listing, detail, delete, and the agent-facing mutation endpoints used for section rewrites, tracking updates, and event append operations; the current Web UI consumes this surface in read-only mode except for full deletion
+- `hone-console-page` `/api/company-profiles*` serves actor-space listing, portrait detail, and full deletion for actor-local portrait docs; portrait creation and updates now rely on runner-native file operations inside the actor sandbox rather than dedicated mutation APIs
 
 ## Web Console Structure
 
@@ -198,7 +199,7 @@ Last updated: 2026-04-12
   - Then check the Web API, channel entrypoints, and frontend pages that depend on it
 - Adjusting company portraits:
   - Start with `memory/src/company_profile.rs`
-  - Then check `crates/hone-tools/src/company_profile.rs` and `crates/hone-web-api/src/routes/company_profiles.rs`
+  - Then check `crates/hone-channels/src/{sandbox.rs,prompt.rs,core.rs}` and `crates/hone-web-api/src/routes/company_profiles.rs`
   - If the Web UI is affected, also check `packages/app/src/{context/company-profiles.tsx,components/company-profile-*.tsx,pages/memory.tsx}`
 - Adjusting identity quotas or limits:
   - Start with `memory/src/quota.rs` and `memory/src/cron_job.rs`

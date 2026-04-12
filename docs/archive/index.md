@@ -10,12 +10,12 @@ Use this file as the historical entry point for completed or paused work that sh
 
 - Status: done
 - Date: 2026-04-12
-- Plan: `docs/archive/plans/company-portrait-tracking.md`, `docs/archive/plans/company-portrait-skill-framework.md`
+- Plan: `docs/archive/plans/company-portrait-tracking.md`, `docs/archive/plans/company-portrait-skill-framework.md`, `docs/archive/plans/company-research-actor-spaces.md`, `docs/archive/plans/remove-kb-memory-surface.md`
 - Handoff: `docs/handoffs/2026-04-12-company-portrait-tracking.md`
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `cargo test -p hone-memory company_profile -- --nocapture`, `cargo test -p hone-tools company_profile -- --nocapture`, `cargo check -p hone-memory -p hone-tools -p hone-web-api -p hone-channels`, `bun run --cwd packages/app typecheck`, `bun run --cwd packages/app test`
-- Current conclusion: Hone 已具备 Markdown 形式的公司画像与事件时间线、`company_profile` 工具、画像 Web API、记忆页只读画像视图（允许彻底删除），以及从知识记忆表打开画像的入口；`company_portrait` 也已升级为更贴近投研档案的 skill，能够引导 agent 维护 Thesis、关键经营指标、风险台账，以及事件中的 why / evidence / research trail，建档与更新统一走 agent
+- Related runbooks / regressions: `cargo test -p hone-memory company_profile -- --nocapture`, `cargo check -p hone-memory -p hone-tools -p hone-web-api -p hone-channels`, `bun run --cwd packages/app typecheck`
+- Current conclusion: Hone 已具备 Markdown 形式的公司画像与事件时间线、按 actor 展示的画像 Web 视图（允许彻底删除），以及更贴近投研档案的 `company_portrait` skill；画像文档现在直接落在 actor sandbox 的 `company_profiles/` 中，由 agent 使用 runner 原生文件读写维护，不再依赖专用 mutation tool、公共画像目录或 KB 记忆入口
 - Next entry point: `docs/handoffs/2026-04-12-company-portrait-tracking.md`
 
 ### CLI 首装 Onboarding 与安装向导

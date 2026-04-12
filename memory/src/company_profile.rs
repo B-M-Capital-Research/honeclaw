@@ -2,11 +2,12 @@
 //!
 //! 目录结构：
 //! ```text
-//! data/company_profiles/
-//!   <profile_id>/
-//!     profile.md
-//!     events/
-//!       2026-04-12-earnings-q1-update.md
+//! <actor_sandbox_root>/
+//!   company_profiles/
+//!     <profile_id>/
+//!       profile.md
+//!       events/
+//!         2026-04-12-earnings-q1-update.md
 //! ```
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -14,6 +15,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
+use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -143,6 +145,17 @@ pub struct ProfileSummary {
     pub event_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProfileSpaceSummary {
+    pub channel: String,
+    pub user_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_scope: Option<String>,
+    pub profile_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateProfileInput {
     pub company_name: String,
@@ -172,13 +185,24 @@ pub struct AppendEventInput {
 
 pub struct CompanyProfileStorage {
     root_dir: PathBuf,
+    actor: Option<ActorIdentity>,
 }
 
 impl CompanyProfileStorage {
     pub fn new(root_dir: impl AsRef<Path>) -> Self {
         let root_dir = root_dir.as_ref().to_path_buf();
         let _ = fs::create_dir_all(&root_dir);
-        Self { root_dir }
+        Self {
+            root_dir,
+            actor: None,
+        }
+    }
+
+    pub fn for_actor(&self, actor: &ActorIdentity) -> Self {
+        Self {
+            root_dir: self.root_dir.clone(),
+            actor: Some(actor.clone()),
+        }
     }
 
     pub fn profile_id(company_name: &str, stock_code: &str) -> String {
@@ -194,6 +218,7 @@ impl CompanyProfileStorage {
         company_name: Option<&str>,
         stock_code: Option<&str>,
     ) -> Option<String> {
+        let root_dir = self.scoped_root().ok()?;
         let company_name = company_name
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -203,7 +228,7 @@ impl CompanyProfileStorage {
             .filter(|value| !value.is_empty())
             .map(normalize_stock_code);
 
-        let entries = match fs::read_dir(&self.root_dir) {
+        let entries = match fs::read_dir(&root_dir) {
             Ok(entries) => entries,
             Err(_) => return None,
         };
@@ -238,7 +263,10 @@ impl CompanyProfileStorage {
     }
 
     pub fn list_profiles(&self) -> Vec<ProfileSummary> {
-        let entries = match fs::read_dir(&self.root_dir) {
+        let Ok(root_dir) = self.scoped_root() else {
+            return Vec::new();
+        };
+        let entries = match fs::read_dir(&root_dir) {
             Ok(entries) => entries,
             Err(_) => return Vec::new(),
         };
@@ -274,12 +302,87 @@ impl CompanyProfileStorage {
         profiles
     }
 
+    pub fn list_profile_spaces(&self) -> Vec<ProfileSpaceSummary> {
+        let mut spaces = Vec::new();
+        let channels = match fs::read_dir(&self.root_dir) {
+            Ok(entries) => entries,
+            Err(_) => return spaces,
+        };
+
+        for channel_entry in channels.flatten() {
+            let channel_path = channel_entry.path();
+            if !channel_path.is_dir() {
+                continue;
+            }
+            let Some(channel_component) = channel_path.file_name().and_then(|value| value.to_str())
+            else {
+                continue;
+            };
+            let channel = decode_component(channel_component);
+            if channel.is_empty() {
+                continue;
+            }
+
+            let scoped_users = match fs::read_dir(&channel_path) {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+
+            for scoped_user_entry in scoped_users.flatten() {
+                let scoped_user_path = scoped_user_entry.path();
+                if !scoped_user_path.is_dir() {
+                    continue;
+                }
+                let Some(scoped_user_key) = scoped_user_path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                else {
+                    continue;
+                };
+                let Some((channel_scope, user_id)) = actor_from_scoped_user_key(scoped_user_key)
+                else {
+                    continue;
+                };
+                let Ok(actor) = ActorIdentity::new(channel.clone(), user_id, channel_scope.clone())
+                else {
+                    continue;
+                };
+                let profiles_dir = scoped_user_path.join("company_profiles");
+                if !profiles_dir.exists() {
+                    continue;
+                }
+                let profiles = self.for_actor(&actor).list_profiles();
+                if profiles.is_empty() {
+                    continue;
+                }
+                spaces.push(ProfileSpaceSummary {
+                    channel: actor.channel.clone(),
+                    user_id: actor.user_id.clone(),
+                    channel_scope: actor.channel_scope.clone(),
+                    profile_count: profiles.len(),
+                    updated_at: profiles.first().map(|profile| profile.updated_at.clone()),
+                });
+            }
+        }
+
+        spaces.sort_by(|a, b| {
+            b.updated_at
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(a.updated_at.as_deref().unwrap_or_default())
+                .then_with(|| a.channel.cmp(&b.channel))
+                .then_with(|| a.user_id.cmp(&b.user_id))
+        });
+        spaces
+    }
+
     pub fn get_profile(&self, profile_id: &str) -> Result<Option<CompanyProfileDocument>, String> {
+        let root_dir = self.scoped_root()?;
         let profile_id = sanitize_id(profile_id.trim());
         if profile_id.is_empty() {
             return Ok(None);
         }
-        self.load_profile_by_dir(&self.root_dir.join(profile_id))
+        self.load_profile_by_dir(&root_dir.join(profile_id))
     }
 
     pub fn create_profile(
@@ -327,7 +430,7 @@ impl CompanyProfileStorage {
 
         let created_at = Utc::now().to_rfc3339();
         let profile_id = Self::profile_id(company_name, &stock_code);
-        let profile_dir = self.root_dir.join(&profile_id);
+        let profile_dir = self.scoped_root()?.join(&profile_id);
         fs::create_dir_all(profile_dir.join("events"))
             .map_err(|err| format!("创建画像目录失败: {err}"))?;
 
@@ -446,7 +549,7 @@ impl CompanyProfileStorage {
         );
         let event_id = event_filename.trim_end_matches(".md").to_string();
         let event_path = self
-            .root_dir
+            .scoped_root()?
             .join(&document.profile_id)
             .join("events")
             .join(&event_filename);
@@ -497,7 +600,7 @@ impl CompanyProfileStorage {
         if profile_id.is_empty() {
             return Ok(false);
         }
-        let profile_dir = self.root_dir.join(&profile_id);
+        let profile_dir = self.scoped_root()?.join(&profile_id);
         if !profile_dir.exists() {
             return Ok(false);
         }
@@ -510,7 +613,7 @@ impl CompanyProfileStorage {
         document: &CompanyProfileDocument,
         sections: Option<Vec<(String, String)>>,
     ) -> Result<(), String> {
-        let profile_dir = self.root_dir.join(&document.profile_id);
+        let profile_dir = self.scoped_root()?.join(&document.profile_id);
         fs::create_dir_all(profile_dir.join("events"))
             .map_err(|err| format!("创建画像目录失败: {err}"))?;
 
@@ -593,6 +696,17 @@ impl CompanyProfileStorage {
         });
         Ok(events)
     }
+
+    fn scoped_root(&self) -> Result<PathBuf, String> {
+        let Some(actor) = &self.actor else {
+            return Err("company profile storage requires actor scope".to_string());
+        };
+        Ok(self
+            .root_dir
+            .join(actor.channel_fs_component())
+            .join(actor.scoped_user_fs_key())
+            .join("company_profiles"))
+    }
 }
 
 fn unique_strings(values: &[String]) -> Vec<String> {
@@ -609,6 +723,53 @@ fn unique_strings(values: &[String]) -> Vec<String> {
         }
     }
     unique
+}
+
+fn actor_from_scoped_user_key(key: &str) -> Option<(Option<String>, String)> {
+    let parts: Vec<&str> = key.splitn(2, "__").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let scope_raw = decode_component(parts[0]);
+    let user_id = decode_component(parts[1]);
+    if user_id.is_empty() {
+        return None;
+    }
+    let channel_scope = if scope_raw == "direct" {
+        None
+    } else {
+        Some(scope_raw)
+    };
+    Some((channel_scope, user_id))
+}
+
+fn decode_component(encoded: &str) -> String {
+    let mut out = String::with_capacity(encoded.len());
+    let bytes = encoded.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'_' && i + 2 < bytes.len() {
+            let hi = bytes[i + 1];
+            let lo = bytes[i + 2];
+            if let (Some(h), Some(l)) = (hex_digit(hi), hex_digit(lo)) {
+                out.push(char::from(h * 16 + l));
+                i += 3;
+                continue;
+            }
+        }
+        out.push(char::from(bytes[i]));
+        i += 1;
+    }
+    out
+}
+
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn alias_union(
@@ -1024,6 +1185,20 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    fn test_actor(channel: &str, user_id: &str, scope: Option<&str>) -> ActorIdentity {
+        ActorIdentity::new(channel, user_id, scope).expect("actor")
+    }
+
+    fn scoped_storage(
+        dir: &std::path::Path,
+        channel: &str,
+        user_id: &str,
+        scope: Option<&str>,
+    ) -> CompanyProfileStorage {
+        let actor = test_actor(channel, user_id, scope);
+        CompanyProfileStorage::new(dir).for_actor(&actor)
+    }
+
     fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1049,7 +1224,8 @@ mod tests {
     #[test]
     fn create_profile_generates_markdown_template_and_industry_sections() {
         let dir = make_temp_dir("company_profile_create");
-        let storage = CompanyProfileStorage::new(&dir);
+        let actor = test_actor("discord", "alice", Some("watchlist"));
+        let storage = CompanyProfileStorage::new(&dir).for_actor(&actor);
 
         let (document, created) = storage
             .create_profile(CreateProfileInput {
@@ -1069,13 +1245,20 @@ mod tests {
         assert!(document.markdown.contains("## Thesis"));
         assert!(document.markdown.contains("## 关键经营指标"));
         assert!(document.markdown.contains("ARR"));
-        assert!(dir.join("SNOW").join("profile.md").exists());
+        assert!(
+            dir.join(actor.channel_fs_component())
+                .join(actor.scoped_user_fs_key())
+                .join("company_profiles")
+                .join("SNOW")
+                .join("profile.md")
+                .exists()
+        );
     }
 
     #[test]
     fn create_profile_reuses_existing_profile_and_merges_aliases() {
         let dir = make_temp_dir("company_profile_alias");
-        let storage = CompanyProfileStorage::new(&dir);
+        let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
 
         let _ = storage
             .create_profile(CreateProfileInput {
@@ -1121,7 +1304,7 @@ mod tests {
     #[test]
     fn rewrite_sections_only_touches_target_section() {
         let dir = make_temp_dir("company_profile_rewrite");
-        let storage = CompanyProfileStorage::new(&dir);
+        let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
 
         let (document, _) = storage
             .create_profile(CreateProfileInput {
@@ -1152,7 +1335,7 @@ mod tests {
     #[test]
     fn append_event_is_idempotent_by_filename() {
         let dir = make_temp_dir("company_profile_event");
-        let storage = CompanyProfileStorage::new(&dir);
+        let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
 
         let (document, _) = storage
             .create_profile(CreateProfileInput {
@@ -1203,7 +1386,7 @@ mod tests {
     #[test]
     fn delete_profile_removes_directory() {
         let dir = make_temp_dir("company_profile_delete");
-        let storage = CompanyProfileStorage::new(&dir);
+        let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
 
         let (document, _) = storage
             .create_profile(CreateProfileInput {
@@ -1228,6 +1411,104 @@ mod tests {
                 .expect("load deleted")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn profiles_are_isolated_by_actor_space() {
+        let dir = make_temp_dir("company_profile_isolation");
+        let alice = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
+        let bob = scoped_storage(&dir, "discord", "bob", Some("watchlist"));
+
+        let (alice_profile, _) = alice
+            .create_profile(CreateProfileInput {
+                company_name: "ServiceNow".to_string(),
+                stock_code: Some("NOW".to_string()),
+                sector: None,
+                aliases: vec![],
+                industry_template: IndustryTemplate::Saas,
+                tracking: None,
+                initial_sections: BTreeMap::new(),
+            })
+            .expect("alice profile");
+
+        let (bob_profile, _) = bob
+            .create_profile(CreateProfileInput {
+                company_name: "CrowdStrike".to_string(),
+                stock_code: Some("CRWD".to_string()),
+                sector: None,
+                aliases: vec![],
+                industry_template: IndustryTemplate::Saas,
+                tracking: None,
+                initial_sections: BTreeMap::new(),
+            })
+            .expect("bob profile");
+
+        let alice_profiles = alice.list_profiles();
+        let bob_profiles = bob.list_profiles();
+
+        assert_eq!(alice_profiles.len(), 1);
+        assert_eq!(bob_profiles.len(), 1);
+        assert_eq!(alice_profiles[0].profile_id, alice_profile.profile_id);
+        assert_eq!(bob_profiles[0].profile_id, bob_profile.profile_id);
+        assert!(
+            alice
+                .get_profile(&bob_profile.profile_id)
+                .expect("alice load")
+                .is_none()
+        );
+        assert!(
+            bob.get_profile(&alice_profile.profile_id)
+                .expect("bob load")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn list_profile_spaces_summarizes_actor_roots() {
+        let dir = make_temp_dir("company_profile_spaces");
+        let base = CompanyProfileStorage::new(&dir);
+        let alice_actor = test_actor("discord", "alice", Some("watchlist"));
+        let bob_actor = test_actor("telegram", "bob", None::<&str>);
+        let alice = base.for_actor(&alice_actor);
+        let bob = base.for_actor(&bob_actor);
+
+        let _ = alice
+            .create_profile(CreateProfileInput {
+                company_name: "Microsoft".to_string(),
+                stock_code: Some("MSFT".to_string()),
+                sector: None,
+                aliases: vec![],
+                industry_template: IndustryTemplate::General,
+                tracking: None,
+                initial_sections: BTreeMap::new(),
+            })
+            .expect("alice profile");
+        let _ = bob
+            .create_profile(CreateProfileInput {
+                company_name: "Visa".to_string(),
+                stock_code: Some("V".to_string()),
+                sector: None,
+                aliases: vec![],
+                industry_template: IndustryTemplate::Financials,
+                tracking: None,
+                initial_sections: BTreeMap::new(),
+            })
+            .expect("bob profile");
+
+        let spaces = base.list_profile_spaces();
+        assert_eq!(spaces.len(), 2);
+        assert!(spaces.iter().any(|space| {
+            space.channel == alice_actor.channel
+                && space.user_id == alice_actor.user_id
+                && space.channel_scope == alice_actor.channel_scope
+                && space.profile_count == 1
+        }));
+        assert!(spaces.iter().any(|space| {
+            space.channel == bob_actor.channel
+                && space.user_id == bob_actor.user_id
+                && space.channel_scope == bob_actor.channel_scope
+                && space.profile_count == 1
+        }));
     }
 
     #[test]

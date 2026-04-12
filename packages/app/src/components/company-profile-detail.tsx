@@ -2,6 +2,7 @@ import { Button } from "@hone-financial/ui/button"
 import { EmptyState } from "@hone-financial/ui/empty-state"
 import { Markdown } from "@hone-financial/ui/markdown"
 import { For, Show } from "solid-js"
+import { actorLabel } from "@/lib/actors"
 import { useCompanyProfiles } from "@/context/company-profiles"
 
 function formatDate(iso?: string) {
@@ -22,11 +23,19 @@ function formatDate(iso?: string) {
 export function CompanyProfileDetail() {
   const profiles = useCompanyProfiles()
   const profile = () => profiles.currentProfile()
+  const currentActor = () => profiles.currentActor()
 
   return (
     <Show
       when={profile()}
-      fallback={<EmptyState title="从左侧选择公司画像" description="页面只负责展示公司画像；建档、更新和事件追加请通过 agent 完成。" />}
+      fallback={
+        <EmptyState
+          title={currentActor() ? "从左侧选择公司画像" : "先选择画像空间"}
+          description={currentActor()
+            ? "页面只负责展示公司画像；建档、更新和事件追加请通过 agent 完成。"
+            : "公司画像按 actor 用户空间隔离展示，请先在左侧选择空间。"}
+        />
+      }
     >
       {(current) => (
         <div class="flex h-full min-h-0 flex-col rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
@@ -43,6 +52,9 @@ export function CompanyProfileDetail() {
               <div class="mt-1 flex flex-wrap gap-3 text-sm text-[color:var(--text-muted)]">
                 <span>模板：{current().metadata.industry_template}</span>
                 <span>Sector：{current().metadata.sector || "未设置"}</span>
+                <Show when={currentActor()}>
+                  <span>空间：{currentActor() ? actorLabel(currentActor()!) : "—"}</span>
+                </Show>
                 <span>更新于：{formatDate(current().metadata.updated_at)}</span>
               </div>
             </div>

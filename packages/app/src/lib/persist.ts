@@ -13,7 +13,6 @@ export type StoredModule =
   | "research"
   | "llm-audit"
   | "logs"
-  | "kb"
   | "settings"
 
 export type StoredSelection = {
@@ -22,6 +21,7 @@ export type StoredSelection = {
   taskId?: string
   portfolioActorKey?: string
   portfolioUserId?: string
+  companyProfileActorKey?: string
   companyProfileId?: string
 }
 

@@ -10,12 +10,10 @@ import { useSkills } from "@/context/skills"
 import { useTasks } from "@/context/tasks"
 import { usePortfolio } from "@/context/portfolio"
 import { useResearch } from "@/context/research"
-import { useKb } from "@/context/kb"
 import { useBackend } from "@/context/backend"
 import { TaskList } from "@/components/task-list"
 import { PortfolioList } from "@/components/portfolio-list"
 import { ResearchList } from "@/components/research-list"
-import { KbList } from "@/components/kb-list"
 import { parseActorKey } from "@/lib/actors"
 
 export default function ConsoleLayout(props: ParentProps) {
@@ -29,7 +27,6 @@ export default function ConsoleLayout(props: ParentProps) {
   const tasks = useTasks()
   const portfolio = usePortfolio()
   const research = useResearch()
-  useKb() // 确保 KbProvider 上下文可访问（供子路由使用）
 
   createEffect(() => {
     const p = location.pathname
@@ -49,8 +46,6 @@ export default function ConsoleLayout(props: ParentProps) {
       consoleState.setModule("llm-audit")
     } else if (p.startsWith("/logs")) {
       consoleState.setModule("logs")
-    } else if (p.startsWith("/kb")) {
-      consoleState.setModule("kb")
     } else if (p.startsWith("/settings")) {
       consoleState.setModule("settings")
     } else {
@@ -111,8 +106,7 @@ export default function ConsoleLayout(props: ParentProps) {
           {consoleState.state.module === "tasks" ? <TaskList /> : null}
           {consoleState.state.module === "portfolio" ? <PortfolioList /> : null}
           {consoleState.state.module === "research" ? <ResearchList /> : null}
-          {consoleState.state.module === "kb" ? <KbList /> : null}
-          {/* logs / kb-detail 模块不需要侧边列表，main 区域全宽展示 */}
+          {/* logs 模块不需要侧边列表，main 区域全宽展示 */}
           <main class="min-h-0 min-w-0 flex-1 overflow-hidden p-3 md:p-4">
             {!backend.state.connected && !backend.state.initializing ? (
               <div class="mb-3 rounded-lg border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 const HONE_AGENT_SANDBOX_DIR_ENV: &str = "HONE_AGENT_SANDBOX_DIR";
 const HONE_DATA_DIR_ENV: &str = "HONE_DATA_DIR";
 
-pub(crate) fn sandbox_base_dir() -> PathBuf {
+pub fn sandbox_base_dir() -> PathBuf {
     std::env::var(HONE_AGENT_SANDBOX_DIR_ENV)
         .map(PathBuf::from)
         .or_else(|_| {
@@ -38,14 +38,6 @@ pub fn channel_download_dir(channel: &str) -> PathBuf {
     sandbox_base_dir()
         .join("downloads")
         .join(sanitize_component(channel))
-}
-
-pub(crate) fn ensure_task_sandbox(namespace: &str, task_id: &str) -> io::Result<PathBuf> {
-    let root = sandbox_base_dir()
-        .join(namespace)
-        .join(sanitize_component(task_id));
-    fs::create_dir_all(&root)?;
-    Ok(root)
 }
 
 #[cfg(test)]

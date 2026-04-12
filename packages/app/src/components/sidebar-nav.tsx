@@ -47,7 +47,6 @@ export function SidebarNav() {
         <Show when={backend.hasCapability("cron_jobs")}><NavLink href="/tasks" label="任务中心" /></Show>
         <NavLink href="/memory" label="记忆" also={["/portfolio"]} />
         <Show when={backend.hasCapability("research")}><NavLink href="/research" label="个股研究" /></Show>
-        <NavLink href="/kb" label="知识库" />
       </div>
 
       {/* 系统分组（紧靠底部状态卡之上） */}

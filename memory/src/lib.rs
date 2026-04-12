@@ -4,7 +4,6 @@
 
 pub mod company_profile;
 pub mod cron_job;
-pub mod kb;
 pub mod llm_audit;
 pub mod portfolio;
 pub mod quota;
@@ -13,11 +12,10 @@ pub mod session_sqlite;
 
 pub use company_profile::{
     AppendEventInput, CompanyProfileDocument, CompanyProfileEventDocument, CompanyProfileStorage,
-    CreateProfileInput, IndustryTemplate, ProfileEventMetadata, ProfileMetadata, ProfileSummary,
-    TrackingConfig,
+    CreateProfileInput, IndustryTemplate, ProfileEventMetadata, ProfileMetadata,
+    ProfileSpaceSummary, ProfileSummary, TrackingConfig,
 };
 pub use cron_job::CronJobStorage;
-pub use kb::{KbEntry, KbSaveRequest, KbStorage, RelatedFileRef, StockRow, StockTableStorage};
 pub use llm_audit::{AuditQueryFilter, AuditRecordSummary, LlmAuditStorage};
 pub use portfolio::PortfolioStorage;
 pub use quota::{

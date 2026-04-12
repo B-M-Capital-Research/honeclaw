@@ -155,9 +155,8 @@ pub fn spawn_attachment_persist_pipeline(
     core: Arc<HoneBotCore>,
     request: AttachmentPersistRequest,
 ) {
-    tokio::spawn(async move {
-        super::vector_store::persist_attachments_to_kb(core, request).await;
-    });
+    let _ = core;
+    let _ = request;
 }
 
 async fn ingest_one_raw_attachment(

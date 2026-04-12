@@ -38,6 +38,7 @@ Last updated: 2026-04-12
 - Default CI proof must cover Rust tests, frontend unit tests, and CI-safe regression scripts
 - High-risk logic changes must keep success-path, failure-path, and boundary-condition verification in automated tests whenever the behavior is CI-safe
 - Company portraits are document-first assets: `profile.md` plus `events/*.md` is the source of truth, while any parsed metadata or API projections are derived views and must not silently diverge from the Markdown files
+- Company portrait docs must live inside the current actor sandbox under `company_profiles/`; do not reintroduce a shared/public portrait directory outside actor-scoped user space
 - Default PR / push CI excludes `hone-desktop` from workspace-wide `cargo check` and `cargo test`; desktop sidecar resources and packaging checks belong to dedicated desktop build or release flows instead of the generic logic gate
 - Local IDE / dev Rust checks may set `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1` to bypass Tauri bundled sidecar validation while still type-checking `hone-desktop`; this flag is only for development syntax checking and must not replace real desktop packaging validation
 - Rust CI / release builds use layered GitHub Actions caching:
@@ -52,9 +53,9 @@ Last updated: 2026-04-12
 - Diagnostic scripts should avoid mutating business data
 - Treat iMessage features as local privileged capabilities; do not assume they can run in generic environments
 - Tool calls must go through a security guard that blocks risky command fragments by default
-- Knowledge-base queries should default to actor / session isolation to avoid cross-user retrieval
+- 用户可见的长期研究记忆目前只保留 company portraits；不要重新暴露 KB 页面、KB API 或 `kb_search` 类记忆入口
 - Company portraits are long-term research assets, not trade execution artifacts: they may store thesis, moat, management, financial quality, capital allocation, valuation frame, risks, and dated event deltas, but they must not evolve into implicit day-trading or automatic recommendation logs
-- Company portrait mutations must stay agent-mediated: the Web console may render portrait documents and event timelines, but create / update / append flows should go through the agent or `company_profile` tool path; the only direct UI mutation allowed is full portrait deletion
+- Company portrait mutations must stay agent-mediated: the Web console may render portrait documents and event timelines, but create / update / append flows should go through the agent's native file operations inside the actor sandbox; the only direct UI mutation allowed is full portrait deletion
 - Company portraits should preserve not only the current conclusion but also enough rationale to make future review possible: `profile.md` should keep the current thesis, key operating metrics, valuation frame, risk ledger, and disconfirming conditions, while event docs should retain why the event mattered, supporting evidence / refs, and a compact research trail when no standalone research-notes layer exists yet
 - Non-local Web console deployments must enable a Bearer token
 - `ChatMode` describes only the message shape (`direct` / `group`) and does not determine session ownership; shared group context must explicitly go through `SessionIdentity`

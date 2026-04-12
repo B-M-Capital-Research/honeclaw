@@ -455,43 +455,6 @@ export type AuditQueryFilter = {
   page_size?: number;
 };
 
-// ── Knowledge Base ────────────────────────────────────────────────────────────
-
-export type KbEntry = {
-  id: string;
-  filename: string;
-  /** 附件分类标签，例如 "Pdf" / "Image" / "Text" */
-  kind: string;
-  size: number;
-  content_type?: string;
-  channel: string;
-  user_id: string;
-  session_id: string;
-  uploaded_at: string;
-  original_path: string;
-  parsed_path: string;
-  /** "ok" | "failed" | "empty" | "skipped" */
-  parse_status: string;
-  parse_error?: string;
-  /** 最近一次成功同步到知识表的时间（ISO 8601），undefined 表示从未同步 */
-  analyzed_at?: string;
-};
-
-export type RelatedFileRef = {
-  kb_id: string;
-  filename: string;
-  summary: string;
-};
-
-export type StockRow = {
-  company_name: string;
-  stock_code: string;
-  related_files: RelatedFileRef[];
-  /** 用户/AI 手动录入的重点知识条目 */
-  key_knowledge: string[];
-  updated_at: string;
-};
-
 // ── Company Profiles ────────────────────────────────────────────────────────
 
 export type IndustryTemplate =
@@ -557,7 +520,18 @@ export type CompanyProfileSummary = {
   event_count: number;
 };
 
+export type CompanyProfileSpaceSummary = {
+  channel: string;
+  user_id: string;
+  channel_scope?: string;
+  profile_count: number;
+  updated_at?: string;
+};
+
 export type CompanyProfileCreateInput = {
+  channel?: string;
+  user_id?: string;
+  channel_scope?: string;
   company_name: string;
   stock_code?: string;
   sector?: string;

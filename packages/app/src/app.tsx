@@ -8,7 +8,6 @@ import { Route, Router } from "@solidjs/router"
 import { ErrorBoundary, Suspense, lazy, type ParentProps } from "solid-js"
 import { BackendProvider } from "@/context/backend"
 import { ConsoleProvider } from "@/context/console"
-import { KbProvider } from "@/context/kb"
 import { SessionsProvider } from "@/context/sessions"
 import { SkillsProvider } from "@/context/skills"
 import { TasksProvider } from "@/context/tasks"
@@ -25,7 +24,6 @@ const TasksPage = lazy(() => import("@/pages/tasks"))
 const PortfolioPage = lazy(() => import("@/pages/portfolio"))
 const MemoryPage = lazy(() => import("@/pages/memory"))
 const ResearchPage = lazy(() => import("@/pages/research"))
-const KbPage = lazy(() => import("@/pages/kb"))
 const LlmAuditPage = lazy(() => import("@/pages/llm-audit"))
 const LogsPage = lazy(() => import("@/pages/logs"))
 const SettingsPage = lazy(() => import("@/pages/settings"))
@@ -50,7 +48,7 @@ function Providers(props: ParentProps) {
                         <PortfolioProvider>
                           <ResearchProvider>
                             <CompanyProfilesProvider>
-                              <KbProvider>{props.children}</KbProvider>
+                              {props.children}
                             </CompanyProfilesProvider>
                           </ResearchProvider>
                         </PortfolioProvider>
@@ -82,7 +80,6 @@ export function App() {
               <Route path="/memory" component={MemoryPage} />
               <Route path="/portfolio/:userId?" component={PortfolioPage} />
               <Route path="/research/:taskId?" component={ResearchPage} />
-              <Route path="/kb/:entryId?" component={KbPage} />
               <Route path="/llm-audit" component={LlmAuditPage} />
               <Route path="/logs" component={LogsPage} />
               <Route path="/settings" component={SettingsPage} />

@@ -3,13 +3,11 @@
 //! 所有工具的核心定义和注册机制。
 
 pub mod base;
-pub mod company_profile;
 pub mod cron_job_tool;
 pub mod data_fetch;
 pub mod deep_research;
 pub mod discover_skills;
 pub mod guard;
-pub mod kb_search;
 pub mod load_skill;
 pub mod portfolio_tool;
 pub mod registry;
@@ -20,13 +18,11 @@ pub mod skill_tool;
 pub mod web_search;
 
 pub use base::{Tool, ToolParameter};
-pub use company_profile::CompanyProfileTool;
 pub use cron_job_tool::CronJobTool;
 pub use data_fetch::DataFetchTool;
 pub use deep_research::DeepResearchTool;
 pub use discover_skills::DiscoverSkillsTool;
 pub use guard::ToolExecutionGuard;
-pub use kb_search::KbSearchTool;
 pub use load_skill::LoadSkillTool;
 pub use portfolio_tool::PortfolioTool;
 pub use registry::ToolRegistry;

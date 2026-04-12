@@ -1,14 +1,12 @@
 import type {
   ChannelStatusInfo,
   CompanyProfile,
-  CompanyProfileCreateInput,
+  CompanyProfileSpaceSummary,
   CompanyProfileSummary,
   HistoryMsg,
-  KbEntry,
   MetaInfo,
   SkillDetailInfo,
   SkillInfo,
-  StockRow,
   UserInfo,
   CronJobInfo,
   CronJobDetailInfo,
@@ -329,87 +327,32 @@ export async function getAuditRecordDetail(id: string) {
   return parseJson<LlmAuditRecord>(response);
 }
 
-// ── Knowledge Base ────────────────────────────────────────────────────────────
-
-export async function getKbEntries() {
-  const response = await apiFetch("/api/kb");
-  const payload = await parseJson<{ entries: KbEntry[] }>(response);
-  return payload.entries;
+export async function listCompanyProfileActors() {
+  const response = await apiFetch("/api/company-profiles/actors");
+  const payload = await parseJson<{ actors: CompanyProfileSpaceSummary[] }>(response);
+  return payload.actors ?? [];
 }
 
-export async function getKbEntry(id: string) {
-  const response = await apiFetch(`/api/kb/${encodeURIComponent(id)}`);
-  return parseJson<{ entry: KbEntry; parsed_text?: string }>(response);
-}
-
-export async function getKbStockTable() {
-  const response = await apiFetch("/api/kb-stock-table");
-  const payload = await parseJson<{ rows: StockRow[] }>(response);
-  return payload.rows;
-}
-
-export async function updateStockKnowledge(params: {
-  company_name: string;
-  stock_code: string;
-  key_knowledge: string[];
-}) {
-  const response = await apiFetch("/api/kb-stock-table/knowledge", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  return parseJson<{ ok: boolean }>(response);
-}
-
-export async function listCompanyProfiles() {
-  const response = await apiFetch("/api/company-profiles");
+export async function listCompanyProfiles(actor: ActorRef) {
+  const response = await apiFetch(`/api/company-profiles?${actorQuery(actor)}`);
   const payload = await parseJson<{ profiles: CompanyProfileSummary[] }>(response);
   return payload.profiles;
 }
 
-export async function getCompanyProfile(profileId: string) {
-  const response = await apiFetch(`/api/company-profiles/${encodeURIComponent(profileId)}`);
+export async function getCompanyProfile(profileId: string, actor: ActorRef) {
+  const response = await apiFetch(
+    `/api/company-profiles/${encodeURIComponent(profileId)}?${actorQuery(actor)}`,
+  );
   const payload = await parseJson<{ profile: CompanyProfile }>(response);
   return payload.profile;
 }
 
-export async function createCompanyProfile(input: CompanyProfileCreateInput) {
-  const response = await apiFetch("/api/company-profiles", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return parseJson<{ profile: CompanyProfile; created: boolean }>(response);
-}
-
-export async function deleteCompanyProfile(profileId: string) {
-  const response = await apiFetch(`/api/company-profiles/${encodeURIComponent(profileId)}`, {
-    method: "DELETE",
-  });
+export async function deleteCompanyProfile(profileId: string, actor: ActorRef) {
+  const response = await apiFetch(
+    `/api/company-profiles/${encodeURIComponent(profileId)}?${actorQuery(actor)}`,
+    {
+      method: "DELETE",
+    },
+  );
   return parseJson<{ ok: boolean }>(response);
-}
-
-export async function analyzeKbEntry(id: string) {
-  const response = await apiFetch(`/api/kb/${encodeURIComponent(id)}/analyze`, {
-    method: "POST",
-  });
-  return parseJson<{ ok: boolean }>(response);
-}
-
-export async function deleteKbEntry(id: string) {
-  const response = await apiFetch(`/api/kb/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
-  return parseJson<{ ok: boolean }>(response);
-}
-
-export async function uploadKbFile(file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  // 注意：不设 Content-Type，让浏览器自动带上 multipart boundary
-  const response = await apiFetch("/api/kb/upload", {
-    method: "POST",
-    body: form,
-  });
-  return parseJson<{ ok: boolean; entry: KbEntry }>(response);
 }
