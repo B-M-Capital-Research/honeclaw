@@ -153,15 +153,13 @@ pub(crate) async fn handle_chat(
                 return;
             }
         };
-        if arc
+        if let Some(reply) = arc
             .core
-            .try_intercept_admin_registration(&actor_clone, &msg)
+            .try_handle_intercept_command(&actor_clone, &msg)
+            .await
         {
             let _ = tx
-                .send((
-                    "assistant_delta".into(),
-                    json!({ "content": hone_channels::core::REGISTER_ADMIN_INTERCEPT_ACK }),
-                ))
+                .send(("assistant_delta".into(), json!({ "content": reply })))
                 .await;
             let _ = tx.send(("done".into(), json!({}))).await;
             return;

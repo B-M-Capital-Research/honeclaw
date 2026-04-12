@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
+use std::time::Duration;
 
 use hone_core::agent::AgentResponse;
 use hone_core::config::HoneConfig;
@@ -20,6 +21,9 @@ use hone_tools::{
     CronJobTool, DeepResearchTool, DiscoverSkillsTool, LoadSkillTool, ToolExecutionGuard,
     ToolRegistry,
 };
+use reqwest::StatusCode;
+use serde::Deserialize;
+use serde_json::json;
 use tokio::sync::mpsc;
 
 use crate::runners::{
@@ -30,6 +34,13 @@ use crate::session_compactor::SessionCompactor;
 
 pub const REGISTER_ADMIN_INTERCEPT_TEXT: &str = "/register-admin AMM";
 pub const REGISTER_ADMIN_INTERCEPT_ACK: &str = "已将当前 identity 升级为管理员。";
+const REPORT_INTERCEPT_PREFIX: &str = "/report";
+const REPORT_PROGRESS_COMMAND: &str = "进度";
+const REPORT_PROGRESS_COMMAND_ALIAS: &str = "progress";
+const REPORT_WORKFLOW_ID: &str = "company_report";
+const REPORT_DEFAULT_MODE: &str = "完整跑完";
+const REPORT_DEFAULT_RESEARCH_TOPIC: &str = "新闻";
+const REPORT_DEFAULT_VALIDATE_CODE: &str = "bamangniubi";
 
 #[derive(Debug, Clone)]
 pub struct CompactSessionOutcome {
@@ -47,6 +58,7 @@ pub struct HoneBotCore {
     pub conversation_quota_storage: ConversationQuotaStorage,
     pub kb_storage: KbStorage,
     pub stock_table: StockTableStorage,
+    workflow_runner_http: reqwest::Client,
     runtime_admin_overrides: RwLock<HashSet<ActorIdentity>>,
 }
 
@@ -62,6 +74,13 @@ impl HoneBotCore {
         let llm = Self::create_llm_provider(&config);
         let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);
         let llm_audit = Self::create_llm_audit_sink(&config);
+        let workflow_runner_http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|err| {
+                tracing::warn!("failed to create workflow runner HTTP client: {}", err);
+                reqwest::Client::new()
+            });
 
         Self {
             config,
@@ -72,6 +91,7 @@ impl HoneBotCore {
             conversation_quota_storage,
             kb_storage,
             stock_table,
+            workflow_runner_http,
             runtime_admin_overrides: RwLock::new(HashSet::new()),
         }
     }
@@ -467,6 +487,170 @@ impl HoneBotCore {
         true
     }
 
+    pub async fn try_handle_intercept_command(
+        &self,
+        actor: &ActorIdentity,
+        input: &str,
+    ) -> Option<String> {
+        if self.try_intercept_admin_registration(actor, input) {
+            return Some(REGISTER_ADMIN_INTERCEPT_ACK.to_string());
+        }
+
+        match parse_report_intercept(input) {
+            Some(ReportIntercept::Start { company_name }) => {
+                Some(self.handle_report_start(actor, &company_name).await)
+            }
+            Some(ReportIntercept::Progress) => Some(self.handle_report_progress(actor).await),
+            None => None,
+        }
+    }
+
+    async fn handle_report_start(&self, actor: &ActorIdentity, company_name: &str) -> String {
+        let Some(base_url) = self.workflow_runner_base_url() else {
+            return "未配置本地 workflow runner 地址，暂时无法启动研报任务。".to_string();
+        };
+
+        let request_body = build_report_run_input(company_name);
+        let url = format!("{base_url}/api/runs");
+        let response = match self
+            .workflow_runner_http
+            .post(&url)
+            .json(&json!({
+                "workflowId": REPORT_WORKFLOW_ID,
+                "input": request_body,
+                "promptOverrides": {},
+            }))
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                tracing::warn!(
+                    "[HoneBotCore] report start request failed actor={} error={}",
+                    actor.session_id(),
+                    err
+                );
+                return format!("研报任务启动失败：无法连接本地 workflow runner（{err}）。");
+            }
+        };
+
+        if response.status() == StatusCode::CONFLICT {
+            let conflict = response.json::<WorkflowConflictResponse>().await.ok();
+            if let Some(active_run_id) = conflict
+                .as_ref()
+                .and_then(|value| value.active_run_id.as_deref())
+            {
+                if let Ok(progress) = self.fetch_report_progress_by_run_id(active_run_id).await {
+                    return format!(
+                        "已有研报任务正在运行中：{}",
+                        format_progress_message(&progress)
+                    );
+                }
+            }
+
+            let detail = conflict
+                .and_then(|value| value.error)
+                .unwrap_or_else(|| "已有研报任务正在运行中。".to_string());
+            return format!("研报任务未重复启动：{detail}");
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = read_response_text(response).await;
+            return format!("研报任务启动失败：{status} {detail}");
+        }
+
+        match response.json::<WorkflowRunCreatedResponse>().await {
+            Ok(payload) => format!(
+                "已启动公司研报：{}。研究倾向默认使用“{}”，任务正在运行中（run_id={}）。可发送 `/report 进度` 查看进度。",
+                company_name.trim(),
+                REPORT_DEFAULT_RESEARCH_TOPIC,
+                payload.id
+            ),
+            Err(err) => format!("研报任务已提交，但解析启动响应失败：{err}"),
+        }
+    }
+
+    async fn handle_report_progress(&self, actor: &ActorIdentity) -> String {
+        let Some(base_url) = self.workflow_runner_base_url() else {
+            return "未配置本地 workflow runner 地址，暂时无法查询研报进度。".to_string();
+        };
+
+        let url = format!("{base_url}/api/runs?workflowId={REPORT_WORKFLOW_ID}&limit=1");
+        let response = match self.workflow_runner_http.get(&url).send().await {
+            Ok(response) => response,
+            Err(err) => {
+                tracing::warn!(
+                    "[HoneBotCore] report progress request failed actor={} error={}",
+                    actor.session_id(),
+                    err
+                );
+                return format!("查询研报进度失败：无法连接本地 workflow runner（{err}）。");
+            }
+        };
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = read_response_text(response).await;
+            return format!("查询研报进度失败：{status} {detail}");
+        }
+
+        let payload = match response.json::<WorkflowRunListResponse>().await {
+            Ok(payload) => payload,
+            Err(err) => return format!("查询研报进度失败：响应解析错误（{err}）。"),
+        };
+
+        let Some(run) = payload.runs.into_iter().next() else {
+            return "当前还没有可查询的研报任务。可直接发送 `/report 公司名` 启动。".to_string();
+        };
+
+        if run.status == "running" {
+            match self.fetch_report_progress_by_run_id(&run.id).await {
+                Ok(progress) => format_progress_message(&progress),
+                Err(err) => format!(
+                    "研报任务正在运行中（run_id={}），但拉取实时进度失败：{}",
+                    run.id, err
+                ),
+            }
+        } else {
+            format_recent_report_message(&run)
+        }
+    }
+
+    fn workflow_runner_base_url(&self) -> Option<String> {
+        let base = self.config.web.local_workflow_api_base.trim();
+        if base.is_empty() {
+            None
+        } else {
+            Some(base.trim_end_matches('/').to_string())
+        }
+    }
+
+    async fn fetch_report_progress_by_run_id(
+        &self,
+        run_id: &str,
+    ) -> Result<WorkflowProgressEnvelope, String> {
+        let base_url = self
+            .workflow_runner_base_url()
+            .ok_or_else(|| "未配置本地 workflow runner 地址".to_string())?;
+        let url = format!("{base_url}/api/runs/{run_id}/progress");
+        let response = self
+            .workflow_runner_http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|err| err.to_string())?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = read_response_text(response).await;
+            return Err(format!("{status} {detail}"));
+        }
+        response
+            .json::<WorkflowProgressEnvelope>()
+            .await
+            .map_err(|err| err.to_string())
+    }
+
     /// 创建工具注册表
     pub fn create_tool_registry(
         &self,
@@ -836,7 +1020,82 @@ fn summarize_tools(tool_calls: &[hone_core::agent::ToolCallMade]) -> String {
     )
 }
 
-fn matches_register_admin_intercept(input: &str) -> bool {
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ReportIntercept {
+    Start { company_name: String },
+    Progress,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowRunCreatedResponse {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowConflictResponse {
+    error: Option<String>,
+    active_run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowRunListResponse {
+    runs: Vec<WorkflowRunSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowRunSummary {
+    id: String,
+    workflow_id: String,
+    workflow_name: Option<String>,
+    status: String,
+    ended_at: Option<String>,
+    error: Option<String>,
+    progress: Option<WorkflowProgressSnapshot>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowProgressEnvelope {
+    id: String,
+    progress: WorkflowProgressSnapshot,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowProgressSnapshot {
+    total_nodes: u32,
+    terminal_nodes: u32,
+    running_nodes: u32,
+    pending_nodes: u32,
+    percent: f64,
+    #[serde(default)]
+    active_nodes: Vec<WorkflowActiveNode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowActiveNode {
+    workflow_name: Option<String>,
+    title: Option<String>,
+    id: String,
+}
+
+fn build_report_run_input(company_name: &str) -> serde_json::Value {
+    json!({
+        "companyName": company_name.trim(),
+        "genPost": REPORT_DEFAULT_MODE,
+        "validateCode": REPORT_DEFAULT_VALIDATE_CODE,
+        "news": "",
+        "task_id": "",
+        "research_topic": REPORT_DEFAULT_RESEARCH_TOPIC,
+    })
+}
+
+fn normalize_intercept_input(input: &str) -> String {
     let trimmed = input.trim();
     let normalized = trimmed
         .strip_prefix('\'')
@@ -848,13 +1107,139 @@ fn matches_register_admin_intercept(input: &str) -> bool {
         })
         .unwrap_or(trimmed)
         .trim();
-    normalized == REGISTER_ADMIN_INTERCEPT_TEXT
+    normalized.to_string()
+}
+
+fn matches_register_admin_intercept(input: &str) -> bool {
+    normalize_intercept_input(input) == REGISTER_ADMIN_INTERCEPT_TEXT
+}
+
+fn parse_report_intercept(input: &str) -> Option<ReportIntercept> {
+    let normalized = normalize_intercept_input(input);
+    let remainder = normalized.strip_prefix(REPORT_INTERCEPT_PREFIX)?.trim();
+    if remainder.is_empty() {
+        return None;
+    }
+    if remainder == REPORT_PROGRESS_COMMAND
+        || remainder.eq_ignore_ascii_case(REPORT_PROGRESS_COMMAND_ALIAS)
+    {
+        return Some(ReportIntercept::Progress);
+    }
+    Some(ReportIntercept::Start {
+        company_name: remainder.to_string(),
+    })
+}
+
+fn format_progress_message(progress: &WorkflowProgressEnvelope) -> String {
+    let active = summarize_active_nodes(&progress.progress.active_nodes);
+    format!(
+        "研报任务正在运行中：{:.1}%（{}/{} 节点已进入终态，{} 个节点运行中，{} 个节点待执行）。{} run_id={}",
+        progress.progress.percent,
+        progress.progress.terminal_nodes,
+        progress.progress.total_nodes,
+        progress.progress.running_nodes,
+        progress.progress.pending_nodes,
+        active,
+        progress.id
+    )
+}
+
+fn format_recent_report_message(run: &WorkflowRunSummary) -> String {
+    let workflow_name = run
+        .workflow_name
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(&run.workflow_id);
+    let progress = run.progress.as_ref();
+    let percent = progress.map(|value| value.percent).unwrap_or(0.0);
+    let terminal_nodes = progress.map(|value| value.terminal_nodes).unwrap_or(0);
+    let total_nodes = progress.map(|value| value.total_nodes).unwrap_or(0);
+    let status_label = match run.status.as_str() {
+        "succeeded" => "已完成",
+        "failed" => "已失败",
+        "stopped" => "已停止",
+        other => other,
+    };
+    let mut message = format!(
+        "当前没有运行中的研报任务。最近一次任务：{}（{}，{:.1}% ，{}/{} 节点终态，run_id={}）。",
+        workflow_name, status_label, percent, terminal_nodes, total_nodes, run.id
+    );
+    if let Some(ended_at) = run
+        .ended_at
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        message.push_str(&format!(" 结束时间：{ended_at}。"));
+    }
+    if let Some(error) = run
+        .error
+        .as_deref()
+        .map(first_non_empty_line)
+        .filter(|value| !value.is_empty())
+    {
+        message.push_str(&format!(" 错误：{}。", truncate_for_log(&error, 120)));
+    }
+    message
+}
+
+fn summarize_active_nodes(nodes: &[WorkflowActiveNode]) -> String {
+    if nodes.is_empty() {
+        return "当前没有活跃节点。".to_string();
+    }
+    let labels = nodes
+        .iter()
+        .take(3)
+        .map(|node| {
+            let workflow_name = node
+                .workflow_name
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("-");
+            let title = node
+                .title
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(&node.id);
+            format!("{workflow_name}/{title}")
+        })
+        .collect::<Vec<_>>();
+    if nodes.len() > 3 {
+        format!(
+            "当前活跃节点：{} 等 {} 个。",
+            labels.join("、"),
+            nodes.len()
+        )
+    } else {
+        format!("当前活跃节点：{}。", labels.join("、"))
+    }
+}
+
+fn first_non_empty_line(value: &str) -> String {
+    value
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("")
+        .to_string()
+}
+
+async fn read_response_text(response: reqwest::Response) -> String {
+    response
+        .text()
+        .await
+        .map(|text| truncate_for_log(text.trim(), 160))
+        .unwrap_or_else(|_| "<empty body>".to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HoneBotCore, REGISTER_ADMIN_INTERCEPT_TEXT, matches_register_admin_intercept};
+    use super::{
+        HoneBotCore, REGISTER_ADMIN_INTERCEPT_TEXT, REPORT_DEFAULT_MODE,
+        REPORT_DEFAULT_RESEARCH_TOPIC, REPORT_DEFAULT_VALIDATE_CODE, ReportIntercept,
+        build_report_run_input, matches_register_admin_intercept, parse_report_intercept,
+    };
     use hone_core::{ActorIdentity, HoneConfig};
+    use serde_json::json;
 
     #[test]
     fn register_admin_intercept_matches_plain_and_quoted_text() {
@@ -877,5 +1262,39 @@ mod tests {
         assert!(core.try_intercept_admin_registration(&actor, REGISTER_ADMIN_INTERCEPT_TEXT));
         assert!(core.is_admin_actor(&actor));
         assert!(!core.is_admin_actor(&other_scope));
+    }
+
+    #[test]
+    fn report_intercept_parses_company_name_and_progress() {
+        assert_eq!(
+            parse_report_intercept("/report Tempus AI"),
+            Some(ReportIntercept::Start {
+                company_name: "Tempus AI".to_string()
+            })
+        );
+        assert_eq!(
+            parse_report_intercept("  '/report 进度'  "),
+            Some(ReportIntercept::Progress)
+        );
+        assert_eq!(
+            parse_report_intercept("/report progress"),
+            Some(ReportIntercept::Progress)
+        );
+        assert_eq!(parse_report_intercept("/report"), None);
+    }
+
+    #[test]
+    fn report_run_input_includes_required_defaults() {
+        assert_eq!(
+            build_report_run_input("Astera Labs"),
+            json!({
+                "companyName": "Astera Labs",
+                "genPost": REPORT_DEFAULT_MODE,
+                "validateCode": REPORT_DEFAULT_VALIDATE_CODE,
+                "news": "",
+                "task_id": "",
+                "research_topic": REPORT_DEFAULT_RESEARCH_TOPIC,
+            })
+        );
     }
 }

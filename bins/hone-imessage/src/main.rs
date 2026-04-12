@@ -612,11 +612,12 @@ async fn process_message(state: Arc<ImessageAppState>, msg: IncomingMessage) {
         session_metadata: None,
         message_metadata: MessageMetadata::default(),
     };
-    if state
+    if let Some(reply) = state
         .core
-        .try_intercept_admin_registration(&envelope.actor, &envelope.text)
+        .try_handle_intercept_command(&envelope.actor, &envelope.text)
+        .await
     {
-        send_imessage(&handle, hone_channels::core::REGISTER_ADMIN_INTERCEPT_ACK);
+        send_imessage(&handle, &reply);
         return;
     }
     let session_id = envelope.actor.session_id();

@@ -452,12 +452,8 @@ async fn process_telegram_message_batch(
         );
         return Ok(());
     }
-    if core.try_intercept_admin_registration(&actor, text) {
-        bot.send_message(
-            first_msg.chat.id,
-            hone_channels::core::REGISTER_ADMIN_INTERCEPT_ACK,
-        )
-        .await?;
+    if let Some(reply) = core.try_handle_intercept_command(&actor, text).await {
+        bot.send_message(first_msg.chat.id, reply).await?;
         return Ok(());
     }
     if !attachments.is_empty() {

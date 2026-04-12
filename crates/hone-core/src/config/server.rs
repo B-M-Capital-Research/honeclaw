@@ -9,6 +9,8 @@ pub struct WebConfig {
     pub research_api_base: String,
     #[serde(default)]
     pub research_api_key: String,
+    #[serde(default = "default_local_workflow_api_base")]
+    pub local_workflow_api_base: String,
 }
 
 impl Default for WebConfig {
@@ -17,12 +19,17 @@ impl Default for WebConfig {
             auth_token: String::new(),
             research_api_base: default_research_api_base(),
             research_api_key: String::new(),
+            local_workflow_api_base: default_local_workflow_api_base(),
         }
     }
 }
 
 fn default_research_api_base() -> String {
     "https://research.example.com".to_string()
+}
+
+fn default_local_workflow_api_base() -> String {
+    "http://127.0.0.1:3213".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

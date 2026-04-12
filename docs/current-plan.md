@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-04-12
-状态：有 8 个活跃任务
+状态：有 9 个活跃任务
 
 ## 说明
 
@@ -48,3 +48,7 @@
   - 状态：`in_progress`
   - 计划：`docs/current-plans/desktop-startup-lock-ux-strategy.md`
   - 摘要：先输出不改代码的策略方案，目标是把“锁冲突直接报错”升级为自动接管、分层恢复和可解释降级的启动体验
+- **主系统 `/report` 指令桥接本地研报 Workflow**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/report-command-bridge.md`
+  - 摘要：在主系统各渠道入口增加 `/report 公司名` 与 `/report 进度` 预拦截，桥接到本地 private workflow runner 的 `company_report` 启动与进度查询接口

@@ -271,6 +271,8 @@ web:
   # Research report API
   research_api_base: "https://research.example.com"
   research_api_key: ""
+  # Local private workflow runner base URL used by the cross-channel /report shortcut
+  local_workflow_api_base: "http://127.0.0.1:3213"
 
 
 security:

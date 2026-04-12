@@ -284,16 +284,16 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         return;
     }
 
-    if state.core.try_intercept_admin_registration(&actor, text) {
+    if let Some(reply) = state.core.try_handle_intercept_command(&actor, text).await {
         if let Err(err) = send_plain_text(
             &state.facade,
             &outbound_receive_id,
             outbound_receive_id_type,
-            hone_channels::core::REGISTER_ADMIN_INTERCEPT_ACK,
+            &reply,
         )
         .await
         {
-            warn!("[Feishu] 发送管理员拦截确认失败: {err}");
+            warn!("[Feishu] 发送指令拦截确认失败: {err}");
         }
         return;
     }

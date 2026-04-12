@@ -42,6 +42,18 @@ Use this file as the historical entry point for completed or paused work that sh
 - Current conclusion: `hone-cli` 已具备 `config / configure / models / channels / status / doctor / start` 管理面；shared runtime overlay service 已供 CLI 与 desktop 共用；macOS / release 安装链路支持 `hone-cli start`，且已补齐首次 runtime config seed 行为
 - Next entry point: `docs/handoffs/2026-04-12-hone-cli-config-mvp.md`
 
+### Local 私有 Workflow Runner（公司研报 v1）
+
+- Status: done
+- Date: 2026-04-12
+- Plan: `docs/archive/plans/local-workflow-runner.md`
+- Handoff: `docs/handoffs/2026-04-12-local-workflow-runner.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cd local/workflow && bun test`, `cd local/workflow && bun run bootstrap-config`, `cd local/workflow && bun build app/app.js server/index.ts server/cli.ts --outdir /tmp/local-workflow-build`, `WORKFLOW_RUNNER_PORT=3213 bun run start`
+- Current conclusion: 在 `local/workflow/` 下新增独立本地 workflow runner，并在后续迭代中补齐紧凑工作台、运行级 prompt override、SSE 去重续流、停止接口、单实例串行、Python UTF-8/旧版本注解兼容，以及结构化进度与节点详情观测；当前 `company_report` 入口既可在页面里运行/观察/停止，也可通过 `bun run client` 从本机其它位置发起并监听进度
+- Next entry point: `docs/handoffs/2026-04-12-local-workflow-runner.md`
+
 ## 2026-04-11
 
 ### 金融自动化合同回归闭环

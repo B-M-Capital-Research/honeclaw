@@ -353,8 +353,8 @@ impl DiscordHandler {
         skill_name: &str,
     ) -> hone_core::HoneResult<String> {
         let actor = discord_actor(author_id, None);
-        if self.core.try_intercept_admin_registration(&actor, input) {
-            return Ok(hone_channels::core::REGISTER_ADMIN_INTERCEPT_ACK.to_string());
+        if let Some(reply) = self.core.try_handle_intercept_command(&actor, input).await {
+            return Ok(reply);
         }
 
         let target = command
@@ -465,12 +465,13 @@ impl DiscordHandler {
             return Ok(());
         }
 
-        if self
+        if let Some(reply) = self
             .core
-            .try_intercept_admin_registration(&actor, msg.content.trim())
+            .try_handle_intercept_command(&actor, msg.content.trim())
+            .await
         {
             msg.channel_id
-                .say(&ctx.http, hone_channels::core::REGISTER_ADMIN_INTERCEPT_ACK)
+                .say(&ctx.http, reply)
                 .await
                 .map_err(|err| hone_core::HoneError::Channel(err.to_string()))?;
             return Ok(());
@@ -714,12 +715,13 @@ impl DiscordHandler {
             session_metadata: None,
             message_metadata: Default::default(),
         };
-        if self
+        if let Some(reply) = self
             .core
-            .try_intercept_admin_registration(&envelope.actor, &envelope.text)
+            .try_handle_intercept_command(&envelope.actor, &envelope.text)
+            .await
         {
             msg.channel_id
-                .say(&ctx.http, hone_channels::core::REGISTER_ADMIN_INTERCEPT_ACK)
+                .say(&ctx.http, reply)
                 .await
                 .map_err(|err| hone_core::HoneError::Channel(err.to_string()))?;
             return Ok(());

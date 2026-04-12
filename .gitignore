@@ -247,3 +247,4 @@ packages/app/dist/
 playwright-report/
 bins/hone-desktop/binaries/
 bins/hone-desktop/tauri.generated.conf.json
+local/

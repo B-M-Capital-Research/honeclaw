@@ -30,7 +30,7 @@ Last updated: 2026-04-12
   - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, the `skill_registry` enabled/disabled override layer, and a compatibility `load_skill` shim
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
-  - `hone-channels`: channel runtime, `HoneBotCore`, shared channel startup bootstrap, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
+  - `hone-channels`: channel runtime, `HoneBotCore`, shared channel startup bootstrap, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes), repo-external actor sandbox management, prompt-audit / session-compaction helpers, the cross-channel pre-session intercept layer for commands such as `/register-admin` and `/report`, and the attachment ingest / KB persistence pipeline split across `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
 - `agents/`
   - `function_calling`: function-calling agent core
   - `gemini_cli`, `codex_cli`: CLI agent adapters
@@ -104,17 +104,18 @@ Last updated: 2026-04-12
 ## Main Flow
 
 1. A channel entrypoint or the Web API receives user input and performs protocol parsing, allowlist checks, and explicit-trigger detection on the channel side
-2. `hone-channels::ingress` centralizes actor scope, chat mode, deduplication, session serialization, shared group pretrigger buffering, and `IncomingEnvelope`
-3. `hone-channels::AgentSession::run()` orchestrates session semantics such as fast user-message persistence, slash skill expansion, quota, and response persistence; it now needs an explicit distinction between:
+2. Before entering `AgentSession::run()`, channel entrypoints may short-circuit shared pre-session intercept commands in `hone-channels::core`, including runtime admin registration and the local report-workflow bridge (`/report 公司名`, `/report 进度`)
+3. `hone-channels::ingress` centralizes actor scope, chat mode, deduplication, session serialization, shared group pretrigger buffering, and `IncomingEnvelope`
+4. `hone-channels::AgentSession::run()` orchestrates session semantics such as fast user-message persistence, slash skill expansion, quota, and response persistence; it now needs an explicit distinction between:
     - `ActorIdentity`: who is executing this request
     - `SessionIdentity`: which history this message should be written into (group-chat shared sessions are controlled by it)
-4. `hone-channels::execution` builds the concrete execution plan for both persistent conversations and transient tasks: prompt audit, tool registry, runner selection, and actor-sandbox-backed `AgentRunnerRequest`
-5. `hone-channels::runners` executes the chosen runtime based on `agent.runner` and maps provider / CLI events back into unified session events. ACP runners now include a local `hone-mcp` server so Hone built-in tools are exposed as MCP tools to the underlying agent. Channel runners default to a repo-external actor sandbox.
-6. `hone-channels::AgentSession::run()` stores parseable tool-call results returned by the runner into the session for future cross-turn recovery; `hone-channels::outbound` and each channel adapter consume the unified events and finish placeholder / reasoning / chunked / streaming responses according to platform capability
-7. `hone-tools` provides data, skills, search, scheduled-task, and other capabilities
+5. `hone-channels::execution` builds the concrete execution plan for both persistent conversations and transient tasks: prompt audit, tool registry, runner selection, and actor-sandbox-backed `AgentRunnerRequest`
+6. `hone-channels::runners` executes the chosen runtime based on `agent.runner` and maps provider / CLI events back into unified session events. ACP runners now include a local `hone-mcp` server so Hone built-in tools are exposed as MCP tools to the underlying agent. Channel runners default to a repo-external actor sandbox.
+7. `hone-channels::AgentSession::run()` stores parseable tool-call results returned by the runner into the session for future cross-turn recovery; `hone-channels::outbound` and each channel adapter consume the unified events and finish placeholder / reasoning / chunked / streaming responses according to platform capability
+8. `hone-tools` provides data, skills, search, scheduled-task, and other capabilities
    - Skill disclosure is now two-phase: the model first sees a compact listing, and full `SKILL.md` bodies are only expanded into the turn after `skill_tool(...)` or a user slash skill is invoked
    - Invoked skill prompts are persisted in session metadata so context restoration can re-inject them after compression instead of relying on historic tool results
-8. `memory` reads and writes local sessions, quotas, portfolios, and cron jobs
+9. `memory` reads and writes local sessions, quotas, portfolios, and cron jobs
     - `memory/src/quota.rs` keeps a daily successful-reply quota for each user-initiated conversation
     - `memory/src/llm_audit.rs` uses SQLite to record LLM call audit logs archived by `ActorIdentity`
     - Session persistence is controlled by `storage.session_runtime_backend`; `json` reads from local files, `sqlite` reads from `storage.session_sqlite_db_path`, and JSON can still be dual-written as a rollback mirror through `storage.session_sqlite_shadow_write_enabled`
