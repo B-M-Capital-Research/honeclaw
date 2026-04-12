@@ -18,6 +18,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          bash scripts/prepare_release_notes.sh "${GITHUB_REF_NAME}" dist/release-notes.md
+
       - name: Ensure GitHub release exists
         shell: bash
         env:
@@ -25,6 +37,10 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${GITHUB_REF_NAME}" \
+              --notes-file dist/release-notes.md
             exit 0
           fi
 
@@ -32,7 +48,7 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+            --notes-file dist/release-notes.md
 
   build-and-release:
     name: build-and-release (${{ matrix.os }}, ${{ matrix.target }})
