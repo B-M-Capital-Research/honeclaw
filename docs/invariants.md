@@ -39,6 +39,10 @@ Last updated: 2026-04-12
 - High-risk logic changes must keep success-path, failure-path, and boundary-condition verification in automated tests whenever the behavior is CI-safe
 - Default PR / push CI excludes `hone-desktop` from workspace-wide `cargo check` and `cargo test`; desktop sidecar resources and packaging checks belong to dedicated desktop build or release flows instead of the generic logic gate
 - Local IDE / dev Rust checks may set `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1` to bypass Tauri bundled sidecar validation while still type-checking `hone-desktop`; this flag is only for development syntax checking and must not replace real desktop packaging validation
+- Rust CI / release builds use layered GitHub Actions caching:
+  - `Swatinem/rust-cache` is the dependency and `target/` cache layer
+  - `sccache` is the compiler object cache layer
+  - `main` branch prewarms release-target caches, and tag releases should primarily restore from that warmed cache rather than create fresh tag-scoped caches
 
 ## Security and Environment Constraints
 

@@ -36,10 +36,12 @@
   - `hone-cli` 的 `config / models / channels / status / doctor / start / onboard`
   - `scripts/install_hone_cli.sh`、CLI install-layout smoke、`hone-cli start`
   - `opencode_acp` 默认继承本机 OpenCode config，不再由 Hone 隐式强推 OpenRouter 默认路由
+  - `v0.1.1` 起 release workflow 只构建 CLI bundle 所需 bins，并能成功产出可用于 `curl | bash` 的 darwin/linux 发行资产
 - 仍待完成：
   - desktop bundled 模式下真正的 `live_apply / component_restart / full_restart` 行为收口
   - desktop settings 与 canonical config / apply result contract 的最后一轮对齐验证
-  - release 资产级别的真实安装 E2E 与剩余文档收尾
+  - Homebrew formula 自动发布收口与 `honeclaw-darwin-x86_64.tar.gz` 资产完成后的 brew 安装 E2E
+  - release cache warm / sccache 策略上线后的首轮 GitHub Actions 时延验证
 
 ## Validation
 
