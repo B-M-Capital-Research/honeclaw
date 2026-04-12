@@ -5,9 +5,122 @@ set -euo pipefail
 REPO="${HONE_GITHUB_REPO:-B-M-Capital-Research/honeclaw}"
 VERSION="${HONE_VERSION:-latest}"
 INSTALL_ROOT="${HONE_INSTALL_DIR:-$HOME/.honeclaw}"
-BIN_DIR="${HONE_BIN_DIR:-$HOME/.local/bin}"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/honeclaw-install.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
+
+path_contains_dir() {
+  local candidate="$1"
+  local entry
+  IFS=':' read -r -a path_entries <<< "${PATH:-}"
+  for entry in "${path_entries[@]}"; do
+    if [[ "$entry" == "$candidate" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+ensure_dir_writable() {
+  local dir="$1"
+  if [[ -d "$dir" ]]; then
+    [[ -w "$dir" ]]
+    return
+  fi
+
+  local parent
+  parent="$(dirname "$dir")"
+  if [[ -d "$parent" && -w "$parent" ]]; then
+    mkdir -p "$dir"
+    return 0
+  fi
+
+  return 1
+}
+
+detect_login_shell() {
+  local shell_path="${SHELL:-}"
+  local shell_name=""
+
+  if [[ -n "$shell_path" ]]; then
+    shell_name="$(basename "$shell_path")"
+  fi
+
+  case "$shell_name" in
+    zsh|bash)
+      echo "$shell_name"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+detect_rc_file() {
+  local shell_name="$1"
+
+  case "$shell_name" in
+    zsh)
+      echo "$HOME/.zshrc"
+      ;;
+    bash)
+      if [[ -f "$HOME/.bashrc" ]]; then
+        echo "$HOME/.bashrc"
+      elif [[ "$OS" == "darwin" ]]; then
+        echo "$HOME/.bash_profile"
+      else
+        echo "$HOME/.bashrc"
+      fi
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+pick_bin_dir() {
+  if [[ -n "${HONE_BIN_DIR:-}" ]]; then
+    echo "$HONE_BIN_DIR"
+    return 0
+  fi
+
+  local candidate
+  local preferred_candidates=(
+    "$HOME/.local/bin"
+    "$HOME/bin"
+    "$HOME/.cargo/bin"
+    "$HOME/.bun/bin"
+  )
+
+  for candidate in "${preferred_candidates[@]}"; do
+    if path_contains_dir "$candidate" && ensure_dir_writable "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  local entry
+  IFS=':' read -r -a path_entries <<< "${PATH:-}"
+  for entry in "${path_entries[@]}"; do
+    if [[ -z "$entry" || "$entry" == "." ]]; then
+      continue
+    fi
+    if [[ "$entry" == "$HOME/"* && -d "$entry" && -w "$entry" ]]; then
+      echo "$entry"
+      return 0
+    fi
+  done
+
+  for candidate in "/opt/homebrew/bin" "/usr/local/bin"; do
+    if path_contains_dir "$candidate" && ensure_dir_writable "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  echo "$HOME/.local/bin"
+}
+
+BIN_DIR="$(pick_bin_dir)"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH_RAW="$(uname -m)"
@@ -140,12 +253,35 @@ Wrapper: $WRAPPER_PATH
 Config: $INSTALL_ROOT/config.yaml
 Data dir: $INSTALL_ROOT/data
 
-If "$BIN_DIR" is not in PATH, add:
-  export PATH="$BIN_DIR:\$PATH"
-
 Next steps:
   hone-cli doctor
   hone-cli onboard
   hone-cli configure --section agent --section channels --section providers
   hone-cli start
 EOF
+
+if ! path_contains_dir "$BIN_DIR"; then
+  export_line="export PATH=\"$BIN_DIR:\$PATH\""
+  cat <<EOF
+
+Current shell PATH does not include "$BIN_DIR".
+Run this now for the current terminal:
+  $export_line
+EOF
+
+  if login_shell="$(detect_login_shell)"; then
+    rc_file="$(detect_rc_file "$login_shell")"
+    cat <<EOF
+
+Detected login shell: $login_shell
+Persist it for future terminals with:
+  printf '\n$export_line\n' >> "$rc_file"
+  source "$rc_file"
+EOF
+  else
+    cat <<EOF
+
+Add the same export line to your shell profile file, then open a new terminal.
+EOF
+  fi
+fi

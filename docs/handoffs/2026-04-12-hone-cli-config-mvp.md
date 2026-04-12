@@ -15,6 +15,7 @@
   - bins/hone-desktop/src/sidecar/settings.rs
   - .github/workflows/release.yml
   - scripts/install_hone_cli.sh
+  - tests/regression/ci/test_install_hone_cli_path_resolution.sh
 - related_docs:
   - docs/archive/plans/hone-cli-config-mvp.md
   - docs/repo-map.md
@@ -32,6 +33,7 @@
 - `hone-desktop` sidecar 改为调用共享配置服务，消除 desktop / CLI 双写逻辑
 - `hone-cli` 改为 clap 子命令结构，保留无参默认进入 chat REPL，并新增 `start`
 - release workflow 改为产出安装所需的多平台 tarball 与安装脚本；install script 会写 wrapper 并注入 `HONE_HOME` / `HONE_CONFIG_PATH` / `HONE_BASE_CONFIG_PATH`
+- 安装脚本同日继续收口 PATH 行为：优先把 `hone-cli` wrapper 写入当前 `PATH` 中可写的用户态 bin 目录，只有找不到合适目录时才回退到 `~/.local/bin`
 - 冷缓存走查过程中补了一个首装缺口：当 `--config` 或 `HONE_CONFIG_PATH` 指向尚未生成的 `data/runtime/config_runtime.yaml` 时，CLI 现在会在写操作自动 seed runtime，在读操作回退到 base `config.yaml`
 
 ## Verification
@@ -47,6 +49,9 @@
   - `status / doctor`
   - `hone-cli start --help`
   - 无参 `hone-cli` 进入 REPL，输入 `quit` 可退出
+- CI-safe 安装回归新增并通过：
+  - `bash tests/regression/ci/test_install_hone_cli_path_resolution.sh`
+  - 覆盖“PATH 中已有可写用户 bin 目录时直接安装到该目录”和“否则回退到 `~/.local/bin` 并打印 PATH 提示”
 - 安装态 env 模式验证通过：
   - 仅设置 `HONE_HOME`、`HONE_BASE_CONFIG_PATH`、`HONE_CONFIG_PATH`、`HONE_DATA_DIR`、`HONE_SKILLS_DIR` 即可完成首次 `config set`，并正确生成 `data/runtime/config_runtime.yaml`
 - 非阻塞失败：

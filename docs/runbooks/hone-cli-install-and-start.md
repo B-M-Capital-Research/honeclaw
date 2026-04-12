@@ -32,7 +32,9 @@ The installer:
 - Downloads the matching release asset such as `honeclaw-darwin-aarch64.tar.gz`
 - Extracts it under `~/.honeclaw/releases/<bundle>`
 - Maintains `~/.honeclaw/current` as the active symlink
-- Writes a `hone-cli` wrapper to `~/.local/bin/hone-cli`
+- Writes a `hone-cli` wrapper to the first writable user-facing bin dir already present in `PATH` when possible
+  - Preferred matches are `~/.local/bin`, `~/bin`, `~/.cargo/bin`, `~/.bun/bin`, then other writable `~/...` PATH entries
+  - If none of those are available, it falls back to `~/.local/bin/hone-cli` and prints both the immediate `export PATH=...` command and a shell-specific `~/.zshrc` or `~/.bashrc` / `~/.bash_profile` persistence hint when it can identify the login shell
 - Seeds `~/.honeclaw/config.yaml` and `~/.honeclaw/soul.md` if they do not already exist
 - In an interactive terminal, asks whether to run `hone-cli onboard` immediately
   - `HONE_RUN_ONBOARD=0` skips the prompt
@@ -135,10 +137,22 @@ Current limitation:
 
 ### `hone-cli` not found
 
-Add `~/.local/bin` to `PATH`:
+Check where the installer placed the wrapper:
+
+```bash
+command -v hone-cli || ls -l ~/.local/bin/hone-cli
+```
+
+If it fell back to `~/.local/bin`, add that directory to `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+If you installed with Homebrew and `hone-cli` is still missing, the more likely issue is that your shell has not loaded Homebrew's environment yet:
+
+```bash
+eval "$($(command -v brew) shellenv)"
 ```
 
 ### `hone-cli start` says a runtime binary is missing

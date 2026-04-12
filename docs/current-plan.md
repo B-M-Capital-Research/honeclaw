@@ -19,7 +19,7 @@
 - **Canonical Config 与 Runtime Apply 统一改造**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/canonical-config-runtime-apply.md`
-  - 摘要：canonical config、effective-config、CLI 管理面、安装 / onboarding、标准 Homebrew tap 与 OpenCode 本机配置继承已落地；desktop bundled 模式下的 live/component/full apply 语义与剩余迁移收尾仍在继续
+  - 摘要：canonical config、effective-config、CLI 管理面、安装 / onboarding、标准 Homebrew tap 与 OpenCode 本机配置继承已落地；当前继续收口安装器 PATH 目录选择与 desktop bundled 模式下的 live/component/full apply 语义
 - **Skill Runtime 对齐 Claude Code**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/skill-runtime-align-claude-code.md`

@@ -11,6 +11,8 @@
   - bins/hone-desktop/src/sidecar.rs
   - bins/hone-desktop/src/sidecar/runtime_env.rs
   - bins/hone-desktop/src/sidecar/processes.rs
+  - scripts/install_hone_cli.sh
+  - tests/regression/ci/test_install_hone_cli_path_resolution.sh
 - related_docs:
   - docs/current-plan.md
   - docs/invariants.md
@@ -35,6 +37,8 @@
   - canonical config path 解析、effective-config 生成与 legacy runtime 文件迁移入口
   - `hone-cli` 的 `config / models / channels / status / doctor / start / onboard`
   - `scripts/install_hone_cli.sh`、CLI install-layout smoke、`hone-cli start`
+  - `scripts/install_hone_cli.sh` 改为优先把 wrapper 写入当前 `PATH` 中可写的用户态 bin 目录；若无匹配再回退到 `~/.local/bin`
+  - 新增 `tests/regression/ci/test_install_hone_cli_path_resolution.sh`，覆盖 PATH 命中与 fallback 两条安装链路
   - `opencode_acp` 默认继承本机 OpenCode config，不再由 Hone 隐式强推 OpenRouter 默认路由
   - `v0.1.1` 起 release workflow 只构建 CLI bundle 所需 bins，并能成功产出可用于 `curl | bash` 的 darwin/linux 发行资产
   - 标准 Homebrew tap 仓库 `B-M-Capital-Research/homebrew-honeclaw` 已建立；release workflow 改为向该 tap 推送 `honeclaw.rb`，`brew install B-M-Capital-Research/honeclaw/honeclaw` 可直接安装
@@ -48,6 +52,7 @@
 - `cargo test -p hone-core`
 - `cargo test -p hone-cli`
 - `cargo check --workspace --all-targets --exclude hone-desktop`
+- `bash tests/regression/ci/test_install_hone_cli_path_resolution.sh`
 - 手工验证：
   - legacy `config_runtime.yaml + .overrides.yaml` 自动迁移到 canonical `config.yaml`
   - `hone-cli config file/get/set/unset/validate`

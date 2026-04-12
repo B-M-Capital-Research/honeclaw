@@ -85,7 +85,7 @@ hone-cli onboard
 hone-cli start
 ```
 
-This path installs the GitHub release bundle under `~/.honeclaw`, writes a `hone-cli` wrapper into `~/.local/bin`, and lets you start the local runtime directly with `hone-cli start` instead of `./launch.sh`.
+This path installs the GitHub release bundle under `~/.honeclaw`, writes a `hone-cli` wrapper into the first writable user-facing bin directory already present in your `PATH` when possible, and falls back to `~/.local/bin` otherwise. That lets you start the local runtime directly with `hone-cli start` instead of `./launch.sh`.
 
 If you choose `opencode_acp` during onboarding, Hone now expects you to finish provider/auth/default-model setup in local `opencode` first, then simply reuses that local OpenCode config by default.
 

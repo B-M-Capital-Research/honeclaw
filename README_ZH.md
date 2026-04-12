@@ -82,7 +82,7 @@ hone-cli onboard
 hone-cli start
 ```
 
-该方式会把 GitHub release bundle 安装到 `~/.honeclaw`，并在 `~/.local/bin` 写入 `hone-cli` 启动包装脚本。之后可以直接使用 `hone-cli start` 启动，不需要手动执行 `./launch.sh`。
+该方式会把 GitHub release bundle 安装到 `~/.honeclaw`，并尽量把 `hone-cli` 启动包装脚本写到当前 `PATH` 里第一个可写的用户态 bin 目录；如果找不到合适目录，才回退到 `~/.local/bin`。之后可以直接使用 `hone-cli start` 启动，不需要手动执行 `./launch.sh`。
 
 如果你在首装向导里选择 `opencode_acp`，Hone 会提示你先在本机 `opencode` 里完成 provider / 鉴权 / 默认模型配置，然后默认直接继承这份本机 OpenCode 配置。
 
