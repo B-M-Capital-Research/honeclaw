@@ -101,6 +101,19 @@ The onboarding flow will:
   - retry the current field
   - go back and disable that channel
 
+Runner install references shown by onboarding:
+
+- `Codex CLI`
+  - Install: `npm install -g @openai/codex`
+  - Update: `codex --upgrade`
+  - Official guide: [OpenAI Codex CLI – Getting Started](https://help.openai.com/en/articles/11096431)
+- `Codex ACP`
+  - Install `codex` first, then install the ACP adapter version Hone currently validates: `npm install -g @zed-industries/codex-acp@0.9.5`
+  - Official adapter repo: [zed-industries/codex-acp](https://github.com/zed-industries/codex-acp)
+- `OpenCode ACP`
+  - Install: `curl -fsSL https://opencode.ai/install | bash`
+  - Official docs: [OpenCode Docs](https://opencode.ai/docs/)
+
 If you prefer the older section-by-section setup, use:
 
 ```bash

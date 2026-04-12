@@ -396,6 +396,8 @@ fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
             notes: &[
                 "前置：本机可执行 `codex --version`。",
                 "优点：不需要单独填写 OpenAI-compatible base URL / API key。",
+                "安装：`npm install -g @openai/codex`；已安装可用 `codex --upgrade` 更新。",
+                "官方说明：https://help.openai.com/en/articles/11096431",
             ],
         },
         RunnerOnboardSpec {
@@ -404,6 +406,8 @@ fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
             notes: &[
                 "前置：本机可执行 `codex --version` 与 `codex-acp --help`。",
                 "可额外配置 model / variant / sandbox policy。",
+                "安装：先装 `codex`，再按 Hone 当前兼容版本安装 `npm install -g @zed-industries/codex-acp@0.9.5`。",
+                "官方说明：https://github.com/zed-industries/codex-acp",
             ],
         },
         RunnerOnboardSpec {
@@ -412,6 +416,8 @@ fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
             notes: &[
                 "前置：本机可执行 `opencode --version`。",
                 "默认不在 Hone 首装里填写 provider / base URL / API key。",
+                "安装：`curl -fsSL https://opencode.ai/install | bash`。",
+                "官方说明：https://opencode.ai/docs/",
                 "请先在 `opencode` 里通过 `/connect` 或全局 `opencode.json` / `opencode.jsonc` 配好默认模型。",
                 "如果需要 Hone 显式覆盖 opencode 默认模型，再用 `hone-cli models set ...`。",
             ],
