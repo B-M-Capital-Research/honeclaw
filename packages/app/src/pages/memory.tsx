@@ -1,10 +1,15 @@
-import { createSignal } from "solid-js"
+import { createEffect, createSignal } from "solid-js"
 import { Show } from "solid-js"
+import { useSearchParams } from "@solidjs/router"
 import { PortfolioList } from "@/components/portfolio-list"
 import { PortfolioDetail } from "@/components/portfolio-detail"
 import { KbStockTable } from "@/components/kb-stock-table"
+import { CompanyProfileList } from "@/components/company-profile-list"
+import { CompanyProfileDetail } from "@/components/company-profile-detail"
+import { useCompanyProfiles } from "@/context/company-profiles"
+import { useBackend } from "@/context/backend"
 
-type MemoryTab = "portfolio" | "knowledge"
+type MemoryTab = "portfolio" | "knowledge" | "profiles"
 
 function TabBtn(props: { label: string; active: boolean; onClick: () => void }) {
   return (
@@ -24,7 +29,27 @@ function TabBtn(props: { label: string; active: boolean; onClick: () => void }) 
 }
 
 export default function MemoryPage() {
+  const backend = useBackend()
+  const companyProfiles = useCompanyProfiles()
   const [tab, setTab] = createSignal<MemoryTab>("portfolio")
+  const [searchParams] = useSearchParams()
+
+  createEffect(() => {
+    const requested = typeof searchParams.tab === "string" ? searchParams.tab : undefined
+    if (requested === "profiles") {
+      setTab("profiles")
+    } else if (requested === "knowledge") {
+      setTab("knowledge")
+    } else if (requested === "portfolio") {
+      setTab("portfolio")
+    }
+
+    const profileId =
+      typeof searchParams.profile === "string" ? searchParams.profile : undefined
+    if (profileId) {
+      companyProfiles.selectProfile(profileId)
+    }
+  })
 
   return (
     <div class="flex h-full flex-col overflow-hidden">
@@ -40,6 +65,13 @@ export default function MemoryPage() {
           active={tab() === "knowledge"}
           onClick={() => setTab("knowledge")}
         />
+        <Show when={backend.hasCapability("company_profiles")}>
+          <TabBtn
+            label="公司画像"
+            active={tab() === "profiles"}
+            onClick={() => setTab("profiles")}
+          />
+        </Show>
       </div>
 
       {/* 持仓记忆 — 两栏布局：左侧选人 + 右侧详情 */}
@@ -56,6 +88,15 @@ export default function MemoryPage() {
       <Show when={tab() === "knowledge"}>
         <div class="min-h-0 flex-1 overflow-y-auto p-5">
           <KbStockTable />
+        </div>
+      </Show>
+
+      <Show when={tab() === "profiles"}>
+        <div class="flex min-h-0 flex-1 overflow-hidden">
+          <CompanyProfileList />
+          <div class="min-h-0 flex-1 overflow-hidden">
+            <CompanyProfileDetail />
+          </div>
         </div>
       </Show>
     </div>

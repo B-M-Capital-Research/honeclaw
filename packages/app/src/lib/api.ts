@@ -1,5 +1,8 @@
 import type {
   ChannelStatusInfo,
+  CompanyProfile,
+  CompanyProfileCreateInput,
+  CompanyProfileSummary,
   HistoryMsg,
   KbEntry,
   MetaInfo,
@@ -354,6 +357,34 @@ export async function updateStockKnowledge(params: {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
+  });
+  return parseJson<{ ok: boolean }>(response);
+}
+
+export async function listCompanyProfiles() {
+  const response = await apiFetch("/api/company-profiles");
+  const payload = await parseJson<{ profiles: CompanyProfileSummary[] }>(response);
+  return payload.profiles;
+}
+
+export async function getCompanyProfile(profileId: string) {
+  const response = await apiFetch(`/api/company-profiles/${encodeURIComponent(profileId)}`);
+  const payload = await parseJson<{ profile: CompanyProfile }>(response);
+  return payload.profile;
+}
+
+export async function createCompanyProfile(input: CompanyProfileCreateInput) {
+  const response = await apiFetch("/api/company-profiles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<{ profile: CompanyProfile; created: boolean }>(response);
+}
+
+export async function deleteCompanyProfile(profileId: string) {
+  const response = await apiFetch(`/api/company-profiles/${encodeURIComponent(profileId)}`, {
+    method: "DELETE",
   });
   return parseJson<{ ok: boolean }>(response);
 }

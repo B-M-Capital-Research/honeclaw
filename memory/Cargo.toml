@@ -7,6 +7,7 @@ edition.workspace = true
 hone-core = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 tracing = { workspace = true }
 thiserror = { workspace = true }

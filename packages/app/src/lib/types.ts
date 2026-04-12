@@ -491,3 +491,77 @@ export type StockRow = {
   key_knowledge: string[];
   updated_at: string;
 };
+
+// ── Company Profiles ────────────────────────────────────────────────────────
+
+export type IndustryTemplate =
+  | "general"
+  | "saas"
+  | "semiconductor_hardware"
+  | "consumer"
+  | "industrial_defense"
+  | "financials";
+
+export type ProfileTrackingConfig = {
+  enabled: boolean;
+  cadence: string;
+  focus_metrics: string[];
+};
+
+export type ProfileMetadata = {
+  company_name: string;
+  stock_code: string;
+  aliases: string[];
+  sector: string;
+  industry_template: IndustryTemplate;
+  status: string;
+  tracking: ProfileTrackingConfig;
+  created_at: string;
+  updated_at: string;
+  last_reviewed_at?: string;
+};
+
+export type CompanyProfileEvent = {
+  id: string;
+  filename: string;
+  title: string;
+  metadata: {
+    event_type: string;
+    occurred_at: string;
+    captured_at: string;
+    thesis_impact: string;
+    changed_sections: string[];
+    refs: string[];
+  };
+  markdown: string;
+};
+
+export type CompanyProfile = {
+  profile_id: string;
+  metadata: ProfileMetadata;
+  markdown: string;
+  events: CompanyProfileEvent[];
+};
+
+export type CompanyProfileSummary = {
+  profile_id: string;
+  company_name: string;
+  stock_code: string;
+  sector: string;
+  industry_template: IndustryTemplate;
+  status: string;
+  tracking_enabled: boolean;
+  tracking_cadence: string;
+  updated_at: string;
+  last_reviewed_at?: string;
+  event_count: number;
+};
+
+export type CompanyProfileCreateInput = {
+  company_name: string;
+  stock_code?: string;
+  sector?: string;
+  aliases?: string[];
+  industry_template?: IndustryTemplate;
+  sections?: Record<string, string>;
+};

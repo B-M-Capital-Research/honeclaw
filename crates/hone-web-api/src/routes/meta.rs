@@ -121,6 +121,7 @@ fn meta_capabilities(config: &HoneConfig, deployment_mode: &str) -> Vec<String> 
         "skills".to_string(),
         "cron_jobs".to_string(),
         "portfolio".to_string(),
+        "company_profiles".to_string(),
         "research".to_string(),
         "llm_audit".to_string(),
     ];

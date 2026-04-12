@@ -241,6 +241,8 @@ pub struct StorageConfig {
     pub gen_images_dir: String,
     #[serde(default = "default_kb_dir")]
     pub kb_dir: String,
+    #[serde(default = "default_company_profiles_dir")]
+    pub company_profiles_dir: String,
 }
 
 impl StorageConfig {
@@ -259,6 +261,7 @@ impl StorageConfig {
         self.x_drafts_dir = root.join("x_drafts").to_string_lossy().to_string();
         self.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
         self.kb_dir = root.join("kb").to_string_lossy().to_string();
+        self.company_profiles_dir = root.join("company_profiles").to_string_lossy().to_string();
     }
 
     pub fn ensure_runtime_dirs(&self) {
@@ -269,6 +272,7 @@ impl StorageConfig {
         let _ = std::fs::create_dir_all(&self.x_drafts_dir);
         let _ = std::fs::create_dir_all(&self.gen_images_dir);
         let _ = std::fs::create_dir_all(&self.kb_dir);
+        let _ = std::fs::create_dir_all(&self.company_profiles_dir);
         let _ = std::fs::create_dir_all(&self.conversation_quota_dir);
         if let Some(parent) = PathBuf::from(&self.llm_audit_db_path).parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -314,4 +318,7 @@ fn default_gen_images_dir() -> String {
 }
 fn default_kb_dir() -> String {
     "./data/kb".to_string()
+}
+fn default_company_profiles_dir() -> String {
+    "./data/company_profiles".to_string()
 }

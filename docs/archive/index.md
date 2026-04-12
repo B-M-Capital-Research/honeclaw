@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-12
 
+### 公司画像与长期基本面追踪
+
+- Status: done
+- Date: 2026-04-12
+- Plan: `docs/archive/plans/company-portrait-tracking.md`
+- Handoff: `docs/handoffs/2026-04-12-company-portrait-tracking.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-memory company_profile -- --nocapture`, `cargo test -p hone-tools company_profile -- --nocapture`, `cargo check -p hone-memory -p hone-tools -p hone-web-api -p hone-channels`, `bun run --cwd packages/app typecheck`, `bun run --cwd packages/app test`
+- Current conclusion: Hone 已具备 Markdown 形式的公司画像与事件时间线、`company_profile` 工具、画像 Web API、记忆页只读画像视图（允许彻底删除），以及从知识记忆表打开画像的入口；prompt 与 `company_portrait` skill 也已补上长期画像策略，建档与更新统一走 agent
+- Next entry point: `docs/handoffs/2026-04-12-company-portrait-tracking.md`
+
 ### CLI 首装 Onboarding 与安装向导
 
 - Status: done

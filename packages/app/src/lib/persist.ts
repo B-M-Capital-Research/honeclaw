@@ -22,6 +22,7 @@ export type StoredSelection = {
   taskId?: string
   portfolioActorKey?: string
   portfolioUserId?: string
+  companyProfileId?: string
 }
 
 function readValue<T>(key: string, fallback: T) {

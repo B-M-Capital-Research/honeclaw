@@ -13,13 +13,13 @@ use hone_core::config::HoneConfig;
 use hone_core::{ActorIdentity, LlmAuditSink};
 use hone_llm::{LlmProvider, OpenAiCompatibleProvider, OpenRouterProvider};
 use hone_memory::{
-    ConversationQuotaStorage, CronJobStorage, KbStorage, LlmAuditStorage, SessionStorage,
-    StockTableStorage,
+    CompanyProfileStorage, ConversationQuotaStorage, CronJobStorage, KbStorage, LlmAuditStorage,
+    SessionStorage, StockTableStorage,
 };
 use hone_scheduler::{HoneScheduler, SchedulerEvent};
 use hone_tools::{
-    CronJobTool, DeepResearchTool, DiscoverSkillsTool, LoadSkillTool, ToolExecutionGuard,
-    ToolRegistry,
+    CompanyProfileTool, CronJobTool, DeepResearchTool, DiscoverSkillsTool, LoadSkillTool,
+    ToolExecutionGuard, ToolRegistry,
 };
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -59,6 +59,7 @@ pub struct HoneBotCore {
     pub kb_storage: KbStorage,
     pub stock_table: StockTableStorage,
     workflow_runner_http: reqwest::Client,
+    pub company_profile_storage: CompanyProfileStorage,
     runtime_admin_overrides: RwLock<HashSet<ActorIdentity>>,
 }
 
@@ -71,6 +72,8 @@ impl HoneBotCore {
                 .expect("failed to initialize conversation quota storage");
         let kb_storage = KbStorage::new(&config.storage.kb_dir);
         let stock_table = StockTableStorage::new(&config.storage.kb_dir);
+        let company_profile_storage =
+            CompanyProfileStorage::new(&config.storage.company_profiles_dir);
         let llm = Self::create_llm_provider(&config);
         let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);
         let llm_audit = Self::create_llm_audit_sink(&config);
@@ -92,6 +95,7 @@ impl HoneBotCore {
             kb_storage,
             stock_table,
             workflow_runner_http,
+            company_profile_storage,
             runtime_admin_overrides: RwLock::new(HashSet::new()),
         }
     }
@@ -729,6 +733,11 @@ impl HoneBotCore {
             self.config.security.kb_actor_isolation,
         )));
         tracing::info!("[HoneBotCore] 已注册工具 kb_search");
+
+        registry.register(Box::new(CompanyProfileTool::new(std::path::PathBuf::from(
+            &self.config.storage.company_profiles_dir,
+        ))));
+        tracing::info!("[HoneBotCore] 已注册工具 company_profile");
 
         // 管理员专属工具（仅 restart_hone 需要管理员权限）
         if let Some(actor) = actor.filter(|actor| self.is_admin_actor(actor)) {

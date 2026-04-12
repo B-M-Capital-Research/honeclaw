@@ -112,9 +112,8 @@ static RE_NL: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"\n[ \t\n]*\n").expect("valid regex"));
 
 // ── skip-buffer 检测正则 ──────────────────────────────────────────────────────
-static RE_ONLY_PUNCT: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"^[\s\.\,\!\?\:\;\-\_\=\+\*\/\\]+$").expect("valid regex")
-});
+static RE_ONLY_PUNCT: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^[\s\.\,\!\?\:\;\-\_\=\+\*\/\\]+$").expect("valid regex"));
 static RE_ONLY_FUNC: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"^(functions?\.?\s*)+$").expect("valid regex"));
 static RE_ONLY_TOOL_CALL: LazyLock<regex::Regex> =

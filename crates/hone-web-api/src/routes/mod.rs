@@ -1,5 +1,6 @@
 pub(crate) mod auth;
 pub(crate) mod chat;
+pub(crate) mod company_profiles;
 pub(crate) mod cron;
 pub(crate) mod events;
 pub(crate) mod files;
@@ -67,6 +68,28 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .route("/cron-jobs/{id}/toggle", post(cron::handle_toggle_cron_job))
         .route("/portfolio/actors", get(portfolio::handle_portfolio_actors))
         .route("/portfolio", get(portfolio::handle_portfolio))
+        .route(
+            "/company-profiles",
+            get(company_profiles::handle_company_profiles)
+                .post(company_profiles::handle_create_company_profile),
+        )
+        .route(
+            "/company-profiles/{id}",
+            get(company_profiles::handle_company_profile_detail)
+                .delete(company_profiles::handle_delete_company_profile),
+        )
+        .route(
+            "/company-profiles/{id}/events",
+            post(company_profiles::handle_append_company_profile_event),
+        )
+        .route(
+            "/company-profiles/{id}/sections",
+            put(company_profiles::handle_update_company_profile_sections),
+        )
+        .route(
+            "/company-profiles/{id}/tracking",
+            put(company_profiles::handle_update_company_profile_tracking),
+        )
         .route(
             "/portfolio/holdings",
             post(portfolio::handle_create_holding),

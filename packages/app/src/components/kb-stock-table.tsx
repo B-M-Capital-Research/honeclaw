@@ -1,7 +1,8 @@
 import { createResource, createSignal, createEffect, For, Show, Switch, Match } from "solid-js"
-import { A } from "@solidjs/router"
+import { A, useNavigate } from "@solidjs/router"
 import { getKbStockTable, updateStockKnowledge } from "@/lib/api"
 import type { StockRow } from "@/lib/types"
+import { useCompanyProfiles } from "@/context/company-profiles"
 
 // ── 辅助 ─────────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,8 @@ function StockRowItem(props: {
   row: StockRow
   index: number
   onSaveKnowledge: (items: string[]) => Promise<void>
+  onOpenProfile: () => void
+  profileId?: string
 }) {
   return (
     <tr class={props.index % 2 === 0 ? "bg-[color:var(--surface)]" : "bg-[color:var(--panel)]"}>
@@ -222,6 +225,22 @@ function StockRowItem(props: {
 
       {/* 重点知识（可编辑） */}
       <KnowledgeCell row={props.row} onSave={props.onSaveKnowledge} />
+
+      <td class="px-3 py-2.5 align-top">
+        <Show
+          when={props.profileId}
+          fallback={
+            <span class="text-xs text-[color:var(--text-muted)]">通过 agent 建立</span>
+          }
+        >
+          <button
+            class="rounded border border-[color:var(--accent)] bg-[color:var(--accent-soft)] px-2 py-1 text-xs text-[color:var(--accent)] transition hover:opacity-80"
+            onClick={props.onOpenProfile}
+          >
+            打开画像
+          </button>
+        </Show>
+      </td>
     </tr>
   )
 }
@@ -229,6 +248,8 @@ function StockRowItem(props: {
 // ── 主组件 ────────────────────────────────────────────────────────────────────
 
 export function KbStockTable() {
+  const navigate = useNavigate()
+  const companyProfiles = useCompanyProfiles()
   const [rows, { refetch }] = createResource<StockRow[]>(getKbStockTable)
 
   const handleSaveKnowledge = async (row: StockRow, items: string[]) => {
@@ -238,6 +259,26 @@ export function KbStockTable() {
       key_knowledge: items,
     })
     await refetch()
+  }
+
+  const profileIdByKey = () => {
+    const map = new Map<string, string>()
+    for (const profile of companyProfiles.profiles() ?? []) {
+      const codeKey = profile.stock_code.trim().toUpperCase()
+      if (codeKey) map.set(codeKey, profile.profile_id)
+      const nameKey = profile.company_name.trim().toLowerCase()
+      if (nameKey) map.set(nameKey, profile.profile_id)
+    }
+    return map
+  }
+
+  const findProfileId = (row: StockRow) =>
+    profileIdByKey().get(row.stock_code.trim().toUpperCase()) ||
+    profileIdByKey().get(row.company_name.trim().toLowerCase())
+
+  const openProfile = (profileId: string) => {
+    companyProfiles.selectProfile(profileId)
+    navigate(`/memory?tab=profiles&profile=${encodeURIComponent(profileId)}`)
   }
 
   return (
@@ -280,16 +321,26 @@ export function KbStockTable() {
                     <th class="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
                       重点知识
                     </th>
+                    <th class="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
+                      公司画像
+                    </th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-[color:var(--border)]">
                   <For each={rows() ?? []}>
                     {(row, i) => (
+                      (() => {
+                        const profileId = findProfileId(row)
+                        return (
                       <StockRowItem
                         row={row}
                         index={i()}
                         onSaveKnowledge={(items) => handleSaveKnowledge(row, items)}
+                        profileId={profileId}
+                        onOpenProfile={() => profileId && openProfile(profileId)}
                       />
+                        )
+                      })()
                     )}
                   </For>
                 </tbody>

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use hone_memory::cron_job::{CronJob, CronJobExecutionRecord};
+use hone_memory::{CompanyProfileDocument, CompanyProfileEventDocument, IndustryTemplate};
 
 #[derive(Deserialize)]
 pub struct UserIdQuery {
@@ -170,6 +171,68 @@ pub struct PortfolioSummary {
     pub holdings_count: usize,
     pub total_shares: f64,
     pub updated_at: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct CompanyProfileSummaryInfo {
+    pub profile_id: String,
+    pub company_name: String,
+    pub stock_code: String,
+    pub sector: String,
+    pub industry_template: IndustryTemplate,
+    pub status: String,
+    pub tracking_enabled: bool,
+    pub tracking_cadence: String,
+    pub updated_at: String,
+    pub last_reviewed_at: Option<String>,
+    pub event_count: usize,
+}
+
+#[derive(Serialize)]
+pub struct CompanyProfileDetailInfo {
+    #[serde(flatten)]
+    pub profile: CompanyProfileDocument,
+}
+
+#[derive(Serialize)]
+pub struct CompanyProfileEventInfo {
+    #[serde(flatten)]
+    pub event: CompanyProfileEventDocument,
+}
+
+#[derive(Deserialize)]
+pub struct CompanyProfileCreateRequest {
+    pub company_name: String,
+    pub stock_code: Option<String>,
+    pub sector: Option<String>,
+    pub aliases: Option<Vec<String>>,
+    pub industry_template: Option<String>,
+    pub sections: Option<std::collections::BTreeMap<String, String>>,
+}
+
+#[derive(Deserialize)]
+pub struct CompanyProfileSectionsUpdateRequest {
+    pub sections: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+pub struct CompanyProfileTrackingUpdateRequest {
+    pub enabled: bool,
+    pub cadence: Option<String>,
+    pub focus_metrics: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct CompanyProfileEventCreateRequest {
+    pub title: String,
+    pub event_type: String,
+    pub occurred_at: String,
+    pub thesis_impact: Option<String>,
+    pub changed_sections: Option<Vec<String>>,
+    pub refs: Option<Vec<String>>,
+    pub what_happened: Option<String>,
+    pub thesis_effect: Option<String>,
+    pub follow_up: Option<String>,
 }
 
 #[derive(Serialize)]

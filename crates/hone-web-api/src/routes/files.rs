@@ -99,6 +99,7 @@ fn file_proxy_roots(config: &hone_core::config::HoneConfig) -> Vec<PathBuf> {
         &config.storage.x_drafts_dir,
         &config.storage.gen_images_dir,
         &config.storage.kb_dir,
+        &config.storage.company_profiles_dir,
     ];
 
     for dir in candidates {

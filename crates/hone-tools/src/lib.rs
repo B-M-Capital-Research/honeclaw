@@ -3,6 +3,7 @@
 //! 所有工具的核心定义和注册机制。
 
 pub mod base;
+pub mod company_profile;
 pub mod cron_job_tool;
 pub mod data_fetch;
 pub mod deep_research;
@@ -19,6 +20,7 @@ pub mod skill_tool;
 pub mod web_search;
 
 pub use base::{Tool, ToolParameter};
+pub use company_profile::CompanyProfileTool;
 pub use cron_job_tool::CronJobTool;
 pub use data_fetch::DataFetchTool;
 pub use deep_research::DeepResearchTool;

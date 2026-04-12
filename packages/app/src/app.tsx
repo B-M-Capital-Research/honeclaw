@@ -14,6 +14,7 @@ import { SkillsProvider } from "@/context/skills"
 import { TasksProvider } from "@/context/tasks"
 import { PortfolioProvider } from "@/context/portfolio"
 import { ResearchProvider } from "@/context/research"
+import { CompanyProfilesProvider } from "@/context/company-profiles"
 import ConsoleLayout from "@/pages/layout"
 
 const HomePage = lazy(() => import("@/pages/home"))
@@ -48,7 +49,9 @@ function Providers(props: ParentProps) {
                       <TasksProvider>
                         <PortfolioProvider>
                           <ResearchProvider>
-                            <KbProvider>{props.children}</KbProvider>
+                            <CompanyProfilesProvider>
+                              <KbProvider>{props.children}</KbProvider>
+                            </CompanyProfilesProvider>
                           </ResearchProvider>
                         </PortfolioProvider>
                       </TasksProvider>

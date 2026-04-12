@@ -38,6 +38,7 @@ Last updated: 2026-04-12
   - `multi-agent`: two-stage runner wiring that combines a direct function-calling search pass with an ACP answer pass
 - `memory/`
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
+  - `memory/src/company_profile.rs` stores long-lived company portraits as Markdown (`profile.md`) plus append-only event files under `events/`
   - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间"
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
@@ -52,6 +53,7 @@ Last updated: 2026-04-12
   - `config.yaml` is the read-only seed template and source of default comments / values
   - `data/runtime/config_runtime.yaml` is the effective runtime base created on first startup
   - `data/runtime/config_runtime.overrides.yaml` stores Desktop / automation overrides and is merged on load
+  - `data/company_profiles/<profile_id>/profile.md` plus `events/*.md` is the source of truth for company portraits and long-term fundamental tracking
 - `packages/`
   - `app`: SolidJS web console
   - `ui`: shared UI components and context
@@ -93,6 +95,7 @@ Last updated: 2026-04-12
 - Session compaction service: `crates/hone-channels/src/session_compactor.rs`
 - Prompt audit writer: `crates/hone-channels/src/prompt_audit.rs`
 - Tool registry entry point: `crates/hone-tools/src/lib.rs`
+- Company portrait tool: `crates/hone-tools/src/company_profile.rs`
 - Skill runtime source of truth: `crates/hone-tools/src/skill_runtime.rs`
 - Desktop sidecar helpers: `bins/hone-desktop/src/sidecar/{processes,runtime_env,settings}.rs`
 - Feishu channel split: `bins/hone-feishu/src/{handler.rs,scheduler.rs,outbound.rs}`
@@ -153,6 +156,7 @@ Last updated: 2026-04-12
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`
 - `hone-console-page` `/api/meta` handles version and capability negotiation
 - `hone-console-page` `/api/skills*` serves the skill management surface: registered listing, detail view, enable/disable mutation, and reset
+- `hone-console-page` `/api/company-profiles*` serves company portrait listing, detail, delete, and the agent-facing mutation endpoints used for section rewrites, tracking updates, and event append operations; the current Web UI consumes this surface in read-only mode except for full deletion
 
 ## Web Console Structure
 
@@ -191,6 +195,10 @@ Last updated: 2026-04-12
 - Adjusting persistence structure:
   - Start with `memory/`
   - Then check the Web API, channel entrypoints, and frontend pages that depend on it
+- Adjusting company portraits:
+  - Start with `memory/src/company_profile.rs`
+  - Then check `crates/hone-tools/src/company_profile.rs` and `crates/hone-web-api/src/routes/company_profiles.rs`
+  - If the Web UI is affected, also check `packages/app/src/{context/company-profiles.tsx,components/company-profile-*.tsx,pages/memory.tsx}`
 - Adjusting identity quotas or limits:
   - Start with `memory/src/quota.rs` and `memory/src/cron_job.rs`
   - Then check `crates/hone-channels/src/agent_session.rs` and `crates/hone-channels/src/scheduler.rs`

@@ -18,6 +18,12 @@ pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略
 - 对这种无明确时刻的条件型任务，必须先询问用户是否要创建“心跳检测”任务；心跳任务会每 30 分钟检查一次条件。\n\
 - 只有在用户明确同意后，才创建 repeat=heartbeat 的任务；heartbeat 任务建议带上 heartbeat 标签。\n\
 - 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。";
+pub const DEFAULT_COMPANY_PROFILE_POLICY: &str = "【公司画像 / 长期跟踪策略】\n\
+- 若用户正在系统研究某家公司，且工具 company_profile 可用，应优先检查是否已有画像。\n\
+- 若尚无画像，不要自动创建；应先提示用户是否要为该公司建立长期画像。\n\
+- 用户确认后，才允许创建画像，并将当前研究结论写入主画像。\n\
+- 若画像已存在，后续研究应优先参考已有画像，并在出现实质新增事实时追加事件；只有长期判断变化明显时才回写主画像 section。\n\
+- 公司画像服务于长期基本面跟踪，不应用于日内盯盘、高频价格提醒或直接交易指令。";
 
 #[derive(Debug, Clone)]
 pub struct PromptOptions {
@@ -112,6 +118,8 @@ pub fn build_prompt_bundle(
 
     static_system.push_str("\n\n");
     static_system.push_str(DEFAULT_FINANCE_DOMAIN_POLICY);
+    static_system.push_str("\n\n");
+    static_system.push_str(DEFAULT_COMPANY_PROFILE_POLICY);
 
     if options.include_format_guidance {
         let format_guidance = channel_format_guidance(channel);
