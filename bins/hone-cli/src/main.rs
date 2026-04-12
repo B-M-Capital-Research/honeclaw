@@ -226,6 +226,15 @@ struct ChannelOnboardSpec {
     supports_chat_scope: bool,
 }
 
+#[derive(Clone, Copy)]
+struct ProviderOnboardSpec {
+    label: &'static str,
+    key_path: &'static str,
+    legacy_single_key_path: Option<&'static str>,
+    prompt: &'static str,
+    notes: &'static [&'static str],
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CleanupTargets {
     home_dir: PathBuf,
@@ -511,6 +520,31 @@ fn channel_onboard_specs() -> &'static [ChannelOnboardSpec] {
     ]
 }
 
+fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
+    &[
+        ProviderOnboardSpec {
+            label: "FMP",
+            key_path: "fmp.api_keys",
+            legacy_single_key_path: Some("fmp.api_key"),
+            prompt: "FMP API keys（逗号分隔）",
+            notes: &[
+                "用于 `data_fetch` 等金融数据能力。",
+                "支持一次填写多个 key，运行时会自动 fallback。",
+            ],
+        },
+        ProviderOnboardSpec {
+            label: "Tavily",
+            key_path: "search.api_keys",
+            legacy_single_key_path: None,
+            prompt: "Tavily API keys（逗号分隔）",
+            notes: &[
+                "用于 `web_search` 等联网搜索能力。",
+                "支持一次填写多个 key，运行时会自动 fallback。",
+            ],
+        },
+    ]
+}
+
 fn print_onboard_block(title: &str, lines: &[&str]) {
     println!();
     println!("{title}");
@@ -544,6 +578,12 @@ enum RequiredFieldResolution {
     Value(String),
     Retry,
     DisableChannel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProviderEmptyAction {
+    Retry,
+    Skip,
 }
 
 fn resolve_required_field_attempt(
@@ -583,6 +623,26 @@ fn prompt_channel_recovery_action(
     Ok(match idx {
         0 => RequiredFieldEmptyAction::Retry,
         _ => RequiredFieldEmptyAction::DisableChannel,
+    })
+}
+
+fn prompt_provider_recovery_action(
+    theme: &ColorfulTheme,
+    provider_label: &str,
+) -> Result<ProviderEmptyAction, String> {
+    let items = vec![
+        "重试当前字段".to_string(),
+        format!("跳过 {provider_label} API key 配置"),
+    ];
+    let idx = prompt_select_index(
+        theme,
+        &format!("{provider_label} API key 为空，下一步？"),
+        &items,
+        0,
+    )?;
+    Ok(match idx {
+        0 => ProviderEmptyAction::Retry,
+        _ => ProviderEmptyAction::Skip,
     })
 }
 
@@ -652,6 +712,68 @@ fn prompt_chat_scope(
         .unwrap_or(0);
     let idx = prompt_select_index(theme, prompt, &items, default)?;
     Ok(scopes[idx].clone())
+}
+
+fn build_provider_api_key_mutations(
+    key_path: &str,
+    legacy_single_key_path: Option<&str>,
+    keys: Vec<String>,
+) -> Vec<ConfigMutation> {
+    let mut mutations = vec![provider_key_mutation(key_path, keys)];
+    if let Some(path) = legacy_single_key_path {
+        mutations.push(ConfigMutation::Set {
+            path: path.to_string(),
+            value: Value::String(String::new()),
+        });
+    }
+    mutations
+}
+
+fn has_configured_search_keys(config: &hone_core::HoneConfig) -> bool {
+    !config
+        .search
+        .api_keys
+        .iter()
+        .all(|key| key.trim().is_empty())
+}
+
+fn has_configured_provider_keys(
+    spec: &ProviderOnboardSpec,
+    config: &hone_core::HoneConfig,
+) -> bool {
+    match spec.key_path {
+        "fmp.api_keys" => !config.fmp.effective_key_pool().is_empty(),
+        "search.api_keys" => has_configured_search_keys(config),
+        _ => false,
+    }
+}
+
+fn prompt_onboard_provider_keys(
+    theme: &ColorfulTheme,
+    provider_label: &str,
+    prompt: &str,
+    current_configured: bool,
+) -> Result<Option<Vec<String>>, String> {
+    loop {
+        let attempted = prompt_secret(theme, prompt, current_configured)?;
+        match attempted {
+            Some(raw) => {
+                let keys = parse_csv_values(&raw);
+                if !keys.is_empty() {
+                    return Ok(Some(keys));
+                }
+            }
+            None if current_configured => return Ok(None),
+            None => {}
+        }
+
+        match prompt_provider_recovery_action(theme, provider_label)? {
+            ProviderEmptyAction::Retry => {
+                println!("请至少输入一个有效 key，或选择跳过。");
+            }
+            ProviderEmptyAction::Skip => return Ok(None),
+        }
+    }
 }
 
 fn apply_mutations_and_generate(
@@ -1701,6 +1823,49 @@ fn build_channel_onboard_mutations(
     Ok(mutations)
 }
 
+fn build_provider_onboard_mutations(
+    theme: &ColorfulTheme,
+    config: &hone_core::HoneConfig,
+) -> Result<Vec<ConfigMutation>, String> {
+    let mut mutations = Vec::new();
+    println!();
+    println!("Provider onboarding");
+    println!("  - FMP 和 Tavily 都会要求你明确选择：现在填写，或本轮跳过。");
+    println!(
+        "  - 跳过不会阻塞 onboarding，之后仍可用 `hone-cli configure --section providers` 补配。"
+    );
+
+    for spec in provider_onboard_specs() {
+        let current_configured = has_configured_provider_keys(spec, config);
+        print_onboard_block(&format!("{} API keys", spec.label), spec.notes);
+
+        if !prompt_bool(
+            theme,
+            &format!("Configure {} API keys now?", spec.label),
+            current_configured,
+        )? {
+            println!("已跳过 {} API key 配置。", spec.label);
+            continue;
+        }
+
+        if let Some(keys) =
+            prompt_onboard_provider_keys(theme, spec.label, spec.prompt, current_configured)?
+        {
+            mutations.extend(build_provider_api_key_mutations(
+                spec.key_path,
+                spec.legacy_single_key_path,
+                keys,
+            ));
+        } else if current_configured {
+            println!("保留现有 {} API key 配置。", spec.label);
+        } else {
+            println!("已跳过 {} API key 配置。", spec.label);
+        }
+    }
+
+    Ok(mutations)
+}
+
 fn run_cleanup(args: CleanupArgs) -> Result<(), String> {
     let home_dir = cleanup_home_dir(args.home.as_deref())?;
     let targets = cleanup_targets(&home_dir);
@@ -2036,6 +2201,7 @@ async fn run_onboard(config_path: Option<&Path>, _args: OnboardArgs) -> Result<(
     let runner = prompt_onboard_runner(&theme, &config)?;
     let mut mutations = build_runner_onboard_mutations(&theme, &config, runner)?;
     mutations.extend(build_channel_onboard_mutations(&theme, &config)?);
+    mutations.extend(build_provider_onboard_mutations(&theme, &config)?);
 
     let result = apply_mutations_and_generate(&paths, &mutations)?;
     println!();
@@ -2482,6 +2648,51 @@ mod tests {
         let mutations = build_channel_mutations(&args).unwrap();
         assert_eq!(mutations.len(), 3);
         assert!(mutations.iter().any(|mutation| matches!(mutation, ConfigMutation::Set { path, value: Value::Bool(true) } if path == "telegram.enabled")));
+    }
+
+    #[test]
+    fn build_provider_api_key_mutations_clears_legacy_fmp_single_key() {
+        let mutations = build_provider_api_key_mutations(
+            "fmp.api_keys",
+            Some("fmp.api_key"),
+            vec!["key-a".to_string(), "key-b".to_string()],
+        );
+
+        assert_eq!(mutations.len(), 2);
+        assert!(matches!(
+            &mutations[0],
+            ConfigMutation::Set {
+                path,
+                value: Value::Sequence(values),
+            } if path == "fmp.api_keys"
+                && values == &vec![
+                    Value::String("key-a".to_string()),
+                    Value::String("key-b".to_string()),
+                ]
+        ));
+        assert!(matches!(
+            &mutations[1],
+            ConfigMutation::Set {
+                path,
+                value: Value::String(value),
+            } if path == "fmp.api_key" && value.is_empty()
+        ));
+    }
+
+    #[test]
+    fn build_provider_api_key_mutations_sets_tavily_keys_without_legacy_field() {
+        let mutations =
+            build_provider_api_key_mutations("search.api_keys", None, vec!["tvly-1".to_string()]);
+
+        assert_eq!(mutations.len(), 1);
+        assert!(matches!(
+            &mutations[0],
+            ConfigMutation::Set {
+                path,
+                value: Value::Sequence(values),
+            } if path == "search.api_keys"
+                && values == &vec![Value::String("tvly-1".to_string())]
+        ));
     }
 
     #[test]

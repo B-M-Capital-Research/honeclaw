@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-12
 
+### v0.1.10 CLI Onboarding Provider 配置补齐
+
+- Status: done
+- Date: 2026-04-12
+- Plan: N/A
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-cli`, `bash scripts/prepare_release_notes.sh v0.1.10 /tmp/release-notes-v0.1.10.md`
+- Current conclusion: `hone-cli onboard` 现在会明确要求用户对 `FMP` 和 `Tavily` API key 做出“填写或跳过”的选择；`FMP` 首装写入改为优先使用 `fmp.api_keys`，并清空旧的 `fmp.api_key` 兼容字段；对应 release notes 已补齐到 `docs/releases/v0.1.10.md`
+- Next entry point: [v0.1.10 release](https://github.com/B-M-Capital-Research/honeclaw/releases/tag/v0.1.10)
+
 ### v0.1.9 Release 失败修复与补发
 
 - Status: done
