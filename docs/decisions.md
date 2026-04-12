@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-04-11
+Last updated: 2026-04-12
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -106,3 +106,13 @@ Last updated: 2026-04-11
   - `hone-web-api` and channel binaries should not rewrite storage, session, or runtime directory paths ad hoc
   - New channel entrypoints should reuse shared logging, enabled-check, process-lock, and heartbeat bootstrap instead of cloning startup logic
   - Channel-local scheduler or outbound helpers should live beside the channel module instead of expanding the binary entry file
+
+## D-2026-04-12-01 Let OpenCode Own Its User Config By Default
+
+- Status: Accepted
+- Decision: `opencode_acp` should inherit the user's local OpenCode provider/auth/model config by default. Hone may still inject a narrow custom `OPENCODE_CONFIG` for permissions and explicit overrides, but it must not replace the user's global OpenCode config root or force an OpenRouter-centric default route when `agent.opencode.*` is empty.
+- Impact:
+  - First-install CLI onboarding should tell users to finish provider setup in `opencode` itself
+  - `config.example.yaml` should leave `agent.opencode.model / variant / api_base_url / api_key` empty by default
+  - The runner should not override `XDG_CONFIG_HOME` just to apply Hone's ACP permission policy
+- Note: Explicit Hone-side overrides through `agent.opencode.*` or `hone-cli models set ...` remain supported for users who want Hone to pin a different route than their local OpenCode default.

@@ -18,6 +18,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: macos-14
             target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -55,25 +57,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PKG_NAME="hone-financial-${{ github.ref_name }}-${{ matrix.target }}"
+          PKG_NAME="honeclaw-${{ github.ref_name }}-${{ matrix.target }}"
           BIN_DIR="target/${{ matrix.target }}/release"
-          mkdir -p dist/"${PKG_NAME}"
-          for bin in hone-cli hone-imessage hone-imessage-web-test hone-telegram hone-discord; do
+          PKG_DIR="dist/${PKG_NAME}"
+          mkdir -p "${PKG_DIR}/bin" "${PKG_DIR}/share/honeclaw"
+          for bin in hone-cli hone-console-page hone-imessage hone-telegram hone-discord hone-feishu hone-mcp; do
             if [ -f "${BIN_DIR}/${bin}" ]; then
-              cp "${BIN_DIR}/${bin}" dist/"${PKG_NAME}"/
+              cp "${BIN_DIR}/${bin}" "${PKG_DIR}/bin/"
             fi
           done
-          cp README.md dist/"${PKG_NAME}"/
-          cp config.example.yaml dist/"${PKG_NAME}"/
-          cp LICENSE dist/"${PKG_NAME}"/
-          cp CONTRIBUTING.md dist/"${PKG_NAME}"/
-          cp SECURITY.md dist/"${PKG_NAME}"/
-          cp CODE_OF_CONDUCT.md dist/"${PKG_NAME}"/
-          cp .editorconfig dist/"${PKG_NAME}"/
-          cp .gitattributes dist/"${PKG_NAME}"/
-          tar -czf "dist/${PKG_NAME}.tar.gz" -C dist "${PKG_NAME}"
+          cp README.md "${PKG_DIR}/share/honeclaw/"
+          cp LICENSE "${PKG_DIR}/share/honeclaw/"
+          cp CONTRIBUTING.md "${PKG_DIR}/share/honeclaw/"
+          cp SECURITY.md "${PKG_DIR}/share/honeclaw/"
+          cp CODE_OF_CONDUCT.md "${PKG_DIR}/share/honeclaw/"
+          cp config.example.yaml "${PKG_DIR}/share/honeclaw/"
+          cp soul.md "${PKG_DIR}/share/honeclaw/"
+          cp -R skills "${PKG_DIR}/share/honeclaw/skills"
+
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) ASSET_NAME="honeclaw-darwin-aarch64.tar.gz" ;;
+            x86_64-apple-darwin) ASSET_NAME="honeclaw-darwin-x86_64.tar.gz" ;;
+            x86_64-unknown-linux-gnu) ASSET_NAME="honeclaw-linux-x86_64.tar.gz" ;;
+            *)
+              echo "unsupported release asset target: ${{ matrix.target }}" >&2
+              exit 1
+              ;;
+          esac
+
+          tar -czf "dist/${ASSET_NAME}" -C dist "${PKG_NAME}"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.tar.gz
+          files: |
+            dist/*.tar.gz
+            scripts/install_hone_cli.sh

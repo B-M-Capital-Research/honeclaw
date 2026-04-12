@@ -676,10 +676,15 @@ impl HoneBotCore {
                     opencode_config.model = model_override.trim().to_string();
                     opencode_config.variant = String::new();
                 }
-                // 优先使用 config_runtime.yaml 中配置的 OpenRouter API key（取第一个有效 key）
-                let pool = self.config.llm.openrouter.effective_key_pool();
-                if let Some(key) = pool.first() {
-                    opencode_config.openrouter_api_key = Some(key.to_string());
+                let hone_manages_opencode_route = !opencode_config.model.trim().is_empty()
+                    || !opencode_config.variant.trim().is_empty()
+                    || !opencode_config.api_base_url.trim().is_empty()
+                    || !opencode_config.api_key.trim().is_empty();
+                if hone_manages_opencode_route && opencode_config.api_key.trim().is_empty() {
+                    let pool = self.config.llm.openrouter.effective_key_pool();
+                    if let Some(key) = pool.first() {
+                        opencode_config.openrouter_api_key = Some(key.to_string());
+                    }
                 }
                 Ok(Box::new(OpencodeAcpRunner::new(opencode_config)))
             }
@@ -707,13 +712,15 @@ impl HoneBotCore {
                     answer_config.model = model_override.trim().to_string();
                     answer_config.variant = String::new();
                 }
+                let hone_manages_answer_route = !answer_config.model.trim().is_empty()
+                    || !answer_config.variant.trim().is_empty()
+                    || !answer_config.api_base_url.trim().is_empty()
+                    || !answer_config.api_key.trim().is_empty();
                 answer_config.openrouter_api_key =
-                    if multi_answer.api_key.trim().starts_with("sk-or-") {
-                        Some(multi_answer.api_key.trim().to_string())
-                    } else if answer_config.api_key.trim().starts_with("sk-or-") {
-                        Some(answer_config.api_key.trim().to_string())
-                    } else {
+                    if hone_manages_answer_route && answer_config.api_key.trim().is_empty() {
                         pool.first().map(|value| value.to_string())
+                    } else {
+                        None
                     };
 
                 Ok(Box::new(MultiAgentRunner::new(

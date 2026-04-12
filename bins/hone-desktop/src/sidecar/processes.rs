@@ -35,7 +35,8 @@ pub(super) fn preflight_bundled_runtime_locks(app: &AppHandle) -> Result<(), Str
         match hone_core::preflight_process_locks(&runtime.runtime_dir, &lock_names) {
             Ok(()) => return Ok(()),
             Err(error) => {
-                if cleanup_attempts < lock_names.len() && try_cleanup_conflicting_process(app, &error)
+                if cleanup_attempts < lock_names.len()
+                    && try_cleanup_conflicting_process(app, &error)
                 {
                     cleanup_attempts += 1;
                     continue;
@@ -155,7 +156,9 @@ fn pid_is_alive(pid: u32) -> bool {
     StdCommand::new("ps")
         .args(["-p", &pid.to_string(), "-o", "pid="])
         .output()
-        .map(|output| output.status.success() && !String::from_utf8_lossy(&output.stdout).trim().is_empty())
+        .map(|output| {
+            output.status.success() && !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+        })
         .unwrap_or(false)
 }
 
@@ -323,7 +326,7 @@ fn common_runtime_envs(runtime: &RuntimePaths) -> Vec<(&'static str, String)> {
     envs
 }
 
-fn start_enabled_channels(
+pub(super) fn start_enabled_channels(
     app: &AppHandle,
     manager: &mut DesktopBackendManager,
     runtime: &RuntimePaths,

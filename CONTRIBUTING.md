@@ -19,12 +19,15 @@
 ## 推荐验证
 
 - `bash scripts/ci/check_fmt_changed.sh`
-- `cargo check --workspace --all-targets`
-- `cargo test --workspace --all-targets`
+- `cargo check --workspace --all-targets --exclude hone-desktop`
+- `cargo test --workspace --all-targets --exclude hone-desktop`
 - `bun run test:web`
 - `bash tests/regression/run_ci.sh`
 
-如果变更影响桌面端、渠道运行时或外部集成，再补充对应的手工回归脚本。
+如果变更影响桌面端、渠道运行时或外部集成，再补充对应的专项验证。
+
+- `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop`
+- 真正的桌面打包 / sidecar 资源校验仍通过 `bun run tauri:prep:*` + `bunx tauri build/dev` 路径完成，不放进默认 Rust workspace 检查里
 
 ## 测试期望
 

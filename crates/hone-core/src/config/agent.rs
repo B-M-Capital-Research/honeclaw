@@ -242,7 +242,7 @@ impl Default for MultiAgentSearchConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiAgentAnswerConfig {
-    #[serde(default = "default_opencode_api_base_url")]
+    #[serde(default = "default_multi_agent_answer_api_base_url")]
     pub api_base_url: String,
     #[serde(default)]
     pub api_key: String,
@@ -261,7 +261,7 @@ pub struct MultiAgentAnswerConfig {
 impl Default for MultiAgentAnswerConfig {
     fn default() -> Self {
         Self {
-            api_base_url: default_opencode_api_base_url(),
+            api_base_url: default_multi_agent_answer_api_base_url(),
             api_key: String::new(),
             model: String::new(),
             variant: String::new(),
@@ -358,10 +358,10 @@ pub struct OpencodeAcpConfig {
     pub model: String,
     #[serde(default)]
     pub variant: String,
-    /// OpenAI 协议渠道的 Base URL（兼容 OpenRouter 及任意 OpenAI-compatible 端点）
+    /// 可选的 Hone 侧 provider/base URL 覆盖；留空则继承用户本机 opencode 配置
     #[serde(default = "default_opencode_api_base_url")]
     pub api_base_url: String,
-    /// OpenAI 协议渠道的 API Key（写入 YAML，用户在设置页直接配置）
+    /// 可选的 Hone 侧 API key 覆盖；留空则继承用户本机 opencode 登录态 / provider 配置
     #[serde(default)]
     pub api_key: String,
     #[serde(default = "default_opencode_startup_timeout")]
@@ -436,11 +436,15 @@ fn default_multi_agent_answer_max_tool_calls() -> u32 {
     1
 }
 
+fn default_multi_agent_answer_api_base_url() -> String {
+    "https://openrouter.ai/api/v1".to_string()
+}
+
 fn default_opencode_command() -> String {
     "opencode".to_string()
 }
 fn default_opencode_api_base_url() -> String {
-    "https://openrouter.ai/api/v1".to_string()
+    String::new()
 }
 
 fn default_gemini_acp_command() -> String {

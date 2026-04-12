@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-04-11
+Last updated: 2026-04-12
 
 ## Purpose
 
@@ -69,6 +69,7 @@ Last updated: 2026-04-11
 - Web console backend: `bins/hone-console-page/src/main.rs`
 - Web console frontend: `packages/app/src/app.tsx`
 - CLI: `bins/hone-cli/src/main.rs`
+  - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, and `start`; no-subcommand mode still drops into the local chat REPL
 - Channel runtime export: `crates/hone-channels/src/lib.rs`
 - Shared channel bootstrap: `crates/hone-channels/src/bootstrap.rs`
 - `AgentSession` abstraction: `crates/hone-channels/src/agent_session.rs`
@@ -98,6 +99,7 @@ Last updated: 2026-04-11
 - Telegram scheduler split: `bins/hone-telegram/src/scheduler.rs`
 - Settings page pure state helpers: `packages/app/src/pages/settings-model.ts`
 - Config sample: `config.example.yaml`
+- GitHub install script: `scripts/install_hone_cli.sh`
 
 ## Main Flow
 
@@ -129,10 +131,13 @@ Last updated: 2026-04-11
 - Desktop sidecars are prepared by `scripts/prepare_tauri_sidecar.mjs`, which detects the target triple, builds the supported channel bins plus `hone-mcp`, resolves/bundles macOS `opencode`, copies them into `bins/hone-desktop/binaries/`, and writes `bins/hone-desktop/tauri.generated.conf.json` for `bunx tauri dev/build`
 - The same script also supports target-override / skip-build self-checks, so macOS packaging expectations can be verified by regenerating config for `*-apple-darwin` without requiring a full build
 - Root `make_dmg_release.sh` is the macOS release entrypoint: it prepares bundled binaries for `aarch64-apple-darwin` and `x86_64-apple-darwin`, runs `tauri build --target`, and collects DMGs into `dist/dmg/`
+- Tag release workflow also emits installable CLI bundles (`honeclaw-darwin-aarch64.tar.gz`, `honeclaw-darwin-x86_64.tar.gz`, `honeclaw-linux-x86_64.tar.gz`) containing `hone-cli`, runtime binaries, `skills/`, `config.example.yaml`, and `soul.md`; `scripts/install_hone_cli.sh` consumes those assets, writes the `hone-cli` wrapper under `~/.local/bin`, and in an interactive terminal can immediately launch `hone-cli onboard`
 - Windows desktop packaging intentionally excludes `hone-imessage`; macOS packaging keeps it, and runtime support still uses `cfg!(target_os = "macos")` as the source of truth
 - `./launch.sh --desktop` is intentionally single-runtime: it starts Vite + Tauri dev only, and the desktop sidecar is responsible for starting the bundled `hone-console-page` plus enabled channel listeners. Do not start the external backend/channel set in parallel for desktop dev, or logs and incoming updates will split across duplicate processes
 - `./launch.sh --desktop --remote` is the dev mode to use when desktop/UI hot reload should not interrupt long-running backend or channel listeners: the launcher starts the normal external `hone-console-page` + channel set first, writes the desktop backend config to `remote`, and then starts Vite + Tauri dev against that remote base URL
 - `./launch.sh --release` starts a release desktop binary without `tauri dev` hot reload. It is intended for long-running desktop verification when source edits should not automatically restart the desktop host. By default the launcher pins `HONE_DESKTOP_DATA_DIR` to the repo `data/` directory and `HONE_DESKTOP_CONFIG_DIR` to `data/runtime/desktop-config/` so the release desktop instance can reuse project-local runtime data instead of silently drifting to an app-specific config/data root
+- `hone-cli onboard` is the first-install guided setup path for bundled CLI installs and repo-local use: it can detect local `codex` / `codex-acp` / `opencode`, switch to `opencode_acp` without forcing Hone-side provider config, and guide channel enablement with mandatory local fields plus prerequisite notes
+- `hone-cli start` is the runtime-only local launch entry for bundled CLI installs and repo-local use: it loads canonical `config.yaml`, generates `data/runtime/effective-config.yaml`, starts `hone-console-page`, waits for `/api/meta`, then starts enabled channel listeners without going through `launch.sh`
 - Desktop startup now uses per-process runtime lock files under `data/runtime/locks/` (or the app runtime dir in packaged mode). `hone-desktop` must hold its own lock, each standalone channel/backend binary must hold its own lock, and bundled desktop mode preflights the full `hone-console-page` + enabled-channel set before startup. When the conflict still points at a live matching Hone process, desktop startup now attempts one lock-targeted cleanup by pid and then retries before surfacing the blocking error.
 - The desktop app supports two backend modes:
   - `bundled`: Tauri starts the built-in `hone-console-page` sidecar and points the frontend API at a local loopback address
@@ -205,7 +210,10 @@ Last updated: 2026-04-11
 - Scripts in `tests/regression/manual/` depend on local environment state or external accounts and must not be promoted to default CI gates
 - iMessage capabilities depend on local macOS permissions and cannot be assumed to work in CI or on non-macOS environments
 - Desktop packaging depends on a local Rust + Tauri toolchain; if `cargo` or `bun` is missing, only static changes are possible, not a full compile verification
-- `cargo check -p hone-desktop` still depends on Tauri sidecar resources matching the active config. On Windows, direct `cargo check` against `tauri.conf.json` can fail before Rust type-checking if the default config still references missing packaged binaries; use the generated Tauri config / prepared sidecars path when validating desktop packaging.
+- Default repo-wide Rust verification should keep using `cargo check --workspace --all-targets --exclude hone-desktop`; desktop packaging is a separate validation lane.
+- For local IDE / syntax checks on the desktop crate itself, use `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop` so Tauri skips bundled sidecar existence validation while still type-checking Rust code.
+- Real desktop packaging validation must still use the generated Tauri config / prepared sidecars path (`bun run tauri:prep:*` + `bunx tauri dev/build`); the skip flag is not a substitute for release-time resource checks.
+- `opencode_acp` now treats the user's local OpenCode config as the default source of provider/auth/model truth. The Hone runner may still inject a small custom `OPENCODE_CONFIG` for ACP permissions and explicit `agent.opencode.*` overrides, but it should not hide `~/.config/opencode/opencode.json` / `opencode.jsonc` by replacing the entire OpenCode config home.
 
 ## Suggested Reading Order
 

@@ -4,7 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 pub mod agent;
@@ -70,24 +71,26 @@ pub struct HoneConfig {
 }
 
 impl HoneConfig {
+    /// 从已经完成 overlay 合并的 YAML 值加载配置。
+    ///
+    /// 与 `from_file()` 不同，这里不会尝试解析并内联 `system_prompt_path`
+    /// 指向的文件内容，适合配置编辑流程里的“纯配置校验”。
+    pub fn from_merged_value(value: Value) -> crate::HoneResult<Self> {
+        let config: Self = serde_yaml::from_value(value)
+            .map_err(|e| crate::HoneError::Config(format!("配置文件解析失败: {e}")))?;
+        let config = config;
+        config.validate()?;
+        Ok(config)
+    }
+
     /// 从 YAML 文件加载配置
     pub fn from_file(path: impl AsRef<Path>) -> crate::HoneResult<Self> {
         let path = path.as_ref();
-        let mut value = read_yaml_value(path)?;
-        let overlay_path = runtime_overlay_path(path);
-        if overlay_path.exists() {
-            let overlay = read_yaml_value(&overlay_path)?;
-            if !overlay.is_null() {
-                merge_yaml_value(&mut value, overlay);
-            }
-        }
-        let config: Self = serde_yaml::from_value(value)
-            .map_err(|e| crate::HoneError::Config(format!("配置文件解析失败: {e}")))?;
-        let mut config = config;
+        let value = read_yaml_value(path)?;
+        let mut config = Self::from_merged_value(value)?;
         if let Err(err) = apply_system_prompt_path(&mut config, path) {
             return Err(crate::HoneError::Config(err));
         }
-        config.validate()?;
         Ok(config)
     }
 
@@ -157,6 +160,20 @@ pub fn read_yaml_value(path: impl AsRef<Path>) -> crate::HoneResult<Value> {
         .map_err(|e| crate::HoneError::Config(format!("配置文件解析失败: {e}")))
 }
 
+/// 读取基础配置并叠加同目录 overlay，返回“当前有效 YAML 值”。
+pub fn read_merged_yaml_value(path: impl AsRef<Path>) -> crate::HoneResult<Value> {
+    let path = path.as_ref();
+    let mut value = read_yaml_value(path)?;
+    let overlay_path = runtime_overlay_path(path);
+    if overlay_path.exists() {
+        let overlay = read_yaml_value(&overlay_path)?;
+        if !overlay.is_null() {
+            merge_yaml_value(&mut value, overlay);
+        }
+    }
+    Ok(value)
+}
+
 /// 将覆盖层递归合并到基础 YAML 上。
 ///
 /// 规则：
@@ -224,6 +241,612 @@ pub fn diff_yaml_value(base: &Value, current: &Value) -> Option<Value> {
                 Some(current.clone())
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ConfigPathSegment {
+    Key(String),
+    Index(usize),
+}
+
+#[derive(Debug, Clone)]
+pub enum ConfigMutation {
+    Set { path: String, value: Value },
+    Unset { path: String },
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigApplyPlan {
+    pub changed_paths: Vec<String>,
+    pub applied_live: bool,
+    pub restarted_components: Vec<String>,
+    pub restart_required: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigMutationResult {
+    pub config: HoneConfig,
+    pub config_revision: String,
+    pub apply: ConfigApplyPlan,
+}
+
+pub fn effective_config_path(runtime_dir: impl AsRef<Path>) -> PathBuf {
+    runtime_dir.as_ref().join("effective-config.yaml")
+}
+
+pub fn legacy_runtime_config_path(runtime_dir: impl AsRef<Path>) -> PathBuf {
+    runtime_dir.as_ref().join("config_runtime.yaml")
+}
+
+pub fn canonical_config_candidate() -> PathBuf {
+    PathBuf::from("config.yaml")
+}
+
+fn parse_config_path(path: &str) -> crate::HoneResult<Vec<ConfigPathSegment>> {
+    let raw = path.trim();
+    if raw.is_empty() {
+        return Err(crate::HoneError::Config("配置路径不能为空".to_string()));
+    }
+
+    let mut chars = raw.chars().peekable();
+    let mut current = String::new();
+    let mut segments = Vec::new();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '.' => {
+                if current.is_empty() {
+                    return Err(crate::HoneError::Config(format!(
+                        "非法配置路径（连续的 '.'）：{raw}"
+                    )));
+                }
+                segments.push(ConfigPathSegment::Key(std::mem::take(&mut current)));
+            }
+            '[' => {
+                if !current.is_empty() {
+                    segments.push(ConfigPathSegment::Key(std::mem::take(&mut current)));
+                }
+                let mut index_buf = String::new();
+                let mut closed = false;
+                for next in chars.by_ref() {
+                    if next == ']' {
+                        closed = true;
+                        break;
+                    }
+                    index_buf.push(next);
+                }
+                if !closed {
+                    return Err(crate::HoneError::Config(format!(
+                        "非法配置路径（缺少 ']'）：{raw}"
+                    )));
+                }
+                let index = index_buf.parse::<usize>().map_err(|_| {
+                    crate::HoneError::Config(format!("非法数组下标 '{index_buf}'：{raw}"))
+                })?;
+                segments.push(ConfigPathSegment::Index(index));
+            }
+            ']' => {
+                return Err(crate::HoneError::Config(format!(
+                    "非法配置路径（多余的 ']'）：{raw}"
+                )));
+            }
+            other => current.push(other),
+        }
+    }
+
+    if !current.is_empty() {
+        segments.push(ConfigPathSegment::Key(current));
+    }
+
+    if segments.is_empty() {
+        return Err(crate::HoneError::Config(format!("非法配置路径：{raw}")));
+    }
+
+    Ok(segments)
+}
+
+fn get_value_at_segments<'a>(
+    current: &'a Value,
+    segments: &[ConfigPathSegment],
+) -> crate::HoneResult<Option<&'a Value>> {
+    let mut node = current;
+    for segment in segments {
+        match segment {
+            ConfigPathSegment::Key(key) => match node {
+                Value::Mapping(map) => match map.get(Value::String(key.clone())) {
+                    Some(value) => node = value,
+                    None => return Ok(None),
+                },
+                other => {
+                    return Err(crate::HoneError::Config(format!(
+                        "配置路径期望对象节点，但命中的是 {}",
+                        yaml_kind(other)
+                    )));
+                }
+            },
+            ConfigPathSegment::Index(index) => match node {
+                Value::Sequence(items) => match items.get(*index) {
+                    Some(value) => node = value,
+                    None => return Ok(None),
+                },
+                other => {
+                    return Err(crate::HoneError::Config(format!(
+                        "配置路径期望数组节点，但命中的是 {}",
+                        yaml_kind(other)
+                    )));
+                }
+            },
+        }
+    }
+
+    Ok(Some(node))
+}
+
+fn set_value_at_segments(
+    current: &mut Value,
+    segments: &[ConfigPathSegment],
+    value: Value,
+) -> crate::HoneResult<()> {
+    if segments.is_empty() {
+        *current = value;
+        return Ok(());
+    }
+
+    match &segments[0] {
+        ConfigPathSegment::Key(key) => {
+            if !matches!(current, Value::Mapping(_)) {
+                *current = Value::Mapping(Mapping::new());
+            }
+            let Value::Mapping(map) = current else {
+                unreachable!();
+            };
+            let entry = map.entry(Value::String(key.clone())).or_insert(Value::Null);
+            set_value_at_segments(entry, &segments[1..], value)
+        }
+        ConfigPathSegment::Index(index) => {
+            if !matches!(current, Value::Sequence(_)) {
+                *current = Value::Sequence(Vec::new());
+            }
+            let Value::Sequence(items) = current else {
+                unreachable!();
+            };
+            while items.len() <= *index {
+                items.push(Value::Null);
+            }
+            set_value_at_segments(&mut items[*index], &segments[1..], value)
+        }
+    }
+}
+
+fn unset_value_at_segments(
+    current: &mut Value,
+    segments: &[ConfigPathSegment],
+) -> crate::HoneResult<bool> {
+    if segments.is_empty() {
+        return Err(crate::HoneError::Config("unset 路径不能为空".to_string()));
+    }
+
+    match &segments[0] {
+        ConfigPathSegment::Key(key) => match current {
+            Value::Mapping(map) => {
+                if segments.len() == 1 {
+                    Ok(map.remove(Value::String(key.clone())).is_some())
+                } else if let Some(child) = map.get_mut(Value::String(key.clone())) {
+                    unset_value_at_segments(child, &segments[1..])
+                } else {
+                    Ok(false)
+                }
+            }
+            other => Err(crate::HoneError::Config(format!(
+                "配置路径期望对象节点，但命中的是 {}",
+                yaml_kind(other)
+            ))),
+        },
+        ConfigPathSegment::Index(index) => match current {
+            Value::Sequence(items) => {
+                if *index >= items.len() {
+                    return Ok(false);
+                }
+                if segments.len() == 1 {
+                    items.remove(*index);
+                    Ok(true)
+                } else {
+                    unset_value_at_segments(&mut items[*index], &segments[1..])
+                }
+            }
+            other => Err(crate::HoneError::Config(format!(
+                "配置路径期望数组节点，但命中的是 {}",
+                yaml_kind(other)
+            ))),
+        },
+    }
+}
+
+fn yaml_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Sequence(_) => "sequence",
+        Value::Mapping(_) => "mapping",
+        Value::Tagged(_) => "tagged",
+    }
+}
+
+fn atomic_write_yaml(path: &Path, yaml: &str) -> crate::HoneResult<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let parent = path.parent().ok_or_else(|| {
+        crate::HoneError::Config(format!("覆盖层路径缺少父目录: {}", path.display()))
+    })?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| crate::HoneError::Config(format!("获取时间戳失败: {e}")))?
+        .as_nanos();
+    let file_name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("config");
+    let tmp_path = parent.join(format!(".{file_name}.{stamp}.tmp"));
+
+    fs::write(&tmp_path, yaml)?;
+    match fs::rename(&tmp_path, path) {
+        Ok(()) => Ok(()),
+        Err(first_err) => {
+            let _ = fs::remove_file(path);
+            match fs::rename(&tmp_path, path) {
+                Ok(()) => Ok(()),
+                Err(second_err) => {
+                    let _ = fs::remove_file(&tmp_path);
+                    Err(crate::HoneError::Config(format!(
+                        "无法写入覆盖层 {}: {second_err}（初次重命名错误: {first_err}）",
+                        path.display()
+                    )))
+                }
+            }
+        }
+    }
+}
+
+pub fn write_overlay_patch(path: &Path, patch: Option<Value>) -> crate::HoneResult<()> {
+    match patch {
+        None => {
+            if path.exists() {
+                fs::remove_file(path)?;
+            }
+            Ok(())
+        }
+        Some(Value::Mapping(map)) if map.is_empty() => {
+            if path.exists() {
+                fs::remove_file(path)?;
+            }
+            Ok(())
+        }
+        Some(value) => {
+            let yaml = serde_yaml::to_string(&value)
+                .map_err(|e| crate::HoneError::Config(format!("覆盖层序列化失败: {e}")))?;
+            atomic_write_yaml(path, &yaml)
+        }
+    }
+}
+
+fn copy_relative_system_prompt_asset(
+    base_config_path: &Path,
+    runtime_config_path: &Path,
+) -> crate::HoneResult<()> {
+    let base_value = read_yaml_value(base_config_path)?;
+    let prompt_path = base_value
+        .as_mapping()
+        .and_then(|root| root.get(Value::String("agent".to_string())))
+        .and_then(|agent| agent.as_mapping())
+        .and_then(|agent| agent.get(Value::String("system_prompt_path".to_string())))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+
+    if prompt_path.is_empty() || Path::new(prompt_path).is_absolute() {
+        return Ok(());
+    }
+
+    let Some(base_parent) = base_config_path.parent() else {
+        return Ok(());
+    };
+    let Some(runtime_parent) = runtime_config_path.parent() else {
+        return Ok(());
+    };
+
+    let source = base_parent.join(prompt_path);
+    if !source.exists() {
+        return Ok(());
+    }
+
+    let dest = runtime_parent.join(prompt_path);
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if !dest.exists() {
+        fs::copy(&source, &dest)?;
+    }
+    Ok(())
+}
+
+pub fn seed_canonical_config_from_source(
+    canonical_config_path: &Path,
+    source_config_path: &Path,
+) -> crate::HoneResult<()> {
+    if canonical_config_path.exists() {
+        return Ok(());
+    }
+    let Some(parent) = canonical_config_path.parent() else {
+        return Err(crate::HoneError::Config(format!(
+            "canonical 配置路径缺少父目录: {}",
+            canonical_config_path.display()
+        )));
+    };
+    fs::create_dir_all(parent)?;
+    fs::copy(source_config_path, canonical_config_path)?;
+    copy_relative_system_prompt_asset(source_config_path, canonical_config_path)?;
+    Ok(())
+}
+
+fn archive_legacy_runtime_files(
+    legacy_runtime_config_path: &Path,
+) -> crate::HoneResult<Option<PathBuf>> {
+    let overlay_path = runtime_overlay_path(legacy_runtime_config_path);
+    if !legacy_runtime_config_path.exists() && !overlay_path.exists() {
+        return Ok(None);
+    }
+
+    let runtime_dir = legacy_runtime_config_path.parent().ok_or_else(|| {
+        crate::HoneError::Config(format!(
+            "legacy runtime 配置路径缺少父目录: {}",
+            legacy_runtime_config_path.display()
+        ))
+    })?;
+    let stamp = crate::beijing_now().format("%Y%m%d-%H%M%S").to_string();
+    let backup_dir = runtime_dir.join("legacy-config-backup").join(stamp);
+    fs::create_dir_all(&backup_dir)?;
+
+    if legacy_runtime_config_path.exists() {
+        let dest = backup_dir.join(
+            legacy_runtime_config_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("config_runtime.yaml"),
+        );
+        fs::rename(legacy_runtime_config_path, dest)?;
+    }
+
+    if overlay_path.exists() {
+        let dest = backup_dir.join(
+            overlay_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("config_runtime.overrides.yaml"),
+        );
+        fs::rename(&overlay_path, dest)?;
+    }
+
+    Ok(Some(backup_dir))
+}
+
+pub fn migrate_legacy_runtime_to_canonical(
+    canonical_config_path: &Path,
+    legacy_runtime_config_path: &Path,
+) -> crate::HoneResult<bool> {
+    if canonical_config_path.exists() || !legacy_runtime_config_path.exists() {
+        return Ok(false);
+    }
+
+    let merged = read_merged_yaml_value(legacy_runtime_config_path)?;
+    HoneConfig::from_merged_value(merged.clone())?;
+
+    let yaml = serde_yaml::to_string(&merged)
+        .map_err(|e| crate::HoneError::Config(format!("legacy 配置序列化失败: {e}")))?;
+    atomic_write_yaml(canonical_config_path, &yaml)?;
+    copy_relative_system_prompt_asset(legacy_runtime_config_path, canonical_config_path)?;
+
+    archive_legacy_runtime_files(legacy_runtime_config_path)?
+        .ok_or_else(|| crate::HoneError::Config("legacy runtime 配置归档失败".to_string()))?;
+
+    Ok(true)
+}
+
+pub fn legacy_runtime_warning(
+    canonical_config_path: &Path,
+    legacy_runtime_config_path: &Path,
+) -> Option<String> {
+    let overlay_path = runtime_overlay_path(legacy_runtime_config_path);
+    if canonical_config_path.exists()
+        && (legacy_runtime_config_path.exists() || overlay_path.exists())
+    {
+        Some(format!(
+            "检测到 legacy runtime 配置仍存在（{} / {}），当前已忽略，请确认后清理",
+            legacy_runtime_config_path.display(),
+            overlay_path.display()
+        ))
+    } else {
+        None
+    }
+}
+
+pub fn ensure_canonical_config(
+    canonical_config_path: &Path,
+    legacy_runtime_config_path: &Path,
+    seed_source: Option<&Path>,
+) -> crate::HoneResult<bool> {
+    if canonical_config_path.exists() {
+        return Ok(false);
+    }
+
+    if migrate_legacy_runtime_to_canonical(canonical_config_path, legacy_runtime_config_path)? {
+        return Ok(true);
+    }
+
+    if let Some(seed_source) = seed_source.filter(|path| path.exists()) {
+        seed_canonical_config_from_source(canonical_config_path, seed_source)?;
+        return Ok(false);
+    }
+
+    Err(crate::HoneError::Config(format!(
+        "找不到 canonical config: {}",
+        canonical_config_path.display()
+    )))
+}
+
+fn yaml_revision(value: &Value) -> crate::HoneResult<String> {
+    use std::hash::{Hash, Hasher};
+
+    let rendered = serde_yaml::to_string(value)
+        .map_err(|e| crate::HoneError::Config(format!("配置序列化失败: {e}")))?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    rendered.hash(&mut hasher);
+    Ok(format!("{:016x}", hasher.finish()))
+}
+
+pub fn generate_effective_config(
+    canonical_config_path: &Path,
+    effective_config_path: &Path,
+) -> crate::HoneResult<String> {
+    let value = read_yaml_value(canonical_config_path)?;
+    HoneConfig::from_merged_value(value.clone())?;
+    let yaml = serde_yaml::to_string(&value)
+        .map_err(|e| crate::HoneError::Config(format!("effective 配置序列化失败: {e}")))?;
+    atomic_write_yaml(effective_config_path, &yaml)?;
+    copy_relative_system_prompt_asset(canonical_config_path, effective_config_path)?;
+    yaml_revision(&value)
+}
+
+pub fn classify_config_paths(paths: &[String]) -> ConfigApplyPlan {
+    let mut restarted_components = BTreeSet::new();
+    let mut restart_required = false;
+    let mut applied_live = false;
+
+    for path in paths {
+        let root = path.split('.').next().unwrap_or_default();
+        let logging_full_restart = root == "logging" && path.trim() != "logging.level";
+        let full_restart = root == "storage"
+            || path.trim() == "security.kb_actor_isolation"
+            || logging_full_restart;
+
+        if full_restart {
+            restart_required = true;
+            continue;
+        }
+
+        match root {
+            "imessage" => {
+                restarted_components.insert("imessage".to_string());
+            }
+            "telegram" => {
+                restarted_components.insert("telegram".to_string());
+            }
+            "discord" => {
+                restarted_components.insert("discord".to_string());
+            }
+            "feishu" => {
+                restarted_components.insert("feishu".to_string());
+            }
+            "agent" | "llm" | "group_context" | "admins" | "web" | "fmp" | "search"
+            | "nano_banana" | "x" => {
+                applied_live = true;
+            }
+            "security" if path.trim_start().starts_with("security.tool_guard.") => {
+                applied_live = true;
+            }
+            "logging" if path.trim() == "logging.level" => {
+                applied_live = true;
+            }
+            _ => {
+                restart_required = true;
+            }
+        }
+    }
+
+    ConfigApplyPlan {
+        changed_paths: paths.to_vec(),
+        applied_live: applied_live && restarted_components.is_empty() && !restart_required,
+        restarted_components: restarted_components.into_iter().collect(),
+        restart_required,
+    }
+}
+
+pub fn read_config_path_value(config_path: &Path, path: &str) -> crate::HoneResult<Option<Value>> {
+    let current = read_yaml_value(config_path)?;
+    let segments = parse_config_path(path)?;
+    Ok(get_value_at_segments(&current, &segments)?.cloned())
+}
+
+pub fn apply_config_mutations(
+    config_path: &Path,
+    mutations: &[ConfigMutation],
+) -> crate::HoneResult<ConfigMutationResult> {
+    let mut current = if config_path.exists() {
+        read_yaml_value(config_path)?
+    } else {
+        Value::Mapping(Mapping::new())
+    };
+    if current.is_null() {
+        current = Value::Mapping(Mapping::new());
+    }
+    let changed_paths: Vec<String> = mutations
+        .iter()
+        .map(|mutation| match mutation {
+            ConfigMutation::Set { path, .. } | ConfigMutation::Unset { path } => path.clone(),
+        })
+        .collect();
+
+    for mutation in mutations {
+        match mutation {
+            ConfigMutation::Set { path, value } => {
+                let segments = parse_config_path(path)?;
+                set_value_at_segments(&mut current, &segments, value.clone())?;
+            }
+            ConfigMutation::Unset { path } => {
+                let segments = parse_config_path(path)?;
+                unset_value_at_segments(&mut current, &segments)?;
+            }
+        }
+    }
+
+    HoneConfig::from_merged_value(current.clone())?;
+    let yaml = serde_yaml::to_string(&current)
+        .map_err(|e| crate::HoneError::Config(format!("配置序列化失败: {e}")))?;
+    atomic_write_yaml(config_path, &yaml)?;
+    Ok(ConfigMutationResult {
+        config: HoneConfig::from_file(config_path)?,
+        config_revision: yaml_revision(&current)?,
+        apply: classify_config_paths(&changed_paths),
+    })
+}
+
+pub fn is_sensitive_config_path(path: &str) -> bool {
+    let lowered = path.to_ascii_lowercase();
+    lowered.contains("api_key")
+        || lowered.contains("secret")
+        || lowered.contains("token")
+        || lowered.contains("password")
+        || lowered.contains("auth_token")
+}
+
+pub fn redact_sensitive_value(path: &str, value: &Value) -> Value {
+    if !is_sensitive_config_path(path) {
+        return value.clone();
+    }
+    match value {
+        Value::Null => Value::Null,
+        Value::Sequence(items) => Value::Sequence(
+            items
+                .iter()
+                .map(|item| redact_sensitive_value(path, item))
+                .collect(),
+        ),
+        _ => Value::String("<redacted>".to_string()),
     }
 }
 
@@ -387,7 +1010,7 @@ new_section:
     }
 
     #[test]
-    fn test_from_file_applies_runtime_overlay() {
+    fn test_read_merged_yaml_value_applies_runtime_overlay() {
         let dir = temp_test_dir("from-file");
         let config_path = dir.join("config_runtime.yaml");
         let overlay_path = runtime_overlay_path(&config_path);
@@ -427,7 +1050,8 @@ custom_section:
         )
         .unwrap();
 
-        let config = HoneConfig::from_file(&config_path).unwrap();
+        let merged = read_merged_yaml_value(&config_path).unwrap();
+        let config = HoneConfig::from_merged_value(merged).unwrap();
         assert!(config.imessage.enabled);
         assert_eq!(
             config.search.api_keys,
@@ -538,6 +1162,19 @@ agent:
         assert_eq!(config.agent.runner, "opencode_acp");
         assert_eq!(config.agent.opencode.model, "openrouter/openai/gpt-5.4");
         assert_eq!(config.agent.opencode.variant, "medium");
+    }
+
+    #[test]
+    fn test_default_agent_opencode_inherits_local_config_when_unset() {
+        let config = HoneConfig::default();
+        assert!(config.agent.opencode.model.is_empty());
+        assert!(config.agent.opencode.variant.is_empty());
+        assert!(config.agent.opencode.api_base_url.is_empty());
+        assert!(config.agent.opencode.api_key.is_empty());
+        assert_eq!(
+            config.agent.multi_agent.answer.api_base_url,
+            "https://openrouter.ai/api/v1"
+        );
     }
 
     #[test]
@@ -713,5 +1350,233 @@ discord:
 "#;
         let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.discord.chat_scope, ChatScope::GroupchatOnly);
+    }
+
+    #[test]
+    fn test_read_config_path_value_supports_nested_mapping_and_sequence() {
+        let dir = temp_test_dir("path-get");
+        let config_path = dir.join("config_runtime.yaml");
+        std::fs::write(
+            &config_path,
+            r#"
+search:
+  api_keys:
+    - key-a
+    - key-b
+agent:
+  runner: codex_cli
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_config_path_value(&config_path, "agent.runner")
+                .unwrap()
+                .and_then(|value| value.as_str().map(ToString::to_string)),
+            Some("codex_cli".to_string())
+        );
+        assert_eq!(
+            read_config_path_value(&config_path, "search.api_keys[1]")
+                .unwrap()
+                .and_then(|value| value.as_str().map(ToString::to_string)),
+            Some("key-b".to_string())
+        );
+        assert!(
+            read_config_path_value(&config_path, "search.api_keys[3]")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_apply_config_mutations_updates_canonical_config_directly() {
+        let dir = temp_test_dir("mutations");
+        let config_path = dir.join("config_runtime.yaml");
+        let overlay_path = runtime_overlay_path(&config_path);
+        std::fs::write(
+            &config_path,
+            r#"
+agent:
+  runner: codex_cli
+search:
+  api_keys:
+    - key-a
+"#,
+        )
+        .unwrap();
+
+        apply_config_mutations(
+            &config_path,
+            &[
+                ConfigMutation::Set {
+                    path: "agent.runner".to_string(),
+                    value: Value::String("opencode_acp".to_string()),
+                },
+                ConfigMutation::Set {
+                    path: "search.api_keys[1]".to_string(),
+                    value: Value::String("key-b".to_string()),
+                },
+            ],
+        )
+        .unwrap();
+
+        let base = std::fs::read_to_string(&config_path).unwrap();
+        assert!(base.contains("opencode_acp"));
+        assert!(base.contains("key-b"));
+        assert!(!overlay_path.exists());
+
+        let config = HoneConfig::from_file(&config_path).unwrap();
+        assert_eq!(config.agent.runner, "opencode_acp");
+        assert_eq!(
+            config.search.api_keys,
+            vec!["key-a".to_string(), "key-b".to_string()]
+        );
+
+        apply_config_mutations(
+            &config_path,
+            &[ConfigMutation::Unset {
+                path: "search.api_keys[0]".to_string(),
+            }],
+        )
+        .unwrap();
+        let config = HoneConfig::from_file(&config_path).unwrap();
+        assert_eq!(config.search.api_keys, vec!["key-b".to_string()]);
+    }
+
+    #[test]
+    fn test_apply_config_mutations_rejects_invalid_path_shape() {
+        let dir = temp_test_dir("mutations-error");
+        let config_path = dir.join("config_runtime.yaml");
+        std::fs::write(
+            &config_path,
+            r#"
+agent:
+  runner: codex_cli
+"#,
+        )
+        .unwrap();
+
+        let error = apply_config_mutations(
+            &config_path,
+            &[ConfigMutation::Set {
+                path: "agent.runner.value".to_string(),
+                value: Value::String("x".to_string()),
+            }],
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("配置")
+                || error.to_string().contains("invalid type")
+                || error.to_string().contains("字符串")
+        );
+    }
+
+    #[test]
+    fn test_redact_sensitive_value_masks_scalars_and_sequences() {
+        assert_eq!(
+            redact_sensitive_value(
+                "agent.opencode.api_key",
+                &Value::String("sk-123".to_string())
+            ),
+            Value::String("<redacted>".to_string())
+        );
+        assert_eq!(
+            redact_sensitive_value(
+                "search.api_keys",
+                &Value::Sequence(vec![
+                    Value::String("a".to_string()),
+                    Value::String("b".to_string())
+                ])
+            ),
+            Value::Sequence(vec![
+                Value::String("<redacted>".to_string()),
+                Value::String("<redacted>".to_string())
+            ])
+        );
+        assert_eq!(
+            redact_sensitive_value("agent.runner", &Value::String("codex_cli".to_string())),
+            Value::String("codex_cli".to_string())
+        );
+    }
+
+    #[test]
+    fn test_generate_effective_config_copies_relative_prompt_asset() {
+        let dir = temp_test_dir("effective-config");
+        let canonical = dir.join("config.yaml");
+        let runtime_dir = dir.join("data/runtime");
+        let effective = effective_config_path(&runtime_dir);
+
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+        std::fs::write(
+            &canonical,
+            r#"
+agent:
+  system_prompt_path: "./soul.md"
+  runner: codex_cli
+"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("soul.md"), "prompt").unwrap();
+
+        let revision = generate_effective_config(&canonical, &effective).unwrap();
+        assert!(!revision.is_empty());
+        assert!(effective.exists());
+        assert_eq!(
+            std::fs::read_to_string(runtime_dir.join("soul.md")).unwrap(),
+            "prompt"
+        );
+    }
+
+    #[test]
+    fn test_ensure_canonical_config_migrates_legacy_runtime_files() {
+        let dir = temp_test_dir("legacy-migrate");
+        let canonical = dir.join("config.yaml");
+        let runtime_dir = dir.join("data/runtime");
+        let legacy = legacy_runtime_config_path(&runtime_dir);
+        let overlay = runtime_overlay_path(&legacy);
+
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+        std::fs::write(
+            &legacy,
+            r#"
+agent:
+  runner: codex_cli
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &overlay,
+            r#"
+telegram:
+  enabled: true
+"#,
+        )
+        .unwrap();
+
+        let migrated = ensure_canonical_config(&canonical, &legacy, None).unwrap();
+        assert!(migrated);
+        assert!(canonical.exists());
+        assert!(!legacy.exists());
+        assert!(!overlay.exists());
+
+        let config = HoneConfig::from_file(&canonical).unwrap();
+        assert_eq!(config.agent.runner, "codex_cli");
+        assert!(config.telegram.enabled);
+    }
+
+    #[test]
+    fn test_legacy_runtime_warning_when_canonical_and_legacy_both_exist() {
+        let dir = temp_test_dir("legacy-warning");
+        let canonical = dir.join("config.yaml");
+        let runtime_dir = dir.join("data/runtime");
+        let legacy = legacy_runtime_config_path(&runtime_dir);
+
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+        std::fs::write(&canonical, "agent:\n  runner: codex_cli\n").unwrap();
+        std::fs::write(&legacy, "agent:\n  runner: opencode_acp\n").unwrap();
+
+        let warning = legacy_runtime_warning(&canonical, &legacy).expect("warning");
+        assert!(warning.contains("legacy runtime"));
+        assert!(warning.contains("config_runtime.yaml"));
     }
 }

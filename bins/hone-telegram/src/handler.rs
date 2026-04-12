@@ -23,9 +23,7 @@ use teloxide::utils::html;
 use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
 
-use super::listener::{
-  TelegramOutboundAdapter, prepend_reply_prefix, send_message_with_fallback,
-};
+use super::listener::{TelegramOutboundAdapter, prepend_reply_prefix, send_message_with_fallback};
 use super::markdown_v2::sanitize_telegram_html_public;
 use super::scheduler::handle_scheduler_events;
 use super::types::{MediaGroupBuffer, TelegramAppState};

@@ -77,6 +77,16 @@ fn isolated_opencode_config_denies_external_directory_and_bash() {
     assert_eq!(payload["model"], "openrouter/google/gemini-3.1-pro-preview");
 }
 
+#[test]
+fn isolated_opencode_config_omits_provider_override_when_base_url_empty() {
+    let config = OpencodeAcpConfig::default();
+    let payload: Value =
+        serde_json::from_str(&isolated_opencode_config(&config)).expect("valid opencode json");
+    assert!(payload.get("provider").is_none());
+    assert!(payload.get("model").is_none());
+    assert_eq!(payload["permission"]["bash"], "deny");
+}
+
 fn make_temp_exec(dir: &Path, name: &str) -> PathBuf {
     let path = dir.join(name);
     fs::write(&path, "#!/bin/sh\nexit 0\n").expect("write temp executable");

@@ -10,9 +10,7 @@ use serde_json::json;
 use tracing::{error, info, warn};
 
 use crate::handler::{resolve_receive_id, validate_scheduler_receive_id};
-use crate::outbound::{
-    scheduled_send_idempotency, send_rendered_messages,
-};
+use crate::outbound::{scheduled_send_idempotency, send_rendered_messages};
 use crate::types::AppState;
 
 pub(crate) async fn handle_scheduler_events(

@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-04-11
+Last updated: 2026-04-12
 
 ## Source of Truth and Document Priority
 
@@ -38,6 +38,7 @@ Last updated: 2026-04-11
 - Default CI proof must cover Rust tests, frontend unit tests, and CI-safe regression scripts
 - High-risk logic changes must keep success-path, failure-path, and boundary-condition verification in automated tests whenever the behavior is CI-safe
 - Default PR / push CI excludes `hone-desktop` from workspace-wide `cargo check` and `cargo test`; desktop sidecar resources and packaging checks belong to dedicated desktop build or release flows instead of the generic logic gate
+- Local IDE / dev Rust checks may set `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1` to bypass Tauri bundled sidecar validation while still type-checking `hone-desktop`; this flag is only for development syntax checking and must not replace real desktop packaging validation
 
 ## Security and Environment Constraints
 
@@ -73,9 +74,10 @@ Last updated: 2026-04-11
 - `codex_acp` currently uses `codex-acp` over stdio / JSON-RPC; startup must verify the local runtime version first. The currently validated combination is `codex >= 0.115.0` and `codex-acp == 0.9.5`; otherwise fail fast with a clear upgrade command.
 - `codex_acp` and `codex_cli` workspace-write mode may still read repo files outside the sandbox. The repo explicitly allows that for production channels today, so if they are used as the default runner, treat that out-of-bounds read risk as accepted and avoid mixing sensitive files with the channel runtime environment.
 - `opencode_acp` currently uses `opencode acp` over stdio / JSON-RPC; the ACP session id must be written back into Hone session metadata so a new ACP session is not created on every turn
+- When `agent.opencode.model` / `api_base_url` / `api_key` are empty, Hone must inherit the user's local OpenCode config instead of shadowing `~/.config/opencode/opencode.json` via a separate config home
 - If `agent.opencode.model` is non-empty, Hone must call ACP `session/set_model` before `session/prompt`; `agent.opencode.variant` should be appended to `modelId` through the same call (for example `openrouter/openai/gpt-5.4/medium`) instead of relying on temporary selection state in the local opencode UI
-- The auxiliary heartbeat / session-compression path must stay separate from the main dialogue model. Prefer `llm.auxiliary` as the source of truth for that OpenAI-compatible background route; `llm.openrouter.sub_model` remains only as a legacy fallback and must not silently replace the main dialogue model selected through `agent.opencode.model`
-- Before Hone has its own ACP permission negotiation layer, `opencode_acp` must deny one `session/request_permission` request by default and must not silently allow file writes or terminal execution; the channel runtime must also inject the minimal opencode config that rejects `external_directory`
+- The auxiliary heartbeat / session-compression path must stay separate from the main dialogue model. Prefer `llm.auxiliary` as the source of truth for that OpenAI-compatible background route; `llm.openrouter.sub_model` remains only as a legacy fallback and must not silently replace either the local OpenCode default model or the Hone-selected `agent.opencode.model`
+- Before Hone has its own ACP permission negotiation layer, `opencode_acp` must deny one `session/request_permission` request by default and must not silently allow file writes or terminal execution; the channel runtime may inject a minimal custom `OPENCODE_CONFIG`, but it must be a narrow permission overlay rather than a full replacement for the user's local OpenCode config
 - The system prompt must stay layered:
   - Static system instructions live in the prefix
   - Session-fixed context is concatenated separately

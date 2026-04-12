@@ -11,7 +11,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use hone_core::HoneConfig;
-use hone_core::config::{diff_yaml_value, read_yaml_value, runtime_overlay_path};
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use rfd::{MessageButtons, MessageDialog, MessageLevel};
 use serde::{Deserialize, Serialize};
@@ -848,38 +847,113 @@ pub(crate) async fn set_agent_settings_impl(
     settings: AgentSettings,
 ) -> Result<(), String> {
     let runtime = ensure_runtime_paths(&app)?;
-    save_runtime_config_overlay(&runtime.config_path, |config| {
-        config.agent.runner = settings.runner.clone();
-        config.agent.codex_model = settings.codex_model.clone();
-        config.agent.opencode.api_base_url = settings.openai_url.clone();
-        config.agent.opencode.model = settings.openai_model.clone();
-        config.agent.opencode.api_key = settings.openai_api_key.clone();
-        if let Some(auxiliary) = &settings.auxiliary {
-            config.llm.auxiliary.base_url = auxiliary.base_url.clone();
-            config.llm.auxiliary.api_key = auxiliary.api_key.clone();
-            config.llm.auxiliary.api_key_env = "MINIMAX_API_KEY".to_string();
-            config.llm.auxiliary.model = auxiliary.model.clone();
-            config.llm.openrouter.sub_model = auxiliary.model.clone();
-        }
-        if let Some(multi_agent) = &settings.multi_agent {
-            config.agent.multi_agent.search.base_url = multi_agent.search.base_url.clone();
-            config.agent.multi_agent.search.api_key = multi_agent.search.api_key.clone();
-            config.agent.multi_agent.search.model = multi_agent.search.model.clone();
-            config.agent.multi_agent.search.max_iterations = multi_agent.search.max_iterations;
-
-            config.agent.multi_agent.answer.api_base_url = multi_agent.answer.base_url.clone();
-            config.agent.multi_agent.answer.api_key = multi_agent.answer.api_key.clone();
-            config.agent.multi_agent.answer.model = multi_agent.answer.model.clone();
-            config.agent.multi_agent.answer.variant = multi_agent.answer.variant.clone();
-            config.agent.multi_agent.answer.max_tool_calls = multi_agent.answer.max_tool_calls;
-
-            // mirror answer agent back into single-runner opencode config
-            config.agent.opencode.api_base_url = multi_agent.answer.base_url.clone();
-            config.agent.opencode.api_key = multi_agent.answer.api_key.clone();
-            config.agent.opencode.model = multi_agent.answer.model.clone();
-            config.agent.opencode.variant = multi_agent.answer.variant.clone();
-        }
-    })?;
+    let mut updates = vec![
+        (
+            "agent.runner",
+            serde_yaml::Value::String(settings.runner.clone()),
+        ),
+        (
+            "agent.codex_model",
+            serde_yaml::Value::String(settings.codex_model.clone()),
+        ),
+        (
+            "agent.opencode.api_base_url",
+            serde_yaml::Value::String(settings.openai_url.clone()),
+        ),
+        (
+            "agent.opencode.model",
+            serde_yaml::Value::String(settings.openai_model.clone()),
+        ),
+        (
+            "agent.opencode.api_key",
+            serde_yaml::Value::String(settings.openai_api_key.clone()),
+        ),
+    ];
+    if let Some(auxiliary) = &settings.auxiliary {
+        updates.extend([
+            (
+                "llm.auxiliary.base_url",
+                serde_yaml::Value::String(auxiliary.base_url.clone()),
+            ),
+            (
+                "llm.auxiliary.api_key",
+                serde_yaml::Value::String(auxiliary.api_key.clone()),
+            ),
+            (
+                "llm.auxiliary.api_key_env",
+                serde_yaml::Value::String("MINIMAX_API_KEY".to_string()),
+            ),
+            (
+                "llm.auxiliary.model",
+                serde_yaml::Value::String(auxiliary.model.clone()),
+            ),
+            (
+                "llm.openrouter.sub_model",
+                serde_yaml::Value::String(auxiliary.model.clone()),
+            ),
+        ]);
+    }
+    if let Some(multi_agent) = &settings.multi_agent {
+        updates.extend([
+            (
+                "agent.multi_agent.search.base_url",
+                serde_yaml::Value::String(multi_agent.search.base_url.clone()),
+            ),
+            (
+                "agent.multi_agent.search.api_key",
+                serde_yaml::Value::String(multi_agent.search.api_key.clone()),
+            ),
+            (
+                "agent.multi_agent.search.model",
+                serde_yaml::Value::String(multi_agent.search.model.clone()),
+            ),
+            (
+                "agent.multi_agent.search.max_iterations",
+                serde_yaml::Value::Number(serde_yaml::Number::from(
+                    multi_agent.search.max_iterations,
+                )),
+            ),
+            (
+                "agent.multi_agent.answer.api_base_url",
+                serde_yaml::Value::String(multi_agent.answer.base_url.clone()),
+            ),
+            (
+                "agent.multi_agent.answer.api_key",
+                serde_yaml::Value::String(multi_agent.answer.api_key.clone()),
+            ),
+            (
+                "agent.multi_agent.answer.model",
+                serde_yaml::Value::String(multi_agent.answer.model.clone()),
+            ),
+            (
+                "agent.multi_agent.answer.variant",
+                serde_yaml::Value::String(multi_agent.answer.variant.clone()),
+            ),
+            (
+                "agent.multi_agent.answer.max_tool_calls",
+                serde_yaml::Value::Number(serde_yaml::Number::from(
+                    multi_agent.answer.max_tool_calls,
+                )),
+            ),
+            (
+                "agent.opencode.api_base_url",
+                serde_yaml::Value::String(multi_agent.answer.base_url.clone()),
+            ),
+            (
+                "agent.opencode.api_key",
+                serde_yaml::Value::String(multi_agent.answer.api_key.clone()),
+            ),
+            (
+                "agent.opencode.model",
+                serde_yaml::Value::String(multi_agent.answer.model.clone()),
+            ),
+            (
+                "agent.opencode.variant",
+                serde_yaml::Value::String(multi_agent.answer.variant.clone()),
+            ),
+        ]);
+    }
+    apply_setting_updates(&runtime.config_path, updates)?;
     log_desktop(
         &app,
         "INFO",
@@ -1214,11 +1288,25 @@ pub(crate) async fn set_openrouter_settings_impl(
         .into_iter()
         .filter(|k| !k.trim().is_empty())
         .collect();
-    save_runtime_config_overlay(&runtime.config_path, |config| {
-        // 过滤空 key，写入 api_keys，清空旧的单 api_key 字段（避免重复）
-        config.llm.openrouter.api_keys = valid_keys.clone();
-        config.llm.openrouter.api_key = String::new(); // 清空旧字段，由 api_keys 主导
-    })?;
+    apply_setting_updates(
+        &runtime.config_path,
+        vec![
+            (
+                "llm.openrouter.api_keys",
+                serde_yaml::Value::Sequence(
+                    valid_keys
+                        .iter()
+                        .cloned()
+                        .map(serde_yaml::Value::String)
+                        .collect(),
+                ),
+            ),
+            (
+                "llm.openrouter.api_key",
+                serde_yaml::Value::String(String::new()),
+            ),
+        ],
+    )?;
     log_desktop(
         &app,
         "INFO",
@@ -1261,10 +1349,22 @@ pub(crate) async fn set_fmp_settings_impl(
         .into_iter()
         .filter(|k| !k.trim().is_empty())
         .collect();
-    save_runtime_config_overlay(&runtime.config_path, |config| {
-        config.fmp.api_keys = valid_keys.clone();
-        config.fmp.api_key = String::new(); // 清空旧字段
-    })?;
+    apply_setting_updates(
+        &runtime.config_path,
+        vec![
+            (
+                "fmp.api_keys",
+                serde_yaml::Value::Sequence(
+                    valid_keys
+                        .iter()
+                        .cloned()
+                        .map(serde_yaml::Value::String)
+                        .collect(),
+                ),
+            ),
+            ("fmp.api_key", serde_yaml::Value::String(String::new())),
+        ],
+    )?;
     log_desktop(
         &app,
         "INFO",
@@ -1312,9 +1412,19 @@ pub(crate) async fn set_tavily_settings_impl(
         .into_iter()
         .filter(|k| !k.trim().is_empty())
         .collect();
-    save_runtime_config_overlay(&runtime.config_path, |config| {
-        config.search.api_keys = valid_keys.clone();
-    })?;
+    apply_setting_updates(
+        &runtime.config_path,
+        vec![(
+            "search.api_keys",
+            serde_yaml::Value::Sequence(
+                valid_keys
+                    .iter()
+                    .cloned()
+                    .map(serde_yaml::Value::String)
+                    .collect(),
+            ),
+        )],
+    )?;
     log_desktop(
         &app,
         "INFO",

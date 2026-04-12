@@ -294,9 +294,6 @@ pub(crate) fn resolve_opencode_command_path(config: &OpencodeAcpConfig) -> PathB
 }
 
 pub(crate) fn isolated_opencode_config(config: &OpencodeAcpConfig) -> String {
-    // 注意：opencode 的 provider.openrouter 不支持 apiKey 字段（会导致 ConfigInvalidError 崩溃）。
-    // API Key 通过 spawn 时设置 OPENROUTER_API_KEY 环境变量传递。
-    let _ = config; // config 在此函数中仅用于 model/variant，api_key 不写入 JSON
     let mut payload = serde_json::json!({
         "$schema": "https://opencode.ai/config.json",
         "permission": {
@@ -312,15 +309,19 @@ pub(crate) fn isolated_opencode_config(config: &OpencodeAcpConfig) -> String {
             "external_directory": {
                 "*": "deny"
             }
-        },
-        "provider": {
-            "openrouter": {
-                "options": {
-                    "baseURL": config.api_base_url.clone()
-                }
-            }
         }
     });
+
+    let api_base_url = config.api_base_url.trim();
+    if !api_base_url.is_empty() {
+        payload["provider"] = serde_json::json!({
+            "openrouter": {
+                "options": {
+                    "baseURL": api_base_url
+                }
+            }
+        });
+    }
 
     if let Some(model) = configured_opencode_model_id(config) {
         payload["model"] = Value::String(model.clone());
@@ -374,21 +375,25 @@ async fn run_opencode_acp(
         message,
     })?;
     let opencode_config_path = prepare_opencode_runtime(config, &request.working_directory)?;
-    let xdg_config_home = opencode_config_path
-        .parent()
-        .and_then(|path| path.parent())
-        .ok_or(AgentSessionError {
-            kind: AgentSessionErrorKind::Io,
-            message: "failed to resolve opencode XDG config home".to_string(),
-        })?;
+
+    let injected_openrouter_api_key = if !config.api_key.trim().is_empty() {
+        Some(config.api_key.trim())
+    } else {
+        config
+            .openrouter_api_key
+            .as_deref()
+            .filter(|key| !key.trim().is_empty())
+    };
 
     // ── 日志：API key 注入状态 ──────────────────────────────────────────────────
-    let api_key_status = match &config.openrouter_api_key {
-        Some(key) if !key.trim().is_empty() => {
+    let api_key_status = match injected_openrouter_api_key {
+        Some(key) => {
             let preview = &key[..key.len().min(8)];
             format!("injecting OPENROUTER_API_KEY={preview}…")
         }
-        _ => "OPENROUTER_API_KEY not injected (will use env or opencode defaults)".to_string(),
+        _ => {
+            "OPENROUTER_API_KEY not injected (will inherit local opencode auth/config)".to_string()
+        }
     };
     let model_status = configured_opencode_model_id(config)
         .map(|m| format!("model={m}"))
@@ -414,17 +419,13 @@ async fn run_opencode_acp(
         .current_dir(&request.working_directory)
         .env("OPENCODE_CONFIG", &opencode_config_path)
         .env("OPENCODE_DISABLE_CLAUDE_CODE", "1")
-        .env("XDG_CONFIG_HOME", xdg_config_home)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     // 通过环境变量传递 OpenRouter API Key（opencode 的 provider.openrouter 配置不支持 apiKey 字段）
-    // 若 config_runtime.yaml 中配置了 OpenRouter API key，会在此处生效并覆盖环境变量
-    if let Some(ref api_key) = config.openrouter_api_key {
-        let trimmed = api_key.trim();
-        if !trimmed.is_empty() {
-            command.env("OPENROUTER_API_KEY", trimmed);
-        }
+    // 若 Hone 未显式注入，则继续使用用户本机 opencode 的 auth / provider 配置。
+    if let Some(api_key) = injected_openrouter_api_key {
+        command.env("OPENROUTER_API_KEY", api_key);
     }
 
     let mut child = command.spawn().map_err(|e| AgentSessionError {

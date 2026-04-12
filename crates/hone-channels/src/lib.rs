@@ -22,13 +22,13 @@ pub mod think;
 
 pub use self::core::HoneBotCore;
 pub use self::core::load_runtime_config;
-pub use bootstrap::{ChannelRuntimeBootstrap, bootstrap_channel_runtime};
 pub use self::sandbox::channel_download_dir;
 pub use agent_session::{
     AgentRunOptions, AgentSession, AgentSessionError, AgentSessionErrorKind, AgentSessionEvent,
     AgentSessionListener, AgentSessionResult, GeminiStreamOptions, MessageMetadata,
     restore_context,
 };
+pub use bootstrap::{ChannelRuntimeBootstrap, bootstrap_channel_runtime};
 pub use ingress::{
     ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, ChatMode,
     GroupPretriggerWindowRegistry, GroupTrigger, GroupTriggerMode, IncomingEnvelope,

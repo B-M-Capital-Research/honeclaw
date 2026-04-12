@@ -285,7 +285,12 @@ pub(crate) fn scheduled_send_idempotency(
     }
 }
 
-fn stable_message_uuid(uuid_seed: Option<&str>, index: usize, msg_type: &str, content: &str) -> String {
+fn stable_message_uuid(
+    uuid_seed: Option<&str>,
+    index: usize,
+    msg_type: &str,
+    content: &str,
+) -> String {
     if let Some(seed) = uuid_seed {
         use std::hash::{Hash, Hasher};
 

@@ -348,10 +348,14 @@ agent:
   opencode:
     command: "opencode"
     args: ["acp"]
-    # Explicit ACP session model; empty uses opencode's own default config
-    model: "openrouter/openai/gpt-5.4"
-    # Reasoning variant can be set separately; for example none|minimal|low|medium|high|xhigh
-    variant: "medium"
+    # Leave empty to inherit your local opencode global config (~/.config/opencode/opencode.json/jsonc)
+    model: ""
+    # Optional; only used when Hone explicitly overrides the opencode model
+    variant: ""
+    # Optional Hone-side provider/base URL override; leave empty to inherit local opencode config
+    api_base_url: ""
+    # Optional Hone-side API key override; leave empty to inherit local opencode auth/provider config
+    api_key: ""
     startup_timeout_seconds: 15
     request_timeout_seconds: 300
   multi_agent:

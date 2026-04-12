@@ -26,15 +26,15 @@ use hone_core::{ActorIdentity, SessionIdentity};
 use serde_json::{Value, json};
 use tracing::{error, info, warn};
 
+use super::card::CardKitSession;
+use super::client::FeishuApiClient;
+use super::listener::FeishuStreamListener;
+use super::markdown::preprocess_markdown_for_feishu;
 use super::outbound::{
     feishu_user_mention, prepend_reply_prefix, send_placeholder_message, send_plain_text,
     send_rendered_messages, update_or_send_plain_text,
 };
 use super::scheduler::handle_scheduler_events;
-use super::card::CardKitSession;
-use super::client::FeishuApiClient;
-use super::listener::FeishuStreamListener;
-use super::markdown::preprocess_markdown_for_feishu;
 use super::types::{AppState, FeishuEventHandler, FeishuIncomingAttachment, FeishuIncomingMessage};
 
 const THINKING_PLACEHOLDER_TEXT: &str = "正在思考中...";

@@ -1,4 +1,5 @@
 use super::*;
+use hone_core::config::runtime_overlay_path;
 
 pub(super) fn normalize_base_url(raw: &str) -> String {
     raw.trim().trim_end_matches('/').to_string()
@@ -12,7 +13,7 @@ fn timestamp_string() -> String {
         .to_string()
 }
 
-fn append_log(path: &PathBuf, level: &str, message: &str) {
+pub(super) fn append_log(path: &PathBuf, level: &str, message: &str) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }

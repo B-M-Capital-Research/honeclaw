@@ -1,4 +1,5 @@
 use super::*;
+use hone_core::config::{ConfigMutation, apply_config_mutations};
 
 pub(super) fn seed_multi_agent_settings(config: &HoneConfig) -> MultiAgentSettings {
     let search = MultiAgentSearchSettings {
@@ -100,88 +101,26 @@ pub(super) fn load_persisted_config(app: &AppHandle) -> Result<BackendConfig, St
     serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
-pub(super) fn save_persisted_config(
-    app: &AppHandle,
-    config: &BackendConfig,
-) -> Result<(), String> {
+pub(super) fn save_persisted_config(app: &AppHandle, config: &BackendConfig) -> Result<(), String> {
     let path = config_store_path(app)?;
     let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
     fs::write(path, json).map_err(|e| e.to_string())
 }
 
-fn atomic_write_yaml(path: &Path, yaml: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("覆盖层路径缺少父目录: {}", path.display()))?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_nanos();
-    let file_name = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("config");
-    let tmp_path = parent.join(format!(".{file_name}.{stamp}.tmp"));
-
-    fs::write(&tmp_path, yaml).map_err(|e| e.to_string())?;
-    match fs::rename(&tmp_path, path) {
-        Ok(()) => Ok(()),
-        Err(first_err) => {
-            let _ = fs::remove_file(path);
-            match fs::rename(&tmp_path, path) {
-                Ok(()) => Ok(()),
-                Err(second_err) => {
-                    let _ = fs::remove_file(&tmp_path);
-                    Err(format!(
-                        "无法写入覆盖层 {}: {second_err}（初次重命名错误: {first_err}）",
-                        path.display()
-                    ))
-                }
-            }
-        }
-    }
-}
-
-fn write_overlay_patch(path: &Path, patch: Option<serde_yaml::Value>) -> Result<(), String> {
-    match patch {
-        None => {
-            if path.exists() {
-                fs::remove_file(path).map_err(|e| e.to_string())?;
-            }
-            Ok(())
-        }
-        Some(serde_yaml::Value::Mapping(map)) if map.is_empty() => {
-            if path.exists() {
-                fs::remove_file(path).map_err(|e| e.to_string())?;
-            }
-            Ok(())
-        }
-        Some(value) => {
-            let yaml = serde_yaml::to_string(&value).map_err(|e| e.to_string())?;
-            atomic_write_yaml(path, &yaml)
-        }
-    }
-}
-
-pub(super) fn save_runtime_config_overlay<F>(
+pub(super) fn apply_setting_updates(
     config_path: &Path,
-    mutate: F,
-) -> Result<HoneConfig, String>
-where
-    F: FnOnce(&mut HoneConfig),
-{
-    let base_value = read_yaml_value(config_path).map_err(|e| e.to_string())?;
-    let mut config = HoneConfig::from_file(config_path).map_err(|e| e.to_string())?;
-    mutate(&mut config);
-    let current_value = serde_yaml::to_value(&config).map_err(|e| e.to_string())?;
-    let patch = diff_yaml_value(&base_value, &current_value);
-    let overlay_path = runtime_overlay_path(config_path);
-    write_overlay_patch(&overlay_path, patch)?;
-    Ok(config)
+    updates: Vec<(&str, serde_yaml::Value)>,
+) -> Result<HoneConfig, String> {
+    let mutations = updates
+        .into_iter()
+        .map(|(path, value)| ConfigMutation::Set {
+            path: path.to_string(),
+            value,
+        })
+        .collect::<Vec<_>>();
+    apply_config_mutations(config_path, &mutations)
+        .map(|result| result.config)
+        .map_err(|e| e.to_string())
 }
 
 pub(super) fn load_channel_settings(app: &AppHandle) -> Result<DesktopChannelSettings, String> {
@@ -207,16 +146,43 @@ pub(super) fn save_channel_settings(
 ) -> Result<DesktopChannelSettings, String> {
     let runtime = ensure_runtime_paths(app)?;
     let config_path = runtime.config_path;
-    let config = save_runtime_config_overlay(&config_path, |config| {
-        config.imessage.enabled = settings.imessage_enabled;
-        config.feishu.enabled = settings.feishu_enabled;
-        config.feishu.app_id = settings.feishu_app_id.clone();
-        config.feishu.app_secret = settings.feishu_app_secret.clone();
-        config.telegram.enabled = settings.telegram_enabled;
-        config.telegram.bot_token = settings.telegram_bot_token.clone();
-        config.discord.enabled = settings.discord_enabled;
-        config.discord.bot_token = settings.discord_bot_token.clone();
-    })?;
+    let config = apply_setting_updates(
+        &config_path,
+        vec![
+            (
+                "imessage.enabled",
+                serde_yaml::Value::Bool(settings.imessage_enabled),
+            ),
+            (
+                "feishu.enabled",
+                serde_yaml::Value::Bool(settings.feishu_enabled),
+            ),
+            (
+                "feishu.app_id",
+                serde_yaml::Value::String(settings.feishu_app_id.clone()),
+            ),
+            (
+                "feishu.app_secret",
+                serde_yaml::Value::String(settings.feishu_app_secret.clone()),
+            ),
+            (
+                "telegram.enabled",
+                serde_yaml::Value::Bool(settings.telegram_enabled),
+            ),
+            (
+                "telegram.bot_token",
+                serde_yaml::Value::String(settings.telegram_bot_token.clone()),
+            ),
+            (
+                "discord.enabled",
+                serde_yaml::Value::Bool(settings.discord_enabled),
+            ),
+            (
+                "discord.bot_token",
+                serde_yaml::Value::String(settings.discord_bot_token.clone()),
+            ),
+        ],
+    )?;
 
     Ok(DesktopChannelSettings {
         config_path: config_path.to_string_lossy().to_string(),

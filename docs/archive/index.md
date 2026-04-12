@@ -1,8 +1,46 @@
 # Archive Index
 
-Last updated: 2026-04-11
+Last updated: 2026-04-12
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
+
+## 2026-04-12
+
+### CLI 首装 Onboarding 与安装向导
+
+- Status: done
+- Date: 2026-04-12
+- Plan: `docs/archive/plans/cli-onboarding-install-wizard.md`
+- Handoff: `docs/handoffs/2026-04-12-cli-onboarding-install-wizard.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `docs/runbooks/hone-cli-install-and-start.md`, `bash tests/regression/manual/test_install_bundle_smoke.sh`, `cargo check -p hone-cli`, `cargo test -p hone-cli`
+- Current conclusion: `hone-cli` 已支持首装 `onboard/setup` TUI，能够探测本机 runner、在不强迫 Hone 侧填写 OpenCode provider 配置的前提下切到 `opencode_acp`，并按渠道逐个引导启用与填写本地必填字段；GitHub release 安装脚本在交互终端下会询问是否立即运行该向导
+- Next entry point: `docs/handoffs/2026-04-12-cli-onboarding-install-wizard.md`
+
+### Desktop Rust Check 与 IDE 语法检查解耦
+
+- Status: done
+- Date: 2026-04-12
+- Plan: `docs/archive/plans/desktop-rust-check-workflow.md`
+- Handoff: `docs/handoffs/2026-04-12-desktop-rust-check-workflow.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo check --workspace --all-targets --exclude hone-desktop`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check --workspace --all-targets`
+- Current conclusion: 默认 workspace Rust 检查继续排除 `hone-desktop`；desktop crate 新增开发态 sidecar 校验豁免开关，VSCode rust-analyzer 默认携带该 env，因此 IDE / 本地 `cargo check` 不再被缺失的 Tauri bundled binaries 阻塞
+- Next entry point: `docs/handoffs/2026-04-12-desktop-rust-check-workflow.md`
+
+### Hone CLI Config MVP 与可安装启动流
+
+- Status: done
+- Date: 2026-04-12
+- Plan: `docs/archive/plans/hone-cli-config-mvp.md`
+- Handoff: `docs/handoffs/2026-04-12-hone-cli-config-mvp.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `docs/runbooks/hone-cli-install-and-start.md`, `cargo check --workspace --all-targets --exclude hone-desktop`, `cargo test -p hone-core`, `cargo test -p hone-cli`
+- Current conclusion: `hone-cli` 已具备 `config / configure / models / channels / status / doctor / start` 管理面；shared runtime overlay service 已供 CLI 与 desktop 共用；macOS / release 安装链路支持 `hone-cli start`，且已补齐首次 runtime config seed 行为
+- Next entry point: `docs/handoffs/2026-04-12-hone-cli-config-mvp.md`
 
 ## 2026-04-11
 

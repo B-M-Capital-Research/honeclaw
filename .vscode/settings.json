@@ -1,3 +1,6 @@
 {
-    "search.useIgnoreFiles": false
+    "search.useIgnoreFiles": false,
+    "rust-analyzer.cargo.extraEnv": {
+        "HONE_SKIP_BUNDLED_RESOURCE_CHECK": "1"
+    }
 }

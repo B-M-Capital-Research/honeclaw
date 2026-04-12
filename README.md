@@ -76,6 +76,21 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 
 ## Installation and Launch
 
+### Option A. Install the macOS/Linux CLI bundle from GitHub
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash
+hone-cli doctor
+hone-cli onboard
+hone-cli start
+```
+
+This path installs the GitHub release bundle under `~/.honeclaw`, writes a `hone-cli` wrapper into `~/.local/bin`, and lets you start the local runtime directly with `hone-cli start` instead of `./launch.sh`.
+
+If you choose `opencode_acp` during onboarding, Hone now expects you to finish provider/auth/default-model setup in local `opencode` first, then simply reuses that local OpenCode config by default.
+
+### Option B. Clone the repository for development
+
 1. Clone the repository
 
 ```shell
@@ -92,7 +107,7 @@ chmod +x launch.sh
 ./launch.sh --desktop
 ```
 
-### What the first startup does
+### What the first repo startup does
 
 Running `./launch.sh --desktop` walks through **environment prep → builds → process bring-up** in order. The **first** full run usually takes about **10 minutes** (depends on network and CPU).
 
