@@ -77,55 +77,71 @@ pub fn resolve_tool_reasoning(tool_name: &str, reasoning: Option<String>) -> Opt
     Some(format!("正在调用 {tool_name}..."))
 }
 
+// ── 静态正则（编译一次，避免热路径重复编译）─────────────────────────────────
+use std::sync::LazyLock;
+
+static RE_MSG: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"\[MSG\d+\]\s*").expect("valid regex"));
+static RE_PIPE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"<\|[^|]+\|>").expect("valid regex"));
+static RE_TOOL_TAG: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"\b(web_search|data_fetch|portfolio|load_skill|skill_tool|discover_skills|image_gen):\d+\s*",
+    )
+    .expect("valid regex")
+});
+static RE_JSON_TOOL: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"\{[^\{\}]*"(query|action|data_type|skill_name|ticker|symbol|draft_id|approval_token|image_prompt|user_intent|image_count|regenerate_images|image_type|content|prompt)"[^\{\}]*\}"#,
+    )
+    .expect("valid regex")
+});
+static RE_SIMPLE_JSON: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#"\{"[^"]*":\s*"[^"]*"\}"#).expect("valid regex"));
+static RE_FUNC: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"(functions?\.?\s*)+").expect("valid regex"));
+static RE_TOOL_KEYWORD: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"</?(tool_call|tool_result|tool_use)\b[^>]*>|\b(tool_call|tool_result|tool_use)\b",
+    )
+    .expect("valid regex")
+});
+static RE_WS: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"[ \t]+").expect("valid regex"));
+static RE_NL: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"\n[ \t\n]*\n").expect("valid regex"));
+
+// ── skip-buffer 检测正则 ──────────────────────────────────────────────────────
+static RE_ONLY_PUNCT: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"^[\s\.\,\!\?\:\;\-\_\=\+\*\/\\]+$").expect("valid regex")
+});
+static RE_ONLY_FUNC: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^(functions?\.?\s*)+$").expect("valid regex"));
+static RE_ONLY_TOOL_CALL: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^(tool_?call\.?\s*)+$").expect("valid regex"));
+
 /// 清理消息中的特殊标记（工具调用残留、MSG 标记等）
 pub fn clean_msg_markers(text: &str) -> String {
-    use regex::Regex;
-
     let mut cleaned = text.to_string();
 
     // [MSG1], [MSG2] 等
-    let msg_re = Regex::new(r"\[MSG\d+\]\s*").unwrap();
-    cleaned = msg_re.replace_all(&cleaned, "").to_string();
-
+    cleaned = RE_MSG.replace_all(&cleaned, "").to_string();
     // <|...|> 标记
-    let pipe_re = Regex::new(r"<\|[^|]+\|>").unwrap();
-    cleaned = pipe_re.replace_all(&cleaned, "").to_string();
-
+    cleaned = RE_PIPE.replace_all(&cleaned, "").to_string();
     // tool_name:N 标记
-    let tool_re = Regex::new(
-        r"\b(web_search|data_fetch|portfolio|load_skill|skill_tool|discover_skills|image_gen):\d+\s*",
-    )
-    .unwrap();
-    cleaned = tool_re.replace_all(&cleaned, "").to_string();
-
+    cleaned = RE_TOOL_TAG.replace_all(&cleaned, "").to_string();
     // JSON 工具参数
-    let json_re = Regex::new(
-        r#"\{[^\{\}]*"(query|action|data_type|skill_name|ticker|symbol|draft_id|approval_token|image_prompt|user_intent|image_count|regenerate_images|image_type|content|prompt)"[^\{\}]*\}"#
-    ).unwrap();
-    cleaned = json_re.replace_all(&cleaned, "").to_string();
-
+    cleaned = RE_JSON_TOOL.replace_all(&cleaned, "").to_string();
     // 简单 JSON
-    let simple_json_re = Regex::new(r#"\{"[^"]*":\s*"[^"]*"\}"#).unwrap();
-    cleaned = simple_json_re.replace_all(&cleaned, "").to_string();
-
+    cleaned = RE_SIMPLE_JSON.replace_all(&cleaned, "").to_string();
     // functions 残留
-    let func_re = Regex::new(r"(functions?\.?\s*)+").unwrap();
-    cleaned = func_re.replace_all(&cleaned, "").to_string();
-
+    cleaned = RE_FUNC.replace_all(&cleaned, "").to_string();
     // tool_call/tool_result/tool_use 及其可能附带的尖括号
-    let tool_keyword_re = Regex::new(
-        r"</?(tool_call|tool_result|tool_use)\b[^>]*>|\b(tool_call|tool_result|tool_use)\b",
-    )
-    .unwrap();
-    cleaned = tool_keyword_re.replace_all(&cleaned, "").to_string();
-
+    cleaned = RE_TOOL_KEYWORD.replace_all(&cleaned, "").to_string();
     // 多余空白（不包含换行）
-    let ws_re = Regex::new(r"[ \t]+").unwrap();
-    cleaned = ws_re.replace_all(&cleaned, " ").to_string();
-
+    cleaned = RE_WS.replace_all(&cleaned, " ").to_string();
     // 连续多个换行（可能夹杂空格）压缩为两个换行，保留段落结构
-    let nl_re = Regex::new(r"\n[ \t\n]*\n").unwrap();
-    cleaned = nl_re.replace_all(&cleaned, "\n\n").to_string();
+    cleaned = RE_NL.replace_all(&cleaned, "\n\n").to_string();
 
     cleaned.trim().to_string()
 }
@@ -163,18 +179,13 @@ pub fn should_skip_buffer(text: &str) -> bool {
     if is_tool_call_content(&cleaned) {
         return true;
     }
-    // 无意义内容
-    use regex::Regex;
-    let patterns = [
-        r"^[\s\.\,\!\?\:\;\-\_\=\+\*\/\\]+$",
-        r"^(functions?\.?\s*)+$",
-        r"^(tool_?call\.?\s*)+$",
-        r"^[\s]*$",
-    ];
-    for pattern in &patterns {
-        if Regex::new(pattern).unwrap().is_match(&cleaned) {
-            return true;
-        }
+    // 无意义内容（使用静态正则，避免重复编译）
+    if RE_ONLY_PUNCT.is_match(&cleaned)
+        || RE_ONLY_FUNC.is_match(&cleaned)
+        || RE_ONLY_TOOL_CALL.is_match(&cleaned)
+        || cleaned.trim().is_empty()
+    {
+        return true;
     }
     false
 }

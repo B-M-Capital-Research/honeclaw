@@ -72,9 +72,9 @@ impl AgentSessionListener for SseSessionListener {
             }
             AgentSessionEvent::Done { response } => {
                 let sent = *self.sent_segments.lock().await;
-                // ── 安全刷新：如果推送的增量很少（可能是握手或元数据），则强制刷新全量内容 ──
-                // 这解决了流式开启瞬间可能存在的第一个字丢失的问题
-                if sent < 3 {
+                // ── 安全刷新：仅当流式阶段完全没有发送过内容时，才补发全量，
+                // 防止 SSE 连接建立前丢失第一帧。若已发过内容则跳过，避免重复渲染。
+                if sent == 0 {
                     let cleaned = clean_msg_markers(&response.content);
                     if !cleaned.is_empty() && !should_skip_buffer(&cleaned) {
                         let _ = self

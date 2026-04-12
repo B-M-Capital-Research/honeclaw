@@ -226,19 +226,22 @@ pub struct AgentSession {
 }
 
 /// 统一串行化同一 session 的整次 run，避免多个入口同时 restore_context + run 时共享旧快照。
-static SESSION_RUN_LOCKS: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
+///
+/// 使用 `Weak` 引用存储锁，当没有任何调用方持有该 session 的锁时，Map 中的条目
+/// 会在下次访问时被自然替换，避免长期运行后 HashMap 无限增长。
+static SESSION_RUN_LOCKS: OnceLock<Mutex<HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>> =
     OnceLock::new();
 
 fn get_session_run_lock(session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
     let map = SESSION_RUN_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = map.lock().expect("session run lock poisoned");
-    if let Some(lock) = guard.get(session_id) {
-        lock.clone()
-    } else {
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
-        guard.insert(session_id.to_string(), lock.clone());
-        lock
+    // 尝试从已有的 Weak 引用升级；若失败（已无持有者）则创建新锁并覆盖旧条目
+    if let Some(existing) = guard.get(session_id).and_then(|w| w.upgrade()) {
+        return existing;
     }
+    let lock = Arc::new(tokio::sync::Mutex::new(()));
+    guard.insert(session_id.to_string(), Arc::downgrade(&lock));
+    lock
 }
 
 struct SessionEventEmitter {

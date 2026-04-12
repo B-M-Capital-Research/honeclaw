@@ -340,7 +340,7 @@ fn build_oauth1_header(
     let nonce = Uuid::new_v4().to_string().replace('-', "");
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs()
         .to_string();
 

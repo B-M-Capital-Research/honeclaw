@@ -193,7 +193,13 @@ pub(crate) async fn handle_logs_stream(
             let data = serde_json::to_string(&entry).unwrap_or_default();
             Some(Ok(Event::default().event("log").data(data)))
         }
-        Err(_) => None,
+        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+            Some(Ok(Event::default()
+                .event("log")
+                .data(format!(
+                    r#"{{"level":"WARN","message":"[stream] 日志消费过慢，跳过了 {n} 条日志"}}"#
+                ))))
+        }
     });
 
     // 先发送 connected 确认事件

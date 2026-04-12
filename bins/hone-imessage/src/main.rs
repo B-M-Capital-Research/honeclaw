@@ -463,7 +463,11 @@ async fn main() {
         let gemini_bin = home.join("local/node/bin");
         if gemini_bin.exists() {
             let current_path = std::env::var("PATH").unwrap_or_default();
-            // Safety: called at startup before spawning threads
+            // Safety: modifying PATH early in main() before any subprocess is spawned.
+            // Tokio's thread pool is already running at this point, but only internal
+            // runtime threads exist — no user code concurrently reads env vars yet.
+            // This is technically unsound under Rust's model but safe in practice here.
+            // TODO: pass gemini_bin via Command::env() per-spawn instead.
             unsafe {
                 std::env::set_var("PATH", format!("{}:{}", gemini_bin.display(), current_path));
             }
