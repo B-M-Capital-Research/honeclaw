@@ -730,7 +730,10 @@ fn cleanup_targets(home_dir: &Path) -> CleanupTargets {
     }
 }
 
-fn select_cleanup_targets(theme: &ColorfulTheme, args: &CleanupArgs) -> Result<CleanupSelection, String> {
+fn select_cleanup_targets(
+    theme: &ColorfulTheme,
+    args: &CleanupArgs,
+) -> Result<CleanupSelection, String> {
     if args.all {
         return Ok(CleanupSelection {
             remove_config_and_profile: true,
@@ -1732,7 +1735,10 @@ fn run_cleanup(args: CleanupArgs) -> Result<(), String> {
     let home_removed = prune_empty_dir(&targets.home_dir)?;
 
     if removed.is_empty() && !home_removed {
-        println!("No matching Hone files found under {}.", targets.home_dir.display());
+        println!(
+            "No matching Hone files found under {}.",
+            targets.home_dir.display()
+        );
     } else {
         println!("Removed:");
         for path in removed {
