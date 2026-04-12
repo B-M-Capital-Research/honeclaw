@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/
 Optional version pin:
 
 ```bash
-HONE_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash
+HONE_VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash
 ```
 
 Optional onboarding control:
@@ -37,6 +37,21 @@ The installer:
 - In an interactive terminal, asks whether to run `hone-cli onboard` immediately
   - `HONE_RUN_ONBOARD=0` skips the prompt
   - `HONE_RUN_ONBOARD=1` forces onboarding immediately
+
+## Install With Homebrew
+
+```bash
+brew tap B-M-Capital-Research/honeclaw https://github.com/B-M-Capital-Research/honeclaw
+brew install B-M-Capital-Research/honeclaw/honeclaw
+```
+
+The Homebrew path installs the same GitHub release bundle under Homebrew `libexec`, then exposes a `hone-cli` wrapper in Homebrew `bin`.
+
+On first run, the wrapper:
+
+- Seeds `~/.honeclaw/config.yaml` and `~/.honeclaw/soul.md` if they do not exist
+- Uses the same default `HONE_HOME`, `HONE_USER_CONFIG_PATH`, `HONE_DATA_DIR`, and `HONE_SKILLS_DIR` semantics as the `curl | bash` install
+- Lets `hone-cli start` reuse the bundled runtime binaries from the Homebrew cellar without requiring `./launch.sh` or `hone-desktop`
 
 ## Installed Layout
 
@@ -141,3 +156,13 @@ hone-cli config file
 ```
 
 The installed wrapper should point to `~/.honeclaw/config.yaml`.
+
+### Homebrew install fails to resolve the formula
+
+Re-tap the repository, then install with the fully qualified formula name:
+
+```bash
+brew untap B-M-Capital-Research/honeclaw
+brew tap B-M-Capital-Research/honeclaw https://github.com/B-M-Capital-Research/honeclaw
+brew install B-M-Capital-Research/honeclaw/honeclaw
+```

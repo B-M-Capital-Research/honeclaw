@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build-and-release:
+    name: build-and-release (${{ matrix.os }}, ${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
@@ -18,7 +19,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: macos-14
             target: aarch64-apple-darwin
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
 
@@ -51,7 +52,17 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build release binaries
-        run: cargo build --release --workspace --bins --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --target "${{ matrix.target }}" \
+            --package hone-cli \
+            --package hone-console-page \
+            --package hone-imessage \
+            --package hone-telegram \
+            --package hone-discord \
+            --package hone-feishu \
+            --package hone-mcp
 
       - name: Package binaries
         shell: bash
@@ -90,6 +101,68 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/*.tar.gz
-            scripts/install_hone_cli.sh
+          files: dist/*.tar.gz
+
+  publish-homebrew-formula:
+    name: publish-homebrew-formula
+    needs: build-and-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir dist \
+            --pattern 'honeclaw-*.tar.gz'
+
+      - name: Generate checksums and Homebrew formula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          darwin_aarch64_sha="$(shasum -a 256 dist/honeclaw-darwin-aarch64.tar.gz | awk '{print $1}')"
+          darwin_x86_64_sha="$(shasum -a 256 dist/honeclaw-darwin-x86_64.tar.gz | awk '{print $1}')"
+          linux_x86_64_sha="$(shasum -a 256 dist/honeclaw-linux-x86_64.tar.gz | awk '{print $1}')"
+
+          cat > dist/SHASUMS256.txt <<EOF
+          ${darwin_aarch64_sha}  honeclaw-darwin-aarch64.tar.gz
+          ${darwin_x86_64_sha}  honeclaw-darwin-x86_64.tar.gz
+          ${linux_x86_64_sha}  honeclaw-linux-x86_64.tar.gz
+          EOF
+
+          bash scripts/update_homebrew_formula.sh \
+            --version "${GITHUB_REF_NAME#v}" \
+            --darwin-aarch64-sha "${darwin_aarch64_sha}" \
+            --darwin-x86_64-sha "${darwin_x86_64_sha}" \
+            --linux-x86_64-sha "${linux_x86_64_sha}"
+
+      - name: Upload checksum asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SHASUMS256.txt
+
+      - name: Commit updated Homebrew formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Formula/honeclaw.rb; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/honeclaw.rb
+          git commit -m "chore: update Homebrew formula for ${GITHUB_REF_NAME}"
+          git push origin HEAD:main

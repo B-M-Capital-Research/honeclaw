@@ -76,7 +76,7 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 
 ## Installation and Launch
 
-### Option A. Install the macOS/Linux CLI bundle from GitHub
+### Option A. Install the macOS/Linux CLI bundle with `curl | bash`
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash
@@ -89,7 +89,19 @@ This path installs the GitHub release bundle under `~/.honeclaw`, writes a `hone
 
 If you choose `opencode_acp` during onboarding, Hone now expects you to finish provider/auth/default-model setup in local `opencode` first, then simply reuses that local OpenCode config by default.
 
-### Option B. Clone the repository for development
+### Option B. Install the same CLI bundle with Homebrew
+
+```shell
+brew tap B-M-Capital-Research/honeclaw https://github.com/B-M-Capital-Research/honeclaw
+brew install B-M-Capital-Research/honeclaw/honeclaw
+hone-cli doctor
+hone-cli onboard
+hone-cli start
+```
+
+The Homebrew tap installs the same GitHub release bundle under Homebrew `libexec`, then exposes a `hone-cli` wrapper that seeds `~/.honeclaw/config.yaml` on first run so the runtime layout stays aligned with the `curl | bash` path.
+
+### Option C. Clone the repository for development
 
 1. Clone the repository
 

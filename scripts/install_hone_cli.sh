@@ -45,12 +45,21 @@ ARCHIVE_PATH="$TMP_DIR/$ASSET_NAME"
 
 download_file() {
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$DOWNLOAD_URL" -o "$ARCHIVE_PATH"
+    if ! curl --retry 3 --retry-delay 1 -fsSL "$DOWNLOAD_URL" -o "$ARCHIVE_PATH"; then
+      echo "failed to download release asset: $DOWNLOAD_URL" >&2
+      echo "ensure the requested Hone release exists and includes $ASSET_NAME" >&2
+      exit 1
+    fi
   elif command -v python3 >/dev/null 2>&1; then
-    python3 - <<PY
+    if ! python3 - <<PY
 import urllib.request
 urllib.request.urlretrieve("${DOWNLOAD_URL}", "${ARCHIVE_PATH}")
 PY
+    then
+      echo "failed to download release asset: $DOWNLOAD_URL" >&2
+      echo "ensure the requested Hone release exists and includes $ASSET_NAME" >&2
+      exit 1
+    fi
   else
     echo "curl or python3 is required to download ${DOWNLOAD_URL}" >&2
     exit 1

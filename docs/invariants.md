@@ -108,5 +108,8 @@ Last updated: 2026-04-12
 
 - When directory responsibilities, entrypoints, or major data flows change, update `docs/repo-map.md`
 - When workflows, testing contracts, or collaboration rules change, update `AGENTS.md` or this file
-- When release or runtime strategy changes, update the matching docs and script notes
-- When config layering changes, keep the runtime seed / overlay split intact and preserve the reset path that rebuilds `config_runtime.yaml` while clearing sibling overrides
+- When release or runtime strategy changes, update the matching docs, installer notes, and formula/tap metadata together
+- Canonical config and runtime state must stay split:
+  - `config.yaml` is the only long-lived user-writable config source
+  - `data/runtime/effective-config.yaml` is generated runtime input for child processes
+  - deleting `data/runtime/` must be a safe runtime reset that does not remove user config
