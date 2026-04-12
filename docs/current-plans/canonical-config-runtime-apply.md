@@ -12,7 +12,10 @@
   - bins/hone-desktop/src/sidecar/runtime_env.rs
   - bins/hone-desktop/src/sidecar/processes.rs
   - scripts/install_hone_cli.sh
+  - scripts/update_homebrew_formula.sh
   - tests/regression/ci/test_install_hone_cli_path_resolution.sh
+  - tests/regression/manual/test_install_bundle_smoke.sh
+  - crates/hone-web-api/src/runtime.rs
 - related_docs:
   - docs/current-plan.md
   - docs/invariants.md
@@ -39,6 +42,8 @@
   - `scripts/install_hone_cli.sh`、CLI install-layout smoke、`hone-cli start`
   - `scripts/install_hone_cli.sh` 改为优先把 wrapper 写入当前 `PATH` 中可写的用户态 bin 目录；若无匹配再回退到 `~/.local/bin`
   - 新增 `tests/regression/ci/test_install_hone_cli_path_resolution.sh`，覆盖 PATH 命中与 fallback 两条安装链路
+  - `hone-cli onboard` channel 向导新增“重试当前字段 / 返回并禁用该渠道”恢复路径，误开 channel 不再只能 `Ctrl-C`
+  - release / install bundle 现在会携带 `share/honeclaw/web` 静态资源目录，wrapper 导出 `HONE_WEB_DIST_DIR`，安装态 smoke 也会校验 `/` 页面可打开
   - `opencode_acp` 默认继承本机 OpenCode config，不再由 Hone 隐式强推 OpenRouter 默认路由
   - `v0.1.1` 起 release workflow 只构建 CLI bundle 所需 bins，并能成功产出可用于 `curl | bash` 的 darwin/linux 发行资产
   - 标准 Homebrew tap 仓库 `B-M-Capital-Research/homebrew-honeclaw` 已建立；release workflow 改为向该 tap 推送 `honeclaw.rb`，`brew install B-M-Capital-Research/honeclaw/honeclaw` 可直接安装
@@ -51,13 +56,16 @@
 
 - `cargo test -p hone-core`
 - `cargo test -p hone-cli`
+- `cargo test -p hone-web-api`
 - `cargo check --workspace --all-targets --exclude hone-desktop`
 - `bash tests/regression/ci/test_install_hone_cli_path_resolution.sh`
+- `bash tests/regression/manual/test_install_bundle_smoke.sh`
 - 手工验证：
   - legacy `config_runtime.yaml + .overrides.yaml` 自动迁移到 canonical `config.yaml`
   - `hone-cli config file/get/set/unset/validate`
   - `hone-cli status` / `doctor` 同时展示 canonical config 与 effective config
   - `hone-cli start` 生成 `data/runtime/effective-config.yaml`
+  - 安装态 `http://127.0.0.1:8077/` 返回 Web HTML，而不是缺失 `packages/app/dist/index.html` 的报错
   - desktop bundled 模式下 agent/provider 配置保存后自动应用；channel 配置保存后只重启受影响 listener；full restart 类变更触发确认
 
 ## Documentation Sync

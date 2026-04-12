@@ -76,6 +76,17 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install web dependencies
+        shell: bash
+        run: bun install --frozen-lockfile
+
+      - name: Build web assets
+        shell: bash
+        run: bun run build:web
+
       - name: Add target
         run: rustup target add ${{ matrix.target }}
 
@@ -124,6 +135,7 @@ jobs:
           cp config.example.yaml "${PKG_DIR}/share/honeclaw/"
           cp soul.md "${PKG_DIR}/share/honeclaw/"
           cp -R skills "${PKG_DIR}/share/honeclaw/skills"
+          cp -R packages/app/dist "${PKG_DIR}/share/honeclaw/web"
 
           case "${{ matrix.target }}" in
             aarch64-apple-darwin) ASSET_NAME="honeclaw-darwin-aarch64.tar.gz" ;;

@@ -217,6 +217,7 @@ export HONE_INSTALL_ROOT="${HONE_INSTALL_ROOT:-$CURRENT_ROOT}"
 export HONE_USER_CONFIG_PATH="${HONE_USER_CONFIG_PATH:-$HONE_HOME/config.yaml}"
 export HONE_DATA_DIR="${HONE_DATA_DIR:-$HONE_HOME/data}"
 export HONE_SKILLS_DIR="${HONE_SKILLS_DIR:-$CURRENT_ROOT/share/honeclaw/skills}"
+export HONE_WEB_DIST_DIR="${HONE_WEB_DIST_DIR:-$CURRENT_ROOT/share/honeclaw/web}"
 
 exec "$CURRENT_ROOT/bin/hone-cli" "$@"
 EOF

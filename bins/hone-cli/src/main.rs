@@ -497,36 +497,101 @@ fn prompt_select_index(
         .map_err(|e| e.to_string())
 }
 
-fn prompt_required_text(
-    theme: &ColorfulTheme,
-    prompt: &str,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RequiredFieldEmptyAction {
+    Retry,
+    DisableChannel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RequiredFieldResolution {
+    Value(String),
+    Retry,
+    DisableChannel,
+}
+
+fn resolve_required_field_attempt(
+    attempted: Option<String>,
     current: &str,
-) -> Result<String, String> {
-    loop {
-        let value = prompt_text(theme, prompt, current)?;
+    on_empty: RequiredFieldEmptyAction,
+) -> RequiredFieldResolution {
+    if let Some(value) = attempted {
         if !value.trim().is_empty() {
-            return Ok(value);
+            return RequiredFieldResolution::Value(value);
         }
-        if !current.trim().is_empty() {
-            return Ok(current.to_string());
-        }
-        println!("该字段为必填项，不能为空。");
+    }
+    if !current.trim().is_empty() {
+        return RequiredFieldResolution::Value(current.to_string());
+    }
+    match on_empty {
+        RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
+        RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
     }
 }
 
-fn prompt_required_secret(
+fn prompt_channel_recovery_action(
     theme: &ColorfulTheme,
+    channel_label: &str,
+    field_label: &str,
+) -> Result<RequiredFieldEmptyAction, String> {
+    let items = vec![
+        "重试当前字段".to_string(),
+        format!("返回并禁用 {channel_label} 渠道"),
+    ];
+    let idx = prompt_select_index(
+        theme,
+        &format!("{channel_label} 的必填项“{field_label}”为空，下一步？"),
+        &items,
+        0,
+    )?;
+    Ok(match idx {
+        0 => RequiredFieldEmptyAction::Retry,
+        _ => RequiredFieldEmptyAction::DisableChannel,
+    })
+}
+
+fn prompt_onboard_required_text(
+    theme: &ColorfulTheme,
+    channel_label: &str,
     prompt: &str,
     current: &str,
-) -> Result<String, String> {
+) -> Result<Option<String>, String> {
     loop {
-        if let Some(value) = prompt_secret(theme, prompt, !current.trim().is_empty())? {
-            return Ok(value);
+        let attempted = prompt_text(theme, prompt, current)?;
+        if !attempted.trim().is_empty() {
+            return Ok(Some(attempted));
         }
         if !current.trim().is_empty() {
-            return Ok(current.to_string());
+            return Ok(Some(current.to_string()));
         }
-        println!("该字段为必填项，不能为空。");
+        match prompt_channel_recovery_action(theme, channel_label, prompt)? {
+            RequiredFieldEmptyAction::Retry => {
+                println!("该字段为必填项，不能为空。");
+            }
+            RequiredFieldEmptyAction::DisableChannel => return Ok(None),
+        }
+    }
+}
+
+fn prompt_onboard_required_secret(
+    theme: &ColorfulTheme,
+    channel_label: &str,
+    prompt: &str,
+    current: &str,
+) -> Result<Option<String>, String> {
+    loop {
+        let attempted = prompt_secret(theme, prompt, !current.trim().is_empty())?;
+        match resolve_required_field_attempt(
+            attempted,
+            current,
+            prompt_channel_recovery_action(theme, channel_label, prompt)?,
+        ) {
+            RequiredFieldResolution::Value(value) => return Ok(Some(value)),
+            RequiredFieldResolution::Retry => {
+                println!("该字段为必填项，不能为空。");
+            }
+            RequiredFieldResolution::DisableChannel => return Ok(None),
+        }
     }
 }
 
@@ -1343,12 +1408,13 @@ fn build_channel_onboard_mutations(
             ChannelKind::Telegram => "telegram.enabled",
             ChannelKind::Discord => "discord.enabled",
         };
-        mutations.push(ConfigMutation::Set {
+        let mut channel_mutations = vec![ConfigMutation::Set {
             path: enabled_path.to_string(),
             value: Value::Bool(enabled),
-        });
+        }];
 
         if !enabled {
+            mutations.extend(channel_mutations);
             continue;
         }
 
@@ -1363,39 +1429,98 @@ fn build_channel_onboard_mutations(
 
         for field in spec.required_fields {
             match field {
-                ChannelRequiredField::FeishuAppId => mutations.push(ConfigMutation::Set {
-                    path: "feishu.app_id".to_string(),
-                    value: Value::String(prompt_required_text(
+                ChannelRequiredField::FeishuAppId => {
+                    let Some(value) = prompt_onboard_required_text(
                         theme,
+                        spec.label,
                         "Feishu app id",
                         &config.feishu.app_id,
-                    )?),
-                }),
-                ChannelRequiredField::FeishuAppSecret => mutations.push(ConfigMutation::Set {
-                    path: "feishu.app_secret".to_string(),
-                    value: Value::String(prompt_required_secret(
+                    )?
+                    else {
+                        println!("已返回并禁用 {} 渠道。", spec.label);
+                        channel_mutations = vec![ConfigMutation::Set {
+                            path: enabled_path.to_string(),
+                            value: Value::Bool(false),
+                        }];
+                        break;
+                    };
+                    channel_mutations.push(ConfigMutation::Set {
+                        path: "feishu.app_id".to_string(),
+                        value: Value::String(value),
+                    });
+                }
+                ChannelRequiredField::FeishuAppSecret => {
+                    let Some(value) = prompt_onboard_required_secret(
                         theme,
+                        spec.label,
                         "Feishu app secret",
                         &config.feishu.app_secret,
-                    )?),
-                }),
-                ChannelRequiredField::TelegramBotToken => mutations.push(ConfigMutation::Set {
-                    path: "telegram.bot_token".to_string(),
-                    value: Value::String(prompt_required_secret(
+                    )?
+                    else {
+                        println!("已返回并禁用 {} 渠道。", spec.label);
+                        channel_mutations = vec![ConfigMutation::Set {
+                            path: enabled_path.to_string(),
+                            value: Value::Bool(false),
+                        }];
+                        break;
+                    };
+                    channel_mutations.push(ConfigMutation::Set {
+                        path: "feishu.app_secret".to_string(),
+                        value: Value::String(value),
+                    });
+                }
+                ChannelRequiredField::TelegramBotToken => {
+                    let Some(value) = prompt_onboard_required_secret(
                         theme,
+                        spec.label,
                         "Telegram bot token",
                         &config.telegram.bot_token,
-                    )?),
-                }),
-                ChannelRequiredField::DiscordBotToken => mutations.push(ConfigMutation::Set {
-                    path: "discord.bot_token".to_string(),
-                    value: Value::String(prompt_required_secret(
+                    )?
+                    else {
+                        println!("已返回并禁用 {} 渠道。", spec.label);
+                        channel_mutations = vec![ConfigMutation::Set {
+                            path: enabled_path.to_string(),
+                            value: Value::Bool(false),
+                        }];
+                        break;
+                    };
+                    channel_mutations.push(ConfigMutation::Set {
+                        path: "telegram.bot_token".to_string(),
+                        value: Value::String(value),
+                    });
+                }
+                ChannelRequiredField::DiscordBotToken => {
+                    let Some(value) = prompt_onboard_required_secret(
                         theme,
+                        spec.label,
                         "Discord bot token",
                         &config.discord.bot_token,
-                    )?),
-                }),
+                    )?
+                    else {
+                        println!("已返回并禁用 {} 渠道。", spec.label);
+                        channel_mutations = vec![ConfigMutation::Set {
+                            path: enabled_path.to_string(),
+                            value: Value::Bool(false),
+                        }];
+                        break;
+                    };
+                    channel_mutations.push(ConfigMutation::Set {
+                        path: "discord.bot_token".to_string(),
+                        value: Value::String(value),
+                    });
+                }
             }
+        }
+
+        let channel_disabled = channel_mutations.len() == 1
+            && matches!(
+                channel_mutations.first(),
+                Some(ConfigMutation::Set { path, value })
+                    if path == enabled_path && matches!(value, Value::Bool(false))
+            );
+        if channel_disabled {
+            mutations.extend(channel_mutations);
+            continue;
         }
 
         if spec.supports_chat_scope {
@@ -1413,7 +1538,7 @@ fn build_channel_onboard_mutations(
                 ChannelKind::Discord => "discord.chat_scope",
                 ChannelKind::Imessage => unreachable!(),
             };
-            mutations.push(ConfigMutation::Set {
+            channel_mutations.push(ConfigMutation::Set {
                 path: scope_path.to_string(),
                 value: Value::String(scope.as_config_value().to_string()),
             });
@@ -1425,11 +1550,13 @@ fn build_channel_onboard_mutations(
                 "iMessage target handle（可选；留空表示监听所有会话）",
                 &config.imessage.target_handle,
             )?;
-            mutations.push(ConfigMutation::Set {
+            channel_mutations.push(ConfigMutation::Set {
                 path: "imessage.target_handle".to_string(),
                 value: Value::String(target_handle),
             });
         }
+
+        mutations.extend(channel_mutations);
     }
 
     Ok(mutations)
@@ -2145,5 +2272,41 @@ mod tests {
         let mutations = build_channel_mutations(&args).unwrap();
         assert_eq!(mutations.len(), 3);
         assert!(mutations.iter().any(|mutation| matches!(mutation, ConfigMutation::Set { path, value: Value::Bool(true) } if path == "telegram.enabled")));
+    }
+
+    #[test]
+    fn resolve_required_field_attempt_disables_channel_when_empty_and_no_current_value() {
+        let resolution = resolve_required_field_attempt(
+            Some(String::new()),
+            "",
+            RequiredFieldEmptyAction::DisableChannel,
+        );
+
+        assert_eq!(resolution, RequiredFieldResolution::DisableChannel);
+    }
+
+    #[test]
+    fn resolve_required_field_attempt_retries_when_empty_and_no_current_value() {
+        let resolution = resolve_required_field_attempt(
+            Some(String::new()),
+            "",
+            RequiredFieldEmptyAction::Retry,
+        );
+
+        assert_eq!(resolution, RequiredFieldResolution::Retry);
+    }
+
+    #[test]
+    fn resolve_required_field_attempt_keeps_existing_value_on_empty_input() {
+        let resolution = resolve_required_field_attempt(
+            Some(String::new()),
+            "existing-secret",
+            RequiredFieldEmptyAction::DisableChannel,
+        );
+
+        assert_eq!(
+            resolution,
+            RequiredFieldResolution::Value("existing-secret".to_string())
+        );
     }
 }

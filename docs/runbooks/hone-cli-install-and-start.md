@@ -36,6 +36,7 @@ The installer:
   - Preferred matches are `~/.local/bin`, `~/bin`, `~/.cargo/bin`, `~/.bun/bin`, then other writable `~/...` PATH entries
   - If none of those are available, it falls back to `~/.local/bin/hone-cli` and prints both the immediate `export PATH=...` command and a shell-specific `~/.zshrc` or `~/.bashrc` / `~/.bash_profile` persistence hint when it can identify the login shell
 - Seeds `~/.honeclaw/config.yaml` and `~/.honeclaw/soul.md` if they do not already exist
+- Ships built Web assets under the install bundle and points the runtime at them through `HONE_WEB_DIST_DIR`
 - In an interactive terminal, asks whether to run `hone-cli onboard` immediately
   - `HONE_RUN_ONBOARD=0` skips the prompt
   - `HONE_RUN_ONBOARD=1` forces onboarding immediately
@@ -61,6 +62,7 @@ On first run, the wrapper:
 - Generated effective config: `~/.honeclaw/data/runtime/effective-config.yaml`
 - Runtime data: `~/.honeclaw/data`
 - Skills dir: `~/.honeclaw/current/share/honeclaw/skills`
+- Web assets: `~/.honeclaw/current/share/honeclaw/web`
 
 The wrapper exports:
 
@@ -69,6 +71,7 @@ The wrapper exports:
 - `HONE_USER_CONFIG_PATH=~/.honeclaw/config.yaml`
 - `HONE_DATA_DIR=~/.honeclaw/data`
 - `HONE_SKILLS_DIR=~/.honeclaw/current/share/honeclaw/skills`
+- `HONE_WEB_DIST_DIR=~/.honeclaw/current/share/honeclaw/web`
 
 `HONE_CONFIG_PATH` is no longer exported globally by the wrapper. It is generated and injected only for spawned runtime processes.
 
@@ -94,6 +97,9 @@ The onboarding flow will:
   - Hone defaults to inheriting `~/.config/opencode/opencode.json` or `opencode.jsonc`
 - Ask whether to enable each channel
 - If a channel is enabled, require its local mandatory fields and print the key permission / prerequisite notes
+- If you accidentally enable a channel and then hit a required field with no value to keep, the wizard offers:
+  - retry the current field
+  - go back and disable that channel
 
 If you prefer the older section-by-section setup, use:
 
@@ -159,6 +165,12 @@ eval "$($(command -v brew) shellenv)"
 
 - Reinstall with the latest GitHub bundle
 - Confirm that `~/.honeclaw/current/bin/` contains `hone-console-page`, `hone-mcp`, and any enabled channel binaries
+
+### The backend starts but the web page says assets are missing
+
+- Reinstall with the latest GitHub bundle or the latest Homebrew formula
+- Confirm that the install root contains `share/honeclaw/web/index.html`
+- Confirm that `HONE_WEB_DIST_DIR` points at the bundled `share/honeclaw/web`
 
 ### Config edits seem to affect the wrong file
 

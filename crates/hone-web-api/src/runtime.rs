@@ -4,10 +4,18 @@ use hone_core::config::HoneConfig;
 
 const DEFAULT_PORT: u16 = 8077;
 
+fn bundled_web_dist_dir() -> Option<PathBuf> {
+    std::env::var_os("HONE_INSTALL_ROOT")
+        .map(PathBuf::from)
+        .map(|root| root.join("share").join("honeclaw").join("web"))
+}
+
 pub fn web_dist_dir() -> PathBuf {
     std::env::var("HONE_WEB_DIST_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("packages/app/dist"))
+        .ok()
+        .or_else(bundled_web_dist_dir)
+        .unwrap_or_else(|| PathBuf::from("packages/app/dist"))
 }
 
 pub fn runtime_config_path() -> String {
@@ -44,4 +52,61 @@ pub fn ensure_runtime_dirs(config: &HoneConfig) {
 
 pub fn web_index_path() -> PathBuf {
     web_dist_dir().join("index.html")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn web_dist_dir_prefers_explicit_env_override() {
+        let _guard = env_lock().lock().unwrap();
+        unsafe {
+            env::set_var("HONE_WEB_DIST_DIR", "/tmp/hone-explicit-web");
+            env::set_var("HONE_INSTALL_ROOT", "/tmp/hone-install-root");
+        }
+
+        assert_eq!(web_dist_dir(), PathBuf::from("/tmp/hone-explicit-web"));
+
+        unsafe {
+            env::remove_var("HONE_WEB_DIST_DIR");
+            env::remove_var("HONE_INSTALL_ROOT");
+        }
+    }
+
+    #[test]
+    fn web_dist_dir_uses_installed_bundle_layout_before_source_fallback() {
+        let _guard = env_lock().lock().unwrap();
+        unsafe {
+            env::remove_var("HONE_WEB_DIST_DIR");
+            env::set_var("HONE_INSTALL_ROOT", "/tmp/hone-install-root");
+        }
+
+        assert_eq!(
+            web_dist_dir(),
+            PathBuf::from("/tmp/hone-install-root/share/honeclaw/web")
+        );
+
+        unsafe {
+            env::remove_var("HONE_INSTALL_ROOT");
+        }
+    }
+
+    #[test]
+    fn web_dist_dir_falls_back_to_source_tree_dist() {
+        let _guard = env_lock().lock().unwrap();
+        unsafe {
+            env::remove_var("HONE_WEB_DIST_DIR");
+            env::remove_var("HONE_INSTALL_ROOT");
+        }
+
+        assert_eq!(web_dist_dir(), PathBuf::from("packages/app/dist"));
+    }
 }

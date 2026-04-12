@@ -21,6 +21,9 @@ cd "$ROOT_DIR"
 
 echo "[INFO] building local install smoke binaries..."
 cargo build -p hone-cli -p hone-console-page -p hone-mcp -p hone-imessage -p hone-discord -p hone-feishu -p hone-telegram
+echo "[INFO] building web assets..."
+bun install --frozen-lockfile
+bun run build:web
 
 echo "[INFO] assembling install-like layout under $TMP_ROOT"
 mkdir -p "$CURRENT_ROOT/bin" "$CURRENT_ROOT/share/honeclaw" "$BIN_DIR" "$INSTALL_ROOT/data/runtime"
@@ -30,6 +33,7 @@ done
 cp config.example.yaml "$CURRENT_ROOT/share/honeclaw/config.example.yaml"
 cp soul.md "$CURRENT_ROOT/share/honeclaw/soul.md"
 cp -R skills "$CURRENT_ROOT/share/honeclaw/skills"
+cp -R packages/app/dist "$CURRENT_ROOT/share/honeclaw/web"
 cp "$CURRENT_ROOT/share/honeclaw/config.example.yaml" "$INSTALL_ROOT/config.yaml"
 cp "$CURRENT_ROOT/share/honeclaw/soul.md" "$INSTALL_ROOT/soul.md"
 
@@ -45,6 +49,7 @@ export HONE_INSTALL_ROOT="${HONE_INSTALL_ROOT:-$CURRENT_ROOT}"
 export HONE_USER_CONFIG_PATH="${HONE_USER_CONFIG_PATH:-$HONE_HOME/config.yaml}"
 export HONE_DATA_DIR="${HONE_DATA_DIR:-$HONE_HOME/data}"
 export HONE_SKILLS_DIR="${HONE_SKILLS_DIR:-$CURRENT_ROOT/share/honeclaw/skills}"
+export HONE_WEB_DIST_DIR="${HONE_WEB_DIST_DIR:-$CURRENT_ROOT/share/honeclaw/web}"
 
 exec "$CURRENT_ROOT/bin/hone-cli" "$@"
 EOF
@@ -79,6 +84,13 @@ done
 
 if [[ "$READY" -ne 1 ]]; then
   echo "[FAIL] hone-cli start did not become ready" >&2
+  cat "$TMP_ROOT/start.log" >&2
+  exit 1
+fi
+
+echo "[INFO] root page smoke"
+if ! curl -fsS http://127.0.0.1:8077/ | grep -Eq '<!DOCTYPE html>|<html'; then
+  echo "[FAIL] hone-cli start did not serve bundled web assets" >&2
   cat "$TMP_ROOT/start.log" >&2
   exit 1
 fi
