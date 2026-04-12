@@ -194,11 +194,12 @@ pub(crate) async fn handle_logs_stream(
             Some(Ok(Event::default().event("log").data(data)))
         }
         Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
-            Some(Ok(Event::default()
-                .event("log")
-                .data(format!(
-                    r#"{{"level":"WARN","message":"[stream] 日志消费过慢，跳过了 {n} 条日志"}}"#
-                ))))
+            let data = serde_json::json!({
+                "level": "WARN",
+                "message": format!("[stream] 日志消费过慢，跳过了 {n} 条日志"),
+            })
+            .to_string();
+            Some(Ok(Event::default().event("log").data(data)))
         }
     });
 
