@@ -22,29 +22,35 @@
 
 ## Summary
 
-ACP `session/prompt` 从固定 300 秒总超时改为双超时：`idle timeout = 300s`，`overall timeout = 1200s`。适用 runner 为 `codex_acp`、`gemini_acp`、`opencode_acp`。
+Agent runtime timeout 已收敛到两档顶层配置：`agent.step_timeout_seconds = 180`、`agent.overall_timeout_seconds = 1200`。`codex_acp`、`gemini_acp`、`opencode_acp` 的 prompt 走 `idle=step / overall=overall`，`gemini_cli` 走 `per_line=step / overall=overall`。
 
 ## What Changed
 
 - 在 `acp_common.rs` 新增公共 `wait_for_response_with_timeouts(...)`，按“收到任意 ACP 行就刷新 idle deadline”的语义等待最终 JSON-RPC `result`。
-- `session/prompt` 超时现在区分：
-  - `idle timeout`: 连续 300 秒无任何 ACP 输出
-  - `overall timeout`: 整轮超过 1200 秒
-- `set_acp_session_model(...)` 仍保留单次请求式等待，但默认使用 `min(idle, overall)`，避免被 20 分钟 overall timeout 放大。
-- 三个 ACP 配置新增 `request_idle_timeout_seconds`，默认值为 300；`request_timeout_seconds` 默认值调整为 1200。
-- 增补了配置默认值与兼容覆盖的单测，并同步更新示例配置和问题分析文档状态。
+- 用户可配置的 runner timeout 只保留两档：
+  - `step timeout`: 180 秒
+  - `overall timeout`: 1200 秒
+- `codex_acp` / `gemini_acp` / `opencode_acp`：
+  - `initialize` / `session/load` / `session/new` / `session/set_model` 走 step timeout
+  - `session/prompt` 走 `idle=step + overall=overall`
+- `gemini_cli`：
+  - `per_line_timeout` 走 step timeout
+  - `overall_timeout` 走 overall timeout
+- `session/load` 超时时不再直接失败，而是像 load error 一样降级到 `session/new`。
+- `config.yaml` 与 `config.example.yaml` 已改为只在 `agent` 顶层暴露两个 timeout 字段。
 
 ## Verification
 
 - `rtk cargo fmt --all`
-- `rtk cargo test -p hone-core test_acp_prompt_timeouts_default_to_idle_plus_longer_overall`
-- `rtk cargo test -p hone-core test_acp_prompt_timeout_override_preserves_explicit_overall_value`
+- `rtk cargo test -p hone-core test_agent_runner_timeouts_default_to_step_plus_overall`
+- `rtk cargo test -p hone-core test_agent_runner_timeout_override_preserves_explicit_values`
 - `rtk cargo test -p hone-channels runners::tests`
 - `rtk cargo check -p hone-channels`
 
 ## Risks / Follow-ups
 
 - 当前 idle timer 以“收到任意 ACP 行”为进展信号；如果以后需要把“工具心跳”和“真正用户可见进展”区分开，需继续细化语义。
+- `codex_cli` / `function_calling` 这类 runner 仍没有统一的硬超时边界；本轮只收敛了 ACP、`gemini_cli` 和多 agent answer 路径。
 
 ## Next Entry Point
 

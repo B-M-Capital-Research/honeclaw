@@ -8,7 +8,6 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
@@ -21,17 +20,19 @@ use super::acp_common::{
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
+    RunnerTimeouts,
 };
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
 
 pub struct OpencodeAcpRunner {
     config: OpencodeAcpConfig,
+    timeouts: RunnerTimeouts,
 }
 
 impl OpencodeAcpRunner {
-    pub fn new(config: OpencodeAcpConfig) -> Self {
-        Self { config }
+    pub fn new(config: OpencodeAcpConfig, timeouts: RunnerTimeouts) -> Self {
+        Self { config, timeouts }
     }
 }
 
@@ -47,7 +48,7 @@ impl AgentRunner for OpencodeAcpRunner {
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
         let mut metadata_updates = HashMap::new();
-        match run_opencode_acp(&self.config, request, emitter.clone()).await {
+        match run_opencode_acp(&self.config, self.timeouts, request, emitter.clone()).await {
             Ok((response, updates)) => {
                 metadata_updates.extend(updates);
                 AgentRunnerResult {
@@ -365,13 +366,14 @@ fn prepare_opencode_runtime(
 
 async fn run_opencode_acp(
     config: &OpencodeAcpConfig,
+    timeouts: RunnerTimeouts,
     request: AgentRunnerRequest,
     emitter: Arc<dyn AgentRunnerEmitter>,
 ) -> Result<(AgentResponse, HashMap<String, Value>), AgentSessionError> {
-    let startup_timeout = Duration::from_secs(config.startup_timeout_seconds.max(1));
-    let prompt_idle_timeout = Duration::from_secs(config.request_idle_timeout_seconds.max(1));
-    let prompt_overall_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
-    let model_timeout = std::cmp::min(prompt_idle_timeout, prompt_overall_timeout);
+    let startup_timeout = timeouts.step;
+    let prompt_idle_timeout = timeouts.step;
+    let prompt_overall_timeout = timeouts.overall;
+    let model_timeout = timeouts.step;
     let mut metadata_updates = HashMap::new();
     let mcp_servers = hone_mcp_servers(&request).map_err(|message| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,

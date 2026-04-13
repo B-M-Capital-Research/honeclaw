@@ -17,6 +17,7 @@ pub use opencode_acp::OpencodeAcpRunner;
 pub use tool_reasoning::{CodexCliReasoningRunner, FunctionCallingReasoningRunner};
 pub use types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
+    RunnerTimeouts,
 };
 
 #[cfg(test)]

@@ -80,6 +80,7 @@ Last updated: 2026-04-12
 - A channel actor's local file visibility must stay inside a repo-external actor sandbox; the default root lives under `hone-agent-sandboxes/` in the system temp directory and can be overridden with `HONE_AGENT_SANDBOX_DIR`
 - Channel attachments must be written to `uploads/<session_id>/` inside the actor sandbox; do not point the underlying runner `cwd` back at the repo root or at a shared upload directory inside the repo
 - 用户可见的运行进度允许保留执行细节，但如果文案中包含 actor sandbox 内的绝对路径，必须改写为相对 sandbox 根目录的路径；sandbox 外绝对路径不得原样透出
+- Runner timeout config must stay converged at `agent.step_timeout_seconds` and `agent.overall_timeout_seconds`; do not reintroduce runner-specific timeout knobs in channel/runtime config.
 - `gemini_acp` currently uses `gemini --experimental-acp` over stdio / JSON-RPC; startup must verify `gemini >= 0.30.0`. Authentication should prefer the local `gemini-cli` login state; if an environment variable such as `GEMINI_API_KEY` is present, prefer the explicit API key.
 - `gemini_cli` in channel runtime must default to sandboxed execution and `approval-mode=plan`; it must no longer default to `yolo`
 - `gemini_acp` in channel runtime must also default to `approval-mode=plan`, but it must not force `--sandbox` right now: local Gemini CLI 0.33.1 exits before `initialize` when run with `--experimental-acp --sandbox`

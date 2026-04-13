@@ -322,6 +322,10 @@ agent:
   # Only used when provider=codex_cli; empty means use the codex-cli default model
   codex_model: "gpt-5.3-codex"
   max_iterations: 100
+  # Single-step timeout used by internal runner phases such as initialize/load and stream idle gaps
+  step_timeout_seconds: 180
+  # Full-run timeout used for one complete answer round
+  overall_timeout_seconds: 1200
   # Verbose logging: print the model name, each iteration, and redacted summaries of tool-call inputs / outputs
   debug_log: false
 
@@ -333,11 +337,6 @@ agent:
     api_key_env: "GEMINI_API_KEY"
     # Optional; empty uses the gemini CLI default model
     model: "gemini-2.5-pro"
-    startup_timeout_seconds: 15
-    # Max allowed silence during one prompt round; any ACP event/chunk resets this timer
-    request_idle_timeout_seconds: 300
-    # Hard cap for the full prompt round even if events keep streaming
-    request_timeout_seconds: 1200
   codex_acp:
     command: "codex-acp"
     args: []
@@ -353,11 +352,6 @@ agent:
     dangerously_bypass_approvals_and_sandbox: false
     sandbox_permissions: []
     extra_config_overrides: []
-    startup_timeout_seconds: 15
-    # Max allowed silence during one prompt round; any ACP event/chunk resets this timer
-    request_idle_timeout_seconds: 300
-    # Hard cap for the full prompt round even if events keep streaming
-    request_timeout_seconds: 1200
   opencode:
     command: "opencode"
     args: ["acp"]
@@ -369,11 +363,6 @@ agent:
     api_base_url: ""
     # Optional Hone-side API key override; leave empty to inherit local opencode auth/provider config
     api_key: ""
-    startup_timeout_seconds: 15
-    # Max allowed silence during one prompt round; any ACP event/chunk resets this timer
-    request_idle_timeout_seconds: 300
-    # Hard cap for the full prompt round even if events keep streaming
-    request_timeout_seconds: 1200
   multi_agent:
     search:
       base_url: "https://api.minimaxi.com/v1"

@@ -357,7 +357,7 @@ async fn run_heartbeat_task(
         gemini_stream: timeout
             .map(|duration| GeminiStreamOptions {
                 overall_timeout: duration,
-                per_line_timeout: std::time::Duration::from_secs(90),
+                per_line_timeout: core.config.agent.step_timeout(),
                 ..GeminiStreamOptions::default()
             })
             .unwrap_or_default(),

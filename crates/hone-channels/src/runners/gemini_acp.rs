@@ -5,7 +5,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
@@ -18,6 +17,7 @@ use super::acp_common::{
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
+    RunnerTimeouts,
 };
 
 const GEMINI_ACP_SESSION_KEY: &str = "gemini_acp_session_id";
@@ -29,11 +29,12 @@ const MIN_GEMINI_ACP_VERSION: CliVersion = CliVersion {
 
 pub struct GeminiAcpRunner {
     config: GeminiAcpConfig,
+    timeouts: RunnerTimeouts,
 }
 
 impl GeminiAcpRunner {
-    pub fn new(config: GeminiAcpConfig) -> Self {
-        Self { config }
+    pub fn new(config: GeminiAcpConfig, timeouts: RunnerTimeouts) -> Self {
+        Self { config, timeouts }
     }
 }
 
@@ -48,7 +49,7 @@ impl AgentRunner for GeminiAcpRunner {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
-        match run_gemini_acp(&self.config, request, emitter.clone()).await {
+        match run_gemini_acp(&self.config, self.timeouts, request, emitter.clone()).await {
             Ok((response, updates)) => AgentRunnerResult {
                 response,
                 streamed_output: true,
@@ -165,14 +166,15 @@ async fn validate_gemini_acp_environment(
 
 async fn run_gemini_acp(
     config: &GeminiAcpConfig,
+    timeouts: RunnerTimeouts,
     request: AgentRunnerRequest,
     emitter: Arc<dyn AgentRunnerEmitter>,
 ) -> Result<(AgentResponse, HashMap<String, Value>), AgentSessionError> {
     validate_gemini_acp_environment(config).await?;
 
-    let startup_timeout = Duration::from_secs(config.startup_timeout_seconds.max(1));
-    let prompt_idle_timeout = Duration::from_secs(config.request_idle_timeout_seconds.max(1));
-    let prompt_overall_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
+    let startup_timeout = timeouts.step;
+    let prompt_idle_timeout = timeouts.step;
+    let prompt_overall_timeout = timeouts.overall;
     let mut metadata_updates = HashMap::new();
     let mcp_servers = hone_mcp_servers(&request).map_err(|message| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,
@@ -284,19 +286,35 @@ async fn run_gemini_acp(
             ),
         )
         .await
-        .map_err(|_| AgentSessionError {
-            kind: AgentSessionErrorKind::TimeoutOverall,
-            message: "gemini acp session/load timeout".to_string(),
-        })? {
-            Ok(_) => {
+        {
+            Ok(Ok(_)) => {
                 next_id += 1;
                 session_id
             }
-            Err(err) => {
+            Ok(Err(err)) => {
                 tracing::warn!(
                     "[AgentRunner/gemini_acp] failed to load ACP session {}, creating new one: {}",
                     session_id,
                     err.message
+                );
+                let new_session_id = create_acp_session(
+                    "gemini",
+                    &mut stdin,
+                    &mut reader,
+                    next_id + 1,
+                    &request.working_directory,
+                    mcp_servers.clone(),
+                    startup_timeout,
+                    stderr_buf.clone(),
+                )
+                .await?;
+                next_id += 2;
+                new_session_id
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "[AgentRunner/gemini_acp] ACP session/load timed out for {}, creating new one",
+                    session_id
                 );
                 let new_session_id = create_acp_session(
                     "gemini",

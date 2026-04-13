@@ -31,7 +31,7 @@
 - **ACP 对齐的 Agent Runtime 全栈重构**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/acp-runtime-refactor.md`
-  - 摘要：ACP runners 已接入 Hone MCP bridge；`gemini_acp initialize timeout` 已定位并修复，`codex/gemini/opencode` prompt 已切到“5 分钟 idle + 20 分钟 overall”双超时，仍需继续收口 runner contract 与全栈行为对齐
+  - 摘要：ACP runners 已接入 Hone MCP bridge；`gemini_acp initialize timeout` 已定位并修复，runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档，`session/load timeout` 也已改为自动回退新 session，仍需继续收口 runner contract 与全栈行为对齐
 - **用户上传文件追踪与 pageIndex 结合评估**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/file-upload-tracking.md`

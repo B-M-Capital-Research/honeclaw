@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::prompt::PromptOptions;
@@ -31,9 +30,8 @@ pub(crate) async fn handle_scheduler_events(
                 is_admin: core_clone.is_admin_actor(&event.actor),
                 ..PromptOptions::default()
             };
-            let timeout_secs = core_clone.config.llm.openrouter.timeout.max(180);
             let run_options = AgentRunOptions {
-                timeout: Some(Duration::from_secs(timeout_secs)),
+                timeout: Some(core_clone.config.agent.overall_timeout()),
                 segmenter: None,
                 quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
                 model_override: None,

@@ -15,12 +15,12 @@
 
 原问题是：实现把整次 ACP `session/prompt` 包在一个固定 300 秒的**总墙钟超时**里，而不是“无进展才超时”的**空闲超时**。因此只要一次正常运行超过 300 秒，即使中间持续有 `agent_message_chunk`、`tool_call_update`、`usage_update` 等进度事件，Hone 仍会在 300 秒整主动中断并向用户返回错误。
 
-2026-04-13 起，`codex_acp`、`gemini_acp`、`opencode_acp` 已统一改为：
+2026-04-13 起，runner timeout 已统一收敛到 `agent` 顶层两档配置：
 
-- `idle timeout`: 300 秒
+- `step timeout`: 180 秒
 - `overall timeout`: 1200 秒
 
-只要 ACP 持续有事件/输出，idle timer 就会被刷新；只有连续 300 秒无进展，或者整轮超过 1200 秒，才会超时。
+其中 ACP prompt 使用 `idle=step timeout`、`overall=overall timeout`。只要 ACP 持续有事件/输出，idle timer 就会被刷新；只有连续 180 秒无进展，或者整轮超过 1200 秒，才会超时。
 
 ## 代码证据
 
@@ -43,13 +43,13 @@ let prompt_result = tokio::time::timeout(
 )
 ```
 
-同时默认配置把 `request_timeout_seconds` 设为 300：
+当时默认配置把 runner 私有 `request_timeout_seconds` 设为 300：
 
 `crates/hone-core/src/config/agent.rs`
 
 ```rust
-fn default_opencode_request_timeout() -> u64 {
-    300
+fn default_agent_step_timeout_seconds() -> u64 {
+    180
 }
 ```
 
@@ -60,8 +60,8 @@ fn default_opencode_request_timeout() -> u64 {
 ```yaml
 agent:
   runner: "opencode_acp"
-  opencode:
-    request_timeout_seconds: 300
+  step_timeout_seconds: 180
+  overall_timeout_seconds: 1200
 ```
 
 ### 2. `wait_for_response` 会消费并处理流式事件，但不会刷新超时
@@ -79,14 +79,14 @@ agent:
 - `tool_call_update`
 - `usage_update`
 
-这些事件说明 ACP 会话在“持续推进”。但由于 `tokio::time::timeout(...)` 包在 `wait_for_response(...)` 的最外层，任何中间进展都不会刷新 300 秒计时器。
+这些事件说明 ACP 会话在“持续推进”。但由于当时 `tokio::time::timeout(...)` 包在 `wait_for_response(...)` 的最外层，任何中间进展都不会刷新计时器。
 
 换句话说，当前逻辑是：
 
 1. 发出 `session/prompt`
-2. 开始一个固定 300 秒倒计时
-3. 即使 299 秒内一直有流式增量输出，倒计时也不会延长
-4. 只要第 300 秒时最终 JSON-RPC `result` 还没回来，就直接报：
+2. 开始一个固定总倒计时
+3. 即使期间一直有流式增量输出，倒计时也不会延长
+4. 只要最终 JSON-RPC `result` 没在总倒计时内回来，就直接报：
    - `opencode acp session/prompt timeout (300s)`
 
 ## 为什么它会表现为“偶发”
@@ -158,8 +158,8 @@ agent:
 ## 本次结论边界
 
 - 已确认原始问题来自实现层固定总超时
-- 修复已落到 ACP runners 公共等待逻辑与默认配置
-- 若某些部署环境仍显式配置 `request_timeout_seconds: 300`，它们会继续保留 300 秒 overall timeout，需额外同步配置
+- 修复已落到 ACP runners 公共等待逻辑与统一 runner timeout 配置
+- 当前运行时应改用 `agent.step_timeout_seconds` 与 `agent.overall_timeout_seconds`
 
 ## 相关文件
 

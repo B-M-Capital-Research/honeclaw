@@ -28,13 +28,14 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 
 - ACP runners already bridge into Hone MCP.
 - `gemini_acp initialize timeout` has been diagnosed and fixed.
-- ACP `session/prompt` now uses dual timeout semantics: 300s idle timeout plus 1200s overall timeout for `codex_acp`, `gemini_acp`, and `opencode_acp`.
+- Runner timeout config is being converged to two top-level knobs under `agent`: `step_timeout_seconds` and `overall_timeout_seconds`.
+- ACP `session/prompt` now uses `idle=step_timeout_seconds` and `overall=overall_timeout_seconds`; `session/load timeout` now falls back to `session/new` instead of directly failing the turn.
 - Remaining work is still needed around runner contract coverage and end-to-end runtime behavior alignment.
 
 ## Validation
 
 - 2026-04-13:
-  - `rtk cargo test -p hone-core test_acp_prompt_timeouts_default_to_idle_plus_longer_overall test_acp_prompt_timeout_override_preserves_explicit_overall_value`
+  - `rtk cargo test -p hone-core test_agent_runner_timeouts_default_to_step_plus_overall test_agent_runner_timeout_override_preserves_explicit_values`
   - `rtk cargo test -p hone-channels runners::tests`
   - `rtk cargo check -p hone-channels`
 
@@ -42,7 +43,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 
 - Keep this file and `docs/adr/0002-agent-runtime-acp-refactor.md` aligned.
 - If the runtime contract changes materially, update `docs/decisions.md`.
-- ACP timeout semantics changed from a single fixed wall-clock timeout to idle+overall timeout; keep `config.example.yaml` and bug analysis docs in sync when adjusting those values again.
+- Runner timeout semantics are now configured only through `agent.step_timeout_seconds` and `agent.overall_timeout_seconds`; keep `config.yaml` / `config.example.yaml` and the timeout analysis docs in sync when adjusting those values again.
 
 ## Risks / Open Questions
 

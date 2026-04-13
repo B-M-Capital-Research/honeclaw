@@ -11,18 +11,25 @@ use crate::runtime::{get_tool_status_message, resolve_tool_reasoning};
 
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
+    RunnerTimeouts,
 };
 
 pub struct GeminiCliRunner {
     system_prompt: String,
     tool_registry: Arc<ToolRegistry>,
+    timeouts: RunnerTimeouts,
 }
 
 impl GeminiCliRunner {
-    pub fn new(system_prompt: String, tool_registry: Arc<ToolRegistry>) -> Self {
+    pub fn new(
+        system_prompt: String,
+        tool_registry: Arc<ToolRegistry>,
+        timeouts: RunnerTimeouts,
+    ) -> Self {
         Self {
             system_prompt,
             tool_registry,
+            timeouts,
         }
     }
 }
@@ -46,9 +53,12 @@ impl AgentRunner for GeminiCliRunner {
         let mut hit_max_iterations = false;
         let mut total_raw_lines_seen = 0u32;
         let mut last_iter_buf = String::new();
+        let mut stream_options = request.gemini_stream.clone();
+        stream_options.overall_timeout = self.timeouts.overall;
+        stream_options.per_line_timeout = self.timeouts.step;
 
         loop {
-            if iteration >= request.gemini_stream.max_iterations {
+            if iteration >= stream_options.max_iterations {
                 hit_max_iterations = true;
                 break;
             }
@@ -77,7 +87,7 @@ impl AgentRunner for GeminiCliRunner {
                 &request.actor_label,
                 &request.working_directory,
                 iteration,
-                &request.gemini_stream,
+                &stream_options,
                 &mut full_reply,
                 &mut total_raw_lines_seen,
                 emitter.clone(),

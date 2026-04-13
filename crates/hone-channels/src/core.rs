@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 
 use crate::runners::{
     AgentRunner, CodexAcpRunner, CodexCliReasoningRunner, FunctionCallingReasoningRunner,
-    GeminiAcpRunner, GeminiCliRunner, MultiAgentRunner, OpencodeAcpRunner,
+    GeminiAcpRunner, GeminiCliRunner, MultiAgentRunner, OpencodeAcpRunner, RunnerTimeouts,
 };
 use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
@@ -146,6 +146,14 @@ impl HoneBotCore {
             llm_timeout,
             llm_max_tokens,
             llm_api_key_source
+        );
+        tracing::info!(
+            "[Startup/{channel}] agent.step_timeout={}s agent.overall_timeout={}s",
+            self.config.agent.step_timeout_seconds.max(1),
+            self.config
+                .agent
+                .overall_timeout_seconds
+                .max(self.config.agent.step_timeout_seconds.max(1))
         );
 
         match self.config.agent.runner.trim() {
@@ -853,13 +861,19 @@ impl HoneBotCore {
         model_override: Option<&str>,
     ) -> Result<Box<dyn AgentRunner>, String> {
         let runner = self.config.agent.runner.trim();
+        let runner_timeouts = RunnerTimeouts {
+            step: self.config.agent.step_timeout(),
+            overall: self.config.agent.overall_timeout(),
+        };
         match runner {
             "gemini_cli" => Ok(Box::new(GeminiCliRunner::new(
                 system_prompt.to_string(),
                 Arc::new(tool_registry),
+                runner_timeouts,
             ))),
             "gemini_acp" => Ok(Box::new(GeminiAcpRunner::new(
                 self.config.agent.gemini_acp.clone(),
+                runner_timeouts,
             ))),
             "codex_cli" => Ok(Box::new(CodexCliReasoningRunner::new(
                 system_prompt.to_string(),
@@ -869,6 +883,7 @@ impl HoneBotCore {
             ))),
             "codex_acp" => Ok(Box::new(CodexAcpRunner::new(
                 self.config.agent.codex_acp.clone(),
+                runner_timeouts,
             ))),
             "function_calling" => {
                 let llm = self.llm.clone().ok_or_else(|| {
@@ -902,7 +917,10 @@ impl HoneBotCore {
                         opencode_config.openrouter_api_key = Some(key.to_string());
                     }
                 }
-                Ok(Box::new(OpencodeAcpRunner::new(opencode_config)))
+                Ok(Box::new(OpencodeAcpRunner::new(
+                    opencode_config,
+                    runner_timeouts,
+                )))
             }
             "multi-agent" => {
                 let pool = self.config.llm.openrouter.effective_key_pool();
@@ -920,8 +938,6 @@ impl HoneBotCore {
                 if !multi_answer.variant.trim().is_empty() {
                     answer_config.variant = multi_answer.variant.trim().to_string();
                 }
-                answer_config.startup_timeout_seconds = multi_answer.startup_timeout_seconds;
-                answer_config.request_timeout_seconds = multi_answer.request_timeout_seconds;
                 if let Some(model_override) =
                     model_override.filter(|value| !value.trim().is_empty())
                 {
@@ -943,6 +959,7 @@ impl HoneBotCore {
                     system_prompt.to_string(),
                     self.config.agent.multi_agent.search.clone(),
                     answer_config,
+                    runner_timeouts,
                     self.config.agent.multi_agent.answer.max_tool_calls.max(1),
                     Arc::new(tool_registry),
                     self.llm_audit.clone(),

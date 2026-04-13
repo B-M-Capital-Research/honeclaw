@@ -679,9 +679,8 @@ async fn process_message_session(
     }));
     let stream_probe = attach_stream_activity_probe(&mut session);
 
-    let timeout_secs = state.core.config.llm.openrouter.timeout.clamp(180, 360);
     let run_options = AgentRunOptions {
-        timeout: Some(Duration::from_secs(timeout_secs)),
+        timeout: Some(state.core.config.agent.overall_timeout()),
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::UserConversation,
         model_override: None,

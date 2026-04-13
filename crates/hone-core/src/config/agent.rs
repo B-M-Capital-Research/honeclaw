@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
@@ -178,7 +179,7 @@ pub struct KimiConfig {
     pub max_tokens: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     #[serde(default)]
     pub system_prompt: String,
@@ -190,6 +191,10 @@ pub struct AgentConfig {
     pub codex_model: String,
     #[serde(default = "default_max_iterations")]
     pub max_iterations: u32,
+    #[serde(default = "default_agent_step_timeout_seconds")]
+    pub step_timeout_seconds: u64,
+    #[serde(default = "default_agent_overall_timeout_seconds")]
+    pub overall_timeout_seconds: u64,
     #[serde(default)]
     pub gemini_acp: GeminiAcpConfig,
     #[serde(default)]
@@ -198,6 +203,37 @@ pub struct AgentConfig {
     pub opencode: OpencodeAcpConfig,
     #[serde(default)]
     pub multi_agent: MultiAgentConfig,
+}
+
+impl AgentConfig {
+    pub fn step_timeout(&self) -> Duration {
+        Duration::from_secs(self.step_timeout_seconds.max(1))
+    }
+
+    pub fn overall_timeout(&self) -> Duration {
+        Duration::from_secs(
+            self.overall_timeout_seconds
+                .max(self.step_timeout_seconds.max(1)),
+        )
+    }
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            system_prompt: String::new(),
+            system_prompt_path: String::new(),
+            runner: default_agent_runner(),
+            codex_model: String::new(),
+            max_iterations: default_max_iterations(),
+            step_timeout_seconds: default_agent_step_timeout_seconds(),
+            overall_timeout_seconds: default_agent_overall_timeout_seconds(),
+            gemini_acp: GeminiAcpConfig::default(),
+            codex_acp: CodexAcpConfig::default(),
+            opencode: OpencodeAcpConfig::default(),
+            multi_agent: MultiAgentConfig::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,10 +286,6 @@ pub struct MultiAgentAnswerConfig {
     pub model: String,
     #[serde(default)]
     pub variant: String,
-    #[serde(default = "default_opencode_startup_timeout")]
-    pub startup_timeout_seconds: u64,
-    #[serde(default = "default_opencode_request_timeout")]
-    pub request_timeout_seconds: u64,
     #[serde(default = "default_multi_agent_answer_max_tool_calls")]
     pub max_tool_calls: u32,
 }
@@ -265,8 +297,6 @@ impl Default for MultiAgentAnswerConfig {
             api_key: String::new(),
             model: String::new(),
             variant: String::new(),
-            startup_timeout_seconds: default_opencode_startup_timeout(),
-            request_timeout_seconds: default_opencode_request_timeout(),
             max_tool_calls: default_multi_agent_answer_max_tool_calls(),
         }
     }
@@ -282,12 +312,6 @@ pub struct GeminiAcpConfig {
     pub model: String,
     #[serde(default = "default_gemini_api_key_env")]
     pub api_key_env: String,
-    #[serde(default = "default_gemini_acp_startup_timeout")]
-    pub startup_timeout_seconds: u64,
-    #[serde(default = "default_gemini_acp_request_idle_timeout")]
-    pub request_idle_timeout_seconds: u64,
-    #[serde(default = "default_gemini_acp_request_timeout")]
-    pub request_timeout_seconds: u64,
 }
 
 impl Default for GeminiAcpConfig {
@@ -297,9 +321,6 @@ impl Default for GeminiAcpConfig {
             args: default_gemini_acp_args(),
             model: String::new(),
             api_key_env: default_gemini_api_key_env(),
-            startup_timeout_seconds: default_gemini_acp_startup_timeout(),
-            request_idle_timeout_seconds: default_gemini_acp_request_idle_timeout(),
-            request_timeout_seconds: default_gemini_acp_request_timeout(),
         }
     }
 }
@@ -326,12 +347,6 @@ pub struct CodexAcpConfig {
     pub sandbox_permissions: Vec<String>,
     #[serde(default)]
     pub extra_config_overrides: Vec<String>,
-    #[serde(default = "default_codex_acp_startup_timeout")]
-    pub startup_timeout_seconds: u64,
-    #[serde(default = "default_codex_acp_request_idle_timeout")]
-    pub request_idle_timeout_seconds: u64,
-    #[serde(default = "default_codex_acp_request_timeout")]
-    pub request_timeout_seconds: u64,
 }
 
 impl Default for CodexAcpConfig {
@@ -347,9 +362,6 @@ impl Default for CodexAcpConfig {
             dangerously_bypass_approvals_and_sandbox: false,
             sandbox_permissions: Vec::new(),
             extra_config_overrides: Vec::new(),
-            startup_timeout_seconds: default_codex_acp_startup_timeout(),
-            request_idle_timeout_seconds: default_codex_acp_request_idle_timeout(),
-            request_timeout_seconds: default_codex_acp_request_timeout(),
         }
     }
 }
@@ -370,12 +382,6 @@ pub struct OpencodeAcpConfig {
     /// 可选的 Hone 侧 API key 覆盖；留空则继承用户本机 opencode 登录态 / provider 配置
     #[serde(default)]
     pub api_key: String,
-    #[serde(default = "default_opencode_startup_timeout")]
-    pub startup_timeout_seconds: u64,
-    #[serde(default = "default_opencode_request_idle_timeout")]
-    pub request_idle_timeout_seconds: u64,
-    #[serde(default = "default_opencode_request_timeout")]
-    pub request_timeout_seconds: u64,
     /// OpenRouter API Key（运行时注入，来自 llm.openrouter.api_key 配置，不写入 YAML）
     #[serde(skip)]
     pub openrouter_api_key: Option<String>,
@@ -390,9 +396,6 @@ impl Default for OpencodeAcpConfig {
             variant: String::new(),
             api_base_url: default_opencode_api_base_url(),
             api_key: String::new(),
-            startup_timeout_seconds: default_opencode_startup_timeout(),
-            request_idle_timeout_seconds: default_opencode_request_idle_timeout(),
-            request_timeout_seconds: default_opencode_request_timeout(),
             openrouter_api_key: None,
         }
     }
@@ -450,6 +453,15 @@ fn default_runtime_admin_registration_passphrase_env() -> String {
 fn default_max_iterations() -> u32 {
     10
 }
+
+fn default_agent_step_timeout_seconds() -> u64 {
+    180
+}
+
+fn default_agent_overall_timeout_seconds() -> u64 {
+    1200
+}
+
 fn default_agent_runner() -> String {
     "function_calling".to_string()
 }
@@ -512,40 +524,4 @@ fn default_codex_command() -> String {
 
 fn default_opencode_args() -> Vec<String> {
     vec!["acp".to_string()]
-}
-
-fn default_opencode_startup_timeout() -> u64 {
-    15
-}
-
-fn default_opencode_request_idle_timeout() -> u64 {
-    300
-}
-
-fn default_opencode_request_timeout() -> u64 {
-    1200
-}
-
-fn default_gemini_acp_startup_timeout() -> u64 {
-    15
-}
-
-fn default_gemini_acp_request_idle_timeout() -> u64 {
-    300
-}
-
-fn default_gemini_acp_request_timeout() -> u64 {
-    1200
-}
-
-fn default_codex_acp_startup_timeout() -> u64 {
-    15
-}
-
-fn default_codex_acp_request_idle_timeout() -> u64 {
-    300
-}
-
-fn default_codex_acp_request_timeout() -> u64 {
-    1200
 }

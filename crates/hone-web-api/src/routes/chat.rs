@@ -1,6 +1,5 @@
 use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::Json;
@@ -202,7 +201,7 @@ pub(crate) async fn handle_chat(
         eprintln!("[Console] [{}] 收到消息，开始处理...", actor_clone.user_id);
 
         let run_options = AgentRunOptions {
-            timeout: Some(Duration::from_secs(300)),
+            timeout: Some(state.core.config.agent.overall_timeout()),
             segmenter: None,
             quota_mode: AgentRunQuotaMode::UserConversation,
             model_override: None,

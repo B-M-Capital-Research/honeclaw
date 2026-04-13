@@ -36,6 +36,12 @@ pub trait AgentRunnerEmitter: Send + Sync {
     async fn emit(&self, event: AgentRunnerEvent);
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RunnerTimeouts {
+    pub step: Duration,
+    pub overall: Duration,
+}
+
 #[derive(Clone)]
 pub struct AgentRunnerRequest {
     pub session_id: String,

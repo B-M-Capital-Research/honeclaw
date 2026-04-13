@@ -854,14 +854,10 @@ impl AgentSession {
     }
 
     fn default_gemini_stream_options(&self, timeout: Option<Duration>) -> GeminiStreamOptions {
-        let timeout_secs = timeout
-            .unwrap_or_else(|| Duration::from_secs(self.core.config.llm.openrouter.timeout))
-            .as_secs()
-            .clamp(180, 300);
         GeminiStreamOptions {
             max_iterations: 18,
-            overall_timeout: Duration::from_secs(timeout_secs),
-            per_line_timeout: Duration::from_secs(90),
+            overall_timeout: timeout.unwrap_or_else(|| self.core.config.agent.overall_timeout()),
+            per_line_timeout: self.core.config.agent.step_timeout(),
         }
     }
 

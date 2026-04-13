@@ -16,12 +16,14 @@ use super::opencode_acp::OpencodeAcpRunner;
 use super::tool_reasoning::RunnerToolObserver;
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
+    RunnerTimeouts,
 };
 
 pub struct MultiAgentRunner {
     system_prompt: String,
     search_config: MultiAgentSearchConfig,
     answer_config: OpencodeAcpConfig,
+    timeouts: RunnerTimeouts,
     answer_max_tool_calls: u32,
     tools: Arc<ToolRegistry>,
     llm_audit: Option<Arc<dyn LlmAuditSink>>,
@@ -32,6 +34,7 @@ impl MultiAgentRunner {
         system_prompt: String,
         search_config: MultiAgentSearchConfig,
         answer_config: OpencodeAcpConfig,
+        timeouts: RunnerTimeouts,
         answer_max_tool_calls: u32,
         tools: Arc<ToolRegistry>,
         llm_audit: Option<Arc<dyn LlmAuditSink>>,
@@ -40,6 +43,7 @@ impl MultiAgentRunner {
             system_prompt,
             search_config,
             answer_config,
+            timeouts,
             answer_max_tool_calls,
             tools,
             llm_audit,
@@ -55,7 +59,7 @@ impl MultiAgentRunner {
             api_key,
             &self.search_config.base_url,
             &self.search_config.model,
-            120,
+            self.timeouts.step.as_secs(),
             4096,
         )
         .map_err(|err| err.to_string())?;
@@ -359,7 +363,7 @@ impl AgentRunner for MultiAgentRunner {
             })
             .await;
         let answer_started = Instant::now();
-        let answer_runner = OpencodeAcpRunner::new(self.answer_config.clone());
+        let answer_runner = OpencodeAcpRunner::new(self.answer_config.clone(), self.timeouts);
         let answer_result = answer_runner.run(answer_request, emitter.clone()).await;
         let answer_elapsed_ms = answer_started.elapsed().as_millis();
         tracing::info!(
@@ -444,6 +448,8 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    use crate::runners::RunnerTimeouts;
+
     fn make_runner() -> MultiAgentRunner {
         MultiAgentRunner::new(
             "system".to_string(),
@@ -454,6 +460,10 @@ mod tests {
                 max_iterations: 8,
             },
             OpencodeAcpConfig::default(),
+            RunnerTimeouts {
+                step: std::time::Duration::from_secs(180),
+                overall: std::time::Duration::from_secs(1200),
+            },
             1,
             Arc::new(ToolRegistry::new()),
             None,

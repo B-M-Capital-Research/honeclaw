@@ -253,9 +253,8 @@ async fn run_scheduled_task(
         is_admin,
         ..PromptOptions::default()
     };
-    let timeout_secs = state.core.config.llm.openrouter.timeout.max(180);
     let run_options = AgentRunOptions {
-        timeout: Some(Duration::from_secs(timeout_secs)),
+        timeout: Some(state.core.config.agent.overall_timeout()),
         segmenter: None,
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
         model_override: None,
