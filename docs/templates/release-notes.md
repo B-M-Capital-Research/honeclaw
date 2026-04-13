@@ -2,6 +2,8 @@
 
 发布日期：{{RELEASE_DATE_UTC}}
 
+English readers: please scroll down for the English version below.
+
 ## 用户应该知道的
 
 - 
@@ -24,5 +26,34 @@
 - 无
 
 ## 对比范围
+
+- Compare: {{COMPARE_URL}}
+
+## English
+
+Release date: {{RELEASE_DATE_UTC}}
+
+### What Users Should Know
+
+- 
+
+### Who Should Update Soon
+
+- 
+
+### What Will Change After Upgrading
+
+- 
+
+### Install and Update
+
+- `curl | bash` users: rerun the install script to move to this version
+- Homebrew users: `brew update && brew upgrade honeclaw`
+
+### Known Notes
+
+- None
+
+### Compare
 
 - Compare: {{COMPARE_URL}}
