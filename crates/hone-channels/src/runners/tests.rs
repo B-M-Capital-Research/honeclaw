@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use super::acp_common::{
     AcpPromptState, CliVersion, extract_finished_tool_calls, parse_cli_version,
+    summarize_finished_tool_calls_for_log,
 };
 use super::codex_acp::{
     codex_acp_effective_args, configured_codex_model_id, validate_codex_version_matrix,
@@ -365,4 +366,29 @@ fn extract_finished_tool_calls_returns_collected_records() {
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "web_search");
     assert_eq!(calls[0].result["ok"], true);
+}
+
+#[test]
+fn summarize_finished_tool_calls_for_log_limits_output_to_count_and_recent_entries() {
+    let calls = vec![
+        ToolCallMade {
+            name: "web_search".to_string(),
+            arguments: serde_json::json!({"query": "AAOI"}),
+            result: serde_json::json!({"ok": true}),
+            tool_call_id: Some("call_1".to_string()),
+        },
+        ToolCallMade {
+            name: "data_fetch".to_string(),
+            arguments: serde_json::json!({"ticker": "COHR"}),
+            result: serde_json::json!({"ok": true}),
+            tool_call_id: Some("call_2".to_string()),
+        },
+    ];
+
+    let summary = summarize_finished_tool_calls_for_log(&calls);
+    assert!(summary.contains("count=2"));
+    assert!(summary.contains("data_fetch#call_2"));
+    assert!(summary.contains("web_search#call_1"));
+    assert!(!summary.contains("AAOI"));
+    assert!(!summary.contains("COHR"));
 }

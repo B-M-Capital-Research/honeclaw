@@ -169,6 +169,96 @@ pub(crate) fn extract_finished_tool_calls(state: AcpPromptState) -> Vec<ToolCall
     state.finished_tool_calls
 }
 
+fn truncate_for_log(text: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_string();
+    }
+    let keep = max_chars.saturating_sub(1);
+    let truncated = text.chars().take(keep).collect::<String>();
+    format!("{truncated}…")
+}
+
+fn tail_for_log(text: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let chars = text.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
+        return text.to_string();
+    }
+    let tail = chars[chars.len() - max_chars..].iter().collect::<String>();
+    format!("…{tail}")
+}
+
+fn value_excerpt_for_log(value: &Value, max_chars: usize) -> String {
+    let encoded = serde_json::to_string(value).unwrap_or_else(|_| value.to_string());
+    truncate_for_log(&encoded, max_chars)
+}
+
+pub(crate) fn summarize_finished_tool_calls_for_log(calls: &[ToolCallMade]) -> String {
+    if calls.is_empty() {
+        return "none".to_string();
+    }
+    let entries = calls
+        .iter()
+        .rev()
+        .take(3)
+        .map(|call| {
+            let call_id = call.tool_call_id.as_deref().unwrap_or("-");
+            format!("{}#{call_id}", call.name)
+        })
+        .collect::<Vec<_>>();
+    format!("count={} recent=[{}]", calls.len(), entries.join(", "))
+}
+
+fn summarize_pending_tool_calls_for_log(state: &AcpPromptState) -> String {
+    if state.pending_tool_calls.is_empty() {
+        return "none".to_string();
+    }
+    let mut entries = state
+        .pending_tool_calls
+        .iter()
+        .map(|(call_id, record)| format!("{}#{call_id}", record.name))
+        .collect::<Vec<_>>();
+    entries.sort();
+    let entries = entries.into_iter().take(3).collect::<Vec<_>>();
+    format!(
+        "count={} recent=[{}]",
+        state.pending_tool_calls.len(),
+        entries.join(", ")
+    )
+}
+
+pub(crate) async fn log_acp_prompt_stop_diagnostics(
+    runner_label: &'static str,
+    session_id: &str,
+    stop_reason: &str,
+    prompt_result: &Value,
+    state: &AcpPromptState,
+    stderr_buf: &std::sync::Arc<tokio::sync::Mutex<String>>,
+) {
+    let stderr_captured = stderr_buf.lock().await.clone();
+    let stderr_tail = if stderr_captured.trim().is_empty() {
+        "<empty>".to_string()
+    } else {
+        tail_for_log(&stderr_captured, 400)
+    };
+    tracing::warn!(
+        "[AgentRunner/{runner_label}] session={} stop_reason={} reply_chars={} prompt_result={} finished_tools={} pending_tools={} stderr_tail={}",
+        session_id,
+        stop_reason,
+        state.full_reply.chars().count(),
+        value_excerpt_for_log(prompt_result, 500),
+        summarize_finished_tool_calls_for_log(&state.finished_tool_calls),
+        summarize_pending_tool_calls_for_log(state),
+        stderr_tail,
+    );
+}
+
 pub(crate) async fn create_acp_session(
     runner_label: &'static str,
     stdin: &mut tokio::process::ChildStdin,

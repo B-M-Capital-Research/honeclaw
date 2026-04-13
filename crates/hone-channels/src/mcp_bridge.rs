@@ -6,6 +6,7 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::HoneBotCore;
@@ -314,6 +315,68 @@ fn tool_call_counters() -> &'static Mutex<HashMap<String, u32>> {
     COUNTERS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn truncate_for_log(text: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_string();
+    }
+    let keep = max_chars.saturating_sub(1);
+    let truncated = text.chars().take(keep).collect::<String>();
+    format!("{truncated}…")
+}
+
+fn redact_value_for_log(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(key, value)| {
+                    let lower = key.to_ascii_lowercase();
+                    let redacted = matches!(
+                        lower.as_str(),
+                        "api_key"
+                            | "apikey"
+                            | "token"
+                            | "access_token"
+                            | "authorization"
+                            | "password"
+                            | "secret"
+                    );
+                    let sanitized = if redacted {
+                        Value::String("<redacted>".to_string())
+                    } else {
+                        redact_value_for_log(value)
+                    };
+                    (key.clone(), sanitized)
+                })
+                .collect(),
+        ),
+        Value::Array(values) => {
+            Value::Array(values.iter().map(redact_value_for_log).collect::<Vec<_>>())
+        }
+        _ => value.clone(),
+    }
+}
+
+fn value_excerpt_for_log(value: &Value, max_chars: usize) -> String {
+    let redacted = redact_value_for_log(value);
+    let encoded = serde_json::to_string(&redacted).unwrap_or_else(|_| redacted.to_string());
+    truncate_for_log(&encoded, max_chars)
+}
+
+fn mcp_actor_label_for_log() -> String {
+    let channel = env::var("HONE_MCP_ACTOR_CHANNEL").unwrap_or_default();
+    let user_id = env::var("HONE_MCP_ACTOR_USER_ID").unwrap_or_default();
+    let scope = env::var("HONE_MCP_ACTOR_SCOPE").unwrap_or_default();
+    if scope.trim().is_empty() {
+        format!("{channel}/{user_id}")
+    } else {
+        format!("{channel}/{user_id}@{scope}")
+    }
+}
+
 fn handle_initialize(params: &Value) -> Value {
     let protocol_version = params
         .get("protocolVersion")
@@ -397,19 +460,61 @@ async fn handle_tools_call(registry: &ToolRegistry, params: &Value) -> Value {
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
+    let session_id = env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
+    let actor = mcp_actor_label_for_log();
+    let args_excerpt = value_excerpt_for_log(&arguments, 240);
+    tracing::info!(
+        "[hone-mcp] tool.start session={} actor={} name={} args={}",
+        session_id,
+        actor,
+        name,
+        args_excerpt
+    );
+    let started_at = Instant::now();
     match registry.execute_tool(name, arguments).await {
         Ok(value) => {
             let is_error = value.get("error").is_some();
+            if is_error {
+                tracing::warn!(
+                    "[hone-mcp] tool.done session={} actor={} name={} duration_ms={} is_error={} result={}",
+                    session_id,
+                    actor,
+                    name,
+                    started_at.elapsed().as_millis(),
+                    is_error,
+                    value_excerpt_for_log(&value, 320)
+                );
+            } else {
+                tracing::info!(
+                    "[hone-mcp] tool.done session={} actor={} name={} duration_ms={} is_error={} result={}",
+                    session_id,
+                    actor,
+                    name,
+                    started_at.elapsed().as_millis(),
+                    is_error,
+                    value_excerpt_for_log(&value, 320)
+                );
+            }
             json!({
                 "content": [{ "type": "text", "text": value.to_string() }],
                 "structuredContent": value,
                 "isError": is_error
             })
         }
-        Err(err) => json!({
-            "content": [{ "type": "text", "text": err.to_string() }],
-            "isError": true
-        }),
+        Err(err) => {
+            tracing::warn!(
+                "[hone-mcp] tool.error session={} actor={} name={} duration_ms={} error={}",
+                session_id,
+                actor,
+                name,
+                started_at.elapsed().as_millis(),
+                truncate_for_log(&err.to_string(), 320)
+            );
+            json!({
+                "content": [{ "type": "text", "text": err.to_string() }],
+                "isError": true
+            })
+        }
     }
 }
 

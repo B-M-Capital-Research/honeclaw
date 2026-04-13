@@ -12,8 +12,8 @@ use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
     AcpPromptState, AcpResponseTimeouts, CliVersion, build_acp_prompt_text, create_acp_session,
-    extract_finished_tool_calls, parse_cli_version, wait_for_response,
-    wait_for_response_with_timeouts, write_jsonrpc_request,
+    extract_finished_tool_calls, log_acp_prompt_stop_diagnostics, parse_cli_version,
+    wait_for_response, wait_for_response_with_timeouts, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -389,6 +389,17 @@ async fn run_gemini_acp(
         .and_then(|value| value.as_str())
         .unwrap_or("unknown");
     let success = stop_reason != "cancelled";
+    if !success {
+        log_acp_prompt_stop_diagnostics(
+            "gemini",
+            &request.session_id,
+            stop_reason,
+            &prompt_result,
+            &gemini_state,
+            &stderr_buf,
+        )
+        .await;
+    }
 
     let _ = stdin.shutdown().await;
     let _ = child.kill().await;
