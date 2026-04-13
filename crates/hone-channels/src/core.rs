@@ -829,6 +829,22 @@ impl HoneBotCore {
             portfolio_actor,
         )));
 
+        if let Some(actor) = actor.cloned() {
+            let sandbox_base = sandbox_base_dir();
+            registry.register(Box::new(hone_tools::LocalListFilesTool::new(
+                sandbox_base.clone(),
+                actor.clone(),
+            )));
+            registry.register(Box::new(hone_tools::LocalSearchFilesTool::new(
+                sandbox_base.clone(),
+                actor.clone(),
+            )));
+            registry.register(Box::new(hone_tools::LocalReadFileTool::new(
+                sandbox_base,
+                actor,
+            )));
+        }
+
         // 注册金融数据获取工具
         registry.register(Box::new(hone_tools::DataFetchTool::from_config(
             &self.config,
@@ -1471,6 +1487,25 @@ mod tests {
         );
         assert!(core.is_admin_actor(&actor));
         assert!(core.is_admin_actor(&other_scope));
+    }
+
+    #[test]
+    fn actor_scoped_registry_includes_local_file_tools() {
+        let core = HoneBotCore::new(HoneConfig::default());
+        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+
+        let with_actor = core.create_tool_registry(Some(&actor), "discord", false);
+        let without_actor = core.create_tool_registry(None, "discord", false);
+
+        let with_actor_tools = with_actor.list_tool_names();
+        assert!(with_actor_tools.contains(&"local_list_files"));
+        assert!(with_actor_tools.contains(&"local_search_files"));
+        assert!(with_actor_tools.contains(&"local_read_file"));
+
+        let without_actor_tools = without_actor.list_tool_names();
+        assert!(!without_actor_tools.contains(&"local_list_files"));
+        assert!(!without_actor_tools.contains(&"local_search_files"));
+        assert!(!without_actor_tools.contains(&"local_read_file"));
     }
 
     #[test]

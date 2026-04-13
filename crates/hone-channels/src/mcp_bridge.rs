@@ -587,8 +587,9 @@ pub fn hone_mcp_command_candidate() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::GeminiStreamOptions;
-    use hone_core::ActorIdentity;
+    use crate::HoneBotCore;
     use hone_core::agent::AgentContext;
+    use hone_core::{ActorIdentity, HoneConfig};
     use serde_json::json;
     use std::sync::MutexGuard;
     use std::time::Duration;
@@ -710,6 +711,24 @@ mod tests {
         assert!(env_bool("HONE_MCP_ALLOW_CRON"));
         unsafe { env::set_var("HONE_MCP_ALLOW_CRON", "0") };
         assert!(!env_bool("HONE_MCP_ALLOW_CRON"));
+    }
+
+    #[test]
+    fn handle_tools_list_respects_allowed_tools_for_local_file_tools() {
+        let _guard = env_lock();
+        clear_test_env();
+        unsafe {
+            env::set_var("HONE_MCP_ALLOWED_TOOLS", "local_list_files");
+        }
+
+        let core = HoneBotCore::new(HoneConfig::default());
+        let actor = ActorIdentity::new("telegram", "8039067465", None::<String>).expect("actor");
+        let registry = core.create_tool_registry(Some(&actor), "telegram", false);
+        let payload = handle_tools_list(&registry);
+        let tools = payload["tools"].as_array().expect("tools");
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["name"], "local_list_files");
     }
 
     #[test]

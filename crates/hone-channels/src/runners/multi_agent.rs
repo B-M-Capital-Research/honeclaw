@@ -154,7 +154,7 @@ Verified search tool transcript (JSON):\n{}",
 
     fn build_search_input(&self, runtime_input: &str) -> String {
         format!(
-            "{runtime_input}\n\n[SEARCH STAGE GUIDANCE]\nDecide whether tool use is actually needed for this turn.\nUse `web_search` or `data_fetch` when the user asks for fresh external facts, live market data, recent news, or other time-sensitive information.\nDo not call tools just to satisfy workflow.\nIf you do use tools, keep your final search-stage note as a compact internal memo in plain text only.\nDo not use HTML, XML-like tags, Markdown headings, Markdown tables, or channel-specific presentation styles in the search-stage note.\nFocus on factual takeaways and unresolved gaps, not polished formatting.\nGreetings, short meta-chat, and other low-cost turns may be answered directly without tools."
+            "{runtime_input}\n\n[SEARCH STAGE GUIDANCE]\nDecide whether tool use is actually needed for this turn.\nUse `web_search` or `data_fetch` when the answer depends on fresh external facts, live market data, recent news, or other time-sensitive information.\nUse `local_list_files`, `local_search_files`, or `local_read_file` when the answer may exist in the current actor sandbox as local persisted state, such as `company_profiles/`, uploaded files, runtime artifacts, or other user-local notes.\nTreat network search and local file inspection as equal search methods. If local files may materially improve accuracy, inspect them before saying you do not have memory, history, or filesystem access.\nThese local file tools are read-only and scoped to the current actor sandbox only. Do not assume access outside that sandbox.\nDo not call tools just to satisfy workflow.\nIf you do use tools, keep your final search-stage note as a compact internal memo in plain text only.\nDo not use HTML, XML-like tags, Markdown headings, Markdown tables, or channel-specific presentation styles in the search-stage note.\nFocus on factual takeaways and unresolved gaps, not polished formatting.\nGreetings, short meta-chat, and other low-cost turns may be answered directly without tools."
         )
     }
 
@@ -535,6 +535,10 @@ mod tests {
         assert!(input.contains("Greetings, short meta-chat"));
         assert!(input.contains("may be answered directly without tools"));
         assert!(input.contains("Use `web_search` or `data_fetch`"));
+        assert!(
+            input.contains("Use `local_list_files`, `local_search_files`, or `local_read_file`")
+        );
+        assert!(input.contains("equal search methods"));
         assert!(input.contains("plain text only"));
         assert!(input.contains("Do not use HTML"));
     }
@@ -572,6 +576,26 @@ mod tests {
 
         assert!(!runner.should_return_search_response_directly(&response));
         assert!(runner.has_live_search_tool_call(&response.tool_calls_made));
+    }
+
+    #[test]
+    fn local_file_tool_calls_also_force_answer_stage() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "本地检索摘要".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "local_search_files".to_string(),
+                arguments: json!({"query": "AAOI", "path": "company_profiles"}),
+                result: json!({"matches": [{"path": "company_profiles/aaoi/profile.md"}]}),
+                tool_call_id: None,
+            }],
+            iterations: 2,
+            success: true,
+            error: None,
+        };
+
+        assert!(!runner.should_return_search_response_directly(&response));
+        assert!(!runner.has_live_search_tool_call(&response.tool_calls_made));
     }
 
     #[test]
