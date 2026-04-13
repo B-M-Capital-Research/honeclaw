@@ -11,9 +11,9 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpPromptState, CliVersion, build_acp_prompt_text, create_acp_session,
+    AcpPromptState, AcpResponseTimeouts, CliVersion, build_acp_prompt_text, create_acp_session,
     extract_finished_tool_calls, parse_cli_version, set_acp_session_model, wait_for_response,
-    write_jsonrpc_request,
+    wait_for_response_with_timeouts, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -272,7 +272,9 @@ async fn run_codex_acp(
     validate_codex_acp_versions(config).await?;
 
     let startup_timeout = Duration::from_secs(config.startup_timeout_seconds.max(1));
-    let request_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
+    let prompt_idle_timeout = Duration::from_secs(config.request_idle_timeout_seconds.max(1));
+    let prompt_overall_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
+    let model_timeout = std::cmp::min(prompt_idle_timeout, prompt_overall_timeout);
     let mut metadata_updates = HashMap::new();
     let mcp_servers = hone_mcp_servers(&request).map_err(|message| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,
@@ -439,7 +441,7 @@ async fn run_codex_acp(
             next_id,
             &codex_session_id,
             &model_id,
-            request_timeout,
+            model_timeout,
             stderr_buf.clone(),
         )
         .await?;
@@ -463,26 +465,20 @@ async fn run_codex_acp(
         }),
     )
     .await?;
-    let prompt_result = tokio::time::timeout(
-        request_timeout,
-        wait_for_response(
-            "codex",
-            &mut reader,
-            &mut stdin,
-            next_id,
-            Some(emitter.clone()),
-            Some(&mut codex_state),
-            Some(stderr_buf.clone()),
-        ),
+    let prompt_result = wait_for_response_with_timeouts(
+        "codex",
+        &mut reader,
+        &mut stdin,
+        next_id,
+        Some(emitter.clone()),
+        Some(&mut codex_state),
+        Some(stderr_buf.clone()),
+        AcpResponseTimeouts {
+            idle: prompt_idle_timeout,
+            overall: prompt_overall_timeout,
+        },
     )
-    .await
-    .map_err(|_| AgentSessionError {
-        kind: AgentSessionErrorKind::TimeoutOverall,
-        message: format!(
-            "codex acp session/prompt timeout ({}s)",
-            request_timeout.as_secs()
-        ),
-    })??;
+    .await?;
 
     let stop_reason = prompt_result
         .get("stopReason")

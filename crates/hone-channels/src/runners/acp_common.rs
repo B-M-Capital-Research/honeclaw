@@ -9,6 +9,12 @@ use crate::runtime::resolve_tool_reasoning;
 
 use super::types::{AgentRunnerEmitter, AgentRunnerEvent};
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AcpResponseTimeouts {
+    pub(crate) idle: Duration,
+    pub(crate) overall: Duration,
+}
+
 #[derive(Default)]
 pub(crate) struct AcpPromptState {
     pub(crate) full_reply: String,
@@ -340,54 +346,18 @@ pub(crate) async fn wait_for_response(
     stderr_buf: Option<std::sync::Arc<tokio::sync::Mutex<String>>>,
 ) -> Result<Value, AgentSessionError> {
     while let Ok(Some(line)) = reader.next_line().await {
-        let payload: Value = serde_json::from_str(&line).map_err(|e| AgentSessionError {
-            kind: AgentSessionErrorKind::Io,
-            message: format!("failed to parse {runner_label} acp line: {e}"),
-        })?;
-
-        if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
-            if let Some(error) = payload.get("error") {
-                let message = error
-                    .get("message")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("unknown acp error")
-                    .to_string();
-                let stderr = if let Some(buf) = stderr_buf {
-                    let captured = buf.lock().await.clone();
-                    if captured.trim().is_empty() {
-                        String::new()
-                    } else {
-                        format!(" stderr={captured}")
-                    }
-                } else {
-                    String::new()
-                };
-                return Err(AgentSessionError {
-                    kind: AgentSessionErrorKind::AgentFailed,
-                    message: format!("{runner_label} acp request failed: {message}{stderr}"),
-                });
-            }
-            return Ok(payload.get("result").cloned().unwrap_or(Value::Null));
-        }
-
-        if let Some(method) = payload.get("method").and_then(|value| value.as_str()) {
-            match method {
-                "session/update" => {
-                    if let Some(emitter) = emitter.as_ref() {
-                        handle_acp_session_update(
-                            payload.get("params").unwrap_or(&Value::Null),
-                            emitter,
-                            state.as_deref_mut(),
-                        )
-                        .await;
-                    }
-                }
-                "session/request_permission" => {
-                    handle_acp_permission_request(runner_label, stdin, &payload, emitter.as_ref())
-                        .await?;
-                }
-                _ => {}
-            }
+        if let Some(result) = process_acp_payload(
+            runner_label,
+            stdin,
+            expected_id,
+            &line,
+            emitter.as_ref(),
+            state.as_deref_mut(),
+            stderr_buf.as_ref(),
+        )
+        .await?
+        {
+            return Ok(result);
         }
     }
 
@@ -395,6 +365,171 @@ pub(crate) async fn wait_for_response(
         kind: AgentSessionErrorKind::ExitFailure,
         message: format!("{runner_label} acp stream closed before response"),
     })
+}
+
+pub(crate) async fn wait_for_response_with_timeouts(
+    runner_label: &'static str,
+    reader: &mut tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
+    stdin: &mut tokio::process::ChildStdin,
+    expected_id: u64,
+    emitter: Option<std::sync::Arc<dyn AgentRunnerEmitter>>,
+    mut state: Option<&mut AcpPromptState>,
+    stderr_buf: Option<std::sync::Arc<tokio::sync::Mutex<String>>>,
+    timeouts: AcpResponseTimeouts,
+) -> Result<Value, AgentSessionError> {
+    let start = tokio::time::Instant::now();
+    let overall_deadline = start + timeouts.overall;
+    let mut idle_deadline = start + timeouts.idle;
+
+    loop {
+        let now = tokio::time::Instant::now();
+        if now >= overall_deadline {
+            return Err(acp_timeout_error(
+                runner_label,
+                "overall",
+                timeouts.overall,
+                stderr_buf.as_ref(),
+            )
+            .await);
+        }
+        if now >= idle_deadline {
+            return Err(acp_timeout_error(
+                runner_label,
+                "idle",
+                timeouts.idle,
+                stderr_buf.as_ref(),
+            )
+            .await);
+        }
+
+        let deadline = std::cmp::min(idle_deadline, overall_deadline);
+        let line = match tokio::time::timeout_at(deadline, reader.next_line()).await {
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => {
+                return Err(AgentSessionError {
+                    kind: AgentSessionErrorKind::ExitFailure,
+                    message: format!("{runner_label} acp stream closed before response"),
+                });
+            }
+            Ok(Err(e)) => {
+                return Err(AgentSessionError {
+                    kind: AgentSessionErrorKind::Io,
+                    message: format!("failed to read {runner_label} acp line: {e}"),
+                });
+            }
+            Err(_) => {
+                let timed_out_on_overall = tokio::time::Instant::now() >= overall_deadline;
+                let (phase, duration) = if timed_out_on_overall {
+                    ("overall", timeouts.overall)
+                } else {
+                    ("idle", timeouts.idle)
+                };
+                return Err(
+                    acp_timeout_error(runner_label, phase, duration, stderr_buf.as_ref()).await,
+                );
+            }
+        };
+
+        idle_deadline = tokio::time::Instant::now() + timeouts.idle;
+
+        if let Some(result) = process_acp_payload(
+            runner_label,
+            stdin,
+            expected_id,
+            &line,
+            emitter.as_ref(),
+            state.as_deref_mut(),
+            stderr_buf.as_ref(),
+        )
+        .await?
+        {
+            return Ok(result);
+        }
+    }
+}
+
+async fn process_acp_payload(
+    runner_label: &'static str,
+    stdin: &mut tokio::process::ChildStdin,
+    expected_id: u64,
+    line: &str,
+    emitter: Option<&std::sync::Arc<dyn AgentRunnerEmitter>>,
+    mut state: Option<&mut AcpPromptState>,
+    stderr_buf: Option<&std::sync::Arc<tokio::sync::Mutex<String>>>,
+) -> Result<Option<Value>, AgentSessionError> {
+    let payload: Value = serde_json::from_str(line).map_err(|e| AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: format!("failed to parse {runner_label} acp line: {e}"),
+    })?;
+
+    if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
+        if let Some(error) = payload.get("error") {
+            let message = error
+                .get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown acp error")
+                .to_string();
+            let stderr = if let Some(buf) = stderr_buf {
+                let captured = buf.lock().await.clone();
+                if captured.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!(" stderr={captured}")
+                }
+            } else {
+                String::new()
+            };
+            return Err(AgentSessionError {
+                kind: AgentSessionErrorKind::AgentFailed,
+                message: format!("{runner_label} acp request failed: {message}{stderr}"),
+            });
+        }
+        return Ok(Some(payload.get("result").cloned().unwrap_or(Value::Null)));
+    }
+
+    if let Some(method) = payload.get("method").and_then(|value| value.as_str()) {
+        match method {
+            "session/update" => {
+                if let Some(emitter) = emitter {
+                    handle_acp_session_update(
+                        payload.get("params").unwrap_or(&Value::Null),
+                        emitter,
+                        state.as_deref_mut(),
+                    )
+                    .await;
+                }
+            }
+            "session/request_permission" => {
+                handle_acp_permission_request(runner_label, stdin, &payload, emitter).await?;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(None)
+}
+
+async fn acp_timeout_error(
+    runner_label: &'static str,
+    phase: &'static str,
+    duration: Duration,
+    stderr_buf: Option<&std::sync::Arc<tokio::sync::Mutex<String>>>,
+) -> AgentSessionError {
+    let base = format!(
+        "{runner_label} acp session/prompt {phase} timeout ({}s)",
+        duration.as_secs()
+    );
+    let message = if let Some(buf) = stderr_buf {
+        timeout_message_with_stderr(&base, buf).await
+    } else {
+        base
+    };
+    let kind = if phase == "idle" {
+        AgentSessionErrorKind::TimeoutPerLine
+    } else {
+        AgentSessionErrorKind::TimeoutOverall
+    };
+    AgentSessionError { kind, message }
 }
 
 async fn handle_acp_permission_request(

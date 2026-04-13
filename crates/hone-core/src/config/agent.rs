@@ -284,6 +284,8 @@ pub struct GeminiAcpConfig {
     pub api_key_env: String,
     #[serde(default = "default_gemini_acp_startup_timeout")]
     pub startup_timeout_seconds: u64,
+    #[serde(default = "default_gemini_acp_request_idle_timeout")]
+    pub request_idle_timeout_seconds: u64,
     #[serde(default = "default_gemini_acp_request_timeout")]
     pub request_timeout_seconds: u64,
 }
@@ -296,6 +298,7 @@ impl Default for GeminiAcpConfig {
             model: String::new(),
             api_key_env: default_gemini_api_key_env(),
             startup_timeout_seconds: default_gemini_acp_startup_timeout(),
+            request_idle_timeout_seconds: default_gemini_acp_request_idle_timeout(),
             request_timeout_seconds: default_gemini_acp_request_timeout(),
         }
     }
@@ -325,6 +328,8 @@ pub struct CodexAcpConfig {
     pub extra_config_overrides: Vec<String>,
     #[serde(default = "default_codex_acp_startup_timeout")]
     pub startup_timeout_seconds: u64,
+    #[serde(default = "default_codex_acp_request_idle_timeout")]
+    pub request_idle_timeout_seconds: u64,
     #[serde(default = "default_codex_acp_request_timeout")]
     pub request_timeout_seconds: u64,
 }
@@ -343,6 +348,7 @@ impl Default for CodexAcpConfig {
             sandbox_permissions: Vec::new(),
             extra_config_overrides: Vec::new(),
             startup_timeout_seconds: default_codex_acp_startup_timeout(),
+            request_idle_timeout_seconds: default_codex_acp_request_idle_timeout(),
             request_timeout_seconds: default_codex_acp_request_timeout(),
         }
     }
@@ -366,6 +372,8 @@ pub struct OpencodeAcpConfig {
     pub api_key: String,
     #[serde(default = "default_opencode_startup_timeout")]
     pub startup_timeout_seconds: u64,
+    #[serde(default = "default_opencode_request_idle_timeout")]
+    pub request_idle_timeout_seconds: u64,
     #[serde(default = "default_opencode_request_timeout")]
     pub request_timeout_seconds: u64,
     /// OpenRouter API Key（运行时注入，来自 llm.openrouter.api_key 配置，不写入 YAML）
@@ -383,6 +391,7 @@ impl Default for OpencodeAcpConfig {
             api_base_url: default_opencode_api_base_url(),
             api_key: String::new(),
             startup_timeout_seconds: default_opencode_startup_timeout(),
+            request_idle_timeout_seconds: default_opencode_request_idle_timeout(),
             request_timeout_seconds: default_opencode_request_timeout(),
             openrouter_api_key: None,
         }
@@ -509,22 +518,34 @@ fn default_opencode_startup_timeout() -> u64 {
     15
 }
 
-fn default_opencode_request_timeout() -> u64 {
+fn default_opencode_request_idle_timeout() -> u64 {
     300
+}
+
+fn default_opencode_request_timeout() -> u64 {
+    1200
 }
 
 fn default_gemini_acp_startup_timeout() -> u64 {
     15
 }
 
-fn default_gemini_acp_request_timeout() -> u64 {
+fn default_gemini_acp_request_idle_timeout() -> u64 {
     300
+}
+
+fn default_gemini_acp_request_timeout() -> u64 {
+    1200
 }
 
 fn default_codex_acp_startup_timeout() -> u64 {
     15
 }
 
-fn default_codex_acp_request_timeout() -> u64 {
+fn default_codex_acp_request_idle_timeout() -> u64 {
     300
+}
+
+fn default_codex_acp_request_timeout() -> u64 {
+    1200
 }

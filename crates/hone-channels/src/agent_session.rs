@@ -21,6 +21,7 @@ use crate::execution::{
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
+use crate::runtime::relativize_user_visible_paths;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSessionErrorKind {
@@ -252,6 +253,7 @@ struct SessionEventEmitter {
     user_id: String,
     session_id: String,
     message_id: Option<String>,
+    working_directory: String,
 }
 
 fn truncate_event_detail(detail: &str, max_chars: usize) -> String {
@@ -264,6 +266,33 @@ fn truncate_event_detail(detail: &str, max_chars: usize) -> String {
 #[async_trait]
 impl AgentRunnerEmitter for SessionEventEmitter {
     async fn emit(&self, event: AgentRunnerEvent) {
+        let event = match event {
+            AgentRunnerEvent::Progress { stage, detail } => AgentRunnerEvent::Progress {
+                stage,
+                detail: detail
+                    .map(|value| relativize_user_visible_paths(&value, &self.working_directory)),
+            },
+            AgentRunnerEvent::ToolStatus {
+                tool,
+                status,
+                message,
+                reasoning,
+            } => AgentRunnerEvent::ToolStatus {
+                tool,
+                status,
+                message: message
+                    .map(|value| relativize_user_visible_paths(&value, &self.working_directory)),
+                reasoning: reasoning
+                    .map(|value| relativize_user_visible_paths(&value, &self.working_directory)),
+            },
+            AgentRunnerEvent::Error { mut error } => {
+                error.message =
+                    relativize_user_visible_paths(&error.message, &self.working_directory);
+                AgentRunnerEvent::Error { error }
+            }
+            other => other,
+        };
+
         match &event {
             AgentRunnerEvent::Progress { stage, detail } => {
                 tracing::info!(
@@ -355,8 +384,9 @@ impl AgentSession {
         runner_name: &str,
         session_id: &str,
         request: AgentRunnerRequest,
+        emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
-        let mut last_result = runner.run(request.clone(), self.runner_emitter()).await;
+        let mut last_result = runner.run(request.clone(), emitter.clone()).await;
 
         for retry_idx in 0..EMPTY_SUCCESS_RETRY_LIMIT {
             // 如果运行失败，或者已经拿到了正文/工具调用，则不重试。
@@ -390,7 +420,7 @@ impl AgentSession {
             })
             .await;
 
-            last_result = runner.run(request.clone(), self.runner_emitter()).await;
+            last_result = runner.run(request.clone(), emitter.clone()).await;
         }
 
         if last_result.response.success && last_result.response.content.trim().is_empty() {
@@ -835,13 +865,14 @@ impl AgentSession {
         }
     }
 
-    fn runner_emitter(&self) -> Arc<dyn AgentRunnerEmitter> {
+    fn runner_emitter(&self, working_directory: String) -> Arc<dyn AgentRunnerEmitter> {
         Arc::new(SessionEventEmitter {
             listeners: self.listeners.clone(),
             channel: self.actor.channel.clone(),
             user_id: self.actor.user_id.clone(),
             session_id: self.session_id.clone(),
             message_id: self.message_id.clone(),
+            working_directory,
         })
     }
 
@@ -1153,6 +1184,8 @@ impl AgentSession {
         })
         .await;
         let started = Instant::now();
+        let runner_emitter =
+            self.runner_emitter(execution.runner_request.working_directory.clone());
 
         let runner_result = self
             .run_runner_with_empty_success_retry(
@@ -1160,6 +1193,7 @@ impl AgentSession {
                 execution.runner_name,
                 &session_id,
                 execution.runner_request,
+                runner_emitter,
             )
             .await;
         let streamed_output = runner_result.streamed_output;
@@ -2355,6 +2389,72 @@ mod tests {
         })
         .await;
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[derive(Default)]
+    struct RecordingListener {
+        events: tokio::sync::Mutex<Vec<AgentSessionEvent>>,
+    }
+
+    #[async_trait]
+    impl AgentSessionListener for RecordingListener {
+        async fn on_event(&self, event: AgentSessionEvent) {
+            self.events.lock().await.push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn session_event_emitter_relativizes_user_visible_paths() {
+        let root = "/tmp/hone-agent-sandboxes/telegram/direct8039067465";
+        let listener = Arc::new(RecordingListener::default());
+        let emitter = SessionEventEmitter {
+            listeners: vec![listener.clone()],
+            channel: "telegram".to_string(),
+            user_id: "8039067465".to_string(),
+            session_id: "session".to_string(),
+            message_id: None,
+            working_directory: root.to_string(),
+        };
+
+        emitter
+            .emit(AgentRunnerEvent::Progress {
+                stage: "tool.execute",
+                detail: Some(format!(
+                    "Edit {root}/company_profiles/sandisk/profile.md and /Users/bytedance/private.txt"
+                )),
+            })
+            .await;
+        emitter
+            .emit(AgentRunnerEvent::ToolStatus {
+                tool: "hone/skill_tool".to_string(),
+                status: "start".to_string(),
+                message: Some(format!(
+                    "Edit {root}/company_profiles/micron-technology/profile.md"
+                )),
+                reasoning: Some(format!(
+                    "Edit {root}/data/research/notes.md and /etc/passwd"
+                )),
+            })
+            .await;
+
+        let events = listener.events.lock().await.clone();
+        assert!(matches!(
+            &events[0],
+            AgentSessionEvent::Progress {
+                detail: Some(detail),
+                ..
+            } if detail
+                == "Edit company_profiles/sandisk/profile.md and <absolute-path>/private.txt"
+        ));
+        assert!(matches!(
+            &events[1],
+            AgentSessionEvent::ToolStatus {
+                message: Some(message),
+                reasoning: Some(reasoning),
+                ..
+            } if message == "Edit company_profiles/micron-technology/profile.md"
+                && reasoning == "Edit data/research/notes.md and <absolute-path>/passwd"
+        ));
     }
 
     #[cfg(unix)]

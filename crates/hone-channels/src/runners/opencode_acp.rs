@@ -15,8 +15,9 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpPromptState, build_acp_prompt_text, create_acp_session, extract_finished_tool_calls,
-    set_acp_session_model, wait_for_response, write_jsonrpc_request,
+    AcpPromptState, AcpResponseTimeouts, build_acp_prompt_text, create_acp_session,
+    extract_finished_tool_calls, set_acp_session_model, wait_for_response,
+    wait_for_response_with_timeouts, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -368,7 +369,9 @@ async fn run_opencode_acp(
     emitter: Arc<dyn AgentRunnerEmitter>,
 ) -> Result<(AgentResponse, HashMap<String, Value>), AgentSessionError> {
     let startup_timeout = Duration::from_secs(config.startup_timeout_seconds.max(1));
-    let request_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
+    let prompt_idle_timeout = Duration::from_secs(config.request_idle_timeout_seconds.max(1));
+    let prompt_overall_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
+    let model_timeout = std::cmp::min(prompt_idle_timeout, prompt_overall_timeout);
     let mut metadata_updates = HashMap::new();
     let mcp_servers = hone_mcp_servers(&request).map_err(|message| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,
@@ -532,7 +535,7 @@ async fn run_opencode_acp(
             next_id,
             &opencode_session_id,
             &model_id,
-            request_timeout,
+            model_timeout,
             stderr_buf.clone(),
         )
         .await?;
@@ -540,9 +543,10 @@ async fn run_opencode_acp(
     }
 
     tracing::info!(
-        "[AgentRunner/opencode] session={} sending session/prompt (timeout={}s)",
+        "[AgentRunner/opencode] session={} sending session/prompt (idle_timeout={}s overall_timeout={}s)",
         request.session_id,
-        request_timeout.as_secs(),
+        prompt_idle_timeout.as_secs(),
+        prompt_overall_timeout.as_secs(),
     );
     let mut opencode_state = AcpPromptState::default();
     let prompt_text = build_acp_prompt_text(&request.system_prompt, &request.runtime_input);
@@ -561,26 +565,20 @@ async fn run_opencode_acp(
         }),
     )
     .await?;
-    let prompt_result = tokio::time::timeout(
-        request_timeout,
-        wait_for_response(
-            "opencode",
-            &mut reader,
-            &mut stdin,
-            next_id,
-            Some(emitter.clone()),
-            Some(&mut opencode_state),
-            Some(stderr_buf.clone()),
-        ),
+    let prompt_result = wait_for_response_with_timeouts(
+        "opencode",
+        &mut reader,
+        &mut stdin,
+        next_id,
+        Some(emitter.clone()),
+        Some(&mut opencode_state),
+        Some(stderr_buf.clone()),
+        AcpResponseTimeouts {
+            idle: prompt_idle_timeout,
+            overall: prompt_overall_timeout,
+        },
     )
-    .await
-    .map_err(|_| AgentSessionError {
-        kind: AgentSessionErrorKind::TimeoutOverall,
-        message: format!(
-            "opencode acp session/prompt timeout ({}s)",
-            request_timeout.as_secs()
-        ),
-    })??;
+    .await?;
 
     let stop_reason = prompt_result
         .get("stopReason")

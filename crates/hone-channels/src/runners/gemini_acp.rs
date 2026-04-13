@@ -12,8 +12,9 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpPromptState, CliVersion, build_acp_prompt_text, create_acp_session,
-    extract_finished_tool_calls, parse_cli_version, wait_for_response, write_jsonrpc_request,
+    AcpPromptState, AcpResponseTimeouts, CliVersion, build_acp_prompt_text, create_acp_session,
+    extract_finished_tool_calls, parse_cli_version, wait_for_response,
+    wait_for_response_with_timeouts, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -170,7 +171,8 @@ async fn run_gemini_acp(
     validate_gemini_acp_environment(config).await?;
 
     let startup_timeout = Duration::from_secs(config.startup_timeout_seconds.max(1));
-    let request_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
+    let prompt_idle_timeout = Duration::from_secs(config.request_idle_timeout_seconds.max(1));
+    let prompt_overall_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
     let mut metadata_updates = HashMap::new();
     let mcp_servers = hone_mcp_servers(&request).map_err(|message| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,
@@ -349,26 +351,20 @@ async fn run_gemini_acp(
         }),
     )
     .await?;
-    let prompt_result = tokio::time::timeout(
-        request_timeout,
-        wait_for_response(
-            "gemini",
-            &mut reader,
-            &mut stdin,
-            next_id,
-            Some(emitter.clone()),
-            Some(&mut gemini_state),
-            Some(stderr_buf.clone()),
-        ),
+    let prompt_result = wait_for_response_with_timeouts(
+        "gemini",
+        &mut reader,
+        &mut stdin,
+        next_id,
+        Some(emitter.clone()),
+        Some(&mut gemini_state),
+        Some(stderr_buf.clone()),
+        AcpResponseTimeouts {
+            idle: prompt_idle_timeout,
+            overall: prompt_overall_timeout,
+        },
     )
-    .await
-    .map_err(|_| AgentSessionError {
-        kind: AgentSessionErrorKind::TimeoutOverall,
-        message: format!(
-            "gemini acp session/prompt timeout ({}s)",
-            request_timeout.as_secs()
-        ),
-    })??;
+    .await?;
 
     let stop_reason = prompt_result
         .get("stopReason")

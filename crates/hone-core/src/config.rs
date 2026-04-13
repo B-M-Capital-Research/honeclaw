@@ -1417,4 +1417,32 @@ agent:
             "prompt"
         );
     }
+
+    #[test]
+    fn test_acp_prompt_timeouts_default_to_idle_plus_longer_overall() {
+        let yaml = r#"
+agent:
+  runner: codex_acp
+"#;
+        let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.agent.codex_acp.request_idle_timeout_seconds, 300);
+        assert_eq!(config.agent.codex_acp.request_timeout_seconds, 1200);
+        assert_eq!(config.agent.gemini_acp.request_idle_timeout_seconds, 300);
+        assert_eq!(config.agent.gemini_acp.request_timeout_seconds, 1200);
+        assert_eq!(config.agent.opencode.request_idle_timeout_seconds, 300);
+        assert_eq!(config.agent.opencode.request_timeout_seconds, 1200);
+    }
+
+    #[test]
+    fn test_acp_prompt_timeout_override_preserves_explicit_overall_value() {
+        let yaml = r#"
+agent:
+  runner: codex_acp
+  codex_acp:
+    request_timeout_seconds: 300
+"#;
+        let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.agent.codex_acp.request_idle_timeout_seconds, 300);
+        assert_eq!(config.agent.codex_acp.request_timeout_seconds, 300);
+    }
 }

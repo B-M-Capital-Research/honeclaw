@@ -1,6 +1,6 @@
 # opencode ACP `session/prompt timeout (300s)` 问题分析
 
-- **状态**: 2026-03-26 已确认存在实现层 bug；本次只留档，不修改运行时代码。
+- **状态**: 2026-04-13 已修复到 ACP runners 公共等待逻辑；保留本文作为问题成因与修复语义记录。
 
 ## 现象
 
@@ -11,9 +11,16 @@
 
 ## 结论
 
-这是 Hone 自身 `opencode_acp` runner 的超时策略 bug，不只是上游模型偶尔变慢。
+这是 Hone 自身 ACP runner 的超时策略 bug，不只是上游模型偶尔变慢。
 
-核心问题是：当前实现把整次 ACP `session/prompt` 包在一个固定 300 秒的**总墙钟超时**里，而不是“无进展才超时”的**空闲超时**。因此只要一次正常运行超过 300 秒，即使中间持续有 `agent_message_chunk`、`tool_call_update`、`usage_update` 等进度事件，Hone 仍会在 300 秒整主动中断并向用户返回错误。
+原问题是：实现把整次 ACP `session/prompt` 包在一个固定 300 秒的**总墙钟超时**里，而不是“无进展才超时”的**空闲超时**。因此只要一次正常运行超过 300 秒，即使中间持续有 `agent_message_chunk`、`tool_call_update`、`usage_update` 等进度事件，Hone 仍会在 300 秒整主动中断并向用户返回错误。
+
+2026-04-13 起，`codex_acp`、`gemini_acp`、`opencode_acp` 已统一改为：
+
+- `idle timeout`: 300 秒
+- `overall timeout`: 1200 秒
+
+只要 ACP 持续有事件/输出，idle timer 就会被刷新；只有连续 300 秒无进展，或者整轮超过 1200 秒，才会超时。
 
 ## 代码证据
 
@@ -150,10 +157,9 @@ agent:
 
 ## 本次结论边界
 
-- 已确认存在实现层 bug
-- 证据来自本地代码与当前运行时配置
-- 本次没有改代码，也没有调整线上配置
-- 因此该问题在当前 `main` 上仍可能继续出现
+- 已确认原始问题来自实现层固定总超时
+- 修复已落到 ACP runners 公共等待逻辑与默认配置
+- 若某些部署环境仍显式配置 `request_timeout_seconds: 300`，它们会继续保留 300 秒 overall timeout，需额外同步配置
 
 ## 相关文件
 

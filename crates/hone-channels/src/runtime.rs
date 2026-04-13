@@ -77,6 +77,75 @@ pub fn resolve_tool_reasoning(tool_name: &str, reasoning: Option<String>) -> Opt
     Some(format!("正在调用 {tool_name}..."))
 }
 
+/// 将用户可见进度中的 sandbox 绝对路径改写为相对路径；sandbox 外绝对路径做占位隐藏。
+pub fn relativize_user_visible_paths(text: &str, sandbox_root: &str) -> String {
+    let normalized_root = trim_trailing_path_separators(sandbox_root);
+    if text.trim().is_empty() || normalized_root.is_empty() {
+        return text.to_string();
+    }
+
+    RE_ABSOLUTE_PATH
+        .replace_all(text, |caps: &regex::Captures| {
+            let prefix = caps.name("prefix").map(|m| m.as_str()).unwrap_or_default();
+            let raw = caps.name("path").map(|m| m.as_str()).unwrap_or_default();
+            let (path, suffix) = split_trailing_path_punctuation(raw);
+            if let Some(relative) = relativize_path_within_root(path, normalized_root) {
+                return format!("{prefix}{relative}{suffix}");
+            }
+            format!("{prefix}{}{suffix}", mask_absolute_path(path))
+        })
+        .to_string()
+}
+
+fn trim_trailing_path_separators(value: &str) -> &str {
+    value.trim_end_matches(|ch| ch == '/' || ch == '\\')
+}
+
+fn split_trailing_path_punctuation(raw: &str) -> (&str, &str) {
+    let mut end = raw.len();
+    loop {
+        let slice = &raw[..end];
+        if slice.ends_with("...") {
+            end -= 3;
+            continue;
+        }
+        let Some(ch) = slice.chars().next_back() else {
+            break;
+        };
+        if matches!(ch, ',' | ';' | ')' | ']' | '}' | '>' | '"' | '\'' | '`') {
+            end -= ch.len_utf8();
+            continue;
+        }
+        if ch == ':' {
+            end -= ch.len_utf8();
+            continue;
+        }
+        break;
+    }
+    (&raw[..end], &raw[end..])
+}
+
+fn relativize_path_within_root<'a>(path: &'a str, sandbox_root: &str) -> Option<&'a str> {
+    if path == sandbox_root {
+        return Some(".");
+    }
+    let rest = path.strip_prefix(sandbox_root)?;
+    rest.strip_prefix('/').or_else(|| rest.strip_prefix('\\'))
+}
+
+fn mask_absolute_path(path: &str) -> String {
+    let trimmed = trim_trailing_path_separators(path);
+    let basename = trimmed
+        .rsplit(['/', '\\'])
+        .find(|segment| !segment.is_empty())
+        .unwrap_or_default();
+    if basename.is_empty() {
+        "<absolute-path>".to_string()
+    } else {
+        format!("<absolute-path>/{basename}")
+    }
+}
+
 // ── 静态正则（编译一次，避免热路径重复编译）─────────────────────────────────
 use std::sync::LazyLock;
 
@@ -110,6 +179,10 @@ static RE_WS: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"[ \t]+").expect("valid regex"));
 static RE_NL: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"\n[ \t\n]*\n").expect("valid regex"));
+static RE_ABSOLUTE_PATH: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"(?P<prefix>^|[\s\(\[\{<"'`])(?P<path>(?:[A-Za-z]:[\\/]|/)[^\s<>"'`]+)"#)
+        .expect("valid regex")
+});
 
 // ── skip-buffer 检测正则 ──────────────────────────────────────────────────────
 static RE_ONLY_PUNCT: LazyLock<regex::Regex> =
@@ -314,5 +387,35 @@ mod tests {
         let (remain, segments) = flush_buffer(input, 18);
         assert!(segments.iter().any(|s| s.contains("第一段结尾")));
         assert!(remain.len() < 18);
+    }
+
+    #[test]
+    fn relativize_user_visible_paths_strips_sandbox_prefix() {
+        let root = "/tmp/hone-agent-sandboxes/telegram/direct8039067465";
+        let text =
+            format!("Edit {root}/company_profiles/sandisk/profile.md, {root}/data/foo/bar.txt");
+        let sanitized = relativize_user_visible_paths(&text, root);
+        assert_eq!(
+            sanitized,
+            "Edit company_profiles/sandisk/profile.md, data/foo/bar.txt"
+        );
+    }
+
+    #[test]
+    fn relativize_user_visible_paths_masks_outside_sandbox_paths() {
+        let text = "Edit /Users/bytedance/secret/profile.md and C:\\Users\\foo\\private\\note.txt";
+        let sanitized = relativize_user_visible_paths(text, "/tmp/hone-agent-sandboxes/demo");
+        assert_eq!(
+            sanitized,
+            "Edit <absolute-path>/profile.md and <absolute-path>/note.txt"
+        );
+    }
+
+    #[test]
+    fn relativize_user_visible_paths_keeps_relative_paths() {
+        let text = "Run rtk sed -n '1,260p' company_profiles/sandisk/profile.md";
+        let sanitized =
+            relativize_user_visible_paths(text, "/tmp/hone-agent-sandboxes/telegram/demo");
+        assert_eq!(sanitized, text);
     }
 }
