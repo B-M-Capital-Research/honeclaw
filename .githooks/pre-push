@@ -166,13 +166,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     continue
   fi
 
-  rust_files=()
-  while IFS= read -r rust_file; do
-    [ -n "$rust_file" ] && rust_files+=("$rust_file")
-  done <<EOF
-$(collect_rust_files "$local_ref" "$local_sha" "$remote_sha")
+  rust_file_list="$(collect_rust_files "$local_ref" "$local_sha" "$remote_sha")"
+  if [ -n "$rust_file_list" ]; then
+    rust_files=()
+    while IFS= read -r rust_file; do
+      [ -n "$rust_file" ] && rust_files+=("$rust_file")
+    done <<EOF
+$rust_file_list
 EOF
-  check_rustfmt_for_ref "$local_ref" "$local_sha" "${rust_files[@]}"
+    check_rustfmt_for_ref "$local_ref" "$local_sha" "${rust_files[@]}"
+  fi
 
   if [ "$remote_sha" = "$ZERO_SHA" ]; then
     scan_range "$local_ref (new ref)" "$local_ref" "--not" "--remotes=$REMOTE_NAME"
