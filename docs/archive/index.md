@@ -1,8 +1,22 @@
 # Archive Index
 
-Last updated: 2026-04-12
+Last updated: 2026-04-13
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
+
+## 2026-04-13
+
+### 飞书表格语法护栏
+
+- Status: done
+- Date: 2026-04-13
+- Plan: `docs/archive/plans/feishu-table-sanitization.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-feishu markdown`, `cargo test -p hone-channels prompt`
+- Current conclusion: 飞书提示词已明确禁止模型手写原始 `<table .../>` 卡片标签；运行时会继续自动把标准 Markdown 表格转换成飞书表格，同时对损坏、截断或 schema 错误的 raw table 做规范化/降级，避免坏标签直接投递到用户侧
+- Next entry point: `docs/archive/plans/feishu-table-sanitization.md`
 
 ## 2026-04-12
 
