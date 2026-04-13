@@ -21,10 +21,11 @@ use hone_tools::{
     CronJobTool, DeepResearchTool, DiscoverSkillsTool, LoadSkillTool, ToolExecutionGuard,
     ToolRegistry,
 };
-use reqwest::StatusCode;
+use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use serde_json::json;
 use subtle::ConstantTimeEq;
+use tokio::process::Command;
 use tokio::sync::mpsc;
 
 use crate::runners::{
@@ -561,14 +562,15 @@ impl HoneBotCore {
         let request_body = build_report_run_input(company_name, &validate_code);
         let url = format!("{base_url}/api/runs");
         let response = match self
-            .workflow_runner_http
-            .post(&url)
-            .json(&json!({
-                "workflowId": REPORT_WORKFLOW_ID,
-                "input": request_body,
-                "promptOverrides": {},
-            }))
-            .send()
+            .workflow_runner_request(
+                Method::POST,
+                &url,
+                Some(json!({
+                    "workflowId": REPORT_WORKFLOW_ID,
+                    "input": request_body,
+                    "promptOverrides": {},
+                })),
+            )
             .await
         {
             Ok(response) => response,
@@ -582,8 +584,8 @@ impl HoneBotCore {
             }
         };
 
-        if response.status() == StatusCode::CONFLICT {
-            let conflict = response.json::<WorkflowConflictResponse>().await.ok();
+        if response.status == StatusCode::CONFLICT {
+            let conflict = serde_json::from_str::<WorkflowConflictResponse>(&response.body).ok();
             if let Some(active_run_id) = conflict
                 .as_ref()
                 .and_then(|value| value.active_run_id.as_deref())
@@ -602,13 +604,13 @@ impl HoneBotCore {
             return format!("研报任务未重复启动：{detail}");
         }
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let detail = read_response_text(response).await;
+        if !response.status.is_success() {
+            let status = response.status;
+            let detail = truncate_for_log(response.body.trim(), 160);
             return format!("研报任务启动失败：{status} {detail}");
         }
 
-        match response.json::<WorkflowRunCreatedResponse>().await {
+        match serde_json::from_str::<WorkflowRunCreatedResponse>(&response.body) {
             Ok(payload) => format!(
                 "已启动公司研报：{}。研究倾向默认使用“{}”，任务正在运行中（run_id={}）。可发送 `/report 进度` 查看进度。",
                 company_name.trim(),
@@ -625,7 +627,7 @@ impl HoneBotCore {
         };
 
         let url = format!("{base_url}/api/runs?workflowId={REPORT_WORKFLOW_ID}&limit=1");
-        let response = match self.workflow_runner_http.get(&url).send().await {
+        let response = match self.workflow_runner_request(Method::GET, &url, None).await {
             Ok(response) => response,
             Err(err) => {
                 tracing::warn!(
@@ -637,13 +639,13 @@ impl HoneBotCore {
             }
         };
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let detail = read_response_text(response).await;
+        if !response.status.is_success() {
+            let status = response.status;
+            let detail = truncate_for_log(response.body.trim(), 160);
             return format!("查询研报进度失败：{status} {detail}");
         }
 
-        let payload = match response.json::<WorkflowRunListResponse>().await {
+        let payload = match serde_json::from_str::<WorkflowRunListResponse>(&response.body) {
             Ok(payload) => payload,
             Err(err) => return format!("查询研报进度失败：响应解析错误（{err}）。"),
         };
@@ -683,20 +685,91 @@ impl HoneBotCore {
             .ok_or_else(|| "未配置本地 workflow runner 地址".to_string())?;
         let url = format!("{base_url}/api/runs/{run_id}/progress");
         let response = self
-            .workflow_runner_http
-            .get(&url)
-            .send()
+            .workflow_runner_request(Method::GET, &url, None)
             .await
             .map_err(|err| err.to_string())?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let detail = read_response_text(response).await;
+        if !response.status.is_success() {
+            let status = response.status;
+            let detail = truncate_for_log(response.body.trim(), 160);
             return Err(format!("{status} {detail}"));
         }
-        response
-            .json::<WorkflowProgressEnvelope>()
-            .await
+        serde_json::from_str::<WorkflowProgressEnvelope>(&response.body)
             .map_err(|err| err.to_string())
+    }
+
+    async fn workflow_runner_request(
+        &self,
+        method: Method,
+        url: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<WorkflowRunnerHttpResponse, String> {
+        let mut request = self.workflow_runner_http.request(method.clone(), url);
+        if let Some(payload) = body.as_ref() {
+            request = request.json(payload);
+        }
+
+        match request.send().await {
+            Ok(response) => WorkflowRunnerHttpResponse::from_reqwest(response).await,
+            Err(err) => {
+                if should_fallback_to_curl(url) {
+                    tracing::warn!(
+                        "[HoneBotCore] workflow runner reqwest failed, falling back to curl url={} error={:?}",
+                        url,
+                        err
+                    );
+                    self.workflow_runner_request_via_curl(method, url, body)
+                        .await
+                } else {
+                    Err(err.to_string())
+                }
+            }
+        }
+    }
+
+    async fn workflow_runner_request_via_curl(
+        &self,
+        method: Method,
+        url: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<WorkflowRunnerHttpResponse, String> {
+        let mut command = Command::new("curl");
+        command.arg("-sS");
+        command.arg("-X").arg(method.as_str());
+        command.arg(url);
+        command.arg("-H").arg("Accept: application/json");
+        command.arg("-w").arg("\n__HONE_STATUS__:%{http_code}");
+
+        if let Some(payload) = body {
+            let payload_text = serde_json::to_string(&payload).map_err(|err| err.to_string())?;
+            command.arg("-H").arg("Content-Type: application/json");
+            command.arg("--data").arg(payload_text);
+        }
+
+        let output = command.output().await.map_err(|err| err.to_string())?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "curl exited with status {}: {}",
+                output.status,
+                truncate_for_log(stderr.trim(), 240)
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let (body_text, status_text) = stdout
+            .rsplit_once("\n__HONE_STATUS__:")
+            .ok_or_else(|| "curl response missing HTTP status marker".to_string())?;
+        let status_code = status_text
+            .trim()
+            .parse::<u16>()
+            .map_err(|err| format!("invalid curl status code: {err}"))?;
+        let status = StatusCode::from_u16(status_code)
+            .map_err(|err| format!("unsupported HTTP status code {status_code}: {err}"))?;
+
+        Ok(WorkflowRunnerHttpResponse {
+            status,
+            body: body_text.to_string(),
+        })
     }
 
     /// 创建工具注册表
@@ -1133,6 +1206,20 @@ struct WorkflowActiveNode {
     id: String,
 }
 
+#[derive(Debug, Clone)]
+struct WorkflowRunnerHttpResponse {
+    status: StatusCode,
+    body: String,
+}
+
+impl WorkflowRunnerHttpResponse {
+    async fn from_reqwest(response: reqwest::Response) -> Result<Self, String> {
+        let status = response.status();
+        let body = response.text().await.map_err(|err| err.to_string())?;
+        Ok(Self { status, body })
+    }
+}
+
 fn build_report_run_input(company_name: &str, validate_code: &str) -> serde_json::Value {
     json!({
         "companyName": company_name.trim(),
@@ -1288,12 +1375,10 @@ fn first_non_empty_line(value: &str) -> String {
         .to_string()
 }
 
-async fn read_response_text(response: reqwest::Response) -> String {
-    response
-        .text()
-        .await
-        .map(|text| truncate_for_log(text.trim(), 160))
-        .unwrap_or_else(|_| "<empty body>".to_string())
+fn should_fallback_to_curl(url: &str) -> bool {
+    url.starts_with("http://127.0.0.1:")
+        || url.starts_with("http://localhost:")
+        || url.starts_with("http://[::1]:")
 }
 
 #[cfg(test)]

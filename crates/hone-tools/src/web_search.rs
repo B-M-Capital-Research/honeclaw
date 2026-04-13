@@ -10,6 +10,8 @@ use serde_json::Value;
 
 use crate::base::{Tool, ToolParameter};
 
+const DEFAULT_TAVILY_SEARCH_ENDPOINT: &str = "https://api.tavily.com/search";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TavilyErrorKind {
     KeyRejected,
@@ -21,6 +23,7 @@ pub struct WebSearchTool {
     /// 有效 API Key 列表（过滤空值后）
     keys: Vec<String>,
     max_results: u32,
+    endpoint: String,
     http: reqwest::Client,
 }
 
@@ -30,6 +33,7 @@ impl WebSearchTool {
         Self {
             keys: pool.keys().to_vec(),
             max_results,
+            endpoint: DEFAULT_TAVILY_SEARCH_ENDPOINT.to_string(),
             http: reqwest::Client::new(),
         }
     }
@@ -39,8 +43,63 @@ impl WebSearchTool {
         Self {
             keys: pool.keys().to_vec(),
             max_results: config.search.max_results,
+            endpoint: DEFAULT_TAVILY_SEARCH_ENDPOINT.to_string(),
             http: reqwest::Client::new(),
         }
+    }
+
+    fn extract_error_text(value: &Value) -> Option<String> {
+        match value {
+            Value::String(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+            Value::Array(items) => items.iter().find_map(Self::extract_error_text),
+            Value::Object(map) => ["error", "message", "detail", "reason"]
+                .iter()
+                .find_map(|key| map.get(*key).and_then(Self::extract_error_text)),
+            _ => None,
+        }
+    }
+
+    fn response_error_message(data: &Value) -> Option<String> {
+        ["detail", "error", "message"]
+            .iter()
+            .find_map(|key| data.get(*key).and_then(Self::extract_error_text))
+    }
+
+    fn interpret_response(status: reqwest::StatusCode, data: Value) -> Result<Value, String> {
+        let provider_error = Self::response_error_message(&data);
+
+        // HTTP 401/403 或 Tavily 显式返回认证错误 → key 无效，触发 fallback
+        if status == 401 || status == 403 {
+            return Err(
+                provider_error.unwrap_or_else(|| format!("Tavily API Key 无效（HTTP {status}）"))
+            );
+        }
+
+        // Tavily 额度耗尽常见于 HTTP 429/432；也要触发 fallback。
+        if status == 429 || status.as_u16() == 432 {
+            return Err(provider_error
+                .unwrap_or_else(|| format!("Tavily API Key 已达额度限制（HTTP {status}）")));
+        }
+
+        if !status.is_success() {
+            return Err(
+                provider_error.unwrap_or_else(|| format!("Tavily 请求失败（HTTP {status}）"))
+            );
+        }
+
+        // Tavily 在 HTTP 200 时也可能把错误包在 detail/error/message 字段里。
+        if let Some(detail) = provider_error {
+            return Err(detail);
+        }
+
+        Ok(data)
     }
 
     /// 用指定 key 执行一次 Tavily 搜索，返回结果或错误
@@ -56,7 +115,7 @@ impl WebSearchTool {
 
         let resp = self
             .http
-            .post("https://api.tavily.com/search")
+            .post(&self.endpoint)
             .json(&body)
             .timeout(std::time::Duration::from_secs(30))
             .send()
@@ -69,17 +128,7 @@ impl WebSearchTool {
             .await
             .map_err(|e| format!("Tavily 响应解析失败: {e}"))?;
 
-        // HTTP 401/403 或响应体含认证错误 → key 无效，触发 fallback
-        if status == 401 || status == 403 {
-            return Err(format!("Tavily API Key 无效（HTTP {status}）"));
-        }
-
-        // Tavily 在 HTTP 200 时也可能返回错误
-        if let Some(detail) = data.get("detail").and_then(|v| v.as_str()) {
-            return Err(detail.to_string());
-        }
-
-        Ok(data)
+        Self::interpret_response(status, data)
     }
 
     fn classify_attempt_error(error: &str) -> TavilyErrorKind {
@@ -91,6 +140,10 @@ impl WebSearchTool {
             || lower.contains("rate limit")
             || lower.contains("upgrade your plan")
             || lower.contains("credits")
+            || lower.contains("http 401")
+            || lower.contains("http 403")
+            || lower.contains("http 429")
+            || lower.contains("http 432")
         {
             TavilyErrorKind::KeyRejected
         } else {
@@ -232,6 +285,59 @@ mod tests {
             WebSearchTool::classify_attempt_error(error),
             TavilyErrorKind::KeyRejected
         );
+    }
+
+    #[test]
+    fn classify_http_432_as_key_rejected() {
+        assert_eq!(
+            WebSearchTool::classify_attempt_error("Tavily API Key 已达额度限制（HTTP 432）"),
+            TavilyErrorKind::KeyRejected
+        );
+    }
+
+    #[test]
+    fn response_error_message_reads_nested_detail_error() {
+        let payload = serde_json::json!({
+            "detail": {
+                "error": "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com"
+            }
+        });
+        assert_eq!(
+            WebSearchTool::response_error_message(&payload).as_deref(),
+            Some(
+                "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com"
+            )
+        );
+    }
+
+    #[test]
+    fn interpret_response_rejects_nested_detail_quota_error() {
+        let payload = serde_json::json!({
+            "detail": {
+                "error": "This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com"
+            }
+        });
+
+        let error = WebSearchTool::interpret_response(
+            reqwest::StatusCode::from_u16(432).expect("status"),
+            payload,
+        )
+        .expect_err("quota response should fail");
+
+        assert!(error.contains("exceeds your plan"));
+    }
+
+    #[test]
+    fn interpret_response_accepts_success_payload_without_error_fields() {
+        let payload = serde_json::json!({
+            "results": [{ "title": "Fallback result" }],
+            "answer": "ok"
+        });
+
+        let result = WebSearchTool::interpret_response(reqwest::StatusCode::OK, payload)
+            .expect("success payload should pass");
+
+        assert_eq!(result["results"][0]["title"], "Fallback result");
     }
 
     #[test]
