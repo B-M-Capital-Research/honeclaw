@@ -86,6 +86,9 @@ fn desktop_canonical_config_path(config_dir: &Path) -> PathBuf {
     if let Ok(override_path) = env::var("HONE_USER_CONFIG_PATH") {
         return PathBuf::from(override_path);
     }
+    if let Ok(override_path) = env::var("HONE_CONFIG_PATH") {
+        return PathBuf::from(override_path);
+    }
     if let Ok(home) = env::var("HONE_HOME") {
         return PathBuf::from(home).join("config.yaml");
     }
