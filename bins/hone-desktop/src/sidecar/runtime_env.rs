@@ -1,7 +1,5 @@
 use super::*;
-use hone_core::config::{
-    generate_effective_config, seed_canonical_config_from_source,
-};
+use hone_core::config::{generate_effective_config, seed_canonical_config_from_source};
 
 pub(super) fn normalize_base_url(raw: &str) -> String {
     raw.trim().trim_end_matches('/').to_string()

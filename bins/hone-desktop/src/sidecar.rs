@@ -954,7 +954,11 @@ pub(crate) async fn set_agent_settings_impl(
             ),
         ]);
     }
-    apply_setting_updates(&runtime.config_path, &runtime.effective_config_path, updates)?;
+    apply_setting_updates(
+        &runtime.config_path,
+        &runtime.effective_config_path,
+        updates,
+    )?;
     log_desktop(
         &app,
         "INFO",
