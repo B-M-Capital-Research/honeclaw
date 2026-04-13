@@ -236,6 +236,7 @@ static SESSION_RUN_LOCKS: OnceLock<
 fn get_session_run_lock(session_id: &str) -> Arc<tokio::sync::Mutex<()>> {
     let map = SESSION_RUN_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = map.lock().expect("session run lock poisoned");
+    guard.retain(|_, weak| weak.upgrade().is_some());
     // 尝试从已有的 Weak 引用升级；若失败（已无持有者）则创建新锁并覆盖旧条目
     if let Some(existing) = guard.get(session_id).and_then(|w| w.upgrade()) {
         return existing;

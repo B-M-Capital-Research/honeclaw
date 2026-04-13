@@ -260,6 +260,11 @@ admins:
   # Discord admin user ID list (Discord numeric IDs)
   discord_user_ids:
     - "" # example: "123456789012345678"
+  # Optional runtime admin registration passphrase.
+  # Prefer setting this through the env var below instead of committing plaintext secrets.
+  runtime_admin_registration_passphrase: ""
+  # Env var name used when runtime_admin_registration_passphrase is empty
+  runtime_admin_registration_passphrase_env: "HONE_ADMIN_REGISTER_PASSPHRASE"
 
 
 web:
@@ -270,6 +275,10 @@ web:
   research_api_key: ""
   # Local private workflow runner base URL used by the cross-channel /report shortcut
   local_workflow_api_base: "http://127.0.0.1:3213"
+  # Validate code required by the local private workflow runner /report shortcut
+  local_workflow_validate_code: ""
+  # Env var name used when local_workflow_validate_code is empty
+  local_workflow_validate_code_env: "HONE_REPORT_VALIDATE_CODE"
 
 
 security:

@@ -566,6 +566,7 @@ impl DiscordHandler {
                 self.core.clone(),
                 AttachmentPersistRequest {
                     channel: "discord".to_string(),
+                    actor: actor.clone(),
                     user_id: author_id.to_string(),
                     session_id: session_id.clone(),
                     attachments: attachments.clone(),
@@ -745,6 +746,7 @@ impl DiscordHandler {
                 self.core.clone(),
                 AttachmentPersistRequest {
                     channel: "discord".to_string(),
+                    actor: envelope.actor.clone(),
                     user_id: author_id.to_string(),
                     session_id: session_id.clone(),
                     attachments: attachments.clone(),

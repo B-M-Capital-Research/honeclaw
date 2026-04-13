@@ -407,6 +407,35 @@ pub struct AdminConfig {
     /// Discord 管理员用户 ID 列表（数字字符串，如 "123456789012345678"）
     #[serde(default)]
     pub discord_user_ids: Vec<String>,
+    /// 运行时管理员注册口令；建议留空并改用环境变量
+    #[serde(default)]
+    pub runtime_admin_registration_passphrase: String,
+    /// 运行时管理员注册口令环境变量名
+    #[serde(default = "default_runtime_admin_registration_passphrase_env")]
+    pub runtime_admin_registration_passphrase_env: String,
+}
+
+impl AdminConfig {
+    pub fn resolved_runtime_admin_registration_passphrase(&self) -> String {
+        let direct = self.runtime_admin_registration_passphrase.trim();
+        if !direct.is_empty() {
+            return direct.to_string();
+        }
+
+        let env_name = self.runtime_admin_registration_passphrase_env.trim();
+        if env_name.is_empty() {
+            return String::new();
+        }
+
+        std::env::var(env_name)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    }
+}
+
+fn default_runtime_admin_registration_passphrase_env() -> String {
+    "HONE_ADMIN_REGISTER_PASSPHRASE".to_string()
 }
 
 fn default_max_iterations() -> u32 {

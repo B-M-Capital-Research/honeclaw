@@ -14,7 +14,6 @@ use hone_channels::attachments::{
     AttachmentIngestRequest, AttachmentPersistRequest, RawAttachment, build_attachment_ack_message,
     build_user_input, ingest_raw_attachments, spawn_attachment_persist_pipeline,
 };
-use hone_channels::channel_download_dir;
 use hone_channels::ingress::{
     ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
     MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
@@ -312,6 +311,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             state.core.clone(),
             AttachmentPersistRequest {
                 channel: "feishu".to_string(),
+                actor: actor.clone(),
                 user_id: log_user.clone(),
                 session_id: session_id.clone(),
                 attachments: attachments.clone(),
@@ -923,6 +923,7 @@ async fn download_attachment(
             "feishu://message/{}/{}/{}",
             message_id, resource_type, file_key
         ),
+        data: None,
         local_path: None,
         error: None,
     };
@@ -933,7 +934,7 @@ async fn download_attachment(
         .await
     {
         Ok((bytes, content_type)) => {
-            attachment.size = Some(bytes.len() as u32);
+            attachment.size = Some(u32::try_from(bytes.len()).unwrap_or(u32::MAX));
             attachment.content_type = content_type.clone();
 
             let mut final_filename = fallback_name.to_string();
@@ -953,31 +954,7 @@ async fn download_attachment(
                 }
             }
             attachment.filename = final_filename.clone();
-
-            let upload_dir = channel_download_dir("feishu");
-            if let Err(e) = std::fs::create_dir_all(&upload_dir) {
-                attachment.error = Some(format!("failed to create dir: {e}"));
-                return attachment;
-            }
-
-            let file_path = upload_dir.join(format!(
-                "{}_{}_{}",
-                chrono::Utc::now().timestamp_millis(),
-                resource_type,
-                final_filename
-            ));
-            if let Err(e) = tokio::fs::write(&file_path, &bytes).await {
-                attachment.error = Some(format!("failed to write file: {e}"));
-                return attachment;
-            }
-
-            attachment.local_path = file_path
-                .file_name()
-                .map(|n| upload_dir.join(n).to_string_lossy().to_string());
-
-            if let Ok(abs) = std::fs::canonicalize(&file_path) {
-                attachment.local_path = Some(abs.to_string_lossy().to_string());
-            }
+            attachment.data = Some(bytes);
         }
         Err(e) => {
             attachment.error = Some(e);
@@ -1149,8 +1126,8 @@ fn collect_raw_attachments(msg: &FeishuIncomingMessage) -> Vec<RawAttachment> {
             content_type: attachment.content_type.clone(),
             size: attachment.size,
             url: attachment.url.clone(),
+            data: attachment.data.clone(),
             local_path: attachment.local_path.clone().map(std::path::PathBuf::from),
-            data: None,
             error: attachment.error.clone(),
         });
     }

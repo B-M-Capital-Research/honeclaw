@@ -49,6 +49,8 @@ pub(crate) struct FeishuIncomingAttachment {
     pub(crate) size: Option<u32>,
     pub(crate) url: String,
     #[serde(default)]
+    pub(crate) data: Option<Vec<u8>>,
+    #[serde(default)]
     pub(crate) local_path: Option<String>,
     #[serde(default)]
     pub(crate) error: Option<String>,

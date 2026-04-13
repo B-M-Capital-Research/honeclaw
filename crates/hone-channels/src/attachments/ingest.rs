@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use flate2::read::GzDecoder;
 use hone_core::ActorIdentity;
+use serde::{Deserialize, Serialize};
 use tar::Archive;
 use tokio::task;
 use tracing::warn;
@@ -30,7 +31,7 @@ const MAX_ATTACHMENT_BYTES: u64 = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 3 * 1024 * 1024;
 const ATTACHMENT_POLICY_REJECT_PREFIX: &str = "附件未通过准入限制";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AttachmentKind {
     Image,
     Pdf,
@@ -57,7 +58,7 @@ impl AttachmentKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractedFileInfo {
     pub path: String,
     pub size: u64,
@@ -65,7 +66,7 @@ pub struct ExtractedFileInfo {
     pub preview: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReceivedAttachment {
     pub filename: String,
     pub content_type: Option<String>,
@@ -110,9 +111,18 @@ pub struct AttachmentIngestRequest {
 #[derive(Debug, Clone)]
 pub struct AttachmentPersistRequest {
     pub channel: String,
+    pub actor: ActorIdentity,
     pub user_id: String,
     pub session_id: String,
     pub attachments: Vec<ReceivedAttachment>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AttachmentPersistManifest {
+    channel: String,
+    user_id: String,
+    session_id: String,
+    attachments: Vec<ReceivedAttachment>,
 }
 
 #[async_trait]
@@ -155,8 +165,11 @@ pub fn spawn_attachment_persist_pipeline(
     core: Arc<HoneBotCore>,
     request: AttachmentPersistRequest,
 ) {
-    let _ = core;
-    let _ = request;
+    tokio::spawn(async move {
+        if let Err(err) = persist_attachment_manifest(core, request).await {
+            warn!("[Attachments] persist manifest failed: {err}");
+        }
+    });
 }
 
 async fn ingest_one_raw_attachment(
@@ -185,6 +198,7 @@ async fn ingest_one_raw_attachment(
     };
 
     if let Some(reason) = validate_attachment_policy(kind, attachment.size) {
+        cleanup_raw_attachment_staging_file(&attachment).await;
         received.error = Some(reason);
         return received;
     }
@@ -261,6 +275,48 @@ async fn materialize_raw_attachment(
 
 fn attachment_upload_dir(actor: &ActorIdentity, session_id: &str) -> PathBuf {
     actor_upload_dir(actor, session_id)
+}
+
+async fn cleanup_raw_attachment_staging_file(attachment: &RawAttachment) {
+    let Some(path) = attachment.local_path.as_ref() else {
+        return;
+    };
+    if let Err(err) = tokio::fs::remove_file(path).await
+        && err.kind() != std::io::ErrorKind::NotFound
+    {
+        warn!(
+            "[Attachments] failed to clean rejected staging file {}: {}",
+            path.display(),
+            err
+        );
+    }
+}
+
+async fn persist_attachment_manifest(
+    _core: Arc<HoneBotCore>,
+    request: AttachmentPersistRequest,
+) -> Result<(), String> {
+    if request.attachments.is_empty() {
+        return Ok(());
+    }
+
+    let upload_dir = attachment_upload_dir(&request.actor, &request.session_id);
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .map_err(|err| format!("创建附件持久化目录失败: {err}"))?;
+
+    let manifest = AttachmentPersistManifest {
+        channel: request.channel,
+        user_id: request.user_id,
+        session_id: request.session_id,
+        attachments: request.attachments,
+    };
+    let manifest_json = serde_json::to_vec_pretty(&manifest)
+        .map_err(|err| format!("序列化附件 manifest 失败: {err}"))?;
+    tokio::fs::write(upload_dir.join("attachments.manifest.json"), manifest_json)
+        .await
+        .map_err(|err| format!("写入附件 manifest 失败: {err}"))?;
+    Ok(())
 }
 
 fn unique_attachment_prefix(index: usize) -> String {
@@ -350,9 +406,12 @@ pub async fn enrich_attachment_with_extract_dir(
                     sanitize_filename(&attachment.filename)
                 ))
         });
-        match extract_archive_with_limits(path.clone(), target_dir).await {
+        match extract_archive_with_limits(path.clone(), target_dir.clone()).await {
             Ok(files) => attachment.extracted_files = files,
-            Err(err) => attachment.extraction_error = Some(err),
+            Err(err) => {
+                let _ = tokio::fs::remove_dir_all(&target_dir).await;
+                attachment.extraction_error = Some(err);
+            }
         }
     } else if attachment.kind == AttachmentKind::Pdf {
         match super::vector_store::extract_pdf_preview(path).await {
@@ -929,6 +988,8 @@ fn maybe_read_text_preview(path: &Path, kind: AttachmentKind, size: u64) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::HoneBotCore;
+    use hone_core::{ActorIdentity, HoneConfig};
     use image::{ImageBuffer, Rgb};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1199,6 +1260,102 @@ mod tests {
         let path = write_test_image(1200, 900, "regular.png");
         assert!(validate_image_shape_blocking(&path, "regular.png").is_none());
         let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn persist_pipeline_writes_manifest_into_actor_upload_dir() {
+        let sandbox_root = std::env::temp_dir().join(format!(
+            "hone-attach-manifest-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("epoch")
+                .as_millis()
+        ));
+        unsafe {
+            std::env::set_var("HONE_AGENT_SANDBOX_DIR", &sandbox_root);
+        }
+
+        let actor = ActorIdentity::new("discord", "alice", Some("dm")).expect("actor");
+        let request = AttachmentPersistRequest {
+            channel: "discord".to_string(),
+            actor: actor.clone(),
+            user_id: "alice".to_string(),
+            session_id: "session-1".to_string(),
+            attachments: vec![ReceivedAttachment {
+                filename: "report.pdf".to_string(),
+                content_type: Some("application/pdf".to_string()),
+                size: 123,
+                url: "discord://attachment/1".to_string(),
+                kind: AttachmentKind::Pdf,
+                local_path: Some("/tmp/report.pdf".to_string()),
+                error: None,
+                extracted_files: vec![],
+                extraction_error: None,
+                pdf_text_preview: None,
+                pdf_extract_error: None,
+            }],
+        };
+
+        persist_attachment_manifest(Arc::new(HoneBotCore::new(HoneConfig::default())), request)
+            .await
+            .expect("persist manifest");
+
+        let manifest_path =
+            attachment_upload_dir(&actor, "session-1").join("attachments.manifest.json");
+        let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
+        assert!(manifest.contains("\"channel\": \"discord\""));
+        assert!(manifest.contains("\"filename\": \"report.pdf\""));
+
+        let _ = fs::remove_dir_all(&sandbox_root);
+        unsafe {
+            std::env::remove_var("HONE_AGENT_SANDBOX_DIR");
+        }
+    }
+
+    #[tokio::test]
+    async fn archive_extract_cleanup_removes_target_dir_on_error() {
+        let base = std::env::temp_dir().join(format!(
+            "hone-attach-extract-cleanup-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("epoch")
+                .as_millis()
+        ));
+        fs::create_dir_all(&base).expect("create temp dir");
+        let zip_path = base.join("too-many-files.zip");
+        let out_dir = base.join("out");
+
+        {
+            let file = fs::File::create(&zip_path).expect("create zip");
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::FileOptions::default();
+            for idx in 0..=MAX_ARCHIVE_EXTRACTED_FILES {
+                zip.start_file(format!("nested/{idx}.txt"), options)
+                    .expect("start file");
+                zip.write_all(b"x").expect("write file");
+            }
+            zip.finish().expect("finish zip");
+        }
+
+        let attachment = ReceivedAttachment {
+            filename: "too-many-files.zip".to_string(),
+            content_type: Some("application/zip".to_string()),
+            size: 128,
+            url: "https://example.com/too-many-files.zip".to_string(),
+            kind: AttachmentKind::Archive,
+            local_path: Some(zip_path.to_string_lossy().to_string()),
+            error: None,
+            extracted_files: vec![],
+            extraction_error: None,
+            pdf_text_preview: None,
+            pdf_extract_error: None,
+        };
+
+        let enriched = enrich_attachment_with_extract_dir(attachment, Some(out_dir.clone())).await;
+        assert!(enriched.extraction_error.is_some());
+        assert!(!out_dir.exists());
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     fn write_test_image(width: u32, height: u32, name: &str) -> PathBuf {

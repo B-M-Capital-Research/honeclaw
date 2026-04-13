@@ -461,6 +461,7 @@ async fn process_telegram_message_batch(
             core.clone(),
             AttachmentPersistRequest {
                 channel: "telegram".to_string(),
+                actor: actor.clone(),
                 user_id: author_id.clone(),
                 session_id: session_id.clone(),
                 attachments: attachments.clone(),

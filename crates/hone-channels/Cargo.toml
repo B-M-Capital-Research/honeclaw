@@ -24,6 +24,7 @@ async-trait = { workspace = true }
 regex = "1"
 chrono.workspace = true
 reqwest = { workspace = true }
+subtle = { workspace = true }
 flate2 = "1"
 tar = "0.4"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }

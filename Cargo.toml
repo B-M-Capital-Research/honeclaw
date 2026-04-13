@@ -23,7 +23,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.12"
+version = "0.1.13"
 edition = "2024"
 authors = ["Hone Financial"]
 license = "MIT"
@@ -69,6 +69,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Regex
 regex = "1"
+subtle = "2"
 
 # Internal crates
 hone-core = { path = "crates/hone-core" }

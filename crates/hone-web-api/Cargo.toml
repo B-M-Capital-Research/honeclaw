@@ -27,6 +27,7 @@ tower-http     = { workspace = true }
 uuid           = { workspace = true }
 reqwest        = { workspace = true }
 async-trait    = { workspace = true }
+subtle         = { workspace = true }
 url            = "2"
 
 [dev-dependencies]

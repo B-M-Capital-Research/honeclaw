@@ -8,6 +8,7 @@ use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
+use subtle::ConstantTimeEq;
 
 use crate::routes::json_error;
 use crate::state::AppState;
@@ -81,7 +82,7 @@ fn request_has_valid_auth(state: &AppState, request: &Request<Body>) -> bool {
         .and_then(|v| v.to_str().ok())
     {
         if let Some(token) = value.strip_prefix("Bearer ") {
-            if token == expected {
+            if token.as_bytes().ct_eq(expected.as_bytes()).into() {
                 return true;
             }
         }
@@ -92,4 +93,56 @@ fn request_has_valid_auth(state: &AppState, request: &Request<Body>) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::request_has_valid_auth;
+    use crate::logging::LogBuffer;
+    use crate::state::{AppState, AuthState, HeartbeatRegistry};
+    use axum::body::Body;
+    use axum::http::{Request, header};
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::broadcast;
+
+    fn test_state(token: Option<&str>) -> AppState {
+        let (push_tx, _) = broadcast::channel(8);
+        AppState {
+            core: Arc::new(hone_channels::HoneBotCore::new(
+                hone_core::HoneConfig::default(),
+            )),
+            push_tx,
+            http_client: reqwest::Client::new(),
+            log_buffer: LogBuffer::new(),
+            deployment_mode: "remote".to_string(),
+            auth: AuthState {
+                bearer_token: token.map(str::to_string),
+                sse_tickets: Mutex::new(HashMap::new()),
+            },
+            heartbeat_registry: HeartbeatRegistry::default(),
+        }
+    }
+
+    #[test]
+    fn bearer_token_auth_accepts_exact_match() {
+        let state = test_state(Some("secret-token"));
+        let request = Request::builder()
+            .uri("/api/skills")
+            .header(header::AUTHORIZATION, "Bearer secret-token")
+            .body(Body::empty())
+            .expect("request");
+        assert!(request_has_valid_auth(&state, &request));
+    }
+
+    #[test]
+    fn bearer_token_auth_rejects_non_matching_token() {
+        let state = test_state(Some("secret-token"));
+        let request = Request::builder()
+            .uri("/api/skills")
+            .header(header::AUTHORIZATION, "Bearer secret-token-x")
+            .body(Body::empty())
+            .expect("request");
+        assert!(!request_has_valid_auth(&state, &request));
+    }
 }

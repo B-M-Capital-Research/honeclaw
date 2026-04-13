@@ -1201,7 +1201,7 @@ mod tests {
         manager.resolved_base_url = Some("http://127.0.0.1:3000".to_string());
         manager.meta = Some(MetaInfo {
             name: "Hone".to_string(),
-            version: "0.1.12".to_string(),
+            version: "0.1.13".to_string(),
             channel: "imessage".to_string(),
             supports_imessage: true,
             api_version: API_VERSION.to_string(),

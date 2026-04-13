@@ -173,7 +173,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 请使用可用工具检查用户设置的触发条件是否已经满足。\n\
 \n\
 规则：\n\
-1. 如果条件尚未满足，优先只输出 `{{\"status\":\"noop\"}}`；为兼容旧行为，也允许只输出 `{}`。\n\
+1. 如果条件尚未满足，优先只输出 `{{\"status\":\"noop\"}}`；为兼容旧行为，也允许只输出 `{{}}`。\n\
 2. 如果条件已满足，只输出一段 JSON：`{{\"status\":\"triggered\",\"message\":\"...\"}}`。\n\
 3. `message` 必须是一条可以直接发给用户的提醒消息，包含：满足的条件、关键数据、检查时间。\n\
 4. 不要创建新的定时任务，也不要修改现有任务。\n\
@@ -181,7 +181,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
 \n\
 以下是需要检查的用户条件：\n{}",
-            event.job_name, HEARTBEAT_NOOP_SENTINEL, event.task_prompt
+            event.job_name, event.task_prompt
         );
     }
     let trigger_note = format!(
@@ -417,7 +417,12 @@ async fn run_heartbeat_task(
 
 #[cfg(test)]
 mod tests {
-    use super::{HeartbeatOutcome, HeartbeatParseKind, inspect_heartbeat_result};
+    use super::{
+        HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, inspect_heartbeat_result,
+    };
+    use hone_core::ActorIdentity;
+    use hone_scheduler::SchedulerEvent;
+    use serde_json::Value;
 
     #[test]
     fn heartbeat_exact_noop_is_suppressed() {
@@ -556,5 +561,26 @@ mod tests {
             inspect_heartbeat_result(r#"{"status":"maybe","message":"foo"}"#);
         assert_eq!(parse_kind, HeartbeatParseKind::JsonUnknownStatus);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
+    }
+
+    #[test]
+    fn heartbeat_prompt_keeps_legacy_empty_json_example_literal() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("discord", "alice", Some("dm")).expect("actor"),
+            job_id: "job-1".to_string(),
+            job_name: "heartbeat".to_string(),
+            task_prompt: "检查条件".to_string(),
+            channel: "discord".to_string(),
+            channel_scope: Some("dm".to_string()),
+            channel_target: "alice".to_string(),
+            delivery_key: "delivery-1".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("也允许只输出 `{}`。"));
+        assert!(!prompt.contains("[[HEARTBEAT_NOOP]]"));
     }
 }

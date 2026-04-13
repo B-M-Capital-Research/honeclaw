@@ -24,6 +24,7 @@ use hone_tools::{
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
+use subtle::ConstantTimeEq;
 use tokio::sync::mpsc;
 
 use crate::runners::{
@@ -33,15 +34,19 @@ use crate::runners::{
 use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
 
-pub const REGISTER_ADMIN_INTERCEPT_TEXT: &str = "/register-admin AMM";
+pub const REGISTER_ADMIN_INTERCEPT_PREFIX: &str = "/register-admin";
 pub const REGISTER_ADMIN_INTERCEPT_ACK: &str = "已将当前 identity 升级为管理员。";
+pub const REGISTER_ADMIN_INTERCEPT_DENY_ACK: &str =
+    "管理员注册失败：当前 identity 不在 admins 白名单中。";
+pub const REGISTER_ADMIN_INTERCEPT_DISABLED_ACK: &str =
+    "管理员注册失败：当前未配置 runtime 管理员注册口令。";
+pub const REGISTER_ADMIN_INTERCEPT_INVALID_ACK: &str = "管理员注册失败：口令无效。";
 const REPORT_INTERCEPT_PREFIX: &str = "/report";
 const REPORT_PROGRESS_COMMAND: &str = "进度";
 const REPORT_PROGRESS_COMMAND_ALIAS: &str = "progress";
 const REPORT_WORKFLOW_ID: &str = "company_report";
 const REPORT_DEFAULT_MODE: &str = "完整跑完";
 const REPORT_DEFAULT_RESEARCH_TOPIC: &str = "新闻";
-const REPORT_DEFAULT_VALIDATE_CODE: &str = "bamangniubi";
 
 #[derive(Debug, Clone)]
 pub struct CompactSessionOutcome {
@@ -466,9 +471,41 @@ impl HoneBotCore {
             || self.is_admin(&actor.user_id, &actor.channel)
     }
 
-    pub fn try_intercept_admin_registration(&self, actor: &ActorIdentity, input: &str) -> bool {
-        if !matches_register_admin_intercept(input) {
-            return false;
+    pub fn try_intercept_admin_registration(
+        &self,
+        actor: &ActorIdentity,
+        input: &str,
+    ) -> Option<String> {
+        let Some(passphrase) = parse_admin_registration_passphrase(input) else {
+            return None;
+        };
+
+        if !self.is_admin(&actor.user_id, &actor.channel) {
+            tracing::warn!(
+                "[HoneBotCore] runtime_admin_override denied actor={} reason=not_whitelisted",
+                actor.session_id()
+            );
+            return Some(REGISTER_ADMIN_INTERCEPT_DENY_ACK.to_string());
+        }
+
+        let expected = self
+            .config
+            .admins
+            .resolved_runtime_admin_registration_passphrase();
+        if expected.is_empty() {
+            tracing::warn!(
+                "[HoneBotCore] runtime_admin_override denied actor={} reason=passphrase_disabled",
+                actor.session_id()
+            );
+            return Some(REGISTER_ADMIN_INTERCEPT_DISABLED_ACK.to_string());
+        }
+
+        if !constant_time_str_eq(&passphrase, &expected) {
+            tracing::warn!(
+                "[HoneBotCore] runtime_admin_override denied actor={} reason=invalid_passphrase",
+                actor.session_id()
+            );
+            return Some(REGISTER_ADMIN_INTERCEPT_INVALID_ACK.to_string());
         }
 
         let inserted = self
@@ -482,7 +519,7 @@ impl HoneBotCore {
             actor.session_id(),
             inserted
         );
-        true
+        Some(REGISTER_ADMIN_INTERCEPT_ACK.to_string())
     }
 
     pub async fn try_handle_intercept_command(
@@ -490,8 +527,8 @@ impl HoneBotCore {
         actor: &ActorIdentity,
         input: &str,
     ) -> Option<String> {
-        if self.try_intercept_admin_registration(actor, input) {
-            return Some(REGISTER_ADMIN_INTERCEPT_ACK.to_string());
+        if let Some(reply) = self.try_intercept_admin_registration(actor, input) {
+            return Some(reply);
         }
 
         match parse_report_intercept(input) {
@@ -508,7 +545,12 @@ impl HoneBotCore {
             return "未配置本地 workflow runner 地址，暂时无法启动研报任务。".to_string();
         };
 
-        let request_body = build_report_run_input(company_name);
+        let validate_code = self.config.web.resolved_local_workflow_validate_code();
+        if validate_code.is_empty() {
+            return "未配置本地 workflow runner validate code，暂时无法启动研报任务。".to_string();
+        }
+
+        let request_body = build_report_run_input(company_name, &validate_code);
         let url = format!("{base_url}/api/runs");
         let response = match self
             .workflow_runner_http
@@ -1074,11 +1116,11 @@ struct WorkflowActiveNode {
     id: String,
 }
 
-fn build_report_run_input(company_name: &str) -> serde_json::Value {
+fn build_report_run_input(company_name: &str, validate_code: &str) -> serde_json::Value {
     json!({
         "companyName": company_name.trim(),
         "genPost": REPORT_DEFAULT_MODE,
-        "validateCode": REPORT_DEFAULT_VALIDATE_CODE,
+        "validateCode": validate_code,
         "news": "",
         "task_id": "",
         "research_topic": REPORT_DEFAULT_RESEARCH_TOPIC,
@@ -1100,8 +1142,24 @@ fn normalize_intercept_input(input: &str) -> String {
     normalized.to_string()
 }
 
+fn parse_admin_registration_passphrase(input: &str) -> Option<String> {
+    let normalized = normalize_intercept_input(input);
+    let remainder = normalized
+        .strip_prefix(REGISTER_ADMIN_INTERCEPT_PREFIX)?
+        .trim();
+    if remainder.is_empty() {
+        return None;
+    }
+    Some(remainder.to_string())
+}
+
+#[cfg(test)]
 fn matches_register_admin_intercept(input: &str) -> bool {
-    normalize_intercept_input(input) == REGISTER_ADMIN_INTERCEPT_TEXT
+    parse_admin_registration_passphrase(input).is_some()
+}
+
+fn constant_time_str_eq(left: &str, right: &str) -> bool {
+    left.as_bytes().ct_eq(right.as_bytes()).into()
 }
 
 fn parse_report_intercept(input: &str) -> Option<ReportIntercept> {
@@ -1224,34 +1282,93 @@ async fn read_response_text(response: reqwest::Response) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        HoneBotCore, REGISTER_ADMIN_INTERCEPT_TEXT, REPORT_DEFAULT_MODE,
-        REPORT_DEFAULT_RESEARCH_TOPIC, REPORT_DEFAULT_VALIDATE_CODE, ReportIntercept,
-        build_report_run_input, matches_register_admin_intercept, parse_report_intercept,
+        HoneBotCore, REGISTER_ADMIN_INTERCEPT_DENY_ACK, REGISTER_ADMIN_INTERCEPT_DISABLED_ACK,
+        REGISTER_ADMIN_INTERCEPT_INVALID_ACK, REGISTER_ADMIN_INTERCEPT_PREFIX, REPORT_DEFAULT_MODE,
+        REPORT_DEFAULT_RESEARCH_TOPIC, ReportIntercept, build_report_run_input,
+        matches_register_admin_intercept, parse_report_intercept,
     };
     use hone_core::{ActorIdentity, HoneConfig};
     use serde_json::json;
+
+    const REGISTER_ADMIN_INTERCEPT_TEXT: &str = "/register-admin secret";
 
     #[test]
     fn register_admin_intercept_matches_plain_and_quoted_text() {
         assert!(matches_register_admin_intercept(
             REGISTER_ADMIN_INTERCEPT_TEXT
         ));
-        assert!(matches_register_admin_intercept("' /register-admin AMM '"));
-        assert!(matches_register_admin_intercept("\"/register-admin AMM\""));
+        assert!(matches_register_admin_intercept(
+            "' /register-admin secret '"
+        ));
+        assert!(matches_register_admin_intercept(
+            "\"/register-admin secret\""
+        ));
         assert!(!matches_register_admin_intercept("/register-admin"));
     }
 
     #[test]
-    fn runtime_admin_override_is_scoped_to_actor_identity() {
+    fn runtime_admin_override_requires_whitelisted_actor_and_configured_passphrase() {
         let core = HoneBotCore::new(HoneConfig::default());
+        let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
+        assert_eq!(
+            core.try_intercept_admin_registration(&actor, REGISTER_ADMIN_INTERCEPT_TEXT),
+            Some(REGISTER_ADMIN_INTERCEPT_DENY_ACK.to_string())
+        );
+    }
+
+    #[test]
+    fn runtime_admin_override_rejects_when_passphrase_missing_or_invalid() {
+        let mut config = HoneConfig::default();
+        config.admins.discord_user_ids = vec!["alice".to_string()];
+        let core = HoneBotCore::new(config.clone());
+        let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
+
+        assert_eq!(
+            core.try_intercept_admin_registration(&actor, REGISTER_ADMIN_INTERCEPT_TEXT),
+            Some(REGISTER_ADMIN_INTERCEPT_DISABLED_ACK.to_string())
+        );
+
+        config.admins.runtime_admin_registration_passphrase = "secret".to_string();
+        let core = HoneBotCore::new(config);
+        assert_eq!(
+            core.try_intercept_admin_registration(
+                &actor,
+                &format!("{REGISTER_ADMIN_INTERCEPT_PREFIX} wrong")
+            ),
+            Some(REGISTER_ADMIN_INTERCEPT_INVALID_ACK.to_string())
+        );
+    }
+
+    #[test]
+    fn runtime_admin_override_is_scoped_to_actor_identity() {
+        let mut config = HoneConfig::default();
+        config.admins.discord_user_ids = vec!["alice".to_string()];
+        config.admins.runtime_admin_registration_passphrase = "secret".to_string();
+        let core = HoneBotCore::new(config);
         let actor = ActorIdentity::new("discord", "alice", Some("g:1:c:2")).expect("actor");
         let other_scope =
             ActorIdentity::new("discord", "alice", Some("g:1:c:3")).expect("other scope");
 
-        assert!(!core.is_admin_actor(&actor));
-        assert!(core.try_intercept_admin_registration(&actor, REGISTER_ADMIN_INTERCEPT_TEXT));
+        assert!(core.is_admin(&actor.user_id, &actor.channel));
+        assert!(
+            !core
+                .runtime_admin_overrides
+                .read()
+                .unwrap()
+                .contains(&actor)
+        );
+        assert_eq!(
+            core.try_intercept_admin_registration(&actor, REGISTER_ADMIN_INTERCEPT_TEXT),
+            Some(super::REGISTER_ADMIN_INTERCEPT_ACK.to_string())
+        );
+        assert!(
+            core.runtime_admin_overrides
+                .read()
+                .unwrap()
+                .contains(&actor)
+        );
         assert!(core.is_admin_actor(&actor));
-        assert!(!core.is_admin_actor(&other_scope));
+        assert!(core.is_admin_actor(&other_scope));
     }
 
     #[test]
@@ -1276,11 +1393,11 @@ mod tests {
     #[test]
     fn report_run_input_includes_required_defaults() {
         assert_eq!(
-            build_report_run_input("Astera Labs"),
+            build_report_run_input("Astera Labs", "validate-me"),
             json!({
                 "companyName": "Astera Labs",
                 "genPost": REPORT_DEFAULT_MODE,
-                "validateCode": REPORT_DEFAULT_VALIDATE_CODE,
+                "validateCode": "validate-me",
                 "news": "",
                 "task_id": "",
                 "research_topic": REPORT_DEFAULT_RESEARCH_TOPIC,

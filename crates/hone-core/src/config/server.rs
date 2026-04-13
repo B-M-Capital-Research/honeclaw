@@ -11,6 +11,10 @@ pub struct WebConfig {
     pub research_api_key: String,
     #[serde(default = "default_local_workflow_api_base")]
     pub local_workflow_api_base: String,
+    #[serde(default)]
+    pub local_workflow_validate_code: String,
+    #[serde(default = "default_local_workflow_validate_code_env")]
+    pub local_workflow_validate_code_env: String,
 }
 
 impl Default for WebConfig {
@@ -20,7 +24,28 @@ impl Default for WebConfig {
             research_api_base: default_research_api_base(),
             research_api_key: String::new(),
             local_workflow_api_base: default_local_workflow_api_base(),
+            local_workflow_validate_code: String::new(),
+            local_workflow_validate_code_env: default_local_workflow_validate_code_env(),
         }
+    }
+}
+
+impl WebConfig {
+    pub fn resolved_local_workflow_validate_code(&self) -> String {
+        let direct = self.local_workflow_validate_code.trim();
+        if !direct.is_empty() {
+            return direct.to_string();
+        }
+
+        let env_name = self.local_workflow_validate_code_env.trim();
+        if env_name.is_empty() {
+            return String::new();
+        }
+
+        std::env::var(env_name)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
     }
 }
 
@@ -30,6 +55,10 @@ fn default_research_api_base() -> String {
 
 fn default_local_workflow_api_base() -> String {
     "http://127.0.0.1:3213".to_string()
+}
+
+fn default_local_workflow_validate_code_env() -> String {
+    "HONE_REPORT_VALIDATE_CODE".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
