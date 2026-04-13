@@ -1,8 +1,22 @@
 # Archive Index
 
-Last updated: 2026-04-12
+Last updated: 2026-04-13
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
+
+## 2026-04-13
+
+### Skill Runtime 对齐 Claude Code 与 Multi-Agent 优化提案
+
+- Status: done
+- Date: 2026-04-13
+- Plan: N/A
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: N/A
+- Current conclusion: 已完成一份 proposal，对比 Claude Code 官方 skill 模型与 Hone 当前实现差异，并分析 `multi-agent` runner 下 skill 的实际使用模式；提案建议把 active skill state 提升为 runner 一等状态，随后再补 `allowed-tools` / `context: fork` / supporting files 等执行与作者体验能力
+- Next entry point: `docs/proposals/skill-runtime-multi-agent-alignment.md`
 
 ## 2026-04-12
 
