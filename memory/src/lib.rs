@@ -13,7 +13,8 @@ pub mod session_sqlite;
 pub use company_profile::{
     AppendEventInput, CompanyProfileDocument, CompanyProfileEventDocument, CompanyProfileStorage,
     CreateProfileInput, IndustryTemplate, ProfileEventMetadata, ProfileMetadata,
-    ProfileSpaceSummary, ProfileSummary, TrackingConfig,
+    ProfileSpaceSummary, ProfileSummary, RawProfileDocument, RawProfileEventDocument,
+    RawProfileSummary, TrackingConfig,
 };
 pub use cron_job::CronJobStorage;
 pub use llm_audit::{AuditQueryFilter, AuditRecordSummary, LlmAuditStorage};

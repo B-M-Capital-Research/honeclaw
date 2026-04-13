@@ -156,6 +156,35 @@ pub struct ProfileSpaceSummary {
     pub updated_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RawProfileSummary {
+    pub profile_id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    pub event_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RawProfileEventDocument {
+    pub id: String,
+    pub filename: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    pub markdown: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RawProfileDocument {
+    pub profile_id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    pub markdown: String,
+    pub events: Vec<RawProfileEventDocument>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateProfileInput {
     pub company_name: String,
@@ -376,6 +405,109 @@ impl CompanyProfileStorage {
         spaces
     }
 
+    pub fn list_profile_spaces_raw(&self) -> Vec<ProfileSpaceSummary> {
+        let mut spaces = Vec::new();
+        let channels = match fs::read_dir(&self.root_dir) {
+            Ok(entries) => entries,
+            Err(_) => return spaces,
+        };
+
+        for channel_entry in channels.flatten() {
+            let channel_path = channel_entry.path();
+            if !channel_path.is_dir() {
+                continue;
+            }
+            let Some(channel_component) = channel_path.file_name().and_then(|value| value.to_str())
+            else {
+                continue;
+            };
+            let channel = decode_component(channel_component);
+            if channel.is_empty() {
+                continue;
+            }
+
+            let scoped_users = match fs::read_dir(&channel_path) {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+
+            for scoped_user_entry in scoped_users.flatten() {
+                let scoped_user_path = scoped_user_entry.path();
+                if !scoped_user_path.is_dir() {
+                    continue;
+                }
+                let Some(scoped_user_key) = scoped_user_path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                else {
+                    continue;
+                };
+                let Some((channel_scope, user_id)) = actor_from_scoped_user_key(scoped_user_key)
+                else {
+                    continue;
+                };
+                let Ok(actor) = ActorIdentity::new(channel.clone(), user_id, channel_scope.clone())
+                else {
+                    continue;
+                };
+                let profiles = self.for_actor(&actor).list_profiles_raw();
+                if profiles.is_empty() {
+                    continue;
+                }
+                spaces.push(ProfileSpaceSummary {
+                    channel: actor.channel.clone(),
+                    user_id: actor.user_id.clone(),
+                    channel_scope: actor.channel_scope.clone(),
+                    profile_count: profiles.len(),
+                    updated_at: profiles
+                        .first()
+                        .and_then(|profile| profile.updated_at.clone()),
+                });
+            }
+        }
+
+        spaces.sort_by(|a, b| {
+            b.updated_at
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(a.updated_at.as_deref().unwrap_or_default())
+                .then_with(|| a.channel.cmp(&b.channel))
+                .then_with(|| a.user_id.cmp(&b.user_id))
+        });
+        spaces
+    }
+
+    pub fn list_profiles_raw(&self) -> Vec<RawProfileSummary> {
+        let Ok(root_dir) = self.scoped_root() else {
+            return Vec::new();
+        };
+        let entries = match fs::read_dir(&root_dir) {
+            Ok(entries) => entries,
+            Err(_) => return Vec::new(),
+        };
+
+        let mut profiles = Vec::new();
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let Some(summary) = self.load_raw_profile_summary_by_dir(&dir).ok().flatten() else {
+                continue;
+            };
+            profiles.push(summary);
+        }
+
+        profiles.sort_by(|a, b| {
+            b.updated_at
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(a.updated_at.as_deref().unwrap_or_default())
+                .then_with(|| a.title.cmp(&b.title))
+        });
+        profiles
+    }
+
     pub fn get_profile(&self, profile_id: &str) -> Result<Option<CompanyProfileDocument>, String> {
         let root_dir = self.scoped_root()?;
         let profile_id = sanitize_id(profile_id.trim());
@@ -383,6 +515,15 @@ impl CompanyProfileStorage {
             return Ok(None);
         }
         self.load_profile_by_dir(&root_dir.join(profile_id))
+    }
+
+    pub fn get_profile_raw(&self, profile_id: &str) -> Result<Option<RawProfileDocument>, String> {
+        let root_dir = self.scoped_root()?;
+        let profile_id = sanitize_id(profile_id.trim());
+        if profile_id.is_empty() {
+            return Ok(None);
+        }
+        self.load_raw_profile_by_dir(&root_dir.join(profile_id))
     }
 
     pub fn create_profile(
@@ -697,6 +838,103 @@ impl CompanyProfileStorage {
         Ok(events)
     }
 
+    fn load_raw_profile_summary_by_dir(
+        &self,
+        dir: &Path,
+    ) -> Result<Option<RawProfileSummary>, String> {
+        let profile_path = dir.join("profile.md");
+        if !profile_path.exists() {
+            return Ok(None);
+        }
+
+        let profile_id = dir
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let markdown = fs::read_to_string(&profile_path)
+            .map_err(|err| format!("读取 profile.md 失败: {err}"))?;
+        let title = extract_title_from_markdown(&markdown, &profile_id);
+        let updated_at = file_modified_at_rfc3339(&profile_path);
+        let event_count = self.load_raw_events(dir)?.len();
+
+        Ok(Some(RawProfileSummary {
+            profile_id,
+            title,
+            updated_at,
+            event_count,
+        }))
+    }
+
+    fn load_raw_profile_by_dir(&self, dir: &Path) -> Result<Option<RawProfileDocument>, String> {
+        let profile_path = dir.join("profile.md");
+        if !profile_path.exists() {
+            return Ok(None);
+        }
+
+        let profile_id = dir
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let markdown = fs::read_to_string(&profile_path)
+            .map_err(|err| format!("读取 profile.md 失败: {err}"))?;
+        let title = extract_title_from_markdown(&markdown, &profile_id);
+        let updated_at = file_modified_at_rfc3339(&profile_path);
+        let events = self.load_raw_events(dir)?;
+
+        Ok(Some(RawProfileDocument {
+            profile_id,
+            title,
+            updated_at,
+            markdown,
+            events,
+        }))
+    }
+
+    fn load_raw_events(&self, profile_dir: &Path) -> Result<Vec<RawProfileEventDocument>, String> {
+        let events_dir = profile_dir.join("events");
+        if !events_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let entries =
+            fs::read_dir(&events_dir).map_err(|err| format!("读取事件目录失败: {err}"))?;
+        let mut events = Vec::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("md") {
+                continue;
+            }
+            let filename = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_string();
+            let id = filename.trim_end_matches(".md").to_string();
+            let markdown =
+                fs::read_to_string(&path).map_err(|err| format!("读取事件文件失败: {err}"))?;
+            let title = extract_title_from_markdown(&markdown, &id);
+            let updated_at = file_modified_at_rfc3339(&path);
+            events.push(RawProfileEventDocument {
+                id,
+                filename,
+                title,
+                updated_at,
+                markdown,
+            });
+        }
+
+        events.sort_by(|a, b| {
+            b.updated_at
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(a.updated_at.as_deref().unwrap_or_default())
+                .then_with(|| b.filename.cmp(&a.filename))
+        });
+        Ok(events)
+    }
+
     fn scoped_root(&self) -> Result<PathBuf, String> {
         let Some(actor) = &self.actor else {
             return Err("company profile storage requires actor scope".to_string());
@@ -830,7 +1068,7 @@ fn parse_event_markdown(
     let (frontmatter, body) = parse_frontmatter(content)?;
     let metadata: ProfileEventMetadata = serde_yaml::from_str(&frontmatter)
         .map_err(|err| format!("解析事件 frontmatter 失败: {err}"))?;
-    let title = extract_title_from_markdown(&body);
+    let title = extract_title_from_markdown(&body, "未命名事件");
     Ok(CompanyProfileEventDocument {
         id: id.to_string(),
         filename: filename.to_string(),
@@ -840,13 +1078,19 @@ fn parse_event_markdown(
     })
 }
 
-fn extract_title_from_markdown(body: &str) -> String {
+fn extract_title_from_markdown(body: &str, fallback: &str) -> String {
     for line in body.lines() {
         if let Some(rest) = line.strip_prefix("# ") {
             return rest.trim().to_string();
         }
     }
-    "未命名事件".to_string()
+    fallback.to_string()
+}
+
+fn file_modified_at_rfc3339(path: &Path) -> Option<String> {
+    let modified = fs::metadata(path).ok()?.modified().ok()?;
+    let updated_at: DateTime<Utc> = modified.into();
+    Some(updated_at.to_rfc3339())
 }
 
 fn render_profile_markdown(
@@ -1509,6 +1753,50 @@ mod tests {
                 && space.channel_scope == bob_actor.channel_scope
                 && space.profile_count == 1
         }));
+    }
+
+    #[test]
+    fn raw_listing_reads_plain_markdown_profiles() {
+        let dir = make_temp_dir("company_profile_raw_listing");
+        let base = CompanyProfileStorage::new(&dir);
+        let actor = test_actor("telegram", "alice", None::<&str>);
+        let actor_root = dir
+            .join(actor.channel_fs_component())
+            .join(actor.scoped_user_fs_key())
+            .join("company_profiles")
+            .join("plain-profile");
+        fs::create_dir_all(actor_root.join("events")).expect("create raw profile dirs");
+        fs::write(
+            actor_root.join("profile.md"),
+            "# Plain Profile\n\n## Notes\nhello raw world\n",
+        )
+        .expect("write raw profile");
+        fs::write(
+            actor_root.join("events").join("2026-04-13-update.md"),
+            "# Fresh Event\n\nbody\n",
+        )
+        .expect("write raw event");
+
+        let spaces = base.list_profile_spaces_raw();
+        assert_eq!(spaces.len(), 1);
+        assert_eq!(spaces[0].channel, actor.channel);
+        assert_eq!(spaces[0].user_id, actor.user_id);
+        assert_eq!(spaces[0].profile_count, 1);
+
+        let profiles = base.for_actor(&actor).list_profiles_raw();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].profile_id, "plain-profile");
+        assert_eq!(profiles[0].title, "Plain Profile");
+        assert_eq!(profiles[0].event_count, 1);
+
+        let detail = base
+            .for_actor(&actor)
+            .get_profile_raw("plain-profile")
+            .expect("load raw profile")
+            .expect("raw profile exists");
+        assert_eq!(detail.title, "Plain Profile");
+        assert_eq!(detail.events.len(), 1);
+        assert_eq!(detail.events[0].title, "Fresh Event");
     }
 
     #[test]

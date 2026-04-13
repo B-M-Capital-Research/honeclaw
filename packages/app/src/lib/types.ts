@@ -38,7 +38,11 @@ export type SkillDetailInfo = {
 export type HistoryMsg = {
   role: "user" | "assistant" | "system" | string;
   content: string;
-  subtype?: "compact_boundary" | "compact_summary" | "compact_skill_snapshot" | string;
+  subtype?:
+    | "compact_boundary"
+    | "compact_summary"
+    | "compact_skill_snapshot"
+    | string;
   synthetic?: boolean;
   transcript_only?: boolean;
 };
@@ -227,19 +231,19 @@ export type ChatStreamEvent =
 
 /** 消息处理阶段 */
 export type PendingPhase =
-  | "queued"     // 已发出请求，等待后端确认
-  | "thinking"   // run_started 到达，AI 正在思考
-  | "running"    // tool_call 到达，正在调用工具
-  | "streaming"  // assistant_delta 到达，流式输出中
-  | "error"      // 发生错误
-  | "timeout";   // 请求超时
+  | "queued" // 已发出请求，等待后端确认
+  | "thinking" // run_started 到达，AI 正在思考
+  | "running" // tool_call 到达，正在调用工具
+  | "streaming" // assistant_delta 到达，流式输出中
+  | "error" // 发生错误
+  | "timeout"; // 请求超时
 
 /** 每个会话独立的消息处理状态（替代全局 thinking/sending/thinkingText） */
 export type PendingState = {
   id: string;
-  startedAt: number;      // Date.now()，用于计算已运行时长
+  startedAt: number; // Date.now()，用于计算已运行时长
   phase: PendingPhase;
-  statusText: string;     // "正在思考…" / "调用工具: web_search" / 错误原因
+  statusText: string; // "正在思考…" / "调用工具: web_search" / 错误原因
   partialContent: string; // 流式累积的 assistant 文本
 };
 
@@ -250,10 +254,38 @@ export type PushScheduledMessageEvent = {
 };
 
 export type TimelineMessage =
-  | { id: string; kind: "user"; content: string; subtype?: string; synthetic?: boolean; transcriptOnly?: boolean }
-  | { id: string; kind: "assistant"; content: string; subtype?: string; synthetic?: boolean; transcriptOnly?: boolean }
-  | { id: string; kind: "system"; content: string; subtype?: string; synthetic?: boolean; transcriptOnly?: boolean }
-  | { id: string; kind: "scheduled"; content: string; jobName?: string; synthetic?: boolean; transcriptOnly?: boolean };
+  | {
+      id: string;
+      kind: "user";
+      content: string;
+      subtype?: string;
+      synthetic?: boolean;
+      transcriptOnly?: boolean;
+    }
+  | {
+      id: string;
+      kind: "assistant";
+      content: string;
+      subtype?: string;
+      synthetic?: boolean;
+      transcriptOnly?: boolean;
+    }
+  | {
+      id: string;
+      kind: "system";
+      content: string;
+      subtype?: string;
+      synthetic?: boolean;
+      transcriptOnly?: boolean;
+    }
+  | {
+      id: string;
+      kind: "scheduled";
+      content: string;
+      jobName?: string;
+      synthetic?: boolean;
+      transcriptOnly?: boolean;
+    };
 
 export type CronJobInfo = {
   id: string;
@@ -488,35 +520,22 @@ export type CompanyProfileEvent = {
   id: string;
   filename: string;
   title: string;
-  metadata: {
-    event_type: string;
-    occurred_at: string;
-    captured_at: string;
-    thesis_impact: string;
-    changed_sections: string[];
-    refs: string[];
-  };
+  updated_at?: string;
   markdown: string;
 };
 
 export type CompanyProfile = {
   profile_id: string;
-  metadata: ProfileMetadata;
+  title: string;
+  updated_at?: string;
   markdown: string;
   events: CompanyProfileEvent[];
 };
 
 export type CompanyProfileSummary = {
   profile_id: string;
-  company_name: string;
-  stock_code: string;
-  sector: string;
-  industry_template: IndustryTemplate;
-  status: string;
-  tracking_enabled: boolean;
-  tracking_cadence: string;
-  updated_at: string;
-  last_reviewed_at?: string;
+  title: string;
+  updated_at?: string;
   event_count: number;
 };
 

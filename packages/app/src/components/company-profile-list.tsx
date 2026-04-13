@@ -1,21 +1,21 @@
-import { EmptyState } from "@hone-financial/ui/empty-state"
-import { Skeleton } from "@hone-financial/ui/skeleton"
-import { For, Show } from "solid-js"
-import { actorKey, actorLabel, type ActorRef } from "@/lib/actors"
-import type { CompanyProfileSpaceSummary } from "@/lib/types"
-import { useCompanyProfiles } from "@/context/company-profiles"
+import { EmptyState } from "@hone-financial/ui/empty-state";
+import { Skeleton } from "@hone-financial/ui/skeleton";
+import { For, Show } from "solid-js";
+import { actorKey, actorLabel, type ActorRef } from "@/lib/actors";
+import type { CompanyProfileSpaceSummary } from "@/lib/types";
+import { useCompanyProfiles } from "@/context/company-profiles";
 
 function formatDate(iso?: string) {
-  if (!iso) return "—"
+  if (!iso) return "—";
   try {
     return new Date(iso).toLocaleString("zh-CN", {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
-    })
+    });
   } catch {
-    return iso
+    return iso;
   }
 }
 
@@ -24,20 +24,23 @@ function actorFromSummary(summary: CompanyProfileSpaceSummary): ActorRef {
     channel: summary.channel,
     user_id: summary.user_id,
     channel_scope: summary.channel_scope,
-  }
+  };
 }
 
 export function CompanyProfileList() {
-  const profiles = useCompanyProfiles()
-  const currentActorKey = () => profiles.state.currentActorKey
-  const currentProfileId = () => profiles.state.currentProfileId
+  const profiles = useCompanyProfiles();
+  const currentActorKey = () => profiles.state.currentActorKey;
+  const currentProfileId = () => profiles.state.currentProfileId;
 
   return (
     <div class="flex h-full min-h-0 w-[360px] flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
       <div class="border-b border-[color:var(--border)] px-4 py-3">
         <div>
           <div class="text-sm font-semibold tracking-tight">公司画像</div>
-          <div class="text-xs text-[color:var(--text-muted)]">每个用户 x 渠道都是独立画像空间；页面只读，建档和更新请通过 agent 完成</div>
+          <div class="text-xs text-[color:var(--text-muted)]">
+            每个用户 x 渠道都是独立画像空间；页面只读，建档和更新请通过 agent
+            完成
+          </div>
         </div>
       </div>
 
@@ -66,9 +69,9 @@ export function CompanyProfileList() {
             <div class="max-h-52 space-y-2 overflow-y-auto pr-1">
               <For each={profiles.actorsList() ?? []}>
                 {(summary) => {
-                  const actor = actorFromSummary(summary)
-                  const key = actorKey(actor)
-                  const isActive = () => currentActorKey() === key
+                  const actor = actorFromSummary(summary);
+                  const key = actorKey(actor);
+                  const isActive = () => currentActorKey() === key;
                   return (
                     <button
                       type="button"
@@ -83,11 +86,16 @@ export function CompanyProfileList() {
                       <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0 flex-1">
                           <div class="truncate text-sm font-medium text-[color:var(--text-primary)]">
-                            {actorLabel(actor)}
+                            {actor.channel} / {actorLabel(actor)}
                           </div>
                           <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
-                            {summary.channel}
+                            用户：{summary.user_id}
                           </div>
+                          <Show when={summary.channel_scope}>
+                            <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
+                              范围：{summary.channel_scope}
+                            </div>
+                          </Show>
                           <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
                             {summary.profile_count} 份画像
                           </div>
@@ -97,7 +105,7 @@ export function CompanyProfileList() {
                         </div>
                       </div>
                     </button>
-                  )
+                  );
                 }}
               </For>
             </div>
@@ -121,8 +129,8 @@ export function CompanyProfileList() {
           when={profiles.currentActor()}
           fallback={
             <EmptyState
-              title="先选择画像空间"
-              description="公司画像按 actor 隔离展示。先选左侧空间，再查看这个空间里的公司画像。"
+              title="先选择渠道和用户"
+              description="公司画像按 actor 隔离展示。先在左侧选择渠道 + 用户，再查看这个空间里的公司画像。"
             />
           }
         >
@@ -160,11 +168,10 @@ export function CompanyProfileList() {
                       <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0 flex-1">
                           <div class="truncate text-sm font-medium text-[color:var(--text-primary)]">
-                            {profile.company_name}
+                            {profile.title}
                           </div>
                           <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
-                            <span>{profile.stock_code || "无代码"}</span>
-                            <span>{profile.industry_template}</span>
+                            <span>{profile.profile_id}</span>
                             <span>{profile.event_count} 条事件</span>
                           </div>
                         </div>
@@ -181,5 +188,5 @@ export function CompanyProfileList() {
         </Show>
       </div>
     </div>
-  )
+  );
 }

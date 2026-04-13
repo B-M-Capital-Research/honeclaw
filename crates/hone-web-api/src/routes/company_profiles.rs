@@ -12,7 +12,7 @@ use crate::types::UserIdQuery;
 pub(crate) async fn handle_company_profile_spaces(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let spaces = state.core.company_profile_storage.list_profile_spaces();
+    let spaces = state.core.company_profile_storage.list_profile_spaces_raw();
     Json(json!({ "actors": spaces }))
 }
 
@@ -28,7 +28,7 @@ pub(crate) async fn handle_company_profiles(
         .core
         .company_profile_storage
         .for_actor(&actor)
-        .list_profiles();
+        .list_profiles_raw();
     Json(json!({ "profiles": profiles })).into_response()
 }
 
@@ -45,7 +45,7 @@ pub(crate) async fn handle_company_profile_detail(
         .core
         .company_profile_storage
         .for_actor(&actor)
-        .get_profile(&id)
+        .get_profile_raw(&id)
     {
         Ok(Some(profile)) => Json(json!({ "profile": profile })).into_response(),
         Ok(None) => json_error(
