@@ -1,5 +1,7 @@
 use super::*;
-use hone_core::config::runtime_overlay_path;
+use hone_core::config::{
+    generate_effective_config, seed_canonical_config_from_source,
+};
 
 pub(super) fn normalize_base_url(raw: &str) -> String {
     raw.trim().trim_end_matches('/').to_string()
@@ -80,6 +82,22 @@ fn resource_or_repo_path(app: &AppHandle, resource: &str) -> PathBuf {
         .map(|dir| dir.join(resource))
         .filter(|path| path.exists())
         .unwrap_or_else(|| repo_root().join(resource))
+}
+
+fn desktop_canonical_config_path(config_dir: &Path) -> PathBuf {
+    if let Ok(override_path) = env::var("HONE_USER_CONFIG_PATH") {
+        return PathBuf::from(override_path);
+    }
+    if let Ok(home) = env::var("HONE_HOME") {
+        return PathBuf::from(home).join("config.yaml");
+    }
+    if cfg!(debug_assertions) {
+        let repo_config = repo_root().join("config.yaml");
+        if repo_config.exists() {
+            return repo_config;
+        }
+    }
+    config_dir.join("config.yaml")
 }
 
 fn current_target_triple() -> Option<String> {
@@ -242,7 +260,8 @@ fn hydrate_login_shell_env(app: &AppHandle) {
 pub(super) fn configure_desktop_runtime_env(app: &AppHandle, runtime: &RuntimePaths) {
     hydrate_login_shell_env(app);
 
-    set_process_env("HONE_CONFIG_PATH", &runtime.config_path);
+    set_process_env("HONE_CONFIG_PATH", &runtime.effective_config_path);
+    set_process_env("HONE_USER_CONFIG_PATH", &runtime.config_path);
     set_process_env("HONE_DATA_DIR", &runtime.data_dir);
     set_process_env("HONE_RUNTIME_DIR", &runtime.runtime_dir);
     set_process_env("HONE_SKILLS_DIR", &runtime.skills_dir);
@@ -288,23 +307,28 @@ pub(super) fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, Stri
     fs::create_dir_all(&locks_dir).map_err(|e| e.to_string())?;
     fs::create_dir_all(&sandbox_dir).map_err(|e| e.to_string())?;
 
-    let config_path = runtime_dir.join("config_runtime.yaml");
-    if !config_path.exists() {
-        let seed = {
-            let root_config = resource_or_repo_path(app, "config.yaml");
-            if root_config.exists() {
-                root_config
-            } else {
-                resource_or_repo_path(app, "config.example.yaml")
-            }
-        };
-        fs::copy(&seed, &config_path)
-            .map_err(|e| format!("无法初始化 config_runtime.yaml（来源: {seed:?}）: {e}"))?;
-        let overlay_path = runtime_overlay_path(&config_path);
-        if overlay_path.exists() {
-            let _ = fs::remove_file(&overlay_path);
+    let config_path = desktop_canonical_config_path(&config_dir);
+    let seed_path = {
+        let root_config = resource_or_repo_path(app, "config.yaml");
+        if root_config.exists() && root_config != config_path {
+            Some(root_config)
+        } else {
+            let example = resource_or_repo_path(app, "config.example.yaml");
+            example.exists().then_some(example)
         }
+    };
+    if let Some(seed_path) = seed_path.as_deref() {
+        seed_canonical_config_from_source(&config_path, seed_path).map_err(|e| {
+            format!(
+                "无法初始化 canonical config（目标: {}）: {e}",
+                config_path.display()
+            )
+        })?;
     }
+
+    let effective_config_path = runtime_dir.join("effective-config.yaml");
+    generate_effective_config(&config_path, &effective_config_path)
+        .map_err(|e| format!("无法生成 effective-config.yaml: {e}"))?;
 
     let soul_dest = runtime_dir.join("soul.md");
     if !soul_dest.exists() {
@@ -318,6 +342,7 @@ pub(super) fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, Stri
     let skills_dir = resource_or_repo_path(app, "skills");
     Ok(RuntimePaths {
         config_path,
+        effective_config_path,
         data_dir,
         runtime_dir,
         skills_dir,

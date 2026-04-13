@@ -1520,8 +1520,6 @@ mod tests {
             root.join("llm_audit.sqlite3").to_string_lossy().to_string();
         config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
         config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
-        config.storage.reports_dir = root.join("reports").to_string_lossy().to_string();
-        config.storage.x_drafts_dir = root.join("x_drafts").to_string_lossy().to_string();
         config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
         configure(&mut config);
 

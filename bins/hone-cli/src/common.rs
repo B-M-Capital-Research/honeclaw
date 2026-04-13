@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use hone_channels::HoneBotCore;
 use hone_core::config::{
-    canonical_config_candidate, effective_config_path, ensure_canonical_config,
-    generate_effective_config, legacy_runtime_config_path, legacy_runtime_warning,
+    canonical_config_candidate, effective_config_path, generate_effective_config,
+    seed_canonical_config_from_source,
 };
 use hone_core::{HoneConfig, HoneResult};
 
@@ -13,13 +13,11 @@ use hone_core::{HoneConfig, HoneResult};
 pub(crate) struct ResolvedRuntimePaths {
     pub(crate) canonical_config_path: PathBuf,
     pub(crate) effective_config_path: PathBuf,
-    pub(crate) legacy_runtime_config_path: PathBuf,
     pub(crate) data_dir: PathBuf,
     pub(crate) runtime_dir: PathBuf,
     pub(crate) skills_dir: PathBuf,
     pub(crate) root_dir: PathBuf,
     pub(crate) web_port: u16,
-    pub(crate) legacy_warning: Option<String>,
 }
 
 fn absolute_path(path: impl AsRef<Path>) -> PathBuf {
@@ -88,7 +86,6 @@ pub(crate) fn resolve_runtime_paths(
         .unwrap_or_else(|| root_dir.join("data"));
     let runtime_dir = data_dir.join("runtime");
     let effective_config_path = effective_config_path(&runtime_dir);
-    let legacy_runtime_config_path = legacy_runtime_config_path(&runtime_dir);
     let skills_dir = env::var_os("HONE_SKILLS_DIR")
         .map(PathBuf::from)
         .map(absolute_path)
@@ -97,19 +94,15 @@ pub(crate) fn resolve_runtime_paths(
         .ok()
         .and_then(|raw| raw.parse::<u16>().ok())
         .unwrap_or(8077);
-    let legacy_warning =
-        legacy_runtime_warning(&canonical_config_path, &legacy_runtime_config_path);
 
     Ok(ResolvedRuntimePaths {
         canonical_config_path,
         effective_config_path,
-        legacy_runtime_config_path,
         data_dir,
         runtime_dir,
         skills_dir,
         root_dir,
         web_port,
-        legacy_warning,
     })
 }
 
@@ -123,11 +116,9 @@ pub(crate) fn load_cli_config(
     } else {
         None
     };
-    ensure_canonical_config(
-        &paths.canonical_config_path,
-        &paths.legacy_runtime_config_path,
-        seed_source.as_deref(),
-    )?;
+    if let Some(seed_source) = seed_source.as_deref() {
+        seed_canonical_config_from_source(&paths.canonical_config_path, seed_source)?;
+    }
     if for_write {
         let _ =
             generate_effective_config(&paths.canonical_config_path, &paths.effective_config_path)?;

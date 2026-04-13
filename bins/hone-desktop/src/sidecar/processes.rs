@@ -291,6 +291,10 @@ fn common_runtime_envs(runtime: &RuntimePaths) -> Vec<(&'static str, String)> {
     let mut envs = vec![
         (
             "HONE_CONFIG_PATH",
+            runtime.effective_config_path.to_string_lossy().to_string(),
+        ),
+        (
+            "HONE_USER_CONFIG_PATH",
             runtime.config_path.to_string_lossy().to_string(),
         ),
         (

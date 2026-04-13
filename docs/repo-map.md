@@ -50,9 +50,9 @@ Last updated: 2026-04-12
   - `hone-imessage`, `hone-telegram`, `hone-discord`, `hone-feishu`: channel entrypoints, with shared startup in `hone-channels::bootstrap` and per-channel sibling modules for scheduler / outbound / handlers where the protocol layer needs local ownership
 - `hone-desktop`: Tauri desktop host with a thin `main.rs` façade, command handlers in `commands.rs`, backend / sidecar lifecycle in `sidecar.rs`, sidecar concern modules in `sidecar/{processes,runtime_env,settings}.rs`, tray extension points in `tray.rs`, and the desktop window packaging flow
 - `config.yaml` / `data/runtime/`
-  - `config.yaml` is the read-only seed template and source of default comments / values
-  - `data/runtime/config_runtime.yaml` is the effective runtime base created on first startup
-  - `data/runtime/config_runtime.overrides.yaml` stores Desktop / automation overrides and is merged on load
+  - `config.yaml` is the canonical user-writable config; dev uses the repo root copy, and packaged installs seed one under the user config dir
+  - `data/runtime/effective-config.yaml` is the generated runtime snapshot for processes that want a materialized runtime config file
+  - legacy `data/runtime/config_runtime.yaml` and sibling `.overrides.yaml` should not be recreated
 - Actor sandbox research docs live under `agent-sandboxes/<channel>/<scope__user>/company_profiles/<profile_id>/profile.md` plus `events/*.md`; this actor-local directory is the source of truth for company portraits and long-term fundamental tracking
 - `packages/`
   - `app`: SolidJS web console
@@ -150,7 +150,7 @@ Last updated: 2026-04-12
 - The desktop app supports two backend modes:
   - `bundled`: Tauri starts the built-in `hone-console-page` sidecar and points the frontend API at a local loopback address
   - `remote`: Tauri does not start a local backend; the frontend connects directly to a remote HTTP base URL
-- Persistent user config now lives in canonical `config.yaml`; runtime processes read only the generated `data/runtime/effective-config.yaml`, and both CLI and desktop settings mutate the canonical file through shared config services
+- Persistent user config now lives in canonical `config.yaml`; CLI/start flows and desktop-managed sidecars export the generated `data/runtime/effective-config.yaml`, while settings surfaces mutate the canonical file through shared config services
 - In packaged desktop mode, runtime data, locks, logs, and actor sandboxes live under the app sandbox data directory by default; the desktop host also hydrates key login-shell environment variables and exports bundled binary paths (`HONE_MCP_BIN`, bundled `opencode`, `HONE_AGENT_SANDBOX_DIR`) before starting the embedded backend or channel sidecars
 - Desktop agent settings now expose the primary opencode/OpenRouter model, a dedicated `llm.auxiliary` OpenAI-compatible background route for heartbeat/session compression, and the nested `multi-agent` search/answer config. `llm.openrouter.sub_model` remains only as the legacy fallback model name for the auxiliary path; it is not reused as the `multi-agent` search model
 - In `bundled` mode, Tauri also starts or stops `hone-imessage` / `hone-discord` / `hone-feishu` / `hone-telegram` according to the layered runtime config in the application data directory; each channel process now posts heartbeat snapshots carrying `channel + pid` back to the console backend via `HONE_CONSOLE_URL`, and `/api/channels` aggregates those live registrations into per-channel multi-process status. Desktop channel status also merges OS process scanning so duplicate listener processes are visible even when an older instance is not bound to the current backend heartbeat registry, and the desktop shell exposes a cleanup command that keeps only one process per channel. The legacy `runtime/*.heartbeat.json` files still exist as a compatibility fallback for non-desktop paths

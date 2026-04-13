@@ -333,8 +333,6 @@ Main directories come from `config.storage.*`:
 - `./data/sessions`
 - `./data/portfolio`
 - `./data/cron_jobs`
-- `./data/reports`
-- `./data/x_drafts`
 - `./data/gen_images`
 
 ### 6.2 Session

@@ -301,6 +301,7 @@ impl Drop for DesktopBackendManager {
 
 struct RuntimePaths {
     config_path: PathBuf,
+    effective_config_path: PathBuf,
     data_dir: PathBuf,
     runtime_dir: PathBuf,
     skills_dir: PathBuf,
@@ -953,7 +954,7 @@ pub(crate) async fn set_agent_settings_impl(
             ),
         ]);
     }
-    apply_setting_updates(&runtime.config_path, updates)?;
+    apply_setting_updates(&runtime.config_path, &runtime.effective_config_path, updates)?;
     log_desktop(
         &app,
         "INFO",
@@ -1196,7 +1197,7 @@ mod tests {
         manager.resolved_base_url = Some("http://127.0.0.1:3000".to_string());
         manager.meta = Some(MetaInfo {
             name: "Hone".to_string(),
-            version: "0.1.0".to_string(),
+            version: "0.1.11".to_string(),
             channel: "imessage".to_string(),
             supports_imessage: true,
             api_version: API_VERSION.to_string(),
@@ -1290,6 +1291,7 @@ pub(crate) async fn set_openrouter_settings_impl(
         .collect();
     apply_setting_updates(
         &runtime.config_path,
+        &runtime.effective_config_path,
         vec![
             (
                 "llm.openrouter.api_keys",
@@ -1351,6 +1353,7 @@ pub(crate) async fn set_fmp_settings_impl(
         .collect();
     apply_setting_updates(
         &runtime.config_path,
+        &runtime.effective_config_path,
         vec![
             (
                 "fmp.api_keys",
@@ -1414,6 +1417,7 @@ pub(crate) async fn set_tavily_settings_impl(
         .collect();
     apply_setting_updates(
         &runtime.config_path,
+        &runtime.effective_config_path,
         vec![(
             "search.api_keys",
             serde_yaml::Value::Sequence(

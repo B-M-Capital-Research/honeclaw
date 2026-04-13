@@ -74,11 +74,8 @@ storage:
   llm_audit_db_path: "$data_dir/llm_audit.sqlite3"
   llm_audit_enabled: false
   portfolio_dir: "$data_dir/portfolio"
-  reports_dir: "$data_dir/reports"
   cron_jobs_dir: "$data_dir/cron_jobs"
-  x_drafts_dir: "$data_dir/x_drafts"
   gen_images_dir: "$data_dir/gen_images"
-  kb_dir: "$data_dir/kb"
 logging:
   console: false
   file: "$runtime_log"

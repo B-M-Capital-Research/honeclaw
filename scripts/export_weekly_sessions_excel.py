@@ -63,7 +63,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=None,
-        help="输出 xlsx 文件路径，默认 data/reports/sessions_YYYYMMDD_last7days.xlsx",
+        help="输出 xlsx 文件路径，默认 ./sessions_YYYYMMDD_last7days.xlsx",
     )
     parser.add_argument(
         "--date",
@@ -527,7 +527,7 @@ def main() -> int:
 
     output_path = args.output
     if output_path is None:
-        output_path = Path("data/reports") / f"sessions_{end_date.strftime('%Y%m%d')}_last{args.days}days.xlsx"
+        output_path = Path(f"sessions_{end_date.strftime('%Y%m%d')}_last{args.days}days.xlsx")
 
     rows_by_sheet = collect_rows(
         args.sessions_dir,

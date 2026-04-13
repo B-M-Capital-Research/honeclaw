@@ -232,10 +232,6 @@ pub struct StorageConfig {
     pub portfolio_dir: String,
     #[serde(default = "default_cron_jobs_dir")]
     pub cron_jobs_dir: String,
-    #[serde(default = "default_reports_dir")]
-    pub reports_dir: String,
-    #[serde(default = "default_x_drafts_dir")]
-    pub x_drafts_dir: String,
     #[serde(default = "default_gen_images_dir")]
     pub gen_images_dir: String,
 }
@@ -252,8 +248,6 @@ impl StorageConfig {
         self.llm_audit_db_path = root.join("llm_audit.sqlite3").to_string_lossy().to_string();
         self.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
         self.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
-        self.reports_dir = root.join("reports").to_string_lossy().to_string();
-        self.x_drafts_dir = root.join("x_drafts").to_string_lossy().to_string();
         self.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
     }
 
@@ -261,8 +255,6 @@ impl StorageConfig {
         let _ = std::fs::create_dir_all(&self.sessions_dir);
         let _ = std::fs::create_dir_all(&self.portfolio_dir);
         let _ = std::fs::create_dir_all(&self.cron_jobs_dir);
-        let _ = std::fs::create_dir_all(&self.reports_dir);
-        let _ = std::fs::create_dir_all(&self.x_drafts_dir);
         let _ = std::fs::create_dir_all(&self.gen_images_dir);
         let _ = std::fs::create_dir_all(&self.conversation_quota_dir);
         if let Some(parent) = PathBuf::from(&self.llm_audit_db_path).parent() {
@@ -297,12 +289,6 @@ fn default_portfolio_dir() -> String {
 }
 fn default_cron_jobs_dir() -> String {
     "./data/cron_jobs".to_string()
-}
-fn default_reports_dir() -> String {
-    "./data/reports".to_string()
-}
-fn default_x_drafts_dir() -> String {
-    "./data/x_drafts".to_string()
 }
 fn default_gen_images_dir() -> String {
     "./data/gen_images".to_string()

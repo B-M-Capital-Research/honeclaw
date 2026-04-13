@@ -369,7 +369,6 @@ struct StatusReport {
     effective_config_path: String,
     data_dir: String,
     skills_dir: String,
-    legacy_warning: Option<String>,
     models: ModelStatusReport,
     channels: Vec<ChannelStatusReport>,
     api_keys: ApiKeySummary,
@@ -1097,7 +1096,6 @@ async fn build_status_report(config_path: Option<&Path>) -> Result<StatusReport,
         effective_config_path: paths.effective_config_path.to_string_lossy().to_string(),
         data_dir: paths.data_dir.to_string_lossy().to_string(),
         skills_dir: paths.skills_dir.to_string_lossy().to_string(),
-        legacy_warning: paths.legacy_warning.clone(),
         models: build_model_status(&config),
         channels: build_channel_reports(&config),
         api_keys: build_api_key_summary(&config),
@@ -1129,13 +1127,6 @@ async fn build_doctor_report(config_path: Option<&Path>) -> DoctorReport {
                 },
                 detail: paths.effective_config_path.to_string_lossy().to_string(),
             });
-            if let Some(warning) = &paths.legacy_warning {
-                checks.push(DoctorCheck {
-                    name: "legacy-runtime-config".to_string(),
-                    status: "warn",
-                    detail: warning.clone(),
-                });
-            }
 
             match load_cli_config(config_path, false) {
                 Ok((config, loaded_paths)) => {
@@ -2490,9 +2481,6 @@ async fn run_cli() -> Result<(), String> {
                 }
                 println!("data_dir={}", report.data_dir);
                 println!("skills_dir={}", report.skills_dir);
-                if let Some(warning) = &report.legacy_warning {
-                    println!("legacy_warning={warning}");
-                }
                 let enabled = report
                     .channels
                     .iter()

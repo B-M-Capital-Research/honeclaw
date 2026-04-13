@@ -99,7 +99,7 @@ if ! wait_for_pattern '"id":1,"result"' 30; then
 fi
 
 MCP_ENV=$(cat <<EOF
-[{"name":"HONE_CONFIG_PATH","value":"$ROOT_DIR/data/runtime/config_runtime.yaml"},{"name":"HONE_MCP_ACTOR_CHANNEL","value":"cli"},{"name":"HONE_MCP_ACTOR_USER_ID","value":"cli_user"},{"name":"HONE_MCP_CHANNEL_TARGET","value":"cli"},{"name":"HONE_MCP_ALLOW_CRON","value":"0"}]
+[{"name":"HONE_CONFIG_PATH","value":"$ROOT_DIR/config.yaml"},{"name":"HONE_MCP_ACTOR_CHANNEL","value":"cli"},{"name":"HONE_MCP_ACTOR_USER_ID","value":"cli_user"},{"name":"HONE_MCP_CHANNEL_TARGET","value":"cli"},{"name":"HONE_MCP_ALLOW_CRON","value":"0"}]
 EOF
 )
 

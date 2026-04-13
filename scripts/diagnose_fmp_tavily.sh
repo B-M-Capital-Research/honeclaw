@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        help="Base config path. Defaults to HONE_CONFIG_PATH, then data/runtime/config_runtime.yaml, then config.yaml.",
+        help="Base config path. Defaults to HONE_CONFIG_PATH, then data/runtime/effective-config.yaml, then config.yaml.",
     )
     parser.add_argument(
         "--timeout",
@@ -59,7 +59,7 @@ def choose_config_path(cli_path: Optional[str]) -> Path:
         candidates.append(Path(env_path))
     candidates.extend(
         [
-            Path("data/runtime/config_runtime.yaml"),
+            Path("data/runtime/effective-config.yaml"),
             Path("config.yaml"),
         ]
     )
@@ -73,7 +73,7 @@ def choose_config_path(cli_path: Optional[str]) -> Path:
         if resolved.exists():
             return resolved
     raise FileNotFoundError(
-        "No config file found. Tried HONE_CONFIG_PATH, data/runtime/config_runtime.yaml, and config.yaml."
+        "No config file found. Tried HONE_CONFIG_PATH, data/runtime/effective-config.yaml, and config.yaml."
     )
 
 

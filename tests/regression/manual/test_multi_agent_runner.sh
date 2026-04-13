@@ -34,10 +34,7 @@ storage:
   llm_audit_db_path: "./data/llm_audit.sqlite3"
   llm_audit_retention_days: 7
   portfolio_dir: "./data/portfolio"
-  reports_dir: "./data/reports"
   cron_jobs_dir: "./data/cron_jobs"
-  x_drafts_dir: "./data/x_drafts"
-  kb_dir: "./data/kb"
 
 logging:
   level: "INFO"

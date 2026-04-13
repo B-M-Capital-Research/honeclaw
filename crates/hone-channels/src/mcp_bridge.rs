@@ -517,7 +517,7 @@ mod tests {
             actor: ActorIdentity::new("feishu", "alice", Some("group-1")).expect("actor"),
             channel_target: "feishu".to_string(),
             allow_cron: true,
-            config_path: "/tmp/config_runtime.yaml".to_string(),
+            config_path: "/tmp/config.yaml".to_string(),
             system_prompt: "system".to_string(),
             runtime_input: "input".to_string(),
             context: AgentContext::new("session-1".to_string()),

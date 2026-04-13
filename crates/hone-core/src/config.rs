@@ -276,10 +276,6 @@ pub fn effective_config_path(runtime_dir: impl AsRef<Path>) -> PathBuf {
     runtime_dir.as_ref().join("effective-config.yaml")
 }
 
-pub fn legacy_runtime_config_path(runtime_dir: impl AsRef<Path>) -> PathBuf {
-    runtime_dir.as_ref().join("config_runtime.yaml")
-}
-
 pub fn canonical_config_candidate() -> PathBuf {
     PathBuf::from("config.yaml")
 }
@@ -594,111 +590,6 @@ pub fn seed_canonical_config_from_source(
     Ok(())
 }
 
-fn archive_legacy_runtime_files(
-    legacy_runtime_config_path: &Path,
-) -> crate::HoneResult<Option<PathBuf>> {
-    let overlay_path = runtime_overlay_path(legacy_runtime_config_path);
-    if !legacy_runtime_config_path.exists() && !overlay_path.exists() {
-        return Ok(None);
-    }
-
-    let runtime_dir = legacy_runtime_config_path.parent().ok_or_else(|| {
-        crate::HoneError::Config(format!(
-            "legacy runtime 配置路径缺少父目录: {}",
-            legacy_runtime_config_path.display()
-        ))
-    })?;
-    let stamp = crate::beijing_now().format("%Y%m%d-%H%M%S").to_string();
-    let backup_dir = runtime_dir.join("legacy-config-backup").join(stamp);
-    fs::create_dir_all(&backup_dir)?;
-
-    if legacy_runtime_config_path.exists() {
-        let dest = backup_dir.join(
-            legacy_runtime_config_path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("config_runtime.yaml"),
-        );
-        fs::rename(legacy_runtime_config_path, dest)?;
-    }
-
-    if overlay_path.exists() {
-        let dest = backup_dir.join(
-            overlay_path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("config_runtime.overrides.yaml"),
-        );
-        fs::rename(&overlay_path, dest)?;
-    }
-
-    Ok(Some(backup_dir))
-}
-
-pub fn migrate_legacy_runtime_to_canonical(
-    canonical_config_path: &Path,
-    legacy_runtime_config_path: &Path,
-) -> crate::HoneResult<bool> {
-    if canonical_config_path.exists() || !legacy_runtime_config_path.exists() {
-        return Ok(false);
-    }
-
-    let merged = read_merged_yaml_value(legacy_runtime_config_path)?;
-    HoneConfig::from_merged_value(merged.clone())?;
-
-    let yaml = serde_yaml::to_string(&merged)
-        .map_err(|e| crate::HoneError::Config(format!("legacy 配置序列化失败: {e}")))?;
-    atomic_write_yaml(canonical_config_path, &yaml)?;
-    copy_relative_system_prompt_asset(legacy_runtime_config_path, canonical_config_path)?;
-
-    archive_legacy_runtime_files(legacy_runtime_config_path)?
-        .ok_or_else(|| crate::HoneError::Config("legacy runtime 配置归档失败".to_string()))?;
-
-    Ok(true)
-}
-
-pub fn legacy_runtime_warning(
-    canonical_config_path: &Path,
-    legacy_runtime_config_path: &Path,
-) -> Option<String> {
-    let overlay_path = runtime_overlay_path(legacy_runtime_config_path);
-    if canonical_config_path.exists()
-        && (legacy_runtime_config_path.exists() || overlay_path.exists())
-    {
-        Some(format!(
-            "检测到 legacy runtime 配置仍存在（{} / {}），当前已忽略，请确认后清理",
-            legacy_runtime_config_path.display(),
-            overlay_path.display()
-        ))
-    } else {
-        None
-    }
-}
-
-pub fn ensure_canonical_config(
-    canonical_config_path: &Path,
-    legacy_runtime_config_path: &Path,
-    seed_source: Option<&Path>,
-) -> crate::HoneResult<bool> {
-    if canonical_config_path.exists() {
-        return Ok(false);
-    }
-
-    if migrate_legacy_runtime_to_canonical(canonical_config_path, legacy_runtime_config_path)? {
-        return Ok(true);
-    }
-
-    if let Some(seed_source) = seed_source.filter(|path| path.exists()) {
-        seed_canonical_config_from_source(canonical_config_path, seed_source)?;
-        return Ok(false);
-    }
-
-    Err(crate::HoneError::Config(format!(
-        "找不到 canonical config: {}",
-        canonical_config_path.display()
-    )))
-}
-
 fn yaml_revision(value: &Value) -> crate::HoneResult<String> {
     use std::hash::{Hash, Hasher};
 
@@ -948,9 +839,9 @@ llm:
 
     #[test]
     fn test_runtime_overlay_path() {
-        let path = Path::new("/tmp/config_runtime.yaml");
+        let path = Path::new("/tmp/config.yaml");
         let overlay = runtime_overlay_path(path);
-        assert_eq!(overlay, PathBuf::from("/tmp/config_runtime.overrides.yaml"));
+        assert_eq!(overlay, PathBuf::from("/tmp/config.overrides.yaml"));
     }
 
     #[test]
@@ -1012,7 +903,7 @@ new_section:
     #[test]
     fn test_read_merged_yaml_value_applies_runtime_overlay() {
         let dir = temp_test_dir("from-file");
-        let config_path = dir.join("config_runtime.yaml");
+        let config_path = dir.join("config.yaml");
         let overlay_path = runtime_overlay_path(&config_path);
 
         std::fs::write(
@@ -1355,7 +1246,7 @@ discord:
     #[test]
     fn test_read_config_path_value_supports_nested_mapping_and_sequence() {
         let dir = temp_test_dir("path-get");
-        let config_path = dir.join("config_runtime.yaml");
+        let config_path = dir.join("config.yaml");
         std::fs::write(
             &config_path,
             r#"
@@ -1391,7 +1282,7 @@ agent:
     #[test]
     fn test_apply_config_mutations_updates_canonical_config_directly() {
         let dir = temp_test_dir("mutations");
-        let config_path = dir.join("config_runtime.yaml");
+        let config_path = dir.join("config.yaml");
         let overlay_path = runtime_overlay_path(&config_path);
         std::fs::write(
             &config_path,
@@ -1446,7 +1337,7 @@ search:
     #[test]
     fn test_apply_config_mutations_rejects_invalid_path_shape() {
         let dir = temp_test_dir("mutations-error");
-        let config_path = dir.join("config_runtime.yaml");
+        let config_path = dir.join("config.yaml");
         std::fs::write(
             &config_path,
             r#"
@@ -1527,56 +1418,4 @@ agent:
         );
     }
 
-    #[test]
-    fn test_ensure_canonical_config_migrates_legacy_runtime_files() {
-        let dir = temp_test_dir("legacy-migrate");
-        let canonical = dir.join("config.yaml");
-        let runtime_dir = dir.join("data/runtime");
-        let legacy = legacy_runtime_config_path(&runtime_dir);
-        let overlay = runtime_overlay_path(&legacy);
-
-        std::fs::create_dir_all(&runtime_dir).unwrap();
-        std::fs::write(
-            &legacy,
-            r#"
-agent:
-  runner: codex_cli
-"#,
-        )
-        .unwrap();
-        std::fs::write(
-            &overlay,
-            r#"
-telegram:
-  enabled: true
-"#,
-        )
-        .unwrap();
-
-        let migrated = ensure_canonical_config(&canonical, &legacy, None).unwrap();
-        assert!(migrated);
-        assert!(canonical.exists());
-        assert!(!legacy.exists());
-        assert!(!overlay.exists());
-
-        let config = HoneConfig::from_file(&canonical).unwrap();
-        assert_eq!(config.agent.runner, "codex_cli");
-        assert!(config.telegram.enabled);
-    }
-
-    #[test]
-    fn test_legacy_runtime_warning_when_canonical_and_legacy_both_exist() {
-        let dir = temp_test_dir("legacy-warning");
-        let canonical = dir.join("config.yaml");
-        let runtime_dir = dir.join("data/runtime");
-        let legacy = legacy_runtime_config_path(&runtime_dir);
-
-        std::fs::create_dir_all(&runtime_dir).unwrap();
-        std::fs::write(&canonical, "agent:\n  runner: codex_cli\n").unwrap();
-        std::fs::write(&legacy, "agent:\n  runner: opencode_acp\n").unwrap();
-
-        let warning = legacy_runtime_warning(&canonical, &legacy).expect("warning");
-        assert!(warning.contains("legacy runtime"));
-        assert!(warning.contains("config_runtime.yaml"));
-    }
 }

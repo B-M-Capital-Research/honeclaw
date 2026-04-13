@@ -95,8 +95,6 @@ fn file_proxy_roots(config: &hone_core::config::HoneConfig) -> Vec<PathBuf> {
         &config.storage.sessions_dir,
         &config.storage.portfolio_dir,
         &config.storage.cron_jobs_dir,
-        &config.storage.reports_dir,
-        &config.storage.x_drafts_dir,
         &config.storage.gen_images_dir,
     ];
 

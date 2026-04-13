@@ -281,12 +281,6 @@ if [[ ! -f "$PROJECT_ROOT/config.yaml" ]]; then
   exit 1
 fi
 
-RUNTIME_CONFIG="$RUNTIME_DIR/config_runtime.yaml"
-RUNTIME_OVERLAY="$RUNTIME_DIR/config_runtime.overrides.yaml"
-if [[ ! -f "$RUNTIME_CONFIG" ]]; then
-  cp "$PROJECT_ROOT/config.yaml" "$RUNTIME_CONFIG"
-  rm -f "$RUNTIME_OVERLAY"
-fi
 if [[ -f "$PROJECT_ROOT/soul.md" && ! -f "$RUNTIME_DIR/soul.md" ]]; then
   cp "$PROJECT_ROOT/soul.md" "$RUNTIME_DIR/soul.md"
 fi
@@ -318,7 +312,8 @@ echo "[INFO] restarting processes..."
 stop_all
 
 export HONE_DISABLE_AUTO_OPEN="1"
-export HONE_CONFIG_PATH="${HONE_CONFIG_PATH:-$RUNTIME_CONFIG}"
+export HONE_CONFIG_PATH="${HONE_CONFIG_PATH:-$PROJECT_ROOT/config.yaml}"
+export HONE_USER_CONFIG_PATH="${HONE_USER_CONFIG_PATH:-$PROJECT_ROOT/config.yaml}"
 export HONE_DATA_DIR="${HONE_DATA_DIR:-$PROJECT_ROOT/data}"
 export HONE_DESKTOP_DATA_DIR="${HONE_DESKTOP_DATA_DIR:-$HONE_DATA_DIR}"
 export HONE_SKILLS_DIR="${HONE_SKILLS_DIR:-$PROJECT_ROOT/skills}"

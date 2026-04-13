@@ -1,5 +1,5 @@
 use super::*;
-use hone_core::config::{ConfigMutation, apply_config_mutations};
+use hone_core::config::{ConfigMutation, apply_config_mutations, generate_effective_config};
 
 pub(super) fn seed_multi_agent_settings(config: &HoneConfig) -> MultiAgentSettings {
     let search = MultiAgentSearchSettings {
@@ -109,6 +109,7 @@ pub(super) fn save_persisted_config(app: &AppHandle, config: &BackendConfig) -> 
 
 pub(super) fn apply_setting_updates(
     config_path: &Path,
+    effective_config_path: &Path,
     updates: Vec<(&str, serde_yaml::Value)>,
 ) -> Result<HoneConfig, String> {
     let mutations = updates
@@ -118,9 +119,9 @@ pub(super) fn apply_setting_updates(
             value,
         })
         .collect::<Vec<_>>();
-    apply_config_mutations(config_path, &mutations)
-        .map(|result| result.config)
-        .map_err(|e| e.to_string())
+    let result = apply_config_mutations(config_path, &mutations).map_err(|e| e.to_string())?;
+    generate_effective_config(config_path, effective_config_path).map_err(|e| e.to_string())?;
+    Ok(result.config)
 }
 
 pub(super) fn load_channel_settings(app: &AppHandle) -> Result<DesktopChannelSettings, String> {
@@ -148,6 +149,7 @@ pub(super) fn save_channel_settings(
     let config_path = runtime.config_path;
     let config = apply_setting_updates(
         &config_path,
+        &runtime.effective_config_path,
         vec![
             (
                 "imessage.enabled",

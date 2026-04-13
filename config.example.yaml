@@ -230,9 +230,7 @@ storage:
   llm_audit_retention_days: 30
   llm_audit_enabled: true
   portfolio_dir: "./data/portfolio"
-  reports_dir: "./data/reports"
   cron_jobs_dir: "./data/cron_jobs"
-  x_drafts_dir: "./data/x_drafts"
 
 logging:
   level: "INFO"
@@ -386,12 +384,6 @@ tools:
     enabled: true
 
   portfolio:
-    enabled: true
-
-  x_draft:
-    enabled: true
-
-  x_publish:
     enabled: true
 
 

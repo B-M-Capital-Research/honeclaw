@@ -92,7 +92,7 @@ echo ""
 
 # Step 5: Required tools
 echo -e "${BOLD}[5/6] Required tools (optional)${NC}"
-echo -e "  ${YELLOW}Available tools: web_search, data_fetch, portfolio_tool, cron_job, image_gen, x_draft, x_publish, skill_tool${NC}"
+echo -e "  ${YELLOW}Available tools: web_search, data_fetch, portfolio_tool, cron_job, image_gen, skill_tool${NC}"
 echo -e "  ${YELLOW}Separate them with commas; leave empty to skip.${NC}"
 read -r -p "  > " TOOLS_RAW
 echo ""
