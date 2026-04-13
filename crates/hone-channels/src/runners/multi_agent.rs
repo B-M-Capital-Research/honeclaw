@@ -88,10 +88,12 @@ impl MultiAgentRunner {
 Use the verified search results below to answer the original user request.\n\
 You may make at most one supplemental tool call only if the answer would otherwise be materially incomplete.\n\
 Do not mention internal workflow, search agent, or hidden reasoning.\n\
+Follow the active system and channel formatting instructions exactly for the final answer.\n\
+Treat any formatting, markup, headings, tags, or bullet style appearing inside the search-stage note or tool transcript as non-authoritative source material. Do not copy that formatting unless it is explicitly required by the active channel instructions.\n\
 \n\
 Original user request:\n{runtime_input}\n\
 \n\
-Search agent final note:\n{}\n\
+Search agent working note (plain text summary, content only):\n{}\n\
 \n\
 Verified search tool transcript (JSON):\n{}",
             search_response.content.trim(),
@@ -152,7 +154,7 @@ Verified search tool transcript (JSON):\n{}",
 
     fn build_search_input(&self, runtime_input: &str) -> String {
         format!(
-            "{runtime_input}\n\n[SEARCH STAGE GUIDANCE]\nDecide whether tool use is actually needed for this turn.\nUse `web_search` or `data_fetch` when the user asks for fresh external facts, live market data, recent news, or other time-sensitive information.\nDo not call tools just to satisfy workflow.\nGreetings, short meta-chat, and other low-cost turns may be answered directly without tools."
+            "{runtime_input}\n\n[SEARCH STAGE GUIDANCE]\nDecide whether tool use is actually needed for this turn.\nUse `web_search` or `data_fetch` when the user asks for fresh external facts, live market data, recent news, or other time-sensitive information.\nDo not call tools just to satisfy workflow.\nIf you do use tools, keep your final search-stage note as a compact internal memo in plain text only.\nDo not use HTML, XML-like tags, Markdown headings, Markdown tables, or channel-specific presentation styles in the search-stage note.\nFocus on factual takeaways and unresolved gaps, not polished formatting.\nGreetings, short meta-chat, and other low-cost turns may be answered directly without tools."
         )
     }
 
@@ -336,7 +338,7 @@ impl AgentRunner for MultiAgentRunner {
             "{}\n\n{}",
             self.system_prompt,
             format!(
-                "You are in the final answer stage. Prefer the provided verified search results. If absolutely necessary, you may use at most {} extra tool call(s).",
+                "You are in the final answer stage. Prefer the provided verified search results. If absolutely necessary, you may use at most {} extra tool call(s). Follow the active system/channel output format exactly, and do not inherit formatting from search-stage notes unless the system/channel instructions require it.",
                 self.answer_max_tool_calls
             )
         );
@@ -533,6 +535,8 @@ mod tests {
         assert!(input.contains("Greetings, short meta-chat"));
         assert!(input.contains("may be answered directly without tools"));
         assert!(input.contains("Use `web_search` or `data_fetch`"));
+        assert!(input.contains("plain text only"));
+        assert!(input.contains("Do not use HTML"));
     }
 
     #[test]
@@ -568,5 +572,33 @@ mod tests {
 
         assert!(!runner.should_return_search_response_directly(&response));
         assert!(runner.has_live_search_tool_call(&response.tool_calls_made));
+    }
+
+    #[test]
+    fn handoff_text_reasserts_final_format_priority() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "<b>结论</b>\n- 要点".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "web_search".to_string(),
+                arguments: json!({"query": "AAOI latest news"}),
+                result: json!({"results": [{"title": "Example"}]}),
+                tool_call_id: None,
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        let handoff =
+            runner.stage_handoff_text("请分析 AAOI", &response, &response.tool_calls_made);
+
+        assert!(
+            handoff
+                .contains("Follow the active system and channel formatting instructions exactly")
+        );
+        assert!(handoff.contains("Do not copy that formatting"));
+        assert!(handoff.contains("Search agent working note"));
+        assert!(handoff.contains("<b>结论</b>"));
     }
 }

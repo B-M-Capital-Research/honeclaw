@@ -1,3 +1,5 @@
+use crate::runtime::tool_display_map;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThinkRenderStyle {
     MarkdownQuote,
@@ -9,7 +11,14 @@ pub enum ThinkRenderStyle {
 pub struct ThinkStreamFormatter {
     style: ThinkRenderStyle,
     pending: String,
-    inside_think: bool,
+    block: FormatterBlock,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FormatterBlock {
+    Plain,
+    Think,
+    ToolCode,
 }
 
 impl ThinkStreamFormatter {
@@ -17,43 +26,59 @@ impl ThinkStreamFormatter {
         Self {
             style,
             pending: String::new(),
-            inside_think: false,
+            block: FormatterBlock::Plain,
         }
     }
 
     pub fn push_chunk(&mut self, chunk: &str) -> String {
         const OPEN_TAG: &str = "<think>";
         const CLOSE_TAG: &str = "</think>";
+        const TOOL_OPEN_TAG: &str = "<tool_code>";
+        const TOOL_CLOSE_TAG: &str = "</tool_code>";
 
         self.pending.push_str(chunk);
         let mut rendered = String::new();
 
         loop {
-            if self.inside_think {
-                let Some(end) = self.pending.find(CLOSE_TAG) else {
+            match self.block {
+                FormatterBlock::Plain => {
+                    if let Some((start, next_block, tag_len)) =
+                        find_next_open_tag(&self.pending, OPEN_TAG, TOOL_OPEN_TAG)
+                    {
+                        rendered.push_str(&self.pending[..start]);
+                        self.pending.drain(..start + tag_len);
+                        self.block = next_block;
+                        continue;
+                    }
+
+                    let keep =
+                        trailing_partial_prefix_len_many(&self.pending, &[OPEN_TAG, TOOL_OPEN_TAG]);
+                    let emit_len = self.pending.len().saturating_sub(keep);
+                    if emit_len > 0 {
+                        rendered.push_str(&self.pending[..emit_len]);
+                        self.pending.drain(..emit_len);
+                    }
                     break;
-                };
-                let thought = self.pending[..end].to_string();
-                rendered.push_str(&render_think_block(&thought, self.style));
-                self.pending.drain(..end + CLOSE_TAG.len());
-                self.inside_think = false;
-                continue;
+                }
+                FormatterBlock::Think => {
+                    let Some(end) = self.pending.find(CLOSE_TAG) else {
+                        break;
+                    };
+                    let thought = self.pending[..end].to_string();
+                    rendered.push_str(&render_think_block(&thought, self.style));
+                    self.pending.drain(..end + CLOSE_TAG.len());
+                    self.block = FormatterBlock::Plain;
+                }
+                FormatterBlock::ToolCode => {
+                    let Some(end) = self.pending.find(TOOL_CLOSE_TAG) else {
+                        break;
+                    };
+                    let tool_code = self.pending[..end].to_string();
+                    rendered.push_str(&render_tool_block(&tool_code, self.style));
+                    self.pending.drain(..end + TOOL_CLOSE_TAG.len());
+                    self.block = FormatterBlock::Plain;
+                }
             }
-
-            if let Some(start) = self.pending.find(OPEN_TAG) {
-                rendered.push_str(&self.pending[..start]);
-                self.pending.drain(..start + OPEN_TAG.len());
-                self.inside_think = true;
-                continue;
-            }
-
-            let keep = trailing_partial_prefix_len(&self.pending, OPEN_TAG);
-            let emit_len = self.pending.len().saturating_sub(keep);
-            if emit_len > 0 {
-                rendered.push_str(&self.pending[..emit_len]);
-                self.pending.drain(..emit_len);
-            }
-            break;
         }
 
         rendered
@@ -64,13 +89,19 @@ impl ThinkStreamFormatter {
             return String::new();
         }
 
-        if self.inside_think {
-            self.inside_think = false;
-            let thought = std::mem::take(&mut self.pending);
-            return render_think_block(&thought, self.style);
+        match self.block {
+            FormatterBlock::Think => {
+                self.block = FormatterBlock::Plain;
+                let thought = std::mem::take(&mut self.pending);
+                render_think_block(&thought, self.style)
+            }
+            FormatterBlock::ToolCode => {
+                self.block = FormatterBlock::Plain;
+                let tool_code = std::mem::take(&mut self.pending);
+                render_tool_block(&tool_code, self.style)
+            }
+            FormatterBlock::Plain => std::mem::take(&mut self.pending),
         }
-
-        std::mem::take(&mut self.pending)
     }
 }
 
@@ -126,6 +157,32 @@ fn trailing_partial_prefix_len(text: &str, marker: &str) -> usize {
     0
 }
 
+fn trailing_partial_prefix_len_many(text: &str, markers: &[&str]) -> usize {
+    markers
+        .iter()
+        .map(|marker| trailing_partial_prefix_len(text, marker))
+        .max()
+        .unwrap_or(0)
+}
+
+fn find_next_open_tag(
+    text: &str,
+    think_tag: &str,
+    tool_tag: &str,
+) -> Option<(usize, FormatterBlock, usize)> {
+    let think = text
+        .find(think_tag)
+        .map(|idx| (idx, FormatterBlock::Think, think_tag.len()));
+    let tool = text
+        .find(tool_tag)
+        .map(|idx| (idx, FormatterBlock::ToolCode, tool_tag.len()));
+    match (think, tool) {
+        (Some(left), Some(right)) => Some(if left.0 <= right.0 { left } else { right }),
+        (Some(found), None) | (None, Some(found)) => Some(found),
+        (None, None) => None,
+    }
+}
+
 fn render_think_block(text: &str, style: ThinkRenderStyle) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -165,6 +222,156 @@ fn render_telegram_quote(text: &str) -> String {
 
 fn render_plain_text(text: &str) -> String {
     format!("思考：\n{text}\n\n")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ToolInvocation {
+    name: String,
+    parameters: Vec<(String, String)>,
+}
+
+fn render_tool_block(text: &str, style: ThinkRenderStyle) -> String {
+    let tools = parse_tool_invocations(text);
+    if tools.is_empty() {
+        return String::new();
+    }
+    let lines = tools
+        .iter()
+        .map(|tool| render_tool_line(tool, style))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{lines}\n\n")
+}
+
+fn render_tool_line(tool: &ToolInvocation, style: ThinkRenderStyle) -> String {
+    let label = friendly_tool_name(&tool.name);
+    let params = summarize_tool_parameters(&tool.parameters);
+    let body = if params.is_empty() {
+        format!("调用工具：{label}")
+    } else {
+        format!("调用工具：{label}（{params}）")
+    };
+    match style {
+        ThinkRenderStyle::MarkdownQuote | ThinkRenderStyle::TelegramHtmlQuote => {
+            format!("- {body}")
+        }
+        ThinkRenderStyle::PlainText => body,
+    }
+}
+
+fn friendly_tool_name(name: &str) -> String {
+    if name == "portfolio_view" {
+        return "查询持仓".to_string();
+    }
+    if let Some((display_name, _)) = tool_display_map().get(name) {
+        return (*display_name).to_string();
+    }
+    name.to_string()
+}
+
+fn summarize_tool_parameters(parameters: &[(String, String)]) -> String {
+    let mut parts = parameters
+        .iter()
+        .take(2)
+        .map(|(name, value)| format!("{name}={}", summarize_inline_value(value, 48)))
+        .collect::<Vec<_>>();
+    if parameters.len() > 2 {
+        parts.push("...".to_string());
+    }
+    parts.join(", ")
+}
+
+fn summarize_inline_value(value: &str, max_chars: usize) -> String {
+    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let char_count = normalized.chars().count();
+    if char_count <= max_chars {
+        return normalized;
+    }
+    let keep = max_chars.saturating_sub(1);
+    let truncated = normalized.chars().take(keep).collect::<String>();
+    format!("{truncated}…")
+}
+
+fn parse_tool_invocations(text: &str) -> Vec<ToolInvocation> {
+    let mut tools = Vec::new();
+    let mut cursor = 0usize;
+
+    while let Some(start_rel) = text[cursor..].find("<tool") {
+        let start = cursor + start_rel;
+        if text[start..].starts_with("<tool_code") {
+            cursor = start + "<tool_code".len();
+            continue;
+        }
+        let Some(open_end_rel) = text[start..].find('>') else {
+            break;
+        };
+        let open_end = start + open_end_rel;
+        let open_tag = &text[start..=open_end];
+        let name = extract_xml_attr(open_tag, "name").unwrap_or_else(|| "tool".to_string());
+
+        if open_tag.trim_end().ends_with("/>") {
+            tools.push(ToolInvocation {
+                name,
+                parameters: Vec::new(),
+            });
+            cursor = open_end + 1;
+            continue;
+        }
+
+        let Some(close_rel) = text[open_end + 1..].find("</tool>") else {
+            tools.push(ToolInvocation {
+                name,
+                parameters: parse_tool_parameters(&text[open_end + 1..]),
+            });
+            break;
+        };
+        let inner_end = open_end + 1 + close_rel;
+        let inner = &text[open_end + 1..inner_end];
+        tools.push(ToolInvocation {
+            name,
+            parameters: parse_tool_parameters(inner),
+        });
+        cursor = inner_end + "</tool>".len();
+    }
+
+    tools
+}
+
+fn parse_tool_parameters(text: &str) -> Vec<(String, String)> {
+    let mut params = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(start_rel) = text[cursor..].find("<parameter") {
+        let start = cursor + start_rel;
+        let Some(open_end_rel) = text[start..].find('>') else {
+            break;
+        };
+        let open_end = start + open_end_rel;
+        let open_tag = &text[start..=open_end];
+        let name = extract_xml_attr(open_tag, "name").unwrap_or_else(|| "arg".to_string());
+        let Some(close_rel) = text[open_end + 1..].find("</parameter>") else {
+            break;
+        };
+        let value_end = open_end + 1 + close_rel;
+        let value = text[open_end + 1..value_end].trim();
+        if !value.is_empty() {
+            params.push((name, value.to_string()));
+        }
+        cursor = value_end + "</parameter>".len();
+    }
+    params
+}
+
+fn extract_xml_attr(tag: &str, attr: &str) -> Option<String> {
+    let marker = format!(r#"{attr}=""#);
+    let start = tag.find(&marker)? + marker.len();
+    let rest = &tag[start..];
+    let end = rest.find('"')?;
+    let value = rest[..end].trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -219,5 +426,31 @@ mod tests {
         let mut buffer = String::from("> hello\n\n");
         append_compacted(&mut buffer, "\n\nhi");
         assert_eq!(buffer, "> hello\n\nhi");
+    }
+
+    #[test]
+    fn markdown_tool_code_becomes_single_line_entries() {
+        let rendered = render_think_blocks(
+            "<tool_code>\n<tool name=\"portfolio_view\">\n</tool>\n<tool name=\"web_search\">\n<parameter name=\"query\">US Iran negotiations April 13 2026 latest update Hormuz Strait ceasefire</parameter>\n</tool>\n</tool_code>",
+            ThinkRenderStyle::MarkdownQuote,
+        );
+        assert!(rendered.contains("- 调用工具：查询持仓"));
+        assert!(rendered.contains("- 调用工具：搜索信息（query=US Iran negotiations"));
+        assert!(!rendered.contains("<tool"));
+    }
+
+    #[test]
+    fn stream_formatter_handles_tool_code_blocks() {
+        let mut formatter = ThinkStreamFormatter::new(ThinkRenderStyle::PlainText);
+        assert_eq!(formatter.push_chunk("<tool_"), "");
+        assert_eq!(
+            formatter.push_chunk("code><tool name=\"portfolio_view\">"),
+            ""
+        );
+        assert_eq!(
+            formatter.push_chunk("</tool></tool_code>done"),
+            "调用工具：查询持仓\n\ndone"
+        );
+        assert_eq!(formatter.finish(), "");
     }
 }
