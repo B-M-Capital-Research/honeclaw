@@ -5,6 +5,23 @@ set -euo pipefail
 ZERO_SHA="0000000000000000000000000000000000000000"
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 REMOTE_NAME="${1:-origin}"
+REFS_FILE="$(mktemp "${TMPDIR:-/tmp}/pre-push-refs.XXXXXX")"
+trap 'rm -f "$REFS_FILE"' EXIT
+
+cat > "$REFS_FILE"
+
+resolve_rustfmt() {
+  if command -v rustfmt >/dev/null 2>&1; then
+    command -v rustfmt
+    return
+  fi
+
+  cat >&2 <<'EOF'
+[pre-push:rustfmt] rustfmt is not installed for this clone.
+Run `rustup component add rustfmt` first, then retry the push.
+EOF
+  exit 1
+}
 
 resolve_gitleaks() {
   if command -v gitleaks >/dev/null 2>&1; then
@@ -73,6 +90,71 @@ EOF
   rm -f "$report_path"
 }
 
+collect_rust_files() {
+  local local_ref="$1"
+  local local_sha="$2"
+  local remote_sha="$3"
+
+  if [[ "$local_ref" != refs/heads/* ]]; then
+    return 0
+  fi
+
+  if [ "$remote_sha" = "$ZERO_SHA" ]; then
+    mapfile -t pending_commits < <(git rev-list "$local_sha" --not "--remotes=$REMOTE_NAME")
+    if [ "${#pending_commits[@]}" -eq 0 ]; then
+      return 0
+    fi
+    git diff-tree --no-commit-id --name-only -r "${pending_commits[@]}" -- '*.rs' | sort -u
+  else
+    git diff --name-only "${remote_sha}..${local_sha}" -- '*.rs' | sort -u
+  fi
+}
+
+check_rustfmt_for_ref() {
+  local label="$1"
+  local local_sha="$2"
+  shift 2
+
+  local files=("$@")
+  if [ "${#files[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/pre-push-rustfmt.XXXXXX")"
+  local -a bad_files=()
+
+  printf '[pre-push:rustfmt] rustfmt --check on files for %s\n' "$label" >&2
+  printf ' - %s\n' "${files[@]}" >&2
+
+  for path in "${files[@]}"; do
+    if ! git cat-file -e "${local_sha}:${path}" 2>/dev/null; then
+      continue
+    fi
+
+    local dest="$tmp_dir/$path"
+    mkdir -p "$(dirname "$dest")"
+    git show "${local_sha}:${path}" > "$dest"
+
+    if ! "$RUSTFMT_BIN" --edition 2024 --check "$dest" >/dev/null 2>&1; then
+      bad_files+=("$path")
+    fi
+  done
+
+  rm -rf "$tmp_dir"
+
+  if [ "${#bad_files[@]}" -gt 0 ]; then
+    printf '[pre-push:rustfmt] blocked push for %s\n' "$label" >&2
+    cat >&2 <<'EOF'
+[pre-push:rustfmt] The commits about to be pushed contain Rust files that are not rustfmt-clean.
+[pre-push:rustfmt] Run `cargo fmt --all`, recommit the formatting changes, then retry the push.
+EOF
+    printf ' - %s\n' "${bad_files[@]}" >&2
+    exit 1
+  fi
+}
+
+RUSTFMT_BIN="$(resolve_rustfmt)"
 GITLEAKS_BIN="$(resolve_gitleaks)"
 
 while read -r local_ref local_sha remote_ref remote_sha; do
@@ -82,11 +164,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     continue
   fi
 
+  mapfile -t rust_files < <(collect_rust_files "$local_ref" "$local_sha" "$remote_sha")
+  check_rustfmt_for_ref "$local_ref" "$local_sha" "${rust_files[@]}"
+
   if [ "$remote_sha" = "$ZERO_SHA" ]; then
     scan_range "$local_ref (new ref)" "$local_ref" "--not" "--remotes=$REMOTE_NAME"
   else
     scan_range "$local_ref -> $remote_ref" "${remote_sha}..${local_sha}"
   fi
-done
+done < "$REFS_FILE"
 
 exit 0

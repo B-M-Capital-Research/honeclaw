@@ -62,5 +62,5 @@ git config core.hooksPath .githooks
 cat <<EOF
 Installed gitleaks $VERSION to $BIN_PATH
 Configured local core.hooksPath=.githooks
-pre-push secret scan is now enabled for this clone
+pre-push secret scan and Rust rustfmt gate are now enabled for this clone
 EOF

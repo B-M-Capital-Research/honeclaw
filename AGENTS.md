@@ -198,8 +198,9 @@
 
 ## 本地 Push 门禁
 
-- 本仓库通过 `.githooks/pre-push` 在本地 push 前运行 `gitleaks`
+- 本仓库通过 `.githooks/pre-push` 在本地 push 前先检查“即将推送的 Rust 变更是否通过 `rustfmt --check`”，再运行 `gitleaks`
 - 当前 clone 初次启用时执行：`bash scripts/install_gitleaks.sh`
+- 若 hook 提示 rustfmt 失败，先执行 `cargo fmt --all`，把格式化结果提交进 commit 后再重新 push；不要指望 hook 在 push 过程中偷偷改写即将推送的提交
 - pre-push 只扫描“即将推送的 commits”，不扫描整个工作区；若命中疑似 secret，必须先清理或更新 allowlist，再重新 push
 
 ## CD 契约
