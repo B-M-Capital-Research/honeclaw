@@ -7,6 +7,7 @@ use hone_memory::{
 
 use crate::HoneBotCore;
 use crate::core::CompactSessionOutcome;
+use crate::runtime::sanitize_user_visible_output;
 
 const POST_COMPACT_MAX_SKILL_SNAPSHOT_CHARS: usize = 12_000;
 const POST_COMPACT_MAX_SKILL_SNAPSHOTS: usize = 4;
@@ -112,7 +113,15 @@ impl<'a> SessionCompactor<'a> {
 
         let mut history_text = String::new();
         for message in &active_messages {
-            history_text.push_str(&format!("{}: {}\n\n", message.role, message.content));
+            let content = match message.role.as_str() {
+                "assistant" | "user" => sanitize_user_visible_output(&message.content).content,
+                "tool" => String::new(),
+                _ => message.content.clone(),
+            };
+            if content.trim().is_empty() {
+                continue;
+            }
+            history_text.push_str(&format!("{}: {}\n\n", message.role, content));
         }
 
         let prompt = if is_group_session {
@@ -267,6 +276,19 @@ impl<'a> SessionCompactor<'a> {
             new_summary_content.chars().count(),
         );
 
+        let sanitized_summary = sanitize_user_visible_output(&new_summary_content).content;
+        let summary_to_store = sanitized_summary.trim();
+        if summary_to_store.is_empty() {
+            tracing::warn!(
+                "[HoneBotCore] Session {} compression produced no user-visible summary after sanitization.",
+                session_id
+            );
+            return Ok(CompactSessionOutcome {
+                compacted: false,
+                summary: None,
+            });
+        }
+
         let mut new_messages = Vec::new();
         new_messages.push(hone_memory::session::SessionMessage {
             role: "system".to_string(),
@@ -280,7 +302,7 @@ impl<'a> SessionCompactor<'a> {
         });
         new_messages.push(hone_memory::session::SessionMessage {
             role: "user".to_string(),
-            content: format!("【Compact Summary】\n{}", new_summary_content.trim()),
+            content: format!("【Compact Summary】\n{summary_to_store}"),
             timestamp: hone_core::beijing_now_rfc3339(),
             metadata: Some(build_compact_summary_metadata(trigger)),
         });
@@ -311,7 +333,7 @@ impl<'a> SessionCompactor<'a> {
         self.core.session_storage.replace_messages_with_summary(
             session_id,
             new_messages,
-            Some(SessionSummary::new(&new_summary_content)),
+            Some(SessionSummary::new(summary_to_store)),
         )?;
         tracing::info!(
             "[HoneBotCore] Session {} compacted to boundary + summary + {} retained items.",
@@ -321,7 +343,7 @@ impl<'a> SessionCompactor<'a> {
 
         Ok(CompactSessionOutcome {
             compacted: true,
-            summary: Some(new_summary_content),
+            summary: Some(summary_to_store.to_string()),
         })
     }
 

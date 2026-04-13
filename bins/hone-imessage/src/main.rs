@@ -219,7 +219,10 @@ impl AgentSessionListener for ImessageConsoleListener {
                         &self.handle,
                         "imessage_assistant_message",
                         serde_json::json!({
-                            "text": render_think_blocks(&response.content, ThinkRenderStyle::PlainText),
+                            "text": render_think_blocks(
+                                &response.content,
+                                ThinkRenderStyle::Hidden
+                            ),
                             "iterations": response.iterations
                         }),
                     );
@@ -674,7 +677,7 @@ async fn process_message_session(
         buffer: tokio::sync::Mutex::new(String::new()),
         sent_segments: tokio::sync::Mutex::new(0),
         think_formatter: tokio::sync::Mutex::new(ThinkStreamFormatter::new(
-            ThinkRenderStyle::PlainText,
+            ThinkRenderStyle::Hidden,
         )),
     }));
     let stream_probe = attach_stream_activity_probe(&mut session);
@@ -710,7 +713,7 @@ async fn process_message_session(
         let full = if response.content.trim().is_empty() {
             "收到。".to_string()
         } else {
-            render_think_blocks(response.content.trim(), ThinkRenderStyle::PlainText)
+            render_think_blocks(response.content.trim(), ThinkRenderStyle::Hidden)
         };
         let segments = split_segments(&full, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_MAX_SEGMENT_SIZE);
         let total_segments = segments.len();

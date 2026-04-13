@@ -394,7 +394,7 @@ impl DiscordHandler {
             let content = if response.content.trim().is_empty() {
                 "收到。".to_string()
             } else {
-                render_think_blocks(response.content.trim(), ThinkRenderStyle::MarkdownQuote)
+                render_think_blocks(response.content.trim(), ThinkRenderStyle::Hidden)
             };
             Ok(content)
         } else {

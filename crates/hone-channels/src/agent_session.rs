@@ -6,8 +6,8 @@ use hone_core::{ActorIdentity, SessionIdentity};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
     build_tool_message_metadata, has_compact_skill_snapshot, invoked_skills_from_metadata,
-    message_is_compact_boundary, message_is_slash_skill, restore_tool_message,
-    select_messages_after_compact_boundary,
+    message_is_compact_boundary, message_is_compact_summary, message_is_slash_skill,
+    restore_tool_message, select_messages_after_compact_boundary,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ use crate::execution::{
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
-use crate::runtime::relativize_user_visible_paths;
+use crate::runtime::{relativize_user_visible_paths, sanitize_user_visible_output};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSessionErrorKind {
@@ -1211,6 +1211,21 @@ impl AgentSession {
             response.error = Some("agent returned leaked system instructions".to_string());
             response.content.clear();
         }
+        if response.success {
+            let sanitized = sanitize_user_visible_output(&response.content);
+            if sanitized.only_internal {
+                tracing::error!(
+                    "[AgentSession] blocked internal-only assistant output runner={} session_id={}",
+                    execution.runner_name,
+                    session_id
+                );
+                response.success = false;
+                response.error = Some("agent returned internal-only output".to_string());
+                response.content.clear();
+            } else {
+                response.content = sanitized.content;
+            }
+        }
         let elapsed_ms = started.elapsed().as_millis();
 
         if response.success {
@@ -1359,10 +1374,22 @@ pub fn restore_context(
         match message.role.as_str() {
             "user" => {
                 if !message_is_slash_skill(message.metadata.as_ref()) {
-                    ctx.add_user_message(&message.content);
+                    let content = if message_is_compact_summary(message.metadata.as_ref()) {
+                        sanitize_user_visible_output(&message.content).content
+                    } else {
+                        message.content.clone()
+                    };
+                    if !content.trim().is_empty() {
+                        ctx.add_user_message(&content);
+                    }
                 }
             }
-            "assistant" => ctx.add_assistant_message(&message.content, None),
+            "assistant" => {
+                let sanitized = sanitize_user_visible_output(&message.content);
+                if !sanitized.content.trim().is_empty() {
+                    ctx.add_assistant_message(&sanitized.content, None);
+                }
+            }
             "tool" => {
                 if let Some((tool_call_id, tool_name, result)) =
                     restore_tool_message(&message.content, message.metadata.as_ref())
@@ -1702,6 +1729,47 @@ mod tests {
             tool_call_id: None,
         };
         assert!(!should_persist_tool_result(&call));
+    }
+
+    #[test]
+    fn restore_context_sanitizes_polluted_assistant_history() {
+        let root = make_temp_dir("hone_channels_restore_sanitized_assistant");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session(
+                Some("restore_sanitized"),
+                Some(actor.clone()),
+                Some(SessionIdentity::from_actor(&actor).expect("session identity")),
+            )
+            .expect("create");
+
+        storage
+            .add_message(
+                &session_id,
+                "assistant",
+                "<think>先查一下</think>\n真正可见结论",
+                None,
+            )
+            .expect("add assistant");
+        storage
+            .add_message(
+                &session_id,
+                "assistant",
+                r#"<tool_call>{"name":"web_search","parameters":{"query":"AAPL"}}</tool_call>"#,
+                None,
+            )
+            .expect("add polluted");
+
+        let ctx = restore_context(&storage, &session_id, None, None);
+        let contents: Vec<_> = ctx
+            .messages
+            .iter()
+            .filter_map(|message| message.content.as_deref())
+            .collect();
+        assert_eq!(contents, vec!["真正可见结论"]);
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

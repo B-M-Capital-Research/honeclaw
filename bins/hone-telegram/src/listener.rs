@@ -38,7 +38,7 @@ impl OutboundAdapter for TelegramOutboundAdapter {
     }
 
     async fn send_response(&self, placeholder: Option<&Self::Placeholder>, text: &str) -> usize {
-        let rendered = render_think_blocks(text, ThinkRenderStyle::TelegramHtmlQuote);
+        let rendered = render_think_blocks(text, ThinkRenderStyle::Hidden);
         let content = sanitize_telegram_html_public(&prepend_reply_prefix_placeholder(
             self.reply_prefix.as_deref(),
             &rendered,

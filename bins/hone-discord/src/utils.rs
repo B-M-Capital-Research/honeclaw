@@ -44,7 +44,7 @@ impl OutboundAdapter for DiscordOutboundAdapter {
     }
 
     async fn send_response(&self, placeholder: Option<&Self::Placeholder>, text: &str) -> usize {
-        let rendered = render_think_blocks(text, ThinkRenderStyle::MarkdownQuote);
+        let rendered = render_think_blocks(text, ThinkRenderStyle::Hidden);
         let content = prepend_reply_prefix(self.reply_prefix.as_deref(), &rendered);
         let segments = split_markdown_segments(&content, self.max_len, 1900);
         let mut owned = placeholder.cloned();

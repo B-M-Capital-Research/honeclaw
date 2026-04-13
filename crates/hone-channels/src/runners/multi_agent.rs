@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::mcp_bridge::hone_mcp_servers;
+use crate::runtime::sanitize_user_visible_output;
 
 use super::opencode_acp::OpencodeAcpRunner;
 use super::tool_reasoning::RunnerToolObserver;
@@ -159,7 +160,11 @@ Verified search tool transcript (JSON):\n{}",
     }
 
     fn should_return_search_response_directly(&self, search_response: &AgentResponse) -> bool {
-        search_response.success && search_response.tool_calls_made.is_empty()
+        if !search_response.success || !search_response.tool_calls_made.is_empty() {
+            return false;
+        }
+        let sanitized = sanitize_user_visible_output(&search_response.content);
+        !sanitized.content.is_empty() && !sanitized.removed_internal
     }
 }
 
@@ -556,6 +561,20 @@ mod tests {
 
         assert!(runner.should_return_search_response_directly(&response));
         assert!(!runner.has_live_search_tool_call(&response.tool_calls_made));
+    }
+
+    #[test]
+    fn internal_search_note_does_not_skip_answer_stage() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "<think>先判断是否需要查资料。</think>\n正在查询 Tempus AI 与 Caris Life Sciences 相关数据与新闻...".to_string(),
+            tool_calls_made: Vec::new(),
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        assert!(!runner.should_return_search_response_directly(&response));
     }
 
     #[test]

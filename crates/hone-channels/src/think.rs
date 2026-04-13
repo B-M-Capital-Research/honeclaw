@@ -2,6 +2,7 @@ use crate::runtime::tool_display_map;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThinkRenderStyle {
+    Hidden,
     MarkdownQuote,
     TelegramHtmlQuote,
     PlainText,
@@ -19,6 +20,9 @@ enum FormatterBlock {
     Plain,
     Think,
     ToolCode,
+    ToolCall,
+    ToolResult,
+    ToolUse,
 }
 
 impl ThinkStreamFormatter {
@@ -35,6 +39,12 @@ impl ThinkStreamFormatter {
         const CLOSE_TAG: &str = "</think>";
         const TOOL_OPEN_TAG: &str = "<tool_code>";
         const TOOL_CLOSE_TAG: &str = "</tool_code>";
+        const TOOL_CALL_OPEN_TAG: &str = "<tool_call>";
+        const TOOL_CALL_CLOSE_TAG: &str = "</tool_call>";
+        const TOOL_RESULT_OPEN_TAG: &str = "<tool_result>";
+        const TOOL_RESULT_CLOSE_TAG: &str = "</tool_result>";
+        const TOOL_USE_OPEN_TAG: &str = "<tool_use>";
+        const TOOL_USE_CLOSE_TAG: &str = "</tool_use>";
 
         self.pending.push_str(chunk);
         let mut rendered = String::new();
@@ -42,17 +52,32 @@ impl ThinkStreamFormatter {
         loop {
             match self.block {
                 FormatterBlock::Plain => {
-                    if let Some((start, next_block, tag_len)) =
-                        find_next_open_tag(&self.pending, OPEN_TAG, TOOL_OPEN_TAG)
-                    {
+                    if let Some((start, next_block, tag_len)) = find_next_open_tag(
+                        &self.pending,
+                        &[
+                            (OPEN_TAG, FormatterBlock::Think),
+                            (TOOL_OPEN_TAG, FormatterBlock::ToolCode),
+                            (TOOL_CALL_OPEN_TAG, FormatterBlock::ToolCall),
+                            (TOOL_RESULT_OPEN_TAG, FormatterBlock::ToolResult),
+                            (TOOL_USE_OPEN_TAG, FormatterBlock::ToolUse),
+                        ],
+                    ) {
                         rendered.push_str(&self.pending[..start]);
                         self.pending.drain(..start + tag_len);
                         self.block = next_block;
                         continue;
                     }
 
-                    let keep =
-                        trailing_partial_prefix_len_many(&self.pending, &[OPEN_TAG, TOOL_OPEN_TAG]);
+                    let keep = trailing_partial_prefix_len_many(
+                        &self.pending,
+                        &[
+                            OPEN_TAG,
+                            TOOL_OPEN_TAG,
+                            TOOL_CALL_OPEN_TAG,
+                            TOOL_RESULT_OPEN_TAG,
+                            TOOL_USE_OPEN_TAG,
+                        ],
+                    );
                     let emit_len = self.pending.len().saturating_sub(keep);
                     if emit_len > 0 {
                         rendered.push_str(&self.pending[..emit_len]);
@@ -78,6 +103,27 @@ impl ThinkStreamFormatter {
                     self.pending.drain(..end + TOOL_CLOSE_TAG.len());
                     self.block = FormatterBlock::Plain;
                 }
+                FormatterBlock::ToolCall => {
+                    let Some(end) = self.pending.find(TOOL_CALL_CLOSE_TAG) else {
+                        break;
+                    };
+                    self.pending.drain(..end + TOOL_CALL_CLOSE_TAG.len());
+                    self.block = FormatterBlock::Plain;
+                }
+                FormatterBlock::ToolResult => {
+                    let Some(end) = self.pending.find(TOOL_RESULT_CLOSE_TAG) else {
+                        break;
+                    };
+                    self.pending.drain(..end + TOOL_RESULT_CLOSE_TAG.len());
+                    self.block = FormatterBlock::Plain;
+                }
+                FormatterBlock::ToolUse => {
+                    let Some(end) = self.pending.find(TOOL_USE_CLOSE_TAG) else {
+                        break;
+                    };
+                    self.pending.drain(..end + TOOL_USE_CLOSE_TAG.len());
+                    self.block = FormatterBlock::Plain;
+                }
             }
         }
 
@@ -100,6 +146,11 @@ impl ThinkStreamFormatter {
                 let tool_code = std::mem::take(&mut self.pending);
                 render_tool_block(&tool_code, self.style)
             }
+            FormatterBlock::ToolCall | FormatterBlock::ToolResult | FormatterBlock::ToolUse => {
+                self.block = FormatterBlock::Plain;
+                self.pending.clear();
+                String::new()
+            }
             FormatterBlock::Plain => std::mem::take(&mut self.pending),
         }
     }
@@ -109,7 +160,12 @@ pub fn render_think_blocks(text: &str, style: ThinkRenderStyle) -> String {
     let mut formatter = ThinkStreamFormatter::new(style);
     let mut out = formatter.push_chunk(text);
     out.push_str(&formatter.finish());
-    compact_excess_blank_lines(&out)
+    let compacted = compact_excess_blank_lines(&out);
+    if style == ThinkRenderStyle::Hidden {
+        compacted.trim().to_string()
+    } else {
+        compacted
+    }
 }
 
 pub fn append_compacted(buffer: &mut String, addition: &str) {
@@ -167,20 +223,11 @@ fn trailing_partial_prefix_len_many(text: &str, markers: &[&str]) -> usize {
 
 fn find_next_open_tag(
     text: &str,
-    think_tag: &str,
-    tool_tag: &str,
+    tags: &[(&str, FormatterBlock)],
 ) -> Option<(usize, FormatterBlock, usize)> {
-    let think = text
-        .find(think_tag)
-        .map(|idx| (idx, FormatterBlock::Think, think_tag.len()));
-    let tool = text
-        .find(tool_tag)
-        .map(|idx| (idx, FormatterBlock::ToolCode, tool_tag.len()));
-    match (think, tool) {
-        (Some(left), Some(right)) => Some(if left.0 <= right.0 { left } else { right }),
-        (Some(found), None) | (None, Some(found)) => Some(found),
-        (None, None) => None,
-    }
+    tags.iter()
+        .filter_map(|(tag, block)| text.find(tag).map(|idx| (idx, *block, tag.len())))
+        .min_by_key(|(idx, _, _)| *idx)
 }
 
 fn render_think_block(text: &str, style: ThinkRenderStyle) -> String {
@@ -190,6 +237,7 @@ fn render_think_block(text: &str, style: ThinkRenderStyle) -> String {
     }
 
     match style {
+        ThinkRenderStyle::Hidden => String::new(),
         ThinkRenderStyle::MarkdownQuote => render_markdown_quote(trimmed),
         ThinkRenderStyle::TelegramHtmlQuote => render_telegram_quote(trimmed),
         ThinkRenderStyle::PlainText => render_plain_text(trimmed),
@@ -252,6 +300,7 @@ fn render_tool_line(tool: &ToolInvocation, style: ThinkRenderStyle) -> String {
         format!("调用工具：{label}（{params}）")
     };
     match style {
+        ThinkRenderStyle::Hidden => String::new(),
         ThinkRenderStyle::MarkdownQuote | ThinkRenderStyle::TelegramHtmlQuote => {
             format!("- {body}")
         }
@@ -388,6 +437,24 @@ mod tests {
         assert!(rendered.contains("> b"));
         assert!(rendered.ends_with("hello"));
         assert!(!rendered.contains("<think>"));
+    }
+
+    #[test]
+    fn hidden_style_strips_think_and_tool_blocks() {
+        let rendered = render_think_blocks(
+            "<think>foo</think>\n<tool_code><tool><parameter name=\"query\">AAPL</parameter></tool></tool_code>\nbar",
+            ThinkRenderStyle::Hidden,
+        );
+        assert_eq!(rendered, "bar");
+    }
+
+    #[test]
+    fn stream_formatter_suppresses_tool_call_blocks() {
+        let mut formatter = ThinkStreamFormatter::new(ThinkRenderStyle::Hidden);
+        let first = formatter.push_chunk("前文<tool_call>{\"name\":\"web_search\"}");
+        let second = formatter.push_chunk("</tool_call>后文");
+        let rendered = format!("{first}{second}{}", formatter.finish());
+        assert_eq!(rendered, "前文后文");
     }
 
     #[test]

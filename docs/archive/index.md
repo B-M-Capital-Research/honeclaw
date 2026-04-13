@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-13
 
+### Multi-Agent 输出净化与 think/tool_call 泄漏修复
+
+- Status: done
+- Date: 2026-04-13
+- Plan: `docs/archive/plans/multi-agent-output-sanitization.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels`, `cargo test -p hone-feishu`, `cargo test -p hone-channels sanitize_user_visible_output -- --nocapture`, `cargo test -p hone-channels restore_context_sanitizes_polluted_assistant_history -- --nocapture`, `cargo test -p hone-channels internal_search_note_does_not_skip_answer_stage -- --nocapture`
+- Current conclusion: 统一新增用户可见输出净化层后，multi-agent 搜索阶段不再把带 `<think>` / `<tool_call>` 的内部工作稿直接返回给用户；`AgentSession`、`restore_context`、`session_compactor` 会在持久化、恢复与压缩路径上拦截或清洗污染内容；Feishu / Telegram / Discord / iMessage 用户可见回复现统一隐藏 `<think>`，Feishu / iMessage 流式 formatter 也会吞掉 `<tool_call>` / `<tool_result>` / `<tool_use>` 内部块
+- Next entry point: `crates/hone-channels/src/runtime.rs`
+
 ### 跨渠道富文本分段渲染修复
 
 - Status: done

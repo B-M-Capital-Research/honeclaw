@@ -559,7 +559,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         cardkit: cardkit_session.clone(),
         show_reasoning: true,
         think_formatter: Arc::new(std::sync::RwLock::new(ThinkStreamFormatter::new(
-            ThinkRenderStyle::MarkdownQuote,
+            ThinkRenderStyle::Hidden,
         ))),
     }));
     let stream_probe = attach_stream_activity_probe(&mut session);
@@ -621,8 +621,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
 
     let response = result.response;
     let saw_stream_delta = stream_probe.saw_stream_delta();
-    let mut final_text =
-        render_think_blocks(response.content.trim(), ThinkRenderStyle::MarkdownQuote);
+    let mut final_text = render_think_blocks(response.content.trim(), ThinkRenderStyle::Hidden);
     if final_text.is_empty() {
         final_text = content_buf.read().unwrap().trim().to_string();
     }

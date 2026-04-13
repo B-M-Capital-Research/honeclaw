@@ -173,4 +173,10 @@ mod tests {
         assert!(rendered.contains("> foo"));
         assert!(rendered.ends_with("bar"));
     }
+
+    #[test]
+    fn hidden_style_does_not_expose_think_text() {
+        let rendered = render_think_blocks("<think>foo</think>\nbar", ThinkRenderStyle::Hidden);
+        assert_eq!(rendered, "bar");
+    }
 }

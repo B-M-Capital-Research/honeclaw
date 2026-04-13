@@ -27,6 +27,13 @@ pub struct StreamProcessResult {
 pub type StreamSendFn =
     Box<dyn Fn(String, String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SanitizedUserVisibleOutput {
+    pub content: String,
+    pub removed_internal: bool,
+    pub only_internal: bool,
+}
+
 /// 工具显示名称映射
 pub fn tool_display_map() -> HashMap<&'static str, (&'static str, bool)> {
     let mut map = HashMap::new();
@@ -62,9 +69,9 @@ pub fn get_tool_status_message(tool_name: &str, status: &str) -> String {
 pub fn resolve_tool_reasoning(tool_name: &str, reasoning: Option<String>) -> Option<String> {
     let cleaned = reasoning
         .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_string());
+        .map(sanitize_user_visible_output)
+        .map(|value| value.content.trim().to_string())
+        .filter(|value| !value.is_empty());
     if cleaned.is_some() {
         return cleaned;
     }
@@ -179,6 +186,32 @@ static RE_WS: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"[ \t]+").expect("valid regex"));
 static RE_NL: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"\n[ \t\n]*\n").expect("valid regex"));
+static RE_INTERNAL_BLOCK: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?is)<think\b[^>]*>.*?</think>|<tool_code\b[^>]*>.*?</tool_code>|</?(tool_call|tool_result|tool_use)\b[^>]*>",
+    )
+    .expect("valid regex")
+});
+static RE_BRACKET_INTERNAL_BLOCK: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(?is)\[(?:/)?TOOL_(?:CALL|RESULT|USE)[^\]]*\]").expect("valid regex")
+});
+static RE_INTERNAL_PROTOCOL_LINE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?ix)
+        ^
+        (
+            <(?:tool_call|tool_result|tool_use|parameter)\b
+            |
+            </(?:tool_call|tool_result|tool_use|parameter)>
+            |
+            \[(?:/)?TOOL_(?:CALL|RESULT|USE)[^\]]*\]
+            |
+            \{[^{}]*(?:"name"\s*:\s*"[^"]+"|"parameters"\s*:|"queryType"\s*:|"maxResults"\s*:)[^{}]*\}
+        )
+        "#,
+    )
+    .expect("valid regex")
+});
 static RE_ABSOLUTE_PATH: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?P<prefix>^|[\s\(\[\{<"'`])(?P<path>(?:[A-Za-z]:[\\/]|/)[^\s<>"'`]+)"#)
         .expect("valid regex")
@@ -218,9 +251,73 @@ pub fn clean_msg_markers(text: &str) -> String {
     cleaned.trim().to_string()
 }
 
+pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
+    if text.trim().is_empty() {
+        return SanitizedUserVisibleOutput {
+            content: String::new(),
+            removed_internal: false,
+            only_internal: false,
+        };
+    }
+
+    let mut removed_internal = false;
+    let mut sanitized = text.replace("\r\n", "\n");
+
+    let block_stripped = RE_INTERNAL_BLOCK.replace_all(&sanitized, "\n");
+    if block_stripped != sanitized {
+        removed_internal = true;
+        sanitized = block_stripped.into_owned();
+    }
+
+    let bracket_stripped = RE_BRACKET_INTERNAL_BLOCK.replace_all(&sanitized, "");
+    if bracket_stripped != sanitized {
+        removed_internal = true;
+        sanitized = bracket_stripped.into_owned();
+    }
+
+    let mut kept_lines = Vec::new();
+    for line in sanitized.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            kept_lines.push(String::new());
+            continue;
+        }
+        if RE_INTERNAL_PROTOCOL_LINE.is_match(trimmed) || is_tool_call_content(trimmed) {
+            removed_internal = true;
+            continue;
+        }
+        kept_lines.push(line.to_string());
+    }
+
+    sanitized = kept_lines.join("\n");
+    sanitized = RE_WS.replace_all(&sanitized, " ").to_string();
+    sanitized = RE_NL.replace_all(&sanitized, "\n\n").to_string();
+    sanitized = sanitized.trim().to_string();
+
+    SanitizedUserVisibleOutput {
+        only_internal: removed_internal && sanitized.is_empty(),
+        removed_internal,
+        content: sanitized,
+    }
+}
+
 /// 检测文本是否包含工具调用标记
 pub fn is_tool_call_content(text: &str) -> bool {
     const MARKERS: &[&str] = &[
+        "<think",
+        "</think>",
+        "<tool_call",
+        "</tool_call>",
+        "<tool_result",
+        "</tool_result>",
+        "<tool_use",
+        "</tool_use>",
+        "<parameter",
+        "</parameter>",
+        "[TOOL_CALL]",
+        "[/TOOL_CALL]",
+        "[TOOL_RESULT]",
+        "[/TOOL_RESULT]",
         "<|tool_call",
         "<|tool_calls_section",
         "tool_call_argument",
@@ -372,6 +469,27 @@ mod tests {
         assert!(should_skip_buffer(r#"{"query":"AAPL"}"#));
         assert!(should_skip_buffer("tool_call tool_call"));
         assert!(!should_skip_buffer("这是用户可读的正常回复内容。"));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_internal_blocks_and_keeps_answer() {
+        let raw = "<think>\n先查一下。\n</think>\n最终结论：公司今日上涨主要因为财报超预期。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "最终结论：公司今日上涨主要因为财报超预期。"
+        );
+        assert!(!sanitized.only_internal);
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_drops_raw_tool_protocol_only_payload() {
+        let raw = r#"<tool_call>{"name":"web_search","parameters":{"query":"Tempus AI stock surge today"}}</tool_call>"#;
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert!(sanitized.only_internal);
+        assert!(sanitized.content.is_empty());
     }
 
     #[test]
