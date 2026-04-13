@@ -1,4 +1,4 @@
-use hone_channels::runtime::{DEFAULT_MAX_SEGMENT_SIZE, flush_buffer};
+use hone_channels::outbound::split_markdown_segments;
 use serde_json::{Value, json};
 
 use super::types::RenderedMessage;
@@ -333,33 +333,11 @@ pub(crate) fn preprocess_markdown_for_feishu(text: &str, convert_tables: bool) -
 }
 
 pub(crate) fn split_into_segments(text: &str, max_segment_size: usize) -> Vec<String> {
-    if text.trim().is_empty() {
-        return vec![];
-    }
+    split_markdown_segments(text, max_message_length_bound(max_segment_size), 3500)
+}
 
-    let target_size = max_segment_size.clamp(100, 3500);
-    let mut segments = Vec::new();
-    let mut buf = text.to_string();
-
-    loop {
-        let (remaining, flushed) = flush_buffer(buf, target_size.min(DEFAULT_MAX_SEGMENT_SIZE * 9));
-        segments.extend(flushed);
-        buf = remaining;
-        if buf.len() < target_size {
-            break;
-        }
-    }
-
-    let tail = buf.trim().to_string();
-    if !tail.is_empty() {
-        segments.push(tail);
-    }
-
-    if segments.is_empty() {
-        segments.push(text.trim().to_string());
-    }
-
-    segments
+fn max_message_length_bound(max_segment_size: usize) -> usize {
+    max_segment_size.clamp(100, 3500)
 }
 
 pub(crate) fn render_outbound_messages(

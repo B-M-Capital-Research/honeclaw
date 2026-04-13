@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-13
 
+### 跨渠道富文本分段渲染修复
+
+- Status: done
+- Date: 2026-04-13
+- Plan: `docs/archive/plans/cross-channel-rich-text-segmentation.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo check -p hone-channels -p hone-telegram -p hone-discord -p hone-feishu`, `cargo test -p hone-channels outbound::tests::split_html_segments_rebalances_open_tags_across_segments -- --exact`, `cargo test -p hone-channels outbound::tests::split_markdown_segments_rebalances_code_fences_across_segments -- --exact`
+- Current conclusion: 共享分段层现在新增 HTML / Markdown 两种 format-aware segmenter；Telegram 长回复会在分段边界自动补全并重开 HTML tag，Discord / Feishu 会在 Markdown 代码块跨段时自动补全并重开 fence，避免富文本结构在长回复发送时被切坏后降级或回退纯文本
+- Next entry point: `crates/hone-channels/src/outbound.rs`
+
 ### 飞书表格语法护栏
 
 - Status: done

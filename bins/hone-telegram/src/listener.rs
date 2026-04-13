@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hone_channels::outbound::{OutboundAdapter, split_segments};
+use hone_channels::outbound::{OutboundAdapter, split_html_segments};
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode, ReplyParameters};
@@ -43,7 +43,7 @@ impl OutboundAdapter for TelegramOutboundAdapter {
             self.reply_prefix.as_deref(),
             &rendered,
         ));
-        let segments = split_segments(&content, self.max_len, 3500);
+        let segments = split_html_segments(&content, self.max_len, 3500);
         if let Some(message_id) = placeholder {
             let first = segments
                 .first()

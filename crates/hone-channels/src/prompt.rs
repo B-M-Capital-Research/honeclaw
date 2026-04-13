@@ -23,10 +23,12 @@ pub const DEFAULT_COMPANY_PROFILE_POLICY: &str = "【公司画像 / 长期跟踪
 - 若用户问题明显依赖当前 actor 用户空间下的本地持久化信息，也应优先检查本地文件，例如 `company_profiles/`、`uploads/`、`runtime/` 产物或其它用户本地笔记；如果当前阶段暴露的是只读本地工具，应优先使用这些工具，而不是直接声称无法访问文件、历史或记忆。\n\
 - 若尚无画像，且用户是在发起新的系统性公司调研，则默认创建长期画像并沉淀本轮结论；不需要再额外征求一次建档确认。\n\
 - 仅当用户明显只是在问一次性短问题，或明确表示这轮不要沉淀时，才不要创建画像。\n\
-- 若画像已存在，后续研究应优先参考已有画像，并在出现实质新增事实时追加事件；只有长期判断变化明显时才直接回写主画像 section。\n\
+- 若画像已存在，后续研究应优先参考已有画像；出现实质新增事实时才追加事件，而只要长期判断、稳定偏好、共识逻辑或估值结论已经变化，就应直接回写主画像正文或对应 section。\n\
+- 只要用户正在研究某家公司，且本轮产出了值得长期复用的内容，就应主动帮用户沉淀到公司画像，不要等用户逐条要求；优先保留用户自己的看法、偏好或约束、你与用户此前已达成一致的判断逻辑，以及本轮形成的估值判断、估值区间或估值锚点。\n\
 - 画像不仅要保留“当前结论”，还应尽量保留“为什么这么判断”、关键证据、来源与本轮研究路径；若当前没有独立 research note 存储层，应把必要的 why / evidence / research trail 写入事件正文。\n\
 - 维护画像与事件时，默认使用用户当前对话语言；仅在用户明确要求或必须保留原始引用/术语时才局部保留其他语言。\n\
-- 主画像应优先维护 Thesis、关键经营指标、估值框架、风险台账与证伪条件；事件更新应围绕 thesis change log，而不是价格噪音。\n\
+- 主画像应优先维护 Thesis、用户视角与偏好、关键经营指标、估值框架与当前估值判断、风险台账与证伪条件；事件更新应围绕 thesis change log，而不是价格噪音。\n\
+- 不要把公司画像写成流水账；已经过时或被新判断替代的内容，应直接在主画像正文中改写，而不是层层追加补丁式备注。\n\
 - 建档、更新和事件追加应优先使用 runner 原生文件读写能力完成，而不是依赖额外的专用 mutation 工具。\n\
 - 公司画像服务于长期基本面跟踪，不应用于日内盯盘、高频价格提醒或直接交易指令。";
 
@@ -285,6 +287,39 @@ mod tests {
                 .contains("不要未经自己思考和风险评估就直接照做")
         );
         assert!(bundle.system_prompt().contains("只回答与金融"));
+
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn build_prompt_bundle_includes_company_profile_memory_requirements() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-prompt-company-profile-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&data_dir).expect("session storage dir should init");
+        let storage = SessionStorage::new(data_dir.join("sessions"));
+        let mut config = HoneConfig::default();
+        config.agent.system_prompt = "你是 Hone。".to_string();
+
+        let bundle = build_prompt_bundle(
+            &config,
+            &storage,
+            "feishu",
+            "session-demo",
+            &SessionPromptState::default(),
+            &PromptOptions::default(),
+        );
+        let system_prompt = bundle.system_prompt();
+
+        assert!(system_prompt.contains("用户自己的看法、偏好或约束"));
+        assert!(system_prompt.contains("已达成一致的判断逻辑"));
+        assert!(system_prompt.contains("估值判断、估值区间或估值锚点"));
+        assert!(system_prompt.contains("用户视角与偏好"));
+        assert!(system_prompt.contains("不要把公司画像写成流水账"));
 
         let _ = fs::remove_dir_all(&data_dir);
     }

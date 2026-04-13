@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hone_channels::outbound::{OutboundAdapter, split_segments};
+use hone_channels::outbound::{OutboundAdapter, split_markdown_segments};
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 use hone_core::ActorIdentity;
 use serenity::all::{
@@ -46,7 +46,7 @@ impl OutboundAdapter for DiscordOutboundAdapter {
     async fn send_response(&self, placeholder: Option<&Self::Placeholder>, text: &str) -> usize {
         let rendered = render_think_blocks(text, ThinkRenderStyle::MarkdownQuote);
         let content = prepend_reply_prefix(self.reply_prefix.as_deref(), &rendered);
-        let segments = split_segments(&content, self.max_len, 1900);
+        let segments = split_markdown_segments(&content, self.max_len, 1900);
         let mut owned = placeholder.cloned();
         let (sent, _) = send_or_edit_segments(
             self.http.as_ref(),
@@ -209,7 +209,7 @@ pub(crate) fn prepend_reply_prefix(prefix: Option<&str>, text: &str) -> String {
 }
 
 pub(crate) fn split_into_segments(text: &str, max_segment_size: usize) -> Vec<String> {
-    split_segments(text, max_segment_size, 1900)
+    split_markdown_segments(text, max_segment_size, 1900)
 }
 
 pub(crate) fn truncate_chars(text: &str, max_chars: usize) -> String {

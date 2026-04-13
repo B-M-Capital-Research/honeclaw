@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hone_channels::agent_session::AgentRunOptions;
-use hone_channels::outbound::split_segments;
+use hone_channels::outbound::split_html_segments;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
@@ -93,7 +93,7 @@ pub(crate) async fn handle_scheduler_events(
                     return;
                 }
             };
-            let segments = split_segments(
+            let segments = split_html_segments(
                 &response,
                 core_clone.config.telegram.max_message_length,
                 3500,
