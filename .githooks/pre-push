@@ -100,11 +100,13 @@ collect_rust_files() {
   fi
 
   if [ "$remote_sha" = "$ZERO_SHA" ]; then
-    mapfile -t pending_commits < <(git rev-list "$local_sha" --not "--remotes=$REMOTE_NAME")
-    if [ "${#pending_commits[@]}" -eq 0 ]; then
+    local pending_commits
+    pending_commits="$(git rev-list "$local_sha" --not "--remotes=$REMOTE_NAME")"
+    if [ -z "$pending_commits" ]; then
       return 0
     fi
-    git diff-tree --no-commit-id --name-only -r "${pending_commits[@]}" -- '*.rs' | sort -u
+    # shellcheck disable=SC2086
+    git diff-tree --no-commit-id --name-only -r $pending_commits -- '*.rs' | sort -u
   else
     git diff --name-only "${remote_sha}..${local_sha}" -- '*.rs' | sort -u
   fi
@@ -164,7 +166,12 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     continue
   fi
 
-  mapfile -t rust_files < <(collect_rust_files "$local_ref" "$local_sha" "$remote_sha")
+  rust_files=()
+  while IFS= read -r rust_file; do
+    [ -n "$rust_file" ] && rust_files+=("$rust_file")
+  done <<EOF
+$(collect_rust_files "$local_ref" "$local_sha" "$remote_sha")
+EOF
   check_rustfmt_for_ref "$local_ref" "$local_sha" "${rust_files[@]}"
 
   if [ "$remote_sha" = "$ZERO_SHA" ]; then
