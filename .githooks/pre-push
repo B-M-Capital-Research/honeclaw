@@ -136,7 +136,7 @@ check_rustfmt_for_ref() {
     mkdir -p "$(dirname "$dest")"
     git show "${local_sha}:${path}" > "$dest"
 
-    if ! "$RUSTFMT_BIN" --edition 2024 --check "$dest" >/dev/null 2>&1; then
+    if ! "$RUSTFMT_BIN" --edition 2024 --check --config skip_children=true "$dest" >/dev/null 2>&1; then
       bad_files+=("$path")
     fi
   done
