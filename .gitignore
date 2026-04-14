@@ -218,6 +218,9 @@ __marimo__/
 # macOS
 .DS_Store
 .AppleDouble
+
+# Codex app local runtime state
+.codex/automations/*/memory.md
 .LSOverride
 
 # Hone project artifacts

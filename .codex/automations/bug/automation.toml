@@ -1,0 +1,13 @@
+version = 1
+id = "bug"
+kind = "cron"
+name = "Bug每小时巡检"
+prompt = "你需要每小时进行项目的bug巡检，重点关注最近的几次commits\nbug如果发现了，都放到docs/bugs文档下\n然后bug分两种类型，分别是System Error和Business Error，分别表示系统异常和业务逻辑异常\nbug有三种级别，P0、P1、P2，P0最严重，基本表示不可用\n然后bug有几种状态，分别是：New，刚发现，如果你发现了bug，立刻设置new写bug文档\nApprived，这个由用户手动来设置\nFixing，表示修复中，已经被认领了\nFixed，表示已修复\nClosed，表示已经关闭\n\n你发现bug的流程，需要全方位的从用户端到端链路上去整体发现，并且说明期望效果和现在的实现效果\n\n发现bug后，需要进行文档撰写，并且提交推送到远端mai，不要改代码，只是找bug，可以从最近的日志、会话记录、提交记录中发现异常点。如果因为网络问题无法连接github，或者推送失败，可以等待两分钟后再重新执行。"
+status = "ACTIVE"
+rrule = "RRULE:FREQ=HOURLY;INTERVAL=1;BYMINUTE=0;BYDAY=SU,MO,TU,WE,TH,FR,SA"
+model = "gpt-5.4"
+reasoning_effort = "medium"
+execution_environment = "local"
+cwds = ["/Users/ecohnoch/Desktop/honeclaw"]
+created_at = 1776158807855
+updated_at = 1776174424943
