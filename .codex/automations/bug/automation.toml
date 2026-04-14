@@ -2,7 +2,7 @@ version = 1
 id = "bug"
 kind = "cron"
 name = "Bug每小时巡检"
-prompt = "你需要每小时进行项目的bug巡检，重点关注最近的几次commits\nbug如果发现了，都放到docs/bugs文档下\n然后bug分两种类型，分别是System Error和Business Error，分别表示系统异常和业务逻辑异常\nbug有三种级别，P0、P1、P2，P0最严重，基本表示不可用\n然后bug有几种状态，分别是：New，刚发现，如果你发现了bug，立刻设置new写bug文档\nApprived，这个由用户手动来设置\nFixing，表示修复中，已经被认领了\nFixed，表示已修复\nClosed，表示已经关闭\n\n你发现bug的流程，需要全方位的从用户端到端链路上去整体发现，并且说明期望效果和现在的实现效果\n\n发现bug后，需要进行文档撰写，并且提交推送到远端mai，不要改代码，只是找bug，可以从最近的日志、会话记录、提交记录中发现异常点。如果因为网络问题无法连接github，或者推送失败，可以等待两分钟后再重新执行。"
+prompt = "你需要对当前仓库执行每小时缺陷巡检，但这是缺陷台账维护任务，不是代码修复任务。\n\n目标：\n- 发现当前仍存在、或状态刚发生变化的缺陷\n- 维护 `docs/bugs/` 下的缺陷文档\n- 不修改任何业务代码、测试代码、配置代码\n\n允许的信息来源，按优先级从高到低：\n- 最近的非文档代码提交\n- 当前仓库中的 bug 文档与相关设计/约束文档\n- 与缺陷直接相关的日志、会话记录、运行痕迹\n\n输出规则：\n- 所有缺陷文档都放在 `docs/bugs/`\n- 先搜索 `docs/bugs/*.md`，避免重复建档\n- 如果同一根因、同一链路、同一影响范围的缺陷已经存在：\n  - 仅在证据更新、严重级别变化、状态变化时更新原文档\n  - 不要新建第二份重复文档\n- 只有当确认是新的根因或新的独立受影响链路时，才允许新建文档\n\n缺陷分类白名单：\n- `Bug Type`: `System Error` 或 `Business Error`\n- `Severity`: `P0`、`P1`、`P2`\n- `Status`: `New`、`Approved`、`Fixing`、`Fixed`、`Closed`\n\n文档结构必须包含：\n- 标题\n- 发现时间\n- Bug Type\n- 严重等级\n- 状态\n- 证据来源\n- 端到端链路\n- 期望效果\n- 当前实现效果\n- 用户影响\n- 根因判断\n- 下一步建议\n\n判定标准：\n- 优先关注当前仍可能影响用户的问题\n- 如果某个问题已经被代码修复，只允许更新已有文档状态为 `Fixed` 或 `Closed`，不要重新登记为 `New`\n- 如果证据不足以证明是 bug，而更像猜测或风险提示，不要建档\n\nGit 规则：\n- 只允许修改 `docs/bugs/` 下相关文档\n- 提交前先确认工作区干净；如果有非本任务改动，立即停止本轮\n- 只允许普通 `git add`、`git commit`、`git push`\n- 如果 push 失败或需要 rebase、merge、cherry-pick、解决冲突，立即停止本轮，等待下次执行\n- 不要强推，不要改 `main` 历史\n\n提交规则：\n- 只有在 `docs/bugs/` 实际发生变化时才提交\n- 如果没有新增或更新任何缺陷文档，不要提交空 commit\n- 若有更新，提交并推送到远端 `main`\n- 若无更新，直接结束，不要制造额外文件"
 status = "ACTIVE"
 rrule = "RRULE:FREQ=HOURLY;INTERVAL=1;BYMINUTE=0;BYDAY=SU,MO,TU,WE,TH,FR,SA"
 model = "gpt-5.4"
@@ -10,4 +10,4 @@ reasoning_effort = "medium"
 execution_environment = "local"
 cwds = ["/Users/ecohnoch/Desktop/honeclaw"]
 created_at = 1776158807855
-updated_at = 1776174424943
+updated_at = 1776175162607
