@@ -3,8 +3,11 @@ import solid from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
 
 const backend = process.env.HONE_WEB_BACKEND_URL ?? "http://127.0.0.1:8077"
+const desktopRelativeBase =
+  process.env.HONE_APP_RELATIVE_BASE === "1" || Boolean(process.env.TAURI_ENV_PLATFORM)
 
 export default defineConfig({
+  base: desktopRelativeBase ? "./" : "/",
   plugins: [solid(), tailwindcss()],
   esbuild: {
     jsx: "automatic",

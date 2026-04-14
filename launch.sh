@@ -137,9 +137,15 @@ build_frontend() {
   echo "[INFO] frontend build done."
 }
 
+build_frontend_desktop() {
+  echo "[INFO] building desktop frontend (relative asset base)..."
+  (cd "$PROJECT_ROOT" && bun run build:web:desktop)
+  echo "[INFO] desktop frontend build done."
+}
+
 build_desktop_release() {
   echo "[INFO] building desktop release artifacts..."
-  build_frontend
+  build_frontend_desktop
   bun run tauri:prep:build
   cargo build -p hone-mcp -p hone-desktop --release
 }

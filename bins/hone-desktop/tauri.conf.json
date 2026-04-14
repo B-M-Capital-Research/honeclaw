@@ -5,7 +5,7 @@
   "identifier": "com.hone.financial",
   "build": {
     "beforeDevCommand": "bun run dev:web",
-    "beforeBuildCommand": "bun run build:web && bun run tauri:prep:build",
+    "beforeBuildCommand": "bun run build:web:desktop && bun run tauri:prep:build",
     "devUrl": "http://127.0.0.1:3000",
     "frontendDist": "../../packages/app/dist"
   },

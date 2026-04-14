@@ -11,6 +11,8 @@ Last updated: 2026-03-28
 - As a result, changing `.rs` files during development can disturb the running desktop runtime and, in the current implementation, may leave duplicate or stale processes behind
 - The current flow also builds overlapping Rust artifacts into multiple target trees, which makes the repo-local `target/` directory grow quickly
 
+For the validated macOS release-app operating procedure, see [desktop-release-app-runtime.md](/Users/ecohnoch/Desktop/honeclaw/docs/runbooks/desktop-release-app-runtime.md).
+
 ## Goal
 
 We want a development model with two explicit guarantees:
@@ -29,6 +31,7 @@ We want a development model with two explicit guarantees:
   - Builds and starts the release desktop binary directly, without `tauri dev`
   - Normal source edits do not affect the already-running desktop process unless we intentionally restart it
   - The launcher pins `HONE_DESKTOP_DATA_DIR` to the repo-local `data/` directory and `HONE_DESKTOP_CONFIG_DIR` to `data/runtime/desktop-config/` by default, so release-mode desktop startup reuses project runtime data instead of silently switching to a separate app config/data root
+  - Release-mode frontend assets must be built with a desktop-specific relative asset base; otherwise the Tauri shell may open to a white screen because `/assets/...` paths do not resolve under `file://`
 
 ## Current Problems
 

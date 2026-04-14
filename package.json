@@ -10,6 +10,7 @@
   "scripts": {
     "dev:web": "bun --filter @hone-financial/app dev",
     "build:web": "bun --filter @hone-financial/app build",
+    "build:web:desktop": "bun scripts/build_desktop_web.mjs",
     "typecheck:web": "bun --filter @hone-financial/app typecheck",
     "test:web": "bun --filter @hone-financial/app test",
     "test:e2e:web": "bun --filter @hone-financial/app test:e2e",
