@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-14
 - **Bug Type**: Business Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近修复提交: `12a5352 fix: sanitize leaked internal agent output`
   - 关联归档: `docs/archive/plans/multi-agent-output-sanitization.md`
@@ -26,6 +26,13 @@
 - Feishu 等流式链路会把这些内部内容实时展示出来，造成明显的产品失真。
 - 历史污染还可能被继续写回 compact summary，导致后续会话反复被旧污染放大。
 
+## 当前实现效果（现状）
+
+- `12a5352` 已把 Discord、Telegram、Feishu、iMessage 等普通用户会话链路统一切到 `ThinkRenderStyle::Hidden`。
+- `AgentSession` 在成功响应返回前会执行统一的用户可见输出净化；如果结果只剩内部协议文本，会直接拦截为失败而不是继续投递。
+- 会话恢复与 compact 恢复路径也会对历史 assistant 内容做净化，避免旧污染重新进入 prompt。
+- 定时任务链路尚未完全复用这套净化规则，但该残留问题已由 `docs/bugs/scheduled_output_sanitization_gap.md` 独立跟踪。
+
 ## 用户影响
 
 - 直接泄露系统内部工作稿，破坏产品可信度与专业感。
@@ -37,7 +44,7 @@
 - multi-agent 搜索阶段与统一运行时缺少“用户可见输出”和“内部协议输出”的严格边界。
 - 会话恢复和 compact 路径此前没有对历史 assistant 内容做统一净化。
 
-## 修复线索
+## 下一步建议
 
-- `12a5352` 已补充统一输出净化、历史污染清洗，以及渠道侧 `<think>` 隐藏渲染。
-- 当前 bug 台账先以 `New` 登记，等待人工确认是否按现网状态转 `Fixed` / `Closed`。
+- 保持 `Fixed`，后续如再出现普通对话链路泄漏内部协议，再按回归重新打开。
+- scheduler 链路的净化缺口继续在独立缺陷中跟踪，不与本缺陷混单。

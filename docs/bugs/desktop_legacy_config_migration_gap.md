@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-14
 - **Bug Type**: Business Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近修复提交: `dfd8a01 fix: restore desktop canonical agent config migration`
   - 最近修复提交: `e802582 fix: migrate desktop legacy runtime user settings`
@@ -27,6 +27,12 @@
 - 用户可能看到 runner、multi-agent、Feishu / Telegram / Discord、Tavily、FMP 等链路“看似已配置，实际不可用”。
 - 这不是单个字段显示错误，而是 desktop 启动后整条用户工作流被静默破坏。
 
+## 当前实现效果（现状）
+
+- `dfd8a01` 已把 desktop 启动流程改为在生成 `effective-config.yaml` 前执行一次 legacy runtime 到 canonical config 的单向补迁。
+- `e802582` 继续补齐了渠道启用状态、bot token、chat scope、搜索配置与 FMP 配置的迁移，并为这些场景补上了自动化断言。
+- 当前主缺陷“升级后 canonical config 丢失大块历史用户设置”的问题已被修复；剩余 `agent.opencode` 整块覆盖和 `llm.openrouter.api_keys` 漏迁，已分别作为独立缺陷单独跟踪。
+
 ## 用户影响
 
 - 升级或切换 desktop runtime 后，用户可能突然失去既有 agent / 渠道 / 搜索能力。
@@ -38,7 +44,7 @@
 - canonical config 切换过程中，legacy runtime 到 canonical 的迁移范围不完整。
 - desktop 启动链路优先相信 canonical config，但 canonical 当时并未完整承接历史用户配置。
 
-## 修复线索
+## 下一步建议
 
-- `dfd8a01` 先恢复 agent 配置迁移；`e802582` 再补齐 channel、search、FMP 与 chat scope 等缺口。
-- 当前 bug 台账先以 `New` 登记，等待人工确认是否按现网状态转 `Fixed` / `Closed`。
+- 保持 `Fixed`，并把后续 desktop 配置迁移问题继续拆分到更具体的独立根因单里。
+- 若后续再新增迁移字段，必须补对应回归测试，避免再次出现“主迁移修了，但某个子配置仍漏迁”的回归。
