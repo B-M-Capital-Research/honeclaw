@@ -50,7 +50,7 @@
 - 仍待完成：
   - desktop bundled 模式下真正的 `live_apply / component_restart / full_restart` 行为收口
   - desktop settings 与 canonical config / apply result contract 的最后一轮对齐验证
-  - desktop dev/runtime 下 canonical config 位置与 legacy `config_runtime.yaml` 单向迁移收口，避免 runner / multi-agent key 因 repo seed config 回退
+  - desktop dev/runtime 下 canonical config 位置与 legacy `config_runtime.yaml` 单向迁移收口，避免 runner / multi-agent / channels / Tavily / FMP 因 repo seed config 回退
   - release cache warm / sccache 策略上线后的首轮 GitHub Actions 时延验证
 
 ## Validation

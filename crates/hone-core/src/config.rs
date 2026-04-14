@@ -607,6 +607,23 @@ fn string_path_is_blank(current: &Value, path: &str) -> crate::HoneResult<bool> 
         .unwrap_or(true))
 }
 
+fn bool_path_is_false_or_missing(current: &Value, path: &str) -> crate::HoneResult<bool> {
+    Ok(get_value_at_path(current, path)?
+        .and_then(|value| value.as_bool())
+        .map(|value| !value)
+        .unwrap_or(true))
+}
+
+fn sequence_path_is_empty(current: &Value, path: &str) -> crate::HoneResult<bool> {
+    Ok(match get_value_at_path(current, path)? {
+        Some(Value::Sequence(items)) => items
+            .iter()
+            .all(|item| item.as_str().map(|s| s.trim().is_empty()).unwrap_or(true)),
+        Some(Value::Null) | None => true,
+        _ => false,
+    })
+}
+
 fn set_value_at_path(current: &mut Value, path: &str, value: Value) -> crate::HoneResult<()> {
     let segments = parse_config_path(path)?;
     set_value_at_segments(current, &segments, value)
@@ -616,7 +633,11 @@ fn canonical_runner_looks_seeded(runner: &str) -> bool {
     matches!(runner.trim(), "" | "function_calling" | "codex_cli")
 }
 
-/// 从 legacy runtime config 中补迁仍未进入 canonical config 的关键 agent 字段。
+fn canonical_chat_scope_looks_seeded(scope: &str) -> bool {
+    matches!(scope.trim(), "" | "DM_ONLY")
+}
+
+/// 从 legacy runtime config 中补迁仍未进入 canonical config 的关键用户设置字段。
 ///
 /// 迁移策略是保守的：
 /// - 只有当 canonical 对应字段仍为空或种子态时，才会提升 legacy 值
@@ -680,6 +701,114 @@ pub fn promote_legacy_runtime_agent_settings(
             legacy_openrouter_key.clone(),
         )?;
         changed_paths.push("llm.openrouter.api_key".to_string());
+    }
+
+    for channel in ["feishu", "telegram", "discord", "imessage"] {
+        let enabled_path = format!("{channel}.enabled");
+        if bool_path_is_false_or_missing(&canonical, &enabled_path)?
+            && let Some(Value::Bool(true)) = get_value_at_path(&legacy, &enabled_path)?
+        {
+            set_value_at_path(&mut canonical, &enabled_path, Value::Bool(true))?;
+            changed_paths.push(enabled_path);
+        }
+
+        let chat_scope_path = format!("{channel}.chat_scope");
+        let canonical_chat_scope =
+            get_string_at_path(&canonical, &chat_scope_path)?.unwrap_or_default();
+        if canonical_chat_scope_looks_seeded(&canonical_chat_scope) {
+            let legacy_chat_scope = match get_value_at_path(&legacy, &chat_scope_path)? {
+                Some(value) => Some(value.clone()),
+                None => match get_value_at_path(&legacy, &format!("{channel}.dm_only"))? {
+                    Some(Value::Bool(false)) => Some(Value::String("ALL".to_string())),
+                    Some(Value::Bool(true)) => Some(Value::String("DM_ONLY".to_string())),
+                    _ => None,
+                },
+            };
+            if let Some(legacy_chat_scope) = legacy_chat_scope {
+                set_value_at_path(&mut canonical, &chat_scope_path, legacy_chat_scope)?;
+                changed_paths.push(chat_scope_path);
+            }
+        }
+
+        match channel {
+            "feishu" => {
+                for field in ["app_id", "app_secret"] {
+                    let field_path = format!("{channel}.{field}");
+                    if string_path_is_blank(&canonical, &field_path)?
+                        && let Some(legacy_value) = get_value_at_path(&legacy, &field_path)?
+                    {
+                        set_value_at_path(&mut canonical, &field_path, legacy_value.clone())?;
+                        changed_paths.push(field_path);
+                    }
+                }
+            }
+            "telegram" | "discord" => {
+                let token_path = format!("{channel}.bot_token");
+                if string_path_is_blank(&canonical, &token_path)?
+                    && let Some(legacy_token) = get_value_at_path(&legacy, &token_path)?
+                {
+                    set_value_at_path(&mut canonical, &token_path, legacy_token.clone())?;
+                    changed_paths.push(token_path);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if sequence_path_is_empty(&canonical, "search.api_keys")?
+        && let Some(legacy_search_keys) = get_value_at_path(&legacy, "search.api_keys")?
+    {
+        set_value_at_path(
+            &mut canonical,
+            "search.api_keys",
+            legacy_search_keys.clone(),
+        )?;
+        changed_paths.push("search.api_keys".to_string());
+    }
+    for path in ["search.provider", "search.search_depth", "search.topic"] {
+        if string_path_is_blank(&canonical, path)?
+            && let Some(legacy_value) = get_value_at_path(&legacy, path)?
+        {
+            set_value_at_path(&mut canonical, path, legacy_value.clone())?;
+            changed_paths.push(path.to_string());
+        }
+    }
+    if get_value_at_path(&canonical, "search.max_results")?.is_none()
+        && let Some(legacy_max_results) = get_value_at_path(&legacy, "search.max_results")?
+    {
+        set_value_at_path(
+            &mut canonical,
+            "search.max_results",
+            legacy_max_results.clone(),
+        )?;
+        changed_paths.push("search.max_results".to_string());
+    }
+
+    if string_path_is_blank(&canonical, "fmp.api_key")?
+        && let Some(legacy_fmp_api_key) = get_value_at_path(&legacy, "fmp.api_key")?
+    {
+        set_value_at_path(&mut canonical, "fmp.api_key", legacy_fmp_api_key.clone())?;
+        changed_paths.push("fmp.api_key".to_string());
+    }
+    if sequence_path_is_empty(&canonical, "fmp.api_keys")?
+        && let Some(legacy_fmp_api_keys) = get_value_at_path(&legacy, "fmp.api_keys")?
+    {
+        set_value_at_path(&mut canonical, "fmp.api_keys", legacy_fmp_api_keys.clone())?;
+        changed_paths.push("fmp.api_keys".to_string());
+    }
+    if string_path_is_blank(&canonical, "fmp.base_url")?
+        && let Some(legacy_fmp_base_url) = get_value_at_path(&legacy, "fmp.base_url")?
+    {
+        set_value_at_path(&mut canonical, "fmp.base_url", legacy_fmp_base_url.clone())?;
+        changed_paths.push("fmp.base_url".to_string());
+    }
+    if let Some(Value::Number(_)) = get_value_at_path(&legacy, "fmp.timeout")?
+        && get_value_at_path(&canonical, "fmp.timeout")?.is_none()
+    {
+        if let Some(legacy_fmp_timeout) = get_value_at_path(&legacy, "fmp.timeout")? {
+            set_value_at_path(&mut canonical, "fmp.timeout", legacy_fmp_timeout.clone())?;
+            changed_paths.push("fmp.timeout".to_string());
+        }
     }
 
     let canonical_runner = get_string_at_path(&canonical, "agent.runner")?.unwrap_or_default();
@@ -1561,6 +1690,23 @@ llm:
     api_key: ""
   openrouter:
     api_key: ""
+search:
+  api_keys: []
+fmp:
+  api_key: ""
+  api_keys: []
+feishu:
+  enabled: false
+  app_id: ""
+  app_secret: ""
+telegram:
+  enabled: false
+  bot_token: ""
+  chat_scope: DM_ONLY
+discord:
+  enabled: false
+  bot_token: ""
+  chat_scope: DM_ONLY
 "#,
         )
         .unwrap();
@@ -1593,6 +1739,31 @@ llm:
     model: "MiniMax-M2.7-highspeed"
   openrouter:
     api_key: "legacy-openrouter"
+search:
+  provider: tavily
+  api_keys:
+    - tvly-one
+    - tvly-two
+  search_depth: advanced
+  topic: finance
+fmp:
+  api_key: "legacy-fmp"
+  api_keys:
+    - legacy-fmp-2
+  base_url: "https://financialmodelingprep.com/api"
+  timeout: 30
+feishu:
+  enabled: true
+  app_id: "cli_test"
+  app_secret: "secret"
+telegram:
+  enabled: true
+  bot_token: "tg-token"
+  dm_only: false
+discord:
+  enabled: true
+  bot_token: "discord-token"
+  dm_only: false
 "#,
         )
         .unwrap();
@@ -1604,6 +1775,12 @@ llm:
         assert!(changed.contains(&"llm.auxiliary".to_string()));
         assert!(changed.contains(&"llm.openrouter.api_key".to_string()));
         assert!(changed.contains(&"agent.runner".to_string()));
+        assert!(changed.contains(&"search.api_keys".to_string()));
+        assert!(changed.contains(&"fmp.api_key".to_string()));
+        assert!(changed.contains(&"fmp.api_keys".to_string()));
+        assert!(changed.contains(&"feishu.enabled".to_string()));
+        assert!(changed.contains(&"telegram.enabled".to_string()));
+        assert!(changed.contains(&"discord.enabled".to_string()));
 
         let config = HoneConfig::from_file(&canonical).unwrap();
         assert_eq!(config.agent.runner, "multi-agent");
@@ -1612,6 +1789,21 @@ llm:
         assert_eq!(config.agent.opencode.api_key, "legacy-answer");
         assert_eq!(config.llm.auxiliary.api_key, "legacy-search");
         assert_eq!(config.llm.openrouter.api_key, "legacy-openrouter");
+        assert_eq!(
+            config.search.api_keys,
+            vec!["tvly-one".to_string(), "tvly-two".to_string()]
+        );
+        assert_eq!(config.fmp.api_key, "legacy-fmp");
+        assert_eq!(config.fmp.api_keys, vec!["legacy-fmp-2".to_string()]);
+        assert!(config.feishu.enabled);
+        assert_eq!(config.feishu.app_id, "cli_test");
+        assert_eq!(config.feishu.app_secret, "secret");
+        assert!(config.telegram.enabled);
+        assert_eq!(config.telegram.bot_token, "tg-token");
+        assert_eq!(config.telegram.chat_scope, ChatScope::All);
+        assert!(config.discord.enabled);
+        assert_eq!(config.discord.bot_token, "discord-token");
+        assert_eq!(config.discord.chat_scope, ChatScope::All);
     }
 
     #[test]
@@ -1635,6 +1827,20 @@ llm:
     api_key: "canonical-aux"
   openrouter:
     api_key: "canonical-openrouter"
+search:
+  api_keys:
+    - canonical-tavily
+fmp:
+  api_key: "canonical-fmp"
+feishu:
+  enabled: true
+  app_id: "canonical-app"
+telegram:
+  enabled: true
+  bot_token: "canonical-tg"
+discord:
+  enabled: true
+  bot_token: "canonical-discord"
 "#,
         )
         .unwrap();
@@ -1653,6 +1859,20 @@ llm:
     api_key: "legacy-aux"
   openrouter:
     api_key: "legacy-openrouter"
+search:
+  api_keys:
+    - legacy-tavily
+fmp:
+  api_key: "legacy-fmp"
+feishu:
+  enabled: true
+  app_id: "legacy-app"
+telegram:
+  enabled: true
+  bot_token: "legacy-tg"
+discord:
+  enabled: true
+  bot_token: "legacy-discord"
 "#,
         )
         .unwrap();
@@ -1666,6 +1886,11 @@ llm:
         assert_eq!(config.agent.multi_agent.answer.api_key, "canonical-answer");
         assert_eq!(config.llm.auxiliary.api_key, "canonical-aux");
         assert_eq!(config.llm.openrouter.api_key, "canonical-openrouter");
+        assert_eq!(config.search.api_keys, vec!["canonical-tavily".to_string()]);
+        assert_eq!(config.fmp.api_key, "canonical-fmp");
+        assert_eq!(config.feishu.app_id, "canonical-app");
+        assert_eq!(config.telegram.bot_token, "canonical-tg");
+        assert_eq!(config.discord.bot_token, "canonical-discord");
     }
 
     #[test]
