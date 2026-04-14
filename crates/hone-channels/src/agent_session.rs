@@ -16,12 +16,13 @@ use std::time::{Duration, Instant};
 
 use crate::HoneBotCore;
 use crate::execution::{
-    ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
+    ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
 use crate::runtime::{relativize_user_visible_paths, sanitize_user_visible_output};
+use crate::session_compactor::SessionCompactor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSessionErrorKind {
@@ -131,8 +132,10 @@ impl Default for GeminiStreamOptions {
 
 const DAILY_CONVERSATION_LIMIT: u32 = 12;
 const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
+const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
 const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
     "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
+const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
 
 fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
     // 失败直接返回；成功时只要有正文或工具调用，也视为已拿到有效结果。
@@ -143,6 +146,17 @@ fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
     !result.response.success
         || !result.response.content.trim().is_empty()
         || !result.response.tool_calls_made.is_empty()
+}
+
+fn is_context_overflow_error_text(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("context window exceeds limit")
+        || normalized.contains("context window overflow")
+        || normalized.contains("context_window_will_overflow")
+        || normalized.contains("context length exceeded")
+        || normalized.contains("maximum context length")
+        || normalized.contains("prompt is too long")
+        || normalized.contains("too many tokens")
 }
 
 fn should_persist_tool_result(call: &ToolCallMade) -> bool {
@@ -442,6 +456,93 @@ impl AgentSession {
         }
 
         last_result
+    }
+
+    fn build_skill_runtime(&self) -> hone_tools::SkillRuntime {
+        hone_tools::SkillRuntime::new(
+            self.core.configured_system_skills_dir(),
+            self.core.configured_custom_skills_dir(),
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        )
+        .with_registry_path(self.core.configured_skill_registry_path())
+    }
+
+    fn restore_runtime_context(
+        &self,
+        session_id: &str,
+        persisted_user_input: &str,
+    ) -> AgentContext {
+        let mut context = restore_context(
+            &self.core.session_storage,
+            session_id,
+            self.restore_max_messages,
+            Some(&self.build_skill_runtime()),
+        );
+        context.set_actor_identity(&self.actor);
+
+        if let Some(last) = context.messages.last() {
+            if last.role == "user" && last.content.as_deref() == Some(persisted_user_input) {
+                context.messages.pop();
+            }
+        }
+
+        context
+    }
+
+    fn prepare_execution_for_turn(
+        &self,
+        session_id: &str,
+        persisted_user_input: &str,
+        runtime_user_input: &str,
+        options: &AgentRunOptions,
+    ) -> Result<PreparedExecution, (AgentSessionErrorKind, String)> {
+        let context = self.restore_runtime_context(session_id, persisted_user_input);
+        let (system_prompt, runtime_input) =
+            self.resolve_prompt_input(session_id, runtime_user_input);
+        ExecutionService::new(self.core.clone())
+            .prepare(ExecutionRequest {
+                mode: ExecutionMode::PersistentConversation,
+                session_id: session_id.to_string(),
+                actor: self.actor.clone(),
+                channel_target: self.channel_target.clone(),
+                allow_cron: self.allow_cron,
+                system_prompt,
+                runtime_input,
+                context,
+                timeout: options.timeout,
+                gemini_stream: self.default_gemini_stream_options(options.timeout),
+                session_metadata: self.load_session_metadata(session_id),
+                model_override: options.model_override.clone(),
+                runner_selection: ExecutionRunnerSelection::Configured,
+                allowed_tools: None,
+                max_tool_calls: None,
+                prompt_audit: Some(PromptAuditMetadata {
+                    session_identity: self.session_identity.clone(),
+                    message_id: self.message_id.clone(),
+                }),
+            })
+            .map_err(|err| {
+                tracing::error!("[AgentSession] execution prepare failed: {}", err);
+                let kind = if err.contains("sandbox") {
+                    AgentSessionErrorKind::Io
+                } else {
+                    AgentSessionErrorKind::AgentFailed
+                };
+                (kind, err)
+            })
+    }
+
+    async fn force_compact_for_context_overflow(&self, session_id: &str) -> Result<bool, String> {
+        let outcome = SessionCompactor::new(&self.core)
+            .compact_session(
+                session_id,
+                "context_overflow_recovery",
+                true,
+                Some("优先保留最近用户问题、最近结论、未完成事项，以及继续当前回答所必需的最小上下文。"),
+            )
+            .await
+            .map_err(|err| err.to_string())?;
+        Ok(outcome.compacted)
     }
 
     pub fn new(
@@ -1080,29 +1181,6 @@ impl AgentSession {
             None,
         );
 
-        let mut context = restore_context(
-            &self.core.session_storage,
-            &session_id,
-            self.restore_max_messages,
-            Some(
-                &hone_tools::SkillRuntime::new(
-                    self.core.configured_system_skills_dir(),
-                    self.core.configured_custom_skills_dir(),
-                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-                )
-                .with_registry_path(self.core.configured_skill_registry_path()),
-            ),
-        );
-        context.set_actor_identity(&self.actor);
-
-        // 因为已在 fast persist 阶段把用户消息写入 DB，restore_context 会把它加载进来。
-        // 但 runtime_input 也会再次传给 runner（避免重复），所以这里把末尾的用户消息弹出。
-        if let Some(last) = context.messages.last() {
-            if last.role == "user" && last.content.as_deref() == Some(persisted_user_input) {
-                context.messages.pop();
-            }
-        }
-
         if !self.core.runner_supports_strict_actor_sandbox() {
             let message = self
                 .core
@@ -1124,43 +1202,20 @@ impl AgentSession {
                 .await;
         }
 
-        let (system_prompt, runtime_input) =
-            self.resolve_prompt_input(&session_id, runtime_user_input);
-        let execution = match ExecutionService::new(self.core.clone()).prepare(ExecutionRequest {
-            mode: ExecutionMode::PersistentConversation,
-            session_id: session_id.clone(),
-            actor: self.actor.clone(),
-            channel_target: self.channel_target.clone(),
-            allow_cron: self.allow_cron,
-            system_prompt,
-            runtime_input,
-            context,
-            timeout: options.timeout,
-            gemini_stream: self.default_gemini_stream_options(options.timeout),
-            session_metadata: self.load_session_metadata(&session_id),
-            model_override: options.model_override.clone(),
-            runner_selection: ExecutionRunnerSelection::Configured,
-            allowed_tools: None,
-            max_tool_calls: None,
-            prompt_audit: Some(PromptAuditMetadata {
-                session_identity: self.session_identity.clone(),
-                message_id: self.message_id.clone(),
-            }),
-        }) {
+        let mut execution = match self.prepare_execution_for_turn(
+            &session_id,
+            persisted_user_input,
+            runtime_user_input,
+            &options,
+        ) {
             Ok(execution) => execution,
-            Err(err) => {
-                tracing::error!("[AgentSession] execution prepare failed: {}", err);
+            Err((kind, err)) => {
                 if let Some(reservation) = quota_reservation.as_ref() {
                     let _ = self
                         .core
                         .conversation_quota_storage
                         .release_daily_conversation(reservation);
                 }
-                let kind = if err.contains("sandbox") {
-                    AgentSessionErrorKind::Io
-                } else {
-                    AgentSessionErrorKind::AgentFailed
-                };
                 return self.fail_run(session_id, kind, err).await;
             }
         };
@@ -1180,27 +1235,125 @@ impl AgentSession {
         })
         .await;
         let started = Instant::now();
-        let runner_emitter =
-            self.runner_emitter(execution.runner_request.working_directory.clone());
+        let mut streamed_output = false;
+        let mut terminal_error_emitted = false;
+        let mut response = AgentResponse {
+            content: String::new(),
+            tool_calls_made: Vec::new(),
+            iterations: 0,
+            success: false,
+            error: None,
+        };
+        for recovery_idx in 0..=CONTEXT_OVERFLOW_RECOVERY_LIMIT {
+            let runner_emitter =
+                self.runner_emitter(execution.runner_request.working_directory.clone());
+            let runner_result = self
+                .run_runner_with_empty_success_retry(
+                    execution.runner.as_ref(),
+                    execution.runner_name,
+                    &session_id,
+                    execution.runner_request.clone(),
+                    runner_emitter,
+                )
+                .await;
+            streamed_output = runner_result.streamed_output;
+            terminal_error_emitted = runner_result.terminal_error_emitted;
+            if !runner_result.session_metadata_updates.is_empty() {
+                let _ = self
+                    .core
+                    .session_storage
+                    .update_metadata(&session_id, runner_result.session_metadata_updates.clone());
+            }
+            response = runner_result.response;
 
-        let runner_result = self
-            .run_runner_with_empty_success_retry(
-                execution.runner.as_ref(),
+            let should_try_recovery = !response.success
+                && response
+                    .error
+                    .as_deref()
+                    .is_some_and(is_context_overflow_error_text)
+                && recovery_idx < CONTEXT_OVERFLOW_RECOVERY_LIMIT;
+            if !should_try_recovery {
+                break;
+            }
+
+            tracing::warn!(
+                "[AgentSession] context overflow detected, compacting and retrying runner={} session_id={} attempt={}/{}",
                 execution.runner_name,
+                session_id,
+                recovery_idx + 1,
+                CONTEXT_OVERFLOW_RECOVERY_LIMIT
+            );
+            self.core.log_message_step(
+                &self.actor.channel,
+                &self.actor.user_id,
                 &session_id,
-                execution.runner_request,
-                runner_emitter,
-            )
+                "agent.run.retry",
+                &format!(
+                    "context_overflow attempt={}/{}",
+                    recovery_idx + 1,
+                    CONTEXT_OVERFLOW_RECOVERY_LIMIT
+                ),
+                self.message_id.as_deref(),
+                None,
+            );
+            self.emit(AgentSessionEvent::Progress {
+                stage: "agent.run.retry",
+                detail: Some(format!(
+                    "{} context_overflow attempt={}/{}",
+                    execution.runner_name,
+                    recovery_idx + 1,
+                    CONTEXT_OVERFLOW_RECOVERY_LIMIT
+                )),
+            })
             .await;
-        let streamed_output = runner_result.streamed_output;
-        let terminal_error_emitted = runner_result.terminal_error_emitted;
-        if !runner_result.session_metadata_updates.is_empty() {
-            let _ = self
-                .core
-                .session_storage
-                .update_metadata(&session_id, runner_result.session_metadata_updates.clone());
+
+            match self.force_compact_for_context_overflow(&session_id).await {
+                Ok(compacted) => {
+                    tracing::info!(
+                        "[AgentSession] context overflow recovery compacted={} session_id={}",
+                        compacted,
+                        session_id
+                    );
+                }
+                Err(err) => {
+                    tracing::error!(
+                        "[AgentSession] context overflow recovery compact failed session_id={} err={}",
+                        session_id,
+                        err
+                    );
+                    response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
+                    break;
+                }
+            }
+
+            execution = match self.prepare_execution_for_turn(
+                &session_id,
+                persisted_user_input,
+                runtime_user_input,
+                &options,
+            ) {
+                Ok(execution) => execution,
+                Err((_kind, err)) => {
+                    tracing::error!(
+                        "[AgentSession] context overflow recovery prepare failed session_id={} err={}",
+                        session_id,
+                        err
+                    );
+                    response.success = false;
+                    response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
+                    break;
+                }
+            };
         }
-        let mut response = runner_result.response;
+
+        if !response.success
+            && response
+                .error
+                .as_deref()
+                .is_some_and(is_context_overflow_error_text)
+        {
+            response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
+        }
         if response.success && response_leaks_system_prompt(&response.content) {
             tracing::error!(
                 "[AgentSession] blocked echoed system prompt runner={} session_id={}",
@@ -1296,6 +1449,8 @@ impl AgentSession {
                 .unwrap_or_else(|| "未知错误".to_string());
             let kind = if err.contains("agent_timeout") {
                 AgentSessionErrorKind::AgentTimeout
+            } else if err == CONTEXT_OVERFLOW_FALLBACK_MESSAGE {
+                AgentSessionErrorKind::ContextWindowOverflow
             } else {
                 AgentSessionErrorKind::AgentFailed
             };
@@ -1465,14 +1620,14 @@ mod tests {
     struct MockLlmState {
         chat_calls: usize,
         chat_with_tools_calls: usize,
-        chat_responses: std::collections::VecDeque<ChatResult>,
-        responses: std::collections::VecDeque<ChatResponse>,
+        chat_responses: std::collections::VecDeque<hone_core::HoneResult<ChatResult>>,
+        responses: std::collections::VecDeque<hone_core::HoneResult<ChatResponse>>,
     }
 
     impl MockLlmProvider {
         fn with_chat_and_tool_responses(
-            chat_responses: Vec<ChatResult>,
-            responses: Vec<ChatResponse>,
+            chat_responses: Vec<hone_core::HoneResult<ChatResult>>,
+            responses: Vec<hone_core::HoneResult<ChatResponse>>,
         ) -> Self {
             Self {
                 state: Arc::new(Mutex::new(MockLlmState {
@@ -1489,7 +1644,7 @@ mod tests {
                 state: Arc::new(Mutex::new(MockLlmState {
                     chat_calls: 0,
                     chat_with_tools_calls: 0,
-                    chat_responses: responses.into(),
+                    chat_responses: responses.into_iter().map(Ok).collect(),
                     responses: Default::default(),
                 })),
             }
@@ -1501,7 +1656,7 @@ mod tests {
                     chat_calls: 0,
                     chat_with_tools_calls: 0,
                     chat_responses: Default::default(),
-                    responses: responses.into(),
+                    responses: responses.into_iter().map(Ok).collect(),
                 })),
             }
         }
@@ -1527,10 +1682,11 @@ mod tests {
         ) -> hone_core::HoneResult<hone_llm::provider::ChatResult> {
             let mut state = self.state.lock().expect("mock llm lock");
             state.chat_calls += 1;
-            state
-                .chat_responses
-                .pop_front()
-                .ok_or_else(|| hone_core::HoneError::Llm("no more mock chat responses".to_string()))
+            state.chat_responses.pop_front().unwrap_or_else(|| {
+                Err(hone_core::HoneError::Llm(
+                    "no more mock chat responses".to_string(),
+                ))
+            })
         }
 
         async fn chat_with_tools(
@@ -1541,10 +1697,11 @@ mod tests {
         ) -> hone_core::HoneResult<ChatResponse> {
             let mut state = self.state.lock().expect("mock llm lock");
             state.chat_with_tools_calls += 1;
-            state
-                .responses
-                .pop_front()
-                .ok_or_else(|| hone_core::HoneError::Llm("no more mock tool responses".to_string()))
+            state.responses.pop_front().unwrap_or_else(|| {
+                Err(hone_core::HoneError::Llm(
+                    "no more mock tool responses".to_string(),
+                ))
+            })
         }
 
         fn chat_stream<'a>(
@@ -2165,6 +2322,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn context_overflow_auto_compacts_and_retries_successfully() {
+        let root = make_temp_dir("hone_channels_context_overflow_retry_success");
+        std::fs::create_dir_all(&root).expect("create root");
+        let llm = MockLlmProvider::with_chat_and_tool_responses(
+            vec![Ok(ChatResult {
+                content: "压缩后的摘要".to_string(),
+                usage: None,
+            })],
+            vec![
+                Err(hone_core::HoneError::Llm(
+                    "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
+                        .to_string(),
+                )),
+                Ok(ChatResponse {
+                    content: "恢复后的正常回复".to_string(),
+                    tool_calls: None,
+                    usage: None,
+                }),
+            ],
+        );
+        let core = make_test_core(&root, llm.clone());
+        let actor = ActorIdentity::new("discord", "overflow-ok", None::<String>).expect("actor");
+        let session = AgentSession::new(core, actor, "direct");
+
+        let result = session
+            .run("请继续分析这个话题", AgentRunOptions::default())
+            .await;
+
+        assert!(result.response.success, "{:?}", result.response.error);
+        assert_eq!(result.response.content, "恢复后的正常回复");
+        assert_eq!(llm.chat_calls(), 1);
+        assert_eq!(llm.chat_with_tools_calls(), 2);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn context_overflow_failure_is_rewritten_to_friendly_message() {
+        let root = make_temp_dir("hone_channels_context_overflow_retry_failure");
+        std::fs::create_dir_all(&root).expect("create root");
+        let llm = MockLlmProvider::with_chat_and_tool_responses(
+            vec![Ok(ChatResult {
+                content: "压缩后的摘要".to_string(),
+                usage: None,
+            })],
+            vec![
+                Err(hone_core::HoneError::Llm(
+                    "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
+                        .to_string(),
+                )),
+                Err(hone_core::HoneError::Llm(
+                    "LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"
+                        .to_string(),
+                )),
+            ],
+        );
+        let core = make_test_core(&root, llm.clone());
+        let actor = ActorIdentity::new("discord", "overflow-fail", None::<String>).expect("actor");
+        let session = AgentSession::new(core, actor, "direct");
+
+        let result = session
+            .run("请继续分析这个话题", AgentRunOptions::default())
+            .await;
+
+        assert!(!result.response.success);
+        let err = result.response.error.expect("friendly error");
+        assert_eq!(err, CONTEXT_OVERFLOW_FALLBACK_MESSAGE);
+        assert!(!err.contains("bad_request_error"));
+        assert!(!err.contains("invalid params"));
+        assert_eq!(llm.chat_calls(), 1);
+        assert_eq!(llm.chat_with_tools_calls(), 2);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
     async fn manual_compact_does_not_consume_quota_or_persist_command_message() {
         let root = make_temp_dir("hone_channels_manual_compact");
         std::fs::create_dir_all(&root).expect("create root");
@@ -2226,15 +2459,15 @@ mod tests {
         let root = make_temp_dir("hone_channels_auto_compact_low_threshold");
         std::fs::create_dir_all(&root).expect("create root");
         let llm = MockLlmProvider::with_chat_and_tool_responses(
-            vec![ChatResult {
+            vec![Ok(ChatResult {
                 content: "group-summary".to_string(),
                 usage: None,
-            }],
-            vec![ChatResponse {
+            })],
+            vec![Ok(ChatResponse {
                 content: "after-compact".to_string(),
                 tool_calls: None,
                 usage: None,
-            }],
+            })],
         );
         let core = make_test_core_with_config(&root, llm.clone(), |config| {
             config.group_context.compress_threshold_messages = 1;

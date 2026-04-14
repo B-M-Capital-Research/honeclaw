@@ -54,6 +54,20 @@ Use this file as the historical entry point for completed or paused work that sh
 - Current conclusion: 已完成一份 proposal，对比 Claude Code 官方 skill 模型与 Hone 当前实现差异，并分析 `multi-agent` runner 下 skill 的实际使用模式；提案建议把 active skill state 提升为 runner 一等状态，随后再补 `allowed-tools` / `context: fork` / supporting files 等执行与作者体验能力
 - Next entry point: `docs/proposals/skill-runtime-multi-agent-alignment.md`
 
+## 2026-04-14
+
+### 会话上下文超限自动恢复与错误净化
+
+- Status: done
+- Date: 2026-04-14
+- Plan: `docs/archive/plans/context-overflow-recovery.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels`, `cargo test -p hone-channels context_overflow_auto_compacts_and_retries_successfully -- --nocapture`, `cargo test -p hone-channels context_overflow_failure_is_rewritten_to_friendly_message -- --nocapture`
+- Current conclusion: `AgentSession` 现在会识别上下文超限错误并在同一 turn 内先强制 compact 当前 session、再重新准备 execution 自动重试一次；若恢复后仍失败，用户只会看到稳定友好的提示，不再看到 `bad_request_error`、`invalid params`、`context window exceeds limit` 等底层 provider 原始报错
+- Next entry point: `crates/hone-channels/src/agent_session.rs`
+
 ## 2026-04-12
 
 ### v0.1.10 CLI Onboarding Provider 配置补齐
