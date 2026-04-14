@@ -193,7 +193,7 @@ dependencies = [
  "enumflags2",
  "futures-channel",
  "futures-util",
- "rand 0.9.2",
+ "rand 0.9.3",
  "raw-window-handle",
  "serde",
  "serde_repr",
@@ -345,7 +345,7 @@ dependencies = [
  "derive_builder",
  "eventsource-stream",
  "futures",
- "rand 0.9.2",
+ "rand 0.9.3",
  "reqwest 0.12.28",
  "reqwest-eventsource",
  "secrecy 0.10.3",
@@ -470,9 +470,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.16.1"
+version = "1.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94bffc006df10ac2a68c83692d734a465f8ee6c5b384d8545a636f81d858f4bf"
+checksum = "a054912289d18629dc78375ba2c3726a3afe3ff71b4edba9dedfca0e3446d1fc"
 dependencies = [
  "aws-lc-sys",
  "untrusted 0.7.1",
@@ -481,9 +481,9 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-sys"
-version = "0.38.0"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4321e568ed89bb5a7d291a7f37997c2c0df89809d7b6d12062c81ddb54aa782e"
+checksum = "83a25cf98105baa966497416dbd42565ce3a8cf8dbfd59803ec9ad46f3126399"
 dependencies = [
  "cc",
  "cmake",
@@ -1552,7 +1552,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1787,7 +1787,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3261,7 +3261,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.2",
+ "socket2 0.5.10",
  "system-configuration 0.7.0",
  "tokio",
  "tower-service",
@@ -3856,7 +3856,7 @@ dependencies = [
  "md-5",
  "nom 8.0.0",
  "nom_locate",
- "rand 0.9.2",
+ "rand 0.9.3",
  "rangemap",
  "sha2",
  "stringprep",
@@ -4218,7 +4218,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4271,7 +4271,7 @@ version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff32365de1b6743cb203b710788263c44a03de03802daf96092f2da4fe6ba4d7"
 dependencies = [
- "proc-macro-crate 3.5.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.116",
@@ -4506,7 +4506,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -5135,7 +5135,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.36",
- "socket2 0.6.2",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5144,15 +5144,15 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.13"
+version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1906b49b0c3bc04b5fe5d86a77925ae6524a19b816ae38ce1e426255f1d8a31"
+checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
 dependencies = [
  "aws-lc-rs",
  "bytes",
  "getrandom 0.3.4",
  "lru-slab",
- "rand 0.9.2",
+ "rand 0.9.3",
  "ring",
  "rustc-hash",
  "rustls 0.23.36",
@@ -5173,9 +5173,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.2",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5220,9 +5220,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.2"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
+checksum = "7ec095654a25171c2124e9e3393a930bddbffdc939556c914957a4c3e0a87166"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.5",
@@ -5705,7 +5705,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5733,7 +5733,7 @@ dependencies = [
  "once_cell",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.9",
+ "rustls-webpki 0.103.10",
  "subtle",
  "zeroize",
 ]
@@ -5783,11 +5783,11 @@ dependencies = [
  "rustls 0.23.36",
  "rustls-native-certs",
  "rustls-platform-verifier-android",
- "rustls-webpki 0.103.9",
+ "rustls-webpki 0.103.10",
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5809,9 +5809,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.9"
+version = "0.103.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7df23109aa6c1567d1c575b9952556388da57401e4ace1d15f79eedad0d8f53"
+checksum = "df33b2b81ac578cabaf06b89b0631153a3f416b0a886e8a7a1707fb51abbd1ef"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -5833,9 +5833,9 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "salvo"
-version = "0.89.2"
+version = "0.89.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d25828ed212c720a358407fbaddcf467c3f0b9bcb974a2e10b411631a31efaf"
+checksum = "997a9250e40b5c3122280212b03fa7579b548307a8239492eecc11d58da8a911"
 dependencies = [
  "salvo-acme",
  "salvo-proxy",
@@ -5844,9 +5844,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-acme"
-version = "0.89.2"
+version = "0.89.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6995792805f95906031138950e7ba5ab19e7576d163145928f5a8fa830d22c59"
+checksum = "214d2a135ac07303211f70b64d8d5039b7886884cb811281d646ff0891e49767"
 dependencies = [
  "aws-lc-rs",
  "base64 0.22.1",
@@ -5888,9 +5888,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-proxy"
-version = "0.89.2"
+version = "0.89.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2de118d2c2d9be1e1a270c556d0c63d927524bb715913eba21f922f963bcd9a"
+checksum = "1501355e3361174931a91cd8c4026061ffdebb1757aa2ed449d97d33a178ee92"
 dependencies = [
  "fastrand",
  "futures-util",
@@ -5907,9 +5907,9 @@ dependencies = [
 
 [[package]]
 name = "salvo-serde-util"
-version = "0.89.2"
+version = "0.89.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2c771ed55960daafbdb7632ae469b4971815978560a7ff22a3654196b4f93fb"
+checksum = "c513cc94967322fab6ac2f1b3e68d40e110971fd4924f4d48677ca6e7df41038"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5918,9 +5918,9 @@ dependencies = [
 
 [[package]]
 name = "salvo_core"
-version = "0.89.2"
+version = "0.89.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2be136947f5a3c40e7d83796bdbcded19e957b527808207ce52fa662980a6b4c"
+checksum = "a6b94eccfe18383d4db6dbc6a0462f1be4160467e8d42506db8e46932b8fd5a3"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -5971,11 +5971,11 @@ dependencies = [
 
 [[package]]
 name = "salvo_macros"
-version = "0.89.2"
+version = "0.89.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f86a6f3ed2d22973a1fd8d006e8e28e945a7d5c910251804c2615926d9ad0e2c"
+checksum = "a51d5f03526f7cc1cc38b60cc24c3cc5982516c8ad9c94ff27d7f82f3c9762fb"
 dependencies = [
- "proc-macro-crate 3.5.0",
+ "proc-macro-crate 2.0.2",
  "proc-macro2",
  "quote",
  "regex",
@@ -6947,9 +6947,9 @@ dependencies = [
 
 [[package]]
 name = "tar"
-version = "0.4.44"
+version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d863878d212c87a19c1a610eb53bb01fe12951c0501cf5a0d65f724914a667a"
+checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
 dependencies = [
  "filetime",
  "libc",
@@ -7292,7 +7292,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix 1.1.3",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7849,7 +7849,7 @@ dependencies = [
  "http 1.4.0",
  "httparse",
  "log",
- "rand 0.9.2",
+ "rand 0.9.3",
  "rustls 0.23.36",
  "rustls-pki-types",
  "sha1",
@@ -8567,7 +8567,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

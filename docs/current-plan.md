@@ -15,7 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
 - **Canonical Config 与 Runtime Apply 统一改造**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/canonical-config-runtime-apply.md`

@@ -15,14 +15,14 @@
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.3",
     "@tauri-apps/api": "^2.0.0",
-    "solid-js": "^1.9.5",
-    "virtua": "^0.48.6",
-    "marked": "^15.0.8",
     "dompurify": "^3.2.4",
     "highlight.js": "^11.11.1",
-    "mermaid": "^11.4.1",
     "html2canvas": "^1.4.1",
-    "jspdf": "^2.5.1"
+    "jspdf": "4.2.1",
+    "marked": "^15.0.8",
+    "mermaid": "^11.4.1",
+    "solid-js": "^1.9.5",
+    "virtua": "^0.48.6"
   },
   "devDependencies": {
     "@types/bun": "^1.2.12",

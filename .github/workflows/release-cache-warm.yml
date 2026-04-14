@@ -20,6 +20,9 @@ concurrency:
   group: release-cache-warm-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   warm-release-cache:
     name: warm-release-cache (${{ matrix.os }}, ${{ matrix.target }})

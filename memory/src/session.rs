@@ -7,6 +7,7 @@ use hone_core::{ActorIdentity, SessionIdentity, beijing_now};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -388,13 +389,17 @@ impl SessionStorage {
         actor: Option<ActorIdentity>,
         session_identity: Option<SessionIdentity>,
     ) -> hone_core::HoneResult<String> {
-        let id = session_id.map(|s| s.to_string()).unwrap_or_else(|| {
+        let id = if let Some(session_id) = session_id {
+            validate_storage_component(session_id).ok_or_else(|| {
+                hone_core::HoneError::Config("session_id 包含非法路径组件".to_string())
+            })?
+        } else {
             session_identity
                 .as_ref()
                 .map(SessionIdentity::session_id)
                 .or_else(|| actor.as_ref().map(ActorIdentity::session_id))
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
-        });
+        };
 
         let session_identity = session_identity.or_else(|| {
             actor
@@ -458,8 +463,9 @@ impl SessionStorage {
 
                 let fallback = self.load_session_from_json(session_id)?;
                 if let Some(session) = &fallback {
-                    let _ =
-                        self.write_session_to_sqlite(&self.session_json_path(session_id), session);
+                    if let Ok(path) = self.session_json_path(session_id) {
+                        let _ = self.write_session_to_sqlite(&path, session);
+                    }
                 }
                 Ok(fallback)
             }
@@ -625,7 +631,7 @@ impl SessionStorage {
     }
 
     fn write_session(&self, session_id: &str, session: &Session) -> hone_core::HoneResult<()> {
-        let path = self.session_json_path(session_id);
+        let path = self.session_json_path(session_id)?;
         let json = serde_json::to_string_pretty(session)
             .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
         std::fs::write(&path, json)?;
@@ -637,12 +643,15 @@ impl SessionStorage {
         Ok(())
     }
 
-    fn session_json_path(&self, session_id: &str) -> PathBuf {
-        self.data_dir.join(format!("{session_id}.json"))
+    fn session_json_path(&self, session_id: &str) -> hone_core::HoneResult<PathBuf> {
+        let normalized = validate_storage_component(session_id).ok_or_else(|| {
+            hone_core::HoneError::Config("session_id 包含非法路径组件".to_string())
+        })?;
+        Ok(self.data_dir.join(format!("{normalized}.json")))
     }
 
     fn load_session_from_json(&self, session_id: &str) -> hone_core::HoneResult<Option<Session>> {
-        let path = self.session_json_path(session_id);
+        let path = self.session_json_path(session_id)?;
         if !path.exists() {
             return Ok(None);
         }
@@ -715,6 +724,26 @@ impl SessionStorage {
                 "failed to shadow-write session into sqlite: {err}"
             );
         }
+    }
+}
+
+fn validate_storage_component(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut components = Path::new(trimmed).components();
+    let component = match components.next() {
+        Some(Component::Normal(component)) => component.to_str()?.to_string(),
+        _ => return None,
+    };
+    if components.next().is_some() {
+        return None;
+    }
+    if component.is_empty() {
+        None
+    } else {
+        Some(component)
     }
 }
 
@@ -912,6 +941,20 @@ mod tests {
             .replace_messages("does-not-exist", Vec::new())
             .expect("replace");
         assert!(!ok);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn create_session_rejects_parent_dir_component() {
+        let root = make_temp_dir("hone_memory_test_invalid_session_id");
+        let storage = SessionStorage::new(&root);
+        let err = storage
+            .create_session(Some("../escape"), None, None)
+            .expect_err("invalid session id should fail");
+        assert!(
+            err.to_string().contains("session_id"),
+            "unexpected error: {err}"
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

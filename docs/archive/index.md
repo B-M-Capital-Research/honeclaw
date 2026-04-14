@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-15
 
+### GitHub Security / Quality 高优问题收口
+
+- Status: done
+- Date: 2026-04-15
+- Plan: `docs/archive/plans/security-quality-remediation.md`
+- Handoff: `docs/handoffs/2026-04-15-security-quality-remediation.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo check --workspace --all-targets --exclude hone-desktop`, `cargo test --workspace --all-targets --exclude hone-desktop`, `bun run test:web`, `bun run build:web`, `bash tests/regression/run_ci.sh`
+- Current conclusion: 已收口 research proxy URL 校验、session / company profile 路径组件校验、console 明文 user id 日志、Actions workflow 权限与一批高优 transitive dependency；剩余值得关注但未继续深挖的主要是 desktop GTK/Tauri 链上的 `glib` 告警，以及 `feishu-sdk -> salvo_core` 带入的低优 `rand 0.10.0`
+- Next entry point: `docs/handoffs/2026-04-15-security-quality-remediation.md`
+
 ### Pre-Compact KV Cache 稳定性收口
 
 - Status: done

@@ -197,8 +197,13 @@ pub(crate) async fn handle_chat(
             sent_segments: sent_segments.clone(),
         }));
 
-        info!("[Console] [{}] 收到: {}", actor_clone.user_id, msg);
-        eprintln!("[Console] [{}] 收到消息，开始处理...", actor_clone.user_id);
+        info!(
+            channel = %actor_clone.channel,
+            attachments = att_count,
+            message_len = msg.chars().count(),
+            "[Console] 收到消息"
+        );
+        eprintln!("[Console] 收到消息，开始处理...");
 
         let run_options = AgentRunOptions {
             timeout: Some(state.core.config.agent.overall_timeout()),

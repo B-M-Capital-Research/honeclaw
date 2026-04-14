@@ -12,6 +12,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -236,7 +237,12 @@ impl CompanyProfileStorage {
 
     pub fn profile_id(company_name: &str, stock_code: &str) -> String {
         if !stock_code.trim().is_empty() {
-            sanitize_id(&normalize_stock_code(stock_code))
+            let sanitized = sanitize_id(&normalize_stock_code(stock_code));
+            if sanitized.is_empty() {
+                slugify(company_name)
+            } else {
+                sanitized
+            }
         } else {
             slugify(company_name)
         }
@@ -510,20 +516,18 @@ impl CompanyProfileStorage {
 
     pub fn get_profile(&self, profile_id: &str) -> Result<Option<CompanyProfileDocument>, String> {
         let root_dir = self.scoped_root()?;
-        let profile_id = sanitize_id(profile_id.trim());
-        if profile_id.is_empty() {
+        let Some(profile_dir) = safe_component_join(&root_dir, profile_id) else {
             return Ok(None);
-        }
-        self.load_profile_by_dir(&root_dir.join(profile_id))
+        };
+        self.load_profile_by_dir(&profile_dir)
     }
 
     pub fn get_profile_raw(&self, profile_id: &str) -> Result<Option<RawProfileDocument>, String> {
         let root_dir = self.scoped_root()?;
-        let profile_id = sanitize_id(profile_id.trim());
-        if profile_id.is_empty() {
+        let Some(profile_dir) = safe_component_join(&root_dir, profile_id) else {
             return Ok(None);
-        }
-        self.load_raw_profile_by_dir(&root_dir.join(profile_id))
+        };
+        self.load_raw_profile_by_dir(&profile_dir)
     }
 
     pub fn create_profile(
@@ -571,6 +575,9 @@ impl CompanyProfileStorage {
 
         let created_at = Utc::now().to_rfc3339();
         let profile_id = Self::profile_id(company_name, &stock_code);
+        if profile_id.is_empty() {
+            return Err("profile_id 非法".to_string());
+        }
         let profile_dir = self.scoped_root()?.join(&profile_id);
         fs::create_dir_all(profile_dir.join("events"))
             .map_err(|err| format!("创建画像目录失败: {err}"))?;
@@ -737,11 +744,10 @@ impl CompanyProfileStorage {
     }
 
     pub fn delete_profile(&self, profile_id: &str) -> Result<bool, String> {
-        let profile_id = sanitize_id(profile_id.trim());
-        if profile_id.is_empty() {
+        let root_dir = self.scoped_root()?;
+        let Some(profile_dir) = safe_component_join(&root_dir, profile_id) else {
             return Ok(false);
-        }
-        let profile_dir = self.scoped_root()?.join(&profile_id);
+        };
         if !profile_dir.exists() {
             return Ok(false);
         }
@@ -1383,7 +1389,7 @@ fn normalize_company_name(value: &str) -> String {
 }
 
 fn sanitize_id(value: &str) -> String {
-    value
+    let sanitized = value
         .trim()
         .chars()
         .map(|ch| {
@@ -1394,8 +1400,9 @@ fn sanitize_id(value: &str) -> String {
             }
         })
         .collect::<String>()
-        .trim_matches('-')
-        .to_string()
+        .trim_matches(|ch| matches!(ch, '-' | '.'))
+        .to_string();
+    validate_storage_component(&sanitized).unwrap_or_default()
 }
 
 fn slugify(value: &str) -> String {
@@ -1414,6 +1421,32 @@ fn slugify(value: &str) -> String {
         }
     }
     slug.trim_matches('-').to_string()
+}
+
+fn validate_storage_component(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut components = Path::new(trimmed).components();
+    let component = match components.next() {
+        Some(Component::Normal(component)) => component.to_str()?.to_string(),
+        _ => return None,
+    };
+    if components.next().is_some() {
+        return None;
+    }
+    if component.is_empty() {
+        None
+    } else {
+        Some(component)
+    }
+}
+
+fn safe_component_join(root: &Path, value: &str) -> Option<PathBuf> {
+    let sanitized = sanitize_id(value);
+    let component = validate_storage_component(&sanitized)?;
+    Some(root.join(component))
 }
 
 fn normalize_event_date(value: &str) -> String {
@@ -1807,5 +1840,24 @@ mod tests {
             .find(|(title, _)| title == "行业模板附录")
             .expect("appendix");
         assert!(appendix.1.contains("净息差"));
+    }
+
+    #[test]
+    fn sanitize_id_rejects_dot_components_but_keeps_safe_ticker_chars() {
+        assert_eq!(sanitize_id(".."), "");
+        assert_eq!(sanitize_id("../secret"), "secret");
+        assert_eq!(sanitize_id("BRK.B"), "BRK.B");
+    }
+
+    #[test]
+    fn get_profile_rejects_parent_dir_component() {
+        let dir = make_temp_dir("company_profile_invalid_component");
+        let storage = scoped_storage(&dir, "discord", "alice", Some("watchlist"));
+        assert!(
+            storage
+                .get_profile("..")
+                .expect("load invalid component")
+                .is_none()
+        );
     }
 }
