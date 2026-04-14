@@ -2,27 +2,27 @@
 
 use async_trait::async_trait;
 use hone_core::agent::{AgentContext, AgentResponse, ToolCallMade};
-use hone_core::{ActorIdentity, SessionIdentity};
+use hone_core::{ActorIdentity, HoneConfig, SessionIdentity};
 use hone_memory::{
-    ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
     build_tool_message_metadata, has_compact_skill_snapshot, invoked_skills_from_metadata,
     message_is_compact_boundary, message_is_compact_summary, message_is_slash_skill,
-    restore_tool_message, select_messages_after_compact_boundary,
+    restore_tool_message, select_messages_after_compact_boundary, ConversationQuotaReservation,
+    ConversationQuotaReserveResult, SessionStorage,
 };
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use crate::HoneBotCore;
 use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
-use crate::prompt::{PromptOptions, build_prompt_bundle};
+use crate::prompt::{build_prompt_bundle, PromptOptions};
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
 use crate::runtime::{relativize_user_visible_paths, sanitize_user_visible_output};
 use crate::session_compactor::SessionCompactor;
+use crate::HoneBotCore;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSessionErrorKind {
@@ -133,9 +133,27 @@ impl Default for GeminiStreamOptions {
 const DAILY_CONVERSATION_LIMIT: u32 = 12;
 const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
+const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
     "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
 const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
+
+fn restore_limit_before_compaction(
+    config: &HoneConfig,
+    session_identity: &SessionIdentity,
+) -> Option<usize> {
+    if session_identity.is_group() {
+        Some(
+            config
+                .group_context
+                .recent_context_limit
+                .max(config.group_context.compress_threshold_messages)
+                .max(1),
+        )
+    } else {
+        Some(DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT)
+    }
+}
 
 fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
     // 失败直接返回；成功时只要有正文或工具调用，也视为已拿到有效结果。
@@ -554,11 +572,7 @@ impl AgentSession {
             SessionIdentity::direct(&actor.channel, &actor.user_id)
                 .expect("actor should always map to a direct session")
         });
-        let restore_max_messages = if session_identity.is_group() {
-            Some(core.config.group_context.recent_context_limit.max(1))
-        } else {
-            Some(12)
-        };
+        let restore_max_messages = restore_limit_before_compaction(&core.config, &session_identity);
         Self {
             core,
             actor,
@@ -588,11 +602,8 @@ impl AgentSession {
 
     pub fn with_session_identity(mut self, session_identity: SessionIdentity) -> Self {
         self.session_id = session_identity.session_id();
-        self.restore_max_messages = if session_identity.is_group() {
-            Some(self.core.config.group_context.recent_context_limit.max(1))
-        } else {
-            self.restore_max_messages
-        };
+        self.restore_max_messages =
+            restore_limit_before_compaction(&self.core.config, &session_identity);
         self.session_identity = session_identity;
         self
     }
@@ -695,7 +706,17 @@ impl AgentSession {
         }
         let related_skills =
             skill_runtime.search(user_input, &extract_possible_file_paths(user_input), 5);
-        if !related_skills.is_empty() {
+        let bundle = build_prompt_bundle(
+            &self.core.config,
+            &self.core.session_storage,
+            &self.actor.channel,
+            session_id,
+            &Default::default(),
+            &prompt_options,
+        );
+        let runtime_user_input = if related_skills.is_empty() {
+            user_input.to_string()
+        } else {
             let listing = related_skills
                 .into_iter()
                 .map(|skill| {
@@ -712,22 +733,14 @@ impl AgentSession {
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
-            prompt_options.extra_sections.push(format!(
-                "【Skills relevant to your task】\n{}\n如这些技能已覆盖下一步，就直接用 skill_tool（或 MCP 下的 hone/skill_tool）；否则再调用 discover_skills（或 hone/discover_skills）。",
-                listing
-            ));
-        }
-        let bundle = build_prompt_bundle(
-            &self.core.config,
-            &self.core.session_storage,
-            &self.actor.channel,
-            session_id,
-            &Default::default(),
-            &prompt_options,
-        );
+            format!(
+                "【本轮相关技能提示】\n{}\n如这些技能已覆盖下一步，就直接用 skill_tool（或 MCP 下的 hone/skill_tool）；否则再调用 discover_skills（或 hone/discover_skills）。\n\n{}",
+                listing, user_input
+            )
+        };
         (
             bundle.system_prompt(),
-            bundle.compose_user_input(user_input),
+            bundle.compose_user_input(&runtime_user_input),
         )
     }
 
@@ -1591,10 +1604,10 @@ fn compose_invoked_skill_runtime_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runners::{AgentRunnerEvent, stream_gemini_prompt};
+    use crate::runners::{stream_gemini_prompt, AgentRunnerEvent};
     use futures::stream::{self, BoxStream};
-    use hone_core::ActorIdentity;
     use hone_core::config::HoneConfig;
+    use hone_core::ActorIdentity;
     use hone_llm::provider::ChatResult;
     use hone_llm::{ChatResponse, LlmProvider, Message};
     use serde_json::Value;
@@ -1853,6 +1866,77 @@ mod tests {
         assert_eq!(ctx.messages[1].name.as_deref(), Some("web_search"));
         assert_eq!(ctx.messages[1].tool_call_id.as_deref(), Some("call_1"));
         assert_eq!(ctx.actor_identity(), Some(actor));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn session_restore_limit_does_not_roll_before_compact_threshold() {
+        let root = make_temp_dir("hone_channels_restore_limit_floor");
+        std::fs::create_dir_all(&root).expect("create root");
+        let llm = MockLlmProvider::with_tool_responses(Vec::new());
+        let core = make_test_core_with_config(&root, llm, |config| {
+            config.group_context.recent_context_limit = 6;
+            config.group_context.compress_threshold_messages = 24;
+        });
+
+        let direct_actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+        let direct = AgentSession::new(core.clone(), direct_actor, "target");
+        assert_eq!(
+            direct.restore_max_messages,
+            Some(DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT)
+        );
+
+        let group_actor =
+            ActorIdentity::new("discord", "alice", Some("room-1".to_string())).expect("actor");
+        let group_session =
+            SessionIdentity::group(&group_actor.channel, "room-1").expect("group session");
+        let group =
+            AgentSession::new(core, group_actor, "room-1").with_session_identity(group_session);
+        assert_eq!(group.restore_max_messages, Some(24));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_prompt_input_keeps_system_prompt_stable_when_related_skills_change() {
+        let root = make_temp_dir("hone_channels_prompt_cache_stability");
+        let system_skills = root.join("system_skills");
+        let skill_dir = system_skills.join("alpha_skill");
+        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Alpha Skill\n",
+                "description: alpha analysis workflow\n",
+                "when_to_use: use for alpha analysis tasks\n",
+                "---\n\n",
+                "body\n"
+            ),
+        )
+        .expect("write skill");
+
+        let llm = MockLlmProvider::with_tool_responses(Vec::new());
+        let core = make_test_core_with_config(&root, llm, |config| {
+            config.extra.insert(
+                "skills_dir".to_string(),
+                serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
+            );
+        });
+        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+        let session = AgentSession::new(core, actor, "target");
+
+        let (system_with_match, runtime_with_match) =
+            session.resolve_prompt_input("session-demo", "alpha skill");
+        let (system_without_match, runtime_without_match) =
+            session.resolve_prompt_input("session-demo", "plain greeting");
+
+        assert_eq!(system_with_match, system_without_match);
+        assert!(!system_with_match.contains("【Skills relevant to your task】"));
+        assert!(runtime_with_match.contains("【本轮相关技能提示】"));
+        assert!(runtime_with_match.contains("alpha_skill"));
+        assert!(!runtime_without_match.contains("【本轮相关技能提示】"));
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -2297,20 +2381,17 @@ mod tests {
         let result = session.run("hello", AgentRunOptions::default()).await;
 
         assert!(!result.response.success);
-        assert!(
-            result
-                .response
-                .error
-                .unwrap_or_default()
-                .contains("已达到今日对话上限")
-        );
+        assert!(result
+            .response
+            .error
+            .unwrap_or_default()
+            .contains("已达到今日对话上限"));
         assert_eq!(llm.chat_with_tools_calls(), 0);
-        assert!(
-            core.session_storage
-                .get_messages(&actor.session_id(), None)
-                .expect("messages")
-                .is_empty()
-        );
+        assert!(core
+            .session_storage
+            .get_messages(&actor.session_id(), None)
+            .expect("messages")
+            .is_empty());
         let snapshot = core
             .conversation_quota_storage
             .snapshot_for_date(&actor, &today)
@@ -2445,11 +2526,9 @@ mod tests {
         assert_eq!(messages[1].content, "【Compact Summary】\nsummary");
         assert_eq!(messages[2].content, "hello");
         assert_eq!(messages[3].content, "world");
-        assert!(
-            messages
-                .iter()
-                .all(|message| !message.content.contains("/compact"))
-        );
+        assert!(messages
+            .iter()
+            .all(|message| !message.content.contains("/compact")));
 
         let _ = std::fs::remove_dir_all(root);
     }

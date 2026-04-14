@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-04-12
+Last updated: 2026-04-15
 
 ## Source of Truth and Document Priority
 
@@ -60,7 +60,7 @@ Last updated: 2026-04-12
 - Non-local Web console deployments must enable a Bearer token
 - `ChatMode` describes only the message shape (`direct` / `group`) and does not determine session ownership; shared group context must explicitly go through `SessionIdentity`
 - `ActorIdentity` and `SessionIdentity` must stay separate: the former is for permissions, quota, sandbox, and private-data isolation, while the latter is for context recovery and session persistence
-- Global finance-domain constraints are injected at runtime by `crates/hone-channels/src/prompt.rs`: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short. Do not override these core rules only in a single channel or in a local config.
+- Global finance-domain constraints are injected at runtime by `crates/hone-channels/src/prompt.rs`: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, keep greetings short, and require macro / market narrative analysis to distinguish noise from thesis-changing evidence. Do not flip between conflicting narratives on a few days of price action or a single headline unless the prior hypothesis has been explicitly falsified, and do not override these core rules only in a single channel or in a local config.
 - Runtime prompt time anchoring is a core behavior contract: Hone must keep the session-provided current time as the source of truth for macro / news / event-driven analysis, must state the current time first on clearly time-sensitive macro answers, and must rewrite relative-time macro searches into absolute-date queries before calling search tools.
 - `config.yaml` is the only long-lived user-writable config source
 - `data/runtime/effective-config.yaml` is the generated runtime input for child processes, and deleting `data/runtime/` must be a safe runtime reset that does not remove user config
@@ -95,6 +95,7 @@ Last updated: 2026-04-12
   - Static system instructions live in the prefix
   - Session-fixed context is concatenated separately
   - Mutable content such as summaries must not be written back into the static system prefix
+- Pre-compact cache stability is a runtime contract: before the next compaction boundary, Hone must not introduce avoidable cache misses by shrinking its own restore window below the active compaction threshold or by injecting turn-specific related-skill hints into the static system prefix. Turn-specific guidance belongs in the current turn input; a post-compact prefix change is expected and acceptable.
 - ACP runners must receive the Hone-assembled system prompt explicitly; they must not rely on the underlying CLI discovering `AGENTS.md` or `GEMINI.md` from the repo `cwd`
 - Session summaries and compacted restore materials may stay session-scoped, but the displayed current time in prompt session context must be recalculated from the live current Beijing time on every turn; do not reuse stale session creation time as "当前时间"
 - Session summaries must be stored in the explicit `summary` field instead of relying on a fake `system` summary message

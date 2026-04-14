@@ -154,8 +154,7 @@ impl CodexCliAgent {
         }
 
         prompt.push_str("### Conversation History ###\n");
-        let messages_to_include: Vec<_> = context.messages.iter().rev().take(20).rev().collect();
-        for msg in &messages_to_include {
+        for msg in &context.messages {
             let content = msg.content.as_deref().unwrap_or("");
             if !content.is_empty() {
                 prompt.push_str(&format!("{}: {}\n\n", msg.role.to_uppercase(), content));
@@ -487,7 +486,10 @@ impl Agent for CodexCliAgent {
 #[cfg(test)]
 mod tests {
     use super::CodexCliAgent;
+    use hone_core::agent::AgentContext;
+    use hone_tools::registry::ToolRegistry;
     use serde_json::json;
+    use std::sync::Arc;
 
     #[test]
     fn parse_tool_call_detects_valid_call() {
@@ -517,5 +519,24 @@ mod tests {
         assert_eq!(name, "skill_tool");
         assert_eq!(args["action"], json!("list"));
         assert!(reasoning.is_none());
+    }
+
+    #[test]
+    fn build_prompt_keeps_full_context_window() {
+        let agent = CodexCliAgent::new(
+            "system".to_string(),
+            None,
+            None,
+            Arc::new(ToolRegistry::new()),
+            None,
+        );
+        let mut context = AgentContext::new("session-1".to_string());
+        for idx in 0..24 {
+            context.add_user_message(&format!("u{idx}"));
+        }
+
+        let prompt = agent.build_prompt(&context, &[]);
+        assert!(prompt.contains("USER: u0"));
+        assert!(prompt.contains("USER: u23"));
     }
 }

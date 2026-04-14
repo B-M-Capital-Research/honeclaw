@@ -1,8 +1,22 @@
 # Archive Index
 
-Last updated: 2026-04-13
+Last updated: 2026-04-15
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
+
+## 2026-04-15
+
+### Pre-Compact KV Cache 稳定性收口
+
+- Status: done
+- Date: 2026-04-15
+- Plan: `docs/archive/plans/kvcache-stability-before-compaction.md`
+- Handoff: `docs/handoffs/2026-04-15-kvcache-stability-before-compaction.md`
+- Decision / ADR: `docs/adr/0002-agent-runtime-acp-refactor.md`
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels`, `cargo test -p hone-agent-codex-cli`
+- Current conclusion: Hone 现在不会在下一次 compact 之前，由自身更小的 recent restore window、按当前用户输入动态变化的 system prompt related-skill block，或 `codex_cli` 的额外 20 条裁剪，提前制造可避免的 cache miss；compact 之后 prefix 变化仍视为正常边界
+- Next entry point: `crates/hone-channels/src/agent_session.rs`
 
 ## 2026-04-13
 
