@@ -1,8 +1,8 @@
 //! Prompt helpers for channel-specific guidance.
 
 use hone_core::config::HoneConfig;
-use hone_memory::SessionStorage;
 use hone_memory::session::SessionPromptState;
+use hone_memory::SessionStorage;
 
 pub const DEFAULT_GROUP_PRIVACY_GUARD: &str = "【群聊隐私约束】在群聊中禁止要求用户提供持仓、成交价、交易单等敏感信息；如需明细，引导其转为私聊提交。";
 pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束】\n\
@@ -27,6 +27,9 @@ pub const DEFAULT_COMPANY_PROFILE_POLICY: &str = "【公司画像 / 长期跟踪
 - 仅当用户明显只是在问一次性短问题，或明确表示这轮不要沉淀时，才不要创建画像。\n\
 - 若画像已存在，后续研究应优先参考已有画像；出现实质新增事实时才追加事件，而只要长期判断、稳定偏好、共识逻辑或估值结论已经变化，就应直接回写主画像正文或对应 section。\n\
 - 若画像已存在，分析时要显式参考画像中的用户风险偏好、既有看法、估值口味与约束条件，使结论贴合该用户，而不是给出与其长期框架脱节的通用答案。\n\
+- 在分析某家公司前，若当前 actor 用户空间下的 `company_profiles/` 已覆盖同产业链、同商业模式、同宏观驱动或其它高度相似公司的画像，应先查看这些相似公司里与当前问题相关的记录，特别是行业景气、需求、供给、资本开支、竞争格局与估值框架等长期叙事。\n\
+- 对同类型公司，宏观叙事与行业框架应尽量保持一致；如果你对一类公司整体偏乐观或偏谨慎，可以据此对该类公司先高看或低看一眼，但具体结论仍必须回到个体公司的基本面、竞争位置、盈利质量、估值与风险，不要在分析相似公司时产出两个彼此冲突、却没有解释原因的宏观叙事。\n\
+- 若同类公司之间需要给出不同结论，必须明确说明差异来自哪些公司层面的关键变量，例如产品结构、客户质量、份额趋势、治理、盈利能力、资产负债表、资本配置或估值，而不是把宏观主线本身随意改写。\n\
 - 但不要迎合极端风险偏好；若用户偏好已接近满仓、满融、梭哈、单一催化重注或其它明显过激做法，必须主动降温，把建议收敛到更可执行的风险暴露、仓位节奏、触发条件与证伪条件上。\n\
 - 分析公司时坚持第一性原理，优先看商业模式、竞争优势、盈利质量、估值与产业周期；不要只盯 K 线、短期价格波动或单日涨跌。\n\
 - 只要用户正在研究某家公司，且本轮产出了值得长期复用的内容，就应主动帮用户沉淀到公司画像，不要等用户逐条要求；优先保留用户自己的看法、偏好或约束、你与用户此前已达成一致的判断逻辑，以及本轮形成的估值判断、估值区间或估值锚点。\n\
@@ -256,8 +259,8 @@ const FEISHU_FORMAT_GUIDANCE: &str = "【输出格式-飞书】\n\
 mod tests {
     use super::*;
     use hone_core::config::HoneConfig;
-    use hone_memory::SessionStorage;
     use hone_memory::session::SessionPromptState;
+    use hone_memory::SessionStorage;
     use std::fs;
 
     #[test]
@@ -286,18 +289,14 @@ mod tests {
 
         assert!(bundle.system_prompt().contains("【领域边界与投研约束】"));
         assert!(bundle.system_prompt().contains("禁止荐股"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不要未经自己思考和风险评估就直接照做")
-        );
+        assert!(bundle
+            .system_prompt()
+            .contains("不要未经自己思考和风险评估就直接照做"));
         assert!(bundle.system_prompt().contains("只回答与金融"));
         assert!(bundle.system_prompt().contains("区分主线与噪音"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("保持分析逻辑、因果链和结论框架的连贯性")
-        );
+        assert!(bundle
+            .system_prompt()
+            .contains("保持分析逻辑、因果链和结论框架的连贯性"));
 
         let _ = fs::remove_dir_all(&data_dir);
     }
@@ -330,6 +329,8 @@ mod tests {
         assert!(system_prompt.contains("已达成一致的判断逻辑"));
         assert!(system_prompt.contains("估值判断、估值区间或估值锚点"));
         assert!(system_prompt.contains("用户视角与偏好"));
+        assert!(system_prompt.contains("相似公司里与当前问题相关的记录"));
+        assert!(system_prompt.contains("宏观叙事与行业框架应尽量保持一致"));
         assert!(system_prompt.contains("不要把公司画像写成流水账"));
 
         let _ = fs::remove_dir_all(&data_dir);
@@ -370,16 +371,12 @@ mod tests {
         );
 
         assert!(!bundle.system_prompt().contains("【Session 上下文】"));
-        assert!(
-            bundle
-                .compose_user_input("你好")
-                .contains("【Session 上下文】")
-        );
-        assert!(
-            bundle
-                .compose_user_input("你好")
-                .contains("【本轮用户输入】")
-        );
+        assert!(bundle
+            .compose_user_input("你好")
+            .contains("【Session 上下文】"));
+        assert!(bundle
+            .compose_user_input("你好")
+            .contains("【本轮用户输入】"));
 
         let _ = fs::remove_dir_all(&data_dir);
     }
