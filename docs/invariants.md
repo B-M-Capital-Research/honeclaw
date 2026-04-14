@@ -64,7 +64,7 @@ Last updated: 2026-04-12
 - Runtime prompt time anchoring is a core behavior contract: Hone must keep the session-provided current time as the source of truth for macro / news / event-driven analysis, must state the current time first on clearly time-sensitive macro answers, and must rewrite relative-time macro searches into absolute-date queries before calling search tools.
 - `config.yaml` is the only long-lived user-writable config source
 - `data/runtime/effective-config.yaml` is the generated runtime input for child processes, and deleting `data/runtime/` must be a safe runtime reset that does not remove user config
-- No code path should read or write legacy `data/runtime/config_runtime.yaml` or sibling `.overrides.yaml` files anymore
+- No steady-state runtime path should read or write legacy `data/runtime/config_runtime.yaml` or sibling `.overrides.yaml` files anymore; the only allowed exception is one-way startup migration that promotes still-missing user settings into canonical `config.yaml`
 - `storage.session_runtime_backend` decides the production session read path:
   - `json`: `data/sessions/*.json` is the source of truth
   - `sqlite`: `storage.session_sqlite_db_path` is the source of truth

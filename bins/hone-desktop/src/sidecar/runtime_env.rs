@@ -1,5 +1,8 @@
 use super::*;
-use hone_core::config::{generate_effective_config, seed_canonical_config_from_source};
+use hone_core::config::{
+    generate_effective_config, promote_legacy_runtime_agent_settings,
+    seed_canonical_config_from_source,
+};
 
 pub(super) fn normalize_base_url(raw: &str) -> String {
     raw.trim().trim_end_matches('/').to_string()
@@ -91,12 +94,6 @@ fn desktop_canonical_config_path(config_dir: &Path) -> PathBuf {
     }
     if let Ok(home) = env::var("HONE_HOME") {
         return PathBuf::from(home).join("config.yaml");
-    }
-    if cfg!(debug_assertions) {
-        let repo_config = repo_root().join("config.yaml");
-        if repo_config.exists() {
-            return repo_config;
-        }
     }
     config_dir.join("config.yaml")
 }
@@ -326,6 +323,17 @@ pub(super) fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, Stri
             )
         })?;
     }
+
+    let legacy_runtime_config_path = runtime_dir.join("config_runtime.yaml");
+    promote_legacy_runtime_agent_settings(&config_path, &legacy_runtime_config_path).map_err(
+        |e| {
+            format!(
+                "无法迁移 legacy runtime config（来源: {}，目标: {}）: {e}",
+                legacy_runtime_config_path.display(),
+                config_path.display()
+            )
+        },
+    )?;
 
     let effective_config_path = runtime_dir.join("effective-config.yaml");
     generate_effective_config(&config_path, &effective_config_path)

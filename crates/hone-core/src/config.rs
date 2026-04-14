@@ -590,6 +590,126 @@ pub fn seed_canonical_config_from_source(
     Ok(())
 }
 
+fn get_value_at_path<'a>(current: &'a Value, path: &str) -> crate::HoneResult<Option<&'a Value>> {
+    let segments = parse_config_path(path)?;
+    get_value_at_segments(current, &segments)
+}
+
+fn get_string_at_path(current: &Value, path: &str) -> crate::HoneResult<Option<String>> {
+    Ok(get_value_at_path(current, path)?
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_string()))
+}
+
+fn string_path_is_blank(current: &Value, path: &str) -> crate::HoneResult<bool> {
+    Ok(get_string_at_path(current, path)?
+        .map(|value| value.is_empty())
+        .unwrap_or(true))
+}
+
+fn set_value_at_path(current: &mut Value, path: &str, value: Value) -> crate::HoneResult<()> {
+    let segments = parse_config_path(path)?;
+    set_value_at_segments(current, &segments, value)
+}
+
+fn canonical_runner_looks_seeded(runner: &str) -> bool {
+    matches!(runner.trim(), "" | "function_calling" | "codex_cli")
+}
+
+/// 从 legacy runtime config 中补迁仍未进入 canonical config 的关键 agent 字段。
+///
+/// 迁移策略是保守的：
+/// - 只有当 canonical 对应字段仍为空或种子态时，才会提升 legacy 值
+/// - 一旦 canonical 已经显式配置，后续启动不会再被 legacy 覆盖
+pub fn promote_legacy_runtime_agent_settings(
+    canonical_config_path: &Path,
+    legacy_runtime_config_path: &Path,
+) -> crate::HoneResult<Vec<String>> {
+    if !canonical_config_path.exists() || !legacy_runtime_config_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut canonical = read_yaml_value(canonical_config_path)?;
+    if canonical.is_null() {
+        canonical = Value::Mapping(Mapping::new());
+    }
+    let legacy = read_yaml_value(legacy_runtime_config_path)?;
+    if legacy.is_null() {
+        return Ok(Vec::new());
+    }
+
+    let mut changed_paths = Vec::new();
+    let mut migrated_multi_agent = false;
+    let mut migrated_opencode = false;
+
+    if string_path_is_blank(&canonical, "agent.multi_agent.search.api_key")?
+        && string_path_is_blank(&canonical, "agent.multi_agent.answer.api_key")?
+    {
+        if let Some(legacy_multi_agent) = get_value_at_path(&legacy, "agent.multi_agent")? {
+            set_value_at_path(
+                &mut canonical,
+                "agent.multi_agent",
+                legacy_multi_agent.clone(),
+            )?;
+            changed_paths.push("agent.multi_agent".to_string());
+            migrated_multi_agent = true;
+        }
+    }
+
+    if string_path_is_blank(&canonical, "agent.opencode.api_key")?
+        && let Some(legacy_opencode) = get_value_at_path(&legacy, "agent.opencode")?
+    {
+        set_value_at_path(&mut canonical, "agent.opencode", legacy_opencode.clone())?;
+        changed_paths.push("agent.opencode".to_string());
+        migrated_opencode = true;
+    }
+
+    if string_path_is_blank(&canonical, "llm.auxiliary.api_key")?
+        && let Some(legacy_auxiliary) = get_value_at_path(&legacy, "llm.auxiliary")?
+    {
+        set_value_at_path(&mut canonical, "llm.auxiliary", legacy_auxiliary.clone())?;
+        changed_paths.push("llm.auxiliary".to_string());
+    }
+
+    if string_path_is_blank(&canonical, "llm.openrouter.api_key")?
+        && let Some(legacy_openrouter_key) = get_value_at_path(&legacy, "llm.openrouter.api_key")?
+    {
+        set_value_at_path(
+            &mut canonical,
+            "llm.openrouter.api_key",
+            legacy_openrouter_key.clone(),
+        )?;
+        changed_paths.push("llm.openrouter.api_key".to_string());
+    }
+
+    let canonical_runner = get_string_at_path(&canonical, "agent.runner")?.unwrap_or_default();
+    let legacy_runner = get_string_at_path(&legacy, "agent.runner")?.unwrap_or_default();
+    let should_promote_runner = !legacy_runner.is_empty()
+        && canonical_runner != legacy_runner
+        && canonical_runner_looks_seeded(&canonical_runner)
+        && ((legacy_runner == "multi-agent" && migrated_multi_agent)
+            || (legacy_runner == "opencode_acp" && migrated_opencode)
+            || canonical_runner.is_empty());
+
+    if should_promote_runner {
+        set_value_at_path(
+            &mut canonical,
+            "agent.runner",
+            Value::String(legacy_runner.clone()),
+        )?;
+        changed_paths.push("agent.runner".to_string());
+    }
+
+    if changed_paths.is_empty() {
+        return Ok(changed_paths);
+    }
+
+    let yaml = serde_yaml::to_string(&canonical)
+        .map_err(|e| crate::HoneError::Config(format!("canonical 配置序列化失败: {e}")))?;
+    atomic_write_yaml(canonical_config_path, &yaml)?;
+    Ok(changed_paths)
+}
+
 fn yaml_revision(value: &Value) -> crate::HoneResult<String> {
     use std::hash::{Hash, Hasher};
 
@@ -1416,6 +1536,136 @@ agent:
             std::fs::read_to_string(runtime_dir.join("soul.md")).unwrap(),
             "prompt"
         );
+    }
+
+    #[test]
+    fn test_promote_legacy_runtime_agent_settings_migrates_blank_multi_agent_and_runner() {
+        let dir = temp_test_dir("legacy-agent-migrate");
+        let canonical = dir.join("config.yaml");
+        let legacy = dir.join("data/runtime/config_runtime.yaml");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(
+            &canonical,
+            r#"
+agent:
+  runner: codex_cli
+  multi_agent:
+    search:
+      api_key: ""
+    answer:
+      api_key: ""
+  opencode:
+    api_key: ""
+llm:
+  auxiliary:
+    api_key: ""
+  openrouter:
+    api_key: ""
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &legacy,
+            r#"
+agent:
+  runner: multi-agent
+  multi_agent:
+    search:
+      base_url: "https://api.minimaxi.com/v1"
+      api_key: "legacy-search"
+      model: "MiniMax-M2.7-highspeed"
+      max_iterations: 8
+    answer:
+      api_base_url: "https://openrouter.ai/api/v1"
+      api_key: "legacy-answer"
+      model: "google/gemini-3.1-pro-preview"
+      variant: "high"
+      max_tool_calls: 1
+  opencode:
+    api_base_url: "https://openrouter.ai/api/v1"
+    api_key: "legacy-answer"
+    model: "google/gemini-3.1-pro-preview"
+    variant: "high"
+llm:
+  auxiliary:
+    base_url: "https://api.minimaxi.com/v1"
+    api_key: "legacy-search"
+    model: "MiniMax-M2.7-highspeed"
+  openrouter:
+    api_key: "legacy-openrouter"
+"#,
+        )
+        .unwrap();
+
+        let changed = promote_legacy_runtime_agent_settings(&canonical, &legacy).unwrap();
+
+        assert!(changed.contains(&"agent.multi_agent".to_string()));
+        assert!(changed.contains(&"agent.opencode".to_string()));
+        assert!(changed.contains(&"llm.auxiliary".to_string()));
+        assert!(changed.contains(&"llm.openrouter.api_key".to_string()));
+        assert!(changed.contains(&"agent.runner".to_string()));
+
+        let config = HoneConfig::from_file(&canonical).unwrap();
+        assert_eq!(config.agent.runner, "multi-agent");
+        assert_eq!(config.agent.multi_agent.search.api_key, "legacy-search");
+        assert_eq!(config.agent.multi_agent.answer.api_key, "legacy-answer");
+        assert_eq!(config.agent.opencode.api_key, "legacy-answer");
+        assert_eq!(config.llm.auxiliary.api_key, "legacy-search");
+        assert_eq!(config.llm.openrouter.api_key, "legacy-openrouter");
+    }
+
+    #[test]
+    fn test_promote_legacy_runtime_agent_settings_keeps_configured_canonical_values() {
+        let dir = temp_test_dir("legacy-agent-preserve");
+        let canonical = dir.join("config.yaml");
+        let legacy = dir.join("data/runtime/config_runtime.yaml");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(
+            &canonical,
+            r#"
+agent:
+  runner: multi-agent
+  multi_agent:
+    search:
+      api_key: "canonical-search"
+    answer:
+      api_key: "canonical-answer"
+llm:
+  auxiliary:
+    api_key: "canonical-aux"
+  openrouter:
+    api_key: "canonical-openrouter"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &legacy,
+            r#"
+agent:
+  runner: codex_cli
+  multi_agent:
+    search:
+      api_key: "legacy-search"
+    answer:
+      api_key: "legacy-answer"
+llm:
+  auxiliary:
+    api_key: "legacy-aux"
+  openrouter:
+    api_key: "legacy-openrouter"
+"#,
+        )
+        .unwrap();
+
+        let changed = promote_legacy_runtime_agent_settings(&canonical, &legacy).unwrap();
+        assert!(changed.is_empty());
+
+        let config = HoneConfig::from_file(&canonical).unwrap();
+        assert_eq!(config.agent.runner, "multi-agent");
+        assert_eq!(config.agent.multi_agent.search.api_key, "canonical-search");
+        assert_eq!(config.agent.multi_agent.answer.api_key, "canonical-answer");
+        assert_eq!(config.llm.auxiliary.api_key, "canonical-aux");
+        assert_eq!(config.llm.openrouter.api_key, "canonical-openrouter");
     }
 
     #[test]
