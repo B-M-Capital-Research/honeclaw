@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-15 21:12 CST
+最后更新：2026-04-15 22:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：15
+- 活跃待修复：17
 - 已修复 / 已关闭：7
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -34,8 +34,10 @@
 | 会话压缩摘要会把最后一个新问题误写成完整“用户报告”并以 `Compact Summary` 回灌，正式回答因此引用不存在的报告与伪造价格假设 | P1 | New | 2026-04-15 Rocket Lab 会话已复现；`MiniMax-M2.7-highspeed` 压缩产出了虚假的 RKLB 长报告并被后续回答当成用户材料 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 定时任务链路绕过统一输出净化，向用户投递内部思考与未清洗富文本 | P1 | New | 未修复；普通会话已净化，scheduler 仍直接发送原始输出 | [scheduled_output_sanitization_gap.md](./scheduled_output_sanitization_gap.md) |
 | 定时任务达到上限后，Agent 未经用户确认就批量删除已有任务 | P1 | New | 2026-04-15 最近一小时真实会话新增；`add` 失败后同轮连续删除 8 个旧任务再重试创建 | [scheduler_task_limit_auto_cleanup_without_confirmation.md](./scheduler_task_limit_auto_cleanup_without_confirmation.md) |
-| Feishu 直聊会话在 Multi-Agent Answer 阶段返回空回复后，链路仍记成功并发送空消息 | P1 | New | 2026-04-15 17:49 最近一小时新增；`reply_chars=0` 后仍 `success=true`，并执行 `reply.send segments.sent=1/1` | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 直聊会话在 Multi-Agent Answer 阶段返回空回复后，链路仍记成功并发送空消息 | P1 | New | 2026-04-15 17:49 首次建档后，21:34 与 21:52 最近一小时又复现两次；`reply_chars=0` 后仍 `success=true` 并持久化空 assistant 消息 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Feishu 定时任务在 Answer 阶段返回空回复后，调度台账仍记为 `completed + sent` | P1 | New | 2026-04-15 20:46-20:50 最近一小时新增；两条 Feishu scheduler run 都是空回复，但 `cron_job_runs` 仍记 `completed + sent + delivered=1` | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
+| Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | New | 2026-04-15 21:04 与 21:35 最近一小时仍复现；两个 direct scheduler job 都因 `target_resolution_failed` 被拦截，`delivered=0` | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
+| 渠道失败分支会把原始 LLM/provider 报错直接发给用户 | P1 | New | 2026-04-15 20:58 最近真实会话新增；Feishu 失败提示直接包含 `bad_request_error`、`invalid function arguments json string` 和 `tool_call_id` | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-15 21:00 最近一小时仍在复现；`Monitor_Watchlist_11` 于 `20:01`、`20:31`、`21:00` 连续被静默吞掉 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Discord 定时任务在 Answer 阶段返回空回复时被记为成功执行，但最终未向用户送达 | P2 | New | 2026-04-15 最近一小时新增；`reply_chars=0` 但 run 仍记为 `completed`，最终 `send_failed` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 

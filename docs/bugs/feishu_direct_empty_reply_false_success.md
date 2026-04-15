@@ -11,6 +11,14 @@
     - `2026-04-15T17:49:05.656906+08:00` 到 `2026-04-15T17:49:05.706807+08:00` 连续 12 次 `data_fetch` 工具成功返回
     - `2026-04-15T17:49:05.708643+08:00` assistant 消息长度为 `0`
     - 该空 assistant 消息仍落库了真实 `message_id=om_x100b52c1aca3f51cc3d6e91f9c1817a`
+  - 最近一小时再次复现：
+    - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+    - `2026-04-15T21:30:00.519354+08:00` 定时任务 `Oil_Price_Monitor_Premarket` 触发后完成 16 次 `data_fetch/web_search`
+    - `2026-04-15T21:34:59.005675+08:00` assistant 消息长度为 `0`
+    - `data/runtime/logs/web.log` 对应记录：`21:34:58.950` `reply_chars=0`、`21:34:58.951` `empty reply`、`21:34:59.008` `done ... success=true ... reply.chars=0`
+    - `session_id=Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
+    - `2026-04-15T21:49:18.094709+08:00` 用户再次提问“你是一个顶级金融分析师，帮我分析美光和闪迪”
+    - `2026-04-15T21:52:43.409827+08:00` assistant 消息再次为空，且落库了新 `message_id=om_x100b52c7740cf850c4c79e49f6f1342`
   - 最近一小时运行日志：`data/runtime/logs/hone-feishu.release-restart.log`
     - `2026-04-15T09:48:56.045195Z` `multi_agent.search.done success=true iterations=3 tool_calls=12`
     - `2026-04-15T09:49:05.651091Z` `stop_reason=end_turn success=true reply_chars=0`
@@ -45,6 +53,7 @@
 - 真实会话已经证明：Feishu 直聊在搜索结果齐备的前提下，仍可能产出零字节 assistant 消息。
 - `opencode_acp` 日志明确识别到 `empty reply`，但 `multi_agent.answer.done`、`MsgFlow/feishu done` 和 `reply.send` 仍全部走成功路径。
 - 数据库最终同时留下“有真实消息 ID”和“assistant 内容为空”这两个互相矛盾的结果，说明空消息并未被链路拦截。
+- 同一根因在最近一小时内至少再次影响了 2 条 Feishu 会话，其中一条是用户主动追问后的直聊主链路，一条是 Feishu 定时任务会话，说明问题不是单次偶发抖动。
 
 ## 用户影响
 
