@@ -1,8 +1,8 @@
 //! Prompt helpers for channel-specific guidance.
 
 use hone_core::config::HoneConfig;
-use hone_memory::session::SessionPromptState;
 use hone_memory::SessionStorage;
+use hone_memory::session::SessionPromptState;
 
 pub const DEFAULT_GROUP_PRIVACY_GUARD: &str = "【群聊隐私约束】在群聊中禁止要求用户提供持仓、成交价、交易单等敏感信息；如需明细，引导其转为私聊提交。";
 pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束】\n\
@@ -259,8 +259,8 @@ const FEISHU_FORMAT_GUIDANCE: &str = "【输出格式-飞书】\n\
 mod tests {
     use super::*;
     use hone_core::config::HoneConfig;
-    use hone_memory::session::SessionPromptState;
     use hone_memory::SessionStorage;
+    use hone_memory::session::SessionPromptState;
     use std::fs;
 
     #[test]
@@ -289,14 +289,18 @@ mod tests {
 
         assert!(bundle.system_prompt().contains("【领域边界与投研约束】"));
         assert!(bundle.system_prompt().contains("禁止荐股"));
-        assert!(bundle
-            .system_prompt()
-            .contains("不要未经自己思考和风险评估就直接照做"));
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("不要未经自己思考和风险评估就直接照做")
+        );
         assert!(bundle.system_prompt().contains("只回答与金融"));
         assert!(bundle.system_prompt().contains("区分主线与噪音"));
-        assert!(bundle
-            .system_prompt()
-            .contains("保持分析逻辑、因果链和结论框架的连贯性"));
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("保持分析逻辑、因果链和结论框架的连贯性")
+        );
 
         let _ = fs::remove_dir_all(&data_dir);
     }
@@ -371,12 +375,16 @@ mod tests {
         );
 
         assert!(!bundle.system_prompt().contains("【Session 上下文】"));
-        assert!(bundle
-            .compose_user_input("你好")
-            .contains("【Session 上下文】"));
-        assert!(bundle
-            .compose_user_input("你好")
-            .contains("【本轮用户输入】"));
+        assert!(
+            bundle
+                .compose_user_input("你好")
+                .contains("【Session 上下文】")
+        );
+        assert!(
+            bundle
+                .compose_user_input("你好")
+                .contains("【本轮用户输入】")
+        );
 
         let _ = fs::remove_dir_all(&data_dir);
     }

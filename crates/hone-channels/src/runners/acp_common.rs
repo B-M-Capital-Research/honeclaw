@@ -1,4 +1,4 @@
-use hone_core::agent::ToolCallMade;
+use hone_core::agent::{AgentMessage, ToolCallMade};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -8,6 +8,27 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::runtime::resolve_tool_reasoning;
 
 use super::types::{AgentRunnerEmitter, AgentRunnerEvent};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AcpToolRenderPhase {
+    Start,
+    Done,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct AcpRenderedToolStatus {
+    pub(crate) tool: String,
+    pub(crate) message: Option<String>,
+    pub(crate) reasoning: Option<String>,
+}
+
+pub(crate) type AcpToolStatusRenderer = fn(
+    update: &Value,
+    phase: AcpToolRenderPhase,
+    default_tool: &str,
+    default_message: Option<String>,
+    default_reasoning: Option<String>,
+) -> AcpRenderedToolStatus;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcpResponseTimeouts {
@@ -21,6 +42,9 @@ pub(crate) struct AcpPromptState {
     pub(crate) pending_tool_calls: HashMap<String, AcpToolCallRecord>,
     pub(crate) finished_tool_calls: Vec<ToolCallMade>,
     pub(crate) completed_tool_call_ids: HashSet<String>,
+    pub(crate) context_messages: Vec<AgentMessage>,
+    pub(crate) pending_assistant_content: String,
+    pub(crate) pending_assistant_tool_calls: Vec<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +148,13 @@ fn capture_tool_start(state: &mut AcpPromptState, update: &Value, fallback_name:
     };
     let tool_name = extract_tool_name(update).unwrap_or_else(|| fallback_name.to_string());
     let arguments = extract_tool_arguments(update);
+    state
+        .pending_assistant_tool_calls
+        .push(build_openai_tool_call_value(
+            &tool_call_id,
+            &tool_name,
+            &arguments,
+        ));
     state.pending_tool_calls.insert(
         tool_call_id,
         AcpToolCallRecord {
@@ -131,6 +162,27 @@ fn capture_tool_start(state: &mut AcpPromptState, update: &Value, fallback_name:
             arguments,
         },
     );
+}
+
+fn flush_pending_assistant_message(state: &mut AcpPromptState) {
+    if state.pending_assistant_content.is_empty() && state.pending_assistant_tool_calls.is_empty() {
+        return;
+    }
+
+    let content = std::mem::take(&mut state.pending_assistant_content);
+    let tool_calls = if state.pending_assistant_tool_calls.is_empty() {
+        None
+    } else {
+        Some(std::mem::take(&mut state.pending_assistant_tool_calls))
+    };
+
+    state.context_messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some(content),
+        tool_calls,
+        tool_call_id: None,
+        name: None,
+    });
 }
 
 fn capture_tool_finish(
@@ -163,10 +215,63 @@ fn capture_tool_finish(
         result,
         tool_call_id: Some(tool_call_id),
     });
+    flush_pending_assistant_message(state);
+    state.context_messages.push(AgentMessage {
+        role: "tool".to_string(),
+        content: Some(stringify_tool_result(
+            &state
+                .finished_tool_calls
+                .last()
+                .map(|call| call.result.clone())
+                .unwrap_or(Value::Null),
+        )),
+        tool_calls: None,
+        tool_call_id: state
+            .finished_tool_calls
+            .last()
+            .and_then(|call| call.tool_call_id.clone()),
+        name: state
+            .finished_tool_calls
+            .last()
+            .map(|call| call.name.clone()),
+    });
 }
 
 pub(crate) fn extract_finished_tool_calls(state: AcpPromptState) -> Vec<ToolCallMade> {
     state.finished_tool_calls
+}
+
+pub(crate) fn finalize_context_messages(state: &mut AcpPromptState) -> Vec<AgentMessage> {
+    flush_pending_assistant_message(state);
+    state.context_messages.clone()
+}
+
+fn build_openai_tool_call_value(tool_call_id: &str, tool_name: &str, arguments: &Value) -> Value {
+    json!({
+        "id": tool_call_id,
+        "type": "function",
+        "function": {
+            "name": tool_name,
+            "arguments": stringify_tool_arguments(arguments),
+        }
+    })
+}
+
+fn stringify_tool_arguments(arguments: &Value) -> String {
+    if let Some(text) = arguments.as_str() {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    serde_json::to_string(arguments).unwrap_or_else(|_| "null".to_string())
+}
+
+fn stringify_tool_result(result: &Value) -> String {
+    if let Some(text) = result.as_str() {
+        return text.to_string();
+    }
+    serde_json::to_string(result).unwrap_or_else(|_| "null".to_string())
 }
 
 fn truncate_for_log(text: &str, max_chars: usize) -> String {
@@ -444,6 +549,7 @@ pub(crate) async fn wait_for_response(
             emitter.as_ref(),
             state.as_deref_mut(),
             stderr_buf.as_ref(),
+            None,
         )
         .await?
         {
@@ -463,9 +569,34 @@ pub(crate) async fn wait_for_response_with_timeouts(
     stdin: &mut tokio::process::ChildStdin,
     expected_id: u64,
     emitter: Option<std::sync::Arc<dyn AgentRunnerEmitter>>,
+    state: Option<&mut AcpPromptState>,
+    stderr_buf: Option<std::sync::Arc<tokio::sync::Mutex<String>>>,
+    timeouts: AcpResponseTimeouts,
+) -> Result<Value, AgentSessionError> {
+    wait_for_response_with_timeouts_and_renderer(
+        runner_label,
+        reader,
+        stdin,
+        expected_id,
+        emitter,
+        state,
+        stderr_buf,
+        timeouts,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
+    runner_label: &'static str,
+    reader: &mut tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
+    stdin: &mut tokio::process::ChildStdin,
+    expected_id: u64,
+    emitter: Option<std::sync::Arc<dyn AgentRunnerEmitter>>,
     mut state: Option<&mut AcpPromptState>,
     stderr_buf: Option<std::sync::Arc<tokio::sync::Mutex<String>>>,
     timeouts: AcpResponseTimeouts,
+    tool_status_renderer: Option<AcpToolStatusRenderer>,
 ) -> Result<Value, AgentSessionError> {
     let start = tokio::time::Instant::now();
     let overall_deadline = start + timeouts.overall;
@@ -530,6 +661,7 @@ pub(crate) async fn wait_for_response_with_timeouts(
             emitter.as_ref(),
             state.as_deref_mut(),
             stderr_buf.as_ref(),
+            tool_status_renderer,
         )
         .await?
         {
@@ -546,6 +678,7 @@ async fn process_acp_payload(
     emitter: Option<&std::sync::Arc<dyn AgentRunnerEmitter>>,
     mut state: Option<&mut AcpPromptState>,
     stderr_buf: Option<&std::sync::Arc<tokio::sync::Mutex<String>>>,
+    tool_status_renderer: Option<AcpToolStatusRenderer>,
 ) -> Result<Option<Value>, AgentSessionError> {
     let payload: Value = serde_json::from_str(line).map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::Io,
@@ -581,10 +714,11 @@ async fn process_acp_payload(
         match method {
             "session/update" => {
                 if let Some(emitter) = emitter {
-                    handle_acp_session_update(
+                    handle_acp_session_update_with_renderer(
                         payload.get("params").unwrap_or(&Value::Null),
                         emitter,
                         state.as_deref_mut(),
+                        tool_status_renderer,
                     )
                     .await;
                 }
@@ -706,22 +840,20 @@ async fn handle_acp_permission_request(
     Ok(())
 }
 
-fn progress_stage_for(runner_label: &'static str, suffix: &'static str) -> &'static str {
-    match (runner_label, suffix) {
-        ("opencode", "tool_failed") => "opencode.tool_failed",
-        ("opencode", "usage") => "opencode.usage",
-        ("codex", "tool_failed") => "codex.tool_failed",
-        ("codex", "usage") => "codex.usage",
-        ("gemini", "tool_failed") => "gemini_acp.tool_failed",
-        ("gemini", "usage") => "gemini_acp.usage",
-        _ => "acp.progress",
-    }
-}
-
+#[allow(dead_code)]
 pub(crate) async fn handle_acp_session_update(
     params: &Value,
     emitter: &std::sync::Arc<dyn AgentRunnerEmitter>,
+    state: Option<&mut AcpPromptState>,
+) {
+    handle_acp_session_update_with_renderer(params, emitter, state, None).await;
+}
+
+pub(crate) async fn handle_acp_session_update_with_renderer(
+    params: &Value,
+    emitter: &std::sync::Arc<dyn AgentRunnerEmitter>,
     mut state: Option<&mut AcpPromptState>,
+    tool_status_renderer: Option<AcpToolStatusRenderer>,
 ) {
     let Some(update) = params.get("update") else {
         return;
@@ -750,6 +882,7 @@ pub(crate) async fn handle_acp_session_update(
             };
             if let Some(state) = state {
                 state.full_reply.push_str(text);
+                state.pending_assistant_content.push_str(text);
             }
             emitter
                 .emit(AgentRunnerEvent::StreamDelta {
@@ -783,12 +916,28 @@ pub(crate) async fn handle_acp_session_update(
             if let Some(state) = state.as_deref_mut() {
                 capture_tool_start(state, update, &tool);
             }
+            let default_reasoning = resolve_tool_reasoning(&tool, extract_acp_reasoning(update));
+            let rendered = tool_status_renderer.map(|renderer| {
+                renderer(
+                    update,
+                    AcpToolRenderPhase::Start,
+                    &tool,
+                    None,
+                    default_reasoning.clone(),
+                )
+            });
             emitter
                 .emit(AgentRunnerEvent::ToolStatus {
-                    tool: tool.clone(),
+                    tool: rendered
+                        .as_ref()
+                        .map(|value| value.tool.clone())
+                        .unwrap_or_else(|| tool.clone()),
                     status: "start".to_string(),
-                    message: None,
-                    reasoning: resolve_tool_reasoning(&tool, extract_acp_reasoning(update)),
+                    message: rendered.as_ref().and_then(|value| value.message.clone()),
+                    reasoning: rendered
+                        .as_ref()
+                        .and_then(|value| value.reasoning.clone())
+                        .or(default_reasoning),
                 })
                 .await;
         }
@@ -809,12 +958,27 @@ pub(crate) async fn handle_acp_session_update(
                         capture_tool_finish(state, update, &tool, result);
                     }
                 }
+                let rendered = tool_status_renderer.map(|renderer| {
+                    renderer(
+                        update,
+                        AcpToolRenderPhase::Done,
+                        &tool,
+                        Some("工具执行完成".to_string()),
+                        None,
+                    )
+                });
                 emitter
                     .emit(AgentRunnerEvent::ToolStatus {
-                        tool,
+                        tool: rendered
+                            .as_ref()
+                            .map(|value| value.tool.clone())
+                            .unwrap_or_else(|| tool.clone()),
                         status: "done".to_string(),
-                        message: Some("工具执行完成".to_string()),
-                        reasoning: None,
+                        message: rendered
+                            .as_ref()
+                            .and_then(|value| value.message.clone())
+                            .or_else(|| Some("工具执行完成".to_string())),
+                        reasoning: rendered.as_ref().and_then(|value| value.reasoning.clone()),
                     })
                     .await;
             } else if status == "failed" {
@@ -825,7 +989,7 @@ pub(crate) async fn handle_acp_session_update(
                 }
                 emitter
                     .emit(AgentRunnerEvent::Progress {
-                        stage: progress_stage_for("opencode", "tool_failed"),
+                        stage: "acp.tool_failed",
                         detail: Some(format!("tool={tool}")),
                     })
                     .await;
@@ -835,7 +999,7 @@ pub(crate) async fn handle_acp_session_update(
             if let Some(used) = update.get("used").and_then(|value| value.as_u64()) {
                 emitter
                     .emit(AgentRunnerEvent::Progress {
-                        stage: progress_stage_for("opencode", "usage"),
+                        stage: "acp.usage",
                         detail: Some(format!("used={used}")),
                     })
                     .await;

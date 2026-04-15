@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hone_core::agent::AgentResponse;
+use hone_core::agent::{AgentContext, AgentMessage, AgentResponse};
 use hone_core::config::CodexAcpConfig;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -11,10 +11,10 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpPromptState, AcpResponseTimeouts, CliVersion, build_acp_prompt_text, create_acp_session,
-    extract_finished_tool_calls, log_acp_prompt_stop_diagnostics, parse_cli_version,
-    set_acp_session_model, wait_for_response, wait_for_response_with_timeouts,
-    write_jsonrpc_request,
+    AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts, AcpToolRenderPhase, CliVersion,
+    build_acp_prompt_text, create_acp_session, finalize_context_messages,
+    log_acp_prompt_stop_diagnostics, parse_cli_version, set_acp_session_model, wait_for_response,
+    wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -109,11 +109,12 @@ impl AgentRunner for CodexAcpRunner {
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
         match run_codex_acp(&self.config, self.timeouts, request, emitter.clone()).await {
-            Ok((response, updates)) => AgentRunnerResult {
+            Ok((response, updates, context_messages)) => AgentRunnerResult {
                 response,
                 streamed_output: true,
                 terminal_error_emitted: false,
                 session_metadata_updates: updates,
+                context_messages,
             },
             Err(error) => {
                 let message = error.message.clone();
@@ -129,6 +130,7 @@ impl AgentRunner for CodexAcpRunner {
                     streamed_output: true,
                     terminal_error_emitted: true,
                     session_metadata_updates: HashMap::new(),
+                    context_messages: None,
                 }
             }
         }
@@ -278,7 +280,14 @@ async fn run_codex_acp(
     timeouts: RunnerTimeouts,
     request: AgentRunnerRequest,
     emitter: Arc<dyn AgentRunnerEmitter>,
-) -> Result<(AgentResponse, HashMap<String, Value>), AgentSessionError> {
+) -> Result<
+    (
+        AgentResponse,
+        HashMap<String, Value>,
+        Option<Vec<AgentMessage>>,
+    ),
+    AgentSessionError,
+> {
     validate_codex_acp_versions(config, timeouts.step).await?;
 
     let startup_timeout = timeouts.step;
@@ -368,91 +377,92 @@ async fn run_codex_acp(
         .map(|value| value.to_string())
         .filter(|value| !value.trim().is_empty());
 
-    let codex_session_id = if let Some(session_id) = existing_session_id {
-        write_jsonrpc_request(
-            &mut stdin,
-            next_id,
-            "session/load",
-            serde_json::json!({
-                "sessionId": session_id,
-                "cwd": request.working_directory,
-                "mcpServers": mcp_servers.clone(),
-            }),
-        )
-        .await?;
-        match tokio::time::timeout(
-            startup_timeout,
-            wait_for_response(
-                "codex",
-                &mut reader,
+    let (codex_session_id, seeded_from_local_context) =
+        if let Some(session_id) = existing_session_id {
+            write_jsonrpc_request(
                 &mut stdin,
                 next_id,
-                None,
-                None,
-                Some(stderr_buf.clone()),
-            ),
-        )
-        .await
-        {
-            Ok(Ok(_)) => {
-                next_id += 1;
-                session_id
-            }
-            Ok(Err(err)) => {
-                tracing::warn!(
-                    "[AgentRunner/codex] failed to load ACP session {}, creating new one: {}",
-                    session_id,
-                    err.message
-                );
-                let new_session_id = create_acp_session(
+                "session/load",
+                serde_json::json!({
+                    "sessionId": session_id,
+                    "cwd": request.working_directory,
+                    "mcpServers": mcp_servers.clone(),
+                }),
+            )
+            .await?;
+            match tokio::time::timeout(
+                startup_timeout,
+                wait_for_response(
                     "codex",
-                    &mut stdin,
                     &mut reader,
-                    next_id + 1,
-                    &request.working_directory,
-                    mcp_servers.clone(),
-                    startup_timeout,
-                    stderr_buf.clone(),
-                )
-                .await?;
-                next_id += 2;
-                new_session_id
-            }
-            Err(_) => {
-                tracing::warn!(
-                    "[AgentRunner/codex] ACP session/load timed out for {}, creating new one",
-                    session_id
-                );
-                let new_session_id = create_acp_session(
-                    "codex",
                     &mut stdin,
-                    &mut reader,
-                    next_id + 1,
-                    &request.working_directory,
-                    mcp_servers.clone(),
-                    startup_timeout,
-                    stderr_buf.clone(),
-                )
-                .await?;
-                next_id += 2;
-                new_session_id
+                    next_id,
+                    None,
+                    None,
+                    Some(stderr_buf.clone()),
+                ),
+            )
+            .await
+            {
+                Ok(Ok(_)) => {
+                    next_id += 1;
+                    (session_id, false)
+                }
+                Ok(Err(err)) => {
+                    tracing::warn!(
+                        "[AgentRunner/codex] failed to load ACP session {}, creating new one: {}",
+                        session_id,
+                        err.message
+                    );
+                    let new_session_id = create_acp_session(
+                        "codex",
+                        &mut stdin,
+                        &mut reader,
+                        next_id + 1,
+                        &request.working_directory,
+                        mcp_servers.clone(),
+                        startup_timeout,
+                        stderr_buf.clone(),
+                    )
+                    .await?;
+                    next_id += 2;
+                    (new_session_id, true)
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        "[AgentRunner/codex] ACP session/load timed out for {}, creating new one",
+                        session_id
+                    );
+                    let new_session_id = create_acp_session(
+                        "codex",
+                        &mut stdin,
+                        &mut reader,
+                        next_id + 1,
+                        &request.working_directory,
+                        mcp_servers.clone(),
+                        startup_timeout,
+                        stderr_buf.clone(),
+                    )
+                    .await?;
+                    next_id += 2;
+                    (new_session_id, true)
+                }
             }
-        }
-    } else {
-        let new_session_id = create_acp_session(
-            "codex",
-            &mut stdin,
-            &mut reader,
-            next_id,
-            &request.working_directory,
-            mcp_servers.clone(),
-            startup_timeout,
-            stderr_buf.clone(),
-        )
-        .await?;
-        next_id += 1;
-        new_session_id
-    };
+        } else {
+            let new_session_id = create_acp_session(
+                "codex",
+                &mut stdin,
+                &mut reader,
+                next_id,
+                &request.working_directory,
+                mcp_servers.clone(),
+                startup_timeout,
+                stderr_buf.clone(),
+            )
+            .await?;
+            next_id += 1;
+            (new_session_id, true)
+        };
 
     metadata_updates.insert(
         CODEX_ACP_SESSION_KEY.to_string(),
@@ -475,7 +485,15 @@ async fn run_codex_acp(
     }
 
     let mut codex_state = AcpPromptState::default();
-    let prompt_text = build_acp_prompt_text(&request.system_prompt, &request.runtime_input);
+    let prompt_text = if seeded_from_local_context {
+        build_codex_acp_prompt_text(
+            &request.system_prompt,
+            &request.runtime_input,
+            Some(&request.context),
+        )
+    } else {
+        build_acp_prompt_text(&request.system_prompt, &request.runtime_input)
+    };
     write_jsonrpc_request(
         &mut stdin,
         next_id,
@@ -491,7 +509,7 @@ async fn run_codex_acp(
         }),
     )
     .await?;
-    let prompt_result = wait_for_response_with_timeouts(
+    let prompt_result = wait_for_response_with_timeouts_and_renderer(
         "codex",
         &mut reader,
         &mut stdin,
@@ -503,6 +521,7 @@ async fn run_codex_acp(
             idle: prompt_idle_timeout,
             overall: prompt_overall_timeout,
         },
+        Some(render_codex_tool_status),
     )
     .await?;
 
@@ -529,7 +548,8 @@ async fn run_codex_acp(
         task.abort();
     }
     let content = std::mem::take(&mut codex_state.full_reply);
-    let tool_calls_made = extract_finished_tool_calls(codex_state);
+    let context_messages = finalize_context_messages(&mut codex_state);
+    let tool_calls_made = codex_state.finished_tool_calls.clone();
 
     Ok((
         AgentResponse {
@@ -546,5 +566,164 @@ async fn run_codex_acp(
             },
         },
         metadata_updates,
+        Some(context_messages),
     ))
+}
+
+pub(crate) fn render_codex_tool_status(
+    update: &Value,
+    phase: AcpToolRenderPhase,
+    default_tool: &str,
+    default_message: Option<String>,
+    default_reasoning: Option<String>,
+) -> AcpRenderedToolStatus {
+    if !is_codex_execute_update(update) {
+        return AcpRenderedToolStatus {
+            tool: default_tool.to_string(),
+            message: default_message,
+            reasoning: default_reasoning,
+        };
+    }
+
+    let rendered_command = render_codex_execute_command(update)
+        .unwrap_or_else(|| truncate_codex_execute_label(default_tool));
+    let purpose_suffix = codex_execute_purpose(update)
+        .map(|purpose| format!("；目的：{}", truncate_codex_purpose(&purpose)))
+        .unwrap_or_default();
+
+    let (message, reasoning) = match phase {
+        AcpToolRenderPhase::Start => (
+            None,
+            Some(format!("正在执行：{rendered_command}{purpose_suffix}")),
+        ),
+        AcpToolRenderPhase::Done => (Some(format!("执行完成：{rendered_command}")), None),
+    };
+
+    AcpRenderedToolStatus {
+        tool: rendered_command,
+        message: message.or(default_message),
+        reasoning: reasoning.or(default_reasoning),
+    }
+}
+
+fn is_codex_execute_update(update: &Value) -> bool {
+    update
+        .get("kind")
+        .and_then(|value| value.as_str())
+        .map(|value| value == "execute")
+        .unwrap_or(false)
+        || update
+            .get("rawInput")
+            .and_then(|value| value.get("command"))
+            .and_then(|value| value.as_array())
+            .is_some()
+        || update
+            .get("rawOutput")
+            .and_then(|value| value.get("command"))
+            .and_then(|value| value.as_array())
+            .is_some()
+}
+
+fn render_codex_execute_command(update: &Value) -> Option<String> {
+    let command = update
+        .get("rawInput")
+        .and_then(|value| value.get("command"))
+        .or_else(|| {
+            update
+                .get("rawOutput")
+                .and_then(|value| value.get("command"))
+        })
+        .and_then(|value| value.as_array())?;
+    let parts = command
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        return None;
+    }
+
+    let text = if parts.len() >= 3
+        && matches!(
+            parts[0],
+            "/bin/zsh" | "zsh" | "/bin/bash" | "bash" | "/bin/sh" | "sh"
+        )
+        && parts[1] == "-lc"
+    {
+        parts[2].to_string()
+    } else {
+        parts.join(" ")
+    };
+    Some(truncate_codex_execute_label(&text))
+}
+
+fn codex_execute_purpose(update: &Value) -> Option<String> {
+    update
+        .get("rawInput")
+        .and_then(|value| value.get("purpose"))
+        .or_else(|| {
+            update
+                .get("rawOutput")
+                .and_then(|value| value.get("purpose"))
+        })
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn truncate_codex_execute_label(text: &str) -> String {
+    const MAX_CHARS: usize = 96;
+    let trimmed = text.trim();
+    let total = trimmed.chars().count();
+    if total <= MAX_CHARS {
+        return trimmed.to_string();
+    }
+    let keep = 56.min(MAX_CHARS.saturating_sub(1));
+    let prefix = trimmed.chars().take(keep).collect::<String>();
+    format!("{prefix} [truncated, {total} chars]")
+}
+
+fn truncate_codex_purpose(text: &str) -> String {
+    const MAX_CHARS: usize = 120;
+    let trimmed = text.trim();
+    let total = trimmed.chars().count();
+    if total <= MAX_CHARS {
+        return trimmed.to_string();
+    }
+    let prefix = trimmed.chars().take(80).collect::<String>();
+    format!("{prefix} [truncated, {total} chars]")
+}
+
+pub(crate) fn build_codex_acp_prompt_text(
+    system_prompt: &str,
+    runtime_input: &str,
+    context: Option<&AgentContext>,
+) -> String {
+    let system = system_prompt.trim();
+    let runtime = runtime_input.trim();
+    let restored = context.and_then(serialize_context_for_codex_prompt);
+
+    let mut sections = Vec::new();
+    if !system.is_empty() {
+        sections.push(format!("### System Instructions ###\n{system}"));
+    }
+    if let Some(restored) = restored {
+        sections.push(format!(
+            "### Restored Conversation Transcript ###\n\
+Use the following JSON transcript as the prior conversation context for this session.\n\
+Messages are ordered from oldest to newest.\n\
+```json\n{restored}\n```"
+        ));
+    }
+    if !runtime.is_empty() {
+        sections.push(format!("### User Input ###\n{runtime}"));
+    }
+    sections.join("\n\n")
+}
+
+pub(crate) fn serialize_context_for_codex_prompt(context: &AgentContext) -> Option<String> {
+    if context.messages.is_empty() {
+        return None;
+    }
+    serde_json::to_string_pretty(&context.messages).ok()
 }

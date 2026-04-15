@@ -173,16 +173,11 @@ pub fn select_context_messages<'a>(
 }
 
 pub fn build_tool_message_metadata(call: &ToolCallMade) -> HashMap<String, Value> {
-    let mut metadata = HashMap::new();
-    metadata.insert("tool_name".to_string(), Value::String(call.name.clone()));
-    if let Some(tool_call_id) = &call.tool_call_id {
-        metadata.insert(
-            "tool_call_id".to_string(),
-            Value::String(tool_call_id.clone()),
-        );
-    }
-    metadata.insert("tool_arguments".to_string(), call.arguments.clone());
-    metadata
+    build_tool_message_metadata_parts(
+        &call.name,
+        call.tool_call_id.as_deref(),
+        Some(call.arguments.clone()),
+    )
 }
 
 pub const INVOKED_SKILLS_METADATA_KEY: &str = "skill_runtime.invoked_skills";
@@ -190,6 +185,53 @@ pub const SLASH_SKILL_METADATA_KEY: &str = "skill_runtime.slash_skill";
 pub const COMPACT_BOUNDARY_METADATA_KEY: &str = "session.compact_boundary";
 pub const COMPACT_SUMMARY_METADATA_KEY: &str = "session.compact_summary";
 pub const COMPACT_SKILL_SNAPSHOT_METADATA_KEY: &str = "session.compact_skill_snapshot";
+pub const ASSISTANT_TOOL_CALLS_METADATA_KEY: &str = "assistant.tool_calls";
+
+pub fn build_tool_message_metadata_parts(
+    tool_name: &str,
+    tool_call_id: Option<&str>,
+    tool_arguments: Option<Value>,
+) -> HashMap<String, Value> {
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "tool_name".to_string(),
+        Value::String(tool_name.to_string()),
+    );
+    if let Some(tool_call_id) = tool_call_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        metadata.insert(
+            "tool_call_id".to_string(),
+            Value::String(tool_call_id.to_string()),
+        );
+    }
+    if let Some(arguments) = tool_arguments {
+        metadata.insert("tool_arguments".to_string(), arguments);
+    }
+    metadata
+}
+
+pub fn build_assistant_message_metadata(tool_calls: &[Value]) -> HashMap<String, Value> {
+    let mut metadata = HashMap::new();
+    if !tool_calls.is_empty() {
+        metadata.insert(
+            ASSISTANT_TOOL_CALLS_METADATA_KEY.to_string(),
+            Value::Array(tool_calls.to_vec()),
+        );
+    }
+    metadata
+}
+
+pub fn assistant_tool_calls_from_metadata(
+    metadata: Option<&HashMap<String, Value>>,
+) -> Option<Vec<Value>> {
+    metadata
+        .and_then(|items| items.get(ASSISTANT_TOOL_CALLS_METADATA_KEY))
+        .and_then(|value| value.as_array())
+        .map(|items| items.to_vec())
+        .filter(|items| !items.is_empty())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct InvokedSkillRecord {

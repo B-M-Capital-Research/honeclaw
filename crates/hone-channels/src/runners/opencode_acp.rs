@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use hone_core::agent::AgentResponse;
+use hone_core::agent::{AgentContext, AgentMessage, AgentResponse};
 use hone_core::config::OpencodeAcpConfig;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -14,9 +14,9 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpPromptState, AcpResponseTimeouts, build_acp_prompt_text, create_acp_session,
-    extract_finished_tool_calls, log_acp_prompt_stop_diagnostics, set_acp_session_model,
-    wait_for_response, wait_for_response_with_timeouts, write_jsonrpc_request,
+    AcpPromptState, AcpResponseTimeouts, AcpToolCallRecord, create_acp_session,
+    log_acp_prompt_stop_diagnostics, set_acp_session_model, timeout_message_with_stderr,
+    wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -49,13 +49,14 @@ impl AgentRunner for OpencodeAcpRunner {
     ) -> AgentRunnerResult {
         let mut metadata_updates = HashMap::new();
         match run_opencode_acp(&self.config, self.timeouts, request, emitter.clone()).await {
-            Ok((response, updates)) => {
+            Ok((response, updates, context_messages)) => {
                 metadata_updates.extend(updates);
                 AgentRunnerResult {
                     response,
                     streamed_output: true,
                     terminal_error_emitted: false,
                     session_metadata_updates: metadata_updates,
+                    context_messages,
                 }
             }
             Err(error) => {
@@ -72,6 +73,7 @@ impl AgentRunner for OpencodeAcpRunner {
                     streamed_output: true,
                     terminal_error_emitted: true,
                     session_metadata_updates: HashMap::new(),
+                    context_messages: None,
                 }
             }
         }
@@ -369,7 +371,14 @@ async fn run_opencode_acp(
     timeouts: RunnerTimeouts,
     request: AgentRunnerRequest,
     emitter: Arc<dyn AgentRunnerEmitter>,
-) -> Result<(AgentResponse, HashMap<String, Value>), AgentSessionError> {
+) -> Result<
+    (
+        AgentResponse,
+        HashMap<String, Value>,
+        Option<Vec<AgentMessage>>,
+    ),
+    AgentSessionError,
+> {
     let startup_timeout = timeouts.step;
     let prompt_idle_timeout = timeouts.step;
     let prompt_overall_timeout = timeouts.overall;
@@ -551,7 +560,11 @@ async fn run_opencode_acp(
         prompt_overall_timeout.as_secs(),
     );
     let mut opencode_state = AcpPromptState::default();
-    let prompt_text = build_acp_prompt_text(&request.system_prompt, &request.runtime_input);
+    let prompt_text = build_opencode_acp_prompt_text(
+        &request.system_prompt,
+        &request.runtime_input,
+        Some(&request.context),
+    );
     write_jsonrpc_request(
         &mut stdin,
         next_id,
@@ -567,14 +580,13 @@ async fn run_opencode_acp(
         }),
     )
     .await?;
-    let prompt_result = wait_for_response_with_timeouts(
-        "opencode",
+    let prompt_result = wait_for_opencode_response_with_timeouts(
         &mut reader,
         &mut stdin,
         next_id,
-        Some(emitter.clone()),
-        Some(&mut opencode_state),
-        Some(stderr_buf.clone()),
+        emitter.clone(),
+        &mut opencode_state,
+        stderr_buf.clone(),
         AcpResponseTimeouts {
             idle: prompt_idle_timeout,
             overall: prompt_overall_timeout,
@@ -605,7 +617,8 @@ async fn run_opencode_acp(
         task.abort();
     }
     let content = std::mem::take(&mut opencode_state.full_reply);
-    let tool_calls_made = extract_finished_tool_calls(opencode_state);
+    let context_messages = finalize_opencode_context_messages(&mut opencode_state);
+    let tool_calls_made = opencode_state.finished_tool_calls.clone();
 
     let reply_chars = content.len();
     tracing::info!(
@@ -644,5 +657,700 @@ async fn run_opencode_acp(
             },
         },
         metadata_updates,
+        Some(context_messages),
     ))
+}
+
+pub(crate) fn build_opencode_acp_prompt_text(
+    system_prompt: &str,
+    runtime_input: &str,
+    context: Option<&AgentContext>,
+) -> String {
+    let system = system_prompt.trim();
+    let runtime = runtime_input.trim();
+    let restored = context.and_then(serialize_context_for_opencode_prompt);
+
+    let mut sections = Vec::new();
+    if !system.is_empty() {
+        sections.push(format!("### System Instructions ###\n{system}"));
+    }
+    if let Some(restored) = restored {
+        sections.push(format!(
+            "### Restored Conversation Transcript ###\n\
+Use the following JSON transcript as the prior conversation context for this session.\n\
+Messages are ordered from oldest to newest.\n\
+```json\n{restored}\n```"
+        ));
+    }
+    if !runtime.is_empty() {
+        sections.push(format!("### User Input ###\n{runtime}"));
+    }
+    sections.join("\n\n")
+}
+
+pub(crate) fn serialize_context_for_opencode_prompt(context: &AgentContext) -> Option<String> {
+    if context.messages.is_empty() {
+        return None;
+    }
+    serde_json::to_string_pretty(&context.messages).ok()
+}
+
+fn flush_pending_assistant_message(state: &mut AcpPromptState) {
+    if state.pending_assistant_content.is_empty() && state.pending_assistant_tool_calls.is_empty() {
+        return;
+    }
+
+    let content = std::mem::take(&mut state.pending_assistant_content);
+    let tool_calls = if state.pending_assistant_tool_calls.is_empty() {
+        None
+    } else {
+        Some(std::mem::take(&mut state.pending_assistant_tool_calls))
+    };
+
+    state.context_messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some(content),
+        tool_calls,
+        tool_call_id: None,
+        name: None,
+    });
+}
+
+fn finalize_opencode_context_messages(state: &mut AcpPromptState) -> Vec<AgentMessage> {
+    flush_pending_assistant_message(state);
+    state.context_messages.clone()
+}
+
+fn tool_call_id(update: &Value) -> Option<&str> {
+    update.get("toolCallId").and_then(|value| value.as_str())
+}
+
+fn opencode_tool_name_from_start(update: &Value) -> String {
+    update
+        .get("title")
+        .and_then(|value| value.as_str())
+        .or_else(|| update.get("kind").and_then(|value| value.as_str()))
+        .unwrap_or("tool")
+        .to_string()
+}
+
+fn opencode_display_label(update: &Value, fallback_tool: &str) -> String {
+    let raw_input = update.get("rawInput");
+    let purpose_suffix = raw_input
+        .and_then(|value| value.get("purpose"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("；目的：{}", truncate_opencode_detail(value, 120)))
+        .unwrap_or_default();
+
+    let base = match fallback_tool {
+        "read" => raw_input
+            .and_then(|value| value.get("filePath"))
+            .and_then(|value| value.as_str())
+            .map(|path| format!("read {}", relativize_opencode_path(path)))
+            .unwrap_or_else(|| "read".to_string()),
+        "grep" => {
+            let pattern = raw_input
+                .and_then(|value| value.get("pattern"))
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let path = raw_input
+                .and_then(|value| value.get("path"))
+                .and_then(|value| value.as_str())
+                .map(relativize_opencode_path);
+            match (pattern, path) {
+                (Some(pattern), Some(path)) => format!(
+                    "grep \"{}\" in {}",
+                    truncate_opencode_detail(pattern, 80),
+                    truncate_opencode_detail(&path, 80)
+                ),
+                (Some(pattern), None) => {
+                    format!("grep \"{}\"", truncate_opencode_detail(pattern, 80))
+                }
+                (None, Some(path)) => format!("grep in {}", truncate_opencode_detail(&path, 80)),
+                (None, None) => "grep".to_string(),
+            }
+        }
+        other => {
+            if let Some(path) = raw_input
+                .and_then(|value| value.get("path"))
+                .and_then(|value| value.as_str())
+            {
+                format!("{other} {}", relativize_opencode_path(path))
+            } else {
+                other.to_string()
+            }
+        }
+    };
+
+    format!("{}{}", truncate_opencode_detail(&base, 96), purpose_suffix)
+}
+
+fn relativize_opencode_path(path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    let marker = "/hone-agent-sandboxes/";
+    if let Some(index) = trimmed.find(marker) {
+        let tail = &trimmed[index + marker.len()..];
+        let mut parts = tail.splitn(3, '/');
+        let _channel = parts.next();
+        let _actor = parts.next();
+        if let Some(rest) = parts.next() {
+            return if rest.is_empty() {
+                "workspace root".to_string()
+            } else {
+                rest.to_string()
+            };
+        }
+        return "workspace root".to_string();
+    }
+    trimmed.to_string()
+}
+
+fn truncate_opencode_detail(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    let total = trimmed.chars().count();
+    if total <= max_chars {
+        return trimmed.to_string();
+    }
+    let keep = max_chars.saturating_sub(1);
+    let prefix = trimmed.chars().take(keep).collect::<String>();
+    format!("{prefix}…")
+}
+
+fn opencode_tool_name_for_update(state: &AcpPromptState, update: &Value) -> String {
+    if let Some(call_id) = tool_call_id(update) {
+        if let Some(existing) = state.pending_tool_calls.get(call_id) {
+            return existing.name.clone();
+        }
+    }
+    opencode_tool_name_from_start(update)
+}
+
+fn is_meaningful_tool_value(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Object(map) => !map.is_empty(),
+        Value::Array(values) => !values.is_empty(),
+        Value::String(text) => !text.trim().is_empty(),
+        _ => true,
+    }
+}
+
+fn stringify_tool_arguments(arguments: &Value) -> String {
+    if let Some(text) = arguments.as_str() {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    serde_json::to_string(arguments).unwrap_or_else(|_| "null".to_string())
+}
+
+fn stringify_tool_result(result: &Value) -> String {
+    if let Some(text) = result.as_str() {
+        return text.to_string();
+    }
+    serde_json::to_string(result).unwrap_or_else(|_| "null".to_string())
+}
+
+fn build_openai_tool_call_value(tool_call_id: &str, tool_name: &str, arguments: &Value) -> Value {
+    json!({
+        "id": tool_call_id,
+        "type": "function",
+        "function": {
+            "name": tool_name,
+            "arguments": stringify_tool_arguments(arguments),
+        }
+    })
+}
+
+fn opencode_extract_tool_arguments(update: &Value) -> Value {
+    update
+        .get("rawInput")
+        .cloned()
+        .filter(is_meaningful_tool_value)
+        .unwrap_or(Value::Null)
+}
+
+fn opencode_extract_text_from_content(update: &Value) -> Option<String> {
+    let content = update.get("content")?.as_array()?;
+    for item in content {
+        let text = item
+            .get("content")
+            .and_then(|value| value.get("text"))
+            .and_then(|value| value.as_str())
+            .or_else(|| item.get("text").and_then(|value| value.as_str()));
+        if let Some(text) = text {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn opencode_extract_tool_result(update: &Value) -> Option<Value> {
+    if let Some(output) = update
+        .get("rawOutput")
+        .and_then(|value| value.get("output"))
+        .cloned()
+        .filter(is_meaningful_tool_value)
+    {
+        return Some(output);
+    }
+    if let Some(raw_output) = update
+        .get("rawOutput")
+        .cloned()
+        .filter(is_meaningful_tool_value)
+    {
+        return Some(raw_output);
+    }
+    opencode_extract_text_from_content(update).map(Value::String)
+}
+
+fn opencode_extract_tool_failure(update: &Value) -> Option<Value> {
+    if let Some(error) = update
+        .get("rawOutput")
+        .and_then(|value| value.get("error"))
+        .and_then(|value| value.as_str())
+    {
+        let trimmed = error.trim();
+        if !trimmed.is_empty() {
+            return Some(json!({ "error": trimmed }));
+        }
+    }
+    opencode_extract_text_from_content(update).map(|text| json!({ "error": text }))
+}
+
+fn upsert_pending_tool_arguments(state: &mut AcpPromptState, update: &Value, tool_name: &str) {
+    let Some(call_id) = tool_call_id(update) else {
+        return;
+    };
+    let arguments = opencode_extract_tool_arguments(update);
+    if !is_meaningful_tool_value(&arguments) {
+        return;
+    }
+
+    state
+        .pending_tool_calls
+        .entry(call_id.to_string())
+        .and_modify(|record| {
+            if !is_meaningful_tool_value(&record.arguments) {
+                record.arguments = arguments.clone();
+            }
+        })
+        .or_insert_with(|| AcpToolCallRecord {
+            name: tool_name.to_string(),
+            arguments: arguments.clone(),
+        });
+
+    if let Some(entry) = state
+        .pending_assistant_tool_calls
+        .iter_mut()
+        .find(|value| value.get("id").and_then(|value| value.as_str()) == Some(call_id))
+    {
+        entry["function"]["arguments"] = Value::String(stringify_tool_arguments(&arguments));
+    }
+}
+
+async fn handle_opencode_tool_call(
+    update: &Value,
+    emitter: &Arc<dyn AgentRunnerEmitter>,
+    state: &mut AcpPromptState,
+) {
+    let Some(call_id) = tool_call_id(update) else {
+        return;
+    };
+    let tool_name = opencode_tool_name_from_start(update);
+    let arguments = opencode_extract_tool_arguments(update);
+    state
+        .pending_assistant_tool_calls
+        .push(build_openai_tool_call_value(
+            call_id, &tool_name, &arguments,
+        ));
+    state.pending_tool_calls.insert(
+        call_id.to_string(),
+        AcpToolCallRecord {
+            name: tool_name.clone(),
+            arguments,
+        },
+    );
+    if is_meaningful_tool_value(&opencode_extract_tool_arguments(update)) {
+        let display_label = opencode_display_label(update, &tool_name);
+        emitter
+            .emit(AgentRunnerEvent::ToolStatus {
+                tool: display_label.clone(),
+                status: "start".to_string(),
+                message: None,
+                reasoning: Some(format!("正在执行：{display_label}")),
+            })
+            .await;
+    }
+}
+
+async fn handle_opencode_tool_call_update(
+    update: &Value,
+    emitter: &Arc<dyn AgentRunnerEmitter>,
+    state: &mut AcpPromptState,
+) {
+    let tool_name = opencode_tool_name_for_update(state, update);
+    upsert_pending_tool_arguments(state, update, &tool_name);
+    let display_label = opencode_display_label(update, &tool_name);
+
+    let status = update
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    if status == "in_progress" && is_meaningful_tool_value(&opencode_extract_tool_arguments(update))
+    {
+        emitter
+            .emit(AgentRunnerEvent::ToolStatus {
+                tool: display_label.clone(),
+                status: "start".to_string(),
+                message: None,
+                reasoning: Some(format!("正在执行：{display_label}")),
+            })
+            .await;
+    }
+    if status == "completed" || status == "failed" {
+        let Some(call_id) = tool_call_id(update).map(|value| value.to_string()) else {
+            return;
+        };
+        if state.completed_tool_call_ids.contains(&call_id) {
+            return;
+        }
+
+        let pending = state.pending_tool_calls.remove(&call_id);
+        let arguments = pending
+            .as_ref()
+            .map(|record| record.arguments.clone())
+            .filter(is_meaningful_tool_value)
+            .unwrap_or_else(|| opencode_extract_tool_arguments(update));
+
+        let result = if status == "completed" {
+            opencode_extract_tool_result(update).unwrap_or(Value::Null)
+        } else {
+            opencode_extract_tool_failure(update)
+                .unwrap_or_else(|| json!({ "error": "tool failed" }))
+        };
+
+        state.completed_tool_call_ids.insert(call_id.clone());
+        state
+            .finished_tool_calls
+            .push(hone_core::agent::ToolCallMade {
+                name: tool_name.clone(),
+                arguments,
+                result: result.clone(),
+                tool_call_id: Some(call_id.clone()),
+            });
+        flush_pending_assistant_message(state);
+        state.context_messages.push(AgentMessage {
+            role: "tool".to_string(),
+            content: Some(stringify_tool_result(&result)),
+            tool_calls: None,
+            tool_call_id: Some(call_id),
+            name: Some(tool_name.clone()),
+        });
+    }
+
+    if status == "completed" {
+        emitter
+            .emit(AgentRunnerEvent::ToolStatus {
+                tool: display_label.clone(),
+                status: "done".to_string(),
+                message: Some(format!("执行完成：{display_label}")),
+                reasoning: None,
+            })
+            .await;
+    } else if status == "failed" {
+        emitter
+            .emit(AgentRunnerEvent::Progress {
+                stage: "opencode.tool_failed",
+                detail: Some(format!("tool={tool_name}")),
+            })
+            .await;
+    }
+}
+
+pub(crate) async fn handle_opencode_session_update(
+    params: &Value,
+    emitter: &Arc<dyn AgentRunnerEmitter>,
+    state: &mut AcpPromptState,
+) {
+    let Some(update) = params.get("update") else {
+        return;
+    };
+    let Some(kind) = update.get("sessionUpdate").and_then(|value| value.as_str()) else {
+        return;
+    };
+
+    match kind {
+        "agent_message_chunk" => {
+            let text = update
+                .get("content")
+                .and_then(|value| value.get("text"))
+                .and_then(|value| value.as_str())
+                .or_else(|| update.get("text").and_then(|value| value.as_str()))
+                .or_else(|| update.get("delta").and_then(|value| value.as_str()));
+            let Some(text) = text else {
+                return;
+            };
+            state.full_reply.push_str(text);
+            state.pending_assistant_content.push_str(text);
+            emitter
+                .emit(AgentRunnerEvent::StreamDelta {
+                    content: text.to_string(),
+                })
+                .await;
+        }
+        "agent_thought_chunk" => {
+            let text = update
+                .get("content")
+                .and_then(|value| value.get("text"))
+                .and_then(|value| value.as_str())
+                .or_else(|| update.get("text").and_then(|value| value.as_str()));
+            let Some(text) = text else {
+                return;
+            };
+            emitter
+                .emit(AgentRunnerEvent::StreamThought {
+                    thought: text.to_string(),
+                })
+                .await;
+        }
+        "tool_call" => {
+            handle_opencode_tool_call(update, emitter, state).await;
+        }
+        "tool_call_update" => {
+            handle_opencode_tool_call_update(update, emitter, state).await;
+        }
+        "usage_update" => {
+            if let Some(used) = update.get("used").and_then(|value| value.as_u64()) {
+                emitter
+                    .emit(AgentRunnerEvent::Progress {
+                        stage: "opencode.usage",
+                        detail: Some(format!("used={used}")),
+                    })
+                    .await;
+            }
+        }
+        _ => {}
+    }
+}
+
+async fn wait_for_opencode_response_with_timeouts(
+    reader: &mut tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
+    stdin: &mut tokio::process::ChildStdin,
+    expected_id: u64,
+    emitter: Arc<dyn AgentRunnerEmitter>,
+    state: &mut AcpPromptState,
+    stderr_buf: Arc<tokio::sync::Mutex<String>>,
+    timeouts: AcpResponseTimeouts,
+) -> Result<Value, AgentSessionError> {
+    let overall_deadline = tokio::time::Instant::now() + timeouts.overall;
+    let mut idle_deadline = tokio::time::Instant::now() + timeouts.idle;
+
+    loop {
+        let now = tokio::time::Instant::now();
+        if now >= overall_deadline {
+            return Err(opencode_timeout_error("overall", timeouts.overall, &stderr_buf).await);
+        }
+        if now >= idle_deadline {
+            return Err(opencode_timeout_error("idle", timeouts.idle, &stderr_buf).await);
+        }
+
+        let deadline = std::cmp::min(idle_deadline, overall_deadline);
+        let line = match tokio::time::timeout_at(deadline, reader.next_line()).await {
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => {
+                return Err(AgentSessionError {
+                    kind: AgentSessionErrorKind::ExitFailure,
+                    message: "opencode acp stream closed before response".to_string(),
+                });
+            }
+            Ok(Err(e)) => {
+                return Err(AgentSessionError {
+                    kind: AgentSessionErrorKind::Io,
+                    message: format!("failed to read opencode acp line: {e}"),
+                });
+            }
+            Err(_) => {
+                let timed_out_on_overall = tokio::time::Instant::now() >= overall_deadline;
+                let (phase, duration) = if timed_out_on_overall {
+                    ("overall", timeouts.overall)
+                } else {
+                    ("idle", timeouts.idle)
+                };
+                return Err(opencode_timeout_error(phase, duration, &stderr_buf).await);
+            }
+        };
+
+        idle_deadline = tokio::time::Instant::now() + timeouts.idle;
+
+        if let Some(result) =
+            process_opencode_payload(stdin, expected_id, &line, &emitter, state, &stderr_buf)
+                .await?
+        {
+            return Ok(result);
+        }
+    }
+}
+
+async fn process_opencode_payload(
+    stdin: &mut tokio::process::ChildStdin,
+    expected_id: u64,
+    line: &str,
+    emitter: &Arc<dyn AgentRunnerEmitter>,
+    state: &mut AcpPromptState,
+    stderr_buf: &Arc<tokio::sync::Mutex<String>>,
+) -> Result<Option<Value>, AgentSessionError> {
+    let payload: Value = serde_json::from_str(line).map_err(|e| AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: format!("failed to parse opencode acp line: {e}"),
+    })?;
+
+    if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
+        if let Some(error) = payload.get("error") {
+            let message = error
+                .get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown acp error")
+                .to_string();
+            let stderr = stderr_buf.lock().await.clone();
+            let stderr = if stderr.trim().is_empty() {
+                String::new()
+            } else {
+                format!(" stderr={stderr}")
+            };
+            return Err(AgentSessionError {
+                kind: AgentSessionErrorKind::AgentFailed,
+                message: format!("opencode acp request failed: {message}{stderr}"),
+            });
+        }
+        return Ok(Some(payload.get("result").cloned().unwrap_or(Value::Null)));
+    }
+
+    if let Some(method) = payload.get("method").and_then(|value| value.as_str()) {
+        match method {
+            "session/update" => {
+                handle_opencode_session_update(
+                    payload.get("params").unwrap_or(&Value::Null),
+                    emitter,
+                    state,
+                )
+                .await;
+            }
+            "session/request_permission" => {
+                handle_opencode_permission_request(stdin, &payload, emitter).await?;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(None)
+}
+
+async fn opencode_timeout_error(
+    phase: &'static str,
+    duration: std::time::Duration,
+    stderr_buf: &Arc<tokio::sync::Mutex<String>>,
+) -> AgentSessionError {
+    let base = format!(
+        "opencode acp session/prompt {phase} timeout ({}s)",
+        duration.as_secs()
+    );
+    let message = timeout_message_with_stderr(&base, stderr_buf).await;
+    let kind = if phase == "idle" {
+        AgentSessionErrorKind::TimeoutPerLine
+    } else {
+        AgentSessionErrorKind::TimeoutOverall
+    };
+    AgentSessionError { kind, message }
+}
+
+async fn handle_opencode_permission_request(
+    stdin: &mut tokio::process::ChildStdin,
+    payload: &Value,
+    emitter: &Arc<dyn AgentRunnerEmitter>,
+) -> Result<(), AgentSessionError> {
+    let request_id =
+        payload
+            .get("id")
+            .and_then(|value| value.as_u64())
+            .ok_or(AgentSessionError {
+                kind: AgentSessionErrorKind::Io,
+                message: "opencode acp permission request missing id".to_string(),
+            })?;
+    let params = payload.get("params").cloned().unwrap_or(Value::Null);
+    let tool_title = params
+        .get("toolCall")
+        .and_then(|value| value.get("title"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("permission")
+        .to_string();
+
+    emitter
+        .emit(AgentRunnerEvent::Progress {
+            stage: "acp.permission",
+            detail: Some(format!("opencode:rejected:{tool_title}")),
+        })
+        .await;
+
+    let reject_option = params
+        .get("options")
+        .and_then(|value| value.as_array())
+        .and_then(|options| {
+            options.iter().find_map(|option| {
+                let kind = option.get("kind").and_then(|value| value.as_str())?;
+                if kind == "reject_once" {
+                    option
+                        .get("optionId")
+                        .and_then(|value| value.as_str())
+                        .map(|value| value.to_string())
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or_else(|| "reject".to_string());
+
+    let response = json!({
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "outcome": {
+                "outcome": "selected",
+                "optionId": reject_option,
+            }
+        }
+    });
+    let encoded = serde_json::to_string(&response).map_err(|e| AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: format!("failed to encode opencode permission response: {e}"),
+    })?;
+    stdin
+        .write_all(encoded.as_bytes())
+        .await
+        .map_err(|e| AgentSessionError {
+            kind: AgentSessionErrorKind::Io,
+            message: format!("failed to write opencode permission response: {e}"),
+        })?;
+    stdin
+        .write_all(b"\n")
+        .await
+        .map_err(|e| AgentSessionError {
+            kind: AgentSessionErrorKind::Io,
+            message: format!("failed to terminate opencode permission response: {e}"),
+        })?;
+    stdin.flush().await.map_err(|e| AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: format!("failed to flush opencode permission response: {e}"),
+    })?;
+    Ok(())
 }

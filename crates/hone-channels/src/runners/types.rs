@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
-use hone_core::agent::{AgentContext, AgentResponse};
+use hone_core::agent::{AgentContext, AgentMessage, AgentResponse};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -66,6 +66,7 @@ pub struct AgentRunnerResult {
     pub streamed_output: bool,
     pub terminal_error_emitted: bool,
     pub session_metadata_updates: HashMap<String, Value>,
+    pub context_messages: Option<Vec<AgentMessage>>,
 }
 
 #[async_trait]

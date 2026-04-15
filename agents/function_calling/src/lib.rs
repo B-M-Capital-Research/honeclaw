@@ -261,7 +261,7 @@ impl Agent for FunctionCallingAgent {
                             Ok(tool_args) => {
                                 self.dbg(&format!("[Agent] tool_call name={tool_name}"));
                                 if let Some(observer) = &self.tool_observer {
-                                    observer.on_tool_start(tool_name, None).await;
+                                    observer.on_tool_start(tool_name, &tool_args, None).await;
                                 }
 
                                 match self.tools.execute_tool(tool_name, tool_args.clone()).await {
@@ -271,7 +271,7 @@ impl Agent for FunctionCallingAgent {
                                         let tr: Value = tool_result.clone();
                                         tool_calls_made.push(ToolCallMade {
                                             name: tool_name.clone(),
-                                            arguments: tool_args,
+                                            arguments: tool_args.clone(),
                                             result: tr,
                                             tool_call_id: Some(tool_call_id.clone()),
                                         });
@@ -284,7 +284,9 @@ impl Agent for FunctionCallingAgent {
                                             &result_str,
                                         );
                                         if let Some(observer) = &self.tool_observer {
-                                            observer.on_tool_finish(tool_name, true).await;
+                                            observer
+                                                .on_tool_finish(tool_name, &tool_args, true)
+                                                .await;
                                         }
                                     }
                                     Err(e) => {
@@ -302,7 +304,9 @@ impl Agent for FunctionCallingAgent {
                                             &result_str,
                                         );
                                         if let Some(observer) = &self.tool_observer {
-                                            observer.on_tool_finish(tool_name, false).await;
+                                            observer
+                                                .on_tool_finish(tool_name, &tool_args, false)
+                                                .await;
                                         }
                                     }
                                 }
@@ -464,14 +468,19 @@ mod tests {
 
     #[async_trait]
     impl ToolExecutionObserver for MockToolObserver {
-        async fn on_tool_start(&self, tool_name: &str, _reasoning: Option<String>) {
+        async fn on_tool_start(
+            &self,
+            tool_name: &str,
+            _arguments: &Value,
+            _reasoning: Option<String>,
+        ) {
             self.events
                 .lock()
                 .expect("observer lock")
                 .push(format!("start:{tool_name}"));
         }
 
-        async fn on_tool_finish(&self, tool_name: &str, success: bool) {
+        async fn on_tool_finish(&self, tool_name: &str, _arguments: &Value, success: bool) {
             self.events
                 .lock()
                 .expect("observer lock")

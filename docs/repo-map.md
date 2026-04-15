@@ -125,6 +125,7 @@ Last updated: 2026-04-12
     - `memory/src/llm_audit.rs` uses SQLite to record LLM call audit logs archived by `ActorIdentity`
     - Session persistence is controlled by `storage.session_runtime_backend`; `json` reads from local files, `sqlite` reads from `storage.session_sqlite_db_path`, and JSON can still be dual-written as a rollback mirror through `storage.session_sqlite_shadow_write_enabled`
     - Session compaction is now boundary-based: compacted sessions write a `Conversation compacted` marker plus a compact summary message, and the active context window is restored from the most recent boundary forward
+    - `codex_acp` and `opencode_acp` session turns now persist restorable assistant/tool transcript structure locally as `assistant(tool_calls)` + `tool` messages; `codex_acp` uses it to reseed recreated ACP sessions, while `opencode_acp` injects the restored transcript into each fresh ACP session prompt because OpenCode does not safely replay prior sessions
     - `AgentSession::run()` now also supports explicit `/compact` requests, reusing the same compaction pipeline without charging user conversation quota or persisting the slash command as a normal transcript message
     - Heartbeat-style cron jobs are still stored in the same cron store; they are identified by `repeat=heartbeat` and a `heartbeat` tag, then polled every 30 minutes instead of a fixed clock time
 9. Responses are sent back to the originating channel; the Web console streams `run_started / assistant_delta / tool_call / run_error / run_finished` via v2 SSE events

@@ -1,4 +1,5 @@
 mod common;
+mod probe;
 mod repl;
 mod start;
 
@@ -49,6 +50,7 @@ enum Commands {
     Status(StatusArgs),
     Doctor(DoctorArgs),
     Start,
+    Probe(ProbeArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -90,6 +92,24 @@ struct StatusArgs {
 struct DoctorArgs {
     #[arg(long)]
     json: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+struct ProbeArgs {
+    #[arg(long)]
+    channel: String,
+    #[arg(long = "user-id")]
+    user_id: String,
+    #[arg(long)]
+    scope: Option<String>,
+    #[arg(long)]
+    group: bool,
+    #[arg(long)]
+    admin: bool,
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    show_events: bool,
+    #[arg(long)]
+    query: String,
 }
 
 #[derive(Args, Debug)]
@@ -2514,6 +2534,10 @@ async fn run_cli() -> Result<(), String> {
             }
         }
         Some(Commands::Start) => start::run_start(cli.config.as_deref()).await,
+        Some(Commands::Probe(args)) => {
+            let (core, paths) = load_cli_core(cli.config.as_deref()).map_err(|e| e.to_string())?;
+            probe::run_probe(core, &paths.canonical_config_path.to_string_lossy(), args).await
+        }
     }
 }
 
@@ -2584,6 +2608,30 @@ mod tests {
             Some(Commands::Cleanup(args)) => {
                 assert!(args.all);
                 assert!(args.yes);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_probe_command() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "probe",
+            "--channel",
+            "telegram",
+            "--user-id",
+            "8039067465",
+            "--query",
+            "夜盘 aaoi 和 cohr 为什么在跌",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Probe(args)) => {
+                assert_eq!(args.channel, "telegram");
+                assert_eq!(args.user_id, "8039067465");
+                assert_eq!(args.query, "夜盘 aaoi 和 cohr 为什么在跌");
+                assert!(args.show_events);
             }
             other => panic!("unexpected command: {other:?}"),
         }

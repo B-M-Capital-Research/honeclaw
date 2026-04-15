@@ -141,12 +141,8 @@ pub(crate) async fn handle_update_holding(
     let contract_multiplier = req
         .contract_multiplier
         .or(existing_holding.contract_multiplier);
-    let holding_horizon = req
-        .holding_horizon
-        .or(existing_holding.holding_horizon);
-    let strategy_notes = req
-        .strategy_notes
-        .or(existing_holding.strategy_notes);
+    let holding_horizon = req.holding_horizon.or(existing_holding.holding_horizon);
+    let strategy_notes = req.strategy_notes.or(existing_holding.strategy_notes);
 
     match storage.upsert_holding(
         &actor,
@@ -246,9 +242,7 @@ fn normalize_optional_option_type(option_type: Option<String>) -> Option<String>
 }
 
 fn normalize_optional_holding_horizon(value: Option<String>) -> Option<String> {
-    value
-        .as_deref()
-        .and_then(normalize_holding_horizon)
+    value.as_deref().and_then(normalize_holding_horizon)
 }
 
 #[cfg(test)]
@@ -312,12 +306,8 @@ mod tests {
 
         let shares = req.quantity.or(req.shares).unwrap_or(existing.shares);
         let avg_cost = req.cost_basis.or(req.avg_cost).unwrap_or(existing.avg_cost);
-        let holding_horizon = req
-            .holding_horizon
-            .or(existing.holding_horizon.clone());
-        let strategy_notes = req
-            .strategy_notes
-            .or(existing.strategy_notes.clone());
+        let holding_horizon = req.holding_horizon.or(existing.holding_horizon.clone());
+        let strategy_notes = req.strategy_notes.or(existing.strategy_notes.clone());
 
         assert_eq!(shares, 12.0);
         assert_eq!(avg_cost, -1.25);

@@ -164,7 +164,34 @@ Verified search tool transcript (JSON):\n{}",
             return false;
         }
         let sanitized = sanitize_user_visible_output(&search_response.content);
-        !sanitized.content.is_empty() && !sanitized.removed_internal
+        if sanitized.content.is_empty() || sanitized.removed_internal {
+            return false;
+        }
+        let content = sanitized.content.trim();
+        if content.len() > 120 || content.contains('\n') {
+            return false;
+        }
+
+        let lowered = content.to_ascii_lowercase();
+        let looks_like_working_note = [
+            "我先",
+            "先核实",
+            "先确认",
+            "先看",
+            "先查",
+            "我去查",
+            "正在",
+            "稍等",
+            "let me",
+            "i'll",
+            "i will",
+            "checking",
+            "looking into",
+        ]
+        .iter()
+        .any(|marker| content.contains(marker) || lowered.contains(marker));
+
+        !looks_like_working_note
     }
 }
 
@@ -218,6 +245,7 @@ impl AgentRunner for MultiAgentRunner {
                     streamed_output: false,
                     terminal_error_emitted: false,
                     session_metadata_updates: HashMap::new(),
+                    context_messages: None,
                 };
             }
         };
@@ -311,6 +339,7 @@ impl AgentRunner for MultiAgentRunner {
                 streamed_output: false,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
+                context_messages: None,
             };
         }
 
@@ -336,6 +365,7 @@ impl AgentRunner for MultiAgentRunner {
                 streamed_output: false,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
+                context_messages: None,
             };
         }
 
@@ -442,6 +472,7 @@ impl AgentRunner for MultiAgentRunner {
             streamed_output: answer_result.streamed_output,
             terminal_error_emitted: answer_result.terminal_error_emitted,
             session_metadata_updates: answer_result.session_metadata_updates,
+            context_messages: None,
         }
     }
 }
@@ -568,6 +599,22 @@ mod tests {
         let runner = make_runner();
         let response = AgentResponse {
             content: "<think>先判断是否需要查资料。</think>\n正在查询 Tempus AI 与 Caris Life Sciences 相关数据与新闻...".to_string(),
+            tool_calls_made: Vec::new(),
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        assert!(!runner.should_return_search_response_directly(&response));
+    }
+
+    #[test]
+    fn plain_text_working_note_does_not_skip_answer_stage() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content:
+                "我先核实两个点：一是 AAOI 和 COHR 在这段夜盘里到底跌了多少，二是有没有共振消息。"
+                    .to_string(),
             tool_calls_made: Vec::new(),
             iterations: 1,
             success: true,

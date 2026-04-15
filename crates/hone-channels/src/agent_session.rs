@@ -1,28 +1,29 @@
 //! Agent session abstraction shared across channels.
 
 use async_trait::async_trait;
-use hone_core::agent::{AgentContext, AgentResponse, ToolCallMade};
+use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
 use hone_core::{ActorIdentity, HoneConfig, SessionIdentity};
 use hone_memory::{
-    build_tool_message_metadata, has_compact_skill_snapshot, invoked_skills_from_metadata,
-    message_is_compact_boundary, message_is_compact_summary, message_is_slash_skill,
-    restore_tool_message, select_messages_after_compact_boundary, ConversationQuotaReservation,
-    ConversationQuotaReserveResult, SessionStorage,
+    ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
+    assistant_tool_calls_from_metadata, build_assistant_message_metadata,
+    build_tool_message_metadata, build_tool_message_metadata_parts, has_compact_skill_snapshot,
+    invoked_skills_from_metadata, message_is_compact_boundary, message_is_compact_summary,
+    message_is_slash_skill, restore_tool_message, select_messages_after_compact_boundary,
 };
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::HoneBotCore;
 use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
-use crate::prompt::{build_prompt_bundle, PromptOptions};
+use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
 use crate::runtime::{relativize_user_visible_paths, sanitize_user_visible_output};
 use crate::session_compactor::SessionCompactor;
-use crate::HoneBotCore;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSessionErrorKind {
@@ -234,6 +235,21 @@ fn merge_message_metadata(
         merged.insert(key, value);
     }
     Some(merged)
+}
+
+fn metadata_with_assistant_tool_calls(
+    base: Option<HashMap<String, Value>>,
+    tool_calls: Option<&Vec<Value>>,
+) -> Option<HashMap<String, Value>> {
+    let extra = tool_calls
+        .filter(|items| !items.is_empty())
+        .map(|items| build_assistant_message_metadata(items));
+    match (base, extra) {
+        (Some(base), Some(extra)) => merge_message_metadata(Some(base), extra),
+        (Some(base), None) => Some(base),
+        (None, Some(extra)) => Some(extra),
+        (None, None) => None,
+    }
 }
 
 pub struct AgentSessionResult {
@@ -548,6 +564,50 @@ impl AgentSession {
                 };
                 (kind, err)
             })
+    }
+
+    fn persist_runner_context_messages(&self, session_id: &str, messages: &[AgentMessage]) {
+        let last_assistant_idx = messages
+            .iter()
+            .rposition(|message| message.role == "assistant");
+        for (idx, message) in messages.iter().enumerate() {
+            match message.role.as_str() {
+                "assistant" => {
+                    let base_metadata = if Some(idx) == last_assistant_idx {
+                        self.message_metadata.assistant.clone()
+                    } else {
+                        None
+                    };
+                    let metadata = metadata_with_assistant_tool_calls(
+                        base_metadata,
+                        message.tool_calls.as_ref(),
+                    );
+                    let _ = self.core.session_storage.add_message(
+                        session_id,
+                        "assistant",
+                        message.content.as_deref().unwrap_or(""),
+                        metadata,
+                    );
+                }
+                "tool" => {
+                    let Some(tool_name) = message.name.as_deref() else {
+                        continue;
+                    };
+                    let metadata = Some(build_tool_message_metadata_parts(
+                        tool_name,
+                        message.tool_call_id.as_deref(),
+                        None,
+                    ));
+                    let _ = self.core.session_storage.add_message(
+                        session_id,
+                        "tool",
+                        message.content.as_deref().unwrap_or(""),
+                        metadata,
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     async fn force_compact_for_context_overflow(&self, session_id: &str) -> Result<bool, String> {
@@ -1250,6 +1310,7 @@ impl AgentSession {
         let started = Instant::now();
         let mut streamed_output = false;
         let mut terminal_error_emitted = false;
+        let mut context_messages: Option<Vec<AgentMessage>> = None;
         let mut response = AgentResponse {
             content: String::new(),
             tool_calls_made: Vec::new(),
@@ -1277,6 +1338,7 @@ impl AgentSession {
                     .session_storage
                     .update_metadata(&session_id, runner_result.session_metadata_updates.clone());
             }
+            context_messages = runner_result.context_messages;
             response = runner_result.response;
 
             let should_try_recovery = !response.success
@@ -1409,25 +1471,32 @@ impl AgentSession {
                     }
                 }
             }
-            for tool_call in &response.tool_calls_made {
-                if !should_persist_tool_result(tool_call) {
-                    continue;
+            if let Some(messages) = context_messages
+                .as_ref()
+                .filter(|messages| !messages.is_empty())
+            {
+                self.persist_runner_context_messages(&session_id, messages);
+            } else {
+                for tool_call in &response.tool_calls_made {
+                    if !should_persist_tool_result(tool_call) {
+                        continue;
+                    }
+                    let result_str = serde_json::to_string(&tool_call.result)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    let _ = self.core.session_storage.add_message(
+                        &session_id,
+                        "tool",
+                        &result_str,
+                        Some(build_tool_message_metadata(tool_call)),
+                    );
                 }
-                let result_str =
-                    serde_json::to_string(&tool_call.result).unwrap_or_else(|_| "{}".to_string());
                 let _ = self.core.session_storage.add_message(
                     &session_id,
-                    "tool",
-                    &result_str,
-                    Some(build_tool_message_metadata(tool_call)),
+                    "assistant",
+                    &response.content,
+                    self.message_metadata.assistant.clone(),
                 );
             }
-            let _ = self.core.session_storage.add_message(
-                &session_id,
-                "assistant",
-                &response.content,
-                self.message_metadata.assistant.clone(),
-            );
             self.core.log_message_step(
                 &self.actor.channel,
                 &self.actor.user_id,
@@ -1553,9 +1622,12 @@ pub fn restore_context(
                 }
             }
             "assistant" => {
+                let tool_calls = assistant_tool_calls_from_metadata(message.metadata.as_ref());
                 let sanitized = sanitize_user_visible_output(&message.content);
-                if !sanitized.content.trim().is_empty() {
-                    ctx.add_assistant_message(&sanitized.content, None);
+                if !sanitized.content.trim().is_empty()
+                    || tool_calls.as_ref().is_some_and(|items| !items.is_empty())
+                {
+                    ctx.add_assistant_message(&sanitized.content, tool_calls);
                 }
             }
             "tool" => {
@@ -1604,10 +1676,10 @@ fn compose_invoked_skill_runtime_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runners::{stream_gemini_prompt, AgentRunnerEvent};
+    use crate::runners::{AgentRunnerEvent, stream_gemini_prompt};
     use futures::stream::{self, BoxStream};
-    use hone_core::config::HoneConfig;
     use hone_core::ActorIdentity;
+    use hone_core::config::HoneConfig;
     use hone_llm::provider::ChatResult;
     use hone_llm::{ChatResponse, LlmProvider, Message};
     use serde_json::Value;
@@ -1803,6 +1875,7 @@ mod tests {
             streamed_output: true,
             terminal_error_emitted: false,
             session_metadata_updates: HashMap::new(),
+            context_messages: None,
         };
 
         assert!(!should_return_runner_result(&result));
@@ -1866,6 +1939,62 @@ mod tests {
         assert_eq!(ctx.messages[1].name.as_deref(), Some("web_search"));
         assert_eq!(ctx.messages[1].tool_call_id.as_deref(), Some("call_1"));
         assert_eq!(ctx.actor_identity(), Some(actor));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn restore_context_rehydrates_assistant_tool_calls() {
+        let root = make_temp_dir("hone_channels_restore_tool_calls");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+
+        storage
+            .add_message(&session_id, "user", "AAOI 是什么公司", None)
+            .expect("add user");
+        storage
+            .add_message(
+                &session_id,
+                "assistant",
+                "我先查本地画像。",
+                Some(build_assistant_message_metadata(&[serde_json::json!({
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "local_search_files",
+                        "arguments": "{\"query\":\"AAOI\"}"
+                    }
+                })])),
+            )
+            .expect("add assistant");
+        storage
+            .add_message(
+                &session_id,
+                "tool",
+                "{\"matches\":[\"company_profiles/applied-optoelectronics/profile.md\"]}",
+                Some(build_tool_message_metadata_parts(
+                    "local_search_files",
+                    Some("call_1"),
+                    None,
+                )),
+            )
+            .expect("add tool");
+
+        let ctx = restore_context(&storage, &session_id, None, None);
+        assert_eq!(ctx.messages.len(), 3);
+        assert_eq!(ctx.messages[1].role, "assistant");
+        let tool_calls = ctx.messages[1]
+            .tool_calls
+            .as_ref()
+            .expect("assistant tool calls");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["id"], "call_1");
+        assert_eq!(tool_calls[0]["function"]["name"], "local_search_files");
+        assert_eq!(ctx.messages[2].role, "tool");
+        assert_eq!(ctx.messages[2].tool_call_id.as_deref(), Some("call_1"));
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -2381,17 +2510,20 @@ mod tests {
         let result = session.run("hello", AgentRunOptions::default()).await;
 
         assert!(!result.response.success);
-        assert!(result
-            .response
-            .error
-            .unwrap_or_default()
-            .contains("已达到今日对话上限"));
+        assert!(
+            result
+                .response
+                .error
+                .unwrap_or_default()
+                .contains("已达到今日对话上限")
+        );
         assert_eq!(llm.chat_with_tools_calls(), 0);
-        assert!(core
-            .session_storage
-            .get_messages(&actor.session_id(), None)
-            .expect("messages")
-            .is_empty());
+        assert!(
+            core.session_storage
+                .get_messages(&actor.session_id(), None)
+                .expect("messages")
+                .is_empty()
+        );
         let snapshot = core
             .conversation_quota_storage
             .snapshot_for_date(&actor, &today)
@@ -2526,9 +2658,11 @@ mod tests {
         assert_eq!(messages[1].content, "【Compact Summary】\nsummary");
         assert_eq!(messages[2].content, "hello");
         assert_eq!(messages[3].content, "world");
-        assert!(messages
-            .iter()
-            .all(|message| !message.content.contains("/compact")));
+        assert!(
+            messages
+                .iter()
+                .all(|message| !message.content.contains("/compact"))
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }

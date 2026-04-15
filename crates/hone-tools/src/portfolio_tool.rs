@@ -773,8 +773,8 @@ mod tests {
     #[tokio::test]
     async fn portfolio_supports_negative_cost_basis_and_strategy_fields() {
         let data_dir = make_temp_dir("hone_portfolio_tool_negative_cost");
-        let actor = ActorIdentity::new("imessage", "u_negative_cost", None::<String>)
-            .expect("actor");
+        let actor =
+            ActorIdentity::new("imessage", "u_negative_cost", None::<String>).expect("actor");
         let tool = PortfolioTool::new(&data_dir, actor);
 
         tool.execute(serde_json::json!({

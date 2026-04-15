@@ -225,21 +225,7 @@ impl CodexCliAgent {
         ));
 
         let mut command = tokio::process::Command::new("codex");
-        command
-            .arg("exec")
-            .arg("--skip-git-repo-check")
-            .arg("--sandbox")
-            .arg("workspace-write")
-            .arg("--ask-for-approval")
-            .arg("never")
-            .arg("-o")
-            .arg(&output_path);
-        if let Some(model) = &self.codex_model {
-            command.arg("-m").arg(model);
-        }
-        if let Some(working_directory) = &self.working_directory {
-            command.arg("--cd").arg(working_directory);
-        }
+        command.args(self.codex_exec_args(&output_path));
         let child = command
             .arg("-")
             .stdin(Stdio::piped())
@@ -283,6 +269,25 @@ impl CodexCliAgent {
                 Err(format!("failed while waiting codex process: {}", e))
             }
         }
+    }
+
+    fn codex_exec_args(&self, output_path: &std::path::Path) -> Vec<String> {
+        let mut args = vec![
+            "exec".to_string(),
+            "--skip-git-repo-check".to_string(),
+            "--full-auto".to_string(),
+            "-o".to_string(),
+            output_path.display().to_string(),
+        ];
+        if let Some(model) = &self.codex_model {
+            args.push("-m".to_string());
+            args.push(model.clone());
+        }
+        if let Some(working_directory) = &self.working_directory {
+            args.push("--cd".to_string());
+            args.push(working_directory.clone());
+        }
+        args
     }
 }
 
@@ -372,7 +377,9 @@ impl Agent for CodexCliAgent {
 
                 let call_id = format!("cli_tc_{}_{}", iteration, tool_name);
                 if let Some(observer) = &self.tool_observer {
-                    observer.on_tool_start(&tool_name, tool_reasoning).await;
+                    observer
+                        .on_tool_start(&tool_name, &tool_args, tool_reasoning)
+                        .await;
                 }
 
                 match self.tools.execute_tool(&tool_name, tool_args.clone()).await {
@@ -386,13 +393,13 @@ impl Agent for CodexCliAgent {
 
                         tool_calls_made.push(ToolCallMade {
                             name: tool_name.clone(),
-                            arguments: tool_args,
+                            arguments: tool_args.clone(),
                             result: tool_result,
                             tool_call_id: Some(call_id.clone()),
                         });
 
                         if let Some(observer) = &self.tool_observer {
-                            observer.on_tool_finish(&tool_name, true).await;
+                            observer.on_tool_finish(&tool_name, &tool_args, true).await;
                         }
                         context.add_tool_result(&call_id, &tool_name, &result_str);
                         pending_tool_results.push((call_id, tool_name, result_str));
@@ -409,7 +416,7 @@ impl Agent for CodexCliAgent {
                         let err_val = serde_json::json!({"error": e.to_string()});
                         let result_str = serde_json::to_string(&err_val).unwrap_or_default();
                         if let Some(observer) = &self.tool_observer {
-                            observer.on_tool_finish(&tool_name, false).await;
+                            observer.on_tool_finish(&tool_name, &tool_args, false).await;
                         }
                         context.add_tool_result(&call_id, &tool_name, &result_str);
                         pending_tool_results.push((call_id, tool_name, result_str));
@@ -489,6 +496,7 @@ mod tests {
     use hone_core::agent::AgentContext;
     use hone_tools::registry::ToolRegistry;
     use serde_json::json;
+    use std::path::Path;
     use std::sync::Arc;
 
     #[test]
@@ -538,5 +546,31 @@ mod tests {
         let prompt = agent.build_prompt(&context, &[]);
         assert!(prompt.contains("USER: u0"));
         assert!(prompt.contains("USER: u23"));
+    }
+
+    #[test]
+    fn codex_exec_args_use_full_auto_for_noninteractive_runs() {
+        let agent = CodexCliAgent::new(
+            "system".to_string(),
+            Some("gpt-5.3-codex".to_string()),
+            Some("/tmp/workspace".to_string()),
+            Arc::new(ToolRegistry::new()),
+            None,
+        );
+
+        let args = agent.codex_exec_args(Path::new("/tmp/codex-output.txt"));
+
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["exec", "--skip-git-repo-check"])
+        );
+        assert!(args.contains(&"--full-auto".to_string()));
+        assert!(!args.contains(&"--ask-for-approval".to_string()));
+        assert!(!args.contains(&"never".to_string()));
+        assert!(args.windows(2).any(|pair| pair == ["-m", "gpt-5.3-codex"]));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--cd", "/tmp/workspace"])
+        );
     }
 }

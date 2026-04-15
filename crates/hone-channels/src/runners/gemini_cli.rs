@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use hone_agent_gemini_cli::{GeminiCliAgent, GeminiStreamEvent, parse_stream_event};
-use hone_core::agent::ToolCallMade;
+use hone_core::agent::{AgentMessage, ToolCallMade};
 use hone_tools::ToolRegistry;
+use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::AsyncBufReadExt;
 
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind, GeminiStreamOptions};
-use crate::runtime::{get_tool_status_message, resolve_tool_reasoning};
 
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -34,6 +34,263 @@ impl GeminiCliRunner {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GeminiCliToolRenderPhase {
+    Start,
+    Done,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GeminiCliRenderedToolStatus {
+    pub tool: String,
+    pub message: Option<String>,
+    pub reasoning: Option<String>,
+}
+
+pub(crate) fn render_gemini_cli_tool_status(
+    tool_name: &str,
+    tool_args: &Value,
+    tool_reasoning: Option<String>,
+    phase: GeminiCliToolRenderPhase,
+) -> GeminiCliRenderedToolStatus {
+    let label = render_gemini_cli_tool_label(tool_name, tool_args);
+    match phase {
+        GeminiCliToolRenderPhase::Start => GeminiCliRenderedToolStatus {
+            tool: label.clone(),
+            message: None,
+            reasoning: Some(render_gemini_cli_reasoning(&label, tool_reasoning)),
+        },
+        GeminiCliToolRenderPhase::Done => GeminiCliRenderedToolStatus {
+            tool: label.clone(),
+            message: Some(format!("执行完成：{label}")),
+            reasoning: None,
+        },
+    }
+}
+
+pub(crate) fn append_gemini_cli_tool_context_messages(
+    messages: &mut Vec<AgentMessage>,
+    call_id: &str,
+    visible_text: &str,
+    tool_name: &str,
+    tool_args: &Value,
+    tool_result: &str,
+) {
+    messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some(visible_text.trim().to_string()),
+        tool_calls: Some(vec![build_gemini_cli_tool_call_value(
+            call_id, tool_name, tool_args,
+        )]),
+        tool_call_id: None,
+        name: None,
+    });
+    messages.push(AgentMessage {
+        role: "tool".to_string(),
+        content: Some(tool_result.to_string()),
+        tool_calls: None,
+        tool_call_id: Some(call_id.to_string()),
+        name: Some(tool_name.to_string()),
+    });
+}
+
+fn append_gemini_cli_final_message(messages: &mut Vec<AgentMessage>, content: &str) {
+    if content.trim().is_empty() {
+        return;
+    }
+    messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some(content.to_string()),
+        tool_calls: None,
+        tool_call_id: None,
+        name: None,
+    });
+}
+
+fn build_gemini_cli_tool_call_value(call_id: &str, tool_name: &str, tool_args: &Value) -> Value {
+    json!({
+        "id": call_id,
+        "type": "function",
+        "function": {
+            "name": tool_name,
+            "arguments": stringify_gemini_cli_tool_arguments(tool_args),
+        }
+    })
+}
+
+fn stringify_gemini_cli_tool_arguments(tool_args: &Value) -> String {
+    serde_json::to_string(tool_args).unwrap_or_else(|_| "null".to_string())
+}
+
+fn render_gemini_cli_reasoning(label: &str, tool_reasoning: Option<String>) -> String {
+    let base = format!("正在执行：{label}");
+    let note = tool_reasoning
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| truncate_gemini_cli_detail(value, 120));
+    match note {
+        Some(note) if note != base => format!("{base}；说明：{note}"),
+        _ => base,
+    }
+}
+
+fn render_gemini_cli_tool_label(tool_name: &str, tool_args: &Value) -> String {
+    let base = match tool_name {
+        "web_search" => {
+            if let Some(query) = tool_arg_string(tool_args, &["query", "q"]) {
+                format!(
+                    "web_search query=\"{}\"",
+                    truncate_gemini_cli_detail(&query, 80)
+                )
+            } else {
+                "web_search".to_string()
+            }
+        }
+        "data_fetch" => {
+            let data_type = tool_arg_string(tool_args, &["data_type"]);
+            let symbol = tool_arg_string(tool_args, &["symbol", "ticker"]);
+            match (data_type, symbol) {
+                (Some(data_type), Some(symbol)) => format!(
+                    "data_fetch {} {}",
+                    truncate_gemini_cli_detail(&data_type, 32),
+                    truncate_gemini_cli_detail(&symbol, 32)
+                ),
+                (Some(data_type), None) => {
+                    format!("data_fetch {}", truncate_gemini_cli_detail(&data_type, 48))
+                }
+                (None, Some(symbol)) => {
+                    format!("data_fetch {}", truncate_gemini_cli_detail(&symbol, 48))
+                }
+                (None, None) => render_generic_gemini_cli_tool_label(tool_name, tool_args),
+            }
+        }
+        "deep_research" => {
+            if let Some(company) = tool_arg_string(tool_args, &["company_name", "query"]) {
+                format!("deep_research {}", truncate_gemini_cli_detail(&company, 72))
+            } else {
+                render_generic_gemini_cli_tool_label(tool_name, tool_args)
+            }
+        }
+        "skill_tool" | "load_skill" => {
+            let action = tool_arg_string(tool_args, &["action"]);
+            let skill = tool_arg_string(tool_args, &["skill_name"]);
+            match (action, skill) {
+                (Some(action), Some(skill)) => format!(
+                    "{tool_name} {} {}",
+                    truncate_gemini_cli_detail(&action, 24),
+                    truncate_gemini_cli_detail(&skill, 48)
+                ),
+                (Some(action), None) => {
+                    format!("{tool_name} {}", truncate_gemini_cli_detail(&action, 48))
+                }
+                (None, Some(skill)) => {
+                    format!("{tool_name} {}", truncate_gemini_cli_detail(&skill, 48))
+                }
+                (None, None) => render_generic_gemini_cli_tool_label(tool_name, tool_args),
+            }
+        }
+        "portfolio" => {
+            let action = tool_arg_string(tool_args, &["action"]);
+            let symbol = tool_arg_string(tool_args, &["symbol", "ticker"]);
+            match (action, symbol) {
+                (Some(action), Some(symbol)) => format!(
+                    "portfolio {} {}",
+                    truncate_gemini_cli_detail(&action, 24),
+                    truncate_gemini_cli_detail(&symbol, 24)
+                ),
+                _ => render_generic_gemini_cli_tool_label(tool_name, tool_args),
+            }
+        }
+        _ => render_generic_gemini_cli_tool_label(tool_name, tool_args),
+    };
+
+    truncate_gemini_cli_detail(&base, 120)
+}
+
+fn render_generic_gemini_cli_tool_label(tool_name: &str, tool_args: &Value) -> String {
+    let summary = summarize_gemini_cli_arguments(tool_args);
+    if summary.is_empty() {
+        tool_name.to_string()
+    } else {
+        format!("{tool_name} {summary}")
+    }
+}
+
+fn summarize_gemini_cli_arguments(tool_args: &Value) -> String {
+    let Value::Object(map) = tool_args else {
+        return String::new();
+    };
+    let mut pairs = Vec::new();
+    for key in [
+        "query",
+        "q",
+        "symbol",
+        "ticker",
+        "company_name",
+        "skill_name",
+        "action",
+        "data_type",
+        "path",
+        "file_path",
+        "url",
+    ] {
+        if let Some(value) = map.get(key) {
+            let rendered = summarize_gemini_cli_argument_value(value);
+            if !rendered.is_empty() {
+                pairs.push(format!("{key}={rendered}"));
+            }
+        }
+        if pairs.len() >= 2 {
+            break;
+        }
+    }
+    pairs.join(" ")
+}
+
+fn summarize_gemini_cli_argument_value(value: &Value) -> String {
+    match value {
+        Value::String(text) => format!("\"{}\"", truncate_gemini_cli_detail(text, 48)),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(boolean) => boolean.to_string(),
+        Value::Array(items) => {
+            if items.is_empty() {
+                "[]".to_string()
+            } else {
+                format!("[{} items]", items.len())
+            }
+        }
+        Value::Object(map) => format!("{{{} keys}}", map.len()),
+        Value::Null => "null".to_string(),
+    }
+}
+
+fn tool_arg_string(tool_args: &Value, keys: &[&str]) -> Option<String> {
+    let Value::Object(map) = tool_args else {
+        return None;
+    };
+    for key in keys {
+        if let Some(value) = map.get(*key).and_then(|value| value.as_str()) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn truncate_gemini_cli_detail(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    let total = trimmed.chars().count();
+    if total <= max_chars {
+        return trimmed.to_string();
+    }
+    let keep = max_chars.saturating_sub(1);
+    let prefix = trimmed.chars().take(keep).collect::<String>();
+    format!("{prefix}…")
+}
+
 #[async_trait]
 impl AgentRunner for GeminiCliRunner {
     fn name(&self) -> &'static str {
@@ -48,11 +305,13 @@ impl AgentRunner for GeminiCliRunner {
         let mut context = request.context;
         let mut pending_tool_results: Vec<(String, String, String)> = Vec::new();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
+        let mut context_messages: Vec<AgentMessage> = Vec::new();
         let mut full_reply = String::new();
         let mut iteration = 0u32;
         let mut hit_max_iterations = false;
         let mut total_raw_lines_seen = 0u32;
         let mut last_iter_buf = String::new();
+        let mut final_assistant_content: Option<String> = None;
         let mut stream_options = request.gemini_stream.clone();
         stream_options.overall_timeout = self.timeouts.overall;
         stream_options.per_line_timeout = self.timeouts.step;
@@ -112,32 +371,37 @@ impl AgentRunner for GeminiCliRunner {
                         streamed_output: true,
                         terminal_error_emitted: true,
                         session_metadata_updates: std::collections::HashMap::new(),
+                        context_messages: None,
                     };
                 }
             };
 
-            let (_visible_text, maybe_tool_call) = GeminiCliAgent::parse_tool_call(&iter_buf);
+            let (visible_text, maybe_tool_call) = GeminiCliAgent::parse_tool_call(&iter_buf);
 
             if let Some((tool_name, tool_args, tool_reasoning)) = maybe_tool_call {
+                let call_id = format!("gemini_cli_call_{iteration}_{}", tool_calls_made.len() + 1);
+                if !visible_text.trim().is_empty() {
+                    context.add_assistant_message(&visible_text, None);
+                }
+                let rendered_start = render_gemini_cli_tool_status(
+                    &tool_name,
+                    &tool_args,
+                    tool_reasoning.clone(),
+                    GeminiCliToolRenderPhase::Start,
+                );
                 emitter
                     .emit(AgentRunnerEvent::Progress {
                         stage: "tool.execute",
-                        detail: Some(tool_name.clone()),
+                        detail: Some(rendered_start.tool.clone()),
                     })
                     .await;
 
-                let tool_status = get_tool_status_message(&tool_name, "start");
-                let reasoning = resolve_tool_reasoning(&tool_name, tool_reasoning);
                 emitter
                     .emit(AgentRunnerEvent::ToolStatus {
-                        tool: tool_name.clone(),
+                        tool: rendered_start.tool.clone(),
                         status: "start".to_string(),
-                        message: if tool_status.is_empty() {
-                            None
-                        } else {
-                            Some(tool_status)
-                        },
-                        reasoning,
+                        message: rendered_start.message,
+                        reasoning: rendered_start.reasoning,
                     })
                     .await;
 
@@ -147,18 +411,28 @@ impl AgentRunner for GeminiCliRunner {
                     .await
                     .unwrap_or_else(|e| serde_json::json!({ "error": e.to_string() }));
                 let tool_result_str = tool_result_val.to_string();
+                append_gemini_cli_tool_context_messages(
+                    &mut context_messages,
+                    &call_id,
+                    &visible_text,
+                    &tool_name,
+                    &tool_args,
+                    &tool_result_str,
+                );
+                context.add_tool_result(&call_id, &tool_name, &tool_result_str);
 
-                let tool_status = get_tool_status_message(&tool_name, "done");
+                let rendered_done = render_gemini_cli_tool_status(
+                    &tool_name,
+                    &tool_args,
+                    None,
+                    GeminiCliToolRenderPhase::Done,
+                );
                 emitter
                     .emit(AgentRunnerEvent::ToolStatus {
-                        tool: tool_name.clone(),
+                        tool: rendered_done.tool,
                         status: "done".to_string(),
-                        message: if tool_status.is_empty() {
-                            None
-                        } else {
-                            Some(tool_status)
-                        },
-                        reasoning: None,
+                        message: rendered_done.message,
+                        reasoning: rendered_done.reasoning,
                     })
                     .await;
 
@@ -166,14 +440,15 @@ impl AgentRunner for GeminiCliRunner {
                     name: tool_name.clone(),
                     arguments: tool_args,
                     result: tool_result_val,
-                    tool_call_id: None,
+                    tool_call_id: Some(call_id.clone()),
                 });
 
-                pending_tool_results.push((String::new(), tool_name, tool_result_str));
+                pending_tool_results.push((call_id, tool_name, tool_result_str));
                 last_iter_buf = iter_buf;
                 continue;
             }
 
+            final_assistant_content = Some(visible_text);
             last_iter_buf = iter_buf;
             break;
         }
@@ -229,6 +504,7 @@ impl AgentRunner for GeminiCliRunner {
                     streamed_output: true,
                     terminal_error_emitted: true,
                     session_metadata_updates: std::collections::HashMap::new(),
+                    context_messages: None,
                 };
             }
         }
@@ -239,6 +515,12 @@ impl AgentRunner for GeminiCliRunner {
                 total_raw_lines_seen,
                 last_iter_buf.chars().take(200).collect::<String>()
             );
+        }
+        if final_assistant_content.is_none() && !full_reply.trim().is_empty() {
+            final_assistant_content = Some(full_reply.trim().to_string());
+        }
+        if let Some(content) = final_assistant_content.as_deref() {
+            append_gemini_cli_final_message(&mut context_messages, content);
         }
 
         AgentRunnerResult {
@@ -252,6 +534,7 @@ impl AgentRunner for GeminiCliRunner {
             streamed_output: true,
             terminal_error_emitted: false,
             session_metadata_updates: std::collections::HashMap::new(),
+            context_messages: Some(context_messages),
         }
     }
 }

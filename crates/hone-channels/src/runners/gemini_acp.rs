@@ -55,6 +55,7 @@ impl AgentRunner for GeminiAcpRunner {
                 streamed_output: true,
                 terminal_error_emitted: false,
                 session_metadata_updates: updates,
+                context_messages: None,
             },
             Err(error) => {
                 let message = error.message.clone();
@@ -70,6 +71,7 @@ impl AgentRunner for GeminiAcpRunner {
                     streamed_output: true,
                     terminal_error_emitted: true,
                     session_metadata_updates: HashMap::new(),
+                    context_messages: None,
                 }
             }
         }
