@@ -2,7 +2,75 @@ version = 1
 id = "bug-2"
 kind = "cron"
 name = "凌晨修高优Bug"
-prompt = "你需要从 `docs/bugs/` 中选择当前仍未修复的高优先级 bug 进行修复，优先级顺序为 `P0` 高于 `P1`。这是一个带严格发布门槛的自动修复任务。\n\n选择规则：\n- 只处理状态为 `New`、`Approved`、`Fixing` 的缺陷\n- 只处理 `P0` 或 `P1`\n- 优先选择证据最充分、修复范围最集中、最适合单次提交闭环的问题\n- 如果没有满足条件的 bug，直接结束，不做任何代码改动、不创建空提交、不打 tag、不发 release\n\n开始前门槛：\n- 先确认工作区干净；如果存在非本任务改动，立即停止本轮\n- 先阅读相关 bug 文档、受影响代码、仓库约束文档和相关测试\n- 先形成最小修复方案，再开始改代码\n\n修复要求：\n- 必须真正修代码，而不是只改文档\n- 修复完成后，必须补上自动化测试或回归证明；每个 bugfix 至少附带一个回归测试，除非仓库现有测试形态明确不适合该缺陷且你能给出充分理由\n- 如果修复涉及文档契约、模块边界、长期约束、运行方式或发布要求，按仓库规则同步更新对应文档\n- 同步更新对应 bug 文档状态；成功修复后至少更新为 `Fixed`，如确认问题闭环可更新为 `Closed`\n\n验证门槛：\n- 先运行与改动直接相关的最小测试，再运行仓库规定的默认验证中与本次改动相关的部分\n- 至少确保相关测试真实通过；如果测试失败，立即停止，不得提交、不得打 tag、不得发 release\n\n重启门槛：\n- 必须先杀掉所有 hone 相关进程，再进行一次完整重启验证\n- 必须使用仓库的 release desktop 启动方式，使用 `./launch.sh --release`\n- 不要使用 `--desktop` 或任何 debug / hot-reload 模式代替 release 模式\n- 只有当 release desktop 成功启动，并且源码改动不会自动触发重启时，才算满足启动方式要求\n\n启动后检查项，全部满足才算重启成功：\n- 核心服务进程已成功启动，且没有遗留重复 hone 相关进程\n- 运行配置正确，尤其是采用 `multi-agent` runner\n- 相关 API key 配置处于正确状态，不为空且未被错误覆盖\n- 启用的渠道进程已正常启动并处于可用状态，例如 `discord`、`feishu` 等启用渠道\n- 如果仓库提供接口或状态页，优先通过正式状态接口验证，例如渠道状态聚合接口；不要只凭日志里一行“started”就判定成功\n\n发布门槛：\n- 只有在代码修复完成、测试通过、release desktop 重启成功、配置检查通过、启用渠道检查通过后，才允许进入发布步骤\n- 发布前必须补齐对应版本的 release notes 到 `docs/releases/vX.Y.Z.md`\n- 版本号必须基于当前仓库状态做一次新的递增，不要复用已有 tag\n- 完成后按顺序执行：提交代码并推送到远端、创建 tag、触发或完成 release 发布\n- 任何一个门槛失败，都不得提交、不得 push、不得打 tag、不得 release\n\nGit 规则：\n- 只允许使用普通的 `git add`、`git commit`、`git push`、`git tag` 等非破坏性命令\n- 不要强推，不要改写历史\n- 如果 push 失败且需要 rebase、merge、cherry-pick、解决冲突，立即停止本轮，等待下一次自动化重新执行\n\n结果要求：\n- 成功时，产出完整的代码、测试、文档、bug 状态更新、release notes、git 提交、远端推送、tag 和 release\n- 失败时，停止在安全边界内，不做发布动作，并在结果里明确失败门槛卡在哪里"
+prompt = """
+你需要从 `docs/bugs/` 中选择当前仍未修复的高优先级 bug 进行修复，优先级顺序为 `P0` 高于 `P1`。这是一个带严格发布门槛的自动修复任务。
+
+缺陷导航规则：
+- `docs/bugs/README.md` 是缺陷导航与状态总表；开始前必须先读它，再进入对应 bug 文档和代码
+- 默认只从导航表“活跃待修复”分区里选择候选
+- 如果导航表与单个 bug 文档不一致，先以实际 bug 文档、代码和测试现状为准修正导航表，再继续选择修复对象
+- 修复完成后，必须同步更新 bug 文档和 `docs/bugs/README.md` 的对应行，至少回写：状态、修复情况、入口文档；如有修复提交或验证结论，也应同步写入
+
+选择规则：
+- 只处理状态为 `New`、`Approved`、`Fixing` 的缺陷
+- 只处理 `P0` 或 `P1`
+- 优先选择证据最充分、修复范围最集中、最适合单次提交闭环的问题
+- 如果没有满足条件的 bug，直接结束，不做任何代码改动、不创建空提交、不打 tag、不发 release
+
+开始前门槛：
+- 先检查工作区是否干净；如果不干净，不要直接停止，而是先查看脏文件和 diff，区分本任务相关改动与无关改动
+- 对于不属于本任务的本地改动，先在安全前提下清理工作区：恢复已跟踪文件、删除无关未跟踪文件，然后再开始本轮修复
+- 先阅读 `docs/bugs/README.md`、相关 bug 文档、受影响代码、仓库约束文档和相关测试
+- 先形成最小修复方案，再开始改代码
+
+修复要求：
+- 必须真正修代码，而不是只改文档
+- 修复完成后，必须补上自动化测试或回归证明；每个 bugfix 至少附带一个回归测试，除非仓库现有测试形态明确不适合该缺陷且你能给出充分理由
+- 如果修复涉及文档契约、模块边界、长期约束、运行方式或发布要求，按仓库规则同步更新对应文档
+- 同步更新对应 bug 文档状态；成功修复后至少更新为 `Fixed`，如确认问题闭环可更新为 `Closed`
+- 同步更新 `docs/bugs/README.md` 中该 bug 的状态与修复情况；如果本轮把一个 bug 拆成多个独立问题，也必须同步调整导航表
+
+验证门槛：
+- 先运行与改动直接相关的最小测试，再运行仓库规定的默认验证中与本次改动相关的部分
+- 至少确保相关测试真实通过；如果测试失败，立即停止，不得提交、不得打 tag、不得发 release
+
+重启门槛：
+- 必须把“重启服务”理解为一次完整的 release app 替换流程，而不是简单重新执行旧命令
+- 当前服务按生产服务处理，必须先完成新的 desktop release app bundle 打包，确认新包已产出且可用于启动，再停止旧的 hone 服务；绝不能先停旧服务再慢慢打包新包
+- 必须先重新打包 desktop release app bundle，使用仓库当前认可的 release app 构建方式；优先参考 `docs/runbooks/desktop-release-app-runtime.md`
+- 必须先关闭旧的 hone 相关进程，再启动新的 release app 和其对应服务，不能让新旧实例并存
+- 必须使用打包后的 `.app` 运行时作为正式启动结果；在 macOS 上，优先使用 `.app/Contents/MacOS/hone-desktop` 这一形态
+- 不要使用 `--desktop`、`tauri dev`、任何 debug / hot-reload 模式，或把裸 `target/release/hone-desktop` 当作最终合格的正式启动结果
+- 启动新实例时，必须显式固定 honeclaw 这份仓库的运行目录与配置目录，确保继续使用当前 checkout 下的 `data`、`data/runtime/config_runtime.yaml`、`data/runtime/desktop-config`、`skills`
+- 只有当新的 release app 成功启动，并且源码改动不会自动触发重启时，才算满足启动方式要求
+
+启动后检查项，全部满足才算重启成功：
+- 核心服务进程已成功启动，且没有遗留重复 hone 相关进程
+- 正在运行的桌面进程路径应指向打包后的 `.app/Contents/MacOS/hone-desktop`
+- 不存在 `tauri dev`、`bun --watch`、`cargo watch` 这类会受代码改动影响的 watch 进程
+- 运行配置正确，尤其是采用 `multi-agent` runner
+- 相关 API key 配置处于正确状态，不为空且未被错误覆盖
+- 启用的渠道进程已正常启动并处于可用状态，例如 `discord`、`feishu` 等启用渠道
+- 如果仓库提供接口或状态页，优先通过正式状态接口验证，例如渠道状态聚合接口；不要只凭日志里一行“started”就判定成功
+
+发布门槛：
+- 只有在代码修复完成、测试通过、release app 重新打包并重启成功、配置检查通过、启用渠道检查通过后，才允许进入发布步骤
+- 发布前必须补齐对应版本的 release notes 到 `docs/releases/vX.Y.Z.md`
+- 版本号必须基于当前仓库状态做一次新的递增，不要复用已有 tag
+- 完成后按顺序执行：提交代码并推送到远端、创建 tag、触发或完成 release 发布
+- 任何一个门槛失败，都不得提交、不得 push、不得打 tag、不得 release
+
+Git 规则：
+- 只允许使用普通非破坏性 Git 命令，包括 `git add`、`git commit`、`git push`、`git tag`、`git fetch`、`git pull --rebase`、`git rebase`
+- 不要强推，不要改写历史
+- 如果 push 失败，不要直接结束；先抓取远端最新 `main`，把本轮提交 rebase 到远端最新提交之后，再继续 push
+- 如果 rebase 或 push 过程中出现冲突，不要直接停止；应查看冲突文件，保留双方都成立的修改，解决冲突后继续 rebase / push
+- 解决冲突后，必须重新检查工作区、关键代码、bug 文档状态、`docs/bugs/README.md`、release notes 与版本信息，确认没有把本轮修复覆盖掉，再继续发布链路
+
+结果要求：
+- 成功时，产出完整的代码、测试、文档、bug 状态更新、导航表更新、release notes、git 提交、远端推送、tag 和 release
+- 失败时，停止在安全边界内，不做发布动作，并在结果里明确失败门槛卡在哪里
+"""
 status = "ACTIVE"
 rrule = "FREQ=WEEKLY;BYDAY=SU,MO,TU,WE,TH,FR,SA;BYHOUR=3;BYMINUTE=0"
 model = "gpt-5.4"
@@ -10,4 +78,4 @@ reasoning_effort = "high"
 execution_environment = "local"
 cwds = ["/Users/ecohnoch/Desktop/honeclaw"]
 created_at = 1776175184637
-updated_at = 1776175184637
+updated_at = 1776231730408

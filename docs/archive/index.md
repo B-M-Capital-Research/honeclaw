@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-15
 
+### Bug 台账导航页与自动化文档模式升级
+
+- Status: done
+- Date: 2026-04-15
+- Plan: N/A
+- Handoff: `docs/handoffs/2026-04-15-bug-index-and-automation-doc-mode.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `ls docs/bugs`, `sed -n '1,40p' docs/bugs/*.md`, `sed -n '1,220p' .codex/automations/bug/automation.toml`, `sed -n '1,220p' .codex/automations/bug-2/automation.toml`
+- Current conclusion: `docs/bugs/README.md` 现在作为 bug 目录导航和状态总表存在，集中展示活跃待修复、已修复/关闭和历史分析条目；`bug` 与 `bug-2` 两个 automation 都被要求在任何 bug 状态变化时同步维护这张表
+- Next entry point: `docs/bugs/README.md`
+
 ### Bug 每小时巡检自动化升级
 
 - Status: done
