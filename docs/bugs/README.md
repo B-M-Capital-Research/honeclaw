@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：10
 - 已修复 / 已关闭：7
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -31,6 +31,7 @@
 | Multi-Agent Answer Agent 在设置页允许 `maxToolCalls=0`，但运行时强制提升为至少 1，用户无法真正禁用补充工具调用 | P1 | New | 未修复；UI 与运行时的 `maxToolCalls` 语义仍不一致 | [multi_agent_answer_max_tool_calls_zero_ignored.md](./multi_agent_answer_max_tool_calls_zero_ignored.md) |
 | Multi-Agent Search Agent 在 Desktop 设置页显示可继承 auxiliary key，但真实运行时不使用该 fallback，导致看似已配置却直接失败 | P1 | New | 未修复；UI fallback 与运行时 Search Agent key 语义仍未对齐 | [multi_agent_search_key_fallback_mismatch.md](./multi_agent_search_key_fallback_mismatch.md) |
 | 定时任务链路绕过统一输出净化，向用户投递内部思考与未清洗富文本 | P1 | New | 未修复；普通会话已净化，scheduler 仍直接发送原始输出 | [scheduled_output_sanitization_gap.md](./scheduled_output_sanitization_gap.md) |
+| 定时任务达到上限后，Agent 未经用户确认就批量删除已有任务 | P1 | New | 2026-04-15 最近一小时真实会话新增；`add` 失败后同轮连续删除 8 个旧任务再重试创建 | [scheduler_task_limit_auto_cleanup_without_confirmation.md](./scheduler_task_limit_auto_cleanup_without_confirmation.md) |
 | Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-15 巡检新增；最近一小时连续 3 次被当作 `noop` 静默跳过 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 
 ## 已修复 / 已关闭
