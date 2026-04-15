@@ -7,12 +7,14 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 最近一小时同一任务持续异常：
+    - `run_id=1768`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T18:01:20.663318+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
     - `run_id=1763`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T17:00:25.067028+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
     - `run_id=1760`，`executed_at=2026-04-15T16:30:23.531089+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
     - `run_id=1756`，`executed_at=2026-04-15T16:03:37.828145+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
   - 最近一小时运行日志：`data/runtime/logs/web.log`
     - `2026-04-15 16:03:37.827` `parse_kind=JsonUnknownStatus`
     - `2026-04-15 17:00:25.066` `parse_kind=JsonUnknownStatus`
+    - `2026-04-15 18:01:20.663` `parse_kind=JsonUnknownStatus`
   - 对比同一小时其他 heartbeat 任务：
     - `j_38745baf`、`j_654aef9b` 在 `16:03` 与 `17:00` 同时段均为 `noop / skipped_noop`
   - 24 小时聚合：
@@ -36,7 +38,7 @@
 
 ## 当前实现效果
 
-- 最近一小时内，`Monitor_Watchlist_11` 仍连续运行并持续落到 `noop / skipped_noop`，说明该缺陷不是早前单次波动，而是当前仍在复现。
+- 最近一小时内，`Monitor_Watchlist_11` 在 `17:00` 与 `18:01` 两轮再次落到 `noop / skipped_noop`，说明该缺陷不是早前单次波动，而是当前仍在复现。
 - `web.log` 在最近一小时仍直接记录 `parse_kind=JsonUnknownStatus`，证明解析异常没有消失，只是继续被静默吞到 `noop` 分支。
 - 同一时间窗内其他 heartbeat 任务没有出现相同行为，说明问题不是“heartbeat 全局都无结果”，而是该链路的输出契约或解析兼容性异常。
 - 数据库没有保存可供人工直接复核的最终文本预览，导致一旦进入 `JsonUnknownStatus`，排障信息同时丢失。
