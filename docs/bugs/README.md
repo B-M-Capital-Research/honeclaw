@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 02:22 CST
+最后更新：2026-04-16 06:14 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -39,7 +39,7 @@
 | Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无回复 | P1 | New | 2026-04-15 22:45 最近一小时新增；搜索阶段已完成工具调用，但 `22:49` 触发 `opencode acp session/prompt idle timeout (180s)` 后既未落库 assistant，也未发送最终回复 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | Feishu 定时任务在 Answer 阶段返回空回复后，调度台账仍记为 `completed + sent` | P1 | New | 2026-04-15 20:46-20:50 最近一小时新增；两条 Feishu scheduler run 都是空回复，但 `cron_job_runs` 仍记 `completed + sent + delivered=1` | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | New | 2026-04-15 21:04 与 21:35 最近一小时仍复现；两个 direct scheduler job 都因 `target_resolution_failed` 被拦截，`delivered=0` | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
-| 渠道失败分支会把原始 LLM/provider 报错直接发给用户 | P1 | New | 2026-04-16 00:05-00:07 最近一小时再次复现；Feishu 连续把 `bad_request_error` 和 `tool call result does not follow tool call` 这类底层报错暴露给用户 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
+| 渠道失败分支会把原始 LLM/provider 报错直接发给用户 | P1 | New | 2026-04-16 00:05-00:07 复现后，`01:10` 同会话又连续两次把 `bad_request_error` / `tool call result does not follow tool call` 透出到失败链路 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 成功会话仍把原始 multi-agent transcript 落库到 assistant 历史，污染后续上下文 | P2 | New | 2026-04-16 01:09 最近一小时新增；Feishu 成功回复的 MU 会话已发送净化答案，但 `session_messages` 与 `last_message_preview` 仍保存 `<think>/tool_call/tool_result/final` 混合 transcript | [session_persist_assistant_transcript_pollution.md](./session_persist_assistant_transcript_pollution.md) |
 | Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-16 01:31 最近一小时仍在复现；`Monitor_Watchlist_11` 在 `01:01` 与 `01:31` 继续于 `JsonNoop/JsonUnknownStatus` 间漂移并被静默吞掉 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Discord 定时任务在 Answer 阶段返回空回复时被记为成功执行，但最终未向用户送达 | P2 | New | 2026-04-15 最近一小时新增；`reply_chars=0` 但 run 仍记为 `completed`，最终 `send_failed` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
