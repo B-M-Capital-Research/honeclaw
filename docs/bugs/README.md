@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-15 22:02 CST
+最后更新：2026-04-15 23:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：17
+- 活跃待修复：18
 - 已修复 / 已关闭：7
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -35,6 +35,7 @@
 | 定时任务链路绕过统一输出净化，向用户投递内部思考与未清洗富文本 | P1 | New | 未修复；普通会话已净化，scheduler 仍直接发送原始输出 | [scheduled_output_sanitization_gap.md](./scheduled_output_sanitization_gap.md) |
 | 定时任务达到上限后，Agent 未经用户确认就批量删除已有任务 | P1 | New | 2026-04-15 最近一小时真实会话新增；`add` 失败后同轮连续删除 8 个旧任务再重试创建 | [scheduler_task_limit_auto_cleanup_without_confirmation.md](./scheduler_task_limit_auto_cleanup_without_confirmation.md) |
 | Feishu 直聊会话在 Multi-Agent Answer 阶段返回空回复后，链路仍记成功并发送空消息 | P1 | New | 2026-04-15 17:49 首次建档后，21:34 与 21:52 最近一小时又复现两次；`reply_chars=0` 后仍 `success=true` 并持久化空 assistant 消息 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无回复 | P1 | New | 2026-04-15 22:45 最近一小时新增；搜索阶段已完成工具调用，但 `22:49` 触发 `opencode acp session/prompt idle timeout (180s)` 后既未落库 assistant，也未发送最终回复 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | Feishu 定时任务在 Answer 阶段返回空回复后，调度台账仍记为 `completed + sent` | P1 | New | 2026-04-15 20:46-20:50 最近一小时新增；两条 Feishu scheduler run 都是空回复，但 `cron_job_runs` 仍记 `completed + sent + delivered=1` | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | New | 2026-04-15 21:04 与 21:35 最近一小时仍复现；两个 direct scheduler job 都因 `target_resolution_failed` 被拦截，`delivered=0` | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | 渠道失败分支会把原始 LLM/provider 报错直接发给用户 | P1 | New | 2026-04-15 20:58 最近真实会话新增；Feishu 失败提示直接包含 `bad_request_error`、`invalid function arguments json string` 和 `tool_call_id` | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
