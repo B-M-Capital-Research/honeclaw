@@ -1,0 +1,52 @@
+# Bug: Multi-Agent Search Agent 在 Desktop 设置页显示可继承 auxiliary key，但真实运行时不使用该 fallback，导致看似已配置却直接失败
+
+- **发现时间**: 2026-04-15
+- **Bug Type**: System Error
+- **严重等级**: P1
+- **状态**: New
+- **证据来源**:
+  - 2026-04-15 当前源码复核
+  - 代码证据:
+    - `bins/hone-desktop/src/sidecar/settings.rs:4-25`
+    - `packages/app/src/pages/settings.tsx:430-478`
+    - `crates/hone-channels/src/runners/multi_agent.rs:54-67`
+    - `crates/hone-channels/src/core.rs:1047-1050`
+
+## 端到端链路
+
+1. Desktop 设置页会把 Multi-Agent Search Agent 的配置展示给用户，其中 `search.apiKey` 在 UI seed 阶段允许从 `llm.auxiliary.api_key` 回填。
+2. 因此对某些用户来说，即使 `agent.multi_agent.search.api_key` 为空，设置页里仍可能显示出一个“已经有值”的 Search Agent key，或者测试链路看起来可以继续操作。
+3. 但真实运行 multi-agent 时，`HoneBotCore::create_runner()` 会把原始 `self.config.agent.multi_agent.search.clone()` 直接传给 `MultiAgentRunner`。
+4. `MultiAgentRunner::build_search_provider()` 只检查 `search_config.api_key` 本身；如果这个字段为空，就直接返回 `multi-agent search agent API key 为空`。
+5. 结果是：Desktop 设置页的“Search Agent 似乎已配置好”和运行时的“Search Agent 直接报空 key”会出现明显割裂。
+
+## 期望效果
+
+- Multi-Agent Search Agent 的 UI 展示、测试入口和真实运行时应该共享同一套 key fallback 语义。
+- 如果产品希望 Search Agent 能继承 `llm.auxiliary.api_key`，运行时也必须真正使用这个 fallback。
+- 如果产品不希望继承，那么设置页就不应显示或暗示 Search Agent 已经具备该 key。
+
+## 当前实现效果（问题发现时）
+
+- `seed_multi_agent_settings()` 在 `bins/hone-desktop/src/sidecar/settings.rs:11-14` 中，当 `agent.multi_agent.search.api_key` 为空时，会回填 `config.llm.auxiliary.api_key` 到 Desktop 设置页草稿。
+- 设置页 Search Agent 区块直接绑定这个草稿值，见 `packages/app/src/pages/settings.tsx:430-478`。
+- 但运行时创建 multi-agent runner 时，在 `crates/hone-channels/src/core.rs:1047-1050` 传入的是原始 `self.config.agent.multi_agent.search.clone()`，没有把 UI seed fallback 合并回真实配置。
+- `MultiAgentRunner::build_search_provider()` 在 `crates/hone-channels/src/runners/multi_agent.rs:54-67` 中只接受 `search_config.api_key`，为空就直接失败。
+
+## 用户影响
+
+- 用户会看到非常误导的状态：设置页里 Search Agent 看起来有 key，但真正执行 multi-agent 时会首轮就失败。
+- 这种失败发生在 multi-agent 搜索阶段入口，用户只会感知到“multi-agent 特别不稳定 / 特别难配”，体验明显差于其它 runner。
+- 排障时如果只看设置页，很容易误判为 provider 抖动，而不是 fallback 语义前后不一致。
+
+## 根因判断
+
+- Desktop 设置页的 seed 逻辑引入了 `auxiliary -> multi-agent.search` 的 UI fallback。
+- 运行时 `create_runner()` 和 `MultiAgentRunner` 并没有遵循同一套 fallback 规则，而是严格读取原始 `agent.multi_agent.search.api_key`。
+- 这导致“展示层”和“执行层”对 Search Agent 是否已配置给出相互矛盾的答案。
+
+## 下一步建议
+
+- 明确 Search Agent key 的唯一真相源：要么运行时也支持 `llm.auxiliary.api_key` fallback，要么设置页停止回填这类继承值。
+- 修复前可补一条最小回归：当 `agent.multi_agent.search.api_key` 为空且 `llm.auxiliary.api_key` 非空时，UI 展示与实际运行结果必须一致，不能一边显示可用、一边运行报空 key。
+- multi-agent 排障时，应单独核对 `agent.multi_agent.search.api_key` 的实际落盘值，而不能只看 Desktop 设置页展示值。
