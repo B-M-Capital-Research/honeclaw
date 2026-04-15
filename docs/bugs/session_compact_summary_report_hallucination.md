@@ -1,15 +1,20 @@
 # Bug: 会话压缩摘要幻觉生成“用户报告”并回灌正式回答
 
 - **发现时间**: 2026-04-15
-- **Bug Type**: Context Corruption / Answer Quality
+- **Bug Type**: System Error
 - **严重等级**: P1
 - **状态**: New
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
-  - Prompt audit: `data/runtime/prompt-audit/feishu/20260415-171407-Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb.json`
-  - LLM audit: `data/llm_audit.sqlite3`
-  - 运行日志: `data/runtime/logs/web.log`
+- Prompt audit: `data/runtime/prompt-audit/feishu/20260415-171407-Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb.json`
+- LLM audit: `data/llm_audit.sqlite3`
+- 运行日志: `data/runtime/logs/web.log`
+ - 2026-04-16 最近一小时再次复现：
+   - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
+   - `2026-04-16 01:07:39.381` 会话自动 compact，并写回 `role=user` 的 `【Compact Summary】...`
+   - 同条 summary 直接伪造了“根据截图内容，一鸣的持仓情况如下”表格，包含 `RKLB 500股 / 成本$68.50`、`SNDK 200股 / 成本$245.00 / 当前价$887.00` 等未验证字段
+   - `2026-04-16T01:10:01.999236+08:00` assistant 后续正式回复继续引用该伪摘要中的两只持仓，称“根据compact summary，看起来之前已经有部分分析结果了”
 
 ## 端到端链路
 
@@ -49,6 +54,21 @@
   - 同轮日志显示搜索阶段 `tool_calls=0`，但 answer 阶段仍额外执行了 `hone_data_fetch`，说明它是在被 compact summary 污染后的上下文里继续补证，而不是纠正 compact summary 的语义
 - 最近一小时这次复现和 17:14 那次事故虽然会话不同，但症状完全一致：新问题进入压缩窗口后，被系统以 `role=user` 的“摘要”形式提前回答，随后正式回答把它当成可信上下文继续展开。
 
+## 当前实现效果（2026-04-16 01:07-01:10 最近一小时复核）
+
+- 同一缺陷在图片附件会话里继续以另一种题材复现，说明问题已经不限于 RKLB 投研问答，而是会把“最后一个未回答任务”直接改写成伪造 summary：
+  - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
+  - `2026-04-16 01:07:39.381291+08:00` 系统写入 `Conversation compacted`
+  - 紧接着 `2026-04-16 01:07:39.381312+08:00` 写回 `role=user` 的 `【Compact Summary】...`
+- 这次 `Compact Summary` 没有总结旧历史，而是直接替用户“完成”了尚未成功的图片识别任务，伪造出一张持仓表：
+  - `RKLB | 500股 | 成本$68.50 | 当前价$72.00`
+  - `SNDK | 200股 | 成本$245.00 | 当前价$887.00`
+  - 还附带“已记录一鸣的持仓信息”“持仓分析建议”等结论性文本
+- 随后的 assistant 持续把这段伪 summary 当成可信前情：
+  - `2026-04-16T01:10:01.999236+08:00` assistant 落库内容明确写出：`根据compact summary，看起来之前已经有部分分析结果了：- RKLB: 500股，成本$68.50 - SNDK: 200股，成本$245.00`
+  - 最终回复继续要求用户基于这两只股票补录其它持仓，证明 compact summary 已经污染本轮“识别四张截图”的主任务链路
+- 这次复现和前两次事故共享同一根因：系统不是在概括旧上下文，而是在 `role=user` 的 summary 中提前作答，并把伪结论回灌给正式回答阶段。
+
 ## 已确认事实
 
 - 本次事故里没有用户上传的 PDF / 图片 / 附件报告。
@@ -65,7 +85,7 @@
 ## 用户影响
 
 - 用户会被误导为“系统看到了一个我上传过的报告”，从而破坏对回答可信度的判断。
-- 正式回答会把压缩幻觉当成事实背景继续扩散，导致二次污染。
+- 正式回答会把压缩幻觉当成事实背景继续扩散，导致二次污染；最近一小时的图片会话里，这种污染已经从“伪造投研报告”扩展到“伪造持仓识别结果”。
 - 在金融分析场景里，这类伪上下文会直接引入错误估值、错误时间线和错误事件判断，属于高风险质量故障。
 - 之所以不是 `P3`，是因为问题并不只是“回答写得不够好”，而是系统内部压缩产物污染了真实会话上下文，后续工具调用与正式结论都会围绕伪上下文继续执行，已经影响主回答链路的正确性。
 
@@ -75,7 +95,7 @@
 2. 压缩结果被存成 `role=user` 消息，语义上过于像用户自己提供的材料。
 3. 回答链路没有对 `session.compact_summary` 做足够强的隔离或降权，导致 multi-agent search / answer 会把它理解成原始用户请求的一部分。
 4. 压缩提示词只要求“总结历史”，但没有显式禁止“回答最后一个问题”或“生成新的投研报告”。
-5. 最近一小时的第二次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段。
+5. 最近两次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段，而且污染题材会随当前最后一个用户任务漂移。
 
 ## 建议修复方向
 

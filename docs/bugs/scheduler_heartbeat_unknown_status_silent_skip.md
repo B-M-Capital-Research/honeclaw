@@ -7,27 +7,15 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 最近一小时同一任务持续异常：
-    - `run_id=1791`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T21:00:21.180858+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1787`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T20:31:18.498979+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1781`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T20:01:20.407445+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1778`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T19:31:21.645768+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1775`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T19:01:17.700484+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1772`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T18:31:18.669982+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1768`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T18:01:20.663318+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1763`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T17:00:25.067028+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1760`，`executed_at=2026-04-15T16:30:23.531089+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
-    - `run_id=1756`，`executed_at=2026-04-15T16:03:37.828145+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
+    - `run_id=1830`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-16T01:31:19.951360+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=1826`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-16T01:01:16.497607+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonNoop`
+    - `run_id=1822`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-16T00:30:20.409961+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonNoop`
+    - 往前回溯同一任务仍可见连续多次 `JsonUnknownStatus`：`run_id=1813 (23:00)`、`1806 (22:00)`、`1791 (21:00)`、`1787 (20:31)`、`1781 (20:01)`
   - 最近一小时运行日志：`data/runtime/logs/web.log`
-    - `2026-04-15 21:00:21.177` `parse_kind=JsonUnknownStatus`
-    - `2026-04-15 20:31:18.498` `parse_kind=JsonUnknownStatus`
-    - `2026-04-15 20:01:20.403` `parse_kind=JsonUnknownStatus`
-    - `2026-04-15 19:31:07.973` `job_id=j_38745baf` `job=全天原油价格3小时播报` `parse_kind=JsonUnknownStatus`
-    - `2026-04-15 19:31:21.645` `parse_kind=JsonNoop`
-    - `2026-04-15 19:01:17.699` `parse_kind=JsonUnknownStatus`
-    - `2026-04-15 18:31:18.669` `parse_kind=JsonUnknownStatus`
-    - `2026-04-15 18:01:20.663` `parse_kind=JsonUnknownStatus`
-    - `2026-04-15 16:03:37.827` `parse_kind=JsonUnknownStatus`
-    - `2026-04-15 17:00:25.066` `parse_kind=JsonUnknownStatus`
+    - `2026-04-16 01:31:19.950` `job_id=j_ab7e8fb1` `parse_kind=JsonUnknownStatus`
+    - `2026-04-16 01:31:19.950` 同轮 `raw_preview` 直接列出 11 只股票的“当前价格 vs 触发价”，但仍未返回合法状态 JSON
+    - `2026-04-16 01:01:16.495` 同一任务短暂回到 `parse_kind=JsonNoop`
+    - `2026-04-15 23:00:21.521`、`22:00:27.112`、`21:00:21.177` 连续历史窗口仍反复落回 `JsonUnknownStatus`
   - 对比同一小时其他 heartbeat 任务：
     - `j_654aef9b` 在 `19:31`、`20:01` 同时段仍为 `JsonNoop -> noop / skipped_noop`
     - `j_38745baf` 在 `19:31` 也短暂出现 `JsonUnknownStatus`，但 `20:01` 又恢复为 `JsonNoop`
@@ -52,9 +40,9 @@
 
 ## 当前实现效果
 
-- 最近一小时内，`Monitor_Watchlist_11` 在 `20:01`、`20:31`、`21:00` 三个窗口持续落到 `noop / skipped_noop`，说明该缺陷仍在当前轮次稳定复现，而不是已经消失。
-- `web.log` 在 `20:01:20.403`、`20:31:18.498` 与 `21:00:21.177` 连续记录 `parse_kind=JsonUnknownStatus`，证明解析异常没有消失，只是继续被静默吞到 `noop` 分支。
-- 同一时间窗内 `j_38745baf`（`全天原油价格3小时播报`）也在 `19:31:07.973` 短暂落到 `JsonUnknownStatus`，说明问题已不再局限于单一 watchlist 任务，而是 heartbeat 输出契约本身存在抖动。
+- 最近一小时内，`Monitor_Watchlist_11` 在 `01:01` 与 `01:31` 两个窗口仍然来回漂移于 `JsonNoop` 与 `JsonUnknownStatus`，说明该缺陷仍在当前轮次持续存在，而不是已经消失。
+- `web.log` 在 `2026-04-16 01:31:19.950` 明确记录 `parse_kind=JsonUnknownStatus`；同一轮 `raw_preview` 已经枚举 11 只股票的实时价格和触发价，但因为没有落成合法状态 JSON，最终仍被当成 `noop / skipped_noop` 静默吞掉。
+- 这也说明问题不只是“偶发返回乱码”，而是模型已经完成了业务判断，却在最后结构化封装一步失配，监控链路因此丢失了本该可追踪的判定结果。
 - 数据库没有保存可供人工直接复核的最终文本预览，导致一旦进入 `JsonUnknownStatus`，排障信息同时丢失。
 
 ## 用户影响
@@ -66,7 +54,7 @@
 ## 根因判断
 
 - heartbeat 输出协议对模型返回格式过于脆弱，出现非标准 JSON 或状态枚举漂移时，会落入 `JsonUnknownStatus`。
-- 最近一小时同一模型在相邻轮次间会在 `JsonNoop` 与 `JsonUnknownStatus` 之间来回抖动，说明除了单个任务 prompt 外，解析器对“带解释文本的 noop 结果”也缺少足够稳健的兼容。
+- 最近一小时同一任务在相邻轮次间会在 `JsonNoop` 与 `JsonUnknownStatus` 之间来回抖动，说明除了单个任务 prompt 外，解析器对“先给分析过程、最后未严格收口到状态 JSON”的输出也缺少足够稳健的兼容或强制约束。
 - 调度器把“无法识别状态”错误地归并进 `noop` 路径，造成功能性失败被静默吞掉。
 - 现有落库字段只保留 `parse_kind` 与字符数，没有把原始响应片段保留下来，进一步放大了排障盲区。
 

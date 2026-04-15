@@ -16,13 +16,17 @@
     - `2026-04-16 00:05:55.267` 同会话随即出现 `multi_agent.search.done success=false`
     - `2026-04-16 00:05:55.268` 错误为 `bad_request_error: invalid params, tool call result does not follow tool call (2013)`
     - `2026-04-16 00:05:57.918`、`00:06:00.133`、`00:06:48.002`、`00:07:21.540`、`00:07:25.806` 同一会话连续重复相同失败
-  - 相关代码位置：
+- 相关代码位置：
     - `crates/hone-channels/src/outbound.rs:151-160`
     - `crates/hone-channels/src/agent_session.rs:1466-1531`
     - `crates/hone-channels/src/runners/opencode_acp.rs:511-516`
   - 相关历史缺陷：
     - `docs/bugs/multi_agent_internal_output_leak.md`
     - `docs/bugs/channel_raw_llm_error_exposure.md`
+  - 2026-04-16 最近一小时同会话再次复现：
+    - `2026-04-16T01:07:39.381312+08:00` 会话先被 compact，并写回伪造持仓表的 `【Compact Summary】...`
+    - `2026-04-16T01:10:01.999236+08:00` assistant 落库内容再次不是纯文本答案，而是整段 `progress` / `tool_call` / `tool_result` / `final` 混合 transcript
+    - transcript 内继续外泄 `<think>`、`skill_tool(image_understanding)` 调用参数、`attachments.manifest.json` 内容、sandbox 相对/绝对路径，以及“系统只支持文本文件读取”之类内部工具错误
 
 ## 端到端链路
 
@@ -45,11 +49,26 @@
 - 同一时间窗内，用户补充“帮我记录四个截图里的持仓情况”后，链路连续 5 次失败，没有产出新的正常回答。
 - 这说明问题不只是“格式不够好”，而是用户可见输出边界失守，并且后续主任务也被打断。
 
+## 当前实现效果（2026-04-16 01:07-01:10 最近一小时复核）
+
+- 同一 `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15` 在最近一小时再次把附件链路的内部 transcript 落成 assistant 正文，而不是仅保留最终答案。
+- `2026-04-16T01:10:01.999236+08:00` 的 assistant 内容仍由多段结构混合组成：
+  - `progress`：直接包含 `<think>` 和“根据compact summary看起来之前已经有部分分析结果了”
+  - `tool_call` / `tool_result`：暴露 `skill_tool(image_understanding)`、`local_read_file`、`local_list_files` 的调用细节
+  - `tool_result`：直接展开 `attachments.manifest.json` 内容，携带 `session_id`、`user_id`、`local_path`
+  - `final`：最终又回退成“请你手工告诉我4只股票”的补救话术
+- 这次复现比 `00:05` 更进一步，说明泄露内容已经不只停留在 skill prompt，而是把整个“读取图片失败 -> 枚举 uploads -> 读取 manifest -> 暴露路径 -> 求用户手填”的内部排障过程都落进了 assistant transcript。
+- 同一会话日志同时显示：
+  - `2026-04-16 01:10:01.994` `stop_reason=end_turn success=true reply_chars=824`
+  - `2026-04-16 01:10:02.000` `step=session.persist_assistant ... detail=done`
+  - `2026-04-16 01:10:02.000` `done ... reply.chars=316`
+- 也就是说，链路表面上把这轮当成“成功回答”，但落库 assistant 仍是未清洗的 transcript，问题并未随着前一轮报错而消失。
+
 ## 用户影响
 
 - 这是功能性缺陷，不是单纯表达质量问题。用户看到了系统内部协议与技能中间稿，同时未能完成“记录持仓截图”的实际任务。
 - 问题发生在 Feishu 直聊主链路，并且涉及用户上传的图片与本地路径、工具参数、技能内部说明等敏感实现细节，因此定级为 `P1`。
-- 之所以不是 `P3`，是因为它已经影响到主功能链路完成度、错误边界和内部实现暴露，而不是仅仅“答案不够好”。
+- 之所以不是 `P3`，是因为它已经影响到主功能链路完成度、错误边界和内部实现暴露，而不是仅仅“答案不够好”；最近一小时这轮还把带路径和 manifest 的排障过程整体写进了 assistant transcript。
 
 ## 根因判断
 
