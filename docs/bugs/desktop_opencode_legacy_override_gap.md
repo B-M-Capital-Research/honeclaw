@@ -7,6 +7,7 @@
 - **证据来源**:
   - 最近提交: `dfd8a01 fix: restore desktop canonical agent config migration`
   - 最近提交: `e802582 fix: migrate desktop legacy runtime user settings`
+  - 2026-04-15 当前源码复核: `crates/hone-core/src/config.rs:680-685` 仍以 `agent.opencode.api_key` 是否为空为门槛，并在命中时整块回填 legacy `agent.opencode`
   - 代码证据:
     - `crates/hone-core/src/config.rs:680-685`
     - `docs/invariants.md:90-92`
@@ -39,6 +40,12 @@
 - 对依赖本机 OpenCode 默认登录态的用户来说，legacy 里的旧 `api_key` 被重新写回后，`opencode_acp` 可能不再继承本机配置，而是改走过期或错误的 Hone 覆盖配置，直接导致回答失败或跑错模型。
 - 这是典型的“升级后表面能启动、但默认对话链路行为被静默改坏”的问题，用户很难从 UI 直接看出根因。
 
+## 当前实现效果（2026-04-15 复核）
+
+- 当前 HEAD 仍在 `string_path_is_blank(&canonical, "agent.opencode.api_key")` 命中后直接执行 `set_value_at_path(&mut canonical, "agent.opencode", legacy_opencode.clone())`。
+- 也就是说，只要 canonical 侧故意把 `api_key` 留空以继承本机 OpenCode，迁移代码仍会把 legacy 整个 `agent.opencode` 节点写回，问题尚未被最近提交覆盖。
+- 本轮巡检未发现对应修复提交，因此该缺陷继续保持 `New`。
+
 ## 根因判断
 
 - legacy 补迁逻辑把 `agent.opencode` 当成“只要 key 为空就整体未配置”，但当前产品契约已经不是这样：`api_key` 为空本身就是一种有效配置，表示继承本机 OpenCode。
@@ -49,4 +56,4 @@
 
 - 把 `agent.opencode` 的 legacy 迁移改成字段级 merge，而不是整块覆盖；至少要区分“字段缺失”与“显式留空表示继承本机 OpenCode”。
 - 增加一条回归测试：canonical 预设 `agent.opencode.model` / `variant`，`api_key` 为空，legacy 含旧 `agent.opencode` 时，迁移后 canonical 不应被整块覆盖。
-- 当前 bug 台账先以 `New` 登记，等待人工确认并转入 `Apprived` / `Fixing` / `Fixed` / `Closed`。
+- 当前 bug 台账先以 `New` 登记，等待人工确认并转入 `Approved` / `Fixing` / `Fixed` / `Closed`。

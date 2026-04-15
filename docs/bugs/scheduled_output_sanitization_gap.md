@@ -7,6 +7,10 @@
 - **证据来源**:
   - 最近提交: `ee342b3 feat(channels): harden company memory and rich text delivery`
   - 相关修复提交: `12a5352 fix: sanitize leaked internal agent output`
+  - 2026-04-15 当前源码复核:
+    - `bins/hone-telegram/src/scheduler.rs:96-100` 仍直接对原始 `response` 调用 `split_html_segments(...)`
+    - `bins/hone-discord/src/scheduler.rs:113-114` 仍直接对原始 `response` 调用 `split_into_segments(...)`
+    - `bins/hone-feishu/src/scheduler.rs:160-168` 仍直接把原始 `response` 交给 `send_rendered_messages(...)`
   - 代码证据:
     - `bins/hone-telegram/src/listener.rs:40-46`
     - `bins/hone-telegram/src/scheduler.rs:62-102`
@@ -41,6 +45,13 @@
 - 用户可能在定时提醒里直接看到内部思考、工具协议、半成品富文本，收到的不是产品化后的提醒消息。
 - Telegram 场景下更容易出现格式降级或发送失败，因为 scheduler 路径没有先把 Markdown-ish 输出归一化成 Telegram 支持的 HTML。
 - 对 heartbeat / 条件提醒这类“自动发出、用户没有上下文纠错机会”的链路来说，异常可感知度高，且会直接损害可信度。
+
+## 当前实现效果（2026-04-15 复核）
+
+- Telegram scheduler 仍然从原始 `response` 直接切分 HTML 分片，没有先执行 `render_think_blocks(..., ThinkRenderStyle::Hidden)` 或 `sanitize_telegram_html_public(...)`。
+- Discord scheduler 仍然直接按原始 `response` 分段发送，没有复用普通会话隐藏 think 的出站净化。
+- Feishu scheduler 仍然把原始 `response` 直接交给 `send_rendered_messages(...)`，入口层没有补上一致的最终可见文本构造。
+- 本轮巡检未发现覆盖这三条 scheduler 出站路径的修复提交，因此该缺陷继续保持 `New`。
 
 ## 根因判断
 
