@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：10
+- 活跃待修复：11
 - 已修复 / 已关闭：7
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -23,6 +23,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | New | 未修复；2026-04-15 日志显示 backend 曾漂移到 `56044`，Desktop 仍持续探测 `8077` | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
 | Desktop legacy runtime 会整块覆盖 canonical `agent.opencode` 配置，破坏本机 OpenCode 继承语义 | P1 | New | 未修复；2026-04-15 HEAD 复核仍存在整块覆盖 | [desktop_opencode_legacy_override_gap.md](./desktop_opencode_legacy_override_gap.md) |
 | Desktop Agent 设置会把 `multi-agent.answer` 反写到 `agent.opencode`，导致不同 runner 的独立配置互相覆盖 | P1 | New | 未修复；设置页两块配置仍共用同一落盘字段 | [desktop_runner_settings_cross_runner_overwrite.md](./desktop_runner_settings_cross_runner_overwrite.md) |
 | Desktop 设置页多入口保存共用同一份配置文件但缺少串行写保护，可能造成 runner 配置被并发保存静默覆盖 | P1 | New | 未修复；配置写入链路仍缺少共享串行锁 | [desktop_runner_settings_write_race.md](./desktop_runner_settings_write_race.md) |
