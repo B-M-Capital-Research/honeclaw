@@ -7,6 +7,8 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 最近一小时同一任务持续异常：
+    - `run_id=1791`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T21:00:21.180858+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
+    - `run_id=1787`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T20:31:18.498979+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
     - `run_id=1781`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T20:01:20.407445+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
     - `run_id=1778`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T19:31:21.645768+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
     - `run_id=1775`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-15T19:01:17.700484+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
@@ -16,6 +18,8 @@
     - `run_id=1760`，`executed_at=2026-04-15T16:30:23.531089+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
     - `run_id=1756`，`executed_at=2026-04-15T16:03:37.828145+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`
   - 最近一小时运行日志：`data/runtime/logs/web.log`
+    - `2026-04-15 21:00:21.177` `parse_kind=JsonUnknownStatus`
+    - `2026-04-15 20:31:18.498` `parse_kind=JsonUnknownStatus`
     - `2026-04-15 20:01:20.403` `parse_kind=JsonUnknownStatus`
     - `2026-04-15 19:31:07.973` `job_id=j_38745baf` `job=全天原油价格3小时播报` `parse_kind=JsonUnknownStatus`
     - `2026-04-15 19:31:21.645` `parse_kind=JsonNoop`
@@ -48,8 +52,8 @@
 
 ## 当前实现效果
 
-- 最近一小时内，`Monitor_Watchlist_11` 在 `19:01`、`20:01` 两轮连续落到 `noop / skipped_noop`，中间 `19:31` 虽短暂恢复为 `JsonNoop`，但前后两个窗口都再次复现，说明该缺陷仍是当前活跃问题，而不是已经消失。
-- `web.log` 在 `19:01:17.699` 与 `20:01:20.403` 仍直接记录 `parse_kind=JsonUnknownStatus`，证明解析异常没有消失，只是继续被静默吞到 `noop` 分支。
+- 最近一小时内，`Monitor_Watchlist_11` 在 `20:01`、`20:31`、`21:00` 三个窗口持续落到 `noop / skipped_noop`，说明该缺陷仍在当前轮次稳定复现，而不是已经消失。
+- `web.log` 在 `20:01:20.403`、`20:31:18.498` 与 `21:00:21.177` 连续记录 `parse_kind=JsonUnknownStatus`，证明解析异常没有消失，只是继续被静默吞到 `noop` 分支。
 - 同一时间窗内 `j_38745baf`（`全天原油价格3小时播报`）也在 `19:31:07.973` 短暂落到 `JsonUnknownStatus`，说明问题已不再局限于单一 watchlist 任务，而是 heartbeat 输出契约本身存在抖动。
 - 数据库没有保存可供人工直接复核的最终文本预览，导致一旦进入 `JsonUnknownStatus`，排障信息同时丢失。
 
