@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: Business Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - 2026-04-15 当前源码复核
   - 代码证据:
@@ -35,7 +35,24 @@
 
 - 当前 `HEAD` 仍在 `packages/app/src/pages/settings.tsx:550-557` 允许用户输入 `0` 并把它保存进草稿。
 - 运行时仍在 `crates/hone-channels/src/core.rs:1052` 使用 `max_tool_calls.max(1)`，没有尊重 `0` 的配置值。
-- 本轮巡检未发现收紧前端最小值或放宽运行时语义的修复，因此该缺陷继续保持 `New`。
+- 本轮巡检时尚未发现收紧前端最小值或放宽运行时语义的修复；随后在同日自动修复轮次中完成了下面记录的本地代码修复。
+
+## 修复进展（2026-04-15 本地修复）
+
+- `crates/hone-channels/src/core.rs` 已去掉 multi-agent answer `max_tool_calls` 的 `.max(1)` 强制提升，运行时现在会原样保留 `0`。
+- `crates/hone-channels/src/runners/multi_agent.rs` 的 answer-stage handoff 文本不再把“最多一次补充工具调用”写死，而是和配置值保持一致；`0` 会明确传达为 `at most 0 supplemental tool call(s)`。
+- 已补两条自动化回归：
+  - `cargo test -p hone-channels handoff_text_respects_zero_supplemental_tool_limit -- --nocapture`
+  - `cargo test -p hone-channels multi_agent_answer_zero_tool_limit_is_preserved -- --nocapture`
+- 已补相关面验证：
+  - `cargo test -p hone-channels multi_agent -- --nocapture`
+  - `cargo check -p hone-channels`
+  - `cargo fmt --all --check`
+- 当前缺口不在代码语义，而在发布门槛：desktop release `.app` 已重新产出到 `/Users/ecohnoch/Desktop/honeclaw/target/release/bundle/macos/Hone Financial.app`，但运行态检查发现：
+  - `data/runtime/config_runtime.yaml` 与 `data/runtime/effective-config.yaml` 的 `agent.runner` 仍是 `codex_cli`，不满足本轮要求的 `multi-agent`
+  - 现网 `desktop-config/backend.json` 仍是 `remote -> http://127.0.0.1:8077`
+  - 旧 runtime 侧 `hone-console-page` 虽仍占用 `8077`，但 `curl http://127.0.0.1:8077/api/meta` / `/api/channels` 无法连通
+- 因此本轮先把缺陷状态推进到 `Fixing`：源码与测试已修，尚未满足 release / restart / publish 门槛，不能标记为 `Fixed` / `Closed`。
 
 ## 用户影响
 
@@ -51,6 +68,8 @@
 
 ## 下一步建议
 
-- 决定唯一语义：要么运行时尊重 `0`，要么前端禁止输入 `0` 并明确文案说明最小值是 `1`。
-- 修复前应补一条回归：当用户保存 `max_tool_calls=0` 时，最终 answer 阶段不得再发生补充工具调用，或 UI 必须明确拒绝该配置。
-- multi-agent 相关体验排查里，像这类“表单允许但运行时 silently 改写”的设置项值得继续系统清点一遍。
+- 先收口 desktop release 运行门槛，再继续这条 bug 的真正发布闭环：
+  - 让本次正式启动所用的 runtime config 明确切回 `multi-agent`
+  - 修复或重建 `127.0.0.1:8077` 的 remote backend 健康状态，确保 `/api/meta` 与 `/api/channels` 可连通
+  - 在新 `.app` 成功接管后，再执行 commit / push / tag / release
+- 如果后续确认产品语义本来就允许 `0`，建议再补一条更贴近真实执行链路的回归，验证 answer 阶段在 `max_tool_calls=0` 下不会发起任何 MCP tool call。

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-15 23:12 CST
+最后更新：2026-04-16 00:41 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -29,9 +29,9 @@
 | Desktop 设置页多入口保存共用同一份配置文件但缺少串行写保护，可能造成 runner 配置被并发保存静默覆盖 | P1 | New | 未修复；配置写入链路仍缺少共享串行锁 | [desktop_runner_settings_write_race.md](./desktop_runner_settings_write_race.md) |
 | Desktop 设置页切换 runner 后可能显示已切换，但 bundled runtime 重启失败会被静默吞掉，实际仍跑旧 runner 或未完成切换 | P1 | New | 未修复；runner 切换仍可能出现“UI 成功、runtime 未生效” | [desktop_runner_switch_false_success_gap.md](./desktop_runner_switch_false_success_gap.md) |
 | Desktop 设置页重复点击 runner 会触发重入保存与 bundled backend 重启，导致切换过程卡死或表现为“点一下就崩” | P1 | New | 未修复；重复点击仍会排队触发连续重启 | [desktop_runner_switch_reentrant_restart_gap.md](./desktop_runner_switch_reentrant_restart_gap.md) |
-| Multi-Agent Answer Agent 在设置页允许 `maxToolCalls=0`，但运行时强制提升为至少 1，用户无法真正禁用补充工具调用 | P1 | New | 未修复；UI 与运行时的 `maxToolCalls` 语义仍不一致 | [multi_agent_answer_max_tool_calls_zero_ignored.md](./multi_agent_answer_max_tool_calls_zero_ignored.md) |
+| Multi-Agent Answer Agent 在设置页允许 `maxToolCalls=0`，但运行时强制提升为至少 1，用户无法真正禁用补充工具调用 | P1 | Fixing | 2026-04-15 本地代码已去掉 `max(1)` 并对齐 handoff 文本，`hone-channels` 回归已过；仍卡在 desktop release runtime 门槛，尚未完成重启 / 发布 | [multi_agent_answer_max_tool_calls_zero_ignored.md](./multi_agent_answer_max_tool_calls_zero_ignored.md) |
 | Multi-Agent Search Agent 在 Desktop 设置页显示可继承 auxiliary key，但真实运行时不使用该 fallback，导致看似已配置却直接失败 | P1 | New | 未修复；UI fallback 与运行时 Search Agent key 语义仍未对齐 | [multi_agent_search_key_fallback_mismatch.md](./multi_agent_search_key_fallback_mismatch.md) |
-| 会话压缩摘要会把最后一个新问题误写成完整“用户报告”并以 `Compact Summary` 回灌，正式回答因此引用不存在的报告与伪造价格假设 | P1 | New | 2026-04-15 Rocket Lab 会话已复现；`MiniMax-M2.7-highspeed` 压缩产出了虚假的 RKLB 长报告并被后续回答当成用户材料 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
+| 会话压缩摘要会把最后一个新问题误写成完整“用户报告”并以 `Compact Summary` 回灌，正式回答因此引用不存在的报告与伪造价格假设 | P1 | New | 2026-04-15 17:14 首次建档后，23:56-23:58 最近一小时在另一条 RKLB 会话再次复现；auto compact 仍会把新问题提前写成 `role=user` 的结论性摘要 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 定时任务链路绕过统一输出净化，向用户投递内部思考与未清洗富文本 | P1 | New | 未修复；普通会话已净化，scheduler 仍直接发送原始输出 | [scheduled_output_sanitization_gap.md](./scheduled_output_sanitization_gap.md) |
 | 定时任务达到上限后，Agent 未经用户确认就批量删除已有任务 | P1 | New | 2026-04-15 最近一小时真实会话新增；`add` 失败后同轮连续删除 8 个旧任务再重试创建 | [scheduler_task_limit_auto_cleanup_without_confirmation.md](./scheduler_task_limit_auto_cleanup_without_confirmation.md) |
 | Feishu 直聊会话在 Multi-Agent Answer 阶段返回空回复后，链路仍记成功并发送空消息 | P1 | New | 2026-04-15 17:49 首次建档后，21:34 与 21:52 最近一小时又复现两次；`reply_chars=0` 后仍 `success=true` 并持久化空 assistant 消息 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |

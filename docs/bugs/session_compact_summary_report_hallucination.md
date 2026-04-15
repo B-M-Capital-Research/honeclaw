@@ -6,8 +6,10 @@
 - **状态**: New
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
+  - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
   - Prompt audit: `data/runtime/prompt-audit/feishu/20260415-171407-Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb.json`
   - LLM audit: `data/llm_audit.sqlite3`
+  - 运行日志: `data/runtime/logs/web.log`
 
 ## 端到端链路
 
@@ -32,6 +34,21 @@
 - 压缩结果被写回为 `role=user` 的 `【Compact Summary】...`，后续 prompt 组装与 multi-agent answer 会直接看到这段内容。
 - 最终回答引用了压缩摘要中的伪“报告假设”，但用户本轮没有上传任何报告文件，也没有在真实历史里提供 `22至25 美元` 这一数字。
 
+## 当前实现效果（2026-04-15 23:56-23:58 最近一小时复核）
+
+- 同类问题已在另一条 Feishu direct 会话再次复现，说明这不是单次压缩偶发，而是当前 active window 压缩链路仍会持续污染后续回答：
+  - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
+  - `2026-04-15T23:56:57.340991+08:00` 用户真实输入只有：`rklb呢 马上SpaceX上市 那rklb估值是不是应该会高一些`
+  - `2026-04-15 23:56:57.348` `web.log` 记录：`Compressing session ... with 27 messages (~59763 bytes)`
+  - `2026-04-15 23:57:23.713` 会话被自动 compact，随后同一时刻写回一条 `role=user` 的 `【Compact Summary】...`
+- 这次 `Compact Summary` 仍然不是对旧历史的中性摘要，而是直接生成了一整段带明确结论的 RKLB 投研文本，例如：
+  - `SpaceX IPO对RKLB的估值拉动效果有限且逻辑存在误区，不建议以"SpaceX影子股"逻辑建仓RKLB`
+  - `Rocket Lab是美国纳斯达克上市的商业火箭公司，专注中小型卫星发射`
+- 后续 answer 阶段没有重新完成独立判断，而是继续沿着这段伪摘要输出结论：
+  - `2026-04-15T23:58:43.545035+08:00` assistant 回复直接从 `SpaceX的IPO不会系统性抬高Rocket Lab（RKLB）的合理估值` 起笔
+  - 同轮日志显示搜索阶段 `tool_calls=0`，但 answer 阶段仍额外执行了 `hone_data_fetch`，说明它是在被 compact summary 污染后的上下文里继续补证，而不是纠正 compact summary 的语义
+- 最近一小时这次复现和 17:14 那次事故虽然会话不同，但症状完全一致：新问题进入压缩窗口后，被系统以 `role=user` 的“摘要”形式提前回答，随后正式回答把它当成可信上下文继续展开。
+
 ## 已确认事实
 
 - 本次事故里没有用户上传的 PDF / 图片 / 附件报告。
@@ -50,6 +67,7 @@
 - 用户会被误导为“系统看到了一个我上传过的报告”，从而破坏对回答可信度的判断。
 - 正式回答会把压缩幻觉当成事实背景继续扩散，导致二次污染。
 - 在金融分析场景里，这类伪上下文会直接引入错误估值、错误时间线和错误事件判断，属于高风险质量故障。
+- 之所以不是 `P3`，是因为问题并不只是“回答写得不够好”，而是系统内部压缩产物污染了真实会话上下文，后续工具调用与正式结论都会围绕伪上下文继续执行，已经影响主回答链路的正确性。
 
 ## 根因判断
 
@@ -57,6 +75,7 @@
 2. 压缩结果被存成 `role=user` 消息，语义上过于像用户自己提供的材料。
 3. 回答链路没有对 `session.compact_summary` 做足够强的隔离或降权，导致 multi-agent search / answer 会把它理解成原始用户请求的一部分。
 4. 压缩提示词只要求“总结历史”，但没有显式禁止“回答最后一个问题”或“生成新的投研报告”。
+5. 最近一小时的第二次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段。
 
 ## 建议修复方向
 
