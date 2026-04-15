@@ -1,7 +1,7 @@
 - title: Canonical Config And Runtime Apply Unification
 - status: in_progress
 - created_at: 2026-04-12
-- updated_at: 2026-04-14
+- updated_at: 2026-04-14 23:13 CST
 - owner: Codex
 - related_files:
   - crates/hone-core/src/config.rs
@@ -45,6 +45,7 @@
   - `hone-cli onboard` channel 向导新增“重试当前字段 / 返回并禁用该渠道”恢复路径，误开 channel 不再只能 `Ctrl-C`
   - release / install bundle 现在会携带 `share/honeclaw/web` 静态资源目录，wrapper 导出 `HONE_WEB_DIST_DIR`，安装态 smoke 也会校验 `/` 页面可打开
   - `opencode_acp` 默认继承本机 OpenCode config，不再由 Hone 隐式强推 OpenRouter 默认路由
+  - `promote_legacy_runtime_agent_settings(...)` 已补齐 `llm.openrouter.api_keys` 的 legacy 补迁，并新增回归测试覆盖“legacy 仅持有 OpenRouter key 池”的 desktop 升级场景
   - `v0.1.1` 起 release workflow 只构建 CLI bundle 所需 bins，并能成功产出可用于 `curl | bash` 的 darwin/linux 发行资产
   - 标准 Homebrew tap 仓库 `B-M-Capital-Research/homebrew-honeclaw` 已建立；release workflow 改为向该 tap 推送 `honeclaw.rb`，`brew install B-M-Capital-Research/honeclaw/honeclaw` 可直接安装
 - 仍待完成：
@@ -83,3 +84,4 @@
 - desktop bundled backend 目前是内嵌 web server + 外部 channel sidecar；`live_apply` 需要在不破坏当前并发模型的前提下给出可接受的自动应用策略
 - direct cut 会触发路径与环境变量语义变化，需要同时覆盖 install wrapper、CLI、desktop sidecar 与诊断脚本
 - 当前密钥仍留在 YAML，本轮只做路径与运行时生效收口，不引入系统 keychain
+- 自动化环境当前可以完成 release `.app` 打包到可写目录，但无法向现有 Hone 进程发送 `kill`；因此需要在可管理进程的环境里完成“停旧实例 -> 启新 `.app` -> API / channel 校验 -> push/tag/release”最后一段闭环

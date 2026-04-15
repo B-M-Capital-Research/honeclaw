@@ -236,6 +236,14 @@ src-tauri/binaries/
 *.db
 __MACOSX/
 
+# Exported spreadsheets
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.csv
+*.tsv
+
 # Local machine overrides (keep secrets here)
 config.local.yaml
 

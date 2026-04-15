@@ -3,10 +3,14 @@
 - **发现时间**: 2026-04-14
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近提交: `dfd8a01 fix: restore desktop canonical agent config migration`
   - 最近提交: `e802582 fix: migrate desktop legacy runtime user settings`
+  - 本次修复验证:
+    - `cargo test -p hone-core promote_legacy_runtime_agent_settings`
+    - `cargo check -p hone-core --all-targets`
+    - `rustfmt --edition 2024 --check crates/hone-core/src/config.rs`
   - 代码证据:
     - `bins/hone-desktop/src/sidecar.rs:1274-1313`
     - `crates/hone-core/src/config.rs:695-703`
@@ -35,6 +39,12 @@
 - `opencode_acp` 和 `multi-agent` answer 路径在 Hone 接管 OpenRouter 路由、且 `agent.opencode.api_key` 为空时，会尝试从 `llm.openrouter.effective_key_pool()` 注入首个 OpenRouter key；该 key 池在这条迁移缺口下会变空。
 - function-calling / OpenRouter provider 直接依赖同一个 key 池，空池会返回“LLM API key 未配置（环境变量或 config.yaml）”。
 
+## 当前实现效果（现状）
+
+- `promote_legacy_runtime_agent_settings(...)` 已补齐 `llm.openrouter.api_keys` 的 legacy 补迁；当 canonical key 池为空时，会把 legacy runtime 中的 key 池完整提升到 canonical `config.yaml`。
+- `llm.openrouter.api_key` 的补迁也已收紧为“仅迁移非空 legacy 单值 key”，避免把空字符串误写回 canonical 并制造伪变更。
+- 已新增自动化回归覆盖“canonical `api_keys` 为空、legacy 仅持有 `llm.openrouter.api_keys`”的升级场景，确保迁移后 `effective_key_pool()` 继续可用。
+
 ## 用户影响
 
 - 已在旧版桌面端配置过 OpenRouter 多 Key 的升级用户，升级后可能看到配置页仍能正常打开，但聊天、辅助任务或 answer agent 首轮就失败。
@@ -47,8 +57,8 @@
 - 迁移逻辑没有和当前 desktop / CLI 的实际写入契约对齐，而这两个入口早已把 OpenRouter 密钥池收敛到 `llm.openrouter.api_keys`。
 - 相关测试只覆盖了 `llm.openrouter.api_key` 的迁移断言，没有覆盖 legacy `api_keys` 数组场景，因此这个回归缺口没有被自动化捕获。
 
-## 修复线索
+## 修复结果
 
-- 在 legacy 补迁逻辑中补齐 `llm.openrouter.api_keys` 的迁移，并明确与单值 `api_key` 的优先级和去重语义。
-- 新增最少一条自动化回归：legacy `config_runtime.yaml` 仅含 `llm.openrouter.api_keys` 时，desktop 启动后 canonical / effective config 仍应保留完整 key 池。
-- 当前 bug 台账先以 `New` 登记，等待人工确认并转入 `Apprived` / `Fixing` / `Fixed` / `Closed`。
+- 已在 legacy 补迁逻辑中补齐 `llm.openrouter.api_keys` 的迁移。
+- 已新增自动化回归，覆盖 legacy 仅持有 OpenRouter key 池时的 desktop 升级场景。
+- 当前源码侧缺陷已修复；是否进入 `Closed` 取决于后续 release / runtime 重启与线上验证是否完成。

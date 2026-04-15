@@ -694,6 +694,10 @@ pub fn promote_legacy_runtime_agent_settings(
 
     if string_path_is_blank(&canonical, "llm.openrouter.api_key")?
         && let Some(legacy_openrouter_key) = get_value_at_path(&legacy, "llm.openrouter.api_key")?
+        && legacy_openrouter_key
+            .as_str()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
     {
         set_value_at_path(
             &mut canonical,
@@ -701,6 +705,17 @@ pub fn promote_legacy_runtime_agent_settings(
             legacy_openrouter_key.clone(),
         )?;
         changed_paths.push("llm.openrouter.api_key".to_string());
+    }
+
+    if sequence_path_is_empty(&canonical, "llm.openrouter.api_keys")?
+        && let Some(legacy_openrouter_keys) = get_value_at_path(&legacy, "llm.openrouter.api_keys")?
+    {
+        set_value_at_path(
+            &mut canonical,
+            "llm.openrouter.api_keys",
+            legacy_openrouter_keys.clone(),
+        )?;
+        changed_paths.push("llm.openrouter.api_keys".to_string());
     }
 
     for channel in ["feishu", "telegram", "discord", "imessage"] {
@@ -1690,6 +1705,7 @@ llm:
     api_key: ""
   openrouter:
     api_key: ""
+    api_keys: []
 search:
   api_keys: []
 fmp:
@@ -1739,6 +1755,9 @@ llm:
     model: "MiniMax-M2.7-highspeed"
   openrouter:
     api_key: "legacy-openrouter"
+    api_keys:
+      - legacy-openrouter-1
+      - legacy-openrouter-2
 search:
   provider: tavily
   api_keys:
@@ -1774,6 +1793,7 @@ discord:
         assert!(changed.contains(&"agent.opencode".to_string()));
         assert!(changed.contains(&"llm.auxiliary".to_string()));
         assert!(changed.contains(&"llm.openrouter.api_key".to_string()));
+        assert!(changed.contains(&"llm.openrouter.api_keys".to_string()));
         assert!(changed.contains(&"agent.runner".to_string()));
         assert!(changed.contains(&"search.api_keys".to_string()));
         assert!(changed.contains(&"fmp.api_key".to_string()));
@@ -1790,6 +1810,13 @@ discord:
         assert_eq!(config.llm.auxiliary.api_key, "legacy-search");
         assert_eq!(config.llm.openrouter.api_key, "legacy-openrouter");
         assert_eq!(
+            config.llm.openrouter.api_keys,
+            vec![
+                "legacy-openrouter-1".to_string(),
+                "legacy-openrouter-2".to_string()
+            ]
+        );
+        assert_eq!(
             config.search.api_keys,
             vec!["tvly-one".to_string(), "tvly-two".to_string()]
         );
@@ -1804,6 +1831,53 @@ discord:
         assert!(config.discord.enabled);
         assert_eq!(config.discord.bot_token, "discord-token");
         assert_eq!(config.discord.chat_scope, ChatScope::All);
+    }
+
+    #[test]
+    fn test_promote_legacy_runtime_agent_settings_migrates_openrouter_key_pool() {
+        let dir = temp_test_dir("legacy-openrouter-pool");
+        let canonical = dir.join("config.yaml");
+        let legacy = dir.join("data/runtime/config_runtime.yaml");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(
+            &canonical,
+            r#"
+llm:
+  openrouter:
+    api_key: ""
+    api_keys: []
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &legacy,
+            r#"
+llm:
+  openrouter:
+    api_key: ""
+    api_keys:
+      - legacy-openrouter-1
+      - legacy-openrouter-2
+"#,
+        )
+        .unwrap();
+
+        let changed = promote_legacy_runtime_agent_settings(&canonical, &legacy).unwrap();
+        assert_eq!(changed, vec!["llm.openrouter.api_keys".to_string()]);
+
+        let config = HoneConfig::from_file(&canonical).unwrap();
+        assert_eq!(config.llm.openrouter.api_key, "");
+        assert_eq!(
+            config.llm.openrouter.api_keys,
+            vec![
+                "legacy-openrouter-1".to_string(),
+                "legacy-openrouter-2".to_string()
+            ]
+        );
+        assert_eq!(
+            config.llm.openrouter.effective_key_pool().keys(),
+            &["legacy-openrouter-1", "legacy-openrouter-2"]
+        );
     }
 
     #[test]
