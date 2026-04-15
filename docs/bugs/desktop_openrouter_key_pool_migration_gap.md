@@ -5,15 +5,16 @@
 - **严重等级**: P1
 - **状态**: Fixed
 - **证据来源**:
-  - 最近提交: `dfd8a01 fix: restore desktop canonical agent config migration`
-  - 最近提交: `e802582 fix: migrate desktop legacy runtime user settings`
+  - 直接修复提交: `5404624 fix: migrate legacy openrouter key pool`
+  - 相关前置提交: `dfd8a01 fix: restore desktop canonical agent config migration`
+  - 相关前置提交: `e802582 fix: migrate desktop legacy runtime user settings`
   - 本次修复验证:
     - `cargo test -p hone-core promote_legacy_runtime_agent_settings`
     - `cargo check -p hone-core --all-targets`
     - `rustfmt --edition 2024 --check crates/hone-core/src/config.rs`
   - 代码证据:
     - `bins/hone-desktop/src/sidecar.rs:1274-1313`
-    - `crates/hone-core/src/config.rs:695-703`
+    - `crates/hone-core/src/config.rs:686-717`
     - `crates/hone-channels/src/core.rs:991-1019`
     - `crates/hone-llm/src/openrouter.rs:46-53`
     - `bins/hone-cli/src/main.rs:2128-2140`
@@ -41,9 +42,9 @@
 
 ## 当前实现效果（现状）
 
-- `promote_legacy_runtime_agent_settings(...)` 已补齐 `llm.openrouter.api_keys` 的 legacy 补迁；当 canonical key 池为空时，会把 legacy runtime 中的 key 池完整提升到 canonical `config.yaml`。
-- `llm.openrouter.api_key` 的补迁也已收紧为“仅迁移非空 legacy 单值 key”，避免把空字符串误写回 canonical 并制造伪变更。
-- 已新增自动化回归覆盖“canonical `api_keys` 为空、legacy 仅持有 `llm.openrouter.api_keys`”的升级场景，确保迁移后 `effective_key_pool()` 继续可用。
+- `5404624` 已把 `promote_legacy_runtime_agent_settings(...)` 补齐到 `llm.openrouter.api_keys`；当 canonical key 池为空时，会把 legacy runtime 中的 key 池完整提升到 canonical `config.yaml`。
+- 同一提交还把 `llm.openrouter.api_key` 的补迁收紧为“仅迁移非空 legacy 单值 key”，避免把空字符串误写回 canonical 并制造伪变更。
+- 当前源码已新增自动化回归覆盖“canonical `api_keys` 为空、legacy 仅持有 `llm.openrouter.api_keys`”的升级场景，确保迁移后 `effective_key_pool()` 继续可用。
 
 ## 用户影响
 
@@ -59,6 +60,5 @@
 
 ## 修复结果
 
-- 已在 legacy 补迁逻辑中补齐 `llm.openrouter.api_keys` 的迁移。
-- 已新增自动化回归，覆盖 legacy 仅持有 OpenRouter key 池时的 desktop 升级场景。
+- `5404624` 已在 legacy 补迁逻辑中补齐 `llm.openrouter.api_keys` 的迁移，并补上对应回归测试。
 - 当前源码侧缺陷已修复；是否进入 `Closed` 取决于后续 release / runtime 重启与线上验证是否完成。
