@@ -52,6 +52,12 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
             "value": data_dir,
         }));
     }
+    if let Ok(sandbox_dir) = env::var("HONE_AGENT_SANDBOX_DIR") {
+        env_entries.push(json!({
+            "name": "HONE_AGENT_SANDBOX_DIR",
+            "value": sandbox_dir,
+        }));
+    }
     if let Some(allowed_tools) = &request.allowed_tools {
         env_entries.push(json!({
             "name": "HONE_MCP_ALLOWED_TOOLS",
@@ -611,6 +617,7 @@ mod tests {
             "HONE_MCP_ACTOR_SCOPE",
             "HONE_MCP_SESSION_ID",
             "HONE_DATA_DIR",
+            "HONE_AGENT_SANDBOX_DIR",
         ] {
             unsafe { env::remove_var(key) };
         }
@@ -646,6 +653,7 @@ mod tests {
         unsafe {
             env::set_var("HONE_MCP_BIN", "/tmp/hone-mcp-custom");
             env::set_var("HONE_DATA_DIR", "/tmp/hone-data");
+            env::set_var("HONE_AGENT_SANDBOX_DIR", "/tmp/hone-sandboxes");
         }
 
         let payload = hone_mcp_servers(&make_request()).expect("payload");
@@ -677,6 +685,10 @@ mod tests {
         assert!(env_entries.iter().any(|entry| {
             entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR")
                 && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp/hone-data")
+        }));
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_AGENT_SANDBOX_DIR")
+                && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp/hone-sandboxes")
         }));
     }
 
