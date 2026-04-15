@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-15
 
+### Desktop 日志接口与 multi-agent 运行态恢复
+
+- Status: done
+- Date: 2026-04-15
+- Plan: `docs/archive/plans/runtime-logs-runner-recovery.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-web-api logs`, `cargo test -p hone-core from_file_applies_runtime_overlay`, `curl http://127.0.0.1:8077/api/logs`, `curl http://127.0.0.1:8077/api/channels`
+- Current conclusion: `/api/logs` 现在能容忍非 UTF-8 日志内容与日志缓冲锁中毒，不再因为多字节明文切片直接断开连接；`HoneConfig::from_file()` 也会正确合并 runtime overlay，渠道与 desktop 运行态恢复后能够稳定回到 `multi-agent`
+- Next entry point: `crates/hone-web-api/src/routes/logs.rs`
+
 ### 持仓记忆补齐持有期限与策略信息
 
 - Status: done

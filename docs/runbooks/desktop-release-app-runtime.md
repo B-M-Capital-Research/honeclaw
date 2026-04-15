@@ -96,6 +96,8 @@ Notes:
 - `build:web:desktop` sets `HONE_APP_RELATIVE_BASE=1`
 - that forces the frontend build to emit `./assets/...` instead of `/assets/...`
 - this is required for correct release-mode loading inside the Tauri app shell
+- if the live desktop/backend runtime is already using `/Users/ecohnoch/Library/Caches/honeclaw/target/...`, any backend or channel rebuild must use the same `CARGO_TARGET_DIR`
+- otherwise you can end up rebuilding repo-local `target/` while the running `.app` and helper processes keep using stale cache-target binaries
 
 The expected bundle path on macOS is:
 
@@ -234,6 +236,29 @@ env \
 - if a supervisor or launcher path does not reliably preserve `HONE_WEB_PORT=8077`, `hone-console-page` can silently fall back to a random port
 - that produces a misleading state where the desktop app is open, but remote mode still fails because it keeps probing `127.0.0.1:8077`
 - when diagnosing this class of failure, prefer a startup path where the runtime env is explicit and inspectable
+
+### Blank logs panel or `broken pipe` symptoms
+
+- if the desktop window is visible but the logs panel is blank, or Codex runner starts surfacing `broken pipe`-style backend failures, do not assume the channel processes are the first problem
+- first check these endpoints directly:
+
+```bash
+curl http://127.0.0.1:8077/api/meta
+curl http://127.0.0.1:8077/api/logs
+curl http://127.0.0.1:8077/api/channels
+```
+
+- in the 2026-04-15 incident, `/api/logs` was the failing path even though `/api/meta` and the desktop window could still come up
+- the backend had an old panic path around multibyte plaintext log lines and malformed file content; after the fix, `/api/logs` should tolerate non-UTF-8 file bytes, multibyte plaintext, and a poisoned in-memory log buffer
+- if these symptoms reappear after the fix is merged, the most likely operational cause is that you rebuilt repo-local `target/` but the live runtime is still serving binaries from `/Users/ecohnoch/Library/Caches/honeclaw/target/...`
+- in that case, rebuild the backend/channel binaries with the same cache `CARGO_TARGET_DIR`, then restart the affected process
+
+### Runtime config changed but process still is not `multi-agent`
+
+- if `data/runtime/config_runtime.yaml` says `agent.runner: multi-agent` but the live channel/backend process still behaves like an older runner, verify that the process was restarted after a build that used the same target directory as the live runtime
+- the 2026-04-15 recovery also exposed a code path where `HoneConfig::from_file()` had been reading only the base YAML without merging the runtime overlay
+- after the fix, `from_file()` now loads the merged config, so runtime-only overrides should apply to channel/backend processes without requiring manual sync back into the base config file
+- if the symptom ever returns, verify both the effective config file path and the actual binary path of the running process before changing more config
 
 ### `launch.sh --release` vs direct `.app` launch
 

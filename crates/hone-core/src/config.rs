@@ -86,7 +86,7 @@ impl HoneConfig {
     /// 从 YAML 文件加载配置
     pub fn from_file(path: impl AsRef<Path>) -> crate::HoneResult<Self> {
         let path = path.as_ref();
-        let value = read_yaml_value(path)?;
+        let value = read_merged_yaml_value(path)?;
         let mut config = Self::from_merged_value(value)?;
         if let Err(err) = apply_system_prompt_path(&mut config, path) {
             return Err(crate::HoneError::Config(err));
@@ -1225,6 +1225,38 @@ custom_section:
                 .and_then(|v| v.as_str()),
             Some("overlay")
         );
+    }
+
+    #[test]
+    fn test_from_file_applies_runtime_overlay() {
+        let dir = temp_test_dir("from-file-runtime-overlay");
+        let config_path = dir.join("config.yaml");
+        let overlay_path = runtime_overlay_path(&config_path);
+
+        std::fs::write(
+            &config_path,
+            r#"
+agent:
+  runner: codex_cli
+feishu:
+  enabled: false
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &overlay_path,
+            r#"
+agent:
+  runner: multi-agent
+feishu:
+  enabled: true
+"#,
+        )
+        .unwrap();
+
+        let config = HoneConfig::from_file(&config_path).unwrap();
+        assert_eq!(config.agent.runner, "multi-agent");
+        assert!(config.feishu.enabled);
     }
 
     #[test]
