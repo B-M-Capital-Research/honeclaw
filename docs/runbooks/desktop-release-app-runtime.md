@@ -1,6 +1,6 @@
 # Runbook: Desktop Release App Runtime
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
 ## Why This Exists
 
@@ -168,6 +168,22 @@ curl http://127.0.0.1:8077/api/meta
 curl http://127.0.0.1:3213/api/workflows
 ```
 
+### 5. Confirm enabled channels are actually online
+
+When the desktop app is using a remote backend, do not rely only on one startup log line or on the window being visible.
+
+Check the backend status API directly:
+
+```bash
+curl http://127.0.0.1:8077/api/channels
+```
+
+Expected shape:
+
+- `web` should be `running`
+- each enabled channel such as `discord`, `feishu`, and `telegram` should report `running`
+- a disabled channel such as `imessage` may legitimately report `disabled`
+
 ## Restart Policy
 
 Treat this mode as a static runtime.
@@ -185,6 +201,39 @@ This is a feature, not a limitation. It is exactly what keeps the running app in
 - the desktop log may briefly record a remote `/api/meta` probe failure during startup
 - in the validated release app path, this did not prevent the window from rendering or the app from staying up
 - treat this as startup noise unless it becomes persistent
+
+### Persistent `Connection refused` on `127.0.0.1:8077`
+
+- if the desktop keeps reporting `request send failed` for `http://127.0.0.1:8077/api/meta`, first verify whether anything is actually listening on `8077`
+- check with:
+
+```bash
+lsof -nP -iTCP:8077 -sTCP:LISTEN
+curl http://127.0.0.1:8077/api/meta
+```
+
+- if nothing is listening, the problem is the backend lane, not the desktop bundle
+- in the 2026-04-15 recovery, the release desktop app and `backend.json` were already correct, but the backend supervisor path had failed to keep `hone-console-page` bound to `8077`
+- a direct long-lived launch with explicit env restored the service immediately:
+
+```bash
+env \
+  HONE_WEB_PORT=8077 \
+  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
+  HONE_SKILLS_DIR=/Users/ecohnoch/Desktop/honeclaw/skills \
+  /Users/ecohnoch/Library/Caches/honeclaw/target/debug/hone-console-page
+```
+
+- once that backend is healthy again, the desktop log should switch from repeated probe failures to `remote backend connected: http://127.0.0.1:8077`
+- after backend recovery, also verify `curl http://127.0.0.1:8077/api/channels` so you know the enabled channels really came back, not just the web API
+
+### Supervisor caveat for remote backend mode
+
+- if a supervisor or launcher path does not reliably preserve `HONE_WEB_PORT=8077`, `hone-console-page` can silently fall back to a random port
+- that produces a misleading state where the desktop app is open, but remote mode still fails because it keeps probing `127.0.0.1:8077`
+- when diagnosing this class of failure, prefer a startup path where the runtime env is explicit and inspectable
 
 ### `launch.sh --release` vs direct `.app` launch
 
