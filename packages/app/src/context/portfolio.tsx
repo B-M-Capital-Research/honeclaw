@@ -61,6 +61,8 @@ function createPortfolioState() {
                     symbol: existing.symbol,
                     shares: existing.shares,
                     avg_cost: existing.avg_cost,
+                    holding_horizon: existing.holding_horizon || "",
+                    strategy_notes: existing.strategy_notes || "",
                     notes: existing.notes || "",
                 })
             }
@@ -70,6 +72,8 @@ function createPortfolioState() {
                 symbol: "",
                 shares: 0,
                 avg_cost: 0,
+                holding_horizon: "",
+                strategy_notes: "",
                 notes: "",
             })
         }

@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
-use hone_memory::portfolio::{Holding, Portfolio, PortfolioStorage};
+use hone_memory::portfolio::{Holding, Portfolio, PortfolioStorage, normalize_holding_horizon};
 use serde_json::Value;
 
 use crate::base::{Tool, ToolParameter};
@@ -130,9 +130,25 @@ impl Tool for PortfolioTool {
                 items: None,
             },
             ToolParameter {
+                name: "holding_horizon".to_string(),
+                param_type: "string".to_string(),
+                description: "持有期限倾向。建议 long_term 或 short_term，也兼容 long/short/长持/短持。".to_string(),
+                required: false,
+                r#enum: Some(vec!["long_term".into(), "short_term".into()]),
+                items: None,
+            },
+            ToolParameter {
+                name: "strategy_notes".to_string(),
+                param_type: "string".to_string(),
+                description: "特殊策略说明，例如 现金担保卖沽、财报事件驱动、核心长期仓位。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
                 name: "holdings".to_string(),
                 param_type: "array".to_string(),
-                description: "批量写入或删除时使用。数组里的每个对象都支持 ticker/asset_type/quantity/cost_basis/underlying/option_type/strike_price/expiration_date/contract_multiplier/notes。".to_string(),
+                description: "批量写入或删除时使用。数组里的每个对象都支持 ticker/asset_type/quantity/cost_basis/underlying/option_type/strike_price/expiration_date/contract_multiplier/holding_horizon/strategy_notes/notes。".to_string(),
                 required: false,
                 r#enum: None,
                 items: Some(serde_json::json!({
@@ -185,7 +201,9 @@ impl Tool for PortfolioTool {
                     }
                     processed.push(serde_json::json!({
                         "ticker": holding.symbol,
-                        "asset_type": holding.asset_type
+                        "asset_type": holding.asset_type,
+                        "holding_horizon": holding.holding_horizon,
+                        "strategy_notes": holding.strategy_notes
                     }));
                 }
                 portfolio.updated_at = chrono::Utc::now().to_rfc3339();
@@ -259,6 +277,8 @@ struct HoldingInput {
     asset_type: String,
     quantity: f64,
     cost_basis: f64,
+    holding_horizon: Option<String>,
+    strategy_notes: Option<String>,
     notes: Option<String>,
     option_meta: OptionMetadata,
 }
@@ -337,6 +357,8 @@ fn parse_holdings_from_args(args: &Value) -> hone_core::HoneResult<Vec<Holding>>
             strike_price: input.option_meta.strike_price,
             expiration_date: input.option_meta.expiration_date,
             contract_multiplier: input.option_meta.contract_multiplier,
+            holding_horizon: input.holding_horizon,
+            strategy_notes: input.strategy_notes,
             notes: input.notes,
         })
         .collect())
@@ -363,6 +385,13 @@ fn parse_single_holding_input(value: &Value) -> hone_core::HoneResult<HoldingInp
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0)
         });
+    let holding_horizon = value
+        .get("holding_horizon")
+        .and_then(|v| v.as_str())
+        .or_else(|| value.get("horizon").and_then(|v| v.as_str()))
+        .and_then(normalize_holding_horizon);
+    let strategy_notes = normalized_notes(value.get("strategy_notes"))
+        .or_else(|| normalized_notes(value.get("strategy")));
     let notes = normalized_notes(value.get("notes"));
     let option_meta = option_metadata(value, &asset_type)?;
 
@@ -371,6 +400,8 @@ fn parse_single_holding_input(value: &Value) -> hone_core::HoneResult<HoldingInp
         asset_type,
         quantity,
         cost_basis,
+        holding_horizon,
+        strategy_notes,
         notes,
         option_meta,
     })
@@ -471,6 +502,7 @@ fn trim_trailing_zero(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hone_memory::portfolio::{HOLDING_HORIZON_LONG_TERM, HOLDING_HORIZON_SHORT_TERM};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_temp_dir(prefix: &str) -> String {
@@ -502,7 +534,9 @@ mod tests {
                 "ticker":"AAPL",
                 "asset_type":"stock",
                 "quantity":10.0,
-                "cost_basis":200.5
+                "cost_basis":200.5,
+                "holding_horizon":"long_term",
+                "strategy_notes":"核心长期仓位"
             }))
             .await
             .expect("add");
@@ -520,6 +554,8 @@ mod tests {
         assert_eq!(holdings[0]["symbol"], "AAPL");
         assert_eq!(holdings[0]["asset_type"], "stock");
         assert_eq!(holdings[0]["shares"], 10.0);
+        assert_eq!(holdings[0]["holding_horizon"], HOLDING_HORIZON_LONG_TERM);
+        assert_eq!(holdings[0]["strategy_notes"], "核心长期仓位");
 
         let update_resp = tool
             .execute(serde_json::json!({
@@ -527,7 +563,9 @@ mod tests {
                 "ticker":"AAPL",
                 "asset_type":"stock",
                 "quantity":12.0,
-                "cost_basis":198.0
+                "cost_basis":198.0,
+                "holding_horizon":"短持",
+                "strategy_notes":"财报前事件驱动"
             }))
             .await
             .expect("update");
@@ -544,6 +582,8 @@ mod tests {
         assert_eq!(holdings.len(), 1);
         assert_eq!(holdings[0]["shares"], 12.0);
         assert_eq!(holdings[0]["avg_cost"], 198.0);
+        assert_eq!(holdings[0]["holding_horizon"], HOLDING_HORIZON_SHORT_TERM);
+        assert_eq!(holdings[0]["strategy_notes"], "财报前事件驱动");
 
         let remove_resp = tool
             .execute(serde_json::json!({
@@ -581,7 +621,9 @@ mod tests {
                 "option_type":"call",
                 "strike_price":200.0,
                 "quantity":2.0,
-                "cost_basis":5.25
+                "cost_basis":5.25,
+                "holding_horizon":"short_term",
+                "strategy_notes":"波动率交易"
             }))
             .await
             .expect("add option");
@@ -602,6 +644,8 @@ mod tests {
         assert_eq!(holdings[0]["option_type"], "call");
         assert_eq!(holdings[0]["strike_price"], 200.0);
         assert_eq!(holdings[0]["contract_multiplier"], 100.0);
+        assert_eq!(holdings[0]["holding_horizon"], HOLDING_HORIZON_SHORT_TERM);
+        assert_eq!(holdings[0]["strategy_notes"], "波动率交易");
 
         let remove_resp = tool
             .execute(serde_json::json!({
@@ -628,7 +672,9 @@ mod tests {
                         "ticker":"AAPL",
                         "asset_type":"stock",
                         "quantity":10.0,
-                        "cost_basis":180.0
+                        "cost_basis":180.0,
+                        "holding_horizon":"long",
+                        "strategy_notes":"分批建仓"
                     },
                     {
                         "asset_type":"option",
@@ -637,7 +683,9 @@ mod tests {
                         "option_type":"put",
                         "strike_price":280.0,
                         "quantity":3.0,
-                        "cost_basis":8.4
+                        "cost_basis":8.4,
+                        "holding_horizon":"short",
+                        "strategy_notes":"保护性对冲"
                     }
                 ]
             }))
@@ -662,6 +710,11 @@ mod tests {
                 .iter()
                 .any(|holding| holding["symbol"] == "TSLA 2026-09-18 P 280")
         );
+        assert!(holdings.iter().any(|holding| {
+            holding["symbol"] == "AAPL"
+                && holding["holding_horizon"] == HOLDING_HORIZON_LONG_TERM
+                && holding["strategy_notes"] == "分批建仓"
+        }));
     }
 
     #[tokio::test]
@@ -715,5 +768,41 @@ mod tests {
             .cloned()
             .unwrap_or_default();
         assert!(holdings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn portfolio_supports_negative_cost_basis_and_strategy_fields() {
+        let data_dir = make_temp_dir("hone_portfolio_tool_negative_cost");
+        let actor = ActorIdentity::new("imessage", "u_negative_cost", None::<String>)
+            .expect("actor");
+        let tool = PortfolioTool::new(&data_dir, actor);
+
+        tool.execute(serde_json::json!({
+            "action":"add",
+            "asset_type":"option",
+            "underlying":"AAPL",
+            "expiration_date":"2026-06-19",
+            "option_type":"put",
+            "strike_price":180.0,
+            "quantity":1.0,
+            "cost_basis":-2.35,
+            "holding_horizon":"短线",
+            "strategy_notes":"现金担保卖沽"
+        }))
+        .await
+        .expect("add negative cost");
+
+        let view_resp = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view negative cost");
+        let holdings = view_resp["portfolio"]["holdings"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(holdings.len(), 1);
+        assert_eq!(holdings[0]["avg_cost"], -2.35);
+        assert_eq!(holdings[0]["holding_horizon"], HOLDING_HORIZON_SHORT_TERM);
+        assert_eq!(holdings[0]["strategy_notes"], "现金担保卖沽");
     }
 }

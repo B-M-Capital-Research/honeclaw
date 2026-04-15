@@ -158,6 +158,10 @@ pub struct PortfolioHoldingRequest {
     pub strike_price: Option<f64>,
     pub expiration_date: Option<String>,
     pub contract_multiplier: Option<f64>,
+    #[serde(alias = "horizon")]
+    pub holding_horizon: Option<String>,
+    #[serde(alias = "strategy")]
+    pub strategy_notes: Option<String>,
     pub notes: Option<String>,
 }
 

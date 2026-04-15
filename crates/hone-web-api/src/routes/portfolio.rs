@@ -7,7 +7,7 @@ use axum::response::IntoResponse;
 use serde_json::json;
 
 use hone_core::ActorIdentity;
-use hone_memory::portfolio::{Holding, Portfolio, PortfolioStorage};
+use hone_memory::portfolio::{Holding, Portfolio, PortfolioStorage, normalize_holding_horizon};
 
 use crate::routes::{json_error, normalize_optional_string, require_actor, require_string};
 use crate::state::AppState;
@@ -76,6 +76,8 @@ pub(crate) async fn handle_create_holding(
             strike_price: req.strike_price,
             expiration_date: normalize_optional_string(req.expiration_date),
             contract_multiplier: req.contract_multiplier,
+            holding_horizon: normalize_optional_holding_horizon(req.holding_horizon),
+            strategy_notes: normalize_optional_string(req.strategy_notes),
             notes: normalize_optional_string(req.notes),
         },
     ) {
@@ -139,6 +141,12 @@ pub(crate) async fn handle_update_holding(
     let contract_multiplier = req
         .contract_multiplier
         .or(existing_holding.contract_multiplier);
+    let holding_horizon = req
+        .holding_horizon
+        .or(existing_holding.holding_horizon);
+    let strategy_notes = req
+        .strategy_notes
+        .or(existing_holding.strategy_notes);
 
     match storage.upsert_holding(
         &actor,
@@ -152,6 +160,8 @@ pub(crate) async fn handle_update_holding(
             strike_price,
             expiration_date: normalize_optional_string(expiration_date),
             contract_multiplier,
+            holding_horizon: normalize_optional_holding_horizon(holding_horizon),
+            strategy_notes: normalize_optional_string(strategy_notes),
             notes: normalize_optional_string(notes),
         },
     ) {
@@ -233,4 +243,91 @@ fn normalize_optional_option_type(option_type: Option<String>) -> Option<String>
             "p" => "put".to_string(),
             _ => value,
         })
+}
+
+fn normalize_optional_holding_horizon(value: Option<String>) -> Option<String> {
+    value
+        .as_deref()
+        .and_then(normalize_holding_horizon)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hone_memory::portfolio::{HOLDING_HORIZON_LONG_TERM, HOLDING_HORIZON_SHORT_TERM};
+
+    #[test]
+    fn normalize_optional_holding_horizon_accepts_aliases() {
+        assert_eq!(
+            normalize_optional_holding_horizon(Some("长持".to_string())).as_deref(),
+            Some(HOLDING_HORIZON_LONG_TERM)
+        );
+        assert_eq!(
+            normalize_optional_holding_horizon(Some("short".to_string())).as_deref(),
+            Some(HOLDING_HORIZON_SHORT_TERM)
+        );
+        assert_eq!(
+            normalize_optional_holding_horizon(Some("event-driven".to_string())),
+            None
+        );
+        assert_eq!(normalize_optional_holding_horizon(None), None);
+    }
+
+    #[test]
+    fn update_path_can_preserve_negative_avg_cost_and_strategy_fields() {
+        let existing = Holding {
+            symbol: "AAPL".to_string(),
+            asset_type: "stock".to_string(),
+            shares: 10.0,
+            avg_cost: -1.25,
+            underlying: None,
+            option_type: None,
+            strike_price: None,
+            expiration_date: None,
+            contract_multiplier: None,
+            holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
+            strategy_notes: Some("期权指派后遗留成本".to_string()),
+            notes: Some("existing".to_string()),
+        };
+
+        let req = PortfolioHoldingRequest {
+            channel: Some("discord".to_string()),
+            user_id: Some("alice".to_string()),
+            channel_scope: None,
+            symbol: None,
+            asset_type: Some("stock".to_string()),
+            shares: None,
+            avg_cost: None,
+            quantity: Some(12.0),
+            cost_basis: None,
+            underlying: None,
+            option_type: None,
+            strike_price: None,
+            expiration_date: None,
+            contract_multiplier: None,
+            holding_horizon: None,
+            strategy_notes: None,
+            notes: None,
+        };
+
+        let shares = req.quantity.or(req.shares).unwrap_or(existing.shares);
+        let avg_cost = req.cost_basis.or(req.avg_cost).unwrap_or(existing.avg_cost);
+        let holding_horizon = req
+            .holding_horizon
+            .or(existing.holding_horizon.clone());
+        let strategy_notes = req
+            .strategy_notes
+            .or(existing.strategy_notes.clone());
+
+        assert_eq!(shares, 12.0);
+        assert_eq!(avg_cost, -1.25);
+        assert_eq!(
+            normalize_optional_holding_horizon(holding_horizon).as_deref(),
+            Some(HOLDING_HORIZON_SHORT_TERM)
+        );
+        assert_eq!(
+            normalize_optional_string(strategy_notes).as_deref(),
+            Some("期权指派后遗留成本")
+        );
+    }
 }

@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-15
 
+### 持仓记忆补齐持有期限与策略信息
+
+- Status: done
+- Date: 2026-04-15
+- Plan: `docs/archive/plans/portfolio-memory-horizon-strategy.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-memory portfolio`, `cargo test -p hone-tools portfolio_`, `cargo test -p hone-web-api portfolio`, `bun run typecheck:web`, `bun run test:web`
+- Current conclusion: 持仓记忆现在除标的、数量、成本和备注外，还会稳定保留 `holding_horizon`（`long_term` / `short_term`）和 `strategy_notes`；前端表单已允许负成本价输入，底层存储 / tool / API / UI 都兼容负成本与新增策略字段
+- Next entry point: `memory/src/portfolio.rs`
+
 ### GitHub Security / Quality 高优问题收口
 
 - Status: done

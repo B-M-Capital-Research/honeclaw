@@ -360,6 +360,8 @@ export type HoldingInfo = {
   strike_price?: number;
   expiration_date?: string;
   contract_multiplier?: number;
+  holding_horizon?: "long_term" | "short_term";
+  strategy_notes?: string;
   notes?: string;
 };
 
@@ -398,6 +400,8 @@ export type HoldingUpsertInput = {
   strike_price?: number;
   expiration_date?: string;
   contract_multiplier?: number;
+  holding_horizon?: "long_term" | "short_term" | "";
+  strategy_notes?: string;
   notes?: string;
 };
 

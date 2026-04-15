@@ -19,12 +19,20 @@ export function PortfolioDetail() {
             symbol: draft.symbol,
             shares: Number(draft.shares),
             avg_cost: Number(draft.avg_cost),
+            holding_horizon: draft.holding_horizon || "",
+            strategy_notes: draft.strategy_notes,
             notes: draft.notes,
         })
     }
 
     const formatMoney = (val: number) => {
         return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val)
+    }
+
+    const horizonLabel = (value?: string) => {
+        if (value === "long_term") return "长持"
+        if (value === "short_term") return "短持"
+        return "未标记"
     }
 
     return (
@@ -73,7 +81,20 @@ export function PortfolioDetail() {
                                     <For each={data()?.portfolio?.holdings || []}>
                                         {(holding) => (
                                             <tr class="border-b border-[color:var(--border)] hover:bg-black/5 transition-colors">
-                                                <td class="py-3 px-4 font-medium uppercase">{holding.symbol}</td>
+                                                <td class="py-3 px-4">
+                                                    <div class="font-medium uppercase">{holding.symbol}</div>
+                                                    <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-muted)]">
+                                                        <span class="rounded-full border border-[color:var(--border)] px-2 py-0.5">
+                                                            {horizonLabel(holding.holding_horizon)}
+                                                        </span>
+                                                        <Show when={holding.strategy_notes}>
+                                                            <span>策略：{holding.strategy_notes}</span>
+                                                        </Show>
+                                                        <Show when={holding.notes}>
+                                                            <span>备注：{holding.notes}</span>
+                                                        </Show>
+                                                    </div>
+                                                </td>
                                                 <td class="py-3 px-4 text-right">{holding.shares}</td>
                                                 <td class="py-3 px-4 text-right">{formatMoney(holding.avg_cost)}</td>
                                                 <td class="py-3 px-4 text-right font-medium">{formatMoney(holding.shares * holding.avg_cost)}</td>
@@ -167,11 +188,33 @@ export function PortfolioDetail() {
                                         required
                                         type="number"
                                         step="0.01"
-                                        min="0"
                                         class="h-9"
                                         value={portfolio.state.draft.avg_cost ?? ""}
                                         onInput={(e) => portfolio.setDraft("avg_cost", parseFloat(e.currentTarget.value))}
-                                        placeholder="150.25"
+                                        placeholder="-2.35 / 150.25"
+                                    />
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-xs font-medium">持有期限倾向 (Horizon)</label>
+                                    <select
+                                        class="h-9 w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 text-sm"
+                                        value={portfolio.state.draft.holding_horizon || ""}
+                                        onChange={(e) =>
+                                            portfolio.setDraft("holding_horizon", e.currentTarget.value as "long_term" | "short_term" | "")
+                                        }
+                                    >
+                                        <option value="">未标记</option>
+                                        <option value="long_term">长持</option>
+                                        <option value="short_term">短持</option>
+                                    </select>
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-xs font-medium">特殊策略 (Strategy)</label>
+                                    <Input
+                                        class="h-9"
+                                        value={portfolio.state.draft.strategy_notes || ""}
+                                        onInput={(e) => portfolio.setDraft("strategy_notes", e.currentTarget.value)}
+                                        placeholder="例如：现金担保卖沽 / 财报事件驱动 / 核心长期仓位"
                                     />
                                 </div>
                                 <div class="space-y-2">

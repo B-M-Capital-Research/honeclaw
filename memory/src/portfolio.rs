@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use std::path::{Path, PathBuf};
 
+pub const HOLDING_HORIZON_LONG_TERM: &str = "long_term";
+pub const HOLDING_HORIZON_SHORT_TERM: &str = "short_term";
+
 /// 持仓存储管理器
 pub struct PortfolioStorage {
     data_dir: PathBuf,
@@ -46,12 +49,30 @@ pub struct Holding {
     pub expiration_date: Option<String>,
     #[serde(default)]
     pub contract_multiplier: Option<f64>,
+    #[serde(default, alias = "horizon")]
+    pub holding_horizon: Option<String>,
+    #[serde(default, alias = "strategy")]
+    pub strategy_notes: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
 }
 
 fn default_asset_type() -> String {
     "stock".to_string()
+}
+
+pub fn normalize_holding_horizon(raw: &str) -> Option<String> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "" => None,
+        "long" | "long_term" | "long-term" | "longterm" | "长期" | "长持" | "长线" => {
+            Some(HOLDING_HORIZON_LONG_TERM.to_string())
+        }
+        "short" | "short_term" | "short-term" | "shortterm" | "短期" | "短持" | "短线" => {
+            Some(HOLDING_HORIZON_SHORT_TERM.to_string())
+        }
+        _ => None,
+    }
 }
 
 /// 从 storage_key 字符串（`{channel}__{scope}__{user_id}`）解析 ActorIdentity。
@@ -280,6 +301,8 @@ mod tests {
                 strike_price: None,
                 expiration_date: None,
                 contract_multiplier: None,
+                holding_horizon: Some(HOLDING_HORIZON_LONG_TERM.to_string()),
+                strategy_notes: Some("核心仓位".to_string()),
                 notes: Some("long term".to_string()),
             }],
             updated_at: chrono::Utc::now().to_rfc3339(),
@@ -293,6 +316,14 @@ mod tests {
         assert_eq!(loaded.holdings[0].symbol, "AAPL");
         assert_eq!(loaded.holdings[0].asset_type, "stock");
         assert_eq!(loaded.holdings[0].shares, 3.5);
+        assert_eq!(
+            loaded.holdings[0].holding_horizon.as_deref(),
+            Some(HOLDING_HORIZON_LONG_TERM)
+        );
+        assert_eq!(
+            loaded.holdings[0].strategy_notes.as_deref(),
+            Some("核心仓位")
+        );
     }
 
     #[test]
@@ -314,6 +345,8 @@ mod tests {
                     strike_price: None,
                     expiration_date: None,
                     contract_multiplier: None,
+                    holding_horizon: Some(HOLDING_HORIZON_LONG_TERM.to_string()),
+                    strategy_notes: Some("逢跌加仓".to_string()),
                     notes: Some("long".to_string()),
                 },
             )
@@ -333,12 +366,23 @@ mod tests {
                     strike_price: None,
                     expiration_date: None,
                     contract_multiplier: None,
+                    holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
+                    strategy_notes: Some("事件驱动".to_string()),
                     notes: None,
                 },
             )
             .expect("upsert update");
         assert_eq!(portfolio.holdings.len(), 1);
         assert_eq!(portfolio.holdings[0].shares, 12.0);
+        assert_eq!(portfolio.holdings[0].avg_cost, 198.0);
+        assert_eq!(
+            portfolio.holdings[0].holding_horizon.as_deref(),
+            Some(HOLDING_HORIZON_SHORT_TERM)
+        );
+        assert_eq!(
+            portfolio.holdings[0].strategy_notes.as_deref(),
+            Some("事件驱动")
+        );
 
         let portfolio = storage
             .remove_holding(&actor, "AAPL")
@@ -367,6 +411,8 @@ mod tests {
                     strike_price: None,
                     expiration_date: None,
                     contract_multiplier: None,
+                    holding_horizon: None,
+                    strategy_notes: None,
                     notes: None,
                 },
             )
@@ -384,6 +430,8 @@ mod tests {
                     strike_price: None,
                     expiration_date: None,
                     contract_multiplier: None,
+                    holding_horizon: None,
+                    strategy_notes: None,
                     notes: None,
                 },
             )
@@ -421,6 +469,8 @@ mod tests {
                     strike_price: Some(200.0),
                     expiration_date: Some("2026-06-19".to_string()),
                     contract_multiplier: Some(100.0),
+                    holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
+                    strategy_notes: Some("卖波动率".to_string()),
                     notes: Some("swing trade".to_string()),
                 },
             )
@@ -435,5 +485,60 @@ mod tests {
             portfolio.holdings[0].expiration_date.as_deref(),
             Some("2026-06-19")
         );
+        assert_eq!(
+            portfolio.holdings[0].holding_horizon.as_deref(),
+            Some(HOLDING_HORIZON_SHORT_TERM)
+        );
+        assert_eq!(
+            portfolio.holdings[0].strategy_notes.as_deref(),
+            Some("卖波动率")
+        );
+    }
+
+    #[test]
+    fn portfolio_storage_supports_negative_avg_cost_and_strategy_metadata() {
+        let dir = make_temp_dir("hone_portfolio_storage_negative_avg_cost");
+        let storage = PortfolioStorage::new(&dir);
+        let actor = actor("discord", "credit_trade", None);
+
+        let portfolio = storage
+            .upsert_holding(
+                &actor,
+                Holding {
+                    symbol: "AAPL 2026-06-19 P 180".to_string(),
+                    asset_type: "option".to_string(),
+                    shares: 1.0,
+                    avg_cost: -2.35,
+                    underlying: Some("AAPL".to_string()),
+                    option_type: Some("put".to_string()),
+                    strike_price: Some(180.0),
+                    expiration_date: Some("2026-06-19".to_string()),
+                    contract_multiplier: Some(100.0),
+                    holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
+                    strategy_notes: Some("现金担保卖沽，权利金净流入".to_string()),
+                    notes: Some("credit position".to_string()),
+                },
+            )
+            .expect("upsert negative avg cost");
+
+        assert_eq!(portfolio.holdings[0].avg_cost, -2.35);
+        assert_eq!(
+            portfolio.holdings[0].strategy_notes.as_deref(),
+            Some("现金担保卖沽，权利金净流入")
+        );
+    }
+
+    #[test]
+    fn normalize_holding_horizon_accepts_common_aliases() {
+        assert_eq!(
+            normalize_holding_horizon("长持").as_deref(),
+            Some(HOLDING_HORIZON_LONG_TERM)
+        );
+        assert_eq!(
+            normalize_holding_horizon("short-term").as_deref(),
+            Some(HOLDING_HORIZON_SHORT_TERM)
+        );
+        assert_eq!(normalize_holding_horizon(""), None);
+        assert_eq!(normalize_holding_horizon("event-driven"), None);
     }
 }
