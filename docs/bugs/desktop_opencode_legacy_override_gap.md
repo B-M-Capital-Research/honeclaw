@@ -46,6 +46,12 @@
 - 也就是说，只要 canonical 侧故意把 `api_key` 留空以继承本机 OpenCode，迁移代码仍会把 legacy 整个 `agent.opencode` 节点写回，问题尚未被最近提交覆盖。
 - 本轮巡检未发现对应修复提交，因此该缺陷继续保持 `New`。
 
+## 当前实现效果（2026-04-15 HEAD 再复核）
+
+- 当前 `HEAD` 仍可在 `crates/hone-core/src/config.rs:680-683` 看到同样的门槛与整块覆盖逻辑，没有改成字段级 merge。
+- 与 `docs/invariants.md` 中“空 `agent.opencode.*` 可继承本机 OpenCode 配置”的长期约束相比，这个覆盖路径仍然会破坏显式留空的继承语义。
+- 本轮巡检未发现新增回归测试或修复提交，因此该缺陷继续保持 `New`。
+
 ## 根因判断
 
 - legacy 补迁逻辑把 `agent.opencode` 当成“只要 key 为空就整体未配置”，但当前产品契约已经不是这样：`api_key` 为空本身就是一种有效配置，表示继承本机 OpenCode。

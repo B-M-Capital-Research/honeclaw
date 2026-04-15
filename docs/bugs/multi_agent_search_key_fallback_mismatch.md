@@ -33,6 +33,13 @@
 - 但运行时创建 multi-agent runner 时，在 `crates/hone-channels/src/core.rs:1047-1050` 传入的是原始 `self.config.agent.multi_agent.search.clone()`，没有把 UI seed fallback 合并回真实配置。
 - `MultiAgentRunner::build_search_provider()` 在 `crates/hone-channels/src/runners/multi_agent.rs:54-67` 中只接受 `search_config.api_key`，为空就直接失败。
 
+## 当前实现效果（2026-04-15 HEAD 复核）
+
+- 当前 `HEAD` 仍在 `bins/hone-desktop/src/sidecar/settings.rs:11-14` 用 `llm.auxiliary.api_key` 回填 Search Agent 草稿。
+- 运行时仍在 `crates/hone-channels/src/core.rs:1004-1015` 仅对 OpenRouter answer 路径读取 `effective_key_pool()`，没有把 auxiliary fallback 应用到 `agent.multi_agent.search`。
+- `crates/hone-channels/src/runners/multi_agent.rs:57` 仍会在 search key 为空时直接返回 `multi-agent search agent API key 为空`。
+- 本轮巡检未发现 UI 展示与运行时 fallback 语义对齐的修复，因此该缺陷继续保持 `New`。
+
 ## 用户影响
 
 - 用户会看到非常误导的状态：设置页里 Search Agent 看起来有 key，但真正执行 multi-agent 时会首轮就失败。

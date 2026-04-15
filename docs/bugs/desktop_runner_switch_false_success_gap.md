@@ -36,6 +36,13 @@
 - 作为对比，channel settings 已在 `packages/app/src/context/backend.tsx:304-316` 中通过 `backendStatus` 回写 frontend runtime 状态，而 agent settings 没有这套收口。
 - 聊天实际使用的 runner 来自运行中 backend 的 `arc.core.config.agent.runner`，见 `crates/hone-web-api/src/routes/chat.rs:169-172`；因此当 runtime 未成功重启或尚未切换完成时，用户会继续看到旧 runner。
 
+## 当前实现效果（2026-04-15 HEAD 复核）
+
+- 当前 `HEAD` 仍在 `bins/hone-desktop/src/sidecar.rs:980` 以 `let _ = connect_backend_serialized(&app, &state).await;` 的方式吞掉 runner 保存后的 bundled backend 重启结果。
+- `packages/app/src/lib/backend.ts:201` 的 `saveDesktopAgentSettings(...)` 仍只返回 `void`，没有把 runtime 重启状态带回前端。
+- `packages/app/src/pages/settings.tsx:322-338` 的 `selectRunner(...)` / `submitAgentSettings(...)` 仍只根据是否抛错判断保存结果，未展示“配置写入成功但 runtime 未切换”的中间态。
+- 本轮巡检未发现把 backend status 回传到 agent settings 保存链路的修复，因此该缺陷继续保持 `New`。
+
 ## 用户影响
 
 - 用户会遇到非常误导的状态：设置页看起来已经选中了新 runner，但新对话仍由旧 runner 执行。

@@ -35,6 +35,12 @@
 - 这些命令虽然会在后续 bundled backend 重启时使用 `transition_lock` 串行化 runtime 切换，但“配置文件读改写”本身并没有纳入同一把锁的保护范围。
 - 前端页面本身也存在多个独立保存入口，例如 Agent Settings 提交位于 `packages/app/src/pages/settings.tsx:332-344`，FMP / Tavily 保存位于 `packages/app/src/pages/settings.tsx:996-1077`；因此用户完全可能在短时间内连续触发多个写命令。
 
+## 当前实现效果（2026-04-15 HEAD 复核）
+
+- 当前 `HEAD` 仍保留 `crates/hone-core/src/config.rs:940-980` 的整文件“读 -> 改 -> 原子写回”模式，没有新增跨调用共享的配置写锁。
+- `bins/hone-desktop/src/sidecar.rs` 中的 `set_agent_settings_impl(...)`、`set_openrouter_settings_impl(...)`、`set_fmp_settings_impl(...)`、`set_tavily_settings_impl(...)` 仍分别直写同一份配置文件，未见统一串行化入口。
+- 本轮巡检未发现把配置写入阶段纳入 `transition_lock` 或其它互斥机制的提交，因此该缺陷继续保持 `New`。
+
 ## 用户影响
 
 - 用户可能先保存了 runner / 模型设置，随后再保存搜索或数据源 key，结果前一次 runner 改动被后一次写配置静默冲掉。

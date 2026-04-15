@@ -31,6 +31,12 @@
 - 运行时在 `crates/hone-channels/src/core.rs:1047-1053` 中却使用 `self.config.agent.multi_agent.answer.max_tool_calls.max(1)`，把任何小于 `1` 的值都强行提升为 `1`。
 - `MultiAgentRunner` 在 answer 阶段 handoff prompt 中会把这个提升后的值写进 “at most N extra tool call(s)” 提示，并同步写入 `answer_request.max_tool_calls`，见 `crates/hone-channels/src/runners/multi_agent.rs:343-358`。
 
+## 当前实现效果（2026-04-15 HEAD 复核）
+
+- 当前 `HEAD` 仍在 `packages/app/src/pages/settings.tsx:550-557` 允许用户输入 `0` 并把它保存进草稿。
+- 运行时仍在 `crates/hone-channels/src/core.rs:1052` 使用 `max_tool_calls.max(1)`，没有尊重 `0` 的配置值。
+- 本轮巡检未发现收紧前端最小值或放宽运行时语义的修复，因此该缺陷继续保持 `New`。
+
 ## 用户影响
 
 - 用户明明在设置页里把补充工具调用关掉了，但 multi-agent answer 阶段仍可能继续触发一次额外工具调用。

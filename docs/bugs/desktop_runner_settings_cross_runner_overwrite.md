@@ -37,6 +37,13 @@
 - `set_agent_settings_impl()` 在 `bins/hone-desktop/src/sidecar.rs:860-870` 先写 `agent.opencode.* = openai*`，随后又在 `bins/hone-desktop/src/sidecar.rs:897-955` 把 `agent.opencode.*` 覆盖成 `multi_agent.answer.*`。
 - 设置页文案和表单布局却把这两套字段拆成了两块独立 UI：`Answer Agent` 区块位于 `packages/app/src/pages/settings.tsx:486-568`，OpenAI-compatible / OpenCode 区块位于 `packages/app/src/pages/settings.tsx:589-728`。这会直接误导用户以为二者独立。
 
+## 当前实现效果（2026-04-15 HEAD 复核）
+
+- 当前 `HEAD` 仍在 `bins/hone-desktop/src/sidecar.rs:861-869` 先写 `agent.opencode.* = openai*`。
+- 同一次保存里，`bins/hone-desktop/src/sidecar.rs:940-953` 仍会把 `agent.opencode.*` 再覆盖成 `multi_agent.answer.*`。
+- `packages/app/src/pages/settings-model.ts:26-28` 仍默认给 OpenAI-compatible runner 草稿填入独立的 `openaiUrl` / `openaiModel` / `openaiApiKey`，继续强化了“这是另一套独立配置”的 UI 预期。
+- 本轮巡检未发现拆分持久化字段或按当前 runner 条件写入的修复，因此该缺陷继续保持 `New`。
+
 ## 用户影响
 
 - 用户在 `opencode_acp` runner 下修改模型、Base URL 或 API Key，保存后可能马上被 `multi-agent.answer` 的旧值覆盖，表现为“明明改了，但下次运行还是错模型/错路由”。
