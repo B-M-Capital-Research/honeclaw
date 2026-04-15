@@ -33,5 +33,7 @@ pub use session::{
     find_last_compact_boundary_index, has_compact_skill_snapshot, invoked_skills_from_metadata,
     latest_compact_summary, message_is_compact_boundary, message_is_compact_skill_snapshot,
     message_is_compact_summary, message_is_slash_skill, restore_tool_message,
-    select_context_messages, select_messages_after_compact_boundary, session_message_in_context,
+    select_context_messages, select_messages_after_compact_boundary,
+    session_message_from_normalized, session_message_from_text, session_message_in_context,
+    session_message_text, session_message_to_agent_messages, session_message_to_normalized,
 };

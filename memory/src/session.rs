@@ -2,7 +2,10 @@
 
 use crate::session_sqlite::SqliteSessionMirror;
 use chrono::{DateTime, FixedOffset};
-use hone_core::agent::ToolCallMade;
+use hone_core::agent::{
+    AgentMessage, NormalizedConversationMessage, NormalizedConversationPart, ToolCallMade,
+    denormalize_normalized_message,
+};
 use hone_core::{ActorIdentity, SessionIdentity, beijing_now};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -67,7 +70,7 @@ fn get_session_lock(session_id: &str) -> Arc<Mutex<()>> {
 }
 
 fn default_session_version() -> u32 {
-    3
+    4
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -134,17 +137,266 @@ pub struct Session {
 }
 
 /// 会话消息
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SessionMessage {
     pub role: String,
-    pub content: String,
+    pub content: Vec<NormalizedConversationPart>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
     pub timestamp: String,
     #[serde(default)]
     pub metadata: Option<HashMap<String, Value>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum SessionMessageContentCompat {
+    Text(String),
+    Parts(Vec<NormalizedConversationPart>),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SessionMessageCompat {
+    role: String,
+    content: SessionMessageContentCompat,
+    #[serde(default)]
+    status: Option<String>,
+    timestamp: String,
+    #[serde(default)]
+    metadata: Option<HashMap<String, Value>>,
+}
+
+impl<'de> Deserialize<'de> for SessionMessage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = SessionMessageCompat::deserialize(deserializer)?;
+        let content = match raw.content {
+            SessionMessageContentCompat::Parts(parts) => parts,
+            SessionMessageContentCompat::Text(text) => {
+                session_message_parts_from_legacy(&raw.role, &text, raw.metadata.as_ref())
+            }
+        };
+        Ok(Self {
+            role: raw.role,
+            content,
+            status: raw.status,
+            timestamp: raw.timestamp,
+            metadata: raw.metadata,
+        })
+    }
+}
+
 pub fn session_message_in_context(role: &str) -> bool {
     matches!(role, "user" | "assistant" | "tool")
+}
+
+fn message_metadata_clone(
+    metadata: Option<&HashMap<String, Value>>,
+) -> Option<HashMap<String, Value>> {
+    metadata.cloned()
+}
+
+fn text_part(part_type: &str, text: &str) -> Option<NormalizedConversationPart> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(NormalizedConversationPart {
+        part_type: part_type.to_string(),
+        text: Some(trimmed.to_string()),
+        id: None,
+        name: None,
+        args: None,
+        result: None,
+        metadata: None,
+    })
+}
+
+fn text_part_with_metadata(
+    part_type: &str,
+    text: &str,
+    metadata: Option<&HashMap<String, Value>>,
+) -> Option<NormalizedConversationPart> {
+    text_part(part_type, text).map(|mut part| {
+        part.metadata = message_metadata_clone(metadata);
+        part
+    })
+}
+
+fn parse_json_or_string(input: &str) -> Value {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        Value::String(String::new())
+    } else {
+        serde_json::from_str(trimmed).unwrap_or_else(|_| Value::String(trimmed.to_string()))
+    }
+}
+
+fn normalized_tool_call_parts(
+    metadata: Option<&HashMap<String, Value>>,
+) -> Vec<NormalizedConversationPart> {
+    assistant_tool_calls_from_metadata(metadata)
+        .into_iter()
+        .flatten()
+        .map(|tool_call| NormalizedConversationPart {
+            part_type: "tool_call".to_string(),
+            text: None,
+            id: tool_call
+                .get("id")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string),
+            name: tool_call
+                .get("function")
+                .and_then(|value| value.get("name"))
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string),
+            args: tool_call
+                .get("function")
+                .and_then(|value| value.get("arguments"))
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(parse_json_or_string)
+                        .unwrap_or_else(|| value.clone())
+                }),
+            result: None,
+            metadata: None,
+        })
+        .collect()
+}
+
+fn session_message_parts_from_legacy(
+    role: &str,
+    content: &str,
+    metadata: Option<&HashMap<String, Value>>,
+) -> Vec<NormalizedConversationPart> {
+    match role {
+        "user" | "system" => text_part_with_metadata("text", content, metadata)
+            .into_iter()
+            .collect(),
+        "assistant" => {
+            let mut parts = normalized_tool_call_parts(metadata);
+            let part_type = if parts.is_empty() { "text" } else { "final" };
+            parts.extend(text_part_with_metadata(part_type, content, metadata));
+            parts
+        }
+        "tool" => {
+            let tool_name = metadata
+                .and_then(|items| items.get("tool_name"))
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string);
+            let tool_call_id = metadata
+                .and_then(|items| items.get("tool_call_id"))
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string);
+            vec![NormalizedConversationPart {
+                part_type: "tool_result".to_string(),
+                text: None,
+                id: tool_call_id,
+                name: tool_name,
+                args: None,
+                result: Some(parse_json_or_string(content)),
+                metadata: message_metadata_clone(metadata),
+            }]
+        }
+        _ => text_part_with_metadata("text", content, metadata)
+            .into_iter()
+            .collect(),
+    }
+}
+
+pub fn session_message_text(message: &SessionMessage) -> String {
+    let text = message
+        .content
+        .iter()
+        .filter_map(|part| part.text.as_deref())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !text.is_empty() {
+        return text;
+    }
+
+    message
+        .content
+        .iter()
+        .find(|part| part.part_type == "tool_result")
+        .map(tool_result_text)
+        .unwrap_or_default()
+}
+
+pub fn session_message_to_normalized(message: &SessionMessage) -> NormalizedConversationMessage {
+    NormalizedConversationMessage {
+        role: message.role.clone(),
+        content: message.content.clone(),
+        status: message.status.clone(),
+        metadata: message.metadata.clone(),
+    }
+}
+
+pub fn session_message_to_agent_messages(message: &SessionMessage) -> Vec<AgentMessage> {
+    if message.role == "tool" {
+        return message
+            .content
+            .iter()
+            .find(|part| part.part_type == "tool_result")
+            .map(|part| {
+                vec![AgentMessage {
+                    role: "tool".to_string(),
+                    content: Some(tool_result_text(part)),
+                    tool_calls: None,
+                    tool_call_id: part.id.clone(),
+                    name: part.name.clone(),
+                    metadata: part.metadata.clone().or_else(|| message.metadata.clone()),
+                }]
+            })
+            .or_else(|| {
+                restore_tool_message(message).map(|(tool_call_id, tool_name, content)| {
+                    vec![AgentMessage {
+                        role: "tool".to_string(),
+                        content: Some(content),
+                        tool_calls: None,
+                        tool_call_id: Some(tool_call_id),
+                        name: Some(tool_name),
+                        metadata: message.metadata.clone(),
+                    }]
+                })
+            })
+            .unwrap_or_default();
+    }
+
+    denormalize_normalized_message(&session_message_to_normalized(message))
+}
+
+pub fn session_message_from_normalized(
+    message: &NormalizedConversationMessage,
+    timestamp: impl Into<String>,
+) -> SessionMessage {
+    SessionMessage {
+        role: message.role.clone(),
+        content: message.content.clone(),
+        status: message.status.clone(),
+        timestamp: timestamp.into(),
+        metadata: message.metadata.clone(),
+    }
+}
+
+pub fn session_message_from_text(
+    role: &str,
+    content: &str,
+    timestamp: impl Into<String>,
+    metadata: Option<HashMap<String, Value>>,
+) -> SessionMessage {
+    SessionMessage {
+        role: role.to_string(),
+        content: session_message_parts_from_legacy(role, content, metadata.as_ref()),
+        status: Some("completed".to_string()),
+        timestamp: timestamp.into(),
+        metadata,
+    }
 }
 
 pub fn select_context_messages<'a>(
@@ -358,22 +610,51 @@ pub fn has_compact_skill_snapshot(messages: &[&SessionMessage]) -> bool {
         .any(|message| message_is_compact_skill_snapshot(message.metadata.as_ref()))
 }
 
-pub fn restore_tool_message(
-    content: &str,
-    metadata: Option<&HashMap<String, Value>>,
-) -> Option<(String, String, String)> {
-    let metadata = metadata?;
-    let tool_name = metadata.get("tool_name")?.as_str()?.trim().to_string();
-    if tool_name.is_empty() {
-        return None;
+fn tool_result_text(part: &NormalizedConversationPart) -> String {
+    match part.result.as_ref() {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Object(map)) => {
+            for key in ["formatted_output", "aggregated_output", "stdout", "text"] {
+                if let Some(text) = map.get(key).and_then(|value| value.as_str()) {
+                    if !text.trim().is_empty() {
+                        return text.to_string();
+                    }
+                }
+            }
+            serde_json::to_string(&Value::Object(map.clone()))
+                .unwrap_or_else(|_| "null".to_string())
+        }
+        Some(value) => serde_json::to_string(value).unwrap_or_else(|_| "null".to_string()),
+        None => String::new(),
     }
-    let tool_call_id = metadata
-        .get("tool_call_id")
-        .and_then(|value| value.as_str())
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    Some((tool_call_id, tool_name, content.to_string()))
+}
+
+pub fn restore_tool_message(message: &SessionMessage) -> Option<(String, String, String)> {
+    if message.role == "tool" {
+        let metadata = message.metadata.as_ref()?;
+        let tool_name = metadata.get("tool_name")?.as_str()?.trim().to_string();
+        if tool_name.is_empty() {
+            return None;
+        }
+        let tool_call_id = metadata
+            .get("tool_call_id")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        return Some((tool_call_id, tool_name, session_message_text(message)));
+    }
+
+    message.content.iter().find_map(|part| {
+        if part.part_type != "tool_result" {
+            return None;
+        }
+        Some((
+            part.id.clone().unwrap_or_default(),
+            part.name.clone().unwrap_or_default(),
+            tool_result_text(part),
+        ))
+    })
 }
 
 impl SessionStorage {
@@ -530,13 +811,14 @@ impl SessionStorage {
             return Ok(false);
         };
 
-        session.messages.push(SessionMessage {
-            role: role.to_string(),
-            content: content.to_string(),
-            timestamp: hone_core::beijing_now_rfc3339(),
+        session.messages.push(session_message_from_text(
+            role,
+            content,
+            hone_core::beijing_now_rfc3339(),
             metadata,
-        });
+        ));
         session.updated_at = hone_core::beijing_now_rfc3339();
+        session.version = default_session_version();
         self.write_session(session_id, &session)?;
 
         Ok(true)
@@ -644,6 +926,26 @@ impl SessionStorage {
         session.summary = summary;
         session.version = default_session_version();
         session.updated_at = hone_core::beijing_now_rfc3339();
+        self.write_session(session_id, &session)?;
+
+        Ok(true)
+    }
+
+    pub fn append_session_messages(
+        &self,
+        session_id: &str,
+        messages: Vec<SessionMessage>,
+    ) -> hone_core::HoneResult<bool> {
+        let lock = get_session_lock(session_id);
+        let _guard = lock.lock().unwrap();
+
+        let Some(mut session) = self.load_session(session_id)? else {
+            return Ok(false);
+        };
+
+        session.messages.extend(messages);
+        session.updated_at = hone_core::beijing_now_rfc3339();
+        session.version = default_session_version();
         self.write_session(session_id, &session)?;
 
         Ok(true)
@@ -857,7 +1159,7 @@ mod tests {
             session.session_identity,
             Some(SessionIdentity::group("discord", "g:1:c:2").expect("session"))
         );
-        assert_eq!(session.version, 3);
+        assert_eq!(session.version, 4);
         assert!(!session.runtime.prompt.frozen_time_beijing.is_empty());
 
         let _ = std::fs::remove_dir_all(root);
@@ -940,7 +1242,7 @@ mod tests {
             .expect("add3");
 
         let msgs = storage.get_messages(&session_id, Some(2)).expect("get");
-        let contents: Vec<_> = msgs.iter().map(|m| m.content.as_str()).collect();
+        let contents: Vec<_> = msgs.iter().map(session_message_text).collect();
         assert_eq!(contents, vec!["m2", "m3"]);
 
         let _ = std::fs::remove_dir_all(root);
@@ -956,12 +1258,12 @@ mod tests {
             .add_message(&session_id, "user", "before", None)
             .expect("add");
 
-        let new_messages = vec![SessionMessage {
-            role: "assistant".to_string(),
-            content: "after".to_string(),
-            timestamp: hone_core::beijing_now_rfc3339(),
-            metadata: None,
-        }];
+        let new_messages = vec![session_message_from_text(
+            "assistant",
+            "after",
+            hone_core::beijing_now_rfc3339(),
+            None,
+        )];
 
         let ok = storage
             .replace_messages(&session_id, new_messages)
@@ -970,7 +1272,7 @@ mod tests {
 
         let msgs = storage.get_messages(&session_id, None).expect("get");
         assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].content, "after");
+        assert_eq!(session_message_text(&msgs[0]), "after");
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -1026,12 +1328,12 @@ mod tests {
         let storage = SessionStorage::new(&root);
         let session_id = storage.create_session(None, None, None).expect("create");
 
-        let new_messages = vec![SessionMessage {
-            role: "assistant".to_string(),
-            content: "after".to_string(),
-            timestamp: hone_core::beijing_now_rfc3339(),
-            metadata: None,
-        }];
+        let new_messages = vec![session_message_from_text(
+            "assistant",
+            "after",
+            hone_core::beijing_now_rfc3339(),
+            None,
+        )];
 
         storage
             .replace_messages_with_summary(
@@ -1057,71 +1359,46 @@ mod tests {
     #[test]
     fn select_messages_after_compact_boundary_slices_to_latest_boundary() {
         let messages = vec![
-            SessionMessage {
-                role: "user".to_string(),
-                content: "before".to_string(),
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: None,
-            },
-            SessionMessage {
-                role: "system".to_string(),
-                content: "Conversation compacted".to_string(),
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: Some(build_compact_boundary_metadata("auto", 3, 5)),
-            },
-            SessionMessage {
-                role: "user".to_string(),
-                content: "【Compact Summary】\nsummary".to_string(),
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: Some(build_compact_summary_metadata("auto")),
-            },
-            SessionMessage {
-                role: "assistant".to_string(),
-                content: "after".to_string(),
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: None,
-            },
+            session_message_from_text("user", "before", hone_core::beijing_now_rfc3339(), None),
+            session_message_from_text(
+                "system",
+                "Conversation compacted",
+                hone_core::beijing_now_rfc3339(),
+                Some(build_compact_boundary_metadata("auto", 3, 5)),
+            ),
+            session_message_from_text(
+                "user",
+                "【Compact Summary】\nsummary",
+                hone_core::beijing_now_rfc3339(),
+                Some(build_compact_summary_metadata("auto")),
+            ),
+            session_message_from_text("assistant", "after", hone_core::beijing_now_rfc3339(), None),
         ];
 
         let selected = select_messages_after_compact_boundary(&messages, None);
-        let contents: Vec<_> = selected.iter().map(|m| m.content.as_str()).collect();
+        let contents: Vec<_> = selected.iter().map(|m| session_message_text(m)).collect();
         assert_eq!(contents, vec!["【Compact Summary】\nsummary", "after"]);
         assert_eq!(
-            latest_compact_summary(&messages).map(|message| message.content.as_str()),
-            Some("【Compact Summary】\nsummary")
+            latest_compact_summary(&messages).map(session_message_text),
+            Some("【Compact Summary】\nsummary".to_string())
         );
     }
 
     #[test]
     fn select_context_messages_keeps_tool_role() {
         let messages = vec![
-            SessionMessage {
-                role: "system".to_string(),
-                content: "ignore".to_string(),
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: None,
-            },
-            SessionMessage {
-                role: "user".to_string(),
-                content: "u1".to_string(),
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: None,
-            },
-            SessionMessage {
-                role: "tool".to_string(),
-                content: "t1".to_string(),
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: Some(HashMap::from([(
+            session_message_from_text("system", "ignore", hone_core::beijing_now_rfc3339(), None),
+            session_message_from_text("user", "u1", hone_core::beijing_now_rfc3339(), None),
+            session_message_from_text(
+                "tool",
+                "t1",
+                hone_core::beijing_now_rfc3339(),
+                Some(HashMap::from([(
                     "tool_name".to_string(),
                     Value::String("web_search".to_string()),
                 )])),
-            },
-            SessionMessage {
-                role: "assistant".to_string(),
-                content: "a1".to_string(),
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: None,
-            },
+            ),
+            session_message_from_text("assistant", "a1", hone_core::beijing_now_rfc3339(), None),
         ];
 
         let selected = select_context_messages(&messages, Some(3));
@@ -1140,8 +1417,13 @@ mod tests {
             tool_call_id: Some("call_1".to_string()),
         };
         let metadata = build_tool_message_metadata(&call);
-        let restored =
-            restore_tool_message("{\"ok\":true}", Some(&metadata)).expect("restore tool");
+        let message = session_message_from_text(
+            "tool",
+            "{\"ok\":true}",
+            hone_core::beijing_now_rfc3339(),
+            Some(metadata),
+        );
+        let restored = restore_tool_message(&message).expect("restore tool");
         assert_eq!(restored.0, "call_1");
         assert_eq!(restored.1, "web_search");
         assert_eq!(restored.2, "{\"ok\":true}");
@@ -1225,7 +1507,7 @@ mod tests {
             .expect("load")
             .expect("session");
         assert_eq!(session.messages.len(), 1);
-        assert_eq!(session.messages[0].content, "hello sqlite");
+        assert_eq!(session_message_text(&session.messages[0]), "hello sqlite");
 
         let _ = std::fs::remove_dir_all(root);
     }

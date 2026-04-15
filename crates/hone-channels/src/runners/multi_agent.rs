@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hone_agent::FunctionCallingAgent;
-use hone_core::agent::{Agent, AgentContext, AgentResponse, ToolCallMade};
+use hone_core::agent::{Agent, AgentContext, AgentMessage, AgentResponse, ToolCallMade};
 use hone_core::config::{MultiAgentSearchConfig, OpencodeAcpConfig};
 use hone_core::{LlmAuditRecord, LlmAuditSink};
 use hone_llm::{LlmProvider, OpenAiCompatibleProvider};
@@ -14,7 +14,7 @@ use crate::mcp_bridge::hone_mcp_servers;
 use crate::runtime::sanitize_user_visible_output;
 
 use super::opencode_acp::OpencodeAcpRunner;
-use super::tool_reasoning::RunnerToolObserver;
+use super::tool_reasoning::{RunnerToolObserver, runner_context_messages};
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
     RunnerTimeouts,
@@ -193,6 +193,75 @@ Verified search tool transcript (JSON):\n{}",
 
         !looks_like_working_note
     }
+
+    fn merge_context_messages(
+        &self,
+        search_messages: Option<Vec<AgentMessage>>,
+        answer_messages: Option<Vec<AgentMessage>>,
+    ) -> Option<Vec<AgentMessage>> {
+        let mut merged = search_messages.unwrap_or_default();
+        merged.extend(answer_messages.unwrap_or_default());
+        if merged.is_empty() {
+            None
+        } else {
+            Some(merged)
+        }
+    }
+
+    fn fallback_context_messages_from_response(
+        &self,
+        response: &AgentResponse,
+    ) -> Option<Vec<AgentMessage>> {
+        let assistant_content = response.content.trim();
+        if assistant_content.is_empty() && response.tool_calls_made.is_empty() {
+            return None;
+        }
+
+        let mut messages = Vec::new();
+        if !response.tool_calls_made.is_empty() {
+            let tool_calls = Some(
+                response
+                    .tool_calls_made
+                    .iter()
+                    .map(|call| {
+                        json!({
+                            "id": call.tool_call_id.clone().unwrap_or_default(),
+                            "type": "function",
+                            "function": {
+                                "name": call.name,
+                                "arguments": serde_json::to_string(&call.arguments)
+                                    .unwrap_or_else(|_| "null".to_string()),
+                            }
+                        })
+                    })
+                    .collect(),
+            );
+            messages.push(AgentMessage {
+                role: "assistant".to_string(),
+                content: None,
+                tool_calls,
+                tool_call_id: None,
+                name: None,
+                metadata: None,
+            });
+        }
+        if !assistant_content.is_empty() {
+            messages.push(AgentMessage {
+                role: "assistant".to_string(),
+                content: Some(assistant_content.to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+                metadata: None,
+            });
+        }
+
+        if messages.is_empty() {
+            None
+        } else {
+            Some(messages)
+        }
+    }
 }
 
 #[async_trait]
@@ -264,6 +333,7 @@ impl AgentRunner for MultiAgentRunner {
 
         let (mut search_context, removed_tool_messages) =
             self.sanitize_search_context(request.context.clone());
+        let search_original_len = search_context.messages.len();
         if removed_tool_messages > 0 {
             tracing::info!(
                 "[MultiAgent] session={} stage=search.context_sanitized removed_tool_messages={}",
@@ -281,6 +351,7 @@ impl AgentRunner for MultiAgentRunner {
         let search_response = search_agent
             .run(&search_runtime_input, &mut search_context)
             .await;
+        let search_context_messages = runner_context_messages(&search_context, search_original_len);
         let search_elapsed_ms = search_started.elapsed().as_millis();
         let search_tool_calls = search_response.tool_calls_made.len();
         let used_live_search_tool =
@@ -339,7 +410,7 @@ impl AgentRunner for MultiAgentRunner {
                 streamed_output: false,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
-                context_messages: None,
+                context_messages: search_context_messages,
             };
         }
 
@@ -365,7 +436,7 @@ impl AgentRunner for MultiAgentRunner {
                 streamed_output: false,
                 terminal_error_emitted: false,
                 session_metadata_updates: HashMap::new(),
-                context_messages: None,
+                context_messages: search_context_messages,
             };
         }
 
@@ -452,6 +523,13 @@ impl AgentRunner for MultiAgentRunner {
 
         let mut combined_tool_calls = search_response.tool_calls_made.clone();
         combined_tool_calls.extend(answer_result.response.tool_calls_made.clone());
+        let context_messages = self.merge_context_messages(
+            search_context_messages,
+            answer_result
+                .context_messages
+                .clone()
+                .or_else(|| self.fallback_context_messages_from_response(&answer_result.response)),
+        );
         tracing::info!(
             "[MultiAgent] session={} stage=complete success={} search_tool_calls={} answer_tool_calls={} combined_tool_calls={}",
             request.session_id,
@@ -472,7 +550,7 @@ impl AgentRunner for MultiAgentRunner {
             streamed_output: answer_result.streamed_output,
             terminal_error_emitted: answer_result.terminal_error_emitted,
             session_metadata_updates: answer_result.session_metadata_updates,
-            context_messages: None,
+            context_messages,
         }
     }
 }
@@ -480,6 +558,7 @@ impl AgentRunner for MultiAgentRunner {
 #[cfg(test)]
 mod tests {
     use super::MultiAgentRunner;
+    use hone_core::agent::normalize_agent_messages;
     use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
     use hone_core::config::{MultiAgentSearchConfig, OpencodeAcpConfig};
     use hone_tools::ToolRegistry;
@@ -518,6 +597,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            metadata: None,
         });
         context.messages.push(AgentMessage {
             role: "tool".to_string(),
@@ -525,6 +605,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: Some("call_legacy".to_string()),
             name: Some("data_fetch".to_string()),
+            metadata: None,
         });
         context.messages.push(AgentMessage {
             role: "assistant".to_string(),
@@ -532,6 +613,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            metadata: None,
         });
 
         let (sanitized, removed) = runner.sanitize_search_context(context);
@@ -690,5 +772,63 @@ mod tests {
         assert!(handoff.contains("Do not copy that formatting"));
         assert!(handoff.contains("Search agent working note"));
         assert!(handoff.contains("<b>结论</b>"));
+    }
+
+    #[test]
+    fn merge_context_messages_keeps_search_then_answer_order() {
+        let runner = make_runner();
+        let merged = runner
+            .merge_context_messages(
+                Some(vec![AgentMessage {
+                    role: "assistant".to_string(),
+                    content: Some("search memo".to_string()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    metadata: None,
+                }]),
+                Some(vec![AgentMessage {
+                    role: "assistant".to_string(),
+                    content: Some("final answer".to_string()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                    metadata: None,
+                }]),
+            )
+            .expect("merged messages");
+
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].content.as_deref(), Some("search memo"));
+        assert_eq!(merged[1].content.as_deref(), Some("final answer"));
+    }
+
+    #[test]
+    fn fallback_context_messages_from_response_builds_persistable_answer_turn() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "结论：AAOI 更弱。".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "web_search".to_string(),
+                arguments: json!({"query": "AAOI latest news"}),
+                result: json!({"results": []}),
+                tool_call_id: Some("call_1".to_string()),
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        let messages = runner
+            .fallback_context_messages_from_response(&response)
+            .expect("fallback messages");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, "assistant");
+        assert!(messages[0].content.is_none());
+        assert_eq!(messages[1].content.as_deref(), Some("结论：AAOI 更弱。"));
+        let normalized = normalize_agent_messages(&messages);
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].content[0].part_type, "tool_call");
+        assert_eq!(normalized[0].content[1].part_type, "final");
     }
 }

@@ -1,6 +1,8 @@
 use async_trait::async_trait;
-use hone_core::agent::AgentContext;
-use hone_core::agent::ToolCallMade;
+use hone_core::agent::{
+    AgentContext, AgentMessage, ToolCallMade, final_assistant_message_content,
+    normalize_agent_messages,
+};
 use hone_core::config::{CodexAcpConfig, GeminiAcpConfig, OpencodeAcpConfig};
 use hone_memory::restore_tool_message;
 use serde_json::Value;
@@ -17,7 +19,7 @@ use super::acp_common::{
 };
 use super::codex_acp::{
     build_codex_acp_prompt_text, codex_acp_effective_args, configured_codex_model_id,
-    render_codex_tool_status, validate_codex_version_matrix,
+    patch_codex_session_update_params, render_codex_tool_status, validate_codex_version_matrix,
 };
 use super::gemini_acp::{
     configured_gemini_api_key_env, gemini_acp_effective_args, validate_gemini_version,
@@ -365,6 +367,38 @@ fn runner_context_messages_drop_new_user_message_and_keep_transcript_tail() {
 }
 
 #[test]
+fn codex_cli_context_messages_are_ready_for_normalized_persistence() {
+    let mut context = AgentContext::new("session-1".to_string());
+    context.add_user_message("old user");
+    context.add_assistant_message("old assistant", None);
+    let original_len = context.messages.len();
+
+    context.add_user_message("new user");
+    context.add_assistant_message(
+        "先检查本地版本。",
+        Some(vec![serde_json::json!({
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "run_shell",
+                "arguments": "{\"cmd\":\"rtk --version\"}"
+            }
+        })]),
+    );
+    context.add_tool_result("call_1", "run_shell", "rtk 0.35.0\n");
+    context.add_assistant_message("VERSION=rtk 0.35.0", None);
+
+    let messages = runner_context_messages(&context, original_len).expect("new messages");
+    let normalized = normalize_agent_messages(&messages);
+    assert_eq!(normalized.len(), 1);
+    assert_eq!(normalized[0].role, "assistant");
+    assert_eq!(normalized[0].content[0].part_type, "progress");
+    assert_eq!(normalized[0].content[1].part_type, "tool_call");
+    assert_eq!(normalized[0].content[2].part_type, "tool_result");
+    assert_eq!(normalized[0].content[3].part_type, "final");
+}
+
+#[test]
 fn codex_version_matrix_accepts_minimum_validated_pair() {
     let result = validate_codex_version_matrix(
         CliVersion {
@@ -487,8 +521,22 @@ fn restore_tool_message_rebuilds_context_tuple() {
         "tool_call_id".to_string(),
         Value::String("call_1".to_string()),
     );
-    let restored =
-        restore_tool_message("{\"result\":true}", Some(&metadata)).expect("tool message");
+    let restored = restore_tool_message(&hone_memory::session::SessionMessage {
+        role: "tool".to_string(),
+        content: vec![hone_core::agent::NormalizedConversationPart {
+            part_type: "tool_result".to_string(),
+            text: None,
+            id: Some("call_1".to_string()),
+            name: Some("web_search".to_string()),
+            args: None,
+            result: Some(serde_json::json!({"result": true})),
+            metadata: None,
+        }],
+        status: Some("completed".to_string()),
+        timestamp: "2026-04-15T00:00:00+08:00".to_string(),
+        metadata: Some(metadata),
+    })
+    .expect("tool message");
     assert_eq!(restored.0, "call_1");
     assert_eq!(restored.1, "web_search");
     assert_eq!(restored.2, "{\"result\":true}");
@@ -596,27 +644,30 @@ async fn acp_updates_build_restorable_transcript_sequence() {
     .await;
 
     let messages = finalize_context_messages(&mut state);
-    assert_eq!(messages.len(), 3);
+    assert_eq!(messages.len(), 4);
     assert_eq!(messages[0].role, "assistant");
     assert_eq!(messages[0].content.as_deref(), Some("先查本地画像。"));
-    let tool_calls = messages[0]
+    assert_eq!(messages[0].tool_calls, None);
+    let tool_calls = messages[1]
         .tool_calls
         .as_ref()
         .expect("assistant tool calls");
     assert_eq!(tool_calls.len(), 1);
     assert_eq!(tool_calls[0]["id"], "call_1");
     assert_eq!(tool_calls[0]["function"]["name"], "local_search_files");
-    assert_eq!(messages[1].role, "tool");
-    assert_eq!(messages[1].tool_call_id.as_deref(), Some("call_1"));
-    assert_eq!(messages[1].name.as_deref(), Some("local_search_files"));
+    assert_eq!(messages[1].role, "assistant");
+    assert_eq!(messages[1].content.as_deref(), Some(""));
+    assert_eq!(messages[2].role, "tool");
+    assert_eq!(messages[2].tool_call_id.as_deref(), Some("call_1"));
+    assert_eq!(messages[2].name.as_deref(), Some("local_search_files"));
     assert!(
-        messages[1]
+        messages[2]
             .content
             .as_deref()
             .is_some_and(|value| value.contains("applied-optoelectronics"))
     );
-    assert_eq!(messages[2].role, "assistant");
-    assert_eq!(messages[2].content.as_deref(), Some("AAOI 是做光模块的。"));
+    assert_eq!(messages[3].role, "assistant");
+    assert_eq!(messages[3].content.as_deref(), Some("AAOI 是做光模块的。"));
 }
 
 #[test]
@@ -630,6 +681,217 @@ fn codex_prompt_text_includes_restored_transcript_when_session_is_recreated() {
     assert!(prompt.contains("\"role\": \"user\""));
     assert!(prompt.contains("AAOI 是什么公司"));
     assert!(prompt.contains("### User Input ###\n新的问题"));
+}
+
+#[test]
+fn codex_prompt_text_serializes_message_metadata() {
+    let mut context = AgentContext::new("session-1".to_string());
+    context.messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some("我先核验本地画像。".to_string()),
+        tool_calls: None,
+        tool_call_id: None,
+        name: None,
+        metadata: Some(HashMap::from([(
+            "codex_acp".to_string(),
+            serde_json::json!({
+                "segment_kind": "progress_note",
+                "channel_fields": {
+                    "stream_kind": "agent_message_chunk"
+                }
+            }),
+        )])),
+    });
+
+    let prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
+    assert!(prompt.contains("\"metadata\""));
+    assert!(prompt.contains("\"codex_acp\""));
+    assert!(prompt.contains("\"segment_kind\": \"progress_note\""));
+    assert!(prompt.contains("\"stream_kind\": \"agent_message_chunk\""));
+}
+
+#[test]
+fn normalized_history_collapses_tool_messages_into_assistant_turns() {
+    let mut context = AgentContext::new("session-1".to_string());
+    context.add_user_message("FLNC 现在怎么看");
+    context.messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some("我先核验实体和现价。".to_string()),
+        tool_calls: Some(vec![serde_json::json!({
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "arguments": "{\"query\":\"FLNC stock price\"}"
+            }
+        })]),
+        tool_call_id: None,
+        name: None,
+        metadata: Some(HashMap::from([(
+            "codex_acp".to_string(),
+            serde_json::json!({ "segment_kind": "progress_note" }),
+        )])),
+    });
+    context.messages.push(AgentMessage {
+        role: "tool".to_string(),
+        content: Some("{\"price\":5.12}".to_string()),
+        tool_calls: None,
+        tool_call_id: Some("call_1".to_string()),
+        name: Some("web_search".to_string()),
+        metadata: None,
+    });
+    context.add_assistant_message("结论：先看订单兑现，再谈估值弹性。", None);
+
+    let history = context.normalized_history();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].role, "user");
+    assert_eq!(history[1].role, "assistant");
+    assert_eq!(history[1].status.as_deref(), Some("completed"));
+    assert_eq!(history[1].content.len(), 4);
+    assert_eq!(history[1].content[0].part_type, "progress");
+    assert_eq!(history[1].content[1].part_type, "tool_call");
+    assert_eq!(history[1].content[1].name.as_deref(), Some("web_search"));
+    assert_eq!(
+        history[1].content[1].args,
+        Some(serde_json::json!({"query":"FLNC stock price"}))
+    );
+    assert_eq!(history[1].content[2].part_type, "tool_result");
+    assert_eq!(
+        history[1].content[2].result,
+        Some(serde_json::json!({"price":5.12}))
+    );
+    assert_eq!(history[1].content[3].part_type, "final");
+    assert_eq!(
+        history[1].content[3].text.as_deref(),
+        Some("结论：先看订单兑现，再谈估值弹性。")
+    );
+}
+
+#[test]
+fn codex_prompt_text_uses_normalized_user_assistant_history() {
+    let mut context = AgentContext::new("session-1".to_string());
+    context.add_user_message("AAOI 是什么公司");
+    context.messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some("我先查本地画像。".to_string()),
+        tool_calls: Some(vec![serde_json::json!({
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "local_search_files",
+                "arguments": "{\"query\":\"AAOI\"}"
+            }
+        })]),
+        tool_call_id: None,
+        name: None,
+        metadata: None,
+    });
+    context.messages.push(AgentMessage {
+        role: "tool".to_string(),
+        content: Some("{\"matches\":[\"company_profiles/aaoi.md\"]}".to_string()),
+        tool_calls: None,
+        tool_call_id: Some("call_1".to_string()),
+        name: Some("local_search_files".to_string()),
+        metadata: None,
+    });
+    context.add_assistant_message("AAOI 是做光模块的。", None);
+
+    let prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
+    assert!(prompt.contains("\"role\": \"assistant\""));
+    assert!(prompt.contains("\"type\": \"tool_call\""));
+    assert!(prompt.contains("\"type\": \"tool_result\""));
+    assert!(prompt.contains("\"type\": \"final\""));
+    assert!(!prompt.contains("\"role\": \"tool\""));
+}
+
+#[test]
+fn codex_and_opencode_prompt_transcripts_share_the_same_normalized_history() {
+    let mut context = AgentContext::new("session-1".to_string());
+    context.add_user_message("FLNC 现在怎么看");
+    context.messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some("我先查最新价格和财报。".to_string()),
+        tool_calls: Some(vec![serde_json::json!({
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "arguments": "{\"query\":\"FLNC earnings stock price\"}"
+            }
+        })]),
+        tool_call_id: None,
+        name: None,
+        metadata: None,
+    });
+    context.messages.push(AgentMessage {
+        role: "tool".to_string(),
+        content: Some("{\"price\":5.12,\"earnings_date\":\"2026-02-04\"}".to_string()),
+        tool_calls: None,
+        tool_call_id: Some("call_1".to_string()),
+        name: Some("web_search".to_string()),
+        metadata: None,
+    });
+    context.add_assistant_message("结论：先看订单兑现，再判断估值弹性。", None);
+
+    let codex_prompt = build_codex_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
+    let opencode_prompt = build_opencode_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
+
+    let codex_marker = "```json\n";
+    let codex_start = codex_prompt
+        .find(codex_marker)
+        .expect("codex transcript start")
+        + codex_marker.len();
+    let codex_end = codex_prompt[codex_start..]
+        .find("\n```")
+        .expect("codex transcript end")
+        + codex_start;
+    let opencode_start = opencode_prompt
+        .find(codex_marker)
+        .expect("opencode transcript start")
+        + codex_marker.len();
+    let opencode_end = opencode_prompt[opencode_start..]
+        .find("\n```")
+        .expect("opencode transcript end")
+        + opencode_start;
+
+    assert_eq!(
+        &codex_prompt[codex_start..codex_end],
+        &opencode_prompt[opencode_start..opencode_end]
+    );
+}
+
+#[test]
+fn final_response_content_prefers_last_assistant_segment() {
+    let messages = vec![
+        AgentMessage {
+            role: "assistant".to_string(),
+            content: Some("先核验实体和现价。".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        },
+        AgentMessage {
+            role: "tool".to_string(),
+            content: Some("{\"ok\":true}".to_string()),
+            tool_calls: None,
+            tool_call_id: Some("call_1".to_string()),
+            name: Some("web_search".to_string()),
+            metadata: None,
+        },
+        AgentMessage {
+            role: "assistant".to_string(),
+            content: Some("结论：当前价位偏交易化，需看储能订单兑现。".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        },
+    ];
+
+    let content =
+        final_assistant_message_content(&messages, "先核验实体和现价。结论：fallback".to_string());
+    assert_eq!(content, "结论：当前价位偏交易化，需看储能订单兑现。");
 }
 
 #[test]
@@ -687,6 +949,54 @@ fn codex_execute_renderer_formats_done_message() {
         Some("执行完成：rtk ls -la uploads")
     );
     assert_eq!(rendered.reasoning, None);
+}
+
+#[tokio::test]
+async fn codex_execute_completed_update_rehydrates_tool_result_from_raw_output() {
+    let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(NoopEmitter);
+    let mut state = AcpPromptState::default();
+
+    let start = serde_json::json!({
+        "update": {
+            "sessionUpdate": "tool_call",
+            "toolCallId": "call_exec_1",
+            "title": "Run rtk --version",
+            "kind": "execute",
+            "rawInput": {
+                "command": ["/bin/zsh", "-lc", "rtk --version"]
+            }
+        }
+    });
+    handle_acp_session_update(&start, &emitter, Some(&mut state)).await;
+
+    let completed = serde_json::json!({
+        "update": {
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call_exec_1",
+            "status": "completed",
+            "kind": "execute",
+            "rawOutput": {
+                "stdout": "rtk 0.35.0\n",
+                "formatted_output": "rtk 0.35.0\n",
+                "exit_code": 0
+            }
+        }
+    });
+    let patched = patch_codex_session_update_params(&completed).expect("patched params");
+    handle_acp_session_update(&patched, &emitter, Some(&mut state)).await;
+
+    let messages = finalize_context_messages(&mut state);
+    assert_eq!(messages.len(), 2);
+    let tool_calls = messages[0]
+        .tool_calls
+        .as_ref()
+        .expect("assistant tool call");
+    assert_eq!(tool_calls[0]["id"], "call_exec_1");
+    assert_eq!(messages[1].role, "tool");
+    assert_eq!(messages[1].tool_call_id.as_deref(), Some("call_exec_1"));
+    let tool_content = messages[1].content.as_deref().expect("tool content");
+    assert!(tool_content.contains("\"stdout\":\"rtk 0.35.0\\n\""));
+    assert!(tool_content.contains("\"exit_code\":0"));
 }
 
 #[tokio::test]
@@ -1026,11 +1336,38 @@ async fn opencode_tool_status_labels_workspace_root_explicitly() {
 fn opencode_prompt_text_includes_restored_transcript_for_fresh_sessions() {
     let mut context = AgentContext::new("session-1".to_string());
     context.add_user_message("先看本地目录");
-    context.add_assistant_message("我先检查 runtime。", None);
+    context.messages.push(AgentMessage {
+        role: "assistant".to_string(),
+        content: Some("我先检查 runtime。".to_string()),
+        tool_calls: Some(vec![serde_json::json!({
+            "id": "call_read_1",
+            "type": "function",
+            "function": {
+                "name": "read",
+                "arguments": "{\"filePath\":\"/tmp/demo/runtime\"}"
+            }
+        })]),
+        tool_call_id: None,
+        name: None,
+        metadata: None,
+    });
+    context.messages.push(AgentMessage {
+        role: "tool".to_string(),
+        content: Some("<entries>(0 entries)</entries>".to_string()),
+        tool_calls: None,
+        tool_call_id: Some("call_read_1".to_string()),
+        name: Some("read".to_string()),
+        metadata: None,
+    });
+    context.add_assistant_message("runtime 目录是空的。", None);
 
     let prompt = build_opencode_acp_prompt_text("SYSTEM", "新的问题", Some(&context));
     assert!(prompt.contains("### Restored Conversation Transcript ###"));
     assert!(prompt.contains("\"role\": \"assistant\""));
+    assert!(prompt.contains("\"type\": \"tool_call\""));
+    assert!(prompt.contains("\"type\": \"tool_result\""));
+    assert!(prompt.contains("\"type\": \"final\""));
+    assert!(!prompt.contains("\"role\": \"tool\""));
     assert!(prompt.contains("我先检查 runtime。"));
     assert!(prompt.contains("### User Input ###\n新的问题"));
 }

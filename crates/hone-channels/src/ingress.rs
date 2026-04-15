@@ -568,7 +568,7 @@ mod tests {
             .get_messages(&session_id, None)
             .expect("get messages");
         assert_eq!(messages.len(), 2);
-        assert_eq!(messages[1].content, "[b] fresh");
+        assert_eq!(hone_memory::session_message_text(&messages[1]), "[b] fresh");
 
         let _ = std::fs::remove_dir_all(root);
     }

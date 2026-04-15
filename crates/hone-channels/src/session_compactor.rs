@@ -2,7 +2,8 @@ use hone_core::LlmAuditRecord;
 use hone_memory::{
     build_compact_boundary_metadata, build_compact_skill_snapshot_metadata,
     build_compact_summary_metadata, invoked_skills_from_metadata,
-    select_messages_after_compact_boundary, session::SessionSummary,
+    select_messages_after_compact_boundary, session::SessionSummary, session_message_from_text,
+    session_message_text,
 };
 
 use crate::HoneBotCore;
@@ -78,7 +79,7 @@ impl<'a> SessionCompactor<'a> {
 
         let total_content_bytes: usize = active_messages
             .iter()
-            .map(|message| message.content.len())
+            .map(|message| session_message_text(message).len())
             .sum();
         let should_compress = force
             || active_messages.len() > compress_threshold
@@ -114,9 +115,11 @@ impl<'a> SessionCompactor<'a> {
         let mut history_text = String::new();
         for message in &active_messages {
             let content = match message.role.as_str() {
-                "assistant" | "user" => sanitize_user_visible_output(&message.content).content,
+                "assistant" | "user" => {
+                    sanitize_user_visible_output(&session_message_text(message)).content
+                }
                 "tool" => String::new(),
-                _ => message.content.clone(),
+                _ => session_message_text(message),
             };
             if content.trim().is_empty() {
                 continue;
@@ -290,22 +293,22 @@ impl<'a> SessionCompactor<'a> {
         }
 
         let mut new_messages = Vec::new();
-        new_messages.push(hone_memory::session::SessionMessage {
-            role: "system".to_string(),
-            content: "Conversation compacted".to_string(),
-            timestamp: hone_core::beijing_now_rfc3339(),
-            metadata: Some(build_compact_boundary_metadata(
+        new_messages.push(session_message_from_text(
+            "system",
+            "Conversation compacted",
+            hone_core::beijing_now_rfc3339(),
+            Some(build_compact_boundary_metadata(
                 trigger,
                 active_messages.len().saturating_sub(retain_recent),
                 active_messages.len(),
             )),
-        });
-        new_messages.push(hone_memory::session::SessionMessage {
-            role: "user".to_string(),
-            content: format!("【Compact Summary】\n{summary_to_store}"),
-            timestamp: hone_core::beijing_now_rfc3339(),
-            metadata: Some(build_compact_summary_metadata(trigger)),
-        });
+        ));
+        new_messages.push(session_message_from_text(
+            "user",
+            &format!("【Compact Summary】\n{summary_to_store}"),
+            hone_core::beijing_now_rfc3339(),
+            Some(build_compact_summary_metadata(trigger)),
+        ));
         for skill in invoked_skills_from_metadata(&session.metadata)
             .into_iter()
             .take(POST_COMPACT_MAX_SKILL_SNAPSHOTS)
@@ -314,12 +317,12 @@ impl<'a> SessionCompactor<'a> {
             if snapshot.trim().is_empty() {
                 continue;
             }
-            new_messages.push(hone_memory::session::SessionMessage {
-                role: "user".to_string(),
-                content: snapshot,
-                timestamp: hone_core::beijing_now_rfc3339(),
-                metadata: Some(build_compact_skill_snapshot_metadata(&skill.skill_name)),
-            });
+            new_messages.push(session_message_from_text(
+                "user",
+                &snapshot,
+                hone_core::beijing_now_rfc3339(),
+                Some(build_compact_skill_snapshot_metadata(&skill.skill_name)),
+            ));
         }
         let retained: Vec<_> = active_messages
             .into_iter()

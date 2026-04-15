@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use hone_core::agent::{AgentContext, AgentMessage, AgentResponse};
+use hone_core::agent::{
+    AgentContext, AgentMessage, AgentResponse, final_assistant_message_content,
+};
 use hone_core::config::CodexAcpConfig;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -11,10 +13,11 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts, AcpToolRenderPhase, CliVersion,
-    build_acp_prompt_text, create_acp_session, finalize_context_messages,
-    log_acp_prompt_stop_diagnostics, parse_cli_version, set_acp_session_model, wait_for_response,
-    wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
+    AcpPermissionDecision, AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts,
+    AcpToolRenderPhase, CliVersion, build_acp_prompt_text, create_acp_session,
+    finalize_context_messages, log_acp_prompt_stop_diagnostics, parse_cli_version,
+    set_acp_session_model, wait_for_response, wait_for_response_with_timeouts_and_renderer,
+    write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -522,6 +525,8 @@ async fn run_codex_acp(
             overall: prompt_overall_timeout,
         },
         Some(render_codex_tool_status),
+        Some(patch_codex_session_update_params),
+        AcpPermissionDecision::ApproveForSession,
     )
     .await?;
 
@@ -547,8 +552,11 @@ async fn run_codex_acp(
     if let Some(task) = stderr_task {
         task.abort();
     }
-    let content = std::mem::take(&mut codex_state.full_reply);
     let context_messages = finalize_context_messages(&mut codex_state);
+    let content = final_assistant_message_content(
+        &context_messages,
+        std::mem::take(&mut codex_state.full_reply),
+    );
     let tool_calls_made = codex_state.finished_tool_calls.clone();
 
     Ok((
@@ -622,6 +630,27 @@ fn is_codex_execute_update(update: &Value) -> bool {
             .and_then(|value| value.get("command"))
             .and_then(|value| value.as_array())
             .is_some()
+}
+
+pub(crate) fn patch_codex_session_update_params(params: &Value) -> Option<Value> {
+    let update = params.get("update")?;
+    let session_update = update
+        .get("sessionUpdate")
+        .and_then(|value| value.as_str())?;
+    if session_update != "tool_call_update" || !is_codex_execute_update(update) {
+        return None;
+    }
+    if update.get("output").is_some() || update.get("result").is_some() {
+        return None;
+    }
+
+    let raw_output = update.get("rawOutput")?.clone();
+    let mut patched = params.clone();
+    patched
+        .get_mut("update")
+        .and_then(|value| value.as_object_mut())
+        .map(|object| object.insert("output".to_string(), raw_output));
+    Some(patched)
 }
 
 fn render_codex_execute_command(update: &Value) -> Option<String> {
@@ -722,8 +751,5 @@ Messages are ordered from oldest to newest.\n\
 }
 
 pub(crate) fn serialize_context_for_codex_prompt(context: &AgentContext) -> Option<String> {
-    if context.messages.is_empty() {
-        return None;
-    }
-    serde_json::to_string_pretty(&context.messages).ok()
+    context.normalized_history_json()
 }

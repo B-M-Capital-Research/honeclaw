@@ -84,6 +84,7 @@ pub(crate) fn append_gemini_cli_tool_context_messages(
         )]),
         tool_call_id: None,
         name: None,
+        metadata: None,
     });
     messages.push(AgentMessage {
         role: "tool".to_string(),
@@ -91,6 +92,7 @@ pub(crate) fn append_gemini_cli_tool_context_messages(
         tool_calls: None,
         tool_call_id: Some(call_id.to_string()),
         name: Some(tool_name.to_string()),
+        metadata: None,
     });
 }
 
@@ -104,6 +106,7 @@ fn append_gemini_cli_final_message(messages: &mut Vec<AgentMessage>, content: &s
         tool_calls: None,
         tool_call_id: None,
         name: None,
+        metadata: None,
     });
 }
 

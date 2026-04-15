@@ -7,7 +7,7 @@ use serde_json::json;
 
 use hone_memory::{
     message_is_compact_boundary, message_is_compact_skill_snapshot, message_is_compact_summary,
-    select_messages_after_compact_boundary,
+    select_messages_after_compact_boundary, session_message_text,
 };
 
 use crate::routes::require_actor;
@@ -48,13 +48,13 @@ pub(crate) async fn handle_history(
                 || message_is_compact_skill_snapshot(m.metadata.as_ref())
         })
         .map(|m| HistoryMsg {
-            attachments: extract_history_attachments(&m.content),
+            attachments: extract_history_attachments(&session_message_text(m)),
             role: if message_is_compact_boundary(m.metadata.as_ref()) {
                 "system".to_string()
             } else {
                 m.role.clone()
             },
-            content: m.content.clone(),
+            content: session_message_text(m),
             subtype: if message_is_compact_boundary(m.metadata.as_ref()) {
                 Some("compact_boundary".to_string())
             } else if message_is_compact_summary(m.metadata.as_ref()) {

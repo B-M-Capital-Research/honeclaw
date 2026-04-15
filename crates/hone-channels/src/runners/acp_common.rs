@@ -15,6 +15,35 @@ pub(crate) enum AcpToolRenderPhase {
     Done,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AcpPermissionDecision {
+    RejectOnce,
+    ApproveForSession,
+}
+
+impl AcpPermissionDecision {
+    fn preferred_kind(self) -> &'static str {
+        match self {
+            Self::RejectOnce => "reject_once",
+            Self::ApproveForSession => "allow_always",
+        }
+    }
+
+    fn fallback_kind(self) -> &'static str {
+        match self {
+            Self::RejectOnce => "reject_once",
+            Self::ApproveForSession => "allow_once",
+        }
+    }
+
+    fn progress_label(self) -> &'static str {
+        match self {
+            Self::RejectOnce => "rejected",
+            Self::ApproveForSession => "approved-for-session",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct AcpRenderedToolStatus {
     pub(crate) tool: String,
@@ -29,6 +58,8 @@ pub(crate) type AcpToolStatusRenderer = fn(
     default_message: Option<String>,
     default_reasoning: Option<String>,
 ) -> AcpRenderedToolStatus;
+
+pub(crate) type AcpSessionUpdateTransformer = fn(&Value) -> Option<Value>;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcpResponseTimeouts {
@@ -182,6 +213,7 @@ fn flush_pending_assistant_message(state: &mut AcpPromptState) {
         tool_calls,
         tool_call_id: None,
         name: None,
+        metadata: None,
     });
 }
 
@@ -234,6 +266,7 @@ fn capture_tool_finish(
             .finished_tool_calls
             .last()
             .map(|call| call.name.clone()),
+        metadata: None,
     });
 }
 
@@ -550,6 +583,8 @@ pub(crate) async fn wait_for_response(
             state.as_deref_mut(),
             stderr_buf.as_ref(),
             None,
+            None,
+            AcpPermissionDecision::RejectOnce,
         )
         .await?
         {
@@ -583,6 +618,8 @@ pub(crate) async fn wait_for_response_with_timeouts(
         stderr_buf,
         timeouts,
         None,
+        None,
+        AcpPermissionDecision::RejectOnce,
     )
     .await
 }
@@ -597,6 +634,8 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
     stderr_buf: Option<std::sync::Arc<tokio::sync::Mutex<String>>>,
     timeouts: AcpResponseTimeouts,
     tool_status_renderer: Option<AcpToolStatusRenderer>,
+    session_update_transformer: Option<AcpSessionUpdateTransformer>,
+    permission_decision: AcpPermissionDecision,
 ) -> Result<Value, AgentSessionError> {
     let start = tokio::time::Instant::now();
     let overall_deadline = start + timeouts.overall;
@@ -662,6 +701,8 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
             state.as_deref_mut(),
             stderr_buf.as_ref(),
             tool_status_renderer,
+            session_update_transformer,
+            permission_decision,
         )
         .await?
         {
@@ -679,6 +720,8 @@ async fn process_acp_payload(
     mut state: Option<&mut AcpPromptState>,
     stderr_buf: Option<&std::sync::Arc<tokio::sync::Mutex<String>>>,
     tool_status_renderer: Option<AcpToolStatusRenderer>,
+    session_update_transformer: Option<AcpSessionUpdateTransformer>,
+    permission_decision: AcpPermissionDecision,
 ) -> Result<Option<Value>, AgentSessionError> {
     let payload: Value = serde_json::from_str(line).map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::Io,
@@ -714,8 +757,14 @@ async fn process_acp_payload(
         match method {
             "session/update" => {
                 if let Some(emitter) = emitter {
+                    let transformed_params = session_update_transformer.and_then(|transformer| {
+                        transformer(payload.get("params").unwrap_or(&Value::Null))
+                    });
+                    let params = transformed_params
+                        .as_ref()
+                        .unwrap_or_else(|| payload.get("params").unwrap_or(&Value::Null));
                     handle_acp_session_update_with_renderer(
-                        payload.get("params").unwrap_or(&Value::Null),
+                        params,
                         emitter,
                         state.as_deref_mut(),
                         tool_status_renderer,
@@ -724,7 +773,14 @@ async fn process_acp_payload(
                 }
             }
             "session/request_permission" => {
-                handle_acp_permission_request(runner_label, stdin, &payload, emitter).await?;
+                handle_acp_permission_request(
+                    runner_label,
+                    stdin,
+                    &payload,
+                    emitter,
+                    permission_decision,
+                )
+                .await?;
             }
             _ => {}
         }
@@ -761,6 +817,7 @@ async fn handle_acp_permission_request(
     stdin: &mut tokio::process::ChildStdin,
     payload: &Value,
     emitter: Option<&std::sync::Arc<dyn AgentRunnerEmitter>>,
+    decision: AcpPermissionDecision,
 ) -> Result<(), AgentSessionError> {
     let request_id =
         payload
@@ -782,28 +839,27 @@ async fn handle_acp_permission_request(
         emitter
             .emit(AgentRunnerEvent::Progress {
                 stage: "acp.permission",
-                detail: Some(format!("{runner_label}:rejected:{tool_title}")),
+                detail: Some(format!(
+                    "{runner_label}:{}:{tool_title}",
+                    decision.progress_label()
+                )),
             })
             .await;
     }
 
-    let reject_option = params
+    let option_id = params
         .get("options")
         .and_then(|value| value.as_array())
         .and_then(|options| {
-            options.iter().find_map(|option| {
-                let kind = option.get("kind").and_then(|value| value.as_str())?;
-                if kind == "reject_once" {
-                    option
-                        .get("optionId")
-                        .and_then(|value| value.as_str())
-                        .map(|value| value.to_string())
-                } else {
-                    None
-                }
-            })
+            select_permission_option(
+                options,
+                &[decision.preferred_kind(), decision.fallback_kind()],
+            )
         })
-        .unwrap_or_else(|| "reject".to_string());
+        .unwrap_or_else(|| match decision {
+            AcpPermissionDecision::RejectOnce => "reject".to_string(),
+            AcpPermissionDecision::ApproveForSession => "approved-for-session".to_string(),
+        });
 
     let response = json!({
         "jsonrpc": "2.0",
@@ -811,7 +867,7 @@ async fn handle_acp_permission_request(
         "result": {
             "outcome": {
                 "outcome": "selected",
-                "optionId": reject_option,
+                "optionId": option_id,
             }
         }
     });
@@ -838,6 +894,25 @@ async fn handle_acp_permission_request(
         message: format!("failed to flush {runner_label} permission response: {e}"),
     })?;
     Ok(())
+}
+
+fn select_permission_option(options: &[Value], preferred_kinds: &[&str]) -> Option<String> {
+    for preferred_kind in preferred_kinds {
+        if let Some(option_id) = options.iter().find_map(|option| {
+            let kind = option.get("kind").and_then(|value| value.as_str())?;
+            if kind == *preferred_kind {
+                option
+                    .get("optionId")
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+            } else {
+                None
+            }
+        }) {
+            return Some(option_id);
+        }
+    }
+    None
 }
 
 #[allow(dead_code)]
@@ -914,6 +989,9 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
                 .unwrap_or("tool")
                 .to_string();
             if let Some(state) = state.as_deref_mut() {
+                if !state.pending_assistant_content.is_empty() {
+                    flush_pending_assistant_message(state);
+                }
                 capture_tool_start(state, update, &tool);
             }
             let default_reasoning = resolve_tool_reasoning(&tool, extract_acp_reasoning(update));

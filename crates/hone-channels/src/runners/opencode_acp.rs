@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use hone_core::agent::{AgentContext, AgentMessage, AgentResponse};
+use hone_core::agent::{
+    AgentContext, AgentMessage, AgentResponse, final_assistant_message_content,
+};
 use hone_core::config::OpencodeAcpConfig;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -616,8 +618,11 @@ async fn run_opencode_acp(
     if let Some(task) = stderr_task {
         task.abort();
     }
-    let content = std::mem::take(&mut opencode_state.full_reply);
     let context_messages = finalize_opencode_context_messages(&mut opencode_state);
+    let content = final_assistant_message_content(
+        &context_messages,
+        std::mem::take(&mut opencode_state.full_reply),
+    );
     let tool_calls_made = opencode_state.finished_tool_calls.clone();
 
     let reply_chars = content.len();
@@ -689,10 +694,7 @@ Messages are ordered from oldest to newest.\n\
 }
 
 pub(crate) fn serialize_context_for_opencode_prompt(context: &AgentContext) -> Option<String> {
-    if context.messages.is_empty() {
-        return None;
-    }
-    serde_json::to_string_pretty(&context.messages).ok()
+    context.normalized_history_json()
 }
 
 fn flush_pending_assistant_message(state: &mut AcpPromptState) {
@@ -713,6 +715,7 @@ fn flush_pending_assistant_message(state: &mut AcpPromptState) {
         tool_calls,
         tool_call_id: None,
         name: None,
+        metadata: None,
     });
 }
 
@@ -1056,6 +1059,7 @@ async fn handle_opencode_tool_call_update(
             tool_calls: None,
             tool_call_id: Some(call_id),
             name: Some(tool_name.clone()),
+            metadata: None,
         });
     }
 

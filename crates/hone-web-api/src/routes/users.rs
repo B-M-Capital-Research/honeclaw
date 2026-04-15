@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::State;
 use axum::response::IntoResponse;
+use hone_memory::session_message_text;
 
 use crate::state::AppState;
 use crate::types::UserInfo;
@@ -37,8 +38,9 @@ pub(crate) async fn handle_users(State(state): State<Arc<AppState>>) -> impl Int
 
         let (last_message, last_role, last_time) = match last_msg {
             Some(m) => {
-                let preview: String = m.content.chars().take(60).collect();
-                let preview = if m.content.len() > 60 {
+                let content = session_message_text(m);
+                let preview: String = content.chars().take(60).collect();
+                let preview = if content.chars().count() > 60 {
                     format!("{}…", preview)
                 } else {
                     preview

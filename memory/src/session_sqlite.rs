@@ -5,7 +5,7 @@ use hone_core::{HoneError, HoneResult};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
-use crate::session::Session;
+use crate::session::{Session, session_message_text};
 
 pub struct SqliteSessionMirror {
     conn: Mutex<Connection>,
@@ -243,7 +243,7 @@ impl SqliteSessionMirror {
                 session.messages.len() as i64,
                 last_message.map(|message| message.timestamp.as_str()),
                 last_message.map(|message| message.role.as_str()),
-                last_message.and_then(|message| preview_text(&message.content)),
+                last_message.and_then(|message| preview_text(&session_message_text(message))),
                 actor_json,
                 session_identity_json,
                 runtime_json,
@@ -278,6 +278,8 @@ impl SqliteSessionMirror {
 
         for (ordinal, message) in session.messages.iter().enumerate() {
             let metadata = message.metadata.as_ref();
+            let content_json = serde_json::to_string(&message.content)
+                .map_err(|err| HoneError::Serialization(err.to_string()))?;
             tx.execute(
                 "
                 INSERT INTO session_messages (
@@ -294,7 +296,7 @@ impl SqliteSessionMirror {
                     session.id,
                     ordinal as i64,
                     message.role,
-                    message.content,
+                    content_json,
                     message.timestamp,
                     metadata
                         .map(serde_json::to_string)
@@ -309,7 +311,7 @@ impl SqliteSessionMirror {
                     metadata_value(metadata, "chat_id"),
                     metadata_value(metadata, "chat_type"),
                     metadata_value(metadata, "message_type"),
-                    sha256_hex(message.content.as_bytes()),
+                    sha256_hex(session_message_text(message).as_bytes()),
                     imported_at,
                 ],
             )
@@ -412,31 +414,24 @@ fn lock_err<T>(_: std::sync::PoisonError<T>) -> HoneError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::{Session, SessionMessage, SessionRuntimeState, SessionSummary};
+    use crate::session::{
+        Session, SessionRuntimeState, SessionSummary, build_tool_message_metadata_parts,
+        session_message_from_text,
+    };
     use hone_core::{ActorIdentity, SessionIdentity};
     use std::collections::HashMap;
 
     fn make_session() -> Session {
         Session {
-            version: 3,
+            version: 4,
             id: "Actor_feishu__direct__alice".to_string(),
             actor: Some(ActorIdentity::new("feishu", "alice", None::<String>).expect("actor")),
             session_identity: Some(SessionIdentity::direct("feishu", "alice").expect("identity")),
             created_at: "2026-03-26T09:00:00+08:00".to_string(),
             updated_at: "2026-03-26T09:05:00+08:00".to_string(),
             messages: vec![
-                SessionMessage {
-                    role: "user".to_string(),
-                    content: "hello".to_string(),
-                    timestamp: "2026-03-26T09:00:00+08:00".to_string(),
-                    metadata: None,
-                },
-                SessionMessage {
-                    role: "assistant".to_string(),
-                    content: "world".to_string(),
-                    timestamp: "2026-03-26T09:05:00+08:00".to_string(),
-                    metadata: None,
-                },
+                session_message_from_text("user", "hello", "2026-03-26T09:00:00+08:00", None),
+                session_message_from_text("assistant", "world", "2026-03-26T09:05:00+08:00", None),
             ],
             metadata: HashMap::from([("channel".to_string(), Value::String("feishu".to_string()))]),
             runtime: SessionRuntimeState::default(),
@@ -524,31 +519,26 @@ mod tests {
             Value::String("chat-1".to_string()),
         );
         first.messages = vec![
-            SessionMessage {
-                role: "tool".to_string(),
-                content: "{\"ok\":true}".to_string(),
-                timestamp: "2026-03-26T09:10:00+08:00".to_string(),
-                metadata: Some(HashMap::from([
-                    (
-                        "tool_name".to_string(),
-                        Value::String("web_search".to_string()),
-                    ),
-                    (
-                        "tool_call_id".to_string(),
-                        Value::String("call-1".to_string()),
-                    ),
-                    ("message_id".to_string(), Value::String("msg-1".to_string())),
-                ])),
-            },
-            SessionMessage {
-                role: "assistant".to_string(),
-                content: long_reply.clone(),
-                timestamp: "2026-03-26T09:20:00+08:00".to_string(),
-                metadata: Some(HashMap::from([(
+            session_message_from_text(
+                "tool",
+                "{\"ok\":true}",
+                "2026-03-26T09:10:00+08:00",
+                Some({
+                    let mut metadata =
+                        build_tool_message_metadata_parts("web_search", Some("call-1"), None);
+                    metadata.insert("message_id".to_string(), Value::String("msg-1".to_string()));
+                    metadata
+                }),
+            ),
+            session_message_from_text(
+                "assistant",
+                &long_reply,
+                "2026-03-26T09:20:00+08:00",
+                Some(HashMap::from([(
                     "message_type".to_string(),
                     Value::String("text".to_string()),
                 )])),
-            },
+            ),
         ];
 
         std::fs::write(

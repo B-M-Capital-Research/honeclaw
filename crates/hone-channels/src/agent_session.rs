@@ -1,14 +1,17 @@
 //! Agent session abstraction shared across channels.
 
 use async_trait::async_trait;
-use hone_core::agent::{AgentContext, AgentMessage, AgentResponse, ToolCallMade};
+use hone_core::agent::{
+    AgentContext, AgentMessage, AgentResponse, NormalizedConversationMessage,
+    NormalizedConversationPart, ToolCallMade, normalize_agent_messages,
+};
 use hone_core::{ActorIdentity, HoneConfig, SessionIdentity};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
-    assistant_tool_calls_from_metadata, build_assistant_message_metadata,
-    build_tool_message_metadata, build_tool_message_metadata_parts, has_compact_skill_snapshot,
-    invoked_skills_from_metadata, message_is_compact_boundary, message_is_compact_summary,
-    message_is_slash_skill, restore_tool_message, select_messages_after_compact_boundary,
+    assistant_tool_calls_from_metadata, has_compact_skill_snapshot, invoked_skills_from_metadata,
+    message_is_compact_boundary, message_is_compact_summary, message_is_slash_skill,
+    restore_tool_message, select_messages_after_compact_boundary, session_message_from_normalized,
+    session_message_text, session_message_to_agent_messages,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -237,18 +240,56 @@ fn merge_message_metadata(
     Some(merged)
 }
 
-fn metadata_with_assistant_tool_calls(
-    base: Option<HashMap<String, Value>>,
-    tool_calls: Option<&Vec<Value>>,
-) -> Option<HashMap<String, Value>> {
-    let extra = tool_calls
-        .filter(|items| !items.is_empty())
-        .map(|items| build_assistant_message_metadata(items));
-    match (base, extra) {
-        (Some(base), Some(extra)) => merge_message_metadata(Some(base), extra),
-        (Some(base), None) => Some(base),
-        (None, Some(extra)) => Some(extra),
-        (None, None) => None,
+fn persistable_turn_from_response(
+    response: &AgentResponse,
+    metadata: Option<HashMap<String, Value>>,
+) -> Option<NormalizedConversationMessage> {
+    let mut content = Vec::new();
+    for tool_call in &response.tool_calls_made {
+        if !should_persist_tool_result(tool_call) {
+            continue;
+        }
+        content.push(NormalizedConversationPart {
+            part_type: "tool_call".to_string(),
+            text: None,
+            id: tool_call.tool_call_id.clone(),
+            name: Some(tool_call.name.clone()),
+            args: Some(tool_call.arguments.clone()),
+            result: None,
+            metadata: None,
+        });
+        content.push(NormalizedConversationPart {
+            part_type: "tool_result".to_string(),
+            text: None,
+            id: tool_call.tool_call_id.clone(),
+            name: Some(tool_call.name.clone()),
+            args: None,
+            result: Some(tool_call.result.clone()),
+            metadata: None,
+        });
+    }
+
+    if !response.content.trim().is_empty() {
+        content.push(NormalizedConversationPart {
+            part_type: "final".to_string(),
+            text: Some(response.content.trim().to_string()),
+            id: None,
+            name: None,
+            args: None,
+            result: None,
+            metadata: None,
+        });
+    }
+
+    if content.is_empty() {
+        None
+    } else {
+        Some(NormalizedConversationMessage {
+            role: "assistant".to_string(),
+            content,
+            status: Some("completed".to_string()),
+            metadata,
+        })
     }
 }
 
@@ -570,43 +611,36 @@ impl AgentSession {
         let last_assistant_idx = messages
             .iter()
             .rposition(|message| message.role == "assistant");
-        for (idx, message) in messages.iter().enumerate() {
-            match message.role.as_str() {
-                "assistant" => {
-                    let base_metadata = if Some(idx) == last_assistant_idx {
-                        self.message_metadata.assistant.clone()
-                    } else {
-                        None
-                    };
-                    let metadata = metadata_with_assistant_tool_calls(
-                        base_metadata,
-                        message.tool_calls.as_ref(),
-                    );
-                    let _ = self.core.session_storage.add_message(
-                        session_id,
-                        "assistant",
-                        message.content.as_deref().unwrap_or(""),
-                        metadata,
-                    );
-                }
-                "tool" => {
-                    let Some(tool_name) = message.name.as_deref() else {
-                        continue;
-                    };
-                    let metadata = Some(build_tool_message_metadata_parts(
-                        tool_name,
-                        message.tool_call_id.as_deref(),
-                        None,
-                    ));
-                    let _ = self.core.session_storage.add_message(
-                        session_id,
-                        "tool",
-                        message.content.as_deref().unwrap_or(""),
-                        metadata,
-                    );
-                }
-                _ => {}
+        let mut normalized = normalize_agent_messages(messages);
+        let last_normalized_assistant_idx = normalized
+            .iter()
+            .rposition(|message| message.role == "assistant");
+
+        if let (Some(source_idx), Some(target_idx)) =
+            (last_assistant_idx, last_normalized_assistant_idx)
+        {
+            let source = &messages[source_idx];
+            let mut metadata = self.message_metadata.assistant.clone();
+            if let Some(extra) = source.metadata.clone() {
+                metadata = merge_message_metadata(metadata, extra);
             }
+            if let Some(extra) = metadata {
+                normalized[target_idx].metadata =
+                    merge_message_metadata(normalized[target_idx].metadata.clone(), extra);
+            }
+        }
+
+        let session_messages = normalized
+            .iter()
+            .map(|message| {
+                session_message_from_normalized(message, hone_core::beijing_now_rfc3339())
+            })
+            .collect::<Vec<_>>();
+        if !session_messages.is_empty() {
+            let _ = self
+                .core
+                .session_storage
+                .append_session_messages(session_id, session_messages);
         }
     }
 
@@ -1477,25 +1511,18 @@ impl AgentSession {
             {
                 self.persist_runner_context_messages(&session_id, messages);
             } else {
-                for tool_call in &response.tool_calls_made {
-                    if !should_persist_tool_result(tool_call) {
-                        continue;
-                    }
-                    let result_str = serde_json::to_string(&tool_call.result)
-                        .unwrap_or_else(|_| "{}".to_string());
-                    let _ = self.core.session_storage.add_message(
+                if let Some(message) = persistable_turn_from_response(
+                    &response,
+                    self.message_metadata.assistant.clone(),
+                ) {
+                    let _ = self.core.session_storage.append_session_messages(
                         &session_id,
-                        "tool",
-                        &result_str,
-                        Some(build_tool_message_metadata(tool_call)),
+                        vec![session_message_from_normalized(
+                            &message,
+                            hone_core::beijing_now_rfc3339(),
+                        )],
                     );
                 }
-                let _ = self.core.session_storage.add_message(
-                    &session_id,
-                    "assistant",
-                    &response.content,
-                    self.message_metadata.assistant.clone(),
-                );
             }
             self.core.log_message_step(
                 &self.actor.channel,
@@ -1612,29 +1639,51 @@ pub fn restore_context(
             "user" => {
                 if !message_is_slash_skill(message.metadata.as_ref()) {
                     let content = if message_is_compact_summary(message.metadata.as_ref()) {
-                        sanitize_user_visible_output(&message.content).content
+                        sanitize_user_visible_output(&session_message_text(message)).content
                     } else {
-                        message.content.clone()
+                        session_message_text(message)
                     };
                     if !content.trim().is_empty() {
-                        ctx.add_user_message(&content);
+                        ctx.messages.push(AgentMessage {
+                            role: "user".to_string(),
+                            content: Some(content),
+                            tool_calls: None,
+                            tool_call_id: None,
+                            name: None,
+                            metadata: message.metadata.clone(),
+                        });
                     }
                 }
             }
-            "assistant" => {
-                let tool_calls = assistant_tool_calls_from_metadata(message.metadata.as_ref());
-                let sanitized = sanitize_user_visible_output(&message.content);
-                if !sanitized.content.trim().is_empty()
-                    || tool_calls.as_ref().is_some_and(|items| !items.is_empty())
-                {
-                    ctx.add_assistant_message(&sanitized.content, tool_calls);
-                }
-            }
-            "tool" => {
-                if let Some((tool_call_id, tool_name, result)) =
-                    restore_tool_message(&message.content, message.metadata.as_ref())
-                {
-                    ctx.add_tool_result(&tool_call_id, &tool_name, &result);
+            "assistant" | "tool" => {
+                for mut restored in session_message_to_agent_messages(message) {
+                    if restored.role == "assistant" {
+                        let sanitized = sanitize_user_visible_output(
+                            restored.content.as_deref().unwrap_or_default(),
+                        );
+                        let tool_calls = restored.tool_calls.clone().or_else(|| {
+                            assistant_tool_calls_from_metadata(message.metadata.as_ref())
+                        });
+                        if sanitized.content.trim().is_empty()
+                            && tool_calls.as_ref().is_none_or(|items| items.is_empty())
+                        {
+                            continue;
+                        }
+                        restored.content = Some(sanitized.content);
+                        restored.tool_calls = tool_calls;
+                    }
+                    if restored.role == "tool"
+                        && restore_tool_message(message).is_none()
+                        && restored
+                            .content
+                            .as_deref()
+                            .unwrap_or_default()
+                            .trim()
+                            .is_empty()
+                    {
+                        continue;
+                    }
+                    ctx.messages.push(restored);
                 }
             }
             "system" => {
@@ -1682,6 +1731,7 @@ mod tests {
     use hone_core::config::HoneConfig;
     use hone_llm::provider::ChatResult;
     use hone_llm::{ChatResponse, LlmProvider, Message};
+    use hone_memory::{build_assistant_message_metadata, build_tool_message_metadata_parts};
     use serde_json::Value;
     use std::env;
     use std::sync::{Arc, Mutex, OnceLock};
@@ -1995,6 +2045,101 @@ mod tests {
         assert_eq!(tool_calls[0]["function"]["name"], "local_search_files");
         assert_eq!(ctx.messages[2].role, "tool");
         assert_eq!(ctx.messages[2].tool_call_id.as_deref(), Some("call_1"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn restore_context_preserves_message_metadata() {
+        let root = make_temp_dir("hone_channels_restore_metadata");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+
+        storage
+            .add_message(
+                &session_id,
+                "assistant",
+                "我先查本地画像。",
+                Some(HashMap::from([
+                    (
+                        "assistant.tool_calls".to_string(),
+                        serde_json::json!([{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "local_search_files",
+                                "arguments": "{\"query\":\"AAOI\"}"
+                            }
+                        }]),
+                    ),
+                    (
+                        "codex_acp".to_string(),
+                        serde_json::json!({
+                            "segment_kind": "progress_note",
+                            "channel_fields": {
+                                "stream_kind": "agent_message_chunk"
+                            }
+                        }),
+                    ),
+                ])),
+            )
+            .expect("add assistant");
+        storage
+            .add_message(
+                &session_id,
+                "tool",
+                "{\"matches\":[\"company_profiles/applied-optoelectronics/profile.md\"]}",
+                Some(HashMap::from([
+                    (
+                        "tool_name".to_string(),
+                        Value::String("local_search_files".to_string()),
+                    ),
+                    (
+                        "tool_call_id".to_string(),
+                        Value::String("call_1".to_string()),
+                    ),
+                    (
+                        "codex_acp".to_string(),
+                        serde_json::json!({
+                            "segment_kind": "tool_result",
+                            "channel_fields": {
+                                "status": "completed"
+                            }
+                        }),
+                    ),
+                ])),
+            )
+            .expect("add tool");
+
+        let ctx = restore_context(&storage, &session_id, None, None);
+        assert_eq!(ctx.messages.len(), 2);
+        assert_eq!(
+            ctx.messages[0]
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("codex_acp")),
+            Some(&serde_json::json!({
+                "segment_kind": "progress_note",
+                "channel_fields": {
+                    "stream_kind": "agent_message_chunk"
+                }
+            }))
+        );
+        assert_eq!(
+            ctx.messages[1]
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("codex_acp")),
+            Some(&serde_json::json!({
+                "segment_kind": "tool_result",
+                "channel_fields": {
+                    "status": "completed"
+                }
+            }))
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -2654,14 +2799,20 @@ mod tests {
             .get_messages(&actor.session_id(), None)
             .expect("messages");
         assert_eq!(messages.len(), 4);
-        assert_eq!(messages[0].content, "Conversation compacted");
-        assert_eq!(messages[1].content, "【Compact Summary】\nsummary");
-        assert_eq!(messages[2].content, "hello");
-        assert_eq!(messages[3].content, "world");
+        assert_eq!(
+            hone_memory::session_message_text(&messages[0]),
+            "Conversation compacted"
+        );
+        assert_eq!(
+            hone_memory::session_message_text(&messages[1]),
+            "【Compact Summary】\nsummary"
+        );
+        assert_eq!(hone_memory::session_message_text(&messages[2]), "hello");
+        assert_eq!(hone_memory::session_message_text(&messages[3]), "world");
         assert!(
             messages
                 .iter()
-                .all(|message| !message.content.contains("/compact"))
+                .all(|message| !hone_memory::session_message_text(message).contains("/compact"))
         );
 
         let _ = std::fs::remove_dir_all(root);
@@ -2723,7 +2874,7 @@ mod tests {
             .expect("messages");
         let contents: Vec<_> = messages
             .iter()
-            .map(|message| message.content.as_str())
+            .map(hone_memory::session_message_text)
             .collect();
         assert_eq!(
             contents,

@@ -199,7 +199,11 @@ pub fn build_prompt_bundle(
         .flatten()
         .and_then(|session| {
             hone_memory::latest_compact_summary(&session.messages)
-                .map(|message| message.content.trim().to_string())
+                .map(|message| {
+                    hone_memory::session_message_text(message)
+                        .trim()
+                        .to_string()
+                })
                 .or_else(|| {
                     session
                         .summary

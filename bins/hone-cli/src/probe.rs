@@ -106,10 +106,22 @@ impl AgentSessionListener for ProbeListener {
                     response.content.len()
                 );
             }
-            AgentSessionEvent::StreamDelta { .. }
-            | AgentSessionEvent::StreamThought { .. }
-            | AgentSessionEvent::UserMessage { .. }
-            | AgentSessionEvent::Segment { .. } => {}
+            AgentSessionEvent::StreamDelta { content } => {
+                if !content.trim().is_empty() {
+                    println!("[delta] {content}");
+                }
+            }
+            AgentSessionEvent::StreamThought { thought } => {
+                if !thought.trim().is_empty() {
+                    println!("[thought] {thought}");
+                }
+            }
+            AgentSessionEvent::Segment { text } => {
+                if !text.trim().is_empty() {
+                    println!("[segment] {text}");
+                }
+            }
+            AgentSessionEvent::UserMessage { .. } => {}
         }
     }
 }
