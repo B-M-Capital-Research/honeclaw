@@ -10,11 +10,19 @@
     - `2026-04-15T20:58:51.471633+08:00` 用户消息：`最近存储系列的还能买吗`
     - `2026-04-15T21:00:30.520799+08:00` 用户追问：`咋回事`
     - 说明失败发生后，用户没有拿到正常回答，只能立即追问原因；失败文案没有作为正常 assistant 消息入库
+  - 最近一小时再次复现：
+    - 同一 `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
+    - `2026-04-16T00:05:57.926067+08:00` 用户发送“我给你四个截图你帮我记录下我的持仓情况 也就是一鸣的持仓情况 并遵守保密义务哈”
+    - `2026-04-16T00:06:45.464163+08:00` 用户追问：`咋出错了`
+    - `2026-04-16T00:07:19.161517+08:00`、`00:07:21.549084+08:00`、`00:07:25.811515+08:00` 用户继续补发图片附件，但本轮仍未获得正常答复
   - 最近运行日志：`data/runtime/logs/web.log`
     - `2026-04-15 20:58:58.152` `MsgFlow/feishu failed ... error="LLM 错误: bad_request_error: invalid params, invalid function arguments json string, tool_call_id: call_function_v0wwk1qhh65v_1 (2013)"`
     - 同一会话随后在 `21:00:30` 重试，最终于 `21:04:05` 恢复出正常回答
+    - `2026-04-16 00:05:57.918` `MsgFlow/feishu failed ... error="LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013)"`
+    - `2026-04-16 00:06:00.133`、`00:06:48.002`、`00:07:21.540`、`00:07:25.806` 同会话持续复现相同错误，说明并非单次抖动
   - 更完整的渠道日志：`data/runtime/logs/hone-feishu.release-restart.log`
     - `2026-04-15T12:58:58.152238Z` 同样记录 `error="LLM 错误: bad_request_error: invalid params, invalid function arguments json string, tool_call_id: call_function_v0wwk1qhh65v_1 (2013)"`
+    - `2026-04-15T16:05:57.918Z` 到 `2026-04-15T16:07:25.806Z` 同样反复记录 `error="LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013)"`
   - 代码证据：
     - `bins/hone-feishu/src/handler.rs:372-389`
     - `crates/hone-channels/src/outbound.rs:140-150`
@@ -40,6 +48,7 @@
 
 - 当前 Feishu 直聊失败分支会把 `response.error` 原样截断后直接拼入用户消息。
 - 这次真实故障中的错误文本包含 `bad_request_error`、`invalid function arguments json string` 和具体 `tool_call_id`，都属于内部实现细节。
+- 最近一小时复现说明泄露文本的具体形态会变化，除了 `invalid function arguments json string` 之外，还会直接把 `tool call result does not follow tool call` 这类协议级报错发给用户。
 - 该问题不是 `context window exceeds limit` 老缺陷的原样回归；老缺陷只为“上下文超限”补了特判改写，其他 provider 错误仍会直出。
 - 同类风险不只存在于 Feishu：共享的 `run_session_with_outbound(...)` 失败路径也会执行 `抱歉，处理失败：{truncate_chars(err, 300)}`，说明这是跨渠道的共性缺口。
 
