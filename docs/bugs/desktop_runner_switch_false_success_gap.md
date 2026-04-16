@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 2026-04-15 当前源码复核
   - 代码证据:
@@ -60,3 +60,22 @@
 - 让 agent settings 保存命令返回和 channel settings 一致的 backend status / restart 结果，而不是 `void`。
 - 如果 bundled backend 重启失败，前端应明确展示“未立即生效”的状态，并允许用户手动重连或重试。
 - 排查时可用聊天流 `run_started.runner` 作为实际生效 runner 的外显证据，避免只看设置页选中状态。
+
+## 修复情况（2026-04-16）
+
+- `bins/hone-desktop/src/sidecar.rs` 的 `set_agent_settings_impl(...)` 不再吞掉 bundled backend 重启结果：
+  - `set_agent_settings` 现在会返回 `AgentSettingsUpdateResult`
+  - bundled 模式下会携带 `backendStatus`
+  - 如果内置后端重启后仍未连接，会明确返回“已保存 Agent 设置，但当前 runtime 尚未生效”的消息，而不是静默当成成功
+- `bins/hone-desktop/src/commands.rs` 与 `packages/app/src/lib/backend.ts` 已把 `set_agent_settings` 从 `void` 调整为带结果对象的返回值
+- `packages/app/src/context/backend.tsx` 已为 agent settings 保存补上和 channel settings 一样的 `backendStatus` 回写；前端会同步刷新 desktop runtime 的连接状态
+- `packages/app/src/pages/settings.tsx` 现在会根据返回结果区分两种情况：
+  - runtime 已成功切换：显示正常成功消息
+  - 配置已写入但 bundled runtime 未成功生效：显示错误提示，不再把这次切换伪装成“已完成”
+- 新增回归证明：
+  - `sidecar::tests::bundled_agent_settings_update_result_surfaces_runtime_not_applied`
+  - `settings-model.test.ts` 中增加 runtime mismatch 判定覆盖
+- 验证命令：
+  - `bun test --preload ./happydom.ts ./src/pages/settings-model.test.ts`
+  - `bun run typecheck`
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop bundled_agent_settings_update_result_surfaces_runtime_not_applied -- --nocapture`

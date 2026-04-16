@@ -3,7 +3,6 @@ import { useBackend } from "@/context/backend"
 import {
   checkDesktopAgentCli,
   loadDesktopAgentSettings,
-  saveDesktopAgentSettings,
   testDesktopOpenAiChannel,
   loadDesktopFmpSettings,
   saveDesktopFmpSettings,
@@ -20,6 +19,7 @@ import {
   defaultFmpSettings,
   defaultTavilySettings,
   hiddenApiKeys,
+  isAgentSettingsRuntimeMismatch,
   mergeAgentSettings,
   normalizeApiKeys,
   removeApiKey,
@@ -329,8 +329,12 @@ export default function SettingsPage() {
     setAgentMessage("")
     setAgentError("")
     try {
-      await saveDesktopAgentSettings(next)
-      setAgentMessage("已切换 Agent runner")
+      const result = await backend.saveAgentSettings(next)
+      if (isAgentSettingsRuntimeMismatch(result)) {
+        setAgentError(result.message)
+      } else {
+        setAgentMessage(result.message)
+      }
     } catch (e) {
       setAgentDraft(previous)
       setAgentError(e instanceof Error ? e.message : String(e))
@@ -345,8 +349,12 @@ export default function SettingsPage() {
     setAgentMessage("")
     setAgentError("")
     try {
-      await saveDesktopAgentSettings(agentDraft())
-      setAgentMessage("已保存 Agent 设置")
+      const result = await backend.saveAgentSettings(agentDraft())
+      if (isAgentSettingsRuntimeMismatch(result)) {
+        setAgentError(result.message)
+      } else {
+        setAgentMessage(result.message)
+      }
     } catch (e) {
       setAgentError(e instanceof Error ? e.message : String(e))
     } finally {

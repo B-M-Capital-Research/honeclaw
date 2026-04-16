@@ -6,6 +6,7 @@ import {
   canSelectRunner,
   defaultAgentSettings,
   hiddenApiKeys,
+  isAgentSettingsRuntimeMismatch,
   mergeAgentSettings,
   normalizeApiKeys,
   removeApiKey,
@@ -81,5 +82,31 @@ describe("settings-model", () => {
   it("skips runner auto-save while a runner switch is already saving", () => {
     expect(canSelectRunner("opencode_acp", "multi-agent", true)).toBe(false)
     expect(canSelectRunner("opencode_acp", "multi-agent", false)).toBe(true)
+  })
+
+  it("marks agent save result as runtime mismatch when bundled backend is disconnected", () => {
+    expect(
+      isAgentSettingsRuntimeMismatch({
+        settings: defaultAgentSettings(),
+        restartedBundledBackend: true,
+        message: "已保存 Agent 设置，但当前 runtime 尚未生效",
+        backendStatus: {
+          config: {
+            mode: "bundled",
+            baseUrl: "",
+            bearerToken: "",
+          },
+          connected: false,
+        },
+      }),
+    ).toBe(true)
+
+    expect(
+      isAgentSettingsRuntimeMismatch({
+        settings: defaultAgentSettings(),
+        restartedBundledBackend: false,
+        message: "已保存 Agent 设置",
+      }),
+    ).toBe(false)
   })
 })

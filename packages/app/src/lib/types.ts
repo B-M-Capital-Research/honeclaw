@@ -143,6 +143,13 @@ export type AgentSettings = {
   multiAgent?: MultiAgentSettings;
 };
 
+export type AgentSettingsUpdateResult = {
+  settings: AgentSettings;
+  restartedBundledBackend: boolean;
+  message: string;
+  backendStatus?: BackendStatusInfo;
+};
+
 export type CliCheckResult = {
   ok: boolean;
   message: string;

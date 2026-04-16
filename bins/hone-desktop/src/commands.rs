@@ -1,9 +1,10 @@
 use tauri::{AppHandle, State};
 
 use crate::sidecar::{
-    AgentSettings, BackendConfig, BackendStatusInfo, ChannelProcessCleanupResult, CliCheckResult,
-    DesktopChannelSettings, DesktopChannelSettingsInput, DesktopChannelSettingsUpdateResult,
-    DesktopState, FmpSettings, OpenRouterSettings, TavilySettings,
+    AgentSettings, AgentSettingsUpdateResult, BackendConfig, BackendStatusInfo,
+    ChannelProcessCleanupResult, CliCheckResult, DesktopChannelSettings,
+    DesktopChannelSettingsInput, DesktopChannelSettingsUpdateResult, DesktopState, FmpSettings,
+    OpenRouterSettings, TavilySettings,
 };
 
 #[tauri::command]
@@ -82,7 +83,7 @@ pub(crate) async fn set_agent_settings(
     app: AppHandle,
     state: State<'_, DesktopState>,
     settings: AgentSettings,
-) -> Result<(), String> {
+) -> Result<AgentSettingsUpdateResult, String> {
     crate::sidecar::set_agent_settings_impl(app, state, settings).await
 }
 

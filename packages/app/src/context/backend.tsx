@@ -5,8 +5,9 @@ import {
   detectTauriRuntime,
   defaultBackendConfig,
   isTauriRuntime,
-  loadDesktopChannelSettings,
   loadDesktopBackendStatus,
+  loadDesktopChannelSettings,
+  saveDesktopAgentSettings,
   probeBackendMeta,
   resolveBaseUrl,
   saveDesktopBackendConfig,
@@ -16,6 +17,8 @@ import {
   supportsApiVersion,
 } from "@/lib/backend"
 import type {
+  AgentSettings,
+  AgentSettingsUpdateResult,
   BackendConfig,
   BackendStatusInfo,
   DesktopChannelSettingsInput,
@@ -300,6 +303,21 @@ function createBackendState() {
         throw new Error("desktop runtime unavailable")
       }
       return loadDesktopChannelSettings()
+    },
+    async saveAgentSettings(settings: AgentSettings): Promise<AgentSettingsUpdateResult> {
+      if (!state.isDesktop) {
+        throw new Error("desktop runtime unavailable")
+      }
+      setState("saving", true)
+      try {
+        const result = await saveDesktopAgentSettings(settings)
+        if (result.backendStatus) {
+          await applyDesktopStatusWithRemoteFallback(result.backendStatus)
+        }
+        return result
+      } finally {
+        setState("saving", false)
+      }
     },
     async saveChannelSettings(settings: DesktopChannelSettingsInput): Promise<DesktopChannelSettingsUpdateResult> {
       if (!state.isDesktop) {

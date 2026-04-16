@@ -1,5 +1,6 @@
 import type {
   AgentSettings,
+  AgentSettingsUpdateResult,
   ChannelProcessCleanupResult,
   CliCheckResult,
   BackendConfig,
@@ -199,7 +200,7 @@ export async function loadDesktopAgentSettings() {
 }
 
 export async function saveDesktopAgentSettings(settings: AgentSettings) {
-  return invokeDesktop<void>("set_agent_settings", { settings })
+  return invokeDesktop<AgentSettingsUpdateResult>("set_agent_settings", { settings })
 }
 
 /** 检测本地 CLI/ACP runner 是否可用（运行 --version，超时 8s） */

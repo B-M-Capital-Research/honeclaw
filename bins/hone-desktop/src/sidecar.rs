@@ -100,6 +100,15 @@ pub(crate) struct DesktopChannelSettingsUpdateResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct AgentSettingsUpdateResult {
+    settings: AgentSettings,
+    restarted_bundled_backend: bool,
+    message: String,
+    backend_status: Option<BackendStatusInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ChannelProcessCleanupEntry {
     channel: String,
     kept_pid: Option<u32>,
@@ -949,11 +958,44 @@ fn agent_settings_require_save(current: &AgentSettings, next: &AgentSettings) ->
     current != next
 }
 
+fn build_agent_settings_update_result(
+    settings: AgentSettings,
+    backend_status: Option<BackendStatusInfo>,
+) -> AgentSettingsUpdateResult {
+    match backend_status {
+        Some(status) => {
+            let message = if status.connected {
+                "已保存 Agent 设置，并已重启内置后端".to_string()
+            } else {
+                format!(
+                    "已保存 Agent 设置，但当前 runtime 尚未生效：{}",
+                    status
+                        .last_error
+                        .clone()
+                        .unwrap_or_else(|| "内置后端重启后未连接".to_string())
+                )
+            };
+            AgentSettingsUpdateResult {
+                settings,
+                restarted_bundled_backend: true,
+                message,
+                backend_status: Some(status),
+            }
+        }
+        None => AgentSettingsUpdateResult {
+            settings,
+            restarted_bundled_backend: false,
+            message: "已保存 Agent 设置。当前为远程模式，下次切回内置后端时生效".to_string(),
+            backend_status: None,
+        },
+    }
+}
+
 pub(crate) async fn set_agent_settings_impl(
     app: AppHandle,
     state: State<'_, DesktopState>,
     settings: AgentSettings,
-) -> Result<(), String> {
+) -> Result<AgentSettingsUpdateResult, String> {
     let current_settings = get_agent_settings_impl(app.clone())?;
     if !agent_settings_require_save(&current_settings, &settings) {
         log_desktop(
@@ -964,7 +1006,12 @@ pub(crate) async fn set_agent_settings_impl(
                 settings.runner
             ),
         );
-        return Ok(());
+        return Ok(AgentSettingsUpdateResult {
+            settings,
+            restarted_bundled_backend: false,
+            message: "Agent 设置未变化".to_string(),
+            backend_status: None,
+        });
     }
     let runtime = ensure_runtime_paths(&app)?;
     let updates = build_agent_setting_updates(&settings);
@@ -995,9 +1042,10 @@ pub(crate) async fn set_agent_settings_impl(
                 "agent settings updated; bundled runtime restart required",
             );
         }
-        let _ = connect_backend_serialized(&app, &state).await;
+        let status = connect_backend_serialized(&app, &state).await?;
+        return Ok(build_agent_settings_update_result(settings, Some(status)));
     }
-    Ok(())
+    Ok(build_agent_settings_update_result(settings, None))
 }
 
 /// 测试 OpenAI 协议渠道连通性：发送一个最小 chat/completions 请求，验证 URL + API Key + 模型是否有效。
@@ -1430,6 +1478,53 @@ fmp:
         assert!(
             agent_settings_require_save(&settings, &changed),
             "changing the runner should still trigger save/restart"
+        );
+    }
+
+    #[test]
+    fn bundled_agent_settings_update_result_surfaces_runtime_not_applied() {
+        let settings = AgentSettings {
+            runner: "multi-agent".to_string(),
+            codex_model: String::new(),
+            openai_url: "https://openrouter.ai/api/v1".to_string(),
+            openai_model: "google/gemini-2.5-pro-preview".to_string(),
+            openai_api_key: String::new(),
+            auxiliary: None,
+            multi_agent: None,
+        };
+        let status = BackendStatusInfo {
+            config: BackendConfig {
+                mode: "bundled".to_string(),
+                base_url: String::new(),
+                bearer_token: String::new(),
+            },
+            resolved_base_url: Some("http://127.0.0.1:8077".to_string()),
+            connected: false,
+            last_error: Some("bundle restart failed".to_string()),
+            meta: None,
+            diagnostics: DiagnosticPaths {
+                config_dir: "/tmp/config".to_string(),
+                data_dir: "/tmp/data".to_string(),
+                logs_dir: "/tmp/logs".to_string(),
+                desktop_log: "/tmp/logs/desktop.log".to_string(),
+                sidecar_log: "/tmp/logs/sidecar.log".to_string(),
+            },
+        };
+
+        let result = build_agent_settings_update_result(settings.clone(), Some(status));
+
+        assert!(result.restarted_bundled_backend);
+        assert_eq!(result.settings.runner, "multi-agent");
+        assert!(
+            result.message.contains("当前 runtime 尚未生效"),
+            "should explicitly surface that runtime did not apply the new runner"
+        );
+        assert_eq!(
+            result
+                .backend_status
+                .as_ref()
+                .and_then(|status| status.last_error.as_deref()),
+            Some("bundle restart failed")
         );
     }
 

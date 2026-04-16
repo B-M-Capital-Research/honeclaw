@@ -1,5 +1,6 @@
 import type {
   AgentSettings,
+  AgentSettingsUpdateResult,
   AgentProvider,
   DesktopChannelSettings,
   DesktopChannelSettingsInput,
@@ -67,6 +68,10 @@ export function canSelectRunner(
   isSaving: boolean,
 ): boolean {
   return !isSaving && currentRunner !== nextRunner
+}
+
+export function isAgentSettingsRuntimeMismatch(result: AgentSettingsUpdateResult): boolean {
+  return Boolean(result.backendStatus && !result.backendStatus.connected)
 }
 
 export function defaultFmpSettings(): FmpSettings {
