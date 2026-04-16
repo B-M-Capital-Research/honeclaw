@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 13:40 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - 最近真实会话：
     - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
@@ -39,6 +39,11 @@
   - 修复结论回撤：
     - 2026-04-16 早些时候补的“私聊 busy 短路”只能覆盖同 session 活跃态可见的场景
     - `13:54` 之后的新证据表明该缺陷仍然活跃，原“Fixed”结论不成立，现回调为 `New`
+  - 2026-04-16 当前修复进展：
+    - `bins/hone-feishu/src/handler.rs` 已把“空解析内容”兜底前移到 placeholder 之前，避免无内容消息再出现 placeholder 假启动
+    - placeholder 发送时机已继续后移到 `AgentSession` 对象准备完成之后，进一步缩小静默区间
+    - 当前运行配置 `data/runtime/config_runtime.yaml` 已为 `+8613871396421` 补入 `feishu_mobiles`，并为其补入 `open_id=ou_39103ac18cf70a98afc6cfc7529120e5` 到管理员名单
+    - 定向回归：`cargo test -p hone-feishu actionable_user_input_detects_empty_payload -- --nocapture`、`cargo test -p hone-feishu direct_busy_text_is_explicit -- --nocapture` 通过
 
 ## 端到端链路
 
@@ -60,8 +65,9 @@
 
 - 修复前，群聊已经有 busy / pretrigger 策略，但 Feishu 私聊没有同等级入口保护。
 - 修复前，私聊用户连续发送消息时，系统会先给 placeholder，随后卡在更深层 session 锁等待，体感上像“处理失败”或“系统没反应”。
-- 当前仍未达标。虽然 Feishu 私聊入口已经补了 `direct.busy` 短路，但最新四条真实消息仍然复现“只发 placeholder、不进主链路”。
-- 说明该缺陷并未彻底修复，现阶段只能确认入口 busy 缺口被部分止血，主问题仍活跃。
+- 当前处于修复中。Feishu 私聊入口已有 `direct.busy` 短路，本轮又补了“空解析内容先兜底、后发 placeholder”的顺序修复，并把 placeholder 发送时机继续后移。
+- 新版本 `hone-feishu` release 二进制已经重编并重启，管理员配置也已生效。
+- 但重启后尚未观察到新的同类真实用户消息，因此还不能把状态提升为 `Fixed`。
 
 ## 用户影响
 

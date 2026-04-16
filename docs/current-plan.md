@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-04-16
-状态：有 9 个活跃任务
+状态：有 10 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,10 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+- **Feishu 直聊 placeholder 假启动后续修复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/feishu-direct-placeholder-followup-fix.md`
+  - 摘要：继续修复 Feishu 私聊消息只发 placeholder 不进主链路的问题，并把 `+8613871396421` 对应 Feishu 用户补入当前运行配置管理员名单；完成后需用最新真实会话和日志复核
 - **Canonical Config 与 Runtime Apply 统一改造**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/canonical-config-runtime-apply.md`

@@ -66,6 +66,14 @@ fn build_direct_busy_text() -> &'static str {
     "上一条消息还在处理中，请等当前回复完成后再发送新消息。"
 }
 
+fn build_unparsed_message_text() -> &'static str {
+    "抱歉，这条消息没有解析到可处理内容。请直接发送文本，或重新发送图片/文件。"
+}
+
+fn has_actionable_user_input(text: &str, attachment_count: usize, buffered_count: usize) -> bool {
+    !text.trim().is_empty() || attachment_count > 0 || buffered_count > 0
+}
+
 fn build_failed_reply_text(
     reply_prefix: Option<&str>,
     saw_stream_delta: bool,
@@ -450,9 +458,53 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     )
     .unwrap_or(0);
 
-    if text.is_empty() && attachments.is_empty() && buffered_count == 0 {
+    let attachment_count = attachments.len();
+    let has_actionable_input = has_actionable_user_input(text, attachment_count, buffered_count);
+    if !has_actionable_input {
+        let display = prepend_reply_prefix(reply_prefix.as_deref(), build_unparsed_message_text());
+        if let Err(err) = send_plain_text(
+            &state.facade,
+            &outbound_receive_id,
+            outbound_receive_id_type,
+            &display,
+        )
+        .await
+        {
+            warn!("[Feishu] 发送空输入兜底提示失败: {}", err);
+        }
+        state.core.log_message_step(
+            "feishu",
+            &log_user,
+            &session_id,
+            "message.empty_payload",
+            &format!(
+                "skipped message_type={} text_chars=0 attachments=0 buffered_messages={buffered_count}",
+                msg.message_type.as_deref().unwrap_or("unknown")
+            ),
+            Some(&msg.message_id),
+            Some("ignored"),
+        );
+        warn!(
+            "[Feishu] 消息未解析出可处理内容，已跳过主链路: session_id={} message_id={} message_type={:?}",
+            session_id, msg.message_id, msg.message_type
+        );
         return;
     }
+
+    state.core.log_message_step(
+        "feishu",
+        &log_user,
+        &session_id,
+        "message.accepted",
+        &format!(
+            "message_type={} text_chars={} attachments={} buffered_messages={buffered_count}",
+            msg.message_type.as_deref().unwrap_or("unknown"),
+            text.chars().count(),
+            attachment_count,
+        ),
+        Some(&msg.message_id),
+        None,
+    );
 
     let recv_extra = if attachments.is_empty() {
         if buffered_count > 0 {
@@ -490,40 +542,6 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             reply_prefix.as_deref(),
             &build_attachment_ack_message(&attachments),
         )
-    };
-    let (placeholder_message_id, placeholder_card_id) = match send_placeholder_message(
-        &state.facade,
-        &outbound_receive_id,
-        outbound_receive_id_type,
-        &placeholder_text,
-    )
-    .await
-    {
-        Ok((message_id, card_id)) => {
-            state.core.log_message_step(
-                "feishu",
-                &log_user,
-                &session_id,
-                "reply.placeholder",
-                "sent",
-                Some(&msg.message_id),
-                None,
-            );
-            (Some(message_id), card_id)
-        }
-        Err(err) => {
-            warn!("[Feishu] 发送占位消息失败: {}", err);
-            state.core.log_message_step(
-                "feishu",
-                &log_user,
-                &session_id,
-                "reply.placeholder",
-                "failed",
-                Some(&msg.message_id),
-                None,
-            );
-            (None, None)
-        }
     };
 
     let is_admin = state.core.is_admin_actor(&actor)
@@ -600,6 +618,40 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     .with_recv_extra(recv_extra.clone())
     .with_cron_allowed(envelope.cron_allowed());
     let content_buf = Arc::new(std::sync::RwLock::new(placeholder_text.clone()));
+    let (placeholder_message_id, placeholder_card_id) = match send_placeholder_message(
+        &state.facade,
+        &outbound_receive_id,
+        outbound_receive_id_type,
+        &placeholder_text,
+    )
+    .await
+    {
+        Ok((message_id, card_id)) => {
+            state.core.log_message_step(
+                "feishu",
+                &log_user,
+                &session_id,
+                "reply.placeholder",
+                "sent",
+                Some(&msg.message_id),
+                None,
+            );
+            (Some(message_id), card_id)
+        }
+        Err(err) => {
+            warn!("[Feishu] 发送占位消息失败: {}", err);
+            state.core.log_message_step(
+                "feishu",
+                &log_user,
+                &session_id,
+                "reply.placeholder",
+                "failed",
+                Some(&msg.message_id),
+                None,
+            );
+            (None, None)
+        }
+    };
     let cardkit_session: Option<Arc<CardKitSession>> =
         placeholder_card_id.as_deref().map(|card_id| {
             Arc::new(CardKitSession::new(
@@ -1356,5 +1408,13 @@ mod tests {
             build_direct_busy_text(),
             "上一条消息还在处理中，请等当前回复完成后再发送新消息。"
         );
+    }
+
+    #[test]
+    fn actionable_user_input_detects_empty_payload() {
+        assert!(!has_actionable_user_input("", 0, 0));
+        assert!(has_actionable_user_input("1", 0, 0));
+        assert!(has_actionable_user_input("", 1, 0));
+        assert!(has_actionable_user_input("", 0, 1));
     }
 }
