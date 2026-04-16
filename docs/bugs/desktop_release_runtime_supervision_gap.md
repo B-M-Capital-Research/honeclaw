@@ -3,7 +3,9 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
+- **修复提交**:
+  - `ea5229b fix release launch runtime contract`
 - **证据来源**:
   - 2026-04-15 用户真实故障与恢复过程
   - 2026-04-16 最近会话“无回复”排查
@@ -40,15 +42,16 @@
 - 2026-04-16 09:01 的最新样本进一步证明：这个缺陷不只表现为“desktop 探测 8077 失败”，还会直接截断正在执行中的 answer 请求，导致用户看到“最后一条消息一直没回复”。
 - 同一次窗口里，`web.log` 在 `09:01:30` 仍能看到多个会话已进入 `opencode session/prompt`，但 `09:01:53` 后日志直接切到新 backend 的 startup banner，中间没有对应会话的完成事件。
 
-## 当前实现效果（2026-04-15 HEAD 复核）
+## 修复情况（2026-04-16 HEAD）
 
-- 当前源码和 runbook 已明确要求 release lane 固定使用 `.app/Contents/MacOS/hone-desktop` 与显式环境变量，但这套约束尚未被一个稳定的默认 supervisor 路径强制落实。
-- `docs/runbooks/desktop-release-app-runtime.md` 也已经记录：如果启动路径没有稳定保留 `HONE_WEB_PORT=8077`，`hone-console-page` 可能静默回退到随机端口，进而让 desktop remote mode 失效。
-- 当前运行态在 detached `screen` 模式下是健康的：
-  - `/api/meta` 返回正常
-  - `/api/channels` 显示 `web`、`feishu`、`telegram`、`discord` 都是 `running`
-  - 运行中的 desktop 路径指向打包后的 `.app/Contents/MacOS/hone-desktop`
-- 因此现阶段更像“release 运行托管缺口仍存在，但已找到可稳定复现的恢复方式”，而不是本轮代码变动正在持续触发热重启。
+- `launch.sh --release` 现在会通过 `bun run build:desktop` 产出正式 Tauri bundle，并在 macOS 上直接启动 `Hone Financial.app/Contents/MacOS/hone-desktop`，不再把裸 `target/release/hone-desktop` 当成正式 release 运行态。
+- `launch.sh` 现在会把自身 supervisor pid 写入 `data/runtime/current.pid`，使 `restart_hone` 和其它后台重启链路可以先终止旧 supervisor，再清理整组 child process，避免旧实例未停、新实例又启动造成的 split-brain、端口冲突和中途替换。
+- `launch.sh` 与 `scripts/build_desktop.sh` 的默认 `CARGO_TARGET_DIR` 已统一到 `~/Library/Caches/honeclaw/target`，不再与 runbook 认可的 cache target 目录分叉；这减少了“重建了错误 target 树，运行中的 release app / backend 仍旧是旧二进制”的误操作窗口。
+- 新增 CI-safe 回归 `tests/regression/ci/test_release_launch_runtime_contract.sh`，锁住三条关键契约：
+  - release helper 必须指向 `.app/Contents/MacOS/hone-desktop`
+  - 默认 cache target 必须是 `honeclaw/target`
+  - `launch.sh` 必须持续写入 `data/runtime/current.pid`
+- 因此，这条缺陷里最核心的“缺少稳定、可复用、受 runbook 约束的 release 启动入口”已经收口；后续如果再出现掉线，更应先排查新的子进程崩溃或渠道级故障，而不是继续沿用旧的启动链路缺口结论。
 
 ## 用户影响
 
@@ -64,8 +67,14 @@
 - 现有链路也缺少“backend 正在替换/重启时，如何处理飞行中的 answer 请求”的保护，因此进程级中断会直接表现成无 assistant 落库、无错误回填、无最终发送。
 - desktop remote backend 模式固定探测 `8077`，因此只要 backend 端口漂移或 backend 整体掉线，就会被放大成持续 `Connection refused` 与整机不可用。
 
-## 下一步建议
+## 回归验证
 
-- 为 release lane 收口到一个仓库内可复用、可验证的稳定 supervisor 入口，避免继续依赖易漂移的临时后台启动方式。
-- 在正式托管收口前，继续沿用本轮验证通过的 detached `screen` + 显式环境变量方案，并把 `HONE_DATA_DIR` 固定到 `/Users/ecohnoch/Desktop/honeclaw/data`。
-- 后续如果再次复现，优先对照三类证据一起看：`desktop.log` 的 probe 失败时间点、`web.log` 的实际监听端口、以及进程树是否仍由稳定 supervisor 持有。
+- `bash -n launch.sh`
+- `bash -n scripts/build_desktop.sh`
+- `bash tests/regression/ci/test_release_launch_runtime_contract.sh`
+- `bash tests/regression/run_ci.sh`
+
+## 结论
+
+- release runtime 现在有了仓库内可复用、默认对齐 runbook 的正式入口：统一 cache target、正式 `.app` 启动形态、以及可被重启工具引用的 supervisor pid 契约。
+- 若后续仍复现“answer 中途断掉”或“Desktop 还在但 backend 掉了”，应转向新的崩溃证据排查，而不是继续把问题归因于旧的 release 启动方式。
