@@ -15,10 +15,10 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-- **Feishu 直聊 placeholder 假启动后续修复**
+- **Feishu 直聊 placeholder 假启动与 release runner 生效链路修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/feishu-direct-placeholder-followup-fix.md`
-  - 摘要：继续修复 Feishu 私聊消息只发 placeholder 不进主链路的问题，并把 `+8613871396421` 对应 Feishu 用户补入当前运行配置管理员名单；完成后需用最新真实会话和日志复核
+  - 摘要：继续修复 Feishu 私聊消息只发 placeholder 不进主链路的问题，同时收口 release app 仍读取 legacy config 导致 runner 改完不立即生效，并把 live 服务切到 `codex_acp`
 - **Canonical Config 与 Runtime Apply 统一改造**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/canonical-config-runtime-apply.md`

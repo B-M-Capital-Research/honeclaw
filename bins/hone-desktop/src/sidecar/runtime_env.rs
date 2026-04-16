@@ -85,17 +85,41 @@ fn resource_or_repo_path(app: &AppHandle, resource: &str) -> PathBuf {
         .unwrap_or_else(|| repo_root().join(resource))
 }
 
-fn desktop_canonical_config_path(config_dir: &Path) -> PathBuf {
-    if let Ok(override_path) = env::var("HONE_USER_CONFIG_PATH") {
-        return PathBuf::from(override_path);
+fn is_legacy_runtime_config_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value == "config_runtime.yaml")
+        .unwrap_or(false)
+}
+
+fn desktop_canonical_config_path_from_overrides(
+    config_dir: &Path,
+    user_config_override: Option<PathBuf>,
+    config_override: Option<PathBuf>,
+    home_override: Option<PathBuf>,
+) -> PathBuf {
+    if let Some(path) = user_config_override.filter(|path| !is_legacy_runtime_config_path(path)) {
+        return path;
     }
-    if let Ok(override_path) = env::var("HONE_CONFIG_PATH") {
-        return PathBuf::from(override_path);
+    if let Some(path) = config_override.filter(|path| !is_legacy_runtime_config_path(path)) {
+        return path;
     }
-    if let Ok(home) = env::var("HONE_HOME") {
-        return PathBuf::from(home).join("config.yaml");
+    if let Some(home) = home_override {
+        return home.join("config.yaml");
     }
     config_dir.join("config.yaml")
+}
+
+fn desktop_canonical_config_path(config_dir: &Path) -> PathBuf {
+    let user_config_override = env::var("HONE_USER_CONFIG_PATH").ok().map(PathBuf::from);
+    let config_override = env::var("HONE_CONFIG_PATH").ok().map(PathBuf::from);
+    let home_override = env::var("HONE_HOME").ok().map(PathBuf::from);
+    desktop_canonical_config_path_from_overrides(
+        config_dir,
+        user_config_override,
+        config_override,
+        home_override,
+    )
 }
 
 fn current_target_triple() -> Option<String> {
@@ -356,4 +380,38 @@ pub(super) fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, Stri
         runtime_dir,
         skills_dir,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_canonical_config_path_ignores_legacy_runtime_override() {
+        let resolved = desktop_canonical_config_path_from_overrides(
+            Path::new("/tmp/desktop-config"),
+            Some(PathBuf::from(
+                "/tmp/project/data/runtime/config_runtime.yaml",
+            )),
+            Some(PathBuf::from("/tmp/project/data/runtime/effective-config.yaml")),
+            Some(PathBuf::from("/tmp/home")),
+        );
+
+        assert_eq!(
+            resolved,
+            PathBuf::from("/tmp/project/data/runtime/effective-config.yaml")
+        );
+    }
+
+    #[test]
+    fn desktop_canonical_config_path_prefers_non_legacy_user_override() {
+        let resolved = desktop_canonical_config_path_from_overrides(
+            Path::new("/tmp/desktop-config"),
+            Some(PathBuf::from("/tmp/project/config.yaml")),
+            Some(PathBuf::from("/tmp/project/data/runtime/effective-config.yaml")),
+            Some(PathBuf::from("/tmp/home")),
+        );
+
+        assert_eq!(resolved, PathBuf::from("/tmp/project/config.yaml"));
+    }
 }

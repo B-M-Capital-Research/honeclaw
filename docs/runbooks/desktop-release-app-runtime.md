@@ -62,11 +62,11 @@ These env vars decide where the release app reads and writes runtime state.
   - desktop runtime data root
   - keep it equal to `HONE_DATA_DIR` so the desktop app uses the same repo-local data
 - `HONE_CONFIG_PATH`
-  - main runtime config file
-  - recommended value: `/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml`
+  - generated effective runtime config file consumed by backend/channel processes
+  - recommended value: `/Users/ecohnoch/Desktop/honeclaw/data/runtime/effective-config.yaml`
 - `HONE_USER_CONFIG_PATH`
-  - user config override path
-  - in this setup we intentionally point it at the same runtime config file
+  - canonical user config file that desktop settings mutate
+  - recommended value: `/Users/ecohnoch/Desktop/honeclaw/config.yaml`
 - `HONE_DESKTOP_CONFIG_DIR`
   - desktop-only runtime config directory
   - recommended value: `/Users/ecohnoch/Desktop/honeclaw/data/runtime/desktop-config`
@@ -119,8 +119,8 @@ Run the executable inside the `.app` bundle with the repo-local runtime env:
 env \
   HONE_DESKTOP_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
   HONE_DESKTOP_CONFIG_DIR=/Users/ecohnoch/Desktop/honeclaw/data/runtime/desktop-config \
-  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
-  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/effective-config.yaml \
+  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/config.yaml \
   HONE_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
   HONE_SKILLS_DIR=/Users/ecohnoch/Desktop/honeclaw/skills \
   /Users/ecohnoch/Library/Caches/honeclaw/target/release/bundle/macos/Hone\ Financial.app/Contents/MacOS/hone-desktop
@@ -138,8 +138,8 @@ Preferred foreground diagnostic launch:
 env \
   HONE_WEB_PORT=8077 \
   HONE_CONSOLE_URL=http://127.0.0.1:8077 \
-  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
-  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/effective-config.yaml \
+  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/config.yaml \
   HONE_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
   HONE_DESKTOP_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
   HONE_DESKTOP_CONFIG_DIR=/Users/ecohnoch/Desktop/honeclaw/data/runtime/desktop-config \
@@ -154,8 +154,8 @@ env \
   RUST_LOG=warn \
   HONE_WEB_PORT=8077 \
   HONE_CONSOLE_URL=http://127.0.0.1:8077 \
-  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
-  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/effective-config.yaml \
+  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/config.yaml \
   HONE_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
   HONE_DESKTOP_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
   HONE_DESKTOP_CONFIG_DIR=/Users/ecohnoch/Desktop/honeclaw/data/runtime/desktop-config \
@@ -298,8 +298,8 @@ curl http://127.0.0.1:8077/api/meta
 ```bash
 env \
   HONE_WEB_PORT=8077 \
-  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
-  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/effective-config.yaml \
+  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/config.yaml \
   HONE_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
   HONE_SKILLS_DIR=/Users/ecohnoch/Desktop/honeclaw/skills \
   /Users/ecohnoch/Library/Caches/honeclaw/target/debug/hone-console-page
@@ -366,12 +366,13 @@ curl http://127.0.0.1:8077/api/channels
 - if these symptoms reappear after the fix is merged, the most likely operational cause is that you rebuilt repo-local `target/` but the live runtime is still serving binaries from `/Users/ecohnoch/Library/Caches/honeclaw/target/...`
 - in that case, rebuild the backend/channel binaries with the same cache `CARGO_TARGET_DIR`, then restart the affected process
 
-### Runtime config changed but process still is not `multi-agent`
+### Runtime config changed but live process still runs the wrong runner
 
-- if `data/runtime/config_runtime.yaml` says `agent.runner: multi-agent` but the live channel/backend process still behaves like an older runner, verify that the process was restarted after a build that used the same target directory as the live runtime
-- the 2026-04-15 recovery also exposed a code path where `HoneConfig::from_file()` had been reading only the base YAML without merging the runtime overlay
-- after the fix, `from_file()` now loads the merged config, so runtime-only overrides should apply to channel/backend processes without requiring manual sync back into the base config file
-- if the symptom ever returns, verify both the effective config file path and the actual binary path of the running process before changing more config
+- the steady-state contract is:
+  - `HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/config.yaml`
+  - `HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/effective-config.yaml`
+- if logs still show `config.path=.../data/runtime/config_runtime.yaml`, the process was started by an old env/runbook path and may ignore the latest runner change
+- verify both the effective config file path and the actual binary path of the running process before changing more config
 
 ### `launch.sh --release` vs direct `.app` launch
 
