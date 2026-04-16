@@ -82,6 +82,79 @@ pub struct SkillSummary {
     pub detail_path: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct SkillStageConstraints {
+    pub allow_cron: bool,
+    pub allowed_tools: Option<HashSet<String>>,
+}
+
+impl Default for SkillStageConstraints {
+    fn default() -> Self {
+        Self {
+            allow_cron: true,
+            allowed_tools: None,
+        }
+    }
+}
+
+impl SkillStageConstraints {
+    pub fn new(allow_cron: bool, allowed_tools: Option<HashSet<String>>) -> Self {
+        Self {
+            allow_cron,
+            allowed_tools,
+        }
+    }
+
+    pub fn from_mcp_env() -> Self {
+        let allow_cron = matches!(
+            std::env::var("HONE_MCP_ALLOW_CRON").ok().as_deref(),
+            Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
+        );
+        let allowed_tools = std::env::var("HONE_MCP_ALLOWED_TOOLS")
+            .ok()
+            .and_then(|raw| {
+                let set = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .collect::<HashSet<_>>();
+                if set.is_empty() { None } else { Some(set) }
+            });
+        Self::new(allow_cron, allowed_tools)
+    }
+
+    pub fn allows_tool(&self, tool_name: &str) -> bool {
+        let normalized = normalize_tool_name(tool_name);
+        if normalized.is_empty() {
+            return true;
+        }
+        if normalized == "cron_job" && !self.allow_cron {
+            return false;
+        }
+        match &self.allowed_tools {
+            Some(allowed) => tool_name_variants(&normalized)
+                .iter()
+                .any(|candidate| allowed.contains(candidate)),
+            None => true,
+        }
+    }
+
+    pub fn missing_tools_for_skill(&self, skill: &SkillDefinition) -> Vec<String> {
+        skill
+            .allowed_tools
+            .iter()
+            .map(|tool| normalize_tool_name(tool))
+            .filter(|tool| !tool.is_empty())
+            .filter(|tool| !self.allows_tool(tool))
+            .collect::<Vec<_>>()
+    }
+
+    pub fn skill_is_usable(&self, skill: &SkillDefinition) -> bool {
+        self.missing_tools_for_skill(skill).is_empty()
+    }
+}
+
 impl From<&SkillDefinition> for SkillSummary {
     fn from(value: &SkillDefinition) -> Self {
         Self {
@@ -169,6 +242,16 @@ impl SkillRuntime {
             .collect()
     }
 
+    pub fn list_summaries_for_stage(
+        &self,
+        constraints: &SkillStageConstraints,
+    ) -> Vec<SkillSummary> {
+        self.load_active_skills_for_stage(&[], constraints)
+            .iter()
+            .map(SkillSummary::from)
+            .collect()
+    }
+
     pub fn list_registered_summaries(&self) -> Vec<SkillSummary> {
         self.load_registered_skills()
             .iter()
@@ -204,10 +287,77 @@ impl SkillRuntime {
         truncate_listing(&listing.join("\n"), max_chars)
     }
 
+    pub fn build_skill_listing_for_stage(
+        &self,
+        max_chars: usize,
+        constraints: &SkillStageConstraints,
+    ) -> String {
+        let listing = self
+            .list_summaries_for_stage(constraints)
+            .into_iter()
+            .map(|skill| {
+                let mut line = format!("- {}: {}", skill.id, skill.description);
+                if let Some(when_to_use) = skill
+                    .when_to_use
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                {
+                    line.push_str(" - ");
+                    line.push_str(when_to_use.trim());
+                }
+                line
+            })
+            .collect::<Vec<_>>();
+
+        truncate_listing(&listing.join("\n"), max_chars)
+    }
+
     pub fn search(&self, query: &str, file_paths: &[String], limit: usize) -> Vec<SkillSummary> {
         let normalized_query = normalize_skill_text(query);
         let mut scored = self
             .load_active_skills(file_paths)
+            .into_iter()
+            .filter_map(|skill| {
+                let summary = SkillSummary::from(&skill);
+                let score = if normalized_query.is_empty() {
+                    1
+                } else {
+                    score_skill(&summary, &normalized_query)
+                };
+                (score > 0).then_some((score, summary))
+            })
+            .collect::<Vec<_>>();
+
+        scored.sort_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| left.1.display_name.cmp(&right.1.display_name))
+                .then_with(|| left.1.id.cmp(&right.1.id))
+        });
+
+        let take_n = if limit == 0 {
+            scored.len()
+        } else {
+            scored.len().min(limit)
+        };
+        scored
+            .into_iter()
+            .take(take_n)
+            .map(|(_, skill)| skill)
+            .collect()
+    }
+
+    pub fn search_for_stage(
+        &self,
+        query: &str,
+        file_paths: &[String],
+        limit: usize,
+        constraints: &SkillStageConstraints,
+    ) -> Vec<SkillSummary> {
+        let normalized_query = normalize_skill_text(query);
+        let mut scored = self
+            .load_active_skills_for_stage(file_paths, constraints)
             .into_iter()
             .filter_map(|skill| {
                 let summary = SkillSummary::from(&skill);
@@ -266,6 +416,41 @@ impl SkillRuntime {
             .ok_or_else(|| format!("技能 '{normalized}' 不存在或当前未激活"))
     }
 
+    pub fn load_skill_for_stage(
+        &self,
+        skill_id: &str,
+        file_paths: &[String],
+        constraints: &SkillStageConstraints,
+    ) -> Result<SkillDefinition, String> {
+        let normalized = skill_id.trim();
+        if normalized.is_empty() {
+            return Err("skill_name 不能为空".to_string());
+        }
+
+        if let Some(skill) = self
+            .load_registered_skills()
+            .into_iter()
+            .find(|skill| skill_matches_reference(skill, normalized))
+        {
+            if !skill.enabled {
+                return Err(skill_disabled_error(normalized));
+            }
+            let path_matches =
+                skill.paths.is_empty() || skill_matches_paths(&skill.paths, file_paths);
+            if path_matches && !constraints.skill_is_usable(&skill) {
+                return Err(skill_stage_unavailable_error(
+                    normalized,
+                    &constraints.missing_tools_for_skill(&skill),
+                ));
+            }
+        }
+
+        self.load_active_skills_for_stage(file_paths, constraints)
+            .into_iter()
+            .find(|skill| skill_matches_reference(skill, normalized))
+            .ok_or_else(|| format!("技能 '{normalized}' 不存在或当前未激活"))
+    }
+
     pub fn load_registered_skill(&self, skill_id: &str) -> Result<SkillDefinition, String> {
         let normalized = skill_id.trim();
         if normalized.is_empty() {
@@ -281,6 +466,17 @@ impl SkillRuntime {
     pub fn resolve_user_invocable_direct(&self, command_name: &str) -> Option<SkillDefinition> {
         let normalized = command_name.trim().trim_start_matches('/');
         self.load_active_skills(&[])
+            .into_iter()
+            .find(|skill| skill.user_invocable && skill_matches_reference(skill, normalized))
+    }
+
+    pub fn resolve_user_invocable_direct_for_stage(
+        &self,
+        command_name: &str,
+        constraints: &SkillStageConstraints,
+    ) -> Option<SkillDefinition> {
+        let normalized = command_name.trim().trim_start_matches('/');
+        self.load_active_skills_for_stage(&[], constraints)
             .into_iter()
             .find(|skill| skill.user_invocable && skill_matches_reference(skill, normalized))
     }
@@ -390,11 +586,53 @@ impl SkillRuntime {
         None
     }
 
+    pub fn resolve_skill_via_search_for_stage(
+        &self,
+        query: &str,
+        file_paths: &[String],
+        constraints: &SkillStageConstraints,
+    ) -> Option<SkillDefinition> {
+        let matches = self.search_for_stage(query, file_paths, 2, constraints);
+        let normalized = normalize_skill_text(query);
+        let exact = matches.iter().find(|skill| {
+            normalize_skill_text(&skill.id) == normalized
+                || normalize_skill_text(&skill.display_name) == normalized
+                || skill
+                    .aliases
+                    .iter()
+                    .any(|alias| normalize_skill_text(alias) == normalized)
+        });
+        if let Some(skill) = exact {
+            return self
+                .load_skill_for_stage(&skill.id, file_paths, constraints)
+                .ok();
+        }
+        if matches.len() == 1 {
+            return self
+                .load_skill_for_stage(&matches[0].id, file_paths, constraints)
+                .ok();
+        }
+        None
+    }
+
     fn load_active_skills(&self, file_paths: &[String]) -> Vec<SkillDefinition> {
         self.load_registered_skills()
             .into_iter()
             .filter(|skill| skill.enabled)
             .filter(|skill| skill.paths.is_empty() || skill_matches_paths(&skill.paths, file_paths))
+            .collect()
+    }
+
+    fn load_active_skills_for_stage(
+        &self,
+        file_paths: &[String],
+        constraints: &SkillStageConstraints,
+    ) -> Vec<SkillDefinition> {
+        self.load_registered_skills()
+            .into_iter()
+            .filter(|skill| skill.enabled)
+            .filter(|skill| skill.paths.is_empty() || skill_matches_paths(&skill.paths, file_paths))
+            .filter(|skill| constraints.skill_is_usable(skill))
             .collect()
     }
 
@@ -572,6 +810,16 @@ fn skill_disabled_error(skill_id: &str) -> String {
     format!("技能 '{skill_id}' 已被管理员禁用")
 }
 
+fn skill_stage_unavailable_error(skill_id: &str, missing_tools: &[String]) -> String {
+    if missing_tools.is_empty() {
+        return format!("技能 '{skill_id}' 当前不可用");
+    }
+    format!(
+        "技能 '{skill_id}' 当前不可用：本阶段缺少工具 {}",
+        missing_tools.join(", ")
+    )
+}
+
 fn skill_matches_reference(skill: &SkillDefinition, reference: &str) -> bool {
     let normalized = normalize_skill_text(reference);
     if normalized.is_empty() {
@@ -638,6 +886,18 @@ fn skill_matches_paths(patterns: &[String], file_paths: &[String]) -> bool {
 
 fn normalize_skill_text(value: &str) -> String {
     value.trim().to_lowercase()
+}
+
+fn normalize_tool_name(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
+fn tool_name_variants(normalized: &str) -> Vec<String> {
+    match normalized {
+        "portfolio_tool" => vec!["portfolio_tool".to_string(), "portfolio".to_string()],
+        "portfolio" => vec!["portfolio".to_string(), "portfolio_tool".to_string()],
+        other => vec![other.to_string()],
+    }
 }
 
 fn map_script_arguments_value(
@@ -821,6 +1081,85 @@ mod tests {
             .load_registered_skill("alpha")
             .expect("registered alpha");
         assert!(!registered_skill.enabled);
+    }
+
+    #[test]
+    fn stage_constraints_hide_cron_skills_when_cron_is_unavailable() {
+        let root = make_temp_dir("hone_skill_runtime_stage_cron");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        fs::create_dir_all(system.join("scheduled_task")).expect("scheduled dir");
+        fs::create_dir_all(system.join("stock_alpha")).expect("stock dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+
+        fs::write(
+            system.join("scheduled_task/SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Scheduled Task\n",
+                "description: manages cron jobs\n",
+                "allowed-tools:\n",
+                "  - cron_job\n",
+                "---\n\n",
+                "body"
+            ),
+        )
+        .expect("write scheduled");
+        fs::write(
+            system.join("stock_alpha/SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Stock Alpha\n",
+                "description: analyze stock setups\n",
+                "allowed-tools:\n",
+                "  - data_fetch\n",
+                "---\n\n",
+                "body"
+            ),
+        )
+        .expect("write alpha");
+
+        let runtime = SkillRuntime::new(system, custom, root);
+        let constraints = SkillStageConstraints::new(false, None);
+        let summaries = runtime.list_summaries_for_stage(&constraints);
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].id, "stock_alpha");
+        assert!(
+            runtime
+                .search_for_stage("scheduled", &[], 5, &constraints)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn load_skill_for_stage_returns_missing_tool_error() {
+        let root = make_temp_dir("hone_skill_runtime_stage_error");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        fs::create_dir_all(system.join("scheduled_task")).expect("scheduled dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::write(
+            system.join("scheduled_task/SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Scheduled Task\n",
+                "description: manages cron jobs\n",
+                "allowed-tools:\n",
+                "  - cron_job\n",
+                "---\n\n",
+                "body"
+            ),
+        )
+        .expect("write scheduled");
+
+        let runtime = SkillRuntime::new(system, custom, root);
+        let constraints =
+            SkillStageConstraints::new(true, Some(HashSet::from([String::from("skill_tool")])));
+        let error = runtime
+            .load_skill_for_stage("scheduled_task", &[], &constraints)
+            .expect_err("stage unavailable");
+        assert!(error.contains("本阶段缺少工具 cron_job"));
     }
 
     #[test]

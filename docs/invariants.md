@@ -109,6 +109,9 @@ Last updated: 2026-04-15
   - Registration still comes from `skills/`, `data/custom_skills/`, or `.hone/skills/`
   - Runtime activation comes from the global `data/runtime/skill_registry.json` override layer
   - When a skill is disabled there, it must disappear from discover/list/search surfaces and be hard-rejected by slash invocation and `skill_tool(...)` across all channels and runners
+- Skill disclosure and stage execution must stay aligned:
+  - A skill that is shown in discovery, turn-0 skill summaries, related-skill hints, slash resolution, or `available_skills` must be usable in the current stage
+  - If the current stage lacks one of the skill's required tools (for example `cron_job`) or the MCP stage tool allowlist excludes it, that skill must disappear from those visible surfaces and fail with an explicit stage-unavailable error instead of looking available first and failing later
 - User slash skills and model `skill_tool(...)` calls must share the same prompt-expansion source of truth; do not let the Web/CLI path hand-maintain a divergent skill prompt template
 - Invoked skills that materially change the current turn prompt must be recoverable from session metadata after compaction / resume; do not rely only on persisted tool results for skill restoration
 - Session restore must respect current skill activation state. If a previously invoked skill is now disabled, its historical prompt may stay in stored metadata, but it must not be re-injected into the live runtime context on restore/compaction recovery

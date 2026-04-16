@@ -3,7 +3,7 @@
 - title: Skill Runtime 对齐 Claude Code
 - status: in_progress
 - created_at: 2026-03-31
-- updated_at: 2026-04-09
+- updated_at: 2026-04-16
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
@@ -16,21 +16,31 @@ Bring the skill runtime in line with the Claude Code interaction model without r
 
 ## Scope
 
-- Listing disclosure is already aligned.
+- Listing disclosure is aligned and now stage-aware: discovery, related-skill hints, direct invoke, `/skill` search, and MCP-side load/list surfaces all hide skills that cannot run in the current stage.
 - Full prompt injection on invoke is already aligned.
-- Slash/direct invoke and session resume are already aligned.
-- Remaining gaps: real hook execution, turn-scope tool enforcement, watcher hot reload.
+- Slash/direct invoke and session resume are aligned.
+- This round also closed two concrete runtime gaps:
+  - `HONE_SKILLS_DIR` is now forwarded into `hone-mcp`, so sandboxed skill loading sees the same system skill root as prompt-time discovery.
+  - Skills that require blocked tools such as `cron_job` now disappear from visible surfaces and return an explicit “missing tool in this stage” error if forced through a lower-level path.
+- Remaining gaps: real hook execution, watcher hot reload, and any additional turn-scope enforcement beyond the current stage/tool filtering contract.
 
 ## Validation
 
-- Pending. The next active implementation update should record concrete verification commands and outcomes here.
+- `cargo test -p hone-tools`
+- `cargo test -p hone-channels handle_tools_list_exposes_cron_job_only_when_allow_cron_is_enabled`
+- `cargo test -p hone-channels handle_tools_call_rejects_cron_job_when_stage_allowed_tools_excludes_it`
+- `cargo test -p hone-channels resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed`
+- `bash tests/regression/manual/test_hone_mcp_skill_dir_env.sh`
+- `bash tests/regression/manual/test_hone_mcp_cron_visibility.sh`
 
 ## Documentation Sync
 
 - Keep `docs/current-plan.md` and this file aligned.
+- Record concrete subtask outcomes in `docs/handoffs/2026-04-16-skill-runtime-stage-visibility.md` when a release-worthy runtime increment lands.
 - If the runtime contract changes, update `docs/decisions.md` or `docs/adr/*.md`.
 
 ## Risks / Open Questions
 
-- Hook execution and tool enforcement can change behavior across multiple channels.
+- Hook execution and any stricter turn-scope enforcement can still change behavior across multiple channels.
+- The new “visible means usable” contract now depends on stage constraints being plumbed consistently anywhere skills are surfaced; new listing surfaces must reuse the same constraint model.
 - Remaining work appears to depend on runner / infra changes rather than prompt-only edits.

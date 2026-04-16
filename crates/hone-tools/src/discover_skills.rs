@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 use crate::base::{Tool, ToolParameter};
-use crate::skill_runtime::SkillRuntime;
+use crate::skill_runtime::{SkillRuntime, SkillStageConstraints};
 
 pub struct DiscoverSkillsTool {
     system_dir: PathBuf,
@@ -96,10 +96,11 @@ impl Tool for DiscoverSkillsTool {
             .get("limit")
             .and_then(|value| value.as_u64())
             .unwrap_or(6) as usize;
+        let stage_constraints = SkillStageConstraints::from_mcp_env();
 
         let skills = self
             .runtime()
-            .search(query, &file_paths, limit)
+            .search_for_stage(query, &file_paths, limit, &stage_constraints)
             .into_iter()
             .map(|skill| {
                 serde_json::json!({

@@ -239,6 +239,42 @@ fn merge_message_metadata(
     Some(merged)
 }
 
+fn compose_runtime_input(
+    bundle: &crate::prompt::PromptBundle,
+    user_input: &str,
+    recv_extra: Option<&str>,
+) -> String {
+    let extra = recv_extra.map(str::trim).filter(|value| !value.is_empty());
+    if extra.is_none() {
+        return bundle.compose_user_input(user_input);
+    }
+
+    let mut sections = Vec::new();
+
+    if let Some(extra) = extra {
+        sections.push(extra.to_string());
+    }
+
+    if let Some(context) = bundle
+        .conversation_context
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        sections.push(context.to_string());
+    }
+
+    sections.push(format!("【本轮用户输入】\n{}", user_input.trim()));
+
+    if let Some(session_context) =
+        Some(bundle.session_context.trim()).filter(|value| !value.is_empty())
+    {
+        sections.push(session_context.to_string());
+    }
+
+    sections.join("\n\n")
+}
+
 fn persistable_turn_from_response(
     response: &AgentResponse,
     metadata: Option<HashMap<String, Value>>,
@@ -771,13 +807,15 @@ impl AgentSession {
                 .extra_sections
                 .push(crate::prompt::DEFAULT_CRON_TASK_POLICY.to_string());
         }
+        let stage_constraints =
+            hone_tools::skill_runtime::SkillStageConstraints::new(self.allow_cron, None);
         let skill_runtime = hone_tools::SkillRuntime::new(
             self.core.configured_system_skills_dir(),
             self.core.configured_custom_skills_dir(),
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
         )
         .with_registry_path(self.core.configured_skill_registry_path());
-        let skill_listing = skill_runtime.build_skill_listing(4_000);
+        let skill_listing = skill_runtime.build_skill_listing_for_stage(4_000, &stage_constraints);
         if !skill_listing.trim().is_empty() {
             prompt_options.extra_sections.push(format!(
                 "【SkillTool】\n\
@@ -789,8 +827,12 @@ impl AgentSession {
                 skill_listing
             ));
         }
-        let related_skills =
-            skill_runtime.search(user_input, &extract_possible_file_paths(user_input), 5);
+        let related_skills = skill_runtime.search_for_stage(
+            user_input,
+            &extract_possible_file_paths(user_input),
+            5,
+            &stage_constraints,
+        );
         let bundle = build_prompt_bundle(
             &self.core.config,
             &self.core.session_storage,
@@ -825,7 +867,7 @@ impl AgentSession {
         };
         (
             bundle.system_prompt(),
-            bundle.compose_user_input(&runtime_user_input),
+            compose_runtime_input(&bundle, &runtime_user_input, self.recv_extra.as_deref()),
         )
     }
 
@@ -845,6 +887,8 @@ impl AgentSession {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
         )
         .with_registry_path(self.core.configured_skill_registry_path());
+        let stage_constraints =
+            hone_tools::skill_runtime::SkillStageConstraints::new(self.allow_cron, None);
 
         if trimmed.strip_prefix("/skill").is_some() {
             let lines = trimmed.lines().collect::<Vec<_>>();
@@ -853,9 +897,11 @@ impl AgentSession {
             if query.is_empty() {
                 return Ok(None);
             }
-            if let Some(skill) =
-                runtime.resolve_skill_via_search(query, &extract_possible_file_paths(user_input))
-            {
+            if let Some(skill) = runtime.resolve_skill_via_search_for_stage(
+                query,
+                &extract_possible_file_paths(user_input),
+                &stage_constraints,
+            ) {
                 let invoked_prompt = runtime.render_invocation_prompt(&skill, session_id, None);
                 let tail = lines.iter().skip(1).copied().collect::<Vec<_>>().join("\n");
                 let runtime_input =
@@ -874,7 +920,9 @@ impl AgentSession {
         let mut parts = command.splitn(2, char::is_whitespace);
         let skill_id = parts.next().unwrap_or_default();
         let args = parts.next().map(str::trim);
-        if let Some(skill) = runtime.resolve_user_invocable_direct(skill_id) {
+        if let Some(skill) =
+            runtime.resolve_user_invocable_direct_for_stage(skill_id, &stage_constraints)
+        {
             let invoked_prompt = runtime.render_invocation_prompt(&skill, session_id, args);
             return Ok(Some(SlashSkillExpansion {
                 raw_input: user_input.to_string(),
@@ -2311,6 +2359,114 @@ mod tests {
         assert!(runtime_with_match.contains("【本轮相关技能提示】"));
         assert!(runtime_with_match.contains("alpha_skill"));
         assert!(!runtime_without_match.contains("【本轮相关技能提示】"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_prompt_input_hides_cron_only_skills_when_cron_is_not_allowed() {
+        let root = make_temp_dir("hone_channels_prompt_stage_skill_visibility");
+        let system_skills = root.join("system_skills");
+        let scheduled_dir = system_skills.join("scheduled_task");
+        let stock_dir = system_skills.join("stock_alpha");
+        std::fs::create_dir_all(&scheduled_dir).expect("create scheduled dir");
+        std::fs::create_dir_all(&stock_dir).expect("create stock dir");
+        std::fs::write(
+            scheduled_dir.join("SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Scheduled Task\n",
+                "description: cron workflow\n",
+                "allowed-tools:\n",
+                "  - cron_job\n",
+                "---\n\n",
+                "body\n"
+            ),
+        )
+        .expect("write scheduled skill");
+        std::fs::write(
+            stock_dir.join("SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Stock Alpha\n",
+                "description: stock workflow\n",
+                "allowed-tools:\n",
+                "  - data_fetch\n",
+                "---\n\n",
+                "body\n"
+            ),
+        )
+        .expect("write stock skill");
+
+        let llm = MockLlmProvider::with_tool_responses(Vec::new());
+        let core = make_test_core_with_config(&root, llm, |config| {
+            config.extra.insert(
+                "skills_dir".to_string(),
+                serde_yaml::Value::String(system_skills.to_string_lossy().to_string()),
+            );
+        });
+        let actor = ActorIdentity::new("telegram", "alice", None::<String>).expect("actor");
+        let session = AgentSession::new(core, actor, "target").with_cron_allowed(false);
+
+        let (_, runtime_input) =
+            session.resolve_prompt_input("session-demo", "set a scheduled task");
+
+        assert!(!runtime_input.contains("scheduled_task"));
+        assert!(!runtime_input.contains("Scheduled Task"));
+        assert!(!runtime_input.contains("cron workflow"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_prompt_input_places_recv_extra_before_compact_summary() {
+        let root = make_temp_dir("hone_channels_prompt_recv_extra_priority");
+        let storage = SessionStorage::new(root.join("sessions"));
+        let actor =
+            ActorIdentity::new("discord", "alice", Some("room-1".to_string())).expect("actor");
+        let session_identity =
+            SessionIdentity::group(&actor.channel, actor.channel_scope.clone().unwrap())
+                .expect("group session");
+        let session_id = storage
+            .create_session(
+                Some("session-demo"),
+                Some(actor.clone()),
+                Some(session_identity),
+            )
+            .expect("create session");
+        storage
+            .add_message(
+                &session_id,
+                "system",
+                "Conversation compacted",
+                Some(hone_memory::build_compact_boundary_metadata("auto", 3, 5)),
+            )
+            .expect("add boundary");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "【Compact Summary】\nsummary",
+                Some(hone_memory::build_compact_summary_metadata("auto")),
+            )
+            .expect("add summary");
+
+        let llm = MockLlmProvider::with_tool_responses(Vec::new());
+        let core = make_test_core(&root, llm);
+        let session = AgentSession::new(core, actor, "target")
+            .with_session_id("session-demo")
+            .with_recv_extra(Some(
+                "【群聊同发言者最近往返候选】\nrecent exchange".to_string(),
+            ));
+
+        let (_, runtime_input) = session.resolve_prompt_input("session-demo", "请继续");
+        let extra_pos = runtime_input
+            .find("【群聊同发言者最近往返候选】")
+            .expect("recv extra present");
+        let summary_pos = runtime_input
+            .find("【Compact Summary】")
+            .expect("summary present");
+        assert!(extra_pos < summary_pos);
 
         let _ = std::fs::remove_dir_all(root);
     }

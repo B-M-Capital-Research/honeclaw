@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 use crate::base::{Tool, ToolParameter};
-use crate::skill_runtime::{SkillRuntime, SkillSummary};
+use crate::skill_runtime::{SkillRuntime, SkillStageConstraints, SkillSummary};
 
 #[derive(Debug, Clone)]
 pub struct SkillMeta {
@@ -63,8 +63,10 @@ impl LoadSkillTool {
     }
 
     fn list_skills(&self) -> Vec<String> {
-        self.runtime()
-            .list_summaries()
+        let runtime = self.runtime();
+        let constraints = SkillStageConstraints::from_mcp_env();
+        runtime
+            .list_summaries_for_stage(&constraints)
             .into_iter()
             .map(|skill| skill.id)
             .collect()
@@ -80,10 +82,11 @@ impl LoadSkillTool {
 
     pub fn search_skills_with_meta(&self, query: &str, limit: usize) -> Vec<SkillMeta> {
         let runtime = self.runtime();
+        let constraints = SkillStageConstraints::from_mcp_env();
         let skills = if query.trim().is_empty() {
-            runtime.list_summaries()
+            runtime.list_summaries_for_stage(&constraints)
         } else {
-            runtime.search(query, &[], limit)
+            runtime.search_for_stage(query, &[], limit, &constraints)
         };
         let mut metas = skills
             .into_iter()
@@ -148,7 +151,8 @@ impl Tool for LoadSkillTool {
         }
 
         let runtime = self.runtime();
-        match runtime.load_skill(skill_name, &[]) {
+        let constraints = SkillStageConstraints::from_mcp_env();
+        match runtime.load_skill_for_stage(skill_name, &[], &constraints) {
             Ok(skill) => {
                 let session_id = std::env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
                 let prompt = runtime.render_invocation_prompt(&skill, &session_id, None);

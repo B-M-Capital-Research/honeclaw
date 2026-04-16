@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -14,6 +15,9 @@ use hone_channels::ingress::{
 use hone_channels::outbound::run_session_with_outbound;
 use hone_channels::prompt::PromptOptions;
 use hone_core::SessionIdentity;
+use hone_memory::session::SessionMessage;
+use hone_memory::{SessionStorage, select_messages_after_compact_boundary};
+use serde_json::Value;
 use teloxide::dispatching::UpdateFilterExt;
 use teloxide::net::Download;
 use teloxide::prelude::*;
@@ -62,6 +66,95 @@ fn build_group_user_input_with_speaker(label: &str, text: &str) -> String {
 
 fn build_group_busy_text(speaker_label: &str) -> String {
     format!("正在处理 {speaker_label} 的消息，请等上一条完成后再 @ 我。")
+}
+
+fn speaker_label_from_message(message: &SessionMessage) -> Option<String> {
+    if let Some(label) = message.metadata.as_ref().and_then(|metadata| {
+        metadata
+            .get("speaker_label")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }) {
+        return Some(label.to_string());
+    }
+
+    if message.role != "user" {
+        return None;
+    }
+
+    let text = hone_memory::session_message_text(message);
+    let trimmed = text.trim();
+    let close = trimmed.find(']')?;
+    if !trimmed.starts_with('[') || close <= 1 {
+        return None;
+    }
+    Some(trimmed[1..close].trim().to_string())
+}
+
+fn truncate_prompt_snippet(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    let mut out = String::new();
+    for ch in trimmed.chars().take(max_chars) {
+        out.push(ch);
+    }
+    if trimmed.chars().count() > max_chars {
+        out.push_str("...");
+    }
+    out
+}
+
+fn build_group_followup_recv_extra(
+    storage: &SessionStorage,
+    session_id: &str,
+    speaker_label: &str,
+) -> Option<String> {
+    let session = storage.load_session(session_id).ok().flatten()?;
+    let messages = select_messages_after_compact_boundary(&session.messages, None);
+
+    for idx in (0..messages.len()).rev() {
+        let message = messages[idx];
+        if message.role != "user" {
+            continue;
+        }
+        if message
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("pretrigger_buffered"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        if speaker_label_from_message(message).as_deref() != Some(speaker_label) {
+            continue;
+        }
+
+        let assistant = messages[idx + 1..]
+            .iter()
+            .copied()
+            .find(|candidate| candidate.role == "assistant")?;
+        let user_text = truncate_prompt_snippet(&hone_memory::session_message_text(message), 220);
+        let assistant_text =
+            truncate_prompt_snippet(&hone_memory::session_message_text(assistant), 420);
+        if user_text.is_empty() || assistant_text.is_empty() {
+            continue;
+        }
+
+        return Some(format!(
+            "【群聊同发言者最近往返候选】\n\
+下面是当前发言者最近一次与机器人的往返，仅作为候选 continuation anchor，不代表当前消息一定在延续这条线。\n\
+你必须根据本轮输入的真实语义自行判断：\n\
+- 如果当前消息看起来是在继续追问、补充、澄清、延展或默认承接上一轮，即使不是中文，也优先沿着这组往返继续回答。\n\
+- 如果当前消息已经明确切换到新主题、提出了独立新问题，或语义上明显不在延续上一轮，就忽略这组候选，不要被它绑住。\n\
+- 不要优先延续 compact summary 里的群全局未决问题，除非当前输入更像是在接那个群话题，而不是接这个发言者自己的最近往返。\n\
+发言者：{speaker_label}\n\
+- 最近用户消息：{user_text}\n\
+- 最近助手回复：{assistant_text}"
+        ));
+    }
+
+    None
 }
 
 pub(crate) async fn run() {
@@ -478,6 +571,25 @@ async fn process_telegram_message_batch(
     } else {
         build_group_user_input_with_speaker(&speaker_label, &normalized)
     };
+    let recv_extra = if !is_private && !reply_to_bot && attachments.is_empty() {
+        build_group_followup_recv_extra(&core.session_storage, &session_id, &speaker_label)
+    } else {
+        None
+    };
+    let user_metadata = if is_private {
+        None
+    } else {
+        Some(HashMap::from([
+            (
+                "speaker_label".to_string(),
+                Value::String(speaker_label.clone()),
+            ),
+            (
+                "channel_message_id".to_string(),
+                Value::String(first_msg.id.0.to_string()),
+            ),
+        ]))
+    };
     let envelope = IncomingEnvelope {
         message_id: Some(first_msg.id.0.to_string()),
         actor,
@@ -492,9 +604,12 @@ async fn process_telegram_message_batch(
             reply_to_bot,
             question_signal: false,
         },
-        recv_extra: None,
+        recv_extra,
         session_metadata: None,
-        message_metadata: MessageMetadata::default(),
+        message_metadata: MessageMetadata {
+            user: user_metadata,
+            assistant: None,
+        },
     };
 
     info!(
@@ -526,6 +641,7 @@ async fn process_telegram_message_batch(
     .with_message_id(envelope.message_id.clone())
     .with_prompt_options(prompt_options)
     .with_message_metadata(envelope.message_metadata.clone())
+    .with_recv_extra(envelope.recv_extra.clone())
     .with_cron_allowed(envelope.cron_allowed());
 
     let reply_prefix = if envelope.is_group() {
@@ -853,6 +969,9 @@ async fn download_telegram_attachment(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hone_memory::{
+        SessionStorage, build_compact_boundary_metadata, build_compact_summary_metadata,
+    };
     use serde_json::json;
 
     fn build_private_message(user_id: u64, text: &str) -> Message {
@@ -915,5 +1034,76 @@ mod tests {
             "manual telegram callback smoke finished using config {}",
             config_path
         );
+    }
+
+    #[test]
+    fn group_followup_recv_extra_prefers_same_speaker_recent_exchange() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_telegram_followup_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("unix time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = SessionStorage::new(&root);
+        let session_id = storage
+            .create_session(Some("group-session"), None, None)
+            .expect("create session");
+        storage
+            .add_message(
+                &session_id,
+                "system",
+                "Conversation compacted",
+                Some(build_compact_boundary_metadata("auto", 12, 24)),
+            )
+            .expect("add boundary");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "【Compact Summary】\n- TEM 未决",
+                Some(build_compact_summary_metadata("auto")),
+            )
+            .expect("add summary");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "[Chet Zhang] @hone_test_bot TEM 怎么看",
+                Some(HashMap::from([(
+                    "speaker_label".to_string(),
+                    Value::String("Chet Zhang".to_string()),
+                )])),
+            )
+            .expect("add chet");
+        storage
+            .add_message(&session_id, "assistant", "先看 TEM。", None)
+            .expect("add tem answer");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "[James Guan] @hone_test_bot I need price levels right now for ETH perp",
+                Some(HashMap::from([(
+                    "speaker_label".to_string(),
+                    Value::String("James Guan".to_string()),
+                )])),
+            )
+            .expect("add james");
+        storage
+            .add_message(&session_id, "assistant", "ETH 先看 2350/2383/2415。", None)
+            .expect("add eth answer");
+
+        let extra =
+            build_group_followup_recv_extra(&storage, &session_id, "James Guan").expect("extra");
+        assert!(extra.contains("James Guan"));
+        assert!(extra.contains("ETH"));
+        assert!(!extra.contains("先看 TEM"));
+        assert!(extra.contains("真实语义自行判断"));
+        assert!(extra.contains("不代表当前消息一定在延续这条线"));
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }

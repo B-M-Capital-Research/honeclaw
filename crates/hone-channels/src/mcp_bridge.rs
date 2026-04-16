@@ -52,6 +52,12 @@ pub fn hone_mcp_servers(request: &AgentRunnerRequest) -> Result<Value, String> {
             "value": data_dir,
         }));
     }
+    if let Ok(skills_dir) = env::var("HONE_SKILLS_DIR") {
+        env_entries.push(json!({
+            "name": "HONE_SKILLS_DIR",
+            "value": skills_dir,
+        }));
+    }
     if let Ok(sandbox_dir) = env::var("HONE_AGENT_SANDBOX_DIR") {
         env_entries.push(json!({
             "name": "HONE_AGENT_SANDBOX_DIR",
@@ -617,6 +623,7 @@ mod tests {
             "HONE_MCP_ACTOR_SCOPE",
             "HONE_MCP_SESSION_ID",
             "HONE_DATA_DIR",
+            "HONE_SKILLS_DIR",
             "HONE_AGENT_SANDBOX_DIR",
         ] {
             unsafe { env::remove_var(key) };
@@ -653,6 +660,7 @@ mod tests {
         unsafe {
             env::set_var("HONE_MCP_BIN", "/tmp/hone-mcp-custom");
             env::set_var("HONE_DATA_DIR", "/tmp/hone-data");
+            env::set_var("HONE_SKILLS_DIR", "/tmp/hone-skills");
             env::set_var("HONE_AGENT_SANDBOX_DIR", "/tmp/hone-sandboxes");
         }
 
@@ -685,6 +693,10 @@ mod tests {
         assert!(env_entries.iter().any(|entry| {
             entry.get("name").and_then(|v| v.as_str()) == Some("HONE_DATA_DIR")
                 && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp/hone-data")
+        }));
+        assert!(env_entries.iter().any(|entry| {
+            entry.get("name").and_then(|v| v.as_str()) == Some("HONE_SKILLS_DIR")
+                && entry.get("value").and_then(|v| v.as_str()) == Some("/tmp/hone-skills")
         }));
         assert!(env_entries.iter().any(|entry| {
             entry.get("name").and_then(|v| v.as_str()) == Some("HONE_AGENT_SANDBOX_DIR")
@@ -741,6 +753,67 @@ mod tests {
 
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0]["name"], "local_list_files");
+    }
+
+    #[test]
+    fn handle_tools_list_exposes_cron_job_only_when_allow_cron_is_enabled() {
+        let _guard = env_lock();
+        clear_test_env();
+
+        let core = HoneBotCore::new(HoneConfig::default());
+        let actor = ActorIdentity::new("telegram", "8039067465", None::<String>).expect("actor");
+
+        let disabled_registry = core.create_tool_registry(Some(&actor), "telegram", false);
+        let disabled_payload = handle_tools_list(&disabled_registry);
+        let disabled_tools = disabled_payload["tools"].as_array().expect("tools");
+        assert!(
+            !disabled_tools
+                .iter()
+                .any(|tool| tool["name"].as_str() == Some("cron_job"))
+        );
+
+        let enabled_registry = core.create_tool_registry(Some(&actor), "telegram", true);
+        let enabled_payload = handle_tools_list(&enabled_registry);
+        let enabled_tools = enabled_payload["tools"].as_array().expect("tools");
+        assert!(
+            enabled_tools
+                .iter()
+                .any(|tool| tool["name"].as_str() == Some("cron_job"))
+        );
+    }
+
+    #[test]
+    fn handle_tools_call_rejects_cron_job_when_stage_allowed_tools_excludes_it() {
+        let _guard = env_lock();
+        clear_test_env();
+        unsafe {
+            env::set_var("HONE_MCP_ALLOWED_TOOLS", "discover_skills,skill_tool");
+        }
+
+        let core = HoneBotCore::new(HoneConfig::default());
+        let actor = ActorIdentity::new("telegram", "8039067465", None::<String>).expect("actor");
+        let registry = core.create_tool_registry(Some(&actor), "telegram", true);
+
+        let list_payload = handle_tools_list(&registry);
+        let tools = list_payload["tools"].as_array().expect("tools");
+        assert!(
+            !tools
+                .iter()
+                .any(|tool| tool["name"].as_str() == Some("cron_job"))
+        );
+
+        let call_payload = futures::executor::block_on(handle_tools_call(
+            &registry,
+            &json!({
+                "name": "cron_job",
+                "arguments": { "action": "list" }
+            }),
+        ));
+        assert_eq!(call_payload["isError"], Value::Bool(true));
+        assert_eq!(
+            call_payload["content"][0]["text"],
+            Value::String("tool `cron_job` is not allowed in this stage".to_string())
+        );
     }
 
     #[test]

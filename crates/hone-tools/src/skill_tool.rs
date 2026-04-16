@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use tokio::process::Command;
 
 use crate::base::{Tool, ToolParameter};
-use crate::skill_runtime::SkillRuntime;
+use crate::skill_runtime::{SkillRuntime, SkillStageConstraints};
 
 const INVOKED_SKILLS_METADATA_KEY: &str = "skill_runtime.invoked_skills";
 
@@ -423,6 +423,7 @@ impl Tool for SkillTool {
         }
 
         let runtime = self.runtime();
+        let stage_constraints = SkillStageConstraints::from_mcp_env();
         let file_paths = args
             .get("file_paths")
             .and_then(|value| value.as_array())
@@ -435,7 +436,7 @@ impl Tool for SkillTool {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        match runtime.load_skill(skill_name, &file_paths) {
+        match runtime.load_skill_for_stage(skill_name, &file_paths, &stage_constraints) {
             Ok(skill) => {
                 let session_id = std::env::var("HONE_MCP_SESSION_ID").unwrap_or_default();
                 let prompt = runtime.render_invocation_prompt(
@@ -496,7 +497,7 @@ impl Tool for SkillTool {
                 "success": false,
                 "error": error,
                 "available_skills": runtime
-                    .list_summaries()
+                    .list_summaries_for_stage(&stage_constraints)
                     .into_iter()
                     .map(|skill| skill.id)
                     .collect::<Vec<_>>()

@@ -26,7 +26,7 @@
 - **Skill Runtime 对齐 Claude Code**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/skill-runtime-align-claude-code.md`
-  - 摘要：核心 skill runtime 已迁到“listing 披露 + 调用时完整注入 + slash/direct invoke + session 恢复”模型；hooks 真执行、turn-scope tool enforcement、watcher 热重载仍待 runner / infra 继续补齐
+  - 摘要：核心 skill runtime 已迁到“listing 披露 + 调用时完整注入 + slash/direct invoke + session 恢复”模型；本轮进一步补上 stage-aware skill 可见性、`HONE_SKILLS_DIR` 透传与 `cron_job` 可执行性对齐，确保当前会话里看得见的 skill 默认都能真正调用；hooks 真执行、watcher 热重载与更细粒度 turn enforcement 仍待 runner / infra 继续补齐
 - **Windows 桌面端打包可用性**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/windows-desktop-packaging.md`
