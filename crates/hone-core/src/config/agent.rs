@@ -407,6 +407,9 @@ pub struct AdminConfig {
     /// iMessage 管理员 handle 列表（手机号或 Apple ID，如 "+13234567890"）
     #[serde(default)]
     pub imessage_handles: Vec<String>,
+    /// Telegram 管理员 user ID 列表（数字字符串，如 "8039067465"）
+    #[serde(default)]
+    pub telegram_user_ids: Vec<String>,
     /// Feishu 管理员邮箱列表
     #[serde(default)]
     pub feishu_emails: Vec<String>,

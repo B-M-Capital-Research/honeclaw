@@ -452,6 +452,7 @@ impl HoneBotCore {
     /// 检查某用户在指定渠道是否为管理员
     ///
     /// - channel 传 "imessage" 时与 admins.imessage_handles 匹配
+    /// - channel 传 "telegram" 时与 admins.telegram_user_ids 匹配
     /// - channel 传 "feishu"   时与 admins.feishu_emails / feishu_mobiles / feishu_open_ids 匹配
     /// - channel 传 "discord"  时与 admins.discord_user_ids  匹配
     pub fn is_admin(&self, user_id: &str, channel: &str) -> bool {
@@ -464,6 +465,10 @@ impl HoneBotCore {
                 .imessage_handles
                 .iter()
                 .any(|h| !h.is_empty() && h == user_id),
+            "telegram" => admin_cfg
+                .telegram_user_ids
+                .iter()
+                .any(|id| !id.is_empty() && id == user_id),
             "feishu" => {
                 admin_cfg
                     .feishu_emails
@@ -1502,6 +1507,20 @@ mod tests {
         );
         assert!(core.is_admin_actor(&actor));
         assert!(core.is_admin_actor(&other_scope));
+    }
+
+    #[test]
+    fn telegram_admin_allowlist_is_honored() {
+        let mut config = HoneConfig::default();
+        config.admins.telegram_user_ids = vec!["8039067465".to_string()];
+        let core = HoneBotCore::new(config);
+
+        assert!(core.is_admin("8039067465", "telegram"));
+        assert!(!core.is_admin("999", "telegram"));
+
+        let actor =
+            ActorIdentity::new("telegram", "8039067465", Some("dm:8039067465")).expect("actor");
+        assert!(core.is_admin_actor(&actor));
     }
 
     #[test]

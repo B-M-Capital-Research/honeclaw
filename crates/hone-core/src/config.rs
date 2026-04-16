@@ -1505,6 +1505,7 @@ feishu:
   facade_addr: "127.0.0.1:19001"
   startup_timeout_seconds: 9
 admins:
+  telegram_user_ids: ["8039067465"]
   feishu_emails: ["admin@example.com"]
   feishu_mobiles: ["+8613900139000"]
   feishu_open_ids: ["ou_admin"]
@@ -1522,6 +1523,7 @@ admins:
         assert_eq!(config.feishu.callback_addr, "127.0.0.1:19002");
         assert_eq!(config.feishu.facade_addr, "127.0.0.1:19001");
         assert_eq!(config.feishu.startup_timeout_seconds, 9);
+        assert_eq!(config.admins.telegram_user_ids, vec!["8039067465"]);
         assert_eq!(config.admins.feishu_emails, vec!["admin@example.com"]);
         assert_eq!(config.admins.feishu_mobiles, vec!["+8613900139000"]);
         assert_eq!(config.admins.feishu_open_ids, vec!["ou_admin"]);

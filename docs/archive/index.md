@@ -573,3 +573,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: N/A
 - Current conclusion: 历史 handoff 已补回入口，具体拦截链路见 handoff
 - Next entry point: `docs/handoffs/2026-03-17-register-admin-intercept.md`
+
+### Telegram 管理员白名单支持
+
+- Status: done
+- Date: 2026-04-16
+- Plan: `docs/archive/plans/telegram-admin-whitelist.md`
+- Handoff: `docs/handoffs/2026-04-16-telegram-admin-whitelist.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-core`, `cargo test -p hone-channels`
+- Current conclusion: `admins` 正式支持 `telegram_user_ids`，共享管理员判定已接入 Telegram，当前私聊 identity `8039067465` 已写入本地配置
+- Next entry point: `docs/handoffs/2026-04-16-telegram-admin-whitelist.md`

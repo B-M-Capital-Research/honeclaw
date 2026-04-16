@@ -248,6 +248,9 @@ admins:
   # These users have admin privileges in the iMessage channel (they can modify code and restart Hone)
   imessage_handles:
     - "" # example: "+13234567890" or "admin@example.com"
+  # Telegram admin user ID list (Telegram numeric IDs)
+  telegram_user_ids:
+    - "" # example: "8039067465"
   # Feishu admin email list
   feishu_emails:
     - "" # example: "admin@example.com"
