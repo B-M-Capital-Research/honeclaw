@@ -483,7 +483,17 @@ fn default_multi_agent_search_max_iterations() -> u32 {
 }
 
 fn default_multi_agent_answer_max_tool_calls() -> u32 {
-    1
+    3
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MultiAgentAnswerConfig;
+
+    #[test]
+    fn multi_agent_answer_default_tool_limit_is_three() {
+        assert_eq!(MultiAgentAnswerConfig::default().max_tool_calls, 3);
+    }
 }
 
 fn default_multi_agent_answer_api_base_url() -> String {

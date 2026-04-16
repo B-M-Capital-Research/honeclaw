@@ -45,7 +45,7 @@ export function defaultAgentSettings(): AgentSettings {
         apiKey: "",
         model: "google/gemini-2.5-pro-preview",
         variant: "high",
-        maxToolCalls: 1,
+        maxToolCalls: 3,
       },
     },
   }

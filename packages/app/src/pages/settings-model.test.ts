@@ -17,6 +17,10 @@ import {
 } from "./settings-model"
 
 describe("settings-model", () => {
+  it("defaults multi-agent answer tool limit to three", () => {
+    expect(defaultAgentSettings().multiAgent?.answer.maxToolCalls).toBe(3)
+  })
+
   it("merges partial agent settings onto defaults", () => {
     const merged = mergeAgentSettings({
       ...defaultAgentSettings(),

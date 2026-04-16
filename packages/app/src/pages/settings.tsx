@@ -567,7 +567,7 @@ export default function SettingsPage() {
                   type="number"
                   min="0"
                   class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
-                  value={agentDraft().multiAgent?.answer.maxToolCalls ?? 1}
+                  value={agentDraft().multiAgent?.answer.maxToolCalls ?? 3}
                   onInput={(e) => setAgentDraft((prev) => ({
                     ...prev,
                     multiAgent: {
