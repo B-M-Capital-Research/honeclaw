@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 最近一小时同一任务持续异常：
@@ -59,9 +59,26 @@
 - 调度器把“无法识别状态”错误地归并进 `noop` 路径，造成功能性失败被静默吞掉。
 - 现有落库字段只保留 `parse_kind` 与字符数，没有把原始响应片段保留下来，进一步放大了排障盲区。
 
-## 下一步建议
+## 修复情况（2026-04-16）
 
-- 把 `JsonUnknownStatus` 从 `noop` 分支中拆出来，至少升级为 `execution_failed` 或独立的可观测状态。
-- 针对 heartbeat 的 `noop` 合法输出补一条更宽松的解析回归，覆盖“模型先输出解释性自然语言或 `<think>`，末尾再给 `{\"status\":\"noop\"}`”的场景，避免同一条链路在相邻轮次间随机漂移。
-- 为 heartbeat 运行记录保留受控长度的原始响应摘要，方便定位是 JSON 包装漂移、字段名变化还是模型回了自然语言。
-- 复核 `Monitor_Watchlist_11` 的 prompt / parser 契约，确认最近从 `JsonNoop` 漂移到 `JsonUnknownStatus` 的具体时间点和触发条件。
+- `crates/hone-channels/src/scheduler.rs` 已把 heartbeat 的解析失败从静默 `noop` 分支中拆出：
+  - `JsonUnknownStatus` 现在会返回 `error`，由各渠道 scheduler 落库为 `execution_failed + skipped_error`
+  - `JsonMalformed` 也同步升级为失败，不再继续伪装成正常 `noop`
+- 同一修复里补上了受控长度的 `raw_preview` 留存：
+  - heartbeat detail 现在会把原始响应摘要写进 `detail_json.raw_preview`
+  - 后续可以直接区分是“未知 status 枚举”“非法 JSON”还是“正常 noop”
+- 这样一来，监控类 heartbeat 任务在模型已经跑完但结构化收口失败时，不会再被后台静默吞掉。
+
+## 回归验证
+
+- `cargo test -p hone-channels heartbeat_unknown_json_status_marks_execution_failed -- --nocapture`
+- `cargo test -p hone-channels heartbeat_malformed_json_marks_execution_failed -- --nocapture`
+- `cargo test -p hone-channels heartbeat_ -- --nocapture`
+- `cargo check -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+- `git diff --check`
+
+## 后续建议
+
+- 如果后面还观察到 heartbeat 在 `JsonNoop` 和 `JsonUnknownStatus` 之间抖动，可以继续收紧 prompt / parser 契约，让模型在末尾 JSON 收口更稳定。
+- 如需更强的运维可观测性，可以再把 `parse_kind` 聚合到状态页或告警面板，而不只停留在 `cron_job_runs.detail_json`。

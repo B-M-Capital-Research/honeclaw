@@ -166,6 +166,86 @@ pub struct ScheduledTaskExecution {
     pub metadata: Value,
 }
 
+fn heartbeat_parse_error_message(parse_kind: &HeartbeatParseKind) -> Option<String> {
+    match parse_kind {
+        HeartbeatParseKind::JsonUnknownStatus => {
+            Some("heartbeat 输出包含未知状态，任务已标记失败".to_string())
+        }
+        HeartbeatParseKind::JsonMalformed => {
+            Some("heartbeat 输出不是合法 JSON，任务已标记失败".to_string())
+        }
+        _ => None,
+    }
+}
+
+fn heartbeat_execution_from_content(
+    content: &str,
+    heartbeat_model: &str,
+) -> ScheduledTaskExecution {
+    let raw_preview = truncate_for_log(content.trim(), 280);
+    let raw_chars = content.chars().count();
+    let starts_with_json = content.trim_start().starts_with('{');
+    let (outcome, parse_kind) = inspect_heartbeat_result(content);
+    let metadata = json!({
+        "heartbeat_model": heartbeat_model,
+        "parse_kind": format!("{:?}", parse_kind),
+        "raw_chars": raw_chars,
+        "starts_with_json": starts_with_json,
+        "raw_preview": raw_preview,
+    });
+
+    if let Some(error) = heartbeat_parse_error_message(&parse_kind) {
+        return ScheduledTaskExecution {
+            should_deliver: false,
+            content: String::new(),
+            error: Some(error),
+            metadata,
+        };
+    }
+
+    match outcome {
+        HeartbeatOutcome::Noop => ScheduledTaskExecution {
+            should_deliver: false,
+            content: String::new(),
+            error: None,
+            metadata,
+        },
+        HeartbeatOutcome::Deliver(message) => {
+            let sanitized_message = sanitize_scheduler_delivery_text(&message);
+            if sanitized_message.trim().is_empty() {
+                return ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: None,
+                    metadata: json!({
+                        "heartbeat_model": heartbeat_model,
+                        "parse_kind": format!("{:?}", parse_kind),
+                        "raw_chars": raw_chars,
+                        "starts_with_json": starts_with_json,
+                        "raw_preview": raw_preview,
+                        "deliver_preview": truncate_for_log(message.trim(), 200),
+                        "sanitized_empty": true,
+                    }),
+                };
+            }
+            let deliver_preview = truncate_for_log(message.trim(), 200);
+            ScheduledTaskExecution {
+                should_deliver: true,
+                content: sanitized_message,
+                error: None,
+                metadata: json!({
+                    "heartbeat_model": heartbeat_model,
+                    "parse_kind": format!("{:?}", parse_kind),
+                    "raw_chars": raw_chars,
+                    "starts_with_json": starts_with_json,
+                    "raw_preview": raw_preview,
+                    "deliver_preview": deliver_preview,
+                }),
+            }
+        }
+    }
+}
+
 fn sanitize_scheduler_delivery_text(text: &str) -> String {
     let sanitized = sanitize_user_visible_output(text).content;
     let kept_lines = sanitized
@@ -303,59 +383,32 @@ pub async fn execute_scheduler_event(
                     raw_preview.replace('\n', "\\n"),
                 );
             }
-            match outcome {
-                HeartbeatOutcome::Noop => ScheduledTaskExecution {
-                    should_deliver: false,
-                    content: String::new(),
-                    error: None,
-                    metadata: json!({
-                        "heartbeat_model": heartbeat_model,
-                        "parse_kind": format!("{:?}", parse_kind),
-                        "raw_chars": raw_chars,
-                        "starts_with_json": starts_with_json,
-                    }),
-                },
-                HeartbeatOutcome::Deliver(message) => {
-                    let sanitized_message = sanitize_scheduler_delivery_text(&message);
-                    if sanitized_message.trim().is_empty() {
-                        return ScheduledTaskExecution {
-                            should_deliver: false,
-                            content: String::new(),
-                            error: None,
-                            metadata: json!({
-                                "heartbeat_model": heartbeat_model,
-                                "parse_kind": format!("{:?}", parse_kind),
-                                "raw_chars": raw_chars,
-                                "starts_with_json": starts_with_json,
-                                "deliver_preview": truncate_for_log(message.trim(), 200),
-                                "sanitized_empty": true,
-                            }),
-                        };
-                    }
-                    let deliver_preview = truncate_for_log(message.trim(), 200);
-                    tracing::info!(
-                        "[HeartbeatDiag] deliver job_id={} job={} target={} parse_kind={:?} deliver_chars={} deliver_preview=\"{}\"",
-                        event.job_id,
-                        event.job_name,
-                        event.channel_target,
-                        parse_kind,
-                        message.chars().count(),
-                        deliver_preview.replace('\n', "\\n"),
-                    );
-                    ScheduledTaskExecution {
-                        should_deliver: true,
-                        content: sanitized_message,
-                        error: None,
-                        metadata: json!({
-                            "heartbeat_model": heartbeat_model,
-                            "parse_kind": format!("{:?}", parse_kind),
-                            "raw_chars": raw_chars,
-                            "starts_with_json": starts_with_json,
-                            "deliver_preview": deliver_preview,
-                        }),
-                    }
-                }
+            if matches!(
+                parse_kind,
+                HeartbeatParseKind::JsonUnknownStatus | HeartbeatParseKind::JsonMalformed
+            ) {
+                tracing::warn!(
+                    "[HeartbeatDiag] parse failure escalated job_id={} job={} target={} parse_kind={:?} preview=\"{}\"",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    parse_kind,
+                    raw_preview.replace('\n', "\\n"),
+                );
             }
+            if let HeartbeatOutcome::Deliver(message) = &outcome {
+                let deliver_preview = truncate_for_log(message.trim(), 200);
+                tracing::info!(
+                    "[HeartbeatDiag] deliver job_id={} job={} target={} parse_kind={:?} deliver_chars={} deliver_preview=\"{}\"",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    parse_kind,
+                    message.chars().count(),
+                    deliver_preview.replace('\n', "\\n"),
+                );
+            }
+            heartbeat_execution_from_content(&content, &heartbeat_model)
         }
         Err(error) => {
             tracing::warn!(
@@ -475,7 +528,8 @@ async fn run_heartbeat_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, inspect_heartbeat_result,
+        HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt,
+        heartbeat_execution_from_content, inspect_heartbeat_result,
         sanitize_scheduler_delivery_text,
     };
     use hone_core::ActorIdentity;
@@ -634,6 +688,36 @@ mod tests {
             inspect_heartbeat_result(r#"{"status":"maybe","message":"foo"}"#);
         assert_eq!(parse_kind, HeartbeatParseKind::JsonUnknownStatus);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
+    }
+
+    #[test]
+    fn heartbeat_unknown_json_status_marks_execution_failed() {
+        let execution =
+            heartbeat_execution_from_content(r#"{"status":"maybe","message":"foo"}"#, "model-x");
+        assert!(!execution.should_deliver);
+        assert_eq!(
+            execution.error.as_deref(),
+            Some("heartbeat 输出包含未知状态，任务已标记失败")
+        );
+        assert_eq!(execution.metadata["parse_kind"], "JsonUnknownStatus");
+        assert_eq!(execution.metadata["heartbeat_model"], "model-x");
+        assert!(
+            execution.metadata["raw_preview"]
+                .as_str()
+                .expect("raw_preview")
+                .contains("\"status\":\"maybe\"")
+        );
+    }
+
+    #[test]
+    fn heartbeat_malformed_json_marks_execution_failed() {
+        let execution = heartbeat_execution_from_content(r#"{"status":"noop"#, "model-x");
+        assert!(!execution.should_deliver);
+        assert_eq!(
+            execution.error.as_deref(),
+            Some("heartbeat 输出不是合法 JSON，任务已标记失败")
+        );
+        assert_eq!(execution.metadata["parse_kind"], "JsonMalformed");
     }
 
     #[test]

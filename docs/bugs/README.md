@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 10:57 CST
+最后更新：2026-04-16 11:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：5
-- 已修复 / 已关闭：22
+- 活跃待修复：4
+- 已修复 / 已关闭：23
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -27,7 +27,6 @@
 | 会话压缩摘要会把最后一个新问题误写成完整“用户报告”并以 `Compact Summary` 回灌，正式回答因此引用不存在的报告与伪造价格假设 | P1 | New | 2026-04-16 08:47-09:00 再次复现；多条 scheduler 会话先被 compact 成 `role=user` 的摘要表，再进入本轮任务，且 `09:00` 还叠加 `context_overflow_recovery` | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | Feishu 图片附件会向用户发送内部 skill transcript，并夹带未清洗的中间协议 | P1 | New | 2026-04-16 01:07-01:10 最近一小时同会话再次复现；assistant 落库仍混入 `<think>`、`tool_call`、`tool_result`、manifest/path 与补救话术 | [feishu_attachment_internal_transcript_leak.md](./feishu_attachment_internal_transcript_leak.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无回复 | P1 | New | 2026-04-15 22:45 最近一小时新增；搜索阶段已完成工具调用，但 `22:49` 触发 `opencode acp session/prompt idle timeout (180s)` 后既未落库 assistant，也未发送最终回复 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
-| Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-16 09:30 与 10:00 最近一小时仍在复现；`Monitor_Watchlist_11` 连续两轮继续落回 `JsonUnknownStatus` 并被静默吞掉 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 
 ## 已修复 / 已关闭
 
@@ -55,6 +54,7 @@
 | Feishu 定时任务在 Answer 阶段返回空回复后，调度台账仍记为 `completed + sent` | P1 | Fixed | 2026-04-16 已通过共享空成功判定修复收口，scheduler 不再发送或记录零字节正文 | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
 | Discord 定时任务在 Answer 阶段返回空回复时被记为成功执行，但最终未向用户送达 | P2 | Fixed | 2026-04-16 已通过共享空成功判定修复收口，不再因为只剩搜索工具调用而把空 answer 视为成功 | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 | Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | Fixed | 2026-04-16 已让 direct scheduler 优先使用绑定 actor 的 `open_id`，并收紧 mobile 识别避免把 `open_id` 误判成手机号 | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
+| Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | Fixed | 2026-04-16 已把 `JsonUnknownStatus` / `JsonMalformed` 从静默 noop 升级为 `execution_failed`，并把 `raw_preview` 写入 heartbeat detail | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 
 ## 历史分析 / 部分止血
 
