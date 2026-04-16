@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-16
 
+### Feishu 直聊 placeholder 假启动收口
+
+- Status: done
+- Date: 2026-04-16
+- Plan: `docs/archive/plans/feishu-direct-busy-placeholder-gap.md`
+- Handoff: `docs/handoffs/2026-04-16-feishu-direct-busy-placeholder-gap.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-feishu direct_busy_text_is_explicit -- --nocapture`, `env CARGO_TARGET_DIR=/Users/ecohnoch/Library/Caches/honeclaw/target bunx tauri build --config bins/hone-desktop/tauri.generated.conf.json`
+- Current conclusion: Feishu 私聊当前已不再在 session 冲突时先发 placeholder 再卡死等待，而是会在入口直接返回 busy 提示；这条修复针对的是“placeholder 假启动”问题，不等同于已经完全根除所有深层长时间持锁根因
+- Next entry point: `docs/handoffs/2026-04-16-feishu-direct-busy-placeholder-gap.md`
+
 ### 搜索失败提示主根因修复与 Tavily 复核
 
 - Status: done

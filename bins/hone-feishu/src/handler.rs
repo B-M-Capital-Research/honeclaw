@@ -62,6 +62,10 @@ fn build_group_busy_text(speaker_label: &str) -> String {
     format!("正在处理 {speaker_label} 的消息，请等上一条完成后再 @ 我。")
 }
 
+fn build_direct_busy_text() -> &'static str {
+    "上一条消息还在处理中，请等当前回复完成后再发送新消息。"
+}
+
 fn build_failed_reply_text(
     reply_prefix: Option<&str>,
     saw_stream_delta: bool,
@@ -314,6 +318,87 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         }
         return;
     }
+    let _active_guard = match state.session_locks.try_begin_active(
+        &session_id,
+        ActiveSessionInfo {
+            speaker_label: speaker_label.clone(),
+            message_id: Some(msg.message_id.clone()),
+        },
+    ) {
+        Ok(guard) => Some(guard),
+        Err(active) if is_group => {
+            if !text.is_empty() && state.core.config.group_context.pretrigger_window_enabled {
+                state
+                    .pretrigger
+                    .push(
+                        &session_id,
+                        BufferedGroupMessage::new(
+                            "feishu",
+                            msg.message_id.clone(),
+                            speaker_label.clone(),
+                            text.to_string(),
+                        ),
+                    )
+                    .await;
+            }
+            let busy_text = prepend_reply_prefix(
+                reply_prefix.as_deref(),
+                &build_group_busy_text(&active.speaker_label),
+            );
+            if let Err(err) = send_plain_text(
+                &state.facade,
+                &outbound_receive_id,
+                outbound_receive_id_type,
+                &busy_text,
+            )
+            .await
+            {
+                warn!("[Feishu] 发送群聊 busy 提示失败: {err}");
+            }
+            state.core.log_message_step(
+                "feishu",
+                &log_user,
+                &session_id,
+                "group.busy",
+                "sent",
+                Some(&msg.message_id),
+                Some("busy"),
+            );
+            warn!(
+                "[Feishu] 群聊触发命中 busy，已回提示并保留到预触发窗口: chat_id={} active_speaker={}",
+                msg.chat_id, active.speaker_label
+            );
+            return;
+        }
+        Err(active) => {
+            let busy_text = prepend_reply_prefix(reply_prefix.as_deref(), build_direct_busy_text());
+            if let Err(err) = send_plain_text(
+                &state.facade,
+                &outbound_receive_id,
+                outbound_receive_id_type,
+                &busy_text,
+            )
+            .await
+            {
+                warn!("[Feishu] 发送私聊 busy 提示失败: {err}");
+            }
+            state.core.log_message_step(
+                "feishu",
+                &log_user,
+                &session_id,
+                "direct.busy",
+                "sent",
+                Some(&msg.message_id),
+                Some("busy"),
+            );
+            warn!(
+                "[Feishu] 私聊触发命中 busy，已跳过 placeholder: session_id={} active_message_id={:?}",
+                session_id, active.message_id
+            );
+            return;
+        }
+    };
+
     let attachments = ingest_raw_attachments(
         state.core.as_ref(),
         AttachmentIngestRequest {
@@ -336,55 +421,6 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             },
         );
     }
-
-    let _active_guard = if is_group {
-        match state.session_locks.try_begin_active(
-            &session_id,
-            ActiveSessionInfo {
-                speaker_label: speaker_label.clone(),
-                message_id: Some(msg.message_id.clone()),
-            },
-        ) {
-            Ok(guard) => Some(guard),
-            Err(active) => {
-                if !text.is_empty() && state.core.config.group_context.pretrigger_window_enabled {
-                    state
-                        .pretrigger
-                        .push(
-                            &session_id,
-                            BufferedGroupMessage::new(
-                                "feishu",
-                                msg.message_id.clone(),
-                                speaker_label.clone(),
-                                text.to_string(),
-                            ),
-                        )
-                        .await;
-                }
-                let busy_text = prepend_reply_prefix(
-                    reply_prefix.as_deref(),
-                    &build_group_busy_text(&active.speaker_label),
-                );
-                if let Err(err) = send_plain_text(
-                    &state.facade,
-                    &outbound_receive_id,
-                    outbound_receive_id_type,
-                    &busy_text,
-                )
-                .await
-                {
-                    warn!("[Feishu] 发送 busy 提示失败: {err}");
-                }
-                warn!(
-                    "[Feishu] 群聊触发命中 busy，已回提示并保留到预触发窗口: chat_id={} active_speaker={}",
-                    msg.chat_id, active.speaker_label
-                );
-                return;
-            }
-        }
-    } else {
-        None
-    };
     if state
         .core
         .session_storage
@@ -1311,6 +1347,14 @@ mod tests {
                 Some("opencode acp session/prompt idle timeout (180s)"),
             ),
             "@alice 阶段性结果\n\n_(处理中发生错误，内容可能不完整)_"
+        );
+    }
+
+    #[test]
+    fn direct_busy_text_is_explicit() {
+        assert_eq!(
+            build_direct_busy_text(),
+            "上一条消息还在处理中，请等当前回复完成后再发送新消息。"
         );
     }
 }

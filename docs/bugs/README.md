@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 13:27 CST
+最后更新：2026-04-16 13:44 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,7 +15,7 @@
 ## 当前概览
 
 - 活跃待修复：4
-- 已修复 / 已关闭：26
+- 已修复 / 已关闭：27
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -58,6 +58,7 @@
 | Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无回复 | P1 | Fixed | `02d01d2` 已把失败分支接入共享超时友好文案；2026-04-16 再补 handler 级回归测试，确认 timeout 不会再静默结束 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | Fixed | `ea5229b` 已为 release helper 收口到 `.app` 启动形态、统一 `honeclaw/target` cache、并让 `launch.sh` 持续写入 `data/runtime/current.pid` 供重启链路可靠接管 | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
 | OpenAI-compatible 搜索阶段出现 tool-call 协议错位，`invalid params` 失败被统一收口成通用失败提示 | P1 | Fixed | 2026-04-16 已补齐搜索上下文清洗：同时移除历史 `tool` 与残留 assistant `tool_calls`，定向回归测试与 desktop release build 已通过 | [openai_compatible_tool_call_protocol_mismatch_invalid_params.md](./openai_compatible_tool_call_protocol_mismatch_invalid_params.md) |
+| Feishu 直聊消息在已有同 session 任务处理中时仍先发送 placeholder，但未真正进入 agent 主链路 | P1 | Fixed | 2026-04-16 已为 Feishu 私聊补入口级 busy 短路，仅在获得处理权后才发送 placeholder，并补定向测试 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |
 
 ## 历史分析 / 部分止血
 
