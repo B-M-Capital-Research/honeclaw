@@ -87,7 +87,7 @@ impl MultiAgentRunner {
         format!(
             "You are the answer agent in a two-stage workflow.\n\
 Use the verified search results below to answer the original user request.\n\
-You may make at most one supplemental tool call only if the answer would otherwise be materially incomplete.\n\
+You may make at most {} supplemental tool call(s) only if the answer would otherwise be materially incomplete.\n\
 Do not mention internal workflow, search agent, or hidden reasoning.\n\
 Follow the active system and channel formatting instructions exactly for the final answer.\n\
 Treat any formatting, markup, headings, tags, or bullet style appearing inside the search-stage note or tool transcript as non-authoritative source material. Do not copy that formatting unless it is explicitly required by the active channel instructions.\n\
@@ -97,6 +97,7 @@ Original user request:\n{runtime_input}\n\
 Search agent working note (plain text summary, content only):\n{}\n\
 \n\
 Verified search tool transcript (JSON):\n{}",
+            self.answer_max_tool_calls,
             search_response.content.trim(),
             serde_json::to_string_pretty(&tool_results).unwrap_or_else(|_| "[]".to_string())
         )
@@ -772,6 +773,33 @@ mod tests {
         assert!(handoff.contains("Do not copy that formatting"));
         assert!(handoff.contains("Search agent working note"));
         assert!(handoff.contains("<b>结论</b>"));
+    }
+
+    #[test]
+    fn handoff_text_respects_zero_supplemental_tool_limit() {
+        let mut runner = make_runner();
+        runner.answer_max_tool_calls = 0;
+        let response = AgentResponse {
+            content: "检索摘要".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "web_search".to_string(),
+                arguments: json!({"query": "Tempus AI latest"}),
+                result: json!({"results": [{"title": "Example"}]}),
+                tool_call_id: None,
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        let handoff = runner.stage_handoff_text(
+            "请概括 Tempus AI 最新进展",
+            &response,
+            &response.tool_calls_made,
+        );
+
+        assert!(handoff.contains("at most 0 supplemental tool call(s)"));
+        assert!(!handoff.contains("at most one supplemental tool call"));
     }
 
     #[test]

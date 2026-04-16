@@ -322,6 +322,10 @@ impl HoneBotCore {
         search_config
     }
 
+    fn effective_multi_agent_answer_max_tool_calls(&self) -> u32 {
+        self.config.agent.multi_agent.answer.max_tool_calls
+    }
+
     fn create_llm_audit_sink(config: &HoneConfig) -> Option<Arc<dyn LlmAuditSink>> {
         if !config.storage.llm_audit_enabled {
             return None;
@@ -1060,7 +1064,7 @@ impl HoneBotCore {
                     self.effective_multi_agent_search_config(),
                     answer_config,
                     runner_timeouts,
-                    self.config.agent.multi_agent.answer.max_tool_calls.max(1),
+                    self.effective_multi_agent_answer_max_tool_calls(),
                     Arc::new(tool_registry),
                     self.llm_audit.clone(),
                 )))
@@ -1583,5 +1587,16 @@ mod tests {
         let effective = core.effective_multi_agent_search_config();
 
         assert_eq!(effective.api_key, "sk-cp-search");
+    }
+
+    #[test]
+    fn multi_agent_answer_zero_tool_limit_is_preserved() {
+        let mut config = HoneConfig::default();
+        config.agent.runner = "multi-agent".to_string();
+        config.agent.multi_agent.answer.max_tool_calls = 0;
+
+        let core = HoneBotCore::new(config);
+
+        assert_eq!(core.effective_multi_agent_answer_max_tool_calls(), 0);
     }
 }
