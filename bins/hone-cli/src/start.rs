@@ -324,8 +324,8 @@ mod tests {
             "the first child should still be running when the second child exits"
         );
 
-        let _ = children[0].kill().await;
-        let _ = children[0].wait().await;
-        let _ = children[1].wait().await;
+        children[0].kill().await.expect("kill slow child");
+        children[0].wait().await.expect("wait slow child");
+        children[1].wait().await.expect("wait fast child");
     }
 }

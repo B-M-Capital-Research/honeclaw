@@ -14,6 +14,25 @@ use tracing::error;
 use crate::handlers::DiscordHandler;
 use crate::scheduler::handle_scheduler_events;
 
+/// Covers known Discord/serenity invalid-auth text variants:
+/// - words with/without spaces (`invalid authentication`, `invalidauthentication`)
+/// - explicit gateway close code forms (`code 4004`, plain ` 4004`)
+const DISCORD_INVALID_AUTH_PATTERNS: &[&str] = &[
+    "invalid authentication",
+    "invalidauthentication",
+    "invalid token",
+    "authentication failed",
+    "code 4004",
+    " 4004",
+];
+
+fn is_discord_invalid_auth_error(error: &str) -> bool {
+    let normalized = error.to_lowercase();
+    DISCORD_INVALID_AUTH_PATTERNS
+        .iter()
+        .any(|pattern| normalized.contains(pattern))
+}
+
 #[tokio::main]
 async fn main() {
     let runtime = hone_channels::bootstrap_channel_runtime(
@@ -67,14 +86,30 @@ async fn main() {
 
     if let Err(e) = client.start().await {
         error!("Discord 运行失败: {}", e);
-        let err_text = e.to_string().to_lowercase();
-        if (err_text.contains("invalid") && err_text.contains("authentication"))
-            || err_text.contains("4004")
-        {
+        if is_discord_invalid_auth_error(&e.to_string()) {
             eprintln!("[ERROR] Discord bot token 认证失败");
             eprintln!("[提示] 请检查是否重复粘贴或 token 已失效");
             eprintln!("[建议] 运行 `hone-cli configure --section channels` 重新配置");
         }
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_discord_invalid_auth_error;
+
+    #[test]
+    fn invalid_auth_patterns_cover_gateway_4004() {
+        assert!(is_discord_invalid_auth_error(
+            "Gateway closed with code 4004: Authentication failed"
+        ));
+    }
+
+    #[test]
+    fn invalid_auth_patterns_do_not_match_unrelated_errors() {
+        assert!(!is_discord_invalid_auth_error(
+            "network timeout while connecting"
+        ));
     }
 }

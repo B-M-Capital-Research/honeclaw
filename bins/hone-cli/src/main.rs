@@ -717,7 +717,7 @@ enum DiscordTokenValidation {
     Invalid(&'static str),
 }
 
-/// Validate a token segment uses base64url characters (A-Z/a-z/0-9/-/_).
+/// Validates that a token segment uses base64url characters (A-Z/a-z/0-9/-/_).
 fn is_base64url_segment(value: &str) -> bool {
     !value.is_empty()
         && value
