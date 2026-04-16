@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
@@ -22,6 +22,16 @@
    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
    - `2026-04-16 09:00:44.238102+08:00` 新一轮定时任务又在触发后被写回 `role=user` 的 `【Compact Summary】...`
    - 同轮 `web.log` 记录 `09:00:28.557` `context overflow detected`，随后 `09:00:44.239` `context_overflow_recovery compacted=true`，说明 scheduler 会话在本轮任务运行中再次把摘要回灌到上下文
+ - 2026-04-16 20:31-20:49 最新复核：
+   - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
+   - `2026-04-16T20:30:59.783610+08:00` 新一轮 `每日仓位复盘` scheduler 任务触发
+   - `2026-04-16T20:31:25.422365+08:00` 会话再次写回 `role=user` 的 `【Compact Summary】...`，内容仍然是上一轮 `RKLB vs SpaceX` 的完整对比表和分析结论，而不是系统态摘要
+   - 该轮 `2026-04-16T20:32:51.450868+08:00` assistant 虽然完成送达，但说明 compact summary 仍会在 scheduler 任务执行前注入可见用户消息
+   - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+   - `2026-04-16T20:45:59.758405+08:00` 新一轮 `美股盘前AI及高景气产业链推演` scheduler 任务触发
+   - `2026-04-16T20:46:13.650765+08:00` 会话再次写回 `role=user` 的 `【Compact Summary】...`，内容明确写出“助手已完成全量9个定时任务的梳理”“建议删除任务4，将完整的新指令写入任务5，待用户确认后执行”
+   - 紧接着 `2026-04-16T20:49:04.746325+08:00` assistant 正式回复开头直接引用该 summary：`关于定时任务系统的梳理，已确认删除原任务4并将完整合并指令写入任务5，待您最终核准`
+   - 同轮 `cron_job_runs.run_id=1989` 被记为 `completed + sent + delivered=1`，说明当前缺陷已从“提前替用户作答”延伸为“把前序任务配置上下文串进下一条 scheduler 结果”
 
 ## 端到端链路
 
@@ -89,6 +99,14 @@
   - 同一时间 `session_messages` 新增 `role=user` 的 `【Compact Summary】...`，其中仍是结构化股票关注表，而不是隔离在系统态的压缩元数据
 - 这说明当前缺陷不仅会“把最后一个问题提前答掉”，还会在 scheduler 场景里把旧会话总结持续注入新一轮定时任务上下文；一旦再叠加 `context_overflow_recovery`，污染会在同轮任务内被再次固化。
 
+## 当前实现效果（2026-04-16 20:31-20:49 最近一小时复核）
+
+- `Compact Summary` 仍然继续以 `role=user` 写回真实会话，说明此前“只总结旧消息”的修复并没有解决“摘要仍被当成用户可见上下文参与后续推理”这个核心问题。
+- `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 在 `20:31:25` 写回的 compact summary 继续保留上一轮 `RKLB vs SpaceX` 的完整结论型表格；虽然这轮 `每日仓位复盘` 最终成功送达，但说明 scheduler 任务前仍会先把旧结论作为用户消息注回上下文。
+- `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 的症状更明确：`20:46:13` compact summary 总结的是“是否删除任务4、把完整指令写入任务5”的任务编排讨论，而 `20:49:04` 下一条本该独立生成的“美股盘前AI及高景气产业链推演”结果，开头却直接继承了这段上下文。
+- 这表明当前缺陷已经不只是“summary 内容本身有幻觉”，而是 `Compact Summary` 仍然作为 `role=user` 进入 prompt，导致不同 scheduler 任务之间发生明显的跨任务串话与回答污染。
+- 本轮 `run_id=1989` 最终被记为 `completed + sent + delivered=1`，说明系统不会把这类污染识别为失败；如果只看台账执行状态，会误以为结果完全正常。
+
 ## 已确认事实
 
 - 本次事故里没有用户上传的 PDF / 图片 / 附件报告。
@@ -116,8 +134,9 @@
 3. 回答链路没有对 `session.compact_summary` 做足够强的隔离或降权，导致 multi-agent search / answer 会把它理解成原始用户请求的一部分。
 4. 压缩提示词只要求“总结历史”，但没有显式禁止“回答最后一个问题”或“生成新的投研报告”。
 5. 最近多次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段；一旦叠加 overflow recovery，这份污染还会在同轮 scheduler 任务内再次被固化。
+6. 从 `20:46 -> 20:49` 的跨任务串话样本看，即使 summary 本身更接近“历史总结”，只要它继续以 `role=user` 参与后续 prompt 组装，answer 阶段仍会把其中的待办、结论和上下文当成当前任务事实继续复述。
 
-## 修复情况（2026-04-16）
+## 修复情况（2026-04-16，已确认未收口）
 
 1. `crates/hone-channels/src/session_compactor.rs` 已改为只总结“将被压掉的旧消息”：
    - 正常 auto compact 不再把保留窗口里的最近消息送进压缩 prompt
@@ -128,6 +147,7 @@
    - 明确禁止把摘要写成正式报告、正式结论或投资建议正文
 3. `context_overflow_recovery` 的强制压缩边界也已保留：
    - 当会话里只剩 1 条活跃消息时，强制 compact 仍可工作，不会把 overflow recovery 退化成“完全不 compact”
+4. 但 `2026-04-16 20:31` 与 `20:46` 的最新样本证明：上述修复最多只缓解了“把最后一个问题直接写成伪答案”的部分场景，并没有消除 `Compact Summary` 作为 `role=user` 回灌后续任务上下文的问题，因此本缺陷状态从 `Fixed` 重新打开为 `New`。
 
 ## 回归验证
 
@@ -141,5 +161,6 @@
 
 ## 后续建议
 
-1. 更彻底的隔离仍可以继续做：把 `Compact Summary` 从 `role=user` 迁出，或者在 prompt 组装里显式降权为系统内部摘要。
-2. 如果后面还观测到摘要继续伪造数字，可再补一条更强的 contract test，直接校验 summary prompt / summary output 不允许出现未出现在历史里的证券价格、持仓数量和目标价。
+1. 优先把 `Compact Summary` 从 `role=user` 迁出，或至少在 prompt 组装里把它降权为系统内部摘要，避免后续 answer/scheduler 把它当成当前用户输入继续消费。
+2. 针对 scheduler 会话补一条跨任务回归测试：前一条任务先 compact，后一条独立任务执行时不应复述 compact summary 中的待确认事项、旧结论或旧任务编号。
+3. 如果后面还观测到摘要继续伪造数字，可再补一条更强的 contract test，直接校验 summary prompt / summary output 不允许出现未出现在历史里的证券价格、持仓数量和目标价。

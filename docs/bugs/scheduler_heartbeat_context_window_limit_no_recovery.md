@@ -28,6 +28,10 @@
       - `2026-04-16 17:31:42.323` `job_id=j_977ac60c job=AAOI_动态监控` 也继续记录同样的 `context window exceeds limit (2013)`
       - `2026-04-16 18:01:38.761` `job_id=j_78d08da1 job=TEM_动态监控` 恢复为 `completed + sent`
       - `2026-04-16 18:01:43.997` `job_id=j_cee5b540 job=RKLB_动态监控` 恢复为 `completed + sent`
+      - `2026-04-16 20:01:21.806` `job_id=j_cee5b540 job=RKLB_动态监控` 再次记录 `context window exceeds limit (2013)`
+      - `2026-04-16 20:01:52.924` `job_id=j_78d08da1 job=TEM_动态监控` 同轮也再次落成 `context window exceeds limit (2013)`
+      - `2026-04-16 20:31:23.362` `job_id=j_cee5b540 job=RKLB_动态监控` 进一步复现同样错误
+      - `2026-04-16 20:31:37.468` `job_id=j_78d08da1 job=TEM_动态监控` 已恢复为 `completed + sent`
   - 关联会话：
     - `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 在 `2026-04-16T13:57:52.064021+08:00` 刚创建并激活三条心跳监控任务；其中 `TEM_动态监控` 与 `AAOI_动态监控` 在下一轮 14:00 首次执行即失败
 
@@ -55,8 +59,9 @@
 - 到 `16:31` 这一轮，`AAOI_动态监控` 又再次落回 `context window exceeds limit (2013)`，而同批的 `RKLB_动态监控` 一度恢复为 `noop`；到 `17:01`，`RKLB_动态监控` 进一步恢复为 `completed + sent`。
 - 但 `17:31` 的最新样本显示 `RKLB_动态监控` 与 `AAOI_动态监控` 已再次同时落回 `context window exceeds limit (2013)`，说明这条缺陷不仅没有收口，当前还会在同一批 heartbeat 任务上并发复现。
 - 到 `18:01` 这一轮，`TEM_动态监控` 与 `RKLB_动态监控` 又同时恢复为 `completed + sent`，说明超窗故障仍然呈现“相邻轮次恢复、随后再回落”的抖动特征，而不是线性修复。
+- 到 `20:01` 这一轮，`RKLB_动态监控` 与 `TEM_动态监控` 又同时重新命中 `context window exceeds limit (2013)`；而仅过 30 分钟，`20:31` 的 `TEM_动态监控` 已恢复为 `completed + sent`，但 `RKLB_动态监控` 仍继续失败。
 - 同批次里 `AAOI_动态监控` 虽然没有再次出现 `context window exceeds limit (2013)`，但仍落成 `JsonUnknownStatus + execution_failed`，说明 heartbeat 整体稳定性问题仍未收口，只是从“超窗”漂移成了“结构化收口失败”。
-- 这表明当前问题不是“单个任务配置写坏后永久失败”，而是 heartbeat 任务集合中存在不稳定的上下文预算失控，故障会在相似任务之间持续漂移，且会阶段性放大为多任务同时失败。
+- 这表明当前问题不是“单个任务配置写坏后永久失败”，而是 heartbeat 任务集合中存在不稳定的上下文预算失控，故障会在相似任务之间持续漂移，且会阶段性放大为多任务同时失败；`20:01 -> 20:31` 的最新窗口再次证明这条缺陷仍处于活跃态。
 
 ## 用户影响
 
