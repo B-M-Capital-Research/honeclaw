@@ -24,6 +24,8 @@
     - 最近半小时新增样本：
       - `2026-04-16 16:31:21.524` `job_id=j_977ac60c job=AAOI_动态监控` 再次记录 `context window exceeds limit (2013)`，而同批次 `RKLB_动态监控` 已恢复为 `JsonNoop`
       - `2026-04-16 17:01:36.857` `job_id=j_cee5b540 job=RKLB_动态监控` 进一步恢复为 `completed + sent`
+      - `2026-04-16 17:31:18.245` `job_id=j_cee5b540 job=RKLB_动态监控` 再次落回 `context window exceeds limit (2013)`
+      - `2026-04-16 17:31:42.323` `job_id=j_977ac60c job=AAOI_动态监控` 也继续记录同样的 `context window exceeds limit (2013)`
   - 关联会话：
     - `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 在 `2026-04-16T13:57:52.064021+08:00` 刚创建并激活三条心跳监控任务；其中 `TEM_动态监控` 与 `AAOI_动态监控` 在下一轮 14:00 首次执行即失败
 
@@ -48,8 +50,9 @@
 - 同一轮其他 heartbeat 任务可以继续返回 `JsonNoop` 或正常触发，说明当前故障不是 scheduler 全面不可用，而是与特定监控任务载荷相关。
 - 由于执行结果落成 `execution_failed + skipped_error`，这次没有伪装成成功；但对用户而言，监控任务仍然在最关键的“首轮验证”阶段直接失效。
 - 到 `15:00` 这一轮，`TEM_动态监控` 已恢复为 `completed + sent`，`AAOI_动态监控` 恢复为 `noop + skipped_noop`，但 `RKLB_动态监控` 又新出现同样的 `context window exceeds limit (2013)`。
-- 到 `16:31` 这一轮，`AAOI_动态监控` 又再次落回 `context window exceeds limit (2013)`，而同批的 `RKLB_动态监控` 已恢复为 `noop`；到 `17:01`，`RKLB_动态监控` 进一步恢复为 `completed + sent`。
-- 这表明当前问题不是“单个任务配置写坏后永久失败”，而是 heartbeat 任务集合中存在不稳定的上下文预算失控，故障会在相似任务之间持续漂移。
+- 到 `16:31` 这一轮，`AAOI_动态监控` 又再次落回 `context window exceeds limit (2013)`，而同批的 `RKLB_动态监控` 一度恢复为 `noop`；到 `17:01`，`RKLB_动态监控` 进一步恢复为 `completed + sent`。
+- 但 `17:31` 的最新样本显示 `RKLB_动态监控` 与 `AAOI_动态监控` 已再次同时落回 `context window exceeds limit (2013)`，说明这条缺陷不仅没有收口，当前还会在同一批 heartbeat 任务上并发复现。
+- 这表明当前问题不是“单个任务配置写坏后永久失败”，而是 heartbeat 任务集合中存在不稳定的上下文预算失控，故障会在相似任务之间持续漂移，且会阶段性放大为多任务同时失败。
 
 ## 用户影响
 
@@ -61,7 +64,7 @@
 
 - 高概率是 heartbeat/function-calling 链路缺少上下文预算控制与 `context window exceeds limit` 的自动恢复能力。
 - 从证据看，普通会话链路已有上下文溢出恢复单独建档并标记 `Fixed`，但 heartbeat 任务在 `14:00` 仍然直接失败，说明这条执行路径没有复用同样的恢复策略，或其首轮构造的 prompt 规模已经超过当前模型容忍上限。
-- 结合 `15:00` 到 `16:31` 的连续样本看，问题也不完全等同于“新建任务首轮继承了过长历史”；因为同根因已经从 `TEM/AAOI` 漂移到 `RKLB`，随后又回漂到 `AAOI`，更像是 heartbeat prompt 预算在不同任务之间缺少稳定上限控制。
+- 结合 `15:00` 到 `17:31` 的连续样本看，问题也不完全等同于“新建任务首轮继承了过长历史”；因为同根因已经从 `TEM/AAOI` 漂移到 `RKLB`，随后又回漂到 `AAOI`，并在最新一轮同时打到 `RKLB + AAOI`，更像是 heartbeat prompt 预算在不同任务之间缺少稳定上限控制。
 - 目前证据仍不足以断言具体是“上下文继承抖动”“工具结果拼接过长”还是“任务模板自身过长”，需要后续结合实际 heartbeat 输入拼装逻辑确认。
 
 ## 下一步建议
