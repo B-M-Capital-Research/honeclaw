@@ -56,6 +56,8 @@
     - placeholder 发送时机已继续后移到 `AgentSession` 对象准备完成之后，进一步缩小静默区间
     - 当前运行配置 `data/runtime/config_runtime.yaml` 已为 `+8613871396421` 补入 `feishu_mobiles`，并为其补入 `open_id=ou_39103ac18cf70a98afc6cfc7529120e5` 到管理员名单
     - 定向回归：`cargo test -p hone-feishu actionable_user_input_detects_empty_payload -- --nocapture`、`cargo test -p hone-feishu direct_busy_text_is_explicit -- --nocapture` 通过
+    - `2026-04-16 18:12` 再补一轮 handler 防静默修复：为每条 Feishu 消息处理任务增加 join-error / panic 兜底；若异步任务异常退出，会直接向用户补发友好失败提示，不再继续只留下 placeholder
+    - 同一轮还为 `session.run()` 前后补了 `handler.session_run=dispatch/completed` 边界日志，并补充定向回归：`cargo test -p hone-feishu outbound_target_uses_open_id_for_direct_messages -- --nocapture`、`cargo test -p hone-feishu panic_fallback_preserves_group_mention_prefix -- --nocapture`
 
 ## 端到端链路
 
@@ -78,6 +80,7 @@
 - 修复前，群聊已经有 busy / pretrigger 策略，但 Feishu 私聊没有同等级入口保护。
 - 修复前，私聊用户连续发送消息时，系统会先给 placeholder，随后卡在更深层 session 锁等待，体感上像“处理失败”或“系统没反应”。
 - 当前处于修复中。Feishu 私聊入口已有 `direct.busy` 短路，本轮又补了“空解析内容先兜底、后发 placeholder”的顺序修复，并把 placeholder 发送时机继续后移。
+- 最新代码又补上了“任务 panic 仍给用户失败提示”与 `handler.session_run` 边界日志，因此下一次复现时，不应再继续只剩 placeholder 且没有任何补充日志。
 - 新版本 `hone-feishu` release 二进制已经重编并重启，管理员配置也已生效。
 - 但最近一小时已经再次观察到两类真实文本消息仍停在 placeholder 之后：
   - `14:58` 样本停在 `message.accepted -> reply.placeholder -> runtime_admin_override denied`
@@ -96,6 +99,7 @@
 - 根因不在 Tavily、MiniMax 或 answer provider。最新 “喂喂喂” / “1” 两条甚至没有进入 `session.persist_user`，说明失败早于搜索或回答阶段。
 - 当前更合理的判断是：此前确认的“私聊入口 busy 缺口”确实存在，但不是唯一根因。
 - 最新证据显示，在 `send_placeholder_message()` 成功之后、`session.run()` 真正开始写库之前，仍存在未被日志覆盖的中断点或任务异常退出路径。
+- 由于本轮已经补上 panic join 兜底和 `handler.session_run` 边界日志，若问题再现，下一轮可以直接判断它究竟是“handler 任务 panic / abort”“`session.run()` 未进入”，还是“`session.run()` 进入后在更前层失败”。
 - `14:58` 的新样本进一步表明，这个中断点并不一定走到 session lock 或 runner 初始化，甚至可能在更前层被 `runtime_admin_override` 等入口逻辑拦住，但拦截发生时 placeholder 已经对用户可见。
 - `16:31` 的最新样本又说明它也不一定需要命中 `runtime_admin_override` 才会发生；placeholder 后仍存在更靠前、更静默的中断点。
 - 因为最近两次复现都没有记录 `direct.busy`，所以它不完全等同于“session run lock 等待”，应继续沿 handler 本地逻辑和异步任务边界排查。

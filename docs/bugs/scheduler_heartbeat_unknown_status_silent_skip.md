@@ -35,6 +35,8 @@
       - `2026-04-16 17:31:42.919` `job_id=j_c1c1be63`（`存储板块加仓信号监控`）同样新增 `parse_kind=JsonUnknownStatus + execution_failed`
       - `2026-04-16 18:01:42.443` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）恢复为 `JsonNoop + skipped_noop`
       - `2026-04-16 18:01:48.288` `job_id=j_977ac60c`（`AAOI_动态监控`）仍落成 `JsonUnknownStatus + execution_failed`
+      - `2026-04-16 19:01:18.801` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）再次回落为 `JsonUnknownStatus + parse failure escalated`
+      - 同一轮日志仍同时打印 `心跳任务未命中，本轮不发送`，说明失败升级与用户侧/渠道侧文案仍未完全对齐
   - 对比同一小时其他 heartbeat 任务：
     - `j_38745baf`（`全天原油价格3小时播报`）在 `run_id=1847`（`09:30:04`）也短暂出现 `JsonUnknownStatus`，`run_id=1853`（`10:00:10`）又恢复为 `JsonNoop`
     - `j_654aef9b`（`小米30港元破位预警`）在 `10:00:10` 仍为 `JsonNoop -> noop / skipped_noop`
@@ -65,7 +67,9 @@
 - 到 `14:00` 这一轮，线上行为已从 `noop / skipped_noop` 变成 `execution_failed / skipped_error`，说明“不要静默吞掉未知状态”的修复开始在当前实例生效；但结构化收口本身仍未修好，所以该缺陷不能关闭。
 - 到 `16:31` 这一轮，`Monitor_Watchlist_11` 又一次落成 `JsonUnknownStatus + execution_failed`；到 `17:01` 它短暂恢复为 `JsonNoop + skipped_noop`，说明问题不是线性修复，而是在相邻轮次之间抖动。
 - `17:01:47` 的样本显示 `AAOI_动态监控` 也开始产出 `JsonUnknownStatus + execution_failed`；到 `17:31`，同类问题又继续扩散到 `小米30港元破位预警` 与 `存储板块加仓信号监控`。
-- 到 `18:01` 这一轮，同批 heartbeat 已出现明显分化：`Monitor_Watchlist_11` 与 `小米30港元破位预警` 都恢复为 `JsonNoop + skipped_noop`，但 `AAOI_动态监控` 仍继续落成 `JsonUnknownStatus + execution_failed`。
+- 到 `18:01` 这一轮，同批 heartbeat 一度出现明显分化：`Monitor_Watchlist_11` 与 `小米30港元破位预警` 都恢复为 `JsonNoop + skipped_noop`，但 `AAOI_动态监控` 仍继续落成 `JsonUnknownStatus + execution_failed`。
+- 但 `19:01:18.801` 的最新样本显示 `Monitor_Watchlist_11` 又再次落回 `JsonUnknownStatus + parse failure escalated`，说明此前“已恢复”为短暂波动，而不是稳定收口。
+- 同一轮 `19:01` 里，`小米30港元破位预警`、`存储板块加仓信号监控`、`RKLB_动态监控` 已恢复为 `JsonNoop`，`TEM_动态监控` 与 `AAOI_动态监控` 甚至成功投递 `JsonTriggered`；这进一步说明缺陷不是整批任务同时失效，而是在不同任务上反复漂移。
 - 最新日志还显示 `AAOI_动态监控` 在 `parse failure escalated` 之后仍打印 `心跳任务未命中，本轮不发送`，说明“未知状态已升级为失败”和“渠道日志仍按 noop 口径描述”之间还存在观测口径不一致。
 - 这说明当前并不是单个 watchlist prompt 失配，而是 heartbeat 输出协议在多条不同模板的监控任务上都可能失去稳定收口。
 - 对照 `11:30` 的最新日志、`run_id=1860`（`10:30`）、`1855`（`10:00`）、`1849`（`09:30`）和更早的 `01:31` 记录可以看到，这类 heartbeat 已经连续多轮维持同一症状，并没有随着时间窗切换自然恢复。
@@ -85,7 +89,7 @@
 - heartbeat 输出协议对模型返回格式过于脆弱，出现非标准 JSON 或状态枚举漂移时，会落入 `JsonUnknownStatus`。
 - 最近一小时同一任务在相邻轮次间会在 `JsonNoop` 与 `JsonUnknownStatus` 之间来回抖动，说明除了单个任务 prompt 外，解析器对“先给分析过程、最后未严格收口到状态 JSON”的输出也缺少足够稳健的兼容或强制约束。
 - 最近一小时新增的 `AAOI_动态监控`、`小米30港元破位预警` 与 `存储板块加仓信号监控` 样本说明这不是 `Monitor_Watchlist_11` 单任务 prompt 特例，而是 heartbeat 输出协议对多条不同模板的监控任务都不够稳健。
-- `18:01` 批次里同组任务已经出现“部分恢复、单点残留”的抖动形态，进一步说明问题不只是某个固定任务模板写坏，而是 heartbeat 输出协议缺少稳定的最终收口约束。
+- `18:01` 与 `19:01` 两个相邻批次一起看，同组任务已经出现“上一轮恢复、下一轮再掉回未知状态”的抖动形态，进一步说明问题不只是某个固定任务模板写坏，而是 heartbeat 输出协议缺少稳定的最终收口约束。
 - 调度器曾把“无法识别状态”错误地归并进 `noop` 路径，造成功能性失败被静默吞掉；而 14:00 的运行结果表明，这一收口正在部分修正，但尚未彻底消除所有旧路径或旧实例。
 - 渠道侧日志仍沿用“心跳任务未命中，本轮不发送”的 noop 文案，说明即使数据库台账已按 `execution_failed` 落账，部分运行日志和可观测口径还没有完全跟上新的失败语义。
 - 现有落库字段只保留 `parse_kind` 与字符数，没有把原始响应片段保留下来，进一步放大了排障盲区。
