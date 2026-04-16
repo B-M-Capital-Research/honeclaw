@@ -6,7 +6,7 @@
 - **状态**: Fixed
 - **修复提交**:
   - `02d01d2 fix channel error message sanitization`
-  - `本轮补 handler 级回归测试提交`
+  - `3e769d7 test feishu timeout fallback reply`
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `sessions`
     - `session_id=Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1`
