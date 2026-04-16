@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 15:06 CST
+最后更新：2026-04-16 15:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -25,10 +25,10 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | New | 2026-04-16 12:12 与 12:22 两条真实直聊会话回归复现；原“已修复”结论已撤回 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Feishu 直聊任务配置请求在搜索阶段反复调用 `cron_job` 后耗尽迭代并整轮无回复 | P1 | New | 2026-04-16 12:06 新发现；待为迭代耗尽补用户态兜底与循环收敛 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
-| Feishu 直聊消息再次出现 placeholder 假启动，最新“喂喂喂”与“1”两条都未进入主链路 | P1 | Fixing | 2026-04-16 已补“空解析内容先兜底、后发 placeholder”与更后置的 placeholder 时机，并重启 release Feishu；待下一条真实会话验证 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |
+| Feishu 直聊消息再次出现 placeholder 假启动，最新 `14:58` 文本消息仍停在 placeholder 后未入主链路 | P1 | Fixing | 2026-04-16 14:58 再次复现；这次停在 `message.accepted -> reply.placeholder -> runtime_admin_override denied`，说明静默中断点仍在 placeholder 之后 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | New | 2026-04-16 13:08 Feishu 直聊 `rklb要不要加` 命中；52 秒后同句重试成功，说明当前缺少对传输抖动的吸震 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
 | Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-16 14:00 再次复现；当前部分实例已升级为 `execution_failed + skipped_error`，但结构化收口仍不稳定 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| 新建 Heartbeat 监控任务首次运行即触发 `context window exceeds limit`，整轮直接失败 | P2 | New | 2026-04-16 14:00 新发现；`TEM_动态监控` 与 `AAOI_动态监控` 首轮均 `execution_failed + skipped_error` | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
+| Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 15:00 继续活跃；`TEM/AAOI` 已部分恢复，但同根因转移到 `RKLB_动态监控`，说明不是单一新建任务首轮问题 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 
 ## 已修复 / 已关闭
 
