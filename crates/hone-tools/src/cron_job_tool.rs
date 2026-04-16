@@ -111,7 +111,7 @@ impl Tool for CronJobTool {
                 description: "任务标签；heartbeat 任务建议包含 heartbeat 标签".to_string(),
                 required: false,
                 r#enum: None,
-                items: Some(serde_json::json!("string")),
+                items: Some(serde_json::json!({ "type": "string" })),
             },
             ToolParameter {
                 name: "task_prompt".to_string(),
@@ -616,5 +616,16 @@ mod tests {
 
         let jobs = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
         assert_eq!(jobs.len(), 2);
+    }
+
+    #[test]
+    fn openai_schema_uses_object_items_for_tags_array() {
+        let data_dir = make_temp_dir("hone_cron_tool_schema");
+        let actor = ActorIdentity::new("imessage", "u1", None::<String>).expect("actor");
+        let tool = CronJobTool::new(&data_dir, Some(actor), "u1", false);
+
+        let schema = tool.to_openai_schema();
+        let tags_items = schema["function"]["parameters"]["properties"]["tags"]["items"].clone();
+        assert_eq!(tags_items["type"], "string");
     }
 }
