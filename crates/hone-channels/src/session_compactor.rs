@@ -81,11 +81,24 @@ impl<'a> SessionCompactor<'a> {
             .iter()
             .map(|message| session_message_text(message).len())
             .sum();
+        let compact_window_size = active_messages.len().saturating_sub(retain_recent);
+        let messages_to_summarize: Vec<_> = if compact_window_size > 0 {
+            active_messages.iter().take(compact_window_size).collect()
+        } else if force {
+            let forced_window = active_messages
+                .len()
+                .saturating_sub(1)
+                .max(1)
+                .min(active_messages.len());
+            active_messages.iter().take(forced_window).collect()
+        } else {
+            Vec::new()
+        };
         let should_compress = force
             || active_messages.len() > compress_threshold
             || total_content_bytes > compress_byte_threshold;
 
-        if !should_compress {
+        if !should_compress || messages_to_summarize.is_empty() {
             return Ok(CompactSessionOutcome {
                 compacted: false,
                 summary: None,
@@ -113,7 +126,7 @@ impl<'a> SessionCompactor<'a> {
         };
 
         let mut history_text = String::new();
-        for message in &active_messages {
+        for message in &messages_to_summarize {
             let content = match message.role.as_str() {
                 "assistant" | "user" => {
                     sanitize_user_visible_output(&session_message_text(message)).content
@@ -175,6 +188,12 @@ impl<'a> SessionCompactor<'a> {
                 2. **【历史对话总结】**\n\
                 在表下面，用1-2段话总结上面发生的核心交互和用户的偏好习惯信息。\n\
                 \n\
+                额外约束：\n\
+                - 你只是在总结已经发生的历史，不是在回答任何尚未解决的问题\n\
+                - 不要生成新的投研结论、价格目标、持仓明细、时间线或事实数字，除非这些内容在历史里已经明确出现\n\
+                - 如果历史末尾包含尚未回答的问题，只能把它记为“用户最近关心/待回答的问题”，不要替助手继续作答\n\
+                - 不要把摘要写成报告、正式结论或投资建议正文\n\
+                \n\
                 {}\n\
                 请保持纯净的 Markdown 输出，不要有多余的寒喧。\n\
                 \n\
@@ -221,6 +240,7 @@ impl<'a> SessionCompactor<'a> {
                     metadata: serde_json::json!({
                         "kind": "session_compression",
                         "active_messages": active_messages.len(),
+                        "summarized_messages": messages_to_summarize.len(),
                         "is_group_session": is_group_session
                     }),
                     prompt_tokens: None,
@@ -251,6 +271,7 @@ impl<'a> SessionCompactor<'a> {
             metadata: serde_json::json!({
                 "kind": "session_compression",
                 "active_messages": active_messages.len(),
+                "summarized_messages": messages_to_summarize.len(),
                 "retained_recent": retain_recent,
                 "is_group_session": is_group_session,
                 "trigger": trigger,

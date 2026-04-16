@@ -1784,6 +1784,7 @@ mod tests {
         chat_with_tools_calls: usize,
         chat_responses: std::collections::VecDeque<hone_core::HoneResult<ChatResult>>,
         responses: std::collections::VecDeque<hone_core::HoneResult<ChatResponse>>,
+        last_chat_messages: Option<Vec<Message>>,
     }
 
     impl MockLlmProvider {
@@ -1797,6 +1798,7 @@ mod tests {
                     chat_with_tools_calls: 0,
                     chat_responses: chat_responses.into(),
                     responses: responses.into(),
+                    last_chat_messages: None,
                 })),
             }
         }
@@ -1808,6 +1810,7 @@ mod tests {
                     chat_with_tools_calls: 0,
                     chat_responses: responses.into_iter().map(Ok).collect(),
                     responses: Default::default(),
+                    last_chat_messages: None,
                 })),
             }
         }
@@ -1819,6 +1822,7 @@ mod tests {
                     chat_with_tools_calls: 0,
                     chat_responses: Default::default(),
                     responses: responses.into_iter().map(Ok).collect(),
+                    last_chat_messages: None,
                 })),
             }
         }
@@ -1833,6 +1837,16 @@ mod tests {
                 .expect("mock llm lock")
                 .chat_with_tools_calls
         }
+
+        fn last_chat_prompt(&self) -> Option<String> {
+            self.state
+                .lock()
+                .expect("mock llm lock")
+                .last_chat_messages
+                .as_ref()
+                .and_then(|messages| messages.first())
+                .and_then(|message| message.content.clone())
+        }
     }
 
     #[async_trait]
@@ -1844,6 +1858,7 @@ mod tests {
         ) -> hone_core::HoneResult<hone_llm::provider::ChatResult> {
             let mut state = self.state.lock().expect("mock llm lock");
             state.chat_calls += 1;
+            state.last_chat_messages = Some(_messages.to_vec());
             state.chat_responses.pop_front().unwrap_or_else(|| {
                 Err(hone_core::HoneError::Llm(
                     "no more mock chat responses".to_string(),
@@ -3115,6 +3130,62 @@ mod tests {
         assert!(hone_memory::message_is_compact_summary(
             messages[1].metadata.as_ref()
         ));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn auto_compact_summary_excludes_latest_user_turn_from_prompt() {
+        let root = make_temp_dir("hone_channels_auto_compact_excludes_latest_turn");
+        std::fs::create_dir_all(&root).expect("create root");
+        let llm = MockLlmProvider::with_chat_and_tool_responses(
+            vec![Ok(ChatResult {
+                content: "summary".to_string(),
+                usage: None,
+            })],
+            vec![Ok(ChatResponse {
+                content: "after-compact".to_string(),
+                tool_calls: None,
+                usage: None,
+            })],
+        );
+        let core = make_test_core_with_config(&root, llm.clone(), |config| {
+            config.group_context.compress_threshold_messages = 1;
+            config.group_context.compress_threshold_bytes = 1024;
+            config.group_context.retain_recent_after_compress = 1;
+            config.group_context.recent_context_limit = 6;
+        });
+        let actor =
+            ActorIdentity::new("discord", "henry", Some("room-2".to_string())).expect("actor");
+        let group_session =
+            SessionIdentity::group(&actor.channel, actor.channel_scope.clone().unwrap())
+                .expect("group session");
+        let session = AgentSession::new(core.clone(), actor.clone(), "room-2")
+            .with_session_identity(group_session.clone());
+        core.session_storage
+            .create_session_for_identity(&group_session, Some(&actor))
+            .expect("create session");
+        core.session_storage
+            .add_message(&group_session.session_id(), "user", "older topic", None)
+            .expect("seed older user");
+        core.session_storage
+            .add_message(
+                &group_session.session_id(),
+                "assistant",
+                "older reply",
+                None,
+            )
+            .expect("seed older assistant");
+
+        let result = session
+            .run("latest unresolved question", AgentRunOptions::default())
+            .await;
+
+        assert!(result.response.success, "{:?}", result.response.error);
+        let compact_prompt = llm.last_chat_prompt().expect("compact prompt");
+        assert!(compact_prompt.contains("older topic"));
+        assert!(compact_prompt.contains("older reply"));
+        assert!(!compact_prompt.contains("latest unresolved question"));
 
         let _ = std::fs::remove_dir_all(root);
     }

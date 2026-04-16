@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
@@ -117,10 +117,29 @@
 4. 压缩提示词只要求“总结历史”，但没有显式禁止“回答最后一个问题”或“生成新的投研报告”。
 5. 最近多次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段；一旦叠加 overflow recovery，这份污染还会在同轮 scheduler 任务内再次被固化。
 
-## 建议修复方向
+## 修复情况（2026-04-16）
 
-1. 压缩时只喂给模型“准备被压掉的旧消息”，不要把最后一个未回答问题放进摘要输入。
-2. `Compact Summary` 不再以 `role=user` 写回；至少应改为独立的系统内部消息类型，或在 prompt 组装层显式标记为非用户材料。
-3. 在 answer/search 阶段对 `session.compact_summary` 做强提示：它只代表系统摘要，不代表用户上传报告、用户自述或外部证据。
-4. 强化压缩提示词，明确禁止输出完整回答、完整报告、投资建议正文，要求只保留摘要结构。
-5. 为“压缩摘要包含大量新事实/估值数字/完整报告标题”增加回归测试，覆盖 `role=user` 回灌与 `context_overflow_recovery` 双阶段路径。
+1. `crates/hone-channels/src/session_compactor.rs` 已改为只总结“将被压掉的旧消息”：
+   - 正常 auto compact 不再把保留窗口里的最近消息送进压缩 prompt
+   - 这意味着最后一个未回答问题不会再被压缩模型提前“接管作答”
+2. direct-session 的压缩提示词已收紧：
+   - 明确要求“只能总结已发生的历史，不能回答尚未解决的问题”
+   - 明确禁止新增价格目标、持仓明细、时间线或未在历史中出现的事实数字
+   - 明确禁止把摘要写成正式报告、正式结论或投资建议正文
+3. `context_overflow_recovery` 的强制压缩边界也已保留：
+   - 当会话里只剩 1 条活跃消息时，强制 compact 仍可工作，不会把 overflow recovery 退化成“完全不 compact”
+
+## 回归验证
+
+- `cargo test -p hone-channels auto_compact_summary_excludes_latest_user_turn_from_prompt -- --nocapture`
+- `cargo test -p hone-channels auto_compact_uses_low_group_threshold_and_keeps_recent_window -- --nocapture`
+- `cargo test -p hone-channels context_overflow_auto_compacts_and_retries_successfully -- --nocapture`
+- `cargo test -p hone-channels context_overflow_failure_is_rewritten_to_friendly_message -- --nocapture`
+- `cargo check -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/session_compactor.rs crates/hone-channels/src/agent_session.rs`
+- `git diff --check`
+
+## 后续建议
+
+1. 更彻底的隔离仍可以继续做：把 `Compact Summary` 从 `role=user` 迁出，或者在 prompt 组装里显式降权为系统内部摘要。
+2. 如果后面还观测到摘要继续伪造数字，可再补一条更强的 contract test，直接校验 summary prompt / summary output 不允许出现未出现在历史里的证券价格、持仓数量和目标价。
