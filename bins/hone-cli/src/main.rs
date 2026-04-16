@@ -645,6 +645,26 @@ fn prompt_channel_recovery_action(
     })
 }
 
+fn prompt_discord_token_invalid_recovery_action(
+    theme: &ColorfulTheme,
+    channel_label: &str,
+) -> Result<RequiredFieldEmptyAction, String> {
+    let items = vec![
+        "重新输入 Discord bot token".to_string(),
+        format!("返回并禁用 {channel_label} 渠道"),
+    ];
+    let idx = prompt_select_index(
+        theme,
+        &format!("{channel_label} 的 Discord token 格式不合法，下一步？"),
+        &items,
+        0,
+    )?;
+    Ok(match idx {
+        0 => RequiredFieldEmptyAction::Retry,
+        _ => RequiredFieldEmptyAction::DisableChannel,
+    })
+}
+
 fn prompt_provider_recovery_action(
     theme: &ColorfulTheme,
     provider_label: &str,
@@ -806,11 +826,15 @@ fn prompt_onboard_required_discord_token(
 ) -> Result<Option<String>, String> {
     loop {
         let attempted = prompt_secret(theme, prompt, !current.trim().is_empty())?;
-        match resolve_required_field_attempt(
-            attempted,
-            current,
-            prompt_channel_recovery_action(theme, channel_label, prompt)?,
-        ) {
+        let resolution = match attempted {
+            Some(value) if !value.trim().is_empty() => RequiredFieldResolution::Value(value),
+            _ if !current.trim().is_empty() => RequiredFieldResolution::Value(current.to_string()),
+            _ => match prompt_channel_recovery_action(theme, channel_label, prompt)? {
+                RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
+                RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
+            },
+        };
+        match resolution {
             RequiredFieldResolution::Value(value) => {
                 let normalized_value = value.trim().to_string();
                 let len = normalized_value.len();
@@ -827,7 +851,7 @@ fn prompt_onboard_required_discord_token(
                     }
                     DiscordTokenValidation::Invalid(message) => {
                         println!("[!] {message}（长度={len}）。");
-                        match prompt_channel_recovery_action(theme, channel_label, prompt)? {
+                        match prompt_discord_token_invalid_recovery_action(theme, channel_label)? {
                             RequiredFieldEmptyAction::Retry => {
                                 println!("请重新输入 Discord bot token。");
                             }
