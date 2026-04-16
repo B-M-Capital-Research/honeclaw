@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use hone_scheduler::SchedulerEvent;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSessionResult, GeminiStreamOptions,
@@ -13,6 +13,7 @@ use crate::execution::{
 };
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
+use crate::runtime::sanitize_user_visible_output;
 use crate::{AgentSession, HoneBotCore};
 
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
@@ -165,6 +166,47 @@ pub struct ScheduledTaskExecution {
     pub metadata: Value,
 }
 
+fn sanitize_scheduler_delivery_text(text: &str) -> String {
+    let sanitized = sanitize_user_visible_output(text).content;
+    let kept_lines = sanitized
+        .lines()
+        .filter(|line| !is_scheduler_protocol_residue(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    kept_lines.trim().to_string()
+}
+
+fn is_scheduler_protocol_residue(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || !(trimmed.starts_with('{') && trimmed.ends_with('}')) {
+        return false;
+    }
+    if trimmed == "{}" {
+        return true;
+    }
+
+    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(trimmed) else {
+        return false;
+    };
+
+    let suspicious_keys = [
+        "tool",
+        "tool_call_id",
+        "arguments",
+        "parameters",
+        "result",
+        "name",
+        "status",
+    ];
+    let user_visible_keys = ["message", "content", "text"];
+
+    map.keys()
+        .any(|key| suspicious_keys.contains(&key.as_str()))
+        && !map
+            .keys()
+            .any(|key| user_visible_keys.contains(&key.as_str()))
+}
+
 pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
     if event.heartbeat {
         return format!(
@@ -216,17 +258,20 @@ pub async fn execute_scheduler_event(
         return if response.success {
             ScheduledTaskExecution {
                 should_deliver: true,
-                content: response.content,
+                content: sanitize_scheduler_delivery_text(&response.content),
                 error: None,
                 metadata: Value::Null,
             }
         } else {
+            let sanitized_error = response
+                .error
+                .map(|value| sanitize_scheduler_delivery_text(&value))
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| Some("定时任务执行失败".to_string()));
             ScheduledTaskExecution {
                 should_deliver: true,
                 content: String::new(),
-                error: response
-                    .error
-                    .or_else(|| Some("定时任务执行失败".to_string())),
+                error: sanitized_error,
                 metadata: Value::Null,
             }
         };
@@ -267,7 +312,7 @@ pub async fn execute_scheduler_event(
                     should_deliver: false,
                     content: String::new(),
                     error: None,
-                    metadata: serde_json::json!({
+                    metadata: json!({
                         "heartbeat_model": heartbeat_model,
                         "parse_kind": format!("{:?}", parse_kind),
                         "raw_chars": raw_chars,
@@ -275,6 +320,22 @@ pub async fn execute_scheduler_event(
                     }),
                 },
                 HeartbeatOutcome::Deliver(message) => {
+                    let sanitized_message = sanitize_scheduler_delivery_text(&message);
+                    if sanitized_message.trim().is_empty() {
+                        return ScheduledTaskExecution {
+                            should_deliver: false,
+                            content: String::new(),
+                            error: None,
+                            metadata: json!({
+                                "heartbeat_model": heartbeat_model,
+                                "parse_kind": format!("{:?}", parse_kind),
+                                "raw_chars": raw_chars,
+                                "starts_with_json": starts_with_json,
+                                "deliver_preview": truncate_for_log(message.trim(), 200),
+                                "sanitized_empty": true,
+                            }),
+                        };
+                    }
                     let deliver_preview = truncate_for_log(message.trim(), 200);
                     tracing::info!(
                         "[HeartbeatDiag] deliver job_id={} job={} target={} parse_kind={:?} deliver_chars={} deliver_preview=\"{}\"",
@@ -287,9 +348,9 @@ pub async fn execute_scheduler_event(
                     );
                     ScheduledTaskExecution {
                         should_deliver: true,
-                        content: message,
+                        content: sanitized_message,
                         error: None,
-                        metadata: serde_json::json!({
+                        metadata: json!({
                             "heartbeat_model": heartbeat_model,
                             "parse_kind": format!("{:?}", parse_kind),
                             "raw_chars": raw_chars,
@@ -313,7 +374,7 @@ pub async fn execute_scheduler_event(
                 should_deliver: false,
                 content: String::new(),
                 error: Some(error),
-                metadata: serde_json::json!({
+                metadata: json!({
                     "heartbeat_model": heartbeat_model,
                 }),
             }
@@ -419,6 +480,7 @@ async fn run_heartbeat_task(
 mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, inspect_heartbeat_result,
+        sanitize_scheduler_delivery_text,
     };
     use hone_core::ActorIdentity;
     use hone_scheduler::SchedulerEvent;
@@ -539,6 +601,21 @@ mod tests {
         let (outcome, parse_kind) = inspect_heartbeat_result(r#"{"status":"noop"#);
         assert_eq!(parse_kind, HeartbeatParseKind::JsonMalformed);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
+    }
+
+    #[test]
+    fn scheduler_delivery_text_strips_internal_blocks_and_tool_protocol() {
+        let raw =
+            "<think>先判断一下</think>\n最终答案\n\n<tool_call>{\"tool\":\"cron_job\"}</tool_call>";
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(sanitized, "最终答案");
+    }
+
+    #[test]
+    fn scheduler_delivery_text_keeps_user_visible_json_message() {
+        let raw = r#"{"status":"triggered","message":"今晚 20:30 继续复盘"}"#;
+        let sanitized = sanitize_scheduler_delivery_text(raw);
+        assert_eq!(sanitized, raw);
     }
 
     #[test]

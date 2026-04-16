@@ -3,6 +3,7 @@ use std::sync::Arc;
 use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::outbound::split_html_segments;
 use hone_channels::prompt::PromptOptions;
+use hone_channels::runtime::sanitize_user_visible_output;
 use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
 use hone_scheduler::SchedulerEvent;
@@ -11,6 +12,17 @@ use teloxide::prelude::{Bot, ChatId};
 use tracing::{error, info};
 
 use crate::listener::send_segments;
+use crate::markdown_v2::sanitize_telegram_html_public;
+
+fn scheduler_public_response_text(text: &str) -> String {
+    let sanitized = sanitize_user_visible_output(text).content;
+    let filtered = sanitized
+        .lines()
+        .filter(|line| line.trim() != "{}")
+        .collect::<Vec<_>>()
+        .join("\n");
+    sanitize_telegram_html_public(&filtered)
+}
 
 pub(crate) async fn handle_scheduler_events(
     bot: Bot,
@@ -63,6 +75,7 @@ pub(crate) async fn handle_scheduler_events(
                 .error
                 .clone()
                 .unwrap_or_else(|| result.content.clone());
+            let response = scheduler_public_response_text(&response);
             let chat_id: i64 = match event.channel_target.parse() {
                 Ok(id) => id,
                 Err(_) => {
@@ -144,4 +157,16 @@ async fn run_scheduled_task(
         AgentRunOptions::default(),
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scheduler_public_response_text;
+
+    #[test]
+    fn scheduler_public_response_text_hides_internal_output_and_normalizes_html() {
+        let raw = "<think>先想想</think>\n**结论**<tool_call>{}</tool_call>";
+        let sanitized = scheduler_public_response_text(raw);
+        assert_eq!(sanitized, "<b>结论</b>");
+    }
 }

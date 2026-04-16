@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-14
 - **Bug Type**: Business Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近提交: `ee342b3 feat(channels): harden company memory and rich text delivery`
   - 相关修复提交: `12a5352 fix: sanitize leaked internal agent output`
@@ -66,3 +66,22 @@
   - 渠道特定的净化函数，如 Telegram 的 `sanitize_telegram_html_public(...)`
   - 统一的 reply prefix / segmenter 语义
 - 当前 bug 台账先以 `New` 登记，等待人工确认并转入 `Fixing` / `Fixed` / `Closed`。
+
+## 修复情况（2026-04-16）
+
+- `crates/hone-channels/src/scheduler.rs` 已补共享的 scheduler 出站净化：
+  - 非 heartbeat 定时任务的成功内容现在统一先经过 `sanitize_user_visible_output(...)`
+  - 错误文本同样先经过可见文本净化；若净化后为空，则回退到通用 `定时任务执行失败`
+  - heartbeat `triggered.message` 在正式进入投递前也会经过同一层净化
+  - 针对 scheduler 常见的协议残渣，还额外过滤了裸 `{}` 和仅含 `tool` / `arguments` / `result` / `status` 等键的 JSON 行
+- `bins/hone-telegram/src/scheduler.rs` 已补 Telegram scheduler 自身的幂等安全清理：
+  - 在分段前对 scheduler 文本再走一遍 `sanitize_user_visible_output(...)`
+  - 之后再执行 `sanitize_telegram_html_public(...)`，避免 Telegram scheduler 直接发送未归一化的富文本
+- 由于 Discord 与 Feishu scheduler 都消费 `execute_scheduler_event(...)` 的结果，这次公共层修复已经把它们的 scheduler 投递输入对齐到同一份“最终可见文本”语义
+- 新增回归测试：
+  - `scheduler::tests::scheduler_delivery_text_strips_internal_blocks_and_tool_protocol`
+  - `scheduler::tests::scheduler_delivery_text_keeps_user_visible_json_message`
+  - `bins/hone-telegram/src/scheduler.rs` 中的 `scheduler_public_response_text_hides_internal_output_and_normalizes_html`
+- 验证命令：
+  - `cargo test -p hone-channels scheduler_delivery_text_ -- --nocapture`
+  - `cargo test -p hone-telegram scheduler_public_response_text_hides_internal_output_and_normalizes_html -- --nocapture`
