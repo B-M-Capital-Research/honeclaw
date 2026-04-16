@@ -35,6 +35,9 @@
       - `2026-04-16 14:58:50.840` `step=reply.placeholder ... detail=sent`
       - `2026-04-16 14:59:42.224` `runtime_admin_override denied ... reason=not_whitelisted`
       - 同一条消息仍没有后续 `session.persist_user`、`recv`、`agent.prepare` 或 `failed`
+      - `2026-04-16 16:31:13.650` 同一 session 再次出现 `step=message.accepted ... text_chars=3`
+      - `2026-04-16 16:31:14.936` 紧接着再次只记录到 `step=reply.placeholder ... detail=sent`
+      - 到本轮巡检时，`session_messages` 仍没有这条 3 字文本用户消息，也没有对应的 `session.persist_user`、`recv`、`agent.prepare`、`agent.run` 或 `failed`
   - 最近消息落库：`data/sessions.sqlite3`
     - `sessions.session_id='Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15'` 在 `2026-04-16T13:58:20.668278+08:00` 之后 `updated_at` 被刷新
     - 但 `last_message_at` 仍停留在 `2026-04-16T12:53:32.600190+08:00`
@@ -76,7 +79,10 @@
 - 修复前，私聊用户连续发送消息时，系统会先给 placeholder，随后卡在更深层 session 锁等待，体感上像“处理失败”或“系统没反应”。
 - 当前处于修复中。Feishu 私聊入口已有 `direct.busy` 短路，本轮又补了“空解析内容先兜底、后发 placeholder”的顺序修复，并把 placeholder 发送时机继续后移。
 - 新版本 `hone-feishu` release 二进制已经重编并重启，管理员配置也已生效。
-- 但最近一小时已经再次观察到新的同类真实文本消息：链路停在 `message.accepted -> reply.placeholder -> runtime_admin_override denied`，依然没有进入 `session.persist_user` 或 `agent.run`。
+- 但最近一小时已经再次观察到两类真实文本消息仍停在 placeholder 之后：
+  - `14:58` 样本停在 `message.accepted -> reply.placeholder -> runtime_admin_override denied`
+  - `16:31` 样本则更早中断，只剩 `message.accepted -> reply.placeholder`
+- `16:31` 这一条说明即使不经过 `runtime_admin_override denied`，placeholder 假启动问题依然可以独立复现。
 - 这说明问题并未随着 placeholder 后移和管理员配置修复一起收口，当前仍不能把状态提升为 `Fixed`。
 
 ## 用户影响
@@ -91,7 +97,8 @@
 - 当前更合理的判断是：此前确认的“私聊入口 busy 缺口”确实存在，但不是唯一根因。
 - 最新证据显示，在 `send_placeholder_message()` 成功之后、`session.run()` 真正开始写库之前，仍存在未被日志覆盖的中断点或任务异常退出路径。
 - `14:58` 的新样本进一步表明，这个中断点并不一定走到 session lock 或 runner 初始化，甚至可能在更前层被 `runtime_admin_override` 等入口逻辑拦住，但拦截发生时 placeholder 已经对用户可见。
-- 因为最新复现没有记录 `direct.busy`，所以它不完全等同于“session run lock 等待”，应继续沿 handler 本地逻辑和异步任务边界排查。
+- `16:31` 的最新样本又说明它也不一定需要命中 `runtime_admin_override` 才会发生；placeholder 后仍存在更靠前、更静默的中断点。
+- 因为最近两次复现都没有记录 `direct.busy`，所以它不完全等同于“session run lock 等待”，应继续沿 handler 本地逻辑和异步任务边界排查。
 
 ## 下一步建议
 
