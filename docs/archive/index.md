@@ -585,3 +585,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `cargo test -p hone-core`, `cargo test -p hone-channels`
 - Current conclusion: `admins` 正式支持 `telegram_user_ids`，共享管理员判定已接入 Telegram，当前私聊 identity `8039067465` 已写入本地配置
 - Next entry point: `docs/handoffs/2026-04-16-telegram-admin-whitelist.md`
+
+### 活跃计划清理
+
+- Status: done
+- Date: 2026-04-16
+- Plan: N/A
+- Handoff: `docs/handoffs/2026-04-16-current-plan-cleanup.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: N/A
+- Current conclusion: `docs/current-plan.md` 已从 10 个活跃任务收口到 4 个；6 个长期失焦或仅剩占位语义的计划已移入 `docs/archive/plans/`
+- Next entry point: `docs/handoffs/2026-04-16-current-plan-cleanup.md`

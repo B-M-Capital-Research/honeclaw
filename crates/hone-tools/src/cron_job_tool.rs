@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
+use hone_memory::cron_job::{CronJobUpdate, CronSchedule};
 use serde_json::Value;
 
 use crate::base::{Tool, ToolParameter};
@@ -103,6 +104,14 @@ impl Tool for CronJobTool {
                     "holiday".into(),
                     "heartbeat".into(),
                 ]),
+                items: None,
+            },
+            ToolParameter {
+                name: "weekday".to_string(),
+                param_type: "number".to_string(),
+                description: "每周几（仅 weekly 使用；0=周一，6=周日）".to_string(),
+                required: false,
+                r#enum: None,
                 items: None,
             },
             ToolParameter {
@@ -292,6 +301,10 @@ impl Tool for CronJobTool {
                 if let Some(repeat) = args.get("repeat") {
                     updates.insert("repeat".into(), repeat.clone());
                 }
+                let weekday = args
+                    .get("weekday")
+                    .and_then(|v| v.as_u64())
+                    .map(|w| w as u32);
                 if let Some(prompt) = args.get("task_prompt") {
                     updates.insert("task_prompt".into(), prompt.clone());
                 }
@@ -311,7 +324,7 @@ impl Tool for CronJobTool {
                     None
                 };
 
-                let mut data = storage.load_jobs(actor);
+                let data = storage.load_jobs(actor);
 
                 // Resolve the target job: by job_id first, then by name fuzzy match.
                 let resolved_id: String = if !job_id.is_empty()
@@ -352,43 +365,63 @@ impl Tool for CronJobTool {
                     }));
                 };
 
-                let target = data.jobs.iter_mut().find(|j| j.id == resolved_id);
-                match target {
-                    Some(job) => {
-                        if let Some(name) = new_name {
-                            job.name = name;
-                        }
-                        if let Some(hour) = updates.get("hour").and_then(|v| v.as_u64()) {
-                            job.schedule.hour = hour as u32;
-                        }
-                        if let Some(minute) = updates.get("minute").and_then(|v| v.as_u64()) {
-                            job.schedule.minute = minute as u32;
-                        }
-                        if let Some(repeat) = updates.get("repeat").and_then(|v| v.as_str()) {
-                            job.schedule.repeat = repeat.to_string();
-                        }
-                        if let Some(prompt) = updates.get("task_prompt").and_then(|v| v.as_str()) {
-                            job.task_prompt = prompt.to_string();
-                        }
-                        if let Some(tags) = tags.clone() {
-                            job.tags = tags;
-                        }
-                        if job.schedule.repeat.eq_ignore_ascii_case("heartbeat") {
-                            if !job
-                                .tags
-                                .iter()
-                                .any(|tag| tag.eq_ignore_ascii_case("heartbeat"))
-                            {
-                                job.tags.push("heartbeat".to_string());
-                            }
-                        } else if updates.contains_key("repeat") || tags.is_some() {
-                            job.tags
-                                .retain(|tag| !tag.eq_ignore_ascii_case("heartbeat"));
-                        }
-                        let job_val = serde_json::to_value(job.clone()).unwrap_or_default();
-                        storage.save_jobs(actor, &data)?;
-                        Ok(serde_json::json!({"success": true, "job": job_val}))
-                    }
+                let Some(existing_job) = data.jobs.iter().find(|j| j.id == resolved_id).cloned()
+                else {
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "error": format!("未找到任务 ID「{resolved_id}」，请先调用 list 确认任务 ID")
+                    }));
+                };
+
+                let schedule = if updates.contains_key("hour")
+                    || updates.contains_key("minute")
+                    || updates.contains_key("repeat")
+                    || weekday.is_some()
+                {
+                    let repeat = updates
+                        .get("repeat")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(existing_job.schedule.repeat.as_str());
+                    Some(CronSchedule {
+                        hour: updates
+                            .get("hour")
+                            .and_then(|v| v.as_u64())
+                            .map(|v| v as u32)
+                            .unwrap_or(existing_job.schedule.hour),
+                        minute: updates
+                            .get("minute")
+                            .and_then(|v| v.as_u64())
+                            .map(|v| v as u32)
+                            .unwrap_or(existing_job.schedule.minute),
+                        weekday: if repeat.eq_ignore_ascii_case("weekly") {
+                            weekday.or(existing_job.schedule.weekday)
+                        } else {
+                            None
+                        },
+                        repeat: repeat.to_string(),
+                    })
+                } else {
+                    None
+                };
+
+                let update = CronJobUpdate {
+                    name: new_name,
+                    schedule,
+                    task_prompt: updates
+                        .get("task_prompt")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    push: None,
+                    enabled: None,
+                    channel_target: None,
+                    tags,
+                };
+
+                match storage.update_job(&resolved_id, Some(actor), update, self.admin_bypass)? {
+                    Some((_updated_actor, job)) => Ok(serde_json::json!({
+                        "success": true,
+                        "job": serde_json::to_value(job).unwrap_or_default()
+                    })),
                     None => Ok(serde_json::json!({
                         "success": false,
                         "error": format!("未找到任务 ID「{resolved_id}」，请先调用 list 确认任务 ID")
@@ -618,6 +651,61 @@ mod tests {
         assert_eq!(jobs.len(), 2);
     }
 
+    #[tokio::test]
+    async fn weekly_jobs_can_be_added_and_updated_with_weekday() {
+        let data_dir = make_temp_dir("hone_cron_tool_weekly");
+        let actor = ActorIdentity::new("imessage", "u1", None::<String>).expect("actor");
+        let tool = CronJobTool::new(&data_dir, Some(actor), "u1", false);
+
+        let add_resp = tool
+            .execute(serde_json::json!({
+                "action":"add",
+                "name":"weekly sunday report",
+                "hour":12,
+                "minute":0,
+                "repeat":"weekly",
+                "weekday":6,
+                "task_prompt":"send weekly report"
+            }))
+            .await
+            .expect("add weekly job");
+        assert_eq!(add_resp["success"], true, "weekly add failed: {add_resp}");
+        assert_eq!(add_resp["job"]["schedule"]["weekday"], 6);
+        let job_id = add_resp["job"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let update_resp = tool
+            .execute(serde_json::json!({
+                "action":"update",
+                "job_id":job_id,
+                "repeat":"weekly",
+                "weekday":0,
+                "hour":9
+            }))
+            .await
+            .expect("update weekly job");
+        assert_eq!(
+            update_resp["success"], true,
+            "weekly update failed: {update_resp}"
+        );
+        assert_eq!(update_resp["job"]["schedule"]["weekday"], 0);
+        assert_eq!(update_resp["job"]["schedule"]["hour"], 9);
+
+        let clear_weekday_resp = tool
+            .execute(serde_json::json!({
+                "action":"update",
+                "job_id":update_resp["job"]["id"],
+                "repeat":"daily"
+            }))
+            .await
+            .expect("change weekly to daily");
+        assert_eq!(clear_weekday_resp["success"], true);
+        assert!(clear_weekday_resp["job"]["schedule"]["weekday"].is_null());
+        assert_eq!(clear_weekday_resp["job"]["schedule"]["repeat"], "daily");
+    }
+
     #[test]
     fn openai_schema_uses_object_items_for_tags_array() {
         let data_dir = make_temp_dir("hone_cron_tool_schema");
@@ -627,5 +715,9 @@ mod tests {
         let schema = tool.to_openai_schema();
         let tags_items = schema["function"]["parameters"]["properties"]["tags"]["items"].clone();
         assert_eq!(tags_items["type"], "string");
+        assert_eq!(
+            schema["function"]["parameters"]["properties"]["weekday"]["type"],
+            "number"
+        );
     }
 }
