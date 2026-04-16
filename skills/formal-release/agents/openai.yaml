@@ -1,0 +1,4 @@
+interface:
+  display_name: "Formal Release"
+  short_description: "Cut a tagged honeclaw release with version bumps, notes, validation, and push order"
+  default_prompt: "Use $formal-release to ship a tagged honeclaw release with version updates, release notes, validation, main push, and tag push in the correct order."
