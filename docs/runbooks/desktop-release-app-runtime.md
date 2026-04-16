@@ -1,6 +1,6 @@
 # Runbook: Desktop Release App Runtime
 
-Last updated: 2026-04-15
+Last updated: 2026-04-16
 
 ## Why This Exists
 
@@ -122,6 +122,48 @@ env \
 
 This is the recommended long-running command.
 
+## Start The Backend Lane
+
+When the desktop is configured to use the local backend on `127.0.0.1:8077`, the backend lane must be restarted with the same repo-local env and the same cache target directory assumptions as the desktop lane.
+
+Preferred foreground diagnostic launch:
+
+```bash
+env \
+  HONE_WEB_PORT=8077 \
+  HONE_CONSOLE_URL=http://127.0.0.1:8077 \
+  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
+  HONE_DESKTOP_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
+  HONE_DESKTOP_CONFIG_DIR=/Users/ecohnoch/Desktop/honeclaw/data/runtime/desktop-config \
+  HONE_SKILLS_DIR=/Users/ecohnoch/Desktop/honeclaw/skills \
+  /Users/ecohnoch/Library/Caches/honeclaw/target/release/hone-console-page
+```
+
+Preferred detached launch after the foreground smoke test is known-good:
+
+```bash
+env \
+  RUST_LOG=warn \
+  HONE_WEB_PORT=8077 \
+  HONE_CONSOLE_URL=http://127.0.0.1:8077 \
+  HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml \
+  HONE_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
+  HONE_DESKTOP_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data \
+  HONE_DESKTOP_CONFIG_DIR=/Users/ecohnoch/Desktop/honeclaw/data/runtime/desktop-config \
+  HONE_SKILLS_DIR=/Users/ecohnoch/Desktop/honeclaw/skills \
+  nohup /Users/ecohnoch/Library/Caches/honeclaw/target/release/hone-console-page \
+    >> /Users/ecohnoch/Desktop/honeclaw/data/runtime/logs/backend_release_restart.log 2>&1 < /dev/null &
+```
+
+Operational note:
+
+- if a detached launch exits immediately without creating a fresh `hone-console-page.lock`, do not keep guessing
+- switch to the foreground diagnostic launch first and capture the first startup output
+- only go back to a detached launch once the foreground path is confirmed healthy
+
 ## Expected Runtime Behavior
 
 After startup:
@@ -186,6 +228,35 @@ Expected shape:
 - each enabled channel such as `discord`, `feishu`, and `telegram` should report `running`
 - a disabled channel such as `imessage` may legitimately report `disabled`
 
+### 6. Confirm the session list API is not silently empty
+
+The desktop can look "empty" even when the underlying session data is present if the backend session listing path is failing.
+
+Check directly:
+
+```bash
+curl http://127.0.0.1:8077/api/users
+```
+
+Expected result:
+
+- the response should be a populated JSON array when session history exists
+- `[]` is only valid when the runtime really has no sessions
+- if the workspace has historical data under `data/sessions/` or `data/sessions.sqlite3` but `/api/users` still returns `[]`, treat that as a backend bug, not as proof that the data directory is wrong or empty
+
+### 7. Confirm a known session can still return history
+
+If `/api/users` is populated, also spot-check one real session:
+
+```bash
+curl 'http://127.0.0.1:8077/api/history?session_id=<real-session-id>'
+```
+
+Expected result:
+
+- `messages` should contain prior conversation content for that session
+- if `/api/users` works but `/api/history` fails for known sessions, treat that as a separate history route bug
+
 ## Restart Policy
 
 Treat this mode as a static runtime.
@@ -230,12 +301,48 @@ env \
 
 - once that backend is healthy again, the desktop log should switch from repeated probe failures to `remote backend connected: http://127.0.0.1:8077`
 - after backend recovery, also verify `curl http://127.0.0.1:8077/api/channels` so you know the enabled channels really came back, not just the web API
+- after backend recovery, also verify `curl http://127.0.0.1:8077/api/users`; if that still returns `[]` while the data files obviously exist, the backend has a session listing regression rather than a path problem
+
+### Stale startup lock after the old process is already gone
+
+- both desktop and backend lanes can fail startup because a `data/runtime/locks/*.lock` file still points at a dead pid
+- before deleting a lock, verify the recorded pid is truly absent with `ps -p <pid>`
+- if the pid is gone, removing the stale lock is safe and is usually required before restart
+- do not delete a lock blindly when the pid is still alive; that risks double-starting the same lane
+
+Typical examples from 2026-04-16:
+
+- `hone-desktop.lock` pointed at dead pid `12535`, which made every new desktop launch abort as "already occupied"
+- `hone-console-page.lock` can show the same failure mode after a backend crash or interrupted restart
 
 ### Supervisor caveat for remote backend mode
 
 - if a supervisor or launcher path does not reliably preserve `HONE_WEB_PORT=8077`, `hone-console-page` can silently fall back to a random port
 - that produces a misleading state where the desktop app is open, but remote mode still fails because it keeps probing `127.0.0.1:8077`
 - when diagnosing this class of failure, prefer a startup path where the runtime env is explicit and inspectable
+
+### `/api/users` returns `[]` even though `data/sessions.sqlite3` is populated
+
+- this is a backend session-listing failure, not evidence that the repo-local `data/` path is wrong
+- on 2026-04-16 the live database had dozens of sessions, but the UI looked empty because `/api/users` returned `[]`
+- two failure modes mattered:
+  - one unreadable sqlite row could poison the whole list operation if the backend aborted the entire listing on deserialize failure
+  - some historical rows did not carry embedded `actor/session_identity`, but their `session_id` still contained enough information to recover the actor/session identity
+- if this symptom returns:
+  1. verify the data still exists with `sqlite3 data/sessions.sqlite3 'select count(*) from sessions;'`
+  2. verify `data/sessions/` still contains historical JSON files
+  3. call `curl http://127.0.0.1:8077/api/users`
+  4. if the count is non-zero but the API still returns `[]`, restart the backend with the current fixed binary before touching the data directory
+
+### Detached backend restart exits silently
+
+- on 2026-04-16, one detached `nohup` restart path exited immediately without creating a new lock and without binding `8077`
+- the same binary launched fine in the foreground with the same env and immediately restored `/api/users`
+- if a detached restart fails without a clear log line:
+  - do not assume the binary itself is broken
+  - run the foreground diagnostic launch first
+  - once it binds `8077`, confirm `/api/meta`, `/api/users`, `/api/history`, and `/api/channels`
+  - only then convert it back to a detached or supervised lane
 
 ### Blank logs panel or `broken pipe` symptoms
 

@@ -351,9 +351,15 @@ impl SqliteSessionMirror {
         let mut sessions = Vec::new();
         for row in rows {
             let raw = row.map_err(sql_err)?;
-            let session = serde_json::from_str(&raw)
-                .map_err(|err| HoneError::Serialization(err.to_string()))?;
-            sessions.push(session);
+            match serde_json::from_str(&raw) {
+                Ok(session) => sessions.push(session),
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        "skipping unreadable session row while listing sqlite sessions"
+                    );
+                }
+            }
         }
         Ok(sessions)
     }
@@ -647,6 +653,58 @@ mod tests {
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[0].id, "Actor_feishu__direct__newer");
         assert_eq!(sessions[1].id, "Actor_feishu__direct__older");
+    }
+
+    #[test]
+    fn list_sessions_skips_unreadable_rows() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_session_sqlite_skip_invalid_{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("root");
+        let db_path = root.join("sessions.sqlite3");
+        let sessions_dir = root.join("sessions");
+        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
+        let mirror = SqliteSessionMirror::new(&db_path).expect("mirror");
+
+        let valid = make_session();
+        let valid_path = sessions_dir.join("valid.json");
+        std::fs::write(
+            &valid_path,
+            serde_json::to_string_pretty(&valid).expect("json"),
+        )
+        .expect("write valid");
+        mirror
+            .upsert_session(&valid_path, &valid)
+            .expect("upsert valid");
+
+        let conn = sqlite3_connect(&db_path);
+        conn.execute(
+            "INSERT INTO sessions (
+                session_id, source_path, version, actor_channel, actor_user_id, actor_channel_scope,
+                session_channel, session_kind, session_user_id, session_channel_scope, created_at,
+                updated_at, frozen_time_beijing, message_count, last_message_at, last_message_role,
+                last_message_preview, actor_json, session_identity_json, runtime_json, summary_json,
+                metadata_json, source_json, normalized_json, source_mtime_ns, source_size,
+                content_sha256, imported_at
+            ) VALUES (
+                ?1, ?2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?3, ?4, NULL, 0, NULL,
+                NULL, NULL, NULL, NULL, NULL, NULL, NULL, '{}', '{broken json', 0, 0, 'broken',
+                ?5
+            )",
+            params![
+                "Broken_session",
+                sessions_dir.join("broken.json").display().to_string(),
+                "2026-04-16T09:00:00+08:00",
+                "2026-04-16T09:01:00+08:00",
+                "2026-04-16T09:01:00+08:00",
+            ],
+        )
+        .expect("insert broken row");
+
+        let sessions = mirror.list_sessions().expect("list sessions");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, valid.id);
     }
 
     fn sqlite3_connect(path: &Path) -> Connection {

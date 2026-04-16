@@ -1,8 +1,22 @@
 # Archive Index
 
-Last updated: 2026-04-15
+Last updated: 2026-04-16
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
+
+## 2026-04-16
+
+### Desktop 启动坑位沉淀与会话列表恢复
+
+- Status: done
+- Date: 2026-04-16
+- Plan: N/A
+- Handoff: `docs/handoffs/2026-04-16-session-list-runtime-recovery.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `docs/runbooks/desktop-release-app-runtime.md`, `cargo test -p hone-core actor::tests::session_identity_can_be_restored_from_actor_session_id -- --exact`, `cargo test -p hone-memory session_sqlite::tests::list_sessions_skips_unreadable_rows -- --exact`, `cargo test -p hone-web-api routes::users::tests::actor_session_id_is_enough_for_listing_identity -- --exact`, `curl http://127.0.0.1:8077/api/meta`, `curl http://127.0.0.1:8077/api/users`, `curl http://127.0.0.1:8077/api/channels`
+- Current conclusion: repo-local `honeclaw/data` 并未丢失，会话为空的主因是 backend session-listing 在部分脏数据路径上直接失败，导致 `/api/users` 错误返回空数组；现在列表会跳过损坏的 `normalized_json` 并从 `session_id` 回推 actor identity，desktop release runtime runbook 和 `bug-2` automation 也已经把锁文件、detached 启动静默失败、desktop/backend 分离排障、正式接口验证等坑位写清楚
+- Next entry point: `docs/handoffs/2026-04-16-session-list-runtime-recovery.md`
 
 ## 2026-04-15
 

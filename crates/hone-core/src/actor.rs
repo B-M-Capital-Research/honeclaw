@@ -79,6 +79,45 @@ impl SessionIdentity {
         }
     }
 
+    pub fn from_session_id(session_id: &str) -> Option<Self> {
+        if let Some(encoded) = session_id.strip_prefix("Actor_") {
+            let parts: Vec<&str> = encoded.splitn(3, "__").collect();
+            if parts.len() != 3 {
+                return None;
+            }
+
+            let channel = decode_component(parts[0]);
+            let scope = decode_component(parts[1]);
+            let user_id = decode_component(parts[2]);
+            if channel.is_empty() || user_id.is_empty() {
+                return None;
+            }
+
+            return if scope == "direct" {
+                Self::direct(channel, user_id).ok()
+            } else {
+                Self::group(channel, scope).ok()
+            };
+        }
+
+        if let Some(encoded) = session_id.strip_prefix("Session_") {
+            let parts: Vec<&str> = encoded.splitn(2, "__group__").collect();
+            if parts.len() != 2 {
+                return None;
+            }
+
+            let channel = decode_component(parts[0]);
+            let channel_scope = decode_component(parts[1]);
+            if channel.is_empty() || channel_scope.is_empty() {
+                return None;
+            }
+
+            return Self::group(channel, channel_scope).ok();
+        }
+
+        None
+    }
+
     pub fn session_id(&self) -> String {
         match self.kind {
             SessionKind::Direct => format!(
@@ -148,6 +187,24 @@ impl ActorIdentity {
         format!("Actor_{}", self.storage_key())
     }
 
+    pub fn from_session_id(session_id: &str) -> Option<Self> {
+        let encoded = session_id.strip_prefix("Actor_")?;
+        let parts: Vec<&str> = encoded.splitn(3, "__").collect();
+        if parts.len() != 3 {
+            return None;
+        }
+
+        let channel = decode_component(parts[0]);
+        let scope = decode_component(parts[1]);
+        let user_id = decode_component(parts[2]);
+        if channel.is_empty() || user_id.is_empty() {
+            return None;
+        }
+
+        let channel_scope = if scope == "direct" { None } else { Some(scope) };
+        Self::new(channel, user_id, channel_scope).ok()
+    }
+
     pub fn channel_fs_component(&self) -> String {
         encode_component(&self.channel)
     }
@@ -172,6 +229,35 @@ fn encode_component(raw: &str) -> String {
         }
     }
     out
+}
+
+fn decode_component(encoded: &str) -> String {
+    let mut out = String::with_capacity(encoded.len());
+    let bytes = encoded.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'_' && i + 2 < bytes.len() {
+            let hi = bytes[i + 1];
+            let lo = bytes[i + 2];
+            if let (Some(h), Some(l)) = (hex_digit(hi), hex_digit(lo)) {
+                out.push(char::from(h * 16 + l));
+                i += 3;
+                continue;
+            }
+        }
+        out.push(char::from(bytes[i]));
+        i += 1;
+    }
+    out
+}
+
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -221,5 +307,35 @@ mod tests {
 
         assert!(alice_session.is_group());
         assert_eq!(alice_session.session_id(), bob_session.session_id());
+    }
+
+    #[test]
+    fn session_identity_can_be_restored_from_actor_session_id() {
+        let actor =
+            ActorIdentity::new("discord", "alice@example.com", Some("g:1:c:2")).expect("actor");
+        let restored = SessionIdentity::from_session_id(&actor.session_id()).expect("restored");
+
+        assert!(restored.is_group());
+        assert_eq!(restored.channel, "discord");
+        assert_eq!(restored.channel_scope.as_deref(), Some("g:1:c:2"));
+    }
+
+    #[test]
+    fn session_identity_can_be_restored_from_shared_group_session_id() {
+        let session = SessionIdentity::group("feishu", "chat:42").expect("session");
+        let restored = SessionIdentity::from_session_id(&session.session_id()).expect("restored");
+
+        assert!(restored.is_group());
+        assert_eq!(restored.channel, "feishu");
+        assert_eq!(restored.channel_scope.as_deref(), Some("chat:42"));
+    }
+
+    #[test]
+    fn actor_identity_can_be_restored_from_actor_session_id() {
+        let actor =
+            ActorIdentity::new("imessage", "+8613121812525", None::<String>).expect("actor");
+        let restored = ActorIdentity::from_session_id(&actor.session_id()).expect("restored");
+
+        assert_eq!(restored, actor);
     }
 }
