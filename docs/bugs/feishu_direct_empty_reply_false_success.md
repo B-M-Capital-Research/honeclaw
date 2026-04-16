@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
@@ -30,6 +30,17 @@
     - `updated_at=2026-04-15T17:49:05.708644+08:00`
     - `last_message_at=2026-04-15T17:49:05.708643+08:00`
     - `last_message_preview` 为空
+  - 2026-04-16 12:12-12:22 最近一小时回归复现：
+    - `session_id=Actor_feishu__direct__ou_5f0e57a9914d61ae96d437cdeb65e43593`
+    - `2026-04-16T12:08:38.607636+08:00` 用户提问：`亚马逊新推出的太空60，哪几家最值得投资`
+    - 搜索阶段完成 8 次 `data_fetch/web_search`，但 `2026-04-16T12:12:57.027055+08:00` assistant 再次落库为空字符串
+    - `data/runtime/logs/web.log` 对应记录：`12:12:56.976` `empty reply (stop_reason=end_turn)`，`12:12:57.034` `done ... success=true ... reply.chars=0`
+    - `sessions.last_message_preview` 长度仍为 `0`，说明链路把空回复当作成功完成并落为会话最后一条消息
+    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+    - `2026-04-16T12:21:48.953881+08:00` 用户提问：`看看我的15支股票池的击球区和买卖评估`
+    - 搜索阶段完成 `portfolio + local_list_files + 4 次 data_fetch` 共 7 次工具调用后，`2026-04-16T12:22:44.064368+08:00` assistant 再次为空
+    - `data/runtime/logs/web.log` 对应记录：`12:22:44.048` `stop_reason=end_turn success=true reply_chars=0`、`12:22:44.048` `empty reply`、`12:22:44.065` `done ... success=true ... reply.chars=0`、`12:22:44.921` `step=reply.send ... segments.sent=1/1`
+    - 两条会话都发生在此前标记“已修复”之后，说明空回复伪成功仍是当前真实用户链路中的活跃缺陷，而不是历史遗留记录
   - 对比同一时间窗异常样式：
     - 最近 90 分钟内仅发现两条空 assistant 消息，另一条是已单独登记的 `discord_scheduler_empty_reply_send_failed`
     - 本次是 Feishu 直聊、非 scheduler、用户主动提问链路，影响范围与已有 Discord 定时任务缺陷不同
@@ -54,6 +65,8 @@
 - `opencode_acp` 日志明确识别到 `empty reply`，但 `multi_agent.answer.done`、`MsgFlow/feishu done` 和 `reply.send` 仍全部走成功路径。
 - 数据库最终同时留下“有真实消息 ID”和“assistant 内容为空”这两个互相矛盾的结果，说明空消息并未被链路拦截。
 - 同一根因在最近一小时内至少再次影响了 2 条 Feishu 会话，其中一条是用户主动追问后的直聊主链路，一条是 Feishu 定时任务会话，说明问题不是单次偶发抖动。
+- 2026-04-16 12:12 与 12:22 的两条新会话进一步证明：即便搜索阶段已经拿到完整数据，Answer 阶段仍会以 `stop_reason=end_turn` 产出空正文，而上层继续把这一轮记为 `success=true`。
+- 这意味着此前“空成功判定已收紧”的修复结论并未稳定覆盖当前 Feishu 直聊链路，该缺陷应从 `Fixed` 恢复为活跃状态。
 
 ## 用户影响
 
@@ -73,6 +86,19 @@
   - `should_return_runner_result(...)` 不再把“只有 `tool_calls_made`、但正文为空”的结果视为有效成功
   - `run_runner_with_empty_success_retry(...)` 现在会对这类结果继续重试，重试耗尽后落回非空的 `EMPTY_SUCCESS_FALLBACK_MESSAGE`
 - 这意味着即使多代理把搜索阶段的工具调用合并进最终 response，也不会再让空 answer 绕过兜底逻辑，Feishu 直聊不再写入或发送零字节 assistant 消息。
+
+## 修复结论复核（2026-04-16 13:01 CST）
+
+- 最近一小时的两条真实 Feishu 直聊会话已经证明，上述修复结论不能成立为“已修复”：
+  - `Actor_feishu__direct__ou_5f0e57a9914d61ae96d437cdeb65e43593`
+  - `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+- 两条会话都在 `opencode_acp` 明确记录 `empty reply` 后，仍然继续走到了 `success=true`、`reply.chars=0` 与 `reply.send segments.sent=1/1`。
+- 因此本缺陷状态恢复为 `New`；后续需要重新核对当前空成功判定是否只覆盖了部分 runner/response 形态，或在最新启动配置下出现了回归路径。
+
+## 下一步建议
+
+- 重新比对 `reply_chars=0` 但 `success=true` 的最新日志路径，确认当前 Feishu 直聊链路为何没有落到 `EMPTY_SUCCESS_FALLBACK_MESSAGE`。
+- 在 bug 修复前，继续把 `reply.chars=0`、`empty reply`、`segments.sent=1/1` 组合视为高优先级回归信号；若 scheduler 或其它渠道也出现同类模式，再分别更新对应文档状态。
 
 ## 回归验证
 
