@@ -1,7 +1,7 @@
 - title: Canonical Config And Runtime Apply Unification
 - status: in_progress
 - created_at: 2026-04-12
-- updated_at: 2026-04-14 23:13 CST
+- updated_at: 2026-04-16 09:08 CST
 - owner: Codex
 - related_files:
   - crates/hone-core/src/config.rs
@@ -53,6 +53,13 @@
   - desktop settings 与 canonical config / apply result contract 的最后一轮对齐验证
   - desktop dev/runtime 下 canonical config 位置与 legacy `config_runtime.yaml` 单向迁移收口，避免 runner / multi-agent / channels / Tavily / FMP 因 repo seed config 回退
   - release cache warm / sccache 策略上线后的首轮 GitHub Actions 时延验证
+
+## Current Focus
+
+- 收口 desktop agent 配置隔离缺口：
+  - legacy runtime 补迁 `agent.opencode` 时改成字段级 merge，不能因为 canonical `api_key` 留空就整块覆盖，破坏“继承本机 OpenCode 配置”的语义
+  - desktop 设置保存时停止让 `multi-agent.answer.*` 反写 `agent.opencode.*`
+  - 为上述两条路径补最小回归测试，并同步 bug 台账状态
 
 ## Validation
 

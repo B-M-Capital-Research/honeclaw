@@ -842,12 +842,7 @@ pub(crate) fn get_agent_settings_impl(app: AppHandle) -> Result<AgentSettings, S
     })
 }
 
-pub(crate) async fn set_agent_settings_impl(
-    app: AppHandle,
-    state: State<'_, DesktopState>,
-    settings: AgentSettings,
-) -> Result<(), String> {
-    let runtime = ensure_runtime_paths(&app)?;
+fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(&'static str, serde_yaml::Value)> {
     let mut updates = vec![
         (
             "agent.runner",
@@ -936,24 +931,18 @@ pub(crate) async fn set_agent_settings_impl(
                     multi_agent.answer.max_tool_calls,
                 )),
             ),
-            (
-                "agent.opencode.api_base_url",
-                serde_yaml::Value::String(multi_agent.answer.base_url.clone()),
-            ),
-            (
-                "agent.opencode.api_key",
-                serde_yaml::Value::String(multi_agent.answer.api_key.clone()),
-            ),
-            (
-                "agent.opencode.model",
-                serde_yaml::Value::String(multi_agent.answer.model.clone()),
-            ),
-            (
-                "agent.opencode.variant",
-                serde_yaml::Value::String(multi_agent.answer.variant.clone()),
-            ),
         ]);
     }
+    updates
+}
+
+pub(crate) async fn set_agent_settings_impl(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    settings: AgentSettings,
+) -> Result<(), String> {
+    let runtime = ensure_runtime_paths(&app)?;
+    let updates = build_agent_setting_updates(&settings);
     apply_setting_updates(
         &runtime.config_path,
         &runtime.effective_config_path,
@@ -1147,6 +1136,83 @@ mod tests {
         assert_eq!(seeded.base_url, "https://api.minimaxi.com/v1");
         assert_eq!(seeded.api_key, "sk-cp-search");
         assert_eq!(seeded.model, "MiniMax-M2.7");
+    }
+
+    #[test]
+    fn build_agent_setting_updates_keeps_opencode_and_multi_agent_answer_isolated() {
+        let settings = AgentSettings {
+            runner: "multi-agent".to_string(),
+            codex_model: String::new(),
+            openai_url: "https://opencode.example/v1".to_string(),
+            openai_model: "openai/gpt-5.4".to_string(),
+            openai_api_key: "sk-opencode".to_string(),
+            auxiliary: None,
+            multi_agent: Some(MultiAgentSettings {
+                search: MultiAgentSearchSettings {
+                    base_url: "https://search.example/v1".to_string(),
+                    api_key: "sk-search".to_string(),
+                    model: "search-model".to_string(),
+                    max_iterations: 6,
+                },
+                answer: MultiAgentAnswerSettings {
+                    base_url: "https://answer.example/v1".to_string(),
+                    api_key: "sk-answer".to_string(),
+                    model: "answer-model".to_string(),
+                    variant: "high".to_string(),
+                    max_tool_calls: 2,
+                },
+            }),
+        };
+
+        let updates = build_agent_setting_updates(&settings);
+        let update_map = updates
+            .into_iter()
+            .map(|(path, value)| (path, value))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        assert_eq!(
+            update_map
+                .get("agent.opencode.api_base_url")
+                .and_then(serde_yaml::Value::as_str),
+            Some("https://opencode.example/v1")
+        );
+        assert_eq!(
+            update_map
+                .get("agent.opencode.model")
+                .and_then(serde_yaml::Value::as_str),
+            Some("openai/gpt-5.4")
+        );
+        assert_eq!(
+            update_map
+                .get("agent.opencode.api_key")
+                .and_then(serde_yaml::Value::as_str),
+            Some("sk-opencode")
+        );
+        assert!(!update_map.contains_key("agent.opencode.variant"));
+        assert_eq!(
+            update_map
+                .get("agent.multi_agent.answer.api_base_url")
+                .and_then(serde_yaml::Value::as_str),
+            Some("https://answer.example/v1")
+        );
+        assert_eq!(
+            update_map
+                .get("agent.multi_agent.answer.api_key")
+                .and_then(serde_yaml::Value::as_str),
+            Some("sk-answer")
+        );
+        assert_eq!(
+            update_map
+                .get("agent.multi_agent.answer.model")
+                .and_then(serde_yaml::Value::as_str),
+            Some("answer-model")
+        );
+        assert_eq!(
+            update_map
+                .get("agent.multi_agent.answer.variant")
+                .and_then(serde_yaml::Value::as_str),
+            Some("high")
+        );
     }
 
     #[test]

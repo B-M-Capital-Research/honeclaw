@@ -637,6 +637,24 @@ fn canonical_chat_scope_looks_seeded(scope: &str) -> bool {
     matches!(scope.trim(), "" | "DM_ONLY")
 }
 
+fn opencode_field_paths() -> [&'static str; 4] {
+    [
+        "agent.opencode.api_base_url",
+        "agent.opencode.api_key",
+        "agent.opencode.model",
+        "agent.opencode.variant",
+    ]
+}
+
+fn canonical_opencode_block_is_blank(current: &Value) -> crate::HoneResult<bool> {
+    for path in opencode_field_paths() {
+        if !string_path_is_blank(current, path)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 /// 从 legacy runtime config 中补迁仍未进入 canonical config 的关键用户设置字段。
 ///
 /// 迁移策略是保守的：
@@ -677,12 +695,30 @@ pub fn promote_legacy_runtime_agent_settings(
         }
     }
 
-    if string_path_is_blank(&canonical, "agent.opencode.api_key")?
-        && let Some(legacy_opencode) = get_value_at_path(&legacy, "agent.opencode")?
-    {
-        set_value_at_path(&mut canonical, "agent.opencode", legacy_opencode.clone())?;
-        changed_paths.push("agent.opencode".to_string());
-        migrated_opencode = true;
+    if let Some(legacy_opencode) = get_value_at_path(&legacy, "agent.opencode")? {
+        if canonical_opencode_block_is_blank(&canonical)? {
+            set_value_at_path(&mut canonical, "agent.opencode", legacy_opencode.clone())?;
+            changed_paths.push("agent.opencode".to_string());
+            migrated_opencode = true;
+        } else {
+            for path in [
+                "agent.opencode.api_base_url",
+                "agent.opencode.model",
+                "agent.opencode.variant",
+            ] {
+                if string_path_is_blank(&canonical, path)?
+                    && let Some(legacy_value) = get_value_at_path(&legacy, path)?
+                    && legacy_value
+                        .as_str()
+                        .map(|value| !value.trim().is_empty())
+                        .unwrap_or(false)
+                {
+                    set_value_at_path(&mut canonical, path, legacy_value.clone())?;
+                    changed_paths.push(path.to_string());
+                    migrated_opencode = true;
+                }
+            }
+        }
     }
 
     if string_path_is_blank(&canonical, "llm.auxiliary.api_key")?
@@ -1997,6 +2033,52 @@ discord:
         assert_eq!(config.feishu.app_id, "canonical-app");
         assert_eq!(config.telegram.bot_token, "canonical-tg");
         assert_eq!(config.discord.bot_token, "canonical-discord");
+    }
+
+    #[test]
+    fn test_promote_legacy_runtime_agent_settings_preserves_blank_opencode_key_inheritance() {
+        let dir = temp_test_dir("legacy-agent-opencode-inheritance");
+        let canonical = dir.join("config.yaml");
+        let legacy = dir.join("data/runtime/config_runtime.yaml");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(
+            &canonical,
+            r#"
+agent:
+  runner: opencode_acp
+  opencode:
+    api_base_url: "https://canonical.example/v1"
+    api_key: ""
+    model: "google/gemini-2.5-pro"
+    variant: "high"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &legacy,
+            r#"
+agent:
+  runner: opencode_acp
+  opencode:
+    api_base_url: "https://legacy.example/v1"
+    api_key: "legacy-key"
+    model: "legacy-model"
+    variant: "legacy-variant"
+"#,
+        )
+        .unwrap();
+
+        let changed = promote_legacy_runtime_agent_settings(&canonical, &legacy).unwrap();
+        assert!(changed.is_empty());
+
+        let config = HoneConfig::from_file(&canonical).unwrap();
+        assert_eq!(
+            config.agent.opencode.api_base_url,
+            "https://canonical.example/v1"
+        );
+        assert_eq!(config.agent.opencode.api_key, "");
+        assert_eq!(config.agent.opencode.model, "google/gemini-2.5-pro");
+        assert_eq!(config.agent.opencode.variant, "high");
     }
 
     #[test]

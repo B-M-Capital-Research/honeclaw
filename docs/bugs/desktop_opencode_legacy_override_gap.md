@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-14
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近提交: `dfd8a01 fix: restore desktop canonical agent config migration`
   - 最近提交: `e802582 fix: migrate desktop legacy runtime user settings`
@@ -63,3 +63,14 @@
 - 把 `agent.opencode` 的 legacy 迁移改成字段级 merge，而不是整块覆盖；至少要区分“字段缺失”与“显式留空表示继承本机 OpenCode”。
 - 增加一条回归测试：canonical 预设 `agent.opencode.model` / `variant`，`api_key` 为空，legacy 含旧 `agent.opencode` 时，迁移后 canonical 不应被整块覆盖。
 - 当前 bug 台账先以 `New` 登记，等待人工确认并转入 `Approved` / `Fixing` / `Fixed` / `Closed`。
+
+## 修复情况（2026-04-16）
+
+- `crates/hone-core/src/config.rs` 已改成：
+  - 只有 canonical `agent.opencode` 整块都为空时，才整块迁移 legacy `agent.opencode`
+  - 否则只按字段补齐 `api_base_url` / `model` / `variant`
+  - 不再因为 canonical `api_key` 留空就把 legacy 整个 `agent.opencode` 写回去
+- 这意味着“故意把 `agent.opencode.api_key` 留空以继承本机 OpenCode 登录态”的语义现在会被保留，不会再被旧 runtime key 静默覆盖
+- 回归验证：
+  - `cargo test -p hone-core promote_legacy_runtime_agent_settings`
+  - 其中 `config::tests::test_promote_legacy_runtime_agent_settings_preserves_blank_opencode_key_inheritance` 覆盖了本缺陷场景

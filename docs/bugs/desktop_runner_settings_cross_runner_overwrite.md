@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: Business Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 2026-04-15 当前源码复核
   - 代码证据:
@@ -61,3 +61,13 @@
 - 明确 `agent.opencode` 与 `multi-agent.answer` 的产品契约：如果必须共享同一路由，应在 UI 上合并为单一真相源；如果应独立，则必须拆开落盘字段并停止互相覆盖。
 - 在修复前，可先补一条最小回归：当 `openai*` 与 `multi_agent.answer.*` 取不同值时，保存后 `agent.opencode.*` 不应被后者静默改写。
 - 后续验证 runner 生效时，不能只看 `agent.runner`，还要核对落盘后的 `agent.opencode.*` 是否仍与用户刚保存的那组值一致。
+
+## 修复情况（2026-04-16）
+
+- `bins/hone-desktop/src/sidecar.rs` 已去掉把 `multi_agent.answer.*` 反写到 `agent.opencode.*` 的那组更新
+- desktop 设置保存现在分为两套独立落盘：
+  - `openaiUrl` / `openaiModel` / `openaiApiKey` -> `agent.opencode.*`
+  - `multiAgent.answer.*` -> `agent.multi_agent.answer.*`
+- 新增回归测试 `sidecar::tests::build_agent_setting_updates_keeps_opencode_and_multi_agent_answer_isolated`，验证两套值不同的时候不会再互相覆盖
+- 回归验证：
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop build_agent_setting_updates_keeps_opencode_and_multi_agent_answer_isolated`

@@ -18,6 +18,18 @@ Use this file as the historical entry point for completed or paused work that sh
 - Current conclusion: repo-local `honeclaw/data` 并未丢失，会话为空的主因是 backend session-listing 在部分脏数据路径上直接失败，导致 `/api/users` 错误返回空数组；现在列表会跳过损坏的 `normalized_json` 并从 `session_id` 回推 actor identity，desktop release runtime runbook 和 `bug-2` automation 也已经把锁文件、detached 启动静默失败、desktop/backend 分离排障、正式接口验证等坑位写清楚
 - Next entry point: `docs/handoffs/2026-04-16-session-list-runtime-recovery.md`
 
+### Desktop Agent 配置隔离修复
+
+- Status: done
+- Date: 2026-04-16
+- Plan: `docs/current-plans/canonical-config-runtime-apply.md`
+- Handoff: `docs/handoffs/2026-04-16-desktop-agent-config-isolation.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-core promote_legacy_runtime_agent_settings`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop build_agent_setting_updates_keeps_opencode_and_multi_agent_answer_isolated`
+- Current conclusion: desktop legacy agent config promotion no longer overwrites canonical `agent.opencode` when the canonical `api_key` is intentionally blank, and desktop settings save no longer lets `multi-agent.answer` silently overwrite `agent.opencode`; both P1 bug docs and the bug navigation table are now updated to `Fixed`
+- Next entry point: `docs/handoffs/2026-04-16-desktop-agent-config-isolation.md`
+
 ## 2026-04-15
 
 ### Bug 台账导航页与自动化文档模式升级
