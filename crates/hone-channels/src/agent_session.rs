@@ -8,10 +8,11 @@ use hone_core::agent::{
 use hone_core::{ActorIdentity, HoneConfig, SessionIdentity};
 use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
-    assistant_tool_calls_from_metadata, has_compact_skill_snapshot, invoked_skills_from_metadata,
-    message_is_compact_boundary, message_is_compact_summary, message_is_slash_skill,
-    restore_tool_message, select_messages_after_compact_boundary, session_message_from_normalized,
-    session_message_text, session_message_to_agent_messages,
+    assistant_tool_calls_from_metadata, build_assistant_message_metadata,
+    has_compact_skill_snapshot, invoked_skills_from_metadata, message_is_compact_boundary,
+    message_is_compact_summary, message_is_slash_skill, restore_tool_message,
+    select_messages_after_compact_boundary, session_message_from_normalized, session_message_text,
+    session_message_to_agent_messages,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -244,30 +245,30 @@ fn persistable_turn_from_response(
     response: &AgentResponse,
     metadata: Option<HashMap<String, Value>>,
 ) -> Option<NormalizedConversationMessage> {
+    let persisted_tool_calls = response
+        .tool_calls_made
+        .iter()
+        .filter(|call| should_persist_tool_result(call))
+        .map(|call| {
+            serde_json::json!({
+                "id": call.tool_call_id.clone().unwrap_or_default(),
+                "type": "function",
+                "function": {
+                    "name": call.name,
+                    "arguments": serde_json::to_string(&call.arguments)
+                        .unwrap_or_else(|_| "null".to_string()),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let tool_call_metadata = build_assistant_message_metadata(&persisted_tool_calls);
+    let metadata = if tool_call_metadata.is_empty() {
+        metadata
+    } else {
+        merge_message_metadata(metadata, tool_call_metadata)
+    };
+
     let mut content = Vec::new();
-    for tool_call in &response.tool_calls_made {
-        if !should_persist_tool_result(tool_call) {
-            continue;
-        }
-        content.push(NormalizedConversationPart {
-            part_type: "tool_call".to_string(),
-            text: None,
-            id: tool_call.tool_call_id.clone(),
-            name: Some(tool_call.name.clone()),
-            args: Some(tool_call.arguments.clone()),
-            result: None,
-            metadata: None,
-        });
-        content.push(NormalizedConversationPart {
-            part_type: "tool_result".to_string(),
-            text: None,
-            id: tool_call.tool_call_id.clone(),
-            name: Some(tool_call.name.clone()),
-            args: None,
-            result: Some(tool_call.result.clone()),
-            metadata: None,
-        });
-    }
 
     if !response.content.trim().is_empty() {
         content.push(NormalizedConversationPart {
@@ -1731,6 +1732,7 @@ mod tests {
     use hone_core::config::HoneConfig;
     use hone_llm::provider::ChatResult;
     use hone_llm::{ChatResponse, LlmProvider, Message};
+    use hone_memory::session::{SessionRuntimeBackend, SessionStorageOptions};
     use hone_memory::{build_assistant_message_metadata, build_tool_message_metadata_parts};
     use serde_json::Value;
     use std::env;
@@ -2283,6 +2285,123 @@ mod tests {
             .filter_map(|message| message.content.as_deref())
             .collect();
         assert_eq!(contents, vec!["真正可见结论"]);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn persistable_turn_from_response_stores_only_final_text_and_tool_call_metadata() {
+        let response = AgentResponse {
+            content: "最终结论：继续观察。".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "web_search".to_string(),
+                arguments: serde_json::json!({"query": "AAOI latest earnings"}),
+                result: serde_json::json!({"results": [{"title": "ok"}]}),
+                tool_call_id: Some("call_1".to_string()),
+            }],
+            iterations: 2,
+            success: true,
+            error: None,
+        };
+
+        let message = persistable_turn_from_response(
+            &response,
+            Some(HashMap::from([(
+                "message_id".to_string(),
+                Value::String("msg-1".to_string()),
+            )])),
+        )
+        .expect("persistable turn");
+
+        assert_eq!(message.role, "assistant");
+        assert_eq!(message.content.len(), 1);
+        assert_eq!(message.content[0].part_type, "final");
+        assert_eq!(
+            message.content[0].text.as_deref(),
+            Some("最终结论：继续观察。")
+        );
+        assert!(
+            message
+                .content
+                .iter()
+                .all(|part| { part.part_type != "tool_call" && part.part_type != "tool_result" })
+        );
+
+        let metadata = message.metadata.as_ref().expect("assistant metadata");
+        assert_eq!(
+            metadata.get("message_id").and_then(|value| value.as_str()),
+            Some("msg-1")
+        );
+        let tool_calls = assistant_tool_calls_from_metadata(Some(metadata)).expect("tool calls");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["id"], "call_1");
+        assert_eq!(tool_calls[0]["function"]["name"], "web_search");
+    }
+
+    #[test]
+    fn persistable_turn_from_response_keeps_sqlite_runtime_history_on_final_text() {
+        let root = make_temp_dir("hone_channels_persistable_turn_preview");
+        let db_path = root.join("sessions.sqlite3");
+        let storage = SessionStorage::with_options(
+            root.join("sessions"),
+            SessionStorageOptions {
+                shadow_sqlite_db_path: Some(db_path.clone()),
+                shadow_sqlite_enabled: true,
+                runtime_backend: SessionRuntimeBackend::Sqlite,
+            },
+        );
+        let actor = ActorIdentity::new("feishu", "preview-user", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+
+        let response = AgentResponse {
+            content: "用户可见结论".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: serde_json::json!({"symbol": "MU"}),
+                result: serde_json::json!({"price": 101}),
+                tool_call_id: Some("call_preview".to_string()),
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+        let message = persistable_turn_from_response(&response, None).expect("persistable turn");
+        storage
+            .append_session_messages(
+                &session_id,
+                vec![session_message_from_normalized(
+                    &message,
+                    hone_core::beijing_now_rfc3339(),
+                )],
+            )
+            .expect("append assistant");
+
+        std::fs::remove_file(root.join("sessions").join(format!("{session_id}.json")))
+            .expect("remove json fallback");
+        let session = storage
+            .load_session(&session_id)
+            .expect("load session")
+            .expect("session from sqlite");
+        let assistant = session
+            .messages
+            .iter()
+            .find(|message| message.role == "assistant")
+            .expect("assistant message");
+
+        assert_eq!(session_message_text(assistant), "用户可见结论");
+        assert_eq!(assistant.content.len(), 1);
+        assert_eq!(assistant.content[0].part_type, "final");
+        assert!(
+            assistant
+                .content
+                .iter()
+                .all(|part| part.part_type != "tool_call" && part.part_type != "tool_result")
+        );
+        let tool_calls = assistant_tool_calls_from_metadata(assistant.metadata.as_ref())
+            .expect("assistant tool call metadata");
+        assert_eq!(tool_calls[0]["id"], "call_preview");
 
         let _ = std::fs::remove_dir_all(root);
     }

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 02:22 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f58ff884640e647a1792f618f45209251`
@@ -61,9 +61,18 @@
 - `sessions.last_message_preview` 继续从脏 assistant 内容生成摘要，说明会话索引层也没有二次净化。
 - 这与 `multi_agent_internal_output_leak.md` 中已修复的“直接发给用户”链路不同，属于成功响应后的历史落库边界缺失。
 
-## 下一步建议
+## 修复情况（2026-04-16）
 
-- 追踪 `session.persist_assistant` 的输入来源，确认何处仍在写入原始 transcript 而不是最终净化文本。
-- 为“用户收到净化文本后，数据库中 assistant 历史也必须是净化文本”补一条回归测试，覆盖 `progress/tool_call/tool_result/final` 混合输出场景。
-- 为 `sessions.last_message_preview` 与 compact/restore 路径增加一致性校验，避免历史索引继续吸收 `<think>` 和工具协议。
-- 修复后联动复核 `feishu_attachment_internal_transcript_leak.md`，确认用户可见泄露和历史脏写入两个问题是否都已收口。
+- 已在 `crates/hone-channels/src/agent_session.rs` 调整 `persistable_turn_from_response(...)`：
+  - assistant 历史不再把 `tool_call` / `tool_result` 混入消息内容
+  - 只持久化最终 `final` 文本内容，保证会话历史与用户最终看到的正文一致
+  - 若需要保留工具调用信息，则改为写入 assistant metadata 的 `assistant.tool_calls`
+- 这意味着后续的 `session_message_text(...)`、sqlite runtime mirror、`sessions.last_message_preview` 与 restore/compact 路径都会基于净化后的最终正文，而不是基于污染 transcript 生成索引。
+
+## 回归验证
+
+- `cargo test -p hone-channels persistable_turn_from_response_ -- --nocapture`
+- `cargo test -p hone-channels restore_context_sanitizes_polluted_assistant_history -- --nocapture`
+- `cargo check -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session.rs`
+- `git diff --check`
