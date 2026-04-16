@@ -67,6 +67,13 @@ async fn main() {
 
     if let Err(e) = client.start().await {
         error!("Discord 运行失败: {}", e);
+        let err_text = e.to_string().to_lowercase();
+        if err_text.contains("invalid authentication") || err_text.contains("invalidauthentication")
+        {
+            eprintln!("[ERROR] Discord bot token 认证失败");
+            eprintln!("[提示] 请检查是否重复粘贴或 token 已失效");
+            eprintln!("[建议] 运行 `hone-cli configure --section channels` 重新配置");
+        }
         std::process::exit(1);
     }
 }

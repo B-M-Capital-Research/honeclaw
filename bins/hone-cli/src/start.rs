@@ -139,6 +139,30 @@ async fn ensure_child_alive(binary: &str, child: &mut Child) -> Result<(), Strin
     }
 }
 
+async fn wait_for_any_child_exit(
+    children: &mut [Child],
+) -> Result<(usize, std::process::ExitStatus), String> {
+    loop {
+        for (idx, child) in children.iter_mut().enumerate() {
+            match child.try_wait() {
+                Ok(Some(status)) => return Ok((idx, status)),
+                Ok(None) => {}
+                Err(error) => return Err(format!("检查子进程状态失败: {error}")),
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+}
+
+fn unexpected_exit_hint(binary: &str) -> Option<&'static str> {
+    match binary {
+        "hone-discord" => Some(
+            "Discord 子进程异常退出。若日志含“invalid authentication / 4004”，请检查 Discord bot token 是否重复粘贴或已失效；可运行 `hone-cli configure --section channels` 重新配置。",
+        ),
+        _ => None,
+    }
+}
+
 async fn shutdown_children(children: &mut [Child]) {
     for child in children.iter_mut().rev() {
         if let Ok(Some(_)) = child.try_wait() {
@@ -154,6 +178,7 @@ pub(crate) async fn run_start(explicit_config: Option<&Path>) -> Result<(), Stri
     let _ = resolve_runtime_paths(explicit_config, true).map_err(|e| e.to_string())?;
 
     let mut children = Vec::new();
+    let mut labels = Vec::new();
 
     println!(
         "[INFO] starting backend using {}",
@@ -172,18 +197,23 @@ pub(crate) async fn run_start(explicit_config: Option<&Path>) -> Result<(), Stri
         paths.web_port
     );
     children.push(backend);
+    labels.push("hone-console-page");
 
     if config.imessage.enabled {
         children.push(spawn_channel("hone-imessage", "iMessage", &paths).await?);
+        labels.push("hone-imessage");
     }
     if config.discord.enabled {
         children.push(spawn_channel("hone-discord", "Discord", &paths).await?);
+        labels.push("hone-discord");
     }
     if config.feishu.enabled {
         children.push(spawn_channel("hone-feishu", "Feishu", &paths).await?);
+        labels.push("hone-feishu");
     }
     if config.telegram.enabled {
         children.push(spawn_channel("hone-telegram", "Telegram", &paths).await?);
+        labels.push("hone-telegram");
     }
 
     println!("[INFO] frontend disabled. use the web console or desktop separately if needed.");
@@ -194,21 +224,20 @@ pub(crate) async fn run_start(explicit_config: Option<&Path>) -> Result<(), Stri
             println!();
             println!("[INFO] shutdown requested");
         }
-        result = async {
-            if let Some(first) = children.first_mut() {
-                first.wait().await.map_err(|e| e.to_string())
-            } else {
-                Ok(std::process::ExitStatus::from_raw(0))
-            }
-        } => {
+        result = wait_for_any_child_exit(&mut children) => {
             match result {
-                Ok(status) => {
+                Ok((idx, status)) => {
                     shutdown_children(&mut children).await;
-                    return Err(format!("backend exited unexpectedly: {status}"));
+                    let binary = labels.get(idx).copied().unwrap_or("unknown");
+                    let base_error = format!("{binary} exited unexpectedly: {status}");
+                    if let Some(hint) = unexpected_exit_hint(binary) {
+                        return Err(format!("{base_error}\n{hint}"));
+                    }
+                    return Err(base_error);
                 }
                 Err(error) => {
                     shutdown_children(&mut children).await;
-                    return Err(format!("等待 backend 退出时失败: {error}"));
+                    return Err(format!("等待子进程退出时失败: {error}"));
                 }
             }
         }
@@ -218,18 +247,19 @@ pub(crate) async fn run_start(explicit_config: Option<&Path>) -> Result<(), Stri
     Ok(())
 }
 
-#[cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[cfg(windows)]
-trait ExitStatusExtCompat {
-    fn from_raw(code: u32) -> std::process::ExitStatus;
-}
+    #[test]
+    fn unexpected_exit_hint_includes_discord_token_guidance() {
+        let hint = unexpected_exit_hint("hone-discord").unwrap_or_default();
+        assert!(hint.contains("token"));
+        assert!(hint.contains("configure --section channels"));
+    }
 
-#[cfg(windows)]
-impl ExitStatusExtCompat for std::process::ExitStatus {
-    fn from_raw(code: u32) -> std::process::ExitStatus {
-        use std::os::windows::process::ExitStatusExt;
-        std::process::ExitStatus::from_raw(code)
+    #[test]
+    fn unexpected_exit_hint_is_none_for_other_processes() {
+        assert!(unexpected_exit_hint("hone-feishu").is_none());
     }
 }
