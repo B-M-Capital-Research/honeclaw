@@ -161,14 +161,12 @@ fn restore_limit_before_compaction(
 }
 
 fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
-    // 失败直接返回；成功时只要有正文或工具调用，也视为已拿到有效结果。
+    // 失败直接返回；成功时必须拿到正文，不能因为只有工具调用就把空答复当成成功。
     //
     // 注意：`streamed_output` 仅表示 runner 具备流式能力，不代表这次真的输出过内容。
     // opencode_acp 会始终把它设为 true，因此不能再把它当成“已有输出”的依据，
     // 否则空回复成功态会被直接放过，前端就可能一直停留在“思考中”。
-    !result.response.success
-        || !result.response.content.trim().is_empty()
-        || !result.response.tool_calls_made.is_empty()
+    !result.response.success || !result.response.content.trim().is_empty()
 }
 
 fn is_context_overflow_error_text(text: &str) -> bool {
@@ -1729,6 +1727,7 @@ mod tests {
     use crate::runners::{AgentRunnerEvent, stream_gemini_prompt};
     use futures::stream::{self, BoxStream};
     use hone_core::ActorIdentity;
+    use hone_core::agent::AgentContext;
     use hone_core::config::HoneConfig;
     use hone_llm::provider::ChatResult;
     use hone_llm::{ChatResponse, LlmProvider, Message};
@@ -1747,6 +1746,32 @@ mod tests {
     #[async_trait]
     impl AgentRunnerEmitter for NoopEmitter {
         async fn emit(&self, _event: AgentRunnerEvent) {}
+    }
+
+    #[derive(Clone)]
+    struct MockEmptySuccessRunner {
+        response: AgentResponse,
+    }
+
+    #[async_trait]
+    impl crate::runners::AgentRunner for MockEmptySuccessRunner {
+        fn name(&self) -> &'static str {
+            "mock_empty_success"
+        }
+
+        async fn run(
+            &self,
+            _request: crate::runners::AgentRunnerRequest,
+            _emitter: Arc<dyn AgentRunnerEmitter>,
+        ) -> crate::runners::AgentRunnerResult {
+            crate::runners::AgentRunnerResult {
+                response: self.response.clone(),
+                streamed_output: true,
+                terminal_error_emitted: false,
+                session_metadata_updates: HashMap::new(),
+                context_messages: None,
+            }
+        }
     }
 
     #[derive(Clone)]
@@ -1935,6 +1960,86 @@ mod tests {
         let mut with_content = result;
         with_content.response.content = "hello".to_string();
         assert!(should_return_runner_result(&with_content));
+    }
+
+    #[test]
+    fn should_return_runner_result_does_not_treat_tool_calls_only_as_success() {
+        let result = AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: vec![ToolCallMade {
+                    name: "data_fetch".to_string(),
+                    arguments: serde_json::json!({"symbol": "MU"}),
+                    result: serde_json::json!({"price": 101}),
+                    tool_call_id: Some("call_1".to_string()),
+                }],
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+            streamed_output: true,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        };
+
+        assert!(!should_return_runner_result(&result));
+    }
+
+    #[tokio::test]
+    async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
+        let root = make_temp_dir("hone_channels_empty_success_tool_calls");
+        std::fs::create_dir_all(&root).expect("create root");
+        let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+        let actor = ActorIdentity::new("discord", "empty-success", None::<String>).expect("actor");
+        let session = AgentSession::new(core, actor, "direct");
+        let runner = MockEmptySuccessRunner {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: vec![ToolCallMade {
+                    name: "web_search".to_string(),
+                    arguments: serde_json::json!({"query": "AAOI"}),
+                    result: serde_json::json!({"results": [{"title": "ok"}]}),
+                    tool_call_id: Some("call_1".to_string()),
+                }],
+                iterations: 1,
+                success: true,
+                error: None,
+            },
+        };
+        let request = crate::runners::AgentRunnerRequest {
+            session_id: "empty-success-session".to_string(),
+            actor_label: "discord:empty-success".to_string(),
+            actor: session.actor.clone(),
+            channel_target: "direct".to_string(),
+            allow_cron: false,
+            config_path: String::new(),
+            system_prompt: "system".to_string(),
+            runtime_input: "user input".to_string(),
+            context: AgentContext::new("empty-success-session".to_string()),
+            timeout: None,
+            gemini_stream: GeminiStreamOptions::default(),
+            session_metadata: HashMap::new(),
+            working_directory: root.display().to_string(),
+            allowed_tools: None,
+            max_tool_calls: None,
+        };
+
+        let result = session
+            .run_runner_with_empty_success_retry(
+                &runner,
+                "mock_empty_success",
+                "empty-success-session",
+                request,
+                Arc::new(NoopEmitter),
+            )
+            .await;
+
+        assert!(result.response.success);
+        assert_eq!(result.response.content, EMPTY_SUCCESS_FALLBACK_MESSAGE);
+        assert_eq!(result.response.tool_calls_made.len(), 1);
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

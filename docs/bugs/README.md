@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 10:31 CST
+最后更新：2026-04-16 10:36 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：10
-- 已修复 / 已关闭：17
+- 活跃待修复：7
+- 已修复 / 已关闭：20
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -27,12 +27,9 @@
 | Multi-Agent Answer Agent 在设置页允许 `maxToolCalls=0`，但运行时强制提升为至少 1，用户无法真正禁用补充工具调用 | P1 | Fixing | 2026-04-15 本地代码已去掉 `max(1)` 并对齐 handoff 文本，`hone-channels` 回归已过；仍卡在 desktop release runtime 门槛，尚未完成重启 / 发布 | [multi_agent_answer_max_tool_calls_zero_ignored.md](./multi_agent_answer_max_tool_calls_zero_ignored.md) |
 | 会话压缩摘要会把最后一个新问题误写成完整“用户报告”并以 `Compact Summary` 回灌，正式回答因此引用不存在的报告与伪造价格假设 | P1 | New | 2026-04-16 08:47-09:00 再次复现；多条 scheduler 会话先被 compact 成 `role=user` 的摘要表，再进入本轮任务，且 `09:00` 还叠加 `context_overflow_recovery` | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | Feishu 图片附件会向用户发送内部 skill transcript，并夹带未清洗的中间协议 | P1 | New | 2026-04-16 01:07-01:10 最近一小时同会话再次复现；assistant 落库仍混入 `<think>`、`tool_call`、`tool_result`、manifest/path 与补救话术 | [feishu_attachment_internal_transcript_leak.md](./feishu_attachment_internal_transcript_leak.md) |
-| Feishu 直聊会话在 Multi-Agent Answer 阶段返回空回复后，链路仍记成功并发送空消息 | P1 | New | 2026-04-15 17:49 首次建档后，21:34 与 21:52 最近一小时又复现两次；`reply_chars=0` 后仍 `success=true` 并持久化空 assistant 消息 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无回复 | P1 | New | 2026-04-15 22:45 最近一小时新增；搜索阶段已完成工具调用，但 `22:49` 触发 `opencode acp session/prompt idle timeout (180s)` 后既未落库 assistant，也未发送最终回复 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
-| Feishu 定时任务在 Answer 阶段返回空回复后，调度台账仍记为 `completed + sent` | P1 | New | 2026-04-15 20:46-20:50 最近一小时新增；两条 Feishu scheduler run 都是空回复，但 `cron_job_runs` 仍记 `completed + sent + delivered=1` | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | New | 2026-04-16 08:31 再次复现；`每日宏观与AI早报` 已生成约 1.3k 字正文，但仍因 `target_resolution_failed` 拦截且 `delivered=0` | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-16 09:30 与 10:00 最近一小时仍在复现；`Monitor_Watchlist_11` 连续两轮继续落回 `JsonUnknownStatus` 并被静默吞掉 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Discord 定时任务在 Answer 阶段返回空回复时被记为成功执行，但最终未向用户送达 | P2 | New | 2026-04-15 最近一小时新增；`reply_chars=0` 但 run 仍记为 `completed`，最终 `send_failed` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 
 ## 已修复 / 已关闭
 
@@ -55,6 +52,9 @@
 | 定时任务链路绕过统一输出净化，向用户投递内部思考与未清洗富文本 | P1 | Fixed | 2026-04-16 已为 scheduler 公共出站补统一可见文本净化，并为 Telegram scheduler 补 HTML 公共清洗 | [scheduled_output_sanitization_gap.md](./scheduled_output_sanitization_gap.md) |
 | 渠道失败分支会把原始 LLM/provider 报错直接发给用户 | P1 | Fixed | 2026-04-16 已新增共享用户态错误净化层，并接入 outbound、scheduler、Feishu、Discord slash 与 iMessage 失败分支 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 成功会话仍把原始 multi-agent transcript 落库到 assistant 历史，污染后续上下文 | P2 | Fixed | 2026-04-16 已让 assistant 持久化只写 `final` 文本，并把工具调用改存到 metadata，避免污染会话索引与 sqlite runtime 预览 | [session_persist_assistant_transcript_pollution.md](./session_persist_assistant_transcript_pollution.md) |
+| Feishu 直聊会话在 Multi-Agent Answer 阶段返回空回复后，链路仍记成功并发送空消息 | P1 | Fixed | 2026-04-16 已收紧空成功判定；搜索阶段遗留的 `tool_calls_made` 不再让空 answer 绕过重试与非空兜底文案 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 定时任务在 Answer 阶段返回空回复后，调度台账仍记为 `completed + sent` | P1 | Fixed | 2026-04-16 已通过共享空成功判定修复收口，scheduler 不再发送或记录零字节正文 | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
+| Discord 定时任务在 Answer 阶段返回空回复时被记为成功执行，但最终未向用户送达 | P2 | Fixed | 2026-04-16 已通过共享空成功判定修复收口，不再因为只剩搜索工具调用而把空 answer 视为成功 | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 
 ## 历史分析 / 部分止血
 

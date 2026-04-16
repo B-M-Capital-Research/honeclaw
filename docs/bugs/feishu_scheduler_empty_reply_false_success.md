@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 21:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
@@ -58,8 +58,16 @@
 - Feishu 调度落库与发送侧只看流程是否走完，没有校验最终正文非空，于是把空结果记成 `completed + sent`。
 - 该问题与 `feishu_direct_empty_reply_false_success` 共享底层空回复判定缺口，但这里是独立的 scheduler 投递链路，影响范围和错误台账形态不同，需单独跟踪。
 
-## 下一步建议
+## 修复情况（2026-04-16）
 
-- 把 `reply_chars=0` / `empty reply` 统一提升为 Answer 阶段失败，禁止继续进入 `success=true`、`completed` 和 `sent`。
-- 为 Feishu scheduler 增加“空正文不可投递、不可记 sent”的最终兜底校验，并把错误摘要回填到 `cron_job_runs.error_message`。
-- 补一条回归测试，覆盖“搜索阶段成功、Answer 阶段空回复、scheduler 试图发送”的场景，确保后续至少显式失败并保留排障线索。
+- 已通过 `crates/hone-channels/src/agent_session.rs` 的共享空成功判定修复收口：
+  - 搜索阶段遗留的 `tool_calls_made` 不再让空 answer 被视为有效成功
+  - 重试耗尽后会返回非空兜底文案，而不是继续让 scheduler 发送零字节正文
+- 因为 Feishu scheduler 复用同一 `AgentSession` / multi-agent 成功判定链路，`response_preview` 与最终投递内容不再出现空字符串的 `completed + sent + delivered=1` 伪成功。
+
+## 回归验证
+
+- `cargo test -p hone-channels should_return_runner_result_ -- --nocapture`
+- `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries -- --nocapture`
+- `cargo check -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session.rs`

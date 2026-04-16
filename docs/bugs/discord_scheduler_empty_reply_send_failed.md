@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 17:10 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_discord__direct__483641214445551626`
@@ -63,8 +63,16 @@
 - Discord scheduler 侧按“发送分段数量是否大于 0”来判定 `send_failed`，却没有把空回复原因回填到 `error_message` 或上游执行状态。
 - 结果是 Answer 阶段的空结果、消息流的 `success=true`、调度落库的 `completed + send_failed` 三者彼此割裂，形成静默漏发。
 
-## 下一步建议
+## 修复情况（2026-04-16）
 
-- 把 `reply_chars=0` 或 `empty reply` 视为 Answer 阶段失败，而不是继续沿用 `success=true`。
-- 调度落库时补充空回复错误摘要，避免 `response_preview` 与 `error_message` 同时为空。
-- 为 Discord 定时任务补一条回归测试，覆盖“搜索阶段成功、Answer 阶段空回复”的场景，确保后续至少能显式失败并可观测。
+- 已通过 `crates/hone-channels/src/agent_session.rs` 的共享空成功判定修复收口：
+  - “正文为空但保留搜索阶段工具调用”的结果不再被视为有效成功
+  - 重试耗尽后会降级成非空兜底文案，因此 Discord scheduler 不再落到 `response_preview=''` 且 `send_failed` 的空回复静默漏发
+- 该修复和 `feishu_direct_empty_reply_false_success.md`、`feishu_scheduler_empty_reply_false_success.md` 共享同一底层根因和回归证明。
+
+## 回归验证
+
+- `cargo test -p hone-channels should_return_runner_result_ -- --nocapture`
+- `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries -- --nocapture`
+- `cargo check -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session.rs`

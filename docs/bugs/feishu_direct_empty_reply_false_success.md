@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
@@ -67,8 +67,16 @@
 - 多代理封装层把空回复继续当作 `answer.done success=true`，导致上层消息流无法区分“正常完成”和“零字节完成”。
 - Feishu 发送侧只看分段流程是否跑完，没有拦截空正文，因此把空 assistant 消息照常投递。
 
-## 下一步建议
+## 修复情况（2026-04-16）
 
-- 把 `reply_chars=0` / `empty reply` 统一升级为 Answer 阶段失败，禁止继续进入 `success=true` 和 `reply.send`。
-- 为直聊消息流补充“空正文不可发送”的最终保护，至少在发送前兜底失败并回填错误摘要。
-- 复核 `multi_agent` 对 `opencode_acp` 返回值的成功判定逻辑，确保 Feishu 直聊与 Discord scheduler 不再各自静默吞掉同类空回复。
+- 已在 `crates/hone-channels/src/agent_session.rs` 收紧空成功判定：
+  - `should_return_runner_result(...)` 不再把“只有 `tool_calls_made`、但正文为空”的结果视为有效成功
+  - `run_runner_with_empty_success_retry(...)` 现在会对这类结果继续重试，重试耗尽后落回非空的 `EMPTY_SUCCESS_FALLBACK_MESSAGE`
+- 这意味着即使多代理把搜索阶段的工具调用合并进最终 response，也不会再让空 answer 绕过兜底逻辑，Feishu 直聊不再写入或发送零字节 assistant 消息。
+
+## 回归验证
+
+- `cargo test -p hone-channels should_return_runner_result_ -- --nocapture`
+- `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries -- --nocapture`
+- `cargo check -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session.rs`
