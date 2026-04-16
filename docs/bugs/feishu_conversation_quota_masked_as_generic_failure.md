@@ -17,6 +17,11 @@
 - 运行日志：
   - `data/runtime/logs/web.log`
   - `data/runtime/logs/hone-feishu.release-restart.log`
+  - 最近一小时新增复现：
+    - `2026-04-16 22:22:06.869` `web.log` 记录 `step=message.accepted user=+8613121812525 text_chars=16`
+    - `2026-04-16 22:22:07.978` 同一 session 紧接着只出现 `step=reply.placeholder`
+    - 会话库对应新增的最新消息仍只有 `2026-04-16T22:22:07.994063+08:00` assistant 失败兜底文案，新的 user turn 没有入库
+    - `data/conversation_quota/feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15/2026-04-16.json` 仍显示 `success_count = 12`、`in_flight = 0`
 
 ## 端到端链路
 
@@ -36,6 +41,10 @@
 6. `crates/hone-channels/src/agent_session.rs` 中 `reserve_conversation_quota()` 在超限时会直接返回：
    - `已达到今日对话上限（...），请明天再试`
    且该分支发生在 `session.persist_user` 之前。
+7. 最近一小时同一 actor 再次复现相同形态：
+   - `2026-04-16 22:22:06` 新 text message 已被 handler 接收
+   - 但之后仍只看到 placeholder 与通用失败兜底，既没有新 user turn 落库，也没有进入 `agent.prepare / agent.run`
+   - 说明这不是 15:44 的一次性事件，而是 quota 触顶后直到夜间仍会稳定复现
 
 ## 期望效果
 
@@ -51,6 +60,7 @@
 - 这会让用户误以为系统临时故障，并继续重试。
 - 由于 quota 检查发生在 `session.persist_user` 之前，最新 user turn 不会进入 session 历史；当前只剩 assistant 失败兜底被落库。
 - 支持和排障侧看到的表象会更像“runner / 搜索 / Feishu 链路异常”，而不容易第一时间识别为业务限制。
+- 到 `2026-04-16 22:22` 的最新样本，这条缺陷仍未收口：同一用户的新文本消息再次只留下 placeholder 与通用失败文案，session 历史里仍缺失对应 user turn。
 
 ## 用户影响
 
@@ -63,6 +73,7 @@
 - 根因一：`AgentSession::run()` 在 `reserve_conversation_quota()` 被拒绝时直接 `fail_run()`，该路径发生在 `session.persist_user` 之前，因此用户消息不会写入会话。
 - 根因二：Feishu handler 当前对 `response.success == false` 统一使用通用失败文案收口，没有把业务拒绝类错误映射成用户可理解的专用提示。
 - 根因三：当前外层可观测性对“系统失败”和“业务规则拒绝”的区分不够，导致真实原因被掩盖。
+- 最近一小时的 `22:22` 复现说明问题不依赖特定消息内容或单次 quota 文件脏状态；只要当日额度已达上限，这条链路就会继续稳定误报成通用失败。
 
 ## 下一步建议
 

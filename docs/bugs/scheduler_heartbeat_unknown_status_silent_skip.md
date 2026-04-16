@@ -43,6 +43,12 @@
       - `2026-04-16 20:01:10.971` 同一任务又恢复为 `noop + skipped_noop`，说明该任务也进入了“上一轮未知状态、下一轮又恢复”的抖动形态
       - `2026-04-16 20:31:20.588` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）再次落成 `JsonUnknownStatus + execution_failed`
       - `2026-04-16 20:32:14.171` `job_id=j_c1c1be63`（`存储板块加仓信号监控`）同轮也新增 `JsonUnknownStatus + execution_failed`
+  - 最近一小时新增样本：
+      - `run_id=2009`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-16T22:01:21.215496+08:00`，再次落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+      - `run_id=2013`，同一任务在 `2026-04-16T22:31:18.346190+08:00` 再次复现 `JsonUnknownStatus + execution_failed`
+      - `2026-04-16 22:01:21.213` 与 `22:31:18.344` 的 `web.log` 都继续记录 `parse_kind=JsonUnknownStatus`
+      - `run_id=2017`，同一任务在 `2026-04-16T23:01:19.570052+08:00` 又短暂回到 `noop + skipped_noop`
+      - 这说明“未知状态已升级为失败”仍在生效，但输出协议本身依旧在相邻轮次间抖动，没有稳定收口
   - 对比同一小时其他 heartbeat 任务：
     - `j_38745baf`（`全天原油价格3小时播报`）在 `run_id=1847`（`09:30:04`）也短暂出现 `JsonUnknownStatus`，`run_id=1853`（`10:00:10`）又恢复为 `JsonNoop`
     - `j_654aef9b`（`小米30港元破位预警`）在 `10:00:10` 仍为 `JsonNoop -> noop / skipped_noop`
@@ -80,11 +86,13 @@
 - 到 `19:31` 这一轮，`小米30港元破位预警` 也新增 `JsonUnknownStatus + execution_failed`，且 `raw_preview` 已经明确写出“当前价格高于触发线，应返回 noop”，最后却只落成 `<think> ... {}`；说明问题并非监控任务自身判断错误，而是最终状态封装仍不稳定。
 - `20:01` 同一任务又立刻恢复为 `noop + skipped_noop`，进一步证明 `JsonUnknownStatus` 已在多个 heartbeat 任务上呈现“相邻轮次抖动”，而不是某一条任务永久损坏。
 - 到 `20:31` 这一轮，`Monitor_Watchlist_11` 再次落回 `JsonUnknownStatus + execution_failed`，`20:32` 的 `存储板块加仓信号监控` 同轮也命中同样症状，说明这条缺陷在最新窗口仍然活跃，且受影响任务并未收敛。
+- 到 `22:01` 与 `22:31` 的最新两个窗口，`Monitor_Watchlist_11` 继续落成 `JsonUnknownStatus + execution_failed`；到 `23:01` 又恢复为 `noop + skipped_noop`，说明缺陷已从“是否静默吞掉”阶段转成“失败与恢复在相邻轮次间来回摆动”。
 - 这说明当前并不是单个 watchlist prompt 失配，而是 heartbeat 输出协议在多条不同模板的监控任务上都可能失去稳定收口。
 - 对照 `11:30` 的最新日志、`run_id=1860`（`10:30`）、`1855`（`10:00`）、`1849`（`09:30`）和更早的 `01:31` 记录可以看到，这类 heartbeat 已经连续多轮维持同一症状，并没有随着时间窗切换自然恢复。
 - 这也说明问题不只是“偶发返回乱码”，而是模型已经完成了业务判断，却在最后结构化封装一步失配，监控链路因此丢失了本该可追踪的判定结果。
 - 数据库没有保存可供人工直接复核的最终文本预览，导致一旦进入 `JsonUnknownStatus`，排障信息同时丢失。
 - 由于最近样本已经同时出现 `parse_kind=JsonUnknownStatus + execution_failed` 与下一轮自动恢复为 `JsonNoop`，当前缺陷的状态应理解为“部分止血但强烈抖动”：错误不再总是伪装成 noop，但 heartbeat 仍会在不同任务、不同轮次上失去稳定的结构化收口。
+- 最近一小时的 `22:01 -> 22:31 -> 23:01` 连续三轮再次证明：同一个 `Monitor_Watchlist_11` 不需要任何配置变更，就会在失败与 noop 之间自行摆动，当前仍不具备可依赖的稳定性。
 
 ## 用户影响
 
