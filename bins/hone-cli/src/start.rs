@@ -250,6 +250,8 @@ pub(crate) async fn run_start(explicit_config: Option<&Path>) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Stdio;
+    use tokio::process::Command;
 
     #[test]
     fn unexpected_exit_hint_includes_discord_token_guidance() {
@@ -261,5 +263,69 @@ mod tests {
     #[test]
     fn unexpected_exit_hint_is_none_for_other_processes() {
         assert!(unexpected_exit_hint("hone-feishu").is_none());
+    }
+
+    fn long_running_command() -> Command {
+        #[cfg(unix)]
+        {
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg("sleep 3");
+            cmd
+        }
+        #[cfg(windows)]
+        {
+            let mut cmd = Command::new("cmd");
+            cmd.args([
+                "/C",
+                "powershell -NoLogo -NoProfile -Command \"Start-Sleep -Seconds 3\"",
+            ]);
+            cmd
+        }
+    }
+
+    fn quick_exit_command(exit_code: i32) -> Command {
+        #[cfg(unix)]
+        {
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg(format!("exit {exit_code}"));
+            cmd
+        }
+        #[cfg(windows)]
+        {
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/C", &format!("exit /B {exit_code}")]);
+            cmd
+        }
+    }
+
+    #[tokio::test]
+    async fn wait_for_any_child_exit_returns_exited_child_index_and_status() {
+        let mut slow = long_running_command();
+        slow.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let slow_child = slow.spawn().expect("spawn slow child");
+
+        let mut fast = quick_exit_command(7);
+        fast.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let fast_child = fast.spawn().expect("spawn fast child");
+
+        let mut children = vec![slow_child, fast_child];
+        let (idx, status) = wait_for_any_child_exit(&mut children)
+            .await
+            .expect("wait_for_any_child_exit should succeed");
+
+        assert_eq!(idx, 1);
+        assert_eq!(status.code(), Some(7));
+        assert!(
+            children[0].try_wait().expect("query slow child").is_none(),
+            "the first child should still be running when the second child exits"
+        );
+
+        let _ = children[0].kill().await;
+        let _ = children[0].wait().await;
+        let _ = children[1].wait().await;
     }
 }
