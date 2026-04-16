@@ -62,6 +62,23 @@ fn build_group_busy_text(speaker_label: &str) -> String {
     format!("正在处理 {speaker_label} 的消息，请等上一条完成后再 @ 我。")
 }
 
+fn build_failed_reply_text(
+    reply_prefix: Option<&str>,
+    saw_stream_delta: bool,
+    final_text: &str,
+    error: Option<&str>,
+) -> String {
+    let display = if saw_stream_delta && !final_text.trim().is_empty() {
+        format!(
+            "{}\n\n_(处理中发生错误，内容可能不完整)_",
+            final_text.trim()
+        )
+    } else {
+        user_visible_error_message(error)
+    };
+    prepend_reply_prefix(reply_prefix, &display)
+}
+
 #[async_trait]
 impl EventHandler for FeishuEventHandler {
     fn event_type(&self) -> &str {
@@ -628,12 +645,12 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     }
 
     if !response.success {
-        let display = if saw_stream_delta && !final_text.is_empty() {
-            format!("{}\n\n_(处理中发生错误，内容可能不完整)_", final_text)
-        } else {
-            user_visible_error_message(response.error.as_deref())
-        };
-        let display = prepend_reply_prefix(reply_prefix.as_deref(), &display);
+        let display = build_failed_reply_text(
+            reply_prefix.as_deref(),
+            saw_stream_delta,
+            &final_text,
+            response.error.as_deref(),
+        );
         if let Some(ck) = &cardkit_session {
             ck.close(&preprocess_markdown_for_feishu(&display, true))
                 .await;
@@ -1269,5 +1286,31 @@ mod tests {
     fn direct_scheduler_does_not_override_explicit_open_id_target() {
         let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
         assert_eq!(scheduler_receive_id_for_target(&actor, "ou_other"), None);
+    }
+
+    #[test]
+    fn failed_reply_text_maps_idle_timeout_to_friendly_message() {
+        assert_eq!(
+            build_failed_reply_text(
+                None,
+                false,
+                "",
+                Some("opencode acp session/prompt idle timeout (180s)"),
+            ),
+            "抱歉，处理超时了。请稍后再试。"
+        );
+    }
+
+    #[test]
+    fn failed_reply_text_keeps_partial_stream_output() {
+        assert_eq!(
+            build_failed_reply_text(
+                Some("@alice"),
+                true,
+                "阶段性结果",
+                Some("opencode acp session/prompt idle timeout (180s)"),
+            ),
+            "@alice 阶段性结果\n\n_(处理中发生错误，内容可能不完整)_"
+        );
     }
 }

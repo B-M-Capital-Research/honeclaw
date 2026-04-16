@@ -3,7 +3,10 @@
 - **发现时间**: 2026-04-15 23:12 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
+- **修复提交**:
+  - `02d01d2 fix channel error message sanitization`
+  - `本轮补 handler 级回归测试提交`
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `sessions`
     - `session_id=Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1`
@@ -42,11 +45,14 @@
 - 如果 Answer 阶段发生 `idle timeout`，链路应向用户返回明确、产品化的失败提示，而不是只留下 placeholder 后静默失败。
 - 会话落库应保留足够的失败痕迹，避免最终只看到“最后一条还是用户消息”。
 
-## 当前实现效果
+## 修复情况（2026-04-16 HEAD 复核）
 
-- 这轮真实会话里，工具执行已经开始并持续了数分钟，但最终没有 assistant 消息，也没有发送结果。
-- 与 `feishu_direct_empty_reply_false_success` 不同，这次不是“空回复被误判成功”，而是 Answer 阶段直接超时失败，整轮回复缺失。
-- 历史 `opencode_acp_prompt_timeout.md` 已标注 300 秒固定总超时问题为已修复，但当前生产链路仍会以新的 `idle timeout (180s)` 形态影响 Feishu 直聊用户。
+- `02d01d2 fix channel error message sanitization` 已把 Feishu 直聊失败分支改成共享 `user_visible_error_message(...)`，不再把原始 timeout 细节直接拼接，也不会在无流式内容时静默结束。
+- 当前 `bins/hone-feishu/src/handler.rs` 的失败分支会在 `response.success=false` 时：
+  - 若已有部分流式正文，回填“内容可能不完整”的收尾提示；
+  - 若没有可见正文，则把 `opencode acp session/prompt idle timeout (180s)` 映射为“抱歉，处理超时了。请稍后再试。”
+- 本轮继续把该失败回复逻辑抽成 `build_failed_reply_text(...)`，并补 handler 级回归测试，防止后续重构再次把 timeout 退化成静默失败或内部报错直出。
+- 因此，这份缺陷文档记录的“22:49 超时后既未落库 assistant，也未发送最终回复”现象已不再代表当前 HEAD 的行为；现阶段剩余风险更接近“超时后是否有持久化失败痕迹”，而不是“完全无最终回复”。
 
 ## 用户影响
 
@@ -56,13 +62,16 @@
 
 ## 根因判断
 
-- 历史上的“固定 300 秒总超时误杀长任务”问题已修复，但当前 `idle timeout=180s` 仍会在某些真实直聊场景下触发，说明链路还存在新的长尾卡顿或无进展问题。
-- Feishu 失败分支当前至少没有把这类超时稳定转成用户可见的产品化失败答复，导致用户只能看到 placeholder，然后等到超时后静默结束。
-- 从日志看，问题更像是 Answer 阶段在工具完成后迟迟没有稳定收敛，而不是搜索阶段或消息发送阶段本身失败。
+- 历史上的“固定 300 秒总超时误杀长任务”问题已修复，但 `idle timeout=180s` 仍可能在某些真实直聊场景下触发，说明链路还存在新的长尾卡顿或无进展问题。
+- 这份缺陷最初暴露出的直接用户痛点，是 Feishu 失败分支当时没有稳定把这类超时转成用户可见的产品化失败答复，导致用户只能看到 placeholder，随后静默结束。
+- 从原始日志看，问题更像是 Answer 阶段在工具完成后迟迟没有稳定收敛，而不是搜索阶段或消息发送阶段本身失败。
 
-## 下一步建议
+## 回归验证
 
-- 新建活跃缺陷跟踪 `idle timeout (180s)` 在直聊主链路的影响范围，不要继续沿用 `opencode_acp_prompt_timeout.md` 的“已收口”结论覆盖当前现象。
-- 排查 `opencode_acp` 在收到工具结果后为何会出现长时间无进展，重点核对是否存在工具后收束、流式事件消费或模型侧卡住未落盘的问题。
-- 为 Feishu 直聊失败分支补上用户态兜底提示，至少在 `TimeoutPerLine` 时返回“处理超时，请重试”的稳定回复。
-- 后续修复时补回归验证，覆盖“搜索成功 + Answer idle timeout”场景，确保不再出现只有 placeholder、没有最终消息的静默失败。
+- `cargo test -p hone-feishu failed_reply_text_maps_idle_timeout_to_friendly_message`
+- `cargo test -p hone-feishu failed_reply_text_keeps_partial_stream_output`
+
+## 结论
+
+- 该缺陷已由 `02d01d2` 的共享错误净化改动实质修复，本轮补齐了 handler 级回归证明。
+- 后续若再观察到“placeholder 后无最终回复”，应优先排查新的持久化/发送分支，而不是继续沿用本缺陷的旧结论。
