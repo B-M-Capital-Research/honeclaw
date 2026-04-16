@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use hone_core::agent::{
     AgentContext, AgentMessage, AgentResponse, NormalizedConversationMessage,
-    NormalizedConversationPart, ToolCallMade, normalize_agent_messages,
+    NormalizedConversationPart, ToolCallMade,
 };
 use hone_core::{ActorIdentity, HoneConfig, SessionIdentity};
 use hone_memory::{
@@ -606,41 +606,33 @@ impl AgentSession {
             })
     }
 
-    fn persist_runner_context_messages(&self, session_id: &str, messages: &[AgentMessage]) {
-        let last_assistant_idx = messages
-            .iter()
-            .rposition(|message| message.role == "assistant");
-        let mut normalized = normalize_agent_messages(messages);
-        let last_normalized_assistant_idx = normalized
-            .iter()
-            .rposition(|message| message.role == "assistant");
-
-        if let (Some(source_idx), Some(target_idx)) =
-            (last_assistant_idx, last_normalized_assistant_idx)
-        {
-            let source = &messages[source_idx];
-            let mut metadata = self.message_metadata.assistant.clone();
-            if let Some(extra) = source.metadata.clone() {
-                metadata = merge_message_metadata(metadata, extra);
-            }
-            if let Some(extra) = metadata {
-                normalized[target_idx].metadata =
-                    merge_message_metadata(normalized[target_idx].metadata.clone(), extra);
-            }
+    fn persist_successful_assistant_turn(
+        &self,
+        session_id: &str,
+        response: &AgentResponse,
+        context_messages: Option<&[AgentMessage]>,
+    ) {
+        let mut metadata = self.message_metadata.assistant.clone();
+        if let Some(source) = context_messages.and_then(|messages| {
+            messages
+                .iter()
+                .rfind(|message| message.role == "assistant")
+                .and_then(|message| message.metadata.clone())
+        }) {
+            metadata = merge_message_metadata(metadata, source);
         }
 
-        let session_messages = normalized
-            .iter()
-            .map(|message| {
-                session_message_from_normalized(message, hone_core::beijing_now_rfc3339())
-            })
-            .collect::<Vec<_>>();
-        if !session_messages.is_empty() {
-            let _ = self
-                .core
-                .session_storage
-                .append_session_messages(session_id, session_messages);
-        }
+        let Some(message) = persistable_turn_from_response(response, metadata) else {
+            return;
+        };
+
+        let _ = self.core.session_storage.append_session_messages(
+            session_id,
+            vec![session_message_from_normalized(
+                &message,
+                hone_core::beijing_now_rfc3339(),
+            )],
+        );
     }
 
     async fn force_compact_for_context_overflow(&self, session_id: &str) -> Result<bool, String> {
@@ -1504,25 +1496,11 @@ impl AgentSession {
                     }
                 }
             }
-            if let Some(messages) = context_messages
-                .as_ref()
-                .filter(|messages| !messages.is_empty())
-            {
-                self.persist_runner_context_messages(&session_id, messages);
-            } else {
-                if let Some(message) = persistable_turn_from_response(
-                    &response,
-                    self.message_metadata.assistant.clone(),
-                ) {
-                    let _ = self.core.session_storage.append_session_messages(
-                        &session_id,
-                        vec![session_message_from_normalized(
-                            &message,
-                            hone_core::beijing_now_rfc3339(),
-                        )],
-                    );
-                }
-            }
+            self.persist_successful_assistant_turn(
+                &session_id,
+                &response,
+                context_messages.as_deref(),
+            );
             self.core.log_message_step(
                 &self.actor.channel,
                 &self.actor.user_id,
@@ -2522,6 +2500,95 @@ mod tests {
         let tool_calls = assistant_tool_calls_from_metadata(assistant.metadata.as_ref())
             .expect("assistant tool call metadata");
         assert_eq!(tool_calls[0]["id"], "call_preview");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn successful_context_messages_persist_only_final_text_and_tool_metadata() {
+        let root = make_temp_dir("hone_channels_context_messages_persist_sanitized");
+        std::fs::create_dir_all(&root).expect("create root");
+        let core = make_test_core(&root, MockLlmProvider::with_tool_responses(Vec::new()));
+        let actor = ActorIdentity::new("feishu", "context-persist", None::<String>).expect("actor");
+        let session = AgentSession::new(core.clone(), actor.clone(), "direct");
+        core.session_storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+
+        let response = AgentResponse {
+            content: "最终识别结果".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "web_search".to_string(),
+                arguments: serde_json::json!({"query": "RKLB holdings screenshot"}),
+                result: serde_json::json!({"results": [{"title": "ok"}]}),
+                tool_call_id: Some("call_ctx_1".to_string()),
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+        let context_messages = vec![
+            AgentMessage {
+                role: "assistant".to_string(),
+                content: Some("<think>先看图</think>\n处理中".to_string()),
+                tool_calls: Some(vec![serde_json::json!({
+                    "id": "call_ctx_1",
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "arguments": "{\"query\":\"RKLB holdings screenshot\"}"
+                    }
+                })]),
+                tool_call_id: None,
+                name: None,
+                metadata: Some(HashMap::from([(
+                    "runner".to_string(),
+                    Value::String("opencode_acp".to_string()),
+                )])),
+            },
+            AgentMessage {
+                role: "tool".to_string(),
+                content: Some(
+                    "{\"session_id\":\"s1\",\"local_path\":\"/tmp/uploads/attachments.manifest.json\"}"
+                        .to_string(),
+                ),
+                tool_calls: None,
+                tool_call_id: Some("call_ctx_1".to_string()),
+                name: Some("skill_tool".to_string()),
+                metadata: None,
+            },
+        ];
+
+        session.persist_successful_assistant_turn(
+            &actor.session_id(),
+            &response,
+            Some(&context_messages),
+        );
+
+        let messages = core
+            .session_storage
+            .get_messages(&actor.session_id(), None)
+            .expect("messages");
+        let assistant = messages
+            .iter()
+            .find(|message| message.role == "assistant")
+            .expect("assistant");
+        assert_eq!(session_message_text(assistant), "最终识别结果");
+        assert_eq!(assistant.content.len(), 1);
+        assert_eq!(assistant.content[0].part_type, "final");
+        assert!(
+            assistant
+                .content
+                .iter()
+                .all(|part| part.part_type != "tool_call" && part.part_type != "tool_result")
+        );
+        let metadata = assistant.metadata.as_ref().expect("metadata");
+        assert_eq!(
+            metadata.get("runner").and_then(|value| value.as_str()),
+            Some("opencode_acp")
+        );
+        let tool_calls = assistant_tool_calls_from_metadata(Some(metadata)).expect("tool metadata");
+        assert_eq!(tool_calls[0]["id"], "call_ctx_1");
 
         let _ = std::fs::remove_dir_all(root);
     }

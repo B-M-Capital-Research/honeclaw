@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 01:10 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
@@ -77,9 +77,24 @@
 - `opencode_acp` 侧虽然已注明不能回放旧会话 chunk，但本轮现象说明附件/技能链路仍存在“内部 chunk 或 transcript 被拼进最终回复”的独立缺口。
 - 同轮随后反复出现 `tool call result does not follow tool call`，说明协议污染很可能进一步破坏了后续消息序列，导致会话无法恢复到正常的图片处理路径。
 
-## 下一步建议
+## 修复情况（2026-04-16）
 
-- 排查图片附件默认技能链路在 Feishu 直聊中的最终出站文本拼装，确认 `progress`、`tool_call`、`tool_result` 为什么仍能穿透到 `response.content`。
-- 为图片/技能链路补一条回归测试，覆盖“上传图片附件时最终发送内容不得包含 `<think>` / `tool_call` / `tool_result` / skill prompt 展开文本”。
-- 排查同会话后续连续触发 `tool call result does not follow tool call` 的消息序列构造，确认是否由这次泄露的 transcript 污染了历史上下文。
-- 修复时联动复核 `docs/bugs/channel_raw_llm_error_exposure.md`，避免只拦住 transcript 泄露但继续把底层 provider 报错直发给用户。
+- `crates/hone-channels/src/agent_session.rs` 的成功持久化路径已统一收口：
+  - 成功执行后不再把 runner 返回的 `context_messages` 原样落库
+  - 现在统一只持久化“最终可见 assistant 文本 + assistant tool call metadata”
+- 这意味着即使 runner 内部拿到了包含 `tool_call` / `tool_result` / skill transcript / manifest path 的上下文消息，session history 里也不会再把它们保存成用户可见 assistant 正文。
+- 同时保留了后续恢复上下文所需的 tool-call metadata，因此不会把需要的工具调用线索一起丢掉。
+
+## 回归验证
+
+- `cargo test -p hone-channels successful_context_messages_persist_only_final_text_and_tool_metadata -- --nocapture`
+- `cargo test -p hone-channels persistable_turn_from_response_ -- --nocapture`
+- `cargo test -p hone-channels restore_context_sanitizes_polluted_assistant_history -- --nocapture`
+- `cargo check -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session.rs`
+- `git diff --check`
+
+## 后续建议
+
+- 如果还要进一步收紧图片附件链路，可以继续在出站层补一条端到端 contract test，直接验证“成功发送到 Feishu 的最终正文不包含 `<think>` / `tool_call` / `tool_result` / manifest/path”。
+- 同会话后续出现的 `tool call result does not follow tool call` 更像是历史污染留下的次生故障；主持久化出口收紧后，这类后续失败的复现概率应显著下降，必要时再单独拆 bug 跟踪。
