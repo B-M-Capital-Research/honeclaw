@@ -91,6 +91,18 @@ fn build_failed_reply_text(
     prepend_reply_prefix(reply_prefix, &display)
 }
 
+fn persist_visible_assistant_message(
+    state: &Arc<AppState>,
+    session_id: &str,
+    content: &str,
+    metadata: Option<HashMap<String, Value>>,
+) {
+    let _ = state
+        .core
+        .session_storage
+        .add_message(session_id, "assistant", content, metadata);
+}
+
 #[async_trait]
 impl EventHandler for FeishuEventHandler {
     fn event_type(&self) -> &str {
@@ -585,6 +597,7 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         user: Some(user_metadata),
         assistant: Some(metadata),
     };
+    let assistant_message_metadata = message_metadata.assistant.clone();
 
     let envelope = IncomingEnvelope {
         message_id: Some(msg.message_id.clone()),
@@ -739,6 +752,12 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             &final_text,
             response.error.as_deref(),
         );
+        persist_visible_assistant_message(
+            &state,
+            &session_id,
+            &display,
+            assistant_message_metadata.clone(),
+        );
         if let Some(ck) = &cardkit_session {
             ck.close(&preprocess_markdown_for_feishu(&display, true))
                 .await;
@@ -759,6 +778,12 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         let fallback = prepend_reply_prefix(
             reply_prefix.as_deref(),
             "抱歉，没有获取到回复内容。请稍后再试。",
+        );
+        persist_visible_assistant_message(
+            &state,
+            &session_id,
+            &fallback,
+            assistant_message_metadata.clone(),
         );
         if let Some(ck) = &cardkit_session {
             ck.close(&fallback).await;

@@ -3,7 +3,7 @@
 - title: Feishu 直聊 placeholder 假启动与 release runner 生效链路修复
 - status: in_progress
 - created_at: 2026-04-16 14:12 CST
-- updated_at: 2026-04-16 15:06 CST
+- updated_at: 2026-04-16 15:42 CST
 - owner: Codex
 - related_files:
   - bins/hone-feishu/src/handler.rs
@@ -28,6 +28,7 @@
 
 - 排查 `process_incoming_message` 在 placeholder 前后和 `session.run()` 之前的静默中断点
 - 修复 Feishu 文本/空输入/异常兜底路径，避免“placeholder 假启动”
+- 修复 Feishu 在 `session.run()` 失败或空回复兜底时只给用户发文案、但不把可见 assistant 结果写回 session storage 的缺口
 - 将 `+8613871396421` 对应 Feishu 身份加入当前运行配置管理员名单
 - 修复 desktop release 运行态误把 legacy `data/runtime/config_runtime.yaml` 当作 steady-state 配置源的问题
 - 修复 desktop 前端缺少 `codex_acp` runner 展示入口、导致 live config 与 UI 状态不一致的问题
@@ -49,6 +50,7 @@
   - 重启当前 `hone-release` 进程组并确认 Feishu 渠道重新连上 stream
 - 待补：
   - 下一条真实 Feishu 用户消息的端到端验证
+  - 新版 release app 切换后确认失败兜底 assistant 会正确落库
 
 ## Documentation Sync
 
@@ -61,3 +63,4 @@
 
 - 最新“喂喂喂”“1”两条消息未成功落库，现有证据只能定位到 placeholder 后静默中断，仍需通过代码路径与新日志进一步缩小范围
 - release app 当前运行方式混用了 legacy `config_runtime.yaml` 与 canonical/effective config；若 live service 不是由 desktop bundled sidecar 拉起，还需额外校准外部 supervisor 的启动环境
+- 当前已确认“用户端看见失败兜底，但 session 未记录 assistant 失败消息”是真实缺口；更上游导致失败兜底的 runner / LLM 根因仍需依赖新版本落库后的样本继续聚类
