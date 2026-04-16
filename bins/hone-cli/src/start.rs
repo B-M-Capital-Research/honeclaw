@@ -250,8 +250,6 @@ pub(crate) async fn run_start(explicit_config: Option<&Path>) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Stdio;
-    use tokio::process::Command;
 
     #[test]
     fn unexpected_exit_hint_includes_discord_token_guidance() {

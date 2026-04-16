@@ -775,16 +775,17 @@ fn prompt_optional_discord_token(
         let Some(token) = prompt_secret(theme, prompt, keep_note)? else {
             return Ok(None);
         };
-        let len = token.trim().len();
-        match validate_discord_token(&token) {
+        let normalized_token = token.trim().to_string();
+        let len = normalized_token.len();
+        match validate_discord_token(&normalized_token) {
             DiscordTokenValidation::Valid => {
                 println!("[✓] Token 格式有效（长度={len}）。");
-                return Ok(Some(token));
+                return Ok(Some(normalized_token));
             }
             DiscordTokenValidation::Warn(message) => {
                 println!("[!] {message}（长度={len}）。");
                 if prompt_bool(theme, "仍然保存这个 Discord token？", false)? {
-                    return Ok(Some(token));
+                    return Ok(Some(normalized_token));
                 }
             }
             DiscordTokenValidation::Invalid(message) => {
@@ -811,16 +812,17 @@ fn prompt_onboard_required_discord_token(
             prompt_channel_recovery_action(theme, channel_label, prompt)?,
         ) {
             RequiredFieldResolution::Value(value) => {
-                let len = value.trim().len();
-                match validate_discord_token(&value) {
+                let normalized_value = value.trim().to_string();
+                let len = normalized_value.len();
+                match validate_discord_token(&normalized_value) {
                     DiscordTokenValidation::Valid => {
                         println!("[✓] Token 格式有效（长度={len}）。");
-                        return Ok(Some(value));
+                        return Ok(Some(normalized_value));
                     }
                     DiscordTokenValidation::Warn(message) => {
                         println!("[!] {message}（长度={len}）。");
                         if prompt_bool(theme, "仍然使用这个 Discord token？", false)? {
-                            return Ok(Some(value));
+                            return Ok(Some(normalized_value));
                         }
                     }
                     DiscordTokenValidation::Invalid(message) => {
