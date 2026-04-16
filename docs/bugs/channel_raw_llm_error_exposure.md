@@ -22,6 +22,12 @@
     - `2026-04-16 00:05:57.918` `MsgFlow/feishu failed ... error="LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013)"`
     - `2026-04-16 00:06:00.133`、`00:06:48.002`、`00:07:21.540`、`00:07:25.806` 同会话持续复现相同错误，说明并非单次抖动
     - `2026-04-16 01:10:05.509` 与 `01:10:08.485` 同会话再次记录 `MsgFlow/feishu failed ... error="LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013)"`
+  - 2026-04-16 08:32 scheduler 再次复现：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=1839`，`job_name=每日美股收盘与持仓早报`，`executed_at=2026-04-16T08:32:01.996117+08:00`
+    - `execution_status=execution_failed`，`message_send_status=sent`，`delivered=1`
+    - `response_preview` 与 `error_message` 都直接等于 `LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013)`
+    - `run_id=1840`，`job_name=每日持仓分析早报`，`executed_at=2026-04-16T08:32:05.416666+08:00`，同样以原始 provider 报错作为已发送内容落库
   - 更完整的渠道日志：`data/runtime/logs/hone-feishu.release-restart.log`
     - `2026-04-15T12:58:58.152238Z` 同样记录 `error="LLM 错误: bad_request_error: invalid params, invalid function arguments json string, tool_call_id: call_function_v0wwk1qhh65v_1 (2013)"`
     - `2026-04-15T16:05:57.918Z` 到 `2026-04-15T16:07:25.806Z` 同样反复记录 `error="LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013)"`
@@ -52,6 +58,7 @@
 - 这次真实故障中的错误文本包含 `bad_request_error`、`invalid function arguments json string` 和具体 `tool_call_id`，都属于内部实现细节。
 - 最近一小时复现说明泄露文本的具体形态会变化，除了 `invalid function arguments json string` 之外，还会直接把 `tool call result does not follow tool call` 这类协议级报错发给用户。
 - 而且这类透传并不要求会话整轮完全失败：`01:10:01` 刚完成一次“表面成功”的回复后，`01:10:05` 与 `01:10:08` 紧接着又落回同类 provider 错误，说明失败链路净化缺口会在同一会话内持续暴露。
+- `08:32` 的两条 scheduler 运行进一步证明：不仅直聊失败分支会透传原始错误，scheduler 也会把同样的 `bad_request_error` 直接写进 `response_preview` 并记成 `sent + delivered=1`。
 - 该问题不是 `context window exceeds limit` 老缺陷的原样回归；老缺陷只为“上下文超限”补了特判改写，其他 provider 错误仍会直出。
 - 同类风险不只存在于 Feishu：共享的 `run_session_with_outbound(...)` 失败路径也会执行 `抱歉，处理失败：{truncate_chars(err, 300)}`，说明这是跨渠道的共性缺口。
 

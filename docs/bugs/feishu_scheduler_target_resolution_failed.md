@@ -20,6 +20,11 @@
     - `data/runtime/logs/hone-feishu.release-restart.log`
       - `2026-04-15T13:04:28.729124Z` 同样记录 `target_resolution_failed`
       - `2026-04-15T13:35:01.515179Z` 同样记录 `target_resolution_failed`
+  - 2026-04-16 08:31 最新复核：
+    - `run_id=1838`，`job_id=j_b3bc4b42`，`job_name=每日宏观与AI早报`，`executed_at=2026-04-16T08:31:58.676736+08:00`
+    - `execution_status=completed`，`message_send_status=target_resolution_failed`，`delivered=0`
+    - `response_preview` 已生成约 1.3k 字完整晨报，但 `error_message=集成错误: No user found for mobile ou_e31244b1208749f16773dce0c822801a`
+    - 说明当前失败形态已从“receive_id 与 actor 不匹配”扩展到“解析结果本身无法在用户目录中反查”，但仍然落在同一条 direct scheduler 目标校验链路上
   - 更早历史复核：
     - 同一 `actor_user_id=ou_3f69c84593eccd71142ed767a885f595`、同一 `channel_target=+8617326027390` 的失败记录可追溯到 `2026-03-25`
     - 说明这不是“本小时偶发回归”，而是长期存在且当前仍在持续影响用户的活跃缺陷
@@ -46,6 +51,7 @@
 - 当前同一用户的多个 Feishu 定时任务在最近一小时内连续命中 `target_resolution_failed`。
 - 一部分 run 已经生成了较长 `response_preview`，说明任务主体并非没跑，而是“产出内容后在投递前被拦住”。
 - 另一部分 run 会同时叠加执行期错误，但即便执行阶段成功，最终也仍然会在目标校验处失败。
+- `08:31` 的 `每日宏观与AI早报` 还表明，即使本轮内容完整生成，目标解析也可能进一步退化成 `No user found for mobile ou_e31244...`，说明 direct scheduler 的目标字段已经不是稳定的 canonical mobile/open_id 表达。
 - 从日志历史看，这个目标解析不一致问题已经持续多周，当前仍没有恢复。
 
 ## 用户影响
@@ -56,9 +62,9 @@
 
 ## 根因判断
 
-- 任务配置中的 `channel_target` 与绑定 actor 的 canonical `open_id` 长期不一致，当前解析逻辑会把手机号再次解析到另一个用户的 `open_id`。
+- 任务配置中的 `channel_target` 与绑定 actor 的 canonical 标识长期不一致，当前解析逻辑既可能把手机号解析到另一个用户的 `open_id`，也可能把已经像 `open_id` 的值再次当成 mobile 反查。
 - 发送前新增的一致性校验阻止了旧的跨用户误投，但没有配套的迁移或修复机制来纠正历史错误 target，因此任务会持续卡在拒发状态。
-- `cron_job_runs` 已多次显示相同 `channel_target -> receive_id` 映射错误，说明问题更接近“定时任务目标存量数据或解析策略不一致”，而不是本轮模型输出异常。
+- `cron_job_runs` 已多次显示相同 direct scheduler 在 `receive_id 不匹配` 与 `No user found` 两种校验错误间切换，说明问题更接近“定时任务目标存量数据或解析策略不一致”，而不是本轮模型输出异常。
 
 ## 下一步建议
 

@@ -10,11 +10,18 @@
 - Prompt audit: `data/runtime/prompt-audit/feishu/20260415-171407-Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb.json`
 - LLM audit: `data/llm_audit.sqlite3`
 - 运行日志: `data/runtime/logs/web.log`
- - 2026-04-16 最近一小时再次复现：
+- 2026-04-16 最近一小时再次复现：
    - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
    - `2026-04-16 01:07:39.381` 会话自动 compact，并写回 `role=user` 的 `【Compact Summary】...`
    - 同条 summary 直接伪造了“根据截图内容，一鸣的持仓情况如下”表格，包含 `RKLB 500股 / 成本$68.50`、`SNDK 200股 / 成本$245.00 / 当前价$887.00` 等未验证字段
    - `2026-04-16T01:10:01.999236+08:00` assistant 后续正式回复继续引用该伪摘要中的两只持仓，称“根据compact summary，看起来之前已经有部分分析结果了”
+ - 2026-04-16 08:47-09:00 最新复核：
+   - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+   - `2026-04-16 08:47:56.682377+08:00` 会话再次写回 `role=user` 的 `【Compact Summary】...`，内容仍是带明确投资结论的 A 股股票表，而不是系统内部摘要
+   - `2026-04-16 08:51:51.243193+08:00` 同轮 scheduler 任务最终 assistant 为空，说明这份 summary 在进入本轮任务前已被回灌进上下文，但没有产生新的正常回答
+   - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+   - `2026-04-16 09:00:44.238102+08:00` 新一轮定时任务又在触发后被写回 `role=user` 的 `【Compact Summary】...`
+   - 同轮 `web.log` 记录 `09:00:28.557` `context overflow detected`，随后 `09:00:44.239` `context_overflow_recovery compacted=true`，说明 scheduler 会话在本轮任务运行中再次把摘要回灌到上下文
 
 ## 端到端链路
 
@@ -69,6 +76,19 @@
   - 最终回复继续要求用户基于这两只股票补录其它持仓，证明 compact summary 已经污染本轮“识别四张截图”的主任务链路
 - 这次复现和前两次事故共享同一根因：系统不是在概括旧上下文，而是在 `role=user` 的 summary 中提前作答，并把伪结论回灌给正式回答阶段。
 
+## 当前实现效果（2026-04-16 08:47-09:00 最近一小时复核）
+
+- 缺陷继续出现在 Feishu scheduler 会话中，且已不局限于单条图片会话：
+  - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+  - `2026-04-16 08:47:56.682377+08:00` 先写回 `role=user` 的 `【Compact Summary】...`
+  - 紧接着 `2026-04-16 08:51:51.243193+08:00` scheduler 任务完成时 assistant 为空，`sessions.last_message_preview` 也为空，说明 compact summary 已被回灌但这轮没有形成新的可用答复
+- 到 `09:00`，同类问题又在另一条 Feishu scheduler 会话上叠加了上下文溢出重压缩：
+  - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+  - `2026-04-16 09:00:28.557` `web.log` 记录 `context overflow detected, compacting and retrying`
+  - `2026-04-16 09:00:44.239` 记录 `context_overflow_recovery compacted=true`
+  - 同一时间 `session_messages` 新增 `role=user` 的 `【Compact Summary】...`，其中仍是结构化股票关注表，而不是隔离在系统态的压缩元数据
+- 这说明当前缺陷不仅会“把最后一个问题提前答掉”，还会在 scheduler 场景里把旧会话总结持续注入新一轮定时任务上下文；一旦再叠加 `context_overflow_recovery`，污染会在同轮任务内被再次固化。
+
 ## 已确认事实
 
 - 本次事故里没有用户上传的 PDF / 图片 / 附件报告。
@@ -95,7 +115,7 @@
 2. 压缩结果被存成 `role=user` 消息，语义上过于像用户自己提供的材料。
 3. 回答链路没有对 `session.compact_summary` 做足够强的隔离或降权，导致 multi-agent search / answer 会把它理解成原始用户请求的一部分。
 4. 压缩提示词只要求“总结历史”，但没有显式禁止“回答最后一个问题”或“生成新的投研报告”。
-5. 最近两次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段，而且污染题材会随当前最后一个用户任务漂移。
+5. 最近多次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段；一旦叠加 overflow recovery，这份污染还会在同轮 scheduler 任务内再次被固化。
 
 ## 建议修复方向
 

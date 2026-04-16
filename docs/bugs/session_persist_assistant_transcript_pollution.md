@@ -18,6 +18,10 @@
   - 对照复现会话：
     - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
     - `2026-04-16T01:10:01.999236+08:00` assistant 同样以 `progress/tool_call/tool_result/final` 混合结构落库；这条会话已在 `feishu_attachment_internal_transcript_leak.md` 中证明用户侧也看到了泄露内容
+  - 2026-04-16 08:31 最新复核：
+    - `session_id=Actor_feishu__direct__ou_5f0a88f4c2105e8388aa2a63ae847f7f28`
+    - `2026-04-16T08:31:33.820805+08:00` scheduler 成功会话的 assistant 预览直接以 `<think> The user has a scheduled task triggering the "创新药持仓每日动态推送"...` 开头
+    - 同轮 `cron_job_runs.run_id=1837` 记为 `completed + sent + delivered=1`，说明即便任务表面成功，`sessions.last_message_preview` 仍保存了未净化 transcript
   - 相关历史缺陷：
     - `docs/bugs/multi_agent_internal_output_leak.md`
     - `docs/bugs/feishu_attachment_internal_transcript_leak.md`
@@ -42,6 +46,7 @@
 - 同一条消息既包含 `<think>`，又包含两个 `data_fetch` 的 `tool_call/tool_result`，最后才附带 `final`，说明落库对象不是净化后的最终答案。
 - `sessions.last_message_preview` 也直接以 `<think>` 开头，说明这份污染已经进入会话索引层，而不只是明细表内部可见。
 - 对照同时间窗的图片会话可见，这种持久化污染并非只存在于失败链路；在失败链路里它会进一步升级成用户侧泄露，在成功链路里则以“历史脏写入”的形式继续存在。
+- `08:31` 的 `创新药持仓每日动态推送` 则进一步证明：即使 scheduler 已经 `completed + sent + delivered=1`，会话索引层仍可能把 `<think>` 作为最后一条 assistant 预览保存下来，说明污染范围不止于直聊问答，也覆盖定时任务成功链路。
 
 ## 用户影响
 
