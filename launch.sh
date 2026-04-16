@@ -19,9 +19,9 @@ cd "$PROJECT_ROOT" || exit 1
 TARGET_DIR="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}"
 default_target_dir() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "$HOME/Library/Caches/hone-financial/target"
+    echo "$HOME/Library/Caches/honeclaw/target"
   else
-    echo "${XDG_CACHE_HOME:-$HOME/.cache}/hone-financial/target"
+    echo "${XDG_CACHE_HOME:-$HOME/.cache}/honeclaw/target"
   fi
 }
 
@@ -52,8 +52,20 @@ pid_file() {
   echo "$RUNTIME_DIR/$1.pid"
 }
 
+write_current_pid() {
+  echo "$$" > "$(pid_file current)"
+}
+
 bin_path() {
   echo "$TARGET_DIR/debug/$1"
+}
+
+release_desktop_bin_path() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "$TARGET_DIR/release/bundle/macos/Hone Financial.app/Contents/MacOS/hone-desktop"
+  else
+    echo "$TARGET_DIR/release/hone-desktop"
+  fi
 }
 
 pid_is_running() {
@@ -145,9 +157,7 @@ build_frontend_desktop() {
 
 build_desktop_release() {
   echo "[INFO] building desktop release artifacts..."
-  build_frontend_desktop
-  bun run tauri:prep:build
-  cargo build -p hone-mcp -p hone-desktop --release
+  bun run build:desktop
 }
 
 desktop_config_dir() {
@@ -387,6 +397,7 @@ if [[ "$START_DESKTOP" == "1" ]]; then
   bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json &
   DESKTOP_PID=$!
   echo "$DESKTOP_PID" > "$(pid_file desktop)"
+  write_current_pid
   echo "[INFO] desktop starting… (Vite: http://127.0.0.1:3000)"
   echo "[INFO] press Ctrl-C to stop."
   wait "$DESKTOP_PID"
@@ -397,16 +408,18 @@ elif [[ "$START_RELEASE" == "1" ]]; then
   export HONE_DESKTOP_CONFIG_DIR="${HONE_DESKTOP_CONFIG_DIR:-$RUNTIME_DIR/desktop-config}"
   mkdir -p "$HONE_DESKTOP_CONFIG_DIR"
   write_desktop_backend_config_bundled
-  RELEASE_DESKTOP_BIN="$TARGET_DIR/release/hone-desktop"
+  RELEASE_DESKTOP_BIN="$(release_desktop_bin_path)"
   if [[ ! -x "$RELEASE_DESKTOP_BIN" ]]; then
     echo "[FAIL] missing desktop release binary: $RELEASE_DESKTOP_BIN"
     exit 1
   fi
   echo "[INFO] desktop release data dir: $HONE_DESKTOP_DATA_DIR"
   echo "[INFO] desktop release config dir: $HONE_DESKTOP_CONFIG_DIR"
+  echo "[INFO] desktop release executable: $RELEASE_DESKTOP_BIN"
   "$RELEASE_DESKTOP_BIN" &
   DESKTOP_PID=$!
   echo "$DESKTOP_PID" > "$(pid_file desktop)"
+  write_current_pid
   echo "[INFO] desktop release running (pid=$DESKTOP_PID)"
   echo "[INFO] press Ctrl-C to stop."
   wait "$DESKTOP_PID"
@@ -439,6 +452,7 @@ elif [[ "$START_WEB" == "1" ]]; then
   bun run dev:web &
   FRONTEND_PID=$!
   echo "$FRONTEND_PID" > "$(pid_file frontend)"
+  write_current_pid
   echo "[INFO] frontend ready: http://127.0.0.1:3000"
   echo "[INFO] press Ctrl-C to stop."
   wait "$FRONTEND_PID"
@@ -466,6 +480,7 @@ else
   start_hone_bin hone-feishu feishu FEISHU_PID
   start_hone_bin hone-telegram telegram TELEGRAM_PID
 
+  write_current_pid
   echo "[INFO] frontend disabled. pass --web or --desktop to start it."
   echo "[INFO] press Ctrl-C to stop."
   wait "$BACKEND_PID"

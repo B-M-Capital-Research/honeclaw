@@ -105,6 +105,12 @@ The expected bundle path on macOS is:
 /Users/ecohnoch/Library/Caches/honeclaw/target/release/bundle/macos/Hone Financial.app
 ```
 
+Current repo helpers now align with this cache target:
+
+- `launch.sh --release` builds and launches the packaged `.app` executable on macOS
+- `scripts/build_desktop.sh` also defaults to `/Users/<user>/Library/Caches/honeclaw/target`
+- do not mix these helpers with the legacy `hone-financial/target` cache path
+
 ## Start The Release App
 
 Run the executable inside the `.app` bundle with the repo-local runtime env:
@@ -370,8 +376,9 @@ curl http://127.0.0.1:8077/api/channels
 ### `launch.sh --release` vs direct `.app` launch
 
 - `./launch.sh --release` is useful as a build-and-run helper
-- but the most reliable macOS runtime shape is still the packaged `.app`
-- if there is ever a discrepancy, prefer the `.app` bundle path documented above
+- it now launches the same packaged `.app/Contents/MacOS/hone-desktop` path documented above
+- `launch.sh` also records its own supervisor pid in `data/runtime/current.pid`, which is the contract used by `restart_hone` to stop the previous supervisor cleanly before relaunch
+- if there is ever a discrepancy, prefer the `.app` bundle path documented above and verify `current.pid` still points to the active `launch.sh` supervisor
 
 ## Recommended Team Habit
 

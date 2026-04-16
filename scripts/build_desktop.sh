@@ -12,9 +12,9 @@ cd "$PROJECT_ROOT" || exit 1
 
 default_target_dir() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "$HOME/Library/Caches/hone-financial/target"
+    echo "$HOME/Library/Caches/honeclaw/target"
   else
-    echo "${XDG_CACHE_HOME:-$HOME/.cache}/hone-financial/target"
+    echo "${XDG_CACHE_HOME:-$HOME/.cache}/honeclaw/target"
   fi
 }
 
