@@ -142,9 +142,35 @@ Verified search tool transcript (JSON):\n{}",
     }
 
     fn sanitize_search_context(&self, mut context: AgentContext) -> (AgentContext, usize) {
-        let original_len = context.messages.len();
-        context.messages.retain(|message| message.role != "tool");
-        let removed = original_len.saturating_sub(context.messages.len());
+        let mut removed = 0usize;
+        let mut sanitized_messages = Vec::with_capacity(context.messages.len());
+
+        for mut message in context.messages.into_iter() {
+            if message.role == "tool" {
+                removed += 1;
+                continue;
+            }
+
+            if message.role == "assistant" {
+                let had_tool_calls = message
+                    .tool_calls
+                    .as_ref()
+                    .map(|calls| !calls.is_empty())
+                    .unwrap_or(false);
+                if had_tool_calls {
+                    removed += 1;
+                    message.tool_calls = None;
+                    let content = message.content.as_deref().map(str::trim).unwrap_or("");
+                    if content.is_empty() {
+                        continue;
+                    }
+                }
+            }
+
+            sanitized_messages.push(message);
+        }
+
+        context.messages = sanitized_messages;
         (context, removed)
     }
 
@@ -622,6 +648,62 @@ mod tests {
         assert_eq!(sanitized.messages.len(), 2);
         assert_eq!(sanitized.messages[0].role, "user");
         assert_eq!(sanitized.messages[1].role, "assistant");
+    }
+
+    #[test]
+    fn sanitize_search_context_strips_historical_assistant_tool_calls() {
+        let runner = make_runner();
+        let mut context = AgentContext::new("session".to_string());
+        context.messages.push(AgentMessage {
+            role: "assistant".to_string(),
+            content: Some("historical note".to_string()),
+            tool_calls: Some(vec![json!({
+                "id": "call_legacy",
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "arguments": "{\"query\":\"OpenAI\"}"
+                }
+            })]),
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        });
+
+        let (sanitized, removed) = runner.sanitize_search_context(context);
+        assert_eq!(removed, 1);
+        assert_eq!(sanitized.messages.len(), 1);
+        assert_eq!(sanitized.messages[0].role, "assistant");
+        assert_eq!(
+            sanitized.messages[0].content.as_deref(),
+            Some("historical note")
+        );
+        assert!(sanitized.messages[0].tool_calls.is_none());
+    }
+
+    #[test]
+    fn sanitize_search_context_drops_empty_assistant_tool_call_shells() {
+        let runner = make_runner();
+        let mut context = AgentContext::new("session".to_string());
+        context.messages.push(AgentMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: Some(vec![json!({
+                "id": "call_legacy",
+                "type": "function",
+                "function": {
+                    "name": "data_fetch",
+                    "arguments": "{\"symbol\":\"AAPL\"}"
+                }
+            })]),
+            tool_call_id: None,
+            name: None,
+            metadata: None,
+        });
+
+        let (sanitized, removed) = runner.sanitize_search_context(context);
+        assert_eq!(removed, 1);
+        assert!(sanitized.messages.is_empty());
     }
 
     #[test]

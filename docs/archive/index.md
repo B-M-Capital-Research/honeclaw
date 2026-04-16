@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-16
 
+### 搜索失败提示主根因修复与 Tavily 复核
+
+- Status: done
+- Date: 2026-04-16
+- Plan: `docs/archive/plans/search-failure-tavily-and-tool-call-fix.md`
+- Handoff: `docs/handoffs/2026-04-16-search-failure-tavily-and-tool-call-fix.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels sanitize_search_context -- --nocapture`, `env CARGO_TARGET_DIR=/Users/ecohnoch/Library/Caches/honeclaw/target bunx tauri build --config bins/hone-desktop/tauri.generated.conf.json`
+- Current conclusion: `web_search` 工具确实走 Tavily，但当前统一失败提示的主根因不是 Tavily 全局不可用，而是 multi-agent 搜索阶段历史上下文清洗不完整，遗留 assistant `tool_calls` 与被删除的 `tool` 结果失配，触发 OpenAI-compatible provider `tool call result does not follow tool call (2013)`；该问题现已修复并完成定向测试与 desktop release 打包验证
+- Next entry point: `docs/handoffs/2026-04-16-search-failure-tavily-and-tool-call-fix.md`
+
 ### Desktop 启动坑位沉淀与会话列表恢复
 
 - Status: done

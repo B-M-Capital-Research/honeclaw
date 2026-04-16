@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 13:30 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近失败样本横向比对：`data/runtime/logs/web.log`
     - 在最近 5000 行内共识别到 17 条 `MsgFlow/feishu failed`
@@ -32,6 +32,10 @@
   - 代码线索：
     - Multi-agent 搜索阶段 provider 为 OpenAI-compatible `https://api.minimaxi.com/v1`
     - 用户态错误在 `crates/hone-channels/src/runtime.rs` 被统一收口为通用失败提示
+  - 2026-04-16 当前源码修复与验证：
+    - `crates/hone-channels/src/runners/multi_agent.rs` 中 `sanitize_search_context(...)` 现已同时移除历史 `tool` 消息、剥离历史 assistant 上残留的 `tool_calls`，并丢弃只剩空壳 tool-call 的 assistant 消息
+    - 定向回归：`cargo test -p hone-channels sanitize_search_context -- --nocapture` 通过
+    - release 打包验证：`env CARGO_TARGET_DIR=/Users/ecohnoch/Library/Caches/honeclaw/target bunx tauri build --config bins/hone-desktop/tauri.generated.conf.json` 通过
 
 ## 端到端链路
 
@@ -50,9 +54,9 @@
 ## 当前实现效果
 
 - 用户侧现在不会再看到原始 `invalid params` 文本，这说明错误净化层本身是生效的。
-- 但从最近失败样本统计看，通用失败提示背后最常见的根因正是这条协议错位错误，而不是超时或网络抖动。
-- 这类错误既会出现在复杂图片/附件会话，也会出现在普通文本问答里，说明影响范围已经超出单一场景。
-- 在 `13:12` 的普通直聊样本中，用户发出新的投资问题后 4 秒内即失败，且没有 assistant 落库，说明这不是“部分答案较差”，而是链路直接中断。
+- 修复前，从最近失败样本统计看，通用失败提示背后最常见的根因正是这条协议错位错误，而不是超时或网络抖动。
+- 根因在于搜索阶段为了避免旧工具结果污染新一轮搜索，只删除了历史 `tool` 消息，却保留了对应 assistant `tool_calls`；这会把 transcript 变成“不完整的 tool-call 对”，进而被 OpenAI-compatible provider 以 `tool call result does not follow tool call (2013)` 拒绝。
+- 当前源码已把这类历史 assistant `tool_calls` 一并清洗，且会丢弃只剩 tool-call 骨架、没有正文内容的 assistant 消息，避免继续把无效协议片段带入新一轮搜索阶段。
 
 ## 用户影响
 
@@ -63,11 +67,10 @@
 ## 根因判断
 
 - 直接触发点是 OpenAI-compatible 搜索阶段在 tool-call 序列上出现协议错位，provider 因 `tool call result does not follow tool call` 拒绝继续处理。
-- 现有系统只解决了“这类内部错误不要直接暴露给用户”，没有解决“这类协议错误为什么频繁发生、发生后如何恢复”。
-- 历史文档里曾把它作为其它缺陷的附属现象记录，但最近失败样本表明它已经是独立、活跃、且高频的主因，应单独跟踪。
+- 更具体地说，`sanitize_search_context(...)` 旧实现只删除 `role=tool` 的历史消息，没有同步删除或剥离与之配对的 assistant `tool_calls`，从而构造出了 provider 侧非法的消息序列。
+- 现有系统之前只解决了“这类内部错误不要直接暴露给用户”，没有解决“这类协议错误为什么频繁发生、发生后如何恢复”；本轮已完成源码级修复和回归验证。
 
 ## 下一步建议
 
-- 优先排查搜索阶段 tool-call / tool-result 序列组装与持久化边界，尤其是多轮会话、图片会话与补发消息场景。
-- 在修复完成前，继续把 `invalid params, tool call result does not follow tool call (2013)` 视作最近通用失败提示的主导信号，而不是单次偶发。
-- 若短期内无法根除，可先为这类协议错误增加一次受控重建/重试，避免用户每次都要手工重发。
+- 持续观察 `data/runtime/logs/web.log` 中是否还有新的 `tool call result does not follow tool call (2013)` 样本，以确认线上行为已收敛。
+- 若后续仍有零星 provider 协议失败，可继续考虑在搜索阶段为这类已知协议错误增加一次受控重建/重试。

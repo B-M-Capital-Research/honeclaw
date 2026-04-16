@@ -31,6 +31,10 @@
   - 代码线索：
     - 搜索阶段 provider 仍指向 `https://api.minimaxi.com/v1`
     - 通用用户态文案收口位于 `crates/hone-channels/src/runtime.rs`
+  - 2026-04-16 配置与连通性复核：
+    - `crates/hone-tools/src/web_search.rs` 已确认 `web_search` 工具走 Tavily，不走 MiniMax
+    - 当前 desktop 生效配置中 Tavily key 池存在 4 个 key，其中抽查结果为 1 个 `HTTP 432` 配额拒绝、3 个可正常返回 `200`
+    - 因此，本缺陷中的 `https://api.minimaxi.com/v1/chat/completions` 发送失败属于 multi-agent search provider 传输问题，不是 Tavily 缺 key 或 Tavily 全局不可用所致
   - 相关缺陷：
     - `docs/bugs/channel_raw_llm_error_exposure.md`
     - `docs/bugs/feishu_direct_cron_job_iteration_exhaustion_no_reply.md`
