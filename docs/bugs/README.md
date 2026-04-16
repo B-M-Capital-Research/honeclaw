@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 17:40 CST
+最后更新：2026-04-16 18:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -29,8 +29,8 @@
 | Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | New | 2026-04-16 15:44 真实会话复现；根因是 quota 已达 `12/12`，但渠道把业务拒绝伪装成通用系统失败 | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-16 16:00 真实会话复现；`session.persist_assistant/done` 后仍继续启动 `hone/web_search`，但用户侧只收到 55 字过渡句 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | New | 2026-04-16 13:08 Feishu 直聊 `rklb要不要加` 命中；52 秒后同句重试成功，说明当前缺少对传输抖动的吸震 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-16 17:31 仍在扩大；除 `Monitor_Watchlist_11`、`AAOI_动态监控` 外，`小米30港元破位预警` 与 `存储板块加仓信号监控` 也开始命中 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 17:31 `RKLB_动态监控` 与 `AAOI_动态监控` 再次同时超窗，说明不是 17:01 的短暂恢复就已收口 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
+| Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-16 18:01 同批任务继续抖动：`Monitor_Watchlist_11` 与 `小米30港元破位预警` 已恢复 `JsonNoop`，但 `AAOI_动态监控` 仍落成 `JsonUnknownStatus + execution_failed` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 18:01 同批任务继续抖动：`TEM_动态监控` 与 `RKLB_动态监控` 已恢复投递成功，但 `AAOI_动态监控` 仍未稳定收口 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 
 ## 已修复 / 已关闭
 
