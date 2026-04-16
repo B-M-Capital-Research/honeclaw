@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 2026-04-15 当前源码复核
   - 代码证据:
@@ -49,3 +49,18 @@
 - 前端 runner 卡片点击应先判断目标值是否已与当前 runner 相同；相同则直接短路，不触发保存。
 - runner 自动保存链路应复用统一的 “saving / switching” 状态，在切换未完成时禁止再次点击。
 - 如需保留“点击即保存”，建议把这条路径的返回结果显式反馈到 UI，避免用户误以为第一次点击没生效而重复触发。
+
+## 修复情况（2026-04-16）
+
+- `packages/app/src/pages/settings.tsx` 的 `selectRunner(...)` 现在会先做两层前端短路：
+  - 点击当前已选 runner 时不再重复触发自动保存
+  - 当上一轮 runner 切换仍处于 `agentSaving` 状态时，不再接受新的 runner 切换点击
+- 同一条自动切换链路不再静默吞错；若保存失败，会回滚 `agentDraft().runner` 到切换前状态，并把错误反馈到设置页
+- Agent settings 区块在 runner 自动切换保存期间会进入禁用态，避免用户在同一轮切换尚未完成时继续触发新的提交
+- `bins/hone-desktop/src/sidecar.rs` 新增了完全相同 `AgentSettings` 的幂等判断；即使前端重复发来同一份 payload，sidecar 也会直接跳过再次写配置和 bundled backend 重启
+- 新增回归证明：
+  - `packages/app/src/pages/settings-model.test.ts`
+  - `bins/hone-desktop/src/sidecar.rs` 中的 `agent_settings_require_save_skips_identical_runner_payloads`
+- 验证命令：
+  - `bun test --preload ./happydom.ts ./src/pages/settings-model.test.ts`
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop agent_settings_require_save_skips_identical_runner_payloads -- --nocapture`

@@ -14,6 +14,7 @@ import type { AgentProvider, AgentSettings, BackendConfig, DesktopChannelSetting
 import {
   appendApiKey,
   appendMaskedKey,
+  canSelectRunner,
   defaultAgentSettings,
   defaultChannelDraft,
   defaultFmpSettings,
@@ -320,12 +321,21 @@ export default function SettingsPage() {
 
   // ── 选中某个 runner 并立即保存 ───────────────────────────────────────────────
   const selectRunner = async (runner: AgentProvider) => {
-    const next = { ...agentDraft(), runner }
+    const previous = agentDraft()
+    if (!canSelectRunner(previous.runner, runner, agentSaving())) return
+    const next = { ...previous, runner }
     setAgentDraft(next)
+    setAgentSaving(true)
+    setAgentMessage("")
+    setAgentError("")
     try {
       await saveDesktopAgentSettings(next)
-    } catch (_) {
-      // 静默失败，主保存按钮仍可用
+      setAgentMessage("已切换 Agent runner")
+    } catch (e) {
+      setAgentDraft(previous)
+      setAgentError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAgentSaving(false)
     }
   }
 
@@ -381,7 +391,7 @@ export default function SettingsPage() {
           选择 Agent 引擎并配置相关参数，保存后立即写入运行时配置。
         </p>
 
-        <fieldset disabled={!backend.state.isDesktop || agentSettingsRes.loading} class="mt-6 space-y-4 disabled:opacity-60">
+        <fieldset disabled={!backend.state.isDesktop || agentSettingsRes.loading || agentSaving()} class="mt-6 space-y-4 disabled:opacity-60">
 
           {/* ── 卡片 0：Multi-Agent ── */}
           <div

@@ -1,5 +1,6 @@
 import type {
   AgentSettings,
+  AgentProvider,
   DesktopChannelSettings,
   DesktopChannelSettingsInput,
   FmpSettings,
@@ -58,6 +59,14 @@ export function mergeAgentSettings(settings?: AgentSettings): AgentSettings {
     auxiliary: settings.auxiliary ?? defaults.auxiliary,
     multiAgent: settings.multiAgent ?? defaults.multiAgent,
   }
+}
+
+export function canSelectRunner(
+  currentRunner: AgentProvider,
+  nextRunner: AgentProvider,
+  isSaving: boolean,
+): boolean {
+  return !isSaving && currentRunner !== nextRunner
 }
 
 export function defaultFmpSettings(): FmpSettings {

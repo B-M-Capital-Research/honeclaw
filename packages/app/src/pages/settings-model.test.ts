@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import {
   appendApiKey,
   appendMaskedKey,
+  canSelectRunner,
   defaultAgentSettings,
   hiddenApiKeys,
   mergeAgentSettings,
@@ -71,5 +72,14 @@ describe("settings-model", () => {
       discordEnabled: true,
       discordBotToken: "token",
     })
+  })
+
+  it("skips runner auto-save when clicking the current runner", () => {
+    expect(canSelectRunner("multi-agent", "multi-agent", false)).toBe(false)
+  })
+
+  it("skips runner auto-save while a runner switch is already saving", () => {
+    expect(canSelectRunner("opencode_acp", "multi-agent", true)).toBe(false)
+    expect(canSelectRunner("opencode_acp", "multi-agent", false)).toBe(true)
   })
 })

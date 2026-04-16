@@ -34,7 +34,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 const API_VERSION: &str = "desktop-v1";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BackendConfig {
     mode: String,
@@ -54,7 +54,7 @@ impl Default for BackendConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DesktopChannelSettings {
     config_path: String,
@@ -72,7 +72,7 @@ pub(crate) struct DesktopChannelSettings {
     discord_bot_token: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DesktopChannelSettingsInput {
     imessage_enabled: bool,
@@ -114,7 +114,7 @@ pub(crate) struct ChannelProcessCleanupResult {
 }
 
 /// Agent 基础设置（写入运行时覆盖层）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MultiAgentSearchSettings {
     #[serde(default)]
@@ -127,7 +127,7 @@ pub(crate) struct MultiAgentSearchSettings {
     max_iterations: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MultiAgentAnswerSettings {
     #[serde(default)]
@@ -142,14 +142,14 @@ pub(crate) struct MultiAgentAnswerSettings {
     max_tool_calls: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MultiAgentSettings {
     search: MultiAgentSearchSettings,
     answer: MultiAgentAnswerSettings,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AuxiliarySettings {
     #[serde(default)]
@@ -160,7 +160,7 @@ pub(crate) struct AuxiliarySettings {
     model: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSettings {
     /// function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent
@@ -945,11 +945,27 @@ fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(&'static str, s
     updates
 }
 
+fn agent_settings_require_save(current: &AgentSettings, next: &AgentSettings) -> bool {
+    current != next
+}
+
 pub(crate) async fn set_agent_settings_impl(
     app: AppHandle,
     state: State<'_, DesktopState>,
     settings: AgentSettings,
 ) -> Result<(), String> {
+    let current_settings = get_agent_settings_impl(app.clone())?;
+    if !agent_settings_require_save(&current_settings, &settings) {
+        log_desktop(
+            &app,
+            "INFO",
+            format!(
+                "agent settings unchanged; skip save/restart runner={}",
+                settings.runner
+            ),
+        );
+        return Ok(());
+    }
     let runtime = ensure_runtime_paths(&app)?;
     let updates = build_agent_setting_updates(&settings);
     with_config_write_lock(&state, || {
@@ -1369,6 +1385,51 @@ fmp:
                 .get("agent.multi_agent.answer.variant")
                 .and_then(serde_yaml::Value::as_str),
             Some("high")
+        );
+    }
+
+    #[test]
+    fn agent_settings_require_save_skips_identical_runner_payloads() {
+        let settings = AgentSettings {
+            runner: "opencode_acp".to_string(),
+            codex_model: String::new(),
+            openai_url: "https://openrouter.ai/api/v1".to_string(),
+            openai_model: "google/gemini-2.5-pro-preview".to_string(),
+            openai_api_key: "sk-or".to_string(),
+            auxiliary: Some(AuxiliarySettings {
+                base_url: "https://api.minimaxi.com/v1".to_string(),
+                api_key: "sk-cp-aux".to_string(),
+                model: "MiniMax-M2.7-highspeed".to_string(),
+            }),
+            multi_agent: Some(MultiAgentSettings {
+                search: MultiAgentSearchSettings {
+                    base_url: "https://api.minimaxi.com/v1".to_string(),
+                    api_key: "sk-cp-search".to_string(),
+                    model: "MiniMax-M2.7-highspeed".to_string(),
+                    max_iterations: 8,
+                },
+                answer: MultiAgentAnswerSettings {
+                    base_url: "https://openrouter.ai/api/v1".to_string(),
+                    api_key: "sk-or-answer".to_string(),
+                    model: "google/gemini-2.5-pro-preview".to_string(),
+                    variant: "high".to_string(),
+                    max_tool_calls: 1,
+                },
+            }),
+        };
+
+        assert!(
+            !agent_settings_require_save(&settings, &settings.clone()),
+            "unchanged settings should not trigger a fresh save/restart"
+        );
+
+        let changed = AgentSettings {
+            runner: "multi-agent".to_string(),
+            ..settings.clone()
+        };
+        assert!(
+            agent_settings_require_save(&settings, &changed),
+            "changing the runner should still trigger save/restart"
         );
     }
 
