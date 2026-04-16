@@ -42,7 +42,7 @@
 - 当前 `HEAD` 仍在 `bins/hone-desktop/src/sidecar.rs:861-869` 先写 `agent.opencode.* = openai*`。
 - 同一次保存里，`bins/hone-desktop/src/sidecar.rs:940-953` 仍会把 `agent.opencode.*` 再覆盖成 `multi_agent.answer.*`。
 - `packages/app/src/pages/settings-model.ts:26-28` 仍默认给 OpenAI-compatible runner 草稿填入独立的 `openaiUrl` / `openaiModel` / `openaiApiKey`，继续强化了“这是另一套独立配置”的 UI 预期。
-- 本轮巡检未发现拆分持久化字段或按当前 runner 条件写入的修复，因此该缺陷继续保持 `New`。
+- 这部分描述记录的是修复前的 HEAD 复核结论；当前状态以文档顶部 `Fixed` 和下方“修复情况（2026-04-16）”为准。
 
 ## 用户影响
 

@@ -41,7 +41,7 @@
 - 当前 `HEAD` 仍在 `bins/hone-desktop/src/sidecar.rs:980` 以 `let _ = connect_backend_serialized(&app, &state).await;` 的方式吞掉 runner 保存后的 bundled backend 重启结果。
 - `packages/app/src/lib/backend.ts:201` 的 `saveDesktopAgentSettings(...)` 仍只返回 `void`，没有把 runtime 重启状态带回前端。
 - `packages/app/src/pages/settings.tsx:322-338` 的 `selectRunner(...)` / `submitAgentSettings(...)` 仍只根据是否抛错判断保存结果，未展示“配置写入成功但 runtime 未切换”的中间态。
-- 本轮巡检未发现把 backend status 回传到 agent settings 保存链路的修复，因此该缺陷继续保持 `New`。
+- 这部分描述记录的是修复前的 HEAD 复核结论；当前状态以文档顶部 `Fixed` 和下方“修复情况（2026-04-16）”为准。
 
 ## 用户影响
 

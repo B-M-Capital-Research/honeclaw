@@ -38,7 +38,7 @@
 - 当前 `HEAD` 仍在 `bins/hone-desktop/src/sidecar/settings.rs:11-14` 用 `llm.auxiliary.api_key` 回填 Search Agent 草稿。
 - 运行时仍在 `crates/hone-channels/src/core.rs:1004-1015` 仅对 OpenRouter answer 路径读取 `effective_key_pool()`，没有把 auxiliary fallback 应用到 `agent.multi_agent.search`。
 - `crates/hone-channels/src/runners/multi_agent.rs:57` 仍会在 search key 为空时直接返回 `multi-agent search agent API key 为空`。
-- 本轮巡检未发现 UI 展示与运行时 fallback 语义对齐的修复，因此该缺陷继续保持 `New`。
+- 这部分描述记录的是修复前的 HEAD 复核结论；当前状态以文档顶部 `Fixed` 和下方“修复情况（2026-04-16）”为准。
 
 ## 用户影响
 

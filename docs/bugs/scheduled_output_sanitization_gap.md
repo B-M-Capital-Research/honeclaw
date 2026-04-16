@@ -51,7 +51,7 @@
 - Telegram scheduler 仍然从原始 `response` 直接切分 HTML 分片，没有先执行 `render_think_blocks(..., ThinkRenderStyle::Hidden)` 或 `sanitize_telegram_html_public(...)`。
 - Discord scheduler 仍然直接按原始 `response` 分段发送，没有复用普通会话隐藏 think 的出站净化。
 - Feishu scheduler 仍然把原始 `response` 直接交给 `send_rendered_messages(...)`，入口层没有补上一致的最终可见文本构造。
-- 本轮巡检未发现覆盖这三条 scheduler 出站路径的修复提交，因此该缺陷继续保持 `New`。
+- 这部分描述记录的是修复前的 2026-04-15 复核结论；当前状态以文档顶部 `Fixed` 和下方“修复情况（2026-04-16）”为准。
 
 ## 根因判断
 
@@ -65,7 +65,7 @@
   - `render_think_blocks(..., ThinkRenderStyle::Hidden)`
   - 渠道特定的净化函数，如 Telegram 的 `sanitize_telegram_html_public(...)`
   - 统一的 reply prefix / segmenter 语义
-- 当前 bug 台账先以 `New` 登记，等待人工确认并转入 `Fixing` / `Fixed` / `Closed`。
+- 上述“修复线索”保留为修复前的历史建议；当前缺陷已完成修复并进入 `Fixed`。
 
 ## 修复情况（2026-04-16）
 

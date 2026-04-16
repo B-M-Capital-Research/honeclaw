@@ -44,13 +44,13 @@
 
 - 当前 HEAD 仍在 `string_path_is_blank(&canonical, "agent.opencode.api_key")` 命中后直接执行 `set_value_at_path(&mut canonical, "agent.opencode", legacy_opencode.clone())`。
 - 也就是说，只要 canonical 侧故意把 `api_key` 留空以继承本机 OpenCode，迁移代码仍会把 legacy 整个 `agent.opencode` 节点写回，问题尚未被最近提交覆盖。
-- 本轮巡检未发现对应修复提交，因此该缺陷继续保持 `New`。
+- 这部分描述记录的是修复前的复核结论；对应缺陷已在后续提交中完成修复，详见下方“修复情况（2026-04-16）”。
 
 ## 当前实现效果（2026-04-15 HEAD 再复核）
 
 - 当前 `HEAD` 仍可在 `crates/hone-core/src/config.rs:680-683` 看到同样的门槛与整块覆盖逻辑，没有改成字段级 merge。
 - 与 `docs/invariants.md` 中“空 `agent.opencode.*` 可继承本机 OpenCode 配置”的长期约束相比，这个覆盖路径仍然会破坏显式留空的继承语义。
-- 本轮巡检未发现新增回归测试或修复提交，因此该缺陷继续保持 `New`。
+- 这部分描述记录的是修复前的再次复核结论；当前状态以文档顶部 `Fixed` 和下方“修复情况（2026-04-16）”为准。
 
 ## 根因判断
 
@@ -62,7 +62,7 @@
 
 - 把 `agent.opencode` 的 legacy 迁移改成字段级 merge，而不是整块覆盖；至少要区分“字段缺失”与“显式留空表示继承本机 OpenCode”。
 - 增加一条回归测试：canonical 预设 `agent.opencode.model` / `variant`，`api_key` 为空，legacy 含旧 `agent.opencode` 时，迁移后 canonical 不应被整块覆盖。
-- 当前 bug 台账先以 `New` 登记，等待人工确认并转入 `Approved` / `Fixing` / `Fixed` / `Closed`。
+- 上述“修复线索”保留为修复前的历史建议；当前缺陷已完成修复并进入 `Fixed`。
 
 ## 修复情况（2026-04-16）
 
