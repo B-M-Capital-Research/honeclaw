@@ -65,6 +65,12 @@
       - `run_id=2034`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-17T00:31:18.580235+08:00`，仍落成 `execution_failed + skipped_error`
       - `2026-04-17 00:31:18.578` 的 `raw_preview` 已改成英文逐项对比 11 只股票价格，但依旧没有稳定收口到合法状态 JSON，说明当前活跃问题已收敛到 `Monitor_Watchlist_11` 这条 watchlist 模板，而不是整批 heartbeat 全面失效
       - 同一时间日志仍打印 `心跳任务未命中，本轮不发送`，说明即使数据库已按失败落账，渠道/日志口径仍把 `execution_failed` 描述成 noop
+  - 2026-04-17 01:01-02:01 最近一小时新增样本：
+      - `run_id=2037`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-17T01:01:19.177592+08:00`，继续落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+      - `run_id=2041`，同一任务在 `2026-04-17T01:31:15.541580+08:00` 再次落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+      - `2026-04-17 01:31:15.540` 的 `web.log` 再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 仍是 11 只股票的逐项价格对比，说明模型已完成业务判断但最终仍未稳定收口到合法状态 JSON
+      - `run_id=2045`，同一任务在 `2026-04-17T02:01:19.629659+08:00` 又恢复为 `noop + skipped_noop`，`detail_json.parse_kind=JsonNoop`
+      - `2026-04-17 02:01:19.628` 的 `web.log` 显示同一模板在下一轮已恢复为 `JsonNoop`，说明故障没有退出，而是继续在相邻轮次间抖动
   - 对比同一小时其他 heartbeat 任务：
     - `j_38745baf`（`全天原油价格3小时播报`）在 `run_id=1847`（`09:30:04`）也短暂出现 `JsonUnknownStatus`，`run_id=1853`（`10:00:10`）又恢复为 `JsonNoop`
     - `j_654aef9b`（`小米30港元破位预警`）在 `10:00:10` 仍为 `JsonNoop -> noop / skipped_noop`
@@ -107,6 +113,7 @@
 - `00:01` 的 `小米30港元破位预警` 样本尤其明确：模型在自由文本里已经知道“应返回 noop”，却仍输出 `<think>` 和解释性文字，导致解析器拿不到合法状态；说明当前问题不在业务判断本身，而在最终协议收口仍不稳定。
 - `00:01` 的 `Monitor_Watchlist_11` 也证明 `23:01` 的 `noop` 只是短暂波动，而非稳定修复，因为同一任务在一个小时内又再次回到 `JsonUnknownStatus + execution_failed`。
 - `00:31` 的窗口则说明故障形态又发生了收缩：`小米30港元破位预警` 与 `存储板块加仓信号监控` 已恢复成 `JsonNoop + skipped_noop`，但 `Monitor_Watchlist_11` 仍继续产出 `JsonUnknownStatus + execution_failed`。
+- `01:31 -> 02:01` 的最新窗口进一步说明，“问题已收敛到单一 watchlist 模板”并不意味着已稳定：同一个 `Monitor_Watchlist_11` 在 30 分钟内先失败、后恢复为 `JsonNoop`，线上表现依旧是连续抖动。
 - 这意味着当前活跃风险已经从“多模板同时漂移”收敛为“个别 watchlist 模板持续不稳定”，但由于仍会让用户失去监控结果，缺陷状态依然不能关闭。
 - 同轮日志仍把 `execution_failed` 说成“未命中，本轮不发送”，说明除了协议收口抖动之外，运维/渠道可观测口径不一致的问题也还在。
 - 这说明当前并不是单个 watchlist prompt 失配，而是 heartbeat 输出协议在多条不同模板的监控任务上都可能失去稳定收口。
@@ -127,6 +134,7 @@
 
 - heartbeat 输出协议对模型返回格式过于脆弱，出现非标准 JSON 或状态枚举漂移时，会落入 `JsonUnknownStatus`。
 - 最近一小时同一任务在相邻轮次间会在 `JsonNoop` 与 `JsonUnknownStatus` 之间来回抖动，说明除了单个任务 prompt 外，解析器对“先给分析过程、最后未严格收口到状态 JSON”的输出也缺少足够稳健的兼容或强制约束。
+- `01:31` 失败而 `02:01` 恢复的最新样本说明，这种抖动当前主要集中在 `Monitor_Watchlist_11` 这类多标的 watchlist 模板上；同一任务无需任何配置变更就会在连续两轮之间切换状态，进一步支持“公共协议脆弱 + 复杂模板更易触发”的判断。
 - 最近一小时新增的 `AAOI_动态监控`、`小米30港元破位预警` 与 `存储板块加仓信号监控` 样本说明这不是 `Monitor_Watchlist_11` 单任务 prompt 特例，而是 heartbeat 输出协议对多条不同模板的监控任务都不够稳健。
 - `23:31` 到 `00:01` 的最新样本进一步证明，问题并不是“模型不会判断触发条件”，而是模型即便在自由文本里已经写出“应该返回 noop / {}”，也仍无法稳定给出解析器认可的最终状态对象。
 - `18:01` 与 `19:01` 两个相邻批次一起看，同组任务已经出现“上一轮恢复、下一轮再掉回未知状态”的抖动形态，进一步说明问题不只是某个固定任务模板写坏，而是 heartbeat 输出协议缺少稳定的最终收口约束。
@@ -146,6 +154,7 @@
 - 这样一来，监控类 heartbeat 任务在模型已经跑完但结构化收口失败时，不会再被后台静默吞掉。
 - 到 `2026-04-16 14:00` 的 `run_id=1889`，未知状态已经落成 `execution_failed + skipped_error`，说明这部分止血开始在线上生效。
 - 但更早轮次的 `run_id=1860` 与 `1865` 仍落成 `noop + skipped_noop`，而且 `14:00` 这一轮依然持续产出 `JsonUnknownStatus`；因此本单只能更新为“状态有变化但问题仍活跃”，不能关闭或降级。
+- `2026-04-17 02:01` 的 `run_id=2045` 表明，失败落账的止血仍在，但同一任务下一轮又会恢复成 `JsonNoop`；因此当前更准确的结论是“失败收口已生效，但输出协议抖动仍未收口”。
 
 ## 回归验证
 
