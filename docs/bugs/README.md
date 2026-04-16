@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 21:12 CST
+最后更新：2026-04-16 22:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：10
+- 活跃待修复：11
 - 已修复 / 已关闭：27
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -27,6 +27,7 @@
 | Feishu 直聊任务配置请求在搜索阶段反复调用 `cron_job` 后耗尽迭代并整轮无回复 | P1 | New | 2026-04-16 12:06 新发现；待为迭代耗尽补用户态兜底与循环收敛 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直聊消息再次出现 placeholder 假启动，最新 `19:51` 图片消息已命中 `direct.busy` 但仍发送 placeholder，随后仅补统一失败文案 | P1 | Fixing | 2026-04-16 19:51 新样本显示“只剩 placeholder”已收敛为“placeholder + 失败兜底”，但 busy 顺序与用户消息落库仍未收口 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |
 | Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | New | 2026-04-16 15:44 真实会话复现；根因是 quota 已达 `12/12`，但渠道把业务拒绝伪装成通用系统失败 | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
+| Feishu 直达定时任务已生成最终播报，但发送阶段连续返回 `HTTP 400 Bad Request` 导致用户收不到盘前提醒 | P1 | New | 2026-04-16 21:04 与 21:33 两条真实 scheduler run 复现；`receive_id` 已对齐 actor，故障已从旧的 target 解析问题转移到发送阶段 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-16 16:00 真实会话复现；`session.persist_assistant/done` 后仍继续启动 `hone/web_search`，但用户侧只收到 55 字过渡句 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-16 18:43 最新 Dell 会话复现；主链路仍能答复，但搜索阶段长期读不到 actor sandbox 画像 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | New | 2026-04-16 13:08 Feishu 直聊 `rklb要不要加` 命中；52 秒后同句重试成功，说明当前缺少对传输抖动的吸震 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
