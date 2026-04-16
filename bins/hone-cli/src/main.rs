@@ -717,6 +717,7 @@ enum DiscordTokenValidation {
     Invalid(&'static str),
 }
 
+/// Validate a token segment uses base64url characters (A-Z/a-z/0-9/-/_).
 fn is_base64url_segment(value: &str) -> bool {
     !value.is_empty()
         && value
@@ -731,8 +732,11 @@ fn validate_discord_token(value: &str) -> DiscordTokenValidation {
     }
 
     let segments = token.split('.').collect::<Vec<_>>();
-    if segments.len() != 3 || !segments.iter().all(|segment| is_base64url_segment(segment)) {
-        return DiscordTokenValidation::Invalid("Token 不是三段 base64url 结构。");
+    if segments.len() != 3 {
+        return DiscordTokenValidation::Invalid("Token 必须是三段结构（形如 xxx.yyy.zzz）。");
+    }
+    if !segments.iter().all(|segment| is_base64url_segment(segment)) {
+        return DiscordTokenValidation::Invalid("Token 包含非法字符，应为 base64url 字符集。");
     }
 
     let len = token.len();
@@ -2952,7 +2956,7 @@ mod tests {
         let token = "not-a-discord-token";
         assert_eq!(
             validate_discord_token(token),
-            DiscordTokenValidation::Invalid("Token 不是三段 base64url 结构。")
+            DiscordTokenValidation::Invalid("Token 必须是三段结构（形如 xxx.yyy.zzz）。")
         );
     }
 
