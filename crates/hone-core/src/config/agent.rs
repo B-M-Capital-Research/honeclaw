@@ -191,6 +191,8 @@ pub struct AgentConfig {
     pub codex_model: String,
     #[serde(default = "default_max_iterations")]
     pub max_iterations: u32,
+    #[serde(default = "default_daily_conversation_limit")]
+    pub daily_conversation_limit: u32,
     #[serde(default = "default_agent_step_timeout_seconds")]
     pub step_timeout_seconds: u64,
     #[serde(default = "default_agent_overall_timeout_seconds")]
@@ -226,6 +228,7 @@ impl Default for AgentConfig {
             runner: default_agent_runner(),
             codex_model: String::new(),
             max_iterations: default_max_iterations(),
+            daily_conversation_limit: default_daily_conversation_limit(),
             step_timeout_seconds: default_agent_step_timeout_seconds(),
             overall_timeout_seconds: default_agent_overall_timeout_seconds(),
             gemini_acp: GeminiAcpConfig::default(),
@@ -457,6 +460,10 @@ fn default_max_iterations() -> u32 {
     10
 }
 
+fn default_daily_conversation_limit() -> u32 {
+    12
+}
+
 fn default_agent_step_timeout_seconds() -> u64 {
     180
 }
@@ -496,6 +503,11 @@ mod tests {
     #[test]
     fn multi_agent_answer_default_tool_limit_is_three() {
         assert_eq!(MultiAgentAnswerConfig::default().max_tool_calls, 3);
+    }
+
+    #[test]
+    fn agent_default_daily_conversation_limit_is_twelve() {
+        assert_eq!(super::AgentConfig::default().daily_conversation_limit, 12);
     }
 }
 

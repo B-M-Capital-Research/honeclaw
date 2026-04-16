@@ -393,7 +393,9 @@ mod tests {
             Some(PathBuf::from(
                 "/tmp/project/data/runtime/config_runtime.yaml",
             )),
-            Some(PathBuf::from("/tmp/project/data/runtime/effective-config.yaml")),
+            Some(PathBuf::from(
+                "/tmp/project/data/runtime/effective-config.yaml",
+            )),
             Some(PathBuf::from("/tmp/home")),
         );
 
@@ -408,7 +410,9 @@ mod tests {
         let resolved = desktop_canonical_config_path_from_overrides(
             Path::new("/tmp/desktop-config"),
             Some(PathBuf::from("/tmp/project/config.yaml")),
-            Some(PathBuf::from("/tmp/project/data/runtime/effective-config.yaml")),
+            Some(PathBuf::from(
+                "/tmp/project/data/runtime/effective-config.yaml",
+            )),
             Some(PathBuf::from("/tmp/home")),
         );
 

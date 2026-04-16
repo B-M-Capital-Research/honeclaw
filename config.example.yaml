@@ -325,6 +325,8 @@ agent:
   # Only used when provider=codex_cli; empty means use the codex-cli default model
   codex_model: "gpt-5.3-codex"
   max_iterations: 100
+  # Daily successful-reply quota for user conversations. Set to 0 to disable the limit.
+  daily_conversation_limit: 12
   # Single-step timeout used by internal runner phases such as initialize/load and stream idle gaps
   step_timeout_seconds: 180
   # Full-run timeout used for one complete answer round

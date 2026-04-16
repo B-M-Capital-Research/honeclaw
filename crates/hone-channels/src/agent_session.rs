@@ -135,7 +135,6 @@ impl Default for GeminiStreamOptions {
     }
 }
 
-const DAILY_CONVERSATION_LIMIT: u32 = 12;
 const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
 const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
@@ -1164,11 +1163,16 @@ impl AgentSession {
             return Ok(None);
         }
 
+        let daily_limit = self.core.config.agent.daily_conversation_limit;
+        if daily_limit == 0 {
+            return Ok(None);
+        }
+
         let is_admin = self.core.is_admin_actor(&self.actor);
         match self
             .core
             .conversation_quota_storage
-            .try_reserve_daily_conversation(&self.actor, DAILY_CONVERSATION_LIMIT, is_admin)?
+            .try_reserve_daily_conversation(&self.actor, daily_limit, is_admin)?
         {
             ConversationQuotaReserveResult::Reserved(reservation) => Ok(Some(reservation)),
             ConversationQuotaReserveResult::Bypassed => Ok(None),
@@ -3098,11 +3102,12 @@ mod tests {
         let core = make_test_core(&root, llm.clone());
         let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
         let today = hone_core::beijing_now().format("%F").to_string();
+        let daily_limit = core.config.agent.daily_conversation_limit;
 
-        for _ in 0..DAILY_CONVERSATION_LIMIT {
+        for _ in 0..daily_limit {
             let reservation = match core
                 .conversation_quota_storage
-                .try_reserve_daily_conversation(&actor, DAILY_CONVERSATION_LIMIT, false)
+                .try_reserve_daily_conversation(&actor, daily_limit, false)
                 .expect("reserve")
             {
                 ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -3136,8 +3141,43 @@ mod tests {
             .snapshot_for_date(&actor, &today)
             .expect("snapshot")
             .expect("row");
-        assert_eq!(snapshot.success_count, DAILY_CONVERSATION_LIMIT);
+        assert_eq!(snapshot.success_count, daily_limit);
         assert_eq!(snapshot.in_flight, 0);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn run_zero_daily_conversation_limit_bypasses_quota() {
+        let root = make_temp_dir("hone_channels_quota_unlimited");
+        std::fs::create_dir_all(&root).expect("create root");
+        let llm = MockLlmProvider::with_tool_responses(
+            (0..15)
+                .map(|_| ChatResponse {
+                    content: "ok".to_string(),
+                    tool_calls: None,
+                    usage: None,
+                })
+                .collect(),
+        );
+        let core = make_test_core_with_config(&root, llm, |config| {
+            config.agent.daily_conversation_limit = 0;
+        });
+        let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+        let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+
+        for idx in 0..15 {
+            let result = session
+                .run(&format!("hello-{idx}"), AgentRunOptions::default())
+                .await;
+            assert!(result.response.success, "{:?}", result.response.error);
+        }
+
+        let today = hone_core::beijing_now().format("%F").to_string();
+        let snapshot = core
+            .conversation_quota_storage
+            .snapshot_for_date(&actor, &today)
+            .expect("snapshot");
+        assert!(snapshot.is_none());
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -3425,11 +3465,12 @@ mod tests {
         let core = make_test_core(&root, llm);
         let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
         let today = hone_core::beijing_now().format("%F").to_string();
+        let daily_limit = core.config.agent.daily_conversation_limit;
 
-        for _ in 0..DAILY_CONVERSATION_LIMIT {
+        for _ in 0..daily_limit {
             let reservation = match core
                 .conversation_quota_storage
-                .try_reserve_daily_conversation(&actor, DAILY_CONVERSATION_LIMIT, false)
+                .try_reserve_daily_conversation(&actor, daily_limit, false)
                 .expect("reserve")
             {
                 ConversationQuotaReserveResult::Reserved(reservation) => reservation,
@@ -3457,7 +3498,7 @@ mod tests {
             .snapshot_for_date(&actor, &today)
             .expect("snapshot")
             .expect("row");
-        assert_eq!(snapshot.success_count, DAILY_CONVERSATION_LIMIT);
+        assert_eq!(snapshot.success_count, daily_limit);
         assert_eq!(snapshot.in_flight, 0);
         let _ = std::fs::remove_dir_all(root);
     }

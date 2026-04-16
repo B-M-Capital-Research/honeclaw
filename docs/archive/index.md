@@ -1,8 +1,22 @@
 # Archive Index
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
+
+## 2026-04-17
+
+### 对话额度改为可配置并支持无限制
+
+- Status: done
+- Date: 2026-04-17
+- Plan: `docs/archive/plans/conversation-quota-config.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-core`, `cargo test -p hone-channels run_success_commits_daily_conversation_quota -- --nocapture`, `cargo test -p hone-channels run_rejects_over_daily_limit_without_persisting_user_message -- --nocapture`, `cargo test -p hone-channels run_zero_daily_conversation_limit_bypasses_quota -- --nocapture`, `cargo run -q -p hone-cli -- config validate`
+- Current conclusion: 用户每日成功对话额度不再固定写死为 `12`；现在由 `agent.daily_conversation_limit` 控制，`0` 表示无限制。本地 repo `config.yaml` 已切到 `0`，当前运行环境不再限制用户每日对话数
+- Next entry point: `crates/hone-channels/src/agent_session.rs`
 
 ## 2026-04-16
 

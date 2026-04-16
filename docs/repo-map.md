@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-04-12
+Last updated: 2026-04-17
 
 ## Purpose
 
@@ -121,7 +121,7 @@ Last updated: 2026-04-12
    - Invoked skill prompts are persisted in session metadata so context restoration can re-inject them after compression instead of relying on historic tool results
    - 用户可见的研究记忆相关 skill 目前只保留 `company_portrait`
 9. `memory` reads and writes local sessions, quotas, portfolios, and cron jobs
-    - `memory/src/quota.rs` keeps a daily successful-reply quota for each user-initiated conversation
+  - `memory/src/quota.rs` keeps a daily successful-reply quota for each user-initiated conversation; the runtime limit now comes from `agent.daily_conversation_limit`, and `0` means unlimited
     - `memory/src/llm_audit.rs` uses SQLite to record LLM call audit logs archived by `ActorIdentity`
     - Session persistence is controlled by `storage.session_runtime_backend`; `json` reads from local files, `sqlite` reads from `storage.session_sqlite_db_path`, and JSON can still be dual-written as a rollback mirror through `storage.session_sqlite_shadow_write_enabled`
     - Session compaction is now boundary-based: compacted sessions write a `Conversation compacted` marker plus a compact summary message, and the active context window is restored from the most recent boundary forward
