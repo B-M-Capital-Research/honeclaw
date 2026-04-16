@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 2026-04-15 当前源码复核
   - 代码证据:
@@ -57,3 +57,17 @@
 - 明确 Search Agent key 的唯一真相源：要么运行时也支持 `llm.auxiliary.api_key` fallback，要么设置页停止回填这类继承值。
 - 修复前可补一条最小回归：当 `agent.multi_agent.search.api_key` 为空且 `llm.auxiliary.api_key` 非空时，UI 展示与实际运行结果必须一致，不能一边显示可用、一边运行报空 key。
 - multi-agent 排障时，应单独核对 `agent.multi_agent.search.api_key` 的实际落盘值，而不能只看 Desktop 设置页展示值。
+
+## 修复情况（2026-04-16）
+
+- `crates/hone-channels/src/core.rs` 已为 multi-agent 运行时补上与 Desktop 设置页一致的 Search Agent key fallback 语义：
+  - 当 `agent.multi_agent.search.api_key` 为空时，运行时会回退到 `llm.auxiliary.resolved_api_key()`
+  - 如果 Search Agent 显式配置了自己的 key，运行时仍优先使用显式 search key，不会被 auxiliary 覆盖
+- `create_runner_with_model_override(...)` 在构建 `MultiAgentRunner` 时，已从直接传 `self.config.agent.multi_agent.search.clone()` 改为传入统一收口后的 effective search config
+- 这次修复没有改 Desktop 设置页展示层；而是把真实执行层对齐到现有 UI 继承语义，避免“页面看起来已配置、运行时报空 key”
+- 新增运行时回归测试：
+  - `core::tests::effective_multi_agent_search_config_falls_back_to_auxiliary_api_key`
+  - `core::tests::effective_multi_agent_search_config_preserves_explicit_search_api_key`
+- 验证命令：
+  - `cargo test -p hone-channels effective_multi_agent_search_config_falls_back_to_auxiliary_api_key -- --nocapture`
+  - `cargo test -p hone-channels effective_multi_agent_search_config_preserves_explicit_search_api_key -- --nocapture`

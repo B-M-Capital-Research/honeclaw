@@ -311,6 +311,17 @@ impl HoneBotCore {
         }
     }
 
+    fn effective_multi_agent_search_config(&self) -> hone_core::config::MultiAgentSearchConfig {
+        let mut search_config = self.config.agent.multi_agent.search.clone();
+        if search_config.api_key.trim().is_empty() {
+            let fallback_key = self.config.llm.auxiliary.resolved_api_key();
+            if !fallback_key.trim().is_empty() {
+                search_config.api_key = fallback_key;
+            }
+        }
+        search_config
+    }
+
     fn create_llm_audit_sink(config: &HoneConfig) -> Option<Arc<dyn LlmAuditSink>> {
         if !config.storage.llm_audit_enabled {
             return None;
@@ -1046,7 +1057,7 @@ impl HoneBotCore {
 
                 Ok(Box::new(MultiAgentRunner::new(
                     system_prompt.to_string(),
-                    self.config.agent.multi_agent.search.clone(),
+                    self.effective_multi_agent_search_config(),
                     answer_config,
                     runner_timeouts,
                     self.config.agent.multi_agent.answer.max_tool_calls.max(1),
@@ -1540,5 +1551,37 @@ mod tests {
                 "research_topic": REPORT_DEFAULT_RESEARCH_TOPIC,
             })
         );
+    }
+
+    #[test]
+    fn effective_multi_agent_search_config_falls_back_to_auxiliary_api_key() {
+        let mut config = HoneConfig::default();
+        config.agent.runner = "multi-agent".to_string();
+        config.agent.multi_agent.search.base_url = "https://api.minimaxi.com/v1".to_string();
+        config.agent.multi_agent.search.model = "MiniMax-M2.7-highspeed".to_string();
+        config.agent.multi_agent.search.api_key = String::new();
+        config.llm.auxiliary.base_url = "https://api.minimaxi.com/v1".to_string();
+        config.llm.auxiliary.model = "MiniMax-M2.7-highspeed".to_string();
+        config.llm.auxiliary.api_key = "sk-cp-aux".to_string();
+
+        let core = HoneBotCore::new(config);
+        let effective = core.effective_multi_agent_search_config();
+
+        assert_eq!(effective.api_key, "sk-cp-aux");
+        assert_eq!(effective.base_url, "https://api.minimaxi.com/v1");
+        assert_eq!(effective.model, "MiniMax-M2.7-highspeed");
+    }
+
+    #[test]
+    fn effective_multi_agent_search_config_preserves_explicit_search_api_key() {
+        let mut config = HoneConfig::default();
+        config.agent.runner = "multi-agent".to_string();
+        config.agent.multi_agent.search.api_key = "sk-cp-search".to_string();
+        config.llm.auxiliary.api_key = "sk-cp-aux".to_string();
+
+        let core = HoneBotCore::new(config);
+        let effective = core.effective_multi_agent_search_config();
+
+        assert_eq!(effective.api_key, "sk-cp-search");
     }
 }

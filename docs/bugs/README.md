@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 10:17 CST
+最后更新：2026-04-16 10:29 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：15
-- 已修复 / 已关闭：12
+- 活跃待修复：14
+- 已修复 / 已关闭：13
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -25,7 +25,6 @@
 | --- | --- | --- | --- | --- |
 | Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | New | 未修复；除端口漂移外，2026-04-16 09:01 还复现了 backend 重启中断 answer 执行，导致最近会话与 scheduler 会话都无最终回复 | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
 | Multi-Agent Answer Agent 在设置页允许 `maxToolCalls=0`，但运行时强制提升为至少 1，用户无法真正禁用补充工具调用 | P1 | Fixing | 2026-04-15 本地代码已去掉 `max(1)` 并对齐 handoff 文本，`hone-channels` 回归已过；仍卡在 desktop release runtime 门槛，尚未完成重启 / 发布 | [multi_agent_answer_max_tool_calls_zero_ignored.md](./multi_agent_answer_max_tool_calls_zero_ignored.md) |
-| Multi-Agent Search Agent 在 Desktop 设置页显示可继承 auxiliary key，但真实运行时不使用该 fallback，导致看似已配置却直接失败 | P1 | New | 未修复；UI fallback 与运行时 Search Agent key 语义仍未对齐 | [multi_agent_search_key_fallback_mismatch.md](./multi_agent_search_key_fallback_mismatch.md) |
 | 会话压缩摘要会把最后一个新问题误写成完整“用户报告”并以 `Compact Summary` 回灌，正式回答因此引用不存在的报告与伪造价格假设 | P1 | New | 2026-04-16 08:47-09:00 再次复现；多条 scheduler 会话先被 compact 成 `role=user` 的摘要表，再进入本轮任务，且 `09:00` 还叠加 `context_overflow_recovery` | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 定时任务链路绕过统一输出净化，向用户投递内部思考与未清洗富文本 | P1 | New | 未修复；普通会话已净化，scheduler 仍直接发送原始输出 | [scheduled_output_sanitization_gap.md](./scheduled_output_sanitization_gap.md) |
 | 定时任务达到上限后，Agent 未经用户确认就批量删除已有任务 | P1 | New | 2026-04-15 最近一小时真实会话新增；`add` 失败后同轮连续删除 8 个旧任务再重试创建 | [scheduler_task_limit_auto_cleanup_without_confirmation.md](./scheduler_task_limit_auto_cleanup_without_confirmation.md) |
@@ -55,6 +54,7 @@
 | Desktop 设置页多入口保存共用同一份配置文件但缺少串行写保护，可能造成 runner 配置被并发保存静默覆盖 | P1 | Fixed | 2026-04-16 已为 desktop 配置写入链路补共享 `config_write_lock`，并补并发保存回归测试 | [desktop_runner_settings_write_race.md](./desktop_runner_settings_write_race.md) |
 | Desktop 设置页重复点击 runner 会触发重入保存与 bundled backend 重启，导致切换过程卡死或表现为“点一下就崩” | P1 | Fixed | 2026-04-16 已为 runner 卡片点击补前端重入短路与失败回滚，并为相同 agent payload 增加 sidecar 幂等跳过 | [desktop_runner_switch_reentrant_restart_gap.md](./desktop_runner_switch_reentrant_restart_gap.md) |
 | Desktop 设置页切换 runner 后可能显示已切换，但 bundled runtime 重启失败会被静默吞掉，实际仍跑旧 runner 或未完成切换 | P1 | Fixed | 2026-04-16 已让 agent settings 保存回传 `backendStatus` 与重启结论；runtime 未生效时前端会明确报错而非伪装成功 | [desktop_runner_switch_false_success_gap.md](./desktop_runner_switch_false_success_gap.md) |
+| Multi-Agent Search Agent 在 Desktop 设置页显示可继承 auxiliary key，但真实运行时不使用该 fallback，导致看似已配置却直接失败 | P1 | Fixed | 2026-04-16 已让 multi-agent 运行时对齐 auxiliary key fallback 语义，并补回归测试锁住显式 search key 优先级 | [multi_agent_search_key_fallback_mismatch.md](./multi_agent_search_key_fallback_mismatch.md) |
 
 ## 历史分析 / 部分止血
 
