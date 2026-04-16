@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-16 10:29 CST
+最后更新：2026-04-16 10:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -35,7 +35,7 @@
 | Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | New | 2026-04-16 08:31 再次复现；`每日宏观与AI早报` 已生成约 1.3k 字正文，但仍因 `target_resolution_failed` 拦截且 `delivered=0` | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | 渠道失败分支会把原始 LLM/provider 报错直接发给用户 | P1 | New | 2026-04-16 08:32 再次复现；两条 Feishu scheduler run 的 `response_preview` 直接等于 `bad_request_error: ... tool call result does not follow tool call` | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 成功会话仍把原始 multi-agent transcript 落库到 assistant 历史，污染后续上下文 | P2 | New | 2026-04-16 08:31 再次复现；scheduler 成功发送后，`创新药持仓每日动态推送` 的 `last_message_preview` 仍以 `<think>` 开头 | [session_persist_assistant_transcript_pollution.md](./session_persist_assistant_transcript_pollution.md) |
-| Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-16 01:31 最近一小时仍在复现；`Monitor_Watchlist_11` 在 `01:01` 与 `01:31` 继续于 `JsonNoop/JsonUnknownStatus` 间漂移并被静默吞掉 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务遇到 `JsonUnknownStatus` 时静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-16 09:30 与 10:00 最近一小时仍在复现；`Monitor_Watchlist_11` 连续两轮继续落回 `JsonUnknownStatus` 并被静默吞掉 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Discord 定时任务在 Answer 阶段返回空回复时被记为成功执行，但最终未向用户送达 | P2 | New | 2026-04-15 最近一小时新增；`reply_chars=0` 但 run 仍记为 `completed`，最终 `send_failed` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 
 ## 已修复 / 已关闭
