@@ -13,7 +13,7 @@ use crate::execution::{
 };
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
-use crate::runtime::sanitize_user_visible_output;
+use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::{AgentSession, HoneBotCore};
 
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
@@ -263,11 +263,7 @@ pub async fn execute_scheduler_event(
                 metadata: Value::Null,
             }
         } else {
-            let sanitized_error = response
-                .error
-                .map(|value| sanitize_scheduler_delivery_text(&value))
-                .filter(|value| !value.trim().is_empty())
-                .or_else(|| Some("定时任务执行失败".to_string()));
+            let sanitized_error = Some(user_visible_error_message(response.error.as_deref()));
             ScheduledTaskExecution {
                 should_deliver: true,
                 content: String::new(),

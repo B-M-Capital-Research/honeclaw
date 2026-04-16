@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 21:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
@@ -76,9 +76,19 @@
 - Feishu 处理器和共享 outbound 适配器都把 `response.error` 直接拼进最终回复，缺少统一的用户态错误净化层。
 - 当前只对 `context window exceeds limit` 做了特定友好化改写，其它 provider 错误没有经过同类产品化处理。
 
-## 下一步建议
+## 修复情况（2026-04-16）
 
-- 为用户可见错误增加统一净化层，把 `bad_request_error`、`tool_call_id`、`invalid params`、HTTP/ACP 原始报错等全部映射为产品化提示。
-- 保留原始错误到日志、诊断事件或受控调试字段，不要继续复用 `response.error` 作为终端展示文本。
-- 在 `AgentSession` 或统一 outbound 层补一条回归测试，覆盖“provider 返回任意 `bad_request_error` 时，用户文案不得包含 `bad_request_error` / `tool_call_id` / `invalid params`”。
-- 修复时一并复核 Feishu handler 的失败分支和共享 `run_session_with_outbound(...)`，避免只补一个入口导致其它渠道继续泄露。
+- 已在 `crates/hone-channels/src/runtime.rs` 增加共享 `user_visible_error_message(...)`，统一把超时错误映射为超时提示，把 `bad_request_error`、`invalid params`、`tool_call_id`、`session/prompt` 等内部/provider 细节收口为稳定的用户可见文案。
+- 已把该 helper 接入以下用户可见失败分支：
+  - `crates/hone-channels/src/outbound.rs`
+  - `crates/hone-channels/src/scheduler.rs`
+  - `bins/hone-feishu/src/handler.rs`
+  - `bins/hone-discord/src/handlers.rs`
+  - `bins/hone-imessage/src/main.rs`
+- 原始错误仍保留在日志与运行诊断路径里用于排障，但不再直接拼进用户回复，也不再作为 scheduler 失败投递正文下发给用户。
+
+## 回归验证
+
+- `cargo test -p hone-channels user_visible_error_message_ -- --nocapture`
+- `cargo check -p hone-feishu -p hone-discord -p hone-imessage -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/runtime.rs crates/hone-channels/src/outbound.rs crates/hone-channels/src/scheduler.rs bins/hone-feishu/src/handler.rs bins/hone-discord/src/handlers.rs bins/hone-imessage/src/main.rs`

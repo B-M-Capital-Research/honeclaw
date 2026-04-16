@@ -11,6 +11,7 @@ use hone_channels::ingress::{
 };
 use hone_channels::outbound::run_session_with_outbound;
 use hone_channels::prompt::{DEFAULT_GROUP_PRIVACY_GUARD, PromptOptions};
+use hone_channels::runtime::user_visible_error_message;
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 use hone_core::SessionIdentity;
 use hone_tools::LoadSkillTool;
@@ -278,7 +279,7 @@ impl DiscordHandler {
                     .await?;
             }
             Err(err) => {
-                let tip = format!("抱歉，处理失败：{}", truncate_chars(&err.to_string(), 300));
+                let tip = user_visible_error_message(Some(&err.to_string()));
                 command
                     .edit_response(&ctx.http, EditInteractionResponse::new().content(tip))
                     .await

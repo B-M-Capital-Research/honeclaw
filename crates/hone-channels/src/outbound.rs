@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use crate::agent_session::{
     AgentRunOptions, AgentSession, AgentSessionEvent, AgentSessionListener, AgentSessionResult,
 };
-use crate::runtime::flush_buffer;
+use crate::runtime::{flush_buffer, user_visible_error_message};
 
 #[async_trait]
 pub trait OutboundAdapter: Clone + Send + Sync + 'static {
@@ -155,14 +155,10 @@ pub async fn run_session_with_outbound<A: OutboundAdapter>(
         };
         adapter.send_response(placeholder.as_ref(), &content).await
     } else {
-        let err = response
-            .error
-            .clone()
-            .unwrap_or_else(|| "未知错误".to_string());
         adapter
             .send_error(
                 placeholder.as_ref(),
-                &format!("抱歉，处理失败：{}", truncate_chars(&err, 300)),
+                &user_visible_error_message(response.error.as_deref()),
             )
             .await;
         0
@@ -436,13 +432,6 @@ fn parse_markdown_fence(line: &str) -> Option<MarkdownFence> {
         marker_len,
         opening_line: trimmed.to_string(),
     })
-}
-
-fn truncate_chars(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    text.chars().take(max_chars).collect::<String>() + "..."
 }
 
 #[cfg(test)]

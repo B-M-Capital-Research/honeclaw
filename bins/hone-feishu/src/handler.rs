@@ -20,6 +20,7 @@ use hone_channels::ingress::{
 };
 use hone_channels::outbound::attach_stream_activity_probe;
 use hone_channels::prompt::PromptOptions;
+use hone_channels::runtime::user_visible_error_message;
 use hone_channels::think::{ThinkRenderStyle, ThinkStreamFormatter, render_think_blocks};
 use hone_core::{ActorIdentity, SessionIdentity};
 use serde_json::{Value, json};
@@ -627,12 +628,10 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     }
 
     if !response.success {
-        let err = response.error.unwrap_or_else(|| "未知错误".to_string());
-        let truncated: String = err.chars().take(120).collect();
         let display = if saw_stream_delta && !final_text.is_empty() {
             format!("{}\n\n_(处理中发生错误，内容可能不完整)_", final_text)
         } else {
-            format!("抱歉，处理出错了: {}", truncated)
+            user_visible_error_message(response.error.as_deref())
         };
         let display = prepend_reply_prefix(reply_prefix.as_deref(), &display);
         if let Some(ck) = &cardkit_session {

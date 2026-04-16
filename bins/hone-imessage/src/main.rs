@@ -19,7 +19,7 @@ use hone_channels::ingress::{
 };
 use hone_channels::outbound::{attach_stream_activity_probe, split_segments};
 use hone_channels::prompt::PromptOptions;
-use hone_channels::runtime::DEFAULT_MAX_SEGMENT_SIZE;
+use hone_channels::runtime::{DEFAULT_MAX_SEGMENT_SIZE, user_visible_error_message};
 use hone_channels::think::{
     ThinkRenderStyle, ThinkStreamFormatter, append_compacted, render_think_blocks,
 };
@@ -699,8 +699,7 @@ async fn process_message_session(
             );
         } else if let Some(err) = response.error.clone() {
             error!("[iMessage] [{}] 处理失败: {}", handle, err);
-            let truncated: String = err.chars().take(120).collect();
-            let _ = send_imessage(&handle, &format!("(处理中断：{})", truncated));
+            let _ = send_imessage(&handle, "处理中断，内容可能不完整。请稍后再试。");
         }
         return;
     }
@@ -737,12 +736,7 @@ async fn process_message_session(
         );
     } else if let Some(err) = response.error.clone() {
         error!("[iMessage] [{}] 处理失败: {}", handle, err);
-        let truncated: String = err.chars().take(100).collect();
-        if err.contains("agent_timeout") {
-            let _ = send_imessage(&handle, "抱歉，处理超时了。请稍后再试。");
-        } else {
-            let _ = send_imessage(&handle, &format!("抱歉，处理出错了: {}", truncated));
-        }
+        let _ = send_imessage(&handle, &user_visible_error_message(Some(&err)));
     }
 }
 

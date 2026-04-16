@@ -14,6 +14,8 @@ pub const DEFAULT_MIN_BUFFER_SIZE: usize = 100;
 
 /// 单条消息最大长度（约手机一屏半，适合 iMessage 阅读）
 pub const DEFAULT_MAX_SEGMENT_SIZE: usize = 400;
+const GENERIC_USER_ERROR_MESSAGE: &str = "抱歉，这次处理失败了。请稍后再试。";
+const TIMEOUT_USER_ERROR_MESSAGE: &str = "抱歉，处理超时了。请稍后再试。";
 
 /// 流式处理结果
 #[derive(Debug, Clone)]
@@ -301,6 +303,44 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
     }
 }
 
+pub fn user_visible_error_message(raw: Option<&str>) -> String {
+    let sanitized = raw
+        .map(sanitize_user_visible_output)
+        .map(|value| value.content.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let Some(sanitized) = sanitized else {
+        return GENERIC_USER_ERROR_MESSAGE.to_string();
+    };
+
+    let lowered = sanitized.to_ascii_lowercase();
+    if lowered.contains("timeout") || lowered.contains("timed out") {
+        return TIMEOUT_USER_ERROR_MESSAGE.to_string();
+    }
+
+    if looks_internal_error_detail(&sanitized, &lowered) {
+        return GENERIC_USER_ERROR_MESSAGE.to_string();
+    }
+
+    sanitized
+}
+
+fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
+    sanitized.contains("LLM 错误")
+        || sanitized.contains("HTTP 错误")
+        || sanitized.contains("渠道错误")
+        || sanitized.contains("工具执行错误")
+        || sanitized.contains("序列化错误")
+        || sanitized.contains("IO 错误")
+        || lowered.contains("bad_request_error")
+        || lowered.contains("invalid params")
+        || lowered.contains("tool_call_id")
+        || lowered.contains("tool call result")
+        || lowered.contains("function arguments")
+        || lowered.contains("provider")
+        || lowered.contains("session/prompt")
+}
+
 /// 检测文本是否包含工具调用标记
 pub fn is_tool_call_content(text: &str) -> bool {
     const MARKERS: &[&str] = &[
@@ -490,6 +530,32 @@ mod tests {
         assert!(sanitized.removed_internal);
         assert!(sanitized.only_internal);
         assert!(sanitized.content.is_empty());
+    }
+
+    #[test]
+    fn user_visible_error_message_rewrites_provider_protocol_errors() {
+        let err = user_visible_error_message(Some(
+            "LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013), tool_call_id: call_123",
+        ));
+        assert_eq!(err, GENERIC_USER_ERROR_MESSAGE);
+        assert!(!err.contains("bad_request_error"));
+        assert!(!err.contains("tool_call_id"));
+    }
+
+    #[test]
+    fn user_visible_error_message_maps_timeout_errors() {
+        let err =
+            user_visible_error_message(Some("opencode acp session/prompt idle timeout (180s)"));
+        assert_eq!(err, TIMEOUT_USER_ERROR_MESSAGE);
+    }
+
+    #[test]
+    fn user_visible_error_message_preserves_already_friendly_text() {
+        let err = user_visible_error_message(Some(
+            "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。",
+        ));
+        assert!(err.contains("当前会话上下文过长"));
+        assert!(!err.contains("bad_request_error"));
     }
 
     #[test]
