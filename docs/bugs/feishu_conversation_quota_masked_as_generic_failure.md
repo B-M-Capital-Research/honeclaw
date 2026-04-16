@@ -3,7 +3,7 @@
 - 发现时间：2026-04-16 15:52 CST
 - Bug Type：Business Error
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 
 ## 证据来源
 
@@ -75,13 +75,21 @@
 - 根因三：当前外层可观测性对“系统失败”和“业务规则拒绝”的区分不够，导致真实原因被掩盖。
 - 最近一小时的 `22:22` 复现说明问题不依赖特定消息内容或单次 quota 文件脏状态；只要当日额度已达上限，这条链路就会继续稳定误报成通用失败。
 
+## 修复情况（2026-04-17）
+
+- `crates/hone-channels/src/agent_session.rs` 的 `reserve_conversation_quota()` 现在直接返回用户态额度提示文本，不再经过 `HoneError::Tool(...)` 包装，避免下游把这类业务拒绝误判成内部错误。
+- 同一文件的 quota 拒绝分支现在会先补最小 `session.persist_user` 审计落库，再返回失败结果；因此即使本轮被额度拦截，session 历史里也能看到用户真实输入。
+- 这条修复不增加 `success_count`，仍会保持 quota 拒绝不计入成功对话数；新增回归测试已覆盖“明确 quota 文案 + user turn 落库 + 不触发 LLM”三件事。
+- 代码层修复已完成并通过 crate 级验证，因此文档状态更新为 `Fixed`。是否进一步升为 `Closed`，仍需结合真实 Feishu 流量确认不再出现 placeholder 后只收通用失败文案的旧症状。
+
+## 回归验证
+
+- `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
+- `cargo test -p hone-channels`
+- `cargo check -p hone-channels`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session.rs`
+
 ## 下一步建议
 
-- 为 quota 拒绝新增用户态专用文案，并在 Feishu/Discord/Telegram 等渠道统一映射，避免继续落到“稍后再试”。
-- 在 quota / 权限 / 白名单等前置拒绝分支补最小 user-turn 审计落库，至少保留原始用户输入与拒绝原因。
-- 为该类前置拒绝补结构化日志字段，例如 `failure_kind=quota_rejected`，便于监控和 bug 巡检直接聚类。
-- 回归验证：
-  - 构造已达 `DAILY_CONVERSATION_LIMIT=12` 的 actor
-  - 发送短消息如“hi”
-  - 断言用户收到明确 quota 提示，而不是通用失败文案
-  - 断言本轮 user turn 可在 session storage 中被检索到
+- 继续补结构化日志字段，例如 `failure_kind=quota_rejected`，便于监控和 bug 巡检直接聚类。
+- 建议后续再补一条 Feishu handler 级回归，直接锁住“quota 拒绝时最终投递文案不是通用失败提示”这一渠道侧契约。

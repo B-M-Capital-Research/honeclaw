@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-17 03:10 CST
+最后更新：2026-04-17 05:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：11
-- 已修复 / 已关闭：27
+- 活跃待修复：9
+- 已修复 / 已关闭：29
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -26,19 +26,19 @@
 | Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | New | 2026-04-16 12:12 与 12:22 两条真实直聊会话回归复现；原“已修复”结论已撤回 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Feishu 直聊任务配置请求在搜索阶段反复调用 `cron_job` 后耗尽迭代并整轮无回复 | P1 | New | 2026-04-16 12:06 新发现；待为迭代耗尽补用户态兜底与循环收敛 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直聊消息再次出现 placeholder 假启动，最新 `19:51` 图片消息已命中 `direct.busy` 但仍发送 placeholder，随后仅补统一失败文案 | P1 | Fixing | 2026-04-16 19:51 新样本显示“只剩 placeholder”已收敛为“placeholder + 失败兜底”，但 busy 顺序与用户消息落库仍未收口 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |
-| Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | New | 2026-04-16 22:22 同一 actor 再次复现；quota 仍为 `12/12`，夜间重试依旧被伪装成通用系统失败 | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
-| Feishu 直达定时任务已生成最终播报，但发送阶段连续返回 `HTTP 400 Bad Request` 导致用户收不到盘前提醒 | P1 | New | 2026-04-16 21:04 与 21:33 两条真实 scheduler run 复现；`receive_id` 已对齐 actor，故障已从旧的 target 解析问题转移到发送阶段 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
+| Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | New | 2026-04-17 04:01 与 04:31 同一目标再次复现；已从“盘前提醒”扩散到收盘后/收盘监控，`receive_id` 仍与 actor 对齐 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-16 16:00 真实会话复现；`session.persist_assistant/done` 后仍继续启动 `hone/web_search`，但用户侧只收到 55 字过渡句 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-16 18:43 最新 Dell 会话复现；主链路仍能答复，但搜索阶段长期读不到 actor sandbox 画像 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | New | 2026-04-16 13:08 Feishu 直聊 `rklb要不要加` 命中；52 秒后同句重试成功，说明当前缺少对传输抖动的吸震 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-17 02:31 再次落成 `JsonUnknownStatus + skipped_error`，03:01 同任务又退化成 `PlainTextSuppressed + skipped_noop`，说明 watchlist 模板仍会把结构异常伪装成未命中 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-17 04:30 `Monitor_Watchlist_11` 再次落成 `JsonUnknownStatus + skipped_error`，05:00 同任务又恢复为 `JsonNoop + skipped_noop`，结构化收口仍在相邻轮次抖动 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 20:01-20:31 最新窗口中 `RKLB_动态监控` 连续两轮超窗，`TEM_动态监控` 同轮失败后 30 分钟内又恢复，抖动仍在持续 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
-| 会话压缩摘要仍以 `Compact Summary` 回灌为 `role=user`，导致 scheduler 任务串入上一轮待办与结论 | P1 | New | 2026-04-17 01:02 新会话继续把股票关注表以 `role=user` 注回上下文，01:06 正式回答仍建立在该摘要参与过的 prompt 之上 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 
 ## 已修复 / 已关闭
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 会话压缩摘要仍以 `Compact Summary` 回灌为 `role=user`，导致 scheduler 任务串入上一轮待办与结论 | P1 | Fixed | 2026-04-17 已把 compact summary 迁出普通用户恢复链路：改存 `role=system`、restore 跳过、prompt 统一改读 `session.summary`，并通过 `hone-channels` 全量测试 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
+| Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | Fixed | 2026-04-17 已让 quota 拒绝直接返回用户态额度文案，并在拒绝前补最小 user-turn 落库；`run_rejects_over_daily_limit_with_user_turn_and_friendly_error` 已通过 | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Release app / 渠道进程仍可被 legacy `config_runtime.yaml` 驱动，导致 runner 改完后 live 服务不立即生效 | P1 | Fixed | 2026-04-16 已让 desktop 忽略 legacy override，并更新 release runbook 到 canonical/effective config 启动方式 | [desktop_release_runner_legacy_config_source.md](./desktop_release_runner_legacy_config_source.md) |
 | Desktop Agent 设置页缺少 `codex_acp` runner 入口，实际已切到 Codex ACP 时仍无法一致展示 | P2 | Fixed | 2026-04-16 已补齐 settings/start 两处 runner 可见入口与检测提示，UI 与 live config 重新对齐 | [desktop_codex_acp_runner_ui_gap.md](./desktop_codex_acp_runner_ui_gap.md) |
 | 飞书渠道消息发错位（跨用户投递） | P0 | Fixed | 2026-03-25 已修复 | [feishu_message_misrouting.md](./feishu_message_misrouting.md) |

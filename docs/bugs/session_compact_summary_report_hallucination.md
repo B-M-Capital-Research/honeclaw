@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
@@ -168,7 +168,18 @@
 5. 最近多次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段；一旦叠加 overflow recovery，这份污染还会在同轮 scheduler 任务内再次被固化。
 6. 从 `20:46 -> 20:49` 的跨任务串话样本看，即使 summary 本身更接近“历史总结”，只要它继续以 `role=user` 参与后续 prompt 组装，answer 阶段仍会把其中的待办、结论和上下文当成当前任务事实继续复述。
 
-## 修复情况（2026-04-16，已确认未收口）
+## 修复情况（2026-04-17）
+
+1. `crates/hone-channels/src/session_compactor.rs` 现在把 compact summary 以 `role=system` 写回会话，不再伪装成新的 `role=user` 输入。
+2. `crates/hone-channels/src/agent_session.rs` 的 `restore_context()` 现在会显式跳过 `session.compact_summary` 消息，避免这段摘要再作为普通用户消息进入后续 runner transcript。
+3. `crates/hone-channels/src/prompt.rs` 现在优先读取 `session.summary` 并统一转换为 `【历史会话总结】` 注入本轮 prompt；旧会话里遗留的 `【Compact Summary】` 消息只作为兼容 fallback 读取，不再把原始标记文本直接塞回用户输入区。
+4. 新增/更新的回归测试已经覆盖：
+   - prompt 组装优先使用 `session.summary`，不会继续引用旧的 compact summary 消息正文
+   - compact boundary 后的 restore 不再把 compact summary 当成普通用户消息恢复
+   - `recv_extra` 仍然位于历史摘要之前，避免群聊补充上下文顺序被这次修复破坏
+5. 代码层修复已完成并通过 crate 级测试；当前文档状态更新为 `Fixed`。是否进一步升为 `Closed`，仍取决于后续真实 Feishu / scheduler 流量是否不再复现串话样本。
+
+## 历史修复情况（2026-04-16，已确认未收口）
 
 1. `crates/hone-channels/src/session_compactor.rs` 已改为只总结“将被压掉的旧消息”：
    - 正常 auto compact 不再把保留窗口里的最近消息送进压缩 prompt
@@ -186,16 +197,19 @@
 
 ## 回归验证
 
+- `cargo test -p hone-channels build_prompt_bundle_uses_session_summary_over_compact_summary_message -- --nocapture`
+- `cargo test -p hone-channels restore_context_uses_only_messages_after_latest_compact_boundary -- --nocapture`
+- `cargo test -p hone-channels restore_context_ -- --nocapture`
+- `cargo test -p hone-channels resolve_prompt_input_places_recv_extra_before_session_summary -- --nocapture`
 - `cargo test -p hone-channels auto_compact_summary_excludes_latest_user_turn_from_prompt -- --nocapture`
 - `cargo test -p hone-channels auto_compact_uses_low_group_threshold_and_keeps_recent_window -- --nocapture`
 - `cargo test -p hone-channels context_overflow_auto_compacts_and_retries_successfully -- --nocapture`
 - `cargo test -p hone-channels context_overflow_failure_is_rewritten_to_friendly_message -- --nocapture`
+- `cargo test -p hone-channels`
 - `cargo check -p hone-channels`
-- `rustfmt --edition 2024 --check crates/hone-channels/src/session_compactor.rs crates/hone-channels/src/agent_session.rs`
-- `git diff --check`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/session_compactor.rs crates/hone-channels/src/agent_session.rs crates/hone-channels/src/prompt.rs`
 
 ## 后续建议
 
-1. 优先把 `Compact Summary` 从 `role=user` 迁出，或至少在 prompt 组装里把它降权为系统内部摘要，避免后续 answer/scheduler 把它当成当前用户输入继续消费。
-2. 针对 scheduler 会话补一条跨任务回归测试：前一条任务先 compact，后一条独立任务执行时不应复述 compact summary 中的待确认事项、旧结论或旧任务编号。
-3. 如果后面还观测到摘要继续伪造数字，可再补一条更强的 contract test，直接校验 summary prompt / summary output 不允许出现未出现在历史里的证券价格、持仓数量和目标价。
+1. 后续仍应优先补一条 scheduler 跨任务回归测试，直接锁住“前一轮 compact summary 不得串入后一轮独立任务答案”的正式 contract。
+2. 如果真实流量里仍观测到摘要幻觉数字，可再补更强的 summary-output contract test，直接约束不得输出历史中未出现的证券价格、持仓数量和目标价。
