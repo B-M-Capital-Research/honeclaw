@@ -21,6 +21,12 @@ const CHANNELS: ChannelDef[] = [
     icon: "∞",
   },
   {
+    runner: "codex_acp",
+    name: "Codex ACP",
+    desc: "通过 codex-acp 驱动当前会话",
+    icon: "⌘",
+  },
+  {
     runner: "opencode_acp",
     name: "自定义 OpenAI 协议",
     desc: "OpenAI compatible / 推荐 OpenRouter",

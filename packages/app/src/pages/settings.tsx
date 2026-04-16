@@ -71,6 +71,8 @@ export default function SettingsPage() {
   // Codex CLI 检测状态
   const [codexCheckStatus, setCodexCheckStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
   const [codexCheckMessage, setCodexCheckMessage] = createSignal("")
+  const [codexAcpCheckStatus, setCodexAcpCheckStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
+  const [codexAcpCheckMessage, setCodexAcpCheckMessage] = createSignal("")
   const [opencodeCheckStatus, setOpencodeCheckStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
   const [opencodeCheckMessage, setOpencodeCheckMessage] = createSignal("")
   const [searchTestStatus, setSearchTestStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
@@ -267,6 +269,19 @@ export default function SettingsPage() {
     } catch (e) {
       setCodexCheckStatus("error")
       setCodexCheckMessage(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const handleCheckCodexAcp = async () => {
+    setCodexAcpCheckStatus("checking")
+    setCodexAcpCheckMessage("")
+    try {
+      const result = await checkDesktopAgentCli("codex_acp")
+      setCodexAcpCheckStatus(result.ok ? "ok" : "error")
+      setCodexAcpCheckMessage(result.message)
+    } catch (e) {
+      setCodexAcpCheckStatus("error")
+      setCodexAcpCheckMessage(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -841,7 +856,80 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* ── 卡片 2：Gemini CLI ── */}
+          {/* ── 卡片 2：Codex ACP ── */}
+          <div
+            class={[
+              "rounded-xl border p-5 transition cursor-pointer",
+              agentDraft().runner === "codex_acp"
+                ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
+                : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
+            ].join(" ")}
+            onClick={() => void selectRunner("codex_acp")}
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-sm font-semibold text-[color:var(--text-primary)]">Codex ACP</div>
+                <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
+                  使用 <code class="rounded bg-black/20 px-1">codex-acp</code> 驱动当前 Agent，会话实际走 ACP 链路而不是 multi-agent。
+                </div>
+              </div>
+              <Show when={agentDraft().runner === "codex_acp"}>
+                <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">当前</span>
+              </Show>
+            </div>
+
+            <div class="mt-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <Show when={codexAcpCheckStatus() !== "idle"}>
+                <div
+                  class={[
+                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+                    codexAcpCheckStatus() === "checking"
+                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
+                      : codexAcpCheckStatus() === "ok"
+                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
+                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
+                  ].join(" ")}
+                >
+                  <Show when={codexAcpCheckStatus() === "checking"}>
+                    <svg class="h-3.5 w-3.5 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  </Show>
+                  <Show when={codexAcpCheckStatus() === "ok"}>
+                    <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                    </svg>
+                  </Show>
+                  <Show when={codexAcpCheckStatus() === "error"}>
+                    <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                  </Show>
+                  <span>
+                    {codexAcpCheckStatus() === "checking" ? "检测中，请稍候…" : codexAcpCheckMessage()}
+                  </span>
+                </div>
+              </Show>
+
+              <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-3 text-xs text-[color:var(--text-secondary)]">
+                运行时配置当前来自 desktop canonical / effective config；如果 live listener 仍显示旧 runner，应继续核对 release sidecar 是否已按新配置重启。
+              </div>
+
+              <div class="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
+                  disabled={codexAcpCheckStatus() === "checking"}
+                  onClick={() => void handleCheckCodexAcp()}
+                >
+                  {codexAcpCheckStatus() === "checking" ? "检测中…" : "测试联通"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 卡片 3：Gemini CLI ── */}
           <div
             class={[
               "rounded-xl border p-5 transition cursor-pointer",
@@ -911,7 +999,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* ── 卡片 3：Codex ── */}
+          {/* ── 卡片 4：Codex CLI ── */}
           <div
             class={[
               "rounded-xl border p-5 transition cursor-pointer",

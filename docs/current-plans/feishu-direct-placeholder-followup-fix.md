@@ -3,7 +3,7 @@
 - title: Feishu 直聊 placeholder 假启动与 release runner 生效链路修复
 - status: in_progress
 - created_at: 2026-04-16 14:12 CST
-- updated_at: 2026-04-16 14:49 CST
+- updated_at: 2026-04-16 15:06 CST
 - owner: Codex
 - related_files:
   - bins/hone-feishu/src/handler.rs
@@ -11,6 +11,7 @@
   - bins/hone-feishu/src/types.rs
   - docs/runbooks/desktop-release-app-runtime.md
   - docs/bugs/README.md
+  - docs/bugs/desktop_codex_acp_runner_ui_gap.md
   - docs/bugs/desktop_release_runner_legacy_config_source.md
   - docs/bugs/feishu_direct_placeholder_without_agent_run.md
 - related_docs:
@@ -29,6 +30,7 @@
 - 修复 Feishu 文本/空输入/异常兜底路径，避免“placeholder 假启动”
 - 将 `+8613871396421` 对应 Feishu 身份加入当前运行配置管理员名单
 - 修复 desktop release 运行态误把 legacy `data/runtime/config_runtime.yaml` 当作 steady-state 配置源的问题
+- 修复 desktop 前端缺少 `codex_acp` runner 展示入口、导致 live config 与 UI 状态不一致的问题
 - 更新 release runbook，明确 canonical `config.yaml` 与 `effective-config.yaml` 的使用边界
 - 更新相关 bug 文档与导航页
 
@@ -39,6 +41,7 @@
 - 检查当前运行配置中管理员项已生效
 - 验证 desktop runtime 在 legacy `config_runtime.yaml` override 下仍会回退到 canonical `config.yaml`
 - 验证当前 live `hone-feishu` 启动日志中的 `dialog.engine` 已切到 `codex_acp`
+- 验证 desktop 设置页 / 启动页会显式展示 `codex_acp` runner，而不是继续让用户从缺失卡片中猜测当前状态
 - 已完成：
   - `cargo test -p hone-feishu actionable_user_input_detects_empty_payload -- --nocapture`
   - `cargo test -p hone-feishu direct_busy_text_is_explicit -- --nocapture`

@@ -18,7 +18,7 @@
 - **Feishu 直聊 placeholder 假启动与 release runner 生效链路修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/feishu-direct-placeholder-followup-fix.md`
-  - 摘要：继续修复 Feishu 私聊消息只发 placeholder 不进主链路的问题，同时收口 release app 仍读取 legacy config 导致 runner 改完不立即生效，并把 live 服务切到 `codex_acp`
+  - 摘要：继续修复 Feishu 私聊消息只发 placeholder 不进主链路的问题，同时收口 release app 仍读取 legacy config 导致 runner 改完不立即生效，并修复 desktop UI 缺少 `codex_acp` 入口造成的 runner 观测不一致
 - **Canonical Config 与 Runtime Apply 统一改造**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/canonical-config-runtime-apply.md`
