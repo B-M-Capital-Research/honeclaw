@@ -8,6 +8,7 @@
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 最近一小时同一任务持续异常：
     - `run_id=1865`，`job_id=j_c1c1be63`，`job_name=存储板块加仓信号监控`，`executed_at=2026-04-16T11:00:31.512294+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `2026-04-16T11:30:28.836+08:00`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，运行日志再次记录 `parse_kind=JsonUnknownStatus`，且同轮仍被记为“心跳任务未命中，本轮不发送”
     - `run_id=1860`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-16T10:30:32.268455+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=1855`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-16T10:00:32.184986+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=1849`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-16T09:30:22.379738+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
@@ -16,6 +17,7 @@
   - 最近一小时运行日志：`data/runtime/logs/web.log`
     - `2026-04-16 10:30:32.267` `job_id=j_ab7e8fb1` `parse_kind=JsonUnknownStatus`
     - `2026-04-16 11:00:31.512` `job_id=j_c1c1be63` `parse_kind=JsonUnknownStatus`
+    - `2026-04-16 11:30:28.836` `job_id=j_ab7e8fb1` 再次出现 `parse_kind=JsonUnknownStatus`，随后仍打印 `心跳任务未命中，本轮不发送`
     - `2026-04-16 10:00:32.184` `job_id=j_ab7e8fb1` `parse_kind=JsonUnknownStatus`
     - `2026-04-16 10:00:32.184` 同轮 `raw_preview` 直接列出 11 只股票的“当前价格 vs 触发价”，但仍未返回合法状态 JSON
     - `2026-04-16 09:30:22.379` 同一任务上一轮仍为 `parse_kind=JsonUnknownStatus`
@@ -45,9 +47,9 @@
 
 ## 当前实现效果
 
-- 最近一小时内，`Monitor_Watchlist_11` 在 `10:00` 与 `10:30` 两个窗口连续落回 `JsonUnknownStatus`，到 `11:00` 虽短暂恢复为 `JsonNoop`，但另一条 heartbeat `存储板块加仓信号监控` 又在 `11:00:31` 落回 `JsonUnknownStatus`，说明该缺陷仍在当前活跃时段持续出现，而不是只在凌晨偶发。
+- 最近一小时内，`Monitor_Watchlist_11` 在 `10:00`、`10:30` 与 `11:30` 三个窗口连续落回 `JsonUnknownStatus`；到 `11:00` 虽短暂恢复为 `JsonNoop`，但另一条 heartbeat `存储板块加仓信号监控` 又在 `11:00:31` 落回 `JsonUnknownStatus`，说明该缺陷仍在当前活跃时段持续出现，而不是只在凌晨偶发。
 - `web.log` 在 `2026-04-16 10:00:32.184` 明确记录 `parse_kind=JsonUnknownStatus`；同一轮 `raw_preview` 已经枚举 11 只股票的实时价格和触发价，但因为没有落成合法状态 JSON，最终仍被当成 `noop / skipped_noop` 静默吞掉。
-- 对照 `run_id=1860`（`10:30`）、`1855`（`10:00`）、`1849`（`09:30`）和更早的 `01:31` 记录可以看到，这类 heartbeat 已经连续多轮维持同一症状，并没有随着时间窗切换自然恢复。
+- 对照 `11:30` 的最新日志、`run_id=1860`（`10:30`）、`1855`（`10:00`）、`1849`（`09:30`）和更早的 `01:31` 记录可以看到，这类 heartbeat 已经连续多轮维持同一症状，并没有随着时间窗切换自然恢复。
 - 这也说明问题不只是“偶发返回乱码”，而是模型已经完成了业务判断，却在最后结构化封装一步失配，监控链路因此丢失了本该可追踪的判定结果。
 - 数据库没有保存可供人工直接复核的最终文本预览，导致一旦进入 `JsonUnknownStatus`，排障信息同时丢失。
 - 由于 `run_id=1865` 仍是 `parse_kind=JsonUnknownStatus + execution_status=noop`，当前线上行为与“已升级为 `execution_failed + skipped_error`”的修复结论不一致，说明此前修复尚未生效到当前运行实例，或存在未覆盖的分支。
