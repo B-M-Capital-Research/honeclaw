@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 13:19 CST
 - **Bug Type**: Business Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
@@ -67,3 +67,20 @@
 - 为 `cron_job remove`、批量替换、超限自动腾挪等路径补充显式确认屏障；未确认前只允许返回候选清单，不允许真正删除。
 - 在任务上限报错中返回结构化候选信息，例如当前任务列表、可停用数量、建议替换入口，减少模型自行脑补“冗余任务”的空间。
 - 为“add 失败后自动 list/remove/retry”的会话路径补一条回归测试，确保后续实现最多停留在建议阶段，不能直接改写用户任务。
+
+## 修复情况（2026-04-16）
+
+- `crates/hone-tools/src/cron_job_tool.rs` 已为 `cron_job remove` 增加显式确认屏障：
+  - 未传 `confirm="yes"` 时，不再执行删除
+  - 工具只返回 `needs_confirmation=true`、目标任务信息，以及后续需要用户确认后才能执行的明确指引
+- `remove` 的描述与参数 schema 已同步强调这是破坏性操作，必须携带显式确认
+- 按名称删除的模糊匹配现在在多候选场景下只返回候选任务列表，不再允许模型直接凭名称继续删任务
+- 正常删除路径仍保留，但需要显式传入精确 `job_id` 和 `confirm="yes"` 才会执行
+- 新增回归测试：
+  - `cron_job_tool::tests::cron_job_tool_add_list_update_remove_flow`
+  - `cron_job_tool::tests::remove_requires_explicit_confirmation_and_exact_job_id`
+  - `cron_job_tool::tests::remove_by_ambiguous_name_returns_candidates_without_deleting`
+- 验证命令：
+  - `cargo test -p hone-tools cron_job_tool_add_list_update_remove_flow -- --nocapture`
+  - `cargo test -p hone-tools confirmation_and_exact_job_id -- --nocapture`
+  - `cargo test -p hone-tools ambiguous_name_returns_candidates_without_deleting -- --nocapture`

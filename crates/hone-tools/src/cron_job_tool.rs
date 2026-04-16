@@ -45,7 +45,7 @@ impl Tool for CronJobTool {
     }
 
     fn description(&self) -> &str {
-        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。"
+        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。remove 属于破坏性操作：必须先拿到精确 job_id，再显式传入 confirm=\"yes\" 才会真正删除；未确认前工具只会返回候选任务和确认指引。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -131,6 +131,16 @@ impl Tool for CronJobTool {
                 r#enum: None,
                 items: None,
             },
+            ToolParameter {
+                name: "confirm".to_string(),
+                param_type: "string".to_string(),
+                description:
+                    "仅 remove 使用；删除属于破坏性操作，必须显式传入 confirm=\"yes\" 才会真正执行"
+                        .to_string(),
+                required: false,
+                r#enum: Some(vec!["yes".into()]),
+                items: None,
+            },
         ]
     }
 
@@ -198,18 +208,25 @@ impl Tool for CronJobTool {
             "remove" => {
                 let job_id = args.get("job_id").and_then(|v| v.as_str()).unwrap_or("");
                 let name_query = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let confirm = args.get("confirm").and_then(|v| v.as_str()).unwrap_or("");
+                let data = storage.load_jobs(actor);
 
-                // If job_id is provided and resolves directly, use it.
-                // Otherwise fall back to name-based fuzzy match.
-                let resolved_id = if !job_id.is_empty() {
-                    job_id.to_string()
+                let matched_job = if !job_id.is_empty() {
+                    match data.jobs.iter().find(|j| j.id == job_id) {
+                        Some(job) => job.clone(),
+                        None => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("未找到任务 ID「{job_id}」，请先调用 list 确认任务 ID")
+                            }));
+                        }
+                    }
                 } else if !name_query.is_empty() {
-                    let data = storage.load_jobs(actor);
                     let name_lower = name_query.to_lowercase();
                     let matches: Vec<_> = data
                         .jobs
                         .iter()
-                        .filter(|j| j.enabled && j.name.to_lowercase().contains(&name_lower))
+                        .filter(|j| j.name.to_lowercase().contains(&name_lower))
                         .collect();
                     match matches.len() {
                         0 => {
@@ -218,12 +235,24 @@ impl Tool for CronJobTool {
                                 "error": format!("未找到名称包含「{name_query}」的任务，请先用 list 确认任务名称")
                             }));
                         }
-                        1 => matches[0].id.clone(),
+                        1 => (*matches[0]).clone(),
                         _ => {
-                            let names: Vec<_> = matches.iter().map(|j| &j.name).collect();
+                            let candidates: Vec<_> = matches
+                                .iter()
+                                .map(|job| {
+                                    serde_json::json!({
+                                        "job_id": job.id,
+                                        "name": job.name,
+                                        "schedule": job.schedule,
+                                        "enabled": job.enabled,
+                                    })
+                                })
+                                .collect();
                             return Ok(serde_json::json!({
                                 "success": false,
-                                "error": format!("名称「{name_query}」匹配到多个任务：{names:?}，请提供 job_id 精确定位")
+                                "error": format!("名称「{name_query}」匹配到多个任务；删除前请先让用户确认具体 job_id"),
+                                "needs_confirmation": true,
+                                "candidates": candidates
                             }));
                         }
                     }
@@ -234,7 +263,19 @@ impl Tool for CronJobTool {
                     }));
                 };
 
-                let result = storage.remove_job(actor, &resolved_id);
+                if confirm != "yes" {
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "needs_confirmation": true,
+                        "job": serde_json::to_value(&matched_job).unwrap_or_default(),
+                        "error": format!(
+                            "删除定时任务属于破坏性操作。请先向用户确认；确认后再使用 cron_job(action=\"remove\", job_id=\"{}\", confirm=\"yes\") 执行删除",
+                            matched_job.id
+                        )
+                    }));
+                }
+
+                let result = storage.remove_job(actor, &matched_job.id);
                 Ok(result)
             }
             "update" => {
@@ -433,13 +474,24 @@ mod tests {
         );
         assert_eq!(update_by_name["job"]["schedule"]["minute"], 45);
 
-        let remove_resp = tool
+        let remove_preview = tool
             .execute(serde_json::json!({
                 "action":"remove",
                 "job_id":job_id
             }))
             .await
             .expect("remove job");
+        assert_eq!(remove_preview["success"], false);
+        assert_eq!(remove_preview["needs_confirmation"], true);
+
+        let remove_resp = tool
+            .execute(serde_json::json!({
+                "action":"remove",
+                "job_id": job_id,
+                "confirm":"yes"
+            }))
+            .await
+            .expect("remove job with confirm");
         assert_eq!(remove_resp["success"], true);
 
         let list_resp = tool
@@ -477,5 +529,92 @@ mod tests {
             .expect("update nonexistent");
         assert_eq!(resp["success"], false);
         assert!(resp["error"].as_str().unwrap_or("").contains("未找到"));
+    }
+
+    #[tokio::test]
+    async fn remove_requires_explicit_confirmation_and_exact_job_id() {
+        let data_dir = make_temp_dir("hone_cron_tool_confirm");
+        let actor = ActorIdentity::new("imessage", "u1", None::<String>).expect("actor");
+        let tool = CronJobTool::new(&data_dir, Some(actor.clone()), "u1", false);
+
+        let add_resp = tool
+            .execute(serde_json::json!({
+                "action":"add",
+                "name":"night review",
+                "hour":20,
+                "minute":30,
+                "repeat":"daily",
+                "task_prompt":"send review"
+            }))
+            .await
+            .expect("add job");
+        let job_id = add_resp["job"]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let preview_resp = tool
+            .execute(serde_json::json!({
+                "action":"remove",
+                "job_id": job_id
+            }))
+            .await
+            .expect("preview remove");
+        assert_eq!(preview_resp["success"], false);
+        assert_eq!(preview_resp["needs_confirmation"], true);
+        assert_eq!(preview_resp["job"]["id"], add_resp["job"]["id"]);
+
+        let jobs_after_preview = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
+        assert_eq!(jobs_after_preview.len(), 1);
+
+        let confirmed_resp = tool
+            .execute(serde_json::json!({
+                "action":"remove",
+                "job_id": add_resp["job"]["id"],
+                "confirm":"yes"
+            }))
+            .await
+            .expect("confirmed remove");
+        assert_eq!(confirmed_resp["success"], true);
+
+        let jobs_after_confirm = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
+        assert!(jobs_after_confirm.is_empty());
+    }
+
+    #[tokio::test]
+    async fn remove_by_ambiguous_name_returns_candidates_without_deleting() {
+        let data_dir = make_temp_dir("hone_cron_tool_ambiguous_remove");
+        let actor = ActorIdentity::new("imessage", "u1", None::<String>).expect("actor");
+        let tool = CronJobTool::new(&data_dir, Some(actor.clone()), "u1", false);
+
+        for suffix in ["oil am", "oil pm"] {
+            tool.execute(serde_json::json!({
+                "action":"add",
+                "name": format!("crude {suffix}"),
+                "hour":8,
+                "minute":0,
+                "repeat":"daily",
+                "task_prompt":"send oil update"
+            }))
+            .await
+            .expect("add job");
+        }
+
+        let resp = tool
+            .execute(serde_json::json!({
+                "action":"remove",
+                "name":"crude"
+            }))
+            .await
+            .expect("remove by ambiguous name");
+        assert_eq!(resp["success"], false);
+        assert_eq!(resp["needs_confirmation"], true);
+        assert_eq!(
+            resp["candidates"].as_array().map(|items| items.len()),
+            Some(2)
+        );
+
+        let jobs = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
+        assert_eq!(jobs.len(), 2);
     }
 }
