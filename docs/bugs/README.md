@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：18
-- 已修复 / 已关闭：9
+- 活跃待修复：17
+- 已修复 / 已关闭：10
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -24,7 +24,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | New | 未修复；除端口漂移外，2026-04-16 09:01 还复现了 backend 重启中断 answer 执行，导致最近会话与 scheduler 会话都无最终回复 | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
-| Desktop 设置页多入口保存共用同一份配置文件但缺少串行写保护，可能造成 runner 配置被并发保存静默覆盖 | P1 | New | 未修复；配置写入链路仍缺少共享串行锁 | [desktop_runner_settings_write_race.md](./desktop_runner_settings_write_race.md) |
 | Desktop 设置页切换 runner 后可能显示已切换，但 bundled runtime 重启失败会被静默吞掉，实际仍跑旧 runner 或未完成切换 | P1 | New | 未修复；runner 切换仍可能出现“UI 成功、runtime 未生效” | [desktop_runner_switch_false_success_gap.md](./desktop_runner_switch_false_success_gap.md) |
 | Desktop 设置页重复点击 runner 会触发重入保存与 bundled backend 重启，导致切换过程卡死或表现为“点一下就崩” | P1 | New | 未修复；重复点击仍会排队触发连续重启 | [desktop_runner_switch_reentrant_restart_gap.md](./desktop_runner_switch_reentrant_restart_gap.md) |
 | Multi-Agent Answer Agent 在设置页允许 `maxToolCalls=0`，但运行时强制提升为至少 1，用户无法真正禁用补充工具调用 | P1 | Fixing | 2026-04-15 本地代码已去掉 `max(1)` 并对齐 handoff 文本，`hone-channels` 回归已过；仍卡在 desktop release runtime 门槛，尚未完成重启 / 发布 | [multi_agent_answer_max_tool_calls_zero_ignored.md](./multi_agent_answer_max_tool_calls_zero_ignored.md) |
@@ -55,6 +54,7 @@
 | Desktop runtime logs 接口曾因坏日志数据或 runtime overlay 漏读而失效，日志面板无法稳定恢复最近运行痕迹 | P1 | Fixed | `d031f16` 已修复日志恢复与 overlay 读取 | [desktop_runtime_logs_recovery_gap.md](./desktop_runtime_logs_recovery_gap.md) |
 | Desktop legacy runtime 会整块覆盖 canonical `agent.opencode` 配置，破坏本机 OpenCode 继承语义 | P1 | Fixed | 2026-04-16 已改成字段级补迁；空 `api_key` 的本机 OpenCode 继承语义已保留，并补回归测试 | [desktop_opencode_legacy_override_gap.md](./desktop_opencode_legacy_override_gap.md) |
 | Desktop Agent 设置会把 `multi-agent.answer` 反写到 `agent.opencode`，导致不同 runner 的独立配置互相覆盖 | P1 | Fixed | 2026-04-16 已停止 `multi-agent.answer` 反写 `agent.opencode`，并补保存链路回归测试 | [desktop_runner_settings_cross_runner_overwrite.md](./desktop_runner_settings_cross_runner_overwrite.md) |
+| Desktop 设置页多入口保存共用同一份配置文件但缺少串行写保护，可能造成 runner 配置被并发保存静默覆盖 | P1 | Fixed | 2026-04-16 已为 desktop 配置写入链路补共享 `config_write_lock`，并补并发保存回归测试 | [desktop_runner_settings_write_race.md](./desktop_runner_settings_write_race.md) |
 
 ## 历史分析 / 部分止血
 

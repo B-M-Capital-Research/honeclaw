@@ -30,7 +30,7 @@ use self::{processes::*, runtime_env::*, settings::*};
 #[cfg(test)]
 use std::sync::Arc;
 #[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 const API_VERSION: &str = "desktop-v1";
 
@@ -275,6 +275,7 @@ pub(crate) struct BackendStatusInfo {
 pub(crate) struct DesktopState {
     desktop_lock: Mutex<Option<hone_core::ProcessLockGuard>>,
     inner: Mutex<DesktopBackendManager>,
+    config_write_lock: tokio::sync::Mutex<()>,
     transition_lock: tokio::sync::Mutex<()>,
 }
 
@@ -687,6 +688,14 @@ async fn connect_backend_serialized(
     connect_backend_inner(app, state).await
 }
 
+async fn with_config_write_lock<T, F>(state: &DesktopState, op: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String>,
+{
+    let _guard = state.config_write_lock.lock().await;
+    op()
+}
+
 pub(crate) async fn connect_backend_impl(
     app: AppHandle,
     state: State<'_, DesktopState>,
@@ -756,7 +765,7 @@ pub(crate) async fn set_channel_settings_impl(
     state: State<'_, DesktopState>,
     settings: DesktopChannelSettingsInput,
 ) -> Result<DesktopChannelSettingsUpdateResult, String> {
-    let saved = save_channel_settings(&app, &settings)?;
+    let saved = with_config_write_lock(&state, || save_channel_settings(&app, &settings)).await?;
     log_desktop(
         &app,
         "INFO",
@@ -943,11 +952,15 @@ pub(crate) async fn set_agent_settings_impl(
 ) -> Result<(), String> {
     let runtime = ensure_runtime_paths(&app)?;
     let updates = build_agent_setting_updates(&settings);
-    apply_setting_updates(
-        &runtime.config_path,
-        &runtime.effective_config_path,
-        updates,
-    )?;
+    with_config_write_lock(&state, || {
+        apply_setting_updates(
+            &runtime.config_path,
+            &runtime.effective_config_path,
+            updates,
+        )
+        .map(|_| ())
+    })
+    .await?;
     log_desktop(
         &app,
         "INFO",
@@ -1066,6 +1079,150 @@ mod tests {
             1,
             "backend transition should never run concurrently"
         );
+    }
+
+    async fn run_with_config_write_lock(
+        state: Arc<DesktopState>,
+        concurrent: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+    ) {
+        let _ = with_config_write_lock(&state, || {
+            let current = concurrent.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(current, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(25));
+            concurrent.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn config_write_lock_serializes_concurrent_calls() {
+        let state = Arc::new(DesktopState::default());
+        let concurrent = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+
+        let mut tasks = Vec::new();
+        for _ in 0..3 {
+            tasks.push(tokio::spawn(run_with_config_write_lock(
+                state.clone(),
+                concurrent.clone(),
+                peak.clone(),
+            )));
+        }
+
+        for task in tasks {
+            task.await.expect("task should join");
+        }
+
+        assert_eq!(
+            peak.load(Ordering::SeqCst),
+            1,
+            "config writes should never run concurrently"
+        );
+    }
+
+    #[tokio::test]
+    async fn config_write_lock_preserves_updates_from_concurrent_saves() {
+        let state = Arc::new(DesktopState::default());
+        let dir = std::env::temp_dir().join(format!(
+            "hone-desktop-config-write-lock-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp test dir should exist");
+        let config_path = dir.join("config.yaml");
+        let effective_config_path = dir.join("effective-config.yaml");
+        std::fs::write(
+            &config_path,
+            r#"
+agent:
+  runner: opencode_acp
+  codex_model: ""
+  opencode:
+    api_base_url: "https://openrouter.ai/api/v1"
+    model: "google/gemini-2.5-pro-preview"
+    api_key: ""
+search:
+  api_keys: []
+fmp:
+  api_keys: []
+  api_key: ""
+"#,
+        )
+        .expect("seed config should write");
+
+        let first_started = Arc::new(AtomicBool::new(false));
+        let state_for_agent = state.clone();
+        let config_for_agent = config_path.clone();
+        let effective_for_agent = effective_config_path.clone();
+        let first_started_for_agent = first_started.clone();
+        let agent_task = tokio::spawn(async move {
+            with_config_write_lock(&state_for_agent, || {
+                first_started_for_agent.store(true, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(30));
+                apply_setting_updates(
+                    &config_for_agent,
+                    &effective_for_agent,
+                    vec![
+                        (
+                            "agent.runner",
+                            serde_yaml::Value::String("multi-agent".to_string()),
+                        ),
+                        (
+                            "agent.codex_model",
+                            serde_yaml::Value::String("ignored-model".to_string()),
+                        ),
+                    ],
+                )
+                .map(|_| ())
+            })
+            .await
+        });
+
+        while !first_started.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+
+        let state_for_fmp = state.clone();
+        let config_for_fmp = config_path.clone();
+        let effective_for_fmp = effective_config_path.clone();
+        let fmp_task = tokio::spawn(async move {
+            with_config_write_lock(&state_for_fmp, || {
+                apply_setting_updates(
+                    &config_for_fmp,
+                    &effective_for_fmp,
+                    vec![
+                        (
+                            "fmp.api_keys",
+                            serde_yaml::Value::Sequence(vec![serde_yaml::Value::String(
+                                "fmp-key-1".to_string(),
+                            )]),
+                        ),
+                        ("fmp.api_key", serde_yaml::Value::String(String::new())),
+                    ],
+                )
+                .map(|_| ())
+            })
+            .await
+        });
+
+        agent_task
+            .await
+            .expect("agent task should join")
+            .expect("agent save should succeed");
+        fmp_task
+            .await
+            .expect("fmp task should join")
+            .expect("fmp save should succeed");
+
+        let config = HoneConfig::from_file(&config_path).expect("final config should load");
+        assert_eq!(config.agent.runner, "multi-agent");
+        assert_eq!(config.agent.codex_model, "ignored-model");
+        assert_eq!(config.fmp.api_keys, vec!["fmp-key-1".to_string()]);
     }
 
     #[test]
@@ -1359,26 +1516,30 @@ pub(crate) async fn set_openrouter_settings_impl(
         .into_iter()
         .filter(|k| !k.trim().is_empty())
         .collect();
-    apply_setting_updates(
-        &runtime.config_path,
-        &runtime.effective_config_path,
-        vec![
-            (
-                "llm.openrouter.api_keys",
-                serde_yaml::Value::Sequence(
-                    valid_keys
-                        .iter()
-                        .cloned()
-                        .map(serde_yaml::Value::String)
-                        .collect(),
+    with_config_write_lock(&state, || {
+        apply_setting_updates(
+            &runtime.config_path,
+            &runtime.effective_config_path,
+            vec![
+                (
+                    "llm.openrouter.api_keys",
+                    serde_yaml::Value::Sequence(
+                        valid_keys
+                            .iter()
+                            .cloned()
+                            .map(serde_yaml::Value::String)
+                            .collect(),
+                    ),
                 ),
-            ),
-            (
-                "llm.openrouter.api_key",
-                serde_yaml::Value::String(String::new()),
-            ),
-        ],
-    )?;
+                (
+                    "llm.openrouter.api_key",
+                    serde_yaml::Value::String(String::new()),
+                ),
+            ],
+        )
+        .map(|_| ())
+    })
+    .await?;
     log_desktop(
         &app,
         "INFO",
@@ -1421,23 +1582,27 @@ pub(crate) async fn set_fmp_settings_impl(
         .into_iter()
         .filter(|k| !k.trim().is_empty())
         .collect();
-    apply_setting_updates(
-        &runtime.config_path,
-        &runtime.effective_config_path,
-        vec![
-            (
-                "fmp.api_keys",
-                serde_yaml::Value::Sequence(
-                    valid_keys
-                        .iter()
-                        .cloned()
-                        .map(serde_yaml::Value::String)
-                        .collect(),
+    with_config_write_lock(&state, || {
+        apply_setting_updates(
+            &runtime.config_path,
+            &runtime.effective_config_path,
+            vec![
+                (
+                    "fmp.api_keys",
+                    serde_yaml::Value::Sequence(
+                        valid_keys
+                            .iter()
+                            .cloned()
+                            .map(serde_yaml::Value::String)
+                            .collect(),
+                    ),
                 ),
-            ),
-            ("fmp.api_key", serde_yaml::Value::String(String::new())),
-        ],
-    )?;
+                ("fmp.api_key", serde_yaml::Value::String(String::new())),
+            ],
+        )
+        .map(|_| ())
+    })
+    .await?;
     log_desktop(
         &app,
         "INFO",
@@ -1485,20 +1650,24 @@ pub(crate) async fn set_tavily_settings_impl(
         .into_iter()
         .filter(|k| !k.trim().is_empty())
         .collect();
-    apply_setting_updates(
-        &runtime.config_path,
-        &runtime.effective_config_path,
-        vec![(
-            "search.api_keys",
-            serde_yaml::Value::Sequence(
-                valid_keys
-                    .iter()
-                    .cloned()
-                    .map(serde_yaml::Value::String)
-                    .collect(),
-            ),
-        )],
-    )?;
+    with_config_write_lock(&state, || {
+        apply_setting_updates(
+            &runtime.config_path,
+            &runtime.effective_config_path,
+            vec![(
+                "search.api_keys",
+                serde_yaml::Value::Sequence(
+                    valid_keys
+                        .iter()
+                        .cloned()
+                        .map(serde_yaml::Value::String)
+                        .collect(),
+                ),
+            )],
+        )
+        .map(|_| ())
+    })
+    .await?;
     log_desktop(
         &app,
         "INFO",

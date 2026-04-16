@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 2026-04-15 当前源码复核
   - 代码证据:
@@ -58,3 +58,19 @@
 - 为所有会修改 desktop runtime 配置的 sidecar 命令补统一的配置写锁，把“读-改-写 canonical config + 写 effective config”纳入同一临界区。
 - runner 设置相关排查不应只关注单次保存成功，还要验证与 FMP / Tavily / OpenRouter 等保存动作交错时是否会丢配置。
 - 若短期内无法重构，应至少补一条并发回归测试，证明两个设置命令交错执行时最终配置仍能保留双方改动。
+
+## 修复情况（2026-04-16）
+
+- `bins/hone-desktop/src/sidecar.rs` 已新增共享的 `config_write_lock`
+- 以下会修改 desktop runtime 配置的保存链路现在都会先拿这把锁，再执行 canonical/effective config 的“读-改-写”：
+  - `set_agent_settings_impl(...)`
+  - `set_channel_settings_impl(...)`
+  - `set_openrouter_settings_impl(...)`
+  - `set_fmp_settings_impl(...)`
+  - `set_tavily_settings_impl(...)`
+- 这次修复没有改变原有的 backend `transition_lock` 职责；配置写锁只负责串行化配置文件更新，bundled backend 重连仍走原来的 transition 串行化链路
+- 新增并发回归测试：
+  - `sidecar::tests::config_write_lock_serializes_concurrent_calls`
+  - `sidecar::tests::config_write_lock_preserves_updates_from_concurrent_saves`
+- 验证命令：
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop config_write_lock_ -- --nocapture`
