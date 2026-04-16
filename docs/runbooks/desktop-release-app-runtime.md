@@ -79,6 +79,40 @@ These env vars decide where the release app reads and writes runtime state.
 
 If these are not pinned explicitly, the app may fall back to other default locations, which is not what we want for the honeclaw-local workflow.
 
+## Mandatory Cleanup Before Restart
+
+Before any release restart, assume the previous runtime may have left behind stale pid files or startup locks.
+
+This is not optional for the honeclaw-local workflow:
+
+- `hone-console-page`, `hone-desktop`, `hone-feishu`, `hone-telegram`, and `hone-discord` all use runtime lock files under `/Users/ecohnoch/Desktop/honeclaw/data/runtime/locks`
+- if an old process crashed or was killed, the lock file may remain even though the pid no longer exists
+- in that state, a new launch can fail immediately with a misleading "old process still holds the startup lock" error
+- the desktop shell may also come up while the backend or channels never actually recover
+
+Recommended preflight:
+
+```bash
+cd /Users/ecohnoch/Desktop/honeclaw
+
+ps -axo pid=,ppid=,command= | rg '[h]one-(console-page|desktop|feishu|telegram|discord)'
+
+find data/runtime -maxdepth 3 \( -name '*.pid' -o -name '*.lock' \) -print | sort
+```
+
+Required cleanup rule:
+
+- if a pid file points to a non-existent process, delete that pid file
+- if a lock file points to a non-existent process, delete that lock file
+- do not leave stale `data/runtime/locks/*.lock` files in place before retrying startup
+- if a real old process is still alive, stop that process first and only then relaunch
+
+This specific failure mode has already happened in practice:
+
+- backend restart was blocked by stale `hone-console-page.lock`
+- desktop restart was blocked by stale `hone-desktop.lock`
+- the window could still be visible while Feishu and the other channels were no longer healthy
+
 ## Build The Release App
 
 Run the build from the repo root:
@@ -113,6 +147,8 @@ Current repo helpers now align with this cache target:
 
 ## Start The Release App
 
+Do the cleanup steps above first.
+
 Run the executable inside the `.app` bundle with the repo-local runtime env:
 
 ```bash
@@ -131,6 +167,8 @@ This is the recommended long-running command.
 ## Start The Backend Lane
 
 When the desktop is configured to use the local backend on `127.0.0.1:8077`, the backend lane must be restarted with the same repo-local env and the same cache target directory assumptions as the desktop lane.
+
+Do the cleanup steps above first.
 
 Preferred foreground diagnostic launch:
 
@@ -167,6 +205,7 @@ env \
 Operational note:
 
 - if a detached launch exits immediately without creating a fresh `hone-console-page.lock`, do not keep guessing
+- if a detached launch fails while an old lock file is still present, treat stale lock cleanup as the first recovery step
 - switch to the foreground diagnostic launch first and capture the first startup output
 - only go back to a detached launch once the foreground path is confirmed healthy
 
@@ -211,6 +250,11 @@ Expected result:
 ```bash
 curl http://127.0.0.1:8077/api/meta
 ```
+
+Expected result:
+
+- JSON should be returned successfully
+- if the desktop window exists but this endpoint fails, treat the runtime as unhealthy
 
 ### 4. Confirm the workflow runner still responds if it is part of the local session
 
