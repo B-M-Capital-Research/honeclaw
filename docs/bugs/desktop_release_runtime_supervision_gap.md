@@ -6,6 +6,7 @@
 - **状态**: New
 - **证据来源**:
   - 2026-04-15 用户真实故障与恢复过程
+  - 2026-04-16 最近会话“无回复”排查
   - 日志证据:
     - `data/runtime/logs/desktop.log`
     - `data/runtime/logs/web.log`
@@ -20,6 +21,9 @@
 3. 同一时间窗里，`data/runtime/logs/web.log` 记录 `2026-04-15 09:02:37` backend 曾启动到 `http://127.0.0.1:56044`，而不是固定的 `8077`；随后又出现多条向 `http://127.0.0.1:8077/api/runtime/heartbeat` 发送失败的警告。
 4. 这说明 release runtime 的某条启动/托管路径没有稳定保住 `HONE_WEB_PORT=8077` 与长期进程生命周期，导致 desktop 继续探测 `8077` 时只能看到 `Connection refused`。
 5. 本轮恢复把 backend、channels、desktop 全部放进显式导出环境变量的 detached `screen` 会话后，`/api/meta` 与 `/api/channels` 恢复正常，当前未再观察到同类掉线。
+6. 2026-04-16 09:01 的最近一次真实排查里，Feishu 直聊会话 `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 已正常完成 search，并在 `09:01:30` 进入 `opencode` answer 阶段发送 `session/prompt`。
+7. 但这条链路在出现 `multi_agent.answer.done`、`session.persist_assistant` 或 `reply.send` 之前，`web.log` 于 `09:01:53` 直接出现新的 backend 启动序列，说明 backend 进程在 answer 执行中途被替换或重启。
+8. 同一重启窗口内，两个 scheduler 会话 `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 与 `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 也停留在 `answer.start` 之后，最终都没有 assistant 落库。
 
 ## 期望效果
 
@@ -33,6 +37,8 @@
 - `data/runtime/logs/web.log` 在 `2026-04-15 09:02:37` 记录 `hone-console-page running at http://127.0.0.1:56044`，说明 backend 的实际监听端口曾与 desktop 约定端口脱节。
 - 同一日志文件在 `09:02:56` 到 `09:06:44` 多次记录向 `http://127.0.0.1:8077/api/runtime/heartbeat` 发送失败，进一步证明系统内不同进程对 backend 地址的认知已经分叉。
 - 本轮排查中，直接用短生命周期的后台启动方式时，runtime 无法稳定保持；改为 detached `screen` 持有完整进程组与显式环境后，release backend、desktop 与三个启用渠道才稳定恢复。
+- 2026-04-16 09:01 的最新样本进一步证明：这个缺陷不只表现为“desktop 探测 8077 失败”，还会直接截断正在执行中的 answer 请求，导致用户看到“最后一条消息一直没回复”。
+- 同一次窗口里，`web.log` 在 `09:01:30` 仍能看到多个会话已进入 `opencode session/prompt`，但 `09:01:53` 后日志直接切到新 backend 的 startup banner，中间没有对应会话的完成事件。
 
 ## 当前实现效果（2026-04-15 HEAD 复核）
 
@@ -47,6 +53,7 @@
 ## 用户影响
 
 - 用户感知是“系统时不时挂掉”或“桌面明明开着，但服务已经不可用”，直接影响主功能可用性。
+- 在更隐蔽的形态下，用户不会立刻看到掉线，而是会看到某条消息永远卡在“处理中”或“始终没有最终回复”，因为 answer 阶段中的 backend 被直接切断。
 - 当 backend 漂移到非 `8077` 端口或整组进程退出时，desktop remote mode、Web API、以及依赖 heartbeat 的启用渠道都会一起受影响。
 - 由于故障更多发生在运行托管层而不是显式业务报错层，用户通常只能看到系统断连，却看不到一个明确的“为什么挂了”的前端提示。
 
@@ -54,6 +61,7 @@
 
 - 当前证据更支持“release runtime 启动/监督链路不稳定”，而不是“代码改动自动把正在运行的 release app 弄崩”。
 - release runtime 对启动上下文过于敏感：一旦 `HONE_WEB_PORT` 没被稳定保留，backend 就可能回退到随机端口；一旦长期进程组没有被可靠托管，整组服务就可能在启动后消失。
+- 现有链路也缺少“backend 正在替换/重启时，如何处理飞行中的 answer 请求”的保护，因此进程级中断会直接表现成无 assistant 落库、无错误回填、无最终发送。
 - desktop remote backend 模式固定探测 `8077`，因此只要 backend 端口漂移或 backend 整体掉线，就会被放大成持续 `Connection refused` 与整机不可用。
 
 ## 下一步建议

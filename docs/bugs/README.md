@@ -23,7 +23,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | New | 未修复；2026-04-15 日志显示 backend 曾漂移到 `56044`，Desktop 仍持续探测 `8077` | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
+| Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | New | 未修复；除端口漂移外，2026-04-16 09:01 还复现了 backend 重启中断 answer 执行，导致最近会话与 scheduler 会话都无最终回复 | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
 | Desktop 设置页多入口保存共用同一份配置文件但缺少串行写保护，可能造成 runner 配置被并发保存静默覆盖 | P1 | New | 未修复；配置写入链路仍缺少共享串行锁 | [desktop_runner_settings_write_race.md](./desktop_runner_settings_write_race.md) |
 | Desktop 设置页切换 runner 后可能显示已切换，但 bundled runtime 重启失败会被静默吞掉，实际仍跑旧 runner 或未完成切换 | P1 | New | 未修复；runner 切换仍可能出现“UI 成功、runtime 未生效” | [desktop_runner_switch_false_success_gap.md](./desktop_runner_switch_false_success_gap.md) |
 | Desktop 设置页重复点击 runner 会触发重入保存与 bundled backend 重启，导致切换过程卡死或表现为“点一下就崩” | P1 | New | 未修复；重复点击仍会排队触发连续重启 | [desktop_runner_switch_reentrant_restart_gap.md](./desktop_runner_switch_reentrant_restart_gap.md) |
