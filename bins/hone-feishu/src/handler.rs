@@ -1088,8 +1088,32 @@ pub(crate) async fn resolve_receive_id(
 }
 
 fn looks_like_mobile(target: &str) -> bool {
+    let trimmed = target.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if !trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_digit() || matches!(ch, '+' | ' ' | '-' | '(' | ')'))
+    {
+        return false;
+    }
     let normalized = normalize_mobile(target);
     !normalized.is_empty() && normalized.chars().filter(|ch| ch.is_ascii_digit()).count() >= 7
+}
+
+pub(crate) fn scheduler_receive_id_for_target(
+    actor: &ActorIdentity,
+    channel_target: &str,
+) -> Option<String> {
+    let target = channel_target.trim();
+    if actor.channel_scope.is_none()
+        && !target.is_empty()
+        && (target.contains('@') || looks_like_mobile(target))
+    {
+        return Some(actor.user_id.clone());
+    }
+    None
 }
 
 pub(crate) fn validate_scheduler_receive_id(
@@ -1219,5 +1243,31 @@ mod tests {
     fn scheduler_delivery_allows_group_tasks_even_if_receive_id_differs() {
         let actor = ActorIdentity::new("feishu", "ou_creator", Some("chat:42")).expect("actor");
         assert!(validate_scheduler_receive_id(&actor, "alice@example.com", "ou_other").is_ok());
+    }
+
+    #[test]
+    fn looks_like_mobile_does_not_treat_open_id_as_mobile() {
+        assert!(!looks_like_mobile("ou_e31244b1208749f16773dce0c822801a"));
+        assert!(looks_like_mobile("+8613800138000"));
+        assert!(looks_like_mobile("138-0013-8000"));
+    }
+
+    #[test]
+    fn direct_scheduler_prefers_actor_open_id_for_contact_targets() {
+        let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
+        assert_eq!(
+            scheduler_receive_id_for_target(&actor, "alice@example.com").as_deref(),
+            Some("ou_creator")
+        );
+        assert_eq!(
+            scheduler_receive_id_for_target(&actor, "+8613800138000").as_deref(),
+            Some("ou_creator")
+        );
+    }
+
+    #[test]
+    fn direct_scheduler_does_not_override_explicit_open_id_target() {
+        let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
+        assert_eq!(scheduler_receive_id_for_target(&actor, "ou_other"), None);
     }
 }

@@ -8,7 +8,9 @@ use hone_scheduler::SchedulerEvent;
 use serde_json::json;
 use tracing::{error, info, warn};
 
-use crate::handler::{resolve_receive_id, validate_scheduler_receive_id};
+use crate::handler::{
+    resolve_receive_id, scheduler_receive_id_for_target, validate_scheduler_receive_id,
+};
 use crate::outbound::{scheduled_send_idempotency, send_rendered_messages};
 use crate::types::AppState;
 
@@ -61,7 +63,11 @@ pub(crate) async fn handle_scheduler_events(
                 .error
                 .clone()
                 .unwrap_or_else(|| result.content.clone());
-            let receive_id =
+            let receive_id = if let Some(overridden) =
+                scheduler_receive_id_for_target(&event.actor, &event.channel_target)
+            {
+                overridden
+            } else {
                 match resolve_receive_id(&state_clone.facade, &event.channel_target).await {
                     Ok(id) => id,
                     Err(err) => {
@@ -91,7 +97,8 @@ pub(crate) async fn handle_scheduler_events(
                         );
                         return;
                     }
-                };
+                }
+            };
             if let Err(err) =
                 validate_scheduler_receive_id(&event.actor, &event.channel_target, &receive_id)
             {

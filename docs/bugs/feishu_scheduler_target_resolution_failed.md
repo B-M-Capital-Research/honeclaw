@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 22:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实任务台账：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=1795`，`job_id=j_f02dfce5`，`job_name=OWALERT_PreMarket`，`executed_at=2026-04-15T21:04:28.730839+08:00`
@@ -66,9 +66,21 @@
 - 发送前新增的一致性校验阻止了旧的跨用户误投，但没有配套的迁移或修复机制来纠正历史错误 target，因此任务会持续卡在拒发状态。
 - `cron_job_runs` 已多次显示相同 direct scheduler 在 `receive_id 不匹配` 与 `No user found` 两种校验错误间切换，说明问题更接近“定时任务目标存量数据或解析策略不一致”，而不是本轮模型输出异常。
 
-## 下一步建议
+## 修复情况（2026-04-16）
 
-- 先排查这批 direct 定时任务的存量 `channel_target` 与 `actor_user_id` 是否来自历史旧数据；若是，补一轮迁移或重绑定。
-- 对 Feishu scheduler 的目标解析链路增加更明确的可观测性，区分“历史脏数据”“手机号反查漂移”“用户目录变更”三类原因。
-- 在导航页和后续修复单里把该缺陷与 `feishu_message_misrouting.md` 明确区分：前者是当前被校验拦住的送达失败，后者是历史上的真实跨用户误投。
-- 对已经连续失败的任务增加主动告警或在 UI/台账上暴露，让用户和维护者知道这些任务当前不会送达。
+- 已在 `bins/hone-feishu/src/handler.rs` 收紧 direct target 解析规则：
+  - `looks_like_mobile(...)` 现在只会把由数字/`+`/常见电话号码分隔符构成的目标识别为手机号，不再把带很多数字的 `open_id` 误判成 mobile
+  - 新增 `scheduler_receive_id_for_target(...)`，对 direct Feishu scheduler 的 email/mobile 历史 target 直接回收为绑定 actor 的 `open_id`
+- 已在 `bins/hone-feishu/src/scheduler.rs` 接入该 direct scheduler 优先规则：
+  - direct 任务不再依赖历史 `channel_target` 二次解析后再做一致性校验
+  - 发送时优先使用 `event.actor.user_id` 这一已绑定且稳定的 `open_id`
+- 这样既保留了历史上的防误投校验，又避免 direct 定时任务因为旧手机号/email target 漂移而长期卡在 `target_resolution_failed`。
+
+## 回归验证
+
+- `cargo test -p hone-feishu scheduler_delivery_ -- --nocapture`
+- `cargo test -p hone-feishu looks_like_mobile_does_not_treat_open_id_as_mobile -- --nocapture`
+- `cargo test -p hone-feishu direct_scheduler_prefers_actor_open_id_for_contact_targets -- --nocapture`
+- `cargo check -p hone-feishu`
+- `rustfmt --edition 2024 --check bins/hone-feishu/src/handler.rs bins/hone-feishu/src/scheduler.rs`
+- `git diff --check`
