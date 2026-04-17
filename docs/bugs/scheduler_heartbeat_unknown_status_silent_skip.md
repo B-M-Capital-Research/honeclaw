@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 00:31-01:01 最近一小时新增样本：
+    - `run_id=2244`，`job_id=j_27495ea4`（`TEM破位预警`），`executed_at=2026-04-18T00:31:08.681668+08:00`，新增落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2245`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T00:31:09.227676+08:00`，再次落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2247`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T00:31:17.974926+08:00`，同轮继续落成 `execution_failed + skipped_error`
+    - `run_id=2249`，`job_id=j_38745baf`（`全天原油价格3小时播报`），`executed_at=2026-04-18T01:01:05.162836+08:00`，30 分钟后又回落到 `execution_failed + skipped_error`
+    - `run_id=2251`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T01:01:07.696600+08:00`，再次回落到 `execution_failed + skipped_error`
+    - `run_id=2254`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T01:01:17.846635+08:00`，同轮继续回落到 `execution_failed + skipped_error`
+    - 最近 6 小时内至少已有 4 条 heartbeat 模板命中同根因：`Monitor_Watchlist_11`（6 次）、`小米30港元破位预警`（2 次）、`全天原油价格3小时播报`（2 次）、`TEM破位预警`（1 次）
+    - `data/runtime/logs/web.log` 在 `2026-04-18 00:31:08.680`、`00:31:09.226`、`00:31:17.972`、`01:01:05.161`、`01:01:07.695`、`01:01:17.845` 连续记录 `parse_kind=JsonUnknownStatus` 与 `parse failure escalated`
+    - 对应 `raw_preview` 都已在自由文本里明确写出“条件未满足，应返回 noop / {}`”，但最终仍以 `<think> ... {}` 或未闭合的自由文本收尾，说明本轮不是业务判断错误，而是结构化状态收口再次批量失稳
   - 最近一小时最新复现：
     - `run_id=2238`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T00:01:20.478083+08:00`，再次落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - 同一任务前两轮 `run_id=2226`（`23:01:15`）与 `run_id=2232`（`23:31:29`）都短暂恢复为 `noop + skipped_noop`，但 `00:01` 又再次跌回失败，说明当前并不是单向收敛，而是同一模板在相邻轮次间继续抖动
@@ -191,6 +201,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-18 00:31 -> 01:01` 的最新窗口，故障不再只停留在 `Monitor_Watchlist_11`：`TEM破位预警`、`小米30港元破位预警`、`全天原油价格3小时播报` 与 `Monitor_Watchlist_11` 四条 heartbeat 模板都在自由文本里写明“应返回 noop / {}`”后，仍统一回落为 `JsonUnknownStatus + execution_failed`。
+- 这组连续两轮的新样本说明，当前线上并不是“单一 watchlist 模板偶发抖动”，而是 heartbeat 输出协议又一次扩散到多条不同模板；最近一小时没有看到对应任务自然恢复为 `JsonNoop` 的回弹轮次，因此活跃风险较上一轮巡检更高。
 - `Monitor_Watchlist_11` 在 `2026-04-16 14:00:27` 再次落回 `JsonUnknownStatus`；与 `10:00`、`10:30`、`11:30` 一样，模型已经完成逐项价格判断，但末尾仍未收口成合法状态 JSON，说明问题仍在当前活跃时段持续出现。
 - `web.log` 在 `2026-04-16 10:00:32.184` 明确记录 `parse_kind=JsonUnknownStatus`；同一轮 `raw_preview` 已经枚举 11 只股票的实时价格和触发价，但因为没有落成合法状态 JSON，最终仍被当成 `noop / skipped_noop` 静默吞掉。
 - 到 `14:00` 这一轮，线上行为已从 `noop / skipped_noop` 变成 `execution_failed / skipped_error`，说明“不要静默吞掉未知状态”的修复开始在当前实例生效；但结构化收口本身仍未修好，所以该缺陷不能关闭。
@@ -257,6 +269,7 @@
 - `23:31` 到 `00:01` 的最新样本进一步证明，问题并不是“模型不会判断触发条件”，而是模型即便在自由文本里已经写出“应该返回 noop / {}”，也仍无法稳定给出解析器认可的最终状态对象。
 - `18:01` 与 `19:01` 两个相邻批次一起看，同组任务已经出现“上一轮恢复、下一轮再掉回未知状态”的抖动形态，进一步说明问题不只是某个固定任务模板写坏，而是 heartbeat 输出协议缺少稳定的最终收口约束。
 - `00:31` 的恢复样本说明解析器与公共协议并非完全不可用；更像是 `Monitor_Watchlist_11` 这类多标的 watchlist 模板在自由文本收束成最终 JSON 时仍更容易失配，因此当前根因判断需要从“所有 heartbeat 都不稳”收缩为“公共协议脆弱 + 某些复杂模板更易触发”。
+- 但 `2026-04-18 00:31 -> 01:01` 的新增样本又把问题重新扩散回多条模板，说明“复杂 watchlist 更易触发”只是风险放大器，不是充分条件；更基础的根因仍是 heartbeat 协议允许模型先输出自由文本与 `<think>`，却没有强制保障最终状态对象稳定闭合。
 - 调度器曾把“无法识别状态”错误地归并进 `noop` 路径，造成功能性失败被静默吞掉；而 14:00 的运行结果表明，这一收口正在部分修正，但尚未彻底消除所有旧路径或旧实例。
 - 渠道侧日志仍沿用“心跳任务未命中，本轮不发送”的 noop 文案，说明即使数据库台账已按 `execution_failed` 落账，部分运行日志和可观测口径还没有完全跟上新的失败语义。
 - 现有落库字段只保留 `parse_kind` 与字符数，没有把原始响应片段保留下来，进一步放大了排障盲区。
