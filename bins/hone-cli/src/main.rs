@@ -605,23 +605,51 @@ enum ProviderEmptyAction {
     Skip,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn resolve_required_field_attempt(
     attempted: Option<String>,
     current: &str,
     on_empty: RequiredFieldEmptyAction,
 ) -> RequiredFieldResolution {
-    if let Some(value) = attempted {
-        if !value.trim().is_empty() {
-            return RequiredFieldResolution::Value(value);
-        }
+    if let Some(value) = normalize_credential_value_opt(attempted.as_deref()) {
+        return RequiredFieldResolution::Value(value);
     }
-    if !current.trim().is_empty() {
-        return RequiredFieldResolution::Value(current.to_string());
+    if let Some(value) = normalize_credential_value_opt(Some(current)) {
+        return RequiredFieldResolution::Value(value);
     }
     match on_empty {
         RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
         RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
     }
+}
+
+fn normalize_credential_value(raw: &str) -> String {
+    raw.trim().to_string()
+}
+
+fn normalize_credential_value_opt(raw: Option<&str>) -> Option<String> {
+    raw.map(normalize_credential_value)
+        .filter(|value| !value.is_empty())
+}
+
+fn resolve_required_secret_attempt<F>(
+    attempted: Option<String>,
+    current: &str,
+    on_empty: F,
+) -> Result<RequiredFieldResolution, String>
+where
+    F: FnOnce() -> Result<RequiredFieldEmptyAction, String>,
+{
+    if let Some(value) = normalize_credential_value_opt(attempted.as_deref()) {
+        return Ok(RequiredFieldResolution::Value(value));
+    }
+    if let Some(value) = normalize_credential_value_opt(Some(current)) {
+        return Ok(RequiredFieldResolution::Value(value));
+    }
+    Ok(match on_empty()? {
+        RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
+        RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
+    })
 }
 
 fn prompt_channel_recovery_action(
@@ -716,11 +744,52 @@ fn prompt_onboard_required_secret(
 ) -> Result<Option<String>, String> {
     loop {
         let attempted = prompt_secret(theme, prompt, !current.trim().is_empty())?;
-        match resolve_required_field_attempt(
-            attempted,
-            current,
-            prompt_channel_recovery_action(theme, channel_label, prompt)?,
-        ) {
+        let resolution = resolve_required_secret_attempt(attempted, current, || {
+            prompt_channel_recovery_action(theme, channel_label, prompt)
+        })?;
+        match resolution {
+            RequiredFieldResolution::Value(value) => return Ok(Some(value)),
+            RequiredFieldResolution::Retry => {
+                println!("该字段为必填项，不能为空。");
+            }
+            RequiredFieldResolution::DisableChannel => return Ok(None),
+        }
+    }
+}
+
+fn prompt_visible_credential(
+    theme: &ColorfulTheme,
+    prompt: &str,
+    keep_note: bool,
+    current: &str,
+) -> Result<Option<String>, String> {
+    let prompt = if keep_note {
+        format!("{prompt}（留空保持现有值）")
+    } else {
+        prompt.to_string()
+    };
+    let mut input = Input::<String>::with_theme(theme);
+    input = input.with_prompt(prompt).allow_empty(true);
+    if !current.is_empty() {
+        input = input.with_initial_text(current.to_string());
+    }
+    let value = input.interact_text().map_err(|e| e.to_string())?;
+    Ok(normalize_credential_value_opt(Some(&value)))
+}
+
+fn prompt_onboard_required_token(
+    theme: &ColorfulTheme,
+    channel_label: &str,
+    prompt: &str,
+    current: &str,
+) -> Result<Option<String>, String> {
+    loop {
+        let attempted =
+            prompt_visible_credential(theme, prompt, !current.trim().is_empty(), current)?;
+        let resolution = resolve_required_secret_attempt(attempted, current, || {
+            prompt_channel_recovery_action(theme, channel_label, prompt)
+        })?;
+        match resolution {
             RequiredFieldResolution::Value(value) => return Ok(Some(value)),
             RequiredFieldResolution::Retry => {
                 println!("该字段为必填项，不能为空。");
@@ -789,13 +858,14 @@ fn discord_token_doctor_check(token: &str) -> DoctorCheck {
 fn prompt_optional_discord_token(
     theme: &ColorfulTheme,
     prompt: &str,
+    current: &str,
     keep_note: bool,
 ) -> Result<Option<String>, String> {
     loop {
-        let Some(token) = prompt_secret(theme, prompt, keep_note)? else {
+        let Some(token) = prompt_visible_credential(theme, prompt, keep_note, current)? else {
             return Ok(None);
         };
-        let normalized_token = token.trim().to_string();
+        let normalized_token = normalize_credential_value(&token);
         let len = normalized_token.len();
         match validate_discord_token(&normalized_token) {
             DiscordTokenValidation::Valid => {
@@ -825,10 +895,13 @@ fn prompt_onboard_required_discord_token(
     current: &str,
 ) -> Result<Option<String>, String> {
     loop {
-        let attempted = prompt_secret(theme, prompt, !current.trim().is_empty())?;
+        let attempted =
+            prompt_visible_credential(theme, prompt, !current.trim().is_empty(), current)?;
         let resolution = match attempted {
-            Some(value) if !value.trim().is_empty() => RequiredFieldResolution::Value(value),
-            _ if !current.trim().is_empty() => RequiredFieldResolution::Value(current.to_string()),
+            Some(value) => RequiredFieldResolution::Value(value),
+            _ if !current.trim().is_empty() => {
+                RequiredFieldResolution::Value(normalize_credential_value(current))
+            }
             _ => match prompt_channel_recovery_action(theme, channel_label, prompt)? {
                 RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
                 RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
@@ -836,7 +909,7 @@ fn prompt_onboard_required_discord_token(
         };
         match resolution {
             RequiredFieldResolution::Value(value) => {
-                let normalized_value = value.trim().to_string();
+                let normalized_value = normalize_credential_value(&value);
                 let len = normalized_value.len();
                 match validate_discord_token(&normalized_value) {
                     DiscordTokenValidation::Valid => {
@@ -1471,10 +1544,11 @@ fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMutation>, St
         );
     }
     if let Some(value) = &args.api_key {
-        push("agent.opencode.api_key", Value::String(value.clone()));
+        let normalized = normalize_credential_value(value);
+        push("agent.opencode.api_key", Value::String(normalized.clone()));
         push(
             "agent.multi_agent.answer.api_key",
-            Value::String(value.clone()),
+            Value::String(normalized),
         );
     }
     if let Some(value) = &args.model {
@@ -1496,7 +1570,10 @@ fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMutation>, St
         push("llm.auxiliary.base_url", Value::String(value.clone()));
     }
     if let Some(value) = &args.aux_api_key {
-        push("llm.auxiliary.api_key", Value::String(value.clone()));
+        push(
+            "llm.auxiliary.api_key",
+            Value::String(normalize_credential_value(value)),
+        );
     }
     if let Some(value) = &args.aux_model {
         push("llm.auxiliary.model", Value::String(value.clone()));
@@ -1512,7 +1589,7 @@ fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMutation>, St
     if let Some(value) = &args.search_api_key {
         push(
             "agent.multi_agent.search.api_key",
-            Value::String(value.clone()),
+            Value::String(normalize_credential_value(value)),
         );
     }
     if let Some(value) = &args.search_model {
@@ -1537,7 +1614,7 @@ fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMutation>, St
     if let Some(value) = &args.answer_api_key {
         push(
             "agent.multi_agent.answer.api_key",
-            Value::String(value.clone()),
+            Value::String(normalize_credential_value(value)),
         );
     }
     if let Some(value) = &args.answer_model {
@@ -1600,7 +1677,10 @@ fn build_channel_mutations(args: &ChannelSetArgs) -> Result<Vec<ConfigMutation>,
                 push("feishu.app_id", Value::String(value.clone()));
             }
             if let Some(value) = &args.app_secret {
-                push("feishu.app_secret", Value::String(value.clone()));
+                push(
+                    "feishu.app_secret",
+                    Value::String(normalize_credential_value(value)),
+                );
             }
             if let Some(value) = &args.chat_scope {
                 push(
@@ -1614,7 +1694,10 @@ fn build_channel_mutations(args: &ChannelSetArgs) -> Result<Vec<ConfigMutation>,
                 push("telegram.enabled", Value::Bool(value));
             }
             if let Some(value) = &args.bot_token {
-                push("telegram.bot_token", Value::String(value.clone()));
+                push(
+                    "telegram.bot_token",
+                    Value::String(normalize_credential_value(value)),
+                );
             }
             if let Some(value) = &args.chat_scope {
                 push(
@@ -1628,7 +1711,10 @@ fn build_channel_mutations(args: &ChannelSetArgs) -> Result<Vec<ConfigMutation>,
                 push("discord.enabled", Value::Bool(value));
             }
             if let Some(value) = &args.bot_token {
-                push("discord.bot_token", Value::String(value.clone()));
+                push(
+                    "discord.bot_token",
+                    Value::String(normalize_credential_value(value)),
+                );
             }
             if let Some(value) = &args.chat_scope {
                 push(
@@ -1692,11 +1778,7 @@ fn prompt_secret(
         .allow_empty_password(true)
         .interact()
         .map_err(|e| e.to_string())?;
-    if value.trim().is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(value))
-    }
+    Ok(normalize_credential_value_opt(Some(&value)))
 }
 
 fn sections_or_default(sections: &[ConfigureSection]) -> Vec<ConfigureSection> {
@@ -1903,7 +1985,7 @@ fn build_channel_onboard_mutations(
                     });
                 }
                 ChannelRequiredField::TelegramBotToken => {
-                    let Some(value) = prompt_onboard_required_secret(
+                    let Some(value) = prompt_onboard_required_token(
                         theme,
                         spec.label,
                         "Telegram bot token",
@@ -2287,7 +2369,12 @@ fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> Result<(), 
                     path: "telegram.enabled".to_string(),
                     value: Value::Bool(telegram_enabled),
                 });
-                if let Some(token) = prompt_secret(&theme, "Telegram bot token", true)? {
+                if let Some(token) = prompt_visible_credential(
+                    &theme,
+                    "Telegram bot token",
+                    true,
+                    &config.telegram.bot_token,
+                )? {
                     mutations.push(ConfigMutation::Set {
                         path: "telegram.bot_token".to_string(),
                         value: Value::String(token),
@@ -2300,9 +2387,12 @@ fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> Result<(), 
                     path: "discord.enabled".to_string(),
                     value: Value::Bool(discord_enabled),
                 });
-                if let Some(token) =
-                    prompt_optional_discord_token(&theme, "Discord bot token", true)?
-                {
+                if let Some(token) = prompt_optional_discord_token(
+                    &theme,
+                    "Discord bot token",
+                    &config.discord.bot_token,
+                    true,
+                )? {
                     mutations.push(ConfigMutation::Set {
                         path: "discord.bot_token".to_string(),
                         value: Value::String(token),
@@ -2831,6 +2921,54 @@ mod tests {
     }
 
     #[test]
+    fn build_model_mutations_trim_secret_values() {
+        let args = ModelsSetArgs {
+            runner: None,
+            model: None,
+            variant: None,
+            base_url: None,
+            api_key: Some("  sk-primary  ".to_string()),
+            codex_model: None,
+            codex_acp_model: None,
+            codex_acp_variant: None,
+            aux_base_url: None,
+            aux_api_key: Some("  sk-aux  ".to_string()),
+            aux_model: None,
+            search_base_url: None,
+            search_api_key: Some("  sk-search  ".to_string()),
+            search_model: None,
+            search_max_iterations: None,
+            answer_base_url: None,
+            answer_api_key: Some("  sk-answer  ".to_string()),
+            answer_model: None,
+            answer_variant: None,
+            answer_max_tool_calls: None,
+        };
+
+        let mutations = build_model_mutations(&args).unwrap();
+        assert!(mutations.iter().any(|mutation| matches!(
+            mutation,
+            ConfigMutation::Set { path, value: Value::String(value) }
+                if path == "agent.opencode.api_key" && value == "sk-primary"
+        )));
+        assert!(mutations.iter().any(|mutation| matches!(
+            mutation,
+            ConfigMutation::Set { path, value: Value::String(value) }
+                if path == "llm.auxiliary.api_key" && value == "sk-aux"
+        )));
+        assert!(mutations.iter().any(|mutation| matches!(
+            mutation,
+            ConfigMutation::Set { path, value: Value::String(value) }
+                if path == "agent.multi_agent.search.api_key" && value == "sk-search"
+        )));
+        assert!(mutations.iter().any(|mutation| matches!(
+            mutation,
+            ConfigMutation::Set { path, value: Value::String(value) }
+                if path == "agent.multi_agent.answer.api_key" && value == "sk-answer"
+        )));
+    }
+
+    #[test]
     fn build_channel_mutations_supports_telegram_toggle_and_token() {
         let args = ChannelSetArgs {
             channel: ChannelKind::Telegram,
@@ -2847,6 +2985,63 @@ mod tests {
         let mutations = build_channel_mutations(&args).unwrap();
         assert_eq!(mutations.len(), 3);
         assert!(mutations.iter().any(|mutation| matches!(mutation, ConfigMutation::Set { path, value: Value::Bool(true) } if path == "telegram.enabled")));
+    }
+
+    #[test]
+    fn build_channel_mutations_trim_secret_values() {
+        let telegram_args = ChannelSetArgs {
+            channel: ChannelKind::Telegram,
+            enabled: None,
+            target_handle: None,
+            db_path: None,
+            poll_interval: None,
+            app_id: None,
+            app_secret: None,
+            bot_token: Some("  tg-token  ".to_string()),
+            chat_scope: None,
+        };
+        let feishu_args = ChannelSetArgs {
+            channel: ChannelKind::Feishu,
+            enabled: None,
+            target_handle: None,
+            db_path: None,
+            poll_interval: None,
+            app_id: None,
+            app_secret: Some("  fs-secret  ".to_string()),
+            bot_token: None,
+            chat_scope: None,
+        };
+        let discord_args = ChannelSetArgs {
+            channel: ChannelKind::Discord,
+            enabled: None,
+            target_handle: None,
+            db_path: None,
+            poll_interval: None,
+            app_id: None,
+            app_secret: None,
+            bot_token: Some("  dc-token  ".to_string()),
+            chat_scope: None,
+        };
+
+        let telegram_mutations = build_channel_mutations(&telegram_args).unwrap();
+        let feishu_mutations = build_channel_mutations(&feishu_args).unwrap();
+        let discord_mutations = build_channel_mutations(&discord_args).unwrap();
+
+        assert!(telegram_mutations.iter().any(|mutation| matches!(
+            mutation,
+            ConfigMutation::Set { path, value: Value::String(value) }
+                if path == "telegram.bot_token" && value == "tg-token"
+        )));
+        assert!(feishu_mutations.iter().any(|mutation| matches!(
+            mutation,
+            ConfigMutation::Set { path, value: Value::String(value) }
+                if path == "feishu.app_secret" && value == "fs-secret"
+        )));
+        assert!(discord_mutations.iter().any(|mutation| matches!(
+            mutation,
+            ConfigMutation::Set { path, value: Value::String(value) }
+                if path == "discord.bot_token" && value == "dc-token"
+        )));
     }
 
     #[test]
@@ -2928,6 +3123,36 @@ mod tests {
             resolution,
             RequiredFieldResolution::Value("existing-secret".to_string())
         );
+    }
+
+    #[test]
+    fn resolve_required_field_attempt_trims_secret_values() {
+        let resolution = resolve_required_field_attempt(
+            Some("  secret  ".to_string()),
+            "",
+            RequiredFieldEmptyAction::DisableChannel,
+        );
+
+        assert_eq!(
+            resolution,
+            RequiredFieldResolution::Value("secret".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_required_secret_attempt_skips_empty_recovery_for_non_empty_input() {
+        let mut on_empty_called = false;
+        let resolution = resolve_required_secret_attempt(Some("  token  ".to_string()), "", || {
+            on_empty_called = true;
+            Ok(RequiredFieldEmptyAction::Retry)
+        })
+        .unwrap();
+
+        assert_eq!(
+            resolution,
+            RequiredFieldResolution::Value("token".to_string())
+        );
+        assert!(!on_empty_called);
     }
 
     #[test]

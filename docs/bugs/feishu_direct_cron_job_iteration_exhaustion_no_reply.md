@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 12:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
@@ -56,3 +56,14 @@
 - 优先排查 multi-agent search 在任务治理/任务重写类请求上的工具选择与停止条件，避免重复调用 `cron_job` 却不产出中间结论。
 - 为“达到最大迭代次数”失败分支补统一用户态错误兜底，至少保证 Feishu 直聊不会再次整轮无回复。
 - 增加回归用例：当同一 search 会话连续多轮只调用 `cron_job` 且未形成答案时，应返回明确失败文案或提前终止，而不是耗尽 8 轮后静默结束。
+
+## 当前修复进展（2026-04-17 10:40 CST）
+
+- 本轮先修“耗尽迭代后整轮无回复”的下游症状，而不是直接修改 search 策略：
+  - `bins/hone-feishu/src/handler.rs` 已为每条消息处理增加 join/panic 兜底，并补 `handler.session_run=dispatch/completed` 边界日志。
+  - `bins/hone-feishu/src/outbound.rs` 已为 placeholder 更新失败补 standalone send 回退；即使错误阶段无法更新已有 placeholder，也应继续尝试发出最终失败文案。
+- 这意味着下一次再出现 `已达最大迭代次数 8` 时，用户侧更应收到受控失败提示，而不是只看到 placeholder 后静默结束。
+- 自动化验证已通过：
+  - `cargo test -p hone-feishu`
+  - `cargo test -p hone-channels`
+- 由于“反复调用 `cron_job` 不收敛”的根因仍未直接消除，本单状态更新为 `Fixing`，待真实任务治理样本确认“至少不再无回复”后，再决定是否拆出独立的策略优化单。

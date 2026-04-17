@@ -118,7 +118,21 @@ impl EventHandler for FeishuEventHandler {
         Box::pin(async move {
             if let Some(msg) = parse_feishu_event(&state, event).await {
                 tokio::spawn(async move {
-                    process_incoming_message(state, msg).await;
+                    let panic_state = state.clone();
+                    let panic_msg = msg.clone();
+                    let join = tokio::spawn(async move {
+                        process_incoming_message(state, msg).await;
+                    });
+                    if let Err(err) = join.await {
+                        error!("[Feishu] message handler join failed: {}", err);
+                        if err.is_panic() {
+                            if let Err(fallback_err) =
+                                send_panic_fallback(&panic_state, &panic_msg).await
+                            {
+                                warn!("[Feishu] panic fallback send failed: {}", fallback_err);
+                            }
+                        }
+                    }
                 });
             }
             Ok(None)
@@ -731,7 +745,29 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::UserConversation,
         model_override: None,
     };
+    state.core.log_message_step(
+        "feishu",
+        &log_user,
+        &session_id,
+        "handler.session_run",
+        "dispatch",
+        Some(&msg.message_id),
+        None,
+    );
     let result = session.run(&user_input, run_options).await;
+    state.core.log_message_step(
+        "feishu",
+        &log_user,
+        &session_id,
+        "handler.session_run",
+        &format!(
+            "completed success={} reply_chars={}",
+            result.response.success,
+            result.response.content.chars().count()
+        ),
+        Some(&msg.message_id),
+        None,
+    );
 
     if let Some(handle) = ticker_handle {
         handle.abort();
@@ -762,14 +798,17 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             ck.close(&preprocess_markdown_for_feishu(&display, true))
                 .await;
         } else {
-            let _ = update_or_send_plain_text(
+            if let Err(err) = update_or_send_plain_text(
                 &state.facade,
                 &outbound_receive_id,
                 outbound_receive_id_type,
                 placeholder_message_id.as_deref(),
                 &display,
             )
-            .await;
+            .await
+            {
+                warn!("[Feishu] 发送失败兜底消息失败: {}", err);
+            }
         }
         return;
     }
@@ -788,14 +827,17 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         if let Some(ck) = &cardkit_session {
             ck.close(&fallback).await;
         } else {
-            let _ = update_or_send_plain_text(
+            if let Err(err) = update_or_send_plain_text(
                 &state.facade,
                 &outbound_receive_id,
                 outbound_receive_id_type,
                 placeholder_message_id.as_deref(),
                 &fallback,
             )
-            .await;
+            .await
+            {
+                warn!("[Feishu] 发送空回复兜底消息失败: {}", err);
+            }
         }
         return;
     }
@@ -841,6 +883,33 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             }
         }
     }
+}
+
+async fn send_panic_fallback(
+    state: &Arc<AppState>,
+    msg: &FeishuIncomingMessage,
+) -> hone_core::HoneResult<usize> {
+    let chat_type = msg.chat_type.as_deref().unwrap_or("p2p");
+    let receive_id = if chat_type == "p2p" {
+        msg.open_id.as_str()
+    } else {
+        msg.chat_id.as_str()
+    };
+    let receive_id_type = if chat_type == "p2p" {
+        "open_id"
+    } else {
+        "chat_id"
+    };
+    let reply_prefix = if chat_type == "p2p" {
+        None
+    } else {
+        Some(feishu_user_mention(&msg.open_id))
+    };
+    let display = prepend_reply_prefix(
+        reply_prefix.as_deref(),
+        "抱歉，这次处理失败了。请稍后再试。",
+    );
+    send_plain_text(&state.facade, receive_id, receive_id_type, &display).await
 }
 
 fn preferred_extension_for_content_type(content_type: &str) -> Option<&'static str> {

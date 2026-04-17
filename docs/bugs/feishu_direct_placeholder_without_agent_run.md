@@ -120,3 +120,14 @@
 - 优先核对 `runtime_admin_override`、管理员白名单判断以及 placeholder 发送顺序之间的关系，确认是否存在“权限拒绝发生在 placeholder 之后”的新前置短路。
 - 补查 `direct.busy` 命中后的控制流，确认为何日志宣称“已跳过 placeholder”，但同一 message_id 随后仍记录 `reply.placeholder` 并只落库失败 assistant。
 - 若补日志后确认是独立于 busy 的第二个中断点，再拆成新 bug；在此之前继续归并到当前文档，避免重复建档。
+
+## 当前修复进展（2026-04-17 10:40 CST）
+
+- 本轮已补两类防静默收口：
+  - `bins/hone-feishu/src/handler.rs` 现在会为每条消息处理任务额外等待 join 结果；若 handler task panic，会直接补发统一失败文案，而不是继续只留下 placeholder。
+  - 同一文件已补 `handler.session_run=dispatch/completed` 边界日志，下一轮若仍出现“placeholder 后停住”，可以直接判断是没进 `session.run`，还是进了但后续发送失败。
+- `bins/hone-feishu/src/outbound.rs` 也已补 `update_message/reply_message` 的 `HTTP 400` 回退：placeholder 更新失败时，会改走 standalone send，而不是让链路静默停在旧 placeholder。
+- 自动化验证已通过：
+  - `cargo test -p hone-feishu`
+  - `cargo test -p hone-channels`
+- 因为当前还没有新的真实 Feishu busy 样本，本单继续保持 `Fixing`。

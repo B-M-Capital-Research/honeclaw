@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
@@ -106,3 +106,12 @@
 - `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries -- --nocapture`
 - `cargo check -p hone-channels`
 - `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session.rs`
+
+## 当前修复进展（2026-04-17 10:40 CST）
+
+- `crates/hone-channels/src/agent_session.rs` 已补“净化后为空”的成功收口：即便 runner 表面 `success=true`，只要用户可见正文在净化后为空，也会改写为 `EMPTY_SUCCESS_FALLBACK_MESSAGE`，不再持久化空 assistant。
+- 同轮还补了 `bins/hone-feishu/src/outbound.rs` 的 Feishu `update/reply` 失败回退，避免“session 已有非空 fallback，但 placeholder 更新失败导致用户侧继续只看到空结果/旧占位”。
+- 自动化验证已通过：
+  - `cargo test -p hone-channels`
+  - `cargo test -p hone-feishu`
+- 由于当前还缺少新的真实 Feishu 回归样本，本单状态先更新为 `Fixing` 而不是 `Fixed`；下一条真实直聊若不再出现 `reply.chars=0 + success=true`，再考虑关闭。

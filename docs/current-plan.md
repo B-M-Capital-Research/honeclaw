@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-04-17
-状态：有 4 个活跃任务
+状态：有 5 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,10 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+- **Feishu P1 直聊与定时任务可靠性修复批次**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/feishu-p1-reliability-batch.md`
+  - 摘要：集中修复当前活跃的 Feishu `P1` 缺陷，优先收口空回复伪成功、迭代耗尽无回复、placeholder 后静默，以及 scheduler 生成成功但发送 400 的问题
 - **Feishu 直聊 placeholder 假启动与 release runner 生效链路修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/feishu-direct-placeholder-followup-fix.md`

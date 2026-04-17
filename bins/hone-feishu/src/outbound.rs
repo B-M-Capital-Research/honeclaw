@@ -1,7 +1,7 @@
 use hone_scheduler::SchedulerEvent;
 use serde_json::json;
 
-use crate::client::FeishuApiClient;
+use crate::client::{FeishuApiClient, FeishuSendResult};
 use crate::markdown::{preprocess_markdown_for_feishu, render_outbound_messages};
 
 #[derive(Clone)]
@@ -122,10 +122,31 @@ pub(crate) async fn update_or_send_plain_text(
             }
         })
         .to_string();
-        facade
+        match facade
             .update_message(message_id, "interactive", &card_content)
             .await
-            .map_err(hone_core::HoneError::Integration)?;
+        {
+            Ok(_) => {}
+            Err(err) if is_feishu_bad_request(&err) => {
+                tracing::warn!(
+                    "[Feishu/outbound] update plain-text placeholder failed with bad request, fallback to standalone send: message_id={} receive_id_type={} err={}",
+                    message_id,
+                    receive_id_type,
+                    err
+                );
+                send_segment_direct(
+                    facade,
+                    receive_id,
+                    receive_id_type,
+                    "interactive",
+                    &card_content,
+                    None,
+                )
+                .await
+                .map_err(hone_core::HoneError::Integration)?;
+            }
+            Err(err) => return Err(hone_core::HoneError::Integration(err)),
+        }
         return Ok(1);
     }
 
@@ -159,6 +180,7 @@ pub(crate) async fn send_rendered_messages(
         return Ok(0);
     }
 
+    let should_thread_followups = receive_id_type == "chat_id" || placeholder_message_id.is_some();
     let total = messages.len();
     let mut previous_message_id = None;
     for (index, message) in messages.into_iter().enumerate() {
@@ -215,49 +237,127 @@ pub(crate) async fn send_rendered_messages(
                     continue;
                 };
 
-                facade
+                match facade
                     .update_message(message_id, "interactive", &card_content)
                     .await
-                    .map_err(hone_core::HoneError::Integration)?;
-                previous_message_id = Some(message_id.to_string());
+                {
+                    Ok(_) => {
+                        previous_message_id = Some(message_id.to_string());
+                    }
+                    Err(err) if is_feishu_bad_request(&err) => {
+                        tracing::warn!(
+                            "[Feishu/outbound] update rendered placeholder failed with bad request, fallback to standalone send: message_id={} receive_id_type={} err={}",
+                            message_id,
+                            receive_id_type,
+                            err
+                        );
+                        let sent = send_segment_direct(
+                            facade,
+                            receive_id,
+                            receive_id_type,
+                            "interactive",
+                            &card_content,
+                            Some(&stable_message_uuid(
+                                uuid_seed,
+                                index,
+                                "interactive",
+                                &card_content,
+                            )),
+                        )
+                        .await
+                        .map_err(hone_core::HoneError::Integration)?;
+                        previous_message_id = Some(sent.message_id);
+                    }
+                    Err(err) => return Err(hone_core::HoneError::Integration(err)),
+                }
                 continue;
             }
         }
 
         let request_uuid =
             stable_message_uuid(uuid_seed, index, message.msg_type, &message.content);
-        let sent = if let Some(parent_id) = previous_message_id.as_deref() {
-            facade
-                .reply_message(
-                    parent_id,
-                    message.msg_type,
-                    &message.content,
-                    Some(&request_uuid),
-                )
-                .await
-        } else if receive_id_type == "chat_id" {
-            facade
-                .send_chat_message(
+        let sent = if should_thread_followups {
+            if let Some(parent_id) = previous_message_id.as_deref() {
+                match facade
+                    .reply_message(
+                        parent_id,
+                        message.msg_type,
+                        &message.content,
+                        Some(&request_uuid),
+                    )
+                    .await
+                {
+                    Ok(sent) => sent,
+                    Err(err) if is_feishu_bad_request(&err) => {
+                        tracing::warn!(
+                            "[Feishu/outbound] reply_message failed with bad request, fallback to standalone send: parent_id={} receive_id_type={} err={}",
+                            parent_id,
+                            receive_id_type,
+                            err
+                        );
+                        send_segment_direct(
+                            facade,
+                            receive_id,
+                            receive_id_type,
+                            message.msg_type,
+                            &message.content,
+                            Some(&request_uuid),
+                        )
+                        .await
+                        .map_err(hone_core::HoneError::Integration)?
+                    }
+                    Err(err) => return Err(hone_core::HoneError::Integration(err)),
+                }
+            } else {
+                send_segment_direct(
+                    facade,
                     receive_id,
+                    receive_id_type,
                     message.msg_type,
                     &message.content,
                     Some(&request_uuid),
                 )
                 .await
+                .map_err(hone_core::HoneError::Integration)?
+            }
         } else {
-            facade
-                .send_message(
-                    receive_id,
-                    message.msg_type,
-                    &message.content,
-                    Some(&request_uuid),
-                )
-                .await
-        }
-        .map_err(hone_core::HoneError::Integration)?;
+            send_segment_direct(
+                facade,
+                receive_id,
+                receive_id_type,
+                message.msg_type,
+                &message.content,
+                Some(&request_uuid),
+            )
+            .await
+            .map_err(hone_core::HoneError::Integration)?
+        };
         previous_message_id = Some(sent.message_id);
     }
     Ok(total)
+}
+
+fn is_feishu_bad_request(err: &str) -> bool {
+    err.contains("HTTP 400")
+}
+
+async fn send_segment_direct(
+    facade: &FeishuApiClient,
+    receive_id: &str,
+    receive_id_type: &str,
+    msg_type: &str,
+    content: &str,
+    uuid: Option<&str>,
+) -> Result<FeishuSendResult, String> {
+    if receive_id_type == "chat_id" {
+        facade
+            .send_chat_message(receive_id, msg_type, content, uuid)
+            .await
+    } else {
+        facade
+            .send_message(receive_id, msg_type, content, uuid)
+            .await
+    }
 }
 
 pub(crate) fn scheduled_send_idempotency(
@@ -322,5 +422,15 @@ mod tests {
         let third = stable_message_uuid(Some("delivery-1"), 1, "interactive", "hello");
         assert_eq!(first, second);
         assert_ne!(first, third);
+    }
+
+    #[test]
+    fn feishu_bad_request_detection_matches_http_400() {
+        assert!(is_feishu_bad_request(
+            "Feishu reply message failed: HTTP 400 Bad Request - {\"code\":1}"
+        ));
+        assert!(!is_feishu_bad_request(
+            "Feishu reply message failed: HTTP 500 Internal Server Error"
+        ));
     }
 }

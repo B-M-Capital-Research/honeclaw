@@ -1527,6 +1527,23 @@ impl AgentSession {
                 response.success = false;
                 response.error = Some("agent returned internal-only output".to_string());
                 response.content.clear();
+            } else if sanitized.content.trim().is_empty() {
+                tracing::warn!(
+                    "[AgentSession] empty visible output after sanitization runner={} session_id={} removed_internal={}",
+                    execution.runner_name,
+                    session_id,
+                    sanitized.removed_internal
+                );
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &session_id,
+                    "agent.run.fallback",
+                    "sanitized_empty_success",
+                    self.message_id.as_deref(),
+                    None,
+                );
+                response.content = EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string();
             } else {
                 response.content = sanitized.content;
             }
@@ -2029,6 +2046,13 @@ mod tests {
         };
 
         assert!(!should_return_runner_result(&result));
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_whitespace_only_success_needs_fallback() {
+        let sanitized = sanitize_user_visible_output("   ");
+        assert!(sanitized.content.is_empty());
+        assert!(!sanitized.only_internal);
     }
 
     #[tokio::test]

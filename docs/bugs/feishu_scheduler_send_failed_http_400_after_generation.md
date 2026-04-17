@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - 最近一小时调度落库：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=1998`，`job_id=j_f02dfce5`，`job_name=OWALERT_PreMarket`，`executed_at=2026-04-16T21:04:06.271882+08:00`
@@ -91,3 +91,14 @@
 - 在 Feishu scheduler 发送失败分支补记录请求元信息与响应体摘要，至少包含 `receive_id_type`、消息类型、正文长度、是否走 markdown/card 分支。
 - 对 `+8617326027390` 最近成功与失败 run 的发送 payload 做差异比对，优先比较 `run_id=1976` 与 `run_id=1998/2005`。
 - 若确认只是同一发送链路的新阶段回归，应在修复后回写 `docs/bugs/README.md` 与本文件状态；修复前不要恢复为 `Fixed`。
+
+## 当前修复进展（2026-04-17 10:40 CST）
+
+- 本轮先按“多段 direct scheduler 发送链路不稳定”收口：
+  - `bins/hone-feishu/src/outbound.rs` 现在对 `receive_id_type=open_id` 且没有 placeholder 的多段消息，不再默认把后续分段走 `reply_message`；会直接逐段 standalone send。
+  - 如果 `update_message` 或 `reply_message` 仍返回 `HTTP 400`，同一分段会自动回退到 standalone send，而不是整轮直接 `send_failed`。
+- `bins/hone-feishu/src/client.rs` 也已补发信失败时的响应体日志，后续再出现 400 时不再只剩裸 `Bad Request`，而会带上 Feishu body 摘要，便于继续定位 payload 差异。
+- 自动化验证已通过：
+  - `cargo test -p hone-feishu`
+  - `cargo test -p hone-channels`
+- 由于当前还缺少下一轮真实 scheduler 窗口的送达样本，本单状态先更新为 `Fixing`。
