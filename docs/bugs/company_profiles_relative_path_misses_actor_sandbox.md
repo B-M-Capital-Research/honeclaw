@@ -6,11 +6,22 @@
 - **状态**: New
 - **证据来源**:
   - `data/runtime/logs/web.log`
+    - `2026-04-17 10:46:35.585` `session=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 在用户再次追问 `ciena 是否值得买入` 时执行 `local_search_files query="CIEN Ciena AI 光网络 DSP WaveLogic"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
+    - `2026-04-17 10:46:35.747` 同一会话紧接着记录 `tool_execute_error ... IO 错误: stream did not contain valid UTF-8`
+    - `2026-04-17 10:47:52.336` 同一会话再次记录 `local_search_files ... IO 错误: stream did not contain valid UTF-8`
+    - `2026-04-17 10:24:40.824` `session=Actor_feishu__direct__ou_5fcd8d8940cb280ac50df027d46bd9f56c` 在用户请求“微软分析”时执行 `local_search_files query="MSFT 微软 Azure"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
+    - `2026-04-17 10:28:28.748` 同一会话继续执行 `local_list_files path="company_profiles"`，随后再次报 `目录不存在: company_profiles`
     - `2026-04-16 18:43:58.887` `session=Actor_feishu__direct__ou_5fe1213e63da238b10e346a384843b434c` 在用户请求“深度分析 Dell”时执行 `local_list_files path="company_profiles"`，随后记录 `tool_execute_error ... 目录不存在: company_profiles`
     - `2026-04-16 13:05:45.267` `session=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 执行 `local_search_files query="RKLB Rocket Lab" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-16 13:09:40.780` 同一会话再次执行 `local_list_files path="company_profiles"`，随后再次报 `目录不存在: company_profiles`
     - 同类报错自 `2026-04-13` 起持续出现，说明不是单次偶发目录缺失
   - `data/sessions.sqlite3`
+    - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
+    - 用户消息：`2026-04-17 10:46:17 CST`，`"ciena 是否值得买入"`
+    - assistant 最终仍返回长文分析：`2026-04-17 10:48:22 CST`
+    - `session_id=Actor_feishu__direct__ou_5fcd8d8940cb280ac50df027d46bd9f56c`
+    - 用户消息：`2026-04-17 10:24:22 CST`，`"微软分析"`
+    - assistant 最终仍返回长文分析：`2026-04-17 10:25:46 CST`
     - `session_id=Actor_feishu__direct__ou_5fe1213e63da238b10e346a384843b434c`
     - 用户消息：`2026-04-16 18:43:50 CST`，`"深度分析 Dell"`
     - assistant 最终仍返回长文分析：`2026-04-16 18:45:53 CST`
@@ -38,6 +49,7 @@
 - 搜索代理持续把 `company_profiles` 当作当前工作目录相对路径使用，而不是 actor sandbox 下的真实画像目录。
 - `local_list_files` / `local_search_files` 在日志中明确报 `目录不存在` / `文件不存在`，但 reply 仍继续生成，导致故障只体现在质量退化上。
 - 最新 `18:43` 的 Dell 会话就是这种状态：用户收到了一篇完整分析，但搜索阶段并未成功读取任何长期画像记忆。
+- 最近一小时内同类问题仍在真实会话复现：`10:24` 的“微软分析”和 `10:46` 的“ciena 是否值得买入”都先触发 `company_profiles` 路径/编码错误，再继续生成最终答复。
 - 由于主链路仍然成功返回，问题不会像空回复、误投递那样立刻暴露，而是以“回答不够连续、没吃到历史沉淀”的形式长期潜伏。
 
 ## 用户影响
