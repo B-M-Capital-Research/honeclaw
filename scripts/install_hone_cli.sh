@@ -181,7 +181,12 @@ PY
 
 download_file
 
-TOP_DIR="$(tar -tzf "$ARCHIVE_PATH" | head -1 | cut -d/ -f1)"
+TOP_DIR="$(
+  tar -tzf "$ARCHIVE_PATH" | {
+    IFS= read -r first_entry || true
+    printf '%s\n' "${first_entry%%/*}"
+  }
+)"
 if [[ -z "$TOP_DIR" ]]; then
   echo "failed to inspect archive layout: $ARCHIVE_PATH" >&2
   exit 1
