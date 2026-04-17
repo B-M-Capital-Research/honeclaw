@@ -6,6 +6,8 @@
 - **状态**: New
 - **证据来源**:
   - `data/runtime/logs/web.log`
+    - `2026-04-17 21:01:05.261` `session=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 在定时任务 `OWALERT_PreMarket` 执行过程中调用 `local_list_files path="company_profiles"`，随后记录 `tool_execute_error ... 目录不存在: company_profiles`
+    - `2026-04-17 21:01:13.821` `session=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 在用户消息 `请对 FORM 进行下详细分析` 中调用 `local_search_files query="FormFactor FORM" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-17 17:00:29.381` `session=Actor_feishu__direct__ou_5f54788f6258d2bce10d70fc267161accb` 在用户追问 `分析AAOI` 时执行 `local_search_files query="AAOI Applied Optoelectronics" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-17 17:01:31.207` 同一会话在 `context_overflow_recovery` 后再次执行 `local_list_files path="company_profiles"`，随后记录 `tool_execute_error ... 目录不存在: company_profiles`
     - `2026-04-17 10:46:35.585` `session=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 在用户再次追问 `ciena 是否值得买入` 时执行 `local_search_files query="CIEN Ciena AI 光网络 DSP WaveLogic"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
@@ -18,6 +20,12 @@
     - `2026-04-16 13:09:40.780` 同一会话再次执行 `local_list_files path="company_profiles"`，随后再次报 `目录不存在: company_profiles`
     - 同类报错自 `2026-04-13` 起持续出现，说明不是单次偶发目录缺失
   - `data/sessions.sqlite3`
+    - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
+    - 用户消息：`2026-04-17 21:01:06 CST`，`"请对 FORM 进行下详细分析"`
+    - 到本轮巡检结束时该会话最新落库仍只有 user turn，尚未看到 assistant 新回复；日志已确认搜索阶段再次命中 `company_profiles` 路径错误
+    - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+    - 用户消息：`2026-04-17 21:00:59 CST`，`"[定时任务触发] 任务名称：OWALERT_PreMarket..."`
+    - 同轮运行日志已确认在定时任务搜索阶段再次命中 `company_profiles` 目录不存在
     - `session_id=Actor_feishu__direct__ou_5f54788f6258d2bce10d70fc267161accb`
     - 用户消息：`2026-04-17 17:00:14 CST`，`"分析AAOI"`
     - `2026-04-17 17:01:22 CST` 同一会话已被强制 compact 并重试，但直到本轮巡检时仍只有用户消息与 compact summary，说明画像路径错误至少参与了这轮长耗时重试
@@ -41,7 +49,7 @@
 1. 用户在 Feishu 直聊中发起“深度分析 Dell”等研究型请求，预期系统先读取该用户长期沉淀的公司画像与历史事件，再结合实时数据完成更连续的分析。
 2. 搜索阶段会先尝试执行 `local_list_files` 或 `local_search_files`，目标路径写成相对路径 `company_profiles`。
 3. 当前运行目录下并不存在这个相对路径，工具立即报错，但主链路不会失败。
-4. agent 继续只依赖 `data_fetch`、`web_search` 等实时信息生成回复，用户侧收到的是“能答复但少了历史画像记忆”的降级结果。
+4. agent 继续只依赖 `data_fetch`、`web_search` 等实时信息生成回复，或者在长链路中继续带着缺失画像的上下文运行，用户侧收到的是“能答复但少了历史画像记忆”的降级结果。
 
 ## 期望效果
 
@@ -53,8 +61,10 @@
 
 - 搜索代理持续把 `company_profiles` 当作当前工作目录相对路径使用，而不是 actor sandbox 下的真实画像目录。
 - `local_list_files` / `local_search_files` 在日志中明确报 `目录不存在` / `文件不存在`，但 reply 仍继续生成，导致故障只体现在质量退化上。
-- 最新 `18:43` 的 Dell 会话就是这种状态：用户收到了一篇完整分析，但搜索阶段并未成功读取任何长期画像记忆。
-- 最近一小时内同类问题仍在真实会话复现：`10:24` 的“微软分析”和 `10:46` 的“ciena 是否值得买入”都先触发 `company_profiles` 路径/编码错误，再继续生成最终答复。
+- 最新 `21:01` 的两个样本说明该问题仍在活跃复现：
+  - `OWALERT_PreMarket` 定时任务刚启动就先命中 `local_list_files path="company_profiles"` 的目录不存在；
+  - 用户新问 `请对 FORM 进行下详细分析` 时也再次命中 `local_search_files ... path="company_profiles"` 的文件不存在。
+- `18:43` 的 Dell 会话与 `10:24` 的“微软分析”、`10:46` 的“ciena 是否值得买入”都已经证明：即便后续能继续产出最终答复，搜索阶段依然没有成功读取任何长期画像记忆。
 - 最新 `17:00` 的 `分析AAOI` 会话里，这个路径错误还在 `context_overflow_recovery` 前后各复现一次，说明问题不仅继续存在，而且会与其他降级链路叠加放大响应耗时。
 - 由于主链路仍然成功返回，问题不会像空回复、误投递那样立刻暴露，而是以“回答不够连续、没吃到历史沉淀”的形式长期潜伏。
 

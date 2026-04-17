@@ -7,10 +7,11 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 最近一小时最新复现：
-    - `2026-04-17 20:00:20.811` `data/runtime/logs/web.log` 记录 `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）`parse_kind=JsonUnknownStatus`
-    - 同轮 `raw_preview` 直接输出 `<think>` 包裹的 11 只股票“当前价格 vs 触发价”逐项判断，但末尾仍没有合法状态 JSON
-    - `2026-04-17 20:00:20.812` 日志紧接着记录 `parse failure escalated`
-    - 同一 20:00 窗口内，真实 Feishu 会话 `Actor_feishu__direct__ou_5fbceebf26fcbb242fd6585745222c8063` 已正常返回 `已达到今日对话上限（12/12，北京时间 2026-04-17），请明天再试`，说明当前最新活跃异常并非通用渠道故障，而是 heartbeat 结构化收口问题仍在持续
+    - `2026-04-17 20:31:16.629` `data/runtime/logs/hone-feishu.release-restart.log` 记录 `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）`parse_kind=JsonUnknownStatus`
+    - 同轮 `raw_preview` 仍是 `<think>` 包裹的 11 只股票“当前价格 vs 触发价”逐项判断，但末尾没有合法状态 JSON
+    - `2026-04-17 20:31:16.628` 日志紧接着记录 `parse failure escalated`
+    - `cron_job_runs.run_id=2191` 同轮落成 `execution_failed + skipped_error`
+    - 但 `2026-04-17 21:01:18.329` 同一任务又恢复为 `parse_kind=JsonNoop`，`cron_job_runs.run_id=2196` 落成 `noop + skipped_noop`，说明该缺陷仍是“相邻轮次失败与恢复交替”的活跃抖动
   - 最近一小时同一任务持续异常：
     - `run_id=1889`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-16T14:00:27.633510+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=1865`，`job_id=j_c1c1be63`，`job_name=存储板块加仓信号监控`，`executed_at=2026-04-16T11:00:31.512294+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
@@ -191,6 +192,7 @@
 - 最新日志还显示 `AAOI_动态监控` 在 `parse failure escalated` 之后仍打印 `心跳任务未命中，本轮不发送`，说明“未知状态已升级为失败”和“渠道日志仍按 noop 口径描述”之间还存在观测口径不一致。
 - 到 `19:31` 这一轮，`小米30港元破位预警` 也新增 `JsonUnknownStatus + execution_failed`，且 `raw_preview` 已经明确写出“当前价格高于触发线，应返回 noop”，最后却只落成 `<think> ... {}`；说明问题并非监控任务自身判断错误，而是最终状态封装仍不稳定。
 - `20:01` 同一任务又立刻恢复为 `noop + skipped_noop`，进一步证明 `JsonUnknownStatus` 已在多个 heartbeat 任务上呈现“相邻轮次抖动”，而不是某一条任务永久损坏。
+- `20:31 -> 21:01` 的最新一对样本把这种抖动延续到了本轮巡检窗口：`Monitor_Watchlist_11` 先在 `20:31` 回落为 `JsonUnknownStatus + execution_failed`，30 分钟后又恢复为 `JsonNoop + skipped_noop`，中间没有任何任务配置变更。
 - `2026-04-17 09:00:23` 的 `run_id=2114` 表明这种抖动在最新小时窗仍未结束：`Monitor_Watchlist_11` 刚在 `08:30` 恢复为 `JsonNoop`，半小时后又再次跌回 `JsonUnknownStatus + execution_failed`。
 - 到 `20:31` 这一轮，`Monitor_Watchlist_11` 再次落回 `JsonUnknownStatus + execution_failed`，`20:32` 的 `存储板块加仓信号监控` 同轮也命中同样症状，说明这条缺陷在最新窗口仍然活跃，且受影响任务并未收敛。
 - 到 `22:01` 与 `22:31` 的最新两个窗口，`Monitor_Watchlist_11` 继续落成 `JsonUnknownStatus + execution_failed`；到 `23:01` 又恢复为 `noop + skipped_noop`，说明缺陷已从“是否静默吞掉”阶段转成“失败与恢复在相邻轮次间来回摆动”。
@@ -252,7 +254,8 @@
 - `13:30 -> 14:00` 的最新窗口再次重复同一模式：`Monitor_Watchlist_11` 刚在 `13:30` 恢复为 `JsonNoop + skipped_noop`，到 `14:00` 又回落为 `JsonUnknownStatus + execution_failed`；而同批 `原油播报` 与 `小米预警` 继续保持 `JsonNoop`，说明当前线上仍是“复杂 watchlist 模板高频抖动、简单 heartbeat 暂时稳定”的活跃故障态。
 - `15:00 -> 15:30 -> 16:00` 的最新三轮把这一抖动继续坐实：同一 `Monitor_Watchlist_11` 在 15:00 失败、15:30 自恢复、16:00 再次失败，中间没有任何任务配置改动，说明当前根因仍是“自由文本 + 状态 JSON 最终收口不稳定”的公共协议脆弱性，而不是某次一次性脏数据。
 - `18:30 -> 19:00` 的最新窗口说明，这种抖动并没有退出活跃态：`小米30港元破位预警` 可以在半小时内从 `JsonUnknownStatus` 自恢复为 `JsonNoop`，但 `Monitor_Watchlist_11` 同一窗口仍连续两轮失败，说明问题仍会在不同 heartbeat 模板间轮流出现，而不是已经稳定收敛。
-- `20:00:20.811` 的最新窗口再次证明活跃故障没有退出：`Monitor_Watchlist_11` 在没有任何任务配置变更的情况下，又一次回落到 `JsonUnknownStatus + parse failure escalated`。
+- `20:31:16.628` 的最新失败窗口再次证明活跃故障没有退出：`Monitor_Watchlist_11` 在没有任何任务配置变更的情况下，又一次回落到 `JsonUnknownStatus + parse failure escalated`。
+- 而 `21:01:18.329` 紧随其后的恢复窗口又说明，这并不是稳定修复，只是同一模板再次短暂恢复为 `JsonNoop`。
 - 同一时间窗内，另一个真实 Feishu 会话已经正常返回 quota 友好文案并完成落库，说明当前系统并非普遍性发送或会话链路故障；最新未收口的问题仍集中在 heartbeat 结构化状态输出。
 - `17:30 -> 18:00` 的最新窗口继续重复同一抖动：`Monitor_Watchlist_11` 在 `17:30` 先回落到 `JsonUnknownStatus + execution_failed`，`18:00` 又恢复为 `JsonNoop`；同批次的 `小米30港元破位预警` 与 `全天原油价格3小时播报` 也都保留 `<think>` 前缀后才分别落成 `JsonNoop` / `JsonTriggered`。这说明当前线上依旧依赖解析器从自由文本尾部勉强提取状态，公共协议脆弱性没有收口。
 
