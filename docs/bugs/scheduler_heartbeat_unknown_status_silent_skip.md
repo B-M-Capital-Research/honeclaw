@@ -254,6 +254,7 @@
 - `2026-04-17 13:00` 的 `run_id=2144` 又把 `Monitor_Watchlist_11` 打回 `execution_failed + skipped_error`，而同批 `run_id=2142/2143` 仍保持 `JsonNoop`；这说明本单不仅未修复，且仍在最新窗口持续复现。
 - `2026-04-17 14:00` 的 `run_id=2150` 进一步说明，当前止血结论仍只能停留在“失败可见化有效”；`Monitor_Watchlist_11` 依旧会在相邻半小时窗口内从 `JsonNoop` 再次跌回 `JsonUnknownStatus + execution_failed`，因此本单仍不能升为 `Fixing` 或 `Fixed`。
 - `2026-04-17 15:00` 的 `run_id=2156` 与 `16:00` 的 `run_id=2161` 继续把同一 watchlist 打回 `execution_failed + skipped_error`，而 `15:30` 的 `run_id=2159` 只是中间短暂恢复为 `JsonNoop`；因此本单在最新小时窗里仍是活跃抖动态，不能调整为已修复。
+- `2026-04-17 17:00` 的 `run_id=2166/2167/2168` 又全部恢复为 `noop + skipped_noop`，说明上一小时的失败并未持续到当前轮次；但 `hone-feishu.release-restart.log` 同轮仍记录三条 heartbeat 的 `raw_preview` 以 `<think>` 开头，只是解析器这次成功从尾部提取了 `{"status":"noop"}`，因此问题更准确地表现为“失败可见化已生效，但协议脆弱性仍未收口”。
 
 ## 回归验证
 

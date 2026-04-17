@@ -6,6 +6,8 @@
 - **状态**: New
 - **证据来源**:
   - `data/runtime/logs/web.log`
+    - `2026-04-17 17:00:29.381` `session=Actor_feishu__direct__ou_5f54788f6258d2bce10d70fc267161accb` 在用户追问 `分析AAOI` 时执行 `local_search_files query="AAOI Applied Optoelectronics" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
+    - `2026-04-17 17:01:31.207` 同一会话在 `context_overflow_recovery` 后再次执行 `local_list_files path="company_profiles"`，随后记录 `tool_execute_error ... 目录不存在: company_profiles`
     - `2026-04-17 10:46:35.585` `session=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 在用户再次追问 `ciena 是否值得买入` 时执行 `local_search_files query="CIEN Ciena AI 光网络 DSP WaveLogic"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-17 10:46:35.747` 同一会话紧接着记录 `tool_execute_error ... IO 错误: stream did not contain valid UTF-8`
     - `2026-04-17 10:47:52.336` 同一会话再次记录 `local_search_files ... IO 错误: stream did not contain valid UTF-8`
@@ -16,6 +18,9 @@
     - `2026-04-16 13:09:40.780` 同一会话再次执行 `local_list_files path="company_profiles"`，随后再次报 `目录不存在: company_profiles`
     - 同类报错自 `2026-04-13` 起持续出现，说明不是单次偶发目录缺失
   - `data/sessions.sqlite3`
+    - `session_id=Actor_feishu__direct__ou_5f54788f6258d2bce10d70fc267161accb`
+    - 用户消息：`2026-04-17 17:00:14 CST`，`"分析AAOI"`
+    - `2026-04-17 17:01:22 CST` 同一会话已被强制 compact 并重试，但直到本轮巡检时仍只有用户消息与 compact summary，说明画像路径错误至少参与了这轮长耗时重试
     - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
     - 用户消息：`2026-04-17 10:46:17 CST`，`"ciena 是否值得买入"`
     - assistant 最终仍返回长文分析：`2026-04-17 10:48:22 CST`
@@ -50,6 +55,7 @@
 - `local_list_files` / `local_search_files` 在日志中明确报 `目录不存在` / `文件不存在`，但 reply 仍继续生成，导致故障只体现在质量退化上。
 - 最新 `18:43` 的 Dell 会话就是这种状态：用户收到了一篇完整分析，但搜索阶段并未成功读取任何长期画像记忆。
 - 最近一小时内同类问题仍在真实会话复现：`10:24` 的“微软分析”和 `10:46` 的“ciena 是否值得买入”都先触发 `company_profiles` 路径/编码错误，再继续生成最终答复。
+- 最新 `17:00` 的 `分析AAOI` 会话里，这个路径错误还在 `context_overflow_recovery` 前后各复现一次，说明问题不仅继续存在，而且会与其他降级链路叠加放大响应耗时。
 - 由于主链路仍然成功返回，问题不会像空回复、误投递那样立刻暴露，而是以“回答不够连续、没吃到历史沉淀”的形式长期潜伏。
 
 ## 用户影响
