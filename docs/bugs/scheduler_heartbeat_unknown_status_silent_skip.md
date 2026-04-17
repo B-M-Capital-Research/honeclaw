@@ -7,6 +7,11 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 最近一小时最新复现：
+    - `run_id=2209`，`job_id=j_38745baf`（`全天原油价格3小时播报`），`executed_at=2026-04-17T22:01:04.770417+08:00`，再次落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2213`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-17T22:01:13.478225+08:00`，同轮新增 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - 两条 `raw_preview` 都明确说明“当前条件未满足，应返回 noop / {}`”，但最终仍以前置 `<think>` + `{}` 破坏结构化状态
+    - `run_id=2214`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-17T22:01:21.080342+08:00`，同轮又恢复成 `noop + skipped_noop`，`detail_json.parse_kind=JsonNoop`
+    - 说明最新小时窗里故障继续跨 heartbeat 模板漂移，而不是只固定在 `Monitor_Watchlist_11`
     - `2026-04-17 20:31:16.629` `data/runtime/logs/hone-feishu.release-restart.log` 记录 `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）`parse_kind=JsonUnknownStatus`
     - 同轮 `raw_preview` 仍是 `<think>` 包裹的 11 只股票“当前价格 vs 触发价”逐项判断，但末尾没有合法状态 JSON
     - `2026-04-17 20:31:16.628` 日志紧接着记录 `parse failure escalated`
@@ -195,7 +200,8 @@
 - `20:31 -> 21:01` 的最新一对样本把这种抖动延续到了本轮巡检窗口：`Monitor_Watchlist_11` 先在 `20:31` 回落为 `JsonUnknownStatus + execution_failed`，30 分钟后又恢复为 `JsonNoop + skipped_noop`，中间没有任何任务配置变更。
 - `2026-04-17 09:00:23` 的 `run_id=2114` 表明这种抖动在最新小时窗仍未结束：`Monitor_Watchlist_11` 刚在 `08:30` 恢复为 `JsonNoop`，半小时后又再次跌回 `JsonUnknownStatus + execution_failed`。
 - 到 `20:31` 这一轮，`Monitor_Watchlist_11` 再次落回 `JsonUnknownStatus + execution_failed`，`20:32` 的 `存储板块加仓信号监控` 同轮也命中同样症状，说明这条缺陷在最新窗口仍然活跃，且受影响任务并未收敛。
-- 到 `22:01` 与 `22:31` 的最新两个窗口，`Monitor_Watchlist_11` 继续落成 `JsonUnknownStatus + execution_failed`；到 `23:01` 又恢复为 `noop + skipped_noop`，说明缺陷已从“是否静默吞掉”阶段转成“失败与恢复在相邻轮次间来回摆动”。
+- 到 `22:01` 的最新窗口，抖动又从 `Monitor_Watchlist_11` 漂移到了 `全天原油价格3小时播报` 与 `小米破位预警`：前两者同轮回落成 `JsonUnknownStatus + execution_failed`，而 `Monitor_Watchlist_11` 反而恢复为 `JsonNoop + skipped_noop`，再次说明当前是公共输出契约不稳定，而不是单一 watchlist prompt 损坏。
+- 到 `2026-04-16 22:01 -> 22:31 -> 23:01` 这一组连续窗口里，`Monitor_Watchlist_11` 先继续落成 `JsonUnknownStatus + execution_failed`，随后又恢复为 `noop + skipped_noop`，说明缺陷已从“是否静默吞掉”阶段转成“失败与恢复在相邻轮次间来回摆动”。
 - 到 `23:31` 与 `00:01` 的最新窗口，抖动并没有收敛，反而继续跨任务漂移：`存储板块加仓信号监控`、`小米30港元破位预警`、`Monitor_Watchlist_11` 在 30 分钟内依次落成 `execution_failed + skipped_error`。
 - `00:01` 的 `小米30港元破位预警` 样本尤其明确：模型在自由文本里已经知道“应返回 noop”，却仍输出 `<think>` 和解释性文字，导致解析器拿不到合法状态；说明当前问题不在业务判断本身，而在最终协议收口仍不稳定。
 - `00:01` 的 `Monitor_Watchlist_11` 也证明 `23:01` 的 `noop` 只是短暂波动，而非稳定修复，因为同一任务在一个小时内又再次回到 `JsonUnknownStatus + execution_failed`。
@@ -216,7 +222,7 @@
 - 这也说明问题不只是“偶发返回乱码”，而是模型已经完成了业务判断，却在最后结构化封装一步失配，监控链路因此丢失了本该可追踪的判定结果。
 - 数据库没有保存可供人工直接复核的最终文本预览，导致一旦进入 `JsonUnknownStatus`，排障信息同时丢失。
 - 由于最近样本已经同时出现 `parse_kind=JsonUnknownStatus + execution_failed` 与下一轮自动恢复为 `JsonNoop`，当前缺陷的状态应理解为“部分止血但强烈抖动”：错误不再总是伪装成 noop，但 heartbeat 仍会在不同任务、不同轮次上失去稳定的结构化收口。
-- 最近一小时的 `22:01 -> 22:31 -> 23:01` 连续三轮再次证明：同一个 `Monitor_Watchlist_11` 不需要任何配置变更，就会在失败与 noop 之间自行摆动，当前仍不具备可依赖的稳定性。
+- `2026-04-16 22:01 -> 22:31 -> 23:01` 的连续三轮再次证明：同一个 `Monitor_Watchlist_11` 不需要任何配置变更，就会在失败与 noop 之间自行摆动，当前仍不具备可依赖的稳定性。
 - `09:30` 的最新窗口进一步说明，这种抖动并没有收敛到单一 watchlist 模板：`全天原油价格3小时播报` 这种时间判断型 heartbeat 也会在明确知道“应返回 noop”的情况下，仍因 `<think>` + `{}` 输出退化成 `JsonUnknownStatus + execution_failed`。
 - `10:00` 的恢复样本则再次证明，当前问题不是任务条件判断错了，而是模型输出能否稳定收口到解析器认可的最终状态对象仍具有随机性；同一个 `Monitor_Watchlist_11` 无需任何配置变更就会在半小时后自行恢复成 `noop`。
 - `10:30 -> 11:00` 的最新一对样本把这种抖动继续坐实：同一批 heartbeat 在 `10:30` 再次退化成 `JsonUnknownStatus`，但到 `11:00` 又全部恢复为 `JsonNoop`，中间没有任何任务配置改动。

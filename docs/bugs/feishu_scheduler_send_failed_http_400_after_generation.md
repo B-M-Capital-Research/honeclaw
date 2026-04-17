@@ -6,6 +6,11 @@
 - **状态**: Fixing
 - **证据来源**:
   - 最近一小时调度落库：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=2207`，`job_id=j_dac3b571`，`job_name=Oil_Price_Monitor_Premarket`，`executed_at=2026-04-17T21:32:32.066317+08:00`
+    - 同样落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`
+    - `error_message=集成错误: Feishu send message failed: HTTP 400 Bad Request`
+    - `detail_json.receive_id=ou_3f69c84593eccd71142ed767a885f595`，继续与 `actor_user_id` 对齐
+    - `response_preview` 保留了完整油价播报开头，说明最近一轮真实 scheduler 窗口里模型执行与会话持久化仍然成功，故障继续停留在发送阶段
     - `run_id=1998`，`job_id=j_f02dfce5`，`job_name=OWALERT_PreMarket`，`executed_at=2026-04-16T21:04:06.271882+08:00`
     - `execution_status=completed`，`message_send_status=send_failed`，`delivered=0`
     - `error_message=集成错误: Feishu send message failed: HTTP 400 Bad Request`
@@ -24,6 +29,7 @@
     - `detail_json.receive_id=ou_3f69c84593eccd71142ed767a885f595`
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+    - `2026-04-17T21:32:31.204674+08:00` assistant 已再次写入 `Oil_Price_Monitor_Premarket` 最终播报，但 `cron_job_runs.run_id=2207` 仍落成 `send_failed`
     - `2026-04-16T21:04:05.652096+08:00` assistant 已写入 `OWALERT_PreMarket` 最终播报
     - `2026-04-16T21:33:06.067389+08:00` assistant 已写入 `Oil_Price_Monitor_Premarket` 最终播报
     - `2026-04-17T04:01:50.132692+08:00` assistant 已写入 `Oil_Price_Monitor_Closing` 最终播报
@@ -31,9 +37,11 @@
     - 说明调度触发、模型执行、会话持久化都已成功，但用户侧仍未送达
   - 最近一小时运行日志：
     - `data/runtime/logs/hone-feishu.release-restart.log`
+      - `2026-04-17T13:32:32.064878Z` `[Feishu] 定时任务投递失败: job=Oil_Price_Monitor_Premarket target=+8617326027390 err=集成错误: Feishu send message failed: HTTP 400 Bad Request`
       - `2026-04-16T13:04:06.270953Z` `[Feishu] 定时任务投递失败: job=OWALERT_PreMarket target=+8617326027390 err=集成错误: Feishu send message failed: HTTP 400 Bad Request`
       - `2026-04-16T13:33:06.728472Z` `[Feishu] 定时任务投递失败: job=Oil_Price_Monitor_Premarket target=+8617326027390 err=集成错误: Feishu send message failed: HTTP 400 Bad Request`
     - `data/runtime/logs/web.log`
+      - `2026-04-17 21:32:32.064` 同样记录 `Oil_Price_Monitor_Premarket` 发送 400，说明 10:40 补的 direct-scheduler fallback 在最新真实窗口里还未收口
       - `2026-04-16 21:04:06.271` 同样记录 `OWALERT_PreMarket` 发送 400
       - `2026-04-16 21:33:06.728` 同样记录 `Oil_Price_Monitor_Premarket` 发送 400
       - `2026-04-17 04:01:50.773` 同样记录 `Oil_Price_Monitor_Closing` 发送 400
@@ -71,6 +79,7 @@
 - 当前日志只保留了通用 `HTTP 400 Bad Request`，没有记录响应体、请求类型或被拒字段，因此只能确认是发送阶段故障，无法从现有日志进一步判定是 Markdown/卡片格式、消息体长度，还是 `receive_id_type` 等请求参数问题。
 - 最近一小时新增样本说明故障已经从“盘前提醒”扩展到“收盘监控 / 收盘后提醒”，属于同一发送链路持续失败，而不是某一个 job 文案偶发异常。
 - `2026-04-17 08:34` 的 `Hone_AI_Morning_Briefing` 新样本说明故障仍在最新小时窗活跃，并且已从盘前 / 收盘 / 盘后扩散到“日常早报”任务；受影响对象仍是同一 `receive_id` 与同一目标手机号。
+- `2026-04-17 21:32` 的最新 `Oil_Price_Monitor_Premarket` 样本说明，哪怕在 10:40 已补 direct scheduler 的 standalone fallback 之后，下一轮真实窗口里同一 `receive_id` 仍会稳定落成 `completed + send_failed + HTTP 400`，所以当前不能把这条链路视为“待验证修复”，而应视为“修复尝试后仍在线复现”。
 
 ## 用户影响
 
@@ -85,6 +94,7 @@
 - 由于同一目标在 `2026-04-16 20:03` 仍有一条 `run_id=1976` 成功送达，而 `2026-04-17 04:01` 与 `04:31` 的新样本继续失败，说明并非该用户或该目标整体不可用，更像是 scheduler 当前某类 payload 形态在发送阶段稳定触发了 400。
 - 新增失败样本覆盖盘前、收盘、收盘后三种 job 名称，但都指向同一 `receive_id` 与同一 actor，会更支持“Feishu 发送请求构造/消息体校验”这一公共链路根因，而不是单个任务 prompt 内容问题。
 - `08:34` 的早报任务失败进一步排除了“只在某一类油价/盘后模板文案触发 400”的可能性；更像是面向同一 Feishu 直达目标的 scheduler 发送链路在多种长文本 payload 上都可能稳定触发 400。
+- `21:32` 的最新失败发生在已经补了 `reply/update -> standalone send` 回退之后，说明问题不只是“回复链路选错 API”；更可能是 scheduler 针对该目标构造的最终发送 payload 或发送上下文本身仍会稳定触发 400。
 
 ## 下一步建议
 
@@ -101,4 +111,4 @@
 - 自动化验证已通过：
   - `cargo test -p hone-feishu`
   - `cargo test -p hone-channels`
-- 由于当前还缺少下一轮真实 scheduler 窗口的送达样本，本单状态先更新为 `Fixing`。
+- 但 `2026-04-17 21:32` 的下一轮真实 scheduler 窗口已经再次复现 `Oil_Price_Monitor_Premarket -> completed + send_failed + HTTP 400`；说明当前修复还没有收口到生产链路，本单继续保持 `Fixing`。
