@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=2162`
@@ -61,8 +61,14 @@
 - 现有 scheduler 链路对这类传输错误缺少自动重试与降级策略，因此单次抖动就会让整轮执行失败。
 - 该问题与直聊搜索阶段的 `minimax_search_http_transport_failure_no_retry` 共享上游故障形态，但发生在独立的 heartbeat 执行链路上，说明“缺少吸震”并不是直聊专属问题。
 
-## 下一步建议
+## 修复进展
 
-- 为 heartbeat scheduler 的 MiniMax `chat/completions` 传输失败补至少一次自动重试，并记录是否重试成功。
-- 评估 scheduler 是否需要 provider fallback，或在失败时保留更清晰的运维侧告警聚合。
+- 2026-04-18 当前工作区里已经出现共享 `OpenAI-compatible provider` 的重试补丁草案，意图让 `chat` / `chat_with_tools` 在命中 MiniMax 传输层瞬时失败时自动进行一次短延迟重试。
+- 由于 heartbeat scheduler 复用同一 provider，这条补丁若后续合并，理论上会直接覆盖 `llm.auxiliary` 路径，不需要在 `scheduler.rs` 里再复制一层重试。
+- 但截至本轮巡检结束，该补丁与配套测试仍停留在未提交的本地改动阶段；仓库主线和最近一小时真实 heartbeat 样本都不能证明这条缺陷已经收口，因此状态只能更新为 `Fixing`。
+
+## 后续观察点
+
+- 待补丁提交并进入仓库主线后，继续巡检 `cron_job_runs` 是否还出现 `error sending request for url (...)` 的同类 heartbeat 失败样本。
+- 评估 scheduler 是否仍需要 provider fallback，或在失败时保留更清晰的运维侧告警聚合。
 - 后续巡检继续关注是否还有其它 heartbeat job 在 `cron_job_runs` 中出现相同 `error sending request for url (...)`，若扩散则考虑提升优先级。

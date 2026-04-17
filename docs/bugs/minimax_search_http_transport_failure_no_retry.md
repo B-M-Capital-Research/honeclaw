@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 13:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - 最近真实会话：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
@@ -75,8 +75,14 @@
 - 历史日志里从 4 月 6 日到 4 月 16 日多次出现同一错误，说明这不是单次会话特例，而是上游不稳定与本地缺少吸震策略共同形成的活跃缺陷。
 - 这条缺陷与 `channel_raw_llm_error_exposure` 不同：后者关注“报错是否暴露给用户”，本条关注“对已知传输抖动是否具备自动恢复能力”。
 
-## 下一步建议
+## 修复进展
 
-- 为搜索阶段的 MiniMax `chat/completions` 传输失败补至少一次自动重试，并记录是否重试成功。
-- 若失败发生前已经积累了足够工具结果，评估是否允许 answer 阶段基于现有证据生成降级答复，避免整轮清零。
-- 增加针对 `error sending request for url (https://api.minimaxi.com/v1/chat/completions)` 的聚合监控，区分“单次抖动”与“持续 provider 故障”。
+- 2026-04-18 当前工作区里已经出现面向 `crates/hone-llm/src/openai_compatible.rs` 的 provider 级重试补丁草案，目标是在 `chat` / `chat_with_tools` 命中 `error sending request for url (...)`、连接被提前关闭或同类瞬时超时信号时补一次自动重试。
+- 同一工作区还出现了配套的本地 HTTP 假服务测试草案，方向与本缺陷根因一致。
+- 但截至本轮巡检结束，上述补丁仍是未提交的本地改动，不属于仓库主线事实，也没有最近一小时真实会话样本可证明已收口，因此当前状态只能更新为 `Fixing`，不能记为 `Fixed`。
+
+## 后续观察点
+
+- 待补丁提交并进入仓库主线后，重新用真实会话或线上日志复核是否还出现 `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`。
+- 若失败发生前已经积累了足够工具结果，后续仍可评估 answer 阶段是否允许基于现有证据生成降级答复，避免整轮清零。
+- 继续聚合 `error sending request for url (https://api.minimaxi.com/v1/chat/completions)` 的生产样本，区分“单次抖动”与“持续 provider 故障”。

@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 03:31-04:01 最近一小时新增样本：
+    - `run_id=2284`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T03:31:14.272753+08:00`，再次回落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2288`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T04:01:08.902119+08:00`，在前一轮 `03:31` 仍为 `noop + skipped_noop` 的前提下，30 分钟后又回落成 `execution_failed + skipped_error`
+    - 同一 `04:01` 窗口里，`run_id=2285/2286/2287/2289/2290`（`全天原油价格3小时播报`、`CAI破位预警`、`TEM破位预警`、`小米破位预警`、`Monitor_Watchlist_11`）都恢复或保持为 `noop + skipped_noop`
+    - 说明这条缺陷在最近一小时继续表现为“同一模板相邻轮次来回抖动，且故障任务在不同 heartbeat 间漂移”，并未稳定收敛到单一坏态
+    - `run_id=2288.detail_json.raw_preview` 明确写出“当前价格是32港元，高于30港元的触发条件。所以条件未满足，需要返回 noop。”，但最终仍以前置 `<think> ... </think>\n\n{}` 形式落成 `JsonUnknownStatus`
+    - `data/sessions.sqlite3` 证明 `03:31 -> 04:01` 相邻轮次间存在“先坏后好 / 先好后坏”的继续漂移
   - 2026-04-18 02:31-03:01 最近一小时新增样本：
     - `run_id=2272`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T02:31:17.468852+08:00`，已恢复为 `noop + skipped_noop`，`detail_json.parse_kind=JsonNoop`
     - `run_id=2276`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T03:01:09.494032+08:00`，在上一轮 `02:01` 还是 `execution_failed + skipped_error` 的前提下，30 分钟后又恢复为 `noop + skipped_noop`
@@ -215,9 +222,9 @@
 
 ## 当前实现效果
 
-- 到 `2026-04-18 02:31 -> 03:01` 的最新窗口，`小米破位预警` 已从上一轮 `02:01` 的 `JsonUnknownStatus + execution_failed` 回弹为 `03:01` 的 `JsonNoop + skipped_noop`，`Monitor_Watchlist_11` 也连续两轮保持 `JsonNoop`。
-- 但这并不意味着缺陷已修复，因为 `03:01` 的 `web.log` 仍显示所有 heartbeat `raw_preview` 保留 `<think>` 前缀，当前只是解析器再次成功从尾部提取状态 JSON；协议是否被接受仍取决于模型本轮尾部是否恰好收口成功。
-- 因而，最新状态应判断为“上一轮失败、下一轮恢复”的抖动继续存在，而不是已经稳定收敛。
+- 到 `2026-04-18 03:31 -> 04:01` 的最新窗口，`Monitor_Watchlist_11` 已在 `03:31` 再次回落成 `JsonUnknownStatus + execution_failed`，而 `小米30港元破位预警` 又在 `04:01` 接力回落；同一窗口里的其它 heartbeat 任务却保持 `noop + skipped_noop`。
+- 这说明缺陷并未从“相邻轮次失败后恢复”收敛，反而继续呈现“不同任务轮流抖动”的活跃状态。
+- 最新失败样本的 `raw_preview` 已明确写出“条件未满足，需要返回 noop”，却仍因 `<think> ... {}` 协议形态被判成 `JsonUnknownStatus`；问题仍然是结构化状态收口不稳定，而不是业务判断本身错误。
 - 到 `2026-04-18 01:31 -> 02:01` 的最新窗口，上一轮“多模板同时失败”的形态又回到典型抖动：`Monitor_Watchlist_11` 在 `01:31` 继续 `JsonUnknownStatus + execution_failed`，`02:01` 同一任务恢复为 `JsonNoop + skipped_noop`，但 `小米破位预警` 又在同一个 `02:01` 窗口新落成 `JsonUnknownStatus + execution_failed`。
 - 这组新增样本说明当前风险仍是“公共 heartbeat 输出契约不稳定”，而不是某一条任务已永久坏掉或已稳定修复；最近一小时只看最终台账会误以为大部分任务恢复，但实际失败模板仍会在相邻轮次间漂移。
 - 到 `2026-04-18 00:31 -> 01:01` 的最新窗口，故障不再只停留在 `Monitor_Watchlist_11`：`TEM破位预警`、`小米30港元破位预警`、`全天原油价格3小时播报` 与 `Monitor_Watchlist_11` 四条 heartbeat 模板都在自由文本里写明“应返回 noop / {}`”后，仍统一回落为 `JsonUnknownStatus + execution_failed`。
