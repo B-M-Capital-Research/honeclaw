@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 06:31-07:01 最近一小时新增样本：
+    - `run_id=2320`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T06:31:14.204675+08:00`，继续落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2321`，`job_id=j_38745baf`（`全天原油价格3小时播报`），`executed_at=2026-04-18T07:01:05.148838+08:00`，从上一轮 `06:31` 的 `JsonUnknownStatus` 恢复为 `noop + skipped_noop`
+    - `run_id=2325`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T07:01:11.915159+08:00`，在 `06:31` 仍为 `noop + skipped_noop` 的前提下，同根因新一轮漂移到该任务，落成 `execution_failed + skipped_error`
+    - `run_id=2326`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T07:01:16.012476+08:00`，同轮又短暂恢复为 `noop + skipped_noop`，`detail_json.parse_kind=JsonNoop`
+    - `run_id=2325.detail_json.raw_preview` 已明确写出“当前价 32 港元、未跌破 30 港元，因此条件未满足，我应该输出 noop”，但最终仍以 `<think> ... </think>\n\n{}` 收尾，被解析成 `JsonUnknownStatus`
+    - `data/runtime/logs/web.log` 在 `2026-04-18 07:01:11.913` 同步记录 `parse_kind=JsonUnknownStatus` 与 `parse failure escalated`；同一窗口的 `2026-04-18 07:01:16.011` 又记录 `Monitor_Watchlist_11` 回到 `JsonNoop`
+    - 这组 `06:31 -> 07:01` 样本说明：故障并未随着 `Monitor_Watchlist_11` 的暂时恢复而收口，而是继续以“同一根因在不同 heartbeat 模板之间漂移”的方式存在；当前受影响模板已从复杂 watchlist 扩散回单标的阈值任务
   - 2026-04-18 05:31-06:01 最近一小时新增样本：
     - `run_id=2303`，`job_id=j_38745baf`（`全天原油价格3小时播报`），`executed_at=2026-04-18T05:31:05.052049+08:00`，在上一轮 `05:01` 还是 `noop + skipped_noop` 的前提下，本轮回落成 `execution_failed + skipped_error`
     - `run_id=2308`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T05:31:16.105413+08:00`，继续落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
