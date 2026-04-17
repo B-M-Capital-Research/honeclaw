@@ -12,6 +12,11 @@
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
     - `2026-04-17T12:00:00.495769+08:00` 定时任务触发 `每日公司资讯与分析总结`，要求汇总 `TEM/CAI/NBIS/CRWV/NVDA/GOOGL/TSM` 的最新资讯、分析师总结与财报日期
     - 截至 `2026-04-17T12:01:26.486+08:00` 对应失败日志写出时，同一 session 仍只新增这条 `role=user` 消息，没有新的 `role=assistant` 落库
+  - 最近一小时调度台账：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=2138`，`job_id=j_7c688485`，`job_name=每日公司资讯与分析总结`
+    - `executed_at=2026-04-17T12:01:28.608155+08:00`
+    - `execution_status=execution_failed`，`message_send_status=sent`，`delivered=1`，`error_message=已达最大迭代次数 8`
+    - 同一时间窗内 `web.log` 没有对应 `step=reply.send`，`session_messages` 也没有新增 assistant 文本，说明 scheduler 台账与真实会话可见结果已经出现不一致
   - 最近一小时运行日志：`data/runtime/logs/web.log`
     - `2026-04-16 11:24:58.565` `step=reply.placeholder`，说明 Feishu 侧已经开始处理该请求
     - `2026-04-16 11:25:06.434` 到 `11:26:02.804` 之间，search 阶段连续多次执行 `cron_job`
@@ -48,6 +53,7 @@
 - 定时汇总样本里，search 阶段 8 次工具调用全部成功返回，`live_search_tool=true`，但仍在 `data_fetch` 收集阶段耗尽预算，说明问题不只限于 `cron_job` 工具循环，而是“search 触顶后的失败分支仍会静默”这一公共收口缺陷。
 - 两个样本的日志都结束于 `failed ... error="已达最大迭代次数 8"`，之后没有 `session.persist_assistant`、没有 `reply.send`、也没有 `done user=...` 收尾日志。
 - `session_messages` 里按真实 `timestamp` 过滤后，两条会话在失败窗口都只剩用户输入，没有任何新的 assistant 文本，说明这不是“回答发出但落库丢失”，而是整轮确实没有产出用户可见最终回复。
+- `2026-04-17 12:01` 的最新 scheduler 台账又暴露出第二层症状：`cron_job_runs` 已记成 `execution_failed + sent + delivered=1`，但真实会话与运行日志都没有 `reply.send` 或 assistant 落库，说明“失败已送达”的账本口径也不可靠。
 - 这条事故不是单纯回答质量浅或格式不佳，而是用户提出的核心任务根本没有完成。
 
 ## 用户影响
@@ -61,6 +67,7 @@
 - 已确认存在两层根因叠加：
   - 上游 search 策略在不同任务类型上都可能失控，要么反复调用 `cron_job`，要么在高基数 `data_fetch` 收集里直接耗尽 8 轮。
   - 下游 `max_iterations` 触顶后的失败分支仍没有稳定接入用户可见降级文案，因此一旦触顶就演化成“无回复”。
+- 同时还存在链路台账失真：scheduler 侧已经把本轮记成 `sent`，但消息日志与会话落库都不支持“用户实际收到了失败提示”这一结论；因此排查时不能只看 `cron_job_runs.message_send_status`。
 - 日志里 `tool_execute_success name=cron_job` 与多次 `data_fetch ... status=done` 都连续出现，说明不是单次工具报错，而是 agent orchestration 缺少“有进展但仍未收敛”与“重复同工具无进展”的统一中止/收口机制。
 
 ## 下一步建议
@@ -81,3 +88,4 @@
   - `cargo test -p hone-feishu`
   - `cargo test -p hone-channels`
 - 由于“search 触顶后仍静默失败”的公共收口缺陷尚未消除，而“反复调用 `cron_job` / 多次 `data_fetch` 后不收敛”这两类上游触发形态也都仍在，本单维持 `Fixing`，待下一轮真实样本确认“至少不再无回复”后再决定是否拆出更细的策略单。
+- `2026-04-17 12:01` 的最新定时汇总样本还表明，当前巡检不能把 `cron_job_runs` 的 `sent/delivered=1` 视为修复迹象；在真实会话仍无 assistant 落库、`web.log` 仍无 `reply.send` 的前提下，本单继续保持 `Fixing`。

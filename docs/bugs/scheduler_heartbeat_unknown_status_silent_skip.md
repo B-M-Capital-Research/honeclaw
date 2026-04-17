@@ -24,6 +24,7 @@
     - `2026-04-17 11:30:31.702` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）再次记录 `parse_kind=JsonUnknownStatus`，并升级为 `parse failure escalated`
     - `2026-04-17 12:00:23.431` `job_id=j_38745baf`（`全天原油价格3小时播报`）恢复为 `parse_kind=JsonTriggered`，且本轮成功送达
     - `2026-04-17 12:00:27.289` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）又恢复为 `parse_kind=JsonNoop`
+    - `2026-04-17 13:00:23.454` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）再次记录 `parse_kind=JsonUnknownStatus`，并升级为 `parse failure escalated`
     - `2026-04-16 14:00:27.632` `job_id=j_ab7e8fb1` `parse_kind=JsonUnknownStatus`
     - `2026-04-16 14:00:27.632` 同轮 `raw_preview` 仍直接输出 11 只股票的“当前价格 vs 触发价”分析，但末尾没有合法状态 JSON
     - `2026-04-16 14:00:27.632` 同轮已不再打印“心跳任务未命中，本轮不发送”，而是升级为 `parse failure escalated`
@@ -216,6 +217,7 @@
 - 渠道侧日志仍沿用“心跳任务未命中，本轮不发送”的 noop 文案，说明即使数据库台账已按 `execution_failed` 落账，部分运行日志和可观测口径还没有完全跟上新的失败语义。
 - 现有落库字段只保留 `parse_kind` 与字符数，没有把原始响应片段保留下来，进一步放大了排障盲区。
 - `11:30 -> 12:00` 的最新窗口再次坐实这种抖动：`Monitor_Watchlist_11` 在 `11:30` 先回落到 `JsonUnknownStatus + execution_failed`，但 `12:00` 又自行恢复为 `JsonNoop + skipped_noop`；同一批次里的 `全天原油价格3小时播报` 则成功回到 `JsonTriggered + sent`，说明协议脆弱点仍未退出活跃态，只是继续在相邻轮次间摆动。
+- `12:30 -> 13:00` 的新一轮窗口进一步说明抖动仍在活跃：`Monitor_Watchlist_11` 在 `12:30` 还是 `JsonNoop + skipped_noop`，到 `13:00` 又回落为 `JsonUnknownStatus + execution_failed`；与此同时 `全天原油价格3小时播报` 与 `小米30港元破位预警` 同轮都保持 `JsonNoop`，说明问题仍主要集中在复杂 watchlist 模板，但公共协议脆弱性并未消失。
 
 ## 修复情况（2026-04-16，待重新验证）
 
@@ -237,6 +239,7 @@
 - `2026-04-17 10:00` 的 `run_id=2125` 虽让 `Monitor_Watchlist_11` 暂时回到 `noop + skipped_noop`，但这只能说明当前线上仍处于“相邻轮次自行恢复、下一轮可能再掉回去”的抖动态，不能视为修复完成。
 - `2026-04-17 10:30` 的新一轮再次扩散到 `全天原油价格3小时播报` 与 `Monitor_Watchlist_11`，说明抖动仍在线上持续。
 - `2026-04-17 11:00` 的三条任务（`全天原油价格3小时播报`、`小米30港元破位预警`、`Monitor_Watchlist_11`）又都恢复为 `JsonNoop`；因此本单仍应维持“问题活跃但呈抖动态”，不能调整为 `Fixed`。
+- `2026-04-17 13:00` 的 `run_id=2144` 又把 `Monitor_Watchlist_11` 打回 `execution_failed + skipped_error`，而同批 `run_id=2142/2143` 仍保持 `JsonNoop`；这说明本单不仅未修复，且仍在最新窗口持续复现。
 
 ## 回归验证
 
