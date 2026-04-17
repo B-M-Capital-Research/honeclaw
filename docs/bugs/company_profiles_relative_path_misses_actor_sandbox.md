@@ -6,6 +6,7 @@
 - **状态**: New
 - **证据来源**:
   - `data/runtime/logs/web.log`
+    - `2026-04-17 23:54:44.989` `session=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 在用户消息 `开启新的话题：请预测联合健康的财报` 中调用 `local_search_files query="UnitedHealth UNH" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-17 21:01:05.261` `session=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 在定时任务 `OWALERT_PreMarket` 执行过程中调用 `local_list_files path="company_profiles"`，随后记录 `tool_execute_error ... 目录不存在: company_profiles`
     - `2026-04-17 21:01:13.821` `session=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 在用户消息 `请对 FORM 进行下详细分析` 中调用 `local_search_files query="FormFactor FORM" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-17 17:00:29.381` `session=Actor_feishu__direct__ou_5f54788f6258d2bce10d70fc267161accb` 在用户追问 `分析AAOI` 时执行 `local_search_files query="AAOI Applied Optoelectronics" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
@@ -20,6 +21,9 @@
     - `2026-04-16 13:09:40.780` 同一会话再次执行 `local_list_files path="company_profiles"`，随后再次报 `目录不存在: company_profiles`
     - 同类报错自 `2026-04-13` 起持续出现，说明不是单次偶发目录缺失
   - `data/sessions.sqlite3`
+    - `session_id=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052`
+    - 用户消息：`2026-04-17 23:54:40 CST`，`"开启新的话题：请预测联合健康的财报"`
+    - `2026-04-17 23:55:10 CST` 同轮已触发 `context_overflow_recovery` 写入 compact summary，`2026-04-17 23:55:32 CST` assistant 仍只返回“当前会话上下文过长”，说明画像路径错误至少参与了这轮新话题切换时的长耗时降级
     - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
     - 用户消息：`2026-04-17 21:01:06 CST`，`"请对 FORM 进行下详细分析"`
     - 到本轮巡检结束时该会话最新落库仍只有 user turn，尚未看到 assistant 新回复；日志已确认搜索阶段再次命中 `company_profiles` 路径错误
@@ -64,6 +68,7 @@
 - 最新 `21:01` 的两个样本说明该问题仍在活跃复现：
   - `OWALERT_PreMarket` 定时任务刚启动就先命中 `local_list_files path="company_profiles"` 的目录不存在；
   - 用户新问 `请对 FORM 进行下详细分析` 时也再次命中 `local_search_files ... path="company_profiles"` 的文件不存在。
+- 最新 `23:54` 的 `UNH` 新话题会话说明，这类画像路径错误不只存在于深度分析模板里；即使用户显式切换新话题，搜索阶段仍会先尝试读取 `company_profiles`，并与后续 `context_overflow_recovery` 叠加放大长链路降级。
 - `18:43` 的 Dell 会话与 `10:24` 的“微软分析”、`10:46` 的“ciena 是否值得买入”都已经证明：即便后续能继续产出最终答复，搜索阶段依然没有成功读取任何长期画像记忆。
 - 最新 `17:00` 的 `分析AAOI` 会话里，这个路径错误还在 `context_overflow_recovery` 前后各复现一次，说明问题不仅继续存在，而且会与其他降级链路叠加放大响应耗时。
 - 由于主链路仍然成功返回，问题不会像空回复、误投递那样立刻暴露，而是以“回答不够连续、没吃到历史沉淀”的形式长期潜伏。

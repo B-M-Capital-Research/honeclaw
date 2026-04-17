@@ -7,6 +7,11 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 最近一小时最新复现：
+    - `run_id=2238`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T00:01:20.478083+08:00`，再次落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - 同一任务前两轮 `run_id=2226`（`23:01:15`）与 `run_id=2232`（`23:31:29`）都短暂恢复为 `noop + skipped_noop`，但 `00:01` 又再次跌回失败，说明当前并不是单向收敛，而是同一模板在相邻轮次间继续抖动
+    - `run_id=2238.detail_json.raw_preview` 已完成 11 只股票“当前价 vs 触发价”的逐项判断，但最终仍以前置 `<think>` 文本结尾，没有合法状态 JSON
+    - `2026-04-18 00:01:20.477` `data/runtime/logs/hone-feishu.release-restart.log` 同步记录 `parse_kind=JsonUnknownStatus` 与 `parse failure escalated`
+  - 最近一小时最新复现：
     - `run_id=2209`，`job_id=j_38745baf`（`全天原油价格3小时播报`），`executed_at=2026-04-17T22:01:04.770417+08:00`，再次落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2213`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-17T22:01:13.478225+08:00`，同轮新增 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - 两条 `raw_preview` 都明确说明“当前条件未满足，应返回 noop / {}`”，但最终仍以前置 `<think>` + `{}` 破坏结构化状态
