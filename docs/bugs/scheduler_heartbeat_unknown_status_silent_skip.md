@@ -21,6 +21,9 @@
     - `2026-04-17 11:00:11.697` `job_id=j_38745baf` 已恢复为 `parse_kind=JsonNoop`
     - `2026-04-17 11:00:18.351` `job_id=j_654aef9b`（`小米30港元破位预警`）已恢复为 `parse_kind=JsonNoop`
     - `2026-04-17 11:00:33.875` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）同样恢复为 `parse_kind=JsonNoop`
+    - `2026-04-17 11:30:31.702` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）再次记录 `parse_kind=JsonUnknownStatus`，并升级为 `parse failure escalated`
+    - `2026-04-17 12:00:23.431` `job_id=j_38745baf`（`全天原油价格3小时播报`）恢复为 `parse_kind=JsonTriggered`，且本轮成功送达
+    - `2026-04-17 12:00:27.289` `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）又恢复为 `parse_kind=JsonNoop`
     - `2026-04-16 14:00:27.632` `job_id=j_ab7e8fb1` `parse_kind=JsonUnknownStatus`
     - `2026-04-16 14:00:27.632` 同轮 `raw_preview` 仍直接输出 11 只股票的“当前价格 vs 触发价”分析，但末尾没有合法状态 JSON
     - `2026-04-16 14:00:27.632` 同轮已不再打印“心跳任务未命中，本轮不发送”，而是升级为 `parse failure escalated`
@@ -212,6 +215,7 @@
 - 调度器曾把“无法识别状态”错误地归并进 `noop` 路径，造成功能性失败被静默吞掉；而 14:00 的运行结果表明，这一收口正在部分修正，但尚未彻底消除所有旧路径或旧实例。
 - 渠道侧日志仍沿用“心跳任务未命中，本轮不发送”的 noop 文案，说明即使数据库台账已按 `execution_failed` 落账，部分运行日志和可观测口径还没有完全跟上新的失败语义。
 - 现有落库字段只保留 `parse_kind` 与字符数，没有把原始响应片段保留下来，进一步放大了排障盲区。
+- `11:30 -> 12:00` 的最新窗口再次坐实这种抖动：`Monitor_Watchlist_11` 在 `11:30` 先回落到 `JsonUnknownStatus + execution_failed`，但 `12:00` 又自行恢复为 `JsonNoop + skipped_noop`；同一批次里的 `全天原油价格3小时播报` 则成功回到 `JsonTriggered + sent`，说明协议脆弱点仍未退出活跃态，只是继续在相邻轮次间摆动。
 
 ## 修复情况（2026-04-16，待重新验证）
 
