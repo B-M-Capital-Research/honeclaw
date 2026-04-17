@@ -1,7 +1,8 @@
 import type { HistoryMsg, TimelineMessage } from "./types"
 import { buildApiUrl, hasRuntimeCapability } from "./backend"
 
-const imagePattern = /(file:\/\/[^\s]+\.(?:jpg|jpeg|png|webp|gif|bmp))/gi
+const imagePattern =
+  /<a\s+href="(file:\/\/[^\s"]+\.(?:jpg|jpeg|png|webp|gif|bmp))"[^>]*>.*?<\/a>|!?\[[^\]]*]\((file:\/\/[^\s)]+\.(?:jpg|jpeg|png|webp|gif|bmp))\)|(file:\/\/[^\s<>"']+\.(?:jpg|jpeg|png|webp|gif|bmp))/gi
 
 export type MessagePart =
   | { type: "text"; value: string }
@@ -51,19 +52,38 @@ export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
 }
 
 export function parseMessageContent(text: string) {
-  const matches = text.match(imagePattern)
-  if (!matches) {
+  const parts: MessagePart[] = []
+  let lastIndex = 0
+
+  for (const match of text.matchAll(imagePattern)) {
+    const start = match.index ?? 0
+    const end = start + match[0].length
+    const uri = match[1] || match[2] || match[3]
+    if (!uri) continue
+
+    if (start > lastIndex) {
+      parts.push({ type: "text", value: text.slice(lastIndex, start) })
+    }
+
+    if (!hasRuntimeCapability("local_file_proxy")) {
+      parts.push({ type: "text", value: match[0] })
+    } else {
+      parts.push({
+        type: "image",
+        value: buildApiUrl(`/api/image?path=${encodeURIComponent(uri.replace("file://", ""))}`),
+      })
+    }
+
+    lastIndex = end
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ type: "text", value: text.slice(lastIndex) })
+  }
+
+  if (parts.length === 0) {
     return [{ type: "text", value: text }] as MessagePart[]
   }
 
-  return text.split(imagePattern).flatMap<MessagePart>((part) => {
-    if (!part) return []
-    if (part.startsWith("file://")) {
-      if (!hasRuntimeCapability("local_file_proxy")) {
-        return [{ type: "text", value: part }]
-      }
-      return [{ type: "image", value: buildApiUrl(`/api/image?path=${encodeURIComponent(part.replace("file://", ""))}`) }]
-    }
-    return [{ type: "text", value: part }]
-  })
+  return parts
 }

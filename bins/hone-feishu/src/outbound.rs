@@ -1,8 +1,10 @@
+use hone_channels::outbound::{ResponseContentSegment, split_response_content_segments};
 use hone_scheduler::SchedulerEvent;
 use serde_json::json;
 
 use crate::client::{FeishuApiClient, FeishuSendResult};
 use crate::markdown::{preprocess_markdown_for_feishu, render_outbound_messages};
+use crate::types::RenderedMessage;
 
 #[derive(Clone)]
 pub(crate) struct SendIdempotency {
@@ -175,166 +177,328 @@ pub(crate) async fn send_rendered_messages(
     placeholder_message_id: Option<&str>,
     uuid_seed: Option<&str>,
 ) -> hone_core::HoneResult<usize> {
-    let messages = render_outbound_messages(markdown, max_message_length);
-    if messages.is_empty() {
+    let segments = split_response_content_segments(markdown);
+    if segments.is_empty() {
         return Ok(0);
     }
 
     let should_thread_followups = receive_id_type == "chat_id" || placeholder_message_id.is_some();
-    let total = messages.len();
-    let mut previous_message_id = None;
-    for (index, message) in messages.into_iter().enumerate() {
-        if index == 0 {
-            if let Some(message_id) = placeholder_message_id {
-                let card_content = if message.msg_type == "interactive" {
-                    message.content.clone()
-                } else if message.msg_type == "post" {
-                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&message.content)
-                    {
-                        if let Some(zh_cn) = parsed.get("zh_cn") {
-                            let mut text_lines = Vec::new();
-                            if let Some(title) = zh_cn.get("title").and_then(|t| t.as_str()) {
-                                if !title.is_empty() {
-                                    text_lines.push(format!("**{}**", title));
-                                }
-                            }
-                            if let Some(content) = zh_cn.get("content").and_then(|c| c.as_array()) {
-                                for row in content {
-                                    if let Some(elements) = row.as_array() {
-                                        let mut line_text = String::new();
-                                        for el in elements {
-                                            if let Some(text) =
-                                                el.get("text").and_then(|t| t.as_str())
-                                            {
-                                                line_text.push_str(text);
-                                            }
-                                        }
-                                        text_lines.push(line_text);
-                                    }
-                                }
-                            }
-                            json!({
-                                "schema": "2.0",
-                                "config": {"wide_screen_mode": true},
-                                "body": {
-                                    "elements": [
-                                        {
-                                            "tag": "markdown",
-                                            "content": preprocess_markdown_for_feishu(&text_lines.join("\n"), true),
-                                            "text_size": "heading"
-                                        }
-                                    ]
-                                }
-                            })
-                            .to_string()
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-                } else {
-                    continue;
-                };
+    let mut sent = 0usize;
+    let mut message_index = 0usize;
+    let mut previous_message_id: Option<String> = None;
+    let mut pending_placeholder = placeholder_message_id.map(str::to_string);
 
-                match facade
-                    .update_message(message_id, "interactive", &card_content)
-                    .await
+    for segment in segments {
+        match segment {
+            ResponseContentSegment::Text(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                sent += send_rendered_sequence(
+                    facade,
+                    receive_id,
+                    receive_id_type,
+                    render_outbound_messages(trimmed, max_message_length),
+                    should_thread_followups,
+                    &mut pending_placeholder,
+                    &mut previous_message_id,
+                    uuid_seed,
+                    &mut message_index,
+                )
+                .await?;
+            }
+            ResponseContentSegment::LocalImage(marker) => {
+                if pending_placeholder.is_some() && previous_message_id.is_none() {
+                    sent += send_rendered_sequence(
+                        facade,
+                        receive_id,
+                        receive_id_type,
+                        render_outbound_messages("图表如下：", max_message_length),
+                        should_thread_followups,
+                        &mut pending_placeholder,
+                        &mut previous_message_id,
+                        uuid_seed,
+                        &mut message_index,
+                    )
+                    .await?;
+                }
+
+                match send_local_image_segment(
+                    facade,
+                    receive_id,
+                    receive_id_type,
+                    &marker.path,
+                    should_thread_followups,
+                    &mut previous_message_id,
+                    uuid_seed,
+                    &mut message_index,
+                )
+                .await
                 {
-                    Ok(_) => {
-                        previous_message_id = Some(message_id.to_string());
-                    }
-                    Err(err) if is_feishu_bad_request(&err) => {
-                        tracing::warn!(
-                            "[Feishu/outbound] update rendered placeholder failed with bad request, fallback to standalone send: message_id={} receive_id_type={} err={}",
-                            message_id,
-                            receive_id_type,
-                            err
-                        );
-                        let sent = send_segment_direct(
+                    Ok(count) => sent += count,
+                    Err(err) => {
+                        tracing::warn!("[Feishu/outbound] send local image failed: {}", err);
+                        let note =
+                            format!("（图表发送失败：{}）", file_label_from_path(&marker.path));
+                        sent += send_rendered_sequence(
                             facade,
                             receive_id,
                             receive_id_type,
+                            render_outbound_messages(&note, max_message_length),
+                            should_thread_followups,
+                            &mut pending_placeholder,
+                            &mut previous_message_id,
+                            uuid_seed,
+                            &mut message_index,
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
+    }
+
+    if sent == 0 {
+        sent += send_rendered_sequence(
+            facade,
+            receive_id,
+            receive_id_type,
+            render_outbound_messages("收到。", max_message_length),
+            should_thread_followups,
+            &mut pending_placeholder,
+            &mut previous_message_id,
+            uuid_seed,
+            &mut message_index,
+        )
+        .await?;
+    }
+
+    Ok(sent)
+}
+
+async fn send_rendered_sequence(
+    facade: &FeishuApiClient,
+    receive_id: &str,
+    receive_id_type: &str,
+    messages: Vec<RenderedMessage>,
+    should_thread_followups: bool,
+    pending_placeholder: &mut Option<String>,
+    previous_message_id: &mut Option<String>,
+    uuid_seed: Option<&str>,
+    message_index: &mut usize,
+) -> hone_core::HoneResult<usize> {
+    let mut sent = 0usize;
+    for message in messages {
+        let current_index = *message_index;
+        *message_index += 1;
+        if let Some(message_id) = pending_placeholder.take() {
+            let card_content = match coerce_placeholder_message_content(&message) {
+                Some(content) => content,
+                None => continue,
+            };
+            match facade
+                .update_message(&message_id, "interactive", &card_content)
+                .await
+            {
+                Ok(_) => {
+                    *previous_message_id = Some(message_id);
+                    sent += 1;
+                    continue;
+                }
+                Err(err) if is_feishu_bad_request(&err) => {
+                    tracing::warn!(
+                        "[Feishu/outbound] update rendered placeholder failed with bad request, fallback to standalone send: message_id={} receive_id_type={} err={}",
+                        message_id,
+                        receive_id_type,
+                        err
+                    );
+                    let sent_message = send_segment_direct(
+                        facade,
+                        receive_id,
+                        receive_id_type,
+                        "interactive",
+                        &card_content,
+                        Some(&stable_message_uuid(
+                            uuid_seed,
+                            current_index,
                             "interactive",
                             &card_content,
-                            Some(&stable_message_uuid(
-                                uuid_seed,
-                                index,
-                                "interactive",
-                                &card_content,
-                            )),
-                        )
-                        .await
-                        .map_err(hone_core::HoneError::Integration)?;
-                        previous_message_id = Some(sent.message_id);
-                    }
-                    Err(err) => return Err(hone_core::HoneError::Integration(err)),
+                        )),
+                    )
+                    .await
+                    .map_err(hone_core::HoneError::Integration)?;
+                    *previous_message_id = Some(sent_message.message_id);
+                    sent += 1;
+                    continue;
                 }
-                continue;
+                Err(err) => return Err(hone_core::HoneError::Integration(err)),
             }
         }
 
         let request_uuid =
-            stable_message_uuid(uuid_seed, index, message.msg_type, &message.content);
-        let sent = if should_thread_followups {
-            if let Some(parent_id) = previous_message_id.as_deref() {
-                match facade
-                    .reply_message(
-                        parent_id,
-                        message.msg_type,
-                        &message.content,
-                        Some(&request_uuid),
-                    )
-                    .await
-                {
-                    Ok(sent) => sent,
-                    Err(err) if is_feishu_bad_request(&err) => {
-                        tracing::warn!(
-                            "[Feishu/outbound] reply_message failed with bad request, fallback to standalone send: parent_id={} receive_id_type={} err={}",
-                            parent_id,
-                            receive_id_type,
-                            err
-                        );
-                        send_segment_direct(
-                            facade,
-                            receive_id,
-                            receive_id_type,
-                            message.msg_type,
-                            &message.content,
-                            Some(&request_uuid),
-                        )
-                        .await
-                        .map_err(hone_core::HoneError::Integration)?
-                    }
-                    Err(err) => return Err(hone_core::HoneError::Integration(err)),
-                }
-            } else {
-                send_segment_direct(
-                    facade,
-                    receive_id,
-                    receive_id_type,
+            stable_message_uuid(uuid_seed, current_index, message.msg_type, &message.content);
+        let sent_message = send_message_with_optional_thread(
+            facade,
+            receive_id,
+            receive_id_type,
+            &message,
+            should_thread_followups,
+            previous_message_id.as_deref(),
+            &request_uuid,
+        )
+        .await?;
+        *previous_message_id = Some(sent_message.message_id);
+        sent += 1;
+    }
+    Ok(sent)
+}
+
+async fn send_local_image_segment(
+    facade: &FeishuApiClient,
+    receive_id: &str,
+    receive_id_type: &str,
+    path: &str,
+    should_thread_followups: bool,
+    previous_message_id: &mut Option<String>,
+    uuid_seed: Option<&str>,
+    message_index: &mut usize,
+) -> hone_core::HoneResult<usize> {
+    let image_key = facade
+        .upload_image(path)
+        .await
+        .map_err(hone_core::HoneError::Integration)?;
+    let content = json!({ "image_key": image_key }).to_string();
+    let current_index = *message_index;
+    *message_index += 1;
+    let request_uuid = stable_message_uuid(uuid_seed, current_index, "image", &content);
+    let message = RenderedMessage {
+        msg_type: "image",
+        content,
+    };
+    let sent_message = send_message_with_optional_thread(
+        facade,
+        receive_id,
+        receive_id_type,
+        &message,
+        should_thread_followups,
+        previous_message_id.as_deref(),
+        &request_uuid,
+    )
+    .await?;
+    *previous_message_id = Some(sent_message.message_id);
+    Ok(1)
+}
+
+async fn send_message_with_optional_thread(
+    facade: &FeishuApiClient,
+    receive_id: &str,
+    receive_id_type: &str,
+    message: &RenderedMessage,
+    should_thread_followups: bool,
+    previous_message_id: Option<&str>,
+    request_uuid: &str,
+) -> hone_core::HoneResult<FeishuSendResult> {
+    if should_thread_followups {
+        if let Some(parent_id) = previous_message_id {
+            return match facade
+                .reply_message(
+                    parent_id,
                     message.msg_type,
                     &message.content,
-                    Some(&request_uuid),
+                    Some(request_uuid),
                 )
                 .await
-                .map_err(hone_core::HoneError::Integration)?
-            }
-        } else {
-            send_segment_direct(
-                facade,
-                receive_id,
-                receive_id_type,
-                message.msg_type,
-                &message.content,
-                Some(&request_uuid),
-            )
-            .await
-            .map_err(hone_core::HoneError::Integration)?
-        };
-        previous_message_id = Some(sent.message_id);
+            {
+                Ok(sent) => Ok(sent),
+                Err(err) if is_feishu_bad_request(&err) => {
+                    tracing::warn!(
+                        "[Feishu/outbound] reply_message failed with bad request, fallback to standalone send: parent_id={} receive_id_type={} err={}",
+                        parent_id,
+                        receive_id_type,
+                        err
+                    );
+                    send_segment_direct(
+                        facade,
+                        receive_id,
+                        receive_id_type,
+                        message.msg_type,
+                        &message.content,
+                        Some(request_uuid),
+                    )
+                    .await
+                    .map_err(hone_core::HoneError::Integration)
+                }
+                Err(err) => Err(hone_core::HoneError::Integration(err)),
+            };
+        }
     }
-    Ok(total)
+
+    send_segment_direct(
+        facade,
+        receive_id,
+        receive_id_type,
+        message.msg_type,
+        &message.content,
+        Some(request_uuid),
+    )
+    .await
+    .map_err(hone_core::HoneError::Integration)
+}
+
+fn coerce_placeholder_message_content(message: &RenderedMessage) -> Option<String> {
+    if message.msg_type == "interactive" {
+        return Some(message.content.clone());
+    }
+    if message.msg_type != "post" {
+        return None;
+    }
+
+    let parsed = serde_json::from_str::<serde_json::Value>(&message.content).ok()?;
+    let zh_cn = parsed.get("zh_cn")?;
+    let mut text_lines = Vec::new();
+    if let Some(title) = zh_cn.get("title").and_then(|t| t.as_str()) {
+        if !title.is_empty() {
+            text_lines.push(format!("**{}**", title));
+        }
+    }
+    if let Some(content) = zh_cn.get("content").and_then(|c| c.as_array()) {
+        for row in content {
+            if let Some(elements) = row.as_array() {
+                let mut line_text = String::new();
+                for el in elements {
+                    if let Some(text) = el.get("text").and_then(|t| t.as_str()) {
+                        line_text.push_str(text);
+                    }
+                }
+                text_lines.push(line_text);
+            }
+        }
+    }
+
+    Some(
+        json!({
+            "schema": "2.0",
+            "config": {"wide_screen_mode": true},
+            "body": {
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": preprocess_markdown_for_feishu(&text_lines.join("\n"), true),
+                        "text_size": "heading"
+                    }
+                ]
+            }
+        })
+        .to_string(),
+    )
+}
+
+fn file_label_from_path(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|| "chart.png".to_string())
 }
 
 fn is_feishu_bad_request(err: &str) -> bool {

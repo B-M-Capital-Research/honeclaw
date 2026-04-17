@@ -1,9 +1,10 @@
 ---
 name: Stock Research
 description: Analyze a stock's fundamentals, technicals, and market sentiment
-tools:
+allowed-tools:
   - data_fetch
   - web_search
+  - skill_tool
 ---
 
 ## Stock Research Skill
@@ -25,3 +26,4 @@ Use the right tool combination based on the user's original question. Prefer `sn
 2. Call `snapshot` for the baseline data
 3. Decide whether to add `web_search` for news or causes
 4. Output a combined answer covering price action, fundamentals, recent events, and risks
+5. If the user explicitly asks for a chart, trend line, comparison visual, or the answer would be materially clearer as a chart, hand off to `chart_visualization` with the concrete numbers you already fetched

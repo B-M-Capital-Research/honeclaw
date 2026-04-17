@@ -8,6 +8,7 @@ use hone_memory::{
 
 use crate::HoneBotCore;
 use crate::core::CompactSessionOutcome;
+use crate::outbound::{LOCAL_IMAGE_CONTEXT_PLACEHOLDER, replace_local_image_markers};
 use crate::runtime::sanitize_user_visible_output;
 
 const POST_COMPACT_MAX_SKILL_SNAPSHOT_CHARS: usize = 12_000;
@@ -128,9 +129,11 @@ impl<'a> SessionCompactor<'a> {
         let mut history_text = String::new();
         for message in &messages_to_summarize {
             let content = match message.role.as_str() {
-                "assistant" | "user" => {
-                    sanitize_user_visible_output(&session_message_text(message)).content
-                }
+                "assistant" => replace_local_image_markers(
+                    &sanitize_user_visible_output(&session_message_text(message)).content,
+                    LOCAL_IMAGE_CONTEXT_PLACEHOLDER,
+                ),
+                "user" => sanitize_user_visible_output(&session_message_text(message)).content,
                 "tool" => String::new(),
                 _ => session_message_text(message),
             };

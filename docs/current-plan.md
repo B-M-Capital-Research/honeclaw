@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-04-17
-状态：有 5 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,10 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+- **Chart Visualization Skill 与多通道 PNG 投递**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/chart-visualization-skill.md`
+  - 摘要：新增 `chart_visualization` skill 与 Python PNG 渲染器，扩展 `skill_tool` 结构化 artifact 契约，统一 `file:///abs/path.png` 助手可见媒体标记，并让 Web / Feishu / Telegram / Discord 在保留 text-image-text 顺序的同时正确渲染或上传本地图表
 - **Feishu P1 直聊与定时任务可靠性修复批次**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/feishu-p1-reliability-batch.md`

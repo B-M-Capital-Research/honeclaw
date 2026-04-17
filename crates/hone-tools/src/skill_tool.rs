@@ -3,13 +3,14 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 use crate::base::{Tool, ToolParameter};
 use crate::skill_runtime::{SkillRuntime, SkillStageConstraints};
 
 const INVOKED_SKILLS_METADATA_KEY: &str = "skill_runtime.invoked_skills";
+const SUPPORTED_IMAGE_ARTIFACT_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif"];
 
 pub struct SkillTool {
     system_dir: PathBuf,
@@ -107,11 +108,34 @@ impl SkillTool {
                 "HONE_SESSION_ID",
                 std::env::var("HONE_MCP_SESSION_ID").unwrap_or_default(),
             );
+        if let Ok(gen_images_dir) = resolve_gen_images_dir() {
+            command.env("HONE_GEN_IMAGES_DIR", gen_images_dir);
+        }
 
         let output = command
             .output()
             .await
             .map_err(|err| format!("执行 skill script 失败: {err}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if !output.status.success() {
+            return Err(format!(
+                "skill script 退出失败: exit_code={:?}, stderr={}",
+                output.status.code(),
+                stderr.trim()
+            ));
+        }
+
+        let structured_output = parse_structured_script_stdout(&stdout)?;
+        let render_success = structured_output
+            .get("success")
+            .and_then(|value| value.as_bool())
+            .ok_or_else(|| "skill script stdout JSON 必须包含布尔字段 success".to_string())?;
+        let artifacts = validate_script_artifacts(&structured_output, skill)?;
+        if render_success && artifacts.is_empty() {
+            return Err("skill script success=true 时必须返回至少一个有效 artifact".to_string());
+        }
+
         Ok(Some(serde_json::json!({
             "script": script_path
                 .strip_prefix(&skill.skill_dir)
@@ -121,10 +145,23 @@ impl SkillTool {
             "cwd": skill.skill_dir.to_string_lossy().to_string(),
             "shell": skill.shell.clone(),
             "arguments": script_arguments,
-            "success": output.status.success(),
+            "process_success": true,
             "exit_code": output.status.code(),
-            "stdout": String::from_utf8_lossy(&output.stdout).to_string(),
-            "stderr": String::from_utf8_lossy(&output.stderr).to_string(),
+            "stdout": stdout,
+            "stderr": stderr,
+            "render_success": render_success,
+            "structured_output": structured_output,
+            "artifacts": artifacts,
+            "summary": structured_output.get("summary").cloned().unwrap_or(Value::Null),
+            "warnings": structured_output
+                .get("warnings")
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new())),
+            "error": structured_output.get("error").cloned().unwrap_or(Value::Null),
+            "fallback_message": structured_output
+                .get("fallback_message")
+                .cloned()
+                .unwrap_or(Value::Null),
         })))
     }
 }
@@ -160,6 +197,9 @@ mod tests {
         unsafe {
             std::env::remove_var("HONE_MCP_SESSION_ID");
             std::env::remove_var("HONE_DATA_DIR");
+            std::env::remove_var("HONE_AGENT_SANDBOX_DIR");
+            std::env::remove_var("HONE_CONFIG_PATH");
+            std::env::remove_var("HONE_GEN_IMAGES_DIR");
         }
     }
 
@@ -194,13 +234,12 @@ mod tests {
         fs::write(
             scripts_dir.join("run.sh"),
             concat!(
-                "printf 'cwd=%s\\n' \"$PWD\"\n",
-                "printf 'dir=%s\\n' \"$HONE_SKILL_DIR\"\n",
-                "printf 'session=%s\\n' \"$HONE_SESSION_ID\"\n",
-                "printf 'argv=%s,%s\\n' \"$1\" \"$2\"\n"
+                "printf '{\"success\":true,\"summary\":\"ok\",\"artifacts\":[{\"kind\":\"image\",\"path\":\"%s/test.png\",\"mime\":\"image/png\"}],\"warnings\":[],\"debug\":{\"cwd\":\"%s\",\"dir\":\"%s\",\"session\":\"%s\",\"argv\":[\"%s\",\"%s\"]}}' \\\n",
+                "  \"$HONE_SKILL_DIR\" \"$PWD\" \"$HONE_SKILL_DIR\" \"$HONE_SESSION_ID\" \"$1\" \"$2\"\n"
             ),
         )
         .expect("script");
+        fs::write(skill_dir.join("test.png"), b"png").expect("test png");
 
         let tool = SkillTool::new(
             system,
@@ -227,15 +266,41 @@ mod tests {
             result["script"],
             Value::String("scripts/run.sh".to_string())
         );
-        assert_eq!(result["script_execution"]["success"], Value::Bool(true));
-        let stdout = result["script_execution"]["stdout"]
-            .as_str()
-            .expect("stdout");
+        assert_eq!(result["render_success"], Value::Bool(true));
+        assert_eq!(
+            result["script_execution"]["process_success"],
+            Value::Bool(true)
+        );
         let canonical_skill_dir = skill_dir.canonicalize().expect("canonical skill dir");
-        assert!(stdout.contains(&format!("cwd={}", canonical_skill_dir.to_string_lossy())));
-        assert!(stdout.contains(&format!("dir={}", skill_dir.to_string_lossy())));
-        assert!(stdout.contains("session=session-script-test"));
-        assert!(stdout.contains("argv=AAPL,5"));
+        assert_eq!(
+            result["artifacts"][0]["path"],
+            Value::String(
+                canonical_skill_dir
+                    .join("test.png")
+                    .to_string_lossy()
+                    .to_string()
+            )
+        );
+        let debug = &result["script_execution"]["structured_output"]["debug"];
+        assert_eq!(
+            debug["cwd"],
+            Value::String(canonical_skill_dir.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            debug["dir"],
+            Value::String(skill_dir.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            debug["session"],
+            Value::String("session-script-test".to_string())
+        );
+        assert_eq!(
+            debug["argv"],
+            Value::Array(vec![
+                Value::String("AAPL".to_string()),
+                Value::String("5".to_string()),
+            ])
+        );
         clear_test_env();
     }
 
@@ -333,6 +398,137 @@ mod tests {
 
         clear_test_env();
     }
+
+    #[tokio::test]
+    async fn execute_rejects_artifacts_outside_allowed_roots() {
+        let _guard = env_lock();
+        clear_test_env();
+        let root = make_temp_dir("hone_skill_tool_artifact_roots");
+        let system = root.join("system");
+        let custom = root.join("custom");
+        let data_dir = root.join("data");
+        let skill_dir = system.join("alpha");
+        let scripts_dir = skill_dir.join("scripts");
+        let outside_dir = root.join("outside");
+        fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        fs::create_dir_all(&custom).expect("custom dir");
+        fs::create_dir_all(&outside_dir).expect("outside dir");
+        let outside_png = outside_dir.join("outside.png");
+        fs::write(&outside_png, b"png").expect("outside png");
+
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            concat!(
+                "---\n",
+                "name: Alpha\n",
+                "description: rejects outside artifacts\n",
+                "script: scripts/run.sh\n",
+                "shell: bash\n",
+                "---\n\n",
+                "body"
+            ),
+        )
+        .expect("skill");
+        fs::write(
+            scripts_dir.join("run.sh"),
+            format!(
+                "printf '%s' '{{\"success\":true,\"summary\":\"oops\",\"artifacts\":[{{\"kind\":\"image\",\"path\":\"{}\",\"mime\":\"image/png\"}}],\"warnings\":[]}}'\n",
+                outside_png.to_string_lossy()
+            ),
+        )
+        .expect("script");
+
+        let tool = SkillTool::new(
+            system,
+            custom,
+            root.join("runtime").join("skill_registry.json"),
+        );
+        unsafe {
+            std::env::set_var("HONE_DATA_DIR", &data_dir);
+            std::env::set_var("HONE_MCP_SESSION_ID", "session-outside-artifact");
+        }
+
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "alpha",
+                "execute_script": true,
+            }))
+            .await
+            .expect("execute");
+
+        assert_eq!(result["success"], Value::Bool(false));
+        assert!(
+            result["error"]
+                .as_str()
+                .is_some_and(|value| value.contains("artifact.path 不在允许目录内"))
+        );
+        clear_test_env();
+    }
+
+    #[tokio::test]
+    async fn chart_visualization_renderer_smoke_writes_png_when_matplotlib_is_available() {
+        let _guard = env_lock();
+        clear_test_env();
+
+        let probe = std::process::Command::new("python3")
+            .arg("-c")
+            .arg("import matplotlib")
+            .status()
+            .expect("probe matplotlib");
+        if !probe.success() {
+            eprintln!("skip chart_visualization smoke test because matplotlib is unavailable");
+            return;
+        }
+
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repo root");
+        let system = repo_root.join("skills");
+        let custom = make_temp_dir("hone_skill_tool_chart_custom");
+        let data_dir = make_temp_dir("hone_skill_tool_chart_data");
+
+        let tool = SkillTool::new(
+            system,
+            custom,
+            data_dir.join("runtime").join("skill_registry.json"),
+        );
+        unsafe {
+            std::env::set_var("HONE_DATA_DIR", &data_dir);
+            std::env::set_var("HONE_MCP_SESSION_ID", "chart-render-smoke");
+        }
+
+        let result = tool
+            .execute(serde_json::json!({
+                "skill_name": "chart_visualization",
+                "execute_script": true,
+                "script_arguments": {
+                    "spec_json": serde_json::json!({
+                        "chart_type": "line",
+                        "title": "Revenue Trend",
+                        "x_values": ["2023Q1", "2023Q2", "2023Q3"],
+                        "series": [
+                            {
+                                "name": "Revenue",
+                                "values": [100, 120, 135]
+                            }
+                        ],
+                        "output_name": "revenue-trend"
+                    }).to_string()
+                }
+            }))
+            .await
+            .expect("execute");
+
+        assert_eq!(result["success"], Value::Bool(true));
+        assert_eq!(result["render_success"], Value::Bool(true));
+        let path = result["artifacts"][0]["path"]
+            .as_str()
+            .expect("artifact path");
+        assert!(path.ends_with(".png"));
+        assert!(PathBuf::from(path).exists());
+        clear_test_env();
+    }
 }
 
 fn resolve_sessions_dir() -> hone_core::HoneResult<PathBuf> {
@@ -344,6 +540,146 @@ fn resolve_sessions_dir() -> hone_core::HoneResult<PathBuf> {
         std::env::var("HONE_CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
     let config = hone_core::config::HoneConfig::from_file(&config_path)?;
     Ok(PathBuf::from(config.storage.sessions_dir))
+}
+
+fn resolve_gen_images_dir() -> hone_core::HoneResult<PathBuf> {
+    if let Ok(root) = std::env::var("HONE_DATA_DIR") {
+        return Ok(PathBuf::from(root).join("gen_images"));
+    }
+
+    let config_path =
+        std::env::var("HONE_CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
+    let config = hone_core::config::HoneConfig::from_file(&config_path)?;
+    Ok(PathBuf::from(config.storage.gen_images_dir))
+}
+
+fn parse_structured_script_stdout(stdout: &str) -> Result<Value, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Err("skill script stdout 为空，必须输出 JSON".to_string());
+    }
+
+    let parsed: Value = serde_json::from_str(trimmed)
+        .map_err(|err| format!("skill script stdout JSON 解析失败: {err}"))?;
+    if !parsed.is_object() {
+        return Err("skill script stdout 必须是 JSON 对象".to_string());
+    }
+    Ok(parsed)
+}
+
+fn validate_script_artifacts(
+    structured_output: &Value,
+    skill: &crate::skill_runtime::SkillDefinition,
+) -> Result<Vec<Value>, String> {
+    let artifacts = structured_output
+        .get("artifacts")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if artifacts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let allowed_roots = artifact_allowed_roots(&skill.skill_dir)?;
+    let mut validated = Vec::with_capacity(artifacts.len());
+    for artifact in artifacts {
+        let kind = artifact
+            .get("kind")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if kind != "image" {
+            return Err(format!("仅支持 image artifact，收到 kind={kind}"));
+        }
+
+        let path = artifact
+            .get("path")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| "artifact.path 缺失".to_string())?
+            .trim();
+        let artifact_path = PathBuf::from(path);
+        if !artifact_path.is_absolute() {
+            return Err(format!("artifact.path 必须是绝对路径: {path}"));
+        }
+        let canonical_path = std::fs::canonicalize(&artifact_path)
+            .map_err(|err| format!("artifact.path 无法解析或文件不存在: {path} ({err})"))?;
+
+        let ext = canonical_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !SUPPORTED_IMAGE_ARTIFACT_EXTENSIONS.contains(&ext.as_str()) {
+            return Err(format!(
+                "artifact.path 仅支持图片扩展名 {:?}: {}",
+                SUPPORTED_IMAGE_ARTIFACT_EXTENSIONS,
+                canonical_path.display()
+            ));
+        }
+
+        if !allowed_roots
+            .iter()
+            .any(|root| canonical_path.starts_with(root))
+        {
+            return Err(format!(
+                "artifact.path 不在允许目录内: {}",
+                canonical_path.display()
+            ));
+        }
+
+        let mime = artifact
+            .get("mime")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| match ext.as_str() {
+                "png" => "image/png".to_string(),
+                "jpg" | "jpeg" => "image/jpeg".to_string(),
+                "webp" => "image/webp".to_string(),
+                "gif" => "image/gif".to_string(),
+                _ => "application/octet-stream".to_string(),
+            });
+
+        validated.push(serde_json::json!({
+            "kind": "image",
+            "path": canonical_path.to_string_lossy().to_string(),
+            "mime": mime,
+        }));
+    }
+
+    Ok(validated)
+}
+
+fn artifact_allowed_roots(skill_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut roots = Vec::new();
+
+    roots.push(
+        std::fs::canonicalize(skill_dir)
+            .map_err(|err| format!("skill 目录无法解析: {} ({err})", skill_dir.display()))?,
+    );
+
+    if let Ok(gen_images_dir) = resolve_gen_images_dir() {
+        if let Ok(canonical) = std::fs::canonicalize(&gen_images_dir) {
+            roots.push(canonical);
+        } else if gen_images_dir.is_absolute() {
+            roots.push(gen_images_dir);
+        }
+    }
+
+    if let Ok(sandbox_root) = std::env::var("HONE_AGENT_SANDBOX_DIR") {
+        let sandbox_root = PathBuf::from(sandbox_root);
+        if let Ok(canonical) = std::fs::canonicalize(&sandbox_root) {
+            roots.push(canonical);
+        } else if sandbox_root.is_absolute() {
+            roots.push(sandbox_root);
+        }
+    }
+
+    roots.sort();
+    roots.dedup();
+    Ok(roots)
 }
 
 #[async_trait]
@@ -456,6 +792,36 @@ impl Tool for SkillTool {
                             }));
                         }
                     };
+                let artifacts = script_execution
+                    .as_ref()
+                    .and_then(|value| value.get("artifacts"))
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(Vec::new()));
+                let render_success = script_execution
+                    .as_ref()
+                    .and_then(|value| value.get("render_success"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let render_summary = script_execution
+                    .as_ref()
+                    .and_then(|value| value.get("summary"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let render_warnings = script_execution
+                    .as_ref()
+                    .and_then(|value| value.get("warnings"))
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(Vec::new()));
+                let render_error = script_execution
+                    .as_ref()
+                    .and_then(|value| value.get("error"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let render_fallback_message = script_execution
+                    .as_ref()
+                    .and_then(|value| value.get("fallback_message"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
                 let payload = serde_json::json!({
                     "skill_name": skill.id,
                     "display_name": skill.display_name,
@@ -490,6 +856,12 @@ impl Tool for SkillTool {
                     "hooks": skill.hooks,
                     "prompt": payload["prompt"],
                     "script_execution": script_execution,
+                    "artifacts": artifacts,
+                    "render_success": render_success,
+                    "render_summary": render_summary,
+                    "render_warnings": render_warnings,
+                    "render_error": render_error,
+                    "render_fallback_message": render_fallback_message,
                     "reminder": "技能已完整展开。请继续围绕用户原始任务执行，不要忘记真正要解决的问题。"
                 }))
             }

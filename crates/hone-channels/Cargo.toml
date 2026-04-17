@@ -30,6 +30,6 @@ tar = "0.4"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 pdf-extract = "0.10.0"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
-uuid = { workspace = true }

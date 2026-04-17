@@ -1,7 +1,9 @@
-use reqwest::Client;
+use reqwest::{Client, multipart};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::fs;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
@@ -307,6 +309,70 @@ impl FeishuApiClient {
         Ok(FeishuSendResult {
             message_id: message_id.to_string(),
         })
+    }
+
+    pub async fn upload_image(&self, path: &str) -> Result<String, String> {
+        let token = self.get_token().await?;
+        let filename = Path::new(path)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("Invalid Feishu image path: {path}"))?;
+        let bytes = fs::read(path)
+            .await
+            .map_err(|err| format!("Feishu image read failed for {path}: {err}"))?;
+        let part = multipart::Part::bytes(bytes)
+            .file_name(filename.to_string())
+            .mime_str(image_mime_type(path))
+            .map_err(|err| format!("Feishu image mime build failed for {path}: {err}"))?;
+        let form = multipart::Form::new()
+            .text("image_type", "message")
+            .part("image", part);
+
+        let resp = self
+            .http
+            .post("https://open.feishu.cn/open-apis/im/v1/images")
+            .bearer_auth(token)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| format!("Feishu upload image request failed: {e}"))?;
+
+        #[derive(Deserialize)]
+        struct UploadImageResp {
+            code: i64,
+            msg: String,
+            data: Option<UploadImageData>,
+        }
+
+        #[derive(Deserialize)]
+        struct UploadImageData {
+            image_key: Option<String>,
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let error_body = resp.text().await.unwrap_or_default();
+            return Err(format!(
+                "Feishu upload image failed: HTTP {} - {}",
+                status, error_body
+            ));
+        }
+
+        let upload_resp: UploadImageResp = resp
+            .json()
+            .await
+            .map_err(|e| format!("Feishu upload image json err: {e}"))?;
+        if upload_resp.code != 0 {
+            return Err(format!(
+                "Feishu upload image api error {}: {}",
+                upload_resp.code, upload_resp.msg
+            ));
+        }
+
+        upload_resp
+            .data
+            .and_then(|data| data.image_key)
+            .ok_or_else(|| "No image_key in Feishu upload image response".to_string())
     }
 
     pub async fn resolve_email(&self, email: &str) -> Result<FeishuResolvedUser, String> {
@@ -656,6 +722,21 @@ impl FeishuApiClient {
             mobile,
             open_id: open_id.to_string(),
         })
+    }
+}
+
+fn image_mime_type(path: &str) -> &'static str {
+    match Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("bmp") => "image/bmp",
+        _ => "image/png",
     }
 }
 

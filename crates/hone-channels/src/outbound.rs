@@ -16,6 +16,178 @@ pub enum ReasoningVisibility {
     Compact,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LocalImageMarker {
+    pub uri: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ResponseContentSegment {
+    Text(String),
+    LocalImage(LocalImageMarker),
+}
+
+pub const LOCAL_IMAGE_CONTEXT_PLACEHOLDER: &str = "（上文包含图表）";
+
+pub fn split_response_content_segments(text: &str) -> Vec<ResponseContentSegment> {
+    let mut segments = Vec::new();
+    let mut cursor = 0usize;
+
+    while let Some((start, end, marker)) = find_next_local_image_reference(text, cursor) {
+        if start > cursor {
+            segments.push(ResponseContentSegment::Text(
+                text[cursor..start].to_string(),
+            ));
+        }
+        segments.push(ResponseContentSegment::LocalImage(marker));
+        cursor = end;
+    }
+
+    if cursor < text.len() {
+        segments.push(ResponseContentSegment::Text(text[cursor..].to_string()));
+    }
+
+    if segments.is_empty() && !text.is_empty() {
+        segments.push(ResponseContentSegment::Text(text.to_string()));
+    }
+
+    segments
+}
+
+pub fn collect_local_image_markers(text: &str) -> Vec<LocalImageMarker> {
+    split_response_content_segments(text)
+        .into_iter()
+        .filter_map(|segment| match segment {
+            ResponseContentSegment::LocalImage(marker) => Some(marker),
+            ResponseContentSegment::Text(_) => None,
+        })
+        .collect()
+}
+
+pub fn replace_local_image_markers(text: &str, placeholder: &str) -> String {
+    let segments = split_response_content_segments(text);
+    if !segments
+        .iter()
+        .any(|segment| matches!(segment, ResponseContentSegment::LocalImage(_)))
+    {
+        return text.to_string();
+    }
+
+    let mut replaced = String::new();
+    for segment in segments {
+        match segment {
+            ResponseContentSegment::Text(value) => replaced.push_str(&value),
+            ResponseContentSegment::LocalImage(_) => replaced.push_str(placeholder),
+        }
+    }
+    replaced
+}
+
+fn find_next_local_image_reference(
+    text: &str,
+    mut cursor: usize,
+) -> Option<(usize, usize, LocalImageMarker)> {
+    while cursor < text.len() {
+        let relative_start = text[cursor..].find("file:///")?;
+        let uri_start = cursor + relative_start;
+
+        if let Some(found) = html_anchor_local_image_at(text, uri_start)
+            .or_else(|| markdown_link_local_image_at(text, uri_start))
+            .or_else(|| bare_local_image_at(text, uri_start))
+        {
+            return Some(found);
+        }
+
+        cursor = uri_start + "file:///".len();
+    }
+
+    None
+}
+
+fn bare_local_image_at(text: &str, start: usize) -> Option<(usize, usize, LocalImageMarker)> {
+    let (end, marker) = local_image_marker_at(text, start)?;
+    Some((start, end, marker))
+}
+
+fn html_anchor_local_image_at(
+    text: &str,
+    uri_start: usize,
+) -> Option<(usize, usize, LocalImageMarker)> {
+    let open_start = text[..uri_start].rfind("<a ")?;
+    let open_end = open_start + text[open_start..].find('>')? + 1;
+    if uri_start >= open_end {
+        return None;
+    }
+
+    let open_tag = &text[open_start..open_end];
+    let (href_marker, quote) = if open_tag.contains("href=\"file:///") {
+        ("href=\"", '"')
+    } else if open_tag.contains("href='file:///") {
+        ("href='", '\'')
+    } else {
+        return None;
+    };
+
+    let href_value_start = open_start + open_tag.find(href_marker)? + href_marker.len();
+    if href_value_start != uri_start {
+        return None;
+    }
+
+    let href_value_end = href_value_start + text[href_value_start..].find(quote)?;
+    let uri = &text[href_value_start..href_value_end];
+    let path = parse_local_image_uri(uri)?;
+    let end = text[open_end..]
+        .find("</a>")
+        .map(|relative| open_end + relative + "</a>".len())
+        .unwrap_or(open_end);
+
+    Some((
+        open_start,
+        end,
+        LocalImageMarker {
+            uri: uri.to_string(),
+            path,
+        },
+    ))
+}
+
+fn markdown_link_local_image_at(
+    text: &str,
+    uri_start: usize,
+) -> Option<(usize, usize, LocalImageMarker)> {
+    let open_paren = uri_start.checked_sub(1)?;
+    if text.as_bytes().get(open_paren).copied() != Some(b'(') {
+        return None;
+    }
+
+    let label_end = open_paren.checked_sub(1)?;
+    if text.as_bytes().get(label_end).copied() != Some(b']') {
+        return None;
+    }
+
+    let open_bracket = text[..label_end].rfind('[')?;
+    let start = if open_bracket > 0 && text.as_bytes().get(open_bracket - 1).copied() == Some(b'!')
+    {
+        open_bracket - 1
+    } else {
+        open_bracket
+    };
+
+    let close_paren = uri_start + text[uri_start..].find(')')?;
+    let uri = &text[uri_start..close_paren];
+    let path = parse_local_image_uri(uri)?;
+
+    Some((
+        start,
+        close_paren + 1,
+        LocalImageMarker {
+            uri: uri.to_string(),
+            path,
+        },
+    ))
+}
+
 #[async_trait]
 pub trait OutboundAdapter: Clone + Send + Sync + 'static {
     type Placeholder: Clone + Send + Sync + 'static;
@@ -382,6 +554,58 @@ pub fn split_markdown_segments(
     rebalance_markdown_segments(split_segments(text, max_segment_size, hard_max))
 }
 
+fn local_image_marker_at(text: &str, start: usize) -> Option<(usize, LocalImageMarker)> {
+    let mut raw_end = start;
+    for (offset, ch) in text[start..].char_indices() {
+        if ch.is_whitespace() || ch == '<' {
+            break;
+        }
+        raw_end = start + offset + ch.len_utf8();
+    }
+    if raw_end <= start {
+        return None;
+    }
+
+    let mut uri_end = raw_end;
+    while uri_end > start {
+        let candidate = &text[start..uri_end];
+        if let Some(path) = parse_local_image_uri(candidate) {
+            return Some((
+                uri_end,
+                LocalImageMarker {
+                    uri: candidate.to_string(),
+                    path,
+                },
+            ));
+        }
+
+        let last = candidate.chars().last()?;
+        if !matches!(last, '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}') {
+            break;
+        }
+        uri_end -= last.len_utf8();
+    }
+
+    None
+}
+
+fn parse_local_image_uri(candidate: &str) -> Option<String> {
+    let path = candidate.strip_prefix("file://")?;
+    if !path.starts_with('/') {
+        return None;
+    }
+
+    let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
+    if !matches!(
+        extension.as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp"
+    ) {
+        return None;
+    }
+
+    Some(path.to_string())
+}
+
 fn rebalance_html_segments(raw_segments: Vec<String>) -> Vec<String> {
     let mut stack = Vec::<HtmlOpenTag>::new();
     let mut segments = Vec::new();
@@ -572,8 +796,11 @@ fn parse_markdown_fence(line: &str) -> Option<MarkdownFence> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProgressTranscript, render_compact_tool_status_done, render_compact_tool_status_start,
-        scan_html_tags, scan_markdown_fences, split_html_segments, split_markdown_segments,
+        LOCAL_IMAGE_CONTEXT_PLACEHOLDER, ProgressTranscript, ResponseContentSegment,
+        collect_local_image_markers, render_compact_tool_status_done,
+        render_compact_tool_status_start, replace_local_image_markers, scan_html_tags,
+        scan_markdown_fences, split_html_segments, split_markdown_segments,
+        split_response_content_segments,
     };
 
     #[test]
@@ -694,5 +921,131 @@ mod tests {
                 "segment markdown fences should be balanced: {segment}"
             );
         }
+    }
+
+    #[test]
+    fn response_content_segments_preserve_text_image_text_order() {
+        let text = "先看趋势：\nfile:///tmp/chart.png\n再看风险。";
+        let segments = split_response_content_segments(text);
+
+        assert_eq!(segments.len(), 3);
+        assert!(matches!(
+            &segments[0],
+            ResponseContentSegment::Text(value) if value == "先看趋势：\n"
+        ));
+        assert!(matches!(
+            &segments[1],
+            ResponseContentSegment::LocalImage(marker)
+                if marker.uri == "file:///tmp/chart.png" && marker.path == "/tmp/chart.png"
+        ));
+        assert!(matches!(
+            &segments[2],
+            ResponseContentSegment::Text(value) if value == "\n再看风险。"
+        ));
+    }
+
+    #[test]
+    fn collect_local_image_markers_ignores_trailing_punctuation() {
+        let text = "图一 file:///tmp/chart-one.png, 图二(file:///tmp/chart-two.jpeg).";
+        let markers = collect_local_image_markers(text);
+
+        assert_eq!(markers.len(), 2);
+        assert_eq!(markers[0].uri, "file:///tmp/chart-one.png");
+        assert_eq!(markers[1].uri, "file:///tmp/chart-two.jpeg");
+    }
+
+    #[test]
+    fn response_content_segments_extract_html_anchor_local_images() {
+        let text = "前文<a href=\"file:///tmp/chart.png\">file:///tmp/chart.png</a>后文";
+        let segments = split_response_content_segments(text);
+
+        assert_eq!(segments.len(), 3);
+        assert!(matches!(
+            &segments[0],
+            ResponseContentSegment::Text(value) if value == "前文"
+        ));
+        assert!(matches!(
+            &segments[1],
+            ResponseContentSegment::LocalImage(marker)
+                if marker.uri == "file:///tmp/chart.png" && marker.path == "/tmp/chart.png"
+        ));
+        assert!(matches!(
+            &segments[2],
+            ResponseContentSegment::Text(value) if value == "后文"
+        ));
+    }
+
+    #[test]
+    fn response_content_segments_extract_markdown_local_images() {
+        let text = "前文[图表](file:///tmp/chart.png)后文";
+        let segments = split_response_content_segments(text);
+
+        assert_eq!(segments.len(), 3);
+        assert!(matches!(
+            &segments[0],
+            ResponseContentSegment::Text(value) if value == "前文"
+        ));
+        assert!(matches!(
+            &segments[1],
+            ResponseContentSegment::LocalImage(marker)
+                if marker.uri == "file:///tmp/chart.png" && marker.path == "/tmp/chart.png"
+        ));
+        assert!(matches!(
+            &segments[2],
+            ResponseContentSegment::Text(value) if value == "后文"
+        ));
+    }
+
+    #[test]
+    fn response_content_segments_extract_bare_local_images_before_html_tags() {
+        let text = "前文file:///tmp/chart.png<br>后文";
+        let segments = split_response_content_segments(text);
+
+        assert_eq!(segments.len(), 3);
+        assert!(matches!(
+            &segments[0],
+            ResponseContentSegment::Text(value) if value == "前文"
+        ));
+        assert!(matches!(
+            &segments[1],
+            ResponseContentSegment::LocalImage(marker)
+                if marker.uri == "file:///tmp/chart.png" && marker.path == "/tmp/chart.png"
+        ));
+        assert!(matches!(
+            &segments[2],
+            ResponseContentSegment::Text(value) if value == "<br>后文"
+        ));
+    }
+
+    #[test]
+    fn response_content_segments_extract_real_telegram_retry_sample() {
+        let text = "@chetzhang file:///Users/bytedance/Codes/honeclaw/data/gen_images/Session_telegram__group__chat_3a-1002012381143/rklb_three_case_valuation_retry.png-a825b14f.png<br>当前价位 82.93 美元已经高于 base case 的 74.4 美元，但距离最激进 bull case 的 118.2 美元仍有一段距离。";
+        let segments = split_response_content_segments(text);
+
+        assert_eq!(segments.len(), 3);
+        assert!(matches!(
+            &segments[0],
+            ResponseContentSegment::Text(value) if value == "@chetzhang "
+        ));
+        assert!(matches!(
+            &segments[1],
+            ResponseContentSegment::LocalImage(marker)
+                if marker.uri == "file:///Users/bytedance/Codes/honeclaw/data/gen_images/Session_telegram__group__chat_3a-1002012381143/rklb_three_case_valuation_retry.png-a825b14f.png"
+                    && marker.path == "/Users/bytedance/Codes/honeclaw/data/gen_images/Session_telegram__group__chat_3a-1002012381143/rklb_three_case_valuation_retry.png-a825b14f.png"
+        ));
+        assert!(matches!(
+            &segments[2],
+            ResponseContentSegment::Text(value)
+                if value == "<br>当前价位 82.93 美元已经高于 base case 的 74.4 美元，但距离最激进 bull case 的 118.2 美元仍有一段距离。"
+        ));
+    }
+
+    #[test]
+    fn replace_local_image_markers_preserves_surrounding_text() {
+        let text = "前文<a href=\"file:///tmp/chart.png\">查看图片</a>后文";
+
+        let replaced = replace_local_image_markers(text, LOCAL_IMAGE_CONTEXT_PLACEHOLDER);
+
+        assert_eq!(replaced, "前文（上文包含图表）后文");
     }
 }

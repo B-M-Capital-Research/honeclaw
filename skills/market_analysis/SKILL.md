@@ -1,9 +1,10 @@
 ---
 name: Market Analysis
 description: Analyze macroeconomics, policy trends, and industry momentum, then combine the result with market index data for a broader judgment
-tools:
+allowed-tools:
   - web_search
   - data_fetch
+  - skill_tool
 ---
 
 ## Market Analysis Skill
@@ -44,3 +45,4 @@ This skill must always anchor the analysis to the current session time before ma
 - Be explicit about the data source, whether it came from `data_fetch` or `web_search`
 - Separate hard facts from market expectations or opinions in the final answer
 - For macro search, never issue a `web_search` query that omits the absolute date when the user intent is time-sensitive
+- If the user asks for a trend, curve, distribution, or side-by-side visual and you already have the numbers, call `skill_tool(skill_name="chart_visualization", execute_script=true, ...)` instead of describing the chart only in prose

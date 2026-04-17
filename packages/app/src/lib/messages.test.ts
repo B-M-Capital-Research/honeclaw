@@ -17,4 +17,29 @@ describe("parseMessageContent", () => {
     const parts = parseMessageContent("before file:///tmp/a.png after")
     expect(parts.map((item) => item.type)).toEqual(["text", "image", "text"])
   })
+
+  it("preserves interleaved text and multiple local images", () => {
+    const parts = parseMessageContent(
+      "alpha\nfile:///tmp/a.png\nbeta file:///tmp/b.webp gamma",
+    )
+    expect(parts.map((item) => item.type)).toEqual([
+      "text",
+      "image",
+      "text",
+      "image",
+      "text",
+    ])
+  })
+
+  it("extracts local image links wrapped in html anchors", () => {
+    const parts = parseMessageContent(
+      'before <a href="file:///tmp/a.png">file:///tmp/a.png</a> after',
+    )
+    expect(parts.map((item) => item.type)).toEqual(["text", "image", "text"])
+  })
+
+  it("extracts local image links wrapped in markdown links", () => {
+    const parts = parseMessageContent("before [图表](file:///tmp/a.png) after")
+    expect(parts.map((item) => item.type)).toEqual(["text", "image", "text"])
+  })
 })

@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-04-12
+Last updated: 2026-04-17
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -116,3 +116,14 @@ Last updated: 2026-04-12
   - `config.example.yaml` should leave `agent.opencode.model / variant / api_base_url / api_key` empty by default
   - The runner should not override `XDG_CONFIG_HOME` just to apply Hone's ACP permission policy
 - Note: Explicit Hone-side overrides through `agent.opencode.*` or `hone-cli models set ...` remain supported for users who want Hone to pin a different route than their local OpenCode default.
+
+## D-2026-04-17-01 Use Inline `file://` Markers As The Canonical Local Image Contract
+
+- Status: Accepted
+- Decision: Hone assistant-visible local images use inline `file:///abs/path/to/image.png` markers in the final assistant text. Web keeps that marker in message content and renders it through the local file proxy, while outbound chat channels must parse the same text into ordered `text` / `local-image` segments and send real images instead of leaking raw local paths.
+- Impact:
+  - Skill or tool scripts that generate charts or other local images should expose absolute artifact paths and instruct the model to place the exact `file://` URI where the image should appear in the answer
+  - `skill_tool` is responsible for validating image artifacts before they become model-visible paths
+  - Web history extraction must recognize inline local image markers as attachments
+  - Feishu / Telegram / Discord outbound adapters must preserve interleaved `text -> image -> text` order and replace local markers with actual uploaded channel images
+- Note: v1 keeps this contract entirely inside the final assistant text and does not introduce a separate SSE media event type.

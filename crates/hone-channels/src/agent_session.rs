@@ -16,6 +16,7 @@ use hone_memory::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -23,10 +24,15 @@ use crate::HoneBotCore;
 use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
+use crate::outbound::{
+    LOCAL_IMAGE_CONTEXT_PLACEHOLDER, ResponseContentSegment, replace_local_image_markers,
+    split_response_content_segments,
+};
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
 use crate::runtime::{relativize_user_visible_paths, sanitize_user_visible_output};
+use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,6 +147,7 @@ const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
     "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
 const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
+const MISSING_LOCAL_IMAGE_FALLBACK_MESSAGE: &str = "（图表文件不可用，请重新生成）";
 
 fn restore_limit_before_compaction(
     config: &HoneConfig,
@@ -325,6 +332,113 @@ fn persistable_turn_from_response(
             metadata,
         })
     }
+}
+
+fn normalize_local_image_references(core: &HoneBotCore, session_id: &str, content: &str) -> String {
+    let segments = split_response_content_segments(content);
+    if !segments
+        .iter()
+        .any(|segment| matches!(segment, ResponseContentSegment::LocalImage(_)))
+    {
+        return content.to_string();
+    }
+
+    let mut normalized = String::new();
+    for segment in segments {
+        match segment {
+            ResponseContentSegment::Text(text) => normalized.push_str(&text),
+            ResponseContentSegment::LocalImage(marker) => {
+                if let Some(stable_path) =
+                    stabilize_local_image_path(core, session_id, &marker.path)
+                {
+                    normalized.push_str("file://");
+                    normalized.push_str(&stable_path);
+                } else {
+                    normalized.push_str(MISSING_LOCAL_IMAGE_FALLBACK_MESSAGE);
+                }
+            }
+        }
+    }
+    normalized
+}
+
+fn stabilize_local_image_path(core: &HoneBotCore, session_id: &str, path: &str) -> Option<String> {
+    let source = Path::new(path);
+    if !source.is_absolute() || !source.exists() {
+        return None;
+    }
+
+    let gen_images_root = PathBuf::from(&core.config.storage.gen_images_dir);
+    if source.starts_with(&gen_images_root) {
+        return Some(source.to_string_lossy().to_string());
+    }
+
+    let sandbox_root = sandbox_base_dir();
+    if !source.starts_with(&sandbox_root) {
+        return Some(source.to_string_lossy().to_string());
+    }
+
+    let target_dir = gen_images_root.join(session_id);
+    if let Err(err) = std::fs::create_dir_all(&target_dir) {
+        tracing::warn!(
+            "[AgentSession] failed to create stable image dir session_id={} dir={} err={}",
+            session_id,
+            target_dir.display(),
+            err
+        );
+        return Some(source.to_string_lossy().to_string());
+    }
+
+    let target_name = unique_stable_image_name(source);
+    let target = target_dir.join(target_name);
+    match std::fs::copy(source, &target) {
+        Ok(_) => Some(target.to_string_lossy().to_string()),
+        Err(err) => {
+            tracing::warn!(
+                "[AgentSession] failed to stabilize local image session_id={} source={} target={} err={}",
+                session_id,
+                source.display(),
+                target.display(),
+                err
+            );
+            Some(source.to_string_lossy().to_string())
+        }
+    }
+}
+
+fn unique_stable_image_name(source: &Path) -> String {
+    let stem = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .map(sanitize_filename_component)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "image".to_string());
+    let ext = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "png".to_string());
+    format!("{stem}-{}.{}", uuid::Uuid::new_v4().simple(), ext)
+}
+
+fn sanitize_filename_component(raw: &str) -> String {
+    raw.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
+}
+
+fn sanitize_assistant_context_content(content: &str) -> String {
+    let sanitized = sanitize_user_visible_output(content).content;
+    replace_local_image_markers(&sanitized, LOCAL_IMAGE_CONTEXT_PLACEHOLDER)
 }
 
 pub struct AgentSessionResult {
@@ -1547,6 +1661,8 @@ impl AgentSession {
             } else {
                 response.content = sanitized.content;
             }
+            response.content =
+                normalize_local_image_references(&self.core, &session_id, &response.content);
         }
         let elapsed_ms = started.elapsed().as_millis();
 
@@ -1704,18 +1820,18 @@ pub fn restore_context(
             "assistant" | "tool" => {
                 for mut restored in session_message_to_agent_messages(message) {
                     if restored.role == "assistant" {
-                        let sanitized = sanitize_user_visible_output(
+                        let sanitized_content = sanitize_assistant_context_content(
                             restored.content.as_deref().unwrap_or_default(),
                         );
                         let tool_calls = restored.tool_calls.clone().or_else(|| {
                             assistant_tool_calls_from_metadata(message.metadata.as_ref())
                         });
-                        if sanitized.content.trim().is_empty()
+                        if sanitized_content.trim().is_empty()
                             && tool_calls.as_ref().is_none_or(|items| items.is_empty())
                         {
                             continue;
                         }
-                        restored.content = Some(sanitized.content);
+                        restored.content = Some(sanitized_content);
                         restored.tool_calls = tool_calls;
                     }
                     if restored.role == "tool"
@@ -2686,6 +2802,76 @@ mod tests {
         assert_eq!(tool_calls[0]["id"], "call_preview");
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn normalize_local_image_references_moves_sandbox_images_into_gen_images() {
+        let root = make_temp_dir("hone_channels_local_image_normalize");
+        std::fs::create_dir_all(&root).expect("create root");
+        let data_dir = root.join("data");
+        std::fs::create_dir_all(&data_dir).expect("create data dir");
+
+        with_temp_env_var("HONE_DATA_DIR", data_dir.as_os_str(), || async {
+            let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+            let sandbox_image = sandbox_base_dir()
+                .join("telegram")
+                .join("chat_3a-test__probe")
+                .join("artifacts")
+                .join("chart.png");
+            std::fs::create_dir_all(sandbox_image.parent().expect("sandbox parent"))
+                .expect("create sandbox artifacts dir");
+            std::fs::write(&sandbox_image, b"png-bytes").expect("write sandbox image");
+
+            let content = format!(
+                "前文<a href=\"file://{}\">查看图片</a>后文",
+                sandbox_image.display()
+            );
+            let normalized = normalize_local_image_references(
+                &core,
+                "Session_telegram__group__chat_3a-test",
+                &content,
+            );
+
+            assert!(!normalized.contains("<a href="));
+            assert!(normalized.starts_with("前文file://"));
+            assert!(normalized.ends_with("后文"));
+
+            let copied_path = normalized
+                .strip_prefix("前文file://")
+                .and_then(|value| value.strip_suffix("后文"))
+                .expect("normalized marker");
+            assert!(copied_path.starts_with(&core.config.storage.gen_images_dir));
+            assert!(std::path::Path::new(copied_path).exists());
+        })
+        .await;
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn normalize_local_image_references_replaces_missing_images_with_fallback_note() {
+        let root = make_temp_dir("hone_channels_local_image_missing");
+        std::fs::create_dir_all(&root).expect("create root");
+        let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+        let missing = root.join("missing").join("chart.png");
+        let content = format!("前文\nfile://{}\n后文", missing.display());
+
+        let normalized =
+            normalize_local_image_references(&core, "Session_telegram__missing", &content);
+
+        assert_eq!(normalized, "前文\n（图表文件不可用，请重新生成）\n后文");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn sanitize_assistant_context_content_redacts_local_image_markers() {
+        let sanitized = sanitize_assistant_context_content(
+            "前文<a href=\"file:///tmp/chart.png\">查看图片</a>后文",
+        );
+
+        assert_eq!(sanitized, "前文（上文包含图表）后文");
     }
 
     #[test]

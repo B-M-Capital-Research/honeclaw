@@ -12,8 +12,12 @@ use hone_channels::ingress::{
     ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
     MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
-use hone_channels::outbound::{ReasoningVisibility, run_session_with_outbound};
+use hone_channels::outbound::{
+    LOCAL_IMAGE_CONTEXT_PLACEHOLDER, ReasoningVisibility, replace_local_image_markers,
+    run_session_with_outbound,
+};
 use hone_channels::prompt::PromptOptions;
+use hone_channels::runtime::sanitize_user_visible_output;
 use hone_core::SessionIdentity;
 use hone_memory::session::SessionMessage;
 use hone_memory::{SessionStorage, select_messages_after_compact_boundary};
@@ -104,6 +108,11 @@ fn truncate_prompt_snippet(text: &str, max_chars: usize) -> String {
     out
 }
 
+fn sanitize_assistant_followup_snippet(text: &str) -> String {
+    let sanitized = sanitize_user_visible_output(text).content;
+    replace_local_image_markers(&sanitized, LOCAL_IMAGE_CONTEXT_PLACEHOLDER)
+}
+
 fn build_group_followup_recv_extra(
     storage: &SessionStorage,
     session_id: &str,
@@ -135,8 +144,10 @@ fn build_group_followup_recv_extra(
             .copied()
             .find(|candidate| candidate.role == "assistant")?;
         let user_text = truncate_prompt_snippet(&hone_memory::session_message_text(message), 220);
-        let assistant_text =
-            truncate_prompt_snippet(&hone_memory::session_message_text(assistant), 420);
+        let assistant_text = truncate_prompt_snippet(
+            &sanitize_assistant_followup_snippet(&hone_memory::session_message_text(assistant)),
+            420,
+        );
         if user_text.is_empty() || assistant_text.is_empty() {
             continue;
         }
@@ -1107,6 +1118,50 @@ mod tests {
         assert!(!extra.contains("先看 TEM"));
         assert!(extra.contains("真实语义自行判断"));
         assert!(extra.contains("不代表当前消息一定在延续这条线"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn group_followup_recv_extra_redacts_local_image_markers_from_assistant_snippet() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_telegram_followup_local_image_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("unix time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = SessionStorage::new(&root);
+        let session_id = storage
+            .create_session(Some("group-session"), None, None)
+            .expect("create session");
+        storage
+            .add_message(
+                &session_id,
+                "user",
+                "[Chet Zhang] @hone_test_bot 再试一次",
+                Some(HashMap::from([(
+                    "speaker_label".to_string(),
+                    Value::String("Chet Zhang".to_string()),
+                )])),
+            )
+            .expect("add user");
+        storage
+            .add_message(
+                &session_id,
+                "assistant",
+                "file:///tmp/chart.png<br>当前价位已经高于 base case。",
+                None,
+            )
+            .expect("add assistant");
+
+        let extra =
+            build_group_followup_recv_extra(&storage, &session_id, "Chet Zhang").expect("extra");
+
+        assert!(extra.contains("（上文包含图表）"));
+        assert!(!extra.contains("file:///tmp/chart.png"));
 
         let _ = std::fs::remove_dir_all(root);
     }

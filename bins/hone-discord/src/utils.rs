@@ -2,12 +2,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hone_channels::outbound::{OutboundAdapter, ReasoningVisibility, split_markdown_segments};
+use hone_channels::outbound::{
+    OutboundAdapter, ReasoningVisibility, ResponseContentSegment, split_markdown_segments,
+    split_response_content_segments,
+};
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 use hone_core::ActorIdentity;
 use serenity::all::{
-    ChannelId, CommandInteraction, CommandOptionType, CreateAllowedMentions, CreateCommand,
-    CreateCommandOption, CreateMessage, EditMessage, Message, ResolvedValue,
+    ChannelId, CommandInteraction, CommandOptionType, CreateAllowedMentions, CreateAttachment,
+    CreateCommand, CreateCommandOption, CreateMessage, EditMessage, Message, ResolvedValue,
 };
 use serenity::http::Http;
 use tracing::warn;
@@ -46,16 +49,15 @@ impl OutboundAdapter for DiscordOutboundAdapter {
     async fn send_response(&self, placeholder: Option<&Self::Placeholder>, text: &str) -> usize {
         let rendered = render_think_blocks(text, ThinkRenderStyle::Hidden);
         let content = prepend_reply_prefix(self.reply_prefix.as_deref(), &rendered);
-        let segments = split_markdown_segments(&content, self.max_len, 1900);
         let mut owned = placeholder.cloned();
-        let (sent, _) = send_or_edit_segments(
+        send_response_segments(
             self.http.as_ref(),
             self.channel_id,
-            owned.as_mut(),
-            segments,
+            &mut owned,
+            split_response_content_segments(&content),
+            self.max_len,
         )
-        .await;
-        sent
+        .await
     }
 
     async fn send_error(&self, placeholder: Option<&Self::Placeholder>, text: &str) {
@@ -256,6 +258,97 @@ pub(crate) async fn update_or_send_plain_text(
     }
 }
 
+pub(crate) async fn send_response_segments(
+    http: &Http,
+    channel_id: ChannelId,
+    placeholder: &mut Option<Message>,
+    segments: Vec<ResponseContentSegment>,
+    max_len: usize,
+) -> usize {
+    let mut sent = 0usize;
+    let mut previous: Option<Message> = None;
+
+    for segment in segments {
+        match segment {
+            ResponseContentSegment::Text(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let parts = split_markdown_segments(trimmed, max_len, 1900);
+                let (count, last) = send_or_edit_segments_with_previous(
+                    http,
+                    channel_id,
+                    placeholder,
+                    previous.clone(),
+                    parts,
+                )
+                .await;
+                if let Some(message) = last {
+                    previous = Some(message);
+                }
+                sent += count;
+            }
+            ResponseContentSegment::LocalImage(marker) => {
+                if placeholder.is_some() && previous.is_none() {
+                    let (count, last) = send_or_edit_segments_with_previous(
+                        http,
+                        channel_id,
+                        placeholder,
+                        previous.clone(),
+                        vec!["图表如下：".to_string()],
+                    )
+                    .await;
+                    if let Some(message) = last {
+                        previous = Some(message);
+                    }
+                    sent += count;
+                }
+
+                match send_local_image(http, channel_id, &marker.path, previous.as_ref()).await {
+                    Ok(Some(message)) => {
+                        previous = Some(message);
+                        sent += 1;
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        warn!("[Discord] 发送图片失败: {}", err);
+                        let note =
+                            format!("（图表发送失败：{}）", file_label_from_path(&marker.path));
+                        let parts = split_markdown_segments(&note, max_len, 1900);
+                        let (count, last) = send_or_edit_segments_with_previous(
+                            http,
+                            channel_id,
+                            placeholder,
+                            previous.clone(),
+                            parts,
+                        )
+                        .await;
+                        if let Some(message) = last {
+                            previous = Some(message);
+                        }
+                        sent += count;
+                    }
+                }
+            }
+        }
+    }
+
+    if sent == 0 {
+        let (count, _last) = send_or_edit_segments_with_previous(
+            http,
+            channel_id,
+            placeholder,
+            previous.clone(),
+            vec!["收到。".to_string()],
+        )
+        .await;
+        sent += count;
+    }
+
+    sent
+}
+
 pub(crate) async fn send_or_edit_segments(
     http: &Http,
     channel_id: ChannelId,
@@ -263,15 +356,36 @@ pub(crate) async fn send_or_edit_segments(
     segments: Vec<String>,
 ) -> (usize, usize) {
     let total = segments.len();
+    let mut placeholder = placeholder.cloned();
+    let (sent, last) =
+        send_or_edit_segments_with_previous(http, channel_id, &mut placeholder, None, segments)
+            .await;
+    (
+        sent,
+        if total == 0 {
+            usize::from(last.is_some())
+        } else {
+            total
+        },
+    )
+}
+
+async fn send_or_edit_segments_with_previous(
+    http: &Http,
+    channel_id: ChannelId,
+    placeholder: &mut Option<Message>,
+    mut previous: Option<Message>,
+    segments: Vec<String>,
+) -> (usize, Option<Message>) {
+    let total = segments.len();
     if total == 0 {
-        return (0, 0);
+        return (0, previous);
     }
 
     let mut sent = 0usize;
-    let mut previous: Option<Message> = None;
     let mut iter = segments.into_iter();
     if let Some(first) = iter.next() {
-        if let Some(msg) = placeholder {
+        if let Some(mut msg) = placeholder.take() {
             match msg
                 .edit(
                     http,
@@ -307,15 +421,13 @@ pub(crate) async fn send_or_edit_segments(
                 }
             }
         } else {
-            match channel_id
-                .send_message(
-                    http,
-                    CreateMessage::new()
-                        .content(&first)
-                        .allowed_mentions(reply_allowed_mentions()),
-                )
-                .await
-            {
+            let mut builder = CreateMessage::new()
+                .content(&first)
+                .allowed_mentions(reply_allowed_mentions());
+            if let Some(prev) = previous.as_ref() {
+                builder = builder.reference_message(prev);
+            }
+            match channel_id.send_message(http, builder).await {
                 Ok(message) => {
                     previous = Some(message);
                     sent += 1;
@@ -345,7 +457,36 @@ pub(crate) async fn send_or_edit_segments(
         }
     }
 
-    (sent, total)
+    (sent, previous)
+}
+
+async fn send_local_image(
+    http: &Http,
+    channel_id: ChannelId,
+    path: &str,
+    reply_to: Option<&Message>,
+) -> Result<Option<Message>, String> {
+    let attachment = CreateAttachment::path(path)
+        .await
+        .map_err(|err| format!("读取本地图表失败 {}: {}", path, err))?;
+    let mut builder = CreateMessage::new()
+        .add_file(attachment)
+        .allowed_mentions(reply_allowed_mentions());
+    if let Some(message) = reply_to {
+        builder = builder.reference_message(message);
+    }
+    channel_id
+        .send_message(http, builder)
+        .await
+        .map(Some)
+        .map_err(|err| format!("上传 Discord 图片失败: {err}"))
+}
+
+fn file_label_from_path(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|| "chart.png".to_string())
 }
 
 fn reply_allowed_mentions() -> CreateAllowedMentions {
