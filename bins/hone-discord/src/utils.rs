@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hone_channels::outbound::{OutboundAdapter, split_markdown_segments};
+use hone_channels::outbound::{OutboundAdapter, ReasoningVisibility, split_markdown_segments};
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 use hone_core::ActorIdentity;
 use serenity::all::{
@@ -20,7 +20,7 @@ pub(crate) struct DiscordOutboundAdapter {
     pub(crate) channel_id: ChannelId,
     pub(crate) max_len: usize,
     pub(crate) reply_prefix: Option<String>,
-    pub(crate) show_reasoning: bool,
+    pub(crate) reasoning_visibility: ReasoningVisibility,
 }
 
 #[async_trait]
@@ -71,8 +71,8 @@ impl OutboundAdapter for DiscordOutboundAdapter {
         .await;
     }
 
-    fn show_reasoning(&self) -> bool {
-        self.show_reasoning
+    fn reasoning_visibility(&self) -> ReasoningVisibility {
+        self.reasoning_visibility
     }
 }
 

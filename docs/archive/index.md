@@ -6,6 +6,18 @@ Use this file as the historical entry point for completed or paused work that sh
 
 ## 2026-04-17
 
+### 群聊中间进度改为 compact 可见
+
+- Status: done
+- Date: 2026-04-17
+- Plan: `docs/archive/plans/group-chat-compact-progress-visibility.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `rtk cargo test -p hone-channels outbound::tests -- --nocapture`, `rtk cargo test -p hone-feishu listener -- --nocapture`, `rtk cargo check --workspace --all-targets --exclude hone-desktop`
+- Current conclusion: Telegram / Discord / Feishu 群聊现在都会显示处理中间进度，但默认收敛到 compact 粒度，只暴露“搜索信息 / 获取数据 / 执行命令 / 执行技能”等阶段，不再把 query、命令行和目录路径这类细节直接刷进群消息；当 runner 只吐出 `Tool` 这类泛化标签时，会结合 reasoning 回退成粗粒度动作文案，且连续多轮相同类型的工具调用也会像单聊一样逐轮追加
+- Next entry point: `crates/hone-channels/src/outbound.rs`
+
 ### 对话额度改为可配置并支持无限制
 
 - Status: done

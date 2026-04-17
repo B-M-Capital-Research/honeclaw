@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hone_channels::outbound::{OutboundAdapter, split_html_segments};
+use hone_channels::outbound::{OutboundAdapter, ReasoningVisibility, split_html_segments};
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode, ReplyParameters};
@@ -15,7 +15,7 @@ pub(crate) struct TelegramOutboundAdapter {
     pub(crate) chat_id: ChatId,
     pub(crate) max_len: usize,
     pub(crate) reply_prefix: Option<String>,
-    pub(crate) show_reasoning: bool,
+    pub(crate) reasoning_visibility: ReasoningVisibility,
 }
 
 #[async_trait]
@@ -74,8 +74,8 @@ impl OutboundAdapter for TelegramOutboundAdapter {
         }
     }
 
-    fn show_reasoning(&self) -> bool {
-        self.show_reasoning
+    fn reasoning_visibility(&self) -> ReasoningVisibility {
+        self.reasoning_visibility
     }
 }
 

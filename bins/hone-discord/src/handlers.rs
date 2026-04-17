@@ -9,7 +9,7 @@ use hone_channels::ingress::{
     ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
     MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
-use hone_channels::outbound::run_session_with_outbound;
+use hone_channels::outbound::{ReasoningVisibility, run_session_with_outbound};
 use hone_channels::prompt::{DEFAULT_GROUP_PRIVACY_GUARD, PromptOptions};
 use hone_channels::runtime::user_visible_error_message;
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
@@ -642,7 +642,7 @@ impl DiscordHandler {
             channel_id: msg.channel_id,
             max_len: self.core.config.discord.max_message_length,
             reply_prefix,
-            show_reasoning: false,
+            reasoning_visibility: ReasoningVisibility::Compact,
         };
 
         let summary = run_session_with_outbound(
@@ -797,7 +797,7 @@ impl DiscordHandler {
             channel_id: msg.channel_id,
             max_len: self.core.config.discord.max_message_length,
             reply_prefix: None,
-            show_reasoning: true,
+            reasoning_visibility: ReasoningVisibility::Full,
         };
 
         let summary = run_session_with_outbound(

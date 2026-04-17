@@ -12,7 +12,7 @@ use hone_channels::ingress::{
     ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
     MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
-use hone_channels::outbound::run_session_with_outbound;
+use hone_channels::outbound::{ReasoningVisibility, run_session_with_outbound};
 use hone_channels::prompt::PromptOptions;
 use hone_core::SessionIdentity;
 use hone_memory::session::SessionMessage;
@@ -665,7 +665,11 @@ async fn process_telegram_message_batch(
             chat_id: first_msg.chat.id,
             max_len: core.config.telegram.max_message_length,
             reply_prefix,
-            show_reasoning: !envelope.is_group(),
+            reasoning_visibility: if envelope.is_group() {
+                ReasoningVisibility::Compact
+            } else {
+                ReasoningVisibility::Full
+            },
         },
         &envelope.text,
         &placeholder_text,

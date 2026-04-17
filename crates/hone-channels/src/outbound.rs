@@ -7,7 +7,14 @@ use tokio::sync::Mutex;
 use crate::agent_session::{
     AgentRunOptions, AgentSession, AgentSessionEvent, AgentSessionListener, AgentSessionResult,
 };
-use crate::runtime::{flush_buffer, user_visible_error_message};
+use crate::runtime::{flush_buffer, tool_display_map, user_visible_error_message};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReasoningVisibility {
+    Hidden,
+    Full,
+    Compact,
+}
 
 #[async_trait]
 pub trait OutboundAdapter: Clone + Send + Sync + 'static {
@@ -21,8 +28,8 @@ pub trait OutboundAdapter: Clone + Send + Sync + 'static {
 
     async fn send_error(&self, placeholder: Option<&Self::Placeholder>, text: &str);
 
-    fn show_reasoning(&self) -> bool {
-        true
+    fn reasoning_visibility(&self) -> ReasoningVisibility {
+        ReasoningVisibility::Full
     }
 }
 
@@ -76,12 +83,12 @@ impl ProgressTranscript {
         }
     }
 
-    fn push(&mut self, entry: &str) -> Option<String> {
+    fn push(&mut self, entry: &str, dedupe: bool) -> Option<String> {
         let normalized = entry.trim();
         if normalized.is_empty() {
             return None;
         }
-        if self.entries.iter().any(|existing| existing == normalized) {
+        if dedupe && self.entries.iter().any(|existing| existing == normalized) {
             return None;
         }
         self.entries.push(normalized.to_string());
@@ -102,21 +109,31 @@ impl ProgressTranscript {
 impl<A: OutboundAdapter> AgentSessionListener for OutboundReasoningListener<A> {
     async fn on_event(&self, event: AgentSessionEvent) {
         let AgentSessionEvent::ToolStatus {
-            status, reasoning, ..
+            tool,
+            status,
+            reasoning,
+            ..
         } = event
         else {
             return;
         };
-        if !self.adapter.show_reasoning() {
-            return;
-        }
         if status != "start" {
             return;
         }
-        let Some(text) = reasoning.filter(|value| !value.trim().is_empty()) else {
+        let visibility = self.adapter.reasoning_visibility();
+        let text = match visibility {
+            ReasoningVisibility::Hidden => None,
+            ReasoningVisibility::Full => reasoning.filter(|value| !value.trim().is_empty()),
+            ReasoningVisibility::Compact => Some(render_compact_tool_status_start(
+                &tool,
+                reasoning.as_deref(),
+            )),
+        };
+        let Some(text) = text else {
             return;
         };
-        let Some(content) = self.progress.lock().await.push(&text) else {
+        let dedupe = !matches!(visibility, ReasoningVisibility::Compact);
+        let Some(content) = self.progress.lock().await.push(&text, dedupe) else {
             return;
         };
         let placeholder = self.placeholder.lock().await.clone();
@@ -169,6 +186,124 @@ pub async fn run_session_with_outbound<A: OutboundAdapter>(
         placeholder_sent,
         sent_segments,
     }
+}
+
+pub fn render_compact_tool_status_start(tool: &str, reasoning: Option<&str>) -> String {
+    format!("正在{}...", compact_tool_subject(tool, reasoning))
+}
+
+pub fn render_compact_tool_status_done(tool: &str, reasoning: Option<&str>) -> String {
+    format!("{}完成", compact_tool_subject(tool, reasoning))
+}
+
+fn compact_tool_subject(tool: &str, reasoning: Option<&str>) -> String {
+    compact_tool_subject_candidate(tool)
+        .or_else(|| reasoning.and_then(compact_tool_subject_candidate_from_reasoning))
+        .unwrap_or_else(|| "调用工具".to_string())
+}
+
+fn compact_tool_subject_candidate_from_reasoning(reasoning: &str) -> Option<String> {
+    let trimmed = reasoning.trim();
+    let candidate = trimmed
+        .strip_prefix("正在执行：")
+        .or_else(|| trimmed.strip_prefix("执行完成："))
+        .unwrap_or(trimmed)
+        .split('；')
+        .next()
+        .unwrap_or(trimmed)
+        .trim();
+    compact_tool_subject_candidate(candidate)
+}
+
+fn compact_tool_subject_candidate(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let base = trimmed
+        .split_whitespace()
+        .next()
+        .unwrap_or(trimmed)
+        .trim_matches(|ch: char| matches!(ch, ':' | ';' | ','));
+
+    if let Some(label) = compact_tool_subject_from_name(base) {
+        return Some(label.to_string());
+    }
+
+    if looks_like_command(trimmed) {
+        return Some("执行命令".to_string());
+    }
+
+    if is_generic_tool_name(base) {
+        return None;
+    }
+
+    if is_safe_tool_identifier(base) {
+        return Some(format!("调用工具 {base}"));
+    }
+
+    None
+}
+
+fn compact_tool_subject_from_name(name: &str) -> Option<&'static str> {
+    match name {
+        "deep_research" => Some("执行深度研究"),
+        "local_search_files" | "local_find_files" => Some("查找本地文件"),
+        "local_read_text_file" | "read_file" | "view" => Some("读取本地文件"),
+        "local_write_text_file" | "write_file" | "replace_file" | "edit_file" => {
+            Some("修改本地文件")
+        }
+        "local_list_directory" => Some("浏览本地目录"),
+        "shell" | "execute" | "command" => Some("执行命令"),
+        _ => tool_display_map()
+            .get(name)
+            .map(|(display_name, _)| *display_name),
+    }
+}
+
+fn is_generic_tool_name(name: &str) -> bool {
+    matches!(
+        name.trim().to_ascii_lowercase().as_str(),
+        "" | "tool" | "tool_call" | "toolcall"
+    )
+}
+
+fn looks_like_command(text: &str) -> bool {
+    let first = text.split_whitespace().next().unwrap_or_default();
+    matches!(
+        first,
+        "rtk"
+            | "bash"
+            | "sh"
+            | "zsh"
+            | "/bin/bash"
+            | "/bin/sh"
+            | "/bin/zsh"
+            | "python"
+            | "python3"
+            | "cargo"
+            | "git"
+            | "ls"
+            | "cat"
+            | "sed"
+            | "rg"
+            | "find"
+            | "cp"
+            | "mv"
+            | "rm"
+            | "bun"
+            | "node"
+    ) || first.contains('/')
+        || first.contains('\\')
+}
+
+fn is_safe_tool_identifier(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 32
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
 }
 
 pub fn attach_stream_activity_probe(session: &mut AgentSession) -> StreamActivityProbe {
@@ -437,19 +572,19 @@ fn parse_markdown_fence(line: &str) -> Option<MarkdownFence> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProgressTranscript, scan_html_tags, scan_markdown_fences, split_html_segments,
-        split_markdown_segments,
+        ProgressTranscript, render_compact_tool_status_done, render_compact_tool_status_start,
+        scan_html_tags, scan_markdown_fences, split_html_segments, split_markdown_segments,
     };
 
     #[test]
     fn progress_transcript_appends_entries_to_placeholder() {
         let mut transcript = ProgressTranscript::new("@alice 正在思考中...");
         assert_eq!(
-            transcript.push("正在搜索公告"),
+            transcript.push("正在搜索公告", true),
             Some("@alice 正在思考中...\n- 正在搜索公告".to_string())
         );
         assert_eq!(
-            transcript.push("正在读取财报"),
+            transcript.push("正在读取财报", true),
             Some("@alice 正在思考中...\n- 正在搜索公告\n- 正在读取财报".to_string())
         );
     }
@@ -457,8 +592,66 @@ mod tests {
     #[test]
     fn progress_transcript_skips_duplicate_entries() {
         let mut transcript = ProgressTranscript::new("正在思考中...");
-        assert!(transcript.push("正在搜索公告").is_some());
-        assert_eq!(transcript.push("正在搜索公告"), None);
+        assert!(transcript.push("正在搜索公告", true).is_some());
+        assert_eq!(transcript.push("正在搜索公告", true), None);
+    }
+
+    #[test]
+    fn progress_transcript_compact_mode_keeps_repeated_entries() {
+        let mut transcript = ProgressTranscript::new("正在思考中...");
+        assert!(transcript.push("正在搜索信息...", false).is_some());
+        assert_eq!(
+            transcript.push("正在搜索信息...", false),
+            Some("正在思考中...\n- 正在搜索信息...\n- 正在搜索信息...".to_string())
+        );
+    }
+
+    #[test]
+    fn compact_tool_status_hides_query_details() {
+        assert_eq!(
+            render_compact_tool_status_start(
+                "web_search query=\"Tempus AI stock surge today\"",
+                None
+            ),
+            "正在搜索信息..."
+        );
+        assert_eq!(
+            render_compact_tool_status_done(
+                "web_search query=\"Tempus AI stock surge today\"",
+                None
+            ),
+            "搜索信息完成"
+        );
+    }
+
+    #[test]
+    fn compact_tool_status_hides_command_and_paths() {
+        assert_eq!(
+            render_compact_tool_status_start("rtk sed -n '1,20p' /tmp/foo/bar.txt", None),
+            "正在执行命令..."
+        );
+        assert_eq!(
+            render_compact_tool_status_done("/bin/bash -lc rtk rg company_profiles /tmp/foo", None),
+            "执行命令完成"
+        );
+    }
+
+    #[test]
+    fn compact_tool_status_uses_reasoning_when_tool_name_is_generic() {
+        assert_eq!(
+            render_compact_tool_status_start(
+                "Tool",
+                Some("正在执行：web_search query=\"Tempus AI stock surge today\"")
+            ),
+            "正在搜索信息..."
+        );
+        assert_eq!(
+            render_compact_tool_status_done(
+                "tool",
+                Some("正在执行：rtk sed -n '1,20p' /tmp/foo/bar.txt")
+            ),
+            "执行命令完成"
+        );
     }
 
     #[test]

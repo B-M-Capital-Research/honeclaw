@@ -18,7 +18,7 @@ use hone_channels::ingress::{
     ActiveSessionInfo, ActorScopeResolver, BufferedGroupMessage, GroupTrigger, IncomingEnvelope,
     MessageDeduplicator, SessionLockRegistry, persist_buffered_group_messages,
 };
-use hone_channels::outbound::attach_stream_activity_probe;
+use hone_channels::outbound::{ReasoningVisibility, attach_stream_activity_probe};
 use hone_channels::prompt::PromptOptions;
 use hone_channels::runtime::user_visible_error_message;
 use hone_channels::think::{ThinkRenderStyle, ThinkStreamFormatter, render_think_blocks};
@@ -690,7 +690,11 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     session.add_listener(Arc::new(FeishuStreamListener {
         buffer: content_buf.clone(),
         cardkit: cardkit_session.clone(),
-        show_reasoning: true,
+        reasoning_visibility: if matches!(chat_mode, ChatMode::Group) {
+            ReasoningVisibility::Compact
+        } else {
+            ReasoningVisibility::Full
+        },
         think_formatter: Arc::new(std::sync::RwLock::new(ThinkStreamFormatter::new(
             ThinkRenderStyle::Hidden,
         ))),
