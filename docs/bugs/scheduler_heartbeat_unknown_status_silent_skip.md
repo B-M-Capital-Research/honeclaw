@@ -134,6 +134,14 @@
       - `run_id=2150`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-17T14:00:23.743351+08:00`，再次落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
       - `2026-04-17 14:00:23.742` 的 `web.log` 同轮记录 `parse_kind=JsonUnknownStatus`；`raw_preview` 已逐项列出 11 只股票“当前价 vs 触发价”且全部判定为未触发，但末尾仍未稳定收口到合法状态 JSON
       - 这组 `13:30 -> 14:00` 样本说明：故障仍主要集中在复杂 watchlist heartbeat；即便同一任务在 `13:30` 短暂恢复，半小时后也会无配置变更地再次回落为 `JsonUnknownStatus + execution_failed`
+  - 2026-04-17 17:30-18:00 最近一小时新增样本：
+      - `run_id=2171`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-17T17:30:57.572904+08:00`，再次落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+      - `run_id=2172`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-17T18:00:11.668026+08:00`，恢复为 `noop + skipped_noop`，`detail_json.parse_kind=JsonNoop`
+      - `2026-04-17 18:00:11.666` 的 `web.log` 显示该任务 `raw_preview` 仍以 `<think>` 开头，然后才收口到 `{\"status\":\"noop\"}`
+      - `run_id=2173`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-17T18:00:22.769992+08:00`，恢复为 `noop + skipped_noop`，`detail_json.parse_kind=JsonNoop`
+      - `2026-04-17 18:00:22.769` 的 `web.log` 显示同一 watchlist `raw_preview` 仍保留 `<think>` 包裹的逐项价格分析，只是解析器这轮成功从尾部提取了状态
+      - `run_id=2174`，`job_id=j_38745baf`（`全天原油价格3小时播报`），`executed_at=2026-04-17T18:00:36.286333+08:00`，恢复为 `completed + sent`，`detail_json.parse_kind=JsonTriggered`
+      - `2026-04-17 18:00:35.111` 的 `web.log` 同样显示 `raw_preview` 仍保留 `<think>` 前缀，说明当前只是解析器再次勉强提取成功，而非输出协议已经稳定
   - 对比同一小时其他 heartbeat 任务：
     - `j_38745baf`（`全天原油价格3小时播报`）在 `run_id=1847`（`09:30:04`）也短暂出现 `JsonUnknownStatus`，`run_id=1853`（`10:00:10`）又恢复为 `JsonNoop`
     - `j_654aef9b`（`小米30港元破位预警`）在 `10:00:10` 仍为 `JsonNoop -> noop / skipped_noop`
@@ -230,6 +238,7 @@
 - `12:30 -> 13:00` 的新一轮窗口进一步说明抖动仍在活跃：`Monitor_Watchlist_11` 在 `12:30` 还是 `JsonNoop + skipped_noop`，到 `13:00` 又回落为 `JsonUnknownStatus + execution_failed`；与此同时 `全天原油价格3小时播报` 与 `小米30港元破位预警` 同轮都保持 `JsonNoop`，说明问题仍主要集中在复杂 watchlist 模板，但公共协议脆弱性并未消失。
 - `13:30 -> 14:00` 的最新窗口再次重复同一模式：`Monitor_Watchlist_11` 刚在 `13:30` 恢复为 `JsonNoop + skipped_noop`，到 `14:00` 又回落为 `JsonUnknownStatus + execution_failed`；而同批 `原油播报` 与 `小米预警` 继续保持 `JsonNoop`，说明当前线上仍是“复杂 watchlist 模板高频抖动、简单 heartbeat 暂时稳定”的活跃故障态。
 - `15:00 -> 15:30 -> 16:00` 的最新三轮把这一抖动继续坐实：同一 `Monitor_Watchlist_11` 在 15:00 失败、15:30 自恢复、16:00 再次失败，中间没有任何任务配置改动，说明当前根因仍是“自由文本 + 状态 JSON 最终收口不稳定”的公共协议脆弱性，而不是某次一次性脏数据。
+- `17:30 -> 18:00` 的最新窗口继续重复同一抖动：`Monitor_Watchlist_11` 在 `17:30` 先回落到 `JsonUnknownStatus + execution_failed`，`18:00` 又恢复为 `JsonNoop`；同批次的 `小米30港元破位预警` 与 `全天原油价格3小时播报` 也都保留 `<think>` 前缀后才分别落成 `JsonNoop` / `JsonTriggered`。这说明当前线上依旧依赖解析器从自由文本尾部勉强提取状态，公共协议脆弱性没有收口。
 
 ## 修复情况（2026-04-16，待重新验证）
 
@@ -255,6 +264,7 @@
 - `2026-04-17 14:00` 的 `run_id=2150` 进一步说明，当前止血结论仍只能停留在“失败可见化有效”；`Monitor_Watchlist_11` 依旧会在相邻半小时窗口内从 `JsonNoop` 再次跌回 `JsonUnknownStatus + execution_failed`，因此本单仍不能升为 `Fixing` 或 `Fixed`。
 - `2026-04-17 15:00` 的 `run_id=2156` 与 `16:00` 的 `run_id=2161` 继续把同一 watchlist 打回 `execution_failed + skipped_error`，而 `15:30` 的 `run_id=2159` 只是中间短暂恢复为 `JsonNoop`；因此本单在最新小时窗里仍是活跃抖动态，不能调整为已修复。
 - `2026-04-17 17:00` 的 `run_id=2166/2167/2168` 又全部恢复为 `noop + skipped_noop`，说明上一小时的失败并未持续到当前轮次；但 `hone-feishu.release-restart.log` 同轮仍记录三条 heartbeat 的 `raw_preview` 以 `<think>` 开头，只是解析器这次成功从尾部提取了 `{"status":"noop"}`，因此问题更准确地表现为“失败可见化已生效，但协议脆弱性仍未收口”。
+- `2026-04-17 17:30` 的 `run_id=2171` 与 `18:00` 的 `run_id=2172/2173/2174` 继续说明，本单在最新小时窗里仍处于“半小时失败、下一轮恢复”的活跃抖动态；而且恢复轮次的 `raw_preview` 依旧保留 `<think>` 前缀，因此不能调整为 `Fixing` 或 `Fixed`。
 
 ## 回归验证
 
