@@ -30,7 +30,12 @@ record() {
 contains() {
   local pattern="$1"
   local file="$2"
-  rg -q --fixed-strings "$pattern" "$file"
+  # Keep fixed-string semantics consistent with rg --fixed-strings.
+  if command -v rg >/dev/null 2>&1; then
+    rg -q --fixed-strings "$pattern" "$file"
+  else
+    grep -F -q -- "$pattern" "$file"
+  fi
 }
 
 DATA_FETCH="crates/hone-tools/src/data_fetch.rs"
@@ -69,7 +74,7 @@ else
   record success "4.scheduled_task->earnings_calendar-window" "scheduled-task linkage is not pinned to the legacy 2024 window"
 fi
 
-if rg -q 'TODO:|\[TODO' "$GOLD_ANALYSIS"; then
+if contains 'TODO:' "$GOLD_ANALYSIS" || contains '[TODO' "$GOLD_ANALYSIS"; then
   record fail "5.gold-analysis-template" "skill still contains template placeholders"
 else
   record success "5.gold-analysis-template" "skill has been filled out"

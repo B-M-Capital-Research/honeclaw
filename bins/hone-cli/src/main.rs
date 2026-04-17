@@ -645,6 +645,26 @@ fn prompt_channel_recovery_action(
     })
 }
 
+fn prompt_discord_token_invalid_recovery_action(
+    theme: &ColorfulTheme,
+    channel_label: &str,
+) -> Result<RequiredFieldEmptyAction, String> {
+    let items = vec![
+        "重新输入 Discord bot token".to_string(),
+        format!("返回并禁用 {channel_label} 渠道"),
+    ];
+    let idx = prompt_select_index(
+        theme,
+        &format!("{channel_label} 的 Discord token 格式不合法，下一步？"),
+        &items,
+        0,
+    )?;
+    Ok(match idx {
+        0 => RequiredFieldEmptyAction::Retry,
+        _ => RequiredFieldEmptyAction::DisableChannel,
+    })
+}
+
 fn prompt_provider_recovery_action(
     theme: &ColorfulTheme,
     provider_label: &str,
@@ -702,6 +722,144 @@ fn prompt_onboard_required_secret(
             prompt_channel_recovery_action(theme, channel_label, prompt)?,
         ) {
             RequiredFieldResolution::Value(value) => return Ok(Some(value)),
+            RequiredFieldResolution::Retry => {
+                println!("该字段为必填项，不能为空。");
+            }
+            RequiredFieldResolution::DisableChannel => return Ok(None),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiscordTokenValidation {
+    Valid,
+    Warn(&'static str),
+    Invalid(&'static str),
+}
+
+/// Validates that a token segment uses base64url characters (A-Z/a-z/0-9/-/_).
+fn is_base64url_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
+fn validate_discord_token(value: &str) -> DiscordTokenValidation {
+    let token = value.trim();
+    if token.is_empty() {
+        return DiscordTokenValidation::Invalid("Token 不能为空。");
+    }
+
+    let segments = token.split('.').collect::<Vec<_>>();
+    if segments.len() != 3 {
+        return DiscordTokenValidation::Invalid("Token 必须是三段结构（形如 xxx.yyy.zzz）。");
+    }
+    if !segments.iter().all(|segment| is_base64url_segment(segment)) {
+        return DiscordTokenValidation::Invalid("Token 包含非法字符，应为 base64url 字符集。");
+    }
+
+    let len = token.len();
+    if len < 50 {
+        DiscordTokenValidation::Warn("Token 长度偏短，请确认是否粘贴完整。")
+    } else if len > 120 {
+        DiscordTokenValidation::Warn("Token 长度异常偏长，请检查是否重复粘贴。")
+    } else {
+        DiscordTokenValidation::Valid
+    }
+}
+
+fn discord_token_doctor_check(token: &str) -> DoctorCheck {
+    let token = token.trim();
+    let len = token.len();
+    let (status, detail) = match validate_discord_token(token) {
+        DiscordTokenValidation::Valid => {
+            ("ok", format!("Discord token 基本格式有效（长度={len}）。"))
+        }
+        DiscordTokenValidation::Warn(message) => ("warn", format!("{message}（长度={len}）。")),
+        DiscordTokenValidation::Invalid(message) => ("fail", format!("{message}（长度={len}）。")),
+    };
+    DoctorCheck {
+        name: "discord-token-format".to_string(),
+        status,
+        detail,
+    }
+}
+
+fn prompt_optional_discord_token(
+    theme: &ColorfulTheme,
+    prompt: &str,
+    keep_note: bool,
+) -> Result<Option<String>, String> {
+    loop {
+        let Some(token) = prompt_secret(theme, prompt, keep_note)? else {
+            return Ok(None);
+        };
+        let normalized_token = token.trim().to_string();
+        let len = normalized_token.len();
+        match validate_discord_token(&normalized_token) {
+            DiscordTokenValidation::Valid => {
+                println!("[✓] Token 格式有效（长度={len}）。");
+                return Ok(Some(normalized_token));
+            }
+            DiscordTokenValidation::Warn(message) => {
+                println!("[!] {message}（长度={len}）。");
+                if prompt_bool(theme, "仍然保存这个 Discord token？", false)? {
+                    return Ok(Some(normalized_token));
+                }
+            }
+            DiscordTokenValidation::Invalid(message) => {
+                println!("[!] {message}（长度={len}）。");
+                if !prompt_bool(theme, "Token 格式异常，重新输入？", true)? {
+                    return Ok(None);
+                }
+            }
+        }
+    }
+}
+
+fn prompt_onboard_required_discord_token(
+    theme: &ColorfulTheme,
+    channel_label: &str,
+    prompt: &str,
+    current: &str,
+) -> Result<Option<String>, String> {
+    loop {
+        let attempted = prompt_secret(theme, prompt, !current.trim().is_empty())?;
+        let resolution = match attempted {
+            Some(value) if !value.trim().is_empty() => RequiredFieldResolution::Value(value),
+            _ if !current.trim().is_empty() => RequiredFieldResolution::Value(current.to_string()),
+            _ => match prompt_channel_recovery_action(theme, channel_label, prompt)? {
+                RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
+                RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
+            },
+        };
+        match resolution {
+            RequiredFieldResolution::Value(value) => {
+                let normalized_value = value.trim().to_string();
+                let len = normalized_value.len();
+                match validate_discord_token(&normalized_value) {
+                    DiscordTokenValidation::Valid => {
+                        println!("[✓] Token 格式有效（长度={len}）。");
+                        return Ok(Some(normalized_value));
+                    }
+                    DiscordTokenValidation::Warn(message) => {
+                        println!("[!] {message}（长度={len}）。");
+                        if prompt_bool(theme, "仍然使用这个 Discord token？", false)? {
+                            return Ok(Some(normalized_value));
+                        }
+                    }
+                    DiscordTokenValidation::Invalid(message) => {
+                        println!("[!] {message}（长度={len}）。");
+                        match prompt_discord_token_invalid_recovery_action(theme, channel_label)? {
+                            RequiredFieldEmptyAction::Retry => {
+                                println!("请重新输入 Discord bot token。");
+                            }
+                            RequiredFieldEmptyAction::DisableChannel => return Ok(None),
+                        }
+                    }
+                }
+            }
             RequiredFieldResolution::Retry => {
                 println!("该字段为必填项，不能为空。");
             }
@@ -1155,6 +1313,9 @@ async fn build_doctor_report(config_path: Option<&Path>) -> DoctorReport {
                         status: "ok",
                         detail: "配置解析成功".to_string(),
                     });
+                    if non_empty(&config.discord.bot_token) {
+                        checks.push(discord_token_doctor_check(&config.discord.bot_token));
+                    }
                     if let Some(parent) = loaded_paths.canonical_config_path.parent() {
                         let readonly = std::fs::metadata(parent)
                             .map(|m| m.permissions().readonly())
@@ -1762,7 +1923,7 @@ fn build_channel_onboard_mutations(
                     });
                 }
                 ChannelRequiredField::DiscordBotToken => {
-                    let Some(value) = prompt_onboard_required_secret(
+                    let Some(value) = prompt_onboard_required_discord_token(
                         theme,
                         spec.label,
                         "Discord bot token",
@@ -2139,7 +2300,9 @@ fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> Result<(), 
                     path: "discord.enabled".to_string(),
                     value: Value::Bool(discord_enabled),
                 });
-                if let Some(token) = prompt_secret(&theme, "Discord bot token", true)? {
+                if let Some(token) =
+                    prompt_optional_discord_token(&theme, "Discord bot token", true)?
+                {
                     mutations.push(ConfigMutation::Set {
                         path: "discord.bot_token".to_string(),
                         value: Value::String(token),
@@ -2794,5 +2957,41 @@ mod tests {
         assert!(remove_path_if_exists(&link).unwrap());
         assert!(!link.exists());
         assert!(target.exists());
+    }
+
+    #[test]
+    fn validate_discord_token_accepts_expected_shape_and_length() {
+        let token = format!("{}.{}.{}", "A".repeat(24), "b".repeat(6), "C".repeat(36));
+        assert_eq!(
+            validate_discord_token(&token),
+            DiscordTokenValidation::Valid
+        );
+    }
+
+    #[test]
+    fn validate_discord_token_warns_when_length_is_abnormally_long() {
+        let token = format!("{}.{}.{}", "A".repeat(48), "b".repeat(6), "C".repeat(96));
+        assert_eq!(
+            validate_discord_token(&token),
+            DiscordTokenValidation::Warn("Token 长度异常偏长，请检查是否重复粘贴。")
+        );
+    }
+
+    #[test]
+    fn validate_discord_token_rejects_non_three_segment_shape() {
+        let token = "not-a-discord-token";
+        assert_eq!(
+            validate_discord_token(token),
+            DiscordTokenValidation::Invalid("Token 必须是三段结构（形如 xxx.yyy.zzz）。")
+        );
+    }
+
+    #[test]
+    fn discord_token_doctor_check_reports_warning() {
+        let token = format!("{}.{}.{}", "A".repeat(48), "b".repeat(6), "C".repeat(96));
+        let check = discord_token_doctor_check(&token);
+        assert_eq!(check.name, "discord-token-format");
+        assert_eq!(check.status, "warn");
+        assert!(check.detail.contains("长度异常偏长"));
     }
 }
