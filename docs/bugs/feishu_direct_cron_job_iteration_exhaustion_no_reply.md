@@ -12,11 +12,19 @@
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
     - `2026-04-17T12:00:00.495769+08:00` 定时任务触发 `每日公司资讯与分析总结`，要求汇总 `TEM/CAI/NBIS/CRWV/NVDA/GOOGL/TSM` 的最新资讯、分析师总结与财报日期
     - 截至 `2026-04-17T12:01:26.486+08:00` 对应失败日志写出时，同一 session 仍只新增这条 `role=user` 消息，没有新的 `role=assistant` 落库
+    - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+    - `2026-04-17T21:00:59.955887+08:00` 定时任务触发 `OWALERT_PreMarket`，要求扫描持仓股与观察池的新闻、评级变化与重大公告
+    - 截至 `2026-04-17T21:01:43.247+08:00` 对应失败日志写出时，同一 session 仍只新增这条 `role=user` 消息，没有新的 `role=assistant` 落库
   - 最近一小时调度台账：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=2138`，`job_id=j_7c688485`，`job_name=每日公司资讯与分析总结`
     - `executed_at=2026-04-17T12:01:28.608155+08:00`
     - `execution_status=execution_failed`，`message_send_status=sent`，`delivered=1`，`error_message=已达最大迭代次数 8`
     - 同一时间窗内 `web.log` 没有对应 `step=reply.send`，`session_messages` 也没有新增 assistant 文本，说明 scheduler 台账与真实会话可见结果已经出现不一致
+    - `run_id=2198`，`job_id=j_f02dfce5`，`job_name=OWALERT_PreMarket`
+    - `executed_at=2026-04-17T21:01:43.248721+08:00`
+    - `execution_status=execution_failed`，`message_send_status=send_failed`，`delivered=0`
+    - `response_preview=已达最大迭代次数 8`，`error_message=集成错误: Feishu send message failed: HTTP 400 Bad Request`
+    - 说明最新小时窗里 search 触顶后的失败收口虽然不再伪装成 `sent/delivered=1`，但真实会话仍无 assistant 落库，失败提示也没有稳定送达
   - 最近一小时运行日志：`data/runtime/logs/web.log`
     - `2026-04-16 11:24:58.565` `step=reply.placeholder`，说明 Feishu 侧已经开始处理该请求
     - `2026-04-16 11:25:06.434` 到 `11:26:02.804` 之间，search 阶段连续多次执行 `cron_job`
@@ -28,6 +36,11 @@
     - `2026-04-17 12:01:26.380` 记录 `stage=search.done success=false iterations=8 tool_calls=8 live_search_tool=true`
     - `2026-04-17 12:01:26.486` `ERROR [MsgFlow/feishu] failed ... error="已达最大迭代次数 8"`
     - 失败后同一 session 同样没有出现 `step=session.persist_assistant`、`done user=...` 或 `step=reply.send`
+    - `2026-04-17 21:01:02.986` `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 进入 `runner.stage=multi_agent.search.start`
+    - `2026-04-17 21:01:08.632` 到 `21:01:42.610` 之间，search 阶段依次完成 `data_fetch snapshot GOOGL / RKLB / SNDK / MU / COHR / VST / BE`
+    - `2026-04-17 21:01:42.610` 记录 `stage=search.done success=false iterations=8 tool_calls=7 live_search_tool=true`
+    - `2026-04-17 21:01:42.611` `ERROR [MsgFlow/feishu] failed ... error="已达最大迭代次数 8"`
+    - 紧接着 `2026-04-17 21:01:43.247` 又记录 `定时任务投递失败 ... HTTP 400 Bad Request`，但到巡检时该 session 仍无新的 assistant 落库
   - 历史日志回溯：
     - `data/runtime/logs/web.log` 中长期存在 `已达最大迭代次数 8` 的 search 失败记录，但本轮证据确认它已直接落在 Feishu 直聊任务治理场景，并表现为“用户无最终回复”
 
@@ -54,6 +67,7 @@
 - 两个样本的日志都结束于 `failed ... error="已达最大迭代次数 8"`，之后没有 `session.persist_assistant`、没有 `reply.send`、也没有 `done user=...` 收尾日志。
 - `session_messages` 里按真实 `timestamp` 过滤后，两条会话在失败窗口都只剩用户输入，没有任何新的 assistant 文本，说明这不是“回答发出但落库丢失”，而是整轮确实没有产出用户可见最终回复。
 - `2026-04-17 12:01` 的最新 scheduler 台账又暴露出第二层症状：`cron_job_runs` 已记成 `execution_failed + sent + delivered=1`，但真实会话与运行日志都没有 `reply.send` 或 assistant 落库，说明“失败已送达”的账本口径也不可靠。
+- `2026-04-17 21:01` 的 `OWALERT_PreMarket` 则说明，账本口径虽然从 `sent/delivered=1` 修正成了 `send_failed/delivered=0`，但 search 触顶后的用户可见收口仍然不存在；失败提示既没有写入会话，也没有稳定送达用户。
 - 这条事故不是单纯回答质量浅或格式不佳，而是用户提出的核心任务根本没有完成。
 
 ## 用户影响
@@ -89,3 +103,4 @@
   - `cargo test -p hone-channels`
 - 由于“search 触顶后仍静默失败”的公共收口缺陷尚未消除，而“反复调用 `cron_job` / 多次 `data_fetch` 后不收敛”这两类上游触发形态也都仍在，本单维持 `Fixing`，待下一轮真实样本确认“至少不再无回复”后再决定是否拆出更细的策略单。
 - `2026-04-17 12:01` 的最新定时汇总样本还表明，当前巡检不能把 `cron_job_runs` 的 `sent/delivered=1` 视为修复迹象；在真实会话仍无 assistant 落库、`web.log` 仍无 `reply.send` 的前提下，本单继续保持 `Fixing`。
+- `2026-04-17 21:01` 的 `OWALERT_PreMarket` 最新样本说明，本单虽然已不再出现“账本谎报 delivered=1”的旧形态，但“达到最大迭代次数后仍没有稳定用户态失败回复”这一核心症状没有解决，因此继续保持 `Fixing`。
