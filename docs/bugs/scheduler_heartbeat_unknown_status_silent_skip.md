@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 最近一小时最新复现：
+    - `2026-04-17 20:00:20.811` `data/runtime/logs/web.log` 记录 `job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`）`parse_kind=JsonUnknownStatus`
+    - 同轮 `raw_preview` 直接输出 `<think>` 包裹的 11 只股票“当前价格 vs 触发价”逐项判断，但末尾仍没有合法状态 JSON
+    - `2026-04-17 20:00:20.812` 日志紧接着记录 `parse failure escalated`
+    - 同一 20:00 窗口内，真实 Feishu 会话 `Actor_feishu__direct__ou_5fbceebf26fcbb242fd6585745222c8063` 已正常返回 `已达到今日对话上限（12/12，北京时间 2026-04-17），请明天再试`，说明当前最新活跃异常并非通用渠道故障，而是 heartbeat 结构化收口问题仍在持续
   - 最近一小时同一任务持续异常：
     - `run_id=1889`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-16T14:00:27.633510+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=1865`，`job_id=j_c1c1be63`，`job_name=存储板块加仓信号监控`，`executed_at=2026-04-16T11:00:31.512294+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`，`detail_json.parse_kind=JsonUnknownStatus`
@@ -247,6 +252,8 @@
 - `13:30 -> 14:00` 的最新窗口再次重复同一模式：`Monitor_Watchlist_11` 刚在 `13:30` 恢复为 `JsonNoop + skipped_noop`，到 `14:00` 又回落为 `JsonUnknownStatus + execution_failed`；而同批 `原油播报` 与 `小米预警` 继续保持 `JsonNoop`，说明当前线上仍是“复杂 watchlist 模板高频抖动、简单 heartbeat 暂时稳定”的活跃故障态。
 - `15:00 -> 15:30 -> 16:00` 的最新三轮把这一抖动继续坐实：同一 `Monitor_Watchlist_11` 在 15:00 失败、15:30 自恢复、16:00 再次失败，中间没有任何任务配置改动，说明当前根因仍是“自由文本 + 状态 JSON 最终收口不稳定”的公共协议脆弱性，而不是某次一次性脏数据。
 - `18:30 -> 19:00` 的最新窗口说明，这种抖动并没有退出活跃态：`小米30港元破位预警` 可以在半小时内从 `JsonUnknownStatus` 自恢复为 `JsonNoop`，但 `Monitor_Watchlist_11` 同一窗口仍连续两轮失败，说明问题仍会在不同 heartbeat 模板间轮流出现，而不是已经稳定收敛。
+- `20:00:20.811` 的最新窗口再次证明活跃故障没有退出：`Monitor_Watchlist_11` 在没有任何任务配置变更的情况下，又一次回落到 `JsonUnknownStatus + parse failure escalated`。
+- 同一时间窗内，另一个真实 Feishu 会话已经正常返回 quota 友好文案并完成落库，说明当前系统并非普遍性发送或会话链路故障；最新未收口的问题仍集中在 heartbeat 结构化状态输出。
 - `17:30 -> 18:00` 的最新窗口继续重复同一抖动：`Monitor_Watchlist_11` 在 `17:30` 先回落到 `JsonUnknownStatus + execution_failed`，`18:00` 又恢复为 `JsonNoop`；同批次的 `小米30港元破位预警` 与 `全天原油价格3小时播报` 也都保留 `<think>` 前缀后才分别落成 `JsonNoop` / `JsonTriggered`。这说明当前线上依旧依赖解析器从自由文本尾部勉强提取状态，公共协议脆弱性没有收口。
 
 ## 修复情况（2026-04-16，待重新验证）

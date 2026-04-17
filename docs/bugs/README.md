@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-17 19:04 CST
+最后更新：2026-04-17 20:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -33,7 +33,7 @@
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-17 17:00 `分析AAOI` 会话再次在重试前后两次命中 `company_profiles` 不存在；主链路仍在运行，但长期画像继续被静默跳过 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-17 11:57 真实会话里两次 `data_fetch quote` 成功后，最终答复仍声称“底层行情链路暂时阻断”，与已抓取证据矛盾 | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | New | 2026-04-16 13:08 Feishu 直聊 `rklb要不要加` 命中；52 秒后同句重试成功，说明当前缺少对传输抖动的吸震 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-17 18:30 `小米30港元破位预警` 与 `Monitor_Watchlist_11` 再次回落到 `JsonUnknownStatus + execution_failed`；19:00 仅 `Monitor_Watchlist_11` 继续失败，说明故障仍在不同 heartbeat 模板间抖动 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-17 20:00 `Monitor_Watchlist_11` 再次命中 `JsonUnknownStatus + parse failure escalated`；同窗 quota 友好文案已正常返回，说明 heartbeat 仍是最新活跃故障 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后缺少自动重试与降级，提醒整轮失败 | P2 | New | 2026-04-17 16:01 `小米30港元破位预警` 命中 `error sending request for url`；当前 scheduler 链路仍会直接失败且不重试 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 20:01-20:31 最新窗口中 `RKLB_动态监控` 连续两轮超窗，`TEM_动态监控` 同轮失败后 30 分钟内又恢复，抖动仍在持续 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 
@@ -42,7 +42,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | 会话压缩摘要仍以 `Compact Summary` 回灌为 `role=user`，导致 scheduler 任务串入上一轮待办与结论 | P1 | Fixed | 2026-04-17 已把 compact summary 迁出普通用户恢复链路：改存 `role=system`、restore 跳过、prompt 统一改读 `session.summary`，并通过 `hone-channels` 全量测试 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
-| Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | Fixed | 2026-04-17 已让 quota 拒绝直接返回用户态额度文案，并在拒绝前补最小 user-turn 落库；`run_rejects_over_daily_limit_with_user_turn_and_friendly_error` 已通过 | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
+| Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | Fixed | 2026-04-17 已让 quota 拒绝直接返回用户态额度文案，并在拒绝前补最小 user-turn 落库；20:00 真实会话已再次返回“已达到今日对话上限（12/12）” | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Release app / 渠道进程仍可被 legacy `config_runtime.yaml` 驱动，导致 runner 改完后 live 服务不立即生效 | P1 | Fixed | 2026-04-16 已让 desktop 忽略 legacy override，并更新 release runbook 到 canonical/effective config 启动方式 | [desktop_release_runner_legacy_config_source.md](./desktop_release_runner_legacy_config_source.md) |
 | Desktop Agent 设置页缺少 `codex_acp` runner 入口，实际已切到 Codex ACP 时仍无法一致展示 | P2 | Fixed | 2026-04-16 已补齐 settings/start 两处 runner 可见入口与检测提示，UI 与 live config 重新对齐 | [desktop_codex_acp_runner_ui_gap.md](./desktop_codex_acp_runner_ui_gap.md) |
 | 飞书渠道消息发错位（跨用户投递） | P0 | Fixed | 2026-03-25 已修复 | [feishu_message_misrouting.md](./feishu_message_misrouting.md) |
