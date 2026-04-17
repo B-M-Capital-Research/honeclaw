@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-18 02:12 CST
+最后更新：2026-04-18 03:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -34,7 +34,7 @@
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-17 11:57 真实会话里两次 `data_fetch quote` 成功后，最终答复仍声称“底层行情链路暂时阻断”，与已抓取证据矛盾 | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | New | 2026-04-17 23:54 用户已明确说“开启新的话题：请预测联合健康的财报”，系统完成 compact 重试后仍只返回统一 fallback，连续三次未产出答案 | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | New | 2026-04-16 13:08 Feishu 直聊 `rklb要不要加` 命中；52 秒后同句重试成功，说明当前缺少对传输抖动的吸震 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 02:01 最新窗口仍在相邻轮次抖动：`Monitor_Watchlist_11` 于 `01:31` 失败后在 `02:01` 恢复，但 `小米破位预警` 同轮新回落到 `JsonUnknownStatus + execution_failed` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 03:01 最新窗口继续呈现相邻轮次抖动：`小米破位预警` 已从 `02:01` 的 `JsonUnknownStatus + execution_failed` 自恢复为 `03:01` `JsonNoop`，但 `raw_preview` 仍保留 `<think>` 前缀，说明协议仍未稳定 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后缺少自动重试与降级，提醒整轮失败 | P2 | New | 2026-04-17 16:01 `小米30港元破位预警` 命中 `error sending request for url`；当前 scheduler 链路仍会直接失败且不重试 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 20:01-20:31 最新窗口中 `RKLB_动态监控` 连续两轮超窗，`TEM_动态监控` 同轮失败后 30 分钟内又恢复，抖动仍在持续 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 
