@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-17 14:01 CST
+最后更新：2026-04-17 15:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：11
+- 活跃待修复：12
 - 已修复 / 已关闭：29
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -29,6 +29,7 @@
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-17 已让 direct scheduler 多段发送不再默认走 reply 链路，并为 `update/reply` 的 400 补 standalone send 回退与响应体日志；自动化测试已通过，待下一轮 scheduler 窗口复核 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-16 16:00 真实会话复现；`session.persist_assistant/done` 后仍继续启动 `hone/web_search`，但用户侧只收到 55 字过渡句 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | New | 2026-04-17 07:48 真实会话复现；用户说“分析目前lite价值”后系统直接输出 Litecoin 分析，需用户二次纠正为 `LITE Lumentum` | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
+| Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | New | 2026-04-17 14:53 真实会话复现；当前 user turn 是“美股DRAM详细分析”，但 search 从首个工具调用起就锁定 `SNDK`，最终整轮答成 SanDisk 个股分析 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-17 10:24-10:46 又在“微软分析”“ciena 是否值得买入”两条真实会话复现；主链路仍能答复，但搜索阶段持续读不到 actor sandbox 画像 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-17 11:57 真实会话里两次 `data_fetch quote` 成功后，最终答复仍声称“底层行情链路暂时阻断”，与已抓取证据矛盾 | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | New | 2026-04-16 13:08 Feishu 直聊 `rklb要不要加` 命中；52 秒后同句重试成功，说明当前缺少对传输抖动的吸震 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
