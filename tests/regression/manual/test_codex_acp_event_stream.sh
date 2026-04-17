@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
-CONFIG_PATH="${HONE_CONFIG_PATH:-$ROOT_DIR/data/runtime/config_runtime.yaml}"
+CONFIG_PATH="${HONE_CONFIG_PATH:-$ROOT_DIR/config.yaml}"
 CHANNEL="${HONE_MCP_ACTOR_CHANNEL:-telegram}"
 ACTOR_USER_ID="${HONE_MCP_ACTOR_USER_ID:-acp_probe_user}"
 CHANNEL_SCOPE="${HONE_MCP_ACTOR_SCOPE:-chat:-1009000000000}"
@@ -25,7 +25,7 @@ Options:
   --user-id ID          MCP actor user id. Default: acp_probe_user
   --scope SCOPE         MCP actor scope. Default: chat:-1009000000000
   --target TARGET       MCP channel target. Default: chat:-1009000000000
-  --config PATH         Runtime config path. Default: data/runtime/config_runtime.yaml
+  --config PATH         Config path. Default: config.yaml
   --show-raw            Print the raw JSONL session/update log after the summary.
   -h, --help            Show this help.
 
@@ -300,7 +300,7 @@ PY
 
 PROMPT_JSON="$(prompt_payload_json)"
 
-echo "[INFO] runtime config: $CONFIG_PATH"
+echo "[INFO] config: $CONFIG_PATH"
 echo "[INFO] runner: $RUNNER"
 echo "[INFO] codex command: $CODEX_COMMAND"
 echo "[INFO] codex-acp command: $CODEX_ACP_COMMAND"

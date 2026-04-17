@@ -210,7 +210,7 @@ start_hone_bin() {
     local status=0
     wait "$pid" || status=$?
     if [[ "$status" -eq "$CHANNEL_DISABLED_EXIT_CODE" ]]; then
-      echo "[INFO] ${service_name} skipped by runtime config."
+      echo "[INFO] ${service_name} skipped by active config."
       rm -f "$(pid_file "$service_name")"
       printf -v "$pid_var" '%s' ""
       return 0

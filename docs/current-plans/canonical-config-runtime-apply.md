@@ -1,9 +1,11 @@
 - title: Canonical Config And Runtime Apply Unification
 - status: in_progress
 - created_at: 2026-04-12
-- updated_at: 2026-04-16 09:08 CST
+- updated_at: 2026-04-17 10:41 CST
 - owner: Codex
 - related_files:
+  - config.yaml
+  - launch.sh
   - crates/hone-core/src/config.rs
   - bins/hone-cli/src/common.rs
   - bins/hone-cli/src/main.rs
@@ -14,6 +16,7 @@
   - scripts/install_hone_cli.sh
   - scripts/update_homebrew_formula.sh
   - tests/regression/ci/test_install_hone_cli_path_resolution.sh
+  - tests/regression/manual/test_codex_acp_event_stream.sh
   - tests/regression/manual/test_install_bundle_smoke.sh
   - crates/hone-web-api/src/runtime.rs
 - related_docs:
@@ -48,6 +51,7 @@
   - `promote_legacy_runtime_agent_settings(...)` 已补齐 `llm.openrouter.api_keys` 的 legacy 补迁，并新增回归测试覆盖“legacy 仅持有 OpenRouter key 池”的 desktop 升级场景
   - `v0.1.1` 起 release workflow 只构建 CLI bundle 所需 bins，并能成功产出可用于 `curl | bash` 的 darwin/linux 发行资产
   - 标准 Homebrew tap 仓库 `B-M-Capital-Research/homebrew-honeclaw` 已建立；release workflow 改为向该 tap 推送 `honeclaw.rb`，`brew install B-M-Capital-Research/honeclaw/honeclaw` 可直接安装
+  - 本地 repo working copy 已按 canonical 语义清理：确认 `config.yaml` 覆盖 legacy `config_runtime.yaml` 的有效设置差异，修正根配置头部说明，并移除本地 legacy `data/runtime/config_runtime.yaml`
 - 仍待完成：
   - desktop bundled 模式下真正的 `live_apply / component_restart / full_restart` 行为收口
   - desktop settings 与 canonical config / apply result contract 的最后一轮对齐验证
