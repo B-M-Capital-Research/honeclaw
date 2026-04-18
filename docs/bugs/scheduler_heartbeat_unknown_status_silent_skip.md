@@ -6,6 +6,31 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 03:02 最近一小时最新样本：
+    - `2026-04-19T02:31:06-02:31:22+08:00` 同一批 heartbeat 在上一轮几乎全部恢复为合法状态：
+      - `run_id=2717`（`全天原油价格3小时播报`）恢复为 `noop + skipped_noop`
+      - `run_id=2718`（`小米30港元破位预警`）恢复为 `noop + skipped_noop`
+      - `run_id=2719`（`TEM破位预警`）恢复为 `noop + skipped_noop`
+      - `run_id=2720`（`Monitor_Watchlist_11`）恢复为 `noop + skipped_noop`
+      - `run_id=2721`（`RKLB异动监控`）恢复为 `noop + skipped_noop`
+      - `run_id=2722`（`ORCL 大事件监控`）恢复为 `noop + skipped_noop`
+      - `run_id=2723`（`TEM大事件心跳监控`）恢复为 `noop + skipped_noop`
+      - `run_id=2724`（`ASTS 重大异动心跳监控`）恢复为 `noop + skipped_noop`
+    - 仅过 30 分钟，到 `2026-04-19T03:01:07.444812+08:00` 与 `2026-04-19T03:01:16.549426+08:00`，故障又漂移到另一组 heartbeat：
+      - `run_id=2727`（`小米30港元破位预警`）重新落成 `execution_failed + skipped_error`
+      - `run_id=2733`（`RKLB异动监控`）同轮再次落成 `execution_failed + skipped_error`
+      - 两条失败样本的 `error_message` 都是 `heartbeat 输出包含未知状态，任务已标记失败`
+    - 同一 `03:01` 窗口里，其它任务又继续“侥幸恢复”：
+      - `run_id=2731`（`TEM大事件心跳监控`）仍为 `noop + skipped_noop`
+      - `run_id=2732`（`ORCL 大事件监控`）仍为 `noop + skipped_noop`
+      - `run_id=2734`（`Monitor_Watchlist_11`）仍为 `noop + skipped_noop`
+      - `run_id=2735`（`ASTS 重大异动心跳监控`）则恢复为 `completed + sent`，成功投递了 BlueBird 7 发射提醒
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-19 03:01:07.444` `job=小米30港元破位预警` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已明确写出“32 > 30，条件未满足，所以应该返回 noop”，但最终只返回 `<think>...</think>\n\n{}`
+      - `2026-04-19 03:01:16.548` `job=RKLB异动监控` 记录 `parse_kind=JsonUnknownStatus`，正文已完成行情、并购和新闻判断，却仍没收口到合法状态 JSON
+      - 同窗 `2026-04-19 03:01:13.570` `job=TEM大事件心跳监控`、`03:01:14.083` `job=ORCL 大事件监控`、`03:01:16.724` `job=Monitor_Watchlist_11` 都仍是 `parse_kind=JsonNoop`，但 `raw_preview` 继续以 `<think>` 开头
+      - `2026-04-19 03:01:21.530` `job=ASTS 重大异动心跳监控` 成功送达一次 `parse_kind=JsonTriggered`
+    - 这组 `02:31 -> 03:01` 样本说明：缺陷仍是活跃抖动态。上一轮全部恢复合法状态的同一批任务，下一轮又在 `小米30港元破位预警` 与 `RKLB异动监控` 上重新跌回 `JsonUnknownStatus`；故障没有收敛到固定任务，而是在不同 heartbeat 模板间持续漂移
   - 2026-04-19 02:01 最近一小时最新样本：
     - `2026-04-19T01:31:05-01:31:31+08:00` 同一批 heartbeat 在上一轮大多恢复为合法状态：
       - `run_id=2698`（`ORCL 大事件监控`）恢复为 `noop + skipped_noop`
