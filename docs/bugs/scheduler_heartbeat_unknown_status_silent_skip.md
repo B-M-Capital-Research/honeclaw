@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 20:01-21:01 最近一小时新增样本：
+    - `run_id=2604`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T21:01:10.496685+08:00`，落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+    - `run_id=2606`，`job_id=j_fc7749ca`（`ASTS 重大异动心跳监控`），`executed_at=2026-04-18T21:01:16.178310+08:00`，同轮也落成 `execution_failed + skipped_error`
+    - `run_id=2609`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T21:01:29.205224+08:00`，连续第四轮落成 `execution_failed + skipped_error`
+    - 同一 `21:01` 窗口里，`ORCL 大事件监控`、`RKLB异动监控`、`小米破位预警`、`TEM破位预警`、`CAI破位预警` 仍是 `noop + skipped_noop`，但 `detail_json.starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头；这说明“侥幸解析成功”的任务仍未恢复结构化输出契约
+    - `run_id=2604.detail_json.raw_preview` 已明确写出“当前价格高于30港元的触发线，所以条件未满足，应该返回noop”，但最终只返回 `<think>...</think>\n\n{}`
+    - `run_id=2606.detail_json.raw_preview` 明确写出 ASTS 当日跌幅仅 `-5.95%`、未触发 8% 阈值，但末尾同样没有稳定收口到合法状态 JSON
+    - `run_id=2609.detail_json.raw_preview` 则继续对 `HIMS/MU/RKLB/LMND/...` 全部逐项判断为未触发，却再次停在 `<think>` 自由文本
+    - 这组 `20:01 -> 21:01` 样本说明：故障已不再收敛成单条 `Monitor_Watchlist_11` watchlist 持续掉线，而是在最新一小时重新扩散到至少 3 条 heartbeat 模板；当前真实影响已从“单任务持续不可用”升级为“同窗多任务同时漏提醒”
   - 2026-04-18 19:01-20:01 最近一小时新增样本：
     - `run_id=2566`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T19:01:13.444291+08:00`，落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
     - `run_id=2578`，同一任务在 `2026-04-18T19:31:16.361760+08:00` 再次落成 `execution_failed + skipped_error`
