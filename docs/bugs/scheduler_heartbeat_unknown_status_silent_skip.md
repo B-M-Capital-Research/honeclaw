@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 01:01 最近一小时最新样本：
+    - `2026-04-19T00:31:13.042683+08:00`，`run_id=2681`（`ORCL 大事件监控`）先落成 `execution_failed + skipped_error`
+    - 仅过 30 分钟，到 `2026-04-19T01:01:07-01:01:16+08:00`，故障又漂移到 `run_id=2688`（`小米30港元破位预警`）与 `run_id=2690`（`ASTS 重大异动心跳监控`），两条都再次落成 `execution_failed + skipped_error`
+    - 三条失败样本的 `error_message` 都是 `heartbeat 输出包含未知状态，任务已标记失败`
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-19 01:01:07.871` `job=小米30港元破位预警` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已明确写出“条件未满足，需要输出 noop”，但最终只返回 `<think>...</think>\n\n{}`
+      - `2026-04-19 01:01:16.354` `job=ASTS 重大异动心跳监控` 记录 `parse_kind=JsonUnknownStatus`，正文已完成涨跌幅与事件判断，却仍没收口到合法状态 JSON
+      - `2026-04-19 01:01:26.722` 同窗 `job=ORCL 大事件监控` 又恢复为 `parse_kind=JsonNoop`，但 `raw_preview` 仍以 `<think>` 开头，说明这不是协议已恢复，而是再次侥幸从尾部提取到了 `{\"status\":\"noop\"}`
+    - 这组 `00:31 -> 01:01` 样本说明：故障继续在不同 heartbeat 模板间漂移；同一小时内既出现 `execution_failed`，又出现“带 `<think>` 污染但勉强解析成功”的伪恢复，协议脆弱性仍未收口
   - 2026-04-19 00:01 最近一小时最新样本：
     - `2026-04-18T23:31:13-23:31:25+08:00` 同一批 heartbeat 中，`run_id=2657`（`小米破位预警`）、`run_id=2659`（`ORCL 大事件监控`）、`run_id=2662`（`TEM大事件心跳监控`）再次落成 `execution_failed + skipped_error`
     - 三条失败样本的 `error_message` 都是 `heartbeat 输出包含未知状态，任务已标记失败`

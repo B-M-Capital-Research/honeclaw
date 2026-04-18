@@ -6,6 +6,26 @@
 - **状态**: Fixing
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=2695`
+    - `job_id=j_27495ea4`
+    - `job_name=TEM破位预警`
+    - `executed_at=2026-04-19T01:02:04.297796+08:00`
+    - `execution_status=execution_failed`
+    - `message_send_status=skipped_error`
+    - `delivered=0`
+    - `error_message=LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
+    - 说明这类传输失败在最近一小时又从 `小米30港元破位预警` 扩散到 `TEM破位预警`，并未随时间自行收口
+  - 运行日志：`data/runtime/logs/web.log`
+    - `2026-04-19 01:00:59.578` heartbeat 启动：`job_id=j_27495ea4 job=TEM破位预警`
+    - `2026-04-19 01:02:04.296` `run_finish ... success=false error="LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)"`
+    - `2026-04-19 01:02:04.296` 同步记录 `runner_error ... model=MiniMax-M2.7-highspeed`
+  - 同一任务前一轮对比：
+    - `run_id=2678`
+    - `executed_at=2026-04-19T00:31:08.921323+08:00`
+    - `execution_status=noop`
+    - `message_send_status=skipped_noop`
+    - 说明 `TEM破位预警` 的配置与业务条件未改，只在相邻轮次遭遇 MiniMax 传输层失败
+  - 更早首个复现样本：
     - `run_id=2162`
     - `job_id=j_654aef9b`
     - `job_name=小米30港元破位预警`
@@ -63,9 +83,9 @@
 
 ## 修复进展
 
-- 2026-04-18 当前工作区里已经出现共享 `OpenAI-compatible provider` 的重试补丁草案，意图让 `chat` / `chat_with_tools` 在命中 MiniMax 传输层瞬时失败时自动进行一次短延迟重试。
-- 由于 heartbeat scheduler 复用同一 provider，这条补丁若后续合并，理论上会直接覆盖 `llm.auxiliary` 路径，不需要在 `scheduler.rs` 里再复制一层重试。
-- 但截至本轮巡检结束，该补丁与配套测试仍停留在未提交的本地改动阶段；仓库主线和最近一小时真实 heartbeat 样本都不能证明这条缺陷已经收口，因此状态只能更新为 `Fixing`。
+- 截至 2026-04-19 01:02，仓库主线仍无法证明这条缺陷已经收口：最新 `TEM破位预警` 真实样本再次命中同一 `error sending request for url (...)`。
+- 本轮巡检时工作区保持干净，未见可据此认定“修复已在本地完成但未提交”的新增证据；因此仍只能按 `Fixing` 持续跟踪，而不能升级为 `Fixed`。
+- 由于 heartbeat scheduler 与直聊搜索阶段共用 MiniMax / OpenAI-compatible provider，后续若主线引入 provider 级重试或 fallback，才可能同时吸收这条 heartbeat 故障。
 
 ## 后续观察点
 
