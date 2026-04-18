@@ -89,117 +89,102 @@ export default function StartPage() {
   };
 
   return (
-    <div class="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto px-6 py-10">
-      {/* ── 品牌区 ── */}
-      <div class="mb-10 flex flex-col items-center gap-4 text-center">
-        <Logo class="mx-auto h-24 w-auto" />
-        <p class="text-base text-[color:var(--text-muted)]">
-          与 Hone 开启深度投研之旅
-        </p>
-      </div>
+    <div class="flex h-full min-h-0 flex-col items-center overflow-y-auto px-5">
+      {/* ── 控制整体垂直偏上的包裹层 ── */}
+      <div class="mt-[15vh] flex w-full max-w-3xl flex-col items-center">
+        {/* ── 品牌区 ── */}
+        <div class="mb-10 flex flex-col items-center gap-4 text-center transition-transform hover:scale-[1.01]">
+          <Logo class="mx-auto h-20 w-auto" />
+          <h1 class="text-[22px] font-medium tracking-wide text-[color:var(--text-primary)]">
+            开启深度投研之旅
+          </h1>
+        </div>
 
-      {/* ── 三个渠道卡片 ── */}
-      <div class="mb-10 flex w-full max-w-2xl gap-4">
-        <For each={CHANNELS}>
-          {(ch) => {
-            const isActive = () => activeRunner() === ch.runner;
-            return (
-              <button
-                type="button"
-                class={[
-                  "relative flex flex-1 flex-col items-center gap-2.5 rounded-2xl border px-5 py-6 text-center transition",
-                  isActive()
-                    ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
-                    : "border-[color:var(--border)] bg-[color:var(--surface)] hover:border-[color:var(--accent)]/50 hover:bg-[color:var(--panel)]",
-                  !backend.state.isDesktop ? "cursor-not-allowed opacity-40" : "cursor-pointer",
-                ].join(" ")}
-                disabled={!backend.state.isDesktop}
-                onClick={() => navigate("/settings#agent-settings")}
-                title={`前往设置配置 ${ch.name}`}
-              >
-                {/* 活跃徽章 */}
-                <Show when={isActive()}>
-                  <span class="absolute right-3 top-2.5 rounded-full bg-[color:var(--accent)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
-                    当前
+        {/* ── 输入区与渠道选择 ── */}
+        <div class="flex w-full flex-col items-center gap-5">
+          {/* 渠道标签栏 (Pills) */}
+          <div class="flex w-full flex-wrap justify-center gap-2 md:gap-2.5">
+          <For each={CHANNELS}>
+            {(ch) => {
+              const isActive = () => activeRunner() === ch.runner;
+              return (
+                <button
+                  type="button"
+                  class={[
+                    "group flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] backdrop-blur-sm transition-all duration-300",
+                    isActive()
+                      ? "border-[color:var(--accent)] bg-[color:var(--accent)]/10 text-[color:var(--accent)] shadow-sm shadow-[color:var(--accent)]/10"
+                      : "border-[color:var(--border)] bg-[color:var(--surface)] text-[color:var(--text-secondary)] shadow-sm shadow-black/5 hover:-translate-y-0.5 hover:border-[color:var(--accent)]/50 hover:bg-[color:var(--panel)] hover:shadow-md",
+                    !backend.state.isDesktop ? "cursor-not-allowed opacity-40" : "cursor-pointer",
+                  ].join(" ")}
+                  disabled={!backend.state.isDesktop}
+                  onClick={() => navigate("/settings#agent-settings")}
+                  title={`说明: ${ch.desc}\n点击前往配置`}
+                >
+                  <span
+                    class={[
+                      "text-base transition-transform duration-300",
+                      isActive() ? "scale-110" : "group-hover:scale-110",
+                    ].join(" ")}
+                  >
+                    {ch.icon}
                   </span>
-                </Show>
+                  <span class="font-medium tracking-wide">{ch.name}</span>
+                </button>
+              );
+            }}
+          </For>
+        </div>
 
-                <span class="text-3xl">{ch.icon}</span>
-                <span class="text-base font-semibold leading-tight text-[color:var(--text-primary)]">
-                  {ch.name}
-                </span>
-                <span class="text-xs leading-tight text-[color:var(--text-muted)]">
-                  {ch.desc}
-                </span>
-              </button>
-            );
-          }}
-        </For>
-      </div>
+        {/* 聊天输入框主体 */}
+        <div class="relative w-full overflow-hidden rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface)] shadow-lg shadow-black/5 transition-all duration-300 focus-within:border-[color:var(--accent)] focus-within:shadow-[color:var(--accent)]/20 focus-within:shadow-xl">
+          <div class="flex">
+            <textarea
+              rows={3}
+              placeholder="输入你想探索的投研问题，按 Enter 发送…"
+              class="min-h-[120px] w-full resize-none bg-transparent px-6 pb-14 pt-5 text-[15px] leading-relaxed text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-muted)]/70"
+              value={input()}
+              onInput={(e) => setInput(e.currentTarget.value)}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
 
-      {/* ── 输入框 ── */}
-      <div class="w-full max-w-2xl">
-        <div class="flex overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm transition focus-within:border-[color:var(--accent)] focus-within:shadow-md focus-within:shadow-[color:var(--accent)]/10">
-          <textarea
-            rows={3}
-            placeholder="输入消息，按 Enter 发送…"
-            class="min-h-0 flex-1 resize-none bg-transparent px-5 py-4 text-base text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-muted)]"
-            value={input()}
-            onInput={(e) => setInput(e.currentTarget.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <div class="flex items-end p-2.5">
+          {/* 底部功能栏 */}
+          <div class="absolute bottom-0 left-0 right-0 flex items-center justify-between bg-gradient-to-t from-[color:var(--surface)] via-[color:var(--surface)] to-transparent px-4 py-3">
+            <div class="ml-2 flex items-center text-[12px] text-[color:var(--text-muted)] opacity-70">
+              <Show
+                when={agentSettings.loading}
+                fallback={<span>Shift + Enter 换行</span>}
+              >
+                <div class="flex items-center gap-2">
+                  <span class="relative flex h-1.5 w-1.5">
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[color:var(--text-muted)] opacity-75"></span>
+                    <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-[color:var(--text-muted)]"></span>
+                  </span>
+                  <span class="animate-pulse">加载配置中…</span>
+                </div>
+              </Show>
+            </div>
             <button
               type="button"
               onClick={handleSend}
               disabled={!input().trim()}
-              class="flex h-12 w-12 items-center justify-center rounded-xl bg-[color:var(--accent)] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+              class="flex h-10 w-10 items-center justify-center rounded-2xl bg-[color:var(--accent)] text-white transition-all hover:scale-105 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-none"
             >
-              <svg viewBox="0 0 20 20" fill="currentColor" class="h-6 w-6">
+              <svg viewBox="0 0 20 20" fill="currentColor" class="ml-0.5 h-5 w-5">
                 <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
               </svg>
             </button>
           </div>
         </div>
-
-        {/* 当前渠道提示 */}
-        <div class="mt-3 flex items-center gap-1.5 text-sm text-[color:var(--text-muted)]">
-          <Show
-            when={agentSettings.loading}
-            fallback={
-              <>
-                <span class="h-1.5 w-1.5 rounded-full bg-[color:var(--success)]" />
-                <span>
-                  当前渠道：
-                  <span class="font-medium text-[color:var(--text-secondary)]">
-                    {RUNNER_LABEL[activeRunner()]}
-                  </span>
-                </span>
-                <span class="mx-1 text-[color:var(--border)]">·</span>
-                <span>Shift+Enter 换行</span>
-              </>
-            }
-          >
-            <span class="animate-pulse">加载渠道配置中…</span>
-          </Show>
+        
+        {/* 底部短语 */}
+        <div class="mt-8 flex items-center gap-3 text-xs text-[color:var(--text-muted)] opacity-60">
+          <span>磨砺认知、剔除噪音</span>
+          <span class="h-1 w-1 rounded-full bg-[color:var(--border)]"></span>
+          <span>Open Financial Console</span>
         </div>
       </div>
-
-      {/* ── 底部 Hone 品牌区 ── */}
-      <div class="mt-16 w-full max-w-2xl">
-        <div class="border-t border-[color:var(--border)] pt-8">
-          <div class="flex items-center gap-4">
-            <Logo class="h-8 w-auto opacity-80" />
-            <div>
-              <div class="text-sm font-medium text-[color:var(--text-secondary)]">
-                磨砺认知、剔除噪音
-              </div>
-              <div class="text-xs text-[color:var(--text-muted)]">
-                Open Financial Console
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
