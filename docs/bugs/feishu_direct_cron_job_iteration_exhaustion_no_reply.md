@@ -104,3 +104,7 @@
 - 由于“search 触顶后仍静默失败”的公共收口缺陷尚未消除，而“反复调用 `cron_job` / 多次 `data_fetch` 后不收敛”这两类上游触发形态也都仍在，本单维持 `Fixing`，待下一轮真实样本确认“至少不再无回复”后再决定是否拆出更细的策略单。
 - `2026-04-17 12:01` 的最新定时汇总样本还表明，当前巡检不能把 `cron_job_runs` 的 `sent/delivered=1` 视为修复迹象；在真实会话仍无 assistant 落库、`web.log` 仍无 `reply.send` 的前提下，本单继续保持 `Fixing`。
 - `2026-04-17 21:01` 的 `OWALERT_PreMarket` 最新样本说明，本单虽然已不再出现“账本谎报 delivered=1”的旧形态，但“达到最大迭代次数后仍没有稳定用户态失败回复”这一核心症状没有解决，因此继续保持 `Fixing`。
+- `2026-04-18 12:00` 的同类任务 `每日公司资讯与分析总结` 本轮未再复现“耗尽迭代后无回复”：
+  - `data/runtime/logs/hone-feishu.release-restart.log` 显示该会话 `search.done success=true iterations=1 tool_calls=0 live_search_tool=false`，随后 `answer.done success=true`，`session.persist_assistant` 与 `done` 均已写出。
+  - `data/sessions.sqlite3` 中同一 `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 已在 `2026-04-18T12:02:15.710608+08:00` 落库 assistant 正文。
+  - 但这并不意味着该类任务已恢复正常：本轮零检索直出摘要，正文还直接承认“当前具体新闻动态与分析师目标价细节未完成最新实时接口校验”，因此症状已转化为新的质量缺陷，另见 [`feishu_scheduler_daily_company_digest_skips_realtime_research.md`](./feishu_scheduler_daily_company_digest_skips_realtime_research.md)。

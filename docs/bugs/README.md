@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-18 11:12 CST
+最后更新：2026-04-18 12:18 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：15
+- 活跃待修复：16
 - 已修复 / 已关闭：29
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -32,6 +32,7 @@
 | Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | New | 2026-04-17 14:53 真实会话复现；当前 user turn 是“美股DRAM详细分析”，但 search 从首个工具调用起就锁定 `SNDK`，最终整轮答成 SanDisk 个股分析 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-17 23:54 `UNH` 新话题会话仍先命中 `company_profiles` 不存在，并与 `context_overflow_recovery` 叠加放大长链路降级 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-18 08:32 的创新药日报再次复现：4 次 `hone_data_fetch` 全部成功后，最终正文仍声称“港股与A股数据底层链路暂时阻断” | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
+| Feishu 定时汇总已送达但未执行最新资讯检索，静默退化为非实时摘要 | P3 | New | 2026-04-18 12:00 的 `每日公司资讯与分析总结` 已送达，但 search/answer 全程 `tool_calls=0`，正文还直接承认“未完成最新实时接口校验” | [feishu_scheduler_daily_company_digest_skips_realtime_research.md](./feishu_scheduler_daily_company_digest_skips_realtime_research.md) |
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | New | 2026-04-17 23:54 用户已明确说“开启新的话题：请预测联合健康的财报”，系统完成 compact 重试后仍只返回统一 fallback，连续三次未产出答案 | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixing | 2026-04-18 当前工作区已出现 provider 级重试补丁与测试草案，但修复尚未以已提交代码进入仓库主线，也未完成最新真实样本复核 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 10:31-11:01 最近窗口暂无新增 `skipped_error`，但原始输出仍持续带 `<think>` 污染；`TEM` 触发态甚至在 10:31 外溢成原始 JSON 投递 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
