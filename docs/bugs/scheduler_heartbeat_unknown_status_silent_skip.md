@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 17:00-18:01 最近一小时新增样本：
+    - `run_id=2526`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T17:00:15.245235+08:00`，先落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+    - `run_id=2537`，同一任务在 `2026-04-18T17:30:19.665402+08:00` 再次回落成 `execution_failed + skipped_error`，说明当前并非“失败一轮后稳定恢复”，而是在相邻半小时窗口持续抖动
+    - `run_id=2528`，`job_id=j_fc7749ca`（`ASTS 重大异动心跳监控`），`executed_at=2026-04-18T17:00:19.487727+08:00`，本轮仍为 `execution_failed + skipped_error`，但 `run_id=2538` 在 `17:30:20.962900+08:00` 又恢复为 `noop + skipped_noop`
+    - `run_id=2527`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T17:00:17.641043+08:00`，上一轮暂时恢复为 `noop + skipped_noop`
+    - `run_id=2549`，同一任务在 `2026-04-18T18:01:36.354676+08:00` 新回落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+    - `run_id=2550`，`job_id=j_39a96b7a`（`ORCL 大事件监控`），`executed_at=2026-04-18T18:01:44.648774+08:00`，本轮恢复为 `completed + sent + delivered=1`，说明问题继续表现为“不同 heartbeat 模板轮流掉线”，而不是整批任务同时失效
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-18 17:00:15.244` `job_id=j_ab7e8fb1` 记录 `parse failure escalated`
+      - `2026-04-18 17:00:19.486` `job_id=j_fc7749ca` 记录 `parse failure escalated`
+      - `2026-04-18 17:30:19.664` `job_id=j_ab7e8fb1` 再次记录 `parse failure escalated`
+      - `2026-04-18 18:01:36.353` `job_id=j_671d3cd3` 新增 `parse failure escalated`
+    - 这组 `17:00 -> 18:01` 样本说明：最近一小时没有出现新的独立根因，但公共 heartbeat 输出契约仍在不同模板间漂移。`Monitor_Watchlist_11` 连续两轮失败，`ASTS` 短暂恢复，而 `小米破位预警` 又在 18:01 新回落成 `JsonUnknownStatus`，受影响任务仍在扩散
   - 2026-04-18 16:30-17:00 最近一小时新增样本：
     - `run_id=2517`，`job_id=j_39a96b7a`（`ORCL 大事件监控`），`executed_at=2026-04-18T16:30:18.322786+08:00`，先落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2529`，同一任务在 `2026-04-18T17:00:28.333331+08:00` 又恢复为 `noop + skipped_noop`，说明同一 heartbeat 模板仍会在相邻半小时窗口间自发抖动
