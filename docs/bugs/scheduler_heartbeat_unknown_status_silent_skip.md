@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 05:01 最近一小时最新样本：
+    - `2026-04-19T04:30:09.833273+08:00`，`run_id=2758`（`小米破位预警`）先落成 `execution_failed + skipped_error`
+    - 仅过约 30 分钟，到 `2026-04-19T05:00:19.791623+08:00` 与 `2026-04-19T05:00:23.302673+08:00`，故障又漂移到 `run_id=2772`（`Monitor_Watchlist_11`）与 `run_id=2773`（`TEM大事件心跳监控`），两条都再次落成 `execution_failed + skipped_error`
+    - 同一 `05:00` 窗口里，`run_id=2769`（`全天原油价格3小时播报`）、`2770`（`小米破位预警`）、`2771`（`ORCL 大事件监控`）又恢复为 `noop + skipped_noop`，但 `data/runtime/logs/web.log` 继续显示这些任务统一满足 `starts_with_json=false` 且 `raw_preview` 以 `<think>` 开头
+    - `Monitor_Watchlist_11` 这轮仍是典型的复杂 watchlist 漂移样本：
+      - `data/runtime/logs/web.log` 在 `2026-04-19 05:00:19.790` 记录 `job=Monitor_Watchlist_11`、`parse_kind=JsonUnknownStatus`
+      - `raw_preview` 先逐项列出 `HIMS / MU / RKLB / LMND / BE ...` 的价格与阈值比较，再因未知状态被升级为 `parse failure escalated`
+    - `TEM大事件心跳监控` 则说明故障并未收敛到 watchlist 单模板：
+      - `data/runtime/logs/web.log` 在 `2026-04-19 05:00:23.301` 记录 `job=TEM大事件心跳监控`、`parse_kind=JsonUnknownStatus`
+      - `raw_preview` 已完成涨跌幅、AACR 事件与新闻判断，却仍停留在 `<think> + 自由文本`，没有稳定收口到合法状态 JSON
+    - 同窗 `run_id=2775`（`RKLB异动监控`）又恢复为 `completed + sent`，成功投递一条并购提醒；说明当前线上仍是“同批 heartbeat 有的送达、有的失败、有的侥幸 noop”的抖动态，而不是某个固定任务彻底坏死
+    - 这组 `04:30 -> 05:00` 样本说明：缺陷仍在最新窗口活跃漂移。上一轮失败的 `小米破位预警` 到 `05:00` 可以自行恢复，但 `Monitor_Watchlist_11` 与 `TEM大事件心跳监控` 又接棒回落；公共 heartbeat 输出契约仍然依赖从 `<think> + 自由文本 + 尾部 JSON` 中勉强提取状态，尚未收口
   - 2026-04-19 04:01 最近一小时最新样本：
     - `2026-04-19T03:33:06.316292+08:00`，`run_id=2736`（`全天原油价格3小时播报`）先落成 `execution_failed + skipped_error`
     - 仅过约 27 分钟，到 `2026-04-19T04:00:20.141360+08:00`，故障又漂移到 `run_id=2752`（`Monitor_Watchlist_11`），再次落成 `execution_failed + skipped_error`
