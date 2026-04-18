@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 19:01-20:01 最近一小时新增样本：
+    - `run_id=2566`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T19:01:13.444291+08:00`，落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+    - `run_id=2578`，同一任务在 `2026-04-18T19:31:16.361760+08:00` 再次落成 `execution_failed + skipped_error`
+    - `run_id=2587`，同一任务在 `2026-04-18T20:01:15.294259+08:00` 第三次连续落成 `execution_failed + skipped_error`
+    - 同一时间窗里的其它 heartbeat 任务，包括 `TEM大事件心跳监控`、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`小米破位预警`、`CAI破位预警`、`TEM破位预警` 与 `全天原油价格3小时播报`，在 `19:01`、`19:31`、`20:01` 三个窗口大多恢复为 `noop + skipped_noop`
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-18 19:01:13.443` `job_id=j_ab7e8fb1` 记录 `parse_kind=JsonUnknownStatus`
+      - `2026-04-18 19:31:16.360` 同一任务再次记录 `parse failure escalated`
+      - `2026-04-18 20:01:15.293` 同一任务第三次记录 `parse failure escalated`
+      - 三轮 `raw_preview` 都以 `<think>` 开头，并逐项输出 `HIMS/MU/RKLB/LMND/...` 当前价格与触发价对比，但末尾没有稳定收口到合法状态 JSON
+    - 这组 `19:01 -> 20:01` 样本说明：最近一小时没有出现新的独立根因，但故障形态已经从“多任务漂移”进一步收敛成 `Monitor_Watchlist_11` 单条 watchlist 模板连续三轮掉线。对用户而言，这意味着这条监控链路不再只是偶发抖动，而是已进入持续不可用状态
   - 2026-04-18 17:00-18:01 最近一小时新增样本：
     - `run_id=2526`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T17:00:15.245235+08:00`，先落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
     - `run_id=2537`，同一任务在 `2026-04-18T17:30:19.665402+08:00` 再次回落成 `execution_failed + skipped_error`，说明当前并非“失败一轮后稳定恢复”，而是在相邻半小时窗口持续抖动
