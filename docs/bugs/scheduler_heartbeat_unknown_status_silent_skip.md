@@ -6,6 +6,10 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 23:01 最近一小时最新样本：
+    - `run_id=2634`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T23:01:20.362+08:00`，再次落成 `execution_failed + skipped_error`
+    - 同窗 `TEM破位预警`、`CAI破位预警`、`小米破位预警` 等任务虽被记为 `noop + skipped_noop`，但运行日志仍显示 `starts_with_json=false` 且原始输出以 `<think>` 开头，说明上游结构化输出契约并未恢复
+    - `RKLB` 这轮 `raw_preview` 仍先写出 `4月16日完成收购 Mynaric`、`4月17日 CEO 谈论 SpaceX IPO` 等业务判断，再因为未知状态整轮跳过；对用户而言，这仍是“已做出判断但没能稳定收口到合法 heartbeat 状态”
   - 2026-04-18 21:31-22:01 最近一小时新增样本：
     - `run_id=2621`，`job_id=j_39a96b7a`（`ORCL 大事件监控`），`executed_at=2026-04-18T21:31:22.039+08:00`，落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
     - `run_id=2619`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T21:31:17.808+08:00`，继续落成 `execution_failed + skipped_error`
