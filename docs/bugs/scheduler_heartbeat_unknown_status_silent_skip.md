@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 07:31-08:01 最近一小时新增样本：
+    - `run_id=2332`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T07:31:15.570333+08:00`，继续落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2337`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T08:01:09.453055+08:00`，在 `07:31` 仍短暂恢复为 `noop + skipped_noop` 的前提下，又回落成 `execution_failed + skipped_error`
+    - `run_id=2341`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T08:01:21.744947+08:00`，同轮再次落成 `execution_failed + skipped_error`，说明复杂 watchlist 模板没有随着 `07:31` 窗口结束而收口
+    - 同一 `08:01` 窗口里，`run_id=2338`（`RKLB异动监控`）、`2339`（`TEM大事件心跳监控`）、`2340`（`ORCL 大事件监控`）、`2342`（`ASTS 重大异动心跳监控`）都落成 `noop + skipped_noop`，但 `detail_json.parse_kind` 只是 `JsonNoop`，其 `raw_preview` 仍统一以 `<think>` 起头并夹带大段自由文本分析，不满足“只返回结构化状态 JSON”的协议要求
+    - `run_id=2342.detail_json.raw_preview` 直接输出了包含事件研判、发射日程和结论段落的长文本，`raw_chars=1462`、`starts_with_json=false`；这说明问题已不只是在少数老任务上“偶发 fail”，而是同一协议污染已经扩散到新增 ASTS/ORCL/TEM/RKLB heartbeat，只是某些模板本轮恰好还能从尾部提取出 `noop`
+    - `data/runtime/logs/web.log` 在 `2026-04-18 07:31:15.569`、`08:01:09.451`、`08:01:21.744` 同步记录 `parse failure escalated`；同时 `2026-04-18 08:01:36.692` 记录 `ASTS 重大异动心跳监控` 为 `parse_kind=JsonNoop` 但 `starts_with_json=false`、`raw_preview` 仍以 `<think>` 开头
+    - 这组 `07:31 -> 08:01` 样本说明：缺陷不仅继续造成真实 `execution_failed + skipped_error`，还在更广泛的 heartbeat 模板上以“协议污染但暂未失败”的形式存在，当前仍属于活跃缺陷而非仅需观察的质量瑕疵
   - 2026-04-18 06:31-07:01 最近一小时新增样本：
     - `run_id=2320`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T06:31:14.204675+08:00`，继续落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2321`，`job_id=j_38745baf`（`全天原油价格3小时播报`），`executed_at=2026-04-18T07:01:05.148838+08:00`，从上一轮 `06:31` 的 `JsonUnknownStatus` 恢复为 `noop + skipped_noop`
