@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 13:30-14:00 最近一小时新增样本：
+    - `run_id=2456`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T13:30:17.416410+08:00`，落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2457`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T13:30:17.454047+08:00`，这一轮短暂恢复为 `noop + skipped_noop`，但 `detail_json.raw_preview` 仍以 `<think>` 起头并逐项比较 11 只股票触发价，`starts_with_json=false`
+    - `run_id=2466`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T14:00:18.908903+08:00`，30 分钟后再次保持 `execution_failed + skipped_error`
+    - `run_id=2467`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T14:00:20.762428+08:00`，从上一轮 `13:30` 的 `JsonNoop` 又回落成 `JsonUnknownStatus + execution_failed`
+    - 对应 `data/runtime/logs/web.log` 在 `2026-04-18 13:30:17.415`、`14:00:18.907`、`14:00:20.761` 连续记录 `parse failure escalated`；同一窗口的 `13:30:06-14:00:30` 其它 heartbeat 即便被解析成 `JsonNoop`，也仍持续记录 `starts_with_json=false`
+    - 这组 `13:30 -> 14:00` 样本说明：缺陷并未收敛到单一坏任务。`RKLB异动监控` 连续两个窗口失败，`Monitor_Watchlist_11` 则继续在相邻轮次间来回抖动，活跃影响仍在持续
   - 2026-04-18 12:31-13:00 最近一小时新增样本：
     - `run_id=2436`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T12:31:12.984747+08:00`，再次落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2439`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T12:31:16.176111+08:00`，这一轮短暂恢复为 `noop + skipped_noop`，但 `detail_json.raw_preview` 仍以 `<think>` 起头并夹带 11 只股票逐项判断，`starts_with_json=false`

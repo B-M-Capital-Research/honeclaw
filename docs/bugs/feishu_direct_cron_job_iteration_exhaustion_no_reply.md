@@ -7,6 +7,11 @@
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+    - `2026-04-18T13:07:58.512803+08:00` 用户发送 A 股光模块产业链分析请求后，系统先在 `2026-04-18T13:08:29.713994+08:00` 返回通用失败文案“抱歉，这次处理失败了。请稍后再试。”
+    - 同一会话用户于 `2026-04-18T13:11:49.076992+08:00` 原样重试后，`2026-04-18T13:12:16.578659+08:00` 新增 assistant 文本直接等于 `已达最大迭代次数 8`
+    - 这说明同一根因在最新小时窗里已从“整轮无回复”漂移为“原始内部限制文本直接出现在用户侧”，但任务依旧没有完成
+  - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
+    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
     - `2026-04-16T11:24:58.582499+08:00` 用户发送长文本任务配置请求，要求按“资深产业价值投资专家”口径重写和执行一组日常任务
     - 在 `timestamp >= 2026-04-16T11:24:00+08:00` 的真实时间窗里，该会话只新增了这条 `role=user` 消息，没有任何新的 `role=assistant` 落库
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
@@ -26,6 +31,11 @@
     - `response_preview=已达最大迭代次数 8`，`error_message=集成错误: Feishu send message failed: HTTP 400 Bad Request`
     - 说明最新小时窗里 search 触顶后的失败收口虽然不再伪装成 `sent/delivered=1`，但真实会话仍无 assistant 落库，失败提示也没有稳定送达
   - 最近一小时运行日志：`data/runtime/logs/web.log`
+    - `2026-04-18 13:11:49.161` `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 再次进入 `runner.stage=multi_agent.search.start`
+    - `2026-04-18 13:11:58.809` 到 `13:12:16.573` 之间，search 阶段连续完成 `data_fetch snapshot 中际旭创` 与 7 次 `data_fetch quote`，包括 `300308.SZ`、`300502.SZ`、`688521.SZ`、`688498.SH`、`002463.SZ`、`300476.SZ`
+    - `2026-04-18 13:12:16.573` 记录 `stage=search.done success=false iterations=8 tool_calls=8 live_search_tool=true`
+    - `2026-04-18 13:12:16.576` `ERROR [MsgFlow/feishu] failed ... error="已达最大迭代次数 8"`
+    - 与 `session_messages` 同步比对可见：这次失败后不再是“没有 assistant 落库”，而是把同一句原始限制文本直接作为 assistant 消息落库并对用户可见
     - `2026-04-16 11:24:58.565` `step=reply.placeholder`，说明 Feishu 侧已经开始处理该请求
     - `2026-04-16 11:25:06.434` 到 `11:26:02.804` 之间，search 阶段连续多次执行 `cron_job`
     - `2026-04-16 11:26:02.804` `stage=search.done success=false iterations=8 tool_calls=8 live_search_tool=false`
@@ -52,27 +62,27 @@
    - 任务治理请求里反复调用 `cron_job`，8 轮都没有收敛。
    - 定时汇总请求里连续完成 8 次 `data_fetch`，但仍在 search 阶段触顶，没有进入 answer。
 4. runner 在达到 `max_iterations=8` 后直接以 `error="已达最大迭代次数 8"` 终止。
-5. 失败后链路没有持久化 assistant 兜底文案，也没有发送最终回复，用户侧整轮静默结束。
+5. 失败后链路会落入两种坏态之一：要么没有任何 assistant 收口、用户侧整轮静默结束；要么直接把 `已达最大迭代次数 8` 当作 assistant 文本返回给用户。
 
 ## 期望效果
 
 - 任务治理或多标的定时汇总类问题，应在有限轮数内收敛到明确结果，不能在 search 阶段耗尽迭代后仍没有结论。
-- 即便 search 阶段耗尽迭代，也应向用户返回可见的失败说明或降级结论，而不是整轮无回复。
+- 即便 search 阶段耗尽迭代，也应向用户返回产品化的失败说明或降级结论，而不是整轮无回复，或把 `已达最大迭代次数 8` 这类内部限制文本直接发给用户。
 - 会话落库应能反映最终用户可见结果；如果没有正常回答，至少要有受控错误文案，而不是只留下用户消息。
 
 ## 当前实现效果
 
 - 任务治理样本里，search 阶段 8 次工具调用全部落在 `cron_job`，`live_search_tool=false`，说明 agent 在任务编排问题上陷入了工具循环，而不是完成分析或进入 answer 阶段。
 - 定时汇总样本里，search 阶段 8 次工具调用全部成功返回，`live_search_tool=true`，但仍在 `data_fetch` 收集阶段耗尽预算，说明问题不只限于 `cron_job` 工具循环，而是“search 触顶后的失败分支仍会静默”这一公共收口缺陷。
-- 两个样本的日志都结束于 `failed ... error="已达最大迭代次数 8"`，之后没有 `session.persist_assistant`、没有 `reply.send`、也没有 `done user=...` 收尾日志。
-- `session_messages` 里按真实 `timestamp` 过滤后，两条会话在失败窗口都只剩用户输入，没有任何新的 assistant 文本，说明这不是“回答发出但落库丢失”，而是整轮确实没有产出用户可见最终回复。
+- 旧样本里的日志都结束于 `failed ... error="已达最大迭代次数 8"`，之后没有 `session.persist_assistant`、没有 `reply.send`、也没有 `done user=...` 收尾日志；但 `2026-04-18 13:12` 的最新直聊样本表明，同一错误现在也可能直接被落成 assistant 文本返回给用户。
+- `session_messages` 说明这条缺陷的下游表现已经发生状态变化：早期样本是失败窗口只剩用户输入、完全无 assistant；最新样本则出现 assistant 文本直接等于 `已达最大迭代次数 8`。两种形态都没有完成用户任务，只是失败收口从“静默”漂移到了“内部错误外泄”。
 - `2026-04-17 12:01` 的最新 scheduler 台账又暴露出第二层症状：`cron_job_runs` 已记成 `execution_failed + sent + delivered=1`，但真实会话与运行日志都没有 `reply.send` 或 assistant 落库，说明“失败已送达”的账本口径也不可靠。
 - `2026-04-17 21:01` 的 `OWALERT_PreMarket` 则说明，账本口径虽然从 `sent/delivered=1` 修正成了 `send_failed/delivered=0`，但 search 触顶后的用户可见收口仍然不存在；失败提示既没有写入会话，也没有稳定送达用户。
-- 这条事故不是单纯回答质量浅或格式不佳，而是用户提出的核心任务根本没有完成。
+- 这条事故不是单纯回答质量浅或格式不佳，而是用户提出的核心任务根本没有完成；最新样本还额外暴露了内部限制文本，进一步损伤用户可理解性。
 
 ## 用户影响
 
-- 这是功能性缺陷。用户已经明确要求系统重写和整理日常任务，但本轮没有收到任何最终回复，任务链路被直接中断。
+- 这是功能性缺陷。用户已经明确要求系统重写和整理日常任务，但链路要么完全不给最终回复，要么只给一条 `已达最大迭代次数 8` 的内部错误文本，任务都被直接中断。
 - 由于问题发生在 Feishu 直聊主链路，且没有可见错误兜底，用户无法判断是请求还在处理中还是系统已经失败，因此定级为 `P1`。
 - 之所以不是 `P0`，是因为当前证据仍集中在单条会话和单类任务治理请求，没有证明所有 Feishu 直聊都不可用。
 
@@ -108,3 +118,7 @@
   - `data/runtime/logs/hone-feishu.release-restart.log` 显示该会话 `search.done success=true iterations=1 tool_calls=0 live_search_tool=false`，随后 `answer.done success=true`，`session.persist_assistant` 与 `done` 均已写出。
   - `data/sessions.sqlite3` 中同一 `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 已在 `2026-04-18T12:02:15.710608+08:00` 落库 assistant 正文。
   - 但这并不意味着该类任务已恢复正常：本轮零检索直出摘要，正文还直接承认“当前具体新闻动态与分析师目标价细节未完成最新实时接口校验”，因此症状已转化为新的质量缺陷，另见 [`feishu_scheduler_daily_company_digest_skips_realtime_research.md`](./feishu_scheduler_daily_company_digest_skips_realtime_research.md)。
+- `2026-04-18 13:12` 的最新直聊样本进一步说明，本单不能再只按“无回复”理解：
+  - `web.log` 显示同一会话在 8 次 `data_fetch` 后再次以 `error="已达最大迭代次数 8"` 终止。
+  - `data/sessions.sqlite3` 中同一 `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 这次新增了 assistant 文本 `已达最大迭代次数 8`，说明下游收口已从“静默失败”漂移成“内部错误直接外泄”。
+  - 因此本单继续保持 `Fixing`：核心问题依旧是 search 触顶后没有稳定、产品化的用户态收口，只是坏态从“完全无回复”扩展成“无回复 / 原始错误外泄”两种分支。

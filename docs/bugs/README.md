@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-18 13:08 CST
+最后更新：2026-04-18 14:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -24,7 +24,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | Fixing | 2026-04-17 已补 `AgentSession` 的“净化后为空”成功收口，并补 Feishu 发送回退；`cargo test -p hone-channels`、`cargo test -p hone-feishu` 已通过，待真实直聊样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixing | 2026-04-17 21:01 的 `OWALERT_PreMarket` 又在 7 次 `data_fetch` 后耗尽 8 轮；`cron_job_runs` 这次改记 `execution_failed + send_failed`，但真实会话仍无 assistant 回复 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
+| Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixing | 2026-04-18 13:12 同一 Feishu 直聊链路又在 8 次 `data_fetch` 后触顶；这次不再静默，但直接把 `已达最大迭代次数 8` 落成 assistant 文本，说明失败收口从“无回复”变成“原始内部错误外泄” | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直聊消息再次出现 placeholder 假启动，最新 `19:51` 图片消息已命中 `direct.busy` 但仍发送 placeholder，随后仅补统一失败文案 | P1 | Fixing | 2026-04-17 已补 handler join/panic 兜底、`handler.session_run` 边界日志，以及 placeholder/update 失败后的 standalone send 回退；仍待下一条真实 busy 样本复核 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-17 21:32 `Oil_Price_Monitor_Premarket` 在最新真实窗口仍落成 `completed + send_failed`；说明 10:40 的 fallback 修补尚未收口到生产链路 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-16 16:00 真实会话复现；`session.persist_assistant/done` 后仍继续启动 `hone/web_search`，但用户侧只收到 55 字过渡句 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
@@ -35,7 +35,7 @@
 | Feishu 定时汇总已送达但未执行最新资讯检索，静默退化为非实时摘要 | P3 | New | 2026-04-18 12:00 的 `每日公司资讯与分析总结` 已送达，但 search/answer 全程 `tool_calls=0`，正文还直接承认“未完成最新实时接口校验” | [feishu_scheduler_daily_company_digest_skips_realtime_research.md](./feishu_scheduler_daily_company_digest_skips_realtime_research.md) |
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | New | 2026-04-18 12:15 用户再次追问 `UNH` 财报，系统第四次在 compact 重试后仍只返回统一 fallback | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixing | 2026-04-18 当前工作区已出现 provider 级重试补丁与测试草案，但修复尚未以已提交代码进入仓库主线，也未完成最新真实样本复核 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 12:31-13:00 `RKLB异动监控` 连续两轮 `skipped_error`，`Monitor_Watchlist_11` 也从 `JsonNoop` 再次回落到 `JsonUnknownStatus` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 13:30-14:00 `RKLB异动监控` 连续两轮 `skipped_error`，`Monitor_Watchlist_11` 在 13:30 短暂 `JsonNoop` 后又于 14:00 回落成 `JsonUnknownStatus + skipped_error` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | New | 2026-04-18 10:31 的 `TEM大事件心跳监控` 已送达成功，但 `response_preview` 与 `deliver_preview` 都直接等于 `{\"trigger\":...}`；11:01 同任务又恢复自然语言 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后缺少自动重试与降级，提醒整轮失败 | P2 | Fixing | 2026-04-18 当前工作区已出现共享 provider 重试补丁与测试草案，但尚未以已提交代码进入仓库主线，也未完成 heartbeat 真实样本复核 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 20:01-20:31 最新窗口中 `RKLB_动态监控` 连续两轮超窗，`TEM_动态监控` 同轮失败后 30 分钟内又恢复，抖动仍在持续 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
