@@ -6,6 +6,25 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 02:01 最近一小时最新样本：
+    - `2026-04-19T01:31:05-01:31:31+08:00` 同一批 heartbeat 在上一轮大多恢复为合法状态：
+      - `run_id=2698`（`ORCL 大事件监控`）恢复为 `noop + skipped_noop`
+      - `run_id=2702`（`Monitor_Watchlist_11`）恢复为 `noop + skipped_noop`
+      - `run_id=2703`（`TEM大事件心跳监控`）恢复为 `noop + skipped_noop`
+      - `run_id=2704`（`ASTS 重大异动心跳监控`）甚至恢复为 `completed + sent`，成功投递了 BlueBird 7 发射提醒
+    - 仅过 30 分钟，到 `2026-04-19T02:01:16.332730+08:00` 至 `2026-04-19T02:01:16.521718+08:00`，故障再次漂移并回落为失败：
+      - `run_id=2711`（`TEM大事件心跳监控`）落成 `execution_failed + skipped_error`
+      - `run_id=2712`（`Monitor_Watchlist_11`）落成 `execution_failed + skipped_error`
+      - `run_id=2713`（`ORCL 大事件监控`）落成 `execution_failed + skipped_error`
+      - 三条失败样本的 `error_message` 都是 `heartbeat 输出包含未知状态，任务已标记失败`
+    - 同一 `02:01` 窗口里，`run_id=2714`（`ASTS 重大异动心跳监控`）又恢复为 `noop + skipped_noop`，`run_id=2715`（`小米破位预警`）也恢复为 `noop + skipped_noop`
+    - 这组 `01:31 -> 02:01` 样本说明：故障并非固定绑定在单个 heartbeat 任务，而是在同一套模板间持续漂移；上一轮刚成功送达或成功 noop 的任务，下一轮仍会重新跌回 `JsonUnknownStatus`
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-19 01:31:07.201` `job=ORCL 大事件监控` 还是 `parse_kind=JsonNoop`，但 `raw_preview` 仍以 `<think>` 开头，说明成功依赖尾部 `{\"status\":\"noop\"}` 被侥幸提取
+      - `2026-04-19 01:31:15.122` `job=Monitor_Watchlist_11` 同样是 `parse_kind=JsonNoop`，`raw_preview` 继续暴露 `<think>` 和逐项股票判断
+      - `2026-04-19 01:31:17.183` `job=TEM大事件心跳监控` 也是 `parse_kind=JsonNoop`，`starts_with_json=false`
+      - `2026-04-19 01:31:16.408` `job=ASTS 重大异动心跳监控` 成功送达一次 `parse_kind=JsonTriggered`
+      - 但 30 分钟后的 `2026-04-19 02:01` 窗口，同组任务又重新落回 `parse_kind=JsonUnknownStatus` / `execution_failed + skipped_error`
   - 2026-04-19 01:01 最近一小时最新样本：
     - `2026-04-19T00:31:13.042683+08:00`，`run_id=2681`（`ORCL 大事件监控`）先落成 `execution_failed + skipped_error`
     - 仅过 30 分钟，到 `2026-04-19T01:01:07-01:01:16+08:00`，故障又漂移到 `run_id=2688`（`小米30港元破位预警`）与 `run_id=2690`（`ASTS 重大异动心跳监控`），两条都再次落成 `execution_failed + skipped_error`
