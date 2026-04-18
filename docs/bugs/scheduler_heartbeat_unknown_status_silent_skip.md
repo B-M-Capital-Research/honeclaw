@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 15:00-16:00 最近一小时新增样本：
+    - `run_id=2486`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T15:00:20.997410+08:00`，继续落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`；`raw_preview` 仍以 `<think>` 起头并逐项比对 11 只股票触发价，说明业务判断完成后仍未稳定收口到合法状态 JSON
+    - `run_id=2498`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T15:30:20.195708+08:00`，在 `15:00` 没有失败落账的前提下，30 分钟后又回落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2499`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T15:30:26.905602+08:00`，同一任务在上一轮 `15:00` 失败后又恢复为 `noop + skipped_noop`，但 `raw_preview` 仍以 `<think>` 起头并夹带逐项判断，说明只是侥幸提取到尾部 `JsonNoop`
+    - `run_id=2503`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T16:00:11.664808+08:00`，再次落成 `execution_failed + skipped_error`；`raw_preview` 已明确写出“当前价格高于 30 港元，所以条件未满足，应只输出 `{\"status\":\"noop\"}` 或 `{}`”，但最终仍因为前置 `<think>` 污染被判为 `JsonUnknownStatus`
+    - `run_id=2508`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T16:00:23.067426+08:00`，又恢复为 `noop + skipped_noop`
+    - 这组 `15:00 -> 16:00` 样本说明：最近一小时没有出现真正的新根因，但已有 heartbeat 协议抖动仍在继续漂移。`Monitor_Watchlist_11` 在失败与恢复之间来回摆动，`RKLB异动监控` 与 `小米30港元破位预警` 则在不同半小时窗口接力回落成 `JsonUnknownStatus`，当前仍属于活跃影响中的公共链路缺陷
   - 2026-04-18 14:30-15:00 最近一小时新增样本：
     - `run_id=2472`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T14:30:12.419524+08:00`，在 `14:00` 还是 `noop + skipped_noop` 的前提下，再次回落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2475`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T14:30:20.429569+08:00`，继续落成 `execution_failed + skipped_error`
