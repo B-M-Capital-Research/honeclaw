@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 14:30-15:00 最近一小时新增样本：
+    - `run_id=2472`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T14:30:12.419524+08:00`，在 `14:00` 还是 `noop + skipped_noop` 的前提下，再次回落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2475`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T14:30:20.429569+08:00`，继续落成 `execution_failed + skipped_error`
+    - `run_id=2478`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T14:30:32.327653+08:00`，在 `14:00` 已失败的前提下再次保持 `JsonUnknownStatus + execution_failed`
+    - `run_id=2483`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T15:00:13.618413+08:00`，30 分钟后又恢复为 `noop + skipped_noop`
+    - `run_id=2486`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T15:00:20.997410+08:00`，同一任务在没有配置变化的情况下继续保持 `JsonUnknownStatus + execution_failed`
+    - `run_id=2489`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T15:00:24.790905+08:00`，又恢复为 `noop + skipped_noop`
+    - 对应 `data/runtime/logs/web.log` 在 `2026-04-18 14:30:12.418`、`14:30:20.428`、`14:30:32.326`、`15:00:20.995` 连续记录 `parse failure escalated`；但同一 `15:00` 窗口里 `小米30港元破位预警` 与 `RKLB异动监控` 又分别恢复为 `JsonNoop`
+    - 这组 `14:30 -> 15:00` 样本说明：问题仍是活跃抖动态，而不是稳定坏态。`Monitor_Watchlist_11` 已连续两轮保持失败，`小米30港元破位预警` 与 `RKLB异动监控` 则继续在相邻半小时窗口内自行失败再恢复
   - 2026-04-18 13:30-14:00 最近一小时新增样本：
     - `run_id=2456`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T13:30:17.416410+08:00`，落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2457`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T13:30:17.454047+08:00`，这一轮短暂恢复为 `noop + skipped_noop`，但 `detail_json.raw_preview` 仍以 `<think>` 起头并逐项比较 11 只股票触发价，`starts_with_json=false`
@@ -380,6 +389,7 @@
 - `11:30 -> 12:00` 的最新窗口再次坐实这种抖动：`Monitor_Watchlist_11` 在 `11:30` 先回落到 `JsonUnknownStatus + execution_failed`，但 `12:00` 又自行恢复为 `JsonNoop + skipped_noop`；同一批次里的 `全天原油价格3小时播报` 则成功回到 `JsonTriggered + sent`，说明协议脆弱点仍未退出活跃态，只是继续在相邻轮次间摆动。
 - `12:30 -> 13:00` 的新一轮窗口进一步说明抖动仍在活跃：`Monitor_Watchlist_11` 在 `12:30` 还是 `JsonNoop + skipped_noop`，到 `13:00` 又回落为 `JsonUnknownStatus + execution_failed`；与此同时 `全天原油价格3小时播报` 与 `小米30港元破位预警` 同轮都保持 `JsonNoop`，说明问题仍主要集中在复杂 watchlist 模板，但公共协议脆弱性并未消失。
 - `13:30 -> 14:00` 的最新窗口再次重复同一模式：`Monitor_Watchlist_11` 刚在 `13:30` 恢复为 `JsonNoop + skipped_noop`，到 `14:00` 又回落为 `JsonUnknownStatus + execution_failed`；而同批 `原油播报` 与 `小米预警` 继续保持 `JsonNoop`，说明当前线上仍是“复杂 watchlist 模板高频抖动、简单 heartbeat 暂时稳定”的活跃故障态。
+- `14:30 -> 15:00` 的最新窗口把这种抖动再往前推了一轮：`Monitor_Watchlist_11` 在 `14:30` 与 `15:00` 连续两轮保持 `JsonUnknownStatus + execution_failed`，而 `小米30港元破位预警` 与 `RKLB异动监控` 又在同一个半小时窗口内从失败恢复为 `JsonNoop`，说明当前线上仍是“复杂 watchlist 模板最脆弱、其它 heartbeat 持续来回摆动”的活跃故障态。
 - `15:00 -> 15:30 -> 16:00` 的最新三轮把这一抖动继续坐实：同一 `Monitor_Watchlist_11` 在 15:00 失败、15:30 自恢复、16:00 再次失败，中间没有任何任务配置改动，说明当前根因仍是“自由文本 + 状态 JSON 最终收口不稳定”的公共协议脆弱性，而不是某次一次性脏数据。
 - `18:30 -> 19:00` 的最新窗口说明，这种抖动并没有退出活跃态：`小米30港元破位预警` 可以在半小时内从 `JsonUnknownStatus` 自恢复为 `JsonNoop`，但 `Monitor_Watchlist_11` 同一窗口仍连续两轮失败，说明问题仍会在不同 heartbeat 模板间轮流出现，而不是已经稳定收敛。
 - `20:31:16.628` 的最新失败窗口再次证明活跃故障没有退出：`Monitor_Watchlist_11` 在没有任何任务配置变更的情况下，又一次回落到 `JsonUnknownStatus + parse failure escalated`。

@@ -6,6 +6,8 @@
 - **状态**: New
 - **证据来源**:
   - `data/runtime/logs/web.log`
+    - `2026-04-18 14:46:45.468` `session=Actor_feishu__direct__ou_5f3fd89de56543549db707217b4e1952bf` 在用户消息 `rklb，tem分析下` 的搜索阶段连续两次调用 `local_search_files ... path="company_profiles"`，随后连续记录 `tool_execute_error ... 文件不存在: company_profiles`
+    - `2026-04-18 14:49:10.714` 同一会话 `multi_agent.answer.done success=true tool_calls=0`，说明画像路径错误在最新一小时仍未阻断主链路，但继续以静默降级形态存在
     - `2026-04-18 12:16:44.558` `session=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 在用户消息 `预测联合健康财报` 的 compact 重试阶段再次调用 `local_search_files query="UnitedHealth UNH" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-17 23:54:44.989` `session=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 在用户消息 `开启新的话题：请预测联合健康的财报` 中调用 `local_search_files query="UnitedHealth UNH" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-17 21:01:05.261` `session=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 在定时任务 `OWALERT_PreMarket` 执行过程中调用 `local_list_files path="company_profiles"`，随后记录 `tool_execute_error ... 目录不存在: company_profiles`
@@ -22,6 +24,9 @@
     - `2026-04-16 13:09:40.780` 同一会话再次执行 `local_list_files path="company_profiles"`，随后再次报 `目录不存在: company_profiles`
     - 同类报错自 `2026-04-13` 起持续出现，说明不是单次偶发目录缺失
   - `data/sessions.sqlite3`
+    - `session_id=Actor_feishu__direct__ou_5f3fd89de56543549db707217b4e1952bf`
+    - 用户消息：`2026-04-18 14:46:22 CST`，`"rklb，tem分析下"`
+    - `2026-04-18 14:49:10 CST` assistant 仍返回完整长文分析，但运行日志已确认同轮先连续两次命中 `company_profiles` 不存在，说明最新一小时的真实直聊仍在“先丢失画像，再继续答复”的静默降级路径上
     - `session_id=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052`
     - 用户消息：`2026-04-18 12:15:59 CST`，`"预测联合健康财报"`
     - `2026-04-18 12:16:35 CST` 同轮再次触发 `context_overflow_recovery` 写入 compact summary，`2026-04-18 12:16:58 CST` assistant 仍只返回“当前会话上下文过长”，说明 `company_profiles` 路径错误仍在最新一小时参与放大 `UNH` 新话题的重试降级
@@ -71,6 +76,7 @@
 - 最新 `21:01` 的两个样本说明该问题仍在活跃复现：
   - `OWALERT_PreMarket` 定时任务刚启动就先命中 `local_list_files path="company_profiles"` 的目录不存在；
   - 用户新问 `请对 FORM 进行下详细分析` 时也再次命中 `local_search_files ... path="company_profiles"` 的文件不存在。
+- 最新 `14:46` 的 `rklb，tem分析下` 会话说明，这条缺陷并不只会和 compact / fallback 叠加；即便主链路最后成功返回完整分析，搜索阶段仍会先连续两次撞上 `company_profiles` 路径错误，导致画像记忆在最新真实直聊中继续被静默跳过。
 - 最新 `23:54` 的 `UNH` 新话题会话说明，这类画像路径错误不只存在于深度分析模板里；即使用户显式切换新话题，搜索阶段仍会先尝试读取 `company_profiles`，并与后续 `context_overflow_recovery` 叠加放大长链路降级。
 - `2026-04-18 12:15` 的同一 `UNH` 会话再次证明，这不是前一晚遗留的一次性失败；compact 后重试仍会先命中 `company_profiles` 不存在，再把新问题拖回统一 fallback。
 - `18:43` 的 Dell 会话与 `10:24` 的“微软分析”、`10:46` 的“ciena 是否值得买入”都已经证明：即便后续能继续产出最终答复，搜索阶段依然没有成功读取任何长期画像记忆。
