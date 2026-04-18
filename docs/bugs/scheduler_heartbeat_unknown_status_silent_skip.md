@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 04:01 最近一小时最新样本：
+    - `2026-04-19T03:33:06.316292+08:00`，`run_id=2736`（`全天原油价格3小时播报`）先落成 `execution_failed + skipped_error`
+    - 仅过约 27 分钟，到 `2026-04-19T04:00:20.141360+08:00`，故障又漂移到 `run_id=2752`（`Monitor_Watchlist_11`），再次落成 `execution_failed + skipped_error`
+    - 同一 `04:00` 窗口里，`run_id=2747`（`全天原油价格3小时播报`）虽恢复为 `noop + skipped_noop`，但这次只是侥幸从长段自由文本后提取到了 `noop`，并非上游协议恢复：
+      - `data/runtime/logs/web.log` 在 `2026-04-19 04:00:11.060` 记录 `job=全天原油价格3小时播报`、`parse_kind=JsonNoop`、`starts_with_json=false`
+      - 同一行 `raw_preview` 先输出一整段时间规则推理与“应该输出 {\"status\":\"noop\"} 或 {}”的自我说明，最后才在尾部勉强收口
+    - `Monitor_Watchlist_11` 在这轮再次证明复杂 watchlist 模板仍会直接跌回未知状态：
+      - `data/runtime/logs/web.log` 在 `2026-04-19 04:00:20.140` 记录 `job=Monitor_Watchlist_11`、`parse_kind=JsonUnknownStatus`
+      - `raw_preview` 先逐项列出 `HIMS / MU / RKLB / LMND ...` 的价格与阈值判断，再因未知状态被升级为 `parse failure escalated`
+    - 同窗 `run_id=2751`（`ASTS 重大异动心跳监控`）、`2753`（`TEM大事件心跳监控`）、`2754`（`RKLB异动监控`）、`2755`（`ORCL 大事件监控`）都恢复为 `noop + skipped_noop`，但 `web.log` 仍显示这些任务统一满足 `starts_with_json=false` 且 `raw_preview` 以 `<think>` 开头
+    - 这组 `03:33 -> 04:00` 样本说明：故障没有收敛，仍在不同 heartbeat 模板间持续漂移；即便某些任务短暂恢复为 `JsonNoop`，也依旧建立在受污染的 `<think> + 自由文本 + 尾部 JSON` 脆弱协议之上
   - 2026-04-19 03:02 最近一小时最新样本：
     - `2026-04-19T02:31:06-02:31:22+08:00` 同一批 heartbeat 在上一轮几乎全部恢复为合法状态：
       - `run_id=2717`（`全天原油价格3小时播报`）恢复为 `noop + skipped_noop`
