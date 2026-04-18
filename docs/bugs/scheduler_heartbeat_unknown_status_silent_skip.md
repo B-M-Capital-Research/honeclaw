@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 07:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 06:30 -> 07:00` 再次出现“上一轮部分恢复、下一轮又漂移失败”的抖动态：
+      - `run_id=2800`（`小米破位预警`）与 `run_id=2799`（`CAI破位预警`）在 `2026-04-19T06:30:11+08:00` 左右仍落成 `execution_failed + skipped_error`
+      - 到 `07:00` 窗口，失败对象又切换为 `run_id=2812`（`RKLB异动监控`）与 `run_id=2813`（`Monitor_Watchlist_11`），分别在 `2026-04-19T07:00:20+08:00`、`2026-04-19T07:00:21+08:00` 落成 `execution_failed + skipped_error`
+      - 同一 `07:00` 批次里，`run_id=2806`（`全天原油价格3小时播报`）、`2808`（`CAI破位预警`）、`2809`（`TEM破位预警`）、`2810`（`ASTS 重大异动心跳监控`）、`2811`（`ORCL 大事件监控`）、`2814`（`小米破位预警`）、`2815`（`TEM大事件心跳监控`）都恢复为 `noop + skipped_noop`
+      - 这说明故障并未停留在 `06:30` 失败的 `小米/CAI`，而是在下一轮再次漂移回 `RKLB/Watchlist` 模板
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-19 07:00:20.947` 记录 `job=RKLB异动监控`、`parse_kind=JsonUnknownStatus`，`raw_preview` 先输出 Rocket Lab 新闻与价格判断，再被升级为 `parse failure escalated`
+      - `2026-04-19 07:00:21.588` 记录 `job=Monitor_Watchlist_11`、`parse_kind=JsonUnknownStatus`，`raw_preview` 先逐项枚举 `HIMS / MU / RKLB / LMND ...` 的阈值比较，随后失败收口
+      - 同窗恢复成功的 `全天原油价格3小时播报`、`TEM破位预警`、`CAI破位预警`、`ORCL 大事件监控`、`TEM大事件心跳监控` 依旧统一满足 `starts_with_json=false`，`raw_preview` 仍以 `<think>` 开头，说明“恢复”为 `JsonNoop` 的任务依然依赖受污染输出尾部侥幸提取状态，而不是协议已经恢复
+    - 这组 `06:30 -> 07:00` 最新窗口说明：缺陷仍在生产链路活跃漂移，且影响对象会在单标的阈值任务与复杂 watchlist/事件监控之间轮换
   - 2026-04-19 06:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 05:30 -> 06:00` 连续两个窗口继续出现“上一轮恢复、下一轮又漂移失败”的抖动态：
       - `run_id=2781`（`RKLB异动监控`）在 `2026-04-19T05:30:18+08:00` 落成 `execution_failed + skipped_error`

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: Fixing
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
@@ -52,12 +52,21 @@
    - `2026-04-17T00:36:07.554072+08:00` 会话再次 compact，并写回 `role=user` 的 `【Compact Summary】...`，内容仍是持仓/关注列表表格，包含 `GOOGL / CAI / TEM / BRK.B` 及“助手的观点 / 用户的观点”列
    - 紧接着 `2026-04-17T00:38:24.093143+08:00` assistant 继续基于被回灌后的上下文给出 `M7` 买入时机结论；`hone-feishu.release-restart.log` 记录同轮 `search_tool_calls=0`、`combined_tool_calls=0`，说明这轮回答并没有新搜索纠偏，而是直接在被污染后的上下文里完成
    - 这两个样本表明：即使 summary 不再伪造全新投研报告，只要它继续以 `role=user` 回灌，就仍会在 scheduler 任务串行执行与普通直聊澄清场景中重写后续 prompt 的事实边界
- - 2026-04-17 01:02-01:06 最近一小时复核：
+- 2026-04-17 01:02-01:06 最近一小时复核：
    - `session_id=Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
    - `2026-04-17T01:02:59.378263+08:00` 会话再次自动 compact，并写回 `role=user` 的 `【Compact Summary】...`
    - 这条 summary 仍是完整的 `股票关注表`，包含 `MU / WDC / TEM / RKLB` 等标的，以及“助手的观点 / 用户的观点”两列，显然不是系统内部压缩元数据
    - 紧接着 `2026-04-17T01:06:39.078023+08:00` assistant 正式回复用户“帮我分析一下hims”；同轮 `web.log` 记录 `search_tool_calls=2`、`answer_tool_calls=0`、`combined_tool_calls=2`
    - 这说明即使进入了新的直聊分析请求，compact summary 仍先以用户消息身份参与本轮上下文组装；问题已不限于 scheduler 串话，也继续存在于普通 direct session 的压缩恢复路径中
+ - 2026-04-19 06:52-06:54 最近一小时复核：
+   - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+   - `2026-04-19T06:52:23.700401+08:00` 会话写入 `system` 消息 `Conversation compacted`
+   - 紧接着 `2026-04-19T06:52:23.700584+08:00`，`session_messages` 再次落入 `role=user` 的 `【Compact Summary】...`，内容不是系统态摘要元数据，而是带明确投资结论的长文：
+     - “光模块产业链的核心投资机会已从三巨头……向上游扩散”
+     - “真正值得重点研究的是上游材料端的估值洼地机会”
+     - 还继续枚举 `源杰科技 / 长光华芯 / 云南锗业` 等标的与产业链判断
+   - 同一会话在 `2026-04-19T06:54:13.701580+08:00` 已继续产出正式 assistant 回答，说明这条 `role=user` 的 compact summary 不是历史遗留脏数据，而是就在本轮 auto compact 后再次进入真实会话上下文
+   - 这与文档里“2026-04-17 已改存 `role=system`、restore 跳过”的修复结论直接冲突，说明生产链路至少在消息落库层面仍未收口；即便最终回答表面可读，压缩摘要角色错误仍在持续污染真实 transcript
 
 ## 端到端链路
 
@@ -177,7 +186,7 @@
    - prompt 组装优先使用 `session.summary`，不会继续引用旧的 compact summary 消息正文
    - compact boundary 后的 restore 不再把 compact summary 当成普通用户消息恢复
    - `recv_extra` 仍然位于历史摘要之前，避免群聊补充上下文顺序被这次修复破坏
-5. 代码层修复已完成并通过 crate 级测试；当前文档状态更新为 `Fixed`。是否进一步升为 `Closed`，仍取决于后续真实 Feishu / scheduler 流量是否不再复现串话样本。
+5. 代码层修复已完成并通过 crate 级测试；当时文档曾更新为 `Fixed`。但 2026-04-19 06:52 的真实 Feishu 会话再次落入 `role=user` 的 `【Compact Summary】`，说明“代码修复通过测试”并不等于线上 transcript 已恢复。
 
 ## 历史修复情况（2026-04-16，已确认未收口）
 
@@ -213,3 +222,4 @@
 
 1. 后续仍应优先补一条 scheduler 跨任务回归测试，直接锁住“前一轮 compact summary 不得串入后一轮独立任务答案”的正式 contract。
 2. 如果真实流量里仍观测到摘要幻觉数字，可再补更强的 summary-output contract test，直接约束不得输出历史中未出现的证券价格、持仓数量和目标价。
+3. 需要优先核对当前线上写库路径与 prompt 组装路径是否出现分叉：即便 runner restore 已跳过 compact summary，只要 `session_messages` 仍把摘要落成 `role=user`，后续导出、排障和任何依赖消息库的能力都会继续读到受污染 transcript。
