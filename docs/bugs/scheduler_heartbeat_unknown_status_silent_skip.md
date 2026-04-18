@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 16:30-17:00 最近一小时新增样本：
+    - `run_id=2517`，`job_id=j_39a96b7a`（`ORCL 大事件监控`），`executed_at=2026-04-18T16:30:18.322786+08:00`，先落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2529`，同一任务在 `2026-04-18T17:00:28.333331+08:00` 又恢复为 `noop + skipped_noop`，说明同一 heartbeat 模板仍会在相邻半小时窗口间自发抖动
+    - `run_id=2519`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T16:30:20.971271+08:00`，上一轮还是 `noop + skipped_noop`，但 `detail_json.raw_preview` 仍以 `<think>` 起头并逐项比较 11 只股票触发价，协议仍处于脆弱态
+    - `run_id=2526`，同一任务在 `2026-04-18T17:00:15.245235+08:00` 再次回落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+    - `run_id=2516`，`job_id=j_fc7749ca`（`ASTS 重大异动心跳监控`），`executed_at=2026-04-18T16:30:16.240430+08:00`，上一轮仍为 `noop + skipped_noop`
+    - `run_id=2528`，同一任务在 `2026-04-18T17:00:19.487727+08:00` 回落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - 同窗 `run_id=2521-2525`、`2527`、`2529-2530` 虽都被记成 `noop + skipped_noop`，但 `detail_json.raw_preview` 仍统一以 `<think>` 起头，并在正文里显式写出“应该返回 `{\"status\":\"noop\"}` 或 `{}`”，说明解析器仍依赖从污染输出尾部侥幸提取合法状态
+    - 这组 `16:30 -> 17:00` 样本说明：最新一小时没有出现新的独立根因，但公共 heartbeat 输出契约仍在扩散到不同任务模板。`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控` 在 17:00 窗口接力回落成 `JsonUnknownStatus`，`ORCL 大事件监控` 则继续表现为“上一轮失败、下一轮自恢复”的抖动态
   - 2026-04-18 15:00-16:00 最近一小时新增样本：
     - `run_id=2486`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T15:00:20.997410+08:00`，继续落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`；`raw_preview` 仍以 `<think>` 起头并逐项比对 11 只股票触发价，说明业务判断完成后仍未稳定收口到合法状态 JSON
     - `run_id=2498`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T15:30:20.195708+08:00`，在 `15:00` 没有失败落账的前提下，30 分钟后又回落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
