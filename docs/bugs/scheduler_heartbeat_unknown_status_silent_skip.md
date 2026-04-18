@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 09:31-10:01 最近一小时新增样本：
+    - `run_id=2383`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T10:01:10.413014+08:00`，在 `09:31` 还是 `noop + skipped_noop` 的前提下，30 分钟后再次回落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2386`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T10:01:17.179309+08:00`，上一轮 `09:31` 还是 `JsonNoop`，本轮重新落成 `execution_failed + skipped_error`
+    - `run_id=2388`，`job_id=j_39a96b7a`（`ORCL 大事件监控`），`executed_at=2026-04-18T10:01:21.747894+08:00`，同轮继续落成 `execution_failed + skipped_error`
+    - 同一 `10:01` 窗口里，`run_id=2380`（`全天原油价格3小时播报`）、`2381`（`小米30港元破位预警`）、`2382`（`CAI破位预警`）、`2384`（`TEM破位预警`）、`2387`（`Monitor_Watchlist_11`）、`2389`（`TEM大事件心跳监控`）虽然被记成 `noop + skipped_noop`，但 `detail_json.raw_preview` 仍全部以 `<think>` 起头并夹带大段自由文本分析，不满足 heartbeat 仅返回单段 JSON 的协议要求
+    - `run_id=2383.detail_json.raw_preview` 已直接写出“数据获取失败，返回空结果。根据规则，如果我不确定是否满足条件，必须返回 noop”，但最终只返回 `<think>...</think>\n\n{}`；`run_id=2388.detail_json.raw_preview` 则完整输出了 ORCL 的行情与新闻分析，却仍未稳定收口到合法状态 JSON
+    - `data/runtime/logs/hone-feishu.release-restart.log` 在 `2026-04-18T01:31:13.733929Z`（`Monitor_Watchlist_11`）、`01:31:23.071534Z`（`ORCL 大事件监控`）记录 `parse failure escalated`，并在 `2026-04-18T02:01:19` 至 `02:01:23` 对应 `10:01` 窗口继续出现同根因失败；`data/sessions.sqlite3` 的最新 `cron_job_runs` 也同步显示 `09:31 -> 10:01` 出现“上一轮侥幸 noop、下一轮重新 execution_failed”的抖动
+    - 这组 `09:31 -> 10:01` 样本说明：缺陷在最近一小时仍处于活跃状态，且失败任务会在单标的阈值、事件监控和 watchlist 模板之间持续漂移；即便某些任务本轮被解析成 `JsonNoop`，其输出协议仍然是受污染状态，不能视为已恢复
   - 2026-04-18 08:31-09:01 最近一小时新增样本：
     - `run_id=2350`，`job_id=j_cec2900d`（`CAI破位预警`），`executed_at=2026-04-18T08:31:10.868035+08:00`，落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2353`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T08:31:14.536237+08:00`，同轮再次落成 `execution_failed + skipped_error`
