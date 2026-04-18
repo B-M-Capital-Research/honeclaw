@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 00:01 最近一小时最新样本：
+    - `2026-04-18T23:31:13-23:31:25+08:00` 同一批 heartbeat 中，`run_id=2657`（`小米破位预警`）、`run_id=2659`（`ORCL 大事件监控`）、`run_id=2662`（`TEM大事件心跳监控`）再次落成 `execution_failed + skipped_error`
+    - 三条失败样本的 `error_message` 都是 `heartbeat 输出包含未知状态，任务已标记失败`
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-18 23:31:13.532` `job=小米破位预警` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 明确写出“当前价格 32 港元并没有跌破 30 港元，所以条件未满足。我需要返回 noop 状态”，但最终只返回 `<think>...</think>\n\n{}`
+      - `2026-04-18 23:31:17.146` `job=ORCL 大事件监控` 记录 `parse_kind=JsonUnknownStatus`，正文已完成行情与新闻判断，却仍没收口到合法状态 JSON
+      - `2026-04-18 23:31:25.886` `job=TEM大事件心跳监控` 记录 `parse_kind=JsonUnknownStatus`，正文已明确枚举 `Gilead Sciences`、`Predicta Biosciences` 等事件判断，但最终仍因未知状态整轮跳过
+    - 仅过 30 分钟，到 `2026-04-19T00:01:08-00:01:22+08:00`，同批任务又全部恢复为 `noop + skipped_noop`：
+      - `run_id=2666`（`小米破位预警`）、`2668`（`TEM大事件心跳监控`）、`2671`（`ORCL 大事件监控`）均恢复为 `noop + skipped_noop`
+      - 同轮 `run_id=2667`（`RKLB异动监控`）、`2670`（`Monitor_Watchlist_11`）也都恢复为 `noop + skipped_noop`
+      - 但 `web.log` 仍显示这些任务的 `raw_preview` 继续以 `<think>` 开头、`starts_with_json=false`；恢复只是再次侥幸从尾部提取到了 `{\"status\":\"noop\"}`，并非上游协议已恢复
+    - 这组 `23:31 -> 00:01` 样本说明：缺陷仍是活跃抖动态。失败任务已从上一轮的 `RKLB` 漂移到 `小米/ORCL/TEM`，随后又在下一轮自行恢复，公共 heartbeat 结构化输出契约仍未收口
   - 2026-04-18 23:01 最近一小时最新样本：
     - `run_id=2634`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T23:01:20.362+08:00`，再次落成 `execution_failed + skipped_error`
     - 同窗 `TEM破位预警`、`CAI破位预警`、`小米破位预警` 等任务虽被记为 `noop + skipped_noop`，但运行日志仍显示 `starts_with_json=false` 且原始输出以 `<think>` 开头，说明上游结构化输出契约并未恢复
