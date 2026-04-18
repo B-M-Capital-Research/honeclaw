@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 06:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 05:30 -> 06:00` 连续两个窗口继续出现“上一轮恢复、下一轮又漂移失败”的抖动态：
+      - `run_id=2781`（`RKLB异动监控`）在 `2026-04-19T05:30:18+08:00` 落成 `execution_failed + skipped_error`
+      - `run_id=2783`（`ORCL 大事件监控`）在 `2026-04-19T05:30:20+08:00` 同轮落成 `execution_failed + skipped_error`
+      - 到 `06:00` 窗口，失败对象又切换为 `run_id=2790`（`RKLB异动监控`）与 `run_id=2792`（`Monitor_Watchlist_11`），分别在 `2026-04-19T06:00:21+08:00`、`2026-04-19T06:00:24+08:00` 落成 `execution_failed + skipped_error`
+      - 同一 `06:00` 批次里，`run_id=2795`（`TEM大事件心跳监控`）恢复为 `noop + skipped_noop`，`run_id=2794`（`全天原油价格3小时播报`）恢复为 `completed + sent`；说明故障仍在同批 heartbeat 模板间漂移，而不是集中在单一任务
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-19 06:00:21.479` 记录 `job=RKLB异动监控`、`parse_kind=JsonUnknownStatus`，`raw_preview` 先输出行情、新闻和并购判断，再被升级为 `parse failure escalated`
+      - `2026-04-19 06:00:24.974` 记录 `job=Monitor_Watchlist_11`、`parse_kind=JsonUnknownStatus`，`raw_preview` 先逐项枚举 `HIMS / MU / RKLB / LMND ...` 的阈值比较，随后失败收口
+      - 同窗恢复为 `JsonNoop` 的 `TEM大事件心跳监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 也仍满足 `starts_with_json=false`，`raw_preview` 均以 `<think>` 开头，说明“成功”依旧建立在受污染输出尾部侥幸提取 JSON，而不是协议恢复
+    - 这组 `05:30 -> 06:00` 最新窗口说明：故障仍在生产链路活跃。上一轮失败的 `ORCL 大事件监控` 到下一轮恢复，但 `Monitor_Watchlist_11` 与 `RKLB异动监控` 又重新跌回 `JsonUnknownStatus`；heartbeat 公共输出契约仍未收口
   - 2026-04-19 05:01 最近一小时最新样本：
     - `2026-04-19T04:30:09.833273+08:00`，`run_id=2758`（`小米破位预警`）先落成 `execution_failed + skipped_error`
     - 仅过约 30 分钟，到 `2026-04-19T05:00:19.791623+08:00` 与 `2026-04-19T05:00:23.302673+08:00`，故障又漂移到 `run_id=2772`（`Monitor_Watchlist_11`）与 `run_id=2773`（`TEM大事件心跳监控`），两条都再次落成 `execution_failed + skipped_error`
