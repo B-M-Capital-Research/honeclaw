@@ -7,6 +7,10 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052`
+    - 2026-04-18 最近一小时新增样本：
+      - `2026-04-18T12:15:59.407329+08:00` 用户再次直接追问：`预测联合健康财报`
+      - `2026-04-18T12:16:35.750413+08:00` / `12:16:35.750432+08:00` 会话再次写入 `Conversation compacted` 与 `【Compact Summary】...`，summary 继续以 `role=system` 正常落库
+      - `2026-04-18T12:16:58.610053+08:00` assistant 第四次返回同一条“当前会话上下文过长...仍无法继续”文案，说明问题在最新一小时仍处于活跃状态
     - `2026-04-17T19:22:29.098516+08:00` 用户提问：`请预测联合健康财报会怎样？`
     - `2026-04-17T19:23:32.488338+08:00` assistant 返回：`当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。`
     - `2026-04-17T22:13:12.458203+08:00` 用户再次追问：`请预测联合健康这一季的财报会怎样？`
@@ -15,6 +19,11 @@
     - `2026-04-17T23:55:10.242164+08:00` / `23:55:10.242188+08:00` 会话写入 `Conversation compacted` 与 `【Compact Summary】...`，且 compact summary 已正确以 `role=system` 落库
     - `2026-04-17T23:55:32.986749+08:00` assistant 仍第三次返回同一条“当前会话上下文过长...仍无法继续”文案，用户始终没有拿到 `UNH` 财报预测结果
   - `data/runtime/logs/hone-feishu.release-restart.log`
+    - `2026-04-18T04:16:22.952Z` 再次记录 `context overflow detected, compacting and retrying`
+    - `2026-04-18T04:16:35.753Z` 记录 `context overflow recovery compacted=true`，说明本轮确实又执行了一次自动 compact
+    - `2026-04-18T04:16:44.558Z` compact 后重试先执行 `local_search_files query="UnitedHealth UNH" path="company_profiles"`，立即报 `文件不存在: company_profiles`
+    - `2026-04-18T04:16:58.491Z` 重试后的 search 再次落成 `stage=search.done success=false iterations=2 tool_calls=2`
+    - `2026-04-18T04:16:58.585Z` 最终仍以同一条产品化 fallback 收口，没有产出 `UNH` 财报预测结果
     - `2026-04-17T15:54:44.989342Z` 同轮搜索阶段先执行 `local_search_files query="UnitedHealth UNH" path="company_profiles"`，立即报 `文件不存在: company_profiles`
     - `2026-04-17T15:54:59.747075Z` 记录 `context overflow detected, compacting and retrying`
     - `2026-04-17T15:55:10.246979Z` 记录 `context overflow recovery compacted=true`，本轮已完成自动 compact
@@ -42,6 +51,7 @@
 - 旧的“底层报错外泄”问题已经修复，最新会话里用户看到的是产品化提示，而不是 provider 原始错误。
 - 但这轮真实样本证明，自动 compact 只是把失败文案变得可接受，并没有恢复主功能链路。
 - 同一个 `UNH` 话题在 `19:22`、`22:13`、`23:54` 三次尝试中都没有产出答案，说明这不是单次 provider 抖动，而是会话一旦进入某种高负载状态后，会持续卡在“compact 后仍无法继续”的粘滞失败。
+- `2026-04-18 12:15` 的第四次复现说明，这种粘滞失败已经跨越到第二天中午；即使用户把问题压缩成更短的 `预测联合健康财报`，系统依然在 compact 后停在相同 fallback。
 - 最新一轮 `23:55` 的 compact summary 已经是 `role=system`，表明这也不是旧的 compact summary 污染回灌问题原样回归。
 
 ## 用户影响

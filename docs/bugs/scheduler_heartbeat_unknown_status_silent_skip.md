@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 12:31-13:00 最近一小时新增样本：
+    - `run_id=2436`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T12:31:12.984747+08:00`，再次落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2439`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T12:31:16.176111+08:00`，这一轮短暂恢复为 `noop + skipped_noop`，但 `detail_json.raw_preview` 仍以 `<think>` 起头并夹带 11 只股票逐项判断，`starts_with_json=false`
+    - `run_id=2446`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T13:00:21.651411+08:00`，30 分钟后再次保持 `execution_failed + skipped_error`
+    - `run_id=2447`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T13:00:21.701158+08:00`，从上一轮 `12:31` 的 `JsonNoop` 又回落成 `JsonUnknownStatus + execution_failed`
+    - 同一窗口里 `run_id=2431-2435`、`2440-2445`、`2448-2450` 虽分别被记为 `noop + skipped_noop`，但 `web.log` 在 `12:31:04-12:31:16` 与 `13:00:05-13:00:30` 仍持续记录 `starts_with_json=false`，说明最新一小时依旧依赖从 `<think>` 污染输出尾部侥幸提取状态
+    - 这组 `12:31 -> 13:00` 样本说明：故障并未收敛到“只有协议污染、不再漏提醒”；`Monitor_Watchlist_11` 与 `RKLB异动监控` 仍在相邻窗口之间来回摆动，活跃影响仍在持续
   - 2026-04-18 10:31-11:01 最近一小时新增样本：
     - `run_id=2394`（`小米破位预警`）、`2395`（`ASTS 重大异动心跳监控`）、`2396`（`ORCL 大事件监控`）、`2399`（`RKLB异动监控`）、`2404`（`小米破位预警`）、`2405`（`RKLB异动监控`）、`2406`（`ORCL 大事件监控`）、`2409`（`ASTS 重大异动心跳监控`）在 `10:31` 与 `11:01` 两个窗口都暂时恢复为 `noop + skipped_noop`
     - 但对应 `data/runtime/logs/web.log` 在 `2026-04-18 10:31:22.681`（`Monitor_Watchlist_11`）、`10:31:26.888`（`TEM大事件心跳监控`）、`11:01:21.255`（`ORCL 大事件监控`）、`11:01:21.705`（`Monitor_Watchlist_11`）仍持续记录 `starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头并夹带大段自由文本分析
