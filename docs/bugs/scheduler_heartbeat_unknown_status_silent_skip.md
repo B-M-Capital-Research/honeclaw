@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 21:31-22:01 最近一小时新增样本：
+    - `run_id=2621`，`job_id=j_39a96b7a`（`ORCL 大事件监控`），`executed_at=2026-04-18T21:31:22.039+08:00`，落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+    - `run_id=2619`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T21:31:17.808+08:00`，继续落成 `execution_failed + skipped_error`
+    - `run_id=2624`，`job_id=j_27495ea4`（`TEM破位预警`），`executed_at=2026-04-18T22:01:07.218+08:00`，新回落成 `execution_failed + skipped_error`
+    - `run_id=2630`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T22:01:21.635+08:00`，同窗也落成 `execution_failed + skipped_error`
+    - 同一 `22:01` 窗口里，`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 与 `TEM大事件心跳监控` 又恢复为 `noop + skipped_noop`，说明故障继续在不同 heartbeat 模板之间漂移，而不是稳定固定在单条任务
+    - `run_id=2624.detail_json.raw_preview` 已明确写出“当前价远高于触发价，因此条件未满足，应返回 noop”，但最终只返回 `<think>...</think>\n\n{}`
+    - `run_id=2630.detail_json.raw_preview` 则在正文中明确提到 `4/16 完成 Mynaric 收购（这是重大并购/基本面消息！）`，却仍没有稳定收口到合法状态 JSON，导致本应评估是否触发的监控被整轮跳过
+    - 这组 `21:31 -> 22:01` 样本说明：最新小时窗里故障仍在活跃扩散，受影响任务从 `Monitor_Watchlist_11` 漂移到 `ORCL / TEM / RKLB`，同时又伴随部分任务自行恢复，公共 heartbeat 输出契约仍处于抖动态
   - 2026-04-18 20:01-21:01 最近一小时新增样本：
     - `run_id=2604`，`job_id=j_654aef9b`（`小米30港元破位预警`），`executed_at=2026-04-18T21:01:10.496685+08:00`，落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
     - `run_id=2606`，`job_id=j_fc7749ca`（`ASTS 重大异动心跳监控`），`executed_at=2026-04-18T21:01:16.178310+08:00`，同轮也落成 `execution_failed + skipped_error`

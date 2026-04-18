@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
+    - 2026-04-18 21:43-21:45 最新样本：
+      - `session_id=Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1`
+      - `2026-04-18T21:43:16.972+08:00` 用户在同一条 Feishu 直聊追问：`预判cai、tem近期的财报情况？`
+      - `2026-04-18T21:44:35.880+08:00` 会话再次写入 `Conversation compacted` 与 `【Compact Summary】...`，summary 继续以 `role=system` 正常落库
+      - `2026-04-18T21:45:08.918+08:00` assistant 仍返回同一条“当前会话上下文过长...仍无法继续”文案；这次失败对象已不再是 `UNH`，而是新的 `CAI/TEM` 财报预判请求
     - `session_id=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052`
     - 2026-04-18 最近一小时新增样本：
       - `2026-04-18T12:15:59.407329+08:00` 用户再次直接追问：`预测联合健康财报`
@@ -19,6 +24,11 @@
     - `2026-04-17T23:55:10.242164+08:00` / `23:55:10.242188+08:00` 会话写入 `Conversation compacted` 与 `【Compact Summary】...`，且 compact summary 已正确以 `role=system` 落库
     - `2026-04-17T23:55:32.986749+08:00` assistant 仍第三次返回同一条“当前会话上下文过长...仍无法继续”文案，用户始终没有拿到 `UNH` 财报预测结果
   - `data/runtime/logs/hone-feishu.release-restart.log`
+    - `2026-04-18T13:43:51.261Z` 记录 `context overflow detected, compacting and retrying`
+    - `2026-04-18T13:44:35.880Z` 记录 `context overflow recovery compacted=true`，说明这轮 `CAI/TEM` 新问题也确实又执行了一次自动 compact
+    - `2026-04-18T13:44:47.820Z` compact 后重试仅重新执行 `data_fetch earnings_calendar`
+    - `2026-04-18T13:45:08.834Z` 重试后的 search 再次落成 `stage=search.done success=false iterations=2 tool_calls=1`
+    - `2026-04-18T13:45:08.918Z` 最终仍以同一条产品化 fallback 收口，没有产出 `CAI/TEM` 财报预判结果
     - `2026-04-18T04:16:22.952Z` 再次记录 `context overflow detected, compacting and retrying`
     - `2026-04-18T04:16:35.753Z` 记录 `context overflow recovery compacted=true`，说明本轮确实又执行了一次自动 compact
     - `2026-04-18T04:16:44.558Z` compact 后重试先执行 `local_search_files query="UnitedHealth UNH" path="company_profiles"`，立即报 `文件不存在: company_profiles`
@@ -52,6 +62,7 @@
 - 但这轮真实样本证明，自动 compact 只是把失败文案变得可接受，并没有恢复主功能链路。
 - 同一个 `UNH` 话题在 `19:22`、`22:13`、`23:54` 三次尝试中都没有产出答案，说明这不是单次 provider 抖动，而是会话一旦进入某种高负载状态后，会持续卡在“compact 后仍无法继续”的粘滞失败。
 - `2026-04-18 12:15` 的第四次复现说明，这种粘滞失败已经跨越到第二天中午；即使用户把问题压缩成更短的 `预测联合健康财报`，系统依然在 compact 后停在相同 fallback。
+- `2026-04-18 21:45` 的最新样本进一步说明，这种粘滞失败并不依赖 `UNH` 这个具体主题；同一会话切到新的 `CAI/TEM` 财报预判后，compact 成功执行但 search 仍再次失败，用户继续只拿到统一 fallback。
 - 最新一轮 `23:55` 的 compact summary 已经是 `role=system`，表明这也不是旧的 compact summary 污染回灌问题原样回归。
 
 ## 用户影响
@@ -65,6 +76,7 @@
 - 旧缺陷修复后，`AgentSession` 已能识别超窗并自动 compact；当前问题更像是 compact 粒度和保留窗口仍不足以让新话题顺利脱离旧上下文负担。
 - 最新日志里 compact 后仍保留 6 条 recent items，且重试 search 继续携带画像读取与多次工具调用，说明 prompt 体积或上下文噪声在 retry 后仍可能超出可用预算。
 - `company_profiles` 路径错误同时出现在这轮重试前，说明无效工具尝试也在放大 search 阶段的上下文和耗时，但它更像放大器，不足以单独解释“连续三次都无法完成回答”。
+- `2026-04-18 21:45` 这轮没有再次命中 `company_profiles`，但 compact 后 search 依旧失败，说明该缺陷已经不再只依赖画像路径错误放大；更底层的问题仍是 compact 后保留窗口与重试搜索预算不足。
 - 因此当前更可能是“会话瘦身策略不足 + 多代理搜索重试后上下文再膨胀”的组合问题，而不是单一 provider 临时抖动。
 
 ## 下一步建议
