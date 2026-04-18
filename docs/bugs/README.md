@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-18 10:03 CST
+最后更新：2026-04-18 11:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：14
+- 活跃待修复：15
 - 已修复 / 已关闭：29
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -34,7 +34,8 @@
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-18 08:32 的创新药日报再次复现：4 次 `hone_data_fetch` 全部成功后，最终正文仍声称“港股与A股数据底层链路暂时阻断” | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | New | 2026-04-17 23:54 用户已明确说“开启新的话题：请预测联合健康的财报”，系统完成 compact 重试后仍只返回统一 fallback，连续三次未产出答案 | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixing | 2026-04-18 当前工作区已出现 provider 级重试补丁与测试草案，但修复尚未以已提交代码进入仓库主线，也未完成最新真实样本复核 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 10:01 最新窗口仍未收口：`小米破位预警`、`RKLB异动监控`、`ORCL 大事件监控` 再次回落成 `execution_failed + skipped_error`，其余模板仍持续输出 `<think>` 包裹的伪 JSON | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 10:31-11:01 最近窗口暂无新增 `skipped_error`，但原始输出仍持续带 `<think>` 污染；`TEM` 触发态甚至在 10:31 外溢成原始 JSON 投递 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | New | 2026-04-18 10:31 的 `TEM大事件心跳监控` 已送达成功，但 `response_preview` 与 `deliver_preview` 都直接等于 `{\"trigger\":...}`；11:01 同任务又恢复自然语言 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后缺少自动重试与降级，提醒整轮失败 | P2 | Fixing | 2026-04-18 当前工作区已出现共享 provider 重试补丁与测试草案，但尚未以已提交代码进入仓库主线，也未完成 heartbeat 真实样本复核 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 20:01-20:31 最新窗口中 `RKLB_动态监控` 连续两轮超窗，`TEM_动态监控` 同轮失败后 30 分钟内又恢复，抖动仍在持续 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 

@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 10:31-11:01 最近一小时新增样本：
+    - `run_id=2394`（`小米破位预警`）、`2395`（`ASTS 重大异动心跳监控`）、`2396`（`ORCL 大事件监控`）、`2399`（`RKLB异动监控`）、`2404`（`小米破位预警`）、`2405`（`RKLB异动监控`）、`2406`（`ORCL 大事件监控`）、`2409`（`ASTS 重大异动心跳监控`）在 `10:31` 与 `11:01` 两个窗口都暂时恢复为 `noop + skipped_noop`
+    - 但对应 `data/runtime/logs/web.log` 在 `2026-04-18 10:31:22.681`（`Monitor_Watchlist_11`）、`10:31:26.888`（`TEM大事件心跳监控`）、`11:01:21.255`（`ORCL 大事件监控`）、`11:01:21.705`（`Monitor_Watchlist_11`）仍持续记录 `starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头并夹带大段自由文本分析
+    - `run_id=2398`（`TEM大事件心跳监控`）虽然在 `2026-04-18T10:31:30.506141+08:00` 落成 `completed + sent + delivered=1`，但 `detail_json.scheduler.deliver_preview` 与 `response_preview` 都直接等于原始 JSON 对象字符串 `{\"trigger\": ...}`；直到 `run_id=2408`（`11:01:27`）才恢复为自然语言提醒
+    - 这说明最近一小时里“未知状态导致 skipped_error”的失败样本暂时没有继续扩大，但 heartbeat 输出协议仍处于脆弱状态：解析器仍需从 `<think>` 污染输出里侥幸提取状态，而且在已触发分支上已经开始外溢成原始 JSON 投递；该部分另见 [`scheduler_heartbeat_trigger_json_payload_leak.md`](./scheduler_heartbeat_trigger_json_payload_leak.md)
   - 2026-04-18 09:31-10:01 最近一小时新增样本：
     - `run_id=2383`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T10:01:10.413014+08:00`，在 `09:31` 还是 `noop + skipped_noop` 的前提下，30 分钟后再次回落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2386`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T10:01:17.179309+08:00`，上一轮 `09:31` 还是 `JsonNoop`，本轮重新落成 `execution_failed + skipped_error`
