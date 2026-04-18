@@ -258,6 +258,18 @@
       - `2026-04-17 06:00:23.597` 与 `06:00:27.702` 的 `web.log` 分别记录 `Monitor_Watchlist_11` 与 `存储板块加仓信号监控` 均为 `parse_kind=JsonNoop`，说明最新一小时窗口里 heartbeat 输出协议未再回落到 `JsonUnknownStatus`
       - 这轮证据表明：问题仍未达到可关闭标准，因为 `<think>` 前缀和结构化收口耦合仍在；但最新三轮（`05:00`、`05:30`、`06:00`）都未再复现未知状态，当前表现已从“每小时抖动”收敛为“需继续观察是否真正稳定”
   - 2026-04-17 06:00-07:00 最近一小时新增样本：
+
+## 最新复核（2026-04-18 19:01 CST）
+
+- 最近一小时新增失败样本仍然明确存在，并且继续命中相同根因：
+  - `run_id=2549`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T18:01:36.354676+08:00`，落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+  - `run_id=2566`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T19:01:13.444291+08:00`，再次落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+- 最近两小时内受影响任务没有收敛到单一模板，`ORCL 大事件监控`（`run_id=2517`，`16:30`）与 `RKLB异动监控`（`run_id=2498`，`15:30`）也都出现了同类 `JsonUnknownStatus` 失败，说明这仍是公共 heartbeat 输出契约问题。
+- 对应 `data/runtime/logs/web.log`：
+  - `2026-04-18 18:01:36.353` `job_id=j_671d3cd3` 再次记录 `parse_kind=JsonUnknownStatus`
+  - `2026-04-18 19:01:13.443` `job_id=j_ab7e8fb1` 再次记录 `parse_kind=JsonUnknownStatus`，并继续升级为 `parse failure escalated`
+  - 同一轮随后仍打印 `心跳任务未命中，本轮不发送`，说明数据库已按失败落账，但调度/渠道日志口径仍把失败叙述成普通 noop
+- 结论：本单仍保持 `New`，且当前活跃影响面已经覆盖 `Monitor_Watchlist_11`、`小米破位预警`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`RKLB异动监控`，需要继续按公共链路缺陷处理。
       - `run_id=2082`（`全天原油价格3小时播报`）、`2083`（`小米30港元破位预警`）、`2084`（`Monitor_Watchlist_11`）、`2085`（`存储板块加仓信号监控`）在 `06:30` 这一轮分别落成 `JsonNoop / JsonNoop / JsonNoop / JsonNoop`
       - `run_id=2086`（`全天原油价格3小时播报`）、`2087`（`小米30港元破位预警`）、`2088`（`Monitor_Watchlist_11`）在 `07:00` 新一轮继续分别落成 `JsonNoop / JsonNoop / JsonNoop`
       - `2026-04-17 07:00:24.629` 的 `web.log` 记录 `job_id=j_ab7e8fb1` `parse_kind=JsonNoop`，`raw_preview` 仍以 `<think>` 开头并夹带 11 只股票逐项判断，说明这轮只是尾部状态 JSON 被成功提取，并非输出已经完全干净收口

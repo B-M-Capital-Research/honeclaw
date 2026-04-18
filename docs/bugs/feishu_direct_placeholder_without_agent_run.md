@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 13:40 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Fixed
 - **证据来源**:
   - 最近真实会话：
     - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
@@ -131,3 +131,14 @@
   - `cargo test -p hone-feishu`
   - `cargo test -p hone-channels`
 - 因为当前还没有新的真实 Feishu busy 样本，本单继续保持 `Fixing`。
+
+## 最新复核（2026-04-18 19:01 CST）
+
+- 最新真实 Feishu busy 样本来自 `data/runtime/logs/web.log`：
+  - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
+  - `2026-04-18 19:01:09.604` 当前正在处理的 `AMKR` 请求正常发送了 placeholder，这条属于活跃主请求本身
+  - `2026-04-18 19:01:33.597` 同一 session 上新的后续消息命中 `step=direct.busy ... detail=sent`
+  - 同一时间紧接着打印 `私聊触发命中 busy，已跳过 placeholder`
+  - 该时间点之后没有新的 `reply.placeholder` 跟在这条 busy 样本后面，说明最新 live 链路里 busy 短路已经先于 placeholder 生效
+- `data/sessions.sqlite3` 中同一 session 的前一条用户消息 `深度分析AMKR，对基本面，技术面，财务，估值进行分析` 也已正常持久化，未再出现“placeholder 已发出但消息没有进入主链路”的旧症状。
+- 基于这条真实线上复核样本，本单状态从 `Fixing` 更新为 `Fixed`。若后续再次观察到“命中 busy 后仍继续发送 placeholder”的同根因样本，再重新打开本单。
