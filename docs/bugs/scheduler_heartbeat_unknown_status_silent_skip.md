@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-18 08:31-09:01 最近一小时新增样本：
+    - `run_id=2350`，`job_id=j_cec2900d`（`CAI破位预警`），`executed_at=2026-04-18T08:31:10.868035+08:00`，落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
+    - `run_id=2353`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T08:31:14.536237+08:00`，同轮再次落成 `execution_failed + skipped_error`
+    - 同一 `08:31` 窗口中，`run_id=2349`（`ORCL 大事件监控`）、`2351`（`ASTS 重大异动心跳监控`）、`2352`（`TEM大事件心跳监控`）、`2354`（`小米破位预警`）、`2355`（`Monitor_Watchlist_11`）虽然分别被解析成 `JsonNoop`，但 `raw_preview` 仍全部以 `<think>` 起头并夹带自由文本分析，不符合 heartbeat 只返回单段 JSON 的协议要求
+    - `run_id=2361`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T09:01:12.234350+08:00`，在上一轮 `08:31` 还是 `noop + skipped_noop` 的前提下，30 分钟后又回落成 `execution_failed + skipped_error`
+    - `run_id=2362`，`job_id=j_1241aad0`（`RKLB异动监控`），`executed_at=2026-04-18T09:01:13.283499+08:00`，同轮再次落成 `execution_failed + skipped_error`
+    - `run_id=2364`，`job_id=j_39a96b7a`（`ORCL 大事件监控`），`executed_at=2026-04-18T09:01:16.622073+08:00`，从上一轮 `JsonNoop` 回落成 `JsonUnknownStatus + execution_failed`
+    - `run_id=2365`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T09:01:21.030417+08:00`，同轮继续落成 `execution_failed + skipped_error`
+    - 同一 `09:01` 窗口里，`run_id=2366`（`TEM大事件心跳监控`）与 `2367`（`ASTS 重大异动心跳监控`）又被解析成 `JsonTriggered + sent`，但 `raw_preview` 仍以 `<think>` 开头，说明当前并不是协议已恢复，而是解析器仍在从受污染输出里“侥幸提取”尾部 JSON
+    - `data/runtime/logs/web.log` 在 `2026-04-18 08:31:10.866`、`08:31:14.535`、`09:01:12.234`、`09:01:13.283`、`09:01:16.620`、`09:01:21.030` 连续记录 `parse failure escalated`；对应 `小米破位预警` 的 `raw_preview` 甚至已明确写出“条件未满足，按规则输出 noop”，但最终仍只返回 `<think>...</think>\n\n{}`
+    - 这组 `08:31 -> 09:01` 样本说明：缺陷在最近一小时并未收口，反而出现“上一轮部分模板侥幸为 `JsonNoop`、下一轮又有多个模板同步回落为 `JsonUnknownStatus`”的扩大化复现；真实影响已经覆盖 watchlist、单标的阈值和事件心跳同一批任务
   - 2026-04-18 07:31-08:01 最近一小时新增样本：
     - `run_id=2332`，`job_id=j_ab7e8fb1`（`Monitor_Watchlist_11`），`executed_at=2026-04-18T07:31:15.570333+08:00`，继续落成 `execution_failed + skipped_error`，`detail_json.parse_kind=JsonUnknownStatus`
     - `run_id=2337`，`job_id=j_671d3cd3`（`小米破位预警`），`executed_at=2026-04-18T08:01:09.453055+08:00`，在 `07:31` 仍短暂恢复为 `noop + skipped_noop` 的前提下，又回落成 `execution_failed + skipped_error`

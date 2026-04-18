@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-18 08:03 CST
+最后更新：2026-04-18 09:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -31,10 +31,10 @@
 | Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | New | 2026-04-17 07:48 真实会话复现；用户说“分析目前lite价值”后系统直接输出 Litecoin 分析，需用户二次纠正为 `LITE Lumentum` | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
 | Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | New | 2026-04-17 14:53 真实会话复现；当前 user turn 是“美股DRAM详细分析”，但 search 从首个工具调用起就锁定 `SNDK`，最终整轮答成 SanDisk 个股分析 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-17 23:54 `UNH` 新话题会话仍先命中 `company_profiles` 不存在，并与 `context_overflow_recovery` 叠加放大长链路降级 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
-| Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-17 11:57 真实会话里两次 `data_fetch quote` 成功后，最终答复仍声称“底层行情链路暂时阻断”，与已抓取证据矛盾 | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
+| Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-18 08:32 的创新药日报再次复现：4 次 `hone_data_fetch` 全部成功后，最终正文仍声称“港股与A股数据底层链路暂时阻断” | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | New | 2026-04-17 23:54 用户已明确说“开启新的话题：请预测联合健康的财报”，系统完成 compact 重试后仍只返回统一 fallback，连续三次未产出答案 | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixing | 2026-04-18 当前工作区已出现 provider 级重试补丁与测试草案，但修复尚未以已提交代码进入仓库主线，也未完成最新真实样本复核 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 08:01 最新窗口仍未收口：`Monitor_Watchlist_11` 与 `小米破位预警` 继续落成 `execution_failed + skipped_error`；同轮新增 `ASTS/ORCL/TEM/RKLB` heartbeat 也继续输出 `<think>` 包裹的伪 JSON，只是本轮被侥幸解析成 `noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-18 09:01 最新窗口继续扩大：`小米破位预警`、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11` 同轮回落成 `execution_failed + skipped_error`，其余模板仍持续输出 `<think>` 包裹的伪 JSON | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后缺少自动重试与降级，提醒整轮失败 | P2 | Fixing | 2026-04-18 当前工作区已出现共享 provider 重试补丁与测试草案，但尚未以已提交代码进入仓库主线，也未完成 heartbeat 真实样本复核 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 20:01-20:31 最新窗口中 `RKLB_动态监控` 连续两轮超窗，`TEM_动态监控` 同轮失败后 30 分钟内又恢复，抖动仍在持续 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 
