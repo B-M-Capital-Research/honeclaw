@@ -68,7 +68,7 @@ export function CompanyProfileDetail() {
       }
     >
       {(actor) => (
-        <div class="flex h-full min-h-0 flex-col rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
+        <div class="flex h-full min-h-0 flex-col bg-[color:var(--surface)]">
           <input
             ref={fileInputRef}
             type="file"
@@ -125,57 +125,60 @@ export function CompanyProfileDetail() {
             </div>
           </div>
 
-          <div class="hf-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div class="flex min-h-0 flex-1 overflow-hidden">
+            {/* 左侧：垂直列出当前空间的画像 */}
             <Show when={(profiles.profiles() ?? []).length > 0}>
-              <div class="mb-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-                <div class="mb-3 flex items-center justify-between gap-3">
-                  <div>
+              <div class="flex w-[240px] shrink-0 flex-col border-r border-[color:var(--border)] bg-[color:var(--panel)]">
+                <div class="shrink-0 border-b border-[color:var(--border)] px-4 py-3">
+                  <div class="flex items-center justify-between">
                     <div class="text-sm font-semibold text-[color:var(--text-primary)]">
                       当前空间画像
                     </div>
-                    <div class="mt-1 text-xs text-[color:var(--text-muted)]">
-                      公司切换放到右侧当前空间内部，不再占左边整段列表。
+                    <div class="text-xs text-[color:var(--text-muted)]">
+                      {(profiles.profiles() ?? []).length} 家
                     </div>
-                  </div>
-                  <div class="text-xs text-[color:var(--text-muted)]">
-                    {(profiles.profiles() ?? []).length} 家公司
                   </div>
                 </div>
 
-                <div class="hf-scrollbar flex gap-2 overflow-x-auto pb-1">
-                  <For each={profiles.profiles() ?? []}>
-                    {(item) => (
-                      <button
-                        type="button"
-                        class={[
-                          "min-w-[220px] shrink-0 rounded-lg border px-3 py-2 text-left transition",
-                          profiles.state.currentProfileId === item.profile_id
-                            ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
-                            : "border-[color:var(--border)] bg-[color:var(--surface)] hover:border-[color:var(--accent)]/50",
-                        ].join(" ")}
-                        onClick={() => profiles.selectProfile(item.profile_id)}
-                      >
-                        <div class="truncate text-sm font-medium text-[color:var(--text-primary)]">
-                          {item.title}
-                        </div>
-                        <div class="mt-1 flex items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
-                          <span>{formatDate(item.updated_at)}</span>
-                          <Show
-                            when={profiles.state.highlightedProfileIds.includes(
-                              item.profile_id,
-                            )}
-                          >
-                            <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700">
-                              本次更新
-                            </span>
-                          </Show>
-                        </div>
-                      </button>
-                    )}
-                  </For>
+                <div class="hf-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+                  <div class="flex flex-col gap-1">
+                    <For each={profiles.profiles() ?? []}>
+                      {(item) => (
+                        <button
+                          type="button"
+                          class={[
+                            "w-full rounded-md border px-3 py-2 text-left transition",
+                            profiles.state.currentProfileId === item.profile_id
+                              ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
+                              : "border-transparent bg-transparent hover:bg-[color:var(--surface)] hover:border-[color:var(--border)]",
+                          ].join(" ")}
+                          onClick={() => profiles.selectProfile(item.profile_id)}
+                        >
+                          <div class="truncate text-sm font-medium text-[color:var(--text-primary)]">
+                            {item.title}
+                          </div>
+                          <div class="mt-1 flex items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
+                            <span class="flex-1 truncate">{formatDate(item.updated_at)}</span>
+                            <Show
+                              when={profiles.state.highlightedProfileIds.includes(
+                                item.profile_id,
+                              )}
+                            >
+                              <span class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 font-medium text-[10px] text-emerald-700">
+                                更新
+                              </span>
+                            </Show>
+                          </div>
+                        </button>
+                      )}
+                    </For>
+                  </div>
                 </div>
               </div>
             </Show>
+
+            {/* 右侧：主视图（预览、文档等） */}
+            <div class="hf-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5 bg-[color:var(--surface)]">
 
             <Show when={transferError()}>
               <div class="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
@@ -461,6 +464,7 @@ export function CompanyProfileDetail() {
                 )}
               </Show>
             </Show>
+            </div>
           </div>
         </div>
       )}

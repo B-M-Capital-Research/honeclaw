@@ -50,7 +50,14 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 </p>
 
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="100%">
+  <img src="./resources/hone_page.jpg" alt="Hone Main UI - Chat with your Financial Assistant" width="100%">
+</p>
+
+<p align="center">
+  <img src="./resources/company_profile.png" alt="Company Portraits - Long-Term Research Memory Dashboard" width="100%">
+</p>
+<p align="center">
+  <em>Company Portraits Dashboard: A centralized UI to manage long-term research memories, sync thesis developments from chats, and review your customized company knowledge base.</em>
 </p>
 
 # 3. 🏗️ Getting Started

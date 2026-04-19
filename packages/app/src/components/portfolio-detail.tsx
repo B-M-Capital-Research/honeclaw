@@ -40,7 +40,7 @@ export function PortfolioDetail() {
             when={portfolio.currentActor()}
             fallback={<EmptyState title="从左侧定位主体持仓" description="你可以查看特定渠道主体的投资概况，或者为其手动调整持仓记录。" />}
         >
-            <div class="flex h-full min-h-0 flex-col rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
+            <div class="flex h-full min-h-0 flex-col bg-[color:var(--surface)]">
                 <div class="flex items-center justify-between border-b border-[color:var(--border)] px-6 py-4">
                     <div>
                         <div class="text-xl font-semibold">持仓概览</div>

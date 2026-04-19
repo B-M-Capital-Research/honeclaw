@@ -62,7 +62,7 @@ export function CompanyProfileList() {
   }
 
   return (
-    <div class="flex h-full min-h-0 w-[340px] flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
+    <div class="flex h-full min-h-0 w-[300px] flex-col border-r border-[color:var(--border)] bg-[color:var(--panel)]">
       <div class="border-b border-[color:var(--border)] px-4 py-3">
         <div>
           <div class="text-sm font-semibold tracking-tight">目标用户空间</div>
@@ -87,7 +87,7 @@ export function CompanyProfileList() {
         </Button>
 
         <Show when={profiles.state.manualTargetOpen}>
-          <div class="mt-3 space-y-2 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-3">
+          <div class="mt-3 space-y-2 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-3">
             <Input
               class="h-8 text-xs"
               value={profiles.state.manualTargetChannel}
@@ -156,7 +156,7 @@ export function CompanyProfileList() {
               fallback={
                 <EmptyState
                   title="没有匹配的目标"
-                  description="换个关键词，或者直接手动指定新的 channel / user_id。"
+                  description="换个关键词，直接手动指定。"
                 />
               }
             >
@@ -171,7 +171,7 @@ export function CompanyProfileList() {
                           "w-full rounded-md border p-3 text-left transition",
                           isSelected()
                             ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
-                            : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
+                            : "border-[color:var(--border)] bg-[color:var(--surface)] hover:border-[color:var(--accent)]/50",
                         ].join(" ")}
                         onClick={() => profiles.selectActor(target.actor)}
                       >

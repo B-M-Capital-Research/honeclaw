@@ -34,7 +34,7 @@ export function PortfolioList() {
     const currentKey = () => portfolio.state.currentActorKey
 
     return (
-        <div class="flex h-full min-h-0 w-[320px] flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
+        <div class="flex h-full min-h-0 w-[300px] flex-col border-r border-[color:var(--border)] bg-[color:var(--panel)]">
             <div class="border-b border-[color:var(--border)] px-4 py-3">
                 <div class="flex items-center justify-between">
                     <div>
@@ -43,7 +43,7 @@ export function PortfolioList() {
                     </div>
                     <button
                         type="button"
-                        class="rounded-md border border-[color:var(--border)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--text-primary)]"
+                        class="rounded-md border border-[color:var(--border)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--text-primary)] bg-[color:var(--surface)]"
                         onClick={() => setShowManual((v) => !v)}
                     >
                         {showManual() ? "收起" : "手动输入"}
@@ -53,19 +53,19 @@ export function PortfolioList() {
                 <Show when={showManual()}>
                     <div class="mt-3 space-y-2">
                         <Input
-                            class="h-8 text-xs"
+                            class="h-8 text-xs bg-[color:var(--surface)]"
                             value={draft().channel}
                             onInput={(e) => setDraft((prev) => ({ ...prev, channel: e.currentTarget.value.trim() }))}
                             placeholder="渠道，如 imessage"
                         />
                         <Input
-                            class="h-8 text-xs"
+                            class="h-8 text-xs bg-[color:var(--surface)]"
                             value={draft().user_id}
                             onInput={(e) => setDraft((prev) => ({ ...prev, user_id: e.currentTarget.value.trim() }))}
                             placeholder="用户 ID"
                         />
                         <Input
-                            class="h-8 text-xs"
+                            class="h-8 text-xs bg-[color:var(--surface)]"
                             value={draft().channel_scope ?? ""}
                             onInput={(e) => setDraft((prev) => ({ ...prev, channel_scope: e.currentTarget.value.trim() }))}
                             placeholder="范围，可选"
@@ -121,7 +121,7 @@ export function PortfolioList() {
                                                 "w-full rounded-md border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]",
                                                 isActive()
                                                     ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
-                                                    : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
+                                                    : "border-[color:var(--border)] bg-[color:var(--surface)] hover:border-[color:var(--accent)]/50",
                                             ].join(" ")}
                                             onClick={() => openActor(actor)}
                                         >
