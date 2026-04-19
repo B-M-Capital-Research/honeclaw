@@ -6,6 +6,21 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-19 21:30-22:00 最近一小时最新样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=3115`，`executed_at=2026-04-19T21:30:39.536730+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `run_id=3123`，`executed_at=2026-04-19T22:00:25.003693+08:00`，仅过约 30 分钟又再次 `completed + sent + delivered=1`
+      - 两条 `response_preview` 仍围绕同一 `BlueBird 7` 旧事件送达，只是把措辞在“已于当日发射升空”和“按计划今日发射”之间改写，没有看到新的独立公告、轨道结果或价格阈值跨越
+      - 这说明最新窗口里 ASTS 仍在跨半小时轮询重复送达同一旧催化，而且重复提醒时还会继续改写同一事实的时态
+    - 同一 `22:00` 批次里，`job_name=RKLB异动监控`
+      - `run_id=3122`，`executed_at=2026-04-19T22:00:24.025144+08:00`，最新落成 `completed + sent + delivered=1`
+      - `response_preview` 直接围绕 `2026年4月16日完成的 Mynaric 收购` 旧事件触发，没有看到新的并购进展、价格阈值跨越或独立公告
+      - 而此前同任务在 `19:01 -> 21:30` 多个窗口里先后表现为 `noop` 或 `execution_failed`，说明公共去重与增量识别依旧不稳定：旧事件可能长时间不报，随后又在新的轮询窗口里被重新当成“新触发”
+  - `data/runtime/logs/web.log`
+    - `2026-04-19 21:30:39.535` 与 `22:00:23.490` 对应 ASTS heartbeat 都继续是 `parse_kind=JsonTriggered`
+    - 两轮 `deliver_preview` 都围绕同一 `BlueBird 7` 旧事件，只是换了近似措辞，没有新增独立事件源
+    - `2026-04-19 22:00:24.025` 的 `RKLB异动监控` 最新也落成 `parse_kind=JsonTriggered`，直接把 `2026-04-16` 完成的 Mynaric 收购重新当成已触发提醒送达
+    - 这说明最近一小时的重复提醒已不再只局限于 ASTS；旧事件在 ASTS 与 RKLB 两条 heartbeat 上都仍会被重新包装为当前窗口的新触发
     - 2026-04-19 20:31-21:02 最近一小时最新样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=3091`，`executed_at=2026-04-19T20:31:19.466805+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
@@ -123,6 +138,9 @@
   - `TEM大事件心跳监控` 在 `19:31` 先回落成 `noop`
   - `20:01` 又围绕同一 `AACR 进行中` 事件重新送达
   - `ASTS 重大异动心跳监控` 也在 `19:31` 短暂停发后，于 `20:01` 再次送达同一 `BlueBird 7` 旧事件
+- `21:30 -> 22:00` 的最新窗口进一步说明，问题已经同时覆盖“同一事件连续半小时重报”和“旧事件在多轮 `noop/failed` 后重新触发”两种形态：
+  - `ASTS` 在 `21:30` 与 `22:00` 连续两轮又重报同一 `BlueBird 7` 旧事件
+  - `RKLB异动监控` 则把 `2026-04-16` 已完成的 Mynaric 收购在 `22:00` 重新当成当前新提醒送达
 - 这与已修复的“同一窗口重复投递”不同；当前是任务本身每次轮询都会重新把旧事件当成新触发。
 
 ## 用户影响

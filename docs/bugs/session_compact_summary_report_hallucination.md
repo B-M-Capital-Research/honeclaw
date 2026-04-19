@@ -7,6 +7,13 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
+- 2026-04-19 21:37 最近一小时最新样本：
+   - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3`
+   - `2026-04-19T21:37:07.311200+08:00` 会话再次自动 compact，并写回 `role=user` 的 `【Compact Summary】...`
+   - 这条 summary 已经不是中性历史摘要，而是直接写出“这个问题涉及卫星变轨和部署的具体技术时间表，我没有确切的最新数据可以准确回答”，本质上是对上一轮 ASTS 问题的答复草稿
+   - 同轮真实用户输入是：`你思想逻辑现在有一点错乱我刚刚的回答是对于你发给我的asts 你和我说到甲骨文去`
+   - `2026-04-19T21:37:27.746598+08:00` assistant 最终回复虽然承认“上下文串线了”，但 `web.log` 记录这一轮仍是先 `Compressing session ... with 22 messages`，再继续 `restore_context + build_prompt + create_runner`
+   - 说明线上会话到 `2026-04-19 21:37` 仍会把 compact summary 当作真实用户消息写回，再进入后续回答链路；影响已从“旧持仓/旧报告污染”扩展到 `ASTS -> ORCL` 的话题串线
 - 2026-04-19 16:41 最近一小时导入样本：
    - `session_id=Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652`
    - `session_messages.imported_at=2026-04-19T16:41:31.133907+08:00` 的最新导入批次里，再次出现 `role=user` 的 `【Compact Summary】...`
@@ -172,6 +179,7 @@
 - `09:00` 的最新样本再次证明 scheduler 普通 auto compact 仍在生产生效：`Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 在 `2026-04-19T09:00:26.593495+08:00` 又写回 `role=user` 的 `TSLA / RKLB` `【Compact Summary】`，随后同一任务仍在 `run_id=2861` 被记为 `completed + sent + delivered=1`。这说明问题不是“旧污染仍留在库里”，而是当前定时任务运行前仍会主动生成并消费这类 summary。
 - `12:01` 的最新样本进一步说明，污染并不依赖任务最终成功送达：`Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 在 overflow recovery 后再次写回 `role=user` 的持仓表 `【Compact Summary】`，随后本轮 `run_id=2923` 只返回“当前会话上下文过长”失败提示。也就是说，compact summary 角色错误仍会在 scheduler 失败路径里实时生成新的 transcript 污染。
 - `16:41` 的最新导入样本说明，这个问题不只表现为“旧时间窗还有脏数据没清掉”。`Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 在最近一次导入里仍把 `14:49` 的 `Compact Summary` 作为 `role=user` 保存进当前活跃会话，同时同批次还包含 `16:12-16:36` 的后续正式回答和 `16:41` 的失败收口；也就是说，生产 transcript 仍在被这一类 summary 真实参与、真实消费。
+- `21:37` 的 ASTS 最新样本进一步说明，污染范围已从“旧持仓/旧报告”扩展到当前话题边界本身：用户刚指出系统把 `ASTS` 说成了 `ORCL`，auto compact 却仍把上一轮答复草稿写回为 `role=user`，随后正式回答只能在被污染的上下文里承认“串线”而非真正隔离错误摘要。
 - 因而当前缺陷的主表现已经收敛为两点：一是 summary 角色仍错误，二是 summary 仍会在后续回答前重写本轮输入语义；这两点都没有被此前修复覆盖。
 
 ## 已确认事实

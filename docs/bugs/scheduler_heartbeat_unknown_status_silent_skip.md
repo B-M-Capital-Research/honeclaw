@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 21:30-22:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 21:30 -> 22:00` 继续出现“上一轮失败对象没有真正修复，下一轮又漂移到别的 heartbeat 模板”的活跃抖动态：
+      - `run_id=3110/3114`（`RKLB异动监控`、`Monitor_Watchlist_11`，`executed_at=2026-04-19T21:30:14-21:30:19+08:00`）在 `21:30` 窗口落成 `execution_failed + skipped_error`
+      - 到 `22:00` 窗口，`run_id=3125`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T22:00:25.726044+08:00`）短暂恢复为 `noop + skipped_noop`
+      - 但失败对象又漂移成 `run_id=3119`（`小米30港元破位预警`，`executed_at=2026-04-19T22:00:12.176402+08:00`），再次落成 `execution_failed + skipped_error`
+      - 同一 `22:00` 批次里，`run_id=3116/3117/3118/3120/3121/3124`（`原油 / CAI / 小米 / TEM破位 / ORCL / TEM大事件`）都只是 `noop + skipped_noop`，说明公共结构化状态契约仍未稳定，只是失败对象在不同模板间轮换
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-19 21:30:14.630` 的 `RKLB异动监控` 记录 `parse_kind=JsonUnknownStatus`，正文已经完成“无新并购/无新火箭进度/无新订单异常”的判断，却仍未稳定收口到合法状态 JSON
+    - `2026-04-19 21:30:19.109` 的 `Monitor_Watchlist_11` 记录 `parse_kind=JsonUnknownStatus`，文本逐项比较 `HIMS / MU / RKLB / LMND ...` 阈值后仍被升级为 `parse failure escalated`
+    - `2026-04-19 22:00:12.176` 的 `小米30港元破位预警` 最新又落成 `execution_failed + skipped_error`，说明故障不是单个任务偶发，而是 heartbeat 公共协议继续在不同模板间漂移
+    - 同一 `22:00` 窗口里，恢复成 `noop` 的任务依旧没有稳定的结构化 `deliver_preview`，说明所谓“恢复”仍主要依赖脆弱的尾部状态提取，而不是上游输出契约已经恢复
   - 2026-04-19 20:31-21:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 20:31 -> 21:01` 继续出现“上一轮失败对象暂时恢复、下一轮又换模板重新跌回 unknown status”的活跃抖动态：
       - `run_id=3092`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T20:31:19.875818+08:00`）在 `20:31` 窗口落成 `execution_failed + skipped_error`
@@ -670,6 +681,7 @@
 - 到 `19:31` 这一轮，`小米30港元破位预警` 也新增 `JsonUnknownStatus + execution_failed`，且 `raw_preview` 已经明确写出“当前价格高于触发线，应返回 noop”，最后却只落成 `<think> ... {}`；说明问题并非监控任务自身判断错误，而是最终状态封装仍不稳定。
 - `20:01` 同一任务又立刻恢复为 `noop + skipped_noop`，进一步证明 `JsonUnknownStatus` 已在多个 heartbeat 任务上呈现“相邻轮次抖动”，而不是某一条任务永久损坏。
 - `20:31 -> 21:01` 的最新一对样本把这种抖动延续到了本轮巡检窗口：`Monitor_Watchlist_11` 先在 `20:31` 回落为 `JsonUnknownStatus + execution_failed`，30 分钟后又恢复为 `JsonNoop + skipped_noop`，中间没有任何任务配置变更。
+- `21:30 -> 22:00` 的最新窗口说明抖动还在继续：`RKLB异动监控 / Monitor_Watchlist_11` 刚在 `21:30` 一起跌回 `execution_failed + skipped_error`，`22:00` 又换成 `小米30港元破位预警` 接力失败，而 `Monitor_Watchlist_11` 仅短暂恢复为 `noop + skipped_noop`。
 - `2026-04-17 09:00:23` 的 `run_id=2114` 表明这种抖动在最新小时窗仍未结束：`Monitor_Watchlist_11` 刚在 `08:30` 恢复为 `JsonNoop`，半小时后又再次跌回 `JsonUnknownStatus + execution_failed`。
 - 到 `20:31` 这一轮，`Monitor_Watchlist_11` 再次落回 `JsonUnknownStatus + execution_failed`，`20:32` 的 `存储板块加仓信号监控` 同轮也命中同样症状，说明这条缺陷在最新窗口仍然活跃，且受影响任务并未收敛。
 - 到 `22:01` 的最新窗口，抖动又从 `Monitor_Watchlist_11` 漂移到了 `全天原油价格3小时播报` 与 `小米破位预警`：前两者同轮回落成 `JsonUnknownStatus + execution_failed`，而 `Monitor_Watchlist_11` 反而恢复为 `JsonNoop + skipped_noop`，再次说明当前是公共输出契约不稳定，而不是单一 watchlist prompt 损坏。

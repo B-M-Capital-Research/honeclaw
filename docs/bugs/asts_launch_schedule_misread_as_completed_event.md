@@ -7,6 +7,17 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3115`，`executed_at=2026-04-19T21:30:39.536730+08:00`，在最近一小时最新窗口里再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3123`，`executed_at=2026-04-19T22:00:25.003693+08:00`，仅过约半小时又再次 `completed + sent + delivered=1`
+    - `21:30` 这轮 `response_preview` 写成：`BlueBird 7 已于当日（美东 6:45 AM）... 发射升空`；`22:00` 这轮又写成：`BlueBird 7 按计划今日（4月19日）从肯尼迪航天中心发射`
+    - 两轮都继续捆绑同一组停牌前价格 `ASTS $85.53 / 前收 $90.94 / 日跌幅约5.95%`，说明系统仍在把旧行情快照包装成事件落地后的市场背景
+    - 这说明到 `22:00` 为止，ASTS heartbeat 仍会在“已发射完成”与“今日按计划发射”之间来回摆动，错误时态与价格时间口径都没有收口
+  - `data/runtime/logs/web.log`
+    - `2026-04-19 21:30:39.535` 的 `HeartbeatDiag deliver` 明确写出：`ASTS 重大基本面事件已触发 ... BlueBird 7 已于当日（美东 6:45 AM）... 发射升空`
+    - `2026-04-19 22:00:23.490` 的 `HeartbeatDiag deliver` 又改写成：`BlueBird 7 按计划今日（4月19日）从肯尼迪航天中心发射`
+    - 两轮都继续附带 `今日ASTS下跌约5.95%，报$85.53` 这组停牌前价格，说明最新窗口里系统仍没有把“事件时态”与“价格快照时间”分离
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
     - `run_id=3091`，`executed_at=2026-04-19T20:31:19.466805+08:00`，在最近一小时最新窗口里落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
     - `run_id=3105`，`executed_at=2026-04-19T21:02:09.819339+08:00`，仅过约半小时又再次 `completed + sent + delivered=1`
     - 两轮最新 `response_preview` 都继续写成：`BlueBird 7 卫星已于今日（2026年4月19日）成功发射升空`
@@ -102,6 +113,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-19 21:30 -> 22:00` 的最新窗口，heartbeat 仍在同一旧事件上继续摇摆：`21:30` 把 `BlueBird 7` 写成“已于当日发射升空”，`22:00` 又回退成“按计划今日发射”，但两轮都继续搭配同一组停牌前价格，说明错误时态和价格时间口径到现在都还在活跃链路里并存。
 - 当前 direct 链路会在用户询问发射进展时，直接把预告新闻和旧行情快照收口成“已发射成功 + 发射后股价下跌”。
 - 当前 heartbeat 链路在 `14:30` 仍把事件描述为“今日发射”，到 `15:00` 又把同一事件直接升级成“已成功发射”，`15:30` 还继续沿用同一错误条件反复送达，而日志里自己同时承认对应北京时间应是当晚。
 - 到 `16:30`，heartbeat 仍继续以 `completed + sent` 对外投递“已于今日成功发射升空”；到 `17:00` 才回落成 `noop`，但同轮 `raw_preview` 又把同一事件写成“4月19日（明天）发射”，说明错误并未修复，只是从误报成功切换成了错误时间口径下的静默跳过。
