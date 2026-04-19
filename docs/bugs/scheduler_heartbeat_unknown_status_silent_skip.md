@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 11:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 10:30 -> 11:00` 继续表现为“同一批 heartbeat 里一部分任务失败、另一部分任务自行恢复”的抖动态：
+      - `run_id=2888`（`ORCL 大事件监控`，`executed_at=2026-04-19T10:30:14.717234+08:00`）落成 `execution_failed + skipped_error`
+      - `run_id=2889`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T10:30:21.530734+08:00`）同窗落成 `execution_failed + skipped_error`
+      - `run_id=2891`（`TEM大事件心跳监控`，`executed_at=2026-04-19T10:30:23.191349+08:00`）同窗落成 `execution_failed + skipped_error`
+      - 到 `11:00` 窗口，`run_id=2900`（`Monitor_Watchlist_11`）与 `run_id=2902`（`TEM大事件心跳监控`）又恢复为 `noop + skipped_noop`，但 `run_id=2901`（`ORCL 大事件监控`，`executed_at=2026-04-19T11:00:32.382342+08:00`）继续落成 `execution_failed + skipped_error`
+      - 同一小时里同批任务出现“10:30 失败、11:00 局部恢复但 ORCL 仍失败”的组合，说明缺陷仍在活跃漂移，并未收敛到单一模板或单一任务
+    - 对应 `data/runtime/logs/hone-feishu.release-restart.log`：
+      - `2026-04-19 10:30:14.715` 的 `ORCL 大事件监控` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已完成日内跌幅、重大新闻与触发条件判断，随后被升级为 `parse failure escalated`
+      - `2026-04-19 10:30:21.526` 的 `Monitor_Watchlist_11` 再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 逐项枚举 `HIMS / MU / RKLB / LMND ...` 的阈值比较后仍未收口到合法状态 JSON
+      - `2026-04-19 10:30:23.189` 的 `TEM大事件心跳监控` 也记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已列出 `Gilead` 合作、`AACR 2026` 摘要等判断，但末尾仍停留在 `<think> + 自由文本`
+      - 到 `11:00` 窗口，`Monitor_Watchlist_11` 与 `TEM大事件心跳监控` 虽恢复为 `JsonNoop`，但 `raw_preview` 仍继续以 `<think>` 开头；`ORCL 大事件监控` 则在 `2026-04-19 11:00:32.381` 再次记录 `parse_kind=JsonUnknownStatus`
+    - 这组 `10:30 -> 11:00` 样本说明：故障仍是生产活跃问题，且同一小时内既出现“未知状态直接失败”，又出现“污染输出尾部侥幸提取 `noop`”的伪恢复，heartbeat 结构化输出契约没有真正恢复稳定
   - 2026-04-19 10:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 09:30 -> 10:00` 再次出现“上一轮部分恢复、下一轮又漂移失败”的抖动态：
       - `run_id=2878`（`RKLB异动监控`，`executed_at=2026-04-19T10:00:21.202768+08:00`）再次落成 `execution_failed + skipped_error`
