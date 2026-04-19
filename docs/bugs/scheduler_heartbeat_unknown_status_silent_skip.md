@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 13:00-14:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 13:00 -> 14:00` 继续呈现“同一批 heartbeat 一部分失败、一部分恢复或正常触发”的漂移态：
+      - `run_id=2941`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T13:00:19.166163+08:00`）落成 `execution_failed + skipped_error`
+      - `run_id=2951`（同一任务，`executed_at=2026-04-19T13:30:16.920945+08:00`）又恢复为 `execution_failed + skipped_error` 之外的 `noop + skipped_noop`
+      - `run_id=2960`（同一任务，`executed_at=2026-04-19T14:00:23.675297+08:00`）再次回落成 `execution_failed + skipped_error`
+      - 同一窗口里，`run_id=2943/2950/2956`（`ORCL 大事件监控`）与 `run_id=2944/2955`（`全天原油价格3小时播报`）仍保持 `noop + skipped_noop`
+      - `run_id=2953` 与 `2963`（`ASTS 重大异动心跳监控`）则连续两轮 `completed + sent + delivered=1`
+    - 这说明最新一小时里，Heartbeat 公共协议仍未恢复稳定：复杂 watchlist 模板持续在 `skipped_noop` 与 `skipped_error` 之间抖动，而同批其它任务只是暂时稳定
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-19 13:00:00.352`、`13:30:00.315`、`14:00:00.289` 同一批 heartbeat 都被正常拉起，说明不是调度器未触发
+    - `13:00` 与 `14:00` 两个窗口都能在 `cron_job_runs` 看到 `Monitor_Watchlist_11` 的 `heartbeat 输出包含未知状态，任务已标记失败`
+    - `13:30` 同批里 `ASTS 重大异动心跳监控` 已正常完成并发送，进一步排除“整批 scheduler 不可用”的可能
+    - 最近一小时链路级现象更接近“Heartbeat 结构化状态契约仍在单任务级抖动”，而非全局发送/渠道故障
   - 2026-04-19 11:30-12:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 11:30 -> 12:00` 继续表现为“同一批 heartbeat 里个别任务失败、其余任务靠尾部提取勉强恢复”的漂移态：
       - `run_id=2905`（`CAI破位预警`，`executed_at=2026-04-19T11:30:08.513547+08:00`）落成 `execution_failed + skipped_error`
@@ -641,6 +654,7 @@
 - 而 `21:01:18.329` 紧随其后的恢复窗口又说明，这并不是稳定修复，只是同一模板再次短暂恢复为 `JsonNoop`。
 - 同一时间窗内，另一个真实 Feishu 会话已经正常返回 quota 友好文案并完成落库，说明当前系统并非普遍性发送或会话链路故障；最新未收口的问题仍集中在 heartbeat 结构化状态输出。
 - `17:30 -> 18:00` 的最新窗口继续重复同一抖动：`Monitor_Watchlist_11` 在 `17:30` 先回落到 `JsonUnknownStatus + execution_failed`，`18:00` 又恢复为 `JsonNoop`；同批次的 `小米30港元破位预警` 与 `全天原油价格3小时播报` 也都保留 `<think>` 前缀后才分别落成 `JsonNoop` / `JsonTriggered`。这说明当前线上依旧依赖解析器从自由文本尾部勉强提取状态，公共协议脆弱性没有收口。
+- `13:00 -> 14:00` 的最新窗口说明这种抖动仍在当前生产小时窗活跃：`Monitor_Watchlist_11` 在 `13:00` 失败、`13:30` 短暂恢复、`14:00` 再次失败，而同批 `ASTS` 连续两轮成功送达、`ORCL/原油播报` 继续稳定为 `noop`。这再次说明问题不是整批调度故障，而是 heartbeat 结构化状态协议在复杂 watchlist 模板上的活跃抖动。
 
 ## 修复情况（2026-04-16，待重新验证）
 

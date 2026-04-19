@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-19 13:18 CST
+最后更新：2026-04-19 14:15 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：19
+- 活跃待修复：20
 - 已修复 / 已关闭：30
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -31,12 +31,13 @@
 | Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | New | 2026-04-17 07:48 真实会话复现；用户说“分析目前lite价值”后系统直接输出 Litecoin 分析，需用户二次纠正为 `LITE Lumentum` | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
 | Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | New | 2026-04-17 14:53 真实会话复现；当前 user turn 是“美股DRAM详细分析”，但 search 从首个工具调用起就锁定 `SNDK`，最终整轮答成 SanDisk 个股分析 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 | Feishu 直聊个股分析把同一风险点在多段结构里重复展开，用户需额外指出“很多信息数据都是重复的” | P3 | New | 2026-04-19 01:01 真实会话复现；上一轮 Cerebras 分析把 `G42 客户集中度` 与 `ORCL 关联敞口` 在财务拆解、多空逻辑、动作建议里重复展开，assistant 后续已明确承认冗余 | [feishu_direct_analysis_redundant_risk_repetition.md](./feishu_direct_analysis_redundant_risk_repetition.md) |
+| Feishu 直聊纯文本 15 支股票池请求误触 `image_understanding`，最终只分析 9 支并要求用户补 6 支代码 | P3 | New | 2026-04-19 13:07 真实会话复现；文本请求先执行 `data_fetch` 后又误触图片技能，最终把“15 支都分析”收缩成 `8+AAOI` 并要求用户补剩余代码 | [feishu_direct_watchlist_text_request_misfires_image_skill.md](./feishu_direct_watchlist_text_request_misfires_image_skill.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-19 12:23 `GOOGL` 深度研究请求在调用 `company_portrait` 后仍读取 `company_profiles/GOOGL/profile.md` 失败；画像路径错误已继续放大 search 触顶 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-18 08:32 的创新药日报再次复现：4 次 `hone_data_fetch` 全部成功后，最终正文仍声称“港股与A股数据底层链路暂时阻断” | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | New | 2026-04-19 12:02 `每日公司资讯与分析总结` 已执行 15 次 `data_fetch` 并完成一次 `context_overflow_recovery`，但重试后仍失败；调度台账记为 `execution_failed + sent`，真实会话未见本轮正常 assistant 正文 | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Feishu 直聊自动 compact 后仍无法稳定完成新话题回答，同一旧会话会在成功与 fallback 间抖动 | P2 | New | 2026-04-18 22:58 同一会话先后答出 `CAI/TEM`、`CRWV/NBIS`，但切到 `Google` 财报预判后又在 compact 重试后回落成统一 fallback | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixing | 2026-04-18 当前工作区已出现 provider 级重试补丁与测试草案，但修复尚未以已提交代码进入仓库主线，也未完成最新真实样本复核 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-19 11:30-12:00 最新窗口仍处于漂移态：`Monitor_Watchlist_11` 连续两轮 `execution_failed + skipped_error`，`CAI破位预警` 在 11:30 失败后 12:00 又恢复为依赖 `<think>` 尾部提取的 `noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-19 13:00-14:00 最新窗口仍处于漂移态：`Monitor_Watchlist_11` 在 `13:00` 失败、`13:30` 恢复、`14:00` 再次失败；同批 `ASTS` 已连续两轮正常送达 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-19 08:30-12:00 `ASTS 重大异动心跳监控` 已围绕同一 `BlueBird 7` 事件跨 7 个窗口反复触发；11:30 一度 `noop`，12:00 又重新送达相同旧事件，说明去重并不稳定 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | New | 2026-04-18 10:31 的 `TEM大事件心跳监控` 已送达成功，但 `response_preview` 与 `deliver_preview` 都直接等于 `{\"trigger\":...}`；11:01 同任务又恢复自然语言 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后缺少自动重试与降级，提醒整轮失败 | P2 | Fixing | 2026-04-19 01:02 `TEM破位预警` 最新真实窗口再次落成 `execution_failed + skipped_error`；仓库主线仍无法证明该类传输失败已被吸震 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
