@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 08:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 07:30 -> 08:00` 继续出现“上一轮部分恢复、下一轮又漂移失败”的抖动态：
+      - `run_id=2816`（`全天原油价格3小时播报`）与 `run_id=2817`（`小米30港元破位预警`）在 `2026-04-19T07:30:10+08:00` 左右仍落成 `execution_failed + skipped_error`
+      - 到 `08:00` 窗口，失败对象又切换为 `run_id=2835`（`Monitor_Watchlist_11`），`executed_at=2026-04-19T08:00:29.449648+08:00`，再次落成 `execution_failed + skipped_error`
+      - 同一 `08:00` 批次里，`run_id=2826`（`全天原油价格3小时播报`）、`2827`（`小米30港元破位预警`）、`2828`（`小米破位预警`）、`2829`（`TEM破位预警`）、`2830`（`RKLB异动监控`）、`2831`（`CAI破位预警`）、`2832`（`ASTS 重大异动心跳监控`）、`2833`（`TEM大事件心跳监控`）、`2834`（`ORCL 大事件监控`）都恢复为 `noop + skipped_noop`
+      - 这说明故障并未停留在 `07:30` 失败的 `原油/小米30港元` 模板，而是在下一轮再次漂移回复杂 watchlist 模板
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-19 07:30` 窗口里，`全天原油价格3小时播报` 与 `小米30港元破位预警` 的 `detail_json.parse_kind` 都是 `JsonUnknownStatus`，`raw_preview` 先完整写出“当前时间不满足播报条件”或“32 港元仍高于 30 港元触发线”，最终却只收口成 `<think>...</think>\n\n{}`
+      - `2026-04-19 08:00:29.449648+08:00` 的 `run_id=2835`（`Monitor_Watchlist_11`）再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 先逐项列出 `HIMS / MU / RKLB / LMND ...` 的阈值比较，再被升级为 `parse failure escalated`
+      - 同窗恢复成功的 `全天原油价格3小时播报`、`小米30港元破位预警`、`小米破位预警`、`TEM破位预警`、`RKLB异动监控`、`CAI破位预警`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`ORCL 大事件监控` 仍统一满足 `starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头，说明“恢复”为 `JsonNoop` 的任务依然依赖受污染输出尾部侥幸提取状态，而不是协议已经恢复
+    - 这组 `07:30 -> 08:00` 最新窗口说明：缺陷仍在生产链路活跃漂移，且影响对象会在时间条件类 heartbeat、单标的阈值任务与复杂 watchlist/事件监控之间轮换
   - 2026-04-19 07:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 06:30 -> 07:00` 再次出现“上一轮部分恢复、下一轮又漂移失败”的抖动态：
       - `run_id=2800`（`小米破位预警`）与 `run_id=2799`（`CAI破位预警`）在 `2026-04-19T06:30:11+08:00` 左右仍落成 `execution_failed + skipped_error`
