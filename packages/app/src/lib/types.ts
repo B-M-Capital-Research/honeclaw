@@ -569,3 +569,65 @@ export type CompanyProfileCreateInput = {
   industry_template?: IndustryTemplate;
   sections?: Record<string, string>;
 };
+
+export type CompanyProfileConflictDecision = "skip" | "replace";
+
+export type CompanyProfileImportMode =
+  | "keep_existing"
+  | "replace_all"
+  | "interactive";
+
+export type CompanyProfileImportProfileSummary = {
+  profile_id: string;
+  company_name: string;
+  stock_code: string;
+  updated_at: string;
+  event_count: number;
+  thesis_excerpt: string;
+};
+
+export type CompanyProfileImportConflict = {
+  imported: CompanyProfileImportProfileSummary;
+  existing: CompanyProfileImportProfileSummary;
+  reasons: string[];
+};
+
+export type CompanyProfileTransferManifestProfile = {
+  profile_id: string;
+  company_name: string;
+  stock_code: string;
+  event_count: number;
+  updated_at: string;
+};
+
+export type CompanyProfileTransferManifest = {
+  version: string;
+  exported_at: string;
+  profile_count: number;
+  event_count: number;
+  profiles: CompanyProfileTransferManifestProfile[];
+};
+
+export type CompanyProfileImportPreview = {
+  manifest: CompanyProfileTransferManifest;
+  profiles: CompanyProfileImportProfileSummary[];
+  conflicts: CompanyProfileImportConflict[];
+  importable_count: number;
+  conflict_count: number;
+  suggested_mode: CompanyProfileImportMode;
+};
+
+export type CompanyProfileImportApplyRequest = {
+  mode: CompanyProfileImportMode;
+  decisions: Record<string, CompanyProfileConflictDecision>;
+};
+
+export type CompanyProfileImportApplyResult = {
+  imported_profile_ids: string[];
+  replaced_profile_ids: string[];
+  skipped_profile_ids: string[];
+  changed_profile_ids: string[];
+  imported_count: number;
+  replaced_count: number;
+  skipped_count: number;
+};

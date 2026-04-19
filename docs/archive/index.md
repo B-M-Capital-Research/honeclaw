@@ -1,6 +1,44 @@
 # Archive Index
 
-Last updated: 2026-04-17
+Last updated: 2026-04-19
+
+## 2026-04-19
+
+### Company Profile Optional Frontmatter
+
+- Status: done
+- Date: 2026-04-19
+- Plan: `docs/archive/plans/company-profile-optional-frontmatter.md`
+- Handoff: `docs/handoffs/2026-04-19-company-profile-optional-frontmatter.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `rtk cargo test -p hone-memory company_profile -- --nocapture`
+- Current conclusion: 公司画像与事件现在不再在读取、列出、bundle preview/import 时硬依赖 YAML frontmatter；legacy plain Markdown 本地画像与 plain-Markdown 画像包都会推断最小 metadata 继续工作，不再因为 `缺少 frontmatter` 直接失败
+- Next entry point: `memory/src/company_profile/markdown.rs`
+
+### 公司画像包导入导出与傻瓜式导入流
+
+- Status: done
+- Date: 2026-04-19
+- Plan: `docs/archive/plans/company-profile-transfer.md`
+- Handoff: `docs/handoffs/2026-04-19-company-profile-transfer.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `rtk cargo test -p hone-memory company_profile`, `rtk cargo test -p hone-web-api`, `rtk bun run test:web`, `rtk bun run typecheck:web`, `rtk bun run build:web`, `rtk bun run --cwd packages/app test:e2e`, `rtk cargo check -p hone-memory -p hone-web-api -p hone-channels`
+- Current conclusion: 公司画像现在支持 actor 私有画像包导入导出；Memory 页面左侧已收敛成单一“目标用户空间”列表，当前空间里的公司切换放到右侧详情内部；右侧会先自动扫描导入包，只在存在冲突时要求逐家公司选择“保留当前”或“用导入版本替换”，并在存在替换时自动生成导入前备份供用户下载；legacy plain Markdown 画像即使缺少 frontmatter，也能被 transfer 导出、自动备份并参与冲突判断
+- Next entry point: `packages/app/src/context/company-profiles.tsx`
+
+### Company Profile 模块拆分
+
+- Status: done
+- Date: 2026-04-19
+- Plan: `docs/archive/plans/company-profile-module-split.md`
+- Handoff: `docs/handoffs/2026-04-19-company-profile-transfer.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `rtk cargo fmt --all`, `rtk cargo test -p hone-memory company_profile`, `rtk cargo test -p hone-web-api`, `rtk cargo check -p hone-memory -p hone-web-api -p hone-channels`
+- Current conclusion: `hone-memory` 里的 company profile 已按职责拆成 `types / markdown / storage / transfer / tests` 子模块，保留原有 `hone_memory::*` 导出面和导入导出语义，后续继续改画像能力时不需要再在单个超大文件里同时处理类型、Markdown、zip 和存储细节
+- Next entry point: `memory/src/company_profile/mod.rs`
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
 

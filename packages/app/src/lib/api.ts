@@ -1,6 +1,9 @@
 import type {
   ChannelStatusInfo,
   CompanyProfile,
+  CompanyProfileImportApplyRequest,
+  CompanyProfileImportApplyResult,
+  CompanyProfileImportPreview,
   CompanyProfileSpaceSummary,
   CompanyProfileSummary,
   HistoryMsg,
@@ -355,4 +358,60 @@ export async function deleteCompanyProfile(profileId: string, actor: ActorRef) {
     },
   );
   return parseJson<{ ok: boolean }>(response);
+}
+
+function parseDownloadFilename(response: Response, fallback: string) {
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/i);
+  return match?.[1]?.trim() || fallback;
+}
+
+export async function exportCompanyProfiles(actor: ActorRef) {
+  const response = await apiFetch(
+    `/api/company-profiles/export?${actorQuery(actor)}`,
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || response.statusText);
+  }
+  const blob = await response.blob();
+  const fallback = `company-profiles-${actor.channel}-${actor.user_id}.zip`;
+  return {
+    blob,
+    fileName: parseDownloadFilename(response, fallback),
+  };
+}
+
+export async function previewImportCompanyProfiles(actor: ActorRef, bundle: File) {
+  const form = new FormData();
+  form.append("bundle", bundle);
+  const response = await apiFetch(
+    `/api/company-profiles/import/preview?${actorQuery(actor)}`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+  const payload = await parseJson<{ preview: CompanyProfileImportPreview }>(response);
+  return payload.preview;
+}
+
+export async function applyImportCompanyProfiles(
+  actor: ActorRef,
+  bundle: File,
+  request: CompanyProfileImportApplyRequest,
+) {
+  const form = new FormData();
+  form.append("bundle", bundle);
+  form.append("mode", request.mode);
+  form.append("decisions", JSON.stringify(request.decisions));
+  const response = await apiFetch(
+    `/api/company-profiles/import/apply?${actorQuery(actor)}`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+  const payload = await parseJson<{ result: CompanyProfileImportApplyResult }>(response);
+  return payload.result;
 }

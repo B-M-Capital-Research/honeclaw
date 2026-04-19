@@ -76,6 +76,18 @@ pub fn build_app(state: Arc<AppState>) -> Router {
             get(company_profiles::handle_company_profiles),
         )
         .route(
+            "/company-profiles/export",
+            get(company_profiles::handle_export_company_profiles),
+        )
+        .route(
+            "/company-profiles/import/preview",
+            post(company_profiles::handle_preview_import_company_profiles),
+        )
+        .route(
+            "/company-profiles/import/apply",
+            post(company_profiles::handle_apply_import_company_profiles),
+        )
+        .route(
             "/company-profiles/{id}",
             get(company_profiles::handle_company_profile_detail)
                 .delete(company_profiles::handle_delete_company_profile),

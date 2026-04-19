@@ -11,10 +11,17 @@ pub mod session;
 pub mod session_sqlite;
 
 pub use company_profile::{
-    AppendEventInput, CompanyProfileDocument, CompanyProfileEventDocument, CompanyProfileStorage,
-    CreateProfileInput, IndustryTemplate, ProfileEventMetadata, ProfileMetadata,
-    ProfileSpaceSummary, ProfileSummary, RawProfileDocument, RawProfileEventDocument,
-    RawProfileSummary, TrackingConfig,
+    AppendEventInput, CompanyProfileConflictDecision, CompanyProfileDocument,
+    CompanyProfileEventDocument, CompanyProfileImportApplyInput, CompanyProfileImportApplyResult,
+    CompanyProfileImportConflict, CompanyProfileImportConflictDetail, CompanyProfileImportDiffLine,
+    CompanyProfileImportDiffLineKind, CompanyProfileImportEventDiff, CompanyProfileImportMode,
+    CompanyProfileImportPreview, CompanyProfileImportProfileSummary,
+    CompanyProfileImportResolutionInput, CompanyProfileImportResolutionResult,
+    CompanyProfileImportResolutionStrategy, CompanyProfileImportSectionChangeType,
+    CompanyProfileImportSectionDiff, CompanyProfileStorage, CompanyProfileTransferManifest,
+    CompanyProfileTransferManifestProfile, CreateProfileInput, IndustryTemplate,
+    ProfileEventMetadata, ProfileMetadata, ProfileSpaceSummary, ProfileSummary, RawProfileDocument,
+    RawProfileEventDocument, RawProfileSummary, TrackingConfig,
 };
 pub use cron_job::CronJobStorage;
 pub use llm_audit::{AuditQueryFilter, AuditRecordSummary, LlmAuditStorage};

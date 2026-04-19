@@ -1,186 +1,216 @@
-import { EmptyState } from "@hone-financial/ui/empty-state";
-import { Skeleton } from "@hone-financial/ui/skeleton";
-import { For, Show } from "solid-js";
-import { actorKey, actorLabel, type ActorRef } from "@/lib/actors";
-import type { CompanyProfileSpaceSummary } from "@/lib/types";
-import { useCompanyProfiles } from "@/context/company-profiles";
+import { Button } from "@hone-financial/ui/button"
+import { EmptyState } from "@hone-financial/ui/empty-state"
+import { Input } from "@hone-financial/ui/input"
+import { Skeleton } from "@hone-financial/ui/skeleton"
+import { createMemo, createSignal, For, Show } from "solid-js"
+import { useCompanyProfiles } from "@/context/company-profiles"
 
 function formatDate(iso?: string) {
-  if (!iso) return "—";
+  if (!iso) return "—"
   try {
     return new Date(iso).toLocaleString("zh-CN", {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
-    });
+    })
   } catch {
-    return iso;
+    return iso
   }
 }
 
-function actorFromSummary(summary: CompanyProfileSpaceSummary): ActorRef {
-  return {
-    channel: summary.channel,
-    user_id: summary.user_id,
-    channel_scope: summary.channel_scope,
-  };
-}
-
 export function CompanyProfileList() {
-  const profiles = useCompanyProfiles();
-  const currentActorKey = () => profiles.state.currentActorKey;
-  const currentProfileId = () => profiles.state.currentProfileId;
+  const profiles = useCompanyProfiles()
+  const [query, setQuery] = createSignal("")
+
+  const allTargets = createMemo(() => {
+    const items = [...profiles.profileSpaceTargets(), ...profiles.sessionTargets()]
+    const manual = profiles.manualTarget()
+    if (manual) {
+      items.unshift(manual)
+    }
+    return items
+  })
+
+  const filteredTargets = createMemo(() => {
+    const keyword = query().trim().toLowerCase()
+    if (!keyword) return allTargets()
+    return allTargets().filter((target) => {
+      const haystack = [
+        target.label,
+        target.description,
+        target.actor.channel,
+        target.actor.user_id,
+        target.actor.channel_scope ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+      return haystack.includes(keyword)
+    })
+  })
+
+  const currentActorKey = () => profiles.state.currentActorKey
+
+  const badgeClass = (kind: "space" | "session" | "manual") => {
+    if (kind === "space") {
+      return "bg-emerald-100 text-emerald-700"
+    }
+    if (kind === "session") {
+      return "bg-sky-100 text-sky-700"
+    }
+    return "bg-amber-100 text-amber-700"
+  }
 
   return (
-    <div class="flex h-full min-h-0 w-[360px] flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
+    <div class="flex h-full min-h-0 w-[340px] flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
       <div class="border-b border-[color:var(--border)] px-4 py-3">
         <div>
-          <div class="text-sm font-semibold tracking-tight">公司画像</div>
+          <div class="text-sm font-semibold tracking-tight">目标用户空间</div>
           <div class="text-xs text-[color:var(--text-muted)]">
-            每个用户 x 渠道都是独立画像空间；页面只读，建档和更新请通过 agent
-            完成
+            左侧只负责选人。选中后，右侧再看这个人的公司画像和导入结果。
           </div>
         </div>
-      </div>
 
-      <div class="border-b border-[color:var(--border)] px-3 py-3">
-        <div class="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
-          画像空间
-        </div>
-        <Show
-          when={!profiles.actorsList.loading}
-          fallback={
-            <div class="space-y-2">
-              <Skeleton class="h-14" />
-              <Skeleton class="h-14" />
-            </div>
-          }
+        <Input
+          class="mt-3 h-9 text-sm"
+          value={query()}
+          onInput={(event) => setQuery(event.currentTarget.value)}
+          placeholder="搜索 channel / user_id / scope"
+        />
+
+        <Button
+          variant="ghost"
+          class="mt-3 h-8 px-3 text-xs"
+          onClick={() => profiles.setManualTargetOpen(!profiles.state.manualTargetOpen)}
         >
-          <Show
-            when={(profiles.actorsList() ?? []).length > 0}
-            fallback={
-              <EmptyState
-                title="暂无画像空间"
-                description="还没有任何用户空间生成公司画像。让 agent 为某家公司建档后，这里会出现对应空间。"
-              />
-            }
-          >
-            <div class="max-h-52 space-y-2 overflow-y-auto pr-1">
-              <For each={profiles.actorsList() ?? []}>
-                {(summary) => {
-                  const actor = actorFromSummary(summary);
-                  const key = actorKey(actor);
-                  const isActive = () => currentActorKey() === key;
-                  return (
-                    <button
-                      type="button"
-                      class={[
-                        "w-full rounded-md border p-3 text-left transition",
-                        isActive()
-                          ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
-                          : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
-                      ].join(" ")}
-                      onClick={() => profiles.selectActor(actor)}
-                    >
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0 flex-1">
-                          <div class="truncate text-sm font-medium text-[color:var(--text-primary)]">
-                            {actor.channel} / {actorLabel(actor)}
-                          </div>
-                          <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
-                            用户：{summary.user_id}
-                          </div>
-                          <Show when={summary.channel_scope}>
-                            <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
-                              范围：{summary.channel_scope}
-                            </div>
-                          </Show>
-                          <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
-                            {summary.profile_count} 份画像
-                          </div>
-                        </div>
-                        <div class="text-[10px] text-[color:var(--text-muted)]">
-                          {formatDate(summary.updated_at)}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                }}
-              </For>
-            </div>
-          </Show>
+          {profiles.state.manualTargetOpen ? "收起手动指定" : "手动指定一个新目标"}
+        </Button>
+
+        <Show when={profiles.state.manualTargetOpen}>
+          <div class="mt-3 space-y-2 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-3">
+            <Input
+              class="h-8 text-xs"
+              value={profiles.state.manualTargetChannel}
+              onInput={(event) =>
+                profiles.setManualTargetField("channel", event.currentTarget.value)
+              }
+              placeholder="channel，例如 discord / telegram / web"
+            />
+            <Input
+              class="h-8 text-xs"
+              value={profiles.state.manualTargetUserId}
+              onInput={(event) =>
+                profiles.setManualTargetField("user_id", event.currentTarget.value)
+              }
+              placeholder="user_id"
+            />
+            <Input
+              class="h-8 text-xs"
+              value={profiles.state.manualTargetScope}
+              onInput={(event) =>
+                profiles.setManualTargetField("channel_scope", event.currentTarget.value)
+              }
+              placeholder="channel_scope，可留空"
+            />
+            <Button
+              class="h-8 w-full text-xs"
+              onClick={() => void profiles.selectManualTarget()}
+            >
+              选择这个目标
+            </Button>
+          </div>
         </Show>
       </div>
 
-      <div class="min-h-0 flex-1 px-3 py-3">
-        <div class="mb-2 flex items-center justify-between">
-          <div class="text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
-            当前空间画像
-          </div>
-          <Show when={profiles.currentActor()}>
-            <div class="text-[11px] text-[color:var(--text-muted)]">
-              {(profiles.profiles() ?? []).length} 家
-            </div>
-          </Show>
-        </div>
-
+      <div class="hf-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-3">
         <Show
-          when={profiles.currentActor()}
+          when={!profiles.actorsList.loading && !profiles.usersList.loading}
           fallback={
-            <EmptyState
-              title="先选择渠道和用户"
-              description="公司画像按 actor 隔离展示。先在左侧选择渠道 + 用户，再查看这个空间里的公司画像。"
-            />
+            <div class="space-y-3 px-1 py-1">
+              <Skeleton class="h-16" />
+              <Skeleton class="h-16" />
+              <Skeleton class="h-16" />
+            </div>
           }
         >
           <Show
-            when={!profiles.profiles.loading}
+            when={allTargets().length > 0}
             fallback={
-              <div class="space-y-3 px-2 py-2">
-                <Skeleton class="h-16" />
-                <Skeleton class="h-16" />
-              </div>
+              <EmptyState
+                title="还没有可选目标"
+                description="你可以先打开一个用户会话，或直接手动指定要导入到哪个用户空间。"
+              />
             }
           >
+            <div class="mb-3 flex items-center justify-between px-1">
+              <div class="text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
+                目标用户
+              </div>
+              <div class="text-[11px] text-[color:var(--text-muted)]">
+                {filteredTargets().length} / {allTargets().length}
+              </div>
+            </div>
+
             <Show
-              when={(profiles.profiles() ?? []).length > 0}
+              when={filteredTargets().length > 0}
               fallback={
                 <EmptyState
-                  title="当前空间暂无公司画像"
-                  description="这个用户空间里还没有画像文档。请通过 agent 建立首份画像。"
+                  title="没有匹配的目标"
+                  description="换个关键词，或者直接手动指定新的 channel / user_id。"
                 />
               }
             >
-              <div class="hf-scrollbar h-full space-y-2 overflow-y-auto">
-                <For each={profiles.profiles() ?? []}>
-                  {(profile) => (
-                    <button
-                      type="button"
-                      class={[
-                        "w-full rounded-md border p-3 text-left transition",
-                        currentProfileId() === profile.profile_id
-                          ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
-                          : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
-                      ].join(" ")}
-                      onClick={() => profiles.selectProfile(profile.profile_id)}
-                    >
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0 flex-1">
-                          <div class="truncate text-sm font-medium text-[color:var(--text-primary)]">
-                            {profile.title}
+              <div class="space-y-2">
+                <For each={filteredTargets()}>
+                  {(target) => {
+                    const isSelected = () => currentActorKey() === target.key
+                    return (
+                      <button
+                        type="button"
+                        class={[
+                          "w-full rounded-md border p-3 text-left transition",
+                          isSelected()
+                            ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
+                            : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
+                        ].join(" ")}
+                        onClick={() => profiles.selectActor(target.actor)}
+                      >
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                              <div class="truncate text-sm font-medium text-[color:var(--text-primary)]">
+                                {target.label}
+                              </div>
+                              <span
+                                class={[
+                                  "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                  badgeClass(target.source),
+                                ].join(" ")}
+                              >
+                                {target.source === "space"
+                                  ? "已有画像"
+                                  : target.source === "session"
+                                    ? "最近会话"
+                                    : "手动指定"}
+                              </span>
+                            </div>
+                            <div class="mt-1 text-[11px] text-[color:var(--text-muted)]">
+                              {target.description}
+                            </div>
                           </div>
-                          <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
-                            <span>{profile.profile_id}</span>
-                            <span>{profile.event_count} 条事件</span>
+                          <div class="text-[10px] text-[color:var(--text-muted)]">
+                            {formatDate(
+                              target.source === "session"
+                                ? target.sessionLastTime
+                                : target.source === "space"
+                                  ? target.updatedAt
+                                  : undefined,
+                            )}
                           </div>
                         </div>
-                        <div class="text-[10px] text-[color:var(--text-muted)]">
-                          {formatDate(profile.updated_at)}
-                        </div>
-                      </div>
-                    </button>
-                  )}
+                      </button>
+                    )
+                  }}
                 </For>
               </div>
             </Show>
@@ -188,5 +218,5 @@ export function CompanyProfileList() {
         </Show>
       </div>
     </div>
-  );
+  )
 }

@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-04-17
+Last updated: 2026-04-19
 
 ## Purpose
 
@@ -27,7 +27,7 @@ Last updated: 2026-04-17
 - `crates/`
   - `hone-core`: foundational capabilities such as the config façade / submodules, logging, errors, and agent context
   - `hone-llm`: model provider abstraction, OpenRouter integration, and generic OpenAI-compatible provider plumbing used by the desktop `multi-agent` search stage
-  - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem now centers on `src/skill_runtime.rs`, the execution-oriented `skill_tool`, the local `discover_skills` index, the `skill_registry` enabled/disabled override layer, and a compatibility `load_skill` shim. `skill_tool` 现在还能解析结构化 script `stdout`，并在把本地图片路径暴露给模型前校验 artifact 根目录与扩展名。
+  - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem centers on `src/skill_runtime.rs`, `skill_tool`, the local `discover_skills` index, the `skill_registry` enabled/disabled override layer, and the compatibility `load_skill` shim. `skill_tool` still parses structured script `stdout` and validates local image artifact roots/extensions before exposing them to the model.
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
   - `hone-channels`: channel runtime, `HoneBotCore`, shared channel startup bootstrap, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes，以及把助手文本里的 `file://` 本地图片 marker 拆成有序 text/image 片段的共享逻辑), repo-external actor sandbox management, prompt-audit / session-compaction helpers, the cross-channel pre-session intercept layer for commands such as `/register-admin` and `/report`, plus shared attachment ingest / PDF preview helpers under `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
@@ -38,7 +38,7 @@ Last updated: 2026-04-17
   - `multi-agent`: two-stage runner wiring that combines a direct function-calling search pass with an ACP answer pass
 - `memory/`
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
-  - `memory/src/company_profile.rs` scans long-lived company portraits from each actor sandbox under `company_profiles/<profile_id>/profile.md` plus append-only `events/*.md`; the portrait defaults now emphasize Thesis / operating metrics / risk ledger, and event docs can retain why / evidence / research trail alongside the thesis delta
+  - `memory/src/company_profile/{mod,types,markdown,storage,transfer,tests}.rs` now splits company portraits into stable public types, Markdown/template parsing, actor-scoped storage CRUD, zip transfer helpers, and colocated regression tests; portraits still live under `company_profiles/<profile_id>/profile.md` plus append-only `events/*.md`, and both storage reads and transfer/import paths tolerate legacy plain Markdown files without frontmatter by synthesizing minimal metadata from titles, filenames, file mtimes, and bundle manifest timestamps
   - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间"
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
@@ -165,7 +165,8 @@ Last updated: 2026-04-17
 - Assistant message parser for inline local images: `packages/app/src/lib/messages.ts`
 - `hone-console-page` `/api/meta` handles version and capability negotiation
 - `hone-console-page` `/api/skills*` serves the skill management surface: registered listing, detail view, enable/disable mutation, and reset
-- `hone-console-page` `/api/company-profiles*` serves actor-space listing, portrait detail, and full deletion for actor-local portrait docs; portrait creation and updates now rely on runner-native file operations inside the actor sandbox rather than dedicated mutation APIs
+- `hone-console-page` `/api/company-profiles*` now serves actor-space listing, portrait detail, full deletion, and actor-scoped portrait bundle transfer (`export`, `import/preview`, `import/apply`) for actor-local portrait docs; portrait creation and section/event updates still rely on runner-native file operations inside the actor sandbox rather than dedicated mutation APIs
+- `packages/app/src/context/company-profiles.tsx` now acts as the memory-page transfer orchestrator: it merges portrait actor spaces with recent session users into one target-selector model, supports manual target entry for first-time imports, runs bundle preview/apply, keeps post-import highlights plus optional pre-import backup blobs, and auto-selects the first company in the current target space so the right panel does not fall back to a false empty state
 
 ## Web Console Structure
 
@@ -183,7 +184,7 @@ Last updated: 2026-04-17
   - Update `agents/function_calling` if needed
   - If the Web UI needs to show it, also update `bins/hone-console-page/src/main.rs` and the frontend pages
 - Adjusting the skill runtime:
-  - Start with `crates/hone-tools/src/skill_runtime.rs`, `crates/hone-tools/src/{skill_registry.rs,skill_tool.rs,discover_skills.rs,load_skill.rs}`
+  - Start with `crates/hone-tools/src/skill_runtime.rs`, `crates/hone-tools/src/{skill_registry.rs,skill_tool.rs}`
   - Then check `crates/hone-channels/src/{agent_session.rs,core.rs,prompt.rs,mcp_bridge.rs,runtime.rs}`
   - If the Web UI is affected, also check `crates/hone-web-api/src/routes/skills.rs` and `packages/app/src/{context/skills.tsx,components/skill-*.tsx,lib/skill-command.ts}`
 - Adding a Web page or dashboard:
@@ -205,7 +206,7 @@ Last updated: 2026-04-17
   - Start with `memory/`
   - Then check the Web API, channel entrypoints, and frontend pages that depend on it
 - Adjusting company portraits:
-  - Start with `memory/src/company_profile.rs`
+  - Start with `memory/src/company_profile/{mod,types,markdown,storage,transfer}.rs`
   - Then check `crates/hone-channels/src/{sandbox.rs,prompt.rs,core.rs}` and `crates/hone-web-api/src/routes/company_profiles.rs`
   - If the Web UI is affected, also check `packages/app/src/{context/company-profiles.tsx,components/company-profile-*.tsx,pages/memory.tsx}`
 - Adjusting identity quotas or limits:
