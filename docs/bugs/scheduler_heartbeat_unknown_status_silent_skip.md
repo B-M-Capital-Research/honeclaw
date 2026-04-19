@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 17:30-18:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 17:30 -> 18:00` 继续维持“同一批 heartbeat 里部分任务失败、部分任务靠尾部侥幸恢复”的活跃漂移态：
+      - `run_id=3029`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T17:30:17.442435+08:00`）落成 `execution_failed + skipped_error`
+      - `run_id=3030`（`RKLB异动监控`，`executed_at=2026-04-19T17:30:18.189754+08:00`）同窗继续落成 `execution_failed + skipped_error`
+      - 到 `18:00` 窗口，失败对象又漂移成 `run_id=3035`（`CAI破位预警`，`executed_at=2026-04-19T18:00:10.233547+08:00`）单独失败
+      - 同一 `18:00` 批次里，`run_id=3034/3036/3037/3038/3039/3041`（`小米30港元 / TEM / RKLB / ORCL / Monitor_Watchlist_11 / 小米破位预警`）又恢复成 `noop + skipped_noop`，`run_id=3040/3042/3043`（`原油 / TEM大事件 / ASTS`）则继续正常触发并送达
+    - 这说明最新一小时里，故障仍不是“某个固定模板永久损坏”，而是继续在 `Monitor_Watchlist_11`、`RKLB`、`CAI` 等任务之间漂移；同批其它任务所谓恢复仍建立在脆弱解析之上
+  - 对应 `data/runtime/logs/hone-feishu.release-restart.log`：
+    - `2026-04-19 17:30:17.441` 的 `Monitor_Watchlist_11` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 继续逐项比较 `HIMS / MU / RKLB / LMND ...` 的触发价后才失败收口
+    - `2026-04-19 17:30:18.188` 的 `RKLB异动监控` 再次记录 `parse_kind=JsonUnknownStatus`，正文已完成价格、新闻与并购条件判断后仍没能稳定收口到合法状态 JSON
+    - `2026-04-19 18:00:10.232` 的 `CAI破位预警` 记录 `parse_kind=JsonUnknownStatus`，文本已经明确写出“条件未满足，应输出 noop”，最终却仍只剩 `<think>...</think>\n\n{}`
+    - 同一 `18:00` 窗口里，恢复成 `JsonNoop` 或 `JsonTriggered` 的任务依旧统一满足 `starts_with_json=false`，说明所谓恢复仍依赖从自由文本尾部勉强提取状态，而不是协议已稳定
   - 2026-04-19 16:30-17:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 16:30 -> 17:00` 继续维持“同一批 heartbeat 里部分任务暂时恢复、部分任务继续失败，且失败对象再次漂移”的活跃态：
       - `run_id=3004`（`全天原油价格3小时播报`，`executed_at=2026-04-19T16:30:05.661281+08:00`）在 `16:30` 窗口先落成 `execution_failed + skipped_error`
