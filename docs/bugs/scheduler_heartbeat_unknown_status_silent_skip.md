@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 14:30-15:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 14:30 -> 15:00` 继续保持“同一批 heartbeat 里部分任务失败、部分任务恢复或正常送达”的漂移态：
+      - `run_id=2968`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T14:30:17.394918+08:00`）落成 `execution_failed + skipped_error`
+      - `run_id=2978`（同一任务，`executed_at=2026-04-19T15:00:21.275118+08:00`）继续落成 `execution_failed + skipped_error`
+      - `run_id=2971`（`RKLB异动监控`，`executed_at=2026-04-19T14:30:20.833962+08:00`）在 `14:30` 失败，但 `run_id=2979`（`2026-04-19T15:00:21.822364+08:00`）又恢复为 `noop + skipped_noop`
+      - 同窗 `run_id=2973` 与 `2983`（`ASTS 重大异动心跳监控`）仍连续两轮 `completed + sent + delivered=1`
+      - `run_id=2972/2980`（`ORCL 大事件监控`）与 `2964/2982`（`全天原油价格3小时播报`）分别保持 `noop + skipped_noop` 与 `completed + sent`
+    - 这说明最新一小时里，Heartbeat 公共协议仍未恢复稳定：复杂 watchlist 模板在两个连续窗口都持续失败，`RKLB` 则继续表现为“上一轮失败、下一轮恢复”的抖动态
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-19 14:30:17.394` 与 `15:00:21.273` 的 `Monitor_Watchlist_11` 连续记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 仍以 `<think>` 开头并逐项枚举 `HIMS / MU / RKLB / LMND ...` 的触发价比较
+    - `2026-04-19 14:30:20.833` 的 `RKLB异动监控` 继续记录 `parse_kind=JsonUnknownStatus`，正文已完成新闻与价格判断后仍被升级为 `parse failure escalated`
+    - `2026-04-19 15:00` 同窗里 `TEM/CAI/ORCL/TEM大事件` 又恢复为 `JsonNoop`，但 `starts_with_json=false` 仍未消失，说明所谓“恢复”仍依赖尾部侥幸提取状态
+    - 最近一小时的链路现象依旧不是整批调度故障，而是 heartbeat 结构化状态契约在不同任务模板间持续漂移
   - 2026-04-19 13:00-14:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 13:00 -> 14:00` 继续呈现“同一批 heartbeat 一部分失败、一部分恢复或正常触发”的漂移态：
       - `run_id=2941`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T13:00:19.166163+08:00`）落成 `execution_failed + skipped_error`
@@ -654,7 +667,7 @@
 - 而 `21:01:18.329` 紧随其后的恢复窗口又说明，这并不是稳定修复，只是同一模板再次短暂恢复为 `JsonNoop`。
 - 同一时间窗内，另一个真实 Feishu 会话已经正常返回 quota 友好文案并完成落库，说明当前系统并非普遍性发送或会话链路故障；最新未收口的问题仍集中在 heartbeat 结构化状态输出。
 - `17:30 -> 18:00` 的最新窗口继续重复同一抖动：`Monitor_Watchlist_11` 在 `17:30` 先回落到 `JsonUnknownStatus + execution_failed`，`18:00` 又恢复为 `JsonNoop`；同批次的 `小米30港元破位预警` 与 `全天原油价格3小时播报` 也都保留 `<think>` 前缀后才分别落成 `JsonNoop` / `JsonTriggered`。这说明当前线上依旧依赖解析器从自由文本尾部勉强提取状态，公共协议脆弱性没有收口。
-- `13:00 -> 14:00` 的最新窗口说明这种抖动仍在当前生产小时窗活跃：`Monitor_Watchlist_11` 在 `13:00` 失败、`13:30` 短暂恢复、`14:00` 再次失败，而同批 `ASTS` 连续两轮成功送达、`ORCL/原油播报` 继续稳定为 `noop`。这再次说明问题不是整批调度故障，而是 heartbeat 结构化状态协议在复杂 watchlist 模板上的活跃抖动。
+- `14:30 -> 15:00` 的最新窗口说明这种抖动仍在当前生产小时窗活跃：`Monitor_Watchlist_11` 在 `14:30`、`15:00` 连续失败，`RKLB异动监控` 在 `14:30` 失败后到 `15:00` 又恢复，而同批 `ASTS` 继续成功送达、`ORCL` 维持 `noop`。这再次说明问题不是整批调度故障，而是 heartbeat 结构化状态协议在复杂 watchlist 模板上的持续漂移。
 
 ## 修复情况（2026-04-16，待重新验证）
 
