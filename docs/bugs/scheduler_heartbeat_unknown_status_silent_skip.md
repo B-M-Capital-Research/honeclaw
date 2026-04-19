@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 10:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 09:30 -> 10:00` 再次出现“上一轮部分恢复、下一轮又漂移失败”的抖动态：
+      - `run_id=2878`（`RKLB异动监控`，`executed_at=2026-04-19T10:00:21.202768+08:00`）再次落成 `execution_failed + skipped_error`
+      - `run_id=2879`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T10:00:23.131306+08:00`）同窗再次落成 `execution_failed + skipped_error`
+      - `run_id=2881`（`ORCL 大事件监控`，`executed_at=2026-04-19T10:00:24.567554+08:00`）也重新落成 `execution_failed + skipped_error`
+      - 同一 `10:00` 批次里，`run_id=2873`（`全天原油价格3小时播报`）、`2874`（`小米30港元破位预警`）、`2875`（`TEM破位预警`）、`2876`（`CAI破位预警`）、`2877`（`小米破位预警`）、`2880`（`TEM大事件心跳监控`）恢复为 `noop + skipped_noop`，`run_id=2882`（`ASTS 重大异动心跳监控`）则继续 `completed + sent`
+      - 这说明故障仍未收敛到单一模板，而是在 `RKLB / ORCL / Monitor_Watchlist_11` 之间持续漂移；同窗其余 heartbeat 依旧依赖尾部侥幸提取 `noop`
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-19 10:00:21.201` 的 `RKLB异动监控` 再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 先完整列出 `Mynaric` 收购、SpaceX IPO 相关新闻与价格判断，随后被升级为 `parse failure escalated`
+      - `2026-04-19 10:00:23.130` 的 `Monitor_Watchlist_11` 再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 逐项枚举 `HIMS / MU / RKLB / LMND ...` 的阈值比较后仍未收口到合法状态 JSON
+      - `2026-04-19 10:00:24.566` 的 `ORCL 大事件监控` 同样记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 先完成股价、日内波动与事件条件判断，随后失败收口
+      - 同窗恢复成功的 `全天原油价格3小时播报`、`小米30港元破位预警`、`TEM破位预警`、`CAI破位预警`、`小米破位预警`、`TEM大事件心跳监控` 仍统一满足 `starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头；说明“恢复”为 `JsonNoop` 的任务依然依赖受污染输出尾部侥幸提取状态，而不是协议已经恢复
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-19 09:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 08:30 -> 09:00` 继续保持“同批 heartbeat 里部分任务侥幸恢复、部分任务仍失败”的漂移态：
       - `run_id=2853`（`小米30港元破位预警`，`executed_at=2026-04-19T09:00:12.853178+08:00`）再次落成 `execution_failed + skipped_error`
