@@ -5,6 +5,19 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-20 04:02 最近一小时最新样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=3249`，`job_id=j_355ba2f1`，`job_name=Oil_Price_Monitor_Closing`，`executed_at=2026-04-20T04:02:07.830452+08:00`
+      - 再次落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`、`should_deliver=1`
+      - `response_preview` 保留了完整收盘前油价播报开头，说明本轮模型执行与调度收口都成功，故障继续停留在最终 Feishu 投递阶段
+      - `error_message` 这次已不再只是裸 `HTTP 400`，而是明确返回 `code=99992361`、`msg="open_id cross app"`
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+      - `2026-04-20T04:02:07.350233+08:00` assistant 已写入本轮 `Oil_Price_Monitor_Closing` 最终播报，且正文长度与 `response_preview` 对齐
+      - 说明 scheduler 注入、LLM 生成、会话持久化全部成功，但用户侧依然没有收到真正投递
+    - `data/runtime/logs/web.log`
+      - `2026-04-20 04:02:07.829` 记录 `[Feishu] 定时任务投递失败: job=Oil_Price_Monitor_Closing ... HTTP 400 Bad Request - {"code":99992361,"msg":"open_id cross app",...}`
+      - 这是当前已落库样本里第一次直接拿到 Feishu 返回体，根因从“泛化 400”收敛到“当前发送所用 open_id 与 app 绑定关系不一致”
   - 最近一小时调度落库：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=2207`，`job_id=j_dac3b571`，`job_name=Oil_Price_Monitor_Premarket`，`executed_at=2026-04-17T21:32:32.066317+08:00`
     - 同样落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`
@@ -76,7 +89,8 @@
 - `OWALERT_PreMarket`、`Oil_Price_Monitor_Premarket`、`Oil_Price_Monitor_Closing` 与 `OWALERT_PostMarket` 在最近几个窗口连续四次失败。
 - 四次失败都发生在相同用户、相同手机号目标、相同 scheduler 送达链路。
 - 与前一日的 `target_resolution_failed` 不同，这一轮 `receive_id` 已解析为正确 actor，但发送接口仍直接返回 400。
-- 当前日志只保留了通用 `HTTP 400 Bad Request`，没有记录响应体、请求类型或被拒字段，因此只能确认是发送阶段故障，无法从现有日志进一步判定是 Markdown/卡片格式、消息体长度，还是 `receive_id_type` 等请求参数问题。
+- `2026-04-20 04:02` 的最新 `Oil_Price_Monitor_Closing` 样本进一步证明，这类失败并不是“消息体太长”或“单个模板 markdown 非法”那么宽泛；Feishu 已明确返回 `code=99992361 / open_id cross app`。
+- 也就是说，当前链路即使拿到了正确会话与最终正文，最终投递时使用的 `open_id` 仍可能不属于正在发消息的 app 绑定域，导致整轮在 Feishu API 校验阶段被拒绝。
 - 最近一小时新增样本说明故障已经从“盘前提醒”扩展到“收盘监控 / 收盘后提醒”，属于同一发送链路持续失败，而不是某一个 job 文案偶发异常。
 - `2026-04-17 08:34` 的 `Hone_AI_Morning_Briefing` 新样本说明故障仍在最新小时窗活跃，并且已从盘前 / 收盘 / 盘后扩散到“日常早报”任务；受影响对象仍是同一 `receive_id` 与同一目标手机号。
 - `2026-04-17 21:32` 的最新 `Oil_Price_Monitor_Premarket` 样本说明，哪怕在 10:40 已补 direct scheduler 的 standalone fallback 之后，下一轮真实窗口里同一 `receive_id` 仍会稳定落成 `completed + send_failed + HTTP 400`，所以当前不能把这条链路视为“待验证修复”，而应视为“修复尝试后仍在线复现”。
@@ -89,17 +103,18 @@
 
 ## 根因判断
 
-- 初步判断：旧的 direct target 解析问题已基本收敛，因为 `detail_json.receive_id` 已回到绑定 actor；当前新故障位于 Feishu 发送请求构造或请求内容校验阶段。
-- 现有证据不足以确认具体子根因。两次失败均缺少 Feishu 侧响应 body，日志可观测性不足是当前定位阻塞点。
+- 初步判断：旧的 direct target 解析问题并没有完全退出生产链路。`detail_json.receive_id` 虽然表面上已回到绑定 actor，但 `2026-04-20 04:02` 的 Feishu 返回体已明确指出当前发送使用的是 `open_id cross app`。
+- 因此根因比“泛化的发送阶段 400”更具体：scheduler 最终调用 Feishu 发送 API 时，所选 `receive_id/open_id` 与当前 app 的绑定关系仍不一致，或者仍沿用了跨 app 域的历史标识。
 - 由于同一目标在 `2026-04-16 20:03` 仍有一条 `run_id=1976` 成功送达，而 `2026-04-17 04:01` 与 `04:31` 的新样本继续失败，说明并非该用户或该目标整体不可用，更像是 scheduler 当前某类 payload 形态在发送阶段稳定触发了 400。
 - 新增失败样本覆盖盘前、收盘、收盘后三种 job 名称，但都指向同一 `receive_id` 与同一 actor，会更支持“Feishu 发送请求构造/消息体校验”这一公共链路根因，而不是单个任务 prompt 内容问题。
 - `08:34` 的早报任务失败进一步排除了“只在某一类油价/盘后模板文案触发 400”的可能性；更像是面向同一 Feishu 直达目标的 scheduler 发送链路在多种长文本 payload 上都可能稳定触发 400。
-- `21:32` 的最新失败发生在已经补了 `reply/update -> standalone send` 回退之后，说明问题不只是“回复链路选错 API”；更可能是 scheduler 针对该目标构造的最终发送 payload 或发送上下文本身仍会稳定触发 400。
+- `21:32` 与 `04:02` 的连续失败都发生在已经补了 `reply/update -> standalone send` 回退之后，说明问题不只是“回复链路选错 API”；当前更像是 scheduler 在直达 Feishu 目标上仍会选到跨 app 域的 `open_id` 或其等价标识。
 
 ## 下一步建议
 
-- 在 Feishu scheduler 发送失败分支补记录请求元信息与响应体摘要，至少包含 `receive_id_type`、消息类型、正文长度、是否走 markdown/card 分支。
-- 对 `+8617326027390` 最近成功与失败 run 的发送 payload 做差异比对，优先比较 `run_id=1976` 与 `run_id=1998/2005`。
+- 优先核对 `+8617326027390` / `ou_3f69c84593eccd71142ed767a885f595` 当前 scheduler 发送时实际落下的 `receive_id_type` 与 `receive_id` 来源，确认是否仍在跨 app 域复用旧 `open_id`。
+- 对 `+8617326027390` 最近成功与失败 run 的发送 payload 做差异比对，优先比较 `run_id=1976` 与 `run_id=3249/2207/1998`。
+- 即便已有响应体日志，也应继续补发信分支的请求元信息，至少包含 `receive_id_type`、消息类型、正文长度、是否走 markdown/card 分支。
 - 若确认只是同一发送链路的新阶段回归，应在修复后回写 `docs/bugs/README.md` 与本文件状态；修复前不要恢复为 `Fixed`。
 
 ## 当前修复进展（2026-04-17 10:40 CST）

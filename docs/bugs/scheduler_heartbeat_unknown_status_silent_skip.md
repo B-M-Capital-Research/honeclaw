@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 03:31-04:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 03:31 -> 04:01` 继续出现“上一轮失败对象没有收口、下一轮又有别的模板重新跌回 unknown status”的活跃漂移态：
+      - `run_id=3235`（`RKLB异动监控`，`executed_at=2026-04-20T03:31:13.934049+08:00`）在 `03:31` 窗口落成 `execution_failed + skipped_error`
+      - 到 `04:01` 窗口，`run_id=3246`（同任务，`executed_at=2026-04-20T04:01:17.190463+08:00`）继续落成 `execution_failed + skipped_error`，说明 `RKLB异动监控` 已跨两个连续窗口稳定失败
+      - 同一 `04:01` 批次里，`run_id=3245`（`小米破位预警`，`executed_at=2026-04-20T04:01:16.969390+08:00`）也再次落成 `execution_failed + skipped_error`
+      - 而同批 `run_id=3240/3241/3242/3243/3244/3247`（`CAI / TEM破位 / ORCL / 小米30港元 / TEM大事件 / Monitor_Watchlist_11`）虽然被记成 `noop + skipped_noop`，但最新日志仍统一是 `starts_with_json=false`
+      - `run_id=3248`（`ASTS 重大异动心跳监控`）继续 `completed + sent`，说明这不是整批 scheduler 故障，而是 heartbeat 结构化状态契约继续在不同模板间漂移
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 03:31:13.932` 的 `RKLB异动监控` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已明确写出“结论：条件未触发，返回 noop”，最终却仍只剩 `<think>...</think>\n\n{}`
+    - `2026-04-20 04:01:16.968` 的 `小米破位预警` 再次记录 `parse_kind=JsonUnknownStatus`；`raw_preview` 已根据旧行情与回购数据完成“未触发”判断，却仍无法稳定收口到合法状态 JSON
+    - `2026-04-20 04:01:17.189` 的 `RKLB异动监控` 连续第二轮记录 `parse_kind=JsonUnknownStatus`，说明失败并不是上一轮偶发
+    - 同一 `04:01` 窗口里，`TEM破位 / CAI / ORCL / 小米30港元 / Monitor_Watchlist_11 / TEM大事件` 虽恢复为 `JsonNoop`，但 `raw_preview` 仍统一以 `<think>` 开头、`starts_with_json=false`，说明所谓“恢复”依旧依赖尾部 JSON 提取，而不是协议本身已经恢复
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 02:31-03:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 02:31 -> 03:01` 再次出现“上一轮同批大多侥幸 `noop`，下一轮又有多条 heartbeat 集体跌回 unknown status”的活跃抖动态：
       - `run_id=3210`（`小米破位预警`，`executed_at=2026-04-20T02:31:05.992323+08:00`）在 `02:31` 窗口落成 `execution_failed + skipped_error`
@@ -692,6 +705,11 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 03:31 -> 04:01` 的最新窗口，这条缺陷继续证明 heartbeat 公共协议没有收口：
+  - `RKLB异动监控` 在 `03:31` 与 `04:01` 连续两轮都落成 `execution_failed + skipped_error`
+  - `小米破位预警` 在 `04:01` 又重新跌回 `JsonUnknownStatus`
+  - 同批被记成 `noop` 的 `TEM破位 / CAI / ORCL / 小米30港元 / Monitor_Watchlist_11 / TEM大事件` 仍统一依赖 `<think>...JSON` 尾部提取
+  - 说明系统依然处于“部分模板直接失败、其余模板伪恢复”的漂移态，而不是结构化状态契约真正恢复
 - 到 `2026-04-20 00:31 -> 01:01` 的最新窗口，`Monitor_Watchlist_11` 已不只是“偶发漂移失败”，而是在相邻两个半小时窗口连续落成 `execution_failed + skipped_error`。
 - 同两轮窗口里，其它任务虽然大多回到 `noop`，但日志仍统一以 `<think>` 开头、`starts_with_json=false`，说明这些 `noop` 依然只是从污染输出尾部侥幸提取状态，而不是结构化协议已恢复。
 - 到 `2026-04-18 05:31 -> 06:01` 的最新窗口，`Monitor_Watchlist_11` 已连续两个轮次落成 `JsonUnknownStatus + execution_failed`，而 `全天原油价格3小时播报` 又在 `05:31` 被同根因击中后，于 `06:01` 自行恢复为 `completed + sent`。
