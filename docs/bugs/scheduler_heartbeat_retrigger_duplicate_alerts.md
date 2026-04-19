@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-20 00:31-01:01 最近一小时最新样本：
+      - `job_name=TEM大事件心跳监控`
+      - `run_id=3175`，`executed_at=2026-04-20T00:31:14.728265+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`
+      - `run_id=3188`，`executed_at=2026-04-20T01:01:32.930174+08:00`，仅过约 30 分钟又切回 `completed + sent + delivered=1`
+      - `3188` 的 `response_preview` 仍围绕同一 `AACR Annual Meeting 2026` 进行中事件与 `Exhibitor Spotlight Theater session` 展开，没有看到新的独立公告、财报、价格阈值跨越或新的公司级催化落地
+      - 这说明最近一小时里，TEM 仍会把同一持续性会议事件在相邻窗口里从 `noop` 回摆成 `triggered` 并重新送达
     - 2026-04-19 21:30-22:00 最近一小时最新样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=3115`，`executed_at=2026-04-19T21:30:39.536730+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
@@ -17,6 +23,9 @@
       - `response_preview` 直接围绕 `2026年4月16日完成的 Mynaric 收购` 旧事件触发，没有看到新的并购进展、价格阈值跨越或独立公告
       - 而此前同任务在 `19:01 -> 21:30` 多个窗口里先后表现为 `noop` 或 `execution_failed`，说明公共去重与增量识别依旧不稳定：旧事件可能长时间不报，随后又在新的轮询窗口里被重新当成“新触发”
   - `data/runtime/logs/web.log`
+    - `2026-04-20 00:31:14.727` 的 `TEM大事件心跳监控` 记录 `parse_kind=JsonNoop`
+    - `2026-04-20 01:01:30.406` 的同任务又记录 `parse_kind=JsonTriggered`，并把同一 AACR 会议进行中 + 当日 session 安排包装成新触发
+    - 两轮之间没有看到新的独立事件源，说明系统依旧会把 ongoing event 在后续窗口重新当成新催化送达
     - `2026-04-19 21:30:39.535` 与 `22:00:23.490` 对应 ASTS heartbeat 都继续是 `parse_kind=JsonTriggered`
     - 两轮 `deliver_preview` 都围绕同一 `BlueBird 7` 旧事件，只是换了近似措辞，没有新增独立事件源
     - `2026-04-19 22:00:24.025` 的 `RKLB异动监控` 最新也落成 `parse_kind=JsonTriggered`，直接把 `2026-04-16` 完成的 Mynaric 收购重新当成已触发提醒送达
@@ -122,6 +131,10 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 00:31 -> 01:01` 的最新窗口，`TEM大事件心跳监控` 继续证明这不是 ASTS 特例：
+  - `00:31` 同一 AACR 会议事件先被压成 `noop`
+  - `01:01` 又因同一会议进行中 + 当日 session 安排回摆成 `triggered + sent`
+  - 两轮之间没有新的独立公告、额外价格阈值跨越或新的公司级催化落地
 - `ASTS 重大异动心跳监控` 在 `08:30 -> 15:00` 的多个连续窗口里，对同一 `BlueBird 7` 发射事件持续重复送达提醒。
 - 到 `11:30 -> 15:00` 窗口，这种重复触发已经演变成“短暂停发一轮又重新触发，并反复改写同一事实”的形态：
   - `11:30` 被记成 `noop + skipped_noop`

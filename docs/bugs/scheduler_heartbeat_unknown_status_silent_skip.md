@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 00:31-01:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 00:31 -> 01:01` 继续出现“同一 heartbeat 模板连续失败，且同批其它任务只是侥幸恢复”的活跃坏态：
+      - `run_id=3178`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T00:31:21.068797+08:00`）落成 `execution_failed + skipped_error`
+      - 仅过 30 分钟，`run_id=3185`（同任务，`executed_at=2026-04-20T01:01:23.136625+08:00`）再次落成 `execution_failed + skipped_error`
+      - 同批 `run_id=3170/3171/3172/3173/3174/3175/3176/3177/3179` 与 `3180/3181/3182/3183/3184/3186/3187` 大多恢复为 `noop + skipped_noop`，`run_id=3188`（`TEM大事件心跳监控`）则又回摆成 `completed + sent`
+      - 这说明结构化状态契约并未稳定恢复；复杂 watchlist 模板仍能跨两个连续窗口直接失败，而其它模板所谓“恢复”依旧只是脆弱的尾部提取
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 00:31:21.067` 的 `Monitor_Watchlist_11` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 继续逐项比较 `HIMS / MU / RKLB / LMND ...` 的触发价后才失败收口
+    - `2026-04-20 01:01:23.136` 的同任务再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 仍是逐项价格比较后没有稳定收口到合法状态 JSON
+    - 同两轮窗口里，恢复为 `JsonNoop` 的 `CAI / TEM破位 / ORCL / RKLB异动 / ASTS` 仍统一满足 `starts_with_json=false`，说明所谓恢复依然依赖 `<think>...JSON` 尾部侥幸提取，而不是上游协议已恢复
+    - 这组最新样本说明：故障不只是“失败对象在模板间漂移”，也已经表现为 `Monitor_Watchlist_11` 在相邻两个窗口稳定连续失败
   - 2026-04-19 21:30-22:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 21:30 -> 22:00` 继续出现“上一轮失败对象没有真正修复，下一轮又漂移到别的 heartbeat 模板”的活跃抖动态：
       - `run_id=3110/3114`（`RKLB异动监控`、`Monitor_Watchlist_11`，`executed_at=2026-04-19T21:30:14-21:30:19+08:00`）在 `21:30` 窗口落成 `execution_failed + skipped_error`
@@ -656,6 +667,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 00:31 -> 01:01` 的最新窗口，`Monitor_Watchlist_11` 已不只是“偶发漂移失败”，而是在相邻两个半小时窗口连续落成 `execution_failed + skipped_error`。
+- 同两轮窗口里，其它任务虽然大多回到 `noop`，但日志仍统一以 `<think>` 开头、`starts_with_json=false`，说明这些 `noop` 依然只是从污染输出尾部侥幸提取状态，而不是结构化协议已恢复。
 - 到 `2026-04-18 05:31 -> 06:01` 的最新窗口，`Monitor_Watchlist_11` 已连续两个轮次落成 `JsonUnknownStatus + execution_failed`，而 `全天原油价格3小时播报` 又在 `05:31` 被同根因击中后，于 `06:01` 自行恢复为 `completed + sent`。
 - 这说明缺陷依旧不是“固定坏掉”或“已经修复”，而是同一轮次里不同 heartbeat 模板继续漂移，且复杂 watchlist 模板已出现短时连续失败。
 - 最新失败样本的 `raw_preview` 仍清楚表达“条件未满足，应返回 noop / {}”，但最终输出依旧带有 `<think>` 前缀和自由文本分析，说明问题继续停留在结构化状态收口不稳定，而不是业务判断错误。
