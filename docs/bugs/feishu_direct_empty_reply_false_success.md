@@ -115,3 +115,37 @@
   - `cargo test -p hone-channels`
   - `cargo test -p hone-feishu`
 - 由于当前还缺少新的真实 Feishu 回归样本，本单状态先更新为 `Fixing` 而不是 `Fixed`；下一条真实直聊若不再出现 `reply.chars=0 + success=true`，再考虑关闭。
+
+## 最新真实样本复核（2026-04-19 23:10 CST）
+
+- `data/sessions.sqlite3` -> `session_messages`
+  - `session_id=Actor_feishu__direct__ou_5f1ed3244e3a7b34789cea10eeabe4da98`
+  - `2026-04-19T22:57:43.695601+08:00` 用户提问：`闪迪还能涨到多少`
+  - `2026-04-19T22:59:24.453973+08:00` assistant 最终落库为通用 fallback：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+- `data/runtime/logs/web.log`
+  - `2026-04-19 22:58:09.561` 到 `22:58:09.569` 首轮 search 中连续触发 `Tool: hone/local_list_files`、3 次 `Tool: hone/local_search_files`，并全部记录 `runner.stage=acp.tool_failed`
+  - `2026-04-19 22:58:16.866` 记录 `empty successful response, retrying ... attempt=1/2`
+  - `2026-04-19 22:58:52.632` 再次记录 `empty successful response, retrying ... attempt=2/2`
+  - `2026-04-19 22:59:24.445` 最终记录 `empty successful response persisted as fallback` 与 `step=agent.run.fallback ... detail=empty_success_exhausted`
+  - `2026-04-19 22:59:24.456` 同轮 `done ... success=true ... reply.chars=35`
+  - `2026-04-19 22:59:25.476` `step=reply.send ... detail=segments.sent=1/1`
+
+## 当前修复结论（2026-04-19 23:10 CST）
+
+- 这条最新真实样本说明，`2026-04-17` 的止血修补已经覆盖了“零字节 assistant 直接落库/外发”的用户侧坏态：
+  - 最新会话没有再出现 `reply.chars=0`、空 assistant 落库或空分段发送。
+  - Feishu 用户侧收到的是非空 fallback，而不是空白消息。
+- 但底层 `empty_success` 根因并没有消失：
+  - `codex_acp` 在同一条简单个股问题上仍连续两次返回空成功，最终只能靠 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 收口。
+  - 同轮还伴随多次 `local_list_files/local_search_files` 失败，说明当前 answer/search 组合仍会把“已有部分工具动作但无最终正文”的坏态带到生产。
+- 因此本单继续维持 `Fixing`：
+  - “空消息伪成功”这一原始用户侧症状已被止血，不再适合回退到 `New`；
+  - 但“runner 空成功仍活跃，只是改由 fallback 遮蔽”的根因仍未修复，暂不能转为 `Fixed`。
+
+## 下一步建议（更新于 2026-04-19 23:10 CST）
+
+- 把 `empty_success_exhausted` 视为当前主监控信号，而不再只盯 `reply.chars=0`；否则会误判为已彻底收口。
+- 继续区分两层结论：
+  - 用户侧止血是否成立：看是否还出现空 assistant / 空分段发送。
+  - 根因是否修复：看 `empty successful response` 重试与 `persisted as fallback` 是否仍在真实会话里出现。
+- 结合同轮 `local_list_files/local_search_files` 连续失败链路排查，为何简单个股问答仍会在有 `data_fetch` 的前提下走到空成功收口，而不是形成可消费答案。

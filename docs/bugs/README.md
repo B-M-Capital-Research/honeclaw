@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-19 22:12 CST
+最后更新：2026-04-19 23:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -23,7 +23,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | Fixing | 2026-04-17 已补 `AgentSession` 的“净化后为空”成功收口，并补 Feishu 发送回退；`cargo test -p hone-channels`、`cargo test -p hone-feishu` 已通过，待真实直聊样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | Fixing | 2026-04-19 22:59 最新直聊样本已不再外发零字节消息，但 `codex_acp` 仍连续两次 `empty_success` 重试后退化为通用 fallback，说明用户侧止血有效、底层空成功根因仍活跃 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixing | 2026-04-19 12:23 `GOOGL` 深度研究请求再次在 search 阶段触顶；这次混入 `company_portrait` / 错误文件读取后仍直接把 `已达最大迭代次数 8` 落成 assistant 文本 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-17 21:32 `Oil_Price_Monitor_Premarket` 在最新真实窗口仍落成 `completed + send_failed`；说明 10:40 的 fallback 修补尚未收口到生产链路 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | 会话压缩摘要再次以 `Compact Summary` 回灌为 `role=user`，真实 transcript 与修复结论重新冲突 | P1 | Fixing | 2026-04-19 21:37 最新直聊样本再次在 auto compact 后写回 `role=user` 的答复型 `Compact Summary`，并直接引发 `ASTS -> ORCL` 话题串线 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
