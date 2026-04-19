@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 18:31-19:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 18:31 -> 19:01` 再次出现“上一轮还是正常 noop，下一轮又漂移回 unknown status”的活跃抖动态：
+      - `run_id=3044`（`全天原油价格3小时播报`，`executed_at=2026-04-19T18:31:05.369002+08:00`）在 `18:31` 窗口仍是 `noop + skipped_noop`
+      - 仅过 30 分钟，到 `run_id=3054`（同任务，`executed_at=2026-04-19T19:01:04.739613+08:00`）就回落成 `execution_failed + skipped_error`
+      - 同一 `19:01` 批次里，`run_id=3056/3059/3060/3061`（`CAI破位预警`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`）又恢复为 `noop + skipped_noop`，`run_id=3063`（`ASTS 重大异动心跳监控`）继续 `completed + sent`
+      - 这说明缺陷仍不是单个模板永久损坏，而是继续在“时间条件 heartbeat / 价格阈值任务 / 事件监控”之间漂移；同批其它任务所谓恢复仍建立在脆弱解析之上
+  - 对应 `data/runtime/logs/hone-feishu.release-restart.log`：
+    - `2026-04-19 19:01:04.738` 的 `全天原油价格3小时播报` 再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已明确写出“当前是 19:00:59，不在 [0,3,6,9,12,15,18,21]，所以条件不满足，应返回 noop”，最终却仍只剩 `<think>...</think>\n\n{}`
+    - 同一 `19:01` 窗口里，`CAI破位预警`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控` 虽分别恢复成 `JsonNoop`，但 `raw_preview` 仍统一以 `<think>` 开头、`starts_with_json=false`，说明“恢复”为 `noop` 的任务依旧依赖尾部侥幸提取状态
+    - 这组最新样本说明：`全天原油价格3小时播报` 已从 `18:31` 的正常 noop 再次漂移回 `JsonUnknownStatus`，Heartbeat 公共结构化状态契约在最近一小时依旧没有收口
   - 2026-04-19 17:30-18:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 17:30 -> 18:00` 继续维持“同一批 heartbeat 里部分任务失败、部分任务靠尾部侥幸恢复”的活跃漂移态：
       - `run_id=3029`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T17:30:17.442435+08:00`）落成 `execution_failed + skipped_error`
