@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 06:31-07:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 06:31 -> 07:01` 继续表现为“上一轮刚回到 `noop` 的模板，下一轮又换一批对象跌回 unknown status”的活跃漂移态：
+      - `run_id=3300/3301`（`Monitor_Watchlist_11`、`ORCL 大事件监控`，`executed_at=2026-04-20T06:31:18.605044+08:00`、`2026-04-20T06:31:20.077291+08:00`）在 `06:31` 窗口落成 `execution_failed + skipped_error`
+      - 到 `07:01` 窗口，这两条又回到 `run_id=3311/3309` 的 `noop + skipped_noop`，但失败对象漂移成 `run_id=3308/3310`（`RKLB异动监控`、`TEM大事件心跳监控`），分别在 `2026-04-20T07:01:11.934337+08:00`、`2026-04-20T07:01:18.047455+08:00` 落成 `execution_failed + skipped_error`
+      - 同一 `06:31` 批次里，`run_id=3293/3294/3295/3296/3297/3298/3299`（`TEM破位 / 小米30港元 / CAI / 小米破位 / RKLB / ASTS / TEM大事件`）大多被记成 `noop + skipped_noop`
+      - 同一 `07:01` 批次里，`run_id=3302/3303/3304/3305/3306/3307/3309/3311`（`全天原油 / 小米30港元 / TEM破位 / CAI / ASTS / 小米破位 / ORCL / Monitor_Watchlist_11`）同样大多被记成 `noop + skipped_noop`
+      - 这说明 heartbeat 公共结构化状态契约在最新窗口仍没有收口；失败对象只是从 `Watchlist/ORCL` 漂移到 `RKLB/TEM大事件`，并不是问题被修复
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 06:31:18.604` 的 `Monitor_Watchlist_11` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 先逐项比较 `HIMS / MU / RKLB / LMND ...` 的触发价，随后被升级为 `parse failure escalated`
+    - `2026-04-20 06:31:20.076` 的 `ORCL 大事件监控` 也记录 `parse_kind=JsonUnknownStatus`；正文已经完成“未超过 5% 且没有重大基本面事件”的判断，最终却仍只收口成 `<think>...</think>\n\n{}`
+    - 到 `2026-04-20 07:01:11.933`，失败对象漂移成 `RKLB异动监控`，日志再次记录 `parse_kind=JsonUnknownStatus`；`raw_preview` 已明确写出“没有新的并购/发射失败/重大订单异常”，却没有稳定收口成合法状态 JSON
+    - `2026-04-20 07:01:18.046` 的 `TEM大事件心跳监控` 同样记录 `parse_kind=JsonUnknownStatus`；正文已完成“价格条件未触发，但有进行中的 AACR/合作新闻”的判断，仍被升级为 `parse failure escalated`
+    - 同两轮窗口里，恢复为 `JsonNoop` 的 `ASTS / 全天原油 / 小米30港元 / TEM破位 / CAI / 小米破位 / ORCL / Monitor_Watchlist_11` 仍统一满足 `starts_with_json=false`，说明所谓“恢复”为 `noop` 的任务依旧依赖 `<think>...JSON` 尾部侥幸提取，而不是协议本身已经恢复
   - 2026-04-20 04:31-05:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 04:31 -> 05:01` 继续出现“同一失败对象跨两个连续窗口不收口、其余任务仍靠尾部提取勉强运行”的活跃坏态：
       - `run_id=3255`（`RKLB异动监控`，`executed_at=2026-04-20T04:31:11.078079+08:00`）在 `04:31` 窗口落成 `execution_failed + skipped_error`
