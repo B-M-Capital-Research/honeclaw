@@ -39,6 +39,7 @@ Last updated: 2026-04-19
 - `memory/`
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
   - `memory/src/company_profile/{mod,types,markdown,storage,transfer,tests}.rs` now splits company portraits into stable public types, Markdown/template parsing, actor-scoped storage CRUD, zip transfer helpers, and colocated regression tests; portraits still live under `company_profiles/<profile_id>/profile.md` plus append-only `events/*.md`, and both storage reads and transfer/import paths tolerate legacy plain Markdown files without frontmatter by synthesizing minimal metadata from titles, filenames, file mtimes, and bundle manifest timestamps
+  - `memory/src/web_auth.rs` keeps web invite users and public-login cookie sessions in the shared SQLite DB; one invite code maps to one stable `channel=web` actor
   - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间"
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
@@ -72,6 +73,7 @@ Last updated: 2026-04-19
 
 - Web console backend: `bins/hone-console-page/src/main.rs`
 - Web console frontend: `packages/app/src/app.tsx`
+  - 管理端与用户端现在按端口和构建产物分离：管理端默认走 `HONE_WEB_PORT` + `packages/app/dist`，用户端默认走 `HONE_PUBLIC_WEB_PORT` + `packages/app/dist-public`
   - 用户可见的长期研究记忆入口现只保留 `/memory` 下的公司画像视图；KB 页面与知识记忆 tab 已移除
 - CLI: `bins/hone-cli/src/main.rs`
   - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, and `start`; no-subcommand mode still drops into the local chat REPL
@@ -164,6 +166,7 @@ Last updated: 2026-04-19
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`
 - Assistant message parser for inline local images: `packages/app/src/lib/messages.ts`
 - `hone-console-page` `/api/meta` handles version and capability negotiation
+- `hone-console-page` admin app only serves `/api/*` and console SPA on the admin port; the public app only serves `/api/public/*` plus `/chat` on the public port for invite-based web users
 - `hone-console-page` `/api/skills*` serves the skill management surface: registered listing, detail view, enable/disable mutation, and reset
 - `hone-console-page` `/api/company-profiles*` now serves actor-space listing, portrait detail, full deletion, and actor-scoped portrait bundle transfer (`export`, `import/preview`, `import/apply`) for actor-local portrait docs; portrait creation and section/event updates still rely on runner-native file operations inside the actor sandbox rather than dedicated mutation APIs
 - `packages/app/src/context/company-profiles.tsx` now acts as the memory-page transfer orchestrator: it merges portrait actor spaces with recent session users into one target-selector model, supports manual target entry for first-time imports, runs bundle preview/apply, keeps post-import highlights plus optional pre-import backup blobs, and auto-selects the first company in the current target space so the right panel does not fall back to a false empty state
@@ -172,6 +175,8 @@ Last updated: 2026-04-19
 
 - Route entrypoint: `packages/app/src/app.tsx`
 - Pages: `packages/app/src/pages/`
+  - admin surface keeps `/start` and the management console routes
+  - public surface only exposes `/` and `/chat`, both pointing at the invite-login chat experience
 - Settings page state helpers: `packages/app/src/pages/settings-model.ts`
 - Domain state: `packages/app/src/context/`
 - Composite components: `packages/app/src/components/`
@@ -191,6 +196,7 @@ Last updated: 2026-04-19
   - Change `packages/app/src/pages/*`
   - Change `packages/app/src/context/*` and / or `packages/app/src/lib/*`
   - If the backend API is insufficient, add the Web bin API
+  - Invite-based public user flows also require checking `memory/src/web_auth.rs` and `crates/hone-web-api/src/routes/public.rs` instead of wiring directly into the console-only `/api/chat` / `/api/history` / `/api/users` routes
 - Adjusting desktop backend switching or sidecar lifecycle:
   - Change `bins/hone-desktop/src/{main.rs,commands.rs,sidecar.rs,tray.rs}`
   - If the change is process supervision, runtime env, or persisted overlay wiring, start with `bins/hone-desktop/src/sidecar/{processes,runtime_env,settings}.rs`

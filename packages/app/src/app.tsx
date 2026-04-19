@@ -4,7 +4,7 @@ import { MarkedProvider } from "@hone-financial/ui/context/marked"
 import { ToastProvider } from "@hone-financial/ui/context/toast"
 import { ThemeProvider } from "@hone-financial/ui/theme"
 import { MetaProvider, Title } from "@solidjs/meta"
-import { Route, Router } from "@solidjs/router"
+import { Navigate, Route, Router } from "@solidjs/router"
 import { ErrorBoundary, Suspense, lazy, type ParentProps } from "solid-js"
 import { BackendProvider } from "@/context/backend"
 import { ConsoleProvider } from "@/context/console"
@@ -17,6 +17,7 @@ import { CompanyProfilesProvider } from "@/context/company-profiles"
 import ConsoleLayout from "@/pages/layout"
 
 const HomePage = lazy(() => import("@/pages/home"))
+const PublicChatPage = lazy(() => import("@/pages/chat"))
 const StartPage = lazy(() => import("@/pages/start"))
 const SessionsPage = lazy(() => import("@/pages/sessions"))
 const SkillsPage = lazy(() => import("@/pages/skills"))
@@ -27,12 +28,13 @@ const ResearchPage = lazy(() => import("@/pages/research"))
 const LlmAuditPage = lazy(() => import("@/pages/llm-audit"))
 const LogsPage = lazy(() => import("@/pages/logs"))
 const SettingsPage = lazy(() => import("@/pages/settings"))
+const APP_SURFACE = import.meta.env.VITE_HONE_APP_SURFACE === "public" ? "public" : "admin"
 
 function Loading() {
   return <div class="flex min-h-screen items-center justify-center text-sm text-[color:var(--text-secondary)]">Loading…</div>
 }
 
-function Providers(props: ParentProps) {
+function AdminProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <Title>Hone Console</Title>
@@ -65,9 +67,38 @@ function Providers(props: ParentProps) {
   )
 }
 
-export function App() {
+function PublicProviders(props: ParentProps) {
   return (
-    <Providers>
+    <MetaProvider>
+      <Title>Hone Chat</Title>
+      <ThemeProvider>
+        <MarkedProvider>
+          <ToastProvider>{props.children}</ToastProvider>
+        </MarkedProvider>
+      </ThemeProvider>
+    </MetaProvider>
+  )
+}
+
+function PublicSurface() {
+  return (
+    <PublicProviders>
+      <ErrorBoundary fallback={(error) => <div class="p-8 text-red-300">{String(error)}</div>}>
+        <Suspense fallback={<Loading />}>
+          <Router>
+            <Route path="/" component={PublicChatPage} />
+            <Route path="/chat" component={PublicChatPage} />
+            <Route path="*" component={() => <Navigate href="/chat" />} />
+          </Router>
+        </Suspense>
+      </ErrorBoundary>
+    </PublicProviders>
+  )
+}
+
+function AdminSurface() {
+  return (
+    <AdminProviders>
       <ErrorBoundary fallback={(error) => <div class="p-8 text-red-300">{String(error)}</div>}>
         <Suspense fallback={<Loading />}>
           <Router>
@@ -87,6 +118,10 @@ export function App() {
           </Router>
         </Suspense>
       </ErrorBoundary>
-    </Providers>
+    </AdminProviders>
   )
+}
+
+export function App() {
+  return APP_SURFACE === "public" ? <PublicSurface /> : <AdminSurface />
 }

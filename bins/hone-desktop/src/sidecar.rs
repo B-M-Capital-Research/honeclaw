@@ -596,7 +596,8 @@ async fn connect_backend_inner(
             )
             .await
             {
-                Ok((_web_state, port)) => {
+                Ok(started) => {
+                    let port = started.admin_port;
                     log_desktop(
                         app,
                         "INFO",

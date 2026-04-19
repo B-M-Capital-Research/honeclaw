@@ -40,7 +40,15 @@ pub(crate) async fn handle_history(
         .get_messages(&session_id, None)
         .unwrap_or_default();
 
-    let history: Vec<HistoryMsg> = select_messages_after_compact_boundary(&messages, Some(50))
+    let history = history_from_messages(&messages);
+
+    Json(json!({ "messages": history })).into_response()
+}
+
+pub(crate) fn history_from_messages(
+    messages: &[hone_memory::session::SessionMessage],
+) -> Vec<HistoryMsg> {
+    select_messages_after_compact_boundary(messages, Some(50))
         .into_iter()
         .filter(|m| {
             matches!(m.role.as_str(), "user" | "assistant")
@@ -71,9 +79,7 @@ pub(crate) async fn handle_history(
             transcript_only: message_is_compact_summary(m.metadata.as_ref())
                 || message_is_compact_skill_snapshot(m.metadata.as_ref()),
         })
-        .collect();
-
-    Json(json!({ "messages": history })).into_response()
+        .collect()
 }
 
 fn extract_history_attachments(content: &str) -> Vec<HistoryAttachment> {

@@ -47,6 +47,27 @@ export type HistoryMsg = {
   transcript_only?: boolean;
 };
 
+export type WebInviteInfo = {
+  user_id: string;
+  invite_code: string;
+  created_at: string;
+  last_login_at?: string;
+  daily_limit: number;
+  success_count: number;
+  in_flight: number;
+  remaining_today: number;
+};
+
+export type PublicAuthUserInfo = {
+  user_id: string;
+  created_at: string;
+  last_login_at?: string;
+  daily_limit: number;
+  success_count: number;
+  in_flight: number;
+  remaining_today: number;
+};
+
 export type MetaInfo = {
   name: string;
   version: string;

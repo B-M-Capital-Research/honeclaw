@@ -55,10 +55,10 @@ export function ChannelStatusBadge() {
   const frontendConnected = createMemo(() => true)
   const backendLabel = createMemo(() => {
     if (backend.state.initializing) return "后端连接中"
-    if (backendConnected()) return "后端正常连接中"
-    return "后端未连接"
+    if (backendConnected()) return "管理端后端正常连接中"
+    return "管理端后端未连接"
   })
-  const frontendLabel = createMemo(() => frontendConnected() ? "前端正常连接中" : "前端未连接")
+  const frontendLabel = createMemo(() => frontendConnected() ? "管理端前端正常连接中" : "管理端前端未连接")
 
   const dotColor = createMemo(() => {
     if (!backendConnected() && !backend.state.initializing) return "bg-rose-500"
@@ -77,7 +77,7 @@ export function ChannelStatusBadge() {
   const backendStatus = createMemo(() => {
     if (backend.state.initializing) {
       return {
-        label: "后端",
+        label: "管理端后端",
         detail: "正在建立连接…",
         status: "degraded",
       }
@@ -87,13 +87,15 @@ export function ChannelStatusBadge() {
         backend.state.resolvedBaseUrl ||
         (backend.isRemote() ? backend.state.config.baseUrl : "bundled")
       return {
-        label: "后端",
-        detail: backend.isRemote() ? `remote · ${target}` : `bundled · ${target}`,
+        label: "管理端后端",
+        detail: backend.isRemote()
+          ? `remote · ${target}（管理端端口 8077）`
+          : `bundled · ${target}（管理端端口 8077）`,
         status: "running",
       }
     }
     return {
-      label: "后端",
+      label: "管理端后端",
       detail: backend.state.error || "未连接",
       status: "stopped",
     }
@@ -105,8 +107,10 @@ export function ChannelStatusBadge() {
         ? window.location.origin
         : "desktop shell"
     return {
-      label: "前端",
-      detail: backend.state.isDesktop ? `desktop · ${target}` : `browser · ${target}`,
+      label: "管理端前端",
+      detail: backend.state.isDesktop
+        ? `desktop · ${target}`
+        : `browser · ${target}（管理端页面）`,
       status: frontendConnected() ? "running" : "stopped",
     }
   })

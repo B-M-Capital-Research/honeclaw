@@ -37,13 +37,13 @@ pub(crate) async fn handle_channels(State(state): State<Arc<AppState>>) -> impl 
     let channels = vec![
         ChannelStatusInfo {
             id: "web".to_string(),
-            label: "Web".to_string(),
+            label: "用户端服务".to_string(),
             enabled: true,
             running: true,
             status: "running".to_string(),
             pid: Some(std::process::id()),
             last_heartbeat_at: None,
-            detail: "Web 控制台与 API 服务".to_string(),
+            detail: "用户端前后端服务（端口 8088，/chat 与 /api/public/*）".to_string(),
             processes: vec![ChannelProcessInfo {
                 pid: std::process::id(),
                 running: true,
@@ -125,6 +125,7 @@ fn meta_capabilities(config: &HoneConfig, deployment_mode: &str) -> Vec<String> 
         "company_profile_transfer".to_string(),
         "research".to_string(),
         "llm_audit".to_string(),
+        "web_invites".to_string(),
     ];
 
     if deployment_mode == "local" {

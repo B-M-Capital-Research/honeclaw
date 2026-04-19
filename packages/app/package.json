@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 3000",
+    "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -p tsconfig.json",
     "test": "bun test --preload ./happydom.ts ./src",
     "test:e2e": "playwright test"

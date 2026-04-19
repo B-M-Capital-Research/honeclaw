@@ -42,6 +42,30 @@ Last updated: 2026-04-19
 
 Use this file as the historical entry point for completed or paused work that should remain discoverable.
 
+### Web 管理端 / 用户端端口隔离与公网暴露加固
+
+- Status: done
+- Date: 2026-04-19
+- Plan: `docs/archive/plans/web-admin-public-isolation.md`
+- Handoff: `docs/handoffs/2026-04-19-web-admin-public-isolation.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo check --workspace --all-targets --exclude hone-desktop`, `bun run typecheck:web`, `bun run test:web`, `./launch.sh --web`, `curl http://127.0.0.1:8077/api/public/auth/me`, `curl http://127.0.0.1:8088/api/meta`
+- Current conclusion: Web 管理端和 invite 用户端已按端口与可访问路由拆开；管理端默认监听 `8077` 并只提供 `/api/*` 与 console SPA，用户端默认监听 `8088` 并只提供 `/api/public/*` 与 `/chat`；前端 dev/build 也拆成 `3000` 管理端与 `3001` 用户端。上线前最关键的约束仍是不要把管理端口反代到公网，且若未来需要远程访问管理端，必须先配置 `web.auth_token`
+- Next entry point: `crates/hone-web-api/src/lib.rs`
+
+### Web 邀请码用户端与管理端入口拆分
+
+- Status: done
+- Date: 2026-04-19
+- Plan: `docs/archive/plans/web-invite-chat-user-surface.md`
+- Handoff: `docs/handoffs/2026-04-19-web-invite-chat-user-surface.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-memory web_auth -- --nocapture`, `cargo test -p hone-web-api -- --nocapture`, `bun run test:web`, `cd packages/app && bun run typecheck && bun run build`
+- Current conclusion: 管理端现在可以在设置页生成邀请码并复制，侧边栏“开始”旁新增了用户端跳转 icon；用户侧新增 `/chat` 页面，通过邀请码登录并进入单会话 SSE 聊天窗口，过程卡片会展示 `Hone 思考中 -> 工具执行 -> 最终回复`；后端新增 `/api/public/*` 与 SQLite `web_auth` 存储，公开接口严格从 cookie 登录态反解 `web` actor，不再接受外部传入的 `channel/user_id/session_id`
+- Next entry point: `crates/hone-web-api/src/routes/public.rs`
+
 ## 2026-04-17
 
 ### 群聊中间进度改为 compact 可见

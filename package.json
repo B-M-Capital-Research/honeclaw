@@ -9,7 +9,9 @@
   ],
   "scripts": {
     "dev:web": "bun --filter @hone-financial/app dev",
+    "dev:web:public": "HONE_APP_PORT=3001 HONE_APP_SURFACE=public HONE_WEB_BACKEND_URL=http://127.0.0.1:8088 bun --filter @hone-financial/app dev",
     "build:web": "bun --filter @hone-financial/app build",
+    "build:web:public": "HONE_APP_OUT_DIR=dist-public HONE_APP_SURFACE=public bun --filter @hone-financial/app build",
     "build:web:desktop": "bun scripts/build_desktop_web.mjs",
     "typecheck:web": "bun --filter @hone-financial/app typecheck",
     "test:web": "bun --filter @hone-financial/app test",

@@ -112,6 +112,14 @@ mod tests {
             core: Arc::new(hone_channels::HoneBotCore::new(
                 hone_core::HoneConfig::default(),
             )),
+            web_auth: Arc::new(
+                hone_memory::WebAuthStorage::new(
+                    std::env::temp_dir()
+                        .join(format!("hone_web_auth_auth_test_{}", uuid::Uuid::new_v4()))
+                        .join("sessions.sqlite3"),
+                )
+                .expect("web auth"),
+            ),
             push_tx,
             http_client: reqwest::Client::new(),
             log_buffer: LogBuffer::new(),

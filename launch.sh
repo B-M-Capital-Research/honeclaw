@@ -37,6 +37,7 @@ mkdir -p "$RUNTIME_DIR"
 
 BACKEND_PID=""
 FRONTEND_PID=""
+PUBLIC_FRONTEND_PID=""
 DESKTOP_PID=""
 IMESSAGE_PID=""
 DISCORD_PID=""
@@ -120,6 +121,24 @@ ensure_port_available() {
   done
 }
 
+wait_for_http_ready() {
+  local url="$1"
+  local pid="$2"
+  local label="$3"
+  for _ in $(seq 1 60); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ -n "$pid" ]] && ! pid_is_running "$pid"; then
+      echo "[FAIL] ${label} exited unexpectedly."
+      exit 1
+    fi
+    sleep 0.5
+  done
+  echo "[FAIL] ${label} did not become ready: ${url}"
+  exit 1
+}
+
 stop_pid_file() {
   local name="$1"
   local file
@@ -144,9 +163,11 @@ build_runtime_binaries() {
 }
 
 build_frontend() {
-  echo "[INFO] building frontend (packages/app)..."
-  (cd "$PROJECT_ROOT/packages/app" && bun run build)
-  echo "[INFO] frontend build done."
+  echo "[INFO] building admin frontend..."
+  (cd "$PROJECT_ROOT" && bun run build:web)
+  echo "[INFO] building public frontend..."
+  (cd "$PROJECT_ROOT" && bun run build:web:public)
+  echo "[INFO] frontend builds done."
 }
 
 build_frontend_desktop() {
@@ -222,6 +243,7 @@ start_hone_bin() {
 
 stop_all() {
   stop_pid_file frontend
+  stop_pid_file public-frontend
   stop_pid_file desktop
   stop_pid_file telegram
   stop_pid_file feishu
@@ -236,6 +258,9 @@ cleanup() {
   trap - INT TERM EXIT
   if [[ -n "$FRONTEND_PID" ]]; then
     terminate_pid "$FRONTEND_PID" "frontend"
+  fi
+  if [[ -n "$PUBLIC_FRONTEND_PID" ]]; then
+    terminate_pid "$PUBLIC_FRONTEND_PID" "public-frontend"
   fi
   if [[ -n "$DESKTOP_PID" ]]; then
     terminate_pid "$DESKTOP_PID" "desktop"
@@ -255,7 +280,7 @@ cleanup() {
   if [[ -n "$TELEGRAM_PID" ]]; then
     terminate_pid "$TELEGRAM_PID" "telegram"
   fi
-  rm -f "$(pid_file frontend)" "$(pid_file desktop)" "$(pid_file backend)" "$(pid_file imessage)" "$(pid_file discord)" "$(pid_file feishu)" "$(pid_file telegram)"
+  rm -f "$(pid_file frontend)" "$(pid_file public-frontend)" "$(pid_file desktop)" "$(pid_file backend)" "$(pid_file imessage)" "$(pid_file discord)" "$(pid_file feishu)" "$(pid_file telegram)"
   exit "$exit_code"
 }
 
@@ -334,6 +359,7 @@ export HONE_DATA_DIR="${HONE_DATA_DIR:-$PROJECT_ROOT/data}"
 export HONE_DESKTOP_DATA_DIR="${HONE_DESKTOP_DATA_DIR:-$HONE_DATA_DIR}"
 export HONE_SKILLS_DIR="${HONE_SKILLS_DIR:-$PROJECT_ROOT/skills}"
 export HONE_WEB_PORT="${HONE_WEB_PORT:-8077}"
+export HONE_PUBLIC_WEB_PORT="${HONE_PUBLIC_WEB_PORT:-8088}"
 export HONE_DESKTOP_CONFIG_DIR="${HONE_DESKTOP_CONFIG_DIR:-$RUNTIME_DIR/desktop-config}"
 
 if [[ "$START_DESKTOP" == "1" ]]; then
@@ -448,12 +474,22 @@ elif [[ "$START_WEB" == "1" ]]; then
   start_hone_bin hone-telegram telegram TELEGRAM_PID
 
   ensure_port_available 3000 "web-frontend"
-  echo "[INFO] starting frontend (vite)..."
+  ensure_port_available 3001 "public-web-frontend"
+  echo "[INFO] starting admin frontend (vite)..."
   bun run dev:web &
   FRONTEND_PID=$!
   echo "$FRONTEND_PID" > "$(pid_file frontend)"
+  echo "[INFO] starting public frontend (vite)..."
+  bun run dev:web:public &
+  PUBLIC_FRONTEND_PID=$!
+  echo "$PUBLIC_FRONTEND_PID" > "$(pid_file public-frontend)"
+  echo "[INFO] waiting admin frontend readiness..."
+  wait_for_http_ready "http://127.0.0.1:3000" "$FRONTEND_PID" "admin frontend"
+  echo "[INFO] waiting public frontend readiness..."
+  wait_for_http_ready "http://127.0.0.1:3001" "$PUBLIC_FRONTEND_PID" "public frontend"
   write_current_pid
-  echo "[INFO] frontend ready: http://127.0.0.1:3000"
+  echo "[INFO] admin frontend ready: http://127.0.0.1:3000"
+  echo "[INFO] public frontend ready: http://127.0.0.1:3001"
   echo "[INFO] press Ctrl-C to stop."
   wait "$FRONTEND_PID"
 else

@@ -85,6 +85,7 @@ fn prune_registry(entries: &mut HashMap<String, HashMap<u32, RuntimeHeartbeatPro
 
 pub struct AppState {
     pub core: Arc<hone_channels::HoneBotCore>,
+    pub web_auth: Arc<hone_memory::WebAuthStorage>,
     pub push_tx: broadcast::Sender<PushEvent>,
     pub http_client: reqwest::Client,
     pub log_buffer: LogBuffer,

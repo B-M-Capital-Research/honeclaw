@@ -14,11 +14,12 @@ use hone_channels::agent_session::{
 };
 use hone_channels::prompt::PromptOptions;
 use hone_channels::runtime::{clean_msg_markers, should_skip_buffer};
+use hone_core::ActorIdentity;
 
 use crate::state::AppState;
 use crate::types::ChatRequest;
 
-struct SseSessionListener {
+pub(crate) struct SseSessionListener {
     tx: tokio::sync::mpsc::Sender<(String, Value)>,
     user_id: String,
     sent_segments: Arc<tokio::sync::Mutex<usize>>,
@@ -45,11 +46,14 @@ impl AgentSessionListener for SseSessionListener {
                 *guard += 1;
             }
             AgentSessionEvent::ToolStatus {
-                reasoning, message, ..
+                status,
+                tool,
+                reasoning,
+                message,
             } => {
                 let payload = json!({
-                    "tool": message,
-                    "status": "update",
+                    "tool": tool,
+                    "status": status,
                     "text": message,
                     "reasoning": reasoning,
                 });
@@ -105,35 +109,12 @@ impl AgentSessionListener for SseSessionListener {
     }
 }
 
-/// POST /api/chat — 接收消息，以 SSE 流式返回 Agent 响应
-pub(crate) async fn handle_chat(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<ChatRequest>,
+pub(crate) fn build_chat_sse(
+    state: Arc<AppState>,
+    actor_result: Result<ActorIdentity, hone_core::HoneError>,
+    message: String,
+    attachments_count: usize,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    let actor_result = hone_channels::HoneBotCore::create_actor(
-        req.channel.trim(),
-        req.user_id.trim(),
-        req.channel_scope.as_deref(),
-    );
-    let mut message = req.message.unwrap_or_default().trim().to_string();
-    let mut attachments_count = 0usize;
-
-    if let Some(attachments) = req.attachments {
-        attachments_count = attachments.len();
-        if !attachments.is_empty() {
-            let att = attachments
-                .iter()
-                .map(|a| format!("[附件: {a}]"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            message = if message.is_empty() {
-                att
-            } else {
-                format!("{message}\n{att}")
-            };
-        }
-    }
-
     // mpsc channel 连接 spawn task ↔ SSE stream
     let (tx, rx) = tokio::sync::mpsc::channel::<(String, Value)>(64);
 
@@ -225,4 +206,36 @@ pub(crate) async fn handle_chat(
     });
 
     Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+/// POST /api/chat — 接收消息，以 SSE 流式返回 Agent 响应
+pub(crate) async fn handle_chat(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ChatRequest>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let actor_result = hone_channels::HoneBotCore::create_actor(
+        req.channel.trim(),
+        req.user_id.trim(),
+        req.channel_scope.as_deref(),
+    );
+    let mut message = req.message.unwrap_or_default().trim().to_string();
+    let mut attachments_count = 0usize;
+
+    if let Some(attachments) = req.attachments {
+        attachments_count = attachments.len();
+        if !attachments.is_empty() {
+            let att = attachments
+                .iter()
+                .map(|a| format!("[附件: {a}]"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            message = if message.is_empty() {
+                att
+            } else {
+                format!("{message}\n{att}")
+            };
+        }
+    }
+
+    build_chat_sse(state, actor_result, message, attachments_count)
 }

@@ -204,14 +204,10 @@ function createSessionsState() {
 
           if (event.event === "tool_call") {
             const tool = event.data.tool;
-            const reasoning = event.data.reasoning ?? event.data.text;
+            const display = event.data.text?.trim() || event.data.reasoning?.trim();
             updatePending(key, {
               phase: "running",
-              statusText: tool
-                ? `调用工具：${tool}`
-                : reasoning
-                  ? reasoning
-                  : "处理中…",
+              statusText: display || (tool ? `调用工具：${tool}` : "处理中…"),
             });
           }
 

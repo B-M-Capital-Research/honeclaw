@@ -1,4 +1,4 @@
-import { Index, Show, createEffect, createMemo, createResource, createSignal } from "solid-js"
+import { For, Index, Show, createEffect, createMemo, createResource, createSignal } from "solid-js"
 import { useBackend } from "@/context/backend"
 import {
   checkDesktopAgentCli,
@@ -9,6 +9,7 @@ import {
   loadDesktopTavilySettings,
   saveDesktopTavilySettings,
 } from "@/lib/backend"
+import { createWebInvite, getWebInvites } from "@/lib/api"
 import type { AgentProvider, AgentSettings, BackendConfig, DesktopChannelSettingsInput, FmpSettings, TavilySettings } from "@/lib/types"
 import {
   appendApiKey,
@@ -63,6 +64,17 @@ export default function SettingsPage() {
   const [showFeishuSecret, setShowFeishuSecret] = createSignal(false)
   const [showTelegramToken, setShowTelegramToken] = createSignal(false)
   const [showDiscordToken, setShowDiscordToken] = createSignal(false)
+  const [inviteMessage, setInviteMessage] = createSignal("")
+  const [inviteError, setInviteError] = createSignal("")
+  const [inviteCreating, setInviteCreating] = createSignal(false)
+
+  const [webInvites, { refetch: refetchWebInvites, mutate: setWebInvites }] = createResource(
+    () => backend.state.connected && backend.hasCapability("web_invites"),
+    async (enabled) => {
+      if (!enabled) return []
+      return getWebInvites()
+    },
+  )
 
   // Gemini CLI 检测状态
   const [geminiCheckStatus, setGeminiCheckStatus] = createSignal<"idle" | "checking" | "ok" | "error">("idle")
@@ -402,6 +414,39 @@ export default function SettingsPage() {
       setChannelMessage(result.message)
     } catch (error) {
       setChannelError(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  const handleCreateInvite = async () => {
+    setInviteCreating(true)
+    setInviteMessage("")
+    setInviteError("")
+    try {
+      const created = await createWebInvite()
+      setWebInvites((current = []) => [created, ...current])
+      setInviteMessage(`已生成邀请码 ${created.invite_code}`)
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(created.invite_code)
+        setInviteMessage(`已生成并复制邀请码 ${created.invite_code}`)
+      }
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setInviteCreating(false)
+    }
+  }
+
+  const copyInviteCode = async (code: string) => {
+    setInviteMessage("")
+    setInviteError("")
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("当前环境不支持复制")
+      }
+      await navigator.clipboard.writeText(code)
+      setInviteMessage(`已复制邀请码 ${code}`)
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -1071,6 +1116,93 @@ export default function SettingsPage() {
 
         </fieldset>
       </div>
+
+      <Show when={backend.hasCapability("web_invites")}>
+        <div id="web-invite-settings" class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6 shadow-sm">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h1 class="text-xl font-semibold text-[color:var(--text-primary)]">Web 用户邀请码</h1>
+              <p class="mt-2 text-sm text-[color:var(--text-secondary)]">
+                生成邀请码时会同步创建一个 `web` 用户。用户通过 `/chat` 输入邀请码登录后，复用现有 12 次对话额度限制。
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:bg-black/5"
+                onClick={() => void refetchWebInvites()}
+              >
+                刷新
+              </button>
+              <button
+                type="button"
+                class="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                disabled={inviteCreating()}
+                onClick={() => void handleCreateInvite()}
+              >
+                {inviteCreating() ? "生成中…" : "生成邀请码"}
+              </button>
+            </div>
+          </div>
+
+          <Show when={inviteMessage()}>
+            <div class="mt-4 rounded-md border border-emerald-300/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+              {inviteMessage()}
+            </div>
+          </Show>
+          <Show when={inviteError()}>
+            <div class="mt-4 rounded-md border border-rose-300/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+              {inviteError()}
+            </div>
+          </Show>
+
+          <div class="mt-6 overflow-hidden rounded-xl border border-[color:var(--border)]">
+            <div class="grid grid-cols-[1.5fr_1.4fr_1fr_1fr_auto] gap-3 bg-[color:var(--panel)] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+              <div>邀请码</div>
+              <div>Web 用户</div>
+              <div>剩余次数</div>
+              <div>最近登录</div>
+              <div>操作</div>
+            </div>
+            <Show
+              when={(webInvites() ?? []).length > 0}
+              fallback={
+                <div class="px-4 py-8 text-sm text-[color:var(--text-secondary)]">
+                  还没有生成任何邀请码。
+                </div>
+              }
+            >
+              <div class="divide-y divide-[color:var(--border)]">
+                <For each={webInvites() ?? []}>
+                  {(invite) => (
+                    <div class="grid grid-cols-[1.5fr_1.4fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-sm">
+                      <div class="font-mono text-[color:var(--text-primary)]">{invite.invite_code}</div>
+                      <div class="text-[color:var(--text-secondary)]">{invite.user_id}</div>
+                      <div class="text-[color:var(--text-secondary)]">
+                        {invite.daily_limit === 0
+                          ? "不限"
+                          : `${invite.remaining_today}/${invite.daily_limit}`}
+                      </div>
+                      <div class="text-[color:var(--text-secondary)]">
+                        {invite.last_login_at ? new Date(invite.last_login_at).toLocaleString() : "未登录"}
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          class="rounded-md border border-[color:var(--border)] px-2.5 py-1 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60"
+                          onClick={() => void copyInviteCode(invite.invite_code)}
+                        >
+                          复制
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
+        </div>
+      </Show>
 
       {/* ── 2. API 配置 ── */}
       <div id="api-settings" class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6 shadow-sm">

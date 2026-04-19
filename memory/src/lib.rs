@@ -9,6 +9,7 @@ pub mod portfolio;
 pub mod quota;
 pub mod session;
 pub mod session_sqlite;
+pub mod web_auth;
 
 pub use company_profile::{
     AppendEventInput, CompanyProfileConflictDecision, CompanyProfileDocument,
@@ -44,3 +45,4 @@ pub use session::{
     session_message_from_normalized, session_message_from_text, session_message_in_context,
     session_message_text, session_message_to_agent_messages, session_message_to_normalized,
 };
+pub use web_auth::{WebAuthStorage, WebInviteSession, WebInviteUser};

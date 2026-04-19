@@ -6,7 +6,7 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
 use crate::routes::json_error;
-use crate::runtime::web_index_path;
+use crate::runtime::{public_web_index_path, web_index_path};
 use crate::state::AppState;
 use crate::types::ImageQuery;
 
@@ -69,8 +69,7 @@ pub(crate) async fn handle_file(
     ([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response()
 }
 
-pub(crate) async fn handle_spa_index() -> Response {
-    let index_path = web_index_path();
+fn serve_spa_index(index_path: PathBuf) -> Response {
     match std::fs::read_to_string(&index_path) {
         Ok(index) => axum::response::Html(index).into_response(),
         Err(_) => (
@@ -82,6 +81,14 @@ pub(crate) async fn handle_spa_index() -> Response {
         )
             .into_response(),
     }
+}
+
+pub(crate) async fn handle_spa_index() -> Response {
+    serve_spa_index(web_index_path())
+}
+
+pub(crate) async fn handle_public_spa_index() -> Response {
+    serve_spa_index(public_web_index_path())
 }
 
 fn file_proxy_roots(config: &hone_core::config::HoneConfig) -> Vec<PathBuf> {

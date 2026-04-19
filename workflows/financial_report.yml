@@ -1,0 +1,2509 @@
+app:
+  description: 'V2版本-修改内容：
+
+    1. 财务分析-精准/验算/相关外部分析引入
+
+    2. 估值分析-免责/相关外部分析引入
+
+    3. 引入一些图表'
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  mode: workflow
+  name: （V3-修改版）带图片·真·全自动工作流
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.1.5
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: llm
+      id: 1740841530496-source-1740841782462-target
+      selected: false
+      source: '1740841530496'
+      sourceHandle: source
+      target: '1740841782462'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: template-transform
+      id: 1741961604818-source-1740842503720-target
+      selected: false
+      source: '1741961604818'
+      sourceHandle: source
+      target: '1740842503720'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: llm
+      id: 1740841530496-source-1740842132267-target
+      selected: false
+      source: '1740841530496'
+      sourceHandle: source
+      target: '1740842132267'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: llm
+      id: 1740841530496-source-1742657234767-target
+      selected: false
+      source: '1740841530496'
+      sourceHandle: source
+      target: '1742657234767'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: llm
+      id: 1740841530496-source-1740842287164-target
+      selected: false
+      source: '1740841530496'
+      sourceHandle: source
+      target: '1740842287164'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: if-else
+        targetType: template-transform
+      id: 1743915544209-false-1743915573353-target
+      selected: false
+      source: '1743915544209'
+      sourceHandle: 'false'
+      target: '1743915573353'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: template-transform
+        targetType: end
+      id: 1743915573353-source-1743915559671-target
+      selected: false
+      source: '1743915573353'
+      sourceHandle: source
+      target: '1743915559671'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: code
+      id: 1742655089850-source-1743917413718-target
+      selected: false
+      source: '1742655089850'
+      sourceHandle: source
+      target: '1743917413718'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: llm
+      id: 1740841782462-source-1743920521771-target
+      selected: false
+      source: '1740841782462'
+      sourceHandle: source
+      target: '1743920521771'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: if-else
+        targetType: if-else
+      id: 1743915544209-true-1746625374271-target
+      selected: false
+      source: '1743915544209'
+      sourceHandle: 'true'
+      target: '1746625374271'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: if-else
+        targetType: tool
+      id: 1746625374271-false-1742573007628-target
+      selected: false
+      source: '1746625374271'
+      sourceHandle: 'false'
+      target: '1742573007628'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: if-else
+        targetType: tool
+      id: 1746625374271-e7f17e09-f4a6-470b-b457-02d8ebf0f53c-1746625630651-target
+      selected: false
+      source: '1746625374271'
+      sourceHandle: e7f17e09-f4a6-470b-b457-02d8ebf0f53c
+      target: '1746625630651'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: tool
+        targetType: template-transform
+      id: 1746625630651-source-17466256364000-target
+      selected: false
+      source: '1746625630651'
+      sourceHandle: source
+      target: '17466256364000'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: if-else
+        targetType: tool
+      id: 1746625374271-true-1746868014397-target
+      selected: false
+      source: '1746625374271'
+      sourceHandle: 'true'
+      target: '1746868014397'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: tool
+        targetType: template-transform
+      id: 1746868014397-source-17466254441100-target
+      selected: false
+      source: '1746868014397'
+      sourceHandle: source
+      target: '17466254441100'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: if-else
+        targetType: llm
+      id: 1747451623069-false-1740842401123-target
+      selected: false
+      source: '1747451623069'
+      sourceHandle: 'false'
+      target: '1740842401123'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: if-else
+        targetType: llm
+      id: 1747451623069-236389e4-3172-4058-84c6-013512e7793c-17474516965680-target
+      selected: false
+      source: '1747451623069'
+      sourceHandle: 236389e4-3172-4058-84c6-013512e7793c
+      target: '17474516965680'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: if-else
+        targetType: llm
+      id: 1747451623069-true-17474517088250-target
+      selected: false
+      source: '1747451623069'
+      sourceHandle: 'true'
+      target: '17474517088250'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: variable-aggregator
+      id: 17474516965680-source-1747451717303-target
+      selected: false
+      source: '17474516965680'
+      sourceHandle: source
+      target: '1747451717303'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: variable-aggregator
+      id: 1740842401123-source-1747451717303-target
+      selected: false
+      source: '1740842401123'
+      sourceHandle: source
+      target: '1747451717303'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: variable-aggregator
+      id: 17474517088250-source-1747451717303-target
+      selected: false
+      source: '17474517088250'
+      sourceHandle: source
+      target: '1747451717303'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: variable-aggregator
+        targetType: code
+      id: 1747451717303-source-1741961604818-target
+      selected: false
+      source: '1747451717303'
+      sourceHandle: source
+      target: '1741961604818'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: start
+        targetType: code
+      id: 1740840395159-source-1747457338972-target
+      selected: false
+      source: '1740840395159'
+      sourceHandle: source
+      target: '1747457338972'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: if-else
+      id: 1747457338972-source-1743915544209-target
+      selected: false
+      source: '1747457338972'
+      sourceHandle: source
+      target: '1743915544209'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: llm
+      id: 17474577407860-source-1740841530496-target
+      selected: false
+      source: '17474577407860'
+      sourceHandle: source
+      target: '1740841530496'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: code
+      id: 1743920521771-source-17474577790310-target
+      source: '1743920521771'
+      sourceHandle: source
+      target: '17474577790310'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: code
+      id: 1740842132267-source-17474577790310-target
+      source: '1740842132267'
+      sourceHandle: source
+      target: '17474577790310'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: code
+      id: 1742657234767-source-17474577790310-target
+      source: '1742657234767'
+      sourceHandle: source
+      target: '17474577790310'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: if-else
+      id: 17474577790310-source-1747451623069-target
+      source: '17474577790310'
+      sourceHandle: source
+      target: '1747451623069'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: llm
+      id: 17474578343810-source-1742655089850-target
+      source: '17474578343810'
+      sourceHandle: source
+      target: '1742655089850'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: end
+      id: 17474578769470-source-1740842541222-target
+      source: '17474578769470'
+      sourceHandle: source
+      target: '1740842541222'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: tool
+        targetType: code
+      id: 1742573007628-source-17474576923800-target
+      source: '1742573007628'
+      sourceHandle: source
+      target: '17474576923800'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: tool
+        targetType: code
+      id: 1747927203838-source-1747927663647-target
+      source: '1747927203838'
+      sourceHandle: source
+      target: '1747927663647'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: code
+      id: 1747927663647-source-17474577407860-target
+      source: '1747927663647'
+      sourceHandle: source
+      target: '17474577407860'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: code
+      id: 1740842287164-source-17474577790310-target
+      source: '1740842287164'
+      sourceHandle: source
+      target: '17474577790310'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: tool
+      id: 17474576923800-source-1748089517652-target
+      source: '17474576923800'
+      sourceHandle: source
+      target: '1748089517652'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: tool
+        targetType: code
+      id: 1748089517652-source-1747927663647-target
+      source: '1748089517652'
+      sourceHandle: source
+      target: '1747927663647'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: template-transform
+        targetType: code
+      id: 17466256364000-source-17481636725260-target
+      source: '17466256364000'
+      sourceHandle: source
+      target: '17481636725260'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: end
+      id: 17481636725260-source-1746625434102-target
+      source: '17481636725260'
+      sourceHandle: source
+      target: '1746625434102'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: template-transform
+        targetType: code
+      id: 17466254441100-source-17481636746300-target
+      source: '17466254441100'
+      sourceHandle: source
+      target: '17481636746300'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: end
+      id: 17481636746300-source-1746625436326-target
+      source: '17481636746300'
+      sourceHandle: source
+      target: '1746625436326'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: code
+      id: 17474576923800-source-1748595237020-target
+      source: '17474576923800'
+      sourceHandle: source
+      target: '1748595237020'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: tool
+      id: 1748595237020-source-1747927203838-target
+      source: '1748595237020'
+      sourceHandle: source
+      target: '1747927203838'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: template-transform
+        targetType: code
+      id: 1740842503720-source-17474578343810-target
+      source: '1740842503720'
+      sourceHandle: source
+      target: '17474578343810'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: code
+      id: 1743917413718-source-17474578769470-target
+      source: '1743917413718'
+      sourceHandle: source
+      target: '17474578769470'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: ''
+        selected: false
+        title: 开始
+        type: start
+        variables:
+        - label: companyName
+          max_length: 256
+          options: []
+          required: true
+          type: text-input
+          variable: companyName
+        - label: 只分析估值并生成文章
+          max_length: 48
+          options:
+          - A股（热点个股）
+          - 美股
+          - 完整跑完
+          - 全跑完-美
+          - 全跑完-A
+          required: true
+          type: select
+          variable: genPost
+        - allowed_file_extensions: []
+          allowed_file_types:
+          - image
+          allowed_file_upload_methods:
+          - local_file
+          - remote_url
+          label: 验证码
+          max_length: 48
+          options: []
+          required: true
+          type: paragraph
+          variable: validateCode
+        - label: 最新的财务和估值动态（没有就填无）
+          max_length: 48000
+          options: []
+          required: false
+          type: paragraph
+          variable: news
+        - label: task_id
+          max_length: 48
+          options: []
+          required: false
+          type: paragraph
+          variable: task_id
+        - label: 研究倾向
+          max_length: 256
+          options: []
+          required: true
+          type: text-input
+          variable: research_topic
+      height: 220
+      id: '1740840395159'
+      position:
+        x: -78.57817177923698
+        y: 310
+      positionAbsolute:
+        x: -78.57817177923698
+        y: 310
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: d8d07cd2-b7d2-4661-a1ba-3cad51901b36
+          role: system
+          text: '目前我在查询一家公司的信息，你需要帮我总结公司的基础信息，你需要自行判断准确性，尽量以准确、公正客观不带主观表述的语言，进行详细的总结输出。注意当前时间为{{#1742573007628.text#}}。
+
+
+            输出的格式应该为：
+
+            ''''''
+
+            ## 1. 公司简介
+
+            公司的基本信息，尽量详细介绍。
+
+
+            ### 1.1 公司核心业务
+
+            公司的几个核心的业务，和一些关键的经营情况和数字，尽量详细介绍。
+
+
+            ### 1.2 公司的文化和愿景
+
+            公司的一些创始人提到的文化信息或者公司愿景，不超过100字，尽量详细介绍。
+
+
+            ### 1.3 公司的主要发展历史
+
+            公司创始时间、重要经历、重要融资以及IPO时间等，尽量详细介绍。
+
+
+            '''''''
+        - id: c2850c3c-8b67-4781-b55d-6aff7a7c1bc8
+          role: user
+          text: '注意目前的公司是：{{#1740840395159.companyName#}}，这个名字有可能是公司全名也有可能是股票代码，你需要看下面的一些搜索引擎的信息，有一些信息你可以利用，有一些是噪音数据（或者是其他无关公司的数据），你需要找到和这家公司相关的信息，并且你无需进行引用，不需要给出具体的引用数据：
+
+            ---
+
+            {{#1747927663647.all_results#}}
+
+            ---
+
+
+            你需要开始你的总结：'
+        selected: true
+        title: 公司基本介绍
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '1740841530496'
+      position:
+        x: 3070.8108335014194
+        y: 464
+      positionAbsolute:
+        x: 3070.8108335014194
+        y: 464
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: 47e1b8f6-cb33-4552-92d8-0832260714bb
+          role: system
+          text: "根据提供的公司名称、公司基础信息、公司年报解读等信息，撰写一份专业且有效的产品和技术分析报告。注意当前时间为{{#1742573007628.text#}}。\n\
+            \n\n注意，尽量详细且全面，多列一些表格。\n\n\n请按照以下步骤和输出格式完成任务：\n\n\n步骤：\n\n\n1. **理解输入信息**：仔细阅读并理解提供的公司名称、基础信息和年报解读内容。确保对公司的业务模式、产品线、技术优势和市场定位有清晰的认识。\n\
+            \n\n2. **分析产品和技术**：基于输入信息，分析公司的核心产品和技术。重点关注产品的创新性、技术的前沿性、市场竞争力以及未来的发展潜力。\n\
+            \n\n3. **撰写报告**：撰写一份结构清晰、内容详实的产品和技术分析报告。报告应包括以下部分：\n   - **产品分析**：详细分析公司的核心产品，包括产品特点、技术优势、市场表现等。\n\
+            \   - **技术分析**：深入探讨公司所采用的技术，包括技术的创新性、应用场景、竞争优势等。\n   - **未来展望**：基于当前的产品和技术，以及近期的重要科研成果，预测公司未来的发展方向和潜在机会。\n\
+            \n\n4. **输出格式**：确保报告内容简洁明了，避免使用任何XML标签。报告应该便于阅读和理解，格式参考：\n\n\n---\n\n\n\
+            ## 2. 公司产品及技术和商业模式\n\n\n### 2.1 公司现有的产品全面介绍\n\n\n详细数量，每个产品线的产品介绍，多列一些表格和因果关系。\n\
+            \n\n### 2.2 产品线的增长速度和未来发展趋势\n\n\n详细介绍增长速度和未来趋势，多列一些表格和因果关系\n\n\n### 2.3\
+            \ 背后的商业模式是什么\n\n\n详细介绍（例如平台模式、服务模式等），多列一些表格和因果关系，并且如果有，可以详细介绍关联和协同效应如何体现？多列一些表格和因果关系\n\
+            \n\n#### 2.4 可以套用Kano理论进行分析\n\n\n多列一些表格和因果关系\n---\n\n\n请确保报告内容准确、专业，并基于提供的输入信息进行撰写。\n\
+            \n\n## 输出格式技术要求\n\n\n### 表格格式要求\n\n\n- 使用标准Markdown表格格式\n- 不需要考虑对齐问题，保证表格能正常渲染即可\
+            \  \n- 不要在表格前后输出任何可能破坏表格格式的额外内容\n- 确保每个表格都有清晰的标题和列名\n\n\n### 具体表格示例需求\n\
+            \n\n#### Kano理论分析表格示例\n\n\n| **需求层次**   | **产品属性**                   |\
+            \ **改进优先级** |\n| -------------- | ------------------------------ | --------------\
+            \ |\n| **基本型需求** | [基础功能描述]                 | [优先级说明]   |\n| **期望型需求**\
+            \ | [性能提升需求]                 | [优先级说明]   |\n| **魅力型需求** | [创新功能特性]   \
+            \              | [优先级说明]   |\n| **无差异需求** | [对用户价值较低的功能]         | [优先级说明]\
+            \   |\n\n\n#### 其他推荐表格类型\n\n\n**产品对比表示例：**\n\n\n| 产品名称 | 功能特点 | 技术指标 |\
+            \ 市场占有率 | 竞争优势 \n\n\n**技术分析表示例：**  \n\n\n- 技术名称 | 创新程度 | 应用场景 | 竞争优势 |\
+            \ 发展阶段\n\n\n**增长趋势表示例：**\n\n\n- 时间周期 | 增长指标 | 增长率 | 影响因素 | 预期目标\n\n"
+        - id: e2c27c35-37f8-4f5d-8f26-a84f4b7a9280
+          role: user
+          text: '你的信息来源包括多个方面。有一些信息你可以利用，这些信息你要过滤出和这家公司相关的数据，你无需进行引用，不需要给出具体的引用数据：
+
+            ---
+
+            {{#1747927663647.all_results#}}
+
+            ---
+
+
+
+            开始你的分析，直接以“## 2. 公司产品及技术和商业模式”为开头开始输出，不要有任何客套词语和回复内容，整个内容输出完毕后以---结尾。'
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 5000
+        selected: false
+        title: 产品分析
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 123
+      id: '1740841782462'
+      position:
+        x: 3425.0825105894082
+        y: 386.1599838637593
+      positionAbsolute:
+        x: 3425.0825105894082
+        y: 386.1599838637593
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: d93ea054-4c34-4d48-af22-db79964d690c
+          role: system
+          text: '你是一个专业的企业分析师，现在正在撰写一份企业分析报告。注意当前时间为{{#1742573007628.text#}}。
+
+
+            现在撰写的章节是第三章、公司管理团队 部分，你大概的报告输出思路是：
+
+            ''''''
+
+            ## 3.公司管理团队：
+
+            ### 3.1 管理层概要说明
+
+
+            ### 3.2 管理层背景和经历
+
+
+            ### 3.3 管理层关键成就
+
+
+            ### 3.4 管理层总结
+
+            ...
+
+            ''''''
+
+
+            分析逻辑：请首先从该公司官网的管理层页面、LinkedIn资料、公开演讲、媒体报道以及相关数据库中收集信息。） 分析重点包括： - 公司核心管理层具备的的学历背景、工作经历、行业经验及关键成就；
+            与公司业务相结合，公司核心团队的能力是否匹配公司竞争优势；'
+        - id: 6bad05ba-7b7b-4ccb-9b0a-c7f8ce07893f
+          role: user
+          text: '你的信息来源包括多个方面。有一些信息你可以利用，这些信息你要过滤出和这家公司相关的数据，你无需进行引用，不需要给出具体的引用数据：
+
+            ---
+
+            {{#1747927203838.text#}}
+
+            ---
+
+
+            开始分析，直接 以 ## 3. 公司管理团队 开头'
+        selected: false
+        title: 管理层分析
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '1740842132267'
+      position:
+        x: 3678
+        y: 602
+      positionAbsolute:
+        x: 3678
+        y: 602
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: 65429e65-f9dc-4d40-b6f4-64458cf7500f
+          role: system
+          text: "你是一个专业的财务分析专家，现在需要分析一家公司的财务情况，你需要根据我们收集的信息撰写一份财务分析报告，注意当前时间为{{#1742573007628.text#}}，报告的输出格式是：\n\
+            '''\n## 4.财务分析：\n### 4.1盈利能力分析\n- 分析毛利率、净利率以及EBITDA情况，判断公司是否实现盈利，并关注盈利指标的历史变化趋势。\n\
+            - 分析利润率变化背后的原因，如成本结构调整、产品升级或市场竞争加剧等。\n### 4.2费用结构分析\n- 对管理费用、销售费用及研发费用进行细致分析，计算各费用占营业收入的比例，并观察其变化趋势。\n\
+            - 分析费用变化是否体现了规模效应或成本优化措施，以及对利润的影响。\n### 4.3营运效率与流动性分析\n- 检查存货、应收账款和应付账款等营运资本项目，计算周转率和现金转换周期，评估运营效率和销售情况。\n\
+            - 分析短期贷款、现金及现金等价物、经营性现金流情况，评估公司的短期偿债能力和流动性风险。\n### 4.4成长性分析\n- 分析营收增长率、净利润增长率及ROE等指标，判断公司的成长性及资产利用效率。\n\
+            - 结合历史数据，讨论未来的成长预期以及与同行业竞争对手的比较情况。\n### 4.5综合讨论与风险评估\n- 结合以上各项分析，总结公司的主要财务驱动因素和存在的风险（例如技术迭代、并购整合风险、监管环境变化等）。\n\
+            '''\n\n## 输出格式技术要求\n\n\n### 表格格式要求\n\n\n- 使用标准Markdown表格格式\n- 不需要考虑对齐问题，保证表格能正常渲染即可\
+            \  \n- 不要在表格前后输出任何可能破坏表格格式的额外内容\n- 确保每个表格都有清晰的标题和列名\n\n\n### Mermaid图表要求\n\
+            \n\n- 所有图表必须用```mermaid```代码块包裹\n- 注意当前mermaid的版本为8版本，不要有高版本的语法内容，避免解析错误\n\
+            - 处理中文文本时必须加上适当引号，避免解析错误\n- 推荐使用的图表类型：流程图(graph)、架构图、关系图等、甘特图等等\n- 示例格式：\n\
+            \n\n```mermaid\ngraph TD\n    A[\"产品线A\"] --> B[\"技术优势\"] \n    B -->\
+            \ C[\"市场表现\"]\n```\n\n### 图片格式要求\n\n- 不要使用 SVG"
+        - id: a263440b-ba9d-4f45-9f9b-e0e9494fab1c
+          role: user
+          text: '当前分析的公司基本信息为：
+
+            ''''''
+
+            {{#1740841530496.text#}}
+
+            ''''''
+
+
+            你的信息来源包括多个方面。有一些信息你可以利用，这些信息你要过滤出和这家公司相关的数据，你无需进行引用，不需要给出具体的引用数据：
+
+            ---
+
+            {{#1747927663647.all_results#}}
+
+            ---
+
+
+            你可以考虑增加一些mermaid图或者SVG图来结合表达，直接 以 ## 4. 财务分析 开头'
+        selected: false
+        title: 财务分析
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '1740842287164'
+      position:
+        x: 3678
+        y: 901.9395006094801
+      positionAbsolute:
+        x: 3678
+        y: 901.9395006094801
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: 940cd740-7e93-4ac5-b191-fe991bbed7e0
+          role: system
+          text: '你是一个专业的财务分析专家，现在需要分析一家公司的估值情况，你需要根据我们收集的信息撰写一份估值分析报告，注意当前时间为{{#1742573007628.text#}}，报告的输出格式是：
+
+            ''''''
+
+            ## 5. 估值分析：
+
+            ### 5.1 【针对快速成长型企业】基于市销率（EV/Sales）的估值方法
+
+            - 假设该企业最新年度营业收入为多少。
+
+            - 选用EV/Sales倍数计算企业价值：估值 = 营业收入 × 倍数。
+
+            - 讨论为何选用该倍数。
+
+
+            ### 5.2. 基于盈利转正后的估值方法
+
+            - 假设该企业在未来一段时间（如一年，两年）实现净利润转正，且EPS达到多少美元，总股本为多少百万股。
+
+            - 选用市盈率估值，计算预期市值：预期市值 = EPS × 总股本 ×市盈率。
+
+            - 讨论此方法合理性，及投资者对风险溢价与盈利持续性预期的考虑。
+
+            【B. 针对成熟、盈利稳定的企业】
+
+
+            ### 5.3. 基于传统估值方法的综合分析
+
+            - 考虑使用市盈率（P/E）、EV/EBITDA、以及贴现现金流（DCF）模型。
+
+            - 请提供各模型的关键假设（例如历史和预期盈利、毛利率变化、现金流状况、资本支出等），计算出各模型的估值，并比较差异。
+
+            - 分析管理费用、销售费用、存货、应收账款、短期债务与现金流的变化情况，以评估运营效率和短期偿债能力。
+
+            - 关注ROE、营收增长、净利润增长等指标，评估公司的成长性和资产利用效率。
+
+
+            ### 估值结论
+
+            详细介绍你的结论。'
+        - id: 5e0d846d-3304-4f67-b5a6-528755a7500e
+          role: user
+          text: '请根据以下逻辑对竞争激烈行业的上市公司（如制造业，制药行业，汽车行业，消费电子行业，食品行业等）进行估值预测，输出详细的计算步骤和结论：
+
+
+            竞争对手PE分析
+
+
+            首先，请确定该公司的主要强竞争对手，并收集它们最新的市盈率（PE）数据。
+
+            毛利率与增速加权PE
+
+
+            请分析目标公司与竞争对手在毛利率和收入增速方面的差异，构建一个权重模型，将毛利率和增速因素结合进PE调整中，以计算出一个合理的目标PE值。
+
+            销售增量预测与营收预算
+
+
+            根据预期在2025年实现的销售增量（例如新产品、车型等新增销售数量），预测该年度的总营收，并详细说明假设条件和计算过程。
+
+            净利润估算
+
+
+            请结合预计的营收和公司的净利率，计算出2025年预期的最终净利润，展示详细公式和计算步骤。
+
+            最终估值计算
+
+
+            最后，将合理的目标PE乘以估算出的净利润，得出公司的最终估值，并说明该估值的合理性及可能的风险因素。
+
+            请确保在输出中提供清晰的步骤、假设数据以及详细的逻辑推导过程。
+
+
+            公司的基本情况：
+
+            ''''''
+
+            {{#1740841530496.text#}}
+
+            ''''''
+
+
+            公司产品和技术分析：
+
+            ''''''
+
+            {{#1740841782462.text#}}
+
+            ''''''
+
+
+            有一些信息你可以利用，你无需进行引用，不需要给出具体的引用数据：
+
+            ---
+
+            {{#1747927663647.all_results#}}
+
+            ---
+
+
+            重要的财务指标数据：
+
+            ---
+
+            {{#1740842287164.text#}}
+
+            ---
+
+
+            注意，当前的股价非常的重要，你需要思考目前的股价是多少，估值会产生多少的波动，不要太离谱，现在开始你的分析。你只需要分析估值，不要有买入，上涨，下跌等建议。
+
+            公式一律采用```math和```进行包裹，并且不要使用\boxed，无需回复，直接开始输出“## 5. 估值分析“'
+        selected: false
+        title: 估值分析
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '1740842401123'
+      position:
+        x: 4614.56063407605
+        y: 985.3854750557099
+      positionAbsolute:
+        x: 4614.56063407605
+        y: 985.3854750557099
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        selected: false
+        template: '{{ arg1 }}
+
+
+          {{ arg2 }}
+
+
+          {{ arg6 }}
+
+
+          {{ text }}
+
+
+          {{ arg3 }}
+
+
+          {{ arg4 }}
+
+
+          {{ arg5 }}
+
+
+          注意：本文仅供参考，全部数据来自公开信息，不存在投资建议，股市有风险，投资需谨慎。'
+        title: 文本组装
+        type: template-transform
+        variables:
+        - value_selector:
+          - '1741961604818'
+          - arg1
+          variable: arg1
+        - value_selector:
+          - '1741961604818'
+          - arg2
+          variable: arg2
+        - value_selector:
+          - '1741961604818'
+          - arg3
+          variable: arg3
+        - value_selector:
+          - '1741961604818'
+          - arg4
+          variable: arg4
+        - value_selector:
+          - '1741961604818'
+          - arg5
+          variable: arg5
+        - value_selector:
+          - '1742657234767'
+          - text
+          variable: text
+        - value_selector:
+          - '1741961604818'
+          - arg6
+          variable: arg6
+      height: 54
+      id: '1740842503720'
+      position:
+        x: 5502
+        y: 740
+      positionAbsolute:
+        x: 5502
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - '17474578769470'
+          - result
+          variable: output
+        selected: false
+        title: 结束
+        type: end
+      height: 90
+      id: '1740842541222'
+      position:
+        x: 8238
+        y: 740
+      positionAbsolute:
+        x: 8238
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import re\n\ndef handle(input_str):\n    # input_str = re.sub(r'>[^\\\
+          n]*\\n', '', input_str)\n    lines = input_str.split('\\n\\n')\n    new_lines\
+          \ = [line for line in lines if not line.strip().startswith('> ')]\n    input_str\
+          \ = '\\n\\n'.join(new_lines)\n\n    input_str = input_str.replace('\\'\\\
+          '\\'', '')\n    input_str = input_str.replace('```', '\\n```')\n    \n \
+          \   # 删除超过100个连续的空格\n    input_str = re.sub(r' {101,}', '', input_str)\n\
+          \    \n    return input_str\n\ndef main(arg1: str, arg2: str, arg3: str,\
+          \ arg4: str, arg5: str, arg6: str) -> dict:\n    arg1 = handle(arg1)\n \
+          \   arg2 = handle(arg2)\n    arg3 = handle(arg3)\n    arg4 = handle(arg4)\n\
+          \    arg5 = handle(arg5)\n    arg6 = handle(arg6)\n    \n    return {\n\
+          \        \"arg1\": arg1,\n        \"arg2\": arg2,\n        \"arg3\": arg3,\n\
+          \        \"arg4\": arg4,\n        \"arg5\": arg5,\n        \"arg6\": arg6,\n\
+          \    }"
+        code_language: python3
+        desc: ''
+        outputs:
+          arg1:
+            children: null
+            type: string
+          arg2:
+            children: null
+            type: string
+          arg3:
+            children: null
+            type: string
+          arg4:
+            children: null
+            type: string
+          arg5:
+            children: null
+            type: string
+          arg6:
+            children: null
+            type: string
+        selected: false
+        title: 无关字符去除
+        type: code
+        variables:
+        - value_selector:
+          - '1740841530496'
+          - text
+          variable: arg1
+        - value_selector:
+          - '1740841782462'
+          - text
+          variable: arg2
+        - value_selector:
+          - '1740842132267'
+          - text
+          variable: arg3
+        - value_selector:
+          - '1740842287164'
+          - text
+          variable: arg4
+        - value_selector:
+          - '1747451717303'
+          - output
+          variable: arg5
+        - value_selector:
+          - '1743920521771'
+          - text
+          variable: arg6
+      height: 54
+      id: '1741961604818'
+      position:
+        x: 5198
+        y: 740
+      positionAbsolute:
+        x: 5198
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        provider_id: time
+        provider_name: time
+        provider_type: builtin
+        selected: false
+        title: 获取当前时间
+        tool_configurations:
+          format: '%Y-%m-%d'
+          timezone: Asia/Shanghai
+        tool_label: 获取当前时间
+        tool_name: current_time
+        tool_parameters: {}
+        type: tool
+      height: 116
+      id: '1742573007628'
+      position:
+        x: 1246
+        y: 451
+      positionAbsolute:
+        x: 1246
+        y: 451
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: qwen-plus
+          provider: tongyi
+        prompt_template:
+        - id: f8493d72-afc4-46f1-a12c-1e7254d7cc3d
+          role: system
+          text: ''
+        - id: 3b987d5b-a864-4aa4-aeb3-961c3ffa43df
+          role: user
+          text: '基于我写的一份报告，报告内容如下：
+
+            ''''''
+
+            {{#1740842503720.output#}}
+
+            ''''''
+
+
+            当前的时间为{{#1742573007628.text#}}，分析的公司为{{#1740840395159.companyName#}}，现在你需要帮我给报告起个标题，10～20个字左右，名字参考：
+
+            XX公司深度分析：一句话概括报告内容+巴芒投研+日期（YYYY-mm-dd）
+
+
+            开始你的报告起名，直接给我名字就可以了，不需要其他内容。'
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 1000
+        selected: false
+        title: 基于报告内容生成名字
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 123
+      id: '1742655089850'
+      position:
+        x: 6414
+        y: 740
+      positionAbsolute:
+        x: 6414
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            enable_search: true
+            temperature: 0.7
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: 83598ed5-70b8-4bd3-a89c-8af05337f7ff
+          role: system
+          text: "请撰写一篇关于一家公司竞争优势的深度分析及行业竞争情况的文章，当前分析的公司为{{#1740840395159.companyName#}}，当前的时间为{{#1742573007628.text#}}，要求文章需分为以下主要部分：（1）技术领先与创新优势（2）产品广度与产品优势（3）行业格局与竞争分析\n\
+            语言专业且逻辑严谨，不能虚构数据与事实。\n\n数据支持与逻辑推导：\n全文无需引用真实数据或权威调研报告的数据（如公司年报、财报、行业报告等），但需要确保数据和数字准确无误。\n\
+            文章中要详细阐述各项数据背后的逻辑，避免出现虚构或无依据的内容。\n请根据以上要求撰写文章，确保内容客观、严谨，符合专业投资分析标准。\n\n\
+            报告应该便于阅读和理解，另外你写的内容是一篇大文档的一个模块，所以是从2.5节开始到2.7节，不要有其他的标题内容，只需要三个标题内容，格式如下：\n\
+            \n---\n### 2.5 技术领先与创新优势\n分析公司在核心产品与技术领域的关键技术与创新优势。护城河是在产品与技术上持续有示范效应，竞争对手学不到，还能带来更高利润，比如产品可能涨价等现象。\n\
+            \n### 2.6 产品广度与集成优势\n列举公司的主要产品线，分析各产品线如何差异化产品与技术优势提供最佳性能，以及这种广泛布局如何降低对单一市场的依赖，并形成跨领域协同效应。或品牌优势，或是良好的产品体验优势，如非常好的客户满意度，客户NPS高等，或是产品品牌为非常知名的品牌。\n\
+            需要分析公司的商业模式，即如何赚钱的模式，比如网络平台模式，技术平台，硬件收入，零售模式，SAAS等。\n\n### 2.7 行业格局与竞争分析\n\
+            简述公司所处市场的增长趋势，判断最新数据（如最近所在行业增长率）。分析主要竞争对手的市场份额和竞争力，指出公司的优势与劣势，并讨论竞争对手的潜在冲击因素。\n\
+            ---\n请确保报告内容准确、专业，并基于提供的输入信息进行撰写，可以多列一些表格内容，阐述一些因果关系。适当的生成mermaid图来综合阐述。\n\
+            \n## 输出格式技术要求\n\n\n### 表格格式要求\n\n\n- 使用标准Markdown表格格式\n- 不需要考虑对齐问题，保证表格能正常渲染即可\
+            \  \n- 不要在表格前后输出任何可能破坏表格格式的额外内容\n- 确保每个表格都有清晰的标题和列名\n\n\n### Mermaid图表要求\n\
+            \n\n- 所有图表必须用```mermaid```代码块包裹，注意，目前mermaid为v8版本，避免使用高版本语法，然后避免太宽，内容较多的情况下可以较高+垂直布局，你需要直接以“对产品分析内容，我们可以以图示来进行分析：后面接mermaid图”，开头，直接生成mermaid图的代码，以及一小段解释，无需总结性内容\n\
+            - 处理中文文本时必须加上适当引号，避免解析错误\n- 推荐使用的图表类型：流程图(graph)、架构图、关系图等、甘特图等等\n- 示例格式：\n\
+            \n\n```mermaid\ngraph TD\n    A[\"产品线A\"] --> B[\"技术优势\"] \n    B -->\
+            \ C[\"市场表现\"]\n```\n\n\n### 图片格式要求\n\n- 不要使用 SVG\n"
+        - id: 2250ccc1-23f0-40d7-be15-b341550d9000
+          role: user
+          text: '你的信息来源包括多个方面。有一些信息你可以利用，这些信息你要过滤出和这家公司相关的数据，你无需进行引用，不需要给出具体的引用数据：
+
+            ---
+
+            {{#1747927663647.all_results#}}
+
+            ---
+
+
+            你的分析为：'
+        retry_config:
+          max_retries: 2
+          retry_enabled: true
+          retry_interval: 1000
+        selected: false
+        title: 产品竞争力分析
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 123
+      id: '1742657234767'
+      position:
+        x: 3678
+        y: 740
+      positionAbsolute:
+        x: 3678
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: contains
+            id: a92e611a-1e19-47ab-ae55-3d969066e00c
+            value: bamangniubi
+            varType: string
+            variable_selector:
+            - '1740840395159'
+            - validateCode
+          id: 'true'
+          logical_operator: and
+        desc: ''
+        selected: false
+        title: 条件分支 3
+        type: if-else
+      height: 126
+      id: '1743915544209'
+      position:
+        x: 638
+        y: 310
+      positionAbsolute:
+        x: 638
+        y: 310
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - '1743915573353'
+          - output
+          variable: output
+        selected: false
+        title: 结束 3
+        type: end
+      height: 90
+      id: '1743915559671'
+      position:
+        x: 1246
+        y: 310
+      positionAbsolute:
+        x: 1246
+        y: 310
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        selected: false
+        template: 验证码错误
+        title: 模板转换 3
+        type: template-transform
+        variables: []
+      height: 54
+      id: '1743915573353'
+      position:
+        x: 942
+        y: 310
+      positionAbsolute:
+        x: 942
+        y: 310
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\nimport re\nfrom datetime import datetime\n\n\ndef\
+          \ main(markdown: str, filename: str, task_id: str):\n    \"\"\"\n    上传\
+          \ Markdown 文件到服务器\n\n    Args:\n        markdown (str): Markdown 文本内容\n\
+          \    \"\"\"\n    try:\n\n        # 添加创建时间到文件内容\n        current_time = datetime.now().strftime(\"\
+          %Y-%m-%d %H:%M:%S\")\n        markdown_with_time = \"# \" + filename + \"\
+          \\n\\n\" + markdown\n\n        # 准备请求数据\n        data = {\n            \"\
+          filename\": filename,\n            \"content\": markdown_with_time,\n  \
+          \          \"task_id\": task_id\n        }\n        url = 'http://bm.vsource.club/api/upload'\n\
+          \        # 发送请求到前端代理\n        response = requests.post(\n            url,\
+          \  # 使用前端代理地址\n            json=data\n        )\n\n        # 检查响应\n    \
+          \    if response.status_code == 200:\n            print(f\"文件上传成功: {filename}.md\"\
+          )\n            print(f\"创建时间: {current_time}\")\n            print(response.content)\n\
+          \            return {'result': \"OK\"}\n        else:\n            print(f\"\
+          上传失败: {response.json().get('error', '未知错误')}\")\n            return {'result':\
+          \ response.json().get('error', '未知错误')}\n\n    except requests.exceptions.ConnectionError:\n\
+          \        print(\"错误: 无法连接到服务器，请确保前端服务器正在运行\")\n        return {'result':\
+          \ \"Network error.\"}\n    except Exception as e:\n        print(f\"错误:\
+          \ {str(e)}\")\n        return {'result': str(e)}"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 文本上传
+        type: code
+        variables:
+        - value_selector:
+          - '1740842503720'
+          - output
+          variable: markdown
+        - value_selector:
+          - '1742655089850'
+          - text
+          variable: filename
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '1743917413718'
+      position:
+        x: 6718
+        y: 740
+      positionAbsolute:
+        x: 6718
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: 89215524-9332-40ef-ac85-1afe3205e120
+          role: system
+          text: ''
+        - id: 976b9a59-8a90-469d-89b7-3a809265704b
+          role: user
+          text: "你需要根据这段产品分析，画一张Mermaid图来进行表达，要求图简洁优雅直接。\n\n## 输出格式技术要求\n\n\n### 表格格式要求\n\
+            \n\n- 使用标准Markdown表格格式\n- 不需要考虑对齐问题，保证表格能正常渲染即可  \n- 不要在表格前后输出任何可能破坏表格格式的额外内容\n\
+            - 确保每个表格都有清晰的标题和列名\n\n\n### Mermaid图表要求\n\n\n- 所有图表必须用```mermaid```代码块包裹\n\
+            - 处理中文文本时必须加上适当引号，避免解析错误\n- 推荐使用的图表类型：流程图(graph)、架构图、关系图等、甘特图等等\n- 示例格式：\n\
+            \n\n```mermaid\ngraph TD\n    A[\"产品线A\"] --> B[\"技术优势\"] \n    B -->\
+            \ C[\"市场表现\"]\n```\n\n\n### 图片格式要求\n\n- 不要使用 SVG\n\n\n产品分析内容：\n'''\n{{#1740841782462.text#}}\n\
+            '''\n\n\n注意，目前mermaid为v8版本，避免使用高版本语法，然后避免太宽，内容较多的情况下可以较高+垂直布局，你需要直接以“对产品分析内容，我们可以以图示来进行分析：后面接mermaid图”，开头，直接生成mermaid图的代码，以及一小段解释，无需总结性内容，一个输入的案例为：\n\
+            \n<case>\n对产品分析内容，我们可以以图示来进行分析：\n```mermaid\ngraph TD\n    subgraph \"\
+            Grasberg 等大型矿山\"\n        A[\"大规模开采作业\"] --> B[\"产出含铜、金的混合矿石\"];\n   \
+            \ end\n\n    subgraph \"选矿与加工流程\"\n        B --> C[\"铜精矿 (主要产品)\"];\n\
+            \        B --> D[\"金 (伴生/副产品)\"];\n    end\n    \n    subgraph \"财务与成本结构\"\
+            \n        C --> E[\"铜销售收入\"];\n        D --> F[\"黄金销售收入\"];\n        F\
+            \ --\"作为副产品收入抵扣 (By-product Credits)\"--> G[\"降低铜的单位净现金成本\"];\n      \
+            \  E & G --> H[\"提升综合利润率\"];\n    end\n\n    H --> I[\"增强市场竞争力与抗风险能力\"\
+            ];\n```\n</case>\n\n注意这个只是一个案例，你需要根据目前的产品分析来进行输出，尽量清晰简单，避免元素太多，尽量不超过10个元素，不要有任何客套和回复内容，直接以“对产品分析内容，我们可以以图示来进行分析：”为开头输出。"
+        selected: false
+        title: 产品分析附图
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '1743920521771'
+      position:
+        x: 3723.4066760794735
+        y: 404
+      positionAbsolute:
+        x: 3723.4066760794735
+        y: 404
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: contains
+            id: 57d367dc-d5ba-40f2-9ea4-46d22fdf7150
+            value: A股（热点个股）
+            varType: string
+            variable_selector:
+            - '1740840395159'
+            - genPost
+          id: 'true'
+          logical_operator: and
+        - case_id: e7f17e09-f4a6-470b-b457-02d8ebf0f53c
+          conditions:
+          - comparison_operator: contains
+            id: 0a2c3c96-1680-41c8-889b-fb0ec83236da
+            value: 美股
+            varType: string
+            variable_selector:
+            - '1740840395159'
+            - genPost
+          id: e7f17e09-f4a6-470b-b457-02d8ebf0f53c
+          logical_operator: and
+        desc: ''
+        selected: false
+        title: 条件分支 3
+        type: if-else
+      height: 174
+      id: '1746625374271'
+      position:
+        x: 942
+        y: 404
+      positionAbsolute:
+        x: 942
+        y: 404
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - '17466256364000'
+          - output
+          variable: output
+        selected: false
+        title: 结束 3
+        type: end
+      height: 90
+      id: '1746625434102'
+      position:
+        x: 2158
+        y: 688
+      positionAbsolute:
+        x: 2158
+        y: 688
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - '17466254441100'
+          - output
+          variable: output
+        selected: false
+        title: 结束 4
+        type: end
+      height: 90
+      id: '1746625436326'
+      position:
+        x: 2158
+        y: 818
+      positionAbsolute:
+        x: 2158
+        y: 818
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        selected: false
+        template: 分析完毕，在分析记录中查看结果吧！
+        title: 模板转换 3 (1)
+        type: template-transform
+        variables: []
+      height: 54
+      id: '17466254441100'
+      position:
+        x: 1550
+        y: 836
+      positionAbsolute:
+        x: 1550
+        y: 836
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        provider_id: 2a40c751-1db2-45c0-a87e-8c7a701b9852
+        provider_name: 美股估值文章撰写
+        provider_type: workflow
+        selected: false
+        title: 美股估值文章撰写
+        tool_configurations: {}
+        tool_label: 美股估值文章撰写
+        tool_name: US_analyze
+        tool_parameters:
+          companyName:
+            type: mixed
+            value: '{{#1740840395159.companyName#}}'
+          news:
+            type: mixed
+            value: '{{#1740840395159.news#}}'
+        type: tool
+      height: 54
+      id: '1746625630651'
+      position:
+        x: 1246
+        y: 724
+      positionAbsolute:
+        x: 1246
+        y: 724
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        selected: false
+        template: 分析完毕，在分析记录中查看结果吧！
+        title: 模板转换 3 (2)
+        type: template-transform
+        variables: []
+      height: 54
+      id: '17466256364000'
+      position:
+        x: 1550
+        y: 706
+      positionAbsolute:
+        x: 1550
+        y: 706
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        provider_id: f5565857-ddc9-4ace-914e-e684964e18c2
+        provider_name: 大A基本面分析(散户)
+        provider_type: workflow
+        selected: false
+        title: 大A基本面分析(散户)
+        tool_configurations: {}
+        tool_label: 大A基本面分析(散户)
+        tool_name: analysis_A_for_sanhu
+        tool_parameters:
+          companyName:
+            type: mixed
+            value: '{{#1740840395159.companyName#}}'
+        type: tool
+      height: 54
+      id: '1746868014397'
+      position:
+        x: 1246
+        y: 854
+      positionAbsolute:
+        x: 1246
+        y: 854
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: contains
+            id: 289aab04-28ab-4549-8a6d-3be2376cc38c
+            value: 全跑完-美
+            varType: string
+            variable_selector:
+            - '1740840395159'
+            - genPost
+          id: 'true'
+          logical_operator: and
+        - case_id: 236389e4-3172-4058-84c6-013512e7793c
+          conditions:
+          - comparison_operator: contains
+            id: b10ad99d-308b-4767-9e94-2ed71f50fb7f
+            value: 全跑完-A
+            varType: string
+            variable_selector:
+            - '1740840395159'
+            - genPost
+          id: 236389e4-3172-4058-84c6-013512e7793c
+          logical_operator: and
+        desc: ''
+        selected: false
+        title: 条件分支 4
+        type: if-else
+      height: 174
+      id: '1747451623069'
+      position:
+        x: 4286
+        y: 602
+      positionAbsolute:
+        x: 4286
+        y: 602
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: 940cd740-7e93-4ac5-b191-fe991bbed7e0
+          role: system
+          text: "你是一个专业的财务分析专家，现在需要分析一家公司的估值情况。请结合各种数据撰写估值分析报告，注意当前时间为 {{#1742573007628.text#}}。报告的输出格式如下：\
+            \ \n## 5.估值分析\n### 5.1. 公司基础信息与市场指标\n1.1 公司简介\n* 注册地／上市地点／成立年份\n* 主营业务及收入占比\n\
+            * 最新股价／总市值／流通市值\n* TTM P/E、P/B、PS、EV/EBITDA\n* 控股股东、实际控制人及持股比例\n* 重要事项：限售股解禁、增减持、重大诉讼、并购或战略合作\n\
+            1.2 战略合作与项目进展\n* 最新合作：如固态电池、上下游原料或科技平台合作\n* 进展阶段：框架协议→设备调试→试产→批量生产→装车应用\n\
+            * 预期贡献：短期（1–2年）／中期（3–5年）新增收入与利润\n1.3 同行可比\n* 列出 3–5 家可比公司（公司名、代码、业务）\n\
+            * 对比关键估值倍数：P/E、PS、EV/Sales、EV/EBITDA、PEG\L────────────────────────\n###\
+            \ 5.2. 核心假设与外部环境\n* 新产品/项目规划：产能扩张、新基地、关键装备或技术升级\n* 战略合作：合作方、合作模式、量产节奏、毛利率假设\n\
+            * 政策/监管变化：补贴退出／延续、税收优惠、行业准入、碳中和政策\n* 宏观环境假设：行业销量增速、原材料价格波动、汇率、中美/欧贸易政策\n\
+            * 资本开支与激励：3–5年CapEx规模；股权激励、期权计划对摊薄的影响\L────────────────────────\n### 5.3.\
+            \ 估值分析框架\n1. 发展阶段与增长率假设\n* 阶段判断：高速增长／成熟／转型，说明依据（营收、利润、ROE趋势）\n* 增速假设：\n\
+            \    1. 短期（1年）：管理层指引或研报预测\n    2. 中期（3年）：券商共识＋行业CAGR\n    3. 长期（5年及以后）：生命周期模型推断\n\
+            2. 外部预测与管理层指引\n* 摘录最新财报／公告中的业绩预期（含发布日期）\n* 分析师共识：收入、净利润、ROE、EPS等预测区间\n\
+            3. 主营业务（第一曲线）预测拆分\n* 拆分要素：销量×均价×毛利率；费用率（销、管、研）\n* 1/3/5年：分别给出营收和净利润预测\n\
+            4. 战略合作／新业务（第二曲线）预测拆分\n* 合作或新业务：市场空间、渗透率、产能节奏、毛利率\n* 贡献预测：3/5年内新增营收与净利润\n\
+            5. 场景与敏感性分析\n* 基准／乐观／悲观三种情境，核心变量（销量、价格、毛利率、合作进度）变化对业绩影响\n* 敏感性：变量±10%/±20%下的估值区间\n\
+            6. 多方法估值结合\n* 成熟业务估值：P/E、EV/EBITDA、DCF\n* 成长或新业务估值：EV/Sales、PS、SoTP分部估值\n\
+            * 估值倍数选取依据：行业中位、历史区间、风险溢价⁄折价\n7 .估值结论与风险提示\n* 时点说明：截至{{#timestamp#}}的股价、市值、主要倍数\n\
+            * 估值区间：低估／合理／高估判断及中枢价格\n* 主要风险：政策、市场竞争、原材料、合作进度、执行风险、宏观波动\n────────────────────────\n\
+            使用须知：\n* 每次运行按“数据来源优先级”自动检索并分析原文（含链接与发布日期）\n* 关键公式：\n    * Revenueₜ =\
+            \ Revenueₜ₋₁ × (1 + Growthₜ)\n    * NetProfitₜ = Revenueₜ × 净利率ₜ\n   \
+            \ * DCF = 折现(FCF₁…FCFₙ) + Terminal Value\n* 输出语言：中文，务必注明所有数据来源链接。\n————————————"
+        - id: 5e0d846d-3304-4f67-b5a6-528755a7500e
+          role: user
+          text: '请确保在输出中提供清晰的步骤、假设数据以及详细的逻辑推导过程。
+
+
+            公司的基本情况：
+
+            ''''''
+
+            {{#1740841530496.text#}}
+
+            ''''''
+
+
+            有一些信息你可以利用，你无需进行引用，不需要给出具体的引用数据：
+
+            ---
+
+            {{#1747927663647.all_results#}}
+
+            ---
+
+
+
+            重要的财务指标数据：
+
+            ---
+
+            {{#1740842287164.text#}}
+
+            ---
+
+
+            注意，当前的股价非常的重要，你需要思考目前的股价是多少，估值会产生多少的波动，不要太离谱，现在开始你的分析。你只需要分析估值，不要有买入，上涨，下跌等建议。公式一律采用```math和```进行包裹，并且不要使用\boxed，无需回复，直接开始输出“##
+            5. 估值分析“'
+        retry_config:
+          max_retries: 3
+          retry_enabled: false
+          retry_interval: 1000
+        selected: false
+        title: 估值分析 (1)
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '17474516965680'
+      position:
+        x: 4590
+        y: 752.5
+      positionAbsolute:
+        x: 4590
+        y: 752.5
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.2
+          mode: chat
+          name: google/gemini-3.1-pro-preview
+          provider: openai_api_compatible
+        prompt_template:
+        - id: 940cd740-7e93-4ac5-b191-fe991bbed7e0
+          role: system
+          text: '你是一个专业的财务分析专家，现在需要分析一家公司的估值情况，你需要根据我们收集的信息撰写一份估值分析报告，注意当前时间为{{#1742573007628.text#}}，
+
+
+            你需要先合理的分析公司适用于哪些估值方法：
+
+            1. 【针对快速成长型企业】基于市销率（EV/Sales）的估值方法
+
+            - 假设该企业最新年度营业收入为多少。
+
+            - 选用EV/Sales倍数计算企业价值：估值 = 营业收入 × 倍数。
+
+            - 讨论为何选用该倍数。
+
+            2. 【B. 针对成熟、盈利稳定的企业】基于盈利转正后的估值方法
+
+            - 假设该企业在未来一段时间（如一年，两年）实现净利润转正，且EPS达到多少美元，总股本为多少百万股。
+
+            - 选用市盈率估值，计算预期市值：预期市值 = EPS × 总股本 ×市盈率。
+
+            - 讨论此方法合理性，及投资者对风险溢价与盈利持续性预期的考虑。
+
+
+            3. 基于传统估值方法的综合分析- 考虑使用市盈率（P/E）、EV/EBITDA、以及贴现现金流（DCF）模型。
+
+            - 考虑使用市盈率（P/E）、EV/EBITDA、以及贴现现金流（DCF）模型。
+
+            - 请提供各模型的关键假设（例如历史和预期盈利、毛利率变化、现金流状况、资本支出等），计算出各模型的估值，并比较差异。
+
+            - 分析管理费用、销售费用、存货、应收账款、短期债务与现金流的变化情况，以评估运营效率和短期偿债能力。
+
+            - 关注ROE、营收增长、净利润增长等指标，评估公司的成长性和资产利用效率。
+
+
+            然后采用选择的估值方法进行计算，报告的输出整体不应该长于3000字，格式如下：
+
+            ''''''
+
+            ## 5. 估值分析：
+
+            ### 5.1 估值方法选定
+
+            根据公司的业务情况、产品能力等方式，并且务必在这里表现出当前的股价、营收和净利润值，整体来判断估值方法
+
+
+
+            ### 5.2 估值计算
+
+            将估值相关的假设和计算方法放到这里。
+
+            假设采用quote：
+
+            > 假设XXXX，会如何如何
+
+
+            公式采用纯文本公式打出，不要使用Latex符号。
+
+
+
+            ### 5.3 估值结论
+
+            合理的呈现估值的结论
+
+            '
+        - edition_type: basic
+          id: 5e0d846d-3304-4f67-b5a6-528755a7500e
+          role: user
+          text: '请确保在输出中提供清晰的步骤、假设数据以及详细的逻辑推导过程。
+
+
+            公司的基本情况：
+
+            ''''''
+
+            {{#1740841530496.text#}}
+
+            ''''''
+
+
+            公司的产品竞争力情况：
+
+            ''''''
+
+            {{#1742657234767.text#}}
+
+            ''''''
+
+
+            公司财务分析说明：
+
+            ''''''
+
+            {{#1740842287164.text#}}
+
+            ''''''
+
+
+            重要的财务指标数据：
+
+            ---
+
+            {{#1748089517652.text#}}
+
+            ---
+
+
+            注意，你无需进行引用，你需要思考目前的股价是多少，估值会产生多少的波动,有的公司现价也不一定合理，现在开始你的分析。另外对于亏损企业，如无法计算，你务必要给出合理的假设，基于这个假设进行后续的估值计算。你只需要分析估值，不要有买入，上涨，下跌等建议。
+
+
+            无需回复，直接开始输出“## 5. 估值分析“'
+        retry_config:
+          max_retries: 2
+          retry_enabled: true
+          retry_interval: 1000
+        selected: false
+        title: 全跑完-美
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 123
+      id: '17474517088250'
+      position:
+        x: 4590
+        y: 576
+      positionAbsolute:
+        x: 4590
+        y: 576
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        output_type: string
+        selected: false
+        title: 变量聚合器 2
+        type: variable-aggregator
+        variables:
+        - - '17474516965680'
+          - text
+        - - '1740842401123'
+          - text
+        - - '17474517088250'
+          - text
+      height: 153
+      id: '1747451717303'
+      position:
+        x: 4894
+        y: 740
+      positionAbsolute:
+        x: 4894
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\n\ndef main(task_id: str) -> dict:\n    if not task_id:\n\
+          \        return {\"result\": \"\"}\n    progress = \"1%\"\n    info = \"\
+          任务启动中\"\n\n    url = f\"http://bm.vsource.club/api/deep-research/tasks/{task_id}/progress\"\
+          \n    \n    # 准备请求数据\n    data = {\"progress\": progress}\n    if info:\n\
+          \        data[\"info\"] = info\n    \n    try:\n        # 发送请求\n       \
+          \ response = requests.post(\n            url, \n            json=data,\n\
+          \            headers={\"Content-Type\": \"application/json\"}\n        )\n\
+          \        \n        # 检查响应状态\n        if response.status_code == 200:\n \
+          \           result = response.json()\n            return {\"result\": \"\
+          上报成功\"}\n        else:\n            return {\"result\": \"上报失败\" + str(response.content)}\n\
+          \            \n    except Exception as e:\n        return {\"result\": \"\
+          上报失败\" + str(e)}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 上报任务进度
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '1747457338972'
+      position:
+        x: 334
+        y: 310
+      positionAbsolute:
+        x: 334
+        y: 310
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\n\ndef main(task_id: str) -> dict:\n    if not task_id:\n\
+          \        return {\"result\": \"\"}\n    progress = \"10%\"\n    info = \"\
+          搜索公司基本信息中\"\n\n    url = f\"http://bm.vsource.club/api/deep-research/tasks/{task_id}/progress\"\
+          \n    \n    # 准备请求数据\n    data = {\"progress\": progress}\n    if info:\n\
+          \        data[\"info\"] = info\n    \n    try:\n        # 发送请求\n       \
+          \ response = requests.post(\n            url, \n            json=data,\n\
+          \            headers={\"Content-Type\": \"application/json\"}\n        )\n\
+          \        \n        # 检查响应状态\n        if response.status_code == 200:\n \
+          \           result = response.json()\n            return {\"result\": \"\
+          上报成功\"}\n        else:\n            return {\"result\": \"上报失败\" + str(response.content)}\n\
+          \            \n    except Exception as e:\n        return {\"result\": \"\
+          上报失败\" + str(e)}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 上报任务进度 (1)
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '17474576923800'
+      position:
+        x: 1550
+        y: 464
+      positionAbsolute:
+        x: 1550
+        y: 464
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\n\ndef main(task_id: str) -> dict:\n    if not task_id:\n\
+          \        return {\"result\": \"\"}\n    progress = \"25%\"\n    info = \"\
+          公司基本信息搜索完成\"\n\n    url = f\"http://bm.vsource.club/api/deep-research/tasks/{task_id}/progress\"\
+          \n    \n    # 准备请求数据\n    data = {\"progress\": progress}\n    if info:\n\
+          \        data[\"info\"] = info\n    \n    try:\n        # 发送请求\n       \
+          \ response = requests.post(\n            url, \n            json=data,\n\
+          \            headers={\"Content-Type\": \"application/json\"}\n        )\n\
+          \        \n        # 检查响应状态\n        if response.status_code == 200:\n \
+          \           result = response.json()\n            return {\"result\": \"\
+          上报成功\"}\n        else:\n            return {\"result\": \"上报失败\" + str(response.content)}\n\
+          \            \n    except Exception as e:\n        return {\"result\": \"\
+          上报失败\" + str(e)}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 上报任务进度 (2)
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '17474577407860'
+      position:
+        x: 2766
+        y: 464
+      positionAbsolute:
+        x: 2766
+        y: 464
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\n\ndef main(task_id: str) -> dict:\n    if not task_id:\n\
+          \        return {\"result\": \"\"}\n    progress = \"50%\"\n    info = \"\
+          开始估值分析中\"\n\n    url = f\"http://bm.vsource.club/api/deep-research/tasks/{task_id}/progress\"\
+          \n    \n    # 准备请求数据\n    data = {\"progress\": progress}\n    if info:\n\
+          \        data[\"info\"] = info\n    \n    try:\n        # 发送请求\n       \
+          \ response = requests.post(\n            url, \n            json=data,\n\
+          \            headers={\"Content-Type\": \"application/json\"}\n        )\n\
+          \        \n        # 检查响应状态\n        if response.status_code == 200:\n \
+          \           result = response.json()\n            return {\"result\": \"\
+          上报成功\"}\n        else:\n            return {\"result\": \"上报失败\" + str(response.content)}\n\
+          \            \n    except Exception as e:\n        return {\"result\": \"\
+          上报失败\" + str(e)}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 上报任务进度 (2)
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '17474577790310'
+      position:
+        x: 3982
+        y: 602
+      positionAbsolute:
+        x: 3982
+        y: 602
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\n\ndef main(task_id: str) -> dict:\n    if not task_id:\n\
+          \        return {\"result\": \"\"}\n    progress = \"80%\"\n    info = \"\
+          估值分析结束\"\n\n    url = f\"http://bm.vsource.club/api/deep-research/tasks/{task_id}/progress\"\
+          \n    \n    # 准备请求数据\n    data = {\"progress\": progress}\n    if info:\n\
+          \        data[\"info\"] = info\n    \n    try:\n        # 发送请求\n       \
+          \ response = requests.post(\n            url, \n            json=data,\n\
+          \            headers={\"Content-Type\": \"application/json\"}\n        )\n\
+          \        \n        # 检查响应状态\n        if response.status_code == 200:\n \
+          \           result = response.json()\n            return {\"result\": \"\
+          上报成功\"}\n        else:\n            return {\"result\": \"上报失败\" + str(response.content)}\n\
+          \            \n    except Exception as e:\n        return {\"result\": \"\
+          上报失败\" + str(e)}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 上报任务进度 (3)
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '17474578343810'
+      position:
+        x: 6110
+        y: 740
+      positionAbsolute:
+        x: 6110
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\n\ndef main(task_id: str) -> dict:\n    if not task_id:\n\
+          \        return {\"result\": \"\"}\n    progress = \"100%\"\n    info =\
+          \ \"任务结束\"\n\n    url = f\"http://bm.vsource.club/api/deep-research/tasks/{task_id}/progress\"\
+          \n    \n    # 准备请求数据\n    data = {\"progress\": progress}\n    if info:\n\
+          \        data[\"info\"] = info\n    \n    try:\n        # 发送请求\n       \
+          \ response = requests.post(\n            url, \n            json=data,\n\
+          \            headers={\"Content-Type\": \"application/json\"}\n        )\n\
+          \        \n        # 检查响应状态\n        if response.status_code == 200:\n \
+          \           result = response.json()\n            return {\"result\": \"\
+          上报成功\"}\n        else:\n            return {\"result\": \"上报失败\" + str(response.content)}\n\
+          \            \n    except Exception as e:\n        return {\"result\": \"\
+          上报失败\" + str(e)}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 上报任务进度 (4)
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '17474578769470'
+      position:
+        x: 7932.525730782709
+        y: 740
+      positionAbsolute:
+        x: 7932.525730782709
+        y: 740
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        provider_id: 10841396-eacd-4499-9734-a13bfccff2f3
+        provider_name: 搜索引擎补强
+        provider_type: workflow
+        selected: false
+        title: 搜索引擎补强
+        tool_configurations:
+          extra_search_topic: ''
+        tool_label: 搜索引擎补强
+        tool_name: SearchEngineEnhanced
+        tool_parameters:
+          companyName:
+            type: mixed
+            value: '{{#1740840395159.companyName#}}'
+          extra_search_topic:
+            type: mixed
+            value: '{{#1748595237020.result#}}'
+        type: tool
+      height: 90
+      id: '1747927203838'
+      position:
+        x: 2158
+        y: 558
+      positionAbsolute:
+        x: 2158
+        y: 558
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "\ndef main(arg1) -> dict:\n    all_results = arg1[0]['all_results']\n\
+          \    ref_text = arg1[0]['ref_text']\n\n    return {\n        \"all_results\"\
+          : all_results[:30000],\n        'ref_text': ref_text[:10000]\n    }\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          all_results:
+            children: null
+            type: string
+          ref_text:
+            children: null
+            type: string
+        selected: false
+        title: 搜索引擎解读
+        type: code
+        variables:
+        - value_selector:
+          - '1747927203838'
+          - json
+          variable: arg1
+      height: 54
+      id: '1747927663647'
+      position:
+        x: 2462
+        y: 464
+      positionAbsolute:
+        x: 2462
+        y: 464
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        provider_id: 29ffbd17-ac61-40f1-84b4-e3148b49872c
+        provider_name: 公司财务指标获取
+        provider_type: workflow
+        selected: false
+        title: 公司财务指标获取
+        tool_configurations: {}
+        tool_label: 公司财务指标获取
+        tool_name: getCompanyFianceExp
+        tool_parameters:
+          companyName:
+            type: mixed
+            value: '{{#1740840395159.companyName#}}'
+        type: tool
+      height: 54
+      id: '1748089517652'
+      position:
+        x: 2158
+        y: 464
+      positionAbsolute:
+        x: 2158
+        y: 464
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\n\ndef main(task_id: str) -> dict:\n    if not task_id:\n\
+          \        return {\"result\": \"\"}\n    progress = \"100%\"\n    info =\
+          \ \"估值分析结束\"\n\n    url = f\"http://bm.vsource.club/api/deep-research/tasks/{task_id}/progress\"\
+          \n    \n    # 准备请求数据\n    data = {\"progress\": progress}\n    if info:\n\
+          \        data[\"info\"] = info\n    \n    try:\n        # 发送请求\n       \
+          \ response = requests.post(\n            url, \n            json=data,\n\
+          \            headers={\"Content-Type\": \"application/json\"}\n        )\n\
+          \        \n        # 检查响应状态\n        if response.status_code == 200:\n \
+          \           result = response.json()\n            return {\"result\": \"\
+          上报成功\"}\n        else:\n            return {\"result\": \"上报失败\" + str(response.content)}\n\
+          \            \n    except Exception as e:\n        return {\"result\": \"\
+          上报失败\" + str(e)}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 上报任务进度 (4)
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '17481636725260'
+      position:
+        x: 966.4899311907579
+        y: 660.2976542639759
+      positionAbsolute:
+        x: 966.4899311907579
+        y: 660.2976542639759
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import requests\n\ndef main(task_id: str) -> dict:\n    if not task_id:\n\
+          \        return {\"result\": \"\"}\n    progress = \"100%\"\n    info =\
+          \ \"热点分析结束\"\n\n    url = f\"http://bm.vsource.club/api/deep-research/tasks/{task_id}/progress\"\
+          \n    \n    # 准备请求数据\n    data = {\"progress\": progress}\n    if info:\n\
+          \        data[\"info\"] = info\n    \n    try:\n        # 发送请求\n       \
+          \ response = requests.post(\n            url, \n            json=data,\n\
+          \            headers={\"Content-Type\": \"application/json\"}\n        )\n\
+          \        \n        # 检查响应状态\n        if response.status_code == 200:\n \
+          \           result = response.json()\n            return {\"result\": \"\
+          上报成功\"}\n        else:\n            return {\"result\": \"上报失败\" + str(response.content)}\n\
+          \            \n    except Exception as e:\n        return {\"result\": \"\
+          上报失败\" + str(e)}\n"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 上报任务进度 (4)
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - task_id
+          variable: task_id
+      height: 54
+      id: '17481636746300'
+      position:
+        x: 1854
+        y: 836
+      positionAbsolute:
+        x: 1854
+        y: 836
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "def main(input_str: str) -> dict:\n    trimmed_str = input_str.strip()\
+          \ if input_str else ''\n    return {'result': trimmed_str}"
+        code_language: python3
+        desc: ''
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: 额外内容检索字符串
+        type: code
+        variables:
+        - value_selector:
+          - '1740840395159'
+          - research_topic
+          variable: input_str
+      height: 54
+      id: '1748595237020'
+      position:
+        x: 1854
+        y: 576
+      positionAbsolute:
+        x: 1854
+        y: 576
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    viewport:
+      x: -1191.2603793947733
+      y: -44.228822927742385
+      zoom: 0.7414978134651138

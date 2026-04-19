@@ -10,7 +10,7 @@ pub mod state;
 pub mod types;
 
 pub use logging::{LogBuffer, LogCaptureLayer, LogEntry};
-pub use routes::build_app;
+pub use routes::{build_admin_app, build_public_app};
 pub use state::{AppState, AuthState, PushEvent};
 
 use std::collections::HashMap;
@@ -25,9 +25,16 @@ use tracing::info;
 use tracing_subscriber::prelude::*;
 
 use crate::routes::events::handle_scheduler_events;
+use crate::runtime::runtime_public_port;
 use crate::state::AppState as InnerAppState;
 
 const PUSH_CHANNEL_CAPACITY: usize = 64;
+
+pub struct StartedServer {
+    pub state: Arc<InnerAppState>,
+    pub admin_port: u16,
+    pub public_port: Option<u16>,
+}
 
 // ── 全局唯一 LogBuffer ──────────────────────────────────────────────────────
 // tracing 订阅者在进程内只能设置一次，因此 LogBuffer 也必须全局唯一，
@@ -70,19 +77,23 @@ pub fn init_logging(log_buffer: &LogBuffer, log_level: &str) {
 /// - `skills_dir`：技能目录，`None` 时使用 config 原始值  
 /// - `deployment_mode`：`"local"` / `"cloud"` 等，写入 `/api/meta` 响应  
 ///
-/// 返回 `(Arc<AppState>, actual_port)`。服务在后台 Tokio task 中运行，进程退出时自然结束。
+/// 返回启动后的共享状态与监听端口。服务在后台 Tokio task 中运行，进程退出时自然结束。
 pub async fn start_server(
     config_path: &str,
     data_dir: Option<&Path>,
     skills_dir: Option<&Path>,
     deployment_mode: &str,
-) -> Result<(Arc<InnerAppState>, u16), String> {
+) -> Result<StartedServer, String> {
     let mut config =
         HoneConfig::from_file(config_path).map_err(|e| format!("配置加载失败: {e}"))?;
     config.apply_runtime_overrides(data_dir, skills_dir, Some(Path::new(config_path)));
     config.ensure_runtime_dirs();
 
     let core = Arc::new(hone_channels::HoneBotCore::new(config));
+    let web_auth = Arc::new(
+        hone_memory::WebAuthStorage::new(&core.config.storage.session_sqlite_db_path)
+            .map_err(|e| format!("Web Auth 存储初始化失败: {e}"))?,
+    );
 
     // ── 日志系统（全局唯一 buffer，订阅者只初始化一次）──────────────
     // 必须使用 global_log_buffer()：tracing 全局订阅者只能 set 一次，
@@ -149,6 +160,7 @@ pub async fn start_server(
     };
     let state = Arc::new(InnerAppState {
         core,
+        web_auth,
         push_tx,
         http_client,
         log_buffer: log_buffer.clone(),
@@ -188,7 +200,7 @@ pub async fn start_server(
     let state_for_scheduler = state.clone();
     tokio::spawn(async move { handle_scheduler_events(state_for_scheduler, event_rx).await });
 
-    // ── 绑定端口（默认随机；若设置 HONE_WEB_PORT 则绑定指定端口）────────
+    // ── 绑定管理端口（默认随机；若设置 HONE_WEB_PORT 则绑定指定端口）────
     let bind_addr = std::env::var("HONE_WEB_PORT")
         .ok()
         .and_then(|raw| raw.parse::<u16>().ok())
@@ -202,12 +214,37 @@ pub async fn start_server(
         .map_err(|e| format!("获取端口失败: {e}"))?
         .port();
 
-    // ── 启动 Axum 服务 ────────────────────────────────────────────
-    let app = build_app(state.clone());
+    // ── 启动管理端 Axum 服务 ───────────────────────────────────────
+    let admin_app = build_admin_app(state.clone());
     tokio::spawn(async move {
-        axum::serve(listener, app).await.ok();
+        axum::serve(listener, admin_app).await.ok();
     });
 
-    info!("Hone Web API 服务已启动，端口 {port}");
-    Ok((state, port))
+    let public_port = if let Some(configured_public_port) = runtime_public_port() {
+        let public_bind_addr = format!("127.0.0.1:{configured_public_port}");
+        let public_listener = tokio::net::TcpListener::bind(&public_bind_addr)
+            .await
+            .map_err(|e| format!("无法绑定用户端口 {public_bind_addr}: {e}"))?;
+        let public_port = public_listener
+            .local_addr()
+            .map_err(|e| format!("获取用户端口失败: {e}"))?
+            .port();
+        let public_app = build_public_app(state.clone());
+        tokio::spawn(async move {
+            axum::serve(public_listener, public_app).await.ok();
+        });
+        Some(public_port)
+    } else {
+        None
+    };
+
+    info!("Hone Web API 管理端已启动，端口 {port}");
+    if let Some(public_port) = public_port {
+        info!("Hone Web API 用户端已启动，端口 {public_port}");
+    }
+    Ok(StartedServer {
+        state,
+        admin_port: port,
+        public_port,
+    })
 }

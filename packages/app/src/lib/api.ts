@@ -7,6 +7,7 @@ import type {
   CompanyProfileSpaceSummary,
   CompanyProfileSummary,
   HistoryMsg,
+  PublicAuthUserInfo,
   MetaInfo,
   SkillDetailInfo,
   SkillInfo,
@@ -18,6 +19,7 @@ import type {
   PortfolioSummary,
   HoldingUpsertInput,
   LogEntry,
+  WebInviteInfo,
 } from "./types";
 import type { ActorRef } from "./actors";
 import { apiFetch, createEventSource } from "./backend";
@@ -50,6 +52,20 @@ export async function getChannels() {
 export async function getUsers() {
   const response = await apiFetch("/api/users");
   return parseJson<UserInfo[]>(response);
+}
+
+export async function getWebInvites() {
+  const response = await apiFetch("/api/web-users/invites");
+  const payload = await parseJson<{ invites?: WebInviteInfo[] }>(response);
+  return payload.invites ?? [];
+}
+
+export async function createWebInvite() {
+  const response = await apiFetch("/api/web-users/invites", {
+    method: "POST",
+  });
+  const payload = await parseJson<{ invite: WebInviteInfo }>(response);
+  return payload.invite;
 }
 
 function actorQuery(actor: ActorRef) {
@@ -126,6 +142,63 @@ export async function sendChat(actor: ActorRef, message: string, signal?: AbortS
 
 export async function connectEvents(actor: ActorRef) {
   return createEventSource(`/api/events?${actorQuery(actor)}`);
+}
+
+export async function publicInviteLogin(inviteCode: string) {
+  const response = await apiFetch("/api/public/auth/invite-login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ invite_code: inviteCode }),
+  });
+  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  return payload.user;
+}
+
+export async function publicLogout() {
+  const response = await apiFetch("/api/public/auth/logout", {
+    method: "POST",
+  });
+  await parseJson<{ ok: boolean }>(response);
+}
+
+export async function getPublicAuthMe() {
+  const response = await apiFetch("/api/public/auth/me");
+  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  return payload.user;
+}
+
+export async function getPublicHistory() {
+  const response = await apiFetch("/api/public/history");
+  const payload = await parseJson<{ messages?: HistoryMsg[] }>(response);
+  return payload.messages ?? [];
+}
+
+export async function sendPublicChat(message: string, signal?: AbortSignal) {
+  const response = await apiFetch("/api/public/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || response.statusText);
+  }
+
+  if (!response.body) {
+    throw new Error("missing response body");
+  }
+
+  return response.body;
+}
+
+export async function connectPublicEvents() {
+  return createEventSource("/api/public/events");
 }
 
 export async function getCronJobs(actor?: ActorRef) {

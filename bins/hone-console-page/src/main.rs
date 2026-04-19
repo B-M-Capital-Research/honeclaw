@@ -38,7 +38,7 @@ async fn main() {
             }
         };
 
-    let (_, port) = match hone_web_api::start_server(
+    let started = match hone_web_api::start_server(
         &config_path,
         data_dir.as_deref(),
         skills_dir.as_deref(),
@@ -46,14 +46,20 @@ async fn main() {
     )
     .await
     {
-        Ok(pair) => pair,
+        Ok(started) => started,
         Err(error) => {
             eprintln!("❌ hone-console-page 启动失败: {error}");
             std::process::exit(1);
         }
     };
 
-    tracing::info!("hone-console-page running at http://127.0.0.1:{port}");
+    tracing::info!(
+        "hone-console-page admin running at http://127.0.0.1:{}",
+        started.admin_port
+    );
+    if let Some(public_port) = started.public_port {
+        tracing::info!("hone-console-page public running at http://127.0.0.1:{public_port}");
+    }
 
     let _ = tokio::signal::ctrl_c().await;
     tracing::info!("hone-console-page shutdown");

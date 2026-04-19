@@ -19,6 +19,16 @@ pub struct ChatRequest {
     pub attachments: Option<Vec<String>>,
 }
 
+#[derive(Deserialize)]
+pub struct PublicInviteLoginRequest {
+    pub invite_code: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PublicChatRequest {
+    pub message: Option<String>,
+}
+
 #[derive(Serialize)]
 pub struct HistoryMsg {
     pub role: String,
@@ -107,6 +117,29 @@ pub struct MetaInfo {
 pub struct SseTicketResponse {
     pub ticket: String,
     pub expires_at: String,
+}
+
+#[derive(Serialize)]
+pub struct WebInviteInfo {
+    pub user_id: String,
+    pub invite_code: String,
+    pub created_at: String,
+    pub last_login_at: Option<String>,
+    pub daily_limit: u32,
+    pub success_count: u32,
+    pub in_flight: u32,
+    pub remaining_today: u32,
+}
+
+#[derive(Serialize)]
+pub struct PublicAuthUserInfo {
+    pub user_id: String,
+    pub created_at: String,
+    pub last_login_at: Option<String>,
+    pub daily_limit: u32,
+    pub success_count: u32,
+    pub in_flight: u32,
+    pub remaining_today: u32,
 }
 
 #[derive(Serialize)]

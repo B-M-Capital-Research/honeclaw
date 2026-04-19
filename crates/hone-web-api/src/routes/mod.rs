@@ -10,9 +10,11 @@ pub(crate) mod llm_audit;
 pub(crate) mod logs;
 pub(crate) mod meta;
 pub(crate) mod portfolio;
+pub(crate) mod public;
 pub(crate) mod research;
 pub(crate) mod skills;
 pub(crate) mod users;
+pub(crate) mod web_users;
 
 mod common;
 
@@ -20,15 +22,21 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::middleware;
+use axum::response::IntoResponse;
 use axum::routing::{get, patch, post, put};
+use axum::{http::StatusCode, response::Response};
 use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
-use crate::runtime::web_dist_dir;
+use crate::runtime::{public_web_dist_dir, web_dist_dir};
 use crate::state::AppState;
 
-pub fn build_app(state: Arc<AppState>) -> Router {
+async fn handle_not_found() -> Response {
+    StatusCode::NOT_FOUND.into_response()
+}
+
+pub fn build_admin_app(state: Arc<AppState>) -> Router {
     let web_dist = web_dist_dir();
     let assets_dir = web_dist.join("assets");
     let cors = CorsLayer::new()
@@ -46,6 +54,10 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .route("/image", get(files::handle_image))
         .route("/file", get(files::handle_file))
         .route("/users", get(users::handle_users))
+        .route(
+            "/web-users/invites",
+            get(web_users::handle_list_invites).post(web_users::handle_create_invite),
+        )
         .route("/skills", get(skills::handle_skills))
         .route("/skills/reset", post(skills::handle_skill_registry_reset))
         .route("/skills/{id}", get(skills::handle_skill_detail))
@@ -122,17 +134,49 @@ pub fn build_app(state: Arc<AppState>) -> Router {
             state.clone(),
             auth::require_api_auth,
         ))
-        .layer(cors)
+        .layer(cors.clone())
         .with_state(state.clone());
 
     Router::new()
         .route("/logo.svg", get(files::handle_logo))
+        .route("/api/public/{*path}", get(handle_not_found).post(handle_not_found))
         .nest("/api", api)
         .nest_service(
             "/assets",
             axum::routing::get_service(ServeDir::new(assets_dir)),
         )
         .fallback(get(files::handle_spa_index))
+        .with_state(state)
+}
+
+pub fn build_public_app(state: Arc<AppState>) -> Router {
+    let web_dist = public_web_dist_dir();
+    let assets_dir = web_dist.join("assets");
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let public_api = Router::new()
+        .route("/auth/invite-login", post(public::handle_invite_login))
+        .route("/auth/logout", post(public::handle_logout))
+        .route("/auth/me", get(public::handle_me))
+        .route("/history", get(public::handle_history))
+        .route("/chat", post(public::handle_chat))
+        .route("/events", get(public::handle_events))
+        .layer(cors)
+        .with_state(state.clone());
+
+    Router::new()
+        .route("/", get(files::handle_public_spa_index))
+        .route("/chat", get(files::handle_public_spa_index))
+        .route("/logo.svg", get(files::handle_logo))
+        .route("/api/{*path}", get(handle_not_found).post(handle_not_found))
+        .nest("/api/public", public_api)
+        .nest_service(
+            "/assets",
+            axum::routing::get_service(ServeDir::new(assets_dir)),
+        )
         .with_state(state)
 }
 
