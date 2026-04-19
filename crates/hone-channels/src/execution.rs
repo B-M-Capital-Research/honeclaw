@@ -123,6 +123,11 @@ impl ExecutionService {
                 channel_target: request.channel_target,
                 allow_cron: request.allow_cron,
                 config_path: runtime_config_path(),
+                runtime_dir: self
+                    .core
+                    .configured_runtime_dir()
+                    .to_string_lossy()
+                    .to_string(),
                 system_prompt: request.system_prompt,
                 runtime_input: request.runtime_input,
                 context: request.context,

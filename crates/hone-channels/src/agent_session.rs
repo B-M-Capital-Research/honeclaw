@@ -2199,6 +2199,7 @@ mod tests {
             channel_target: "direct".to_string(),
             allow_cron: false,
             config_path: String::new(),
+            runtime_dir: String::new(),
             system_prompt: "system".to_string(),
             runtime_input: "user input".to_string(),
             context: AgentContext::new("empty-success-session".to_string()),

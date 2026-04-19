@@ -638,6 +638,7 @@ mod tests {
             channel_target: "feishu".to_string(),
             allow_cron: true,
             config_path: "/tmp/config.yaml".to_string(),
+            runtime_dir: "/tmp/runtime".to_string(),
             system_prompt: "system".to_string(),
             runtime_input: "input".to_string(),
             context: AgentContext::new("session-1".to_string()),

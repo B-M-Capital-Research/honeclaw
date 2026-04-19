@@ -1,13 +1,161 @@
+use chrono::Utc;
 use hone_core::agent::{AgentMessage, ToolCallMade};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 
 use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::runtime::resolve_tool_reasoning;
 
-use super::types::{AgentRunnerEmitter, AgentRunnerEvent};
+use super::types::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest};
+
+const ACP_EVENT_LOG_FILENAME: &str = "acp-events.log";
+
+static ACP_EVENT_LOG_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+#[derive(Debug, Clone)]
+pub(crate) struct AcpEventLogContext {
+    pub(crate) runner_label: &'static str,
+    pub(crate) log_path: PathBuf,
+    pub(crate) session_id: String,
+    pub(crate) identity: String,
+    pub(crate) actor_channel: String,
+    pub(crate) actor_user_id: String,
+    pub(crate) actor_channel_scope: Option<String>,
+}
+
+impl AcpEventLogContext {
+    pub(crate) fn from_request(runner_label: &'static str, request: &AgentRunnerRequest) -> Self {
+        Self {
+            runner_label,
+            log_path: acp_event_log_path(&request.runtime_dir),
+            session_id: request.session_id.clone(),
+            identity: request.actor.session_id(),
+            actor_channel: request.actor.channel.clone(),
+            actor_user_id: request.actor.user_id.clone(),
+            actor_channel_scope: request.actor.channel_scope.clone(),
+        }
+    }
+}
+
+pub(crate) fn acp_event_log_path(runtime_dir: &str) -> PathBuf {
+    PathBuf::from(runtime_dir)
+        .join("logs")
+        .join(ACP_EVENT_LOG_FILENAME)
+}
+
+async fn append_acp_event_record(log_ctx: Option<&AcpEventLogContext>, record: Value) {
+    let Some(log_ctx) = log_ctx else {
+        return;
+    };
+
+    let Some(parent) = log_ctx.log_path.parent() else {
+        return;
+    };
+
+    let _guard = ACP_EVENT_LOG_LOCK
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
+
+    if tokio::fs::create_dir_all(parent).await.is_err() {
+        return;
+    }
+
+    let Ok(mut file) = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_ctx.log_path)
+        .await
+    else {
+        return;
+    };
+
+    let Ok(mut encoded) = serde_json::to_vec(&record) else {
+        return;
+    };
+    encoded.push(b'\n');
+    let _ = file.write_all(&encoded).await;
+    let _ = file.flush().await;
+}
+
+fn build_acp_event_record(
+    log_ctx: &AcpEventLogContext,
+    direction: &'static str,
+    payload: Value,
+) -> Value {
+    let method = payload
+        .get("method")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string());
+    let event_kind = if method.is_some() {
+        "notification"
+    } else if payload.get("id").is_some() {
+        "response"
+    } else {
+        "message"
+    };
+
+    json!({
+        "timestamp": Utc::now().to_rfc3339(),
+        "runner": log_ctx.runner_label,
+        "direction": direction,
+        "event_kind": event_kind,
+        "method": method,
+        "session_id": log_ctx.session_id,
+        "identity": log_ctx.identity,
+        "actor_channel": log_ctx.actor_channel,
+        "actor_user_id": log_ctx.actor_user_id,
+        "actor_channel_scope": log_ctx.actor_channel_scope,
+        "payload": payload,
+    })
+}
+
+pub(crate) async fn log_acp_payload(
+    log_ctx: Option<&AcpEventLogContext>,
+    direction: &'static str,
+    payload: &Value,
+) {
+    let Some(log_ctx) = log_ctx else {
+        return;
+    };
+    append_acp_event_record(
+        Some(log_ctx),
+        build_acp_event_record(log_ctx, direction, payload.clone()),
+    )
+    .await;
+}
+
+pub(crate) async fn log_acp_raw_parse_error(
+    log_ctx: Option<&AcpEventLogContext>,
+    direction: &'static str,
+    raw_line: &str,
+    error: &str,
+) {
+    let Some(log_ctx) = log_ctx else {
+        return;
+    };
+    append_acp_event_record(
+        Some(log_ctx),
+        json!({
+            "timestamp": Utc::now().to_rfc3339(),
+            "runner": log_ctx.runner_label,
+            "direction": direction,
+            "event_kind": "parse_error",
+            "session_id": log_ctx.session_id,
+            "identity": log_ctx.identity,
+            "actor_channel": log_ctx.actor_channel,
+            "actor_user_id": log_ctx.actor_user_id,
+            "actor_channel_scope": log_ctx.actor_channel_scope,
+            "error": error,
+            "raw_line": raw_line,
+        }),
+    )
+    .await;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AcpToolRenderPhase {
@@ -406,6 +554,7 @@ pub(crate) async fn create_acp_session(
     mcp_servers: Value,
     timeout: Duration,
     stderr_buf: std::sync::Arc<tokio::sync::Mutex<String>>,
+    log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<String, AgentSessionError> {
     write_jsonrpc_request(
         stdin,
@@ -415,6 +564,7 @@ pub(crate) async fn create_acp_session(
             "cwd": working_directory,
             "mcpServers": mcp_servers,
         }),
+        log_ctx,
     )
     .await?;
     let result = match tokio::time::timeout(
@@ -427,6 +577,7 @@ pub(crate) async fn create_acp_session(
             None,
             None,
             Some(stderr_buf.clone()),
+            log_ctx,
         ),
     )
     .await
@@ -475,6 +626,7 @@ pub(crate) async fn set_acp_session_model(
     model_id: &str,
     timeout: Duration,
     stderr_buf: std::sync::Arc<tokio::sync::Mutex<String>>,
+    log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<(), AgentSessionError> {
     write_jsonrpc_request(
         stdin,
@@ -484,6 +636,7 @@ pub(crate) async fn set_acp_session_model(
             "sessionId": session_id,
             "modelId": model_id,
         }),
+        log_ctx,
     )
     .await?;
     match tokio::time::timeout(
@@ -496,6 +649,7 @@ pub(crate) async fn set_acp_session_model(
             None,
             None,
             Some(stderr_buf.clone()),
+            log_ctx,
         ),
     )
     .await
@@ -532,6 +686,7 @@ pub(crate) async fn write_jsonrpc_request(
     id: u64,
     method: &str,
     params: Value,
+    log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<(), AgentSessionError> {
     let payload = json!({
         "jsonrpc": "2.0",
@@ -539,6 +694,7 @@ pub(crate) async fn write_jsonrpc_request(
         "method": method,
         "params": params,
     });
+    log_acp_payload(log_ctx, "send", &payload).await;
     let encoded = serde_json::to_string(&payload).map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::Io,
         message: format!("failed to encode acp request: {e}"),
@@ -572,6 +728,7 @@ pub(crate) async fn wait_for_response(
     emitter: Option<std::sync::Arc<dyn AgentRunnerEmitter>>,
     mut state: Option<&mut AcpPromptState>,
     stderr_buf: Option<std::sync::Arc<tokio::sync::Mutex<String>>>,
+    log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<Value, AgentSessionError> {
     while let Ok(Some(line)) = reader.next_line().await {
         if let Some(result) = process_acp_payload(
@@ -585,6 +742,7 @@ pub(crate) async fn wait_for_response(
             None,
             None,
             AcpPermissionDecision::RejectOnce,
+            log_ctx,
         )
         .await?
         {
@@ -607,6 +765,7 @@ pub(crate) async fn wait_for_response_with_timeouts(
     state: Option<&mut AcpPromptState>,
     stderr_buf: Option<std::sync::Arc<tokio::sync::Mutex<String>>>,
     timeouts: AcpResponseTimeouts,
+    log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<Value, AgentSessionError> {
     wait_for_response_with_timeouts_and_renderer(
         runner_label,
@@ -620,6 +779,7 @@ pub(crate) async fn wait_for_response_with_timeouts(
         None,
         None,
         AcpPermissionDecision::RejectOnce,
+        log_ctx,
     )
     .await
 }
@@ -636,6 +796,7 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
     tool_status_renderer: Option<AcpToolStatusRenderer>,
     session_update_transformer: Option<AcpSessionUpdateTransformer>,
     permission_decision: AcpPermissionDecision,
+    log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<Value, AgentSessionError> {
     let start = tokio::time::Instant::now();
     let overall_deadline = start + timeouts.overall;
@@ -703,6 +864,7 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
             tool_status_renderer,
             session_update_transformer,
             permission_decision,
+            log_ctx,
         )
         .await?
         {
@@ -722,11 +884,20 @@ async fn process_acp_payload(
     tool_status_renderer: Option<AcpToolStatusRenderer>,
     session_update_transformer: Option<AcpSessionUpdateTransformer>,
     permission_decision: AcpPermissionDecision,
+    log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<Option<Value>, AgentSessionError> {
-    let payload: Value = serde_json::from_str(line).map_err(|e| AgentSessionError {
-        kind: AgentSessionErrorKind::Io,
-        message: format!("failed to parse {runner_label} acp line: {e}"),
-    })?;
+    let payload: Value = match serde_json::from_str(line) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let message = format!("failed to parse {runner_label} acp line: {e}");
+            log_acp_raw_parse_error(log_ctx, "recv", line, &message).await;
+            return Err(AgentSessionError {
+                kind: AgentSessionErrorKind::Io,
+                message,
+            });
+        }
+    };
+    log_acp_payload(log_ctx, "recv", &payload).await;
 
     if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
         if let Some(error) = payload.get("error") {
@@ -779,6 +950,7 @@ async fn process_acp_payload(
                     &payload,
                     emitter,
                     permission_decision,
+                    log_ctx,
                 )
                 .await?;
             }
@@ -789,35 +961,13 @@ async fn process_acp_payload(
     Ok(None)
 }
 
-async fn acp_timeout_error(
-    runner_label: &'static str,
-    phase: &'static str,
-    duration: Duration,
-    stderr_buf: Option<&std::sync::Arc<tokio::sync::Mutex<String>>>,
-) -> AgentSessionError {
-    let base = format!(
-        "{runner_label} acp session/prompt {phase} timeout ({}s)",
-        duration.as_secs()
-    );
-    let message = if let Some(buf) = stderr_buf {
-        timeout_message_with_stderr(&base, buf).await
-    } else {
-        base
-    };
-    let kind = if phase == "idle" {
-        AgentSessionErrorKind::TimeoutPerLine
-    } else {
-        AgentSessionErrorKind::TimeoutOverall
-    };
-    AgentSessionError { kind, message }
-}
-
 async fn handle_acp_permission_request(
     runner_label: &'static str,
     stdin: &mut tokio::process::ChildStdin,
     payload: &Value,
     emitter: Option<&std::sync::Arc<dyn AgentRunnerEmitter>>,
     decision: AcpPermissionDecision,
+    log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<(), AgentSessionError> {
     let request_id =
         payload
@@ -871,6 +1021,7 @@ async fn handle_acp_permission_request(
             }
         }
     });
+    log_acp_payload(log_ctx, "send", &response).await;
     let encoded = serde_json::to_string(&response).map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::Io,
         message: format!("failed to encode {runner_label} permission response: {e}"),
@@ -894,6 +1045,29 @@ async fn handle_acp_permission_request(
         message: format!("failed to flush {runner_label} permission response: {e}"),
     })?;
     Ok(())
+}
+
+async fn acp_timeout_error(
+    runner_label: &'static str,
+    phase: &'static str,
+    duration: Duration,
+    stderr_buf: Option<&std::sync::Arc<tokio::sync::Mutex<String>>>,
+) -> AgentSessionError {
+    let base = format!(
+        "{runner_label} acp session/prompt {phase} timeout ({}s)",
+        duration.as_secs()
+    );
+    let message = if let Some(buf) = stderr_buf {
+        timeout_message_with_stderr(&base, buf).await
+    } else {
+        base
+    };
+    let kind = if phase == "idle" {
+        AgentSessionErrorKind::TimeoutPerLine
+    } else {
+        AgentSessionErrorKind::TimeoutOverall
+    };
+    AgentSessionError { kind, message }
 }
 
 fn select_permission_option(options: &[Value], preferred_kinds: &[&str]) -> Option<String> {
@@ -1132,4 +1306,47 @@ pub(crate) fn parse_cli_version(raw: &str) -> Option<CliVersion> {
                 patch,
             })
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AcpEventLogContext, acp_event_log_path, log_acp_payload};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn acp_event_log_records_identity_for_grep() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "hone_acp_log_{}_{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let ctx = AcpEventLogContext {
+            runner_label: "codex",
+            log_path: acp_event_log_path(&temp_root.to_string_lossy()),
+            session_id: "session-1".to_string(),
+            identity: "Actor_feishu__group-1__alice".to_string(),
+            actor_channel: "feishu".to_string(),
+            actor_user_id: "alice".to_string(),
+            actor_channel_scope: Some("group-1".to_string()),
+        };
+
+        log_acp_payload(
+            Some(&ctx),
+            "recv",
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": { "update": { "sessionUpdate": "usage_update", "used": 1 } }
+            }),
+        )
+        .await;
+
+        let content = tokio::fs::read_to_string(&ctx.log_path)
+            .await
+            .expect("read log");
+        assert!(content.contains("\"identity\":\"Actor_feishu__group-1__alice\""));
+        assert!(content.contains("\"method\":\"session/update\""));
+
+        let _ = tokio::fs::remove_dir_all(&temp_root).await;
+    }
 }

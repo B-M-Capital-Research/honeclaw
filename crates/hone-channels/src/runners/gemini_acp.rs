@@ -11,9 +11,9 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpPromptState, AcpResponseTimeouts, CliVersion, build_acp_prompt_text, create_acp_session,
-    extract_finished_tool_calls, log_acp_prompt_stop_diagnostics, parse_cli_version,
-    wait_for_response, wait_for_response_with_timeouts, write_jsonrpc_request,
+    AcpEventLogContext, AcpPromptState, AcpResponseTimeouts, CliVersion, build_acp_prompt_text,
+    create_acp_session, extract_finished_tool_calls, log_acp_prompt_stop_diagnostics,
+    parse_cli_version, wait_for_response, wait_for_response_with_timeouts, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -172,6 +172,7 @@ async fn run_gemini_acp(
     request: AgentRunnerRequest,
     emitter: Arc<dyn AgentRunnerEmitter>,
 ) -> Result<(AgentResponse, HashMap<String, Value>), AgentSessionError> {
+    let acp_log = AcpEventLogContext::from_request("gemini", &request);
     validate_gemini_acp_environment(config).await?;
 
     let startup_timeout = timeouts.step;
@@ -235,6 +236,7 @@ async fn run_gemini_acp(
             "protocolVersion": 1,
             "clientCapabilities": {}
         }),
+        Some(&acp_log),
     )
     .await?;
     let _ = tokio::time::timeout(
@@ -247,6 +249,7 @@ async fn run_gemini_acp(
             None,
             None,
             Some(stderr_buf.clone()),
+            Some(&acp_log),
         ),
     )
     .await
@@ -273,6 +276,7 @@ async fn run_gemini_acp(
                 "cwd": request.working_directory,
                 "mcpServers": mcp_servers.clone(),
             }),
+            Some(&acp_log),
         )
         .await?;
         match tokio::time::timeout(
@@ -285,6 +289,7 @@ async fn run_gemini_acp(
                 None,
                 None,
                 Some(stderr_buf.clone()),
+                Some(&acp_log),
             ),
         )
         .await
@@ -308,6 +313,7 @@ async fn run_gemini_acp(
                     mcp_servers.clone(),
                     startup_timeout,
                     stderr_buf.clone(),
+                    Some(&acp_log),
                 )
                 .await?;
                 next_id += 2;
@@ -327,6 +333,7 @@ async fn run_gemini_acp(
                     mcp_servers.clone(),
                     startup_timeout,
                     stderr_buf.clone(),
+                    Some(&acp_log),
                 )
                 .await?;
                 next_id += 2;
@@ -343,6 +350,7 @@ async fn run_gemini_acp(
             mcp_servers.clone(),
             startup_timeout,
             stderr_buf.clone(),
+            Some(&acp_log),
         )
         .await?;
         next_id += 1;
@@ -369,6 +377,7 @@ async fn run_gemini_acp(
                 }
             ]
         }),
+        Some(&acp_log),
     )
     .await?;
     let prompt_result = wait_for_response_with_timeouts(
@@ -383,6 +392,7 @@ async fn run_gemini_acp(
             idle: prompt_idle_timeout,
             overall: prompt_overall_timeout,
         },
+        Some(&acp_log),
     )
     .await?;
 

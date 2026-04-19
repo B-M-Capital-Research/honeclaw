@@ -16,9 +16,9 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpPromptState, AcpResponseTimeouts, AcpToolCallRecord, create_acp_session,
-    log_acp_prompt_stop_diagnostics, set_acp_session_model, timeout_message_with_stderr,
-    wait_for_response, write_jsonrpc_request,
+    AcpEventLogContext, AcpPromptState, AcpResponseTimeouts, AcpToolCallRecord, create_acp_session,
+    log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
+    set_acp_session_model, timeout_message_with_stderr, wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -381,6 +381,7 @@ async fn run_opencode_acp(
     ),
     AgentSessionError,
 > {
+    let acp_log = AcpEventLogContext::from_request("opencode", &request);
     let startup_timeout = timeouts.step;
     let prompt_idle_timeout = timeouts.step;
     let prompt_overall_timeout = timeouts.overall;
@@ -485,6 +486,7 @@ async fn run_opencode_acp(
             "protocolVersion": 1,
             "clientCapabilities": {}
         }),
+        Some(&acp_log),
     )
     .await?;
     let _ = tokio::time::timeout(
@@ -497,6 +499,7 @@ async fn run_opencode_acp(
             None,
             None,
             Some(stderr_buf.clone()),
+            Some(&acp_log),
         ),
     )
     .await
@@ -523,6 +526,7 @@ async fn run_opencode_acp(
         mcp_servers.clone(),
         startup_timeout,
         stderr_buf.clone(),
+        Some(&acp_log),
     )
     .await?;
     next_id += 1;
@@ -550,6 +554,7 @@ async fn run_opencode_acp(
             &model_id,
             model_timeout,
             stderr_buf.clone(),
+            Some(&acp_log),
         )
         .await?;
         next_id += 1;
@@ -580,6 +585,7 @@ async fn run_opencode_acp(
                 }
             ]
         }),
+        Some(&acp_log),
     )
     .await?;
     let prompt_result = wait_for_opencode_response_with_timeouts(
@@ -593,6 +599,7 @@ async fn run_opencode_acp(
             idle: prompt_idle_timeout,
             overall: prompt_overall_timeout,
         },
+        &acp_log,
     )
     .await?;
 
@@ -1156,6 +1163,7 @@ async fn wait_for_opencode_response_with_timeouts(
     state: &mut AcpPromptState,
     stderr_buf: Arc<tokio::sync::Mutex<String>>,
     timeouts: AcpResponseTimeouts,
+    log_ctx: &AcpEventLogContext,
 ) -> Result<Value, AgentSessionError> {
     let overall_deadline = tokio::time::Instant::now() + timeouts.overall;
     let mut idle_deadline = tokio::time::Instant::now() + timeouts.idle;
@@ -1197,9 +1205,16 @@ async fn wait_for_opencode_response_with_timeouts(
 
         idle_deadline = tokio::time::Instant::now() + timeouts.idle;
 
-        if let Some(result) =
-            process_opencode_payload(stdin, expected_id, &line, &emitter, state, &stderr_buf)
-                .await?
+        if let Some(result) = process_opencode_payload(
+            stdin,
+            expected_id,
+            &line,
+            &emitter,
+            state,
+            &stderr_buf,
+            log_ctx,
+        )
+        .await?
         {
             return Ok(result);
         }
@@ -1213,11 +1228,20 @@ async fn process_opencode_payload(
     emitter: &Arc<dyn AgentRunnerEmitter>,
     state: &mut AcpPromptState,
     stderr_buf: &Arc<tokio::sync::Mutex<String>>,
+    log_ctx: &AcpEventLogContext,
 ) -> Result<Option<Value>, AgentSessionError> {
-    let payload: Value = serde_json::from_str(line).map_err(|e| AgentSessionError {
-        kind: AgentSessionErrorKind::Io,
-        message: format!("failed to parse opencode acp line: {e}"),
-    })?;
+    let payload: Value = match serde_json::from_str(line) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let message = format!("failed to parse opencode acp line: {e}");
+            log_acp_raw_parse_error(Some(log_ctx), "recv", line, &message).await;
+            return Err(AgentSessionError {
+                kind: AgentSessionErrorKind::Io,
+                message,
+            });
+        }
+    };
+    log_acp_payload(Some(log_ctx), "recv", &payload).await;
 
     if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
         if let Some(error) = payload.get("error") {
@@ -1251,7 +1275,7 @@ async fn process_opencode_payload(
                 .await;
             }
             "session/request_permission" => {
-                handle_opencode_permission_request(stdin, &payload, emitter).await?;
+                handle_opencode_permission_request(stdin, &payload, emitter, log_ctx).await?;
             }
             _ => {}
         }
@@ -1282,6 +1306,7 @@ async fn handle_opencode_permission_request(
     stdin: &mut tokio::process::ChildStdin,
     payload: &Value,
     emitter: &Arc<dyn AgentRunnerEmitter>,
+    log_ctx: &AcpEventLogContext,
 ) -> Result<(), AgentSessionError> {
     let request_id =
         payload
@@ -1334,6 +1359,7 @@ async fn handle_opencode_permission_request(
             }
         }
     });
+    log_acp_payload(Some(log_ctx), "send", &response).await;
     let encoded = serde_json::to_string(&response).map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::Io,
         message: format!("failed to encode opencode permission response: {e}"),

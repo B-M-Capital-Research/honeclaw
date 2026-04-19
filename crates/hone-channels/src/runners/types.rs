@@ -50,6 +50,7 @@ pub struct AgentRunnerRequest {
     pub channel_target: String,
     pub allow_cron: bool,
     pub config_path: String,
+    pub runtime_dir: String,
     pub system_prompt: String,
     pub runtime_input: String,
     pub context: AgentContext,
