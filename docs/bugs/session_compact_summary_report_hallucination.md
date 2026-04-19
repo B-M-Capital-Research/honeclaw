@@ -7,6 +7,12 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
+- 2026-04-19 16:41 最近一小时导入样本：
+   - `session_id=Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652`
+   - `session_messages.imported_at=2026-04-19T16:41:31.133907+08:00` 的最新导入批次里，再次出现 `role=user` 的 `【Compact Summary】...`
+   - 这条 summary 的原始 `timestamp=2026-04-19T14:49:30.823580+08:00`，内容仍是 `TEM / RKLB` 等持仓表与“助手的观点 / 用户的观点”列，而不是系统态摘要元数据
+   - 同一批导入里，随后还能看到 `16:12-16:36` 的正式 assistant 连续回答都围绕该用户既有持仓与投资风格展开，说明这条 summary 仍作为真实 transcript 被保留下来，而不是只存在于内部 summary 字段
+   - 最后 `2026-04-19T16:41:31.132922+08:00` 又落入一条用户可见 `抱歉，这次处理失败了。请稍后再试。`，说明本轮导入不只是历史脏数据回灌，而是当前活跃直聊在被污染 transcript 上继续运行并收口失败
 - Prompt audit: `data/runtime/prompt-audit/feishu/20260415-171407-Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb.json`
 - LLM audit: `data/llm_audit.sqlite3`
 - 运行日志: `data/runtime/logs/web.log`
@@ -165,6 +171,7 @@
 - `01:02` 的最新样本进一步说明，即使本轮新问题是独立的 `HIMS` 分析，请求进入 answer 前仍会先插入一条 `role=user` 的股票关注表 compact summary；也就是说，问题并没有收敛到 scheduler 场景，而是继续存在于普通 direct session 的自动 compact 路径。
 - `09:00` 的最新样本再次证明 scheduler 普通 auto compact 仍在生产生效：`Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 在 `2026-04-19T09:00:26.593495+08:00` 又写回 `role=user` 的 `TSLA / RKLB` `【Compact Summary】`，随后同一任务仍在 `run_id=2861` 被记为 `completed + sent + delivered=1`。这说明问题不是“旧污染仍留在库里”，而是当前定时任务运行前仍会主动生成并消费这类 summary。
 - `12:01` 的最新样本进一步说明，污染并不依赖任务最终成功送达：`Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 在 overflow recovery 后再次写回 `role=user` 的持仓表 `【Compact Summary】`，随后本轮 `run_id=2923` 只返回“当前会话上下文过长”失败提示。也就是说，compact summary 角色错误仍会在 scheduler 失败路径里实时生成新的 transcript 污染。
+- `16:41` 的最新导入样本说明，这个问题不只表现为“旧时间窗还有脏数据没清掉”。`Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 在最近一次导入里仍把 `14:49` 的 `Compact Summary` 作为 `role=user` 保存进当前活跃会话，同时同批次还包含 `16:12-16:36` 的后续正式回答和 `16:41` 的失败收口；也就是说，生产 transcript 仍在被这一类 summary 真实参与、真实消费。
 - 因而当前缺陷的主表现已经收敛为两点：一是 summary 角色仍错误，二是 summary 仍会在后续回答前重写本轮输入语义；这两点都没有被此前修复覆盖。
 
 ## 已确认事实

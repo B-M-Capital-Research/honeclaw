@@ -5,6 +5,17 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3012`，`executed_at=2026-04-19T16:30:37.743228+08:00`，仍落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - 同轮 `response_preview` 直接写出：`BlueBird 7 卫星已于今日成功发射升空`，同时又把发射时间写成 `美国东部时间 2026年4月19日早上`，等价于在北京时间 `16:30` 仍提前把当晚窗口判成既成事实
+    - 到 `run_id=3020`，`executed_at=2026-04-19T17:00:17.494841+08:00`，同一任务又回落成 `execution_status=noop`、`message_send_status=skipped_noop`
+    - 但这不是修复：`17:00` 对应日志 `raw_preview` 反而把同一事件改写成 `BlueBird 7 计划于4月19日（明天）发射`，说明链路只是从“过早宣布成功”漂移成了“时间口径继续错误的 noop”
+  - `data/runtime/logs/web.log`
+    - `2026-04-19 16:30:37.742` 的 `HeartbeatDiag deliver` 明确写出：`BlueBird 7 卫星已于今日成功发射升空`
+    - 同轮 `deliver_preview` 继续把 `当前价$85.53，前收$90.94` 包装成事件后的现时行情，说明停牌前价格仍在被错用为“发射后市场反应”
+    - `2026-04-19 17:00:17.493` 的 `HeartbeatDiag raw_preview` 又写出 `BlueBird 7 计划于4月19日（明天）从卡纳维拉尔角发射`
+    - 这说明同一根因在最近一小时里已经从“过早触发 completed + sent”漂移成“错误时间理解下的 noop”，并未真正收口
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3`
     - `2026-04-19T14:23:13.806125+08:00` 用户在 Feishu 直聊提问：`asts发射成功了告诉我一下，帮我留意着。`
@@ -50,6 +61,7 @@
 
 - 当前 direct 链路会在用户询问发射进展时，直接把预告新闻和旧行情快照收口成“已发射成功 + 发射后股价下跌”。
 - 当前 heartbeat 链路在 `14:30` 仍把事件描述为“今日发射”，到 `15:00` 又把同一事件直接升级成“已成功发射”，`15:30` 还继续沿用同一错误条件反复送达，而日志里自己同时承认对应北京时间应是当晚。
+- 到 `16:30`，heartbeat 仍继续以 `completed + sent` 对外投递“已于今日成功发射升空”；到 `17:00` 才回落成 `noop`，但同轮 `raw_preview` 又把同一事件写成“4月19日（明天）发射”，说明错误并未修复，只是从误报成功切换成了错误时间口径下的静默跳过。
 - 这不是纯粹的措辞波动，而是用户态事实判断前后矛盾，且已经跨越直聊和定时提醒两条链路。
 - 之所以定级为 `P2`，是因为问题直接伤害了投资提醒的事实正确性：用户收到的是可以驱动操作判断的结论性文本，而不是单纯的风格偏差或格式瑕疵。
 

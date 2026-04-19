@@ -6,6 +6,20 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 16:30-17:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 16:30 -> 17:00` 继续维持“同一批 heartbeat 里部分任务暂时恢复、部分任务继续失败，且失败对象再次漂移”的活跃态：
+      - `run_id=3004`（`全天原油价格3小时播报`，`executed_at=2026-04-19T16:30:05.661281+08:00`）在 `16:30` 窗口先落成 `execution_failed + skipped_error`
+      - `run_id=3010`（`RKLB异动监控`，`executed_at=2026-04-19T16:30:20.506346+08:00`）同窗继续落成 `execution_failed + skipped_error`
+      - `run_id=3012`（`ASTS 重大异动心跳监控`，`executed_at=2026-04-19T16:30:37.743228+08:00`）则仍然 `completed + sent + delivered=1`，说明不是整批 scheduler 故障
+      - 仅过 30 分钟，到 `17:00` 窗口，失败对象又漂移成 `run_id=3018`（`小米破位预警`）、`3021`（`RKLB异动监控`）、`3022`（`Monitor_Watchlist_11`），三条都落成 `execution_failed + skipped_error`
+      - 同一 `17:00` 批次里，`run_id=3014/3015/3016/3017/3019/3020/3023`（`全天原油 / 小米30港元 / CAI / TEM / TEM大事件 / ASTS / ORCL`）又恢复为 `noop + skipped_noop`
+    - 这说明最新一小时里，故障既没有从 `15:30-16:00` 的漂移态收口，也没有固定在单一模板；`全天原油价格3小时播报` 与 `小米破位预警` 都已新漂移进失败队列，而 `RKLB异动监控` 仍跨两个窗口连续失败
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-19 16:30:05.660` 的 `全天原油价格3小时播报` 记录 `parse_kind=JsonUnknownStatus`，正文已写明“17点不在播报时间点，应返回 noop”，最终却仍只收口成 `<think>...</think>\n\n{}`
+    - `2026-04-19 17:00:14.163` 的 `小米破位预警` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已写明“当前价格 32.00 港元，没有跌破 30 港元，所以应该返回 noop”，最终仍被升级为 `parse failure escalated`
+    - `2026-04-19 17:00:17.578` 的 `RKLB异动监控` 再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 继续先完成行情与新闻判断后才失败收口
+    - `2026-04-19 17:00:20.686` 的 `Monitor_Watchlist_11` 也再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 继续逐项枚举 `HIMS / MU / RKLB / LMND ...` 的触发价比较
+    - 同一 `17:00` 窗口里 `全天原油 / 小米30港元 / CAI / TEM / TEM大事件 / ASTS / ORCL` 虽恢复成 `JsonNoop`，但日志仍统一表现为 `starts_with_json=false`，说明所谓“恢复”依旧依赖尾部侥幸提取状态
   - 2026-04-19 15:30-16:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 15:30 -> 16:00` 继续维持“同一批 heartbeat 里一部分任务侥幸恢复、另一部分直接失败”的漂移态：
       - `run_id=2992`（`RKLB异动监控`，`executed_at=2026-04-19T15:30:23.550061+08:00`）落成 `execution_failed + skipped_error`
