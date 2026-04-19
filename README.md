@@ -201,13 +201,13 @@ These cover areas such as:
 
 If you are interested in accessing these capabilities, feel free to reach out to us:
 
-1. - [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93) — follow for investment research content
+1. [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93) — follow for investment research content
 
 ![BM YTB](./resources/bm_youtube.jpg)
 
-2. - [BiliBili: 巴芒投资](https://space.bilibili.com/224670487)  — follow for investment research content
+2. [BiliBili: 巴芒投资](https://space.bilibili.com/224670487)  — follow for investment research content
 
-3. - [Discord](https://discord.gg/TyDNfYXDGF): see the invite link (https://discord.gg/TyDNfYXDGF) to join our community channel
+3. [Discord](https://discord.gg/TyDNfYXDGF): see the invite link (https://discord.gg/TyDNfYXDGF) to join our community channel
 
 # 6. 🤝 Contributing
 
