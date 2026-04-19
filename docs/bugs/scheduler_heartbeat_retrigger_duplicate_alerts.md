@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-20 05:01-06:01 最近一小时最新样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=3270`，`executed_at=2026-04-20T05:01:30.466350+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `run_id=3281`，`executed_at=2026-04-20T05:31:19.225338+08:00`，仅过约 30 分钟又再次 `completed + sent + delivered=1`
+      - 两条 `response_preview` 都仍围绕同一 `BlueBird 7 被送入低于计划轨道` 旧事件展开，没有看到新的独立公告、轨道修正、额外价格阈值跨越或新的公司级催化落地
+      - 之后 `run_id=3291`，`executed_at=2026-04-20T06:01:44.164566+08:00`，进一步退化成 `execution_failed + skipped_error`，说明“旧事件跨窗口重复送达”不仅还在持续，还会把后续窗口拖进新的失败形态
+  - `data/runtime/logs/web.log`
+    - `2026-04-20 05:01:29.559` 与 `05:31:17.675` 对应 ASTS heartbeat 都继续是 `parse_kind=JsonTriggered`
+    - 两轮 `deliver_preview` 都继续围绕同一 `BlueBird 7 低于计划轨道` 旧事件，没有新增独立事件源
+    - `2026-04-20 06:01:44.162` 则同任务直接记录 `success=false error="已达最大迭代次数 6"`，说明在重复消费同一旧事件之后，链路还会进一步退化为整轮失败
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-20 04:31-05:01 最近一小时最新样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=3257`，`executed_at=2026-04-20T04:31:15.440929+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
@@ -167,6 +178,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 05:01 -> 06:01` 的最新窗口，`ASTS 重大异动心跳监控` 继续先在 `05:01`、`05:31` 两轮重复送达同一 `BlueBird 7` 旧事件，随后 `06:01` 又退化成 `已达最大迭代次数 6` 的执行失败；说明“旧事件重复消费”不仅没被抑制，反而还在放大后续窗口的失败风险。
 - 到 `2026-04-20 04:31 -> 05:01` 的最新窗口，这条缺陷仍在活跃扩散：
   - `ASTS` 在 `04:31` 与 `05:01` 连续两轮都再次围绕同一 `BlueBird 7` 低轨事件送达
   - `TEM` 在 `04:31` 先被压成 `noop`，`05:01` 又围绕同一 `AACR 2026` 进行中事件回摆成 `triggered + sent`
