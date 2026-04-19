@@ -3,8 +3,15 @@
 - **发现时间**: 2026-04-18 12:18 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Closed
 - **证据来源**:
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=2923`
+    - `executed_at=2026-04-19T12:02:17.355973+08:00`
+    - 同一任务 `每日公司资讯与分析总结` 在最新小时窗已经不再表现为 `tool_calls=0 + completed + sent` 的伪完成形态
+    - 最新一轮调度台账改为 `execution_failed + sent + delivered=1`，`response_preview` 直接变成 `当前会话上下文过长...仍无法继续`
+    - 对应 `hone-feishu.release-restart.log` 也显示本轮经历了一次 `context_overflow_recovery`，重试后执行了 15 次 `data_fetch` 才失败；说明 2026-04-18 记录的“零检索直接成功送达”症状在最新样本中已不再复现
+    - 当前同链路已转化为新的功能性失败，改由 [`feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md`](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) 继续跟踪
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
     - `2026-04-18T12:00:59.095367+08:00` 用户触发 Feishu 定时任务：`每日公司资讯与分析总结`
@@ -49,6 +56,8 @@
 - 但 search/answer 全程 `tool_calls=0`，与任务中“最新资讯、最新分析师总结、财报日期”的信息要求明显不匹配。
 - 最终正文还主动承认“当前具体新闻动态与分析师目标价细节未完成最新实时接口校验”，说明模型自己也没有拿到足够的新鲜证据。
 - 这不是单纯的表述保守，而是任务内容已静默降级成“基于旧上下文的泛化总结”，用户很难从成功态表象识别本轮其实没有完成预期信息采集。
+- 但截至 `2026-04-19 12:00` 的最新巡检，这个特定坏态已不再活跃：同一任务不再以 `tool_calls=0` 伪装成成功完成，而是改成 overflow recovery 后的功能性失败。
+- 因此本单关闭，不再把“旧会话 auto compact 后失败提示”混入本单；当前活跃问题已由新文档单独跟踪。
 
 ## 用户影响
 
@@ -67,3 +76,4 @@
 - 检查 scheduler 触发的“公司资讯汇总”类 prompt 是否缺少必须执行实时检索的硬约束，尤其是 search 阶段的停机条件。
 - 为“要求 latest/news/analyst summary 的定时任务”增加回归：若 search 阶段零工具调用，则不得直接标记成功完成。
 - 若系统决定允许降级，也应输出明确的“本轮未完成实时更新”失败或部分完成态，而不是继续给出强结论与交易建议。
+- 对最新 `2026-04-19 12:00` 起的新失败形态，转入 [`feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md`](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) 继续跟踪，不在本单里混合记录不同根因。

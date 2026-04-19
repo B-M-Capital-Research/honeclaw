@@ -58,7 +58,7 @@
    - 这条 summary 仍是完整的 `股票关注表`，包含 `MU / WDC / TEM / RKLB` 等标的，以及“助手的观点 / 用户的观点”两列，显然不是系统内部压缩元数据
    - 紧接着 `2026-04-17T01:06:39.078023+08:00` assistant 正式回复用户“帮我分析一下hims”；同轮 `web.log` 记录 `search_tool_calls=2`、`answer_tool_calls=0`、`combined_tool_calls=2`
    - 这说明即使进入了新的直聊分析请求，compact summary 仍先以用户消息身份参与本轮上下文组装；问题已不限于 scheduler 串话，也继续存在于普通 direct session 的压缩恢复路径中
- - 2026-04-19 06:52-06:54 最近一小时复核：
+- 2026-04-19 06:52-06:54 最近一小时复核：
    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
    - `2026-04-19T06:52:23.700401+08:00` 会话写入 `system` 消息 `Conversation compacted`
    - 紧接着 `2026-04-19T06:52:23.700584+08:00`，`session_messages` 再次落入 `role=user` 的 `【Compact Summary】...`，内容不是系统态摘要元数据，而是带明确投资结论的长文：
@@ -67,6 +67,16 @@
      - 还继续枚举 `源杰科技 / 长光华芯 / 云南锗业` 等标的与产业链判断
    - 同一会话在 `2026-04-19T06:54:13.701580+08:00` 已继续产出正式 assistant 回答，说明这条 `role=user` 的 compact summary 不是历史遗留脏数据，而是就在本轮 auto compact 后再次进入真实会话上下文
    - 这与文档里“2026-04-17 已改存 `role=system`、restore 跳过”的修复结论直接冲突，说明生产链路至少在消息落库层面仍未收口；即便最终回答表面可读，压缩摘要角色错误仍在持续污染真实 transcript
+ - 2026-04-19 12:00-12:02 最近一小时复核：
+   - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
+   - `2026-04-19T12:00:00.416514+08:00` 新一轮 `每日公司资讯与分析总结` 定时任务触发
+   - `2026-04-19T12:01:38.970370+08:00` 会话再次写入 `system` 消息 `Conversation compacted`
+   - 紧接着同一 `imported_at` 下，`session_messages` 又写入 `role=user` 的 `【Compact Summary】...`，内容仍是持仓/观点表，而不是系统态摘要元数据：
+     - `RKLB | 高弹性标的之一，5月7日财报为重要观察节点 | 持仓257股，成本72.22美元`
+     - `TEM | 待补 | 持仓193股，成本49.53美元`
+     - `CRWV / NBIS / GOOGL / TSM` 也被整理进同一张表
+   - 对应 `hone-feishu.release-restart.log` 记录该轮在 `2026-04-19T04:01:18Z` 命中 `context overflow detected`，`04:01:38Z` 完成 `context_overflow_recovery compacted=true`，随后本轮任务仍失败收口为“当前会话上下文过长...仍无法继续”
+   - 这说明 compact summary 的 `role=user` 污染不只会伴随“看似成功送达的日报”，也会在 scheduler 失败分支里继续写入真实 transcript，并与最新定时任务触发混在同一会话上下文里
 
 ## 端到端链路
 
@@ -147,6 +157,7 @@
 - `00:36` 的澄清样本说明，这种回灌已经不是极端长会话专属问题；即便用户只是补一句对 `M7` 的定义，系统也会先注入大段历史表格，再在零额外工具调用的前提下沿着被回灌后的上下文作答。
 - `01:02` 的最新样本进一步说明，即使本轮新问题是独立的 `HIMS` 分析，请求进入 answer 前仍会先插入一条 `role=user` 的股票关注表 compact summary；也就是说，问题并没有收敛到 scheduler 场景，而是继续存在于普通 direct session 的自动 compact 路径。
 - `09:00` 的最新样本再次证明 scheduler 普通 auto compact 仍在生产生效：`Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 在 `2026-04-19T09:00:26.593495+08:00` 又写回 `role=user` 的 `TSLA / RKLB` `【Compact Summary】`，随后同一任务仍在 `run_id=2861` 被记为 `completed + sent + delivered=1`。这说明问题不是“旧污染仍留在库里”，而是当前定时任务运行前仍会主动生成并消费这类 summary。
+- `12:01` 的最新样本进一步说明，污染并不依赖任务最终成功送达：`Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 在 overflow recovery 后再次写回 `role=user` 的持仓表 `【Compact Summary】`，随后本轮 `run_id=2923` 只返回“当前会话上下文过长”失败提示。也就是说，compact summary 角色错误仍会在 scheduler 失败路径里实时生成新的 transcript 污染。
 - 因而当前缺陷的主表现已经收敛为两点：一是 summary 角色仍错误，二是 summary 仍会在后续回答前重写本轮输入语义；这两点都没有被此前修复覆盖。
 
 ## 已确认事实
@@ -178,6 +189,7 @@
 5. 最近多次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段；一旦叠加 overflow recovery，这份污染还会在同轮 scheduler 任务内再次被固化。
 6. 从 `20:46 -> 20:49` 的跨任务串话样本看，即使 summary 本身更接近“历史总结”，只要它继续以 `role=user` 参与后续 prompt 组装，answer 阶段仍会把其中的待办、结论和上下文当成当前任务事实继续复述。
 7. `2026-04-19 09:00` 的定时任务样本说明，这个缺陷并不限于直聊恢复路径。scheduler 在普通 auto compact 后仍会把 summary 作为真实 `role=user` transcript 落库，再继续执行并成功送达最终日报，意味着线上生产路径仍在实时生成新的污染样本。
+8. `2026-04-19 12:01` 的最新定时汇总样本说明，即使任务最终没有成功送达正文，scheduler 在 `context_overflow_recovery` 失败路径里仍会把 compact summary 写成真实 `role=user` transcript；因此当前问题不只是“成功回答前污染上下文”，还会继续污染失败任务后的会话库与排障视图。
 
 ## 修复情况（2026-04-17）
 

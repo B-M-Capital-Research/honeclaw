@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 11:30-12:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 11:30 -> 12:00` 继续表现为“同一批 heartbeat 里个别任务失败、其余任务靠尾部提取勉强恢复”的漂移态：
+      - `run_id=2905`（`CAI破位预警`，`executed_at=2026-04-19T11:30:08.513547+08:00`）落成 `execution_failed + skipped_error`
+      - `run_id=2908`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T11:30:19.686715+08:00`）同窗继续落成 `execution_failed + skipped_error`
+      - 到 `12:00` 窗口，`run_id=2917`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T12:00:23.905425+08:00`）再次落成 `execution_failed + skipped_error`
+      - 同一 `12:00` 批次里，`run_id=2913`（`CAI破位预警`）、`2916`（`RKLB异动监控`）、`2918`（`ORCL 大事件监控`）、`2920`（`TEM大事件心跳监控`）又恢复为 `noop + skipped_noop`
+      - 这说明故障仍未收敛到单一任务：`Monitor_Watchlist_11` 连续两轮失败，`CAI破位预警` 则在 11:30 失败后 12:00 又回到伪恢复态
+    - 对应 `data/runtime/logs/web.log`：
+      - `2026-04-19 11:30:19.686` 与 `12:00:23.904` 的 `Monitor_Watchlist_11` 连续记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 都以 `<think>` 起头并逐项比较 11 只股票触发价，随后被升级为 `parse failure escalated`
+      - `2026-04-19 12:00:19.929` 的 `RKLB异动监控` 记录 `parse_kind=JsonNoop`，但 `raw_preview` 仍以 `<think>` 起头并围绕 `Mynaric` 收购与新闻条件做自由文本推演
+      - `2026-04-19 12:00:27.394` 的 `ORCL 大事件监控` 与 `12:00:31.645` 的 `TEM大事件心跳监控` 也都继续满足 `starts_with_json=false`
+    - 这组 `11:30 -> 12:00` 样本说明：heartbeat 结构化输出契约仍没有恢复稳定；一部分任务仍直接失败，另一部分则继续依赖受污染输出尾部侥幸提取 `noop`
   - 2026-04-19 11:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 10:30 -> 11:00` 继续表现为“同一批 heartbeat 里一部分任务失败、另一部分任务自行恢复”的抖动态：
       - `run_id=2888`（`ORCL 大事件监控`，`executed_at=2026-04-19T10:30:14.717234+08:00`）落成 `execution_failed + skipped_error`
