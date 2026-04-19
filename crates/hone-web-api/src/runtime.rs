@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use hone_core::config::HoneConfig;
 
 const DEFAULT_PORT: u16 = 8077;
+const DEFAULT_PUBLIC_PORT: u16 = 8088;
 
 fn bundled_web_dist_dir() -> Option<PathBuf> {
     std::env::var_os("HONE_INSTALL_ROOT")
@@ -41,9 +42,12 @@ pub fn runtime_port() -> u16 {
 }
 
 pub fn runtime_public_port() -> Option<u16> {
-    std::env::var("HONE_PUBLIC_WEB_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
+    Some(
+        std::env::var("HONE_PUBLIC_WEB_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(DEFAULT_PUBLIC_PORT),
+    )
 }
 
 pub fn runtime_deployment_mode() -> String {
@@ -128,5 +132,36 @@ mod tests {
         }
 
         assert_eq!(web_dist_dir(), PathBuf::from("packages/app/dist"));
+    }
+
+    #[test]
+    fn runtime_ports_fall_back_to_fixed_defaults() {
+        let _guard = env_lock().lock().unwrap();
+        unsafe {
+            env::remove_var("HONE_WEB_PORT");
+            env::remove_var("WEB_TEST_PORT");
+            env::remove_var("HONE_PUBLIC_WEB_PORT");
+        }
+
+        assert_eq!(runtime_port(), 8077);
+        assert_eq!(runtime_public_port(), Some(8088));
+    }
+
+    #[test]
+    fn runtime_ports_honor_explicit_overrides() {
+        let _guard = env_lock().lock().unwrap();
+        unsafe {
+            env::set_var("HONE_WEB_PORT", "19077");
+            env::set_var("HONE_PUBLIC_WEB_PORT", "19088");
+            env::remove_var("WEB_TEST_PORT");
+        }
+
+        assert_eq!(runtime_port(), 19077);
+        assert_eq!(runtime_public_port(), Some(19088));
+
+        unsafe {
+            env::remove_var("HONE_WEB_PORT");
+            env::remove_var("HONE_PUBLIC_WEB_PORT");
+        }
     }
 }

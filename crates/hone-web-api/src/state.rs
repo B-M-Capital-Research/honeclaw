@@ -8,6 +8,7 @@ use serde_json::Value;
 use tokio::sync::broadcast;
 
 use crate::logging::LogBuffer;
+use crate::public_auth::PublicAuthLimiter;
 
 /// 调度器 → 浏览器的主动推送事件
 #[derive(Debug, Clone, Serialize)]
@@ -86,6 +87,7 @@ fn prune_registry(entries: &mut HashMap<String, HashMap<u32, RuntimeHeartbeatPro
 pub struct AppState {
     pub core: Arc<hone_channels::HoneBotCore>,
     pub web_auth: Arc<hone_memory::WebAuthStorage>,
+    pub public_auth_limiter: PublicAuthLimiter,
     pub push_tx: broadcast::Sender<PushEvent>,
     pub http_client: reqwest::Client,
     pub log_buffer: LogBuffer,

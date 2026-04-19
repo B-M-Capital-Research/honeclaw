@@ -20,8 +20,14 @@ pub struct ChatRequest {
 }
 
 #[derive(Deserialize)]
+pub struct CreateWebInviteRequest {
+    pub phone_number: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct PublicInviteLoginRequest {
     pub invite_code: Option<String>,
+    pub phone_number: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -123,8 +129,12 @@ pub struct SseTicketResponse {
 pub struct WebInviteInfo {
     pub user_id: String,
     pub invite_code: String,
+    pub phone_number: String,
     pub created_at: String,
     pub last_login_at: Option<String>,
+    pub revoked_at: Option<String>,
+    pub enabled: bool,
+    pub active_session_count: u32,
     pub daily_limit: u32,
     pub success_count: u32,
     pub in_flight: u32,

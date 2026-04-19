@@ -4,6 +4,30 @@ Last updated: 2026-04-19
 
 ## 2026-04-19
 
+### Web 邀请码手机号绑定与固定端口切换
+
+- Status: done
+- Date: 2026-04-19
+- Plan: `docs/archive/plans/web-invite-phone-and-fixed-ports.md`
+- Handoff: `docs/handoffs/2026-04-19-web-invite-phone-and-fixed-ports.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-memory web_auth`, `cargo test -p hone-web-api`, `cargo check -p hone-web-api -p hone-memory`, `bun run typecheck:web`, `bun run test:web`, `bun run build:web`, `bun run build:web:public`, `env CARGO_TARGET_DIR=/Users/ecohnoch/Library/Caches/honeclaw/target bun run tauri:prep:build`, `env CARGO_TARGET_DIR=/Users/ecohnoch/Library/Caches/honeclaw/target bunx tauri build --config bins/hone-desktop/tauri.generated.conf.json`, `curl http://127.0.0.1:8077/api/meta`, `curl http://127.0.0.1:8088/api/public/auth/me`, `curl -I http://127.0.0.1:8088/chat`
+- Current conclusion: bundled desktop 现在固定使用管理端 `8077` 与用户端 `8088`；Web 邀请码已改为与手机号强绑定，管理端发码必须填手机号，用户端登录必须同时提交邀请码和手机号。新的 release app 已按 runbook 切换到 `.app` runtime；`discord` / `feishu` 在线，`telegram` 仍因配置里的 `Invalid bot token` 处于 `degraded`
+- Next entry point: `docs/handoffs/2026-04-19-web-invite-phone-and-fixed-ports.md`
+
+### 用户可见内部工作说明泄露修复
+
+- Status: done
+- Date: 2026-04-19
+- Plan: `docs/archive/plans/user-visible-internal-working-note-fix.md`
+- Handoff: `docs/handoffs/2026-04-19-user-visible-internal-working-note-fix.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels runners::tests -- --nocapture`, `cargo test -p hone-channels agent_session -- --nocapture`, `cargo test -p hone-web-api -- --nocapture`, `bun run test:web`
+- Current conclusion: public web 不再把 `company_profiles/`、actor 用户空间、目录结构这类内部工作说明直接作为最终答复或执行中状态暴露给用户；ACP runner 在本轮发生工具调用时只接受“最后一个 tool 之后的 assistant 文本”作为最终答复候选，session 成功态也会对明显的内部 working note 触发安全 fallback
+- Next entry point: `crates/hone-channels/src/agent_session.rs`
+
 ### Company Profile Optional Frontmatter
 
 - Status: done
@@ -50,9 +74,21 @@ Use this file as the historical entry point for completed or paused work that sh
 - Handoff: `docs/handoffs/2026-04-19-web-admin-public-isolation.md`
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `cargo check --workspace --all-targets --exclude hone-desktop`, `bun run typecheck:web`, `bun run test:web`, `./launch.sh --web`, `curl http://127.0.0.1:8077/api/public/auth/me`, `curl http://127.0.0.1:8088/api/meta`
-- Current conclusion: Web 管理端和 invite 用户端已按端口与可访问路由拆开；管理端默认监听 `8077` 并只提供 `/api/*` 与 console SPA，用户端默认监听 `8088` 并只提供 `/api/public/*` 与 `/chat`；前端 dev/build 也拆成 `3000` 管理端与 `3001` 用户端。上线前最关键的约束仍是不要把管理端口反代到公网，且若未来需要远程访问管理端，必须先配置 `web.auth_token`
-- Next entry point: `crates/hone-web-api/src/lib.rs`
+- Related runbooks / regressions: `cargo check --workspace --all-targets --exclude hone-desktop`, `cargo test -p hone-memory web_auth`, `cargo test -p hone-web-api`, `cargo check -p hone-web-api -p hone-memory`, `bun run typecheck:web`, `bun run test:web`, `./launch.sh --web`, `curl http://127.0.0.1:8077/api/public/auth/me`, `curl http://127.0.0.1:8088/api/meta`
+- Current conclusion: Web 管理端和 invite 用户端已按端口与可访问路由拆开；管理端默认监听 `8077` 并只提供 `/api/*` 与 console SPA，用户端默认监听 `8088` 并只提供 `/api/public/*` 与 `/chat`。后续安全加固已经补上 public 邀请码失败冷却、邀请码停用 / 恢复 / 重置与会话清退、单邀请码单活跃 session、HTTPS 场景 `Secure` cookie，以及 public API 默认去掉 `CORS: *`；公网暴露时仍必须确保管理端不被反代出去，并在反向代理 / WAF 层继续做 IP 级限流
+- Next entry point: `crates/hone-web-api/src/routes/public.rs`
+
+### Public Web 邀请码与公网暴露安全加固
+
+- Status: done
+- Date: 2026-04-19
+- Plan: `docs/archive/plans/public-web-security-hardening.md`
+- Handoff: `docs/handoffs/2026-04-19-web-admin-public-isolation.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-memory web_auth`, `cargo test -p hone-web-api`, `cargo check -p hone-web-api -p hone-memory`, `bun run typecheck:web`, `bun run test:web`
+- Current conclusion: public 邀请码登录已从“无防刷、无撤销、无会话止血”状态提升到具备应用层失败冷却、邀请码停用 / 恢复 / 重置、旧 session 立即失效、HTTPS `Secure` cookie 和同源默认访问的基础安全面；剩余长期暴露风险主要转移到反向代理 / WAF 限流策略与管理端误暴露治理
+- Next entry point: `crates/hone-web-api/src/routes/web_users.rs`
 
 ### Web 邀请码用户端与管理端入口拆分
 

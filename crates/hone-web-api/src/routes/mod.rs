@@ -58,6 +58,18 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
             "/web-users/invites",
             get(web_users::handle_list_invites).post(web_users::handle_create_invite),
         )
+        .route(
+            "/web-users/invites/{user_id}/disable",
+            post(web_users::handle_disable_invite),
+        )
+        .route(
+            "/web-users/invites/{user_id}/enable",
+            post(web_users::handle_enable_invite),
+        )
+        .route(
+            "/web-users/invites/{user_id}/reset",
+            post(web_users::handle_reset_invite),
+        )
         .route("/skills", get(skills::handle_skills))
         .route("/skills/reset", post(skills::handle_skill_registry_reset))
         .route("/skills/{id}", get(skills::handle_skill_detail))
@@ -155,10 +167,6 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
 pub fn build_public_app(state: Arc<AppState>) -> Router {
     let web_dist = public_web_dist_dir();
     let assets_dir = web_dist.join("assets");
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
 
     let public_api = Router::new()
         .route("/auth/invite-login", post(public::handle_invite_login))
@@ -167,7 +175,6 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/history", get(public::handle_history))
         .route("/chat", post(public::handle_chat))
         .route("/events", get(public::handle_events))
-        .layer(cors)
         .with_state(state.clone());
 
     Router::new()
@@ -185,5 +192,5 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
 
 pub(crate) use common::{
     json_error, normalize_optional_string, normalized_actor, normalized_query_actor, require_actor,
-    require_string,
+    require_phone_number, require_string,
 };

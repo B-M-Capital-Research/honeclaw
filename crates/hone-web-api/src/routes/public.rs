@@ -11,6 +11,7 @@ use tokio_stream::wrappers::BroadcastStream;
 
 use hone_core::ActorIdentity;
 
+use crate::public_auth::PublicAuthLimitStatus;
 use crate::routes::chat::build_chat_sse;
 use crate::routes::history::history_from_messages;
 use crate::state::{AppState, PushEvent};
@@ -21,40 +22,68 @@ const WEB_SESSION_MAX_AGE_SECS: i64 = 30 * 24 * 60 * 60;
 
 pub(crate) async fn handle_invite_login(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(request): Json<PublicInviteLoginRequest>,
 ) -> Response {
     let invite_code = request
         .invite_code
         .as_deref()
-        .map(str::trim)
+        .map(normalize_invite_code)
         .filter(|value| !value.is_empty());
     let Some(invite_code) = invite_code else {
         return crate::routes::json_error(StatusCode::BAD_REQUEST, "缺少邀请码");
     };
+    let phone_number = match crate::routes::require_phone_number(request.phone_number, "手机号")
+    {
+        Ok(phone_number) => phone_number,
+        Err(response) => return response,
+    };
 
-    match state.web_auth.create_session_for_invite(invite_code) {
-        Ok(Some(session)) => match state.web_auth.find_invite_user(&session.user_id) {
-            Ok(Some(user)) => {
-                let user_id = user.user_id.clone();
-                let mut response = Json(json!({
-                    "user": to_public_auth_user(&state, &user_id, user),
-                }))
-                .into_response();
-                response.headers_mut().append(
-                    header::SET_COOKIE,
-                    build_session_cookie(&session.session_token),
-                );
-                response
+    let client_key = public_client_key(&headers);
+    if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
+        state.public_auth_limiter.check(&client_key)
+    {
+        return json_rate_limited(retry_after_secs);
+    }
+
+    match state
+        .web_auth
+        .create_session_for_invite(&invite_code, &phone_number)
+    {
+        Ok(Some(session)) => {
+            state.public_auth_limiter.record_success(&client_key);
+            match state.web_auth.find_invite_user(&session.user_id) {
+                Ok(Some(user)) => {
+                    let user_id = user.user_id.clone();
+                    let mut response = Json(json!({
+                        "user": to_public_auth_user(&state, &user_id, user),
+                    }))
+                    .into_response();
+                    response.headers_mut().append(
+                        header::SET_COOKIE,
+                        build_session_cookie(&session.session_token, &headers),
+                    );
+                    response
+                }
+                Ok(None) => {
+                    crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "邀请码用户不存在")
+                }
+                Err(error) => crate::routes::json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("读取邀请码用户失败: {error}"),
+                ),
             }
-            Ok(None) => {
-                crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "邀请码用户不存在")
+        }
+        Ok(None) => {
+            if let Some(retry_after_secs) = state.public_auth_limiter.record_failure(&client_key) {
+                json_rate_limited(retry_after_secs)
+            } else {
+                crate::routes::json_error(
+                    StatusCode::UNAUTHORIZED,
+                    "邀请码或手机号不正确，或邀请码已失效",
+                )
             }
-            Err(error) => crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("读取邀请码用户失败: {error}"),
-            ),
-        },
-        Ok(None) => crate::routes::json_error(StatusCode::UNAUTHORIZED, "邀请码无效"),
+        }
         Err(error) => crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("邀请码登录失败: {error}"),
@@ -73,7 +102,7 @@ pub(crate) async fn handle_logout(
     let mut response = Json(json!({ "ok": true })).into_response();
     response
         .headers_mut()
-        .append(header::SET_COOKIE, clear_session_cookie());
+        .append(header::SET_COOKIE, clear_session_cookie(&headers));
     response
 }
 
@@ -132,7 +161,7 @@ pub(crate) async fn handle_chat(
         return crate::routes::json_error(StatusCode::BAD_REQUEST, "消息不能为空");
     }
 
-    build_chat_sse(state, Ok(actor), message, 0).into_response()
+    build_chat_sse(state, Ok(actor), message, 0, true).into_response()
 }
 
 pub(crate) async fn handle_events(
@@ -213,15 +242,107 @@ fn read_session_token(headers: &HeaderMap) -> Option<String> {
     })
 }
 
-fn build_session_cookie(session_token: &str) -> HeaderValue {
+fn build_session_cookie(session_token: &str, headers: &HeaderMap) -> HeaderValue {
+    let secure_attr = if request_is_secure(headers) {
+        "; Secure"
+    } else {
+        ""
+    };
     HeaderValue::from_str(&format!(
-        "{WEB_SESSION_COOKIE}={session_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={WEB_SESSION_MAX_AGE_SECS}"
+        "{WEB_SESSION_COOKIE}={session_token}; Path=/; HttpOnly; SameSite=Strict{secure_attr}; Max-Age={WEB_SESSION_MAX_AGE_SECS}"
     ))
     .expect("valid session cookie")
 }
 
-fn clear_session_cookie() -> HeaderValue {
-    HeaderValue::from_static("hone_web_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
+fn clear_session_cookie(headers: &HeaderMap) -> HeaderValue {
+    let secure_attr = if request_is_secure(headers) {
+        "; Secure"
+    } else {
+        ""
+    };
+    HeaderValue::from_str(&format!(
+        "{WEB_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict{secure_attr}; Max-Age=0"
+    ))
+    .expect("valid clear session cookie")
+}
+
+fn request_is_secure(headers: &HeaderMap) -> bool {
+    header_is_https(headers, "x-forwarded-proto")
+        || forwarded_proto_is_https(headers)
+        || header_is_https_url(headers, header::ORIGIN.as_str())
+        || header_is_https_url(headers, header::REFERER.as_str())
+}
+
+fn header_is_https(headers: &HeaderMap, name: &str) -> bool {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .split(',')
+                .any(|item| item.trim().eq_ignore_ascii_case("https"))
+        })
+        .unwrap_or(false)
+}
+
+fn header_is_https_url(headers: &HeaderMap, name: &str) -> bool {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim_start().starts_with("https://"))
+}
+
+fn forwarded_proto_is_https(headers: &HeaderMap) -> bool {
+    headers
+        .get("forwarded")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value.split(';').any(|segment| {
+                let lower = segment.trim().to_ascii_lowercase();
+                lower == "proto=https" || lower.ends_with(", proto=https")
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn normalize_invite_code(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .trim()
+        .to_uppercase()
+}
+
+fn public_client_key(headers: &HeaderMap) -> String {
+    if let Some(forwarded_for) = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').find(|item| !item.trim().is_empty()))
+    {
+        return format!("ip:{}", forwarded_for.trim());
+    }
+    if let Some(real_ip) = headers
+        .get("x-real-ip")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return format!("ip:{real_ip}");
+    }
+
+    "ip:unknown".to_string()
+}
+
+fn json_rate_limited(retry_after_secs: u64) -> Response {
+    let mut response = crate::routes::json_error(
+        StatusCode::TOO_MANY_REQUESTS,
+        format!("邀请码尝试过于频繁，请在 {} 秒后重试", retry_after_secs),
+    );
+    if let Ok(value) = HeaderValue::from_str(&retry_after_secs.to_string()) {
+        response.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+    response
 }
 
 fn to_public_auth_user(
@@ -259,5 +380,46 @@ fn to_public_auth_user(
         success_count,
         in_flight,
         remaining_today,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_session_cookie, clear_session_cookie, normalize_invite_code, public_client_key,
+    };
+    use axum::http::{HeaderMap, HeaderValue, header};
+
+    #[test]
+    fn invite_code_normalization_removes_spaces_and_uppercases() {
+        assert_eq!(normalize_invite_code(" hone-abc 123 \n"), "HONE-ABC123");
+    }
+
+    #[test]
+    fn secure_cookie_is_enabled_for_https_origin() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://chat.example.com"),
+        );
+
+        let cookie_value = build_session_cookie("token", &headers);
+        let cookie = cookie_value.to_str().expect("cookie");
+        let cleared_value = clear_session_cookie(&headers);
+        let cleared = cleared_value.to_str().expect("cookie");
+
+        assert!(cookie.contains("Secure"));
+        assert!(cookie.contains("SameSite=Strict"));
+        assert!(cleared.contains("Secure"));
+    }
+
+    #[test]
+    fn client_key_prefers_forwarded_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("203.0.113.9, 10.0.0.2"),
+        );
+        assert_eq!(public_client_key(&headers), "ip:203.0.113.9");
     }
 }

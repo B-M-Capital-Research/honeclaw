@@ -4,6 +4,7 @@
 //! 供 `hone-desktop` 在 Tauri 主进程内直接嵌入启动，无需子进程 sidecar。
 
 pub mod logging;
+mod public_auth;
 pub mod routes;
 pub mod runtime;
 pub mod state;
@@ -25,7 +26,7 @@ use tracing::info;
 use tracing_subscriber::prelude::*;
 
 use crate::routes::events::handle_scheduler_events;
-use crate::runtime::runtime_public_port;
+use crate::runtime::{runtime_port, runtime_public_port};
 use crate::state::AppState as InnerAppState;
 
 const PUSH_CHANNEL_CAPACITY: usize = 64;
@@ -161,6 +162,7 @@ pub async fn start_server(
     let state = Arc::new(InnerAppState {
         core,
         web_auth,
+        public_auth_limiter: Default::default(),
         push_tx,
         http_client,
         log_buffer: log_buffer.clone(),
@@ -200,12 +202,8 @@ pub async fn start_server(
     let state_for_scheduler = state.clone();
     tokio::spawn(async move { handle_scheduler_events(state_for_scheduler, event_rx).await });
 
-    // ── 绑定管理端口（默认随机；若设置 HONE_WEB_PORT 则绑定指定端口）────
-    let bind_addr = std::env::var("HONE_WEB_PORT")
-        .ok()
-        .and_then(|raw| raw.parse::<u16>().ok())
-        .map(|port| format!("127.0.0.1:{port}"))
-        .unwrap_or_else(|| "127.0.0.1:0".to_string());
+    // ── 绑定管理端口（默认 8077，可通过 HONE_WEB_PORT 覆盖）─────────────
+    let bind_addr = format!("127.0.0.1:{}", runtime_port());
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .map_err(|e| format!("无法绑定端口 {bind_addr}: {e}"))?;

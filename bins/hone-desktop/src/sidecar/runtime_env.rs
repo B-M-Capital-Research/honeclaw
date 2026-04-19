@@ -284,6 +284,12 @@ pub(super) fn configure_desktop_runtime_env(app: &AppHandle, runtime: &RuntimePa
 
     set_process_env("HONE_CONFIG_PATH", &runtime.effective_config_path);
     set_process_env("HONE_USER_CONFIG_PATH", &runtime.config_path);
+    if env::var_os("HONE_WEB_PORT").is_none() {
+        set_process_env("HONE_WEB_PORT", "8077");
+    }
+    if env::var_os("HONE_PUBLIC_WEB_PORT").is_none() {
+        set_process_env("HONE_PUBLIC_WEB_PORT", "8088");
+    }
     set_process_env("HONE_DATA_DIR", &runtime.data_dir);
     set_process_env("HONE_RUNTIME_DIR", &runtime.runtime_dir);
     set_process_env("HONE_SKILLS_DIR", &runtime.skills_dir);

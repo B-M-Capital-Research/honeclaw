@@ -50,12 +50,22 @@ export type HistoryMsg = {
 export type WebInviteInfo = {
   user_id: string;
   invite_code: string;
+  phone_number: string;
   created_at: string;
   last_login_at?: string;
+  revoked_at?: string;
+  enabled: boolean;
+  active_session_count: number;
   daily_limit: number;
   success_count: number;
   in_flight: number;
   remaining_today: number;
+};
+
+export type WebInviteActionResult = {
+  invite: WebInviteInfo;
+  cleared_session_count: number;
+  message: string;
 };
 
 export type PublicAuthUserInfo = {

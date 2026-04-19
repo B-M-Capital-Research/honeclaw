@@ -27,6 +27,32 @@ pub(crate) fn require_string(value: Option<String>, field: &str) -> Result<Strin
         .ok_or_else(|| json_error(StatusCode::BAD_REQUEST, format!("缺少 {field}")))
 }
 
+pub(crate) fn normalize_phone_number(value: &str) -> String {
+    let mut normalized = String::new();
+    for ch in value.trim().chars() {
+        if ch.is_ascii_digit() {
+            normalized.push(ch);
+        } else if ch == '+' && normalized.is_empty() {
+            normalized.push(ch);
+        }
+    }
+    normalized
+}
+
+pub(crate) fn require_phone_number(value: Option<String>, field: &str) -> Result<String, Response> {
+    let raw = require_string(value, field)?;
+    let normalized = normalize_phone_number(&raw);
+    let digit_count = normalized.chars().filter(|ch| ch.is_ascii_digit()).count();
+    if (6..=20).contains(&digit_count) {
+        Ok(normalized)
+    } else {
+        Err(json_error(
+            StatusCode::BAD_REQUEST,
+            format!("{field}格式不合法"),
+        ))
+    }
+}
+
 pub(crate) fn require_actor(
     channel: Option<String>,
     user_id: Option<String>,
@@ -64,5 +90,19 @@ pub(crate) fn normalized_actor(
             StatusCode::BAD_REQUEST,
             "channel 和 user_id 需要同时提供",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_phone_number;
+
+    #[test]
+    fn phone_number_normalization_keeps_digits_and_leading_plus() {
+        assert_eq!(
+            normalize_phone_number(" +86 138-0013-8000 "),
+            "+8613800138000"
+        );
+        assert_eq!(normalize_phone_number("(021) 1234 5678"), "02112345678");
     }
 }

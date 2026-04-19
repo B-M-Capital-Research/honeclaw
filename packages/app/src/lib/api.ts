@@ -19,6 +19,7 @@ import type {
   PortfolioSummary,
   HoldingUpsertInput,
   LogEntry,
+  WebInviteActionResult,
   WebInviteInfo,
 } from "./types";
 import type { ActorRef } from "./actors";
@@ -60,12 +61,41 @@ export async function getWebInvites() {
   return payload.invites ?? [];
 }
 
-export async function createWebInvite() {
+export async function createWebInvite(phoneNumber: string) {
   const response = await apiFetch("/api/web-users/invites", {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ phone_number: phoneNumber }),
   });
   const payload = await parseJson<{ invite: WebInviteInfo }>(response);
   return payload.invite;
+}
+
+async function mutateWebInvite(
+  userId: string,
+  action: "disable" | "enable" | "reset",
+) {
+  const response = await apiFetch(
+    `/api/web-users/invites/${encodeURIComponent(userId)}/${action}`,
+    {
+      method: "POST",
+    },
+  );
+  return parseJson<WebInviteActionResult>(response);
+}
+
+export async function disableWebInvite(userId: string) {
+  return mutateWebInvite(userId, "disable");
+}
+
+export async function enableWebInvite(userId: string) {
+  return mutateWebInvite(userId, "enable");
+}
+
+export async function resetWebInvite(userId: string) {
+  return mutateWebInvite(userId, "reset");
 }
 
 function actorQuery(actor: ActorRef) {
@@ -96,13 +126,16 @@ export async function getSkill(skillId: string) {
 }
 
 export async function updateSkillState(skillId: string, enabled: boolean) {
-  const response = await apiFetch(`/api/skills/${encodeURIComponent(skillId)}/state`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
+  const response = await apiFetch(
+    `/api/skills/${encodeURIComponent(skillId)}/state`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ enabled }),
     },
-    body: JSON.stringify({ enabled }),
-  });
+  );
   return parseJson<SkillInfo>(response);
 }
 
@@ -113,7 +146,11 @@ export async function resetSkillRegistry() {
   return parseJson<SkillInfo[]>(response);
 }
 
-export async function sendChat(actor: ActorRef, message: string, signal?: AbortSignal) {
+export async function sendChat(
+  actor: ActorRef,
+  message: string,
+  signal?: AbortSignal,
+) {
   const response = await apiFetch("/api/chat", {
     method: "POST",
     headers: {
@@ -144,13 +181,19 @@ export async function connectEvents(actor: ActorRef) {
   return createEventSource(`/api/events?${actorQuery(actor)}`);
 }
 
-export async function publicInviteLogin(inviteCode: string) {
+export async function publicInviteLogin(
+  inviteCode: string,
+  phoneNumber: string,
+) {
   const response = await apiFetch("/api/public/auth/invite-login", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ invite_code: inviteCode }),
+    body: JSON.stringify({
+      invite_code: inviteCode,
+      phone_number: phoneNumber,
+    }),
   });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
   return payload.user;
@@ -405,13 +448,17 @@ export async function getAuditRecordDetail(id: string) {
 
 export async function listCompanyProfileActors() {
   const response = await apiFetch("/api/company-profiles/actors");
-  const payload = await parseJson<{ actors: CompanyProfileSpaceSummary[] }>(response);
+  const payload = await parseJson<{ actors: CompanyProfileSpaceSummary[] }>(
+    response,
+  );
   return payload.actors ?? [];
 }
 
 export async function listCompanyProfiles(actor: ActorRef) {
   const response = await apiFetch(`/api/company-profiles?${actorQuery(actor)}`);
-  const payload = await parseJson<{ profiles: CompanyProfileSummary[] }>(response);
+  const payload = await parseJson<{ profiles: CompanyProfileSummary[] }>(
+    response,
+  );
   return payload.profiles;
 }
 
@@ -455,7 +502,10 @@ export async function exportCompanyProfiles(actor: ActorRef) {
   };
 }
 
-export async function previewImportCompanyProfiles(actor: ActorRef, bundle: File) {
+export async function previewImportCompanyProfiles(
+  actor: ActorRef,
+  bundle: File,
+) {
   const form = new FormData();
   form.append("bundle", bundle);
   const response = await apiFetch(
@@ -465,7 +515,9 @@ export async function previewImportCompanyProfiles(actor: ActorRef, bundle: File
       body: form,
     },
   );
-  const payload = await parseJson<{ preview: CompanyProfileImportPreview }>(response);
+  const payload = await parseJson<{ preview: CompanyProfileImportPreview }>(
+    response,
+  );
   return payload.preview;
 }
 
@@ -485,6 +537,8 @@ export async function applyImportCompanyProfiles(
       body: form,
     },
   );
-  const payload = await parseJson<{ result: CompanyProfileImportApplyResult }>(response);
+  const payload = await parseJson<{ result: CompanyProfileImportApplyResult }>(
+    response,
+  );
   return payload.result;
 }

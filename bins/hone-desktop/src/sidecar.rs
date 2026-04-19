@@ -391,34 +391,6 @@ impl DesktopBackendManager {
     }
 }
 
-struct ScopedEnvVar {
-    key: &'static str,
-    previous: Option<String>,
-}
-
-impl ScopedEnvVar {
-    fn remove(key: &'static str) -> Self {
-        let previous = env::var(key).ok();
-        unsafe {
-            env::remove_var(key);
-        }
-        Self { key, previous }
-    }
-}
-
-impl Drop for ScopedEnvVar {
-    fn drop(&mut self) {
-        match &self.previous {
-            Some(value) => unsafe {
-                env::set_var(self.key, value);
-            },
-            None => unsafe {
-                env::remove_var(self.key);
-            },
-        }
-    }
-}
-
 async fn probe_meta(base_url: &str, bearer_token: &str) -> Result<MetaInfo, String> {
     let mut headers = HeaderMap::new();
     if !bearer_token.trim().is_empty() {
@@ -582,7 +554,6 @@ async fn connect_backend_inner(
                 ),
             );
 
-            let _hone_web_port_guard = ScopedEnvVar::remove("HONE_WEB_PORT");
             log_desktop(
                 app,
                 "INFO",

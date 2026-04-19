@@ -1,6 +1,15 @@
 import { Logo } from "@hone-financial/ui/logo";
 import { Markdown } from "@hone-financial/ui/markdown";
-import { createSignal, createEffect, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  For,
+  Match,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+} from "solid-js";
 import {
   connectPublicEvents,
   getPublicAuthMe,
@@ -9,7 +18,11 @@ import {
   publicLogout,
   sendPublicChat,
 } from "@/lib/api";
-import { parseMessageContent, historyToTimeline, messageId } from "@/lib/messages";
+import {
+  parseMessageContent,
+  historyToTimeline,
+  messageId,
+} from "@/lib/messages";
 import { parseSseChunks } from "@/lib/stream";
 
 type AuthState = "loading" | "logged_out" | "logging_in" | "ready";
@@ -26,11 +39,19 @@ type ChatMessage = {
 };
 
 const GITHUB_REPO_URL = "https://github.com/B-M-Capital-Research/honeclaw";
-const GITHUB_API_URL = "https://api.github.com/repos/B-M-Capital-Research/honeclaw";
+const GITHUB_API_URL =
+  "https://api.github.com/repos/B-M-Capital-Research/honeclaw";
 const GITHUB_STAR_COUNT_FALLBACK = 221;
 
 export function normalizeInviteCode(value: string) {
   return value.replace(/\s+/g, "").trim().toUpperCase();
+}
+
+export function normalizePhoneNumber(value: string) {
+  const trimmed = value.trim();
+  const hasLeadingPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D+/g, "");
+  return hasLeadingPlus ? `+${digits}` : digits;
 }
 
 function formatElapsed(startedAt?: number) {
@@ -58,10 +79,12 @@ function RepoLink(props: { stars: number }) {
 
 export function LoginCard(props: {
   inviteCode: string;
+  phoneNumber: string;
   loading: boolean;
   error: string;
   githubStars: number;
   onInput: (value: string) => void;
+  onPhoneInput: (value: string) => void;
   onSubmit: () => void;
 }) {
   return (
@@ -90,7 +113,7 @@ export function LoginCard(props: {
               开启深度投研之旅
             </h1>
             <p class="mx-auto mt-4 max-w-2xl px-2 text-sm leading-7 text-black/55 md:px-0 md:text-[15px]">
-              输入邀请码后进入单会话聊天界面。体验会保持简洁，没有侧边栏，历史消息直接向上滚动查看。
+              输入邀请码和手机号后进入单会话聊天界面。体验会保持简洁，没有侧边栏，历史消息直接向上滚动查看。
             </p>
 
             <form
@@ -103,20 +126,39 @@ export function LoginCard(props: {
               <input
                 type="text"
                 value={props.inviteCode}
-                onInput={(event) => props.onInput(normalizeInviteCode(event.currentTarget.value))}
-                placeholder="输入邀请码，按 Enter 登录"
+                onInput={(event) =>
+                  props.onInput(normalizeInviteCode(event.currentTarget.value))
+                }
+                placeholder="输入邀请码"
                 autocomplete="off"
                 autocapitalize="characters"
                 spellcheck={false}
                 class="h-13 w-full bg-transparent px-1 text-[16px] tracking-[0.01em] text-black outline-none placeholder:text-black/30 sm:h-14 sm:px-2"
               />
+              <input
+                type="tel"
+                value={props.phoneNumber}
+                onInput={(event) =>
+                  props.onPhoneInput(
+                    normalizePhoneNumber(event.currentTarget.value),
+                  )
+                }
+                placeholder="输入手机号，按 Enter 登录"
+                autocomplete="tel"
+                spellcheck={false}
+                class="mt-2 h-13 w-full border-t border-black/8 bg-transparent px-1 text-[16px] tracking-[0.01em] text-black outline-none placeholder:text-black/30 sm:h-14 sm:px-2"
+              />
               <div class="mt-3 flex flex-col gap-3 border-t border-black/8 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div class="text-left text-xs leading-6 text-black/45">
-                  邀请码登录后会自动恢复你的单线程 Web 会话
+                  邀请码与手机号验证通过后会自动恢复你的单线程 Web 会话
                 </div>
                 <button
                   type="submit"
-                  disabled={props.loading || !props.inviteCode.trim()}
+                  disabled={
+                    props.loading ||
+                    !props.inviteCode.trim() ||
+                    !props.phoneNumber.trim()
+                  }
                   class="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-full bg-black px-5 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20 sm:w-auto"
                 >
                   {props.loading ? "验证中…" : "开始对话"}
@@ -131,9 +173,15 @@ export function LoginCard(props: {
             </Show>
 
             <div class="mt-8 flex flex-wrap items-center justify-center gap-3 text-xs text-black/42">
-              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">单会话</div>
-              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">长连接更新</div>
-              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">邀请码登录</div>
+              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">
+                单会话
+              </div>
+              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">
+                长连接更新
+              </div>
+              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">
+                邀请码 + 手机号
+              </div>
             </div>
           </div>
         </div>
@@ -143,10 +191,16 @@ export function LoginCard(props: {
 }
 
 function AssistantCard(props: { message: ChatMessage }) {
-  const [elapsed, setElapsed] = createSignal(formatElapsed(props.message.startedAt));
+  const [elapsed, setElapsed] = createSignal(
+    formatElapsed(props.message.startedAt),
+  );
 
   createEffect(() => {
-    if (!props.message.startedAt || props.message.phase === "done" || props.message.phase === "error") {
+    if (
+      !props.message.startedAt ||
+      props.message.phase === "done" ||
+      props.message.phase === "error"
+    ) {
       setElapsed(formatElapsed(props.message.startedAt));
       return;
     }
@@ -157,15 +211,23 @@ function AssistantCard(props: { message: ChatMessage }) {
   });
 
   const toneClass = () =>
-    props.message.phase === "error"
-      ? "bg-rose-50"
-      : "bg-white/82";
+    props.message.phase === "error" ? "bg-rose-50" : "bg-white/82";
 
   return (
-    <div class={["rounded-[28px] px-5 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)]", toneClass()].join(" ")}>
+    <div
+      class={[
+        "rounded-[28px] px-5 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)]",
+        toneClass(),
+      ].join(" ")}
+    >
       <div class="flex items-center justify-between gap-4">
         <div class="flex items-center gap-2">
-          <span class={["h-2.5 w-2.5 rounded-full", props.message.phase === "error" ? "bg-rose-400" : "bg-black"].join(" ")} />
+          <span
+            class={[
+              "h-2.5 w-2.5 rounded-full",
+              props.message.phase === "error" ? "bg-rose-400" : "bg-black",
+            ].join(" ")}
+          />
           <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-black/42">
             {props.message.phase === "done"
               ? "Hone 已回复"
@@ -204,10 +266,17 @@ function AssistantCard(props: { message: ChatMessage }) {
             {(part) => (
               <Switch>
                 <Match when={part.type === "image"}>
-                  <img src={part.value} alt="" class="mt-3 max-w-full rounded-2xl" />
+                  <img
+                    src={part.value}
+                    alt=""
+                    class="mt-3 max-w-full rounded-2xl"
+                  />
                 </Match>
                 <Match when={part.type === "text"}>
-                  <Markdown text={part.value} class="text-[15px] leading-8 text-black [&_p]:my-0 [&_p+*]:mt-4 [&_pre]:mt-4 [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-black/[0.04] [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1 [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-black/12 [&_blockquote]:pl-4 [&_blockquote]:text-black/58" />
+                  <Markdown
+                    text={part.value}
+                    class="text-[15px] leading-8 text-black [&_p]:my-0 [&_p+*]:mt-4 [&_pre]:mt-4 [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-black/[0.04] [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1 [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-black/12 [&_blockquote]:pl-4 [&_blockquote]:text-black/58"
+                  />
                 </Match>
               </Switch>
             )}
@@ -217,9 +286,18 @@ function AssistantCard(props: { message: ChatMessage }) {
 
       <Show when={!props.message.content && props.message.phase !== "error"}>
         <div class="mt-4 flex gap-1.5">
-          <span class="h-2 w-2 animate-bounce rounded-full bg-black/28" style={{ "animation-delay": "0ms" }} />
-          <span class="h-2 w-2 animate-bounce rounded-full bg-black/28" style={{ "animation-delay": "120ms" }} />
-          <span class="h-2 w-2 animate-bounce rounded-full bg-black/28" style={{ "animation-delay": "240ms" }} />
+          <span
+            class="h-2 w-2 animate-bounce rounded-full bg-black/28"
+            style={{ "animation-delay": "0ms" }}
+          />
+          <span
+            class="h-2 w-2 animate-bounce rounded-full bg-black/28"
+            style={{ "animation-delay": "120ms" }}
+          />
+          <span
+            class="h-2 w-2 animate-bounce rounded-full bg-black/28"
+            style={{ "animation-delay": "240ms" }}
+          />
         </div>
       </Show>
     </div>
@@ -230,11 +308,14 @@ export default function PublicChatPage() {
   const [authState, setAuthState] = createSignal<AuthState>("loading");
   const [loginError, setLoginError] = createSignal("");
   const [inviteCode, setInviteCode] = createSignal("");
+  const [phoneNumber, setPhoneNumber] = createSignal("");
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
   const [draft, setDraft] = createSignal("");
   const [sendError, setSendError] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
-  const [githubStars, setGithubStars] = createSignal(GITHUB_STAR_COUNT_FALLBACK);
+  const [githubStars, setGithubStars] = createSignal(
+    GITHUB_STAR_COUNT_FALLBACK,
+  );
   const [sessionInfo, setSessionInfo] = createSignal<{
     userId: string;
     remainingToday: number;
@@ -265,7 +346,9 @@ export default function PublicChatPage() {
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
       const timeline = historyToTimeline(history)
-        .filter((message) => message.kind === "user" || message.kind === "assistant")
+        .filter(
+          (message) => message.kind === "user" || message.kind === "assistant",
+        )
         .map((message) => ({
           id: message.id,
           role: message.kind,
@@ -360,18 +443,21 @@ export default function PublicChatPage() {
 
   const handleLogin = async () => {
     const code = normalizeInviteCode(inviteCode());
-    if (!code) return;
+    const phone = normalizePhoneNumber(phoneNumber());
+    if (!code || !phone) return;
     setAuthState("logging_in");
     setLoginError("");
     setInviteCode(code);
+    setPhoneNumber(phone);
     try {
-      const user = await publicInviteLogin(code);
+      const user = await publicInviteLogin(code, phone);
       setSessionInfo({
         userId: user.user_id,
         remainingToday: user.remaining_today,
         dailyLimit: user.daily_limit,
       });
       setInviteCode("");
+      setPhoneNumber("");
       await syncSession();
     } catch (error) {
       setAuthState("logged_out");
@@ -459,8 +545,8 @@ export default function PublicChatPage() {
 
           if (event.event === "tool_call") {
             const step =
-              (event.data.reasoning ?? event.data.text ?? "").trim() ||
-              (event.data.tool ? `调用工具：${event.data.tool}` : "");
+              (event.data.text ?? event.data.reasoning ?? "").trim() ||
+              "处理中…";
             appendAssistantStep(assistantId, step);
             setMessages((current) =>
               current.map((message) =>
@@ -468,7 +554,7 @@ export default function PublicChatPage() {
                   ? {
                       ...message,
                       phase: "running",
-                      statusText: step || "正在执行工具",
+                      statusText: step || "处理中…",
                     }
                   : message,
               ),
@@ -494,8 +580,8 @@ export default function PublicChatPage() {
           if (event.event === "run_error" || event.event === "error") {
             const messageText =
               event.event === "run_error"
-                ? event.data.message ?? "处理失败，请重试"
-                : event.data.text ?? "处理失败，请重试";
+                ? (event.data.message ?? "处理失败，请重试")
+                : (event.data.text ?? "处理失败，请重试");
             setMessages((current) =>
               current.map((message) =>
                 message.id === assistantId
@@ -557,10 +643,12 @@ export default function PublicChatPage() {
       fallback={
         <LoginCard
           inviteCode={inviteCode()}
+          phoneNumber={phoneNumber()}
           loading={authState() === "logging_in"}
           error={loginError()}
           githubStars={githubStars()}
           onInput={setInviteCode}
+          onPhoneInput={setPhoneNumber}
           onSubmit={() => void handleLogin()}
         />
       }
@@ -571,7 +659,9 @@ export default function PublicChatPage() {
             <div class="min-w-0 flex items-center gap-3 sm:gap-4">
               <Logo class="h-8 w-auto" />
               <div class="min-w-0">
-                <div class="truncate text-sm font-semibold text-black">Hone Chat</div>
+                <div class="truncate text-sm font-semibold text-black">
+                  Hone Chat
+                </div>
                 <div class="truncate text-[11px] text-black/45 sm:text-xs">
                   {sessionInfo()?.dailyLimit
                     ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}`
@@ -613,22 +703,37 @@ export default function PublicChatPage() {
                     问 Hone 一个问题
                   </h1>
                   <p class="mt-4 max-w-2xl text-sm leading-8 text-black/55">
-                    这里没有侧边栏，也没有多会话切换。输入问题后，Hone 会先展示思考和工具执行过程，再把同一张回复卡片更新成最终答案。
+                    这里没有侧边栏，也没有多会话切换。输入问题后，Hone
+                    会先展示思考和工具执行过程，再把同一张回复卡片更新成最终答案。
                   </p>
                 </div>
               }
             >
               <For each={messages()}>
                 {(message) => (
-                  <div class={["flex w-full", message.role === "user" ? "justify-end" : "justify-start"].join(" ")}>
-                    <div class={message.role === "user" ? "max-w-[86%] sm:max-w-[72%]" : "max-w-[100%] sm:max-w-[96%] md:max-w-[92%]"}> 
-                    <Show
-                      when={message.role === "assistant"}
-                      fallback={
-                          <div class="rounded-[20px] bg-black px-3.5 py-2.5 text-[15px] leading-6 text-white shadow-[0_12px_30px_rgba(0,0,0,0.12)] sm:rounded-[22px] sm:px-4">
-                            <Markdown text={message.content} class="text-[15px] leading-6 !text-white [&_*]:!text-white [&_p]:my-0 [&_p+*]:mt-2.5 [&_pre]:mt-2.5 [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-white/12 [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-2.5 [&_ol]:my-2.5 [&_li]:my-1 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-white/18 [&_blockquote]:pl-4 [&_blockquote]:!text-white" />
-                          </div>
+                  <div
+                    class={[
+                      "flex w-full",
+                      message.role === "user" ? "justify-end" : "justify-start",
+                    ].join(" ")}
+                  >
+                    <div
+                      class={
+                        message.role === "user"
+                          ? "max-w-[86%] sm:max-w-[72%]"
+                          : "max-w-[100%] sm:max-w-[96%] md:max-w-[92%]"
                       }
+                    >
+                      <Show
+                        when={message.role === "assistant"}
+                        fallback={
+                          <div class="rounded-[20px] bg-black px-3.5 py-2.5 text-[15px] leading-6 text-white shadow-[0_12px_30px_rgba(0,0,0,0.12)] sm:rounded-[22px] sm:px-4">
+                            <Markdown
+                              text={message.content}
+                              class="text-[15px] leading-6 !text-white [&_*]:!text-white [&_p]:my-0 [&_p+*]:mt-2.5 [&_pre]:mt-2.5 [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-white/12 [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-2.5 [&_ol]:my-2.5 [&_li]:my-1 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-white/18 [&_blockquote]:pl-4 [&_blockquote]:!text-white"
+                            />
+                          </div>
+                        }
                       >
                         <AssistantCard message={message} />
                       </Show>
@@ -639,7 +744,12 @@ export default function PublicChatPage() {
             </Show>
           </div>
 
-          <div class="mt-2 shrink-0 rounded-[22px] bg-white/92 px-3 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.04)] sm:rounded-[24px] sm:px-4 sm:py-2.5" style={{ "padding-bottom": "max(env(safe-area-inset-bottom), 0.5rem)" }}>
+          <div
+            class="mt-2 shrink-0 rounded-[22px] bg-white/92 px-3 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.04)] sm:rounded-[24px] sm:px-4 sm:py-2.5"
+            style={{
+              "padding-bottom": "max(env(safe-area-inset-bottom), 0.5rem)",
+            }}
+          >
             <textarea
               rows={1}
               value={draft()}
@@ -656,7 +766,10 @@ export default function PublicChatPage() {
             />
             <div class="mt-1.5 flex flex-col gap-2 pt-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div class="text-xs text-black/42">
-                <Show when={sendError()} fallback={<span>Shift + Enter 换行</span>}>
+                <Show
+                  when={sendError()}
+                  fallback={<span>Shift + Enter 换行</span>}
+                >
                   <span class="text-rose-400">{sendError()}</span>
                 </Show>
               </div>

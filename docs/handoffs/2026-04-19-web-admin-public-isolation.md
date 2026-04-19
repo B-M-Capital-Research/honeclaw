@@ -1,11 +1,17 @@
 - title: Web 管理端 / 用户端端口隔离与公网暴露加固
 - status: done
 - created_at: 2026-04-19
-- updated_at: 2026-04-19
+- updated_at: 2026-04-19 16:25 CST
 - owner: Codex
 - related_files:
   - crates/hone-web-api/src/lib.rs
   - crates/hone-web-api/src/routes/mod.rs
+  - crates/hone-web-api/src/routes/public.rs
+  - crates/hone-web-api/src/routes/web_users.rs
+  - crates/hone-web-api/src/public_auth.rs
+  - memory/src/web_auth.rs
+  - packages/app/src/lib/api.ts
+  - packages/app/src/pages/settings.tsx
   - packages/app/src/app.tsx
   - packages/app/vite.config.ts
   - package.json
@@ -13,6 +19,7 @@
   - docs/repo-map.md
 - related_docs:
   - docs/archive/plans/web-admin-public-isolation.md
+  - docs/archive/plans/public-web-security-hardening.md
   - docs/archive/index.md
   - docs/repo-map.md
 - related_prs: N/A
@@ -28,6 +35,10 @@
 - `packages/app` 增加 `VITE_HONE_APP_SURFACE`，同一套代码可分别构建管理端和用户端；root scripts 新增 `dev:web:public` 与 `build:web:public`
 - `launch.sh --web` 现在会同时拉起 `3000` 管理端前端和 `3001` 用户端前端，并做 ready-check
 - `docs/repo-map.md` 已补充新的入口和部署结构
+- public 邀请码登录新增应用层失败冷却：同一来源连续失败达到阈值后会收到 `429` 和 `Retry-After`，不再无限制暴力尝试
+- `web_auth` 现在支持邀请码 `revoked_at`、停用 / 恢复、重置邀请码，并在停用或重置时立即清理现有 public 登录态；同一邀请码重复登录时改为“最新登录覆盖旧 session”
+- public 端登录 Cookie 改为 `HttpOnly + SameSite=Strict`，并在 HTTPS `Origin` / `Referer` / `X-Forwarded-Proto` 场景自动附带 `Secure`
+- public API 默认不再挂 `CORS: *`；管理端设置页已补邀请码状态、活跃登录态、停用 / 启用 / 重置按钮
 
 ## Verification
 
@@ -37,13 +48,16 @@
 - `./launch.sh --web`
 - `curl http://127.0.0.1:8077/api/public/auth/me` -> `404`
 - `curl http://127.0.0.1:8088/api/meta` -> `404`
+- `cargo test -p hone-memory web_auth`
+- `cargo test -p hone-web-api`
+- `cargo check -p hone-web-api -p hone-memory`
 
 ## Risks / Follow-ups
 
 - 当前管理端鉴权逻辑在 `deployment_mode=local` 且 `web.auth_token` 为空时仍会放行管理 API；这只适用于“管理端只监听本机”的前提。任何把管理端暴露到公网、局域网或跳板机后的场景，都必须先配 `web.auth_token`
-- 用户端目前仍缺少显式 rate limiting / 邀请码暴力尝试防护。如果真的直接对公网开放，下一步建议在反向代理层加 IP 级限流，并在应用层补失败次数与冷却时间
-- public cookie 目前主要依赖 `HttpOnly` / `SameSite` 语义；正式 HTTPS 暴露前，建议复核 `Secure` 标记和反向代理 TLS 终止后的 cookie 行为
+- public 用户端已经补了应用层失败冷却，但当前限流状态仍只保存在进程内存里；若要长期公网暴露，仍建议在反向代理 / WAF 层加 IP 级限流和异常流量拦截
+- public `Secure` cookie 依赖反代层或浏览器请求头能正确体现 HTTPS；上线时需要确认 `Origin` / `Referer` / `X-Forwarded-Proto` 至少有一条链路可靠透传
 
 ## Next Entry Point
 
-- `crates/hone-web-api/src/routes/auth.rs`
+- `crates/hone-web-api/src/routes/public.rs`
