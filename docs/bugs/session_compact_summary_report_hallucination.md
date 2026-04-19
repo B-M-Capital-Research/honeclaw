@@ -146,6 +146,7 @@
 - `00:03` 的 scheduler 串行样本说明，即便每轮任务最终都成功送达，compact summary 仍会把“任务清单/触发条件”作为用户消息夹在任务之间，导致后续任务共享被污染的上下文。
 - `00:36` 的澄清样本说明，这种回灌已经不是极端长会话专属问题；即便用户只是补一句对 `M7` 的定义，系统也会先注入大段历史表格，再在零额外工具调用的前提下沿着被回灌后的上下文作答。
 - `01:02` 的最新样本进一步说明，即使本轮新问题是独立的 `HIMS` 分析，请求进入 answer 前仍会先插入一条 `role=user` 的股票关注表 compact summary；也就是说，问题并没有收敛到 scheduler 场景，而是继续存在于普通 direct session 的自动 compact 路径。
+- `09:00` 的最新样本再次证明 scheduler 普通 auto compact 仍在生产生效：`Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 在 `2026-04-19T09:00:26.593495+08:00` 又写回 `role=user` 的 `TSLA / RKLB` `【Compact Summary】`，随后同一任务仍在 `run_id=2861` 被记为 `completed + sent + delivered=1`。这说明问题不是“旧污染仍留在库里”，而是当前定时任务运行前仍会主动生成并消费这类 summary。
 - 因而当前缺陷的主表现已经收敛为两点：一是 summary 角色仍错误，二是 summary 仍会在后续回答前重写本轮输入语义；这两点都没有被此前修复覆盖。
 
 ## 已确认事实
@@ -176,6 +177,7 @@
 4. 压缩提示词只要求“总结历史”，但没有显式禁止“回答最后一个问题”或“生成新的投研报告”。
 5. 最近多次复现证明，即使没有再次命中 `context_overflow_recovery`，仅靠一次普通 auto compact 就足以把伪结论写回会话并污染后续 answer 阶段；一旦叠加 overflow recovery，这份污染还会在同轮 scheduler 任务内再次被固化。
 6. 从 `20:46 -> 20:49` 的跨任务串话样本看，即使 summary 本身更接近“历史总结”，只要它继续以 `role=user` 参与后续 prompt 组装，answer 阶段仍会把其中的待办、结论和上下文当成当前任务事实继续复述。
+7. `2026-04-19 09:00` 的定时任务样本说明，这个缺陷并不限于直聊恢复路径。scheduler 在普通 auto compact 后仍会把 summary 作为真实 `role=user` transcript 落库，再继续执行并成功送达最终日报，意味着线上生产路径仍在实时生成新的污染样本。
 
 ## 修复情况（2026-04-17）
 
@@ -186,7 +188,7 @@
    - prompt 组装优先使用 `session.summary`，不会继续引用旧的 compact summary 消息正文
    - compact boundary 后的 restore 不再把 compact summary 当成普通用户消息恢复
    - `recv_extra` 仍然位于历史摘要之前，避免群聊补充上下文顺序被这次修复破坏
-5. 代码层修复已完成并通过 crate 级测试；当时文档曾更新为 `Fixed`。但 2026-04-19 06:52 的真实 Feishu 会话再次落入 `role=user` 的 `【Compact Summary】`，说明“代码修复通过测试”并不等于线上 transcript 已恢复。
+5. 代码层修复已完成并通过 crate 级测试；当时文档曾更新为 `Fixed`。但 2026-04-19 06:52 的真实 Feishu 会话再次落入 `role=user` 的 `【Compact Summary】`，而且 2026-04-19 09:00 的 `特斯拉与火箭实验室新闻日报` 也在 auto compact 后重现同样落库方式，说明“代码修复通过测试”并不等于线上 transcript 已恢复。
 
 ## 历史修复情况（2026-04-16，已确认未收口）
 
