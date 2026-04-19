@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-20 02:31-03:01 最近一小时最新样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=3217`，`executed_at=2026-04-20T02:31:15.279880+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`
+      - `run_id=3227`，`executed_at=2026-04-20T03:01:19.446829+08:00`，仅过约 30 分钟又再次 `completed + sent + delivered=1`
+      - `3227` 的 `response_preview` 仍围绕同一 `BlueBird 7 已于4月19日发射，但被送入低于计划轨道` 的旧事件展开，没有看到新的独立公告、轨道修正进展、价格阈值跨越或新的公司级催化落地
+      - 这说明最新一小时里，ASTS 仍会把同一 `BlueBird 7` 旧事件在相邻窗口里从 `noop` 回摆成 `triggered` 并重新送达
     - 2026-04-20 00:31-01:01 最近一小时最新样本：
       - `job_name=TEM大事件心跳监控`
       - `run_id=3175`，`executed_at=2026-04-20T00:31:14.728265+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`
@@ -23,6 +29,9 @@
       - `response_preview` 直接围绕 `2026年4月16日完成的 Mynaric 收购` 旧事件触发，没有看到新的并购进展、价格阈值跨越或独立公告
       - 而此前同任务在 `19:01 -> 21:30` 多个窗口里先后表现为 `noop` 或 `execution_failed`，说明公共去重与增量识别依旧不稳定：旧事件可能长时间不报，随后又在新的轮询窗口里被重新当成“新触发”
   - `data/runtime/logs/web.log`
+    - `2026-04-20 02:31:15.278` 的 `ASTS 重大异动心跳监控` 记录 `parse_kind=JsonNoop`
+    - `2026-04-20 03:01:17.357` 的同任务又记录 `parse_kind=JsonTriggered`，并把同一 `BlueBird 7` 低轨发射结果重新包装成新触发
+    - 两轮之间没有看到新的独立事件源，说明系统仍会把已提醒过的旧事件在后续窗口重新当成新催化送达
     - `2026-04-20 00:31:14.727` 的 `TEM大事件心跳监控` 记录 `parse_kind=JsonNoop`
     - `2026-04-20 01:01:30.406` 的同任务又记录 `parse_kind=JsonTriggered`，并把同一 AACR 会议进行中 + 当日 session 安排包装成新触发
     - 两轮之间没有看到新的独立事件源，说明系统依旧会把 ongoing event 在后续窗口重新当成新催化送达
@@ -131,6 +140,10 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 02:31 -> 03:01` 的最新窗口，`ASTS 重大异动心跳监控` 继续证明这条缺陷仍在活跃：
+  - `02:31` 同一 `BlueBird 7` 事件先被压成 `noop`
+  - `03:01` 又围绕“4月19日发射、轨道低于计划”回摆成 `triggered + sent`
+  - 两轮之间没有新的独立公告、轨道修正、价格阈值跨越或新的公司级催化落地
 - 到 `2026-04-20 00:31 -> 01:01` 的最新窗口，`TEM大事件心跳监控` 继续证明这不是 ASTS 特例：
   - `00:31` 同一 AACR 会议事件先被压成 `noop`
   - `01:01` 又因同一会议进行中 + 当日 session 安排回摆成 `triggered + sent`

@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 02:31-03:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 02:31 -> 03:01` 再次出现“上一轮同批大多侥幸 `noop`，下一轮又有多条 heartbeat 集体跌回 unknown status”的活跃抖动态：
+      - `run_id=3210`（`小米破位预警`，`executed_at=2026-04-20T02:31:05.992323+08:00`）在 `02:31` 窗口落成 `execution_failed + skipped_error`
+      - 同一 `02:31` 批次里，`run_id=3211/3212/3213/3214/3215/3216/3217/3218`（`TEM破位 / CAI破位 / 小米30港元 / RKLB异动 / Monitor_Watchlist_11 / ORCL / ASTS / TEM大事件`）大多暂时恢复为 `noop + skipped_noop`
+      - 仅过约 30 分钟，到 `03:01` 窗口，失败对象立即扩散成 `run_id=3222/3223/3224/3225`（`小米破位预警 / RKLB异动监控 / Monitor_Watchlist_11 / TEM大事件心跳监控`），分别在 `2026-04-20T03:01:09-03:01:18+08:00` 再次落成 `execution_failed + skipped_error`
+      - 同批 `run_id=3219/3220/3221/3226`（`小米30港元 / CAI / TEM破位 / ORCL`）则又恢复为 `noop + skipped_noop`，`run_id=3227/3228`（`ASTS / 全天原油价格3小时播报`）继续 `completed + sent`
+      - 这说明 heartbeat 公共结构化状态契约在最新窗口依旧没有收口；上一轮暂时恢复的 `RKLB / Watchlist / TEM大事件` 到下一轮又重新跌回 `unknown status`，而 `noop` 任务仍只是依赖脆弱的尾部 JSON 提取
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 02:31:05.991` 的 `小米破位预警` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已明确写出“获取不到数据，返回 noop”，最终却仍只剩 `<think>...</think>\n\n{}`
+    - `2026-04-20 02:31:13.037` 的 `Monitor_Watchlist_11`、`02:31:14.050` 的 `ORCL 大事件监控`、`02:31:15.278` 的 `ASTS 重大异动心跳监控` 与 `02:31:26.102` 的 `TEM大事件心跳监控` 都暂时恢复成 `JsonNoop`，但统一满足 `starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头，说明所谓恢复依旧依赖 `<think>...JSON` 尾部侥幸提取
+    - 到 `2026-04-20 03:01:14.826`、`03:01:17.858`、`03:01:18.091`，`RKLB异动监控 / Monitor_Watchlist_11 / TEM大事件心跳监控` 又分别记录 `parse_kind=JsonUnknownStatus`，失败对象从 `02:31` 的单条 `小米破位预警` 漂移回复杂事件/监控模板
+    - 同一 `03:01` 窗口里，`CAI / TEM破位 / 小米30港元 / ORCL` 虽恢复为 `JsonNoop`，但日志仍统一表现为 `starts_with_json=false`，说明最新一轮所谓“成功收口”仍不是协议恢复，只是继续从受污染的自由文本尾部提取状态
   - 2026-04-20 01:31-02:02 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 01:31 -> 02:02` 继续出现“上一轮部分模板侥幸恢复、下一轮又换任务模板重新跌回 unknown status”的活跃抖动态：
       - `run_id=3189`（`全天原油价格3小时播报`，`executed_at=2026-04-20T01:31:05.131785+08:00`）在 `01:31` 窗口落成 `execution_failed + skipped_error`
