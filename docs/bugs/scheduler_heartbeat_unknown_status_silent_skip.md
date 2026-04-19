@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 20:31-21:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 20:31 -> 21:01` 继续出现“上一轮失败对象暂时恢复、下一轮又换模板重新跌回 unknown status”的活跃抖动态：
+      - `run_id=3092`（`Monitor_Watchlist_11`，`executed_at=2026-04-19T20:31:19.875818+08:00`）在 `20:31` 窗口落成 `execution_failed + skipped_error`
+      - 到 `21:01` 窗口，`run_id=3101`（同任务，`executed_at=2026-04-19T21:01:21.381034+08:00`）又恢复为 `noop + skipped_noop`
+      - 同一 `21:01` 批次里，失败对象改为 `run_id=3098/3099`（`小米破位预警`、`RKLB异动监控`，`executed_at=2026-04-19T21:01:10-21:01:10+08:00`），两条再次落成 `execution_failed + skipped_error`
+      - 同批 `run_id=3095/3096/3097/3100/3101/3103`（`TEM / CAI / 小米30港元 / ORCL / Monitor_Watchlist_11 / TEM大事件`）恢复为 `noop + skipped_noop`，`run_id=3102/3105`（`原油 / ASTS`）继续 `completed + sent`
+      - 这说明缺陷并未因为 `20:31` 的单个失败样本而收口；故障仍在 watchlist、单标的阈值和事件监控模板之间持续漂移
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-19 20:31:19.875` 的 `Monitor_Watchlist_11` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 继续逐项比较 `HIMS / MU / RKLB / LMND ...` 的触发价后才失败收口
+    - `2026-04-19 21:01:10.107` 的 `小米破位预警` 记录 `parse_kind=JsonUnknownStatus`，正文已明确写出“01810.HK 数据未返回，因此应返回 noop”，最终却仍只剩 `<think>...</think>\n\n{}`
+    - `2026-04-19 21:01:10.996` 的 `RKLB异动监控` 再次记录 `parse_kind=JsonUnknownStatus`，文本已经完成“无新并购/无新火箭进度/无新订单异常”的判断，却仍没能稳定收口到合法状态 JSON
+    - 同一 `21:01` 窗口里，恢复成 `JsonNoop` 的 `TEM / CAI / ORCL / Monitor_Watchlist_11 / TEM大事件` 仍统一满足 `starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头，说明这些所谓恢复依旧依赖尾部侥幸提取状态
   - 2026-04-19 19:31-20:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 19:31 -> 20:01` 继续出现“上一轮失败对象短暂漂移、下一轮又换模板重新跌回 unknown status”的活跃抖动态：
       - `run_id=3067/3068/3071`（`小米破位预警`、`ORCL 大事件监控`、`CAI破位预警`，`executed_at=2026-04-19T19:31:17-19:31:19+08:00`）在 `19:31` 窗口同时落成 `execution_failed + skipped_error`

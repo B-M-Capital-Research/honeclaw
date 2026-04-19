@@ -7,6 +7,17 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3091`，`executed_at=2026-04-19T20:31:19.466805+08:00`，在最近一小时最新窗口里落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3105`，`executed_at=2026-04-19T21:02:09.819339+08:00`，仅过约半小时又再次 `completed + sent + delivered=1`
+    - 两轮最新 `response_preview` 都继续写成：`BlueBird 7 卫星已于今日（2026年4月19日）成功发射升空`
+    - 同时又继续搭配同一组 `ASTS $85.53 / 前收 $90.94 / 日跌幅约5.95%` 的停牌前价格，说明链路仍在把旧价格包装成“发射落地后的市场反应”
+    - 这说明错误并没有随着前一轮 `19:31 -> 20:01` 的时态摇摆而收口；到 `20:31 -> 21:02` 最新窗口，系统已经连续两轮稳定输出同一错误完成态
+  - `data/runtime/logs/web.log`
+    - `2026-04-19 20:31` 对应 ASTS heartbeat 继续以 `parse_kind=JsonTriggered` 出站，`deliver_preview` 写成 `BlueBird 7 已于今日（2026年4月19日）...发射升空`
+    - `2026-04-19 21:02` 对应 `cron_job_runs.run_id=3105` 再次把同一事件投递为“已成功发射”，并继续附带 `当前价 $85.53 / 盘中最低 $84.91 / 盘中最高 $91.77`
+    - 两轮之间没有新的独立价格时间戳或新的市场开盘数据，却继续沿用同一停牌前快照描述“发射后的价格背景”
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
     - `run_id=3070`，`executed_at=2026-04-19T19:31:19.680900+08:00`，在最近一小时最新窗口里短暂回落成 `execution_status=noop`、`message_send_status=skipped_noop`
     - 仅过约 30 分钟，到 `run_id=3083`，`executed_at=2026-04-19T20:01:33.782226+08:00`，同一任务又重新落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
     - 最新 `response_preview` 再次写成：`BlueBird 7 卫星已于北京时间2026年4月19日从佛罗里达州卡纳维拉尔角成功发射升空`

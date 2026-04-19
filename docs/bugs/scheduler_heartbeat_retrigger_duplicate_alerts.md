@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-19 20:31-21:02 最近一小时最新样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=3091`，`executed_at=2026-04-19T20:31:19.466805+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `run_id=3105`，`executed_at=2026-04-19T21:02:09.819339+08:00`，仅过约半小时又再次 `completed + sent + delivered=1`
+      - 两条 `response_preview` 仍围绕同一 `BlueBird 7` 旧事件送达，没有看到新的独立公告、额外轨道结果或新的价格阈值跨越
+      - 这说明最新窗口里 ASTS 仍在跨半小时轮询重复送达同一催化，而不是稳定记住“这条旧事件已提醒过”
+    - 同一 `20:31 -> 21:02` 窗口里，`job_name=TEM大事件心跳监控` 从 `run_id=3093`（`20:31:34`，`noop + skipped_noop`）到 `run_id=3103`（`21:01:31`，仍是 `noop + skipped_noop`）
+      - 虽然 TEM 这轮没有再次送达，但结合前一小时 `19:31 -> 20:01` 里同一事件曾从 `noop` 摇摆回 `triggered` 可见，当前公共去重仍处于抖动态，而不是稳定收口
+  - `data/runtime/logs/web.log`
+    - `2026-04-19 20:31` 与 `21:02` 对应 ASTS heartbeat 都继续是 `parse_kind=JsonTriggered`
+    - 两轮 `deliver_preview` 都围绕同一 `BlueBird 7` 旧事件，只是对同一事实换了近似措辞，没有新增独立事件源
+    - 这说明最新窗口里“旧事件跨窗口重复送达”的主缺陷仍在持续，只是本轮再次集中体现在 ASTS 上
     - 2026-04-19 19:31-20:01 最近一小时最新样本：
       - `job_name=TEM大事件心跳监控`
       - `run_id=3073`，`executed_at=2026-04-19T19:31:37.543166+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`
