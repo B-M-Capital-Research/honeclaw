@@ -7,6 +7,16 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3197`，`executed_at=2026-04-20T01:31:34.070170+08:00`，在最近一小时最新窗口里再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - 同轮 `response_preview` 继续写成：`BlueBird 7 已于2026年4月19日通过 Blue Origin New Glenn 火箭从 Cape Canaveral 成功发射`
+    - 仅过约 30 分钟，到 `run_id=3208`，`executed_at=2026-04-20T02:02:14.687350+08:00`，同一任务又回落成 `execution_status=noop`、`message_send_status=skipped_noop`
+    - 这说明到 `02:02` 为止，ASTS heartbeat 仍会在“已成功发射，应主动推送”与“无需触发，直接 noop”之间来回摇摆；而 `01:31` 那轮已发送提醒仍继续捆绑停牌前 `ASTS $85.53 / 前收 $90.94 / 日跌幅 -5.95%`
+  - `data/runtime/logs/web.log`
+    - `2026-04-20 01:31:34.069` 的 `HeartbeatDiag deliver` 明确写出：`ASTS 重大基本面事件触发提醒。BlueBird 7 已于2026年4月19日通过 Blue Origin New Glenn 火箭从 Cape Canaveral 成功发射`
+    - `2026-04-20 02:02:14.686` 的同任务 `raw_preview` 又回落为 `parse_kind=JsonNoop`，说明相邻两个窗口对同一事件的结论仍不稳定
+    - 两轮之间没有新的独立市场价格时间戳，`01:31` 那轮却继续把同一组停牌前价格写成事件触发时的市场背景，说明“旧价格包装为事件落地后反应”的错误仍未收口
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
     - `run_id=3115`，`executed_at=2026-04-19T21:30:39.536730+08:00`，在最近一小时最新窗口里再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
     - `run_id=3123`，`executed_at=2026-04-19T22:00:25.003693+08:00`，仅过约半小时又再次 `completed + sent + delivered=1`
     - `21:30` 这轮 `response_preview` 写成：`BlueBird 7 已于当日（美东 6:45 AM）... 发射升空`；`22:00` 这轮又写成：`BlueBird 7 按计划今日（4月19日）从肯尼迪航天中心发射`
@@ -113,7 +123,8 @@
 
 ## 当前实现效果
 
-- 到 `2026-04-19 21:30 -> 22:00` 的最新窗口，heartbeat 仍在同一旧事件上继续摇摆：`21:30` 把 `BlueBird 7` 写成“已于当日发射升空”，`22:00` 又回退成“按计划今日发射”，但两轮都继续搭配同一组停牌前价格，说明错误时态和价格时间口径到现在都还在活跃链路里并存。
+- 到 `2026-04-20 01:31 -> 02:02` 的最新窗口，heartbeat 仍在同一旧事件上继续摇摆：`01:31` 把 `BlueBird 7` 写成“已成功发射并主动提醒”，`02:02` 又回退成 `noop`，但发送那轮仍继续搭配同一组停牌前价格，说明错误时态和价格时间口径到现在都还在活跃链路里并存。
+- 到 `2026-04-19 21:30 -> 22:00` 的上一组窗口，heartbeat 仍在同一旧事件上继续摇摆：`21:30` 把 `BlueBird 7` 写成“已于当日发射升空”，`22:00` 又回退成“按计划今日发射”，但两轮都继续搭配同一组停牌前价格，说明错误时态和价格时间口径到现在都还在活跃链路里并存。
 - 当前 direct 链路会在用户询问发射进展时，直接把预告新闻和旧行情快照收口成“已发射成功 + 发射后股价下跌”。
 - 当前 heartbeat 链路在 `14:30` 仍把事件描述为“今日发射”，到 `15:00` 又把同一事件直接升级成“已成功发射”，`15:30` 还继续沿用同一错误条件反复送达，而日志里自己同时承认对应北京时间应是当晚。
 - 到 `16:30`，heartbeat 仍继续以 `completed + sent` 对外投递“已于今日成功发射升空”；到 `17:00` 才回落成 `noop`，但同轮 `raw_preview` 又把同一事件写成“4月19日（明天）发射”，说明错误并未修复，只是从误报成功切换成了错误时间口径下的静默跳过。

@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 01:31-02:02 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 01:31 -> 02:02` 继续出现“上一轮部分模板侥幸恢复、下一轮又换任务模板重新跌回 unknown status”的活跃抖动态：
+      - `run_id=3189`（`全天原油价格3小时播报`，`executed_at=2026-04-20T01:31:05.131785+08:00`）在 `01:31` 窗口落成 `execution_failed + skipped_error`
+      - 同轮 `run_id=3195`（`ORCL 大事件监控`，`executed_at=2026-04-20T01:31:14.736808+08:00`）也再次落成 `execution_failed + skipped_error`
+      - 到 `02:01` 窗口，失败对象继续漂移成 `run_id=3204`（`Monitor_Watchlist_11`）、`3206`（`TEM大事件心跳监控`）、`3207`（`ORCL 大事件监控`），分别在 `2026-04-20T02:01:15-02:01:37+08:00` 落成 `execution_failed + skipped_error`
+      - 同一批里，`run_id=3197`（`ASTS 重大异动心跳监控`）在 `01:31` 仍是 `completed + sent`，但 `run_id=3208` 到 `02:02` 又回落为 `noop + skipped_noop`；`run_id=3190/3191/3193/3194/3196/3198/3199/3200/3201/3202/3203/3205` 则大多恢复为 `noop + skipped_noop`
+      - 这说明 heartbeat 公共结构化状态契约到现在仍未恢复，失败对象继续在“时间型播报 / 复杂 watchlist / 事件监控”之间漂移，而所谓恢复任务依旧依赖脆弱的尾部 JSON 提取
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 01:31:05.130` 的 `全天原油价格3小时播报` 记录 `parse_kind=JsonUnknownStatus`；正文已完成“当前 01:30 不满足每 3 小时播报条件”的时间判断，却仍未稳定收口到合法状态 JSON
+    - `2026-04-20 01:31:14.736` 与 `02:01:37.623` 的 `ORCL 大事件监控` 都记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已完成价格与事件条件判断后仍被升级为 `parse failure escalated`
+    - `2026-04-20 02:01:15.636` 的 `Monitor_Watchlist_11` 与 `02:01:20.145` 的 `TEM大事件心跳监控` 再次记录 `parse_kind=JsonUnknownStatus`，说明失败对象并未收敛到单一模板
+    - 同两轮窗口里，恢复为 `JsonNoop` 的 `CAI / TEM破位 / RKLB异动 / 小米预警 / ASTS` 仍统一满足 `starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头，说明所谓“恢复”依旧依赖 `<think>...JSON` 尾部侥幸提取，而不是上游协议已恢复
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 00:31-01:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 00:31 -> 01:01` 继续出现“同一 heartbeat 模板连续失败，且同批其它任务只是侥幸恢复”的活跃坏态：
       - `run_id=3178`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T00:31:21.068797+08:00`）落成 `execution_failed + skipped_error`
