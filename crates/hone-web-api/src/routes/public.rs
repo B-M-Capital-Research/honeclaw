@@ -46,10 +46,9 @@ pub(crate) async fn handle_invite_login(
                 );
                 response
             }
-            Ok(None) => crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "邀请码用户不存在",
-            ),
+            Ok(None) => {
+                crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "邀请码用户不存在")
+            }
             Err(error) => crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("读取邀请码用户失败: {error}"),
@@ -78,10 +77,7 @@ pub(crate) async fn handle_logout(
     response
 }
 
-pub(crate) async fn handle_me(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Response {
+pub(crate) async fn handle_me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
     match require_public_user(&state, &headers) {
         Ok(user) => {
             let user_id = user.user_id.clone();
@@ -152,9 +148,8 @@ pub(crate) async fn handle_events(
         Err(error) => return crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()),
     };
     let rx = state.push_tx.subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(move |msg| {
-        filter_public_push(actor.clone(), msg)
-    });
+    let stream =
+        BroadcastStream::new(rx).filter_map(move |msg| filter_public_push(actor.clone(), msg));
     let init = tokio_stream::iter(vec![Ok::<_, Infallible>(
         Event::default().event("connected").data("{}"),
     )]);
@@ -177,11 +172,11 @@ fn filter_public_push(
             let data = serde_json::to_string(&event.data).unwrap_or_else(|_| "{}".to_string());
             Some(Ok(Event::default().event(event.event).data(data)))
         }
-        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => Some(Ok(
-            Event::default()
+        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+            Some(Ok(Event::default()
                 .event("events_lagged")
-                .data(json!({ "skipped": n }).to_string()),
-        )),
+                .data(json!({ "skipped": n }).to_string())))
+        }
         _ => None,
     }
 }
@@ -226,9 +221,7 @@ fn build_session_cookie(session_token: &str) -> HeaderValue {
 }
 
 fn clear_session_cookie() -> HeaderValue {
-    HeaderValue::from_static(
-        "hone_web_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-    )
+    HeaderValue::from_static("hone_web_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
 }
 
 fn to_public_auth_user(
@@ -239,17 +232,18 @@ fn to_public_auth_user(
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None).ok();
     let daily_limit = state.core.config.agent.daily_conversation_limit;
     let quota_date = hone_core::beijing_now().format("%F").to_string();
-    let snapshot = actor
+    let snapshot = actor.as_ref().and_then(|actor| {
+        state
+            .core
+            .conversation_quota_storage
+            .snapshot_for_date(actor, &quota_date)
+            .ok()
+            .flatten()
+    });
+    let success_count = snapshot
         .as_ref()
-        .and_then(|actor| {
-            state
-                .core
-                .conversation_quota_storage
-                .snapshot_for_date(actor, &quota_date)
-                .ok()
-                .flatten()
-        });
-    let success_count = snapshot.as_ref().map(|value| value.success_count).unwrap_or(0);
+        .map(|value| value.success_count)
+        .unwrap_or(0);
     let in_flight = snapshot.as_ref().map(|value| value.in_flight).unwrap_or(0);
     let remaining_today = if daily_limit == 0 {
         0

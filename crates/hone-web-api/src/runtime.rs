@@ -23,11 +23,7 @@ pub fn public_web_dist_dir() -> PathBuf {
         .map(PathBuf::from)
         .ok()
         .or_else(|| {
-            bundled_web_dist_dir().map(|root| {
-                root.parent()
-                    .unwrap_or(&root)
-                    .join("web-public")
-            })
+            bundled_web_dist_dir().map(|root| root.parent().unwrap_or(&root).join("web-public"))
         })
         .unwrap_or_else(|| PathBuf::from("packages/app/dist-public"))
 }

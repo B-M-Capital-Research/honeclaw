@@ -139,7 +139,10 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/logo.svg", get(files::handle_logo))
-        .route("/api/public/{*path}", get(handle_not_found).post(handle_not_found))
+        .route(
+            "/api/public/{*path}",
+            get(handle_not_found).post(handle_not_found),
+        )
         .nest("/api", api)
         .nest_service(
             "/assets",

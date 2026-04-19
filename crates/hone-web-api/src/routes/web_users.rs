@@ -38,21 +38,26 @@ pub(crate) async fn handle_create_invite(State(state): State<Arc<AppState>>) -> 
     }
 }
 
-fn to_invite_info(state: &AppState, user_id: &str, invite: hone_memory::WebInviteUser) -> WebInviteInfo {
+fn to_invite_info(
+    state: &AppState,
+    user_id: &str,
+    invite: hone_memory::WebInviteUser,
+) -> WebInviteInfo {
     let actor = ActorIdentity::new("web", user_id, Option::<String>::None).ok();
     let daily_limit = state.core.config.agent.daily_conversation_limit;
     let quota_date = hone_core::beijing_now().format("%F").to_string();
-    let snapshot = actor
+    let snapshot = actor.as_ref().and_then(|actor| {
+        state
+            .core
+            .conversation_quota_storage
+            .snapshot_for_date(actor, &quota_date)
+            .ok()
+            .flatten()
+    });
+    let success_count = snapshot
         .as_ref()
-        .and_then(|actor| {
-            state
-                .core
-                .conversation_quota_storage
-                .snapshot_for_date(actor, &quota_date)
-                .ok()
-                .flatten()
-        });
-    let success_count = snapshot.as_ref().map(|value| value.success_count).unwrap_or(0);
+        .map(|value| value.success_count)
+        .unwrap_or(0);
     let in_flight = snapshot.as_ref().map(|value| value.in_flight).unwrap_or(0);
     let remaining_today = if daily_limit == 0 {
         0

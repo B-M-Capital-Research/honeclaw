@@ -182,7 +182,10 @@ impl WebAuthStorage {
         .map_err(sql_err)
     }
 
-    pub fn create_session_for_invite(&self, invite_code: &str) -> HoneResult<Option<WebInviteSession>> {
+    pub fn create_session_for_invite(
+        &self,
+        invite_code: &str,
+    ) -> HoneResult<Option<WebInviteSession>> {
         let now = beijing_now();
         let created_at = now.to_rfc3339();
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS)).to_rfc3339();
@@ -269,7 +272,8 @@ impl WebAuthStorage {
             .optional()
             .map_err(sql_err)?;
         if user.is_some() {
-            let next_expiry = (beijing_now() + chrono::Duration::days(SESSION_TTL_DAYS)).to_rfc3339();
+            let next_expiry =
+                (beijing_now() + chrono::Duration::days(SESSION_TTL_DAYS)).to_rfc3339();
             tx.execute(
                 "
                 UPDATE web_auth_sessions
@@ -333,7 +337,7 @@ fn sql_err(err: rusqlite::Error) -> HoneError {
 
 #[cfg(test)]
 mod tests {
-    use super::{WebAuthStorage, SESSION_TTL_DAYS};
+    use super::{SESSION_TTL_DAYS, WebAuthStorage};
 
     fn test_storage() -> WebAuthStorage {
         let root = std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
