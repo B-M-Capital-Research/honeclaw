@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-19 19:31-20:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-19 19:31 -> 20:01` 继续出现“上一轮失败对象短暂漂移、下一轮又换模板重新跌回 unknown status”的活跃抖动态：
+      - `run_id=3067/3068/3071`（`小米破位预警`、`ORCL 大事件监控`、`CAI破位预警`，`executed_at=2026-04-19T19:31:17-19:31:19+08:00`）在 `19:31` 窗口同时落成 `execution_failed + skipped_error`
+      - 到 `20:01` 窗口，上述三条又恢复为 `noop + skipped_noop`，但失败对象漂移成 `run_id=3079`（`RKLB异动监控`，`executed_at=2026-04-19T20:01:15.795633+08:00`），再次落成 `execution_failed + skipped_error`
+      - 同一 `20:01` 批次里，`run_id=3074/3075/3076/3077/3078/3080/3082`（`原油 / TEM / CAI / 小米30港元 / 小米 / ORCL / Monitor_Watchlist_11`）被记为 `noop + skipped_noop`，`run_id=3081/3083`（`TEM大事件 / ASTS`）继续 `completed + sent`
+      - 这说明缺陷并未因为 `19:31` 的部分失败样本自行恢复而收口，故障仍在不同 heartbeat 模板之间持续漂移；同批其它任务的所谓恢复依旧建立在脆弱解析之上
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-19 19:31:17.382` 的 `小米破位预警`、`19:31:18.332` 的 `ORCL 大事件监控`、`19:31:19.912` 的 `CAI破位预警` 都记录 `parse_kind=JsonUnknownStatus`
+    - 这三条 `raw_preview` 都先完成条件判断，再以 `<think>...</think>\n\n{}` 或自由文本结尾被升级为 `parse failure escalated`，说明失败并不来自工具缺失，而是结构化状态没有稳定收口
+    - `2026-04-19 20:01:15.794` 的 `RKLB异动监控` 又再次记录 `parse_kind=JsonUnknownStatus`；正文已完成新闻、并购与价格条件判断，却仍未输出合法状态 JSON
+    - 同一 `20:01` 窗口里，恢复成 `JsonNoop` 的 `全天原油价格3小时播报`、`TEM破位预警`、`CAI破位预警`、`ORCL 大事件监控`、`Monitor_Watchlist_11` 仍统一满足 `starts_with_json=false`，`raw_preview` 继续以 `<think>` 开头，说明“恢复”为 `noop` 的任务依旧依赖尾部侥幸提取状态
   - 2026-04-19 18:31-19:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-19 18:31 -> 19:01` 再次出现“上一轮还是正常 noop，下一轮又漂移回 unknown status”的活跃抖动态：
       - `run_id=3044`（`全天原油价格3小时播报`，`executed_at=2026-04-19T18:31:05.369002+08:00`）在 `18:31` 窗口仍是 `noop + skipped_noop`
