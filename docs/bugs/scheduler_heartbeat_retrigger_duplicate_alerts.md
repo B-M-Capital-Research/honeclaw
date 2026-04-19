@@ -6,6 +6,24 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-20 04:31-05:01 最近一小时最新样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=3257`，`executed_at=2026-04-20T04:31:15.440929+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `run_id=3270`，`executed_at=2026-04-20T05:01:30.466350+08:00`，仅过约 30 分钟又再次 `completed + sent + delivered=1`
+      - 两条 `response_preview` 都继续围绕同一 `BlueBird 7 被送入低于计划轨道` 旧事件展开，没有看到新的独立公告、轨道修正、额外价格阈值跨越或新的公司级催化落地
+      - 这说明最新一小时里，ASTS 已不仅仅是“停发一轮后重报”，而是相邻两个窗口都持续把同一旧事件当成新的 `triggered`
+      - `job_name=TEM大事件心跳监控`
+      - `run_id=3259`，`executed_at=2026-04-20T04:31:18.050008+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`
+      - `run_id=3269`，`executed_at=2026-04-20T05:01:28.904756+08:00`，仅过约 30 分钟又切回 `completed + sent + delivered=1`
+      - `3269` 的 `response_preview` 仍围绕同一 `AACR 2026` 进行中会议与重磅数据发布展开，没有看到新的财报、价格阈值跨越或新的独立公司公告
+      - 这说明最近一小时里，TEM 仍会把同一持续性会议事件在相邻窗口里从 `noop` 回摆成 `triggered` 并重新送达
+  - `data/runtime/logs/web.log`
+    - `2026-04-20 04:31:13.695` 与 `05:01:29.559` 对应 ASTS heartbeat 都继续是 `parse_kind=JsonTriggered`
+    - 两轮 `deliver_preview` 都围绕同一 `BlueBird 7 低于计划轨道` 旧事件，没有新增独立事件源，说明系统已在连续两轮直接重复送达同一催化
+    - `2026-04-20 04:31:18.048` 的 `TEM大事件心跳监控` 记录 `parse_kind=JsonNoop`
+    - `2026-04-20 05:01:26.804` 的同任务又记录 `parse_kind=JsonTriggered`，并把同一 AACR 会议进行中事件重新包装成当前窗口的新触发
+    - 两轮之间没有看到新的独立事件源，说明 ongoing event 去重与增量检测仍未生效
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-20 03:31-04:01 最近一小时最新样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=3238`，`executed_at=2026-04-20T03:31:24.549535+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
@@ -149,6 +167,10 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 04:31 -> 05:01` 的最新窗口，这条缺陷仍在活跃扩散：
+  - `ASTS` 在 `04:31` 与 `05:01` 连续两轮都再次围绕同一 `BlueBird 7` 低轨事件送达
+  - `TEM` 在 `04:31` 先被压成 `noop`，`05:01` 又围绕同一 `AACR 2026` 进行中事件回摆成 `triggered + sent`
+  - 两条链路之间都没有新的独立公告、额外价格阈值跨越或新的公司级催化落地
 - 到 `2026-04-20 03:31 -> 04:01` 的最新窗口，`ASTS 重大异动心跳监控` 继续证明这条缺陷仍在活跃：
   - `03:31` 与 `04:01` 两轮都直接 `completed + sent`
   - 两轮正文都围绕同一 `BlueBird 7` 低轨事件，没有新的独立公告、轨道修正或价格阈值跨越

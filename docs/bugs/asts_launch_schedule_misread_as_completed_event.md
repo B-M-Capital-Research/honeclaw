@@ -7,6 +7,16 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3257`，`executed_at=2026-04-20T04:31:15.440929+08:00`，在最近一小时最新窗口里再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3270`，`executed_at=2026-04-20T05:01:30.466350+08:00`，仅过约 30 分钟又再次 `completed + sent + delivered=1`
+    - 两轮 `response_preview` 都继续围绕同一 `BlueBird 7` 低于计划轨道旧事件展开，并继续捆绑同一组停牌前 `ASTS $85.53 / 前收 $90.94 / 日跌幅约 5.95%`
+    - 这说明到 `05:01` 为止，ASTS heartbeat 仍在把旧价格快照包装成事件后的市场背景，而不是显式标注“停牌前最后可见价格”
+  - `data/runtime/logs/web.log`
+    - `2026-04-20 04:31:13.695` 的 `HeartbeatDiag deliver` 明确写出：`BlueBird 7 于4月19日搭乘 New Glenn 发射升空，但卫星被放置至低于计划的轨道 ... ASTS当日下跌约5.95%至$85.53`
+    - `2026-04-20 05:01:29.559` 的同任务 `deliver_preview` 又继续写成 `当前价格 $85.53 / Day's Change -5.95%`，但两轮之间没有新的独立价格时间戳或新的市场开盘数据
+    - 这说明当前链路仍没有把“低轨事件的事实时间”与“最近可得停牌前价格快照时间”剥离，用户侧收到的仍是旧价格被包装成事件后市场反应
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
     - `run_id=3197`，`executed_at=2026-04-20T01:31:34.070170+08:00`，在最近一小时最新窗口里再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
     - 同轮 `response_preview` 继续写成：`BlueBird 7 已于2026年4月19日通过 Blue Origin New Glenn 火箭从 Cape Canaveral 成功发射`
     - 仅过约 30 分钟，到 `run_id=3208`，`executed_at=2026-04-20T02:02:14.687350+08:00`，同一任务又回落成 `execution_status=noop`、`message_send_status=skipped_noop`
@@ -123,6 +133,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 04:31 -> 05:01` 的最新窗口，heartbeat 仍连续两轮围绕同一 `BlueBird 7` 低轨事件送达，并继续沿用同一组停牌前 `ASTS $85.53 / -5.95%` 价格来描述事件背景，说明错误价格时间口径到现在依旧没有收口。
 - 到 `2026-04-20 01:31 -> 02:02` 的最新窗口，heartbeat 仍在同一旧事件上继续摇摆：`01:31` 把 `BlueBird 7` 写成“已成功发射并主动提醒”，`02:02` 又回退成 `noop`，但发送那轮仍继续搭配同一组停牌前价格，说明错误时态和价格时间口径到现在都还在活跃链路里并存。
 - 到 `2026-04-19 21:30 -> 22:00` 的上一组窗口，heartbeat 仍在同一旧事件上继续摇摆：`21:30` 把 `BlueBird 7` 写成“已于当日发射升空”，`22:00` 又回退成“按计划今日发射”，但两轮都继续搭配同一组停牌前价格，说明错误时态和价格时间口径到现在都还在活跃链路里并存。
 - 当前 direct 链路会在用户询问发射进展时，直接把预告新闻和旧行情快照收口成“已发射成功 + 发射后股价下跌”。

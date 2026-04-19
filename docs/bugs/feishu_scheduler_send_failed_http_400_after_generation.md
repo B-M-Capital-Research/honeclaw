@@ -5,6 +5,19 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-20 04:32 最近一小时最新样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=3260`，`job_id=j_a6577b6f`，`job_name=OWALERT_PostMarket`，`executed_at=2026-04-20T04:32:37.532710+08:00`
+      - 紧接 `04:02 Oil_Price_Monitor_Closing` 后再次落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`、`should_deliver=1`
+      - `response_preview` 保留了完整盘后复盘正文开头，说明本轮依旧是模型执行与会话持久化成功、最终 Feishu 投递失败
+      - `error_message` 与 `04:02` 样本一致，继续返回 `code=99992361`、`msg="open_id cross app"`
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+      - `2026-04-20T04:32:36.633054+08:00` assistant 已写入本轮 `OWALERT_PostMarket` 最终播报，长度与 `response_preview` 对齐
+      - 说明本轮 scheduler 注入、LLM 生成、会话落库都成功，真正缺口仍在 Feishu 出站
+    - `data/runtime/logs/web.log`
+      - `2026-04-20 04:32:37.531` 记录 `[Feishu] 定时任务投递失败: job=OWALERT_PostMarket ... HTTP 400 Bad Request - {"code":99992361,"msg":"open_id cross app",...}`
+      - 同一 `actor_user_id / receive_id` 在 30 分钟内连续第二次命中同一返回体，说明这不是单个任务模板偶发异常
   - 2026-04-20 04:02 最近一小时最新样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=3249`，`job_id=j_355ba2f1`，`job_name=Oil_Price_Monitor_Closing`，`executed_at=2026-04-20T04:02:07.830452+08:00`
@@ -86,6 +99,8 @@
 
 ## 当前实现效果
 
+- `2026-04-20 04:02` 的 `Oil_Price_Monitor_Closing` 与 `04:32` 的 `OWALERT_PostMarket` 在同一目标上连续两轮都落成 `completed + send_failed`，并且 Feishu 返回体都明确是 `code=99992361 / open_id cross app`。
+- 这说明故障已经不只是“收盘前油价播报”单任务失败，而是同一 Feishu 直达 scheduler 发送链路在盘前之外的盘后复盘任务上也稳定复现。
 - `OWALERT_PreMarket`、`Oil_Price_Monitor_Premarket`、`Oil_Price_Monitor_Closing` 与 `OWALERT_PostMarket` 在最近几个窗口连续四次失败。
 - 四次失败都发生在相同用户、相同手机号目标、相同 scheduler 送达链路。
 - 与前一日的 `target_resolution_failed` 不同，这一轮 `receive_id` 已解析为正确 actor，但发送接口仍直接返回 400。

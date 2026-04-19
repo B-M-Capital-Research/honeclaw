@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 04:31-05:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 04:31 -> 05:01` 继续出现“同一失败对象跨两个连续窗口不收口、其余任务仍靠尾部提取勉强运行”的活跃坏态：
+      - `run_id=3255`（`RKLB异动监控`，`executed_at=2026-04-20T04:31:11.078079+08:00`）在 `04:31` 窗口落成 `execution_failed + skipped_error`
+      - `run_id=3265`（同任务，`executed_at=2026-04-20T05:01:09.728356+08:00`）到下一轮继续落成 `execution_failed + skipped_error`，说明 `RKLB异动监控` 已跨两轮稳定失败
+      - `run_id=3258/3266`（`Monitor_Watchlist_11`）也在 `04:31` 与 `05:01` 连续两轮都落成 `execution_failed + skipped_error`
+      - 同批 `run_id=3250/3251/3252/3253/3254/3256/3259` 与 `3261/3262/3263/3264/3267/3268`（`全天原油 / 小米30港元 / CAI / TEM破位 / 小米破位 / ORCL / TEM大事件`）虽然被记成 `noop + skipped_noop`，但日志仍统一满足 `starts_with_json=false`
+      - 同一 `05:01` 批次里，`run_id=3269/3270`（`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`）又直接 `completed + sent`，说明这不是整批 scheduler 停摆，而是 heartbeat 结构化状态契约继续一边漂移失败、一边依赖脆弱解析送达
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 04:31:11.076` 与 `05:01:09.727` 的 `RKLB异动监控` 连续两轮都记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已完成“无新并购/无新火箭进度/无新订单异常”的判断后仍未收口成合法状态 JSON
+    - `2026-04-20 04:31:17.914` 与 `05:01:15.180` 的 `Monitor_Watchlist_11` 也连续两轮记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 继续逐项比较 `HIMS / MU / RKLB / LMND ...` 触发价后失败收口
+    - 同两轮窗口里，恢复为 `JsonNoop` 的 `全天原油 / CAI / TEM破位 / ORCL / 小米30港元 / 小米破位 / TEM大事件` 仍统一满足 `starts_with_json=false`，说明所谓“恢复”依旧依赖 `<think>...JSON` 尾部侥幸提取状态，而不是协议已恢复
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 03:31-04:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 03:31 -> 04:01` 继续出现“上一轮失败对象没有收口、下一轮又有别的模板重新跌回 unknown status”的活跃漂移态：
       - `run_id=3235`（`RKLB异动监控`，`executed_at=2026-04-20T03:31:13.934049+08:00`）在 `03:31` 窗口落成 `execution_failed + skipped_error`
