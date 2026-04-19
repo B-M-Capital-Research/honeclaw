@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-19 12:22 CST
+最后更新：2026-04-19 13:18 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -24,14 +24,14 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | Fixing | 2026-04-17 已补 `AgentSession` 的“净化后为空”成功收口，并补 Feishu 发送回退；`cargo test -p hone-channels`、`cargo test -p hone-feishu` 已通过，待真实直聊样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixing | 2026-04-18 13:12 同一 Feishu 直聊链路又在 8 次 `data_fetch` 后触顶；这次不再静默，但直接把 `已达最大迭代次数 8` 落成 assistant 文本，说明失败收口从“无回复”变成“原始内部错误外泄” | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
+| Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixing | 2026-04-19 12:23 `GOOGL` 深度研究请求再次在 search 阶段触顶；这次混入 `company_portrait` / 错误文件读取后仍直接把 `已达最大迭代次数 8` 落成 assistant 文本 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-17 21:32 `Oil_Price_Monitor_Premarket` 在最新真实窗口仍落成 `completed + send_failed`；说明 10:40 的 fallback 修补尚未收口到生产链路 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| 会话压缩摘要再次以 `Compact Summary` 回灌为 `role=user`，真实 transcript 与修复结论重新冲突 | P1 | Fixing | 2026-04-19 12:00 `每日公司资讯与分析总结` 在 `context_overflow_recovery` 后再次把持仓表摘要写成 `role=user`；同轮最终只返回“当前会话上下文过长”，说明污染仍活跃于 scheduler 生产链路 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
+| 会话压缩摘要再次以 `Compact Summary` 回灌为 `role=user`，真实 transcript 与修复结论重新冲突 | P1 | Fixing | 2026-04-19 12:44 新的 `900943` 直聊提问前又写回 `TEM/RKLB` 持仓表摘要；正式回答随后直接带入“你的美股科技主线”与旧持仓建议，说明污染已继续改写新问题答案 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-16 16:00 真实会话复现；`session.persist_assistant/done` 后仍继续启动 `hone/web_search`，但用户侧只收到 55 字过渡句 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | New | 2026-04-17 07:48 真实会话复现；用户说“分析目前lite价值”后系统直接输出 Litecoin 分析，需用户二次纠正为 `LITE Lumentum` | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
 | Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | New | 2026-04-17 14:53 真实会话复现；当前 user turn 是“美股DRAM详细分析”，但 search 从首个工具调用起就锁定 `SNDK`，最终整轮答成 SanDisk 个股分析 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 | Feishu 直聊个股分析把同一风险点在多段结构里重复展开，用户需额外指出“很多信息数据都是重复的” | P3 | New | 2026-04-19 01:01 真实会话复现；上一轮 Cerebras 分析把 `G42 客户集中度` 与 `ORCL 关联敞口` 在财务拆解、多空逻辑、动作建议里重复展开，assistant 后续已明确承认冗余 | [feishu_direct_analysis_redundant_risk_repetition.md](./feishu_direct_analysis_redundant_risk_repetition.md) |
-| 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-18 14:46 `rklb，tem分析下` 真实直聊仍连续两次命中 `company_profiles` 不存在；主链路虽成功返回，但画像记忆继续被静默跳过 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
+| 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-19 12:23 `GOOGL` 深度研究请求在调用 `company_portrait` 后仍读取 `company_profiles/GOOGL/profile.md` 失败；画像路径错误已继续放大 search 触顶 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-18 08:32 的创新药日报再次复现：4 次 `hone_data_fetch` 全部成功后，最终正文仍声称“港股与A股数据底层链路暂时阻断” | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | New | 2026-04-19 12:02 `每日公司资讯与分析总结` 已执行 15 次 `data_fetch` 并完成一次 `context_overflow_recovery`，但重试后仍失败；调度台账记为 `execution_failed + sent`，真实会话未见本轮正常 assistant 正文 | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Feishu 直聊自动 compact 后仍无法稳定完成新话题回答，同一旧会话会在成功与 fallback 间抖动 | P2 | New | 2026-04-18 22:58 同一会话先后答出 `CAI/TEM`、`CRWV/NBIS`，但切到 `Google` 财报预判后又在 compact 重试后回落成统一 fallback | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |

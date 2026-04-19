@@ -6,6 +6,10 @@
 - **状态**: New
 - **证据来源**:
   - `data/runtime/logs/web.log`
+    - `2026-04-19 12:22:57.347` `session=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185` 在用户消息“我想系统研究一家公司，比如分析一下GOOGL...”的搜索阶段先执行 `discover_skills query="company profile portrait save write GOOGL"`，随后 `12:22:59.247` 调用 `skill_tool company_portrait`
+    - `2026-04-19 12:23:05.811` 同一会话继续执行 `local_read_file path="company_profiles/GOOGL/profile.md"`，紧接着记录 `tool_execute_error ... 文件不存在: company_profiles/GOOGL/profile.md`
+    - `2026-04-19 12:23:13.632` 同轮又执行 `local_search_files query="company_profiles" path="."`，随后记录 `tool_execute_error ... IO 错误: stream did not contain valid UTF-8`
+    - 这说明最新小时窗里，链路已经不只是“泛搜 company_profiles 目录不存在”，而是明确尝试读取具体画像文件 `company_profiles/GOOGL/profile.md`，仍然沿用错误的相对路径假设
     - `2026-04-18 14:46:45.468` `session=Actor_feishu__direct__ou_5f3fd89de56543549db707217b4e1952bf` 在用户消息 `rklb，tem分析下` 的搜索阶段连续两次调用 `local_search_files ... path="company_profiles"`，随后连续记录 `tool_execute_error ... 文件不存在: company_profiles`
     - `2026-04-18 14:49:10.714` 同一会话 `multi_agent.answer.done success=true tool_calls=0`，说明画像路径错误在最新一小时仍未阻断主链路，但继续以静默降级形态存在
     - `2026-04-18 12:16:44.558` `session=Actor_feishu__direct__ou_5fba037d8699a7194dfe01a1fda5ced052` 在用户消息 `预测联合健康财报` 的 compact 重试阶段再次调用 `local_search_files query="UnitedHealth UNH" path="company_profiles"`，随后记录 `tool_execute_error ... 文件不存在: company_profiles`
@@ -24,6 +28,10 @@
     - `2026-04-16 13:09:40.780` 同一会话再次执行 `local_list_files path="company_profiles"`，随后再次报 `目录不存在: company_profiles`
     - 同类报错自 `2026-04-13` 起持续出现，说明不是单次偶发目录缺失
   - `data/sessions.sqlite3`
+    - `session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`
+    - 用户消息：`2026-04-19 12:21:47 CST`，`"我想系统研究一家公司，比如分析一下GOOGL，按基本面、护城河、估值、风险逐层拆解，长期结论自动沉淀为画像"`
+    - `2026-04-19 12:23:13 CST` 同轮 assistant 最终只返回 `已达最大迭代次数 8`；结合运行日志可见，失败前已经显式尝试读取 `company_profiles/GOOGL/profile.md`
+    - 说明画像路径错误不再只是“主链路成功但记忆静默缺失”的质量退化，在最新深度研究样本里已与 search 触顶故障叠加，放大整轮失败概率
     - `session_id=Actor_feishu__direct__ou_5f3fd89de56543549db707217b4e1952bf`
     - 用户消息：`2026-04-18 14:46:22 CST`，`"rklb，tem分析下"`
     - `2026-04-18 14:49:10 CST` assistant 仍返回完整长文分析，但运行日志已确认同轮先连续两次命中 `company_profiles` 不存在，说明最新一小时的真实直聊仍在“先丢失画像，再继续答复”的静默降级路径上
@@ -77,6 +85,9 @@
   - `OWALERT_PreMarket` 定时任务刚启动就先命中 `local_list_files path="company_profiles"` 的目录不存在；
   - 用户新问 `请对 FORM 进行下详细分析` 时也再次命中 `local_search_files ... path="company_profiles"` 的文件不存在。
 - 最新 `14:46` 的 `rklb，tem分析下` 会话说明，这条缺陷并不只会和 compact / fallback 叠加；即便主链路最后成功返回完整分析，搜索阶段仍会先连续两次撞上 `company_profiles` 路径错误，导致画像记忆在最新真实直聊中继续被静默跳过。
+- 最新 `12:23` 的 `GOOGL` 深度研究样本说明，这条缺陷已经从“抽象目录不存在”进一步暴露为“具体画像文件仍按相对路径读取”：
+  - agent 先发现并调用 `company_portrait` 技能，随后却仍直接读取 `company_profiles/GOOGL/profile.md`，说明技能链路与真实画像落盘/读取位置没有打通。
+  - 这次故障没有停留在静默降级；它与 `local_read_file path="."`、`local_search_files ... UTF-8` 等搜索噪音叠加后，一起把整轮 `GOOGL` 研究请求拖进了 `已达最大迭代次数 8`。
 - 最新 `23:54` 的 `UNH` 新话题会话说明，这类画像路径错误不只存在于深度分析模板里；即使用户显式切换新话题，搜索阶段仍会先尝试读取 `company_profiles`，并与后续 `context_overflow_recovery` 叠加放大长链路降级。
 - `2026-04-18 12:15` 的同一 `UNH` 会话再次证明，这不是前一晚遗留的一次性失败；compact 后重试仍会先命中 `company_profiles` 不存在，再把新问题拖回统一 fallback。
 - `18:43` 的 Dell 会话与 `10:24` 的“微软分析”、`10:46` 的“ciena 是否值得买入”都已经证明：即便后续能继续产出最终答复，搜索阶段依然没有成功读取任何长期画像记忆。

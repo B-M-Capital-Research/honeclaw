@@ -6,6 +6,11 @@
 - **状态**: Fixing
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
+    - `session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`
+    - `2026-04-19T12:21:47.244074+08:00` 用户发送“我想系统研究一家公司，比如分析一下GOOGL，按基本面、护城河、估值、风险逐层拆解，长期结论自动沉淀为画像”
+    - `2026-04-19T12:23:13.805446+08:00` assistant 新增文本直接等于 `已达最大迭代次数 8`
+    - 这说明最新小时窗里，直聊深度研究请求仍会在 search 阶段耗尽迭代后直接把内部限制文本返回给用户，任务本身没有完成
+  - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
     - `2026-04-18T13:07:58.512803+08:00` 用户发送 A 股光模块产业链分析请求后，系统先在 `2026-04-18T13:08:29.713994+08:00` 返回通用失败文案“抱歉，这次处理失败了。请稍后再试。”
     - 同一会话用户于 `2026-04-18T13:11:49.076992+08:00` 原样重试后，`2026-04-18T13:12:16.578659+08:00` 新增 assistant 文本直接等于 `已达最大迭代次数 8`
@@ -31,6 +36,11 @@
     - `response_preview=已达最大迭代次数 8`，`error_message=集成错误: Feishu send message failed: HTTP 400 Bad Request`
     - 说明最新小时窗里 search 触顶后的失败收口虽然不再伪装成 `sent/delivered=1`，但真实会话仍无 assistant 落库，失败提示也没有稳定送达
   - 最近一小时运行日志：`data/runtime/logs/web.log`
+    - `2026-04-19 12:22:02.702` 到 `12:23:13.802`，`session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185` 先后执行 `data_fetch financials GOOGL`、两次 `local_list_files path="."`、`local_read_file path="."`、`discover_skills query="company profile portrait save write GOOGL"`、`skill_tool company_portrait`、`local_read_file path="company_profiles/GOOGL/profile.md"`、`local_search_files query="company_profiles" path="."`
+    - 同轮日志同时记录 `工具执行错误: 请提供具体文件路径`、`文件不存在: company_profiles/GOOGL/profile.md`、`IO 错误: stream did not contain valid UTF-8`
+    - `2026-04-19 12:23:13.802` 记录 `stage=search.done success=false iterations=8 tool_calls=6 live_search_tool=true`
+    - `2026-04-19 12:23:13.805` `ERROR [MsgFlow/feishu] failed ... error="已达最大迭代次数 8"`
+    - `2026-04-19 12:23:13.805` 同时记录 `step=handler.session_run ... completed success=false reply_chars=0`，说明本轮仍没有形成正常用户态正文，只把内部错误文本写进会话
     - `2026-04-18 13:11:49.161` `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 再次进入 `runner.stage=multi_agent.search.start`
     - `2026-04-18 13:11:58.809` 到 `13:12:16.573` 之间，search 阶段连续完成 `data_fetch snapshot 中际旭创` 与 7 次 `data_fetch quote`，包括 `300308.SZ`、`300502.SZ`、`688521.SZ`、`688498.SH`、`002463.SZ`、`300476.SZ`
     - `2026-04-18 13:12:16.573` 记录 `stage=search.done success=false iterations=8 tool_calls=8 live_search_tool=true`
@@ -122,3 +132,6 @@
   - `web.log` 显示同一会话在 8 次 `data_fetch` 后再次以 `error="已达最大迭代次数 8"` 终止。
   - `data/sessions.sqlite3` 中同一 `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 这次新增了 assistant 文本 `已达最大迭代次数 8`，说明下游收口已从“静默失败”漂移成“内部错误直接外泄”。
   - 因此本单继续保持 `Fixing`：核心问题依旧是 search 触顶后没有稳定、产品化的用户态收口，只是坏态从“完全无回复”扩展成“无回复 / 原始错误外泄”两种分支。
+- `2026-04-19 12:23` 的最新 `GOOGL` 深度研究样本说明，这个坏态仍在活跃复现，而且上游失控形态进一步扩大：
+  - 本轮不再只是高频 `data_fetch`，而是把 `local_list_files path="."`、`local_read_file path="."`、`discover_skills`、`skill_tool company_portrait` 与错误的 `company_profiles/GOOGL/profile.md` 路径访问混进同一 search 回合。
+  - search 阶段在只完成 6 次工具调用的情况下仍触顶为 `iterations=8`，随后继续把 `已达最大迭代次数 8` 直接写成 assistant 文本；说明“内部错误外泄”不是一次性波动，而是当前生产直聊链路的持续坏态。
