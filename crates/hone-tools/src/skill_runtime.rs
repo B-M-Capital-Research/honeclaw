@@ -1233,18 +1233,18 @@ mod tests {
         let root = make_temp_dir("hone_skill_runtime_aliases");
         let system = root.join("system");
         let custom = root.join("custom");
-        fs::create_dir_all(system.join("one_sentence_memory")).expect("skill dir");
+        fs::create_dir_all(system.join("stock_research")).expect("skill dir");
         fs::create_dir_all(&custom).expect("custom dir");
 
         fs::write(
-            system.join("one_sentence_memory/SKILL.md"),
+            system.join("stock_research/SKILL.md"),
             concat!(
                 "---\n",
-                "name: One-sentence Memory\n",
+                "name: Stock Research\n",
                 "description: alias resolution\n",
                 "aliases:\n",
-                "  - OWJY\n",
-                "  - memory write\n",
+                "  - OWGZ\n",
+                "  - valuation\n",
                 "---\n\n",
                 "body"
             ),
@@ -1252,18 +1252,18 @@ mod tests {
         .expect("write skill");
 
         let runtime = SkillRuntime::new(system, custom, root);
-        let alias = runtime.load_skill("OWJY", &[]).expect("alias load");
-        assert_eq!(alias.id, "one_sentence_memory");
+        let alias = runtime.load_skill("OWGZ", &[]).expect("alias load");
+        assert_eq!(alias.id, "stock_research");
 
         let display = runtime
-            .load_skill("One-sentence Memory", &[])
+            .load_skill("Stock Research", &[])
             .expect("display load");
-        assert_eq!(display.id, "one_sentence_memory");
+        assert_eq!(display.id, "stock_research");
 
         let direct = runtime
-            .resolve_user_invocable_direct("/OWJY")
+            .resolve_user_invocable_direct("/OWGZ")
             .expect("direct alias");
-        assert_eq!(direct.id, "one_sentence_memory");
+        assert_eq!(direct.id, "stock_research");
     }
 
     #[test]

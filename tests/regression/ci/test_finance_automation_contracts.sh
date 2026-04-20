@@ -41,14 +41,11 @@ contains() {
 DATA_FETCH="crates/hone-tools/src/data_fetch.rs"
 PROMPT_FILE="crates/hone-channels/src/prompt.rs"
 STOCK_RESEARCH="skills/stock_research/SKILL.md"
-STOCK_SELECTION="skills/stock_selection/SKILL.md"
 POSITION_ADVICE="skills/position_advice/SKILL.md"
-VALUATION="skills/valuation/SKILL.md"
-MAJOR_ALERT="skills/major_alert/SKILL.md"
 SCHEDULED_TASK="skills/scheduled_task/SKILL.md"
 GOLD_ANALYSIS="skills/gold-analysis/SKILL.md"
 
-echo "[finance-automation-contracts] fixed sample count: 9"
+echo "[finance-automation-contracts] fixed sample count: 8"
 
 if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_RESEARCH"; then
   record success "1.stock_research->snapshot" "tool enum and skill contract are aligned"
@@ -56,16 +53,16 @@ else
   record fail "1.stock_research->snapshot" "skill references snapshot but tool contract is incomplete"
 fi
 
-if contains '"snapshot".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="snapshot"' "$STOCK_SELECTION"; then
-  record success "2.stock_selection->snapshot" "tool enum and skill contract are aligned"
+if contains '"financials".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="financials"' "$STOCK_RESEARCH" && contains 'OWGZ' "$STOCK_RESEARCH"; then
+  record success "2.stock_research->valuation-mode" "canonical stock research skill covers valuation mode"
 else
-  record fail "2.stock_selection->snapshot" "skill references snapshot but tool contract is incomplete"
+  record fail "2.stock_research->valuation-mode" "valuation mode is missing from canonical stock research"
 fi
 
-if contains 'data_fetch(data_type="earnings_calendar")' "$MAJOR_ALERT" && contains 'from=2024-01-01&to=2024-12-31' "$DATA_FETCH"; then
-  record fail "3.major_alert->earnings_calendar-window" "earnings calendar is still pinned to 2024"
+if contains '"gainers_losers".into()' "$DATA_FETCH" && contains 'data_fetch(data_type="gainers_losers")' "$STOCK_RESEARCH" && contains 'OWXG' "$STOCK_RESEARCH"; then
+  record success "3.stock_research->screening-mode" "canonical stock research skill covers screener mode"
 else
-  record success "3.major_alert->earnings_calendar-window" "earnings calendar is not pinned to the legacy 2024 window"
+  record fail "3.stock_research->screening-mode" "screening mode is missing from canonical stock research"
 fi
 
 if contains 'earnings_calendar' "$SCHEDULED_TASK" && contains 'from=2024-01-01&to=2024-12-31' "$DATA_FETCH"; then
@@ -86,16 +83,16 @@ else
   record success "6.position_advice-policy" "skill stays within the global finance policy"
 fi
 
-if contains 'Return a recommendation list' "$STOCK_SELECTION"; then
-  record fail "7.stock_selection-policy" "skill still asks for direct recommendation lists"
+if contains 'recommendation list' "$STOCK_RESEARCH" && ! contains 'Do not output a blunt recommendation list' "$STOCK_RESEARCH"; then
+  record fail "7.stock_research-policy" "canonical stock research still encourages direct recommendation lists"
 else
-  record success "7.stock_selection-policy" "skill avoids direct stock-picking language"
+  record success "7.stock_research-policy" "canonical stock research avoids direct stock-picking language"
 fi
 
-if contains 'overvalued, fair, or undervalued' "$VALUATION"; then
-  record review "8.valuation-conditionality" "valuation still uses categorical end states and should be reviewed in a later round"
+if contains 'overvalued, fair, or undervalued' "$STOCK_RESEARCH"; then
+  record review "8.stock_research-conditionality" "valuation mode still uses categorical end states and should be reviewed in a later round"
 else
-  record success "8.valuation-conditionality" "valuation wording is conditional instead of categorical"
+  record success "8.stock_research-conditionality" "valuation mode wording is conditional instead of categorical"
 fi
 
 if contains 'DEFAULT_FINANCE_DOMAIN_POLICY' "$PROMPT_FILE" && contains 'static_system.push_str(DEFAULT_FINANCE_DOMAIN_POLICY);' "$PROMPT_FILE"; then
