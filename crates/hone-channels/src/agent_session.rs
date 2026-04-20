@@ -716,7 +716,8 @@ impl AgentSession {
         options: &AgentRunOptions,
         restore_max_override: Option<usize>,
     ) -> Result<PreparedExecution, (AgentSessionErrorKind, String)> {
-        let context = self.restore_runtime_context(session_id, persisted_user_input, restore_max_override);
+        let context =
+            self.restore_runtime_context(session_id, persisted_user_input, restore_max_override);
         let (system_prompt, runtime_input) =
             self.resolve_prompt_input(session_id, runtime_user_input);
         ExecutionService::new(self.core.clone())

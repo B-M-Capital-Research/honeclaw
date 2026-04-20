@@ -13,7 +13,9 @@ use crate::execution::{
 };
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
-use crate::runtime::{is_context_overflow_error, sanitize_user_visible_output, user_visible_error_message};
+use crate::runtime::{
+    is_context_overflow_error, sanitize_user_visible_output, user_visible_error_message,
+};
 use crate::{AgentSession, HoneBotCore};
 
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
@@ -761,8 +763,7 @@ mod tests {
 
     #[test]
     fn heartbeat_think_plus_empty_json_is_noop() {
-        let (outcome, parse_kind) =
-            inspect_heartbeat_result("<think>reasoning</think>\n\n{}");
+        let (outcome, parse_kind) = inspect_heartbeat_result("<think>reasoning</think>\n\n{}");
         assert_eq!(parse_kind, HeartbeatParseKind::JsonEmptyStatus);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
     }

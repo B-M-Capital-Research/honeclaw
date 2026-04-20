@@ -209,9 +209,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                     let msg = err.to_string();
                     let hone_err = hone_core::HoneError::Llm(msg.clone());
                     if attempt == 0 && is_retryable_transport_error(&msg) {
-                        tracing::warn!(
-                            "[openai_compatible] chat transport error, retrying: {msg}"
-                        );
+                        tracing::warn!("[openai_compatible] chat transport error, retrying: {msg}");
                         last_err = Some(hone_err);
                     } else {
                         return Err(hone_err);

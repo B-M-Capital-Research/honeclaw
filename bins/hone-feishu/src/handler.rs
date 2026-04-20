@@ -142,25 +142,20 @@ impl EventHandler for FeishuEventHandler {
 
 const RESTART_RECOVERY_WINDOW_MINUTES: i64 = 30;
 const RESTART_RECOVERY_GRACE_SECONDS: i64 = 30;
-const RESTART_RECOVERY_TEXT: &str =
-    "服务重启，之前的消息处理已中断，请稍后重试。";
+const RESTART_RECOVERY_TEXT: &str = "服务重启，之前的消息处理已中断，请稍后重试。";
 
-async fn recover_interrupted_sessions(
-    core: &hone_channels::HoneBotCore,
-    facade: &FeishuApiClient,
-) {
+async fn recover_interrupted_sessions(core: &hone_channels::HoneBotCore, facade: &FeishuApiClient) {
     let now = chrono::Utc::now();
-    let updated_after = (now
-        - chrono::TimeDelta::minutes(RESTART_RECOVERY_WINDOW_MINUTES))
-    .to_rfc3339();
-    let updated_before = (now
-        - chrono::TimeDelta::seconds(RESTART_RECOVERY_GRACE_SECONDS))
-    .to_rfc3339();
+    let updated_after =
+        (now - chrono::TimeDelta::minutes(RESTART_RECOVERY_WINDOW_MINUTES)).to_rfc3339();
+    let updated_before =
+        (now - chrono::TimeDelta::seconds(RESTART_RECOVERY_GRACE_SECONDS)).to_rfc3339();
 
-    let interrupted = match core
-        .session_storage
-        .find_interrupted_sessions("feishu", &updated_after, &updated_before)
-    {
+    let interrupted = match core.session_storage.find_interrupted_sessions(
+        "feishu",
+        &updated_after,
+        &updated_before,
+    ) {
         Ok(list) => list,
         Err(err) => {
             warn!("[Feishu] 启动恢复：查询中断会话失败: {err}");
