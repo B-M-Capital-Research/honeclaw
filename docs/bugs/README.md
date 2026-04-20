@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-20 18:18 CST
+最后更新：2026-04-20 19:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -40,10 +40,10 @@
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | New | 2026-04-19 12:02 `每日公司资讯与分析总结` 已执行 15 次 `data_fetch` 并完成一次 `context_overflow_recovery`，但重试后仍失败；调度台账记为 `execution_failed + sent`，真实会话未见本轮正常 assistant 正文 | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Feishu 直聊自动 compact 后仍无法稳定完成新话题回答，同一旧会话会在成功与 fallback 间抖动 | P2 | New | 2026-04-18 22:58 同一会话先后答出 `CAI/TEM`、`CRWV/NBIS`，但切到 `Google` 财报预判后又在 compact 重试后回落成统一 fallback | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixing | 2026-04-18 当前工作区已出现 provider 级重试补丁与测试草案，但修复尚未以已提交代码进入仓库主线，也未完成最新真实样本复核 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-20 17:30 与 18:00 失败对象继续在 `RKLB/TEM大事件` 和 `小米破位/Watchlist` 间漂移；恢复为 `noop` 的任务仍普遍以 `<think>...JSON` 侥幸收口 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | New | 2026-04-20 17:30 与 18:00 仍连续 `completed + sent`；同一 `BlueBird 7` 旧事故被重复包装成新提醒，措辞从“上天失败”继续漂移到“发射异常” | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-20 08:31 与 09:01 `ASTS 重大异动心跳监控` 连续两轮重报同一 `BlueBird 7` 事件；`TEM大事件心跳监控` 也从 `noop` 回摆成同一 `AACR/Gilead/Predicta` 组合事实的重复提醒 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 06:01 `ASTS 重大异动心跳监控` 从前两轮 `completed + sent` 直接退化成 `execution_failed + skipped_error`，且没有任何用户态降级提醒 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-20 18:00 与 19:00 失败对象继续在 `小米破位/Watchlist` 和 `RKLB` 间漂移；恢复为 `noop` 的任务仍只是模板间侥幸回摆 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | New | 2026-04-20 17:30、18:00、19:00 连续 `completed + sent`；同一 `BlueBird 7` 旧事故被改写成“上天失败/发射异常/发射失败”三种既成事实口径 | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-20 18:00 与 19:00 `ASTS 重大异动心跳监控` 继续重报同一 `BlueBird 7` 旧事件；两轮之间没有新的轨道修正、公告或价格阈值变化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 18:00 `全天原油价格3小时播报` 再次落成 `execution_failed + skipped_error`；前后窗口都只是 `noop`，用户侧无法区分未触发还是本轮根本没跑完 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | New | 2026-04-18 10:31 的 `TEM大事件心跳监控` 已送达成功，但 `response_preview` 与 `deliver_preview` 都直接等于 `{\"trigger\":...}`；11:01 同任务又恢复自然语言 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后缺少自动重试与降级，提醒整轮失败 | P2 | Fixing | 2026-04-19 01:02 `TEM破位预警` 最新真实窗口再次落成 `execution_failed + skipped_error`；仓库主线仍无法证明该类传输失败已被吸震 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | New | 2026-04-16 20:01-20:31 最新窗口中 `RKLB_动态监控` 连续两轮超窗，`TEM_动态监控` 同轮失败后 30 分钟内又恢复，抖动仍在持续 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |

@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-20 18:00-19:00 最近一小时最新样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=3547`，`executed_at=2026-04-20T18:00:24.824813+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `run_id=3568`，`executed_at=2026-04-20T19:00:33.405895+08:00`，仅过约 1 小时又再次 `completed + sent + delivered=1`
+      - 两条 `response_preview` 都继续围绕同一 `BlueBird 7` 低于计划轨道旧事件展开，没有新的轨道修正、价格阈值跨越或新的独立公告
+      - 这说明最近一小时里，ASTS 旧事件仍会在相邻轮询窗口里被再次当成新的 `triggered` 结果送达
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-20 18:00` 与 `19:00` 对应 ASTS heartbeat 都再次成功送达，正文继续围绕同一 `BlueBird 7` 低轨事件，只是把措辞从“发射异常”改写成“发射失败”，没有新增独立事件源
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-20 08:31-09:01 最近一小时最新样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=3345`，`executed_at=2026-04-20T08:31:17.547421+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
@@ -191,6 +200,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 18:00 -> 19:00` 的最新窗口，`ASTS 重大异动心跳监控` 仍在继续把同一 `BlueBird 7` 低轨旧事件当成新提醒送达；两轮之间没有新的轨道修正、官方新增公告或价格阈值跨越，只是把文案从“发射异常”继续改写成“发射失败”。
 - 到 `2026-04-20 08:31 -> 09:01` 的最新窗口，这条缺陷仍在活跃：
   - `ASTS` 在 `08:31` 与 `09:01` 连续两轮都再次围绕同一 `BlueBird 7` 低轨事件送达
   - `TEM` 在 `08:31` 先被压成 `noop`，`09:01` 又围绕同一 `AACR 2026 + Gilead/Predicta` 组合事实回摆成 `triggered + sent`

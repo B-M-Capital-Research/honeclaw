@@ -6,6 +6,20 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 18:00-19:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 18:00:05 -> 19:00:21` 继续表现为“上一轮一组模板失败，下一轮又换模板继续跌回 unknown status”的活跃漂移态：
+      - `run_id=3542`（`小米破位预警`，`executed_at=2026-04-20T18:00:09.347187+08:00`）在 `18:00` 窗口落成 `execution_failed + skipped_error`
+      - 同一 `18:00` 批次里，`run_id=3545`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T18:00:23.355421+08:00`）也落成 `execution_failed + skipped_error`
+      - 到下一轮 `19:00`，`run_id=3566`（`RKLB异动监控`，`executed_at=2026-04-20T19:00:21.502812+08:00`）又回落成 `execution_failed + skipped_error`
+      - 同一 `19:00` 批次里，`run_id=3560/3561/3562/3563/3564/3565/3567`（`全天原油价格3小时播报`、`小米30港元破位预警`、`CAI破位预警`、`TEM破位预警`、`TEM大事件心跳监控`、`小米破位预警`、`ORCL 大事件监控`）又暂时回到 `noop + skipped_noop`
+      - 这说明截至 `19:00`，失败对象仍在 `小米/Watchlist -> RKLB` 间继续漂移，并没有收敛到某一个固定坏模板
+  - 对应 `data/sessions.sqlite3` -> `cron_job_runs.detail_json` 与 `data/runtime/logs/sidecar.log`：
+    - `run_id=3542` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 已明确写出 “The data fetch is returning empty results... should return a noop status.”，最终却仍只返回 `{}` 并触发失败升级
+    - `run_id=3545` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 继续逐项比较 11 只标的的触发价后失败收口
+    - `run_id=3566` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 继续围绕 `RKLB` 当日涨跌幅、新闻与并购条件展开分析，最终仍未稳定收口到合法状态 JSON
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-20 18:00:09.346`、`18:00:23.354` 与 `19:00:21.502` 分别明确记录 `job=小米破位预警`、`job=Monitor_Watchlist_11`、`job=RKLB异动监控` 的 `parse_kind=JsonUnknownStatus ... parse failure escalated`
+    - 同一 `19:00` 窗口里，其它恢复为 `noop` 的 heartbeat 任务依旧说明这不是调度器整体停摆，而是结构化状态契约仍在不同模板间轮流失守
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 17:30-18:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 17:30:07 -> 18:00:32` 继续表现为“上一轮一个模板恢复，下一轮另一组模板重新跌回 unknown status”的活跃漂移态：
       - `run_id=3534`（`RKLB异动监控`，`executed_at=2026-04-20T17:30:19.505223+08:00`）在 `17:30` 窗口落成 `execution_failed + skipped_error`

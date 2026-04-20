@@ -6,6 +6,18 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=3548`，`job_id=j_38745baf`，`job_name=全天原油价格3小时播报`，`executed_at=2026-04-20T18:00:32.340199+08:00`
+    - 本轮再次落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`delivered=0`
+    - `error_message=已达最大迭代次数 6`
+    - 对比同任务前后窗口：
+      - `run_id=3530`，`executed_at=2026-04-20T17:30:07.907846+08:00`，仍是 `noop + skipped_noop`
+      - `run_id=3549`，`executed_at=2026-04-20T18:30:07.814055+08:00`，又恢复为 `noop + skipped_noop`
+      - 这说明最新真实窗口里，heartbeat 不是一直稳定失败，而是会在正常 `noop` 与 `已达最大迭代次数 6` 的执行失败之间抖动；用户无法从行为上区分“本轮没触发”还是“本轮根本没跑完”
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-20 18:00` 同批 heartbeat 已启动；`cron_job_runs` 最终把 `全天原油价格3小时播报` 记成 `execution_failed + skipped_error`
+    - 同一半小时窗口里其它任务既有 `noop + skipped_noop`，也有 `JsonUnknownStatus + execution_failed`，说明这不是整批 scheduler 宕掉，而是原油 heartbeat 本轮单独撞到 `max_iterations=6`
+    - 最新样本再次证明：一旦 heartbeat 在推理阶段触顶，当前链路仍然只会静默跳过，不会给用户态任何失败说明或降级提醒
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=3291`，`job_id=j_fc7749ca`，`job_name=ASTS 重大异动心跳监控`，`executed_at=2026-04-20T06:01:44.164566+08:00`
     - 本轮落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`delivered=0`
     - `error_message=已达最大迭代次数 6`
@@ -44,6 +56,7 @@
 
 ## 当前实现效果
 
+- `2026-04-20 18:00` 的 `全天原油价格3小时播报` 再次把这条缺陷带回最近一小时真实窗口：前一轮 `17:30` 还是正常 `noop`，`18:00` 直接退化成 `已达最大迭代次数 6 + skipped_error`，到 `18:30` 又回到 `noop`。这说明 heartbeat 触顶失败仍在生产活跃，只是故障对象从早晨的 `ASTS` 再次漂移回历史老问题任务 `原油播报`。
 - `ASTS 重大异动心跳监控` 在 `05:01`、`05:31` 两轮还会重复送达同一 `BlueBird 7` 旧事件，但到 `06:01` 已经直接退化成 `已达最大迭代次数 6` 的执行失败。
 - 最新这轮失败没有像 `JsonUnknownStatus` 那样留下 `parse_kind`、`raw_preview` 或 `deliver_preview`，`detail_json` 只剩 `heartbeat_model`，说明 heartbeat 迭代耗尽时当前台账几乎没有可用于快速定位的执行细节。
 - 历史上 `全天原油价格3小时播报` 已至少两次出现同样的 `已达最大迭代次数 6 + skipped_error`，证明 heartbeat 链路早就存在“达到上限后直接静默失败”的公共缺口。
@@ -57,6 +70,7 @@
 
 ## 根因判断
 
+- `2026-04-20 18:00` 的 `全天原油价格3小时播报` 新样本说明，这个根因并不依赖 ASTS 那种“旧事件反复消费”的复杂上下文；即使是时间型 heartbeat，也仍可能在本轮推理中直接撞到 `max_iterations=6` 后静默失败。
 - heartbeat/function-calling 链路缺少对 `max_iterations` 触顶的专门恢复与降级处理，高概率仍沿用“直接失败并跳过发送”的默认分支。
 - 从 ASTS 最新样本看，同一旧事件已经先触发“跨窗口重复送达”，随后又拖到 `已达最大迭代次数 6`，说明链路既缺少增量判断，也缺少预算控制，最终把本可快速收口的 heartbeat 任务拖成失败。
 - 该问题与 `JsonUnknownStatus` 不是同一根因：本轮没有结构化解析失败日志，而是 runner 在更早阶段就直接耗尽迭代并退出。

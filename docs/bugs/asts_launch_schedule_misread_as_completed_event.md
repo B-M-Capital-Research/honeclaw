@@ -7,6 +7,17 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3538`，`executed_at=2026-04-20T17:30:26.321745+08:00`，继续落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3547`，`executed_at=2026-04-20T18:00:24.824813+08:00`，仅隔约 30 分钟再次 `completed + sent + delivered=1`
+    - `run_id=3568`，`executed_at=2026-04-20T19:00:33.405895+08:00`，又隔约 1 小时继续 `completed + sent + delivered=1`
+    - 三轮 `response_preview` 都围绕同一 `BlueBird 7` 低于计划轨道旧事件展开，但措辞继续在“上天失败”“发射异常”“发射失败”之间漂移，没有新的轨道修正、处置结果或新的交易时间锚点
+    - 这说明截至 `19:00`，问题已不只是“旧事件重复提醒”，而是同一旧事实仍会被不断改写成更像已完成事故结论的用户态提醒
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-20 17:30:26.320`、`18:00:21.890` 对应 `HeartbeatDiag deliver` 继续把同一 `BlueBird 7` 低轨事件出站为新的 triggered 提醒
+    - `cron_job_runs.run_id=3568` 的 `response_preview` 又进一步写成 “BlueBird 7 卫星发射失败”，同时声称“官方已发布公告确认此事件”，但仍没有新的价格时点或新增独立事件窗口
+    - 最新窗口说明链路仍没有稳定的事件状态基线；同一旧事件会在后续轮询里被重新包装成不同严重口径的既成事实
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
     - `run_id=3538`，`executed_at=2026-04-20T17:30:26.321745+08:00`，在最近一小时最新窗口里继续落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
     - `run_id=3547`，`executed_at=2026-04-20T18:00:24.824813+08:00`，仅隔约 30 分钟又再次 `completed + sent + delivered=1`
     - 两轮 `response_preview` 都继续围绕同一 `BlueBird 7` 低于计划轨道旧事件展开；`17:30` 这轮直接写成“重大基本面积压事件（BlueBird 卫星上天失败）”，`18:00` 又写成“BlueBird 7发射异常——New Glenn 3火箭将BlueBird 7卫星部署至低于计划的轨道”
@@ -211,6 +222,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 17:30 -> 19:00` 的最近一小时最新窗口，ASTS heartbeat 连续三轮都继续把同一 `BlueBird 7` 低轨旧事件送达给用户，且措辞从“上天失败”漂移到“发射异常”，再到 `19:00` 的“发射失败”；这说明链路仍在把同一旧事实不断包装成新的既成事故结论，而不是稳定维持一个已知事件状态。
 - 到 `2026-04-20 13:30 -> 14:00` 的最近一小时最新窗口，ASTS heartbeat 先把 `BlueBird 7` 写成“被部署至低于计划轨道”，随后又在没有新价格时间戳或新交易时段的前提下升级成“AST 官方确认将进行离轨处理，卫星已报废”；但两轮都继续沿用同一组停牌前 `ASTS $85.53 / -5.95%` 快照，说明链路仍在把旧价格包装成事件后的实时背景，同时让事故结论越写越重。
 - 到 `2026-04-20 11:30 -> 12:30 -> 13:00` 的最新三轮窗口，ASTS heartbeat 先把同一 `BlueBird 7` 事件写成“已成功发射至 LEO”，随后又改口成“重大发射事故应触发提醒”，再回退为 `noop`；但三轮都继续沿用同一组停牌前 `ASTS $85.53 / -5.95%` 快照做判断，说明事件事实状态与价格时间口径都还在持续抖动。
 - 到 `2026-04-20 11:00` 的最新窗口，ASTS heartbeat 仍继续把同一 `BlueBird 7` 低轨事故与停牌前 `ASTS $85.53 / -5.95%` 价格打包成新一轮“重大异动提醒”；这说明即使事件表述从“发射升空”切到“发射事故”，价格时间口径错误仍未收口。
