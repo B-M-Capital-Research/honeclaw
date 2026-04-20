@@ -2692,7 +2692,7 @@ dependencies = [
 
 [[package]]
 name = "hone-agent"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "futures",
@@ -2709,7 +2709,7 @@ dependencies = [
 
 [[package]]
 name = "hone-agent-codex-cli"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "hone-core",
@@ -2724,7 +2724,7 @@ dependencies = [
 
 [[package]]
 name = "hone-agent-gemini-cli"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "hone-core",
@@ -2739,7 +2739,7 @@ dependencies = [
 
 [[package]]
 name = "hone-channels"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2772,7 +2772,7 @@ dependencies = [
 
 [[package]]
 name = "hone-cli"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "clap",
@@ -2794,7 +2794,7 @@ dependencies = [
 
 [[package]]
 name = "hone-console-page"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "hone-core",
  "hone-web-api",
@@ -2804,7 +2804,7 @@ dependencies = [
 
 [[package]]
 name = "hone-core"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2824,7 +2824,7 @@ dependencies = [
 
 [[package]]
 name = "hone-desktop"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "chrono",
  "hone-core",
@@ -2842,7 +2842,7 @@ dependencies = [
 
 [[package]]
 name = "hone-discord"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2863,7 +2863,7 @@ dependencies = [
 
 [[package]]
 name = "hone-feishu"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "axum",
@@ -2888,7 +2888,7 @@ dependencies = [
 
 [[package]]
 name = "hone-imessage"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "axum",
@@ -2911,7 +2911,7 @@ dependencies = [
 
 [[package]]
 name = "hone-integrations"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-openai",
  "base64 0.22.1",
@@ -2933,7 +2933,7 @@ dependencies = [
 
 [[package]]
 name = "hone-llm"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-openai",
  "async-trait",
@@ -2949,7 +2949,7 @@ dependencies = [
 
 [[package]]
 name = "hone-mcp"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "hone-channels",
  "hone-core",
@@ -2960,7 +2960,7 @@ dependencies = [
 
 [[package]]
 name = "hone-memory"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "chrono",
  "hone-core",
@@ -2977,7 +2977,7 @@ dependencies = [
 
 [[package]]
 name = "hone-scheduler"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "chrono",
  "hone-agent",
@@ -2994,7 +2994,7 @@ dependencies = [
 
 [[package]]
 name = "hone-telegram"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3010,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "hone-tools"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3030,7 +3030,7 @@ dependencies = [
 
 [[package]]
 name = "hone-web-api"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "async-trait",
  "axum",
