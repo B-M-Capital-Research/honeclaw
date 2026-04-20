@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 00:01-01:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-21 00:01:22 -> 01:01:19` 继续表现为“上一轮失败对象漂移、下一轮又暂时自愈回 noop”的活跃抖动态：
+      - `run_id=3682`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T00:01:22.323902+08:00`）在 `00:01` 窗口落成 `execution_failed + skipped_error`
+      - 到 `00:31` 窗口，失败对象又漂移成 `run_id=3695`（`RKLB异动监控`，`executed_at=2026-04-21T00:31:12.955867+08:00`）与 `run_id=3698`（`小米破位预警`，`executed_at=2026-04-21T00:31:18.833997+08:00`），分别落成 `execution_failed + skipped_error`
+      - 仅过 30 分钟，到 `01:01` 窗口，前一轮失败的 `RKLB异动监控` 与 `小米破位预警` 又分别变成 `run_id=3706/3703` 的 `noop + skipped_noop`
+      - 同一 `01:01` 批次里，`run_id=3708/3707/3705/3702/3701/3700/3699`（`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ORCL 大事件监控`、`小米30港元破位预警`、`CAI破位预警`、`TEM破位预警`、`全天原油价格3小时播报`）也统一恢复为 `noop + skipped_noop`
+      - 这说明根因并未收敛成“固定坏任务”，而是继续在 `Watchlist -> RKLB/小米 -> 全批次短暂恢复` 之间抖动；用户无法判断某一轮是链路恢复还是仅靠脆弱解析侥幸过关
+  - 对应 `data/runtime/logs/sidecar.log`：
+    - `2026-04-21 00:01:22.323` 的 `Monitor_Watchlist_11` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 逐项比较 11 只标的触发价后仍未收口成合法状态 JSON
+    - `2026-04-21 00:31:12.955` 的 `RKLB异动监控` 再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 明确写出“没有重大并购/Neutron 进度/订单或发射失败，应返回 noop”，最终仍被升级为失败
+    - `2026-04-21 00:31:18.832` 的 `小米破位预警` 同样记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已完成“当前价 32.32 港元，高于 30 港元，应该 noop”的判断后仍失败
+    - 但到 `2026-04-21 01:01:07-01:01:19`，同批 heartbeat 任务又统一表现为 `starts_with_json=false + parse_kind=JsonNoop`
+    - 这说明最新窗口并不是“结构化协议恢复为纯 JSON”，而是同一批任务仍在输出 `<think> ... {"status":"noop"}` 的受污染自由文本，只是本轮调度器恰好又能从尾部提取到合法状态
   - 2026-04-20 20:30-21:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 20:30:08 -> 21:00:25` 再次表现为“上一轮侥幸恢复为 noop，下一轮又换模板重新跌回 unknown status”的活跃漂移态：
       - `run_id=3595`（`小米30港元破位预警`，`executed_at=2026-04-20T20:30:08.801396+08:00`）在 `20:30` 窗口落成 `execution_failed + skipped_error`
@@ -887,6 +900,9 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-21 00:01 -> 01:01` 的最新窗口，这条缺陷仍然是活跃抖动态，而不是已经收敛或修复：`Monitor_Watchlist_11` 在 `00:01` 失败，`RKLB异动监控` 与 `小米破位预警` 在 `00:31` 再次失败，但到 `01:01` 同批任务又暂时恢复成 `noop + skipped_noop`。
+- 这种“下一轮自愈”并不表示问题关闭，因为 `sidecar.log` 显示 `01:01` 窗口里的 `noop` 任务依旧统一满足 `starts_with_json=false`，即输出仍是 `<think> ... {"status":"noop"}` 的污染文本，只是调度器本轮又侥幸解析成功。
+- 对用户侧而言，影响仍然是同一批 heartbeat 任务会在相邻轮次里在“静默跳过失败”和“看似正常 noop”之间来回摆动，无法建立稳定预期。
 - 到 `2026-04-20 13:30 -> 14:00` 的最近一小时最新窗口，`TEM大事件心跳监控` 又从上一轮 `JsonNoop` 回落成 `JsonUnknownStatus`，而同批 `Monitor_Watchlist_11`、`ORCL 大事件监控` 又恢复为 `noop`；说明故障仍在不同 heartbeat 模板之间持续漂移，而不是某一个固定任务永久损坏。
 - 到 `2026-04-20 12:30 -> 13:00` 的最新窗口，heartbeat 失败对象继续在 `RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 之间漂移：`RKLB` 在 `12:30` 失败、`13:00` 又自恢复，但 `Monitor_Watchlist_11` 与 `ORCL` 同批重新跌回 `execution_failed + skipped_error`，说明公共结构化状态契约仍未收口。
 - 到 `2026-04-20 07:31 -> 08:01` 的最新窗口，heartbeat 仍在“整批暂时恢复为 `noop`”与“`ORCL / Monitor_Watchlist_11 / RKLB异动监控` 集体回落成 `unknown status`”之间来回摆动；同时其余 `noop` 任务依旧统一依赖 `<think>...JSON` 尾部提取，说明结构化状态契约到 `08:01` 仍未恢复。
