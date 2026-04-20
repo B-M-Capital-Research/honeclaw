@@ -7,6 +7,14 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-20 15:36 最近一小时最新复现：
+   - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
+   - `2026-04-20T15:36:31.232945+08:00` 会话自动 compact 后，先写入 `system` 边界消息 `Conversation compacted`
+   - 紧接着 `2026-04-20T15:36:31.233259+08:00` 又再次写回 `role=user` 的 `【Compact Summary】...`
+   - 这条 summary 仍然不是系统态元数据，而是完整的股票关注表与结论文本，直接列出 `3042.HK / DRAM / BTC / 港股科技股` 等标的的“助手的观点 / 用户的观点”
+   - 同轮真实用户新问题是 `股價的上漲是由什麽推動的，資金量？`，随后 `2026-04-20T15:37:05.557727+08:00` assistant 给出 DRAM 驱动分析；一分钟后用户又追问 `成交量和换手率具體怎麽看`
+   - `data/runtime/logs/web.log` 同步记录 `2026-04-20 15:36:02.437` `Compressing session ... with 22 messages`、`15:36:31.239` `compacted to boundary + summary + 6 retained items`，随后 `15:37:05.564` `session.persist_assistant detail=done`
+   - 这说明到本轮巡检时，compact summary 仍会以真实 `user` transcript 身份插在新问题前进入 prompt，而不是只保存在内部 summary 字段；问题已从 11 点窗口继续延续到 15:36 的最新直聊样本
 - 2026-04-20 11:37 最近一小时最新复现：
    - `session_id=Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
    - `2026-04-20T11:37:42.915697+08:00` 会话自动 compact 后，再次写回 `role=user` 的 `【Compact Summary】...`

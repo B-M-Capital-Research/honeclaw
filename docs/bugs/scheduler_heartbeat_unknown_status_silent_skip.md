@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 15:30-16:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 15:30:25 -> 16:00:27` 再次表现为“上一轮刚出现多模板并发失败，下一轮仍未收敛到单一坏模板”的活跃坏态：
+      - `run_id=3497`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T15:30:25.301842+08:00`）在 `15:30` 窗口落成 `execution_failed + skipped_error`
+      - `run_id=3498`（`ORCL 大事件监控`，`executed_at=2026-04-20T15:30:37.787211+08:00`）同轮也落成 `execution_failed + skipped_error`
+      - 到下一轮 `16:00`，`run_id=3507`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T16:00:27.533012+08:00`）继续保持 `execution_failed + skipped_error`
+      - 但同一 `16:00` 批次里，`run_id=3504/3506/3508`（`RKLB异动监控`、`TEM大事件心跳监控`、`ORCL 大事件监控`）又暂时回到 `noop + skipped_noop`
+      - 这说明最新窗口里故障并没有退出活跃态，而是继续维持“复杂 watchlist 模板连续失败，事件监控模板在相邻轮次里来回回摆”的漂移形态
+  - 对应 `data/sessions.sqlite3` -> `cron_job_runs.detail_json` 与 `data/runtime/logs/sidecar.log`：
+    - `run_id=3497` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 以 `<think>\nLet me check each price against the trigger conditions:` 开头，逐项比较 11 只标的后仍未输出合法状态 JSON
+    - `run_id=3498` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 以 `<think>\nLet me analyze the data:` 开头，已经完成 ORCL 价格与事件判断，最终仍被升级为失败
+    - `run_id=3507` 的 `detail_json.parse_kind=JsonUnknownStatus`，且 `raw_preview` 直接换成中文 `<think>\n让我检查所有11只标的的当前价格与触发价：`，说明同一任务即使切换输出语言模板，也仍没有稳定回到纯 JSON 契约
+    - `data/runtime/logs/sidecar.log` 分别在 `2026-04-20 15:30:25.302`、`15:30:37.792`、`16:00:27.534` 记录 `parse failure escalated`，错误体都指向 `heartbeat 输出包含未知状态，任务已标记失败`
+    - 因此，README 中上一轮“14:00 失败、14:30/15:00 回摆”的摘要已经过时；最新一小时证据表明这条缺陷仍在 `15:30` 与 `16:00` 持续活跃
   - 2026-04-20 14:00-15:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 14:00:26 -> 15:00:26` 表现为“14:00 刚跌回 unknown status，后两轮又回到 noop，但协议仍未恢复”的症状回摆态：
       - `run_id=3466`（`TEM大事件心跳监控`，`executed_at=2026-04-20T14:00:26.180089+08:00`）在 `14:00` 窗口落成 `execution_failed + skipped_error`
