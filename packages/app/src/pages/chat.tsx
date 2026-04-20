@@ -10,6 +10,7 @@ import {
   Show,
   Switch,
 } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicNav } from "@/components/public-nav";
 import "./public-site.css";
@@ -21,44 +22,19 @@ import {
   publicLogout,
   sendPublicChat,
 } from "@/lib/api";
+import { parseMessageContent, messageId } from "@/lib/messages";
 import {
-  parseMessageContent,
-  historyToTimeline,
-  messageId,
-} from "@/lib/messages";
+  normalizeInviteCode,
+  normalizePhoneNumber,
+  resolvePublicChatView,
+  toPublicChatMessages,
+} from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
-
-type AuthState = "loading" | "logged_out" | "logging_in" | "ready";
-type AssistantPhase = "thinking" | "running" | "streaming" | "done" | "error";
-type PublicChatView = "loading" | "login" | "chat";
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  phase?: AssistantPhase;
-  statusText?: string;
-  startedAt?: number;
-  steps?: string[];
-};
-
-
-export function normalizeInviteCode(value: string) {
-  return value.replace(/\s+/g, "").trim().toUpperCase();
-}
-
-export function normalizePhoneNumber(value: string) {
-  const trimmed = value.trim();
-  const hasLeadingPlus = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D+/g, "");
-  return hasLeadingPlus ? `+${digits}` : digits;
-}
-
-export function resolvePublicChatView(authState: AuthState): PublicChatView {
-  if (authState === "ready") return "chat";
-  if (authState === "loading") return "loading";
-  return "login";
-}
+import type { PublicAuthUserInfo } from "@/lib/types";
+import type {
+  PublicChatAuthState as AuthState,
+  PublicChatMessage as ChatMessage,
+} from "@/lib/public-chat";
 
 function formatElapsed(startedAt?: number) {
   if (!startedAt) return "0s";
@@ -838,7 +814,7 @@ export default function PublicChatPage() {
   const [loginError, setLoginError] = createSignal("");
   const [inviteCode, setInviteCode] = createSignal("");
   const [phoneNumber, setPhoneNumber] = createSignal("");
-  const [messages, setMessages] = createSignal<ChatMessage[]>([]);
+  const [messages, setMessages] = createStore<ChatMessage[]>([]);
   const [draft, setDraft] = createSignal("");
   const [sendError, setSendError] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
@@ -852,6 +828,9 @@ export default function PublicChatPage() {
   let scrollRef: HTMLDivElement | undefined;
   let sessionSyncGeneration = 0;
 
+  const isAuthExpiredError = (error: unknown) =>
+    error instanceof Error && /401|未登录|过期/.test(error.message);
+
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
       if (!scrollRef) return;
@@ -859,41 +838,92 @@ export default function PublicChatPage() {
     });
   };
 
-  const syncSession = async () => {
+  const findMessageIndex = (id: string) =>
+    messages.findIndex((message) => message.id === id);
+
+  const clearMessages = () => {
+    setMessages(reconcile([], { key: "id" }));
+  };
+
+  const appendMessage = (message: ChatMessage) => {
+    setMessages(messages.length, message);
+  };
+
+  const appendMessages = (...nextMessages: ChatMessage[]) => {
+    const start = messages.length;
+    nextMessages.forEach((message, offset) => {
+      setMessages(start + offset, message);
+    });
+  };
+
+  const replaceHistoryMessages = (nextMessages: ChatMessage[]) => {
+    setMessages(reconcile(nextMessages, { key: "id" }));
+  };
+
+  const removeMessageById = (id: string) => {
+    setMessages(
+      reconcile(
+        messages.filter((message) => message.id !== id),
+        { key: "id" },
+      ),
+    );
+  };
+
+  const patchMessageAtIndex = (index: number, patch: Partial<ChatMessage>) => {
+    const current = messages[index];
+    if (!current) return;
+
+    if ("content" in patch && patch.content !== current.content) {
+      setMessages(index, "content", patch.content ?? "");
+    }
+    if ("phase" in patch && patch.phase !== current.phase) {
+      setMessages(index, "phase", patch.phase);
+    }
+    if ("statusText" in patch && patch.statusText !== current.statusText) {
+      setMessages(index, "statusText", patch.statusText);
+    }
+    if ("startedAt" in patch && patch.startedAt !== current.startedAt) {
+      setMessages(index, "startedAt", patch.startedAt);
+    }
+    if ("steps" in patch && patch.steps !== current.steps) {
+      setMessages(index, "steps", patch.steps);
+    }
+  };
+
+  const patchMessageById = (id: string, patch: Partial<ChatMessage>) => {
+    const index = findMessageIndex(id);
+    if (index < 0) return;
+    patchMessageAtIndex(index, patch);
+  };
+
+  const applySessionInfo = (user: PublicAuthUserInfo) => {
+    setSessionInfo({
+      userId: user.user_id,
+      remainingToday: user.remaining_today,
+      dailyLimit: user.daily_limit,
+    });
+    setAuthState("ready");
+    setLoginError("");
+  };
+
+  const restoreSession = async () => {
     const generation = ++sessionSyncGeneration;
     try {
       const user = await getPublicAuthMe();
       if (generation !== sessionSyncGeneration) return;
-      setSessionInfo({
-        userId: user.user_id,
-        remainingToday: user.remaining_today,
-        dailyLimit: user.daily_limit,
-      });
-      setAuthState("ready");
-      setLoginError("");
+      applySessionInfo(user);
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
-      const timeline = historyToTimeline(history)
-        .filter(
-          (message) => message.kind === "user" || message.kind === "assistant",
-        )
-        .map((message) => ({
-          id: message.id,
-          role: message.kind,
-          content: message.content,
-          phase: "done" as const,
-          steps: [],
-        }));
-      setMessages(timeline);
-      await connectPushEvents();
+      replaceHistoryMessages(toPublicChatMessages(history));
+      await ensurePushEvents();
       if (generation !== sessionSyncGeneration) return;
       scrollToBottom();
     } catch (error) {
       if (generation !== sessionSyncGeneration) return;
       setSessionInfo(null);
-      setMessages([]);
+      clearMessages();
       setAuthState("logged_out");
-      if (error instanceof Error && !/401|未登录|过期/.test(error.message)) {
+      if (error instanceof Error && !isAuthExpiredError(error)) {
         setLoginError(error.message);
       }
     }
@@ -901,53 +931,80 @@ export default function PublicChatPage() {
 
   const publicChatView = () => resolvePublicChatView(authState());
 
-  const connectPushEvents = async () => {
-    eventSource?.close();
-    eventSource = null;
+  const ensurePushEvents = async () => {
+    if (eventSource) return;
+    let nextEventSource: EventSource | null = null;
     try {
-      eventSource = await connectPublicEvents();
-      eventSource.addEventListener("scheduled_message", (event) => {
+      nextEventSource = await connectPublicEvents();
+      nextEventSource.addEventListener("scheduled_message", (event) => {
         const data = JSON.parse(event.data || "{}") as { text?: string };
         if (!data.text?.trim()) return;
-        setMessages((current) => [
-          ...current,
-          {
-            id: messageId(),
-            role: "assistant",
-            content: data.text ?? "",
-            phase: "done",
-            steps: [],
-          },
-        ]);
+        appendMessage({
+          id: messageId(),
+          role: "assistant",
+          content: data.text ?? "",
+          phase: "done",
+          steps: [],
+        });
         scrollToBottom();
       });
-      eventSource.addEventListener("push_message", (event) => {
+      nextEventSource.addEventListener("push_message", (event) => {
         const data = JSON.parse(event.data || "{}") as { text?: string };
         if (!data.text?.trim()) return;
-        setMessages((current) => [
-          ...current,
-          {
-            id: messageId(),
-            role: "assistant",
-            content: data.text ?? "",
-            phase: "done",
-            steps: [],
-          },
-        ]);
+        appendMessage({
+          id: messageId(),
+          role: "assistant",
+          content: data.text ?? "",
+          phase: "done",
+          steps: [],
+        });
         scrollToBottom();
       });
-      eventSource.onerror = () => {
-        eventSource?.close();
-        eventSource = null;
+      nextEventSource.onerror = () => {
+        nextEventSource?.close();
+        if (eventSource === nextEventSource) {
+          eventSource = null;
+        }
       };
+      eventSource = nextEventSource;
     } catch {
-      eventSource?.close();
-      eventSource = null;
+      nextEventSource?.close();
+      if (eventSource === nextEventSource) {
+        eventSource = null;
+      }
+    }
+  };
+
+  const refreshSessionAfterSend = async () => {
+    const generation = ++sessionSyncGeneration;
+    try {
+      const user = await getPublicAuthMe();
+      if (generation !== sessionSyncGeneration) return;
+      applySessionInfo(user);
+      const history = await getPublicHistory();
+      if (generation !== sessionSyncGeneration) return;
+      replaceHistoryMessages(toPublicChatMessages(history));
+      if (!eventSource) {
+        await ensurePushEvents();
+      }
+      if (generation !== sessionSyncGeneration) return;
+      scrollToBottom();
+    } catch (error) {
+      if (generation !== sessionSyncGeneration) return;
+      if (isAuthExpiredError(error)) {
+        setSessionInfo(null);
+        clearMessages();
+        setAuthState("logged_out");
+        return;
+      }
+      if (error instanceof Error) {
+        setSendError(error.message);
+      }
     }
   };
 
   onMount(() => {
-    void syncSession();
+    void restoreSession();
   });
 
   onCleanup(() => {
@@ -956,7 +1013,7 @@ export default function PublicChatPage() {
   });
 
   createEffect(() => {
-    messages().length;
+    messages.length;
     scrollToBottom();
   });
 
@@ -977,7 +1034,7 @@ export default function PublicChatPage() {
       });
       setInviteCode("");
       setPhoneNumber("");
-      await syncSession();
+      await restoreSession();
     } catch (error) {
       setAuthState("logged_out");
       setLoginError(error instanceof Error ? error.message : String(error));
@@ -990,7 +1047,7 @@ export default function PublicChatPage() {
     eventSource?.close();
     eventSource = null;
     await publicLogout();
-    setMessages([]);
+    clearMessages();
     setDraft("");
     setSendError("");
     setSessionInfo(null);
@@ -1000,17 +1057,11 @@ export default function PublicChatPage() {
   const appendAssistantStep = (messageIdValue: string, step: string) => {
     const normalized = step.trim();
     if (!normalized) return;
-    setMessages((current) =>
-      current.map((message) => {
-        if (message.id !== messageIdValue) return message;
-        const steps = message.steps ?? [];
-        if (steps.includes(normalized)) return message;
-        return {
-          ...message,
-          steps: [...steps, normalized],
-        };
-      }),
-    );
+    const index = findMessageIndex(messageIdValue);
+    if (index < 0) return;
+    const steps = messages[index]?.steps ?? [];
+    if (steps.includes(normalized)) return;
+    patchMessageAtIndex(index, { steps: [...steps, normalized] });
   };
 
   const handleSend = async () => {
@@ -1020,8 +1071,7 @@ export default function PublicChatPage() {
     setSendError("");
     setDraft("");
     setIsSending(true);
-    setMessages((current) => [
-      ...current,
+    appendMessages(
       { id: messageId(), role: "user", content: text },
       {
         id: assistantId,
@@ -1032,7 +1082,7 @@ export default function PublicChatPage() {
         startedAt: Date.now(),
         steps: [],
       },
-    ]);
+    );
     scrollToBottom();
 
     const controller = new AbortController();
@@ -1053,13 +1103,10 @@ export default function PublicChatPage() {
 
         for (const event of parsed.events) {
           if (event.event === "run_started") {
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? { ...message, phase: "thinking", statusText: "Hone 思考中" }
-                  : message,
-              ),
-            );
+            patchMessageById(assistantId, {
+              phase: "thinking",
+              statusText: "Hone 思考中",
+            });
           }
 
           if (event.event === "tool_call") {
@@ -1067,33 +1114,22 @@ export default function PublicChatPage() {
               (event.data.text ?? event.data.reasoning ?? "").trim() ||
               "处理中…";
             appendAssistantStep(assistantId, step);
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? {
-                      ...message,
-                      phase: "running",
-                      statusText: step || "处理中…",
-                    }
-                  : message,
-              ),
-            );
+            patchMessageById(assistantId, {
+              phase: "running",
+              statusText: step || "处理中…",
+            });
           }
 
           if (event.event === "assistant_delta") {
             const content = event.data.content ?? "";
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? {
-                      ...message,
-                      phase: "streaming",
-                      statusText: "整理正式回复",
-                      content: message.content + content,
-                    }
-                  : message,
-              ),
-            );
+            const index = findMessageIndex(assistantId);
+            if (index >= 0) {
+              patchMessageAtIndex(index, {
+                phase: "streaming",
+                statusText: "整理正式回复",
+                content: messages[index].content + content,
+              });
+            }
           }
 
           if (event.event === "run_error" || event.event === "error") {
@@ -1101,36 +1137,26 @@ export default function PublicChatPage() {
               event.event === "run_error"
                 ? (event.data.message ?? "处理失败，请重试")
                 : (event.data.text ?? "处理失败，请重试");
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? {
-                      ...message,
-                      phase: "error",
-                      statusText: messageText,
-                    }
-                  : message,
-              ),
-            );
+            patchMessageById(assistantId, {
+              phase: "error",
+              statusText: messageText,
+            });
           }
 
           if (event.event === "run_finished") {
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === assistantId
-                  ? {
-                      ...message,
-                      phase: event.data.success === false ? "error" : "done",
-                      statusText:
-                        event.data.success === false
-                          ? message.statusText || "处理失败，请重试"
-                          : message.content
-                            ? ""
-                            : "本轮没有返回正文",
-                    }
-                  : message,
-              ),
-            );
+            const index = findMessageIndex(assistantId);
+            if (index >= 0) {
+              const message = messages[index];
+              patchMessageAtIndex(index, {
+                phase: event.data.success === false ? "error" : "done",
+                statusText:
+                  event.data.success === false
+                    ? message.statusText || "处理失败，请重试"
+                    : message.content
+                      ? ""
+                      : "本轮没有返回正文",
+              });
+            }
           }
         }
       }
@@ -1142,17 +1168,14 @@ export default function PublicChatPage() {
             ? error.message
             : String(error);
       setSendError(messageText);
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantId
-            ? { ...message, phase: "error", statusText: messageText }
-            : message,
-        ),
-      );
+      patchMessageById(assistantId, {
+        phase: "error",
+        statusText: messageText,
+      });
     } finally {
       activeController = null;
       setIsSending(false);
-      void syncSession();
+      void refreshSessionAfterSend();
     }
   };
 
@@ -1253,7 +1276,7 @@ export default function PublicChatPage() {
             >
               <div style={{ "max-width": "760px", margin: "0 auto", padding: "0 24px" }}>
                 <Show
-                  when={messages().length > 0}
+                  when={messages.length > 0}
                   fallback={
                     <div
                       style={{
@@ -1301,7 +1324,7 @@ export default function PublicChatPage() {
                     </div>
                   }
                 >
-                  <For each={messages()}>
+                  <For each={messages}>
                     {(message) => (
                       <Show
                         when={message.role === "user"}
@@ -1316,9 +1339,7 @@ export default function PublicChatPage() {
                                 message={message}
                                 onStop={() => activeController?.abort()}
                                 onDismiss={() => {
-                                  setMessages((current) =>
-                                    current.filter((m) => m.id !== message.id),
-                                  );
+                                  removeMessageById(message.id);
                                 }}
                               />
                             }
