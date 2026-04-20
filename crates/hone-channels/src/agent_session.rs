@@ -144,6 +144,7 @@ impl Default for GeminiStreamOptions {
 const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
 const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
+const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
 const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
     "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
 const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
@@ -176,14 +177,7 @@ fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
 }
 
 fn is_context_overflow_error_text(text: &str) -> bool {
-    let normalized = text.trim().to_ascii_lowercase();
-    normalized.contains("context window exceeds limit")
-        || normalized.contains("context window overflow")
-        || normalized.contains("context_window_will_overflow")
-        || normalized.contains("context length exceeded")
-        || normalized.contains("maximum context length")
-        || normalized.contains("prompt is too long")
-        || normalized.contains("too many tokens")
+    crate::runtime::is_context_overflow_error(text)
 }
 
 fn should_persist_tool_result(call: &ToolCallMade) -> bool {
@@ -694,11 +688,13 @@ impl AgentSession {
         &self,
         session_id: &str,
         persisted_user_input: &str,
+        restore_max_override: Option<usize>,
     ) -> AgentContext {
+        let restore_limit = restore_max_override.or(self.restore_max_messages);
         let mut context = restore_context(
             &self.core.session_storage,
             session_id,
-            self.restore_max_messages,
+            restore_limit,
             Some(&self.build_skill_runtime()),
         );
         context.set_actor_identity(&self.actor);
@@ -718,8 +714,9 @@ impl AgentSession {
         persisted_user_input: &str,
         runtime_user_input: &str,
         options: &AgentRunOptions,
+        restore_max_override: Option<usize>,
     ) -> Result<PreparedExecution, (AgentSessionErrorKind, String)> {
-        let context = self.restore_runtime_context(session_id, persisted_user_input);
+        let context = self.restore_runtime_context(session_id, persisted_user_input, restore_max_override);
         let (system_prompt, runtime_input) =
             self.resolve_prompt_input(session_id, runtime_user_input);
         ExecutionService::new(self.core.clone())
@@ -1471,6 +1468,7 @@ impl AgentSession {
             persisted_user_input,
             runtime_user_input,
             &options,
+            None,
         ) {
             Ok(execution) => execution,
             Err((kind, err)) => {
@@ -1597,6 +1595,7 @@ impl AgentSession {
                 persisted_user_input,
                 runtime_user_input,
                 &options,
+                Some(CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT),
             ) {
                 Ok(execution) => execution,
                 Err((_kind, err)) => {
@@ -1799,12 +1798,10 @@ pub fn restore_context(
     for message in messages {
         match message.role.as_str() {
             "user" => {
-                if !message_is_slash_skill(message.metadata.as_ref()) {
-                    let content = if message_is_compact_summary(message.metadata.as_ref()) {
-                        sanitize_user_visible_output(&session_message_text(message)).content
-                    } else {
-                        session_message_text(message)
-                    };
+                if !message_is_slash_skill(message.metadata.as_ref())
+                    && !message_is_compact_summary(message.metadata.as_ref())
+                {
+                    let content = session_message_text(message);
                     if !content.trim().is_empty() {
                         ctx.messages.push(AgentMessage {
                             role: "user".to_string(),
@@ -1849,7 +1846,9 @@ pub fn restore_context(
                 }
             }
             "system" => {
-                if message_is_compact_boundary(message.metadata.as_ref()) {
+                if message_is_compact_boundary(message.metadata.as_ref())
+                    || message_is_compact_summary(message.metadata.as_ref())
+                {
                     continue;
                 }
             }
@@ -2590,7 +2589,7 @@ mod tests {
         storage
             .add_message(
                 &session_id,
-                "user",
+                "system",
                 "【Compact Summary】\nsummary",
                 Some(hone_memory::build_compact_summary_metadata("auto")),
             )
@@ -3121,7 +3120,7 @@ mod tests {
         storage
             .add_message(
                 &session_id,
-                "user",
+                "system",
                 "【Compact Summary】\nsummary",
                 Some(hone_memory::build_compact_summary_metadata("auto")),
             )
@@ -3136,10 +3135,8 @@ mod tests {
             .iter()
             .filter_map(|m| m.content.as_deref())
             .collect();
-        assert_eq!(
-            contents,
-            vec!["【Compact Summary】\nsummary", "after-compact"]
-        );
+        // compact_summary is skipped from message history; summary is injected via conversation_context
+        assert_eq!(contents, vec!["after-compact"]);
     }
 
     #[test]
@@ -3183,7 +3180,7 @@ mod tests {
         storage
             .add_message(
                 &session_id,
-                "user",
+                "system",
                 "【Compact Summary】\nsummary",
                 Some(hone_memory::build_compact_summary_metadata("auto")),
             )
@@ -3195,10 +3192,8 @@ mod tests {
             .iter()
             .filter_map(|m| m.content.as_deref())
             .collect();
-        assert_eq!(
-            contents,
-            vec!["INVOKED_SKILL_PROMPT", "【Compact Summary】\nsummary"]
-        );
+        // compact_summary is excluded from message history; injected via conversation_context
+        assert_eq!(contents, vec!["INVOKED_SKILL_PROMPT"]);
     }
 
     #[test]
@@ -3242,7 +3237,7 @@ mod tests {
         storage
             .add_message(
                 &session_id,
-                "user",
+                "system",
                 "【Compact Summary】\nsummary",
                 Some(hone_memory::build_compact_summary_metadata("auto")),
             )
@@ -3262,10 +3257,8 @@ mod tests {
             .iter()
             .filter_map(|m| m.content.as_deref())
             .collect();
-        assert_eq!(
-            contents,
-            vec!["【Compact Summary】\nsummary", "INVOKED_SKILL_PROMPT"]
-        );
+        // compact_summary skipped from history; skill_snapshot remains; no duplicate from metadata
+        assert_eq!(contents, vec!["INVOKED_SKILL_PROMPT"]);
     }
 
     #[tokio::test]

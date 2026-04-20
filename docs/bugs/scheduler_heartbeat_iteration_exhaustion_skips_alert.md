@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-20 06:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=3548`，`job_id=j_38745baf`，`job_name=全天原油价格3小时播报`，`executed_at=2026-04-20T18:00:32.340199+08:00`

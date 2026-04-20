@@ -363,6 +363,56 @@ impl SqliteSessionMirror {
         }
         Ok(sessions)
     }
+
+    /// Find direct sessions that were interrupted mid-flight: `last_message_role='user'`
+    /// with `updated_at` strictly between `updated_after` and `updated_before` (RFC 3339 strings).
+    /// Used at startup to send failure replies to sessions cut off by a process restart.
+    pub fn find_interrupted_sessions(
+        &self,
+        channel: &str,
+        updated_after_rfc3339: &str,
+        updated_before_rfc3339: &str,
+    ) -> HoneResult<Vec<InterruptedSessionInfo>> {
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT session_id, actor_user_id, actor_channel_scope
+                 FROM sessions
+                 WHERE actor_channel = ?1
+                   AND session_kind = 'direct'
+                   AND last_message_role = 'user'
+                   AND updated_at > ?2
+                   AND updated_at < ?3
+                 ORDER BY updated_at DESC",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(
+                params![channel, updated_after_rfc3339, updated_before_rfc3339],
+                |row| {
+                    Ok(InterruptedSessionInfo {
+                        session_id: row.get(0)?,
+                        actor_user_id: row.get(1)?,
+                        actor_channel_scope: row.get(2)?,
+                    })
+                },
+            )
+            .map_err(sql_err)?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row.map_err(sql_err)?);
+        }
+        Ok(results)
+    }
+}
+
+/// Session that was in-flight when the process was killed, identified at startup by a
+/// `last_message_role='user'` row with a recent `updated_at`.
+#[derive(Debug, Clone)]
+pub struct InterruptedSessionInfo {
+    pub session_id: String,
+    pub actor_user_id: String,
+    pub actor_channel_scope: Option<String>,
 }
 
 fn ensure_parent_dir(path: &Path) -> HoneResult<()> {

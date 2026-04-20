@@ -31,6 +31,7 @@ pub use quota::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, ConversationQuotaSnapshot,
     ConversationQuotaStorage,
 };
+pub use session_sqlite::InterruptedSessionInfo;
 pub use session::{
     ASSISTANT_TOOL_CALLS_METADATA_KEY, COMPACT_BOUNDARY_METADATA_KEY,
     COMPACT_SKILL_SNAPSHOT_METADATA_KEY, COMPACT_SUMMARY_METADATA_KEY, INVOKED_SKILLS_METADATA_KEY,

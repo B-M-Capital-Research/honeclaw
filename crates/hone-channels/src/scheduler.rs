@@ -13,7 +13,7 @@ use crate::execution::{
 };
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
-use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
+use crate::runtime::{is_context_overflow_error, sanitize_user_visible_output, user_visible_error_message};
 use crate::{AgentSession, HoneBotCore};
 
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
@@ -31,6 +31,7 @@ enum HeartbeatParseKind {
     SentinelNoop,
     InternalMarker,
     JsonNoop,
+    JsonEmptyStatus,
     JsonTriggered,
     JsonUnknownStatus,
     JsonMalformed,
@@ -132,6 +133,9 @@ fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseK
         let status = parsed.status.unwrap_or_default();
         if status.eq_ignore_ascii_case("noop") {
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonNoop);
+        }
+        if status.is_empty() {
+            return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonEmptyStatus);
         }
         if status.eq_ignore_ascii_case("triggered") {
             let message = parsed.message.unwrap_or_default().trim().to_string();
@@ -287,6 +291,11 @@ fn is_scheduler_protocol_residue(line: &str) -> bool {
             .any(|key| user_visible_keys.contains(&key.as_str()))
 }
 
+fn is_max_iterations_error(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("已达最大迭代次数") || normalized.contains("max iterations")
+}
+
 pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
     if event.heartbeat {
         return format!(
@@ -301,6 +310,9 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 4. 不要创建新的定时任务，也不要修改现有任务。\n\
 5. 不要输出 Markdown 代码块，不要输出额外解释，不要暴露任何内部控制标记。\n\
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
+7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
+8. 价格时间口径约束：引用股价时，必须核实价格的时间戳。若市场已停盘、股票停牌或价格来自上一交易日，必须在 message 中明确标注（最新可得价格为停牌前/上一交易日），不允许把旧价格包装成事件发生后的即时市场反应。\n\
+9. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\n\
 \n\
 以下是需要检查的用户条件：\n{}",
             event.job_name, event.task_prompt
@@ -411,21 +423,49 @@ pub async fn execute_scheduler_event(
             heartbeat_execution_from_content(&content, &heartbeat_model)
         }
         Err(error) => {
-            tracing::warn!(
-                "[HeartbeatDiag] runner_error job_id={} job={} target={} model={} error=\"{}\"",
-                event.job_id,
-                event.job_name,
-                event.channel_target,
-                heartbeat_model,
-                truncate_for_log(&error, 280).replace('\n', "\\n"),
-            );
-            ScheduledTaskExecution {
-                should_deliver: false,
-                content: String::new(),
-                error: Some(error),
-                metadata: json!({
-                    "heartbeat_model": heartbeat_model,
-                }),
+            let (parse_kind_label, treat_as_noop) = if is_context_overflow_error(&error) {
+                ("ContextOverflowNoop", true)
+            } else if is_max_iterations_error(&error) {
+                ("MaxIterationsNoop", true)
+            } else {
+                ("", false)
+            };
+            if treat_as_noop {
+                tracing::warn!(
+                    "[HeartbeatDiag] transient_noop parse_kind={} job_id={} job={} target={} model={} error=\"{}\"",
+                    parse_kind_label,
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    heartbeat_model,
+                    truncate_for_log(&error, 280).replace('\n', "\\n"),
+                );
+                ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: None,
+                    metadata: json!({
+                        "heartbeat_model": heartbeat_model,
+                        "parse_kind": parse_kind_label,
+                    }),
+                }
+            } else {
+                tracing::warn!(
+                    "[HeartbeatDiag] runner_error job_id={} job={} target={} model={} error=\"{}\"",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    heartbeat_model,
+                    truncate_for_log(&error, 280).replace('\n', "\\n"),
+                );
+                ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: Some(error),
+                    metadata: json!({
+                        "heartbeat_model": heartbeat_model,
+                    }),
+                }
             }
         }
     }
@@ -707,6 +747,24 @@ mod tests {
                 .expect("raw_preview")
                 .contains("\"status\":\"maybe\"")
         );
+    }
+
+    #[test]
+    fn heartbeat_empty_json_is_noop_not_failure() {
+        let (outcome, parse_kind) = inspect_heartbeat_result("{}");
+        assert_eq!(parse_kind, HeartbeatParseKind::JsonEmptyStatus);
+        assert_eq!(outcome, HeartbeatOutcome::Noop);
+        let execution = heartbeat_execution_from_content("{}", "model-x");
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+    }
+
+    #[test]
+    fn heartbeat_think_plus_empty_json_is_noop() {
+        let (outcome, parse_kind) =
+            inspect_heartbeat_result("<think>reasoning</think>\n\n{}");
+        assert_eq!(parse_kind, HeartbeatParseKind::JsonEmptyStatus);
+        assert_eq!(outcome, HeartbeatOutcome::Noop);
     }
 
     #[test]

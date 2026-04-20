@@ -332,6 +332,7 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || sanitized.contains("工具执行错误")
         || sanitized.contains("序列化错误")
         || sanitized.contains("IO 错误")
+        || lowered.contains("max_iterations_exceeded")
         || lowered.contains("bad_request_error")
         || lowered.contains("invalid params")
         || lowered.contains("tool_call_id")
@@ -339,6 +340,9 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || lowered.contains("function arguments")
         || lowered.contains("provider")
         || lowered.contains("session/prompt")
+        || lowered.contains("codex acp")
+        || lowered.contains("stream closed before response")
+        || lowered.contains("acp stream")
 }
 
 /// 检测文本是否包含工具调用标记
@@ -377,6 +381,17 @@ pub fn is_tool_call_content(text: &str) -> bool {
         r#"{"image_type""#,
     ];
     MARKERS.iter().any(|marker| text.contains(marker))
+}
+
+pub(crate) fn is_context_overflow_error(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("context window exceeds limit")
+        || normalized.contains("context window overflow")
+        || normalized.contains("context_window_will_overflow")
+        || normalized.contains("context length exceeded")
+        || normalized.contains("maximum context length")
+        || normalized.contains("prompt is too long")
+        || normalized.contains("too many tokens")
 }
 
 /// 检测缓冲区内容是否应该跳过发送

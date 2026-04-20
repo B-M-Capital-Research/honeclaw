@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Fixed
 - **证据来源**:
   - 2026-04-20 20:00 最近一小时最新样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`

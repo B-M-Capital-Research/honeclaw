@@ -865,6 +865,24 @@ impl SessionStorage {
         }
     }
 
+    /// Find direct sessions that were interrupted mid-flight (last message from user, no reply).
+    /// Only the SQLite backend supports this; JSON backend always returns an empty list.
+    pub fn find_interrupted_sessions(
+        &self,
+        channel: &str,
+        updated_after_rfc3339: &str,
+        updated_before_rfc3339: &str,
+    ) -> hone_core::HoneResult<Vec<crate::session_sqlite::InterruptedSessionInfo>> {
+        if let Some(storage) = &self.sqlite_storage {
+            return storage.find_interrupted_sessions(
+                channel,
+                updated_after_rfc3339,
+                updated_before_rfc3339,
+            );
+        }
+        Ok(Vec::new())
+    }
+
     /// 获取或初始化 session 级 prompt 状态。
     pub fn ensure_prompt_state(
         &self,

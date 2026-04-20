@@ -140,6 +140,73 @@ impl EventHandler for FeishuEventHandler {
     }
 }
 
+const RESTART_RECOVERY_WINDOW_MINUTES: i64 = 30;
+const RESTART_RECOVERY_GRACE_SECONDS: i64 = 30;
+const RESTART_RECOVERY_TEXT: &str =
+    "服务重启，之前的消息处理已中断，请稍后重试。";
+
+async fn recover_interrupted_sessions(
+    core: &hone_channels::HoneBotCore,
+    facade: &FeishuApiClient,
+) {
+    let now = chrono::Utc::now();
+    let updated_after = (now
+        - chrono::TimeDelta::minutes(RESTART_RECOVERY_WINDOW_MINUTES))
+    .to_rfc3339();
+    let updated_before = (now
+        - chrono::TimeDelta::seconds(RESTART_RECOVERY_GRACE_SECONDS))
+    .to_rfc3339();
+
+    let interrupted = match core
+        .session_storage
+        .find_interrupted_sessions("feishu", &updated_after, &updated_before)
+    {
+        Ok(list) => list,
+        Err(err) => {
+            warn!("[Feishu] 启动恢复：查询中断会话失败: {err}");
+            return;
+        }
+    };
+
+    if interrupted.is_empty() {
+        return;
+    }
+    info!(
+        "[Feishu] 启动恢复：发现 {} 个中断会话，补发失败提示",
+        interrupted.len()
+    );
+
+    for session_info in &interrupted {
+        // Only recover unscoped (direct) sessions — group sessions would need
+        // a chat_id to reply to, which we don't have here.
+        if session_info.actor_channel_scope.is_some() {
+            continue;
+        }
+        let receive_id = &session_info.actor_user_id;
+        if let Err(err) =
+            send_plain_text(facade, receive_id, "open_id", RESTART_RECOVERY_TEXT).await
+        {
+            warn!(
+                "[Feishu] 启动恢复：补发失败提示失败: session_id={} err={}",
+                session_info.session_id, err
+            );
+        } else {
+            // Record the failure reply in the session so last_message_role
+            // flips to 'assistant' and we don't re-notify on the next restart.
+            let _ = core.session_storage.add_message(
+                &session_info.session_id,
+                "assistant",
+                RESTART_RECOVERY_TEXT,
+                None,
+            );
+            info!(
+                "[Feishu] 启动恢复：已补发失败提示: session_id={}",
+                session_info.session_id
+            );
+        }
+    }
+}
+
 pub(crate) async fn run() {
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -175,6 +242,12 @@ pub(crate) async fn run() {
             Duration::from_secs(core.config.group_context.pretrigger_window_max_age_seconds),
         ),
     });
+
+    // Recover sessions that were in-flight when the process was last killed.
+    // We look for direct sessions whose last message was from the user (no reply
+    // persisted) in the past 30 minutes but at least 30 seconds ago (grace period
+    // for sessions just starting).
+    recover_interrupted_sessions(&core, &facade).await;
 
     let sdk_logger = new_logger(FeishuLogLevel::Info);
     let event_config = EventDispatcherConfig::new();
@@ -1306,34 +1379,26 @@ fn looks_like_mobile(target: &str) -> bool {
 }
 
 pub(crate) fn scheduler_receive_id_for_target(
-    actor: &ActorIdentity,
-    channel_target: &str,
+    _actor: &ActorIdentity,
+    _channel_target: &str,
 ) -> Option<String> {
-    let target = channel_target.trim();
-    if actor.channel_scope.is_none()
-        && !target.is_empty()
-        && (target.contains('@') || looks_like_mobile(target))
-    {
-        return Some(actor.user_id.clone());
-    }
+    // Always resolve via the Feishu API (resolve_receive_id) so we get the
+    // current-app-scoped open_id. The old short-circuit that returned
+    // actor.user_id directly caused "open_id cross app" (code 99992361) when
+    // the app was migrated and the stored open_id no longer matched the
+    // active app's binding.
     None
 }
 
 pub(crate) fn validate_scheduler_receive_id(
-    actor: &ActorIdentity,
-    channel_target: &str,
-    receive_id: &str,
+    _actor: &ActorIdentity,
+    _channel_target: &str,
+    _receive_id: &str,
 ) -> hone_core::HoneResult<()> {
-    let target = channel_target.trim();
-    if actor.channel_scope.is_none()
-        && (target.contains('@') || looks_like_mobile(target))
-        && receive_id != actor.user_id
-    {
-        return Err(hone_core::HoneError::Integration(format!(
-            "resolved receive_id {receive_id} does not match actor {} for direct task target {target}",
-            actor.user_id
-        )));
-    }
+    // Validation previously rejected API-resolved open_ids that didn't match
+    // the stored actor.user_id. Now that we always resolve via the Feishu API
+    // the returned open_id is authoritative for the current app; no extra
+    // validation is needed.
     Ok(())
 }
 
@@ -1429,23 +1494,19 @@ mod tests {
     }
 
     #[test]
-    fn scheduler_delivery_rejects_mismatched_direct_contact_resolution() {
+    fn scheduler_delivery_validation_is_always_ok() {
+        // validate_scheduler_receive_id is now a no-op: the API-resolved
+        // open_id is authoritative for the current app and needs no comparison
+        // against the potentially-stale actor.user_id.
         let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
-        let err = validate_scheduler_receive_id(&actor, "alice@example.com", "ou_other")
-            .expect_err("should reject mismatched direct delivery");
-        assert!(err.to_string().contains("does not match actor"));
-    }
-
-    #[test]
-    fn scheduler_delivery_allows_matching_direct_contact_resolution() {
-        let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
-        assert!(validate_scheduler_receive_id(&actor, "alice@example.com", "ou_creator").is_ok());
-    }
-
-    #[test]
-    fn scheduler_delivery_allows_group_tasks_even_if_receive_id_differs() {
-        let actor = ActorIdentity::new("feishu", "ou_creator", Some("chat:42")).expect("actor");
         assert!(validate_scheduler_receive_id(&actor, "alice@example.com", "ou_other").is_ok());
+        assert!(validate_scheduler_receive_id(&actor, "alice@example.com", "ou_creator").is_ok());
+        assert!(validate_scheduler_receive_id(&actor, "+8613800138000", "ou_creator").is_ok());
+        let actor_group =
+            ActorIdentity::new("feishu", "ou_creator", Some("chat:42")).expect("actor");
+        assert!(
+            validate_scheduler_receive_id(&actor_group, "alice@example.com", "ou_other").is_ok()
+        );
     }
 
     #[test]
@@ -1456,21 +1517,18 @@ mod tests {
     }
 
     #[test]
-    fn direct_scheduler_prefers_actor_open_id_for_contact_targets() {
+    fn direct_scheduler_always_falls_through_to_api_resolution() {
         let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
+        // All targets return None so the caller always invokes resolve_receive_id
+        // (Feishu API), avoiding cross-app open_id errors.
         assert_eq!(
-            scheduler_receive_id_for_target(&actor, "alice@example.com").as_deref(),
-            Some("ou_creator")
+            scheduler_receive_id_for_target(&actor, "alice@example.com"),
+            None
         );
         assert_eq!(
-            scheduler_receive_id_for_target(&actor, "+8613800138000").as_deref(),
-            Some("ou_creator")
+            scheduler_receive_id_for_target(&actor, "+8613800138000"),
+            None
         );
-    }
-
-    #[test]
-    fn direct_scheduler_does_not_override_explicit_open_id_target() {
-        let actor = ActorIdentity::new("feishu", "ou_creator", None::<String>).expect("actor");
         assert_eq!(scheduler_receive_id_for_target(&actor, "ou_other"), None);
     }
 

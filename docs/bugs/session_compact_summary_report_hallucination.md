@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Fixed
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
@@ -311,6 +311,16 @@
 - `cargo test -p hone-channels`
 - `cargo check -p hone-channels`
 - `rustfmt --edition 2024 --check crates/hone-channels/src/session_compactor.rs crates/hone-channels/src/agent_session.rs crates/hone-channels/src/prompt.rs`
+
+## 修复情况（2026-04-20）
+
+根因确认：前序修复（b3d5102）只收紧了摘要内容，但 `session_compactor.rs` 仍把 compact summary 写成 `role=user`，导致 `restore_context` 继续把它作为用户消息注回历史。
+
+本次修复：
+1. `crates/hone-channels/src/session_compactor.rs:331` — 将 compact summary 写库角色从 `"user"` 改为 `"system"`
+2. `crates/hone-channels/src/agent_session.rs` — `restore_context` 的 `"user"` 分支：遇到 compact_summary 元数据直接跳过（兼容旧数据）；`"system"` 分支：同时跳过 compact_boundary 和 compact_summary
+3. 更新所有相关回归测试（共 4 个），期望值从"含 summary"改为"只含真实消息"；`resolve_prompt_input` 测试仍通过（summary 通过 `conversation_context` 正常出现在 runtime_input 里）
+4. `cargo test -p hone-channels` 全部 213 个测试通过
 
 ## 后续建议
 
