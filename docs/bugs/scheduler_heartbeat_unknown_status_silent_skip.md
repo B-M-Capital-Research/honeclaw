@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 14:00-15:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 14:00:26 -> 15:00:26` 表现为“14:00 刚跌回 unknown status，后两轮又回到 noop，但协议仍未恢复”的症状回摆态：
+      - `run_id=3466`（`TEM大事件心跳监控`，`executed_at=2026-04-20T14:00:26.180089+08:00`）在 `14:00` 窗口落成 `execution_failed + skipped_error`
+      - 到下一轮 `14:30`，同一任务 `run_id=3478`（`executed_at=2026-04-20T14:31:01.102081+08:00`）回到 `noop + skipped_noop`
+      - 再到 `15:00`，`run_id=3485`（`executed_at=2026-04-20T15:00:25.769537+08:00`）继续维持 `noop + skipped_noop`
+      - 同一 `15:00` 批次里，`run_id=3482/3483/3486`（`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`）也都暂时回到 `noop + skipped_noop`
+      - 这说明最新窗口里的直接失败样本暂时收窄到 `14:00` 那一轮 TEM，但恢复只是“本轮没再跌回失败”，并不能证明 heartbeat 结构化状态契约已经修复
+  - 对应 `data/sessions.sqlite3` -> `cron_job_runs.detail_json` 与 `data/runtime/logs/web.log`：
+    - `run_id=3466` 的 `detail_json.parse_kind=JsonUnknownStatus`，对应 `2026-04-20 14:00:26.179` 日志明确记录 `heartbeat 输出包含未知状态，任务已标记失败`
+    - `run_id=3478` 与 `3485` 虽然回到 `parse_kind=JsonNoop`，但 `detail_json.raw_preview` 仍分别以 `<think>\nLet me piece together the data...`、`<think>\nLet me analyze the data...` 开头，再在尾部补 `{"status":"noop"}`
+    - `run_id=3482/3483/3486` 也同样满足 `parse_kind=JsonNoop` 但 `raw_preview` 以 `<think>` 起头，说明最新窗口所谓“恢复”为 `noop` 的任务依旧依赖自由文本尾部提取状态，而不是恢复为稳定的纯 JSON 输出契约
+    - 因此，这一轮变化应视为“已知缺陷症状回摆”，不是“问题已修复”
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 13:30-14:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 13:30:28 -> 14:00:26` 继续表现为“上一轮刚恢复为 noop，下一轮又换模板跌回 unknown status”的活跃漂移态：
       - `run_id=3458`（`TEM大事件心跳监控`，`executed_at=2026-04-20T13:30:28.496762+08:00`）在 `13:30` 窗口还是 `noop + skipped_noop`

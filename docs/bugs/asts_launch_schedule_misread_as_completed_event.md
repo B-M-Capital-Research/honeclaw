@@ -7,6 +7,16 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3477`，`executed_at=2026-04-20T14:30:58.985852+08:00`，最近一小时窗口里继续落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3488`，`executed_at=2026-04-20T15:01:21.455010+08:00`，仅过约 30 分钟再次 `completed + sent + delivered=1`
+    - 两轮 `response_preview` 都继续围绕同一 `BlueBird 7` 轨道异常展开，并继续把停牌前 `ASTS $85.53 / 前收 $90.94 / 日跌幅约 -5.95%` 写成 `14:30` 与 `15:00` 的“当前行情”
+    - 这说明问题到最新窗口并未止血；即便 `14:00` 那轮一度扩写成“卫星已报废”，后续两轮回落到“轨道异常”措辞后，仍然持续把旧价格快照包装成事件后的实时市场反应
+  - `data/runtime/logs/web.log`
+    - `2026-04-20 14:30:57.118` 的 `deliver_preview` 写出：`BlueBird 7 卫星发射异常 ... 被部署至低于计划的轨道`
+    - `2026-04-20 15:00:18.543-15:00:21.121` 同批仍先出现 Tavily 超额告警，随后 ASTS heartbeat 继续成功投递；`detail_json.scheduler.deliver_preview` 对应内容仍把 `ASTS $85.53 / -5.95%` 作为“今日ASTS跌幅”背景
+    - 这说明最新窗口里并不是链路失败，而是错误事实/错误价格时间口径继续被稳定送达给用户
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
     - `run_id=3457`，`executed_at=2026-04-20T13:30:25.099974+08:00`，最近一小时窗口里再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
     - 这轮 `response_preview` 明确写成：`BlueBird 7 卫星在 Blue Origin New Glenn 3 发射任务中因上面级故障，被部署至低于计划的轨道`
     - 仅过约 30 分钟，到 `run_id=3468`，`executed_at=2026-04-20T14:00:56.780035+08:00`，同一任务又再次 `completed + sent + delivered=1`
