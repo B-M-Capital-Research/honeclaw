@@ -39,11 +39,17 @@ pub(crate) async fn handle_invite_login(
         Err(response) => return response,
     };
 
-    let client_key = public_client_key(&headers);
-    if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
-        state.public_auth_limiter.check(&client_key)
-    {
-        return json_rate_limited(retry_after_secs);
+    // Rate-limit by phone number (unforgeable) + IP (best-effort).
+    // Even if an attacker spoofs X-Forwarded-For, the phone_number dimension
+    // still prevents brute-forcing a single invite code.
+    let ip_key = public_client_key(&headers);
+    let phone_key = format!("phone:{phone_number}");
+    for key in [&ip_key, &phone_key] {
+        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
+            state.public_auth_limiter.check(key)
+        {
+            return json_rate_limited(retry_after_secs);
+        }
     }
 
     match state
@@ -51,7 +57,8 @@ pub(crate) async fn handle_invite_login(
         .create_session_for_invite(&invite_code, &phone_number)
     {
         Ok(Some(session)) => {
-            state.public_auth_limiter.record_success(&client_key);
+            state.public_auth_limiter.record_success(&ip_key);
+            state.public_auth_limiter.record_success(&phone_key);
             match state.web_auth.find_invite_user(&session.user_id) {
                 Ok(Some(user)) => {
                     let user_id = user.user_id.clone();
@@ -75,8 +82,14 @@ pub(crate) async fn handle_invite_login(
             }
         }
         Ok(None) => {
-            if let Some(retry_after_secs) = state.public_auth_limiter.record_failure(&client_key) {
-                json_rate_limited(retry_after_secs)
+            let mut rate_limited_response = None;
+            for key in [&ip_key, &phone_key] {
+                if let Some(retry_after_secs) = state.public_auth_limiter.record_failure(key) {
+                    rate_limited_response = Some(json_rate_limited(retry_after_secs));
+                }
+            }
+            if let Some(response) = rate_limited_response {
+                response
             } else {
                 crate::routes::json_error(
                     StatusCode::UNAUTHORIZED,
@@ -266,11 +279,28 @@ fn clear_session_cookie(headers: &HeaderMap) -> HeaderValue {
     .expect("valid clear session cookie")
 }
 
+/// Determine whether the Secure flag should be set on session cookies.
+///
+/// Checks `HONE_PUBLIC_SECURE_COOKIE` env var first (accepts "true"/"1" to
+/// force-enable, "false"/"0" to force-disable). Falls back to inspecting
+/// request headers when the env var is absent or empty.
 fn request_is_secure(headers: &HeaderMap) -> bool {
+    if let Some(forced) = env_force_secure_cookie() {
+        return forced;
+    }
     header_is_https(headers, "x-forwarded-proto")
         || forwarded_proto_is_https(headers)
         || header_is_https_url(headers, header::ORIGIN.as_str())
         || header_is_https_url(headers, header::REFERER.as_str())
+}
+
+fn env_force_secure_cookie() -> Option<bool> {
+    let value = std::env::var("HONE_PUBLIC_SECURE_COOKIE").ok()?;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" => Some(true),
+        "0" | "false" | "no" => Some(false),
+        _ => None,
+    }
 }
 
 fn header_is_https(headers: &HeaderMap, name: &str) -> bool {
@@ -421,5 +451,36 @@ mod tests {
             HeaderValue::from_static("203.0.113.9, 10.0.0.2"),
         );
         assert_eq!(public_client_key(&headers), "ip:203.0.113.9");
+    }
+
+    #[test]
+    fn env_force_secure_cookie_overrides_headers() {
+        // When env is set to "true", Secure flag should be on even without https headers.
+        // SAFETY: test-only; this binary runs tests sequentially per module.
+        unsafe { std::env::set_var("HONE_PUBLIC_SECURE_COOKIE", "true") };
+        let headers = HeaderMap::new();
+        let cookie = build_session_cookie("tok", &headers)
+            .to_str()
+            .expect("cookie")
+            .to_string();
+        assert!(cookie.contains("Secure"), "env=true should force Secure");
+
+        // When env is set to "false", Secure flag should be off even with https origin.
+        unsafe { std::env::set_var("HONE_PUBLIC_SECURE_COOKIE", "false") };
+        let mut https_headers = HeaderMap::new();
+        https_headers.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://chat.example.com"),
+        );
+        let cookie2 = build_session_cookie("tok", &https_headers)
+            .to_str()
+            .expect("cookie")
+            .to_string();
+        assert!(
+            !cookie2.contains("Secure"),
+            "env=false should suppress Secure"
+        );
+
+        unsafe { std::env::remove_var("HONE_PUBLIC_SECURE_COOKIE") };
     }
 }

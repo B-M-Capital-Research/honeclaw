@@ -576,16 +576,17 @@ impl HoneBotCore {
 
         let request_body = build_report_run_input(company_name);
         let url = format!("{base_url}/api/runs");
+        let validate_code = self.config.web.resolved_local_workflow_validate_code();
+        let mut run_payload = json!({
+            "workflowId": REPORT_WORKFLOW_ID,
+            "input": request_body,
+            "promptOverrides": {},
+        });
+        if !validate_code.is_empty() {
+            run_payload["validateCode"] = serde_json::Value::String(validate_code);
+        }
         let response = match self
-            .workflow_runner_request(
-                Method::POST,
-                &url,
-                Some(json!({
-                    "workflowId": REPORT_WORKFLOW_ID,
-                    "input": request_body,
-                    "promptOverrides": {},
-                })),
-            )
+            .workflow_runner_request(Method::POST, &url, Some(run_payload))
             .await
         {
             Ok(response) => response,

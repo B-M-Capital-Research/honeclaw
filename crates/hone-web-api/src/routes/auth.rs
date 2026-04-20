@@ -129,6 +129,7 @@ mod tests {
                 sse_tickets: Mutex::new(HashMap::new()),
             },
             heartbeat_registry: HeartbeatRegistry::default(),
+            public_auth_limiter: Default::default(),
         }
     }
 
