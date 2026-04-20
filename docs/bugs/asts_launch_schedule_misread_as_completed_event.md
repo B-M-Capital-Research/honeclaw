@@ -7,6 +7,17 @@
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3538`，`executed_at=2026-04-20T17:30:26.321745+08:00`，在最近一小时最新窗口里继续落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3547`，`executed_at=2026-04-20T18:00:24.824813+08:00`，仅隔约 30 分钟又再次 `completed + sent + delivered=1`
+    - 两轮 `response_preview` 都继续围绕同一 `BlueBird 7` 低于计划轨道旧事件展开；`17:30` 这轮直接写成“重大基本面积压事件（BlueBird 卫星上天失败）”，`18:00` 又写成“BlueBird 7发射异常——New Glenn 3火箭将BlueBird 7卫星部署至低于计划的轨道”
+    - 两轮之间没有新的独立行情时间戳或新的事件窗口，却继续把同一旧事件重复包装成新一轮 heartbeat 触发提醒，说明最新小时窗里不仅事实仍错，而且重复投递仍在继续
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-20 17:30:26.320` 与 `18:00:21.890` 对应的 `HeartbeatDiag deliver` 都继续把同一 `BlueBird 7` 低轨事件出站为新的 triggered 提醒
+    - `17:30` 的 `deliver_preview` 已把措辞升级成“BlueBird 卫星上天失败”
+    - `18:00` 的 `deliver_preview` 又写成“Blue Origin 官方确认”“相关负面报道已覆盖 Barron's、WSJ、TechCrunch”，但仍没有新的价格时间锚点或新的用户触发条件变化
+    - 这说明截至最近一小时，链路并没有进入稳定的“事件已处理完毕，不再重复提醒”状态，而是在同一旧事件上继续改写措辞并重复出站
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
     - `run_id=3477`，`executed_at=2026-04-20T14:30:58.985852+08:00`，最近一小时窗口里继续落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
     - `run_id=3488`，`executed_at=2026-04-20T15:01:21.455010+08:00`，仅过约 30 分钟再次 `completed + sent + delivered=1`
     - 两轮 `response_preview` 都继续围绕同一 `BlueBird 7` 轨道异常展开，并继续把停牌前 `ASTS $85.53 / 前收 $90.94 / 日跌幅约 -5.95%` 写成 `14:30` 与 `15:00` 的“当前行情”

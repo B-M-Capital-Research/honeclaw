@@ -6,6 +6,22 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 17:30-18:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 17:30:07 -> 18:00:32` 继续表现为“上一轮一个模板恢复，下一轮另一组模板重新跌回 unknown status”的活跃漂移态：
+      - `run_id=3534`（`RKLB异动监控`，`executed_at=2026-04-20T17:30:19.505223+08:00`）在 `17:30` 窗口落成 `execution_failed + skipped_error`
+      - 同一 `17:30` 批次里，`run_id=3537`（`TEM大事件心跳监控`，`executed_at=2026-04-20T17:30:26.024833+08:00`）也落成 `execution_failed + skipped_error`
+      - 到下一轮 `18:00`，`run_id=3543/3544`（`RKLB异动监控`、`TEM大事件心跳监控`）又暂时回到 `noop + skipped_noop`
+      - 但同一 `18:00` 批次里，失败对象再次漂移成 `run_id=3542`（`小米破位预警`）与 `run_id=3545`（`Monitor_Watchlist_11`），分别落成 `execution_failed + skipped_error`
+      - 这说明截至 `18:00`，heartbeat 结构化状态契约依旧没有收敛；故障对象仍在 `RKLB/TEM大事件 -> 小米/Watchlist` 间漂移，不是单一模板坏死
+  - 对应 `data/sessions.sqlite3` -> `cron_job_runs.detail_json` 与 `data/runtime/logs/sidecar.log` / `web.log`：
+    - `run_id=3534` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 已明确写出 “RKLB 当日涨幅 2.25%，没有新的并购、Neutron 进展或重大订单”，最终却仍未稳定收口为合法状态 JSON
+    - `run_id=3537` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 已完成 `TEM` 价格与 AACR / 合作事件判断，仍停留在 `<think>...` 自由文本
+    - `run_id=3542` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 甚至直接写出 “The data fetch is returning empty results. ... should return a noop status.”，但最终只返回 `{}` 并触发失败升级
+    - `run_id=3545` 的 `detail_json.parse_kind=JsonUnknownStatus`，`raw_preview` 仍逐项比较 11 只股票的触发价后失败收口
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-20 18:00:09.346` 明确记录 `job=小米破位预警 ... parse_kind=JsonUnknownStatus ... parse failure escalated`
+    - 同一日志在 `2026-04-20 18:00:08.455` 与 `18:00:09.226` 仍显示 `TEM破位预警`、`小米30港元破位预警` 虽被收口成 `JsonNoop`，但 `starts_with_json=false`、`raw_preview` 继续以 `<think>` 起头
+    - 因此，最近一小时的最新状态不是“只剩 watchlist 模板失败”，而是失败对象继续跨模板漂移，且所谓恢复为 `noop` 的任务仍依赖尾部 JSON 侥幸提取
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 15:30-16:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 15:30:25 -> 16:00:27` 再次表现为“上一轮刚出现多模板并发失败，下一轮仍未收敛到单一坏模板”的活跃坏态：
       - `run_id=3497`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T15:30:25.301842+08:00`）在 `15:30` 窗口落成 `execution_failed + skipped_error`
