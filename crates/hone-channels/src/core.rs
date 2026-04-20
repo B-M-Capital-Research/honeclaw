@@ -46,7 +46,7 @@ const REPORT_INTERCEPT_PREFIX: &str = "/report";
 const REPORT_PROGRESS_COMMAND: &str = "进度";
 const REPORT_PROGRESS_COMMAND_ALIAS: &str = "progress";
 const REPORT_WORKFLOW_ID: &str = "company_report";
-const REPORT_DEFAULT_MODE: &str = "完整跑完";
+const REPORT_DEFAULT_MODE: &str = "全跑完-美";
 const REPORT_DEFAULT_RESEARCH_TOPIC: &str = "新闻";
 
 #[derive(Debug, Clone)]
@@ -574,12 +574,7 @@ impl HoneBotCore {
             return "未配置本地 workflow runner 地址，暂时无法启动研报任务。".to_string();
         };
 
-        let validate_code = self.config.web.resolved_local_workflow_validate_code();
-        if validate_code.is_empty() {
-            return "未配置本地 workflow runner validate code，暂时无法启动研报任务。".to_string();
-        }
-
-        let request_body = build_report_run_input(company_name, &validate_code);
+        let request_body = build_report_run_input(company_name);
         let url = format!("{base_url}/api/runs");
         let response = match self
             .workflow_runner_request(
@@ -1256,11 +1251,10 @@ impl WorkflowRunnerHttpResponse {
     }
 }
 
-fn build_report_run_input(company_name: &str, validate_code: &str) -> serde_json::Value {
+fn build_report_run_input(company_name: &str) -> serde_json::Value {
     json!({
         "companyName": company_name.trim(),
         "genPost": REPORT_DEFAULT_MODE,
-        "validateCode": validate_code,
         "news": "",
         "task_id": "",
         "research_topic": REPORT_DEFAULT_RESEARCH_TOPIC,
@@ -1564,11 +1558,10 @@ mod tests {
     #[test]
     fn report_run_input_includes_required_defaults() {
         assert_eq!(
-            build_report_run_input("Astera Labs", "validate-me"),
+            build_report_run_input("Astera Labs"),
             json!({
                 "companyName": "Astera Labs",
                 "genPost": REPORT_DEFAULT_MODE,
-                "validateCode": "validate-me",
                 "news": "",
                 "task_id": "",
                 "research_topic": REPORT_DEFAULT_RESEARCH_TOPIC,
