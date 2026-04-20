@@ -157,7 +157,9 @@ fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseK
         }
         if status.eq_ignore_ascii_case("triggered") {
             let raw_message = parsed.message.unwrap_or_default();
-            let message = unwrap_nested_json_message(raw_message.trim()).trim().to_string();
+            let message = unwrap_nested_json_message(raw_message.trim())
+                .trim()
+                .to_string();
             if message.is_empty() || heartbeat_internal_marker_prefix(&message) {
                 return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonTriggered);
             }
@@ -635,8 +637,8 @@ async fn run_heartbeat_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt,
-        has_skip_delivery_signal, heartbeat_execution_from_content, inspect_heartbeat_result,
+        HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, has_skip_delivery_signal,
+        heartbeat_execution_from_content, inspect_heartbeat_result,
         sanitize_scheduler_delivery_text,
     };
     use hone_core::ActorIdentity;
@@ -835,10 +837,14 @@ mod tests {
 
     #[test]
     fn heartbeat_nested_json_message_is_unwrapped() {
-        let raw = r#"{"status":"triggered","message":"{\"trigger\":\"标的: TEM\\n事件: 大事件\"}"}"#;
+        let raw =
+            r#"{"status":"triggered","message":"{\"trigger\":\"标的: TEM\\n事件: 大事件\"}"}"#;
         let (outcome, parse_kind) = inspect_heartbeat_result(raw);
         assert_eq!(parse_kind, HeartbeatParseKind::JsonTriggered);
-        assert_eq!(outcome, HeartbeatOutcome::Deliver("标的: TEM\n事件: 大事件".to_string()));
+        assert_eq!(
+            outcome,
+            HeartbeatOutcome::Deliver("标的: TEM\n事件: 大事件".to_string())
+        );
     }
 
     #[test]
@@ -889,8 +895,14 @@ mod tests {
             tags: vec![],
             heartbeat: true,
             last_delivered_previews: vec![
-                ("2026-04-20T05:01:00+08:00".to_string(), "BlueBird 7 低轨事件".to_string()),
-                ("2026-04-20T04:31:00+08:00".to_string(), "BlueBird 7 发射".to_string()),
+                (
+                    "2026-04-20T05:01:00+08:00".to_string(),
+                    "BlueBird 7 低轨事件".to_string(),
+                ),
+                (
+                    "2026-04-20T04:31:00+08:00".to_string(),
+                    "BlueBird 7 发射".to_string(),
+                ),
             ],
         };
 
