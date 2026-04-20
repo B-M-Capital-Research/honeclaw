@@ -161,7 +161,7 @@ pub(crate) async fn handle_chat(
         return crate::routes::json_error(StatusCode::BAD_REQUEST, "消息不能为空");
     }
 
-    build_chat_sse(state, Ok(actor), message, 0, true).into_response()
+    build_chat_sse(state, Ok(actor), message, 0).into_response()
 }
 
 pub(crate) async fn handle_events(
