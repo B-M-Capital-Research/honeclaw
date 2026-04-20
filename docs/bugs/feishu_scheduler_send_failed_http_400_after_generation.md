@@ -5,6 +5,20 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-20 20:00 最近一小时最新样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=3590`，`job_id=j_98f3899c`，`job_name=GEV earnings reminder`，`executed_at=2026-04-20T20:00:38.780847+08:00`
+      - 再次落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`、`should_deliver=1`
+      - `detail_json.receive_id=ou_3f69c84593eccd71142ed767a885f595`，仍与历史失败目标一致
+      - `error_message` 再次明确返回 `code=99992361`、`msg="open_id cross app"`，并附上新的 Feishu `log_id=20260420200038769EC0904EBA08FA7907`
+      - `response_preview` 仅保留一段 72 字计划句，说明这轮不仅发送失败，连 scheduler 拿到的可见正文都已经退化成半成品
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+      - `2026-04-20T20:00:36.997863+08:00` assistant 已写入本轮 `GEV earnings reminder` 的可见回复，正文与 `response_preview` 对齐
+      - 说明 scheduler 注入、会话持久化与“拿到待发送正文”都已完成，真正失败点仍停留在 Feishu 最终投递阶段
+    - `data/runtime/logs/web.log`
+      - `2026-04-20 20:00:38.779` 记录 `[Feishu] 定时任务投递失败: job=GEV earnings reminder ... HTTP 400 Bad Request - {"code":99992361,"msg":"open_id cross app",...}`
+      - 这说明故障已经从盘前/盘后/早报任务进一步扩散到财报提醒类任务，而不是局限在某几个固定模板
   - 2026-04-20 08:33 最近一小时最新样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=3348`，`job_id=j_248f0f3c`，`job_name=Hone_AI_Morning_Briefing`，`executed_at=2026-04-20T08:33:04.280905+08:00`
@@ -108,6 +122,8 @@
 
 ## 当前实现效果
 
+- `2026-04-20 20:00` 的 `GEV earnings reminder` 继续命中同一 `open_id cross app` 返回体，说明故障已经从盘前/盘后扫描、日常早报进一步扩散到财报提醒任务；当前不能再把它视为少数模板异常。
+- 这轮最新样本的 `response_preview` 只有 72 字计划句，说明发送失败链路当前还会叠加 answer 侧的半成品收口；但从台账角度看，真正导致“用户完全收不到提醒”的决定性故障仍是 Feishu 出站 400。
 - `2026-04-20 08:33` 的 `Hone_AI_Morning_Briefing` 继续落成 `completed + send_failed`，且错误体与 `04:02/04:32` 两轮完全一致，仍然是 `code=99992361 / open_id cross app`。
 - 这说明故障已经从 `Oil_Price_Monitor_Closing`、`OWALERT_PostMarket` 扩散到同一目标上的通用早报任务；问题不是单个 job 模板、单个消息长度或单个盘前/盘后场景偶发异常。
 - `2026-04-20 04:02` 的 `Oil_Price_Monitor_Closing` 与 `04:32` 的 `OWALERT_PostMarket` 在同一目标上连续两轮都落成 `completed + send_failed`，并且 Feishu 返回体都明确是 `code=99992361 / open_id cross app`。

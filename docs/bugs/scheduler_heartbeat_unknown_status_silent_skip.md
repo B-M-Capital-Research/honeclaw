@@ -6,6 +6,20 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 19:30-20:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 19:30:21 -> 20:00:26` 再次从“上一轮侥幸 noop”跌回“同轮双模板 failed”的活跃坏态：
+      - `run_id=3577`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T19:30:21.733750+08:00`）在 `19:30` 窗口暂时回到 `noop + skipped_noop`
+      - `run_id=3579`（`TEM大事件心跳监控`，`executed_at=2026-04-20T19:30:30.910562+08:00`）同轮也暂时回到 `noop + skipped_noop`
+      - 但仅过 30 分钟，到 `20:00` 窗口，`run_id=3584`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T20:00:19.715394+08:00`）再次落成 `execution_failed + skipped_error`
+      - 同一 `20:00` 批次里，`run_id=3588`（`TEM大事件心跳监控`，`executed_at=2026-04-20T20:00:26.251170+08:00`）也再次落成 `execution_failed + skipped_error`
+      - 而 `run_id=3580/3581/3582/3583/3585/3586/3587`（`原油/小米/CAI/TEM破位/RKLB/ORCL/小米破位`）又只是 `noop + skipped_noop`
+      - 这说明最新一小时里，结构化状态契约仍不是“修了又坏一个模板”，而是在同一轮同时让 Watchlist 与事件监控模板重新失守
+  - 对应 `data/runtime/logs/sidecar.log`：
+    - `2026-04-20 20:00:19.714` 明确记录 `job=Monitor_Watchlist_11 ... parse_kind=JsonUnknownStatus ... parse failure escalated`
+    - `2026-04-20 20:00:26.250` 明确记录 `job=TEM大事件心跳监控 ... parse_kind=JsonUnknownStatus ... parse failure escalated`
+    - 同一窗口里恢复为 `noop` 的 `run_id=3580/3581/3582/3583/3585/3586/3587` 依旧统一满足 `starts_with_json=false`
+    - 这说明所谓“恢复”为 `noop` 的任务仍主要依赖 `<think>...JSON` 尾部侥幸提取，而不是上游结构化输出契约已经稳定恢复
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 18:00-19:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 18:00:05 -> 19:00:21` 继续表现为“上一轮一组模板失败，下一轮又换模板继续跌回 unknown status”的活跃漂移态：
       - `run_id=3542`（`小米破位预警`，`executed_at=2026-04-20T18:00:09.347187+08:00`）在 `18:00` 窗口落成 `execution_failed + skipped_error`

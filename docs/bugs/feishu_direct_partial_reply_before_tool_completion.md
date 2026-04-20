@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
+    - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+    - `2026-04-20T20:00:00.154161+08:00` scheduler 注入用户请求：`GEV earnings reminder`
+    - `2026-04-20T20:00:36.997863+08:00` assistant 仅落下 72 字计划句：`这次是明确的财报前预判任务。我先调取GEV的历史研究记录和财报前关键事实，再核验最新市场预期...`
+    - 到本轮巡检结束，这条 assistant 之后没有新的正式财报前分析正文；`cron_job_runs.run_id=3590` 同时保留相同 `response_preview`
+    - 这说明半成品先落库的问题已经扩散到 scheduler 注入的 direct 会话，而不只发生在用户手动发起的直聊提问
+  - `data/runtime/logs/web.log`
+    - `2026-04-20 20:00:34.680` 同一 `GEV earnings reminder` 会话在短答落库前仍继续启动 `Tool: hone/local_list_files`
+    - `2026-04-20 20:00:34.834` 紧接着记录 `runner.stage=acp.tool_failed`，说明系统还在尝试补上下文文件
+    - `2026-04-20 20:00:36.985` 又继续启动 `Tool: hone/web_search`
+    - `2026-04-20 20:00:37.031` 才记录 `step=session.persist_assistant detail=done`
+    - 同一秒落成 `done ... success=true ... reply.chars=72`
+    - 这说明当前收口时序依然允许“仍有后续工具动作 -> 先把计划句持久化成最终答复”
+  - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
     - `2026-04-20T16:18:54.098436+08:00` 用户提问：`请对 vistra energy 进行详细分析`
     - `2026-04-20T16:19:32.990566+08:00` assistant 先返回过程句：`本地用户空间里没有现成的 company_profiles/ 目录，我先补查当前 actor 目录结构，再抓取 VST 的实时数据、财务和最新新闻...`
@@ -50,8 +63,11 @@
 ## 当前实现效果
 
 - `2026-04-20 08:54` 的 `TEMPUS AI` 最新样本说明，这条缺陷仍是当前线上活跃问题，而不是 4 月 16 日的单次偶发。
+- `2026-04-20 20:00` 的 `GEV earnings reminder` 说明问题已经不只局限于人工直聊提问；scheduler 注入的同类分析任务也会在研究动作尚未结束时先落一条计划句。
+- 这轮最新样本里，`local_list_files` / `local_search_files` 还先后失败，随后 `web_search` 才继续启动，但系统已经把 72 字过渡句记成整轮 `success=true`；即使没有后续投递失败，用户实际能看到的也只会是半成品。
 - `2026-04-20 16:19` 的 `vistra energy` 最新样本进一步说明，问题不只表现为“最终只剩一句过程句”；它也会先把过程句作为一条可见 assistant 消息落进真实会话，导致用户在没有拿到正式分析前只能重复提问。
 - 本轮返回内容不是简短但完整的摘要，而是明显的内部执行计划句：系统告诉用户“还缺一件事”“先看本地已有画像模板和写法”，却没有继续给出 `TEMPUS AI` 的估值或基本面判断。
+- `GEV earnings reminder` 的最新 72 字文本同样不是财报判断本身，而只是“我先调取历史研究记录、再核验市场预期”的执行计划；这进一步证明问题是答复结构被截断，而不是模型选择了简短风格。
 - `vistra energy` 这轮过程句同样暴露了内部执行轨迹：系统先告诉用户要去补查 actor 目录结构、抓取实时数据和新闻，随后才在下一次用户重问后完成正式答复。
 - 日志还显示 `Tool: hone/local_list_files status=start` 与 `session.persist_assistant/done` 在同一秒交错，证明收口时序仍然允许“工具未结束 -> 先落最终答复”。
 - 这已经不只是“答得偏短”的质量波动，而是答复结构被截断成过程说明，导致用户任务没有真正完成。
@@ -60,6 +76,7 @@
 
 - 这是质量类缺陷，不影响消息送达、会话持久化或系统稳定性，因此不属于 `P1/P2` 功能性故障。
 - 之所以定级为 `P3`，是因为用户仍然收到了可读文本，没有出现无回复、错投、数据损坏或系统级失败。
+- `2026-04-20 20:00` 的 scheduler 样本虽然最终又叠加了 Feishu `send_failed`，但这不改变本缺陷的定性：如果单看 answer 收口，系统仍先生成了错误的半成品 assistant。
 - 但该文本没有完成用户明确提出的分析任务，用户需要重新追问或自行判断这句过程说明是否代表“系统还没答完”，体验明显劣化。
 
 ## 根因判断
