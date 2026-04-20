@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 12:30-13:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 12:30:14 -> 13:00:21` 继续表现为“上一轮失败对象短暂自恢复、下一轮又换模板跌回 unknown status”的活跃漂移态：
+      - `run_id=3433`（`RKLB异动监控`，`executed_at=2026-04-20T12:30:14.984603+08:00`）在 `12:30` 窗口落成 `execution_failed + skipped_error`
+      - 同轮 `run_id=3436`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T12:30:22.744737+08:00`）也再次落成 `execution_failed + skipped_error`
+      - 到下一轮 `13:00`，`run_id=3444`（`RKLB异动监控`，`executed_at=2026-04-20T13:00:16.811561+08:00`）又恢复为 `noop + skipped_noop`
+      - 但同一 `13:00` 批次里，`run_id=3445/3446`（`Monitor_Watchlist_11`、`ORCL 大事件监控`）继续落成 `execution_failed + skipped_error`
+      - 这说明到 `13:00` 为止，问题仍不是单一 watchlist 模板损坏，而是 heartbeat 公共输出契约继续在 `RKLB -> Watchlist/ORCL` 等不同模板之间漂移
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 12:30:14.983` 的 `RKLB异动监控` 记录 `parse_kind=JsonUnknownStatus`，正文已写出“无新并购、无新 Neutron 进展、无新重大订单/发射失败”，却仍被升级为 `parse failure escalated`
+    - `2026-04-20 12:30:22.743` 的 `Monitor_Watchlist_11` 再次记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 仍逐项比较 11 只股票的触发价后失败收口
+    - `2026-04-20 13:00:16.810` 的 `RKLB异动监控` 又恢复为 `parse_kind=JsonNoop`，但 `raw_preview` 仍以 `<think>` 起头、依赖尾部 `{"status":"noop"}` 收口
+    - `2026-04-20 13:00:18.048` 的 `Monitor_Watchlist_11` 与 `13:00:21.175` 的 `ORCL 大事件监控` 同批继续记录 `parse_kind=JsonUnknownStatus` 并触发 `parse failure escalated`
+    - 同一 `13:00` 窗口里日志仍打印 `心跳任务未命中，本轮不发送`，说明“未知状态已升级为失败”和“渠道日志仍按 noop 口径描述”之间的观测口径不一致依旧存在
   - 2026-04-20 11:30-12:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 11:30:20 -> 12:00:22` 继续表现为“上一轮失败对象短暂恢复，下一轮又换模板跌回 unknown status”的活跃漂移态：
       - `run_id=3416`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T11:30:28.919909+08:00`）在 `11:30` 窗口落成 `execution_failed + skipped_error`
@@ -780,6 +793,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 12:30 -> 13:00` 的最新窗口，heartbeat 失败对象继续在 `RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 之间漂移：`RKLB` 在 `12:30` 失败、`13:00` 又自恢复，但 `Monitor_Watchlist_11` 与 `ORCL` 同批重新跌回 `execution_failed + skipped_error`，说明公共结构化状态契约仍未收口。
 - 到 `2026-04-20 07:31 -> 08:01` 的最新窗口，heartbeat 仍在“整批暂时恢复为 `noop`”与“`ORCL / Monitor_Watchlist_11 / RKLB异动监控` 集体回落成 `unknown status`”之间来回摆动；同时其余 `noop` 任务依旧统一依赖 `<think>...JSON` 尾部提取，说明结构化状态契约到 `08:01` 仍未恢复。
 - 到 `2026-04-20 03:31 -> 04:01` 的最新窗口，这条缺陷继续证明 heartbeat 公共协议没有收口：
   - `RKLB异动监控` 在 `03:31` 与 `04:01` 连续两轮都落成 `execution_failed + skipped_error`
