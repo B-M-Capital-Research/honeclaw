@@ -6,7 +6,13 @@
 - **状态**: Fixing
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
-  - 最近一小时复现会话: `Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
+  - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-20 11:37 最近一小时最新复现：
+   - `session_id=Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+   - `2026-04-20T11:37:42.915697+08:00` 会话自动 compact 后，再次写回 `role=user` 的 `【Compact Summary】...`
+   - 这条 summary 不是系统态元数据，而是完整的股票关注表与结论文本，直接列出 `TEM / 地平线机器人 / Dell / IREN / COHR` 等标的的“助手的观点 / 用户的观点”
+   - 紧接着同轮真实用户新问题是：`cohr呢`
+   - `2026-04-20T11:38:51.090650+08:00` assistant 虽然表面成功回答了 COHR，但这说明在最近小时窗里，compact summary 仍会作为真实 `user` transcript 插入新问题前的 prompt，而不是只存入内部 summary 字段
 - 2026-04-20 10:11-10:46 最近一小时最新复现：
    - `session_id=Actor_feishu__direct__ou_5f721e2f6a672bf212d3056d02d931faa0`
    - `2026-04-20T10:11:17.155738+08:00` 会话自动 compact 后，再次写回 `role=user` 的 `【Compact Summary】...`

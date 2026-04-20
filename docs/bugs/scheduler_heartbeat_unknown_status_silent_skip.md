@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 11:30-12:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 11:30:20 -> 12:00:22` 继续表现为“上一轮失败对象短暂恢复，下一轮又换模板跌回 unknown status”的活跃漂移态：
+      - `run_id=3416`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T11:30:28.919909+08:00`）在 `11:30` 窗口落成 `execution_failed + skipped_error`
+      - 到下一轮 `12:00`，同一任务 `run_id=3425`（`executed_at=2026-04-20T12:00:22.396079+08:00`）又恢复为 `noop + skipped_noop`
+      - 但同一 `12:00` 批次里，失败对象漂移成 `run_id=3426`（`ORCL 大事件监控`，`executed_at=2026-04-20T12:00:22.521689+08:00`），再次落成 `execution_failed + skipped_error`
+      - 同批 `run_id=3422/3423/3424`（`RKLB异动监控 / ASTS 重大异动心跳监控 / TEM大事件心跳监控`）则都回到 `noop + skipped_noop`
+      - 这说明到 `12:00` 为止，问题仍不是单一 watchlist 模板损坏，而是 heartbeat 公共输出契约继续在 `Watchlist -> ORCL` 等不同模板之间漂移
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 12:00:22.394` 的 `Monitor_Watchlist_11` 已恢复为 `parse_kind=JsonNoop`，但 `raw_preview` 仍先输出整段自然语言比较后才在尾部补 `{"status":"noop"}`，说明结构化成功依旧依赖脆弱的尾部提取
+    - `2026-04-20 12:00:22.520` 的 `ORCL 大事件监控` 同轮记录 `parse_kind=JsonUnknownStatus`，正文已经完成“跌幅未超过 5%、没有重大基本面事件”的判断，却仍被升级为 `parse failure escalated`
+    - `2026-04-20 12:00:20.339` 的 `RKLB异动监控` 与 `12:00:21.939` 的 `TEM大事件心跳监控` 则都被收口成 `JsonNoop`，进一步证明当前是模板间漂移而不是整批调度停摆
   - 2026-04-20 10:30-11:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 10:30:14 -> 11:00:28` 继续表现为“上一轮刚有部分任务恢复为 `noop`，下一轮又有 heartbeat 模板跌回未知状态”的活跃漂移态：
       - `run_id=3395`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T10:30:28.836822+08:00`）再次落成 `execution_failed + skipped_error`
