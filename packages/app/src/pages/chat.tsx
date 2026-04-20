@@ -27,6 +27,7 @@ import { parseSseChunks } from "@/lib/stream";
 
 type AuthState = "loading" | "logged_out" | "logging_in" | "ready";
 type AssistantPhase = "thinking" | "running" | "streaming" | "done" | "error";
+type PublicChatView = "loading" | "login" | "chat";
 
 type ChatMessage = {
   id: string;
@@ -54,6 +55,12 @@ export function normalizePhoneNumber(value: string) {
   return hasLeadingPlus ? `+${digits}` : digits;
 }
 
+export function resolvePublicChatView(authState: AuthState): PublicChatView {
+  if (authState === "ready") return "chat";
+  if (authState === "loading") return "loading";
+  return "login";
+}
+
 function formatElapsed(startedAt?: number) {
   if (!startedAt) return "0s";
   const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
@@ -77,6 +84,35 @@ function RepoLink(props: { stars: number }) {
   );
 }
 
+function LoadingCard(props: { githubStars: number }) {
+  return (
+    <div class="relative min-h-screen overflow-x-hidden overflow-y-hidden bg-[#ffffff] px-4 py-6 text-[#111111] sm:px-6 sm:py-10">
+      <div class="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col sm:min-h-[calc(100vh-5rem)]">
+        <div class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex items-center gap-3 text-[11px] uppercase tracking-[0.22em] text-black/45 sm:tracking-[0.26em]">
+            <Logo class="h-8 w-auto" />
+            <span>Hone Chat</span>
+          </div>
+          <RepoLink stars={props.githubStars} />
+        </div>
+        <div class="flex flex-1 items-center justify-center">
+          <div class="w-full max-w-2xl rounded-[28px] border border-black/8 bg-white px-6 py-10 text-center shadow-[0_16px_48px_rgba(0,0,0,0.05)] sm:rounded-[32px] sm:px-8 sm:py-12">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-[0_10px_28px_rgba(0,0,0,0.12)]">
+              <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" />
+            </div>
+            <h1 class="mt-6 text-[28px] font-medium tracking-[-0.04em] text-black sm:text-[34px]">
+              正在恢复登录状态
+            </h1>
+            <p class="mx-auto mt-4 max-w-xl text-sm leading-7 text-black/52 sm:text-[15px]">
+              已登录用户刷新页面后会先校验当前会话，再恢复聊天内容和长连接更新。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LoginCard(props: {
   inviteCode: string;
   phoneNumber: string;
@@ -88,7 +124,7 @@ export function LoginCard(props: {
   onSubmit: () => void;
 }) {
   return (
-    <div class="relative min-h-screen overflow-hidden bg-[#ffffff] px-4 py-6 text-[#111111] sm:px-6 sm:py-10">
+    <div class="relative min-h-screen overflow-x-hidden overflow-y-hidden bg-[#ffffff] px-4 py-6 text-[#111111] sm:px-6 sm:py-10">
       <div class="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col sm:min-h-[calc(100vh-5rem)]">
         <div class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div class="flex items-center gap-3 text-[11px] uppercase tracking-[0.22em] text-black/45 sm:tracking-[0.26em]">
@@ -216,7 +252,7 @@ function AssistantCard(props: { message: ChatMessage }) {
   return (
     <div
       class={[
-        "rounded-[28px] px-5 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)]",
+        "overflow-hidden rounded-[28px] px-5 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)]",
         toneClass(),
       ].join(" ")}
     >
@@ -275,7 +311,7 @@ function AssistantCard(props: { message: ChatMessage }) {
                 <Match when={part.type === "text"}>
                   <Markdown
                     text={part.value}
-                    class="text-[15px] leading-8 text-black [&_p]:my-0 [&_p+*]:mt-4 [&_pre]:mt-4 [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-black/[0.04] [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1 [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-black/12 [&_blockquote]:pl-4 [&_blockquote]:text-black/58"
+                    class="break-words text-[15px] leading-8 text-black [&_*]:max-w-full [&_p]:my-0 [&_p+*]:mt-4 [&_pre]:mt-4 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-black/[0.04] [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1 [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-black/12 [&_blockquote]:pl-4 [&_blockquote]:text-black/58"
                   />
                 </Match>
               </Switch>
@@ -343,6 +379,8 @@ export default function PublicChatPage() {
         remainingToday: user.remaining_today,
         dailyLimit: user.daily_limit,
       });
+      setAuthState("ready");
+      setLoginError("");
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
       const timeline = historyToTimeline(history)
@@ -357,8 +395,6 @@ export default function PublicChatPage() {
           steps: [],
         }));
       setMessages(timeline);
-      setAuthState("ready");
-      setLoginError("");
       await connectPushEvents();
       if (generation !== sessionSyncGeneration) return;
       scrollToBottom();
@@ -372,6 +408,8 @@ export default function PublicChatPage() {
       }
     }
   };
+
+  const publicChatView = () => resolvePublicChatView(authState());
 
   const connectPushEvents = async () => {
     eventSource?.close();
@@ -638,9 +676,11 @@ export default function PublicChatPage() {
   };
 
   return (
-    <Show
-      when={authState() === "ready"}
-      fallback={
+    <Switch>
+      <Match when={publicChatView() === "loading"}>
+        <LoadingCard githubStars={githubStars()} />
+      </Match>
+      <Match when={publicChatView() === "login"}>
         <LoginCard
           inviteCode={inviteCode()}
           phoneNumber={phoneNumber()}
@@ -651,9 +691,9 @@ export default function PublicChatPage() {
           onPhoneInput={setPhoneNumber}
           onSubmit={() => void handleLogin()}
         />
-      }
-    >
-      <div class="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#ffffff] text-[#111111]">
+      </Match>
+      <Match when={publicChatView() === "chat"}>
+        <div class="flex h-[100dvh] max-h-[100dvh] min-w-0 flex-col overflow-x-hidden overflow-y-hidden bg-[#ffffff] text-[#111111]">
         <header class="shrink-0 bg-[#ffffff]/92 backdrop-blur">
           <div class="mx-auto flex w-full max-w-7xl items-center justify-between px-3 py-3 sm:px-6 sm:py-4">
             <div class="min-w-0 flex items-center gap-3 sm:gap-4">
@@ -687,10 +727,10 @@ export default function PublicChatPage() {
           </div>
         </header>
 
-        <main class="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col overflow-hidden px-2 pb-3 pt-1 sm:px-3 md:px-6">
+        <main class="mx-auto flex min-h-0 min-w-0 w-full max-w-[1440px] flex-1 flex-col overflow-x-hidden overflow-y-hidden px-2 pb-3 pt-1 sm:px-3 md:px-6">
           <div
             ref={scrollRef}
-            class="hf-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-3 sm:gap-5 sm:py-4 md:px-2"
+            class="hf-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-1 py-3 sm:gap-5 sm:py-4 md:px-2"
           >
             <Show
               when={messages().length > 0}
@@ -720,17 +760,17 @@ export default function PublicChatPage() {
                     <div
                       class={
                         message.role === "user"
-                          ? "max-w-[86%] sm:max-w-[72%]"
-                          : "max-w-[100%] sm:max-w-[96%] md:max-w-[92%]"
+                          ? "min-w-0 max-w-[86%] sm:max-w-[72%]"
+                          : "min-w-0 max-w-[100%] sm:max-w-[96%] md:max-w-[92%]"
                       }
                     >
                       <Show
                         when={message.role === "assistant"}
                         fallback={
-                          <div class="rounded-[20px] bg-black px-3.5 py-2.5 text-[15px] leading-6 text-white shadow-[0_12px_30px_rgba(0,0,0,0.12)] sm:rounded-[22px] sm:px-4">
+                          <div class="overflow-hidden rounded-[20px] bg-black px-3.5 py-2.5 text-[15px] leading-6 text-white shadow-[0_12px_30px_rgba(0,0,0,0.12)] sm:rounded-[22px] sm:px-4">
                             <Markdown
                               text={message.content}
-                              class="text-[15px] leading-6 !text-white [&_*]:!text-white [&_p]:my-0 [&_p+*]:mt-2.5 [&_pre]:mt-2.5 [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-white/12 [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-2.5 [&_ol]:my-2.5 [&_li]:my-1 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-white/18 [&_blockquote]:pl-4 [&_blockquote]:!text-white"
+                              class="break-words text-[15px] leading-6 !text-white [&_*]:max-w-full [&_*]:!text-white [&_p]:my-0 [&_p+*]:mt-2.5 [&_pre]:mt-2.5 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-white/12 [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-2.5 [&_ol]:my-2.5 [&_li]:my-1 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-white/18 [&_blockquote]:pl-4 [&_blockquote]:!text-white"
                             />
                           </div>
                         }
@@ -795,7 +835,8 @@ export default function PublicChatPage() {
             </div>
           </div>
         </main>
-      </div>
-    </Show>
+        </div>
+      </Match>
+    </Switch>
   );
 }
