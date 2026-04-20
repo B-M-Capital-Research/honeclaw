@@ -7,6 +7,13 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-20 16:51 最近一小时最新复现：
+   - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`
+   - `2026-04-20T16:50:45.690+08:00` 用户真实输入是：`分析一下DELL，并综合对比DELL、HPE、CRWV三家公司`
+   - `data/runtime/logs/web.log` 记录 `2026-04-20 16:50:45.691` `Compressing session ... with 21 messages`，随后 `16:51:21.587` 记录 `compacted to boundary + summary + 6 retained items`
+   - 紧接着 `session_messages` 在 `2026-04-20T16:51:21.579381+08:00` 再次写回 `role=user` 的 `【Compact Summary】...`
+   - 这条 summary 仍然不是系统态元数据，而是完整股票关注表与观点文本，直接列出 `CLS / DELL / HPE / CRWV / 曦智科技 / 特斯拉` 等标的的“助手的观点 / 用户的观点”
+   - 随后 `2026-04-20T16:55:48.792364+08:00` assistant 虽然成功返回 DELL 正式分析，但说明到最近一小时窗口结束时，compact summary 仍会实时以真实 `user` transcript 身份插到新问题前进入 prompt，而不是只保存在内部 summary 字段
 - 2026-04-20 15:36 最近一小时最新复现：
    - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
    - `2026-04-20T15:36:31.232945+08:00` 会话自动 compact 后，先写入 `system` 边界消息 `Conversation compacted`
@@ -259,6 +266,7 @@
 9. `2026-04-19 12:44` 的最新直聊样本说明，这条缺陷已经继续改写正式回答的价值判断：新问题只是“研究一下900943这家公司”，但 answer 仍直接沿用刚回灌的美股持仓上下文，扩写成“是否符合你的美股科技主线”的组合建议。
 10. `2026-04-19 23:37` 与 `23:47` 的双样本进一步说明，问题并未局限在某个历史污染会话。最近一小时两个不同 Feishu 直聊都再次生成新的 `role=user` `Compact Summary`，证明线上 transcript 污染仍是当前时态的活跃问题。
 11. `2026-04-20 10:11` 与 `10:46` 的最新双样本进一步说明，哪怕上一轮正式回答表面可读，这个缺陷依旧会在“新问题进来之前”实时生成新的 `role=user` `Compact Summary`；因此当前线上仍在持续制造新污染，而不是只剩历史遗留数据。
+12. `2026-04-20 16:51` 的最新 DELL 对比样本进一步证明，这个问题到本轮巡检结束前仍在生产持续发生。虽然随后正式回答可读，但 `Compact Summary` 仍先以真实 `user` 消息落库，说明“旧污染还在库里”已经不是准确描述，当前链路仍在继续制造新的污染 transcript。
 
 ## 修复情况（2026-04-17）
 
