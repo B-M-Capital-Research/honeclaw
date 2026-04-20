@@ -9,9 +9,9 @@ import type { PublicAuthUserInfo } from "@/lib/types"
 import "./public-site.css"
 
 function formatDate(iso: string | undefined): string {
-  if (!iso) return "—"
+  if (!iso) return CONTENT.me.date_placeholder
   try {
-    return new Date(iso).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })
+    return new Date(iso).toLocaleDateString(CONTENT.me.date_locale, { year: "numeric", month: "long", day: "numeric" })
   } catch {
     return iso
   }
@@ -212,7 +212,7 @@ function LoggedOutView() {
             {C.logged_out_cta}
           </button>
           <div style={{ "font-size": "12px", color: "#94a3b8", "line-height": "1.6" }}>
-            需要邀请码才能进入对话
+            {C.invite_note}
           </div>
         </div>
       </div>
@@ -251,7 +251,7 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
                 "margin-bottom": "8px",
               }}
             >
-              账号中心
+              {C.logged_in_eyebrow}
             </div>
             <h1
               style={{
@@ -291,13 +291,13 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
         {/* Stats grid */}
         <div class="pub-me-stats">
           <StatCard
-            label="今日剩余"
+            label={C.stats.remaining_today_label}
             value={props.user.remaining_today}
-            sub={`/ ${props.user.daily_limit} 次每日`}
+            sub={C.stats.remaining_today_sub_template.replace("{daily}", String(props.user.daily_limit))}
             accent
           />
-          <StatCard label="累计使用" value={props.user.success_count} sub="次成功对话" />
-          <StatCard label="每日额度" value={props.user.daily_limit} sub="次 / 天" />
+          <StatCard label={C.stats.total_label} value={props.user.success_count} sub={C.stats.total_sub} />
+          <StatCard label={C.stats.daily_limit_label} value={props.user.daily_limit} sub={C.stats.daily_limit_sub} />
         </div>
 
         {/* Usage bar */}
@@ -318,7 +318,7 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
               "margin-bottom": "10px",
             }}
           >
-            <span style={{ "font-size": "13px", "font-weight": "600", color: "#0f172a" }}>今日用量</span>
+            <span style={{ "font-size": "13px", "font-weight": "600", color: "#0f172a" }}>{C.usage_today_label}</span>
             <span
               style={{
                 "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
@@ -362,7 +362,7 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
               margin: "0 0 4px",
             }}
           >
-            账号信息
+            {C.account_info_title}
           </h3>
           <div>
             <InfoRow label={C.fields.user_id} value={props.user.user_id} />
@@ -374,16 +374,16 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
         {/* Actions */}
         <div style={{ display: "flex", "flex-wrap": "wrap", gap: "10px", "margin-bottom": "40px" }}>
           <ActionBtn variant="primary" onClick={() => navigate("/chat")}>
-            进入对话 →
+            {C.actions.chat}
           </ActionBtn>
           <ActionBtn variant="default" onClick={() => navigate("/roadmap")}>
-            查看路线图
+            {C.actions.roadmap}
           </ActionBtn>
           <ActionBtn variant="ghost" href="#">
-            加入社群
+            {C.actions.community}
           </ActionBtn>
           <ActionBtn variant="danger" onClick={props.onLogout}>
-            退出登录
+            {C.actions.logout}
           </ActionBtn>
         </div>
 
@@ -409,10 +409,10 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
             </span>
             <div>
               <div style={{ "font-size": "13px", "font-weight": "700", color: "#0f172a", "margin-bottom": "4px" }}>
-                会员 / 高级功能（结构预留）
+                {C.membership.title}
               </div>
               <div style={{ "font-size": "12px", color: "#94a3b8" }}>
-                付费体系、VIP 群、私域高级 Skill——即将推出。加入社群获取第一手信息。
+                {C.membership.desc}
               </div>
             </div>
           </div>
@@ -465,7 +465,7 @@ export default function PublicMePage() {
               "justify-content": "center",
             }}
           >
-            <div style={{ "font-size": "13px", color: "#94a3b8" }}>加载中…</div>
+            <div style={{ "font-size": "13px", color: "#94a3b8" }}>{CONTENT.me.loading}</div>
           </div>
         }
       >

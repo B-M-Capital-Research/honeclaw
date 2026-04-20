@@ -27,17 +27,17 @@ const PHASE_COLORS: Record<PhaseVariant, {
   later: { border: "rgba(100,116,139,0.15)", bg: "#f8fafc", dot: "#94a3b8", badge: "#64748b" },
 }
 
-const TOC = [
-  { id: "quick-start", label: "快速开始", sub: "Quick Start" },
-  { id: "capabilities", label: "能力矩阵", sub: "Capability Matrix" },
-  { id: "channels", label: "渠道接入", sub: "Channels" },
-  { id: "architecture", label: "架构", sub: "Architecture" },
-  { id: "skills", label: "内置 Skill", sub: "Skills" },
-  { id: "roadmap", label: "产品路线图", sub: "Roadmap" },
-  { id: "boundary", label: "开源边界", sub: "Open Source" },
-  { id: "docs", label: "文档入口", sub: "Docs" },
-  { id: "contributing", label: "参与贡献", sub: "Contributing" },
-  { id: "faq", label: "常见问题", sub: "FAQ" },
+const TOC_IDS = [
+  "quick-start",
+  "capabilities",
+  "channels",
+  "architecture",
+  "skills",
+  "roadmap",
+  "boundary",
+  "docs",
+  "contributing",
+  "faq",
 ] as const
 
 function StatusChip(props: { status: Status }) {
@@ -293,6 +293,7 @@ function FAQItem(props: { q: string; a: string; defaultOpen?: boolean }) {
 }
 
 function SidebarTOC(props: { active: string; onJump: (id: string) => void }) {
+  const C = CONTENT.roadmap
   return (
     <aside class="pub-doc-aside">
       <div
@@ -306,10 +307,10 @@ function SidebarTOC(props: { active: string; onJump: (id: string) => void }) {
           "margin-bottom": "16px",
         }}
       >
-        ON THIS PAGE
+        {C.sidebar_title}
       </div>
       <ul style={{ "list-style": "none", padding: "0", margin: "0", display: "flex", "flex-direction": "column", gap: "2px" }}>
-        <For each={TOC}>
+        <For each={C.toc}>
           {(item) => (
             <li>
               <a
@@ -408,7 +409,7 @@ const ARCH_DIAGRAM = `            ┌──────────────�
 export default function PublicRoadmapPage() {
   const navigate = useNavigate()
   const C = CONTENT.roadmap
-  const [activeToc, setActiveToc] = createSignal<string>(TOC[0].id)
+  const [activeToc, setActiveToc] = createSignal<string>(TOC_IDS[0])
   const [installTab, setInstallTab] = createSignal<"curl" | "brew" | "source">("curl")
 
   const jumpTo = (id: string) => {
@@ -425,8 +426,8 @@ export default function PublicRoadmapPage() {
       },
       { rootMargin: "-80px 0px -60% 0px" },
     )
-    TOC.forEach((t) => {
-      const el = document.getElementById(t.id)
+    TOC_IDS.forEach((id) => {
+      const el = document.getElementById(id)
       if (el) obs.observe(el)
     })
     onCleanup(() => obs.disconnect())
@@ -509,7 +510,7 @@ export default function PublicRoadmapPage() {
                   "text-transform": "uppercase",
                 }}
               >
-                ROADMAP · DOCS · API
+                {C.hero_meta}
               </span>
             </div>
             <h1
@@ -539,7 +540,7 @@ export default function PublicRoadmapPage() {
             <div style={{ display: "flex", "flex-wrap": "wrap", gap: "8px" }}>
               <For each={["quick-start", "capabilities", "channels", "roadmap", "faq"] as const}>
                 {(id) => {
-                  const t = TOC.find((x) => x.id === id)
+                  const t = C.toc.find((x) => x.id === id)
                   return (
                     <a
                       href={`#${id}`}
@@ -575,7 +576,7 @@ export default function PublicRoadmapPage() {
 
           <main style={{ flex: "1", "min-width": "0" }}>
             {/* QUICK START */}
-            <DocSection id="quick-start" eyebrow="§ 01 · QUICK START" title="快速开始">
+            <DocSection id="quick-start" eyebrow={C.sections.quick_start.eyebrow} title={C.sections.quick_start.title}>
               <p
                 style={{
                   "font-size": "15px",
@@ -585,7 +586,7 @@ export default function PublicRoadmapPage() {
                   "max-width": "640px",
                 }}
               >
-                三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。任选其一即可开始。
+                {C.sections.quick_start.intro}
               </p>
               <div
                 class="pub-install-tabs"
@@ -596,24 +597,20 @@ export default function PublicRoadmapPage() {
                   "border-bottom": "1px solid rgba(0,0,0,0.06)",
                 }}
               >
-                <For each={[
-                  { k: "curl" as const, label: "curl | bash", badge: "推荐" },
-                  { k: "brew" as const, label: "Homebrew", badge: null },
-                  { k: "source" as const, label: "源码 / launch.sh", badge: null },
-                ]}>
+                <For each={C.install.tabs}>
                   {(tab) => (
                     <button
-                      onClick={() => setInstallTab(tab.k)}
+                      onClick={() => setInstallTab(tab.key)}
                       style={{
                         padding: "10px 18px",
                         background: "transparent",
                         border: "none",
                         cursor: "pointer",
-                        "border-bottom": `2px solid ${installTab() === tab.k ? "#f59e0b" : "transparent"}`,
+                        "border-bottom": `2px solid ${installTab() === tab.key ? "#f59e0b" : "transparent"}`,
                         "font-family": "inherit",
                         "font-size": "13px",
                         "font-weight": "600",
-                        color: installTab() === tab.k ? "#0f172a" : "#64748b",
+                        color: installTab() === tab.key ? "#0f172a" : "#64748b",
                         display: "flex",
                         "align-items": "center",
                         gap: "8px",
@@ -654,12 +651,12 @@ export default function PublicRoadmapPage() {
                   color: "#94a3b8",
                 }}
               >
-                <span>系统要求：{C.requirements}</span>
+                <span>{C.install.requirements_prefix}{C.requirements}</span>
               </div>
             </DocSection>
 
             {/* CAPABILITIES */}
-            <DocSection id="capabilities" eyebrow="§ 02 · CAPABILITY MATRIX" title="能力矩阵">
+            <DocSection id="capabilities" eyebrow={C.sections.capabilities.eyebrow} title={C.sections.capabilities.title}>
               <p
                 style={{
                   "font-size": "15px",
@@ -669,7 +666,7 @@ export default function PublicRoadmapPage() {
                   "max-width": "640px",
                 }}
               >
-                <StatusChip status="stable" /> 生产可用 · <StatusChip status="beta" /> 预览 · <StatusChip status="planned" /> 规划中
+                <StatusChip status="stable" /> {C.sections.capabilities.legend.stable} · <StatusChip status="beta" /> {C.sections.capabilities.legend.beta} · <StatusChip status="planned" /> {C.sections.capabilities.legend.planned}
               </p>
               <div style={{ "border-radius": "10px", border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden" }}>
                 <For each={C.capability_matrix}>
@@ -726,7 +723,7 @@ export default function PublicRoadmapPage() {
             </DocSection>
 
             {/* CHANNELS */}
-            <DocSection id="channels" eyebrow="§ 03 · CHANNELS" title="渠道接入">
+            <DocSection id="channels" eyebrow={C.sections.channels.eyebrow} title={C.sections.channels.title}>
               <p
                 style={{
                   "font-size": "15px",
@@ -736,7 +733,7 @@ export default function PublicRoadmapPage() {
                   "max-width": "640px",
                 }}
               >
-                Hone 是多端接入的投研 agent。每个渠道都是独立进程，可独立启停、独立配置。
+                {C.sections.channels.intro}
               </p>
               <div class="pub-channels-grid">
                 <For each={C.channels}>
@@ -782,7 +779,7 @@ export default function PublicRoadmapPage() {
             </DocSection>
 
             {/* ARCHITECTURE */}
-            <DocSection id="architecture" eyebrow="§ 04 · ARCHITECTURE" title="系统架构">
+            <DocSection id="architecture" eyebrow={C.sections.architecture.eyebrow} title={C.sections.architecture.title}>
               <p
                 style={{
                   "font-size": "15px",
@@ -792,7 +789,7 @@ export default function PublicRoadmapPage() {
                   "max-width": "640px",
                 }}
               >
-                Rust 核心引擎 · 多 Runner 抽象 · SolidJS 前端。设计目标：长时间运行不掉线、多渠道状态隔离、Skill 可热插拔。
+                {C.sections.architecture.intro}
               </p>
               <pre
                 style={{
@@ -832,14 +829,14 @@ export default function PublicRoadmapPage() {
                   ℹ
                 </span>
                 <span style={{ "font-size": "13px", color: "#475569", "line-height": "1.65" }}>
-                  完整模块说明见{" "}
+                  {C.sections.architecture.footnote_prefix}{" "}
                   <a
                     href="https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: "#d97706", "text-decoration": "none", "font-weight": "600" }}
                   >
-                    AGENTS.md ↗
+                    {C.sections.architecture.footnote_link}
                   </a>
                   。
                 </span>
@@ -847,7 +844,7 @@ export default function PublicRoadmapPage() {
             </DocSection>
 
             {/* SKILLS */}
-            <DocSection id="skills" eyebrow="§ 05 · BUILT-IN SKILLS" title="内置 Skill">
+            <DocSection id="skills" eyebrow={C.sections.skills.eyebrow} title={C.sections.skills.title}>
               <p
                 style={{
                   "font-size": "15px",
@@ -857,7 +854,7 @@ export default function PublicRoadmapPage() {
                   "max-width": "640px",
                 }}
               >
-                Hone 的 Skill 由模型根据上下文自动调用。下面是仓库 <code style={{ "font-family": "var(--font-mono, 'JetBrains Mono', monospace)", "font-size": "13px", padding: "1px 6px", background: "rgba(245,158,11,0.10)", "border-radius": "3px", color: "#d97706" }}>skills/</code> 目录下的 18 个公开 Skill。
+                {C.sections.skills.intro_prefix} <code style={{ "font-family": "var(--font-mono, 'JetBrains Mono', monospace)", "font-size": "13px", padding: "1px 6px", background: "rgba(245,158,11,0.10)", "border-radius": "3px", color: "#d97706" }}>skills/</code> {C.sections.skills.intro_suffix}
               </p>
               <div style={{ "border-radius": "10px", border: "1px solid rgba(0,0,0,0.08)", overflow: "hidden" }}>
                 <For each={C.skills}>
@@ -891,7 +888,7 @@ export default function PublicRoadmapPage() {
             </DocSection>
 
             {/* ROADMAP */}
-            <DocSection id="roadmap" eyebrow="§ 06 · ROADMAP" title="产品路线图">
+            <DocSection id="roadmap" eyebrow={C.sections.roadmap.eyebrow} title={C.sections.roadmap.title}>
               <p
                 style={{
                   "font-size": "15px",
@@ -901,7 +898,7 @@ export default function PublicRoadmapPage() {
                   "max-width": "640px",
                 }}
               >
-                我们按 <strong style={{ color: "#0f172a" }}>Now / Next / Later</strong> 三阶段推进，具体发布节奏见 GitHub Releases。
+                {C.sections.roadmap.intro_lead} <strong style={{ color: "#0f172a" }}>{C.sections.roadmap.intro_highlight}</strong> {C.sections.roadmap.intro_trail}
               </p>
               <div class="pub-roadmap-phases">
                 <PhaseCard phase="NOW" label={C.now.label} items={C.now.items} variant="now" />
@@ -911,7 +908,7 @@ export default function PublicRoadmapPage() {
             </DocSection>
 
             {/* BOUNDARY */}
-            <DocSection id="boundary" eyebrow="§ 07 · OPEN SOURCE BOUNDARY" title="开源边界">
+            <DocSection id="boundary" eyebrow={C.sections.boundary.eyebrow} title={C.sections.boundary.title}>
               <p
                 style={{
                   "font-size": "15px",
@@ -921,7 +918,7 @@ export default function PublicRoadmapPage() {
                   "max-width": "640px",
                 }}
               >
-                MIT 协议开源。开源仓库包含完整可运行的核心系统，私域增强能力不公开但不影响主流程可用性。
+                {C.sections.boundary.intro}
               </p>
               <div class="pub-roadmap-boundary">
                 <div
@@ -943,7 +940,7 @@ export default function PublicRoadmapPage() {
                         "text-transform": "uppercase",
                       }}
                     >
-                      开源公开
+                      {C.sections.boundary.open_label}
                     </span>
                   </div>
                   <ul style={{ "list-style": "none", padding: "0", margin: "0", display: "flex", "flex-direction": "column", gap: "8px" }}>
@@ -978,7 +975,7 @@ export default function PublicRoadmapPage() {
                         "text-transform": "uppercase",
                       }}
                     >
-                      私域 / 付费
+                      {C.sections.boundary.closed_label}
                     </span>
                   </div>
                   <ul style={{ "list-style": "none", padding: "0", margin: "0", display: "flex", "flex-direction": "column", gap: "8px" }}>
@@ -998,7 +995,7 @@ export default function PublicRoadmapPage() {
             </DocSection>
 
             {/* DOCS */}
-            <DocSection id="docs" eyebrow="§ 08 · DOCUMENTATION" title="文档入口">
+            <DocSection id="docs" eyebrow={C.sections.docs.eyebrow} title={C.sections.docs.title}>
               <div class="pub-docs-grid">
                 <For each={C.docs}>
                   {(doc) => (
@@ -1036,7 +1033,7 @@ export default function PublicRoadmapPage() {
             </DocSection>
 
             {/* CONTRIBUTING */}
-            <DocSection id="contributing" eyebrow="§ 09 · CONTRIBUTING" title="参与贡献">
+            <DocSection id="contributing" eyebrow={C.sections.contributing.eyebrow} title={C.sections.contributing.title}>
               <p
                 style={{
                   "font-size": "15px",
@@ -1046,29 +1043,10 @@ export default function PublicRoadmapPage() {
                   "max-width": "640px",
                 }}
               >
-                Hone 是开源项目，欢迎所有形式的参与——不只是代码。
+                {C.sections.contributing.intro}
               </p>
               <div class="pub-contrib-grid">
-                <For each={[
-                  {
-                    icon: "◈",
-                    title: "提交 Issue",
-                    desc: "报告 bug、提功能建议、讨论设计",
-                    href: "https://github.com/B-M-Capital-Research/honeclaw/issues/new/choose",
-                  },
-                  {
-                    icon: "⚡",
-                    title: "发 Pull Request",
-                    desc: "修 bug、加功能、优化文档",
-                    href: "https://github.com/B-M-Capital-Research/honeclaw/pulls",
-                  },
-                  {
-                    icon: "∞",
-                    title: "贡献 Skill",
-                    desc: "用 skills/skill_manager/create_skill.sh 起一个新 Skill",
-                    href: "https://github.com/B-M-Capital-Research/honeclaw/tree/main/skills",
-                  },
-                ]}>
+                <For each={C.contributing}>
                   {(c) => (
                     <a
                       href={c.href}
@@ -1104,7 +1082,7 @@ export default function PublicRoadmapPage() {
             </DocSection>
 
             {/* FAQ */}
-            <DocSection id="faq" eyebrow="§ 10 · FAQ" title="常见问题" divider={false}>
+            <DocSection id="faq" eyebrow={C.sections.faq.eyebrow} title={C.sections.faq.title} divider={false}>
               <div style={{ display: "flex", "flex-direction": "column", gap: "10px" }}>
                 <For each={C.faqs}>
                   {(f, i) => <FAQItem q={f.q} a={f.a} defaultOpen={i() === 0} />}
@@ -1126,7 +1104,7 @@ export default function PublicRoadmapPage() {
                 "letter-spacing": "-0.02em",
               }}
             >
-              准备好开始了吗？
+              {C.bottom_cta.title}
             </h2>
             <p
               style={{
@@ -1136,7 +1114,7 @@ export default function PublicRoadmapPage() {
                 "line-height": "1.7",
               }}
             >
-              进入对话，或直接 clone 仓库开始本地运行。
+              {C.bottom_cta.desc}
             </p>
             <div style={{ display: "flex", gap: "12px", "justify-content": "center", "flex-wrap": "wrap" }}>
               <button
@@ -1154,7 +1132,7 @@ export default function PublicRoadmapPage() {
                   "box-shadow": "0 4px 20px rgba(245,158,11,0.30)",
                 }}
               >
-                进入对话 →
+                {C.bottom_cta.primary}
               </button>
               <a
                 href={CONTENT.nav.github_url}

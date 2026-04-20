@@ -3,6 +3,7 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useNavigate, useLocation } from "@solidjs/router"
 import { CONTENT } from "@/lib/public-content"
+import { setLocale, useLocale } from "@/lib/i18n"
 import "../pages/public-site.css"
 
 export function PublicNav() {
@@ -163,6 +164,54 @@ export function PublicNav() {
           >
             GitHub ↗
           </a>
+
+          <div
+            style={{
+              "margin-left": "8px",
+              display: "inline-flex",
+              "align-items": "center",
+              gap: "2px",
+              padding: "2px",
+              "border-radius": "6px",
+              border: transparent() ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.10)",
+            }}
+          >
+            <For each={[{ code: "zh" as const, label: C.locale_zh }, { code: "en" as const, label: C.locale_en }]}>
+              {(opt) => {
+                const active = () => useLocale() === opt.code
+                return (
+                  <button
+                    onClick={() => setLocale(opt.code)}
+                    style={{
+                      "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+                      "font-size": "11px",
+                      "font-weight": active() ? "600" : "500",
+                      "letter-spacing": "0.05em",
+                      padding: "4px 8px",
+                      "border-radius": "4px",
+                      border: "none",
+                      cursor: "pointer",
+                      background: active()
+                        ? transparent()
+                          ? "rgba(255,255,255,0.14)"
+                          : "rgba(245,158,11,0.10)"
+                        : "transparent",
+                      color: active()
+                        ? transparent()
+                          ? "#fff"
+                          : "#f59e0b"
+                        : transparent()
+                        ? "rgba(255,255,255,0.55)"
+                        : "#64748b",
+                      transition: "color 0.2s, background 0.2s",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              }}
+            </For>
+          </div>
         </div>
 
         {/* Mobile hamburger */}
@@ -178,7 +227,7 @@ export function PublicNav() {
             "flex-direction": "column",
             gap: "5px",
           }}
-          aria-label="菜单"
+          aria-label={C.menu_aria}
         >
           <span
             style={{
@@ -296,12 +345,26 @@ export function PublicNav() {
 
 export function PublicFooter() {
   const C = CONTENT.footer
+  const Cnav = CONTENT.nav
   const navigate = useNavigate()
 
   const go = (href: string) => {
     navigate(href)
     window.scrollTo(0, 0)
   }
+
+  const chipStyle = (active: boolean) => ({
+    padding: "3px 10px",
+    "border-radius": "999px",
+    border: active ? "1px solid #f59e0b" : "1px solid #1e293b",
+    cursor: "pointer",
+    background: active ? "rgba(245,158,11,0.10)" : "transparent",
+    color: active ? "#f59e0b" : "#475569",
+    "font-size": "11px",
+    "letter-spacing": "0.05em",
+    "font-family": "inherit",
+    transition: "color 0.2s, background 0.2s, border-color 0.2s",
+  })
 
   return (
     <footer
@@ -323,32 +386,18 @@ export function PublicFooter() {
               {C.tagline}
             </p>
             <div style={{ display: "flex", gap: "6px" }}>
-              <span
-                style={{
-                  padding: "3px 10px",
-                  "border-radius": "999px",
-                  border: "1px solid #1e293b",
-                  cursor: "pointer",
-                  color: "#475569",
-                  "font-size": "11px",
-                  "letter-spacing": "0.05em",
-                }}
+              <button
+                onClick={() => setLocale("zh")}
+                style={chipStyle(useLocale() === "zh")}
               >
-                中文
-              </span>
-              <span
-                style={{
-                  padding: "3px 10px",
-                  "border-radius": "999px",
-                  border: "1px solid #1e293b",
-                  cursor: "pointer",
-                  color: "#334155",
-                  "font-size": "11px",
-                  "letter-spacing": "0.05em",
-                }}
+                {Cnav.locale_zh}
+              </button>
+              <button
+                onClick={() => setLocale("en")}
+                style={chipStyle(useLocale() === "en")}
               >
-                EN
-              </span>
+                {Cnav.locale_en}
+              </button>
             </div>
           </div>
 
@@ -425,7 +474,7 @@ export function PublicFooter() {
               "font-weight": "600",
             }}
           >
-            磨砺认知 · 剔除噪音 · OPEN FINANCIAL CONSOLE
+            {C.mantra}
           </span>
         </div>
       </div>

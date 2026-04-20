@@ -344,7 +344,7 @@ function HeroSection() {
             "text-transform": "uppercase",
           }}
         >
-          滚动探索
+          {CONTENT.hero.scroll_hint}
         </span>
         <div class="pub-scroll-chevron">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -571,7 +571,7 @@ function CasesSection() {
                         color: "#94a3b8",
                       }}
                     >
-                      {`> hone: ${item().tag} 场景演示截图（占位）`}
+                      {`> hone: ${item().tag} ${CONTENT.cases.placeholder_suffix}`}
                     </div>
                   </div>
                 }
@@ -698,7 +698,7 @@ function VideoSection() {
                     >
                       ▶
                     </div>
-                    <span>视频链接待配置（替换 video_url）</span>
+                    <span>{CONTENT.video.url_placeholder}</span>
                   </div>
                 </Show>
               </div>
@@ -760,7 +760,7 @@ function VideoSection() {
                   ⚡
                 </span>
                 <span style={{ "font-size": "13px", color: "#64748b", "line-height": "1.5" }}>
-                  视频涵盖：个股深度研究、持仓追踪、定时任务、多端接入演示
+                  {CONTENT.video.coverage}
                 </span>
               </div>
             </div>
@@ -887,7 +887,7 @@ function CommunitySection() {
                             }}
                           />
                           <span style={{ "font-size": "10px", color: "#94a3b8", "letter-spacing": "0.05em" }}>
-                            二维码
+                            {CONTENT.community.qr_label}
                           </span>
                         </>
                       }
