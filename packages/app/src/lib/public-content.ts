@@ -139,11 +139,11 @@ export const CONTENT = {
     section_sub: "B&M Capital Research 出品，MIT 协议开放",
     items: [
       { title: "GitHub 仓库", desc: "Star、Fork、提 Issue，参与开源建设", url: "https://github.com/B-M-Capital-Research/honeclaw", tag: "开源", icon: "⌘" },
-      { title: "中文文档", desc: "README、使用说明、案例示范", url: "#", tag: "文档", icon: "◈" },
-      { title: "安装方式", desc: "macOS 桌面端 + 服务端自部署指南", url: "#", tag: "安装", icon: "⚡" },
-      { title: "架构图", desc: "系统模块结构与技术架构说明", url: "#", tag: "技术", icon: "∞" },
-      { title: "案例集", desc: "真实投研场景使用示例", url: "#", tag: "案例", icon: "✦" },
-      { title: "贡献指南", desc: "参与开发、提交 PR、讨论功能方向", url: "#", tag: "贡献", icon: "ℹ" },
+      { title: "中文文档", desc: "README、使用说明、案例示范", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", tag: "文档", icon: "◈" },
+      { title: "安装方式", desc: "macOS 桌面端 + 服务端自部署指南", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动", tag: "安装", icon: "⚡" },
+      { title: "架构图", desc: "系统模块结构与技术架构说明", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md", tag: "技术", icon: "∞" },
+      { title: "案例集", desc: "真实投研场景使用示例", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", tag: "案例", icon: "✦" },
+      { title: "贡献指南", desc: "参与开发、提交 PR、讨论功能方向", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md", tag: "贡献", icon: "ℹ" },
     ],
   },
 
@@ -394,9 +394,9 @@ export const CONTENT = {
         title: "资源",
         items: [
           { label: "GitHub", href: "https://github.com/B-M-Capital-Research/honeclaw" },
-          { label: "中文文档", href: "#" },
-          { label: "安装方式", href: "#" },
-          { label: "架构图", href: "#" },
+          { label: "中文文档", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md" },
+          { label: "安装方式", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动" },
+          { label: "架构图", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md" },
         ],
       },
       community: {
