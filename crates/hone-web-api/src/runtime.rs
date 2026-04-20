@@ -70,14 +70,6 @@ pub fn ensure_runtime_dirs(config: &HoneConfig) {
     config.ensure_runtime_dirs();
 }
 
-pub fn web_index_path() -> PathBuf {
-    web_dist_dir().join("index.html")
-}
-
-pub fn public_web_index_path() -> PathBuf {
-    public_web_dist_dir().join("index.html")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
