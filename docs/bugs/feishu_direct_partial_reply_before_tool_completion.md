@@ -1,78 +1,66 @@
 # Bug: Feishu 直聊在工具链尚未结束时提前持久化短答，导致用户只收到过渡性半成品回复
 
-- 发现时间：2026-04-16 16:12 CST
-- Bug Type：Business Error
-- 严重等级：P3
-- 状态：New
-
-## 证据来源
-
-- 会话库：
-  - `data/sessions.sqlite3`
-  - session_id：`Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
-- 会话快照：
-  - `data/sessions/Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15.json`
-- 运行日志：
+- **发现时间**: 2026-04-16 16:12 CST
+- **Bug Type**: Business Error
+- **严重等级**: P3
+- **状态**: New
+- **证据来源**:
+  - `data/sessions.sqlite3` -> `session_messages`
+    - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
+    - `2026-04-20T08:53:43.082970+08:00` 用户提问：`美股TEMPUS AI 的value analysis`
+    - `2026-04-20T08:54:47.412231+08:00` assistant 最终只返回 84 字过程句：`我还缺一件事：如果把 Tempus 作为后续持续跟踪对象，我需要按现有画像格式沉淀一份主画像...`
+    - 到本轮巡检结束，这条 user turn 之后没有新的正式分析答复；同会话下一条消息已跳到 `09:00:59` 的定时任务注入，说明本次请求被过程句截断后就结束了
   - `data/runtime/logs/web.log`
+    - `2026-04-20 08:54:47.406` 同一会话仍在启动 `Tool: hone/local_list_files`
+    - `2026-04-20 08:54:47.417` 紧接着就出现 `step=session.persist_assistant detail=done`
+    - 同一时间点落成 `done ... success=true ... reply.chars=84`
+    - `2026-04-20 08:54:49.155` 继续执行 `step=reply.send ... segments.sent=1/1`
+    - 这说明本轮不是“工具跑完后只答得短”，而是 answer 在仍有工具动作时就把内部计划句当成最终结果出站
+  - 历史同根因样本：
+    - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
+    - `2026-04-16T16:00:09+08:00` 用户要求“组合风险评估 + 核心持仓评估”
+    - `2026-04-16T16:01:05+08:00` assistant 只收到 55 字过渡句：`美股行情已经拿到。港股代码格式在底层数据里没直接回出...`
+    - 同轮日志同样显示 `session.persist_assistant/done` 之后仍继续启动 `Tool: hone/web_search`
 
 ## 端到端链路
 
-1. 2026-04-16 16:00:09 CST，Feishu 直聊用户发送：“你帮我做一下组合风险的评估，然后再做一下核心持仓的评估”。
-2. 日志显示这条消息正常经过：
-   - `step=message.accepted`
-   - `step=reply.placeholder`
-   - `step=session.persist_user`
-   - `step=agent.prepare`
-   - `step=agent.run`
-3. 同一轮里执行了大量工具调用：
-   - 多次 `ToolRegistry tool_execute_start/tool_execute_success name=data_fetch`
-   - 两次 `tool_execute_success name=web_search`
-   - `16:00:26.505` 还出现一次 `runner.stage=acp.tool_failed`
-4. 但在 `2026-04-16 16:01:05.377`，系统已经先写入并完成：
-   - `step=session.persist_assistant detail=done`
-   - `done ... success=true ... reply.chars=55`
-5. 对应落库的最终 assistant 文本只有一句：
-   - “美股行情已经拿到。港股代码格式在底层数据里没直接回出，我改用搜索补腾讯和小米的现价，同时补核心持仓新闻和催化。”
-6. 关键异常在于：`session.persist_assistant` 与 `done` 之后的同一时间点，日志仍在启动新工具：
-   - `2026-04-16 16:01:05.369` `runner.tool ... Tool: hone/web_search status=start`
-7. 用户最终只收到这句过渡性说明，没有继续收到本应完成的“组合风险评估 + 核心持仓评估”正式分析。
+1. Feishu 直聊用户发起需要正式分析的请求，例如 `美股TEMPUS AI 的value analysis`。
+2. agent 正常进入 `agent.prepare` 与 `agent.run`，并在同一轮先后调用 `skill_tool`、`local_search_files`、`data_fetch`、`web_search` 等工具。
+3. 在工具链尚未结束时，系统先把一段过程性说明句持久化为 assistant 最终文本，并将本轮标记为 `success=true`。
+4. 发送链路随后立即把这段短句发送给用户，整轮会话收口。
+5. 用户拿到的是“还要去补画像/补数据”的中间句，而不是其明确要求的正式分析。
 
 ## 期望效果
 
-- 当用户明确要求“组合风险评估 + 核心持仓评估”时，系统应在工具完成后输出完整分析，而不是只返回“我正在补数据”的过程性说明。
-- 只有在 answer 阶段真正结束且不再继续调工具时，才应执行 `session.persist_assistant`、`done` 与 `reply.send`。
-- 若工具失败导致无法完成完整分析，也应给出明确的失败说明或降级结论，而不是伪装成已完成的短答。
+- 当用户明确要求 `value analysis`、组合评估或深度分析时，系统应在工具完成后输出正式结论，而不是把“还要去做什么”的计划句当作最终答复。
+- `session.persist_assistant`、`done` 与 `reply.send` 应只在 answer 真正收敛、且不再继续拉起新工具后发生。
+- 如果工具阶段失败导致无法完成分析，也应给出明确的失败/降级说明，而不是伪装成任务已经完成。
 
 ## 当前实现效果
 
-- 该轮会话主链路没有中断：消息被接收、持久化、执行并送达。
-- 但最终送达内容只是一个过程性过渡句，既没有组合风险评估，也没有核心持仓评估。
-- 日志还显示 assistant 已经被持久化并标记 `done` 后，新的 `hone/web_search` 工具才刚开始，说明 answer 收口时序与工具执行状态不一致。
-- 这会让用户误以为系统已经完成回答，实际却只拿到半成品。
+- `2026-04-20 08:54` 的 `TEMPUS AI` 最新样本说明，这条缺陷仍是当前线上活跃问题，而不是 4 月 16 日的单次偶发。
+- 本轮返回内容不是简短但完整的摘要，而是明显的内部执行计划句：系统告诉用户“还缺一件事”“先看本地已有画像模板和写法”，却没有继续给出 `TEMPUS AI` 的估值或基本面判断。
+- 日志还显示 `Tool: hone/local_list_files status=start` 与 `session.persist_assistant/done` 在同一秒交错，证明收口时序仍然允许“工具未结束 -> 先落最终答复”。
+- 这已经不只是“答得偏短”的质量波动，而是答复结构被截断成过程说明，导致用户任务没有真正完成。
 
 ## 用户影响
 
-- 这是质量性 bug。用户收到了回复，但回复没有完成其明确提出的双重分析任务。
-- 之所以定级为 `P3`，是因为消息投递、会话持久化和基础工具链均已工作，没有出现错投、无回复、数据损坏或系统级失败。
-- 问题主要体现在 answer 结果的完整性和收口质量，而不是主功能链路完全不可用。
+- 这是质量类缺陷，不影响消息送达、会话持久化或系统稳定性，因此不属于 `P1/P2` 功能性故障。
+- 之所以定级为 `P3`，是因为用户仍然收到了可读文本，没有出现无回复、错投、数据损坏或系统级失败。
+- 但该文本没有完成用户明确提出的分析任务，用户需要重新追问或自行判断这句过程说明是否代表“系统还没答完”，体验明显劣化。
 
 ## 根因判断
 
-- 高概率是 answer 阶段的“最终可见文本”在工具链尚未真正收敛时被过早认定为最终结果，导致过程性草稿提前落库并发送。
-- `16:01:05` 的日志顺序显示 `session.persist_assistant/done` 与新的 `hone/web_search start` 交错出现，这意味着：
-  - 要么 runner/adapter 过早消费了一个中间文本块并把它视为 final；
-  - 要么存在工具失败后的提前收口分支，没有等待后续补充分析完成。
-- 目前证据更偏向 answer 收口时序异常，而不是单纯模型“答得短”；因为日志里还能看到持久化完成后继续启动工具。
+- 高概率是 answer 阶段对“最终可见文本”的判定仍然过早，会把中间计划句或过渡句消费成 final。
+- 从 `2026-04-20 08:54:47` 的日志顺序看，当前链路没有把“仍有新的 tool start 事件”视为禁止收口的信号。
+- `TEMPUS AI` 最新样本还表明，这类提前收口不仅会输出“我正在补数据”的短句，也会把“我需要先看画像模板/决定是否回写”的内部执行计划直接暴露给用户。
 
 ## 下一步建议
 
-- 优先排查 Feishu 直聊 answer 出站链路如何判定“final 可发送文本”，确认是否会把中间进度句提前视为最终答复。
-- 对 `session.persist_assistant` 与 `reply.send` 增加约束：若仍存在未完成工具调用或新的 tool start 事件，不应提前结束本轮回答。
-- 为这类“短答但 success=true”场景补质量巡检信号，例如：
-  - 用户请求明显需要分析型长答
-  - 但 `reply.chars` 极短
-  - 且 `done` 前后仍有工具事件
-- 回归验证时应覆盖：
-  - 用户请求组合评估 + 个股评估
-  - answer 阶段包含多次 `data_fetch/web_search`
-  - 断言最终发送内容不是过程性说明句，且发送完成后不再出现新的工具启动
+- 优先排查 Feishu 直聊 answer 出站链路如何判定 `final`，确认是否会把中间计划句、画像准备句或进度句提前视为最终可发送文本。
+- 对 `session.persist_assistant` / `done` 增加约束：若同一轮仍存在新的 tool start 事件，或最后一条可见文本明显是计划句/过渡句，不应直接结束本轮。
+- 为这类样本补质量巡检信号：
+  - 用户请求是分析型长答
+  - `reply.chars` 极短
+  - `done` 前后仍有工具事件
+  - 最终文本含“我还缺一件事”“先看模板”“我再补数据”之类过程性措辞
