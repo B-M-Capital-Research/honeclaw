@@ -149,7 +149,7 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .layer(cors.clone())
         .with_state(state.clone());
 
-    let static_service = ServeDir::new(&web_dist).not_found_service(ServeFile::new(&index_path));
+    let static_service = ServeDir::new(&web_dist).fallback(ServeFile::new(&index_path));
 
     Router::new()
         .route("/logo.svg", get(files::handle_logo))
@@ -158,7 +158,7 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
             get(handle_not_found).post(handle_not_found),
         )
         .nest("/api", api)
-        .nest_service("/", static_service)
+        .fallback_service(static_service)
         .with_state(state)
 }
 
@@ -180,13 +180,13 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .layer(cors)
         .with_state(state.clone());
 
-    let static_service = ServeDir::new(&web_dist).not_found_service(ServeFile::new(&index_path));
+    let static_service = ServeDir::new(&web_dist).fallback(ServeFile::new(&index_path));
 
     Router::new()
         .route("/logo.svg", get(files::handle_logo))
         .route("/api/{*path}", get(handle_not_found).post(handle_not_found))
         .nest("/api/public", public_api)
-        .nest_service("/", static_service)
+        .fallback_service(static_service)
         .with_state(state)
 }
 
