@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 13:30-14:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 13:30:28 -> 14:00:26` 继续表现为“上一轮刚恢复为 noop，下一轮又换模板跌回 unknown status”的活跃漂移态：
+      - `run_id=3458`（`TEM大事件心跳监控`，`executed_at=2026-04-20T13:30:28.496762+08:00`）在 `13:30` 窗口还是 `noop + skipped_noop`
+      - 到下一轮 `14:00`，同一任务 `run_id=3466`（`executed_at=2026-04-20T14:00:26.180089+08:00`）又回落成 `execution_failed + skipped_error`
+      - 同一 `14:00` 批次里，`run_id=3465`（`Monitor_Watchlist_11`）与 `run_id=3467`（`ORCL 大事件监控`）分别恢复为 `noop + skipped_noop`
+      - 这说明到 `14:00` 为止，失败对象仍在不同 heartbeat 模板间持续漂移，并未收敛到某一个固定坏模板
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 13:30:28.495` 的 `TEM大事件心跳监控` 还是 `parse_kind=JsonNoop`，但 `raw_preview` 仍先输出整段自然语言判断，再在尾部补 `{"status":"noop"}`
+    - `2026-04-20 14:00:26.179` 的同任务则直接跌回 `parse_kind=JsonUnknownStatus`，正文已经写出“有！4月9日与 Gilead 扩大合作、4月15日与 Predicta 合作、4月14日宣布 AACR/临床数据”等自然语言判断，却没有稳定收口到合法状态 JSON
+    - 同一 `14:00` 窗口里日志仍把失败收口为 `heartbeat 输出包含未知状态，任务已标记失败`，说明最新真实窗口仍会因为状态解析失败而静默跳过用户提醒
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 12:30-13:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 12:30:14 -> 13:00:21` 继续表现为“上一轮失败对象短暂自恢复、下一轮又换模板跌回 unknown status”的活跃漂移态：
       - `run_id=3433`（`RKLB异动监控`，`executed_at=2026-04-20T12:30:14.984603+08:00`）在 `12:30` 窗口落成 `execution_failed + skipped_error`
@@ -793,6 +804,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 13:30 -> 14:00` 的最近一小时最新窗口，`TEM大事件心跳监控` 又从上一轮 `JsonNoop` 回落成 `JsonUnknownStatus`，而同批 `Monitor_Watchlist_11`、`ORCL 大事件监控` 又恢复为 `noop`；说明故障仍在不同 heartbeat 模板之间持续漂移，而不是某一个固定任务永久损坏。
 - 到 `2026-04-20 12:30 -> 13:00` 的最新窗口，heartbeat 失败对象继续在 `RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 之间漂移：`RKLB` 在 `12:30` 失败、`13:00` 又自恢复，但 `Monitor_Watchlist_11` 与 `ORCL` 同批重新跌回 `execution_failed + skipped_error`，说明公共结构化状态契约仍未收口。
 - 到 `2026-04-20 07:31 -> 08:01` 的最新窗口，heartbeat 仍在“整批暂时恢复为 `noop`”与“`ORCL / Monitor_Watchlist_11 / RKLB异动监控` 集体回落成 `unknown status`”之间来回摆动；同时其余 `noop` 任务依旧统一依赖 `<think>...JSON` 尾部提取，说明结构化状态契约到 `08:01` 仍未恢复。
 - 到 `2026-04-20 03:31 -> 04:01` 的最新窗口，这条缺陷继续证明 heartbeat 公共协议没有收口：
@@ -868,6 +880,7 @@
 ## 根因判断
 
 - heartbeat 输出协议对模型返回格式过于脆弱，出现非标准 JSON 或状态枚举漂移时，会落入 `JsonUnknownStatus`。
+- 最新 `13:30 -> 14:00` 的 TEM 样本说明，问题不是单一股票池模板或单一新闻模板损坏，而是 heartbeat 公共结构化输出仍依赖“自由文本 + 尾部 JSON”这条脆弱路径；只要模型把自然语言判断写得更满一层，就可能再次丢失合法 `status` 并被升级成失败。
 - 最近一小时同一任务在相邻轮次间会在 `JsonNoop` 与 `JsonUnknownStatus` 之间来回抖动，说明除了单个任务 prompt 外，解析器对“先给分析过程、最后未严格收口到状态 JSON”的输出也缺少足够稳健的兼容或强制约束。
 - `2026-04-18 01:31 -> 02:01` 的最新样本说明，当前抖动不再固定在 `Monitor_Watchlist_11`：同一小时里 watchlist 任务先失败后恢复，而 `小米破位预警` 又接棒回落为 `JsonUnknownStatus`，进一步支持“公共协议脆弱 + 多模板随机触发”的判断。
 - `01:31` 失败而 `02:01` 恢复的最新样本说明，这种抖动当前主要集中在 `Monitor_Watchlist_11` 这类多标的 watchlist 模板上；同一任务无需任何配置变更就会在连续两轮之间切换状态，进一步支持“公共协议脆弱 + 复杂模板更易触发”的判断。

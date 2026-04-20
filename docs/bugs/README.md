@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-20 13:11 CST
+最后更新：2026-04-20 14:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -39,8 +39,8 @@
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | New | 2026-04-19 12:02 `每日公司资讯与分析总结` 已执行 15 次 `data_fetch` 并完成一次 `context_overflow_recovery`，但重试后仍失败；调度台账记为 `execution_failed + sent`，真实会话未见本轮正常 assistant 正文 | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Feishu 直聊自动 compact 后仍无法稳定完成新话题回答，同一旧会话会在成功与 fallback 间抖动 | P2 | New | 2026-04-18 22:58 同一会话先后答出 `CAI/TEM`、`CRWV/NBIS`，但切到 `Google` 财报预判后又在 compact 重试后回落成统一 fallback | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixing | 2026-04-18 当前工作区已出现 provider 级重试补丁与测试草案，但修复尚未以已提交代码进入仓库主线，也未完成最新真实样本复核 | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-20 12:30 与 13:00 最新窗口里 `RKLB异动监控` 已短暂恢复为 `noop`，但 `Monitor_Watchlist_11` 与 `ORCL 大事件监控` 又在 13:00 同批跌回 `execution_failed + skipped_error`；失败对象仍在不同 heartbeat 模板间漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | New | 2026-04-20 11:30、12:30、13:00 三个相邻窗口对同一 `BlueBird 7` 事件先后给出“成功发射至 LEO”→“发射事故”→`noop` 的相反结论，并持续沿用同一停牌前 `ASTS $85.53 / -5.95%` 价格快照 | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-20 13:30 `TEM大事件心跳监控` 还短暂恢复为 `noop`，到 14:00 又跌回 `execution_failed + skipped_error`；同批 `Monitor_Watchlist_11`、`ORCL` 已恢复，失败对象仍在模板间漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | New | 2026-04-20 13:30 与 14:00 连续两轮又把同一 `BlueBird 7` 事件从“低于计划轨道”升级写成“卫星已报废”，但仍沿用同一停牌前 `ASTS $85.53 / -5.95%` 价格快照 | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-20 08:31 与 09:01 `ASTS 重大异动心跳监控` 连续两轮重报同一 `BlueBird 7` 事件；`TEM大事件心跳监控` 也从 `noop` 回摆成同一 `AACR/Gilead/Predicta` 组合事实的重复提醒 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 06:01 `ASTS 重大异动心跳监控` 从前两轮 `completed + sent` 直接退化成 `execution_failed + skipped_error`，且没有任何用户态降级提醒 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | New | 2026-04-18 10:31 的 `TEM大事件心跳监控` 已送达成功，但 `response_preview` 与 `deliver_preview` 都直接等于 `{\"trigger\":...}`；11:01 同任务又恢复自然语言 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
