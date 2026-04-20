@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 10:30-11:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 10:30:14 -> 11:00:28` 继续表现为“上一轮刚有部分任务恢复为 `noop`，下一轮又有 heartbeat 模板跌回未知状态”的活跃漂移态：
+      - `run_id=3395`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T10:30:28.836822+08:00`）再次落成 `execution_failed + skipped_error`
+      - `run_id=3392`（`RKLB异动监控`，`executed_at=2026-04-20T10:30:14.647219+08:00`）同轮回落为 `execution_failed + skipped_error`
+      - 到下一轮 `11:00`，`run_id=3407`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T11:00:28.450536+08:00`）继续落成 `execution_failed + skipped_error`
+      - 但同一 `11:00` 批次里，`run_id=3403/3404/3405`（`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`）又暂时回到 `noop + skipped_noop`
+      - 这说明到 `11:00` 当前线上仍不是某个固定任务永久损坏，而是 heartbeat 结构化状态在不同模板之间持续漂移；前一轮失败的任务下一轮可能自恢复，另一些模板则继续靠脆弱解析侥幸收口
+  - 对应 `data/runtime/logs/hone-feishu.release-restart.log`：
+    - `2026-04-20 10:30:28.449` 的 `Monitor_Watchlist_11` 再次记录 `parse_kind=JsonUnknownStatus`，正文已逐项比较 `HIMS / MU / RKLB / LMND ...` 触发价，却仍被升级为 `parse failure escalated`
+    - `2026-04-20 11:00:28.449` 的同任务又一次记录 `parse_kind=JsonUnknownStatus`，说明它不是单轮偶发，而是在最近一小时连续两轮无法稳定收口成合法状态 JSON
   - 2026-04-20 10:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 10:00:05 -> 10:00:37` 再次出现“上一轮多数任务还能 `noop/sent`，下一轮又有多条 heartbeat 集体跌回未知状态”的活跃漂移态：
       - `run_id=3387`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T10:00:37.215258+08:00`）再次落成 `execution_failed + skipped_error`
@@ -821,6 +831,7 @@
 - `09:30` 的最新窗口进一步说明，这种抖动并没有收敛到单一 watchlist 模板：`全天原油价格3小时播报` 这种时间判断型 heartbeat 也会在明确知道“应返回 noop”的情况下，仍因 `<think>` + `{}` 输出退化成 `JsonUnknownStatus + execution_failed`。
 - `10:00` 的恢复样本则再次证明，当前问题不是任务条件判断错了，而是模型输出能否稳定收口到解析器认可的最终状态对象仍具有随机性；同一个 `Monitor_Watchlist_11` 无需任何配置变更就会在半小时后自行恢复成 `noop`。
 - `10:30 -> 11:00` 的最新一对样本把这种抖动继续坐实：同一批 heartbeat 在 `10:30` 再次退化成 `JsonUnknownStatus`，但到 `11:00` 又全部恢复为 `JsonNoop`，中间没有任何任务配置改动。
+- `2026-04-20 10:30 -> 11:00` 的最新窗口补充说明，恢复也不是整批同时发生：`Monitor_Watchlist_11` 在 `10:30` 与 `11:00` 连续两轮都停留在 `JsonUnknownStatus + execution_failed`，而 `RKLB异动监控` 却在同一小时内从失败回摆成 `noop`，进一步证明当前根因仍是公共协议脆弱导致的模板级漂移，而不是单一任务配置错误。
 
 ## 用户影响
 
