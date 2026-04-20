@@ -299,7 +299,13 @@ fn env_force_secure_cookie() -> Option<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" => Some(true),
         "0" | "false" | "no" => Some(false),
-        _ => None,
+        other => {
+            tracing::warn!(
+                "HONE_PUBLIC_SECURE_COOKIE has unrecognized value {:?}, defaulting to Secure=true",
+                other
+            );
+            Some(true)
+        }
     }
 }
 
@@ -419,6 +425,12 @@ mod tests {
         build_session_cookie, clear_session_cookie, normalize_invite_code, public_client_key,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn invite_code_normalization_removes_spaces_and_uppercases() {
@@ -455,8 +467,9 @@ mod tests {
 
     #[test]
     fn env_force_secure_cookie_overrides_headers() {
+        let _guard = env_lock().lock().unwrap();
+
         // When env is set to "true", Secure flag should be on even without https headers.
-        // SAFETY: test-only; this binary runs tests sequentially per module.
         unsafe { std::env::set_var("HONE_PUBLIC_SECURE_COOKIE", "true") };
         let headers = HeaderMap::new();
         let cookie = build_session_cookie("tok", &headers)

@@ -390,17 +390,15 @@ fn generate_user_id() -> String {
 }
 
 fn generate_invite_code() -> String {
-    // Use 20 hex chars (80 bits entropy) for brute-force resistance.
-    // Two UUID v4 values are combined to ensure sufficient random material.
-    let a = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
-    let b = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
-    let pool = format!("{a}{b}");
+    // A single UUID v4 provides more than enough random hex material.
+    // We take 20 hex chars (80 bits entropy) for brute-force resistance.
+    let token = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
     format!(
         "HONE-{}-{}-{}-{}",
-        &pool[..5],
-        &pool[5..10],
-        &pool[10..15],
-        &pool[15..20]
+        &token[..5],
+        &token[5..10],
+        &token[10..15],
+        &token[15..20]
     )
 }
 
