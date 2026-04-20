@@ -5,6 +5,15 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-20 08:33 最近一小时最新样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=3348`，`job_id=j_248f0f3c`，`job_name=Hone_AI_Morning_Briefing`，`executed_at=2026-04-20T08:33:04.280905+08:00`
+      - 再次落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`、`should_deliver=1`
+      - `response_preview` 保留了完整早报正文开头，说明这轮仍是模型执行成功、会话持久化成功，但最终 Feishu 投递失败
+      - `error_message` 再次明确返回 `code=99992361`、`msg="open_id cross app"`，并给出 Feishu troubleshooting `log_id`
+    - `data/runtime/logs/sidecar.log`
+      - `2026-04-20 08:33:04.280` 记录 `[Feishu] 定时任务投递失败: job=Hone_AI_Morning_Briefing ... HTTP 400 Bad Request - {"code":99992361,"msg":"open_id cross app",...}`
+      - 这说明故障已经不只停留在油价/盘后提醒，而是扩散到同一目标上的日常早报任务
   - 2026-04-20 04:32 最近一小时最新样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=3260`，`job_id=j_a6577b6f`，`job_name=OWALERT_PostMarket`，`executed_at=2026-04-20T04:32:37.532710+08:00`
@@ -99,6 +108,8 @@
 
 ## 当前实现效果
 
+- `2026-04-20 08:33` 的 `Hone_AI_Morning_Briefing` 继续落成 `completed + send_failed`，且错误体与 `04:02/04:32` 两轮完全一致，仍然是 `code=99992361 / open_id cross app`。
+- 这说明故障已经从 `Oil_Price_Monitor_Closing`、`OWALERT_PostMarket` 扩散到同一目标上的通用早报任务；问题不是单个 job 模板、单个消息长度或单个盘前/盘后场景偶发异常。
 - `2026-04-20 04:02` 的 `Oil_Price_Monitor_Closing` 与 `04:32` 的 `OWALERT_PostMarket` 在同一目标上连续两轮都落成 `completed + send_failed`，并且 Feishu 返回体都明确是 `code=99992361 / open_id cross app`。
 - 这说明故障已经不只是“收盘前油价播报”单任务失败，而是同一 Feishu 直达 scheduler 发送链路在盘前之外的盘后复盘任务上也稳定复现。
 - `OWALERT_PreMarket`、`Oil_Price_Monitor_Premarket`、`Oil_Price_Monitor_Closing` 与 `OWALERT_PostMarket` 在最近几个窗口连续四次失败。

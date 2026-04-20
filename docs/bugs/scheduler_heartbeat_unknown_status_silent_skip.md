@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 08:31-09:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 08:31 -> 09:01` 继续表现为“上一轮局部失败、下一轮局部回摆但协议仍未收口”的活跃漂移态：
+      - `run_id=3342`（`ORCL 大事件监控`，`executed_at=2026-04-20T08:31:11.911397+08:00`）在 `08:31` 窗口再次落成 `execution_failed + skipped_error`
+      - 同一 `08:31` 批次里，`run_id=3341/3343/3344`（`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`）回到 `noop + skipped_noop`，`run_id=3345`（`ASTS 重大异动心跳监控`）则继续 `completed + sent`
+      - 到 `09:01` 窗口，`run_id=3358/3359/3361`（`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控`）又回摆成 `noop + skipped_noop`
+      - 但同一 `09:01` 批次里，`run_id=3362/3363`（`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`）继续 `completed + sent`，说明 heartbeat 公共输出契约仍主要依赖脆弱解析与模板漂移，而不是结构化状态已恢复稳定
+  - 对应 `data/runtime/logs/sidecar.log`：
+    - `2026-04-20 08:31:11.909` 的 `ORCL 大事件监控` 再次记录 `parse_kind=JsonUnknownStatus`，正文已经完成“跌幅未超过 5%、没有重大基本面事件”的判断，却仍被升级为 `parse failure escalated`
+    - `2026-04-20 09:01:17.165` 的 `小米30港元破位预警` 虽被收口成 `noop`，但日志继续显示 `starts_with_json=false`、`raw_preview` 仍以 `<think>` 起头，说明所谓恢复任务仍未回到稳定的纯 JSON 协议
   - 2026-04-20 07:31-08:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 07:31 -> 08:01` 再次表现为“上一轮整批暂时恢复为 `noop`，下一轮又有多条 heartbeat 集体跌回 unknown status”的活跃漂移态：
       - `run_id=3316/3317/3320/3321`（`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`）在 `07:31` 窗口都还是 `noop + skipped_noop`
@@ -846,6 +855,7 @@
 - 同一时间窗内，另一个真实 Feishu 会话已经正常返回 quota 友好文案并完成落库，说明当前系统并非普遍性发送或会话链路故障；最新未收口的问题仍集中在 heartbeat 结构化状态输出。
 - `17:30 -> 18:00` 的最新窗口继续重复同一抖动：`Monitor_Watchlist_11` 在 `17:30` 先回落到 `JsonUnknownStatus + execution_failed`，`18:00` 又恢复为 `JsonNoop`；同批次的 `小米30港元破位预警` 与 `全天原油价格3小时播报` 也都保留 `<think>` 前缀后才分别落成 `JsonNoop` / `JsonTriggered`。这说明当前线上依旧依赖解析器从自由文本尾部勉强提取状态，公共协议脆弱性没有收口。
 - `14:30 -> 15:00` 的最新窗口说明这种抖动仍在当前生产小时窗活跃：`Monitor_Watchlist_11` 在 `14:30`、`15:00` 连续失败，`RKLB异动监控` 在 `14:30` 失败后到 `15:00` 又恢复，而同批 `ASTS` 继续成功送达、`ORCL` 维持 `noop`。这再次说明问题不是整批调度故障，而是 heartbeat 结构化状态协议在复杂 watchlist 模板上的持续漂移。
+- `2026-04-20 08:31 -> 09:01` 的最新窗口说明这条缺陷仍未收口：`ORCL 大事件监控` 在 `08:31` 又一次跌回 `JsonUnknownStatus + execution_failed`，`09:01` 虽暂时回摆成 `noop`，但同批成功任务仍继续依赖 `<think>...JSON` 尾部提取或直接送达旧事件文本，说明公共协议依旧是漂移态，而不是结构化输出已稳定恢复。
 
 ## 修复情况（2026-04-16，待重新验证）
 

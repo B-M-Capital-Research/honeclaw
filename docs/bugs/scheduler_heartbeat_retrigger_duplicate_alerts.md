@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-20 08:31-09:01 最近一小时最新样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=3345`，`executed_at=2026-04-20T08:31:17.547421+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `run_id=3363`，`executed_at=2026-04-20T09:01:33.325354+08:00`，仅过约 30 分钟又再次 `completed + sent + delivered=1`
+      - 两条 `response_preview` 都继续围绕同一 `BlueBird 7 被送入低于计划轨道` 旧事件展开，没有新的独立公告、轨道修正进展或新的价格阈值跨越
+      - `job_name=TEM大事件心跳监控`
+      - `run_id=3344`，`executed_at=2026-04-20T08:31:16.855892+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`
+      - `run_id=3362`，`executed_at=2026-04-20T09:01:32.217767+08:00`，仅过约 30 分钟又切回 `completed + sent + delivered=1`
+      - `3362` 的 `response_preview` 仍围绕同一 `AACR Annual Meeting 2026` 进行中事件、`Gilead` 合作与 `Predicta` 合作展开，没有看到新的独立公告、价格阈值跨越或新的会议节点
+      - 这说明最近一小时里，ASTS 继续连续重报同一旧事件，而 TEM 仍会把同一 ongoing event 在相邻窗口里从 `noop` 回摆成 `triggered`
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-20 09:01` 对应 ASTS 与 TEM heartbeat 都再次成功送达，且正文继续围绕前序窗口已经出现过的同一 `BlueBird 7` 低轨事件与 `AACR/Gilead/Predicta` 组合事实，没有新增独立事件源
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-20 05:01-06:01 最近一小时最新样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=3270`，`executed_at=2026-04-20T05:01:30.466350+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
@@ -178,6 +191,10 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 08:31 -> 09:01` 的最新窗口，这条缺陷仍在活跃：
+  - `ASTS` 在 `08:31` 与 `09:01` 连续两轮都再次围绕同一 `BlueBird 7` 低轨事件送达
+  - `TEM` 在 `08:31` 先被压成 `noop`，`09:01` 又围绕同一 `AACR 2026 + Gilead/Predicta` 组合事实回摆成 `triggered + sent`
+  - 两条链路之间都没有新的独立公告、轨道修正、价格阈值跨越或新的会议节点
 - 到 `2026-04-20 05:01 -> 06:01` 的最新窗口，`ASTS 重大异动心跳监控` 继续先在 `05:01`、`05:31` 两轮重复送达同一 `BlueBird 7` 旧事件，随后 `06:01` 又退化成 `已达最大迭代次数 6` 的执行失败；说明“旧事件重复消费”不仅没被抑制，反而还在放大后续窗口的失败风险。
 - 到 `2026-04-20 04:31 -> 05:01` 的最新窗口，这条缺陷仍在活跃扩散：
   - `ASTS` 在 `04:31` 与 `05:01` 连续两轮都再次围绕同一 `BlueBird 7` 低轨事件送达
