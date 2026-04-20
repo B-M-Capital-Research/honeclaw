@@ -3,8 +3,21 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 20:30-21:00 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 20:30:08 -> 21:00:25` 再次表现为“上一轮侥幸恢复为 noop，下一轮又换模板重新跌回 unknown status”的活跃漂移态：
+      - `run_id=3595`（`小米30港元破位预警`，`executed_at=2026-04-20T20:30:08.801396+08:00`）在 `20:30` 窗口落成 `execution_failed + skipped_error`
+      - 同一 `20:30` 批次里，`run_id=3598/3599/3600/3601`（`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ORCL 大事件监控`、`RKLB异动监控`）又暂时回到 `noop + skipped_noop`
+      - 仅过 30 分钟，到 `21:00` 窗口，失败对象立即漂移成 `run_id=3612`（`Monitor_Watchlist_11`，`executed_at=2026-04-20T21:00:23.980409+08:00`）与 `run_id=3613`（`ORCL 大事件监控`，`executed_at=2026-04-20T21:00:25.849549+08:00`），再次落成 `execution_failed + skipped_error`
+      - 同一 `21:00` 批次里，`run_id=3607/3608/3609/3610/3611/3615`（`CAI破位`、`小米30港元破位`、`TEM破位`、`RKLB异动`、`小米破位`、`ASTS 重大异动心跳监控`）又继续只是 `noop + skipped_noop`
+      - 这说明最新一小时里，失败对象仍在 `小米30港元 -> Watchlist/ORCL` 间继续漂移，并没有收敛到某一个固定坏模板
+  - 对应 `data/runtime/logs/web.log` / `data/runtime/logs/acp-events.log`：
+    - `2026-04-20 20:30:08.801` 的 `小米30港元破位预警` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已明确写出“价格 32.32 > 30，应该返回 noop 状态”，最终却仍只返回 `{}` 并触发失败升级
+    - `2026-04-20 21:00:23.979` 的 `Monitor_Watchlist_11` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 再次以 `<think>\nLet me compare current prices vs trigger prices:` 开头，逐项比较 11 只标的后仍未收口到合法状态 JSON
+    - `2026-04-20 21:00:25.848` 的 `ORCL 大事件监控` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 继续以 `<think>\nLet me analyze the data:` 开头，完成价格与事件判断后仍被升级为失败
+    - 同一 `21:00` 窗口里恢复成 `JsonNoop` 的 `ASTS/小米/CAI/TEM/RKLB` 任务依旧统一满足 `starts_with_json=false`，说明所谓恢复仍主要依赖 `<think>...JSON` 尾部提取，而不是上游结构化输出契约已经恢复
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-20 19:30-20:00 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 19:30:21 -> 20:00:26` 再次从“上一轮侥幸 noop”跌回“同轮双模板 failed”的活跃坏态：
