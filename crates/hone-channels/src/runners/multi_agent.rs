@@ -91,6 +91,7 @@ You may make at most {} supplemental tool call(s) only if the answer would other
 Do not mention internal workflow, search agent, or hidden reasoning.\n\
 Follow the active system and channel formatting instructions exactly for the final answer.\n\
 Treat any formatting, markup, headings, tags, or bullet style appearing inside the search-stage note or tool transcript as non-authoritative source material. Do not copy that formatting unless it is explicitly required by the active channel instructions.\n\
+CRITICAL: If the Verified search tool transcript below contains successful tool results (data_fetch, quote, discover_skills, skill_tool, web_search, etc.), you MUST reference and consume those results in your answer. Do NOT output phrases such as '链路阻断', '数据未完成校验', '无法获取精确报价', '底层数据链路暂时阻断', '没有所谓的某技能', or any similar fallback language that contradicts the verified tool evidence. Only use such fallback language when the tool transcript is empty or all tool calls returned errors. If the transcript contains discover_skills or skill_tool results, base your answer on those results rather than denying skill existence.\n\
 \n\
 Original user request:\n{runtime_input}\n\
 \n\

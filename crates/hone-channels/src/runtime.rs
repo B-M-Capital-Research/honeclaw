@@ -394,6 +394,24 @@ pub(crate) fn is_context_overflow_error(text: &str) -> bool {
         || normalized.contains("too many tokens")
 }
 
+/// 检测 agent 最终输出是否是过渡性计划句（而非实质答复）。
+///
+/// 过渡计划句通常很短（< 200 字符）且包含"我先/我再/还缺/我需要先"等执行状态描述。
+/// 这类内容不应作为最终答复发送给用户。
+pub(crate) fn is_transitional_planning_sentence(text: &str) -> bool {
+    let char_count = text.chars().count();
+    if char_count >= 200 || char_count == 0 {
+        return false;
+    }
+    let patterns = [
+        "我先", "我再", "我需要先", "我还缺", "我需要补",
+        "我先调取", "我先补查", "我先看", "我先拿", "我先查",
+        "先看本地", "先补查", "先调取", "先核验", "先抓取",
+        "还缺一件事", "我还需要先",
+    ];
+    patterns.iter().any(|pat| text.contains(pat))
+}
+
 /// 检测缓冲区内容是否应该跳过发送
 pub fn should_skip_buffer(text: &str) -> bool {
     let cleaned = clean_msg_markers(text);

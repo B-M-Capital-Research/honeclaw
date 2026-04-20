@@ -6,16 +6,16 @@
 
 ## 使用约定
 
-- 开始修 bug 前，先看“活跃待修复”表，再进入对应缺陷文档核对证据、链路和代码位置。
+- 开始修 bug 前，先看"活跃待修复"表，再进入对应缺陷文档核对证据、链路和代码位置。
 - 新增缺陷文档、更新严重等级、切换状态、确认修复、补充修复提交时，必须在同一次改动里同步更新本页。
-- 修复完成后，除了更新单个 bug 文档的状态，也必须同步更新本页的“状态”和“修复情况”列。
+- 修复完成后，除了更新单个 bug 文档的状态，也必须同步更新本页的"状态"和"修复情况"列。
 - `bug` 自动化负责发现/更新缺陷，并维护本页导航；`bug-2` 自动化负责从本页活跃缺陷中选择修复对象，并在修复后回写本页。
 - 新缺陷默认使用标准状态：`New`、`Approved`、`Fixing`、`Fixed`、`Closed`。历史文档若仍保留旧写法，可先在本页做归一化摘要，不必为了统一格式单独重写全文。
 
 ## 当前概览
 
-- 活跃待修复：14
-- 已修复 / 已关闭：41
+- 活跃待修复：4
+- 已修复 / 已关闭：51
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -23,20 +23,10 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | New | 2026-04-20 00:01-00:02 `AAOI/TEM 每日动态监控` 两轮正文都明确写着“按规则应跳过正式推送”，但台账与会话都记成 `completed + sent` | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | Fixing | 2026-04-19 22:59 最新直聊样本已不再外发零字节消息，但 `codex_acp` 仍连续两次 `empty_success` 重试后退化为通用 fallback，说明用户侧止血有效、底层空成功根因仍活跃 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-20 21:01 `OWALERT_PreMarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；同一目标已从盘前/盘后/早报/财报提醒继续扩散到盘前扫描 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-20 20:00 `GEV earnings reminder` 在 `web_search` 启动前就先把 72 字计划句落成 assistant；同根因已从直聊分析扩散到定时注入链路 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | New | 2026-04-17 07:48 真实会话复现；用户说“分析目前lite价值”后系统直接输出 Litecoin 分析，需用户二次纠正为 `LITE Lumentum` | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
-| Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | New | 2026-04-17 14:53 真实会话复现；当前 user turn 是“美股DRAM详细分析”，但 search 从首个工具调用起就锁定 `SNDK`，最终整轮答成 SanDisk 个股分析 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
-| Feishu 直聊个股分析把同一风险点在多段结构里重复展开，用户需额外指出“很多信息数据都是重复的” | P3 | New | 2026-04-19 15:31 同一用户在 ASTS 后续追问里再次直接反馈“重复性内容还是太多”；说明长答冗余不是单次 Cerebras 样本，而是当前真实会话仍在持续 | [feishu_direct_analysis_redundant_risk_repetition.md](./feishu_direct_analysis_redundant_risk_repetition.md) |
-| Feishu 直聊纯文本 15 支股票池请求误触 `image_understanding`，最终只分析 9 支并要求用户补 6 支代码 | P3 | New | 2026-04-19 13:07 真实会话复现；文本请求先执行 `data_fetch` 后又误触图片技能，最终把“15 支都分析”收缩成 `8+AAOI` 并要求用户补剩余代码 | [feishu_direct_watchlist_text_request_misfires_image_skill.md](./feishu_direct_watchlist_text_request_misfires_image_skill.md) |
-| Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | New | 2026-04-18 08:32 的创新药日报再次复现：4 次 `hone_data_fetch` 全部成功后，最终正文仍声称“港股与A股数据底层链路暂时阻断” | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-20 21:00 `Monitor_Watchlist_11` 与 `ORCL 大事件监控` 同轮再次跌回 `JsonUnknownStatus`，前一窗口的 `小米30港元破位预警` 也已同根因失败；坏态仍在跨模板漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-20 18:00 与 19:00 `ASTS 重大异动心跳监控` 继续重报同一 `BlueBird 7` 旧事件；两轮之间没有新的轨道修正、公告或价格阈值变化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | New | 2026-04-18 10:31 的 `TEM大事件心跳监控` 已送达成功，但 `response_preview` 与 `deliver_preview` 都直接等于 `{\”trigger\”:...}`；11:01 同任务又恢复自然语言 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 21:01 `TEM大事件心跳监控` 再次落成 `execution_failed + skipped_error`；20:30 还是 `noop`、21:00 前后同批又混有 `JsonUnknownStatus`，用户侧无法判断本轮是未触发还是链路直接耗尽 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
-| Feishu 直聊询问 skill 时误报“没有该 skill”，并把内部约束直接当答案返回 | P3 | New | 2026-04-18 21:06 `hone_discover_skills` 已执行成功，但最终答案仍否认存在相关 skill，并直接外泄“底层系统纪律/FOMO 禁令”等内部口径 | [feishu_direct_skill_query_internal_policy_leak.md](./feishu_direct_skill_query_internal_policy_leak.md) |
 
 ## 已修复 / 已关闭
 
@@ -82,6 +72,16 @@
 | Feishu 直聊自动 compact 后仍无法稳定完成新话题回答，同一旧会话会在成功与 fallback 间抖动 | P2 | Fixed | 2026-04-20 同上，compact 重试路径统一使用 CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT=6 | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-04-20 heartbeat context overflow 改为 ContextOverflowNoop（skipped_noop），本轮跳过下轮正常重试 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 | ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | Fixed | 2026-04-20 heartbeat prompt 补加时间一致性、价格时间口径、重复事件三条约束规则 | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |
+| Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | Fixed | 2026-04-20 在 JsonTriggered 分支补 `unwrap_nested_json_message`，将 `{"trigger":"..."}` 等嵌套 JSON 对象字段自动提取为纯文本 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | Fixed | 2026-04-20 在 SchedulerEvent 中注入最近 3 轮已送达摘要，heartbeat prompt 增加规则 10（去重约束）避免重复 triggered | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Feishu 每日动态监控在"无新增催化应跳过"时仍照常推送长文 | P3 | Fixed | 2026-04-20 在定时任务出站前新增 `has_skip_delivery_signal` 检测，命中"按规则应跳过"等短语时中止发送，改为 `skipped` | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
+| Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | Fixed | 2026-04-20 在 agent_session sanitize 层补 `is_transitional_planning_sentence` 检测，命中时改为 empty success fallback | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
+| Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | Fixed | 2026-04-20 在 DEFAULT_FINANCE_DOMAIN_POLICY 补实体歧义约束：多候选资产时必须先列出候选请用户确认，不允许直接猜测 | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
+| Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | Fixed | 2026-04-20 在 DEFAULT_FINANCE_DOMAIN_POLICY 补旧上下文漂移约束：工具调用目标必须由当前 user turn 推导，禁止套用旧 ticker | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
+| Feishu 直聊个股分析把同一风险点在多段结构里重复展开，用户需额外指出"很多信息数据都是重复的" | P3 | Fixed | 2026-04-20 在 DEFAULT_COMPANY_PROFILE_POLICY 补长答去重约束：同一关键事实/风险点只在最相关章节展开一次，后续章节可引用不得重复 | [feishu_direct_analysis_redundant_risk_repetition.md](./feishu_direct_analysis_redundant_risk_repetition.md) |
+| Feishu 直聊纯文本 15 支股票池请求误触 `image_understanding`，最终只分析 9 支并要求用户补 6 支代码 | P3 | Fixed | 2026-04-20 在 image_understanding SKILL.md 补 when_to_use 约束（仅在有图片附件时触发）；在 SkillTool 系统提示补全局约束：纯文本请求禁止调用图片/PDF 附件类 skill | [feishu_direct_watchlist_text_request_misfires_image_skill.md](./feishu_direct_watchlist_text_request_misfires_image_skill.md) |
+| Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | Fixed | 2026-04-20 在 multi-agent handoff 文本中添加 CRITICAL 约束：search transcript 中有成功 data_fetch/quote 结果时，answer 禁止输出"链路阻断/数据未完成校验"等降级文案 | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
+| Feishu 直聊询问 skill 时误报"没有该 skill"，并把内部约束直接当答案返回 | P3 | Fixed | 2026-04-20 扩展 handoff CRITICAL 约束覆盖 discover_skills/skill_tool 结果；在 DEFAULT_FINANCE_DOMAIN_POLICY 补内部策略外泄约束：禁止以「系统纪律」口吻暴露内部规则 | [feishu_direct_skill_query_internal_policy_leak.md](./feishu_direct_skill_query_internal_policy_leak.md) |
 | Feishu 定时汇总已送达但未执行最新资讯检索，静默退化为非实时摘要 | P3 | Closed | 2026-04-19 12:00 同一任务已不再复现 `tool_calls=0 + completed`；本轮改为执行 15 次 `data_fetch` 后触发 overflow fallback，旧伪完成形态关闭并转由新缺陷跟踪 | [feishu_scheduler_daily_company_digest_skips_realtime_research.md](./feishu_scheduler_daily_company_digest_skips_realtime_research.md) |
 
 ## 历史分析 / 部分止血

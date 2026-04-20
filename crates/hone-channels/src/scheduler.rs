@@ -112,6 +112,22 @@ fn heartbeat_internal_marker_present(text: &str) -> bool {
     upper.contains(HEARTBEAT_NOOP_SENTINEL) || upper.contains(HEARTBEAT_INTERNAL_PREFIX)
 }
 
+fn unwrap_nested_json_message(text: &str) -> String {
+    if !text.starts_with('{') {
+        return text.to_string();
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        for key in &["trigger", "message", "content", "text", "alert"] {
+            if let Some(s) = v.get(key).and_then(|v| v.as_str()) {
+                if !s.is_empty() {
+                    return s.to_string();
+                }
+            }
+        }
+    }
+    text.to_string()
+}
+
 fn truncate_for_log(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();
@@ -140,7 +156,8 @@ fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseK
             return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonEmptyStatus);
         }
         if status.eq_ignore_ascii_case("triggered") {
-            let message = parsed.message.unwrap_or_default().trim().to_string();
+            let raw_message = parsed.message.unwrap_or_default();
+            let message = unwrap_nested_json_message(raw_message.trim()).trim().to_string();
             if message.is_empty() || heartbeat_internal_marker_prefix(&message) {
                 return (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonTriggered);
             }
@@ -298,8 +315,40 @@ fn is_max_iterations_error(text: &str) -> bool {
     normalized.contains("已达最大迭代次数") || normalized.contains("max iterations")
 }
 
+/// 检测定时任务正文中是否包含明确的"跳过推送"信号。
+/// 仅匹配直接声明"本次跳过推送"或"无需发送"的短语，避免误拦截合法内容。
+pub(crate) fn has_skip_delivery_signal(text: &str) -> bool {
+    let patterns = [
+        "按规则应跳过正式推送",
+        "无新增催化，跳过推送",
+        "无新增催化,跳过推送",
+        "按规则跳过推送",
+        "跳过本次推送",
+        "本轮跳过推送",
+        "本次不推送",
+        "本轮不推送",
+        "无需推送",
+    ];
+    patterns.iter().any(|pat| text.contains(pat))
+}
+
 pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
     if event.heartbeat {
+        let history_section = if event.last_delivered_previews.is_empty() {
+            String::new()
+        } else {
+            let entries = event
+                .last_delivered_previews
+                .iter()
+                .map(|(ts, preview)| format!("  - [{}] {}", ts, preview))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "\n最近几轮已送达的提醒（供去重参考，不得重复发送相同事实）：\n{}\n\
+10. 去重约束：对照上方【最近已送达】列表，若本轮检索到的事件与列表中某条内容描述的是同一个事件（相同催化 + 相同事件窗口），且没有新的独立行情时间戳、新的公告或新的状态变化，必须返回 noop，不允许重复 triggered。\n",
+                entries
+            )
+        };
         return format!(
             "[心跳检测任务] 任务名称：{}。\n\
 你正在执行一个每 30 分钟运行一次的后台条件检查。\n\
@@ -314,10 +363,10 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
 8. 价格时间口径约束：引用股价时，必须核实价格的时间戳。若市场已停盘、股票停牌或价格来自上一交易日，必须在 message 中明确标注（最新可得价格为停牌前/上一交易日），不允许把旧价格包装成事件发生后的即时市场反应。\n\
-9. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\n\
-\n\
-以下是需要检查的用户条件：\n{}",
-            event.job_name, event.task_prompt
+9. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\
+{}\
+\n以下是需要检查的用户条件：\n{}",
+            event.job_name, history_section, event.task_prompt
         );
     }
     let trigger_note = format!(
@@ -350,11 +399,27 @@ pub async fn execute_scheduler_event(
         let result = run_scheduled_task(core, event, prompt_options, run_options).await;
         let response = result.response;
         return if response.success {
-            ScheduledTaskExecution {
-                should_deliver: true,
-                content: sanitize_scheduler_delivery_text(&response.content),
-                error: None,
-                metadata: Value::Null,
+            let sanitized = sanitize_scheduler_delivery_text(&response.content);
+            if has_skip_delivery_signal(&sanitized) {
+                tracing::info!(
+                    "[SchedulerDiag] skip_signal job_id={} job={} chars={}",
+                    event.job_id,
+                    event.job_name,
+                    sanitized.chars().count(),
+                );
+                ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: sanitized,
+                    error: None,
+                    metadata: Value::Null,
+                }
+            } else {
+                ScheduledTaskExecution {
+                    should_deliver: true,
+                    content: sanitized,
+                    error: None,
+                    metadata: Value::Null,
+                }
             }
         } else {
             let sanitized_error = Some(user_visible_error_message(response.error.as_deref()));
@@ -571,7 +636,7 @@ async fn run_heartbeat_task(
 mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt,
-        heartbeat_execution_from_content, inspect_heartbeat_result,
+        has_skip_delivery_signal, heartbeat_execution_from_content, inspect_heartbeat_result,
         sanitize_scheduler_delivery_text,
     };
     use hone_core::ActorIdentity;
@@ -769,6 +834,14 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_nested_json_message_is_unwrapped() {
+        let raw = r#"{"status":"triggered","message":"{\"trigger\":\"标的: TEM\\n事件: 大事件\"}"}"#;
+        let (outcome, parse_kind) = inspect_heartbeat_result(raw);
+        assert_eq!(parse_kind, HeartbeatParseKind::JsonTriggered);
+        assert_eq!(outcome, HeartbeatOutcome::Deliver("标的: TEM\n事件: 大事件".to_string()));
+    }
+
+    #[test]
     fn heartbeat_malformed_json_marks_execution_failed() {
         let execution = heartbeat_execution_from_content(r#"{"status":"noop"#, "model-x");
         assert!(!execution.should_deliver);
@@ -793,10 +866,70 @@ mod tests {
             push: Value::Null,
             tags: vec![],
             heartbeat: true,
+            last_delivered_previews: vec![],
         };
 
         let prompt = build_scheduled_prompt(&event);
         assert!(prompt.contains("也允许只输出 `{}`。"));
         assert!(!prompt.contains("[[HEARTBEAT_NOOP]]"));
+    }
+
+    #[test]
+    fn heartbeat_prompt_includes_delivery_history_when_present() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_abc", None::<String>).expect("actor"),
+            job_id: "job-2".to_string(),
+            job_name: "ASTS 重大异动心跳监控".to_string(),
+            task_prompt: "ASTS 异动监控".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_abc".to_string(),
+            delivery_key: "delivery-2".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            last_delivered_previews: vec![
+                ("2026-04-20T05:01:00+08:00".to_string(), "BlueBird 7 低轨事件".to_string()),
+                ("2026-04-20T04:31:00+08:00".to_string(), "BlueBird 7 发射".to_string()),
+            ],
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("最近几轮已送达的提醒"));
+        assert!(prompt.contains("BlueBird 7 低轨事件"));
+        assert!(prompt.contains("去重约束"));
+        assert!(prompt.contains("不允许重复 triggered"));
+    }
+
+    #[test]
+    fn heartbeat_prompt_no_history_section_when_empty() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_abc", None::<String>).expect("actor"),
+            job_id: "job-3".to_string(),
+            job_name: "新任务".to_string(),
+            task_prompt: "条件检查".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_abc".to_string(),
+            delivery_key: "delivery-3".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            last_delivered_previews: vec![],
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(!prompt.contains("最近几轮已送达的提醒"));
+        assert!(!prompt.contains("去重约束"));
+    }
+
+    #[test]
+    fn skip_delivery_signal_detected() {
+        assert!(has_skip_delivery_signal(
+            "AAOI 今日没有出现新的实质性催化或风险证伪信号，按规则应跳过正式推送，以下是背景分析..."
+        ));
+        assert!(has_skip_delivery_signal("当前行情平稳，跳过本次推送。"));
+        assert!(!has_skip_delivery_signal("AAOI 今日出现重大利好，建议关注"));
+        assert!(!has_skip_delivery_signal(""));
     }
 }

@@ -31,7 +31,9 @@ use crate::outbound::{
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
-use crate::runtime::{relativize_user_visible_paths, sanitize_user_visible_output};
+use crate::runtime::{
+    is_transitional_planning_sentence, relativize_user_visible_paths, sanitize_user_visible_output,
+};
 use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
 
@@ -931,9 +933,10 @@ impl AgentSession {
             prompt_options.extra_sections.push(format!(
                 "【SkillTool】\n\
                 - 当用户任务明显匹配某个 skill 时，必须先调用 skill_tool，再继续回答。\n\
-                - 若当前 runner 通过 MCP 暴露 namespaced 工具名，则 `skill_tool` 对应 `hone/skill_tool`，`discover_skills` 对应 `hone/discover_skills`；必须调用真实暴露出的那个工具名，不要因为带前缀就误判“工具不存在”。\n\
+                - 若当前 runner 通过 MCP 暴露 namespaced 工具名，则 `skill_tool` 对应 `hone/skill_tool`，`discover_skills` 对应 `hone/discover_skills`；必须调用真实暴露出的那个工具名，不要因为带前缀就误判”工具不存在”。\n\
                 - 用户可以直接输入 `/<skill-id>` 触发 user-invocable 技能；模型不要假装已经加载 skill，必须真的调用工具。\n\
                 - 如果当前任务发生中途转向，或现有技能不够覆盖，再调用 discover_skills / hone/discover_skills 检索相关技能。\n\
+                - 禁止在纯文本请求（消息中没有图片或文件附件）时调用 `image_understanding`、`pdf_understanding` 等附件处理类 skill；这类 skill 仅在当前消息中真实存在对应附件时才可触发。\n\
                 - turn-0 可用技能索引：\n{}",
                 skill_listing
             ));
@@ -1654,6 +1657,23 @@ impl AgentSession {
                     &session_id,
                     "agent.run.fallback",
                     "sanitized_empty_success",
+                    self.message_id.as_deref(),
+                    None,
+                );
+                response.content = EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string();
+            } else if is_transitional_planning_sentence(sanitized.content.trim()) {
+                tracing::warn!(
+                    "[AgentSession] transitional planning sentence detected, treating as empty runner={} session_id={} chars={}",
+                    execution.runner_name,
+                    session_id,
+                    sanitized.content.trim().chars().count()
+                );
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &session_id,
+                    "agent.run.fallback",
+                    "planning_sentence_suppressed",
                     self.message_id.as_deref(),
                     None,
                 );

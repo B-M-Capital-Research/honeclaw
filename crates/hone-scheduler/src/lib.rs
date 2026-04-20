@@ -23,6 +23,8 @@ pub struct SchedulerEvent {
     pub push: serde_json::Value,
     pub tags: Vec<String>,
     pub heartbeat: bool,
+    /// 最近几轮已送达的提醒摘要，仅 heartbeat 任务填充，用于去重判断
+    pub last_delivered_previews: Vec<(String, String)>,
 }
 
 /// 定时任务调度器
@@ -93,6 +95,18 @@ impl HoneScheduler {
         );
 
         for (actor, job) in due_jobs {
+            let last_delivered_previews = if job.is_heartbeat() {
+                self.storage
+                    .list_execution_records(&job.id, 5)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|r| r.delivered && r.response_preview.is_some())
+                    .take(3)
+                    .map(|r| (r.executed_at, r.response_preview.unwrap_or_default()))
+                    .collect()
+            } else {
+                Vec::new()
+            };
             let event = SchedulerEvent {
                 actor: actor.clone(),
                 job_id: job.id.clone(),
@@ -105,6 +119,7 @@ impl HoneScheduler {
                 push: job.push.clone(),
                 tags: job.tags.clone(),
                 heartbeat: job.is_heartbeat(),
+                last_delivered_previews,
             };
 
             // 先发送事件，成功后再标记已执行；
