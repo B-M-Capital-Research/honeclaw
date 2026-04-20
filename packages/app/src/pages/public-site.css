@@ -1,0 +1,343 @@
+/* public-site.css — Responsive overrides for Hone Public Site */
+
+/*
+ * The admin console UI styles lock scroll on html/body/#root for its
+ * own internal scroll containers. Override everything here for the
+ * public-facing surface so the browser window scrolls normally.
+ */
+html,
+body,
+#root {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow: visible !important;
+}
+
+body {
+  overflow-x: hidden !important;
+}
+
+/* Ensure sensible text color base for public pages */
+.pub-page {
+  color: #0f172a;
+}
+
+/* Headings inside public pages always dark unless overridden by inline style */
+.pub-page h1,
+.pub-page h2,
+.pub-page h3,
+.pub-page h4 {
+  color: #0f172a;
+}
+
+/* Nav */
+.pub-nav-links {
+  display: flex;
+}
+.pub-nav-hamburger {
+  display: none;
+}
+
+/* Scroll indicator bounce */
+@keyframes pub-bounce {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50%       { transform: translateY(6px); opacity: 1; }
+}
+.pub-scroll-chevron {
+  animation: pub-bounce 1.8s ease-in-out infinite;
+}
+
+/* Chat animations */
+@keyframes pub-blink  { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes pub-bounce-d { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-4px); } }
+@keyframes pub-pulsed { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes pub-fadeup { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.pub-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: #64748b;
+  vertical-align: middle;
+  margin-left: 1px;
+  opacity: 0.6;
+  animation: pub-blink 1s step-end infinite;
+}
+.pub-dot1,
+.pub-dot2,
+.pub-dot3 {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #64748b;
+  opacity: 0.35;
+  display: inline-block;
+  animation: pub-bounce-d 1.2s ease-in-out infinite;
+}
+.pub-dot2 { animation-delay: 0.15s; }
+.pub-dot3 { animation-delay: 0.30s; }
+.pub-pulsedot { animation: pub-pulsed 1.5s ease-in-out infinite; }
+.pub-msg-in { animation: pub-fadeup 0.3s ease forwards; }
+
+/* Hero */
+.pub-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+  padding-top: 56px;
+}
+
+/* Trust */
+.pub-trust-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  margin-top: 48px;
+}
+
+/* Cases */
+.pub-cases-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 2px;
+  min-height: 360px;
+}
+
+/* Video */
+.pub-video-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+  margin-top: 48px;
+}
+
+/* Capabilities */
+.pub-caps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: rgba(0, 0, 0, 0.06);
+  margin-top: 48px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Community */
+.pub-community-t1 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.pub-community-t2 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+/* Repo */
+.pub-repo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Footer */
+.pub-footer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 40px;
+  margin-bottom: 56px;
+}
+
+/* Roadmap */
+.pub-roadmap-phases {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.pub-roadmap-boundary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.pub-roadmap-docs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+/* Roadmap doc shell (sidebar + main) */
+.pub-doc-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 32px;
+  display: flex;
+  gap: 48px;
+}
+.pub-doc-aside {
+  position: sticky;
+  top: 80px;
+  align-self: flex-start;
+  width: 220px;
+  flex-shrink: 0;
+  padding-right: 20px;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+.pub-channels-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.pub-docs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.pub-docs-card:hover {
+  border-color: rgba(245, 158, 11, 0.30) !important;
+  background: rgba(245, 158, 11, 0.03) !important;
+}
+.pub-contrib-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+/* Me */
+.pub-me-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  .pub-nav-links {
+    display: none;
+  }
+  .pub-nav-hamburger {
+    display: flex !important;
+  }
+
+  .pub-hero-grid {
+    grid-template-columns: 1fr;
+    gap: 48px;
+    padding: 80px 0 40px;
+  }
+
+  .pub-trust-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-cases-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-video-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .pub-caps-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pub-community-t1 {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-community-t2 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pub-repo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+
+  .pub-roadmap-phases {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-roadmap-boundary {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-roadmap-docs {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pub-me-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-doc-shell {
+    flex-direction: column;
+    gap: 32px;
+    padding: 32px 20px;
+  }
+  .pub-doc-aside {
+    position: static;
+    width: 100%;
+    padding-right: 0;
+    border-right: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    padding-bottom: 16px;
+  }
+  .pub-channels-grid {
+    grid-template-columns: 1fr;
+  }
+  .pub-docs-grid {
+    grid-template-columns: 1fr;
+  }
+  .pub-contrib-grid {
+    grid-template-columns: 1fr;
+  }
+  .pub-cap-row {
+    grid-template-columns: 1fr 80px !important;
+    gap: 12px !important;
+  }
+  .pub-cap-row > :nth-child(3) {
+    grid-column: 1 / -1;
+    color: #94a3b8;
+  }
+  .pub-skill-row {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+  .pub-install-tabs {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .pub-caps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-community-t2 {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-roadmap-docs {
+    grid-template-columns: 1fr;
+  }
+
+  .pub-footer-grid {
+    grid-template-columns: 1fr;
+  }
+}

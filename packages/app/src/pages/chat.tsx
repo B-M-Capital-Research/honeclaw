@@ -10,6 +10,9 @@ import {
   Show,
   Switch,
 } from "solid-js";
+import { useNavigate } from "@solidjs/router";
+import { PublicNav } from "@/components/public-nav";
+import "./public-site.css";
 import {
   connectPublicEvents,
   getPublicAuthMe,
@@ -39,10 +42,6 @@ type ChatMessage = {
   steps?: string[];
 };
 
-const GITHUB_REPO_URL = "https://github.com/B-M-Capital-Research/honeclaw";
-const GITHUB_API_URL =
-  "https://api.github.com/repos/B-M-Capital-Research/honeclaw";
-const GITHUB_STAR_COUNT_FALLBACK = 221;
 
 export function normalizeInviteCode(value: string) {
   return value.replace(/\s+/g, "").trim().toUpperCase();
@@ -70,43 +69,65 @@ function formatElapsed(startedAt?: number) {
   return `${minutes}m ${remain}s`;
 }
 
-function RepoLink(props: { stars: number }) {
-  return (
-    <a
-      href={GITHUB_REPO_URL}
-      target="_blank"
-      rel="noreferrer"
-      class="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-2 text-xs text-black/48 transition hover:bg-white hover:text-black"
-    >
-      <span class="font-medium">GitHub</span>
-      <span>★ {props.stars}</span>
-    </a>
-  );
-}
 
-function LoadingCard(props: { githubStars: number }) {
+function LoadingCard() {
   return (
-    <div class="relative min-h-screen overflow-x-hidden overflow-y-hidden bg-[#ffffff] px-4 py-6 text-[#111111] sm:px-6 sm:py-10">
-      <div class="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col sm:min-h-[calc(100vh-5rem)]">
-        <div class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex items-center gap-3 text-[11px] uppercase tracking-[0.22em] text-black/45 sm:tracking-[0.26em]">
-            <Logo class="h-8 w-auto" />
-            <span>Hone Chat</span>
+    <div
+      style={{
+        background: "#f8fafc",
+        "min-height": "100vh",
+        "padding-top": "56px",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+      }}
+    >
+      <div
+        style={{
+          "max-width": "480px",
+          width: "100%",
+          padding: "0 24px",
+          "text-align": "center",
+        }}
+      >
+        <div
+          style={{
+            padding: "40px 28px",
+            "border-radius": "16px",
+            border: "1px solid rgba(0,0,0,0.08)",
+            background: "#fff",
+            "box-shadow": "0 4px 24px rgba(0,0,0,0.06)",
+          }}
+        >
+          <div
+            style={{
+              width: "44px",
+              height: "44px",
+              "border-radius": "50%",
+              background: "#f59e0b",
+              "box-shadow": "0 6px 20px rgba(245,158,11,0.28)",
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              margin: "0 auto 20px",
+            }}
+          >
+            <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" />
           </div>
-          <RepoLink stars={props.githubStars} />
-        </div>
-        <div class="flex flex-1 items-center justify-center">
-          <div class="w-full max-w-2xl rounded-[28px] border border-black/8 bg-white px-6 py-10 text-center shadow-[0_16px_48px_rgba(0,0,0,0.05)] sm:rounded-[32px] sm:px-8 sm:py-12">
-            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-[0_10px_28px_rgba(0,0,0,0.12)]">
-              <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" />
-            </div>
-            <h1 class="mt-6 text-[28px] font-medium tracking-[-0.04em] text-black sm:text-[34px]">
-              正在恢复登录状态
-            </h1>
-            <p class="mx-auto mt-4 max-w-xl text-sm leading-7 text-black/52 sm:text-[15px]">
-              已登录用户刷新页面后会先校验当前会话，再恢复聊天内容和长连接更新。
-            </p>
-          </div>
+          <h1
+            style={{
+              "font-size": "18px",
+              "font-weight": "700",
+              color: "#0f172a",
+              margin: "0 0 8px",
+            }}
+          >
+            正在恢复登录状态
+          </h1>
+          <p style={{ "font-size": "13px", color: "#94a3b8", margin: "0", "line-height": "1.7" }}>
+            校验当前会话，恢复聊天内容和长连接更新
+          </p>
         </div>
       </div>
     </div>
@@ -118,45 +139,70 @@ export function LoginCard(props: {
   phoneNumber: string;
   loading: boolean;
   error: string;
-  githubStars: number;
   onInput: (value: string) => void;
   onPhoneInput: (value: string) => void;
   onSubmit: () => void;
 }) {
   return (
-    <div class="relative min-h-screen overflow-x-hidden overflow-y-hidden bg-[#ffffff] px-4 py-6 text-[#111111] sm:px-6 sm:py-10">
-      <div class="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col sm:min-h-[calc(100vh-5rem)]">
-        <div class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex items-center gap-3 text-[11px] uppercase tracking-[0.22em] text-black/45 sm:tracking-[0.26em]">
-            <Logo class="h-8 w-auto" />
-            <span>Hone Chat</span>
-          </div>
-          <div class="flex flex-wrap items-center gap-2 sm:justify-end">
-            <div class="rounded-full bg-white/80 px-3 py-2 text-[11px] text-black/45 sm:px-4 sm:text-xs">
-              Invite access
-            </div>
-            <RepoLink stars={props.githubStars} />
-          </div>
+    <div
+      style={{
+        background: "#f8fafc",
+        "min-height": "100vh",
+        "padding-top": "56px",
+        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+      }}
+    >
+      <div
+        style={{
+          "max-width": "480px",
+          width: "100%",
+          padding: "0 24px 64px",
+          "text-align": "center",
+        }}
+      >
+        {/* Heading */}
+        <div style={{ "margin-bottom": "28px" }}>
+          <h1
+            style={{
+              "font-size": "26px",
+              "font-weight": "700",
+              color: "#0f172a",
+              margin: "0 0 10px",
+              "letter-spacing": "-0.02em",
+            }}
+          >
+            开启深度投研之旅
+          </h1>
+          <p style={{ "font-size": "14px", color: "#64748b", margin: "0", "line-height": "1.7" }}>
+            输入邀请码和手机号，进入单会话聊天界面
+          </p>
         </div>
-        <div class="flex flex-1 items-center justify-center">
-          <div class="w-full max-w-3xl pb-12 pt-6 text-center sm:pb-16 sm:pt-8">
-            <div class="flex justify-center">
-              <div class="rounded-[28px] bg-white/88 px-6 py-4 shadow-[0_18px_50px_rgba(0,0,0,0.05)] sm:rounded-[32px] sm:px-8 sm:py-5">
-                <Logo class="h-12 w-auto sm:h-14 md:h-20" />
-              </div>
-            </div>
-            <h1 class="mx-auto mt-6 max-w-3xl text-[28px] font-medium tracking-[-0.05em] text-black sm:text-[34px] md:text-[56px]">
-              开启深度投研之旅
-            </h1>
-            <p class="mx-auto mt-4 max-w-2xl px-2 text-sm leading-7 text-black/55 md:px-0 md:text-[15px]">
-              输入邀请码和手机号后进入单会话聊天界面。体验会保持简洁，没有侧边栏，历史消息直接向上滚动查看。
-            </p>
 
-            <form
-              class="mx-auto mt-8 max-w-2xl rounded-[28px] border border-black/10 bg-white px-4 py-4 shadow-[0_12px_60px_rgba(0,0,0,0.06)] sm:mt-10 sm:rounded-[32px] sm:px-5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                props.onSubmit();
+        {/* Form card */}
+        <div
+          style={{
+            padding: "28px",
+            "border-radius": "16px",
+            border: "1px solid rgba(0,0,0,0.08)",
+            background: "#fff",
+            "box-shadow": "0 4px 24px rgba(0,0,0,0.06)",
+          }}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              props.onSubmit();
+            }}
+          >
+            <div
+              style={{
+                "border-radius": "10px",
+                border: "1px solid rgba(0,0,0,0.10)",
+                overflow: "hidden",
+                "margin-bottom": "16px",
               }}
             >
               <input
@@ -165,60 +211,620 @@ export function LoginCard(props: {
                 onInput={(event) =>
                   props.onInput(normalizeInviteCode(event.currentTarget.value))
                 }
-                placeholder="输入邀请码"
+                placeholder="邀请码"
                 autocomplete="off"
                 autocapitalize="characters"
                 spellcheck={false}
-                class="h-13 w-full bg-transparent px-1 text-[16px] tracking-[0.01em] text-black outline-none placeholder:text-black/30 sm:h-14 sm:px-2"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "13px 14px",
+                  "font-size": "15px",
+                  "font-family": "inherit",
+                  color: "#0f172a",
+                  background: "#fafafa",
+                  border: "none",
+                  "border-bottom": "1px solid rgba(0,0,0,0.08)",
+                  outline: "none",
+                  "box-sizing": "border-box",
+                }}
               />
               <input
                 type="tel"
                 value={props.phoneNumber}
                 onInput={(event) =>
-                  props.onPhoneInput(
-                    normalizePhoneNumber(event.currentTarget.value),
-                  )
+                  props.onPhoneInput(normalizePhoneNumber(event.currentTarget.value))
                 }
-                placeholder="输入手机号，按 Enter 登录"
+                placeholder="手机号"
                 autocomplete="tel"
                 spellcheck={false}
-                class="mt-2 h-13 w-full border-t border-black/8 bg-transparent px-1 text-[16px] tracking-[0.01em] text-black outline-none placeholder:text-black/30 sm:h-14 sm:px-2"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "13px 14px",
+                  "font-size": "15px",
+                  "font-family": "inherit",
+                  color: "#0f172a",
+                  background: "#fafafa",
+                  border: "none",
+                  outline: "none",
+                  "box-sizing": "border-box",
+                }}
               />
-              <div class="mt-3 flex flex-col gap-3 border-t border-black/8 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <div class="text-left text-xs leading-6 text-black/45">
-                  邀请码与手机号验证通过后会自动恢复你的单线程 Web 会话
-                </div>
-                <button
-                  type="submit"
-                  disabled={
-                    props.loading ||
-                    !props.inviteCode.trim() ||
-                    !props.phoneNumber.trim()
-                  }
-                  class="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-full bg-black px-5 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20 sm:w-auto"
-                >
-                  {props.loading ? "验证中…" : "开始对话"}
-                </button>
-              </div>
-            </form>
-
-            <Show when={props.error}>
-              <div class="mx-auto mt-4 max-w-2xl rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-left text-sm text-rose-500">
-                {props.error}
-              </div>
-            </Show>
-
-            <div class="mt-8 flex flex-wrap items-center justify-center gap-3 text-xs text-black/42">
-              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">
-                单会话
-              </div>
-              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">
-                长连接更新
-              </div>
-              <div class="rounded-full border border-black/10 bg-white/80 px-4 py-2">
-                邀请码 + 手机号
-              </div>
             </div>
+
+            <button
+              type="submit"
+              disabled={
+                props.loading ||
+                !props.inviteCode.trim() ||
+                !props.phoneNumber.trim()
+              }
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "13px 24px",
+                "border-radius": "8px",
+                background:
+                  props.loading || !props.inviteCode.trim() || !props.phoneNumber.trim()
+                    ? "rgba(245,158,11,0.35)"
+                    : "#f59e0b",
+                border: "none",
+                cursor:
+                  props.loading || !props.inviteCode.trim() || !props.phoneNumber.trim()
+                    ? "not-allowed"
+                    : "pointer",
+                "font-family": "inherit",
+                "font-size": "15px",
+                "font-weight": "700",
+                color: "#fff",
+                "box-shadow":
+                  props.loading || !props.inviteCode.trim() || !props.phoneNumber.trim()
+                    ? "none"
+                    : "0 4px 16px rgba(245,158,11,0.30)",
+                transition: "background 0.2s",
+                "margin-bottom": "12px",
+              }}
+            >
+              {props.loading ? "验证中…" : "开始对话"}
+            </button>
+
+            <p style={{ "font-size": "12px", color: "#94a3b8", margin: "0", "line-height": "1.6" }}>
+              验证通过后自动恢复你的单线程 Web 会话
+            </p>
+          </form>
+        </div>
+
+        <Show when={props.error}>
+          <div
+            style={{
+              "margin-top": "12px",
+              padding: "12px 16px",
+              "border-radius": "10px",
+              border: "1px solid rgba(239,68,68,0.20)",
+              background: "rgba(239,68,68,0.05)",
+              "font-size": "13px",
+              color: "#ef4444",
+              "text-align": "left",
+            }}
+          >
+            {props.error}
+          </div>
+        </Show>
+
+        <div
+          style={{
+            "margin-top": "20px",
+            display: "flex",
+            "justify-content": "center",
+            "flex-wrap": "wrap",
+            gap: "8px",
+          }}
+        >
+          {["单会话", "长连接更新", "邀请码 + 手机号"].map((label) => (
+            <span
+              style={{
+                padding: "4px 12px",
+                "border-radius": "999px",
+                border: "1px solid rgba(0,0,0,0.08)",
+                "font-size": "11px",
+                color: "#94a3b8",
+                background: "#fff",
+              }}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function assistantMarkdownClass(extra: string = "") {
+  return [
+    "break-words text-[14px] leading-[1.75] text-[#0f172a]",
+    "[&_*]:max-w-full",
+    "[&_p]:my-0 [&_p+*]:mt-2",
+    "[&_strong]:text-[#0f172a] [&_strong]:font-semibold",
+    "[&_pre]:mt-3 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border-0 [&_pre]:shadow-none",
+    "[&_code]:rounded [&_code]:bg-black/[0.06] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[12px] [&_code]:font-[var(--font-mono,'JetBrains_Mono',monospace)]",
+    "[&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5",
+    "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-black/12 [&_blockquote]:pl-3 [&_blockquote]:text-[#64748b]",
+    extra,
+  ].join(" ");
+}
+
+function AssistantBody(props: { content: string; white?: boolean }) {
+  return (
+    <For each={parseMessageContent(props.content)}>
+      {(part) => (
+        <Switch>
+          <Match when={part.type === "image"}>
+            <img src={part.value} alt="" class="mt-2 max-w-full rounded-lg" />
+          </Match>
+          <Match when={part.type === "text"}>
+            <Markdown
+              text={part.value}
+              class={assistantMarkdownClass(
+                props.white ? "!text-white [&_*]:!text-white" : "",
+              )}
+            />
+          </Match>
+        </Switch>
+      )}
+    </For>
+  );
+}
+
+function UserBubble(props: { content: string }) {
+  return (
+    <div
+      class="pub-msg-in"
+      style={{
+        display: "flex",
+        "justify-content": "flex-end",
+        "margin-bottom": "12px",
+      }}
+    >
+      <div
+        style={{
+          "max-width": "72%",
+          background: "#f59e0b",
+          color: "#fff",
+          "border-radius": "18px 18px 4px 18px",
+          padding: "11px 16px",
+          "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+          "font-size": "14px",
+          "line-height": "1.65",
+          "box-shadow": "0 2px 8px rgba(245,158,11,0.20)",
+          "white-space": "pre-wrap",
+          "word-break": "break-word",
+        }}
+      >
+        {props.content}
+      </div>
+    </div>
+  );
+}
+
+function AssistantBubble(props: { content: string }) {
+  return (
+    <div
+      class="pub-msg-in"
+      style={{
+        display: "flex",
+        "justify-content": "flex-start",
+        "margin-bottom": "12px",
+      }}
+    >
+      <div
+        style={{
+          "max-width": "78%",
+          background: "#fff",
+          border: "1px solid rgba(0,0,0,0.09)",
+          "border-radius": "4px 18px 18px 18px",
+          padding: "12px 16px",
+          "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+          color: "#0f172a",
+          "box-shadow": "0 1px 4px rgba(0,0,0,0.05)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            gap: "6px",
+            "margin-bottom": "9px",
+          }}
+        >
+          <span
+            style={{
+              width: "7px",
+              height: "7px",
+              "border-radius": "50%",
+              background: "#f59e0b",
+              display: "inline-block",
+              "flex-shrink": "0",
+            }}
+          />
+          <span
+            style={{
+              "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+              "font-size": "11px",
+              "font-weight": "600",
+              "letter-spacing": "0.15em",
+              "text-transform": "uppercase",
+              color: "#64748b",
+            }}
+          >
+            HONE
+          </span>
+        </div>
+        <AssistantBody content={props.content} />
+      </div>
+    </div>
+  );
+}
+
+function PendingBubble(props: {
+  message: ChatMessage;
+  onStop: () => void;
+  onDismiss: () => void;
+}) {
+  const [elapsed, setElapsed] = createSignal(0);
+
+  createEffect(() => {
+    if (!props.message.startedAt) {
+      setElapsed(0);
+      return;
+    }
+    const tick = () => {
+      const seconds = Math.max(
+        0,
+        Math.floor((Date.now() - (props.message.startedAt ?? 0)) / 1000),
+      );
+      setElapsed(seconds);
+    };
+    tick();
+    if (props.message.phase === "done" || props.message.phase === "error") return;
+    const timer = setInterval(tick, 1000);
+    onCleanup(() => clearInterval(timer));
+  });
+
+  const terminal = () => props.message.phase === "error";
+  const labelText = () => {
+    switch (props.message.phase) {
+      case "error":
+        return "HONE 出错了";
+      case "streaming":
+        return "HONE 输出中";
+      case "running":
+        return "HONE 执行中";
+      default:
+        return "HONE 思考中";
+    }
+  };
+  const showDots = () => !props.message.content && !terminal();
+
+  return (
+    <div
+      class="pub-msg-in"
+      style={{
+        display: "flex",
+        "justify-content": "flex-start",
+        "margin-bottom": "12px",
+      }}
+    >
+      <div
+        style={{
+          "max-width": "78%",
+          "min-width": "200px",
+          background: "#fff",
+          border: terminal()
+            ? "1px solid rgba(239,68,68,0.22)"
+            : "1px solid rgba(0,0,0,0.09)",
+          "border-radius": "4px 18px 18px 18px",
+          padding: "12px 16px",
+          "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+          color: "#0f172a",
+          "box-shadow": "0 1px 4px rgba(0,0,0,0.05)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "space-between",
+            gap: "8px",
+            "margin-bottom": props.message.content ? "10px" : "0",
+          }}
+        >
+          <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+            <span
+              class={
+                props.message.phase === "thinking" ||
+                props.message.phase === "streaming"
+                  ? "pub-pulsedot"
+                  : ""
+              }
+              style={{
+                width: "7px",
+                height: "7px",
+                "border-radius": "50%",
+                display: "inline-block",
+                "flex-shrink": "0",
+                background: terminal() ? "#ef4444" : "#f59e0b",
+              }}
+            />
+            <span
+              style={{
+                "font-size": "11px",
+                "font-weight": "600",
+                "letter-spacing": "0.15em",
+                "text-transform": "uppercase",
+                color: "#64748b",
+              }}
+            >
+              {labelText()}
+            </span>
+            <span
+              style={{
+                "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
+                "font-size": "10px",
+                color: "rgba(0,0,0,0.20)",
+              }}
+            >
+              {elapsed()}s
+            </span>
+          </div>
+          <Show
+            when={!terminal()}
+            fallback={
+              <button
+                type="button"
+                onClick={props.onDismiss}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#64748b",
+                  "font-size": "12px",
+                  padding: "0 2px",
+                }}
+              >
+                ✕
+              </button>
+            }
+          >
+            <button
+              type="button"
+              onClick={props.onStop}
+              style={{
+                display: "inline-flex",
+                "align-items": "center",
+                gap: "4px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px 6px",
+                "border-radius": "4px",
+                "font-size": "11px",
+                color: "#64748b",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(239,68,68,0.08)";
+                e.currentTarget.style.color = "#ef4444";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "none";
+                e.currentTarget.style.color = "#64748b";
+              }}
+            >
+              <span
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  "border-radius": "1px",
+                  background: "currentColor",
+                  display: "inline-block",
+                }}
+              />
+              停止
+            </button>
+          </Show>
+        </div>
+
+        <Show when={showDots()}>
+          <div style={{ display: "flex", gap: "4px", padding: "4px 0" }}>
+            <span class="pub-dot1" />
+            <span class="pub-dot2" />
+            <span class="pub-dot3" />
+          </div>
+        </Show>
+
+        <Show when={props.message.content}>
+          <div style={{ "white-space": "pre-wrap", "word-break": "break-word" }}>
+            <AssistantBody content={props.message.content} />
+            <Show when={props.message.phase === "streaming"}>
+              <span class="pub-cursor" />
+            </Show>
+          </div>
+        </Show>
+
+        <Show when={terminal()}>
+          <div
+            style={{
+              "font-size": "13px",
+              color: "#ef4444",
+              "margin-top": "4px",
+            }}
+          >
+            {props.message.statusText || "请求出错，请重试。"}
+          </div>
+        </Show>
+      </div>
+    </div>
+  );
+}
+
+function Composer(props: {
+  draft: string;
+  onDraftChange: (v: string) => void;
+  onSend: () => void;
+  onStop: () => void;
+  isSending: boolean;
+  remaining: number | undefined;
+}) {
+  const [focused, setFocused] = createSignal(false);
+  let taRef: HTMLTextAreaElement | undefined;
+
+  const canSend = () =>
+    !props.isSending &&
+    !!props.draft.trim() &&
+    (props.remaining === undefined || props.remaining > 0);
+
+  createEffect(() => {
+    if (!props.isSending && taRef) taRef.focus();
+  });
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.isComposing) return;
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (canSend()) props.onSend();
+    }
+  };
+
+  return (
+    <div
+      style={{
+        padding: "8px 20px 16px",
+        "border-top": "1px solid rgba(0,0,0,0.08)",
+        background: "#fff",
+        "flex-shrink": "0",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          "border-radius": "24px",
+          border: focused()
+            ? "1px solid #f59e0b"
+            : "1px solid rgba(0,0,0,0.10)",
+          background: "#fff",
+          "box-shadow": focused()
+            ? "0 4px 20px rgba(245,158,11,0.12)"
+            : "0 2px 8px rgba(0,0,0,0.05)",
+          transition: "border-color 0.2s, box-shadow 0.2s",
+          overflow: "hidden",
+        }}
+      >
+        <textarea
+          ref={taRef}
+          rows={3}
+          placeholder={
+            props.remaining === 0
+              ? "今日额度已用完"
+              : "输入你的问题，按 Enter 发送"
+          }
+          value={props.draft}
+          disabled={props.isSending}
+          onInput={(e) => props.onDraftChange(e.currentTarget.value)}
+          onKeyDown={onKey}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            width: "100%",
+            "min-height": "90px",
+            resize: "none",
+            border: "none",
+            outline: "none",
+            background: "transparent",
+            padding: "16px 20px 44px",
+            "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+            "font-size": "14px",
+            "line-height": "1.65",
+            color: "#0f172a",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: "0",
+            left: "0",
+            right: "0",
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "space-between",
+            padding: "8px 14px 10px",
+            background: "linear-gradient(to top,#fff 60%,transparent)",
+          }}
+        >
+          <span style={{ "font-size": "11px", color: "rgba(0,0,0,0.28)" }}>
+            Shift + Enter 换行
+          </span>
+          <div style={{ display: "flex", gap: "6px", "align-items": "center" }}>
+            <Show when={props.isSending}>
+              <button
+                type="button"
+                onClick={props.onStop}
+                style={{
+                  padding: "5px 13px",
+                  "border-radius": "7px",
+                  border: "1px solid rgba(0,0,0,0.10)",
+                  background: "#fff",
+                  "font-size": "12px",
+                  "font-weight": "600",
+                  color: "#64748b",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#ef4444";
+                  e.currentTarget.style.color = "#ef4444";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(0,0,0,0.10)";
+                  e.currentTarget.style.color = "#64748b";
+                }}
+              >
+                停止
+              </button>
+            </Show>
+            <button
+              type="button"
+              onClick={() => canSend() && props.onSend()}
+              disabled={!canSend()}
+              style={{
+                width: "34px",
+                height: "34px",
+                "border-radius": "10px",
+                background: canSend() ? "#f59e0b" : "rgba(0,0,0,0.07)",
+                border: "none",
+                cursor: canSend() ? "pointer" : "default",
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                if (canSend()) e.currentTarget.style.transform = "scale(1.06)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              <svg
+                viewBox="0 0 20 20"
+                width="16"
+                height="16"
+                fill={canSend() ? "white" : "rgba(0,0,0,0.25)"}
+              >
+                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -226,121 +832,8 @@ export function LoginCard(props: {
   );
 }
 
-function AssistantCard(props: { message: ChatMessage }) {
-  const [elapsed, setElapsed] = createSignal(
-    formatElapsed(props.message.startedAt),
-  );
-
-  createEffect(() => {
-    if (
-      !props.message.startedAt ||
-      props.message.phase === "done" ||
-      props.message.phase === "error"
-    ) {
-      setElapsed(formatElapsed(props.message.startedAt));
-      return;
-    }
-    const timer = setInterval(() => {
-      setElapsed(formatElapsed(props.message.startedAt));
-    }, 1000);
-    onCleanup(() => clearInterval(timer));
-  });
-
-  const toneClass = () =>
-    props.message.phase === "error" ? "bg-rose-50" : "bg-white/82";
-
-  return (
-    <div
-      class={[
-        "overflow-hidden rounded-[28px] px-5 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)]",
-        toneClass(),
-      ].join(" ")}
-    >
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-2">
-          <span
-            class={[
-              "h-2.5 w-2.5 rounded-full",
-              props.message.phase === "error" ? "bg-rose-400" : "bg-black",
-            ].join(" ")}
-          />
-          <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-black/42">
-            {props.message.phase === "done"
-              ? "Hone 已回复"
-              : props.message.phase === "error"
-                ? "Hone 出错"
-                : props.message.phase === "streaming"
-                  ? "Hone 输出中"
-                  : props.message.phase === "running"
-                    ? "Hone 执行中"
-                    : "Hone 思考中"}
-          </span>
-        </div>
-        <div class="text-xs text-black/35">{elapsed()}</div>
-      </div>
-
-      <Show when={props.message.statusText}>
-        <div class="mt-3 text-sm text-black/56">{props.message.statusText}</div>
-      </Show>
-
-      <Show when={props.message.steps && props.message.steps!.length > 0}>
-        <div class="mt-4 space-y-2 rounded-2xl bg-[#f5f5f0] px-4 py-3">
-          <For each={props.message.steps}>
-            {(step) => (
-              <div class="flex items-start gap-2 text-sm text-black/58">
-                <span class="mt-[9px] h-1.5 w-1.5 rounded-full bg-black/70" />
-                <span>{step}</span>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      <Show when={props.message.content}>
-        <div class="mt-4 text-[15px] leading-8 text-black">
-          <For each={parseMessageContent(props.message.content)}>
-            {(part) => (
-              <Switch>
-                <Match when={part.type === "image"}>
-                  <img
-                    src={part.value}
-                    alt=""
-                    class="mt-3 max-w-full rounded-2xl"
-                  />
-                </Match>
-                <Match when={part.type === "text"}>
-                  <Markdown
-                    text={part.value}
-                    class="break-words text-[15px] leading-8 text-black [&_*]:max-w-full [&_p]:my-0 [&_p+*]:mt-4 [&_pre]:mt-4 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-black/[0.04] [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1 [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-black/12 [&_blockquote]:pl-4 [&_blockquote]:text-black/58"
-                  />
-                </Match>
-              </Switch>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      <Show when={!props.message.content && props.message.phase !== "error"}>
-        <div class="mt-4 flex gap-1.5">
-          <span
-            class="h-2 w-2 animate-bounce rounded-full bg-black/28"
-            style={{ "animation-delay": "0ms" }}
-          />
-          <span
-            class="h-2 w-2 animate-bounce rounded-full bg-black/28"
-            style={{ "animation-delay": "120ms" }}
-          />
-          <span
-            class="h-2 w-2 animate-bounce rounded-full bg-black/28"
-            style={{ "animation-delay": "240ms" }}
-          />
-        </div>
-      </Show>
-    </div>
-  );
-}
-
 export default function PublicChatPage() {
+  const navigate = useNavigate();
   const [authState, setAuthState] = createSignal<AuthState>("loading");
   const [loginError, setLoginError] = createSignal("");
   const [inviteCode, setInviteCode] = createSignal("");
@@ -349,9 +842,6 @@ export default function PublicChatPage() {
   const [draft, setDraft] = createSignal("");
   const [sendError, setSendError] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
-  const [githubStars, setGithubStars] = createSignal(
-    GITHUB_STAR_COUNT_FALLBACK,
-  );
   const [sessionInfo, setSessionInfo] = createSignal<{
     userId: string;
     remainingToday: number;
@@ -457,15 +947,6 @@ export default function PublicChatPage() {
   };
 
   onMount(() => {
-    void fetch(GITHUB_API_URL)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => {
-        const stars = payload?.stargazers_count;
-        if (typeof stars === "number" && Number.isFinite(stars)) {
-          setGithubStars(stars);
-        }
-      })
-      .catch(() => {});
     void syncSession();
   });
 
@@ -676,167 +1157,214 @@ export default function PublicChatPage() {
   };
 
   return (
-    <Switch>
-      <Match when={publicChatView() === "loading"}>
-        <LoadingCard githubStars={githubStars()} />
-      </Match>
-      <Match when={publicChatView() === "login"}>
-        <LoginCard
-          inviteCode={inviteCode()}
-          phoneNumber={phoneNumber()}
-          loading={authState() === "logging_in"}
-          error={loginError()}
-          githubStars={githubStars()}
-          onInput={setInviteCode}
-          onPhoneInput={setPhoneNumber}
-          onSubmit={() => void handleLogin()}
-        />
-      </Match>
-      <Match when={publicChatView() === "chat"}>
-        <div class="flex h-[100dvh] max-h-[100dvh] min-w-0 flex-col overflow-x-hidden overflow-y-hidden bg-[#ffffff] text-[#111111]">
-        <header class="shrink-0 bg-[#ffffff]/92 backdrop-blur">
-          <div class="mx-auto flex w-full max-w-7xl items-center justify-between px-3 py-3 sm:px-6 sm:py-4">
-            <div class="min-w-0 flex items-center gap-3 sm:gap-4">
-              <Logo class="h-8 w-auto" />
-              <div class="min-w-0">
-                <div class="truncate text-sm font-semibold text-black">
-                  Hone Chat
-                </div>
-                <div class="truncate text-[11px] text-black/45 sm:text-xs">
-                  {sessionInfo()?.dailyLimit
-                    ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}`
-                    : "当前实例未启用对话次数限制"}
-                </div>
-              </div>
-            </div>
-            <div class="flex items-center gap-2 sm:gap-3">
-              <div class="hidden sm:block">
-                <RepoLink stars={githubStars()} />
-              </div>
-              <div class="hidden rounded-full bg-white/70 px-3 py-1.5 text-xs text-black/48 md:block">
-                {sessionInfo()?.userId}
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleLogout()}
-                class="rounded-full bg-white px-3 py-2 text-sm text-black transition hover:bg-black/[0.03] sm:px-4"
-              >
-                退出登录
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <main class="mx-auto flex min-h-0 min-w-0 w-full max-w-[1440px] flex-1 flex-col overflow-x-hidden overflow-y-hidden px-2 pb-3 pt-1 sm:px-3 md:px-6">
+    <>
+      <PublicNav />
+      <Switch>
+        <Match when={publicChatView() === "loading"}>
+          <LoadingCard />
+        </Match>
+        <Match when={publicChatView() === "login"}>
+          <LoginCard
+            inviteCode={inviteCode()}
+            phoneNumber={phoneNumber()}
+            loading={authState() === "logging_in"}
+            error={loginError()}
+            onInput={setInviteCode}
+            onPhoneInput={setPhoneNumber}
+            onSubmit={() => void handleLogin()}
+          />
+        </Match>
+        <Match when={publicChatView() === "chat"}>
+          {/* Fixed container below the 56px PublicNav */}
           <div
-            ref={scrollRef}
-            class="hf-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-1 py-3 sm:gap-5 sm:py-4 md:px-2"
-          >
-            <Show
-              when={messages().length > 0}
-              fallback={
-                <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-3 py-12 text-center sm:py-16">
-                  <div class="rounded-full bg-white/80 px-6 py-3.5 shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
-                    <Logo class="h-9 w-auto" />
-                  </div>
-                  <h1 class="mt-6 text-[30px] font-medium tracking-[-0.04em] text-black sm:text-[42px]">
-                    问 Hone 一个问题
-                  </h1>
-                  <p class="mt-4 max-w-2xl text-sm leading-8 text-black/55">
-                    这里没有侧边栏，也没有多会话切换。输入问题后，Hone
-                    会先展示思考和工具执行过程，再把同一张回复卡片更新成最终答案。
-                  </p>
-                </div>
-              }
-            >
-              <For each={messages()}>
-                {(message) => (
-                  <div
-                    class={[
-                      "flex w-full",
-                      message.role === "user" ? "justify-end" : "justify-start",
-                    ].join(" ")}
-                  >
-                    <div
-                      class={
-                        message.role === "user"
-                          ? "min-w-0 max-w-[86%] sm:max-w-[72%]"
-                          : "min-w-0 max-w-[100%] sm:max-w-[96%] md:max-w-[92%]"
-                      }
-                    >
-                      <Show
-                        when={message.role === "assistant"}
-                        fallback={
-                          <div class="overflow-hidden rounded-[20px] bg-black px-3.5 py-2.5 text-[15px] leading-6 text-white shadow-[0_12px_30px_rgba(0,0,0,0.12)] sm:rounded-[22px] sm:px-4">
-                            <Markdown
-                              text={message.content}
-                              class="break-words text-[15px] leading-6 !text-white [&_*]:max-w-full [&_*]:!text-white [&_p]:my-0 [&_p+*]:mt-2.5 [&_pre]:mt-2.5 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none [&_code]:rounded [&_code]:bg-white/12 [&_code]:px-1.5 [&_code]:py-0.5 [&_ul]:my-2.5 [&_ol]:my-2.5 [&_li]:my-1 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-white/18 [&_blockquote]:pl-4 [&_blockquote]:!text-white"
-                            />
-                          </div>
-                        }
-                      >
-                        <AssistantCard message={message} />
-                      </Show>
-                    </div>
-                  </div>
-                )}
-              </For>
-            </Show>
-          </div>
-
-          <div
-            class="mt-2 shrink-0 rounded-[22px] bg-white/92 px-3 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.04)] sm:rounded-[24px] sm:px-4 sm:py-2.5"
             style={{
-              "padding-bottom": "max(env(safe-area-inset-bottom), 0.5rem)",
+              position: "fixed",
+              top: "56px",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: "flex",
+              "flex-direction": "column",
+              background: "#fff",
             }}
           >
-            <textarea
-              rows={1}
-              value={draft()}
-              onInput={(event) => setDraft(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.isComposing) return;
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSend();
-                }
+            {/* Session strip — 34px */}
+            <div
+              style={{
+                height: "34px",
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "space-between",
+                padding: "0 20px",
+                "border-top": "1px solid rgba(0,0,0,0.06)",
+                "border-bottom": "1px solid rgba(0,0,0,0.08)",
+                background: "#fafbfc",
+                "flex-shrink": "0",
               }}
-              placeholder="输入你的问题，按 Enter 发送"
-              class="min-h-[44px] max-h-[132px] w-full resize-none bg-transparent px-1 py-1.5 text-[15px] leading-6 text-black outline-none placeholder:text-black/28 sm:leading-7"
-            />
-            <div class="mt-1.5 flex flex-col gap-2 pt-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div class="text-xs text-black/42">
-                <Show
-                  when={sendError()}
-                  fallback={<span>Shift + Enter 换行</span>}
-                >
-                  <span class="text-rose-400">{sendError()}</span>
-                </Show>
-              </div>
-              <div class="flex items-center justify-end gap-2 sm:gap-3">
-                <Show when={isSending()}>
-                  <button
-                    type="button"
-                    onClick={() => activeController?.abort()}
-                    class="rounded-full bg-rose-50 px-3 py-2 text-sm text-rose-500 transition hover:bg-rose-100 sm:px-4"
-                  >
-                    停止
-                  </button>
-                </Show>
+            >
+              <span style={{ "font-size": "12px", color: "#64748b" }}>
+                {sessionInfo()?.dailyLimit
+                  ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}`
+                  : "当前实例未启用次数限制"}
+              </span>
+              <div style={{ display: "flex", "align-items": "center", gap: "10px" }}>
                 <button
                   type="button"
-                  onClick={() => void handleSend()}
-                  disabled={!draft().trim() || isSending()}
-                  class="inline-flex h-11 items-center rounded-full bg-black px-4 text-sm font-medium text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/20 sm:px-5"
+                  onClick={() => navigate("/me")}
+                  style={{
+                    "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
+                    "font-size": "11px",
+                    color: "#64748b",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "0",
+                  }}
                 >
-                  发送
+                  {sessionInfo()?.userId ?? "个人"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  style={{
+                    padding: "3px 10px",
+                    "border-radius": "5px",
+                    border: "1px solid rgba(0,0,0,0.09)",
+                    background: "#fff",
+                    "font-size": "11px",
+                    cursor: "pointer",
+                    color: "#64748b",
+                  }}
+                >
+                  退出登录
                 </button>
               </div>
             </div>
+
+            {/* Messages list */}
+            <div
+              ref={scrollRef}
+              style={{
+                flex: "1",
+                "overflow-y": "auto",
+                padding: "20px 0",
+                "scroll-behavior": "smooth",
+              }}
+            >
+              <div style={{ "max-width": "760px", margin: "0 auto", padding: "0 24px" }}>
+                <Show
+                  when={messages().length > 0}
+                  fallback={
+                    <div
+                      style={{
+                        display: "flex",
+                        "flex-direction": "column",
+                        "align-items": "center",
+                        "justify-content": "center",
+                        "text-align": "center",
+                        padding: "48px 16px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "12px 24px",
+                          "border-radius": "999px",
+                          background: "rgba(245,158,11,0.08)",
+                          border: "1px solid rgba(245,158,11,0.18)",
+                        }}
+                      >
+                        <Logo class="h-8 w-auto" />
+                      </div>
+                      <h1
+                        style={{
+                          "font-size": "28px",
+                          "font-weight": "700",
+                          color: "#0f172a",
+                          margin: "20px 0 10px",
+                          "letter-spacing": "-0.02em",
+                        }}
+                      >
+                        问 Hone 一个问题
+                      </h1>
+                      <p
+                        style={{
+                          "font-size": "14px",
+                          "line-height": "1.75",
+                          color: "#64748b",
+                          "max-width": "480px",
+                          margin: "0",
+                        }}
+                      >
+                        这里没有侧边栏，也没有多会话切换。输入问题后，Hone
+                        会先展示思考和工具执行过程，再把同一张回复卡片更新成最终答案。
+                      </p>
+                    </div>
+                  }
+                >
+                  <For each={messages()}>
+                    {(message) => (
+                      <Show
+                        when={message.role === "user"}
+                        fallback={
+                          <Show
+                            when={
+                              !message.phase ||
+                              message.phase === "done"
+                            }
+                            fallback={
+                              <PendingBubble
+                                message={message}
+                                onStop={() => activeController?.abort()}
+                                onDismiss={() => {
+                                  setMessages((current) =>
+                                    current.filter((m) => m.id !== message.id),
+                                  );
+                                }}
+                              />
+                            }
+                          >
+                            <AssistantBubble content={message.content} />
+                          </Show>
+                        }
+                      >
+                        <UserBubble content={message.content} />
+                      </Show>
+                    )}
+                  </For>
+                </Show>
+                <div style={{ height: "8px" }} />
+              </div>
+            </div>
+
+            {/* Composer */}
+            <div style={{ "max-width": "760px", width: "100%", margin: "0 auto", padding: "0 4px" }}>
+              <Show when={sendError()}>
+                <div
+                  style={{
+                    margin: "0 24px 4px",
+                    padding: "8px 12px",
+                    "border-radius": "8px",
+                    border: "1px solid rgba(239,68,68,0.20)",
+                    background: "rgba(239,68,68,0.05)",
+                    "font-size": "12px",
+                    color: "#ef4444",
+                  }}
+                >
+                  {sendError()}
+                </div>
+              </Show>
+              <Composer
+                draft={draft()}
+                onDraftChange={setDraft}
+                onSend={() => void handleSend()}
+                onStop={() => activeController?.abort()}
+                isSending={isSending()}
+                remaining={sessionInfo()?.remainingToday}
+              />
+            </div>
           </div>
-        </main>
-        </div>
-      </Match>
-    </Switch>
+        </Match>
+      </Switch>
+    </>
   );
 }

@@ -20,3 +20,17 @@ body {
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
+
+/* Public site */
+html {
+  scroll-behavior: smooth;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+}

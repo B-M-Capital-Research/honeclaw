@@ -167,6 +167,10 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
 pub fn build_public_app(state: Arc<AppState>) -> Router {
     let web_dist = public_web_dist_dir();
     let assets_dir = web_dist.join("assets");
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
     let public_api = Router::new()
         .route("/auth/invite-login", post(public::handle_invite_login))
@@ -175,11 +179,10 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/history", get(public::handle_history))
         .route("/chat", post(public::handle_chat))
         .route("/events", get(public::handle_events))
+        .layer(cors)
         .with_state(state.clone());
 
     Router::new()
-        .route("/", get(files::handle_public_spa_index))
-        .route("/chat", get(files::handle_public_spa_index))
         .route("/logo.svg", get(files::handle_logo))
         .route("/api/{*path}", get(handle_not_found).post(handle_not_found))
         .nest("/api/public", public_api)
@@ -187,6 +190,7 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             "/assets",
             axum::routing::get_service(ServeDir::new(assets_dir)),
         )
+        .fallback(get(files::handle_public_spa_index))
         .with_state(state)
 }
 
