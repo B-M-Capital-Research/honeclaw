@@ -1,8 +1,20 @@
 # Archive Index
 
-Last updated: 2026-04-19
+Last updated: 2026-04-20
 
 ## 2026-04-19
+
+### Hone 半小时健康巡检补齐用户端静态资源检查
+
+- Status: done
+- Date: 2026-04-19
+- Plan: N/A
+- Handoff: `docs/handoffs/2026-04-19-hone-health-automation-public-web-check.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `sed -n '1,220p' ~/.codex/automations/hone-health-30m/automation.toml`, `bun run build:web:public`, `curl http://127.0.0.1:8088/`, `ls packages/app/dist-public`
+- Current conclusion: `hone-health-30m` 现在不会再把“`8088` 正在监听”误判成用户端健康；它新增了 `packages/app/dist-public/index.html` 与 `8088` HTML 返回检查，并在只缺用户端静态资源时优先执行 `bun run build:web:public` 做最小止血，只有仍不健康时才整套重启
+- Next entry point: `.codex/automations/hone-health-30m/automation.toml`
 
 ### Web 邀请码手机号绑定与固定端口切换
 

@@ -1,0 +1,72 @@
+version = 1
+id = "hone-health-30m"
+kind = "cron"
+name = "Hone半小时健康巡检"
+prompt = """
+你需要对 `/Users/ecohnoch/Desktop/honeclaw` 这份仓库当前正在运行的 release runtime 做健康巡检，并在服务不健康时按既定 release 运行方式自动恢复可用性。这是运维巡检任务，不是代码修复任务；不要修改业务代码、测试代码或仓库文档，除非本次运行明确要求只更新本 automation 的 memory。
+
+固定约束：
+- 运行目录固定为 `/Users/ecohnoch/Desktop/honeclaw`
+- 数据目录固定为 `/Users/ecohnoch/Desktop/honeclaw/data`
+- 配置目录固定为 `/Users/ecohnoch/Desktop/honeclaw/data/runtime/desktop-config`
+- skills 目录固定为 `/Users/ecohnoch/Desktop/honeclaw/skills`
+- release 二进制与 `.app` 统一从 `/Users/ecohnoch/Library/Caches/honeclaw/target/release` 读取
+- desktop 正式运行形态必须是打包后的 `.app/Contents/MacOS/hone-desktop`
+- 不要使用 `tauri dev`、`--desktop`、`bun --watch`、`cargo watch`、hot reload、或裸 `target/release/hone-desktop` 作为正式运行结果
+
+健康判定顺序：
+1. 先检查是否存在 watch 类进程：`tauri dev`、`bun --watch`、`cargo watch`
+2. 检查 hone 相关进程树，重点看：
+   - backend: `/Users/ecohnoch/Library/Caches/honeclaw/target/release/hone-console-page`
+   - channels: `hone-feishu`、`hone-telegram`、`hone-discord`
+   - desktop: `/Users/ecohnoch/Library/Caches/honeclaw/target/release/bundle/macos/Hone Financial.app/Contents/MacOS/hone-desktop`
+3. 检查 `curl -sf http://127.0.0.1:8077/api/meta`
+4. 检查 `curl -sf http://127.0.0.1:8077/api/channels`
+5. 检查用户端构建产物是否存在：`/Users/ecohnoch/Desktop/honeclaw/packages/app/dist-public/index.html`
+6. 检查 `8088` 的用户端不是“假在线”：
+   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8088/` 应返回 `200`
+   - `curl -s http://127.0.0.1:8088/` 返回内容里应能看到前端入口，例如 `<div id="root"></div>` 或 `/assets/`
+   - 不要只因为 `8088` 有监听就判定用户端健康
+
+只有同时满足以下条件，才算健康：
+- `/api/meta` 成功返回
+- `/api/channels` 中 `web`、`feishu`、`telegram`、`discord` 都是 `running`
+- 正在运行的 desktop 路径指向打包后的 `.app/Contents/MacOS/hone-desktop`
+- 没有 `tauri dev`、`bun --watch`、`cargo watch` 这类 watch 进程
+- 没有重复的 hone release 进程组
+- `packages/app/dist-public/index.html` 存在
+- `http://127.0.0.1:8088/` 返回 `200` 且能正常吐出前端 HTML，而不是因为缺少 `dist-public` 报错
+
+如果不健康，按以下恢复流程执行：
+1. 先记录当前异常证据到 memory：失败的接口、异常端口、缺失/重复进程、关键日志时间点、以及 `dist-public` 是否缺失。
+2. 如果 backend / channels / desktop 进程仍然健康，只是 `packages/app/dist-public/index.html` 缺失、或 `8088` 返回 `Hone Web assets not found` 这类静态资源错误，先做最小止血，不要立刻整套重启：
+   - 在仓库根目录执行 `bun run build:web:public`
+   - 重新检查 `packages/app/dist-public/index.html`
+   - 重新检查 `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8088/`
+   - 如果这一步已经恢复用户端，就结束，不要打扰其他正在运行的服务
+3. 如果存在旧的 hone release 进程异常、重复进程、desktop/backend/channel 缺失，或执行 `bun run build:web:public` 后仍不能通过健康检查，再进入整套恢复：
+   - 先关闭已有 `screen` 会话 `hone-release`
+   - 随后仅清理与 hone release 相关的旧进程：`hone-console-page`、`hone-feishu`、`hone-telegram`、`hone-discord`、以及 `.app/Contents/MacOS/hone-desktop` 对应进程
+4. 使用 detached `screen` 重新拉起整组服务，命令模式固定为：
+   - `screen -dmS hone-release bash -lc 'cd /Users/ecohnoch/Desktop/honeclaw && export HONE_WEB_PORT=8077 HONE_CONSOLE_URL=http://127.0.0.1:8077 HONE_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml HONE_USER_CONFIG_PATH=/Users/ecohnoch/Desktop/honeclaw/data/runtime/config_runtime.yaml HONE_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data HONE_DESKTOP_DATA_DIR=/Users/ecohnoch/Desktop/honeclaw/data HONE_DESKTOP_CONFIG_DIR=/Users/ecohnoch/Desktop/honeclaw/data/runtime/desktop-config HONE_SKILLS_DIR=/Users/ecohnoch/Desktop/honeclaw/skills; /Users/ecohnoch/Library/Caches/honeclaw/target/release/hone-console-page >> /Users/ecohnoch/Desktop/honeclaw/data/runtime/logs/backend_release_restart.log 2>&1 & /Users/ecohnoch/Library/Caches/honeclaw/target/release/hone-feishu >> /Users/ecohnoch/Desktop/honeclaw/data/runtime/logs/hone-feishu.release-restart.log 2>&1 & /Users/ecohnoch/Library/Caches/honeclaw/target/release/hone-telegram >> /Users/ecohnoch/Desktop/honeclaw/data/runtime/logs/hone-telegram.release-restart.log 2>&1 & /Users/ecohnoch/Library/Caches/honeclaw/target/release/hone-discord >> /Users/ecohnoch/Desktop/honeclaw/data/runtime/logs/hone-discord.release-restart.log 2>&1 & /Users/ecohnoch/Library/Caches/honeclaw/target/release/bundle/macos/Hone\\ Financial.app/Contents/MacOS/hone-desktop >> /Users/ecohnoch/Desktop/honeclaw/data/runtime/logs/desktop_release_app.log 2>&1 & wait'`
+5. 启动后重试健康检查，必须再次确认 `/api/meta`、`/api/channels`、`packages/app/dist-public/index.html`、`8088` 首页可访问、进程路径、无重复进程、无 watch 进程。
+
+执行边界：
+- 不做代码修复，不跑发布，不重建 release bundle；默认直接使用当前已有的 release 产物做恢复。
+- 允许把 `bun run build:web:public` 作为用户端静态资源缺失时的运维止血动作；这不是业务代码修改。
+- 如果发现 release 产物缺失、`screen` 不可用，或恢复后仍无法通过健康检查，则停止在安全边界内，保留现场，不要反复重启；把阻塞点写入 memory 和 inbox item。
+- 如果系统本来就健康，不要重启，不要打扰运行中的服务。
+
+结果输出：
+- 正常时：简短说明本轮健康检查通过，给出关键验证点。
+- 异常恢复成功时：说明故障形态、恢复动作、恢复后验证结果。
+- 异常恢复失败时：明确卡在哪个门槛。
+"""
+status = "ACTIVE"
+rrule = "RRULE:FREQ=HOURLY;INTERVAL=1;BYMINUTE=0,30;BYDAY=SU,MO,TU,WE,TH,FR,SA"
+model = "gpt-5.4"
+reasoning_effort = "medium"
+execution_environment = "local"
+cwds = ["/Users/ecohnoch/Desktop/honeclaw"]
+created_at = 1776240638075
+updated_at = 1776611899197
