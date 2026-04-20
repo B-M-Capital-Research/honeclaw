@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-20 16:01 CST
+最后更新：2026-04-20 17:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -28,8 +28,8 @@
 | Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | Fixing | 2026-04-19 22:59 最新直聊样本已不再外发零字节消息，但 `codex_acp` 仍连续两次 `empty_success` 重试后退化为通用 fallback，说明用户侧止血有效、底层空成功根因仍活跃 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixing | 2026-04-19 12:23 `GOOGL` 深度研究请求再次在 search 阶段触顶；这次混入 `company_portrait` / 错误文件读取后仍直接把 `已达最大迭代次数 8` 落成 assistant 文本 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-20 08:33 `Hone_AI_Morning_Briefing` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；故障已从油价/盘后提醒扩散到同一目标上的日常早报 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| 会话压缩摘要再次以 `Compact Summary` 回灌为 `role=user`，真实 transcript 与修复结论重新冲突 | P1 | Fixing | 2026-04-20 15:36 最新 Feishu 直聊又在 auto compact 后把 `Compact Summary` 插到“股價的上漲是由什麽推動的”之前；随后虽能继续答题，但污染消息仍作为真实 `user` transcript 进入 prompt | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
-| Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-20 08:54 `TEMPUS AI` 会话再次在 `Tool: hone/local_list_files` 启动时就先 `done + reply.send`，用户只收到“我还缺一件事”的过程句 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
+| 会话压缩摘要再次以 `Compact Summary` 回灌为 `role=user`，真实 transcript 与修复结论重新冲突 | P1 | Fixing | 2026-04-20 16:51 最新 Feishu 直聊在 DELL 对比请求前再次 auto compact，并把 `Compact Summary` 作为真实 `user` 消息插到新问题前；随后虽能继续答题，但污染 transcript 仍在生产持续生成 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
+| Feishu 直聊在工具尚未跑完时提前把过渡句当成最终答复发送，组合评估请求只收到半成品回复 | P3 | New | 2026-04-20 16:19 `vistra energy` 会话先回“我先补查...再抓数据”的过程句；用户重问后才在 16:24 拿到正式长答，说明半成品先出站仍在复现 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | New | 2026-04-17 07:48 真实会话复现；用户说“分析目前lite价值”后系统直接输出 Litecoin 分析，需用户二次纠正为 `LITE Lumentum` | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
 | Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | New | 2026-04-17 14:53 真实会话复现；当前 user turn 是“美股DRAM详细分析”，但 search 从首个工具调用起就锁定 `SNDK`，最终整轮答成 SanDisk 个股分析 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 | Feishu 直聊个股分析把同一风险点在多段结构里重复展开，用户需额外指出“很多信息数据都是重复的” | P3 | New | 2026-04-19 15:31 同一用户在 ASTS 后续追问里再次直接反馈“重复性内容还是太多”；说明长答冗余不是单次 Cerebras 样本，而是当前真实会话仍在持续 | [feishu_direct_analysis_redundant_risk_repetition.md](./feishu_direct_analysis_redundant_risk_repetition.md) |
