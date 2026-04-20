@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-20 07:31-08:01 最近一小时最新样本：
+    - `cron_job_runs` 在 `2026-04-20 07:31 -> 08:01` 再次表现为“上一轮整批暂时恢复为 `noop`，下一轮又有多条 heartbeat 集体跌回 unknown status”的活跃漂移态：
+      - `run_id=3316/3317/3320/3321`（`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`）在 `07:31` 窗口都还是 `noop + skipped_noop`
+      - 到 `08:01` 窗口，失败对象又漂移成 `run_id=3327/3328/3329`（`ORCL 大事件监控`、`Monitor_Watchlist_11`、`RKLB异动监控`），分别在 `2026-04-20T08:01:14-08:01:18+08:00` 落成 `execution_failed + skipped_error`
+      - 同一 `08:01` 批次里，`run_id=3322/3323/3324/3325/3326/3330`（`全天原油 / 小米30港元 / CAI / TEM破位 / 小米破位 / TEM大事件心跳监控`）仍被记成 `noop + skipped_noop`
+      - 这说明 heartbeat 公共结构化状态契约到 `08:01` 仍没有收口；失败对象只是从前一窗口的“整批暂时恢复”再次漂移回 `ORCL / Watchlist / RKLB` 组合，而不是问题已修复
+  - 对应 `data/runtime/logs/web.log`：
+    - `2026-04-20 08:01:14.673` 的 `ORCL 大事件监控` 记录 `parse_kind=JsonUnknownStatus`，`raw_preview` 已完成“价格未超过 5%，也没有重大事件”的判断，最终却仍被升级为 `parse failure escalated`
+    - `2026-04-20 08:01:15.256` 的 `Monitor_Watchlist_11` 继续记录 `parse_kind=JsonUnknownStatus`；正文已逐项比较 `HIMS / MU / RKLB / LMND ...` 的触发价，却仍没能稳定收口到合法状态 JSON
+    - `2026-04-20 08:01:18.792` 的 `RKLB异动监控` 再次记录 `parse_kind=JsonUnknownStatus`；`raw_preview` 已明确写出“没有新的并购/发射失败/重大订单异常”，但输出仍停留在 `<think>...` 自由文本
+    - 同一 `08:01` 窗口里，恢复为 `JsonNoop` 的 `全天原油 / 小米30港元 / CAI / TEM破位 / 小米破位 / TEM大事件心跳监控` 依旧统一满足 `starts_with_json=false`，说明所谓“恢复”为 `noop` 的任务仍只是依赖 `<think>...JSON` 尾部侥幸提取，而不是协议已恢复
   - 2026-04-20 06:31-07:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-20 06:31 -> 07:01` 继续表现为“上一轮刚回到 `noop` 的模板，下一轮又换一批对象跌回 unknown status”的活跃漂移态：
       - `run_id=3300/3301`（`Monitor_Watchlist_11`、`ORCL 大事件监控`，`executed_at=2026-04-20T06:31:18.605044+08:00`、`2026-04-20T06:31:20.077291+08:00`）在 `06:31` 窗口落成 `execution_failed + skipped_error`
@@ -730,6 +741,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 07:31 -> 08:01` 的最新窗口，heartbeat 仍在“整批暂时恢复为 `noop`”与“`ORCL / Monitor_Watchlist_11 / RKLB异动监控` 集体回落成 `unknown status`”之间来回摆动；同时其余 `noop` 任务依旧统一依赖 `<think>...JSON` 尾部提取，说明结构化状态契约到 `08:01` 仍未恢复。
 - 到 `2026-04-20 03:31 -> 04:01` 的最新窗口，这条缺陷继续证明 heartbeat 公共协议没有收口：
   - `RKLB异动监控` 在 `03:31` 与 `04:01` 连续两轮都落成 `execution_failed + skipped_error`
   - `小米破位预警` 在 `04:01` 又重新跌回 `JsonUnknownStatus`
