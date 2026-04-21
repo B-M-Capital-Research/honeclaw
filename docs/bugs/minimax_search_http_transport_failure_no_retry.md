@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 13:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixing
+- **状态**: Fixed
 - **证据来源**:
   - 最近真实会话：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`

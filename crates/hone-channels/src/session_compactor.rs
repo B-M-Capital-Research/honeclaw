@@ -328,7 +328,7 @@ impl<'a> SessionCompactor<'a> {
             )),
         ));
         new_messages.push(session_message_from_text(
-            "user",
+            "system",
             &format!("【Compact Summary】\n{summary_to_store}"),
             hone_core::beijing_now_rfc3339(),
             Some(build_compact_summary_metadata(trigger)),

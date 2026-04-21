@@ -3,8 +3,52 @@
 - **发现时间**: 2026-04-19 14:28 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3538`，`executed_at=2026-04-20T17:30:26.321745+08:00`，继续落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3547`，`executed_at=2026-04-20T18:00:24.824813+08:00`，仅隔约 30 分钟再次 `completed + sent + delivered=1`
+    - `run_id=3568`，`executed_at=2026-04-20T19:00:33.405895+08:00`，又隔约 1 小时继续 `completed + sent + delivered=1`
+    - 三轮 `response_preview` 都围绕同一 `BlueBird 7` 低于计划轨道旧事件展开，但措辞继续在“上天失败”“发射异常”“发射失败”之间漂移，没有新的轨道修正、处置结果或新的交易时间锚点
+    - 这说明截至 `19:00`，问题已不只是“旧事件重复提醒”，而是同一旧事实仍会被不断改写成更像已完成事故结论的用户态提醒
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-20 17:30:26.320`、`18:00:21.890` 对应 `HeartbeatDiag deliver` 继续把同一 `BlueBird 7` 低轨事件出站为新的 triggered 提醒
+    - `cron_job_runs.run_id=3568` 的 `response_preview` 又进一步写成 “BlueBird 7 卫星发射失败”，同时声称“官方已发布公告确认此事件”，但仍没有新的价格时点或新增独立事件窗口
+    - 最新窗口说明链路仍没有稳定的事件状态基线；同一旧事件会在后续轮询里被重新包装成不同严重口径的既成事实
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3538`，`executed_at=2026-04-20T17:30:26.321745+08:00`，在最近一小时最新窗口里继续落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3547`，`executed_at=2026-04-20T18:00:24.824813+08:00`，仅隔约 30 分钟又再次 `completed + sent + delivered=1`
+    - 两轮 `response_preview` 都继续围绕同一 `BlueBird 7` 低于计划轨道旧事件展开；`17:30` 这轮直接写成“重大基本面积压事件（BlueBird 卫星上天失败）”，`18:00` 又写成“BlueBird 7发射异常——New Glenn 3火箭将BlueBird 7卫星部署至低于计划的轨道”
+    - 两轮之间没有新的独立行情时间戳或新的事件窗口，却继续把同一旧事件重复包装成新一轮 heartbeat 触发提醒，说明最新小时窗里不仅事实仍错，而且重复投递仍在继续
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-20 17:30:26.320` 与 `18:00:21.890` 对应的 `HeartbeatDiag deliver` 都继续把同一 `BlueBird 7` 低轨事件出站为新的 triggered 提醒
+    - `17:30` 的 `deliver_preview` 已把措辞升级成“BlueBird 卫星上天失败”
+    - `18:00` 的 `deliver_preview` 又写成“Blue Origin 官方确认”“相关负面报道已覆盖 Barron's、WSJ、TechCrunch”，但仍没有新的价格时间锚点或新的用户触发条件变化
+    - 这说明截至最近一小时，链路并没有进入稳定的“事件已处理完毕，不再重复提醒”状态，而是在同一旧事件上继续改写措辞并重复出站
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3477`，`executed_at=2026-04-20T14:30:58.985852+08:00`，最近一小时窗口里继续落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - `run_id=3488`，`executed_at=2026-04-20T15:01:21.455010+08:00`，仅过约 30 分钟再次 `completed + sent + delivered=1`
+    - 两轮 `response_preview` 都继续围绕同一 `BlueBird 7` 轨道异常展开，并继续把停牌前 `ASTS $85.53 / 前收 $90.94 / 日跌幅约 -5.95%` 写成 `14:30` 与 `15:00` 的“当前行情”
+    - 这说明问题到最新窗口并未止血；即便 `14:00` 那轮一度扩写成“卫星已报废”，后续两轮回落到“轨道异常”措辞后，仍然持续把旧价格快照包装成事件后的实时市场反应
+  - `data/runtime/logs/web.log`
+    - `2026-04-20 14:30:57.118` 的 `deliver_preview` 写出：`BlueBird 7 卫星发射异常 ... 被部署至低于计划的轨道`
+    - `2026-04-20 15:00:18.543-15:00:21.121` 同批仍先出现 Tavily 超额告警，随后 ASTS heartbeat 继续成功投递；`detail_json.scheduler.deliver_preview` 对应内容仍把 `ASTS $85.53 / -5.95%` 作为“今日ASTS跌幅”背景
+    - 这说明最新窗口里并不是链路失败，而是错误事实/错误价格时间口径继续被稳定送达给用户
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `job_name=ASTS 重大异动心跳监控`
+    - `run_id=3457`，`executed_at=2026-04-20T13:30:25.099974+08:00`，最近一小时窗口里再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+    - 这轮 `response_preview` 明确写成：`BlueBird 7 卫星在 Blue Origin New Glenn 3 发射任务中因上面级故障，被部署至低于计划的轨道`
+    - 仅过约 30 分钟，到 `run_id=3468`，`executed_at=2026-04-20T14:00:56.780035+08:00`，同一任务又再次 `completed + sent + delivered=1`
+    - 最新 `response_preview` 又升级成：`AST官方确认将进行离轨处理，卫星已报废`
+    - 两轮都继续绑定同一组 `ASTS $85.53 / 前收 $90.94 / 日跌幅约 -5.95%` 的停牌前价格快照；说明系统不只是把旧事件重复提醒，而是在没有新市场时点的前提下继续扩写更重的事故结论
+  - `data/runtime/logs/web.log`
+    - `2026-04-20 13:30:23.067` 的 `deliver_preview` 写出：`BlueBird 7 卫星在 ... 发射任务中因上面级故障，被部署至低于计划的轨道`
+    - `2026-04-20 14:00:53.919` 的 `deliver_preview` 又进一步写成：`AST官方确认将进行离轨处理，卫星已报废`
+    - 同轮 `raw_preview` 仍在用 `Current price: $85.53 / Day change: -5.95%` 作为“当前行情（截至 14:00 北京时间）”背景
+    - 这说明最近一小时最新窗口里，链路已经从“成功发射/事故/noop”三态漂移，继续放大成“事故 -> 已报废”的更重结论漂移，但价格时间口径仍完全没有更新
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `job_name=ASTS 重大异动心跳监控`
     - `run_id=3417`，`executed_at=2026-04-20T11:30:31.644313+08:00`，在最近一小时最新窗口里再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
@@ -178,6 +222,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-20 17:30 -> 19:00` 的最近一小时最新窗口，ASTS heartbeat 连续三轮都继续把同一 `BlueBird 7` 低轨旧事件送达给用户，且措辞从“上天失败”漂移到“发射异常”，再到 `19:00` 的“发射失败”；这说明链路仍在把同一旧事实不断包装成新的既成事故结论，而不是稳定维持一个已知事件状态。
+- 到 `2026-04-20 13:30 -> 14:00` 的最近一小时最新窗口，ASTS heartbeat 先把 `BlueBird 7` 写成“被部署至低于计划轨道”，随后又在没有新价格时间戳或新交易时段的前提下升级成“AST 官方确认将进行离轨处理，卫星已报废”；但两轮都继续沿用同一组停牌前 `ASTS $85.53 / -5.95%` 快照，说明链路仍在把旧价格包装成事件后的实时背景，同时让事故结论越写越重。
 - 到 `2026-04-20 11:30 -> 12:30 -> 13:00` 的最新三轮窗口，ASTS heartbeat 先把同一 `BlueBird 7` 事件写成“已成功发射至 LEO”，随后又改口成“重大发射事故应触发提醒”，再回退为 `noop`；但三轮都继续沿用同一组停牌前 `ASTS $85.53 / -5.95%` 快照做判断，说明事件事实状态与价格时间口径都还在持续抖动。
 - 到 `2026-04-20 11:00` 的最新窗口，ASTS heartbeat 仍继续把同一 `BlueBird 7` 低轨事故与停牌前 `ASTS $85.53 / -5.95%` 价格打包成新一轮“重大异动提醒”；这说明即使事件表述从“发射升空”切到“发射事故”，价格时间口径错误仍未收口。
 - 到 `2026-04-20 09:01` 的最新窗口，ASTS heartbeat 仍继续把同一 `BlueBird 7` 低轨事件与停牌前 `ASTS $85.53 / -5.95%` 价格打包成当前提醒，说明“旧价格包装为事件后市场反应”的错误仍在真实出站文本里活跃。
@@ -203,6 +249,7 @@
 
 ## 根因判断
 
+- 最近一小时 `13:30 -> 14:00` 的新样本表明，系统不仅缺少“事件时间是否已到达”的一致性校验，也缺少“同一事件已经确认到哪一步”的稳定状态机；没有新的行情或事件时间戳进入时，模型仍会把同一条旧事故报道从“低于计划轨道”继续扩写成“卫星已报废”。
 - 最新 `11:30 -> 12:30 -> 13:00` 三轮还显示，系统对同一 `BlueBird 7` 事件根本没有稳定的事实状态机：上一轮可以判成“成功发射至 LEO”，下一轮改成“低于计划轨道事故”，再下一轮又回退为 `noop`，说明不仅缺少时间校验，也缺少对同一事件已知结论的稳定收口。
 - 当前链路缺少“事件时间是否已到达”的一致性校验，模型只要看到“今天发射/发射成功”的搜索片段，就可能直接输出完成态。
 - 行情快照的时间语义没有被强制暴露到最终答案，导致停牌前价格、上周五收盘价被误包装成事件落地后的即时反应。

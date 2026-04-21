@@ -2,6 +2,20 @@
 
 Last updated: 2026-04-20
 
+## 2026-04-20
+
+### Hone 内置技能高置信度收敛
+
+- Status: done
+- Date: 2026-04-20
+- Plan: `docs/archive/plans/hone-skill-consolidation.md`
+- Handoff: `docs/handoffs/2026-04-20-hone-skill-consolidation.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `rtk bash tests/regression/ci/test_finance_automation_contracts.sh`, `rtk cargo test -p hone-tools load_skill_and_direct_invocation_accept_aliases`, `rtk cargo fmt --all --check`
+- Current conclusion: Hone 的高重叠金融 skill 已收敛到更小的维护面：`one_sentence_memory` 被删除，`major_alert` 被并入 `scheduled_task`，`valuation` 与 `stock_selection` 被并入带兼容 alias 的 `stock_research`；finance regression 已改为验证新的 canonical skill 形态
+- Next entry point: `skills/stock_research/SKILL.md`
+
 ## 2026-04-19
 
 ### Hone 半小时健康巡检补齐用户端静态资源检查

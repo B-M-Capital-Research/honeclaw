@@ -3,8 +3,14 @@
 - **发现时间**: 2026-04-15 21:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+  - 最近一小时真实回归：`data/sessions.sqlite3` -> `session_messages`
+    - `session_id=Actor_feishu__direct__ou_5f69970af6b0ef6ce8e233ef0e0cc0bd79`
+    - `2026-04-20T22:28:42.874437+08:00` 用户发送：`2`
+    - `2026-04-20T22:29:51.998260+08:00` assistant 直接落库：`正在思考中...Falling back from WebSockets to HTTPS transport. unexpected status 403 Forbidden: Unknown error, url: wss://chatgpt.com/backend-api/codex/responses, cf-ray: ... 我把你的“2”解释为...`
+    - 这条文本把 WebSocket 回退、`403 Forbidden`、`Unknown error`、`wss://chatgpt.com/backend-api/codex/responses` 以及 `cf-ray` 调试信息直接拼进用户可见答复，而不是收口成产品化错误提示
+    - 同会话直到 `2026-04-20T22:36:27.344689+08:00` 用户继续发送 `继续` 后，系统才在 `2026-04-20T22:37:54.546948+08:00` 给出正常的 `WULF` 正式分析，说明上一轮并没有正确完成用户请求
   - 最近真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f5ffb1004abf2c344917ee093ffb14c15`
     - `2026-04-15T20:58:51.471633+08:00` 用户消息：`最近存储系列的还能买吗`
@@ -54,6 +60,9 @@
 
 ## 当前实现效果
 
+- `2026-04-20 22:29` 的最新 Feishu 直聊样本说明，这个缺陷已经以新形态回归：虽然不再是 `bad_request_error: invalid params`，但底层传输回退细节仍会直接拼进用户可见正文。
+- 这次暴露出来的不只是泛化的“处理失败”，而是完整的运行时排障细节，包括 `Falling back from WebSockets to HTTPS transport`、`unexpected status 403 Forbidden`、`Unknown error`、具体 `wss://chatgpt.com/backend-api/codex/responses` URL 与 `cf-ray` 追踪信息。
+- 同一条 assistant 文本还把这段底层错误和后续的业务答复草稿混在一起，导致用户先看到一段污染文本，随后还要继续追问才能拿到正式的 `WULF` 分析，说明问题已经不只是“错误提示不友好”，而是原始错误直接污染主回复链路。
 - 当前 Feishu 直聊失败分支会把 `response.error` 原样截断后直接拼入用户消息。
 - 这次真实故障中的错误文本包含 `bad_request_error`、`invalid function arguments json string` 和具体 `tool_call_id`，都属于内部实现细节。
 - 最近一小时复现说明泄露文本的具体形态会变化，除了 `invalid function arguments json string` 之外，还会直接把 `tool call result does not follow tool call` 这类协议级报错发给用户。
@@ -65,18 +74,21 @@
 ## 用户影响
 
 - 这是功能性缺陷，不是单纯表达问题。用户本轮任务失败，同时还看到了不该暴露的底层报错与协议细节。
+- `2026-04-20 22:29` 的回归样本表明，即使后续模型还能继续产出部分业务文本，只要原始传输报错被混入最终回复，用户侧看到的仍是被污染的正式答复，产品边界已经失守。
 - 这会损害用户对系统稳定性和专业性的信任，也会暴露内部实现形态，如 `tool_call_id` 与 provider 参数校验细节。
 - 问题出现在用户主对话链路，且任何未被专门改写的上游错误都可能命中，因此定级为 `P1`。
 - 之所以不是 `P3`，是因为这不只是“文案不好”，而是失败链路的错误边界失守，直接把内部错误透传给用户。
 
 ## 根因判断
 
+- 最新回归说明，`user_visible_error_message(...)` 虽然覆盖了 `bad_request_error`、`invalid params`、`tool_call_id` 等既有模式，但并没有覆盖 `Falling back from WebSockets to HTTPS transport`、`unexpected status 403 Forbidden`、`Unknown error`、`cf-ray` 这类 OpenAI/Codex 传输回退细节。
+- 同时，当前链路没有阻断“内部错误片段 + 后续答复草稿”被拼接成一条用户可见消息的情况，导致即便不是纯失败文案，也会把底层传输排障文本夹带进最终回复。
 - `HoneError::Llm` 当前默认把上游错误包装成 `LLM 错误: {0}`，没有区分“日志可见文案”和“用户可见文案”。
 - `AgentSession` 失败时直接把 `err.to_string()` 填入 `response.error`。
 - Feishu 处理器和共享 outbound 适配器都把 `response.error` 直接拼进最终回复，缺少统一的用户态错误净化层。
 - 当前只对 `context window exceeds limit` 做了特定友好化改写，其它 provider 错误没有经过同类产品化处理。
 
-## 修复情况（2026-04-16）
+## 修复情况（2026-04-16，现已回归）
 
 - 已在 `crates/hone-channels/src/runtime.rs` 增加共享 `user_visible_error_message(...)`，统一把超时错误映射为超时提示，把 `bad_request_error`、`invalid params`、`tool_call_id`、`session/prompt` 等内部/provider 细节收口为稳定的用户可见文案。
 - 已把该 helper 接入以下用户可见失败分支：
@@ -86,6 +98,7 @@
   - `bins/hone-discord/src/handlers.rs`
   - `bins/hone-imessage/src/main.rs`
 - 原始错误仍保留在日志与运行诊断路径里用于排障，但不再直接拼进用户回复，也不再作为 scheduler 失败投递正文下发给用户。
+- 但 `2026-04-20 22:29` 的 Feishu 真实会话说明，传输回退类报错仍未被这套净化规则覆盖，因此本缺陷不能继续维持 `Fixed`。
 
 ## 回归验证
 

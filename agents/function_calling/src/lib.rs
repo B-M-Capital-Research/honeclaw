@@ -158,7 +158,7 @@ impl Agent for FunctionCallingAgent {
                     tool_calls_made,
                     iterations,
                     success: false,
-                    error: Some(format!("已达最大迭代次数 {}", self.max_iterations)),
+                    error: Some(format!("max_iterations_exceeded:{}", self.max_iterations)),
                 };
             }
             iterations += 1;

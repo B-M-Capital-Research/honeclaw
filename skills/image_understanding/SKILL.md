@@ -1,6 +1,7 @@
 ---
 name: Image Understanding
 description: Analyze images sent by the user, such as portfolio screenshots or candlestick charts, and combine the result with tools for a fuller assessment
+when_to_use: "Only invoke when the current message contains an actual image attachment (photo, screenshot, chart). Never call this skill for text-only requests, even if the user mentions watchlists, portfolios, or charts in text."
 tools:
   - portfolio
   - web_search

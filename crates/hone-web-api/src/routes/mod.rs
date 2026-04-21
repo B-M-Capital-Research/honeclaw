@@ -27,7 +27,7 @@ use axum::routing::{get, patch, post, put};
 use axum::{http::StatusCode, response::Response};
 use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::runtime::{public_web_dist_dir, web_dist_dir};
 use crate::state::AppState;
@@ -38,7 +38,7 @@ async fn handle_not_found() -> Response {
 
 pub fn build_admin_app(state: Arc<AppState>) -> Router {
     let web_dist = web_dist_dir();
-    let assets_dir = web_dist.join("assets");
+    let index_path = web_dist.join("index.html");
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -149,6 +149,8 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .layer(cors.clone())
         .with_state(state.clone());
 
+    let static_service = ServeDir::new(&web_dist).fallback(ServeFile::new(&index_path));
+
     Router::new()
         .route("/logo.svg", get(files::handle_logo))
         .route(
@@ -156,17 +158,17 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
             get(handle_not_found).post(handle_not_found),
         )
         .nest("/api", api)
-        .nest_service(
-            "/assets",
-            axum::routing::get_service(ServeDir::new(assets_dir)),
-        )
-        .fallback(get(files::handle_spa_index))
+        .fallback_service(static_service)
         .with_state(state)
 }
 
 pub fn build_public_app(state: Arc<AppState>) -> Router {
     let web_dist = public_web_dist_dir();
-    let assets_dir = web_dist.join("assets");
+    let index_path = web_dist.join("index.html");
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
     let public_api = Router::new()
         .route("/auth/invite-login", post(public::handle_invite_login))
@@ -175,18 +177,16 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/history", get(public::handle_history))
         .route("/chat", post(public::handle_chat))
         .route("/events", get(public::handle_events))
+        .layer(cors)
         .with_state(state.clone());
 
+    let static_service = ServeDir::new(&web_dist).fallback(ServeFile::new(&index_path));
+
     Router::new()
-        .route("/", get(files::handle_public_spa_index))
-        .route("/chat", get(files::handle_public_spa_index))
         .route("/logo.svg", get(files::handle_logo))
         .route("/api/{*path}", get(handle_not_found).post(handle_not_found))
         .nest("/api/public", public_api)
-        .nest_service(
-            "/assets",
-            axum::routing::get_service(ServeDir::new(assets_dir)),
-        )
+        .fallback_service(static_service)
         .with_state(state)
 }
 

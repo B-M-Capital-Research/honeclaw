@@ -10,7 +10,6 @@
   - `skills/chart_visualization/scripts/render_chart.py`
   - `skills/market_analysis/SKILL.md`
   - `skills/stock_research/SKILL.md`
-  - `skills/valuation/SKILL.md`
   - `skills/gold-analysis/SKILL.md`
   - `crates/hone-tools/src/skill_tool.rs`
   - `crates/hone-channels/src/outbound.rs`

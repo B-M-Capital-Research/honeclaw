@@ -61,6 +61,8 @@ Last updated: 2026-04-19
 - `skills/`
   - In-repo skill definitions; runtime also supports `data/custom_skills/<id>/SKILL.md` and nested `.hone/skills/<id>/SKILL.md` with nearer dynamic directories taking precedence
   - `SKILL.md` frontmatter now also supports an opt-in `script` entrypoint that `skill_tool(..., execute_script=true)` can run from the skill directory
+  - `skills/stock_research/` is now the canonical equity-research skill surface: it covers single-company research, valuation framing, and criteria-based screening through one prompt plus compatibility aliases such as `valuation`, `OWGZ`, `stock screener`, and `OWXG`
+  - `skills/scheduled_task/` now also owns portfolio event reminder linkage; the former standalone `major_alert` prompt has been folded into this skill
   - `skills/chart_visualization/` 是内置图表 skill：`SKILL.md` 定义 chart spec 与 `file:///abs/path.png` 输出契约，`scripts/render_chart.py` 用 Python `matplotlib` 把 PNG 写进 Hone runtime 的 `gen_images` 目录
   - `skills/company_portrait/` now follows a lighter Codex-style pattern: keep the trigger/workflow contract in `SKILL.md`, and move the detailed portrait framework / event template / research-trail guidance into `references/`
 - `data/runtime/skill_registry.json`

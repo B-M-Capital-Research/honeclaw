@@ -45,4 +45,5 @@ pub use session::{
     session_message_from_normalized, session_message_from_text, session_message_in_context,
     session_message_text, session_message_to_agent_messages, session_message_to_normalized,
 };
+pub use session_sqlite::InterruptedSessionInfo;
 pub use web_auth::{WebAuthStorage, WebInviteSession, WebInviteUser};

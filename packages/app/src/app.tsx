@@ -18,6 +18,9 @@ import ConsoleLayout from "@/pages/layout"
 
 const HomePage = lazy(() => import("@/pages/home"))
 const PublicChatPage = lazy(() => import("@/pages/chat"))
+const PublicSiteHomePage = lazy(() => import("@/pages/public-home"))
+const PublicSiteRoadmapPage = lazy(() => import("@/pages/public-roadmap"))
+const PublicSiteMePage = lazy(() => import("@/pages/public-me"))
 const StartPage = lazy(() => import("@/pages/start"))
 const SessionsPage = lazy(() => import("@/pages/sessions"))
 const SkillsPage = lazy(() => import("@/pages/skills"))
@@ -86,9 +89,11 @@ function PublicSurface() {
       <ErrorBoundary fallback={(error) => <div class="p-8 text-red-300">{String(error)}</div>}>
         <Suspense fallback={<Loading />}>
           <Router>
-            <Route path="/" component={PublicChatPage} />
+            <Route path="/" component={PublicSiteHomePage} />
+            <Route path="/roadmap" component={PublicSiteRoadmapPage} />
+            <Route path="/me" component={PublicSiteMePage} />
             <Route path="/chat" component={PublicChatPage} />
-            <Route path="*" component={() => <Navigate href="/chat" />} />
+            <Route path="*" component={() => <Navigate href="/" />} />
           </Router>
         </Suspense>
       </ErrorBoundary>

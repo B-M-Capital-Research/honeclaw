@@ -332,6 +332,7 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || sanitized.contains("工具执行错误")
         || sanitized.contains("序列化错误")
         || sanitized.contains("IO 错误")
+        || lowered.contains("max_iterations_exceeded")
         || lowered.contains("bad_request_error")
         || lowered.contains("invalid params")
         || lowered.contains("tool_call_id")
@@ -339,6 +340,9 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || lowered.contains("function arguments")
         || lowered.contains("provider")
         || lowered.contains("session/prompt")
+        || lowered.contains("codex acp")
+        || lowered.contains("stream closed before response")
+        || lowered.contains("acp stream")
 }
 
 /// 检测文本是否包含工具调用标记
@@ -377,6 +381,48 @@ pub fn is_tool_call_content(text: &str) -> bool {
         r#"{"image_type""#,
     ];
     MARKERS.iter().any(|marker| text.contains(marker))
+}
+
+pub(crate) fn is_context_overflow_error(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("context window exceeds limit")
+        || normalized.contains("context window overflow")
+        || normalized.contains("context_window_will_overflow")
+        || normalized.contains("context length exceeded")
+        || normalized.contains("maximum context length")
+        || normalized.contains("prompt is too long")
+        || normalized.contains("too many tokens")
+}
+
+/// 检测 agent 最终输出是否是过渡性计划句（而非实质答复）。
+///
+/// 过渡计划句通常很短（< 200 字符）且包含"我先/我再/还缺/我需要先"等执行状态描述。
+/// 这类内容不应作为最终答复发送给用户。
+pub(crate) fn is_transitional_planning_sentence(text: &str) -> bool {
+    let char_count = text.chars().count();
+    if char_count >= 200 || char_count == 0 {
+        return false;
+    }
+    let patterns = [
+        "我先",
+        "我再",
+        "我需要先",
+        "我还缺",
+        "我需要补",
+        "我先调取",
+        "我先补查",
+        "我先看",
+        "我先拿",
+        "我先查",
+        "先看本地",
+        "先补查",
+        "先调取",
+        "先核验",
+        "先抓取",
+        "还缺一件事",
+        "我还需要先",
+    ];
+    patterns.iter().any(|pat| text.contains(pat))
 }
 
 /// 检测缓冲区内容是否应该跳过发送

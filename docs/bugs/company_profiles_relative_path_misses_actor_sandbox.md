@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 19:10 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/runtime/logs/web.log`
     - `2026-04-19 12:22:57.347` `session=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185` 在用户消息“我想系统研究一家公司，比如分析一下GOOGL...”的搜索阶段先执行 `discover_skills query="company profile portrait save write GOOGL"`，随后 `12:22:59.247` 调用 `skill_tool company_portrait`
@@ -105,6 +105,12 @@
 - 搜索工具侧仍在使用裸相对路径 `company_profiles`，没有对齐 actor sandbox 的实际目录根。
 - 约束文档已经把画像路径定义为 `data/agent-sandboxes/.../company_profiles/...`，说明更可能是运行时路径拼接或工作目录假设没有与现行 sandbox 布局同步。
 - 工具失败后主链路没有把“画像读取失败”上浮成可见降级信号，导致故障只能从日志里发现。
+
+## 修复情况（2026-04-20）
+
+根因确认：`ensure_actor_sandbox` 只创建 `uploads/` 和 `runtime/`，不创建 `company_profiles/`。当 runner 第一次对某用户初始化 sandbox 时，`local_list_files path="company_profiles"` 返回"目录不存在"而非空列表，导致模型把它当工具错误反复重试，最终耗尽迭代次数。
+
+修复：`crates/hone-channels/src/sandbox.rs` — `ensure_actor_sandbox` 增加 `fs::create_dir_all(root.join("company_profiles"))`，确保 sandbox 初始化时预建空目录，工具返回空列表而非路径错误。`cargo test -p hone-channels` 全部通过。
 
 ## 下一步建议
 

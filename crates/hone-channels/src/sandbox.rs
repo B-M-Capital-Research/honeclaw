@@ -27,6 +27,9 @@ pub(crate) fn ensure_actor_sandbox(actor: &ActorIdentity) -> io::Result<PathBuf>
     let root = actor_sandbox_root(actor);
     fs::create_dir_all(root.join("uploads"))?;
     fs::create_dir_all(root.join("runtime"))?;
+    // Pre-create company_profiles so tools return an empty listing rather than
+    // "directory not found", which causes repeated search retries in the model.
+    fs::create_dir_all(root.join("company_profiles"))?;
     Ok(root)
 }
 

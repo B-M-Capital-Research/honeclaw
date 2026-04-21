@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 14:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=1887`，`job_id=j_78d08da1`，`job_name=TEM_动态监控`，`executed_at=2026-04-16T14:00:19.471571+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`，`error_message=LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)`

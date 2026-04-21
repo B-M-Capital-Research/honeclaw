@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-17 08:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `sessions` / `session_messages`
   - 真实会话：`session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`

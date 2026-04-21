@@ -39,9 +39,9 @@ pub(crate) async fn handle_invite_login(
         Err(response) => return response,
     };
 
-    // Rate-limit by phone number (unforgeable) + IP (best-effort).
-    // Even if an attacker spoofs X-Forwarded-For, the phone_number dimension
-    // still prevents brute-forcing a single invite code.
+    // Rate-limit by phone number + IP (best-effort). The phone number comes
+    // from the request body, but it still helps throttle attempts that target
+    // a known phone number even if the IP headers are spoofed.
     let ip_key = public_client_key(&headers);
     let phone_key = format!("phone:{phone_number}");
     for key in [&ip_key, &phone_key] {
@@ -281,9 +281,9 @@ fn clear_session_cookie(headers: &HeaderMap) -> HeaderValue {
 
 /// Determine whether the Secure flag should be set on session cookies.
 ///
-/// Checks `HONE_PUBLIC_SECURE_COOKIE` env var first (accepts "true"/"1" to
-/// force-enable, "false"/"0" to force-disable). Falls back to inspecting
-/// request headers when the env var is absent or empty.
+/// Checks `HONE_PUBLIC_SECURE_COOKIE` env var first (accepts "true"/"1"/"yes"
+/// to force-enable, "false"/"0"/"no" to force-disable). Falls back to
+/// inspecting request headers when the env var is absent or empty.
 fn request_is_secure(headers: &HeaderMap) -> bool {
     if let Some(forced) = env_force_secure_cookie() {
         return forced;
@@ -296,7 +296,11 @@ fn request_is_secure(headers: &HeaderMap) -> bool {
 
 fn env_force_secure_cookie() -> Option<bool> {
     let value = std::env::var("HONE_PUBLIC_SECURE_COOKIE").ok()?;
-    match value.trim().to_ascii_lowercase().as_str() {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    match normalized.as_str() {
         "1" | "true" | "yes" => Some(true),
         "0" | "false" | "no" => Some(false),
         other => {
@@ -425,11 +429,36 @@ mod tests {
         build_session_cookie, clear_session_cookie, normalize_invite_code, public_client_key,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
-    use std::sync::{Mutex, OnceLock};
+    const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
 
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+    struct EnvVarGuard {
+        name: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(name: &'static str, value: &str) -> Self {
+            let previous = std::env::var(name).ok();
+            unsafe { std::env::set_var(name, value) };
+            Self { name, previous }
+        }
+
+        fn unset(name: &'static str) -> Self {
+            let previous = std::env::var(name).ok();
+            unsafe { std::env::remove_var(name) };
+            Self { name, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.previous {
+                    Some(value) => std::env::set_var(self.name, value),
+                    None => std::env::remove_var(self.name),
+                }
+            }
+        }
     }
 
     #[test]
@@ -439,6 +468,8 @@ mod tests {
 
     #[test]
     fn secure_cookie_is_enabled_for_https_origin() {
+        let _guard = crate::test_env_lock().lock().unwrap();
+        let _env = EnvVarGuard::unset(SECURE_COOKIE_ENV);
         let mut headers = HeaderMap::new();
         headers.insert(
             header::ORIGIN,
@@ -467,10 +498,10 @@ mod tests {
 
     #[test]
     fn env_force_secure_cookie_overrides_headers() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = crate::test_env_lock().lock().unwrap();
+        let _env = EnvVarGuard::set(SECURE_COOKIE_ENV, "true");
 
         // When env is set to "true", Secure flag should be on even without https headers.
-        unsafe { std::env::set_var("HONE_PUBLIC_SECURE_COOKIE", "true") };
         let headers = HeaderMap::new();
         let cookie = build_session_cookie("tok", &headers)
             .to_str()
@@ -479,7 +510,7 @@ mod tests {
         assert!(cookie.contains("Secure"), "env=true should force Secure");
 
         // When env is set to "false", Secure flag should be off even with https origin.
-        unsafe { std::env::set_var("HONE_PUBLIC_SECURE_COOKIE", "false") };
+        unsafe { std::env::set_var(SECURE_COOKIE_ENV, "false") };
         let mut https_headers = HeaderMap::new();
         https_headers.insert(
             header::ORIGIN,
@@ -493,7 +524,34 @@ mod tests {
             !cookie2.contains("Secure"),
             "env=false should suppress Secure"
         );
+    }
 
-        unsafe { std::env::remove_var("HONE_PUBLIC_SECURE_COOKIE") };
+    #[test]
+    fn empty_env_secure_cookie_falls_back_to_headers() {
+        let _guard = crate::test_env_lock().lock().unwrap();
+        let _env = EnvVarGuard::set(SECURE_COOKIE_ENV, "");
+
+        let cookie_without_https = build_session_cookie("tok", &HeaderMap::new())
+            .to_str()
+            .expect("cookie")
+            .to_string();
+        assert!(
+            !cookie_without_https.contains("Secure"),
+            "empty env should not force Secure"
+        );
+
+        let mut https_headers = HeaderMap::new();
+        https_headers.insert(
+            header::ORIGIN,
+            HeaderValue::from_static("https://chat.example.com"),
+        );
+        let cookie_with_https = build_session_cookie("tok", &https_headers)
+            .to_str()
+            .expect("cookie")
+            .to_string();
+        assert!(
+            cookie_with_https.contains("Secure"),
+            "empty env should fall back to https headers"
+        );
     }
 }

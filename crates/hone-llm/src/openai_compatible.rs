@@ -160,6 +160,17 @@ impl OpenAiCompatibleProvider {
     }
 }
 
+/// Returns true for transient HTTP transport errors that are worth retrying once.
+/// Covers "error sending request for url", connection resets, and EOF-before-response.
+fn is_retryable_transport_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("error sending request")
+        || lower.contains("connection reset")
+        || lower.contains("connection closed before message completed")
+        || lower.contains("operation timed out")
+        || lower.contains("tcp connect error")
+}
+
 #[async_trait]
 impl LlmProvider for OpenAiCompatibleProvider {
     async fn chat(
@@ -175,26 +186,38 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .build()
             .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
 
-        let response = self
-            .client
-            .chat()
-            .create(request)
-            .await
-            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
-
-        let content = response
-            .choices
-            .first()
-            .and_then(|c| c.message.content.clone())
-            .unwrap_or_default();
-
-        let usage = response.usage.map(|u| crate::provider::TokenUsage {
-            prompt_tokens: Some(u.prompt_tokens),
-            completion_tokens: Some(u.completion_tokens),
-            total_tokens: Some(u.total_tokens),
-        });
-
-        Ok(ChatResult { content, usage })
+        let mut last_err: Option<hone_core::HoneError> = None;
+        for attempt in 0..=1 {
+            if attempt > 0 {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            match self.client.chat().create(request.clone()).await {
+                Ok(response) => {
+                    let content = response
+                        .choices
+                        .first()
+                        .and_then(|c| c.message.content.clone())
+                        .unwrap_or_default();
+                    let usage = response.usage.map(|u| crate::provider::TokenUsage {
+                        prompt_tokens: Some(u.prompt_tokens),
+                        completion_tokens: Some(u.completion_tokens),
+                        total_tokens: Some(u.total_tokens),
+                    });
+                    return Ok(ChatResult { content, usage });
+                }
+                Err(err) => {
+                    let msg = err.to_string();
+                    let hone_err = hone_core::HoneError::Llm(msg.clone());
+                    if attempt == 0 && is_retryable_transport_error(&msg) {
+                        tracing::warn!("[openai_compatible] chat transport error, retrying: {msg}");
+                        last_err = Some(hone_err);
+                    } else {
+                        return Err(hone_err);
+                    }
+                }
+            }
+        }
+        Err(last_err.unwrap())
     }
 
     async fn chat_with_tools(
@@ -213,41 +236,55 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .build()
             .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
 
-        let response = self
-            .client
-            .chat()
-            .create(request)
-            .await
-            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
-
-        let choice = response
-            .choices
-            .first()
-            .ok_or_else(|| hone_core::HoneError::Llm("LLM 返回空 choices".to_string()))?;
-        let content = choice.message.content.clone().unwrap_or_default();
-        let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
-            tcs.iter()
-                .map(|tc| ToolCall {
-                    id: tc.id.clone(),
-                    call_type: "function".to_string(),
-                    function: FunctionCall {
-                        name: tc.function.name.clone(),
-                        arguments: tc.function.arguments.clone(),
-                    },
-                })
-                .collect()
-        });
-        let usage = response.usage.map(|u| crate::provider::TokenUsage {
-            prompt_tokens: Some(u.prompt_tokens),
-            completion_tokens: Some(u.completion_tokens),
-            total_tokens: Some(u.total_tokens),
-        });
-
-        Ok(ChatResponse {
-            content,
-            tool_calls,
-            usage,
-        })
+        let mut last_err: Option<hone_core::HoneError> = None;
+        for attempt in 0..=1 {
+            if attempt > 0 {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            match self.client.chat().create(request.clone()).await {
+                Ok(response) => {
+                    let choice = response.choices.first().ok_or_else(|| {
+                        hone_core::HoneError::Llm("LLM 返回空 choices".to_string())
+                    })?;
+                    let content = choice.message.content.clone().unwrap_or_default();
+                    let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
+                        tcs.iter()
+                            .map(|tc| ToolCall {
+                                id: tc.id.clone(),
+                                call_type: "function".to_string(),
+                                function: FunctionCall {
+                                    name: tc.function.name.clone(),
+                                    arguments: tc.function.arguments.clone(),
+                                },
+                            })
+                            .collect()
+                    });
+                    let usage = response.usage.map(|u| crate::provider::TokenUsage {
+                        prompt_tokens: Some(u.prompt_tokens),
+                        completion_tokens: Some(u.completion_tokens),
+                        total_tokens: Some(u.total_tokens),
+                    });
+                    return Ok(ChatResponse {
+                        content,
+                        tool_calls,
+                        usage,
+                    });
+                }
+                Err(err) => {
+                    let msg = err.to_string();
+                    let hone_err = hone_core::HoneError::Llm(msg.clone());
+                    if attempt == 0 && is_retryable_transport_error(&msg) {
+                        tracing::warn!(
+                            "[openai_compatible] chat_with_tools transport error, retrying: {msg}"
+                        );
+                        last_err = Some(hone_err);
+                    } else {
+                        return Err(hone_err);
+                    }
+                }
+            }
+        }
+        Err(last_err.unwrap())
     }
 
     fn chat_stream<'a>(

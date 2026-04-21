@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 12:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`
@@ -111,6 +111,16 @@
 - 为“达到最大迭代次数”失败分支补稳定的用户态错误兜底，至少保证 Feishu 直聊和直达定时任务不会再次整轮无回复。
 - 增加回归用例：当同一 search 会话连续多轮只调用 `cron_job` 且未形成答案时，应返回明确失败文案或提前终止，而不是耗尽 8 轮后静默结束。
 - 再补一条回归：当 search 阶段已完成多次 `data_fetch` 但未能在 8 轮内进入 answer 时，也必须返回受控失败文案或降级摘要，而不是静默终止。
+
+## 修复情况（2026-04-20）
+
+根因确认：`agents/function_calling/src/lib.rs:161` 是纯工程代码写了 `error: Some("已达最大迭代次数 8")`，不是模型输出。该错误字段经过 multi_agent → agent_session → Feishu handler 一路传到 `persist_visible_assistant_message`，直接写进 DB 并发给用户。
+
+修复两点：
+1. `agents/function_calling/src/lib.rs` — 将 error 改为机器可读的 `"max_iterations_exceeded:{n}"`，不再对外暴露中文工程文本
+2. `crates/hone-channels/src/runtime.rs` — `looks_internal_error_detail` 增加 `"max_iterations_exceeded"` 匹配，确保该 key 被统一转为 `GENERIC_USER_ERROR_MESSAGE`（"抱歉，这次处理失败了。请稍后再试。"）
+
+`cargo test -p hone-agent -p hone-channels` 全部 217 个测试通过。
 
 ## 当前修复进展（2026-04-17 10:40 CST）
 

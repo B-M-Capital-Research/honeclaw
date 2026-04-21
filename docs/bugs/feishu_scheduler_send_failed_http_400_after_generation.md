@@ -5,6 +5,46 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-20 21:31 最近一小时最新样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=3633`，`job_id=j_dac3b571`，`job_name=Oil_Price_Monitor_Premarket`，`executed_at=2026-04-20T21:31:24.235993+08:00`
+      - 再次落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`、`should_deliver=1`
+      - `error_message` 继续明确返回 `code=99992361`、`msg="open_id cross app"`，并附上新的 Feishu `log_id=2026042021312424437E9F8568C4DA7107`
+      - `response_preview` 已保留完整盘前油价播报开头，说明这次不是 answer 半成品，而是 scheduler 已拿到完整播报后仍在 Feishu 最终投递阶段失败
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+      - `2026-04-20T21:31:23.743374+08:00` assistant 已写入本轮 `Oil_Price_Monitor_Premarket` 可见正文，长度与 `response_preview` 对齐
+      - 说明 scheduler 注入、会话持久化与“拿到待发送正文”都已完成，真正失败点仍停留在 Feishu 最终投递阶段
+    - `data/runtime/logs/web.log`
+      - `2026-04-20 21:31:24.234` 记录 `[Feishu] 定时任务投递失败: job=Oil_Price_Monitor_Premarket ... HTTP 400 Bad Request - {"code":99992361,"msg":"open_id cross app",...}`
+      - 这说明故障没有停留在 `21:01` 的盘前扫描；同一目标上的油价盘前播报在同一小时窗里继续复现相同返回体
+  - 2026-04-20 21:01 最近一小时最新样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=3619`，`job_id=j_f02dfce5`，`job_name=OWALERT_PreMarket`，`executed_at=2026-04-20T21:01:26.218056+08:00`
+      - 再次落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`、`should_deliver=1`
+      - `error_message` 继续明确返回 `code=99992361`、`msg="open_id cross app"`，并附上新的 Feishu `log_id=202604202101260FE9A88A408E4AF1BA56`
+      - `response_preview` 已保留盘前扫描正文开头，说明这次不是 answer 空结果，而是 scheduler 已拿到完整播报后仍在 Feishu 最终投递阶段失败
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+      - `2026-04-20T21:00:59.985150+08:00` assistant 已写入本轮 `OWALERT_PreMarket` 可见正文，长度与 `response_preview` 对齐
+      - 说明 scheduler 注入、会话持久化与“拿到待发送正文”都已完成，真正失败点仍停留在 Feishu 最终投递阶段
+    - `data/runtime/logs/web.log`
+      - `2026-04-20 21:01:26.216` 记录 `[Feishu] 定时任务投递失败: job=OWALERT_PreMarket ... HTTP 400 Bad Request - {"code":99992361,"msg":"open_id cross app",...}`
+      - 这说明故障已从盘前/盘后/早报/财报提醒继续扩散到同一目标上的盘前扫描任务，而不是只停留在某一个提醒模板
+  - 2026-04-20 20:00 最近一小时最新样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=3590`，`job_id=j_98f3899c`，`job_name=GEV earnings reminder`，`executed_at=2026-04-20T20:00:38.780847+08:00`
+      - 再次落成 `execution_status=completed`、`message_send_status=send_failed`、`delivered=0`、`should_deliver=1`
+      - `detail_json.receive_id=ou_3f69c84593eccd71142ed767a885f595`，仍与历史失败目标一致
+      - `error_message` 再次明确返回 `code=99992361`、`msg="open_id cross app"`，并附上新的 Feishu `log_id=20260420200038769EC0904EBA08FA7907`
+      - `response_preview` 仅保留一段 72 字计划句，说明这轮不仅发送失败，连 scheduler 拿到的可见正文都已经退化成半成品
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+      - `2026-04-20T20:00:36.997863+08:00` assistant 已写入本轮 `GEV earnings reminder` 的可见回复，正文与 `response_preview` 对齐
+      - 说明 scheduler 注入、会话持久化与“拿到待发送正文”都已完成，真正失败点仍停留在 Feishu 最终投递阶段
+    - `data/runtime/logs/web.log`
+      - `2026-04-20 20:00:38.779` 记录 `[Feishu] 定时任务投递失败: job=GEV earnings reminder ... HTTP 400 Bad Request - {"code":99992361,"msg":"open_id cross app",...}`
+      - 这说明故障已经从盘前/盘后/早报任务进一步扩散到财报提醒类任务，而不是局限在某几个固定模板
   - 2026-04-20 08:33 最近一小时最新样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=3348`，`job_id=j_248f0f3c`，`job_name=Hone_AI_Morning_Briefing`，`executed_at=2026-04-20T08:33:04.280905+08:00`
@@ -108,6 +148,11 @@
 
 ## 当前实现效果
 
+- `2026-04-20 21:31` 的 `Oil_Price_Monitor_Premarket` 说明，这条缺陷在最近一小时里仍是最新活跃问题：在 `21:01` 的盘前扫描失败后，同一目标的盘前油价播报又再次落成 `completed + send_failed + code=99992361/open_id cross app`。
+- 这次 `response_preview` 已经是完整油价正文开头，不再叠加 `GEV earnings reminder` 那种 72 字计划句；因此最新小时窗进一步收敛出站根因仍独立存在，不能再归因于 answer 侧半成品收口。
+- `2026-04-20 21:01` 的 `OWALERT_PreMarket` 再次落成 `completed + send_failed + code=99992361/open_id cross app`，并且这次 `response_preview` 已经是完整盘前扫描正文开头，不再只是 `GEV earnings reminder` 那种 72 字计划句；这说明即使 answer 侧没有再明显截断，Feishu 出站 400 仍会单独导致用户完全收不到提醒。
+- `2026-04-20 20:00` 的 `GEV earnings reminder` 继续命中同一 `open_id cross app` 返回体，说明故障已经从盘前/盘后扫描、日常早报进一步扩散到财报提醒任务；当前不能再把它视为少数模板异常。
+- 这轮最新样本的 `response_preview` 只有 72 字计划句，说明发送失败链路当前还会叠加 answer 侧的半成品收口；但从台账角度看，真正导致“用户完全收不到提醒”的决定性故障仍是 Feishu 出站 400。
 - `2026-04-20 08:33` 的 `Hone_AI_Morning_Briefing` 继续落成 `completed + send_failed`，且错误体与 `04:02/04:32` 两轮完全一致，仍然是 `code=99992361 / open_id cross app`。
 - 这说明故障已经从 `Oil_Price_Monitor_Closing`、`OWALERT_PostMarket` 扩散到同一目标上的通用早报任务；问题不是单个 job 模板、单个消息长度或单个盘前/盘后场景偶发异常。
 - `2026-04-20 04:02` 的 `Oil_Price_Monitor_Closing` 与 `04:32` 的 `OWALERT_PostMarket` 在同一目标上连续两轮都落成 `completed + send_failed`，并且 Feishu 返回体都明确是 `code=99992361 / open_id cross app`。
@@ -129,6 +174,8 @@
 
 ## 根因判断
 
+- `2026-04-20 21:31` 的 `Oil_Price_Monitor_Premarket` 新样本进一步说明，问题不依赖某一份特定 prompt 或持仓扫描模板；即使是另一条油价播报任务，只要命中同一目标，scheduler 最终发送到 Feishu API 时仍会稳定收到 `open_id cross app`。
+- `2026-04-20 21:01` 的 `OWALERT_PreMarket` 与 `20:00` 的 `GEV earnings reminder` 连续两轮都命中相同 `code=99992361 / open_id cross app`，且都指向同一 `actor_user_id`，进一步说明问题核心仍在 scheduler 最终投递时选择/复用的 Feishu 标识域，而不是某一轮 answer 内容刚好异常。
 - 初步判断：旧的 direct target 解析问题并没有完全退出生产链路。`detail_json.receive_id` 虽然表面上已回到绑定 actor，但 `2026-04-20 04:02` 的 Feishu 返回体已明确指出当前发送使用的是 `open_id cross app`。
 - 因此根因比“泛化的发送阶段 400”更具体：scheduler 最终调用 Feishu 发送 API 时，所选 `receive_id/open_id` 与当前 app 的绑定关系仍不一致，或者仍沿用了跨 app 域的历史标识。
 - 由于同一目标在 `2026-04-16 20:03` 仍有一条 `run_id=1976` 成功送达，而 `2026-04-17 04:01` 与 `04:31` 的新样本继续失败，说明并非该用户或该目标整体不可用，更像是 scheduler 当前某类 payload 形态在发送阶段稳定触发了 400。

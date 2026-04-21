@@ -1,8 +1,14 @@
 ---
 name: Scheduled Task Management
-description: Register, update, cancel, and list user scheduled push tasks
-tools:
+description: Register, update, cancel, and enrich user scheduled push tasks, including event-driven reminders for portfolio holdings
+when_to_use: Use when the user wants recurring or one-off reminders, scheduled briefings, or event-linked follow-up tasks
+user-invocable: true
+context: inline
+allowed-tools:
   - cron_job
+  - portfolio
+  - data_fetch
+  - web_search
 ---
 
 ## Scheduled Task Management Skill
@@ -57,9 +63,11 @@ Users can configure scheduled push tasks. Hone will execute them automatically a
 - **You must check the `success` field** in the tool response. If it is `false`, do not say the task succeeded; explain the error and retry.
 - Prefer `job_id` for exact matching. If `job_id` is unknown, you may pass a name keyword and let the tool find the unique match
 
-### Major Event Linkage
+### Event-Driven Reminder Linkage
 
-If a scheduled task is a daily pre-market or after-market briefing, and in the current context you discover that one of the user's holdings has earnings or a product launch within the next 3 days:
-- You must invoke `major_alert` with `skill_tool(skill_name="major_alert")` so the full skill prompt is injected for this turn
-- You must automatically add a one-time reminder task with `cron_job(action="add")` (for example, set `repeat="once"` for earnings day and use a short prompt such as "remind the user that Apple reports earnings after the close today")
-- In that day's message, tell the user that the reminder task has already been scheduled
+If the current context involves the user's holdings or a portfolio-focused scheduled task, proactively check for major events instead of delegating to another skill:
+
+1. Call `portfolio(action="get")` to inspect holdings when the user asks for portfolio-linked reminders or briefings
+2. Use `data_fetch(data_type="earnings_calendar")` for near-term earnings, and use `web_search` for other major catalysts such as product launches, FDA decisions, or management events when relevant
+3. If a major event is found within the next few days, automatically add a one-time reminder with `cron_job(action="add")`
+4. In the user-facing reply, explicitly say that the reminder task has already been scheduled and why
