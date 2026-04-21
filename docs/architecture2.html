@@ -218,9 +218,11 @@
     <div>
       <h1>HONE 技术架构图</h1>
       <p class="lead">
-        用<strong>一条主链路</strong>说明：用户消息从各通道进入后，如何在 <code>hone-channels</code> 里完成编排、由 <code>runners</code> 执行、经 <code>hone-tools</code> 与 <code>memory</code> 读写本地数据，最后回到通道或 Web 控制台。
+        用<strong>一条主链路</strong>说明：用户消息从各通道进入后，如何在 <code>hone-channels</code> 里完成编排、由 <code>runners</code> 执行、经 <code>hone-tools</code> 与 <code>memory</code> 读写本地数据，最后回到通道或 Web 控制台。<br/>
+        另外还有<strong>一条独立于对话的链路 —— 主动事件 Feed</strong>，由 <code>hone-event-engine</code> 定时从外部数据源拉事件、按用户偏好路由，再经 <code>MultiChannelSink</code> 真实投递到各通道（见下方 ⑦）。
       </p>
     </div>
+    <div class="meta">v0.2.0 · 2026-04-21 · feed 真实投递</div>
   </header>
 
   <div class="pipeline" role="navigation" aria-label="主数据流">
@@ -466,6 +468,127 @@
         <h3>⏰ 调度</h3>
         <p><code>HoneScheduler</code> 分钟级轮询；cron 到期 → 再次进入 <code>AgentSession</code>。</p>
       </div>
+    </div>
+  </section>
+
+  <div class="flow-arrow" style="margin-top:28px;border-top:1px dashed #c8b898;padding-top:14px;">▼ 另一条链路：主动事件 Feed（独立于 <code>AgentSession</code>）</div>
+
+  <!-- 7 -->
+  <section class="stage" aria-labelledby="s7">
+    <div class="stage-head">
+      <span class="num" id="s7" style="background:#8b67c2;">📡</span>
+      <div>
+        <div class="stage-title">主动事件 Feed</div>
+        <div class="stage-en">hone-event-engine · proactive push（v0.2.0 首次真实投递）</div>
+      </div>
+    </div>
+    <p class="stage-desc">
+      用户不发消息也能收到的那条链路。<code>hone-event-engine</code> 每隔固定窗口从外部数据源拉事件、去重落盘、按订阅与用户偏好路由，最终经 <code>MultiChannelSink</code> 真实投递到 Telegram / Discord / 飞书 / iMessage。整条流水线独立于 <code>AgentSession</code>，只借 <code>HoneConfig</code> 共享渠道凭据。
+    </p>
+
+    <div class="pipeline" role="navigation" aria-label="feed 数据流" style="margin-bottom:16px;">
+      <strong>Feed 链路</strong>
+      <span class="pipe-sep">→</span> 外部数据源
+      <span class="pipe-sep">→</span> <code>Pollers</code>
+      <span class="pipe-sep">→</span> <code>EventStore</code>（dedup）
+      <span class="pipe-sep">→</span> <code>Router</code>（prefs + severity）
+      <span class="pipe-sep">→</span> 立即推 / <code>Digest Buffer</code>
+      <span class="pipe-sep">→</span> <code>Renderer</code>
+      <span class="pipe-sep">→</span> <code>MultiChannelSink</code>
+      <span class="pipe-sep">→</span> 通道 API
+    </div>
+
+    <!-- 7.1 采集 -->
+    <div style="font-weight:700;font-size:0.88rem;margin:4px 0 8px;color:#4a3a2c;">① 采集 · Pollers</div>
+    <div class="grid">
+      <div class="tile t-sand">
+        <h3>📰 news</h3>
+        <p>FMP <code>stock_news</code>，15 min tick。</p>
+      </div>
+      <div class="tile t-sand">
+        <h3>💹 price</h3>
+        <p>FMP <code>quote</code> 按 watch pool，5 min tick；阈值触发 price_alert / 52W / VolumeSpike。</p>
+      </div>
+      <div class="tile t-sand">
+        <h3>📅 cron-aligned</h3>
+        <p><code>earnings_calendar</code> · <code>earnings_surprise</code> · <code>corp_action</code> · <code>sec_filings</code> · <code>macro_calendar</code> · <code>analyst_grade</code>；在 digest flush 窗口前 30 min 各跑一次（v0.1.46 起）。</p>
+      </div>
+    </div>
+
+    <div class="flow-arrow">▼ 落盘 + 路由决策</div>
+
+    <!-- 7.2 入库 & 路由 -->
+    <div style="font-weight:700;font-size:0.88rem;margin:4px 0 8px;color:#4a3a2c;">② 入库 &amp; 路由</div>
+    <div class="grid">
+      <div class="tile t-gray">
+        <h3>🗄 <code>EventStore</code></h3>
+        <p>sqlite（主存）+ <code>events.jsonl</code>（mirror）；按稳定 event id 去重。</p>
+      </div>
+      <div class="tile t-gray">
+        <h3>🧭 <code>Router</code></h3>
+        <p>按订阅匹配 actor；逐个对照 <code>NotificationPrefs</code>（<code>blocked_kinds</code> / <code>min_severity</code> / <code>portfolio_only</code>）；阈值决定 severity。</p>
+      </div>
+      <div class="tile t-gray">
+        <h3>🚦 分流</h3>
+        <p>severity=<strong>High</strong> → 立即推（同 ticker 60 min cooldown、per-actor 日配额）；<strong>Low / Medium</strong> → Digest Buffer。</p>
+      </div>
+    </div>
+
+    <div class="flow-arrow">▼ Digest 调度（pre/post market）</div>
+
+    <!-- 7.3 Digest -->
+    <div style="font-weight:700;font-size:0.88rem;margin:4px 0 8px;color:#4a3a2c;">③ Digest 调度 · Renderer</div>
+    <div class="grid">
+      <div class="tile t-gold">
+        <h3>⏰ <code>DigestScheduler</code></h3>
+        <p>北京时区 cron；两个 flush 窗口 <code>digest.pre_market</code> / <code>digest.post_market</code>。</p>
+      </div>
+      <div class="tile t-gold">
+        <h3>🧮 Read-time 衍生</h3>
+        <p>财报 T-3 / T-2 / T-1 倒计时等在 flush 时刻从 EventStore 现算，不入库（v0.1.46 起）。</p>
+      </div>
+      <div class="tile t-gold">
+        <h3>📝 <code>Renderer</code></h3>
+        <p><code>RenderFormat::Plain</code> 统一渲染；<code>max_items_per_batch</code> 防溢洪。</p>
+      </div>
+    </div>
+
+    <div class="flow-arrow">▼ 真实投递（v0.2.0）</div>
+
+    <!-- 7.4 OutboundSink -->
+    <div style="font-weight:700;font-size:0.88rem;margin:4px 0 8px;color:#4a3a2c;">④ <code>OutboundSink</code> · v0.2.0 首次真实投递</div>
+    <p class="stage-desc" style="font-size:0.82rem;">
+      v0.1.46 及之前只有 <code>LogSink</code>（主动事件仅落日志、不投递）。v0.2.0 起 <code>hone-web-api</code> 按 <code>HoneConfig</code> 各渠道的 <code>enabled</code> + 凭据就绪条件装配 <code>MultiChannelSink</code>，并按 <code>ActorIdentity.channel</code> 派发到具体 sink。
+    </p>
+    <div class="grid">
+      <div class="tile t-dark">
+        <h3>🧩 <code>MultiChannelSink</code></h3>
+        <p>路由表 <code>channel → Arc&lt;dyn OutboundSink&gt;</code>；未注册 / sink 抛错自动 fallback 到 <code>LogSink</code>。</p>
+      </div>
+      <div class="tile t-dark">
+        <h3>📱 <code>TelegramSink</code></h3>
+        <p>Bot API <code>sendMessage</code>；私聊用 user_id、群聊剥 <code>chat_</code> 前缀。</p>
+      </div>
+      <div class="tile t-dark">
+        <h3>🎮 <code>DiscordSink</code></h3>
+        <p><code>/users/@me/channels</code> 解 DM channel（进程内缓存）+ <code>/channels/{id}/messages</code>。</p>
+      </div>
+      <div class="tile t-dark">
+        <h3>🪶 <code>FeishuSink</code></h3>
+        <p>缓存 <code>tenant_access_token</code>（提前 5 min 过期）+ <code>/open-apis/im/v1/messages</code>。</p>
+      </div>
+      <div class="tile t-dark">
+        <h3>💬 <code>IMessageSink</code></h3>
+        <p><code>osascript</code> + Messages.app；非 macOS 直接 bail 走 fallback。</p>
+      </div>
+      <div class="tile t-dark">
+        <h3>🗒 <code>LogSink</code>（fallback）</h3>
+        <p>所有未装配渠道的兜底；<code>event_engine.dryrun=true</code> 时强制全员走 LogSink。</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>用户偏好尊重：</strong>每个 actor 的 <code>data/notif_prefs/&lt;actor_key&gt;.json</code> 决定 <code>min_severity</code>、<code>blocked_kinds</code>、<code>portfolio_only</code>。把 <code>earnings_upcoming</code> 塞进 <code>blocked_kinds</code> 即可一键静音整条财报生命周期。
     </div>
   </section>
 
