@@ -21,7 +21,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use hone_core::config::{EventEngineConfig, HoneConfig};
-use hone_event_engine::{BodyPolisher, LlmPolisher, parse_polish_levels};
+use hone_event_engine::{
+    BodyPolisher, DiscordSink, FeishuSink, IMessageSink, LlmPolisher, LogSink, MultiChannelSink,
+    OutboundSink, TelegramSink, parse_polish_levels,
+};
 use hone_llm::{LlmProvider, OpenRouterProvider};
 use tokio::sync::broadcast;
 use tracing::info;
@@ -56,6 +59,60 @@ fn build_event_engine_polisher(
             None
         }
     }
+}
+
+/// 按 config 组装真实 OutboundSink(事件引擎的渠道出口)。
+///
+/// - `dryrun=true` → 一律 LogSink,方便验证引擎行为却不真的骚扰用户
+/// - 否则按每个 channel 的 `enabled` 以及必要凭据是否就绪,逐个 attach 真 sink
+///   到 MultiChannelSink 上;未 attach 的渠道 fall back 到 LogSink
+/// - 没有 channel 启用(极端情况) → 退化成纯 LogSink,语义不变
+fn build_event_engine_sink(
+    core_cfg: &HoneConfig,
+    engine_cfg: &EventEngineConfig,
+) -> Arc<dyn OutboundSink> {
+    if engine_cfg.dryrun {
+        info!("event engine sink: dryrun=true,使用 LogSink");
+        return Arc::new(LogSink);
+    }
+    let mut multi = MultiChannelSink::with_log_fallback();
+    if core_cfg.telegram.enabled && !core_cfg.telegram.bot_token.trim().is_empty() {
+        multi = multi.with_channel(
+            "telegram",
+            Arc::new(TelegramSink::new(core_cfg.telegram.bot_token.clone())),
+        );
+    }
+    if core_cfg.discord.enabled && !core_cfg.discord.bot_token.trim().is_empty() {
+        multi = multi.with_channel(
+            "discord",
+            Arc::new(DiscordSink::new(core_cfg.discord.bot_token.clone())),
+        );
+    }
+    if core_cfg.feishu.enabled
+        && !core_cfg.feishu.app_id.trim().is_empty()
+        && !core_cfg.feishu.app_secret.trim().is_empty()
+    {
+        multi = multi.with_channel(
+            "feishu",
+            Arc::new(FeishuSink::new(
+                core_cfg.feishu.app_id.clone(),
+                core_cfg.feishu.app_secret.clone(),
+            )),
+        );
+    }
+    if core_cfg.imessage.enabled {
+        multi = multi.with_channel("imessage", Arc::new(IMessageSink::new()));
+    }
+    let registered = multi.channels_registered();
+    if registered.is_empty() {
+        info!("event engine sink: 没有渠道启用,回退到 LogSink");
+        return Arc::new(LogSink);
+    }
+    info!(
+        channels = ?registered,
+        "event engine sink: MultiChannelSink 已装配"
+    );
+    Arc::new(multi)
 }
 
 pub struct StartedServer {
@@ -247,13 +304,15 @@ pub async fn start_server(
         };
         // 可选 LLM 润色：当 llm_polish_for 非空且 llm provider 可用时装配 LlmPolisher。
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
+        let sink = build_event_engine_sink(&state.core.config, &engine_cfg);
         tokio::spawn(async move {
             let mut engine = hone_event_engine::EventEngine::new(engine_cfg, fmp_cfg)
                 .with_store_path(events_db)
                 .with_events_jsonl_path(Some(events_jsonl))
                 .with_portfolio_dir(portfolio_dir)
                 .with_prefs_dir(notif_prefs_dir)
-                .with_digest_dir(digest_dir);
+                .with_digest_dir(digest_dir)
+                .with_sink(sink);
             if let Some(p) = polisher {
                 engine = engine.with_polisher(p);
             }
