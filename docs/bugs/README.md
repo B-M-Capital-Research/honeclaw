@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-21 10:18 CST
+最后更新：2026-04-21 11:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：9
-- 已修复 / 已关闭：47
+- 活跃待修复：11
+- 已修复 / 已关闭：46
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -27,11 +27,13 @@
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-20 22:29 Feishu 真实会话把 `Falling back from WebSockets... 403 Forbidden ... wss://chatgpt.com/backend-api/codex/responses` 直接混进用户可见答复，旧净化规则已回归失效 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-20 21:31 `Oil_Price_Monitor_Premarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；同一目标已在同一小时窗连续打到盘前扫描和油价盘前播报 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；10:01 `ASTS 重大异动心跳监控` 已完成触发与 `deliver_preview`，仍在最终发送前卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
+| 会话压缩摘要仍以 `role=user` 的 `Compact Summary` 回灌真实 transcript，修复结论已回归失效 | P1 | Fixing | 2026-04-21 10:52 `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 再次在 compact 后写入 `role=user` 摘要，并继续驱动后续正式回答，说明 2026-04-20 的“改为 system 并跳过 restore”未在生产收口 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，用户只收到半成品回复 | P3 | New | 2026-04-20 23:54 `迈富时` 真实提问只收到“简短 todo + 这类单轮分析不落盘动态计划”的 138 字内部执行计划，没有任何买入判断或替代标的结论 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-21 09:31 `CAI破位预警` 再次跌回 `JsonUnknownStatus`，10:01 `Monitor_Watchlist_11` 继续把 `<think> + 自由文本 + {}` 记成失败；同批其它任务只是侥幸回到 `JsonNoop/JsonTriggered`，根因未收敛 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-20 21:30 与 22:00 `ASTS 重大异动心跳监控` 继续重报同一 `BlueBird 7` 旧事件；两轮之间没有新的轨道修正、公告或价格阈值变化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 21:01 `TEM大事件心跳监控` 再次落成 `execution_failed + skipped_error`；20:30 还是 `noop`、21:00 前后同批又混有 `JsonUnknownStatus`，用户侧无法判断本轮是未触发还是链路直接耗尽 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 与 09:31 两个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 09:00 与 09:31 两轮共有 16 次 heartbeat run 再次统一报 `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`；README 先前标成 `Fixed` 已与最新生产证据不符 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
+| Telegram update listener 持续 `Connection refused`，近一个月没有新消息入库 | P2 | New | 2026-04-21 10:01-10:17 `GetUpdates` 每分钟重试仍统一报 `tcp connect error: Connection refused (os error 61)`；`sessions` 最近 Telegram 会话仍停在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## 已修复 / 已关闭
 
@@ -61,7 +63,6 @@
 | Discord 定时任务在 Answer 阶段返回空回复时被记为成功执行，但最终未向用户送达 | P2 | Fixed | 2026-04-16 已通过共享空成功判定修复收口，不再因为只剩搜索工具调用而把空 answer 视为成功 | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 | Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | Fixed | 2026-04-16 已让 direct scheduler 优先使用绑定 actor 的 `open_id`，并收紧 mobile 识别避免把 `open_id` 误判成手机号 | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Feishu 图片附件会向用户发送内部 skill transcript，并夹带未清洗的中间协议 | P1 | Fixed | 2026-04-16 已让成功持久化统一只写最终可见文本与 tool-call metadata，不再把 runner `context_messages` 原样落库成 transcript | [feishu_attachment_internal_transcript_leak.md](./feishu_attachment_internal_transcript_leak.md) |
-| 会话压缩摘要以 `Compact Summary` 回灌为 `role=user`，污染后续真实 transcript | P1 | Fixed | 2026-04-20 已将摘要写入 `role=system`，并在 `restore_context` 中跳过 compact_summary 消息（新旧数据双分支） | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | Fixed | 2026-04-20 已在 `ensure_actor_sandbox` 中预创建 `company_profiles/` 目录，工具返回空列表而非 not-found | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixed | 2026-04-20 已将 `已达最大迭代次数 N` 改为机器可读 key `max_iterations_exceeded:N`，并在净化层过滤 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直聊在处理中遭遇 runtime 重启风暴，placeholder 发出后整轮无最终回复 | P1 | Fixed | 2026-04-20 已在 `run()` 启动时扫描 30 分钟内 `last_message_role=user` 的直聊会话并补发失败提示，同时落库 assistant 失败消息防止重复 | [feishu_direct_runtime_restart_interrupts_inflight_reply.md](./feishu_direct_runtime_restart_interrupts_inflight_reply.md) |
