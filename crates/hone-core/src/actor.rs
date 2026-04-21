@@ -205,6 +205,11 @@ impl ActorIdentity {
         Self::new(channel, user_id, channel_scope).ok()
     }
 
+    /// 该 actor 是否来自单聊。`channel_scope` 为空即单聊；有值则是群聊/频道 scope。
+    pub fn is_direct(&self) -> bool {
+        self.channel_scope.is_none()
+    }
+
     pub fn channel_fs_component(&self) -> String {
         encode_component(&self.channel)
     }

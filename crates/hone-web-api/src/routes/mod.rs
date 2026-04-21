@@ -9,6 +9,7 @@ pub(crate) mod imessage;
 pub(crate) mod llm_audit;
 pub(crate) mod logs;
 pub(crate) mod meta;
+pub(crate) mod notification_prefs;
 pub(crate) mod portfolio;
 pub(crate) mod public;
 pub(crate) mod research;
@@ -91,6 +92,11 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .route("/cron-jobs/{id}/toggle", post(cron::handle_toggle_cron_job))
         .route("/portfolio/actors", get(portfolio::handle_portfolio_actors))
         .route("/portfolio", get(portfolio::handle_portfolio))
+        .route(
+            "/notification-prefs",
+            get(notification_prefs::handle_get_prefs)
+                .put(notification_prefs::handle_put_prefs),
+        )
         .route(
             "/company-profiles/actors",
             get(company_profiles::handle_company_profile_spaces),

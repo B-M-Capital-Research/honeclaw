@@ -845,6 +845,13 @@ impl HoneBotCore {
             portfolio_actor,
         )));
 
+        // 终端用户通过自然语言调推送偏好——构造时硬绑定 actor,只能改自己那份。
+        // 目录必须与 event-engine `with_prefs_dir` 使用同一个,否则写进去 router 读不到。
+        registry.register(Box::new(hone_tools::NotificationPrefsTool::new(
+            &self.config.storage.notif_prefs_dir,
+            actor.cloned(),
+        )));
+
         if let Some(actor) = actor.cloned() {
             let sandbox_base = sandbox_base_dir();
             registry.register(Box::new(hone_tools::LocalListFilesTool::new(

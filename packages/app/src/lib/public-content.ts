@@ -168,7 +168,7 @@ const CONTENT_ZH = {
     hero_sub: "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.1.41",
+    version: "v0.1.43",
 
     toc: [
       { id: "quick-start", label: "快速开始", sub: "Quick Start" },
@@ -210,7 +210,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "内置 Skill",
         intro_prefix: "Hone 的 Skill 由模型根据上下文自动调用。下面是仓库",
-        intro_suffix: "目录下的 18 个公开 Skill。",
+        intro_suffix: "目录下的 19 个公开 Skill。",
       },
       roadmap: {
         eyebrow: "§ 06 · ROADMAP",
@@ -300,6 +300,7 @@ const CONTENT_ZH = {
           { name: "自定义 Skill", status: "stable", note: "skill_manager · create_skill.sh" },
           { name: "MCP 协议", status: "stable", note: "hone-mcp 二进制可作为 MCP server" },
           { name: "HTTP + SSE 内部 API", status: "stable", note: "hone-web-api 路由全开" },
+          { name: "按用户细粒度推送偏好", status: "stable", note: "notification_preferences skill + 设置页 + config 全局节流" },
           { name: "公开 Skill 市场", status: "planned", note: "社区共享" },
         ],
       },
@@ -333,6 +334,7 @@ const CONTENT_ZH = {
       { name: "image_understanding", desc: "解析用户上传的 K 线 / 持仓截图" },
       { name: "pdf_understanding", desc: "解析 PDF（财报、研报）输出要点与风险" },
       { name: "skill_manager", desc: "查看 / 新建 / 修改 Hone Skill" },
+      { name: "notification_preferences", desc: "用自然语言调整自己的推送偏好（严重度、持仓过滤、kind 白/黑名单）" },
       { name: "hone_admin", desc: "查看修改 Hone 源码与配置（管理员）" },
     ],
 
@@ -342,10 +344,11 @@ const CONTENT_ZH = {
         "Web 聊天界面（邀请制）+ 公开门面站",
         "Tauri macOS 桌面端 + 内置后端",
         "7 个渠道：Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
-        "18 个内置 Skill（个股、持仓、估值、图表、PDF、Cron…）",
+        "19 个内置 Skill（个股、持仓、估值、图表、PDF、Cron、推送偏好…）",
         "投研纪律约束 & 零幻觉协议",
         "公司画像与跨会话长期记忆",
         "Cron 定时任务系统",
+        "事件引擎三层推送过滤（config 全局节流 + 用户 NL 自调 + 管理台代改）",
         "多 Runner 抽象：OpenAI / Gemini CLI/ACP / Codex CLI/ACP / OpenCode ACP",
       ],
     },
@@ -686,7 +689,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     hero_sub: "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.1.41",
+    version: "v0.1.43",
 
     toc: [
       { id: "quick-start", label: "Quick Start", sub: "Quick Start" },
@@ -727,7 +730,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       skills: {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "Built-in Skills",
-        intro_prefix: "Hone's skills are invoked by the model from context. Below are the 18 public skills in the",
+        intro_prefix: "Hone's skills are invoked by the model from context. Below are the 19 public skills in the",
         intro_suffix: "directory.",
       },
       roadmap: {
@@ -818,6 +821,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           { name: "Custom skills", status: "stable", note: "skill_manager · create_skill.sh" },
           { name: "MCP protocol", status: "stable", note: "hone-mcp binary can act as an MCP server" },
           { name: "HTTP + SSE internal API", status: "stable", note: "hone-web-api fully exposed" },
+          { name: "Per-actor notification prefs", status: "stable", note: "notification_preferences skill + settings page + config-level mute" },
           { name: "Public skill marketplace", status: "planned", note: "community sharing" },
         ],
       },
@@ -851,6 +855,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       { name: "image_understanding", desc: "Parse K-line / portfolio screenshots from users" },
       { name: "pdf_understanding", desc: "Parse PDFs (filings, reports) into key points and risks" },
       { name: "skill_manager", desc: "View / create / edit Hone skills" },
+      { name: "notification_preferences", desc: "Tune your own push prefs in natural language (severity, portfolio-only, kind allow/block)" },
       { name: "hone_admin", desc: "Inspect and modify Hone source & config (admin)" },
     ],
 
@@ -860,10 +865,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Web chat (invite-only) + public landing site",
         "Tauri macOS desktop with bundled backend",
         "7 channels: Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
-        "18 built-in skills (stocks, portfolio, valuation, charts, PDF, cron…)",
+        "19 built-in skills (stocks, portfolio, valuation, charts, PDF, cron, notification prefs…)",
         "Research discipline & zero-hallucination protocol",
         "Company profiles + cross-session long memory",
         "Cron-driven scheduled tasks",
+        "Three-tier event-engine push filtering (global config mute + user NL prefs + admin UI)",
         "Multi-runner: OpenAI / Gemini CLI/ACP / Codex CLI/ACP / OpenCode ACP",
       ],
     },

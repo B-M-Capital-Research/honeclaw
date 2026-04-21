@@ -1,0 +1,118 @@
+//! 市场事件核心数据结构。
+//!
+//! `MarketEvent` 是事件引擎的通用载荷，所有 poller 产出此类型。
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    #[default]
+    Low,
+    Medium,
+    High,
+}
+
+impl Severity {
+    /// 大小比较用的数值秩：Low=0 < Medium=1 < High=2。
+    pub fn rank(self) -> u8 {
+        match self {
+            Severity::Low => 0,
+            Severity::Medium => 1,
+            Severity::High => 2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EventKind {
+    EarningsUpcoming,
+    EarningsReleased,
+    NewsCritical,
+    PressRelease,
+    PriceAlert { pct_change_bps: i64, window: String },
+    Weekly52High,
+    Weekly52Low,
+    VolumeSpike,
+    Dividend,
+    Split,
+    Buyback,
+    SecFiling { form: String },
+    AnalystGrade,
+    MacroEvent,
+    PortfolioPreMarket,
+    PortfolioPostMarket,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketEvent {
+    pub id: String,
+    pub kind: EventKind,
+    pub severity: Severity,
+    #[serde(default)]
+    pub symbols: Vec<String>,
+    pub occurred_at: DateTime<Utc>,
+    pub title: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    pub source: String,
+    #[serde(default)]
+    pub payload: serde_json::Value,
+}
+
+impl MarketEvent {
+    pub fn touches(&self, symbol: &str) -> bool {
+        self.symbols.iter().any(|s| s.eq_ignore_ascii_case(symbol))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn touches_is_case_insensitive() {
+        let ev = MarketEvent {
+            id: "earnings:AAPL:2026-04-30".into(),
+            kind: EventKind::EarningsUpcoming,
+            severity: Severity::Medium,
+            symbols: vec!["AAPL".into()],
+            occurred_at: Utc::now(),
+            title: "Apple earnings".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.earning_calendar".into(),
+            payload: serde_json::Value::Null,
+        };
+        assert!(ev.touches("aapl"));
+        assert!(ev.touches("AAPL"));
+        assert!(!ev.touches("TSLA"));
+    }
+
+    #[test]
+    fn event_roundtrip_json() {
+        let ev = MarketEvent {
+            id: "price:NVDA:2026-04-21T15:00".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 1200,
+                window: "5m".into(),
+            },
+            severity: Severity::High,
+            symbols: vec!["NVDA".into()],
+            occurred_at: Utc::now(),
+            title: "NVDA +12%".into(),
+            summary: "intraday spike".into(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({"price": 940.5}),
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        let back: MarketEvent = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.id, ev.id);
+        assert_eq!(back.severity, Severity::High);
+    }
+}

@@ -11,6 +11,7 @@ members = [
     "crates/hone-integrations",
     "crates/hone-scheduler",
     "crates/hone-channels",
+    "crates/hone-event-engine",
     "bins/hone-imessage",
     "bins/hone-feishu",
     "bins/hone-console-page",
@@ -23,7 +24,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.42"
+version = "0.1.43"
 edition = "2024"
 authors = ["Hone Financial"]
 license = "MIT"
@@ -83,3 +84,4 @@ hone-integrations = { path = "crates/hone-integrations" }
 hone-scheduler = { path = "crates/hone-scheduler" }
 hone-channels  = { path = "crates/hone-channels" }
 hone-web-api   = { path = "crates/hone-web-api" }
+hone-event-engine = { path = "crates/hone-event-engine" }

@@ -542,3 +542,46 @@ export async function applyImportCompanyProfiles(
   );
   return payload.result;
 }
+
+// ── 通知偏好 API ──────────────────────────────────────────────────────────
+
+export type NotificationPrefs = {
+  enabled: boolean;
+  portfolio_only: boolean;
+  min_severity: "low" | "medium" | "high";
+  allow_kinds: string[] | null;
+  blocked_kinds: string[];
+};
+
+export type NotificationPrefsBundle = {
+  prefs: NotificationPrefs;
+  kind_tags: string[];
+};
+
+export async function getNotificationPrefs(
+  actor: ActorRef,
+): Promise<NotificationPrefsBundle> {
+  const response = await apiFetch(
+    `/api/notification-prefs?${actorQuery(actor)}`,
+  );
+  return parseJson<NotificationPrefsBundle>(response);
+}
+
+export async function putNotificationPrefs(
+  actor: ActorRef,
+  prefs: NotificationPrefs,
+): Promise<NotificationPrefs> {
+  const body = {
+    channel: actor.channel,
+    user_id: actor.user_id,
+    channel_scope: actor.channel_scope,
+    prefs,
+  };
+  const response = await apiFetch("/api/notification-prefs", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await parseJson<{ prefs: NotificationPrefs }>(response);
+  return payload.prefs;
+}

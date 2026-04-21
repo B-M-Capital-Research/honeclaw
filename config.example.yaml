@@ -196,6 +196,67 @@ fmp:
   timeout: 30
 
 
+# Proactive event engine: polls FMP for market events, deduplicates, and
+# dispatches to subscribers (per-holding or global). High-severity events push
+# immediately; Medium/Low roll up into pre/post-market digests.
+event_engine:
+  # Master switch. Default off — enable only when you want proactive pushes.
+  enabled: false
+  # Dryrun forces OutboundSink to only log; wire real channel sinks when ready.
+  dryrun: true
+  poll_intervals:
+    news_secs: 900              # 15 min
+    price_secs: 300             # 5 min
+    earnings_secs: 86400        # 24 h: upcoming calendar
+    corp_action_secs: 86400     # 24 h: splits/dividends + SEC 8-K per holding
+    macro_secs: 86400           # 24 h: economic calendar
+    analyst_grade_secs: 86400   # 24 h: upgrades/downgrades per holding
+    earnings_surprise_secs: 86400  # 24 h: post-market actual vs estimate
+  digest:
+    # Pre/post-market digests fire at these local times in the configured timezone.
+    # Defaults target CN users: pre_market rolls the overnight queue into a morning
+    # briefing; post_market is deliberately delayed to 09:00 Beijing (instead of
+    # US-close 16:00 ET / 04:00 Beijing) so the US overnight summary arrives after
+    # users wake up.
+    timezone: Asia/Shanghai
+    pre_market: "08:30"
+    post_market: "09:00"
+    # Max items rendered per digest flush. Events beyond this (sorted by severity
+    # desc, occurred_at desc) are dropped with a "…… 另 N 条已省略" footer so a
+    # Low-severity storm can't bury the user. 0 disables the cap.
+    max_items_per_batch: 20
+  thresholds:
+    # |pct| < low → no event; low ≤ |pct| < high → Low (digest); |pct| ≥ high → High (immediate push)
+    # Production defaults tuned for US equities: 10% rarely triggers, 5% misses many real moves.
+    price_alert_low_pct: 2.5
+    price_alert_high_pct: 6.0
+    volume_sigma: 2.0
+    high_severity_daily_cap: 8
+    # Minimum minutes between two High sink pushes for the *same* ticker.
+    # Protects against one stock firing price + news + filing in quick succession.
+    # Later Highs within the window get demoted to digest (status="cooled_down").
+    # 0 disables the cooldown.
+    same_symbol_cooldown_minutes: 60
+  renderer:
+    # Severity list that goes through LLM polish. Empty list = pure template.
+    # Requires llm.openrouter to be configured.
+    llm_polish_for: []
+    template_dir: "./data/event_templates"
+  sources:
+    fmp_news: true
+    fmp_press_release: true
+    fmp_economic_calendar: true
+    fmp_sec_filings: true
+  # 全局 event kind 黑名单。router 在 per-user NotificationPrefs 之前先过一遍;
+  # 入库仍然发生(便于日报 / 统计),只是不再分发给任何 actor。即使用户把某个
+  # kind 放进 allow_kinds,在这里禁用后仍然不会推。合法 tag:
+  #   earnings_upcoming, earnings_released, news_critical, press_release,
+  #   price_alert, weekly52_high, weekly52_low, volume_spike,
+  #   dividend, split, buyback, sec_filing, analyst_grade,
+  #   macro_event, portfolio_pre_market, portfolio_post_market
+  disabled_kinds: []
+
+
 llm:
   provider: openrouter
   openrouter:

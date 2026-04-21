@@ -15,6 +15,10 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 reqwest = { workspace = true }
 hone-memory = { workspace = true }
+hone-event-engine = { workspace = true }
 chrono = { workspace = true }
 glob = "0.3"
 walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"

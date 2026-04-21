@@ -7,6 +7,7 @@ import {
   createResource,
   createSignal,
 } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import { useBackend } from "@/context/backend";
 import {
   checkDesktopAgentCli,
@@ -24,6 +25,7 @@ import {
   getWebInvites,
   resetWebInvite,
 } from "@/lib/api";
+import { NotificationPreferencesCard } from "@/components/notification-preferences-card";
 import type {
   AgentProvider,
   AgentSettings,
@@ -597,11 +599,63 @@ export default function SettingsPage() {
     }
   };
 
+  type TabKey = "agent" | "data" | "notify" | "channel" | "invite";
+  const TAB_KEYS: TabKey[] = ["agent", "data", "notify", "channel", "invite"];
+  const TAB_LABELS: Record<TabKey, string> = {
+    agent: "Agent",
+    data: "数据源",
+    notify: "通知",
+    channel: "渠道",
+    invite: "邀请码",
+  };
+  const [searchParams, setSearchParams] = useSearchParams<{ tab?: string }>();
+  const activeTab = (): TabKey => {
+    const raw = searchParams.tab;
+    return (TAB_KEYS as string[]).includes(raw ?? "")
+      ? (raw as TabKey)
+      : "agent";
+  };
+  const selectTab = (key: TabKey) => setSearchParams({ tab: key });
+  let contentRef: HTMLDivElement | undefined;
+  createEffect(() => {
+    // track active tab and reset scroll on change
+    activeTab();
+    if (contentRef) contentRef.scrollTop = 0;
+  });
+  const isTab = (key: TabKey) => activeTab() === key;
+
   return (
-    <div class="mx-auto flex h-full max-w-4xl flex-col gap-4 overflow-y-auto">
+    <div class="mx-auto flex h-full max-w-4xl flex-col">
+      <nav class="sticky top-0 z-10 -mx-1 flex gap-1 overflow-x-auto border-b border-[color:var(--border)] bg-[color:var(--surface)]/95 px-1 py-2 backdrop-blur">
+        <For each={TAB_KEYS}>
+          {(key) => (
+            <Show
+              when={key !== "invite" || backend.hasCapability("web_invites")}
+            >
+              <button
+                type="button"
+                onClick={() => selectTab(key)}
+                class={[
+                  "shrink-0 rounded-md px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]",
+                  isTab(key)
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--text-primary)]"
+                    : "text-[color:var(--text-secondary)] hover:bg-black/5 hover:text-[color:var(--text-primary)]",
+                ].join(" ")}
+              >
+                {TAB_LABELS[key]}
+              </button>
+            </Show>
+          )}
+        </For>
+      </nav>
+      <div
+        ref={contentRef}
+        class="flex flex-1 flex-col gap-4 overflow-y-auto py-4"
+      >
       {/* ── 基础设置 ── */}
       <div
         id="agent-settings"
+        classList={{ hidden: !isTab("agent") }}
         class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6 shadow-sm"
       >
         <h1 class="text-xl font-semibold text-[color:var(--text-primary)]">
@@ -1571,6 +1625,7 @@ export default function SettingsPage() {
       <Show when={backend.hasCapability("web_invites")}>
         <div
           id="web-invite-settings"
+          classList={{ hidden: !isTab("invite") }}
           class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6 shadow-sm"
         >
           <div class="flex items-start justify-between gap-4">
@@ -1759,6 +1814,7 @@ export default function SettingsPage() {
       {/* ── 2. API 配置 ── */}
       <div
         id="api-settings"
+        classList={{ hidden: !isTab("data") }}
         class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6 shadow-sm"
       >
         <div class="flex items-center gap-3">
@@ -2038,9 +2094,43 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* ── 2.5. 通知推送偏好 ── */}
+      <div
+        id="notification-prefs"
+        classList={{ hidden: !isTab("notify") }}
+        class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6 shadow-sm"
+      >
+        <div class="flex items-center gap-3">
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 text-violet-500 font-bold">
+            <svg
+              class="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 01-3.46 0" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold text-[color:var(--text-primary)]">
+              通知推送偏好
+            </h1>
+            <p class="mt-1 text-sm text-[color:var(--text-secondary)]">
+              代任意 actor 调整事件推送策略。终端用户自己也可以在渠道里用自然语言调整。
+            </p>
+          </div>
+        </div>
+        <div class="mt-6">
+          <NotificationPreferencesCard />
+        </div>
+      </div>
+
       {/* ── 3. 渠道设置 ── */}
       <div
         id="channel-settings"
+        classList={{ hidden: !isTab("channel") }}
         class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6 shadow-sm"
       >
         <form onSubmit={(event) => void submitChannels(event)}>
@@ -2341,6 +2431,7 @@ export default function SettingsPage() {
             </div>
           </fieldset>
         </form>
+      </div>
       </div>
     </div>
   );

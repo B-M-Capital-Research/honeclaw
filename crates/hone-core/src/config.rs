@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 pub mod agent;
 pub mod channels;
+pub mod event_engine;
 pub mod server;
 
 pub use agent::{
@@ -20,6 +21,11 @@ pub use agent::{
 pub use channels::{
     ChatScope, DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig,
     GroupContextConfig, IMessageConfig, TelegramConfig, XConfig, XOAuth1Config,
+};
+pub use event_engine::{
+    DigestConfig as EventEngineDigestConfig, EventEngineConfig,
+    PollIntervals as EventEnginePollIntervals, RendererConfig as EventEngineRendererConfig,
+    Sources as EventEngineSources, Thresholds as EventEngineThresholds, tz_offset_hours,
 };
 pub use server::{
     FmpConfig, LoggingConfig, NanoBananaConfig, SearchConfig, SecurityConfig, StorageConfig,
@@ -65,6 +71,9 @@ pub struct HoneConfig {
     /// 安全策略配置
     #[serde(default)]
     pub security: SecurityConfig,
+    /// 主动事件引擎配置
+    #[serde(default)]
+    pub event_engine: EventEngineConfig,
     /// 额外的未知字段
     #[serde(flatten)]
     pub extra: HashMap<String, serde_yaml::Value>,
@@ -1093,6 +1102,7 @@ impl Default for HoneConfig {
             admins: AdminConfig::default(),
             web: WebConfig::default(),
             security: SecurityConfig::default(),
+            event_engine: EventEngineConfig::default(),
             extra: HashMap::new(),
         }
     }

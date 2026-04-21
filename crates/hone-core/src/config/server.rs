@@ -263,6 +263,13 @@ pub struct StorageConfig {
     pub cron_jobs_dir: String,
     #[serde(default = "default_gen_images_dir")]
     pub gen_images_dir: String,
+    /// 通知偏好(per-actor NotificationPrefs JSON)的目录。同时给:
+    /// * event-engine router / digest scheduler 读取
+    /// * HTTP API / 管理端设置页 读写
+    /// * NotificationPrefsTool (终端用户自然语言) 读写
+    /// 三者必须是同一份文件,否则改完不生效。
+    #[serde(default = "default_notif_prefs_dir")]
+    pub notif_prefs_dir: String,
 }
 
 impl StorageConfig {
@@ -278,6 +285,7 @@ impl StorageConfig {
         self.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
         self.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
         self.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
+        self.notif_prefs_dir = root.join("notif_prefs").to_string_lossy().to_string();
     }
 
     pub fn ensure_runtime_dirs(&self) {
@@ -285,6 +293,7 @@ impl StorageConfig {
         let _ = std::fs::create_dir_all(&self.portfolio_dir);
         let _ = std::fs::create_dir_all(&self.cron_jobs_dir);
         let _ = std::fs::create_dir_all(&self.gen_images_dir);
+        let _ = std::fs::create_dir_all(&self.notif_prefs_dir);
         let _ = std::fs::create_dir_all(&self.conversation_quota_dir);
         if let Some(parent) = PathBuf::from(&self.llm_audit_db_path).parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -321,4 +330,7 @@ fn default_cron_jobs_dir() -> String {
 }
 fn default_gen_images_dir() -> String {
     "./data/gen_images".to_string()
+}
+fn default_notif_prefs_dir() -> String {
+    "./data/notif_prefs".to_string()
 }

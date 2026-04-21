@@ -20,7 +20,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use hone_core::config::HoneConfig;
+use hone_core::config::{EventEngineConfig, HoneConfig};
+use hone_event_engine::{BodyPolisher, LlmPolisher, parse_polish_levels};
+use hone_llm::{LlmProvider, OpenRouterProvider};
 use tokio::sync::broadcast;
 use tracing::info;
 use tracing_subscriber::prelude::*;
@@ -30,6 +32,31 @@ use crate::runtime::{runtime_port, runtime_public_port};
 use crate::state::AppState as InnerAppState;
 
 const PUSH_CHANNEL_CAPACITY: usize = 64;
+
+/// 按 config 决定是否装配 LlmPolisher。
+/// 失败路径统一回退到 `None`（引擎继续用 NoopPolisher，走默认模板）。
+fn build_event_engine_polisher(
+    core_cfg: &HoneConfig,
+    engine_cfg: &EventEngineConfig,
+) -> Option<Arc<dyn BodyPolisher>> {
+    let levels = parse_polish_levels(&engine_cfg.renderer.llm_polish_for);
+    if levels.is_empty() {
+        return None;
+    }
+    match OpenRouterProvider::from_config(core_cfg) {
+        Ok(provider) => {
+            let provider: Arc<dyn LlmProvider> = Arc::new(provider);
+            let polisher = LlmPolisher::new(provider, levels)
+                .with_model(core_cfg.llm.openrouter.auxiliary_model());
+            info!("event engine: LlmPolisher 已装配");
+            Some(Arc::new(polisher) as Arc<dyn BodyPolisher>)
+        }
+        Err(e) => {
+            tracing::warn!("event engine: llm provider 不可用，跳过 polish: {e}");
+            None
+        }
+    }
+}
 
 pub struct StartedServer {
     pub state: Arc<InnerAppState>,
@@ -197,6 +224,45 @@ pub async fn start_server(
             }
         }
     });
+
+    // ── 事件引擎（主动消息 feed，默认 enabled=false；config 开启后启动）──
+    {
+        let engine_cfg = state.core.config.event_engine.clone();
+        let fmp_cfg = state.core.config.fmp.clone();
+        let portfolio_dir = state.core.config.storage.portfolio_dir.clone();
+        let notif_prefs_dir = state.core.config.storage.notif_prefs_dir.clone();
+        let (events_db, events_jsonl, digest_dir) = {
+            // 与 sessions.sqlite3 同目录：events.sqlite3 + events.jsonl + digest_buffer/
+            let session_db = std::path::PathBuf::from(
+                &state.core.config.storage.session_sqlite_db_path,
+            );
+            let base = session_db
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("./data"));
+            (
+                base.join("events.sqlite3"),
+                base.join("events.jsonl"),
+                base.join("digest_buffer"),
+            )
+        };
+        // 可选 LLM 润色：当 llm_polish_for 非空且 llm provider 可用时装配 LlmPolisher。
+        let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
+        tokio::spawn(async move {
+            let mut engine = hone_event_engine::EventEngine::new(engine_cfg, fmp_cfg)
+                .with_store_path(events_db)
+                .with_events_jsonl_path(Some(events_jsonl))
+                .with_portfolio_dir(portfolio_dir)
+                .with_prefs_dir(notif_prefs_dir)
+                .with_digest_dir(digest_dir);
+            if let Some(p) = polisher {
+                engine = engine.with_polisher(p);
+            }
+            if let Err(e) = engine.start().await {
+                tracing::warn!("event engine start failed: {e}");
+            }
+        });
+    }
 
     // ── 调度器 ─────────────────────────────────────────────────────
     let mut scheduler_channels = vec!["web".to_string()];
