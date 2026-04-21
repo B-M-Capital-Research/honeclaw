@@ -224,10 +224,9 @@ impl EventStore {
               AND symbols_json LIKE ?3
             "#,
         )?;
-        let rows = stmt.query_map(
-            params![start.timestamp(), end.timestamp(), needle],
-            |row| row.get::<_, String>(0),
-        )?;
+        let rows = stmt.query_map(params![start.timestamp(), end.timestamp(), needle], |row| {
+            row.get::<_, String>(0)
+        })?;
         let mut out: Vec<String> = Vec::new();
         for r in rows {
             let json = r?;
@@ -252,11 +251,7 @@ impl EventStore {
     /// 该 actor 在 `[since, now]` 窗口内通过 sink 成功送达的 High 事件数。
     /// 用于 Router 执行 `high_severity_daily_cap` 硬上限:超了自动降级到 digest,
     /// 避免同一天被同一股票的 8-K / 财报 / 价格异动轮番轰炸。
-    pub fn count_high_sent_since(
-        &self,
-        actor: &str,
-        since: DateTime<Utc>,
-    ) -> anyhow::Result<i64> {
+    pub fn count_high_sent_since(&self, actor: &str, since: DateTime<Utc>) -> anyhow::Result<i64> {
         let conn = self.conn.lock().unwrap();
         let n: i64 = conn.query_row(
             r#"
@@ -513,15 +508,39 @@ mod tests {
         // 真正算数的:高优 + sink + sent —— 4 条
         for i in 0..4 {
             store
-                .log_delivery(&format!("e{i}"), actor, "sink", Severity::High, "sent", None)
+                .log_delivery(
+                    &format!("e{i}"),
+                    actor,
+                    "sink",
+                    Severity::High,
+                    "sent",
+                    None,
+                )
                 .unwrap();
         }
         // 不算数的对照组
-        store.log_delivery("e-medium", actor, "sink", Severity::Medium, "sent", None).unwrap();
-        store.log_delivery("e-failed", actor, "sink", Severity::High, "failed", None).unwrap();
-        store.log_delivery("e-digest", actor, "digest", Severity::High, "sent", None).unwrap();
-        store.log_delivery("e-filtered", actor, "prefs", Severity::High, "filtered", None).unwrap();
-        store.log_delivery("e-other", "tg::::u2", "sink", Severity::High, "sent", None).unwrap();
+        store
+            .log_delivery("e-medium", actor, "sink", Severity::Medium, "sent", None)
+            .unwrap();
+        store
+            .log_delivery("e-failed", actor, "sink", Severity::High, "failed", None)
+            .unwrap();
+        store
+            .log_delivery("e-digest", actor, "digest", Severity::High, "sent", None)
+            .unwrap();
+        store
+            .log_delivery(
+                "e-filtered",
+                actor,
+                "prefs",
+                Severity::High,
+                "filtered",
+                None,
+            )
+            .unwrap();
+        store
+            .log_delivery("e-other", "tg::::u2", "sink", Severity::High, "sent", None)
+            .unwrap();
 
         let since = Utc::now() - chrono::Duration::minutes(1);
         assert_eq!(store.count_high_sent_since(actor, since).unwrap(), 4);
@@ -546,10 +565,12 @@ mod tests {
         store.insert_event(&nvda).unwrap();
 
         // 初始状态:无记录
-        assert!(store
-            .last_high_sink_send_for_symbol(actor, "AAPL")
-            .unwrap()
-            .is_none());
+        assert!(
+            store
+                .last_high_sink_send_for_symbol(actor, "AAPL")
+                .unwrap()
+                .is_none()
+        );
 
         // High + sink + sent AAPL —— 应命中
         store
@@ -577,15 +598,15 @@ mod tests {
             .log_delivery("ev-nvda", actor, "sink", Severity::High, "sent", None)
             .unwrap();
 
-        let t_aapl = store
-            .last_high_sink_send_for_symbol(actor, "aapl")
-            .unwrap();
+        let t_aapl = store.last_high_sink_send_for_symbol(actor, "aapl").unwrap();
         assert!(t_aapl.is_some(), "AAPL(小写查询)应命中");
         // 不存在的 symbol
-        assert!(store
-            .last_high_sink_send_for_symbol(actor, "TSLA")
-            .unwrap()
-            .is_none());
+        assert!(
+            store
+                .last_high_sink_send_for_symbol(actor, "TSLA")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -613,10 +634,18 @@ mod tests {
     fn delivery_breakdown_groups_per_actor_and_status() {
         let dir = tempdir().unwrap();
         let store = EventStore::open(dir.path().join("events.db")).unwrap();
-        store.log_delivery("e1", "u1", "tg", Severity::High, "sent", None).unwrap();
-        store.log_delivery("e2", "u1", "tg", Severity::Medium, "queued", None).unwrap();
-        store.log_delivery("e3", "u1", "tg", Severity::High, "sent", None).unwrap();
-        store.log_delivery("e4", "u2", "tg", Severity::High, "failed", None).unwrap();
+        store
+            .log_delivery("e1", "u1", "tg", Severity::High, "sent", None)
+            .unwrap();
+        store
+            .log_delivery("e2", "u1", "tg", Severity::Medium, "queued", None)
+            .unwrap();
+        store
+            .log_delivery("e3", "u1", "tg", Severity::High, "sent", None)
+            .unwrap();
+        store
+            .log_delivery("e4", "u2", "tg", Severity::High, "failed", None)
+            .unwrap();
         let since = Utc::now() - chrono::Duration::minutes(1);
         let until = Utc::now() + chrono::Duration::minutes(1);
         let breakdown = delivery_breakdown_per_actor(&store, since, until).unwrap();
@@ -641,9 +670,7 @@ mod tests {
 
         // 今日 AAPL 8-K
         let mut filing = sample_event("sec:AAPL:today");
-        filing.kind = EventKind::SecFiling {
-            form: "8-K".into(),
-        };
+        filing.kind = EventKind::SecFiling { form: "8-K".into() };
         filing.occurred_at = Utc::now();
         store.insert_event(&filing).unwrap();
 

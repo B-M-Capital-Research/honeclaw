@@ -60,12 +60,7 @@ impl PricePoller {
     }
 }
 
-fn events_from_quotes(
-    raw: &Value,
-    low_pct: f64,
-    high_pct: f64,
-    near_tol: f64,
-) -> Vec<MarketEvent> {
+fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -> Vec<MarketEvent> {
     let arr = match raw.as_array() {
         Some(a) => a,
         None => return vec![],
@@ -74,7 +69,11 @@ fn events_from_quotes(
     let mut out = Vec::new();
 
     for item in arr {
-        let Some(symbol) = item.get("symbol").and_then(|v| v.as_str()).map(String::from) else {
+        let Some(symbol) = item
+            .get("symbol")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+        else {
             continue;
         };
         let price = item.get("price").and_then(|v| v.as_f64());
@@ -102,9 +101,7 @@ fn events_from_quotes(
                     symbols: vec![symbol.clone()],
                     occurred_at: Utc::now(),
                     title: format!("{symbol} {direction}{pct:.2}%"),
-                    summary: price
-                        .map(|p| format!("价格 {p:.2}"))
-                        .unwrap_or_default(),
+                    summary: price.map(|p| format!("价格 {p:.2}")).unwrap_or_default(),
                     url: None,
                     source: "fmp.quote".into(),
                     payload: item.clone(),
@@ -193,7 +190,11 @@ mod tests {
         let events = events_from_quotes(&raw, 5.0, 10.0, 0.001);
         // 只返回 PriceAlert High（-12.3 触发），价格离 yearLow 还远
         assert!(events.iter().any(|e| e.severity == Severity::High));
-        assert!(events.iter().any(|e| matches!(e.kind, EventKind::PriceAlert { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
+        );
     }
 
     #[test]
@@ -203,7 +204,11 @@ mod tests {
              "yearHigh": 1000.0, "yearLow": 400.0}
         ]);
         let events = events_from_quotes(&raw, 5.0, 10.0, 0.001);
-        assert!(events.iter().any(|e| matches!(e.kind, EventKind::Weekly52High)));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e.kind, EventKind::Weekly52High))
+        );
         let hi = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::Weekly52High))

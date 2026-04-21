@@ -96,17 +96,20 @@ async fn main() -> Result<()> {
         token,
         client: reqwest::Client::new(),
     };
-    let storage = FilePrefsStorage::new(PREFS_DIR)
-        .with_context(|| format!("open prefs dir {PREFS_DIR}"))?;
+    let storage =
+        FilePrefsStorage::new(PREFS_DIR).with_context(|| format!("open prefs dir {PREFS_DIR}"))?;
     let event = build_fake_event();
 
     println!("== push_smoke ==");
     println!("event id   : {}", event.id);
-    println!("event kind : news_critical / High (symbols={:?})", event.symbols);
+    println!(
+        "event kind : news_critical / High (symbols={:?})",
+        event.symbols
+    );
     println!();
 
-    let dir_entries = std::fs::read_dir(PREFS_DIR)
-        .with_context(|| format!("read dir {PREFS_DIR}"))?;
+    let dir_entries =
+        std::fs::read_dir(PREFS_DIR).with_context(|| format!("read dir {PREFS_DIR}"))?;
     let mut actors: Vec<ActorIdentity> = Vec::new();
     for entry in dir_entries {
         let entry = entry?;

@@ -137,7 +137,12 @@ pub fn render_body(
         }
         out.push_str("| actor | sent | queued | filtered | failed |\n|---|--:|--:|--:|--:|\n");
         for (actor, rows) in by_actor {
-            let get = |s: &str| rows.iter().find(|(st, _)| *st == s).map(|(_, n)| *n).unwrap_or(0);
+            let get = |s: &str| {
+                rows.iter()
+                    .find(|(st, _)| *st == s)
+                    .map(|(_, n)| *n)
+                    .unwrap_or(0)
+            };
             out.push_str(&format!(
                 "| `{actor}` | {} | {} | {} | {} |\n",
                 get("sent"),

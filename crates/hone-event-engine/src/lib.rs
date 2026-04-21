@@ -10,8 +10,8 @@ pub mod daily_report;
 pub mod digest;
 pub mod event;
 pub mod fmp;
-pub mod pollers;
 pub mod polisher;
+pub mod pollers;
 pub mod prefs;
 pub mod renderer;
 pub mod router;
@@ -23,11 +23,11 @@ pub use digest::{DigestBuffer, DigestScheduler};
 pub use event::{EventKind, MarketEvent, Severity};
 pub use fmp::FmpClient;
 pub use hone_core::config::{EventEngineConfig, FmpConfig};
+pub use polisher::{BodyPolisher, LlmPolisher, NoopPolisher, parse_polish_levels};
 pub use pollers::{
     AnalystGradePoller, CorpActionPoller, EarningsPoller, EarningsSurprisePoller, MacroPoller,
     NewsPoller, PricePoller,
 };
-pub use polisher::{BodyPolisher, LlmPolisher, NoopPolisher, parse_polish_levels};
 pub use prefs::{
     AllowAllPrefs, FilePrefsStorage, NotificationPrefs, PrefsProvider, SharedPrefs, kind_tag,
 };
@@ -35,8 +35,8 @@ pub use renderer::RenderFormat;
 pub use router::{LogSink, NotificationRouter, OutboundSink};
 pub use store::EventStore;
 pub use subscription::{
-    GlobalSubscription, PortfolioSubscription, SharedRegistry, Subscription,
-    SubscriptionRegistry, registry_from_portfolios,
+    GlobalSubscription, PortfolioSubscription, SharedRegistry, Subscription, SubscriptionRegistry,
+    registry_from_portfolios,
 };
 
 use std::path::PathBuf;
@@ -426,7 +426,11 @@ async fn process_events(
     }
     info!(
         poller = name,
-        total, new = new_cnt, duplicate = dup_cnt, sent, pending_digest = pending,
+        total,
+        new = new_cnt,
+        duplicate = dup_cnt,
+        sent,
+        pending_digest = pending,
         "poller ok"
     );
 }
@@ -580,9 +584,7 @@ fn spawn_earnings_surprise_poller(
                 continue;
             }
             match poller.poll(&symbols).await {
-                Ok(events) => {
-                    process_events("earnings_surprise", events, &store, &router).await
-                }
+                Ok(events) => process_events("earnings_surprise", events, &store, &router).await,
                 Err(e) => warn!("earnings surprise poller failed: {e:#}"),
             }
         }
@@ -699,10 +701,8 @@ mod tests {
         use crate::event::{EventKind, MarketEvent, Severity};
         use chrono::Utc;
 
-        let token =
-            std::env::var("HONE_TG_BOT_TOKEN").expect("需要 HONE_TG_BOT_TOKEN");
-        let chat_id =
-            std::env::var("HONE_TG_CHAT_ID").expect("需要 HONE_TG_CHAT_ID");
+        let token = std::env::var("HONE_TG_BOT_TOKEN").expect("需要 HONE_TG_BOT_TOKEN");
+        let chat_id = std::env::var("HONE_TG_CHAT_ID").expect("需要 HONE_TG_CHAT_ID");
 
         // 事件 1：High — 财报发布（应立即推）
         let ev_earnings = MarketEvent {
@@ -712,8 +712,7 @@ mod tests {
             symbols: vec!["AAPL".into()],
             occurred_at: Utc::now(),
             title: "Apple Q2 FY26 EPS $2.18 vs est $1.94，beat +12%".into(),
-            summary: "营收 $97.3B（+7% YoY），服务业务创新高；公司上调回购至 $110B。"
-                .into(),
+            summary: "营收 $97.3B（+7% YoY），服务业务创新高；公司上调回购至 $110B。".into(),
             url: Some("https://investor.apple.com/investor-relations/default.aspx".into()),
             source: "demo".into(),
             payload: serde_json::Value::Null,
@@ -727,8 +726,11 @@ mod tests {
             symbols: vec!["TSLA".into()],
             occurred_at: Utc::now(),
             title: "Tesla 提交 8-K：CFO 辞职".into(),
-            summary: "CFO Vaibhav Taneja 于 2026-04-21 提交辞呈，立即生效；公司正在物色继任者。".into(),
-            url: Some("https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001318605".into()),
+            summary: "CFO Vaibhav Taneja 于 2026-04-21 提交辞呈，立即生效；公司正在物色继任者。"
+                .into(),
+            url: Some(
+                "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001318605".into(),
+            ),
             source: "demo".into(),
             payload: serde_json::Value::Null,
         };
@@ -807,7 +809,10 @@ mod tests {
             let status = resp.status();
             let body_resp = resp.text().await.unwrap_or_default();
             println!("[tg demo] fmt={fmt:?} status={status} body={body_resp}");
-            assert!(status.is_success(), "telegram API 返回非 2xx: {status} / {body_resp}");
+            assert!(
+                status.is_success(),
+                "telegram API 返回非 2xx: {status} / {body_resp}"
+            );
             // Telegram 发送速率限制：每秒 30 条个人；留 500ms 间隔
             tokio::time::sleep(std::time::Duration::from_millis(600)).await;
         }
@@ -863,8 +868,7 @@ mod tests {
             summary: "CFO Vaibhav Taneja 于 2026-04-21 提交辞呈，立即生效；公司正在物色继任者。"
                 .into(),
             url: Some(
-                "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001318605"
-                    .into(),
+                "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001318605".into(),
             ),
             source: "demo".into(),
             payload: serde_json::Value::Null,
@@ -1028,9 +1032,16 @@ mod tests {
         let mut rows: Vec<Row> = quote_arr
             .iter()
             .map(|q| {
-                let sym = q.get("symbol").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+                let sym = q
+                    .get("symbol")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string();
                 let price = q.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let pct = q.get("changesPercentage").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let pct = q
+                    .get("changesPercentage")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
                 let (shares, avg_cost) = cost_map.get(&sym).copied().unwrap_or((0.0, 0.0));
                 let mv = price * shares;
                 Row {
@@ -1043,7 +1054,12 @@ mod tests {
                 }
             })
             .collect();
-        rows.sort_by(|a, b| b.pct.abs().partial_cmp(&a.pct.abs()).unwrap_or(std::cmp::Ordering::Equal));
+        rows.sort_by(|a, b| {
+            b.pct
+                .abs()
+                .partial_cmp(&a.pct.abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let total_value: f64 = rows.iter().map(|r| r.mv).sum();
         let total_pnl: f64 = rows.iter().map(|r| r.pnl).sum();
         let up = rows.iter().filter(|r| r.pct > 0.0).count();
@@ -1095,8 +1111,14 @@ mod tests {
         println!(
             "NewsEvents: {} (High {} / Low {})",
             news_all.len(),
-            news_all.iter().filter(|e| matches!(e.severity, crate::event::Severity::High)).count(),
-            news_all.iter().filter(|e| matches!(e.severity, crate::event::Severity::Low)).count(),
+            news_all
+                .iter()
+                .filter(|e| matches!(e.severity, crate::event::Severity::High))
+                .count(),
+            news_all
+                .iter()
+                .filter(|e| matches!(e.severity, crate::event::Severity::Low))
+                .count(),
         );
 
         // 6) CorpActionPoller —— 日历 filter 到持仓 + 每只 ticker 拉最近 8-K
@@ -1218,14 +1240,8 @@ mod tests {
                         _ => "当日",
                     })
                     .unwrap_or("");
-                let eps_est = ev
-                    .payload
-                    .get("epsEstimated")
-                    .and_then(|v| v.as_f64());
-                let rev_est = ev
-                    .payload
-                    .get("revenueEstimated")
-                    .and_then(|v| v.as_f64());
+                let eps_est = ev.payload.get("epsEstimated").and_then(|v| v.as_f64());
+                let rev_est = ev.payload.get("revenueEstimated").and_then(|v| v.as_f64());
                 let fmt_rev = |r: f64| {
                     if r >= 1e9 {
                         format!("${:.1}B", r / 1e9)
@@ -1285,8 +1301,10 @@ mod tests {
             picks.sort_by(|a, b| b.occurred_at.cmp(&a.occurred_at));
             picks.truncate(10);
 
-            let touched_tickers: std::collections::HashSet<&str> =
-                picks.iter().filter_map(|e| e.symbols.first().map(|s| s.as_str())).collect();
+            let touched_tickers: std::collections::HashSet<&str> = picks
+                .iter()
+                .filter_map(|e| e.symbols.first().map(|s| s.as_str()))
+                .collect();
 
             // #13 财报窗口标记：对每条 news,看是否同 ticker 有 earnings 事件落在
             // [news - 1d, news + 2d] 窗口内,若有则 🔔 标记——这些是 Router 里
@@ -1324,7 +1342,10 @@ mod tests {
             println!(
                 "[#13 earnings-window] flagged={flagged} / picks={} · earnings: {:?} · news_per_sym: {:?}",
                 picks.len(),
-                earn_by_sym.iter().map(|(k, v)| (*k, v.occurred_at.date_naive().to_string())).collect::<Vec<_>>(),
+                earn_by_sym
+                    .iter()
+                    .map(|(k, v)| (*k, v.occurred_at.date_naive().to_string()))
+                    .collect::<Vec<_>>(),
                 per_sym,
             );
 
@@ -1478,8 +1499,10 @@ mod tests {
                 .expect("telegram 发送请求失败");
             let status = resp.status();
             let body_resp = resp.text().await.unwrap_or_default();
-            println!("[backtest push] html={use_html} status={status} body_len={}",
-                     body_resp.len());
+            println!(
+                "[backtest push] html={use_html} status={status} body_len={}",
+                body_resp.len()
+            );
             assert!(
                 status.is_success(),
                 "telegram API 返回非 2xx: {status} / {body_resp}"
@@ -1511,7 +1534,11 @@ mod tests {
         let fake = vec![
             ("fmp.stock_news", EventKind::NewsCritical, 5),
             ("fmp.earning_calendar", EventKind::EarningsUpcoming, 2),
-            ("fmp.sec_filings", EventKind::SecFiling { form: "8-K".into() }, 1),
+            (
+                "fmp.sec_filings",
+                EventKind::SecFiling { form: "8-K".into() },
+                1,
+            ),
             ("fmp.stock_split_calendar", EventKind::Split, 1),
             ("fmp.upgrades_downgrades", EventKind::AnalystGrade, 1),
         ];
@@ -1536,16 +1563,29 @@ mod tests {
         }
         let ak_main = "telegram::::8039067465";
         for _ in 0..3 {
-            store.log_delivery("f-s", ak_main, "sink", Severity::High, "sent", None).unwrap();
+            store
+                .log_delivery("f-s", ak_main, "sink", Severity::High, "sent", None)
+                .unwrap();
         }
         for _ in 0..8 {
-            store.log_delivery("f-q", ak_main, "digest", Severity::Medium, "queued", None).unwrap();
+            store
+                .log_delivery("f-q", ak_main, "digest", Severity::Medium, "queued", None)
+                .unwrap();
         }
         for _ in 0..2 {
-            store.log_delivery("f-f", ak_main, "prefs", Severity::Low, "filtered", None).unwrap();
+            store
+                .log_delivery("f-f", ak_main, "prefs", Severity::Low, "filtered", None)
+                .unwrap();
         }
         store
-            .log_delivery("f-o", "feishu::::ghost", "sink", Severity::High, "sent", None)
+            .log_delivery(
+                "f-o",
+                "feishu::::ghost",
+                "sink",
+                Severity::High,
+                "sent",
+                None,
+            )
             .unwrap();
 
         // 人工构造"恰好在 22:00 本地"的 now:取北京 tz,today 的 22:00。

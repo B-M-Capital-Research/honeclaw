@@ -91,7 +91,11 @@ fn events_from_surprises(
             } else {
                 Severity::Medium
             };
-            let direction = if pct >= 0.0 { "超预期" } else { "不及预期" };
+            let direction = if pct >= 0.0 {
+                "超预期"
+            } else {
+                "不及预期"
+            };
             Some(MarketEvent {
                 id: format!("earnings_surprise:{ticker}:{date}"),
                 kind: EventKind::EarningsReleased,
@@ -127,40 +131,34 @@ mod tests {
     #[test]
     fn large_beat_is_high() {
         let raw = serde_json::json!([surprise(0, 2.30, 2.00)]);
-        let events = events_from_surprises(
-            &raw,
-            "AAPL",
-            Utc::now() - chrono::Duration::days(7),
-            5.0,
-        );
+        let events =
+            events_from_surprises(&raw, "AAPL", Utc::now() - chrono::Duration::days(7), 5.0);
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].severity, Severity::High);
         assert!(events[0].title.contains("超预期"));
         assert!(events[0].summary.contains("2.30"));
-        assert_eq!(events[0].id, format!("earnings_surprise:AAPL:{}", events[0].occurred_at.format("%Y-%m-%d")));
+        assert_eq!(
+            events[0].id,
+            format!(
+                "earnings_surprise:AAPL:{}",
+                events[0].occurred_at.format("%Y-%m-%d")
+            )
+        );
     }
 
     #[test]
     fn small_beat_is_medium() {
         let raw = serde_json::json!([surprise(0, 2.03, 2.00)]);
-        let events = events_from_surprises(
-            &raw,
-            "AAPL",
-            Utc::now() - chrono::Duration::days(7),
-            5.0,
-        );
+        let events =
+            events_from_surprises(&raw, "AAPL", Utc::now() - chrono::Duration::days(7), 5.0);
         assert_eq!(events[0].severity, Severity::Medium);
     }
 
     #[test]
     fn large_miss_is_high() {
         let raw = serde_json::json!([surprise(0, 1.70, 2.00)]);
-        let events = events_from_surprises(
-            &raw,
-            "AAPL",
-            Utc::now() - chrono::Duration::days(7),
-            5.0,
-        );
+        let events =
+            events_from_surprises(&raw, "AAPL", Utc::now() - chrono::Duration::days(7), 5.0);
         assert_eq!(events[0].severity, Severity::High);
         assert!(events[0].title.contains("不及预期"));
     }
@@ -168,24 +166,16 @@ mod tests {
     #[test]
     fn stale_surprise_is_dropped() {
         let raw = serde_json::json!([surprise(90, 2.30, 2.00)]);
-        let events = events_from_surprises(
-            &raw,
-            "AAPL",
-            Utc::now() - chrono::Duration::days(3),
-            5.0,
-        );
+        let events =
+            events_from_surprises(&raw, "AAPL", Utc::now() - chrono::Duration::days(3), 5.0);
         assert!(events.is_empty());
     }
 
     #[test]
     fn zero_estimate_is_skipped() {
         let raw = serde_json::json!([surprise(0, 2.30, 0.0)]);
-        let events = events_from_surprises(
-            &raw,
-            "AAPL",
-            Utc::now() - chrono::Duration::days(3),
-            5.0,
-        );
+        let events =
+            events_from_surprises(&raw, "AAPL", Utc::now() - chrono::Duration::days(3), 5.0);
         assert!(events.is_empty());
     }
 

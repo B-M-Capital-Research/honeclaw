@@ -16,7 +16,7 @@ use tracing::info;
 use crate::digest::DigestBuffer;
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::polisher::{BodyPolisher, NoopPolisher};
-use crate::prefs::{kind_tag, AllowAllPrefs, PrefsProvider};
+use crate::prefs::{AllowAllPrefs, PrefsProvider, kind_tag};
 use crate::renderer::{self, RenderFormat};
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
@@ -236,10 +236,7 @@ impl NotificationRouter {
             let mut demoted_by_cooldown = false;
             let mut effective_sev = if matches!(sev, Severity::High) && self.high_daily_cap > 0 {
                 let since = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
-                match self
-                    .store
-                    .count_high_sent_since(&actor_key(&actor), since)
-                {
+                match self.store.count_high_sent_since(&actor_key(&actor), since) {
                     Ok(n) if n >= self.high_daily_cap as i64 => {
                         tracing::info!(
                             actor = %actor_key(&actor),
@@ -384,7 +381,10 @@ fn actor_key(a: &ActorIdentity) -> String {
 
 /// 按给定 tz 偏移求本地当日 00:00 对应的 UTC 时刻。用作
 /// `count_high_sent_since` 的 cutoff,保证跨时区一致。
-fn local_day_start(now: chrono::DateTime<chrono::Utc>, offset_hours: i32) -> chrono::DateTime<chrono::Utc> {
+fn local_day_start(
+    now: chrono::DateTime<chrono::Utc>,
+    offset_hours: i32,
+) -> chrono::DateTime<chrono::Utc> {
     use chrono::{FixedOffset, NaiveTime, TimeZone};
     let offset =
         FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
@@ -454,7 +454,12 @@ mod tests {
         let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
         let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
         (
-            NotificationRouter::new(Arc::new(SharedRegistry::from_registry(reg)), sink.clone(), store, digest),
+            NotificationRouter::new(
+                Arc::new(SharedRegistry::from_registry(reg)),
+                sink.clone(),
+                store,
+                digest,
+            ),
             sink,
             dir,
         )
@@ -515,11 +520,20 @@ mod tests {
         let (s3, p3) = router.dispatch(&mk("h3")).await.unwrap();
         assert_eq!(s3, 0, "触顶后 High 不应走 sink");
         assert_eq!(p3, 1, "应降级进 digest");
-        assert_eq!(sink.calls.lock().unwrap().len(), 2, "sink call count 不应增加");
+        assert_eq!(
+            sink.calls.lock().unwrap().len(),
+            2,
+            "sink call count 不应增加"
+        );
 
         // delivery_log 里应有 2 条 sent + 1 条 capped
         let since = Utc::now() - chrono::Duration::minutes(1);
-        assert_eq!(store.count_high_sent_since("imessage::::u1", since).unwrap(), 2);
+        assert_eq!(
+            store
+                .count_high_sent_since("imessage::::u1", since)
+                .unwrap(),
+            2
+        );
     }
 
     #[tokio::test]
@@ -663,8 +677,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
         let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
-        let router = NotificationRouter::new(Arc::new(SharedRegistry::from_registry(reg)), sink.clone(), store, digest)
-            .with_polisher(Arc::new(FixedPolisher));
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_polisher(Arc::new(FixedPolisher));
 
         let _ = router.dispatch(&ev(Severity::High)).await.unwrap();
         let calls = sink.calls.lock().unwrap();
@@ -684,8 +703,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
         let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
-        let prefs_store =
-            Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
         prefs_store
             .save(
                 &actor("u1"),
@@ -695,8 +713,13 @@ mod tests {
                 },
             )
             .unwrap();
-        let router = NotificationRouter::new(Arc::new(SharedRegistry::from_registry(reg)), sink.clone(), store, digest)
-            .with_prefs(prefs_store);
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store);
 
         let (sent_h, pending_h) = router.dispatch(&ev(Severity::High)).await.unwrap();
         let (sent_m, pending_m) = router.dispatch(&ev(Severity::Medium)).await.unwrap();
@@ -718,9 +741,15 @@ mod tests {
         // 这里简化为 dispatch MacroEvent 并注入 GlobalSubscription。
         struct AlwaysMatch(ActorIdentity);
         impl crate::subscription::Subscription for AlwaysMatch {
-            fn id(&self) -> &str { "always" }
-            fn matches(&self, _e: &MarketEvent) -> bool { true }
-            fn actors(&self) -> Vec<ActorIdentity> { vec![self.0.clone()] }
+            fn id(&self) -> &str {
+                "always"
+            }
+            fn matches(&self, _e: &MarketEvent) -> bool {
+                true
+            }
+            fn actors(&self) -> Vec<ActorIdentity> {
+                vec![self.0.clone()]
+            }
         }
         reg.register(Box::new(AlwaysMatch(actor("u1"))));
 
@@ -728,8 +757,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
         let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
-        let prefs_store =
-            Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
         use crate::prefs::PrefsProvider;
         prefs_store
             .save(
@@ -740,8 +768,13 @@ mod tests {
                 },
             )
             .unwrap();
-        let router = NotificationRouter::new(Arc::new(SharedRegistry::from_registry(reg)), sink.clone(), store, digest)
-            .with_prefs(prefs_store);
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store);
 
         // 无 symbol 的 macro 事件应被过滤
         let mut macro_ev = ev(Severity::High);

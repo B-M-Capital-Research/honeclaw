@@ -260,9 +260,7 @@ mod tests {
 
     #[test]
     fn sec_filing_includes_form_code() {
-        let ev = sample(EventKind::SecFiling {
-            form: "8-K".into(),
-        });
+        let ev = sample(EventKind::SecFiling { form: "8-K".into() });
         let s = render_immediate(&ev, RenderFormat::Plain);
         assert!(s.contains("SEC 8-K"));
     }
@@ -314,7 +312,10 @@ mod tests {
 
     #[test]
     fn telegram_html_wraps_header_and_anchor_url() {
-        let s = render_immediate(&sample(EventKind::EarningsReleased), RenderFormat::TelegramHtml);
+        let s = render_immediate(
+            &sample(EventKind::EarningsReleased),
+            RenderFormat::TelegramHtml,
+        );
         let first = s.lines().next().unwrap();
         assert!(
             first.starts_with("<b>【要闻】 $AAPL · "),

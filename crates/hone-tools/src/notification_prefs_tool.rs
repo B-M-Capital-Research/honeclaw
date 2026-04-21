@@ -11,11 +11,11 @@
 
 use async_trait::async_trait;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
-use hone_event_engine::prefs::{
-    first_invalid_kind_tag, FilePrefsStorage, NotificationPrefs, PrefsProvider, ALL_KIND_TAGS,
-};
 use hone_event_engine::Severity;
-use serde_json::{json, Value};
+use hone_event_engine::prefs::{
+    ALL_KIND_TAGS, FilePrefsStorage, NotificationPrefs, PrefsProvider, first_invalid_kind_tag,
+};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 
 use crate::base::{Tool, ToolParameter};
@@ -183,12 +183,13 @@ impl Tool for NotificationPrefsTool {
                 let flag = match &value {
                     Value::Bool(b) => *b,
                     Value::String(s) => {
-                        matches!(s.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on")
+                        matches!(
+                            s.trim().to_ascii_lowercase().as_str(),
+                            "true" | "1" | "yes" | "on"
+                        )
                     }
                     _ => {
-                        return Err(HoneError::Tool(
-                            "set_portfolio_only 需要 true/false".into(),
-                        ));
+                        return Err(HoneError::Tool("set_portfolio_only 需要 true/false".into()));
                     }
                 };
                 prefs.portfolio_only = flag;

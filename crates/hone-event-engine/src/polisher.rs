@@ -97,11 +97,7 @@ impl BodyPolisher for LlmPolisher {
             return None;
         }
         let messages = Self::build_prompt(event, default_body);
-        match self
-            .provider
-            .chat(&messages, self.model.as_deref())
-            .await
-        {
+        match self.provider.chat(&messages, self.model.as_deref()).await {
             Ok(res) => {
                 let t = res.content.trim();
                 if t.is_empty() {

@@ -56,9 +56,7 @@ fn events_from_calendar(raw: &Value) -> Vec<MarketEvent> {
             let date_str = item.get("date")?.as_str()?.to_string();
             // FMP 返回的 date 是 YYYY-MM-DD；我们落到 UTC 当天 00:00。
             let naive = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").ok()?;
-            let occurred_at = Utc
-                .from_utc_datetime(&naive.and_hms_opt(0, 0, 0)?)
-                .to_utc();
+            let occurred_at = Utc.from_utc_datetime(&naive.and_hms_opt(0, 0, 0)?).to_utc();
 
             let eps_est = item.get("epsEstimated").and_then(|v| v.as_f64());
             let rev_est = item.get("revenueEstimated").and_then(|v| v.as_f64());

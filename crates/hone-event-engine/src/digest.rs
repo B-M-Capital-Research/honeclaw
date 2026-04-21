@@ -105,12 +105,23 @@ impl DigestBuffer {
 fn actor_slug(a: &ActorIdentity) -> String {
     // 简单 slug：channel_scope_user；用 `__` 分隔避免与系统路径冲突。
     let scope = a.channel_scope.as_deref().unwrap_or("direct");
-    format!("{}__{}__{}", sanitize(&a.channel), sanitize(scope), sanitize(&a.user_id))
+    format!(
+        "{}__{}__{}",
+        sanitize(&a.channel),
+        sanitize(scope),
+        sanitize(&a.user_id)
+    )
 }
 
 fn sanitize(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -118,7 +129,8 @@ fn sanitize(s: &str) -> String {
 
 /// 判断 `now` 对应的本地时间（按 `offset_hours` 解释）是否处于给定 HH:MM 的 60 秒窗口内。
 pub fn in_window(now: DateTime<Utc>, hhmm: &str, offset_hours: i32) -> bool {
-    let offset = FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
+    let offset =
+        FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
     let local = offset.from_utc_datetime(&now.naive_utc());
     let Ok(target) = NaiveTime::parse_from_str(hhmm, "%H:%M") else {
         return false;
@@ -129,9 +141,15 @@ pub fn in_window(now: DateTime<Utc>, hhmm: &str, offset_hours: i32) -> bool {
 
 /// 当前本地日期（粗略）—— 用于 flush key 防止同一天重复触发。
 pub fn local_date_key(now: DateTime<Utc>, offset_hours: i32) -> String {
-    let offset = FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
+    let offset =
+        FixedOffset::east_opt(offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
     let local = offset.from_utc_datetime(&now.naive_utc());
-    format!("{:04}-{:02}-{:02}", local.year(), local.month(), local.day())
+    format!(
+        "{:04}-{:02}-{:02}",
+        local.year(),
+        local.month(),
+        local.day()
+    )
 }
 
 pub struct DigestScheduler {
@@ -290,7 +308,11 @@ impl DigestScheduler {
                             // 同一 digest body 覆盖多个 event_id；用合成 id 记录"flush 批次"。
                             let batch_id =
                                 format!("digest-batch:{date}@{window}:{}", filtered.len());
-                            let status = if send_result.is_ok() { "sent" } else { "failed" };
+                            let status = if send_result.is_ok() {
+                                "sent"
+                            } else {
+                                "failed"
+                            };
                             let _ = store.log_delivery(
                                 &batch_id,
                                 &actor_key,
@@ -363,7 +385,9 @@ pub fn render_digest(
     }
     if overflow > 0 {
         out.push('\n');
-        out.push_str(&format!("…… 另 {overflow} 条已省略（优先展示高优先级/最新）"));
+        out.push_str(&format!(
+            "…… 另 {overflow} 条已省略（优先展示高优先级/最新）"
+        ));
     }
     out
 }
@@ -457,7 +481,10 @@ mod tests {
         #[async_trait]
         impl OutboundSink for SpySink {
             async fn send(&self, a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
-                self.0.lock().unwrap().push((a.user_id.clone(), body.into()));
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((a.user_id.clone(), body.into()));
                 Ok(())
             }
         }
@@ -465,8 +492,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
         let sink = Arc::new(SpySink::default());
-        let prefs =
-            Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
         buf.enqueue(&actor("u1"), &ev("1", "AAPL")).unwrap();
         // u1 在 enqueue 之后把推送关了
         prefs
@@ -501,7 +527,10 @@ mod tests {
         #[async_trait]
         impl OutboundSink for SpySink {
             async fn send(&self, a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
-                self.0.lock().unwrap().push((a.user_id.clone(), body.into()));
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((a.user_id.clone(), body.into()));
                 Ok(())
             }
         }
@@ -514,8 +543,8 @@ mod tests {
         buf.enqueue(&actor("u2"), &ev("3", "TSLA")).unwrap();
 
         // 显式按 ET (-4) 解释窗口，复用原有 UTC 12:30 == 08:30 ET 的测试向量。
-        let sched = DigestScheduler::new(buf, sink.clone(), "08:30", "17:00")
-            .with_tz_offset_hours(-4);
+        let sched =
+            DigestScheduler::new(buf, sink.clone(), "08:30", "17:00").with_tz_offset_hours(-4);
         let now = Utc.with_ymd_and_hms(2026, 4, 21, 12, 30, 0).unwrap();
         let mut fired = HashSet::new();
         let n = sched.tick_once(now, &mut fired).await.unwrap();
@@ -549,12 +578,7 @@ mod tests {
     #[test]
     fn render_digest_omits_footer_when_no_overflow() {
         let events: Vec<MarketEvent> = (0..2).map(|i| ev(&format!("e{i}"), "AAPL")).collect();
-        let body = render_digest(
-            "盘前摘要",
-            &events,
-            0,
-            crate::renderer::RenderFormat::Plain,
-        );
+        let body = render_digest("盘前摘要", &events, 0, crate::renderer::RenderFormat::Plain);
         assert!(!body.contains("已省略"), "无 overflow 时不应出现省略提示");
     }
 

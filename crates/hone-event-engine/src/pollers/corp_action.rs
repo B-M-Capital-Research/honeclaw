@@ -55,16 +55,14 @@ impl CorpActionPoller {
         let mut out = Vec::new();
 
         // Splits
-        let splits_path =
-            format!("/v3/stock_split_calendar?from={from_str}&to={to_str}");
+        let splits_path = format!("/v3/stock_split_calendar?from={from_str}&to={to_str}");
         match self.client.get_json(&splits_path).await {
             Ok(v) => out.extend(events_from_splits(&v)),
             Err(e) => tracing::warn!("split calendar fetch failed: {e:#}"),
         }
 
         // Dividends
-        let div_path =
-            format!("/v3/stock_dividend_calendar?from={from_str}&to={to_str}");
+        let div_path = format!("/v3/stock_dividend_calendar?from={from_str}&to={to_str}");
         match self.client.get_json(&div_path).await {
             Ok(v) => out.extend(events_from_dividends(&v)),
             Err(e) => tracing::warn!("dividend calendar fetch failed: {e:#}"),
@@ -131,9 +129,7 @@ fn events_from_dividends(raw: &Value) -> Vec<MarketEvent> {
             let naive = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()?;
             let occurred_at = Utc.from_utc_datetime(&naive.and_hms_opt(0, 0, 0)?);
             let dividend = item.get("dividend").and_then(|v| v.as_f64());
-            let summary = dividend
-                .map(|d| format!("股息 {d:.4}"))
-                .unwrap_or_default();
+            let summary = dividend.map(|d| format!("股息 {d:.4}")).unwrap_or_default();
             Some(MarketEvent {
                 id: format!("div:{symbol}:{date}"),
                 kind: EventKind::Dividend,
@@ -171,7 +167,10 @@ fn events_from_sec_filings(raw: &Value, ticker: &str) -> Vec<MarketEvent> {
             if accession.is_empty() {
                 return None;
             }
-            let filed = item.get("fillingDate").and_then(|v| v.as_str()).unwrap_or("");
+            let filed = item
+                .get("fillingDate")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let accepted = item
                 .get("acceptedDate")
                 .and_then(|v| v.as_str())

@@ -21,7 +21,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use hone_event_engine::prefs::{
-    first_invalid_kind_tag, FilePrefsStorage, NotificationPrefs, PrefsProvider, ALL_KIND_TAGS,
+    ALL_KIND_TAGS, FilePrefsStorage, NotificationPrefs, PrefsProvider, first_invalid_kind_tag,
 };
 
 use crate::routes::{json_error, require_actor};

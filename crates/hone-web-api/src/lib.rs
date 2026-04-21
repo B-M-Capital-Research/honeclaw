@@ -233,9 +233,8 @@ pub async fn start_server(
         let notif_prefs_dir = state.core.config.storage.notif_prefs_dir.clone();
         let (events_db, events_jsonl, digest_dir) = {
             // 与 sessions.sqlite3 同目录：events.sqlite3 + events.jsonl + digest_buffer/
-            let session_db = std::path::PathBuf::from(
-                &state.core.config.storage.session_sqlite_db_path,
-            );
+            let session_db =
+                std::path::PathBuf::from(&state.core.config.storage.session_sqlite_db_path);
             let base = session_db
                 .parent()
                 .map(|p| p.to_path_buf())

@@ -269,7 +269,11 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        assert!(!p.should_deliver(&ev(EventKind::EarningsReleased, Severity::High, vec!["AAPL"])));
+        assert!(!p.should_deliver(&ev(
+            EventKind::EarningsReleased,
+            Severity::High,
+            vec!["AAPL"]
+        )));
     }
 
     #[test]
@@ -299,7 +303,11 @@ mod tests {
             allow_kinds: Some(vec!["earnings_released".into()]),
             ..Default::default()
         };
-        assert!(p.should_deliver(&ev(EventKind::EarningsReleased, Severity::High, vec!["AAPL"])));
+        assert!(p.should_deliver(&ev(
+            EventKind::EarningsReleased,
+            Severity::High,
+            vec!["AAPL"]
+        )));
         assert!(!p.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
     }
 
@@ -310,7 +318,11 @@ mod tests {
             blocked_kinds: vec!["news_critical".into()],
             ..Default::default()
         };
-        assert!(p.should_deliver(&ev(EventKind::EarningsReleased, Severity::High, vec!["AAPL"])));
+        assert!(p.should_deliver(&ev(
+            EventKind::EarningsReleased,
+            Severity::High,
+            vec!["AAPL"]
+        )));
         assert!(!p.should_deliver(&ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"])));
     }
 

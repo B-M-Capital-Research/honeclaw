@@ -53,11 +53,7 @@ impl PortfolioSubscription {
             .map(|s| s.to_ascii_uppercase())
             .filter(|s| !s.is_empty())
             .collect();
-        Self {
-            id,
-            actor,
-            symbols,
-        }
+        Self { id, actor, symbols }
     }
 
     pub fn symbols(&self) -> &HashSet<String> {
@@ -312,7 +308,11 @@ pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegis
             );
             continue;
         }
-        let symbols: Vec<String> = portfolio.holdings.iter().map(|h| h.symbol.clone()).collect();
+        let symbols: Vec<String> = portfolio
+            .holdings
+            .iter()
+            .map(|h| h.symbol.clone())
+            .collect();
         if symbols.is_empty() {
             continue;
         }
@@ -403,12 +403,7 @@ mod tests {
         let sub = GlobalSubscription::new("g1", vec![actor("imessage", "u1")])
             .with_kinds(["macro_event".to_string()]);
         assert!(sub.matches(&ev("e", "", Severity::Low, EventKind::MacroEvent)));
-        assert!(!sub.matches(&ev(
-            "e",
-            "AAPL",
-            Severity::Low,
-            EventKind::EarningsUpcoming
-        )));
+        assert!(!sub.matches(&ev("e", "AAPL", Severity::Low, EventKind::EarningsUpcoming)));
     }
 
     #[test]
@@ -416,12 +411,8 @@ mod tests {
         // 哪怕 Subscription 命中，群聊 actor 都应该被硬过滤。
         let mut reg = SubscriptionRegistry::new();
         let group_actor = actor("feishu", "u1");
-        let group_actor = ActorIdentity::new(
-            group_actor.channel,
-            group_actor.user_id,
-            Some("chat:42"),
-        )
-        .unwrap();
+        let group_actor =
+            ActorIdentity::new(group_actor.channel, group_actor.user_id, Some("chat:42")).unwrap();
         reg.register(Box::new(PortfolioSubscription::new(
             group_actor.clone(),
             vec!["AAPL".into()],
@@ -473,8 +464,7 @@ mod tests {
         storage.save(&dm, &p_dm).unwrap();
 
         // 群 actor → 应跳过
-        let group =
-            ActorIdentity::new("feishu", "u2", Some("chat:42")).unwrap();
+        let group = ActorIdentity::new("feishu", "u2", Some("chat:42")).unwrap();
         let p_group = Portfolio {
             actor: Some(group.clone()),
             user_id: "u2".into(),
@@ -593,7 +583,10 @@ mod tests {
     fn shared_registry_from_registry_has_no_refresh() {
         let reg = SubscriptionRegistry::new();
         let shared = SharedRegistry::from_registry(reg);
-        assert!(shared.refresh().is_none(), "无 portfolio 目录时 refresh 应返回 None");
+        assert!(
+            shared.refresh().is_none(),
+            "无 portfolio 目录时 refresh 应返回 None"
+        );
     }
 
     #[test]
