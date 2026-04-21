@@ -6,6 +6,12 @@
 - **状态**: Fixing
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 11:00-12:00 最新巡检样本：
+    - `11:00:05` 窗口里，`run_id=3917/3918/3919/3920/3921/3922/3923/3924` 分别对应 `CAI破位预警`、`TEM破位预警`、`RKLB异动监控`、`ORCL 大事件监控`、`小米30港元破位预警`、`TEM大事件心跳监控`、`全天原油价格3小时播报`、`ASTS 重大异动心跳监控`，全部落成 `execution_failed + skipped_error + delivered=0`，错误体相同：`LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
+    - 同一 `11:00` 窗口还出现 `run_id=3925/3926` 的 `JsonUnknownStatus` 失败，说明同批 heartbeat 除了传输失败外仍混有结构化状态退化；但本条缺陷只跟踪 MiniMax HTTP 传输失败。
+    - `11:30:05` 窗口里，`run_id=3927-3936` 覆盖 `CAI破位预警`、`Monitor_Watchlist_11`、`全天原油价格3小时播报`、`TEM大事件心跳监控`、`TEM破位预警`、`ASTS 重大异动心跳监控`、`小米破位预警`、`RKLB异动监控`、`ORCL 大事件监控`、`小米30港元破位预警`，再次全部统一落成同一 MiniMax HTTP 传输失败。
+    - `12:00:05` 窗口里，`run_id=3937-3946` 又覆盖相同任务族并全部 `execution_failed + skipped_error + delivered=0`，错误仍为 `https://api.minimaxi.com/v1/chat/completions` 发送失败。
+    - 这说明 09:00/09:31 后故障没有自然恢复，而是持续影响至少三个后续半小时窗口。
   - 2026-04-21 09:00-09:31 最近一小时最新样本：
     - `09:00:05` 窗口里，`run_id=3873/3874/3875/3876/3877/3878/3879/3880/3881/3882`
       - 分别对应 `小米破位预警`、`全天原油价格3小时播报`、`Monitor_Watchlist_11`、`小米30港元破位预警`、`CAI破位预警`、`TEM破位预警`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`RKLB异动监控`
@@ -78,7 +84,8 @@
 
 ## 当前实现效果
 
-- `2026-04-21 09:00` 与 `09:31` 的最新真实窗口说明，这条缺陷不能继续维持 `Fixed`：仅最近一小时就至少有 16 条 heartbeat run 再次统一命中同一 `chat/completions` 传输失败。
+- `2026-04-21 11:00`、`11:30`、`12:00` 的最新真实窗口说明，这条缺陷仍在继续：三个窗口又至少 30 条 heartbeat run 统一命中同一 `chat/completions` 传输失败。
+- 加上 `09:00` 与 `09:31` 的 16 条样本，故障已跨越多个半小时检查周期，不能按单次上游抖动处理。
 - 失败对象覆盖 `ASTS / RKLB / TEM / ORCL / Watchlist / CAI / 原油 / 小米` 多种 heartbeat 模板与不同 target，不再是单个 job 抖动。
 - 更关键的是，`web.log` 仍显示每次失败后直接进入 `心跳任务未命中，本轮不发送`，表明当前生产链路并没有稳定吸收这类传输抖动；README 中先前“2026-04-20 已 provider 级修复”的结论已与最新生产事实不符。
 - 当前 heartbeat 链路在 MiniMax HTTP 发送失败后直接落为 `execution_failed + skipped_error`，没有自动重试。
@@ -101,7 +108,7 @@
 
 ## 修复进展
 
-- 截至 2026-04-21 09:31，仓库主线仍无法证明这条缺陷已经收口：最近一小时的 16 条 heartbeat 真实样本再次命中同一 `error sending request for url (...)`。
+- 截至 2026-04-21 12:00，仓库主线仍无法证明这条缺陷已经收口：从 `09:00` 到 `12:00` 的多个 heartbeat 真实窗口持续命中同一 `error sending request for url (...)`。
 - 本轮巡检时工作区保持干净，未见能证明“线上已落地吸震补丁”的仓库内新增事实；因此本单只能恢复为 `Fixing`，不能继续记为 `Fixed`。
 - 由于 heartbeat scheduler 与直聊搜索阶段共用 MiniMax / OpenAI-compatible provider，后续只有在真实生产窗口不再出现这类成批 `chat/completions` 传输失败时，才可重新评估是否关闭。
 

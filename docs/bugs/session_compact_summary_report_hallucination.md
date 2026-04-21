@@ -7,6 +7,17 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-21 10:52-11:14 最新连续复现：
+   - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
+   - `2026-04-21T10:52:02.385261+08:00` 会话先写入 `system` 消息 `Conversation compacted`
+   - 紧接着 `2026-04-21T10:52:02.385272+08:00` 又写入 `role=user` 的 `【Compact Summary】...`，内容是完整 `股票关注表` 与“助手的观点 / 用户的观点”列
+   - `session_id=Actor_feishu__direct__ou_5f44da57b6746474d4497f091b9f772b87`
+   - `2026-04-21T10:59:14.072609+08:00` 写入 `system` 边界消息后，`2026-04-21T10:59:14.072620+08:00` 又写回 `role=user` 的 `【Compact Summary】...`，内容覆盖 `002353.SZ / 300049.SZ / 02259.HK` 等前序股票关注表
+   - 同一会话随后在 `2026-04-21T11:01:30.668657+08:00` 继续正式回答“如果黄金上涨，它和02899对比哪个更合适？”，说明这条 `role=user` summary 仍进入后续上下文窗口
+   - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
+   - `2026-04-21T11:09:54.781705+08:00` 写入 `system` 边界消息后，`2026-04-21T11:09:54.781714+08:00` 又写回 `role=user` 的 `【Compact Summary】...`，内容覆盖 `CRDO / VST / NUAI` 等历史画像与观点
+   - 同一会话随后在 `2026-04-21T11:14:05.205080+08:00` 正式回答“请详细分析下高通”，说明最新生产链路仍是“summary 以 user 身份回灌，再继续回答新问题”
+   - 这三个会话在同一小时内连续复现，说明问题不是单个旧会话残留，而是当前 auto compact 持续把摘要写入真实 user transcript。
 - 2026-04-21 10:52-10:59 最近一小时最新复现：
    - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
    - `2026-04-21T10:52:02.385261+08:00` 会话先写入 `system` 消息 `Conversation compacted`

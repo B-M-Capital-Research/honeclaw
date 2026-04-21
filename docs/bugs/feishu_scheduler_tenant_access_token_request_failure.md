@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 11:22 用户侧最新反馈：
+    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+    - `2026-04-21T11:22:49.960870+08:00` 用户明确发送：`今天你的指令工作怎么没发？需要你继续执行。`
+    - 同一会话对应的定时任务在 `08:34:13` 到 `08:49:12` 之间至少有 `run_id=3868`（`美股盘后AI及高景气产业链推演`）、`run_id=3871`（`美股AI产业链盘后报告`）、`run_id=3872`（`A股盘前高景气产业链推演`）全部落成 `execution_failed + send_failed + delivered=0`
+    - 这些 run 的 `error_message` 都是 `集成错误: Feishu token request failed: error sending request for url (https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal)`
+    - 用户随后只能手动要求“继续执行”，assistant 在 `2026-04-21T11:26:47.585590+08:00` 才补发一份当前时点报告，说明该发送故障已经转化为用户可感知的定时任务缺席。
   - 2026-04-21 08:04-09:04 最近一小时真实样本：
     - `run_id=3852`，`job_name=HoneClaw每日使用Tips`，`executed_at=2026-04-21T08:04:12.373341+08:00`
       - `execution_status=execution_failed`
@@ -53,11 +59,13 @@
 - `2026-04-21 08:04 -> 09:04` 的最新真实窗口里，至少 11 条 Feishu 定时任务跨多个不同 target 统一落成 `send_failed`，错误体完全一致，说明问题发生在共享发送前置链路，而不是单个任务 prompt、单个用户配置或单个 receive_id。
 - 这些 run 的 `response_preview` 多数已经是稳定的用户态失败文案或完整正文开头，说明 scheduler 主体并未卡在 search / answer 阶段，真正失败点发生在最终 Feishu 发送准备阶段。
 - `2026-04-21 10:01` 的 `ASTS 重大异动心跳监控` 更进一步证明：即使 heartbeat 已经完成事件判断并生成了明确的 `deliver_preview`，最终仍会因为 `tenant_access_token/internal` 请求失败而彻底丢失提醒。
+- `2026-04-21 11:22` 的直聊反馈进一步证明，这不是只有台账可见的后台失败：用户已经明确感知到今天定时指令没有送达，并要求人工补跑。
 - 这说明本故障不是“某类日报任务触发超时 fallback 后发不出去”的局部问题，而是 Feishu 发送公共前置依赖当前不稳定。
 
 ## 用户影响
 
 - 这是功能性缺陷，不是回答质量问题。任务内容已经生成或 heartbeat 已经确认触发，但用户最终完全收不到消息。
+- 最新用户反馈说明，自动任务缺席已经直接影响用户工作流；用户需要主动追问并触发人工补发，才能拿到原本应自动送达的内容。
 - 之所以定级为 `P1`，是因为问题在最近一小时内同时影响了多个 Feishu 定时任务与至少一条 heartbeat 告警，已经是跨任务、跨目标的共享发送链路故障。
 - 这不是 `P3`：损害不在于“内容写得一般”，而在于 Feishu 自动投递主能力直接中断。
 
