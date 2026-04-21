@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 01:30-02:01 最新巡检样本：
+    - 同一目标 `+8613867793336` 的 RKLB / TEM / ORCL / ASTS heartbeat 在 `01:30-02:01` 窗口仍没有形成新的用户可见播报，全部落成 `noop + skipped_noop`。
+    - `run_id=4233`（`TEM大事件心跳监控`，`executed_at=2026-04-22T01:30:39.956023+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`，`raw_preview` 已分析价格、AACR、Gilead collaboration 等条件，仍以前置 `<think>` 自由文本收口。
+    - `run_id=4243`（`TEM大事件心跳监控`，`executed_at=2026-04-22T02:01:02.916414+08:00`）继续落成 `noop + skipped_noop`，`detail_json.parse_kind=JsonNoop`，但 `starts_with_json=false`，`raw_preview` 仍以 `<think>` 开头并夹带会议进展分析。
+    - `run_id=4241`（`RKLB异动监控`，`executed_at=2026-04-22T02:00:30.158792+08:00`）落成 `noop + skipped_noop`，`raw_preview` 已分析价格、Neutron launch 与订单积压新闻，仍是 `<think>` 自由文本在前、尾部状态依赖解析器提取。
+    - `run_id=4239/4242`（`ORCL 大事件监控` / `ASTS 重大异动心跳监控`，`executed_at=2026-04-22T02:00:24-02:00:40+08:00`）同样为 `noop + skipped_noop` 且 `starts_with_json=false`；其中 ASTS 继续复述 BlueBird 7 错误入轨事件，说明“应触发/应跳过”的用户可解释性仍完全依赖模型自由文本与后台解析，不是稳定结构化契约。
+    - 本轮没有升级成 `execution_failed`，但这不是修复结论：最新样本仍证明 heartbeat 上游没有稳定输出纯 JSON，调度器继续把 `<think>...noop` / `JsonEmptyStatus` 当静默跳过处理；结合 01:00 用户反馈“只报告 ASTS，不报告 RKLB/TEM/甲骨文”，该缺陷仍影响用户对监控覆盖面的信任。
   - 2026-04-22 00:00-01:01 最新巡检样本：
     - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 `2026-04-22T01:00:48.669607+08:00` 收到用户明确反馈：“你怎么只报告asts的消息，我让你看的其他3只股票都不告诉我消息面rklb tem 甲骨文”。
     - 同一目标 `+8613867793336` 的 heartbeat 任务在 `00:00-01:01` 窗口内没有形成新的 RKLB / TEM / ORCL 用户可见播报：
