@@ -40,11 +40,7 @@ impl MultiChannelSink {
         Self::new(Arc::new(LogSink))
     }
 
-    pub fn with_channel(
-        mut self,
-        channel: impl Into<String>,
-        sink: Arc<dyn OutboundSink>,
-    ) -> Self {
+    pub fn with_channel(mut self, channel: impl Into<String>, sink: Arc<dyn OutboundSink>) -> Self {
         self.sinks.insert(channel.into(), sink);
         self
     }
@@ -95,7 +91,10 @@ mod tests {
     #[async_trait]
     impl OutboundSink for Spy {
         async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
-            self.0.lock().unwrap().push(format!("{}:{}", actor.channel, body));
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("{}:{}", actor.channel, body));
             Ok(())
         }
     }

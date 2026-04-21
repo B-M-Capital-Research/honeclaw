@@ -80,15 +80,14 @@ mod tests {
 
     #[test]
     fn chat_id_for_group_strips_chat_prefix() {
-        let actor = ActorIdentity::new("telegram", "8039067465", Some("chat_-1002012381143"))
-            .unwrap();
+        let actor =
+            ActorIdentity::new("telegram", "8039067465", Some("chat_-1002012381143")).unwrap();
         assert_eq!(TelegramSink::chat_id_for(&actor), "-1002012381143");
     }
 
     #[test]
     fn chat_id_for_group_without_prefix_passes_through() {
-        let actor =
-            ActorIdentity::new("telegram", "8039067465", Some("-1001234567890")).unwrap();
+        let actor = ActorIdentity::new("telegram", "8039067465", Some("-1001234567890")).unwrap();
         assert_eq!(TelegramSink::chat_id_for(&actor), "-1001234567890");
     }
 }

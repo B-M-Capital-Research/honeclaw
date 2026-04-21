@@ -114,7 +114,9 @@ impl OutboundSink for FeishuSink {
         let content = serde_json::json!({ "text": body }).to_string();
         let resp = self
             .client
-            .post(format!("{FEISHU_SEND_URL}?receive_id_type={receive_id_type}"))
+            .post(format!(
+                "{FEISHU_SEND_URL}?receive_id_type={receive_id_type}"
+            ))
             .bearer_auth(&token)
             .json(&serde_json::json!({
                 "receive_id": receive_id,

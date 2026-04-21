@@ -75,18 +75,13 @@ impl DiscordSink {
     }
 
     fn channel_id_for_group(scope: &str) -> String {
-        scope
-            .strip_prefix("channel_")
-            .unwrap_or(scope)
-            .to_string()
+        scope.strip_prefix("channel_").unwrap_or(scope).to_string()
     }
 
     async fn send_to_channel(&self, channel_id: &str, body: &str) -> anyhow::Result<()> {
         let resp = self
             .client
-            .post(format!(
-                "{DISCORD_API_BASE}/channels/{channel_id}/messages"
-            ))
+            .post(format!("{DISCORD_API_BASE}/channels/{channel_id}/messages"))
             .header("Authorization", self.auth_header())
             .json(&serde_json::json!({ "content": body }))
             .send()
