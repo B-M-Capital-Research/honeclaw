@@ -6,6 +6,10 @@
 - **状态**: Fixing
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 14:30-15:00 最新巡检样本：
+    - `run_id=3988`（`RKLB异动监控`，`executed_at=2026-04-21T14:30:06.999855+08:00`）再次落成 `execution_failed + skipped_error + delivered=0`
+    - `error_message=LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
+    - 但到 `15:00` 同一 `RKLB异动监控` 已不再是 HTTP 传输失败，而是切换成 `JsonUnknownStatus`；说明 MiniMax 传输失败仍会单点复现，但最新窗口主要故障又漂移回结构化输出契约。
   - 2026-04-21 14:00 最新巡检样本：
     - `run_id=3978`（`RKLB异动监控`，`executed_at=2026-04-21T14:00:06.953369+08:00`）再次落成 `execution_failed + skipped_error + delivered=0`
     - `error_message=LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
@@ -89,6 +93,7 @@
 
 ## 当前实现效果
 
+- `2026-04-21 14:30` 最新窗口又出现 `RKLB异动监控` 单点 MiniMax HTTP 传输失败；`15:00` 同任务虽转为 `JsonUnknownStatus`，但这不能证明传输吸震已收口，只能说明当前 heartbeat 故障在“传输失败”和“结构化输出失败”之间切换。
 - `2026-04-21 14:00` 最新窗口又出现 `RKLB异动监控` 单点 MiniMax HTTP 传输失败；虽然不再是 09:00-12:00 的大面积批量失败，但足以推翻“短时恢复可能已收口”的判断，本单继续保持 `Fixing`。
 - `2026-04-21 12:30` 与 `13:00` 两个最新 heartbeat 窗口没有继续出现 `https://api.minimaxi.com/v1/chat/completions` 的成批传输失败；同批主要退化为 `JsonUnknownStatus` 或正常 `noop/triggered`。
 - 但该观察只覆盖上一次大面积失败后的两个半小时窗口，尚不足以证明重试或降级策略已经在生产收口；本单继续保持 `Fixing`，等待后续窗口确认是否稳定不再复现。

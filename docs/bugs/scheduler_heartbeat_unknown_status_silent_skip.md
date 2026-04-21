@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 15:00 最新巡检样本：
+    - `run_id=4000`（`小米破位预警`，`executed_at=2026-04-21T15:00:18.465327+08:00`）落成 `execution_failed + skipped_error`
+      - 日志 `2026-04-21 15:00:18.464` 显示 `parse_kind=JsonUnknownStatus`
+      - `raw_preview` 已明确写出 `The data fetch failed... I must return noop` 并输出 `{}`，但仍被升级为失败
+    - `run_id=4004`（`RKLB异动监控`，`executed_at=2026-04-21T15:00:34.306514+08:00`）落成 `execution_failed + skipped_error`
+      - 日志 `2026-04-21 15:00:34.306` 显示 `parse_kind=JsonUnknownStatus`
+      - `raw_preview` 已围绕 `Rocket Lab` 旧新闻做出“没有新重大新闻”的判断，却没有稳定收口为合法状态 JSON
+    - `run_id=4005`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T15:00:39.008012+08:00`）同批继续 `execution_failed + skipped_error`
+      - 日志 `2026-04-21 15:00:39.007` 显示 `raw_preview` 继续以 `<think>\nLet me check each stock against its trigger price:` 开头
+    - 这说明 `14:00` 的失败没有自然收口；15:00 又扩散到 `小米破位预警`、`RKLB异动监控` 与 `Monitor_Watchlist_11`，结构化状态契约仍在不同模板间漂移。
   - 2026-04-21 13:30-14:00 最近一小时最新样本：
     - `run_id=3968`（`小米30港元破位预警`，`executed_at=2026-04-21T13:30:13.671481+08:00`）再次落成 `execution_failed + skipped_error`
       - `detail_json.parse_kind=JsonUnknownStatus`
@@ -931,6 +941,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-21 15:00` 最新窗口，`小米破位预警`、`RKLB异动监控`、`Monitor_Watchlist_11` 再次因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，说明该缺陷仍在活跃扩散，而不是 14:00 后自恢复。
 - 到 `2026-04-21 13:30 -> 14:00` 的最新窗口，这条缺陷仍在活跃：`小米30港元破位预警`、`CAI破位预警`、`Monitor_Watchlist_11` 分别在相邻两轮里落成 `JsonUnknownStatus`，且失败正文都已经完成“条件未满足，应 noop”的业务判断，只是没有稳定输出合法状态 JSON。
 - `2026-04-21 09:31` 与 `10:01` 的最新窗口说明，这条缺陷仍然活跃且继续漂移：上一轮失败对象是 `CAI破位预警`，下一轮又切到 `Monitor_Watchlist_11`。
 - 两条最新 `raw_preview` 都已经在正文里明确写出“条件未触发，应返回 noop/{}”，但因为前面混入 `<think>` 和解释性自由文本，最终仍被升级为 `JsonUnknownStatus`。

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-21 14:10 CST
+最后更新：2026-04-21 15:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：12
-- 已修复 / 已关闭：47
+- 活跃待修复：13
+- 已修复 / 已关闭：46
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -27,14 +27,15 @@
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-20 22:29 Feishu 真实会话把 `Falling back from WebSockets... 403 Forbidden ... wss://chatgpt.com/backend-api/codex/responses` 直接混进用户可见答复，旧净化规则已回归失效 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-20 21:31 `Oil_Price_Monitor_Premarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；同一目标已在同一小时窗连续打到盘前扫描和油价盘前播报 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
-| Feishu 出站 `send message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 12:03 同一时间窗内 `每日公司资讯与分析总结` 落成 `completed + send_failed + delivered=0`，另一个直聊会话已 `reply.chars=1649` 却随后 `发送回复失败`，错误端点均为 `im/v1/messages?receive_id_type=open_id` | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
+| Feishu 出站 `send message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:00 `全天原油价格3小时播报` 已生成并 `should_deliver=1`，但同一 `im/v1/messages?receive_id_type=open_id` 出站请求传输失败，落成 `send_failed + delivered=0` | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
+| Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无最终回复 | P1 | New | 2026-04-21 14:52 `分析一下金风科技` 触发 `codex acp session/prompt idle timeout (180s)`；最终只落库“正在思考中”和工具调用轨迹，没有正式 final 答复，2026-04-16 的 Fixed 结论回归失效 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | 会话压缩摘要仍以 `role=user` 的 `Compact Summary` 回灌真实 transcript，修复结论已回归失效 | P1 | Fixing | 2026-04-21 10:52、10:59、11:09 三个 Feishu 直聊会话连续在 compact 后写入 `role=user` 摘要，并继续驱动后续正式回答，说明 2026-04-20 的“改为 system 并跳过 restore”未在生产收口 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，用户只收到半成品回复 | P3 | New | 2026-04-20 23:54 `迈富时` 真实提问只收到“简短 todo + 这类单轮分析不落盘动态计划”的 138 字内部执行计划，没有任何买入判断或替代标的结论 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-21 13:30 `小米30港元破位预警` 又因 `<think>...{}` 落成 `JsonUnknownStatus`，14:00 同批 `CAI破位预警` 与 `Monitor_Watchlist_11` 再次失败；问题仍在不同模板间漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-21 13:01 `ASTS 重大异动心跳监控` 再次送达 `BlueBird 7` 低轨/卫星损失旧事件；13:30/14:01 虽转回 `noop`，raw_preview 仍继续消费同一旧事实，去重仍未稳定 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-21 15:00 `小米破位预警`、`RKLB异动监控`、`Monitor_Watchlist_11` 再次因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，问题仍在不同模板间漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-21 14:30 与 15:00 `ASTS 重大异动心跳监控` 连续两轮再次送达同一 `BlueBird 7` 低轨/卫星损失旧事件，13:30/14:01 的 `noop` 只是短暂摇摆 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 21:01 `TEM大事件心跳监控` 再次落成 `execution_failed + skipped_error`；20:30 还是 `noop`、21:00 前后同批又混有 `JsonUnknownStatus`，用户侧无法判断本轮是未触发还是链路直接耗尽 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
-| Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 14:00 `RKLB异动监控` 又单点复现 `https://api.minimaxi.com/v1/chat/completions` 发送失败；12:30/13:00 短时恢复不足以证明传输吸震已收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
-| Telegram update listener 持续网络不可达，近一个月没有新消息入库 | P2 | New | 2026-04-21 13:49 `GetUpdates` 仍失败，最新错误从 `Connection refused` 变为 `operation timed out`；`sessions` 最近 Telegram 会话仍停在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
+| Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 14:30 `RKLB异动监控` 又单点复现 `https://api.minimaxi.com/v1/chat/completions` 发送失败；15:00 同任务转为 `JsonUnknownStatus`，传输吸震仍不能判定收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
+| Telegram update listener 持续网络不可达，近一个月没有新消息入库 | P2 | New | 2026-04-21 14:31-14:58 `GetUpdates` 继续反复 `operation timed out`，退避升至 64s 仍未恢复；`sessions` 最近 Telegram 会话仍停在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## 已修复 / 已关闭
 
@@ -70,7 +71,6 @@
 | Feishu 直聊在处理中遭遇 runtime 重启风暴，placeholder 发出后整轮无最终回复 | P1 | Fixed | 2026-04-20 已在 `run()` 启动时扫描 30 分钟内 `last_message_role=user` 的直聊会话并补发失败提示，同时落库 assistant 失败消息防止重复 | [feishu_direct_runtime_restart_interrupts_inflight_reply.md](./feishu_direct_runtime_restart_interrupts_inflight_reply.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixed | 2026-04-20 已在 `openai_compatible.rs` 的 `chat` / `chat_with_tools` 中对传输层错误补一次自动重试（2 秒间隔） | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
 | Feishu 每日动态监控遇到 `codex acp stream closed before response` 后台账仍记为已发送 | P2 | Fixed | 2026-04-20 已将 `codex acp`/`stream closed before response`/`acp stream` 加入 `looks_internal_error_detail`，发送时自动替换为通用失败文案 | [feishu_scheduler_codex_acp_stream_closed_false_sent.md](./feishu_scheduler_codex_acp_stream_closed_false_sent.md) |
-| Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无回复 | P1 | Fixed | `02d01d2` 已把失败分支接入共享超时友好文案；2026-04-16 再补 handler 级回归测试，确认 timeout 不会再静默结束 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | Feishu 直聊消息在已有同 session 任务处理中时仍先发送 placeholder，但未真正进入 agent 主链路 | P1 | Fixed | 2026-04-18 19:01 最新真实 busy 样本已只发送 `direct.busy` 并跳过 placeholder，live 复核通过 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |
 | Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | Fixed | `ea5229b` 已为 release helper 收口到 `.app` 启动形态、统一 `honeclaw/target` cache、并让 `launch.sh` 持续写入 `data/runtime/current.pid` 供重启链路可靠接管 | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
 | OpenAI-compatible 搜索阶段出现 tool-call 协议错位，`invalid params` 失败被统一收口成通用失败提示 | P1 | Fixed | 2026-04-16 已补齐搜索上下文清洗：同时移除历史 `tool` 与残留 assistant `tool_calls`，定向回归测试与 desktop release build 已通过 | [openai_compatible_tool_call_protocol_mismatch_invalid_params.md](./openai_compatible_tool_call_protocol_mismatch_invalid_params.md) |

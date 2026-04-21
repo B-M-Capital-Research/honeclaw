@@ -5,6 +5,21 @@
 - **严重等级**: P1
 - **状态**: New
 - **证据来源**:
+  - 2026-04-21 15:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=4001`
+      - `job_name=全天原油价格3小时播报`
+      - `executed_at=2026-04-21T15:00:23.813221+08:00`
+      - `execution_status=completed`
+      - `message_send_status=send_failed`
+      - `should_deliver=1`
+      - `delivered=0`
+      - `response_preview=【原油价格播报】2026年4月21日 15:00 北京时间...`
+      - `error_message=集成错误: Feishu send message request failed: error sending request for url (https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id)`
+    - `data/runtime/logs/sidecar.log`
+      - `2026-04-21 15:00:18.808` 已记录 `deliver job=全天原油价格3小时播报 ... deliver_preview="【原油价格播报】..."`
+      - `2026-04-21 15:00:23.811` 随后记录 `[Feishu] 定时任务投递失败 ... im/v1/messages?receive_id_type=open_id`
+    - 说明该出站传输失败不是 12:03 单次抖动；15:00 又有已生成、应投递的 Feishu 定时任务在同一 `im/v1/messages` 端点失败。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=3947`
     - `job_name=每日公司资讯与分析总结`
@@ -45,6 +60,7 @@
 
 ## 当前实现效果
 
+- `2026-04-21 15:00` 最新窗口再次出现 `completed + send_failed + delivered=0`，失败端点仍是 Feishu `im/v1/messages?receive_id_type=open_id`；本单继续保持 `New`，不能视作 12:03 的瞬时故障已恢复。
 - `2026-04-21 12:03` 同一时间窗里，一条定时任务和一条直聊回复都已经完成生成，但最终 Feishu 发送请求在同一个 `im/v1/messages` 出站端点失败。
 - 定时任务有明确台账：`should_deliver=1` 但 `delivered=0`。
 - 直聊会话有 `session.persist_assistant` 与 `handler.session_run completed success=true`，随后才出现 `发送回复失败`，说明用户可能看到 placeholder 或 busy 提示，但收不到正式答案。

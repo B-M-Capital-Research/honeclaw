@@ -6,6 +6,8 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+    - `2026-04-21 14:31:46`、`14:33:12`、`14:51:11`、`14:51:17`、`14:51:24`、`14:51:33`、`14:51:47`、`14:52:08`、`14:52:45`、`14:53:54`、`14:55:03`、`14:56:12`、`14:57:21`、`14:58:30` 最新窗口继续反复报 `Telegram update listener error ... GetUpdates ... operation timed out`
+    - 退避从 `1s` 逐步升到 `64s` 后仍未恢复，说明截至 15:00 CST 前 Telegram 入站轮询仍不可用。
     - `2026-04-21 13:49:04.964` 最新样本仍为 `GetUpdates` 网络失败：`Telegram update listener error: A network error: error sending request for url (https://api.telegram.org/token:redacted/GetUpdates): error trying to connect: operation timed out`
     - 这说明 `10:01-10:17` 的 `Connection refused` 不是单次瞬时异常；到 `13:49` 最新错误形态变成连接超时，但端到端结果仍是 Telegram listener 无法稳定拉取更新。
     - `2026-04-21 10:01:02.189` 开始，Telegram listener 连续报错：`Telegram update listener error: A network error: error sending request for url (https://api.telegram.org/token:redacted/GetUpdates): error trying to connect: tcp connect error: Connection refused (os error 61)`
@@ -32,6 +34,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-21 14:31-14:58` 最新窗口，Telegram listener 仍持续 `GetUpdates` 超时并固定退避重试，没有看到入站链路恢复或新 Telegram 会话落库。
 - 到 `2026-04-21 13:49` 的最新日志，Telegram listener 仍在 `GetUpdates` 网络阶段失败；错误从 `Connection refused` 变为 `operation timed out`，但没有看到入站链路恢复或新 Telegram 会话落库。
 - 最近一小时里 Telegram listener 基本每分钟都在固定重试一次 `getUpdates`，且每次都因 `Connection refused (os error 61)` 失败。
 - 仓库内最近的 Telegram 会话更新时间仍停留在 2026-03-18，最近 24 小时没有任何 Telegram 新消息落库，说明问题不是单次抖动，而是当前入站链路处于持续不可用状态。

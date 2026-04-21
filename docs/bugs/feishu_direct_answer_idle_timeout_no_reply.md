@@ -1,13 +1,27 @@
-# Bug: Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无回复
+# Bug: Feishu 直聊在 Answer 阶段触发 idle timeout 后整轮无最终回复
 
 - **发现时间**: 2026-04-15 23:12 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **修复提交**:
   - `02d01d2 fix channel error message sanitization`
   - `3e769d7 test feishu timeout fallback reply`
 - **证据来源**:
+  - 2026-04-21 14:52-15:00 最新回归样本：
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`
+      - `ordinal=16` user turn，`timestamp=2026-04-21T14:52:33.208137+08:00`
+      - 用户输入：`分析一下金风科技`
+      - `ordinal=17` assistant turn，`timestamp=2026-04-21T14:58:54.387058+08:00`
+      - assistant 内容不是正式分析结论，而是 `正在思考中...当前时间为2026年4月21日14:52（北京时间）。金风科技同时有 A 股和 H 股口径...`，后续夹带 `正在调用 Tool: hone/skill_tool...`、`正在执行：rg --files company_profiles | rg 'goldwind|jinfeng|金风|002202|02208'`、多次工具调用进度等中间轨迹。
+      - `ordinal=18` 已是用户下一轮 `分析一下ASTS`，说明 `金风科技` 这一轮没有后续正式 `final` 答复落库。
+    - `data/runtime/logs/sidecar.log`
+      - `2026-04-21 14:52:33.212` `recv ... input.preview="分析一下金风科技"`
+      - `2026-04-21 14:58:54.382` `runner.error ... kind=TimeoutPerLine message="codex acp session/prompt idle timeout (180s) stderr=... failed to open state db ... migration 23 was previously applied but is missing in the resolved migrations ..."`
+      - `2026-04-21 14:58:54.385` `MsgFlow/feishu failed ... error="codex acp session/prompt idle timeout (180s) ..."`
+      - `2026-04-21 14:58:54.385` `step=handler.session_run ... completed success=false reply_chars=0`
+    - 这说明 2026-04-16 的“timeout 失败分支会回填友好文案、不再静默结束”结论已回归失效：当前真实会话虽落库了一条 assistant，但它是半成品进度/工具轨迹，不是用户请求的最终答案；从用户视角仍等同本轮任务失败。
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `sessions`
     - `session_id=Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1`
     - `updated_at=2026-04-15T22:45:16.220393+08:00`
@@ -33,11 +47,11 @@
 
 ## 端到端链路
 
-1. Feishu 用户在直聊里发送“我的持仓情况”，这是主问答链路中的正常用户请求。
-2. 系统先发送 placeholder，并完成搜索阶段，期间成功执行 `portfolio` 与 `hone_portfolio` 工具。
-3. Multi-Agent 进入 Answer 阶段后，`opencode_acp` 长时间没有产出最终答复。
+1. Feishu 用户在直聊里发送正常用户请求，例如 `我的持仓情况` 或 `分析一下金风科技`。
+2. 系统先发送 placeholder，并进入 agent 执行链路；部分样本已完成搜索/工具调用，部分样本已把工具调用进度流式写入。
+3. Runner 进入 Answer / Codex ACP 阶段后长时间没有产出正式最终答复。
 4. 约 180 秒后 runner 触发 `session/prompt idle timeout (180s)`，本轮被标记为 `success=false`。
-5. 链路随后直接结束，没有 assistant 消息落库，也没有任何最终回复发送给用户，用户视角等同“机器人开始工作但最后没回”。
+5. 链路随后没有给出用户请求的最终答案：旧样本表现为没有 assistant 消息落库，新样本表现为只落库半成品进度/工具轨迹，用户视角仍等同“机器人开始工作但最后没完成”。
 
 ## 期望效果
 
@@ -47,6 +61,7 @@
 
 ## 修复情况（2026-04-16 HEAD 复核）
 
+- 2026-04-21 14:52 最新真实样本已推翻本节旧结论：`codex acp session/prompt idle timeout (180s)` 后没有回填完整产品化失败文案，也没有正式回答用户问题，而是把过渡文本和工具调用轨迹作为 assistant 消息落库。本单重新打开为 `New`。
 - `02d01d2 fix channel error message sanitization` 已把 Feishu 直聊失败分支改成共享 `user_visible_error_message(...)`，不再把原始 timeout 细节直接拼接，也不会在无流式内容时静默结束。
 - 当前 `bins/hone-feishu/src/handler.rs` 的失败分支会在 `response.success=false` 时：
   - 若已有部分流式正文，回填“内容可能不完整”的收尾提示；
@@ -73,5 +88,5 @@
 
 ## 结论
 
-- 该缺陷已由 `02d01d2` 的共享错误净化改动实质修复，本轮补齐了 handler 级回归证明。
-- 后续若再观察到“placeholder 后无最终回复”，应优先排查新的持久化/发送分支，而不是继续沿用本缺陷的旧结论。
+- 该缺陷在 2026-04-16 曾由 `02d01d2` 方向修复，但 2026-04-21 14:52 真实会话出现回归/变体：超时失败后只留下半成品进度和工具轨迹，没有正式回答。
+- 下一步应优先检查 Codex ACP runner 超时失败分支、已有 partial stream 时的失败收尾和 assistant 持久化策略，确保用户至少收到明确失败文案，而不是中间执行轨迹。
