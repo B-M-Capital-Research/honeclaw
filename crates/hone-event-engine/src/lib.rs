@@ -335,6 +335,7 @@ impl EventEngine {
                 store.clone(),
                 router.clone(),
                 Duration::from_secs(self.engine_cfg.poll_intervals.earnings_secs),
+                self.engine_cfg.earnings.window_days,
             );
         } else {
             info!("earnings_calendar poller disabled by config.sources.earnings_calendar=false");
@@ -464,9 +465,10 @@ fn spawn_earnings_poller(
     store: Arc<EventStore>,
     router: Arc<NotificationRouter>,
     interval: Duration,
+    window_days: i64,
 ) {
     tokio::spawn(async move {
-        let poller = EarningsPoller::new(client);
+        let poller = EarningsPoller::new(client).with_window_days(window_days);
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {

@@ -96,6 +96,12 @@ fn events_from_surprises(
             } else {
                 "不及预期"
             };
+            // FMP /v3/earnings-surprises 本身不返回 press release 链接;
+            // 指向 Yahoo 的 press-releases 页面作为通用兜底 —— 用户点进去就能看到
+            // 该公司最新(通常就是当日)的财报新闻稿,无需注册且免费。
+            let url = Some(format!(
+                "https://finance.yahoo.com/quote/{ticker}/press-releases/"
+            ));
             Some(MarketEvent {
                 id: format!("earnings_surprise:{ticker}:{date}"),
                 kind: EventKind::EarningsReleased,
@@ -104,7 +110,7 @@ fn events_from_surprises(
                 occurred_at,
                 title: format!("{ticker} 财报 {direction} {pct:+.1}%"),
                 summary: format!("实际 {actual:.2} / 预期 {est:.2}"),
-                url: None,
+                url,
                 source: "fmp.earnings_surprises".into(),
                 payload: item.clone(),
             })
@@ -144,6 +150,17 @@ mod tests {
                 events[0].occurred_at.format("%Y-%m-%d")
             )
         );
+    }
+
+    #[test]
+    fn released_event_carries_press_release_link() {
+        let raw = serde_json::json!([surprise(0, 2.30, 2.00)]);
+        let events =
+            events_from_surprises(&raw, "AAPL", Utc::now() - chrono::Duration::days(7), 5.0);
+        let url = events[0].url.as_ref().expect("press-release url");
+        assert!(url.contains("AAPL"));
+        assert!(url.starts_with("https://"));
+        assert!(url.contains("press-releases"));
     }
 
     #[test]

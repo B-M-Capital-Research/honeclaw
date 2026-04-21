@@ -204,13 +204,34 @@ event_engine:
   enabled: false
   # Dryrun forces OutboundSink to only log; wire real channel sinks when ready.
   dryrun: true
+  # 各 poller 拉取间隔（秒）。主要影响「时效性 vs FMP 配额」这对权衡：
+  # - 数值越小 = 事件到达用户的延迟越短，FMP 每天请求数越多（超额会被限速/扣费）
+  # - 数值越大 = 更省配额，但错过或迟到的窗口变长
+  # price_secs 是 FMP 请求的大头：每 tick 会按 watch pool 批量拉 /v3/quote，
+  # 其它 poller 要么单次日历、要么仅对持仓列表。调优时优先看 price_secs。
+  # 强烈不建议跑到下面「最小推荐值」以下，会触发 FMP 限流且实际没有更快的新鲜度收益。
   poll_intervals:
+    # 新闻。最小推荐 300 (5m)，典型 600-1800 (10-30m)，最大 3600 (1h)。
+    # 低于 300 时 FMP 返回不会更新，只是多烧配额。
     news_secs: 900              # 15 min
+    # 盘中价格异动。最小推荐 60 (1m)，典型 180-600 (3-10m)，最大 900 (15m)。
+    # 降到 60 时 N 只持仓 × 每分钟一次 quote，会显著吃 FMP 配额；
+    # 非交易时段 poller 会自动 skip，不必担心夜里空烧。
     price_secs: 300             # 5 min
+    # 财报日历（未来若干日的 earnings_upcoming）。典型 43200-86400 (12-24h)，最大 86400。
+    # 小于 43200 意义不大，财报日历不会小时级变动。
     earnings_secs: 86400        # 24 h: upcoming calendar
+    # 分红 / 拆股日历 + 持仓 SEC 8-K。典型 43200-86400；SEC 官方本身也有抓取频率限制，
+    # 低于 21600 (6h) 容易触发 EDGAR 的 rate-limit，非常不推荐。
     corp_action_secs: 86400     # 24 h: splits/dividends + SEC 8-K per holding
+    # 宏观经济日历。典型 43200-86400。事件粒度就是日级（CPI/NFP/FOMC 按日发布），
+    # 比 43200 更短无增益。
     macro_secs: 86400           # 24 h: economic calendar
+    # 分析师评级升降。典型 43200-86400。小于 21600 会频繁拉空结果，浪费配额。
     analyst_grade_secs: 86400   # 24 h: upgrades/downgrades per holding
+    # 财报 surprise（actual vs estimate）。典型 43200-86400。
+    # 真实的时效性靠 scheduler 在美股盘后（CN 早晨 04:30 前后）集中扫一次即可，
+    # 24h 足够；强行降到 3600 也不会更早拿到数据。
     earnings_surprise_secs: 86400  # 24 h: post-market actual vs estimate
   digest:
     # Pre/post-market digests fire at these local times in the configured timezone.
@@ -242,6 +263,19 @@ event_engine:
     # Requires llm.openrouter to be configured.
     llm_polish_for: []
     template_dir: "./data/event_templates"
+
+  # 财报 poller 参数。
+  # - window_days:EarningsPoller 每 tick 向 FMP earning_calendar 拉 [today, today+N]。
+  #   这决定 Hone 从多早开始"关注"一家公司的财报 —— 默认 14 天:启动时你会一次看到
+  #   未来 14 天内所有持仓的财报预告(Medium 级,进 digest)。
+  #   在此基础上,EarningsPoller 会对距今 T-3/T-2/T-1 的财报额外每日发倒计时(id 带
+  #   `:countdown:N` 后缀避免跨日 dedup);T-1 升 High 立即推(盘前提醒),T-2/T-3 维持
+  #   Medium 进 digest。用户 `blocked_kinds` 包含 `earnings_upcoming` 即全程静音。
+  #   典型取值:7(仅本周)、14(两周,默认)、21(三周,但信号老化)。小于 3 会让 T-3
+  #   倒计时失效(因为 poller 看不到 T-3 的财报)。
+  earnings:
+    window_days: 14
+
   # Per-poller 开关。每个字段对应 hone-event-engine 内一个 spawn_*_poller 调用,
   # 设成 false 即直接 skip 该 poller 的 tick(最省 FMP 配额)。
   # 想要"poller 仍跑、只是 router 丢弃某 kind"的兜底关法,改用下方 disabled_kinds。

@@ -25,6 +25,9 @@ pub struct EventEngineConfig {
     #[serde(default)]
     pub sources: Sources,
 
+    #[serde(default)]
+    pub earnings: EarningsConfig,
+
     /// 全局禁用的 event kind 标签列表（`kind_tag` 字符串，如 `"press_release"`）。
     /// Router 在 per-user prefs 之前先过一遍；入库仍然发生（便于日报统计），
     /// 只是不分发给任何 actor。部署方用于关闭噪音类事件。
@@ -44,10 +47,36 @@ impl Default for EventEngineConfig {
             thresholds: Thresholds::default(),
             renderer: RendererConfig::default(),
             sources: Sources::default(),
+            earnings: EarningsConfig::default(),
             disabled_kinds: Vec::new(),
             dryrun: default_dryrun(),
         }
     }
+}
+
+/// 财报 poller 特有参数。
+///
+/// `window_days` 决定 EarningsPoller 每 tick 向 FMP earning_calendar 拉 `[today, today+N]`
+/// 的天数；也就是 Hone 开始"关注"一家公司财报的提前量。`EarningsPoller` 在此基础上会
+/// 对距今 T-3/T-2/T-1 的财报额外发送每日倒计时事件(id 带 `:countdown:N` 后缀避免 store
+/// 去重折叠;T-1 升级为 High 立即推,T-2/T-3 维持 Medium 进 digest)。用户若 `blocked_kinds`
+/// 包含 `earnings_upcoming`,则全程静音(初次预告 + 每日倒计时一并拦住)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarningsConfig {
+    #[serde(default = "default_earnings_window_days")]
+    pub window_days: i64,
+}
+
+impl Default for EarningsConfig {
+    fn default() -> Self {
+        Self {
+            window_days: default_earnings_window_days(),
+        }
+    }
+}
+
+fn default_earnings_window_days() -> i64 {
+    14
 }
 
 fn default_enabled() -> bool {
