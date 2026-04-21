@@ -8,6 +8,17 @@
   - `02d01d2 fix channel error message sanitization`
   - `3e769d7 test feishu timeout fallback reply`
 - **证据来源**:
+  - 2026-04-21 20:25-20:29 最新失败样本：
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+      - `2026-04-21T20:25:49.192603+08:00` 用户输入：`击球区不要只写比率，也要写区间值`
+      - `2026-04-21T20:29:14.930893+08:00` assistant 只落库 `抱歉，处理超时了。请稍后再试。`
+      - 同一会话在该 user turn 后没有正式完成“补区间值”的确认或更新说明。
+    - `data/runtime/logs/web.log`
+      - `2026-04-21 20:25:49.214` 记录 `restore_context + build_prompt + create_runner` 后进入 `agent.run`
+      - `2026-04-21 20:29:14.922` 记录 `runner.error ... kind=TimeoutPerLine message="codex acp session/prompt idle timeout (180s) ... state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations"`
+      - `2026-04-21 20:29:14.925` 记录 `handler.session_run ... completed success=false reply_chars=0`
+    - 这说明 15:14-15:32 的 Codex ACP state DB migration 变体没有自然恢复；到 20:29 仍会让普通短指令在 Answer 阶段失败，用户只得到通用超时文案，主任务未完成。
   - 2026-04-21 15:14-15:32 最新连续失败样本：
     - `data/sessions.sqlite3` -> `session_messages`
       - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`

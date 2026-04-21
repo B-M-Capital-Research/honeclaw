@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 20:30-21:00 最新巡检样本：
+    - `run_id=4114`（`小米30港元破位预警`，`executed_at=2026-04-21T20:30:16.106142+08:00`）落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 写出 API 调用失败、应返回 `noop`，但最终仍是 `<think>...{}`，被升级为失败
+    - `run_id=4126`（`小米破位预警`，`executed_at=2026-04-21T21:00:14.302408+08:00`）再次落成 `execution_failed + skipped_error`
+      - `raw_preview` 已拿到当前价 `32.4 港元`，明确没有跌破 `30 港元`，但只输出 `{}` 并触发 `JsonUnknownStatus`
+    - `run_id=4129`（`ORCL 大事件监控`，`executed_at=2026-04-21T21:00:22.942571+08:00`）同批失败
+      - `raw_preview` 已完成 ORCL 价格和新闻检查，判断没有 5% 单日涨跌或新重大事件，仍未稳定输出受支持状态
+    - `run_id=4131`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T21:00:29.818143+08:00`）继续失败
+      - `raw_preview` 逐项比较 `HIMS / MU / RKLB / LMND ...` 当前价与触发价，仍以前置 `<think>` 自由文本污染输出并触发 `JsonUnknownStatus`
+    - 这说明 20:00 的失败没有自然收口；到 21:00 仍在破位预警、事件监控与 watchlist 模板之间漂移。
   - 2026-04-21 20:00 最新巡检样本：
     - `run_id=4101`（`小米破位预警`，`executed_at=2026-04-21T20:00:15.742509+08:00`）落成 `execution_failed + skipped_error`
       - `detail_json.parse_kind=JsonUnknownStatus`
