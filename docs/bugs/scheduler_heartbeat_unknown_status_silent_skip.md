@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 04:30-05:00 最新巡检样本：
+    - `run_id=4290`（`RKLB异动监控`，`executed_at=2026-04-22T04:30:18.718605+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已分析价格、新闻、Neutron/订单等条件，却仍以前置 `<think>` 自由文本开头。
+    - `run_id=4291`（`ORCL 大事件监控`，`executed_at=2026-04-22T04:30:23.414652+08:00`）同样落成 `noop + skipped_noop + JsonEmptyStatus`，且 `raw_preview` 先解释报价、时间戳和涨跌幅，再由后台静默吞掉。
+    - `run_id=4304`（`ORCL 大事件监控`，`executed_at=2026-04-22T05:00:32.633969+08:00`）与 `run_id=4305`（`TEM大事件心跳监控`，`executed_at=2026-04-22T05:00:42.491324+08:00`）虽解析为 `JsonNoop`，但 `starts_with_json=false`，仍依赖 `<think>...尾部 JSON` 提取而不是纯 JSON 契约。
+    - 本轮没有新增 `execution_failed` 或用户投诉，说明严重等级不升级；但最新一小时证明结构化契约仍未恢复，P2 活跃缺陷继续有效。
   - 2026-04-22 03:30-04:01 最新巡检样本：
     - `run_id=4264-4273` 在 `2026-04-22T03:30:05-03:30:38+08:00` 覆盖 `Monitor_Watchlist_11`、`全天原油价格3小时播报`、小米/TEM/CAI/RKLB/ASTS/ORCL 等 heartbeat，全部落成 `noop + skipped_noop`，但 `detail_json.parse_kind` 仍主要为 `JsonNoop` 且日志继续记录 `starts_with_json=false`。
     - `run_id=4274-4283` 在 `2026-04-22T04:00:07-04:00:28+08:00` 再次覆盖同一批 heartbeat，全部为 `noop + skipped_noop`；其中 `run_id=4276`（`小米破位预警`）落成 `JsonEmptyStatus`，说明上游仍会输出不带受支持状态的结构化空结果。

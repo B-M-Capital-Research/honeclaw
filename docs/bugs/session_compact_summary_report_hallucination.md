@@ -7,6 +7,13 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 05:00 最新 prompt 污染复核：
+   - `session_id=Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44`
+   - `session_messages` 中仍保留 `2026-04-20T21:31:24.260047+08:00` 的 `role=user` `【Compact Summary】...`，内容覆盖 `TEM / RKLB / BE / MSFT / BOXX / YINN / MU / LITE` 等持仓与交易纪律。
+   - 最新真实任务是 `2026-04-22T05:00:00.105203+08:00` 的 `[定时任务触发] 任务名称：科技成长赛道大盘极值与情绪监控`，用户只要求盘后扫描纳指、ARKK、成长股与 VIX 极值信号。
+   - `data/runtime/logs/acp-events.log` 在 `2026-04-21T21:00:03.002554+00:00` 的 `session/update` 中把上述旧 `【Compact Summary】`、`【历史对话总结】` 与本轮定时任务输入一起送入 runner。
+   - `2026-04-22T05:00:48.663741+08:00` assistant 最终正常生成盘后扫描并送达；这说明当前主要风险不是本轮无回复，而是存量 `role=user` compact summary 仍会作为真实用户上下文进入 prompt，继续影响后续投资类回答的事实边界和个性化偏置。
+   - 因此状态继续维持 `Fixing`：新生成 summary 角色已有收敛迹象，但历史 `role=user` summary 未迁移/隔离前，生产 prompt 污染仍未闭环。
 - 2026-04-22 04:00 最新 prompt 污染复核：
    - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
    - `session_messages` 中仍保留 `2026-04-20T21:30:28.320382+08:00` 的 `role=user` `【Compact Summary】...`，内容覆盖 `COHR / RKLB / GEV / SNDK / MU / BE / VST / CIEN / GOOGL / AVGO / TEM` 等股票关注表。
