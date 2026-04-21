@@ -7,6 +7,13 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-21 18:55-18:57 最新复现：
+   - `session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`
+   - `2026-04-21T18:54:52.082570+08:00` 用户真实输入为 `预判一下美股纳斯达克指数今天开盘后的走势`
+   - `data/runtime/logs/web.log` 在 `18:54:52-18:55:04` 记录同一会话 `Compressing session ... with 22 messages`，随后 `compacted to boundary + summary + 6 retained items`
+   - `session_messages` 在 `2026-04-21T18:55:04.787603+08:00` 先写入 `role=system` 的 `Conversation compacted`
+   - 紧接着 `2026-04-21T18:55:04.787621+08:00` 又写入 `role=user` 的 `【Compact Summary】...`，内容甚至写出 `这不是历史总结任务，无法执行`，并列出 `ANET / EQIX / DLR / SMCI / BE / WDC / COHR / LITE / AXTI / GOOGL`
+   - `2026-04-21T18:57:04.401376+08:00` assistant 随后继续产出纳指开盘预判正式回答，说明最新生产链路仍会在真实用户新问题前实时生成并落库 `role=user` compact summary；问题不是旧会话存量污染。
 - 2026-04-21 17:49-17:51 最新复现：
    - `session_id=Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
    - `session_messages` 中仍保留 `2026-04-20T11:37:42.915681+08:00` 的 `system` 消息 `Conversation compacted`
@@ -201,6 +208,7 @@
 
 ## 当前实现效果（问题发现时）
 
+- 2026-04-21 18:55 最新样本说明，auto compact 仍在当前生产链路实时把 `Compact Summary` 写成 `role=user`；即使回答表面完成，真实 transcript 已被内部压缩产物污染。
 - 2026-04-21 17:49 最新样本说明，旧 `role=user` compact summary 不只是存量脏数据；它在新的 `那rklb 呢` 直聊请求中仍被恢复进 runner 输入，并与本轮真实 user turn 同时进入 prompt。
 - 2026-04-21 16:05 最新样本说明，compact summary 仍会以 `role=user` 写入会话；同轮后续正式回答继续处理“美股亚川”新问题，生产链路没有收口到“summary 只作为系统态元数据”。
 - 2026-04-21 15:54 样本同样说明，另一条观察池会话在 compact 后写入 `role=user` 的 22 支观察池 summary，并继续处理 24 支观察池更新请求。

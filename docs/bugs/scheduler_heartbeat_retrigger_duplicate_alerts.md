@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-21 18:30-19:00 最新巡检样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=4077`，`executed_at=2026-04-21T18:31:09.777487+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `response_preview` 继续围绕同一 `BlueBird 7` 发射失败 / 低于计划轨道 / 卫星损失事件展开，触发时间写为北京 `2026-04-21 18:30`
+      - `run_id=4088`，`executed_at=2026-04-21T19:00:55.979965+08:00`，仅约半小时后再次 `completed + sent + delivered=1`
+      - `response_preview` 仍写 `AST SpaceMobile确认其于4月19日使用New Glenn火箭发射的BlueBird 7卫星已损失`，只是把价格影响改写成盘前跌幅、开盘跌幅和当前价口径
+      - 两轮之间没有看到新的独立公司公告、轨道处置结果或新的用户配置变化；说明 `BlueBird 7` 同一旧事件仍在相邻窗口里被重新包装成新触发提醒。
+  - `data/runtime/logs/sidecar.log` / `data/runtime/logs/web.log`
+    - `2026-04-21 18:30` 与 `19:00` 两轮均记录 `parse_kind=JsonTriggered` 与成功 `deliver`
+    - `19:00` 的 `raw_preview` 仍以 `<think>` 展开同一 BlueBird 7 卫星损失事实后输出触发消息，说明重复提醒不是发送幂等重放，而是模型每轮重新把旧事件判成 `triggered`。
     - 2026-04-21 15:00-16:00 最新巡检样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=4007`，`executed_at=2026-04-21T15:00:42.441826+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-21 18:08 CST
+最后更新：2026-04-21 19:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -29,13 +29,13 @@
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 15:14-15:32 同一用户连续请求 `分析一下ASTS`，多轮只收到“处理超时”，日志暴露 `state_5.sqlite migration 23 was previously applied but is missing`，无正式 ASTS 分析答复 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
-| 会话压缩摘要仍以 `role=user` 的 `Compact Summary` 回灌真实 transcript，修复结论已回归失效 | P1 | Fixing | 2026-04-21 17:49 `Actor_feishu__direct__ou_5f988...` 的 RKLB 新请求仍把旧 `【Compact Summary】` 作为 `user_message_chunk` 送入 runner，说明不只是历史落库脏数据 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
+| 会话压缩摘要仍以 `role=user` 的 `Compact Summary` 回灌真实 transcript，修复结论已回归失效 | P1 | Fixing | 2026-04-21 18:55 `Actor_feishu__direct__ou_5ff094...` 新一轮 auto compact 又把 `【Compact Summary】` 写成 `role=user`，随后继续回答纳指开盘预判；问题仍在生产链路实时生成 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，用户只收到半成品回复 | P3 | New | 2026-04-21 16:39 用户要求更新 09:00 日报，最终只落库 `正在思考中...`、`Tool: hone/cron_job` 与“处理中发生错误”，没有完成任务更新确认；问题仍不影响投递链路，因此保持 P3 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-21 18:00 `ORCL / RKLB / Monitor_Watchlist_11` 又因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，问题继续跨事件监控与 watchlist 模板漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-21 15:00 与 15:32 `ASTS 重大异动心跳监控` 继续送达同一 `BlueBird 7` 低轨/卫星损失旧事件；16:00 又因 MiniMax 传输失败跳过，未形成稳定去重状态 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-21 19:00 `小米30港元 / 小米 / Monitor_Watchlist_11` 再次因 `<think>...{}` 或空 `{}` 落成 `JsonUnknownStatus + execution_failed + skipped_error`，问题继续跨破位与 watchlist 模板漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-21 18:30 与 19:00 `ASTS 重大异动心跳监控` 又连续送达同一 `BlueBird 7` 卫星损失事件，只是改写盘前/盘中跌幅口径，仍没有新增独立公告或处置结果 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 21:01 `TEM大事件心跳监控` 再次落成 `execution_failed + skipped_error`；20:30 还是 `noop`、21:00 前后同批又混有 `JsonUnknownStatus`，用户侧无法判断本轮是未触发还是链路直接耗尽 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
-| Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 17:31-18:00 `ASTS / 小米30港元 / 小米` 继续命中 `https://api.minimaxi.com/v1/chat/completions` 发送失败，传输吸震未收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
-| Telegram update listener 持续网络不可达，近一个月没有新消息入库 | P2 | New | 2026-04-21 14:31-14:58 `GetUpdates` 继续反复 `operation timed out`，退避升至 64s 仍未恢复；`sessions` 最近 Telegram 会话仍停在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
+| Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 18:30 `小米30港元 / TEM破位` 继续命中 `https://api.minimaxi.com/v1/chat/completions` 发送失败；19:00 同批主要漂移到 `JsonUnknownStatus`，传输吸震仍未稳定收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
+| Telegram update listener 持续网络不可达，近一个月没有新消息入库 | P2 | New | 2026-04-21 18:36 `GetUpdates` 继续出现 `operation timed out` / `error trying to connect: operation timed out`，退避重试后仍未看到 Telegram 新会话落库 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## 已修复 / 已关闭
 

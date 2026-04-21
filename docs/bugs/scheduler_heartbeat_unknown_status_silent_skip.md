@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 19:00 最新巡检样本：
+    - `run_id=4080`（`小米30港元破位预警`，`executed_at=2026-04-21T19:00:14.773479+08:00`）落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 已明确写出当前价 `32.4` 高于 `30`，条件未满足，应返回 `noop`，但尾部只输出 `{}` 并被升级为失败
+    - `run_id=4083`（`小米破位预警`，`executed_at=2026-04-21T19:00:20.758855+08:00`）再次落成 `execution_failed + skipped_error`
+      - `raw_preview` 写出数据获取失败、按规则应返回 noop，最终仍是 `<think>...{}` 形态并触发 `JsonUnknownStatus`
+    - `run_id=4087`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T19:00:25.783280+08:00`）同批继续 `execution_failed + skipped_error`
+      - `raw_preview` 逐项比较 `HIMS / MU / RKLB / LMND ...` 当前价与触发价后仍未产出受支持状态
+    - `data/runtime/logs/web.log` 在 `19:00:14.773`、`19:00:20.757`、`19:00:25.782` 同步记录 `parse failure escalated`，说明最新窗口仍是 heartbeat 公共状态契约漂移，不是单个任务配置损坏。
   - 2026-04-21 17:30-18:01 最新巡检样本：
     - `run_id=4056`（`RKLB异动监控`，`executed_at=2026-04-21T17:30:30.973829+08:00`）落成 `execution_failed + skipped_error`
       - `detail_json.parse_kind=JsonUnknownStatus`
