@@ -7,6 +7,12 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 04:00 最新 prompt 污染复核：
+   - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+   - `session_messages` 中仍保留 `2026-04-20T21:30:28.320382+08:00` 的 `role=user` `【Compact Summary】...`，内容覆盖 `COHR / RKLB / GEV / SNDK / MU / BE / VST / CIEN / GOOGL / AVGO / TEM` 等股票关注表。
+   - 最新真实任务是 `2026-04-22T04:00:00.213839+08:00` 的 `[定时任务触发] 任务名称：Oil_Price_Monitor_Closing`，用户只要求收盘前原油价格与对 COHR/RKLB 等科技股的影响判断。
+   - `data/runtime/logs/acp-events.log` 在同轮 `user_message_chunk` 中把这条旧 `【Compact Summary】`、`【历史对话总结】` 与本轮定时任务输入一起送入 runner，并且 summary 里还带有“OWALERT_PreMarket 尚未完成正式输出”等旧任务状态。
+   - `2026-04-22T04:01:10.452480+08:00` assistant 虽然给出了原油回复，但说明生产 prompt 仍会消费历史 `role=user` compact summary；问题已从“新生成 summary 是否仍写成 user”转为“存量 user-summary 污染仍未迁移/隔离”。因此状态继续维持 `Fixing`，不能关闭。
 - 2026-04-22 00:00 最新状态变化复核：
    - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
    - `2026-04-21T23:16:37.180473+08:00` 会话 auto compact 后写入 `role=system` 的 `Conversation compacted`

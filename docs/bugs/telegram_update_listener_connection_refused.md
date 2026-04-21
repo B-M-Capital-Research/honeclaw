@@ -1,4 +1,4 @@
-# Bug: Telegram update listener 持续网络不可达，近一个月无新会话落库
+# Bug: Telegram update listener 持续不可用，近一个月无新会话落库
 
 - **发现时间**: 2026-04-21 10:01 CST
 - **Bug Type**: System Error
@@ -6,6 +6,9 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+    - `2026-04-22 03:10:21`、`03:11:35`、`03:12:28` release app 启动 Telegram 渠道时连续报 `无法获取 Telegram Bot 信息: A Telegram's error: Invalid bot token`。
+    - 同一窗口 `data/runtime/logs/desktop.log` 在 `03:10:20`、`03:11:34`、`03:12:27` 记录 `managed channel telegram skipped because it exited during startup`，说明当前不是单纯 `GetUpdates` 网络抖动，而是 Telegram sidecar 在启动阶段就因 bot token 无效退出。
+    - 这与此前 `GetUpdates` 连接超时同属 Telegram 入站不可用链路，因此更新原缺陷，不新建重复单；根因判断从“网络可达性/代理为主”扩展为“凭据有效性或运行配置错误也会导致当前生产 Telegram 完全不可用”。
     - `2026-04-21 18:36:09` 最新样本仍为 `GetUpdates` 网络失败：`Telegram update listener error ... GetUpdates): operation timed out`
     - `2026-04-21 18:36:15` 下一次重试继续失败：`error trying to connect: operation timed out`
     - 同步日志显示退避从 `1s` 切到 `2s` 后继续重试，仍未看到 Telegram 入站链路恢复。
@@ -24,20 +27,21 @@
 
 ## 端到端链路
 
-1. Telegram 渠道进程启动后进入 `getUpdates` 长轮询。
-2. listener 在访问 `https://api.telegram.org/.../GetUpdates` 时直接命中 TCP 连接失败，错误为 `Connection refused (os error 61)`。
-3. 当前实现只做固定退避重试，没有恢复到可用轮询状态。
-4. 因为入站更新拉取失败，新的 Telegram 用户消息无法进入正常处理链路，也不会落到 `sessions` / `session_messages`。
+1. Telegram 渠道进程启动后需要先完成 bot token 校验，再进入 `getUpdates` 长轮询。
+2. 最新 release app 窗口里，进程在启动阶段因 `Invalid bot token` 退出，desktop 只记录 managed channel skipped；较早窗口即使进入 listener，也会在 `GetUpdates` 阶段持续连接超时或拒绝。
+3. 当前实现没有把“凭据无效导致 sidecar 退出”和“长轮询网络失败”恢复到可用入站状态。
+4. 因为 Telegram 渠道无法稳定进入可监听状态，新的 Telegram 用户消息无法进入正常处理链路，也不会落到 `sessions` / `session_messages`。
 
 ## 期望效果
 
-- Telegram listener 应稳定完成 `getUpdates` 轮询，而不是在传输层持续 `Connection refused`。
+- Telegram listener 应先用有效 bot token 完成启动校验，再稳定完成 `getUpdates` 轮询，而不是在启动阶段退出或在传输层持续 `Connection refused` / timeout。
 - 即使上游网络短时异常，也应具备明确的可恢复策略或更清晰的链路告警，而不是长时间反复重试无新消息。
 - Telegram 渠道至少应能恢复到“用户发消息后能够创建/更新会话并落库”的基本功能状态。
 
 ## 当前实现效果
 
-- 到 `2026-04-21 18:36` 最新窗口，Telegram listener 仍在 `GetUpdates` 阶段超时，且下一次重试继续连接超时；没有看到 Telegram 新消息恢复落库。
+- 到 `2026-04-22 03:10-03:12` 最新 release app 窗口，Telegram sidecar 已从此前 `GetUpdates` 超时演变为启动即失败：`Invalid bot token`，desktop 标记 `managed channel telegram skipped because it exited during startup`。
+- 到 `2026-04-21 18:36` 窗口，Telegram listener 仍在 `GetUpdates` 阶段超时，且下一次重试继续连接超时；没有看到 Telegram 新消息恢复落库。
 - 到 `2026-04-21 14:31-14:58` 最新窗口，Telegram listener 仍持续 `GetUpdates` 超时并固定退避重试，没有看到入站链路恢复或新 Telegram 会话落库。
 - 到 `2026-04-21 13:49` 的最新日志，Telegram listener 仍在 `GetUpdates` 网络阶段失败；错误从 `Connection refused` 变为 `operation timed out`，但没有看到入站链路恢复或新 Telegram 会话落库。
 - 最近一小时里 Telegram listener 基本每分钟都在固定重试一次 `getUpdates`，且每次都因 `Connection refused (os error 61)` 失败。
@@ -52,13 +56,13 @@
 
 ## 根因判断
 
-- 直接触发点是 Telegram listener 在请求 `GetUpdates` 时发生网络连接失败；最新样本已覆盖 TCP 连接拒绝与连接超时两种形态，当前更像网络可达性、代理/DNS、上游屏蔽或本机出站链路问题，而不是单条消息 payload 处理错误。
-- 由于 listener 能持续进入重试分支，说明 bot 进程本身仍在运行；失效点集中在与 Telegram API 的连接建立阶段。
+- 最新直接触发点是 Telegram bot token 无效，导致 sidecar 在进入长轮询前退出；此前样本还覆盖 TCP 连接拒绝与连接超时两种形态。
+- 因此当前根因不再只能解释为网络可达性、代理/DNS、上游屏蔽或本机出站链路问题；还必须核对 release app / runtime 配置实际读取到的 Telegram bot token 是否为空、过期、被替换或来自错误配置源。
 - 目前没有证据表明这是已有 Feishu/Heartbeat 缺陷的同根因复用，应作为独立渠道故障跟踪。
 
 ## 下一步建议
 
-- 优先排查当前环境到 `api.telegram.org` 的网络可达性、代理/防火墙、DNS 解析与证书链路。
+- 优先核对 release app 当前读取的 Telegram bot token 来源、是否与生产 bot 一致、是否被错误配置覆盖；随后再排查当前环境到 `api.telegram.org` 的网络可达性、代理/防火墙、DNS 解析与证书链路。
 - 修复后优先验证两件事：
-  1. `sidecar.log` 不再持续出现 `GetUpdates ... Connection refused`
+  1. `sidecar.log` 不再出现 `Invalid bot token`，也不再持续出现 `GetUpdates ... Connection refused` / timeout
   2. Telegram 新消息能重新写入 `sessions` / `session_messages`

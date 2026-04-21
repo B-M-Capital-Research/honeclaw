@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 03:30-04:01 最新巡检样本：
+    - `run_id=4264-4273` 在 `2026-04-22T03:30:05-03:30:38+08:00` 覆盖 `Monitor_Watchlist_11`、`全天原油价格3小时播报`、小米/TEM/CAI/RKLB/ASTS/ORCL 等 heartbeat，全部落成 `noop + skipped_noop`，但 `detail_json.parse_kind` 仍主要为 `JsonNoop` 且日志继续记录 `starts_with_json=false`。
+    - `run_id=4274-4283` 在 `2026-04-22T04:00:07-04:00:28+08:00` 再次覆盖同一批 heartbeat，全部为 `noop + skipped_noop`；其中 `run_id=4276`（`小米破位预警`）落成 `JsonEmptyStatus`，说明上游仍会输出不带受支持状态的结构化空结果。
+    - 对应 `data/runtime/logs/web.log` / `data/runtime/logs/sidecar.log` 在 `04:00:07.793` 记录 `全天原油价格3小时播报` 的 `raw_preview` 仍以 `<think>` 开头并在自由文本里解释时间条件；同批其它心跳任务也继续依赖尾部 JSON 提取，而不是从首字符开始输出纯 JSON。
+    - 本轮没有新增用户投诉，也没有升级成 `execution_failed`，因此不新建独立缺陷；但最新一小时证明 heartbeat 结构化契约仍未恢复，`JsonEmptyStatus` / `<think>...noop` 仍会被静默吞掉，用户无法从台账判断本轮到底是可靠未触发还是解析侥幸通过。
   - 2026-04-22 02:30-03:00 最新巡检样本：
     - `run_id=4254/4256/4257/4258/4259/4261/4262` 在 `2026-04-22T03:00:13-03:00:50+08:00` 继续落成 `noop + skipped_noop`，覆盖 `CAI破位预警`、`TEM破位预警`、`小米破位预警`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`RKLB异动监控`、`ASTS 重大异动心跳监控`。
     - 对应 `data/runtime/logs/web.log` 仍记录 `starts_with_json=false`，多条 `raw_preview` 以 `<think>` 开头，再在尾部给 `{"status":"noop"}` 或 `{}`；例如 `2026-04-22 03:00:13.658` 的 `CAI破位预警`、`03:00:20.739` 的 `小米30港元破位预警`、`03:00:25.058` 的 `Monitor_Watchlist_11`、`03:00:50.506` 的 `ASTS 重大异动心跳监控`。
