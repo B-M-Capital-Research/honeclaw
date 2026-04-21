@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 16:30-17:00 最新巡检样本：
+    - `run_id=4033`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T16:30:55.115417+08:00`）落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 以 `<think>` 开头，已经逐项比较 `HIMS / MU / RKLB / LMND / BE...` 的当前价与触发价，但仍未稳定收口到合法状态 JSON
+    - `run_id=4043`（`小米破位预警`，`executed_at=2026-04-21T17:00:32.072020+08:00`）再次落成 `execution_failed + skipped_error`
+      - `raw_preview` 明确写出多次取数为空、按规则应返回 noop，尾部只输出 `{}`，仍被解析为 `JsonUnknownStatus`
+    - `run_id=4045`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T17:00:35.686904+08:00`）下一轮继续失败
+      - `raw_preview` 切换成中文 `<think>` 逐项比较 11 只标的触发价，仍未产出受支持状态
+    - 这说明 `16:01` 之后问题没有自然恢复；最新窗口仍在破位预警与 watchlist 模板之间漂移。
   - 2026-04-21 15:30-16:01 最新巡检样本：
     - `run_id=4013`（`小米破位预警`，`executed_at=2026-04-21T15:30:15.791758+08:00`）落成 `execution_failed + skipped_error`
       - 日志 `2026-04-21 15:30:15.791` 显示 `parse_kind=JsonUnknownStatus`

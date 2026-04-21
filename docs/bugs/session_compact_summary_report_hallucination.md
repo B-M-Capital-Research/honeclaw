@@ -13,6 +13,12 @@
    - 紧接着 `2026-04-21T15:54:56.700944+08:00` 又写入 `role=user` 的 `【Compact Summary】...`，内容是 `22支观察池 · 正式总表`，覆盖 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 等观察池与击球区信息
    - 同一会话随后处理真实用户请求 `再加一个BE，AMD进来，然后24支股排优先级名单，还有一版击球区距离表。`，并在 `2026-04-21T15:58:24.885618+08:00` 正式回答 24 支观察池更新
    - 这说明最新生产链路仍会把 compact summary 以真实 `user` transcript 身份写回，并继续驱动后续投资组合类回答；问题不是上午旧样本残留。
+- 2026-04-21 16:05-16:08 最新复现：
+   - `session_id=Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34`
+   - `2026-04-21T16:05:35.978776+08:00` 会话先写入 `system` 消息 `Conversation compacted`
+   - 紧接着 `2026-04-21T16:05:35.978791+08:00` 又写入 `role=user` 的 `【Compact Summary】...`，内容是 `股票关注表`，覆盖 `RKLB / TEM / IONQ / 量子计算 / 美股科技股` 等历史关注项
+   - 同一会话真实用户新问题是 `美股亚川在光通信行业被低估吗`，随后 `2026-04-21T16:08:57.128142+08:00` assistant 继续基于该会话上下文回答 ADTRAN/ADTN 分析
+   - 这说明 16:00 之后生产链路仍会在新问题前把 compact summary 作为真实 `user` transcript 插入，而不是只保存在系统态 summary 字段。
 - 2026-04-21 10:52-11:14 最新连续复现：
    - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
    - `2026-04-21T10:52:02.385261+08:00` 会话先写入 `system` 消息 `Conversation compacted`
@@ -188,7 +194,8 @@
 
 ## 当前实现效果（问题发现时）
 
-- 2026-04-21 15:54 最新样本说明，compact summary 仍会以 `role=user` 写入会话；同轮后续正式回答继续基于这条观察池 summary 处理用户更新请求，生产链路没有收口到“summary 只作为系统态元数据”。
+- 2026-04-21 16:05 最新样本说明，compact summary 仍会以 `role=user` 写入会话；同轮后续正式回答继续处理“美股亚川”新问题，生产链路没有收口到“summary 只作为系统态元数据”。
+- 2026-04-21 15:54 样本同样说明，另一条观察池会话在 compact 后写入 `role=user` 的 22 支观察池 summary，并继续处理 24 支观察池更新请求。
 - 压缩模型实际使用的是 `llm.auxiliary.model = MiniMax-M2.7-highspeed`，而不是主对话模型。
 - 2026-04-15 17:14:07 的自动压缩记录显示 `active_messages=26`、`trigger=auto`，已经满足 direct session 自动压缩条件。
 - 2026-04-15 17:15:47 的恢复压缩记录显示 `trigger=context_overflow_recovery`、`forced=true`，会在上下文溢出后再次强制压缩并重试。
