@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 15:30-16:01 最新巡检样本：
+    - `run_id=4013`（`小米破位预警`，`executed_at=2026-04-21T15:30:15.791758+08:00`）落成 `execution_failed + skipped_error`
+      - 日志 `2026-04-21 15:30:15.791` 显示 `parse_kind=JsonUnknownStatus`
+      - `raw_preview` 以 `<think>` 开头，正文写出获取报价失败后“应返回 noop”，尾部只输出 `{}`，但仍被升级为失败
+    - `run_id=4016`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T15:30:49.383289+08:00`）再次落成 `execution_failed + skipped_error`
+      - 日志 `2026-04-21 15:30:49.382` 显示 `raw_preview` 逐项比较 watchlist 触发价后仍为 `JsonUnknownStatus`
+    - `run_id=4024`（`RKLB异动监控`，`executed_at=2026-04-21T16:01:02.077284+08:00`）继续落成同类失败
+      - 日志 `2026-04-21 16:01:02.076` 显示 `raw_preview` 包含行情判断过程但未产出受支持状态，继续 `parse failure escalated`
+    - 同批其它任务又混有 MiniMax HTTP 传输失败与正常 `noop`，说明结构化状态退化仍在不同 heartbeat 模板之间漂移，而不是单个任务配置损坏。
   - 2026-04-21 15:00 最新巡检样本：
     - `run_id=4000`（`小米破位预警`，`executed_at=2026-04-21T15:00:18.465327+08:00`）落成 `execution_failed + skipped_error`
       - 日志 `2026-04-21 15:00:18.464` 显示 `parse_kind=JsonUnknownStatus`
@@ -941,6 +950,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-21 15:30 -> 16:01` 最新窗口，`小米破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控` 继续因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，说明该缺陷仍在活跃漂移。
 - 到 `2026-04-21 15:00` 最新窗口，`小米破位预警`、`RKLB异动监控`、`Monitor_Watchlist_11` 再次因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，说明该缺陷仍在活跃扩散，而不是 14:00 后自恢复。
 - 到 `2026-04-21 13:30 -> 14:00` 的最新窗口，这条缺陷仍在活跃：`小米30港元破位预警`、`CAI破位预警`、`Monitor_Watchlist_11` 分别在相邻两轮里落成 `JsonUnknownStatus`，且失败正文都已经完成“条件未满足，应 noop”的业务判断，只是没有稳定输出合法状态 JSON。
 - `2026-04-21 09:31` 与 `10:01` 的最新窗口说明，这条缺陷仍然活跃且继续漂移：上一轮失败对象是 `CAI破位预警`，下一轮又切到 `Monitor_Watchlist_11`。

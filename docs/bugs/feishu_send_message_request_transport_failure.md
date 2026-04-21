@@ -5,6 +5,15 @@
 - **严重等级**: P1
 - **状态**: New
 - **证据来源**:
+  - 2026-04-21 15:37 最新直聊出站失败样本：
+    - `data/runtime/logs/web.log`
+      - `2026-04-21 15:33:29.773` Feishu 直聊收到用户问题：`就AI这场工业革命而言，芯片、存储、电、光作为重要的部分先后发生紧缺的情况从而股价大涨，请问最有可能成为下一个爆发点的概念板块可能是什么？`
+      - `2026-04-21 15:37:23.257` 已记录 `session.persist_assistant detail=done`，并落成 `done ... success=true ... reply.chars=3561`
+      - `2026-04-21 15:37:28.262` 随后记录 `[Feishu] 发送回复失败: 集成错误: Feishu update message request failed: error sending request for url (https://open.feishu.cn/open-apis/im/v1/messages/om_x100b5146ca5a1cbcb34fc04abdbd8b4)`
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`
+      - `2026-04-21T15:37:23.252085+08:00` assistant 已落库正式 3561 字左右回答，开头为 `当前时间是北京时间2026年4月21日15:33。若把芯片、存储、电力、光模块都视为已经被市场充分挖掘过的主线...`
+    - 这说明出站传输失败不仅发生在 `send message` 创建消息端点，也发生在直聊 placeholder 的 `update message` 端点；共同症状仍是“答案已生成并落库，但用户可能收不到最终回复”。
   - 2026-04-21 15:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=4001`
@@ -60,6 +69,7 @@
 
 ## 当前实现效果
 
+- `2026-04-21 15:37` 最新直聊样本显示，Feishu 出站传输失败已扩展到 `update message` 端点：系统生成并持久化了 3561 字正式答复，但更新 placeholder 时请求传输失败。
 - `2026-04-21 15:00` 最新窗口再次出现 `completed + send_failed + delivered=0`，失败端点仍是 Feishu `im/v1/messages?receive_id_type=open_id`；本单继续保持 `New`，不能视作 12:03 的瞬时故障已恢复。
 - `2026-04-21 12:03` 同一时间窗里，一条定时任务和一条直聊回复都已经完成生成，但最终 Feishu 发送请求在同一个 `im/v1/messages` 出站端点失败。
 - 定时任务有明确台账：`should_deliver=1` 但 `delivered=0`。

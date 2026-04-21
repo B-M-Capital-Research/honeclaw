@@ -8,6 +8,18 @@
   - `02d01d2 fix channel error message sanitization`
   - `3e769d7 test feishu timeout fallback reply`
 - **证据来源**:
+  - 2026-04-21 15:14-15:32 最新连续失败样本：
+    - `data/sessions.sqlite3` -> `session_messages`
+      - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`
+      - `2026-04-21T15:14:27.370207+08:00` 与 `2026-04-21T15:19:50.059361+08:00`，用户连续两次发送 `分析一下ASTS`
+      - 对应 assistant 仅在 `15:17:53.101867` 与 `15:23:20.926592` 落库 `抱歉，处理超时了。请稍后再试。`
+      - `2026-04-21T15:28:55.973084+08:00` 又出现一条图片类 user turn，`15:32:31.073397` 仍只落库同一通用超时文案
+      - 到本轮巡检结束，该会话在 15:14 之后没有任何正式 ASTS 分析答复；用户连续重试也只得到通用失败提示。
+    - `data/runtime/logs/sidecar.log`
+      - `2026-04-21 15:32:31.066` 记录 `runner.error ... kind=AgentFailed message="codex acp request failed: Internal error stderr=... failed to open state db at <absolute-path>/state_5.sqlite: migration 23 was previously applied but is missing in the resolved migrations ..."`
+      - `2026-04-21 15:32:31.067` 同步记录 `MsgFlow/feishu failed ... error="codex acp request failed: Internal error stderr=... state_5.sqlite ... migration 23 ..."`
+      - `2026-04-21 15:32:31.068` `handler.session_run ... completed success=false reply_chars=0`
+    - 这说明本缺陷最新形态已从单纯 `idle timeout` 扩展到 Codex ACP 本地 state DB migration 不一致导致的 Answer 阶段失败；当前用户侧虽然收到通用“处理超时”，但主任务仍没有被完成。
   - 2026-04-21 14:52-15:00 最新回归样本：
     - `data/sessions.sqlite3` -> `session_messages`
       - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`
@@ -61,6 +73,7 @@
 
 ## 修复情况（2026-04-16 HEAD 复核）
 
+- 2026-04-21 15:14-15:32 又出现同一用户连续请求 `分析一下ASTS` 却只收到通用超时提示的样本；日志根因变体为 Codex ACP 本地 `state_5.sqlite` migration 不一致，仍属于 Answer 阶段失败后主任务无最终答复，本单继续保持 `New`。
 - 2026-04-21 14:52 最新真实样本已推翻本节旧结论：`codex acp session/prompt idle timeout (180s)` 后没有回填完整产品化失败文案，也没有正式回答用户问题，而是把过渡文本和工具调用轨迹作为 assistant 消息落库。本单重新打开为 `New`。
 - `02d01d2 fix channel error message sanitization` 已把 Feishu 直聊失败分支改成共享 `user_visible_error_message(...)`，不再把原始 timeout 细节直接拼接，也不会在无流式内容时静默结束。
 - 当前 `bins/hone-feishu/src/handler.rs` 的失败分支会在 `response.success=false` 时：

@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-21 15:00-16:00 最新巡检样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=4007`，`executed_at=2026-04-21T15:00:42.441826+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `response_preview` 继续围绕 `BlueBird 7` 轨道偏差 / 未能进入计划轨道旧事件展开，并叠加 4 月 20 日盘中跌幅
+      - `run_id=4017`，`executed_at=2026-04-21T15:32:12.311292+08:00`，仅约 30 分钟后再次 `completed + sent + delivered=1`
+      - `response_preview` 继续写 `BlueBird 7 卫星在2026年4月20日确认发射失败`，仍是同一旧事实，没有新的独立公司公告、轨道处置结果或价格阈值跨越
+      - `run_id=4019`，`executed_at=2026-04-21T16:00:07.160785+08:00` 又转为 MiniMax HTTP 传输失败，说明旧事件去重仍没有形成稳定状态记忆；链路在重复送达与执行失败之间摇摆。
+  - `data/runtime/logs/web.log`
+    - `2026-04-21 15:32:03.313` 对应 `parse_kind=JsonTriggered`，`deliver_preview` 仍围绕同一 `BlueBird 7` 低轨/发射失败事件
+    - `2026-04-21 16:00:07.159` 同任务又因 `https://api.minimaxi.com/v1/chat/completions` 传输失败整轮跳过，未能证明去重逻辑恢复。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-21 14:30-15:00 最新巡检样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=3997`，`executed_at=2026-04-21T14:30:36.988772+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
@@ -236,6 +247,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-21 15:00 -> 16:00` 的最新窗口，`ASTS 重大异动心跳监控` 在 `15:00` 与 `15:32` 继续把同一 `BlueBird 7` 低轨 / 卫星损失旧事件送达，`16:00` 又因 MiniMax 传输失败跳过；这说明系统仍没有稳定记录“该催化已提醒过”，只是继续在重复提醒、临场 noop 与执行失败之间摇摆。
 - 到 `2026-04-21 14:30 -> 15:00` 的最新窗口，`ASTS 重大异动心跳监控` 又连续两轮把同一 `BlueBird 7` 低轨 / 卫星损失旧事件送达；这说明 `13:30/14:01` 的 `noop` 只是短暂摇摆，跨窗口已提醒事件状态仍未稳定形成。
 - 到 `2026-04-21 13:01 -> 14:01` 的最新窗口，`ASTS 重大异动心跳监控` 仍在 `13:01` 把同一 `BlueBird 7` 低轨 / 卫星损失旧事件送达一次；`13:30` 与 `14:01` 虽暂时转为 `noop`，但 `raw_preview` 继续围绕同一旧事实判断，说明系统仍没有稳定的跨窗口已提醒事件状态，只是依赖模型本轮是否决定触发。
 - 到 `2026-04-20 21:30 -> 22:00` 的最新窗口，`ASTS 重大异动心跳监控` 仍在继续把同一 `BlueBird 7` 低轨旧事件当成新提醒送达；两轮之间没有新的官方轨道修正、额外独立公告或新的价格阈值跨越，只是把盘中价格与跌幅更新到了新的时间点。
