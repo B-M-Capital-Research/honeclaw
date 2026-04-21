@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 00:00-01:01 最新巡检样本：
+    - `session_id=Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 在 `2026-04-22T01:00:48.669607+08:00` 收到用户明确反馈：“你怎么只报告asts的消息，我让你看的其他3只股票都不告诉我消息面rklb tem 甲骨文”。
+    - 同一目标 `+8613867793336` 的 heartbeat 任务在 `00:00-01:01` 窗口内没有形成新的 RKLB / TEM / ORCL 用户可见播报：
+      - `run_id=4196`（`ORCL 大事件监控`，`executed_at=2026-04-22T00:00:30.210559+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`，`raw_preview` 已完成 ORCL 价格与涨跌阈值判断，仍以前置 `<think>` 自由文本收口。
+      - `run_id=4198`（`RKLB异动监控`，`executed_at=2026-04-22T00:00:33.250455+08:00`）落成 `noop + skipped_noop`，`raw_preview` 已分析价格与新闻后判断无重大触发。
+      - `run_id=4210`（`RKLB异动监控`，`executed_at=2026-04-22T00:30:19.487555+08:00`）再次落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`，说明上游仍未稳定输出受支持状态 JSON，只是本轮没有升级为 `execution_failed`。
+      - `run_id=4220/4222/4215`（`TEM大事件心跳监控` / `RKLB异动监控` / `ORCL 大事件监控`，`executed_at=2026-04-22T01:00:12-01:00:28+08:00`）均落成 `noop + skipped_noop`，`raw_preview` 仍以 `<think>` 分析过程开头。
+    - 这次不是新的独立根因：它延续了 heartbeat 公共结构化状态契约漂移。不同点是用户侧已经把结果感知为“ASTS 有报，其它监控没报”，说明即便当前窗口没有全部升级为 `execution_failed`，`JsonEmptyStatus` / `<think>...noop` 形态仍会造成监控解释性不足和用户信任下降。
   - 2026-04-21 20:30-21:00 最新巡检样本：
     - `run_id=4114`（`小米30港元破位预警`，`executed_at=2026-04-21T20:30:16.106142+08:00`）落成 `execution_failed + skipped_error`
       - `detail_json.parse_kind=JsonUnknownStatus`
