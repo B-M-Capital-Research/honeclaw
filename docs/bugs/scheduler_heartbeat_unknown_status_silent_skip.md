@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 02:30-03:00 最新巡检样本：
+    - `run_id=4254/4256/4257/4258/4259/4261/4262` 在 `2026-04-22T03:00:13-03:00:50+08:00` 继续落成 `noop + skipped_noop`，覆盖 `CAI破位预警`、`TEM破位预警`、`小米破位预警`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`RKLB异动监控`、`ASTS 重大异动心跳监控`。
+    - 对应 `data/runtime/logs/web.log` 仍记录 `starts_with_json=false`，多条 `raw_preview` 以 `<think>` 开头，再在尾部给 `{"status":"noop"}` 或 `{}`；例如 `2026-04-22 03:00:13.658` 的 `CAI破位预警`、`03:00:20.739` 的 `小米30港元破位预警`、`03:00:25.058` 的 `Monitor_Watchlist_11`、`03:00:50.506` 的 `ASTS 重大异动心跳监控`。
+    - `run_id=4260`（`ORCL 大事件监控`）同批从 `starts_with_json=false` 的自由文本被解析成 `JsonTriggered` 并发送，且内部判断与最终触发口径相反；该误触发已作为独立缺陷记录到 `scheduler_heartbeat_orcl_intraday_range_false_trigger.md`，但它也进一步证明 heartbeat 上游仍没有稳定输出纯结构化状态。
+    - 本轮多数任务没有升级成 `execution_failed`，但仍不是修复结论：调度器继续依赖 `<think>...JSON` 的尾部提取来决定静默跳过或发送，结构化契约没有恢复为可审计的纯 JSON。
   - 2026-04-22 01:30-02:01 最新巡检样本：
     - 同一目标 `+8613867793336` 的 RKLB / TEM / ORCL / ASTS heartbeat 在 `01:30-02:01` 窗口仍没有形成新的用户可见播报，全部落成 `noop + skipped_noop`。
     - `run_id=4233`（`TEM大事件心跳监控`，`executed_at=2026-04-22T01:30:39.956023+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`，`raw_preview` 已分析价格、AACR、Gilead collaboration 等条件，仍以前置 `<think>` 自由文本收口。
