@@ -1,6 +1,7 @@
 import { Logo } from "@hone-financial/ui/logo";
 import { Markdown } from "@hone-financial/ui/markdown";
 import {
+  createMemo,
   createSignal,
   createEffect,
   For,
@@ -332,24 +333,29 @@ function assistantMarkdownClass(extra: string = "") {
 }
 
 function AssistantBody(props: { content: string; white?: boolean }) {
+  const parts = createMemo(() => parseMessageContent(props.content));
+  const hasImage = () => parts().some((part) => part.type === "image");
+  const markdownClass = () =>
+    assistantMarkdownClass(props.white ? "!text-white [&_*]:!text-white" : "");
+
   return (
-    <For each={parseMessageContent(props.content)}>
-      {(part) => (
-        <Switch>
-          <Match when={part.type === "image"}>
-            <img src={part.value} alt="" class="mt-2 max-w-full rounded-lg" />
-          </Match>
-          <Match when={part.type === "text"}>
-            <Markdown
-              text={part.value}
-              class={assistantMarkdownClass(
-                props.white ? "!text-white [&_*]:!text-white" : "",
-              )}
-            />
-          </Match>
-        </Switch>
-      )}
-    </For>
+    <Show
+      when={hasImage()}
+      fallback={<Markdown text={props.content} class={markdownClass()} />}
+    >
+      <For each={parts()}>
+        {(part) => (
+          <Switch>
+            <Match when={part.type === "image"}>
+              <img src={part.value} alt="" class="mt-2 max-w-full rounded-lg" />
+            </Match>
+            <Match when={part.type === "text"}>
+              <Markdown text={part.value} class={markdownClass()} />
+            </Match>
+          </Switch>
+        )}
+      </For>
+    </Show>
   );
 }
 
