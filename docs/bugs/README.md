@@ -15,7 +15,7 @@
 ## 当前概览
 
 - 活跃待修复：11
-- 已修复 / 已关闭：46
+- 已修复 / 已关闭：47
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -39,6 +39,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 公开面认证与限流安全审计发现多个高/中风险问题 | P1/P2 | Fixed | 2026-04-20 已修复公开登录限流维度、Secure Cookie 配置、workflow runner `validateCode`、邀请码熵和认证态闪烁问题 | [public_auth_security_audit_2026_04_20.md](./public_auth_security_audit_2026_04_20.md) |
 | Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | Fixed | 2026-04-17 已让 quota 拒绝直接返回用户态额度文案，并在拒绝前补最小 user-turn 落库；20:00 真实会话已再次返回“已达到今日对话上限（12/12）” | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Release app / 渠道进程仍可被 legacy `config_runtime.yaml` 驱动，导致 runner 改完后 live 服务不立即生效 | P1 | Fixed | 2026-04-16 已让 desktop 忽略 legacy override，并更新 release runbook 到 canonical/effective config 启动方式 | [desktop_release_runner_legacy_config_source.md](./desktop_release_runner_legacy_config_source.md) |
 | Desktop Agent 设置页缺少 `codex_acp` runner 入口，实际已切到 Codex ACP 时仍无法一致展示 | P2 | Fixed | 2026-04-16 已补齐 settings/start 两处 runner 可见入口与检测提示，UI 与 live config 重新对齐 | [desktop_codex_acp_runner_ui_gap.md](./desktop_codex_acp_runner_ui_gap.md) |

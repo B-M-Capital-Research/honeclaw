@@ -47,6 +47,12 @@ fn global_log_buffer() -> &'static LogBuffer {
     GLOBAL_LOG_BUFFER.get_or_init(LogBuffer::new)
 }
 
+#[cfg(test)]
+pub(crate) fn test_env_lock() -> &'static Mutex<()> {
+    static TEST_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    TEST_ENV_LOCK.get_or_init(|| Mutex::new(()))
+}
+
 /// 初始化全局 tracing 订阅者（含内存捕获层）。
 /// 调用一次即可；重复调用安全（会静默失败）。
 pub fn init_logging(log_buffer: &LogBuffer, log_level: &str) {

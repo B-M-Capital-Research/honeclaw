@@ -74,16 +74,10 @@ pub fn ensure_runtime_dirs(config: &HoneConfig) {
 mod tests {
     use super::*;
     use std::env;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     #[test]
     fn web_dist_dir_prefers_explicit_env_override() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = crate::test_env_lock().lock().unwrap();
         unsafe {
             env::set_var("HONE_WEB_DIST_DIR", "/tmp/hone-explicit-web");
             env::set_var("HONE_INSTALL_ROOT", "/tmp/hone-install-root");
@@ -99,7 +93,7 @@ mod tests {
 
     #[test]
     fn web_dist_dir_uses_installed_bundle_layout_before_source_fallback() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = crate::test_env_lock().lock().unwrap();
         unsafe {
             env::remove_var("HONE_WEB_DIST_DIR");
             env::set_var("HONE_INSTALL_ROOT", "/tmp/hone-install-root");
@@ -117,7 +111,7 @@ mod tests {
 
     #[test]
     fn web_dist_dir_falls_back_to_source_tree_dist() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = crate::test_env_lock().lock().unwrap();
         unsafe {
             env::remove_var("HONE_WEB_DIST_DIR");
             env::remove_var("HONE_INSTALL_ROOT");
@@ -128,7 +122,7 @@ mod tests {
 
     #[test]
     fn runtime_ports_fall_back_to_fixed_defaults() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = crate::test_env_lock().lock().unwrap();
         unsafe {
             env::remove_var("HONE_WEB_PORT");
             env::remove_var("WEB_TEST_PORT");
@@ -141,7 +135,7 @@ mod tests {
 
     #[test]
     fn runtime_ports_honor_explicit_overrides() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = crate::test_env_lock().lock().unwrap();
         unsafe {
             env::set_var("HONE_WEB_PORT", "19077");
             env::set_var("HONE_PUBLIC_WEB_PORT", "19088");

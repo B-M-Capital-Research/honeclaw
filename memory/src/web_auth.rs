@@ -390,8 +390,16 @@ fn generate_user_id() -> String {
 }
 
 fn generate_invite_code() -> String {
+    // A single UUID v4 provides more than enough random hex material.
+    // We take 20 hex chars (80 bits entropy) for brute-force resistance.
     let token = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
-    format!("HONE-{}-{}", &token[..6], &token[6..12])
+    format!(
+        "HONE-{}-{}-{}-{}",
+        &token[..5],
+        &token[5..10],
+        &token[10..15],
+        &token[15..20]
+    )
 }
 
 fn normalize_invite_code(invite_code: &str) -> String {
@@ -496,6 +504,13 @@ fn delete_sessions_for_user_tx(tx: &Transaction<'_>, user_id: &str) -> HoneResul
     .map_err(sql_err)
 }
 
+/// Add a column to an existing table if it does not already exist.
+///
+/// # Safety (SQL injection)
+///
+/// `table`, `column`, and `definition` are interpolated directly into DDL.
+/// **All arguments MUST be hard-coded string literals** — never pass values
+/// derived from user input or external configuration.
 fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str) -> HoneResult<()> {
     let mut stmt = conn
         .prepare(&format!("PRAGMA table_info({table})"))
@@ -519,13 +534,29 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str)
 
 #[cfg(test)]
 mod tests {
-    use super::{SESSION_TTL_DAYS, WebAuthStorage};
+    use super::{SESSION_TTL_DAYS, WebAuthStorage, generate_invite_code};
     use rusqlite::Connection;
 
     fn test_storage() -> WebAuthStorage {
         let root = std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("root");
         WebAuthStorage::new(root.join("sessions.sqlite3")).expect("storage")
+    }
+
+    #[test]
+    fn invite_code_has_sufficient_entropy() {
+        let code = generate_invite_code();
+        assert!(code.starts_with("HONE-"), "prefix: {code}");
+        // HONE- + 4 groups of 5 hex chars separated by dashes = 28 chars total
+        assert_eq!(code.len(), 28, "length: {code}");
+        // 20 hex characters after the "HONE-" prefix = 80 bits of entropy.
+        // Count only the random part (skip the "HONE-" prefix and dashes).
+        let random_part = &code["HONE-".len()..];
+        let hex_chars: String = random_part
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .collect();
+        assert_eq!(hex_chars.len(), 20, "hex chars in random part: {code}");
     }
 
     #[test]

@@ -937,7 +937,6 @@ export default function PublicChatPage() {
       remainingToday: user.remaining_today,
       dailyLimit: user.daily_limit,
     });
-    setAuthState("ready");
     setLoginError("");
   };
 
@@ -950,6 +949,9 @@ export default function PublicChatPage() {
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
       replaceHistoryMessages(toPublicChatMessages(history));
+      // Transition to "ready" only after history is loaded so the UI
+      // doesn't flash an empty chat view while messages are still loading.
+      setAuthState("ready");
       await ensurePushEvents();
       if (generation !== sessionSyncGeneration) return;
       scrollToBottom();
@@ -1019,6 +1021,7 @@ export default function PublicChatPage() {
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
       replaceHistoryMessages(toPublicChatMessages(history));
+      setAuthState("ready");
       if (!eventSource) {
         await ensurePushEvents();
       }
