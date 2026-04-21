@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 12:30-13:00 最近一小时最新样本：
+    - `run_id=3954`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T12:30:22.259333+08:00`）再次落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 继续以 `<think>\nLet me check each ticker against its trigger condition:` 开头，逐项比较 11 只标的触发价后仍未收口到合法状态 JSON
+    - `run_id=3963`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T13:00:27.657409+08:00`）在下一轮继续 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 仍以 `<think>\nLet me compare each stock's current price against its trigger price:` 开头，说明 watchlist 模板连续两轮没有恢复结构化输出
+    - 同一 `13:00` 批次里，失败对象扩散到 `run_id=3964`（`TEM大事件心跳监控`）与 `run_id=3965`（`ORCL 大事件监控`），两条都落成 `execution_failed + skipped_error + JsonUnknownStatus`
+    - 这说明最新一小时里，问题已从上一轮 `Monitor_Watchlist_11` 单点失败重新扩散到事件监控模板；根因仍是 heartbeat 公共结构化状态契约不稳定，而不是单个任务模板偶发。
   - 2026-04-21 09:31-10:01 最近一小时最新样本：
     - `run_id=3893`（`CAI破位预警`，`executed_at=2026-04-21T09:31:15.528669+08:00`）在 `09:31` 窗口再次落成 `execution_failed + skipped_error`
       - `data/runtime/logs/sidecar.log` 同步记录：

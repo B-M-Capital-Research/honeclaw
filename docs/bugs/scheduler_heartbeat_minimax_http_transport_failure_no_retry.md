@@ -84,6 +84,8 @@
 
 ## 当前实现效果
 
+- `2026-04-21 12:30` 与 `13:00` 两个最新 heartbeat 窗口没有继续出现 `https://api.minimaxi.com/v1/chat/completions` 的成批传输失败；同批主要退化为 `JsonUnknownStatus` 或正常 `noop/triggered`。
+- 但该观察只覆盖上一次大面积失败后的两个半小时窗口，尚不足以证明重试或降级策略已经在生产收口；本单继续保持 `Fixing`，等待后续窗口确认是否稳定不再复现。
 - `2026-04-21 11:00`、`11:30`、`12:00` 的最新真实窗口说明，这条缺陷仍在继续：三个窗口又至少 30 条 heartbeat run 统一命中同一 `chat/completions` 传输失败。
 - 加上 `09:00` 与 `09:31` 的 16 条样本，故障已跨越多个半小时检查周期，不能按单次上游抖动处理。
 - 失败对象覆盖 `ASTS / RKLB / TEM / ORCL / Watchlist / CAI / 原油 / 小米` 多种 heartbeat 模板与不同 target，不再是单个 job 抖动。
@@ -108,6 +110,7 @@
 
 ## 修复进展
 
+- 截至 2026-04-21 13:00，最近两个 heartbeat 窗口暂未再现 MiniMax HTTP 传输失败，但仍只算短时恢复观察；若后续连续多个窗口不再复现，可再评估从 `Fixing` 切到 `Fixed`。
 - 截至 2026-04-21 12:00，仓库主线仍无法证明这条缺陷已经收口：从 `09:00` 到 `12:00` 的多个 heartbeat 真实窗口持续命中同一 `error sending request for url (...)`。
 - 本轮巡检时工作区保持干净，未见能证明“线上已落地吸震补丁”的仓库内新增事实；因此本单只能恢复为 `Fixing`，不能继续记为 `Fixed`。
 - 由于 heartbeat scheduler 与直聊搜索阶段共用 MiniMax / OpenAI-compatible provider，后续只有在真实生产窗口不再出现这类成批 `chat/completions` 传输失败时，才可重新评估是否关闭。

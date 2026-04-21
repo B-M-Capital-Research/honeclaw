@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-21 12:30 最近一小时最新样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=3957`
+      - `executed_at=2026-04-21T12:30:42.169507+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `detail_json.scheduler.deliver_preview` 同时触发“盘中涨幅约 9.38%”与 `BlueBird 7` 于 `2026-04-19` 被送入错误低轨、卫星损失这一旧事件
+      - `detail_json.raw_preview` 明确把 `4月19日` 旧发射失败重新包装为本轮触发消息；没有看到新的轨道修正、官方新增公告或独立公司级事件
+      - 这说明到 2026-04-21 中午，ASTS 旧事件仍会在后续轮询窗口被重新送达；即使本轮叠加了盘中涨幅阈值，消息正文仍继续消费同一个已反复提醒过的 `BlueBird 7` 旧事件。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-20 21:30-22:00 最近一小时最新样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=3630`，`executed_at=2026-04-20T21:30:34.823333+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
