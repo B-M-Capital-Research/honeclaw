@@ -626,6 +626,35 @@ function PendingBubble(props: {
           </div>
         </Show>
 
+        <Show when={(props.message.steps?.length ?? 0) > 0}>
+          <ul
+            style={{
+              margin: props.message.content ? "0 0 8px" : "4px 0 0",
+              padding: "0",
+              "list-style": "none",
+              "font-size": "12px",
+              "line-height": "1.7",
+              color: "#64748b",
+            }}
+          >
+            <For each={props.message.steps}>
+              {(step) => (
+                <li
+                  style={{
+                    display: "flex",
+                    "align-items": "flex-start",
+                    gap: "6px",
+                    "word-break": "break-word",
+                  }}
+                >
+                  <span style={{ color: "#f59e0b", "flex-shrink": "0" }}>•</span>
+                  <span>{step}</span>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
+
         <Show when={props.message.content}>
           <div style={{ "white-space": "pre-wrap", "word-break": "break-word" }}>
             <AssistantBody content={props.message.content} />
@@ -1116,14 +1145,20 @@ export default function PublicChatPage() {
           }
 
           if (event.event === "tool_call") {
-            const step =
-              (event.data.text ?? event.data.reasoning ?? "").trim() ||
-              "处理中…";
-            appendAssistantStep(assistantId, step);
-            patchMessageById(assistantId, {
-              phase: "running",
-              statusText: step || "处理中…",
-            });
+            if (event.data.status === "start") {
+              const tool = event.data.tool?.trim() ?? "";
+              const detail = (event.data.text ?? event.data.reasoning ?? "").trim();
+              const step = tool
+                ? detail
+                  ? `正在调用 Tool: ${tool} · ${detail}`
+                  : `正在调用 Tool: ${tool}`
+                : detail || "处理中…";
+              appendAssistantStep(assistantId, step);
+              patchMessageById(assistantId, {
+                phase: "running",
+                statusText: step,
+              });
+            }
           }
 
           if (event.event === "assistant_delta") {
