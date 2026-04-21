@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 09:31-10:01 最近一小时最新样本：
+    - `run_id=3893`（`CAI破位预警`，`executed_at=2026-04-21T09:31:15.528669+08:00`）在 `09:31` 窗口再次落成 `execution_failed + skipped_error`
+      - `data/runtime/logs/sidecar.log` 同步记录：
+      - `2026-04-21 09:31:15.528` `parse_kind=JsonUnknownStatus`
+      - `raw_preview` 明确写出“当前价 $21.24 远高于 52 周低点，应该只返回 `{}` 或 `{\"status\":\"noop\"}`”，但最终仍以前置 `<think>` 污染文本 + `{}` 形式收口并被升级为失败
+    - `run_id=3902`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T10:01:25.894616+08:00`）在 `10:01` 窗口再次落成 `execution_failed + skipped_error`
+      - `data/runtime/logs/sidecar.log` 记录：
+      - `2026-04-21 10:01:25.893` `parse_kind=JsonUnknownStatus`
+      - `raw_preview` 继续以 `<think>\nLet me check each ticker against its trigger price:` 开头，逐项比较 11 只标的后仍未收口为合法状态 JSON
+    - 对比同一 `10:01` 批次：
+      - `run_id=3899`（`TEM大事件心跳监控`）暂时恢复为 `noop + skipped_noop`
+      - `run_id=3895` 对应的 `ASTS 重大异动心跳监控` 在运行日志中又恢复成 `parse_kind=JsonTriggered`
+      - 这说明故障对象仍在不同模板间漂移，并不是协议已经恢复，只是个别模板本轮侥幸被解析器吞下
   - 2026-04-21 00:01-01:01 最近一小时最新样本：
     - `cron_job_runs` 在 `2026-04-21 00:01:22 -> 01:01:19` 继续表现为“上一轮失败对象漂移、下一轮又暂时自愈回 noop”的活跃抖动态：
       - `run_id=3682`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T00:01:22.323902+08:00`）在 `00:01` 窗口落成 `execution_failed + skipped_error`
@@ -900,6 +913,9 @@
 
 ## 当前实现效果
 
+- `2026-04-21 09:31` 与 `10:01` 的最新窗口说明，这条缺陷仍然活跃且继续漂移：上一轮失败对象是 `CAI破位预警`，下一轮又切到 `Monitor_Watchlist_11`。
+- 两条最新 `raw_preview` 都已经在正文里明确写出“条件未触发，应返回 noop/{}”，但因为前面混入 `<think>` 和解释性自由文本，最终仍被升级为 `JsonUnknownStatus`。
+- 同一 `10:01` 批次里，`TEM大事件心跳监控` 又暂时恢复成 `JsonNoop`，`ASTS 重大异动心跳监控` 甚至恢复到 `JsonTriggered`；这进一步证明根因仍是结构化输出契约脆弱，而不是某一个固定任务永久坏死。
 - 到 `2026-04-21 00:01 -> 01:01` 的最新窗口，这条缺陷仍然是活跃抖动态，而不是已经收敛或修复：`Monitor_Watchlist_11` 在 `00:01` 失败，`RKLB异动监控` 与 `小米破位预警` 在 `00:31` 再次失败，但到 `01:01` 同批任务又暂时恢复成 `noop + skipped_noop`。
 - 这种“下一轮自愈”并不表示问题关闭，因为 `sidecar.log` 显示 `01:01` 窗口里的 `noop` 任务依旧统一满足 `starts_with_json=false`，即输出仍是 `<think> ... {"status":"noop"}` 的污染文本，只是调度器本轮又侥幸解析成功。
 - 对用户侧而言，影响仍然是同一批 heartbeat 任务会在相邻轮次里在“静默跳过失败”和“看似正常 noop”之间来回摆动，无法建立稳定预期。

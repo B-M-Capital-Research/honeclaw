@@ -3,8 +3,22 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: Fixing
 - **证据来源**:
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 09:00-09:31 最近一小时最新样本：
+    - `09:00:05` 窗口里，`run_id=3873/3874/3875/3876/3877/3878/3879/3880/3881/3882`
+      - 分别对应 `小米破位预警`、`全天原油价格3小时播报`、`Monitor_Watchlist_11`、`小米30港元破位预警`、`CAI破位预警`、`TEM破位预警`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`RKLB异动监控`
+      - 全部统一落成 `execution_failed + skipped_error + delivered=0`
+      - `error_message` 全部相同：`LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
+    - 到 `09:31:04` 窗口，`run_id=3886/3887/3888/3889/3890/3891`
+      - 分别对应 `TEM破位预警`、`TEM大事件心跳监控`、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`小米30港元破位预警`
+      - 再次统一落成相同的 `execution_failed + skipped_error`
+      - 说明这不是单个 heartbeat job 偶发失败，而是在相邻两个半小时窗口里成批复现
+  - `data/runtime/logs/web.log`
+    - `2026-04-21 09:00:05.350 -> 09:00:05.371` 连续记录 10 条 heartbeat `run_finish ... success=false error="LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)"`
+    - `2026-04-21 09:31:04.190 -> 09:31:04.200` 再次连续记录 6 条相同 heartbeat 失败
+    - 每条失败后都紧跟 `[Feishu] 心跳任务未命中，本轮不发送`，说明当前链路仍把传输失败折叠成“未命中”式静默跳过，而不是自动重试或明确降级
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=2695`
     - `job_id=j_27495ea4`
@@ -64,6 +78,9 @@
 
 ## 当前实现效果
 
+- `2026-04-21 09:00` 与 `09:31` 的最新真实窗口说明，这条缺陷不能继续维持 `Fixed`：仅最近一小时就至少有 16 条 heartbeat run 再次统一命中同一 `chat/completions` 传输失败。
+- 失败对象覆盖 `ASTS / RKLB / TEM / ORCL / Watchlist / CAI / 原油 / 小米` 多种 heartbeat 模板与不同 target，不再是单个 job 抖动。
+- 更关键的是，`web.log` 仍显示每次失败后直接进入 `心跳任务未命中，本轮不发送`，表明当前生产链路并没有稳定吸收这类传输抖动；README 中先前“2026-04-20 已 provider 级修复”的结论已与最新生产事实不符。
 - 当前 heartbeat 链路在 MiniMax HTTP 发送失败后直接落为 `execution_failed + skipped_error`，没有自动重试。
 - 从 15:30 的正常 `JsonNoop` 到 16:01 的传输失败之间，没有任务配置变更，说明当前更像是上游/网络抖动没有被 scheduler 吸收。
 - 用户本轮虽然没有被误报为成功，但提醒任务仍未完成，功能链路已中断。
@@ -77,15 +94,16 @@
 
 ## 根因判断
 
+- 最新 `09:00/09:31` 成批复现说明，至少在当前仓库对应的线上链路里，并没有看到“provider 级重试已覆盖 heartbeat”的稳定证据；如果相关修补曾存在，也没有被最新运行事实证明已经生效。
 - 直接触发点是 heartbeat scheduler 调用 MiniMax `https://api.minimaxi.com/v1/chat/completions` 时发生 HTTP 传输失败。
 - 现有 scheduler 链路对这类传输错误缺少自动重试与降级策略，因此单次抖动就会让整轮执行失败。
 - 该问题与直聊搜索阶段的 `minimax_search_http_transport_failure_no_retry` 共享上游故障形态，但发生在独立的 heartbeat 执行链路上，说明“缺少吸震”并不是直聊专属问题。
 
 ## 修复进展
 
-- 截至 2026-04-19 01:02，仓库主线仍无法证明这条缺陷已经收口：最新 `TEM破位预警` 真实样本再次命中同一 `error sending request for url (...)`。
-- 本轮巡检时工作区保持干净，未见可据此认定“修复已在本地完成但未提交”的新增证据；因此仍只能按 `Fixing` 持续跟踪，而不能升级为 `Fixed`。
-- 由于 heartbeat scheduler 与直聊搜索阶段共用 MiniMax / OpenAI-compatible provider，后续若主线引入 provider 级重试或 fallback，才可能同时吸收这条 heartbeat 故障。
+- 截至 2026-04-21 09:31，仓库主线仍无法证明这条缺陷已经收口：最近一小时的 16 条 heartbeat 真实样本再次命中同一 `error sending request for url (...)`。
+- 本轮巡检时工作区保持干净，未见能证明“线上已落地吸震补丁”的仓库内新增事实；因此本单只能恢复为 `Fixing`，不能继续记为 `Fixed`。
+- 由于 heartbeat scheduler 与直聊搜索阶段共用 MiniMax / OpenAI-compatible provider，后续只有在真实生产窗口不再出现这类成批 `chat/completions` 传输失败时，才可重新评估是否关闭。
 
 ## 后续观察点
 
