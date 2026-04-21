@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 13:30-14:00 最近一小时最新样本：
+    - `run_id=3968`（`小米30港元破位预警`，`executed_at=2026-04-21T13:30:13.671481+08:00`）再次落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `data/runtime/logs/web.log` 同步记录 `raw_preview="<think>\nThe current price is 32.26 HKD... I should return a noop.\n</think>\n\n{}"`，即模型已经判断未触发，却仍因 `<think>...{}` 形态被升级为失败
+    - `run_id=3979`（`CAI破位预警`，`executed_at=2026-04-21T14:00:14.429556+08:00`）再次 `execution_failed + skipped_error`
+      - 日志 `2026-04-21 14:00:14.429` 显示 `parse_kind=JsonUnknownStatus`，正文明确写出 `当前价格21.24 > 16.28，所以条件未满足，返回noop`，最终仍只输出 `{}` 并失败
+    - `run_id=3985`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T14:00:36.784095+08:00`）同批再次 `execution_failed + skipped_error`
+      - 日志 `2026-04-21 14:00:36.782` 显示 `raw_preview` 继续以 `<think>\nLet me check each price against its trigger:` 开头，逐项比较 watchlist 后仍未收口到合法状态 JSON
+    - 对比 `13:30` 同批的 `Monitor_Watchlist_11` 与 `CAI破位预警` 还能被解析为 `JsonNoop`，到 `14:00` 又分别漂移成 `JsonUnknownStatus`，说明问题不是固定任务坏死，而是 heartbeat 公共输出契约持续抖动。
   - 2026-04-21 12:30-13:00 最近一小时最新样本：
     - `run_id=3954`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T12:30:22.259333+08:00`）再次落成 `execution_failed + skipped_error`
       - `detail_json.parse_kind=JsonUnknownStatus`
@@ -922,6 +931,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-21 13:30 -> 14:00` 的最新窗口，这条缺陷仍在活跃：`小米30港元破位预警`、`CAI破位预警`、`Monitor_Watchlist_11` 分别在相邻两轮里落成 `JsonUnknownStatus`，且失败正文都已经完成“条件未满足，应 noop”的业务判断，只是没有稳定输出合法状态 JSON。
 - `2026-04-21 09:31` 与 `10:01` 的最新窗口说明，这条缺陷仍然活跃且继续漂移：上一轮失败对象是 `CAI破位预警`，下一轮又切到 `Monitor_Watchlist_11`。
 - 两条最新 `raw_preview` 都已经在正文里明确写出“条件未触发，应返回 noop/{}”，但因为前面混入 `<think>` 和解释性自由文本，最终仍被升级为 `JsonUnknownStatus`。
 - 同一 `10:01` 批次里，`TEM大事件心跳监控` 又暂时恢复成 `JsonNoop`，`ASTS 重大异动心跳监控` 甚至恢复到 `JsonTriggered`；这进一步证明根因仍是结构化输出契约脆弱，而不是某一个固定任务永久坏死。

@@ -6,6 +6,11 @@
 - **状态**: Fixing
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 14:00 最新巡检样本：
+    - `run_id=3978`（`RKLB异动监控`，`executed_at=2026-04-21T14:00:06.953369+08:00`）再次落成 `execution_failed + skipped_error + delivered=0`
+    - `error_message=LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
+    - `data/runtime/logs/web.log` 在 `2026-04-21 14:00:06.952` 同步记录 `run_finish ... success=false` 与 `runner_error ... model=MiniMax-M2.7-highspeed`
+    - 这次不是 09:00-12:00 那种成批失败，而是单个 heartbeat job 在短时恢复观察后再次复现；因此不能把 `12:30/13:00` 两个窗口无同类错误解释为缺陷已修复。
   - 2026-04-21 11:00-12:00 最新巡检样本：
     - `11:00:05` 窗口里，`run_id=3917/3918/3919/3920/3921/3922/3923/3924` 分别对应 `CAI破位预警`、`TEM破位预警`、`RKLB异动监控`、`ORCL 大事件监控`、`小米30港元破位预警`、`TEM大事件心跳监控`、`全天原油价格3小时播报`、`ASTS 重大异动心跳监控`，全部落成 `execution_failed + skipped_error + delivered=0`，错误体相同：`LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
     - 同一 `11:00` 窗口还出现 `run_id=3925/3926` 的 `JsonUnknownStatus` 失败，说明同批 heartbeat 除了传输失败外仍混有结构化状态退化；但本条缺陷只跟踪 MiniMax HTTP 传输失败。
@@ -84,6 +89,7 @@
 
 ## 当前实现效果
 
+- `2026-04-21 14:00` 最新窗口又出现 `RKLB异动监控` 单点 MiniMax HTTP 传输失败；虽然不再是 09:00-12:00 的大面积批量失败，但足以推翻“短时恢复可能已收口”的判断，本单继续保持 `Fixing`。
 - `2026-04-21 12:30` 与 `13:00` 两个最新 heartbeat 窗口没有继续出现 `https://api.minimaxi.com/v1/chat/completions` 的成批传输失败；同批主要退化为 `JsonUnknownStatus` 或正常 `noop/triggered`。
 - 但该观察只覆盖上一次大面积失败后的两个半小时窗口，尚不足以证明重试或降级策略已经在生产收口；本单继续保持 `Fixing`，等待后续窗口确认是否稳定不再复现。
 - `2026-04-21 11:00`、`11:30`、`12:00` 的最新真实窗口说明，这条缺陷仍在继续：三个窗口又至少 30 条 heartbeat run 统一命中同一 `chat/completions` 传输失败。
@@ -110,6 +116,7 @@
 
 ## 修复进展
 
+- 截至 2026-04-21 14:00，MiniMax HTTP 失败已从 09:00-12:00 的大面积成批故障回落为单点复现，但仍未完全消失；后续需继续观察是否还有新的 `chat/completions` 发送失败。
 - 截至 2026-04-21 13:00，最近两个 heartbeat 窗口暂未再现 MiniMax HTTP 传输失败，但仍只算短时恢复观察；若后续连续多个窗口不再复现，可再评估从 `Fixing` 切到 `Fixed`。
 - 截至 2026-04-21 12:00，仓库主线仍无法证明这条缺陷已经收口：从 `09:00` 到 `12:00` 的多个 heartbeat 真实窗口持续命中同一 `error sending request for url (...)`。
 - 本轮巡检时工作区保持干净，未见能证明“线上已落地吸震补丁”的仓库内新增事实；因此本单只能恢复为 `Fixing`，不能继续记为 `Fixed`。
