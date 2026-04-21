@@ -6,6 +6,10 @@
 - **状态**: Fixing
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 19:30-20:00 最新巡检样本：
+    - `run_id=4089`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T19:30:06.654987+08:00`）落成 `execution_failed + skipped_error + delivered=0`
+    - 错误体为 `LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
+    - 到 `20:00` 同批主要故障又切换为 `JsonUnknownStatus` 与 ASTS 重复触发，说明 MiniMax 传输失败已从 18:30 的小批量故障回落成单点复现，但仍没有稳定消失，不能标记为已修复。
   - 2026-04-21 18:30-19:00 最新巡检样本：
     - `run_id=4069`（`TEM破位预警`，`executed_at=2026-04-21T18:30:06.674728+08:00`）落成 `execution_failed + skipped_error + delivered=0`
     - `run_id=4070`（`小米30港元破位预警`，`executed_at=2026-04-21T18:30:06.675238+08:00`）同批落成 `execution_failed + skipped_error + delivered=0`
@@ -115,6 +119,7 @@
 
 ## 当前实现效果
 
+- `2026-04-21 19:30` 最新窗口继续出现 `Monitor_Watchlist_11` MiniMax `chat/completions` 发送失败；`20:00` 虽又漂移到结构化状态失败，但同类传输失败仍在生产窗口单点复现，说明 heartbeat 上游吸震仍未稳定证明收口。
 - `2026-04-21 18:30` 最新窗口继续出现 `TEM破位预警` 与 `小米30港元破位预警` MiniMax `chat/completions` 发送失败；`19:00` 虽未继续同类传输失败，但漂移到结构化状态失败，说明 heartbeat 上游吸震仍未稳定证明收口。
 - `2026-04-21 17:31-18:00` 最新窗口继续出现 `ASTS / 小米30港元 / 小米` 三条 MiniMax `chat/completions` 发送失败；虽不再是 11:00-12:00 的全批次失败，但足以证明吸震策略仍未在生产稳定收口。
 - `2026-04-21 15:30-16:01` 最新窗口又出现多任务批量和单点 MiniMax HTTP 传输失败；失败对象覆盖 `RKLB / ORCL / 原油 / 小米 / TEM / ASTS / CAI`，说明传输吸震仍未在生产收口。

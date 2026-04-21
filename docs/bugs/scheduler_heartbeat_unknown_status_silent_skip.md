@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 20:00 最新巡检样本：
+    - `run_id=4101`（`小米破位预警`，`executed_at=2026-04-21T20:00:15.742509+08:00`）落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 已写出无法获取小米行情、应返回 `noop`，但尾部只输出 `{}` 并被升级为失败
+    - `run_id=4104`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T20:00:24.429586+08:00`）同批继续 `execution_failed + skipped_error`
+      - `raw_preview` 逐项比较 `HIMS / MU / RKLB / LMND ...` 当前价与触发价，仍未稳定收口为合法状态
+    - `run_id=4105`（`RKLB异动监控`，`executed_at=2026-04-21T20:00:25.291506+08:00`）继续 `execution_failed + skipped_error`
+      - `raw_preview` 已分析最新新闻多为 SpaceX IPO、机构持仓与评论文章，没有重大并购、Neutron 进展、重大订单或发射失败，却仍未输出受支持状态
+    - `run_id=4106`（`ORCL 大事件监控`，`executed_at=2026-04-21T20:00:28.320038+08:00`）同批失败
+      - `raw_preview` 已完成 ORCL 价格与单日涨跌阈值判断，仍以 `<think>` 自由文本开头并触发 `JsonUnknownStatus`
+    - 这说明 19:00 的失败没有自然收口；到 20:00 又扩散到 `小米 / Watchlist / RKLB / ORCL` 四类模板，heartbeat 公共结构化状态契约仍在生产窗口活跃漂移。
   - 2026-04-21 19:00 最新巡检样本：
     - `run_id=4080`（`小米30港元破位预警`，`executed_at=2026-04-21T19:00:14.773479+08:00`）落成 `execution_failed + skipped_error`
       - `detail_json.parse_kind=JsonUnknownStatus`
@@ -982,6 +993,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-21 20:00` 最新窗口，`小米破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控` 四类 heartbeat 模板再次落成 `JsonUnknownStatus + execution_failed + skipped_error`，说明该缺陷仍在破位、watchlist 与事件监控模板之间漂移。
 - 到 `2026-04-21 15:30 -> 16:01` 最新窗口，`小米破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控` 继续因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，说明该缺陷仍在活跃漂移。
 - 到 `2026-04-21 15:00` 最新窗口，`小米破位预警`、`RKLB异动监控`、`Monitor_Watchlist_11` 再次因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，说明该缺陷仍在活跃扩散，而不是 14:00 后自恢复。
 - 到 `2026-04-21 13:30 -> 14:00` 的最新窗口，这条缺陷仍在活跃：`小米30港元破位预警`、`CAI破位预警`、`Monitor_Watchlist_11` 分别在相邻两轮里落成 `JsonUnknownStatus`，且失败正文都已经完成“条件未满足，应 noop”的业务判断，只是没有稳定输出合法状态 JSON。

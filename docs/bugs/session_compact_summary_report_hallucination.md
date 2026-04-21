@@ -7,6 +7,13 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-21 20:00-20:02 最新复现：
+   - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+   - `2026-04-21T20:00:00.291431+08:00` 真实用户消息为 `[定时任务触发] 任务名称：A股盘后高景气产业链推演`
+   - `data/runtime/logs/sidecar.log` 在 `20:00:00.299913` 记录 `Compressing session ... with 24 messages (~82140 bytes)`，`20:00:36.440438` 记录 `summary_chars=2641`，随后 `20:00:36.449352` 记录 `compacted to boundary + summary + 6 retained items`
+   - `session_messages` 在 `2026-04-21T20:00:36.441080+08:00` 写入 `role=system` 的 `Conversation compacted`
+   - 紧接着 `2026-04-21T20:00:36.441099+08:00` 又写入 `role=user` 的 `【Compact Summary】...`，内容是 A 股高景气观察池表格，覆盖 `300308 / 300502 / 300394 / 688498` 等标的与“助手的观点 / 用户的观点”列
+   - 日志在 `20:00:36.449574` 继续进入 `restore_context + build_prompt + create_runner`，并在 `20:01-20:02` 连续调用 `skill_tool` 与 `data_fetch`，说明最新 scheduler 会话仍在压缩后把内部摘要当作真实 user transcript 继续进入回答链路。
 - 2026-04-21 18:55-18:57 最新复现：
    - `session_id=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`
    - `2026-04-21T18:54:52.082570+08:00` 用户真实输入为 `预判一下美股纳斯达克指数今天开盘后的走势`
@@ -208,7 +215,8 @@
 
 ## 当前实现效果（问题发现时）
 
-- 2026-04-21 18:55 最新样本说明，auto compact 仍在当前生产链路实时把 `Compact Summary` 写成 `role=user`；即使回答表面完成，真实 transcript 已被内部压缩产物污染。
+- 2026-04-21 20:00 最新样本说明，scheduler 触发会话在 auto compact 后仍实时把 `Compact Summary` 写成 `role=user`，随后立即进入 `restore_context + build_prompt + create_runner`；问题仍是当前生产链路实时生成，不是旧会话存量污染。
+- 2026-04-21 18:55 样本说明，auto compact 仍在当前生产链路实时把 `Compact Summary` 写成 `role=user`；即使回答表面完成，真实 transcript 已被内部压缩产物污染。
 - 2026-04-21 17:49 最新样本说明，旧 `role=user` compact summary 不只是存量脏数据；它在新的 `那rklb 呢` 直聊请求中仍被恢复进 runner 输入，并与本轮真实 user turn 同时进入 prompt。
 - 2026-04-21 16:05 最新样本说明，compact summary 仍会以 `role=user` 写入会话；同轮后续正式回答继续处理“美股亚川”新问题，生产链路没有收口到“summary 只作为系统态元数据”。
 - 2026-04-21 15:54 样本同样说明，另一条观察池会话在 compact 后写入 `role=user` 的 22 支观察池 summary，并继续处理 24 支观察池更新请求。
