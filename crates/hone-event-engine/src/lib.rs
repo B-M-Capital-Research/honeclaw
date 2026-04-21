@@ -138,7 +138,7 @@ impl EventEngine {
         info!(
             news_secs = self.engine_cfg.poll_intervals.news_secs,
             price_secs = self.engine_cfg.poll_intervals.price_secs,
-            earnings_secs = self.engine_cfg.poll_intervals.earnings_secs,
+            prefetch_offset_mins = self.engine_cfg.digest.prefetch_offset_mins,
             dryrun = self.engine_cfg.dryrun,
             store = %self.store_path.display(),
             portfolio = %self.portfolio_dir.display(),
@@ -271,6 +271,7 @@ impl EventEngine {
         )
         .with_tz_offset_hours(tz_offset)
         .with_store(store.clone())
+        .with_registry(registry.clone())
         .with_prefs(prefs_storage.clone())
         .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize);
         tokio::spawn(async move {
@@ -328,13 +329,38 @@ impl EventEngine {
         // sources.* 是 per-poller 1:1 的"最省钱"关法:直接不 spawn 对应 poller;
         // 事件既不入库也不分发。需要"poller 仍跑、只是 router 丢弃某 kind"
         // 这种兜底关法,改用 EventEngineConfig.disabled_kinds。
+        //
+        // v0.1.46 开始:earnings / corp_action / macro / analyst_grade / earnings_surprise
+        // 这 5 个日频 poller 改为 **cron-aligned**:在 `pre_market - offset` /
+        // `post_market - offset` 各跑一次,保证 digest flush 时用到的数据永远是刚拉的。
+        // 同时冷启动时每个 poller 立即跑一次,避免用户重启后等到下一个 flush 窗口。
+        // news / price 节奏本来就快(分钟级),继续用固定 interval。
         let sources = &self.engine_cfg.sources;
+        let pre_prefetch = digest::shift_hhmm_earlier(
+            &self.engine_cfg.digest.pre_market,
+            self.engine_cfg.digest.prefetch_offset_mins,
+        );
+        let post_prefetch = digest::shift_hhmm_earlier(
+            &self.engine_cfg.digest.post_market,
+            self.engine_cfg.digest.prefetch_offset_mins,
+        );
+        info!(
+            pre_market = %self.engine_cfg.digest.pre_market,
+            post_market = %self.engine_cfg.digest.post_market,
+            prefetch_offset_mins = self.engine_cfg.digest.prefetch_offset_mins,
+            pre_prefetch = %pre_prefetch,
+            post_prefetch = %post_prefetch,
+            "cron-aligned poller prefetch windows resolved"
+        );
+
         if sources.earnings_calendar {
             spawn_earnings_poller(
                 client.clone(),
                 store.clone(),
                 router.clone(),
-                Duration::from_secs(self.engine_cfg.poll_intervals.earnings_secs),
+                tz_offset,
+                pre_prefetch.clone(),
+                post_prefetch.clone(),
                 self.engine_cfg.earnings.window_days,
             );
         } else {
@@ -356,7 +382,9 @@ impl EventEngine {
                 store.clone(),
                 router.clone(),
                 registry.clone(),
-                Duration::from_secs(self.engine_cfg.poll_intervals.corp_action_secs),
+                tz_offset,
+                pre_prefetch.clone(),
+                post_prefetch.clone(),
                 sources.corp_action,
                 sources.sec_filings,
             );
@@ -370,7 +398,9 @@ impl EventEngine {
                 client.clone(),
                 store.clone(),
                 router.clone(),
-                Duration::from_secs(self.engine_cfg.poll_intervals.macro_secs),
+                tz_offset,
+                pre_prefetch.clone(),
+                post_prefetch.clone(),
             );
         } else {
             info!("macro poller disabled by config.sources.macro_calendar=false");
@@ -398,7 +428,9 @@ impl EventEngine {
                 store.clone(),
                 router.clone(),
                 registry.clone(),
-                Duration::from_secs(self.engine_cfg.poll_intervals.analyst_grade_secs),
+                tz_offset,
+                pre_prefetch.clone(),
+                post_prefetch.clone(),
             );
         } else {
             info!("analyst_grade poller disabled by config.sources.analyst_grade=false");
@@ -409,7 +441,9 @@ impl EventEngine {
                 store.clone(),
                 router.clone(),
                 registry.clone(),
-                Duration::from_secs(self.engine_cfg.poll_intervals.earnings_surprise_secs),
+                tz_offset,
+                pre_prefetch.clone(),
+                post_prefetch.clone(),
             );
         } else {
             info!("earnings_surprise poller disabled by config.sources.earnings_surprise=false");
@@ -460,24 +494,72 @@ async fn process_events(
     );
 }
 
+/// 通用 cron-aligned 循环:冷启动立即跑一次,然后每 60s 检查是否命中
+/// `pre_prefetch` / `post_prefetch` 对应的本地时刻(60s 分辨率由 `in_window` 保证)。
+/// `already_fired` 每日清空避免同分钟重复触发。
+///
+/// `action` 是 async closure:每次命中窗口就被 await 一次。签名用 `Fn` + 返回
+/// `BoxFuture` 以便调用方捕获共享 Arc。
+async fn cron_aligned_loop(
+    name: &'static str,
+    tz_offset: i32,
+    pre_prefetch: String,
+    post_prefetch: String,
+    action: impl Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+    + Send
+    + 'static,
+) {
+    // 冷启动:先跑一次,不等待 cron 窗口——保证用户重启 Hone 后马上能看到最新 teaser。
+    action().await;
+    let mut ticker = tokio::time::interval(Duration::from_secs(60));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut fired: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut last_date = String::new();
+    loop {
+        ticker.tick().await;
+        let now = chrono::Utc::now();
+        let today = digest::local_date_key(now, tz_offset);
+        if today != last_date {
+            fired.clear();
+            last_date = today.clone();
+        }
+        for (label, hhmm) in [("pre", &pre_prefetch), ("post", &post_prefetch)] {
+            if !digest::in_window(now, hhmm, tz_offset) {
+                continue;
+            }
+            let key = format!("{today}@{label}@{hhmm}");
+            if !fired.insert(key) {
+                continue;
+            }
+            info!(poller = name, window = label, hhmm = %hhmm, "cron-aligned poller firing");
+            action().await;
+        }
+    }
+}
+
 fn spawn_earnings_poller(
     client: FmpClient,
     store: Arc<EventStore>,
     router: Arc<NotificationRouter>,
-    interval: Duration,
+    tz_offset: i32,
+    pre_prefetch: String,
+    post_prefetch: String,
     window_days: i64,
 ) {
     tokio::spawn(async move {
-        let poller = EarningsPoller::new(client).with_window_days(window_days);
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match poller.poll().await {
-                Ok(events) => process_events("earnings", events, &store, &router).await,
-                Err(e) => warn!("earnings poller failed: {e:#}"),
-            }
-        }
+        let poller = Arc::new(EarningsPoller::new(client).with_window_days(window_days));
+        let action = move || {
+            let poller = poller.clone();
+            let store = store.clone();
+            let router = router.clone();
+            Box::pin(async move {
+                match poller.poll().await {
+                    Ok(events) => process_events("earnings", events, &store, &router).await,
+                    Err(e) => warn!("earnings poller failed: {e:#}"),
+                }
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        };
+        cron_aligned_loop("earnings", tz_offset, pre_prefetch, post_prefetch, action).await;
     });
 }
 
@@ -506,16 +588,13 @@ fn spawn_corp_action_poller(
     store: Arc<EventStore>,
     router: Arc<NotificationRouter>,
     registry: Arc<SharedRegistry>,
-    interval: Duration,
+    tz_offset: i32,
+    pre_prefetch: String,
+    post_prefetch: String,
     corp_action_enabled: bool,
     sec_filings_enabled: bool,
 ) {
     tokio::spawn(async move {
-        // sec_recent_hours=48:每次 tick 只把"过去 48h 新出现的"8-K 送入 store;
-        // store.insert_event 幂等 IGNORE 保证同一 filing 不会触发两次 dispatch。
-        let poller = CorpActionPoller::new(client).with_sec_recent_hours(48);
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         if !corp_action_enabled {
             info!(
                 "corp_action dividend/split fetch disabled by config.sources.corp_action=false; sec_filings 仍按设置运行"
@@ -524,34 +603,50 @@ fn spawn_corp_action_poller(
         if !sec_filings_enabled {
             info!("sec filings fetch disabled by config.sources.sec_filings=false");
         }
-        loop {
-            ticker.tick().await;
-            if corp_action_enabled {
-                // 拆股/分红日历——无需 ticker 列表。
-                match poller.poll().await {
-                    Ok(events) => process_events("corp_action", events, &store, &router).await,
-                    Err(e) => warn!("corp_action poller failed: {e:#}"),
+        // sec_recent_hours=48:每次 tick 只把"过去 48h 新出现的"8-K 送入 store;
+        // store.insert_event 幂等 IGNORE 保证同一 filing 不会触发两次 dispatch。
+        let poller = Arc::new(CorpActionPoller::new(client).with_sec_recent_hours(48));
+        let action = move || {
+            let poller = poller.clone();
+            let store = store.clone();
+            let router = router.clone();
+            let registry = registry.clone();
+            Box::pin(async move {
+                if corp_action_enabled {
+                    match poller.poll().await {
+                        Ok(events) => {
+                            process_events("corp_action", events, &store, &router).await
+                        }
+                        Err(e) => warn!("corp_action poller failed: {e:#}"),
+                    }
                 }
-            }
-            if !sec_filings_enabled {
-                continue;
-            }
-            // SEC 8-K——按 watch pool 逐 ticker 拉。空 pool 就跳过。
-            let symbols = registry.load().watch_pool();
-            if symbols.is_empty() {
-                continue;
-            }
-            let mut sec_events = Vec::new();
-            for sym in &symbols {
-                match poller.fetch_sec_filings(sym).await {
-                    Ok(v) => sec_events.extend(v),
-                    Err(e) => warn!("sec_filings fetch {sym} failed: {e:#}"),
+                if !sec_filings_enabled {
+                    return;
                 }
-            }
-            if !sec_events.is_empty() {
-                process_events("sec_filings", sec_events, &store, &router).await;
-            }
-        }
+                let symbols = registry.load().watch_pool();
+                if symbols.is_empty() {
+                    return;
+                }
+                let mut sec_events = Vec::new();
+                for sym in &symbols {
+                    match poller.fetch_sec_filings(sym).await {
+                        Ok(v) => sec_events.extend(v),
+                        Err(e) => warn!("sec_filings fetch {sym} failed: {e:#}"),
+                    }
+                }
+                if !sec_events.is_empty() {
+                    process_events("sec_filings", sec_events, &store, &router).await;
+                }
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        };
+        cron_aligned_loop(
+            "corp_action",
+            tz_offset,
+            pre_prefetch,
+            post_prefetch,
+            action,
+        )
+        .await;
     });
 }
 
@@ -559,19 +654,24 @@ fn spawn_macro_poller(
     client: FmpClient,
     store: Arc<EventStore>,
     router: Arc<NotificationRouter>,
-    interval: Duration,
+    tz_offset: i32,
+    pre_prefetch: String,
+    post_prefetch: String,
 ) {
     tokio::spawn(async move {
-        let poller = MacroPoller::new(client);
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match poller.poll().await {
-                Ok(events) => process_events("macro", events, &store, &router).await,
-                Err(e) => warn!("macro poller failed: {e:#}"),
-            }
-        }
+        let poller = Arc::new(MacroPoller::new(client));
+        let action = move || {
+            let poller = poller.clone();
+            let store = store.clone();
+            let router = router.clone();
+            Box::pin(async move {
+                match poller.poll().await {
+                    Ok(events) => process_events("macro", events, &store, &router).await,
+                    Err(e) => warn!("macro poller failed: {e:#}"),
+                }
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        };
+        cron_aligned_loop("macro", tz_offset, pre_prefetch, post_prefetch, action).await;
     });
 }
 
@@ -580,23 +680,36 @@ fn spawn_analyst_grade_poller(
     store: Arc<EventStore>,
     router: Arc<NotificationRouter>,
     registry: Arc<SharedRegistry>,
-    interval: Duration,
+    tz_offset: i32,
+    pre_prefetch: String,
+    post_prefetch: String,
 ) {
     tokio::spawn(async move {
-        let poller = AnalystGradePoller::new(client);
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            let symbols = registry.load().watch_pool();
-            if symbols.is_empty() {
-                continue;
-            }
-            match poller.poll(&symbols).await {
-                Ok(events) => process_events("analyst_grade", events, &store, &router).await,
-                Err(e) => warn!("analyst grade poller failed: {e:#}"),
-            }
-        }
+        let poller = Arc::new(AnalystGradePoller::new(client));
+        let action = move || {
+            let poller = poller.clone();
+            let store = store.clone();
+            let router = router.clone();
+            let registry = registry.clone();
+            Box::pin(async move {
+                let symbols = registry.load().watch_pool();
+                if symbols.is_empty() {
+                    return;
+                }
+                match poller.poll(&symbols).await {
+                    Ok(events) => process_events("analyst_grade", events, &store, &router).await,
+                    Err(e) => warn!("analyst grade poller failed: {e:#}"),
+                }
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        };
+        cron_aligned_loop(
+            "analyst_grade",
+            tz_offset,
+            pre_prefetch,
+            post_prefetch,
+            action,
+        )
+        .await;
     });
 }
 
@@ -605,23 +718,38 @@ fn spawn_earnings_surprise_poller(
     store: Arc<EventStore>,
     router: Arc<NotificationRouter>,
     registry: Arc<SharedRegistry>,
-    interval: Duration,
+    tz_offset: i32,
+    pre_prefetch: String,
+    post_prefetch: String,
 ) {
     tokio::spawn(async move {
-        let poller = EarningsSurprisePoller::new(client);
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            let symbols = registry.load().watch_pool();
-            if symbols.is_empty() {
-                continue;
-            }
-            match poller.poll(&symbols).await {
-                Ok(events) => process_events("earnings_surprise", events, &store, &router).await,
-                Err(e) => warn!("earnings surprise poller failed: {e:#}"),
-            }
-        }
+        let poller = Arc::new(EarningsSurprisePoller::new(client));
+        let action = move || {
+            let poller = poller.clone();
+            let store = store.clone();
+            let router = router.clone();
+            let registry = registry.clone();
+            Box::pin(async move {
+                let symbols = registry.load().watch_pool();
+                if symbols.is_empty() {
+                    return;
+                }
+                match poller.poll(&symbols).await {
+                    Ok(events) => {
+                        process_events("earnings_surprise", events, &store, &router).await
+                    }
+                    Err(e) => warn!("earnings surprise poller failed: {e:#}"),
+                }
+            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        };
+        cron_aligned_loop(
+            "earnings_surprise",
+            tz_offset,
+            pre_prefetch,
+            post_prefetch,
+            action,
+        )
+        .await;
     });
 }
 
@@ -693,7 +821,8 @@ mod tests {
         };
         let mut engine_cfg = EventEngineConfig::default();
         engine_cfg.enabled = true;
-        engine_cfg.poll_intervals.earnings_secs = 9999;
+        // earnings poller 在 v0.1.46 起改为 cron-aligned,冷启动会立即跑一次然后
+        // 等到下一个 prefetch 窗口。8 秒 sleep 只会命中冷启动那一次 poll,足够做 e2e 校验。
 
         let tmp = tempfile::tempdir().unwrap();
         let store_path = tmp.path().join("events.db");

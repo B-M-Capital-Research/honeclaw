@@ -139,6 +139,18 @@ pub fn in_window(now: DateTime<Utc>, hhmm: &str, offset_hours: i32) -> bool {
     now_t == target
 }
 
+/// 把 `HH:MM` 形式的时间点向前偏移 `offset_mins` 分钟,用于 cron-align pollers
+/// 计算"比 flush 窗口早 N 分钟去拉数据"的 target。
+/// 非法输入按原样返回。跨日回绕取模处理(例如 "00:10" - 30min → "23:40")。
+pub fn shift_hhmm_earlier(hhmm: &str, offset_mins: u32) -> String {
+    let Ok(t) = NaiveTime::parse_from_str(hhmm, "%H:%M") else {
+        return hhmm.into();
+    };
+    let total = t.hour() as i64 * 60 + t.minute() as i64;
+    let shifted = (total - offset_mins as i64).rem_euclid(24 * 60);
+    format!("{:02}:{:02}", shifted / 60, shifted % 60)
+}
+
 /// 当前本地日期（粗略）—— 用于 flush key 防止同一天重复触发。
 pub fn local_date_key(now: DateTime<Utc>, offset_hours: i32) -> String {
     let offset =
@@ -156,6 +168,10 @@ pub struct DigestScheduler {
     buffer: Arc<DigestBuffer>,
     sink: Arc<dyn crate::router::OutboundSink>,
     store: Option<Arc<crate::store::EventStore>>,
+    /// 可选订阅注册中心:有则在每次 flush 时把 T-3/T-2/T-1 的 earnings 倒计时
+    /// 现算并注入到匹配 actor 的 digest payload 里(见 `synthesize_countdowns`)。
+    /// 这样即使 poller cron 漂移也不会让倒计时 off-by-one。
+    registry: Option<Arc<crate::subscription::SharedRegistry>>,
     prefs: Arc<dyn crate::prefs::PrefsProvider>,
     pre_market: String,
     post_market: String,
@@ -177,6 +193,7 @@ impl DigestScheduler {
             buffer,
             sink,
             store: None,
+            registry: None,
             prefs: Arc::new(crate::prefs::AllowAllPrefs),
             pre_market: pre_market.into(),
             post_market: post_market.into(),
@@ -194,6 +211,13 @@ impl DigestScheduler {
     /// 可选注入 store：flush 成功/失败时把渲染后的 digest body 写 delivery_log。
     pub fn with_store(mut self, store: Arc<crate::store::EventStore>) -> Self {
         self.store = Some(store);
+        self
+    }
+
+    /// 注入订阅注册中心,开启 flush 时现算 earnings 倒计时。只有同时注入 store
+    /// 才会生效(synth 需要从 store 查 teaser)。
+    pub fn with_registry(mut self, registry: Arc<crate::subscription::SharedRegistry>) -> Self {
+        self.registry = Some(registry);
         self
     }
 
@@ -236,7 +260,56 @@ impl DigestScheduler {
                 // post_market 默认 09:00 北京时间，定位为"晨间简报，汇总隔夜美股"。
                 format!("晨间摘要 · {window}")
             };
-            for actor in self.buffer.list_pending_actors() {
+
+            // ── Read-time earnings 倒计时合成 ─────────────────────────────
+            // 每次 flush 现算 T-3/T-2/T-1 倒计时(见 `pollers::earnings::synthesize_countdowns`);
+            // 这样 poller 的 24h cron 就算漂移到下午才跑也不会让倒计时 off-by-one。
+            // 只有同时注入 store + registry 才会启用 —— 缺一则 fall back 回纯 buffer flush。
+            let mut synth_by_actor: HashMap<ActorIdentity, Vec<MarketEvent>> = HashMap::new();
+            if let (Some(store), Some(registry)) = (&self.store, &self.registry) {
+                // within_days=4 留一天裕量覆盖跨时区/接近午夜 flush 的边界;
+                // synthesize_countdowns 内部仍然只接纳 1..=3,不会超发。
+                match store.list_upcoming_earnings(now, 4) {
+                    Ok(teasers) => {
+                        let local_today = {
+                            let offset = FixedOffset::east_opt(self.tz_offset_hours * 3600)
+                                .unwrap_or(FixedOffset::east_opt(0).unwrap());
+                            offset.from_utc_datetime(&now.naive_utc()).date_naive()
+                        };
+                        let synth_pool = crate::pollers::earnings::synthesize_countdowns(
+                            &teasers,
+                            local_today,
+                        );
+                        let reg = registry.load();
+                        for ev in &synth_pool {
+                            for (actor, _sev) in reg.resolve(ev) {
+                                if !actor.is_direct() {
+                                    continue;
+                                }
+                                synth_by_actor
+                                    .entry(actor)
+                                    .or_default()
+                                    .push(ev.clone());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "digest: list_upcoming_earnings failed, skip synth overlay: {e:#}"
+                        );
+                    }
+                }
+            }
+
+            // 合并 actor 集合:buffer 里有排队事件的 + 仅有 synth 倒计时的。
+            // 后者保证"今天只有 AAPL T-1 一条,buffer 空"的场景也能触发 flush。
+            let mut actors: std::collections::HashSet<ActorIdentity> =
+                self.buffer.list_pending_actors().into_iter().collect();
+            for a in synth_by_actor.keys() {
+                actors.insert(a.clone());
+            }
+
+            for actor in actors {
                 // 硬规则：只向单聊推送；若历史 buffer 遗留群 actor，直接 drain 丢弃。
                 if !actor.is_direct() {
                     let _ = self.buffer.drain_actor(&actor);
@@ -248,89 +321,99 @@ impl DigestScheduler {
                     continue;
                 }
                 let user_prefs = self.prefs.load(&actor);
-                match self.buffer.drain_actor(&actor) {
-                    Ok(events) if !events.is_empty() => {
-                        // flush 时按最新 prefs 再过一遍：enqueue 后用户可能已关掉推送或
-                        // 调整范围——这里是最后一道拦截。
-                        let mut filtered: Vec<MarketEvent> = events
-                            .into_iter()
-                            .filter(|e| user_prefs.should_deliver(e))
-                            .collect();
-                        if filtered.is_empty() {
-                            tracing::info!(
-                                actor = %format!(
-                                    "{}::{}::{}",
-                                    actor.channel,
-                                    actor.channel_scope.clone().unwrap_or_default(),
-                                    actor.user_id
-                                ),
-                                "digest skipped by user prefs"
-                            );
-                            continue;
-                        }
-                        // 批次防轰炸：按 severity 降序(High→Medium→Low)再按 occurred_at 降序排序,
-                        // 超过上限的尾部丢弃并在渲染时提示。
-                        filtered.sort_by(|a, b| {
-                            b.severity
-                                .rank()
-                                .cmp(&a.severity.rank())
-                                .then_with(|| b.occurred_at.cmp(&a.occurred_at))
-                        });
-                        let overflow = if self.max_items_per_batch > 0
-                            && filtered.len() > self.max_items_per_batch
-                        {
-                            let dropped = filtered.len() - self.max_items_per_batch;
-                            filtered.truncate(self.max_items_per_batch);
-                            tracing::info!(
-                                actor = %format!(
-                                    "{}::{}::{}",
-                                    actor.channel,
-                                    actor.channel_scope.clone().unwrap_or_default(),
-                                    actor.user_id
-                                ),
-                                dropped,
-                                kept = filtered.len(),
-                                "digest truncated to avoid info flooding"
-                            );
-                            dropped
-                        } else {
-                            0
-                        };
-                        let body = render_digest(&label, &filtered, overflow, self.sink.format());
-                        let actor_key = format!(
+                // 拉 buffer 里既有的 Medium/Low 事件,拼上现算的 earnings 倒计时。
+                // drain_actor 失败走空列表:synth 覆盖层本身已是有效 payload。
+                let buffered = match self.buffer.drain_actor(&actor) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("drain_actor failed: {e:#}");
+                        Vec::new()
+                    }
+                };
+                let synths = synth_by_actor.remove(&actor).unwrap_or_default();
+                let mut events = buffered;
+                events.extend(synths);
+                if events.is_empty() {
+                    continue;
+                }
+                // flush 时按最新 prefs 再过一遍：enqueue 后用户可能已关掉推送或
+                // 调整范围——这里是最后一道拦截。synth 倒计时共用 `earnings_upcoming`
+                // kind,用户静音该 kind 时倒计时也一并被拦掉。
+                let mut filtered: Vec<MarketEvent> = events
+                    .into_iter()
+                    .filter(|e| user_prefs.should_deliver(e))
+                    .collect();
+                if filtered.is_empty() {
+                    tracing::info!(
+                        actor = %format!(
                             "{}::{}::{}",
                             actor.channel,
                             actor.channel_scope.clone().unwrap_or_default(),
                             actor.user_id
-                        );
-                        let send_result = self.sink.send(&actor, &body).await;
-                        if let Some(store) = &self.store {
-                            // 同一 digest body 覆盖多个 event_id；用合成 id 记录"flush 批次"。
-                            let batch_id =
-                                format!("digest-batch:{date}@{window}:{}", filtered.len());
-                            let status = if send_result.is_ok() {
-                                "sent"
-                            } else {
-                                "failed"
-                            };
-                            let _ = store.log_delivery(
-                                &batch_id,
-                                &actor_key,
-                                "digest",
-                                filtered[0].severity,
-                                status,
-                                Some(&body),
-                            );
-                        }
-                        if let Err(e) = send_result {
-                            tracing::warn!("digest sink failed: {e:#}");
-                            continue;
-                        }
-                        flushed += 1;
-                    }
-                    Ok(_) => {}
-                    Err(e) => tracing::warn!("drain_actor failed: {e:#}"),
+                        ),
+                        "digest skipped by user prefs"
+                    );
+                    continue;
                 }
+                // 批次防轰炸：按 severity 降序(High→Medium→Low)再按 occurred_at 降序排序,
+                // 超过上限的尾部丢弃并在渲染时提示。
+                filtered.sort_by(|a, b| {
+                    b.severity
+                        .rank()
+                        .cmp(&a.severity.rank())
+                        .then_with(|| b.occurred_at.cmp(&a.occurred_at))
+                });
+                let overflow = if self.max_items_per_batch > 0
+                    && filtered.len() > self.max_items_per_batch
+                {
+                    let dropped = filtered.len() - self.max_items_per_batch;
+                    filtered.truncate(self.max_items_per_batch);
+                    tracing::info!(
+                        actor = %format!(
+                            "{}::{}::{}",
+                            actor.channel,
+                            actor.channel_scope.clone().unwrap_or_default(),
+                            actor.user_id
+                        ),
+                        dropped,
+                        kept = filtered.len(),
+                        "digest truncated to avoid info flooding"
+                    );
+                    dropped
+                } else {
+                    0
+                };
+                let body = render_digest(&label, &filtered, overflow, self.sink.format());
+                let actor_key = format!(
+                    "{}::{}::{}",
+                    actor.channel,
+                    actor.channel_scope.clone().unwrap_or_default(),
+                    actor.user_id
+                );
+                let send_result = self.sink.send(&actor, &body).await;
+                if let Some(store) = &self.store {
+                    // 同一 digest body 覆盖多个 event_id；用合成 id 记录"flush 批次"。
+                    let batch_id =
+                        format!("digest-batch:{date}@{window}:{}", filtered.len());
+                    let status = if send_result.is_ok() {
+                        "sent"
+                    } else {
+                        "failed"
+                    };
+                    let _ = store.log_delivery(
+                        &batch_id,
+                        &actor_key,
+                        "digest",
+                        filtered[0].severity,
+                        status,
+                        Some(&body),
+                    );
+                }
+                if let Err(e) = send_result {
+                    tracing::warn!("digest sink failed: {e:#}");
+                    continue;
+                }
+                flushed += 1;
             }
         }
         Ok(flushed)

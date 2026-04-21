@@ -57,10 +57,11 @@ impl Default for EventEngineConfig {
 /// 财报 poller 特有参数。
 ///
 /// `window_days` 决定 EarningsPoller 每 tick 向 FMP earning_calendar 拉 `[today, today+N]`
-/// 的天数；也就是 Hone 开始"关注"一家公司财报的提前量。`EarningsPoller` 在此基础上会
-/// 对距今 T-3/T-2/T-1 的财报额外发送每日倒计时事件(id 带 `:countdown:N` 后缀避免 store
-/// 去重折叠;T-1 升级为 High 立即推,T-2/T-3 维持 Medium 进 digest)。用户若 `blocked_kinds`
-/// 包含 `earnings_upcoming`,则全程静音(初次预告 + 每日倒计时一并拦住)。
+/// 的天数;也就是 Hone 开始"关注"一家公司财报的提前量。**v0.1.46 起**,Poller 只产出
+/// 稳定 id 的 `earnings:{SYM}:{DATE}` teaser(Medium);T-3/T-2/T-1 倒计时由 DigestScheduler
+/// 在每次 flush 时刻从 EventStore 现算(见 `pollers::earnings::synthesize_countdowns`),
+/// 这样 poller cron 漂移不会让倒计时 off-by-one。整条 lifecycle 仍共享 `earnings_upcoming`
+/// kind,用户把它放进 `blocked_kinds` 就能一次静音 teaser + 所有倒计时。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EarningsConfig {
     #[serde(default = "default_earnings_window_days")]
@@ -87,26 +88,21 @@ fn default_dryrun() -> bool {
     true
 }
 
+/// **v0.1.46 破坏性简化**:只保留 `news_secs` / `price_secs` 这两类**真实时效性敏感**
+/// 的 poller 配置。原来的 `earnings_secs` / `corp_action_secs` / `macro_secs` /
+/// `analyst_grade_secs` / `earnings_surprise_secs` 5 个 24h 间隔字段被删除——对应
+/// poller 改成 **cron-aligned**:在 `digest.pre_market` / `digest.post_market` 的前
+/// `digest.prefetch_offset_mins` 分钟各执行一次拉取,这样推送的数据永远是 flush 之前
+/// 刚拉的,不会因为用户重启时机而漂到几小时前。
+///
+/// 旧 config 里这 5 个字段即使仍存在也会被 `#[serde(default)]` + unknown-field tolerant
+/// 悄悄忽略(serde 默认 deny_unknown_fields=false),YAML 不用改就能继续工作。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PollIntervals {
     #[serde(default = "default_news_interval")]
     pub news_secs: u64,
     #[serde(default = "default_price_interval")]
     pub price_secs: u64,
-    #[serde(default = "default_daily_interval")]
-    pub earnings_secs: u64,
-    #[serde(default = "default_daily_interval")]
-    pub corp_action_secs: u64,
-    #[serde(default = "default_daily_interval")]
-    pub macro_secs: u64,
-    /// 分析师评级拉取间隔。默认 24h——评级变更基本是日频节奏,更频繁拉只会
-    /// 放大 FMP 配额压力，不提升时效性。
-    #[serde(default = "default_daily_interval")]
-    pub analyst_grade_secs: u64,
-    /// 财报 surprise 拉取间隔。默认 24h;真实的时效性靠 scheduler 在盘后
-    /// (post-market 窗口附近)做一次集中扫即可。
-    #[serde(default = "default_daily_interval")]
-    pub earnings_surprise_secs: u64,
 }
 
 impl Default for PollIntervals {
@@ -114,11 +110,6 @@ impl Default for PollIntervals {
         Self {
             news_secs: default_news_interval(),
             price_secs: default_price_interval(),
-            earnings_secs: default_daily_interval(),
-            corp_action_secs: default_daily_interval(),
-            macro_secs: default_daily_interval(),
-            analyst_grade_secs: default_daily_interval(),
-            earnings_surprise_secs: default_daily_interval(),
         }
     }
 }
@@ -128,9 +119,6 @@ fn default_news_interval() -> u64 {
 }
 fn default_price_interval() -> u64 {
     5 * 60
-}
-fn default_daily_interval() -> u64 {
-    24 * 60 * 60
 }
 
 /// Digest 触发窗口配置。
@@ -152,6 +140,13 @@ pub struct DigestConfig {
     /// 单条摘要最多渲染多少事件，超出截断并附"另 N 条已省略"。0 = 不限制。
     #[serde(default = "default_max_items_per_batch")]
     pub max_items_per_batch: u32,
+    /// **cron-aligned poller** 在 flush 窗口前多少分钟执行拉取。v0.1.46 新增:
+    /// earnings / corp_action / macro / analyst_grade / earnings_surprise 这 5 个
+    /// 24h 节奏的 poller 不再用固定 interval 轮询,而是在 `pre_market - offset` /
+    /// `post_market - offset` 各跑一次,保证推送数据永远是 flush 前刚拉的。
+    /// 默认 30min;数值越小,数据越新但留给 EventStore/Router 处理的缓冲越紧。
+    #[serde(default = "default_prefetch_offset_mins")]
+    pub prefetch_offset_mins: u32,
 }
 
 impl Default for DigestConfig {
@@ -161,8 +156,13 @@ impl Default for DigestConfig {
             pre_market: default_pre_market(),
             post_market: default_post_market(),
             max_items_per_batch: default_max_items_per_batch(),
+            prefetch_offset_mins: default_prefetch_offset_mins(),
         }
     }
+}
+
+fn default_prefetch_offset_mins() -> u32 {
+    30
 }
 
 fn default_tz() -> String {

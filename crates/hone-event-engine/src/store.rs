@@ -248,6 +248,75 @@ impl EventStore {
         self.symbol_signal_kinds_in_window(symbol, since, Utc::now())
     }
 
+    /// 列出未来 `within_days` 天内的 `EarningsUpcoming` teaser 事件。
+    ///
+    /// 用于 `DigestScheduler` 在每次 flush 时刻把"今天应该提醒 T-3/T-2/T-1"
+    /// 的财报现算出来(见 `pollers::earnings::synthesize_countdowns`),这样
+    /// 即使 poller 的 cron tick 漂移也不会让倒计时 off-by-one。
+    pub fn list_upcoming_earnings(
+        &self,
+        now: DateTime<Utc>,
+        within_days: i64,
+    ) -> anyhow::Result<Vec<MarketEvent>> {
+        let start = now.timestamp();
+        let end = (now + chrono::Duration::days(within_days)).timestamp();
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
+                   title, summary, url, source, payload_json
+            FROM events
+            WHERE occurred_at_ts >= ?1 AND occurred_at_ts <= ?2
+              AND kind_json LIKE '%"earnings_upcoming"%'
+            "#,
+        )?;
+        let rows = stmt.query_map(params![start, end], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) = r?;
+            let Ok(kind) = serde_json::from_str(&kind_json) else {
+                continue;
+            };
+            let severity = match sev.as_str() {
+                "high" => crate::event::Severity::High,
+                "medium" => crate::event::Severity::Medium,
+                _ => crate::event::Severity::Low,
+            };
+            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let payload: serde_json::Value =
+                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+                continue;
+            };
+            out.push(MarketEvent {
+                id,
+                kind,
+                severity,
+                symbols,
+                occurred_at,
+                title,
+                summary,
+                url,
+                source,
+                payload,
+            });
+        }
+        Ok(out)
+    }
+
     /// 该 actor 在 `[since, now]` 窗口内通过 sink 成功送达的 High 事件数。
     /// 用于 Router 执行 `high_severity_daily_cap` 硬上限:超了自动降级到 digest,
     /// 避免同一天被同一股票的 8-K / 财报 / 价格异动轮番轰炸。
@@ -694,6 +763,45 @@ mod tests {
         let mut tags = store.today_signal_kinds("AAPL", since).unwrap();
         tags.sort();
         assert_eq!(tags, vec!["price_alert", "sec_filing"]);
+    }
+
+    #[test]
+    fn list_upcoming_earnings_returns_in_window_only() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+
+        // 未来 5 天后的 AAPL earnings —— 应命中(within_days=14)
+        let mut future = sample_event("earnings:AAPL:2026-04-26");
+        future.kind = EventKind::EarningsUpcoming;
+        future.symbols = vec!["AAPL".into()];
+        future.occurred_at = Utc::now() + chrono::Duration::days(5);
+        store.insert_event(&future).unwrap();
+
+        // 未来 30 天后的 NVDA —— 超出 14 天窗口,应不命中
+        let mut far_future = sample_event("earnings:NVDA:2026-05-21");
+        far_future.kind = EventKind::EarningsUpcoming;
+        far_future.symbols = vec!["NVDA".into()];
+        far_future.occurred_at = Utc::now() + chrono::Duration::days(30);
+        store.insert_event(&far_future).unwrap();
+
+        // 昨天的 TSLA earnings —— 过去,不命中
+        let mut past = sample_event("earnings:TSLA:2026-04-20");
+        past.kind = EventKind::EarningsUpcoming;
+        past.symbols = vec!["TSLA".into()];
+        past.occurred_at = Utc::now() - chrono::Duration::days(1);
+        store.insert_event(&past).unwrap();
+
+        // 未来 2 天的 AAPL 8-K —— 不是 earnings_upcoming,不命中
+        let mut filing = sample_event("sec:AAPL:future");
+        filing.kind = EventKind::SecFiling { form: "8-K".into() };
+        filing.symbols = vec!["AAPL".into()];
+        filing.occurred_at = Utc::now() + chrono::Duration::days(2);
+        store.insert_event(&filing).unwrap();
+
+        let upcoming = store.list_upcoming_earnings(Utc::now(), 14).unwrap();
+        assert_eq!(upcoming.len(), 1);
+        assert_eq!(upcoming[0].id, "earnings:AAPL:2026-04-26");
+        assert!(matches!(upcoming[0].kind, EventKind::EarningsUpcoming));
     }
 
     #[test]
