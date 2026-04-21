@@ -3,8 +3,15 @@
 - **发现时间**: 2026-04-16 19:10 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+  - 2026-04-21 21:00 修复后回归样本：
+    - `data/runtime/logs/acp-events.log`
+      - `2026-04-21T13:00:04.165140+00:00`，`session_id=Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768`，工具返回 `工具执行错误: 目录不存在: company_profiles`
+      - `2026-04-21T13:00:04.172741+00:00` 同一轮 assistant chunk 对用户可见地解释：`本地没有现成的 company_profiles/ 目录，我直接按实时研究走...`
+    - `data/sessions.sqlite3`
+      - 同一会话上一轮用户真实请求为 `2026-04-20T16:56:38+08:00` 的 `亚马逊能否买入`，assistant 最终在 `2026-04-20T16:58:00+08:00` 完成 AMZN 分析；到 `2026-04-21T21:00` 的后续盘前任务仍沿用该会话并再次暴露 `company_profiles` 目录缺失。
+    - 这说明 2026-04-20 记录的 `ensure_actor_sandbox` 预建目录修复没有覆盖当前生产 ACP 事件路径，至少老会话或当前 runner 工作目录仍可能看不到 `company_profiles/`。
   - `data/runtime/logs/web.log`
     - `2026-04-19 12:22:57.347` `session=Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185` 在用户消息“我想系统研究一家公司，比如分析一下GOOGL...”的搜索阶段先执行 `discover_skills query="company profile portrait save write GOOGL"`，随后 `12:22:59.247` 调用 `skill_tool company_portrait`
     - `2026-04-19 12:23:05.811` 同一会话继续执行 `local_read_file path="company_profiles/GOOGL/profile.md"`，紧接着记录 `tool_execute_error ... 文件不存在: company_profiles/GOOGL/profile.md`
@@ -81,6 +88,7 @@
 
 - 搜索代理持续把 `company_profiles` 当作当前工作目录相对路径使用，而不是 actor sandbox 下的真实画像目录。
 - `local_list_files` / `local_search_files` 在日志中明确报 `目录不存在` / `文件不存在`，但 reply 仍继续生成，导致故障只体现在质量退化上。
+- `2026-04-21 21:00` 修复后回归样本说明，当前生产 ACP 事件仍能返回 `目录不存在: company_profiles`，且 assistant 会把“本地没有现成目录”当作执行说明发给用户；问题已从单纯静默降级扩展为内部目录状态外泄到用户可见文本。
 - 最新 `21:01` 的两个样本说明该问题仍在活跃复现：
   - `OWALERT_PreMarket` 定时任务刚启动就先命中 `local_list_files path="company_profiles"` 的目录不存在；
   - 用户新问 `请对 FORM 进行下详细分析` 时也再次命中 `local_search_files ... path="company_profiles"` 的文件不存在。
@@ -111,6 +119,10 @@
 根因确认：`ensure_actor_sandbox` 只创建 `uploads/` 和 `runtime/`，不创建 `company_profiles/`。当 runner 第一次对某用户初始化 sandbox 时，`local_list_files path="company_profiles"` 返回"目录不存在"而非空列表，导致模型把它当工具错误反复重试，最终耗尽迭代次数。
 
 修复：`crates/hone-channels/src/sandbox.rs` — `ensure_actor_sandbox` 增加 `fs::create_dir_all(root.join("company_profiles"))`，确保 sandbox 初始化时预建空目录，工具返回空列表而非路径错误。`cargo test -p hone-channels` 全部通过。
+
+## 回归情况（2026-04-21）
+
+2026-04-21 21:00 的真实 ACP 事件再次出现 `目录不存在: company_profiles`，并且 assistant 对用户暴露“本地没有现成的 company_profiles/ 目录”。这证明此前修复最多覆盖了部分 sandbox 初始化路径，尚未保证当前生产 runner 的实际工作目录、旧会话恢复路径或 ACP 工具路径都能稳定看到预建目录；本缺陷状态从 `Fixed` 重新打开为 `New`。
 
 ## 下一步建议
 

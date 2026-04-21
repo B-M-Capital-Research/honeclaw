@@ -7,6 +7,12 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-21 21:02 最新可见文本外泄样本：
+   - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+   - `2026-04-21T21:00:00.426553+08:00` 真实用户消息为 `[定时任务触发] 任务名称：OWALERT_PreMarket`
+   - `2026-04-21T21:02:47.997793+08:00` assistant 最终内容直接以 `Context compacted` 开头，然后才进入盘前扫描正文
+   - 对应 `cron_job_runs.run_id=4136` 记录该任务 `execution_status=completed`、`message_send_status=send_failed`，说明压缩标记已经进入最终可见正文，即使本轮又被 Feishu 发送 400 阻断，落库文本本身已经污染。
+   - 这不是单纯的内部 `role=user` summary 落库问题；压缩状态标记已经穿透到用户可见答复正文，属于输出格式/内部状态外泄。
 - 2026-04-21 20:00-20:02 最新复现：
    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
    - `2026-04-21T20:00:00.291431+08:00` 真实用户消息为 `[定时任务触发] 任务名称：A股盘后高景气产业链推演`
@@ -216,6 +222,7 @@
 ## 当前实现效果（问题发现时）
 
 - 2026-04-21 20:00 最新样本说明，scheduler 触发会话在 auto compact 后仍实时把 `Compact Summary` 写成 `role=user`，随后立即进入 `restore_context + build_prompt + create_runner`；问题仍是当前生产链路实时生成，不是旧会话存量污染。
+- 2026-04-21 21:02 最新样本说明，`OWALERT_PreMarket` 的最终 assistant 文本直接以 `Context compacted` 开头，压缩状态不再只停留在 transcript 角色污染，而是会进入最终可见输出。
 - 2026-04-21 18:55 样本说明，auto compact 仍在当前生产链路实时把 `Compact Summary` 写成 `role=user`；即使回答表面完成，真实 transcript 已被内部压缩产物污染。
 - 2026-04-21 17:49 最新样本说明，旧 `role=user` compact summary 不只是存量脏数据；它在新的 `那rklb 呢` 直聊请求中仍被恢复进 runner 输入，并与本轮真实 user turn 同时进入 prompt。
 - 2026-04-21 16:05 最新样本说明，compact summary 仍会以 `role=user` 写入会话；同轮后续正式回答继续处理“美股亚川”新问题，生产链路没有收口到“summary 只作为系统态元数据”。
