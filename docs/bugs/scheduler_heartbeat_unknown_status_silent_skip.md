@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 06:00-06:31 最新巡检样本：
+    - `run_id=4317-4325` 在 `2026-04-22T06:01:08-06:01:39+08:00` 覆盖小米、CAI、TEM、ORCL、ASTS、RKLB、Watchlist 与 TEM 大事件 heartbeat；全部不是纯 JSON 起始，`detail_json.starts_with_json=false`，其中 `run_id=4317` 为 `JsonEmptyStatus`，其余多数依赖 `<think>...{"status":"noop"}` 尾部提取。
+    - `run_id=4332`（`RKLB异动监控`，`executed_at=2026-04-22T06:31:15.823964+08:00`）、`run_id=4333`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T06:31:17.048087+08:00`）和 `run_id=4334`（`ORCL 大事件监控`，`executed_at=2026-04-22T06:31:20.207241+08:00`）继续落成 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 已完成价格/新闻/触发价判断，却没有稳定输出受支持状态 JSON。
+    - `run_id=4326`（`全天原油价格3小时播报`）同批被解析为 `JsonTriggered + sent`，但 `starts_with_json=false`，说明问题不只影响静默跳过；触发型输出同样依赖 `<think>...尾部 JSON`，内容正确性另行登记到 `oil_price_scheduler_geopolitical_hallucination.md`。
+    - 本轮没有新增 `execution_failed` 或用户投诉，严重等级维持 P2；但 06:00-06:31 证明结构化契约仍未恢复，当前状态继续保持 `New`。
   - 2026-04-22 05:30-05:31 最新巡检样本：
     - `run_id=4312`（`ORCL 大事件监控`，`executed_at=2026-04-22T05:31:16.406788+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已分析 ORCL 行情、时间戳和新闻条件，并说明上一轮已通知，却仍以前置 `<think>` 自由文本收口，后台只能静默跳过。
     - `run_id=4315`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T05:31:25.636736+08:00`）同样落成 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 已逐项比较 `HIMS / MU / RKLB / LMND ...` 当前价与触发价，但没有稳定输出受支持状态 JSON。
