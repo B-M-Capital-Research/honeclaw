@@ -267,29 +267,46 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2026, 4, 27).unwrap(); // T-3
         let synth = synthesize_countdowns(&[teaser.clone()], today);
         assert_eq!(synth.len(), 1);
-        assert!(synth[0].id.contains("synth:earnings:AAPL:2026-04-30:countdown:2026-04-27"));
+        assert!(
+            synth[0]
+                .id
+                .contains("synth:earnings:AAPL:2026-04-30:countdown:2026-04-27")
+        );
         assert!(synth[0].title.contains("in 3 days"));
         assert_eq!(synth[0].severity, Severity::Medium);
         assert_eq!(synth[0].source, "digest.synth.earnings_countdown");
 
-        let t2 = synthesize_countdowns(&[teaser.clone()], NaiveDate::from_ymd_opt(2026, 4, 28).unwrap());
+        let t2 = synthesize_countdowns(
+            &[teaser.clone()],
+            NaiveDate::from_ymd_opt(2026, 4, 28).unwrap(),
+        );
         assert_eq!(t2.len(), 1);
         assert!(t2[0].title.contains("in 2 days"));
 
         let t1 = synthesize_countdowns(&[teaser], NaiveDate::from_ymd_opt(2026, 4, 29).unwrap());
         assert_eq!(t1.len(), 1);
         assert!(t1[0].title.contains("tomorrow"));
-        assert_eq!(t1[0].severity, Severity::Medium, "T-1 不再升 High,靠 flush 定时即可");
+        assert_eq!(
+            t1[0].severity,
+            Severity::Medium,
+            "T-1 不再升 High,靠 flush 定时即可"
+        );
     }
 
     #[test]
     fn synth_suppressed_outside_window() {
         let teaser = fake_teaser("NVDA", "2026-04-30");
         // T-4:太远
-        let t4 = synthesize_countdowns(&[teaser.clone()], NaiveDate::from_ymd_opt(2026, 4, 26).unwrap());
+        let t4 = synthesize_countdowns(
+            &[teaser.clone()],
+            NaiveDate::from_ymd_opt(2026, 4, 26).unwrap(),
+        );
         assert!(t4.is_empty());
         // T-0:财报当日,EarningsSurprisePoller 接手
-        let t0 = synthesize_countdowns(&[teaser.clone()], NaiveDate::from_ymd_opt(2026, 4, 30).unwrap());
+        let t0 = synthesize_countdowns(
+            &[teaser.clone()],
+            NaiveDate::from_ymd_opt(2026, 4, 30).unwrap(),
+        );
         assert!(t0.is_empty());
         // T+1:已过期
         let tp1 = synthesize_countdowns(&[teaser], NaiveDate::from_ymd_opt(2026, 5, 1).unwrap());
@@ -299,8 +316,14 @@ mod tests {
     #[test]
     fn synth_ids_embed_today_so_per_day_renderings_dont_dedupe_each_other() {
         let teaser = fake_teaser("AMD", "2026-04-30");
-        let t3 = synthesize_countdowns(&[teaser.clone()], NaiveDate::from_ymd_opt(2026, 4, 27).unwrap());
-        let t2 = synthesize_countdowns(&[teaser.clone()], NaiveDate::from_ymd_opt(2026, 4, 28).unwrap());
+        let t3 = synthesize_countdowns(
+            &[teaser.clone()],
+            NaiveDate::from_ymd_opt(2026, 4, 27).unwrap(),
+        );
+        let t2 = synthesize_countdowns(
+            &[teaser.clone()],
+            NaiveDate::from_ymd_opt(2026, 4, 28).unwrap(),
+        );
         let t1 = synthesize_countdowns(&[teaser], NaiveDate::from_ymd_opt(2026, 4, 29).unwrap());
         assert_ne!(t3[0].id, t2[0].id);
         assert_ne!(t2[0].id, t1[0].id);
@@ -310,7 +333,8 @@ mod tests {
     fn synth_ignores_non_earnings_events() {
         let mut wrong_kind = fake_teaser("AAPL", "2026-04-30");
         wrong_kind.kind = EventKind::NewsCritical;
-        let synth = synthesize_countdowns(&[wrong_kind], NaiveDate::from_ymd_opt(2026, 4, 29).unwrap());
+        let synth =
+            synthesize_countdowns(&[wrong_kind], NaiveDate::from_ymd_opt(2026, 4, 29).unwrap());
         assert!(synth.is_empty());
     }
 

@@ -614,9 +614,7 @@ fn spawn_corp_action_poller(
             Box::pin(async move {
                 if corp_action_enabled {
                     match poller.poll().await {
-                        Ok(events) => {
-                            process_events("corp_action", events, &store, &router).await
-                        }
+                        Ok(events) => process_events("corp_action", events, &store, &router).await,
                         Err(e) => warn!("corp_action poller failed: {e:#}"),
                     }
                 }

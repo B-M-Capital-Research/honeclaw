@@ -276,20 +276,15 @@ impl DigestScheduler {
                                 .unwrap_or(FixedOffset::east_opt(0).unwrap());
                             offset.from_utc_datetime(&now.naive_utc()).date_naive()
                         };
-                        let synth_pool = crate::pollers::earnings::synthesize_countdowns(
-                            &teasers,
-                            local_today,
-                        );
+                        let synth_pool =
+                            crate::pollers::earnings::synthesize_countdowns(&teasers, local_today);
                         let reg = registry.load();
                         for ev in &synth_pool {
                             for (actor, _sev) in reg.resolve(ev) {
                                 if !actor.is_direct() {
                                     continue;
                                 }
-                                synth_by_actor
-                                    .entry(actor)
-                                    .or_default()
-                                    .push(ev.clone());
+                                synth_by_actor.entry(actor).or_default().push(ev.clone());
                             }
                         }
                     }
@@ -363,26 +358,25 @@ impl DigestScheduler {
                         .cmp(&a.severity.rank())
                         .then_with(|| b.occurred_at.cmp(&a.occurred_at))
                 });
-                let overflow = if self.max_items_per_batch > 0
-                    && filtered.len() > self.max_items_per_batch
-                {
-                    let dropped = filtered.len() - self.max_items_per_batch;
-                    filtered.truncate(self.max_items_per_batch);
-                    tracing::info!(
-                        actor = %format!(
-                            "{}::{}::{}",
-                            actor.channel,
-                            actor.channel_scope.clone().unwrap_or_default(),
-                            actor.user_id
-                        ),
-                        dropped,
-                        kept = filtered.len(),
-                        "digest truncated to avoid info flooding"
-                    );
-                    dropped
-                } else {
-                    0
-                };
+                let overflow =
+                    if self.max_items_per_batch > 0 && filtered.len() > self.max_items_per_batch {
+                        let dropped = filtered.len() - self.max_items_per_batch;
+                        filtered.truncate(self.max_items_per_batch);
+                        tracing::info!(
+                            actor = %format!(
+                                "{}::{}::{}",
+                                actor.channel,
+                                actor.channel_scope.clone().unwrap_or_default(),
+                                actor.user_id
+                            ),
+                            dropped,
+                            kept = filtered.len(),
+                            "digest truncated to avoid info flooding"
+                        );
+                        dropped
+                    } else {
+                        0
+                    };
                 let body = render_digest(&label, &filtered, overflow, self.sink.format());
                 let actor_key = format!(
                     "{}::{}::{}",
@@ -393,8 +387,7 @@ impl DigestScheduler {
                 let send_result = self.sink.send(&actor, &body).await;
                 if let Some(store) = &self.store {
                     // 同一 digest body 覆盖多个 event_id；用合成 id 记录"flush 批次"。
-                    let batch_id =
-                        format!("digest-batch:{date}@{window}:{}", filtered.len());
+                    let batch_id = format!("digest-batch:{date}@{window}:{}", filtered.len());
                     let status = if send_result.is_ok() {
                         "sent"
                     } else {
