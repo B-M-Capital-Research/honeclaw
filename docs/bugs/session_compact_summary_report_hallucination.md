@@ -3,10 +3,15 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: Fixing
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-21 10:52-10:59 最近一小时最新复现：
+   - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
+   - `2026-04-21T10:52:02.385261+08:00` 会话先写入 `system` 消息 `Conversation compacted`
+   - 紧接着 `2026-04-21T10:52:02.385272+08:00`，`session_messages` 又再次写回 `role=user` 的 `【Compact Summary】...`，内容仍是完整 `股票关注表` 与“助手的观点 / 用户的观点”列，而不是系统态摘要元数据
+   - 随后同一会话在 `2026-04-21T10:54:09.279122+08:00` 与 `2026-04-21T10:58:15.980432+08:00` 连续给出仓位复盘正式回答，说明所谓“2026-04-20 已改为写 `role=system` 并在 restore 跳过”的修复结论并未落到当前生产链路；auto compact 仍在持续生成新的 `role=user` 污染样本
 - 2026-04-20 16:51 最近一小时最新复现：
    - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`
    - `2026-04-20T16:50:45.690+08:00` 用户真实输入是：`分析一下DELL，并综合对比DELL、HPE、CRWV三家公司`
@@ -321,6 +326,7 @@
 2. `crates/hone-channels/src/agent_session.rs` — `restore_context` 的 `"user"` 分支：遇到 compact_summary 元数据直接跳过（兼容旧数据）；`"system"` 分支：同时跳过 compact_boundary 和 compact_summary
 3. 更新所有相关回归测试（共 4 个），期望值从"含 summary"改为"只含真实消息"；`resolve_prompt_input` 测试仍通过（summary 通过 `conversation_context` 正常出现在 runtime_input 里）
 4. `cargo test -p hone-channels` 全部 213 个测试通过
+5. 但 `2026-04-21T10:52:02.385272+08:00` 的最新 Feishu 真实会话仍再次落入 `role=user` 的 `【Compact Summary】...`，证明仓库曾记录的修复并没有让当前生产写库路径真正收口；本单状态因此重新回到 `Fixing`，README 也需要同步撤回“已修复”结论。
 
 ## 后续建议
 
