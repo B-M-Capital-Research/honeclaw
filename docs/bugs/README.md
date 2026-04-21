@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-21 23:00 CST
+最后更新：2026-04-22 00:00 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -23,13 +23,13 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | Fixing | 2026-04-19 22:59 最新直聊样本已不再外发零字节消息，但 `codex_acp` 仍连续两次 `empty_success` 重试后退化为通用 fallback，说明用户侧止血有效、底层空成功根因仍活跃 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 直聊 Answer 阶段再次出现空回复伪成功，`reply.chars=0` 仍被记成功并发送空分段 | P1 | Fixing | 2026-04-21 23:34 简单直聊“你在吗”被 `transitional planning sentence detected, treating as empty` 判空后返回通用 fallback；零字节外发已止血，但 Answer 空/无效成功根因仍影响真实用户 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-20 22:29 Feishu 真实会话把 `Falling back from WebSockets... 403 Forbidden ... wss://chatgpt.com/backend-api/codex/responses` 直接混进用户可见答复，旧净化规则已回归失效 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-21 21:02 `OWALERT_PreMarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；正文已落库但用户侧未送达 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
-| 会话压缩摘要仍以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-21 21:02 `OWALERT_PreMarket` 最终 assistant 文本直接以 `Context compacted` 开头；20:00 样本仍证明 `Compact Summary` 以 `role=user` 回灌 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
+| 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-21 23:16 与 23:59 最新 auto compact 样本已改为 `role=system`，但 21:02 仍有 `Context compacted` 进入最终正文；维持 Fixing，继续观察是否彻底停止可见外泄与 prompt 污染 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-21 23:01 后续定时任务仍按旧 `22支` 清单发送，不含用户要求新增的 `BE/AMD`；16:39 `cron_job` 更新轮只落库工具轨迹和错误尾注，已从纯质量问题升级为任务配置工作流偏差 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-21 21:00 `小米破位 / ORCL / Monitor_Watchlist_11` 再次落成 `JsonUnknownStatus + execution_failed + skipped_error`；20:30 也有 `小米30港元破位预警` 失败，问题仍跨破位、watchlist 与事件监控模板漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |

@@ -5,6 +5,12 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-21 23:34 最新真实直聊样本：
+    - `session_id=Actor_feishu__direct__ou_5f01b20218487e01a6d48c881ce6893123`
+    - `2026-04-21T23:34:43.526597+08:00` 用户只问：`你在吗`
+    - `2026-04-21T23:34:58.039230+08:00` assistant 最终落库为通用 fallback：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - `data/runtime/logs/sidecar.log` 同步记录 `2026-04-21 23:34:58.038` `transitional planning sentence detected, treating as empty runner=codex_acp ... chars=69`
+    - 这说明用户侧零字节外发仍被 fallback 止血，但 Answer 阶段仍会把无效/过渡性输出判成空结果；即使是最简单的在线确认问题，也会退化成“没成功产出完整回复”。
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
     - `2026-04-15T17:45:15.399804+08:00` 用户消息要求比较 `AT&T`、`T-Mobile`、`VSAT`、`IRDM`、`GSAT`、`ASTS` 在 2025 年财报中的手机通信收入，并输出投资报告格式的表格和文字分析
@@ -61,6 +67,7 @@
 
 ## 当前实现效果
 
+- `2026-04-21 23:34` 的最新样本说明，问题已经从“空字符串直接外发”缓解为“无效 Answer 被判空并返回 fallback”，但底层仍不能稳定为简单直聊生成可消费答复。
 - 真实会话已经证明：Feishu 直聊在搜索结果齐备的前提下，仍可能产出零字节 assistant 消息。
 - `opencode_acp` 日志明确识别到 `empty reply`，但 `multi_agent.answer.done`、`MsgFlow/feishu done` 和 `reply.send` 仍全部走成功路径。
 - 数据库最终同时留下“有真实消息 ID”和“assistant 内容为空”这两个互相矛盾的结果，说明空消息并未被链路拦截。
@@ -141,6 +148,13 @@
 - 因此本单继续维持 `Fixing`：
   - “空消息伪成功”这一原始用户侧症状已被止血，不再适合回退到 `New`；
   - 但“runner 空成功仍活跃，只是改由 fallback 遮蔽”的根因仍未修复，暂不能转为 `Fixed`。
+
+## 最新真实样本复核（2026-04-22 00:00 CST）
+
+- 本轮巡检没有发现 `reply.chars=0 + segments.sent=1/1` 的新空消息外发样本。
+- 但 `2026-04-21 23:34` 的 `你在吗` 会话证明底层坏态仍活跃：`codex_acp` 产出的 69 字过渡性文本被 `transitional planning sentence detected` 判空，最终只能给用户返回通用 fallback。
+- 这不是新的独立缺陷，而是同一 Answer 空/无效成功根因的新表现：用户侧不再收到空白消息，但仍没有拿到对简单问题的正常回答。
+- 因此本单继续维持 `Fixing`，不转 `Fixed`。
 
 ## 下一步建议（更新于 2026-04-19 23:10 CST）
 

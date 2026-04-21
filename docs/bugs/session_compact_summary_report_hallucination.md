@@ -7,6 +7,14 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 00:00 最新状态变化复核：
+   - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
+   - `2026-04-21T23:16:37.180473+08:00` 会话 auto compact 后写入 `role=system` 的 `Conversation compacted`
+   - `2026-04-21T23:16:37.180494+08:00` 随后的 `【Compact Summary】...` 也已写成 `role=system`，不再是此前的 `role=user`
+   - `session_id=Actor_feishu__direct__ou_5f79ee8185333e5db4a55e5eca0d8d2f7e`
+   - `2026-04-21T23:59:54.708566+08:00` 写入 `role=system` 的 `Conversation compacted`
+   - `2026-04-21T23:59:54.708583+08:00` 随后的 `【Compact Summary】...` 同样为 `role=system`
+   - 这说明“新生成 compact summary 继续以 `role=user` 落库”的症状在最新两条直聊 auto compact 样本里已有收敛迹象；但 2026-04-21 21:02 仍有 `Context compacted` 穿透进最终 assistant 正文，且本轮未完整验证 `role=system` summary 是否一定不会进入 prompt，因此状态维持 `Fixing`。
 - 2026-04-21 21:02 最新可见文本外泄样本：
    - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
    - `2026-04-21T21:00:00.426553+08:00` 真实用户消息为 `[定时任务触发] 任务名称：OWALERT_PreMarket`
@@ -292,7 +300,7 @@
 - `12:01` 的最新样本进一步说明，污染并不依赖任务最终成功送达：`Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 在 overflow recovery 后再次写回 `role=user` 的持仓表 `【Compact Summary】`，随后本轮 `run_id=2923` 只返回“当前会话上下文过长”失败提示。也就是说，compact summary 角色错误仍会在 scheduler 失败路径里实时生成新的 transcript 污染。
 - `16:41` 的最新导入样本说明，这个问题不只表现为“旧时间窗还有脏数据没清掉”。`Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 在最近一次导入里仍把 `14:49` 的 `Compact Summary` 作为 `role=user` 保存进当前活跃会话，同时同批次还包含 `16:12-16:36` 的后续正式回答和 `16:41` 的失败收口；也就是说，生产 transcript 仍在被这一类 summary 真实参与、真实消费。
 - `21:37` 的 ASTS 最新样本进一步说明，污染范围已从“旧持仓/旧报告”扩展到当前话题边界本身：用户刚指出系统把 `ASTS` 说成了 `ORCL`，auto compact 却仍把上一轮答复草稿写回为 `role=user`，随后正式回答只能在被污染的上下文里承认“串线”而非真正隔离错误摘要。
-- 因而当前缺陷的主表现已经收敛为两点：一是 summary 角色仍错误，二是 summary 仍会在后续回答前重写本轮输入语义；这两点都没有被此前修复覆盖。
+- 因而当前缺陷的主表现一度收敛为两点：一是 summary 角色仍错误，二是 summary 仍会在后续回答前重写本轮输入语义；这两点都没有被此前修复覆盖。2026-04-22 00:00 最新复核显示，`role=user` 写库症状在最新两条样本里已有收敛，但仍需继续验证 prompt 隔离与最终可见文本外泄是否彻底停止。
 
 ## 已确认事实
 
@@ -342,6 +350,12 @@
 6. `2026-04-19 12:44` 的 `900943` 新样本进一步说明，线上问题不只停留在 transcript 污染本身；`role=user` 的旧摘要已经会直接进入 answer 立场判断，把原本中性的公司研究题改写成围绕既有持仓风格的建议输出。
 7. `2026-04-19 23:37` 与 `23:47` 的最新双样本又证明，这并不是某条旧摘要未清理干净的残留问题，而是 auto compact 在当前生产会话里仍会新生成 `role=user` summary，并在后续正常问答前参与真实上下文组装。
 8. `2026-04-20 10:11` 与 `10:46` 的最新双样本说明，这种“新生成 summary 再参与下一题”的行为今天上午仍在继续；即使后续 `群核科技` 与 `DELL` 答案可读，真实 transcript 仍先被错误角色的压缩摘要污染。
+
+## 最新真实样本复核（2026-04-22 00:00 CST）
+
+- `2026-04-21 23:16` 与 `23:59` 两条最新直聊 auto compact 样本均显示 `【Compact Summary】` 已改为 `role=system` 落库。
+- 本轮没有发现新的 `role=user` compact summary 样本，也没有发现 23:00-00:00 窗口内新的 `Context compacted` 可见外泄。
+- 但 `2026-04-21 21:02` 的可见正文污染仍是同日生产证据；因此本轮只更新为“部分症状收敛”，不把状态改为 `Fixed` 或 `Closed`。
 
 ## 历史修复情况（2026-04-16，已确认未收口）
 
