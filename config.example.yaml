@@ -242,11 +242,18 @@ event_engine:
     # Requires llm.openrouter to be configured.
     llm_polish_for: []
     template_dir: "./data/event_templates"
+  # Per-poller 开关。每个字段对应 hone-event-engine 内一个 spawn_*_poller 调用,
+  # 设成 false 即直接 skip 该 poller 的 tick(最省 FMP 配额)。
+  # 想要"poller 仍跑、只是 router 丢弃某 kind"的兜底关法,改用下方 disabled_kinds。
   sources:
-    fmp_news: true
-    fmp_press_release: true
-    fmp_economic_calendar: true
-    fmp_sec_filings: true
+    news: true               # /v3/stock_news → NewsCritical
+    price: true              # /v3/quote 按 watch pool 拉 → PriceAlert / 52W / VolumeSpike
+    earnings_calendar: true  # /v3/earning_calendar → EarningsUpcoming
+    corp_action: true        # 拆股 / 分红日历 → Split / Dividend
+    sec_filings: true        # SEC 8-K per-ticker → SecFiling
+    macro_calendar: true     # /v3/economic_calendar → MacroEvent
+    analyst_grade: true      # 按 watch pool 拉 → AnalystGrade
+    earnings_surprise: true  # 按 watch pool 拉 → EarningsReleased
   # 全局 event kind 黑名单。router 在 per-user NotificationPrefs 之前先过一遍;
   # 入库仍然发生(便于日报 / 统计),只是不再分发给任何 actor。即使用户把某个
   # kind 放进 allow_kinds,在这里禁用后仍然不会推。合法 tag:

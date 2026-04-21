@@ -226,25 +226,49 @@ pub struct RendererConfig {
     pub template_dir: Option<String>,
 }
 
+/// Per-poller 开关。每个字段对应 `crates/hone-event-engine/src/lib.rs::start`
+/// 里的一个 spawn_*_poller 调用,关闭即直接 skip 该 poller 的 tick(最省 FMP 配额)。
+///
+/// 想要更细粒度的"跑 poller 但不分发某 kind"的兜底关法,用 `EventEngineConfig.disabled_kinds`。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sources {
+    /// `spawn_news_poller` —— FMP /v3/stock_news,产出 NewsCritical
     #[serde(default = "default_true")]
-    pub fmp_news: bool,
+    pub news: bool,
+    /// `spawn_price_poller` —— FMP /v3/quote 按 watch pool 拉,产出 PriceAlert/52W/VolumeSpike
     #[serde(default = "default_true")]
-    pub fmp_press_release: bool,
+    pub price: bool,
+    /// `spawn_earnings_poller` —— FMP /v3/earning_calendar,产出 EarningsUpcoming
     #[serde(default = "default_true")]
-    pub fmp_economic_calendar: bool,
+    pub earnings_calendar: bool,
+    /// `corp_action_poller` 内部的 dividend/split 全局日历分支
     #[serde(default = "default_true")]
-    pub fmp_sec_filings: bool,
+    pub corp_action: bool,
+    /// `corp_action_poller` 内部的 SEC 8-K per-ticker 分支
+    #[serde(default = "default_true")]
+    pub sec_filings: bool,
+    /// `spawn_macro_poller` —— FMP /v3/economic_calendar,产出 MacroEvent
+    #[serde(default = "default_true")]
+    pub macro_calendar: bool,
+    /// `spawn_analyst_grade_poller` —— 按 watch pool 拉,产出 AnalystGrade
+    #[serde(default = "default_true")]
+    pub analyst_grade: bool,
+    /// `spawn_earnings_surprise_poller` —— 按 watch pool 拉,产出 EarningsReleased
+    #[serde(default = "default_true")]
+    pub earnings_surprise: bool,
 }
 
 impl Default for Sources {
     fn default() -> Self {
         Self {
-            fmp_news: true,
-            fmp_press_release: true,
-            fmp_economic_calendar: true,
-            fmp_sec_filings: true,
+            news: true,
+            price: true,
+            earnings_calendar: true,
+            corp_action: true,
+            sec_filings: true,
+            macro_calendar: true,
+            analyst_grade: true,
+            earnings_surprise: true,
         }
     }
 }

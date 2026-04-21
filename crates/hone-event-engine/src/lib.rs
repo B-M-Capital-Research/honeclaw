@@ -325,16 +325,21 @@ impl EventEngine {
         );
 
         // ── 各 poller 独立 spawn ──────────────────────────────────────
-        // Sources.fmp_* 为"最省钱"的关法:直接不 spawn 对应 poller;事件既不入库
-        // 也不分发。disabled_kinds 是兜底——poller 仍然跑,只是 router 丢弃。
+        // sources.* 是 per-poller 1:1 的"最省钱"关法:直接不 spawn 对应 poller;
+        // 事件既不入库也不分发。需要"poller 仍跑、只是 router 丢弃某 kind"
+        // 这种兜底关法,改用 EventEngineConfig.disabled_kinds。
         let sources = &self.engine_cfg.sources;
-        spawn_earnings_poller(
-            client.clone(),
-            store.clone(),
-            router.clone(),
-            Duration::from_secs(self.engine_cfg.poll_intervals.earnings_secs),
-        );
-        if sources.fmp_news {
+        if sources.earnings_calendar {
+            spawn_earnings_poller(
+                client.clone(),
+                store.clone(),
+                router.clone(),
+                Duration::from_secs(self.engine_cfg.poll_intervals.earnings_secs),
+            );
+        } else {
+            info!("earnings_calendar poller disabled by config.sources.earnings_calendar=false");
+        }
+        if sources.news {
             spawn_news_poller(
                 client.clone(),
                 store.clone(),
@@ -342,17 +347,24 @@ impl EventEngine {
                 Duration::from_secs(self.engine_cfg.poll_intervals.news_secs),
             );
         } else {
-            info!("news poller disabled by config.sources.fmp_news=false");
+            info!("news poller disabled by config.sources.news=false");
         }
-        spawn_corp_action_poller(
-            client.clone(),
-            store.clone(),
-            router.clone(),
-            registry.clone(),
-            Duration::from_secs(self.engine_cfg.poll_intervals.corp_action_secs),
-            sources.fmp_sec_filings,
-        );
-        if sources.fmp_economic_calendar {
+        if sources.corp_action || sources.sec_filings {
+            spawn_corp_action_poller(
+                client.clone(),
+                store.clone(),
+                router.clone(),
+                registry.clone(),
+                Duration::from_secs(self.engine_cfg.poll_intervals.corp_action_secs),
+                sources.corp_action,
+                sources.sec_filings,
+            );
+        } else {
+            info!(
+                "corp_action poller fully disabled by config.sources.corp_action=false and sources.sec_filings=false"
+            );
+        }
+        if sources.macro_calendar {
             spawn_macro_poller(
                 client.clone(),
                 store.clone(),
@@ -360,35 +372,47 @@ impl EventEngine {
                 Duration::from_secs(self.engine_cfg.poll_intervals.macro_secs),
             );
         } else {
-            info!("macro poller disabled by config.sources.fmp_economic_calendar=false");
+            info!("macro poller disabled by config.sources.macro_calendar=false");
         }
-        // PricePoller 无条件 spawn——每 tick 从 SharedRegistry 读最新 watch pool。
+        // PricePoller 每 tick 从 SharedRegistry 读最新 watch pool。
         // 若此刻为空就 skip tick；用户新增持仓后下个 tick 就能生效。
-        spawn_price_poller(
-            client.clone(),
-            store.clone(),
-            router.clone(),
-            registry.clone(),
-            self.engine_cfg.thresholds.price_alert_low_pct,
-            self.engine_cfg.thresholds.price_alert_high_pct,
-            Duration::from_secs(self.engine_cfg.poll_intervals.price_secs),
-        );
+        if sources.price {
+            spawn_price_poller(
+                client.clone(),
+                store.clone(),
+                router.clone(),
+                registry.clone(),
+                self.engine_cfg.thresholds.price_alert_low_pct,
+                self.engine_cfg.thresholds.price_alert_high_pct,
+                Duration::from_secs(self.engine_cfg.poll_intervals.price_secs),
+            );
+        } else {
+            info!("price poller disabled by config.sources.price=false");
+        }
         // 分析师评级、财报 surprise：两个都按 watch pool 逐 ticker 拉。
         // 初次 tick 之前 watch pool 为空就跳过——用户新增持仓后下一个 tick 生效。
-        spawn_analyst_grade_poller(
-            client.clone(),
-            store.clone(),
-            router.clone(),
-            registry.clone(),
-            Duration::from_secs(self.engine_cfg.poll_intervals.analyst_grade_secs),
-        );
-        spawn_earnings_surprise_poller(
-            client.clone(),
-            store.clone(),
-            router.clone(),
-            registry.clone(),
-            Duration::from_secs(self.engine_cfg.poll_intervals.earnings_surprise_secs),
-        );
+        if sources.analyst_grade {
+            spawn_analyst_grade_poller(
+                client.clone(),
+                store.clone(),
+                router.clone(),
+                registry.clone(),
+                Duration::from_secs(self.engine_cfg.poll_intervals.analyst_grade_secs),
+            );
+        } else {
+            info!("analyst_grade poller disabled by config.sources.analyst_grade=false");
+        }
+        if sources.earnings_surprise {
+            spawn_earnings_surprise_poller(
+                client.clone(),
+                store.clone(),
+                router.clone(),
+                registry.clone(),
+                Duration::from_secs(self.engine_cfg.poll_intervals.earnings_surprise_secs),
+            );
+        } else {
+            info!("earnings_surprise poller disabled by config.sources.earnings_surprise=false");
+        }
 
         Ok(())
     }
@@ -481,6 +505,7 @@ fn spawn_corp_action_poller(
     router: Arc<NotificationRouter>,
     registry: Arc<SharedRegistry>,
     interval: Duration,
+    corp_action_enabled: bool,
     sec_filings_enabled: bool,
 ) {
     tokio::spawn(async move {
@@ -489,15 +514,22 @@ fn spawn_corp_action_poller(
         let poller = CorpActionPoller::new(client).with_sec_recent_hours(48);
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        if !corp_action_enabled {
+            info!(
+                "corp_action dividend/split fetch disabled by config.sources.corp_action=false; sec_filings 仍按设置运行"
+            );
+        }
         if !sec_filings_enabled {
-            info!("sec filings fetch disabled by config.sources.fmp_sec_filings=false");
+            info!("sec filings fetch disabled by config.sources.sec_filings=false");
         }
         loop {
             ticker.tick().await;
-            // 拆股/分红日历——无需 ticker 列表。
-            match poller.poll().await {
-                Ok(events) => process_events("corp_action", events, &store, &router).await,
-                Err(e) => warn!("corp_action poller failed: {e:#}"),
+            if corp_action_enabled {
+                // 拆股/分红日历——无需 ticker 列表。
+                match poller.poll().await {
+                    Ok(events) => process_events("corp_action", events, &store, &router).await,
+                    Err(e) => warn!("corp_action poller failed: {e:#}"),
+                }
             }
             if !sec_filings_enabled {
                 continue;
