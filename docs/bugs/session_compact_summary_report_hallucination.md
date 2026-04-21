@@ -7,6 +7,13 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-21 17:49-17:51 最新复现：
+   - `session_id=Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+   - `session_messages` 中仍保留 `2026-04-20T11:37:42.915681+08:00` 的 `system` 消息 `Conversation compacted`
+   - 紧接着 `2026-04-20T11:37:42.915697+08:00` 仍是 `role=user` 的 `【Compact Summary】...`，内容覆盖 `TEM / TSLA / 海力士 / VCX / 9992.HK / 06656.HK / AVGO / 地平线` 等股票关注表
+   - 最新真实用户输入为 `2026-04-21T17:49:30.011371+08:00` 的 `那rklb 呢`
+   - `data/runtime/logs/acp-events.log` 在 `2026-04-21T09:49:35Z` 的 `user_message_chunk` 中仍把同一 `【Compact Summary】` 与本轮用户输入一起送入 runner
+   - `2026-04-21T17:51:42.901297+08:00` assistant 随后产出 RKLB 正式分析，说明最新生产回答仍会消费这条以 `role=user` 身份回灌的 compact summary；问题不是只停留在历史落库层。
 - 2026-04-21 15:54-15:58 最新复现：
    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
    - `2026-04-21T15:54:56.700908+08:00` 会话先写入 `system` 消息 `Conversation compacted`
@@ -194,6 +201,7 @@
 
 ## 当前实现效果（问题发现时）
 
+- 2026-04-21 17:49 最新样本说明，旧 `role=user` compact summary 不只是存量脏数据；它在新的 `那rklb 呢` 直聊请求中仍被恢复进 runner 输入，并与本轮真实 user turn 同时进入 prompt。
 - 2026-04-21 16:05 最新样本说明，compact summary 仍会以 `role=user` 写入会话；同轮后续正式回答继续处理“美股亚川”新问题，生产链路没有收口到“summary 只作为系统态元数据”。
 - 2026-04-21 15:54 样本同样说明，另一条观察池会话在 compact 后写入 `role=user` 的 22 支观察池 summary，并继续处理 24 支观察池更新请求。
 - 压缩模型实际使用的是 `llm.auxiliary.model = MiniMax-M2.7-highspeed`，而不是主对话模型。

@@ -6,6 +6,13 @@
 - **状态**: Fixing
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 17:30-18:00 最新巡检样本：
+    - `run_id=4057`（`ASTS 重大异动心跳监控`，`executed_at=2026-04-21T17:31:04.688322+08:00`）落成 `execution_failed + skipped_error + delivered=0`
+    - `run_id=4058`（`小米30港元破位预警`，`executed_at=2026-04-21T18:00:06.533451+08:00`）再次落成 `execution_failed + skipped_error + delivered=0`
+    - `run_id=4059`（`小米破位预警`，`executed_at=2026-04-21T18:00:06.543419+08:00`）同批落成 `execution_failed + skipped_error + delivered=0`
+    - 三条错误体均为 `LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-21 18:00:06.531` 与 `18:00:06.542` 记录两条 `run_finish ... success=false` 与 `runner_error ... model=MiniMax-M2.7-highspeed`，失败后仍以“心跳任务未命中，本轮不发送”收口。
+    - 这说明 16:01 之后并未稳定收口；MiniMax HTTP 传输失败继续以单点和小批量方式影响 heartbeat。
   - 2026-04-21 15:30-16:01 最新巡检样本：
     - `15:30:07` 窗口里，`run_id=4008/4009/4010/4011/4012` 分别对应 `RKLB异动监控`、`ORCL 大事件监控`、`全天原油价格3小时播报`、`小米30港元破位预警`、`TEM大事件心跳监控`，全部落成 `execution_failed + skipped_error + delivered=0`
     - 错误体相同：`LLM 错误: http error: error sending request for url (https://api.minimaxi.com/v1/chat/completions)`
@@ -103,6 +110,7 @@
 
 ## 当前实现效果
 
+- `2026-04-21 17:31-18:00` 最新窗口继续出现 `ASTS / 小米30港元 / 小米` 三条 MiniMax `chat/completions` 发送失败；虽不再是 11:00-12:00 的全批次失败，但足以证明吸震策略仍未在生产稳定收口。
 - `2026-04-21 15:30-16:01` 最新窗口又出现多任务批量和单点 MiniMax HTTP 传输失败；失败对象覆盖 `RKLB / ORCL / 原油 / 小米 / TEM / ASTS / CAI`，说明传输吸震仍未在生产收口。
 - `2026-04-21 14:30` 最新窗口又出现 `RKLB异动监控` 单点 MiniMax HTTP 传输失败；`15:00` 同任务虽转为 `JsonUnknownStatus`，但这不能证明传输吸震已收口，只能说明当前 heartbeat 故障在“传输失败”和“结构化输出失败”之间切换。
 - `2026-04-21 14:00` 最新窗口又出现 `RKLB异动监控` 单点 MiniMax HTTP 传输失败；虽然不再是 09:00-12:00 的大面积批量失败，但足以推翻“短时恢复可能已收口”的判断，本单继续保持 `Fixing`。

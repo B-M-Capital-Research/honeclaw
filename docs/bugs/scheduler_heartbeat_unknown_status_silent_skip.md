@@ -6,6 +6,20 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-21 17:30-18:01 最新巡检样本：
+    - `run_id=4056`（`RKLB异动监控`，`executed_at=2026-04-21T17:30:30.973829+08:00`）落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 以 `<think>` 开头，已经判断没有重大并购、Neutron 进展、重大订单或发射失败，却仍未稳定收口为合法状态 JSON
+    - `run_id=4062`（`ORCL 大事件监控`，`executed_at=2026-04-21T18:00:28.243903+08:00`）再次落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 已完成 ORCL 当日涨跌幅、盘中高低点与触发条件判断，仍以前置 `<think>` 自由文本污染输出
+    - `run_id=4063`（`RKLB异动监控`，`executed_at=2026-04-21T18:00:32.320154+08:00`）在下一轮继续失败
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 切换为中文分析，指出行情字段可能有问题并继续展开判断，但没有输出受支持状态
+    - `run_id=4065`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T18:00:45.919013+08:00`）同批落成 `execution_failed + skipped_error`
+      - `detail_json.parse_kind=JsonUnknownStatus`
+      - `raw_preview` 逐项比较 `HIMS / MU / RKLB / LMND ...` 当前价与触发价后仍未收口到合法状态
+    - 这说明 17:00 之后问题仍在 `RKLB / ORCL / Watchlist` 之间漂移；不是上一轮单个任务的旧状态残留。
   - 2026-04-21 16:30-17:00 最新巡检样本：
     - `run_id=4033`（`Monitor_Watchlist_11`，`executed_at=2026-04-21T16:30:55.115417+08:00`）落成 `execution_failed + skipped_error`
       - `detail_json.parse_kind=JsonUnknownStatus`
