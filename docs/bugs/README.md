@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-22 05:01 CST
+最后更新：2026-04-22 06:00 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -32,7 +32,7 @@
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-22 05:00 `科技成长赛道大盘极值与情绪监控` runner 输入仍带入 2026-04-20 的 `role=user` `Compact Summary`；存量污染继续进入 prompt，新生成 summary 角色已有收敛迹象但未完成迁移/隔离闭环 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-21 23:01 后续定时任务仍按旧 `22支` 清单发送，不含用户要求新增的 `BE/AMD`；16:39 `cron_job` 更新轮只落库工具轨迹和错误尾注，已从纯质量问题升级为任务配置工作流偏差 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-22 04:30-05:00 最新 heartbeat 仍以 `<think>` 自由文本开头；`run_id=4290/4291` 出现 `JsonEmptyStatus`，`run_id=4304/4305` 仍靠尾部 JSON 提取成 `JsonNoop` 并静默跳过 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-22 05:30-05:31 最新 heartbeat 仍以 `<think>` 自由文本开头；`run_id=4312`（ORCL）与 `run_id=4315`（Monitor_Watchlist_11）继续出现 `JsonEmptyStatus + skipped_noop`，说明结构化契约未恢复 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | ORCL heartbeat 将盘中振幅误判为单日涨跌幅并发送错误触发提醒 | P2 | New | 2026-04-22 03:00 `ORCL 大事件监控` 内部先判断当前涨幅 `+3.55%` 未超过 `5%`，最终却按高低点振幅约 `5.3%` 落成 `JsonTriggered + sent`，已向用户投递口径冲突的触发提醒 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-21 19:00 与 20:00 `ASTS 重大异动心跳监控` 又连续送达同一 `BlueBird 7` 卫星损失事件，只是更新检查时间和报价口径，仍没有新增独立公告或处置结果 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 21:01 `TEM大事件心跳监控` 再次落成 `execution_failed + skipped_error`；20:30 还是 `noop`、21:00 前后同批又混有 `JsonUnknownStatus`，用户侧无法判断本轮是未触发还是链路直接耗尽 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |

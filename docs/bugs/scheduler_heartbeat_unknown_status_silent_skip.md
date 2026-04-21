@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 05:30-05:31 最新巡检样本：
+    - `run_id=4312`（`ORCL 大事件监控`，`executed_at=2026-04-22T05:31:16.406788+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已分析 ORCL 行情、时间戳和新闻条件，并说明上一轮已通知，却仍以前置 `<think>` 自由文本收口，后台只能静默跳过。
+    - `run_id=4315`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T05:31:25.636736+08:00`）同样落成 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 已逐项比较 `HIMS / MU / RKLB / LMND ...` 当前价与触发价，但没有稳定输出受支持状态 JSON。
+    - 同批 `run_id=4307-4316` 覆盖原油、小米、TEM、CAI、RKLB、ORCL、ASTS 和 Watchlist heartbeat；多数记录仍为 `starts_with_json=false + JsonNoop`，说明所谓“跳过”继续依赖 `<think>...尾部 JSON` 提取，不是上游恢复为纯 JSON 契约。
+    - 本轮没有新增用户投诉或投递失败，严重等级维持 P2；但该缺陷仍处于 `New` 活跃态，不能标记为修复。
   - 2026-04-22 04:30-05:00 最新巡检样本：
     - `run_id=4290`（`RKLB异动监控`，`executed_at=2026-04-22T04:30:18.718605+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已分析价格、新闻、Neutron/订单等条件，却仍以前置 `<think>` 自由文本开头。
     - `run_id=4291`（`ORCL 大事件监控`，`executed_at=2026-04-22T04:30:23.414652+08:00`）同样落成 `noop + skipped_noop + JsonEmptyStatus`，且 `raw_preview` 先解释报价、时间戳和涨跌幅，再由后台静默吞掉。
