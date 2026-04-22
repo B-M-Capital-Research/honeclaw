@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=4840`
+    - `job_id=j_fc7749ca`
+    - `job_name=ASTS 重大异动心跳监控`
+    - `executed_at=2026-04-23T06:31:37.173782+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `should_deliver=1`
+    - `delivered=1`
+    - `response_preview` 再次写出：`ASTS 触发条件1（盘中涨跌幅超8%）`，并列出 `4月22日盘中最高：$87.78（+9.71%，超过8%阈值）`、`4月22日收盘：$84.66（+5.81%）`。
+    - 同轮 `detail_json.scheduler.raw_preview` 先明确计算 `Current/Last price: $84.66`、`Previous close: $80.01`、`Change %: +5.81%`，并写出 `below the 8%`；最终仍解析成 `JsonTriggered` 并发送，说明 03:01 后同一 ASTS 任务继续把日内高点相对昨收当成“盘中涨跌幅超8%”。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-23 06:31:34.655` 记录同一任务 `parse_kind=JsonTriggered`、`starts_with_json=false`，`deliver_preview` 写出 `日内最高：$87.78（+9.71%，超过8%阈值）` 与 `收盘：$84.66（+5.81%）` 后仍实际投递。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=4760`
     - `job_id=j_fc7749ca`
     - `job_name=ASTS 重大异动心跳监控`
@@ -50,7 +63,7 @@ Feishu heartbeat scheduler 触发单标的价格/事件监控 -> function-callin
 
 ## 当前实现效果
 
-同一轮 ORCL 运行里，模型先判断当前涨幅 `+3.55%` 未超过 `5%`，但最终发送的用户可见消息改用 `当日最高 $185.34` 与 `当日最低 $176.01` 计算约 `5.3%` 的盘中振幅，并宣称“触发条件已满足”。2026-04-23 03:01 的 ASTS 运行又出现同类变体：当前价格约 `$84.45`、日内涨幅 `+5.54%` 未超过 `8%`，最终却改用日内高点 `$87.78` 相对昨收 `+9.71%` 判定“涨跌幅超8%”。系统把两条结果都落为 `completed + sent + delivered=1`。
+同一轮 ORCL 运行里，模型先判断当前涨幅 `+3.55%` 未超过 `5%`，但最终发送的用户可见消息改用 `当日最高 $185.34` 与 `当日最低 $176.01` 计算约 `5.3%` 的盘中振幅，并宣称“触发条件已满足”。2026-04-23 03:01 的 ASTS 运行又出现同类变体：当前价格约 `$84.45`、日内涨幅 `+5.54%` 未超过 `8%`，最终却改用日内高点 `$87.78` 相对昨收 `+9.71%` 判定“涨跌幅超8%”。2026-04-23 06:31 同一 ASTS 任务再次复发：当前/收盘价 `$84.66` 相对昨收 `$80.01` 仅 `+5.81%`，raw preview 也先判断低于 8%，最终仍以日内最高 `$87.78` 的 `+9.71%` 触发并送达。系统把这些结果都落为 `completed + sent + delivered=1`。
 
 ## 用户影响
 
