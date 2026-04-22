@@ -7,6 +7,12 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 09:03 最新用户可见外泄复核：
+   - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
+   - `cron_job_runs.run_id=4400`（`早9点市场复盘(XME及加密ETF)`，`executed_at=2026-04-22T09:03:58.992153+08:00`）记录 `execution_status=completed`、`message_send_status=sent`、`delivered=1`。
+   - 同轮 `session_messages.ordinal=16` 的 assistant final 在 `2026-04-22T09:03:32.070747+08:00` 直接以 `Context compacted` 开头，然后才进入 XME、BTC/ETH/SOL 与宏观大盘复盘正文。
+   - 这说明 08:33 之后同类用户可见格式污染仍在下一小时继续复现；问题不是单条报告偶发，而是压缩后第一条最终输出仍缺少发送前净化。
+   - 状态继续维持 `Fixing`：新生成 summary 角色已有收敛迹象，但可见输出净化与存量 summary 隔离仍未闭环。
 - 2026-04-22 08:33 最新用户可见外泄复核：
    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
    - `cron_job_runs.run_id=4383`（`美股AI产业链盘后报告`，`executed_at=2026-04-22T08:33:21.473282+08:00`）记录 `execution_status=completed`、`message_send_status=sent`、`delivered=1`。

@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 09:31 最新巡检样本：
+    - `run_id=4405`（`ORCL 大事件监控`，`executed_at=2026-04-22T09:31:18.299199+08:00`）落成 `noop + skipped_noop`，`detail_json.starts_with_json=false`；`raw_preview` 已读取 ORCL 价格、前收、涨跌幅、盘中高低点与新闻条件，却仍以前置 `<think>` 自由文本开头并依赖尾部状态提取。
+    - `run_id=4409`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T09:31:21.703185+08:00`）同样落成 `noop + skipped_noop`，`raw_preview` 已逐项比较 `HIMS / MU / RKLB / LMND / BE / OKLO / PLTR ...` 当前价与触发价，但仍为 `starts_with_json=false`。
+    - `run_id=4411`（`ASTS 重大异动心跳监控`，`executed_at=2026-04-22T09:31:41.873589+08:00`）继续 `noop + skipped_noop + starts_with_json=false`，内部已经比较 Kraken/Robinhood/Yahoo 等报价与 BlueBird 7 新闻，但输出契约仍不是纯 JSON。
+    - 本轮没有新增 `execution_failed` 或用户投诉，严重等级维持 P2；但 09:31 证明结构化契约仍未恢复，状态继续为 `New`。
   - 2026-04-22 08:31 最新巡检样本：
     - `run_id=4375`（`ORCL 大事件监控`，`executed_at=2026-04-22T08:31:16.590824+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已完成 ORCL 当前价、前收、单日涨跌幅与高低点判断，明确未达到 5% 单日异动，却仍以前置 `<think>` 自由文本收口。
     - `run_id=4377`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T08:31:18.963805+08:00`）同样落成 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 已逐项比较 `HIMS / MU / RKLB / LMND / BE / OKLO / PLTR ...` 当前价与触发价，仍未稳定输出受支持状态 JSON。
