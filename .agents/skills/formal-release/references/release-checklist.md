@@ -17,15 +17,15 @@
 3. 最近真实 tag 是什么：
 
 ```bash
-rtk git tag --sort=-version:refname | head -n 5
+git tag --sort=-version:refname | head -n 5
 ```
 
 4. 自上次 release 到现在有哪些 commit 和未发布工作：
 
 ```bash
-rtk git log --oneline <last-tag>..HEAD
-rtk git log --oneline HEAD..origin/main
-rtk git diff --stat
+git log --oneline <last-tag>..HEAD
+git log --oneline HEAD..origin/main
+git diff --stat
 ```
 
 ## 版本号位置
@@ -42,7 +42,7 @@ rtk git diff --stat
 2. 再跑一次会刷新 lock 的命令，例如：
 
 ```bash
-rtk cargo check --workspace --all-targets --exclude hone-desktop
+cargo check --workspace --all-targets --exclude hone-desktop
 ```
 
 3. 确认 `Cargo.lock` 里的 workspace package version 已跟上
@@ -68,7 +68,7 @@ rtk cargo check --workspace --all-targets --exclude hone-desktop
 本地可用下面命令做一次模板校验：
 
 ```bash
-rtk bash scripts/prepare_release_notes.sh vX.Y.Z /tmp/release-notes-vX.Y.Z.md
+bash scripts/prepare_release_notes.sh vX.Y.Z /tmp/release-notes-vX.Y.Z.md
 ```
 
 如果这个脚本失败，先补齐 `docs/releases/vX.Y.Z.md`，不要继续打 tag。
@@ -78,16 +78,16 @@ rtk bash scripts/prepare_release_notes.sh vX.Y.Z /tmp/release-notes-vX.Y.Z.md
 至少跑：
 
 ```bash
-rtk cargo check --workspace --all-targets --exclude hone-desktop
-rtk bash scripts/prepare_release_notes.sh vX.Y.Z /tmp/release-notes-vX.Y.Z.md
+cargo check --workspace --all-targets --exclude hone-desktop
+bash scripts/prepare_release_notes.sh vX.Y.Z /tmp/release-notes-vX.Y.Z.md
 ```
 
 再根据本次改动面追加定向测试，例如：
 
 ```bash
-rtk cargo test -p hone-tools -p hone-channels
-rtk cargo test -p hone-telegram
-rtk bash tests/regression/manual/test_<topic>.sh
+cargo test -p hone-tools -p hone-channels
+cargo test -p hone-telegram
+bash tests/regression/manual/test_<topic>.sh
 ```
 
 如果 release 吸收了文档治理、skill、runtime、desktop、channel 等跨模块变化，优先补对应模块的 targeted tests，而不是盲跑全仓所有重测试。
@@ -97,14 +97,14 @@ rtk bash tests/regression/manual/test_<topic>.sh
 1. 先审计暂存区：
 
 ```bash
-rtk git diff --staged
+git diff --staged
 ```
 
 2. 再提交。不要用 `--no-verify`。
 3. 如果本地落后远端，先 rebase：
 
 ```bash
-rtk proxy git pull --rebase origin main
+git pull --rebase origin main
 ```
 
 4. rebase 后如 commit 发生变化，至少重跑一轮快速验证。
@@ -117,7 +117,7 @@ git push origin main
 6. 创建 annotated tag：
 
 ```bash
-rtk proxy git tag -a vX.Y.Z -m "vX.Y.Z"
+git tag -a vX.Y.Z -m "vX.Y.Z"
 ```
 
 7. 推 tag：
@@ -161,4 +161,3 @@ tag 推上去只代表 workflow 被触发，不代表 tarball / Homebrew formula
 - `docs/archive/index.md`
 
 不需要时也应明确说明为什么不更新，避免“代码发了但上下文资产没同步”。
-

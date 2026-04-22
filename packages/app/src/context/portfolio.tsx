@@ -23,14 +23,14 @@ function createPortfolioState() {
 
     const currentActor = createMemo(() => parseActorKey(state.currentActorKey))
 
-    const allHoldings = createMemo(() => portfolioData()?.portfolio?.holdings ?? [])
-    const holdingsList = createMemo(() => allHoldings().filter(h => !h.tracking_only))
-    const watchlist = createMemo(() => allHoldings().filter(h => !!h.tracking_only))
-
     const [portfolioData, { refetch }] = createResource(
         () => (backend.state.connected && backend.hasCapability("portfolio") ? currentActor() : undefined),
         (actor) => actor ? getPortfolio(actor) : undefined
     )
+
+    const allHoldings = createMemo(() => portfolioData()?.portfolio?.holdings ?? [])
+    const holdingsList = createMemo(() => allHoldings().filter(h => !h.tracking_only))
+    const watchlist = createMemo(() => allHoldings().filter(h => !!h.tracking_only))
 
     // 加载所有已有持仓的 actor 列表（从 data/portfolio/ 目录）
     const [actorsList, { refetch: refetchActors }] = createResource(

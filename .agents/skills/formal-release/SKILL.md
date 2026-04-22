@@ -39,9 +39,7 @@ aliases:
 
 - 用户如果只要求 `push`，不要默认执行正式发版。
 - `docs/releases/vX.Y.Z.md` 不存在时，禁止打 tag。
-- 所有 shell 命令默认加 `rtk` 前缀；`git push` 例外，直接用原始 `git push`。
 - 不要使用 `git worktree`。
 - 不要用 `--no-verify` 绕过 hook。
 - 遇到 non-fast-forward，先 rebase 再重推；不要强推覆盖远端。
 - pre-push 如果卡在 `rustfmt` 或 `gitleaks`，修完再推，不要假装已经发版完成。
-
