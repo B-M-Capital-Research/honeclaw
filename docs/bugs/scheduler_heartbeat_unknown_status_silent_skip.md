@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 18:31-19:01 最新巡检样本：
+    - `run_id=4563-4576` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；除 18:01 原油触发播报已另行登记事实质量缺陷外，同批可见记录均为 `noop + skipped_noop`。
+    - 同批 `detail_json.starts_with_json=false` 仍全部为真，`raw_preview` 继续以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器提取。
+    - `run_id=4573`（`全天原油价格3小时播报`，`2026-04-22T19:01:05.372902+08:00`）落成 `JsonEmptyStatus + skipped_noop`，模型在 `<think>` 中已经判断 19 点不满足 0/3/6/9/12/15/18/21 点播报条件，但最终仍不是受支持的纯 JSON 状态。
+    - `run_id=4575`（`小米破位预警`，`2026-04-22T19:01:10.102809+08:00`）同样落成 `JsonEmptyStatus + skipped_noop`，`raw_preview` 写出行情获取失败、应返回 noop，尾部只输出 `{}`。
+    - `run_id=4568`（`Monitor_Watchlist_11`，`2026-04-22T18:31:16.178216+08:00`）、`run_id=4569`（`RKLB异动监控`，`2026-04-22T18:31:16.970017+08:00`）、`run_id=4571`（`TEM大事件心跳监控`，`2026-04-22T18:31:24.702156+08:00`）和 `run_id=4572`（`ASTS 重大异动心跳监控`，`2026-04-22T18:31:25.469857+08:00`）虽被解析为 `JsonNoop`，但仍全部是 `<think>` 在前、尾部 JSON 在后。
+    - 本轮没有新增 `execution_failed` 或用户投诉，严重等级不升级；但 19:01 继续证明 heartbeat 上游结构化输出契约未恢复，状态保持 `New`。
   - 2026-04-22 17:00-18:01 最新巡检样本：
     - `run_id=4533-4561` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；除原油 18:00 轮尚未在查询窗口落库外，其它可见记录均为 `noop + skipped_noop`。
     - 同批 `detail_json.starts_with_json=false` 仍全部为真，`raw_preview` 继续以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器提取。
@@ -1091,6 +1098,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-22 18:31 -> 19:01` 最新窗口，heartbeat 仍全部 `starts_with_json=false`，原油和小米任务继续出现 `JsonEmptyStatus + skipped_noop`，说明上游状态契约没有恢复为纯 JSON。
+- 这轮没有新增 `execution_failed`，因此不升级严重等级；但当前“正常 noop”仍依赖 `<think>...尾部 JSON` 的解析器止血，用户和运维无法把可靠未触发与解析侥幸通过稳定区分开。
 - 到 `2026-04-21 20:00` 最新窗口，`小米破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控` 四类 heartbeat 模板再次落成 `JsonUnknownStatus + execution_failed + skipped_error`，说明该缺陷仍在破位、watchlist 与事件监控模板之间漂移。
 - 到 `2026-04-21 15:30 -> 16:01` 最新窗口，`小米破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控` 继续因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，说明该缺陷仍在活跃漂移。
 - 到 `2026-04-21 15:00` 最新窗口，`小米破位预警`、`RKLB异动监控`、`Monitor_Watchlist_11` 再次因 `JsonUnknownStatus` 落成 `execution_failed + skipped_error`，说明该缺陷仍在活跃扩散，而不是 14:00 后自恢复。
