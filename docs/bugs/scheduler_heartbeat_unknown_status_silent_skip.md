@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 13:01 最新巡检样本：
+    - `run_id=4453-4462` 在 `2026-04-22T13:01:08-13:01:39+08:00` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`RKLB异动监控` 与 `TEM大事件心跳监控`。
+    - 同批 10 条 heartbeat 全部落成 `noop + skipped_noop`，但 `detail_json.starts_with_json=false` 全部为真，`raw_preview` 仍统一以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或解析器提取。
+    - `run_id=4460`（`ORCL 大事件监控`，`executed_at=2026-04-22T13:01:27.100053+08:00`）仍为 `parse_kind=JsonEmptyStatus`；`raw_preview` 已读取 ORCL 当前价、前收、涨跌幅、日内高低点和时间戳，却没有稳定输出受支持状态 JSON，后台最终按 `skipped_noop` 静默吞掉。
+    - 同轮 `data/runtime/logs/web.log` 在 `13:01:20-13:01:31` 还记录 ORCL / TEM 事件监控调用 `web_search` 时 Tavily key 超额告警后仍 `tool_execute_success`，说明上游检索降级与结构化输出漂移仍会共存；本轮没有新增用户投诉或投递失败，因此严重等级不升级，但状态继续保持 `New`。
   - 2026-04-22 12:00 最新巡检样本：
     - `run_id=4437`（`ORCL 大事件监控`，`executed_at=2026-04-22T12:00:24.835089+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已完成 ORCL 价格、前收、涨跌幅、高低点和新闻检查，却仍以前置 `<think>` 自由文本开头。
     - `run_id=4438`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T12:00:27.151681+08:00`）同样为 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 已逐项比较 `HIMS / MU / RKLB / LMND / BE ...` 当前价与触发价，但没有稳定输出受支持状态 JSON。
