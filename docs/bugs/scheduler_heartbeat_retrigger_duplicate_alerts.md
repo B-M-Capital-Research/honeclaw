@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-22 07:01-08:01 最新巡检样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=4346`，`executed_at=2026-04-22T07:01:38.022661+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `response_preview` 仍围绕同一 `BlueBird 7 卫星发射失败 / Blue Origin NG-3 / 未能进入计划轨道` 旧事件展开，并把检查时间更新为 `2026-04-22 07:00:59 北京时间`
+      - 同一事件此前已在 2026-04-21 19:00、20:00 等窗口反复送达；本轮没有看到新的独立公司公告、轨道处置结果或用户配置变化，却再次投递给用户
+      - 后续 `run_id=4355`（`07:31:24`）与 `run_id=4362`（`08:01:19`）转为 `noop + skipped_noop`，但 `raw_preview` 仍继续消费同一 BlueBird 7 旧事件，说明去重仍依赖模型临场摇摆而非稳定的已提醒事实状态。
     - 2026-04-21 19:00-20:00 最新巡检样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=4088`，`executed_at=2026-04-21T19:00:55.979965+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`

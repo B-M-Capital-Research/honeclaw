@@ -6,6 +6,10 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 07:31-08:01 最新巡检样本：
+    - `run_id=4355`（`ASTS 重大异动心跳监控`，`executed_at=2026-04-22T07:31:24.385240+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已分析 ASTS 行情、BlueBird 7 新闻与是否有新增独立事件，却仍以前置 `<think>` 自由文本收口。
+    - `run_id=4362`（同任务，`executed_at=2026-04-22T08:01:19.374721+08:00`）再次落成 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 明确写出“最新新闻都是4月21日关于 BlueBird 7 失败的后续报道 / 没有新的独立事件”，但没有稳定输出受支持状态 JSON。
+    - 同一 08:01 批次里多数 heartbeat 仍为 `starts_with_json=false + JsonNoop`；本轮没有新增用户投诉或投递失败，因此严重等级维持 P2，状态继续为 `New`。
   - 2026-04-22 06:00-06:31 最新巡检样本：
     - `run_id=4317-4325` 在 `2026-04-22T06:01:08-06:01:39+08:00` 覆盖小米、CAI、TEM、ORCL、ASTS、RKLB、Watchlist 与 TEM 大事件 heartbeat；全部不是纯 JSON 起始，`detail_json.starts_with_json=false`，其中 `run_id=4317` 为 `JsonEmptyStatus`，其余多数依赖 `<think>...{"status":"noop"}` 尾部提取。
     - `run_id=4332`（`RKLB异动监控`，`executed_at=2026-04-22T06:31:15.823964+08:00`）、`run_id=4333`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T06:31:17.048087+08:00`）和 `run_id=4334`（`ORCL 大事件监控`，`executed_at=2026-04-22T06:31:20.207241+08:00`）继续落成 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 已完成价格/新闻/触发价判断，却没有稳定输出受支持状态 JSON。
