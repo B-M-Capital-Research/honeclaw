@@ -551,6 +551,14 @@ export type NotificationPrefs = {
   min_severity: "low" | "medium" | "high";
   allow_kinds: string[] | null;
   blocked_kinds: string[];
+  /** IANA 时区名;null = 沿用全局 digest.timezone */
+  timezone: string | null;
+  /** 本地 HH:MM 列表;null = 沿用全局 [pre_market, post_market];[] = 关 digest */
+  digest_windows: string[] | null;
+  /** 价格异动即时推阈值(百分点);null = 沿用全局 thresholds.price_alert_high_pct */
+  price_high_pct_override: number | null;
+  /** 强制升 High 即时推的 kind tag 列表;null/[] = 不强升 */
+  immediate_kinds: string[] | null;
 };
 
 export type NotificationPrefsBundle = {

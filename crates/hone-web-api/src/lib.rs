@@ -15,7 +15,7 @@ pub use routes::{build_admin_app, build_public_app};
 pub use state::{AppState, AuthState, PushEvent};
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -151,9 +151,66 @@ pub struct StartedServer {
 // 否则重连后 AppState 持有新 buffer 但订阅者仍向旧 buffer 写入，导致日志消失。
 static GLOBAL_LOG_BUFFER: OnceLock<LogBuffer> = OnceLock::new();
 static FILE_LOG_STARTED: AtomicBool = AtomicBool::new(false);
+// tracing-appender 的 NonBlocking writer 依赖 WorkerGuard 存活;guard drop 即停止
+// 后台 flush 线程,因此必须 hold 在静态变量里直到进程退出。
+static FILE_LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 
 fn global_log_buffer() -> &'static LogBuffer {
     GLOBAL_LOG_BUFFER.get_or_init(LogBuffer::new)
+}
+
+/// 维护 `acp-events.log` 的简单按日轮转 + 15 天清理。
+/// acp-events.log 的写入方在 `hone-channels` 里每写一行重新 open,所以这里
+/// 直接 rename 不会撞到打开的 FD;无需协调锁。
+fn spawn_acp_events_log_rotator(logs_dir: PathBuf) {
+    const RETENTION_DAYS: i64 = 15;
+    const ACTIVE_LOG: &str = "acp-events.log";
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(3600));
+        loop {
+            ticker.tick().await;
+            let today = chrono::Local::now().date_naive();
+            let active = logs_dir.join(ACTIVE_LOG);
+            if let Ok(meta) = std::fs::metadata(&active) {
+                if let Ok(mtime) = meta.modified() {
+                    let mtime_local: chrono::DateTime<chrono::Local> = mtime.into();
+                    let mtime_date = mtime_local.date_naive();
+                    if mtime_date < today {
+                        let rotated = logs_dir
+                            .join(format!("{ACTIVE_LOG}.{}", mtime_date.format("%Y-%m-%d")));
+                        if let Err(e) = std::fs::rename(&active, &rotated) {
+                            tracing::warn!("acp-events.log 轮转失败: {e}");
+                        } else {
+                            tracing::info!(
+                                "acp-events.log 已轮转 → {}",
+                                rotated.file_name().and_then(|s| s.to_str()).unwrap_or("")
+                            );
+                        }
+                    }
+                }
+            }
+            let cutoff = today - chrono::Duration::days(RETENTION_DAYS);
+            let Ok(entries) = std::fs::read_dir(&logs_dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                    continue;
+                };
+                let Some((_prefix, date_str)) = name.rsplit_once('.') else {
+                    continue;
+                };
+                let Ok(date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") else {
+                    continue;
+                };
+                if date < cutoff {
+                    if let Err(e) = std::fs::remove_file(entry.path()) {
+                        tracing::warn!("旧日志清理失败 {name}: {e}");
+                    }
+                }
+            }
+        }
+    });
 }
 
 #[cfg(test)]
@@ -220,47 +277,56 @@ pub async fn start_server(
     init_logging(&log_buffer, &log_level);
 
     // ── 文件日志（仅首次 start_server 时启动写入任务）────────────────
+    // web.log:走 tracing-appender DAILY rolling,保留最近 15 天,文件名形如
+    //   web.log.YYYY-MM-DD(沿用 web.log. 前缀,既有 grep 仍能匹配)。
+    // acp-events.log:每写一次重新 open,所以无需 FD 协调;另起一个 tick 任务
+    //   每小时巡一次,把昨日 mtime 的 acp-events.log 重命名归档,并删 15 天前的归档。
     if let Some(data) = data_dir {
-        let log_file_path = data.join("runtime").join("logs").join("web.log");
+        let logs_dir = data.join("runtime").join("logs");
+        let _ = std::fs::create_dir_all(&logs_dir);
         if FILE_LOG_STARTED
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()
         {
-            let buf = log_buffer.clone();
-            tokio::spawn(async move {
-                use tokio::io::AsyncWriteExt;
-                let mut rx = buf.tx.subscribe();
-                match tokio::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&log_file_path)
-                    .await
-                {
-                    Ok(mut file) => loop {
-                        match rx.recv().await {
-                            Ok(entry) => {
-                                let line = format!(
-                                    "[{}] {:<5} {}\n",
-                                    entry.timestamp, entry.level, entry.message
-                                );
-                                let _ = file.write_all(line.as_bytes()).await;
-                                let _ = file.flush().await;
-                            }
-                            Err(broadcast::error::RecvError::Closed) => break,
-                            Err(broadcast::error::RecvError::Lagged(n)) => {
-                                let _ = file
-                                    .write_all(
+            match tracing_appender::rolling::Builder::new()
+                .rotation(tracing_appender::rolling::Rotation::DAILY)
+                .filename_prefix("web.log")
+                .max_log_files(15)
+                .build(&logs_dir)
+            {
+                Ok(appender) => {
+                    let (writer, guard) = tracing_appender::non_blocking(appender);
+                    let _ = FILE_LOG_GUARD.set(guard);
+                    let buf = log_buffer.clone();
+                    tokio::spawn(async move {
+                        use std::io::Write;
+                        let mut rx = buf.tx.subscribe();
+                        let mut writer = writer;
+                        loop {
+                            match rx.recv().await {
+                                Ok(entry) => {
+                                    let line = format!(
+                                        "[{}] {:<5} {}\n",
+                                        entry.timestamp, entry.level, entry.message
+                                    );
+                                    let _ = writer.write_all(line.as_bytes());
+                                }
+                                Err(broadcast::error::RecvError::Closed) => break,
+                                Err(broadcast::error::RecvError::Lagged(n)) => {
+                                    let _ = writer.write_all(
                                         format!("[WARN ] 日志追赶：跳过 {n} 条\n").as_bytes(),
-                                    )
-                                    .await;
+                                    );
+                                }
                             }
                         }
-                    },
-                    Err(e) => {
-                        tracing::warn!("无法打开 web.log: {e}");
-                    }
+                    });
                 }
-            });
+                Err(e) => {
+                    tracing::warn!("无法初始化 web.log RollingFileAppender: {e}");
+                }
+            }
+
+            spawn_acp_events_log_rotator(logs_dir.clone());
         }
     }
 

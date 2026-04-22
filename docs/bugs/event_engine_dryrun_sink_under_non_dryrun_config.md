@@ -128,6 +128,9 @@ let _ = self.store.log_delivery(
 
 ## Latest巡检 Update
 
+- 2026-04-22T06:10:50Z: the two historical `[dryrun sink]` lines are still within the current 24h scan window at `data/runtime/logs/web.log:1090-1093` and `data/runtime/logs/web.log:1121-1126`, while `config.yaml` still has `event_engine.dryrun=false`.
+- The active backend process is now on the real sink assembly path: the latest restart shows `data/runtime/logs/web.log:2058` `event engine sink: MultiChannelSink 已装配`, and no new `[dryrun sink]` lines were observed after `data/runtime/logs/web.log:1121`.
+- `data/events.sqlite3` still records 4 `sink/high/sent` rows in the last 24h, including real post-assembly rows such as `price:AAOI:2026-04-22` at `2026-04-22 00:04:33` UTC. The remaining risk is the earlier dryrun-marked-as-sent rows, not a currently continuing dryrun stream.
 - 2026-04-22T02:09:55Z: current `config.yaml` still has `event_engine.enabled=true` and `event_engine.dryrun=false`; Telegram is enabled and Discord is disabled.
 - No additional `[dryrun sink]` lines were observed after `data/runtime/logs/web.log:1121`. The latest backend start still shows `data/runtime/logs/web.log:1255-1256` with `event engine sink: MultiChannelSink 已装配` immediately before `event engine starting`.
 - `data/events.sqlite3` now has later real high `sink/sent` rows, including `price:AAOI:2026-04-22` at `2026-04-22 00:04:33` UTC and an AAPL news item at `2026-04-21 21:19:33` UTC. The active process therefore appears to be on the real sink path; the unresolved risk remains the earlier two dryrun-sent high rows.

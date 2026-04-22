@@ -84,6 +84,12 @@ fn validate_tags(tags: &[String]) -> HoneResult<()> {
     Ok(())
 }
 
+fn validate_hhmm(s: &str) -> HoneResult<()> {
+    chrono::NaiveTime::parse_from_str(s, "%H:%M")
+        .map(|_| ())
+        .map_err(|_| HoneError::Tool(format!("时间格式必须为 HH:MM (24h),收到 {s:?}")))
+}
+
 fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
     json!({
         "enabled": prefs.enabled,
@@ -95,6 +101,10 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         },
         "allow_kinds": prefs.allow_kinds,
         "blocked_kinds": prefs.blocked_kinds,
+        "timezone": prefs.timezone,
+        "digest_windows": prefs.digest_windows,
+        "price_high_pct_override": prefs.price_high_pct_override,
+        "immediate_kinds": prefs.immediate_kinds,
     })
 }
 
@@ -109,6 +119,10 @@ impl Tool for NotificationPrefsTool {
          enable/disable 总开关、set_min_severity 调整最低严重度 (low/medium/high)、\
          set_portfolio_only 只推持仓相关、allow_kinds 设置白名单、block_kinds 设置黑名单、\
          clear_allow/clear_block 清空对应列表、reset 恢复默认。\
+         per-actor 推送节奏:set_timezone 设本人 IANA 时区(如 Asia/Shanghai、America/New_York)、\
+         set_digest_windows 设本地 HH:MM 摘要时刻列表(传 [] 则关 digest)、\
+         set_price_high_pct 调价格异动即时推阈值 (0<x≤50,如 3.5)、\
+         set_immediate_kinds 指定哪些 kind 强制升 High 即时推。\
          kind tag 必须选自:earnings_upcoming / earnings_released / news_critical / \
          press_release / price_alert / weekly52_high / weekly52_low / volume_spike / \
          dividend / split / buyback / sec_filing / analyst_grade / macro_event / \
@@ -132,6 +146,10 @@ impl Tool for NotificationPrefsTool {
                     "block_kinds".into(),
                     "clear_allow".into(),
                     "clear_block".into(),
+                    "set_timezone".into(),
+                    "set_digest_windows".into(),
+                    "set_price_high_pct".into(),
+                    "set_immediate_kinds".into(),
                     "reset".into(),
                 ]),
                 items: None,
@@ -142,7 +160,10 @@ impl Tool for NotificationPrefsTool {
                 description: "参数值:\
                     set_min_severity 传 low/medium/high;\
                     set_portfolio_only 传 true/false;\
-                    allow_kinds/block_kinds 传 JSON 数组 (例 [\"news_critical\"])。\
+                    allow_kinds/block_kinds/set_immediate_kinds 传 JSON 数组 (例 [\"news_critical\"]);\
+                    set_timezone 传 IANA 名 (例 \"Asia/Shanghai\");\
+                    set_digest_windows 传 HH:MM 数组 (例 [\"19:00\",\"02:30\",\"09:00\"],空数组关 digest);\
+                    set_price_high_pct 传数字 (0<x≤50,例 3.5)。\
                     其它 action 不需要此参数。"
                     .to_string(),
                 required: false,
@@ -209,6 +230,69 @@ impl Tool for NotificationPrefsTool {
             }
             "clear_block" => {
                 prefs.blocked_kinds.clear();
+            }
+            "set_timezone" => {
+                let raw = value.as_str().ok_or_else(|| {
+                    HoneError::Tool("set_timezone 需要 IANA 字符串,例 \"Asia/Shanghai\"".into())
+                })?;
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    prefs.timezone = None;
+                } else {
+                    use std::str::FromStr;
+                    chrono_tz::Tz::from_str(trimmed).map_err(|_| {
+                        HoneError::Tool(format!(
+                            "未知 IANA 时区 {trimmed:?};示例:Asia/Shanghai、America/New_York、Europe/London"
+                        ))
+                    })?;
+                    prefs.timezone = Some(trimmed.to_string());
+                }
+            }
+            "set_digest_windows" => {
+                let arr = value.as_array().ok_or_else(|| {
+                    HoneError::Tool(
+                        "set_digest_windows 需要 HH:MM 字符串数组,例 [\"19:00\",\"09:00\"];传 [] 关 digest".into(),
+                    )
+                })?;
+                let mut wins: Vec<String> = Vec::with_capacity(arr.len());
+                for item in arr {
+                    let s = item
+                        .as_str()
+                        .ok_or_else(|| HoneError::Tool("digest_windows 元素必须是字符串".into()))?
+                        .trim()
+                        .to_string();
+                    if s.is_empty() {
+                        continue;
+                    }
+                    validate_hhmm(&s)?;
+                    wins.push(s);
+                }
+                prefs.digest_windows = Some(wins);
+            }
+            "set_price_high_pct" => {
+                let pct = match &value {
+                    Value::Number(n) => n.as_f64(),
+                    Value::String(s) => s.trim().parse::<f64>().ok(),
+                    Value::Null => None,
+                    _ => None,
+                }
+                .ok_or_else(|| {
+                    HoneError::Tool(
+                        "set_price_high_pct 需要数字 (0<x≤50,例 3.5);传 null 清空回到全局阈值"
+                            .into(),
+                    )
+                })?;
+                if !(pct > 0.0 && pct <= 50.0) || !pct.is_finite() {
+                    return Err(HoneError::Tool(format!(
+                        "price_high_pct 必须在 (0, 50] 范围,收到 {pct}"
+                    )));
+                }
+                prefs.price_high_pct_override = Some(pct);
+            }
+            "set_immediate_kinds" => {
+                let tags = extract_string_array(&value)?;
+                validate_tags(&tags)?;
+                prefs.immediate_kinds = if tags.is_empty() { None } else { Some(tags) };
             }
             "reset" => {
                 prefs = NotificationPrefs::default();
@@ -329,6 +413,133 @@ mod tests {
             .unwrap();
         let out = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(out["prefs"]["portfolio_only"], json!(false));
+    }
+
+    #[tokio::test]
+    async fn set_timezone_validates_iana_and_persists() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({"action":"set_timezone","value":"America/New_York"}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["timezone"], json!("America/New_York"));
+
+        let err = tool
+            .execute(json!({"action":"set_timezone","value":"Mars/Olympus"}))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("未知 IANA 时区"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+
+        // 空字符串等价清空
+        tool.execute(json!({"action":"set_timezone","value":""}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["timezone"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn set_digest_windows_round_trips_and_validates_format() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_digest_windows",
+            "value": ["19:00", "02:30", "09:00"]
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(
+            out["prefs"]["digest_windows"],
+            json!(["19:00", "02:30", "09:00"])
+        );
+
+        // 非法格式被拒
+        let err = tool
+            .execute(json!({"action":"set_digest_windows","value":["25:99"]}))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("HH:MM"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+
+        // 空数组允许 = 关 digest
+        tool.execute(json!({"action":"set_digest_windows","value":[]}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["digest_windows"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn set_price_high_pct_enforces_range() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({"action":"set_price_high_pct","value":3.5}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["price_high_pct_override"], json!(3.5));
+
+        // 0 与负数被拒
+        let err = tool
+            .execute(json!({"action":"set_price_high_pct","value":0}))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("(0, 50]"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+        let err = tool
+            .execute(json!({"action":"set_price_high_pct","value":99}))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HoneError::Tool(_)));
+
+        // 字符串数字也接受
+        tool.execute(json!({"action":"set_price_high_pct","value":"4.2"}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["price_high_pct_override"], json!(4.2));
+    }
+
+    #[tokio::test]
+    async fn set_immediate_kinds_validates_and_clears_on_empty() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_immediate_kinds",
+            "value": ["weekly52_high", "analyst_grade"]
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(
+            out["prefs"]["immediate_kinds"],
+            json!(["weekly52_high", "analyst_grade"])
+        );
+
+        let err = tool
+            .execute(json!({"action":"set_immediate_kinds","value":["bogus_kind"]}))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("未知的 kind tag"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+
+        // 空数组等价 None(== 不强升)
+        tool.execute(json!({"action":"set_immediate_kinds","value":[]}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["immediate_kinds"], json!(null));
     }
 
     #[tokio::test]

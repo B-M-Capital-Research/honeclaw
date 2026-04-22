@@ -16,6 +16,7 @@ use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 
 use crate::event::MarketEvent;
+use crate::router::body_preview;
 
 pub struct DigestBuffer {
     dir: PathBuf,
@@ -164,6 +165,66 @@ pub fn local_date_key(now: DateTime<Utc>, offset_hours: i32) -> String {
     )
 }
 
+/// 调度器内部用的"有效时区"——优先 IANA 名称(尊重 DST/历史偏移),否则回到全局
+/// FixedOffset。这层抽象让 actor 的 prefs.timezone 与全局 `digest.timezone` 共用同
+/// 一套窗口/日期判断函数,不必双份实现。
+#[derive(Debug, Clone)]
+enum EffectiveTz {
+    Iana(chrono_tz::Tz),
+    Fixed(FixedOffset),
+}
+
+impl EffectiveTz {
+    fn from_actor_prefs(prefs_tz: Option<&str>, fallback_offset_hours: i32) -> Self {
+        if let Some(name) = prefs_tz {
+            if let Ok(tz) = name.parse::<chrono_tz::Tz>() {
+                return EffectiveTz::Iana(tz);
+            }
+            tracing::warn!(
+                "actor prefs.timezone {name:?} 解析失败,回到全局 fallback_offset_hours={fallback_offset_hours}"
+            );
+        }
+        let offset = FixedOffset::east_opt(fallback_offset_hours * 3600)
+            .unwrap_or(FixedOffset::east_opt(0).unwrap());
+        EffectiveTz::Fixed(offset)
+    }
+
+    fn local_hm(&self, now: DateTime<Utc>) -> (u32, u32) {
+        match self {
+            EffectiveTz::Iana(tz) => {
+                let local = tz.from_utc_datetime(&now.naive_utc());
+                (local.hour(), local.minute())
+            }
+            EffectiveTz::Fixed(off) => {
+                let local = off.from_utc_datetime(&now.naive_utc());
+                (local.hour(), local.minute())
+            }
+        }
+    }
+
+    fn date_key(&self, now: DateTime<Utc>) -> String {
+        let (y, m, d) = match self {
+            EffectiveTz::Iana(tz) => {
+                let local = tz.from_utc_datetime(&now.naive_utc());
+                (local.year(), local.month(), local.day())
+            }
+            EffectiveTz::Fixed(off) => {
+                let local = off.from_utc_datetime(&now.naive_utc());
+                (local.year(), local.month(), local.day())
+            }
+        };
+        format!("{y:04}-{m:02}-{d:02}")
+    }
+
+    fn in_window(&self, now: DateTime<Utc>, hhmm: &str) -> bool {
+        let Ok(target) = NaiveTime::parse_from_str(hhmm, "%H:%M") else {
+            return false;
+        };
+        let (h, m) = self.local_hm(now);
+        h == target.hour() && m == target.minute()
+    }
+}
+
 pub struct DigestScheduler {
     buffer: Arc<DigestBuffer>,
     sink: Arc<dyn crate::router::OutboundSink>,
@@ -236,88 +297,101 @@ impl DigestScheduler {
         self.tz_offset_hours
     }
 
-    /// 单轮 tick：检查当前时间是否命中两个窗口，命中则 flush 所有 actor。
-    /// `already_fired_today` 传入"今日已触发过的 key"集合，防止 60s 分辨率下
-    /// 同一分钟被 tick 两次。
+    /// 单轮 tick：以 actor 为外循环,各自按 `prefs.timezone` 与 `prefs.digest_windows`
+    /// (缺省回到全局 pre/post-market)判断是否命中本分钟。`already_fired_today` 的
+    /// key 是 `{actor}::{date}@{window}`,保证不同 actor 的相同窗口互不去重,
+    /// 同 actor 的同窗口同分钟不重复。
     pub async fn tick_once(
         &self,
         now: DateTime<Utc>,
         already_fired_today: &mut std::collections::HashSet<String>,
     ) -> anyhow::Result<u32> {
-        let date = local_date_key(now, self.tz_offset_hours);
         let mut flushed = 0u32;
-        for window in [&self.pre_market, &self.post_market] {
-            if !in_window(now, window, self.tz_offset_hours) {
-                continue;
-            }
-            let fire_key = format!("{date}@{window}");
-            if !already_fired_today.insert(fire_key) {
-                continue; // 同一分钟已触发
-            }
-            let label = if window == &self.pre_market {
-                format!("盘前摘要 · {window}")
-            } else {
-                // post_market 默认 09:00 北京时间，定位为"晨间简报，汇总隔夜美股"。
-                format!("晨间摘要 · {window}")
-            };
 
-            // ── Read-time earnings 倒计时合成 ─────────────────────────────
-            // 每次 flush 现算 T-3/T-2/T-1 倒计时(见 `pollers::earnings::synthesize_countdowns`);
-            // 这样 poller 的 24h cron 就算漂移到下午才跑也不会让倒计时 off-by-one。
-            // 只有同时注入 store + registry 才会启用 —— 缺一则 fall back 回纯 buffer flush。
-            let mut synth_by_actor: HashMap<ActorIdentity, Vec<MarketEvent>> = HashMap::new();
-            if let (Some(store), Some(registry)) = (&self.store, &self.registry) {
-                // within_days=4 留一天裕量覆盖跨时区/接近午夜 flush 的边界;
-                // synthesize_countdowns 内部仍然只接纳 1..=3,不会超发。
-                match store.list_upcoming_earnings(now, 4) {
-                    Ok(teasers) => {
-                        let local_today = {
-                            let offset = FixedOffset::east_opt(self.tz_offset_hours * 3600)
-                                .unwrap_or(FixedOffset::east_opt(0).unwrap());
-                            offset.from_utc_datetime(&now.naive_utc()).date_naive()
-                        };
-                        let synth_pool =
-                            crate::pollers::earnings::synthesize_countdowns(&teasers, local_today);
-                        let reg = registry.load();
-                        for ev in &synth_pool {
-                            for (actor, _sev) in reg.resolve(ev) {
-                                if !actor.is_direct() {
-                                    continue;
-                                }
-                                synth_by_actor.entry(actor).or_default().push(ev.clone());
+        // ── Read-time earnings 倒计时合成 ─────────────────────────────
+        // 与窗口/actor 都无关,每个 tick 算一次然后按 actor 分发。注入 store +
+        // registry 才启用,缺一回到纯 buffer flush。
+        let mut synth_by_actor: HashMap<ActorIdentity, Vec<MarketEvent>> = HashMap::new();
+        if let (Some(store), Some(registry)) = (&self.store, &self.registry) {
+            match store.list_upcoming_earnings(now, 4) {
+                Ok(teasers) => {
+                    let local_today = {
+                        let offset = FixedOffset::east_opt(self.tz_offset_hours * 3600)
+                            .unwrap_or(FixedOffset::east_opt(0).unwrap());
+                        offset.from_utc_datetime(&now.naive_utc()).date_naive()
+                    };
+                    let synth_pool =
+                        crate::pollers::earnings::synthesize_countdowns(&teasers, local_today);
+                    let reg = registry.load();
+                    for ev in &synth_pool {
+                        for (actor, _sev) in reg.resolve(ev) {
+                            if !actor.is_direct() {
+                                continue;
                             }
+                            synth_by_actor.entry(actor).or_default().push(ev.clone());
                         }
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            "digest: list_upcoming_earnings failed, skip synth overlay: {e:#}"
-                        );
-                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "digest: list_upcoming_earnings failed, skip synth overlay: {e:#}"
+                    );
                 }
             }
+        }
 
-            // 合并 actor 集合:buffer 里有排队事件的 + 仅有 synth 倒计时的。
-            // 后者保证"今天只有 AAPL T-1 一条,buffer 空"的场景也能触发 flush。
-            let mut actors: std::collections::HashSet<ActorIdentity> =
-                self.buffer.list_pending_actors().into_iter().collect();
-            for a in synth_by_actor.keys() {
-                actors.insert(a.clone());
+        // 合并 actor 集合:buffer 待 flush ∪ synth 命中。
+        let mut actors: std::collections::HashSet<ActorIdentity> =
+            self.buffer.list_pending_actors().into_iter().collect();
+        for a in synth_by_actor.keys() {
+            actors.insert(a.clone());
+        }
+
+        for actor in actors {
+            // 硬规则:只向单聊推送;群 actor 的 buffer 直接 drain 丢弃。
+            if !actor.is_direct() {
+                let _ = self.buffer.drain_actor(&actor);
+                tracing::info!(
+                    channel = %actor.channel,
+                    scope = ?actor.channel_scope,
+                    "digest drained & dropped for group actor (push is DM-only)"
+                );
+                continue;
             }
-
-            for actor in actors {
-                // 硬规则：只向单聊推送；若历史 buffer 遗留群 actor，直接 drain 丢弃。
-                if !actor.is_direct() {
-                    let _ = self.buffer.drain_actor(&actor);
-                    tracing::info!(
-                        channel = %actor.channel,
-                        scope = ?actor.channel_scope,
-                        "digest drained & dropped for group actor (push is DM-only)"
-                    );
+            let user_prefs = self.prefs.load(&actor);
+            let effective_tz =
+                EffectiveTz::from_actor_prefs(user_prefs.timezone.as_deref(), self.tz_offset_hours);
+            // 没设 digest_windows → 用全局 pre/post;设了空数组 → 用户主动关 digest。
+            let actor_windows: Vec<String> = match user_prefs.digest_windows.as_deref() {
+                Some(v) => v.to_vec(),
+                None => vec![self.pre_market.clone(), self.post_market.clone()],
+            };
+            if actor_windows.is_empty() {
+                continue;
+            }
+            let actor_key_str = format!(
+                "{}::{}::{}",
+                actor.channel,
+                actor.channel_scope.clone().unwrap_or_default(),
+                actor.user_id
+            );
+            for window in &actor_windows {
+                if !effective_tz.in_window(now, window) {
                     continue;
                 }
-                let user_prefs = self.prefs.load(&actor);
-                // 拉 buffer 里既有的 Medium/Low 事件,拼上现算的 earnings 倒计时。
-                // drain_actor 失败走空列表:synth 覆盖层本身已是有效 payload。
+                let date = effective_tz.date_key(now);
+                let fire_key = format!("{actor_key_str}::{date}@{window}");
+                if !already_fired_today.insert(fire_key) {
+                    continue; // 同一分钟同 actor 已触发(理论上不会)
+                }
+                let label = if window == &self.pre_market {
+                    format!("盘前摘要 · {window}")
+                } else if window == &self.post_market {
+                    format!("晨间摘要 · {window}")
+                } else {
+                    format!("盘中摘要 · {window}")
+                };
+
                 let buffered = match self.buffer.drain_actor(&actor) {
                     Ok(v) => v,
                     Err(e) => {
@@ -331,27 +405,18 @@ impl DigestScheduler {
                 if events.is_empty() {
                     continue;
                 }
-                // flush 时按最新 prefs 再过一遍：enqueue 后用户可能已关掉推送或
-                // 调整范围——这里是最后一道拦截。synth 倒计时共用 `earnings_upcoming`
-                // kind,用户静音该 kind 时倒计时也一并被拦掉。
+                // flush 时再过一遍 prefs:enqueue 后用户可能已关推送或缩小范围。
                 let mut filtered: Vec<MarketEvent> = events
                     .into_iter()
                     .filter(|e| user_prefs.should_deliver(e))
                     .collect();
                 if filtered.is_empty() {
                     tracing::info!(
-                        actor = %format!(
-                            "{}::{}::{}",
-                            actor.channel,
-                            actor.channel_scope.clone().unwrap_or_default(),
-                            actor.user_id
-                        ),
+                        actor = %actor_key_str,
                         "digest skipped by user prefs"
                     );
                     continue;
                 }
-                // 批次防轰炸：按 severity 降序(High→Medium→Low)再按 occurred_at 降序排序,
-                // 超过上限的尾部丢弃并在渲染时提示。
                 filtered.sort_by(|a, b| {
                     b.severity
                         .rank()
@@ -360,17 +425,17 @@ impl DigestScheduler {
                 });
                 let overflow =
                     if self.max_items_per_batch > 0 && filtered.len() > self.max_items_per_batch {
-                        let dropped = filtered.len() - self.max_items_per_batch;
+                        let dropped_ids: Vec<String> = filtered[self.max_items_per_batch..]
+                            .iter()
+                            .map(|e| e.id.clone())
+                            .collect();
+                        let dropped = dropped_ids.len();
                         filtered.truncate(self.max_items_per_batch);
                         tracing::info!(
-                            actor = %format!(
-                                "{}::{}::{}",
-                                actor.channel,
-                                actor.channel_scope.clone().unwrap_or_default(),
-                                actor.user_id
-                            ),
+                            actor = %actor_key_str,
                             dropped,
                             kept = filtered.len(),
+                            dropped_ids = ?dropped_ids,
                             "digest truncated to avoid info flooding"
                         );
                         dropped
@@ -378,15 +443,8 @@ impl DigestScheduler {
                         0
                     };
                 let body = render_digest(&label, &filtered, overflow, self.sink.format());
-                let actor_key = format!(
-                    "{}::{}::{}",
-                    actor.channel,
-                    actor.channel_scope.clone().unwrap_or_default(),
-                    actor.user_id
-                );
                 let send_result = self.sink.send(&actor, &body).await;
                 if let Some(store) = &self.store {
-                    // 同一 digest body 覆盖多个 event_id；用合成 id 记录"flush 批次"。
                     let batch_id = format!("digest-batch:{date}@{window}:{}", filtered.len());
                     let status = if send_result.is_ok() {
                         "sent"
@@ -395,7 +453,7 @@ impl DigestScheduler {
                     };
                     let _ = store.log_delivery(
                         &batch_id,
-                        &actor_key,
+                        &actor_key_str,
                         "digest",
                         filtered[0].severity,
                         status,
@@ -403,9 +461,25 @@ impl DigestScheduler {
                     );
                 }
                 if let Err(e) = send_result {
-                    tracing::warn!("digest sink failed: {e:#}");
+                    tracing::warn!(
+                        actor = %actor_key_str,
+                        window = %window,
+                        items = filtered.len(),
+                        body_len = body.chars().count(),
+                        body_preview = %body_preview(&body),
+                        "digest sink failed: {e:#}"
+                    );
                     continue;
                 }
+                tracing::info!(
+                    actor = %actor_key_str,
+                    window = %window,
+                    items = filtered.len(),
+                    overflow,
+                    body_len = body.chars().count(),
+                    body_preview = %body_preview(&body),
+                    "digest delivered"
+                );
                 flushed += 1;
             }
         }
@@ -709,5 +783,136 @@ mod tests {
         assert!(body.contains("MID-KEEP"), "Medium 应被保留,body = {body}");
         // 溢出提示
         assert!(body.contains("另 3 条已省略"), "body = {body}");
+    }
+
+    #[tokio::test]
+    async fn per_actor_windows_and_timezones_fire_independently() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+        use crate::router::OutboundSink;
+        use async_trait::async_trait;
+        use std::collections::HashSet;
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct SpySink(Mutex<Vec<(String, String)>>);
+        #[async_trait]
+        impl OutboundSink for SpySink {
+            async fn send(&self, a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((a.user_id.clone(), body.into()));
+                Ok(())
+            }
+        }
+
+        let dir = tempdir().unwrap();
+        let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let sink = Arc::new(SpySink::default());
+        let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+
+        let sh = actor("sh");
+        let ny = actor("ny");
+        // 给两人各 enqueue 一条 Medium
+        buf.enqueue(&sh, &ev("e-sh", "AAPL")).unwrap();
+        buf.enqueue(&ny, &ev("e-ny", "MSFT")).unwrap();
+
+        // sh: 上海时区,只在本地 19:00 推一次。
+        prefs
+            .save(
+                &sh,
+                &NotificationPrefs {
+                    timezone: Some("Asia/Shanghai".into()),
+                    digest_windows: Some(vec!["19:00".into()]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // ny: 纽约时区,只在本地 07:00 推一次。
+        prefs
+            .save(
+                &ny,
+                &NotificationPrefs {
+                    timezone: Some("America/New_York".into()),
+                    digest_windows: Some(vec!["07:00".into()]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        // 全局兜底窗口设个不会命中的 ("00:00") + 偏移设 0 即 UTC,确保命中由 prefs 决定。
+        let sched = DigestScheduler::new(buf.clone(), sink.clone(), "00:00", "00:00")
+            .with_tz_offset_hours(0)
+            .with_prefs(prefs.clone());
+
+        // T1: 2026-04-21 11:00 UTC == 19:00 上海 (CST=UTC+8) == 07:00 纽约 (EDT=UTC-4 in April)
+        // 两个 actor 同时命中各自窗口。
+        let now1 = Utc.with_ymd_and_hms(2026, 4, 21, 11, 0, 0).unwrap();
+        let mut fired = HashSet::new();
+        let n1 = sched.tick_once(now1, &mut fired).await.unwrap();
+        assert_eq!(n1, 2, "两个 actor 各自命中本地窗口,应都 flush");
+
+        let calls = sink.0.lock().unwrap();
+        let users: Vec<&str> = calls.iter().map(|(u, _)| u.as_str()).collect();
+        assert!(users.contains(&"sh"));
+        assert!(users.contains(&"ny"));
+        drop(calls);
+
+        // 同一分钟再 tick 不重复
+        let n_again = sched.tick_once(now1, &mut fired).await.unwrap();
+        assert_eq!(n_again, 0);
+
+        // T2: 同一天 ny actor 又来一条事件,sh 已经过 19:00 但还没到次日。
+        // 23:00 UTC == 07:00 (next day) 上海 / 19:00 纽约 — 两边都不命中。
+        buf.enqueue(&ny, &ev("e-ny-2", "GOOG")).unwrap();
+        let now2 = Utc.with_ymd_and_hms(2026, 4, 21, 23, 0, 0).unwrap();
+        let n2 = sched.tick_once(now2, &mut fired).await.unwrap();
+        assert_eq!(n2, 0, "23:00 UTC 两个本地窗口都不命中");
+    }
+
+    #[tokio::test]
+    async fn per_actor_empty_windows_disables_digest_entirely() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+        use crate::router::OutboundSink;
+        use async_trait::async_trait;
+        use std::collections::HashSet;
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct SpySink(Mutex<Vec<String>>);
+        #[async_trait]
+        impl OutboundSink for SpySink {
+            async fn send(&self, _a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+                self.0.lock().unwrap().push(body.into());
+                Ok(())
+            }
+        }
+
+        let dir = tempdir().unwrap();
+        let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let sink = Arc::new(SpySink::default());
+        let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+
+        let a = actor("quiet");
+        buf.enqueue(&a, &ev("e1", "AAPL")).unwrap();
+        prefs
+            .save(
+                &a,
+                &NotificationPrefs {
+                    digest_windows: Some(vec![]), // 显式关 digest
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        // 把全局窗口设成 08:30,UTC 偏移 -4 → UTC 12:30 命中。但该 actor 应被 prefs 关闭。
+        let sched = DigestScheduler::new(buf, sink.clone(), "08:30", "17:00")
+            .with_tz_offset_hours(-4)
+            .with_prefs(prefs);
+        let now = Utc.with_ymd_and_hms(2026, 4, 21, 12, 30, 0).unwrap();
+        let mut fired = HashSet::new();
+        let n = sched.tick_once(now, &mut fired).await.unwrap();
+        assert_eq!(n, 0, "digest_windows=Some(vec![]) 应彻底关 digest");
+        assert!(sink.0.lock().unwrap().is_empty());
     }
 }

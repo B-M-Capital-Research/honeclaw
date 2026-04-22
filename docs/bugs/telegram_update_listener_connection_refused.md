@@ -45,7 +45,10 @@
 
 ## 当前实现效果
 
+- 2026-04-22 14:03 CST 最新样本仍在 `data/runtime/logs/web.log:2167` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
+- 2026-04-22 12:03 CST 同一窗口还出现 `data/runtime/logs/web.log:2125` 的 `GetUpdates` 连接中断；`telegram.pid=75490` 和 heartbeat 均存活，说明这是监听请求层面的持续错误，而不是 Telegram sidecar 进程已退出。
 - 到 `2026-04-22 11:14` 最新 release app 窗口，Telegram Bot 再次启动后仍立即报 `Invalid bot token`；`11:32` 又出现启动记录，但没有新的 Telegram 会话落库。
+- 2026-04-22 07:22 CST 出现两条用户入站消息后，runner 在 `data/runtime/logs/web.log:1906-1917` 因 `hone-mcp binary not found near current executable` 失败并只发送 placeholder；这属于 Telegram 对话执行链路的新近失败证据，和 GetUpdates 拉取错误不同，但同样影响 Telegram 用户端可用性。
 - 2026-04-22 10:03 CST 最新样本仍在 `data/runtime/logs/web.log` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
 - 2026-04-22 06:03 最新样本仍在 `data/runtime/logs/web.log` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；同类错误还在 `2026-04-22 00:03`、`02:03`、`04:03` 出现。
 - 到 `2026-04-22 03:10-03:12` release app 窗口，Telegram sidecar 已从此前 `GetUpdates` 超时演变为启动即失败：`Invalid bot token`，desktop 标记 `managed channel telegram skipped because it exited during startup`。

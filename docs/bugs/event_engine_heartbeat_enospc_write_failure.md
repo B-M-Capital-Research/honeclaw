@@ -61,6 +61,10 @@ fn write_snapshot(path: &Path, snapshot: &ProcessHeartbeatSnapshot) -> io::Resul
 
 ## Latest巡检 Update
 
+- 2026-04-22T06:10:14Z: enabled Telegram heartbeat was fresh: `data/runtime/telegram.heartbeat.json` had `pid=75490`, `started_at=2026-04-22T03:58:06.994362Z`, and `updated_at=2026-04-22T06:10:07.098463Z`; `ps -p 75490` showed `/Users/bytedance/Library/Caches/honeclaw/target/debug/hone-telegram` alive with `etime=02:12:10`.
+- `data/runtime/backend.pid=75329` was alive with `etime=02:12:14`; the Telegram heartbeat `started_at` was within the same process lifetime, so no enabled-channel heartbeat跨重启残留 was observed.
+- `data/runtime/discord.heartbeat.json` remains stale from `2026-04-16`, and `discord.pid` / `feishu.pid` / `imessage.pid` point to dead processes, but current startup logs include `discord.enabled=false`, `feishu.enabled=false`, and `imessage.enabled=false`; those stale files were not counted as enabled-channel failures.
+- The original `data/runtime/logs/web.log:1251` `failed to write heartbeat: No space left on device (os error 28)` remains the only ENOSPC heartbeat write warning in this scan.
 - 2026-04-22T02:09:10Z: all pid files under `data/runtime/*.pid` resolved to live processes; `backend.pid=75069` had `etime=12:19:41` and `telegram.pid=75095` had `etime=12:19:37`.
 - Enabled Telegram heartbeat was fresh: `data/runtime/telegram.heartbeat.json` had `started_at=2026-04-21T13:49:34.236871Z` and `updated_at=2026-04-22T02:09:04.218383Z`, matching the live Telegram process lifetime within normal drift.
 - `data/runtime/discord.heartbeat.json` remained stale from `2026-04-16`, but `config.yaml` has `discord.enabled=false`, so it was not counted as an enabled-channel heartbeat failure. `df -h data/runtime` showed `68Gi` available, and no new ENOSPC warning was found after `data/runtime/logs/web.log:1251`.

@@ -910,6 +910,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono-tz"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93698b29de5e97ad0ae26447b344c482a7284c737d9ddc5f9e52b74a336671bb"
+dependencies = [
+ "chrono",
+ "chrono-tz-build",
+ "phf 0.11.3",
+]
+
+[[package]]
+name = "chrono-tz-build"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c088aee841df9c3041febbb73934cfc39708749bf96dc827e3359cd39ef11b1"
+dependencies = [
+ "parse-zoneinfo",
+ "phf 0.11.3",
+ "phf_codegen 0.11.3",
+]
+
+[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1552,7 +1574,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1787,7 +1809,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2692,7 +2714,7 @@ dependencies = [
 
 [[package]]
 name = "hone-agent"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "futures",
@@ -2709,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "hone-agent-codex-cli"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "hone-core",
@@ -2724,7 +2746,7 @@ dependencies = [
 
 [[package]]
 name = "hone-agent-gemini-cli"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "hone-core",
@@ -2739,7 +2761,7 @@ dependencies = [
 
 [[package]]
 name = "hone-channels"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2772,7 +2794,7 @@ dependencies = [
 
 [[package]]
 name = "hone-cli"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "clap",
@@ -2794,7 +2816,7 @@ dependencies = [
 
 [[package]]
 name = "hone-console-page"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hone-core",
  "hone-web-api",
@@ -2804,7 +2826,7 @@ dependencies = [
 
 [[package]]
 name = "hone-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2825,7 +2847,7 @@ dependencies = [
 
 [[package]]
 name = "hone-desktop"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "hone-core",
@@ -2843,7 +2865,7 @@ dependencies = [
 
 [[package]]
 name = "hone-discord"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2864,11 +2886,12 @@ dependencies = [
 
 [[package]]
 name = "hone-event-engine"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "chrono-tz",
  "futures",
  "hone-core",
  "hone-llm",
@@ -2886,7 +2909,7 @@ dependencies = [
 
 [[package]]
 name = "hone-feishu"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "axum",
@@ -2911,7 +2934,7 @@ dependencies = [
 
 [[package]]
 name = "hone-imessage"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "axum",
@@ -2934,7 +2957,7 @@ dependencies = [
 
 [[package]]
 name = "hone-integrations"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-openai",
  "base64 0.22.1",
@@ -2956,7 +2979,7 @@ dependencies = [
 
 [[package]]
 name = "hone-llm"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-openai",
  "async-trait",
@@ -2972,7 +2995,7 @@ dependencies = [
 
 [[package]]
 name = "hone-mcp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hone-channels",
  "hone-core",
@@ -2983,7 +3006,7 @@ dependencies = [
 
 [[package]]
 name = "hone-memory"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "hone-core",
@@ -3000,7 +3023,7 @@ dependencies = [
 
 [[package]]
 name = "hone-scheduler"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "hone-agent",
@@ -3017,7 +3040,7 @@ dependencies = [
 
 [[package]]
 name = "hone-telegram"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3033,11 +3056,12 @@ dependencies = [
 
 [[package]]
 name = "hone-tools"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "chrono-tz",
  "glob",
  "hone-core",
  "hone-event-engine",
@@ -3055,11 +3079,12 @@ dependencies = [
 
 [[package]]
 name = "hone-web-api"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "chrono-tz",
  "hone-agent",
  "hone-channels",
  "hone-core",
@@ -3078,6 +3103,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
  "url",
  "uuid",
@@ -3290,7 +3316,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.2",
  "system-configuration 0.7.0",
  "tokio",
  "tower-service",
@@ -4247,7 +4273,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4300,7 +4326,7 @@ version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff32365de1b6743cb203b710788263c44a03de03802daf96092f2da4fe6ba4d7"
 dependencies = [
- "proc-macro-crate 1.3.1",
+ "proc-macro-crate 3.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.116",
@@ -4535,7 +4561,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4590,6 +4616,15 @@ dependencies = [
  "redox_syscall 0.5.18",
  "smallvec",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "parse-zoneinfo"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f2a05b18d44e2957b88f96ba460715e295bc1d7510468a2f3d3b44535d26c24"
+dependencies = [
+ "regex",
 ]
 
 [[package]]
@@ -5164,7 +5199,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.36",
- "socket2 0.5.10",
+ "socket2 0.6.2",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5202,9 +5237,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5734,7 +5769,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5816,7 +5851,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6004,7 +6039,7 @@ version = "0.89.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a51d5f03526f7cc1cc38b60cc24c3cc5982516c8ad9c94ff27d7f82f3c9762fb"
 dependencies = [
- "proc-macro-crate 2.0.2",
+ "proc-macro-crate 3.5.0",
  "proc-macro2",
  "quote",
  "regex",
@@ -6805,6 +6840,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "symlink"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7973cce6668464ea31f176d85b13c7ab3bba2cb3b77a2ed26abd7801688010a"
+
+[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7321,7 +7362,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix 1.1.3",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7741,6 +7782,19 @@ dependencies = [
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-appender"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "050686193eb999b4bb3bc2acfa891a13da00f79734704c4b8b4ef1a10b368a3c"
+dependencies = [
+ "crossbeam-channel",
+ "symlink",
+ "thiserror 2.0.18",
+ "time",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -8596,7 +8650,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

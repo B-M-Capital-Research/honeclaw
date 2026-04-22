@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-22 15:03 CST
+最后更新：2026-04-22 15:30 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：16
+- 活跃待修复：18
 - 已修复 / 已关闭：45
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -38,7 +38,8 @@
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-22 10:02 `ASTS 重大异动心跳监控` 在 07:01 已送达同一 `BlueBird 7` 失败事件、随后多轮 `noop` 后，再次落成 `completed + sent + delivered=1`；去重仍依赖模型临场判断而非稳定已提醒状态 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 21:01 `TEM大事件心跳监控` 再次落成 `execution_failed + skipped_error`；20:30 还是 `noop`、21:00 前后同批又混有 `JsonUnknownStatus`，用户侧无法判断本轮是未触发还是链路直接耗尽 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 19:30 `Monitor_Watchlist_11` 继续命中 `https://api.minimaxi.com/v1/chat/completions` 发送失败；20:00 同批主要漂移到 `JsonUnknownStatus`，传输吸震仍未稳定收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
-| Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-22 11:14 Telegram Bot 再次启动后仍报 `Invalid bot token`；11:32 又出现启动记录但无新会话落库，最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
+| Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-22 14:03 `GetUpdates` 仍连接中断；11:14 release app 启动后报 `Invalid bot token`，11:32 又有启动记录但无新会话落库；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
+| Event-engine price poller 单次 FMP quote 抓取失败 | P3 | New | 2026-04-22 12:03 quote 批量请求连接被关闭；后续 poller 恢复且 `fmp.quote` 近 24h 有记录，暂按单 tick 丢失跟踪 | [event_engine_price_poller_transient_fetch_failure.md](./event_engine_price_poller_transient_fetch_failure.md) |
 
 ## 已修复 / 已关闭
 

@@ -12,6 +12,7 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
@@ -30,3 +31,7 @@ path = "examples/push_smoke.rs"
 [[example]]
 name = "news_llm_e2e"
 path = "examples/news_llm_e2e.rs"
+
+[[example]]
+name = "per_actor_override_e2e"
+path = "examples/per_actor_override_e2e.rs"

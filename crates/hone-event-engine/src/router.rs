@@ -37,7 +37,9 @@ const NEWS_CONVERGENCE_HARD_SIGNALS: &[&str] = &[
 pub trait OutboundSink: Send + Sync {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()>;
 
-    /// 该 Sink 期望的消息格式。默认 Plain；Telegram sink 应返回 `TelegramHtml`。
+    /// 该 Sink 期望的消息格式。当前所有内置 sink 一律 Plain;若新增渠道想用富文本
+    /// (如 TelegramHtml / DiscordMarkdown),override 这里同时在 send() 带上对应的
+    /// parse_mode,否则会出现 `<b>` 当字面量泄露。
     fn format(&self) -> RenderFormat {
         RenderFormat::Plain
     }
@@ -344,6 +346,12 @@ impl NotificationRouter {
                 }
                 None => (event, sev),
             };
+            // per-actor severity override:用户可自定义
+            //   (a) price_high_pct_override:价格异动绝对值触达即升 High 即时推;
+            //   (b) immediate_kinds:某些 kind 无条件升 High 即时推(例如 52 周高/低、
+            //       分析师评级)。
+            // 升级后仍要走 high_daily_cap / cooldown,保持 burst 防护。
+            let sev = apply_per_actor_severity_override(event, sev, &user_prefs);
             if !user_prefs.should_deliver(event) {
                 let _ = self.store.log_delivery(
                     &event.id,
@@ -433,7 +441,14 @@ impl NotificationRouter {
                         None => default_body,
                     };
                     if let Err(e) = self.sink.send(&actor, &body).await {
-                        tracing::warn!("sink send failed: {e:#}");
+                        tracing::warn!(
+                            actor = %actor_key(&actor),
+                            event_id = %event.id,
+                            kind = %kind_tag(&event.kind),
+                            body_len = body.chars().count(),
+                            body_preview = %body_preview(&body),
+                            "sink send failed: {e:#}"
+                        );
                         let _ = self.store.log_delivery(
                             &event.id,
                             &actor_key(&actor),
@@ -451,6 +466,15 @@ impl NotificationRouter {
                         sev,
                         "sent",
                         Some(&body),
+                    );
+                    tracing::info!(
+                        actor = %actor_key(&actor),
+                        event_id = %event.id,
+                        kind = %kind_tag(&event.kind),
+                        severity = ?sev,
+                        body_len = body.chars().count(),
+                        body_preview = %body_preview(&body),
+                        "sink delivered"
                     );
                     sent += 1;
                 }
@@ -510,6 +534,49 @@ fn actor_key(a: &ActorIdentity) -> String {
         a.channel_scope.clone().unwrap_or_default(),
         a.user_id
     )
+}
+
+/// 取 body 头 120 字符做 tracing 预览,换行折成单行 ⏎,避免日志多行难抓。
+/// 全文一律已经在 SQLite `delivery_log` 里,这里只是肉眼速读用。
+pub(crate) fn body_preview(body: &str) -> String {
+    let mut s: String = body.chars().take(120).collect();
+    if body.chars().count() > 120 {
+        s.push('…');
+    }
+    s.replace('\n', " ⏎ ")
+}
+
+/// 按用户 prefs 重写 severity:price_high_pct_override 阈值触达 → High;
+/// immediate_kinds 命中 → High。其余维持 poller / convergence / LLM 给的 sev。
+/// 不修改 event 本身,仅返回新 sev——保持原 dispatch 的"event 不可变"语义。
+fn apply_per_actor_severity_override(
+    event: &MarketEvent,
+    sev: Severity,
+    prefs: &NotificationPrefs,
+) -> Severity {
+    if matches!(sev, Severity::High) {
+        return sev;
+    }
+    if let Some(threshold_pct) = prefs.price_high_pct_override {
+        if matches!(event.kind, EventKind::PriceAlert { .. }) {
+            let pct = event
+                .payload
+                .get("changesPercentage")
+                .and_then(|v| v.as_f64());
+            if let Some(p) = pct {
+                if p.abs() >= threshold_pct {
+                    return Severity::High;
+                }
+            }
+        }
+    }
+    if let Some(kinds) = prefs.immediate_kinds.as_deref() {
+        let tag = kind_tag(&event.kind);
+        if kinds.iter().any(|k| k == tag) {
+            return Severity::High;
+        }
+    }
+    sev
 }
 
 /// 按给定 tz 偏移求本地当日 00:00 对应的 UTC 时刻。用作
@@ -1485,6 +1552,148 @@ mod tests {
             let (_s, p) = router.dispatch(&news).await.unwrap();
             assert_eq!(p, 1);
         }
+    }
+
+    #[tokio::test]
+    async fn per_actor_price_threshold_promotes_low_to_immediate() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAOI".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    price_high_pct_override: Some(3.0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store);
+
+        // 4% 价格异动:全局阈值 6% 时为 Low,但 user override 3% 应升 High。
+        let ev = MarketEvent {
+            id: "price:AAOI:test".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 400,
+                window: "day".into(),
+            },
+            severity: Severity::Low,
+            symbols: vec!["AAOI".into()],
+            occurred_at: Utc::now(),
+            title: "AAOI +4.00%".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({"changesPercentage": 4.05}),
+        };
+        let (sent, pending) = router.dispatch(&ev).await.unwrap();
+        assert_eq!(sent, 1, "user override 阈值触达应即时推");
+        assert_eq!(pending, 0);
+    }
+
+    #[tokio::test]
+    async fn per_actor_immediate_kinds_promotes_weekly52_high() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAOI".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    immediate_kinds: Some(vec!["weekly52_high".into()]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store);
+
+        let ev = MarketEvent {
+            id: "52h:AAOI:test".into(),
+            kind: EventKind::Weekly52High,
+            severity: Severity::Medium,
+            symbols: vec!["AAOI".into()],
+            occurred_at: Utc::now(),
+            title: "AAOI 触及 52 周新高".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::Value::Null,
+        };
+        let (sent, pending) = router.dispatch(&ev).await.unwrap();
+        assert_eq!(sent, 1, "immediate_kinds 命中 weekly52_high 应即时推");
+        assert_eq!(pending, 0);
+
+        // NewsCritical Low 不在列表 → 仍走 digest。
+        let news = MarketEvent {
+            id: "news:AAOI:1".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec!["AAOI".into()],
+            occurred_at: Utc::now(),
+            title: "AAOI 普通新闻".into(),
+            summary: String::new(),
+            url: None,
+            source: "test".into(),
+            payload: serde_json::Value::Null,
+        };
+        let (sent2, pending2) = router.dispatch(&news).await.unwrap();
+        assert_eq!(sent2, 0, "未在 immediate_kinds 列表的 kind 不应被升");
+        assert_eq!(pending2, 1);
+    }
+
+    #[tokio::test]
+    async fn per_actor_overrides_default_off_keeps_legacy_behavior() {
+        // 不设 prefs override 时,Low PriceAlert 与 Medium Weekly52High 仍走 digest。
+        let (router, sink, _tmp) = router_with_aapl_actor();
+        let price_low = MarketEvent {
+            id: "price:AAPL:legacy".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 400,
+                window: "day".into(),
+            },
+            severity: Severity::Low,
+            symbols: vec!["AAPL".into()],
+            occurred_at: Utc::now(),
+            title: "AAPL +4%".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({"changesPercentage": 4.0}),
+        };
+        let (sent, pending) = router.dispatch(&price_low).await.unwrap();
+        assert_eq!(sent, 0);
+        assert_eq!(pending, 1);
+        assert!(sink.calls.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

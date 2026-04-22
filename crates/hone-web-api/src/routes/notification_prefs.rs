@@ -61,6 +61,48 @@ fn validate_prefs(prefs: &NotificationPrefs) -> Result<(), Response> {
             ));
         }
     }
+    if let Some(tz) = &prefs.timezone {
+        if !tz.trim().is_empty() {
+            use std::str::FromStr;
+            if chrono_tz::Tz::from_str(tz.trim()).is_err() {
+                return Err(json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "timezone {tz:?} 不是合法 IANA 名;示例:Asia/Shanghai、America/New_York、Europe/London"
+                    ),
+                ));
+            }
+        }
+    }
+    if let Some(windows) = &prefs.digest_windows {
+        for w in windows {
+            if chrono::NaiveTime::parse_from_str(w, "%H:%M").is_err() {
+                return Err(json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("digest_windows 含非法时刻 {w:?},必须是 HH:MM (24h)"),
+                ));
+            }
+        }
+    }
+    if let Some(pct) = prefs.price_high_pct_override {
+        if !pct.is_finite() || !(pct > 0.0 && pct <= 50.0) {
+            return Err(json_error(
+                StatusCode::BAD_REQUEST,
+                format!("price_high_pct_override 必须在 (0, 50] 范围,收到 {pct}"),
+            ));
+        }
+    }
+    if let Some(kinds) = &prefs.immediate_kinds {
+        if let Some(bad) = first_invalid_kind_tag(kinds.iter().map(|s| s.as_str())) {
+            return Err(json_error(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "immediate_kinds 含未知 tag '{bad}';合法清单:{}",
+                    ALL_KIND_TAGS.join(", ")
+                ),
+            ));
+        }
+    }
     Ok(())
 }
 

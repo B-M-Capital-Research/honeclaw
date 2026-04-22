@@ -24,7 +24,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 authors = ["Hone Financial"]
 license = "MIT"
@@ -55,6 +55,7 @@ anyhow = "1"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "registry", "fmt"] }
+tracing-appender = "0.2"
 
 # Async trait
 async-trait = "0.1"
@@ -64,6 +65,7 @@ uuid = { version = "1", features = ["v4"] }
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.9"
 
 # SQLite (for iMessage chat.db)
 rusqlite = { version = "0.31", features = ["bundled"] }

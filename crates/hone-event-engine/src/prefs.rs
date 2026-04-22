@@ -51,6 +51,20 @@ pub struct NotificationPrefs {
     /// `NewsCritical` 与此 prompt 一起送给 LLM 仲裁器,LLM 判 yes 即升 Medium。
     /// `None` → 走 `EventEngineConfig.news_importance_prompt` 全局默认。
     pub news_importance_prompt: Option<String>,
+    /// 用户所在 IANA 时区,如 `"Asia/Shanghai"`、`"America/New_York"`。
+    /// `None` → 沿用全局 `digest.timezone`。仅影响 digest 窗口的本地时刻解释。
+    pub timezone: Option<String>,
+    /// 用户希望触发 digest 的本地时刻列表(`"HH:MM"`,按 `timezone` 解释)。
+    /// `None` → 沿用全局 `[pre_market, post_market]`。`Some(vec![])` = 完全关 digest。
+    pub digest_windows: Option<Vec<String>>,
+    /// 价格异动即时推阈值(百分点,绝对值)。`None` → 沿用全局
+    /// `thresholds.price_alert_high_pct`(目前 6.0)。例如 `Some(3.5)` = 任何
+    /// `|pct| >= 3.5%` 的 PriceAlert 在本 actor 路由阶段升 High。
+    pub price_high_pct_override: Option<f64>,
+    /// 强制升 High 即时推的 kind tag 列表(用 `kind_tag()` 字符串)。
+    /// `None` / 空 → 不做任何 kind 强升;命中元素 → router 在本 actor 路径升 High。
+    /// 校验复用 `first_invalid_kind_tag()`。
+    pub immediate_kinds: Option<Vec<String>>,
 }
 
 impl Default for NotificationPrefs {
@@ -62,6 +76,10 @@ impl Default for NotificationPrefs {
             allow_kinds: None,
             blocked_kinds: Vec::new(),
             news_importance_prompt: None,
+            timezone: None,
+            digest_windows: None,
+            price_high_pct_override: None,
+            immediate_kinds: None,
         }
     }
 }
@@ -347,6 +365,10 @@ mod tests {
             allow_kinds: Some(vec!["split".into()]),
             blocked_kinds: vec!["news_critical".into()],
             news_importance_prompt: None,
+            timezone: Some("America/New_York".into()),
+            digest_windows: Some(vec!["07:00".into(), "18:00".into()]),
+            price_high_pct_override: Some(3.5),
+            immediate_kinds: Some(vec!["weekly52_high".into(), "analyst_grade".into()]),
         };
         store.save(&a, &p).unwrap();
         let loaded = store.load(&a);
@@ -354,6 +376,43 @@ mod tests {
         assert!(loaded.portfolio_only);
         assert_eq!(loaded.min_severity, Severity::High);
         assert_eq!(loaded.allow_kinds.as_deref(), Some(&["split".into()][..]));
+        assert_eq!(loaded.timezone.as_deref(), Some("America/New_York"));
+        assert_eq!(
+            loaded.digest_windows.as_deref(),
+            Some(&["07:00".to_string(), "18:00".to_string()][..])
+        );
+        assert_eq!(loaded.price_high_pct_override, Some(3.5));
+        assert_eq!(
+            loaded.immediate_kinds.as_deref(),
+            Some(&["weekly52_high".to_string(), "analyst_grade".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn new_per_actor_fields_default_to_none() {
+        let p = NotificationPrefs::default();
+        assert!(p.timezone.is_none());
+        assert!(p.digest_windows.is_none());
+        assert!(p.price_high_pct_override.is_none());
+        assert!(p.immediate_kinds.is_none());
+    }
+
+    #[test]
+    fn new_per_actor_fields_missing_in_old_json_fall_back() {
+        // 老 prefs 文件没有这 4 个字段;serde(default) 应让加载继续走默认。
+        let dir = tempdir().unwrap();
+        let store = FilePrefsStorage::new(dir.path()).unwrap();
+        let a = actor();
+        std::fs::write(
+            store.path_for(&a),
+            r#"{"enabled":true,"portfolio_only":false,"min_severity":"low","blocked_kinds":[]}"#,
+        )
+        .unwrap();
+        let p = store.load(&a);
+        assert!(p.timezone.is_none());
+        assert!(p.digest_windows.is_none());
+        assert!(p.price_high_pct_override.is_none());
+        assert!(p.immediate_kinds.is_none());
     }
 
     #[test]

@@ -119,6 +119,10 @@ let overflow =
 
 ## Latest巡检 Update
 
+- 2026-04-22T06:10:50Z: the 24h scan found 322 `news severity upgraded Low→Medium (window convergence)` log entries. The largest single-second burst is still `data/runtime/logs/web.log:1352-1379`, with 27 upgrades at `2026-04-21 22:34:32` local time, exceeding the巡检 threshold of 20.
+- Later bursts remained below the threshold but frequent: `2026-04-22 06:19:32` had 13 upgrades, `2026-04-22 04:34:32` had 12, and `2026-04-22 04:19:32` / `06:49:32` / `07:04:32` each had 11.
+- Poller cadence stayed healthy outside restart windows. The largest adjacent `poller ok` gap was about 1092 seconds from `data/runtime/logs/web.log:1253` to `data/runtime/logs/web.log:1281`, but that interval contains the `21:49:30` backend restart at `data/runtime/logs/web.log:1254-1256`, so it was not classified as poller停摆.
+- Runtime digest buffer files were still absent (`data/runtime/telegram__direct__*.jsonl` and `.flushed-*` did not exist), while `data/events.sqlite3` recorded `digest-batch:2026-04-22@09:00:20` as `digest/medium/sent` at `2026-04-22 01:00:32` UTC. The exact retained/dropped records for the 27-upgrade burst remain unavailable.
 - 2026-04-22T02:09:55Z: the maximum single-second burst in the scanned `web.log` remains `data/runtime/logs/web.log:1352-1379`, where `2026-04-21 22:34:32` local time logged 27 upgrades around one poller tick.
 - Poller cadence was otherwise healthy in the recent window: adjacent `poller ok` entries stayed around five minutes or less, and no >15 minute poller停摆 without restart was observed.
 - Runtime digest buffers were absent (`find data/runtime -name 'telegram__direct__*'` returned no files), while `data/events.sqlite3` recorded `digest-batch:2026-04-22@09:00:20` as `digest/medium/sent` at `2026-04-22 01:00:32` UTC. There is still no buffer archive available to map the 27 upgraded items to retained versus truncated digest content.

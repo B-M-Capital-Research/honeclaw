@@ -26,6 +26,10 @@ const DEFAULT_PREFS: NotificationPrefs = {
   min_severity: "low",
   allow_kinds: null,
   blocked_kinds: [],
+  timezone: null,
+  digest_windows: null,
+  price_high_pct_override: null,
+  immediate_kinds: null,
 };
 
 type RosterEntry = {
@@ -76,6 +80,18 @@ function summarize(p: NotificationPrefs): string {
     parts.push(`白名单 ${p.allow_kinds.length}`);
   if (p.blocked_kinds && p.blocked_kinds.length)
     parts.push(`黑名单 ${p.blocked_kinds.length}`);
+  if (p.timezone) parts.push(`TZ=${p.timezone}`);
+  if (p.digest_windows) {
+    parts.push(
+      p.digest_windows.length === 0
+        ? "关 digest"
+        : `digest×${p.digest_windows.length}`,
+    );
+  }
+  if (p.price_high_pct_override != null)
+    parts.push(`⚡${p.price_high_pct_override}%`);
+  if (p.immediate_kinds && p.immediate_kinds.length)
+    parts.push(`强升 ${p.immediate_kinds.length}`);
   return `启用 · ${parts.join(" · ")}`;
 }
 
@@ -244,6 +260,58 @@ export function NotificationPreferencesCard() {
     editCurrent((p) => ({
       ...p,
       blocked_kinds: toggleTag(p.blocked_kinds ?? [], tag),
+    }));
+  };
+
+  const handleImmediateToggle = (tag: string) => {
+    editCurrent((p) => {
+      const next = toggleTag(p.immediate_kinds ?? [], tag);
+      return { ...p, immediate_kinds: next.length === 0 ? null : next };
+    });
+  };
+
+  // digest_windows 操作:null = 沿用全局,[] = 关 digest,[..] = 自定义。
+  const [windowDraft, setWindowDraft] = createSignal("");
+  const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const sortedUniqueWindows = (list: string[]): string[] =>
+    Array.from(new Set(list)).sort();
+  const addWindow = () => {
+    const v = windowDraft().trim();
+    if (!HHMM_RE.test(v)) return;
+    editCurrent((p) => ({
+      ...p,
+      digest_windows: sortedUniqueWindows([...(p.digest_windows ?? []), v]),
+    }));
+    setWindowDraft("");
+  };
+  const removeWindow = (hhmm: string) => {
+    editCurrent((p) => ({
+      ...p,
+      digest_windows: (p.digest_windows ?? []).filter((w) => w !== hhmm),
+    }));
+  };
+  const resetWindowsToGlobal = () => {
+    editCurrent((p) => ({ ...p, digest_windows: null }));
+  };
+  const muteAllDigest = () => {
+    editCurrent((p) => ({ ...p, digest_windows: [] }));
+  };
+
+  const handleTimezoneInput = (raw: string) => {
+    const v = raw.trim();
+    editCurrent((p) => ({ ...p, timezone: v === "" ? null : v }));
+  };
+
+  const handlePriceHighInput = (raw: string) => {
+    const v = raw.trim();
+    if (v === "") {
+      editCurrent((p) => ({ ...p, price_high_pct_override: null }));
+      return;
+    }
+    const n = Number(v);
+    editCurrent((p) => ({
+      ...p,
+      price_high_pct_override: Number.isFinite(n) ? n : p.price_high_pct_override,
     }));
   };
 
@@ -481,6 +549,142 @@ export function NotificationPreferencesCard() {
                   );
                 }}
               </For>
+            </div>
+          </div>
+
+          <div class="space-y-3 rounded-md border border-dashed border-[color:var(--border)] p-3">
+            <div class="text-[11px] font-semibold text-[color:var(--text-secondary)]">
+              推送节奏(per-actor;留空 = 沿用全局)
+            </div>
+
+            <label class="flex flex-col gap-1 text-[11px]">
+              <span class="text-[color:var(--text-secondary)]">
+                时区 (IANA, 例 Asia/Shanghai、America/New_York)
+              </span>
+              <input
+                class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
+                placeholder="留空 → 沿用全局 digest.timezone"
+                value={currentPrefs().timezone ?? ""}
+                onInput={(e) => handleTimezoneInput(e.currentTarget.value)}
+              />
+            </label>
+
+            <div class="flex flex-col gap-1.5 text-[11px]">
+              <span class="text-[color:var(--text-secondary)]">
+                Digest 时刻 (本地 HH:MM;不设 = 沿用全局,清空 = 关 digest)
+              </span>
+              <div class="flex flex-wrap items-center gap-1">
+                <Show when={currentPrefs().digest_windows === null}>
+                  <span class="text-[10px] italic text-[color:var(--text-secondary)]">
+                    当前:沿用全局 pre/post-market
+                  </span>
+                </Show>
+                <Show when={currentPrefs().digest_windows?.length === 0}>
+                  <span class="rounded-md border border-amber-500 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-500">
+                    关 digest(只接收 immediate sink)
+                  </span>
+                </Show>
+                <For each={currentPrefs().digest_windows ?? []}>
+                  {(hhmm) => (
+                    <span class="inline-flex items-center gap-1 rounded-md border border-emerald-500 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] text-emerald-600">
+                      {hhmm}
+                      <button
+                        type="button"
+                        class="-mr-0.5 rounded text-emerald-700 hover:text-rose-500"
+                        title="移除"
+                        onClick={() => removeWindow(hhmm)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                </For>
+              </div>
+              <div class="flex flex-wrap items-center gap-1">
+                <input
+                  type="time"
+                  class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 font-mono text-xs"
+                  value={windowDraft()}
+                  onInput={(e) => setWindowDraft(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addWindow();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  class="rounded-md border border-emerald-500 px-2 py-1 text-[11px] text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-40"
+                  disabled={!HHMM_RE.test(windowDraft().trim())}
+                  onClick={addWindow}
+                >
+                  + 添加
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md border border-[color:var(--border)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                  onClick={resetWindowsToGlobal}
+                  title="清掉自定义 → 沿用全局 pre/post-market"
+                >
+                  恢复全局
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md border border-amber-500 px-2 py-1 text-[11px] text-amber-500 hover:bg-amber-500/10"
+                  onClick={muteAllDigest}
+                  title="设为空数组,即完全不发 digest"
+                >
+                  关 digest
+                </button>
+              </div>
+            </div>
+
+            <label class="flex flex-col gap-1 text-[11px]">
+              <span class="text-[color:var(--text-secondary)]">
+                价格异动即时推阈值 (% 绝对值, 0&lt;x≤50;留空 = 沿用全局,
+                通常调低如 3.5 = 更敏感)
+              </span>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="50"
+                class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
+                placeholder="留空 → 沿用全局 thresholds.price_alert_high_pct"
+                value={currentPrefs().price_high_pct_override ?? ""}
+                onInput={(e) => handlePriceHighInput(e.currentTarget.value)}
+              />
+            </label>
+
+            <div>
+              <div class="text-[11px] text-[color:var(--text-secondary)]">
+                强制升 High 即时推 immediate_kinds(命中元素无视 poller 给的
+                severity,直接 High 走 sink)
+              </div>
+              <div class="mt-1 flex flex-wrap gap-1">
+                <For each={currentKindTags()}>
+                  {(tag) => {
+                    const selected = () =>
+                      (currentPrefs().immediate_kinds ?? []).includes(tag);
+                    return (
+                      <button
+                        type="button"
+                        class="rounded-md border px-2 py-0.5 text-[11px]"
+                        classList={{
+                          "border-amber-500 bg-amber-500/10 text-amber-500":
+                            selected(),
+                          "border-[color:var(--border)] text-[color:var(--text-secondary)]":
+                            !selected(),
+                        }}
+                        onClick={() => handleImmediateToggle(tag)}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  }}
+                </For>
+              </div>
             </div>
           </div>
 
