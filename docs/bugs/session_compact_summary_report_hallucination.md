@@ -7,6 +7,12 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 20:05 最新用户可见外泄复核：
+   - `session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`
+   - 同会话在 `2026-04-22T20:00:37.102052+08:00` 写入 `role=system` 的 `Conversation compacted`，紧接着 `20:00:37.102063` 写入 `role=system` 的 `【Compact Summary】...`，说明新生成 summary 角色继续维持 system 态。
+   - 用户在 `2026-04-22T20:02:11.211146+08:00` 追问 `不局限在科技股 关注A股所有标的 还有哪些值得现在投资？`
+   - `session_messages.ordinal=10` 的 assistant final 在 `2026-04-22T20:05:22.460217+08:00` 仍直接以 `Context compacted` 开头，然后才进入 A 股全市场配置建议。
+   - 这再次证明问题已经收敛为“压缩后首条/近邻最终输出缺少可见文本净化”：summary 角色已改善，但用户可见正文仍会泄漏内部压缩标记。状态继续维持 `Fixing`，不能关闭。
 - 2026-04-22 16:50 最新用户可见外泄复核：
    - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
    - 用户在 `2026-04-22T16:49:02.504465+08:00` 提问 `分析一下今天VRT的财务会Beat还是Miss。`

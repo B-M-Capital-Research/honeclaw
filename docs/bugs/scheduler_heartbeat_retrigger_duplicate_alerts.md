@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-22 21:01 最新巡检样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=4623`，`executed_at=2026-04-22T21:01:02.489544+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `response_preview` 再次围绕同一 `BlueBird-7 卫星未能进入预定轨道 / Blue Origin 卫星发射事故` 旧事件发送，同时叠加 `FCC授予AST SpaceMobile商业运营授权` 与 `检查时间：2026年4月22日 21:00 北京时间` 包装成当前触发。
+      - 同一任务在 `run_id=4613`（`2026-04-22T20:31:28+08:00`）刚刚落成 `noop + skipped_noop`，但半小时后又回摆成 `triggered + sent`；当前报价字段还明确写出 API 数据是前一交易日收盘基准，说明没有稳定的“已提醒事实”去重状态。
     - 2026-04-22 15:32 最新巡检样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=4512`，`executed_at=2026-04-22T15:32:04.815465+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
