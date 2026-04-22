@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 19:31-20:01 最新巡检样本：
+    - `run_id=4583-4602` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；可见记录仍全部落成 `noop + skipped_noop`，没有用户可见提醒。
+    - 对应 `data/runtime/logs/sidecar.log` 继续记录 `starts_with_json=false`，`raw_preview` 仍以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 被解析器提取。
+    - `run_id=4593`（`全天原油价格3小时播报`，`2026-04-22T20:01:04.847288+08:00`）先在 `<think>` 中判断当前 20 点不属于 0/3/6/9/12/15/18/21 播报小时，再输出尾部 `{"status":"noop"}`；这仍不是纯 JSON 起始。
+    - `run_id=4590`（`Monitor_Watchlist_11`，`2026-04-22T19:31:17.400235+08:00`）落成 `JsonEmptyStatus + skipped_noop`，模型已逐项比较触发价但没有稳定输出受支持状态；`run_id=4598`（同任务，`2026-04-22T20:01:18.681177+08:00`）下一轮仍是 `<think>` 前缀 + `JsonNoop`。
+    - `run_id=4599-4602` 显示 `TEM大事件心跳监控`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控` 继续以自由文本分析开头，最终被解析为 `JsonNoop` 并静默跳过。
+    - 本轮没有新增 `execution_failed` 或用户投诉，严重等级不升级；但 20:01 继续证明 heartbeat 上游结构化输出契约未恢复，状态保持 `New`。
   - 2026-04-22 18:31-19:01 最新巡检样本：
     - `run_id=4563-4576` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；除 18:01 原油触发播报已另行登记事实质量缺陷外，同批可见记录均为 `noop + skipped_noop`。
     - 同批 `detail_json.starts_with_json=false` 仍全部为真，`raw_preview` 继续以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器提取。
