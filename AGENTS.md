@@ -196,11 +196,13 @@
 - 任何需要外部账号凭证的检查都必须放到 `tests/regression/manual/`，不阻塞主干合并
 - `hone-desktop` 依赖桌面 sidecar 资源与打包环境，不属于默认 PR / push 逻辑门禁；相关检查保留在桌面构建或 release 流程中处理
 
-## 本地 Push 门禁
+## 本地 Git Hook
 
+- 本仓库通过 `.githooks/pre-commit` 在提交前对“已暂存的 Rust 文件”自动执行 `rustfmt --edition 2024 --config skip_children=true`，并重新暂存格式化结果
+- 若同一个 Rust 文件同时存在已暂存和未暂存变更，`pre-commit` 不会自动格式化，避免把未选择的内容混进 commit；先拆分、暂存或 stash 后再提交
 - 本仓库通过 `.githooks/pre-push` 在本地 push 前先检查“即将推送的 Rust 变更是否通过 `rustfmt --check`”，再运行 `gitleaks`
 - 当前 clone 初次启用时执行：`bash scripts/install_gitleaks.sh`
-- 若 hook 提示 rustfmt 失败，先执行 `cargo fmt --all`，把格式化结果提交进 commit 后再重新 push；不要指望 hook 在 push 过程中偷偷改写即将推送的提交
+- 正常情况下格式问题会在 commit 时自动修复；若 push hook 仍提示 rustfmt 失败，先执行 `cargo fmt --all`，把格式化结果提交进 commit 后再重新 push；不要指望 hook 在 push 过程中偷偷改写即将推送的提交
 - pre-push 只扫描“即将推送的 commits”，不扫描整个工作区；若命中疑似 secret，必须先清理或更新 allowlist，再重新 push
 
 ## CD 契约

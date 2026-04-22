@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+cd "$ROOT_DIR"
+
+resolve_rustfmt() {
+  if command -v rustfmt >/dev/null 2>&1; then
+    command -v rustfmt
+    return
+  fi
+
+  cat >&2 <<'EOF'
+[pre-commit:rustfmt] rustfmt is not installed for this clone.
+Run `rustup component add rustfmt` first, then retry the commit.
+EOF
+  exit 1
+}
+
+staged_rust_files=()
+while IFS= read -r rust_file; do
+  [ -n "$rust_file" ] && staged_rust_files+=("$rust_file")
+done <<EOF
+$(git diff --cached --name-only --diff-filter=ACMR -- '*.rs')
+EOF
+
+if [ "${#staged_rust_files[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+mixed_rust_files=()
+for path in "${staged_rust_files[@]}"; do
+  if ! git diff --quiet -- "$path"; then
+    mixed_rust_files+=("$path")
+  fi
+done
+
+if [ "${#mixed_rust_files[@]}" -gt 0 ]; then
+  cat >&2 <<'EOF'
+[pre-commit:rustfmt] Cannot auto-format partially staged Rust files.
+[pre-commit:rustfmt] Stage or stash the unstaged edits in these files, then retry the commit.
+EOF
+  printf ' - %s\n' "${mixed_rust_files[@]}" >&2
+  exit 1
+fi
+
+RUSTFMT_BIN="$(resolve_rustfmt)"
+
+printf '[pre-commit:rustfmt] auto-format staged Rust files\n' >&2
+printf ' - %s\n' "${staged_rust_files[@]}" >&2
+
+"$RUSTFMT_BIN" --edition 2024 --config skip_children=true "${staged_rust_files[@]}"
+
+for path in "${staged_rust_files[@]}"; do
+  if [ -e "$path" ]; then
+    git add -- "$path"
+  fi
+done

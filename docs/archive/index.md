@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-04-20
+Last updated: 2026-04-22
+
+## 2026-04-22
+
+### Git Hook Auto Format
+
+- Status: done
+- Date: 2026-04-22
+- Plan: `docs/archive/plans/git-hook-auto-format.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `.githooks/pre-commit` hook smoke test with staged Rust formatting, `rtk bash -n .githooks/pre-commit`, `rtk bash -n scripts/install_gitleaks.sh`
+- Current conclusion: 本地 Git hook 现在会在 commit 前自动格式化已暂存 Rust 文件并重新暂存，push 前的 rustfmt / gitleaks 仍作为兜底门禁；同一 Rust 文件如果同时有已暂存和未暂存改动，pre-commit 会停止以避免把未选择的内容混入 commit
+- Next entry point: `.githooks/pre-commit`
 
 ## 2026-04-20
 

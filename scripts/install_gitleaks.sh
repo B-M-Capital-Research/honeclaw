@@ -56,11 +56,11 @@ PY
 fi
 
 ln -sfn "$INSTALL_DIR" "$CURRENT_LINK"
-chmod +x "$ROOT_DIR/.githooks/pre-push"
+chmod +x "$ROOT_DIR/.githooks/pre-commit" "$ROOT_DIR/.githooks/pre-push"
 git config core.hooksPath .githooks
 
 cat <<EOF
 Installed gitleaks $VERSION to $BIN_PATH
 Configured local core.hooksPath=.githooks
-pre-push secret scan and Rust rustfmt gate are now enabled for this clone
+pre-commit Rust auto-format, pre-push secret scan, and pre-push Rust rustfmt gate are now enabled for this clone
 EOF
