@@ -10,6 +10,7 @@ pub mod daily_report;
 pub mod digest;
 pub mod event;
 pub mod fmp;
+pub mod news_classifier;
 pub mod polisher;
 pub mod pollers;
 pub mod prefs;
@@ -24,6 +25,9 @@ pub use digest::{DigestBuffer, DigestScheduler};
 pub use event::{EventKind, MarketEvent, Severity};
 pub use fmp::FmpClient;
 pub use hone_core::config::{EventEngineConfig, FmpConfig};
+pub use news_classifier::{
+    DEFAULT_IMPORTANCE_PROMPT, Importance, LlmNewsClassifier, NewsClassifier, NoopClassifier,
+};
 pub use polisher::{BodyPolisher, LlmPolisher, NoopPolisher, parse_polish_levels};
 pub use pollers::{
     AnalystGradePoller, CorpActionPoller, EarningsPoller, EarningsSurprisePoller, MacroPoller,
@@ -60,6 +64,7 @@ pub struct EventEngine {
     daily_report_dir: PathBuf,
     sink: Arc<dyn OutboundSink>,
     polisher: Arc<dyn BodyPolisher>,
+    news_classifier: Option<Arc<dyn news_classifier::NewsClassifier>>,
     retention_days: i64,
 }
 
@@ -76,6 +81,7 @@ impl EventEngine {
             daily_report_dir: PathBuf::from("./data/daily_reports"),
             sink: Arc::new(LogSink),
             polisher: Arc::new(NoopPolisher),
+            news_classifier: None,
             retention_days: 30,
         }
     }
@@ -128,6 +134,16 @@ impl EventEngine {
 
     pub fn with_polisher(mut self, polisher: Arc<dyn BodyPolisher>) -> Self {
         self.polisher = polisher;
+        self
+    }
+
+    /// 注入"不确定来源"NewsCritical 的 LLM 仲裁器(典型实现:`LlmNewsClassifier`)。
+    /// `None`(默认)→ 该路径关闭,uncertain 源新闻保持 poller 给的 Low。
+    pub fn with_news_classifier(
+        mut self,
+        classifier: Arc<dyn news_classifier::NewsClassifier>,
+    ) -> Self {
+        self.news_classifier = Some(classifier);
         self
     }
 
@@ -234,22 +250,27 @@ impl EventEngine {
 
         let tz_offset_for_router =
             hone_core::config::tz_offset_hours(&self.engine_cfg.digest.timezone);
-        let router = Arc::new(
-            NotificationRouter::new(
-                registry.clone(),
-                self.sink.clone(),
-                store.clone(),
-                digest_buffer.clone(),
-            )
-            .with_polisher(self.polisher.clone())
-            .with_prefs(prefs_storage.clone())
-            .with_tz_offset_hours(tz_offset_for_router)
-            .with_high_daily_cap(self.engine_cfg.thresholds.high_severity_daily_cap)
-            .with_same_symbol_cooldown_minutes(
-                self.engine_cfg.thresholds.same_symbol_cooldown_minutes,
-            )
-            .with_disabled_kinds(self.engine_cfg.disabled_kinds.clone()),
-        );
+        let mut router_builder = NotificationRouter::new(
+            registry.clone(),
+            self.sink.clone(),
+            store.clone(),
+            digest_buffer.clone(),
+        )
+        .with_polisher(self.polisher.clone())
+        .with_prefs(prefs_storage.clone())
+        .with_tz_offset_hours(tz_offset_for_router)
+        .with_high_daily_cap(self.engine_cfg.thresholds.high_severity_daily_cap)
+        .with_same_symbol_cooldown_minutes(self.engine_cfg.thresholds.same_symbol_cooldown_minutes)
+        .with_disabled_kinds(self.engine_cfg.disabled_kinds.clone())
+        .with_news_upgrade_per_symbol_per_tick_cap(
+            self.engine_cfg.thresholds.news_upgrade_per_symbol_per_tick,
+        )
+        .with_default_importance_prompt(self.engine_cfg.news_importance_prompt.clone());
+        if let Some(classifier) = self.news_classifier.clone() {
+            router_builder = router_builder.with_news_classifier(classifier);
+            info!("event engine: news LLM classifier 已装配 (uncertain-source 升 Medium)");
+        }
+        let router = Arc::new(router_builder);
         if !self.engine_cfg.disabled_kinds.is_empty() {
             info!(
                 disabled = ?self.engine_cfg.disabled_kinds,
@@ -463,6 +484,8 @@ async fn process_events(
     router: &NotificationRouter,
 ) {
     let total = events.len();
+    // 按 tick 重置 per-symbol 升级计数,使新一批事件不会受到上一 tick 残留计数干扰。
+    router.reset_tick_counters();
     let (mut new_cnt, mut dup_cnt, mut sent, mut pending) = (0u32, 0u32, 0u32, 0u32);
     for ev in &events {
         let is_new = match store.insert_event(ev) {

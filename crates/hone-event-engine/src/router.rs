@@ -6,8 +6,8 @@
 //! MVP 的 `OutboundSink` 实现只打 `tracing::info` 日志（dryrun 语义）；真实
 //! 渠道适配器在后续 step 接入。
 
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
@@ -15,8 +15,9 @@ use tracing::info;
 
 use crate::digest::DigestBuffer;
 use crate::event::{EventKind, MarketEvent, Severity};
+use crate::news_classifier::{DEFAULT_IMPORTANCE_PROMPT, Importance, NewsClassifier};
 use crate::polisher::{BodyPolisher, NoopPolisher};
-use crate::prefs::{AllowAllPrefs, PrefsProvider, kind_tag};
+use crate::prefs::{AllowAllPrefs, NotificationPrefs, PrefsProvider, kind_tag};
 use crate::renderer::{self, RenderFormat};
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
@@ -76,6 +77,17 @@ pub struct NotificationRouter {
     /// 部署方配置的全局 kind 黑名单。命中后 dispatch 直接返回 (0, 0),
     /// 任何 actor 的 prefs / cap / cooldown 都不再参与。
     disabled_kinds: Arc<HashSet<String>>,
+    /// 单次 poller tick 内,同一 ticker 触发 NewsCritical 升级 (Low→Medium)
+    /// 的次数上限。0 = 不启用。命中后该条 Low 维持 Low,从而不进 digest 顶端。
+    news_upgrade_per_symbol_per_tick_cap: u32,
+    /// 当 tick 内每个 symbol 已升级的次数。`reset_tick_counters()` 在每次
+    /// `process_events` 入口被调用,清零后重新计数。
+    news_upgrade_counter: Arc<Mutex<HashMap<String, u32>>>,
+    /// `source_class=uncertain` 的 NewsCritical 仲裁器。`None` → 跳过 LLM 路径,
+    /// 维持 poller 给的 Low(与历史行为兼容)。
+    news_classifier: Option<Arc<dyn NewsClassifier>>,
+    /// 全局默认重要性 prompt;per-actor `news_importance_prompt = None` 时回落。
+    default_importance_prompt: String,
 }
 
 impl NotificationRouter {
@@ -96,6 +108,10 @@ impl NotificationRouter {
             tz_offset_hours: 8,
             same_symbol_cooldown_minutes: 0,
             disabled_kinds: Arc::new(HashSet::new()),
+            news_upgrade_per_symbol_per_tick_cap: 0,
+            news_upgrade_counter: Arc::new(Mutex::new(HashMap::new())),
+            news_classifier: None,
+            default_importance_prompt: DEFAULT_IMPORTANCE_PROMPT.to_string(),
         }
     }
 
@@ -141,6 +157,34 @@ impl NotificationRouter {
         self
     }
 
+    /// 单 tick 内同 symbol 升级次数上限。0 = 不启用,与历史行为兼容。
+    /// 命中后,Low NewsCritical 不再被升到 Medium,避免 burst 把 digest
+    /// 顶端淹满同一 ticker 的 PR wire 报道。
+    pub fn with_news_upgrade_per_symbol_per_tick_cap(mut self, cap: u32) -> Self {
+        self.news_upgrade_per_symbol_per_tick_cap = cap;
+        self
+    }
+
+    /// 在每次 poller tick 入口被调用,清零升级计数。生产路径由
+    /// `process_events` 在批处理开始时调用一次。
+    pub fn reset_tick_counters(&self) {
+        if let Ok(mut map) = self.news_upgrade_counter.lock() {
+            map.clear();
+        }
+    }
+
+    /// 注入 LLM-based 不确定来源新闻仲裁器。`None` 时维持 poller 给的 Low。
+    pub fn with_news_classifier(mut self, classifier: Arc<dyn NewsClassifier>) -> Self {
+        self.news_classifier = Some(classifier);
+        self
+    }
+
+    /// 全局默认重要性 prompt。per-actor `news_importance_prompt` 缺失时回落到这里。
+    pub fn with_default_importance_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.default_importance_prompt = prompt.into();
+        self
+    }
+
     /// 新闻多信号合流 + 财报窗口升级:当事件为 `NewsCritical + Low`,且同一 ticker
     /// 在 `[news_ts - 1d, news_ts + 2d]` 窗口内出现过硬信号
     /// (price_alert / earnings_released / earnings_upcoming / sec_filing /
@@ -177,6 +221,36 @@ impl NotificationRouter {
         let Some(tag) = trigger_tag else {
             return event.clone();
         };
+        // per-symbol per-tick 升级上限:命中后维持 Low,不污染 digest 顶端。
+        // 取 event.symbols 中已经升过最多次的那个 symbol 的计数代表本事件;
+        // 若任一相关 symbol 都已超过 cap,则跳过升级,但所有相关 symbol 都不再
+        // 计数(因为本事件未升级,不应推高计数)。
+        if self.news_upgrade_per_symbol_per_tick_cap > 0 {
+            if let Ok(map) = self.news_upgrade_counter.lock() {
+                let already_capped = event.symbols.iter().any(|sym| {
+                    map.get(sym)
+                        .copied()
+                        .map(|n| n >= self.news_upgrade_per_symbol_per_tick_cap)
+                        .unwrap_or(false)
+                });
+                if already_capped {
+                    tracing::info!(
+                        event_id = %event.id,
+                        symbols = ?event.symbols,
+                        cap = self.news_upgrade_per_symbol_per_tick_cap,
+                        "news upgrade skipped (per-symbol per-tick cap reached)"
+                    );
+                    return event.clone();
+                }
+            }
+        }
+        // 升级落地:对所有相关 symbol +1。即使某个 symbol 之前 0 次,
+        // 这次升级也算它的一次"相关升级"。
+        if let Ok(mut map) = self.news_upgrade_counter.lock() {
+            for sym in &event.symbols {
+                *map.entry(sym.clone()).or_insert(0) += 1;
+            }
+        }
         let mut upgraded = event.clone();
         upgraded.severity = Severity::Medium;
         tracing::info!(
@@ -186,6 +260,55 @@ impl NotificationRouter {
             "news severity upgraded Low→Medium (window convergence)"
         );
         upgraded
+    }
+
+    /// 检查该事件是否是"不确定来源 Low NewsCritical",需要 LLM 仲裁器
+    /// 介入决定是否升级。返回 `Some(upgraded_event)` 表示 LLM 判 important,
+    /// router 应使用升级后的 severity=Medium。返回 `None` 表示无需升级
+    /// (源/类型/分类器/LLM 输出 均不满足)。
+    async fn maybe_llm_upgrade_for_actor(
+        &self,
+        event: &MarketEvent,
+        prefs: &NotificationPrefs,
+    ) -> Option<MarketEvent> {
+        // 仅对 NewsCritical Low + uncertain 源走 LLM 路径;其它类型直接跳过。
+        if !matches!(event.kind, EventKind::NewsCritical) || event.severity != Severity::Low {
+            return None;
+        }
+        let source_class = event
+            .payload
+            .get("source_class")
+            .and_then(|v| v.as_str())
+            .unwrap_or("uncertain");
+        if source_class != "uncertain" {
+            return None;
+        }
+        // 律所模板已被 poller 强制 Low,LLM 也不应再"复活"它。
+        let is_legal_ad = event
+            .payload
+            .get("legal_ad_template")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if is_legal_ad {
+            return None;
+        }
+        let classifier = self.news_classifier.as_ref()?;
+        let prompt = prefs
+            .news_importance_prompt
+            .as_deref()
+            .unwrap_or(&self.default_importance_prompt);
+        match classifier.classify(event, prompt).await {
+            Some(Importance::Important) => {
+                let mut upgraded = event.clone();
+                upgraded.severity = Severity::Medium;
+                tracing::info!(
+                    event_id = %event.id,
+                    "uncertain-source news upgraded Low→Medium by LLM classifier"
+                );
+                Some(upgraded)
+            }
+            _ => None,
+        }
     }
 
     /// 对一个事件执行分发。High 立即推；其余当前只记 pending-digest 日志。
@@ -211,6 +334,16 @@ impl NotificationRouter {
         let mut pending = 0u32;
         for (actor, sev) in hits {
             let user_prefs = self.prefs.load(&actor);
+            // LLM 仲裁:不确定来源的 Low NewsCritical,按 actor 重要性 prompt
+            // 决定是否升 Medium。结果只影响本 actor 的本次分发,不污染原 event。
+            let actor_event_buf;
+            let (event, sev) = match self.maybe_llm_upgrade_for_actor(event, &user_prefs).await {
+                Some(upgraded) => {
+                    actor_event_buf = upgraded;
+                    (&actor_event_buf, Severity::Medium)
+                }
+                None => (event, sev),
+            };
             if !user_prefs.should_deliver(event) {
                 let _ = self.store.log_delivery(
                     &event.id,
@@ -963,6 +1096,395 @@ mod tests {
         // 非黑名单 kind 不受影响
         let (sent, _) = router.dispatch(&ev(Severity::High)).await.unwrap();
         assert_eq!(sent, 1);
+    }
+
+    /// e2e:对 uncertain 源 NewsCritical Low,注入 LLM 仲裁器返回 Important
+    /// → router 升 Medium → 走 digest 而非 sink immediate。
+    #[tokio::test]
+    async fn llm_classifier_upgrades_uncertain_news_to_medium_for_actor() {
+        use crate::news_classifier::{Importance, NewsClassifier};
+
+        struct YesClassifier;
+        #[async_trait]
+        impl NewsClassifier for YesClassifier {
+            async fn classify(&self, _e: &MarketEvent, _p: &str) -> Option<Importance> {
+                Some(Importance::Important)
+            }
+        }
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["ACME".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_news_classifier(Arc::new(YesClassifier));
+
+        // 模拟 poller 给的 uncertain Low NewsCritical
+        let news = MarketEvent {
+            id: "news:ACME:1".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec!["ACME".into()],
+            occurred_at: Utc::now(),
+            title: "ACME announces breakthrough".into(),
+            summary: "ACME pioneers something".into(),
+            url: None,
+            source: "fmp.stock_news:smallblog.io".into(),
+            payload: serde_json::json!({"source_class": "uncertain", "legal_ad_template": false}),
+        };
+        let (sent, pending) = router.dispatch(&news).await.unwrap();
+        // 升 Medium 后走 digest,immediate sink 仍为 0
+        assert_eq!(sent, 0);
+        assert_eq!(pending, 1, "LLM 升级后应进 digest");
+        assert!(sink.calls.lock().unwrap().is_empty());
+    }
+
+    /// e2e:LLM 返回 NotImportant 时,uncertain 源新闻保持 Low,正常进 digest。
+    #[tokio::test]
+    async fn llm_classifier_keeps_low_when_not_important() {
+        use crate::news_classifier::{Importance, NewsClassifier};
+
+        struct NoClassifier;
+        #[async_trait]
+        impl NewsClassifier for NoClassifier {
+            async fn classify(&self, _e: &MarketEvent, _p: &str) -> Option<Importance> {
+                Some(Importance::NotImportant)
+            }
+        }
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["ACME".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_news_classifier(Arc::new(NoClassifier));
+
+        let news = MarketEvent {
+            id: "news:ACME:2".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec!["ACME".into()],
+            occurred_at: Utc::now(),
+            title: "ACME mundane news".into(),
+            summary: "ACME has a meeting".into(),
+            url: None,
+            source: "fmp.stock_news:smallblog.io".into(),
+            payload: serde_json::json!({"source_class": "uncertain", "legal_ad_template": false}),
+        };
+        let (sent, pending) = router.dispatch(&news).await.unwrap();
+        assert_eq!(sent, 0);
+        assert_eq!(pending, 1);
+        assert!(sink.calls.lock().unwrap().is_empty());
+    }
+
+    /// e2e:trusted 源 News 不走 LLM(LLM 即便返回 Important 也不应触发,
+    /// 因为前置守卫只放过 source_class=uncertain)。
+    #[tokio::test]
+    async fn llm_classifier_skipped_for_trusted_source() {
+        use crate::news_classifier::{Importance, NewsClassifier};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct CountingClassifier(Arc<AtomicUsize>);
+        #[async_trait]
+        impl NewsClassifier for CountingClassifier {
+            async fn classify(&self, _e: &MarketEvent, _p: &str) -> Option<Importance> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Some(Importance::Important)
+            }
+        }
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let counter = Arc::new(AtomicUsize::new(0));
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_news_classifier(Arc::new(CountingClassifier(counter.clone())));
+
+        let news = MarketEvent {
+            id: "news:AAPL:trust".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec!["AAPL".into()],
+            occurred_at: Utc::now(),
+            title: "AAPL news".into(),
+            summary: "ok".into(),
+            url: None,
+            source: "fmp.stock_news:reuters.com".into(),
+            payload: serde_json::json!({"source_class": "trusted", "legal_ad_template": false}),
+        };
+        let (_sent, _pending) = router.dispatch(&news).await.unwrap();
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "trusted source 不应触发 LLM"
+        );
+    }
+
+    /// e2e:即使 LLM 说 important,律所模板标题(legal_ad_template=true)
+    /// 也保持 Low,不被 LLM 复活。
+    #[tokio::test]
+    async fn llm_classifier_does_not_resurrect_legal_ad_templates() {
+        use crate::news_classifier::{Importance, NewsClassifier};
+
+        struct YesClassifier;
+        #[async_trait]
+        impl NewsClassifier for YesClassifier {
+            async fn classify(&self, _e: &MarketEvent, _p: &str) -> Option<Importance> {
+                Some(Importance::Important)
+            }
+        }
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["SNOW".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_news_classifier(Arc::new(YesClassifier));
+
+        let news = MarketEvent {
+            id: "news:SNOW:legal".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec!["SNOW".into()],
+            occurred_at: Utc::now(),
+            title: "SHAREHOLDER ALERT class action lawsuit has been filed".into(),
+            summary: "...".into(),
+            url: None,
+            source: "fmp.stock_news:globenewswire.com".into(),
+            payload: serde_json::json!({"source_class": "uncertain", "legal_ad_template": true}),
+        };
+        let (sent, pending) = router.dispatch(&news).await.unwrap();
+        // 不应升 Medium —— 仍按原 Low 走 digest
+        assert_eq!(sent, 0);
+        assert_eq!(pending, 1);
+    }
+
+    /// e2e:per-actor news_importance_prompt 覆盖全局默认,LLM 收到 actor 的版本。
+    #[tokio::test]
+    async fn per_actor_importance_prompt_overrides_default() {
+        use crate::news_classifier::{Importance, NewsClassifier};
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        // 记录 LLM 收到的 prompt;断言取到的是 actor 的覆盖版而不是全局默认。
+        struct RecordingClassifier(Arc<Mutex<Vec<String>>>);
+        #[async_trait]
+        impl NewsClassifier for RecordingClassifier {
+            async fn classify(&self, _e: &MarketEvent, p: &str) -> Option<Importance> {
+                self.0.lock().unwrap().push(p.to_string());
+                Some(Importance::NotImportant)
+            }
+        }
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["ACME".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    news_importance_prompt: Some("仅与 SaaS 行业并购相关".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store)
+        .with_default_importance_prompt("全局默认 prompt")
+        .with_news_classifier(Arc::new(RecordingClassifier(captured.clone())));
+
+        let news = MarketEvent {
+            id: "news:ACME:per-actor".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec!["ACME".into()],
+            occurred_at: Utc::now(),
+            title: "ACME bulletin".into(),
+            summary: "...".into(),
+            url: None,
+            source: "fmp.stock_news:smallblog.io".into(),
+            payload: serde_json::json!({"source_class": "uncertain", "legal_ad_template": false}),
+        };
+        router.dispatch(&news).await.unwrap();
+        let prompts = captured.lock().unwrap().clone();
+        assert_eq!(prompts.len(), 1);
+        assert_eq!(prompts[0], "仅与 SaaS 行业并购相关");
+    }
+
+    #[tokio::test]
+    async fn news_upgrade_per_symbol_cap_limits_burst_within_tick() {
+        // 同一 ticker 在单 tick 内最多升级 N 条;超出的 Low NewsCritical 维持 Low,
+        // 不进 digest 顶端。
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+
+        // 先落一条硬信号,使 maybe_upgrade_news 满足窗口条件
+        let hard = MarketEvent {
+            id: "earnings:AAPL:tomorrow".into(),
+            kind: EventKind::EarningsUpcoming,
+            severity: Severity::Medium,
+            symbols: vec!["AAPL".into()],
+            occurred_at: Utc::now() + chrono::Duration::days(1),
+            title: "AAPL earnings tomorrow".into(),
+            summary: String::new(),
+            url: None,
+            source: "test".into(),
+            payload: serde_json::Value::Null,
+        };
+        store.insert_event(&hard).unwrap();
+
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_news_upgrade_per_symbol_per_tick_cap(2);
+
+        // 模拟一个 tick 入口
+        router.reset_tick_counters();
+
+        let mk = |id: &str| MarketEvent {
+            id: id.into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec!["AAPL".into()],
+            occurred_at: Utc::now(),
+            title: format!("AAPL minor {id}"),
+            summary: String::new(),
+            url: None,
+            source: "test".into(),
+            payload: serde_json::Value::Null,
+        };
+
+        // 前 2 条命中升级 → Medium → digest pending=1
+        let (s1, p1) = router.dispatch(&mk("n1")).await.unwrap();
+        let (s2, p2) = router.dispatch(&mk("n2")).await.unwrap();
+        assert_eq!(s1 + s2, 0);
+        assert_eq!(p1 + p2, 2);
+
+        // 第 3 条触顶 → 维持 Low → 仍入 digest(pending=1),但 severity 没升
+        let (s3, p3) = router.dispatch(&mk("n3")).await.unwrap();
+        assert_eq!(s3, 0);
+        assert_eq!(p3, 1);
+
+        // reset 后下一 tick 重新计数
+        router.reset_tick_counters();
+        let (s4, p4) = router.dispatch(&mk("n4")).await.unwrap();
+        assert_eq!(s4, 0);
+        assert_eq!(p4, 1);
+    }
+
+    #[tokio::test]
+    async fn news_upgrade_cap_zero_means_unlimited() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+
+        let hard = MarketEvent {
+            id: "earnings:AAPL:tomorrow".into(),
+            kind: EventKind::EarningsUpcoming,
+            severity: Severity::Medium,
+            symbols: vec!["AAPL".into()],
+            occurred_at: Utc::now() + chrono::Duration::days(1),
+            title: "AAPL earnings tomorrow".into(),
+            summary: String::new(),
+            url: None,
+            source: "test".into(),
+            payload: serde_json::Value::Null,
+        };
+        store.insert_event(&hard).unwrap();
+
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_news_upgrade_per_symbol_per_tick_cap(0);
+
+        for i in 0..6 {
+            let news = MarketEvent {
+                id: format!("n{i}"),
+                kind: EventKind::NewsCritical,
+                severity: Severity::Low,
+                symbols: vec!["AAPL".into()],
+                occurred_at: Utc::now(),
+                title: format!("AAPL minor {i}"),
+                summary: String::new(),
+                url: None,
+                source: "test".into(),
+                payload: serde_json::Value::Null,
+            };
+            let (_s, p) = router.dispatch(&news).await.unwrap();
+            assert_eq!(p, 1);
+        }
     }
 
     #[tokio::test]

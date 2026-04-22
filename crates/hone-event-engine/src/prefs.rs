@@ -47,6 +47,10 @@ pub struct NotificationPrefs {
     pub allow_kinds: Option<Vec<String>>,
     /// 黑名单。与白名单叠加时，黑名单优先生效。
     pub blocked_kinds: Vec<String>,
+    /// 不确定来源新闻的"重要性"短语。Router 把每条 `source_class=uncertain` 的
+    /// `NewsCritical` 与此 prompt 一起送给 LLM 仲裁器,LLM 判 yes 即升 Medium。
+    /// `None` → 走 `EventEngineConfig.news_importance_prompt` 全局默认。
+    pub news_importance_prompt: Option<String>,
 }
 
 impl Default for NotificationPrefs {
@@ -57,6 +61,7 @@ impl Default for NotificationPrefs {
             min_severity: Severity::Low,
             allow_kinds: None,
             blocked_kinds: Vec::new(),
+            news_importance_prompt: None,
         }
     }
 }
@@ -341,6 +346,7 @@ mod tests {
             min_severity: Severity::High,
             allow_kinds: Some(vec!["split".into()]),
             blocked_kinds: vec!["news_critical".into()],
+            news_importance_prompt: None,
         };
         store.save(&a, &p).unwrap();
         let loaded = store.load(&a);

@@ -26,9 +26,10 @@ pub use channel_process::{
 pub use config::{ChatScope, HoneConfig};
 pub use error::{HoneError, HoneResult};
 pub use heartbeat::{
-    HEARTBEAT_INTERVAL_SECS, HEARTBEAT_STALE_AFTER_SECS, ProcessHeartbeat,
-    ProcessHeartbeatSnapshot, read_process_heartbeat, runtime_heartbeat_dir,
-    runtime_heartbeat_path, spawn_process_heartbeat,
+    HEARTBEAT_INTERVAL_SECS, HEARTBEAT_STALE_AFTER_SECS, HeartbeatErrorRecord, HeartbeatMetrics,
+    ProcessHeartbeat, ProcessHeartbeatSnapshot, read_heartbeat_error, read_process_heartbeat,
+    runtime_heartbeat_dir, runtime_heartbeat_error_path, runtime_heartbeat_path,
+    spawn_process_heartbeat,
 };
 pub use process_lock::{
     PROCESS_LOCK_CONSOLE_PAGE, PROCESS_LOCK_DESKTOP, PROCESS_LOCK_DISCORD, PROCESS_LOCK_FEISHU,

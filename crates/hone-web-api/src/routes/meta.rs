@@ -11,7 +11,8 @@ use serde_json::json;
 
 use hone_core::config::HoneConfig;
 use hone_core::{
-    HEARTBEAT_STALE_AFTER_SECS, ProcessHeartbeatSnapshot, read_process_heartbeat,
+    HEARTBEAT_STALE_AFTER_SECS, HeartbeatErrorRecord, ProcessHeartbeatSnapshot,
+    read_heartbeat_error, read_process_heartbeat, runtime_heartbeat_error_path,
     runtime_heartbeat_path, scan_channel_processes,
 };
 
@@ -145,12 +146,45 @@ fn read_channel_heartbeat(config: &HoneConfig, channel: &str) -> Option<ProcessH
     read_process_heartbeat(&path).ok()
 }
 
+fn read_channel_heartbeat_error(
+    config: &HoneConfig,
+    channel: &str,
+) -> Option<HeartbeatErrorRecord> {
+    let path = runtime_heartbeat_error_path(&hone_core::runtime_heartbeat_dir(config), channel);
+    read_heartbeat_error(&path)
+}
+
 fn heartbeat_is_fresh(snapshot: &ProcessHeartbeatSnapshot) -> bool {
     let age = Utc::now().signed_duration_since(snapshot.updated_at);
     age >= chrono::TimeDelta::zero()
         && age
             <= chrono::TimeDelta::from_std(Duration::from_secs(HEARTBEAT_STALE_AFTER_SECS))
                 .unwrap_or_else(|_| chrono::TimeDelta::seconds(HEARTBEAT_STALE_AFTER_SECS as i64))
+}
+
+/// 综合 heartbeat 文件 mtime 与 error sidecar:任何最近写入失败都让 channel
+/// 进入 degraded,即使 heartbeat.json 本身仍在 75s 内。
+fn heartbeat_health(
+    snapshot: &ProcessHeartbeatSnapshot,
+    error: Option<&HeartbeatErrorRecord>,
+) -> ProcessHealth {
+    let fresh = heartbeat_is_fresh(snapshot);
+    let degraded_by_error =
+        matches!(error, Some(rec) if rec.pid == snapshot.pid && rec.consecutive_failures > 0);
+    if !fresh {
+        ProcessHealth::Stale
+    } else if degraded_by_error {
+        ProcessHealth::Degraded
+    } else {
+        ProcessHealth::Fresh
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessHealth {
+    Fresh,
+    Degraded,
+    Stale,
 }
 
 fn external_channel_status(
@@ -205,9 +239,10 @@ fn external_channel_status(
         };
     }
 
+    let error_record = read_channel_heartbeat_error(&state.core.config, id);
     let processes = snapshots
         .iter()
-        .map(snapshot_to_process_info)
+        .map(|snapshot| snapshot_to_process_info(snapshot, error_record.as_ref()))
         .collect::<Vec<_>>();
     let mut processes = processes;
     merge_os_processes(id, &mut processes);
@@ -218,31 +253,58 @@ fn external_channel_status(
     let primary_pid = latest.map(|snapshot| snapshot.pid);
     let latest_heartbeat_at = latest.map(|snapshot| snapshot.updated_at.to_rfc3339());
 
-    let (running, status, detail) = if running_processes > 0 && stale_processes == 0 {
-        let pids = running_pid_summary(&processes);
-        (
-            true,
-            "running".to_string(),
-            format!(
-                "{detail}（{} 个进程在线，pids={}）",
-                running_processes, pids
-            ),
-        )
-    } else if running_processes > 0 {
-        let pids = running_pid_summary(&processes);
-        (
-            false,
-            "degraded".to_string(),
-            format!(
-                "{detail}（{} / {} 个进程在线，在线 pids={}）",
-                running_processes,
-                processes.len(),
-                pids
-            ),
-        )
-    } else {
-        (false, "stopped".to_string(), stopped_detail(&processes))
-    };
+    // primary heartbeat 写入失败仍能让运行进程进入 degraded:即使文件 updated_at
+    // 还在新鲜窗口内,只要 error sidecar 报告对应 pid 有 consecutive_failures>0,
+    // 也认为该渠道当前处于 degraded(磁盘满 / IO 错误下,旧 mtime 会假报健康)。
+    let write_degraded = matches!(
+        (latest, error_record.as_ref()),
+        (Some(snap), Some(rec)) if rec.pid == snap.pid && rec.consecutive_failures > 0
+    );
+
+    let (running, status, detail) =
+        if running_processes > 0 && stale_processes == 0 && !write_degraded {
+            let pids = running_pid_summary(&processes);
+            (
+                true,
+                "running".to_string(),
+                format!(
+                    "{detail}（{} 个进程在线，pids={}）",
+                    running_processes, pids
+                ),
+            )
+        } else if running_processes > 0 || write_degraded {
+            let pids = running_pid_summary(&processes);
+            let mut text = if write_degraded {
+                let rec = error_record
+                    .as_ref()
+                    .expect("write_degraded implies error_record");
+                format!(
+                    "{detail}（{} / {} 个进程在线，在线 pids={}；最近 {} 次心跳写入失败：{}）",
+                    running_processes,
+                    processes.len(),
+                    pids,
+                    rec.consecutive_failures,
+                    rec.last_error,
+                )
+            } else {
+                format!(
+                    "{detail}（{} / {} 个进程在线，在线 pids={}）",
+                    running_processes,
+                    processes.len(),
+                    pids,
+                )
+            };
+            if write_degraded && running_processes == 0 {
+                text.push_str("；进程心跳已过期");
+            }
+            (
+                running_processes > 0 && !write_degraded,
+                "degraded".to_string(),
+                text,
+            )
+        } else {
+            (false, "stopped".to_string(), stopped_detail(&processes))
+        };
 
     ChannelStatusInfo {
         id: id.to_string(),
@@ -287,10 +349,14 @@ fn collect_channel_heartbeats(
     snapshots.into_values().collect()
 }
 
-fn snapshot_to_process_info(snapshot: &ProcessHeartbeatSnapshot) -> ChannelProcessInfo {
+fn snapshot_to_process_info(
+    snapshot: &ProcessHeartbeatSnapshot,
+    error_record: Option<&HeartbeatErrorRecord>,
+) -> ChannelProcessInfo {
+    let health = heartbeat_health(snapshot, error_record);
     ChannelProcessInfo {
         pid: snapshot.pid,
-        running: heartbeat_is_fresh(snapshot),
+        running: matches!(health, ProcessHealth::Fresh),
         started_at: Some(snapshot.started_at.to_rfc3339()),
         last_heartbeat_at: Some(snapshot.updated_at.to_rfc3339()),
         managed_by_desktop: None,
@@ -371,5 +437,57 @@ mod tests {
         assert!(!heartbeat_is_fresh(&heartbeat_with_age(
             HEARTBEAT_STALE_AFTER_SECS as i64 + 1
         )));
+    }
+
+    #[test]
+    fn health_fresh_when_no_error_and_recent() {
+        let snap = heartbeat_with_age(10);
+        assert_eq!(heartbeat_health(&snap, None), ProcessHealth::Fresh);
+    }
+
+    #[test]
+    fn health_degraded_when_error_for_same_pid() {
+        let snap = heartbeat_with_age(10);
+        let rec = HeartbeatErrorRecord {
+            channel: snap.channel.clone(),
+            pid: snap.pid,
+            consecutive_failures: 2,
+            last_error: "No space left on device".into(),
+            last_failure_at: Utc::now(),
+        };
+        assert_eq!(heartbeat_health(&snap, Some(&rec)), ProcessHealth::Degraded);
+    }
+
+    #[test]
+    fn health_ignores_stale_error_for_different_pid() {
+        let snap = heartbeat_with_age(10);
+        let rec = HeartbeatErrorRecord {
+            channel: snap.channel.clone(),
+            pid: snap.pid + 1,
+            consecutive_failures: 5,
+            last_error: "old".into(),
+            last_failure_at: Utc::now(),
+        };
+        assert_eq!(heartbeat_health(&snap, Some(&rec)), ProcessHealth::Fresh);
+    }
+
+    #[test]
+    fn health_stale_when_heartbeat_expired() {
+        let snap = heartbeat_with_age(HEARTBEAT_STALE_AFTER_SECS as i64 + 5);
+        assert_eq!(heartbeat_health(&snap, None), ProcessHealth::Stale);
+    }
+
+    #[test]
+    fn snapshot_to_process_info_marks_degraded_as_not_running() {
+        let snap = heartbeat_with_age(10);
+        let rec = HeartbeatErrorRecord {
+            channel: snap.channel.clone(),
+            pid: snap.pid,
+            consecutive_failures: 1,
+            last_error: "io".into(),
+            last_failure_at: Utc::now(),
+        };
+        let info = snapshot_to_process_info(&snap, Some(&rec));
+        assert!(!info.running);
     }
 }

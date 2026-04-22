@@ -40,7 +40,10 @@
 
 ## 当前实现效果
 
+- 2026-04-22 10:03 CST 最新样本仍在 `data/runtime/logs/web.log` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
+- 2026-04-22 06:03 最新样本仍在 `data/runtime/logs/web.log` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；同类错误还在 `2026-04-22 00:03`、`02:03`、`04:03` 出现。
 - 到 `2026-04-22 03:10-03:12` 最新 release app 窗口，Telegram sidecar 已从此前 `GetUpdates` 超时演变为启动即失败：`Invalid bot token`，desktop 标记 `managed channel telegram skipped because it exited during startup`。
+- 本轮 event-engine 巡检没有调用 Telegram API；上述结论仅来自本地运行日志。与此同时，`data/events.sqlite3` 在 `2026-04-21 21:19:33` UTC 记录过 event-engine high `sink/sent`，说明 `sendMessage` 路径至少曾成功，当前错误集中在 update listener 的 `GetUpdates` 入站长轮询。
 - 到 `2026-04-21 18:36` 窗口，Telegram listener 仍在 `GetUpdates` 阶段超时，且下一次重试继续连接超时；没有看到 Telegram 新消息恢复落库。
 - 到 `2026-04-21 14:31-14:58` 最新窗口，Telegram listener 仍持续 `GetUpdates` 超时并固定退避重试，没有看到入站链路恢复或新 Telegram 会话落库。
 - 到 `2026-04-21 13:49` 的最新日志，Telegram listener 仍在 `GetUpdates` 网络阶段失败；错误从 `Connection refused` 变为 `operation timed out`，但没有看到入站链路恢复或新 Telegram 会话落库。

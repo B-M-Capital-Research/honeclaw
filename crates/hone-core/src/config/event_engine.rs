@@ -34,6 +34,12 @@ pub struct EventEngineConfig {
     #[serde(default)]
     pub disabled_kinds: Vec<String>,
 
+    /// 不确定来源新闻的全局默认"重要性"短语。Per-actor `NotificationPrefs.
+    /// news_importance_prompt = None` 时回落到这里。Router 把每条 source_class=
+    /// uncertain 的 NewsCritical 与该 prompt 一起送 LLM 仲裁,LLM 判 yes 即升 Medium。
+    #[serde(default = "default_news_importance_prompt")]
+    pub news_importance_prompt: String,
+
     #[serde(default = "default_dryrun")]
     pub dryrun: bool,
 }
@@ -49,9 +55,14 @@ impl Default for EventEngineConfig {
             sources: Sources::default(),
             earnings: EarningsConfig::default(),
             disabled_kinds: Vec::new(),
+            news_importance_prompt: default_news_importance_prompt(),
             dryrun: default_dryrun(),
         }
     }
+}
+
+fn default_news_importance_prompt() -> String {
+    "公司或潜在影响公司长期逻辑和宏观叙事的重大事件".to_string()
 }
 
 /// 财报 poller 特有参数。
@@ -212,6 +223,11 @@ pub struct Thresholds {
     /// 防止一个 ticker 在短时间内被价格异动、新闻、filing 连环轰炸同一用户。
     #[serde(default = "default_cooldown_minutes")]
     pub same_symbol_cooldown_minutes: u32,
+    /// 单次 poller tick 内,同一 ticker 触发 NewsCritical 升级 (Low→Medium)
+    /// 的次数上限。0 = 不启用。防止一波 PR wire 把 digest 顶端淹满同一 ticker
+    /// 的相关报道。
+    #[serde(default = "default_news_upgrade_per_symbol_per_tick")]
+    pub news_upgrade_per_symbol_per_tick: u32,
 }
 
 impl Default for Thresholds {
@@ -222,6 +238,7 @@ impl Default for Thresholds {
             volume_sigma: default_sigma(),
             high_severity_daily_cap: default_cap(),
             same_symbol_cooldown_minutes: default_cooldown_minutes(),
+            news_upgrade_per_symbol_per_tick: default_news_upgrade_per_symbol_per_tick(),
         }
     }
 }
@@ -245,6 +262,11 @@ fn default_cap() -> u32 {
 /// 默认 60 分钟:同一 ticker 每小时最多一次 High sink 推送;其它在摘要里合并。
 fn default_cooldown_minutes() -> u32 {
     60
+}
+/// 默认 3:单 tick 内,同一 ticker 最多升级 3 条 Low→Medium。多于此的 NewsCritical
+/// 维持 Low、不进 digest 顶端。0 关闭限流。
+fn default_news_upgrade_per_symbol_per_tick() -> u32 {
+    3
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -61,6 +61,31 @@ fn build_event_engine_polisher(
     }
 }
 
+/// 装配"不确定来源 NewsCritical → LLM 仲裁"分类器。
+/// 走 OpenRouter 的 `google/gemini-3-flash-preview`,key 复用 llm.openrouter.api_key。
+/// 失败一律退化为 `None`(router 跳过 LLM 路径,uncertain 源新闻保持 Low)。
+fn build_event_engine_news_classifier(
+    core_cfg: &HoneConfig,
+) -> Option<Arc<dyn hone_event_engine::NewsClassifier>> {
+    match OpenRouterProvider::from_config(core_cfg) {
+        Ok(provider) => {
+            let provider: Arc<dyn LlmProvider> = Arc::new(provider);
+            let classifier = hone_event_engine::LlmNewsClassifier::new(
+                provider,
+                "google/gemini-3-flash-preview",
+            );
+            info!("event engine: news LLM classifier 装配 (model=google/gemini-3-flash-preview)");
+            Some(Arc::new(classifier) as Arc<dyn hone_event_engine::NewsClassifier>)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "event engine: news LLM classifier 不可用,uncertain 源新闻将维持 Low: {e}"
+            );
+            None
+        }
+    }
+}
+
 /// 按 config 组装真实 OutboundSink(事件引擎的渠道出口)。
 ///
 /// - `dryrun=true` → 一律 LogSink,方便验证引擎行为却不真的骚扰用户
@@ -305,6 +330,7 @@ pub async fn start_server(
         // 可选 LLM 润色：当 llm_polish_for 非空且 llm provider 可用时装配 LlmPolisher。
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
         let sink = build_event_engine_sink(&state.core.config, &engine_cfg);
+        let news_classifier = build_event_engine_news_classifier(&state.core.config);
         tokio::spawn(async move {
             let mut engine = hone_event_engine::EventEngine::new(engine_cfg, fmp_cfg)
                 .with_store_path(events_db)
@@ -315,6 +341,9 @@ pub async fn start_server(
                 .with_sink(sink);
             if let Some(p) = polisher {
                 engine = engine.with_polisher(p);
+            }
+            if let Some(c) = news_classifier {
+                engine = engine.with_news_classifier(c);
             }
             if let Err(e) = engine.start().await {
                 tracing::warn!("event engine start failed: {e}");
