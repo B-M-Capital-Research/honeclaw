@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 12:00 最新巡检样本：
+    - `run_id=4437`（`ORCL 大事件监控`，`executed_at=2026-04-22T12:00:24.835089+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已完成 ORCL 价格、前收、涨跌幅、高低点和新闻检查，却仍以前置 `<think>` 自由文本开头。
+    - `run_id=4438`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T12:00:27.151681+08:00`）同样为 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 已逐项比较 `HIMS / MU / RKLB / LMND / BE ...` 当前价与触发价，但没有稳定输出受支持状态 JSON。
+    - `run_id=4439`（`TEM大事件心跳监控`，`executed_at=2026-04-22T12:00:28.016904+08:00`）虽被解析为 `JsonNoop`，但 `starts_with_json=false`，正文仍是 `<think>...{"status":"noop"}` 的尾部提取形态。
+    - `run_id=4441`（`ASTS 重大异动心跳监控`，`executed_at=2026-04-22T12:00:34.354161+08:00`）继续 `noop + skipped_noop + starts_with_json=false`，`raw_preview` 已分析最新报价和 BlueBird 7 事件状态，仍不是纯 JSON 契约。
+    - 本轮没有新增 `execution_failed` 或用户投诉，且部分样本能被解析为 `JsonNoop`，因此严重等级不升级；但 `JsonEmptyStatus` 与 `<think>` 前缀仍证明结构化输出契约没有恢复，状态继续为 `New`。
   - 2026-04-22 09:31 最新巡检样本：
     - `run_id=4405`（`ORCL 大事件监控`，`executed_at=2026-04-22T09:31:18.299199+08:00`）落成 `noop + skipped_noop`，`detail_json.starts_with_json=false`；`raw_preview` 已读取 ORCL 价格、前收、涨跌幅、盘中高低点与新闻条件，却仍以前置 `<think>` 自由文本开头并依赖尾部状态提取。
     - `run_id=4409`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T09:31:21.703185+08:00`）同样落成 `noop + skipped_noop`，`raw_preview` 已逐项比较 `HIMS / MU / RKLB / LMND / BE / OKLO / PLTR ...` 当前价与触发价，但仍为 `starts_with_json=false`。

@@ -5,6 +5,11 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - 最近一小时运行日志：`data/runtime/logs/web.log`
+    - `2026-04-22 11:14:41.977` Telegram Bot 再次启动。
+    - `2026-04-22 11:14:43.273` 随即报 `无法获取 Telegram Bot 信息: A Telegram's error: Invalid bot token`。
+    - `2026-04-22 11:32:20.693` 又出现一次 Telegram Bot 启动记录，但截至本轮巡检未看到新的 Telegram 会话落库。
+    - `data/sessions.sqlite3` 中最近 Telegram 会话仍停留在 `Actor_telegram__direct__8039067465`，`updated_at=2026-03-18T11:06:59.182313+08:00`。
   - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
     - `2026-04-22 03:10:21`、`03:11:35`、`03:12:28` release app 启动 Telegram 渠道时连续报 `无法获取 Telegram Bot 信息: A Telegram's error: Invalid bot token`。
     - 同一窗口 `data/runtime/logs/desktop.log` 在 `03:10:20`、`03:11:34`、`03:12:27` 记录 `managed channel telegram skipped because it exited during startup`，说明当前不是单纯 `GetUpdates` 网络抖动，而是 Telegram sidecar 在启动阶段就因 bot token 无效退出。
@@ -40,9 +45,10 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-22 11:14` 最新 release app 窗口，Telegram Bot 再次启动后仍立即报 `Invalid bot token`；`11:32` 又出现启动记录，但没有新的 Telegram 会话落库。
 - 2026-04-22 10:03 CST 最新样本仍在 `data/runtime/logs/web.log` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
 - 2026-04-22 06:03 最新样本仍在 `data/runtime/logs/web.log` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；同类错误还在 `2026-04-22 00:03`、`02:03`、`04:03` 出现。
-- 到 `2026-04-22 03:10-03:12` 最新 release app 窗口，Telegram sidecar 已从此前 `GetUpdates` 超时演变为启动即失败：`Invalid bot token`，desktop 标记 `managed channel telegram skipped because it exited during startup`。
+- 到 `2026-04-22 03:10-03:12` release app 窗口，Telegram sidecar 已从此前 `GetUpdates` 超时演变为启动即失败：`Invalid bot token`，desktop 标记 `managed channel telegram skipped because it exited during startup`。
 - 本轮 event-engine 巡检没有调用 Telegram API；上述结论仅来自本地运行日志。与此同时，`data/events.sqlite3` 在 `2026-04-21 21:19:33` UTC 记录过 event-engine high `sink/sent`，说明 `sendMessage` 路径至少曾成功，当前错误集中在 update listener 的 `GetUpdates` 入站长轮询。
 - 到 `2026-04-21 18:36` 窗口，Telegram listener 仍在 `GetUpdates` 阶段超时，且下一次重试继续连接超时；没有看到 Telegram 新消息恢复落库。
 - 到 `2026-04-21 14:31-14:58` 最新窗口，Telegram listener 仍持续 `GetUpdates` 超时并固定退避重试，没有看到入站链路恢复或新 Telegram 会话落库。
