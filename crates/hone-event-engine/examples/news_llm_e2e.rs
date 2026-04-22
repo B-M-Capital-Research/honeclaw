@@ -7,7 +7,7 @@
 //!   2. NewsPoller.poll() 调真 FMP /v3/stock_news,拉一页。
 //!   3. 统计 source_class 分布(trusted / pr_wire / uncertain)与 legal_ad 命中数。
 //!   4. 对每条 NewsCritical+Low+source_class=uncertain+非律所模板,真调
-//!      OpenRouter `google/gemini-3-flash-preview`,看返回是否能被解析为
+//!      OpenRouter `openai/gpt-oss-20b:nitro`,看返回是否能被解析为
 //!      Important / NotImportant。
 //!   5. 验证缓存:同一条新闻第二次 classify 不再 LLM 调用(LLM 计数稳定)。
 //!
@@ -26,7 +26,7 @@ use hone_event_engine::{EventKind, Severity};
 use hone_llm::OpenRouterProvider;
 
 const CONFIG_PATH: &str = "./config.yaml";
-const LLM_MODEL: &str = "google/gemini-3-flash-preview";
+const LLM_MODEL: &str = "openai/gpt-oss-20b:nitro";
 const DEFAULT_MAX_LLM_CALLS: usize = 8;
 
 #[tokio::main]

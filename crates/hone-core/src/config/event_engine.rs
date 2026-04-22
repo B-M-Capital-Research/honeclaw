@@ -307,6 +307,16 @@ pub struct Sources {
     /// `spawn_earnings_surprise_poller` —— 按 watch pool 拉,产出 EarningsReleased
     #[serde(default = "default_true")]
     pub earnings_surprise: bool,
+
+    /// Telegram 公开频道监听(web preview `t.me/s/<handle>`),产出 `SocialPost`。
+    /// 空列表 = 不启用。每条配置对应一个独立 poller loop。
+    #[serde(default)]
+    pub telegram_channels: Vec<TelegramChannelConfig>,
+
+    /// Truth Social 公开账号监听(Mastodon 兼容 API),产出 `SocialPost`。
+    /// 空列表 = 不启用。每条配置对应一个独立 poller loop。
+    #[serde(default)]
+    pub truth_social_accounts: Vec<TruthSocialAccountConfig>,
 }
 
 impl Default for Sources {
@@ -320,8 +330,44 @@ impl Default for Sources {
             macro_calendar: true,
             analyst_grade: true,
             earnings_surprise: true,
+            telegram_channels: Vec::new(),
+            truth_social_accounts: Vec::new(),
         }
     }
+}
+
+/// Telegram 公开频道配置。
+///
+/// 通过 `https://t.me/s/<handle>` 无 token 抓取最新 ~20 条帖子。`extract_cashtags`
+/// 开启时会把正文里的 `$TICKER` 提取到 `MarketEvent.symbols`,便于 actor 订阅命中;
+/// 关闭时 symbols 为空,依赖 social GlobalSubscription + LLM 仲裁升级走全局分发。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramChannelConfig {
+    pub handle: String,
+    #[serde(default = "default_social_interval")]
+    pub interval_secs: u64,
+    #[serde(default)]
+    pub extract_cashtags: bool,
+}
+
+/// Truth Social 公开账号配置。
+///
+/// 首次 poll 时若未提供 `account_id` 会 fallback 到 `/api/v2/search?q=@<username>`
+/// 解析一次并在实例内存中缓存。想避免每次启动都 resolve 一遍,可手动填 `account_id`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TruthSocialAccountConfig {
+    pub username: String,
+    #[serde(default)]
+    pub account_id: Option<String>,
+    #[serde(default = "default_social_interval_slow")]
+    pub interval_secs: u64,
+}
+
+fn default_social_interval() -> u64 {
+    30 * 60
+}
+fn default_social_interval_slow() -> u64 {
+    60 * 60
 }
 
 fn default_true() -> bool {

@@ -61,8 +61,10 @@ fn build_event_engine_polisher(
     }
 }
 
+const EVENT_ENGINE_NEWS_CLASSIFIER_MODEL: &str = "openai/gpt-oss-20b:nitro";
+
 /// 装配"不确定来源 NewsCritical → LLM 仲裁"分类器。
-/// 走 OpenRouter 的 `google/gemini-3-flash-preview`,key 复用 llm.openrouter.api_key。
+/// 走 OpenRouter 的 `openai/gpt-oss-20b:nitro`,key 复用 llm.openrouter.api_key。
 /// 失败一律退化为 `None`(router 跳过 LLM 路径,uncertain 源新闻保持 Low)。
 fn build_event_engine_news_classifier(
     core_cfg: &HoneConfig,
@@ -72,9 +74,11 @@ fn build_event_engine_news_classifier(
             let provider: Arc<dyn LlmProvider> = Arc::new(provider);
             let classifier = hone_event_engine::LlmNewsClassifier::new(
                 provider,
-                "google/gemini-3-flash-preview",
+                EVENT_ENGINE_NEWS_CLASSIFIER_MODEL,
             );
-            info!("event engine: news LLM classifier 装配 (model=google/gemini-3-flash-preview)");
+            info!(
+                "event engine: news LLM classifier 装配 (model={EVENT_ENGINE_NEWS_CLASSIFIER_MODEL})"
+            );
             Some(Arc::new(classifier) as Arc<dyn hone_event_engine::NewsClassifier>)
         }
         Err(e) => {

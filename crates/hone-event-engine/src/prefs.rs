@@ -129,6 +129,7 @@ pub fn kind_tag(kind: &EventKind) -> &'static str {
         EventKind::MacroEvent => "macro_event",
         EventKind::PortfolioPreMarket => "portfolio_pre_market",
         EventKind::PortfolioPostMarket => "portfolio_post_market",
+        EventKind::SocialPost => "social_post",
     }
 }
 
@@ -151,6 +152,7 @@ pub const ALL_KIND_TAGS: &[&str] = &[
     "macro_event",
     "portfolio_pre_market",
     "portfolio_post_market",
+    "social_post",
 ];
 
 /// 校验一串 kind tag 是否全部合法；返回第一个非法 tag（调用方据此构造错误消息）。

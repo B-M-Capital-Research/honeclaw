@@ -74,6 +74,9 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 regex = "1"
 subtle = "2"
 
+# HTML 解析 (Telegram 公开频道 web preview)
+scraper = "0.20"
+
 # Internal crates
 hone-core = { path = "crates/hone-core" }
 hone-llm = { path = "crates/hone-llm" }

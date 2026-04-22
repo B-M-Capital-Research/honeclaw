@@ -25,7 +25,8 @@ pub use channels::{
 pub use event_engine::{
     DigestConfig as EventEngineDigestConfig, EventEngineConfig,
     PollIntervals as EventEnginePollIntervals, RendererConfig as EventEngineRendererConfig,
-    Sources as EventEngineSources, Thresholds as EventEngineThresholds, tz_offset_hours,
+    Sources as EventEngineSources, TelegramChannelConfig, Thresholds as EventEngineThresholds,
+    TruthSocialAccountConfig, tz_offset_hours,
 };
 pub use server::{
     FmpConfig, LoggingConfig, NanoBananaConfig, SearchConfig, SecurityConfig, StorageConfig,

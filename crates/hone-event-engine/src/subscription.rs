@@ -293,10 +293,16 @@ impl SharedRegistry {
     }
 }
 
-/// 扫描 PortfolioStorage 下所有 actor，构建一份初始 Registry（只含
-/// PortfolioSubscription）。将来如果要加 Global / NL 订阅，调用方自行 `register()`。
+/// 扫描 PortfolioStorage 下所有 actor，构建一份初始 Registry。
+///
+/// 组成：
+/// - 每个有持仓的 direct actor → `PortfolioSubscription`（按 ticker 命中）
+/// - 所有 direct actor 汇总后 → 一个 `GlobalSubscription`(kinds=[`social_post`])
+///   用于把 Telegram / Truth Social 等"无 ticker"社交事件广播给所有 actor,
+///   让 router 有机会调 LLM 仲裁。未来若加 macro 全员播报,在 kinds 里追加即可。
 pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegistry {
     let mut reg = SubscriptionRegistry::new();
+    let mut direct_actors: Vec<ActorIdentity> = Vec::new();
     for (actor, portfolio) in storage.list_all() {
         // 硬规则：群聊持仓不订阅——主动推送只走单聊。
         // 这里跳过可以避免群聊 holdings 污染 watch pool，省下不必要的 FMP 拉取。
@@ -313,10 +319,18 @@ pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegis
             .iter()
             .map(|h| h.symbol.clone())
             .collect();
-        if symbols.is_empty() {
-            continue;
+        // 即便 holdings 为空,也把 actor 纳入 social 全员订阅——社交源帖子无 ticker,
+        // 否则会被 registry.resolve 漏过、连 LLM 仲裁都走不到。
+        if !symbols.is_empty() {
+            reg.register(Box::new(PortfolioSubscription::new(actor.clone(), symbols)));
         }
-        reg.register(Box::new(PortfolioSubscription::new(actor, symbols)));
+        direct_actors.push(actor);
+    }
+    if !direct_actors.is_empty() {
+        reg.register(Box::new(
+            GlobalSubscription::new("social_global", direct_actors)
+                .with_kinds(["social_post".to_string()]),
+        ));
     }
     reg
 }
@@ -489,7 +503,8 @@ mod tests {
         storage.save(&group, &p_group).unwrap();
 
         let reg = registry_from_portfolios(&storage);
-        assert_eq!(reg.len(), 1);
+        // 1 direct actor portfolio sub + 1 社交全员 sub(direct actor 集合)
+        assert_eq!(reg.len(), 2);
         assert_eq!(reg.watch_pool(), vec!["AAPL"], "NVDA 来自群持仓应被跳过");
     }
 
@@ -569,8 +584,9 @@ mod tests {
         assert!(shared.load().watch_pool().is_empty());
 
         // refresh 后：新持仓可见，resolve 立即命中
+        // 1 portfolio sub + 1 social_global sub(direct actor 汇总)
         let n = shared.refresh().unwrap();
-        assert_eq!(n, 1);
+        assert_eq!(n, 2);
         assert_eq!(shared.load().watch_pool(), vec!["AAPL"]);
         let hits = shared.load().resolve(&ev(
             "e1",
@@ -632,7 +648,9 @@ mod tests {
         storage.save(&a2, &p2).unwrap();
 
         let reg = registry_from_portfolios(&storage);
-        assert_eq!(reg.len(), 1, "空持仓不应产生订阅");
+        // 1 portfolio sub(a has AAPL)+ 1 social_global sub(包含 a 和 a2),
+        // 空持仓 a2 不单独产生 PortfolioSubscription
+        assert_eq!(reg.len(), 2, "空持仓不应产生 PortfolioSubscription");
     }
 
     /// 不变量：仅关注（tracking_only=true）的 symbol 也必须进入 watch_pool 与 resolve。
@@ -651,7 +669,8 @@ mod tests {
             .expect("upsert watch");
 
         let reg = registry_from_portfolios(&storage);
-        assert_eq!(reg.len(), 1, "仅关注的 actor 也应注册订阅");
+        // 1 portfolio sub(仅关注 NVDA 也会创建 PortfolioSub)+ 1 social_global sub
+        assert_eq!(reg.len(), 2, "仅关注的 actor 也应注册订阅");
         assert_eq!(reg.watch_pool(), vec!["NVDA"]);
 
         let hits = reg.resolve(&ev(

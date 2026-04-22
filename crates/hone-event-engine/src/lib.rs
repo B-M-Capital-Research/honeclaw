@@ -17,6 +17,7 @@ pub mod prefs;
 pub mod renderer;
 pub mod router;
 pub mod sinks;
+pub mod source;
 pub mod store;
 pub mod subscription;
 
@@ -31,7 +32,7 @@ pub use news_classifier::{
 pub use polisher::{BodyPolisher, LlmPolisher, NoopPolisher, parse_polish_levels};
 pub use pollers::{
     AnalystGradePoller, CorpActionPoller, EarningsPoller, EarningsSurprisePoller, MacroPoller,
-    NewsPoller, PricePoller,
+    NewsPoller, PricePoller, TelegramChannelPoller, TruthSocialPoller,
 };
 pub use prefs::{
     AllowAllPrefs, FilePrefsStorage, NotificationPrefs, PrefsProvider, SharedPrefs, kind_tag,
@@ -39,6 +40,7 @@ pub use prefs::{
 pub use renderer::RenderFormat;
 pub use router::{LogSink, NotificationRouter, OutboundSink};
 pub use sinks::{DiscordSink, FeishuSink, IMessageSink, MultiChannelSink, TelegramSink};
+pub use source::{EventSource, FnSource, SourceSchedule};
 pub use store::EventStore;
 pub use subscription::{
     GlobalSubscription, PortfolioSubscription, SharedRegistry, Subscription, SubscriptionRegistry,
@@ -164,9 +166,11 @@ impl EventEngine {
         );
 
         let client = FmpClient::from_config(&self.fmp_cfg);
-        if !client.has_keys() {
-            warn!("event engine: FMP key missing — pollers 将不会启动");
-            return Ok(());
+        let fmp_available = client.has_keys();
+        if !fmp_available {
+            warn!(
+                "event engine: FMP key missing — FMP pollers 不会启动,仅社交源(Telegram/Truth Social)照常运行"
+            );
         }
 
         let mut store_builder = EventStore::open(&self.store_path)?;
@@ -376,7 +380,7 @@ impl EventEngine {
             "cron-aligned poller prefetch windows resolved"
         );
 
-        if sources.earnings_calendar {
+        if fmp_available && sources.earnings_calendar {
             spawn_earnings_poller(
                 client.clone(),
                 store.clone(),
@@ -386,20 +390,20 @@ impl EventEngine {
                 post_prefetch.clone(),
                 self.engine_cfg.earnings.window_days,
             );
-        } else {
+        } else if fmp_available {
             info!("earnings_calendar poller disabled by config.sources.earnings_calendar=false");
         }
-        if sources.news {
+        if fmp_available && sources.news {
             spawn_news_poller(
                 client.clone(),
                 store.clone(),
                 router.clone(),
                 Duration::from_secs(self.engine_cfg.poll_intervals.news_secs),
             );
-        } else {
+        } else if fmp_available {
             info!("news poller disabled by config.sources.news=false");
         }
-        if sources.corp_action || sources.sec_filings {
+        if fmp_available && (sources.corp_action || sources.sec_filings) {
             spawn_corp_action_poller(
                 client.clone(),
                 store.clone(),
@@ -411,12 +415,12 @@ impl EventEngine {
                 sources.corp_action,
                 sources.sec_filings,
             );
-        } else {
+        } else if fmp_available {
             info!(
                 "corp_action poller fully disabled by config.sources.corp_action=false and sources.sec_filings=false"
             );
         }
-        if sources.macro_calendar {
+        if fmp_available && sources.macro_calendar {
             spawn_macro_poller(
                 client.clone(),
                 store.clone(),
@@ -425,12 +429,12 @@ impl EventEngine {
                 pre_prefetch.clone(),
                 post_prefetch.clone(),
             );
-        } else {
+        } else if fmp_available {
             info!("macro poller disabled by config.sources.macro_calendar=false");
         }
         // PricePoller 每 tick 从 SharedRegistry 读最新 watch pool。
         // 若此刻为空就 skip tick；用户新增持仓后下个 tick 就能生效。
-        if sources.price {
+        if fmp_available && sources.price {
             spawn_price_poller(
                 client.clone(),
                 store.clone(),
@@ -440,12 +444,12 @@ impl EventEngine {
                 self.engine_cfg.thresholds.price_alert_high_pct,
                 Duration::from_secs(self.engine_cfg.poll_intervals.price_secs),
             );
-        } else {
+        } else if fmp_available {
             info!("price poller disabled by config.sources.price=false");
         }
         // 分析师评级、财报 surprise：两个都按 watch pool 逐 ticker 拉。
         // 初次 tick 之前 watch pool 为空就跳过——用户新增持仓后下一个 tick 生效。
-        if sources.analyst_grade {
+        if fmp_available && sources.analyst_grade {
             spawn_analyst_grade_poller(
                 client.clone(),
                 store.clone(),
@@ -455,10 +459,10 @@ impl EventEngine {
                 pre_prefetch.clone(),
                 post_prefetch.clone(),
             );
-        } else {
+        } else if fmp_available {
             info!("analyst_grade poller disabled by config.sources.analyst_grade=false");
         }
-        if sources.earnings_surprise {
+        if fmp_available && sources.earnings_surprise {
             spawn_earnings_surprise_poller(
                 client.clone(),
                 store.clone(),
@@ -468,8 +472,43 @@ impl EventEngine {
                 pre_prefetch.clone(),
                 post_prefetch.clone(),
             );
-        } else {
+        } else if fmp_available {
             info!("earnings_surprise poller disabled by config.sources.earnings_surprise=false");
+        }
+
+        // ── 社交源监听(通用 EventSource trait)─────────────────────────
+        // Telegram channel web preview + Truth Social Mastodon API。
+        // 事件一律 Low + payload.source_class="uncertain",交给 router 的
+        // LLM 仲裁链路按"是否重要"决定升 Medium 即时推(见 router.rs
+        // maybe_llm_upgrade_for_actor)。symbols 多数为空,靠 social
+        // GlobalSubscription(见 subscription.rs registry_from_portfolios)
+        // 把事件 fanout 给所有 actor 后再过 LLM。
+        for cfg in &sources.telegram_channels {
+            let poller = TelegramChannelPoller::new(
+                cfg.handle.clone(),
+                Duration::from_secs(cfg.interval_secs),
+                cfg.extract_cashtags,
+            );
+            info!(
+                handle = %cfg.handle,
+                interval_secs = cfg.interval_secs,
+                extract_cashtags = cfg.extract_cashtags,
+                "telegram channel poller starting"
+            );
+            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+        }
+        for cfg in &sources.truth_social_accounts {
+            let poller = TruthSocialPoller::new(
+                cfg.username.clone(),
+                cfg.account_id.clone(),
+                Duration::from_secs(cfg.interval_secs),
+            );
+            info!(
+                username = %cfg.username,
+                interval_secs = cfg.interval_secs,
+                "truth_social poller starting"
+            );
+            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
         }
 
         Ok(())
@@ -809,6 +848,92 @@ fn spawn_price_poller(
             }
         }
     });
+}
+
+/// 通用事件源 spawn 入口:依据 `source.schedule()` 分发到 FixedInterval 或
+/// CronAligned 两条循环。新增第三方监听源(Telegram / Truth Social / ...)只需
+/// 实现 `EventSource` trait,调用一次本函数即可接入 store + router 主链路,
+/// 不需要再复制 spawn/ticker/process_events 的模板。
+///
+/// 注:FMP 旧链路(7 个 `spawn_*_poller`)暂未迁移到此路径——它们 action
+/// 语义更复杂(watch pool 过滤、compound fetch 等),暂保持原样,后续可选
+/// 择性用 `FnSource` 包装迁移。
+fn spawn_event_source(
+    source: Arc<dyn EventSource>,
+    store: Arc<EventStore>,
+    router: Arc<NotificationRouter>,
+) {
+    let name: String = source.name().to_string();
+    let schedule = source.schedule();
+    tokio::spawn(async move {
+        match schedule {
+            SourceSchedule::FixedInterval(interval) => {
+                // 冷启动立即拉一次,避免用户重启后等到下一 tick 才有数据。
+                if let Err(e) = run_once(&name, &*source, &store, &router).await {
+                    warn!(poller = %name, "initial poll failed: {e:#}");
+                }
+                let mut ticker = tokio::time::interval(interval);
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                // 第一次 tick 立刻返回(已在 run_once 做过冷启动),跳过一次。
+                ticker.tick().await;
+                loop {
+                    ticker.tick().await;
+                    if let Err(e) = run_once(&name, &*source, &store, &router).await {
+                        warn!(poller = %name, "poll failed: {e:#}");
+                    }
+                }
+            }
+            SourceSchedule::CronAligned {
+                pre_prefetch,
+                post_prefetch,
+                tz_offset,
+            } => {
+                // 冷启动先跑一次,然后每 60s 检查是否命中 pre/post 窗口。
+                if let Err(e) = run_once(&name, &*source, &store, &router).await {
+                    warn!(poller = %name, "initial poll failed: {e:#}");
+                }
+                let mut ticker = tokio::time::interval(Duration::from_secs(60));
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                let mut fired: std::collections::HashSet<String> = std::collections::HashSet::new();
+                let mut last_date = String::new();
+                loop {
+                    ticker.tick().await;
+                    let now = chrono::Utc::now();
+                    let today = digest::local_date_key(now, tz_offset);
+                    if today != last_date {
+                        fired.clear();
+                        last_date = today.clone();
+                    }
+                    for (label, hhmm) in [("pre", &pre_prefetch), ("post", &post_prefetch)] {
+                        if !digest::in_window(now, hhmm, tz_offset) {
+                            continue;
+                        }
+                        let key = format!("{today}@{label}@{hhmm}");
+                        if !fired.insert(key) {
+                            continue;
+                        }
+                        info!(poller = %name, window = label, hhmm = %hhmm, "cron-aligned source firing");
+                        if let Err(e) = run_once(&name, &*source, &store, &router).await {
+                            warn!(poller = %name, "poll failed: {e:#}");
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// `spawn_event_source` 内部复用的单次拉取 + 分发小工具,包一层把 poll 错误
+/// 抽成 Result 供上层决定 warn! 粒度。
+async fn run_once(
+    name: &str,
+    source: &dyn EventSource,
+    store: &EventStore,
+    router: &NotificationRouter,
+) -> anyhow::Result<()> {
+    let events = source.poll().await?;
+    process_events(name, events, store, router).await;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1802,5 +1927,123 @@ mod tests {
         // 两个 actor 行都在
         assert!(body.contains(&format!("| `{ak_main}` |")));
         assert!(body.contains("| `feishu::::ghost` |"));
+    }
+
+    /// 真实 E2E:启动 engine → TelegramChannelPoller (冷启动立即拉一次
+    /// `https://t.me/s/watcherguru`) → EventStore + events.jsonl 镜像。
+    /// 不依赖 FMP key、不依赖 hone-cli orchestration,直接验证社交链路通。
+    ///
+    /// 触发:
+    /// `cargo test -p hone-event-engine --lib tests::live_social_engine_e2e \
+    ///   -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn live_social_engine_e2e() {
+        use hone_core::ActorIdentity;
+        use hone_core::config::event_engine::Sources;
+        use hone_core::config::{FmpConfig, TelegramChannelConfig, TruthSocialAccountConfig};
+        use hone_memory::PortfolioStorage;
+        use hone_memory::portfolio::{Holding, Portfolio};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let store_path = tmp.path().join("events.db");
+        let jsonl_path = tmp.path().join("events.jsonl");
+        let portfolio_dir = tmp.path().join("portfolio");
+        let digest_dir = tmp.path().join("digest");
+        let prefs_dir = tmp.path().join("prefs");
+        let daily_report_dir = tmp.path().join("daily_reports");
+        std::fs::create_dir_all(&portfolio_dir).unwrap();
+
+        // seed 一个 direct-actor 持仓,让 social_global GlobalSub 有 fanout 目标
+        let storage = PortfolioStorage::new(&portfolio_dir);
+        let actor = ActorIdentity::new("telegram", "e2e-user", None::<String>).unwrap();
+        let portfolio = Portfolio {
+            actor: Some(actor.clone()),
+            user_id: "e2e-user".into(),
+            holdings: vec![Holding {
+                symbol: "AAPL".into(),
+                asset_type: "stock".into(),
+                shares: 1.0,
+                avg_cost: 100.0,
+                underlying: None,
+                option_type: None,
+                strike_price: None,
+                expiration_date: None,
+                contract_multiplier: None,
+                holding_horizon: None,
+                strategy_notes: None,
+                notes: None,
+                tracking_only: None,
+            }],
+            updated_at: "2026-04-22".into(),
+        };
+        storage.save(&actor, &portfolio).unwrap();
+
+        // 关掉所有 FMP poller,只开社交
+        let mut engine_cfg = EventEngineConfig::default();
+        engine_cfg.enabled = true;
+        engine_cfg.sources = Sources {
+            news: false,
+            price: false,
+            earnings_calendar: false,
+            corp_action: false,
+            sec_filings: false,
+            macro_calendar: false,
+            analyst_grade: false,
+            earnings_surprise: false,
+            telegram_channels: vec![TelegramChannelConfig {
+                handle: "watcherguru".into(),
+                interval_secs: 1800,
+                extract_cashtags: true,
+            }],
+            truth_social_accounts: Vec::<TruthSocialAccountConfig>::new(),
+        };
+
+        let engine = EventEngine::new(engine_cfg, FmpConfig::default())
+            .with_store_path(store_path.clone())
+            .with_events_jsonl_path(Some(jsonl_path.clone()))
+            .with_portfolio_dir(portfolio_dir)
+            .with_digest_dir(digest_dir)
+            .with_prefs_dir(prefs_dir)
+            .with_daily_report_dir(daily_report_dir)
+            .with_retention_days(0);
+        engine.start().await.unwrap();
+
+        // 冷启动立即拉一次 → 等 HTTP + HTML 解析 + store 写入。
+        // 正常情况下 5-10s 够了,给 20s 容 CI 慢网。
+        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+
+        let store = EventStore::open(&store_path).unwrap();
+        let n = store.count_events().unwrap();
+        let jsonl = std::fs::read_to_string(&jsonl_path).unwrap_or_default();
+        let tg_lines: Vec<&str> = jsonl
+            .lines()
+            .filter(|l| l.contains("\"telegram.watcherguru\""))
+            .collect();
+
+        println!("=== live_social_engine_e2e ===");
+        println!("count_events = {n}");
+        println!("telegram.watcherguru 事件数 = {}", tg_lines.len());
+        if let Some(first) = tg_lines.first() {
+            println!("第一条:{first}");
+        }
+
+        assert!(n > 0, "events SQLite 应有至少 1 条事件");
+        assert!(
+            !tg_lines.is_empty(),
+            "应至少有 1 条 source=telegram.watcherguru 事件(若 Telegram 改版或网络问题请另查)"
+        );
+        assert!(
+            tg_lines
+                .iter()
+                .any(|l| l.contains("\"type\":\"social_post\"")),
+            "社交事件 kind 应为 social_post"
+        );
+        assert!(
+            tg_lines
+                .iter()
+                .any(|l| l.contains("\"source_class\":\"uncertain\"")),
+            "payload 应带 source_class=uncertain(LLM 仲裁开关)"
+        );
     }
 }
