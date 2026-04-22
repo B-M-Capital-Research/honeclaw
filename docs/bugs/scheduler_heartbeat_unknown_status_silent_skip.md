@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-23 01:00-02:00 最新巡检样本：
+    - `run_id=4707-4738` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控` 与新建 `持仓重大事件心跳检测`。
+    - `run_id=4715`（`Monitor_Watchlist_11`，`2026-04-23T01:00:21.205650+08:00`）继续落成 `execution_failed + skipped_error`，`error_message=max_iterations_exceeded:6`，说明结构化 heartbeat 仍可能触顶后整轮跳过。
+    - `run_id=4719`（`小米破位预警`，`2026-04-23T01:30:11.319513+08:00`）日志记录 `parse_kind=JsonEmptyStatus`，`raw_preview` 已写“数据获取失败...必须返回 noop”，尾部却只输出 `{}`。
+    - `run_id=4724`（`RKLB异动监控`，`2026-04-23T01:30:18.164352+08:00`）与 `run_id=4725`（`Monitor_Watchlist_11`，`2026-04-23T01:30:19.300554+08:00`）同批仍为 `JsonEmptyStatus + skipped_noop`，模型已完成新闻/价格/触发价判断但没有稳定输出受支持状态 JSON。
+    - `run_id=4728`（`全天原油价格3小时播报`，`2026-04-23T02:00:08.567067+08:00`）日志继续为 `JsonEmptyStatus`，`raw_preview` 以英文 `<think>` 分析时间条件开头，仍不是纯 JSON 起始。
+    - `run_id=4729-4738` 多数 heartbeat 虽落成 `noop + skipped_noop`，但 `data/runtime/logs/web.log` / `sidecar.log` 继续记录 `starts_with_json=false`，例如 `run_id=4736`（`持仓重大事件心跳检测`）明确依赖上一轮提醒记忆后输出 `<think>...JsonNoop`。本轮没有新增用户投诉或错误投递，因此严重等级不升级，状态保持 `New`。
   - 2026-04-23 00:00 最新巡检样本：
     - `run_id=4663-4693` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；多数未触发任务仍落成 `noop + skipped_noop`。
     - `run_id=4668`（`RKLB异动监控`，`2026-04-22T23:00:22.840091+08:00`）落成 `JsonEmptyStatus + skipped_noop`，`raw_preview` 已分析 2026-04-21 及以前新闻、并判断没有重大并购、Neutron 进展、重大订单或发射失败，却没有稳定输出受支持状态 JSON。
@@ -1116,6 +1123,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-23 01:00-02:00` 最新窗口，`Monitor_Watchlist_11` 仍在 01:00 落成 `execution_failed + skipped_error + max_iterations_exceeded:6`，01:30 的小米/RKLB/Watchlist 与 02:00 的原油任务继续出现 `JsonEmptyStatus` 或 `starts_with_json=false`，说明上游状态契约仍没有恢复为纯 JSON。
 - 到 `2026-04-23 00:00` 最新窗口，`RKLB异动监控` 在 23:00 与 00:00 连续两轮落成 `JsonEmptyStatus + skipped_noop`，同批多任务仍为 `starts_with_json=false`，说明上游状态契约仍没有恢复为纯 JSON。
 - 到 `2026-04-22 22:00` 窗口，heartbeat 仍全部 `noop + skipped_noop`，`CAI破位预警` 与 `Monitor_Watchlist_11` 继续落成 `JsonEmptyStatus`，说明上游状态契约仍没有恢复为纯 JSON。
 - 这轮 `ASTS 重大异动心跳监控` 能识别 `21:01` 已提醒并跳过，说明重复提醒有局部缓解迹象；但当前“正常 noop”仍依赖 `<think>...尾部 JSON` 的解析器止血，不能据此关闭结构化状态缺陷。
