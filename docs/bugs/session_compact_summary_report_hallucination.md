@@ -13,6 +13,13 @@
    - 同轮 `session_messages.ordinal=6` 的 assistant final 在 `2026-04-22T21:03:28.051552+08:00` 直接以 `Context compacted` 开头，然后才进入盘前扫描正文。
    - 同会话在 `2026-04-22T21:30:36.563117+08:00` 又写入 `role=system` 的 `Conversation compacted` 和 `【Compact Summary】...`，说明 summary 角色继续维持 system 态，但用户可见正文净化仍未闭环。
    - 这次已经送达用户，说明 20:05 后问题仍在真实定时任务出站链路活跃；状态继续维持 `Fixing`，不能关闭。
+
+- 2026-04-23 04:00 最新 compact summary 语义污染复核：
+   - `session_id=Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c`
+   - 用户在 `2026-04-23T03:39:44.493988+08:00` 提问 `如果有新增订单呢`，assistant 在 `2026-04-23T03:40:24.000785+08:00` 已给出 1248 字回答。
+   - 同会话后续在 `2026-04-23T04:00:09.635294+08:00` 自动 compact，并于 `04:00:09.635312` 写入 `role=system` 的 `【Compact Summary】...`。
+   - 该 summary 开头仍写“你的最新提问 **‘如果有新增订单呢’** 属于**尚未回答的新问题**”，与实际已回答历史不符。
+   - 本轮未看到新的 `role=user` compact summary，也未看到 `Context compacted` 直接进入可见 assistant final；但 summary 本身仍会把错误“未回答新问题”回灌后续 prompt，说明 compact summary 的事实/边界校验仍未闭环，状态不能切到 `Fixed`。
 - 2026-04-22 20:05 最新用户可见外泄复核：
    - `session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`
    - 同会话在 `2026-04-22T20:00:37.102052+08:00` 写入 `role=system` 的 `Conversation compacted`，紧接着 `20:00:37.102063` 写入 `role=system` 的 `【Compact Summary】...`，说明新生成 summary 角色继续维持 system 态。

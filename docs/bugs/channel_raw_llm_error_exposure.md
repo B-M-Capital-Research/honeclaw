@@ -105,3 +105,9 @@
 - `cargo test -p hone-channels user_visible_error_message_ -- --nocapture`
 - `cargo check -p hone-feishu -p hone-discord -p hone-imessage -p hone-channels`
 - `rustfmt --edition 2024 --check crates/hone-channels/src/runtime.rs crates/hone-channels/src/outbound.rs crates/hone-channels/src/scheduler.rs bins/hone-feishu/src/handler.rs bins/hone-discord/src/handlers.rs bins/hone-imessage/src/main.rs`
+
+## 2026-04-23 巡检结论
+
+- 本轮开始时工作区存在一组未提交的代码/版本号/release note 改动，其中包含疑似针对 Codex WebSocket/HTTPS 传输残留的 sanitizer 补丁；该补丁不属于本次缺陷台账维护边界，已按自动化规则恢复。
+- 恢复后 `crates/hone-channels/src/runtime.rs` 中没有 `Falling back from WebSockets`、`backend-api/codex/responses`、`cf-ray`、`unexpected status 403 Forbidden` 等识别规则，不能用未提交脏代码支撑本缺陷 `Fixed`。
+- 最近一小时未再观察到同类用户可见外泄样本，但已知 2026-04-20 22:29 真实会话证据仍成立；状态维持 `New`，等待正式代码修复后再切到 `Fixed`。

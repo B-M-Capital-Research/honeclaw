@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-23 03:03 CST
+最后更新：2026-04-23 04:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：18
-- 已修复 / 已关闭：46
+- 活跃待修复：20
+- 已修复 / 已关闭：44
 - 历史分析 / 部分止血：2
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -28,6 +28,8 @@
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
+| 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-23 巡检未找到已提交修复覆盖 Codex WebSocket/HTTPS 回退、`wss://chatgpt.com/backend-api/codex/responses`、`cf-ray`、`unexpected status 403` 等内部传输残留；不能维持 Fixed | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
+| 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-23 04:00 最新 auto compact 仍生成语义错误 summary：把 03:40 已回答的“如果有新增订单呢”标为“尚未回答的新问题”，说明 compact summary 可信边界仍未闭环 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-23 03:00 `全天原油价格3小时播报` 再次 `completed + sent + delivered=1`，把美伊冲突升级、霍尔木兹实际关闭、WTI 期货单日飙升超 12% 等未核验叙述写成价格大涨主因；市场播报缺少来源质量与置信度门禁 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-22 22:43 用户要求 LRCX 基本面/护城河/财务/估值分析，系统在 `web_search` 刚启动后仅把 77 字“本地没有画像，我会按新研究处理”过程句记为 `success=true` 并发送；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
