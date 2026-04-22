@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-22 10:00 CST
+最后更新：2026-04-22 11:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -35,7 +35,7 @@
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-21 23:01 后续定时任务仍按旧 `22支` 清单发送，不含用户要求新增的 `BE/AMD`；16:39 `cron_job` 更新轮只落库工具轨迹和错误尾注，已从纯质量问题升级为任务配置工作流偏差 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-22 09:31 `ORCL 大事件监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控` 仍是 `starts_with_json=false`；raw preview 已完成价格/新闻/触发价判断但继续以 `<think>` 自由文本开头，结构化契约未恢复 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | ORCL heartbeat 将盘中振幅误判为单日涨跌幅并发送错误触发提醒 | P2 | New | 2026-04-22 03:00 `ORCL 大事件监控` 内部先判断当前涨幅 `+3.55%` 未超过 `5%`，最终却按高低点振幅约 `5.3%` 落成 `JsonTriggered + sent`，已向用户投递口径冲突的触发提醒 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-22 07:01 `ASTS 重大异动心跳监控` 又把同一 `BlueBird 7` 卫星失败事件落成 `completed + sent + delivered=1`，没有新增独立公告或处置结果；07:31/08:01 又回摆为 `JsonEmptyStatus` noop | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-22 10:02 `ASTS 重大异动心跳监控` 在 07:01 已送达同一 `BlueBird 7` 失败事件、随后多轮 `noop` 后，再次落成 `completed + sent + delivered=1`；去重仍依赖模型临场判断而非稳定已提醒状态 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 21:01 `TEM大事件心跳监控` 再次落成 `execution_failed + skipped_error`；20:30 还是 `noop`、21:00 前后同批又混有 `JsonUnknownStatus`，用户侧无法判断本轮是未触发还是链路直接耗尽 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 19:30 `Monitor_Watchlist_11` 继续命中 `https://api.minimaxi.com/v1/chat/completions` 发送失败；20:00 同批主要漂移到 `JsonUnknownStatus`，传输吸震仍未稳定收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-22 03:10-03:12 release app 启动时 Telegram 进程连续退出，日志报 `Invalid bot token`；此前 `GetUpdates` 超时未恢复，最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
