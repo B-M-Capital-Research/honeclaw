@@ -154,6 +154,21 @@ delivery|queued|medium|digest|16
 
 - The local `web.log` interval after `2026-04-22 22:12:03` had no `sink delivered`, `sink send failed`, or `[dryrun sink]` lines, while `config.yaml` and `data/runtime/effective-config.yaml` both had `event_engine.dryrun=false`.
 
+- 2026-04-22T22:16:25Z: the pattern recurred in the next incremental window after `2026-04-22T18:12:34Z`. `data/events.sqlite3` stored one new `severity=high` MarketWatch stock-news event with no matching `delivery_log` row:
+
+```text
+created=2026-04-22 18:52:42 UTC
+occurred=2026-04-22 14:32:00 UTC
+source=fmp.stock_news:marketwatch.com
+severity=high
+id=news:https://www.marketwatch.com/story/spirit-airlines-may-get-a-bailout-whats-in-it-for-u-s-taxpayers-39099d91
+title=Spirit Airlines may get a bailout. What's in it for U.S. taxpayers?
+symbols=["FLYYQ"]
+delivery_rows=0
+```
+
+- The same incremental log window had no `sink delivered`, `sink send failed`, or `[dryrun sink]` lines. It did record `digest queued` rows and one `digest/sent/high` delivery row for a digest batch, but no `channel='sink' and status='sent'` row after `2026-04-22T18:12:34Z`.
+
 ## Severity
 
 sev2. The affected events are high severity and one is a safety recall while another is a guidance cut; if they should match the user, the current evidence trail makes the miss silent rather than auditable.

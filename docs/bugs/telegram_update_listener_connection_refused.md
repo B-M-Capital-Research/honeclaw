@@ -46,6 +46,7 @@
 ## 当前实现效果
 
 - 2026-04-22 14:03 CST 最新样本仍在 `data/runtime/logs/web.log:2167` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
+- 2026-04-23 04:03 CST 与 06:03 CST 最新窗口继续复现 `GetUpdates` 连接中断：`data/runtime/logs/web.log.2026-04-22:1196` 和 `:1326` 均记录 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。对应错误处理入口仍是 `bins/hone-telegram/src/handler.rs:220-230`，除 `TerminatedByOtherGetUpdates` 外只记录 error 并依赖 listener 后续重试，没有持久健康状态或用户侧告警。
 - 2026-04-22 12:03 CST 同一窗口还出现 `data/runtime/logs/web.log:2125` 的 `GetUpdates` 连接中断；`telegram.pid=75490` 和 heartbeat 均存活，说明这是监听请求层面的持续错误，而不是 Telegram sidecar 进程已退出。
 - 到 `2026-04-22 11:14` 最新 release app 窗口，Telegram Bot 再次启动后仍立即报 `Invalid bot token`；`11:32` 又出现启动记录，但没有新的 Telegram 会话落库。
 - 2026-04-22 07:22 CST 出现两条用户入站消息后，runner 在 `data/runtime/logs/web.log:1906-1917` 因 `hone-mcp binary not found near current executable` 失败并只发送 placeholder；这属于 Telegram 对话执行链路的新近失败证据，和 GetUpdates 拉取错误不同，但同样影响 Telegram 用户端可用性。

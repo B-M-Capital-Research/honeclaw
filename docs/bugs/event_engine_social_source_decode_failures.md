@@ -120,6 +120,17 @@ sev3. The failures are repeated and the social source produced no new events aft
 
 Latest update: still sev3. The decode failures continued, but `telegram.watcherguru` recovered enough to persist four events in the latest window; remaining impact is a recurring source-specific failure or logging attribution gap.
 
+Latest update 2026-04-22T22:16:25Z: still sev3. The next incremental window after `2026-04-22T18:12:34Z` logged four more generic event-source decode failures:
+
+```text
+data/runtime/logs/web.log.2026-04-22:1140:[2026-04-23 02:37:43.557] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+data/runtime/logs/web.log.2026-04-22:1183:[2026-04-23 03:37:43.618] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+data/runtime/logs/web.log.2026-04-22:1248:[2026-04-23 04:37:43.799] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+data/runtime/logs/web.log.2026-04-22:1310:[2026-04-23 05:37:43.624] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+```
+
+The same window still produced six `telegram.watcherguru` rows in `data/events.sqlite3`, so this remains a repeated source-specific decode/observability defect rather than a full social-source outage. The text log still omits the structured `poller` field from `crates/hone-event-engine/src/lib.rs:881-882`, so attribution remains unresolved.
+
 ## Date Observed
 
 2026-04-22T14:14:09Z

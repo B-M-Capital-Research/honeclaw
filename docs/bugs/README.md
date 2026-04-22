@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-23 06:06 CST
+最后更新：2026-04-23 06:16 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -40,8 +40,10 @@
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-23 04:31 `持仓重大事件心跳检测` 在 02:00-04:01 连续 `noop` 后又把 01:30 已送达的 ASTS/FCC/BlueBird 旧事件投递为 `completed + sent + delivered=1`；05:00 才再次依赖上一轮投递记忆转回 `noop` | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-23 01:00 `Monitor_Watchlist_11` 再次落成 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 19:30 `Monitor_Watchlist_11` 继续命中 `https://api.minimaxi.com/v1/chat/completions` 发送失败；20:00 同批主要漂移到 `JsonUnknownStatus`，传输吸震仍未稳定收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
-| Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-22 14:03 `GetUpdates` 仍连接中断；11:14 release app 启动后报 `Invalid bot token`，11:32 又有启动记录但无新会话落库；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
+| Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-23 04:03 与 06:03 `GetUpdates` 仍连接中断；listener 只记录 error 并重试，缺少持久健康状态；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Event-engine price poller 单次 FMP quote 抓取失败 | P3 | New | 2026-04-22 12:03 quote 批量请求连接被关闭；后续 poller 恢复且 `fmp.quote` 近 24h 有记录，暂按单 tick 丢失跟踪 | [event_engine_price_poller_transient_fetch_failure.md](./event_engine_price_poller_transient_fetch_failure.md) |
+| Event-engine high stock-news events lack sink delivery evidence | P2 | New | 2026-04-22 18:52 UTC 新增 `FLYYQ` high MarketWatch 事件仍无 `delivery_log` sink 行；同窗口也无 `sink delivered` 日志 | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |
+| Event-engine social/event-source pollers repeat decode failures | P3 | New | 2026-04-23 02:37-05:37 CST generic event-source poller 继续 4 次 JSON decode 失败；日志仍缺 poller 字段，`telegram.watcherguru` 同窗有部分恢复 | [event_engine_social_source_decode_failures.md](./event_engine_social_source_decode_failures.md) |
 
 ## 已修复 / 已关闭
 
