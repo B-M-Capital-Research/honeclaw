@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-22 22:02 CST
+最后更新：2026-04-22 23:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -32,7 +32,7 @@
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-22 21:03 `OWALERT_PreMarket` 再次 `completed + sent + delivered=1`，assistant final 仍以 `Context compacted` 开头；summary 角色已有收敛，但压缩后可见输出净化仍未闭环 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-22 21:00 `全天原油价格3小时播报` 再次 `completed + sent + delivered=1`，继续把 OPEC+ 延长减产、区域冲突和 IEA 2026 供给过剩预测作为确定性驱动送达；市场播报缺少来源质量与置信度门禁 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
-| Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-22 18:45 用户要求预测 TSLA Q1 业绩，系统调用 8 次工具后仅把 93 字“下一步我会补交付量和一致预期”过程句记为 `success=true` 并发送；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
+| Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-22 22:43 用户要求 LRCX 基本面/护城河/财务/估值分析，系统在 `web_search` 刚启动后仅把 77 字“本地没有画像，我会按新研究处理”过程句记为 `success=true` 并发送；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-22 22:00 heartbeat 仍全部 `noop + skipped_noop`；`CAI破位预警` 与 `Monitor_Watchlist_11` 继续出现 `JsonEmptyStatus`，多任务日志仍为 `starts_with_json=false`，继续依赖 `<think>...尾部 JSON` 提取 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | ORCL heartbeat 将盘中振幅误判为单日涨跌幅并发送错误触发提醒 | P2 | New | 2026-04-22 03:00 `ORCL 大事件监控` 内部先判断当前涨幅 `+3.55%` 未超过 `5%`，最终却按高低点振幅约 `5.3%` 落成 `JsonTriggered + sent`，已向用户投递口径冲突的触发提醒 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
