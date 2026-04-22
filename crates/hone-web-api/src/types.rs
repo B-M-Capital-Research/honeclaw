@@ -206,6 +206,7 @@ pub struct PortfolioHoldingRequest {
     #[serde(alias = "strategy")]
     pub strategy_notes: Option<String>,
     pub notes: Option<String>,
+    pub tracking_only: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -214,6 +215,7 @@ pub struct PortfolioSummary {
     pub user_id: String,
     pub channel_scope: Option<String>,
     pub holdings_count: usize,
+    pub watchlist_count: usize,
     pub total_shares: f64,
     pub updated_at: Option<String>,
 }

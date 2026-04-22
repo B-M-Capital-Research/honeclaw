@@ -401,6 +401,7 @@ export type HoldingInfo = {
   holding_horizon?: "long_term" | "short_term";
   strategy_notes?: string;
   notes?: string;
+  tracking_only?: boolean;
 };
 
 export type PortfolioInfo = {
@@ -419,6 +420,7 @@ export type PortfolioSummary = {
   user_id: string;
   channel_scope?: string;
   holdings_count: number;
+  watchlist_count?: number;
   total_shares: number;
   updated_at?: string;
 };
@@ -441,6 +443,7 @@ export type HoldingUpsertInput = {
   holding_horizon?: "long_term" | "short_term" | "";
   strategy_notes?: string;
   notes?: string;
+  tracking_only?: boolean;
 };
 
 // ── 日志 ─────────────────────────────────────────────────────────────────────

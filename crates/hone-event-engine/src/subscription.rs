@@ -458,6 +458,7 @@ mod tests {
                 holding_horizon: None,
                 strategy_notes: None,
                 notes: None,
+                tracking_only: None,
             }],
             updated_at: "2026-04-21".into(),
         };
@@ -481,6 +482,7 @@ mod tests {
                 holding_horizon: None,
                 strategy_notes: None,
                 notes: None,
+                tracking_only: None,
             }],
             updated_at: "2026-04-21".into(),
         };
@@ -557,6 +559,7 @@ mod tests {
                 holding_horizon: None,
                 strategy_notes: None,
                 notes: None,
+                tracking_only: None,
             }],
             updated_at: "2026-04-21".into(),
         };
@@ -612,6 +615,7 @@ mod tests {
                 holding_horizon: None,
                 strategy_notes: None,
                 notes: None,
+                tracking_only: None,
             }],
             updated_at: "2026-04-21".into(),
         };
@@ -629,5 +633,80 @@ mod tests {
 
         let reg = registry_from_portfolios(&storage);
         assert_eq!(reg.len(), 1, "空持仓不应产生订阅");
+    }
+
+    /// 不变量：仅关注（tracking_only=true）的 symbol 也必须进入 watch_pool 与 resolve。
+    /// 锁死"关注与持仓同级推送"的契约——未来若有人误给 registry_from_portfolios
+    /// 加上 `!h.tracking_only.unwrap_or(false)` 过滤,这条测试会立即失败。
+    #[test]
+    fn registry_from_portfolios_includes_tracking_only_symbols() {
+        use hone_memory::PortfolioStorage;
+        use hone_memory::portfolio::{Holding, Portfolio};
+        let dir = tempfile::tempdir().unwrap();
+        let storage = PortfolioStorage::new(dir.path());
+
+        let a = actor("imessage", "u_watch");
+        storage
+            .upsert_watch(&a, "NVDA", "stock")
+            .expect("upsert watch");
+
+        let reg = registry_from_portfolios(&storage);
+        assert_eq!(reg.len(), 1, "仅关注的 actor 也应注册订阅");
+        assert_eq!(reg.watch_pool(), vec!["NVDA"]);
+
+        let hits = reg.resolve(&ev(
+            "e-watchlist",
+            "NVDA",
+            Severity::High,
+            EventKind::NewsCritical,
+        ));
+        assert_eq!(hits.len(), 1, "关注标的应命中推送路由");
+        assert_eq!(hits[0].0.user_id, "u_watch");
+
+        // 验证即使与真实持仓混用,关注项仍会贡献 symbol
+        let a2 = actor("telegram", "u_mixed");
+        let p_mixed = Portfolio {
+            actor: Some(a2.clone()),
+            user_id: "u_mixed".into(),
+            holdings: vec![
+                Holding {
+                    symbol: "AAPL".into(),
+                    asset_type: "stock".into(),
+                    shares: 10.0,
+                    avg_cost: 180.0,
+                    underlying: None,
+                    option_type: None,
+                    strike_price: None,
+                    expiration_date: None,
+                    contract_multiplier: None,
+                    holding_horizon: None,
+                    strategy_notes: None,
+                    notes: None,
+                    tracking_only: None,
+                },
+                Holding {
+                    symbol: "TSLA".into(),
+                    asset_type: "stock".into(),
+                    shares: 0.0,
+                    avg_cost: 0.0,
+                    underlying: None,
+                    option_type: None,
+                    strike_price: None,
+                    expiration_date: None,
+                    contract_multiplier: None,
+                    holding_horizon: None,
+                    strategy_notes: None,
+                    notes: None,
+                    tracking_only: Some(true),
+                },
+            ],
+            updated_at: "2026-04-22".into(),
+        };
+        storage.save(&a2, &p_mixed).unwrap();
+
+        let reg = registry_from_portfolios(&storage);
+        let mut pool = reg.watch_pool();
+        pool.sort();
+        assert_eq!(pool, vec!["AAPL", "NVDA", "TSLA"]);
     }
 }

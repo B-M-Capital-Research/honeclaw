@@ -23,6 +23,10 @@ function createPortfolioState() {
 
     const currentActor = createMemo(() => parseActorKey(state.currentActorKey))
 
+    const allHoldings = createMemo(() => portfolioData()?.portfolio?.holdings ?? [])
+    const holdingsList = createMemo(() => allHoldings().filter(h => !h.tracking_only))
+    const watchlist = createMemo(() => allHoldings().filter(h => !!h.tracking_only))
+
     const [portfolioData, { refetch }] = createResource(
         () => (backend.state.connected && backend.hasCapability("portfolio") ? currentActor() : undefined),
         (actor) => actor ? getPortfolio(actor) : undefined
@@ -64,6 +68,7 @@ function createPortfolioState() {
                     holding_horizon: existing.holding_horizon || "",
                     strategy_notes: existing.strategy_notes || "",
                     notes: existing.notes || "",
+                    tracking_only: !!existing.tracking_only,
                 })
             }
         } else {
@@ -75,6 +80,7 @@ function createPortfolioState() {
                 holding_horizon: "",
                 strategy_notes: "",
                 notes: "",
+                tracking_only: false,
             })
         }
     }
@@ -119,6 +125,8 @@ function createPortfolioState() {
         state,
         currentActor,
         portfolioData,
+        holdingsList,
+        watchlist,
         refetch,
         actorsList,
         refetchActors,

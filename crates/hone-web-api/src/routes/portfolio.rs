@@ -79,6 +79,11 @@ pub(crate) async fn handle_create_holding(
             holding_horizon: normalize_optional_holding_horizon(req.holding_horizon),
             strategy_notes: normalize_optional_string(req.strategy_notes),
             notes: normalize_optional_string(req.notes),
+            tracking_only: if req.tracking_only.unwrap_or(false) {
+                Some(true)
+            } else {
+                None
+            },
         },
     ) {
         Ok(portfolio) => (
@@ -143,6 +148,11 @@ pub(crate) async fn handle_update_holding(
         .or(existing_holding.contract_multiplier);
     let holding_horizon = req.holding_horizon.or(existing_holding.holding_horizon);
     let strategy_notes = req.strategy_notes.or(existing_holding.strategy_notes);
+    let tracking_only = match req.tracking_only {
+        Some(true) => Some(true),
+        Some(false) => None,
+        None => existing_holding.tracking_only,
+    };
 
     match storage.upsert_holding(
         &actor,
@@ -159,6 +169,7 @@ pub(crate) async fn handle_update_holding(
             holding_horizon: normalize_optional_holding_horizon(holding_horizon),
             strategy_notes: normalize_optional_string(strategy_notes),
             notes: normalize_optional_string(notes),
+            tracking_only,
         },
     ) {
         Ok(portfolio) => Json(json!({
@@ -198,21 +209,45 @@ fn portfolio_storage(state: &AppState) -> PortfolioStorage {
     PortfolioStorage::new(&state.core.config.storage.portfolio_dir)
 }
 
+fn is_tracking_only(holding: &Holding) -> bool {
+    holding.tracking_only.unwrap_or(false)
+}
+
 fn portfolio_summary(actor: &ActorIdentity, portfolio: Option<&Portfolio>) -> PortfolioSummary {
     match portfolio {
-        Some(portfolio) => PortfolioSummary {
-            channel: actor.channel.clone(),
-            user_id: actor.user_id.clone(),
-            channel_scope: actor.channel_scope.clone(),
-            holdings_count: portfolio.holdings.len(),
-            total_shares: portfolio.holdings.iter().map(|h| h.shares).sum(),
-            updated_at: Some(portfolio.updated_at.clone()),
-        },
+        Some(portfolio) => {
+            let holdings_count = portfolio
+                .holdings
+                .iter()
+                .filter(|h| !is_tracking_only(h))
+                .count();
+            let watchlist_count = portfolio
+                .holdings
+                .iter()
+                .filter(|h| is_tracking_only(h))
+                .count();
+            let total_shares = portfolio
+                .holdings
+                .iter()
+                .filter(|h| !is_tracking_only(h))
+                .map(|h| h.shares)
+                .sum();
+            PortfolioSummary {
+                channel: actor.channel.clone(),
+                user_id: actor.user_id.clone(),
+                channel_scope: actor.channel_scope.clone(),
+                holdings_count,
+                watchlist_count,
+                total_shares,
+                updated_at: Some(portfolio.updated_at.clone()),
+            }
+        }
         None => PortfolioSummary {
             channel: actor.channel.clone(),
             user_id: actor.user_id.clone(),
             channel_scope: actor.channel_scope.clone(),
             holdings_count: 0,
+            watchlist_count: 0,
             total_shares: 0.0,
             updated_at: None,
         },
@@ -282,6 +317,7 @@ mod tests {
             holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
             strategy_notes: Some("期权指派后遗留成本".to_string()),
             notes: Some("existing".to_string()),
+            tracking_only: None,
         };
 
         let req = PortfolioHoldingRequest {
@@ -302,6 +338,7 @@ mod tests {
             holding_horizon: None,
             strategy_notes: None,
             notes: None,
+            tracking_only: None,
         };
 
         let shares = req.quantity.or(req.shares).unwrap_or(existing.shares);
@@ -319,5 +356,71 @@ mod tests {
             normalize_optional_string(strategy_notes).as_deref(),
             Some("期权指派后遗留成本")
         );
+    }
+
+    #[test]
+    fn tracking_only_excluded_from_total_shares() {
+        let actor = ActorIdentity {
+            channel: "telegram".to_string(),
+            user_id: "bob".to_string(),
+            channel_scope: None,
+        };
+        let portfolio = Portfolio {
+            actor: Some(actor.clone()),
+            user_id: actor.user_id.clone(),
+            updated_at: "2026-04-22T00:00:00Z".to_string(),
+            holdings: vec![
+                Holding {
+                    symbol: "AAPL".to_string(),
+                    asset_type: "stock".to_string(),
+                    shares: 100.0,
+                    avg_cost: 150.0,
+                    underlying: None,
+                    option_type: None,
+                    strike_price: None,
+                    expiration_date: None,
+                    contract_multiplier: None,
+                    holding_horizon: None,
+                    strategy_notes: None,
+                    notes: None,
+                    tracking_only: None,
+                },
+                Holding {
+                    symbol: "NVDA".to_string(),
+                    asset_type: "stock".to_string(),
+                    shares: 0.0,
+                    avg_cost: 0.0,
+                    underlying: None,
+                    option_type: None,
+                    strike_price: None,
+                    expiration_date: None,
+                    contract_multiplier: None,
+                    holding_horizon: None,
+                    strategy_notes: None,
+                    notes: None,
+                    tracking_only: Some(true),
+                },
+                Holding {
+                    symbol: "TSLA".to_string(),
+                    asset_type: "stock".to_string(),
+                    shares: 50.0,
+                    avg_cost: 250.0,
+                    underlying: None,
+                    option_type: None,
+                    strike_price: None,
+                    expiration_date: None,
+                    contract_multiplier: None,
+                    holding_horizon: None,
+                    strategy_notes: None,
+                    notes: None,
+                    tracking_only: None,
+                },
+            ],
+        };
+
+        let summary = portfolio_summary(&actor, Some(&portfolio));
+        assert_eq!(summary.total_shares, 150.0);
+        assert_eq!(summary.holdings_count, 2);
+        assert_eq!(summary.watchlist_count, 1);
     }
 }

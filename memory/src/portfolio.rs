@@ -55,10 +55,19 @@ pub struct Holding {
     pub strategy_notes: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    /// 关注标的标记：`Some(true)` → 仅关注(无持仓,shares/avg_cost 约定为 0)；
+    /// `None` / `Some(false)` → 真实持仓。
+    /// 下游若要按持仓真实市值/股数聚合,应显式 `filter(|h| !h.tracking_only.unwrap_or(false))`。
+    #[serde(default, skip_serializing_if = "is_false_or_none")]
+    pub tracking_only: Option<bool>,
 }
 
 fn default_asset_type() -> String {
     "stock".to_string()
+}
+
+fn is_false_or_none(v: &Option<bool>) -> bool {
+    !matches!(v, Some(true))
 }
 
 pub fn normalize_holding_horizon(raw: &str) -> Option<String> {
@@ -237,6 +246,82 @@ impl PortfolioStorage {
         results
     }
 
+    /// 加入关注列表。symbol 已存在时保持现有记录不变,返回完整 Portfolio。
+    pub fn upsert_watch(
+        &self,
+        actor: &ActorIdentity,
+        symbol: &str,
+        asset_type: &str,
+    ) -> hone_core::HoneResult<Portfolio> {
+        let mut portfolio = self.load(actor)?.unwrap_or_else(|| Portfolio {
+            actor: Some(actor.clone()),
+            user_id: actor.user_id.clone(),
+            holdings: Vec::new(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        });
+
+        if !portfolio
+            .holdings
+            .iter()
+            .any(|h| h.symbol == symbol && h.asset_type == asset_type)
+        {
+            portfolio.holdings.push(Holding {
+                symbol: symbol.to_string(),
+                asset_type: asset_type.to_string(),
+                shares: 0.0,
+                avg_cost: 0.0,
+                underlying: None,
+                option_type: None,
+                strike_price: None,
+                expiration_date: None,
+                contract_multiplier: None,
+                holding_horizon: None,
+                strategy_notes: None,
+                notes: None,
+                tracking_only: Some(true),
+            });
+            portfolio.updated_at = chrono::Utc::now().to_rfc3339();
+            self.save(actor, &portfolio)?;
+        }
+
+        Ok(portfolio)
+    }
+
+    /// 把关注项升级为持仓：查到对应行后清 `tracking_only`,写入 shares / avg_cost。
+    /// 返回 `Ok(Some(portfolio, was_watchlist))`:
+    /// - `was_watchlist=true` 表示这条确实来自关注列表,调用方可据此向用户汇报"已自动转为持仓"；
+    /// - `was_watchlist=false` 表示本就是真实持仓,只是做了一次正常 upsert；
+    /// - `Ok(None)` 表示该 actor 尚无任何持仓/关注记录,调用方应当走普通 upsert 路径。
+    pub fn promote_to_holding(
+        &self,
+        actor: &ActorIdentity,
+        symbol: &str,
+        asset_type: &str,
+        shares: f64,
+        avg_cost: f64,
+    ) -> hone_core::HoneResult<Option<(Portfolio, bool)>> {
+        let Some(mut portfolio) = self.load(actor)? else {
+            return Ok(None);
+        };
+
+        let Some(existing) = portfolio
+            .holdings
+            .iter_mut()
+            .find(|h| h.symbol == symbol && h.asset_type == asset_type)
+        else {
+            return Ok(None);
+        };
+
+        let was_watchlist = existing.tracking_only.unwrap_or(false);
+        existing.shares = shares;
+        existing.avg_cost = avg_cost;
+        existing.tracking_only = None;
+
+        portfolio.updated_at = chrono::Utc::now().to_rfc3339();
+        self.save(actor, &portfolio)?;
+        Ok(Some((portfolio, was_watchlist)))
+    }
+
     pub fn remove_holding(
         &self,
         actor: &ActorIdentity,
@@ -304,6 +389,7 @@ mod tests {
                 holding_horizon: Some(HOLDING_HORIZON_LONG_TERM.to_string()),
                 strategy_notes: Some("核心仓位".to_string()),
                 notes: Some("long term".to_string()),
+                tracking_only: None,
             }],
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
@@ -348,6 +434,7 @@ mod tests {
                     holding_horizon: Some(HOLDING_HORIZON_LONG_TERM.to_string()),
                     strategy_notes: Some("逢跌加仓".to_string()),
                     notes: Some("long".to_string()),
+                    tracking_only: None,
                 },
             )
             .expect("upsert add");
@@ -369,6 +456,7 @@ mod tests {
                     holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
                     strategy_notes: Some("事件驱动".to_string()),
                     notes: None,
+                    tracking_only: None,
                 },
             )
             .expect("upsert update");
@@ -414,6 +502,7 @@ mod tests {
                     holding_horizon: None,
                     strategy_notes: None,
                     notes: None,
+                    tracking_only: None,
                 },
             )
             .expect("left save");
@@ -433,6 +522,7 @@ mod tests {
                     holding_horizon: None,
                     strategy_notes: None,
                     notes: None,
+                    tracking_only: None,
                 },
             )
             .expect("right save");
@@ -472,6 +562,7 @@ mod tests {
                     holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
                     strategy_notes: Some("卖波动率".to_string()),
                     notes: Some("swing trade".to_string()),
+                    tracking_only: None,
                 },
             )
             .expect("upsert option");
@@ -517,6 +608,7 @@ mod tests {
                     holding_horizon: Some(HOLDING_HORIZON_SHORT_TERM.to_string()),
                     strategy_notes: Some("现金担保卖沽，权利金净流入".to_string()),
                     notes: Some("credit position".to_string()),
+                    tracking_only: None,
                 },
             )
             .expect("upsert negative avg cost");
@@ -540,5 +632,74 @@ mod tests {
         );
         assert_eq!(normalize_holding_horizon(""), None);
         assert_eq!(normalize_holding_horizon("event-driven"), None);
+    }
+
+    #[test]
+    fn holding_tracking_only_roundtrip() {
+        let dir = make_temp_dir("hone_portfolio_storage_watchlist");
+        let storage = PortfolioStorage::new(&dir);
+        let actor = actor("imessage", "watcher", None);
+
+        let portfolio = storage
+            .upsert_watch(&actor, "NVDA", "stock")
+            .expect("upsert watch");
+        assert_eq!(portfolio.holdings.len(), 1);
+        assert_eq!(portfolio.holdings[0].symbol, "NVDA");
+        assert_eq!(portfolio.holdings[0].shares, 0.0);
+        assert_eq!(portfolio.holdings[0].avg_cost, 0.0);
+        assert_eq!(portfolio.holdings[0].tracking_only, Some(true));
+
+        let loaded = storage.load(&actor).expect("load").expect("exists");
+        assert_eq!(loaded.holdings[0].tracking_only, Some(true));
+
+        let again = storage
+            .upsert_watch(&actor, "NVDA", "stock")
+            .expect("idempotent watch");
+        assert_eq!(again.holdings.len(), 1);
+    }
+
+    #[test]
+    fn legacy_json_without_tracking_only_deserializes_as_none() {
+        let legacy = r#"{
+            "user_id": "legacy",
+            "holdings": [
+                {"symbol":"AAPL","asset_type":"stock","shares":10,"avg_cost":180}
+            ],
+            "updated_at": "2026-01-01T00:00:00Z"
+        }"#;
+        let portfolio: Portfolio = serde_json::from_str(legacy).expect("parse legacy");
+        assert_eq!(portfolio.holdings.len(), 1);
+        assert_eq!(portfolio.holdings[0].tracking_only, None);
+
+        let serialized = serde_json::to_string(&portfolio).expect("re-serialize");
+        assert!(!serialized.contains("tracking_only"));
+    }
+
+    #[test]
+    fn upsert_watch_and_promote() {
+        let dir = make_temp_dir("hone_portfolio_storage_promote");
+        let storage = PortfolioStorage::new(&dir);
+        let actor = actor("telegram", "promoter", None);
+
+        storage
+            .upsert_watch(&actor, "TSLA", "stock")
+            .expect("watch");
+
+        let (portfolio, was_watchlist) = storage
+            .promote_to_holding(&actor, "TSLA", "stock", 50.0, 120.0)
+            .expect("promote")
+            .expect("record exists");
+        assert!(was_watchlist);
+        assert_eq!(portfolio.holdings.len(), 1);
+        assert_eq!(portfolio.holdings[0].shares, 50.0);
+        assert_eq!(portfolio.holdings[0].avg_cost, 120.0);
+        assert_eq!(portfolio.holdings[0].tracking_only, None);
+
+        let promote_again = storage
+            .promote_to_holding(&actor, "TSLA", "stock", 60.0, 115.0)
+            .expect("second promote")
+            .expect("record exists");
+        assert!(!promote_again.1);
+        assert_eq!(promote_again.0.holdings[0].shares, 60.0);
     }
 }

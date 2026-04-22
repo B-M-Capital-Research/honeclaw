@@ -31,7 +31,7 @@ impl Tool for PortfolioTool {
     }
 
     fn description(&self) -> &str {
-        "管理投资组合持仓。支持股票和期权。支持操作：view（查看持仓）、add（添加持仓）、remove（删除持仓）、update（更新持仓）。"
+        "管理投资组合持仓与关注列表。支持股票和期权。支持操作：view（查看持仓与关注）、add（新增持仓,若该 ticker 原为关注会自动转持仓）、update（更新持仓）、remove（删除,持仓/关注通用）、watch（加入关注,只需 ticker）、unwatch（取消关注,不会误删真实持仓）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -46,6 +46,8 @@ impl Tool for PortfolioTool {
                     "add".into(),
                     "remove".into(),
                     "update".into(),
+                    "watch".into(),
+                    "unwatch".into(),
                 ]),
                 items: None,
             },
@@ -169,8 +171,30 @@ impl Tool for PortfolioTool {
             "view" => {
                 let portfolio = storage.load(&self.actor)?;
                 let data = match portfolio {
-                    Some(p) => serde_json::to_value(&p).unwrap_or_default(),
-                    None => serde_json::json!({"holdings": [], "message": "暂无持仓"}),
+                    Some(p) => {
+                        let mut holdings = Vec::new();
+                        let mut watchlist = Vec::new();
+                        for h in &p.holdings {
+                            let enriched = enrich_holding(h);
+                            if h.tracking_only.unwrap_or(false) {
+                                watchlist.push(enriched);
+                            } else {
+                                holdings.push(enriched);
+                            }
+                        }
+                        serde_json::json!({
+                            "actor": p.actor,
+                            "user_id": p.user_id,
+                            "holdings": holdings,
+                            "watchlist": watchlist,
+                            "updated_at": p.updated_at,
+                        })
+                    }
+                    None => serde_json::json!({
+                        "holdings": [],
+                        "watchlist": [],
+                        "message": "暂无持仓"
+                    }),
                 };
                 Ok(serde_json::json!({
                     "action": "view",
@@ -190,20 +214,26 @@ impl Tool for PortfolioTool {
                 let mut processed = Vec::with_capacity(input_holdings.len());
 
                 for holding in input_holdings {
-                    if let Some(existing) = portfolio
-                        .holdings
-                        .iter_mut()
-                        .find(|h| h.symbol == holding.symbol && h.asset_type == holding.asset_type)
-                    {
-                        *existing = holding.clone();
-                    } else {
-                        portfolio.holdings.push(holding.clone());
-                    }
+                    let promoted_from_watchlist =
+                        if let Some(existing) = portfolio.holdings.iter_mut().find(|h| {
+                            h.symbol == holding.symbol && h.asset_type == holding.asset_type
+                        }) {
+                            let was_watchlist = existing.tracking_only.unwrap_or(false);
+                            *existing = Holding {
+                                tracking_only: None,
+                                ..holding.clone()
+                            };
+                            was_watchlist
+                        } else {
+                            portfolio.holdings.push(holding.clone());
+                            false
+                        };
                     processed.push(serde_json::json!({
                         "ticker": holding.symbol,
                         "asset_type": holding.asset_type,
                         "holding_horizon": holding.holding_horizon,
-                        "strategy_notes": holding.strategy_notes
+                        "strategy_notes": holding.strategy_notes,
+                        "promoted_from_watchlist": promoted_from_watchlist,
                     }));
                 }
                 portfolio.updated_at = chrono::Utc::now().to_rfc3339();
@@ -254,6 +284,141 @@ impl Tool for PortfolioTool {
                 {
                     response["ticker"] = first["ticker"].clone();
                     response["asset_type"] = first["asset_type"].clone();
+                }
+                Ok(response)
+            }
+            "watch" => {
+                let input_holdings = parse_holdings_from_args(&args)?;
+
+                let mut portfolio = storage.load(&self.actor)?.unwrap_or_else(|| Portfolio {
+                    actor: Some(self.actor.clone()),
+                    user_id: self.actor.user_id.clone(),
+                    holdings: Vec::new(),
+                    updated_at: chrono::Utc::now().to_rfc3339(),
+                });
+
+                let mut processed = Vec::with_capacity(input_holdings.len());
+                for mut holding in input_holdings {
+                    holding.shares = 0.0;
+                    holding.avg_cost = 0.0;
+                    holding.tracking_only = Some(true);
+
+                    let result =
+                        if let Some(existing) = portfolio.holdings.iter().find(|h| {
+                            h.symbol == holding.symbol && h.asset_type == holding.asset_type
+                        }) {
+                            if existing.tracking_only.unwrap_or(false) {
+                                "already_watching"
+                            } else {
+                                "already_holding"
+                            }
+                        } else {
+                            portfolio.holdings.push(holding.clone());
+                            "watching"
+                        };
+
+                    let kind = if result == "already_holding" {
+                        "holding"
+                    } else {
+                        "watchlist"
+                    };
+                    processed.push(serde_json::json!({
+                        "ticker": holding.symbol,
+                        "asset_type": holding.asset_type,
+                        "kind": kind,
+                        "result": result,
+                    }));
+                }
+
+                portfolio.updated_at = chrono::Utc::now().to_rfc3339();
+                storage.save(&self.actor, &portfolio)?;
+
+                let mut response = serde_json::json!({
+                    "action": "watch",
+                    "count": processed.len(),
+                    "holdings": processed,
+                    "success": true
+                });
+                if let Some(first) = response["holdings"]
+                    .as_array()
+                    .and_then(|items| items.first())
+                    .cloned()
+                {
+                    response["ticker"] = first["ticker"].clone();
+                    response["asset_type"] = first["asset_type"].clone();
+                    response["kind"] = first["kind"].clone();
+                    response["result"] = first["result"].clone();
+                    if first["result"] == "already_holding" {
+                        response["message"] = serde_json::json!("该标的已在持仓中,无需额外关注");
+                    }
+                }
+                Ok(response)
+            }
+            "unwatch" => {
+                let removals = parse_removals_from_args(&args)?;
+
+                let mut processed = Vec::with_capacity(removals.len());
+                if let Some(mut portfolio) = storage.load(&self.actor)? {
+                    for removal in &removals {
+                        let before = portfolio.holdings.len();
+                        portfolio.holdings.retain(|h| {
+                            !(h.symbol == removal.symbol
+                                && h.asset_type == removal.asset_type
+                                && h.tracking_only.unwrap_or(false))
+                        });
+                        let removed = portfolio.holdings.len() < before;
+                        let reason = if removed {
+                            "unwatched"
+                        } else if portfolio.holdings.iter().any(|h| {
+                            h.symbol == removal.symbol && h.asset_type == removal.asset_type
+                        }) {
+                            "not_watchlist"
+                        } else {
+                            "not_found"
+                        };
+                        processed.push(serde_json::json!({
+                            "ticker": removal.symbol,
+                            "asset_type": removal.asset_type,
+                            "result": reason,
+                            "success": removed,
+                        }));
+                    }
+                    portfolio.updated_at = chrono::Utc::now().to_rfc3339();
+                    storage.save(&self.actor, &portfolio)?;
+                } else {
+                    for removal in &removals {
+                        processed.push(serde_json::json!({
+                            "ticker": removal.symbol,
+                            "asset_type": removal.asset_type,
+                            "result": "not_found",
+                            "success": false,
+                        }));
+                    }
+                }
+
+                let overall_success = processed
+                    .iter()
+                    .all(|v| v["success"].as_bool().unwrap_or(false));
+                let mut response = serde_json::json!({
+                    "action": "unwatch",
+                    "count": processed.len(),
+                    "holdings": processed,
+                    "success": overall_success
+                });
+                if let Some(first) = response["holdings"]
+                    .as_array()
+                    .and_then(|items| items.first())
+                    .cloned()
+                {
+                    response["ticker"] = first["ticker"].clone();
+                    response["asset_type"] = first["asset_type"].clone();
+                    response["result"] = first["result"].clone();
+                    if first["result"] == "not_watchlist" {
+                        response["message"] =
+                            serde_json::json!("未找到关注记录;若要删除持仓,请使用 action=remove");
+                    } else if first["result"] == "not_found" {
+                        response["message"] = serde_json::json!("未找到该标的");
+                    }
                 }
                 Ok(response)
             }
@@ -360,6 +525,7 @@ fn parse_holdings_from_args(args: &Value) -> hone_core::HoneResult<Vec<Holding>>
             holding_horizon: input.holding_horizon,
             strategy_notes: input.strategy_notes,
             notes: input.notes,
+            tracking_only: None,
         })
         .collect())
 }
@@ -489,6 +655,19 @@ fn option_metadata(args: &Value, asset_type: &str) -> hone_core::HoneResult<Opti
             .and_then(|v| v.as_f64())
             .or(Some(100.0)),
     })
+}
+
+fn enrich_holding(h: &Holding) -> Value {
+    let mut v = serde_json::to_value(h).unwrap_or(serde_json::json!({}));
+    let kind = if h.tracking_only.unwrap_or(false) {
+        "watchlist"
+    } else {
+        "holding"
+    };
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert("kind".to_string(), serde_json::json!(kind));
+    }
+    v
 }
 
 fn trim_trailing_zero(value: f64) -> String {
@@ -804,5 +983,219 @@ mod tests {
         assert_eq!(holdings[0]["avg_cost"], -2.35);
         assert_eq!(holdings[0]["holding_horizon"], HOLDING_HORIZON_SHORT_TERM);
         assert_eq!(holdings[0]["strategy_notes"], "现金担保卖沽");
+    }
+
+    #[tokio::test]
+    async fn portfolio_watch_and_unwatch_flow() {
+        let data_dir = make_temp_dir("hone_portfolio_tool_watch");
+        let actor = ActorIdentity::new("imessage", "u_watch", None::<String>).expect("actor");
+        let tool = PortfolioTool::new(&data_dir, actor);
+
+        let watch_resp = tool
+            .execute(serde_json::json!({
+                "action":"watch",
+                "ticker":"NVDA"
+            }))
+            .await
+            .expect("watch");
+        assert_eq!(watch_resp["success"], true);
+        assert_eq!(watch_resp["ticker"], "NVDA");
+        assert_eq!(watch_resp["kind"], "watchlist");
+        assert_eq!(watch_resp["result"], "watching");
+
+        let view_resp = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view");
+        let watchlist = view_resp["portfolio"]["watchlist"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let holdings = view_resp["portfolio"]["holdings"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(watchlist.len(), 1);
+        assert!(holdings.is_empty());
+        assert_eq!(watchlist[0]["symbol"], "NVDA");
+        assert_eq!(watchlist[0]["kind"], "watchlist");
+        assert_eq!(watchlist[0]["shares"], 0.0);
+
+        let watch_again = tool
+            .execute(serde_json::json!({"action":"watch","ticker":"NVDA"}))
+            .await
+            .expect("watch again");
+        assert_eq!(watch_again["result"], "already_watching");
+
+        let unwatch_resp = tool
+            .execute(serde_json::json!({"action":"unwatch","ticker":"NVDA"}))
+            .await
+            .expect("unwatch");
+        assert_eq!(unwatch_resp["success"], true);
+        assert_eq!(unwatch_resp["result"], "unwatched");
+
+        let view_after = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view after unwatch");
+        let watchlist = view_after["portfolio"]["watchlist"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(watchlist.is_empty());
+    }
+
+    #[tokio::test]
+    async fn portfolio_watch_existing_holding_is_noop() {
+        let data_dir = make_temp_dir("hone_portfolio_tool_watch_holding");
+        let actor = ActorIdentity::new("imessage", "u_watch_hold", None::<String>).expect("actor");
+        let tool = PortfolioTool::new(&data_dir, actor);
+
+        tool.execute(serde_json::json!({
+            "action":"add",
+            "ticker":"AAPL",
+            "quantity":10.0,
+            "cost_basis":180.0
+        }))
+        .await
+        .expect("seed holding");
+
+        let watch_resp = tool
+            .execute(serde_json::json!({
+                "action":"watch",
+                "ticker":"AAPL"
+            }))
+            .await
+            .expect("watch existing");
+        assert_eq!(watch_resp["result"], "already_holding");
+        assert_eq!(watch_resp["kind"], "holding");
+        assert!(
+            watch_resp["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("已在持仓中")
+        );
+
+        let view_resp = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view after no-op watch");
+        let holdings = view_resp["portfolio"]["holdings"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(holdings.len(), 1);
+        assert_eq!(holdings[0]["shares"], 10.0);
+        assert_eq!(holdings[0]["avg_cost"], 180.0);
+        assert_eq!(holdings[0]["kind"], "holding");
+
+        let unwatch_resp = tool
+            .execute(serde_json::json!({"action":"unwatch","ticker":"AAPL"}))
+            .await
+            .expect("unwatch real holding");
+        assert_eq!(unwatch_resp["success"], false);
+        assert_eq!(unwatch_resp["result"], "not_watchlist");
+
+        let view_after = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view after failed unwatch");
+        assert_eq!(
+            view_after["portfolio"]["holdings"]
+                .as_array()
+                .map(|h| h.len())
+                .unwrap_or(0),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn portfolio_add_promotes_watchlist() {
+        let data_dir = make_temp_dir("hone_portfolio_tool_promote");
+        let actor = ActorIdentity::new("telegram", "u_promote", None::<String>).expect("actor");
+        let tool = PortfolioTool::new(&data_dir, actor);
+
+        tool.execute(serde_json::json!({"action":"watch","ticker":"TSLA"}))
+            .await
+            .expect("watch");
+
+        let add_resp = tool
+            .execute(serde_json::json!({
+                "action":"add",
+                "ticker":"TSLA",
+                "quantity":50.0,
+                "cost_basis":120.0
+            }))
+            .await
+            .expect("promote");
+        assert_eq!(add_resp["success"], true);
+        let first = add_resp["holdings"]
+            .as_array()
+            .and_then(|items| items.first())
+            .cloned()
+            .expect("promoted entry");
+        assert_eq!(first["promoted_from_watchlist"], true);
+
+        let view_resp = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view");
+        let holdings = view_resp["portfolio"]["holdings"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let watchlist = view_resp["portfolio"]["watchlist"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(holdings.len(), 1);
+        assert!(watchlist.is_empty());
+        assert_eq!(holdings[0]["shares"], 50.0);
+        assert_eq!(holdings[0]["avg_cost"], 120.0);
+        assert_eq!(holdings[0]["kind"], "holding");
+    }
+
+    #[tokio::test]
+    async fn portfolio_remove_deletes_either_watchlist_or_holding() {
+        let data_dir = make_temp_dir("hone_portfolio_tool_remove_mixed");
+        let actor =
+            ActorIdentity::new("imessage", "u_remove_mixed", None::<String>).expect("actor");
+        let tool = PortfolioTool::new(&data_dir, actor);
+
+        tool.execute(serde_json::json!({"action":"watch","ticker":"NVDA"}))
+            .await
+            .expect("watch");
+        tool.execute(serde_json::json!({
+            "action":"add",
+            "ticker":"AAPL",
+            "quantity":10.0,
+            "cost_basis":180.0
+        }))
+        .await
+        .expect("add");
+
+        tool.execute(serde_json::json!({"action":"remove","ticker":"NVDA"}))
+            .await
+            .expect("remove watchlist");
+        tool.execute(serde_json::json!({"action":"remove","ticker":"AAPL"}))
+            .await
+            .expect("remove holding");
+
+        let view_resp = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view after mixed remove");
+        assert!(
+            view_resp["portfolio"]["holdings"]
+                .as_array()
+                .map(|h| h.is_empty())
+                .unwrap_or(false)
+        );
+        assert!(
+            view_resp["portfolio"]["watchlist"]
+                .as_array()
+                .map(|h| h.is_empty())
+                .unwrap_or(false)
+        );
     }
 }
