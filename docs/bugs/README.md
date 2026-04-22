@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-22 16:00 CST
+最后更新：2026-04-22 17:00 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -29,11 +29,11 @@
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
-| 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-22 14:38 Feishu 直聊“国产AI服务器厂商有哪些？”在新生成 summary 已为 `role=system` 后，assistant final 仍直接以 `Context compacted` 开头；角色落库有收敛，但压缩后首条可见输出净化仍未闭环 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
+| 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-22 16:50 Feishu 直聊“分析一下今天VRT的财务会Beat还是Miss”最终回复仍以 `Context compacted` 开头；压缩后首条可见输出净化仍未闭环 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-22 15:01 `全天原油价格3小时播报` 再次 `completed + sent + delivered=1`，正文只含价格但仍把“地缘政治紧张局势及市场需求预期变化”作为确定性归因送达；市场播报缺少来源质量与置信度门禁 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-21 23:01 后续定时任务仍按旧 `22支` 清单发送，不含用户要求新增的 `BE/AMD`；16:39 `cron_job` 更新轮只落库工具轨迹和错误尾注，已从纯质量问题升级为任务配置工作流偏差 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-22 14:31 同批 10 条 heartbeat 全部 `noop + skipped_noop` 且 `starts_with_json=0`；小米30港元、ORCL、Watchlist 仍落成 `JsonEmptyStatus`，继续依赖 `<think>...尾部 JSON` 提取，结构化契约未恢复 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-22 16:01-16:31 heartbeat 仍全部 `noop + skipped_noop`，`Monitor_Watchlist_11` 从 `JsonEmptyStatus` 抖到 `JsonNoop` 但两轮都 `starts_with_json=false`，继续依赖 `<think>...尾部 JSON` 提取 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | ORCL heartbeat 将盘中振幅误判为单日涨跌幅并发送错误触发提醒 | P2 | New | 2026-04-22 03:00 `ORCL 大事件监控` 内部先判断当前涨幅 `+3.55%` 未超过 `5%`，最终却按高低点振幅约 `5.3%` 落成 `JsonTriggered + sent`，已向用户投递口径冲突的触发提醒 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-22 15:32 `ASTS 重大异动心跳监控` 在 15:01 `noop` 后又把同一 `BlueBird 7` 失败旧事件落成 `completed + sent + delivered=1`；去重仍依赖模型临场判断而非稳定已提醒状态 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-20 21:01 `TEM大事件心跳监控` 再次落成 `execution_failed + skipped_error`；20:30 还是 `noop`、21:00 前后同批又混有 `JsonUnknownStatus`，用户侧无法判断本轮是未触发还是链路直接耗尽 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |

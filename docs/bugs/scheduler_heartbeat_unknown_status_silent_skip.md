@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 16:01-16:31 最新巡检样本：
+    - `run_id=4513-4522` 在 `2026-04-22T16:01:10-16:01:49+08:00` 覆盖原油、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；全部落成 `noop + skipped_noop`。
+    - 但同批 `detail_json.starts_with_json=false` 仍普遍存在，`data/runtime/logs/sidecar.log` 记录多条 `raw_preview` 以 `<think>` 开头，再由尾部 `{"status":"noop"}` 或空对象被解析器提取。
+    - `run_id=4521`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T16:01:36.866506+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；模型已逐项比较 11 只股票触发价，却没有稳定输出受支持状态 JSON。
+    - `run_id=4532`（同任务，`2026-04-22T16:31:40.290830+08:00`）下一轮恢复为 `JsonNoop`，但仍是 `<think>` 自由文本在前、尾部状态在后，说明只是解析结果抖动，不是上游纯 JSON 契约修复。
+    - 本轮没有新增 `execution_failed` 或用户投诉，严重等级不升级；但最新一小时继续证明 heartbeat 上游结构化输出契约未恢复，状态保持 `New`。
   - 2026-04-22 14:31 最新巡检样本：
     - `run_id=4483-4492` 在 `2026-04-22T14:31:05-14:31:38+08:00` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；全部落成 `noop + skipped_noop`，本轮没有新增投递失败或用户投诉。
     - 但同批 `detail_json.starts_with_json=0` 全部为真，输出仍统一以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器提取。

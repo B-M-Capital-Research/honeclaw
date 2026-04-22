@@ -7,6 +7,12 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 16:50 最新用户可见外泄复核：
+   - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
+   - 用户在 `2026-04-22T16:49:02.504465+08:00` 提问 `分析一下今天VRT的财务会Beat还是Miss。`
+   - `session_messages.ordinal=18` 的 assistant final 在 `2026-04-22T16:50:37.876162+08:00` 仍直接以 `Context compacted` 开头，然后才进入 VRT 财报 Beat/Miss 判断。
+   - `data/runtime/logs/acp-events.log` 同轮在 `2026-04-22T08:50:17.678745+00:00` 也记录 `agent_message_chunk` 内容为 `Context compacted\n`，说明压缩状态标记来自 runner 输出流并进入最终可见正文。
+   - 这再次证明 14:38 后问题没有自然收口：压缩后首条最终输出仍缺少可见文本净化。状态继续维持 `Fixing`，不能关闭。
 - 2026-04-22 14:38 最新用户可见外泄复核：
    - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`
    - 用户在 `2026-04-22T14:35:45.460823+08:00` 提问 `国产AI服务器厂商有哪些？`。
