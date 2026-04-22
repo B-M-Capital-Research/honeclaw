@@ -86,6 +86,74 @@ pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegis
 - Need a snapshot of active direct portfolios/subscriptions to determine whether `F`, `DTEGY`, or `TUIFF` should have matched a user, alias, ADR, or ETF exposure.
 - This巡检 did not call any real channel API, so it cannot prove user non-delivery; it can only show absence of local sink success evidence.
 
+## Latest巡检 Update
+
+- 2026-04-22T14:14:09Z: the same pattern recurred after the previous巡检 window. `data/events.sqlite3` stored a new `severity=high` WSJ stock news event with no matching `delivery_log` row:
+
+```text
+created=2026-04-22 13:52:42
+occurred=2026-04-22 09:34:00
+source=fmp.stock_news:wsj.com
+severity=high
+id=news:https://www.wsj.com/business/telecom/deutsche-telekom-shares-fall-on-reports-of-potential-merger-with-t-mobile-us-1ed8e3ba
+title=Deutsche Telekom Shares Fall on Reports of Potential Merger With T-Mobile US
+symbols=["DTEGY"]
+delivery_rows=0
+```
+
+- The same incremental window did record successful sink sends for other High events, so this is not a global sink outage:
+
+```text
+2026-04-22 10:30:10|sec:GEV:https://www.sec.gov/Archives/edgar/data/1996810/000199681026000063/gev-20260422.htm|sink|high|sent
+2026-04-22 12:37:47|earnings_surprise:GEV:2026-04-22|sink|high|sent
+2026-04-22 13:32:43|price:BE:2026-04-22|sink|high|sent
+2026-04-22 13:32:43|price:GEV:2026-04-22|digest|high|cooled_down
+```
+
+- Local logs also show real sink assembly and successful delivery in the same runtime:
+
+```text
+data/runtime/logs/web.log.2026-04-22:239:[2026-04-22 17:55:52.293] INFO  event engine sink: MultiChannelSink 已装配
+data/runtime/logs/web.log.2026-04-22:339:[2026-04-22 18:30:10.570] INFO  sink delivered
+data/runtime/logs/web.log.2026-04-22:563:[2026-04-22 20:37:47.227] INFO  sink delivered
+data/runtime/logs/web.log.2026-04-22:623:[2026-04-22 21:32:43.777] INFO  sink delivered
+```
+
+- 2026-04-22T18:13:04Z: the pattern recurred again in the next incremental window. `data/events.sqlite3` stored two new `severity=high` Reuters stock-news events created after `2026-04-22T14:12:03Z`, both with `delivery_rows=0`:
+
+```text
+created=2026-04-22 16:37:42
+occurred=2026-04-22 12:15:29
+source=fmp.stock_news:reuters.com
+severity=high
+id=news:https://www.reuters.com/business/united-airlines-ceo-plays-down-merger-talk-white-house-signals-skepticism-2026-04-22/
+title=United Airlines CEO plays down merger talk as White House signals skepticism
+symbols=["UAL"]
+delivery_rows=0
+
+created=2026-04-22 18:07:42
+occurred=2026-04-22 13:44:35
+source=fmp.stock_news:reuters.com
+severity=high
+id=news:https://www.reuters.com/legal/litigation/how-deutsche-telecom-t-mobile-us-could-pull-off-worlds-biggest-ma-deal-2026-04-22/
+title=Explainer: How Deutsche Telecom and T-Mobile US could pull off the world's biggest M&A deal
+symbols=["TMUS"]
+delivery_rows=0
+```
+
+- The same window had `delivery_log` rows only for digest/prefs outcomes and no `sink` channel rows:
+
+```text
+high|118
+low|419
+medium|16471
+delivery|filtered|low|prefs|3
+delivery|queued|low|digest|6
+delivery|queued|medium|digest|16
+```
+
+- The local `web.log` interval after `2026-04-22 22:12:03` had no `sink delivered`, `sink send failed`, or `[dryrun sink]` lines, while `config.yaml` and `data/runtime/effective-config.yaml` both had `event_engine.dryrun=false`.
+
 ## Severity
 
 sev2. The affected events are high severity and one is a safety recall while another is a guidance cut; if they should match the user, the current evidence trail makes the miss silent rather than auditable.
