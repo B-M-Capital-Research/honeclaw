@@ -3,8 +3,16 @@
 - **发现时间**: 2026-04-20 01:01 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+  - 最新复发证据：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=4695`，`job_id=j_5f0b686a`，`job_name=RKLB 每日动态监控`，`executed_at=2026-04-23T00:03:26.575982+08:00`
+    - 本轮落成 `execution_status=completed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`
+    - `response_preview` 明确写入：`RKLB 今日未发现新的实质性催化或风险证伪信号，按规则可跳过正式推送`，并在“动作”段写 `不触发正式推送`
+    - `run_id=4696`，`job_id=j_379acc40`，`job_name=TEM 每日动态监控`，`executed_at=2026-04-23T00:04:15.585007+08:00`
+    - 本轮同样落成 `execution_status=completed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`
+    - `response_preview` 明确写入：`TEM 今日未发现新的实质性催化或风险证伪信号，按规则可跳过正式推送`，并在“动作”段写 `不触发正式推送`
+    - 这说明 2026-04-20 标记为 `Fixed` 的发送前 skip-signal 止血没有覆盖当前生产链路，或者规则只覆盖了旧措辞 `按规则应跳过`，未覆盖当前常见措辞 `按规则可跳过` / `不触发正式推送`
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b`
     - `2026-04-20T00:00:59.970078+08:00` 调度触发 `AAOI 每日动态监控`
@@ -45,6 +53,7 @@
 
 - `AAOI 每日动态监控` 与 `TEM 每日动态监控` 在最近一小时都明确判定“无新增实质性催化”。
 - 但两轮都仍被记成 `completed + sent + delivered=1`，并在会话中落为正式 assistant 长文。
+- 2026-04-23 复发样本显示，`RKLB 每日动态监控` 与 `TEM 每日动态监控` 已经使用“按规则可跳过正式推送 / 不触发正式推送”这类变体措辞，但发送前过滤仍未中止投递。
 - 当前坏态不是单次措辞偏差，而是“业务规则写着跳过，出站行为却仍发送”的执行偏差。
 
 ## 用户影响
@@ -55,7 +64,7 @@
 
 ## 根因判断
 
-- 当前“每日动态监控”链路缺少从自然语言结论回收到调度状态机的收口步骤。
+- 当前“每日动态监控”链路缺少从自然语言结论回收到调度状态机的稳定收口步骤；既有止血可能只覆盖了有限 skip 关键词，未覆盖 `按规则可跳过`、`不触发正式推送` 等新变体。
 - 模型已经在正文里完成“应跳过”的判断，但上层仍按普通成功答复处理，未转成 `noop`。
 - 问题更像是 direct scheduler 模板与 heartbeat/noop 模板没有共享统一的“无需发送”协议，而不是单次数据误判。
 
