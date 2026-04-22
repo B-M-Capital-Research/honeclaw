@@ -7,6 +7,12 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 21:03 最新用户可见外泄复核：
+   - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+   - `cron_job_runs.run_id=4626`（`OWALERT_PreMarket`，`executed_at=2026-04-22T21:03:32.723942+08:00`）记录 `execution_status=completed`、`message_send_status=sent`、`delivered=1`。
+   - 同轮 `session_messages.ordinal=6` 的 assistant final 在 `2026-04-22T21:03:28.051552+08:00` 直接以 `Context compacted` 开头，然后才进入盘前扫描正文。
+   - 同会话在 `2026-04-22T21:30:36.563117+08:00` 又写入 `role=system` 的 `Conversation compacted` 和 `【Compact Summary】...`，说明 summary 角色继续维持 system 态，但用户可见正文净化仍未闭环。
+   - 这次已经送达用户，说明 20:05 后问题仍在真实定时任务出站链路活跃；状态继续维持 `Fixing`，不能关闭。
 - 2026-04-22 20:05 最新用户可见外泄复核：
    - `session_id=Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8`
    - 同会话在 `2026-04-22T20:00:37.102052+08:00` 写入 `role=system` 的 `Conversation compacted`，紧接着 `20:00:37.102063` 写入 `role=system` 的 `【Compact Summary】...`，说明新生成 summary 角色继续维持 system 态。
