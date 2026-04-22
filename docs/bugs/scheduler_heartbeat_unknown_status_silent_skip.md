@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 17:00-18:01 最新巡检样本：
+    - `run_id=4533-4561` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；除原油 18:00 轮尚未在查询窗口落库外，其它可见记录均为 `noop + skipped_noop`。
+    - 同批 `detail_json.starts_with_json=false` 仍全部为真，`raw_preview` 继续以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器提取。
+    - `run_id=4538`（`RKLB异动监控`，`2026-04-22T17:01:27.484444+08:00`）、`run_id=4539`（`ORCL 大事件监控`，`2026-04-22T17:01:30.392061+08:00`）、`run_id=4547`（`小米破位预警`，`2026-04-22T17:31:09.857085+08:00`）、`run_id=4557`（`RKLB异动监控`，`2026-04-22T18:01:17.505664+08:00`）、`run_id=4558`（`Monitor_Watchlist_11`，`2026-04-22T18:01:18.862387+08:00`）和 `run_id=4559`（`TEM大事件心跳监控`，`2026-04-22T18:01:24.544946+08:00`）均落成 `JsonEmptyStatus + skipped_noop`。
+    - `run_id=4561`（`ORCL 大事件监控`，`2026-04-22T18:01:26.520838+08:00`）虽然最终为 `JsonNoop`，但 `raw_preview` 仍在 `<think>` 中计算盘中高低点约 `5.3%`，再解释“不是单日涨跌幅”；这说明 03:00 曾误触发的口径冲突已在本轮未触发，但上游仍没有恢复纯 JSON 契约。
+    - 本轮没有新增 `execution_failed` 或用户投诉，严重等级不升级；但最新一小时继续证明 heartbeat 上游结构化输出契约未恢复，状态保持 `New`。
   - 2026-04-22 16:01-16:31 最新巡检样本：
     - `run_id=4513-4522` 在 `2026-04-22T16:01:10-16:01:49+08:00` 覆盖原油、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；全部落成 `noop + skipped_noop`。
     - 但同批 `detail_json.starts_with_json=false` 仍普遍存在，`data/runtime/logs/sidecar.log` 记录多条 `raw_preview` 以 `<think>` 开头，再由尾部 `{"status":"noop"}` 或空对象被解析器提取。
