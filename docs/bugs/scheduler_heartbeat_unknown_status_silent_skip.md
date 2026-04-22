@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 08:31 最新巡检样本：
+    - `run_id=4375`（`ORCL 大事件监控`，`executed_at=2026-04-22T08:31:16.590824+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已完成 ORCL 当前价、前收、单日涨跌幅与高低点判断，明确未达到 5% 单日异动，却仍以前置 `<think>` 自由文本收口。
+    - `run_id=4377`（`Monitor_Watchlist_11`，`executed_at=2026-04-22T08:31:18.963805+08:00`）同样落成 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 已逐项比较 `HIMS / MU / RKLB / LMND / BE / OKLO / PLTR ...` 当前价与触发价，仍未稳定输出受支持状态 JSON。
+    - `run_id=4380`（`ASTS 重大异动心跳监控`，`executed_at=2026-04-22T08:31:26.648973+08:00`）虽解析成 `JsonNoop`，但 `starts_with_json=false`，`raw_preview` 仍以 `<think>` 开头，说明所谓跳过继续依赖尾部状态提取而不是纯 JSON 契约。
+    - 本轮没有新增 `execution_failed` 或用户投诉，严重等级维持 P2；但 08:31 证明结构化契约仍未恢复，状态继续为 `New`。
   - 2026-04-22 07:31-08:01 最新巡检样本：
     - `run_id=4355`（`ASTS 重大异动心跳监控`，`executed_at=2026-04-22T07:31:24.385240+08:00`）落成 `noop + skipped_noop`，但 `detail_json.parse_kind=JsonEmptyStatus`、`starts_with_json=false`；`raw_preview` 已分析 ASTS 行情、BlueBird 7 新闻与是否有新增独立事件，却仍以前置 `<think>` 自由文本收口。
     - `run_id=4362`（同任务，`executed_at=2026-04-22T08:01:19.374721+08:00`）再次落成 `noop + skipped_noop + JsonEmptyStatus`，`raw_preview` 明确写出“最新新闻都是4月21日关于 BlueBird 7 失败的后续报道 / 没有新的独立事件”，但没有稳定输出受支持状态 JSON。

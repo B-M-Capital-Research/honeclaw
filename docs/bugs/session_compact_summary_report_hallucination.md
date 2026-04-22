@@ -7,6 +7,13 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 08:33 最新用户可见外泄复核：
+   - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+   - `cron_job_runs.run_id=4383`（`美股AI产业链盘后报告`，`executed_at=2026-04-22T08:33:21.473282+08:00`）记录 `execution_status=completed`、`message_send_status=sent`、`delivered=1`。
+   - 同轮 `session_messages.ordinal=10` 的 assistant final 在 `2026-04-22T08:33:18.287474+08:00` 直接以 `Context compacted` 开头，然后才进入正式盘后 AI 产业链报告。
+   - 这次不再只是 prompt 里带入存量 `role=user` summary；压缩状态标记已经进入已送达正文，属于用户可见格式污染和内部状态外泄。
+   - 同一会话随后 `08:34:58` 与 `08:47:28` 的两条后续 assistant final 不再以 `Context compacted` 开头，说明症状可能是压缩后第一条输出穿透，但发送侧尚未统一清洗该标记。
+   - 状态继续维持 `Fixing`：新生成 summary 角色已有收敛迹象，但可见输出净化与存量 summary 隔离仍未闭环。
 - 2026-04-22 05:00 最新 prompt 污染复核：
    - `session_id=Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44`
    - `session_messages` 中仍保留 `2026-04-20T21:31:24.260047+08:00` 的 `role=user` `【Compact Summary】...`，内容覆盖 `TEM / RKLB / BE / MSFT / BOXX / YINN / MU / LITE` 等持仓与交易纪律。
@@ -244,6 +251,7 @@
 
 - 2026-04-21 20:00 最新样本说明，scheduler 触发会话在 auto compact 后仍实时把 `Compact Summary` 写成 `role=user`，随后立即进入 `restore_context + build_prompt + create_runner`；问题仍是当前生产链路实时生成，不是旧会话存量污染。
 - 2026-04-21 21:02 最新样本说明，`OWALERT_PreMarket` 的最终 assistant 文本直接以 `Context compacted` 开头，压缩状态不再只停留在 transcript 角色污染，而是会进入最终可见输出。
+- 2026-04-22 08:33 最新样本说明，同类 `Context compacted` 外泄已出现在 `completed + sent + delivered=1` 的 `美股AI产业链盘后报告`，说明发送成功路径仍缺少压缩标记清洗。
 - 2026-04-21 18:55 样本说明，auto compact 仍在当前生产链路实时把 `Compact Summary` 写成 `role=user`；即使回答表面完成，真实 transcript 已被内部压缩产物污染。
 - 2026-04-21 17:49 最新样本说明，旧 `role=user` compact summary 不只是存量脏数据；它在新的 `那rklb 呢` 直聊请求中仍被恢复进 runner 输入，并与本轮真实 user turn 同时进入 prompt。
 - 2026-04-21 16:05 最新样本说明，compact summary 仍会以 `role=user` 写入会话；同轮后续正式回答继续处理“美股亚川”新问题，生产链路没有收口到“summary 只作为系统态元数据”。
