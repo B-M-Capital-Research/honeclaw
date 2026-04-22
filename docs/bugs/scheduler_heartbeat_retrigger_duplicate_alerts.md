@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-22 15:32 最新巡检样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=4512`，`executed_at=2026-04-22T15:32:04.815465+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+      - `response_preview` 再次围绕同一 `BlueBird 7 发射失败 / Blue Origin New Glenn NG-3 / 未能进入计划轨道` 旧事件发送，并把 `Portnoy Law Firm` 调查、`4月20日收盘价` 和 `检查时间：2026-04-22 15:30` 包装成当前提醒。
+      - 同一任务在 `run_id=4501`（`2026-04-22T15:01:36+08:00`）刚刚落成 `noop + skipped_noop`，但 `15:32` 又回摆成 `triggered + sent`；两轮之间没有看到新的独立公司公告、轨道处置结果或用户配置变化。
+      - `detail_json.scheduler.raw_preview` 已承认价格时间戳是 `2026年4月20日` 的停牌前/上一交易日旧数据，却仍把同一旧事件判定为本轮触发，说明去重仍依赖模型临场判断而非持久化已提醒事实状态。
     - 2026-04-22 10:02 最新巡检样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=4421`，`executed_at=2026-04-22T10:02:59.807130+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
