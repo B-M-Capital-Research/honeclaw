@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-22 14:31 最新巡检样本：
+    - `run_id=4483-4492` 在 `2026-04-22T14:31:05-14:31:38+08:00` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；全部落成 `noop + skipped_noop`，本轮没有新增投递失败或用户投诉。
+    - 但同批 `detail_json.starts_with_json=0` 全部为真，输出仍统一以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器提取。
+    - `run_id=4484`（`小米30港元破位预警`）、`run_id=4488`（`ORCL 大事件监控`）与 `run_id=4491`（`Monitor_Watchlist_11`）均为 `parse_kind=JsonEmptyStatus`：模型已经完成价格/新闻/触发价判断，却没有稳定输出受支持状态 JSON，后台最终按 `skipped_noop` 静默吞掉。
+    - 这不是新根因，也不升级严重等级：当前窗口没有 `execution_failed`，说明调度器止血式尾部提取仍在工作；但上游 heartbeat 纯 JSON 契约仍未恢复，用户仍无法从台账区分“可靠未触发”和“解析侥幸通过”，状态继续保持 `New`。
   - 2026-04-22 14:01 最新巡检样本：
     - `run_id=4473-4482` 在 `2026-04-22T14:01:05-14:01:27+08:00` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`ORCL 大事件监控` 与 `TEM大事件心跳监控`；全部落成 `noop + skipped_noop`，本轮没有新增投递失败或用户投诉。
     - 但 `data/runtime/logs/sidecar.log` 同批 `HeartbeatDiag` 继续显示 `starts_with_json=false`，多个 `raw_preview` 仍以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器提取；例如 `14:01:05` 原油任务先解释时间条件，`14:01:10-14:01:11` 小米任务先输出分析再给 `{"status":"noop"}`。

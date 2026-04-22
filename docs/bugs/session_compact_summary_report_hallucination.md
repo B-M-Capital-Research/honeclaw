@@ -7,6 +7,12 @@
 - **证据来源**:
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
+- 2026-04-22 14:38 最新用户可见外泄复核：
+   - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`
+   - 用户在 `2026-04-22T14:35:45.460823+08:00` 提问 `国产AI服务器厂商有哪些？`。
+   - 同会话在 `2026-04-22T14:36:08.979650+08:00` 写入 `role=system` 的 `Conversation compacted`，紧接着 `14:36:08.979668` 写入 `role=system` 的 `【Compact Summary】...`，说明新生成 summary 角色仍维持 system 态。
+   - 但 `session_messages.ordinal=8` 的 assistant final 在 `2026-04-22T14:38:43.349287+08:00` 仍直接以 `Context compacted` 开头，然后才回答国产 AI 服务器厂商分类、浪潮信息/新华三/紫光股份/联想/宁畅/超聚变/华为等内容。
+   - 这说明问题已进一步收敛为“压缩后第一条最终输出缺少可见文本净化”：角色落库已改善，但用户可见正文仍泄漏内部压缩标记。状态继续维持 `Fixing`，不能关闭。
 - 2026-04-22 09:03 最新用户可见外泄复核：
    - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
    - `cron_job_runs.run_id=4400`（`早9点市场复盘(XME及加密ETF)`，`executed_at=2026-04-22T09:03:58.992153+08:00`）记录 `execution_status=completed`、`message_send_status=sent`、`delivered=1`。
