@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-23 00:00 最新巡检样本：
+    - `run_id=4663-4693` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；多数未触发任务仍落成 `noop + skipped_noop`。
+    - `run_id=4668`（`RKLB异动监控`，`2026-04-22T23:00:22.840091+08:00`）落成 `JsonEmptyStatus + skipped_noop`，`raw_preview` 已分析 2026-04-21 及以前新闻、并判断没有重大并购、Neutron 进展、重大订单或发射失败，却没有稳定输出受支持状态 JSON。
+    - `run_id=4688`（`RKLB异动监控`，`2026-04-23T00:00:18.251886+08:00`）下一小时继续落成 `JsonEmptyStatus + skipped_noop`，`raw_preview` 仍以前置 `<think>` 自由文本开头，说明该模板没有恢复为纯 JSON 起始。
+    - 同批日志继续记录多条 `starts_with_json=false`，并在 `2026-04-23 00:00:09-00:00:31` 出现 Tavily key 超额告警；本轮没有新增用户投诉或 `execution_failed`，严重等级不升级，但 heartbeat 上游结构化输出契约仍未恢复，状态保持 `New`。
   - 2026-04-22 22:00 最新巡检样本：
     - `run_id=4642-4651` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 与 `ASTS 重大异动心跳监控`；可见记录仍全部落成 `noop + skipped_noop`，没有用户可见提醒。
     - `data/runtime/logs/web.log` 同批继续记录 `starts_with_json=false`，`raw_preview` 仍以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器提取。
@@ -1111,7 +1116,8 @@
 
 ## 当前实现效果
 
-- 到 `2026-04-22 22:00` 最新窗口，heartbeat 仍全部 `noop + skipped_noop`，`CAI破位预警` 与 `Monitor_Watchlist_11` 继续落成 `JsonEmptyStatus`，说明上游状态契约仍没有恢复为纯 JSON。
+- 到 `2026-04-23 00:00` 最新窗口，`RKLB异动监控` 在 23:00 与 00:00 连续两轮落成 `JsonEmptyStatus + skipped_noop`，同批多任务仍为 `starts_with_json=false`，说明上游状态契约仍没有恢复为纯 JSON。
+- 到 `2026-04-22 22:00` 窗口，heartbeat 仍全部 `noop + skipped_noop`，`CAI破位预警` 与 `Monitor_Watchlist_11` 继续落成 `JsonEmptyStatus`，说明上游状态契约仍没有恢复为纯 JSON。
 - 这轮 `ASTS 重大异动心跳监控` 能识别 `21:01` 已提醒并跳过，说明重复提醒有局部缓解迹象；但当前“正常 noop”仍依赖 `<think>...尾部 JSON` 的解析器止血，不能据此关闭结构化状态缺陷。
 - 到 `2026-04-22 18:31 -> 19:01` 最新窗口，heartbeat 仍全部 `starts_with_json=false`，原油和小米任务继续出现 `JsonEmptyStatus + skipped_noop`，说明上游状态契约没有恢复为纯 JSON。
 - 这轮没有新增 `execution_failed`，因此不升级严重等级；但当前“正常 noop”仍依赖 `<think>...尾部 JSON` 的解析器止血，用户和运维无法把可靠未触发与解析侥幸通过稳定区分开。
