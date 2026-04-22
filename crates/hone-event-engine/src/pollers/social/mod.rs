@@ -9,3 +9,6 @@ pub mod truth_social;
 
 pub use telegram_channel::TelegramChannelPoller;
 pub use truth_social::TruthSocialPoller;
+
+const SOCIAL_TITLE_MAX_CHARS: usize = 240;
+const SOCIAL_SUMMARY_MAX_CHARS: usize = 280;

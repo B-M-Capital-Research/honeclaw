@@ -106,7 +106,7 @@ impl OutboundSink for DiscordSink {
     }
 
     fn format(&self) -> RenderFormat {
-        RenderFormat::Plain
+        RenderFormat::DiscordMarkdown
     }
 }
 

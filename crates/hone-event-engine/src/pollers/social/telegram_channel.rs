@@ -16,6 +16,8 @@ use serde_json::{Map, Value};
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::source::{EventSource, SourceSchedule};
 
+use super::{SOCIAL_SUMMARY_MAX_CHARS, SOCIAL_TITLE_MAX_CHARS};
+
 pub struct TelegramChannelPoller {
     handle: String, // 频道用户名,如 "watcherguru"
     interval: Duration,
@@ -132,8 +134,8 @@ pub fn parse_telegram_preview(
             None => (None, Utc::now()),
         };
 
-        let title = summarize(&text, 80);
-        let summary = truncate(&text, 280);
+        let title = summarize(&text, SOCIAL_TITLE_MAX_CHARS);
+        let summary = truncate(&text, SOCIAL_SUMMARY_MAX_CHARS);
         let symbols = if extract_cashtags {
             extract_cashtag_symbols(&text)
         } else {
@@ -277,6 +279,22 @@ mod tests {
         let e_off = events_off.iter().find(|e| e.id.ends_with("12345")).unwrap();
         assert!(e_on.symbols.contains(&"BTC".to_string()));
         assert!(e_off.symbols.is_empty());
+    }
+
+    #[test]
+    fn title_keeps_long_social_first_line_beyond_legacy_80_chars() {
+        let text = "JUST IN: Polymarket to launch 24/7 perpetual futures trading for crypto, equities, commodities, and FX markets next quarter.";
+        let html = format!(
+            r#"<div class="tgme_widget_message" data-post="watcherguru/222">
+                <div class="tgme_widget_message_text">{text}</div>
+                <a class="tgme_widget_message_date" href="https://t.me/watcherguru/222">
+                  <time datetime="2026-04-20T12:40:00+00:00">3:50 PM</time>
+                </a>
+              </div>"#
+        );
+        let events = parse_telegram_preview(&html, "watcherguru", false);
+        assert_eq!(events[0].title, text);
+        assert!(!events[0].title.ends_with('…'));
     }
 
     #[test]

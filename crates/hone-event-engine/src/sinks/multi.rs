@@ -77,8 +77,15 @@ impl OutboundSink for MultiChannelSink {
     }
 
     fn format(&self) -> RenderFormat {
-        // 所有 sink 统一 Plain,避免 renderer 需要知道具体 actor → sink 的映射。
         RenderFormat::Plain
+    }
+
+    fn format_for(&self, actor: &ActorIdentity) -> RenderFormat {
+        if let Some(s) = self.sinks.get(&actor.channel) {
+            s.format_for(actor)
+        } else {
+            self.fallback.format_for(actor)
+        }
     }
 }
 
@@ -96,6 +103,10 @@ mod tests {
                 .unwrap()
                 .push(format!("{}:{}", actor.channel, body));
             Ok(())
+        }
+
+        fn format(&self) -> RenderFormat {
+            RenderFormat::DiscordMarkdown
         }
     }
 
@@ -134,5 +145,14 @@ mod tests {
         let actor = ActorIdentity::new("feishu", "u1", None::<String>).unwrap();
         sink.send(&actor, "hi").await.unwrap();
         assert_eq!(fb.0.lock().unwrap().len(), 1, "errored channel falls back");
+    }
+
+    #[test]
+    fn format_for_uses_registered_channel_sink() {
+        let fb = Arc::new(LogSink);
+        let sink = MultiChannelSink::new(fb)
+            .with_channel("discord", Arc::new(Spy(Mutex::new(Vec::new()))));
+        let actor = ActorIdentity::new("discord", "u1", None::<String>).unwrap();
+        assert_eq!(sink.format_for(&actor), RenderFormat::DiscordMarkdown);
     }
 }

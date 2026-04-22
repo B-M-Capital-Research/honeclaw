@@ -1085,6 +1085,7 @@ mod tests {
                 RenderFormat::Plain => "— Plain —".to_string(),
                 RenderFormat::TelegramHtml => "— TelegramHtml —".to_string(),
                 RenderFormat::DiscordMarkdown => "— Markdown —".to_string(),
+                RenderFormat::FeishuPost => "— FeishuPost —".to_string(),
             };
             messages.push((fmt, marker));
             messages.push((fmt, crate::renderer::render_immediate(&ev_earnings, fmt)));

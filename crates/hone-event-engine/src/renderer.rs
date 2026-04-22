@@ -22,9 +22,15 @@ pub enum RenderFormat {
     TelegramHtml,
     /// Discord 消息 Markdown。
     DiscordMarkdown,
+    /// Feishu rich text `post` message content JSON.
+    FeishuPost,
 }
 
 pub fn render_immediate(event: &MarketEvent, fmt: RenderFormat) -> String {
+    if matches!(fmt, RenderFormat::FeishuPost) {
+        return render_immediate_feishu_post(event);
+    }
+
     let tag = severity_tag(event.severity);
     let head = header_line(event);
     let head_plain = if tag.is_empty() {
@@ -37,6 +43,7 @@ pub fn render_immediate(event: &MarketEvent, fmt: RenderFormat) -> String {
         RenderFormat::Plain => head_plain.clone(),
         RenderFormat::TelegramHtml => format!("<b>{}</b>", escape_html(&head_plain)),
         RenderFormat::DiscordMarkdown => format!("**{}**", escape_md(&head_plain)),
+        RenderFormat::FeishuPost => unreachable!("handled above"),
     };
     let title_out = render_inline(&event.title, fmt);
 
@@ -53,6 +60,37 @@ pub fn render_immediate(event: &MarketEvent, fmt: RenderFormat) -> String {
         out.push_str(&render_link(u, fmt));
     }
     out
+}
+
+fn render_immediate_feishu_post(event: &MarketEvent) -> String {
+    let tag = severity_tag(event.severity);
+    let head = header_line(event);
+    let head_plain = if tag.is_empty() {
+        head
+    } else {
+        format!("{tag} {head}")
+    };
+
+    let mut content = Vec::new();
+    let mut title_row = vec![feishu_text(&event.title)];
+    if let Some(url) = event.url.as_deref().filter(|u| !u.is_empty()) {
+        title_row.push(feishu_text(" · "));
+        title_row.push(feishu_link_icon(url));
+    }
+    content.push(title_row);
+
+    let summary_trim = event.summary.trim();
+    if !summary_trim.is_empty() {
+        content.push(vec![feishu_text(summary_trim)]);
+    }
+
+    serde_json::json!({
+        "zh_cn": {
+            "title": head_plain,
+            "content": content,
+        }
+    })
+    .to_string()
 }
 
 /// High → "【要闻】"、Medium → "【简讯】"、Low → ""（无前缀）。
@@ -153,6 +191,7 @@ pub fn render_inline(text: &str, fmt: RenderFormat) -> String {
         RenderFormat::Plain => text.to_string(),
         RenderFormat::TelegramHtml => escape_html(text),
         RenderFormat::DiscordMarkdown => escape_md(text),
+        RenderFormat::FeishuPost => text.to_string(),
     }
 }
 
@@ -168,6 +207,18 @@ pub fn render_link(url: &str, fmt: RenderFormat) -> String {
         RenderFormat::DiscordMarkdown => {
             format!("[{}]({})", escape_md(&link_label(url)), url)
         }
+        RenderFormat::FeishuPost => format!("🔗 {}", link_label(url)),
+    }
+}
+
+pub fn render_link_icon(url: &str, fmt: RenderFormat) -> String {
+    match fmt {
+        RenderFormat::Plain => format!("🔗 {}", link_label(url)),
+        RenderFormat::TelegramHtml => {
+            format!("<a href=\"{}\">🔗</a>", escape_html_attr(url))
+        }
+        RenderFormat::DiscordMarkdown => format!("[🔗]({url})"),
+        RenderFormat::FeishuPost => "🔗".into(),
     }
 }
 
@@ -222,6 +273,21 @@ fn escape_md(s: &str) -> String {
         }
     }
     out
+}
+
+pub(crate) fn feishu_text(text: &str) -> serde_json::Value {
+    serde_json::json!({
+        "tag": "text",
+        "text": text,
+    })
+}
+
+pub(crate) fn feishu_link_icon(url: &str) -> serde_json::Value {
+    serde_json::json!({
+        "tag": "a",
+        "text": "🔗",
+        "href": url,
+    })
 }
 
 #[cfg(test)]
@@ -355,6 +421,36 @@ mod tests {
         assert!(
             s.contains("[x.example.com](https://x.example.com/path)"),
             "URL 应为 Markdown 链接语法；got: {s}"
+        );
+    }
+
+    #[test]
+    fn feishu_post_renders_link_icon_element() {
+        let s = render_immediate(
+            &sample(EventKind::EarningsReleased),
+            RenderFormat::FeishuPost,
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(
+            parsed
+                .pointer("/zh_cn/title")
+                .and_then(|v| v.as_str())
+                .unwrap(),
+            "【要闻】 $AAPL · 📊 财报发布"
+        );
+        assert_eq!(
+            parsed
+                .pointer("/zh_cn/content/0/2")
+                .and_then(|v| v.get("tag"))
+                .and_then(|v| v.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            parsed
+                .pointer("/zh_cn/content/0/2")
+                .and_then(|v| v.get("text"))
+                .and_then(|v| v.as_str()),
+            Some("🔗")
         );
     }
 }

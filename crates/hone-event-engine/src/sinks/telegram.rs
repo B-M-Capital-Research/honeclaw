@@ -4,8 +4,7 @@
 //! - 群聊:`actor.channel_scope = Some("chat_<chat_id>")`,剥掉 `chat_` 前缀后
 //!   就是 Telegram 的负数 chat_id
 //!
-//! 不做消息分段,`renderer::RenderFormat::Plain` 已经保证长度可控;真超长
-//! Telegram 会返 400,外层看日志就能发现。
+//! 不做消息分段;真超长 Telegram 会返 400,外层看日志就能发现。
 
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
@@ -51,6 +50,7 @@ impl OutboundSink for TelegramSink {
                 "chat_id": chat_id,
                 "text": body,
                 "disable_web_page_preview": true,
+                "parse_mode": "HTML",
             }))
             .send()
             .await?;
@@ -63,7 +63,7 @@ impl OutboundSink for TelegramSink {
     }
 
     fn format(&self) -> RenderFormat {
-        RenderFormat::Plain
+        RenderFormat::TelegramHtml
     }
 }
 

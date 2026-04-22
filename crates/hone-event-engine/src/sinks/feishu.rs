@@ -1,8 +1,8 @@
 //! Feishu OutboundSink —— 直接打 Feishu Open API。
 //!
 //! - 获取 `tenant_access_token` 并本地缓存(提前 5 分钟过期,避开边界失败)
-//! - `POST /open-apis/im/v1/messages?receive_id_type={open_id|chat_id}` 发 text
-//!   类型消息
+//! - `POST /open-apis/im/v1/messages?receive_id_type={open_id|chat_id}` 发 post
+//!   富文本消息
 //! - 私聊:`receive_id_type=open_id`,`receive_id = actor.user_id`(prefs 文件里
 //!   的 user_id 在 Feishu 场景就是 open_id)
 //! - 群聊:`receive_id_type=chat_id`,从 `actor.channel_scope` 取(剥 `chat_`
@@ -111,7 +111,11 @@ impl OutboundSink for FeishuSink {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
         let token = self.token().await?;
         let (receive_id_type, receive_id) = Self::receive_target(actor);
-        let content = serde_json::json!({ "text": body }).to_string();
+        let (msg_type, content) = if is_feishu_post_content(body) {
+            ("post", body.to_string())
+        } else {
+            ("text", serde_json::json!({ "text": body }).to_string())
+        };
         let resp = self
             .client
             .post(format!(
@@ -120,7 +124,7 @@ impl OutboundSink for FeishuSink {
             .bearer_auth(&token)
             .json(&serde_json::json!({
                 "receive_id": receive_id,
-                "msg_type": "text",
+                "msg_type": msg_type,
                 "content": content,
             }))
             .send()
@@ -138,8 +142,15 @@ impl OutboundSink for FeishuSink {
     }
 
     fn format(&self) -> RenderFormat {
-        RenderFormat::Plain
+        RenderFormat::FeishuPost
     }
+}
+
+fn is_feishu_post_content(body: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("zh_cn").cloned())
+        .is_some()
 }
 
 #[cfg(test)]
@@ -160,5 +171,13 @@ mod tests {
         let (ty, id) = FeishuSink::receive_target(&actor);
         assert_eq!(ty, "chat_id");
         assert_eq!(id, "oc_123");
+    }
+
+    #[test]
+    fn detects_post_content_payload() {
+        assert!(is_feishu_post_content(
+            r#"{"zh_cn":{"title":"t","content":[]}}"#
+        ));
+        assert!(!is_feishu_post_content("plain text"));
     }
 }

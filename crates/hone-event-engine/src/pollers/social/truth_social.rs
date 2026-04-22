@@ -17,6 +17,8 @@ use tokio::sync::RwLock;
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::source::{EventSource, SourceSchedule};
 
+use super::{SOCIAL_SUMMARY_MAX_CHARS, SOCIAL_TITLE_MAX_CHARS};
+
 pub struct TruthSocialPoller {
     username: String,                   // "realDonaldTrump" (无 @)
     account_id: RwLock<Option<String>>, // 首次 resolve 后缓存
@@ -150,8 +152,8 @@ pub fn parse_statuses(arr: &[Value], username: &str) -> Vec<MarketEvent> {
             .and_then(parse_iso_datetime)
             .unwrap_or_else(Utc::now);
 
-        let title = summarize(&text, 80);
-        let summary = truncate(&text, 280);
+        let title = summarize(&text, SOCIAL_TITLE_MAX_CHARS);
+        let summary = truncate(&text, SOCIAL_SUMMARY_MAX_CHARS);
 
         let mut payload = Map::new();
         payload.insert("username".into(), Value::String(username.into()));
@@ -292,6 +294,19 @@ mod tests {
     fn skips_empty_content() {
         let arr = vec![sample_status("1", "<p>   </p>", "2026-04-20T18:00:00.000Z")];
         assert!(parse_statuses(&arr, "a").is_empty());
+    }
+
+    #[test]
+    fn title_keeps_long_social_first_line_beyond_legacy_80_chars() {
+        let text = "JUST IN: President Trump says Saudi Arabia is helping the US on the Strait of Hormuz and energy market stability this week.";
+        let arr = vec![sample_status(
+            "110002",
+            &format!("<p>{text}</p>"),
+            "2026-04-20T18:00:00.000Z",
+        )];
+        let events = parse_statuses(&arr, "realDonaldTrump");
+        assert_eq!(events[0].title, text);
+        assert!(!events[0].title.ends_with('…'));
     }
 
     #[test]

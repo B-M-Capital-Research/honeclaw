@@ -15,8 +15,10 @@ use chrono::{DateTime, Datelike, FixedOffset, NaiveTime, TimeZone, Timelike, Utc
 use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 
-use crate::event::MarketEvent;
+use crate::event::{EventKind, MarketEvent};
 use crate::router::body_preview;
+
+const DIGEST_SOCIAL_TITLE_MAX_CHARS: usize = 240;
 
 pub struct DigestBuffer {
     dir: PathBuf,
@@ -442,7 +444,7 @@ impl DigestScheduler {
                     } else {
                         0
                     };
-                let body = render_digest(&label, &filtered, overflow, self.sink.format());
+                let body = render_digest(&label, &filtered, overflow, self.sink.format_for(&actor));
                 let send_result = self.sink.send(&actor, &body).await;
                 if let Some(store) = &self.store {
                     let batch_id = format!("digest-batch:{date}@{window}:{}", filtered.len());
@@ -510,6 +512,9 @@ pub fn render_digest(
     } else {
         format!("📬 {label}")
     };
+    if matches!(fmt, RenderFormat::FeishuPost) {
+        return render_digest_feishu_post(&raw_title, events, overflow);
+    }
     let title = match fmt {
         RenderFormat::Plain => raw_title,
         RenderFormat::TelegramHtml => format!(
@@ -520,17 +525,28 @@ pub fn render_digest(
             "**{}**",
             crate::renderer::render_inline(&raw_title, RenderFormat::DiscordMarkdown)
         ),
+        RenderFormat::FeishuPost => unreachable!("handled above"),
     };
     let mut out = title;
     for ev in events {
         let head = crate::renderer::header_line_compact(ev);
-        let title_inline = crate::renderer::render_inline(&ev.title, fmt);
+        let display_title = digest_event_title(ev);
+        let title_inline = crate::renderer::render_inline(&display_title, fmt);
         let head_inline = crate::renderer::render_inline(&head, fmt);
+        let link_inline = ev
+            .url
+            .as_deref()
+            .filter(|u| !u.is_empty())
+            .map(|u| crate::renderer::render_link_icon(u, fmt));
         out.push('\n');
         if head_inline.is_empty() {
             out.push_str(&format!("• {title_inline}"));
         } else {
             out.push_str(&format!("• {head_inline} · {title_inline}"));
+        }
+        if let Some(link_inline) = link_inline {
+            out.push_str(" · ");
+            out.push_str(&link_inline);
         }
     }
     if overflow > 0 {
@@ -539,6 +555,65 @@ pub fn render_digest(
             "…… 另 {overflow} 条已省略（优先展示高优先级/最新）"
         ));
     }
+    out
+}
+
+fn render_digest_feishu_post(raw_title: &str, events: &[MarketEvent], overflow: usize) -> String {
+    let mut content = Vec::new();
+    for ev in events {
+        let head = crate::renderer::header_line_compact(ev);
+        let display_title = digest_event_title(ev);
+        let mut row = Vec::new();
+        row.push(crate::renderer::feishu_text("• "));
+        if !head.is_empty() {
+            row.push(crate::renderer::feishu_text(&head));
+            row.push(crate::renderer::feishu_text(" · "));
+        }
+        row.push(crate::renderer::feishu_text(&display_title));
+        if let Some(url) = ev.url.as_deref().filter(|u| !u.is_empty()) {
+            row.push(crate::renderer::feishu_text(" · "));
+            row.push(crate::renderer::feishu_link_icon(url));
+        }
+        content.push(row);
+    }
+    if overflow > 0 {
+        content.push(vec![crate::renderer::feishu_text(&format!(
+            "…… 另 {overflow} 条已省略（优先展示高优先级/最新）"
+        ))]);
+    }
+    serde_json::json!({
+        "zh_cn": {
+            "title": raw_title,
+            "content": content,
+        }
+    })
+    .to_string()
+}
+
+fn digest_event_title(event: &MarketEvent) -> String {
+    if matches!(event.kind, EventKind::SocialPost) {
+        if let Some(first_line) = event
+            .payload
+            .get("raw_text")
+            .and_then(|v| v.as_str())
+            .and_then(first_non_empty_line)
+        {
+            return truncate_chars(first_line, DIGEST_SOCIAL_TITLE_MAX_CHARS);
+        }
+    }
+    event.title.clone()
+}
+
+fn first_non_empty_line(text: &str) -> Option<&str> {
+    text.lines().map(str::trim).find(|line| !line.is_empty())
+}
+
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max_chars.saturating_sub(1)).collect();
+    out.push('…');
     out
 }
 
@@ -730,6 +805,110 @@ mod tests {
         let events: Vec<MarketEvent> = (0..2).map(|i| ev(&format!("e{i}"), "AAPL")).collect();
         let body = render_digest("盘前摘要", &events, 0, crate::renderer::RenderFormat::Plain);
         assert!(!body.contains("已省略"), "无 overflow 时不应出现省略提示");
+    }
+
+    #[test]
+    fn render_digest_recovers_social_title_from_raw_text() {
+        let full = "JUST IN: Polymarket to launch 24/7 perpetual futures trading for crypto, equities, commodities, and FX markets next quarter.";
+        let mut event = ev("social-1", "");
+        event.kind = EventKind::SocialPost;
+        event.title =
+            "JUST IN: Polymarket to launch 24/7 perpetual futures trading for crypto, equiti…"
+                .into();
+        event.payload = serde_json::json!({ "raw_text": full });
+
+        let body = render_digest(
+            "盘前摘要 · 19:00",
+            &[event],
+            0,
+            crate::renderer::RenderFormat::Plain,
+        );
+
+        assert!(body.contains(full), "body = {body}");
+        assert!(!body.contains("equiti…"), "body = {body}");
+    }
+
+    #[test]
+    fn render_digest_adds_compact_source_link_for_plain() {
+        let mut event = ev("news-1", "AAPL");
+        event.title = "Apple supplier update".into();
+        event.url = Some("https://news.example.com/path/to/story".into());
+
+        let body = render_digest(
+            "盘前摘要 · 19:00",
+            &[event],
+            0,
+            crate::renderer::RenderFormat::Plain,
+        );
+
+        assert!(body.contains("🔗 news.example.com"), "body = {body}");
+        assert!(
+            !body.contains("https://news.example.com/path/to/story"),
+            "plain digest should not expand long source URLs: {body}"
+        );
+    }
+
+    #[test]
+    fn render_digest_adds_icon_link_for_telegram_and_discord() {
+        let mut event = ev("news-1", "AAPL");
+        event.url = Some("https://news.example.com/path/to/story".into());
+
+        let telegram = render_digest(
+            "盘前摘要 · 19:00",
+            &[event.clone()],
+            0,
+            crate::renderer::RenderFormat::TelegramHtml,
+        );
+        assert!(
+            telegram.contains(r#"<a href="https://news.example.com/path/to/story">🔗</a>"#),
+            "telegram = {telegram}"
+        );
+
+        let discord = render_digest(
+            "盘前摘要 · 19:00",
+            &[event],
+            0,
+            crate::renderer::RenderFormat::DiscordMarkdown,
+        );
+        assert!(
+            discord.contains("[🔗](https://news.example.com/path/to/story)"),
+            "discord = {discord}"
+        );
+    }
+
+    #[test]
+    fn render_digest_feishu_post_uses_link_icon_element() {
+        let mut event = ev("news-1", "AAPL");
+        event.url = Some("https://news.example.com/path/to/story".into());
+
+        let body = render_digest(
+            "盘前摘要 · 19:00",
+            &[event],
+            0,
+            crate::renderer::RenderFormat::FeishuPost,
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            parsed
+                .pointer("/zh_cn/content/0/5")
+                .and_then(|v| v.get("tag"))
+                .and_then(|v| v.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            parsed
+                .pointer("/zh_cn/content/0/5")
+                .and_then(|v| v.get("text"))
+                .and_then(|v| v.as_str()),
+            Some("🔗")
+        );
+        assert_eq!(
+            parsed
+                .pointer("/zh_cn/content/0/5")
+                .and_then(|v| v.get("href"))
+                .and_then(|v| v.as_str()),
+            Some("https://news.example.com/path/to/story")
+        );
     }
 
     #[tokio::test]

@@ -37,11 +37,15 @@ const NEWS_CONVERGENCE_HARD_SIGNALS: &[&str] = &[
 pub trait OutboundSink: Send + Sync {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()>;
 
-    /// 该 Sink 期望的消息格式。当前所有内置 sink 一律 Plain;若新增渠道想用富文本
-    /// (如 TelegramHtml / DiscordMarkdown),override 这里同时在 send() 带上对应的
-    /// parse_mode,否则会出现 `<b>` 当字面量泄露。
+    /// 该 Sink 期望的消息格式。若渠道使用富文本,override 这里同时在 send()
+    /// 带上对应的 parse_mode / msg_type,否则会出现 `<b>` 当字面量泄露。
     fn format(&self) -> RenderFormat {
         RenderFormat::Plain
+    }
+
+    /// MultiChannelSink 这类按 actor.channel 分发的 sink 需要按目标渠道选择格式。
+    fn format_for(&self, _actor: &ActorIdentity) -> RenderFormat {
+        self.format()
     }
 }
 
@@ -439,10 +443,15 @@ impl NotificationRouter {
             }
             match effective_sev {
                 Severity::High => {
-                    let default_body = renderer::render_immediate(event, self.sink.format());
-                    let body = match self.polisher.polish(event, &default_body).await {
-                        Some(polished) => polished,
-                        None => default_body,
+                    let fmt = self.sink.format_for(&actor);
+                    let default_body = renderer::render_immediate(event, fmt);
+                    let body = if matches!(fmt, RenderFormat::Plain) {
+                        match self.polisher.polish(event, &default_body).await {
+                            Some(polished) => polished,
+                            None => default_body,
+                        }
+                    } else {
+                        default_body
                     };
                     if let Err(e) = self.sink.send(&actor, &body).await {
                         tracing::warn!(
