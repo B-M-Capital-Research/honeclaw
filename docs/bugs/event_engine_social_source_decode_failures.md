@@ -140,6 +140,19 @@ data/runtime/logs/web.log.2026-04-23:[2026-04-23 09:37:43.596] WARN  poll failed
 
 The same incremental source summary still had stored non-FMP events historically (`telegram.watcherguru` total rows reached 24, latest created at `2026-04-22 22:07:45` UTC), but no new `telegram.watcherguru` rows after the last巡检. The text log still lacks the structured `poller` field, so attribution remains unresolved without richer logging.
 
+Latest update 2026-04-23T06:18:33Z: still sev3. The next incremental window after `2026-04-23T02:16:05Z` logged more generic decode failures plus one explicit Telegram preview fetch refusal:
+
+```text
+data/runtime/logs/web.log.2026-04-23:307:[2026-04-23 10:29:32.626] WARN  initial poll failed: error decoding response body: expected value at line 1 column 1
+data/runtime/logs/web.log.2026-04-23:531:[2026-04-23 10:59:33.753] WARN  poll failed: error sending request for url (https://t.me/s/watcherguru): client error (Connect): tunnel error: failed to create underlying connection: tcp connect error: Connection refused (os error 61)
+data/runtime/logs/web.log.2026-04-23:552:[2026-04-23 11:29:33.933] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+data/runtime/logs/web.log.2026-04-23:577:[2026-04-23 12:29:33.672] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+data/runtime/logs/web.log.2026-04-23:603:[2026-04-23 12:43:39.085] WARN  initial poll failed: error decoding response body: expected value at line 1 column 1
+data/runtime/logs/web.log.2026-04-23:795:[2026-04-23 13:43:40.144] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+```
+
+The explicit `https://t.me/s/watcherguru` refusal confirms at least one affected source is the Telegram preview poller path in `crates/hone-event-engine/src/pollers/social/telegram_channel.rs:54-62`; the remaining decode failures still lack the structured `poller` field in text logs, so Truth Social versus another generic source remains unassigned.
+
 ## Date Observed
 
 2026-04-22T14:14:09Z

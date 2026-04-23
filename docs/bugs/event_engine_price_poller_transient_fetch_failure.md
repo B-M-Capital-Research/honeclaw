@@ -76,6 +76,26 @@ pub async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
 - Need upstream/network telemetry around `2026-04-22T04:03:01Z` to separate local network closure from FMP-side transport failure.
 - This巡检 did not call FMP or any real network API, so recovery is inferred only from later local logs and stored `fmp.quote` events.
 
+## Latest巡检 Update
+
+- 2026-04-23T06:18:33Z: the incremental window after `2026-04-23T02:16:05Z` showed a local outbound network refusal window affecting FMP quote/news fetches:
+
+```text
+data/runtime/logs/web.log.2026-04-23:518:[2026-04-23 10:54:29.577] WARN  price poller failed: error sending request for url (https://financialmodelingprep.com/api/v3/quote/AAOI,AAPL,AMD,BE,CAI,COHR,GEV,GOOGL,MU,RKLB,SNDK,TEM,VST?apikey=<redacted>): client error (Connect): tunnel error: failed to create underlying connection: tcp connect error: Connection refused (os error 61)
+data/runtime/logs/web.log.2026-04-23:529:[2026-04-23 10:59:29.576] WARN  price poller failed: error sending request for url (https://financialmodelingprep.com/api/v3/quote/AAOI,AAPL,AMD,BE,CAI,COHR,GEV,GOOGL,MU,RKLB,SNDK,TEM,VST?apikey=<redacted>): client error (Connect): tunnel error: failed to create underlying connection: tcp connect error: Connection refused (os error 61)
+data/runtime/logs/web.log.2026-04-23:530:[2026-04-23 10:59:29.576] WARN  news poller failed: error sending request for url (https://financialmodelingprep.com/api/v3/stock_news?limit=50&apikey=<redacted>): client error (Connect): tunnel error: failed to create underlying connection: tcp connect error: Connection refused (os error 61)
+```
+
+- The same run still saw `fmp.quote` and `fmp.stock_news:*` rows created after the cutoff, so this is still a degraded tick/window rather than a full source断流:
+
+```text
+fmp.quote|7|2026-04-23 04:43:39
+fmp.stock_news:reuters.com|16|2026-04-23 05:58:39
+fmp.stock_news:seekingalpha.com|28|2026-04-23 06:13:39
+```
+
+- `crates/hone-event-engine/src/lib.rs:648-663` and `:852-882` still only log and wait for the next interval when `NewsPoller::poll` or `PricePoller::poll` returns a transport error. The 2026-04-23 sample also created a `poller ok` gap from `10:49:30.912` to `11:04:31.069` local time, just over the 15 minute巡检 threshold, with no restart line between those two ticks.
+
 ## Severity
 
 sev3. One quote tick can be missed for the full watch pool, but current evidence shows later ticks resumed and `fmp.quote` was not断流.

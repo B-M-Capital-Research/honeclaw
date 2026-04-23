@@ -169,6 +169,47 @@ delivery_rows=0
 
 - The same incremental log window had no `sink delivered`, `sink send failed`, or `[dryrun sink]` lines. It did record `digest queued` rows and one `digest/sent/high` delivery row for a digest batch, but no `channel='sink' and status='sent'` row after `2026-04-22T18:12:34Z`.
 
+## Latest巡检 Update
+
+- 2026-04-23T06:18:33Z: the pattern recurred after `2026-04-23T02:16:05Z`. `data/events.sqlite3` stored one new `severity=high` Reuters stock-news event, and the only delivery row was `router/no_actor`; there was no `sink` send row:
+
+```text
+created=2026-04-23 05:43:39 UTC
+occurred=2026-04-23 01:20:46 UTC
+source=fmp.stock_news:reuters.com
+severity=high
+id=news:https://www.reuters.com/business/autos-transportation/hyundai-motor-reports-31-drop-q1-operating-profit-meets-forecasts-2026-04-23/
+title=Hyundai Motor reports 31% drop in Q1 operating profit, meets forecasts
+symbols=["HYMTF"]
+delivery=router|no_actor|high|2026-04-23 05:43:39
+```
+
+- The new `router/no_actor` row comes from `crates/hone-event-engine/src/router.rs:545-563`, which is better evidence than the earlier zero-row cases but still means a High news event can be silently skipped when no portfolio/subscription matches:
+
+```rust
+let hits = self.registry.load().resolve(event);
+if hits.is_empty() {
+    let _ = self.store.log_delivery(
+        &event.id,
+        "event_engine::::no_actor",
+        "router",
+        event.severity,
+        "no_actor",
+        None,
+    );
+    info!(
+        event_id = %event.id,
+        kind = %kind_tag(&event.kind),
+        source = %event.source,
+        symbols = ?event.symbols,
+        "dispatch skipped: no matching actor"
+    );
+    return Ok((0, 0));
+}
+```
+
+- The same delivery window had no `sink|sent|high` rows after the cutoff; it had `digest` rows and one `router|no_actor|high` row. This keeps the issue scoped to subscription/routing coverage rather than a global sink assembly failure.
+
 ## Severity
 
 sev2. The affected events are high severity and one is a safety recall while another is a guidance cut; if they should match the user, the current evidence trail makes the miss silent rather than auditable.
