@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use hone_core::ActorIdentity;
+use hone_memory::FEED_PUSH_METADATA_KEY;
 use hone_scheduler::SchedulerEvent;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -636,6 +638,61 @@ async fn run_heartbeat_task(
             .response
             .error
             .unwrap_or_else(|| "心跳检测执行失败".to_string()))
+    }
+}
+
+/// 将系统主动推送的消息持久化到 actor 的会话历史中，以便下次用户提问时能够引用。
+///
+/// 已成功投递给用户的 feed 推送消息会以 `assistant` 角色存入会话，
+/// 并在 metadata 中设置 `feed.push = true`，供上下文恢复时识别。
+pub fn persist_feed_push_to_session(
+    core: &HoneBotCore,
+    actor: &ActorIdentity,
+    content: &str,
+    job_id: &str,
+    job_name: &str,
+) {
+    let content = content.trim();
+    if content.is_empty() {
+        return;
+    }
+    let session_id = actor.session_id();
+    // 如果 session 还不存在就创建
+    if core
+        .session_storage
+        .load_session(&session_id)
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        if let Err(err) = core.session_storage.create_session_for_actor(actor) {
+            tracing::warn!(
+                "[FeedPush] 创建 session 失败，主动推送消息不会持久化: actor={} err={}",
+                session_id,
+                err
+            );
+            return;
+        }
+    }
+
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert(FEED_PUSH_METADATA_KEY.to_string(), Value::Bool(true));
+    metadata.insert("job_id".to_string(), Value::String(job_id.to_string()));
+    metadata.insert(
+        "job_name".to_string(),
+        Value::String(job_name.to_string()),
+    );
+
+    if let Err(err) =
+        core.session_storage
+            .add_message(&session_id, "assistant", content, Some(metadata))
+    {
+        tracing::warn!(
+            "[FeedPush] 主动推送消息持久化失败: actor={} job={} err={}",
+            session_id,
+            job_name,
+            err
+        );
     }
 }
 

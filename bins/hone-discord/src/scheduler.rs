@@ -130,6 +130,15 @@ pub(crate) async fn handle_scheduler_events(
                     event.job_name, event.channel_target
                 );
             }
+            if sent > 0 && result.error.is_none() {
+                channel_scheduler::persist_feed_push_to_session(
+                    &core_clone,
+                    &event.actor,
+                    &result.content,
+                    &event.job_id,
+                    &event.job_name,
+                );
+            }
             let _ = storage.record_execution_event(
                 &event.actor,
                 &event.job_id,

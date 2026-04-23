@@ -10,7 +10,7 @@ use hone_memory::{
     ConversationQuotaReservation, ConversationQuotaReserveResult, SessionStorage,
     assistant_tool_calls_from_metadata, build_assistant_message_metadata,
     has_compact_skill_snapshot, invoked_skills_from_metadata, message_is_compact_boundary,
-    message_is_compact_summary, message_is_slash_skill, restore_tool_message,
+    message_is_compact_summary, message_is_feed_push, message_is_slash_skill, restore_tool_message,
     select_messages_after_compact_boundary, session_message_from_normalized, session_message_text,
     session_message_to_agent_messages,
 };
@@ -1493,9 +1493,8 @@ pub fn restore_context(
             "assistant" | "tool" => {
                 for mut restored in session_message_to_agent_messages(message) {
                     if restored.role == "assistant" {
-                        let sanitized_content = sanitize_assistant_context_content(
-                            restored.content.as_deref().unwrap_or_default(),
-                        );
+                        let raw_content = restored.content.as_deref().unwrap_or_default();
+                        let sanitized_content = sanitize_assistant_context_content(raw_content);
                         let tool_calls = restored.tool_calls.clone().or_else(|| {
                             assistant_tool_calls_from_metadata(message.metadata.as_ref())
                         });
@@ -1504,7 +1503,16 @@ pub fn restore_context(
                         {
                             continue;
                         }
-                        restored.content = Some(sanitized_content);
+                        // 主动推送的 feed 消息在上下文中加前缀，便于模型理解其来源
+                        let final_content =
+                            if message_is_feed_push(message.metadata.as_ref())
+                                && !sanitized_content.trim().is_empty()
+                            {
+                                format!("[主动推送通知]\n{}", sanitized_content.trim())
+                            } else {
+                                sanitized_content
+                            };
+                        restored.content = Some(final_content);
                         restored.tool_calls = tool_calls;
                     }
                     if restored.role == "tool"
