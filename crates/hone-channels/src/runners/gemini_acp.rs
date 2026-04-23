@@ -11,9 +11,10 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpEventLogContext, AcpPromptState, AcpResponseTimeouts, CliVersion, build_acp_prompt_text,
-    create_acp_session, extract_finished_tool_calls, log_acp_prompt_stop_diagnostics,
-    parse_cli_version, wait_for_response, wait_for_response_with_timeouts, write_jsonrpc_request,
+    AcpEventLogContext, AcpPromptState, AcpResponseTimeouts, CliVersion, acp_prompt_succeeded,
+    build_acp_prompt_text, create_acp_session, extract_finished_tool_calls,
+    log_acp_prompt_stop_diagnostics, parse_cli_version, wait_for_response,
+    wait_for_response_with_timeouts, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -396,11 +397,11 @@ async fn run_gemini_acp(
     )
     .await?;
 
-    let stop_reason = prompt_result
+    let stop_reason_value = prompt_result
         .get("stopReason")
-        .and_then(|value| value.as_str())
-        .unwrap_or("unknown");
-    let success = stop_reason != "cancelled";
+        .and_then(|value| value.as_str());
+    let success = acp_prompt_succeeded(stop_reason_value);
+    let stop_reason = stop_reason_value.unwrap_or("unknown");
     if !success {
         log_acp_prompt_stop_diagnostics(
             "gemini",

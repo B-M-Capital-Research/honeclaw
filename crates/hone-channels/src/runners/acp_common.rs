@@ -899,31 +899,6 @@ async fn process_acp_payload(
     };
     log_acp_payload(log_ctx, "recv", &payload).await;
 
-    if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
-        if let Some(error) = payload.get("error") {
-            let message = error
-                .get("message")
-                .and_then(|value| value.as_str())
-                .unwrap_or("unknown acp error")
-                .to_string();
-            let stderr = if let Some(buf) = stderr_buf {
-                let captured = buf.lock().await.clone();
-                if captured.trim().is_empty() {
-                    String::new()
-                } else {
-                    format!(" stderr={captured}")
-                }
-            } else {
-                String::new()
-            };
-            return Err(AgentSessionError {
-                kind: AgentSessionErrorKind::AgentFailed,
-                message: format!("{runner_label} acp request failed: {message}{stderr}"),
-            });
-        }
-        return Ok(Some(payload.get("result").cloned().unwrap_or(Value::Null)));
-    }
-
     if let Some(method) = payload.get("method").and_then(|value| value.as_str()) {
         match method {
             "session/update" => {
@@ -956,6 +931,32 @@ async fn process_acp_payload(
             }
             _ => {}
         }
+        return Ok(None);
+    }
+
+    if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
+        if let Some(error) = payload.get("error") {
+            let message = error
+                .get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown acp error")
+                .to_string();
+            let stderr = if let Some(buf) = stderr_buf {
+                let captured = buf.lock().await.clone();
+                if captured.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!(" stderr={captured}")
+                }
+            } else {
+                String::new()
+            };
+            return Err(AgentSessionError {
+                kind: AgentSessionErrorKind::AgentFailed,
+                message: format!("{runner_label} acp request failed: {message}{stderr}"),
+            });
+        }
+        return Ok(Some(payload.get("result").cloned().unwrap_or(Value::Null)));
     }
 
     Ok(None)
@@ -1068,6 +1069,10 @@ async fn acp_timeout_error(
         AgentSessionErrorKind::TimeoutOverall
     };
     AgentSessionError { kind, message }
+}
+
+pub(crate) fn acp_prompt_succeeded(stop_reason: Option<&str>) -> bool {
+    matches!(stop_reason, Some(reason) if reason != "cancelled")
 }
 
 fn select_permission_option(options: &[Value], preferred_kinds: &[&str]) -> Option<String> {
@@ -1310,8 +1315,12 @@ pub(crate) fn parse_cli_version(raw: &str) -> Option<CliVersion> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AcpEventLogContext, acp_event_log_path, log_acp_payload};
+    use super::{
+        AcpEventLogContext, AcpPermissionDecision, acp_event_log_path, acp_prompt_succeeded,
+        log_acp_payload, process_acp_payload,
+    };
     use serde_json::json;
+    use std::process::Stdio;
 
     #[tokio::test]
     async fn acp_event_log_records_identity_for_grep() {
@@ -1348,5 +1357,65 @@ mod tests {
         assert!(content.contains("\"method\":\"session/update\""));
 
         let _ = tokio::fs::remove_dir_all(&temp_root).await;
+    }
+
+    #[tokio::test]
+    async fn acp_permission_request_matching_expected_id_is_not_prompt_response() {
+        let mut child = tokio::process::Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn cat");
+        let mut stdin = child.stdin.take().expect("child stdin");
+        let line = json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "session/request_permission",
+            "params": {
+                "sessionId": "session-1",
+                "options": [
+                    {
+                        "kind": "allow_always",
+                        "name": "Allow for this session",
+                        "optionId": "approved-for-session"
+                    }
+                ],
+                "toolCall": {
+                    "title": "Approve MCP tool call"
+                }
+            }
+        })
+        .to_string();
+
+        let result = process_acp_payload(
+            "codex",
+            &mut stdin,
+            4,
+            &line,
+            None,
+            None,
+            None,
+            None,
+            None,
+            AcpPermissionDecision::ApproveForSession,
+            None,
+        )
+        .await
+        .expect("process permission request");
+
+        assert!(result.is_none());
+        drop(stdin);
+        let output = child.wait_with_output().await.expect("cat output");
+        let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+        assert!(stdout.contains("\"id\":4"));
+        assert!(stdout.contains("\"optionId\":\"approved-for-session\""));
+    }
+
+    #[test]
+    fn acp_prompt_success_requires_explicit_non_cancelled_stop_reason() {
+        assert!(acp_prompt_succeeded(Some("end_turn")));
+        assert!(acp_prompt_succeeded(Some("max_tokens")));
+        assert!(!acp_prompt_succeeded(Some("cancelled")));
+        assert!(!acp_prompt_succeeded(None));
     }
 }

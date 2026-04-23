@@ -16,9 +16,10 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpEventLogContext, AcpPromptState, AcpResponseTimeouts, AcpToolCallRecord, create_acp_session,
-    log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
-    set_acp_session_model, timeout_message_with_stderr, wait_for_response, write_jsonrpc_request,
+    AcpEventLogContext, AcpPromptState, AcpResponseTimeouts, AcpToolCallRecord,
+    acp_prompt_succeeded, create_acp_session, log_acp_payload, log_acp_prompt_stop_diagnostics,
+    log_acp_raw_parse_error, set_acp_session_model, timeout_message_with_stderr, wait_for_response,
+    write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -603,11 +604,11 @@ async fn run_opencode_acp(
     )
     .await?;
 
-    let stop_reason = prompt_result
+    let stop_reason_value = prompt_result
         .get("stopReason")
-        .and_then(|value| value.as_str())
-        .unwrap_or("unknown");
-    let success = stop_reason != "cancelled";
+        .and_then(|value| value.as_str());
+    let success = acp_prompt_succeeded(stop_reason_value);
+    let stop_reason = stop_reason_value.unwrap_or("unknown");
     if !success {
         log_acp_prompt_stop_diagnostics(
             "opencode",
