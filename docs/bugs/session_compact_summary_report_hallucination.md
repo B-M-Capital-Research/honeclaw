@@ -6,6 +6,15 @@
 - **状态**: Fixing（2026-04-23 架构改造已落地，待 24h 灰度复核）
 - **证据来源**:
 
+- 2026-04-23 19:38-20:02 最新同小时状态变化复核：
+   - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
+   - 用户在 `2026-04-23T19:36:35.245543+08:00` 提问 `量子计算股票有哪些`，`session_messages.ordinal=18` 的 assistant final 于 `19:38:29.383833+08:00` 仍直接以 `Context compacted` 开头，说明 19:02 runtime 重启后同一小时内仍存在用户可见外泄。
+   - 同一会话在 `2026-04-23T20:00:00.608307+08:00` 收到定时任务 `美股盘前与持仓新闻综述` 后，`session_messages.ordinal=20` 于 `20:01:57.267126+08:00` 已输出正常长文，不再包含 `Context compacted`。
+   - 另一个定时任务会话 `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 也在 `2026-04-23T20:02:39.437955+08:00` 输出正常长文，`sessions.last_message_preview` 未见 compact 标记。
+   - `data/runtime/logs/sidecar.log`
+     - `2026-04-23 20:01:29.172` 记录 `runner internal compact signalled via status text: "Context compacted\n"`，说明新逻辑已经开始在 runner 层识别并拦截内部 compact 信号。
+   - 结论：这条缺陷在 19:38 仍真实影响用户，但 20:00 两条后续任务已出现“内部识别成功、用户侧未再外泄”的止血迹象；状态继续保持 `Fixing`，并继续观察是否只是部分场景生效。
+
 - 2026-04-23 13:50 根因复盘 + 架构改造落地（本次）：
    - **新增证据**：Telegram 出站链路也复现，chat `8039067465`（hone-test-bot）收到一条只有 `Context compacted` 的机器人消息。
    - **根因复合（实测确认）**：
