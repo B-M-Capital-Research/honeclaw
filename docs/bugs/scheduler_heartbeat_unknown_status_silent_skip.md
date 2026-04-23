@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-23 07:00-08:01 最新巡检样本：
+    - `run_id=4841-4873` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控` 与 `持仓重大事件心跳检测`。
+    - 07:01 与 07:31 两批 heartbeat 均未触发用户可见提醒，最终台账大多为 `noop + skipped_noop`；但 `detail_json.starts_with_json=false` 仍普遍存在，raw preview 继续以 `<think>` 自由文本开头，再依赖尾部 JSON 或空对象被解析器兜底。
+    - `run_id=4860`（`Monitor_Watchlist_11`，`2026-04-23T07:31:17.700080+08:00`）落成 `noop + skipped_noop + JsonEmptyStatus`；模型已逐项比较 11 只股票当前价与触发价，却没有稳定输出受支持状态 JSON。
+    - `run_id=4872`（同任务，`2026-04-23T08:01:20.140504+08:00`）再次为 `JsonEmptyStatus`，raw preview 仍是 `<think>` 包裹的逐项判断；说明 `01:00-02:00` 后结构化输出契约未恢复，只是当前被调度器兜底为 noop，没有新增错误投递。
+    - 本轮没有新增用户投诉、`execution_failed` 或 `delivered=1` 的错误提醒，因此严重等级不升级，状态保持 `New`；但不能按稳定恢复或修复处理。
   - 2026-04-23 01:00-02:00 最新巡检样本：
     - `run_id=4707-4738` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控` 与新建 `持仓重大事件心跳检测`。
     - `run_id=4715`（`Monitor_Watchlist_11`，`2026-04-23T01:00:21.205650+08:00`）继续落成 `execution_failed + skipped_error`，`error_message=max_iterations_exceeded:6`，说明结构化 heartbeat 仍可能触顶后整轮跳过。
