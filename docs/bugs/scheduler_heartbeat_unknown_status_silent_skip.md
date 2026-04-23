@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 00:30-01:00 最新巡检样本：
+    - `run_id=5260-5271` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测`；sqlite 在 `00:30` 与 `01:00` 两批里仍以 `noop + skipped_noop` 为主，仅 `run_id=5281`（`持仓重大事件心跳检测`，`2026-04-24T01:00:46.272224+08:00`）触发并送达。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 00:30:10-00:30:44` 与 `01:00:06-01:00:44` 连续记录 `starts_with_json=false`；`TEM破位预警`、`CAI破位预警`、`小米30港元破位预警`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`TEM大事件心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测` 的 raw preview 仍以前置 `<think>` / 自由文本分析开头，再依赖 `JsonNoop`、`JsonEmptyStatus` 或 `JsonTriggered` 被解析器兜底。
+    - `run_id=5264`（`持仓重大事件心跳检测`，`2026-04-24T00:30:13.774126+08:00`）在 sqlite 落成 `noop + skipped_noop`，但日志记录 `parse_kind=JsonEmptyStatus`、`starts_with_json=false`；模型先复盘 ASTS/ORCL/RKLB/TEM 已推送历史，再由解析器决定“本轮静默”。
+    - `run_id=5276`（`Monitor_Watchlist_11`，`2026-04-24T01:00:16.893919+08:00`）与 `run_id=5280`（`ORCL 大事件监控`，`2026-04-24T01:00:32.449123+08:00`）继续落成 `noop + skipped_noop`，但日志分别记录 `parse_kind=JsonEmptyStatus` / `JsonNoop` 且 `starts_with_json=false`，说明 watchlist 与事件监控模板都还没有恢复“纯 JSON 首包”。
+    - `run_id=5281`（`持仓重大事件心跳检测`）虽然 `completed + sent + delivered=1`，但日志仍写明 `parse_kind=JsonTriggered`、`starts_with_json=false`，`deliver_preview` 为 `【双重增量更新 — 北京时间 2026-04-24 01:00】`；这说明连成功触发型输出也还在依赖 `<think>...JSON` 兜底抽取，而不是稳定的结构化协议。
+    - 结论：00:30-01:00 这一小时没有重新升级成大面积 `execution_failed`，但 heartbeat 公共输出契约仍未恢复；当前只是靠解析器吸收漂移，状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-24 00:00-00:01 最新巡检样本：
     - `run_id=5250/5251/5253/5254` 覆盖 `Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控` 与 `持仓重大事件心跳检测`；sqlite 虽统一落成 `noop + skipped_noop`，但这仍是解析兜底后的结果，不代表上游协议恢复。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-24 00:00:25-00:00:46` 连续记录 `starts_with_json=false`；`Monitor_Watchlist_11` 为 `parse_kind=JsonEmptyStatus`，`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 与 `ORCL 大事件监控` 继续以 `<think>` / 自由文本开头，再被解析器收口成 `JsonNoop`。
