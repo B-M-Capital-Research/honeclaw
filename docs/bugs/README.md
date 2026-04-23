@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-24 03:05 CST
+最后更新：2026-04-24 04:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -30,7 +30,7 @@
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-23 巡检未找到已提交修复覆盖 Codex WebSocket/HTTPS 回退、`wss://chatgpt.com/backend-api/codex/responses`、`cf-ray`、`unexpected status 403` 等内部传输残留；不能维持 Fixed | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-23 23:01 同一会话 `核心观察股池晚间快报` 已恢复正常前缀，但 21:37 的 `run_id=5199` 仍刚把 `Context compacted` 送达用户；说明止血开始生效但尚未稳定 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-24 03:00 `全天原油价格3小时播报` 再次 `completed + sent + delivered=1`；raw preview 仍把“以色列与伊朗冲突升级导致油价暴涨至近 $120/桶”“OPEC+ 虽同意增产但警告复苏缓慢”等高风险叙述当成近期主因播报 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-24 04:01 `Oil_Price_Monitor_Closing` 再次 `completed + sent + delivered=1`；结论先行直接写“油价重新加速上冲、需提高尾盘防守”，仍未给出可追溯来源或置信度；03:00 的 `全天原油价格3小时播报` 同根因仍在 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-24 02:30-03:00 heartbeat 仍普遍以 `starts_with_json=false`、`<think>` 前缀和 `JsonNoop/JsonEmptyStatus/JsonTriggered` 被兜底解析；`Monitor_Watchlist_11`、`持仓重大事件心跳检测`、`TEM大事件心跳监控` 与 `ASTS 重大异动心跳监控` 仍未恢复纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
