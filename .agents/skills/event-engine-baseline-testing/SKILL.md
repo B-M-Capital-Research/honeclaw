@@ -131,6 +131,34 @@ Interpretation:
 - Drift that demotes a concrete hard event should usually be fixed in prompt rules or deterministic fallback.
 - Do not update the expected baseline just to make a new model pass. First decide whether the new answer is better.
 
+## Daily Push Calibration Export
+
+Daily Telegram calibration should start from the actual delivery evidence already stored in
+`data/events.sqlite3`. Use the read-only exporter to produce an ignored local JSON/Markdown
+snapshot for one actor and one local day:
+
+```bash
+rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465
+```
+
+The default output directory is `data/exports/event-engine-calibration/`, which is ignored by git.
+The JSON report includes blank `calibration_label` and `calibration_note` fields. The Markdown
+report is for quick human review.
+
+Suggested labels:
+
+- `useful`
+- `noise`
+- `should_immediate`
+- `should_digest`
+- `should_filter`
+- `baseline_candidate`
+
+When the user marks a stable reusable case, copy only the durable public fields into
+`tests/fixtures/event_engine/news_classifier_baseline_2026-04-23.json` or a newer fixture. Do not
+commit daily exports, private runtime DB files, full copyrighted article bodies, or one-off labels
+that only explain a single noisy day.
+
 ## Add New Baseline Samples
 
 Add a new baseline when live logs or user feedback exposes a reusable decision case, such as:

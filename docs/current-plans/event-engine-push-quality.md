@@ -21,6 +21,7 @@
   - `config.example.yaml`
   - `tests/fixtures/event_engine/news_classifier_baseline_2026-04-23.json`
   - `tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+  - `scripts/diagnose_event_engine_daily_pushes.py`
   - `.agents/skills/event-engine-baseline-testing/SKILL.md`
 - related_docs:
   - `docs/bugs/event_engine_high_macro_events_unrouted.md`
@@ -52,30 +53,30 @@ Close the full 24-item event-engine push-quality backlog without overfitting to 
 
 | # | Item | Status | Next proof |
 |---|---|---|---|
-| 1 | Price quote timestamp and stale protection | done_uncommitted | `price::tests` and `hone-event-engine --lib` |
-| 2 | Closing move versus intraday alert | done_uncommitted | close quote + router override tests |
-| 3 | Personal price threshold sensitivity | done_uncommitted | system floor, large-position, directional threshold tests |
-| 4 | Social source digest noise | done_uncommitted | social cap, source allow/block, source-quality digest score tests |
-| 5 | Repeated digest news | done_uncommitted | title dedupe, similar-title clustering, recent topic memory tests |
-| 6 | Window convergence over-upgrade | done_uncommitted | hard-signal correlation and per-symbol/per-tick cap tests |
-| 7 | Macro high rule gating | done_uncommitted | FMP impact + country + event type fixtures |
-| 8 | Macro high immediate due window | done_uncommitted | future macro digest; near-window macro immediate test |
-| 9 | Legal ad/news demotion | done_uncommitted | poller template + router hard-demotion tests |
-| 10 | High news delivery evidence | done_uncommitted | no_actor/filter/cap/cooldown/fail plus digest_item logs |
-| 11 | Digest value ranking | done_uncommitted | source quality and high-value event score tests |
-| 12 | Digest window policy | done_uncommitted | min-gap duplicate-window suppression test |
-| 13 | Pushed topic memory | done_uncommitted | 24h similar-topic suppression test |
-| 14 | Social source/channel preferences | done_uncommitted | source allow/block preference tests |
-| 15 | Rich sink/digest logs | done_uncommitted | event_id/source/symbols/item_ids/status logging paths |
-| 16 | Digest buffer/flush evidence policy | done_uncommitted | buffer path/rotated flushed timestamp logs |
-| 17 | Delivery `sent` semantics | done_uncommitted | dryrun status cannot equal sent test |
-| 18 | Poller decode/fetch degraded logs | done_uncommitted | poller/source/url_class/degraded log fields |
-| 19 | LLM classifier fallback | done_uncommitted | provider error and unparseable response tests |
-| 20 | High cap/cooldown by category | done_uncommitted | price/news/filing/earnings/macro category bucket store tests |
-| 21 | Portfolio-first default | done_uncommitted | symbol news remains portfolio/watchlist; global social/macro digest-gated |
-| 22 | Quiet mode preset | done_uncommitted | quiet mode demotes news but keeps SEC immediate test |
-| 23 | Directional/exposure price thresholds | done_uncommitted | up/down threshold and large-position tests |
-| 24 | Earnings preview lead time and transcript split | done_uncommitted | far preview Low digest + transcript dedicated-kind tests |
+| 1 | Price quote timestamp and stale protection | done_pushed | `price::tests` and `hone-event-engine --lib` |
+| 2 | Closing move versus intraday alert | done_pushed | close quote + router override tests |
+| 3 | Personal price threshold sensitivity | done_pushed | system floor, large-position, directional threshold tests |
+| 4 | Social source digest noise | done_pushed | social cap, source allow/block, source-quality digest score tests |
+| 5 | Repeated digest news | done_pushed | title dedupe, similar-title clustering, recent topic memory tests |
+| 6 | Window convergence over-upgrade | done_pushed | hard-signal correlation and per-symbol/per-tick cap tests |
+| 7 | Macro high rule gating | done_pushed | FMP impact + country + event type fixtures |
+| 8 | Macro high immediate due window | done_pushed | future macro digest; near-window macro immediate test |
+| 9 | Legal ad/news demotion | done_pushed | poller template + router hard-demotion tests |
+| 10 | High news delivery evidence | done_pushed | no_actor/filter/cap/cooldown/fail plus digest_item logs |
+| 11 | Digest value ranking | done_pushed | source quality and high-value event score tests |
+| 12 | Digest window policy | done_pushed | min-gap duplicate-window suppression test |
+| 13 | Pushed topic memory | done_pushed | 24h similar-topic suppression test |
+| 14 | Social source/channel preferences | done_pushed | source allow/block preference tests |
+| 15 | Rich sink/digest logs | done_pushed | event_id/source/symbols/item_ids/status logging paths |
+| 16 | Digest buffer/flush evidence policy | done_pushed | buffer path/rotated flushed timestamp logs |
+| 17 | Delivery `sent` semantics | done_pushed | dryrun status cannot equal sent test |
+| 18 | Poller decode/fetch degraded logs | done_pushed | poller/source/url_class/degraded log fields |
+| 19 | LLM classifier fallback | done_pushed | provider error and unparseable response tests |
+| 20 | High cap/cooldown by category | done_pushed | price/news/filing/earnings/macro category bucket store tests |
+| 21 | Portfolio-first default | done_pushed | symbol news remains portfolio/watchlist; global social/macro digest-gated |
+| 22 | Quiet mode preset | done_pushed | quiet mode demotes news but keeps SEC immediate test |
+| 23 | Directional/exposure price thresholds | done_pushed | up/down threshold and large-position tests |
+| 24 | Earnings preview lead time and transcript split | done_pushed | far preview Low digest + transcript dedicated-kind tests |
 
 ## Validation
 
@@ -97,6 +98,8 @@ Latest validation:
 - 2026-04-23: saved the live news set as `tests/fixtures/event_engine/news_classifier_baseline_2026-04-23.json`; added an offline fixture stability unit test and a manual OpenRouter drift script. The manual script intentionally uses a title-only baseline to avoid storing FMP article bodies; the fixture keeps the original live-with-text answer separately where it differed.
 - 2026-04-23: added repository skill `.agents/skills/event-engine-baseline-testing` to document the event-engine test matrix, live LLM baseline rerun commands, and rules for adding new baseline samples
 - 2026-04-23: screened non-Google/non-OpenAI/non-Anthropic OpenRouter models for news classifier use. `amazon/nova-lite-v1` won on the saved baseline: 5 passes x 12 items = 60 calls, 0 drift, 0 parse errors, reported cost `$0.002563`, avg latency 1.44s, p95 2.44s. Updated event-engine default/recommended classifier model to `amazon/nova-lite-v1`.
+- 2026-04-23: pushed the 24-item implementation batch to `main` as `0ff23d4 feat(event-engine): improve push quality routing`.
+- 2026-04-23: added read-only daily calibration exporter `scripts/diagnose_event_engine_daily_pushes.py`. Smoke run for `telegram::::8039067465` on `2026-04-23` produced ignored local JSON/Markdown exports with 43 delivery rows: 5 immediate sends, 3 digest batches, 35 queued/demoted rows, 0 filtered/failed rows.
 
 ## Documentation Sync
 
