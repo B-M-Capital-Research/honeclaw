@@ -151,24 +151,6 @@ discord_watch:
 
 
 
-# X (Twitter) publishing config
-x:
-  enabled: false
-  # Dry-run switch: true means simulate publishing only, without actually posting
-  dry_run: false
-  # Number of images to attach automatically (0 means text only; max 4)
-  default_image_count: 3
-  timeout_seconds: 30
-  api_base_url: "https://api.twitter.com"
-  upload_base_url: "https://upload.twitter.com"
-  oauth1:
-    # Fill these directly in config.yaml instead of relying on environment variables
-    consumer_key: ""
-    consumer_secret: ""
-    access_token: ""
-    access_token_secret: ""
-
-
 # Nano Banana Pro image generation config
 nano_banana:
   enabled: true

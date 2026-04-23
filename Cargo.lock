@@ -2990,21 +2990,14 @@ dependencies = [
 name = "hone-integrations"
 version = "0.2.6"
 dependencies = [
- "async-openai",
  "base64 0.22.1",
  "chrono",
- "hmac",
  "hone-core",
- "mime_guess",
  "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "sha1",
- "thiserror 2.0.18",
  "tokio",
- "tracing",
- "url",
  "uuid",
 ]
 

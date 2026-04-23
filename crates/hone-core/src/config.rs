@@ -20,7 +20,7 @@ pub use agent::{
 };
 pub use channels::{
     ChatScope, DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig,
-    GroupContextConfig, IMessageConfig, TelegramConfig, XConfig, XOAuth1Config,
+    GroupContextConfig, IMessageConfig, TelegramConfig,
 };
 pub use event_engine::{
     DigestConfig as EventEngineDigestConfig, EventEngineConfig,
@@ -48,8 +48,6 @@ pub struct HoneConfig {
     pub discord: DiscordConfig,
     #[serde(default)]
     pub group_context: GroupContextConfig,
-    #[serde(default)]
-    pub x: XConfig,
     #[serde(default)]
     pub nano_banana: NanoBananaConfig,
     #[serde(default)]
@@ -1093,7 +1091,6 @@ impl Default for HoneConfig {
             telegram: TelegramConfig::default(),
             discord: DiscordConfig::default(),
             group_context: GroupContextConfig::default(),
-            x: XConfig::default(),
             nano_banana: NanoBananaConfig::default(),
             fmp: FmpConfig::default(),
             search: SearchConfig::default(),
