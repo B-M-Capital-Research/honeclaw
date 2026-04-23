@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-24 05:30-06:00 最新巡检样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=5383`，`executed_at=2026-04-24T05:30:38.532569+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 又把 `FCC 于 2026-04-22 授予 AST SpaceMobile 商业授权` 作为 `重大基本面事件（FCC监管进展）` 送达；同一 FCC 事件已在更早多个窗口和同文档既有样本里多次发送，不属于 05:30 窗口内新发生的独立催化。
+      - 仅约 30 分钟后，同一任务 `run_id=5390`，`executed_at=2026-04-24T06:00:24.414999+08:00`，又转回 `noop + skipped_noop`；`detail_json.raw_preview` 明确写 `上一轮已处理的 FCC 授权事件`，说明去重基线仍依赖最近一轮临场判断，而不是稳定持久化的“已提醒事实”状态。
+      - `data/runtime/logs/sidecar.log` 在 `2026-04-24 05:30:35.916-05:30:35.916` 记录 `parse_kind=JsonTriggered` 与成功 `deliver`，在 `06:00:24.414-06:00:24.418` 又记录同任务 `parse_kind=JsonNoop`；同一旧事件在相邻两个窗口里继续出现 `triggered -> noop` 回摆。
+      - 这组最新样本说明重复提醒问题仍然活跃，而且根因还是“什么算新增”缺少稳定共享基线。它不阻断主功能链路，但会继续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-24 01:00-02:00 最新巡检样本：
       - `job_name=持仓重大事件心跳检测`
       - `run_id=5281`，`executed_at=2026-04-24T01:00:46.272224+08:00`，落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
