@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
+    - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
+    - `2026-04-23T13:27:36.582666+08:00` 用户提问：`攜程，價值分析`
+    - `2026-04-23T13:28:53.276120+08:00` assistant 最终只落库 96 字过程性片段：`已校验到 TCOM 最新报价、2025年度财务和近期新闻。一个需要降权处理的点：近期新闻里律师诉讼公告很多...`
+    - 这轮没有给出携程的主营结构、盈利质量、估值、增长驱动、风险、投资价值或可能走势；`sessions.last_message_preview` 也停在同一条“已校验到 TCOM...”片段。
+  - `data/runtime/logs/sidecar.log` / `data/runtime/logs/acp-events.log`
+    - `2026-04-23 13:28:53` 同一会话记录 `done ... success=true ... tools=6(Tool: hone/data_fetch,Tool: hone/local_list_files,Tool: hone/skill_tool,Tool: hone/web_search) reply.chars=96`，随后 `reply.send ... segments.sent=1/1`。
+    - ACP 事件显示同轮用户上下文明确为 `【本轮用户输入】攜程，價值分析`，且系统已执行多次搜索/行情/财报查询；最终仍只外发核验摘要，没有进入正式分析结构。
+    - 同轮在 `session.persist_assistant/done` 之后还继续出现 `local_list_files path="company_profiles"` 和 `local_search_files query="Trip.com" path="company_profiles"` 的工具调用请求与结果，说明收口与后续画像检索动作之间仍存在时序错位。
+  - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
     - `2026-04-22T22:43:47.623958+08:00` 用户提问：`分析LRCX公司，基本面，护城河，财务，估值，及最新的一些情况`
     - `2026-04-22T22:44:23.588581+08:00` assistant 最终只落库 77 字过程句：`本地没有找到 LRCX 或 Lam Research 的既有画像；我会按新研究处理，但这轮先输出分析，不写入长期画像，避免把一次性问题扩展成持久档案维护。`
@@ -14,7 +23,7 @@
     - `2026-04-22 22:44:08-22:44:23` 同一会话先后执行 `Tool: hone/skill_tool`、`Tool: hone/local_list_files`、`Tool: hone/local_search_files` 与多次 `Tool: hone/data_fetch`。
     - `2026-04-22 22:44:23.574` 新启动 `Tool: hone/web_search` 后，`2026-04-22 22:44:23.588` 立即记录 `step=session.persist_assistant detail=done`。
     - 同一秒落成 `done ... success=true ... tools=7(...) reply.chars=77`，随后 `2026-04-22 22:44:24.488` 执行 `reply.send ... segments.sent=1/1`。
-    - 这说明最新一小时仍允许“后续 web_search 刚启动、结果尚未消费 -> 先把过程句持久化并外发”。
+    - 这说明系统仍允许“后续 web_search 刚启动、结果尚未消费 -> 先把过程句持久化并外发”。
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fa7fc023b9aa2a550a3568c8ffc4d7cdc`
     - `2026-04-22T18:45:36.384423+08:00` 用户提问：`预测一下特斯拉2026年一季报业绩`
@@ -146,6 +155,9 @@
 
 ## 当前实现效果
 
+- `2026-04-23 13:27` 的 `携程 value analysis` 最新样本说明，缺陷在最近一小时仍活跃：用户明确要求价值分析，但系统只发送 96 字“已校验到 TCOM...”核验片段，没有给出正式价值判断。
+- 这轮不是没有进入工具链：日志显示同轮已执行 `skill_tool`、`data_fetch`、`web_search`、本地文件工具等 6 类工具，并落成 `success=true`；但最终文本仍只是研究过程摘要，缺少携程的基本面、估值、风险与投资价值分析。
+- ACP 事件还显示，`session.persist_assistant/done` 后仍有 `company_profiles` 相关本地检索请求，说明 answer 收口与后续工具动作之间仍可能交错；这与此前“工具尚未完成就先外发半成品”的根因一致。
 - `2026-04-22 22:43` 的 `LRCX` 最新样本说明，缺陷在本轮最近一小时仍活跃：用户明确要求基本面、护城河、财务、估值和最新情况，但系统只返回“本地没有找到画像；我会按新研究处理”的过程句。
 - 这轮不是没有进入工具链：日志显示 `skill_tool`、本地文件检索、`data_fetch` 都已执行，且 `web_search` 在 `22:44:23.574` 刚启动后，`22:44:23.588` 就把 77 字短句记为 `success=true` 并发送。
 - `2026-04-22 17:57` 的 `vistra energy` 样本说明，缺陷在当天稍早窗口也仍活跃：用户要求“详细分析”，但系统只返回“我现在核验最新行情和公告”的过程句，并在 `web_search` 刚启动后把 68 字文本记为 `success=true` 且发送。

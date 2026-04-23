@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-23 13:00 CST
+最后更新：2026-04-23 14:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -32,7 +32,7 @@
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-23 04:00 最新 auto compact 仍生成语义错误 summary：把 03:40 已回答的“如果有新增订单呢”标为“尚未回答的新问题”，说明 compact summary 可信边界仍未闭环 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-23 12:00 `全天原油价格3小时播报` 再次 `completed + sent + delivered=1`；raw preview 承认没有精确实时价格，却仍把 WTI 约 99-101 美元、布伦特 101.91 美元和航运/伊朗谈判风险作为确定性播报送达 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
-| Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-22 22:43 用户要求 LRCX 基本面/护城河/财务/估值分析，系统在 `web_search` 刚启动后仅把 77 字“本地没有画像，我会按新研究处理”过程句记为 `success=true` 并发送；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
+| Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | New | 2026-04-23 00:03/00:04 `RKLB 每日动态监控` 与 `TEM 每日动态监控` 正文均写“按规则可跳过正式推送 / 不触发正式推送”，但台账仍是 `completed + sent + delivered=1`，说明 2026-04-20 的止血已回归失效 | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-23 12:00-13:00 三批 heartbeat 仍普遍 `starts_with_json=false`；13:00 `持仓重大事件心跳检测` 触发型输出也先吐 `<think>` 再由解析器提取并发送，12:30 ORCL 超窗虽已降级为 noop，但结构化契约未恢复 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
