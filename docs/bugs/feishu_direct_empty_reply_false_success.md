@@ -5,6 +5,15 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-23 10:36 最新真实直聊样本：
+    - `session_id=Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c`
+    - `2026-04-23T10:36:51.771181+08:00` 用户输入：`帮我建腾讯控股ADR的画像`
+    - `data/runtime/logs/sidecar.log` 同轮记录已实际执行 `mkdir -p company_profiles/tencent-holdings-adr/events`，并在 `2026-04-23 10:38:42` 通过 `Edit` 写入：
+      - `data/agent-sandboxes/feishu/direct__ou_5f680322a6dcbc688a7db633545beae42c/company_profiles/tencent-holdings-adr/profile.md`
+      - `data/agent-sandboxes/feishu/direct__ou_5f680322a6dcbc688a7db633545beae42c/company_profiles/tencent-holdings-adr/events/2026-04-23-initial-profile.md`
+    - 但 `2026-04-23 10:38:47.439` 随后记录 `transitional planning sentence detected, treating as empty runner=codex_acp ... chars=43`，紧接着 `step=agent.run.fallback ... detail=planning_sentence_suppressed`。
+    - `2026-04-23T10:38:47.440223+08:00` assistant 最终落库并发送的是通用 fallback：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - 同轮 `MsgFlow/feishu done ... success=true ... tools=15(...) reply.chars=35`，说明用户任务的业务副作用已发生，但用户侧看到的是“失败/请重试”，会误导用户以为画像没有创建；这是 Answer 空/无效成功根因的新形态，不是独立新缺陷。
   - 2026-04-21 23:34 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f01b20218487e01a6d48c881ce6893123`
     - `2026-04-21T23:34:43.526597+08:00` 用户只问：`你在吗`
@@ -68,6 +77,7 @@
 ## 当前实现效果
 
 - `2026-04-21 23:34` 的最新样本说明，问题已经从“空字符串直接外发”缓解为“无效 Answer 被判空并返回 fallback”，但底层仍不能稳定为简单直聊生成可消费答复。
+- `2026-04-23 10:36` 的最新样本进一步说明，fallback 止血会掩盖已经发生的业务副作用：画像文件实际已创建，但最终可见回复仍被替换成“没有成功产出完整回复”，用户无法确认任务完成情况，甚至可能重复请求造成画像重复写入或状态混乱。
 - 真实会话已经证明：Feishu 直聊在搜索结果齐备的前提下，仍可能产出零字节 assistant 消息。
 - `opencode_acp` 日志明确识别到 `empty reply`，但 `multi_agent.answer.done`、`MsgFlow/feishu done` 和 `reply.send` 仍全部走成功路径。
 - 数据库最终同时留下“有真实消息 ID”和“assistant 内容为空”这两个互相矛盾的结果，说明空消息并未被链路拦截。
@@ -155,6 +165,15 @@
 - 但 `2026-04-21 23:34` 的 `你在吗` 会话证明底层坏态仍活跃：`codex_acp` 产出的 69 字过渡性文本被 `transitional planning sentence detected` 判空，最终只能给用户返回通用 fallback。
 - 这不是新的独立缺陷，而是同一 Answer 空/无效成功根因的新表现：用户侧不再收到空白消息，但仍没有拿到对简单问题的正常回答。
 - 因此本单继续维持 `Fixing`，不转 `Fixed`。
+
+## 最新真实样本复核（2026-04-23 11:08 CST）
+
+- 本轮巡检没有发现新的 `reply.chars=0 + segments.sent=1/1` 空白外发样本，说明用户侧零字节消息止血仍成立。
+- 但 `2026-04-23 10:36` 的腾讯控股 ADR 画像样本证明，`planning_sentence_suppressed` 仍会把真实任务收口成通用失败 fallback：
+  - 业务动作已经执行，`profile.md` 和事件文件已写入 actor sandbox；
+  - 最终用户只收到“这次没有成功产出完整回复”，无法知道画像已经创建；
+  - 主流程仍记录 `success=true` 与 `reply.chars=35`。
+- 因此本单继续维持 `Fixing`。当前待修范围不只是“避免空白消息”，还需要让空/无效 Answer 的 fallback 与真实业务副作用一致：如果任务已完成，应给出完成确认；如果不能确认，应避免把已执行写操作伪装成纯失败重试。
 
 ## 下一步建议（更新于 2026-04-19 23:10 CST）
 
