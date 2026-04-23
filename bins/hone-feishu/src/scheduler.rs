@@ -204,6 +204,15 @@ pub(crate) async fn handle_scheduler_events(
                     },
                 );
             } else {
+                if result.error.is_none() {
+                    scheduler::persist_feed_push_to_session(
+                        &state_clone.core,
+                        &event.actor,
+                        &result.content,
+                        &event.job_id,
+                        &event.job_name,
+                    );
+                }
                 let _ = storage.record_execution_event(
                     &event.actor,
                     &event.job_id,

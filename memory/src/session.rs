@@ -438,6 +438,8 @@ pub const COMPACT_BOUNDARY_METADATA_KEY: &str = "session.compact_boundary";
 pub const COMPACT_SUMMARY_METADATA_KEY: &str = "session.compact_summary";
 pub const COMPACT_SKILL_SNAPSHOT_METADATA_KEY: &str = "session.compact_skill_snapshot";
 pub const ASSISTANT_TOOL_CALLS_METADATA_KEY: &str = "assistant.tool_calls";
+/// 标记该消息是由系统定时任务主动推送给用户的（非用户触发），而不是对话中的普通 assistant 回复。
+pub const FEED_PUSH_METADATA_KEY: &str = "feed.push";
 
 pub fn build_tool_message_metadata_parts(
     tool_name: &str,
@@ -536,6 +538,14 @@ pub fn message_is_compact_summary(metadata: Option<&HashMap<String, Value>>) -> 
 pub fn message_is_compact_skill_snapshot(metadata: Option<&HashMap<String, Value>>) -> bool {
     metadata
         .and_then(|items| items.get(COMPACT_SKILL_SNAPSHOT_METADATA_KEY))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+/// 检查一条消息是否为系统定时任务主动推送（非用户触发）。
+pub fn message_is_feed_push(metadata: Option<&HashMap<String, Value>>) -> bool {
+    metadata
+        .and_then(|items| items.get(FEED_PUSH_METADATA_KEY))
         .and_then(|value| value.as_bool())
         .unwrap_or(false)
 }

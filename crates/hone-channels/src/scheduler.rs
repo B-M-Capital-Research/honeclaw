@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use hone_core::ActorIdentity;
+use hone_memory::FEED_PUSH_METADATA_KEY;
 use hone_scheduler::SchedulerEvent;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -639,16 +641,82 @@ async fn run_heartbeat_task(
     }
 }
 
+/// 将系统主动推送的消息持久化到 actor 的会话历史中，以便下次用户提问时能够引用。
+///
+/// 已成功投递给用户的 feed 推送消息会以 `assistant` 角色存入会话，
+/// 并在 metadata 中设置 `feed.push = true`，供上下文恢复时识别。
+pub fn persist_feed_push_to_session(
+    core: &HoneBotCore,
+    actor: &ActorIdentity,
+    content: &str,
+    job_id: &str,
+    job_name: &str,
+) {
+    let content = content.trim();
+    if content.is_empty() {
+        return;
+    }
+    let session_id = actor.session_id();
+    // 如果 session 还不存在就创建
+    if core
+        .session_storage
+        .load_session(&session_id)
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        if let Err(err) = core.session_storage.create_session_for_actor(actor) {
+            tracing::warn!(
+                "[FeedPush] 创建 session 失败，主动推送消息不会持久化: actor={} err={}",
+                session_id,
+                err
+            );
+            return;
+        }
+    }
+
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert(FEED_PUSH_METADATA_KEY.to_string(), Value::Bool(true));
+    metadata.insert("job_id".to_string(), Value::String(job_id.to_string()));
+    metadata.insert(
+        "job_name".to_string(),
+        Value::String(job_name.to_string()),
+    );
+
+    if let Err(err) =
+        core.session_storage
+            .add_message(&session_id, "assistant", content, Some(metadata))
+    {
+        tracing::warn!(
+            "[FeedPush] 主动推送消息持久化失败: actor={} job={} err={}",
+            session_id,
+            job_name,
+            err
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, has_skip_delivery_signal,
         heartbeat_execution_from_content, inspect_heartbeat_result,
-        sanitize_scheduler_delivery_text,
+        persist_feed_push_to_session, sanitize_scheduler_delivery_text,
     };
     use hone_core::ActorIdentity;
+    use hone_memory::FEED_PUSH_METADATA_KEY;
     use hone_scheduler::SchedulerEvent;
     use serde_json::Value;
+
+    fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("{prefix}_{}", uuid::Uuid::new_v4()))
+    }
+
+    fn make_core_with_sessions_dir(root: &std::path::Path) -> crate::HoneBotCore {
+        let mut config = hone_core::config::HoneConfig::default();
+        config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
+        crate::HoneBotCore::new(config)
+    }
 
     #[test]
     fn heartbeat_exact_noop_is_suppressed() {
@@ -948,5 +1016,54 @@ mod tests {
         assert!(has_skip_delivery_signal("当前行情平稳，跳过本次推送。"));
         assert!(!has_skip_delivery_signal("AAOI 今日出现重大利好，建议关注"));
         assert!(!has_skip_delivery_signal(""));
+    }
+
+    #[test]
+    fn persist_feed_push_creates_session_and_saves_message_with_metadata() {
+        let root = make_temp_dir("hone_scheduler_feed_push");
+        let core = make_core_with_sessions_dir(&root);
+        let actor = ActorIdentity::new("telegram", "alice", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+
+        persist_feed_push_to_session(&core, &actor, "TSLA 已触达目标价 $200", "job-1", "TSLA 价格警报");
+
+        let messages = core
+            .session_storage
+            .get_messages(&session_id, None)
+            .expect("get messages");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "assistant");
+        assert_eq!(
+            hone_memory::session_message_text(&messages[0]),
+            "TSLA 已触达目标价 $200"
+        );
+        let metadata = messages[0].metadata.as_ref().expect("metadata present");
+        assert_eq!(
+            metadata.get(FEED_PUSH_METADATA_KEY).and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            metadata.get("job_id").and_then(|v| v.as_str()),
+            Some("job-1")
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn persist_feed_push_ignores_empty_content() {
+        let root = make_temp_dir("hone_scheduler_feed_push_empty");
+        let core = make_core_with_sessions_dir(&root);
+        let actor = ActorIdentity::new("telegram", "bob", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+
+        persist_feed_push_to_session(&core, &actor, "   ", "job-2", "Empty test");
+
+        // Session might not even exist; either way, no messages should be stored.
+        let messages = core
+            .session_storage
+            .get_messages(&session_id, None)
+            .unwrap_or_default();
+        assert!(messages.is_empty());
+        let _ = std::fs::remove_dir_all(root);
     }
 }
