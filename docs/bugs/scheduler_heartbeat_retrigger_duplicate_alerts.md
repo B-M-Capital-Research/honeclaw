@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-23 10:01 最新巡检样本：
+      - `job_name=ASTS 重大异动心跳监控`
+      - `run_id=4932`，`executed_at=2026-04-23T10:01:36.893968+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 又围绕 `BlueBird 7 因 Blue Origin 火箭故障部署失败` 与 `FCC 于 4月22日批准 AST SpaceMobile 商业授权` 展开；同一 ASTS/FCC/BlueBird 事件已在 `run_id=4874`（`2026-04-23T08:01:41.547823+08:00`）由 `持仓重大事件心跳检测` 送达，也已在更早窗口多次由 ASTS heartbeat/持仓 heartbeat 送达。
+      - 同轮正文明确写出 `当前价84.66美元，较前收盘80.01美元上涨5.81%，未触发8%盘中涨跌幅阈值`，最终仍以 `条件2（重大基本面事件）已满足` 触发，说明这次不是价格阈值误判，而是旧重大事件缺少稳定去重基线。
+      - 这不是新的独立发送故障：发送链路成功，且问题仍是已提醒事实在后续窗口被重新包装成当前触发，因此继续按 P3 跟踪；它不阻断主功能链路，但会造成提醒打扰和用户对监控增量性的信任下降。
     - 2026-04-23 04:31-05:00 最新巡检样本：
       - `job_name=持仓重大事件心跳检测`
       - `run_id=4794`，`executed_at=2026-04-23T04:31:05.358230+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
