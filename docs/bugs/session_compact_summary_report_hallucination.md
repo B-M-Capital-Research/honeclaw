@@ -6,6 +6,15 @@
 - **状态**: Fixing（2026-04-23 架构改造已落地，待 24h 灰度复核）
 - **证据来源**:
 
+- 2026-04-23 21:00-21:02 最新同小时状态变化复核：
+   - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
+   - 定时任务 `OWALERT_PreMarket` 在 `2026-04-23T21:00:00.700150+08:00` 触发后，日志显示同轮持续执行 `skill_tool`、`data_fetch`、`web_search`，并伴随 Tavily `usage limit` 降级告警。
+   - `data/runtime/logs/sidecar.log`
+     - `2026-04-23 21:02:12.080` 再次记录 `runner internal compact signalled via status text: "Context compacted\n"`。
+     - `2026-04-23 21:02:44.904` 记录 `step=session.persist_assistant detail=done`，随后 `done ... success=true elapsed_ms=164072 tools=14(Tool: hone/data_fetch,Tool: hone/skill_tool,Tool: hone/web_search)`。
+   - `session_messages` 同轮 assistant final 于 `2026-04-23T21:02:44.901261+08:00` 仍直接以 `Context compacted` 开头，然后才进入盘前扫描正文。
+   - 结论：20:01/20:02 两条定时任务“未外泄”的止血迹象没有扩展到 21:00 的最新真实播报，compact 标记仍会进入用户可见最终回复；状态继续保持 `Fixing`，不能降级或关闭。
+
 - 2026-04-23 19:38-20:02 最新同小时状态变化复核：
    - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
    - 用户在 `2026-04-23T19:36:35.245543+08:00` 提问 `量子计算股票有哪些`，`session_messages.ordinal=18` 的 assistant final 于 `19:38:29.383833+08:00` 仍直接以 `Context compacted` 开头，说明 19:02 runtime 重启后同一小时内仍存在用户可见外泄。
