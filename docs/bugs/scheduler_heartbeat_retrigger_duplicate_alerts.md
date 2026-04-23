@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-23 17:31-18:01 最新巡检样本：
+      - `job_name=持仓重大事件心跳检测`
+      - `run_id=5099`，`executed_at=2026-04-23T17:31:15.674891+08:00`，落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 发送 `RKLB — Stifel上调目标价至$105，评级维持Buy`；这是 4 月 20 日的旧机构研报，被包装成 4 月 23 日盘中的“增量事件”送达。
+      - 约 30 分钟后，同一任务 `run_id=5110`，`executed_at=2026-04-23T18:01:08.820567+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把 `ASTS FCC商业授权批准`、`BlueBird 7事故后的监管对冲` 与 `Oracle/Google Cloud 扩展AI合作` 组合成 `ASTS + ORCL 双增量事件检测` 送达；其中 ASTS/FCC/BlueBird 事件已在更早多个窗口发送，ORCL 合作新闻也来自 2026-04-22，并非 18:00 窗口内新出现的独立催化。
+      - `data/runtime/logs/sidecar.log` 在 `2026-04-23 18:01:07.156-18:01:07.158` 同步记录 `parse_kind=JsonTriggered` 与成功 `deliver`；raw preview 还明确写出 `RKLB ... 已在最近已送达中`、`TEM ... 无新重大事件`，却仍把 ASTS/FCC 与 ORCL 旧新闻重组后作为“新双增量事件”发出，说明去重/增量基线仍是临场拼接而非稳定状态。
+      - 这两条最新样本都不是发送链路故障，而是同一持仓 heartbeat 在 30 分钟窗口内不断改写“什么算新增”；它不阻断主功能链路，但会造成提醒打扰和用户对“只报新增”的信任下降，因此继续按 P3 跟踪。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-23 12:00 最新巡检样本：
       - `job_name=持仓重大事件心跳检测`
       - `run_id=4976`，`executed_at=2026-04-23T12:00:32.792424+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`

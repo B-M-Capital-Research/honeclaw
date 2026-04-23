@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-23 17:30-18:00 最新巡检样本：
+    - `run_id=5089-5107` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控` 与 `TEM大事件心跳监控`；sqlite 除明确触发的原油播报外，其余继续全部落成 `noop + skipped_noop + delivered=0`。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-23 17:30:36`、`18:00:15`、`18:00:22`、`18:00:26`、`18:00:36`、`18:00:41` 与 `18:01:04` 继续记录 `starts_with_json=false`；`TEM大事件心跳监控`、`小米破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 的 raw preview 仍普遍以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器兜底。
+    - `run_id=5098`（`TEM大事件心跳监控`，`2026-04-23T17:30:36.082997+08:00`）在 sqlite 已落成 `noop + skipped_noop`，但日志仍是 `parse_kind=JsonEmptyStatus`；模型先复盘 AACR 已结束、旧合作新闻不构成新触发，再输出非纯 JSON 结果。
+    - `run_id=5104`（`Monitor_Watchlist_11`，`2026-04-23T18:00:22.991735+08:00`）与 `run_id=5106`（`RKLB异动监控`，`2026-04-23T18:00:36.243906+08:00`）同样落成 `noop + skipped_noop`，但日志仍分别记录 `parse_kind=JsonNoop` 且 `starts_with_json=false`，说明“已被正确跳过”和“上游输出契约恢复”为两件不同的事。
+    - `run_id=5109`（`ASTS 重大异动心跳监控`，`2026-04-23T18:01:04.255409+08:00`）日志明确先写出 `BlueBird 7 ... 发射失败`、`FCC批准`、`当前涨幅+5.81%` 等分析段落，最后才被收口成 `JsonNoop`；这证明旧事件判断仍依赖自由文本推理，而不是稳定的结构化状态首包。
+    - 同批 `18:00:48-18:00:48` 还伴随 Tavily `usage limit` 告警，但非原油 heartbeat 最终仍被兜底为 `noop + skipped_noop`；说明本窗口主要问题仍是 heartbeat 公共 JSON 契约漂移，而不是新的独立发送故障。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-23 16:30-17:00 最新巡检样本：
     - `run_id=5067-5088` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 与 `TEM大事件心跳监控`；sqlite 全部落成 `noop + skipped_noop + delivered=0`，说明这一小时没有新增误投递或 execution failed。
     - `data/runtime/logs/web.log.2026-04-23` 在 `2026-04-23 16:30:07-16:30:45` 与 `17:00:11-17:00:51` 两批 heartbeat 中，继续记录多条 `starts_with_json=false`；`全天原油价格3小时播报`、`小米破位预警`、`CAI破位预警`、`TEM破位预警`、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测`、`TEM大事件心跳监控` 的 raw preview 仍普遍以 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器兜底。
