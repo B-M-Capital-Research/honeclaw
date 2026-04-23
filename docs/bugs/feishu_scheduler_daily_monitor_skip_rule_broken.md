@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - 最新复发证据：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=5257`，`job_id=j_101f5e64`，`job_name=AAOI 每日动态监控`，`executed_at=2026-04-24T00:01:07.356294+08:00`
+    - 本轮落成 `execution_status=completed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`
+    - `response_preview` 明确写入：`AAOI 今日未出现新的公司级实质催化或风险证伪信号，按规则可跳过正式推送`
+    - 最近一小时真实会话 `session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 也显示：
+      - `2026-04-24T00:00:00.368631+08:00` 调度触发 `AAOI 每日动态监控`
+      - `2026-04-24T00:01:05.641306+08:00` assistant 正文先写明 `按规则可跳过正式推送`
+      - 但同一条 assistant 仍被完整落库为正式长文，并在调度台账里记成 `sent + delivered=1`
+    - 这说明当前生产链路不仅没有处理旧措辞 `按规则应跳过正式推送`，连最新常见措辞 `按规则可跳过正式推送` 也仍然直接出站
+  - 最新复发证据：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=4695`，`job_id=j_5f0b686a`，`job_name=RKLB 每日动态监控`，`executed_at=2026-04-23T00:03:26.575982+08:00`
     - 本轮落成 `execution_status=completed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`
     - `response_preview` 明确写入：`RKLB 今日未发现新的实质性催化或风险证伪信号，按规则可跳过正式推送`，并在“动作”段写 `不触发正式推送`
@@ -51,6 +60,7 @@
 
 ## 当前实现效果
 
+- 2026-04-24 00:01 最新样本显示，`AAOI 每日动态监控` 已明确判断“未出现新的公司级实质催化或风险证伪信号，按规则可跳过正式推送”，但仍被记成 `completed + sent + delivered=1` 并向用户落库正式正文。
 - `AAOI 每日动态监控` 与 `TEM 每日动态监控` 在最近一小时都明确判定“无新增实质性催化”。
 - 但两轮都仍被记成 `completed + sent + delivered=1`，并在会话中落为正式 assistant 长文。
 - 2026-04-23 复发样本显示，`RKLB 每日动态监控` 与 `TEM 每日动态监控` 已经使用“按规则可跳过正式推送 / 不触发正式推送”这类变体措辞，但发送前过滤仍未中止投递。

@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 00:00-00:01 最新巡检样本：
+    - `run_id=5250/5251/5253/5254` 覆盖 `Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控` 与 `持仓重大事件心跳检测`；sqlite 虽统一落成 `noop + skipped_noop`，但这仍是解析兜底后的结果，不代表上游协议恢复。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 00:00:25-00:00:46` 连续记录 `starts_with_json=false`；`Monitor_Watchlist_11` 为 `parse_kind=JsonEmptyStatus`，`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 与 `ORCL 大事件监控` 继续以 `<think>` / 自由文本开头，再被解析器收口成 `JsonNoop`。
+    - 同批 `run_id=5255`（`全天原油价格3小时播报`，`2026-04-24T00:00:42.397277+08:00`）仍是 `completed + sent + delivered=1`，日志记录 `parse_kind=JsonTriggered`、`starts_with_json=false`；说明即使是成功触发型输出，heartbeat 也没有恢复为纯 JSON 首包，而是继续依赖兜底抽取。
+    - 结论：00:00 这一批 heartbeat 继续证明“当前窗口能正常跳过/送达”不等于“协议恢复”；结构化状态仍靠 `JsonNoop` / `JsonEmptyStatus` / `JsonTriggered` 解析兜底，状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-23 23:00-23:01 最新巡检样本：
     - `run_id=5222-5232` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；sqlite 里多数任务仍是 `noop + skipped_noop`，但结构化契约仍未恢复。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-23 23:00:08-23:00:53` 连续记录 `starts_with_json=false`；`全天原油价格3小时播报`、CAI/小米/TEM 破位、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测` 的 raw preview 仍以前置 `<think>` / 自由文本开头，再依赖 `JsonNoop`、`JsonEmptyStatus` 或 `JsonTriggered` 被解析器兜底。

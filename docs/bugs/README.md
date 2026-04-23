@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-23 23:08 CST
+最后更新：2026-04-24 00:07 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -33,8 +33,8 @@
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-23 18:00 `全天原油价格3小时播报` 再次 `completed + sent + delivered=1`；raw preview 仍把“霍尔木兹海峡持续受阻”“主要产油国出口受影响”“油价或破150美元”等高风险叙述当成确定性主因播报 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | New | 2026-04-23 00:03/00:04 `RKLB 每日动态监控` 与 `TEM 每日动态监控` 正文均写“按规则可跳过正式推送 / 不触发正式推送”，但台账仍是 `completed + sent + delivered=1`，说明 2026-04-20 的止血已回归失效 | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-23 23:00 这一批 heartbeat 仍普遍以 `starts_with_json=false`、`<think>` 前缀和 `JsonNoop/JsonEmptyStatus/JsonTriggered` 被兜底解析；`Monitor_Watchlist_11` 与 `ORCL 大事件监控` 都未恢复纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | New | 2026-04-24 00:01 `AAOI 每日动态监控` 正文再次写“按规则可跳过正式推送”，但 `cron_job_runs` 仍落成 `completed + sent + delivered=1`；说明当前生产链路仍未把 skip 结论收口成 `noop` | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-24 00:00 这一批 heartbeat 仍普遍以 `starts_with_json=false`、`<think>` 前缀和 `JsonNoop/JsonEmptyStatus/JsonTriggered` 被兜底解析；`Monitor_Watchlist_11`、`TEM/ASTS/ORCL` 心跳都未恢复纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 将日内高点/区间振幅误判为涨跌幅阈值并发送错误触发提醒 | P2 | New | 2026-04-23 06:31 `ASTS 重大异动心跳监控` 再次 `JsonTriggered + sent`：当前/收盘价相对昨收仅 `+5.81%`，raw preview 也先判低于 8%，最终仍用日内高点相对昨收 `+9.71%` 判定“盘中涨跌幅超8%”；同根因曾在 ORCL 上把高低点振幅误判为涨跌幅 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-23 18:01 `持仓重大事件心跳检测` 再次把 ASTS FCC 批准与旧 BlueBird 事故包装成 `ASTS + ORCL 双增量事件` 送达；17:31 刚送过 RKLB 目标价上调，说明增量基线仍按临场拼接摇摆 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
