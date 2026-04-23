@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-23 12:00-13:00 最新巡检样本：
+    - `run_id=4967-5000` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 与 `TEM大事件心跳监控`。
+    - `data/runtime/logs/sidecar.log` 在 12:00、12:30、13:00 三批 heartbeat 中继续记录多条 `starts_with_json=false`；raw preview 普遍以 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或触发 JSON 被解析器提取。
+    - `run_id=4999`（`持仓重大事件心跳检测`，`2026-04-23T13:00:39.665336+08:00`）为 `completed + sent + delivered=1`；日志 `2026-04-23 13:00:34.541` 显示同一触发型输出仍是 `starts_with_json=false + JsonTriggered`，先输出 `<think>` 分析 RKLB/JAXA 发射，再由解析器提取正文送达。
+    - `run_id=4986`（`ORCL 大事件监控`，`2026-04-23T12:30:19.623448+08:00`）落成 `noop + skipped_noop`，但日志先记录 `context window exceeds limit (2013)`，随后按 `ContextOverflowNoop` 降级；这说明 overflow 恢复止血生效，未重新打开已修复的超窗缺陷，但结构化 heartbeat 仍不是纯 JSON 契约。
+    - 本轮没有新增 `execution_failed` 或用户投诉，严重等级不升级，状态保持 `New`；但 13:00 继续证明上游 heartbeat 输出契约未恢复，不能按稳定修复处理。
   - 2026-04-23 09:01-10:01 最新巡检样本：
     - `run_id=4897-4932` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 与 `TEM大事件心跳监控`。
     - 09:01 与 09:31 两批未触发 heartbeat 多数落成 `noop + skipped_noop`；日志层仍记录多个 `starts_with_json=false`，raw preview 以 `<think>` 自由文本开头，再依赖尾部 JSON 或空对象被解析器兜底。
