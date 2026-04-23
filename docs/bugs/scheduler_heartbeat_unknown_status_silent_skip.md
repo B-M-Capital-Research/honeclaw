@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-23 23:00-23:01 最新巡检样本：
+    - `run_id=5222-5232` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；sqlite 里多数任务仍是 `noop + skipped_noop`，但结构化契约仍未恢复。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-23 23:00:08-23:00:53` 连续记录 `starts_with_json=false`；`全天原油价格3小时播报`、CAI/小米/TEM 破位、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测` 的 raw preview 仍以前置 `<think>` / 自由文本开头，再依赖 `JsonNoop`、`JsonEmptyStatus` 或 `JsonTriggered` 被解析器兜底。
+    - `run_id=5229`（`Monitor_Watchlist_11`，`2026-04-23T23:00:31.927090+08:00`）继续落成 `noop + skipped_noop`，但日志记录 `parse_kind=JsonEmptyStatus`、`starts_with_json=false`，说明 watchlist 模板依旧不是“纯 JSON 起始”。
+    - `run_id=5230`（`ORCL 大事件监控`，`2026-04-23T23:00:41.327420+08:00`）在日志里明确写出“上一轮 22:00 已报告跌幅 6.33%”，最终仍以 `JsonNoop` 被兜底吸收；这证明当前跳过依赖自由文本推理和解析器，而不是稳定的结构化首包。
+    - `run_id=5231`（`TEM大事件心跳监控`）与 `run_id=5232`（`持仓重大事件心跳检测`）都再次 `completed + sent + delivered=1`，但日志仍分别是 `starts_with_json=false + JsonTriggered`；即使成功触发型输出也没有恢复到纯 JSON 契约。
+    - 结论：23:00 这一批 heartbeat 继续证明“没有报错”不等于“协议恢复”；结构化状态仍在靠解析兜底吸收漂移，状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-23 21:30-22:00 最新巡检样本：
     - `run_id=5190-5210` 覆盖 `ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`持仓重大事件心跳检测` 与 `ORCL 大事件监控`；sqlite 显示同一批任务继续以 `noop + skipped_noop` 为主，仅 `ORCL 大事件监控` 在 `run_id=5209` 触发并送达。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-23 21:30:25`、`21:30:29`、`21:30:41` 以及 `22:00:22`、`22:00:26`、`22:00:54` 连续记录 `starts_with_json=false`；`ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`持仓重大事件心跳检测` 的 raw preview 仍普遍以前置 `<think>` / 自由文本分析开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器兜底。
