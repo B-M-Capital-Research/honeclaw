@@ -6,6 +6,13 @@
 - **状态**: Fixing（2026-04-23 架构改造已落地，待 24h 灰度复核）
 - **证据来源**:
 
+- 2026-04-23 21:35-21:37 最新同小时状态变化复核：
+   - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+   - 定时任务 `科技核心股池 · 晚间击球区快报` 在 `cron_job_runs.run_id=5199`、`executed_at=2026-04-23T21:37:09.792230+08:00` 记录为 `completed + sent + delivered=1`。
+   - `session_messages.ordinal=24` 的 assistant final 于 `2026-04-23T21:37:05.557097+08:00` 仍直接以 `Context compacted` 开头，然后才进入 25 支观察池晚间快报正文。
+   - 同一任务在 `2026-04-22T21:36:01.630843+08:00` 的上一日样本 `run_id=4641` 已恢复为正常前缀；说明 2026-04-23 21:35 不是历史脏样本残留，而是用户可见 compact 标记在最新生产窗口重新外泄。
+   - 结论：21:02 `OWALERT_PreMarket` 之后并未稳定收口，21:35 新样本再次证明定时任务出站仍会把 compact 标记投给用户；状态继续保持 `Fixing`，不能降级或关闭。
+
 - 2026-04-23 21:00-21:02 最新同小时状态变化复核：
    - `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`
    - 定时任务 `OWALERT_PreMarket` 在 `2026-04-23T21:00:00.700150+08:00` 触发后，日志显示同轮持续执行 `skill_tool`、`data_fetch`、`web_search`，并伴随 Tavily `usage limit` 降级告警。

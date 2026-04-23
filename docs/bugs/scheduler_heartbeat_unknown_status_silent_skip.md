@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-23 21:30-22:00 最新巡检样本：
+    - `run_id=5190-5210` 覆盖 `ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`持仓重大事件心跳检测` 与 `ORCL 大事件监控`；sqlite 显示同一批任务继续以 `noop + skipped_noop` 为主，仅 `ORCL 大事件监控` 在 `run_id=5209` 触发并送达。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-23 21:30:25`、`21:30:29`、`21:30:41` 以及 `22:00:22`、`22:00:26`、`22:00:54` 连续记录 `starts_with_json=false`；`ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`持仓重大事件心跳检测` 的 raw preview 仍普遍以前置 `<think>` / 自由文本分析开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器兜底。
+    - `run_id=5205`（`ASTS 重大异动心跳监控`，`2026-04-23T22:00:22.552658+08:00`）与 `run_id=5207`（`Monitor_Watchlist_11`，`2026-04-23T22:00:26.593140+08:00`）继续落成 `noop + skipped_noop`，但日志分别记录 `parse_kind=JsonNoop`、`starts_with_json=false`，说明上游输出契约仍未恢复为“纯 JSON 起始”。
+    - `run_id=5208`（`持仓重大事件心跳检测`，`2026-04-23T22:00:26.954270+08:00`）已复盘 ASTS FCC 批准、BlueBird 事故与旧推送记录，最终仍以 `JsonNoop` 被静默吸收；这说明增量判断依旧依赖自由文本推理，而不是稳定的结构化状态首包。
+    - `run_id=5210`（`TEM大事件心跳监控`，`2026-04-23T22:00:54.128874+08:00`）同样记录 `parse_kind=JsonNoop`，raw preview 先输出新闻与价格分析，再由调度器归并为 `noop`；22:00 窗口没有新增 `execution_failed`，但也没有恢复 JSON 契约。
+    - `run_id=5209`（`ORCL 大事件监控`，`completed + sent + delivered=1`）虽成功送达，但日志仍是 `starts_with_json=false + JsonTriggered`，说明即便触发型输出也持续依赖解析器从 `<think>` 后抽取结构化结果。
+    - 结论：最近半小时并非“已修复后正常跳过”，而是解析兜底继续吸收 heartbeat 输出漂移；状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-23 17:30-18:00 最新巡检样本：
     - `run_id=5089-5107` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控` 与 `TEM大事件心跳监控`；sqlite 除明确触发的原油播报外，其余继续全部落成 `noop + skipped_noop + delivered=0`。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-23 17:30:36`、`18:00:15`、`18:00:22`、`18:00:26`、`18:00:36`、`18:00:41` 与 `18:01:04` 继续记录 `starts_with_json=false`；`TEM大事件心跳监控`、`小米破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 的 raw preview 仍普遍以前置 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器兜底。
