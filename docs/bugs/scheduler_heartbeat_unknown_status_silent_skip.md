@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 04:30-05:00 最新巡检样本：
+    - `run_id=5349-5372` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控` 与 `ORCL 大事件监控`；04:30 与 05:00 两个窗口仍以 `noop + skipped_noop` 为主，仅 `run_id=5356`（`ORCL 大事件监控`）在 04:30 触发送达。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 04:30:54`、`05:00:07`、`05:00:09`、`05:00:14`、`05:00:21`、`05:00:24`、`05:00:30`、`05:00:39` 与 `05:00:48` 连续记录 `starts_with_json=false`；`全天原油价格3小时播报`、小米/CAI/TEM 破位、`RKLB异动监控`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控` 与 `持仓重大事件心跳检测` 的 `raw_preview` 仍以前置 `<think>` / 自由文本分析开头，再依赖 `JsonNoop` 或 `JsonEmptyStatus` 被解析器兜底。
+    - `run_id=5361`（`全天原油价格3小时播报`，`2026-04-24T05:00:07.192109+08:00`）日志明确记录 `parse_kind=JsonNoop`、`starts_with_json=false`，模型先解释“当前小时数 5 不在 [0,3,6,9,12,15,18,21] 中”，再尾部补 `{\"status\":\"noop\"}`；即使最简单的时间门控任务也没有恢复成纯 JSON 首包。
+    - `run_id=5368`（`Monitor_Watchlist_11`，`2026-04-24T05:00:30.958241+08:00`）继续落成 `noop + skipped_noop`，日志记录 `parse_kind=JsonEmptyStatus`、`starts_with_json=false`；模型先长篇换算 quote timestamp、逐项比较触发价，再由后台静默吞掉。
+    - `run_id=5369`（`持仓重大事件心跳检测`，`2026-04-24T05:00:39.551373+08:00`）同样是 `parse_kind=JsonNoop`、`starts_with_json=false`；模型先复盘 ASTS / RKLB / TEM 等历史新闻，再尾部给出 noop。
+    - `run_id=5372`（`ORCL 大事件监控`，`2026-04-24T05:00:49.290044+08:00`）sqlite 虽已记为 `noop + skipped_noop`，但日志显示本轮实际先命中 `LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)`，随后才被调度器吸收为 `ContextOverflowNoop`；说明 heartbeat 当前仍依赖后台兜底降级，而不是上游稳定履约结构化协议。
+    - 结论：直到 05:00，heartbeat 仍没有恢复“纯 JSON 首包 + 明确状态”契约；只是解析器比 04-21 更能把漂移输出吸收到 `noop`，状态继续保持 `New`，严重等级维持 `P2`。
   - 2026-04-24 02:30-03:00 最新巡检样本：
     - `run_id=5304-5325` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；sqlite 在 `02:30` 与 `03:00` 两批里仍以 `noop + skipped_noop` 为主，仅 `run_id=5325`（`全天原油价格3小时播报`）触发并送达。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-24 02:30:06-02:30:28` 与 `03:00:13-03:00:46` 连续记录 `starts_with_json=false`；`Monitor_Watchlist_11`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控` 与 `全天原油价格3小时播报` 的 raw preview 仍以前置 `<think>` / 自由文本分析开头，再依赖 `JsonNoop`、`JsonEmptyStatus` 或 `JsonTriggered` 被解析器兜底。
