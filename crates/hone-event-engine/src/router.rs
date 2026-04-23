@@ -33,6 +33,32 @@ const NEWS_CONVERGENCE_HARD_SIGNALS: &[&str] = &[
     "analyst_grade",
 ];
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct NewsUpgradeTickStats {
+    pub upgraded: u32,
+    pub skipped_per_tick_cap: u32,
+    pub skipped_per_symbol_cap: u32,
+    pub trigger_counts: HashMap<String, u32>,
+    pub symbol_counts: HashMap<String, u32>,
+}
+
+impl NewsUpgradeTickStats {
+    pub fn has_activity(&self) -> bool {
+        self.upgraded > 0 || self.skipped_per_tick_cap > 0 || self.skipped_per_symbol_cap > 0
+    }
+
+    pub fn top_symbols(&self, limit: usize) -> Vec<(String, u32)> {
+        let mut items: Vec<_> = self
+            .symbol_counts
+            .iter()
+            .map(|(sym, count)| (sym.clone(), *count))
+            .collect();
+        items.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        items.truncate(limit);
+        items
+    }
+}
+
 #[async_trait]
 pub trait OutboundSink: Send + Sync {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()>;
@@ -115,6 +141,8 @@ pub struct NotificationRouter {
     news_classifier: Option<Arc<dyn NewsClassifier>>,
     /// 全局默认重要性 prompt;per-actor `news_importance_prompt = None` 时回落。
     default_importance_prompt: String,
+    /// 单 tick 内 window convergence 升级/跳过统计,供 poller 级汇总日志消费。
+    news_upgrade_tick_stats: Arc<Mutex<NewsUpgradeTickStats>>,
 }
 
 impl NotificationRouter {
@@ -145,6 +173,7 @@ impl NotificationRouter {
             news_upgrade_total_counter: Arc::new(Mutex::new(0)),
             news_classifier: None,
             default_importance_prompt: DEFAULT_IMPORTANCE_PROMPT.to_string(),
+            news_upgrade_tick_stats: Arc::new(Mutex::new(NewsUpgradeTickStats::default())),
         }
     }
 
@@ -229,6 +258,16 @@ impl NotificationRouter {
         if let Ok(mut n) = self.news_upgrade_total_counter.lock() {
             *n = 0;
         }
+        if let Ok(mut stats) = self.news_upgrade_tick_stats.lock() {
+            *stats = NewsUpgradeTickStats::default();
+        }
+    }
+
+    pub(crate) fn news_upgrade_tick_stats_snapshot(&self) -> NewsUpgradeTickStats {
+        self.news_upgrade_tick_stats
+            .lock()
+            .map(|stats| stats.clone())
+            .unwrap_or_default()
     }
 
     /// 注入 LLM-based 不确定来源新闻仲裁器。`None` 时维持 poller 给的 Low。
@@ -304,6 +343,9 @@ impl NotificationRouter {
         if self.news_upgrade_per_tick_cap > 0 {
             if let Ok(n) = self.news_upgrade_total_counter.lock() {
                 if *n >= self.news_upgrade_per_tick_cap {
+                    if let Ok(mut stats) = self.news_upgrade_tick_stats.lock() {
+                        stats.skipped_per_tick_cap += 1;
+                    }
                     tracing::info!(
                         event_id = %event.id,
                         symbols = ?event.symbols,
@@ -327,6 +369,9 @@ impl NotificationRouter {
                         .unwrap_or(false)
                 });
                 if already_capped {
+                    if let Ok(mut stats) = self.news_upgrade_tick_stats.lock() {
+                        stats.skipped_per_symbol_cap += 1;
+                    }
                     tracing::info!(
                         event_id = %event.id,
                         symbols = ?event.symbols,
@@ -346,6 +391,13 @@ impl NotificationRouter {
         }
         if let Ok(mut n) = self.news_upgrade_total_counter.lock() {
             *n += 1;
+        }
+        if let Ok(mut stats) = self.news_upgrade_tick_stats.lock() {
+            stats.upgraded += 1;
+            *stats.trigger_counts.entry(tag.clone()).or_insert(0) += 1;
+            for sym in &event.symbols {
+                *stats.symbol_counts.entry(sym.clone()).or_insert(0) += 1;
+            }
         }
         let mut upgraded = event.clone();
         upgraded.severity = Severity::Medium;
@@ -2055,6 +2107,76 @@ mod tests {
             .count();
         assert_eq!(upgraded, 2, "per-tick cap should limit total upgrades");
         assert_eq!(drained.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn news_upgrade_tick_stats_capture_upgrades_and_skips() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into(), "AMD".into(), "GEV".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let now = Utc::now();
+        for sym in ["AAPL", "AMD", "GEV"] {
+            store
+                .insert_event(&MarketEvent {
+                    id: format!("earnings:{sym}:tomorrow"),
+                    kind: EventKind::EarningsUpcoming,
+                    severity: Severity::Medium,
+                    symbols: vec![sym.into()],
+                    occurred_at: now + chrono::Duration::days(1),
+                    title: format!("{sym} earnings tomorrow"),
+                    summary: String::new(),
+                    url: None,
+                    source: "test".into(),
+                    payload: serde_json::Value::Null,
+                })
+                .unwrap();
+        }
+
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink,
+            store,
+            digest,
+        )
+        .with_news_upgrade_per_symbol_per_tick_cap(1)
+        .with_news_upgrade_per_tick_cap(2);
+        router.reset_tick_counters();
+
+        let mk = |id: &str, sym: &str| MarketEvent {
+            id: id.into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec![sym.into()],
+            occurred_at: now,
+            title: format!("{sym} earnings preview"),
+            summary: String::new(),
+            url: None,
+            source: "test".into(),
+            payload: serde_json::Value::Null,
+        };
+
+        router.dispatch(&mk("news:aapl:1", "AAPL")).await.unwrap();
+        router.dispatch(&mk("news:aapl:2", "AAPL")).await.unwrap();
+        router.dispatch(&mk("news:amd:1", "AMD")).await.unwrap();
+        router.dispatch(&mk("news:gev:1", "GEV")).await.unwrap();
+
+        let stats = router.news_upgrade_tick_stats_snapshot();
+        assert_eq!(stats.upgraded, 2);
+        assert_eq!(stats.skipped_per_symbol_cap, 1);
+        assert_eq!(stats.skipped_per_tick_cap, 1);
+        assert_eq!(stats.trigger_counts.get("earnings_upcoming"), Some(&2));
+        assert_eq!(stats.symbol_counts.get("AAPL"), Some(&1));
+        assert_eq!(stats.symbol_counts.get("AMD"), Some(&1));
+        assert_eq!(
+            stats.top_symbols(5),
+            vec![("AAPL".to_string(), 1), ("AMD".to_string(), 1)]
+        );
     }
 
     #[tokio::test]

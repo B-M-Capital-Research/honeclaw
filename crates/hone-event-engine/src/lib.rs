@@ -164,6 +164,20 @@ impl EventEngine {
             portfolio = %self.portfolio_dir.display(),
             "event engine starting"
         );
+        info!(
+            news_upgrade_per_symbol_per_tick =
+                self.engine_cfg.thresholds.news_upgrade_per_symbol_per_tick,
+            news_upgrade_per_tick = self.engine_cfg.thresholds.news_upgrade_per_tick,
+            "event engine news upgrade guards configured"
+        );
+        if self.engine_cfg.sources.news
+            && self.engine_cfg.thresholds.news_upgrade_per_symbol_per_tick == 0
+            && self.engine_cfg.thresholds.news_upgrade_per_tick == 0
+        {
+            warn!(
+                "event engine news upgrade guards disabled; window convergence bursts will not be capped"
+            );
+        }
 
         let client = FmpClient::from_config(&self.fmp_cfg);
         let fmp_available = client.has_keys();
@@ -564,6 +578,18 @@ async fn process_events(
         pending_digest = pending,
         "poller ok"
     );
+    let news_stats = router.news_upgrade_tick_stats_snapshot();
+    if news_stats.has_activity() {
+        info!(
+            poller = name,
+            upgraded = news_stats.upgraded,
+            skipped_per_tick_cap = news_stats.skipped_per_tick_cap,
+            skipped_per_symbol_cap = news_stats.skipped_per_symbol_cap,
+            triggers = ?news_stats.trigger_counts,
+            top_symbols = ?news_stats.top_symbols(5),
+            "news window convergence summary"
+        );
+    }
 }
 
 fn log_poller_error(name: &str, source: &str, url_class: &str, error: &anyhow::Error) {
