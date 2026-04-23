@@ -13,6 +13,7 @@ use hone_channels::agent_session::{
     AgentRunOptions, AgentRunQuotaMode, AgentSession, AgentSessionEvent, AgentSessionListener,
 };
 use hone_channels::prompt::PromptOptions;
+use hone_channels::run_event::RunEvent;
 use hone_channels::runtime::{clean_msg_markers, should_skip_buffer};
 use hone_core::ActorIdentity;
 
@@ -37,7 +38,7 @@ impl AgentSessionListener for SseSessionListener {
                 let mut guard = self.sent_segments.lock().await;
                 *guard += 1;
             }
-            AgentSessionEvent::StreamDelta { content } => {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
                 let _ = self
                     .tx
                     .send(("assistant_delta".into(), json!({ "content": content })))
@@ -45,12 +46,12 @@ impl AgentSessionListener for SseSessionListener {
                 let mut guard = self.sent_segments.lock().await;
                 *guard += 1;
             }
-            AgentSessionEvent::ToolStatus {
+            AgentSessionEvent::Run(RunEvent::ToolStatus {
                 status,
                 tool,
                 reasoning,
                 message,
-            } => {
+            }) => {
                 let payload = json!({
                     "tool": tool,
                     "status": status,
@@ -59,7 +60,7 @@ impl AgentSessionListener for SseSessionListener {
                 });
                 let _ = self.tx.send(("tool_call".into(), payload)).await;
             }
-            AgentSessionEvent::Error { error } => {
+            AgentSessionEvent::Run(RunEvent::Error { error }) => {
                 let mut i = error.message.len().min(120);
                 while i > 0 && !error.message.is_char_boundary(i) {
                     i -= 1;

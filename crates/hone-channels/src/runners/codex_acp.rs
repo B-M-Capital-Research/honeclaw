@@ -13,9 +13,9 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpEventLogContext, AcpPermissionDecision, AcpPromptState, AcpRenderedToolStatus,
-    AcpResponseTimeouts, AcpToolRenderPhase, CliVersion, acp_prompt_succeeded,
-    build_acp_prompt_text, create_acp_session, finalize_context_messages,
+    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpEventLogContext, AcpPermissionDecision,
+    AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts, AcpToolRenderPhase, CliVersion,
+    acp_prompt_succeeded, build_acp_prompt_text, create_acp_session, finalize_context_messages,
     log_acp_prompt_stop_diagnostics, parse_cli_version, set_acp_session_model, wait_for_response,
     wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
@@ -104,6 +104,10 @@ pub(crate) fn codex_acp_effective_args(config: &CodexAcpConfig, locked_down: boo
 impl AgentRunner for CodexAcpRunner {
     fn name(&self) -> &'static str {
         "codex_acp"
+    }
+
+    fn manages_own_context(&self) -> bool {
+        true
     }
 
     async fn run(
@@ -497,7 +501,13 @@ async fn run_codex_acp(
         next_id += 1;
     }
 
-    let mut codex_state = AcpPromptState::default();
+    let mut codex_state = AcpPromptState {
+        prev_prompt_peak_used: request
+            .session_metadata
+            .get(ACP_PREV_PROMPT_PEAK_KEY)
+            .and_then(|value| value.as_u64()),
+        ..AcpPromptState::default()
+    };
     let prompt_text = if seeded_from_local_context {
         build_codex_acp_prompt_text(
             &request.system_prompt,
@@ -564,6 +574,27 @@ async fn run_codex_acp(
     if let Some(task) = stderr_task {
         task.abort();
     }
+    // ACP runner 内置 compact 状态写回 session_metadata：
+    //  * 总是回写本轮 used 峰值，下一轮作为 used-drop 检测基线
+    //  * 若本轮检测到 compact，置 acp_needs_sp_reseed=true，下一轮 prompt 构建层
+    //    把完整 system_prompt 重新拼入 user message
+    metadata_updates.insert(
+        ACP_PREV_PROMPT_PEAK_KEY.to_string(),
+        Value::from(codex_state.current_prompt_peak_used),
+    );
+    if codex_state.compact_detected {
+        tracing::info!(
+            "[AgentRunner/codex] session={} ACP compact detected (peak_used={}); marking next turn for SP reseed",
+            request.session_id,
+            codex_state.current_prompt_peak_used
+        );
+        metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
+    } else {
+        // 显式清掉上一轮可能残留的 reseed 标志，确保只在 reseed 完成后才清
+        // —— 实际清理由 prompt 构建层负责（看到 true → 重塞 → 写 false）。
+        // 这里不主动写 false，避免覆盖 prompt 构建层尚未消费的 true。
+    }
+
     let context_messages = finalize_context_messages(&mut codex_state);
     let content = final_assistant_message_content(
         &context_messages,

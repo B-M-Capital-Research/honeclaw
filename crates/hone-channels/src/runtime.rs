@@ -579,6 +579,28 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_user_visible_output_keeps_acp_compact_marker_lines() {
+        for variant in [
+            "Context compacted",
+            "context compacted.",
+            "Conversation compacted",
+            "  CONVERSATION COMPACTED  ",
+        ] {
+            let raw = format!("{}\n模型对本轮的真实回答内容。", variant);
+            let sanitized = sanitize_user_visible_output(&raw);
+            assert!(
+                sanitized.content.contains(variant.trim()),
+                "variant {variant:?} should remain visible"
+            );
+            assert!(
+                sanitized.content.contains("模型对本轮的真实回答内容。"),
+                "real reply should still remain visible for {variant:?}"
+            );
+            assert!(!sanitized.removed_internal);
+        }
+    }
+
+    #[test]
     fn user_visible_error_message_rewrites_provider_protocol_errors() {
         let err = user_visible_error_message(Some(
             "LLM 错误: bad_request_error: invalid params, tool call result does not follow tool call (2013), tool_call_id: call_123",

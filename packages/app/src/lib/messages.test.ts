@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test"
 import { setBackendRuntime } from "./backend"
 import { parseMessageContent } from "./messages"
+import localImageMarkerFixtures from "../../../../tests/fixtures/local_image_markers.json"
 
 describe("parseMessageContent", () => {
   beforeEach(() => {
@@ -41,5 +42,14 @@ describe("parseMessageContent", () => {
   it("extracts local image links wrapped in markdown links", () => {
     const parts = parseMessageContent("before [图表](file:///tmp/a.png) after")
     expect(parts.map((item) => item.type)).toEqual(["text", "image", "text"])
+  })
+
+  it("matches the shared local image marker fixture", () => {
+    for (const fixture of localImageMarkerFixtures) {
+      const parts = parseMessageContent(fixture.input)
+      expect(parts.map((item) => item.type)).toEqual(
+        fixture.part_types as Array<"text" | "image">,
+      )
+    }
   })
 })

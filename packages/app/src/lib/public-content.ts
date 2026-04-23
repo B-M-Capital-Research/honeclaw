@@ -168,7 +168,7 @@ const CONTENT_ZH = {
     hero_sub: "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.1.43",
+    version: "v0.2.6",
 
     toc: [
       { id: "quick-start", label: "快速开始", sub: "Quick Start" },
@@ -289,7 +289,7 @@ const CONTENT_ZH = {
           { name: "Rust 核心引擎", status: "stable", note: "Tokio · axum · SSE" },
           { name: "SolidJS 前端", status: "stable", note: "Vite · Tailwind v4" },
           { name: "Tauri 桌面端", status: "stable", note: "macOS 已发布" },
-          { name: "多 Runner 抽象", status: "stable", note: "OpenAI · Gemini CLI/ACP · Codex CLI/ACP" },
+          { name: "多 Runner 抽象", status: "stable", note: "OpenAI · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent" },
           { name: "Windows / Linux 桌面端", status: "planned", note: "Tauri 多平台打包" },
         ],
       },
@@ -348,8 +348,9 @@ const CONTENT_ZH = {
         "投研纪律约束 & 零幻觉协议",
         "公司画像与跨会话长期记忆",
         "Cron 定时任务系统",
-        "事件引擎三层推送过滤（config 全局节流 + 用户 NL 自调 + 管理台代改）",
-        "多 Runner 抽象：OpenAI / Gemini CLI/ACP / Codex CLI/ACP / OpenCode ACP",
+        "事件引擎推送质量收口：digest 去重 / min-gap / topic memory / 分类预算 / 方向性价格阈值",
+        "ACP 自管上下文与 compact 防泄漏，支持 codex_acp / opencode_acp 长会话恢复",
+        "多 Runner 抽象：OpenAI / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
       ],
     },
     next: {
@@ -379,7 +380,7 @@ const CONTENT_ZH = {
         "Rust 核心引擎 (hone-core / hone-channels / hone-llm / hone-tools)",
         "前端 UI (SolidJS + Tailwind v4)",
         "Tauri 桌面端壳",
-        "全部 18 个公开 Skill",
+        "全部 19 个公开 Skill",
         "全部渠道集成代码 (Web / iMessage / Lark / Discord / Telegram / CLI / MCP)",
       ],
       closed: [
@@ -438,11 +439,11 @@ const CONTENT_ZH = {
       },
       {
         q: "支持哪些 LLM？",
-        a: "通过 Runner 抽象层支持：OpenAI 兼容协议（含 OpenRouter）、Gemini CLI / ACP、Codex CLI / ACP、OpenCode ACP。可以在桌面端设置里随时切换。",
+        a: "通过 Runner 抽象层支持：OpenAI 兼容协议（含 OpenRouter）、Gemini CLI、Codex CLI / ACP、OpenCode ACP，以及 multi-agent 搜索+回答链路。可以在桌面端设置里随时切换。",
       },
       {
         q: "开源协议？能商用吗？",
-        a: "MIT 协议，可商用。开源仓库包含完整可运行的核心引擎、UI、桌面端、全部 18 个公开 Skill 和 7 个渠道集成。私域高级 Skill 与付费数据源接入不在仓库中，不影响主流程。",
+        a: "MIT 协议，可商用。开源仓库包含完整可运行的核心引擎、UI、桌面端、全部 19 个公开 Skill 和 7 个渠道集成。私域高级 Skill 与付费数据源接入不在仓库中，不影响主流程。",
       },
       {
         q: "数据存在哪里？",
@@ -450,7 +451,7 @@ const CONTENT_ZH = {
       },
       {
         q: "和 Codex / RooCode 等 coding agent 的关系？",
-        a: "Hone 借鉴了这些产品的 runner / skill / session 架构，但专注投研而非写代码。Codex CLI / ACP、Gemini CLI / ACP、OpenCode ACP 在 Hone 中作为可插拔 Runner 存在。",
+        a: "Hone 借鉴了这些产品的 runner / skill / session 架构，但专注投研而非写代码。Codex CLI / ACP、Gemini CLI、OpenCode ACP 和 multi-agent 在 Hone 中作为可插拔 Runner 存在。",
       },
     ],
   },
@@ -689,7 +690,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     hero_sub: "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.1.43",
+    version: "v0.2.6",
 
     toc: [
       { id: "quick-start", label: "Quick Start", sub: "Quick Start" },
@@ -810,7 +811,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           { name: "Rust core engine", status: "stable", note: "Tokio · axum · SSE" },
           { name: "SolidJS frontend", status: "stable", note: "Vite · Tailwind v4" },
           { name: "Tauri desktop", status: "stable", note: "macOS released" },
-          { name: "Multi-runner abstraction", status: "stable", note: "OpenAI · Gemini CLI/ACP · Codex CLI/ACP" },
+          { name: "Multi-runner abstraction", status: "stable", note: "OpenAI · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent" },
           { name: "Windows / Linux desktop", status: "planned", note: "Tauri multi-platform packaging" },
         ],
       },
@@ -869,8 +870,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Research discipline & zero-hallucination protocol",
         "Company profiles + cross-session long memory",
         "Cron-driven scheduled tasks",
-        "Three-tier event-engine push filtering (global config mute + user NL prefs + admin UI)",
-        "Multi-runner: OpenAI / Gemini CLI/ACP / Codex CLI/ACP / OpenCode ACP",
+        "Event-engine push-quality pass: digest dedupe / min-gap / topic memory / category budgets / directional price thresholds",
+        "ACP self-managed context with compact-leak suppression for long codex_acp / opencode_acp sessions",
+        "Multi-runner: OpenAI / Gemini CLI / Codex CLI/ACP / OpenCode ACP / multi-agent",
       ],
     },
     next: {
@@ -900,7 +902,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Rust core engine (hone-core / hone-channels / hone-llm / hone-tools)",
         "Frontend UI (SolidJS + Tailwind v4)",
         "Tauri desktop shell",
-        "All 18 public skills",
+        "All 19 public skills",
         "All channel integrations (Web / iMessage / Lark / Discord / Telegram / CLI / MCP)",
       ],
       closed: [
@@ -959,11 +961,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Which LLMs are supported?",
-        a: "Through the runner abstraction: OpenAI-compatible protocols (including OpenRouter), Gemini CLI / ACP, Codex CLI / ACP, and OpenCode ACP. Switch at any time from the desktop settings.",
+        a: "Through the runner abstraction: OpenAI-compatible protocols (including OpenRouter), Gemini CLI, Codex CLI / ACP, OpenCode ACP, and the multi-agent search-plus-answer flow. Switch at any time from the desktop settings.",
       },
       {
         q: "What license? Commercial use?",
-        a: "MIT, commercial use allowed. The repo ships a fully-working core engine, UI, desktop, all 18 public skills, and 7 channel integrations. Private premium skills and paid data sources live outside the repo and don't block the main flow.",
+        a: "MIT, commercial use allowed. The repo ships a fully-working core engine, UI, desktop, all 19 public skills, and 7 channel integrations. Private premium skills and paid data sources live outside the repo and don't block the main flow.",
       },
       {
         q: "Where is data stored?",
@@ -971,7 +973,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "How does Hone relate to Codex / RooCode and other coding agents?",
-        a: "Hone borrows their runner / skill / session architecture but targets investment research, not coding. Codex CLI / ACP, Gemini CLI / ACP, and OpenCode ACP show up inside Hone as pluggable runners.",
+        a: "Hone borrows their runner / skill / session architecture but targets investment research, not coding. Codex CLI / ACP, Gemini CLI, OpenCode ACP, and multi-agent show up inside Hone as pluggable runners.",
       },
     ],
   },

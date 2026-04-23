@@ -31,8 +31,8 @@ describe("resolvePublicChatView", () => {
 describe("toPublicChatMessages", () => {
   it("keeps stable ids for unchanged history rows", () => {
     const history: HistoryMsg[] = [
-      { role: "user", content: "我是 zxr" },
-      { role: "assistant", content: "已记住，你是 zxr。" },
+      { role: "user", content: "我是 zxr", attachments: [] },
+      { role: "assistant", content: "已记住，你是 zxr。", attachments: [] },
     ];
 
     const first = toPublicChatMessages(history);
@@ -45,14 +45,14 @@ describe("toPublicChatMessages", () => {
 
   it("preserves existing prefix ids when new history rows are appended", () => {
     const baseHistory: HistoryMsg[] = [
-      { role: "user", content: "第一个问题" },
-      { role: "assistant", content: "第一个回答" },
+      { role: "user", content: "第一个问题", attachments: [] },
+      { role: "assistant", content: "第一个回答", attachments: [] },
     ];
 
     const nextHistory: HistoryMsg[] = [
       ...baseHistory,
-      { role: "user", content: "第二个问题" },
-      { role: "assistant", content: "第二个回答" },
+      { role: "user", content: "第二个问题", attachments: [] },
+      { role: "assistant", content: "第二个回答", attachments: [] },
     ];
 
     const base = toPublicChatMessages(baseHistory);

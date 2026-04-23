@@ -3,12 +3,15 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-04-15
+- updated_at: 2026-04-23
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
   - `crates/hone-channels/src/runners/acp_common.rs`
+  - `crates/hone-channels/src/core.rs`
   - `crates/hone-channels/src/runners/codex_acp.rs`
+  - `crates/hone-channels/src/runtime.rs`
+  - `crates/hone-channels/src/scheduler.rs`
   - `crates/hone-channels/src/agent_session.rs`
   - `crates/hone-core/src/storage.rs`
   - `crates/hone-channels/src/runners/gemini_acp.rs`
@@ -29,7 +32,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 ## Scope
 
 - ACP runners already bridge into Hone MCP.
-- `gemini_acp initialize timeout` has been diagnosed and fixed.
+- `gemini_acp` 的初始化与 usage 信号链路已被完整复盘，但该 runner 现已禁用并输出迁移提示，不再作为收敛目标保留在默认运行路径里。
 - Runner timeout config is being converged to two top-level knobs under `agent`: `step_timeout_seconds` and `overall_timeout_seconds`.
 - ACP `session/prompt` now uses `idle=step_timeout_seconds` and `overall=overall_timeout_seconds`; `session/load timeout` now falls back to `session/new` instead of directly failing the turn.
 - `codex_acp` transcript is being reworked so intermediate model output is preserved in restorable transcript segments without flattening everything into one assistant blob.
@@ -39,6 +42,9 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - `codex_acp` now patches execute-completion `tool_call_update.rawOutput` into persisted `tool_result` parts, so codex execute turns are recorded as `progress -> tool_call -> tool_result -> final` in the same assistant turn instead of falling back to a partial tool-call-only record.
 - `codex_cli` reasoning runs are now explicitly covered by the same normalized persistence contract: runner tail messages are normalized into `progress/tool_call/tool_result/final` assistant content parts before storage.
 - `multi-agent` no longer drops intermediate stage transcript at the top-level runner boundary: search-stage and answer-stage `context_messages` are now merged and persisted back into the shared session model instead of storing only the final answer fallback.
+- ACP runners now treat their own session/compact logic as the source of truth: Hone skips its auto SessionCompactor for `codex_acp` / `opencode_acp`, and prompt construction suppresses Hone-side compact summaries for self-managed runners.
+- `acp_common` now detects codex literal `Context compacted` chunks and opencode usage-drop / markdown-summary compact signatures, drops those leak paths from user-visible output, and sets session metadata so the next turn can reseed the system prompt when needed.
+- `gemini_acp` is no longer offered as an active runtime path: factory creation now errors with a migration hint because Gemini ACP does not emit reliable `usage_update` signals and is unsafe for Hone's long-session compact detection model.
 - Remaining work is still needed around runner contract coverage and end-to-end runtime behavior alignment.
 
 ## Validation
@@ -59,6 +65,13 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
   - `rtk cargo run -q -p hone-cli -- --config data/runtime/config_runtime_opencode.yaml probe --channel telegram --user-id acp_storage_probe2 --group --scope 'chat:acp-storage-20260415-215524' --show-events true --query '上一轮你拿到的 VERSION 是什么？不要重新执行命令，不要调用工具，只输出一行 SAME=<结果>。'`
   - verified persisted session JSON: `data/runtime/data/sessions/Session_telegram__group__chat_3aacp-storage-20260415-215524.json`
   - bare `codex-acp` JSON-RPC probe with `initialize/session/new/session/prompt` and explicit `mcpServers: []`
+- 2026-04-23:
+  - `rtk cargo test -p hone-channels --lib`
+  - `rtk cargo test -p hone-web-api --lib`
+  - `rtk bun run test:web`
+  - `rtk cargo check --workspace --all-targets --exclude hone-desktop`
+  - `rtk cargo test --workspace --all-targets --exclude hone-desktop`
+  - `rtk bash tests/regression/run_ci.sh`
 
 ## Documentation Sync
 
@@ -66,6 +79,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - If the runtime contract changes materially, update `docs/decisions.md`.
 - Runner timeout semantics are now configured only through `agent.step_timeout_seconds` and `agent.overall_timeout_seconds`; keep `config.yaml` / `config.example.yaml` and the timeout analysis docs in sync when adjusting those values again.
 - If ACP transcript persistence semantics change, update the ACP runtime ADR or `docs/decisions.md` to reflect the new transcript contract.
+- Compact leak handling and Gemini ACP disablement must stay aligned with `docs/bugs/session_compact_summary_report_hallucination.md` and `config.example.yaml`.
 - If runner-specific transcript metadata is added later, keep it under the owning runner/channel namespace and avoid introducing a shared ACP-wide event schema in `memory` or other common storage helpers.
 - If the normalized history model expands again, preserve runner interchangeability: prompt restoration should keep consuming the shared `user/assistant` model rather than any single runner’s raw event stream.
 
@@ -75,3 +89,4 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - Partial convergence is risky if one runner path silently diverges from ACP behavior.
 - `opencode_acp` and `codex_acp` now consume the same normalized history for prompt restore, but their raw ACP event shapes still differ; raw-session persistence and replay must remain runner-owned.
 - Runner-specific transcript metadata can still grow session files; any future expansion should be validated against real session size and restore cost.
+- ACP compact detection currently depends on codex literal markers plus opencode usage-drop heuristics; if upstream protocols change those signals, the detection path needs fresh live validation.

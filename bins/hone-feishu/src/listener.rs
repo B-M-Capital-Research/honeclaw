@@ -5,6 +5,7 @@ use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
 use hone_channels::outbound::{
     ReasoningVisibility, render_compact_tool_status_done, render_compact_tool_status_start,
 };
+use hone_channels::run_event::RunEvent;
 use hone_channels::think::{ThinkStreamFormatter, append_compacted};
 
 use super::card::CardKitSession;
@@ -66,7 +67,7 @@ pub(crate) struct FeishuStreamListener {
 impl AgentSessionListener for FeishuStreamListener {
     async fn on_event(&self, event: AgentSessionEvent) {
         match event {
-            AgentSessionEvent::StreamDelta { content } => {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
                 let rendered = {
                     let mut formatter = self.think_formatter.write().unwrap();
                     formatter.push_chunk(&content)
@@ -94,12 +95,12 @@ impl AgentSessionListener for FeishuStreamListener {
                     }
                 }
             }
-            AgentSessionEvent::ToolStatus {
+            AgentSessionEvent::Run(RunEvent::ToolStatus {
                 status,
                 tool,
                 message,
                 reasoning,
-            } => {
+            }) => {
                 if matches!(self.reasoning_visibility, ReasoningVisibility::Hidden) {
                     return;
                 }

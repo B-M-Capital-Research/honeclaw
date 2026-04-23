@@ -1576,20 +1576,12 @@ fmp:
 /// 检测本地 CLI/ACP runner 是否可用（运行 --version）。
 /// 仅检查二进制是否存在且可执行，不发送真实请求，通常在 1～2s 内完成。
 pub(crate) async fn check_agent_cli_impl(runner: String) -> Result<CliCheckResult, String> {
-    let binary = match runner.as_str() {
-        "gemini_cli" | "gemini_acp" => "gemini",
-        "codex_cli" => "codex",
-        "codex_acp" => "codex-acp",
-        "opencode_acp" | "multi-agent" => "opencode",
-        other => return Err(format!("不支持的 runner: {other}")),
-    };
+    let probe = hone_core::config::AgentRunnerKind::from_config_value(&runner)
+        .cli_probe()
+        .ok_or_else(|| format!("不支持的 runner: {runner}"))?;
 
-    let mut command = tokio::process::Command::new(binary);
-    if runner == "codex_acp" {
-        command.arg("--help");
-    } else {
-        command.arg("--version");
-    }
+    let mut command = tokio::process::Command::new(probe.binary);
+    command.arg(probe.arg);
     let result = tokio::time::timeout(std::time::Duration::from_secs(8), command.output()).await;
 
     match result {

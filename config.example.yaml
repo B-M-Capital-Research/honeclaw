@@ -435,8 +435,9 @@ security:
 
 
 agent:
-  # Optional: function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp
-  runner: "codex_cli"
+  # Recommended: multi-agent | codex_acp | opencode_acp. Legacy: function_calling | gemini_cli | codex_cli.
+  # gemini_acp is disabled at runtime and kept below only for migration/reference.
+  runner: "multi-agent"
   # Only used when provider=codex_cli; empty means use the codex-cli default model
   codex_model: "gpt-5.3-codex"
   max_iterations: 100

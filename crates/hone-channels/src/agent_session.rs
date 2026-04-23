@@ -16,7 +16,6 @@ use hone_memory::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -24,18 +23,19 @@ use crate::HoneBotCore;
 use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService, PreparedExecution,
 };
-use crate::outbound::{
-    LOCAL_IMAGE_CONTEXT_PLACEHOLDER, ResponseContentSegment, replace_local_image_markers,
-    split_response_content_segments,
-};
-use crate::prompt::{PromptOptions, build_prompt_bundle};
+use crate::outbound::{LOCAL_IMAGE_CONTEXT_PLACEHOLDER, replace_local_image_markers};
+use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
+use crate::response_finalizer::{EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response};
+#[cfg(test)]
+use crate::response_finalizer::{normalize_local_image_references, response_leaks_system_prompt};
+use crate::run_event::RunEvent;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult};
-use crate::runtime::{
-    is_transitional_planning_sentence, relativize_user_visible_paths, sanitize_user_visible_output,
-};
+use crate::runtime::{relativize_user_visible_paths, sanitize_user_visible_output};
+#[cfg(test)]
 use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
+use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSessionErrorKind {
@@ -59,39 +59,23 @@ pub struct AgentSessionError {
 
 #[derive(Debug, Clone)]
 pub enum AgentSessionEvent {
-    Progress {
-        stage: &'static str,
-        detail: Option<String>,
-    },
-    UserMessage {
-        content: String,
-    },
-    StreamDelta {
-        content: String,
-    },
-    StreamThought {
-        thought: String,
-    },
-    ToolStatus {
-        tool: String,
-        status: String,
-        message: Option<String>,
-        reasoning: Option<String>,
-    },
-    Segment {
-        text: String,
-    },
-    Done {
-        response: AgentResponse,
-    },
-    Error {
-        error: AgentSessionError,
-    },
+    Run(RunEvent),
+    UserMessage { content: String },
+    Segment { text: String },
+    Done { response: AgentResponse },
 }
 
 #[async_trait]
 pub trait AgentSessionListener: Send + Sync {
     async fn on_event(&self, event: AgentSessionEvent);
+}
+
+fn session_progress_event(stage: &'static str, detail: Option<String>) -> AgentSessionEvent {
+    AgentSessionEvent::Run(RunEvent::Progress { stage, detail })
+}
+
+fn session_error_event(error: AgentSessionError) -> AgentSessionEvent {
+    AgentSessionEvent::Run(RunEvent::Error { error })
 }
 
 #[derive(Debug, Clone, Default)]
@@ -147,10 +131,7 @@ const EMPTY_SUCCESS_RETRY_LIMIT: usize = 2;
 const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
 const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
-const EMPTY_SUCCESS_FALLBACK_MESSAGE: &str =
-    "这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。";
 const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
-const MISSING_LOCAL_IMAGE_FALLBACK_MESSAGE: &str = "（图表文件不可用，请重新生成）";
 
 fn restore_limit_before_compaction(
     config: &HoneConfig,
@@ -218,14 +199,6 @@ fn matches_skill_runtime_tool_name(name: &str) -> bool {
 }
 
 #[derive(Debug, Clone)]
-struct SlashSkillExpansion {
-    raw_input: String,
-    invoked_prompt: String,
-    runtime_input: String,
-    skill_id: String,
-}
-
-#[derive(Debug, Clone)]
 struct CompactCommand {
     instructions: Option<String>,
 }
@@ -239,42 +212,6 @@ fn merge_message_metadata(
         merged.insert(key, value);
     }
     Some(merged)
-}
-
-fn compose_runtime_input(
-    bundle: &crate::prompt::PromptBundle,
-    user_input: &str,
-    recv_extra: Option<&str>,
-) -> String {
-    let extra = recv_extra.map(str::trim).filter(|value| !value.is_empty());
-    if extra.is_none() {
-        return bundle.compose_user_input(user_input);
-    }
-
-    let mut sections = Vec::new();
-
-    if let Some(extra) = extra {
-        sections.push(extra.to_string());
-    }
-
-    if let Some(context) = bundle
-        .conversation_context
-        .as_ref()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-    {
-        sections.push(context.to_string());
-    }
-
-    sections.push(format!("【本轮用户输入】\n{}", user_input.trim()));
-
-    if let Some(session_context) =
-        Some(bundle.session_context.trim()).filter(|value| !value.is_empty())
-    {
-        sections.push(session_context.to_string());
-    }
-
-    sections.join("\n\n")
 }
 
 fn persistable_turn_from_response(
@@ -328,108 +265,6 @@ fn persistable_turn_from_response(
             metadata,
         })
     }
-}
-
-fn normalize_local_image_references(core: &HoneBotCore, session_id: &str, content: &str) -> String {
-    let segments = split_response_content_segments(content);
-    if !segments
-        .iter()
-        .any(|segment| matches!(segment, ResponseContentSegment::LocalImage(_)))
-    {
-        return content.to_string();
-    }
-
-    let mut normalized = String::new();
-    for segment in segments {
-        match segment {
-            ResponseContentSegment::Text(text) => normalized.push_str(&text),
-            ResponseContentSegment::LocalImage(marker) => {
-                if let Some(stable_path) =
-                    stabilize_local_image_path(core, session_id, &marker.path)
-                {
-                    normalized.push_str("file://");
-                    normalized.push_str(&stable_path);
-                } else {
-                    normalized.push_str(MISSING_LOCAL_IMAGE_FALLBACK_MESSAGE);
-                }
-            }
-        }
-    }
-    normalized
-}
-
-fn stabilize_local_image_path(core: &HoneBotCore, session_id: &str, path: &str) -> Option<String> {
-    let source = Path::new(path);
-    if !source.is_absolute() || !source.exists() {
-        return None;
-    }
-
-    let gen_images_root = PathBuf::from(&core.config.storage.gen_images_dir);
-    if source.starts_with(&gen_images_root) {
-        return Some(source.to_string_lossy().to_string());
-    }
-
-    let sandbox_root = sandbox_base_dir();
-    if !source.starts_with(&sandbox_root) {
-        return Some(source.to_string_lossy().to_string());
-    }
-
-    let target_dir = gen_images_root.join(session_id);
-    if let Err(err) = std::fs::create_dir_all(&target_dir) {
-        tracing::warn!(
-            "[AgentSession] failed to create stable image dir session_id={} dir={} err={}",
-            session_id,
-            target_dir.display(),
-            err
-        );
-        return Some(source.to_string_lossy().to_string());
-    }
-
-    let target_name = unique_stable_image_name(source);
-    let target = target_dir.join(target_name);
-    match std::fs::copy(source, &target) {
-        Ok(_) => Some(target.to_string_lossy().to_string()),
-        Err(err) => {
-            tracing::warn!(
-                "[AgentSession] failed to stabilize local image session_id={} source={} target={} err={}",
-                session_id,
-                source.display(),
-                target.display(),
-                err
-            );
-            Some(source.to_string_lossy().to_string())
-        }
-    }
-}
-
-fn unique_stable_image_name(source: &Path) -> String {
-    let stem = source
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .map(sanitize_filename_component)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "image".to_string());
-    let ext = source
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "png".to_string());
-    format!("{stem}-{}.{}", uuid::Uuid::new_v4().simple(), ext)
-}
-
-fn sanitize_filename_component(raw: &str) -> String {
-    raw.chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
-                ch
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string()
 }
 
 fn sanitize_assistant_context_content(content: &str) -> String {
@@ -582,27 +417,7 @@ impl AgentRunnerEmitter for SessionEventEmitter {
             AgentRunnerEvent::StreamDelta { .. } | AgentRunnerEvent::StreamThought { .. } => {}
         }
 
-        let mapped = match event {
-            AgentRunnerEvent::Progress { stage, detail } => {
-                AgentSessionEvent::Progress { stage, detail }
-            }
-            AgentRunnerEvent::StreamDelta { content } => AgentSessionEvent::StreamDelta { content },
-            AgentRunnerEvent::StreamThought { thought } => {
-                AgentSessionEvent::StreamThought { thought }
-            }
-            AgentRunnerEvent::ToolStatus {
-                tool,
-                status,
-                message,
-                reasoning,
-            } => AgentSessionEvent::ToolStatus {
-                tool,
-                status,
-                message,
-                reasoning,
-            },
-            AgentRunnerEvent::Error { error } => AgentSessionEvent::Error { error },
-        };
+        let mapped = AgentSessionEvent::Run(event);
 
         for listener in &self.listeners {
             listener.on_event(mapped.clone()).await;
@@ -645,12 +460,12 @@ impl AgentSession {
                 self.message_id.as_deref(),
                 None,
             );
-            self.emit(AgentSessionEvent::Progress {
-                stage: "agent.run.retry",
-                detail: Some(format!(
+            self.emit(session_progress_event(
+                "agent.run.retry",
+                Some(format!(
                     "{runner_name} empty_success attempt={attempt}/{EMPTY_SUCCESS_RETRY_LIMIT}"
                 )),
-            })
+            ))
             .await;
 
             last_result = runner.run(request.clone(), emitter.clone()).await;
@@ -914,75 +729,16 @@ impl AgentSession {
     }
 
     fn resolve_prompt_input(&self, session_id: &str, user_input: &str) -> (String, String) {
-        let mut prompt_options = self.prompt_options.clone();
-        if self.allow_cron {
-            prompt_options
-                .extra_sections
-                .push(crate::prompt::DEFAULT_CRON_TASK_POLICY.to_string());
-        }
-        let stage_constraints =
-            hone_tools::skill_runtime::SkillStageConstraints::new(self.allow_cron, None);
-        let skill_runtime = hone_tools::SkillRuntime::new(
-            self.core.configured_system_skills_dir(),
-            self.core.configured_custom_skills_dir(),
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-        )
-        .with_registry_path(self.core.configured_skill_registry_path());
-        let skill_listing = skill_runtime.build_skill_listing_for_stage(4_000, &stage_constraints);
-        if !skill_listing.trim().is_empty() {
-            prompt_options.extra_sections.push(format!(
-                "【SkillTool】\n\
-                - 当用户任务明显匹配某个 skill 时，必须先调用 skill_tool，再继续回答。\n\
-                - 若当前 runner 通过 MCP 暴露 namespaced 工具名，则 `skill_tool` 对应 `hone/skill_tool`，`discover_skills` 对应 `hone/discover_skills`；必须调用真实暴露出的那个工具名，不要因为带前缀就误判”工具不存在”。\n\
-                - 用户可以直接输入 `/<skill-id>` 触发 user-invocable 技能；模型不要假装已经加载 skill，必须真的调用工具。\n\
-                - 如果当前任务发生中途转向，或现有技能不够覆盖，再调用 discover_skills / hone/discover_skills 检索相关技能。\n\
-                - 禁止在纯文本请求（消息中没有图片或文件附件）时调用 `image_understanding`、`pdf_understanding` 等附件处理类 skill；这类 skill 仅在当前消息中真实存在对应附件时才可触发。\n\
-                - turn-0 可用技能索引：\n{}",
-                skill_listing
-            ));
-        }
-        let related_skills = skill_runtime.search_for_stage(
-            user_input,
-            &extract_possible_file_paths(user_input),
-            5,
-            &stage_constraints,
-        );
-        let bundle = build_prompt_bundle(
-            &self.core.config,
-            &self.core.session_storage,
-            &self.actor.channel,
+        let turn = PromptTurnBuilder::new(
+            &self.core,
+            &self.actor,
             session_id,
-            &Default::default(),
-            &prompt_options,
-        );
-        let runtime_user_input = if related_skills.is_empty() {
-            user_input.to_string()
-        } else {
-            let listing = related_skills
-                .into_iter()
-                .map(|skill| {
-                    let mut line = format!("- {}: {}", skill.id, skill.description);
-                    if let Some(when_to_use) = skill
-                        .when_to_use
-                        .as_deref()
-                        .filter(|value| !value.trim().is_empty())
-                    {
-                        line.push_str(" - ");
-                        line.push_str(when_to_use.trim());
-                    }
-                    line
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            format!(
-                "【本轮相关技能提示】\n{}\n如这些技能已覆盖下一步，就直接用 skill_tool（或 MCP 下的 hone/skill_tool）；否则再调用 discover_skills（或 hone/discover_skills）。\n\n{}",
-                listing, user_input
-            )
-        };
-        (
-            bundle.system_prompt(),
-            compose_runtime_input(&bundle, &runtime_user_input, self.recv_extra.as_deref()),
+            self.prompt_options.clone(),
+            self.allow_cron,
+            self.recv_extra.as_deref(),
         )
+        .resolve_prompt_input(user_input);
+        (turn.system_prompt, turn.runtime_input)
     }
 
     fn expand_slash_skill_input(
@@ -990,63 +746,15 @@ impl AgentSession {
         session_id: &str,
         user_input: &str,
     ) -> hone_core::HoneResult<Option<SlashSkillExpansion>> {
-        let trimmed = user_input.trim();
-        if !trimmed.starts_with('/') {
-            return Ok(None);
-        }
-
-        let runtime = hone_tools::SkillRuntime::new(
-            self.core.configured_system_skills_dir(),
-            self.core.configured_custom_skills_dir(),
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        PromptTurnBuilder::new(
+            &self.core,
+            &self.actor,
+            session_id,
+            self.prompt_options.clone(),
+            self.allow_cron,
+            self.recv_extra.as_deref(),
         )
-        .with_registry_path(self.core.configured_skill_registry_path());
-        let stage_constraints =
-            hone_tools::skill_runtime::SkillStageConstraints::new(self.allow_cron, None);
-
-        if trimmed.strip_prefix("/skill").is_some() {
-            let lines = trimmed.lines().collect::<Vec<_>>();
-            let first_line = lines.first().copied().unwrap_or_default();
-            let query = first_line.trim_start_matches("/skill").trim();
-            if query.is_empty() {
-                return Ok(None);
-            }
-            if let Some(skill) = runtime.resolve_skill_via_search_for_stage(
-                query,
-                &extract_possible_file_paths(user_input),
-                &stage_constraints,
-            ) {
-                let invoked_prompt = runtime.render_invocation_prompt(&skill, session_id, None);
-                let tail = lines.iter().skip(1).copied().collect::<Vec<_>>().join("\n");
-                let runtime_input =
-                    compose_invoked_skill_runtime_input(&invoked_prompt, Some(tail.trim()));
-                return Ok(Some(SlashSkillExpansion {
-                    raw_input: user_input.to_string(),
-                    invoked_prompt,
-                    runtime_input,
-                    skill_id: skill.id,
-                }));
-            }
-            return Ok(None);
-        }
-
-        let command = trimmed.trim_start_matches('/');
-        let mut parts = command.splitn(2, char::is_whitespace);
-        let skill_id = parts.next().unwrap_or_default();
-        let args = parts.next().map(str::trim);
-        if let Some(skill) =
-            runtime.resolve_user_invocable_direct_for_stage(skill_id, &stage_constraints)
-        {
-            let invoked_prompt = runtime.render_invocation_prompt(&skill, session_id, args);
-            return Ok(Some(SlashSkillExpansion {
-                raw_input: user_input.to_string(),
-                invoked_prompt: invoked_prompt.clone(),
-                runtime_input: compose_invoked_skill_runtime_input(&invoked_prompt, args),
-                skill_id: skill.id,
-            }));
-        }
-
-        Ok(None)
+        .expand_slash_skill_input(user_input)
     }
 
     fn parse_compact_command(&self, user_input: &str) -> Option<CompactCommand> {
@@ -1119,10 +827,10 @@ impl AgentSession {
             self.message_id.as_deref(),
         );
 
-        self.emit(AgentSessionEvent::Progress {
-            stage: "session.compress",
-            detail: Some("start".to_string()),
-        })
+        self.emit(session_progress_event(
+            "session.compress",
+            Some("start".to_string()),
+        ))
         .await;
         let started = Instant::now();
         let outcome = self
@@ -1132,10 +840,10 @@ impl AgentSession {
 
         let response = match outcome {
             Ok(outcome) => {
-                self.emit(AgentSessionEvent::Progress {
-                    stage: "session.compress",
-                    detail: Some("done".to_string()),
-                })
+                self.emit(session_progress_event(
+                    "session.compress",
+                    Some("done".to_string()),
+                ))
                 .await;
                 let content = if outcome.compacted {
                     "Conversation compacted.".to_string()
@@ -1152,10 +860,10 @@ impl AgentSession {
             }
             Err(err) => {
                 tracing::error!("[AgentSession] manual compact failed: {}", err);
-                self.emit(AgentSessionEvent::Progress {
-                    stage: "session.compress",
-                    detail: Some("failed".to_string()),
-                })
+                self.emit(session_progress_event(
+                    "session.compress",
+                    Some("failed".to_string()),
+                ))
                 .await;
                 AgentResponse {
                     content: String::new(),
@@ -1194,12 +902,10 @@ impl AgentSession {
                 elapsed_ms,
                 self.message_id.as_deref(),
             );
-            self.emit(AgentSessionEvent::Error {
-                error: AgentSessionError {
-                    kind: AgentSessionErrorKind::AgentFailed,
-                    message: err,
-                },
-            })
+            self.emit(session_error_event(AgentSessionError {
+                kind: AgentSessionErrorKind::AgentFailed,
+                message: err,
+            }))
             .await;
             self.emit(AgentSessionEvent::Done {
                 response: response.clone(),
@@ -1253,10 +959,7 @@ impl AgentSession {
             kind,
             message: message.clone(),
         };
-        self.emit(AgentSessionEvent::Error {
-            error: error.clone(),
-        })
-        .await;
+        self.emit(session_error_event(error.clone())).await;
         AgentSessionResult {
             response: AgentResponse {
                 content: String::new(),
@@ -1415,24 +1118,24 @@ impl AgentSession {
             self.message_id.as_deref(),
         );
 
-        self.emit(AgentSessionEvent::Progress {
-            stage: "session.compress",
-            detail: Some("start".to_string()),
-        })
+        self.emit(session_progress_event(
+            "session.compress",
+            Some("start".to_string()),
+        ))
         .await;
 
         if let Err(err) = self.core.maybe_compress_session(&session_id).await {
             tracing::error!("[AgentSession] compress failed: {}", err);
-            self.emit(AgentSessionEvent::Progress {
-                stage: "session.compress",
-                detail: Some("failed".to_string()),
-            })
+            self.emit(session_progress_event(
+                "session.compress",
+                Some("failed".to_string()),
+            ))
             .await;
         } else {
-            self.emit(AgentSessionEvent::Progress {
-                stage: "session.compress",
-                detail: Some("done".to_string()),
-            })
+            self.emit(session_progress_event(
+                "session.compress",
+                Some("done".to_string()),
+            ))
             .await;
         }
 
@@ -1495,10 +1198,10 @@ impl AgentSession {
             self.message_id.as_deref(),
             None,
         );
-        self.emit(AgentSessionEvent::Progress {
-            stage: "agent.run",
-            detail: Some(execution.runner_name.to_string()),
-        })
+        self.emit(session_progress_event(
+            "agent.run",
+            Some(execution.runner_name.to_string()),
+        ))
         .await;
         let started = Instant::now();
         let mut streamed_output = false;
@@ -1564,15 +1267,15 @@ impl AgentSession {
                 self.message_id.as_deref(),
                 None,
             );
-            self.emit(AgentSessionEvent::Progress {
-                stage: "agent.run.retry",
-                detail: Some(format!(
+            self.emit(session_progress_event(
+                "agent.run.retry",
+                Some(format!(
                     "{} context_overflow attempt={}/{}",
                     execution.runner_name,
                     recovery_idx + 1,
                     CONTEXT_OVERFLOW_RECOVERY_LIMIT
                 )),
-            })
+            ))
             .await;
 
             match self.force_compact_for_context_overflow(&session_id).await {
@@ -1623,66 +1326,22 @@ impl AgentSession {
         {
             response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
         }
-        if response.success && response_leaks_system_prompt(&response.content) {
-            tracing::error!(
-                "[AgentSession] blocked echoed system prompt runner={} session_id={}",
-                execution.runner_name,
-                session_id
+        let finalize_outcome = finalize_agent_response(
+            &self.core,
+            &session_id,
+            &execution.runner_name,
+            &mut response,
+        );
+        if let Some(reason) = finalize_outcome.fallback_reason {
+            self.core.log_message_step(
+                &self.actor.channel,
+                &self.actor.user_id,
+                &session_id,
+                "agent.run.fallback",
+                reason,
+                self.message_id.as_deref(),
+                None,
             );
-            response.success = false;
-            response.error = Some("agent returned leaked system instructions".to_string());
-            response.content.clear();
-        }
-        if response.success {
-            let sanitized = sanitize_user_visible_output(&response.content);
-            if sanitized.only_internal {
-                tracing::error!(
-                    "[AgentSession] blocked internal-only assistant output runner={} session_id={}",
-                    execution.runner_name,
-                    session_id
-                );
-                response.success = false;
-                response.error = Some("agent returned internal-only output".to_string());
-                response.content.clear();
-            } else if sanitized.content.trim().is_empty() {
-                tracing::warn!(
-                    "[AgentSession] empty visible output after sanitization runner={} session_id={} removed_internal={}",
-                    execution.runner_name,
-                    session_id,
-                    sanitized.removed_internal
-                );
-                self.core.log_message_step(
-                    &self.actor.channel,
-                    &self.actor.user_id,
-                    &session_id,
-                    "agent.run.fallback",
-                    "sanitized_empty_success",
-                    self.message_id.as_deref(),
-                    None,
-                );
-                response.content = EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string();
-            } else if is_transitional_planning_sentence(sanitized.content.trim()) {
-                tracing::warn!(
-                    "[AgentSession] transitional planning sentence detected, treating as empty runner={} session_id={} chars={}",
-                    execution.runner_name,
-                    session_id,
-                    sanitized.content.trim().chars().count()
-                );
-                self.core.log_message_step(
-                    &self.actor.channel,
-                    &self.actor.user_id,
-                    &session_id,
-                    "agent.run.fallback",
-                    "planning_sentence_suppressed",
-                    self.message_id.as_deref(),
-                    None,
-                );
-                response.content = EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string();
-            } else {
-                response.content = sanitized.content;
-            }
-            response.content =
-                normalize_local_image_references(&self.core, &session_id, &response.content);
         }
         let elapsed_ms = started.elapsed().as_millis();
 
@@ -1754,9 +1413,10 @@ impl AgentSession {
                 self.message_id.as_deref(),
             );
             if !terminal_error_emitted {
-                self.emit(AgentSessionEvent::Error {
-                    error: AgentSessionError { kind, message: err },
-                })
+                self.emit(session_error_event(AgentSessionError {
+                    kind,
+                    message: err,
+                }))
                 .await;
             }
             self.emit(AgentSessionEvent::Done {
@@ -1771,11 +1431,6 @@ impl AgentSession {
             session_id,
         }
     }
-}
-
-fn response_leaks_system_prompt(content: &str) -> bool {
-    let trimmed = content.trim_start_matches(char::is_whitespace);
-    trimmed.starts_with("### System Instructions ###")
 }
 
 /// Restore recent messages into AgentContext.
@@ -1878,30 +1533,6 @@ pub fn restore_context(
     }
 
     ctx
-}
-
-fn extract_possible_file_paths(input: &str) -> Vec<String> {
-    input
-        .split_whitespace()
-        .filter(|token| token.contains('/') || token.contains('\\'))
-        .map(|token| token.trim_matches(|ch: char| matches!(ch, '"' | '\'' | ',' | ')' | '(')))
-        .filter(|token| !token.is_empty())
-        .map(|token| token.to_string())
-        .collect()
-}
-
-fn compose_invoked_skill_runtime_input(
-    invoked_prompt: &str,
-    user_supplement: Option<&str>,
-) -> String {
-    if let Some(supplement) = user_supplement
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        format!("{invoked_prompt}\n\n【User Task After Invoking This Skill】\n{supplement}")
-    } else {
-        invoked_prompt.to_string()
-    }
 }
 
 #[cfg(test)]
@@ -2646,8 +2277,10 @@ mod tests {
 
     #[test]
     fn compose_invoked_skill_runtime_input_keeps_user_supplement_outside_skill_context() {
-        let runtime_input =
-            compose_invoked_skill_runtime_input("SKILL_PROMPT", Some("finish the task"));
+        let runtime_input = crate::turn_builder::compose_invoked_skill_runtime_input(
+            "SKILL_PROMPT",
+            Some("finish the task"),
+        );
         assert!(runtime_input.contains("SKILL_PROMPT"));
         assert!(runtime_input.contains("【User Task After Invoking This Skill】"));
         assert!(runtime_input.contains("finish the task"));
@@ -3885,19 +3518,19 @@ mod tests {
         let events = listener.events.lock().await.clone();
         assert!(matches!(
             &events[0],
-            AgentSessionEvent::Progress {
+            AgentSessionEvent::Run(RunEvent::Progress {
                 detail: Some(detail),
                 ..
-            } if detail
+            }) if detail
                 == "Edit company_profiles/sandisk/profile.md and <absolute-path>/private.txt"
         ));
         assert!(matches!(
             &events[1],
-            AgentSessionEvent::ToolStatus {
+            AgentSessionEvent::Run(RunEvent::ToolStatus {
                 message: Some(message),
                 reasoning: Some(reasoning),
                 ..
-            } if message == "Edit company_profiles/micron-technology/profile.md"
+            }) if message == "Edit company_profiles/micron-technology/profile.md"
                 && reasoning == "Edit data/research/notes.md and <absolute-path>/passwd"
         ));
     }

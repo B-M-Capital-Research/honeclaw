@@ -1324,13 +1324,9 @@ fn build_api_key_summary(config: &hone_core::HoneConfig) -> ApiKeySummary {
 }
 
 fn runner_binary_name(runner: &str) -> Option<(&'static str, &'static str)> {
-    match runner {
-        "gemini_cli" | "gemini_acp" => Some(("gemini", "--version")),
-        "codex_cli" => Some(("codex", "--version")),
-        "codex_acp" => Some(("codex-acp", "--help")),
-        "opencode_acp" | "multi-agent" => Some(("opencode", "--version")),
-        _ => None,
-    }
+    hone_core::config::AgentRunnerKind::from_config_value(runner)
+        .cli_probe()
+        .map(|probe| (probe.binary, probe.arg))
 }
 
 async fn build_status_report(config_path: Option<&Path>) -> Result<StatusReport, String> {

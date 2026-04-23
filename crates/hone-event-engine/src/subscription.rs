@@ -199,7 +199,7 @@ impl SubscriptionRegistry {
                 let key = actor_storage_key(&actor);
                 best.entry(key)
                     .and_modify(|(_, cur)| {
-                        if severity_rank(sev) > severity_rank(*cur) {
+                        if sev.rank() > cur.rank() {
                             *cur = sev;
                         }
                     })
@@ -213,14 +213,6 @@ impl SubscriptionRegistry {
 impl Default for SubscriptionRegistry {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn severity_rank(s: Severity) -> u8 {
-    match s {
-        Severity::Low => 0,
-        Severity::Medium => 1,
-        Severity::High => 2,
     }
 }
 

@@ -1,9 +1,10 @@
 use chrono::Utc;
 use hone_core::agent::{AgentMessage, ToolCallMade};
+use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 
@@ -15,6 +16,34 @@ use super::types::{AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest};
 const ACP_EVENT_LOG_FILENAME: &str = "acp-events.log";
 
 static ACP_EVENT_LOG_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+/// session_metadata 上记录的"上一轮 prompt 完成时 ACP runner 报告的 usage.used 峰值"。
+/// 用作下一轮 compact 检测的基线（opencode 不推 compact 字面量，只能靠 used 骤降识别）。
+pub(crate) const ACP_PREV_PROMPT_PEAK_KEY: &str = "acp_prev_prompt_peak_used";
+/// session_metadata 上记录的"下一轮需要重新塞 system_prompt"标志。
+/// 写入条件：本轮 ACP runner 报告了 compact 事件（codex 字面量 / opencode used drop）。
+/// 消费方：prompt 构建层下一轮检查到 true 时，把完整 system_prompt 重新拼入 user message。
+pub(crate) const ACP_NEEDS_SP_RESEED_KEY: &str = "acp_needs_sp_reseed";
+
+/// codex-acp 在内置 compact 触发后推回的字面量 chunk（实测：
+/// `agent_message_chunk text="Context compacted\n"`，单独一条）。
+/// 同时也匹配 honeclaw 老 SessionCompactor 历史写入的 `Conversation compacted` 字符串。
+static RE_ACP_COMPACT_STATUS_TEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?im)^\s*(context|conversation)\s+compacted\.?\s*$").expect("valid regex")
+});
+
+/// opencode 在内置 compact 触发后会把"重启会话"的 markdown summary 拼到本轮 reply 后面，
+/// 形如 `OK\n---\n## Goal\n...\n## Relevant Files\n- (none)\n---\nI don't have...`。
+/// 我们用 `\n---\n## ` / `^---\n## ` 作为 compact 已发生的补充检测信号。
+/// 注意：opencode 实测会把这段边界拆到多条 `agent_message_chunk` 里（如 `---\n` /
+/// `## ` / ` Goal`），单条 chunk 上 regex 必然漏；因此 ingest 时必须在 **累积 buffer**
+/// 上扫描。
+static RE_OPENCODE_SUMMARY_BOUNDARY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)(^|\n)---\s*\n##\s+\w").expect("valid regex"));
+
+/// 跨 chunk 扫 opencode summary boundary 时，从 buffer 尾部回看的窗口字节数。
+/// 取 64 足以覆盖 `\n---\n## <heading>` 的最长合法变体（含 trailing 空白）。
+const ACP_BOUNDARY_SCAN_TAIL_BYTES: usize = 64;
 
 #[derive(Debug, Clone)]
 pub(crate) struct AcpEventLogContext {
@@ -224,6 +253,26 @@ pub(crate) struct AcpPromptState {
     pub(crate) context_messages: Vec<AgentMessage>,
     pub(crate) pending_assistant_content: String,
     pub(crate) pending_assistant_tool_calls: Vec<Value>,
+    /// 入口由 runner 在 spawn 时从 session_metadata 读取
+    /// `ACP_PREV_PROMPT_PEAK_KEY`，作为本轮 usage_update.used 骤降判定的基线。
+    /// `None` 表示本 session 是第一次有 ACP 流，不做骤降判定。
+    pub(crate) prev_prompt_peak_used: Option<u64>,
+    /// 本轮 prompt 流中观测到的 usage.used 峰值，结束后 runner 写回 metadata。
+    pub(crate) current_prompt_peak_used: u64,
+    /// 本轮 prompt 流中是否检测到 ACP runner 触发了内置 compact。
+    /// 触发源：codex 推 `Context compacted` 字面量 / opencode used 骤降 (>50%)。
+    /// 检测后：runner 应在 metadata 写 `ACP_NEEDS_SP_RESEED_KEY=true`，下一轮重塞 SP。
+    pub(crate) compact_detected: bool,
+    /// 流中是否已经收到第一条 usage_update（用于"首次观测时与 prev_peak 比较"）。
+    pub(crate) usage_update_seen: bool,
+}
+
+fn floor_char_boundary(text: &str, pos: usize) -> usize {
+    let mut boundary = pos.min(text.len());
+    while boundary > 0 && !text.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    boundary
 }
 
 #[derive(Debug, Clone)]
@@ -1103,6 +1152,87 @@ pub(crate) async fn handle_acp_session_update(
     handle_acp_session_update_with_renderer(params, emitter, state, None).await;
 }
 
+/// 处理一段 ACP `agent_message_chunk` 文本（codex / opencode / gemini 共用）。
+///
+/// compact 发生后的文本现在按用户可见内容透传，不再在 ACP ingest 层做裁剪。
+/// 这里仍保留 compact 检测，用于 runner 在本轮结束时写回
+/// `ACP_NEEDS_SP_RESEED_KEY`，保证下一轮 system prompt 能正确 reseed。
+pub(crate) async fn ingest_acp_message_chunk(
+    text: &str,
+    state: &mut AcpPromptState,
+    emitter: &std::sync::Arc<dyn AgentRunnerEmitter>,
+) {
+    if RE_ACP_COMPACT_STATUS_TEXT.is_match(text) {
+        if !state.compact_detected {
+            tracing::info!(
+                "[acp] runner internal compact signalled via status text: {:?}",
+                text
+            );
+            state.compact_detected = true;
+        }
+    }
+
+    let pre_full_len = state.full_reply.len();
+    state.full_reply.push_str(text);
+    state.pending_assistant_content.push_str(text);
+
+    let scan_start = floor_char_boundary(
+        &state.full_reply,
+        pre_full_len.saturating_sub(ACP_BOUNDARY_SCAN_TAIL_BYTES),
+    );
+    if !state.compact_detected
+        && RE_OPENCODE_SUMMARY_BOUNDARY
+            .find(&state.full_reply[scan_start..])
+            .is_some()
+    {
+        tracing::info!("[acp] opencode compact summary boundary detected in accumulated buffer");
+        state.compact_detected = true;
+    }
+
+    emitter
+        .emit(AgentRunnerEvent::StreamDelta {
+            content: text.to_string(),
+        })
+        .await;
+}
+
+/// 处理一条 ACP `usage_update`。共用 peak 跟踪 + "流内首次 used 与 prev_peak 比较"
+/// 的 compact 骤降识别（覆盖 opencode 不发字面量的场景）。
+///
+/// `progress_stage` 由调用方决定（`"acp.usage"` / `"opencode.usage"` 等）以维持
+/// 现有运营 metrics 兼容。
+pub(crate) async fn ingest_acp_usage_update(
+    used: u64,
+    state: &mut AcpPromptState,
+    emitter: &std::sync::Arc<dyn AgentRunnerEmitter>,
+    progress_stage: &'static str,
+) {
+    emitter
+        .emit(AgentRunnerEvent::Progress {
+            stage: progress_stage,
+            detail: Some(format!("used={used}")),
+        })
+        .await;
+
+    state.current_prompt_peak_used = state.current_prompt_peak_used.max(used);
+    let was_first = !state.usage_update_seen;
+    state.usage_update_seen = true;
+
+    if was_first
+        && !state.compact_detected
+        && let Some(prev_peak) = state.prev_prompt_peak_used
+        && prev_peak >= 30_000
+        && used * 2 < prev_peak
+    {
+        tracing::info!(
+            "[acp] runner internal compact signalled via usage drop: prev_peak={} now_used={}",
+            prev_peak,
+            used
+        );
+        state.compact_detected = true;
+    }
+}
+
 pub(crate) async fn handle_acp_session_update_with_renderer(
     params: &Value,
     emitter: &std::sync::Arc<dyn AgentRunnerEmitter>,
@@ -1134,15 +1264,16 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
                 );
                 return;
             };
-            if let Some(state) = state {
-                state.full_reply.push_str(text);
-                state.pending_assistant_content.push_str(text);
+
+            if let Some(state) = state.as_deref_mut() {
+                ingest_acp_message_chunk(text, state, emitter).await;
+            } else {
+                emitter
+                    .emit(AgentRunnerEvent::StreamDelta {
+                        content: text.to_string(),
+                    })
+                    .await;
             }
-            emitter
-                .emit(AgentRunnerEvent::StreamDelta {
-                    content: text.to_string(),
-                })
-                .await;
         }
         "agent_thought_chunk" => {
             // Try nested content.text first, then flat text field
@@ -1253,7 +1384,12 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
             }
         }
         "usage_update" => {
-            if let Some(used) = update.get("used").and_then(|value| value.as_u64()) {
+            if let Some(used) = update.get("used").and_then(|value| value.as_u64())
+                && let Some(state) = state.as_deref_mut()
+            {
+                ingest_acp_usage_update(used, state, emitter, "acp.usage").await;
+            } else if let Some(used) = update.get("used").and_then(|value| value.as_u64()) {
+                // 无 state 上下文时只投 Progress（保持现状）
                 emitter
                     .emit(AgentRunnerEvent::Progress {
                         stage: "acp.usage",
@@ -1316,11 +1452,221 @@ pub(crate) fn parse_cli_version(raw: &str) -> Option<CliVersion> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AcpEventLogContext, AcpPermissionDecision, acp_event_log_path, acp_prompt_succeeded,
-        log_acp_payload, process_acp_payload,
+        AcpEventLogContext, AcpPermissionDecision, AcpPromptState, acp_event_log_path,
+        acp_prompt_succeeded, handle_acp_session_update, ingest_acp_message_chunk, log_acp_payload,
+        process_acp_payload,
     };
+    use crate::runners::types::{AgentRunnerEmitter, AgentRunnerEvent};
+    use async_trait::async_trait;
     use serde_json::json;
     use std::process::Stdio;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    struct CollectingEmitter {
+        deltas: Arc<Mutex<Vec<String>>>,
+    }
+
+    #[async_trait]
+    impl AgentRunnerEmitter for CollectingEmitter {
+        async fn emit(&self, event: AgentRunnerEvent) {
+            if let AgentRunnerEvent::StreamDelta { content } = event {
+                self.deltas.lock().await.push(content);
+            }
+        }
+    }
+
+    fn collecting_emitter() -> (Arc<dyn AgentRunnerEmitter>, Arc<Mutex<Vec<String>>>) {
+        let deltas = Arc::new(Mutex::new(Vec::new()));
+        let emitter: Arc<dyn AgentRunnerEmitter> = Arc::new(CollectingEmitter {
+            deltas: deltas.clone(),
+        });
+        (emitter, deltas)
+    }
+
+    /// codex-acp 内置 compact 触发后单独发一条 `agent_message_chunk text="Context compacted\n"`。
+    /// 现在这类文本会继续透传给用户，但仍需在 state 上标记 compact_detected=true，
+    /// 供 runner 写回 metadata 触发下一轮 SP reseed。
+    #[tokio::test]
+    async fn handle_acp_session_update_marks_codex_compact_literal_chunk_without_dropping_output() {
+        let mut state = AcpPromptState::default();
+        let (emitter, deltas) = collecting_emitter();
+        let params = json!({
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": { "text": "Context compacted\n" }
+            }
+        });
+        handle_acp_session_update(&params, &emitter, Some(&mut state)).await;
+        assert!(state.compact_detected, "compact_detected should be set");
+        assert!(
+            state.full_reply == "Context compacted\n",
+            "compact literal should stay in full_reply, got: {:?}",
+            state.full_reply
+        );
+        assert!(
+            deltas.lock().await.clone() == vec!["Context compacted\n".to_string()],
+            "compact literal should be forwarded to sink"
+        );
+    }
+
+    /// opencode 不推 compact 字面量，但内置 compact 后 session 体积 >50% 骤降。
+    /// 我们以"流内首次 usage_update.used 与上轮 peak 比下降超 50%"作为信号，
+    /// 同样置 compact_detected=true。
+    #[tokio::test]
+    async fn handle_acp_session_update_detects_opencode_compact_via_usage_drop() {
+        // 模拟上一轮结束时 peak_used = 200_000
+        let mut state = AcpPromptState {
+            prev_prompt_peak_used: Some(200_000),
+            ..AcpPromptState::default()
+        };
+        let (emitter, _) = collecting_emitter();
+
+        // 本轮第一条 usage_update：used=10_000，远低于 prev_peak/2 (=100_000)
+        let drop_event = json!({
+            "update": {
+                "sessionUpdate": "usage_update",
+                "used": 10_000u64,
+                "size": 256_000u64
+            }
+        });
+        handle_acp_session_update(&drop_event, &emitter, Some(&mut state)).await;
+        assert!(
+            state.compact_detected,
+            "usage drop from 200K to 10K should signal compact"
+        );
+        assert!(state.usage_update_seen);
+        assert_eq!(state.current_prompt_peak_used, 10_000);
+    }
+
+    /// 平稳增长的 usage_update 不应误判为 compact（避免假阳性）。
+    #[tokio::test]
+    async fn handle_acp_session_update_no_compact_on_normal_usage_growth() {
+        let mut state = AcpPromptState {
+            prev_prompt_peak_used: Some(50_000),
+            ..AcpPromptState::default()
+        };
+        let (emitter, _) = collecting_emitter();
+
+        let event = json!({
+            "update": {
+                "sessionUpdate": "usage_update",
+                "used": 60_000u64,
+                "size": 256_000u64
+            }
+        });
+        handle_acp_session_update(&event, &emitter, Some(&mut state)).await;
+        assert!(
+            !state.compact_detected,
+            "monotonic growth should not trigger compact"
+        );
+    }
+
+    /// opencode compact 后会把 markdown summary 拼到本轮真实回复后面，
+    /// 如 `OK\n---\n## Goal\n...`。现在不再切掉这段用户可见文本，但仍需识别
+    /// compact 已发生并打上 compact_detected。
+    #[tokio::test]
+    async fn handle_acp_session_update_keeps_opencode_summary_after_boundary() {
+        let mut state = AcpPromptState::default();
+        let (emitter, deltas) = collecting_emitter();
+
+        let event = json!({
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": { "text": "OK\n---\n## Goal\n- placeholder\n## Constraints\n- none" }
+            }
+        });
+        handle_acp_session_update(&event, &emitter, Some(&mut state)).await;
+        assert_eq!(
+            state.full_reply, "OK\n---\n## Goal\n- placeholder\n## Constraints\n- none",
+            "summary should remain in full_reply"
+        );
+        let captured = deltas.lock().await.clone();
+        assert_eq!(
+            captured,
+            vec!["OK\n---\n## Goal\n- placeholder\n## Constraints\n- none".to_string()]
+        );
+        assert!(state.compact_detected);
+    }
+
+    /// opencode 实测会把 `\n---\n## Goal` 边界拆到多个 `agent_message_chunk` 里
+    /// （e.g. `"OK\n"`, `"---\n"`, `"## "`, `" Goal\n- placeholder"`）。
+    /// 单 chunk 上 regex 必漏，必须扫累积 buffer。命中后只标记 compact_detected，
+    /// 不再回截 full_reply。
+    /// 注意：本场景 compact_detected **未**预置，早于 usage_update 收到 summary 是常态，
+    /// 必须能直接从 chunk 流自身识别。
+    #[tokio::test]
+    async fn ingest_acp_message_chunk_detects_boundary_split_across_chunks_without_truncating() {
+        let mut state = AcpPromptState::default();
+        let (emitter, deltas) = collecting_emitter();
+
+        for piece in ["OK\n", "---\n", "## ", " Goal\n- placeholder\n"] {
+            ingest_acp_message_chunk(piece, &mut state, &emitter).await;
+        }
+
+        assert_eq!(
+            state.full_reply, "OK\n---\n##  Goal\n- placeholder\n",
+            "cross-chunk boundary should preserve the original streamed text"
+        );
+        assert_eq!(
+            state.pending_assistant_content, "OK\n---\n##  Goal\n- placeholder\n",
+            "pending_assistant_content should stay in lockstep with full_reply"
+        );
+        assert!(
+            state.compact_detected,
+            "boundary detection must mark compact_detected for SP reseed"
+        );
+
+        let captured = deltas.lock().await.clone();
+        assert_eq!(
+            captured,
+            vec![
+                "OK\n".to_string(),
+                "---\n".to_string(),
+                "## ".to_string(),
+                " Goal\n- placeholder\n".to_string()
+            ],
+            "all streamed chunks should remain visible"
+        );
+
+        ingest_acp_message_chunk("## Constraints\n- none\n", &mut state, &emitter).await;
+        assert_eq!(
+            state.full_reply,
+            "OK\n---\n##  Goal\n- placeholder\n## Constraints\n- none\n"
+        );
+        let captured_after = deltas.lock().await.clone();
+        assert_eq!(
+            captured_after.len(),
+            5,
+            "post-boundary chunk should still produce a new delta"
+        );
+    }
+
+    /// 回归：scan_start 采用“按字节回看窗口”时，若 full_reply 前缀包含中文等多字节 UTF-8
+    /// 字符，旧实现会把切片起点落到字符中间并 panic。
+    #[tokio::test]
+    async fn ingest_acp_message_chunk_handles_multibyte_prefix_when_scanning_boundary_window() {
+        let mut state = AcpPromptState::default();
+        let (emitter, deltas) = collecting_emitter();
+
+        let prefix = "我".repeat(30);
+        ingest_acp_message_chunk(&prefix, &mut state, &emitter).await;
+        ingest_acp_message_chunk("\n---\n## Goal\n- placeholder\n", &mut state, &emitter).await;
+
+        assert_eq!(
+            state.full_reply,
+            format!("{prefix}\n---\n## Goal\n- placeholder\n")
+        );
+        assert_eq!(
+            state.pending_assistant_content,
+            format!("{prefix}\n---\n## Goal\n- placeholder\n")
+        );
+        assert!(state.compact_detected);
+        assert_eq!(
+            deltas.lock().await.clone(),
+            vec![prefix, "\n---\n## Goal\n- placeholder\n".to_string()]
+        );
+    }
 
     #[tokio::test]
     async fn acp_event_log_records_identity_for_grep() {

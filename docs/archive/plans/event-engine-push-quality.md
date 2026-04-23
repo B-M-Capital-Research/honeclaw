@@ -1,7 +1,7 @@
 # Event Engine Push Quality Full Fix
 
 - title: Event Engine Push Quality Full Fix
-- status: in_progress
+- status: done
 - created_at: 2026-04-23
 - updated_at: 2026-04-23
 - owner: Codex
@@ -104,8 +104,9 @@ Latest validation:
 ## Documentation Sync
 
 - This plan is now the active cross-session tracker because the task spans multiple modules, behavior changes, and more than one turn.
-- Update `docs/current-plan.md` while active.
-- When complete, add a handoff with final behavior, verification, rollback notes, and archive this plan through `docs/archive/index.md`.
+- Done: `docs/current-plan.md` 已移出活跃索引。
+- Done: 已新增 `docs/handoffs/2026-04-23-event-engine-push-quality.md`。
+- Done: 已通过 `docs/archive/index.md` 追加归档入口，并将本计划页移入 `docs/archive/plans/`。
 - Bug-specific docs under `docs/bugs/` should only be updated when closing or replacing an existing anomaly report.
 
 ## Risks / Open Questions

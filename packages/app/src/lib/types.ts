@@ -45,6 +45,13 @@ export type HistoryMsg = {
     | string;
   synthetic?: boolean;
   transcript_only?: boolean;
+  attachments: HistoryAttachment[];
+};
+
+export type HistoryAttachment = {
+  path: string;
+  name: string;
+  kind: "image" | "pdf" | "file" | string;
 };
 
 export type WebInviteInfo = {
@@ -158,7 +165,7 @@ export type AuxiliarySettings = {
 };
 
 export type AgentSettings = {
-  /** function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp */
+  /** function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent */
   runner: AgentProvider;
   /** codex_cli 专用；其他 provider 留空 */
   codexModel: string;

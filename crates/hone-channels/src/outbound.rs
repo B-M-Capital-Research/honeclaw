@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 use crate::agent_session::{
     AgentRunOptions, AgentSession, AgentSessionEvent, AgentSessionListener, AgentSessionResult,
 };
+use crate::run_event::RunEvent;
 use crate::runtime::{flush_buffer, tool_display_map, user_visible_error_message};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -229,7 +230,7 @@ struct StreamActivityListener {
 #[async_trait]
 impl AgentSessionListener for StreamActivityListener {
     async fn on_event(&self, event: AgentSessionEvent) {
-        if matches!(event, AgentSessionEvent::StreamDelta { .. }) {
+        if matches!(event, AgentSessionEvent::Run(RunEvent::StreamDelta { .. })) {
             self.probe.saw_stream_delta.store(true, Ordering::Relaxed);
         }
     }
@@ -280,12 +281,12 @@ impl ProgressTranscript {
 #[async_trait]
 impl<A: OutboundAdapter> AgentSessionListener for OutboundReasoningListener<A> {
     async fn on_event(&self, event: AgentSessionEvent) {
-        let AgentSessionEvent::ToolStatus {
+        let AgentSessionEvent::Run(RunEvent::ToolStatus {
             tool,
             status,
             reasoning,
             ..
-        } = event
+        }) = event
         else {
             return;
         };
@@ -802,6 +803,16 @@ mod tests {
         scan_markdown_fences, split_html_segments, split_markdown_segments,
         split_response_content_segments,
     };
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct LocalImageMarkerFixture {
+        name: String,
+        input: String,
+        part_types: Vec<String>,
+        uris: Vec<String>,
+        paths: Vec<String>,
+    }
 
     #[test]
     fn progress_transcript_appends_entries_to_placeholder() {
@@ -952,6 +963,46 @@ mod tests {
         assert_eq!(markers.len(), 2);
         assert_eq!(markers[0].uri, "file:///tmp/chart-one.png");
         assert_eq!(markers[1].uri, "file:///tmp/chart-two.jpeg");
+    }
+
+    #[test]
+    fn local_image_marker_contract_matches_shared_fixture() {
+        let fixtures: Vec<LocalImageMarkerFixture> = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/local_image_markers.json"
+        ))
+        .expect("local image marker fixture");
+
+        for fixture in fixtures {
+            let segments = split_response_content_segments(&fixture.input);
+            let part_types = segments
+                .iter()
+                .map(|segment| match segment {
+                    ResponseContentSegment::Text(_) => "text",
+                    ResponseContentSegment::LocalImage(_) => "image",
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(part_types, fixture.part_types, "{}", fixture.name);
+
+            let markers = collect_local_image_markers(&fixture.input);
+            assert_eq!(
+                markers
+                    .iter()
+                    .map(|marker| marker.uri.as_str())
+                    .collect::<Vec<_>>(),
+                fixture.uris,
+                "{}",
+                fixture.name
+            );
+            assert_eq!(
+                markers
+                    .iter()
+                    .map(|marker| marker.path.as_str())
+                    .collect::<Vec<_>>(),
+                fixture.paths,
+                "{}",
+                fixture.name
+            );
+        }
     }
 
     #[test]

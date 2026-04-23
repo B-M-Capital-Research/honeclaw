@@ -19,6 +19,7 @@ use hone_channels::ingress::{
 };
 use hone_channels::outbound::{attach_stream_activity_probe, split_segments};
 use hone_channels::prompt::PromptOptions;
+use hone_channels::run_event::RunEvent;
 use hone_channels::runtime::{DEFAULT_MAX_SEGMENT_SIZE, user_visible_error_message};
 use hone_channels::think::{
     ThinkRenderStyle, ThinkStreamFormatter, append_compacted, render_think_blocks,
@@ -180,7 +181,7 @@ impl AgentSessionListener for ImessageConsoleListener {
                     serde_json::json!({ "text": content }),
                 );
             }
-            AgentSessionEvent::Progress { stage, detail } => match stage {
+            AgentSessionEvent::Run(RunEvent::Progress { stage, detail }) => match stage {
                 "agent.run" => {
                     push_console_event(
                         &self.handle,
@@ -203,7 +204,7 @@ impl AgentSessionListener for ImessageConsoleListener {
                 }
                 _ => {}
             },
-            AgentSessionEvent::Error { error } => {
+            AgentSessionEvent::Run(RunEvent::Error { error }) => {
                 push_console_event(
                     &self.handle,
                     "imessage_processing_error",
@@ -282,7 +283,7 @@ impl ImessageStreamListener {
 impl AgentSessionListener for ImessageStreamListener {
     async fn on_event(&self, event: AgentSessionEvent) {
         match event {
-            AgentSessionEvent::StreamDelta { content } => {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
                 let rendered = {
                     let mut formatter = self.think_formatter.lock().await;
                     formatter.push_chunk(&content)
@@ -302,7 +303,7 @@ impl AgentSessionListener for ImessageStreamListener {
                     self.send_segments(segments).await;
                 }
             }
-            AgentSessionEvent::Error { error } => {
+            AgentSessionEvent::Run(RunEvent::Error { error }) => {
                 if matches!(
                     error.kind,
                     hone_channels::agent_session::AgentSessionErrorKind::TimeoutOverall

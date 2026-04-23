@@ -12,12 +12,15 @@ pub mod mcp_bridge;
 pub mod outbound;
 pub mod prompt;
 pub(crate) mod prompt_audit;
+pub(crate) mod response_finalizer;
+pub mod run_event;
 pub(crate) mod runners;
 pub mod runtime;
 pub(crate) mod sandbox;
 pub mod scheduler;
 pub(crate) mod session_compactor;
 pub mod think;
+pub(crate) mod turn_builder;
 
 pub use self::core::HoneBotCore;
 pub use self::core::load_runtime_config;

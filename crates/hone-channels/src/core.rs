@@ -9,7 +9,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use hone_core::agent::AgentResponse;
-use hone_core::config::HoneConfig;
+use hone_core::config::{AgentRunnerKind, HoneConfig};
 use hone_core::{ActorIdentity, LlmAuditSink};
 use hone_llm::{LlmProvider, OpenAiCompatibleProvider, OpenRouterProvider};
 use hone_memory::{
@@ -30,7 +30,7 @@ use tokio::sync::mpsc;
 
 use crate::runners::{
     AgentRunner, CodexAcpRunner, CodexCliReasoningRunner, FunctionCallingReasoningRunner,
-    GeminiAcpRunner, GeminiCliRunner, MultiAgentRunner, OpencodeAcpRunner, RunnerTimeouts,
+    GeminiCliRunner, MultiAgentRunner, OpencodeAcpRunner, RunnerTimeouts,
 };
 use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
@@ -157,27 +157,25 @@ impl HoneBotCore {
                 .max(self.config.agent.step_timeout_seconds.max(1))
         );
 
-        match self.config.agent.runner.trim() {
-            "gemini_cli" => tracing::info!(
+        match self.config.agent.runner_kind() {
+            AgentRunnerKind::GeminiCli => tracing::info!(
                 "[Startup/{channel}] dialog.engine=gemini_cli command=gemini model.source=gemini-cli(profile/default)"
             ),
-            "gemini_acp" => tracing::info!(
-                "[Startup/{channel}] dialog.engine=gemini_acp transport=stdio-jsonrpc command={} args={:?} model={} api_key_env={}",
-                printable_or_default(&self.config.agent.gemini_acp.command, "gemini"),
-                self.config.agent.gemini_acp.args,
-                printable_or_default(&self.config.agent.gemini_acp.model, "<gemini-default>"),
-                printable_or_default(&self.config.agent.gemini_acp.api_key_env, "GEMINI_API_KEY"),
+            AgentRunnerKind::GeminiAcp => tracing::warn!(
+                "[Startup/{channel}] dialog.engine=gemini_acp 已禁用：gemini ACP 未推 usage_update，\
+                 honeclaw 无法识别其内置 compact 信号；并且 Gemini ToS 不建议在第三方 ACP 客户端中长期复用 session。\
+                 请在 config 中切换到 codex_acp / opencode_acp / multi-agent。"
             ),
-            "codex_cli" => tracing::info!(
+            AgentRunnerKind::CodexCli => tracing::info!(
                 "[Startup/{channel}] dialog.engine=codex_cli command=codex exec model={}",
                 printable_or_default(&self.config.agent.codex_model, "<codex-cli-default>")
             ),
-            "opencode_acp" => tracing::info!(
+            AgentRunnerKind::OpencodeAcp => tracing::info!(
                 "[Startup/{channel}] dialog.engine=opencode_acp transport=stdio-jsonrpc command={} args={:?}",
                 printable_or_default(&self.config.agent.opencode.command, "opencode"),
                 self.config.agent.opencode.args
             ),
-            "multi-agent" => tracing::info!(
+            AgentRunnerKind::MultiAgent => tracing::info!(
                 "[Startup/{channel}] dialog.engine=multi-agent search.base_url={} search.model={} answer.base_url={} answer.model={} answer.variant={} max_iterations={} max_tool_calls={}",
                 printable_or_default(&self.config.agent.multi_agent.search.base_url, "<empty>"),
                 printable_or_default(&self.config.agent.multi_agent.search.model, "<empty>"),
@@ -190,7 +188,7 @@ impl HoneBotCore {
                 self.config.agent.multi_agent.search.max_iterations,
                 self.config.agent.multi_agent.answer.max_tool_calls,
             ),
-            "codex_acp" => tracing::info!(
+            AgentRunnerKind::CodexAcp => tracing::info!(
                 "[Startup/{channel}] dialog.engine=codex_acp transport=stdio-jsonrpc command={} args={:?} codex_command={} sandbox_mode={} approval_policy={} dangerous_bypass={} sandbox_permissions={:?} extra_config_overrides={:?}",
                 printable_or_default(&self.config.agent.codex_acp.command, "codex-acp"),
                 self.config.agent.codex_acp.args,
@@ -204,15 +202,15 @@ impl HoneBotCore {
                 self.config.agent.codex_acp.sandbox_permissions,
                 self.config.agent.codex_acp.extra_config_overrides,
             ),
-            "function_calling" => tracing::info!(
+            AgentRunnerKind::FunctionCalling => tracing::info!(
                 "[Startup/{channel}] dialog.engine=function_calling llm.provider={} llm.model={} max_iterations={}",
                 printable_or_default(llm_provider, "<empty>"),
                 llm_model,
                 self.config.agent.max_iterations
             ),
-            other => tracing::warn!(
+            AgentRunnerKind::Unknown => tracing::warn!(
                 "[Startup/{channel}] dialog.engine=unknown(agent.runner={}) fallback=function_calling llm.provider={} llm.model={}",
-                printable_or_default(other, "<empty>"),
+                printable_or_default(self.config.agent.runner.trim(), "<empty>"),
                 printable_or_default(llm_provider, "<empty>"),
                 llm_model
             ),
@@ -977,27 +975,29 @@ impl HoneBotCore {
             step: self.config.agent.step_timeout(),
             overall: self.config.agent.overall_timeout(),
         };
-        match runner {
-            "gemini_cli" => Ok(Box::new(GeminiCliRunner::new(
+        match self.config.agent.runner_kind() {
+            AgentRunnerKind::GeminiCli => Ok(Box::new(GeminiCliRunner::new(
                 system_prompt.to_string(),
                 Arc::new(tool_registry),
                 runner_timeouts,
             ))),
-            "gemini_acp" => Ok(Box::new(GeminiAcpRunner::new(
-                self.config.agent.gemini_acp.clone(),
-                runner_timeouts,
-            ))),
-            "codex_cli" => Ok(Box::new(CodexCliReasoningRunner::new(
+            AgentRunnerKind::GeminiAcp => Err(
+                "dialog.engine=gemini_acp 已被 honeclaw 全局禁用（gemini 不推 usage_update，\
+                 无法可靠检测内置 compact 信号；Gemini ToS 也不建议这种长 session 复用模式）。\
+                 请在 config.yaml 的 agent.runner 切换到 codex_acp / opencode_acp / multi-agent / function_calling。"
+                    .to_string(),
+            ),
+            AgentRunnerKind::CodexCli => Ok(Box::new(CodexCliReasoningRunner::new(
                 system_prompt.to_string(),
                 Some(self.config.agent.codex_model.clone()),
                 Arc::new(tool_registry),
                 self.llm_audit.clone(),
             ))),
-            "codex_acp" => Ok(Box::new(CodexAcpRunner::new(
+            AgentRunnerKind::CodexAcp => Ok(Box::new(CodexAcpRunner::new(
                 self.config.agent.codex_acp.clone(),
                 runner_timeouts,
             ))),
-            "function_calling" => {
+            AgentRunnerKind::FunctionCalling => {
                 let llm = self.llm.clone().ok_or_else(|| {
                     "AI 服务未配置（openrouter.api_key 为空），无法使用 function_calling 引擎。\
 请在 config.yaml 中填写有效的 API Key 后重启服务。"
@@ -1011,7 +1011,7 @@ impl HoneBotCore {
                     self.llm_audit.clone(),
                 )))
             }
-            "opencode_acp" => {
+            AgentRunnerKind::OpencodeAcp => {
                 let mut opencode_config = self.config.agent.opencode.clone();
                 if let Some(model_override) =
                     model_override.filter(|value| !value.trim().is_empty())
@@ -1034,7 +1034,7 @@ impl HoneBotCore {
                     runner_timeouts,
                 )))
             }
-            "multi-agent" => {
+            AgentRunnerKind::MultiAgent => {
                 let pool = self.config.llm.openrouter.effective_key_pool();
                 let mut answer_config = self.config.agent.opencode.clone();
                 let multi_answer = &self.config.agent.multi_agent.answer;
@@ -1077,10 +1077,10 @@ impl HoneBotCore {
                     self.llm_audit.clone(),
                 )))
             }
-            other => {
+            AgentRunnerKind::Unknown => {
                 tracing::warn!(
                     "[HoneBotCore] unknown runner={}, fallback to function_calling",
-                    printable_or_default(other, "<empty>")
+                    printable_or_default(runner, "<empty>")
                 );
                 let llm = self.llm.clone().ok_or_else(|| {
                     "AI 服务未配置（openrouter.api_key 为空），无法使用 function_calling 引擎。\
@@ -1106,8 +1106,21 @@ impl HoneBotCore {
         ActorIdentity::new(channel, user_id, channel_scope)
     }
 
-    /// 检查并压缩会话历史
+    /// 检查并压缩会话历史。
+    ///
+    /// 对于自带上下文管理 / 内置 compact 的 runner（codex_acp / opencode_acp），
+    /// 直接短路返回 —— 不再触发 SessionCompactor，把 honeclaw 自己的
+    /// `session_messages` 完整保留，依赖 ACP runner 内部 session 自压。
+    /// 见 `docs/bugs/session_compact_summary_report_hallucination.md` 2026-04-23 决策。
     pub async fn maybe_compress_session(&self, session_id: &str) -> hone_core::HoneResult<()> {
+        if self.config.agent.runner_kind().manages_own_context() {
+            tracing::debug!(
+                "[Compact] session={} runner={} 自管上下文，跳过 honeclaw 自动 compact",
+                session_id,
+                self.config.agent.runner
+            );
+            return Ok(());
+        }
         let _ = self
             .compact_session(session_id, "auto", false, None)
             .await?;

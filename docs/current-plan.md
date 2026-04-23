@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-04-23
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -16,10 +16,6 @@
 
 ## 活跃任务
 
-- **Event Engine 推送质量全量修复**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/event-engine-push-quality.md`
-  - 摘要：按 24 项清单逐个修复价格时效、路由降噪、摘要排序、偏好表达与可观测性问题；每项要求 mock 复现、泛化实现和回归验证，真实 LLM 仅用于手工对照
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`
@@ -43,4 +39,4 @@
 - **ACP 对齐的 Agent Runtime 全栈重构**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/acp-runtime-refactor.md`
-  - 摘要：ACP runners 已接入 Hone MCP bridge；`gemini_acp initialize timeout` 已定位并修复，runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档，`session/load timeout` 也已改为自动回退新 session；当前继续收口 ACP transcript 边界，session 持久化已切到 `version=4 + user/assistant + content[] + status` 统一模型，codex execute 完成态也已落成 `tool_result`，并已用同一会话实测 codex/opencode 可互相切换恢复；本轮又把 `codex_cli` 明确纳入同一 normalized 持久化契约，并让 `multi-agent` 把 search/answer 两阶段 transcript 一并回写 session
+  - 摘要：ACP runners 已接入 Hone MCP bridge；runner timeout 已收敛到顶层 `step=3 分钟 / overall=20 分钟` 两档，`session/load timeout` 也已改为自动回退新 session；当前继续收口 ACP transcript 边界、compact 防泄漏与 system prompt reseed 语义。session 持久化已切到 `version=4 + user/assistant + content[] + status` 统一模型，codex/opencode 可互相切换恢复，`codex_cli` 也纳入同一 normalized 持久化契约，`multi-agent` 会把 search/answer 两阶段 transcript 一并回写 session；`gemini_acp` 已禁用并给出迁移提示

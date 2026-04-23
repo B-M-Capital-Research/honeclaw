@@ -4,14 +4,14 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelProcessInfo {
+pub struct ObservedChannelProcess {
     pub channel: String,
     pub pid: u32,
     pub executable: String,
     pub command: String,
 }
 
-pub fn scan_channel_processes(channel: &str) -> Vec<ChannelProcessInfo> {
+pub fn scan_channel_processes(channel: &str) -> Vec<ObservedChannelProcess> {
     let binary = channel_binary_name(channel);
     let Ok(output) = Command::new("ps").args(["-Ao", "pid=,args="]).output() else {
         return Vec::new();
@@ -26,7 +26,7 @@ pub fn scan_channel_processes(channel: &str) -> Vec<ChannelProcessInfo> {
         .collect()
 }
 
-fn parse_ps_line(channel: &str, binary: &str, line: &str) -> Option<ChannelProcessInfo> {
+fn parse_ps_line(channel: &str, binary: &str, line: &str) -> Option<ObservedChannelProcess> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return None;
@@ -45,7 +45,7 @@ fn parse_ps_line(channel: &str, binary: &str, line: &str) -> Option<ChannelProce
         return None;
     }
 
-    Some(ChannelProcessInfo {
+    Some(ObservedChannelProcess {
         channel: channel.to_string(),
         pid,
         executable,

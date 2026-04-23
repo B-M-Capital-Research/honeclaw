@@ -6,6 +6,7 @@ use hone_channels::agent_session::{
     AgentRunOptions, AgentSession, AgentSessionEvent, AgentSessionListener,
 };
 use hone_channels::prompt::PromptOptions;
+use hone_channels::run_event::RunEvent;
 use hone_core::SessionIdentity;
 
 use crate::ProbeArgs;
@@ -71,19 +72,19 @@ struct ProbeListener;
 impl AgentSessionListener for ProbeListener {
     async fn on_event(&self, event: AgentSessionEvent) {
         match event {
-            AgentSessionEvent::Progress { stage, detail } => {
+            AgentSessionEvent::Run(RunEvent::Progress { stage, detail }) => {
                 if let Some(detail) = detail.filter(|value| !value.trim().is_empty()) {
                     println!("[progress] {stage} :: {detail}");
                 } else {
                     println!("[progress] {stage}");
                 }
             }
-            AgentSessionEvent::ToolStatus {
+            AgentSessionEvent::Run(RunEvent::ToolStatus {
                 tool,
                 status,
                 message,
                 reasoning,
-            } => {
+            }) => {
                 let mut line = format!("[tool] {tool} :: {status}");
                 if let Some(message) = message.filter(|value| !value.trim().is_empty()) {
                     line.push_str(" :: ");
@@ -95,7 +96,7 @@ impl AgentSessionListener for ProbeListener {
                 }
                 println!("{line}");
             }
-            AgentSessionEvent::Error { error } => {
+            AgentSessionEvent::Run(RunEvent::Error { error }) => {
                 println!("[error] {:?} :: {}", error.kind, error.message);
             }
             AgentSessionEvent::Done { response } => {
@@ -106,12 +107,12 @@ impl AgentSessionListener for ProbeListener {
                     response.content.len()
                 );
             }
-            AgentSessionEvent::StreamDelta { content } => {
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
                 if !content.trim().is_empty() {
                     println!("[delta] {content}");
                 }
             }
-            AgentSessionEvent::StreamThought { thought } => {
+            AgentSessionEvent::Run(RunEvent::StreamThought { thought }) => {
                 if !thought.trim().is_empty() {
                     println!("[thought] {thought}");
                 }

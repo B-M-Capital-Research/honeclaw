@@ -6,30 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::agent_session::{AgentSessionError, GeminiStreamOptions};
-
-#[derive(Debug, Clone)]
-pub enum AgentRunnerEvent {
-    Progress {
-        stage: &'static str,
-        detail: Option<String>,
-    },
-    StreamDelta {
-        content: String,
-    },
-    StreamThought {
-        thought: String,
-    },
-    ToolStatus {
-        tool: String,
-        status: String,
-        message: Option<String>,
-        reasoning: Option<String>,
-    },
-    Error {
-        error: AgentSessionError,
-    },
-}
+use crate::agent_session::GeminiStreamOptions;
+pub use crate::run_event::RunEvent as AgentRunnerEvent;
 
 #[async_trait]
 pub trait AgentRunnerEmitter: Send + Sync {
@@ -79,4 +57,14 @@ pub trait AgentRunner: Send + Sync {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult;
+
+    /// Runner 是否自己管理对话上下文 / 历史 / 内置压缩。
+    ///
+    /// 返回 true 时 honeclaw 不会对其触发 SessionCompactor，也不会在每轮 prompt
+    /// 里再拼接 `latest_compact_summary`，由 runner 内置的 ACP session 机制累积
+    /// 与压缩。仅 ACP 系列 runner（codex_acp / opencode_acp）应当 override 为
+    /// true；其它 runner（multi_agent / function_calling 等）保持默认 false。
+    fn manages_own_context(&self) -> bool {
+        false
+    }
 }

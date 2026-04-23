@@ -16,10 +16,10 @@ use crate::agent_session::{AgentSessionError, AgentSessionErrorKind};
 use crate::mcp_bridge::hone_mcp_servers;
 
 use super::acp_common::{
-    AcpEventLogContext, AcpPromptState, AcpResponseTimeouts, AcpToolCallRecord,
-    acp_prompt_succeeded, create_acp_session, log_acp_payload, log_acp_prompt_stop_diagnostics,
-    log_acp_raw_parse_error, set_acp_session_model, timeout_message_with_stderr, wait_for_response,
-    write_jsonrpc_request,
+    ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpEventLogContext, AcpPromptState,
+    AcpResponseTimeouts, AcpToolCallRecord, acp_prompt_succeeded, create_acp_session,
+    log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
+    set_acp_session_model, timeout_message_with_stderr, wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -43,6 +43,10 @@ impl OpencodeAcpRunner {
 impl AgentRunner for OpencodeAcpRunner {
     fn name(&self) -> &'static str {
         "opencode_acp"
+    }
+
+    fn manages_own_context(&self) -> bool {
+        true
     }
 
     async fn run(
@@ -567,7 +571,13 @@ async fn run_opencode_acp(
         prompt_idle_timeout.as_secs(),
         prompt_overall_timeout.as_secs(),
     );
-    let mut opencode_state = AcpPromptState::default();
+    let mut opencode_state = AcpPromptState {
+        prev_prompt_peak_used: request
+            .session_metadata
+            .get(ACP_PREV_PROMPT_PEAK_KEY)
+            .and_then(|value| value.as_u64()),
+        ..AcpPromptState::default()
+    };
     let prompt_text = build_opencode_acp_prompt_text(
         &request.system_prompt,
         &request.runtime_input,
@@ -626,6 +636,20 @@ async fn run_opencode_acp(
     if let Some(task) = stderr_task {
         task.abort();
     }
+    // ACP runner 内置 compact 状态写回 metadata（含义同 codex_acp.rs）
+    metadata_updates.insert(
+        ACP_PREV_PROMPT_PEAK_KEY.to_string(),
+        Value::from(opencode_state.current_prompt_peak_used),
+    );
+    if opencode_state.compact_detected {
+        tracing::info!(
+            "[AgentRunner/opencode] session={} ACP compact detected (peak_used={}); marking next turn for SP reseed",
+            request.session_id,
+            opencode_state.current_prompt_peak_used
+        );
+        metadata_updates.insert(ACP_NEEDS_SP_RESEED_KEY.to_string(), Value::Bool(true));
+    }
+
     let context_messages = finalize_opencode_context_messages(&mut opencode_state);
     let content = final_assistant_message_content(
         &context_messages,
@@ -1113,13 +1137,10 @@ pub(crate) async fn handle_opencode_session_update(
             let Some(text) = text else {
                 return;
             };
-            state.full_reply.push_str(text);
-            state.pending_assistant_content.push_str(text);
-            emitter
-                .emit(AgentRunnerEvent::StreamDelta {
-                    content: text.to_string(),
-                })
-                .await;
+            // 共用 acp_common 的 compact 识别路径：
+            // 字面量 `Context compacted` / opencode markdown summary 边界
+            //（含跨 chunk 拆分场景）统一走 compact 检测，但用户可见文本不再裁剪。
+            super::acp_common::ingest_acp_message_chunk(text, state, emitter).await;
         }
         "agent_thought_chunk" => {
             let text = update
@@ -1144,11 +1165,8 @@ pub(crate) async fn handle_opencode_session_update(
         }
         "usage_update" => {
             if let Some(used) = update.get("used").and_then(|value| value.as_u64()) {
-                emitter
-                    .emit(AgentRunnerEvent::Progress {
-                        stage: "opencode.usage",
-                        detail: Some(format!("used={used}")),
-                    })
+                // 共用 acp_common 的 usage 骤降识别路径，stage 维持 `opencode.usage`。
+                super::acp_common::ingest_acp_usage_update(used, state, emitter, "opencode.usage")
                     .await;
             }
         }

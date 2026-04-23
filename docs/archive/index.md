@@ -1,6 +1,32 @@
 # Archive Index
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
+
+## 2026-04-23
+
+### Event Engine 推送质量全量修复
+
+- Status: done
+- Date: 2026-04-23
+- Plan: `docs/archive/plans/event-engine-push-quality.md`
+- Handoff: `docs/handoffs/2026-04-23-event-engine-push-quality.md`
+- Decision / ADR: N/A
+- Related PRs / commits: `0ff23d4 feat(event-engine): improve push quality routing`, `df820ca feat(event-engine): add daily push calibration export`
+- Related runbooks / regressions: `rtk cargo fmt --all -- --check`, `rtk cargo test -p hone-event-engine --lib`, `rtk cargo test -p hone-core --lib`, `rtk cargo check -p hone-web-api`, `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+- Current conclusion: event engine 的 24 项推送质量清单已全部收口，新增 digest 去重 / min-gap / topic memory、source/channel 偏好、分类预算、方向性价格阈值、macro/earnings 时窗、delivery observability，以及 `amazon/nova-lite-v1` 不确定来源新闻分类基线
+- Next entry point: `docs/handoffs/2026-04-23-event-engine-push-quality.md`
+
+### Core Runtime 职责与类型收敛
+
+- Status: done
+- Date: 2026-04-23
+- Plan: `docs/archive/plans/core-runtime-type-consolidation.md`
+- Handoff: `docs/handoffs/2026-04-23-core-runtime-type-consolidation.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `rtk cargo test -p hone-channels agent_session`, `rtk cargo test -p hone-channels runners::tests`, `rtk cargo test -p hone-event-engine subscription`, `rtk cargo test -p hone-web-api routes::history`, `rtk bun run test:web`, `rtk bun --filter @hone-financial/app typecheck`, `rtk cargo check --workspace --all-targets --exclude hone-desktop`, `rtk cargo test --workspace --all-targets --exclude hone-desktop`, `rtk bash tests/regression/run_ci.sh`
+- Current conclusion: `AgentSession` 的 prompt/skill turn 构建与 response finalization 已从主编排里拆出，runner/session 内部事件收敛到 canonical `run_event`，runner kind / CLI probe 逻辑有了统一 helper，前端历史附件类型已和 Rust 对齐，本地图片 marker 也补了 Rust/前端共享 fixture
+- Next entry point: `crates/hone-channels/src/agent_session.rs`
 
 ## 2026-04-22
 

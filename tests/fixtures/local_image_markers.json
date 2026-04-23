@@ -1,0 +1,30 @@
+[
+  {
+    "name": "bare-uri",
+    "input": "before file:///tmp/a.png after",
+    "part_types": ["text", "image", "text"],
+    "uris": ["file:///tmp/a.png"],
+    "paths": ["/tmp/a.png"]
+  },
+  {
+    "name": "markdown-link",
+    "input": "before [图表](file:///tmp/a.png) after",
+    "part_types": ["text", "image", "text"],
+    "uris": ["file:///tmp/a.png"],
+    "paths": ["/tmp/a.png"]
+  },
+  {
+    "name": "html-anchor",
+    "input": "before <a href=\"file:///tmp/a.png\">file:///tmp/a.png</a> after",
+    "part_types": ["text", "image", "text"],
+    "uris": ["file:///tmp/a.png"],
+    "paths": ["/tmp/a.png"]
+  },
+  {
+    "name": "interleaved",
+    "input": "alpha\nfile:///tmp/a.png\nbeta file:///tmp/b.webp gamma",
+    "part_types": ["text", "image", "text", "image", "text"],
+    "uris": ["file:///tmp/a.png", "file:///tmp/b.webp"],
+    "paths": ["/tmp/a.png", "/tmp/b.webp"]
+  }
+]

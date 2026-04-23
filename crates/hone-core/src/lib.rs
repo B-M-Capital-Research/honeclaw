@@ -20,9 +20,7 @@ pub const CHANNEL_DISABLED_EXIT_CODE: i32 = 20;
 pub use actor::{ActorIdentity, SessionIdentity, SessionKind};
 pub use api_key_pool::ApiKeyPool;
 pub use audit::{LlmAuditRecord, LlmAuditSink};
-pub use channel_process::{
-    ChannelProcessInfo as ObservedChannelProcess, channel_binary_name, scan_channel_processes,
-};
+pub use channel_process::{ObservedChannelProcess, channel_binary_name, scan_channel_processes};
 pub use config::{ChatScope, HoneConfig};
 pub use error::{HoneError, HoneResult};
 pub use heartbeat::{

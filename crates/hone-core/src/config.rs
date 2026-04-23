@@ -14,9 +14,9 @@ pub mod event_engine;
 pub mod server;
 
 pub use agent::{
-    AdminConfig, AgentConfig, AuxiliaryLlmConfig, CodexAcpConfig, GeminiAcpConfig, KimiConfig,
-    LlmConfig, MultiAgentAnswerConfig, MultiAgentConfig, MultiAgentSearchConfig, OpenRouterConfig,
-    OpencodeAcpConfig,
+    AdminConfig, AgentConfig, AgentRunnerKind, AgentRunnerProbe, AuxiliaryLlmConfig,
+    CodexAcpConfig, GeminiAcpConfig, KimiConfig, LlmConfig, MultiAgentAnswerConfig,
+    MultiAgentConfig, MultiAgentSearchConfig, OpenRouterConfig, OpencodeAcpConfig,
 };
 pub use channels::{
     ChatScope, DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig,

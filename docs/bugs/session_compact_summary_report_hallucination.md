@@ -3,8 +3,58 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Fixing（2026-04-23 架构改造已落地，待 24h 灰度复核）
 - **证据来源**:
+
+- 2026-04-23 13:50 根因复盘 + 架构改造落地（本次）：
+   - **新增证据**：Telegram 出站链路也复现，chat `8039067465`（hone-test-bot）收到一条只有 `Context compacted` 的机器人消息。
+   - **根因复合（实测确认）**：
+     1. **codex-acp 内置 compact**：实测当 ACP session 内 token 用到 ~98%（251K/258K）时，
+        codex 在处理下一轮 prompt 之前先 compact，并通过 `agent_message_chunk text="Context compacted\n"`
+        通知客户端。ACP 协议 `session/*` 方法只暴露 `new/load/list/prompt/cancel/update/set_config_option/set_mode`，
+        客户端无法主动控制 compact 时机。
+     2. **opencode-acp 内置 compact**：实测在 ~85%（221K/256K）触发，**没有**任何字面量信号；
+        而是直接把一段 `OK\n---\n## Goal\n## Constraints\n## Progress\n...\n## Relevant Files\n---\n
+        I don't have an active task yet. How can I help you today?` 形式的 markdown summary
+        拼到本轮 reply 后面推回客户端 —— 同样会被 honeclaw 当作模型正常回复投到 sink，
+        造成另一种用户可见外泄。
+     3. **gemini-acp**：实测**完全不推 `usage_update`**，无任何可观测的 compact 信号，且本机
+        ACP 大 input 性能问题严重。**已全局禁用**（factory 层报错引导切换）。
+     4. **honeclaw 自带 SessionCompactor 是冗余且有害的**：ACP 系列 runner 自带 session 持久化与
+        内置 compact，honeclaw 这边再走自己的 24msg/48KB 阈值压缩，会写 `Conversation compacted`
+        边界 + `【Compact Summary】...` 系统消息，又被回灌进下一轮 prompt（即本 bug 的旧根因）。
+   - **改造方向（本次落地）**：
+     1. **客户端入口丢弃 compact 字面量** — `acp_common.rs::handle_acp_session_update_with_renderer`
+        识别 `Context compacted` / `Conversation compacted` chunk，drop 不进 final_reply / 不投 sink，
+        同时置 `state.compact_detected = true`。
+     2. **opencode summary 切断** — 一旦 `compact_detected`，识别后续 chunk 中 `\n---\n## ` 边界，
+        保留前缀（模型对本轮 prompt 的真实回答），从边界开始 drop，并把后续 chunk 整块 drop。
+     3. **opencode usage 骤降识别** — opencode 没有字面量，改用"流内首次 `usage_update.used`
+        相对上一轮 peak 下降超 50%"作为信号，落到同一个 `compact_detected` 路径。
+     4. **honeclaw 不再对 ACP runner 自动 compact** — `AgentRunner::manages_own_context()` 返回 true
+        的 runner（codex_acp / opencode_acp），`HoneBotCore::maybe_compress_session` 直接短路返回，
+        不再触发 SessionCompactor。
+     5. **ACP runner 不再灌 `latest_compact_summary`** — `agent_session.rs::resolve_prompt_input` 与
+        `scheduler.rs::run_heartbeat_task` 在 self-managed runner 下把 `bundle.conversation_context`
+        清空，节流 ~30KB / 轮 input。honeclaw 自己的 `session_messages` 仍完整保留，用作跨 runner
+        切换、UI 展示与 debug。
+     6. **末端 sanitize 兜底** — `runtime.rs::sanitize_user_visible_output` 加 `RE_COMPACT_MARKER_LINE`,
+        逐行匹配 `(context|conversation) compacted` 并丢弃，覆盖 multi_agent / 历史脏数据回放等场景。
+     7. **gemini_acp 全局禁用** — `core.rs::create_runner_with_model_override` 的 `gemini_acp` 分支
+        直接返回错误，引导用户切换到 codex_acp / opencode_acp / multi-agent / function_calling。
+   - **保留路径**：
+     - `agent_session.rs::force_compact_for_context_overflow`（LLM 报 context overflow 时的兜底）保留
+     - `agent_session.rs` 中用户 `/compact` 命令的 manual 触发保留
+     - 仅 `auto` 触发对 ACP runner 短路
+   - **后续 SP reseed 优化（Pass 2，未实施）**：`acp_common` + 两个 ACP runner 已经把
+     `acp_needs_sp_reseed` flag 写入 session_metadata；当前 prompt 构建层每轮都发 SP，flag 未消费。
+     如果后续要进一步省 token（每轮少发 ~3KB），可以让 prompt 构建在 reseed flag=false 且非首轮时
+     skip SP，在 reseed flag=true（compact 已发生）时强制重发 SP；不在本次范围。
+   - **状态**：架构改造已落地、单测覆盖 4 个新用例，等待 24h 灰度复核 —— 跟踪
+     `data/runtime/logs/acp-events.log` 与 `session_messages` / `cron_job_runs.response_preview`
+     是否还有 `Context compacted` 开头的 assistant final 写入。
+
+
   - 会话: `Actor_feishu__direct__ou_5ff08d714cd9398f4802f89c9e4a1bb2cb`
   - 最近一小时复现会话: `Actor_feishu__direct__ou_5f988206c4f2b110f0f8ce93f89c1eb07c`
 - 2026-04-22 21:03 最新用户可见外泄复核：

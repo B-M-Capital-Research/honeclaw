@@ -30,7 +30,7 @@ Last updated: 2026-04-19
   - `hone-tools`: tool traits, registry, and built-in tools; the skill subsystem centers on `src/skill_runtime.rs`, `skill_tool`, the local `discover_skills` index, the `skill_registry` enabled/disabled override layer, and the compatibility `load_skill` shim. `skill_tool` still parses structured script `stdout` and validates local image artifact roots/extensions before exposing them to the model.
   - `hone-integrations`: external integrations such as X, Feishu, and image generation
   - `hone-scheduler`: scheduled task orchestration
-  - `hone-channels`: channel runtime, `HoneBotCore`, shared channel startup bootstrap, unified `agent_session` orchestration, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes，以及把助手文本里的 `file://` 本地图片 marker 拆成有序 text/image 片段的共享逻辑), repo-external actor sandbox management, prompt-audit / session-compaction helpers, the cross-channel pre-session intercept layer for commands such as `/register-admin` and `/report`, plus shared attachment ingest / PDF preview helpers under `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
+  - `hone-channels`: channel runtime, `HoneBotCore`, shared channel startup bootstrap, unified `agent_session` run orchestration, `turn_builder` prompt/skill turn construction, `response_finalizer` assistant output cleanup/fallback/media stabilization, canonical `run_event` types, the shared `execution` preparation layer, and the separate `runners` execution layer; it also hosts shared `ingress` (incoming envelope / actor scope / dedup / session lock / group pretrigger window), `outbound` (placeholder / reasoning / chunking / stream probes，以及把助手文本里的 `file://` 本地图片 marker 拆成有序 text/image 片段的共享逻辑), repo-external actor sandbox management, prompt-audit / session-compaction helpers, the cross-channel pre-session intercept layer for commands such as `/register-admin` and `/report`, plus shared attachment ingest / PDF preview helpers under `attachments/{ingest,vision,vector_store}.rs`. Feishu / Discord / Telegram attachment size and image-dimension gates are also centralized here.
 - `agents/`
   - `function_calling`: function-calling agent core
   - `gemini_cli`, `codex_cli`: CLI agent adapters
@@ -82,7 +82,11 @@ Last updated: 2026-04-19
 - Channel runtime export: `crates/hone-channels/src/lib.rs`
 - Shared channel bootstrap: `crates/hone-channels/src/bootstrap.rs`
 - `AgentSession` abstraction: `crates/hone-channels/src/agent_session.rs`
-  - Owns turn-0 skill listing disclosure, related-skill hints, slash-skill expansion, and invoked-skill restoration after compaction
+- Prompt/skill turn construction: `crates/hone-channels/src/turn_builder.rs`
+  - Owns turn-0 skill listing disclosure, related-skill hints, slash-skill expansion, and invoked-skill runtime input composition
+- Assistant response finalization: `crates/hone-channels/src/response_finalizer.rs`
+  - Owns final output sanitization, empty-success fallback, leaked-system/internal-only blocking, and local image marker stabilization
+- Canonical runner/session run events: `crates/hone-channels/src/run_event.rs`
 - Shared execution preparation: `crates/hone-channels/src/execution.rs`
   - Centralizes prompt-audit write, tool registry creation, runner creation, and actor-sandbox-backed `AgentRunnerRequest` assembly for both session and transient task flows
 - Shared ingress model: `crates/hone-channels/src/ingress.rs`
@@ -119,7 +123,7 @@ Last updated: 2026-04-19
 1. A channel entrypoint or the Web API receives user input and performs protocol parsing, allowlist checks, and explicit-trigger detection on the channel side
 2. Before entering `AgentSession::run()`, channel entrypoints may short-circuit shared pre-session intercept commands in `hone-channels::core`, including runtime admin registration and the local report-workflow bridge (`/report 公司名`, `/report 进度`)
 3. `hone-channels::ingress` centralizes actor scope, chat mode, deduplication, session serialization, shared group pretrigger buffering, and `IncomingEnvelope`
-4. `hone-channels::AgentSession::run()` orchestrates session semantics such as fast user-message persistence, slash skill expansion, quota, and response persistence; it now needs an explicit distinction between:
+4. `hone-channels::AgentSession::run()` orchestrates session semantics such as run locking, fast user-message persistence, quota, runner invocation, listener dispatch, compaction trigger, and final persistence. Prompt/slash skill turn building lives in `turn_builder.rs`; assistant output cleanup, empty-success fallback, system-prompt/internal-output blocking, and local image marker stabilization live in `response_finalizer.rs`. Keep an explicit distinction between:
     - `ActorIdentity`: who is executing this request
     - `SessionIdentity`: which history this message should be written into (group-chat shared sessions are controlled by it)
 5. `hone-channels::execution` builds the concrete execution plan for both persistent conversations and transient tasks: prompt audit, tool registry, runner selection, and actor-sandbox-backed `AgentRunnerRequest`

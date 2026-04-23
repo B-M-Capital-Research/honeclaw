@@ -208,6 +208,10 @@ pub struct AgentConfig {
 }
 
 impl AgentConfig {
+    pub fn runner_kind(&self) -> AgentRunnerKind {
+        AgentRunnerKind::from_config_value(&self.runner)
+    }
+
     pub fn step_timeout(&self) -> Duration {
         Duration::from_secs(self.step_timeout_seconds.max(1))
     }
@@ -217,6 +221,97 @@ impl AgentConfig {
             self.overall_timeout_seconds
                 .max(self.step_timeout_seconds.max(1)),
         )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentRunnerKind {
+    FunctionCalling,
+    GeminiCli,
+    GeminiAcp,
+    CodexCli,
+    CodexAcp,
+    OpencodeAcp,
+    MultiAgent,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AgentRunnerProbe {
+    pub binary: &'static str,
+    pub arg: &'static str,
+}
+
+impl AgentRunnerKind {
+    pub fn from_config_value(value: &str) -> Self {
+        match value.trim() {
+            "function_calling" => Self::FunctionCalling,
+            "gemini_cli" => Self::GeminiCli,
+            "gemini_acp" => Self::GeminiAcp,
+            "codex_cli" => Self::CodexCli,
+            "codex_acp" => Self::CodexAcp,
+            "opencode_acp" => Self::OpencodeAcp,
+            "multi-agent" => Self::MultiAgent,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FunctionCalling => "function_calling",
+            Self::GeminiCli => "gemini_cli",
+            Self::GeminiAcp => "gemini_acp",
+            Self::CodexCli => "codex_cli",
+            Self::CodexAcp => "codex_acp",
+            Self::OpencodeAcp => "opencode_acp",
+            Self::MultiAgent => "multi-agent",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn manages_own_context(self) -> bool {
+        matches!(self, Self::CodexAcp | Self::OpencodeAcp)
+    }
+
+    pub fn cli_probe(self) -> Option<AgentRunnerProbe> {
+        match self {
+            Self::GeminiCli | Self::GeminiAcp => Some(AgentRunnerProbe {
+                binary: "gemini",
+                arg: "--version",
+            }),
+            Self::CodexCli => Some(AgentRunnerProbe {
+                binary: "codex",
+                arg: "--version",
+            }),
+            Self::CodexAcp => Some(AgentRunnerProbe {
+                binary: "codex-acp",
+                arg: "--help",
+            }),
+            Self::OpencodeAcp | Self::MultiAgent => Some(AgentRunnerProbe {
+                binary: "opencode",
+                arg: "--version",
+            }),
+            Self::FunctionCalling | Self::Unknown => None,
+        }
+    }
+}
+
+impl Serialize for AgentRunnerKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentRunnerKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value))
     }
 }
 
@@ -498,7 +593,7 @@ fn default_multi_agent_answer_max_tool_calls() -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::MultiAgentAnswerConfig;
+    use super::{AgentRunnerKind, MultiAgentAnswerConfig};
 
     #[test]
     fn multi_agent_answer_default_tool_limit_is_three() {
@@ -508,6 +603,22 @@ mod tests {
     #[test]
     fn agent_default_daily_conversation_limit_is_twelve() {
         assert_eq!(super::AgentConfig::default().daily_conversation_limit, 12);
+    }
+
+    #[test]
+    fn agent_runner_kind_keeps_wire_values_and_probe_mapping() {
+        let kind = AgentRunnerKind::from_config_value("codex_acp");
+        assert_eq!(kind.as_str(), "codex_acp");
+        assert!(kind.manages_own_context());
+        let probe = kind.cli_probe().expect("codex acp probe");
+        assert_eq!(probe.binary, "codex-acp");
+        assert_eq!(probe.arg, "--help");
+        assert_eq!(
+            serde_yaml::to_string(&AgentRunnerKind::MultiAgent)
+                .expect("serialize")
+                .trim(),
+            "multi-agent"
+        );
     }
 }
 

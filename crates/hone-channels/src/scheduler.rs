@@ -554,7 +554,7 @@ async fn run_heartbeat_task(
     run_options: AgentRunOptions,
 ) -> Result<String, String> {
     let transient_session_id = format!("heartbeat_probe::{}", event.job_id);
-    let bundle = build_prompt_bundle(
+    let mut bundle = build_prompt_bundle(
         &core.config,
         &core.session_storage,
         &event.actor.channel,
@@ -562,6 +562,11 @@ async fn run_heartbeat_task(
         &Default::default(),
         &prompt_options,
     );
+    // 与 agent_session.rs::resolve_prompt_input 一致：self-managed-context runner
+    // 不需要 honeclaw 灌注 conversation_context，runner 自带 ACP session 管理。
+    if core.config.agent.runner_kind().manages_own_context() {
+        bundle.conversation_context = None;
+    }
     let timeout = run_options.timeout;
     let execution = ExecutionService::new(core.clone()).prepare(ExecutionRequest {
         mode: ExecutionMode::TransientTask,
