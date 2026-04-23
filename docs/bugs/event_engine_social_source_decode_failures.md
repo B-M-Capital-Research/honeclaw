@@ -131,6 +131,15 @@ data/runtime/logs/web.log.2026-04-22:1310:[2026-04-23 05:37:43.624] WARN  poll f
 
 The same window still produced six `telegram.watcherguru` rows in `data/events.sqlite3`, so this remains a repeated source-specific decode/observability defect rather than a full social-source outage. The text log still omits the structured `poller` field from `crates/hone-event-engine/src/lib.rs:881-882`, so attribution remains unresolved.
 
+Latest update 2026-04-23T02:16:48Z: still sev3. The incremental window after `2026-04-22T22:14:35Z` logged two more generic decode failures:
+
+```text
+data/runtime/logs/web.log.2026-04-23:[2026-04-23 08:37:43.841] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+data/runtime/logs/web.log.2026-04-23:[2026-04-23 09:37:43.596] WARN  poll failed: error decoding response body: expected value at line 1 column 1
+```
+
+The same incremental source summary still had stored non-FMP events historically (`telegram.watcherguru` total rows reached 24, latest created at `2026-04-22 22:07:45` UTC), but no new `telegram.watcherguru` rows after the last巡检. The text log still lacks the structured `poller` field, so attribution remains unresolved without richer logging.
+
 ## Date Observed
 
 2026-04-22T14:14:09Z

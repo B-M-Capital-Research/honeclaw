@@ -22,6 +22,8 @@ const DEFAULT_HIGH_MACRO_KEYWORDS: &[&str] = &[
     "unemployment rate",
     "jobless claims",
     "fomc",
+    "interest rate decision",
+    "rate decision",
     "fed interest rate",
     "federal funds",
     "gdp",
@@ -29,6 +31,12 @@ const DEFAULT_HIGH_MACRO_KEYWORDS: &[&str] = &[
     "ism services",
     "retail sales",
     "consumer confidence",
+];
+
+/// High macro events should be both high-impact and relevant to broad market users.
+/// Other countries can still enter the store as Low/Medium for future analytics.
+const HIGH_MACRO_COUNTRIES: &[&str] = &[
+    "US", "EU", "CN", "JP", "GB", "UK", "DE", "FR", "IT", "CA", "HK", "TW", "GLOBAL",
 ];
 
 pub struct MacroPoller {
@@ -90,7 +98,8 @@ fn events_from_calendar(raw: &Value, keywords: &[String]) -> Vec<MarketEvent> {
                 .to_string();
             let occurred_at = parse_fmp_datetime(&date_raw).unwrap_or_else(Utc::now);
 
-            let severity = classify(&event_name, keywords);
+            let impact = item.get("impact").and_then(|v| v.as_str());
+            let severity = classify(&event_name, &country, impact, keywords);
             let slug = slugify(&event_name);
             let date_key = date_raw.chars().take(10).collect::<String>();
 
@@ -136,14 +145,28 @@ fn parse_fmp_datetime(s: &str) -> Option<chrono::DateTime<Utc>> {
     None
 }
 
-fn classify(event_name: &str, keywords: &[String]) -> Severity {
+fn classify(
+    event_name: &str,
+    country: &str,
+    impact: Option<&str>,
+    keywords: &[String],
+) -> Severity {
     let n = event_name.to_lowercase();
-    for kw in keywords {
-        if n.contains(kw) {
-            return Severity::High;
-        }
+    let keyword_hit = keywords.iter().any(|kw| n.contains(kw));
+    if !keyword_hit {
+        return Severity::Low;
     }
-    Severity::Low
+
+    match impact.map(|s| s.to_ascii_lowercase()) {
+        Some(v) if v == "high" && is_high_macro_country(country) => Severity::High,
+        Some(v) if v == "high" || v == "medium" => Severity::Medium,
+        _ => Severity::Low,
+    }
+}
+
+fn is_high_macro_country(country: &str) -> bool {
+    let country = country.to_ascii_uppercase();
+    HIGH_MACRO_COUNTRIES.contains(&country.as_str())
 }
 
 fn slugify(s: &str) -> String {
@@ -178,6 +201,7 @@ mod tests {
                 "event": "CPI YoY",
                 "date": "2026-05-13 12:30:00",
                 "country": "US",
+                "impact": "High",
                 "actual": null,
                 "estimate": 3.1,
                 "previous": 3.2
@@ -206,11 +230,54 @@ mod tests {
 
     #[test]
     fn missing_country_defaults_to_global() {
-        let raw = serde_json::json!([{"event": "Core PCE", "date": "2026-05-30"}]);
+        let raw =
+            serde_json::json!([{"event": "Core PCE", "date": "2026-05-30", "impact": "High"}]);
         let events = events_from_calendar(&raw, &kws());
         assert_eq!(events.len(), 1);
         assert!(events[0].id.starts_with("macro:GLOBAL:"));
         assert_eq!(events[0].severity, Severity::High);
+    }
+
+    #[test]
+    fn impact_and_country_bound_high_macro_classification() {
+        let raw = serde_json::json!([
+            {
+                "event": "Retail Sales YoY",
+                "date": "2026-05-13 12:30:00",
+                "country": "CL",
+                "impact": "Low"
+            },
+            {
+                "event": "GDP Growth Rate QoQ",
+                "date": "2026-05-13 12:30:00",
+                "country": "MX",
+                "impact": "Medium"
+            },
+            {
+                "event": "CPI YoY",
+                "date": "2026-05-13 12:30:00",
+                "country": "US",
+                "impact": "High"
+            },
+            {
+                "event": "GDP Growth Rate QoQ",
+                "date": "2026-05-13 12:30:00",
+                "country": "ES",
+                "impact": "High"
+            },
+            {
+                "event": "Interest Rate Decision",
+                "date": "2026-05-13 12:30:00",
+                "country": "EU",
+                "impact": "High"
+            }
+        ]);
+        let events = events_from_calendar(&raw, &kws());
+        assert_eq!(events[0].severity, Severity::Low);
+        assert_eq!(events[1].severity, Severity::Medium);
+        assert_eq!(events[2].severity, Severity::High);
+        assert_eq!(events[3].severity, Severity::Medium);
+        assert_eq!(events[4].severity, Severity::High);
     }
 
     #[test]

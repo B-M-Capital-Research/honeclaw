@@ -7,11 +7,15 @@
 //! - id 稳定：`price:{SYM}:{YYYY-MM-DD}` / `52h:{SYM}:{YYYY-MM-DD}` / `52l:{SYM}:{YYYY-MM-DD}`
 //!   每交易日最多一次，避免重复推送。
 
-use chrono::Utc;
+use chrono::{DateTime, TimeZone, Timelike, Utc};
 use serde_json::Value;
 
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
+
+const FRESH_QUOTE_MAX_AGE_SECS: i64 = 15 * 60;
+const CLOSING_QUOTE_MAX_AGE_SECS: i64 = 20 * 60 * 60;
+const FUTURE_QUOTE_MAX_SKEW_SECS: i64 = 5 * 60;
 
 pub struct PricePoller {
     client: FmpClient,
@@ -51,24 +55,39 @@ impl PricePoller {
         let joined = self.symbols.join(",");
         let path = format!("/v3/quote/{joined}");
         let raw = self.client.get_json(&path).await?;
-        Ok(events_from_quotes(
+        Ok(events_from_quotes_at(
             &raw,
             self.low_pct,
             self.high_pct,
             self.near_hi_lo_tolerance,
+            Utc::now(),
         ))
     }
 }
 
+#[cfg(test)]
 fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -> Vec<MarketEvent> {
+    events_from_quotes_at(raw, low_pct, high_pct, near_tol, Utc::now())
+}
+
+fn events_from_quotes_at(
+    raw: &Value,
+    low_pct: f64,
+    high_pct: f64,
+    near_tol: f64,
+    now: DateTime<Utc>,
+) -> Vec<MarketEvent> {
     let arr = match raw.as_array() {
         Some(a) => a,
         None => return vec![],
     };
-    let date_key = Utc::now().date_naive().format("%Y-%m-%d").to_string();
     let mut out = Vec::new();
 
     for item in arr {
+        let Some((quote_time, window)) = quote_time_and_window(item, now) else {
+            continue;
+        };
+        let date_key = quote_time.date_naive().format("%Y-%m-%d").to_string();
         let Some(symbol) = item
             .get("symbol")
             .and_then(|v| v.as_str())
@@ -84,7 +103,9 @@ fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -
         if let Some(pct) = pct {
             let abs = pct.abs();
             if abs >= low_pct {
-                let severity = if abs >= high_pct {
+                let severity = if window == PriceWindow::Close {
+                    closing_move_severity(abs, high_pct)
+                } else if abs >= high_pct {
                     Severity::High
                 } else {
                     Severity::Low
@@ -92,14 +113,14 @@ fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -
                 let bps = (pct * 100.0).round() as i64;
                 let direction = if pct >= 0.0 { "+" } else { "" };
                 out.push(MarketEvent {
-                    id: format!("price:{symbol}:{date_key}"),
+                    id: format!("{}:{symbol}:{date_key}", window.price_id_prefix()),
                     kind: EventKind::PriceAlert {
                         pct_change_bps: bps,
-                        window: "day".into(),
+                        window: window.as_str().into(),
                     },
                     severity,
                     symbols: vec![symbol.clone()],
-                    occurred_at: Utc::now(),
+                    occurred_at: quote_time,
                     title: format!("{symbol} {direction}{pct:.2}%"),
                     summary: price.map(|p| format!("价格 {p:.2}")).unwrap_or_default(),
                     url: None,
@@ -116,7 +137,7 @@ fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -
                     kind: EventKind::Weekly52High,
                     severity: Severity::Medium,
                     symbols: vec![symbol.clone()],
-                    occurred_at: Utc::now(),
+                    occurred_at: quote_time,
                     title: format!("{symbol} 触及 52 周新高"),
                     summary: format!("价格 {price:.2} · 年内高 {yh:.2}"),
                     url: None,
@@ -132,7 +153,7 @@ fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -
                     kind: EventKind::Weekly52Low,
                     severity: Severity::Medium,
                     symbols: vec![symbol.clone()],
-                    occurred_at: Utc::now(),
+                    occurred_at: quote_time,
                     title: format!("{symbol} 触及 52 周新低"),
                     summary: format!("价格 {price:.2} · 年内低 {yl:.2}"),
                     url: None,
@@ -144,6 +165,62 @@ fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -
     }
 
     out
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PriceWindow {
+    Day,
+    Close,
+}
+
+impl PriceWindow {
+    fn as_str(self) -> &'static str {
+        match self {
+            PriceWindow::Day => "day",
+            PriceWindow::Close => "close",
+        }
+    }
+
+    fn price_id_prefix(self) -> &'static str {
+        match self {
+            PriceWindow::Day => "price",
+            PriceWindow::Close => "price_close",
+        }
+    }
+}
+
+fn quote_time_and_window(item: &Value, now: DateTime<Utc>) -> Option<(DateTime<Utc>, PriceWindow)> {
+    let Some(quote_time) = item
+        .get("timestamp")
+        .and_then(|v| v.as_i64())
+        .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
+    else {
+        return Some((now, PriceWindow::Day));
+    };
+
+    let age_secs = now.signed_duration_since(quote_time).num_seconds();
+    if age_secs < -FUTURE_QUOTE_MAX_SKEW_SECS {
+        return None;
+    }
+
+    if is_us_regular_close_quote(quote_time) {
+        return (age_secs <= CLOSING_QUOTE_MAX_AGE_SECS)
+            .then_some((quote_time, PriceWindow::Close));
+    }
+
+    (age_secs <= FRESH_QUOTE_MAX_AGE_SECS).then_some((quote_time, PriceWindow::Day))
+}
+
+fn is_us_regular_close_quote(quote_time: DateTime<Utc>) -> bool {
+    matches!(quote_time.hour(), 20 | 21) && quote_time.minute() <= 10
+}
+
+fn closing_move_severity(abs_pct: f64, high_pct: f64) -> Severity {
+    if abs_pct >= high_pct {
+        Severity::Medium
+    } else {
+        Severity::Low
+    }
 }
 
 #[cfg(test)]
@@ -243,6 +320,69 @@ mod tests {
         // Z 仍能产出 PriceAlert（price 只影响 summary）
         assert!(events.iter().all(|e| !e.id.starts_with("52")));
         assert!(events.iter().any(|e| e.symbols[0] == "Z"));
+    }
+
+    #[test]
+    fn quote_timestamp_drives_price_event_date_and_occurrence() {
+        let quote_time = Utc.with_ymd_and_hms(2026, 4, 22, 13, 32, 40).unwrap();
+        let now = quote_time + chrono::Duration::seconds(2);
+        let raw = serde_json::json!([
+            {"symbol": "BE", "price": 229.75, "changesPercentage": 4.01,
+             "timestamp": quote_time.timestamp(), "yearHigh": 235.35, "yearLow": 16.05}
+        ]);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        let price = events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
+            .unwrap();
+        assert_eq!(price.id, "price:BE:2026-04-22");
+        assert_eq!(price.occurred_at, quote_time);
+    }
+
+    #[test]
+    fn stale_non_close_quote_is_ignored() {
+        let quote_time = Utc.with_ymd_and_hms(2026, 4, 22, 13, 32, 40).unwrap();
+        let now = quote_time + chrono::Duration::hours(4);
+        let raw = serde_json::json!([
+            {"symbol": "BE", "price": 229.75, "changesPercentage": 8.0,
+             "timestamp": quote_time.timestamp(), "yearHigh": 235.35, "yearLow": 16.05}
+        ]);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn close_quote_gets_close_id_and_never_high_severity() {
+        let close_time = Utc.with_ymd_and_hms(2026, 4, 22, 20, 0, 1).unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 4, 23, 0, 2, 42).unwrap();
+        let raw = serde_json::json!([
+            {"symbol": "AMD", "price": 303.46, "changesPercentage": 6.66807,
+             "timestamp": close_time.timestamp(), "yearHigh": 304.10, "yearLow": 90.12}
+        ]);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        let price = events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
+            .unwrap();
+        assert_eq!(price.id, "price_close:AMD:2026-04-22");
+        assert_eq!(price.severity, Severity::Medium);
+        assert_eq!(price.occurred_at, close_time);
+        match &price.kind {
+            EventKind::PriceAlert { window, .. } => assert_eq!(window, "close"),
+            _ => panic!("expected PriceAlert"),
+        }
+    }
+
+    #[test]
+    fn very_old_close_quote_is_ignored() {
+        let close_time = Utc.with_ymd_and_hms(2026, 4, 22, 20, 0, 1).unwrap();
+        let now = close_time + chrono::Duration::hours(24);
+        let raw = serde_json::json!([
+            {"symbol": "AMD", "price": 303.46, "changesPercentage": 6.66807,
+             "timestamp": close_time.timestamp(), "yearHigh": 304.10, "yearLow": 90.12}
+        ]);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        assert!(events.is_empty());
     }
 
     #[tokio::test]

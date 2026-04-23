@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-23 12:09 CST
+最后更新：2026-04-23 12:13 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,7 +14,7 @@
 
 ## 当前概览
 
-- 活跃待修复：25
+- 活跃待修复：26
 - 已修复 / 已关闭：44
 - 历史分析 / 部分止血：4
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -46,8 +46,9 @@
 | Event-engine high stock-news events lack sink delivery evidence | P2 | New | 2026-04-22 18:52 UTC 新增 `FLYYQ` high MarketWatch 事件仍无 `delivery_log` sink 行；同窗口也无 `sink delivered` 日志 | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |
 | Event-engine marks legal-ad style stock news as high severity | P2 | New | 2026-04-22 巡检确认 `class action` / `shareholder alert` 等律所模板在 24h high 事件中持续占比过高，可能消耗 high cap 并污染即时提醒 | [event_engine_legal_news_high_severity_noise.md](./event_engine_legal_news_high_severity_noise.md) |
 | Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | New | 2026-04-22 OpenRouter 403 / 反序列化失败让 uncertain-source 新闻 LLM 仲裁返回 `None`，重要新闻可能退回低优先级 digest 路径 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
-| Event-engine window convergence upgraded more than 20 news items in one tick | P3 | New | 2026-04-21 22:34 单 tick 记录 27 次 `Low→Medium (window convergence)`，后续 24h 仍有大量升级，可能降低 digest 质量 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
-| Event-engine social/event-source pollers repeat decode failures | P3 | New | 2026-04-23 02:37-05:37 CST generic event-source poller 继续 4 次 JSON decode 失败；日志仍缺 poller 字段，`telegram.watcherguru` 同窗有部分恢复 | [event_engine_social_source_decode_failures.md](./event_engine_social_source_decode_failures.md) |
+| Event-engine social/event-source pollers repeat decode failures | P3 | New | 2026-04-23 08:37/09:37 CST generic event-source poller 继续 2 次 JSON decode 失败；日志仍缺 poller 字段，最新窗口未见新 `telegram.watcherguru` 入库 | [event_engine_social_source_decode_failures.md](./event_engine_social_source_decode_failures.md) |
+| Event-engine window convergence upgrade bursts crowd digest quality | P3 | New | 2026-04-23 08:22:42 CST 单秒再次出现 25 条 `Low→Medium` 窗口收敛提级，超过巡检阈值；poller 与 sink 正常，问题集中在路由降噪 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
+| Event-engine high macro events are stored but not routed | P2 | New | 2026-04-23 已确认是工程规则问题：先将 high macro 样本从 77 收敛到预计 15；即时路由因会提前推未来 7 天日历而暂不打开 | [event_engine_high_macro_events_unrouted.md](./event_engine_high_macro_events_unrouted.md) |
 
 ## 已修复 / 已关闭
 

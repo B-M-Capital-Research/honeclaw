@@ -265,10 +265,17 @@ impl EventEngine {
         .with_tz_offset_hours(tz_offset_for_router)
         .with_high_daily_cap(self.engine_cfg.thresholds.high_severity_daily_cap)
         .with_same_symbol_cooldown_minutes(self.engine_cfg.thresholds.same_symbol_cooldown_minutes)
+        .with_price_min_direct_pct(self.engine_cfg.thresholds.price_min_direct_pct)
+        .with_large_position_weight_pct(self.engine_cfg.thresholds.large_position_weight_pct)
+        .with_macro_immediate_window(
+            self.engine_cfg.thresholds.macro_immediate_lookahead_hours,
+            self.engine_cfg.thresholds.macro_immediate_grace_hours,
+        )
         .with_disabled_kinds(self.engine_cfg.disabled_kinds.clone())
         .with_news_upgrade_per_symbol_per_tick_cap(
             self.engine_cfg.thresholds.news_upgrade_per_symbol_per_tick,
         )
+        .with_news_upgrade_per_tick_cap(self.engine_cfg.thresholds.news_upgrade_per_tick)
         .with_default_importance_prompt(self.engine_cfg.news_importance_prompt.clone());
         if let Some(classifier) = self.news_classifier.clone() {
             router_builder = router_builder.with_news_classifier(classifier);
@@ -300,7 +307,8 @@ impl EventEngine {
         .with_store(store.clone())
         .with_registry(registry.clone())
         .with_prefs(prefs_storage.clone())
-        .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize);
+        .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize)
+        .with_min_gap_minutes(self.engine_cfg.digest.min_gap_minutes);
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(60));
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -558,6 +566,16 @@ async fn process_events(
     );
 }
 
+fn log_poller_error(name: &str, source: &str, url_class: &str, error: &anyhow::Error) {
+    warn!(
+        poller = name,
+        source,
+        url_class,
+        degraded = true,
+        "poller fetch failed: {error:#}"
+    );
+}
+
 /// 通用 cron-aligned 循环:冷启动立即跑一次,然后每 60s 检查是否命中
 /// `pre_prefetch` / `post_prefetch` 对应的本地时刻(60s 分辨率由 `in_window` 保证)。
 /// `already_fired` 每日清空避免同分钟重复触发。
@@ -619,7 +637,7 @@ fn spawn_earnings_poller(
             Box::pin(async move {
                 match poller.poll().await {
                     Ok(events) => process_events("earnings", events, &store, &router).await,
-                    Err(e) => warn!("earnings poller failed: {e:#}"),
+                    Err(e) => log_poller_error("earnings", "fmp.earning_calendar", "calendar", &e),
                 }
             }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
         };
@@ -641,7 +659,7 @@ fn spawn_news_poller(
             ticker.tick().await;
             match poller.poll().await {
                 Ok(events) => process_events("news", events, &store, &router).await,
-                Err(e) => warn!("news poller failed: {e:#}"),
+                Err(e) => log_poller_error("news", "fmp.stock_news", "stock_news", &e),
             }
         }
     });
@@ -679,7 +697,7 @@ fn spawn_corp_action_poller(
                 if corp_action_enabled {
                     match poller.poll().await {
                         Ok(events) => process_events("corp_action", events, &store, &router).await,
-                        Err(e) => warn!("corp_action poller failed: {e:#}"),
+                        Err(e) => log_poller_error("corp_action", "fmp.calendar", "calendar", &e),
                     }
                 }
                 if !sec_filings_enabled {
@@ -693,7 +711,16 @@ fn spawn_corp_action_poller(
                 for sym in &symbols {
                     match poller.fetch_sec_filings(sym).await {
                         Ok(v) => sec_events.extend(v),
-                        Err(e) => warn!("sec_filings fetch {sym} failed: {e:#}"),
+                        Err(e) => {
+                            warn!(
+                                poller = "sec_filings",
+                                source = "fmp.sec_filings",
+                                url_class = "per_symbol",
+                                symbol = %sym,
+                                degraded = true,
+                                "poller fetch failed: {e:#}"
+                            );
+                        }
                     }
                 }
                 if !sec_events.is_empty() {
@@ -729,7 +756,7 @@ fn spawn_macro_poller(
             Box::pin(async move {
                 match poller.poll().await {
                     Ok(events) => process_events("macro", events, &store, &router).await,
-                    Err(e) => warn!("macro poller failed: {e:#}"),
+                    Err(e) => log_poller_error("macro", "fmp.economic_calendar", "calendar", &e),
                 }
             }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
         };
@@ -760,7 +787,9 @@ fn spawn_analyst_grade_poller(
                 }
                 match poller.poll(&symbols).await {
                     Ok(events) => process_events("analyst_grade", events, &store, &router).await,
-                    Err(e) => warn!("analyst grade poller failed: {e:#}"),
+                    Err(e) => {
+                        log_poller_error("analyst_grade", "fmp.analyst_grade", "per_symbol", &e)
+                    }
                 }
             }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
         };
@@ -800,7 +829,12 @@ fn spawn_earnings_surprise_poller(
                     Ok(events) => {
                         process_events("earnings_surprise", events, &store, &router).await
                     }
-                    Err(e) => warn!("earnings surprise poller failed: {e:#}"),
+                    Err(e) => log_poller_error(
+                        "earnings_surprise",
+                        "fmp.earnings_surprise",
+                        "per_symbol",
+                        &e,
+                    ),
                 }
             }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
         };
@@ -844,7 +878,7 @@ fn spawn_price_poller(
                 .with_thresholds(low_pct, high_pct);
             match poller.poll().await {
                 Ok(events) => process_events("price", events, &store, &router).await,
-                Err(e) => warn!("price poller failed: {e:#}"),
+                Err(e) => log_poller_error("price", "fmp.quote", "quote", &e),
             }
         }
     });
@@ -870,7 +904,13 @@ fn spawn_event_source(
             SourceSchedule::FixedInterval(interval) => {
                 // 冷启动立即拉一次,避免用户重启后等到下一 tick 才有数据。
                 if let Err(e) = run_once(&name, &*source, &store, &router).await {
-                    warn!(poller = %name, "initial poll failed: {e:#}");
+                    warn!(
+                        poller = %name,
+                        source = %name,
+                        url_class = "event_source",
+                        degraded = true,
+                        "initial poll failed: {e:#}"
+                    );
                 }
                 let mut ticker = tokio::time::interval(interval);
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -879,7 +919,13 @@ fn spawn_event_source(
                 loop {
                     ticker.tick().await;
                     if let Err(e) = run_once(&name, &*source, &store, &router).await {
-                        warn!(poller = %name, "poll failed: {e:#}");
+                        warn!(
+                            poller = %name,
+                            source = %name,
+                            url_class = "event_source",
+                            degraded = true,
+                            "poll failed: {e:#}"
+                        );
                     }
                 }
             }
@@ -890,7 +936,13 @@ fn spawn_event_source(
             } => {
                 // 冷启动先跑一次,然后每 60s 检查是否命中 pre/post 窗口。
                 if let Err(e) = run_once(&name, &*source, &store, &router).await {
-                    warn!(poller = %name, "initial poll failed: {e:#}");
+                    warn!(
+                        poller = %name,
+                        source = %name,
+                        url_class = "event_source",
+                        degraded = true,
+                        "initial poll failed: {e:#}"
+                    );
                 }
                 let mut ticker = tokio::time::interval(Duration::from_secs(60));
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -914,7 +966,13 @@ fn spawn_event_source(
                         }
                         info!(poller = %name, window = label, hhmm = %hhmm, "cron-aligned source firing");
                         if let Err(e) = run_once(&name, &*source, &store, &router).await {
-                            warn!(poller = %name, "poll failed: {e:#}");
+                            warn!(
+                                poller = %name,
+                                source = %name,
+                                url_class = "event_source",
+                                degraded = true,
+                                "poll failed: {e:#}"
+                            );
                         }
                     }
                 }

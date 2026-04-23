@@ -6,7 +6,7 @@
 //! MVP 时区处理：用固定小时偏移（见 `tz_offset_hours`），默认 Asia/Shanghai（UTC+8）。
 //! 夏/冬令时按常用区域近似；接 `chrono-tz` 后替换。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,10 +15,14 @@ use chrono::{DateTime, Datelike, FixedOffset, NaiveTime, TimeZone, Timelike, Utc
 use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 
-use crate::event::{EventKind, MarketEvent};
+use crate::event::{EventKind, MarketEvent, Severity};
 use crate::router::body_preview;
 
 const DIGEST_SOCIAL_TITLE_MAX_CHARS: usize = 240;
+const DIGEST_MAX_SOCIAL_ITEMS: usize = 3;
+const DIGEST_MAX_ITEMS_PER_SYMBOL: usize = 4;
+const DIGEST_MAX_ITEMS_PER_SOURCE: usize = 3;
+const DIGEST_MAX_ITEMS_PER_DOMAIN: usize = 2;
 
 pub struct DigestBuffer {
     dir: PathBuf,
@@ -40,6 +44,10 @@ impl DigestBuffer {
 
     fn file_for(&self, actor: &ActorIdentity) -> PathBuf {
         self.dir.join(format!("{}.jsonl", actor_slug(actor)))
+    }
+
+    pub fn dir(&self) -> &std::path::Path {
+        &self.dir
     }
 
     pub fn enqueue(&self, actor: &ActorIdentity, event: &MarketEvent) -> anyhow::Result<()> {
@@ -67,6 +75,16 @@ impl DigestBuffer {
         let ts = Utc::now().timestamp();
         let rotated = path.with_extension(format!("flushed-{ts}"));
         std::fs::rename(&path, &rotated)?;
+        let flushed_at = DateTime::<Utc>::from_timestamp(ts, 0)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| ts.to_string());
+        tracing::info!(
+            actor = %actor_key(actor),
+            path = %path.display(),
+            rotated = %rotated.display(),
+            flushed_at = %flushed_at,
+            "digest buffer rotated"
+        );
 
         let f = std::fs::File::open(&rotated)?;
         let mut out = Vec::new();
@@ -113,6 +131,15 @@ fn actor_slug(a: &ActorIdentity) -> String {
         sanitize(&a.channel),
         sanitize(scope),
         sanitize(&a.user_id)
+    )
+}
+
+fn actor_key(a: &ActorIdentity) -> String {
+    format!(
+        "{}::{}::{}",
+        a.channel,
+        a.channel_scope.clone().unwrap_or_default(),
+        a.user_id
     )
 }
 
@@ -242,6 +269,7 @@ pub struct DigestScheduler {
     tz_offset_hours: i32,
     /// 单批最多渲染多少条事件,超出截断并在 footer 提示。0 = 不限制。
     max_items_per_batch: usize,
+    min_gap_minutes: u32,
 }
 
 impl DigestScheduler {
@@ -262,12 +290,18 @@ impl DigestScheduler {
             post_market: post_market.into(),
             tz_offset_hours: 8,
             max_items_per_batch: 20,
+            min_gap_minutes: 0,
         }
     }
 
     /// 设置单批最多渲染多少条事件。0 表示不截断。
     pub fn with_max_items_per_batch(mut self, n: usize) -> Self {
         self.max_items_per_batch = n;
+        self
+    }
+
+    pub fn with_min_gap_minutes(mut self, minutes: u32) -> Self {
+        self.min_gap_minutes = minutes;
         self
     }
 
@@ -386,6 +420,28 @@ impl DigestScheduler {
                 if !already_fired_today.insert(fire_key) {
                     continue; // 同一分钟同 actor 已触发(理论上不会)
                 }
+                if self.min_gap_minutes > 0 {
+                    if let Some(store) = &self.store {
+                        let cutoff = now - chrono::Duration::minutes(self.min_gap_minutes as i64);
+                        match store.last_digest_success_at(&actor_key_str) {
+                            Ok(Some(last)) if last >= cutoff => {
+                                tracing::info!(
+                                    actor = %actor_key_str,
+                                    window = %window,
+                                    last_digest_at = %last,
+                                    min_gap_minutes = self.min_gap_minutes,
+                                    "digest window skipped by min-gap policy"
+                                );
+                                continue;
+                            }
+                            Ok(_) => {}
+                            Err(e) => tracing::warn!(
+                                actor = %actor_key_str,
+                                "last_digest_success_at failed: {e:#}"
+                            ),
+                        }
+                    }
+                }
                 let label = if window == &self.pre_market {
                     format!("盘前摘要 · {window}")
                 } else if window == &self.post_market {
@@ -420,11 +476,28 @@ impl DigestScheduler {
                     continue;
                 }
                 filtered.sort_by(|a, b| {
-                    b.severity
-                        .rank()
-                        .cmp(&a.severity.rank())
+                    digest_score(b)
+                        .cmp(&digest_score(a))
                         .then_with(|| b.occurred_at.cmp(&a.occurred_at))
                 });
+                let mut overflow = 0usize;
+                if let Some(store) = &self.store {
+                    let before_memory = filtered.len();
+                    filtered = suppress_recent_digest_topics(&actor_key_str, filtered, store, now);
+                    overflow += before_memory.saturating_sub(filtered.len());
+                }
+                let before_curation = filtered.len();
+                filtered = curate_digest_events(filtered);
+                overflow += before_curation.saturating_sub(filtered.len());
+                if filtered.is_empty() {
+                    tracing::info!(
+                        actor = %actor_key_str,
+                        window = %window,
+                        overflow,
+                        "digest skipped after curation/topic memory"
+                    );
+                    continue;
+                }
                 let overflow =
                     if self.max_items_per_batch > 0 && filtered.len() > self.max_items_per_batch {
                         let dropped_ids: Vec<String> = filtered[self.max_items_per_batch..]
@@ -436,20 +509,22 @@ impl DigestScheduler {
                         tracing::info!(
                             actor = %actor_key_str,
                             dropped,
+                            curated = overflow,
                             kept = filtered.len(),
                             dropped_ids = ?dropped_ids,
                             "digest truncated to avoid info flooding"
                         );
-                        dropped
+                        overflow += dropped;
+                        overflow
                     } else {
-                        0
+                        overflow
                     };
                 let body = render_digest(&label, &filtered, overflow, self.sink.format_for(&actor));
                 let send_result = self.sink.send(&actor, &body).await;
                 if let Some(store) = &self.store {
                     let batch_id = format!("digest-batch:{date}@{window}:{}", filtered.len());
                     let status = if send_result.is_ok() {
-                        "sent"
+                        self.sink.success_status()
                     } else {
                         "failed"
                     };
@@ -461,22 +536,38 @@ impl DigestScheduler {
                         status,
                         Some(&body),
                     );
+                    if send_result.is_ok() {
+                        for item in &filtered {
+                            let _ = store.log_delivery(
+                                &item.id,
+                                &actor_key_str,
+                                "digest_item",
+                                item.severity,
+                                status,
+                                None,
+                            );
+                        }
+                    }
                 }
                 if let Err(e) = send_result {
+                    let item_ids: Vec<&str> = filtered.iter().map(|e| e.id.as_str()).collect();
                     tracing::warn!(
                         actor = %actor_key_str,
                         window = %window,
                         items = filtered.len(),
+                        item_ids = ?item_ids,
                         body_len = body.chars().count(),
                         body_preview = %body_preview(&body),
                         "digest sink failed: {e:#}"
                     );
                     continue;
                 }
+                let item_ids: Vec<&str> = filtered.iter().map(|e| e.id.as_str()).collect();
                 tracing::info!(
                     actor = %actor_key_str,
                     window = %window,
                     items = filtered.len(),
+                    item_ids = ?item_ids,
                     overflow,
                     body_len = body.chars().count(),
                     body_preview = %body_preview(&body),
@@ -488,6 +579,283 @@ impl DigestScheduler {
         Ok(flushed)
     }
 }
+
+fn curate_digest_events(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
+    let mut out = Vec::with_capacity(events.len());
+    let mut social_count = 0usize;
+    let mut by_symbol: HashMap<String, usize> = HashMap::new();
+    let mut by_source: HashMap<String, usize> = HashMap::new();
+    let mut by_domain: HashMap<String, usize> = HashMap::new();
+    let mut title_keys: HashSet<String> = HashSet::new();
+    let mut topic_tokens: Vec<(String, HashSet<String>)> = Vec::new();
+
+    for event in events {
+        let is_high = event.severity.rank() >= crate::event::Severity::High.rank();
+        if !is_high {
+            if matches!(event.kind, EventKind::SocialPost) {
+                if social_count >= DIGEST_MAX_SOCIAL_ITEMS {
+                    continue;
+                }
+            }
+            if let Some(symbol) = primary_symbol_key(&event) {
+                if by_symbol.get(&symbol).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_SYMBOL {
+                    continue;
+                }
+            }
+            if !event.source.is_empty()
+                && by_source.get(&event.source).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_SOURCE
+            {
+                continue;
+            }
+            if let Some(domain) = event_domain_key(&event) {
+                if by_domain.get(&domain).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_DOMAIN {
+                    continue;
+                }
+            }
+            if let Some(title_key) = digest_title_dedupe_key(&event) {
+                if !title_keys.insert(title_key) {
+                    continue;
+                }
+            }
+            if let Some((topic_key, tokens)) = digest_topic_tokens(&event) {
+                if topic_tokens
+                    .iter()
+                    .any(|(key, seen)| key == &topic_key && token_jaccard(seen, &tokens) >= 0.55)
+                {
+                    continue;
+                }
+                topic_tokens.push((topic_key, tokens));
+            }
+        }
+
+        if matches!(event.kind, EventKind::SocialPost) {
+            social_count += 1;
+        }
+        if let Some(symbol) = primary_symbol_key(&event) {
+            *by_symbol.entry(symbol).or_default() += 1;
+        }
+        if !event.source.is_empty() {
+            *by_source.entry(event.source.clone()).or_default() += 1;
+        }
+        if let Some(domain) = event_domain_key(&event) {
+            *by_domain.entry(domain).or_default() += 1;
+        }
+        out.push(event);
+    }
+
+    out
+}
+
+fn suppress_recent_digest_topics(
+    actor_key: &str,
+    events: Vec<MarketEvent>,
+    store: &crate::store::EventStore,
+    now: DateTime<Utc>,
+) -> Vec<MarketEvent> {
+    let since = now - chrono::Duration::hours(24);
+    let Ok(recent) = store.list_recent_digest_item_events(actor_key, since) else {
+        return events;
+    };
+    let recent_topics: Vec<(String, HashSet<String>)> =
+        recent.iter().filter_map(digest_topic_tokens).collect();
+    if recent_topics.is_empty() {
+        return events;
+    }
+
+    events
+        .into_iter()
+        .filter(|event| {
+            if event.severity == Severity::High {
+                return true;
+            }
+            let Some((topic_key, tokens)) = digest_topic_tokens(event) else {
+                return true;
+            };
+            let duplicate = recent_topics
+                .iter()
+                .any(|(key, seen)| key == &topic_key && token_jaccard(seen, &tokens) >= 0.55);
+            if duplicate {
+                tracing::info!(
+                    actor = %actor_key,
+                    event_id = %event.id,
+                    topic = %topic_key,
+                    "digest topic suppressed by recent memory"
+                );
+            }
+            !duplicate
+        })
+        .collect()
+}
+
+fn digest_score(event: &MarketEvent) -> i32 {
+    let mut score = match event.severity {
+        Severity::High => 300,
+        Severity::Medium => 200,
+        Severity::Low => 100,
+    };
+    score += match event.kind {
+        EventKind::EarningsReleased | EventKind::SecFiling { .. } => 50,
+        EventKind::EarningsCallTranscript => 15,
+        EventKind::PriceAlert { ref window, .. } if window != "close" => 35,
+        EventKind::Dividend | EventKind::Split | EventKind::Buyback => 30,
+        EventKind::MacroEvent => 20,
+        EventKind::NewsCritical => 10,
+        EventKind::SocialPost => -35,
+        _ => 0,
+    };
+    if matches!(
+        event.payload.get("source_class").and_then(|v| v.as_str()),
+        Some("trusted")
+    ) {
+        score += 20;
+    }
+    if matches!(
+        event.payload.get("source_class").and_then(|v| v.as_str()),
+        Some("pr_wire" | "opinion_blog")
+    ) {
+        score -= 35;
+    }
+    if is_low_quality_social_source(event) {
+        score -= 30;
+    }
+    if matches!(event.kind, EventKind::EarningsUpcoming) {
+        let days_until = (event.occurred_at.date_naive() - Utc::now().date_naive()).num_days();
+        if days_until > 7 {
+            score -= 40;
+        } else if days_until <= 3 {
+            score += 25;
+        }
+    }
+    score
+}
+
+fn primary_symbol_key(event: &MarketEvent) -> Option<String> {
+    event
+        .symbols
+        .iter()
+        .find(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_ascii_uppercase())
+}
+
+fn event_domain_key(event: &MarketEvent) -> Option<String> {
+    if let Some(url) = event.url.as_deref() {
+        let without_scheme = url
+            .strip_prefix("https://")
+            .or_else(|| url.strip_prefix("http://"))
+            .unwrap_or(url);
+        let host = without_scheme.split('/').next().unwrap_or_default();
+        let host = host.strip_prefix("www.").unwrap_or(host).trim();
+        if !host.is_empty() {
+            return Some(host.to_ascii_lowercase());
+        }
+    }
+    event
+        .source
+        .split_once(':')
+        .map(|(_, domain)| domain.trim().to_ascii_lowercase())
+        .filter(|domain| !domain.is_empty())
+}
+
+fn digest_title_dedupe_key(event: &MarketEvent) -> Option<String> {
+    if !matches!(
+        event.kind,
+        EventKind::NewsCritical | EventKind::PressRelease | EventKind::SocialPost
+    ) {
+        return None;
+    }
+    let title = digest_event_title(event);
+    let normalized: Vec<String> = title
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter_map(|token| {
+            let token = token.trim().to_ascii_lowercase();
+            (token.len() > 2).then_some(token)
+        })
+        .take(10)
+        .collect();
+    if normalized.is_empty() {
+        return None;
+    }
+    let symbol = primary_symbol_key(event).unwrap_or_else(|| "-".into());
+    Some(format!("{symbol}:{}", normalized.join(" ")))
+}
+
+fn digest_topic_tokens(event: &MarketEvent) -> Option<(String, HashSet<String>)> {
+    if !matches!(
+        event.kind,
+        EventKind::NewsCritical | EventKind::PressRelease | EventKind::SocialPost
+    ) {
+        return None;
+    }
+    let tokens: HashSet<String> = digest_event_title(event)
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter_map(|token| {
+            let token = token.trim().to_ascii_lowercase();
+            if token.len() <= 2 || DIGEST_STOPWORDS.contains(&token.as_str()) {
+                None
+            } else {
+                Some(token)
+            }
+        })
+        .collect();
+    if tokens.len() < 3 {
+        return None;
+    }
+    let symbol = primary_symbol_key(event).unwrap_or_else(|| "-".into());
+    Some((format!("{symbol}:{}", kind_topic_tag(&event.kind)), tokens))
+}
+
+fn token_jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
+    let intersection = a.intersection(b).count();
+    let union = a.union(b).count();
+    if union == 0 {
+        0.0
+    } else {
+        intersection as f64 / union as f64
+    }
+}
+
+fn kind_topic_tag(kind: &EventKind) -> &'static str {
+    match kind {
+        EventKind::SocialPost => "social",
+        EventKind::PressRelease => "press",
+        _ => "news",
+    }
+}
+
+fn is_low_quality_social_source(event: &MarketEvent) -> bool {
+    let source = event.source.to_ascii_lowercase();
+    matches!(event.kind, EventKind::SocialPost)
+        && (source.contains("watcherguru") || source.contains("truth_social"))
+}
+
+const DIGEST_STOPWORDS: &[&str] = &[
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "that",
+    "this",
+    "after",
+    "before",
+    "into",
+    "over",
+    "under",
+    "says",
+    "said",
+    "stock",
+    "stocks",
+    "shares",
+    "share",
+    "inc",
+    "corp",
+    "ltd",
+    "company",
+    "announces",
+    "announced",
+    "update",
+    "market",
+];
 
 /// 渲染 digest 摘要。`label` 由调用方控制（比如 "盘前摘要 · 08:30"），
 /// 本函数只负责拼标题头 + 条目行。`overflow` > 0 时在 footer 提示"另 N 条已省略"。
@@ -911,6 +1279,111 @@ mod tests {
         );
     }
 
+    #[test]
+    fn curation_caps_social_and_source_noise() {
+        let mut events = Vec::new();
+        for (i, topic) in ["bitcoin", "ethereum", "fed", "oil", "tesla", "spacex"]
+            .iter()
+            .enumerate()
+        {
+            let mut event = ev(&format!("social-{i}"), "");
+            event.kind = EventKind::SocialPost;
+            event.severity = Severity::Low;
+            event.source = "telegram.watcherguru".into();
+            event.title = format!("JUST IN: {topic} market update");
+            event.payload = serde_json::json!({ "raw_text": event.title });
+            events.push(event);
+        }
+
+        let curated = curate_digest_events(events);
+        assert_eq!(curated.len(), DIGEST_MAX_SOCIAL_ITEMS);
+        assert!(
+            curated
+                .iter()
+                .all(|e| matches!(e.kind, EventKind::SocialPost))
+        );
+    }
+
+    #[test]
+    fn curation_dedupes_repeated_news_titles() {
+        let mut first = ev("news-1", "GEV");
+        first.kind = EventKind::NewsCritical;
+        first.severity = Severity::Medium;
+        first.source = "fmp.stock_news:site-a.example".into();
+        first.title = "GE Vernova stock soars as data center demand lifts outlook".into();
+        first.url = Some("https://site-a.example/story".into());
+
+        let mut duplicate = first.clone();
+        duplicate.id = "news-2".into();
+        duplicate.source = "fmp.stock_news:site-b.example".into();
+        duplicate.url = Some("https://site-b.example/story".into());
+
+        let mut distinct = first.clone();
+        distinct.id = "news-3".into();
+        distinct.title = "GE Vernova raises annual revenue forecast".into();
+        distinct.url = Some("https://site-c.example/story".into());
+
+        let curated = curate_digest_events(vec![first, duplicate, distinct]);
+        let ids: Vec<&str> = curated.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["news-1", "news-3"]);
+    }
+
+    #[test]
+    fn curation_dedupes_similar_same_symbol_news_titles() {
+        let mut first = ev("news-1", "AMD");
+        first.kind = EventKind::NewsCritical;
+        first.severity = Severity::Medium;
+        first.title = "AMD shares rally after data center demand lifts outlook".into();
+        first.source = "fmp.stock_news:site-a.example".into();
+
+        let mut similar = first.clone();
+        similar.id = "news-2".into();
+        similar.title = "AMD stock jumps as data center demand boosts outlook".into();
+        similar.source = "fmp.stock_news:site-b.example".into();
+
+        let curated = curate_digest_events(vec![first, similar]);
+        assert_eq!(curated.len(), 1, "同 symbol 同主题相似标题应折叠");
+    }
+
+    #[test]
+    fn digest_score_prefers_trusted_portfolio_signal_over_social_noise() {
+        let mut social = ev("social-1", "");
+        social.kind = EventKind::SocialPost;
+        social.severity = Severity::Medium;
+        social.source = "telegram.watcherguru".into();
+        social.title = "JUST IN: generic crypto headline".into();
+
+        let mut filing = ev("sec-1", "AAPL");
+        filing.kind = EventKind::SecFiling { form: "8-K".into() };
+        filing.severity = Severity::Medium;
+        filing.source = "sec.gov".into();
+        filing.title = "AAPL files 8-K".into();
+
+        assert!(digest_score(&filing) > digest_score(&social));
+    }
+
+    #[test]
+    fn curation_keeps_high_items_even_when_caps_are_hit() {
+        let mut events = Vec::new();
+        for i in 0..DIGEST_MAX_ITEMS_PER_SYMBOL {
+            let mut event = ev(&format!("aapl-low-{i}"), "AAPL");
+            event.severity = Severity::Low;
+            event.source = format!("source-{i}");
+            events.push(event);
+        }
+        let mut high = ev("aapl-high", "AAPL");
+        high.severity = Severity::High;
+        high.title = "AAPL critical filing".into();
+        high.source = "source-high".into();
+        events.push(high);
+
+        let curated = curate_digest_events(events);
+        assert!(
+            curated.iter().any(|e| e.id == "aapl-high"),
+            "high severity digest item must not be dropped by curation caps"
+        );
+    }
+
     #[tokio::test]
     async fn scheduler_caps_batch_and_prioritizes_high_severity() {
         use crate::event::Severity;
@@ -962,6 +1435,101 @@ mod tests {
         assert!(body.contains("MID-KEEP"), "Medium 应被保留,body = {body}");
         // 溢出提示
         assert!(body.contains("另 3 条已省略"), "body = {body}");
+    }
+
+    #[tokio::test]
+    async fn scheduler_min_gap_skips_close_digest_windows_without_draining() {
+        use crate::router::OutboundSink;
+        use crate::store::EventStore;
+        use async_trait::async_trait;
+        use std::collections::HashSet;
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct SpySink(Mutex<Vec<String>>);
+        #[async_trait]
+        impl OutboundSink for SpySink {
+            async fn send(&self, _a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+                self.0.lock().unwrap().push(body.into());
+                Ok(())
+            }
+        }
+
+        let dir = tempdir().unwrap();
+        let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let sink = Arc::new(SpySink::default());
+        let a = actor("u1");
+        buf.enqueue(&a, &ev("first", "AAPL")).unwrap();
+
+        let sched = DigestScheduler::new(buf.clone(), sink.clone(), "08:30", "12:00")
+            .with_tz_offset_hours(8)
+            .with_store(store)
+            .with_min_gap_minutes(240);
+        let mut fired = HashSet::new();
+        let morning = Utc.with_ymd_and_hms(2026, 4, 21, 0, 30, 0).unwrap();
+        assert_eq!(sched.tick_once(morning, &mut fired).await.unwrap(), 1);
+
+        buf.enqueue(&a, &ev("second", "MSFT")).unwrap();
+        let noon = Utc.with_ymd_and_hms(2026, 4, 21, 4, 0, 0).unwrap();
+        assert_eq!(sched.tick_once(noon, &mut fired).await.unwrap(), 0);
+        assert_eq!(
+            buf.drain_actor(&a).unwrap().len(),
+            1,
+            "min-gap skip 不应 drain buffer"
+        );
+    }
+
+    #[tokio::test]
+    async fn scheduler_suppresses_recently_delivered_similar_topic() {
+        use crate::router::OutboundSink;
+        use crate::store::EventStore;
+        use async_trait::async_trait;
+        use std::collections::HashSet;
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct SpySink(Mutex<Vec<String>>);
+        #[async_trait]
+        impl OutboundSink for SpySink {
+            async fn send(&self, _a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+                self.0.lock().unwrap().push(body.into());
+                Ok(())
+            }
+        }
+
+        let dir = tempdir().unwrap();
+        let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let store = Arc::new(EventStore::open(dir.path().join("events.db")).unwrap());
+        let sink = Arc::new(SpySink::default());
+        let a = actor("u1");
+        let mut first = ev("news-amd-1", "AMD");
+        first.kind = EventKind::NewsCritical;
+        first.title = "AMD shares rally after data center demand lifts outlook".into();
+        first.source = "fmp.stock_news:site-a.example".into();
+        let mut second = first.clone();
+        second.id = "news-amd-2".into();
+        second.title = "AMD stock jumps as data center demand boosts outlook".into();
+        second.source = "fmp.stock_news:site-b.example".into();
+
+        store.insert_event(&first).unwrap();
+        buf.enqueue(&a, &first).unwrap();
+        let sched = DigestScheduler::new(buf.clone(), sink.clone(), "08:30", "09:00")
+            .with_tz_offset_hours(8)
+            .with_store(store.clone());
+        let mut fired = HashSet::new();
+        let morning = Utc.with_ymd_and_hms(2026, 4, 21, 0, 30, 0).unwrap();
+        assert_eq!(sched.tick_once(morning, &mut fired).await.unwrap(), 1);
+
+        store.insert_event(&second).unwrap();
+        buf.enqueue(&a, &second).unwrap();
+        let later = Utc.with_ymd_and_hms(2026, 4, 21, 1, 0, 0).unwrap();
+        assert_eq!(sched.tick_once(later, &mut fired).await.unwrap(), 0);
+        assert_eq!(
+            sink.0.lock().unwrap().len(),
+            1,
+            "相似主题 24h 内不应再次形成摘要"
+        );
     }
 
     #[tokio::test]

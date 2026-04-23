@@ -1,0 +1,376 @@
+{
+  "baseline_version": 1,
+  "observed_at_utc": "2026-04-23T03:44:12Z",
+  "actor": "telegram::::8039067465",
+  "source": "FMP /v3/stock_news",
+  "model": "x-ai/grok-4.1-fast",
+  "recommended_model": "amazon/nova-lite-v1",
+  "importance_prompt": "公司或潜在影响公司长期逻辑和宏观叙事的重大事件",
+  "system_prompt": "你是金融新闻重要性判别助手。只回答 yes 或 no。\n\nyes 只能用于硬事件:新闻必须描述已经发生或由公司/监管/可信媒体明确报道的具体事件,且可能实质改变相关公司的收入、成本、监管状态、管理层、资本结构或长期产品路线。硬事件包括:\n- 并购/收购/分拆/IPO/上市/破产/退市/重组;\n- CEO/CFO 正式任免、离任或突发死亡;\n- SEC/FDA/反垄断/重大诉讼/召回/网络攻击/数据泄露;\n- 有明确客户/供应商/金额/多年期限的重大合同、订单、合作或产能计划;\n- 公司正式发布的重大芯片、平台、产线或技术突破。\n\n默认 no:如果不是上述硬事件,或者证据不清楚,回答 no。常见 no 情况:\n- 财报 preview / what to expect / 财报前观望;\n- earnings call transcript 作为独立事件由用户偏好控制,不在新闻仲裁里升重要;\n- 估值、目标价、upgrade/downgrade、buy/sell、技术形态、单日涨跌;\n- 'X stocks to buy / top picks / hot stocks' 等列表/promo;\n- 泛 AI 叙事、客户部署、agent/tool 试点、产品小功能、代码生成比例;\n- CEO 接班猜测、人物回顾或管理层评论,但没有正式任免;\n- 大盘走势评论、13F/机构持仓变化、YouTube/对比文章;\n- 标题/摘要主语不是涉及股票公司,目标股票只是被 FMP 自动关联;\n- ETF/基金推销、'Magnificent Seven' 等组合性回顾。",
+  "summary": {
+    "fmp_news_count": 120,
+    "uncertain_before_source_tuning": 27,
+    "uncertain_after_source_tuning": 12,
+    "live_llm_after_source_tuning": {
+      "parseable": 12,
+      "yes": 4,
+      "no": 8
+    },
+    "manual_title_only_rerun": {
+      "parseable": 12,
+      "yes": 3,
+      "no": 9
+    },
+    "model_selection_2026_04_23": {
+      "excluded_prefixes": [
+        "openai/",
+        "google/",
+        "anthropic/"
+      ],
+      "screened_models": 14,
+      "finalist_passes": 5,
+      "recommended_model": "amazon/nova-lite-v1",
+      "recommended_result": {
+        "calls": 60,
+        "drift": 0,
+        "unparseable_or_error": 0,
+        "reported_cost_usd": 0.002563,
+        "avg_latency_seconds": 1.44,
+        "p95_latency_seconds": 2.44
+      }
+    }
+  },
+  "items": [
+    {
+      "id": "grok-baseline-001",
+      "symbol": "GOOGL",
+      "site": "pymnts.com",
+      "title": "Ulta Beauty Deploys Google-Powered AI Assistant and Agentic Commerce",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-002",
+      "symbol": "GOOGL",
+      "site": "techcrunch.com",
+      "title": "Google updates Workspace to make AI your new office intern",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-003",
+      "symbol": "GOOGL",
+      "site": "seekingalpha.com",
+      "title": "Alphabet Advances In AI, Positioned To Gain Leadership (Earnings Preview)",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-004",
+      "symbol": "AAPL",
+      "site": "techcrunch.com",
+      "title": "Apple fixes bug that cops used to extract deleted chat messages from iPhones",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-005",
+      "symbol": "GOOGL",
+      "site": "techcrunch.com",
+      "title": "Google Cloud launches two new AI chips to compete with Nvidia",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "yes",
+      "expected_route_after_engine": "digest_medium"
+    },
+    {
+      "id": "grok-baseline-006",
+      "symbol": "GOOGL",
+      "site": "forbes.com",
+      "title": "Ulta Partners With Google Gemini To Power Agentic AI For Beauty Shoppers",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-007",
+      "symbol": "GOOGL",
+      "site": "techcrunch.com",
+      "title": "Google makes an interesting choice with its new agent building tool for enterprises",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-008",
+      "symbol": "AAPL",
+      "site": "forbes.com",
+      "title": "A Sudden Changing Of The Guard, At Apple, Adobe, Netflix And Disney",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-009",
+      "symbol": "GOOGL",
+      "site": "pymnts.com",
+      "title": "Google Accelerates Agentic AI Shift With New Enterprise Platform",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-010",
+      "symbol": "GEV",
+      "site": "seekingalpha.com",
+      "title": "GE Vernova Inc. (GEV) Q1 2026 Earnings Call Transcript",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "earnings_call_transcript",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-011",
+      "symbol": "GEV",
+      "site": "seekingalpha.com",
+      "title": "GE Vernova: A Blowout Q1, Raised Guidance, And Why I'm Hiking My Target",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-012",
+      "symbol": "GEV",
+      "site": "proactiveinvestors.com",
+      "title": "GE Vernova shares pop on earnings beat, raised full year guidance",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-013",
+      "symbol": "GEV",
+      "site": "invezz.com",
+      "title": "GE Vernova stock jumps 13% as AI data center boom lifts outlook",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-014",
+      "symbol": "AAPL",
+      "site": "seekingalpha.com",
+      "title": "Apple: The CEO Transition Is A Multiple Compression Catalyst",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-015",
+      "symbol": "GOOGL",
+      "site": "businessinsider.com",
+      "title": "Google says 75% of the company's new code is AI-generated",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-016",
+      "symbol": "GOOGL",
+      "site": "businessinsider.com",
+      "title": "Google's new chips are a shot at Nvidia \u2014 and a big hint at where AI goes next",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "yes",
+      "expected_llm_title_only_after_engine": "no",
+      "expected_route_after_engine": "digest_medium"
+    },
+    {
+      "id": "grok-baseline-017",
+      "symbol": "GOOGL",
+      "site": "techcrunch.com",
+      "title": "Exclusive: Google deepens Thinking Machines Lab ties with new multi-billion-dollar deal",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "yes",
+      "expected_route_after_engine": "digest_medium"
+    },
+    {
+      "id": "grok-baseline-018",
+      "symbol": "AAPL",
+      "site": "businessinsider.com",
+      "title": "Apple's incoming CEO faces a fresh set of marketing challenges",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-019",
+      "symbol": "AAPL",
+      "site": "seekingalpha.com",
+      "title": "Apple: I See An Alchain-Allen Theorem At Play (Upgrade)",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-020",
+      "symbol": "MU",
+      "site": "seekingalpha.com",
+      "title": "Micron: A Study Of Event Returns, Regime Tailwinds, And DRAM ASP",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-021",
+      "symbol": "MU",
+      "site": "invezz.com",
+      "title": "SK Hynix spends $13 billion to widen its lead over Samsung and Micron",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-022",
+      "symbol": "COHR",
+      "site": "seekingalpha.com",
+      "title": "Coherent: A Buy Driven By Robust AI Datacenter Optics Demand",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-023",
+      "symbol": "AAPL",
+      "site": "techcrunch.com",
+      "title": "Tim Cook is stepping down as CEO of Apple. Here's a look at his 15-year legacy, from new products and services to China expansion.",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "yes",
+      "expected_route_after_engine": "digest_medium"
+    },
+    {
+      "id": "grok-baseline-024",
+      "symbol": "AAPL",
+      "site": "techcrunch.com",
+      "title": "Apple's John Ternus will run one of the world's most powerful companies; the job is a minefield",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-025",
+      "symbol": "AAOI",
+      "site": "seekingalpha.com",
+      "title": "Applied Optoelectronics Has A Vision Of Success, And So Do I",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-026",
+      "symbol": "COHR",
+      "site": "seekingalpha.com",
+      "title": "Coherent: A Cautious Buy Despite Hefty Valuation",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-027",
+      "symbol": "GEV",
+      "site": "zacks.com",
+      "title": "Compared to Estimates, GE Vernova (GEV) Q1 Earnings: A Look at Key Metrics",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-028",
+      "symbol": "GOOGL",
+      "site": "fool.com",
+      "title": "Should You Buy Alphabet Stock Before the Huge Investor Update?",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-029",
+      "symbol": "AAPL",
+      "site": "cnet.com",
+      "title": "A Previously Banned Apple Watch Health Feature Is Now Here to Stay",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "yes",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "grok-baseline-030",
+      "symbol": "GEV",
+      "site": "zacks.com",
+      "title": "Earnings Picture Remains Positive: A Closer Look",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": "no",
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "digest_low"
+    }
+  ]
+}

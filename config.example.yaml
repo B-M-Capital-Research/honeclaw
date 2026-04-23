@@ -238,6 +238,9 @@ event_engine:
     # 各跑一次,保证推送数据永远是 flush 前刚拉的。
     # 默认 30:数值越小数据越新,但留给 EventStore/Router 的缓冲越紧;低于 5 不推荐。
     prefetch_offset_mins: 30
+    # 同一用户两次 digest 的最小间隔。用户配置多个窗口时，避免 09:00/12:00/16:00
+    # 反复消费同一批主题；0 表示不限制。
+    min_gap_minutes: 180
   thresholds:
     # |pct| < low → no event; low ≤ |pct| < high → Low (digest); |pct| ≥ high → High (immediate push)
     # Production defaults tuned for US equities: 10% rarely triggers, 5% misses many real moves.
@@ -250,6 +253,17 @@ event_engine:
     # Later Highs within the window get demoted to digest (status="cooled_down").
     # 0 disables the cooldown.
     same_symbol_cooldown_minutes: 60
+    # Low→Medium news convergence caps. Per-symbol prevents one ticker from
+    # dominating; per-tick prevents broad multi-ticker bursts crowding digest.
+    news_upgrade_per_symbol_per_tick: 3
+    news_upgrade_per_tick: 12
+    # 用户 per-actor price_high_pct_override 低于该值时，只会让价格异动进 digest；
+    # 即时推送仍要求达到该系统最小阈值，除非 payload 标明高仓位。
+    price_min_direct_pct: 6.0
+    large_position_weight_pct: 20.0
+    # High macro 只有临近发生窗口才即时推；未来 7 天日历保留为摘要/预告。
+    macro_immediate_lookahead_hours: 6
+    macro_immediate_grace_hours: 2
   renderer:
     # Severity list that goes through LLM polish. Empty list = pure template.
     # Requires llm.openrouter to be configured.
@@ -285,11 +299,16 @@ event_engine:
   # 全局 event kind 黑名单。router 在 per-user NotificationPrefs 之前先过一遍;
   # 入库仍然发生(便于日报 / 统计),只是不再分发给任何 actor。即使用户把某个
   # kind 放进 allow_kinds,在这里禁用后仍然不会推。合法 tag:
-  #   earnings_upcoming, earnings_released, news_critical, press_release,
+  #   earnings_upcoming, earnings_released, earnings_call_transcript,
+  #   news_critical, press_release,
   #   price_alert, weekly52_high, weekly52_low, volume_spike,
   #   dividend, split, buyback, sec_filing, analyst_grade,
-  #   macro_event, portfolio_pre_market, portfolio_post_market
+  #   macro_event, portfolio_pre_market, portfolio_post_market, social_post
   disabled_kinds: []
+  # OpenRouter model used by the uncertain-source news classifier. Empty falls
+  # back to the code default. Keep CI/tests mocked; use real API only for manual
+  # live-quality checks.
+  news_classifier_model: "amazon/nova-lite-v1"
 
 
 llm:

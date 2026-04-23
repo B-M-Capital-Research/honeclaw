@@ -138,28 +138,26 @@ impl LlmNewsClassifier {
             Message {
                 role: "system".into(),
                 content: Some(
-                    "你是金融新闻重要性判别助手。按下面的两步决策,严格回答 yes 或 no。\n\n\
-                     **第 1 步 — yes 检查(满足任一即 yes)**:\n\
-                     标题或摘要明确报道了关于'涉及股票'公司的以下事件之一:\n\
-                     a) 并购/收购/分拆/IPO/上市/破产/退市/重组;\n\
-                     b) 关键人事变动(CEO/CFO 离任/任命/突发死亡);\n\
-                     c) 监管/法律事件(SEC 立案/调查、FDA 拒/强制召回、集体诉讼被立案、\
-                        反垄断起诉、重大数据泄露/网络攻击);\n\
-                     d) 影响长期收入/成本结构的具体合同/订单/工厂/产线/技术突破/重大产品合作\
-                        (例:'Broadcom 与 Meta 续签 AI 合作至 2029');\n\
-                     e) 影响整个行业长期叙事的政策/技术/宏观转折。\n\
-                     上述只要标题里清楚体现就答 yes,不必苛求摘要充分。\n\n\
-                     **第 2 步 — 若第 1 步未命中,默认 no**。常见的 no 情况:\n\
-                     - 单日股价涨跌/盘中波动/技术形态/估值评论/目标价调整/分析师 rating upgrade-downgrade;\n\
-                     - 财报 preview / 'what to expect' / 财报前观望;\n\
+                    "你是金融新闻重要性判别助手。只回答 yes 或 no。\n\n\
+                     **yes 只能用于硬事件**:新闻必须描述已经发生或由公司/监管/可信媒体\
+                     明确报道的具体事件,且可能实质改变相关公司的收入、成本、监管状态、\
+                     管理层、资本结构或长期产品路线。硬事件包括:\n\
+                     - 并购/收购/分拆/IPO/上市/破产/退市/重组;\n\
+                     - CEO/CFO 正式任免、离任或突发死亡;\n\
+                     - SEC/FDA/反垄断/重大诉讼/召回/网络攻击/数据泄露;\n\
+                     - 有明确客户/供应商/金额/多年期限的重大合同、订单、合作或产能计划;\n\
+                     - 公司正式发布的重大芯片、平台、产线或技术突破。\n\n\
+                     **默认 no**:如果不是上述硬事件,或者证据不清楚,回答 no。\
+                     常见 no 情况:\n\
+                     - 财报 preview / what to expect / 财报前观望;\n\
+                     - earnings call transcript 作为独立事件由用户偏好控制,不在新闻仲裁里升重要;\n\
+                     - 估值、目标价、upgrade/downgrade、buy/sell、技术形态、单日涨跌;\n\
                      - 'X stocks to buy / top picks / hot stocks' 等列表/promo;\n\
-                     - 投资观点 / opinion / 'is X a buy' / 估值是否合理;\n\
-                     - 大盘走势评论(标题主体是 S&P / Nasdaq / Markets,与具体公司事件无关);\n\
-                     - 13F / 机构持仓变化 / 'X Capital purchased N shares of Y';\n\
-                     - 财经博主 YouTube 视频、对比文章('X vs Y');\n\
-                     - 标题/摘要主语完全是别的公司/行业/宏观事件,目标股票只是被 FMP 自动关联\
-                       (例:目标股票=TSLA 但标题讲 'Solis lithium with Rio Tinto'),答 no;\n\
-                     - ETF / 基金推销、'Magnificent Seven' 一类组合性回顾。"
+                     - 泛 AI 叙事、客户部署、agent/tool 试点、产品小功能、代码生成比例;\n\
+                     - CEO 接班猜测、人物回顾或管理层评论,但没有正式任免;\n\
+                     - 大盘走势评论、13F/机构持仓变化、YouTube/对比文章;\n\
+                     - 标题/摘要主语不是涉及股票公司,目标股票只是被 FMP 自动关联;\n\
+                     - ETF/基金推销、'Magnificent Seven' 等组合性回顾。"
                         .into(),
                 ),
                 tool_calls: None,
@@ -176,7 +174,7 @@ impl LlmNewsClassifier {
         ]
     }
 
-    fn parse(content: &str) -> Importance {
+    fn parse(content: &str) -> Option<Importance> {
         let trimmed = content.trim().to_lowercase();
         // 取第一个非空行的开头几个字符,容错 LLM 多说话的情况
         let head: String = trimmed
@@ -187,9 +185,63 @@ impl LlmNewsClassifier {
             .take(8)
             .collect();
         if head.starts_with("yes") || head.starts_with("是") || head.starts_with("重要") {
+            Some(Importance::Important)
+        } else if head.starts_with("no") || head.starts_with("否") || head.starts_with("不重要")
+        {
+            Some(Importance::NotImportant)
+        } else {
+            None
+        }
+    }
+
+    fn deterministic_fallback(event: &MarketEvent) -> Importance {
+        let text = format!("{} {}", event.title, event.summary).to_lowercase();
+        let important_patterns = [
+            "acquisition",
+            "acquire",
+            "merger",
+            "takeover",
+            "bankruptcy",
+            "bankrupt",
+            "delist",
+            "sec investigation",
+            "sec probe",
+            "fda reject",
+            "fda approval",
+            "recall",
+            "guidance cut",
+            "cuts guidance",
+            "lowers guidance",
+            "ceo resign",
+            "cfo resign",
+            "data breach",
+            "cyberattack",
+            "major contract",
+            "partnership",
+            "pact",
+            "joint venture",
+        ];
+        if important_patterns.iter().any(|p| text.contains(p)) {
             Importance::Important
         } else {
             Importance::NotImportant
+        }
+    }
+
+    fn cache_result(
+        &self,
+        l1_key: (String, u64),
+        l2_key: (String, String, u64),
+        title_norm: &str,
+        importance: Importance,
+    ) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.insert(l1_key, importance);
+        }
+        if !title_norm.is_empty() {
+            if let Ok(mut cache) = self.title_cache.lock() {
+                cache.insert(l2_key, importance);
+            }
         }
     }
 }
@@ -227,23 +279,34 @@ impl NewsClassifier for LlmNewsClassifier {
         let result = self.provider.chat(&messages, Some(&self.model)).await;
         match result {
             Ok(resp) => {
-                let importance = Self::parse(&resp.content);
-                if let Ok(mut cache) = self.cache.lock() {
-                    cache.insert(l1_key, importance);
-                }
-                if !title_norm.is_empty() {
-                    if let Ok(mut cache) = self.title_cache.lock() {
-                        cache.insert(l2_key, importance);
+                let importance = match Self::parse(&resp.content) {
+                    Some(v) => v,
+                    None => {
+                        let fallback = Self::deterministic_fallback(event);
+                        tracing::warn!(
+                            event_id = %event.id,
+                            classifier_unavailable = true,
+                            reason = "unparseable_response",
+                            fallback = ?fallback,
+                            "news LLM classifier fallback used"
+                        );
+                        fallback
                     }
-                }
+                };
+                self.cache_result(l1_key, l2_key, &title_norm, importance);
                 Some(importance)
             }
             Err(e) => {
+                let fallback = Self::deterministic_fallback(event);
                 tracing::warn!(
                     event_id = %event.id,
-                    "news LLM classifier call failed: {e}"
+                    classifier_unavailable = true,
+                    reason = "provider_error",
+                    fallback = ?fallback,
+                    "news LLM classifier call failed, fallback used: {e}"
                 );
-                None
+                self.cache_result(l1_key, l2_key, &title_norm, fallback);
+                Some(fallback)
             }
         }
     }
@@ -276,28 +339,34 @@ mod tests {
 
     #[test]
     fn parse_yes_variants() {
-        assert_eq!(LlmNewsClassifier::parse("yes"), Importance::Important);
-        assert_eq!(LlmNewsClassifier::parse("Yes\n"), Importance::Important);
+        assert_eq!(LlmNewsClassifier::parse("yes"), Some(Importance::Important));
+        assert_eq!(
+            LlmNewsClassifier::parse("Yes\n"),
+            Some(Importance::Important)
+        );
         assert_eq!(
             LlmNewsClassifier::parse("YES — this matters"),
-            Importance::Important
+            Some(Importance::Important)
         );
-        assert_eq!(LlmNewsClassifier::parse("是"), Importance::Important);
-        assert_eq!(LlmNewsClassifier::parse("重要"), Importance::Important);
+        assert_eq!(LlmNewsClassifier::parse("是"), Some(Importance::Important));
+        assert_eq!(
+            LlmNewsClassifier::parse("重要"),
+            Some(Importance::Important)
+        );
     }
 
     #[test]
-    fn parse_no_and_garbage_default_not_important() {
-        assert_eq!(LlmNewsClassifier::parse("no"), Importance::NotImportant);
-        assert_eq!(LlmNewsClassifier::parse(""), Importance::NotImportant);
+    fn parse_no_and_garbage_defaults_to_fallback() {
         assert_eq!(
-            LlmNewsClassifier::parse("I don't know"),
-            Importance::NotImportant
+            LlmNewsClassifier::parse("no"),
+            Some(Importance::NotImportant)
         );
         assert_eq!(
             LlmNewsClassifier::parse("nope, not important"),
-            Importance::NotImportant
+            Some(Importance::NotImportant)
         );
+        assert_eq!(LlmNewsClassifier::parse(""), None);
+        assert_eq!(LlmNewsClassifier::parse("I don't know"), None);
     }
 
     /// Mock LLM that returns a fixed response, counting calls so we can verify caching.
@@ -318,6 +387,37 @@ mod tests {
                 content: self.fixed_response.clone(),
                 usage: None,
             })
+        }
+        async fn chat_with_tools(
+            &self,
+            _: &[Message],
+            _: &[serde_json::Value],
+            _: Option<&str>,
+        ) -> HoneResult<ChatResponse> {
+            Err(HoneError::Llm("not used".into()))
+        }
+        fn chat_stream<'a>(
+            &'a self,
+            _: &'a [Message],
+            _: Option<&'a str>,
+        ) -> BoxStream<'a, HoneResult<String>> {
+            Box::pin(stream::empty())
+        }
+    }
+
+    struct FailingProvider {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl LlmProvider for FailingProvider {
+        async fn chat(
+            &self,
+            _messages: &[Message],
+            _model: Option<&str>,
+        ) -> HoneResult<hone_llm::provider::ChatResult> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(HoneError::Llm("mock provider unavailable".into()))
         }
         async fn chat_with_tools(
             &self,
@@ -370,6 +470,35 @@ mod tests {
         // 换 prompt → 再调一次
         let _ = c.classify(&ev(), "完全不同的标准").await;
         assert_eq!(mock.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn classifier_fallback_marks_obvious_major_event_important_on_provider_error() {
+        let mock = Arc::new(FailingProvider {
+            calls: AtomicUsize::new(0),
+        });
+        let c = LlmNewsClassifier::new(mock.clone(), "google/gemini-3-flash-preview");
+        let mut event = ev();
+        event.title = "ACME announces $5 billion acquisition of RivalCo".into();
+        event.summary = "The transaction reshapes ACME's long-term product strategy.".into();
+        let r = c.classify(&event, DEFAULT_IMPORTANCE_PROMPT).await;
+        assert_eq!(r, Some(Importance::Important));
+        assert_eq!(mock.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn classifier_fallback_keeps_generic_opinion_not_important() {
+        let mock = Arc::new(MockProvider {
+            fixed_response: "maybe".into(),
+            calls: AtomicUsize::new(0),
+        });
+        let c = LlmNewsClassifier::new(mock.clone(), "google/gemini-3-flash-preview");
+        let mut event = ev();
+        event.title = "Is Apple stock a buy after recent rally?".into();
+        event.summary = "Analysts debate valuation and technical momentum.".into();
+        let r = c.classify(&event, DEFAULT_IMPORTANCE_PROMPT).await;
+        assert_eq!(r, Some(Importance::NotImportant));
+        assert_eq!(mock.calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

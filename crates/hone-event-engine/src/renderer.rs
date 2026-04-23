@@ -144,6 +144,7 @@ fn kind_label(kind: &EventKind) -> String {
     match kind {
         EventKind::EarningsUpcoming => "📅 财报预告".into(),
         EventKind::EarningsReleased => "📊 财报发布".into(),
+        EventKind::EarningsCallTranscript => "📝 财报纪要".into(),
         EventKind::NewsCritical => "🔔 关键新闻".into(),
         EventKind::PressRelease => "📣 公司公告".into(),
         EventKind::PriceAlert { .. } => "⚡ 价格异动".into(),
@@ -166,6 +167,7 @@ fn kind_short(kind: &EventKind) -> Option<String> {
     Some(match kind {
         EventKind::EarningsUpcoming => "[财报预告]".into(),
         EventKind::EarningsReleased => "[财报]".into(),
+        EventKind::EarningsCallTranscript => "[财报纪要]".into(),
         EventKind::NewsCritical => "[新闻]".into(),
         EventKind::PressRelease => "[公告]".into(),
         EventKind::PriceAlert { .. } => "[价格]".into(),

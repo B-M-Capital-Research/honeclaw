@@ -61,10 +61,10 @@ fn build_event_engine_polisher(
     }
 }
 
-const EVENT_ENGINE_NEWS_CLASSIFIER_MODEL: &str = "openai/gpt-oss-20b:nitro";
+const DEFAULT_EVENT_ENGINE_NEWS_CLASSIFIER_MODEL: &str = "amazon/nova-lite-v1";
 
 /// 装配"不确定来源 NewsCritical → LLM 仲裁"分类器。
-/// 走 OpenRouter 的 `openai/gpt-oss-20b:nitro`,key 复用 llm.openrouter.api_key。
+/// 走 OpenRouter,key 复用 llm.openrouter.api_key。
 /// 失败一律退化为 `None`(router 跳过 LLM 路径,uncertain 源新闻保持 Low)。
 fn build_event_engine_news_classifier(
     core_cfg: &HoneConfig,
@@ -72,13 +72,14 @@ fn build_event_engine_news_classifier(
     match OpenRouterProvider::from_config(core_cfg) {
         Ok(provider) => {
             let provider: Arc<dyn LlmProvider> = Arc::new(provider);
-            let classifier = hone_event_engine::LlmNewsClassifier::new(
-                provider,
-                EVENT_ENGINE_NEWS_CLASSIFIER_MODEL,
-            );
-            info!(
-                "event engine: news LLM classifier 装配 (model={EVENT_ENGINE_NEWS_CLASSIFIER_MODEL})"
-            );
+            let model = core_cfg.event_engine.news_classifier_model.trim();
+            let model = if model.is_empty() {
+                DEFAULT_EVENT_ENGINE_NEWS_CLASSIFIER_MODEL
+            } else {
+                model
+            };
+            let classifier = hone_event_engine::LlmNewsClassifier::new(provider, model);
+            info!("event engine: news LLM classifier 装配 (model={model})");
             Some(Arc::new(classifier) as Arc<dyn hone_event_engine::NewsClassifier>)
         }
         Err(e) => {

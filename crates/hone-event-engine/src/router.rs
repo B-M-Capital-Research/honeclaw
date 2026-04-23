@@ -37,6 +37,12 @@ const NEWS_CONVERGENCE_HARD_SIGNALS: &[&str] = &[
 pub trait OutboundSink: Send + Sync {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()>;
 
+    /// 成功送达后写入 delivery_log 的 status。真实 sink 返回 `sent`;dryrun sink
+    /// 返回 `dryrun`，避免 dryrun 被统计成真实 ack。
+    fn success_status(&self) -> &'static str {
+        "sent"
+    }
+
     /// 该 Sink 期望的消息格式。若渠道使用富文本,override 这里同时在 send()
     /// 带上对应的 parse_mode / msg_type,否则会出现 `<b>` 当字面量泄露。
     fn format(&self) -> RenderFormat {
@@ -61,6 +67,10 @@ impl OutboundSink for LogSink {
         );
         Ok(())
     }
+
+    fn success_status(&self) -> &'static str {
+        "dryrun"
+    }
 }
 
 pub struct NotificationRouter {
@@ -80,15 +90,26 @@ pub struct NotificationRouter {
     /// 防止同一 ticker 短时间内被价格异动 + 新闻 + SEC filing 三连推。
     /// 命中后降级到 digest,log_delivery 写 status="cooled_down"。
     same_symbol_cooldown_minutes: u32,
+    /// 用户价格阈值覆盖的系统级最小即时推阈值。
+    price_min_direct_pct: f64,
+    /// 大仓位标的用用户敏感阈值直推的默认仓位权重门槛。
+    large_position_weight_pct: f64,
+    /// MacroEvent High 允许即时推的临近窗口。
+    macro_immediate_lookahead_hours: i64,
+    macro_immediate_grace_hours: i64,
     /// 部署方配置的全局 kind 黑名单。命中后 dispatch 直接返回 (0, 0),
     /// 任何 actor 的 prefs / cap / cooldown 都不再参与。
     disabled_kinds: Arc<HashSet<String>>,
     /// 单次 poller tick 内,同一 ticker 触发 NewsCritical 升级 (Low→Medium)
     /// 的次数上限。0 = 不启用。命中后该条 Low 维持 Low,从而不进 digest 顶端。
     news_upgrade_per_symbol_per_tick_cap: u32,
+    /// 单次 poller tick 内 NewsCritical 升级 (Low→Medium) 的全局总上限。
+    /// 0 = 不启用。用于防止多 ticker 同时提级造成摘要洪峰。
+    news_upgrade_per_tick_cap: u32,
     /// 当 tick 内每个 symbol 已升级的次数。`reset_tick_counters()` 在每次
     /// `process_events` 入口被调用,清零后重新计数。
     news_upgrade_counter: Arc<Mutex<HashMap<String, u32>>>,
+    news_upgrade_total_counter: Arc<Mutex<u32>>,
     /// `source_class=uncertain` 的 NewsCritical 仲裁器。`None` → 跳过 LLM 路径,
     /// 维持 poller 给的 Low(与历史行为兼容)。
     news_classifier: Option<Arc<dyn NewsClassifier>>,
@@ -113,9 +134,15 @@ impl NotificationRouter {
             high_daily_cap: 0,
             tz_offset_hours: 8,
             same_symbol_cooldown_minutes: 0,
+            price_min_direct_pct: 6.0,
+            large_position_weight_pct: 20.0,
+            macro_immediate_lookahead_hours: 6,
+            macro_immediate_grace_hours: 2,
             disabled_kinds: Arc::new(HashSet::new()),
             news_upgrade_per_symbol_per_tick_cap: 0,
+            news_upgrade_per_tick_cap: 0,
             news_upgrade_counter: Arc::new(Mutex::new(HashMap::new())),
+            news_upgrade_total_counter: Arc::new(Mutex::new(0)),
             news_classifier: None,
             default_importance_prompt: DEFAULT_IMPORTANCE_PROMPT.to_string(),
         }
@@ -152,6 +179,22 @@ impl NotificationRouter {
         self
     }
 
+    pub fn with_price_min_direct_pct(mut self, pct: f64) -> Self {
+        self.price_min_direct_pct = pct.max(0.0);
+        self
+    }
+
+    pub fn with_large_position_weight_pct(mut self, pct: f64) -> Self {
+        self.large_position_weight_pct = pct.max(0.0);
+        self
+    }
+
+    pub fn with_macro_immediate_window(mut self, lookahead_hours: i64, grace_hours: i64) -> Self {
+        self.macro_immediate_lookahead_hours = lookahead_hours.max(0);
+        self.macro_immediate_grace_hours = grace_hours.max(0);
+        self
+    }
+
     /// 部署方 kind 黑名单——命中后 dispatch 直接丢弃,不下发也不入 digest。
     /// 事件仍然入库,便于统计;空列表 = 不启用。
     pub fn with_disabled_kinds<I, S>(mut self, tags: I) -> Self
@@ -171,11 +214,20 @@ impl NotificationRouter {
         self
     }
 
+    /// 单 tick 内所有 ticker 合计升级次数上限。0 = 不启用。
+    pub fn with_news_upgrade_per_tick_cap(mut self, cap: u32) -> Self {
+        self.news_upgrade_per_tick_cap = cap;
+        self
+    }
+
     /// 在每次 poller tick 入口被调用,清零升级计数。生产路径由
     /// `process_events` 在批处理开始时调用一次。
     pub fn reset_tick_counters(&self) {
         if let Ok(mut map) = self.news_upgrade_counter.lock() {
             map.clear();
+        }
+        if let Ok(mut n) = self.news_upgrade_total_counter.lock() {
+            *n = 0;
         }
     }
 
@@ -205,17 +257,39 @@ impl NotificationRouter {
         if !matches!(event.kind, EventKind::NewsCritical) || event.severity != Severity::Low {
             return event.clone();
         }
-        let start = event.occurred_at - chrono::Duration::days(1);
-        let end = event.occurred_at + chrono::Duration::days(2);
         let mut trigger_tag: Option<String> = None;
         for sym in &event.symbols {
-            match self.store.symbol_signal_kinds_in_window(sym, start, end) {
+            let recent_start = event.occurred_at - chrono::Duration::hours(6);
+            let recent_end = event.occurred_at + chrono::Duration::hours(1);
+            match self
+                .store
+                .symbol_signal_kinds_in_window(sym, recent_start, recent_end)
+            {
                 Ok(tags) => {
                     if let Some(hit) = tags
                         .iter()
                         .find(|t| NEWS_CONVERGENCE_HARD_SIGNALS.contains(&t.as_str()))
+                        .filter(|t| hard_signal_correlates(event, t))
                     {
                         trigger_tag = Some(hit.clone());
+                        break;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("symbol_signal_kinds_in_window failed for {sym}: {e:#}");
+                }
+            }
+            let earnings_start = event.occurred_at - chrono::Duration::hours(12);
+            let earnings_end = event.occurred_at + chrono::Duration::days(2);
+            match self
+                .store
+                .symbol_signal_kinds_in_window(sym, earnings_start, earnings_end)
+            {
+                Ok(tags) => {
+                    if tags.iter().any(|t| t == "earnings_upcoming")
+                        && hard_signal_correlates(event, "earnings_upcoming")
+                    {
+                        trigger_tag = Some("earnings_upcoming".to_string());
                         break;
                     }
                 }
@@ -227,6 +301,19 @@ impl NotificationRouter {
         let Some(tag) = trigger_tag else {
             return event.clone();
         };
+        if self.news_upgrade_per_tick_cap > 0 {
+            if let Ok(n) = self.news_upgrade_total_counter.lock() {
+                if *n >= self.news_upgrade_per_tick_cap {
+                    tracing::info!(
+                        event_id = %event.id,
+                        symbols = ?event.symbols,
+                        cap = self.news_upgrade_per_tick_cap,
+                        "news upgrade skipped (per-tick cap reached)"
+                    );
+                    return event.clone();
+                }
+            }
+        }
         // per-symbol per-tick 升级上限:命中后维持 Low,不污染 digest 顶端。
         // 取 event.symbols 中已经升过最多次的那个 symbol 的计数代表本事件;
         // 若任一相关 symbol 都已超过 cap,则跳过升级,但所有相关 symbol 都不再
@@ -256,6 +343,9 @@ impl NotificationRouter {
             for sym in &event.symbols {
                 *map.entry(sym.clone()).or_insert(0) += 1;
             }
+        }
+        if let Ok(mut n) = self.news_upgrade_total_counter.lock() {
+            *n += 1;
         }
         let mut upgraded = event.clone();
         upgraded.severity = Severity::Medium;
@@ -321,6 +411,119 @@ impl NotificationRouter {
         }
     }
 
+    /// 系统级事件策略：在 per-actor prefs 之前先把明显不该即时推的事件降级。
+    /// 这里不丢事件，只调整 severity，让它们进入 digest 或保持低优先级。
+    fn apply_system_event_policy(&self, event: &MarketEvent) -> MarketEvent {
+        let mut routed = event.clone();
+        if is_legal_ad_event(&routed) && routed.severity != Severity::Low {
+            routed.severity = Severity::Low;
+            tracing::info!(
+                event_id = %routed.id,
+                source = %routed.source,
+                "legal-ad news demoted to Low"
+            );
+        }
+        if matches!(routed.kind, EventKind::MacroEvent) && routed.severity == Severity::High {
+            let now = chrono::Utc::now();
+            let earliest = now - chrono::Duration::hours(self.macro_immediate_grace_hours);
+            let latest = now + chrono::Duration::hours(self.macro_immediate_lookahead_hours);
+            if routed.occurred_at < earliest || routed.occurred_at > latest {
+                routed.severity = Severity::Medium;
+                tracing::info!(
+                    event_id = %routed.id,
+                    source = %routed.source,
+                    occurred_at = %routed.occurred_at,
+                    lookahead_hours = self.macro_immediate_lookahead_hours,
+                    grace_hours = self.macro_immediate_grace_hours,
+                    "macro high demoted to digest outside due window"
+                );
+            }
+        }
+        if matches!(routed.kind, EventKind::EarningsUpcoming) {
+            let days_until =
+                (routed.occurred_at.date_naive() - chrono::Utc::now().date_naive()).num_days();
+            if days_until > 7 && routed.severity.rank() > Severity::Low.rank() {
+                routed.severity = Severity::Low;
+                tracing::info!(
+                    event_id = %routed.id,
+                    source = %routed.source,
+                    days_until,
+                    "far earnings preview demoted to Low"
+                );
+            }
+        }
+        routed
+    }
+
+    /// 按用户 prefs 重写 severity:价格阈值 / immediate_kinds。价格覆盖保留用户
+    /// 敏感度，但默认不能低于系统最小直推阈值；大仓位标的可用用户阈值。
+    fn apply_per_actor_severity_override(
+        &self,
+        event: &MarketEvent,
+        sev: Severity,
+        prefs: &NotificationPrefs,
+    ) -> Severity {
+        if matches!(sev, Severity::High) {
+            return sev;
+        }
+        if let Some(threshold_pct) = price_override_threshold(event, prefs) {
+            if matches!(
+                event.kind,
+                EventKind::PriceAlert { ref window, .. } if window != "close"
+            ) {
+                let pct = event
+                    .payload
+                    .get("changesPercentage")
+                    .and_then(|v| v.as_f64());
+                if let Some(p) = pct {
+                    let min_direct = self.price_min_direct_pct.max(0.0);
+                    let large_weight_threshold = prefs
+                        .large_position_weight_pct
+                        .unwrap_or(self.large_position_weight_pct);
+                    let is_large_position = event_position_weight_pct(event)
+                        .map(|w| w >= large_weight_threshold)
+                        .unwrap_or(false);
+                    let required = if is_large_position {
+                        threshold_pct
+                    } else {
+                        threshold_pct.max(min_direct)
+                    };
+                    if p.abs() >= required {
+                        return Severity::High;
+                    }
+                }
+            }
+        }
+        if let Some(kinds) = prefs.immediate_kinds.as_deref() {
+            let tag = kind_tag(&event.kind);
+            if kinds.iter().any(|k| k == tag) {
+                return Severity::High;
+            }
+        }
+        sev
+    }
+
+    fn apply_quiet_mode(
+        &self,
+        event: &MarketEvent,
+        sev: Severity,
+        prefs: &NotificationPrefs,
+    ) -> Severity {
+        if !prefs.quiet_mode || sev != Severity::High {
+            return sev;
+        }
+        if quiet_mode_allows_immediate(event) {
+            return sev;
+        }
+        tracing::info!(
+            event_id = %event.id,
+            kind = %kind_tag(&event.kind),
+            source = %event.source,
+            "quiet mode demoted High to digest"
+        );
+        Severity::Medium
+    }
+
     /// 对一个事件执行分发。High 立即推；其余当前只记 pending-digest 日志。
     ///
     /// 返回 `(immediate_sent, pending_digest)` 数量。
@@ -337,9 +540,28 @@ impl NotificationRouter {
             return Ok((0, 0));
         }
         let upgraded = self.maybe_upgrade_news(event);
-        let event = &upgraded;
+        let routed = self.apply_system_event_policy(&upgraded);
+        let event = &routed;
         // 每次 dispatch 都拿最新快照——用户持仓更新后下一条事件即可感知。
         let hits = self.registry.load().resolve(event);
+        if hits.is_empty() {
+            let _ = self.store.log_delivery(
+                &event.id,
+                "event_engine::::no_actor",
+                "router",
+                event.severity,
+                "no_actor",
+                None,
+            );
+            info!(
+                event_id = %event.id,
+                kind = %kind_tag(&event.kind),
+                source = %event.source,
+                symbols = ?event.symbols,
+                "dispatch skipped: no matching actor"
+            );
+            return Ok((0, 0));
+        }
         let mut sent = 0u32;
         let mut pending = 0u32;
         for (actor, sev) in hits {
@@ -359,7 +581,8 @@ impl NotificationRouter {
             //   (b) immediate_kinds:某些 kind 无条件升 High 即时推(例如 52 周高/低、
             //       分析师评级)。
             // 升级后仍要走 high_daily_cap / cooldown,保持 burst 防护。
-            let sev = apply_per_actor_severity_override(event, sev, &user_prefs);
+            let sev = self.apply_per_actor_severity_override(event, sev, &user_prefs);
+            let sev = self.apply_quiet_mode(event, sev, &user_prefs);
             if !user_prefs.should_deliver(event) {
                 let _ = self.store.log_delivery(
                     &event.id,
@@ -372,6 +595,9 @@ impl NotificationRouter {
                 info!(
                     actor = %actor_key(&actor),
                     event_id = %event.id,
+                    kind = %kind_tag(&event.kind),
+                    source = %event.source,
+                    symbols = ?event.symbols,
                     "skipped by user prefs"
                 );
                 continue;
@@ -385,11 +611,18 @@ impl NotificationRouter {
             let mut demoted_by_cooldown = false;
             let mut effective_sev = if matches!(sev, Severity::High) && self.high_daily_cap > 0 {
                 let since = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
-                match self.store.count_high_sent_since(&actor_key(&actor), since) {
+                let category = event_category(event);
+                match self.store.count_high_sent_since_for_category(
+                    &actor_key(&actor),
+                    since,
+                    category,
+                ) {
                     Ok(n) if n >= self.high_daily_cap as i64 => {
                         tracing::info!(
                             actor = %actor_key(&actor),
                             event_id = %event.id,
+                            source = %event.source,
+                            category = %category,
                             today_high = n,
                             cap = self.high_daily_cap,
                             "High 事件降级进 digest(已超当日上限)"
@@ -415,14 +648,16 @@ impl NotificationRouter {
                 let cutoff = chrono::Utc::now()
                     - chrono::Duration::minutes(self.same_symbol_cooldown_minutes as i64);
                 for sym in &event.symbols {
-                    match self
-                        .store
-                        .last_high_sink_send_for_symbol(&actor_key(&actor), sym)
-                    {
+                    match self.store.last_high_sink_send_for_symbol_category(
+                        &actor_key(&actor),
+                        sym,
+                        event_category(event),
+                    ) {
                         Ok(Some(ts)) if ts >= cutoff => {
                             tracing::info!(
                                 actor = %actor_key(&actor),
                                 event_id = %event.id,
+                                source = %event.source,
                                 symbol = %sym,
                                 last_sent_at = %ts,
                                 cooldown_min = self.same_symbol_cooldown_minutes,
@@ -458,6 +693,8 @@ impl NotificationRouter {
                             actor = %actor_key(&actor),
                             event_id = %event.id,
                             kind = %kind_tag(&event.kind),
+                            source = %event.source,
+                            symbols = ?event.symbols,
                             body_len = body.chars().count(),
                             body_preview = %body_preview(&body),
                             "sink send failed: {e:#}"
@@ -472,19 +709,23 @@ impl NotificationRouter {
                         );
                         continue;
                     }
+                    let success_status = self.sink.success_status();
                     let _ = self.store.log_delivery(
                         &event.id,
                         &actor_key(&actor),
                         "sink",
                         sev,
-                        "sent",
+                        success_status,
                         Some(&body),
                     );
                     tracing::info!(
                         actor = %actor_key(&actor),
                         event_id = %event.id,
                         kind = %kind_tag(&event.kind),
+                        source = %event.source,
+                        symbols = ?event.symbols,
                         severity = ?sev,
+                        status = %success_status,
                         body_len = body.chars().count(),
                         body_preview = %body_preview(&body),
                         "sink delivered"
@@ -515,6 +756,9 @@ impl NotificationRouter {
                             info!(
                                 actor = %actor_key(&actor),
                                 event_id = %event.id,
+                                kind = %kind_tag(&event.kind),
+                                source = %event.source,
+                                symbols = ?event.symbols,
                                 severity = ?sev,
                                 status = %status,
                                 "digest queued"
@@ -559,37 +803,102 @@ pub(crate) fn body_preview(body: &str) -> String {
     s.replace('\n', " ⏎ ")
 }
 
-/// 按用户 prefs 重写 severity:price_high_pct_override 阈值触达 → High;
-/// immediate_kinds 命中 → High。其余维持 poller / convergence / LLM 给的 sev。
-/// 不修改 event 本身,仅返回新 sev——保持原 dispatch 的"event 不可变"语义。
-fn apply_per_actor_severity_override(
-    event: &MarketEvent,
-    sev: Severity,
-    prefs: &NotificationPrefs,
-) -> Severity {
-    if matches!(sev, Severity::High) {
-        return sev;
+fn price_override_threshold(event: &MarketEvent, prefs: &NotificationPrefs) -> Option<f64> {
+    let pct = event
+        .payload
+        .get("changesPercentage")
+        .and_then(|v| v.as_f64());
+    match pct {
+        Some(p) if p >= 0.0 => prefs
+            .price_high_pct_up_override
+            .or(prefs.price_high_pct_override),
+        Some(_) => prefs
+            .price_high_pct_down_override
+            .or(prefs.price_high_pct_override),
+        None => prefs.price_high_pct_override,
     }
-    if let Some(threshold_pct) = prefs.price_high_pct_override {
-        if matches!(event.kind, EventKind::PriceAlert { .. }) {
-            let pct = event
-                .payload
-                .get("changesPercentage")
-                .and_then(|v| v.as_f64());
-            if let Some(p) = pct {
-                if p.abs() >= threshold_pct {
-                    return Severity::High;
-                }
-            }
+}
+
+fn event_position_weight_pct(event: &MarketEvent) -> Option<f64> {
+    let raw = event
+        .payload
+        .get("portfolio_weight_pct")
+        .or_else(|| event.payload.get("portfolio_weight"))
+        .and_then(|v| v.as_f64())?;
+    Some(if raw <= 1.0 { raw * 100.0 } else { raw })
+}
+
+fn quiet_mode_allows_immediate(event: &MarketEvent) -> bool {
+    match &event.kind {
+        EventKind::EarningsReleased
+        | EventKind::EarningsCallTranscript
+        | EventKind::SecFiling { .. } => true,
+        EventKind::PriceAlert { window, .. } if window != "close" => true,
+        _ => false,
+    }
+}
+
+fn is_legal_ad_event(event: &MarketEvent) -> bool {
+    event
+        .payload
+        .get("legal_ad_template")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+        || {
+            let text = format!("{} {}", event.title, event.summary).to_ascii_lowercase();
+            [
+                "shareholder alert",
+                "investor alert",
+                "class action lawsuit",
+                "securities fraud class action",
+                "law offices",
+                "law firm",
+            ]
+            .iter()
+            .any(|pat| text.contains(pat))
         }
+}
+
+fn hard_signal_correlates(event: &MarketEvent, tag: &str) -> bool {
+    let text = format!("{} {}", event.title, event.summary).to_ascii_lowercase();
+    let any = |needles: &[&str]| needles.iter().any(|needle| text.contains(needle));
+    match tag {
+        "price_alert" => any(&[
+            "price", "stock", "share", "shares", "surge", "jump", "rally", "fall", "drop", "slump",
+            "plunge",
+        ]),
+        "earnings_released" | "earnings_upcoming" | "earnings_call_transcript" => any(&[
+            "earnings",
+            "results",
+            "revenue",
+            "profit",
+            "eps",
+            "guidance",
+            "quarter",
+            "transcript",
+        ]),
+        "sec_filing" => any(&["sec", "filing", "8-k", "10-k", "10-q", "investigation"]),
+        "analyst_grade" => any(&["analyst", "upgrade", "downgrade", "price target", "rating"]),
+        _ => true,
     }
-    if let Some(kinds) = prefs.immediate_kinds.as_deref() {
-        let tag = kind_tag(&event.kind);
-        if kinds.iter().any(|k| k == tag) {
-            return Severity::High;
-        }
+}
+
+fn event_category(event: &MarketEvent) -> &'static str {
+    match event.kind {
+        EventKind::PriceAlert { .. }
+        | EventKind::Weekly52High
+        | EventKind::Weekly52Low
+        | EventKind::VolumeSpike => "price",
+        EventKind::NewsCritical | EventKind::PressRelease | EventKind::SocialPost => "news",
+        EventKind::SecFiling { .. } => "filing",
+        EventKind::EarningsUpcoming
+        | EventKind::EarningsReleased
+        | EventKind::EarningsCallTranscript => "earnings",
+        EventKind::MacroEvent => "macro",
+        EventKind::Dividend | EventKind::Split | EventKind::Buyback => "corp_action",
+        EventKind::AnalystGrade => "analyst",
+        EventKind::PortfolioPreMarket | EventKind::PortfolioPostMarket => "portfolio",
     }
-    sev
 }
 
 /// 按给定 tz 偏移求本地当日 00:00 对应的 UTC 时刻。用作
@@ -722,15 +1031,21 @@ mod tests {
             payload: serde_json::Value::Null,
         };
 
-        let (s1, _) = router.dispatch(&mk("h1")).await.unwrap();
-        let (s2, _) = router.dispatch(&mk("h2")).await.unwrap();
+        let h1 = mk("h1");
+        let h2 = mk("h2");
+        let h3 = mk("h3");
+        store.insert_event(&h1).unwrap();
+        store.insert_event(&h2).unwrap();
+        store.insert_event(&h3).unwrap();
+        let (s1, _) = router.dispatch(&h1).await.unwrap();
+        let (s2, _) = router.dispatch(&h2).await.unwrap();
         // 前两条正常走 sink
         assert_eq!(s1, 1);
         assert_eq!(s2, 1);
         assert_eq!(sink.calls.lock().unwrap().len(), 2);
 
         // 第三条触顶 → 降级到 digest,sink 不再收到,pending=1
-        let (s3, p3) = router.dispatch(&mk("h3")).await.unwrap();
+        let (s3, p3) = router.dispatch(&h3).await.unwrap();
         assert_eq!(s3, 0, "触顶后 High 不应走 sink");
         assert_eq!(p3, 1, "应降级进 digest");
         assert_eq!(
@@ -1003,6 +1318,117 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn macro_high_is_digest_until_due_window_then_immediate() {
+        struct AlwaysMatch(ActorIdentity);
+        impl crate::subscription::Subscription for AlwaysMatch {
+            fn id(&self) -> &str {
+                "always"
+            }
+            fn matches(&self, _e: &MarketEvent) -> bool {
+                true
+            }
+            fn actors(&self) -> Vec<ActorIdentity> {
+                vec![self.0.clone()]
+            }
+        }
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(AlwaysMatch(actor("u1"))));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_macro_immediate_window(6, 2);
+
+        let mut future_macro = ev(Severity::High);
+        future_macro.id = "macro:future:cpi".into();
+        future_macro.kind = EventKind::MacroEvent;
+        future_macro.symbols.clear();
+        future_macro.occurred_at = Utc::now() + chrono::Duration::days(3);
+        future_macro.title = "[US] CPI YoY".into();
+        future_macro.source = "fmp.economic_calendar".into();
+        let (sent, pending) = router.dispatch(&future_macro).await.unwrap();
+        assert_eq!(sent, 0, "未来 7 天日历不应即时推");
+        assert_eq!(pending, 1);
+
+        let mut near_macro = future_macro.clone();
+        near_macro.id = "macro:near:cpi".into();
+        near_macro.occurred_at = Utc::now() + chrono::Duration::hours(2);
+        let (sent, pending) = router.dispatch(&near_macro).await.unwrap();
+        assert_eq!(sent, 1, "临近发生窗口内的 high macro 才即时推");
+        assert_eq!(pending, 0);
+    }
+
+    #[tokio::test]
+    async fn far_earnings_preview_is_low_priority_digest() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest.clone(),
+        );
+        let mut event = ev(Severity::Medium);
+        event.id = "earnings:AAPL:far".into();
+        event.kind = EventKind::EarningsUpcoming;
+        event.occurred_at = Utc::now() + chrono::Duration::days(10);
+        let (sent, pending) = router.dispatch(&event).await.unwrap();
+        assert_eq!(sent, 0);
+        assert_eq!(pending, 1);
+        let drained = digest.drain_actor(&actor("u1")).unwrap();
+        assert_eq!(drained[0].severity, Severity::Low);
+    }
+
+    #[tokio::test]
+    async fn legal_ad_high_is_demoted_before_sink() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["SNOW".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        );
+        let event = MarketEvent {
+            id: "news:SNOW:legal-high".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::High,
+            symbols: vec!["SNOW".into()],
+            occurred_at: Utc::now(),
+            title: "SHAREHOLDER ALERT class action lawsuit has been filed".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.stock_news:globenewswire.com".into(),
+            payload: serde_json::json!({"legal_ad_template": true}),
+        };
+        let (sent, pending) = router.dispatch(&event).await.unwrap();
+        assert_eq!(sent, 0);
+        assert_eq!(pending, 1, "法律广告即使误标 High 也应进 digest");
+        assert!(sink.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn low_news_upgrades_to_medium_when_same_day_hard_signal_exists() {
         // 构造一条今日 AAPL 的 price_alert 先入 store,再 dispatch 一条 Low NewsCritical,
         // 应升级为 Medium 并进 digest(sent=0, pending=1)。
@@ -1047,7 +1473,7 @@ mod tests {
             severity: Severity::Low,
             symbols: vec!["AAPL".into()],
             occurred_at: Utc::now(),
-            title: "AAPL minor headline".into(),
+            title: "AAPL stock jumps after price spike".into(),
             summary: String::new(),
             url: None,
             source: "test".into(),
@@ -1490,7 +1916,7 @@ mod tests {
             severity: Severity::Low,
             symbols: vec!["AAPL".into()],
             occurred_at: Utc::now(),
-            title: format!("AAPL minor {id}"),
+            title: format!("AAPL earnings preview {id}"),
             summary: String::new(),
             url: None,
             source: "test".into(),
@@ -1556,7 +1982,7 @@ mod tests {
                 severity: Severity::Low,
                 symbols: vec!["AAPL".into()],
                 occurred_at: Utc::now(),
-                title: format!("AAPL minor {i}"),
+                title: format!("AAPL earnings preview {i}"),
                 summary: String::new(),
                 url: None,
                 source: "test".into(),
@@ -1568,7 +1994,71 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn per_actor_price_threshold_promotes_low_to_immediate() {
+    async fn news_upgrade_per_tick_cap_limits_cross_symbol_burst() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into(), "AMD".into(), "GEV".into(), "MU".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let now = Utc::now();
+        for sym in ["AAPL", "AMD", "GEV", "MU"] {
+            let hard = MarketEvent {
+                id: format!("earnings:{sym}:tomorrow"),
+                kind: EventKind::EarningsUpcoming,
+                severity: Severity::Medium,
+                symbols: vec![sym.into()],
+                occurred_at: now + chrono::Duration::days(1),
+                title: format!("{sym} earnings tomorrow"),
+                summary: String::new(),
+                url: None,
+                source: "test".into(),
+                payload: serde_json::Value::Null,
+            };
+            store.insert_event(&hard).unwrap();
+        }
+
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink,
+            store,
+            digest.clone(),
+        )
+        .with_news_upgrade_per_symbol_per_tick_cap(3)
+        .with_news_upgrade_per_tick_cap(2);
+        router.reset_tick_counters();
+
+        for sym in ["AAPL", "AMD", "GEV", "MU"] {
+            let news = MarketEvent {
+                id: format!("news:{sym}:1"),
+                kind: EventKind::NewsCritical,
+                severity: Severity::Low,
+                symbols: vec![sym.into()],
+                occurred_at: now,
+                title: format!("{sym} earnings preview"),
+                summary: String::new(),
+                url: None,
+                source: "test".into(),
+                payload: serde_json::Value::Null,
+            };
+            let (_s, p) = router.dispatch(&news).await.unwrap();
+            assert_eq!(p, 1);
+        }
+
+        let drained = digest.drain_actor(&actor("u1")).unwrap();
+        let upgraded = drained
+            .iter()
+            .filter(|e| e.severity == Severity::Medium)
+            .count();
+        assert_eq!(upgraded, 2, "per-tick cap should limit total upgrades");
+        assert_eq!(drained.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn per_actor_price_threshold_below_system_floor_stays_digest() {
         use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
 
         let mut reg = SubscriptionRegistry::new();
@@ -1598,7 +2088,8 @@ mod tests {
         )
         .with_prefs(prefs_store);
 
-        // 4% 价格异动:全局阈值 6% 时为 Low,但 user override 3% 应升 High。
+        // 4% 价格异动:用户 override=3% 只表达"关注",但低于系统 6% 直推地板,
+        // 应进入 digest 而不是即时打扰。
         let ev = MarketEvent {
             id: "price:AAOI:test".into(),
             kind: EventKind::PriceAlert {
@@ -1615,8 +2106,174 @@ mod tests {
             payload: serde_json::json!({"changesPercentage": 4.05}),
         };
         let (sent, pending) = router.dispatch(&ev).await.unwrap();
-        assert_eq!(sent, 1, "user override 阈值触达应即时推");
+        assert_eq!(sent, 0, "低于系统直推地板不应即时推");
+        assert_eq!(pending, 1);
+        assert!(sink.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn large_position_can_use_sensitive_price_threshold() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAOI".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    price_high_pct_override: Some(4.0),
+                    large_position_weight_pct: Some(20.0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store)
+        .with_price_min_direct_pct(6.0);
+
+        let ev = MarketEvent {
+            id: "price:AAOI:large".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 450,
+                window: "day".into(),
+            },
+            severity: Severity::Low,
+            symbols: vec!["AAOI".into()],
+            occurred_at: Utc::now(),
+            title: "AAOI +4.50%".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({
+                "changesPercentage": 4.5,
+                "portfolio_weight_pct": 25.0
+            }),
+        };
+        let (sent, pending) = router.dispatch(&ev).await.unwrap();
+        assert_eq!(sent, 1, "大仓位标的可使用用户敏感阈值直推");
         assert_eq!(pending, 0);
+    }
+
+    #[tokio::test]
+    async fn directional_price_thresholds_use_move_direction() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    price_high_pct_up_override: Some(6.0),
+                    price_high_pct_down_override: Some(5.0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store)
+        .with_price_min_direct_pct(5.0);
+
+        let mk = |id: &str, pct: f64| MarketEvent {
+            id: id.into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: (pct * 100.0) as i64,
+                window: "day".into(),
+            },
+            severity: Severity::Low,
+            symbols: vec!["AAPL".into()],
+            occurred_at: Utc::now(),
+            title: format!("AAPL {pct:+.2}%"),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({"changesPercentage": pct}),
+        };
+        let (sent_up, pending_up) = router.dispatch(&mk("price:up", 5.5)).await.unwrap();
+        assert_eq!(sent_up, 0, "+5.5% 未达到上行 6% 阈值");
+        assert_eq!(pending_up, 1);
+
+        let (sent_down, pending_down) = router.dispatch(&mk("price:down", -5.5)).await.unwrap();
+        assert_eq!(sent_down, 1, "-5.5% 达到下行 5% 阈值");
+        assert_eq!(pending_down, 0);
+    }
+
+    #[tokio::test]
+    async fn per_actor_price_threshold_does_not_promote_closing_move() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AMD".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    price_high_pct_override: Some(4.0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store);
+
+        let ev = MarketEvent {
+            id: "price_close:AMD:2026-04-22".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 667,
+                window: "close".into(),
+            },
+            severity: Severity::Medium,
+            symbols: vec!["AMD".into()],
+            occurred_at: Utc::now(),
+            title: "AMD +6.67%".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({"changesPercentage": 6.67}),
+        };
+        let (sent, pending) = router.dispatch(&ev).await.unwrap();
+        assert_eq!(sent, 0, "收盘异动不应被个人 price override 直推");
+        assert_eq!(pending, 1);
+        assert!(sink.calls.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -1682,6 +2339,84 @@ mod tests {
         let (sent2, pending2) = router.dispatch(&news).await.unwrap();
         assert_eq!(sent2, 0, "未在 immediate_kinds 列表的 kind 不应被升");
         assert_eq!(pending2, 1);
+    }
+
+    #[tokio::test]
+    async fn quiet_mode_demotes_news_but_keeps_sec_immediate() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    quiet_mode: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store);
+
+        let mut news = ev(Severity::High);
+        news.id = "news:AAPL:quiet".into();
+        news.kind = EventKind::NewsCritical;
+        news.title = "AAPL high news".into();
+        let (sent, pending) = router.dispatch(&news).await.unwrap();
+        assert_eq!(sent, 0);
+        assert_eq!(pending, 1, "quiet mode 下新闻 High 应进 digest");
+
+        let mut filing = ev(Severity::High);
+        filing.id = "sec:AAPL:8k".into();
+        filing.kind = EventKind::SecFiling { form: "8-K".into() };
+        let (sent, pending) = router.dispatch(&filing).await.unwrap();
+        assert_eq!(sent, 1, "SEC filing 仍应即时推");
+        assert_eq!(pending, 0);
+    }
+
+    #[tokio::test]
+    async fn dryrun_sink_success_is_not_counted_as_sent_ack() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAPL".into()],
+        )));
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            Arc::new(LogSink),
+            store.clone(),
+            digest,
+        );
+        let event = ev(Severity::High);
+        store.insert_event(&event).unwrap();
+        let (sent, pending) = router.dispatch(&event).await.unwrap();
+        assert_eq!(sent, 1, "dispatch 计数代表 sink 调用成功");
+        assert_eq!(pending, 0);
+        let since = Utc::now() - chrono::Duration::minutes(1);
+        assert_eq!(
+            store
+                .count_high_sent_since("imessage::::u1", since)
+                .unwrap(),
+            0,
+            "dryrun status 不应被 count_high_sent_since 当成真实 sent"
+        );
     }
 
     #[tokio::test]

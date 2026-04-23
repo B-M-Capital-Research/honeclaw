@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-04-20
-状态：有 6 个活跃任务
+最后更新：2026-04-23
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -16,6 +16,10 @@
 
 ## 活跃任务
 
+- **Event Engine 推送质量全量修复**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/event-engine-push-quality.md`
+  - 摘要：按 24 项清单逐个修复价格时效、路由降噪、摘要排序、偏好表达与可观测性问题；每项要求 mock 复现、泛化实现和回归验证，真实 LLM 仅用于手工对照
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

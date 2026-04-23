@@ -65,6 +65,20 @@ pub struct NotificationPrefs {
     /// `None` / 空 → 不做任何 kind 强升;命中元素 → router 在本 actor 路径升 High。
     /// 校验复用 `first_invalid_kind_tag()`。
     pub immediate_kinds: Option<Vec<String>>,
+    /// 少打扰模式：只保留财报 / SEC / 够大的持仓价格异动即时推送，其它 High 默认降级
+    /// 进 digest。过滤仍由 `should_deliver` 执行，降级在 router 阶段完成。
+    pub quiet_mode: bool,
+    /// source 白名单 / 黑名单。元素按大小写无关的子串或前缀匹配
+    /// `event.source`，例如 `"watcherguru"`、`"fmp.stock_news:globenewswire.com"`。
+    pub allow_sources: Option<Vec<String>>,
+    pub blocked_sources: Vec<String>,
+    /// 价格即时推的方向性覆盖。未设置时回落到 `price_high_pct_override`。
+    /// 正数价格变动优先用 `price_high_pct_up_override`，负数优先用 down。
+    pub price_high_pct_up_override: Option<f64>,
+    pub price_high_pct_down_override: Option<f64>,
+    /// 当 router 能从事件 payload 读到 portfolio_weight / portfolio_weight_pct 时，
+    /// 高仓位标的允许使用更敏感的用户阈值直推；低仓位仍受系统最小直推阈值保护。
+    pub large_position_weight_pct: Option<f64>,
 }
 
 impl Default for NotificationPrefs {
@@ -80,6 +94,12 @@ impl Default for NotificationPrefs {
             digest_windows: None,
             price_high_pct_override: None,
             immediate_kinds: None,
+            quiet_mode: false,
+            allow_sources: None,
+            blocked_sources: Vec::new(),
+            price_high_pct_up_override: None,
+            price_high_pct_down_override: None,
+            large_position_weight_pct: None,
         }
     }
 }
@@ -96,6 +116,14 @@ impl NotificationPrefs {
         if self.portfolio_only && event.symbols.is_empty() {
             return false;
         }
+        if self.source_blocked(&event.source) {
+            return false;
+        }
+        if let Some(allow) = &self.allow_sources {
+            if !allow.iter().any(|pat| source_matches(&event.source, pat)) {
+                return false;
+            }
+        }
         let tag = kind_tag(&event.kind);
         if self.blocked_kinds.iter().any(|k| k == tag) {
             return false;
@@ -107,6 +135,19 @@ impl NotificationPrefs {
         }
         true
     }
+
+    pub fn source_blocked(&self, source: &str) -> bool {
+        self.blocked_sources
+            .iter()
+            .any(|pat| source_matches(source, pat))
+    }
+}
+
+fn source_matches(source: &str, pattern: &str) -> bool {
+    let source = source.trim().to_ascii_lowercase();
+    let pattern = pattern.trim().to_ascii_lowercase();
+    !pattern.is_empty()
+        && (source == pattern || source.starts_with(&pattern) || source.contains(&pattern))
 }
 
 /// `EventKind` 的稳定字符串标签——用于 allow/block 列表匹配，
@@ -115,6 +156,7 @@ pub fn kind_tag(kind: &EventKind) -> &'static str {
     match kind {
         EventKind::EarningsUpcoming => "earnings_upcoming",
         EventKind::EarningsReleased => "earnings_released",
+        EventKind::EarningsCallTranscript => "earnings_call_transcript",
         EventKind::NewsCritical => "news_critical",
         EventKind::PressRelease => "press_release",
         EventKind::PriceAlert { .. } => "price_alert",
@@ -138,6 +180,7 @@ pub fn kind_tag(kind: &EventKind) -> &'static str {
 pub const ALL_KIND_TAGS: &[&str] = &[
     "earnings_upcoming",
     "earnings_released",
+    "earnings_call_transcript",
     "news_critical",
     "press_release",
     "price_alert",
@@ -371,6 +414,12 @@ mod tests {
             digest_windows: Some(vec!["07:00".into(), "18:00".into()]),
             price_high_pct_override: Some(3.5),
             immediate_kinds: Some(vec!["weekly52_high".into(), "analyst_grade".into()]),
+            quiet_mode: true,
+            allow_sources: Some(vec!["fmp.stock_news:reuters.com".into()]),
+            blocked_sources: vec!["watcherguru".into()],
+            price_high_pct_up_override: Some(6.0),
+            price_high_pct_down_override: Some(5.0),
+            large_position_weight_pct: Some(20.0),
         };
         store.save(&a, &p).unwrap();
         let loaded = store.load(&a);
@@ -388,6 +437,15 @@ mod tests {
             loaded.immediate_kinds.as_deref(),
             Some(&["weekly52_high".to_string(), "analyst_grade".to_string()][..])
         );
+        assert!(loaded.quiet_mode);
+        assert_eq!(
+            loaded.allow_sources.as_deref(),
+            Some(&["fmp.stock_news:reuters.com".to_string()][..])
+        );
+        assert_eq!(loaded.blocked_sources, vec!["watcherguru".to_string()]);
+        assert_eq!(loaded.price_high_pct_up_override, Some(6.0));
+        assert_eq!(loaded.price_high_pct_down_override, Some(5.0));
+        assert_eq!(loaded.large_position_weight_pct, Some(20.0));
     }
 
     #[test]
@@ -397,6 +455,12 @@ mod tests {
         assert!(p.digest_windows.is_none());
         assert!(p.price_high_pct_override.is_none());
         assert!(p.immediate_kinds.is_none());
+        assert!(!p.quiet_mode);
+        assert!(p.allow_sources.is_none());
+        assert!(p.blocked_sources.is_empty());
+        assert!(p.price_high_pct_up_override.is_none());
+        assert!(p.price_high_pct_down_override.is_none());
+        assert!(p.large_position_weight_pct.is_none());
     }
 
     #[test]
@@ -415,6 +479,32 @@ mod tests {
         assert!(p.digest_windows.is_none());
         assert!(p.price_high_pct_override.is_none());
         assert!(p.immediate_kinds.is_none());
+        assert!(!p.quiet_mode);
+        assert!(p.allow_sources.is_none());
+        assert!(p.blocked_sources.is_empty());
+        assert!(p.price_high_pct_up_override.is_none());
+        assert!(p.price_high_pct_down_override.is_none());
+        assert!(p.large_position_weight_pct.is_none());
+    }
+
+    #[test]
+    fn source_allow_and_block_lists_filter_events() {
+        let mut event = ev(EventKind::NewsCritical, Severity::High, vec!["AAPL"]);
+        event.source = "fmp.stock_news:reuters.com".into();
+        let p = NotificationPrefs {
+            allow_sources: Some(vec!["reuters.com".into()]),
+            ..Default::default()
+        };
+        assert!(p.should_deliver(&event));
+
+        event.source = "telegram.channel:watcherguru".into();
+        assert!(!p.should_deliver(&event));
+
+        let p = NotificationPrefs {
+            blocked_sources: vec!["watcherguru".into()],
+            ..Default::default()
+        };
+        assert!(!p.should_deliver(&event));
     }
 
     #[test]
@@ -437,6 +527,7 @@ mod tests {
         let sample = [
             EarningsUpcoming,
             EarningsReleased,
+            EarningsCallTranscript,
             NewsCritical,
             PressRelease,
             PriceAlert {
@@ -456,6 +547,7 @@ mod tests {
             MacroEvent,
             PortfolioPreMarket,
             PortfolioPostMarket,
+            SocialPost,
         ];
         for k in &sample {
             let tag = kind_tag(k);

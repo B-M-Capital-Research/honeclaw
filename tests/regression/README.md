@@ -10,6 +10,9 @@
 - `bash tests/regression/run_ci.sh`
 - `bash tests/regression/run_manual.sh`
 - `bash tests/regression/manual/test_<topic>.sh`
+- `RUN_EVENT_ENGINE_LLM_BASELINE=1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+  - 默认使用 fixture 中的推荐模型；可选: `EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=x-ai/grok-4.1-fast`
+  - 默认不调用真实 LLM API；设置环境变量后才会对保存的历史新闻样本做 live drift 对比
 
 ## 约定
 

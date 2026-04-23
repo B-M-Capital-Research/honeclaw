@@ -119,6 +119,9 @@ let overflow =
 
 ## Latest巡检 Update
 
+- 2026-04-23T02:16:48Z: the incremental scan after `2026-04-22T22:14:35Z` found another threshold breach in `data/runtime/logs/web.log.2026-04-23`: `2026-04-23 08:22:42` local time logged 25 `news severity upgraded Low→Medium (window convergence)` rows in one second, then `poller ok` at `08:22:43.176`.
+- The same incremental window had healthy poller cadence and normal digest/sink activity (`sink delivered` at `08:02:47-08:02:49`, `digest delivered` at `09:00:42-09:00:43`), so this is still a routing-quality/flood-control issue rather than a poller outage.
+- Runtime digest buffer files were still absent (`data/runtime/telegram__direct__*.jsonl` and `.flushed-*` did not exist), so the latest burst still cannot be mapped to exact retained versus truncated digest items.
 - 2026-04-22T06:10:50Z: the 24h scan found 322 `news severity upgraded Low→Medium (window convergence)` log entries. The largest single-second burst is still `data/runtime/logs/web.log:1352-1379`, with 27 upgrades at `2026-04-21 22:34:32` local time, exceeding the巡检 threshold of 20.
 - Later bursts remained below the threshold but frequent: `2026-04-22 06:19:32` had 13 upgrades, `2026-04-22 04:34:32` had 12, and `2026-04-22 04:19:32` / `06:49:32` / `07:04:32` each had 11.
 - Poller cadence stayed healthy outside restart windows. The largest adjacent `poller ok` gap was about 1092 seconds from `data/runtime/logs/web.log:1253` to `data/runtime/logs/web.log:1281`, but that interval contains the `21:49:30` backend restart at `data/runtime/logs/web.log:1254-1256`, so it was not classified as poller停摆.

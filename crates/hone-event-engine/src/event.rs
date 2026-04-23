@@ -30,6 +30,7 @@ impl Severity {
 pub enum EventKind {
     EarningsUpcoming,
     EarningsReleased,
+    EarningsCallTranscript,
     NewsCritical,
     PressRelease,
     PriceAlert {

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Event Engine Baseline Testing"
+  short_description: "Run event-engine tests and save classifier baselines"
+  default_prompt: "Use $event-engine-baseline-testing to validate event-engine changes and update the news classifier baseline."

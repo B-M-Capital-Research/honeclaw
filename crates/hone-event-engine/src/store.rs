@@ -21,7 +21,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use chrono::{DateTime, TimeZone, Utc};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::types::Value as SqlValue;
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::event::MarketEvent;
 
@@ -321,6 +322,49 @@ impl EventStore {
     /// 用于 Router 执行 `high_severity_daily_cap` 硬上限:超了自动降级到 digest,
     /// 避免同一天被同一股票的 8-K / 财报 / 价格异动轮番轰炸。
     pub fn count_high_sent_since(&self, actor: &str, since: DateTime<Utc>) -> anyhow::Result<i64> {
+        self.count_high_sent_since_for_category(actor, since, "all")
+    }
+
+    /// 该 actor 在 `[since, now]` 窗口内某一事件类别通过 sink 成功送达的 High 数。
+    /// `category="all"` 维持旧语义；其它类别用于把 price/news/filing/earnings/macro
+    /// 的 high cap 分桶，避免互相挤占。
+    pub fn count_high_sent_since_for_category(
+        &self,
+        actor: &str,
+        since: DateTime<Utc>,
+        category: &str,
+    ) -> anyhow::Result<i64> {
+        if category == "all" {
+            return self.count_high_sent_since_all(actor, since);
+        }
+        let Some(tags) = category_kind_tags(category) else {
+            return self.count_high_sent_since_all(actor, since);
+        };
+        let predicates = vec!["e.kind_json LIKE ?"; tags.len()].join(" OR ");
+        let sql = format!(
+            r#"
+            SELECT COUNT(*) FROM delivery_log d
+            JOIN events e ON d.event_id = e.id
+            WHERE d.actor = ?
+              AND d.severity = 'high'
+              AND d.status = 'sent'
+              AND d.channel = 'sink'
+              AND d.sent_at_ts >= ?
+              AND ({predicates})
+            "#
+        );
+        let mut values = Vec::with_capacity(2 + tags.len());
+        values.push(SqlValue::Text(actor.to_string()));
+        values.push(SqlValue::Integer(since.timestamp()));
+        for tag in tags {
+            values.push(SqlValue::Text(format!("%\"{tag}\"%")));
+        }
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = conn.query_row(&sql, params_from_iter(values), |row| row.get(0))?;
+        Ok(n)
+    }
+
+    fn count_high_sent_since_all(&self, actor: &str, since: DateTime<Utc>) -> anyhow::Result<i64> {
         let conn = self.conn.lock().unwrap();
         let n: i64 = conn.query_row(
             r#"
@@ -345,6 +389,54 @@ impl EventStore {
         actor: &str,
         symbol: &str,
     ) -> anyhow::Result<Option<DateTime<Utc>>> {
+        self.last_high_sink_send_for_symbol_category(actor, symbol, "all")
+    }
+
+    /// 该 actor 针对 symbol + category 最近一次 High 成功送达 sink 的时刻。
+    pub fn last_high_sink_send_for_symbol_category(
+        &self,
+        actor: &str,
+        symbol: &str,
+        category: &str,
+    ) -> anyhow::Result<Option<DateTime<Utc>>> {
+        if category == "all" {
+            return self.last_high_sink_send_for_symbol_all(actor, symbol);
+        }
+        let Some(tags) = category_kind_tags(category) else {
+            return self.last_high_sink_send_for_symbol_all(actor, symbol);
+        };
+        let predicates = vec!["e.kind_json LIKE ?"; tags.len()].join(" OR ");
+        let needle = format!("%\"{}\"%", symbol.to_uppercase());
+        let sql = format!(
+            r#"
+            SELECT MAX(d.sent_at_ts) FROM delivery_log d
+            JOIN events e ON d.event_id = e.id
+            WHERE d.actor = ?
+              AND d.severity = 'high'
+              AND d.status = 'sent'
+              AND d.channel = 'sink'
+              AND e.symbols_json LIKE ?
+              AND ({predicates})
+            "#
+        );
+        let mut values = Vec::with_capacity(2 + tags.len());
+        values.push(SqlValue::Text(actor.to_string()));
+        values.push(SqlValue::Text(needle));
+        for tag in tags {
+            values.push(SqlValue::Text(format!("%\"{tag}\"%")));
+        }
+        let conn = self.conn.lock().unwrap();
+        let row: Option<i64> = conn.query_row(&sql, params_from_iter(values), |row| {
+            row.get::<_, Option<i64>>(0)
+        })?;
+        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+    }
+
+    fn last_high_sink_send_for_symbol_all(
+        &self,
+        actor: &str,
+        symbol: &str,
+    ) -> anyhow::Result<Option<DateTime<Utc>>> {
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
         let conn = self.conn.lock().unwrap();
         let row: Option<i64> = conn.query_row(
@@ -361,6 +453,86 @@ impl EventStore {
             |row| row.get::<_, Option<i64>>(0),
         )?;
         Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+    }
+
+    pub fn last_digest_success_at(&self, actor: &str) -> anyhow::Result<Option<DateTime<Utc>>> {
+        let conn = self.conn.lock().unwrap();
+        let row: Option<i64> = conn.query_row(
+            r#"
+            SELECT MAX(sent_at_ts) FROM delivery_log
+            WHERE actor = ?1
+              AND channel = 'digest'
+              AND status IN ('sent', 'dryrun')
+            "#,
+            params![actor],
+            |row| row.get::<_, Option<i64>>(0),
+        )?;
+        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+    }
+
+    pub fn list_recent_digest_item_events(
+        &self,
+        actor: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<MarketEvent>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
+                   e.title, e.summary, e.url, e.source, e.payload_json
+            FROM delivery_log d
+            JOIN events e ON d.event_id = e.id
+            WHERE d.actor = ?1
+              AND d.channel = 'digest_item'
+              AND d.status IN ('sent', 'dryrun')
+              AND d.sent_at_ts >= ?2
+            "#,
+        )?;
+        let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) = r?;
+            let Ok(kind) = serde_json::from_str(&kind_json) else {
+                continue;
+            };
+            let severity = match sev.as_str() {
+                "high" => crate::event::Severity::High,
+                "medium" => crate::event::Severity::Medium,
+                _ => crate::event::Severity::Low,
+            };
+            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let payload: serde_json::Value =
+                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+                continue;
+            };
+            out.push(MarketEvent {
+                id,
+                kind,
+                severity,
+                symbols,
+                occurred_at,
+                title,
+                summary,
+                url,
+                source,
+                payload,
+            });
+        }
+        Ok(out)
     }
 
     /// Append-only 追加一条推送审计。同一 (event, actor) 可以多行，表达
@@ -450,6 +622,29 @@ fn severity_tag(s: &crate::event::Severity) -> &'static str {
         crate::event::Severity::Low => "low",
         crate::event::Severity::Medium => "medium",
         crate::event::Severity::High => "high",
+    }
+}
+
+fn category_kind_tags(category: &str) -> Option<&'static [&'static str]> {
+    match category {
+        "price" => Some(&[
+            "price_alert",
+            "weekly52_high",
+            "weekly52_low",
+            "volume_spike",
+        ]),
+        "news" => Some(&["news_critical", "press_release", "social_post"]),
+        "filing" => Some(&["sec_filing"]),
+        "earnings" => Some(&[
+            "earnings_upcoming",
+            "earnings_released",
+            "earnings_call_transcript",
+        ]),
+        "macro" => Some(&["macro_event"]),
+        "corp_action" => Some(&["dividend", "split", "buyback"]),
+        "analyst" => Some(&["analyst_grade"]),
+        "portfolio" => Some(&["portfolio_pre_market", "portfolio_post_market"]),
+        _ => None,
     }
 }
 
@@ -617,6 +812,43 @@ mod tests {
         // 未来时间点:当然 0
         let future = Utc::now() + chrono::Duration::days(1);
         assert_eq!(store.count_high_sent_since(actor, future).unwrap(), 0);
+    }
+
+    #[test]
+    fn high_counts_are_bucketed_by_event_category() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let actor = "tg::::u1";
+        let mut price = sample_event("price-aapl");
+        price.kind = EventKind::PriceAlert {
+            pct_change_bps: 700,
+            window: "day".into(),
+        };
+        let mut filing = sample_event("sec-aapl");
+        filing.kind = EventKind::SecFiling { form: "8-K".into() };
+        store.insert_event(&price).unwrap();
+        store.insert_event(&filing).unwrap();
+        store
+            .log_delivery(&price.id, actor, "sink", Severity::High, "sent", None)
+            .unwrap();
+        store
+            .log_delivery(&filing.id, actor, "sink", Severity::High, "sent", None)
+            .unwrap();
+
+        let since = Utc::now() - chrono::Duration::minutes(1);
+        assert_eq!(
+            store
+                .count_high_sent_since_for_category(actor, since, "price")
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            store
+                .count_high_sent_since_for_category(actor, since, "filing")
+                .unwrap(),
+            1
+        );
+        assert_eq!(store.count_high_sent_since(actor, since).unwrap(), 2);
     }
 
     #[test]

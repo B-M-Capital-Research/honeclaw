@@ -40,6 +40,11 @@ pub struct EventEngineConfig {
     #[serde(default = "default_news_importance_prompt")]
     pub news_importance_prompt: String,
 
+    /// 不确定来源新闻 LLM 仲裁模型。走 OpenRouter 兼容 chat completions。
+    /// 留空时装配层回退到默认值。
+    #[serde(default = "default_news_classifier_model")]
+    pub news_classifier_model: String,
+
     #[serde(default = "default_dryrun")]
     pub dryrun: bool,
 }
@@ -56,6 +61,7 @@ impl Default for EventEngineConfig {
             earnings: EarningsConfig::default(),
             disabled_kinds: Vec::new(),
             news_importance_prompt: default_news_importance_prompt(),
+            news_classifier_model: default_news_classifier_model(),
             dryrun: default_dryrun(),
         }
     }
@@ -63,6 +69,10 @@ impl Default for EventEngineConfig {
 
 fn default_news_importance_prompt() -> String {
     "公司或潜在影响公司长期逻辑和宏观叙事的重大事件".to_string()
+}
+
+fn default_news_classifier_model() -> String {
+    "amazon/nova-lite-v1".to_string()
 }
 
 /// 财报 poller 特有参数。
@@ -158,6 +168,10 @@ pub struct DigestConfig {
     /// 默认 30min;数值越小,数据越新但留给 EventStore/Router 处理的缓冲越紧。
     #[serde(default = "default_prefetch_offset_mins")]
     pub prefetch_offset_mins: u32,
+    /// 同一 actor 两次 digest 之间的最小间隔。用于用户配置了很多窗口时避免
+    /// 同一批主题在短时间内反复出现。0 = 不启用。
+    #[serde(default = "default_min_gap_minutes")]
+    pub min_gap_minutes: u32,
 }
 
 impl Default for DigestConfig {
@@ -168,12 +182,16 @@ impl Default for DigestConfig {
             post_market: default_post_market(),
             max_items_per_batch: default_max_items_per_batch(),
             prefetch_offset_mins: default_prefetch_offset_mins(),
+            min_gap_minutes: default_min_gap_minutes(),
         }
     }
 }
 
 fn default_prefetch_offset_mins() -> u32 {
     30
+}
+fn default_min_gap_minutes() -> u32 {
+    180
 }
 
 fn default_tz() -> String {
@@ -228,6 +246,23 @@ pub struct Thresholds {
     /// 的相关报道。
     #[serde(default = "default_news_upgrade_per_symbol_per_tick")]
     pub news_upgrade_per_symbol_per_tick: u32,
+    /// 单次 poller tick 内 NewsCritical 升级 (Low→Medium) 的总次数上限。
+    /// 0 = 不启用。防止多 ticker 同时提级形成摘要洪峰。
+    #[serde(default = "default_news_upgrade_per_tick")]
+    pub news_upgrade_per_tick: u32,
+    /// 用户价格阈值覆盖不能低于该系统级最小直推阈值，除非事件 payload 标明
+    /// portfolio_weight / portfolio_weight_pct 达到大仓位阈值。
+    #[serde(default = "default_price_min_direct_pct")]
+    pub price_min_direct_pct: f64,
+    /// 高仓位标的使用用户自定义价格阈值直推的最小仓位权重百分比。
+    #[serde(default = "default_large_position_weight_pct")]
+    pub large_position_weight_pct: f64,
+    /// High 宏观事件只有在发生前该小时数内才允许即时推；更远期降级摘要。
+    #[serde(default = "default_macro_immediate_lookahead_hours")]
+    pub macro_immediate_lookahead_hours: i64,
+    /// High 宏观事件发生后该小时数内仍允许即时推；更旧事件降级摘要。
+    #[serde(default = "default_macro_immediate_grace_hours")]
+    pub macro_immediate_grace_hours: i64,
 }
 
 impl Default for Thresholds {
@@ -239,6 +274,11 @@ impl Default for Thresholds {
             high_severity_daily_cap: default_cap(),
             same_symbol_cooldown_minutes: default_cooldown_minutes(),
             news_upgrade_per_symbol_per_tick: default_news_upgrade_per_symbol_per_tick(),
+            news_upgrade_per_tick: default_news_upgrade_per_tick(),
+            price_min_direct_pct: default_price_min_direct_pct(),
+            large_position_weight_pct: default_large_position_weight_pct(),
+            macro_immediate_lookahead_hours: default_macro_immediate_lookahead_hours(),
+            macro_immediate_grace_hours: default_macro_immediate_grace_hours(),
         }
     }
 }
@@ -267,6 +307,23 @@ fn default_cooldown_minutes() -> u32 {
 /// 维持 Low、不进 digest 顶端。0 关闭限流。
 fn default_news_upgrade_per_symbol_per_tick() -> u32 {
     3
+}
+/// 默认 12:单 tick 内最多升级 12 条 Low→Medium。多于此的 NewsCritical
+/// 维持 Low,避免跨 ticker 的收敛洪峰挤占摘要。
+fn default_news_upgrade_per_tick() -> u32 {
+    12
+}
+fn default_price_min_direct_pct() -> f64 {
+    6.0
+}
+fn default_large_position_weight_pct() -> f64 {
+    20.0
+}
+fn default_macro_immediate_lookahead_hours() -> i64 {
+    6
+}
+fn default_macro_immediate_grace_hours() -> i64 {
+    2
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

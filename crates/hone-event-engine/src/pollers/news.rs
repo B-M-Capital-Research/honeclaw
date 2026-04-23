@@ -60,8 +60,10 @@ const PR_WIRE_DOMAINS: &[&str] = &[
 /// (reuters/bloomberg/wsj/cnbc 等)报道**,所以即便把这些 opinion 域全部
 /// 降级,actor 也不会漏掉重大新闻——只是少收一份重复包装。
 const OPINION_BLOG_DOMAINS: &[&str] = &[
+    "seekingalpha.com",
     "fool.com",
     "zacks.com",
+    "forbes.com",
     "247wallst.com",
     "etftrends.com",
     "gurufocus.com",
@@ -85,6 +87,8 @@ const OPINION_BLOG_DOMAINS: &[&str] = &[
     "schaeffersresearch.com",
     // 财经 promo / 大盘观点聚合 — 偶有研报转发但 90%+ 噪音
     "finbold.com",
+    "proactiveinvestors.com",
+    "invezz.com",
     // 注:marketbeat.com 故意不加 — 该域偶有真合同/研报新闻
     // (例:Broadcom-Meta AI Pact 2029),整域降级会丢真信号
 ];
@@ -153,6 +157,13 @@ pub fn classify_news_source(site: &str) -> NewsSourceClass {
 pub fn is_legal_ad_title(title: &str) -> bool {
     let lower = title.to_lowercase();
     LEGAL_AD_TITLE_PATTERNS.iter().any(|p| lower.contains(p))
+}
+
+/// Earnings call transcript 是稳定、可订阅的财报材料,但不应被当作
+/// NewsCritical 送 LLM 仲裁。独立成 kind 后用户可以单独 allow/block。
+pub fn is_earnings_call_transcript_title(title: &str) -> bool {
+    let lower = title.to_lowercase();
+    lower.contains("earnings call transcript") || lower.contains("earnings transcript")
 }
 
 /// 默认高影响关键词（小写匹配）。后续可从 config 注入覆盖。
@@ -272,10 +283,20 @@ fn events_from_stock_news(raw: &Value, keywords: &[String]) -> Vec<MarketEvent> 
                 .to_string();
 
             let source_class = classify_news_source(&site);
-            let severity = classify_severity(&title, &text, keywords, source_class);
+            let is_transcript = is_earnings_call_transcript_title(&title);
+            let severity = if is_transcript {
+                Severity::Low
+            } else {
+                classify_severity(&title, &text, keywords, source_class)
+            };
+            let id_prefix = if is_transcript {
+                "earnings_call_transcript"
+            } else {
+                "news"
+            };
             let id = match &url {
-                Some(u) => format!("news:{u}"),
-                None => format!("news:{published_raw}:{}", truncate(&title, 64)),
+                Some(u) => format!("{id_prefix}:{u}"),
+                None => format!("{id_prefix}:{published_raw}:{}", truncate(&title, 64)),
             };
             let symbols = symbol.map(|s| vec![s]).unwrap_or_default();
             let summary_snippet = truncate(&text, 240);
@@ -292,11 +313,19 @@ fn events_from_stock_news(raw: &Value, keywords: &[String]) -> Vec<MarketEvent> 
                 "legal_ad_template".into(),
                 Value::Bool(is_legal_ad_title(&title)),
             );
+            enriched.insert(
+                "earnings_call_transcript".into(),
+                Value::Bool(is_transcript),
+            );
             enriched.insert("fmp".into(), item.clone());
 
             Some(MarketEvent {
                 id,
-                kind: EventKind::NewsCritical,
+                kind: if is_transcript {
+                    EventKind::EarningsCallTranscript
+                } else {
+                    EventKind::NewsCritical
+                },
                 severity,
                 symbols,
                 occurred_at,
@@ -505,6 +534,105 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("opinion_blog")
         );
+    }
+
+    #[test]
+    fn market_commentary_sites_are_classified_as_opinion_blog() {
+        for site in [
+            "seekingalpha.com",
+            "forbes.com",
+            "proactiveinvestors.com",
+            "invezz.com",
+        ] {
+            assert_eq!(
+                classify_news_source(site),
+                NewsSourceClass::OpinionBlog,
+                "{site} should skip LLM arbitration and stay low by default"
+            );
+        }
+    }
+
+    #[test]
+    fn earnings_call_transcript_gets_dedicated_kind() {
+        let raw = serde_json::json!([{
+            "symbol": "GEV",
+            "publishedDate": "2026-04-22 21:30:00",
+            "title": "GE Vernova Inc. (GEV) Q1 2026 Earnings Call Transcript",
+            "site": "seekingalpha.com",
+            "text": "Prepared remarks and Q&A transcript ...",
+            "url": "https://seekingalpha.com/article/gev-transcript"
+        }]);
+        let events = events_from_stock_news(&raw, &default_kws());
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, EventKind::EarningsCallTranscript);
+        assert_eq!(events[0].severity, Severity::Low);
+        assert!(events[0].id.starts_with("earnings_call_transcript:"));
+        assert_eq!(
+            events[0]
+                .payload
+                .get("earnings_call_transcript")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn live_news_classifier_baseline_source_policy_is_stable() {
+        let fixture = include_str!(
+            "../../../../tests/fixtures/event_engine/news_classifier_baseline_2026-04-23.json"
+        );
+        let fixture: Value = serde_json::from_str(fixture).expect("fixture json");
+        let items = fixture
+            .get("items")
+            .and_then(|v| v.as_array())
+            .expect("items array");
+        assert_eq!(items.len(), 30);
+
+        let mut uncertain_llm_items = 0usize;
+        for item in items {
+            let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+            let site = item.get("site").and_then(|v| v.as_str()).unwrap_or("");
+            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let expected_source = item
+                .get("expected_source_class_after")
+                .and_then(|v| v.as_str())
+                .unwrap();
+            let expected_kind = item
+                .get("expected_kind_after")
+                .and_then(|v| v.as_str())
+                .unwrap();
+            let expected_llm = item
+                .get("expected_llm_after_engine")
+                .and_then(|v| v.as_str());
+
+            assert_eq!(
+                classify_news_source(site).as_str(),
+                expected_source,
+                "{id}: source class drift for {site} / {title}"
+            );
+            assert_eq!(
+                if is_earnings_call_transcript_title(title) {
+                    "earnings_call_transcript"
+                } else {
+                    "news_critical"
+                },
+                expected_kind,
+                "{id}: kind split drift for {title}"
+            );
+
+            if expected_llm.is_some() {
+                uncertain_llm_items += 1;
+                assert_eq!(
+                    expected_source, "uncertain",
+                    "{id}: only uncertain-source news should need LLM baseline reruns"
+                );
+                assert_eq!(
+                    expected_kind, "news_critical",
+                    "{id}: standalone events should not enter news LLM arbitration"
+                );
+            }
+        }
+        assert_eq!(uncertain_llm_items, 12);
     }
 
     #[test]
