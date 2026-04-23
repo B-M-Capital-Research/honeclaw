@@ -132,6 +132,8 @@ const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
 const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
 const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
+/// 上下文恢复时为主动推送消息添加的标签前缀，便于模型识别其来源。
+const FEED_PUSH_CONTEXT_PREFIX: &str = "[主动推送通知]";
 
 fn restore_limit_before_compaction(
     config: &HoneConfig,
@@ -1508,7 +1510,11 @@ pub fn restore_context(
                             if message_is_feed_push(message.metadata.as_ref())
                                 && !sanitized_content.trim().is_empty()
                             {
-                                format!("[主动推送通知]\n{}", sanitized_content.trim())
+                                format!(
+                                    "{}\n{}",
+                                    FEED_PUSH_CONTEXT_PREFIX,
+                                    sanitized_content.trim()
+                                )
                             } else {
                                 sanitized_content
                             };
