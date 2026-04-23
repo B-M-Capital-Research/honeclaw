@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-23 12:00 最新巡检样本：
+      - `job_name=持仓重大事件心跳检测`
+      - `run_id=4976`，`executed_at=2026-04-23T12:00:32.792424+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 继续围绕 `FCC已于2026年4月22日授予AST SpaceMobile商业授权` 与 `BlueBird 7事故后的低点大幅反弹` 展开；同一 ASTS/FCC/BlueBird 事件已经在 `run_id=4932`（`2026-04-23T10:01:36.893968+08:00`）和更早窗口送达。
+      - `job_name=TEM大事件心跳监控`
+      - `run_id=4977`，`executed_at=2026-04-23T12:00:35.972391+08:00`，同样落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 把 `AACR Annual Meeting 2026（4月17-22日已于圣迭戈举行）` 和 4月上旬/中旬合作旧闻重新包装成利好事件触发；同一 TEM/AACR 持续性会议事件已在 2026-04-20 多个窗口出现过 `noop -> triggered` 回摆。
+      - 两条 12:00 样本都不是投递失败，而是旧事件去重和增量判断继续不稳定；它们不阻断主功能链路，但会造成提醒打扰和用户对心跳任务“只报新增”的信任下降，因此继续按 P3 跟踪。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-23 10:01 最新巡检样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=4932`，`executed_at=2026-04-23T10:01:36.893968+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
