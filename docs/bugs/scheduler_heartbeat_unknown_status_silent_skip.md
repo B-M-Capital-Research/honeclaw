@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-23 16:30-17:00 最新巡检样本：
+    - `run_id=5067-5088` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 与 `TEM大事件心跳监控`；sqlite 全部落成 `noop + skipped_noop + delivered=0`，说明这一小时没有新增误投递或 execution failed。
+    - `data/runtime/logs/web.log.2026-04-23` 在 `2026-04-23 16:30:07-16:30:45` 与 `17:00:11-17:00:51` 两批 heartbeat 中，继续记录多条 `starts_with_json=false`；`全天原油价格3小时播报`、`小米破位预警`、`CAI破位预警`、`TEM破位预警`、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测`、`TEM大事件心跳监控` 的 raw preview 仍普遍以 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或 `{}` 被解析器兜底。
+    - `run_id=5072`（`ORCL 大事件监控`，`2026-04-23T16:30:23.045280+08:00`）与 `run_id=5076`（`Monitor_Watchlist_11`，`2026-04-23T16:30:30.580274+08:00`）在 sqlite 已落成 `noop + skipped_noop`，但日志仍分别记录 `parse_kind=JsonEmptyStatus` 与 `starts_with_json=false`，说明解析兜底在吸收失败，heartbeat 输出契约本身没有恢复成“纯 JSON 起始”。
+    - `run_id=5078`（`全天原油价格3小时播报`，`2026-04-23T17:00:11.420249+08:00`）与 `run_id=5088`（`TEM大事件心跳监控`，`2026-04-23T17:00:51.651462+08:00`）同样继续先输出 `<think>` 分析，再让调度器归并为 `noop`；17:00 窗口没有重新触发旧的错误发送，但也没有恢复上游 JSON 契约。
+    - `2026-04-23 17:00:33-17:00:34` 同批还出现 Tavily `usage limit` 告警，但 `小米破位预警` 最终仍被兜底为 `noop + skipped_noop`；这进一步说明当前窗口主要是 heartbeat 公共状态契约继续漂移，而非新的独立送达故障。
+    - 本轮没有新增 `execution_failed`、错误投递或用户投诉，因此严重等级维持 `P2`、状态保持 `New`；但 16:30 与 17:00 两批继续证明 heartbeat 上游输出没有恢复为稳定的结构化 JSON。
   - 2026-04-23 12:00-13:00 最新巡检样本：
     - `run_id=4967-5000` 覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 与 `TEM大事件心跳监控`。
     - `data/runtime/logs/sidecar.log` 在 12:00、12:30、13:00 三批 heartbeat 中继续记录多条 `starts_with_json=false`；raw preview 普遍以 `<think>` 自由文本开头，再依赖尾部 `{"status":"noop"}` 或触发 JSON 被解析器提取。
