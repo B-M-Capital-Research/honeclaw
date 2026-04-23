@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-24 06:31 最新巡检样本：
+      - `job_name=持仓重大事件心跳检测`
+      - `run_id=5405`，`executed_at=2026-04-24T06:31:42.538595+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 又把 `BlueBird 7 进入错误轨道并将自然离轨`、`该信息在 4 月 20-21 日被市场充分消化` 组织成 `【ASTS 双触发 - 请关注】` 送达；这些事实在本文件既有样本里已经由 `ASTS 重大异动心跳监控` 和同一持仓 heartbeat 多次发送，不属于 06:30-06:31 窗口内新发生的独立催化。
+      - 仅约 31 分钟前，同一目标下 `run_id=5404`（`ASTS 重大异动心跳监控`，`2026-04-24T06:30:33.347345+08:00`）刚转为 `noop + skipped_noop`；这说明不同 heartbeat 之间仍没有共享稳定的“已提醒事实”基线，一个链路刚判断应跳过，另一个链路就会把同一旧事实重新包装成触发提醒。
+      - `data/runtime/logs/sidecar.log` 在 `2026-04-24 06:31:39.976-06:31:39.977` 记录同一任务 `parse_kind=JsonTriggered` 与成功 `deliver`，`raw_preview` 先复盘 `BlueBird 7` 与 `FCC` 历史事实，再抽取触发正文；根因仍是“什么算新增”依赖模型临场拼接，而不是持久去重状态。
+      - 这组最新样本说明重复提醒已经不只表现为同一 job 在相邻窗口 `triggered -> noop -> triggered` 回摆，也表现为不同 heartbeat 对同一旧事实交叉重报。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-24 05:30-06:00 最新巡检样本：
       - `job_name=ASTS 重大异动心跳监控`
       - `run_id=5383`，`executed_at=2026-04-24T05:30:38.532569+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`

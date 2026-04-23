@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 06:30-07:01 最新巡检样本：
+    - `run_id=5395-5404` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 与 `ASTS 重大异动心跳监控`；`06:30` 这一批继续全部落成 `noop + skipped_noop + delivered=0`。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 06:30:07-06:30:33` 连续记录 `starts_with_json=false`；`run_id=5400`（`RKLB异动监控`）和 `run_id=5404`（`ASTS 重大异动心跳监控`）甚至再次落成 `parse_kind=JsonEmptyStatus`，其余样本则继续靠 `JsonNoop` 从 `<think>...{"status":"noop"}` 尾部兜底。
+    - `run_id=5402`（`Monitor_Watchlist_11`，`2026-04-24T06:30:26.976532+08:00`）继续逐项解释 11 只股票的当前价与触发价比较，但最终仍是 `parse_kind=JsonNoop`、`starts_with_json=false`，不是纯 JSON 首包。
+    - `run_id=5400`（`RKLB异动监控`，`2026-04-24T06:30:23.036924+08:00`）与 `run_id=5404`（`ASTS 重大异动心跳监控`，`2026-04-24T06:30:33.347345+08:00`）都继续落成 `parse_kind=JsonEmptyStatus`；模型先长篇分析新闻、价格与时间戳，再由后台静默跳过。
+    - `07:00-07:01` 下一批 `run_id=5406-5415` 仍普遍是 `starts_with_json=false`；`run_id=5410`（`小米破位预警`）和 `run_id=5414`（`RKLB异动监控`）再次出现 `parse_kind=JsonEmptyStatus`，说明问题没有在 06:30 后自然收口。
+    - 结论：直到 07:01，heartbeat 公共输出仍未恢复成“纯 JSON 首包 + 明确状态”；当前只是解析器持续吸收结构漂移，状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-24 05:30-06:01 最新巡检样本：
     - `run_id=5373-5394` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；05:30 与 06:00 两个窗口仍以 `noop + skipped_noop` 为主，仅 `run_id=5383`（`ASTS 重大异动心跳监控`）和 `run_id=5394`（`全天原油价格3小时播报`）触发送达。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-24 05:30:06-05:30:38` 与 `06:00:10-06:00:57` 连续记录 `starts_with_json=false`；`全天原油价格3小时播报`、`持仓重大事件心跳检测`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `ASTS 重大异动心跳监控` 的 `raw_preview` 仍以前置 `<think>` / 自由文本分析开头，再依赖 `JsonNoop`、`JsonEmptyStatus` 或 `JsonTriggered` 被解析器兜底。
