@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-24 01:11 CST
+最后更新：2026-04-24 02:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -34,10 +34,10 @@
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | New | 2026-04-24 00:01 `AAOI 每日动态监控` 正文再次写“按规则可跳过正式推送”，但 `cron_job_runs` 仍落成 `completed + sent + delivered=1`；说明当前生产链路仍未把 skip 结论收口成 `noop` | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-24 00:30-01:00 heartbeat 仍普遍以 `starts_with_json=false`、`<think>` 前缀和 `JsonNoop/JsonEmptyStatus/JsonTriggered` 被兜底解析；`Monitor_Watchlist_11`、`ORCL` 与 `持仓重大事件心跳检测` 仍未恢复纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-24 01:30-02:01 heartbeat 仍普遍以 `starts_with_json=false`、`<think>` 前缀和 `JsonNoop/JsonEmptyStatus/JsonTriggered` 被兜底解析；`Monitor_Watchlist_11`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测` 仍未恢复纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 将日内高点/区间振幅误判为涨跌幅阈值并发送错误触发提醒 | P2 | New | 2026-04-23 06:31 `ASTS 重大异动心跳监控` 再次 `JsonTriggered + sent`：当前/收盘价相对昨收仅 `+5.81%`，raw preview 也先判低于 8%，最终仍用日内高点相对昨收 `+9.71%` 判定“盘中涨跌幅超8%”；同根因曾在 ORCL 上把高低点振幅误判为涨跌幅 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-23 18:01 `持仓重大事件心跳检测` 再次把 ASTS FCC 批准与旧 BlueBird 事故包装成 `ASTS + ORCL 双增量事件` 送达；17:31 刚送过 RKLB 目标价上调，说明增量基线仍按临场拼接摇摆 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-24 02:00 `持仓重大事件心跳检测` 又把 `ORCL 取消 Supermicro 合同` 包装成“双重增量更新”；该事件 01:30 已由 `ORCL 大事件监控` 单独送达，说明跨任务增量基线仍会重报同一催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-23 01:00 `Monitor_Watchlist_11` 再次落成 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 19:30 `Monitor_Watchlist_11` 继续命中 `https://api.minimaxi.com/v1/chat/completions` 发送失败；20:00 同批主要漂移到 `JsonUnknownStatus`，传输吸震仍未稳定收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |

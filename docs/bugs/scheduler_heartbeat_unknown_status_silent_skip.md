@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 01:30-02:01 最新巡检样本：
+    - `run_id=5282-5302` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；sqlite 在 `01:30` 与 `02:00` 两批里仍以 `noop + skipped_noop` 为主，仅 `run_id=5290`（`ORCL 大事件监控`）、`run_id=5291`（`TEM大事件心跳监控`）和 `run_id=5302`（`持仓重大事件心跳检测`）触发并送达。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 01:30:07-01:30:29` 与 `02:00:17-02:01:23` 连续记录 `starts_with_json=false`；`全天原油价格3小时播报`、`Monitor_Watchlist_11`、CAI/小米/TEM 破位、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测` 的 raw preview 仍以前置 `<think>` / 自由文本分析开头，再依赖 `JsonNoop`、`JsonEmptyStatus` 或 `JsonTriggered` 被解析器兜底。
+    - `run_id=5298`（`Monitor_Watchlist_11`，`2026-04-24T02:00:19.189719+08:00`）继续落成 `noop + skipped_noop`，但日志记录 `parse_kind=JsonEmptyStatus`、`starts_with_json=false`；说明 watchlist 模板到 02:00 仍没有恢复“纯 JSON 首包”。
+    - `run_id=5291`（`TEM大事件心跳监控`，`2026-04-24T01:30:48.342802+08:00`）与 `run_id=5302`（`持仓重大事件心跳检测`，`2026-04-24T02:00:42.242764+08:00`）虽然 `completed + sent + delivered=1`，但日志仍分别记录 `parse_kind=JsonTriggered`、`starts_with_json=false`，`deliver_preview` 也是从 `<think>...JSON` 兜底抽取后的正文。
+    - `run_id=5300`（`TEM大事件心跳监控`，`2026-04-24T02:00:31.752305+08:00`）在 02:00 批次转为 `noop + skipped_noop`，但同轮日志仍写 `parse_kind=JsonNoop`、`starts_with_json=false`，说明即使和 01:30 的触发/发送形态相比发生了状态切换，输出协议本身也没有恢复成稳定的结构化首包。
+    - 结论：01:30-02:01 这一小时 heartbeat 没有重新升级成大面积 `execution_failed`，但公共输出契约仍未恢复；当前只是靠解析器继续吸收漂移，状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-24 00:30-01:00 最新巡检样本：
     - `run_id=5260-5271` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测`；sqlite 在 `00:30` 与 `01:00` 两批里仍以 `noop + skipped_noop` 为主，仅 `run_id=5281`（`持仓重大事件心跳检测`，`2026-04-24T01:00:46.272224+08:00`）触发并送达。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-24 00:30:10-00:30:44` 与 `01:00:06-01:00:44` 连续记录 `starts_with_json=false`；`TEM破位预警`、`CAI破位预警`、`小米30港元破位预警`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`TEM大事件心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测` 的 raw preview 仍以前置 `<think>` / 自由文本分析开头，再依赖 `JsonNoop`、`JsonEmptyStatus` 或 `JsonTriggered` 被解析器兜底。

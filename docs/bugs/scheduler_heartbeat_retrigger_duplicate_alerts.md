@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-24 01:00-02:00 最新巡检样本：
+      - `job_name=持仓重大事件心跳检测`
+      - `run_id=5281`，`executed_at=2026-04-24T01:00:46.272224+08:00`，落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 在 `01:00` 先发送 `TEM 与 USC Keck 医学院合作`、`ASTS Portnoy Law Firm 调查` 这组“增量事件”。
+      - 仅约一小时后，同一任务 `run_id=5302`，`executed_at=2026-04-24T02:00:42.242764+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把 `RKLB 4月23日第二次 JAXA 专属发射成功` 与 `ORCL 取消 Supermicro 合同` 组合成 `双重增量更新` 送达；其中 ORCL 合同取消已在 `run_id=5290`（`ORCL 大事件监控`，`2026-04-24T01:30:31.666448+08:00`）单独触发并送达，仅隔约 30 分钟又被持仓 heartbeat 重新包装成新提醒。
+      - `data/runtime/logs/sidecar.log` 在 `2026-04-24 02:00:39.116-02:00:39.118` 同步记录 `parse_kind=JsonTriggered` 与成功 `deliver`；raw preview 仍是自由文本分析后再从尾部抽取结构化结果，说明当前“什么算新增”仍由模型临场拼接，不是共享的稳定去重基线。
+      - 这组最新样本说明重复提醒已经不只发生在 ASTS/TEM 这类旧事件上；同一个用户目标下，`ORCL 取消 Supermicro 合同` 这种 01:30 刚单独播报过的事件，02:00 又会被持仓 heartbeat 二次包装为“新增”。它不阻断主功能链路，但会持续放大提醒噪音，因此继续按 `P3` 跟踪。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-23 17:31-18:01 最新巡检样本：
       - `job_name=持仓重大事件心跳检测`
       - `run_id=5099`，`executed_at=2026-04-23T17:31:15.674891+08:00`，落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
