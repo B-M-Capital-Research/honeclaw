@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-22 03:06 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=4840`
@@ -72,6 +72,16 @@ Feishu heartbeat scheduler 触发单标的价格/事件监控 -> function-callin
 ## 根因判断
 
 初步判断不是 Feishu 发送失败或通用 JSON 解析失败，而是 heartbeat 任务的条件判定缺少结构化、可验证的阈值计算层：模型自由文本可以同时存在“当前涨幅未超过阈值”和“日内高点/振幅超过阈值应触发”两套口径，调度器只消费最终 `triggered` 结果，没有校验触发原因与任务阈值语义是否一致。ASTS 新样本还显示价格时间换算也会漂移，进一步说明当前触发依据没有被机器校验。
+
+## 修复情况（2026-04-24）
+
+- 已在 `crates/hone-channels/src/scheduler.rs` 的 heartbeat prompt 规则里新增价格阈值口径约束：
+  - 除非任务明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”统一按最新可得价格相对昨收计算。
+  - 若只有日内高点、日内低点或高低点振幅命中阈值，而最新价格未命中，则必须返回 `noop`，不允许触发。
+- 这次修复直接针对 ORCL / ASTS 样本中“当前价未过线，但用日内高点或振幅硬触发”的提示词歧义；后续 heartbeat runner 会收到更明确的阈值口径约束，不再把 high/low range 当成 `涨跌幅` 的默认替代。
+- 新增回归测试：
+  - `cargo test -p hone-channels heartbeat_prompt_clarifies_price_threshold_semantics`
+  - `cargo test -p hone-channels scheduler::tests`
 
 ## 下一步建议
 

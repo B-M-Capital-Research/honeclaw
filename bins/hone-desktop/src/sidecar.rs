@@ -1579,8 +1579,9 @@ pub(crate) async fn check_agent_cli_impl(runner: String) -> Result<CliCheckResul
     let probe = hone_core::config::AgentRunnerKind::from_config_value(&runner)
         .cli_probe()
         .ok_or_else(|| format!("不支持的 runner: {runner}"))?;
+    let binary = probe.binary;
 
-    let mut command = tokio::process::Command::new(probe.binary);
+    let mut command = tokio::process::Command::new(binary);
     command.arg(probe.arg);
     let result = tokio::time::timeout(std::time::Duration::from_secs(8), command.output()).await;
 

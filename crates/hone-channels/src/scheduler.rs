@@ -322,13 +322,19 @@ fn is_max_iterations_error(text: &str) -> bool {
 pub(crate) fn has_skip_delivery_signal(text: &str) -> bool {
     let patterns = [
         "按规则应跳过正式推送",
+        "按规则可跳过正式推送",
+        "按规则可跳过",
         "无新增催化，跳过推送",
         "无新增催化,跳过推送",
+        "可跳过正式推送",
         "按规则跳过推送",
         "跳过本次推送",
         "本轮跳过推送",
         "本次不推送",
         "本轮不推送",
+        "不触发正式推送",
+        "不触发本次正式推送",
+        "无需正式推送",
         "无需推送",
     ];
     patterns.iter().any(|pat| text.contains(pat))
@@ -365,7 +371,9 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
 8. 价格时间口径约束：引用股价时，必须核实价格的时间戳。若市场已停盘、股票停牌或价格来自上一交易日，必须在 message 中明确标注（最新可得价格为停牌前/上一交易日），不允许把旧价格包装成事件发生后的即时市场反应。\n\
-9. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\
+9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
+10. 若最新可得价格相对昨收尚未达到阈值，但日内高点、日内低点或盘中振幅达到阈值，且任务没有明确要求这些口径，本轮必须返回 noop，不允许触发。\n\
+11. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\
 {}\
 \n以下是需要检查的用户条件：\n{}",
             event.job_name, history_section, event.task_prompt
@@ -945,8 +953,37 @@ mod tests {
         assert!(has_skip_delivery_signal(
             "AAOI 今日没有出现新的实质性催化或风险证伪信号，按规则应跳过正式推送，以下是背景分析..."
         ));
+        assert!(has_skip_delivery_signal(
+            "RKLB 今日未发现新的实质性催化或风险证伪信号，按规则可跳过正式推送。"
+        ));
+        assert!(has_skip_delivery_signal(
+            "TEM 今日无新增公司级催化，不触发正式推送。"
+        ));
         assert!(has_skip_delivery_signal("当前行情平稳，跳过本次推送。"));
         assert!(!has_skip_delivery_signal("AAOI 今日出现重大利好，建议关注"));
         assert!(!has_skip_delivery_signal(""));
+    }
+
+    #[test]
+    fn heartbeat_prompt_clarifies_price_threshold_semantics() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_threshold", None::<String>).expect("actor"),
+            job_id: "job-4".to_string(),
+            job_name: "ORCL 大事件监控".to_string(),
+            task_prompt: "若 ORCL 盘中涨跌幅超过 5%，提醒我".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_threshold".to_string(),
+            delivery_key: "delivery-4".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            last_delivered_previews: vec![],
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("盘中涨跌幅超过 X%"));
+        assert!(prompt.contains("不允许用日内高点相对昨收"));
+        assert!(prompt.contains("本轮必须返回 noop"));
     }
 }

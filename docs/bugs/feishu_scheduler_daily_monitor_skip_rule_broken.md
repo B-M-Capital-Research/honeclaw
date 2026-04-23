@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-20 01:01 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最新复发证据：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=5257`，`job_id=j_101f5e64`，`job_name=AAOI 每日动态监控`，`executed_at=2026-04-24T00:01:07.356294+08:00`
@@ -77,6 +77,20 @@
 - 当前“每日动态监控”链路缺少从自然语言结论回收到调度状态机的稳定收口步骤；既有止血可能只覆盖了有限 skip 关键词，未覆盖 `按规则可跳过`、`不触发正式推送` 等新变体。
 - 模型已经在正文里完成“应跳过”的判断，但上层仍按普通成功答复处理，未转成 `noop`。
 - 问题更像是 direct scheduler 模板与 heartbeat/noop 模板没有共享统一的“无需发送”协议，而不是单次数据误判。
+
+## 修复情况（2026-04-24）
+
+- 已在 `crates/hone-channels/src/scheduler.rs` 扩展 `has_skip_delivery_signal(...)` 的收口词表，新增覆盖：
+  - `按规则可跳过正式推送`
+  - `按规则可跳过`
+  - `可跳过正式推送`
+  - `不触发正式推送`
+  - `不触发本次正式推送`
+  - `无需正式推送`
+- 非 heartbeat 定时任务在成功返回后，会先经过这组更完整的 skip-signal 检查；命中后统一收口为 `should_deliver=false`，后续 Feishu 调度记录会落成 `noop + skipped_noop`，不再把“声明跳过”的正文继续外发。
+- 新增回归测试：
+  - `cargo test -p hone-channels skip_delivery_signal_detected`
+  - `cargo test -p hone-channels scheduler::tests`
 
 ## 下一步建议
 

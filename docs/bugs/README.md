@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-24 03:13 CST
+最后更新：2026-04-24 03:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：26
-- 已修复 / 已关闭：44
+- 活跃待修复：24
+- 已修复 / 已关闭：46
 - 历史分析 / 部分止血：4
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -33,10 +33,8 @@
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-24 03:00 `全天原油价格3小时播报` 再次 `completed + sent + delivered=1`；raw preview 仍把“以色列与伊朗冲突升级导致油价暴涨至近 $120/桶”“OPEC+ 虽同意增产但警告复苏缓慢”等高风险叙述当成近期主因播报 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | New | 2026-04-24 00:01 `AAOI 每日动态监控` 正文再次写“按规则可跳过正式推送”，但 `cron_job_runs` 仍落成 `completed + sent + delivered=1`；说明当前生产链路仍未把 skip 结论收口成 `noop` | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-24 02:30-03:00 heartbeat 仍普遍以 `starts_with_json=false`、`<think>` 前缀和 `JsonNoop/JsonEmptyStatus/JsonTriggered` 被兜底解析；`Monitor_Watchlist_11`、`持仓重大事件心跳检测`、`TEM大事件心跳监控` 与 `ASTS 重大异动心跳监控` 仍未恢复纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 将日内高点/区间振幅误判为涨跌幅阈值并发送错误触发提醒 | P2 | New | 2026-04-23 06:31 `ASTS 重大异动心跳监控` 再次 `JsonTriggered + sent`：当前/收盘价相对昨收仅 `+5.81%`，raw preview 也先判低于 8%，最终仍用日内高点相对昨收 `+9.71%` 判定“盘中涨跌幅超8%”；同根因曾在 ORCL 上把高低点振幅误判为涨跌幅 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-24 02:00 `持仓重大事件心跳检测` 又把 `ORCL 取消 Supermicro 合同` 包装成“双重增量更新”；该事件 01:30 已由 `ORCL 大事件监控` 单独送达，说明跨任务增量基线仍会重报同一催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-23 01:00 `Monitor_Watchlist_11` 再次落成 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
@@ -83,10 +81,12 @@
 | Feishu 直聊在处理中遭遇 runtime 重启风暴，placeholder 发出后整轮无最终回复 | P1 | Fixed | 2026-04-20 已在 `run()` 启动时扫描 30 分钟内 `last_message_role=user` 的直聊会话并补发失败提示，同时落库 assistant 失败消息防止重复 | [feishu_direct_runtime_restart_interrupts_inflight_reply.md](./feishu_direct_runtime_restart_interrupts_inflight_reply.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixed | 2026-04-20 已在 `openai_compatible.rs` 的 `chat` / `chat_with_tools` 中对传输层错误补一次自动重试（2 秒间隔） | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
 | Feishu 每日动态监控遇到 `codex acp stream closed before response` 后台账仍记为已发送 | P2 | Fixed | 2026-04-20 已将 `codex acp`/`stream closed before response`/`acp stream` 加入 `looks_internal_error_detail`，发送时自动替换为通用失败文案 | [feishu_scheduler_codex_acp_stream_closed_false_sent.md](./feishu_scheduler_codex_acp_stream_closed_false_sent.md) |
+| Heartbeat 将日内高点/区间振幅误判为涨跌幅阈值并发送错误触发提醒 | P2 | Fixed | 2026-04-24 已在 `scheduler.rs` 的 heartbeat prompt 明确“盘中涨跌幅”默认按最新价相对昨收判断，禁止用日内高点/低点或振幅替代；`cargo test -p hone-channels scheduler::tests` 通过 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
 | Feishu 直聊消息在已有同 session 任务处理中时仍先发送 placeholder，但未真正进入 agent 主链路 | P1 | Fixed | 2026-04-18 19:01 最新真实 busy 样本已只发送 `direct.busy` 并跳过 placeholder，live 复核通过 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |
 | Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | Fixed | `ea5229b` 已为 release helper 收口到 `.app` 启动形态、统一 `honeclaw/target` cache、并让 `launch.sh` 持续写入 `data/runtime/current.pid` 供重启链路可靠接管 | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
 | OpenAI-compatible 搜索阶段出现 tool-call 协议错位，`invalid params` 失败被统一收口成通用失败提示 | P1 | Fixed | 2026-04-16 已补齐搜索上下文清洗：同时移除历史 `tool` 与残留 assistant `tool_calls`，定向回归测试与 desktop release build 已通过 | [openai_compatible_tool_call_protocol_mismatch_invalid_params.md](./openai_compatible_tool_call_protocol_mismatch_invalid_params.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为"当前会话上下文过长"失败提示 | P2 | Fixed | 2026-04-20 在 context overflow compact 重试后改用更小的 restore limit（6 条消息），给 search 阶段留出足够上下文预算 | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
+| Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | Fixed | 2026-04-24 已扩展 scheduler skip-signal 词表，覆盖 `按规则可跳过正式推送`、`不触发正式推送` 等变体；命中后收口为 `noop + skipped_noop`，相关 `hone-channels` 测试通过 | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | Feishu 直聊自动 compact 后仍无法稳定完成新话题回答，同一旧会话会在成功与 fallback 间抖动 | P2 | Fixed | 2026-04-20 同上，compact 重试路径统一使用 CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT=6 | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-04-20 heartbeat context overflow 改为 ContextOverflowNoop（skipped_noop），本轮跳过下轮正常重试 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 | ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | Fixed | 2026-04-20 heartbeat prompt 补加时间一致性、价格时间口径、重复事件三条约束规则 | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |
