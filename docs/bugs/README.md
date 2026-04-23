@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-23 08:00 CST
+最后更新：2026-04-23 09:00 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,9 +14,9 @@
 
 ## 当前概览
 
-- 活跃待修复：21
+- 活跃待修复：25
 - 已修复 / 已关闭：44
-- 历史分析 / 部分止血：2
+- 历史分析 / 部分止血：4
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
 ## 活跃待修复
@@ -39,10 +39,14 @@
 | Heartbeat 将日内高点/区间振幅误判为涨跌幅阈值并发送错误触发提醒 | P2 | New | 2026-04-23 06:31 `ASTS 重大异动心跳监控` 再次 `JsonTriggered + sent`：当前/收盘价相对昨收仅 `+5.81%`，raw preview 也先判低于 8%，最终仍用日内高点相对昨收 `+9.71%` 判定“盘中涨跌幅超8%”；同根因曾在 ORCL 上把高低点振幅误判为涨跌幅 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-23 04:31 `持仓重大事件心跳检测` 在 02:00-04:01 连续 `noop` 后又把 01:30 已送达的 ASTS/FCC/BlueBird 旧事件投递为 `completed + sent + delivered=1`；05:00 才再次依赖上一轮投递记忆转回 `noop` | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-23 01:00 `Monitor_Watchlist_11` 再次落成 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
+| 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 19:30 `Monitor_Watchlist_11` 继续命中 `https://api.minimaxi.com/v1/chat/completions` 发送失败；20:00 同批主要漂移到 `JsonUnknownStatus`，传输吸震仍未稳定收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-23 04:03 与 06:03 `GetUpdates` 仍连接中断；listener 只记录 error 并重试，缺少持久健康状态；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Event-engine price poller 单次 FMP quote 抓取失败 | P3 | New | 2026-04-22 12:03 quote 批量请求连接被关闭；后续 poller 恢复且 `fmp.quote` 近 24h 有记录，暂按单 tick 丢失跟踪 | [event_engine_price_poller_transient_fetch_failure.md](./event_engine_price_poller_transient_fetch_failure.md) |
 | Event-engine high stock-news events lack sink delivery evidence | P2 | New | 2026-04-22 18:52 UTC 新增 `FLYYQ` high MarketWatch 事件仍无 `delivery_log` sink 行；同窗口也无 `sink delivered` 日志 | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |
+| Event-engine marks legal-ad style stock news as high severity | P2 | New | 2026-04-22 巡检确认 `class action` / `shareholder alert` 等律所模板在 24h high 事件中持续占比过高，可能消耗 high cap 并污染即时提醒 | [event_engine_legal_news_high_severity_noise.md](./event_engine_legal_news_high_severity_noise.md) |
+| Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | New | 2026-04-22 OpenRouter 403 / 反序列化失败让 uncertain-source 新闻 LLM 仲裁返回 `None`，重要新闻可能退回低优先级 digest 路径 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
+| Event-engine window convergence upgraded more than 20 news items in one tick | P3 | New | 2026-04-21 22:34 单 tick 记录 27 次 `Low→Medium (window convergence)`，后续 24h 仍有大量升级，可能降低 digest 质量 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
 | Event-engine social/event-source pollers repeat decode failures | P3 | New | 2026-04-23 02:37-05:37 CST generic event-source poller 继续 4 次 JSON decode 失败；日志仍缺 poller 字段，`telegram.watcherguru` 同窗有部分恢复 | [event_engine_social_source_decode_failures.md](./event_engine_social_source_decode_failures.md) |
 
 ## 已修复 / 已关闭
@@ -98,5 +102,7 @@
 
 | 主题 | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Event-engine logged dryrun high sends while config dryrun was false | P2 | Approved | 2026-04-22 最新进程已装配 `MultiChannelSink` 且无新增 `[dryrun sink]`，但历史高优先级事件可能只打印却被记 `sent`，未自动重放 | [event_engine_dryrun_sink_under_non_dryrun_config.md](./event_engine_dryrun_sink_under_non_dryrun_config.md) |
+| Event-engine enabled channel heartbeat write hit ENOSPC | P2 | Approved | 2026-04-22 后续 heartbeat 与磁盘空间恢复，原始 `No space left on device` 写失败仍缺持久 degraded 状态与容量根因 | [event_engine_heartbeat_enospc_write_failure.md](./event_engine_heartbeat_enospc_write_failure.md) |
 | opencode ACP `session/prompt timeout (300s)` 问题分析 | - | Fixed | 2026-04-13 已收口到 ACP runners 公共等待逻辑 | [opencode_acp_prompt_timeout.md](./opencode_acp_prompt_timeout.md) |
 | opencode ACP 相关的 Prompt 泄露与缓存失效问题分析 | - | Partial | Prompt Echo 已止血；完整多轮 message 级缓存复用仍未实现 | [opencode_prompt_issues.md](./opencode_prompt_issues.md) |
