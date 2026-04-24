@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-24 10:31-11:00 最新巡检样本：
+      - `job_name=ORCL 大事件监控`
+      - `run_id=5504`，`executed_at=2026-04-24T10:31:05.712383+08:00`，落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 再次把 `ORCL 取消与 Super Micro Computer 价值约 11-14 亿美元 GB300 NVL72 订单` 和 `ORCL 单日跌 5.98%` 组织成触发提醒；这不是新公告或新价格窗口，而是同一 4 月 23 日旧事实的再次送达。
+      - 仅约 29 分钟后，同一目标下 `job_name=持仓重大事件心跳检测` 的 `run_id=5515`，`executed_at=2026-04-24T11:00:44.592950+08:00`，又落成 `completed + sent + delivered=1`
+      - `response_preview` 再次把同一 `ORCL - SMCI大单取消，AI基础设施需求信号走弱` 作为持仓重大事件送达；`sidecar.log` 同步记录本轮仍把同一 ORCL 旧事件视为当前增量，而不是继承 10:31 已提醒事实。
+      - 同一 `11:00` 批次里，`run_id=5514`（`ORCL 大事件监控`）又退回 `noop + skipped_noop`，说明重复提醒已不只表现为“同一 job 跨窗口重报”，也表现为“一个专用 heartbeat 刚发完，同目标聚合 heartbeat 又在半小时内重复包装同一旧事实”。
+      - 这组最新样本说明重复提醒缺陷仍然活跃，并且影响范围已扩展到同一用户目标下的跨 job 重复送达。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-24 07:31-08:01 最新巡检样本：
       - `job_name=ORCL 大事件监控`
       - `run_id=5427`，`executed_at=2026-04-24T07:31:24.612850+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`

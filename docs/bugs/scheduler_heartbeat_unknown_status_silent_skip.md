@@ -6,6 +6,12 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 10:30-11:00 最新巡检样本：
+    - `run_id=5494-5503` 对应 `10:30` 整批 heartbeat，除 `run_id=5504` 的 `ORCL 大事件监控` 触发送达外，其余任务继续全部落成 `noop + skipped_noop + delivered=0`；其中 `run_id=5499`（`RKLB异动监控`）与 `run_id=5501`（`TEM大事件心跳监控`）再次出现 `parse_kind=JsonEmptyStatus`，说明结构化状态仍在不同模板间抖动。
+    - `run_id=5505-5515` 对应 `11:00` 下一批里，除 `run_id=5515` 的 `持仓重大事件心跳检测` 触发送达外，其余 heartbeat 再次全部是 `noop + skipped_noop`；`run_id=5514`（`ORCL 大事件监控`）刚在 10:31 送达过同一 ORCL 事件，11:00 这一轮又退回 `parse_kind=JsonEmptyStatus`，表明上游输出契约没有稳定恢复。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 10:30:08-10:30:43` 与 `11:00:10-11:00:41` 连续记录 `starts_with_json=false`；`run_id=5494`（`全天原油价格3小时播报`）、`run_id=5496`（`小米30港元破位预警`）、`run_id=5500`（`Monitor_Watchlist_11`）、`run_id=5503`（`ASTS 重大异动心跳监控`）、`run_id=5514`（`ORCL 大事件监控`）等样本的 `raw_preview` 仍统一以前置 `<think>` / 自由文本分析开头，再依赖 `JsonNoop` / `JsonEmptyStatus` / `JsonTriggered` 由解析器兜底。
+    - `run_id=5504`（`ORCL 大事件监控`）与 `run_id=5515`（`持仓重大事件心跳检测`）虽然成功送达，但日志仍显示送达正文来自 `starts_with_json=false` 的 `<think>...JSON` 尾部抽取，不是稳定的纯 JSON 首包。
+    - 结论：直到 11:00，heartbeat 公共输出仍没有恢复成“纯 JSON 首包 + 明确状态”；当前只是解析器继续吸收结构漂移，状态保持 `New`，严重等级维持 `P2`。
   - 2026-04-24 09:00-10:00 最新巡检样本：
     - `run_id=5457-5466` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 与 `Monitor_Watchlist_11`；除 `run_id=5462` 的 `全天原油价格3小时播报` 触发送达外，其余 heartbeat 在 `09:00-09:01` 这一批继续全部落成 `noop + skipped_noop + delivered=0`。
     - `run_id=5471-5481` 对应 `09:30` 下一批里，除 `run_id=5481` 的 `持仓重大事件心跳检测` 触发送达 ORCL 融资压力提醒外，其余 heartbeat 再次全部是 `noop + skipped_noop`；说明问题没有在 09:00 之后自然收口。
