@@ -3,8 +3,17 @@
 - **发现时间**: 2026-04-16 19:10 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
+  - 2026-04-24 16:46-16:49 最新真实回归样本：
+    - `data/runtime/logs/acp-events.log`
+      - `2026-04-24T08:47:02.018772+00:00`，`session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`，工具成功写入 `/Users/ecohnoch/Desktop/honeclaw/data/agent-sandboxes/feishu/direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21/company_profiles/soitec/profile.md`
+      - `2026-04-24T08:48:13.401516+00:00` 至 `2026-04-24T08:48:13.475069+00:00`，同一 actor sandbox 下再次成功写入 `company_profiles/alphabet/profile.md` 与 `company_profiles/alphabet/events/2026-04-24-initial-thesis.md`
+      - 同一小时检索 `acp-events.log` / `sidecar.log` 未再出现 `目录不存在: company_profiles`、`文件不存在: company_profiles` 或把缺目录解释给用户的样本
+    - `data/sessions.sqlite3`
+      - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
+      - 用户消息：`2026-04-24 16:46:58 CST`，`"请详细分析下谷歌"`
+      - assistant 最终在 `2026-04-24 16:49:12 CST` 返回 4954 字完整分析，期间运行日志已证明画像成功落到 actor sandbox；说明这条链路不再是“先报 company_profiles 路径错，再静默降级”
   - 2026-04-21 21:00 修复后回归样本：
     - `data/runtime/logs/acp-events.log`
       - `2026-04-21T13:00:04.165140+00:00`，`session_id=Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768`，工具返回 `工具执行错误: 目录不存在: company_profiles`
@@ -86,21 +95,9 @@
 
 ## 当前实现效果
 
-- 搜索代理持续把 `company_profiles` 当作当前工作目录相对路径使用，而不是 actor sandbox 下的真实画像目录。
-- `local_list_files` / `local_search_files` 在日志中明确报 `目录不存在` / `文件不存在`，但 reply 仍继续生成，导致故障只体现在质量退化上。
-- `2026-04-21 21:00` 修复后回归样本说明，当前生产 ACP 事件仍能返回 `目录不存在: company_profiles`，且 assistant 会把“本地没有现成目录”当作执行说明发给用户；问题已从单纯静默降级扩展为内部目录状态外泄到用户可见文本。
-- 最新 `21:01` 的两个样本说明该问题仍在活跃复现：
-  - `OWALERT_PreMarket` 定时任务刚启动就先命中 `local_list_files path="company_profiles"` 的目录不存在；
-  - 用户新问 `请对 FORM 进行下详细分析` 时也再次命中 `local_search_files ... path="company_profiles"` 的文件不存在。
-- 最新 `14:46` 的 `rklb，tem分析下` 会话说明，这条缺陷并不只会和 compact / fallback 叠加；即便主链路最后成功返回完整分析，搜索阶段仍会先连续两次撞上 `company_profiles` 路径错误，导致画像记忆在最新真实直聊中继续被静默跳过。
-- 最新 `12:23` 的 `GOOGL` 深度研究样本说明，这条缺陷已经从“抽象目录不存在”进一步暴露为“具体画像文件仍按相对路径读取”：
-  - agent 先发现并调用 `company_portrait` 技能，随后却仍直接读取 `company_profiles/GOOGL/profile.md`，说明技能链路与真实画像落盘/读取位置没有打通。
-  - 这次故障没有停留在静默降级；它与 `local_read_file path="."`、`local_search_files ... UTF-8` 等搜索噪音叠加后，一起把整轮 `GOOGL` 研究请求拖进了 `已达最大迭代次数 8`。
-- 最新 `23:54` 的 `UNH` 新话题会话说明，这类画像路径错误不只存在于深度分析模板里；即使用户显式切换新话题，搜索阶段仍会先尝试读取 `company_profiles`，并与后续 `context_overflow_recovery` 叠加放大长链路降级。
-- `2026-04-18 12:15` 的同一 `UNH` 会话再次证明，这不是前一晚遗留的一次性失败；compact 后重试仍会先命中 `company_profiles` 不存在，再把新问题拖回统一 fallback。
-- `18:43` 的 Dell 会话与 `10:24` 的“微软分析”、`10:46` 的“ciena 是否值得买入”都已经证明：即便后续能继续产出最终答复，搜索阶段依然没有成功读取任何长期画像记忆。
-- 最新 `17:00` 的 `分析AAOI` 会话里，这个路径错误还在 `context_overflow_recovery` 前后各复现一次，说明问题不仅继续存在，而且会与其他降级链路叠加放大响应耗时。
-- 由于主链路仍然成功返回，问题不会像空回复、误投递那样立刻暴露，而是以“回答不够连续、没吃到历史沉淀”的形式长期潜伏。
+- 2026-04-24 16:46-16:49 的真实 `GOOGL` 会话里，agent 已连续成功写入 actor sandbox 下的 `company_profiles/alphabet/profile.md` 与 `events/2026-04-24-initial-thesis.md`，同一 actor 稍早也成功写入 `company_profiles/soitec/profile.md`。
+- 最近一小时的 `acp-events.log` / `sidecar.log` 未再出现 `目录不存在: company_profiles`、`文件不存在: company_profiles` 或把缺目录解释给用户的可见文本；说明当前生产路径已能对齐到 `data/agent-sandboxes/<channel>/<scope__user>/company_profiles/...`。
+- 历史上这条缺陷确实长期存在，并且曾放大深度研究、compact 重试与定时任务链路的质量退化；但按本轮真实回归样本看，当前坏态已不再活跃。
 
 ## 用户影响
 
@@ -119,6 +116,10 @@
 根因确认：`ensure_actor_sandbox` 只创建 `uploads/` 和 `runtime/`，不创建 `company_profiles/`。当 runner 第一次对某用户初始化 sandbox 时，`local_list_files path="company_profiles"` 返回"目录不存在"而非空列表，导致模型把它当工具错误反复重试，最终耗尽迭代次数。
 
 修复：`crates/hone-channels/src/sandbox.rs` — `ensure_actor_sandbox` 增加 `fs::create_dir_all(root.join("company_profiles"))`，确保 sandbox 初始化时预建空目录，工具返回空列表而非路径错误。`cargo test -p hone-channels` 全部通过。
+
+## 回归情况（2026-04-24）
+
+2026-04-24 16:46-16:49 的真实 Feishu 直聊 `请详细分析下谷歌` 已连续成功写入 actor sandbox 下的 `company_profiles/alphabet/*`，同一 actor 稍早还成功写入 `company_profiles/soitec/profile.md`。本轮同时检索最近一小时 `acp-events.log` / `sidecar.log`，未再找到 `company_profiles` 相对路径不存在的错误样本。基于最新真实会话证据，这条缺陷状态更新为 `Fixed`。
 
 ## 回归情况（2026-04-21）
 
