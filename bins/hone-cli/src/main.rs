@@ -1,5 +1,6 @@
 mod cleanup;
 mod common;
+mod configure;
 mod discord_token;
 mod mutations;
 mod onboard;
@@ -11,13 +12,12 @@ mod start;
 mod yaml_io;
 
 use cleanup::{CleanupArgs, run_cleanup};
-use discord_token::prompt_optional_discord_token;
+use configure::{ConfigureArgs, run_configure};
 use mutations::{
     ChannelKind, ChannelSetArgs, ChannelToggleArgs, ModelsSetArgs, build_channel_mutations,
-    build_model_mutations, parse_csv_values, provider_key_mutation,
+    build_model_mutations,
 };
 use onboard::{OnboardArgs, run_onboard};
-use prompts::{prompt_bool, prompt_secret, prompt_text, prompt_visible_credential};
 use reports::{
     build_channel_reports, build_doctor_report, build_model_status, build_status_report,
     print_doctor_report_text,
@@ -27,14 +27,11 @@ use yaml_io::{
     yaml_value_from_cli,
 };
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use common::{load_cli_config, load_cli_core, resolve_runtime_paths};
-use dialoguer::theme::ColorfulTheme;
-use hone_core::config::{
-    ConfigMutation, is_sensitive_config_path, read_config_path_value, redact_sensitive_value,
-};
+use hone_core::config::{ConfigMutation, read_config_path_value, redact_sensitive_value};
 use serde::Serialize;
 use serde_yaml::Value;
 
@@ -145,12 +142,6 @@ struct ConfigSetArgs {
     value: String,
 }
 
-#[derive(Args, Debug)]
-struct ConfigureArgs {
-    #[arg(long = "section", value_enum)]
-    sections: Vec<ConfigureSection>,
-}
-
 /// `config set` / `config get` 的输出结构（用于 `--json` 模式序列化)。
 #[derive(Debug, Serialize)]
 struct MutationResult {
@@ -162,13 +153,6 @@ struct MutationResult {
     restart_required: bool,
     path: String,
     value: Value,
-}
-
-#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum ConfigureSection {
-    Agent,
-    Channels,
-    Providers,
 }
 
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
@@ -203,284 +187,6 @@ impl CliChatScope {
 /// `trim` 后非空判定。被 main.rs 及拆出的 `reports` module 共用。
 pub(crate) fn non_empty(value: &str) -> bool {
     !value.trim().is_empty()
-}
-
-fn sections_or_default(sections: &[ConfigureSection]) -> Vec<ConfigureSection> {
-    if sections.is_empty() {
-        vec![
-            ConfigureSection::Agent,
-            ConfigureSection::Channels,
-            ConfigureSection::Providers,
-        ]
-    } else {
-        sections.to_vec()
-    }
-}
-
-fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> Result<(), String> {
-    let (config, paths) = load_cli_config(config_path, true).map_err(|e| e.to_string())?;
-    let theme = ColorfulTheme::default();
-    let mut mutations = Vec::new();
-
-    for section in sections_or_default(&args.sections) {
-        match section {
-            ConfigureSection::Agent => {
-                let runner = prompt_text(&theme, "Runner", &config.agent.runner)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.runner".to_string(),
-                    value: Value::String(runner),
-                });
-
-                let codex_model =
-                    prompt_text(&theme, "Codex CLI model", &config.agent.codex_model)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.codex_model".to_string(),
-                    value: Value::String(codex_model),
-                });
-
-                let opencode_url = prompt_text(
-                    &theme,
-                    "Primary OpenAI-compatible base URL",
-                    &config.agent.opencode.api_base_url,
-                )?;
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.opencode.api_base_url".to_string(),
-                    value: Value::String(opencode_url.clone()),
-                });
-                let opencode_model =
-                    prompt_text(&theme, "Primary model", &config.agent.opencode.model)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.opencode.model".to_string(),
-                    value: Value::String(opencode_model.clone()),
-                });
-                let opencode_variant =
-                    prompt_text(&theme, "Primary variant", &config.agent.opencode.variant)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.opencode.variant".to_string(),
-                    value: Value::String(opencode_variant.clone()),
-                });
-                if let Some(api_key) = prompt_secret(
-                    &theme,
-                    "Primary API key",
-                    is_sensitive_config_path("agent.opencode.api_key"),
-                )? {
-                    mutations.push(ConfigMutation::Set {
-                        path: "agent.opencode.api_key".to_string(),
-                        value: Value::String(api_key),
-                    });
-                }
-
-                let aux_base =
-                    prompt_text(&theme, "Auxiliary base URL", &config.llm.auxiliary.base_url)?;
-                let aux_model =
-                    prompt_text(&theme, "Auxiliary model", &config.llm.auxiliary.model)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "llm.auxiliary.base_url".to_string(),
-                    value: Value::String(aux_base),
-                });
-                mutations.push(ConfigMutation::Set {
-                    path: "llm.auxiliary.model".to_string(),
-                    value: Value::String(aux_model.clone()),
-                });
-                mutations.push(ConfigMutation::Set {
-                    path: "llm.openrouter.sub_model".to_string(),
-                    value: Value::String(aux_model),
-                });
-                if let Some(api_key) = prompt_secret(&theme, "Auxiliary API key", true)? {
-                    mutations.push(ConfigMutation::Set {
-                        path: "llm.auxiliary.api_key".to_string(),
-                        value: Value::String(api_key),
-                    });
-                }
-
-                let search_base = prompt_text(
-                    &theme,
-                    "Multi-agent search base URL",
-                    &config.agent.multi_agent.search.base_url,
-                )?;
-                let search_model = prompt_text(
-                    &theme,
-                    "Multi-agent search model",
-                    &config.agent.multi_agent.search.model,
-                )?;
-                let search_iterations = prompt_text(
-                    &theme,
-                    "Multi-agent search max iterations",
-                    &config.agent.multi_agent.search.max_iterations.to_string(),
-                )?;
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.multi_agent.search.base_url".to_string(),
-                    value: Value::String(search_base),
-                });
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.multi_agent.search.model".to_string(),
-                    value: Value::String(search_model),
-                });
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.multi_agent.search.max_iterations".to_string(),
-                    value: Value::Number(serde_yaml::Number::from(
-                        search_iterations
-                            .parse::<u32>()
-                            .map_err(|e| e.to_string())?,
-                    )),
-                });
-                if let Some(api_key) = prompt_secret(&theme, "Multi-agent search API key", true)? {
-                    mutations.push(ConfigMutation::Set {
-                        path: "agent.multi_agent.search.api_key".to_string(),
-                        value: Value::String(api_key),
-                    });
-                }
-
-                let answer_base = prompt_text(
-                    &theme,
-                    "Multi-agent answer base URL",
-                    &config.agent.multi_agent.answer.api_base_url,
-                )?;
-                let answer_model = prompt_text(
-                    &theme,
-                    "Multi-agent answer model",
-                    &config.agent.multi_agent.answer.model,
-                )?;
-                let answer_variant = prompt_text(
-                    &theme,
-                    "Multi-agent answer variant",
-                    &config.agent.multi_agent.answer.variant,
-                )?;
-                let answer_tool_calls = prompt_text(
-                    &theme,
-                    "Multi-agent answer max tool calls",
-                    &config.agent.multi_agent.answer.max_tool_calls.to_string(),
-                )?;
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.multi_agent.answer.api_base_url".to_string(),
-                    value: Value::String(answer_base),
-                });
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.multi_agent.answer.model".to_string(),
-                    value: Value::String(answer_model),
-                });
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.multi_agent.answer.variant".to_string(),
-                    value: Value::String(answer_variant),
-                });
-                mutations.push(ConfigMutation::Set {
-                    path: "agent.multi_agent.answer.max_tool_calls".to_string(),
-                    value: Value::Number(serde_yaml::Number::from(
-                        answer_tool_calls
-                            .parse::<u32>()
-                            .map_err(|e| e.to_string())?,
-                    )),
-                });
-                if let Some(api_key) = prompt_secret(&theme, "Multi-agent answer API key", true)? {
-                    mutations.push(ConfigMutation::Set {
-                        path: "agent.multi_agent.answer.api_key".to_string(),
-                        value: Value::String(api_key),
-                    });
-                }
-            }
-            ConfigureSection::Channels => {
-                let imessage_enabled =
-                    prompt_bool(&theme, "Enable iMessage channel?", config.imessage.enabled)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "imessage.enabled".to_string(),
-                    value: Value::Bool(imessage_enabled),
-                });
-
-                let feishu_enabled =
-                    prompt_bool(&theme, "Enable Feishu channel?", config.feishu.enabled)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "feishu.enabled".to_string(),
-                    value: Value::Bool(feishu_enabled),
-                });
-                let feishu_app_id = prompt_text(&theme, "Feishu app id", &config.feishu.app_id)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "feishu.app_id".to_string(),
-                    value: Value::String(feishu_app_id),
-                });
-                if let Some(secret) = prompt_secret(&theme, "Feishu app secret", true)? {
-                    mutations.push(ConfigMutation::Set {
-                        path: "feishu.app_secret".to_string(),
-                        value: Value::String(secret),
-                    });
-                }
-
-                let telegram_enabled =
-                    prompt_bool(&theme, "Enable Telegram channel?", config.telegram.enabled)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "telegram.enabled".to_string(),
-                    value: Value::Bool(telegram_enabled),
-                });
-                if let Some(token) = prompt_visible_credential(
-                    &theme,
-                    "Telegram bot token",
-                    true,
-                    &config.telegram.bot_token,
-                )? {
-                    mutations.push(ConfigMutation::Set {
-                        path: "telegram.bot_token".to_string(),
-                        value: Value::String(token),
-                    });
-                }
-
-                let discord_enabled =
-                    prompt_bool(&theme, "Enable Discord channel?", config.discord.enabled)?;
-                mutations.push(ConfigMutation::Set {
-                    path: "discord.enabled".to_string(),
-                    value: Value::Bool(discord_enabled),
-                });
-                if let Some(token) = prompt_optional_discord_token(
-                    &theme,
-                    "Discord bot token",
-                    &config.discord.bot_token,
-                    true,
-                )? {
-                    mutations.push(ConfigMutation::Set {
-                        path: "discord.bot_token".to_string(),
-                        value: Value::String(token),
-                    });
-                }
-            }
-            ConfigureSection::Providers => {
-                if let Some(keys) = prompt_secret(&theme, "OpenRouter API keys（逗号分隔）", true)?
-                {
-                    mutations.push(provider_key_mutation(
-                        "llm.openrouter.api_keys",
-                        parse_csv_values(&keys),
-                    ));
-                    mutations.push(ConfigMutation::Set {
-                        path: "llm.openrouter.api_key".to_string(),
-                        value: Value::String(String::new()),
-                    });
-                }
-                if let Some(keys) = prompt_secret(&theme, "FMP API keys（逗号分隔）", true)? {
-                    mutations.push(provider_key_mutation(
-                        "fmp.api_keys",
-                        parse_csv_values(&keys),
-                    ));
-                    mutations.push(ConfigMutation::Set {
-                        path: "fmp.api_key".to_string(),
-                        value: Value::String(String::new()),
-                    });
-                }
-                if let Some(keys) = prompt_secret(&theme, "Tavily API keys（逗号分隔）", true)?
-                {
-                    mutations.push(provider_key_mutation(
-                        "search.api_keys",
-                        parse_csv_values(&keys),
-                    ));
-                }
-            }
-        }
-    }
-
-    let result = apply_mutations_and_generate(&paths, &mutations)?;
-    println!("{}", apply_message(&result.apply));
-    println!(
-        "config={} effective={}",
-        paths.canonical_config_path.to_string_lossy(),
-        paths.effective_config_path.to_string_lossy()
-    );
-    Ok(())
 }
 
 async fn run_cli() -> Result<(), String> {

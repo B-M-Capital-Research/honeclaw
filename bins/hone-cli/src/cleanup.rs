@@ -22,7 +22,7 @@ use std::{env, fs};
 use clap::Args;
 use dialoguer::theme::ColorfulTheme;
 
-use crate::prompt_bool;
+use crate::prompts::prompt_bool;
 
 /// `cleanup` 子命令的 CLI 参数。
 #[derive(Args, Debug, Default)]
