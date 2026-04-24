@@ -14,15 +14,17 @@
 //! `core.log_message_step(...)`；想用 `&dyn AuditRecorder` 替代 `&HoneBotCore`
 //! 的调用点可以逐个迁移，不用一次改完。
 //!
-//! 已抽出的 trait：
+//! 已抽出的 trait（全部 6 项）：
 //! - [`AuditRecorder`]       —— 消息流审计日志 (log_message_{received,step,finished,failed})
 //! - [`AdminIntercept`]      —— 管理员判定与 runtime 拦截命令
 //! - [`PathResolver`]        —— 运行时路径查询 (configured_*_dir)
 //! - [`RunnerFactory`]       —— 根据 agent.runner 配置创建具体 AgentRunner
 //! - [`ToolRegistryFactory`] —— 为当前 actor 构造 ToolRegistry（含权限过滤）
+//! - [`LlmProviderBundle`]   —— 主 / auxiliary LLM provider + audit sink 访问器
 //!
-//! 待抽（后续 session）：
-//! - LlmProviderBundle（primary / auxiliary / multi_agent 三条 LLM 路由句柄）
+//! 全部 trait 都是「HoneBotCore 已有能力的契约版本」,目前 HoneBotCore 通过
+//! 转发到 inherent method / pub field 实现。调用方还没有被迁移到 `&dyn Trait`,
+//! 这是下一阶段的工作（每个调用点单独决策,不会一次大改）。
 //!
 //! ## 为什么不一次做完
 //!
@@ -33,9 +35,11 @@
 
 use async_trait::async_trait;
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use hone_core::ActorIdentity;
 use hone_core::agent::AgentResponse;
+use hone_core::{ActorIdentity, LlmAuditSink};
+use hone_llm::LlmProvider;
 use hone_tools::ToolRegistry;
 
 use crate::core::HoneBotCore;
@@ -182,6 +186,29 @@ pub trait RunnerFactory: Send + Sync {
         tool_registry: ToolRegistry,
         model_override: Option<&str>,
     ) -> Result<Box<dyn AgentRunner>, String>;
+}
+
+/// LLM provider / audit sink 访问器。
+///
+/// 当前 `HoneBotCore` 把这三项暴露成 `pub` 字段,直接 `core.llm.clone()`
+/// 就能拿到 `Arc<dyn LlmProvider>`;这样很顺手但也让「依赖了一个 LLM 路由」
+/// 这件事隐形：审视一个模块是否需要 LLM 得翻代码。抽 trait 之后,把这种
+/// 依赖显式化成 `&dyn LlmProviderBundle`,同时为测试 mock 打开通道。
+pub trait LlmProviderBundle: Send + Sync {
+    /// 主对话 LLM（走 `agent.runner` 选定的路径;可能未配置,返回 `None`）。
+    fn primary_llm(&self) -> Option<Arc<dyn LlmProvider>>;
+
+    /// 辅助 LLM（heartbeat / session compaction 等后台任务使用）。
+    fn auxiliary_llm(&self) -> Option<Arc<dyn LlmProvider>>;
+
+    /// 审计落盘 sink（启用时把 LLM 请求 / 响应保存到 SQLite）。
+    fn llm_audit_sink(&self) -> Option<Arc<dyn LlmAuditSink>>;
+
+    /// 辅助 LLM 的显示用模型名称（降级时会回落到 openrouter.sub_model）。
+    fn auxiliary_model_name(&self) -> String;
+
+    /// 辅助 LLM 的 `(provider_display, model_display)`,供前端展示。
+    fn auxiliary_provider_hint(&self) -> (String, String);
 }
 
 /// 工具注册表工厂：根据 actor 身份和渠道 target 构造一份 `ToolRegistry`。
@@ -349,6 +376,28 @@ impl ToolRegistryFactory for HoneBotCore {
     }
 }
 
+impl LlmProviderBundle for HoneBotCore {
+    fn primary_llm(&self) -> Option<Arc<dyn LlmProvider>> {
+        self.llm.clone()
+    }
+
+    fn auxiliary_llm(&self) -> Option<Arc<dyn LlmProvider>> {
+        self.auxiliary_llm.clone()
+    }
+
+    fn llm_audit_sink(&self) -> Option<Arc<dyn LlmAuditSink>> {
+        self.llm_audit.clone()
+    }
+
+    fn auxiliary_model_name(&self) -> String {
+        HoneBotCore::auxiliary_model_name(self)
+    }
+
+    fn auxiliary_provider_hint(&self) -> (String, String) {
+        HoneBotCore::auxiliary_provider_hint(self)
+    }
+}
+
 impl PathResolver for HoneBotCore {
     fn configured_system_skills_dir(&self) -> PathBuf {
         HoneBotCore::configured_system_skills_dir(self)
@@ -404,5 +453,10 @@ mod tests {
     #[test]
     fn hone_bot_core_is_object_safe_tool_registry_factory() {
         fn _assert<T: ToolRegistryFactory + ?Sized>(_: &T) {}
+    }
+
+    #[test]
+    fn hone_bot_core_is_object_safe_llm_provider_bundle() {
+        fn _assert<T: LlmProviderBundle + ?Sized>(_: &T) {}
     }
 }
