@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 14:30-15:01 最新巡检样本：
+    - `run_id=5583-5594` 对应 `14:30` 整批 heartbeat，除 `run_id=5583` 的 `全天原油价格3小时播报` 因非触发小时落成 `noop + skipped_noop` 外，CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测` 再次全部落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=5594-5601` 对应 `15:01` 下一批里，除 `run_id=5602` 的 `全天原油价格3小时播报` 触发送达外，其余 heartbeat 再次全部是 `noop + skipped_noop`；最新整点窗口仍没有恢复任何“纯 JSON 首包 + 明确状态”的稳定样本。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 14:30:09-14:30:39` 与 `15:01:06-15:01:31` 连续记录 `starts_with_json=false`；`run_id=5588`（`RKLB异动监控`）与 `run_id=5599`（`Monitor_Watchlist_11`）再次出现 `parse_kind=JsonEmptyStatus` 且正文仍是 `<think> ... {}`，`run_id=5594`（`ORCL 大事件监控`）则在 13:30 已触发过一次后，15:01 又退回 `<think>` 长文分析并被 `JsonNoop` 静默吞掉。
+    - 同批 `2026-04-24 15:01:19-15:01:32` 还重复出现 Tavily `usage limit` 告警，但 `ASTS 重大异动心跳监控`、`RKLB异动监控` 与 `Monitor_Watchlist_11` 最终仍被解析成 `JsonNoop/JsonEmptyStatus`；说明最近一小时主问题仍是 heartbeat 公共 JSON 契约持续漂移，而不是新的独立发送故障。
+    - 结论：直到 `2026-04-24 15:01`，heartbeat 公共输出仍没有恢复成“纯 JSON 首包 + 明确状态”；当前只是解析器继续吸收结构漂移，状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-24 13:31-14:01 最新巡检样本：
     - `run_id=5571` 对应 `13:31` 的 `持仓重大事件心跳检测`，以及 `run_id=5572-5581` 对应 `14:01` 下一批 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`小米30港元破位预警`、`TEM大事件心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控` 与 `ORCL 大事件监控`，全部再次落成 `noop + skipped_noop + delivered=0`。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-24 14:01:06-14:01:25` 连续记录 `starts_with_json=false`；`run_id=5572`（`全天原油价格3小时播报`）继续先解释“14 不在 [0, 3, 6, 9, 12, 15, 18, 21]”再尾部补 noop，`run_id=5574`（`小米破位预警`）再次出现 `parse_kind=JsonEmptyStatus` 且正文是 `<think> ... {}`，`run_id=5577`（`TEM大事件心跳监控`）、`run_id=5579`（`Monitor_Watchlist_11`）、`run_id=5580`（`ASTS 重大异动心跳监控`）与 `run_id=5581`（`ORCL 大事件监控`）继续先输出长段自由文本分析，再被 `JsonNoop` / `JsonEmptyStatus` 兜底跳过。

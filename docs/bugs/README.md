@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-24 14:01 CST
+最后更新：2026-04-24 15:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -31,10 +31,10 @@
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-23 巡检未找到已提交修复覆盖 Codex WebSocket/HTTPS 回退、`wss://chatgpt.com/backend-api/codex/responses`、`cf-ray`、`unexpected status 403` 等内部传输残留；不能维持 Fixed | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-24 11:11 Feishu 直聊 `分析一下胜宏科技` 仍在检测到 ACP compact 后把 `Context compacted` 直接送进用户可见 final；23:01 的局部恢复不能视为稳定修复 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-24 12:00 `全天原油价格3小时播报` 已送达，但同一条正文同时写出 `WTI $98.32/桶` 与 `日内高点 $84.13`，并继续拼接 OPEC+/霍尔木兹等确定性归因；问题已扩展到价格字段自相矛盾 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-24 15:01 `全天原油价格3小时播报` 再次已送达，把 `霍尔木兹海峡保持关闭`、美伊对峙升级等高风险叙述写成确定性归因；同批 Tavily 仍有 `usage limit` 降级 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | New | 2026-04-21 21:00 ACP 事件仍记录 `工具执行错误: 目录不存在: company_profiles`，且 assistant chunk 对用户解释“本地没有现成的 company_profiles/ 目录”，说明 2026-04-20 修复未覆盖当前生产路径 | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-24 13:31-14:01 heartbeat 再次整批 `noop + skipped_noop`；`sidecar.log` 仍显示 `starts_with_json=false`、`<think>` 前缀，以及中英混合模板继续落成 `JsonNoop/JsonEmptyStatus`，说明最近一小时仍未恢复纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-24 14:30-15:01 heartbeat 再次整批 `noop + skipped_noop`；`sidecar.log` 仍显示 `starts_with_json=false`、`<think>` 前缀，且 `RKLB异动监控` / `Monitor_Watchlist_11` 继续落成 `JsonEmptyStatus` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-24 10:31 的 `ORCL 大事件监控` 刚发送 `SMCI 大单取消`，11:00 的 `持仓重大事件心跳检测` 又把同一 ORCL 旧事实重新包装成新增送达，出现同目标跨 job 重复提醒 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-23 01:00 `Monitor_Watchlist_11` 再次落成 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |

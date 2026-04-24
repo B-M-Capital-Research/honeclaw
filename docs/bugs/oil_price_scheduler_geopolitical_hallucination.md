@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=5602`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-04-24T15:01:39.275252+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `should_deliver=1`
+    - `delivered=1`
+    - `response_preview` 再次向用户发送：`WTI原油：$96.55/桶，日涨幅+0.73%`、`布伦特原油：$106.18/桶，日涨幅+1.06%`，并把 `中东局势持续紧张`、`美伊围绕霍尔木兹海峡的对峙升级`、`该战略通道保持关闭状态`、`以色列-黎巴嫩停火协议延长3周` 写成近期波动原因。
+    - 这说明 12:01 的“价格字段自相矛盾”之后，15:00 整点播报仍继续把未经充分核验的地缘链条组织成确定性归因；问题没有因为上一轮时间窗或价格修正而自然消失。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-24 15:01:35.368-15:01:35.369` 记录同一任务 `parse_kind=JsonTriggered`、`starts_with_json=false`，`raw_preview` 明确先列出价格，再把 `霍尔木兹海峡关闭`、`市场担忧伊朗战争持续` 等叙述直接拼进触发正文。
+    - 同批 `15:01:19-15:01:32` 多次记录 `tavily request failed ... usage limit`，说明外部搜索链路仍有配额降级噪声，但最终仍生成并投递了确定性地缘结论。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=5537`
     - `job_name=全天原油价格3小时播报`
     - `executed_at=2026-04-24T12:01:51.692857+08:00`
