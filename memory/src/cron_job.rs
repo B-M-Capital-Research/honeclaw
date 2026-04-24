@@ -3,7 +3,7 @@
 //! 管理按 actor（channel + user_id + channel_scope）隔离的定时任务持久化存储。
 
 use chrono::{Datelike, NaiveDate, Timelike};
-use hone_core::ActorIdentity;
+use hone_core::{ActorIdentity, beijing_offset};
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,8 +12,6 @@ use std::path::{Path, PathBuf};
 use tracing::warn;
 use uuid::Uuid;
 
-/// 北京时间偏移（+8h）
-const BEIJING_OFFSET: i32 = 8 * 3600;
 /// 每个 actor 同时启用中的最大定时任务数
 pub const MAX_ENABLED_JOBS_PER_ACTOR: usize = 12;
 /// 容错窗口（分钟）— 向过去看 5 分钟，覆盖 LLM 处理时间导致的时间窗口错过
@@ -979,7 +977,7 @@ fn beijing_slot_time(
 ) -> chrono::DateTime<chrono::FixedOffset> {
     day.and_hms_opt(hour, minute, 0)
         .expect("valid cron slot time")
-        .and_local_timezone(chrono::FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"))
+        .and_local_timezone(beijing_offset())
         .single()
         .expect("fixed offset slot")
 }
@@ -1069,7 +1067,6 @@ fn us_market_holidays(year: i32) -> Vec<NaiveDate> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::FixedOffset;
     use chrono::Timelike;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1149,8 +1146,7 @@ mod tests {
         let storage = CronJobStorage::new(&dir);
         let actor = actor("imessage", "u1", None);
 
-        let now_bj = chrono::Utc::now()
-            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"));
+        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
 
@@ -1197,8 +1193,7 @@ mod tests {
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_real", None);
 
-        let now_bj = chrono::Utc::now()
-            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"));
+        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
 
@@ -1250,8 +1245,7 @@ mod tests {
         let primary_actor = actor("feishu", "ou_real", None);
         let other_actor = actor("feishu", "ou_other", None);
 
-        let now_bj = chrono::Utc::now()
-            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"));
+        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
 
@@ -1465,8 +1459,7 @@ mod tests {
         assert_eq!(add["success"], true);
         let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
 
-        let now_bj = chrono::Utc::now()
-            .with_timezone(&FixedOffset::east_opt(BEIJING_OFFSET).expect("offset"));
+        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
         let due_first =
             storage.get_due_jobs(10, 30, now_bj.weekday().num_days_from_monday(), &["feishu"]);
         assert_eq!(due_first.len(), 1);
