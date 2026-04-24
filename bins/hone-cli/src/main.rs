@@ -1,16 +1,27 @@
 mod cleanup;
 mod common;
 mod discord_token;
+mod mutations;
 mod probe;
 mod repl;
 mod reports;
 mod start;
+mod yaml_io;
 
 use cleanup::{CleanupArgs, run_cleanup};
 use discord_token::{DiscordTokenValidation, validate_discord_token};
+use mutations::{
+    ChannelKind, ChannelSetArgs, ChannelToggleArgs, ModelsSetArgs, build_channel_mutations,
+    build_model_mutations, build_provider_api_key_mutations, parse_csv_values,
+    provider_key_mutation,
+};
 use reports::{
     binary_check, build_channel_reports, build_doctor_report, build_model_status,
     build_status_report, print_doctor_report_text,
+};
+use yaml_io::{
+    apply_message, apply_mutations_and_generate, print_json, value_to_pretty_text,
+    yaml_value_from_cli,
 };
 
 use std::io::IsTerminal;
@@ -20,8 +31,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use common::{load_cli_config, load_cli_core, resolve_runtime_paths};
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 use hone_core::config::{
-    ConfigApplyPlan, ConfigMutation, apply_config_mutations, generate_effective_config,
-    is_sensitive_config_path, read_config_path_value, redact_sensitive_value,
+    ConfigMutation, is_sensitive_config_path, read_config_path_value, redact_sensitive_value,
 };
 use serde::Serialize;
 use serde_yaml::Value;
@@ -149,23 +159,15 @@ enum ConfigureSection {
     Providers,
 }
 
-#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
-enum ChannelKind {
-    Imessage,
-    Feishu,
-    Telegram,
-    Discord,
-}
-
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum CliChatScope {
+pub(crate) enum CliChatScope {
     DmOnly,
     GroupchatOnly,
     All,
 }
 
 impl CliChatScope {
-    fn as_config_value(&self) -> &'static str {
+    pub(crate) fn as_config_value(&self) -> &'static str {
         match self {
             Self::DmOnly => "DM_ONLY",
             Self::GroupchatOnly => "GROUPCHAT_ONLY",
@@ -253,76 +255,6 @@ struct ProviderOnboardSpec {
     notes: &'static [&'static str],
 }
 
-#[derive(Args, Debug)]
-struct ModelsSetArgs {
-    #[arg(long)]
-    runner: Option<String>,
-    #[arg(long)]
-    model: Option<String>,
-    #[arg(long)]
-    variant: Option<String>,
-    #[arg(long)]
-    base_url: Option<String>,
-    #[arg(long)]
-    api_key: Option<String>,
-    #[arg(long)]
-    codex_model: Option<String>,
-    #[arg(long)]
-    codex_acp_model: Option<String>,
-    #[arg(long)]
-    codex_acp_variant: Option<String>,
-    #[arg(long)]
-    aux_base_url: Option<String>,
-    #[arg(long)]
-    aux_api_key: Option<String>,
-    #[arg(long)]
-    aux_model: Option<String>,
-    #[arg(long)]
-    search_base_url: Option<String>,
-    #[arg(long)]
-    search_api_key: Option<String>,
-    #[arg(long)]
-    search_model: Option<String>,
-    #[arg(long)]
-    search_max_iterations: Option<u32>,
-    #[arg(long)]
-    answer_base_url: Option<String>,
-    #[arg(long)]
-    answer_api_key: Option<String>,
-    #[arg(long)]
-    answer_model: Option<String>,
-    #[arg(long)]
-    answer_variant: Option<String>,
-    #[arg(long)]
-    answer_max_tool_calls: Option<u32>,
-}
-
-#[derive(Args, Debug)]
-struct ChannelSetArgs {
-    channel: ChannelKind,
-    #[arg(long)]
-    enabled: Option<bool>,
-    #[arg(long)]
-    target_handle: Option<String>,
-    #[arg(long)]
-    db_path: Option<String>,
-    #[arg(long)]
-    poll_interval: Option<u64>,
-    #[arg(long)]
-    app_id: Option<String>,
-    #[arg(long)]
-    app_secret: Option<String>,
-    #[arg(long)]
-    bot_token: Option<String>,
-    #[arg(long, value_enum)]
-    chat_scope: Option<CliChatScope>,
-}
-
-#[derive(Args, Debug)]
-struct ChannelToggleArgs {
-    channel: ChannelKind,
-}
-
 #[derive(Debug, Serialize)]
 struct MutationResult {
     config_path: String,
@@ -333,19 +265,6 @@ struct MutationResult {
     restart_required: bool,
     path: String,
     value: Value,
-}
-
-fn apply_message(plan: &ConfigApplyPlan) -> String {
-    if plan.restart_required {
-        return "配置已保存，需重启运行时".to_string();
-    }
-    if !plan.restarted_components.is_empty() {
-        return format!(
-            "配置已保存，并需重启组件：{}",
-            plan.restarted_components.join(", ")
-        );
-    }
-    "配置已保存，已立即生效".to_string()
 }
 
 fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
@@ -526,7 +445,7 @@ fn resolve_required_field_attempt(
     }
 }
 
-fn normalize_credential_value(raw: &str) -> String {
+pub(crate) fn normalize_credential_value(raw: &str) -> String {
     raw.trim().to_string()
 }
 
@@ -811,21 +730,6 @@ fn prompt_chat_scope(
     Ok(scopes[idx].clone())
 }
 
-fn build_provider_api_key_mutations(
-    key_path: &str,
-    legacy_single_key_path: Option<&str>,
-    keys: Vec<String>,
-) -> Vec<ConfigMutation> {
-    let mut mutations = vec![provider_key_mutation(key_path, keys)];
-    if let Some(path) = legacy_single_key_path {
-        mutations.push(ConfigMutation::Set {
-            path: path.to_string(),
-            value: Value::String(String::new()),
-        });
-    }
-    mutations
-}
-
 fn has_configured_search_keys(config: &hone_core::HoneConfig) -> bool {
     !config
         .search
@@ -873,276 +777,9 @@ fn prompt_onboard_provider_keys(
     }
 }
 
-fn apply_mutations_and_generate(
-    paths: &common::ResolvedRuntimePaths,
-    mutations: &[ConfigMutation],
-) -> Result<hone_core::config::ConfigMutationResult, String> {
-    let mut result = apply_config_mutations(&paths.canonical_config_path, mutations)
-        .map_err(|e| e.to_string())?;
-    result.config_revision =
-        generate_effective_config(&paths.canonical_config_path, &paths.effective_config_path)
-            .map_err(|e| e.to_string())?;
-    Ok(result)
-}
-
-fn yaml_value_from_cli(raw: &str) -> Result<Value, String> {
-    serde_yaml::from_str(raw).map_err(|e| format!("无法解析配置值: {e}"))
-}
-
-fn value_to_pretty_text(value: &Value) -> String {
-    match value {
-        Value::Null => "null".to_string(),
-        Value::Bool(v) => v.to_string(),
-        Value::Number(v) => v.to_string(),
-        Value::String(v) => v.clone(),
-        _ => serde_yaml::to_string(value)
-            .unwrap_or_else(|_| "<unable to render>".to_string())
-            .trim()
-            .to_string(),
-    }
-}
-
-fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
-    let rendered = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    println!("{rendered}");
-    Ok(())
-}
-
 /// `trim` 后非空判定。被 main.rs 及拆出的 `reports` module 共用。
 pub(crate) fn non_empty(value: &str) -> bool {
     !value.trim().is_empty()
-}
-
-fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMutation>, String> {
-    let mut mutations = Vec::new();
-    let mut push = |path: &str, value: Value| {
-        mutations.push(ConfigMutation::Set {
-            path: path.to_string(),
-            value,
-        });
-    };
-
-    if let Some(value) = &args.runner {
-        push("agent.runner", Value::String(value.clone()));
-    }
-    if let Some(value) = &args.codex_model {
-        push("agent.codex_model", Value::String(value.clone()));
-    }
-    if let Some(value) = &args.codex_acp_model {
-        push("agent.codex_acp.model", Value::String(value.clone()));
-    }
-    if let Some(value) = &args.codex_acp_variant {
-        push("agent.codex_acp.variant", Value::String(value.clone()));
-    }
-
-    if let Some(value) = &args.base_url {
-        push("agent.opencode.api_base_url", Value::String(value.clone()));
-        push(
-            "agent.multi_agent.answer.api_base_url",
-            Value::String(value.clone()),
-        );
-    }
-    if let Some(value) = &args.api_key {
-        let normalized = normalize_credential_value(value);
-        push("agent.opencode.api_key", Value::String(normalized.clone()));
-        push(
-            "agent.multi_agent.answer.api_key",
-            Value::String(normalized),
-        );
-    }
-    if let Some(value) = &args.model {
-        push("agent.opencode.model", Value::String(value.clone()));
-        push(
-            "agent.multi_agent.answer.model",
-            Value::String(value.clone()),
-        );
-    }
-    if let Some(value) = &args.variant {
-        push("agent.opencode.variant", Value::String(value.clone()));
-        push(
-            "agent.multi_agent.answer.variant",
-            Value::String(value.clone()),
-        );
-    }
-
-    if let Some(value) = &args.aux_base_url {
-        push("llm.auxiliary.base_url", Value::String(value.clone()));
-    }
-    if let Some(value) = &args.aux_api_key {
-        push(
-            "llm.auxiliary.api_key",
-            Value::String(normalize_credential_value(value)),
-        );
-    }
-    if let Some(value) = &args.aux_model {
-        push("llm.auxiliary.model", Value::String(value.clone()));
-        push("llm.openrouter.sub_model", Value::String(value.clone()));
-    }
-
-    if let Some(value) = &args.search_base_url {
-        push(
-            "agent.multi_agent.search.base_url",
-            Value::String(value.clone()),
-        );
-    }
-    if let Some(value) = &args.search_api_key {
-        push(
-            "agent.multi_agent.search.api_key",
-            Value::String(normalize_credential_value(value)),
-        );
-    }
-    if let Some(value) = &args.search_model {
-        push(
-            "agent.multi_agent.search.model",
-            Value::String(value.clone()),
-        );
-    }
-    if let Some(value) = args.search_max_iterations {
-        push(
-            "agent.multi_agent.search.max_iterations",
-            Value::Number(serde_yaml::Number::from(value)),
-        );
-    }
-
-    if let Some(value) = &args.answer_base_url {
-        push(
-            "agent.multi_agent.answer.api_base_url",
-            Value::String(value.clone()),
-        );
-    }
-    if let Some(value) = &args.answer_api_key {
-        push(
-            "agent.multi_agent.answer.api_key",
-            Value::String(normalize_credential_value(value)),
-        );
-    }
-    if let Some(value) = &args.answer_model {
-        push(
-            "agent.multi_agent.answer.model",
-            Value::String(value.clone()),
-        );
-    }
-    if let Some(value) = &args.answer_variant {
-        push(
-            "agent.multi_agent.answer.variant",
-            Value::String(value.clone()),
-        );
-    }
-    if let Some(value) = args.answer_max_tool_calls {
-        push(
-            "agent.multi_agent.answer.max_tool_calls",
-            Value::Number(serde_yaml::Number::from(value)),
-        );
-    }
-
-    if mutations.is_empty() {
-        return Err("至少提供一个 models set 参数".to_string());
-    }
-    Ok(mutations)
-}
-
-fn build_channel_mutations(args: &ChannelSetArgs) -> Result<Vec<ConfigMutation>, String> {
-    let mut mutations = Vec::new();
-    let mut push = |path: &str, value: Value| {
-        mutations.push(ConfigMutation::Set {
-            path: path.to_string(),
-            value,
-        });
-    };
-
-    match args.channel {
-        ChannelKind::Imessage => {
-            if let Some(value) = args.enabled {
-                push("imessage.enabled", Value::Bool(value));
-            }
-            if let Some(value) = &args.target_handle {
-                push("imessage.target_handle", Value::String(value.clone()));
-            }
-            if let Some(value) = &args.db_path {
-                push("imessage.db_path", Value::String(value.clone()));
-            }
-            if let Some(value) = args.poll_interval {
-                push(
-                    "imessage.poll_interval",
-                    Value::Number(serde_yaml::Number::from(value)),
-                );
-            }
-        }
-        ChannelKind::Feishu => {
-            if let Some(value) = args.enabled {
-                push("feishu.enabled", Value::Bool(value));
-            }
-            if let Some(value) = &args.app_id {
-                push("feishu.app_id", Value::String(value.clone()));
-            }
-            if let Some(value) = &args.app_secret {
-                push(
-                    "feishu.app_secret",
-                    Value::String(normalize_credential_value(value)),
-                );
-            }
-            if let Some(value) = &args.chat_scope {
-                push(
-                    "feishu.chat_scope",
-                    Value::String(value.as_config_value().to_string()),
-                );
-            }
-        }
-        ChannelKind::Telegram => {
-            if let Some(value) = args.enabled {
-                push("telegram.enabled", Value::Bool(value));
-            }
-            if let Some(value) = &args.bot_token {
-                push(
-                    "telegram.bot_token",
-                    Value::String(normalize_credential_value(value)),
-                );
-            }
-            if let Some(value) = &args.chat_scope {
-                push(
-                    "telegram.chat_scope",
-                    Value::String(value.as_config_value().to_string()),
-                );
-            }
-        }
-        ChannelKind::Discord => {
-            if let Some(value) = args.enabled {
-                push("discord.enabled", Value::Bool(value));
-            }
-            if let Some(value) = &args.bot_token {
-                push(
-                    "discord.bot_token",
-                    Value::String(normalize_credential_value(value)),
-                );
-            }
-            if let Some(value) = &args.chat_scope {
-                push(
-                    "discord.chat_scope",
-                    Value::String(value.as_config_value().to_string()),
-                );
-            }
-        }
-    }
-
-    if mutations.is_empty() {
-        return Err("至少提供一个 channels set 参数".to_string());
-    }
-    Ok(mutations)
-}
-
-fn provider_key_mutation(path: &str, keys: Vec<String>) -> ConfigMutation {
-    ConfigMutation::Set {
-        path: path.to_string(),
-        value: Value::Sequence(keys.into_iter().map(Value::String).collect()),
-    }
-}
-
-fn parse_csv_values(raw: &str) -> Vec<String> {
-    raw.split(',')
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .map(ToString::to_string)
-        .collect()
 }
 
 fn prompt_text(theme: &ColorfulTheme, prompt: &str, current: &str) -> Result<String, String> {
@@ -2221,205 +1858,6 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
-    }
-
-    #[test]
-    fn build_model_mutations_mirrors_primary_to_multi_agent_answer() {
-        let args = ModelsSetArgs {
-            runner: Some("opencode_acp".to_string()),
-            model: Some("openrouter/openai/gpt-5.4".to_string()),
-            variant: Some("medium".to_string()),
-            base_url: Some("https://openrouter.ai/api/v1".to_string()),
-            api_key: Some("sk-test".to_string()),
-            codex_model: None,
-            codex_acp_model: None,
-            codex_acp_variant: None,
-            aux_base_url: None,
-            aux_api_key: None,
-            aux_model: None,
-            search_base_url: None,
-            search_api_key: None,
-            search_model: None,
-            search_max_iterations: None,
-            answer_base_url: None,
-            answer_api_key: None,
-            answer_model: None,
-            answer_variant: None,
-            answer_max_tool_calls: None,
-        };
-
-        let mutations = build_model_mutations(&args).unwrap();
-        assert!(mutations.iter().any(|mutation| matches!(mutation, ConfigMutation::Set { path, .. } if path == "agent.opencode.model")));
-        assert!(mutations.iter().any(|mutation| matches!(mutation, ConfigMutation::Set { path, .. } if path == "agent.multi_agent.answer.model")));
-    }
-
-    #[test]
-    fn build_model_mutations_trim_secret_values() {
-        let args = ModelsSetArgs {
-            runner: None,
-            model: None,
-            variant: None,
-            base_url: None,
-            api_key: Some("  sk-primary  ".to_string()),
-            codex_model: None,
-            codex_acp_model: None,
-            codex_acp_variant: None,
-            aux_base_url: None,
-            aux_api_key: Some("  sk-aux  ".to_string()),
-            aux_model: None,
-            search_base_url: None,
-            search_api_key: Some("  sk-search  ".to_string()),
-            search_model: None,
-            search_max_iterations: None,
-            answer_base_url: None,
-            answer_api_key: Some("  sk-answer  ".to_string()),
-            answer_model: None,
-            answer_variant: None,
-            answer_max_tool_calls: None,
-        };
-
-        let mutations = build_model_mutations(&args).unwrap();
-        assert!(mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "agent.opencode.api_key" && value == "sk-primary"
-        )));
-        assert!(mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "llm.auxiliary.api_key" && value == "sk-aux"
-        )));
-        assert!(mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "agent.multi_agent.search.api_key" && value == "sk-search"
-        )));
-        assert!(mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "agent.multi_agent.answer.api_key" && value == "sk-answer"
-        )));
-    }
-
-    #[test]
-    fn build_channel_mutations_supports_telegram_toggle_and_token() {
-        let args = ChannelSetArgs {
-            channel: ChannelKind::Telegram,
-            enabled: Some(true),
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
-            app_secret: None,
-            bot_token: Some("token".to_string()),
-            chat_scope: Some(CliChatScope::All),
-        };
-
-        let mutations = build_channel_mutations(&args).unwrap();
-        assert_eq!(mutations.len(), 3);
-        assert!(mutations.iter().any(|mutation| matches!(mutation, ConfigMutation::Set { path, value: Value::Bool(true) } if path == "telegram.enabled")));
-    }
-
-    #[test]
-    fn build_channel_mutations_trim_secret_values() {
-        let telegram_args = ChannelSetArgs {
-            channel: ChannelKind::Telegram,
-            enabled: None,
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
-            app_secret: None,
-            bot_token: Some("  tg-token  ".to_string()),
-            chat_scope: None,
-        };
-        let feishu_args = ChannelSetArgs {
-            channel: ChannelKind::Feishu,
-            enabled: None,
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
-            app_secret: Some("  fs-secret  ".to_string()),
-            bot_token: None,
-            chat_scope: None,
-        };
-        let discord_args = ChannelSetArgs {
-            channel: ChannelKind::Discord,
-            enabled: None,
-            target_handle: None,
-            db_path: None,
-            poll_interval: None,
-            app_id: None,
-            app_secret: None,
-            bot_token: Some("  dc-token  ".to_string()),
-            chat_scope: None,
-        };
-
-        let telegram_mutations = build_channel_mutations(&telegram_args).unwrap();
-        let feishu_mutations = build_channel_mutations(&feishu_args).unwrap();
-        let discord_mutations = build_channel_mutations(&discord_args).unwrap();
-
-        assert!(telegram_mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "telegram.bot_token" && value == "tg-token"
-        )));
-        assert!(feishu_mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "feishu.app_secret" && value == "fs-secret"
-        )));
-        assert!(discord_mutations.iter().any(|mutation| matches!(
-            mutation,
-            ConfigMutation::Set { path, value: Value::String(value) }
-                if path == "discord.bot_token" && value == "dc-token"
-        )));
-    }
-
-    #[test]
-    fn build_provider_api_key_mutations_clears_legacy_fmp_single_key() {
-        let mutations = build_provider_api_key_mutations(
-            "fmp.api_keys",
-            Some("fmp.api_key"),
-            vec!["key-a".to_string(), "key-b".to_string()],
-        );
-
-        assert_eq!(mutations.len(), 2);
-        assert!(matches!(
-            &mutations[0],
-            ConfigMutation::Set {
-                path,
-                value: Value::Sequence(values),
-            } if path == "fmp.api_keys"
-                && values == &vec![
-                    Value::String("key-a".to_string()),
-                    Value::String("key-b".to_string()),
-                ]
-        ));
-        assert!(matches!(
-            &mutations[1],
-            ConfigMutation::Set {
-                path,
-                value: Value::String(value),
-            } if path == "fmp.api_key" && value.is_empty()
-        ));
-    }
-
-    #[test]
-    fn build_provider_api_key_mutations_sets_tavily_keys_without_legacy_field() {
-        let mutations =
-            build_provider_api_key_mutations("search.api_keys", None, vec!["tvly-1".to_string()]);
-
-        assert_eq!(mutations.len(), 1);
-        assert!(matches!(
-            &mutations[0],
-            ConfigMutation::Set {
-                path,
-                value: Value::Sequence(values),
-            } if path == "search.api_keys"
-                && values == &vec![Value::String("tvly-1".to_string())]
-        ));
     }
 
     #[test]
