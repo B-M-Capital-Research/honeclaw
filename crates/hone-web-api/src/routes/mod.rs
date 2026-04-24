@@ -181,6 +181,9 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/auth/me", get(public::handle_me))
         .route("/history", get(public::handle_history))
         .route("/chat", post(public::handle_chat))
+        .route("/upload", post(public::handle_upload))
+        .route("/image", get(public::handle_public_image))
+        .route("/file", get(public::handle_public_file))
         .route("/events", get(public::handle_events))
         .layer(cors)
         .with_state(state.clone());

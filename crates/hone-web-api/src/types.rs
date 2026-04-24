@@ -33,6 +33,21 @@ pub struct PublicInviteLoginRequest {
 #[derive(Deserialize)]
 pub struct PublicChatRequest {
     pub message: Option<String>,
+    pub attachments: Option<Vec<PublicChatAttachmentInput>>,
+}
+
+#[derive(Deserialize)]
+pub struct PublicChatAttachmentInput {
+    pub path: String,
+    pub name: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct PublicUploadedAttachment {
+    pub path: String,
+    pub name: String,
+    pub kind: String,
+    pub size: u64,
 }
 
 #[derive(Serialize)]

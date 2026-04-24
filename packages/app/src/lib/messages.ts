@@ -48,12 +48,19 @@ export function historyToTimeline(messages: HistoryMsg[]): TimelineMessage[] {
       subtype: message.subtype,
       synthetic: message.synthetic,
       transcriptOnly: message.transcript_only,
+      attachments: message.attachments ?? [],
     }))
 }
 
-export function parseMessageContent(text: string) {
+export type ParseMessageOptions = {
+  /** Image-proxy endpoint to use when a `file://` URL is rewritten. Defaults to `/api/image`. */
+  imageEndpoint?: string
+}
+
+export function parseMessageContent(text: string, options: ParseMessageOptions = {}) {
   const parts: MessagePart[] = []
   let lastIndex = 0
+  const endpoint = options.imageEndpoint ?? "/api/image"
 
   for (const match of text.matchAll(imagePattern)) {
     const start = match.index ?? 0
@@ -70,7 +77,7 @@ export function parseMessageContent(text: string) {
     } else {
       parts.push({
         type: "image",
-        value: buildApiUrl(`/api/image?path=${encodeURIComponent(uri.replace("file://", ""))}`),
+        value: buildApiUrl(`${endpoint}?path=${encodeURIComponent(uri.replace("file://", ""))}`),
       })
     }
 

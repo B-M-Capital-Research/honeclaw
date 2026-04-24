@@ -1,13 +1,15 @@
 use std::convert::Infallible;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Multipart, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response, sse::Event, sse::KeepAlive, sse::Sse};
 use serde_json::json;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
+use uuid::Uuid;
 
 use hone_core::ActorIdentity;
 
@@ -15,7 +17,14 @@ use crate::public_auth::PublicAuthLimitStatus;
 use crate::routes::chat::build_chat_sse;
 use crate::routes::history::history_from_messages;
 use crate::state::{AppState, PushEvent};
-use crate::types::{PublicAuthUserInfo, PublicChatRequest, PublicInviteLoginRequest};
+use crate::types::{
+    PublicAuthUserInfo, PublicChatRequest, PublicInviteLoginRequest, PublicUploadedAttachment,
+};
+
+/// Upper bounds enforced when users upload files through the public chat.
+/// Kept conservative so a misbehaving client can't fill disk with a single request.
+const PUBLIC_UPLOAD_MAX_FILES: usize = 4;
+const PUBLIC_UPLOAD_MAX_BYTES: usize = 10 * 1024 * 1024;
 
 const WEB_SESSION_COOKIE: &str = "hone_web_session";
 const WEB_SESSION_MAX_AGE_SECS: i64 = 30 * 24 * 60 * 60;
@@ -170,11 +179,252 @@ pub(crate) async fn handle_chat(
         Err(error) => return crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()),
     };
     let message = request.message.unwrap_or_default().trim().to_string();
-    if message.is_empty() {
+    let attachments = request.attachments.unwrap_or_default();
+
+    if message.is_empty() && attachments.is_empty() {
         return crate::routes::json_error(StatusCode::BAD_REQUEST, "消息不能为空");
     }
 
-    build_chat_sse(state, Ok(actor), message, 0).into_response()
+    let user_upload_root = public_upload_dir(&state, &user.user_id);
+    let mut validated_paths = Vec::with_capacity(attachments.len());
+    for attachment in &attachments {
+        match validate_public_upload_path(&user_upload_root, &attachment.path) {
+            Ok(path) => validated_paths.push(path),
+            Err(response) => return response,
+        }
+    }
+
+    let attachments_count = validated_paths.len();
+    let combined_message = compose_message_with_attachments(&message, &validated_paths);
+
+    build_chat_sse(state, Ok(actor), combined_message, attachments_count).into_response()
+}
+
+pub(crate) async fn handle_upload(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Response {
+    let user = match require_public_user(&state, &headers) {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+
+    let upload_root = public_upload_dir(&state, &user.user_id);
+    let day = hone_core::beijing_now().format("%Y-%m-%d").to_string();
+    let target_dir = upload_root.join(&day);
+    if let Err(error) = std::fs::create_dir_all(&target_dir) {
+        return crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("创建上传目录失败: {error}"),
+        );
+    }
+
+    let mut stored: Vec<PublicUploadedAttachment> = Vec::new();
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(error) => {
+                return crate::routes::json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("读取 multipart 失败: {error}"),
+                );
+            }
+        };
+        // We accept either `file` or `files` as the form field name; other fields are ignored.
+        let field_name = field.name().unwrap_or_default().to_string();
+        if field_name != "file" && field_name != "files" {
+            continue;
+        }
+        let original_name = field
+            .file_name()
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "attachment".to_string());
+        let bytes = match field.bytes().await {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return crate::routes::json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("读取上传数据失败: {error}"),
+                );
+            }
+        };
+        if bytes.is_empty() {
+            continue;
+        }
+        if bytes.len() > PUBLIC_UPLOAD_MAX_BYTES {
+            return crate::routes::json_error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                format!(
+                    "单个附件过大，最大 {} MB",
+                    PUBLIC_UPLOAD_MAX_BYTES / 1024 / 1024
+                ),
+            );
+        }
+        if stored.len() >= PUBLIC_UPLOAD_MAX_FILES {
+            return crate::routes::json_error(
+                StatusCode::BAD_REQUEST,
+                format!("单次最多上传 {PUBLIC_UPLOAD_MAX_FILES} 个附件"),
+            );
+        }
+
+        let safe_name = sanitize_attachment_name(&original_name);
+        let stored_name = format!("{}-{}", Uuid::new_v4().simple(), safe_name);
+        let final_path = target_dir.join(&stored_name);
+        if let Err(error) = std::fs::write(&final_path, &bytes) {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("写入附件失败: {error}"),
+            );
+        }
+
+        stored.push(PublicUploadedAttachment {
+            path: final_path.to_string_lossy().to_string(),
+            name: safe_name,
+            kind: classify_attachment_kind(&original_name),
+            size: bytes.len() as u64,
+        });
+    }
+
+    if stored.is_empty() {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, "未收到文件");
+    }
+
+    Json(json!({ "attachments": stored })).into_response()
+}
+
+/// Per-user upload root. Lives under the configured sessions dir so the existing
+/// `/api/image` and `/api/file` proxy whitelist already covers reads.
+fn public_upload_dir(state: &AppState, user_id: &str) -> PathBuf {
+    let base = PathBuf::from(&state.core.config.storage.sessions_dir);
+    base.join("public-uploads").join(sanitize_user_id(user_id))
+}
+
+fn compose_message_with_attachments(message: &str, attachment_paths: &[PathBuf]) -> String {
+    if attachment_paths.is_empty() {
+        return message.to_string();
+    }
+    let att = attachment_paths
+        .iter()
+        .map(|path| format!("[附件: {}]", path.to_string_lossy()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if message.is_empty() {
+        att
+    } else {
+        format!("{message}\n{att}")
+    }
+}
+
+/// Only accept attachment paths that sit inside this user's upload root, so the
+/// chat endpoint can't be used to reference arbitrary files on disk.
+fn validate_public_upload_path(upload_root: &Path, raw_path: &str) -> Result<PathBuf, Response> {
+    let cleaned = raw_path.trim().strip_prefix("file://").unwrap_or(raw_path);
+    if cleaned.is_empty() {
+        return Err(crate::routes::json_error(
+            StatusCode::BAD_REQUEST,
+            "附件路径为空",
+        ));
+    }
+    let path = PathBuf::from(cleaned);
+    let canonical_root =
+        std::fs::canonicalize(upload_root).unwrap_or_else(|_| upload_root.to_path_buf());
+    let canonical_target = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    if !canonical_target.starts_with(&canonical_root) {
+        return Err(crate::routes::json_error(
+            StatusCode::FORBIDDEN,
+            "附件路径不在允许范围内",
+        ));
+    }
+    if !canonical_target.is_file() {
+        return Err(crate::routes::json_error(
+            StatusCode::NOT_FOUND,
+            "附件不存在",
+        ));
+    }
+    Ok(canonical_target)
+}
+
+fn sanitize_user_id(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for byte in raw.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_') {
+            out.push(char::from(*byte));
+        } else {
+            out.push('-');
+        }
+    }
+    let trimmed = out.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "anonymous".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn sanitize_attachment_name(raw: &str) -> String {
+    let stem = Path::new(raw)
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|| "attachment".to_string());
+    let mut out = String::with_capacity(stem.len());
+    for ch in stem.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    let trimmed = out.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "attachment".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn classify_attachment_kind(name: &str) -> String {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".png")
+        || lower.ends_with(".jpg")
+        || lower.ends_with(".jpeg")
+        || lower.ends_with(".gif")
+        || lower.ends_with(".webp")
+        || lower.ends_with(".bmp")
+    {
+        "image".to_string()
+    } else if lower.ends_with(".pdf") {
+        "pdf".to_string()
+    } else {
+        "file".to_string()
+    }
+}
+
+pub(crate) async fn handle_public_image(
+    state: State<Arc<AppState>>,
+    headers: HeaderMap,
+    query: axum::extract::Query<crate::types::ImageQuery>,
+) -> Response {
+    if let Err(response) = require_public_user(&state, &headers) {
+        return response;
+    }
+    crate::routes::files::handle_image(state, query)
+        .await
+        .into_response()
+}
+
+pub(crate) async fn handle_public_file(
+    state: State<Arc<AppState>>,
+    headers: HeaderMap,
+    query: axum::extract::Query<crate::types::ImageQuery>,
+) -> Response {
+    if let Err(response) = require_public_user(&state, &headers) {
+        return response;
+    }
+    crate::routes::files::handle_file(state, query)
+        .await
+        .into_response()
 }
 
 pub(crate) async fn handle_events(

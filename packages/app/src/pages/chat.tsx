@@ -22,20 +22,68 @@ import {
   publicInviteLogin,
   publicLogout,
   sendPublicChat,
+  uploadPublicAttachments,
+  type PublicChatAttachmentInput,
 } from "@/lib/api";
+import { buildApiUrl } from "@/lib/backend";
 import { parseMessageContent, messageId } from "@/lib/messages";
 import {
   normalizeInviteCode,
   normalizePhoneNumber,
   resolvePublicChatView,
+  stripAttachmentMarkers,
   toPublicChatMessages,
 } from "@/lib/public-chat";
 import { parseSseChunks } from "@/lib/stream";
 import type { PublicAuthUserInfo } from "@/lib/types";
 import type {
+  PublicChatAttachment,
   PublicChatAuthState as AuthState,
   PublicChatMessage as ChatMessage,
 } from "@/lib/public-chat";
+
+const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
+const MAX_ATTACHMENTS = 4;
+
+function publicAttachmentUrl(att: PublicChatAttachment): string {
+  if (att.previewUrl) return att.previewUrl;
+  return buildApiUrl(
+    `${PUBLIC_IMAGE_ENDPOINT}?path=${encodeURIComponent(att.path)}`,
+  );
+}
+
+function formatBytes(bytes?: number) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function fileExtension(name: string) {
+  const parts = name.split(".");
+  return parts.length > 1
+    ? parts[parts.length - 1]!.toUpperCase().slice(0, 4)
+    : "FILE";
+}
+
+function classifyKind(file: File) {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type === "application/pdf") return "pdf";
+  return "file";
+}
+
+function renamePasteFile(file: File) {
+  const ext = file.type.split("/")[1]?.split(";")[0] || "bin";
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")
+    .replace("T", "_")
+    .slice(0, 19);
+  return new File([file], `pasted-${stamp}.${ext}`, {
+    type: file.type,
+    lastModified: file.lastModified,
+  });
+}
 
 function formatElapsed(startedAt?: number) {
   if (!startedAt) return "0s";
@@ -333,7 +381,10 @@ function assistantMarkdownClass(extra: string = "") {
 }
 
 function AssistantBody(props: { content: string; white?: boolean }) {
-  const parts = createMemo(() => parseMessageContent(props.content));
+  const cleaned = createMemo(() => stripAttachmentMarkers(props.content));
+  const parts = createMemo(() =>
+    parseMessageContent(cleaned(), { imageEndpoint: PUBLIC_IMAGE_ENDPOINT }),
+  );
   const hasImage = () => parts().some((part) => part.type === "image");
   const markdownClass = () =>
     assistantMarkdownClass(props.white ? "!text-white [&_*]:!text-white" : "");
@@ -341,13 +392,18 @@ function AssistantBody(props: { content: string; white?: boolean }) {
   return (
     <Show
       when={hasImage()}
-      fallback={<Markdown text={props.content} class={markdownClass()} />}
+      fallback={<Markdown text={cleaned()} class={markdownClass()} />}
     >
       <For each={parts()}>
         {(part) => (
           <Switch>
             <Match when={part.type === "image"}>
-              <img src={part.value} alt="" class="mt-2 max-w-full rounded-lg" />
+              <img
+                src={part.value}
+                alt=""
+                class="hone-assistant-image mt-2 max-w-full cursor-zoom-in rounded-lg"
+                data-testid="assistant-inline-image"
+              />
             </Match>
             <Match when={part.type === "text"}>
               <Markdown text={part.value} class={markdownClass()} />
@@ -359,7 +415,175 @@ function AssistantBody(props: { content: string; white?: boolean }) {
   );
 }
 
-function UserBubble(props: { content: string }) {
+function ImageMosaic(props: {
+  images: PublicChatAttachment[];
+  onOpen: (index: number) => void;
+  inUserBubble?: boolean;
+}) {
+  const count = () => props.images.length;
+
+  return (
+    <Show
+      when={count() === 1}
+      fallback={
+        <div
+          style={{
+            display: "grid",
+            "grid-template-columns": `repeat(${count() === 2 ? 2 : 2}, 1fr)`,
+            gap: "2px",
+            "border-radius": "12px",
+            overflow: "hidden",
+            "max-width": "380px",
+            "aspect-ratio": count() === 2 ? "2 / 1" : "1 / 1",
+          }}
+        >
+          <For each={props.images.slice(0, 4)}>
+            {(img, index) => (
+              <div
+                onClick={() => props.onOpen(index())}
+                style={{
+                  position: "relative",
+                  cursor: "zoom-in",
+                  overflow: "hidden",
+                  background: "#f1f5f9",
+                  ...(count() === 3 && index() === 0
+                    ? { "grid-row": "span 2" }
+                    : {}),
+                }}
+              >
+                <img
+                  src={publicAttachmentUrl(img)}
+                  alt={img.name}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    "object-fit": "cover",
+                    display: "block",
+                  }}
+                  data-testid="user-attachment-image"
+                />
+              </div>
+            )}
+          </For>
+        </div>
+      }
+    >
+      <div
+        onClick={() => props.onOpen(0)}
+        style={{
+          "border-radius": "12px",
+          overflow: "hidden",
+          cursor: "zoom-in",
+          "max-width": "380px",
+          "line-height": "0",
+          position: "relative",
+        }}
+      >
+        <img
+          src={publicAttachmentUrl(props.images[0]!)}
+          alt={props.images[0]!.name}
+          style={{ width: "100%", height: "auto", display: "block" }}
+          data-testid="user-attachment-image"
+        />
+      </div>
+    </Show>
+  );
+}
+
+function FileCard(props: { file: PublicChatAttachment; inUserBubble?: boolean }) {
+  const ext = () => fileExtension(props.file.name);
+  const iconBg = () =>
+    props.inUserBubble ? "rgba(255,255,255,0.22)" : "rgba(245,158,11,0.12)";
+  const iconColor = () => (props.inUserBubble ? "#fff" : "#d97706");
+  const textColor = () =>
+    props.inUserBubble ? "rgba(255,255,255,0.95)" : "#0f172a";
+  const subColor = () =>
+    props.inUserBubble ? "rgba(255,255,255,0.75)" : "#64748b";
+  return (
+    <div
+      style={{
+        display: "flex",
+        "align-items": "center",
+        gap: "12px",
+        padding: "8px 10px",
+        background: props.inUserBubble
+          ? "rgba(255,255,255,0.10)"
+          : "rgba(0,0,0,0.02)",
+        border: props.inUserBubble
+          ? "1px solid rgba(255,255,255,0.15)"
+          : "1px solid rgba(0,0,0,0.06)",
+        "border-radius": "10px",
+        "min-width": "220px",
+      }}
+      data-testid="attachment-file-card"
+    >
+      <div
+        style={{
+          width: "40px",
+          height: "40px",
+          "border-radius": "8px",
+          background: iconBg(),
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "center",
+          "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
+          "font-size": "10px",
+          "font-weight": "700",
+          color: iconColor(),
+          "letter-spacing": "0.04em",
+          "flex-shrink": "0",
+        }}
+      >
+        {ext()}
+      </div>
+      <div style={{ flex: "1", "min-width": "0" }}>
+        <div
+          style={{
+            "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+            "font-size": "13px",
+            "font-weight": "600",
+            color: textColor(),
+            "white-space": "nowrap",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+          }}
+        >
+          {props.file.name}
+        </div>
+        <Show when={props.file.size}>
+          <div
+            style={{
+              "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
+              "font-size": "11px",
+              color: subColor(),
+              "margin-top": "2px",
+            }}
+          >
+            {formatBytes(props.file.size)}
+          </div>
+        </Show>
+      </div>
+    </div>
+  );
+}
+
+function UserBubble(props: {
+  content: string;
+  attachments?: PublicChatAttachment[];
+  onOpenImage: (images: PublicChatAttachment[], index: number) => void;
+}) {
+  const cleaned = createMemo(() => stripAttachmentMarkers(props.content));
+  const images = createMemo(() =>
+    (props.attachments ?? []).filter((a) => a.kind === "image"),
+  );
+  const files = createMemo(() =>
+    (props.attachments ?? []).filter((a) => a.kind !== "image"),
+  );
+  const hasText = () => cleaned().length > 0;
+  const hasAttach = () => images().length + files().length > 0;
+  const imageOnly = () =>
+    images().length > 0 && !hasText() && files().length === 0;
+
   return (
     <div
       class="pub-msg-in"
@@ -375,7 +599,7 @@ function UserBubble(props: { content: string }) {
           background: "#f59e0b",
           color: "#fff",
           "border-radius": "18px 18px 4px 18px",
-          padding: "11px 16px",
+          padding: imageOnly() ? "4px" : "11px 16px",
           "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
           "font-size": "14px",
           "line-height": "1.65",
@@ -384,13 +608,48 @@ function UserBubble(props: { content: string }) {
           "word-break": "break-word",
         }}
       >
-        {props.content}
+        <Show when={images().length > 0}>
+          <div
+            style={{
+              "margin-bottom":
+                hasText() || files().length > 0 ? "8px" : "0",
+            }}
+          >
+            <ImageMosaic
+              images={images()}
+              inUserBubble
+              onOpen={(index) => props.onOpenImage(images(), index)}
+            />
+          </div>
+        </Show>
+        <Show when={files().length > 0}>
+          <div
+            style={{
+              display: "flex",
+              "flex-direction": "column",
+              gap: "6px",
+              "margin-bottom": hasText() ? "8px" : "0",
+            }}
+          >
+            <For each={files()}>
+              {(file) => <FileCard file={file} inUserBubble />}
+            </For>
+          </div>
+        </Show>
+        <Show when={hasText()}>{cleaned()}</Show>
+        <Show when={!hasAttach() && !hasText()}>{props.content}</Show>
       </div>
     </div>
   );
 }
 
-function AssistantBubble(props: { content: string }) {
+function AssistantBubble(props: {
+  content: string;
+  attachments?: PublicChatAttachment[];
+}) {
+  const nonImageAttachments = createMemo(() =>
+    (props.attachments ?? []).filter((a) => a.kind !== "image"),
+  );
   return (
     <div
       class="pub-msg-in"
@@ -444,6 +703,20 @@ function AssistantBubble(props: { content: string }) {
           </span>
         </div>
         <AssistantBody content={props.content} />
+        <Show when={nonImageAttachments().length > 0}>
+          <div
+            style={{
+              display: "flex",
+              "flex-direction": "column",
+              gap: "6px",
+              "margin-top": "12px",
+            }}
+          >
+            <For each={nonImageAttachments()}>
+              {(file) => <FileCard file={file} />}
+            </For>
+          </div>
+        </Show>
       </div>
     </div>
   );
@@ -680,20 +953,318 @@ function PendingBubble(props: {
   );
 }
 
+function AttachPreview(props: {
+  items: PublicChatAttachment[];
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <Show when={props.items.length > 0}>
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          padding: "10px 14px",
+          "flex-wrap": "wrap",
+          "border-bottom": "1px solid rgba(0,0,0,0.05)",
+        }}
+        data-testid="composer-attach-preview"
+      >
+        <For each={props.items}>
+          {(item, index) => (
+            <div style={{ position: "relative", "flex-shrink": "0" }}>
+              <Show
+                when={item.kind === "image"}
+                fallback={
+                  <div
+                    style={{
+                      width: "180px",
+                      height: "64px",
+                      padding: "0 10px",
+                      display: "flex",
+                      "align-items": "center",
+                      gap: "10px",
+                      "border-radius": "8px",
+                      border: "1px solid rgba(0,0,0,0.08)",
+                      background: "rgba(0,0,0,0.02)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        "border-radius": "6px",
+                        background: "rgba(245,158,11,0.12)",
+                        display: "flex",
+                        "align-items": "center",
+                        "justify-content": "center",
+                        "font-family":
+                          "var(--font-mono, 'JetBrains Mono', monospace)",
+                        "font-size": "10px",
+                        "font-weight": "700",
+                        color: "#d97706",
+                        "flex-shrink": "0",
+                      }}
+                    >
+                      {fileExtension(item.name)}
+                    </div>
+                    <div style={{ flex: "1", "min-width": "0" }}>
+                      <div
+                        style={{
+                          "font-size": "12px",
+                          "font-weight": "600",
+                          color: "#0f172a",
+                          "white-space": "nowrap",
+                          overflow: "hidden",
+                          "text-overflow": "ellipsis",
+                        }}
+                      >
+                        {item.name}
+                      </div>
+                      <div
+                        style={{
+                          "font-family":
+                            "var(--font-mono, 'JetBrains Mono', monospace)",
+                          "font-size": "10px",
+                          color: "#64748b",
+                        }}
+                      >
+                        {formatBytes(item.size)}
+                      </div>
+                    </div>
+                  </div>
+                }
+              >
+                <div
+                  style={{
+                    width: "64px",
+                    height: "64px",
+                    "border-radius": "8px",
+                    overflow: "hidden",
+                    border: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <img
+                    src={publicAttachmentUrl(item)}
+                    alt={item.name}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      "object-fit": "cover",
+                    }}
+                  />
+                </div>
+              </Show>
+              <button
+                type="button"
+                onClick={() => props.onRemove(index())}
+                aria-label="移除附件"
+                style={{
+                  position: "absolute",
+                  top: "-6px",
+                  right: "-6px",
+                  width: "20px",
+                  height: "20px",
+                  "border-radius": "10px",
+                  background: "#0f172a",
+                  color: "#fff",
+                  border: "2px solid #fff",
+                  cursor: "pointer",
+                  "font-size": "11px",
+                  "line-height": "1",
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  "box-shadow": "0 2px 6px rgba(0,0,0,0.2)",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </For>
+      </div>
+    </Show>
+  );
+}
+
+function AttachMenu(props: {
+  open: boolean;
+  onClose: () => void;
+  onPickImage: () => void;
+  onPickFile: () => void;
+}) {
+  return (
+    <Show when={props.open}>
+      <div class="pub-attach-backdrop" onClick={props.onClose} />
+      <div class="pub-attach-menu" data-testid="composer-attach-menu">
+        <div class="pub-attach-sheet-handle" aria-hidden="true" />
+        <button
+          type="button"
+          class="pub-attach-item"
+          data-testid="composer-pick-image"
+          onClick={() => {
+            props.onPickImage();
+            props.onClose();
+          }}
+        >
+          <span class="pub-attach-icon" aria-hidden="true">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="5" width="18" height="14" rx="2.5" />
+              <circle cx="8.5" cy="10" r="1.5" />
+              <path d="M21 15l-5-5-8 9" />
+            </svg>
+          </span>
+          <span class="pub-attach-label">
+            <span class="pub-attach-label-title">图片</span>
+            <span class="pub-attach-label-sub">照片与截图</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="pub-attach-item"
+          data-testid="composer-pick-file"
+          onClick={() => {
+            props.onPickFile();
+            props.onClose();
+          }}
+        >
+          <span class="pub-attach-icon" aria-hidden="true">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+              <path d="M14 3v5h5" />
+              <path d="M9 13h6M9 17h4" />
+            </svg>
+          </span>
+          <span class="pub-attach-label">
+            <span class="pub-attach-label-title">文件</span>
+            <span class="pub-attach-label-sub">PDF · 文档 · 其他</span>
+          </span>
+        </button>
+      </div>
+    </Show>
+  );
+}
+
+function Lightbox(props: {
+  images: PublicChatAttachment[];
+  index: number;
+  onClose: () => void;
+  onNav: (delta: number) => void;
+}) {
+  createEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") props.onClose();
+      if (event.key === "ArrowLeft") props.onNav(-1);
+      if (event.key === "ArrowRight") props.onNav(1);
+    };
+    window.addEventListener("keydown", handler);
+    onCleanup(() => window.removeEventListener("keydown", handler));
+  });
+
+  const image = () => props.images[props.index];
+
+  return (
+    <Show when={image()}>
+      <div
+        onClick={props.onClose}
+        style={{
+          position: "fixed",
+          inset: "0",
+          background: "rgba(15,23,42,0.92)",
+          "z-index": "1000",
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "center",
+          padding: "40px",
+          cursor: "zoom-out",
+        }}
+        data-testid="chat-lightbox"
+      >
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onClose();
+          }}
+          aria-label="关闭"
+          style={{
+            position: "absolute",
+            top: "20px",
+            right: "20px",
+            width: "40px",
+            height: "40px",
+            "border-radius": "20px",
+            background: "rgba(255,255,255,0.10)",
+            border: "none",
+            cursor: "pointer",
+            color: "#fff",
+            "font-size": "20px",
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "center",
+          }}
+        >
+          ✕
+        </button>
+        <img
+          src={publicAttachmentUrl(image()!)}
+          alt={image()!.name}
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            "max-width": "90%",
+            "max-height": "90%",
+            "object-fit": "contain",
+            "border-radius": "8px",
+            "box-shadow": "0 10px 40px rgba(0,0,0,0.6)",
+          }}
+        />
+      </div>
+    </Show>
+  );
+}
+
 function Composer(props: {
   draft: string;
   onDraftChange: (v: string) => void;
+  attachments: PublicChatAttachment[];
+  onRemoveAttachment: (index: number) => void;
+  onPickFiles: (files: File[], kind: "image" | "file") => void;
+  uploadError: string;
+  onDismissUploadError: () => void;
+  uploading: boolean;
   onSend: () => void;
   onStop: () => void;
   isSending: boolean;
   remaining: number | undefined;
 }) {
   const [focused, setFocused] = createSignal(false);
+  const [menuOpen, setMenuOpen] = createSignal(false);
   let taRef: HTMLTextAreaElement | undefined;
+  let imgInputRef: HTMLInputElement | undefined;
+  let fileInputRef: HTMLInputElement | undefined;
 
   const canSend = () =>
     !props.isSending &&
-    !!props.draft.trim() &&
+    !props.uploading &&
+    (!!props.draft.trim() || props.attachments.length > 0) &&
     (props.remaining === undefined || props.remaining > 0);
 
   createEffect(() => {
@@ -708,6 +1279,31 @@ function Composer(props: {
     }
   };
 
+  const onPaste = (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+    const images: File[] = [];
+    const others: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      // Pasted screenshots often come through with an empty or generic
+      // filename; stamp a readable one so history/preview/upload are clear.
+      const named =
+        file.name && file.name !== "image.png"
+          ? file
+          : renamePasteFile(file);
+      if (named.type.startsWith("image/")) images.push(named);
+      else others.push(named);
+    }
+    if (images.length === 0 && others.length === 0) return;
+    e.preventDefault();
+    if (images.length > 0) props.onPickFiles(images, "image");
+    if (others.length > 0) props.onPickFiles(others, "file");
+  };
+
   return (
     <div
       style={{
@@ -715,12 +1311,85 @@ function Composer(props: {
         "border-top": "1px solid rgba(0,0,0,0.08)",
         background: "#fff",
         "flex-shrink": "0",
+        position: "relative",
       }}
     >
+      <input
+        ref={imgInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{ display: "none" }}
+        data-testid="composer-image-input"
+        onChange={(event) => {
+          const files = event.currentTarget.files
+            ? Array.from(event.currentTarget.files)
+            : [];
+          event.currentTarget.value = "";
+          if (files.length) props.onPickFiles(files, "image");
+        }}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        data-testid="composer-file-input"
+        onChange={(event) => {
+          const files = event.currentTarget.files
+            ? Array.from(event.currentTarget.files)
+            : [];
+          event.currentTarget.value = "";
+          if (files.length) props.onPickFiles(files, "file");
+        }}
+      />
+
+      <AttachMenu
+        open={menuOpen()}
+        onClose={() => setMenuOpen(false)}
+        onPickImage={() => imgInputRef?.click()}
+        onPickFile={() => fileInputRef?.click()}
+      />
+
+      <Show when={props.uploadError}>
+        <div
+          style={{
+            margin: "0 0 6px",
+            padding: "8px 12px",
+            "border-radius": "8px",
+            border: "1px solid rgba(239,68,68,0.20)",
+            background: "rgba(239,68,68,0.05)",
+            "font-size": "12px",
+            color: "#ef4444",
+            display: "flex",
+            "justify-content": "space-between",
+            "align-items": "center",
+            gap: "12px",
+          }}
+          data-testid="composer-upload-error"
+        >
+          <span>{props.uploadError}</span>
+          <button
+            type="button"
+            onClick={props.onDismissUploadError}
+            aria-label="关闭错误"
+            style={{
+              background: "none",
+              border: "none",
+              color: "#ef4444",
+              cursor: "pointer",
+              "font-size": "12px",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </Show>
+
       <div
         style={{
           position: "relative",
-          "border-radius": "24px",
+          "border-radius": "20px",
           border: focused()
             ? "1px solid #f59e0b"
             : "1px solid rgba(0,0,0,0.10)",
@@ -732,112 +1401,138 @@ function Composer(props: {
           overflow: "hidden",
         }}
       >
-        <textarea
-          ref={taRef}
-          rows={3}
-          placeholder={
-            props.remaining === 0
-              ? "今日额度已用完"
-              : "输入你的问题，按 Enter 发送"
-          }
-          value={props.draft}
-          disabled={props.isSending}
-          onInput={(e) => props.onDraftChange(e.currentTarget.value)}
-          onKeyDown={onKey}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={{
-            width: "100%",
-            "min-height": "90px",
-            resize: "none",
-            border: "none",
-            outline: "none",
-            background: "transparent",
-            padding: "16px 20px 44px",
-            "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-            "font-size": "14px",
-            "line-height": "1.65",
-            color: "#0f172a",
-          }}
+        <AttachPreview
+          items={props.attachments}
+          onRemove={props.onRemoveAttachment}
         />
+
         <div
           style={{
-            position: "absolute",
-            bottom: "0",
-            left: "0",
-            right: "0",
             display: "flex",
-            "align-items": "center",
-            "justify-content": "space-between",
-            padding: "8px 14px 10px",
-            background: "linear-gradient(to top,#fff 60%,transparent)",
+            "align-items": "flex-end",
+            gap: "4px",
+            padding: "4px 6px 4px 4px",
           }}
         >
-          <span style={{ "font-size": "11px", color: "rgba(0,0,0,0.28)" }}>
-            Shift + Enter 换行
-          </span>
-          <div style={{ display: "flex", gap: "6px", "align-items": "center" }}>
-            <Show when={props.isSending}>
-              <button
-                type="button"
-                onClick={props.onStop}
-                style={{
-                  padding: "5px 13px",
-                  "border-radius": "7px",
-                  border: "1px solid rgba(0,0,0,0.10)",
-                  background: "#fff",
-                  "font-size": "12px",
-                  "font-weight": "600",
-                  color: "#64748b",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#ef4444";
-                  e.currentTarget.style.color = "#ef4444";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(0,0,0,0.10)";
-                  e.currentTarget.style.color = "#64748b";
-                }}
-              >
-                停止
-              </button>
-            </Show>
-            <button
-              type="button"
-              onClick={() => canSend() && props.onSend()}
-              disabled={!canSend()}
-              style={{
-                width: "34px",
-                height: "34px",
-                "border-radius": "10px",
-                background: canSend() ? "#f59e0b" : "rgba(0,0,0,0.07)",
-                border: "none",
-                cursor: canSend() ? "pointer" : "default",
-                display: "flex",
-                "align-items": "center",
-                "justify-content": "center",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={(e) => {
-                if (canSend()) e.currentTarget.style.transform = "scale(1.06)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-              }}
+          <button
+            type="button"
+            class="pub-attach-btn"
+            onClick={() => setMenuOpen(!menuOpen())}
+            aria-label="附件"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen()}
+            data-open={menuOpen() ? "true" : "false"}
+            data-testid="composer-attach-button"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
             >
-              <svg
-                viewBox="0 0 20 20"
-                width="16"
-                height="16"
-                fill={canSend() ? "white" : "rgba(0,0,0,0.25)"}
-              >
-                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-              </svg>
-            </button>
-          </div>
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
+
+          <textarea
+            ref={taRef}
+            rows={1}
+            placeholder={
+              props.remaining === 0 ? "今日额度已用完" : "消息..."
+            }
+            value={props.draft}
+            disabled={props.isSending}
+            onInput={(e) => props.onDraftChange(e.currentTarget.value)}
+            onKeyDown={onKey}
+            onPaste={onPaste}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={{
+              flex: "1",
+              resize: "none",
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              padding: "10px 6px",
+              "font-family":
+                "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+              "font-size": "14px",
+              "line-height": "1.55",
+              color: "#0f172a",
+              "max-height": "160px",
+              "min-height": "38px",
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => canSend() && props.onSend()}
+            disabled={!canSend()}
+            aria-label="发送"
+            data-testid="composer-send-button"
+            style={{
+              width: "38px",
+              height: "38px",
+              "border-radius": "10px",
+              background: canSend() ? "#f59e0b" : "rgba(0,0,0,0.07)",
+              border: "none",
+              cursor: canSend() ? "pointer" : "default",
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              transition: "all 0.2s",
+              "flex-shrink": "0",
+            }}
+          >
+            <svg
+              viewBox="0 0 20 20"
+              width="16"
+              height="16"
+              fill={canSend() ? "white" : "rgba(0,0,0,0.25)"}
+            >
+              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+            </svg>
+          </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          "justify-content": "space-between",
+          "margin-top": "6px",
+          padding: "0 6px",
+        }}
+      >
+        <span style={{ "font-size": "10px", color: "rgba(0,0,0,0.30)" }}>
+          Shift + Enter 换行 · 拖拽或粘贴图片上传
+        </span>
+        <Show when={props.uploading}>
+          <span style={{ "font-size": "10px", color: "#f59e0b" }}>
+            正在上传附件…
+          </span>
+        </Show>
+        <Show when={props.isSending}>
+          <button
+            type="button"
+            onClick={props.onStop}
+            style={{
+              padding: "2px 8px",
+              "border-radius": "5px",
+              border: "1px solid rgba(0,0,0,0.10)",
+              background: "#fff",
+              "font-size": "10px",
+              color: "#64748b",
+              cursor: "pointer",
+            }}
+          >
+            停止
+          </button>
+        </Show>
       </div>
     </div>
   );
@@ -853,6 +1548,16 @@ export default function PublicChatPage() {
   const [draft, setDraft] = createSignal("");
   const [sendError, setSendError] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
+  const [pendingAttachments, setPendingAttachments] = createStore<
+    PublicChatAttachment[]
+  >([]);
+  const [uploadError, setUploadError] = createSignal("");
+  const [uploading, setUploading] = createSignal(false);
+  const [lightbox, setLightbox] = createSignal<{
+    images: PublicChatAttachment[];
+    index: number;
+  } | null>(null);
+  const [dragActive, setDragActive] = createSignal(false);
   const [sessionInfo, setSessionInfo] = createSignal<{
     userId: string;
     remainingToday: number;
@@ -922,6 +1627,9 @@ export default function PublicChatPage() {
     }
     if ("steps" in patch && patch.steps !== current.steps) {
       setMessages(index, "steps", patch.steps);
+    }
+    if ("attachments" in patch && patch.attachments !== current.attachments) {
+      setMessages(index, "attachments", patch.attachments);
     }
   };
 
@@ -1012,21 +1720,26 @@ export default function PublicChatPage() {
     }
   };
 
+  // Called after a send finishes (success OR error OR abort). We intentionally
+  // DO NOT re-fetch history here: the SSE stream already delivered the full
+  // assistant content into local state, and history IDs (hash-based, derived
+  // from index+role+content) don't match the UUIDs on the locally-appended
+  // user/assistant pair. A reconcile(history) would blow away the bubbles the
+  // user just saw — which is exactly the "占位符突然消失" bug that showed up
+  // when the backend hadn't finished persisting the round yet.
+  //
+  // Only refresh the quota/session strip. If the backend pushes or schedules
+  // a later message, ensurePushEvents() handles it. A hard refresh via page
+  // reload still goes through restoreSession() which DOES re-pull history.
   const refreshSessionAfterSend = async () => {
     const generation = ++sessionSyncGeneration;
     try {
       const user = await getPublicAuthMe();
       if (generation !== sessionSyncGeneration) return;
       applySessionInfo(user);
-      const history = await getPublicHistory();
-      if (generation !== sessionSyncGeneration) return;
-      replaceHistoryMessages(toPublicChatMessages(history));
-      setAuthState("ready");
       if (!eventSource) {
         await ensurePushEvents();
       }
-      if (generation !== sessionSyncGeneration) return;
-      scrollToBottom();
     } catch (error) {
       if (generation !== sessionSyncGeneration) return;
       if (isAuthExpiredError(error)) {
@@ -1102,15 +1815,181 @@ export default function PublicChatPage() {
     patchMessageAtIndex(index, { steps: [...steps, normalized] });
   };
 
+  const revokePreviewUrl = (att: PublicChatAttachment) => {
+    if (att.previewUrl) {
+      try {
+        URL.revokeObjectURL(att.previewUrl);
+      } catch {
+        /* noop */
+      }
+    }
+  };
+
+  const clearPendingAttachments = () => {
+    for (const att of pendingAttachments) revokePreviewUrl(att);
+    setPendingAttachments(reconcile([], { key: "path" }));
+  };
+
+  const handlePickFiles = async (files: File[], _kind: "image" | "file") => {
+    if (!files.length) return;
+    setUploadError("");
+    const room = MAX_ATTACHMENTS - pendingAttachments.length;
+    if (room <= 0) {
+      setUploadError(`最多只能附加 ${MAX_ATTACHMENTS} 个文件`);
+      return;
+    }
+    const accepted = files.slice(0, room);
+    if (files.length > room) {
+      setUploadError(`最多只能附加 ${MAX_ATTACHMENTS} 个文件，已截断多余项`);
+    }
+
+    const previewStart = pendingAttachments.length;
+    const previews: PublicChatAttachment[] = accepted.map((file) => ({
+      path: `__uploading__${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`,
+      name: file.name,
+      kind: classifyKind(file),
+      size: file.size,
+      previewUrl: file.type.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : undefined,
+    }));
+    previews.forEach((preview, offset) => {
+      setPendingAttachments(previewStart + offset, preview);
+    });
+
+    setUploading(true);
+    try {
+      const uploaded = await uploadPublicAttachments(accepted);
+      uploaded.forEach((item, offset) => {
+        const existing = pendingAttachments[previewStart + offset];
+        setPendingAttachments(previewStart + offset, {
+          path: item.path,
+          name: item.name,
+          kind: item.kind,
+          size: item.size,
+          previewUrl: existing?.previewUrl,
+        });
+      });
+      if (uploaded.length < accepted.length) {
+        // Trim trailing previews whose upload was rejected silently.
+        for (let i = accepted.length - 1; i >= uploaded.length; i--) {
+          const idx = previewStart + i;
+          const stale = pendingAttachments[idx];
+          if (stale) revokePreviewUrl(stale);
+          setPendingAttachments(
+            reconcile(
+              [...pendingAttachments].filter((_, j) => j !== idx),
+              { key: "path" },
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      for (let i = accepted.length - 1; i >= 0; i--) {
+        const idx = previewStart + i;
+        const stale = pendingAttachments[idx];
+        if (stale) revokePreviewUrl(stale);
+      }
+      setPendingAttachments(
+        reconcile(
+          pendingAttachments.slice(0, previewStart),
+          { key: "path" },
+        ),
+      );
+      setUploadError(
+        error instanceof Error ? error.message : "上传失败，请重试",
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    const target = pendingAttachments[index];
+    if (!target) return;
+    revokePreviewUrl(target);
+    setPendingAttachments(
+      reconcile(
+        pendingAttachments.filter((_, i) => i !== index),
+        { key: "path" },
+      ),
+    );
+  };
+
+  const handleOpenLightbox = (
+    images: PublicChatAttachment[],
+    index: number,
+  ) => {
+    if (!images.length) return;
+    setLightbox({ images, index });
+  };
+
+  const handleNavLightbox = (delta: number) => {
+    const current = lightbox();
+    if (!current) return;
+    const next =
+      (current.index + delta + current.images.length) % current.images.length;
+    setLightbox({ images: current.images, index: next });
+  };
+
+  const handleDragEnter = (event: DragEvent) => {
+    if (!event.dataTransfer?.types?.includes("Files")) return;
+    event.preventDefault();
+    setDragActive(true);
+  };
+
+  const handleDragOver = (event: DragEvent) => {
+    if (!event.dataTransfer?.types?.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (event: DragEvent) => {
+    if (event.currentTarget === event.target) {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (event: DragEvent) => {
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    setDragActive(false);
+    const files = Array.from(event.dataTransfer.files);
+    const kind = files.every((f) => f.type.startsWith("image/"))
+      ? "image"
+      : "file";
+    void handlePickFiles(files, kind);
+  };
+
   const handleSend = async () => {
     const text = draft().trim();
-    if (!text || authState() !== "ready" || activeController) return;
+    const atts = [...pendingAttachments];
+    const hasReadyAtts = atts.every((att) => !att.path.startsWith("__uploading__"));
+    if (
+      (!text && atts.length === 0) ||
+      authState() !== "ready" ||
+      activeController ||
+      uploading() ||
+      !hasReadyAtts
+    )
+      return;
     const assistantId = messageId();
     setSendError("");
     setDraft("");
     setIsSending(true);
     appendMessages(
-      { id: messageId(), role: "user", content: text },
+      {
+        id: messageId(),
+        role: "user",
+        content: text,
+        attachments: atts.map((a) => ({
+          path: a.path,
+          name: a.name,
+          kind: a.kind,
+          size: a.size,
+          previewUrl: a.previewUrl,
+        })),
+      },
       {
         id: assistantId,
         role: "assistant",
@@ -1121,13 +2000,23 @@ export default function PublicChatPage() {
         steps: [],
       },
     );
+    clearPendingAttachments();
     scrollToBottom();
 
     const controller = new AbortController();
     activeController = controller;
 
+    const attachmentInputs: PublicChatAttachmentInput[] = atts.map((a) => ({
+      path: a.path,
+      name: a.name,
+    }));
+
     try {
-      const stream = await sendPublicChat(text, controller.signal);
+      const stream = await sendPublicChat(
+        text,
+        attachmentInputs,
+        controller.signal,
+      );
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let pending = "";
@@ -1254,6 +2143,10 @@ export default function PublicChatPage() {
               "flex-direction": "column",
               background: "#fff",
             }}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
             {/* Session strip — 34px */}
             <div
@@ -1388,11 +2281,18 @@ export default function PublicChatPage() {
                               />
                             }
                           >
-                            <AssistantBubble content={message.content} />
+                            <AssistantBubble
+                              content={message.content}
+                              attachments={message.attachments}
+                            />
                           </Show>
                         }
                       >
-                        <UserBubble content={message.content} />
+                        <UserBubble
+                          content={message.content}
+                          attachments={message.attachments}
+                          onOpenImage={handleOpenLightbox}
+                        />
                       </Show>
                     )}
                   </For>
@@ -1421,12 +2321,51 @@ export default function PublicChatPage() {
               <Composer
                 draft={draft()}
                 onDraftChange={setDraft}
+                attachments={[...pendingAttachments]}
+                onRemoveAttachment={handleRemoveAttachment}
+                onPickFiles={(files, kind) => void handlePickFiles(files, kind)}
+                uploadError={uploadError()}
+                onDismissUploadError={() => setUploadError("")}
+                uploading={uploading()}
                 onSend={() => void handleSend()}
                 onStop={() => activeController?.abort()}
                 isSending={isSending()}
                 remaining={sessionInfo()?.remainingToday}
               />
             </div>
+
+            <Show when={lightbox()}>
+              <Lightbox
+                images={lightbox()!.images}
+                index={lightbox()!.index}
+                onClose={() => setLightbox(null)}
+                onNav={handleNavLightbox}
+              />
+            </Show>
+
+            <Show when={dragActive()}>
+              <div
+                style={{
+                  position: "absolute",
+                  inset: "0",
+                  "pointer-events": "none",
+                  background: "rgba(245,158,11,0.08)",
+                  border: "2px dashed rgba(245,158,11,0.45)",
+                  "z-index": "40",
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  "font-family":
+                    "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+                  "font-size": "14px",
+                  "font-weight": "600",
+                  color: "#d97706",
+                }}
+                data-testid="chat-drop-overlay"
+              >
+                释放文件以上传
+              </div>
+            </Show>
           </div>
         </Match>
       </Switch>

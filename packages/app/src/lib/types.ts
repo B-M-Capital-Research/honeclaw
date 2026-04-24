@@ -306,6 +306,7 @@ export type TimelineMessage =
       subtype?: string;
       synthetic?: boolean;
       transcriptOnly?: boolean;
+      attachments?: HistoryAttachment[];
     }
   | {
       id: string;
@@ -314,6 +315,7 @@ export type TimelineMessage =
       subtype?: string;
       synthetic?: boolean;
       transcriptOnly?: boolean;
+      attachments?: HistoryAttachment[];
     }
   | {
       id: string;
@@ -322,6 +324,7 @@ export type TimelineMessage =
       subtype?: string;
       synthetic?: boolean;
       transcriptOnly?: boolean;
+      attachments?: HistoryAttachment[];
     }
   | {
       id: string;
@@ -330,6 +333,7 @@ export type TimelineMessage =
       jobName?: string;
       synthetic?: boolean;
       transcriptOnly?: boolean;
+      attachments?: HistoryAttachment[];
     };
 
 export type CronJobInfo = {

@@ -218,13 +218,29 @@ export async function getPublicHistory() {
   return payload.messages ?? [];
 }
 
-export async function sendPublicChat(message: string, signal?: AbortSignal) {
+export type PublicUploadedAttachment = {
+  path: string;
+  name: string;
+  kind: string;
+  size: number;
+};
+
+export type PublicChatAttachmentInput = {
+  path: string;
+  name?: string;
+};
+
+export async function sendPublicChat(
+  message: string,
+  attachments: PublicChatAttachmentInput[] = [],
+  signal?: AbortSignal,
+) {
   const response = await apiFetch("/api/public/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, attachments }),
     signal,
   });
 
@@ -238,6 +254,22 @@ export async function sendPublicChat(message: string, signal?: AbortSignal) {
   }
 
   return response.body;
+}
+
+export async function uploadPublicAttachments(files: File[]) {
+  if (!files.length) return [] as PublicUploadedAttachment[];
+  const form = new FormData();
+  for (const file of files) {
+    form.append("files", file, file.name);
+  }
+  const response = await apiFetch("/api/public/upload", {
+    method: "POST",
+    body: form,
+  });
+  const payload = await parseJson<{ attachments: PublicUploadedAttachment[] }>(
+    response,
+  );
+  return payload.attachments ?? [];
 }
 
 export async function connectPublicEvents() {
