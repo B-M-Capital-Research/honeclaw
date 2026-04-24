@@ -166,6 +166,36 @@ GROUP BY source;
 
 - 其它主链路仍在工作：同一时间窗 `poller ok` 连续、`fmp.*` 近 24h 仍有正常记录、`delivery_log` 也持续出现 `sink/high/sent`。因此这次补充继续把问题限定在 Truth Social source 自身，而不是整个 event-engine 停摆。
 
+## Latest巡检 Update
+
+- 2026-04-24T22:26:46Z：在 `2026-04-24T18:25:00Z` 之后，Truth Social `statuses` 403 又连续出现了 3 次，新增窗口里的本地日志样本如下：
+
+```text
+data/runtime/logs/web.log.2026-04-24:4224:[2026-04-25 03:06:53.157] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-24:4488:[2026-04-25 05:06:53.056] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-24:4572:[2026-04-25 06:06:52.928] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+```
+
+- 同一巡检窗口里，Telegram social source 仍在继续落库，说明 social 子系统并非整体停摆：
+
+```text
+source=telegram.watcherguru
+count=40
+last_created_utc=2026-04-24 22:06:55
+```
+
+- 但 `data/events.sqlite3` 对 `source LIKE 'truth_social.%'` 仍然 0 行，表示启用的 Truth Social source 依旧完全断流：
+
+```text
+SELECT source, COUNT(*), datetime(MAX(created_at_ts),'unixepoch')
+FROM events
+WHERE source LIKE 'truth_social.%'
+GROUP BY source;
+-- no rows
+```
+
+- `data/runtime/logs/web.log.2026-04-24` 在这些 403 前后仍持续出现 `poller ok`，因此这次补充继续把影响限定在 Truth Social source 自身，而不是整个 event-engine cadence 或 sink 装配失败。
+
 ## Date Observed
 
 `2026-04-24T04:05:20Z`

@@ -305,6 +305,37 @@ pub fn should_deliver(&self, event: &MarketEvent) -> bool {
 
 - This keeps the issue scoped to routing coverage, not sink assembly or Telegram channel health: the same incremental window had a real `sink|sent|high` row for AMD, but the Reuters Spirit bailout and CNBC Musk/OpenAI lawsuit high news still had no actor route at all.
 
+## Latest巡检 Update
+
+- 2026-04-24T22:26:46Z: after `2026-04-24T18:25:00Z`, the same routing gap recurred. `data/events.sqlite3` stored one new trusted-source High Reuters news row, and its only delivery evidence was `router|no_actor|high`:
+
+```text
+created=2026-04-24 20:36:52 UTC
+occurred=2026-04-24 16:09:50 UTC
+source=fmp.stock_news:reuters.com
+severity=high
+id=news:https://www.reuters.com/business/iheartmedia-holds-merger-talks-with-sirius-xm-bloomberg-news-reports-2026-04-24/
+title=IHeartMedia holds merger talks with Sirius XM, Bloomberg News reports
+symbols=["IHRT"]
+delivery=router|no_actor|high|2026-04-24 20:36:52
+```
+
+- The same incremental window still had a working High sink path, so this was not a global sink outage:
+
+```text
+2026-04-24 19:36:54|price_band:RKLB:2026-04-24:down:600|sink|high|sent
+2026-04-24 20:36:52|news:https://www.reuters.com/business/iheartmedia-holds-merger-talks-with-sirius-xm-bloomberg-news-reports-2026-04-24/|router|high|no_actor
+```
+
+- `data/runtime/logs/web.log.2026-04-24` shows the same contrast in local runtime logs: a successful sink send earlier in the same run, then the Reuters event falling through to `dispatch skipped: no matching actor` one hour later:
+
+```text
+data/runtime/logs/web.log.2026-04-24:4290:[2026-04-25 03:36:54.142] INFO  sink delivered
+data/runtime/logs/web.log.2026-04-24:4408:[2026-04-25 04:36:52.405] INFO  dispatch skipped: no matching actor
+```
+
+- The event payload in `data/events.jsonl` remains a trusted-source merger headline with `severity="high"` and `symbols=["IHRT"]`, so the latest evidence still points to routing/subscription coverage rather than upstream classification noise.
+
 ## Severity
 
 sev2. The affected events are high severity and one is a safety recall while another is a guidance cut; if they should match the user, the current evidence trail makes the miss silent rather than auditable.
