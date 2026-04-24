@@ -14,7 +14,7 @@ use hone_core::ActorIdentity;
 use tracing::info;
 
 use crate::digest::DigestBuffer;
-use crate::event::{EventKind, MarketEvent, Severity};
+use crate::event::{EventKind, MarketEvent, Severity, is_noop_analyst_grade};
 use crate::news_classifier::{DEFAULT_IMPORTANCE_PROMPT, Importance, NewsClassifier};
 use crate::polisher::{BodyPolisher, NoopPolisher};
 use crate::prefs::{AllowAllPrefs, NotificationPrefs, PrefsProvider, kind_tag};
@@ -296,6 +296,9 @@ impl NotificationRouter {
         if !matches!(event.kind, EventKind::NewsCritical) || event.severity != Severity::Low {
             return event.clone();
         }
+        if news_source_class_is_low_signal(event) {
+            return event.clone();
+        }
         let mut trigger_tag: Option<String> = None;
         for sym in &event.symbols {
             let recent_start = event.occurred_at - chrono::Duration::hours(6);
@@ -519,10 +522,7 @@ impl NotificationRouter {
             return sev;
         }
         if let Some(threshold_pct) = price_override_threshold(event, prefs) {
-            if matches!(
-                event.kind,
-                EventKind::PriceAlert { ref window, .. } if window != "close"
-            ) {
+            if matches!(event.kind, EventKind::PriceAlert { .. }) {
                 let pct = event
                     .payload
                     .get("changesPercentage")
@@ -549,6 +549,15 @@ impl NotificationRouter {
         if let Some(kinds) = prefs.immediate_kinds.as_deref() {
             let tag = kind_tag(&event.kind);
             if kinds.iter().any(|k| k == tag) {
+                if is_noop_analyst_grade(event) {
+                    tracing::info!(
+                        event_id = %event.id,
+                        kind = %tag,
+                        source = %event.source,
+                        "immediate_kinds override skipped for no-op analyst grade"
+                    );
+                    return sev;
+                }
                 return Severity::High;
             }
         }
@@ -909,6 +918,13 @@ fn is_legal_ad_event(event: &MarketEvent) -> bool {
             .iter()
             .any(|pat| text.contains(pat))
         }
+}
+
+fn news_source_class_is_low_signal(event: &MarketEvent) -> bool {
+    matches!(
+        event.payload.get("source_class").and_then(|v| v.as_str()),
+        Some("opinion_blog" | "pr_wire")
+    )
 }
 
 fn hard_signal_correlates(event: &MarketEvent, tag: &str) -> bool {
@@ -1535,6 +1551,62 @@ mod tests {
         assert_eq!(sent, 0);
         assert_eq!(pending, 1, "Low 新闻应被升到 Medium 后入 digest");
         assert!(sink.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn opinion_blog_news_does_not_upgrade_on_hard_signal() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AMD".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+
+        let hard = MarketEvent {
+            id: "price:AMD:today".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 700,
+                window: "day".into(),
+            },
+            severity: Severity::High,
+            symbols: vec!["AMD".into()],
+            occurred_at: Utc::now(),
+            title: "AMD +7%".into(),
+            summary: String::new(),
+            url: None,
+            source: "test".into(),
+            payload: serde_json::Value::Null,
+        };
+        store.insert_event(&hard).unwrap();
+
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest.clone(),
+        );
+
+        let news = MarketEvent {
+            id: "news:AMD:opinion".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Low,
+            symbols: vec!["AMD".into()],
+            occurred_at: Utc::now(),
+            title: "AMD: Why I'm Going From Very Bearish To Confidently Bullish".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.stock_news:seekingalpha.com".into(),
+            payload: serde_json::json!({"source_class": "opinion_blog"}),
+        };
+        let (sent, pending) = router.dispatch(&news).await.unwrap();
+        assert_eq!(sent, 0);
+        assert_eq!(pending, 1);
+
+        let drained = digest.drain_actor(&actor("u1")).unwrap();
+        assert_eq!(drained[0].severity, Severity::Low);
     }
 
     #[tokio::test]
@@ -2347,7 +2419,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn per_actor_price_threshold_does_not_promote_closing_move() {
+    async fn per_actor_price_threshold_can_promote_closing_move() {
         use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
 
         let mut reg = SubscriptionRegistry::new();
@@ -2393,9 +2465,9 @@ mod tests {
             payload: serde_json::json!({"changesPercentage": 6.67}),
         };
         let (sent, pending) = router.dispatch(&ev).await.unwrap();
-        assert_eq!(sent, 0, "收盘异动不应被个人 price override 直推");
-        assert_eq!(pending, 1);
-        assert!(sink.calls.lock().unwrap().is_empty());
+        assert_eq!(sent, 1, "超过直推地板的收盘异动应按价格阈值直推");
+        assert_eq!(pending, 0);
+        assert_eq!(sink.calls.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -2461,6 +2533,60 @@ mod tests {
         let (sent2, pending2) = router.dispatch(&news).await.unwrap();
         assert_eq!(sent2, 0, "未在 immediate_kinds 列表的 kind 不应被升");
         assert_eq!(pending2, 1);
+    }
+
+    #[tokio::test]
+    async fn per_actor_immediate_kinds_skips_noop_analyst_grade() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["GEV".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    immediate_kinds: Some(vec!["analyst_grade".into()]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store);
+
+        let ev = MarketEvent {
+            id: "grade:GEV:no-op".into(),
+            kind: EventKind::AnalystGrade,
+            severity: Severity::Low,
+            symbols: vec!["GEV".into()],
+            occurred_at: Utc::now(),
+            title: "GEV · RBC Capital hold · Outperform".into(),
+            summary: "Outperform → Outperform".into(),
+            url: Some("https://thefly.com/ajax/news_get.php?id=4335563".into()),
+            source: "fmp.upgrades_downgrades".into(),
+            payload: serde_json::json!({
+                "action": "hold",
+                "previousGrade": "Outperform",
+                "newGrade": "Outperform"
+            }),
+        };
+
+        let (sent, pending) = router.dispatch(&ev).await.unwrap();
+        assert_eq!(sent, 0, "评级没有变化时不应被 immediate_kinds 强制直推");
+        assert_eq!(pending, 1);
+        assert!(sink.calls.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -1,5 +1,7 @@
 # Bug: event-engine social/event-source pollers log repeated decode failures
 
+Latest update 2026-04-24: `TruthSocialPoller` 已补偿 HTTP 失败日志，见 `docs/bugs/truth_social_poller_opaque_json_decode_stalls_source.md`。后续 generic `poll failed: error decoding response body` 若仍出现，应能在 Truth Social 路径看到 status / content-type / body prefix；若仍只有 opaque 文本，则需要继续检查非 Truth Social 的 `EventSource` 或日志格式化层。
+
 ## Summary
 
 The generic event-source poller repeatedly logged response-body decode failures after the last巡检, while the social source had no new stored events in the same window.

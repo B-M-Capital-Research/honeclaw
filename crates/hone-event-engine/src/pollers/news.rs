@@ -586,7 +586,7 @@ mod tests {
             .get("items")
             .and_then(|v| v.as_array())
             .expect("items array");
-        assert_eq!(items.len(), 30);
+        assert_eq!(items.len(), 43);
 
         let mut uncertain_llm_items = 0usize;
         for item in items {
@@ -632,7 +632,7 @@ mod tests {
                 );
             }
         }
-        assert_eq!(uncertain_llm_items, 12);
+        assert_eq!(uncertain_llm_items, 15);
     }
 
     #[test]

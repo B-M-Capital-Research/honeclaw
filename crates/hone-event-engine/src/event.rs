@@ -79,6 +79,34 @@ impl MarketEvent {
     }
 }
 
+pub fn is_noop_analyst_grade(event: &MarketEvent) -> bool {
+    if !matches!(event.kind, EventKind::AnalystGrade) {
+        return false;
+    }
+    let action = event
+        .payload
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    if !matches!(action.as_str(), "hold" | "maintained" | "reiterated") {
+        return false;
+    }
+    let previous = normalized_grade(event.payload.get("previousGrade").and_then(|v| v.as_str()));
+    let new = normalized_grade(event.payload.get("newGrade").and_then(|v| v.as_str()));
+    !new.is_empty() && previous == new
+}
+
+fn normalized_grade(raw: Option<&str>) -> String {
+    raw.unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +128,50 @@ mod tests {
         assert!(ev.touches("aapl"));
         assert!(ev.touches("AAPL"));
         assert!(!ev.touches("TSLA"));
+    }
+
+    #[test]
+    fn detects_noop_analyst_grade_hold() {
+        let ev = MarketEvent {
+            id: "grade:GEV:test".into(),
+            kind: EventKind::AnalystGrade,
+            severity: Severity::Low,
+            symbols: vec!["GEV".into()],
+            occurred_at: Utc::now(),
+            title: "GEV · RBC Capital hold · Outperform".into(),
+            summary: "Outperform → Outperform".into(),
+            url: None,
+            source: "fmp.upgrades_downgrades".into(),
+            payload: serde_json::json!({
+                "action": "hold",
+                "previousGrade": "Outperform",
+                "newGrade": "Outperform"
+            }),
+        };
+
+        assert!(is_noop_analyst_grade(&ev));
+    }
+
+    #[test]
+    fn target_change_with_same_rating_is_not_noop_grade() {
+        let ev = MarketEvent {
+            id: "grade:GEV:test".into(),
+            kind: EventKind::AnalystGrade,
+            severity: Severity::Medium,
+            symbols: vec!["GEV".into()],
+            occurred_at: Utc::now(),
+            title: "GEV · RBC Capital target-raised · Outperform".into(),
+            summary: "Outperform → Outperform".into(),
+            url: None,
+            source: "fmp.upgrades_downgrades".into(),
+            payload: serde_json::json!({
+                "action": "target-raised",
+                "previousGrade": "Outperform",
+                "newGrade": "Outperform"
+            }),
+        };
+
+        assert!(!is_noop_analyst_grade(&ev));
     }
 
     #[test]

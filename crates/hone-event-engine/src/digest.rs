@@ -15,7 +15,7 @@ use chrono::{DateTime, Datelike, FixedOffset, NaiveTime, TimeZone, Timelike, Utc
 use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 
-use crate::event::{EventKind, MarketEvent, Severity};
+use crate::event::{EventKind, MarketEvent, Severity, is_noop_analyst_grade};
 use crate::router::body_preview;
 
 const DIGEST_SOCIAL_TITLE_MAX_CHARS: usize = 240;
@@ -23,6 +23,22 @@ const DIGEST_MAX_SOCIAL_ITEMS: usize = 3;
 const DIGEST_MAX_ITEMS_PER_SYMBOL: usize = 4;
 const DIGEST_MAX_ITEMS_PER_SOURCE: usize = 3;
 const DIGEST_MAX_ITEMS_PER_DOMAIN: usize = 2;
+const DIGEST_MACRO_LOOKAHEAD_HOURS: i64 = 48;
+
+#[derive(Debug)]
+struct DigestCuration {
+    kept: Vec<MarketEvent>,
+    omitted: Vec<MarketEvent>,
+}
+
+impl DigestCuration {
+    fn kept(events: Vec<MarketEvent>) -> Self {
+        Self {
+            kept: events,
+            omitted: Vec::new(),
+        }
+    }
+}
 
 pub struct DigestBuffer {
     dir: PathBuf,
@@ -480,45 +496,47 @@ impl DigestScheduler {
                         .cmp(&digest_score(a))
                         .then_with(|| b.occurred_at.cmp(&a.occurred_at))
                 });
-                let mut overflow = 0usize;
+                let mut omitted_events = Vec::new();
                 if let Some(store) = &self.store {
-                    let before_memory = filtered.len();
-                    filtered = suppress_recent_digest_topics(&actor_key_str, filtered, store, now);
-                    overflow += before_memory.saturating_sub(filtered.len());
+                    let memory = suppress_recent_digest_topics_with_omitted(
+                        &actor_key_str,
+                        filtered,
+                        store,
+                        now,
+                    );
+                    filtered = memory.kept;
+                    omitted_events.extend(memory.omitted);
                 }
-                let before_curation = filtered.len();
-                filtered = curate_digest_events(filtered);
-                overflow += before_curation.saturating_sub(filtered.len());
+                let curation = curate_digest_events_with_omitted_at(filtered, now);
+                filtered = curation.kept;
+                omitted_events.extend(curation.omitted);
                 if filtered.is_empty() {
+                    if let Some(store) = &self.store {
+                        log_omitted_digest_items(store, &actor_key_str, &omitted_events);
+                    }
                     tracing::info!(
                         actor = %actor_key_str,
                         window = %window,
-                        overflow,
+                        omitted = omitted_events.len(),
                         "digest skipped after curation/topic memory"
                     );
                     continue;
                 }
-                let overflow =
-                    if self.max_items_per_batch > 0 && filtered.len() > self.max_items_per_batch {
-                        let dropped_ids: Vec<String> = filtered[self.max_items_per_batch..]
-                            .iter()
-                            .map(|e| e.id.clone())
-                            .collect();
-                        let dropped = dropped_ids.len();
-                        filtered.truncate(self.max_items_per_batch);
-                        tracing::info!(
-                            actor = %actor_key_str,
-                            dropped,
-                            curated = overflow,
-                            kept = filtered.len(),
-                            dropped_ids = ?dropped_ids,
-                            "digest truncated to avoid info flooding"
-                        );
-                        overflow += dropped;
-                        overflow
-                    } else {
-                        overflow
-                    };
+                if self.max_items_per_batch > 0 && filtered.len() > self.max_items_per_batch {
+                    let truncated = filtered.split_off(self.max_items_per_batch);
+                    let dropped_ids: Vec<String> = truncated.iter().map(|e| e.id.clone()).collect();
+                    let dropped = dropped_ids.len();
+                    omitted_events.extend(truncated);
+                    tracing::info!(
+                        actor = %actor_key_str,
+                        dropped,
+                        curated = omitted_events.len().saturating_sub(dropped),
+                        kept = filtered.len(),
+                        dropped_ids = ?dropped_ids,
+                        "digest truncated to avoid info flooding"
+                    );
+                }
+                let overflow = omitted_events.len();
                 let body = render_digest(&label, &filtered, overflow, self.sink.format_for(&actor));
                 let send_result = self.sink.send(&actor, &body).await;
                 if let Some(store) = &self.store {
@@ -547,6 +565,7 @@ impl DigestScheduler {
                                 None,
                             );
                         }
+                        log_omitted_digest_items(store, &actor_key_str, &omitted_events);
                     }
                 }
                 if let Err(e) = send_result {
@@ -580,8 +599,33 @@ impl DigestScheduler {
     }
 }
 
+fn log_omitted_digest_items(
+    store: &crate::store::EventStore,
+    actor_key: &str,
+    omitted: &[MarketEvent],
+) {
+    for item in omitted {
+        let _ = store.log_delivery(
+            &item.id,
+            actor_key,
+            "digest_item",
+            item.severity,
+            "omitted",
+            None,
+        );
+    }
+}
+
 fn curate_digest_events(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
-    let mut out = Vec::with_capacity(events.len());
+    curate_digest_events_with_omitted_at(events, Utc::now()).kept
+}
+
+fn curate_digest_events_with_omitted_at(
+    events: Vec<MarketEvent>,
+    now: DateTime<Utc>,
+) -> DigestCuration {
+    let mut kept = Vec::with_capacity(events.len());
+    let mut omitted = Vec::new();
     let mut social_count = 0usize;
     let mut by_symbol: HashMap<String, usize> = HashMap::new();
     let mut by_source: HashMap<String, usize> = HashMap::new();
@@ -592,28 +636,37 @@ fn curate_digest_events(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
     for event in events {
         let is_high = event.severity.rank() >= crate::event::Severity::High.rank();
         if !is_high {
+            if should_omit_from_digest(&event, now) {
+                omitted.push(event);
+                continue;
+            }
             if matches!(event.kind, EventKind::SocialPost) {
                 if social_count >= DIGEST_MAX_SOCIAL_ITEMS {
+                    omitted.push(event);
                     continue;
                 }
             }
             if let Some(symbol) = primary_symbol_key(&event) {
                 if by_symbol.get(&symbol).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_SYMBOL {
+                    omitted.push(event);
                     continue;
                 }
             }
             if !event.source.is_empty()
                 && by_source.get(&event.source).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_SOURCE
             {
+                omitted.push(event);
                 continue;
             }
             if let Some(domain) = event_domain_key(&event) {
                 if by_domain.get(&domain).copied().unwrap_or(0) >= DIGEST_MAX_ITEMS_PER_DOMAIN {
+                    omitted.push(event);
                     continue;
                 }
             }
             if let Some(title_key) = digest_title_dedupe_key(&event) {
                 if !title_keys.insert(title_key) {
+                    omitted.push(event);
                     continue;
                 }
             }
@@ -622,6 +675,7 @@ fn curate_digest_events(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
                     .iter()
                     .any(|(key, seen)| key == &topic_key && token_jaccard(seen, &tokens) >= 0.55)
                 {
+                    omitted.push(event);
                     continue;
                 }
                 topic_tokens.push((topic_key, tokens));
@@ -640,51 +694,55 @@ fn curate_digest_events(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
         if let Some(domain) = event_domain_key(&event) {
             *by_domain.entry(domain).or_default() += 1;
         }
-        out.push(event);
+        kept.push(event);
     }
 
-    out
+    DigestCuration { kept, omitted }
 }
 
-fn suppress_recent_digest_topics(
+fn suppress_recent_digest_topics_with_omitted(
     actor_key: &str,
     events: Vec<MarketEvent>,
     store: &crate::store::EventStore,
     now: DateTime<Utc>,
-) -> Vec<MarketEvent> {
+) -> DigestCuration {
     let since = now - chrono::Duration::hours(24);
     let Ok(recent) = store.list_recent_digest_item_events(actor_key, since) else {
-        return events;
+        return DigestCuration::kept(events);
     };
     let recent_topics: Vec<(String, HashSet<String>)> =
         recent.iter().filter_map(digest_topic_tokens).collect();
     if recent_topics.is_empty() {
-        return events;
+        return DigestCuration::kept(events);
     }
 
-    events
-        .into_iter()
-        .filter(|event| {
-            if event.severity == Severity::High {
-                return true;
-            }
-            let Some((topic_key, tokens)) = digest_topic_tokens(event) else {
-                return true;
-            };
-            let duplicate = recent_topics
-                .iter()
-                .any(|(key, seen)| key == &topic_key && token_jaccard(seen, &tokens) >= 0.55);
-            if duplicate {
-                tracing::info!(
-                    actor = %actor_key,
-                    event_id = %event.id,
-                    topic = %topic_key,
-                    "digest topic suppressed by recent memory"
-                );
-            }
-            !duplicate
-        })
-        .collect()
+    let mut kept = Vec::with_capacity(events.len());
+    let mut omitted = Vec::new();
+    for event in events {
+        if event.severity == Severity::High {
+            kept.push(event);
+            continue;
+        }
+        let Some((topic_key, tokens)) = digest_topic_tokens(&event) else {
+            kept.push(event);
+            continue;
+        };
+        let duplicate = recent_topics
+            .iter()
+            .any(|(key, seen)| key == &topic_key && token_jaccard(seen, &tokens) >= 0.55);
+        if duplicate {
+            tracing::info!(
+                actor = %actor_key,
+                event_id = %event.id,
+                topic = %topic_key,
+                "digest topic suppressed by recent memory"
+            );
+            omitted.push(event);
+        } else {
+            kept.push(event);
+        }
+    }
+    DigestCuration { kept, omitted }
 }
 
 fn digest_score(event: &MarketEvent) -> i32 {
@@ -727,6 +785,34 @@ fn digest_score(event: &MarketEvent) -> i32 {
         }
     }
     score
+}
+
+fn should_omit_from_digest(event: &MarketEvent, now: DateTime<Utc>) -> bool {
+    if event.severity == Severity::High {
+        return false;
+    }
+    if is_noop_analyst_grade(event) {
+        return true;
+    }
+    match event.kind {
+        EventKind::MacroEvent => {
+            event.severity == Severity::Low
+                || event.occurred_at > now + chrono::Duration::hours(DIGEST_MACRO_LOOKAHEAD_HOURS)
+        }
+        EventKind::NewsCritical => {
+            event.severity == Severity::Low
+                || matches!(
+                    event.payload.get("source_class").and_then(|v| v.as_str()),
+                    Some("opinion_blog" | "pr_wire")
+                )
+        }
+        EventKind::SocialPost => {
+            event.severity == Severity::Low
+                && event.symbols.is_empty()
+                && is_low_quality_social_source(event)
+        }
+        _ => false,
+    }
 }
 
 fn primary_symbol_key(event: &MarketEvent) -> Option<String> {
@@ -1288,7 +1374,7 @@ mod tests {
         {
             let mut event = ev(&format!("social-{i}"), "");
             event.kind = EventKind::SocialPost;
-            event.severity = Severity::Low;
+            event.severity = Severity::Medium;
             event.source = "telegram.watcherguru".into();
             event.title = format!("JUST IN: {topic} market update");
             event.payload = serde_json::json!({ "raw_text": event.title });
@@ -1302,6 +1388,116 @@ mod tests {
                 .iter()
                 .all(|e| matches!(e.kind, EventKind::SocialPost))
         );
+    }
+
+    #[test]
+    fn curation_omits_low_opinion_blog_news() {
+        let mut event = ev("news-opinion", "AAPL");
+        event.kind = EventKind::NewsCritical;
+        event.severity = Severity::Low;
+        event.source = "fmp.stock_news:zacks.com".into();
+        event.title = "Apple Earnings Preview: Q2 2026".into();
+        event.payload = serde_json::json!({"source_class": "opinion_blog"});
+
+        let curation = curate_digest_events_with_omitted_at(
+            vec![event],
+            Utc.with_ymd_and_hms(2026, 4, 24, 1, 0, 0).unwrap(),
+        );
+
+        assert!(curation.kept.is_empty());
+        assert_eq!(curation.omitted.len(), 1);
+    }
+
+    #[test]
+    fn curation_omits_low_news_after_importance_arbitration() {
+        let mut event = ev("news-low", "AAPL");
+        event.kind = EventKind::NewsCritical;
+        event.severity = Severity::Low;
+        event.source = "fmp.stock_news:businessinsider.com".into();
+        event.title = "Tim Cook had bold visions for Apple. See which ones came true.".into();
+        event.payload = serde_json::json!({"source_class": "uncertain"});
+
+        let curation = curate_digest_events_with_omitted_at(
+            vec![event],
+            Utc.with_ymd_and_hms(2026, 4, 24, 1, 0, 0).unwrap(),
+        );
+
+        assert!(curation.kept.is_empty());
+        assert_eq!(curation.omitted.len(), 1);
+    }
+
+    #[test]
+    fn curation_omits_low_quality_social_without_symbols() {
+        let now = Utc.with_ymd_and_hms(2026, 4, 24, 1, 0, 0).unwrap();
+        let mut no_symbol = ev("social-no-symbol", "");
+        no_symbol.kind = EventKind::SocialPost;
+        no_symbol.severity = Severity::Low;
+        no_symbol.symbols.clear();
+        no_symbol.source = "telegram.watcherguru".into();
+        no_symbol.title = "JUST IN: generic political update".into();
+
+        let mut symbol_medium = no_symbol.clone();
+        symbol_medium.id = "social-usdt".into();
+        symbol_medium.severity = Severity::Medium;
+        symbol_medium.symbols = vec!["USDT".into()];
+        symbol_medium.title = "JUST IN: Tether freezes $USDT".into();
+
+        let curation = curate_digest_events_with_omitted_at(vec![no_symbol, symbol_medium], now);
+
+        let kept_ids: Vec<&str> = curation.kept.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(kept_ids, vec!["social-usdt"]);
+        assert_eq!(curation.omitted.len(), 1);
+    }
+
+    #[test]
+    fn curation_omits_low_or_far_future_macro_calendar() {
+        let now = Utc.with_ymd_and_hms(2026, 4, 24, 1, 0, 0).unwrap();
+        let mut near_medium = ev("macro-near-medium", "");
+        near_medium.kind = EventKind::MacroEvent;
+        near_medium.severity = Severity::Medium;
+        near_medium.symbols.clear();
+        near_medium.occurred_at = now + chrono::Duration::hours(12);
+        near_medium.title = "[US] ISM Manufacturing PMI (Apr)".into();
+
+        let mut near_low = near_medium.clone();
+        near_low.id = "macro-near-low".into();
+        near_low.severity = Severity::Low;
+        near_low.title = "[US] Baker Hughes Oil Rig Count".into();
+
+        let mut far_medium = near_medium.clone();
+        far_medium.id = "macro-far-medium".into();
+        far_medium.occurred_at = now + chrono::Duration::days(7);
+        far_medium.title = "[CH] Retail Sales YoY (Mar)".into();
+
+        let curation =
+            curate_digest_events_with_omitted_at(vec![near_medium, near_low, far_medium], now);
+
+        let kept_ids: Vec<&str> = curation.kept.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(kept_ids, vec!["macro-near-medium"]);
+        assert_eq!(curation.omitted.len(), 2);
+    }
+
+    #[test]
+    fn curation_omits_noop_analyst_grade() {
+        let mut event = ev("grade-noop", "GEV");
+        event.kind = EventKind::AnalystGrade;
+        event.severity = Severity::Low;
+        event.source = "fmp.upgrades_downgrades".into();
+        event.title = "GEV · RBC Capital hold · Outperform".into();
+        event.summary = "Outperform → Outperform".into();
+        event.payload = serde_json::json!({
+            "action": "hold",
+            "previousGrade": "Outperform",
+            "newGrade": "Outperform"
+        });
+
+        let curation = curate_digest_events_with_omitted_at(
+            vec![event],
+            Utc.with_ymd_and_hms(2026, 4, 24, 1, 0, 0).unwrap(),
+        );
+
+        assert!(curation.kept.is_empty());
+        assert_eq!(curation.omitted.len(), 1);
     }
 
     #[test]
@@ -1435,6 +1631,65 @@ mod tests {
         assert!(body.contains("MID-KEEP"), "Medium 应被保留,body = {body}");
         // 溢出提示
         assert!(body.contains("另 3 条已省略"), "body = {body}");
+    }
+
+    #[tokio::test]
+    async fn scheduler_logs_omitted_digest_items_for_truncated_batches() {
+        use crate::router::OutboundSink;
+        use crate::store::EventStore;
+        use async_trait::async_trait;
+        use std::collections::HashSet;
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct SpySink(Mutex<Vec<String>>);
+        #[async_trait]
+        impl OutboundSink for SpySink {
+            async fn send(&self, _a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+                self.0.lock().unwrap().push(body.into());
+                Ok(())
+            }
+        }
+
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("events.db");
+        let store = Arc::new(EventStore::open(&db_path).unwrap());
+        let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let sink = Arc::new(SpySink::default());
+        let a = actor("u1");
+        for i in 0..3 {
+            let mut e = ev(&format!("mid-{i}"), &format!("SYM{i}"));
+            e.severity = Severity::Medium;
+            e.title = format!("MID-{i}");
+            buf.enqueue(&a, &e).unwrap();
+        }
+
+        let sched = DigestScheduler::new(buf, sink, "08:30", "17:00")
+            .with_tz_offset_hours(-4)
+            .with_max_items_per_batch(1)
+            .with_store(store);
+        let now = Utc.with_ymd_and_hms(2026, 4, 21, 12, 30, 0).unwrap();
+        let mut fired = HashSet::new();
+        let n = sched.tick_once(now, &mut fired).await.unwrap();
+        assert_eq!(n, 1);
+
+        let conn = rusqlite::Connection::open(db_path).unwrap();
+        let sent_items: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM delivery_log WHERE channel='digest_item' AND status='sent'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let omitted_items: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM delivery_log WHERE channel='digest_item' AND status='omitted'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sent_items, 1);
+        assert_eq!(omitted_items, 2);
     }
 
     #[tokio::test]

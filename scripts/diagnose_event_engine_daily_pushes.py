@@ -206,6 +206,9 @@ def group_report(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]
     digest_items = [
         x for x in items if x["channel"] == "digest_item" and x["status"] in ("sent", "dryrun")
     ]
+    digest_omitted = [
+        x for x in items if x["channel"] == "digest_item" and x["status"] == "omitted"
+    ]
     queued_or_demoted = [
         x
         for x in items
@@ -220,6 +223,7 @@ def group_report(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]
         "sent_immediate": sent_immediate,
         "sent_digests": sent_digests,
         "digest_items": digest_items,
+        "digest_omitted": digest_omitted,
         "queued_or_demoted": queued_or_demoted,
         "filtered_or_failed": filtered,
     }
@@ -244,6 +248,7 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"- sent_immediate: {report['summary']['sent_immediate']}",
         f"- sent_digests: {report['summary']['sent_digests']}",
         f"- digest_items: {report['summary']['digest_items']}",
+        f"- digest_omitted: {report['summary']['digest_omitted']}",
         f"- queued_or_demoted: {report['summary']['queued_or_demoted']}",
         f"- filtered_or_failed: {report['summary']['filtered_or_failed']}",
         "",
@@ -258,6 +263,7 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         ("sent_immediate", "Sent Immediate"),
         ("sent_digests", "Sent Digest Batches"),
         ("digest_items", "Digest Items"),
+        ("digest_omitted", "Digest Omitted Items"),
         ("queued_or_demoted", "Queued / Demoted"),
         ("filtered_or_failed", "Filtered / Failed"),
     ]:
@@ -320,6 +326,7 @@ def main() -> None:
             "sent_immediate": len(grouped["sent_immediate"]),
             "sent_digests": len(grouped["sent_digests"]),
             "digest_items": len(grouped["digest_items"]),
+            "digest_omitted": len(grouped["digest_omitted"]),
             "queued_or_demoted": len(grouped["queued_or_demoted"]),
             "filtered_or_failed": len(grouped["filtered_or_failed"]),
             "status_counts": dict(sorted(status_counts.items())),
@@ -351,6 +358,7 @@ def main() -> None:
                 "sent_immediate": report["summary"]["sent_immediate"],
                 "sent_digests": report["summary"]["sent_digests"],
                 "digest_items": report["summary"]["digest_items"],
+                "digest_omitted": report["summary"]["digest_omitted"],
                 "queued_or_demoted": report["summary"]["queued_or_demoted"],
                 "filtered_or_failed": report["summary"]["filtered_or_failed"],
             },

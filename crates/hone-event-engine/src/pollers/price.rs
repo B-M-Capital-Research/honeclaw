@@ -217,7 +217,7 @@ fn is_us_regular_close_quote(quote_time: DateTime<Utc>) -> bool {
 
 fn closing_move_severity(abs_pct: f64, high_pct: f64) -> Severity {
     if abs_pct >= high_pct {
-        Severity::Medium
+        Severity::High
     } else {
         Severity::Low
     }
@@ -352,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn close_quote_gets_close_id_and_never_high_severity() {
+    fn close_quote_above_high_pct_gets_close_id_and_high_severity() {
         let close_time = Utc.with_ymd_and_hms(2026, 4, 22, 20, 0, 1).unwrap();
         let now = Utc.with_ymd_and_hms(2026, 4, 23, 0, 2, 42).unwrap();
         let raw = serde_json::json!([
@@ -365,12 +365,29 @@ mod tests {
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
             .unwrap();
         assert_eq!(price.id, "price_close:AMD:2026-04-22");
-        assert_eq!(price.severity, Severity::Medium);
+        assert_eq!(price.severity, Severity::High);
         assert_eq!(price.occurred_at, close_time);
         match &price.kind {
             EventKind::PriceAlert { window, .. } => assert_eq!(window, "close"),
             _ => panic!("expected PriceAlert"),
         }
+    }
+
+    #[test]
+    fn close_quote_below_high_pct_remains_low_severity() {
+        let close_time = Utc.with_ymd_and_hms(2026, 4, 22, 20, 0, 1).unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 4, 23, 0, 2, 42).unwrap();
+        let raw = serde_json::json!([
+            {"symbol": "AMD", "price": 303.46, "changesPercentage": 3.5,
+             "timestamp": close_time.timestamp(), "yearHigh": 500.10, "yearLow": 90.12}
+        ]);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        let price = events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
+            .unwrap();
+        assert_eq!(price.id, "price_close:AMD:2026-04-22");
+        assert_eq!(price.severity, Severity::Low);
     }
 
     #[test]

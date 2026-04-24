@@ -9,17 +9,18 @@
   "system_prompt": "你是金融新闻重要性判别助手。只回答 yes 或 no。\n\nyes 只能用于硬事件:新闻必须描述已经发生或由公司/监管/可信媒体明确报道的具体事件,且可能实质改变相关公司的收入、成本、监管状态、管理层、资本结构或长期产品路线。硬事件包括:\n- 并购/收购/分拆/IPO/上市/破产/退市/重组;\n- CEO/CFO 正式任免、离任或突发死亡;\n- SEC/FDA/反垄断/重大诉讼/召回/网络攻击/数据泄露;\n- 有明确客户/供应商/金额/多年期限的重大合同、订单、合作或产能计划;\n- 公司正式发布的重大芯片、平台、产线或技术突破。\n\n默认 no:如果不是上述硬事件,或者证据不清楚,回答 no。常见 no 情况:\n- 财报 preview / what to expect / 财报前观望;\n- earnings call transcript 作为独立事件由用户偏好控制,不在新闻仲裁里升重要;\n- 估值、目标价、upgrade/downgrade、buy/sell、技术形态、单日涨跌;\n- 'X stocks to buy / top picks / hot stocks' 等列表/promo;\n- 泛 AI 叙事、客户部署、agent/tool 试点、产品小功能、代码生成比例;\n- CEO 接班猜测、人物回顾或管理层评论,但没有正式任免;\n- 大盘走势评论、13F/机构持仓变化、YouTube/对比文章;\n- 标题/摘要主语不是涉及股票公司,目标股票只是被 FMP 自动关联;\n- ETF/基金推销、'Magnificent Seven' 等组合性回顾。",
   "summary": {
     "fmp_news_count": 120,
+    "fixture_items": 43,
     "uncertain_before_source_tuning": 27,
-    "uncertain_after_source_tuning": 12,
+    "uncertain_after_source_tuning": 15,
     "live_llm_after_source_tuning": {
-      "parseable": 12,
-      "yes": 4,
-      "no": 8
+      "parseable": 15,
+      "yes": 5,
+      "no": 10
     },
     "manual_title_only_rerun": {
-      "parseable": 12,
-      "yes": 3,
-      "no": 9
+      "parseable": 15,
+      "yes": 4,
+      "no": 11
     },
     "model_selection_2026_04_23": {
       "excluded_prefixes": [
@@ -371,6 +372,150 @@
       "old_prompt_grok_answer": "no",
       "expected_llm_after_engine": null,
       "expected_route_after_engine": "digest_low"
+    },
+    {
+      "id": "daily-calibration-20260424-031",
+      "symbol": "AAPL",
+      "site": "businessinsider.com",
+      "title": "Tim Cook had bold visions for Apple. See which ones came true.",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-032",
+      "symbol": "AAPL",
+      "site": "marketbeat.com",
+      "title": "Ternus the Page: Apple's Engineering Prodigy Takes the Reins",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": "no",
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-033",
+      "symbol": "GEV",
+      "site": "marketbeat.com",
+      "title": "GE Vernova Beats Earnings by 790% as Data Center Demand Explodes",
+      "expected_source_class_after": "uncertain",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": "yes",
+      "expected_llm_title_only_after_engine": "no",
+      "expected_route_after_engine": "digest_medium"
+    },
+    {
+      "id": "daily-calibration-20260424-034",
+      "symbol": "AAPL",
+      "site": "zacks.com",
+      "title": "Apple's Leadership Change to Boost AI Integration? ETFs in Focus",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-035",
+      "symbol": "GOOGL",
+      "site": "finbold.com",
+      "title": "Jim Cramer sets Google stock price target",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-036",
+      "symbol": "RKLB",
+      "site": "seekingalpha.com",
+      "title": "SpaceX IPO Rewrites The Playbook For Rocket Lab",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-037",
+      "symbol": "AMD",
+      "site": "seekingalpha.com",
+      "title": "AMD: Why I'm Going From Very Bearish To Confidently Bullish",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-038",
+      "symbol": "MU",
+      "site": "benzinga.com",
+      "title": "AI Memory Shortage Sparking 'Red-Hot' Rally: Why Jim Cramer Says Micron is Just Getting Started",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-039",
+      "symbol": "AAPL",
+      "site": "247wallst.com",
+      "title": "Jim Cramer Says Tim Cook Built Something No Other CEO Has: A Device People Think Is Their Friend",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-040",
+      "symbol": "AMD",
+      "site": "zacks.com",
+      "title": "AMD's Ryzen 9950X3D2 Launch Impact: What's Ahead in Gaming Next?",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-041",
+      "symbol": "AAPL",
+      "site": "seekingalpha.com",
+      "title": "Apple Earnings Preview: Q2 2026",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-042",
+      "symbol": "COHR",
+      "site": "zacks.com",
+      "title": "COHR vs. ARM: Which Tech Growth Stock Offers More Upside Now?",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
+    },
+    {
+      "id": "daily-calibration-20260424-043",
+      "symbol": "SNDK",
+      "site": "247wallst.com",
+      "title": "SanDisk Climbs 295% YTD as AI Fuels Memory Mania: Can Q1 Results Justify the Run?",
+      "expected_source_class_after": "opinion_blog",
+      "expected_kind_after": "news_critical",
+      "old_prompt_grok_answer": null,
+      "expected_llm_after_engine": null,
+      "expected_route_after_engine": "filtered_digest_noise"
     }
   ]
 }

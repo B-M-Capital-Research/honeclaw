@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-24 11:02 CST
+最后更新：2026-04-24 11:31 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,7 +15,7 @@
 ## 当前概览
 
 - 活跃待修复：25
-- 已修复 / 已关闭：46
+- 已修复 / 已关闭：48
 - 历史分析 / 部分止血：4
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -45,7 +45,7 @@
 | Event-engine high stock-news events lack sink delivery evidence | P2 | New | 2026-04-22 18:52 UTC 新增 `FLYYQ` high MarketWatch 事件仍无 `delivery_log` sink 行；同窗口也无 `sink delivered` 日志 | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |
 | Event-engine marks legal-ad style stock news as high severity | P2 | New | 2026-04-22 巡检确认 `class action` / `shareholder alert` 等律所模板在 24h high 事件中持续占比过高，可能消耗 high cap 并污染即时提醒 | [event_engine_legal_news_high_severity_noise.md](./event_engine_legal_news_high_severity_noise.md) |
 | Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | New | 2026-04-22 OpenRouter 403 / 反序列化失败让 uncertain-source 新闻 LLM 仲裁返回 `None`，重要新闻可能退回低优先级 digest 路径 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
-| Event-engine social/event-source pollers repeat decode failures | P3 | New | 2026-04-23 08:37/09:37 CST generic event-source poller 继续 2 次 JSON decode 失败；日志仍缺 poller 字段，最新窗口未见新 `telegram.watcherguru` 入库 | [event_engine_social_source_decode_failures.md](./event_engine_social_source_decode_failures.md) |
+| Truth Social / generic event-source pollers repeat opaque decode failures | P2 | Fixing | 2026-04-24 已给 Truth Social search/statuses 响应补 `status`、`content_type`、`body_prefix` 诊断；真实断流根因仍需下一条 live 补偿日志确认 | [truth_social_poller_opaque_json_decode_stalls_source.md](./truth_social_poller_opaque_json_decode_stalls_source.md) / [event_engine_social_source_decode_failures.md](./event_engine_social_source_decode_failures.md) |
 | Event-engine window convergence upgrade bursts crowd digest quality | P3 | New | 2026-04-23 08:22:42 CST 单秒再次出现 25 条 `Low→Medium` 窗口收敛提级，超过巡检阈值；poller 与 sink 正常，问题集中在路由降噪 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
 | Event-engine high macro events are stored but not routed | P2 | New | 2026-04-23 已确认是工程规则问题：先将 high macro 样本从 77 收敛到预计 15；即时路由因会提前推未来 7 天日历而暂不打开 | [event_engine_high_macro_events_unrouted.md](./event_engine_high_macro_events_unrouted.md) |
 
@@ -88,6 +88,8 @@
 | OpenAI-compatible 搜索阶段出现 tool-call 协议错位，`invalid params` 失败被统一收口成通用失败提示 | P1 | Fixed | 2026-04-16 已补齐搜索上下文清洗：同时移除历史 `tool` 与残留 assistant `tool_calls`，定向回归测试与 desktop release build 已通过 | [openai_compatible_tool_call_protocol_mismatch_invalid_params.md](./openai_compatible_tool_call_protocol_mismatch_invalid_params.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为"当前会话上下文过长"失败提示 | P2 | Fixed | 2026-04-20 在 context overflow compact 重试后改用更小的 restore limit（6 条消息），给 search 阶段留出足够上下文预算 | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | Fixed | 2026-04-24 已扩展 scheduler skip-signal 词表，覆盖 `按规则可跳过正式推送`、`不触发正式推送` 等变体；命中后收口为 `noop + skipped_noop`，相关 `hone-channels` 测试通过 | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
+| Event-engine 收盘大幅波动永远不会即时推送 | P2 | Fixed | 2026-04-24 已让超过 high 阈值的 `price_close` 生成 High，并允许 per-actor price override 覆盖 close；普通 close 仍走 digest，`hone-event-engine` 相关测试与真实模型 baseline 通过 | [event_engine_close_price_alerts_never_immediate.md](./event_engine_close_price_alerts_never_immediate.md) |
+| Event-engine digest 省略项不可审计且低信号新闻/宏观/评级噪声挤入摘要 | P2 | Fixed | 2026-04-24 已把省略项写入 `digest_item omitted`，导出脚本新增 `digest_omitted`；同时过滤 Low news、opinion/pr-wire convergence、无标的低优先级社交、远期 macro 和 no-op analyst hold；baseline fixture 扩到 43 条 / 15 条 LLM | [event_engine_digest_omitted_items_and_low_signal_noise.md](./event_engine_digest_omitted_items_and_low_signal_noise.md) |
 | Feishu 直聊自动 compact 后仍无法稳定完成新话题回答，同一旧会话会在成功与 fallback 间抖动 | P2 | Fixed | 2026-04-20 同上，compact 重试路径统一使用 CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT=6 | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-04-20 heartbeat context overflow 改为 ContextOverflowNoop（skipped_noop），本轮跳过下轮正常重试 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 | ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | Fixed | 2026-04-20 heartbeat prompt 补加时间一致性、价格时间口径、重复事件三条约束规则 | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |

@@ -9,8 +9,10 @@
 
 use std::time::Duration;
 
+use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use reqwest::header::CONTENT_TYPE;
 use serde_json::{Map, Value};
 use tokio::sync::RwLock;
 
@@ -18,6 +20,8 @@ use crate::event::{EventKind, MarketEvent, Severity};
 use crate::source::{EventSource, SourceSchedule};
 
 use super::{SOCIAL_SUMMARY_MAX_CHARS, SOCIAL_TITLE_MAX_CHARS};
+
+const RESPONSE_BODY_PREFIX_CHARS: usize = 240;
 
 pub struct TruthSocialPoller {
     username: String,                   // "realDonaldTrump" (无 @)
@@ -66,12 +70,7 @@ impl TruthSocialPoller {
             "{}/api/v2/search?q=%40{}&resolve=true&type=accounts&limit=1",
             self.base_url, self.username
         );
-        let resp = self.http.get(&url).send().await?;
-        let status = resp.status();
-        let body: Value = resp.json().await?;
-        if !status.is_success() {
-            anyhow::bail!("truth_social search HTTP {status}: {body}");
-        }
+        let body = self.fetch_json(&url, "search").await?;
         // Mastodon /api/v2/search → { accounts: [{ id, username, ... }] }
         let id = body
             .get("accounts")
@@ -96,13 +95,38 @@ impl TruthSocialPoller {
             "{}/api/v1/accounts/{}/statuses?limit={}&exclude_replies=true",
             self.base_url, account_id, self.limit
         );
-        let resp = self.http.get(&url).send().await?;
-        let status = resp.status();
-        let body: Value = resp.json().await?;
-        if !status.is_success() {
-            anyhow::bail!("truth_social statuses HTTP {status}: {body}");
-        }
+        let body = self.fetch_json(&url, "statuses").await?;
         Ok(body.as_array().cloned().unwrap_or_default())
+    }
+
+    async fn fetch_json(&self, url: &str, endpoint: &str) -> anyhow::Result<Value> {
+        let resp = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("truth_social {endpoint} request failed"))?;
+        let status = resp.status();
+        let content_type = resp
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("unknown")
+            .to_string();
+        let body_text = resp.text().await.with_context(|| {
+            format!("truth_social {endpoint} read body failed status={status} content_type={content_type}")
+        })?;
+        let body_prefix = response_body_prefix(&body_text);
+        if !status.is_success() {
+            anyhow::bail!(
+                "truth_social {endpoint} HTTP {status} content_type={content_type} body_prefix={body_prefix:?}"
+            );
+        }
+        serde_json::from_str(&body_text).map_err(|e| {
+            anyhow::anyhow!(
+                "truth_social {endpoint} JSON decode failed status={status} content_type={content_type} body_prefix={body_prefix:?}: {e}"
+            )
+        })
     }
 }
 
@@ -223,6 +247,11 @@ fn decode_entities(s: &str) -> String {
         .replace("&nbsp;", " ")
 }
 
+fn response_body_prefix(body: &str) -> String {
+    let compact = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    compact.chars().take(RESPONSE_BODY_PREFIX_CHARS).collect()
+}
+
 fn parse_iso_datetime(s: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
         .ok()
@@ -246,7 +275,28 @@ fn truncate(s: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
     use serde_json::json;
+
+    fn serve_once(status_line: &str, content_type: &str, body: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status_line = status_line.to_string();
+        let content_type = content_type.to_string();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request_buf = [0; 1024];
+            let _ = stream.read(&mut request_buf);
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        format!("http://{addr}")
+    }
 
     fn sample_status(id: &str, content: &str, created_at: &str) -> Value {
         json!({
@@ -314,5 +364,46 @@ mod tests {
         let got = strip_html("<p>Hello &amp; world</p><p>line2</p>");
         assert!(got.contains("Hello & world"));
         assert!(got.contains("line2"));
+    }
+
+    #[tokio::test]
+    async fn fetch_statuses_reports_http_status_content_type_and_body_prefix() {
+        let base = serve_once(
+            "503 Service Unavailable",
+            "text/html; charset=utf-8",
+            "<!doctype html><title>Cloudflare challenge</title>",
+        );
+        let poller = TruthSocialPoller::new(
+            "realDonaldTrump",
+            Some("107780257626128497".into()),
+            Duration::from_secs(3600),
+        )
+        .with_base_url(base);
+
+        let err = poller.fetch_statuses().await.unwrap_err().to_string();
+        assert!(err.contains("truth_social statuses HTTP 503 Service Unavailable"));
+        assert!(err.contains("content_type=text/html; charset=utf-8"));
+        assert!(err.contains("Cloudflare challenge"));
+    }
+
+    #[tokio::test]
+    async fn fetch_statuses_reports_json_decode_context_for_html_success() {
+        let base = serve_once(
+            "200 OK",
+            "text/html",
+            "<html><body>Access denied before JSON</body></html>",
+        );
+        let poller = TruthSocialPoller::new(
+            "realDonaldTrump",
+            Some("107780257626128497".into()),
+            Duration::from_secs(3600),
+        )
+        .with_base_url(base);
+
+        let err = poller.fetch_statuses().await.unwrap_err().to_string();
+        assert!(err.contains("truth_social statuses JSON decode failed"));
+        assert!(err.contains("status=200 OK"));
+        assert!(err.contains("content_type=text/html"));
+        assert!(err.contains("Access denied before JSON"));
     }
 }

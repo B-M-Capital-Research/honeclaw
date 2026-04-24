@@ -1,5 +1,9 @@
 # Bug: Truth Social poller 用不透明 JSON 解码错误掩盖 source 断流
 
+状态：`Fixing`
+
+最新进展：2026-04-24 已补偿日志。`TruthSocialPoller` 现在对 search / statuses 响应先读取文本，再在非 2xx 或 JSON 解码失败时输出 `status`、`content_type` 与截断 `body_prefix`；同时补了本地 HTTP mock 回归测试，覆盖 `503 text/html` 与 `200 text/html` 两类 opaque decode 场景。该改动解决“日志不可定位 / 不可排障”的问题，但 Truth Social 真实断流是否来自 Cloudflare、空 body 或其它上游响应，还需要等 live 进程产出下一条补偿日志后确认。
+
 ## Summary
 
 已启用的 `truth_social.realdonaldtrump` source 在本地库里至今 `0` 条事件；自 `2026-04-23T14:18:41.651Z` 之后，`web.log` 又按 3600 秒节拍重复出现 `poll failed: error decoding response body: expected value at line 1 column 1`。当前实现先对响应做 `resp.json()` 再判断 HTTP 状态，导致 Truth Social / Cloudflare 返回的非 JSON 页面被压扁成无 source 名称的通用解码报错，实际断流对巡检与排障都不透明。
@@ -102,9 +106,26 @@ async fn fetch_statuses(&self) -> anyhow::Result<Vec<Value>> {
 
 ## Evidence Gap
 
-- 目前没有直接抓到 Truth Social 返回的原始 HTTP 状态、headers 和 body 前 200 字节，因此还不能 100% 坐实是 Cloudflare HTML 挑战页、反爬拦截页还是上游接口返回了别的非 JSON 内容。
+- 2026-04-24 代码侧已补 `status`、`content_type` 和 `body_prefix`，但当前日志样本仍是修复前产生的 opaque decode error；还需要 live 进程重启 / 部署后等下一次失败样本来坐实 Cloudflare HTML 挑战页、反爬拦截页还是上游接口返回了别的非 JSON 内容。
 - 本轮巡检遵循只读约束，没有主动请求 Truth Social，也没有打开任何真实网络探测；因此缺少单次请求级复现样本。
 - 文件日志当前没有把 `poller=%name` / `source=%name` 结构化字段展开到正文；“这 5 条 hourly warn 对应 truth_social”是基于 `3600s` 配置节拍、Truth Social source 总事件数恒为 0、同时 Telegram social source 正常产出的综合推断。
+
+## Fix Notes
+
+- `crates/hone-event-engine/src/pollers/social/truth_social.rs`
+  - 新增 `fetch_json(endpoint)` 公共响应处理，避免 `resp.json()` 在 HTTP status 判断前吞掉错误上下文。
+  - 非 2xx 响应记录：`truth_social {endpoint} HTTP {status} content_type={content_type} body_prefix=...`
+  - 2xx 但非 JSON 响应记录：`truth_social {endpoint} JSON decode failed status={status} content_type={content_type} body_prefix=...`
+  - `body_prefix` 只保留折叠空白后的前 240 字符，避免把完整 HTML 错误页写入日志。
+- 回归测试：
+  - `fetch_statuses_reports_http_status_content_type_and_body_prefix`
+  - `fetch_statuses_reports_json_decode_context_for_html_success`
+
+## Verification
+
+- `rtk cargo test -p hone-event-engine truth_social --lib`
+- `rtk cargo test -p hone-event-engine --lib`
+- `rtk cargo fmt --all -- --check`
 
 ## Severity
 

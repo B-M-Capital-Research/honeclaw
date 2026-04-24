@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
+
+## 2026-04-24
+
+### Event Engine Close Price 与 Truth Social 后续修复
+
+- Status: done
+- Date: 2026-04-24
+- Plan: `docs/archive/plans/event-engine-close-price-truth-social-followup.md`
+- Handoff: `docs/handoffs/2026-04-24-event-engine-close-price-truth-social-followup.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `rtk cargo test -p hone-event-engine --lib`, `rtk cargo fmt --all -- --check`, `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`, `rtk cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`, `rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`, `rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465`, `rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-24 --actor telegram::::8039067465 --include-body`
+- Current conclusion: Truth Social poller 已补 status / content-type / body-prefix 失败诊断，`price_close` 高波动已恢复 High / immediate 路由；真实模型 baseline 已从 12 条 LLM 样本扩到 15 条并 15/15 matched；2026-04-24 Telegram digest 省略项已可通过 `digest_item omitted` 审计，低信号 news/social/macro/no-op analyst 噪声已降噪
+- Next entry point: `docs/handoffs/2026-04-24-event-engine-close-price-truth-social-followup.md`
 
 ## 2026-04-23
 

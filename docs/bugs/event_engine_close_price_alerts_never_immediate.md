@@ -1,5 +1,9 @@
 # Bug: event-engine 收盘大幅波动永远不会即时推送
 
+状态：`Fixed`
+
+修复进展：2026-04-24 已修复。`price_close` 现在仍保留独立 id / close window，但当绝对涨跌幅达到全局 `price_alert_high_pct` 时会生成 `Severity::High`；router 的 per-actor `price_high_pct_override` 也不再排除 `window="close"`，因此超过系统直推地板或满足大仓位敏感阈值的收盘波动可以进入即时 sink。普通收盘波动仍维持 Low / digest，避免把所有 close 事件都升级成凌晨即时提醒。
+
 ## Summary
 
 持仓命中的 `fmp.quote` 收盘异动即使绝对涨跌幅已经超过全局 `price_alert_high_pct=6.0`，当前实现仍会把 `price_close:*` 固定记为 `severity=medium` 并仅进入 digest，不走即时 sink；这会让用户对重要收盘波动的提醒至少延后到下一个 digest 窗口。
@@ -142,9 +146,24 @@ assert!(sink.calls.lock().unwrap().is_empty());
 
 ## Evidence Gap
 
-- 还不能从现有日志单独判断产品意图到底是“所有 `price_close` 都应该 digest 化，避免凌晨打扰”，还是“超过高阈值的收盘异动本来也应该即时推送，只是规则写错了”。
+- 产品策略按本次修复收敛为：普通 `price_close` 继续 digest 化，超过系统高阈值或满足 actor 价格 override 直推条件的 close 才即时推送。
 - 本轮巡检没有调用真实外部 API，因此只能依据本地持仓、SQLite delivery log、digest buffer 和源码规则判断；缺少用户侧实际阅读反馈，无法证明这 5 小时延迟已经造成了错过操作窗口。
-- 若产品希望保留“普通收盘波动走 digest”，更合理的行为可能是只把超过 `high_pct` 或命中用户 override 的 `price_close` 升为 High，而不是把所有 close 窗口一律压成 Medium；这需要产品/策略决策进一步确认。
+
+## Fix Notes
+
+- `crates/hone-event-engine/src/pollers/price.rs`
+  - `closing_move_severity(abs_pct, high_pct)` 达到 high 阈值时返回 `Severity::High`，否则仍返回 `Severity::Low`。
+  - 新增/调整 close quote 单测，锁定“高阈值 close 即 High、低于高阈值 close 仍 Low”。
+- `crates/hone-event-engine/src/router.rs`
+  - per-actor price override 适用于所有 `PriceAlert`，不再排除 `window="close"`。
+  - 原先断言 close 不应直推的测试改为断言超过直推地板的 close 应直推。
+
+## Verification
+
+- `rtk cargo test -p hone-event-engine close_quote --lib`
+- `rtk cargo test -p hone-event-engine per_actor_price_threshold_can_promote_closing_move --lib`
+- `rtk cargo test -p hone-event-engine --lib`
+- `rtk cargo fmt --all -- --check`
 
 ## Severity
 
