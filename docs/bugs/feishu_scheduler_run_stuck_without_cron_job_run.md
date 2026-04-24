@@ -23,6 +23,21 @@
 - 用 progress 心跳定位的卡点 session_id 反查对应 ACP runner：codex_acp `session/prompt` idle 超时、gemini_acp tool 调用未返回、tool executor（data_fetch/web_search/skill_tool）阻塞中的哪一个。
 - 同步复核 `run_scheduled_task` 在开头是否立即写了 `cron_job_runs(execution_status="running")`；若写入发生在收尾阶段，仍会出现台账缺失的老问题。
 - **证据来源**:
+  - 2026-04-24 20:00-20:03 最新真实会话与运行日志：`data/sessions.sqlite3` + `data/runtime/logs/sidecar.log`
+    - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
+      - `2026-04-24T20:00:59.652508+08:00` 注入 `[定时任务触发] 任务名称：A股盘后高景气产业链推演`
+      - `sidecar.log` 在 `20:00:59.675` 记录 `recv`、`20:00:59.675` 记录 `step=agent.prepare`、`20:00:59.839` 记录 `step=agent.run ... detail=start`
+      - `20:01:08.768`、`20:02:17.842` 持续出现 `runner.stage=acp.usage`；`20:01:18.018` 起进入 `Tool: hone/skill_tool`，`20:02:29.372` 起继续命中 `Tool: hone/data_fetch`
+      - 到 `2026-04-24 20:03 CST` 复查时，仍没有同 session 的 `session.persist_assistant`、`done user=`、`failed user=`、`reply.send`；`sessions.last_message_role` 仍是 `user`
+    - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
+      - `2026-04-24T20:00:59.647974+08:00` 注入 `[定时任务触发] 任务名称：美股盘前与持仓新闻综述`
+      - `sidecar.log` 在 `20:00:59.669` 记录 `recv`、`20:00:59.669` 记录 `step=agent.prepare`、`20:00:59.839` 记录 `step=agent.run ... detail=start`
+      - `20:01:11.551` 起持续出现 `runner.stage=acp.usage`；`20:01:18.899` 命中 `Tool: hone/skill_tool`，随后连续触发 `hone/portfolio`、多轮 `hone/data_fetch` 与 `hone/web_search`，直到 `20:01:58.393` 仍在工具阶段来回
+      - 到 `2026-04-24 20:03 CST` 复查时，同样没有 `session.persist_assistant`、`done user=`、`failed user=`、`reply.send`；`sessions.last_message_role` 仍是 `user`
+    - `cron_job_runs`
+      - `ou_995a704ab20334787947a366d62192f7` 的 `A股盘后高景气产业链推演` 最新仍是 `run_id=5156`、`executed_at=2026-04-23T20:02:43.068459+08:00`
+      - `ou_e31244b1208749f16773dce0c822801a` 的 `美股盘前与持仓新闻综述` 最新仍是 `run_id=5155`、`executed_at=2026-04-23T20:02:01.417135+08:00`
+      - 说明 2026-04-24 20:00 这轮并非“已失败但状态写错”，而是再次出现“进入执行和工具调用、却既无最终回复也无 run 台账”的老问题
   - 2026-04-24 08:30-09:02 最新真实会话与消息落库：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732`
       - `2026-04-24T08:30:59.933045+08:00` 导入 `[定时任务触发] 任务名称：每日有色化工标的新闻追踪`

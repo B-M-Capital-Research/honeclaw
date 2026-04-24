@@ -19,6 +19,14 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-24 20:01-20:02 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=5703` `ORCL 大事件监控`、`run_id=5708` `Monitor_Watchlist_11`、`run_id=5713` `持仓重大事件心跳检测` 在 `19:31` 之后的下一批最新窗口里再次全部落成 `noop + skipped_noop + delivered=0`
+    - 同批 `run_id=5704-5714` 还覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 等 heartbeat；最新窗口没有任何一条恢复成“纯 JSON 首包 + 明确状态”的稳定样本
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-24 20:01:08.768` `session=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7` 相关调度链路继续出现 `runner.stage=acp.usage`；同窗口 heartbeat 侧最新日志仍保持 `starts_with_json=false`
+    - `2026-04-24 20:01:56.428` 对应 `持仓重大事件心跳检测`、`2026-04-24 20:02:10.654` 对应 `ORCL 大事件监控` 的最新台账依旧只收口为 `noop + skipped_noop`，说明解析器仍在兜底上游输出漂移，而不是上游契约已恢复
+    - 结论：到 `20:02` 为止，heartbeat 结构化输出仍没有任何样本恢复成“首字符即 `{` 的单段 JSON”；状态与严重等级保持不变
   - 2026-04-24 19:01 最新巡检样本：
     - `data/runtime/logs/sidecar.log`
     - `2026-04-24 19:01:19.361` `job=ORCL 大事件监控`，`parse_kind=JsonNoop`、`starts_with_json=false`，`raw_preview` 继续以 `<think>` 长段英文推理开头，随后才在尾部补 noop 判定
