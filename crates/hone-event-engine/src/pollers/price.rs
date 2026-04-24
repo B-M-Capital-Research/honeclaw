@@ -22,6 +22,7 @@ pub struct PricePoller {
     symbols: Vec<String>,
     low_pct: f64,
     high_pct: f64,
+    realert_step_pct: f64,
     /// 52 周高/低的相对容差（0.001 = 触碰 0.1% 内算新高/新低）。
     near_hi_lo_tolerance: f64,
 }
@@ -33,6 +34,7 @@ impl PricePoller {
             symbols: vec![],
             low_pct: 5.0,
             high_pct: 10.0,
+            realert_step_pct: 2.0,
             near_hi_lo_tolerance: 0.001,
         }
     }
@@ -48,6 +50,11 @@ impl PricePoller {
         self
     }
 
+    pub fn with_realert_step_pct(mut self, step_pct: f64) -> Self {
+        self.realert_step_pct = sanitize_realert_step_pct(step_pct);
+        self
+    }
+
     pub async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
         if self.symbols.is_empty() {
             return Ok(vec![]);
@@ -59,6 +66,7 @@ impl PricePoller {
             &raw,
             self.low_pct,
             self.high_pct,
+            self.realert_step_pct,
             self.near_hi_lo_tolerance,
             Utc::now(),
         ))
@@ -67,13 +75,14 @@ impl PricePoller {
 
 #[cfg(test)]
 fn events_from_quotes(raw: &Value, low_pct: f64, high_pct: f64, near_tol: f64) -> Vec<MarketEvent> {
-    events_from_quotes_at(raw, low_pct, high_pct, near_tol, Utc::now())
+    events_from_quotes_at(raw, low_pct, high_pct, 2.0, near_tol, Utc::now())
 }
 
 fn events_from_quotes_at(
     raw: &Value,
     low_pct: f64,
     high_pct: f64,
+    realert_step_pct: f64,
     near_tol: f64,
     now: DateTime<Utc>,
 ) -> Vec<MarketEvent> {
@@ -103,6 +112,7 @@ fn events_from_quotes_at(
         if let Some(pct) = pct {
             let abs = pct.abs();
             if abs >= low_pct {
+                let step_pct = sanitize_realert_step_pct(realert_step_pct);
                 let severity = if window == PriceWindow::Close {
                     closing_move_severity(abs, high_pct)
                 } else if abs >= high_pct {
@@ -112,8 +122,15 @@ fn events_from_quotes_at(
                 };
                 let bps = (pct * 100.0).round() as i64;
                 let direction = if pct >= 0.0 { "+" } else { "" };
+                let lane = price_lane(pct, low_pct, high_pct, step_pct, window);
+                let payload = price_payload(item, pct, price, &date_key, lane.as_ref());
                 out.push(MarketEvent {
-                    id: format!("{}:{symbol}:{date_key}", window.price_id_prefix()),
+                    id: lane
+                        .as_ref()
+                        .map(|lane| lane.event_id(&symbol, &date_key, window))
+                        .unwrap_or_else(|| {
+                            format!("{}:{symbol}:{date_key}", window.price_id_prefix())
+                        }),
                     kind: EventKind::PriceAlert {
                         pct_change_bps: bps,
                         window: window.as_str().into(),
@@ -121,11 +138,11 @@ fn events_from_quotes_at(
                     severity,
                     symbols: vec![symbol.clone()],
                     occurred_at: quote_time,
-                    title: format!("{symbol} {direction}{pct:.2}%"),
-                    summary: price.map(|p| format!("价格 {p:.2}")).unwrap_or_default(),
+                    title: price_title(&symbol, pct, lane.as_ref(), direction),
+                    summary: price_summary(price, pct, lane.as_ref()),
                     url: None,
                     source: "fmp.quote".into(),
-                    payload: item.clone(),
+                    payload,
                 });
             }
         }
@@ -221,6 +238,175 @@ fn closing_move_severity(abs_pct: f64, high_pct: f64) -> Severity {
     } else {
         Severity::Low
     }
+}
+
+#[derive(Debug, Clone)]
+enum PriceLane {
+    Low,
+    Band {
+        direction: &'static str,
+        band_bps: i64,
+        next_band_bps: i64,
+    },
+    Close,
+}
+
+impl PriceLane {
+    fn event_id(&self, symbol: &str, date_key: &str, window: PriceWindow) -> String {
+        match self {
+            PriceLane::Low => format!("price_low:{symbol}:{date_key}"),
+            PriceLane::Band {
+                direction,
+                band_bps,
+                ..
+            } => format!("price_band:{symbol}:{date_key}:{direction}:{band_bps}"),
+            PriceLane::Close => format!("{}:{symbol}:{date_key}", window.price_id_prefix()),
+        }
+    }
+}
+
+fn price_lane(
+    pct: f64,
+    low_pct: f64,
+    high_pct: f64,
+    realert_step_pct: f64,
+    window: PriceWindow,
+) -> Option<PriceLane> {
+    if window == PriceWindow::Close {
+        return Some(PriceLane::Close);
+    }
+    let abs = pct.abs();
+    if abs < low_pct {
+        return None;
+    }
+    if abs < high_pct {
+        return Some(PriceLane::Low);
+    }
+    let direction = if pct >= 0.0 { "up" } else { "down" };
+    let band_pct =
+        high_pct + ((abs - high_pct) / realert_step_pct).floor().max(0.0) * realert_step_pct;
+    let band_bps = (band_pct * 100.0).round() as i64;
+    let next_band_bps = ((band_pct + realert_step_pct) * 100.0).round() as i64;
+    Some(PriceLane::Band {
+        direction,
+        band_bps,
+        next_band_bps,
+    })
+}
+
+fn sanitize_realert_step_pct(step_pct: f64) -> f64 {
+    if step_pct.is_finite() && step_pct > 0.0 {
+        step_pct
+    } else {
+        2.0
+    }
+}
+
+fn price_payload(
+    item: &Value,
+    pct: f64,
+    price: Option<f64>,
+    date_key: &str,
+    lane: Option<&PriceLane>,
+) -> Value {
+    let mut payload = item.clone();
+    let Some(obj) = payload.as_object_mut() else {
+        return payload;
+    };
+    obj.insert(
+        "hone_price_trade_date".into(),
+        Value::String(date_key.to_string()),
+    );
+    obj.insert("hone_price_pct".into(), json_number(pct));
+    if let Some(price) = price {
+        obj.insert("hone_price".into(), json_number(price));
+    }
+    match lane {
+        Some(PriceLane::Low) => {
+            obj.insert("hone_price_event_scope".into(), Value::String("low".into()));
+        }
+        Some(PriceLane::Band {
+            direction,
+            band_bps,
+            next_band_bps,
+        }) => {
+            obj.insert(
+                "hone_price_event_scope".into(),
+                Value::String("band".into()),
+            );
+            obj.insert(
+                "hone_price_direction".into(),
+                Value::String((*direction).to_string()),
+            );
+            obj.insert("hone_price_band_bps".into(), Value::from(*band_bps));
+            obj.insert(
+                "hone_price_next_band_bps".into(),
+                Value::from(*next_band_bps),
+            );
+        }
+        Some(PriceLane::Close) => {
+            obj.insert(
+                "hone_price_event_scope".into(),
+                Value::String("close".into()),
+            );
+        }
+        None => {}
+    }
+    payload
+}
+
+fn price_title(symbol: &str, pct: f64, lane: Option<&PriceLane>, direction_prefix: &str) -> String {
+    match lane {
+        Some(PriceLane::Band {
+            direction,
+            band_bps,
+            ..
+        }) => {
+            let sign = if *direction == "up" { "+" } else { "-" };
+            format!("{symbol} 跨过 {sign}{}% 档", format_bps(*band_bps))
+        }
+        _ => format!("{symbol} {direction_prefix}{pct:.2}%"),
+    }
+}
+
+fn price_summary(price: Option<f64>, pct: f64, lane: Option<&PriceLane>) -> String {
+    let price_text = price
+        .map(|p| format!("当前 {p:.2}"))
+        .unwrap_or_else(|| "当前价格未知".into());
+    let move_text = if pct >= 0.0 {
+        format!("日涨 +{pct:.2}%")
+    } else {
+        format!("日跌 {pct:.2}%")
+    };
+    match lane {
+        Some(PriceLane::Band {
+            direction,
+            next_band_bps,
+            ..
+        }) => {
+            let sign = if *direction == "up" { "+" } else { "-" };
+            format!(
+                "{price_text}，{move_text}，下一档 {sign}{}%",
+                format_bps(*next_band_bps)
+            )
+        }
+        _ => format!("{price_text}，{move_text}"),
+    }
+}
+
+fn format_bps(bps: i64) -> String {
+    let pct = bps as f64 / 100.0;
+    if bps % 100 == 0 {
+        format!("{pct:.0}")
+    } else {
+        format!("{pct:.2}")
+    }
+}
+
+fn json_number(n: f64) -> Value {
+    serde_json::Number::from_f64(n)
+        .map(Value::Number)
+        .unwrap_or(Value::Null)
 }
 
 #[cfg(test)]
@@ -330,13 +516,60 @@ mod tests {
             {"symbol": "BE", "price": 229.75, "changesPercentage": 4.01,
              "timestamp": quote_time.timestamp(), "yearHigh": 235.35, "yearLow": 16.05}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
         let price = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
             .unwrap();
-        assert_eq!(price.id, "price:BE:2026-04-22");
+        assert_eq!(price.id, "price_low:BE:2026-04-22");
         assert_eq!(price.occurred_at, quote_time);
+        assert_eq!(
+            price
+                .payload
+                .get("hone_price_event_scope")
+                .and_then(|v| v.as_str()),
+            Some("low")
+        );
+    }
+
+    #[test]
+    fn intraday_high_move_uses_directional_band_id() {
+        let quote_time = Utc.with_ymd_and_hms(2026, 4, 24, 13, 45, 0).unwrap();
+        let now = quote_time + chrono::Duration::seconds(2);
+        let raw = serde_json::json!([
+            {"symbol": "AAOI", "price": 146.24, "changesPercentage": 6.18,
+             "timestamp": quote_time.timestamp(), "yearHigh": 173.41, "yearLow": 11.86}
+        ]);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let price = events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
+            .unwrap();
+        assert_eq!(price.id, "price_band:AAOI:2026-04-24:up:600");
+        assert_eq!(price.severity, Severity::High);
+        assert_eq!(
+            price
+                .payload
+                .get("hone_price_next_band_bps")
+                .and_then(|v| v.as_i64()),
+            Some(800)
+        );
+    }
+
+    #[test]
+    fn jump_open_uses_highest_reached_band_not_all_intermediate_bands() {
+        let quote_time = Utc.with_ymd_and_hms(2026, 4, 24, 13, 30, 0).unwrap();
+        let now = quote_time + chrono::Duration::seconds(2);
+        let raw = serde_json::json!([
+            {"symbol": "AMD", "price": 342.53, "changesPercentage": 12.18,
+             "timestamp": quote_time.timestamp(), "yearHigh": 360.0, "yearLow": 90.12}
+        ]);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
+        let price = events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
+            .unwrap();
+        assert_eq!(price.id, "price_band:AMD:2026-04-24:up:1200");
     }
 
     #[test]
@@ -347,7 +580,7 @@ mod tests {
             {"symbol": "BE", "price": 229.75, "changesPercentage": 8.0,
              "timestamp": quote_time.timestamp(), "yearHigh": 235.35, "yearLow": 16.05}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
         assert!(events.is_empty());
     }
 
@@ -359,7 +592,7 @@ mod tests {
             {"symbol": "AMD", "price": 303.46, "changesPercentage": 6.66807,
              "timestamp": close_time.timestamp(), "yearHigh": 304.10, "yearLow": 90.12}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
         let price = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
@@ -381,7 +614,7 @@ mod tests {
             {"symbol": "AMD", "price": 303.46, "changesPercentage": 3.5,
              "timestamp": close_time.timestamp(), "yearHigh": 500.10, "yearLow": 90.12}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
         let price = events
             .iter()
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
@@ -398,7 +631,7 @@ mod tests {
             {"symbol": "AMD", "price": 303.46, "changesPercentage": 6.66807,
              "timestamp": close_time.timestamp(), "yearHigh": 304.10, "yearLow": 90.12}
         ]);
-        let events = events_from_quotes_at(&raw, 2.5, 6.0, 0.001, now);
+        let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
         assert!(events.is_empty());
     }
 

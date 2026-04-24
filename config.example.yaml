@@ -242,6 +242,17 @@ event_engine:
     # 用户 per-actor price_high_pct_override 低于该值时，只会让价格异动进 digest；
     # 即时推送仍要求达到该系统最小阈值，除非 payload 标明高仓位。
     price_min_direct_pct: 6.0
+    # 价格异动跨档再提醒步长。high=6, step=2 时,盘中跨 +6/+8/+10
+    # 或 -6/-8/-10 会形成独立事件；未跨新档只更新摘要最新态。
+    price_realert_step_pct: 2.0
+    # 同一用户、同一 ticker、同一方向的价格 band 即时推最小间隔。
+    # 价格 band 不再走通用 same_symbol_cooldown,避免 +6 后把 +8 误挡住。
+    price_intraday_min_gap_minutes: 30
+    # 同一用户、同一 ticker、同一方向每日最多即时推几个价格 band。
+    # 默认 2:例如 +6/+8 推送,+10 只更新摘要。
+    price_symbol_direction_daily_cap: 2
+    # 收盘 price_close 默认只进摘要,避免美股收盘在北京时间凌晨即时打扰。
+    price_close_direct_enabled: false
     large_position_weight_pct: 20.0
     # High macro 只有临近发生窗口才即时推；未来 7 天日历保留为摘要/预告。
     macro_immediate_lookahead_hours: 6

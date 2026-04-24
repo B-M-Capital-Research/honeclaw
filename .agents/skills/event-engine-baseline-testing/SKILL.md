@@ -15,7 +15,7 @@ Use this skill for event-engine push quality work, especially changes touching:
 - `crates/hone-web-api/src/lib.rs`
 - `tests/fixtures/event_engine/news_classifier_baseline_*.json`
 
-Always obey the repository rule: prefix shell commands with `rtk` except native `git push`.
+Use repository-native commands exactly as written in this skill. Do not add local wrapper prefixes.
 
 ## Start Checklist
 
@@ -29,7 +29,7 @@ Before changing code or fixtures, write a short todo that includes:
 Check the worktree first:
 
 ```bash
-rtk git status --short --branch
+git status --short --branch
 ```
 
 Do not commit if `main` is behind, or if staged/unrelated files would make an isolated commit unsafe.
@@ -41,32 +41,32 @@ Run the smallest useful subset first, then broaden.
 For event-engine logic:
 
 ```bash
-rtk cargo test -p hone-event-engine --lib
+cargo test -p hone-event-engine --lib
 ```
 
 For config schema/default changes:
 
 ```bash
-rtk cargo test -p hone-core --lib
+cargo test -p hone-core --lib
 ```
 
 For web-api assembly changes, such as sink/classifier model wiring:
 
 ```bash
-rtk cargo check -p hone-web-api
+cargo check -p hone-web-api
 ```
 
 Always finish Rust work with:
 
 ```bash
-rtk cargo fmt --all -- --check
+cargo fmt --all -- --check
 ```
 
 If formatting fails, run:
 
 ```bash
-rtk cargo fmt --all
-rtk cargo fmt --all -- --check
+cargo fmt --all
+cargo fmt --all -- --check
 ```
 
 ## Existing News Baseline
@@ -89,7 +89,7 @@ The CI-safe source/kind drift test is in:
 Run it directly when touching source classification or transcript splitting:
 
 ```bash
-rtk cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib
+cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib
 ```
 
 ## Rerun Baseline
@@ -97,31 +97,31 @@ rtk cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_b
 Offline check, no network/API cost:
 
 ```bash
-rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
+bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
 ```
 
 Live model drift check against the saved title-only samples:
 
 ```bash
-rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
+env RUN_EVENT_ENGINE_LLM_BASELINE=1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
 ```
 
 To explicitly check the current recommended model:
 
 ```bash
-rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
+env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
 ```
 
 To compare another model:
 
 ```bash
-rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=x-ai/grok-4.1-fast bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
+env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=x-ai/grok-4.1-fast bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
 ```
 
 To collect a non-blocking drift report:
 
 ```bash
-rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 ALLOW_EVENT_ENGINE_LLM_BASELINE_DRIFT=1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
+env RUN_EVENT_ENGINE_LLM_BASELINE=1 ALLOW_EVENT_ENGINE_LLM_BASELINE_DRIFT=1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
 ```
 
 Interpretation:
@@ -138,7 +138,7 @@ Daily Telegram calibration should start from the actual delivery evidence alread
 snapshot for one actor and one local day:
 
 ```bash
-rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465
+python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465
 ```
 
 The default output directory is `data/exports/event-engine-calibration/`, which is ignored by git.
@@ -185,9 +185,9 @@ Workflow:
 6. Run:
 
 ```bash
-rtk python3 -m json.tool tests/fixtures/event_engine/news_classifier_baseline_2026-04-23.json >/dev/null
-rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
-rtk cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib
+python3 -m json.tool tests/fixtures/event_engine/news_classifier_baseline_2026-04-23.json >/dev/null
+bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh
+cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib
 ```
 
 7. If the user explicitly asked for live model validation, also run the live script and report cost/latency/drift.

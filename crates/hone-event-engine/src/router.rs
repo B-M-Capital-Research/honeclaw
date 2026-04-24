@@ -118,6 +118,12 @@ pub struct NotificationRouter {
     same_symbol_cooldown_minutes: u32,
     /// 用户价格阈值覆盖的系统级最小即时推阈值。
     price_min_direct_pct: f64,
+    /// 同一 actor + symbol + direction 两次价格 band 即时推的最小间隔。
+    price_intraday_min_gap_minutes: u32,
+    /// 同一 actor + symbol + direction 每日本地日价格 band 即时推上限。
+    price_symbol_direction_daily_cap: u32,
+    /// 收盘价格异动是否允许即时推；默认只进入摘要。
+    price_close_direct_enabled: bool,
     /// 大仓位标的用用户敏感阈值直推的默认仓位权重门槛。
     large_position_weight_pct: f64,
     /// MacroEvent High 允许即时推的临近窗口。
@@ -163,6 +169,9 @@ impl NotificationRouter {
             tz_offset_hours: 8,
             same_symbol_cooldown_minutes: 0,
             price_min_direct_pct: 6.0,
+            price_intraday_min_gap_minutes: 0,
+            price_symbol_direction_daily_cap: 0,
+            price_close_direct_enabled: false,
             large_position_weight_pct: 20.0,
             macro_immediate_lookahead_hours: 6,
             macro_immediate_grace_hours: 2,
@@ -210,6 +219,21 @@ impl NotificationRouter {
 
     pub fn with_price_min_direct_pct(mut self, pct: f64) -> Self {
         self.price_min_direct_pct = pct.max(0.0);
+        self
+    }
+
+    pub fn with_price_intraday_min_gap_minutes(mut self, minutes: u32) -> Self {
+        self.price_intraday_min_gap_minutes = minutes;
+        self
+    }
+
+    pub fn with_price_symbol_direction_daily_cap(mut self, cap: u32) -> Self {
+        self.price_symbol_direction_daily_cap = cap;
+        self
+    }
+
+    pub fn with_price_close_direct_enabled(mut self, enabled: bool) -> Self {
+        self.price_close_direct_enabled = enabled;
         self
     }
 
@@ -642,8 +666,20 @@ impl NotificationRouter {
             //   (b) immediate_kinds:某些 kind 无条件升 High 即时推(例如 52 周高/低、
             //       分析师评级)。
             // 升级后仍要走 high_daily_cap / cooldown,保持 burst 防护。
-            let sev = self.apply_per_actor_severity_override(event, sev, &user_prefs);
-            let sev = self.apply_quiet_mode(event, sev, &user_prefs);
+            let mut sev = self.apply_per_actor_severity_override(event, sev, &user_prefs);
+            sev = self.apply_quiet_mode(event, sev, &user_prefs);
+            if is_price_close_alert(event)
+                && !self.price_close_direct_enabled
+                && matches!(sev, Severity::High)
+            {
+                tracing::info!(
+                    actor = %actor_key(&actor),
+                    event_id = %event.id,
+                    source = %event.source,
+                    "price_close high demoted to digest because price_close_direct_enabled=false"
+                );
+                sev = Severity::Medium;
+            }
             if !user_prefs.should_deliver(event) {
                 let _ = self.store.log_delivery(
                     &event.id,
@@ -670,6 +706,8 @@ impl NotificationRouter {
             // cap=0 关闭该逻辑,与历史行为兼容。
             let mut demoted_by_cap = false;
             let mut demoted_by_cooldown = false;
+            let mut demoted_by_price_cap = false;
+            let mut demoted_by_price_gap = false;
             let mut effective_sev = if matches!(sev, Severity::High) && self.high_daily_cap > 0 {
                 let since = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
                 let category = event_category(event);
@@ -700,11 +738,76 @@ impl NotificationRouter {
             } else {
                 sev
             };
+            if matches!(effective_sev, Severity::High) && is_intraday_price_band_alert(event) {
+                if let Some((symbol, direction)) = price_alert_symbol_direction(event) {
+                    if self.price_symbol_direction_daily_cap > 0 {
+                        let since = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
+                        match self.store.count_price_band_sent_since(
+                            &actor_key(&actor),
+                            symbol,
+                            direction,
+                            since,
+                        ) {
+                            Ok(n) if n >= self.price_symbol_direction_daily_cap as i64 => {
+                                tracing::info!(
+                                    actor = %actor_key(&actor),
+                                    event_id = %event.id,
+                                    source = %event.source,
+                                    symbol = %symbol,
+                                    direction = %direction,
+                                    today_price_bands = n,
+                                    cap = self.price_symbol_direction_daily_cap,
+                                    "price band demoted to digest (symbol-direction daily cap)"
+                                );
+                                demoted_by_price_cap = true;
+                                effective_sev = Severity::Medium;
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!("count_price_band_sent_since failed: {e:#}");
+                            }
+                        }
+                    }
+                    if matches!(effective_sev, Severity::High)
+                        && self.price_intraday_min_gap_minutes > 0
+                    {
+                        let cutoff = chrono::Utc::now()
+                            - chrono::Duration::minutes(self.price_intraday_min_gap_minutes as i64);
+                        match self.store.last_price_band_sink_send_for_symbol_direction(
+                            &actor_key(&actor),
+                            symbol,
+                            direction,
+                        ) {
+                            Ok(Some(ts)) if ts >= cutoff => {
+                                tracing::info!(
+                                    actor = %actor_key(&actor),
+                                    event_id = %event.id,
+                                    source = %event.source,
+                                    symbol = %symbol,
+                                    direction = %direction,
+                                    last_sent_at = %ts,
+                                    gap_min = self.price_intraday_min_gap_minutes,
+                                    "price band demoted to digest (symbol-direction min gap)"
+                                );
+                                demoted_by_price_gap = true;
+                                effective_sev = Severity::Medium;
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(
+                                    "last_price_band_sink_send_for_symbol_direction failed for {symbol}: {e:#}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
             // 同 ticker 冷却:如果事件还是 High,且 cooldown>0,检查任一 symbol 最近一次
             // High+sink+sent 的时间戳,若在冷却窗口内则降级进 digest。
             if matches!(effective_sev, Severity::High)
                 && self.same_symbol_cooldown_minutes > 0
                 && !event.symbols.is_empty()
+                && !is_intraday_price_band_alert(event)
             {
                 let cutoff = chrono::Utc::now()
                     - chrono::Duration::minutes(self.same_symbol_cooldown_minutes as i64);
@@ -801,6 +904,10 @@ impl NotificationRouter {
                             // (sev),方便事后 grep "high + capped/cooled_down" 对账。
                             let status = if demoted_by_cap {
                                 "capped"
+                            } else if demoted_by_price_cap {
+                                "price_capped"
+                            } else if demoted_by_price_gap {
+                                "price_cooled_down"
                             } else if demoted_by_cooldown {
                                 "cooled_down"
                             } else {
@@ -887,6 +994,34 @@ fn event_position_weight_pct(event: &MarketEvent) -> Option<f64> {
         .or_else(|| event.payload.get("portfolio_weight"))
         .and_then(|v| v.as_f64())?;
     Some(if raw <= 1.0 { raw * 100.0 } else { raw })
+}
+
+fn is_price_close_alert(event: &MarketEvent) -> bool {
+    matches!(&event.kind, EventKind::PriceAlert { window, .. } if window == "close")
+}
+
+fn is_intraday_price_band_alert(event: &MarketEvent) -> bool {
+    matches!(&event.kind, EventKind::PriceAlert { window, .. } if window != "close")
+        && event.id.starts_with("price_band:")
+}
+
+fn price_alert_symbol_direction(event: &MarketEvent) -> Option<(&str, &str)> {
+    if !is_intraday_price_band_alert(event) {
+        return None;
+    }
+    let symbol = event.symbols.first()?.as_str();
+    let direction = event
+        .payload
+        .get("hone_price_direction")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            event
+                .payload
+                .get("changesPercentage")
+                .and_then(|v| v.as_f64())
+                .map(|pct| if pct >= 0.0 { "up" } else { "down" })
+        })?;
+    matches!(direction, "up" | "down").then_some((symbol, direction))
 }
 
 fn quiet_mode_allows_immediate(event: &MarketEvent) -> bool {
@@ -1030,6 +1165,30 @@ mod tests {
             url: None,
             source: "test".into(),
             payload: serde_json::Value::Null,
+        }
+    }
+
+    fn price_band_ev(symbol: &str, direction: &str, band_bps: i64, pct: f64) -> MarketEvent {
+        MarketEvent {
+            id: format!("price_band:{symbol}:2026-04-24:{direction}:{band_bps}"),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: (pct * 100.0).round() as i64,
+                window: "day".into(),
+            },
+            severity: Severity::High,
+            symbols: vec![symbol.into()],
+            occurred_at: Utc::now(),
+            title: format!("{symbol} {pct:+.2}%"),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({
+                "changesPercentage": pct,
+                "hone_price_event_scope": "band",
+                "hone_price_direction": direction,
+                "hone_price_band_bps": band_bps,
+                "hone_price_trade_date": "2026-04-24"
+            }),
         }
     }
 
@@ -1240,6 +1399,137 @@ mod tests {
             assert_eq!(s, 1, "cooldown=0 时不应降级");
         }
         assert_eq!(sink.calls.lock().unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn price_band_uses_price_specific_gap_instead_of_generic_symbol_cooldown() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAOI".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store.clone(),
+            digest,
+        )
+        .with_same_symbol_cooldown_minutes(60)
+        .with_price_intraday_min_gap_minutes(0)
+        .with_price_symbol_direction_daily_cap(0);
+
+        let first = price_band_ev("AAOI", "up", 600, 6.18);
+        let second = price_band_ev("AAOI", "up", 800, 8.12);
+        store.insert_event(&first).unwrap();
+        store.insert_event(&second).unwrap();
+
+        assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
+        assert_eq!(
+            router.dispatch(&second).await.unwrap(),
+            (1, 0),
+            "价格 band 应绕开通用同 ticker cooldown"
+        );
+        assert_eq!(sink.calls.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn price_band_min_gap_demotes_next_band_to_digest() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAOI".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store.clone(),
+            digest,
+        )
+        .with_price_intraday_min_gap_minutes(60)
+        .with_price_symbol_direction_daily_cap(0);
+
+        let first = price_band_ev("AAOI", "up", 600, 6.18);
+        let second = price_band_ev("AAOI", "up", 800, 8.12);
+        store.insert_event(&first).unwrap();
+        store.insert_event(&second).unwrap();
+
+        assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
+        assert_eq!(router.dispatch(&second).await.unwrap(), (0, 1));
+        assert_eq!(sink.calls.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn price_band_symbol_direction_daily_cap_demotes_third_band() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAOI".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store.clone(),
+            digest,
+        )
+        .with_price_intraday_min_gap_minutes(0)
+        .with_price_symbol_direction_daily_cap(2);
+
+        let first = price_band_ev("AAOI", "up", 600, 6.18);
+        let second = price_band_ev("AAOI", "up", 800, 8.12);
+        let third = price_band_ev("AAOI", "up", 1000, 10.35);
+        for event in [&first, &second, &third] {
+            store.insert_event(event).unwrap();
+        }
+
+        assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
+        assert_eq!(router.dispatch(&second).await.unwrap(), (1, 0));
+        assert_eq!(router.dispatch(&third).await.unwrap(), (0, 1));
+        assert_eq!(sink.calls.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn price_band_direction_cap_is_independent_for_reversal() {
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AAOI".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store.clone(),
+            digest,
+        )
+        .with_price_intraday_min_gap_minutes(0)
+        .with_price_symbol_direction_daily_cap(1);
+
+        let up = price_band_ev("AAOI", "up", 600, 6.18);
+        let down = price_band_ev("AAOI", "down", 600, -6.30);
+        store.insert_event(&up).unwrap();
+        store.insert_event(&down).unwrap();
+
+        assert_eq!(router.dispatch(&up).await.unwrap(), (1, 0));
+        assert_eq!(
+            router.dispatch(&down).await.unwrap(),
+            (1, 0),
+            "正向 cap 不应挡住负向独立 lane"
+        );
     }
 
     #[tokio::test]
@@ -2419,7 +2709,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn per_actor_price_threshold_can_promote_closing_move() {
+    async fn price_close_direct_disabled_keeps_closing_move_in_digest() {
         use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
 
         let mut reg = SubscriptionRegistry::new();
@@ -2465,9 +2755,61 @@ mod tests {
             payload: serde_json::json!({"changesPercentage": 6.67}),
         };
         let (sent, pending) = router.dispatch(&ev).await.unwrap();
-        assert_eq!(sent, 1, "超过直推地板的收盘异动应按价格阈值直推");
+        assert_eq!(sent, 0, "默认不应在收盘时间即时推价格异动");
+        assert_eq!(pending, 1);
+        assert!(sink.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn price_close_direct_enabled_allows_closing_move_promotion() {
+        use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+        let mut reg = SubscriptionRegistry::new();
+        reg.register(Box::new(PortfolioSubscription::new(
+            actor("u1"),
+            vec!["AMD".into()],
+        )));
+        let sink = Arc::new(CapturingSink::default());
+        let dir = tempdir().unwrap();
+        let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+        let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+        let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+        prefs_store
+            .save(
+                &actor("u1"),
+                &NotificationPrefs {
+                    price_high_pct_override: Some(4.0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let router = NotificationRouter::new(
+            Arc::new(SharedRegistry::from_registry(reg)),
+            sink.clone(),
+            store,
+            digest,
+        )
+        .with_prefs(prefs_store)
+        .with_price_close_direct_enabled(true);
+
+        let ev = MarketEvent {
+            id: "price_close:AMD:2026-04-22".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 667,
+                window: "close".into(),
+            },
+            severity: Severity::Medium,
+            symbols: vec!["AMD".into()],
+            occurred_at: Utc::now(),
+            title: "AMD +6.67%".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({"changesPercentage": 6.67}),
+        };
+        let (sent, pending) = router.dispatch(&ev).await.unwrap();
+        assert_eq!(sent, 1);
         assert_eq!(pending, 0);
-        assert_eq!(sink.calls.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]

@@ -455,6 +455,64 @@ impl EventStore {
         Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
     }
 
+    pub fn count_price_band_sent_since(
+        &self,
+        actor: &str,
+        symbol: &str,
+        direction: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<i64> {
+        let Some(pattern) = price_band_id_pattern(symbol, direction) else {
+            return Ok(0);
+        };
+        let needle = format!("%\"{}\"%", symbol.to_uppercase());
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = conn.query_row(
+            r#"
+            SELECT COUNT(*) FROM delivery_log d
+            JOIN events e ON d.event_id = e.id
+            WHERE d.actor = ?1
+              AND d.severity = 'high'
+              AND d.status = 'sent'
+              AND d.channel = 'sink'
+              AND d.sent_at_ts >= ?2
+              AND e.symbols_json LIKE ?3
+              AND e.id LIKE ?4
+            "#,
+            params![actor, since.timestamp(), needle, pattern],
+            |row| row.get(0),
+        )?;
+        Ok(n)
+    }
+
+    pub fn last_price_band_sink_send_for_symbol_direction(
+        &self,
+        actor: &str,
+        symbol: &str,
+        direction: &str,
+    ) -> anyhow::Result<Option<DateTime<Utc>>> {
+        let Some(pattern) = price_band_id_pattern(symbol, direction) else {
+            return Ok(None);
+        };
+        let needle = format!("%\"{}\"%", symbol.to_uppercase());
+        let conn = self.conn.lock().unwrap();
+        let row: Option<i64> = conn.query_row(
+            r#"
+            SELECT MAX(d.sent_at_ts) FROM delivery_log d
+            JOIN events e ON d.event_id = e.id
+            WHERE d.actor = ?1
+              AND d.severity = 'high'
+              AND d.status = 'sent'
+              AND d.channel = 'sink'
+              AND e.symbols_json LIKE ?2
+              AND e.id LIKE ?3
+            "#,
+            params![actor, needle, pattern],
+            |row| row.get::<_, Option<i64>>(0),
+        )?;
+        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+    }
+
     pub fn last_digest_success_at(&self, actor: &str) -> anyhow::Result<Option<DateTime<Utc>>> {
         let conn = self.conn.lock().unwrap();
         let row: Option<i64> = conn.query_row(
@@ -646,6 +704,18 @@ fn category_kind_tags(category: &str) -> Option<&'static [&'static str]> {
         "portfolio" => Some(&["portfolio_pre_market", "portfolio_post_market"]),
         _ => None,
     }
+}
+
+fn price_band_id_pattern(symbol: &str, direction: &str) -> Option<String> {
+    let direction = match direction {
+        "up" | "down" => direction,
+        _ => return None,
+    };
+    Some(format!(
+        "price_band:{}:%:{}:%",
+        symbol.to_uppercase(),
+        direction
+    ))
 }
 
 #[cfg(test)]

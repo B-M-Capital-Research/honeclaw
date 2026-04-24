@@ -280,6 +280,13 @@ impl EventEngine {
         .with_high_daily_cap(self.engine_cfg.thresholds.high_severity_daily_cap)
         .with_same_symbol_cooldown_minutes(self.engine_cfg.thresholds.same_symbol_cooldown_minutes)
         .with_price_min_direct_pct(self.engine_cfg.thresholds.price_min_direct_pct)
+        .with_price_intraday_min_gap_minutes(
+            self.engine_cfg.thresholds.price_intraday_min_gap_minutes,
+        )
+        .with_price_symbol_direction_daily_cap(
+            self.engine_cfg.thresholds.price_symbol_direction_daily_cap,
+        )
+        .with_price_close_direct_enabled(self.engine_cfg.thresholds.price_close_direct_enabled)
         .with_large_position_weight_pct(self.engine_cfg.thresholds.large_position_weight_pct)
         .with_macro_immediate_window(
             self.engine_cfg.thresholds.macro_immediate_lookahead_hours,
@@ -464,6 +471,7 @@ impl EventEngine {
                 registry.clone(),
                 self.engine_cfg.thresholds.price_alert_low_pct,
                 self.engine_cfg.thresholds.price_alert_high_pct,
+                self.engine_cfg.thresholds.price_realert_step_pct,
                 Duration::from_secs(self.engine_cfg.poll_intervals.price_secs),
             );
         } else if fmp_available {
@@ -882,6 +890,7 @@ fn spawn_price_poller(
     registry: Arc<SharedRegistry>,
     low_pct: f64,
     high_pct: f64,
+    realert_step_pct: f64,
     interval: Duration,
 ) {
     tokio::spawn(async move {
@@ -901,7 +910,8 @@ fn spawn_price_poller(
             }
             let poller = PricePoller::new(client.clone())
                 .with_symbols(symbols)
-                .with_thresholds(low_pct, high_pct);
+                .with_thresholds(low_pct, high_pct)
+                .with_realert_step_pct(realert_step_pct);
             match poller.poll().await {
                 Ok(events) => process_events("price", events, &store, &router).await,
                 Err(e) => log_poller_error("price", "fmp.quote", "quote", &e),

@@ -73,11 +73,54 @@ impl DigestBuffer {
             enqueued_at: Utc::now(),
         };
         let line = serde_json::to_string(&rec)?;
+        if let Some(key) = price_digest_key(event) {
+            return self.enqueue_latest(actor, &line, &key);
+        }
         let mut f = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(self.file_for(actor))?;
         writeln!(f, "{line}")?;
+        Ok(())
+    }
+
+    fn enqueue_latest(&self, actor: &ActorIdentity, line: &str, key: &str) -> anyhow::Result<()> {
+        let path = self.file_for(actor);
+        let mut kept = Vec::new();
+        if path.exists() {
+            let f = std::fs::File::open(&path)?;
+            for line in BufReader::new(f).lines().map_while(Result::ok) {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let should_replace = serde_json::from_str::<BufferRecord>(&line)
+                    .ok()
+                    .and_then(|rec| price_digest_key(&rec.event))
+                    .as_deref()
+                    == Some(key);
+                if !should_replace {
+                    kept.push(line);
+                }
+            }
+        }
+        kept.push(line.to_string());
+
+        let tmp = path.with_extension(format!(
+            "jsonl.tmp-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        {
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(&tmp)?;
+            for item in kept {
+                writeln!(f, "{item}")?;
+            }
+        }
+        std::fs::rename(tmp, path)?;
         Ok(())
     }
 
@@ -169,6 +212,26 @@ fn sanitize(s: &str) -> String {
             }
         })
         .collect()
+}
+
+fn price_digest_key(event: &MarketEvent) -> Option<String> {
+    let EventKind::PriceAlert { window, .. } = &event.kind else {
+        return None;
+    };
+    let symbol = event.symbols.first()?.to_uppercase();
+    let date = event
+        .payload
+        .get("hone_price_trade_date")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            event
+                .occurred_at
+                .date_naive()
+                .format("%Y-%m-%d")
+                .to_string()
+        });
+    Some(format!("{symbol}:{date}:{window}"))
 }
 
 // ── Scheduler ───────────────────────────────────────────────────────────────
@@ -1091,6 +1154,27 @@ mod tests {
         }
     }
 
+    fn price_ev(id: &str, sym: &str, pct: f64) -> MarketEvent {
+        MarketEvent {
+            id: id.into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: (pct * 100.0).round() as i64,
+                window: "day".into(),
+            },
+            severity: Severity::Low,
+            symbols: vec![sym.into()],
+            occurred_at: Utc.with_ymd_and_hms(2026, 4, 24, 13, 45, 0).unwrap(),
+            title: format!("{sym} {pct:+.2}%"),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({
+                "changesPercentage": pct,
+                "hone_price_trade_date": "2026-04-24"
+            }),
+        }
+    }
+
     #[test]
     fn enqueue_then_drain_returns_events_in_order() {
         let dir = tempdir().unwrap();
@@ -1102,6 +1186,26 @@ mod tests {
         assert_eq!(drained.len(), 2);
         assert_eq!(drained[0].id, "1");
         assert_eq!(drained[1].id, "2");
+    }
+
+    #[test]
+    fn price_enqueue_replaces_same_symbol_day_with_latest_event() {
+        let dir = tempdir().unwrap();
+        let buf = DigestBuffer::new(dir.path()).unwrap();
+        let a = actor("u1");
+        buf.enqueue(&a, &price_ev("price_low:AAOI:2026-04-24", "AAOI", 5.87))
+            .unwrap();
+        buf.enqueue(
+            &a,
+            &price_ev("price_band:AAOI:2026-04-24:up:1000", "AAOI", 10.35),
+        )
+        .unwrap();
+        buf.enqueue(&a, &ev("news-1", "AAOI")).unwrap();
+
+        let drained = buf.drain_actor(&a).unwrap();
+        assert_eq!(drained.len(), 2);
+        assert_eq!(drained[0].id, "price_band:AAOI:2026-04-24:up:1000");
+        assert_eq!(drained[1].id, "news-1");
     }
 
     #[test]

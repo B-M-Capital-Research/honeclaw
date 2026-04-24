@@ -254,6 +254,21 @@ pub struct Thresholds {
     /// portfolio_weight / portfolio_weight_pct 达到大仓位阈值。
     #[serde(default = "default_price_min_direct_pct")]
     pub price_min_direct_pct: f64,
+    /// 价格异动跨档后的再提醒步长百分比。例如 high=6, step=2 时,盘中跨
+    /// +6/+8/+10 或 -6/-8/-10 会形成独立 band 事件。
+    #[serde(default = "default_price_realert_step_pct")]
+    pub price_realert_step_pct: f64,
+    /// 同一 actor + symbol + direction 两次价格 band 即时推的最小间隔。
+    /// 0 = 不启用。用于替代通用同 ticker cooldown 对价格 band 的误伤。
+    #[serde(default = "default_price_intraday_min_gap_minutes")]
+    pub price_intraday_min_gap_minutes: u32,
+    /// 同一 actor + symbol + direction 每个本地日最多即时推多少个价格 band。
+    /// 0 = 不启用。
+    #[serde(default = "default_price_symbol_direction_daily_cap")]
+    pub price_symbol_direction_daily_cap: u32,
+    /// 收盘 price_close 是否允许即时推。默认 false,避免美股收盘在北京凌晨打扰。
+    #[serde(default = "default_price_close_direct_enabled")]
+    pub price_close_direct_enabled: bool,
     /// 高仓位标的使用用户自定义价格阈值直推的最小仓位权重百分比。
     #[serde(default = "default_large_position_weight_pct")]
     pub large_position_weight_pct: f64,
@@ -276,6 +291,10 @@ impl Default for Thresholds {
             news_upgrade_per_symbol_per_tick: default_news_upgrade_per_symbol_per_tick(),
             news_upgrade_per_tick: default_news_upgrade_per_tick(),
             price_min_direct_pct: default_price_min_direct_pct(),
+            price_realert_step_pct: default_price_realert_step_pct(),
+            price_intraday_min_gap_minutes: default_price_intraday_min_gap_minutes(),
+            price_symbol_direction_daily_cap: default_price_symbol_direction_daily_cap(),
+            price_close_direct_enabled: default_price_close_direct_enabled(),
             large_position_weight_pct: default_large_position_weight_pct(),
             macro_immediate_lookahead_hours: default_macro_immediate_lookahead_hours(),
             macro_immediate_grace_hours: default_macro_immediate_grace_hours(),
@@ -315,6 +334,18 @@ fn default_news_upgrade_per_tick() -> u32 {
 }
 fn default_price_min_direct_pct() -> f64 {
     6.0
+}
+fn default_price_realert_step_pct() -> f64 {
+    2.0
+}
+fn default_price_intraday_min_gap_minutes() -> u32 {
+    30
+}
+fn default_price_symbol_direction_daily_cap() -> u32 {
+    2
+}
+fn default_price_close_direct_enabled() -> bool {
+    false
 }
 fn default_large_position_weight_pct() -> f64 {
     20.0
