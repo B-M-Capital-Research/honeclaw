@@ -253,6 +253,21 @@ pub fn clean_msg_markers(text: &str) -> String {
     cleaned.trim().to_string()
 }
 
+/// 剥离 `<think>` / `<tool_code>` / `<tool_call>` 等 runner 内部 reasoning 块。
+///
+/// 用于 heartbeat 结构化解析、scheduler 出站净化等需要「先拿到 LLM 的公开正文再做
+/// 契约判断」的链路。与 `sanitize_user_visible_output` 共用同一条规则，保证
+/// 「什么算内部 reasoning」在全链路单一来源。
+pub fn strip_internal_reasoning_blocks(text: &str) -> String {
+    let normalized = text.replace("\r\n", "\n");
+    let block_stripped = RE_INTERNAL_BLOCK
+        .replace_all(&normalized, "\n")
+        .into_owned();
+    RE_BRACKET_INTERNAL_BLOCK
+        .replace_all(&block_stripped, "")
+        .into_owned()
+}
+
 pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
     if text.trim().is_empty() {
         return SanitizedUserVisibleOutput {

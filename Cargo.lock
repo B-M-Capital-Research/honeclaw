@@ -2792,6 +2792,7 @@ dependencies = [
 name = "hone-channels"
 version = "0.2.8"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
  "flate2",

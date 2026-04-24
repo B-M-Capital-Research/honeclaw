@@ -33,3 +33,4 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 uuid = { workspace = true }
 
 [dev-dependencies]
+anyhow = { workspace = true }

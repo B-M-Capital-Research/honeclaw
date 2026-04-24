@@ -3,7 +3,25 @@
 - **发现时间**: 2026-04-24 09:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Observing (2026-04-24)
+
+## 观测落地（2026-04-24）
+
+- `crates/hone-channels/src/agent_session.rs`：在 `run_runner_with_empty_success_retry` 里新增 `run_runner_with_progress_watchdog`，用 `tokio::select!` + 60 秒 interval ticker 包住底层 `runner.run(...)`。ticker 每命中一次就会：
+  - 发 `tracing::warn! state=agent_iterating`，内容包含 `runner_name / session_id / elapsed_s / tick / retry_attempt`；
+  - 走 `log_message_step("agent.run.progress", ...)`，在 `sidecar.log` 留下可按 `state=agent_iterating` + `step=agent.run.progress` 聚合的 stuck 心跳；
+  - 通过 `session_progress_event("agent.run.progress", ...)` 同步到 `AgentSessionListener`，让 UI / 下游订阅者看到执行还在继续。
+- 这不修复卡死本身，但消除了「卡死期间只有 `agent.run start` 一条日志」的盲区；一旦真实卡死复现，只需看 `sidecar.log` 是否只剩 progress 心跳没有 tool 调用，即可快速判定「Runner 内部静默」vs「tool 外部阻塞」。
+- **2026-04-24 真实 LLM live 验证（不再是 mock/伪造 sleep）**：
+  - 把 `run_runner_with_progress_watchdog` 里的 select+ticker 核心循环抽成 `pub fn run_with_progress_ticks(Future, Duration, FnMut -> async)`（`agent_session.rs`），生产调用方走同一条实现。
+  - 新增 `pub fn progress_watchdog_tick()`：生产默认 60s，`HONE_AGENT_RUN_PROGRESS_TICK_SECS` env 可覆盖，仅供 e2e smoke 缩短观察窗。
+  - `crates/hone-channels/examples/progress_watchdog_live_smoke.rs`：tick=2s，`run_fut = MiniMax.chat(<1500 字原油复盘长文 prompt>)`。实跑结果：chat 真实耗时 **111.4 秒**，watchdog 按 2s 间隔发了 **55 次 tick**（`[tick 1] elapsed=2s` 一直到 `[tick 55] elapsed=110s`），chat 返回后再等 4 秒 (`2*tick`)，tick 计数器保持 55 不变——证明 run_fut 返回后 ticker 被 select 正确收敛，不会继续 busy-tick。
+  - 这就直接证实了 bug doc 里假设的两件事：1) watchdog 不会在 runner 长阻塞时静默；2) runner 一旦返回，watchdog 立即退出。
+
+## 下一步根因排查建议
+
+- 用 progress 心跳定位的卡点 session_id 反查对应 ACP runner：codex_acp `session/prompt` idle 超时、gemini_acp tool 调用未返回、tool executor（data_fetch/web_search/skill_tool）阻塞中的哪一个。
+- 同步复核 `run_scheduled_task` 在开头是否立即写了 `cron_job_runs(execution_status="running")`；若写入发生在收尾阶段，仍会出现台账缺失的老问题。
 - **证据来源**:
   - 2026-04-24 08:30-09:02 最新真实会话与消息落库：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732`

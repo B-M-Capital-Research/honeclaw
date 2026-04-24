@@ -14,7 +14,8 @@ use crate::execution::{
 use crate::prompt::{PromptOptions, build_prompt_bundle};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
 use crate::runtime::{
-    is_context_overflow_error, sanitize_user_visible_output, user_visible_error_message,
+    is_context_overflow_error, sanitize_user_visible_output, strip_internal_reasoning_blocks,
+    user_visible_error_message,
 };
 use crate::{AgentSession, HoneBotCore};
 
@@ -22,13 +23,13 @@ const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
 
 #[derive(Debug, PartialEq, Eq)]
-enum HeartbeatOutcome {
+pub enum HeartbeatOutcome {
     Noop,
     Deliver(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum HeartbeatParseKind {
+pub enum HeartbeatParseKind {
     Empty,
     SentinelNoop,
     InternalMarker,
@@ -135,8 +136,12 @@ fn truncate_for_log(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect::<String>() + "..."
 }
 
-fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseKind) {
-    let trimmed = content.trim();
+pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseKind) {
+    // 先剥掉 runner 的 `<think>` / `<tool_code>` 等 reasoning 块，避免 balanced-brace
+    // 扫描把 think 块里演示用的 JSON 片段（例如 `{}` / `{"status":"..."}`）误当成
+    // 模型本轮的真实输出。与 `sanitize_user_visible_output` 共用同一条规则。
+    let stripped = strip_internal_reasoning_blocks(content);
+    let trimmed = stripped.trim();
     if trimmed.is_empty() {
         return (HeartbeatOutcome::Noop, HeartbeatParseKind::Empty);
     }
@@ -369,6 +374,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 4. 不要创建新的定时任务，也不要修改现有任务。\n\
 5. 不要输出 Markdown 代码块，不要输出额外解释，不要暴露任何内部控制标记。\n\
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
+6a. 输出契约：整条回复必须是单段 JSON，第一个可见字符必须是 `{{`。严禁使用 `<think>...</think>`、```json ... ```、`## 分析`、分步解释或任何前置/收尾的自由文本。推理过程不要对外展示；需要推理时在内部完成后，直接给出最终 JSON。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
 8. 价格时间口径约束：引用股价时，必须核实价格的时间戳。若市场已停盘、股票停牌或价格来自上一交易日，必须在 message 中明确标注（最新可得价格为停牌前/上一交易日），不允许把旧价格包装成事件发生后的即时市场反应。\n\
 9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
@@ -752,6 +758,27 @@ mod tests {
             inspect_heartbeat_result(content),
             (HeartbeatOutcome::Noop, HeartbeatParseKind::SentinelNoop)
         );
+    }
+
+    // 2026-04-24 真实 heartbeat 样本：think 块里演示 `{}` 作为 noop 示例，随后
+    // LLM 只输出裸 `{}`。strip_internal_reasoning_blocks 让 balanced-brace 扫描不再
+    // 误把 think 里演示的 `{"status":"triggered",...}` 当成真实输出。
+    #[test]
+    fn heartbeat_think_wrapped_empty_json_is_suppressed() {
+        let content = "<think>\n示例：条件满足时应输出 `{\"status\":\"triggered\",\"message\":\"...\"}`，否则输出 `{}`。\n当前条件未满足。\n</think>\n{}";
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (HeartbeatOutcome::Noop, HeartbeatParseKind::JsonEmptyStatus)
+        );
+    }
+
+    // think 块内部若出现 `{"status":"triggered",...}` 作为「如何输出」的示例，
+    // 而 think 块外没有独立 JSON，整体应视为 noop，不能把示例 JSON 误当成真实触发。
+    #[test]
+    fn heartbeat_think_demo_triggered_without_outer_json_is_suppressed() {
+        let content = "<think>\n如果条件满足，我应该输出 `{\"status\":\"triggered\",\"message\":\"小米跌破 30 港元\"}`。\n当前小米股价 31.2 港元，未跌破 30，所以不触发。\n</think>";
+        let (outcome, parse_kind) = inspect_heartbeat_result(content);
+        assert_eq!(outcome, HeartbeatOutcome::Noop, "parse_kind={parse_kind:?}");
     }
 
     #[test]

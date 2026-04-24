@@ -3,7 +3,19 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixing (2026-04-24)
+
+## 修复动作（2026-04-24）
+
+- `crates/hone-channels/src/prompt.rs` `DEFAULT_FINANCE_DOMAIN_POLICY` 末尾追加「报价字段一致性约束」：同一条输出里引用的任何价格数字都必须来自同一合约标的、同一时间点、同一口径；禁止把现货价、不同合约月份（CLJ26 / CLK26 等）、不同时间窗口（现价与日内高点/低点）混写成同一个「现价」。
+- 约束同时要求数学一致性：`日内低点 ≤ 最新价 ≤ 日内高点`；写出任何 `较昨收 +/-X%` 时，数值必须由 (最新价 − 昨收) / 昨收 反推可复算。
+- 该策略通过 `build_prompt` 注入每次会话 system_prompt，因此既覆盖 `全天原油价格3小时播报` 的 heartbeat，也覆盖其它 scheduler 产出价格字段的任务。
+- 价格一致性主要靠 system_prompt 生效，后续巡检监督 `response_preview` 是否仍出现「现价 > 日内高点」式互斥叙述；heartbeat JSON 契约 smoke (`heartbeat_prompt_llm_smoke`) 也同时验证 prompt 注入没有破坏结构化输出。
+- **LLM e2e 验证（2026-04-24）**：`crates/hone-channels/examples/finance_consistency_llm_smoke.rs` 直接把 `DEFAULT_FINANCE_DOMAIN_POLICY` 作为 system prompt 喂给生产辅助模型（MiniMax `MiniMax-M2.7-highspeed`），构造两个诱导 case 实跑：
+  - `wti_math_inconsistent`：人为注入现价 $62.48 > 日内最高 $61.90 的硬冲突数据。实测模型输出以「⚠️ 数据一致性异常，无法完成播报」开头，用表格逐字段列出矛盾（"最新成交价 $62.48 ❌ 高于日内最高价 $61.90"），并建议用户核实后重传，不输出任何虚构的"现价"数字。
+  - `wti_contract_mix`：注入 WTI 连续合约/CLJ26/CLK26/Brent 四组不同口径价格。实测模型在最前加「⚠️ 数据说明：以下价格来自不同合约与数据源」警示，每个数字都显式标注合约代码 + 时间戳（"CLK26 $61.40（纽约时间 10:12 ET）"），而不是把所有价混成一个"现价"。
+  - 启发式判据（`SANE_KEYWORDS` 命中 + 两个冲突数字都出现则视为 pass）：两个 case 全部 `pass=true`。这是首次在生产真实模型上实测「报价字段一致性约束」确实生效，不只是 prompt 写得好看。
+  - 未做：OpenRouter 侧 `deepseek/deepseek-v4-pro` 对照跑返回 404（模型名在 OpenRouter 不存在），待确认正确的 deepseek 版本后补跑。
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=5602`

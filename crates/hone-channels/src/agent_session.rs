@@ -133,6 +133,55 @@ const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
 const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
 
+/// 返回 `agent.run` progress 心跳 tick 间隔。生产默认 60s，可通过
+/// `HONE_AGENT_RUN_PROGRESS_TICK_SECS` 环境变量覆盖（仅供真 LLM e2e 冒烟用，
+/// 避免为了观察 ticker 行为等满一分钟）。最小值 1s，防止 0 导致 busy-loop。
+pub fn progress_watchdog_tick() -> Duration {
+    let secs = std::env::var("HONE_AGENT_RUN_PROGRESS_TICK_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|v| *v >= 1)
+        .unwrap_or(60);
+    Duration::from_secs(secs)
+}
+
+/// 在 `run_fut` 未完成期间，按 `tick` 间隔重复调用 `on_tick(ticks, elapsed)`。
+/// 一旦 `run_fut` 返回，立刻转发其结果，停止触发 tick。
+///
+/// `on_tick` 返回一个 `Future`，在 select 分支里被 `.await`——因此 tick 闭包
+/// 里可以安全做异步 emit（log_message_step 是同步的，可直接放在闭包体外的同步前置段）。
+///
+/// 抽出来的动机：生产 `run_runner_with_progress_watchdog` 与 watchdog live smoke
+/// 共用同一段 select + interval 逻辑，避免测试代码复制一份走偏。
+pub async fn run_with_progress_ticks<Fut, T, OnTick, TickFut>(
+    run_fut: Fut,
+    tick: Duration,
+    mut on_tick: OnTick,
+) -> T
+where
+    Fut: std::future::Future<Output = T>,
+    OnTick: FnMut(u64, Duration) -> TickFut,
+    TickFut: std::future::Future<Output = ()>,
+{
+    tokio::pin!(run_fut);
+    let mut ticker = tokio::time::interval(tick);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // 消耗 interval 在 t=0 立刻发出的首个 tick，下一次 tick 在 `tick` 之后。
+    ticker.tick().await;
+
+    let started = Instant::now();
+    let mut ticks: u64 = 0;
+    loop {
+        tokio::select! {
+            result = &mut run_fut => return result,
+            _ = ticker.tick() => {
+                ticks += 1;
+                on_tick(ticks, started.elapsed()).await;
+            }
+        }
+    }
+}
+
 fn restore_limit_before_compaction(
     config: &HoneConfig,
     session_identity: &SessionIdentity,
@@ -434,7 +483,16 @@ impl AgentSession {
         request: AgentRunnerRequest,
         emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
-        let mut last_result = runner.run(request.clone(), emitter.clone()).await;
+        let mut last_result = self
+            .run_runner_with_progress_watchdog(
+                runner,
+                runner_name,
+                session_id,
+                0,
+                request.clone(),
+                emitter.clone(),
+            )
+            .await;
 
         for retry_idx in 0..EMPTY_SUCCESS_RETRY_LIMIT {
             // 如果运行失败，或者已经拿到了正文/工具调用，则不重试。
@@ -468,7 +526,16 @@ impl AgentSession {
             ))
             .await;
 
-            last_result = runner.run(request.clone(), emitter.clone()).await;
+            last_result = self
+                .run_runner_with_progress_watchdog(
+                    runner,
+                    runner_name,
+                    session_id,
+                    attempt,
+                    request.clone(),
+                    emitter.clone(),
+                )
+                .await;
         }
 
         if last_result.response.success && last_result.response.content.trim().is_empty() {
@@ -490,6 +557,63 @@ impl AgentSession {
         }
 
         last_result
+    }
+
+    /// Run the underlying runner while emitting a periodic "still running" heartbeat.
+    ///
+    /// 背景：`runner.run(...)` 内部会一直驻留到 ACP 会话结束；一旦进入长工具链或上游静默，
+    /// 外层除了 `agent.run start` 之外没有任何痕迹，直到整个 run 结束或超时才会再次落日志
+    /// （参见 `docs/bugs/feishu_scheduler_run_stuck_without_cron_job_run.md`）。这里用一个
+    /// `tokio::select!` ticker 在 run_fut 未完成时定期打 `agent.run.progress`，保证：
+    /// - `sidecar.log` 在卡死期间仍有心跳，运维能立刻判定「执行中 vs 卡死」；
+    /// - session 可见进度事件 (`session_progress_event`) 同步到 UI/下游，避免客户端以为 run 已失联。
+    async fn run_runner_with_progress_watchdog(
+        &self,
+        runner: &dyn crate::runners::AgentRunner,
+        runner_name: &str,
+        session_id: &str,
+        attempt: usize,
+        request: AgentRunnerRequest,
+        emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        let tick = progress_watchdog_tick();
+        let runner_name = runner_name.to_string();
+        let session_id_s = session_id.to_string();
+        let run_fut = runner.run(request, emitter);
+        run_with_progress_ticks(run_fut, tick, |ticks, elapsed| {
+            let runner_name = runner_name.clone();
+            let session_id = session_id_s.clone();
+            let elapsed_s = elapsed.as_secs();
+            let detail = if attempt == 0 {
+                format!("elapsed_s={elapsed_s} tick={ticks}")
+            } else {
+                format!("elapsed_s={elapsed_s} tick={ticks} retry_attempt={attempt}")
+            };
+            tracing::warn!(
+                state = "agent_iterating",
+                "[AgentSession] agent.run still running runner={} session_id={} {}",
+                runner_name,
+                session_id,
+                detail
+            );
+            self.core.log_message_step(
+                &self.actor.channel,
+                &self.actor.user_id,
+                &session_id,
+                "agent.run.progress",
+                &format!("{runner_name} {detail}"),
+                self.message_id.as_deref(),
+                Some("agent_iterating"),
+            );
+            async move {
+                self.emit(session_progress_event(
+                    "agent.run.progress",
+                    Some(format!("{runner_name} {detail}")),
+                ))
+                .await;
+            }
+        })
+        .await
     }
 
     fn build_skill_runtime(&self) -> hone_tools::SkillRuntime {

@@ -3,7 +3,21 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixing (2026-04-24)
+
+## 修复动作（2026-04-24）
+
+- `crates/hone-channels/src/runtime.rs`：新增公共工具 `strip_internal_reasoning_blocks`，负责在判契约前剥掉 `<think>...</think>` / `<tool_code>...</tool_code>` / `[TOOL_CALL]...[/TOOL_CALL]` 等 runner 内部块。`sanitize_user_visible_output` 与 heartbeat parser 共用同一条规则，避免两条链路对「什么算内部 reasoning」各自为政。
+- `crates/hone-channels/src/scheduler.rs` `inspect_heartbeat_result`：在做 balanced-brace 扫描之前先 `strip_internal_reasoning_blocks`；解决「模型把演示 JSON（`{}` / `{"status":"..."}`）写在 think 块内，外层仅一段自由文本」时被误判 JsonEmptyStatus / JsonNoop 的历史案例。
+- `build_scheduled_prompt(heartbeat)` 新增规则 6a：整条回复必须是单段 JSON、首字符必须是 `{`，明确禁止 `<think>`、```json``` 代码块、`## 分析` 前置或任何分步解释；推理过程不得对外透出。
+- 单元测试：`heartbeat_think_wrapped_empty_json_is_suppressed` / `heartbeat_think_demo_triggered_without_outer_json_is_suppressed`。
+- LLM 冒烟：`crates/hone-channels/examples/heartbeat_prompt_llm_smoke.rs`。关键：smoke 走 `OpenAiCompatibleProvider` 指向 `llm.auxiliary`，即生产 heartbeat 真正命中的 MiniMax 辅助通道 (`MiniMax-M2.7-highspeed`, `https://api.minimaxi.com/v1`)，不是 `llm.openrouter.sub_model`——因为 `scheduler.rs` 里 `model_override = core.auxiliary_model_name()` 已经 override 掉 legacy OpenRouter 路径。
+- 2026-04-24 smoke 实跑结果：3 个 case（`noop_unavailable_condition` / `noop_future_event` / `triggered_deterministic`）raw 全部以 `<think>` 开头（正好复现本 bug 的坏态样本），经 `strip_internal_reasoning_blocks` 剥离后 parse_kind 分别为 `JsonEmptyStatus` / `JsonNoop` / `JsonEmptyStatus`，均落在合法契约枚举，`contract_ok=true`。修复前同类 payload 会被判成 `JsonUnknownStatus` 并走静默跳过分支。
+
+## 待观察
+
+- 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
+- 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-24 14:30-15:01 最新巡检样本：

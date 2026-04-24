@@ -446,7 +446,7 @@ agent:
     # Startup checks: codex >= 0.115.0 and codex-acp == 0.9.5; otherwise fail with an upgrade or switch-version hint
     codex_command: "codex"
     # Explicit ACP session model; empty uses the codex-acp default model
-    model: "gpt-5.4"
+    model: "gpt-5.5"
     # Reasoning variant can be set separately; for example low|medium|high|xhigh
     variant: "medium"
     # Recommended: keep workspace-write + never, and let Hone run inside the actor sandbox

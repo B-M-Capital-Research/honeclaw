@@ -3,7 +3,18 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing（2026-04-23 架构改造已落地，待 24h 灰度复核）
+- **状态**: Fixing（compact 文本透出为当前接受状态；compact 识别已迁移到 usage drop，不再依赖字面 marker）
+
+## 2026-04-24 决策
+
+- 经讨论，Runner 层的 `Context compacted\n` / `Conversation compacted` 状态行不再在 sanitize 层做字面剥离：不同 ACP runner 的 compact 表达差异过大，用正则收口容易把真实正文里的 "context" / "compact" 误判成内部 marker。
+- 当前 compact 识别改由 `crates/hone-channels/src/runners/acp_common.rs::ingest_acp_usage_update` 通过 input token 骤降（`prev_peak >= 30_000 && used * 2 < prev_peak`）来判定并标记 `mark_next_turn_for_sp_reseed`；字面 marker 的少量信息透出视为可接受副作用，交给用户端文字习惯承担。
+- 本次不再在 `runtime.rs` / `sanitize_user_visible_output` 上加 compact 过滤。相关改动已回退。
+
+## 观测与后续
+
+- 继续盯 `session_messages` 里是否出现 `Context compacted\n` 开头 assistant final；若产生明显用户投诉（而不仅是 marker 透出），再评估按 runner 做针对性收口。
+- compact 幻觉（假摘要回灌为正式回答）已由 2026-04-23 架构改造修复，这部分不受本次决策影响。
 - **证据来源**:
 
 - 2026-04-24 11:09-11:11 最新同小时状态变化复核：
