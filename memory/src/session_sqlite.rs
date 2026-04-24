@@ -5,10 +5,37 @@ use hone_core::{HoneError, HoneResult};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
-use crate::session::{Session, session_message_text};
+use crate::session::{Session, SessionIndex, session_message_text};
 
+/// 基于本地 SQLite 的 `SessionIndex` 实现。
+///
+/// 目前是唯一实现；trait 抽象本身的价值是让 `SessionStorage` 和测试代码
+/// 不直接依赖这里的 struct。
 pub struct SqliteSessionMirror {
     conn: Mutex<Connection>,
+}
+
+impl SessionIndex for SqliteSessionMirror {
+    fn upsert(&self, source_path: &Path, session: &Session) -> HoneResult<()> {
+        self.upsert_session(source_path, session)
+    }
+
+    fn load(&self, session_id: &str) -> HoneResult<Option<Session>> {
+        self.load_session(session_id)
+    }
+
+    fn list(&self) -> HoneResult<Vec<Session>> {
+        self.list_sessions()
+    }
+
+    fn find_interrupted(
+        &self,
+        channel: &str,
+        updated_after_rfc3339: &str,
+        updated_before_rfc3339: &str,
+    ) -> HoneResult<Vec<InterruptedSessionInfo>> {
+        self.find_interrupted_sessions(channel, updated_after_rfc3339, updated_before_rfc3339)
+    }
 }
 
 impl SqliteSessionMirror {

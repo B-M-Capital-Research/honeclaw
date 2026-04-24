@@ -1,12 +1,23 @@
-//! 会话存储 — JSON 文件
+//! 会话存储 — JSON 文件 + 可选的 SQLite 索引层
+//!
+//! 架构要点：
+//! - JSON 文件始终是 session 的权威持久化：`SessionStorage::write_session`
+//!   每次都会写 `{data_dir}/{session_id}.json`，不管有没有启用 SQLite
+//! - SQLite 是可选的「索引/加速」层，通过 `SessionIndex` trait 抽象：
+//!   * `runtime_backend=Sqlite`：读路径先查 index，未命中再读 JSON 并回填 index
+//!   * `runtime_backend=Json` + `shadow_sqlite_enabled`：写 JSON 后把同一份
+//!     session 镜像到 index（异步一致性可接受，读路径仍走 JSON）
+//! - 当前只有 `SqliteSessionMirror` 一种实现；抽成 trait 的原因是让
+//!   runtime 层（`AgentSession`、tests）能接受任意实现（例如 mock、
+//!   或将来要接的远程索引），而不用硬绑定到 SQLite
 
-use crate::session_sqlite::SqliteSessionMirror;
+use crate::session_sqlite::{InterruptedSessionInfo, SqliteSessionMirror};
 use chrono::{DateTime, FixedOffset};
 use hone_core::agent::{
     AgentMessage, NormalizedConversationMessage, NormalizedConversationPart, ToolCallMade,
     denormalize_normalized_message,
 };
-use hone_core::{ActorIdentity, SessionIdentity, beijing_now};
+use hone_core::{ActorIdentity, HoneResult, SessionIdentity, beijing_now};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -14,10 +25,52 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+/// Session 的「索引/加速」后端抽象。
+///
+/// JSON 文件永远是权威存储；实现者只负责按 session_id 索引、列出和回填。
+/// 设计成 trait 主要是两件事：
+/// - 允许测试或 runtime 层注入 mock/替代实现（例如把 SQLite 换成其它 KV）
+/// - 把 `SessionStorage` 对 SQLite 的硬依赖去掉，让它只依赖 trait
+///
+/// 语义约定：
+/// - `upsert`：必须幂等；`source_path` 是对应 JSON 文件的绝对路径，
+///   便于实现层在自己的 schema 里保留路径元信息
+/// - `load` 返回 `None` 表示「index 里没有」，调用方会自行 fallback 到 JSON
+/// - `list` 返回的顺序由实现决定；`SessionStorage` 只在 JSON 扫出空时才信任它
+/// - `find_interrupted` 是面向 channel recovery 的窄接口，纯 JSON 场景下
+///   可以返回空 Vec
+pub trait SessionIndex: Send + Sync {
+    /// 把 `session` 全量 upsert 进索引。`source_path` 是对应 JSON 文件路径。
+    fn upsert(&self, source_path: &Path, session: &Session) -> HoneResult<()>;
+
+    /// 按 session_id 查询。未命中返回 `Ok(None)`。
+    fn load(&self, session_id: &str) -> HoneResult<Option<Session>>;
+
+    /// 列出索引里已知的所有 session。顺序由实现决定。
+    fn list(&self) -> HoneResult<Vec<Session>>;
+
+    /// 查询某渠道在给定时间窗内被中断（最后一条是 user、没有后续 assistant）的 session。
+    /// 仅供 channel recovery 使用；纯 JSON 后端返回空切片是合理默认。
+    fn find_interrupted(
+        &self,
+        channel: &str,
+        updated_after_rfc3339: &str,
+        updated_before_rfc3339: &str,
+    ) -> HoneResult<Vec<InterruptedSessionInfo>>;
+}
+
 /// 会话存储管理器
+///
+/// 字段说明：
+/// - `data_dir`：session JSON 文件的根目录
+/// - `sqlite_storage`：可选的 `SessionIndex` 实现;
+///   `None` 代表纯 JSON 模式；`Some` 可能是 shadow-write 的镜像，
+///   也可能是 `runtime_backend=Sqlite` 时的主读写路径
+/// - `runtime_backend`：读路径应优先走哪边（见模块头文档）
+/// - `shadow_sqlite_enabled`：在 JSON 主后端下，是否把每次写入同步到 index
 pub struct SessionStorage {
     data_dir: PathBuf,
-    sqlite_storage: Option<SqliteSessionMirror>,
+    sqlite_storage: Option<Arc<dyn SessionIndex>>,
     runtime_backend: SessionRuntimeBackend,
     shadow_sqlite_enabled: bool,
 }
@@ -665,12 +718,14 @@ impl SessionStorage {
     pub fn with_options(data_dir: impl AsRef<Path>, options: SessionStorageOptions) -> Self {
         let dir = data_dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&dir).ok();
-        let sqlite_storage = if options.shadow_sqlite_enabled
+        // 仅在「Sqlite 主后端」或「JSON 主 + shadow_write」场景下才实例化索引。
+        // 初始化失败时降级为纯 JSON：带 warn log，避免启动阻塞。
+        let sqlite_storage: Option<Arc<dyn SessionIndex>> = if options.shadow_sqlite_enabled
             || matches!(options.runtime_backend, SessionRuntimeBackend::Sqlite)
         {
             options.shadow_sqlite_db_path.as_ref().and_then(|path| {
                 match SqliteSessionMirror::new(path) {
-                    Ok(storage) => Some(storage),
+                    Ok(storage) => Some(Arc::new(storage) as Arc<dyn SessionIndex>),
                     Err(err) => {
                         tracing::warn!(
                             path = %path.display(),
@@ -689,6 +744,24 @@ impl SessionStorage {
             sqlite_storage,
             runtime_backend: options.runtime_backend,
             shadow_sqlite_enabled: options.shadow_sqlite_enabled,
+        }
+    }
+
+    /// 测试 / runtime 层可以注入自定义的 `SessionIndex`（例如 mock）。
+    /// 生产流程走 `with_options` 即可，不需要用这个构造器。
+    pub fn with_custom_index(
+        data_dir: impl AsRef<Path>,
+        runtime_backend: SessionRuntimeBackend,
+        shadow_sqlite_enabled: bool,
+        index: Option<Arc<dyn SessionIndex>>,
+    ) -> Self {
+        let dir = data_dir.as_ref().to_path_buf();
+        std::fs::create_dir_all(&dir).ok();
+        Self {
+            data_dir: dir,
+            sqlite_storage: index,
+            runtime_backend,
+            shadow_sqlite_enabled,
         }
     }
 
@@ -773,17 +846,22 @@ impl SessionStorage {
         )
     }
 
-    /// 加载会话
+    /// 加载会话。
+    ///
+    /// Json 主后端直接读文件；Sqlite 主后端先查索引，未命中再读 JSON 并
+    /// 回填索引（保证 JSON→SQLite 的数据迁移过程中老 session 也能被索引）。
     pub fn load_session(&self, session_id: &str) -> hone_core::HoneResult<Option<Session>> {
         match self.runtime_backend {
             SessionRuntimeBackend::Json => self.load_session_from_json(session_id),
             SessionRuntimeBackend::Sqlite => {
                 if let Some(storage) = &self.sqlite_storage {
-                    if let Some(session) = storage.load_session(session_id)? {
+                    if let Some(session) = storage.load(session_id)? {
                         return Ok(Some(session));
                     }
                 }
 
+                // 索引未命中 → 回 JSON 找兜底；若命中就顺手回填索引。
+                // 回填失败只 warn 不抛，避免破坏主读路径。
                 let fallback = self.load_session_from_json(session_id)?;
                 if let Some(session) = &fallback {
                     if let Ok(path) = self.session_json_path(session_id) {
@@ -854,8 +932,9 @@ impl SessionStorage {
         match self.runtime_backend {
             SessionRuntimeBackend::Json => self.list_sessions_from_json(),
             SessionRuntimeBackend::Sqlite => {
+                // 索引返回空时降级到 JSON 扫描，兼容首次启动尚未回填的情况。
                 if let Some(storage) = &self.sqlite_storage {
-                    let sessions = storage.list_sessions()?;
+                    let sessions = storage.list()?;
                     if !sessions.is_empty() {
                         return Ok(sessions);
                     }
@@ -865,8 +944,9 @@ impl SessionStorage {
         }
     }
 
-    /// Find direct sessions that were interrupted mid-flight (last message from user, no reply).
-    /// Only the SQLite backend supports this; JSON backend always returns an empty list.
+    /// 查询某渠道内「最后一条是 user、没有 assistant 回复」的会话，
+    /// 用于 channel 重启时恢复未完成请求。
+    /// 只有启用了 `SessionIndex` 实现才能给出结果，否则返回空切片。
     pub fn find_interrupted_sessions(
         &self,
         channel: &str,
@@ -874,7 +954,7 @@ impl SessionStorage {
         updated_before_rfc3339: &str,
     ) -> hone_core::HoneResult<Vec<crate::session_sqlite::InterruptedSessionInfo>> {
         if let Some(storage) = &self.sqlite_storage {
-            return storage.find_interrupted_sessions(
+            return storage.find_interrupted(
                 channel,
                 updated_after_rfc3339,
                 updated_before_rfc3339,
@@ -1052,13 +1132,15 @@ impl SessionStorage {
         Ok(sessions)
     }
 
+    /// Sqlite 主后端下的主写入路径：把同一份 session upsert 到索引。
+    /// 没配索引时退化为 shadow-write 语义（通常不会走到,但保留兜底）。
     fn write_session_to_sqlite(&self, path: &Path, session: &Session) -> hone_core::HoneResult<()> {
         let Some(sqlite_storage) = &self.sqlite_storage else {
             self.shadow_write_session(path, session);
             return Ok(());
         };
 
-        if let Err(err) = sqlite_storage.upsert_session(path, session) {
+        if let Err(err) = sqlite_storage.upsert(path, session) {
             tracing::error!(
                 session_id = %session.id,
                 path = %path.display(),
@@ -1070,6 +1152,8 @@ impl SessionStorage {
         Ok(())
     }
 
+    /// JSON 主后端下的可选镜像写入。未开启 shadow 或没配索引时静默跳过；
+    /// 失败只 warn 不抛，因为权威数据（JSON）此时已经落盘成功。
     fn shadow_write_session(&self, path: &Path, session: &Session) {
         if !self.shadow_sqlite_enabled {
             return;
@@ -1079,7 +1163,7 @@ impl SessionStorage {
             return;
         };
 
-        if let Err(err) = shadow_sqlite.upsert_session(path, session) {
+        if let Err(err) = shadow_sqlite.upsert(path, session) {
             tracing::warn!(
                 session_id = %session.id,
                 path = %path.display(),
