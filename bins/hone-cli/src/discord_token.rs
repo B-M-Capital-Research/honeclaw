@@ -8,6 +8,9 @@
 //! 本 module 只做**格式**校验,不会拿 token 去 Discord API 验证——那是 online
 //! check,留给 runtime 起 channel 时发现真 token 无效再报错。
 
+use dialoguer::theme::ColorfulTheme;
+
+use crate::prompts::{normalize_credential_value, prompt_bool, prompt_visible_credential};
 use crate::reports::DoctorCheck;
 
 /// Discord token 的格式校验结论。`Warn` 表示可能有问题但仍允许保存。
@@ -66,6 +69,43 @@ pub(crate) fn discord_token_doctor_check(token: &str) -> DoctorCheck {
         name: "discord-token-format".to_string(),
         status,
         detail,
+    }
+}
+
+/// 可选型 Discord token prompt：用户可以留空表示「保留现有/跳过」。
+/// 空值直接返回 `None`;有值则按格式校验分三档处理(Valid / Warn / Invalid)。
+/// `configure` 流程调用这一版;onboard 走另一条严格必填的版本
+/// (`onboard::prompt_onboard_required_discord_token`)。
+pub(crate) fn prompt_optional_discord_token(
+    theme: &ColorfulTheme,
+    prompt: &str,
+    current: &str,
+    keep_note: bool,
+) -> Result<Option<String>, String> {
+    loop {
+        let Some(token) = prompt_visible_credential(theme, prompt, keep_note, current)? else {
+            return Ok(None);
+        };
+        let normalized_token = normalize_credential_value(&token);
+        let len = normalized_token.len();
+        match validate_discord_token(&normalized_token) {
+            DiscordTokenValidation::Valid => {
+                println!("[✓] Token 格式有效（长度={len}）。");
+                return Ok(Some(normalized_token));
+            }
+            DiscordTokenValidation::Warn(message) => {
+                println!("[!] {message}（长度={len}）。");
+                if prompt_bool(theme, "仍然保存这个 Discord token？", false)? {
+                    return Ok(Some(normalized_token));
+                }
+            }
+            DiscordTokenValidation::Invalid(message) => {
+                println!("[!] {message}（长度={len}）。");
+                if !prompt_bool(theme, "Token 格式异常，重新输入？", true)? {
+                    return Ok(None);
+                }
+            }
+        }
     }
 }
 

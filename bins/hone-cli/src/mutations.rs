@@ -14,7 +14,8 @@ use serde_yaml::Value;
 
 use hone_core::config::ConfigMutation;
 
-use crate::{CliChatScope, normalize_credential_value};
+use crate::CliChatScope;
+use crate::prompts::normalize_credential_value;
 
 /// `hone-cli channels` 子命令的渠道枚举。
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
