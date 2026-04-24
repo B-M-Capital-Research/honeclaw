@@ -33,6 +33,9 @@ use hone_core::config::ConfigMutation;
 
 use crate::common::load_cli_config;
 use crate::discord_token::{DiscordTokenValidation, validate_discord_token};
+use crate::display::{
+    banner, bullet, fail_line, hint_line, ok_line, step_header, subsection, warn_line,
+};
 use crate::mutations::{ChannelKind, build_provider_api_key_mutations};
 use crate::prompts::{
     ProviderEmptyAction, RequiredFieldEmptyAction, RequiredFieldResolution,
@@ -43,6 +46,10 @@ use crate::prompts::{
 use crate::reports::{binary_check, build_doctor_report, print_doctor_report_text};
 use crate::yaml_io::{apply_message, apply_mutations_and_generate};
 use crate::{CliChatScope, start};
+
+/// Onboard 总共的步骤数,供 step_header 显示「N/TOTAL」。
+/// runner → channels → admins → providers → apply → follow-up。
+const ONBOARD_TOTAL_STEPS: usize = 5;
 
 /// `hone-cli onboard` 的命令行参数(目前为空,保留结构以便将来扩展 `--skip`、
 /// `--runner` 等非交互覆盖)。
@@ -273,10 +280,9 @@ fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
 }
 
 fn print_onboard_block(title: &str, lines: &[&str]) {
-    println!();
-    println!("{title}");
+    subsection(title);
     for line in lines {
-        println!("  - {line}");
+        bullet(line);
     }
 }
 
@@ -396,20 +402,20 @@ fn prompt_onboard_required_discord_token(
                 let len = normalized_value.len();
                 match validate_discord_token(&normalized_value) {
                     DiscordTokenValidation::Valid => {
-                        println!("[✓] Token 格式有效（长度={len}）。");
+                        ok_line(&format!("Token 格式有效(长度={len})。"));
                         return Ok(Some(normalized_value));
                     }
                     DiscordTokenValidation::Warn(message) => {
-                        println!("[!] {message}（长度={len}）。");
-                        if prompt_bool(theme, "仍然使用这个 Discord token？", false)? {
+                        warn_line(&format!("{message}(长度={len})。"));
+                        if prompt_bool(theme, "仍然使用这个 Discord token?", false)? {
                             return Ok(Some(normalized_value));
                         }
                     }
                     DiscordTokenValidation::Invalid(message) => {
-                        println!("[!] {message}（长度={len}）。");
+                        fail_line(&format!("{message}(长度={len})。"));
                         match prompt_discord_token_invalid_recovery_action(theme, channel_label)? {
                             RequiredFieldEmptyAction::Retry => {
-                                println!("请重新输入 Discord bot token。");
+                                hint_line("请重新输入 Discord bot token。");
                             }
                             RequiredFieldEmptyAction::DisableChannel => return Ok(None),
                         }
@@ -499,11 +505,14 @@ pub(crate) fn prompt_onboard_runner(
     theme: &ColorfulTheme,
     config: &hone_core::HoneConfig,
 ) -> Result<OnboardRunnerKind, String> {
+    step_header(1, ONBOARD_TOTAL_STEPS, "Runner");
+
     let specs = runner_onboard_specs();
+    // label 只放「title [badge]」,description 长文案下移到选定后再展开,
+    // 否则 dialoguer 的 Select 在窄终端会把单个 item 截成多行,视觉上糊成一团。
     let labels = specs
         .iter()
         .map(|spec| {
-            // multi-agent 不依赖本机 binary,标记 "no binary" 而非 missing。
             let badge = match spec.kind.binary_probe() {
                 None => "no binary needed".to_string(),
                 Some((binary, help_arg)) => {
@@ -514,7 +523,7 @@ pub(crate) fn prompt_onboard_runner(
                     }
                 }
             };
-            format!("{} [{}] - {}", spec.kind.title(), badge, spec.description)
+            format!("{} [{}]", spec.kind.title(), badge)
         })
         .collect::<Vec<_>>();
     let default = specs
@@ -525,6 +534,7 @@ pub(crate) fn prompt_onboard_runner(
     loop {
         let idx = prompt_select_index(theme, "Choose the default runner", &labels, default)?;
         let selected = specs[idx];
+        hint_line(selected.description);
         print_onboard_block(selected.kind.title(), selected.notes);
 
         // 不依赖 binary(如 multi-agent)直接通过。
@@ -534,10 +544,10 @@ pub(crate) fn prompt_onboard_runner(
 
         let status = binary_check(binary, help_arg);
         if status.available {
-            println!("检测结果：{} 可用。", binary);
+            ok_line(&format!("{binary} 已检测到可用。"));
             return Ok(selected.kind);
         }
-        println!("检测结果：{} 未检测到（{}）。", binary, status.detail);
+        fail_line(&format!("{binary} 未检测到({})。", status.detail));
         // 选 true 会继续用当前 runner(配置会写入,运行时才会因缺 binary 报错);
         // 选 false 会回到 runner 选单重新挑一个(最常见路径)。
         if prompt_bool(
@@ -634,10 +644,9 @@ pub(crate) fn build_channel_onboard_mutations(
     enabled_channels: &mut Vec<ChannelKind>,
 ) -> Result<Vec<ConfigMutation>, String> {
     let mut mutations = Vec::new();
-    println!();
-    println!("Channel onboarding");
-    println!(
-        "  - 你可以先全部跳过，之后再用 `hone-cli onboard`、`hone-cli configure` 或 `hone-cli channels ...` 修改。"
+    step_header(2, ONBOARD_TOTAL_STEPS, "Channels");
+    hint_line(
+        "每个渠道可以先跳过,之后用 `hone-cli onboard` / `hone-cli configure` / `hone-cli channels ...` 补配。",
     );
 
     for spec in channel_onboard_specs() {
@@ -645,7 +654,7 @@ pub(crate) fn build_channel_onboard_mutations(
         // 以免让 Linux 用户对一个铁定用不了的 channel 回答一堆问题。
         if spec.kind == ChannelKind::Imessage && !cfg!(target_os = "macos") {
             println!();
-            println!("iMessage 渠道仅 macOS 可用,当前平台跳过。");
+            hint_line("iMessage 渠道仅 macOS 可用,当前平台跳过。");
             continue;
         }
 
@@ -689,12 +698,12 @@ pub(crate) fn build_channel_onboard_mutations(
         // 空表等于「所有人都能触发」。onboard 不做详细白名单配置(太长),
         // 但必须让用户知道这件事,不然 bot 会对陌生人裸奔。
         println!();
-        println!(
-            "  ⚠ 注意:{} 渠道默认 allow 白名单为空,即所有联系人都能触发 Hone。",
+        warn_line(&format!(
+            "{} 渠道默认 allow 白名单为空,即所有联系人都能触发 Hone。",
             spec.label
-        );
-        println!(
-            "     如需限定,onboard 完成后用 `hone-cli configure --section channels` 或直接编辑 config.yaml。"
+        ));
+        hint_line(
+            "如需限定,onboard 完成后用 `hone-cli configure --section channels` 或直接编辑 config.yaml。",
         );
 
         // 必填字段循环:任一字段让用户选择「放弃整个渠道」都会把 channel_mutations
@@ -878,14 +887,13 @@ pub(crate) fn build_admin_onboard_mutations(
         return Ok(mutations);
     }
 
-    println!();
-    println!("Admin onboarding");
-    println!("  - 管理员白名单决定谁能触发 `/register-admin` / `/report` / 重启 Hone 等管理指令。");
-    println!("  - 不配就没人是 admin,本机所有人都触发不到管理能力。");
+    step_header(3, ONBOARD_TOTAL_STEPS, "Admins");
+    hint_line("管理员白名单决定谁能触发 `/register-admin` / `/report` / 重启 Hone 等管理指令。");
+    hint_line("不配就没人是 admin,本机所有人都触发不到管理能力。");
 
     if !prompt_bool(theme, "把自己加为已启用渠道的 admin 白名单?", true)? {
-        println!(
-            "已跳过 admin 配置;之后可用 `hone-cli configure` 或直接编辑 config.yaml 的 `admins.*`。"
+        hint_line(
+            "已跳过 admin 配置;之后可用 `hone-cli configure` 或直接编辑 config.yaml 的 `admins.*`。",
         );
         return Ok(mutations);
     }
@@ -995,12 +1003,9 @@ pub(crate) fn build_provider_onboard_mutations(
     config: &hone_core::HoneConfig,
 ) -> Result<Vec<ConfigMutation>, String> {
     let mut mutations = Vec::new();
-    println!();
-    println!("Provider onboarding");
-    println!("  - OpenRouter / FMP / Tavily 都会要求你明确选择：现在填写，或本轮跳过。");
-    println!(
-        "  - 跳过不会阻塞 onboarding，之后仍可用 `hone-cli configure --section providers` 补配。"
-    );
+    step_header(4, ONBOARD_TOTAL_STEPS, "Providers");
+    hint_line("OpenRouter / FMP / Tavily 都会要求你明确选择:现在填写,或本轮跳过。");
+    hint_line("跳过不会阻塞 onboarding,之后仍可用 `hone-cli configure --section providers` 补配。");
 
     for spec in provider_onboard_specs() {
         let current_configured = has_configured_provider_keys(spec, config);
@@ -1011,7 +1016,7 @@ pub(crate) fn build_provider_onboard_mutations(
             &format!("Configure {} API keys now?", spec.label),
             current_configured,
         )? {
-            println!("已跳过 {} API key 配置。", spec.label);
+            hint_line(&format!("已跳过 {} API key 配置。", spec.label));
             continue;
         }
 
@@ -1023,10 +1028,11 @@ pub(crate) fn build_provider_onboard_mutations(
                 spec.legacy_single_key_path,
                 keys,
             ));
+            ok_line(&format!("已保存 {} API keys。", spec.label));
         } else if current_configured {
-            println!("保留现有 {} API key 配置。", spec.label);
+            hint_line(&format!("保留现有 {} API key 配置。", spec.label));
         } else {
-            println!("已跳过 {} API key 配置。", spec.label);
+            hint_line(&format!("已跳过 {} API key 配置。", spec.label));
         }
     }
 
@@ -1087,12 +1093,11 @@ pub(crate) async fn run_onboard(
     let (config, paths) = load_cli_config(config_path, true).map_err(|e| e.to_string())?;
     let theme = ColorfulTheme::default();
 
-    println!("Hone onboarding");
-    println!("  - 约 3–5 分钟,全程键盘操作即可。");
-    println!(
-        "  - 任意时刻 Ctrl+C 可安全退出,已填的东西只在走到最后一步「apply」时才会写入 config.yaml。"
+    banner(
+        "Hone onboarding",
+        "约 3–5 分钟,全程键盘即可。Ctrl+C 可安全退出:mutation 只在最后一步才写盘。",
     );
-    println!("  - 每个环节都可以跳过,之后再通过 `hone-cli onboard` 或其他 CLI 子命令补配。");
+    hint_line("每个环节都可以跳过,之后再通过 `hone-cli onboard` 或其他 CLI 子命令补配。");
 
     let runner = prompt_onboard_runner(&theme, &config)?;
     let mut mutations = build_runner_onboard_mutations(&theme, &config, runner)?;
@@ -1111,18 +1116,21 @@ pub(crate) async fn run_onboard(
     )?);
     mutations.extend(build_provider_onboard_mutations(&theme, &config)?);
 
+    step_header(5, ONBOARD_TOTAL_STEPS, "Apply");
     let result = apply_mutations_and_generate(&paths, &mutations)?;
-    println!();
-    println!("{}", apply_message(&result.apply));
-    println!(
-        "  - 共写入 {} 条配置字段。",
+    ok_line(&format!(
+        "{}(共写入 {} 条字段)",
+        apply_message(&result.apply),
         result.apply.changed_paths.len()
-    );
-    println!(
-        "config={} effective={}",
-        paths.canonical_config_path.to_string_lossy(),
+    ));
+    hint_line(&format!(
+        "canonical config → {}",
+        paths.canonical_config_path.to_string_lossy()
+    ));
+    hint_line(&format!(
+        "effective config → {}",
         paths.effective_config_path.to_string_lossy()
-    );
+    ));
 
     if prompt_bool(&theme, "Run `hone-cli doctor` now?", true)? {
         println!();
@@ -1134,10 +1142,9 @@ pub(crate) async fn run_onboard(
         return start::run_start(config_path).await;
     }
 
-    println!();
-    println!("后续命令：");
-    println!("  - `hone-cli status`");
-    println!("  - `hone-cli doctor`");
-    println!("  - `hone-cli start`");
+    banner("Onboarding complete", "下一步:");
+    bullet("`hone-cli status`   快速查当前配置");
+    bullet("`hone-cli doctor`   深度体检(路径 / binary / auth)");
+    bullet("`hone-cli start`    启动 Hone + 启用渠道");
     Ok(())
 }

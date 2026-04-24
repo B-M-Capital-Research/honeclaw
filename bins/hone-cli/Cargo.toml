@@ -22,6 +22,9 @@ crossterm = "0.28"
 ratatui = "0.29"
 clap = { version = "4.5", features = ["derive"] }
 dialoguer = "0.11"
+# `console` 已经是 dialoguer 的 transitive 依赖;提成直接依赖,用来在 onboard /
+# configure 输出里加彩色 section 分隔、警告、成功标记,避免视觉上全是白字堆叠。
+console = "0.15"
 async-trait = { workspace = true }
 
 [dev-dependencies]

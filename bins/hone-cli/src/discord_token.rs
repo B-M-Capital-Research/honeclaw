@@ -10,6 +10,7 @@
 
 use dialoguer::theme::ColorfulTheme;
 
+use crate::display::{fail_line, ok_line, warn_line};
 use crate::prompts::{normalize_credential_value, prompt_bool, prompt_visible_credential};
 use crate::reports::DoctorCheck;
 
@@ -90,18 +91,18 @@ pub(crate) fn prompt_optional_discord_token(
         let len = normalized_token.len();
         match validate_discord_token(&normalized_token) {
             DiscordTokenValidation::Valid => {
-                println!("[✓] Token 格式有效（长度={len}）。");
+                ok_line(&format!("Token 格式有效(长度={len})。"));
                 return Ok(Some(normalized_token));
             }
             DiscordTokenValidation::Warn(message) => {
-                println!("[!] {message}（长度={len}）。");
-                if prompt_bool(theme, "仍然保存这个 Discord token？", false)? {
+                warn_line(&format!("{message}(长度={len})。"));
+                if prompt_bool(theme, "仍然保存这个 Discord token?", false)? {
                     return Ok(Some(normalized_token));
                 }
             }
             DiscordTokenValidation::Invalid(message) => {
-                println!("[!] {message}（长度={len}）。");
-                if !prompt_bool(theme, "Token 格式异常，重新输入？", true)? {
+                fail_line(&format!("{message}(长度={len})。"));
+                if !prompt_bool(theme, "Token 格式异常,重新输入?", true)? {
                     return Ok(None);
                 }
             }

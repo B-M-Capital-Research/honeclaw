@@ -2,6 +2,7 @@ mod cleanup;
 mod common;
 mod configure;
 mod discord_token;
+mod display;
 mod mutations;
 mod onboard;
 mod probe;

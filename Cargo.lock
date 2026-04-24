@@ -2828,6 +2828,7 @@ version = "0.2.9"
 dependencies = [
  "async-trait",
  "clap",
+ "console",
  "crossterm",
  "dialoguer",
  "hone-agent",
