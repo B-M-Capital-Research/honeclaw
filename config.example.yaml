@@ -447,7 +447,7 @@ agent:
     codex_command: "codex"
     # Explicit ACP session model; empty uses the codex-acp default model
     model: "gpt-5.5"
-    # Reasoning variant can be set separately; for example low|medium|high|xhigh
+    # Reasoning effort passed to Codex as model_reasoning_effort; for example low|medium|high|xhigh
     variant: "medium"
     # Recommended: keep workspace-write + never, and let Hone run inside the actor sandbox
     sandbox_mode: "workspace-write"

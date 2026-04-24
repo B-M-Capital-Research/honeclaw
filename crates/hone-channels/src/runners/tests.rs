@@ -19,7 +19,8 @@ use super::acp_common::{
 };
 use super::codex_acp::{
     build_codex_acp_prompt_text, codex_acp_effective_args, configured_codex_model_id,
-    patch_codex_session_update_params, render_codex_tool_status, validate_codex_version_matrix,
+    configured_codex_reasoning_effort, patch_codex_session_update_params, render_codex_tool_status,
+    validate_codex_version_matrix,
 };
 use super::gemini_acp::{
     configured_gemini_api_key_env, gemini_acp_effective_args, validate_gemini_version,
@@ -169,15 +170,62 @@ fn resolve_opencode_command_prefers_bundled_env_override() {
 }
 
 #[test]
-fn configured_codex_model_id_appends_variant() {
+fn configured_codex_model_id_omits_variant_suffix() {
     let config = CodexAcpConfig {
-        model: "gpt-5.4".to_string(),
+        model: "gpt-5.5".to_string(),
+        variant: "high".to_string(),
+        ..CodexAcpConfig::default()
+    };
+    assert_eq!(
+        configured_codex_model_id(&config).as_deref(),
+        Some("gpt-5.5")
+    );
+}
+
+#[test]
+fn configured_codex_model_id_strips_legacy_variant_suffix() {
+    let config = CodexAcpConfig {
+        model: "gpt-5.4/medium".to_string(),
         variant: "medium".to_string(),
         ..CodexAcpConfig::default()
     };
     assert_eq!(
         configured_codex_model_id(&config).as_deref(),
-        Some("gpt-5.4/medium")
+        Some("gpt-5.4")
+    );
+}
+
+#[test]
+fn configured_codex_reasoning_effort_reads_variant() {
+    let with_variant = CodexAcpConfig {
+        model: "gpt-5.5".to_string(),
+        variant: "high".to_string(),
+        ..CodexAcpConfig::default()
+    };
+    assert_eq!(
+        configured_codex_reasoning_effort(&with_variant).as_deref(),
+        Some("high")
+    );
+
+    let empty_variant = CodexAcpConfig {
+        model: "gpt-5.5".to_string(),
+        variant: String::new(),
+        ..CodexAcpConfig::default()
+    };
+    assert!(configured_codex_reasoning_effort(&empty_variant).is_none());
+}
+
+#[test]
+fn codex_acp_effective_args_include_reasoning_effort() {
+    let config = CodexAcpConfig {
+        variant: "high".to_string(),
+        ..CodexAcpConfig::default()
+    };
+    let args = codex_acp_effective_args(&config, true);
+    assert!(
+        args.windows(2)
+            .any(|w| w[0] == "-c" && w[1] == "model_reasoning_effort=\"high\""),
+        "expected reasoning effort override in args, got: {args:?}"
     );
 }
 

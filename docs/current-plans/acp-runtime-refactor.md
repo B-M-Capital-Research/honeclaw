@@ -3,7 +3,7 @@
 - title: ACP 对齐的 Agent Runtime 全栈重构
 - status: in_progress
 - created_at: 2026-03-17
-- updated_at: 2026-04-23
+- updated_at: 2026-04-24
 - owner: shared
 - related_files:
   - `docs/current-plan.md`
@@ -45,6 +45,7 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 - ACP runners now treat their own session/compact logic as the source of truth: Hone skips its auto SessionCompactor for `codex_acp` / `opencode_acp`, and prompt construction suppresses Hone-side compact summaries for self-managed runners.
 - `acp_common` now detects codex literal `Context compacted` chunks and opencode usage-drop / markdown-summary compact signatures, drops those leak paths from user-visible output, and sets session metadata so the next turn can reseed the system prompt when needed.
 - `gemini_acp` is no longer offered as an active runtime path: factory creation now errors with a migration hint because Gemini ACP does not emit reliable `usage_update` signals and is unsafe for Hone's long-session compact detection model.
+- `codex_acp` now treats `agent.codex_acp.variant` as Codex CLI `model_reasoning_effort` instead of appending it to the model id; legacy `model/variant` strings are stripped back to the base model before starting the ACP session.
 - Remaining work is still needed around runner contract coverage and end-to-end runtime behavior alignment.
 
 ## Validation
@@ -72,6 +73,9 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
   - `rtk cargo check --workspace --all-targets --exclude hone-desktop`
   - `rtk cargo test --workspace --all-targets --exclude hone-desktop`
   - `rtk bash tests/regression/run_ci.sh`
+- 2026-04-24:
+  - `cargo test -p hone-channels configured_codex`
+  - `cargo test -p hone-channels codex_acp_effective_args`
 
 ## Documentation Sync
 

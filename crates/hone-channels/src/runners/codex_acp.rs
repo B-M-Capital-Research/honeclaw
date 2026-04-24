@@ -88,6 +88,11 @@ pub(crate) fn codex_acp_effective_args(config: &CodexAcpConfig, locked_down: boo
         args.push(format!("sandbox_permissions=[{permissions}]"));
     }
 
+    if let Some(effort) = configured_codex_reasoning_effort(config) {
+        args.push("-c".to_string());
+        args.push(format!("model_reasoning_effort=\"{}\"", effort));
+    }
+
     for override_value in &config.extra_config_overrides {
         let trimmed = override_value.trim();
         if trimmed.is_empty() {
@@ -151,15 +156,21 @@ pub(crate) fn configured_codex_model_id(config: &CodexAcpConfig) -> Option<Strin
     }
 
     let variant = config.variant.trim();
-    if variant.is_empty() {
-        return Some(model.to_string());
+    if !variant.is_empty() {
+        let suffix = format!("/{variant}");
+        if let Some(stripped) = model.strip_suffix(&suffix) {
+            return Some(stripped.to_string());
+        }
     }
+    Some(model.to_string())
+}
 
-    let suffix = format!("/{variant}");
-    if model.ends_with(&suffix) {
-        Some(model.to_string())
+pub(crate) fn configured_codex_reasoning_effort(config: &CodexAcpConfig) -> Option<String> {
+    let variant = config.variant.trim();
+    if variant.is_empty() {
+        None
     } else {
-        Some(format!("{model}/{variant}"))
+        Some(variant.to_string())
     }
 }
 
