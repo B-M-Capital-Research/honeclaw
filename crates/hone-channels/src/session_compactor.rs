@@ -1,4 +1,4 @@
-use hone_core::LlmAuditRecord;
+use hone_core::{LlmAuditRecord, truncate_chars};
 use hone_memory::{
     build_compact_boundary_metadata, build_compact_skill_snapshot_metadata,
     build_compact_summary_metadata, invoked_skills_from_metadata,
@@ -381,11 +381,4 @@ impl<'a> SessionCompactor<'a> {
             }
         }
     }
-}
-
-fn truncate_chars(content: &str, max_chars: usize) -> String {
-    if max_chars == 0 || content.chars().count() <= max_chars {
-        return content.to_string();
-    }
-    content.chars().take(max_chars).collect::<String>()
 }

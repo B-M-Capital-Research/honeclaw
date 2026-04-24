@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use hone_core::truncate_chars_append;
 use pdf_extract::extract_text;
 use tokio::task;
 
@@ -17,7 +18,11 @@ pub(crate) async fn extract_pdf_preview(pdf_path: PathBuf) -> Result<String, Str
         if normalized.trim().is_empty() {
             return Err("未提取到可读文本（可能是扫描件图片 PDF）".to_string());
         }
-        Ok(truncate_chars(&normalized, MAX_PDF_PREVIEW_CHARS))
+        Ok(truncate_chars_append(
+            &normalized,
+            MAX_PDF_PREVIEW_CHARS,
+            "...",
+        ))
     })
     .await
     .map_err(|e| format!("PDF 提取任务失败: {e}"))?
@@ -44,10 +49,3 @@ pub async fn extract_full_pdf_text(pdf_path: &std::path::Path) -> Result<String,
 }
 
 const MAX_PDF_PREVIEW_CHARS: usize = 4000;
-
-fn truncate_chars(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    text.chars().take(max_chars).collect::<String>() + "..."
-}

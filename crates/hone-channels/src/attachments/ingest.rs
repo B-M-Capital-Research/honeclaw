@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use flate2::read::GzDecoder;
-use hone_core::ActorIdentity;
+use hone_core::{ActorIdentity, truncate_chars_append};
 use serde::{Deserialize, Serialize};
 use tar::Archive;
 use tokio::task;
@@ -497,7 +497,11 @@ pub fn build_attachment_ack_message(attachments: &[ReceivedAttachment]) -> Strin
         .filter(|a| a.kind == AttachmentKind::Archive)
         .map(|a| {
             if let Some(err) = &a.extraction_error {
-                format!("{} 解压失败: {}", a.filename, truncate_chars(err, 80))
+                format!(
+                    "{} 解压失败: {}",
+                    a.filename,
+                    truncate_chars_append(err, 80, "...")
+                )
             } else {
                 format!("{} 已解压 {} 个文件", a.filename, a.extracted_files.len())
             }
@@ -514,7 +518,11 @@ pub fn build_attachment_ack_message(attachments: &[ReceivedAttachment]) -> Strin
         .filter(|a| a.kind == AttachmentKind::Pdf)
         .map(|a| {
             if let Some(err) = &a.pdf_extract_error {
-                format!("{} 解析失败: {}", a.filename, truncate_chars(err, 80))
+                format!(
+                    "{} 解析失败: {}",
+                    a.filename,
+                    truncate_chars_append(err, 80, "...")
+                )
             } else if a.pdf_text_preview.is_some() {
                 format!("{} 已提取文本", a.filename)
             } else {
@@ -532,7 +540,11 @@ pub fn build_attachment_ack_message(attachments: &[ReceivedAttachment]) -> Strin
         .iter()
         .map(|a| {
             let reason = a.error.as_deref().unwrap_or("未通过准入限制");
-            format!("{}：{}", a.filename, truncate_chars(reason, 120))
+            format!(
+                "{}：{}",
+                a.filename,
+                truncate_chars_append(reason, 120, "...")
+            )
         })
         .collect();
     if !rejected_status.is_empty() {
@@ -612,13 +624,6 @@ pub fn sanitize_filename(name: &str) -> String {
         safe.truncate(120);
     }
     safe
-}
-
-fn truncate_chars(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    text.chars().take(max_chars).collect::<String>() + "..."
 }
 
 fn human_size_bytes(bytes: u64) -> String {
@@ -703,7 +708,7 @@ fn build_pdf_extraction_note_from_refs(attachments: &[&ReceivedAttachment]) -> O
             lines.push(format!(
                 "- {}: 提取失败（{}）",
                 pdf.filename,
-                truncate_chars(err, 120)
+                truncate_chars_append(err, 120, "...")
             ));
             continue;
         }
@@ -741,7 +746,7 @@ fn build_archive_extraction_note_from_refs(attachments: &[&ReceivedAttachment]) 
             lines.push(format!(
                 "- {}: 解压失败（{}）",
                 archive.filename,
-                truncate_chars(err, 120)
+                truncate_chars_append(err, 120, "...")
             ));
             continue;
         }
@@ -982,7 +987,11 @@ fn maybe_read_text_preview(path: &Path, kind: AttachmentKind, size: u64) -> Opti
     if preview.is_empty() {
         return None;
     }
-    Some(truncate_chars(&preview, MAX_ARCHIVE_PREVIEW_CHARS))
+    Some(truncate_chars_append(
+        &preview,
+        MAX_ARCHIVE_PREVIEW_CHARS,
+        "...",
+    ))
 }
 
 #[cfg(test)]

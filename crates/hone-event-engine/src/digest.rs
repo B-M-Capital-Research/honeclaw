@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::{DateTime, Datelike, FixedOffset, NaiveTime, TimeZone, Timelike, Utc};
-use hone_core::ActorIdentity;
+use hone_core::{ActorIdentity, truncate_chars_append};
 use serde::{Deserialize, Serialize};
 
 use crate::event::{EventKind, MarketEvent, Severity, is_noop_analyst_grade};
@@ -1062,12 +1062,7 @@ fn first_non_empty_line(text: &str) -> Option<&str> {
 }
 
 fn truncate_chars(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    let mut out: String = text.chars().take(max_chars.saturating_sub(1)).collect();
-    out.push('…');
-    out
+    truncate_chars_append(text, max_chars.saturating_sub(1), "…")
 }
 
 #[cfg(test)]

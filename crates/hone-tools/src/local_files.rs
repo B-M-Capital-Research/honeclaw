@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use glob::Pattern;
-use hone_core::{ActorIdentity, HoneError, HoneResult};
+use hone_core::{ActorIdentity, HoneError, HoneResult, truncate_chars_append};
 use serde_json::{Value, json};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -566,12 +566,7 @@ impl Tool for LocalReadFileTool {
 }
 
 fn truncate_chars(input: &str, max_chars: usize) -> String {
-    if input.chars().count() <= max_chars {
-        return input.to_string();
-    }
-    let keep = max_chars.saturating_sub(1);
-    let truncated = input.chars().take(keep).collect::<String>();
-    format!("{truncated}…")
+    truncate_chars_append(input, max_chars.saturating_sub(1), "…")
 }
 
 #[cfg(test)]

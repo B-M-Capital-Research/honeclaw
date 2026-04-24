@@ -12,6 +12,7 @@ pub mod error;
 pub mod heartbeat;
 pub mod logging;
 pub mod process_lock;
+pub mod text;
 pub mod time;
 pub mod tool_event;
 
@@ -35,5 +36,6 @@ pub use process_lock::{
     acquire_process_lock, acquire_runtime_process_lock, format_lock_failure_message,
     preflight_process_locks, process_lock_path, runtime_lock_dir,
 };
+pub use text::{truncate_chars, truncate_chars_append};
 pub use time::{BEIJING_OFFSET_SECS, beijing_now, beijing_now_rfc3339, beijing_offset};
 pub use tool_event::ToolExecutionObserver;

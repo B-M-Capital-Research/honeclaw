@@ -7,7 +7,7 @@ use hone_channels::outbound::{
     split_response_content_segments,
 };
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
-use hone_core::ActorIdentity;
+use hone_core::{ActorIdentity, truncate_chars_append};
 use serenity::all::{
     ChannelId, CommandInteraction, CommandOptionType, CreateAllowedMentions, CreateAttachment,
     CreateCommand, CreateCommandOption, CreateMessage, EditMessage, Message, ResolvedValue,
@@ -215,10 +215,7 @@ pub(crate) fn split_into_segments(text: &str, max_segment_size: usize) -> Vec<St
 }
 
 pub(crate) fn truncate_chars(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    text.chars().take(max_chars).collect::<String>() + "..."
+    truncate_chars_append(text, max_chars, "...")
 }
 
 pub(crate) async fn send_placeholder_message(
