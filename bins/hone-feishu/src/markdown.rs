@@ -1,7 +1,19 @@
-use hone_channels::outbound::split_markdown_segments;
+use hone_channels::outbound::PlatformMessageSplitter;
 use serde_json::{Value, json};
 
 use super::types::RenderedMessage;
+
+/// 飞书富文本卡片单段硬上限（内部经验值,低于平台 5K/字符限制留出 buffer）。
+pub(crate) const FEISHU_HARD_MAX_CHARS: usize = 3500;
+
+/// Feishu 分段适配器。
+pub(crate) struct FeishuSplitter;
+
+impl PlatformMessageSplitter for FeishuSplitter {
+    fn hard_max_chars(&self) -> usize {
+        FEISHU_HARD_MAX_CHARS
+    }
+}
 
 fn render_feishu_table(columns: &[Value], data: &[Value]) -> String {
     let columns_json = serde_json::to_string(columns).unwrap_or_default();
@@ -333,11 +345,13 @@ pub(crate) fn preprocess_markdown_for_feishu(text: &str, convert_tables: bool) -
 }
 
 pub(crate) fn split_into_segments(text: &str, max_segment_size: usize) -> Vec<String> {
-    split_markdown_segments(text, max_message_length_bound(max_segment_size), 3500)
+    // clamp 把调用方可能传入的 max_segment_size 收敛到安全区间,
+    // 避免过小造成碎片过多或过大直接超过平台限制。
+    FeishuSplitter.split_markdown(text, max_message_length_bound(max_segment_size))
 }
 
 fn max_message_length_bound(max_segment_size: usize) -> usize {
-    max_segment_size.clamp(100, 3500)
+    max_segment_size.clamp(100, FEISHU_HARD_MAX_CHARS)
 }
 
 pub(crate) fn render_outbound_messages(

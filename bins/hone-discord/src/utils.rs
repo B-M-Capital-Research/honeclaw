@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use hone_channels::outbound::{
-    OutboundAdapter, ReasoningVisibility, ResponseContentSegment, split_markdown_segments,
+    OutboundAdapter, PlatformMessageSplitter, ReasoningVisibility, ResponseContentSegment,
     split_response_content_segments,
 };
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
@@ -210,8 +210,20 @@ pub(crate) fn prepend_reply_prefix(prefix: Option<&str>, text: &str) -> String {
     }
 }
 
+/// Discord 单条消息原生 2000 字符上限；留点余量给 markdown/emoji 转义。
+pub(crate) const DISCORD_HARD_MAX_CHARS: usize = 1900;
+
+/// Zero-size splitter，把 Discord 的硬上限封装在一处,避免在多个调用点手写 1900。
+pub(crate) struct DiscordSplitter;
+
+impl PlatformMessageSplitter for DiscordSplitter {
+    fn hard_max_chars(&self) -> usize {
+        DISCORD_HARD_MAX_CHARS
+    }
+}
+
 pub(crate) fn split_into_segments(text: &str, max_segment_size: usize) -> Vec<String> {
-    split_markdown_segments(text, max_segment_size, 1900)
+    DiscordSplitter.split_markdown(text, max_segment_size)
 }
 
 pub(crate) fn truncate_chars(text: &str, max_chars: usize) -> String {
@@ -272,7 +284,7 @@ pub(crate) async fn send_response_segments(
                 if trimmed.is_empty() {
                     continue;
                 }
-                let parts = split_markdown_segments(trimmed, max_len, 1900);
+                let parts = DiscordSplitter.split_markdown(trimmed, max_len);
                 let (count, last) = send_or_edit_segments_with_previous(
                     http,
                     channel_id,
@@ -312,7 +324,7 @@ pub(crate) async fn send_response_segments(
                         warn!("[Discord] 发送图片失败: {}", err);
                         let note =
                             format!("（图表发送失败：{}）", file_label_from_path(&marker.path));
-                        let parts = split_markdown_segments(&note, max_len, 1900);
+                        let parts = DiscordSplitter.split_markdown(&note, max_len);
                         let (count, last) = send_or_edit_segments_with_previous(
                             http,
                             channel_id,

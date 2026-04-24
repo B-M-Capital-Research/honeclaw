@@ -555,6 +555,39 @@ pub fn split_markdown_segments(
     rebalance_markdown_segments(split_segments(text, max_segment_size, hard_max))
 }
 
+/// 平台差异化的消息分段适配器。
+///
+/// 目的：把「每个渠道各自的硬上限常量」从散落调用点集中到一个类型上，避免
+/// 同一个常量（比如 Discord 的 1900 字符）在多个文件里各自复制。
+///
+/// 使用方式：每个 bin 只定义一个 zero-size struct 并 `impl PlatformMessageSplitter`，
+/// 然后调用 `.split_markdown(...)` / `.split_html(...)` 即可，内部自动带上
+/// 平台硬上限参数。`max_segment_size` 仍由调用方按当前消息渲染策略传入。
+///
+/// 例子：
+/// ```ignore
+/// pub(crate) struct DiscordSplitter;
+/// impl hone_channels::outbound::PlatformMessageSplitter for DiscordSplitter {
+///     fn hard_max_chars(&self) -> usize { 1900 }
+/// }
+/// let segments = DiscordSplitter.split_markdown(text, max_len);
+/// ```
+pub trait PlatformMessageSplitter {
+    /// 单条消息的硬上限（比如 Discord 原生 2000，减去一点 buffer 即 1900）。
+    fn hard_max_chars(&self) -> usize;
+
+    /// 按 markdown 语义分段：调用方给 soft 上限,硬上限由实现提供。
+    fn split_markdown(&self, text: &str, max_segment_size: usize) -> Vec<String> {
+        split_markdown_segments(text, max_segment_size, self.hard_max_chars())
+    }
+
+    /// 按 HTML 语义分段：调用方给 soft 上限,硬上限由实现提供。
+    /// 默认按 markdown 处理的 bin 可以不 override。
+    fn split_html(&self, text: &str, max_segment_size: usize) -> Vec<String> {
+        split_html_segments(text, max_segment_size, self.hard_max_chars())
+    }
+}
+
 fn local_image_marker_at(text: &str, start: usize) -> Option<(usize, LocalImageMarker)> {
     let mut raw_end = start;
     for (offset, ch) in text[start..].char_indices() {

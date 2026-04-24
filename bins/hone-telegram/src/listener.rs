@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hone_channels::outbound::{
-    OutboundAdapter, ReasoningVisibility, ResponseContentSegment, split_html_segments,
+    OutboundAdapter, PlatformMessageSplitter, ReasoningVisibility, ResponseContentSegment,
     split_response_content_segments,
 };
 use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
@@ -11,6 +11,18 @@ use tracing::warn;
 use super::markdown_v2::{
     prepend_reply_prefix_placeholder, sanitize_telegram_html_public, truncate_telegram_progress,
 };
+
+/// Telegram 单条消息硬上限（官方 4096,留 buffer 给 `<a>` / `<code>` 等标签转义）。
+pub(crate) const TELEGRAM_HARD_MAX_CHARS: usize = 3500;
+
+/// Telegram 分段适配器。输出是 HTML 格式,所以默认走 `split_html`。
+pub(crate) struct TelegramSplitter;
+
+impl PlatformMessageSplitter for TelegramSplitter {
+    fn hard_max_chars(&self) -> usize {
+        TELEGRAM_HARD_MAX_CHARS
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct TelegramOutboundAdapter {
@@ -121,7 +133,7 @@ pub(crate) async fn send_response_segments(
                     continue;
                 }
                 let html = sanitize_telegram_html_public(trimmed);
-                let parts = split_html_segments(&html, max_len, 3500);
+                let parts = TelegramSplitter.split_html(&html, max_len);
                 let (count, last) =
                     send_text_segments_with_previous(bot, chat_id, placeholder, previous, parts)
                         .await;
@@ -158,7 +170,7 @@ pub(crate) async fn send_response_segments(
                             "（图表发送失败：{}）",
                             file_label_from_path(&marker.path)
                         ));
-                        let parts = split_html_segments(&note, max_len, 3500);
+                        let parts = TelegramSplitter.split_html(&note, max_len);
                         let (count, last) = send_text_segments_with_previous(
                             bot,
                             chat_id,

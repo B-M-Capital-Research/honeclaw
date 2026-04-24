@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hone_channels::agent_session::AgentRunOptions;
-use hone_channels::outbound::split_html_segments;
+use hone_channels::outbound::PlatformMessageSplitter;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::runtime::sanitize_user_visible_output;
 use hone_channels::scheduler;
@@ -11,7 +11,7 @@ use serde_json::json;
 use teloxide::prelude::{Bot, ChatId};
 use tracing::{error, info};
 
-use crate::listener::send_segments;
+use crate::listener::{TelegramSplitter, send_segments};
 use crate::markdown_v2::sanitize_telegram_html_public;
 
 fn scheduler_public_response_text(text: &str) -> String {
@@ -106,11 +106,8 @@ pub(crate) async fn handle_scheduler_events(
                     return;
                 }
             };
-            let segments = split_html_segments(
-                &response,
-                core_clone.config.telegram.max_message_length,
-                3500,
-            );
+            let segments = TelegramSplitter
+                .split_html(&response, core_clone.config.telegram.max_message_length);
             let total_segments = segments.len();
             let sent = send_segments(&bot_clone, ChatId(chat_id), segments, None).await;
             let _ = storage.record_execution_event(
