@@ -616,6 +616,7 @@ fn log_omitted_digest_items(
     }
 }
 
+#[cfg(test)]
 fn curate_digest_events(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
     curate_digest_events_with_omitted_at(events, Utc::now()).kept
 }
