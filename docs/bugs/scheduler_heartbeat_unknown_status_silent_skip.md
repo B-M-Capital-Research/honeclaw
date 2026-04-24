@@ -19,6 +19,13 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-24 19:01 最新巡检样本：
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-24 19:01:19.361` `job=ORCL 大事件监控`，`parse_kind=JsonNoop`、`starts_with_json=false`，`raw_preview` 继续以 `<think>` 长段英文推理开头，随后才在尾部补 noop 判定
+    - `2026-04-24 19:01:23.197` `job=Monitor_Watchlist_11`，`parse_kind=JsonNoop`、`starts_with_json=false`，逐项股票触发价比较仍先写在 `<think>` 中，未恢复为单段 JSON 首包
+    - `2026-04-24 19:01:34.441` `job=持仓重大事件心跳检测` 再次落成 `JsonNoop`、`starts_with_json=false`；本轮甚至没有像 17:31 那样触发可见提醒，说明结构化收口仍不稳定
+    - `2026-04-24 19:01:04.808` 同批 `全天原油价格3小时播报` 仍是 `<think> ... {"status":"noop"}`，`parse_kind=JsonNoop`
+    - 结论：到 `19:01` 为止，最新整点 heartbeat 仍没有任何样本恢复成“首字符即 `{` 的单段 JSON”；当前只是解析器继续吸收上游结构漂移，状态与严重等级保持不变
   - 2026-04-24 17:31-18:01 最新巡检样本：
     - `data/runtime/logs/sidecar.log`
     - `2026-04-24 17:31:17.283` `job=RKLB异动监控`，`parse_kind=JsonNoop`、`starts_with_json=false`，`raw_preview` 仍以 `<think>` 长段新闻/价格分析开头，再由尾部 JSON 兜底
