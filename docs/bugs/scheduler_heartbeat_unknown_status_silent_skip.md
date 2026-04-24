@@ -20,6 +20,12 @@
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 15:31-16:01 最新巡检样本：
+    - `run_id=5605-5615` 对应 `15:31` 整批 heartbeat，以及 `run_id=83444-83504` 对应 `16:01` 下一批最新 `HeartbeatDiag` 日志，继续覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`。
+    - `cron_job_runs` 显示 `15:31` 这一批除非触发小时的原油任务外，其余 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`；最新窗口里没有任何一条恢复成“纯 JSON 首包 + 明确状态”的稳定形态。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 15:31:06-15:32:09` 与 `16:01:09-16:01:21` 连续记录 `starts_with_json=false`；虽然 `RKLB异动监控` / `Monitor_Watchlist_11` 已从上一轮的 `JsonEmptyStatus` 暂时回落为 `JsonNoop`，但 `raw_preview` 仍统一以前置 `<think>` 长文分析开头，再由尾部 `{"status":"noop"}` 被解析器兜底。
+    - `run_id=5613`（`ORCL 大事件监控`）与 `16:01:11` 的同任务最新日志仍先长篇复述“用户 wants to monitor ORCL for specific triggers”，再在尾部补 noop；`run_id=5615`（`持仓重大事件心跳检测`）与 `15:32:09` 的同任务日志也继续把多标的新闻/价格复盘写在 `<think>` 里，最后才被收口为 `JsonNoop`。
+    - 结论：最近一小时内虽然 `JsonEmptyStatus` 样本数下降，但 heartbeat 公共输出契约仍未恢复为纯 JSON 首包；当前属于“解析器继续吸收结构漂移”的延续态，不足以调整状态或严重等级。
   - 2026-04-24 14:30-15:01 最新巡检样本：
     - `run_id=5583-5594` 对应 `14:30` 整批 heartbeat，除 `run_id=5583` 的 `全天原油价格3小时播报` 因非触发小时落成 `noop + skipped_noop` 外，CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测` 再次全部落成 `noop + skipped_noop + delivered=0`。
     - `run_id=5594-5601` 对应 `15:01` 下一批里，除 `run_id=5602` 的 `全天原油价格3小时播报` 触发送达外，其余 heartbeat 再次全部是 `noop + skipped_noop`；最新整点窗口仍没有恢复任何“纯 JSON 首包 + 明确状态”的稳定样本。
