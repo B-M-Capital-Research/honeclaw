@@ -1,4 +1,12 @@
 //! 配置变更管道：路径级 set/unset、影响面分类、敏感字段脱敏。
+//!
+//! Web 控制台 / CLI 的「改一行配置」请求都会走这里：先 `parse_config_path`
+//! 解析点路径,`apply_config_mutations` 原地写入并重新校验整份 `HoneConfig`,
+//! 再用 `classify_config_paths` 告诉调用方本次变更是能热生效、需要重启某些
+//! channel、还是必须整个进程重启。
+//!
+//! `is_sensitive_config_path` / `redact_sensitive_value` 负责把涉及
+//! `api_key` / `secret` / `token` / `password` 的字段在日志与返回值里脱敏。
 
 use serde::Serialize;
 use serde_yaml::{Mapping, Value};
@@ -34,6 +42,14 @@ pub struct ConfigMutationResult {
     pub apply: ConfigApplyPlan,
 }
 
+/// 根据本次变更涉及的配置路径,推断应用策略：
+/// - `restart_required = true`：进程需整体重启才能看到新值（例如 `storage.*`,
+///   或除了 `logging.level` 以外的 logging 字段；这些改动会影响运行时 singletons）
+/// - `restarted_components` 非空：对应 channel 子进程需要重启（改了 imessage /
+///   telegram / discord / feishu 的任意字段）
+/// - `applied_live = true`：可以热更新,不需要重启任何进程
+///
+/// 任何未知顶层字段都按最保守的「整体重启」处理,避免漏改 singleton 造成不一致。
 pub fn classify_config_paths(paths: &[String]) -> ConfigApplyPlan {
     let mut restarted_components = BTreeSet::new();
     let mut restart_required = false;

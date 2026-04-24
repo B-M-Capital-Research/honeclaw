@@ -1,4 +1,12 @@
 //! Cron 执行历史的 SQLite 持久化。
+//!
+//! 与 `storage.rs` 的 JSON 定义文件互补：
+//! - JSON：定时任务的「定义」（hour / minute / repeat / enabled 等）
+//! - SQLite：每一次实际触发的「执行事件」（执行时间、投递状态、错误、响应预览）
+//!
+//! 只在构造 `CronJobStorage` 时传了 sqlite_path 才会启用,这样测试和轻量
+//! 场景下仍然可以只用 JSON 即可工作（`open_execution_conn` 会返回 `None`）。
+//! schema 用 `CREATE TABLE IF NOT EXISTS`,第一次连接时自动建表。
 
 use hone_core::{ActorIdentity, HoneError, HoneResult, truncate_chars_append};
 use rusqlite::{Connection, params};

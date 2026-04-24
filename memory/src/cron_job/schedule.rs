@@ -1,14 +1,20 @@
 //! 调度时间 / 日历 / 节假日 / 触发判定等纯函数。
+//!
+//! 本模块里所有函数都是纯函数（给定输入 -> 固定输出），不做 IO 也不依赖
+//! `CronJobStorage` 自身状态。`storage.rs` 会基于这里的判定实现完整的
+//! `get_due_jobs` / `add_job` / `validate` 管线。
 
 use chrono::{Datelike, NaiveDate};
 use hone_core::beijing_offset;
 
 use super::types::CronJob;
 
-/// 容错窗口（分钟）— 向过去看 5 分钟，覆盖 LLM 处理时间导致的时间窗口错过
+/// 时间窗口容错（分钟）：允许将过去 5 分钟内的计划视为「当前到点」，
+/// 用来抵消 scheduler 触发延迟以及 LLM 处理慢造成的错过。
 pub(super) const DUE_WINDOW_MINUTES: i32 = 5;
 
 impl CronJob {
+    /// 是否为 heartbeat 类型：`schedule.repeat == "heartbeat"` 或 `tags` 里有 `heartbeat`。
     pub fn is_heartbeat(&self) -> bool {
         is_heartbeat_repeat_or_tags(&self.schedule.repeat, &self.tags)
     }
@@ -84,6 +90,7 @@ pub(super) fn normalized_repeat<'a>(repeat: &'a str, tags: &[String]) -> &'a str
     }
 }
 
+/// 周一到周五视为工作日（不考虑假期调休）。
 pub(super) fn is_workday(day: NaiveDate) -> bool {
     day.weekday().num_days_from_monday() < 5
 }
@@ -92,14 +99,18 @@ fn is_market_holiday(day: NaiveDate) -> bool {
     us_market_holidays(day.year()).contains(&day)
 }
 
+/// 美股交易日：工作日且不是美股节假日。
 pub(super) fn is_trading_day(day: NaiveDate) -> bool {
     is_workday(day) && !is_market_holiday(day)
 }
 
+/// 非工作日或美股节假日（`trading_day` 的补集）。
 pub(super) fn is_holiday(day: NaiveDate) -> bool {
     !is_workday(day) || is_market_holiday(day)
 }
 
+/// 把 `(day, hour, minute)` 解释成 +08:00 时区的具体时刻。
+/// 专供 `get_due_jobs` 的 catch-up 判定和测试断言使用。
 pub(crate) fn beijing_slot_time(
     day: NaiveDate,
     hour: u32,
@@ -112,6 +123,9 @@ pub(crate) fn beijing_slot_time(
         .expect("fixed offset slot")
 }
 
+/// 任务是否在当天的计划时刻之前就已经存在：用于判断某个已经过了 `hh:mm`
+/// 的任务是「今天漏跑需要补」还是「今天才刚创建，不补跑」。
+/// 缺失 / 无法解析 `created_at` 时按「存在」处理，保持向后兼容。
 pub(super) fn job_existed_before_slot(job: &CronJob, day: NaiveDate) -> bool {
     let Some(created_at) = job.created_at.as_deref() else {
         return true;
@@ -122,6 +136,8 @@ pub(super) fn job_existed_before_slot(job: &CronJob, day: NaiveDate) -> bool {
     created_dt <= beijing_slot_time(day, job.schedule.hour, job.schedule.minute)
 }
 
+/// 把落在周末的节假日挪到最近的工作日（周六→周五，周日→周一），
+/// 匹配 NYSE 的 observed holiday 规则。
 fn observed_holiday(base: NaiveDate) -> NaiveDate {
     match base.weekday().num_days_from_monday() {
         5 => base - chrono::Duration::days(1), // Saturday → Friday
@@ -130,6 +146,7 @@ fn observed_holiday(base: NaiveDate) -> NaiveDate {
     }
 }
 
+/// 某月的第 n 个指定星期几（用于 MLK、总统日、劳动节、感恩节等）。
 fn nth_weekday(year: i32, month: u32, weekday: u32, n: u32) -> NaiveDate {
     let mut current = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
     while current.weekday().num_days_from_monday() != weekday {
@@ -138,6 +155,7 @@ fn nth_weekday(year: i32, month: u32, weekday: u32, n: u32) -> NaiveDate {
     current + chrono::Duration::days(((n - 1) * 7) as i64)
 }
 
+/// 某月的最后一个指定星期几（用于阵亡将士纪念日：5 月最后一个周一）。
 fn last_weekday(year: i32, month: u32, weekday: u32) -> NaiveDate {
     let mut current = if month == 12 {
         NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap() - chrono::Duration::days(1)
@@ -150,6 +168,8 @@ fn last_weekday(year: i32, month: u32, weekday: u32) -> NaiveDate {
     current
 }
 
+/// 公元 `year` 的复活节日期（Anonymous Gregorian 算法）。
+/// 美股耶稣受难日（Good Friday）是复活节前第二天，需要动态计算。
 fn easter_date(year: i32) -> NaiveDate {
     let a = year % 19;
     let b = year / 100;

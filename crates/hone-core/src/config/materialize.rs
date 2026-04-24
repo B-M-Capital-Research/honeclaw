@@ -1,4 +1,16 @@
 //! Canonical 配置 seed / 升级 / effective 产出。
+//!
+//! 概念：
+//! - **canonical 配置**：用户可编辑的权威 `config.yaml`（repo 根或安装后的用户目录）
+//! - **legacy runtime 配置**：历史上写在 `data/runtime/config_runtime.yaml` 的残留,
+//!   现在只用来一次性补齐 canonical 中仍为空/种子态的字段
+//! - **effective 配置**：启动时根据 canonical 实时生成的 `data/runtime/effective-config.yaml`,
+//!   供运行时进程消费（只读快照）
+//!
+//! 本模块就是围绕这三者流转的：
+//! - `seed_canonical_config_from_source`：从 `config.example.yaml` 或历史 canonical 拷一份到目标位置（只在不存在时触发）
+//! - `promote_legacy_runtime_agent_settings`：保守地把 legacy 里真正非空、canonical 仍为空的字段提升进 canonical
+//! - `generate_effective_config`：canonical → effective 快照 + revision hash
 
 use serde_yaml::{Mapping, Value};
 use std::fs;
@@ -78,10 +90,13 @@ pub fn seed_canonical_config_from_source(
     Ok(())
 }
 
+/// 判断 canonical 配置里的 runner 字段是不是 seed 默认值,需要被 legacy 覆盖。
+/// 只有空字符串以及两个历史默认值会被视为「用户未显式设置」。
 fn canonical_runner_looks_seeded(runner: &str) -> bool {
     matches!(runner.trim(), "" | "function_calling" | "codex_cli")
 }
 
+/// chat_scope 在 canonical 中是不是 seed 默认值（空或 DM_ONLY）,需要被 legacy 覆盖。
 fn canonical_chat_scope_looks_seeded(scope: &str) -> bool {
     matches!(scope.trim(), "" | "DM_ONLY")
 }

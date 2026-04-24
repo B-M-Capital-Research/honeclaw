@@ -300,10 +300,16 @@ impl CronJobStorage {
         let _ = self.save_jobs(actor, &data);
     }
 
-    /// 获取应触发的所有任务
+    /// 扫描所有 actor 的 cron 文件，返回当前时刻应触发的任务列表。
     ///
-    /// `channels`：若非空，只返回 `job.channel` 在列表中的任务；
-    /// 若为空切片，则返回所有任务（向后兼容/测试用途）。
+    /// 触发判定要同时满足多个维度：
+    /// 1. `enabled = true`
+    /// 2. `channels` 非空时要求 `job.channel` 命中（避免多渠道进程共享目录时相互误触发）
+    /// 3. 时间窗口命中（heartbeat 走 30 分钟半点槽；普通任务走 `[job_total - DUE_WINDOW, job_total]`
+    ///    的容错窗口，或在同日内的「错过后补跑」条件下命中）
+    /// 4. 按 `repeat` 过滤星期/工作日/交易日/假日
+    /// 5. `last_run_at` 未命中当前周期（heartbeat 以半点槽，weekly 以 ISO 周，once 只跑一次）
+    /// 6. 跨文件去重（同一 `channel:job_id:target` 只返回一次）
     pub fn get_due_jobs(
         &self,
         current_hour: i32,
@@ -316,6 +322,8 @@ impl CronJobStorage {
         let now = hone_core::beijing_now();
         let current_day = now.date_naive();
         let current_total = current_hour * 60 + current_minute;
+
+        // 只扫描 `cron_jobs_*.json` 文件；无法读取或解析的跳过，避免一个坏文件阻塞全部扫描。
 
         let entries = match std::fs::read_dir(&self.data_dir) {
             Ok(e) => e,
@@ -364,6 +372,8 @@ impl CronJobStorage {
                 let job_total = (job.schedule.hour as i32) * 60 + (job.schedule.minute as i32);
                 let is_heartbeat = job.is_heartbeat();
                 if is_heartbeat {
+                    // Heartbeat 任务按每半小时的整点槽触发；只在槽起点及其后的 DUE_WINDOW 分钟
+                    // 内视为「当前槽内」,其它时刻一律跳过。
                     let slot_minute = (current_total / 30) * 30;
                     if !(slot_minute <= current_total
                         && current_total <= slot_minute + DUE_WINDOW_MINUTES)
@@ -371,6 +381,10 @@ impl CronJobStorage {
                         continue;
                     }
                 } else {
+                    // 普通任务：
+                    // - `due_in_window`: 处在计划时刻前 DUE_WINDOW 分钟到计划时刻之间
+                    // - `due_by_catch_up`: 已经过了计划时刻,但任务在当天的计划时刻之前就存在,
+                    //   说明是当天错过的那次调用,允许同日内补跑一次
                     let due_in_window = current_total - DUE_WINDOW_MINUTES <= job_total
                         && job_total <= current_total;
                     let due_by_catch_up =
@@ -405,6 +419,9 @@ impl CronJobStorage {
                     _ => {}
                 }
 
+                // 去抖：已经在当前周期内跑过一次就跳过。各 repeat 类型用不同的粒度比较：
+                // heartbeat 以「当日 + 同一 30 分钟槽」；weekly 以 ISO 周编号;
+                // once 跑完就永久视为已跑；其它(daily/workday/trading_day/holiday)以自然日。
                 if let Some(ref last_run) = job.last_run_at
                     && let Ok(last_dt) = chrono::DateTime::parse_from_rfc3339(last_run)
                 {

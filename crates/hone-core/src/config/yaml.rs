@@ -1,9 +1,20 @@
 //! YAML 读写 / overlay 合并 / path 解析 / 最小补丁等底层工具。
+//!
+//! 这里的函数只认 `serde_yaml::Value`，不关心 `HoneConfig` 具体字段。
+//! 上层模块（`materialize` / `mutation`）基于它们组合出「canonical 配置
+//! 升级」、「按路径 set/unset」等高层语义。
+//!
+//! 设计原则：
+//! - 所有写入都走 `atomic_write_yaml`，通过临时文件 + rename 保证不会写到
+//!   一半留下坏文件
+//! - `merge_yaml_value` / `diff_yaml_value` 只递归 mapping；sequence 和标量
+//!   发生变化时整段覆盖，避免「半个数组」的歧义
 
 use serde_yaml::{Mapping, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// `ConfigMutation` 路径的单段：`foo.bar[0].baz` → `[Key("foo"), Key("bar"), Index(0), Key("baz")]`。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ConfigPathSegment {
     Key(String),
@@ -125,6 +136,11 @@ pub fn diff_yaml_value(base: &Value, current: &Value) -> Option<Value> {
     }
 }
 
+/// 把点路径 + 方括号下标串解析成一串 `ConfigPathSegment`。
+///
+/// 支持 `foo.bar`, `foo.bar[2]`, `foo[0].bar[1]` 这类组合。
+/// 不支持引号包裹的键（当前 config schema 里不存在含点或含括号的字段名）。
+/// 任何语法错误都返回 `HoneError::Config` 并附上原文，方便定位。
 pub(super) fn parse_config_path(path: &str) -> crate::HoneResult<Vec<ConfigPathSegment>> {
     let raw = path.trim();
     if raw.is_empty() {
@@ -225,6 +241,9 @@ pub(super) fn get_value_at_segments<'a>(
     Ok(Some(node))
 }
 
+/// 沿 `segments` 深入 `current` 并在末端写入 `value`。
+/// 中途遇到类型不匹配时（例如期望 mapping 但命中 string），会直接替换成
+/// 空 mapping / 空 sequence 再继续写；sequence 下标超出会自动补 `Null` 扩容。
 pub(super) fn set_value_at_segments(
     current: &mut Value,
     segments: &[ConfigPathSegment],
@@ -317,6 +336,9 @@ fn yaml_kind(value: &Value) -> &'static str {
     }
 }
 
+/// 原子写入 YAML：先写到同目录下的隐藏 `.name.<ts>.tmp`，成功后 rename 覆盖。
+/// rename 失败时会再尝试一次（先删目标再 rename），兼容一些 FS 上 rename
+/// 不能覆盖已有文件的情况。
 pub(super) fn atomic_write_yaml(path: &Path, yaml: &str) -> crate::HoneResult<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
