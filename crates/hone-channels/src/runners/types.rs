@@ -48,6 +48,15 @@ pub struct AgentRunnerResult {
     pub context_messages: Option<Vec<AgentMessage>>,
 }
 
+/// Agent 执行器抽象。
+///
+/// **历史还原契约**：Runner **不应该**直接读 `SessionStorage` / `SessionMessage`。
+/// 上游 `AgentSession` 会用 `restore_context` 把 session 历史构造成
+/// `AgentContext`,以 `AgentRunnerRequest.context` 注入。Runner 只消费
+/// `AgentContext`（或它的 `normalized_history_json()` 序列化形式）。
+///
+/// 这么约束的原因是让 session 持久化 schema 的任何变更都只需要改动
+/// `restore_context` 一处,不需要同步到每个 runner 实现里。
 #[async_trait]
 pub trait AgentRunner: Send + Sync {
     fn name(&self) -> &'static str;
