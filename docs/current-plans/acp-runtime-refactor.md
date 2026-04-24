@@ -51,28 +51,28 @@ Finish converging the agent runtime on ACP semantics so channel entrypoints, run
 ## Validation
 
 - 2026-04-13:
-  - `rtk cargo test -p hone-core test_agent_runner_timeouts_default_to_step_plus_overall test_agent_runner_timeout_override_preserves_explicit_values`
-  - `rtk cargo test -p hone-channels runners::tests`
-  - `rtk cargo check -p hone-channels`
+  - `cargo test -p hone-core test_agent_runner_timeouts_default_to_step_plus_overall test_agent_runner_timeout_override_preserves_explicit_values`
+  - `cargo test -p hone-channels runners::tests`
+  - `cargo check -p hone-channels`
 - 2026-04-15:
-  - `rtk cargo run -q -p hone-cli -- --config config.yaml probe --channel telegram --user-id acp_probe_user --group --scope 'chat:-1009000000000' --query '详细分析一下FLNC现在的价位以及潜力'`
-  - `rtk cargo run -q -p hone-cli -- --config config.yaml probe --channel telegram --user-id acp_probe_fresh --group --scope 'chat:acp-probe-fresh-20260415' --query '详细分析一下FLNC现在的价位以及潜力'`
-  - `rtk cargo test -p hone-channels --lib`
-  - `rtk cargo test -p hone-channels --lib -- --test-threads=1`
-  - `rtk cargo test -p hone-memory --lib`
-  - `rtk cargo check --workspace --all-targets --exclude hone-desktop`
-  - `rtk cargo run -q -p hone-cli -- --config config.yaml probe --channel telegram --user-id acp_probe_short2 --group --scope 'chat:acp-probe-short2-20260415' --query '先告诉我你会检查本地 rtk 版本，然后执行 rtk --version，最后只输出一行 VERSION=<结果>。'`
-  - `rtk cargo run -q -p hone-cli -- --config config.yaml probe --channel telegram --user-id acp_storage_probe2 --group --scope 'chat:acp-storage-20260415-215524' --show-events true --query '先告诉我你会检查本地 rtk 版本，然后执行 rtk --version，最后只输出一行 VERSION=<结果>。'`
-  - `rtk cargo run -q -p hone-cli -- --config data/runtime/config_runtime_opencode.yaml probe --channel telegram --user-id acp_storage_probe2 --group --scope 'chat:acp-storage-20260415-215524' --show-events true --query '上一轮你拿到的 VERSION 是什么？不要重新执行命令，不要调用工具，只输出一行 SAME=<结果>。'`
+  - `cargo run -q -p hone-cli -- --config config.yaml probe --channel telegram --user-id acp_probe_user --group --scope 'chat:-1009000000000' --query '详细分析一下FLNC现在的价位以及潜力'`
+  - `cargo run -q -p hone-cli -- --config config.yaml probe --channel telegram --user-id acp_probe_fresh --group --scope 'chat:acp-probe-fresh-20260415' --query '详细分析一下FLNC现在的价位以及潜力'`
+  - `cargo test -p hone-channels --lib`
+  - `cargo test -p hone-channels --lib -- --test-threads=1`
+  - `cargo test -p hone-memory --lib`
+  - `cargo check --workspace --all-targets --exclude hone-desktop`
+  - `cargo run -q -p hone-cli -- --config config.yaml probe --channel telegram --user-id acp_probe_short2 --group --scope 'chat:acp-probe-short2-20260415' --query '先告诉我你会检查本地 版本，然后执行 --version，最后只输出一行 VERSION=<结果>。'`
+  - `cargo run -q -p hone-cli -- --config config.yaml probe --channel telegram --user-id acp_storage_probe2 --group --scope 'chat:acp-storage-20260415-215524' --show-events true --query '先告诉我你会检查本地 版本，然后执行 --version，最后只输出一行 VERSION=<结果>。'`
+  - `cargo run -q -p hone-cli -- --config data/runtime/config_runtime_opencode.yaml probe --channel telegram --user-id acp_storage_probe2 --group --scope 'chat:acp-storage-20260415-215524' --show-events true --query '上一轮你拿到的 VERSION 是什么？不要重新执行命令，不要调用工具，只输出一行 SAME=<结果>。'`
   - verified persisted session JSON: `data/runtime/data/sessions/Session_telegram__group__chat_3aacp-storage-20260415-215524.json`
   - bare `codex-acp` JSON-RPC probe with `initialize/session/new/session/prompt` and explicit `mcpServers: []`
 - 2026-04-23:
-  - `rtk cargo test -p hone-channels --lib`
-  - `rtk cargo test -p hone-web-api --lib`
-  - `rtk bun run test:web`
-  - `rtk cargo check --workspace --all-targets --exclude hone-desktop`
-  - `rtk cargo test --workspace --all-targets --exclude hone-desktop`
-  - `rtk bash tests/regression/run_ci.sh`
+  - `cargo test -p hone-channels --lib`
+  - `cargo test -p hone-web-api --lib`
+  - `bun run test:web`
+  - `cargo check --workspace --all-targets --exclude hone-desktop`
+  - `cargo test --workspace --all-targets --exclude hone-desktop`
+  - `bash tests/regression/run_ci.sh`
 - 2026-04-24:
   - `cargo test -p hone-channels configured_codex`
   - `cargo test -p hone-channels codex_acp_effective_args`

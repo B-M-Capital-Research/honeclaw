@@ -29,15 +29,15 @@
 
 ## Validation
 
-- `rtk cargo test -p hone-event-engine truth_social --lib`
-- `rtk cargo test -p hone-event-engine close_quote --lib`
-- `rtk cargo test -p hone-event-engine per_actor_price_threshold_can_promote_closing_move --lib`
-- `rtk cargo test -p hone-event-engine --lib`
-- `rtk cargo fmt --all -- --check`
-- `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
-- `rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
-- `rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465`
-- `rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465 --include-body`
+- `cargo test -p hone-event-engine truth_social --lib`
+- `cargo test -p hone-event-engine close_quote --lib`
+- `cargo test -p hone-event-engine per_actor_price_threshold_can_promote_closing_move --lib`
+- `cargo test -p hone-event-engine --lib`
+- `cargo fmt --all -- --check`
+- `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+- `env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+- `python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465`
+- `python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465 --include-body`
 
 ## Documentation Sync
 

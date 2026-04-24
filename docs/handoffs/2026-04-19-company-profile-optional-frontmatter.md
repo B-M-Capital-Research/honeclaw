@@ -31,7 +31,7 @@
 
 ## Verification
 
-- `rtk cargo test -p hone-memory company_profile -- --nocapture`
+- `cargo test -p hone-memory company_profile -- --nocapture`
 
 ## Risks / Follow-ups
 

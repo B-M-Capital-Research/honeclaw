@@ -40,13 +40,13 @@
 
 ## Verification
 
-- `rtk cargo fmt --all -- --check`
-- `rtk cargo test -p hone-event-engine --lib`
-- `rtk cargo test -p hone-core --lib`
-- `rtk cargo check -p hone-web-api`
-- `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+- `cargo fmt --all -- --check`
+- `cargo test -p hone-event-engine --lib`
+- `cargo test -p hone-core --lib`
+- `cargo check -p hone-web-api`
+- `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
 - live OpenRouter/FMP manual eval with saved baseline: 12/12 parseable, classifier drift screened against non-Google/non-OpenAI/non-Anthropic candidates
-- smoke run: `rtk python3 scripts/diagnose_event_engine_daily_pushes.py --actor 'telegram::::8039067465' --date 2026-04-23`
+- smoke run: `python3 scripts/diagnose_event_engine_daily_pushes.py --actor 'telegram::::8039067465' --date 2026-04-23`
 
 ## Risks / Follow-ups
 

@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-04-17
+Last updated: 2026-04-24
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -127,3 +127,14 @@ Last updated: 2026-04-17
   - Web history extraction must recognize inline local image markers as attachments
   - Feishu / Telegram / Discord outbound adapters must preserve interleaved `text -> image -> text` order and replace local markers with actual uploaded channel images
 - Note: v1 keeps this contract entirely inside the final assistant text and does not introduce a separate SSE media event type.
+
+## D-2026-04-24-01 Route Price Alerts Through Directional Band Lanes
+
+- Status: Accepted
+- Decision: Price alerts use daily low/close ids plus directional intraday band ids instead of one `price:{symbol}:{date}` id per day. Intraday bands are keyed as `price_band:{symbol}:{date}:{up|down}:{band_bps}` and default to `6%` with `2pp` steps.
+- Impact:
+  - A low-magnitude price move can enter digest first, then a later same-day cross of `+6%/+8%` or `-6%/-8%` can still dispatch as a distinct event.
+  - Price bands bypass the generic same-symbol cooldown and use price-specific `price_intraday_min_gap_minutes` plus `price_symbol_direction_daily_cap`.
+  - Close price alerts are digest-only by default through `price_close_direct_enabled=false`.
+  - Digest buffering treats price alerts as latest-state rows per actor/symbol/date/window, replacing older queued price rows instead of appending duplicates.
+- Note: This preserves old event rows in SQLite; it only changes ids and routing for new price observations.

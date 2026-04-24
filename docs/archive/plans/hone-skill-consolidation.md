@@ -33,9 +33,9 @@ Reduce obvious overlap in Hone built-in skills, remove the non-functional one-se
 
 ## Validation
 
-- `rtk bash tests/regression/ci/test_finance_automation_contracts.sh`
-- `rtk cargo test -p hone-tools load_skill_and_direct_invocation_accept_aliases`
-- `rtk cargo fmt --all --check`
+- `bash tests/regression/ci/test_finance_automation_contracts.sh`
+- `cargo test -p hone-tools load_skill_and_direct_invocation_accept_aliases`
+- `cargo fmt --all --check`
 - Review `git diff --stat` and key skill files to confirm only intended skills changed
 
 ## Documentation Sync

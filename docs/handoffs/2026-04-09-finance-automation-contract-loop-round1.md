@@ -40,14 +40,14 @@ Round 1 fixed the `snapshot` contract gap. Round 2 then fixed the `earnings_cale
 
 ## Verification
 
-- `rtk cargo test -p hone-tools -- --nocapture`
+- `cargo test -p hone-tools -- --nocapture`
   - `42 passed`
-- `rtk bash tests/regression/ci/test_finance_automation_contracts.sh`
+- `bash tests/regression/ci/test_finance_automation_contracts.sh`
   - after Round 2: `success=5 review=1 fail=3 total=9`
   - after Round 3: `success=9 review=0 fail=0 total=9`
-- `rtk bash tests/regression/manual/test_finance_snapshot_live.sh`
+- `bash tests/regression/manual/test_finance_snapshot_live.sh`
   - passed with a real `AAPL snapshot` response through `hone-mcp`
-- `rtk bash tests/regression/manual/test_earnings_calendar_live.sh`
+- `bash tests/regression/manual/test_earnings_calendar_live.sh`
   - passed with a real default-window earnings-calendar response through `hone-mcp`
 - `bash tests/regression/run_ci.sh`
   - passed after the Round 3 skill wording cleanup

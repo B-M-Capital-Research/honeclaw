@@ -27,8 +27,8 @@ Remove the remaining hard requirement that company profile Markdown and event Ma
 
 ## Validation
 
-- `rtk cargo test -p hone-memory company_profile -- --nocapture`
-- `rtk cargo test -p hone-tools company_profile_transfer -- --nocapture`
+- `cargo test -p hone-memory company_profile -- --nocapture`
+- `cargo test -p hone-tools company_profile_transfer -- --nocapture`
 - Bare Codex ACP + Hone MCP probe: `company_profile_transfer action=preview` succeeds on a plain-Markdown bundle that previously failed with `缺少 frontmatter`
 
 ## Documentation Sync

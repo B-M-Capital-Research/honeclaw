@@ -4,6 +4,18 @@ Last updated: 2026-04-24
 
 ## 2026-04-24
 
+### Price Event Lane 增量改造
+
+- Status: done
+- Date: 2026-04-24
+- Plan: `docs/archive/plans/price-event-lane.md`
+- Handoff: `docs/handoffs/2026-04-24-price-event-lane.md`
+- Decision / ADR: `docs/decisions.md#d-2026-04-24-01-route-price-alerts-through-directional-band-lanes`
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-event-engine price --lib`, `cargo test -p hone-event-engine router --lib`, `cargo test -p hone-event-engine digest --lib`, `cargo test -p hone-core --lib`, `cargo fmt --all -- --check`, `cargo test -p hone-event-engine --lib`, `cargo check --workspace --all-targets --exclude hone-desktop`, `bash tests/regression/run_ci.sh`, `cargo test --workspace --all-targets --exclude hone-desktop`
+- Current conclusion: 价格事件已从日级去重改为 low/band/close 分层 id；盘中 `price_band:{symbol}:{date}:{up|down}:{band_bps}` 可在同日多次跨新档时形成独立事件，router 使用价格专属 gap/cap 控频，digest 对同一 actor/symbol/date/window 保留最新价格态，收盘价格默认摘要化
+- Next entry point: `docs/handoffs/2026-04-24-price-event-lane.md`
+
 ### Event Engine Close Price 与 Truth Social 后续修复
 
 - Status: done
@@ -12,7 +24,7 @@ Last updated: 2026-04-24
 - Handoff: `docs/handoffs/2026-04-24-event-engine-close-price-truth-social-followup.md`
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `rtk cargo test -p hone-event-engine --lib`, `rtk cargo fmt --all -- --check`, `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`, `rtk cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`, `rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`, `rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465`, `rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-24 --actor telegram::::8039067465 --include-body`
+- Related runbooks / regressions: `cargo test -p hone-event-engine --lib`, `cargo fmt --all -- --check`, `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`, `cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`, `env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`, `python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465`, `python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-24 --actor telegram::::8039067465 --include-body`
 - Current conclusion: Truth Social poller 已补 status / content-type / body-prefix 失败诊断，`price_close` 高波动已恢复 High / immediate 路由；真实模型 baseline 已从 12 条 LLM 样本扩到 15 条并 15/15 matched；2026-04-24 Telegram digest 省略项已可通过 `digest_item omitted` 审计，低信号 news/social/macro/no-op analyst 噪声已降噪
 - Next entry point: `docs/handoffs/2026-04-24-event-engine-close-price-truth-social-followup.md`
 
@@ -26,7 +38,7 @@ Last updated: 2026-04-24
 - Handoff: `docs/handoffs/2026-04-23-event-engine-push-quality.md`
 - Decision / ADR: N/A
 - Related PRs / commits: `0ff23d4 feat(event-engine): improve push quality routing`, `df820ca feat(event-engine): add daily push calibration export`
-- Related runbooks / regressions: `rtk cargo fmt --all -- --check`, `rtk cargo test -p hone-event-engine --lib`, `rtk cargo test -p hone-core --lib`, `rtk cargo check -p hone-web-api`, `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+- Related runbooks / regressions: `cargo fmt --all -- --check`, `cargo test -p hone-event-engine --lib`, `cargo test -p hone-core --lib`, `cargo check -p hone-web-api`, `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
 - Current conclusion: event engine 的 24 项推送质量清单已全部收口，新增 digest 去重 / min-gap / topic memory、source/channel 偏好、分类预算、方向性价格阈值、macro/earnings 时窗、delivery observability，以及 `amazon/nova-lite-v1` 不确定来源新闻分类基线
 - Next entry point: `docs/handoffs/2026-04-23-event-engine-push-quality.md`
 
@@ -38,7 +50,7 @@ Last updated: 2026-04-24
 - Handoff: `docs/handoffs/2026-04-23-core-runtime-type-consolidation.md`
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `rtk cargo test -p hone-channels agent_session`, `rtk cargo test -p hone-channels runners::tests`, `rtk cargo test -p hone-event-engine subscription`, `rtk cargo test -p hone-web-api routes::history`, `rtk bun run test:web`, `rtk bun --filter @hone-financial/app typecheck`, `rtk cargo check --workspace --all-targets --exclude hone-desktop`, `rtk cargo test --workspace --all-targets --exclude hone-desktop`, `rtk bash tests/regression/run_ci.sh`
+- Related runbooks / regressions: `cargo test -p hone-channels agent_session`, `cargo test -p hone-channels runners::tests`, `cargo test -p hone-event-engine subscription`, `cargo test -p hone-web-api routes::history`, `bun run test:web`, `bun --filter @hone-financial/app typecheck`, `cargo check --workspace --all-targets --exclude hone-desktop`, `cargo test --workspace --all-targets --exclude hone-desktop`, `bash tests/regression/run_ci.sh`
 - Current conclusion: `AgentSession` 的 prompt/skill turn 构建与 response finalization 已从主编排里拆出，runner/session 内部事件收敛到 canonical `run_event`，runner kind / CLI probe 逻辑有了统一 helper，前端历史附件类型已和 Rust 对齐，本地图片 marker 也补了 Rust/前端共享 fixture
 - Next entry point: `crates/hone-channels/src/agent_session.rs`
 
@@ -52,7 +64,7 @@ Last updated: 2026-04-24
 - Handoff: N/A
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `.githooks/pre-commit` hook smoke test with staged Rust formatting, `rtk bash -n .githooks/pre-commit`, `rtk bash -n scripts/install_gitleaks.sh`
+- Related runbooks / regressions: `.githooks/pre-commit` hook smoke test with staged Rust formatting, `bash -n .githooks/pre-commit`, `bash -n scripts/install_gitleaks.sh`
 - Current conclusion: 本地 Git hook 现在会在 commit 前自动格式化已暂存 Rust 文件并重新暂存，push 前的 rustfmt / gitleaks 仍作为兜底门禁；同一 Rust 文件如果同时有已暂存和未暂存改动，pre-commit 会停止以避免把未选择的内容混入 commit
 - Next entry point: `.githooks/pre-commit`
 
@@ -66,7 +78,7 @@ Last updated: 2026-04-24
 - Handoff: `docs/handoffs/2026-04-20-hone-skill-consolidation.md`
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `rtk bash tests/regression/ci/test_finance_automation_contracts.sh`, `rtk cargo test -p hone-tools load_skill_and_direct_invocation_accept_aliases`, `rtk cargo fmt --all --check`
+- Related runbooks / regressions: `bash tests/regression/ci/test_finance_automation_contracts.sh`, `cargo test -p hone-tools load_skill_and_direct_invocation_accept_aliases`, `cargo fmt --all --check`
 - Current conclusion: Hone 的高重叠金融 skill 已收敛到更小的维护面：`one_sentence_memory` 被删除，`major_alert` 被并入 `scheduled_task`，`valuation` 与 `stock_selection` 被并入带兼容 alias 的 `stock_research`；finance regression 已改为验证新的 canonical skill 形态
 - Next entry point: `skills/stock_research/SKILL.md`
 
@@ -116,7 +128,7 @@ Last updated: 2026-04-24
 - Handoff: `docs/handoffs/2026-04-19-company-profile-optional-frontmatter.md`
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `rtk cargo test -p hone-memory company_profile -- --nocapture`
+- Related runbooks / regressions: `cargo test -p hone-memory company_profile -- --nocapture`
 - Current conclusion: 公司画像与事件现在不再在读取、列出、bundle preview/import 时硬依赖 YAML frontmatter；legacy plain Markdown 本地画像与 plain-Markdown 画像包都会推断最小 metadata 继续工作，不再因为 `缺少 frontmatter` 直接失败
 - Next entry point: `memory/src/company_profile/markdown.rs`
 
@@ -128,7 +140,7 @@ Last updated: 2026-04-24
 - Handoff: `docs/handoffs/2026-04-19-company-profile-transfer.md`
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `rtk cargo test -p hone-memory company_profile`, `rtk cargo test -p hone-web-api`, `rtk bun run test:web`, `rtk bun run typecheck:web`, `rtk bun run build:web`, `rtk bun run --cwd packages/app test:e2e`, `rtk cargo check -p hone-memory -p hone-web-api -p hone-channels`
+- Related runbooks / regressions: `cargo test -p hone-memory company_profile`, `cargo test -p hone-web-api`, `bun run test:web`, `bun run typecheck:web`, `bun run build:web`, `bun run --cwd packages/app test:e2e`, `cargo check -p hone-memory -p hone-web-api -p hone-channels`
 - Current conclusion: 公司画像现在支持 actor 私有画像包导入导出；Memory 页面左侧已收敛成单一“目标用户空间”列表，当前空间里的公司切换放到右侧详情内部；右侧会先自动扫描导入包，只在存在冲突时要求逐家公司选择“保留当前”或“用导入版本替换”，并在存在替换时自动生成导入前备份供用户下载；legacy plain Markdown 画像即使缺少 frontmatter，也能被 transfer 导出、自动备份并参与冲突判断
 - Next entry point: `packages/app/src/context/company-profiles.tsx`
 
@@ -140,7 +152,7 @@ Last updated: 2026-04-24
 - Handoff: `docs/handoffs/2026-04-19-company-profile-transfer.md`
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `rtk cargo fmt --all`, `rtk cargo test -p hone-memory company_profile`, `rtk cargo test -p hone-web-api`, `rtk cargo check -p hone-memory -p hone-web-api -p hone-channels`
+- Related runbooks / regressions: `cargo fmt --all`, `cargo test -p hone-memory company_profile`, `cargo test -p hone-web-api`, `cargo check -p hone-memory -p hone-web-api -p hone-channels`
 - Current conclusion: `hone-memory` 里的 company profile 已按职责拆成 `types / markdown / storage / transfer / tests` 子模块，保留原有 `hone_memory::*` 导出面和导入导出语义，后续继续改画像能力时不需要再在单个超大文件里同时处理类型、Markdown、zip 和存储细节
 - Next entry point: `memory/src/company_profile/mod.rs`
 
@@ -192,7 +204,7 @@ Use this file as the historical entry point for completed or paused work that sh
 - Handoff: N/A
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
-- Related runbooks / regressions: `rtk cargo test -p hone-channels outbound::tests -- --nocapture`, `rtk cargo test -p hone-feishu listener -- --nocapture`, `rtk cargo check --workspace --all-targets --exclude hone-desktop`
+- Related runbooks / regressions: `cargo test -p hone-channels outbound::tests -- --nocapture`, `cargo test -p hone-feishu listener -- --nocapture`, `cargo check --workspace --all-targets --exclude hone-desktop`
 - Current conclusion: Telegram / Discord / Feishu 群聊现在都会显示处理中间进度，但默认收敛到 compact 粒度，只暴露“搜索信息 / 获取数据 / 执行命令 / 执行技能”等阶段，不再把 query、命令行和目录路径这类细节直接刷进群消息；当 runner 只吐出 `Tool` 这类泛化标签时，会结合 reasoning 回退成粗粒度动作文案，且连续多轮相同类型的工具调用也会像单聊一样逐轮追加
 - Next entry point: `crates/hone-channels/src/outbound.rs`
 

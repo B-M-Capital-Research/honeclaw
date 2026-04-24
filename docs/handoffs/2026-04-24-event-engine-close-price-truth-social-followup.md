@@ -88,7 +88,7 @@
 导出命令：
 
 ```bash
-rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465
+python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --actor telegram::::8039067465
 ```
 
 输出文件在 ignored 目录：
@@ -122,7 +122,7 @@ rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-23 --ac
 导出命令：
 
 ```bash
-rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-24 --actor telegram::::8039067465 --include-body
+python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-24 --actor telegram::::8039067465 --include-body
 ```
 
 输出文件在 ignored 目录：
@@ -149,16 +149,16 @@ rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-24 --ac
 
 ## Verification
 
-- `rtk cargo test -p hone-event-engine truth_social --lib`：7 passed
-- `rtk cargo test -p hone-event-engine close_quote --lib`：4 passed
-- `rtk cargo test -p hone-event-engine per_actor_price_threshold_can_promote_closing_move --lib`：1 passed
-- `rtk cargo test -p hone-event-engine --lib`：221 passed, 13 ignored
-- `rtk cargo fmt --all -- --check`：passed
-- `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：fixture loaded, 43 items, 15 LLM items
-- `rtk cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`：1 passed
-- `rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：15/15 matched, reported cost `0.000640`, avg latency `2.17s`
+- `cargo test -p hone-event-engine truth_social --lib`：7 passed
+- `cargo test -p hone-event-engine close_quote --lib`：4 passed
+- `cargo test -p hone-event-engine per_actor_price_threshold_can_promote_closing_move --lib`：1 passed
+- `cargo test -p hone-event-engine --lib`：221 passed, 13 ignored
+- `cargo fmt --all -- --check`：passed
+- `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：fixture loaded, 43 items, 15 LLM items
+- `cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`：1 passed
+- `env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：15/15 matched, reported cost `0.000640`, avg latency `2.17s`
 - FMP / WatcherGuru 批量真实模型校准：719 条原始样本，238 条 route LLM，15 条 shadow LLM。
-- `rtk git diff --check`：passed
+- `git diff --check`：passed
 
 ## Risks / Follow-ups
 

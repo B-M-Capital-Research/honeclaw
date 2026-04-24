@@ -36,13 +36,13 @@
 
 ## Validation
 
-- `rtk cargo test -p hone-memory company_profile`
-- `rtk cargo test -p hone-web-api`
-- `rtk bun run test:web`
-- `rtk bun run typecheck:web`
-- `rtk bun run build:web`
-- `rtk bun run --cwd packages/app test:e2e`
-- `rtk cargo check -p hone-memory -p hone-web-api -p hone-channels`
+- `cargo test -p hone-memory company_profile`
+- `cargo test -p hone-web-api`
+- `bun run test:web`
+- `bun run typecheck:web`
+- `bun run build:web`
+- `bun run --cwd packages/app test:e2e`
+- `cargo check -p hone-memory -p hone-web-api -p hone-channels`
 
 ## Documentation Sync
 

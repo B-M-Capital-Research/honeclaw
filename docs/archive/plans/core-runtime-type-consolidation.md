@@ -44,21 +44,21 @@
 
 ## Validation
 
-- done: `rtk cargo check -p hone-channels --all-targets`
-- done: `rtk cargo check -p hone-core --all-targets`
-- done: `rtk cargo check -p hone-web-api --all-targets`
-- done: `rtk cargo check -p hone-event-engine --all-targets`
-- done: `rtk bun --filter @hone-financial/app typecheck`
-- done: `rtk cargo test -p hone-core agent_runner_kind_keeps_wire_values_and_probe_mapping -- --nocapture`
-- done: `rtk cargo test -p hone-channels local_image_marker_contract_matches_shared_fixture -- --nocapture`
-- done: `rtk cargo test -p hone-channels agent_session`
-- done: `rtk cargo test -p hone-channels runners::tests`
-- done: `rtk cargo test -p hone-event-engine subscription`
-- done: `rtk cargo test -p hone-web-api routes::history`
-- done: `rtk bun run test:web`
-- done: `rtk cargo check --workspace --all-targets --exclude hone-desktop`
-- done: `rtk cargo test --workspace --all-targets --exclude hone-desktop`
-- done: `rtk bash tests/regression/run_ci.sh`
+- done: `cargo check -p hone-channels --all-targets`
+- done: `cargo check -p hone-core --all-targets`
+- done: `cargo check -p hone-web-api --all-targets`
+- done: `cargo check -p hone-event-engine --all-targets`
+- done: `bun --filter @hone-financial/app typecheck`
+- done: `cargo test -p hone-core agent_runner_kind_keeps_wire_values_and_probe_mapping -- --nocapture`
+- done: `cargo test -p hone-channels local_image_marker_contract_matches_shared_fixture -- --nocapture`
+- done: `cargo test -p hone-channels agent_session`
+- done: `cargo test -p hone-channels runners::tests`
+- done: `cargo test -p hone-event-engine subscription`
+- done: `cargo test -p hone-web-api routes::history`
+- done: `bun run test:web`
+- done: `cargo check --workspace --all-targets --exclude hone-desktop`
+- done: `cargo test --workspace --all-targets --exclude hone-desktop`
+- done: `bash tests/regression/run_ci.sh`
 
 ## Documentation Sync
 

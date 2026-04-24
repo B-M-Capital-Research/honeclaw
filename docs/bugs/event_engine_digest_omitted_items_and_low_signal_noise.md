@@ -12,10 +12,10 @@
   - `crates/hone-event-engine/src/event.rs`
   - `scripts/diagnose_event_engine_daily_pushes.py`
 - verification:
-  - `rtk cargo test -p hone-event-engine --lib`
-  - `rtk cargo fmt --all -- --check`
-  - `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
-  - `rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+  - `cargo test -p hone-event-engine --lib`
+  - `cargo fmt --all -- --check`
+  - `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+  - `env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
 
 ## Evidence
 
@@ -77,11 +77,11 @@
 
 ## Verification
 
-- `rtk cargo test -p hone-event-engine --lib`：221 passed, 13 ignored
-- `rtk cargo fmt --all -- --check`：passed
-- `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：fixture loaded, 43 items, 15 LLM items
-- `rtk cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`：1 passed
-- `rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：15/15 matched, reported cost `0.000640`, avg latency `2.17s`
+- `cargo test -p hone-event-engine --lib`：221 passed, 13 ignored
+- `cargo fmt --all -- --check`：passed
+- `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：fixture loaded, 43 items, 15 LLM items
+- `cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`：1 passed
+- `env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：15/15 matched, reported cost `0.000640`, avg latency `2.17s`
 - 真实批量校准：FMP 499 + WatcherGuru 220；route LLM 238 条，shadow LLM 15 条。
 
 ## Risks

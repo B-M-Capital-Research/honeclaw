@@ -250,7 +250,7 @@ data/portfolio/portfolio_telegram__direct__8039067465.json:177-189
 // crates/hone-event-engine/src/subscription.rs:288-325
 /// - 每个有持仓的 direct actor → `PortfolioSubscription`（按 ticker 命中）
 /// - 所有 direct actor 汇总后 → 一个 `GlobalSubscription`(kinds=[`social_post`,
-///   `macro_event`])。社交事件默认进 digest/LLM 仲裁；宏观事件经 router 的
+/// `macro_event`])。社交事件默认进 digest/LLM 仲裁；宏观事件经 router 的
 ///   due-window 保护后，远期日历只进摘要，临近 high 才即时播报。
 pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegistry {
     let mut reg = SubscriptionRegistry::new();

@@ -41,11 +41,11 @@ Agent runtime timeout 已收敛到两档顶层配置：`agent.step_timeout_secon
 
 ## Verification
 
-- `rtk cargo fmt --all`
-- `rtk cargo test -p hone-core test_agent_runner_timeouts_default_to_step_plus_overall`
-- `rtk cargo test -p hone-core test_agent_runner_timeout_override_preserves_explicit_values`
-- `rtk cargo test -p hone-channels runners::tests`
-- `rtk cargo check -p hone-channels`
+- `cargo fmt --all`
+- `cargo test -p hone-core test_agent_runner_timeouts_default_to_step_plus_overall`
+- `cargo test -p hone-core test_agent_runner_timeout_override_preserves_explicit_values`
+- `cargo test -p hone-channels runners::tests`
+- `cargo check -p hone-channels`
 
 ## Risks / Follow-ups
 

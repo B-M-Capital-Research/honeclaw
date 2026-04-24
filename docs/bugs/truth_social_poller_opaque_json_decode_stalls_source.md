@@ -132,9 +132,9 @@ async fn fetch_json(&self, url: &str, endpoint: &str) -> anyhow::Result<Value> {
 
 ## Verification
 
-- `rtk cargo test -p hone-event-engine truth_social --lib`
-- `rtk cargo test -p hone-event-engine --lib`
-- `rtk cargo fmt --all -- --check`
+- `cargo test -p hone-event-engine truth_social --lib`
+- `cargo test -p hone-event-engine --lib`
+- `cargo fmt --all -- --check`
 
 ## Severity
 

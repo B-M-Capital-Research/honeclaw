@@ -34,10 +34,10 @@
 
 ## Validation
 
-- `rtk cargo fmt --all`
-- `rtk cargo test -p hone-memory company_profile`
-- `rtk cargo test -p hone-web-api`
-- `rtk cargo check -p hone-memory -p hone-web-api -p hone-channels`
+- `cargo fmt --all`
+- `cargo test -p hone-memory company_profile`
+- `cargo test -p hone-web-api`
+- `cargo check -p hone-memory -p hone-web-api -p hone-channels`
 
 ## Documentation Sync
 

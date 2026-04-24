@@ -85,7 +85,7 @@
         的 runner（codex_acp / opencode_acp），`HoneBotCore::maybe_compress_session` 直接短路返回，
         不再触发 SessionCompactor。
      5. **ACP runner 不再灌 `latest_compact_summary`** — `agent_session.rs::resolve_prompt_input` 与
-        `scheduler.rs::run_heartbeat_task` 在 self-managed runner 下把 `bundle.conversation_context`
+ `scheduler.rs::run_heartbeat_task` 在 self-managed runner 下把 `bundle.conversation_context`
         清空，节流 ~30KB / 轮 input。honeclaw 自己的 `session_messages` 仍完整保留，用作跨 runner
         切换、UI 展示与 debug。
      6. **末端 sanitize 兜底** — `runtime.rs::sanitize_user_visible_output` 加 `RE_COMPACT_MARKER_LINE`,
@@ -97,11 +97,11 @@
      - `agent_session.rs` 中用户 `/compact` 命令的 manual 触发保留
      - 仅 `auto` 触发对 ACP runner 短路
    - **后续 SP reseed 优化（Pass 2，未实施）**：`acp_common` + 两个 ACP runner 已经把
-     `acp_needs_sp_reseed` flag 写入 session_metadata；当前 prompt 构建层每轮都发 SP，flag 未消费。
+ `acp_needs_sp_reseed` flag 写入 session_metadata；当前 prompt 构建层每轮都发 SP，flag 未消费。
      如果后续要进一步省 token（每轮少发 ~3KB），可以让 prompt 构建在 reseed flag=false 且非首轮时
      skip SP，在 reseed flag=true（compact 已发生）时强制重发 SP；不在本次范围。
    - **状态**：架构改造已落地、单测覆盖 4 个新用例，等待 24h 灰度复核 —— 跟踪
-     `data/runtime/logs/acp-events.log` 与 `session_messages` / `cron_job_runs.response_preview`
+ `data/runtime/logs/acp-events.log` 与 `session_messages` / `cron_job_runs.response_preview`
      是否还有 `Context compacted` 开头的 assistant final 写入。
 
 

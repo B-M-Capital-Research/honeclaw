@@ -24,12 +24,12 @@
 
 **根因**
 1. **动态时间戳充当了 Cache Buster（缓存杀手）**：在 `crates/hone-channels/src/prompt.rs` 的 `build_prompt_bundle` 函数逻辑里，代码为了传递时间感知能力，把精确到“秒”的时间加入到了 System Instructions 的内部（前缀靠前的部分）：
-   ```rust
+ ```rust
    let session_context = format!(
        "【Session 上下文】\n当前时间：{} (北京时间)\n当前日期：{}...",
        frozen.format("%Y-%m-%d %H:%M:%S")
    );
-   ```
+ ```
    由于当今大模型的 Prompt Cache（如 Anthropic/DeepSeek）大多严格依赖绝对前缀 Token 的字符串完全静态一致匹配。一旦时间秒级变动，这个处于句子靠前位置的 Token 便发生更改，导致模型直接抛弃该位置之后所有的 Cache。数十 K 的背景设定与历史总结均被重新计费计算。
 2. **全新会话的纯文本压缩导致无法复用 Messages**：在 `crates/hone-channels/src/runners/opencode_acp.rs` 里，为了解决其他脏历史重复显示等 Bug，现在每轮生成均被强制重置并开启独立全新的 `session/new`，不再利用历史 messages 数组的 `cache_control` 设计，而是将所有的“过去”压缩为一个无结构的纯文本总结附加在了长篇开场白中。这从结构上也杀死了标准多轮缓存能力。
 

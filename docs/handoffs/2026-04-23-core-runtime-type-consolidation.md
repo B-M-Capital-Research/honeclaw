@@ -35,15 +35,15 @@
 
 ## Verification
 
-- `rtk cargo test -p hone-channels agent_session`
-- `rtk cargo test -p hone-channels runners::tests`
-- `rtk cargo test -p hone-event-engine subscription`
-- `rtk cargo test -p hone-web-api routes::history`
-- `rtk bun run test:web`
-- `rtk bun --filter @hone-financial/app typecheck`
-- `rtk cargo check --workspace --all-targets --exclude hone-desktop`
-- `rtk cargo test --workspace --all-targets --exclude hone-desktop`
-- `rtk bash tests/regression/run_ci.sh`
+- `cargo test -p hone-channels agent_session`
+- `cargo test -p hone-channels runners::tests`
+- `cargo test -p hone-event-engine subscription`
+- `cargo test -p hone-web-api routes::history`
+- `bun run test:web`
+- `bun --filter @hone-financial/app typecheck`
+- `cargo check --workspace --all-targets --exclude hone-desktop`
+- `cargo test --workspace --all-targets --exclude hone-desktop`
+- `bash tests/regression/run_ci.sh`
 
 ## Risks / Follow-ups
 

@@ -160,10 +160,10 @@ assert!(sink.calls.lock().unwrap().is_empty());
 
 ## Verification
 
-- `rtk cargo test -p hone-event-engine close_quote --lib`
-- `rtk cargo test -p hone-event-engine per_actor_price_threshold_can_promote_closing_move --lib`
-- `rtk cargo test -p hone-event-engine --lib`
-- `rtk cargo fmt --all -- --check`
+- `cargo test -p hone-event-engine close_quote --lib`
+- `cargo test -p hone-event-engine per_actor_price_threshold_can_promote_closing_move --lib`
+- `cargo test -p hone-event-engine --lib`
+- `cargo fmt --all -- --check`
 
 ## Severity
 

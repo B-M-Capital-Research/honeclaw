@@ -32,9 +32,9 @@ Removed the non-functional `one_sentence_memory` and redundant `major_alert` / `
 
 ## Verification
 
-- `rtk bash tests/regression/ci/test_finance_automation_contracts.sh`
-- `rtk cargo test -p hone-tools load_skill_and_direct_invocation_accept_aliases`
-- `rtk cargo fmt --all --check`
+- `bash tests/regression/ci/test_finance_automation_contracts.sh`
+- `cargo test -p hone-tools load_skill_and_direct_invocation_accept_aliases`
+- `cargo fmt --all --check`
 
 ## Risks / Follow-ups
 

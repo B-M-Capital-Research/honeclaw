@@ -29,9 +29,9 @@
 
 ## Validation
 
-- `rtk cargo test -p hone-channels outbound::tests -- --nocapture`
-- `rtk cargo test -p hone-feishu listener -- --nocapture`
-- `rtk cargo check --workspace --all-targets --exclude hone-desktop`
+- `cargo test -p hone-channels outbound::tests -- --nocapture`
+- `cargo test -p hone-feishu listener -- --nocapture`
+- `cargo check --workspace --all-targets --exclude hone-desktop`
 
 ## Documentation Sync
 
