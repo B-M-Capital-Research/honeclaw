@@ -6,6 +6,13 @@
 - **状态**: Fixing（2026-04-23 架构改造已落地，待 24h 灰度复核）
 - **证据来源**:
 
+- 2026-04-24 11:09-11:11 最新同小时状态变化复核：
+   - `session_id=Actor_feishu__direct__ou_5f44da57b6746474d4497f091b9f772b87`
+   - 用户在 `2026-04-24T11:09:10.951085+08:00` 发起真实 Feishu 直聊问题 `分析一下胜宏科技`。
+   - `data/runtime/logs/sidecar.log` 在 `2026-04-24 11:10:57.872` 继续记录 `runner internal compact signalled via status text: "Context compacted\n"`，随后 `11:11:37.760` 又记录 `ACP compact detected (peak_used=225849); marking next turn for SP reseed`。
+   - 但 `session_messages.ordinal=16` 的 assistant final 仍于 `2026-04-24T11:11:37.773148+08:00` 直接以 `Context compacted` 开头，再进入 `胜宏科技` 正式分析正文；`sessions.last_message_preview` 同样保留 `Context compacted 当前时间是2026年4月24日11:09...`。
+   - 结论：2026-04-23 23:01 的“已恢复正常前缀”并未延续到 2026-04-24 上午真实直聊样本；compact 标记仍会在检测到 ACP compact 后直接外泄给用户，状态继续保持 `Fixing`，不能降级为 `Fixed`。
+
 - 2026-04-23 23:00-23:01 最新同小时状态变化复核：
    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
    - 同一会话在 `2026-04-23T23:00:00.481663+08:00` 再次触发定时任务 `核心观察股池晚间快报`；`cron_job_runs.run_id=5233` 于 `2026-04-23T23:01:07.397080+08:00` 记录为 `completed + sent + delivered=1`。
