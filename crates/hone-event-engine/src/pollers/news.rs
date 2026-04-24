@@ -34,6 +34,10 @@ const LEGAL_AD_TITLE_PATTERNS: &[&str] = &[
     "investors to act",
     "lost money",
     "investors who lost",
+    "investor notice",
+    "stockholders have rights",
+    "lead investor class action",
+    "opportunity to lead investor class action",
 ];
 
 /// PR wire / press release 聚合域。这些域几乎只发布商业 PR/律所广告,
@@ -49,6 +53,7 @@ const PR_WIRE_DOMAINS: &[&str] = &[
     "newswire.ca",
     "marketwired.com",
     "issuewire.com",
+    "thenewswire.com",
 ];
 
 /// Opinion blog / financial content farm。这些域产 list / "5 stocks to buy" /
@@ -550,6 +555,27 @@ mod tests {
                 "{site} should skip LLM arbitration and stay low by default"
             );
         }
+    }
+
+    #[test]
+    fn microcap_wire_sites_are_classified_as_pr_wire() {
+        for site in ["thenewswire.com", "www.thenewswire.com"] {
+            assert_eq!(
+                classify_news_source(site),
+                NewsSourceClass::PrWire,
+                "{site} should skip LLM arbitration and stay low by default"
+            );
+        }
+    }
+
+    #[test]
+    fn investor_notice_class_action_templates_are_legal_ads() {
+        assert!(is_legal_ad_title(
+            "INVESTOR NOTICE: Gossamer Bio, Inc. Investors with Substantial Losses Have Opportunity to Lead Investor Class Action"
+        ));
+        assert!(is_legal_ad_title(
+            "STLA Stockholders Have Rights - Contact Robbins LLP for Information About Recovering Your Losses"
+        ));
     }
 
     #[test]

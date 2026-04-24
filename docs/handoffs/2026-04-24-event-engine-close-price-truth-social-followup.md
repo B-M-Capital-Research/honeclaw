@@ -47,10 +47,41 @@
 - Digest / news quality:
   - Digest flush 对 curation/topic-memory/max-items 省略项写 `delivery_log channel='digest_item' status='omitted'`。
   - 校准导出脚本新增 `digest_omitted` 分组。
-  - Digest curation 过滤 Low `news_critical`、`source_class=opinion_blog/pr_wire` news、无 symbols 的低优先级 WatcherGuru/Truth Social、Low/远期 macro 和 no-op analyst hold/reiterate。
+  - Digest curation 过滤 Low `news_critical`、`source_class=opinion_blog/pr_wire` news、低优先级 WatcherGuru/Truth Social、Low/远期 macro 和 no-op analyst hold/reiterate。
   - Router window convergence 不再把 opinion/pr-wire news 从 Low 升 Medium。
   - `immediate_kinds=["analyst_grade"]` 不再强制直推 no-op analyst hold/reiterate。
+  - `thenewswire.com` 纳入 `source_class=pr_wire`，避免微盘 PR wire 被 uncertain-source LLM 升入 digest。
+  - 法律广告模板补充 `investor notice`、`stockholders have rights`、`lead investor class action` 等形态。
   - News classifier baseline fixture 从 30 条扩到 43 条：新增 13 条 2026-04-24 daily calibration stock-news 样本，其中 3 条进入真实 LLM baseline；非 stock-news 的 social/macro/analyst 通过 Rust 单测和 bug 文档固化。
+
+## Batch FMP / WatcherGuru Calibration
+
+用户要求“从 FMP / WatcherGuru 多拉几百条，用分类系统跑一遍”。本轮追加了真实批量校准：
+
+- FMP `v3/stock_news`：499 条。
+- WatcherGuru Telegram preview：220 条。
+- 当前线上会进入 LLM 仲裁的 route candidates：238 条，全部用 `amazon/nova-lite-v1` 跑完。
+- shadow LLM：15 条被规则挡掉但标题含硬事件候选词的样本，用来找规则误伤。
+
+输出文件在 ignored 目录：
+
+- `data/exports/event-engine-calibration/event_engine_batch_calibration_2026-04-24.json`
+- `data/exports/event-engine-calibration/event_engine_batch_calibration_2026-04-24.md`
+- `data/exports/event-engine-calibration/event_engine_batch_calibration_2026-04-24_postfix.json`
+- `data/exports/event-engine-calibration/event_engine_batch_calibration_2026-04-24_postfix.md`
+
+批量结论：
+
+- FMP 499 条中，302 条 opinion_blog、149 条 pr_wire、30 条 trusted、18 条 uncertain。Zacks/SeekingAlpha/PRNewswire/GlobeNewswire/Newsfile 这类低信号源基本被压住，符合预期。
+- Route LLM 238 条中，17 条 important、221 条 not_important。保留项主要是 recall、裁员、Tether freeze、AMZN/Anthropic 投资、Kraken/SpaceX IPO、油设施攻击等硬事件。
+- Shadow LLM 给出 7 条 important，但其中 6 条是 class-action / investor notice 广告被 LLM 误判；规则过滤是正确的。剩下一条 `newsfilecorp.com` common-share acquisition 属微盘 PR，维持过滤。
+- 真正需要调的误伤/漏挡是 `thenewswire.com`：两条微盘 PR 被当 uncertain 并由 LLM 升 Medium；已纳入 pr_wire。
+- WatcherGuru 明确漏挡 15 条：LLM 已判 no，但因带 cashtag 仍会保留 Low digest，例如 TSLA FSD subscriptions、AAPL/Trump quote、SPX all-time high、BIRD shift to AI、NET crashes 等；已改为 Low WatcherGuru/TruthSocial 一律过滤，只有 LLM yes 的 Medium 社交才保留。
+
+补丁后同一批样本重算：
+
+- FMP：Medium digest 从 6 条降到 4 条。
+- WatcherGuru：保留从 26 条降到 11 条，只保留 LLM yes 的 Medium 社交。
 
 ## Telegram 2026-04-23 Calibration
 
@@ -121,11 +152,12 @@ rtk python3 scripts/diagnose_event_engine_daily_pushes.py --date 2026-04-24 --ac
 - `rtk cargo test -p hone-event-engine truth_social --lib`：7 passed
 - `rtk cargo test -p hone-event-engine close_quote --lib`：4 passed
 - `rtk cargo test -p hone-event-engine per_actor_price_threshold_can_promote_closing_move --lib`：1 passed
-- `rtk cargo test -p hone-event-engine --lib`：219 passed, 13 ignored
+- `rtk cargo test -p hone-event-engine --lib`：221 passed, 13 ignored
 - `rtk cargo fmt --all -- --check`：passed
 - `rtk bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：fixture loaded, 43 items, 15 LLM items
 - `rtk cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`：1 passed
-- `rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：15/15 matched, reported cost `0.000640`, avg latency `1.81s`
+- `rtk env RUN_EVENT_ENGINE_LLM_BASELINE=1 EVENT_ENGINE_NEWS_CLASSIFIER_MODEL=amazon/nova-lite-v1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`：15/15 matched, reported cost `0.000640`, avg latency `2.17s`
+- FMP / WatcherGuru 批量真实模型校准：719 条原始样本，238 条 route LLM，15 条 shadow LLM。
 - `rtk git diff --check`：passed
 
 ## Risks / Follow-ups

@@ -807,9 +807,7 @@ fn should_omit_from_digest(event: &MarketEvent, now: DateTime<Utc>) -> bool {
                 )
         }
         EventKind::SocialPost => {
-            event.severity == Severity::Low
-                && event.symbols.is_empty()
-                && is_low_quality_social_source(event)
+            event.severity == Severity::Low && is_low_quality_social_source(event)
         }
         _ => false,
     }
@@ -1427,7 +1425,7 @@ mod tests {
     }
 
     #[test]
-    fn curation_omits_low_quality_social_without_symbols() {
+    fn curation_omits_low_quality_social_after_llm_no_even_with_symbols() {
         let now = Utc.with_ymd_and_hms(2026, 4, 24, 1, 0, 0).unwrap();
         let mut no_symbol = ev("social-no-symbol", "");
         no_symbol.kind = EventKind::SocialPost;
@@ -1436,17 +1434,23 @@ mod tests {
         no_symbol.source = "telegram.watcherguru".into();
         no_symbol.title = "JUST IN: generic political update".into();
 
+        let mut symbol_low = no_symbol.clone();
+        symbol_low.id = "social-tsla-low".into();
+        symbol_low.symbols = vec!["TSLA".into()];
+        symbol_low.title = "JUST IN: Tesla $TSLA rises 7% today".into();
+
         let mut symbol_medium = no_symbol.clone();
         symbol_medium.id = "social-usdt".into();
         symbol_medium.severity = Severity::Medium;
         symbol_medium.symbols = vec!["USDT".into()];
         symbol_medium.title = "JUST IN: Tether freezes $USDT".into();
 
-        let curation = curate_digest_events_with_omitted_at(vec![no_symbol, symbol_medium], now);
+        let curation =
+            curate_digest_events_with_omitted_at(vec![no_symbol, symbol_low, symbol_medium], now);
 
         let kept_ids: Vec<&str> = curation.kept.iter().map(|e| e.id.as_str()).collect();
         assert_eq!(kept_ids, vec!["social-usdt"]);
-        assert_eq!(curation.omitted.len(), 1);
+        assert_eq!(curation.omitted.len(), 2);
     }
 
     #[test]
