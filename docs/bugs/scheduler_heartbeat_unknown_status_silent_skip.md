@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 09:00-10:00 最新巡检样本：
+    - `run_id=5457-5466` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 与 `Monitor_Watchlist_11`；除 `run_id=5462` 的 `全天原油价格3小时播报` 触发送达外，其余 heartbeat 在 `09:00-09:01` 这一批继续全部落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=5471-5481` 对应 `09:30` 下一批里，除 `run_id=5481` 的 `持仓重大事件心跳检测` 触发送达 ORCL 融资压力提醒外，其余 heartbeat 再次全部是 `noop + skipped_noop`；说明问题没有在 09:00 之后自然收口。
+    - `run_id=5483-5493` 对应 `10:00` 最新窗口里，`全天原油价格3小时播报`、CAI/小米/TEM 破位、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`持仓重大事件心跳检测` 与 `ASTS 重大异动心跳监控` 再次全部落成 `noop + skipped_noop`，没有任何一条恢复成纯 JSON 首包。
+    - `data/runtime/logs/web.log.2026-04-24` 在 `09:00:12-09:00:14`、`09:30:24-09:30:49` 与 `10:00:10-10:00:49` 连续记录 `starts_with_json=false`；`run_id=5462`（`全天原油价格3小时播报`）和 `run_id=5481`（`持仓重大事件心跳检测`）虽然送达成功，但分别是 `parse_kind=JsonTriggered`、`starts_with_json=false`，`raw_preview` 仍以前置 `<think>` 推理开头，再由解析器从尾部抽取状态与正文。
+    - `10:00` 最新一批中，`run_id=5483`（`全天原油价格3小时播报`）继续先解释“10 不在 [0, 3, 6, 9, 12, 15, 18, 21]”后再补 `{"status":"noop"}`；`run_id=5485`（`小米破位预警`）明确写出“数据获取失败。按照规则，我无法确认条件是否满足，应该返回noop”；`run_id=5488`（`Monitor_Watchlist_11`）与 `run_id=5489`（`RKLB异动监控`）仍先长篇比较价格/新闻条件，再被后台静默吞掉。
+    - 结论：直到 10:00，这条缺陷仍表现为“上游输出契约持续漂移，后台解析器被迫兜底吸收”；即便偶尔有 `JsonTriggered` 送达，heartbeat 公共输出也没有恢复成“纯 JSON 首包 + 明确状态”，状态继续保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-24 07:30-08:01 最新巡检样本：
     - `run_id=5418-5426` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；除 `run_id=5427` 的 ORCL 触发外，其余 heartbeat 在 `07:31` 这一批仍全部落成 `noop + skipped_noop + delivered=0`。
     - `run_id=5428-5437` 对应 `08:01` 下一批里，除 `run_id=5438` 的 `持仓重大事件心跳检测` 触发外，其余 heartbeat 再次全部是 `noop + skipped_noop`；说明问题并未在 07:31 后自然收口。
