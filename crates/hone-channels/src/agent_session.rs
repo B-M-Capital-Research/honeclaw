@@ -327,6 +327,51 @@ pub struct AgentSessionResult {
     pub session_id: String,
 }
 
+/// 配额预留的 RAII guard。
+///
+/// 主流程里任何一个失败分支（ensure_session 失败、slash skill 展开失败、
+/// prepare_execution 失败、sandbox guard 不通过等）都必须把已经预留的
+/// 配额「释放」掉,否则同一个用户当天能用的对话次数会被错误消耗。
+///
+/// 引入这个 guard 之前,`run()` 里重复了 5 处
+/// `if let Some(reservation) = quota_reservation.as_ref() { release... }`
+/// 的样板,非常容易漏改；现在统一成「默认 drop = release,成功路径调用
+/// `commit()` 消耗自身阻止 drop 自动释放」。
+struct QuotaReservationGuard {
+    core: Arc<HoneBotCore>,
+    reservation: Option<ConversationQuotaReservation>,
+}
+
+impl QuotaReservationGuard {
+    fn new(core: Arc<HoneBotCore>, reservation: Option<ConversationQuotaReservation>) -> Self {
+        Self { core, reservation }
+    }
+
+    /// 成功路径：把预留的额度正式 commit 到当日计数。
+    /// 消耗 self 防止随后的 Drop 再次执行 release。
+    fn commit(mut self) {
+        if let Some(reservation) = self.reservation.take() {
+            let _ = self
+                .core
+                .conversation_quota_storage
+                .commit_daily_conversation(&reservation);
+        }
+    }
+}
+
+impl Drop for QuotaReservationGuard {
+    fn drop(&mut self) {
+        // 默认退出路径 = 失败 / panic / 提前 return：把 reservation 原样还回去,
+        // 避免用户当日配额被白白消耗。`commit` 已经 take 过时这里是 no-op。
+        if let Some(reservation) = self.reservation.take() {
+            let _ = self
+                .core
+                .conversation_quota_storage
+                .release_daily_conversation(&reservation);
+        }
+    }
+}
+
 pub struct AgentSession {
     core: Arc<HoneBotCore>,
     actor: ActorIdentity,
@@ -1153,8 +1198,10 @@ impl AgentSession {
                 .await;
         }
 
-        let quota_reservation = match self.reserve_conversation_quota(options.quota_mode) {
-            Ok(reservation) => reservation,
+        // 配额预留；后续任何失败分支都靠 guard 在 drop 时自动把预留释放掉,
+        // 不再需要每处都手写 release_daily_conversation。
+        let quota_guard = match self.reserve_conversation_quota(options.quota_mode) {
+            Ok(reservation) => QuotaReservationGuard::new(self.core.clone(), reservation),
             Err(err) => {
                 return self
                     .fail_run(
@@ -1169,12 +1216,8 @@ impl AgentSession {
         let slash_skill = match self.expand_slash_skill_input(&session_id, user_input) {
             Ok(value) => value,
             Err(err) => {
-                if let Some(reservation) = quota_reservation.as_ref() {
-                    let _ = self
-                        .core
-                        .conversation_quota_storage
-                        .release_daily_conversation(reservation);
-                }
+                // quota_guard 在 return 的 drop 中自动 release
+                drop(quota_guard);
                 return self
                     .fail_run(
                         session_id,
@@ -1279,12 +1322,7 @@ impl AgentSession {
                 .strict_actor_sandbox_guard_message()
                 .unwrap_or("当前 runner 不支持严格 actor sandbox。");
             tracing::error!("[AgentSession] strict actor sandbox guard: {}", message);
-            if let Some(reservation) = quota_reservation.as_ref() {
-                let _ = self
-                    .core
-                    .conversation_quota_storage
-                    .release_daily_conversation(reservation);
-            }
+            drop(quota_guard);
             return self
                 .fail_run(
                     session_id,
@@ -1303,12 +1341,7 @@ impl AgentSession {
         ) {
             Ok(execution) => execution,
             Err((kind, err)) => {
-                if let Some(reservation) = quota_reservation.as_ref() {
-                    let _ = self
-                        .core
-                        .conversation_quota_storage
-                        .release_daily_conversation(reservation);
-                }
+                drop(quota_guard);
                 return self.fail_run(session_id, kind, err).await;
             }
         };
@@ -1470,12 +1503,9 @@ impl AgentSession {
         let elapsed_ms = started.elapsed().as_millis();
 
         if response.success {
-            if let Some(reservation) = quota_reservation.as_ref() {
-                let _ = self
-                    .core
-                    .conversation_quota_storage
-                    .commit_daily_conversation(reservation);
-            }
+            // 成功路径：主动 commit 把预留转成当日计数,并消耗 guard 阻止
+            // 后续 drop 再执行 release。
+            quota_guard.commit();
             if !streamed_output {
                 if let Some(segmenter) = options.segmenter.as_ref() {
                     let segments = segmenter(&response.content);
@@ -1511,12 +1541,8 @@ impl AgentSession {
             })
             .await;
         } else {
-            if let Some(reservation) = quota_reservation.as_ref() {
-                let _ = self
-                    .core
-                    .conversation_quota_storage
-                    .release_daily_conversation(reservation);
-            }
+            // 失败路径：显式 drop 触发 release,让配额回到预留前的状态。
+            drop(quota_guard);
             let err = response
                 .error
                 .clone()
