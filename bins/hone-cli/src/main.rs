@@ -45,51 +45,76 @@ struct Cli {
     command: Option<Commands>,
 }
 
+// clap 会优先用 variant 上的 `///` doc 作为 subcommand 描述,而不是目标
+// struct 上的 rustdoc。把面向用户的文案写在这里，内部 struct 的开发者
+// rustdoc 才不会被当成 help 文本暴露到 CLI。
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// 启动本地 chat REPL（默认子命令)。
     Chat,
+    /// 首次安装向导：写入 canonical config,可选跑 doctor / start。
     #[command(visible_alias = "setup")]
     Onboard(OnboardArgs),
+    /// 删除 `$HONE_HOME` 下的 runtime data / config / 已下载 bundle。
     Cleanup(CleanupArgs),
+    /// 读/写 canonical config (`file` / `get` / `set` / `unset` / `validate`)。
     Config {
         #[command(subcommand)]
         command: ConfigCommands,
     },
+    /// 按 section 交互式编辑配置(agent / channels / providers)。
     Configure(ConfigureArgs),
+    /// 查看 / 修改 agent model 路由配置。
     Models {
         #[command(subcommand)]
         command: ModelsCommands,
     },
+    /// 查看 / 启用 / 禁用各渠道配置。
     Channels {
         #[command(subcommand)]
         command: ChannelsCommands,
     },
+    /// 快速检查当前运行时配置和二进制可用性。
     Status(StatusArgs),
+    /// 深度体检：路径 / 权限 / 二进制 / 渠道 auth 是否都 OK。
     Doctor(DoctorArgs),
+    /// 启动 hone-console-page + 各启用渠道(bundled CLI install 用)。
     Start,
+    /// 启动渠道协议 probe,方便排查外部渠道连接问题。
     Probe(ProbeArgs),
 }
 
 #[derive(Subcommand, Debug)]
 enum ConfigCommands {
+    /// 打印 canonical config 文件路径。
     File,
+    /// 读取指定路径的配置值(敏感字段会自动脱敏)。
     Get(ConfigPathArgs),
+    /// 按路径写入配置值并立即重新生成 effective config。
     Set(ConfigSetArgs),
+    /// 按路径删除配置值。
     Unset(ConfigPathArgs),
+    /// 解析并校验 canonical config 的合法性。
     Validate(ReadableArgs),
 }
 
 #[derive(Subcommand, Debug)]
 enum ModelsCommands {
+    /// 以人类可读 / JSON 形式打印当前 model 路由配置。
     Status(ReadableArgs),
+    /// 按字段写入 model 路由(runner / base_url / api_key / model 等)。
     Set(ModelsSetArgs),
 }
 
 #[derive(Subcommand, Debug)]
 enum ChannelsCommands {
+    /// 列出四个渠道(iMessage / Feishu / Telegram / Discord)当前状态。
     List(ReadableArgs),
+    /// 按渠道写入启用状态 / 认证字段 / chat_scope。
     Set(ChannelSetArgs),
+    /// 快捷启用某个渠道(等价于 `channels set <c> --enabled true`)。
     Enable(ChannelToggleArgs),
+    /// 快捷禁用某个渠道。
     Disable(ChannelToggleArgs),
 }
 
