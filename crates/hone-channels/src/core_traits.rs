@@ -14,15 +14,15 @@
 //! `core.log_message_step(...)`；想用 `&dyn AuditRecorder` 替代 `&HoneBotCore`
 //! 的调用点可以逐个迁移，不用一次改完。
 //!
-//! 已抽出的 trait（本次）：
-//! - [`AuditRecorder`]  —— 消息流审计日志 (log_message_{received,step,finished,failed})
-//! - [`AdminIntercept`] —— 管理员判定与 runtime 拦截命令
-//! - [`PathResolver`]   —— 运行时路径查询 (configured_*_dir)
+//! 已抽出的 trait：
+//! - [`AuditRecorder`]       —— 消息流审计日志 (log_message_{received,step,finished,failed})
+//! - [`AdminIntercept`]      —— 管理员判定与 runtime 拦截命令
+//! - [`PathResolver`]        —— 运行时路径查询 (configured_*_dir)
+//! - [`RunnerFactory`]       —— 根据 agent.runner 配置创建具体 AgentRunner
+//! - [`ToolRegistryFactory`] —— 为当前 actor 构造 ToolRegistry（含权限过滤）
 //!
 //! 待抽（后续 session）：
-//! - RunnerFactory（create_runner / override / sandbox_guard）
-//! - LlmProviderBundle（primary / auxiliary / multi_agent）
-//! - ToolRegistryFactory
+//! - LlmProviderBundle（primary / auxiliary / multi_agent 三条 LLM 路由句柄）
 //!
 //! ## 为什么不一次做完
 //!
@@ -36,8 +36,10 @@ use std::path::PathBuf;
 
 use hone_core::ActorIdentity;
 use hone_core::agent::AgentResponse;
+use hone_tools::ToolRegistry;
 
 use crate::core::HoneBotCore;
+use crate::runners::AgentRunner;
 
 /// 消息流 / 审计日志的记录能力。
 ///
@@ -148,6 +150,55 @@ pub trait PathResolver: Send + Sync {
     fn configured_skill_registry_path(&self) -> PathBuf;
 }
 
+/// Agent runner 工厂。
+///
+/// 根据 `config.agent.runner` 选择具体实现（function_calling / codex_cli /
+/// codex_acp / opencode_acp / multi_agent / gemini_cli / gemini_acp），
+/// 并注入 tool_registry、LLM provider、超时等运行时依赖。
+///
+/// 把这一行为放到 trait 是为了让 ExecutionService / 测试可以 mock 一个
+/// 特定 runner 而不用构造完整 HoneBotCore（包含真实 LLM provider）。
+pub trait RunnerFactory: Send + Sync {
+    /// 当前 runner 是否支持「每个 actor 一份 sandbox cwd」的强隔离模型。
+    /// 目前所有实现都返回 `true`；历史上曾有 gemini_acp 返回 `false`,
+    /// 保留 trait 形式让这个维度永远显式。
+    fn runner_supports_strict_actor_sandbox(&self) -> bool;
+
+    /// 若 runner 不支持强沙箱,返回一条面向用户的解释文案;否则 `None`。
+    fn strict_actor_sandbox_guard_message(&self) -> Option<&'static str>;
+
+    /// 用默认模型构造 runner。
+    fn create_runner(
+        &self,
+        system_prompt: &str,
+        tool_registry: ToolRegistry,
+    ) -> Result<Box<dyn AgentRunner>, String>;
+
+    /// 用指定 model override 构造 runner（multi-agent / opencode_acp 等
+    /// 支持 skill 级别切模型的场景使用)。
+    fn create_runner_with_model_override(
+        &self,
+        system_prompt: &str,
+        tool_registry: ToolRegistry,
+        model_override: Option<&str>,
+    ) -> Result<Box<dyn AgentRunner>, String>;
+}
+
+/// 工具注册表工厂：根据 actor 身份和渠道 target 构造一份 `ToolRegistry`。
+///
+/// 同一个 HoneBotCore 会为每次 run 单独构造一份 registry,是因为 tool 的
+/// 权限过滤（管理员 / cron 是否允许 / sandbox 根目录等）依赖具体 actor。
+/// 抽成 trait 之后,测试可以注入固定的一份 registry 来绕开 skill/security
+/// 配置校验。
+pub trait ToolRegistryFactory: Send + Sync {
+    fn create_tool_registry(
+        &self,
+        actor: Option<&ActorIdentity>,
+        channel_target: &str,
+        allow_cron: bool,
+    ) -> ToolRegistry;
+}
+
 // ── HoneBotCore 的 trait 实现。
 //
 // 全部委托给 HoneBotCore 的 inherent method,零行为变化。
@@ -255,6 +306,49 @@ impl AdminIntercept for HoneBotCore {
     }
 }
 
+impl RunnerFactory for HoneBotCore {
+    fn runner_supports_strict_actor_sandbox(&self) -> bool {
+        HoneBotCore::runner_supports_strict_actor_sandbox(self)
+    }
+
+    fn strict_actor_sandbox_guard_message(&self) -> Option<&'static str> {
+        HoneBotCore::strict_actor_sandbox_guard_message(self)
+    }
+
+    fn create_runner(
+        &self,
+        system_prompt: &str,
+        tool_registry: ToolRegistry,
+    ) -> Result<Box<dyn AgentRunner>, String> {
+        HoneBotCore::create_runner(self, system_prompt, tool_registry)
+    }
+
+    fn create_runner_with_model_override(
+        &self,
+        system_prompt: &str,
+        tool_registry: ToolRegistry,
+        model_override: Option<&str>,
+    ) -> Result<Box<dyn AgentRunner>, String> {
+        HoneBotCore::create_runner_with_model_override(
+            self,
+            system_prompt,
+            tool_registry,
+            model_override,
+        )
+    }
+}
+
+impl ToolRegistryFactory for HoneBotCore {
+    fn create_tool_registry(
+        &self,
+        actor: Option<&ActorIdentity>,
+        channel_target: &str,
+        allow_cron: bool,
+    ) -> ToolRegistry {
+        HoneBotCore::create_tool_registry(self, actor, channel_target, allow_cron)
+    }
+}
+
 impl PathResolver for HoneBotCore {
     fn configured_system_skills_dir(&self) -> PathBuf {
         HoneBotCore::configured_system_skills_dir(self)
@@ -300,5 +394,15 @@ mod tests {
     #[test]
     fn hone_bot_core_is_object_safe_path_resolver() {
         fn _assert<T: PathResolver + ?Sized>(_: &T) {}
+    }
+
+    #[test]
+    fn hone_bot_core_is_object_safe_runner_factory() {
+        fn _assert<T: RunnerFactory + ?Sized>(_: &T) {}
+    }
+
+    #[test]
+    fn hone_bot_core_is_object_safe_tool_registry_factory() {
+        fn _assert<T: ToolRegistryFactory + ?Sized>(_: &T) {}
     }
 }

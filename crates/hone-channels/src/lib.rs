@@ -25,7 +25,9 @@ pub(crate) mod turn_builder;
 
 pub use self::core::HoneBotCore;
 pub use self::core::load_runtime_config;
-pub use self::core_traits::{AdminIntercept, AuditRecorder, PathResolver};
+pub use self::core_traits::{
+    AdminIntercept, AuditRecorder, PathResolver, RunnerFactory, ToolRegistryFactory,
+};
 pub use self::sandbox::{channel_download_dir, sandbox_base_dir};
 pub use agent_session::{
     AgentRunOptions, AgentSession, AgentSessionError, AgentSessionErrorKind, AgentSessionEvent,
