@@ -1,35 +1,28 @@
-# Bug: Truth Social poller 用不透明 JSON 解码错误掩盖 source 断流
+# Bug: Truth Social poller 用不透明响应掩盖并持续触发 source 断流
 
 状态：`Fixing`
 
-最新进展：2026-04-24 已补偿日志。`TruthSocialPoller` 现在对 search / statuses 响应先读取文本，再在非 2xx 或 JSON 解码失败时输出 `status`、`content_type` 与截断 `body_prefix`；同时补了本地 HTTP mock 回归测试，覆盖 `503 text/html` 与 `200 text/html` 两类 opaque decode 场景。该改动解决“日志不可定位 / 不可排障”的问题，但 Truth Social 真实断流是否来自 Cloudflare、空 body 或其它上游响应，还需要等 live 进程产出下一条补偿日志后确认。
+最新进展：2026-04-24 已补偿日志，且本轮巡检看到了第一条 live 样本。`TruthSocialPoller` 现在确实会把 search / statuses 响应先读成文本，再在非 2xx 或 JSON 解码失败时输出 `status`、`content_type` 与截断 `body_prefix`；`data/runtime/logs/web.log.2026-04-24:614` 已明确记录 `truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix=...`。这说明“日志不可定位 / 不可排障”的缺口已收口，但 `truth_social.realdonaldtrump` source 依旧 0 条事件，当前问题已经从“opaque decode 难排查”收敛为“enabled source 在真实运行中持续被 403 HTML 响应拦截”。
 
 ## Summary
 
-已启用的 `truth_social.realdonaldtrump` source 在本地库里至今 `0` 条事件；自 `2026-04-23T14:18:41.651Z` 之后，`web.log` 又按 3600 秒节拍重复出现 `poll failed: error decoding response body: expected value at line 1 column 1`。当前实现先对响应做 `resp.json()` 再判断 HTTP 状态，导致 Truth Social / Cloudflare 返回的非 JSON 页面被压扁成无 source 名称的通用解码报错，实际断流对巡检与排障都不透明。
+已启用的 `truth_social.realdonaldtrump` source 在本地库里仍然 `0` 条事件；本轮 live 日志已经明确显示 Truth Social `statuses` 接口返回 `HTTP 403 + text/html`，说明 observability 补丁生效了，但 source 断流本身仍在持续发生。
 
 ## Observed Symptoms
 
 - `config.yaml:238-243` 明确启用了 Truth Social 轮询，并且把 `account_id` 固定为 `"107780257626128497"`、`interval_secs=3600`，注释还直接写明“国内/数据中心 IP 可能被 Cloudflare 拦截，poller 会 warn! 后下轮重试”。
-- `data/runtime/logs/web.log.2026-04-23:3238` 记录当前进程启动后装配了该 poller：
-  - `2026-04-23 19:22:45.538 INFO  truth_social poller starting`
-- 同一日志文件在上次巡检后的增量窗口里，随后每小时都重复同一条 WARN：
-  - `data/runtime/logs/web.log.2026-04-23:3923`
-    - `2026-04-23 22:22:49.175 WARN  poll failed: error decoding response body: expected value at line 1 column 1`
-  - `data/runtime/logs/web.log.2026-04-23:4113`
-    - `2026-04-23 23:22:47.786 WARN  poll failed: error decoding response body: expected value at line 1 column 1`
-  - `data/runtime/logs/web.log.2026-04-23:4383`
-    - `2026-04-24 00:22:47.928 WARN  poll failed: error decoding response body: expected value at line 1 column 1`
-  - `data/runtime/logs/web.log.2026-04-23:4538`
-    - `2026-04-24 01:22:47.901 WARN  poll failed: error decoding response body: expected value at line 1 column 1`
-  - `data/runtime/logs/web.log.2026-04-23:4706`
-    - `2026-04-24 02:22:47.904 WARN  poll failed: error decoding response body: expected value at line 1 column 1`
-- `data/events.sqlite3` 只读查询显示，同一套 social poller 里 Telegram source 仍在正常产出，但 Truth Social source 完全没有事件：
-  - `select count(*) from events where source='telegram.watcherguru'` -> `29`
-  - `select datetime(max(created_at_ts),'unixepoch') from events where source='telegram.watcherguru'` -> `2026-04-23 18:22:49`
+- 本轮新增窗口里的 live 进程再次装配了该 poller，并立刻输出 source-specific 失败样本：
+  - `data/runtime/logs/web.log.2026-04-24:598`
+    - `2026-04-24 12:05:18.498 INFO  truth_social poller starting`
+  - `data/runtime/logs/web.log.2026-04-24:614`
+    - `2026-04-24 12:05:20.030 WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> <!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]--> <!--[if IE 7]> <html class=\"no-js ie7 oldie\" lang=\"en-US\"> <![endif]--> <!--[if IE 8]> <html class=\"no-js ie8 oldie\" lang=\"en-US\"> <![endif]--> <!--["`
+- 这条样本正好落在上一个 `poll failed: error decoding response body: expected value at line 1 column 1` 小时节拍之后，说明“报错正文不透明”已经修好，但 live 请求仍被返回 HTML 403 页面。
+- `data/events.sqlite3` 只读查询显示，同一套 social poller 里 Telegram source 仍在正常产出，但 Truth Social source 仍然完全没有事件：
+  - `select count(*) from events where source='telegram.watcherguru'` -> `31`
+  - `select datetime(max(created_at_ts),'unixepoch') from events where source='telegram.watcherguru'` -> `2026-04-23 21:52:50`
   - `select count(*) from events where source='truth_social.realdonaldtrump'` -> `0`
   - `select datetime(max(created_at_ts),'unixepoch') from events where source='truth_social.realdonaldtrump'` -> `NULL`
-- 这说明当前异常不是“整个 social 子系统都坏了”，而是 Truth Social 这一条 source 长期静默且本轮继续失败。
+- 这说明当前异常不是“整个 social 子系统都坏了”，而是 Truth Social 这一条 enabled source 在本轮继续被明确的 `403 text/html` 响应挡住。
 
 ## Hypothesis / Suspected Code Path
 
@@ -51,7 +44,7 @@ for cfg in &sources.truth_social_accounts {
 }
 ```
 
-`crates/hone-event-engine/src/lib.rs:930-955` 的固定间隔事件源循环会把 `run_once()` 的错误统一写成 `poll failed: {e:#}`；如果底层只返回 JSON decode error，日志里就只剩下一句无法定位 source/HTTP 状态的 warn：
+`crates/hone-event-engine/src/lib.rs:930-955` 的固定间隔事件源循环会在冷启动和后续每个 interval 重试时把错误统一折叠为 `initial poll failed` / `poll failed`。这意味着只要上游持续返回 403，当前 source 就会稳定停留在“每小时 degraded 一次、但没有补救路径”的状态：
 
 ```rust
 match schedule {
@@ -83,32 +76,48 @@ match schedule {
     }
 ```
 
-`crates/hone-event-engine/src/pollers/social/truth_social.rs:93-105` 在 `fetch_statuses()` 里先调用 `resp.json().await?` 再判断 `status`；如果 Truth Social / Cloudflare 返回 HTML 挑战页、空 body 或其它非 JSON 响应，错误会在 `resp.json()` 处提前抛出，HTTP 状态码与 body 前缀都丢失，最终正好退化成日志里的 `expected value at line 1 column 1`：
+`crates/hone-event-engine/src/pollers/social/truth_social.rs:102-129` 现在已经会把 `status`、`content_type` 和 `body_prefix` 记进错误；本轮 live 样本正是从这里产出的 `HTTP 403 text/html`。因此当前更可疑的根因已不是“代码吞掉了错误上下文”，而是同一个请求路径在真实环境下持续拿到 HTML 拦截页：
 
 ```rust
-async fn fetch_statuses(&self) -> anyhow::Result<Vec<Value>> {
-    let account_id = self.resolve_account_id().await?;
-    let url = format!(
-        "{}/api/v1/accounts/{}/statuses?limit={}&exclude_replies=true",
-        self.base_url, account_id, self.limit
-    );
-    let resp = self.http.get(&url).send().await?;
+async fn fetch_json(&self, url: &str, endpoint: &str) -> anyhow::Result<Value> {
+    let resp = self
+        .http
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("truth_social {endpoint} request failed"))?;
     let status = resp.status();
-    let body: Value = resp.json().await?;
+    let content_type = resp
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string();
+    let body_text = resp.text().await.with_context(|| {
+        format!("truth_social {endpoint} read body failed status={status} content_type={content_type}")
+    })?;
+    let body_prefix = response_body_prefix(&body_text);
     if !status.is_success() {
-        anyhow::bail!("truth_social statuses HTTP {status}: {body}");
+        anyhow::bail!(
+            "truth_social {endpoint} HTTP {status} content_type={content_type} body_prefix={body_prefix:?}"
+        );
     }
-    Ok(body.as_array().cloned().unwrap_or_default())
+    serde_json::from_str(&body_text).map_err(|e| {
+        anyhow::anyhow!(
+            "truth_social {endpoint} JSON decode failed status={status} content_type={content_type} body_prefix={body_prefix:?}: {e}"
+        )
+    })
 }
 ```
 
-结合 `config.yaml` 里对 Cloudflare 的已有注释，这条代码路径可以解释“source 一直是 0，日志却只有模糊 JSON 解码 warn”的现象。
+结合 `config.yaml` 里对 Cloudflare 的已有注释，这条代码路径现在可以解释为“source 一直是 0，且 live 运行已经能直接看到 403 HTML 拦截页”。
 
 ## Evidence Gap
 
-- 2026-04-24 代码侧已补 `status`、`content_type` 和 `body_prefix`，但当前日志样本仍是修复前产生的 opaque decode error；还需要 live 进程重启 / 部署后等下一次失败样本来坐实 Cloudflare HTML 挑战页、反爬拦截页还是上游接口返回了别的非 JSON 内容。
+- 现在已经有 live 失败样本能坐实 `statuses` 接口返回 `403 text/html`，所以“到底是不是 Truth Social source / 到底是不是非 JSON 响应”这层疑点已经消失。
 - 本轮巡检遵循只读约束，没有主动请求 Truth Social，也没有打开任何真实网络探测；因此缺少单次请求级复现样本。
-- 文件日志当前没有把 `poller=%name` / `source=%name` 结构化字段展开到正文；“这 5 条 hourly warn 对应 truth_social”是基于 `3600s` 配置节拍、Truth Social source 总事件数恒为 0、同时 Telegram social source 正常产出的综合推断。
+- 仍不能仅凭当前 `body_prefix` 断言 403 一定来自 Cloudflare 挑战页、地区/IP 黑名单、缺少 browser-like headers，还是账号 / endpoint 本身的访问策略变化；需要后续在同一网络出口做一次受控复现，或补充更完整的响应头诊断。
+- 文件日志虽然已经能把 endpoint 级错误写进正文，但还没有展开完整响应头；当前无法从本地只读证据直接拿到 `cf-ray`、`server`、`set-cookie` 等能更快定位 403 来源的字段。
 
 ## Fix Notes
 
@@ -133,4 +142,4 @@ async fn fetch_statuses(&self) -> anyhow::Result<Vec<Value>> {
 
 ## Date Observed
 
-`2026-04-23T18:28:33Z`
+`2026-04-24T04:05:20Z`
