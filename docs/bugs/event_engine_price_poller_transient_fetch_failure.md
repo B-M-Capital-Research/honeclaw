@@ -76,7 +76,7 @@ pub async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
 - Need upstream/network telemetry around `2026-04-22T04:03:01Z` to separate local network closure from FMP-side transport failure.
 - This巡检 did not call FMP or any real network API, so recovery is inferred only from later local logs and stored `fmp.quote` events.
 
-## Latest巡检 Update
+## Latest巡检 Update 2026-04-24T18:34:27Z
 
 - 2026-04-23T06:18:33Z: the incremental window after `2026-04-23T02:16:05Z` showed a local outbound network refusal window affecting FMP quote/news fetches:
 
@@ -99,6 +99,26 @@ fmp.stock_news:seekingalpha.com|28|2026-04-23 06:13:39
 ## Severity
 
 sev3. One quote tick can be missed for the full watch pool, but current evidence shows later ticks resumed and `fmp.quote` was not断流.
+
+## Latest巡检 Update
+
+- 2026-04-24T18:34:27Z：上次巡检之后，`quote` 批量抓取又出现了同类超时，但仍然表现为“单 tick/transient”而不是 `fmp.quote` 断流：
+
+```text
+data/runtime/logs/web.log.2026-04-24:2927:[2026-04-24 23:05:40.610] WARN  poller fetch failed: error sending request for url (https://financialmodelingprep.com/api/v3/quote/AAOI,AAPL,AMD,BE,CAI,COHR,GEV,GOOGL,MU,RKLB,SNDK,TEM,VST?apikey=<redacted>): operation timed out
+data/runtime/logs/web.log.2026-04-24:2973:[2026-04-24 23:10:40.613] WARN  poller fetch failed: error sending request for url (https://financialmodelingprep.com/api/v3/quote/AAOI,AAPL,AMD,BE,CAI,COHR,GEV,GOOGL,MU,RKLB,SNDK,TEM,VST?apikey=<redacted>): operation timed out
+data/runtime/logs/web.log.2026-04-24:2979:[2026-04-24 23:15:27.159] INFO  digest queued
+data/runtime/logs/web.log.2026-04-24:2980:[2026-04-24 23:15:27.159] INFO  poller ok
+```
+
+- 同一窗口里 `fmp.quote` 近 24h 仍然有 25 条事件，且本轮没有出现 `poller ok` 超过 15 分钟的停摆缺口：
+
+```text
+data/events.sqlite3
+fmp.quote|25
+```
+
+- 因此这次补充仍不改变定级：这是重复出现的外部抓取抖动，但目前证据仍显示 event-engine 会在后续 tick 恢复，不是新的 source 级断流。
 
 ## Date Observed
 

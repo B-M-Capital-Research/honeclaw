@@ -4,6 +4,8 @@
 
 最新进展：2026-04-24 已补偿日志，且本轮巡检看到了第一条 live 样本。`TruthSocialPoller` 现在确实会把 search / statuses 响应先读成文本，再在非 2xx 或 JSON 解码失败时输出 `status`、`content_type` 与截断 `body_prefix`；`data/runtime/logs/web.log.2026-04-24:614` 已明确记录 `truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix=...`。这说明“日志不可定位 / 不可排障”的缺口已收口，但 `truth_social.realdonaldtrump` source 依旧 0 条事件，当前问题已经从“opaque decode 难排查”收敛为“enabled source 在真实运行中持续被 403 HTML 响应拦截”。
 
+最新巡检补充：2026-04-24T18:34:27Z 的增量窗口里，同一问题在重启后继续复现。`data/runtime/logs/web.log.2026-04-24:3167/3177`、`3652/3663`、`4113` 分别记录了 `truth_social poller starting` 后紧接 `initial poll failed` / `poll failed: truth_social statuses HTTP 403 Forbidden ...`；`data/events.sqlite3` 对 `source LIKE 'truth_social.%'` 仍然查不到任何事件。这说明当前坏态不是旧日志残留，而是在最近一轮真实运行中持续断流。
+
 ## Summary
 
 已启用的 `truth_social.realdonaldtrump` source 在本地库里仍然 `0` 条事件；本轮 live 日志已经明确显示 Truth Social `statuses` 接口返回 `HTTP 403 + text/html`，说明 observability 补丁生效了，但 source 断流本身仍在持续发生。
@@ -139,6 +141,30 @@ async fn fetch_json(&self, url: &str, endpoint: &str) -> anyhow::Result<Value> {
 ## Severity
 
 `sev2`。理由：这是一个已启用 source 的持续断流，用户会稳定错过 Truth Social 侧的重要社交事件；但其它 event-engine 主链路、FMP poller 和 Telegram social source 仍在工作，尚未上升到整个 event-engine 不可用的 `sev1`。
+
+## Latest巡检 Update
+
+- 2026-04-24T18:34:27Z：上次巡检之后的新增窗口里，Truth Social 403 仍在继续：
+
+```text
+data/runtime/logs/web.log.2026-04-24:3167:[2026-04-25 00:13:34.788] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-24:3177:[2026-04-25 00:13:36.013] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-24:3652:[2026-04-25 01:06:50.835] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-24:3663:[2026-04-25 01:06:51.991] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-24:4113:[2026-04-25 02:06:53.106] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+```
+
+- 同一窗口里 `data/events.sqlite3` 仍然查不到 `truth_social.%` 新事件：
+
+```text
+SELECT source, COUNT(*), datetime(MAX(created_at_ts),'unixepoch')
+FROM events
+WHERE source LIKE 'truth_social.%'
+GROUP BY source;
+-- no rows
+```
+
+- 其它主链路仍在工作：同一时间窗 `poller ok` 连续、`fmp.*` 近 24h 仍有正常记录、`delivery_log` 也持续出现 `sink/high/sent`。因此这次补充继续把问题限定在 Truth Social source 自身，而不是整个 event-engine 停摆。
 
 ## Date Observed
 
