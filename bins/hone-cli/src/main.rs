@@ -1,12 +1,20 @@
+mod cleanup;
 mod common;
+mod discord_token;
 mod probe;
 mod repl;
+mod reports;
 mod start;
+
+use cleanup::{CleanupArgs, run_cleanup};
+use discord_token::{DiscordTokenValidation, validate_discord_token};
+use reports::{
+    binary_check, build_channel_reports, build_doctor_report, build_model_status,
+    build_status_report, print_doctor_report_text,
+};
 
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use std::process::Command as StdCommand;
-use std::{env, fs};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use common::{load_cli_config, load_cli_core, resolve_runtime_paths};
@@ -134,16 +142,6 @@ struct ConfigureArgs {
 #[derive(Args, Debug, Default)]
 struct OnboardArgs {}
 
-#[derive(Args, Debug, Default)]
-struct CleanupArgs {
-    #[arg(long)]
-    all: bool,
-    #[arg(long)]
-    yes: bool,
-    #[arg(long)]
-    home: Option<PathBuf>,
-}
-
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum ConfigureSection {
     Agent,
@@ -255,23 +253,6 @@ struct ProviderOnboardSpec {
     notes: &'static [&'static str],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CleanupTargets {
-    home_dir: PathBuf,
-    config_path: PathBuf,
-    soul_path: PathBuf,
-    data_dir: PathBuf,
-    releases_dir: PathBuf,
-    current_link: PathBuf,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct CleanupSelection {
-    remove_config_and_profile: bool,
-    remove_runtime_data: bool,
-    remove_release_bundles: bool,
-}
-
 #[derive(Args, Debug)]
 struct ModelsSetArgs {
     #[arg(long)]
@@ -340,84 +321,6 @@ struct ChannelSetArgs {
 #[derive(Args, Debug)]
 struct ChannelToggleArgs {
     channel: ChannelKind,
-}
-
-#[derive(Debug, Serialize)]
-struct ModelStatusReport {
-    runner: String,
-    codex_model: String,
-    codex_acp_model: String,
-    codex_acp_variant: String,
-    opencode_base_url: String,
-    opencode_model: String,
-    opencode_variant: String,
-    opencode_api_key_configured: bool,
-    opencode_inherits_local_config: bool,
-    auxiliary_base_url: String,
-    auxiliary_model: String,
-    auxiliary_api_key_configured: bool,
-    search_base_url: String,
-    search_model: String,
-    search_api_key_configured: bool,
-    search_max_iterations: u32,
-    answer_base_url: String,
-    answer_model: String,
-    answer_variant: String,
-    answer_api_key_configured: bool,
-    answer_max_tool_calls: u32,
-}
-
-#[derive(Debug, Serialize)]
-struct ChannelStatusReport {
-    channel: String,
-    enabled: bool,
-    auth_configured: bool,
-    chat_scope: Option<String>,
-    details: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct BinaryStatus {
-    name: String,
-    available: bool,
-    detail: String,
-}
-
-#[derive(Debug, Serialize)]
-struct StatusReport {
-    canonical_config_path: String,
-    effective_config_path: String,
-    data_dir: String,
-    skills_dir: String,
-    models: ModelStatusReport,
-    channels: Vec<ChannelStatusReport>,
-    api_keys: ApiKeySummary,
-    binaries: Vec<BinaryStatus>,
-}
-
-#[derive(Debug, Serialize)]
-struct ApiKeySummary {
-    openrouter: bool,
-    primary_route: bool,
-    auxiliary: bool,
-    multi_agent_search: bool,
-    multi_agent_answer: bool,
-    fmp: bool,
-    tavily: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct DoctorCheck {
-    name: String,
-    status: &'static str,
-    detail: String,
-}
-
-#[derive(Debug, Serialize)]
-struct DoctorReport {
-    canonical_config_path: String,
-    effective_config_path: String,
-    checks: Vec<DoctorCheck>,
 }
 
 #[derive(Debug, Serialize)]
@@ -799,62 +702,6 @@ fn prompt_onboard_required_token(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DiscordTokenValidation {
-    Valid,
-    Warn(&'static str),
-    Invalid(&'static str),
-}
-
-/// Validates that a token segment uses base64url characters (A-Z/a-z/0-9/-/_).
-fn is_base64url_segment(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-}
-
-fn validate_discord_token(value: &str) -> DiscordTokenValidation {
-    let token = value.trim();
-    if token.is_empty() {
-        return DiscordTokenValidation::Invalid("Token 不能为空。");
-    }
-
-    let segments = token.split('.').collect::<Vec<_>>();
-    if segments.len() != 3 {
-        return DiscordTokenValidation::Invalid("Token 必须是三段结构（形如 xxx.yyy.zzz）。");
-    }
-    if !segments.iter().all(|segment| is_base64url_segment(segment)) {
-        return DiscordTokenValidation::Invalid("Token 包含非法字符，应为 base64url 字符集。");
-    }
-
-    let len = token.len();
-    if len < 50 {
-        DiscordTokenValidation::Warn("Token 长度偏短，请确认是否粘贴完整。")
-    } else if len > 120 {
-        DiscordTokenValidation::Warn("Token 长度异常偏长，请检查是否重复粘贴。")
-    } else {
-        DiscordTokenValidation::Valid
-    }
-}
-
-fn discord_token_doctor_check(token: &str) -> DoctorCheck {
-    let token = token.trim();
-    let len = token.len();
-    let (status, detail) = match validate_discord_token(token) {
-        DiscordTokenValidation::Valid => {
-            ("ok", format!("Discord token 基本格式有效（长度={len}）。"))
-        }
-        DiscordTokenValidation::Warn(message) => ("warn", format!("{message}（长度={len}）。")),
-        DiscordTokenValidation::Invalid(message) => ("fail", format!("{message}（长度={len}）。")),
-    };
-    DoctorCheck {
-        name: "discord-token-format".to_string(),
-        status,
-        detail,
-    }
-}
-
 fn prompt_optional_discord_token(
     theme: &ColorfulTheme,
     prompt: &str,
@@ -1061,453 +908,9 @@ fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
     Ok(())
 }
 
-fn non_empty(value: &str) -> bool {
+/// `trim` 后非空判定。被 main.rs 及拆出的 `reports` module 共用。
+pub(crate) fn non_empty(value: &str) -> bool {
     !value.trim().is_empty()
-}
-
-fn cleanup_home_dir(explicit_home: Option<&Path>) -> Result<PathBuf, String> {
-    if let Some(path) = explicit_home {
-        return Ok(if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(path)
-        });
-    }
-    if let Some(home) = env::var_os("HONE_HOME") {
-        let path = PathBuf::from(home);
-        return Ok(if path.is_absolute() {
-            path
-        } else {
-            env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(path)
-        });
-    }
-    let home = env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| "无法确定 HOME，请传入 `hone-cli cleanup --home <path>`。".to_string())?;
-    Ok(home.join(".honeclaw"))
-}
-
-fn cleanup_targets(home_dir: &Path) -> CleanupTargets {
-    CleanupTargets {
-        home_dir: home_dir.to_path_buf(),
-        config_path: home_dir.join("config.yaml"),
-        soul_path: home_dir.join("soul.md"),
-        data_dir: home_dir.join("data"),
-        releases_dir: home_dir.join("releases"),
-        current_link: home_dir.join("current"),
-    }
-}
-
-fn select_cleanup_targets(
-    theme: &ColorfulTheme,
-    args: &CleanupArgs,
-) -> Result<CleanupSelection, String> {
-    if args.all {
-        return Ok(CleanupSelection {
-            remove_config_and_profile: true,
-            remove_runtime_data: true,
-            remove_release_bundles: true,
-        });
-    }
-    if args.yes {
-        return Ok(CleanupSelection {
-            remove_config_and_profile: false,
-            remove_runtime_data: true,
-            remove_release_bundles: true,
-        });
-    }
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        return Err("`hone-cli cleanup` 在非交互环境下请显式传 `--yes` 或 `--all`。".to_string());
-    }
-    println!("Cleanup Hone local files");
-    println!("  - 默认只清 runtime 数据和已下载 bundle，不会删除用户 config。");
-    println!("  - 如果你连 `config.yaml` / `soul.md` 也想删除，请在下面确认。");
-    Ok(CleanupSelection {
-        remove_runtime_data: prompt_bool(theme, "Remove runtime data under HONE_HOME/data?", true)?,
-        remove_release_bundles: prompt_bool(
-            theme,
-            "Remove downloaded bundles and current symlink under HONE_HOME/releases and HONE_HOME/current?",
-            true,
-        )?,
-        remove_config_and_profile: prompt_bool(
-            theme,
-            "Also remove HONE_HOME/config.yaml and HONE_HOME/soul.md?",
-            false,
-        )?,
-    })
-}
-
-fn remove_path_if_exists(path: &Path) -> Result<bool, String> {
-    if !path.exists() && fs::symlink_metadata(path).is_err() {
-        return Ok(false);
-    }
-    let metadata = fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if metadata.file_type().is_symlink() || metadata.is_file() {
-        fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    } else if metadata.is_dir() {
-        fs::remove_dir_all(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    } else {
-        fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    }
-    Ok(true)
-}
-
-fn prune_empty_dir(path: &Path) -> Result<bool, String> {
-    if !path.exists() {
-        return Ok(false);
-    }
-    let mut entries = fs::read_dir(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if entries.next().is_some() {
-        return Ok(false);
-    }
-    fs::remove_dir(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(true)
-}
-
-fn binary_check(name: &str, help_arg: &str) -> BinaryStatus {
-    let output = StdCommand::new(name).arg(help_arg).output();
-    match output {
-        Ok(result) => {
-            let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
-            let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-            let detail = if !stdout.is_empty() {
-                stdout
-            } else if !stderr.is_empty() {
-                stderr
-            } else {
-                "命令可执行".to_string()
-            };
-            BinaryStatus {
-                name: name.to_string(),
-                available: true,
-                detail,
-            }
-        }
-        Err(error) => BinaryStatus {
-            name: name.to_string(),
-            available: false,
-            detail: error.to_string(),
-        },
-    }
-}
-
-fn runtime_binary_status(binary: &str) -> BinaryStatus {
-    match start::locate_binary(binary) {
-        Some(path) => BinaryStatus {
-            name: binary.to_string(),
-            available: true,
-            detail: path.to_string_lossy().to_string(),
-        },
-        None => BinaryStatus {
-            name: binary.to_string(),
-            available: false,
-            detail: "未在 hone-cli 附近找到二进制".to_string(),
-        },
-    }
-}
-
-fn chat_scope_label(scope: hone_core::config::ChatScope) -> String {
-    match scope {
-        hone_core::config::ChatScope::DmOnly => "DM_ONLY".to_string(),
-        hone_core::config::ChatScope::GroupchatOnly => "GROUPCHAT_ONLY".to_string(),
-        hone_core::config::ChatScope::All => "ALL".to_string(),
-    }
-}
-
-fn build_model_status(config: &hone_core::HoneConfig) -> ModelStatusReport {
-    let opencode_inherits_local_config = config.agent.runner == "opencode_acp"
-        && !non_empty(&config.agent.opencode.model)
-        && !non_empty(&config.agent.opencode.variant)
-        && !non_empty(&config.agent.opencode.api_base_url)
-        && !non_empty(&config.agent.opencode.api_key);
-    ModelStatusReport {
-        runner: config.agent.runner.clone(),
-        codex_model: config.agent.codex_model.clone(),
-        codex_acp_model: config.agent.codex_acp.model.clone(),
-        codex_acp_variant: config.agent.codex_acp.variant.clone(),
-        opencode_base_url: config.agent.opencode.api_base_url.clone(),
-        opencode_model: config.agent.opencode.model.clone(),
-        opencode_variant: config.agent.opencode.variant.clone(),
-        opencode_api_key_configured: non_empty(&config.agent.opencode.api_key),
-        opencode_inherits_local_config,
-        auxiliary_base_url: config.llm.auxiliary.base_url.clone(),
-        auxiliary_model: config.llm.auxiliary.model.clone(),
-        auxiliary_api_key_configured: !config.llm.auxiliary.resolved_api_key().is_empty(),
-        search_base_url: config.agent.multi_agent.search.base_url.clone(),
-        search_model: config.agent.multi_agent.search.model.clone(),
-        search_api_key_configured: non_empty(&config.agent.multi_agent.search.api_key),
-        search_max_iterations: config.agent.multi_agent.search.max_iterations,
-        answer_base_url: config.agent.multi_agent.answer.api_base_url.clone(),
-        answer_model: config.agent.multi_agent.answer.model.clone(),
-        answer_variant: config.agent.multi_agent.answer.variant.clone(),
-        answer_api_key_configured: non_empty(&config.agent.multi_agent.answer.api_key),
-        answer_max_tool_calls: config.agent.multi_agent.answer.max_tool_calls,
-    }
-}
-
-fn build_channel_reports(config: &hone_core::HoneConfig) -> Vec<ChannelStatusReport> {
-    vec![
-        ChannelStatusReport {
-            channel: "imessage".to_string(),
-            enabled: config.imessage.enabled,
-            auth_configured: true,
-            chat_scope: None,
-            details: vec![
-                format!("db_path={}", config.imessage.db_path),
-                format!("poll_interval={}", config.imessage.poll_interval),
-            ],
-        },
-        ChannelStatusReport {
-            channel: "feishu".to_string(),
-            enabled: config.feishu.enabled,
-            auth_configured: non_empty(&config.feishu.app_id)
-                && non_empty(&config.feishu.app_secret),
-            chat_scope: Some(chat_scope_label(config.feishu.chat_scope)),
-            details: vec![format!(
-                "app_id={}",
-                if non_empty(&config.feishu.app_id) {
-                    "<set>"
-                } else {
-                    "<empty>"
-                }
-            )],
-        },
-        ChannelStatusReport {
-            channel: "telegram".to_string(),
-            enabled: config.telegram.enabled,
-            auth_configured: non_empty(&config.telegram.bot_token),
-            chat_scope: Some(chat_scope_label(config.telegram.chat_scope)),
-            details: vec![format!(
-                "bot_token={}",
-                if non_empty(&config.telegram.bot_token) {
-                    "<set>"
-                } else {
-                    "<empty>"
-                }
-            )],
-        },
-        ChannelStatusReport {
-            channel: "discord".to_string(),
-            enabled: config.discord.enabled,
-            auth_configured: non_empty(&config.discord.bot_token),
-            chat_scope: Some(chat_scope_label(config.discord.chat_scope)),
-            details: vec![format!(
-                "bot_token={}",
-                if non_empty(&config.discord.bot_token) {
-                    "<set>"
-                } else {
-                    "<empty>"
-                }
-            )],
-        },
-    ]
-}
-
-fn build_api_key_summary(config: &hone_core::HoneConfig) -> ApiKeySummary {
-    ApiKeySummary {
-        openrouter: !config.llm.openrouter.effective_key_pool().is_empty(),
-        primary_route: non_empty(&config.agent.opencode.api_key),
-        auxiliary: !config.llm.auxiliary.resolved_api_key().is_empty(),
-        multi_agent_search: non_empty(&config.agent.multi_agent.search.api_key),
-        multi_agent_answer: non_empty(&config.agent.multi_agent.answer.api_key),
-        fmp: !config.fmp.effective_key_pool().is_empty(),
-        tavily: !config
-            .search
-            .api_keys
-            .iter()
-            .all(|key| key.trim().is_empty()),
-    }
-}
-
-fn runner_binary_name(runner: &str) -> Option<(&'static str, &'static str)> {
-    hone_core::config::AgentRunnerKind::from_config_value(runner)
-        .cli_probe()
-        .map(|probe| (probe.binary, probe.arg))
-}
-
-async fn build_status_report(config_path: Option<&Path>) -> Result<StatusReport, String> {
-    let (config, paths) = load_cli_config(config_path, false).map_err(|e| e.to_string())?;
-    let mut binaries = Vec::new();
-    if let Some((binary, help_arg)) = runner_binary_name(config.agent.runner.trim()) {
-        binaries.push(binary_check(binary, help_arg));
-    }
-    binaries.push(runtime_binary_status("hone-console-page"));
-    binaries.push(runtime_binary_status("hone-mcp"));
-
-    Ok(StatusReport {
-        canonical_config_path: paths.canonical_config_path.to_string_lossy().to_string(),
-        effective_config_path: paths.effective_config_path.to_string_lossy().to_string(),
-        data_dir: paths.data_dir.to_string_lossy().to_string(),
-        skills_dir: paths.skills_dir.to_string_lossy().to_string(),
-        models: build_model_status(&config),
-        channels: build_channel_reports(&config),
-        api_keys: build_api_key_summary(&config),
-        binaries,
-    })
-}
-
-async fn build_doctor_report(config_path: Option<&Path>) -> DoctorReport {
-    let resolved = resolve_runtime_paths(config_path, false);
-    let mut checks = Vec::new();
-
-    match resolved {
-        Ok(paths) => {
-            checks.push(DoctorCheck {
-                name: "canonical-config".to_string(),
-                status: if paths.canonical_config_path.exists() {
-                    "ok"
-                } else {
-                    "fail"
-                },
-                detail: paths.canonical_config_path.to_string_lossy().to_string(),
-            });
-            checks.push(DoctorCheck {
-                name: "effective-config".to_string(),
-                status: if paths.effective_config_path.exists() {
-                    "ok"
-                } else {
-                    "warn"
-                },
-                detail: paths.effective_config_path.to_string_lossy().to_string(),
-            });
-
-            match load_cli_config(config_path, false) {
-                Ok((config, loaded_paths)) => {
-                    checks.push(DoctorCheck {
-                        name: "config-parse".to_string(),
-                        status: "ok",
-                        detail: "配置解析成功".to_string(),
-                    });
-                    if non_empty(&config.discord.bot_token) {
-                        checks.push(discord_token_doctor_check(&config.discord.bot_token));
-                    }
-                    if let Some(parent) = loaded_paths.canonical_config_path.parent() {
-                        let readonly = std::fs::metadata(parent)
-                            .map(|m| m.permissions().readonly())
-                            .unwrap_or(false);
-                        checks.push(DoctorCheck {
-                            name: "canonical-parent".to_string(),
-                            status: if parent.exists() && !readonly {
-                                "ok"
-                            } else if parent.exists() {
-                                "warn"
-                            } else {
-                                "fail"
-                            },
-                            detail: if readonly {
-                                format!(
-                                    "{} (只读权限，可能无法写 canonical config)",
-                                    parent.to_string_lossy()
-                                )
-                            } else {
-                                parent.to_string_lossy().to_string()
-                            },
-                        });
-                    }
-                    checks.push(DoctorCheck {
-                        name: "runtime-dir".to_string(),
-                        status: if loaded_paths.runtime_dir.exists() {
-                            "ok"
-                        } else {
-                            "warn"
-                        },
-                        detail: loaded_paths.runtime_dir.to_string_lossy().to_string(),
-                    });
-
-                    checks.push(DoctorCheck {
-                        name: "data-dir".to_string(),
-                        status: if loaded_paths.data_dir.exists() {
-                            "ok"
-                        } else {
-                            "warn"
-                        },
-                        detail: loaded_paths.data_dir.to_string_lossy().to_string(),
-                    });
-                    checks.push(DoctorCheck {
-                        name: "skills-dir".to_string(),
-                        status: if loaded_paths.skills_dir.exists() {
-                            "ok"
-                        } else {
-                            "warn"
-                        },
-                        detail: loaded_paths.skills_dir.to_string_lossy().to_string(),
-                    });
-
-                    if let Some((binary, help_arg)) = runner_binary_name(config.agent.runner.trim())
-                    {
-                        let status = binary_check(binary, help_arg);
-                        checks.push(DoctorCheck {
-                            name: format!("runner-binary:{binary}"),
-                            status: if status.available { "ok" } else { "fail" },
-                            detail: status.detail,
-                        });
-                    }
-
-                    let starter_bins = [
-                        "hone-console-page",
-                        "hone-mcp",
-                        "hone-imessage",
-                        "hone-discord",
-                        "hone-feishu",
-                        "hone-telegram",
-                    ];
-                    for binary in starter_bins {
-                        let status = runtime_binary_status(binary);
-                        checks.push(DoctorCheck {
-                            name: format!("runtime-binary:{binary}"),
-                            status: if status.available { "ok" } else { "warn" },
-                            detail: status.detail,
-                        });
-                    }
-
-                    for channel in build_channel_reports(&config)
-                        .into_iter()
-                        .filter(|channel| channel.enabled)
-                    {
-                        checks.push(DoctorCheck {
-                            name: format!("channel-auth:{}", channel.channel),
-                            status: if channel.auth_configured {
-                                "ok"
-                            } else {
-                                "fail"
-                            },
-                            detail: if channel.auth_configured {
-                                "已配置".to_string()
-                            } else {
-                                "已启用，但缺少认证字段".to_string()
-                            },
-                        });
-                    }
-                }
-                Err(error) => {
-                    checks.push(DoctorCheck {
-                        name: "config-parse".to_string(),
-                        status: "fail",
-                        detail: error.to_string(),
-                    });
-                }
-            }
-
-            DoctorReport {
-                canonical_config_path: paths.canonical_config_path.to_string_lossy().to_string(),
-                effective_config_path: paths.effective_config_path.to_string_lossy().to_string(),
-                checks,
-            }
-        }
-        Err(error) => DoctorReport {
-            canonical_config_path: "<unresolved>".to_string(),
-            effective_config_path: "<unresolved>".to_string(),
-            checks: vec![DoctorCheck {
-                name: "config-path".to_string(),
-                status: "fail",
-                detail: error.to_string(),
-            }],
-        },
-    }
 }
 
 fn build_model_mutations(args: &ModelsSetArgs) -> Result<Vec<ConfigMutation>, String> {
@@ -2116,62 +1519,6 @@ fn build_provider_onboard_mutations(
     Ok(mutations)
 }
 
-fn run_cleanup(args: CleanupArgs) -> Result<(), String> {
-    let home_dir = cleanup_home_dir(args.home.as_deref())?;
-    let targets = cleanup_targets(&home_dir);
-    let selection = select_cleanup_targets(&ColorfulTheme::default(), &args)?;
-
-    if !selection.remove_config_and_profile
-        && !selection.remove_runtime_data
-        && !selection.remove_release_bundles
-    {
-        println!("No cleanup selected. Nothing changed.");
-        return Ok(());
-    }
-
-    let mut removed = Vec::new();
-
-    if selection.remove_runtime_data && remove_path_if_exists(&targets.data_dir)? {
-        removed.push(targets.data_dir.display().to_string());
-    }
-    if selection.remove_release_bundles && remove_path_if_exists(&targets.releases_dir)? {
-        removed.push(targets.releases_dir.display().to_string());
-    }
-    if selection.remove_release_bundles && remove_path_if_exists(&targets.current_link)? {
-        removed.push(targets.current_link.display().to_string());
-    }
-    if selection.remove_config_and_profile && remove_path_if_exists(&targets.config_path)? {
-        removed.push(targets.config_path.display().to_string());
-    }
-    if selection.remove_config_and_profile && remove_path_if_exists(&targets.soul_path)? {
-        removed.push(targets.soul_path.display().to_string());
-    }
-
-    let home_removed = prune_empty_dir(&targets.home_dir)?;
-
-    if removed.is_empty() && !home_removed {
-        println!(
-            "No matching Hone files found under {}.",
-            targets.home_dir.display()
-        );
-    } else {
-        println!("Removed:");
-        for path in removed {
-            println!("  - {path}");
-        }
-        if home_removed {
-            println!("  - {}", targets.home_dir.display());
-        }
-    }
-
-    println!();
-    println!("Homebrew uninstall only removes the package files.");
-    println!("If you installed via Homebrew, run one of:");
-    println!("  - `brew uninstall honeclaw`");
-    println!("  - `brew uninstall B-M-Capital-Research/honeclaw/honeclaw`");
-    Ok(())
-}
-
 fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> Result<(), String> {
     let (config, paths) = load_cli_config(config_path, true).map_err(|e| e.to_string())?;
     let theme = ColorfulTheme::default();
@@ -2436,14 +1783,6 @@ fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> Result<(), 
         paths.effective_config_path.to_string_lossy()
     );
     Ok(())
-}
-
-fn print_doctor_report_text(report: DoctorReport) {
-    println!("canonical_config={}", report.canonical_config_path);
-    println!("effective_config={}", report.effective_config_path);
-    for check in report.checks {
-        println!("[{}] {} {}", check.status, check.name, check.detail);
-    }
 }
 
 async fn run_onboard(config_path: Option<&Path>, _args: OnboardArgs) -> Result<(), String> {
@@ -2801,8 +2140,6 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::tempdir;
 
     #[test]
     fn cli_parses_config_get_command() {
@@ -3149,70 +2486,5 @@ mod tests {
             RequiredFieldResolution::Value("token".to_string())
         );
         assert!(!on_empty_called);
-    }
-
-    #[test]
-    fn select_cleanup_targets_defaults_to_runtime_and_bundles_for_yes() {
-        let selection = select_cleanup_targets(
-            &ColorfulTheme::default(),
-            &CleanupArgs {
-                yes: true,
-                ..CleanupArgs::default()
-            },
-        )
-        .unwrap();
-
-        assert!(selection.remove_runtime_data);
-        assert!(selection.remove_release_bundles);
-        assert!(!selection.remove_config_and_profile);
-    }
-
-    #[test]
-    fn remove_path_if_exists_handles_symlink() {
-        let dir = tempdir().unwrap();
-        let target = dir.path().join("target.txt");
-        let link = dir.path().join("link.txt");
-        fs::write(&target, "hello").unwrap();
-        std::os::unix::fs::symlink(&target, &link).unwrap();
-
-        assert!(remove_path_if_exists(&link).unwrap());
-        assert!(!link.exists());
-        assert!(target.exists());
-    }
-
-    #[test]
-    fn validate_discord_token_accepts_expected_shape_and_length() {
-        let token = format!("{}.{}.{}", "A".repeat(24), "b".repeat(6), "C".repeat(36));
-        assert_eq!(
-            validate_discord_token(&token),
-            DiscordTokenValidation::Valid
-        );
-    }
-
-    #[test]
-    fn validate_discord_token_warns_when_length_is_abnormally_long() {
-        let token = format!("{}.{}.{}", "A".repeat(48), "b".repeat(6), "C".repeat(96));
-        assert_eq!(
-            validate_discord_token(&token),
-            DiscordTokenValidation::Warn("Token 长度异常偏长，请检查是否重复粘贴。")
-        );
-    }
-
-    #[test]
-    fn validate_discord_token_rejects_non_three_segment_shape() {
-        let token = "not-a-discord-token";
-        assert_eq!(
-            validate_discord_token(token),
-            DiscordTokenValidation::Invalid("Token 必须是三段结构（形如 xxx.yyy.zzz）。")
-        );
-    }
-
-    #[test]
-    fn discord_token_doctor_check_reports_warning() {
-        let token = format!("{}.{}.{}", "A".repeat(48), "b".repeat(6), "C".repeat(96));
-        let check = discord_token_doctor_check(&token);
-        assert_eq!(check.name, "discord-token-format");
-        assert_eq!(check.status, "warn");
-        assert!(check.detail.contains("长度异常偏长"));
     }
 }
