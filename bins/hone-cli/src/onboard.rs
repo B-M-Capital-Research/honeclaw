@@ -44,6 +44,8 @@ pub(crate) struct OnboardArgs {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OnboardRunnerKind {
+    /// 默认推荐:纯 OpenRouter 路由,不需要本机 CLI。
+    MultiAgent,
     CodexCli,
     CodexAcp,
     OpencodeAcp,
@@ -52,6 +54,7 @@ pub(crate) enum OnboardRunnerKind {
 impl OnboardRunnerKind {
     pub(crate) fn config_value(&self) -> &'static str {
         match self {
+            Self::MultiAgent => "multi-agent",
             Self::CodexCli => "codex_cli",
             Self::CodexAcp => "codex_acp",
             Self::OpencodeAcp => "opencode_acp",
@@ -60,6 +63,7 @@ impl OnboardRunnerKind {
 
     fn title(&self) -> &'static str {
         match self {
+            Self::MultiAgent => "Multi-Agent (OpenRouter)",
             Self::CodexCli => "Codex CLI",
             Self::CodexAcp => "Codex ACP",
             Self::OpencodeAcp => "OpenCode ACP",
@@ -67,11 +71,13 @@ impl OnboardRunnerKind {
     }
 
     /// 对应 CLI 的 probe 指令（`codex --version` 等),用于在选择时判断本机是否已装。
-    fn binary_probe(&self) -> (&'static str, &'static str) {
+    /// 返回 `None` 表示该 runner 不依赖本机 binary(例如 multi-agent 纯走 HTTP)。
+    fn binary_probe(&self) -> Option<(&'static str, &'static str)> {
         match self {
-            Self::CodexCli => ("codex", "--version"),
-            Self::CodexAcp => ("codex-acp", "--help"),
-            Self::OpencodeAcp => ("opencode", "--version"),
+            Self::MultiAgent => None,
+            Self::CodexCli => Some(("codex", "--version")),
+            Self::CodexAcp => Some(("codex-acp", "--help")),
+            Self::OpencodeAcp => Some(("opencode", "--version")),
         }
     }
 }
@@ -117,6 +123,16 @@ struct ProviderOnboardSpec {
 
 fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
     &[
+        RunnerOnboardSpec {
+            kind: OnboardRunnerKind::MultiAgent,
+            description: "默认推荐:search + answer 两段式,纯 HTTP 走 OpenRouter,不需要本机 CLI。",
+            notes: &[
+                "前置:一把可用的 OpenRouter API key(后面 Providers 环节会让你填)。",
+                "原理:第一段 search 用小模型拉证据,第二段 answer 用主模型总结。",
+                "适合:只有 API key、不想装 CLI 的用户。",
+                "需要在本机切换模型时,之后用 `hone-cli models set ...` 即可,不必重跑 onboard。",
+            ],
+        },
         RunnerOnboardSpec {
             kind: OnboardRunnerKind::CodexCli,
             description: "优先复用本机 codex CLI 登录态；适合已经能直接运行 codex 的用户。",
@@ -211,6 +227,21 @@ fn channel_onboard_specs() -> &'static [ChannelOnboardSpec] {
 
 fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
     &[
+        // OpenRouter 放最前。对 multi-agent / codex_acp / codex_cli / nano_banana 都是
+        // 硬依赖,只有 opencode_acp (且用户已在 opencode 里配好 provider)可以跳过。
+        // 早期版本的 onboard 完全没问这个 key,新用户跑完向导发消息立刻报
+        // 「openrouter.api_key 为空」,体验很差。
+        ProviderOnboardSpec {
+            label: "OpenRouter",
+            key_path: "llm.openrouter.api_keys",
+            legacy_single_key_path: Some("llm.openrouter.api_key"),
+            prompt: "OpenRouter API keys（逗号分隔）",
+            notes: &[
+                "LLM 主路由。multi-agent / codex_* / nano_banana 都默认走这里。",
+                "如果你 runner=opencode_acp 且已在 opencode 里配好 provider,可以在下一步跳过。",
+                "支持一次填写多个 key,运行时会自动 fallback。",
+            ],
+        },
         ProviderOnboardSpec {
             label: "FMP",
             key_path: "fmp.api_keys",
@@ -424,6 +455,7 @@ fn has_configured_provider_keys(
     match spec.key_path {
         "fmp.api_keys" => !config.fmp.effective_key_pool().is_empty(),
         "search.api_keys" => has_configured_search_keys(config),
+        "llm.openrouter.api_keys" => !config.llm.openrouter.effective_key_pool().is_empty(),
         _ => false,
     }
 }
@@ -464,18 +496,18 @@ pub(crate) fn prompt_onboard_runner(
     let labels = specs
         .iter()
         .map(|spec| {
-            let (binary, help_arg) = spec.kind.binary_probe();
-            let status = binary_check(binary, help_arg);
-            format!(
-                "{} [{}] - {}",
-                spec.kind.title(),
-                if status.available {
-                    "installed"
-                } else {
-                    "missing"
-                },
-                spec.description
-            )
+            // multi-agent 不依赖本机 binary,标记 "no binary" 而非 missing。
+            let badge = match spec.kind.binary_probe() {
+                None => "no binary needed".to_string(),
+                Some((binary, help_arg)) => {
+                    if binary_check(binary, help_arg).available {
+                        format!("{binary} installed")
+                    } else {
+                        format!("{binary} missing")
+                    }
+                }
+            };
+            format!("{} [{}] - {}", spec.kind.title(), badge, spec.description)
         })
         .collect::<Vec<_>>();
     let default = specs
@@ -486,17 +518,24 @@ pub(crate) fn prompt_onboard_runner(
     loop {
         let idx = prompt_select_index(theme, "Choose the default runner", &labels, default)?;
         let selected = specs[idx];
-        let (binary, help_arg) = selected.kind.binary_probe();
-        let status = binary_check(binary, help_arg);
         print_onboard_block(selected.kind.title(), selected.notes);
+
+        // 不依赖 binary(如 multi-agent)直接通过。
+        let Some((binary, help_arg)) = selected.kind.binary_probe() else {
+            return Ok(selected.kind);
+        };
+
+        let status = binary_check(binary, help_arg);
         if status.available {
             println!("检测结果：{} 可用。", binary);
             return Ok(selected.kind);
         }
         println!("检测结果：{} 未检测到（{}）。", binary, status.detail);
+        // 选 true 会继续用当前 runner(配置会写入,运行时才会因缺 binary 报错);
+        // 选 false 会回到 runner 选单重新挑一个(最常见路径)。
         if prompt_bool(
             theme,
-            "Binary not detected. Continue configuring this runner anyway?",
+            "缺少 binary,仍然保留这个 runner?(no = 返回重新选择 runner)",
             false,
         )? {
             return Ok(selected.kind);
@@ -515,6 +554,20 @@ pub(crate) fn build_runner_onboard_mutations(
     }];
 
     match runner {
+        OnboardRunnerKind::MultiAgent => {
+            // Multi-agent 不需要本机 binary,也不在这里填 OpenRouter key
+            // (留给统一的 Providers 环节处理,避免 key 散布在多个地方)。
+            let _ = theme;
+            let _ = config;
+            print_onboard_block(
+                "Multi-Agent setup",
+                &[
+                    "本 runner 只会写入 `agent.runner = \"multi-agent\"`;",
+                    "实际跑起来需要一把 OpenRouter API key,Providers 环节会让你填。",
+                    "进阶:`multi-agent.search` / `answer` 两段模型可用 `hone-cli models set ...` 微调。",
+                ],
+            );
+        }
         OnboardRunnerKind::CodexCli => {
             let codex_model = prompt_text(
                 theme,
@@ -543,7 +596,6 @@ pub(crate) fn build_runner_onboard_mutations(
         OnboardRunnerKind::OpencodeAcp => {
             // opencode 的 provider / model 来源于用户已有的 opencode 配置,
             // Hone 不在首装里抢占 (避免把用户 opencode 里已有的 provider 登录态覆盖掉)。
-            let _ = theme;
             let _ = config;
             print_onboard_block(
                 "OpenCode ACP setup",
@@ -553,6 +605,16 @@ pub(crate) fn build_runner_onboard_mutations(
                     "如果之后需要 Hone 显式覆盖 opencode 默认模型，再运行 `hone-cli models set ...`。",
                 ],
             );
+            // 不写入任何东西,只是给用户一个"我意识到你可能还没 /connect" 的心理反馈。
+            if !prompt_bool(
+                theme,
+                "你已经在 opencode 里 `/connect` 并选好默认模型了吗?",
+                true,
+            )? {
+                println!(
+                    "继续写入 runner 配置;请记得稍后执行 `opencode` 并 `/connect` 配好 provider,否则 Hone 起 chat 会立刻失败。"
+                );
+            }
         }
     }
 
@@ -562,6 +624,7 @@ pub(crate) fn build_runner_onboard_mutations(
 pub(crate) fn build_channel_onboard_mutations(
     theme: &ColorfulTheme,
     config: &hone_core::HoneConfig,
+    enabled_channels: &mut Vec<ChannelKind>,
 ) -> Result<Vec<ConfigMutation>, String> {
     let mut mutations = Vec::new();
     println!();
@@ -571,6 +634,14 @@ pub(crate) fn build_channel_onboard_mutations(
     );
 
     for spec in channel_onboard_specs() {
+        // iMessage 在非 macOS 平台不可用(依赖 AppleScript + chat.db),直接 skip
+        // 以免让 Linux 用户对一个铁定用不了的 channel 回答一堆问题。
+        if spec.kind == ChannelKind::Imessage && !cfg!(target_os = "macos") {
+            println!();
+            println!("iMessage 渠道仅 macOS 可用,当前平台跳过。");
+            continue;
+        }
+
         let current_enabled = match spec.kind {
             ChannelKind::Imessage => config.imessage.enabled,
             ChannelKind::Feishu => config.feishu.enabled,
@@ -605,6 +676,18 @@ pub(crate) fn build_channel_onboard_mutations(
         print_onboard_block(
             &format!("{} prerequisites", spec.label),
             spec.permission_notes,
+        );
+
+        // 安全提醒:每个启用的 channel 默认的 allow_* 白名单都是空,
+        // 空表等于「所有人都能触发」。onboard 不做详细白名单配置(太长),
+        // 但必须让用户知道这件事,不然 bot 会对陌生人裸奔。
+        println!();
+        println!(
+            "  ⚠ 注意:{} 渠道默认 allow 白名单为空,即所有联系人都能触发 Hone。",
+            spec.label
+        );
+        println!(
+            "     如需限定,onboard 完成后用 `hone-cli configure --section channels` 或直接编辑 config.yaml。"
         );
 
         // 必填字段循环:任一字段让用户选择「放弃整个渠道」都会把 channel_mutations
@@ -707,6 +790,9 @@ pub(crate) fn build_channel_onboard_mutations(
             continue;
         }
 
+        // 到这里 channel 真的会启用,记下来供后续 admin 环节按 channel 询问 id。
+        enabled_channels.push(spec.kind);
+
         if spec.supports_chat_scope {
             let current_scope = match spec.kind {
                 ChannelKind::Feishu => config.feishu.chat_scope,
@@ -746,6 +832,157 @@ pub(crate) fn build_channel_onboard_mutations(
     Ok(mutations)
 }
 
+/// 追加一个 `admins.<path>` 到数组:先读现有 list,去重后把 `value` 插进去,
+/// 作为 Sequence 整体覆盖回去。空字符串条目被自动过滤,避免 `example: ""`
+/// 这种 placeholder 被保留到最终 yaml。
+fn append_admin_mutation(path: &'static str, existing: &[String], value: String) -> ConfigMutation {
+    let mut items: Vec<String> = existing
+        .iter()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .collect();
+    if !items.iter().any(|v| v == &value) {
+        items.push(value);
+    }
+    ConfigMutation::Set {
+        path: path.to_string(),
+        value: Value::Sequence(items.into_iter().map(Value::String).collect()),
+    }
+}
+
+/// 询问用户「要不要把自己加为 admin」,逐一根据已启用的渠道问对应 ID。
+///
+/// admin 名单决定谁能触发:
+/// - `/register-admin`(运行时把 actor 升级成管理员)
+/// - `/report`(本地私有 workflow 快捷)
+/// - 重启 Hone / 危险 tool 等管理员专属工具
+///
+/// onboard 不做详细白名单管理(要支持列表编辑、移除、多种 id 混填的话 UI 太重)。
+/// 这里只做一件事:**对每个启用的渠道,收集一个自己的 id,直接 append 到对应的
+/// `admins.<field>` 数组**。用户后续可用 `hone-cli configure` 或直接改 yaml
+/// 扩充或清理。
+pub(crate) fn build_admin_onboard_mutations(
+    theme: &ColorfulTheme,
+    config: &hone_core::HoneConfig,
+    enabled_channels: &[ChannelKind],
+) -> Result<Vec<ConfigMutation>, String> {
+    let mut mutations = Vec::new();
+    if enabled_channels.is_empty() {
+        return Ok(mutations);
+    }
+
+    println!();
+    println!("Admin onboarding");
+    println!("  - 管理员白名单决定谁能触发 `/register-admin` / `/report` / 重启 Hone 等管理指令。");
+    println!("  - 不配就没人是 admin,本机所有人都触发不到管理能力。");
+
+    if !prompt_bool(theme, "把自己加为已启用渠道的 admin 白名单?", true)? {
+        println!(
+            "已跳过 admin 配置;之后可用 `hone-cli configure` 或直接编辑 config.yaml 的 `admins.*`。"
+        );
+        return Ok(mutations);
+    }
+
+    for kind in enabled_channels {
+        match kind {
+            ChannelKind::Imessage => {
+                let value = prompt_text(
+                    theme,
+                    "iMessage admin handle(手机号带国家码,如 +8613800138000 或 Apple ID 邮箱;留空跳过)",
+                    "",
+                )?;
+                let value = value.trim();
+                if !value.is_empty() {
+                    mutations.push(append_admin_mutation(
+                        "admins.imessage_handles",
+                        &config.admins.imessage_handles,
+                        value.to_string(),
+                    ));
+                }
+            }
+            ChannelKind::Telegram => {
+                let value = prompt_text(
+                    theme,
+                    "Telegram admin user id(数字 ID,如 8039067465;可通过 @userinfobot 获取;留空跳过)",
+                    "",
+                )?;
+                let value = value.trim();
+                if !value.is_empty() {
+                    mutations.push(append_admin_mutation(
+                        "admins.telegram_user_ids",
+                        &config.admins.telegram_user_ids,
+                        value.to_string(),
+                    ));
+                }
+            }
+            ChannelKind::Discord => {
+                let value = prompt_text(
+                    theme,
+                    "Discord admin user id(数字 ID,18 位数,可在 Discord 开发者模式下右键用户头像复制;留空跳过)",
+                    "",
+                )?;
+                let value = value.trim();
+                if !value.is_empty() {
+                    mutations.push(append_admin_mutation(
+                        "admins.discord_user_ids",
+                        &config.admins.discord_user_ids,
+                        value.to_string(),
+                    ));
+                }
+            }
+            ChannelKind::Feishu => {
+                // 飞书管理员识别支持 3 种 id(平台接口不一定都给全),一次收一种即可。
+                let choices = vec![
+                    "邮箱(admin@example.com)".to_string(),
+                    "手机号(+8613800138000)".to_string(),
+                    "open_id(ou_xxx)".to_string(),
+                    "跳过".to_string(),
+                ];
+                let idx = prompt_select_index(theme, "Feishu admin 用哪种 id 添加?", &choices, 0)?;
+                match idx {
+                    0 => {
+                        let value = prompt_text(theme, "Feishu admin 邮箱", "")?;
+                        if !value.trim().is_empty() {
+                            mutations.push(append_admin_mutation(
+                                "admins.feishu_emails",
+                                &config.admins.feishu_emails,
+                                value.trim().to_string(),
+                            ));
+                        }
+                    }
+                    1 => {
+                        let value = prompt_text(
+                            theme,
+                            "Feishu admin 手机号(推荐带国家码,如 +8613800138000)",
+                            "",
+                        )?;
+                        if !value.trim().is_empty() {
+                            mutations.push(append_admin_mutation(
+                                "admins.feishu_mobiles",
+                                &config.admins.feishu_mobiles,
+                                value.trim().to_string(),
+                            ));
+                        }
+                    }
+                    2 => {
+                        let value = prompt_text(theme, "Feishu admin open_id", "")?;
+                        if !value.trim().is_empty() {
+                            mutations.push(append_admin_mutation(
+                                "admins.feishu_open_ids",
+                                &config.admins.feishu_open_ids,
+                                value.trim().to_string(),
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Ok(mutations)
+}
+
 pub(crate) fn build_provider_onboard_mutations(
     theme: &ColorfulTheme,
     config: &hone_core::HoneConfig,
@@ -753,7 +990,7 @@ pub(crate) fn build_provider_onboard_mutations(
     let mut mutations = Vec::new();
     println!();
     println!("Provider onboarding");
-    println!("  - FMP 和 Tavily 都会要求你明确选择：现在填写，或本轮跳过。");
+    println!("  - OpenRouter / FMP / Tavily 都会要求你明确选择：现在填写，或本轮跳过。");
     println!(
         "  - 跳过不会阻塞 onboarding，之后仍可用 `hone-cli configure --section providers` 补配。"
     );
@@ -789,6 +1026,49 @@ pub(crate) fn build_provider_onboard_mutations(
     Ok(mutations)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn append_admin_mutation_skips_duplicates_and_empty_placeholders() {
+        let existing = vec!["".to_string(), "  ".to_string(), "alice".to_string()];
+        let mutation = append_admin_mutation("admins.imessage_handles", &existing, "bob".into());
+        let ConfigMutation::Set { path, value } = mutation else {
+            panic!("expected Set")
+        };
+        assert_eq!(path, "admins.imessage_handles");
+        let Value::Sequence(items) = value else {
+            panic!("expected sequence")
+        };
+        // 空串被 filter 掉,alice 保留,bob 追加。
+        assert_eq!(
+            items,
+            vec![Value::String("alice".into()), Value::String("bob".into()),]
+        );
+    }
+
+    #[test]
+    fn append_admin_mutation_is_idempotent_on_existing_value() {
+        let existing = vec!["alice".to_string()];
+        let mutation = append_admin_mutation("admins.feishu_emails", &existing, "alice".into());
+        let ConfigMutation::Set { value, .. } = mutation else {
+            panic!("expected Set")
+        };
+        let Value::Sequence(items) = value else {
+            panic!("expected sequence")
+        };
+        assert_eq!(items, vec![Value::String("alice".into())]);
+    }
+
+    #[test]
+    fn onboard_runner_kind_multi_agent_config_value() {
+        assert_eq!(OnboardRunnerKind::MultiAgent.config_value(), "multi-agent");
+        assert!(OnboardRunnerKind::MultiAgent.binary_probe().is_none());
+        assert!(OnboardRunnerKind::CodexCli.binary_probe().is_some());
+    }
+}
+
 pub(crate) async fn run_onboard(
     config_path: Option<&Path>,
     _args: OnboardArgs,
@@ -801,17 +1081,36 @@ pub(crate) async fn run_onboard(
     let theme = ColorfulTheme::default();
 
     println!("Hone onboarding");
-    println!("  - 这个向导会写入 canonical config，并在需要时生成 runtime effective config。");
-    println!("  - 任何步骤都可以先跳过，之后再通过 `hone-cli onboard` 或其他 CLI 子命令补配。");
+    println!("  - 约 3–5 分钟,全程键盘操作即可。");
+    println!(
+        "  - 任意时刻 Ctrl+C 可安全退出,已填的东西只在走到最后一步「apply」时才会写入 config.yaml。"
+    );
+    println!("  - 每个环节都可以跳过,之后再通过 `hone-cli onboard` 或其他 CLI 子命令补配。");
 
     let runner = prompt_onboard_runner(&theme, &config)?;
     let mut mutations = build_runner_onboard_mutations(&theme, &config, runner)?;
-    mutations.extend(build_channel_onboard_mutations(&theme, &config)?);
+
+    // channel 里真正被 enable 的记一份,供 admin 环节按渠道收集对应 id。
+    let mut enabled_channels: Vec<ChannelKind> = Vec::new();
+    mutations.extend(build_channel_onboard_mutations(
+        &theme,
+        &config,
+        &mut enabled_channels,
+    )?);
+    mutations.extend(build_admin_onboard_mutations(
+        &theme,
+        &config,
+        &enabled_channels,
+    )?);
     mutations.extend(build_provider_onboard_mutations(&theme, &config)?);
 
     let result = apply_mutations_and_generate(&paths, &mutations)?;
     println!();
     println!("{}", apply_message(&result.apply));
+    println!(
+        "  - 共写入 {} 条配置字段。",
+        result.apply.changed_paths.len()
+    );
     println!(
         "config={} effective={}",
         paths.canonical_config_path.to_string_lossy(),
