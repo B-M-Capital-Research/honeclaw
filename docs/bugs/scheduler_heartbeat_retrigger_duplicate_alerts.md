@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-24 07:31-08:01 最新巡检样本：
+      - `job_name=ORCL 大事件监控`
+      - `run_id=5427`，`executed_at=2026-04-24T07:31:24.612850+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 又把 `Oracle 取消 Super Micro Computer（SMCI）约 11-14 亿美元 GB300 NVL72 订单` 与 `ORCL 单日跌 5.98%` 组织成触发提醒；同一根因在 `run_id=5356`（`2026-04-24T04:30:26.235355+08:00`）已由同一 job 送达，07:31 这轮没有新的独立公告、额外订单变化或新的价格窗口，只是把同一 4 月 23 日旧事实重新推送。
+      - 约 30 分钟后，同一 job `run_id=5433`（`2026-04-24T08:01:16.770545+08:00`）又回到 `noop + skipped_noop`，说明 ORCL 这条 heartbeat 仍在相邻窗口 `triggered -> noop` 摇摆，而不是由稳定的“已提醒事实”基线抑制重复送达。
+      - `job_name=持仓重大事件心跳检测`
+      - `run_id=5438`，`executed_at=2026-04-24T08:01:43.755453+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`
+      - `response_preview` 把 `Portnoy Law Firm 于 2026-04-21 宣布调查 AST SpaceMobile` 包装成 `【ASTS - Portnoy Law Firm 证券欺诈调查】`；但同一事件早在 `run_id=5281`（`2026-04-24T01:00:46.272224+08:00`）就已由同一 `持仓重大事件心跳检测` 送达，本轮只是因为 06:31 的上一条提醒改发了 `BlueBird 7/FCC` 组合，就把旧的 Portnoy 调查重新视作“新增”。
+      - `data/runtime/logs/sidecar.log` 在 `2026-04-24 08:01` 同步记录 `run_id=5438` 为 `parse_kind=JsonTriggered` 且 `starts_with_json=false`；`raw_preview` 还明确写出“之前（06:31 那轮）的推送没有包含这条信息”，说明当前去重范围仍只看最近一次提醒内容，而不是稳定维护整条链路的已提醒事实集合。
+      - 这组最新样本说明重复提醒缺陷仍然活跃，并且已扩散到“同一 job 数小时后重报同一旧事实”与“同一持仓 heartbeat 因上一轮换了别的主题，就把更早送达过的旧事实重新当新增”两种形态。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-24 06:31 最新巡检样本：
       - `job_name=持仓重大事件心跳检测`
       - `run_id=5405`，`executed_at=2026-04-24T06:31:42.538595+08:00`，再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`

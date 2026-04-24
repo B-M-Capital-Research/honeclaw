@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 07:30-08:01 最新巡检样本：
+    - `run_id=5418-5426` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；除 `run_id=5427` 的 ORCL 触发外，其余 heartbeat 在 `07:31` 这一批仍全部落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=5428-5437` 对应 `08:01` 下一批里，除 `run_id=5438` 的 `持仓重大事件心跳检测` 触发外，其余 heartbeat 再次全部是 `noop + skipped_noop`；说明问题并未在 07:31 后自然收口。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 07:31:05-07:31:19` 与 `08:01` 同批继续记录 `starts_with_json=false`；`run_id=5423`（`RKLB异动监控`）和 `run_id=5425`（`Monitor_Watchlist_11`）仍是 `parse_kind=JsonEmptyStatus`，其余样本继续依赖 `JsonNoop` / `JsonTriggered` 从 `<think>...JSON` 尾部兜底。
+    - `run_id=5418`（`全天原油价格3小时播报`，`2026-04-24T07:31:06.437118+08:00`）与 `run_id=5428`（同任务，`2026-04-24T08:01:07.155201+08:00`）都继续落成 `noop + skipped_noop`；其中 07:31 的 `raw_preview` 先长篇解释“当前小时数 7、分钟数 30，不满足播报条件”，而不是直接输出纯 JSON 首包。
+    - `run_id=5438`（`持仓重大事件心跳检测`，`2026-04-24T08:01:43.755453+08:00`）虽然成功送达 `ASTS - Portnoy Law Firm 证券欺诈调查`，但 `detail_json.scheduler.parse_kind=JsonTriggered`、`starts_with_json=false`，`raw_preview` 仍以前置 `<think>` 推理开头，说明触发型 heartbeat 也没有恢复为纯 JSON 首包。
+    - 结论：直到 08:01，heartbeat 公共输出仍未恢复成“纯 JSON 首包 + 明确状态”；当前只是解析器继续吸收结构漂移，状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-24 06:30-07:01 最新巡检样本：
     - `run_id=5395-5404` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 与 `ASTS 重大异动心跳监控`；`06:30` 这一批继续全部落成 `noop + skipped_noop + delivered=0`。
     - `data/runtime/logs/sidecar.log` 在 `2026-04-24 06:30:07-06:30:33` 连续记录 `starts_with_json=false`；`run_id=5400`（`RKLB异动监控`）和 `run_id=5404`（`ASTS 重大异动心跳监控`）甚至再次落成 `parse_kind=JsonEmptyStatus`，其余样本则继续靠 `JsonNoop` 从 `<think>...{"status":"noop"}` 尾部兜底。
