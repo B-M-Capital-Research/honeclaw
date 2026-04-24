@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-24 17:14 CST
+最后更新：2026-04-24 18:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -34,7 +34,7 @@
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-24 已在 `DEFAULT_FINANCE_DOMAIN_POLICY` 末尾追加「报价字段一致性约束」（同标的/同时间/同合约口径 + 数学一致）；LLM e2e `finance_consistency_llm_smoke` 在 MiniMax 上 2 case 全 pass，模型在硬冲突 case 直接拒发播报、列表标出矛盾；OpenRouter 对照模型名待用户确认后补跑。注：15:01 `全天原油价格3小时播报` 的复现样本发生在策略生效前 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | Fixed | 2026-04-24 16:46 `请详细分析下谷歌` 真实会话已连续成功写入 actor sandbox 下的 `company_profiles/alphabet/*`；同小时 `acp-events.log` 未再出现 `目录不存在: company_profiles` | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-24 16:31 最新 live heartbeat 仍统一 `starts_with_json=false`、`<think>` 长文在前、尾部 JSON 兜底；`ORCL 大事件监控` 虽触发送达，送达正文仍来自尾部抽取，不是纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-24 17:31-18:01 最新两批 live heartbeat 仍统一 `starts_with_json=false`；`Monitor_Watchlist_11` 继续落成 `JsonEmptyStatus`，`持仓重大事件心跳检测` 虽触发送达但正文仍来自 `<think>...JSON` 尾部抽取 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-24 10:31 的 `ORCL 大事件监控` 刚发送 `SMCI 大单取消`，11:00 的 `持仓重大事件心跳检测` 又把同一 ORCL 旧事实重新包装成新增送达，出现同目标跨 job 重复提醒 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-23 01:00 `Monitor_Watchlist_11` 再次落成 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |

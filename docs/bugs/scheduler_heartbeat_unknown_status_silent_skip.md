@@ -19,6 +19,14 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-24 17:31-18:01 最新巡检样本：
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-24 17:31:17.283` `job=RKLB异动监控`，`parse_kind=JsonNoop`、`starts_with_json=false`，`raw_preview` 仍以 `<think>` 长段新闻/价格分析开头，再由尾部 JSON 兜底
+    - `2026-04-24 17:31:20.297` `job=Monitor_Watchlist_11`，`parse_kind=JsonEmptyStatus`、`starts_with_json=false`，逐项股票检查仍写在 `<think>` 中，外层没有稳定首包 JSON
+    - `2026-04-24 17:31:47.727` `job=持仓重大事件心跳检测` 虽然 `parse_kind=JsonTriggered` 并成功送达，但 `starts_with_json=false`，送达正文仍来自 `<think>...JSON` 尾部抽取
+    - `2026-04-24 18:01:09.308` `job=小米30港元破位预警`、`2026-04-24 18:01:10.455` `job=CAI破位预警`、`2026-04-24 18:01:11.833` `job=TEM破位预警` 均继续落成 `JsonNoop + starts_with_json=false`，说明简单阈值类 heartbeat 也没有恢复为纯 JSON 首包
+    - `2026-04-24 18:01:23.062` `job=Monitor_Watchlist_11` 再次落成 `JsonEmptyStatus`、`starts_with_json=false`；`2026-04-24 18:01:23.737` `job=ASTS 重大异动心跳监控` 仍是 `JsonNoop`、`starts_with_json=false`
+    - 结论：到 `18:01` 为止，heartbeat 结构化输出仍持续依赖解析器从 `<think>` 后抽取尾部 JSON；最新一小时没有任何样本恢复成“首字符即 `{` 的单段 JSON”，状态与严重等级保持不变
   - 2026-04-24 16:31-16:32 最新巡检样本：
     - `data/runtime/logs/sidecar.log`
     - `2026-04-24 16:31:07.407` `job=全天原油价格3小时播报`，`parse_kind=JsonNoop`、`starts_with_json=false`，`raw_preview` 仍是 `<think>` 长文先解释时间条件，尾部再补 `{"status":"noop"}`
