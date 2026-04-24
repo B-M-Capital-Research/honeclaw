@@ -2,7 +2,7 @@
 
 ## Summary
 
-Since the previous巡检, three `severity=high` trusted-source stock news events were stored, but no `sink delivered` log line and no `delivery_log channel=sink` row appeared for the same window.
+Trusted-source `severity=high` stock news can still fall through to `router/no_actor` without any sink delivery, even when the active direct actor has `portfolio_only=false` and other High events in the same window deliver normally.
 
 ## Observed Symptoms
 
@@ -209,6 +209,101 @@ if hits.is_empty() {
 ```
 
 - The same delivery window had no `sink|sent|high` rows after the cutoff; it had `digest` rows and one `router|no_actor|high` row. This keeps the issue scoped to subscription/routing coverage rather than a global sink assembly failure.
+
+## Latest巡检 Update
+
+- 2026-04-24T14:25:14Z: after `2026-04-24T10:23:05Z`, `data/events.sqlite3` stored three new High events. The AMD price alert still delivered immediately, but two trusted-source High news rows again ended at `router|no_actor` with no sink send evidence:
+
+```text
+2026-04-24 13:41:19|fmp.quote|high|price:AMD:2026-04-24|AMD +13.55%
+2026-04-24 14:05:17|fmp.stock_news:reuters.com|high|news:https://www.reuters.com/world/union-says-federal-bailout-spirit-airlines-must-protect-employees-2026-04-24/|Union says federal bailout of Spirit Airlines must protect employees
+2026-04-24 14:20:15|fmp.stock_news:cnbc.com|high|news:https://www.cnbc.com/2026/04/24/musk-v-altman-trial-openai-lawsuit-xai.html|Musk v. Altman heads to court next week. Here's what's at stake
+```
+
+```text
+price:AMD:2026-04-24|2026-04-24 13:41:21|telegram::::8039067465|sink|high|sent
+news:https://www.reuters.com/world/union-says-federal-bailout-spirit-airlines-must-protect-employees-2026-04-24/|2026-04-24 14:05:17|event_engine::::no_actor|router|high|no_actor
+news:https://www.cnbc.com/2026/04/24/musk-v-altman-trial-openai-lawsuit-xai.html|2026-04-24 14:20:15|event_engine::::no_actor|router|high|no_actor
+```
+
+- The active actor prefs still allow non-portfolio-only delivery:
+
+```text
+data/notif_prefs/telegram__direct__8039067465.json:1-27
+  "enabled": true
+  "portfolio_only": false
+  "min_severity": "low"
+```
+
+- The same actor portfolio snapshot only tracks `AMD` as an extra watch symbol and has no `TSLA` / `FLYYQ` entry:
+
+```text
+data/portfolio/portfolio_telegram__direct__8039067465.json:177-189
+  "symbol": "AMD",
+  "notes": "用户要求关注 AMD；作为关注列表标的，不计入真实持仓资金统计。",
+  "tracking_only": true
+```
+
+- Current code still explains why `portfolio_only=false` cannot rescue those High news rows. `registry_from_portfolios` only adds global fanout for `social_post` and `macro_event`, so `news_critical` must hit a portfolio symbol before prefs are even consulted:
+
+```rust
+// crates/hone-event-engine/src/subscription.rs:288-325
+/// - 每个有持仓的 direct actor → `PortfolioSubscription`（按 ticker 命中）
+/// - 所有 direct actor 汇总后 → 一个 `GlobalSubscription`(kinds=[`social_post`,
+///   `macro_event`])。社交事件默认进 digest/LLM 仲裁；宏观事件经 router 的
+///   due-window 保护后，远期日历只进摘要，临近 high 才即时播报。
+pub fn registry_from_portfolios(storage: &PortfolioStorage) -> SubscriptionRegistry {
+    let mut reg = SubscriptionRegistry::new();
+    let mut direct_actors: Vec<ActorIdentity> = Vec::new();
+    ...
+    if !direct_actors.is_empty() {
+        reg.register(Box::new(
+            GlobalSubscription::new("social_global", direct_actors)
+                .with_kinds(["social_post".to_string(), "macro_event".to_string()]),
+        ));
+    }
+```
+
+```rust
+// crates/hone-event-engine/src/router.rs:618-647
+    info!(
+        event_id = %event.id,
+        kind = %kind_tag(&event.kind),
+        source = %event.source,
+        symbols = ?event.symbols,
+        "dispatch skipped: no matching actor"
+    );
+    return Ok((0, 0));
+}
+...
+let sev = self.apply_per_actor_severity_override(event, sev, &user_prefs);
+let sev = self.apply_quiet_mode(event, sev, &user_prefs);
+if !user_prefs.should_deliver(event) {
+```
+
+```rust
+// crates/hone-event-engine/src/prefs.rs:109-132
+pub fn should_deliver(&self, event: &MarketEvent) -> bool {
+    if !self.enabled {
+        return false;
+    }
+    if event.severity.rank() < self.min_severity.rank() {
+        return false;
+    }
+    if self.portfolio_only && event.symbols.is_empty() {
+        return false;
+    }
+    if self.source_blocked(&event.source) {
+        return false;
+    }
+    if let Some(allow) = &self.allow_sources {
+        if !allow.iter().any(|pat| source_matches(&event.source, pat)) {
+            return false;
+        }
+    }
+```
+
+- This keeps the issue scoped to routing coverage, not sink assembly or Telegram channel health: the same incremental window had a real `sink|sent|high` row for AMD, but the Reuters Spirit bailout and CNBC Musk/OpenAI lawsuit high news still had no actor route at all.
 
 ## Severity
 
