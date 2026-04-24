@@ -1,19 +1,26 @@
 //! `hone-cli onboard` —— 首次安装后的向导式配置流程。
 //!
 //! 整体结构:
-//! 1. 展示当前 runner 选择 + binary 可用性,让用户选一种默认 runner
+//! 1. 展示当前 runner 选项(multi-agent / codex_cli / codex_acp / opencode_acp)+
+//!    binary 可用性,让用户选一种默认 runner
 //!    ([`prompt_onboard_runner`] + [`build_runner_onboard_mutations`])
 //! 2. 对每个渠道 (iMessage / Feishu / Telegram / Discord) 询问是否启用,
-//!    启用的再逐字段收集必填项,最后询问 chat_scope
+//!    启用的再逐字段收集必填项,展示 allow_* 默认开放的安全警告,
+//!    最后询问 chat_scope。非 macOS 平台自动跳过 iMessage。
 //!    ([`build_channel_onboard_mutations`])
-//! 3. 对每个 provider (FMP / Tavily) 询问是否现在填 key
+//! 3. 根据上一步真正启用的渠道,逐个询问是否把自己加进对应 `admins.*` 白名单
+//!    ([`build_admin_onboard_mutations`])
+//! 4. 对每个 provider (OpenRouter / FMP / Tavily) 询问是否现在填 key
 //!    ([`build_provider_onboard_mutations`])
-//! 4. 把所有 mutation 一次性写入 canonical config,并重生成 effective config
-//! 5. 可选运行 doctor / 直接 start
+//! 5. 把所有 mutation 一次性写入 canonical config,并重生成 effective config,
+//!    打印写入字段数量摘要
+//! 6. 可选运行 doctor / 直接 start
 //!
 //! 所有 Spec struct(`RunnerOnboardSpec` / `ChannelOnboardSpec` /
 //! `ProviderOnboardSpec`) 都是 `&'static` 常量数据,放在各自的 `*_specs()`
 //! 工厂函数里,方便未来改文案/加新 runner 时集中维护。
+//!
+//! 交互契约:任意步骤 Ctrl+C 都安全 —— mutation 只在第 5 步才真正写盘。
 
 use std::io::IsTerminal;
 use std::path::Path;
