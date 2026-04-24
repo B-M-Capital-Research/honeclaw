@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+  - 2026-04-24 12:30-13:00 最新巡检样本：
+    - `run_id=5539-5549` 对应 `12:30` 整批 heartbeat，`全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 与 `持仓重大事件心跳检测` 全部再次落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=5550-5560` 对应 `13:00` 下一批里，上述 heartbeat 再次整批 `noop + skipped_noop`；最近一小时没有任何 heartbeat 恢复为“纯 JSON 首包 + 明确状态”的稳定形态。
+    - `data/runtime/logs/sidecar.log` 在 `2026-04-24 13:00:09-13:00:48` 连续记录 `starts_with_json=false`；`run_id=5551`（`全天原油价格3小时播报`）继续先解释“13 不在 [0, 3, 6, 9, 12, 15, 18, 21]”再尾部补 noop，`run_id=5553`（`小米30港元破位预警`）再次出现 `parse_kind=JsonEmptyStatus` 且正文是 `<think> ... {}`，`run_id=5555`（`Monitor_Watchlist_11`）与 `run_id=5558`（`持仓重大事件心跳检测`）继续先输出长段自由文本分析再被 `JsonNoop` 兜底跳过。
+    - 同批 `2026-04-24 13:00:15-13:00:33` 还重复出现 Tavily `usage limit` 告警，但 `RKLB异动监控`、`ORCL 大事件监控`、`持仓重大事件心跳检测` 最终仍被解析成 `JsonNoop`；说明最新窗口的主问题仍是 heartbeat 公共 JSON 契约持续漂移，而不是新的独立发送故障。
+    - 结论：直到 `2026-04-24 13:00`，heartbeat 公共输出仍没有恢复成“纯 JSON 首包 + 明确状态”；当前只是解析器继续吸收结构漂移，状态保持 `New`，严重等级维持 `P2`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-24 11:30-12:01 最新巡检样本：
     - `run_id=5516-5526` 对应 `11:30` 整批 heartbeat，`全天原油价格3小时播报`、CAI/小米/TEM 破位、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`RKLB异动监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测` 全部再次落成 `noop + skipped_noop + delivered=0`。
     - `run_id=5527-5536` 对应 `12:01` 下一批里，上述 heartbeat 再次整批 `noop + skipped_noop`；只有 `run_id=5537` 的 `全天原油价格3小时播报` 被解析为 `completed + sent`，但它同样不是纯 JSON 首包。
