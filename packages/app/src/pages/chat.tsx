@@ -15,12 +15,12 @@ import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicNav } from "@/components/public-nav";
 import { PasswordSetupGuard } from "@/components/password-setup-guard";
+import { PublicLoginForm } from "@/components/public-login-form";
 import "./public-site.css";
 import {
   connectPublicEvents,
   getPublicAuthMe,
   getPublicHistory,
-  publicInviteLogin,
   publicLogout,
   sendPublicChat,
   uploadPublicAttachments,
@@ -29,8 +29,6 @@ import {
 import { buildApiUrl } from "@/lib/backend";
 import { parseMessageContent, messageId } from "@/lib/messages";
 import {
-  normalizeInviteCode,
-  normalizePhoneNumber,
   resolvePublicChatView,
   stripAttachmentMarkers,
   toPublicChatMessages,
@@ -154,213 +152,6 @@ function LoadingCard() {
           <p style={{ "font-size": "13px", color: "#94a3b8", margin: "0", "line-height": "1.7" }}>
             校验当前会话，恢复聊天内容和长连接更新
           </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function LoginCard(props: {
-  inviteCode: string;
-  phoneNumber: string;
-  loading: boolean;
-  error: string;
-  onInput: (value: string) => void;
-  onPhoneInput: (value: string) => void;
-  onSubmit: () => void;
-}) {
-  return (
-    <div
-      style={{
-        background: "#f8fafc",
-        "min-height": "100vh",
-        "padding-top": "56px",
-        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-      }}
-    >
-      <div
-        style={{
-          "max-width": "480px",
-          width: "100%",
-          padding: "0 24px 64px",
-          "text-align": "center",
-        }}
-      >
-        {/* Heading */}
-        <div style={{ "margin-bottom": "28px" }}>
-          <h1
-            style={{
-              "font-size": "26px",
-              "font-weight": "700",
-              color: "#0f172a",
-              margin: "0 0 10px",
-              "letter-spacing": "-0.02em",
-            }}
-          >
-            开启深度投研之旅
-          </h1>
-          <p style={{ "font-size": "14px", color: "#64748b", margin: "0", "line-height": "1.7" }}>
-            输入邀请码和手机号，进入单会话聊天界面
-          </p>
-        </div>
-
-        {/* Form card */}
-        <div
-          style={{
-            padding: "28px",
-            "border-radius": "16px",
-            border: "1px solid rgba(0,0,0,0.08)",
-            background: "#fff",
-            "box-shadow": "0 4px 24px rgba(0,0,0,0.06)",
-          }}
-        >
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              props.onSubmit();
-            }}
-          >
-            <div
-              style={{
-                "border-radius": "10px",
-                border: "1px solid rgba(0,0,0,0.10)",
-                overflow: "hidden",
-                "margin-bottom": "16px",
-              }}
-            >
-              <input
-                type="text"
-                value={props.inviteCode}
-                onInput={(event) =>
-                  props.onInput(normalizeInviteCode(event.currentTarget.value))
-                }
-                placeholder="邀请码"
-                autocomplete="off"
-                autocapitalize="characters"
-                spellcheck={false}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "13px 14px",
-                  "font-size": "15px",
-                  "font-family": "inherit",
-                  color: "#0f172a",
-                  background: "#fafafa",
-                  border: "none",
-                  "border-bottom": "1px solid rgba(0,0,0,0.08)",
-                  outline: "none",
-                  "box-sizing": "border-box",
-                }}
-              />
-              <input
-                type="tel"
-                value={props.phoneNumber}
-                onInput={(event) =>
-                  props.onPhoneInput(normalizePhoneNumber(event.currentTarget.value))
-                }
-                placeholder="手机号"
-                autocomplete="tel"
-                spellcheck={false}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "13px 14px",
-                  "font-size": "15px",
-                  "font-family": "inherit",
-                  color: "#0f172a",
-                  background: "#fafafa",
-                  border: "none",
-                  outline: "none",
-                  "box-sizing": "border-box",
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={
-                props.loading ||
-                !props.inviteCode.trim() ||
-                !props.phoneNumber.trim()
-              }
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "13px 24px",
-                "border-radius": "8px",
-                background:
-                  props.loading || !props.inviteCode.trim() || !props.phoneNumber.trim()
-                    ? "rgba(245,158,11,0.35)"
-                    : "#f59e0b",
-                border: "none",
-                cursor:
-                  props.loading || !props.inviteCode.trim() || !props.phoneNumber.trim()
-                    ? "not-allowed"
-                    : "pointer",
-                "font-family": "inherit",
-                "font-size": "15px",
-                "font-weight": "700",
-                color: "#fff",
-                "box-shadow":
-                  props.loading || !props.inviteCode.trim() || !props.phoneNumber.trim()
-                    ? "none"
-                    : "0 4px 16px rgba(245,158,11,0.30)",
-                transition: "background 0.2s",
-                "margin-bottom": "12px",
-              }}
-            >
-              {props.loading ? "验证中…" : "开始对话"}
-            </button>
-
-            <p style={{ "font-size": "12px", color: "#94a3b8", margin: "0", "line-height": "1.6" }}>
-              验证通过后自动恢复你的单线程 Web 会话
-            </p>
-          </form>
-        </div>
-
-        <Show when={props.error}>
-          <div
-            style={{
-              "margin-top": "12px",
-              padding: "12px 16px",
-              "border-radius": "10px",
-              border: "1px solid rgba(239,68,68,0.20)",
-              background: "rgba(239,68,68,0.05)",
-              "font-size": "13px",
-              color: "#ef4444",
-              "text-align": "left",
-            }}
-          >
-            {props.error}
-          </div>
-        </Show>
-
-        <div
-          style={{
-            "margin-top": "20px",
-            display: "flex",
-            "justify-content": "center",
-            "flex-wrap": "wrap",
-            gap: "8px",
-          }}
-        >
-          {["单会话", "长连接更新", "邀请码 + 手机号"].map((label) => (
-            <span
-              style={{
-                padding: "4px 12px",
-                "border-radius": "999px",
-                border: "1px solid rgba(0,0,0,0.08)",
-                "font-size": "11px",
-                color: "#94a3b8",
-                background: "#fff",
-              }}
-            >
-              {label}
-            </span>
-          ))}
         </div>
       </div>
     </div>
@@ -1542,9 +1333,6 @@ function Composer(props: {
 export default function PublicChatPage() {
   const navigate = useNavigate();
   const [authState, setAuthState] = createSignal<AuthState>("loading");
-  const [loginError, setLoginError] = createSignal("");
-  const [inviteCode, setInviteCode] = createSignal("");
-  const [phoneNumber, setPhoneNumber] = createSignal("");
   const [currentUser, setCurrentUser] = createSignal<PublicAuthUserInfo | null>(null);
   const [messages, setMessages] = createStore<ChatMessage[]>([]);
   const [draft, setDraft] = createSignal("");
@@ -1648,7 +1436,6 @@ export default function PublicChatPage() {
       dailyLimit: user.daily_limit,
     });
     setCurrentUser(user);
-    setLoginError("");
   };
 
   const restoreSession = async () => {
@@ -1673,9 +1460,6 @@ export default function PublicChatPage() {
       setCurrentUser(null);
       clearMessages();
       setAuthState("logged_out");
-      if (error instanceof Error && !isAuthExpiredError(error)) {
-        setLoginError(error.message);
-      }
     }
   };
 
@@ -1774,28 +1558,9 @@ export default function PublicChatPage() {
     scrollToBottom();
   });
 
-  const handleLogin = async () => {
-    const code = normalizeInviteCode(inviteCode());
-    const phone = normalizePhoneNumber(phoneNumber());
-    if (!code || !phone) return;
-    setAuthState("logging_in");
-    setLoginError("");
-    setInviteCode(code);
-    setPhoneNumber(phone);
-    try {
-      const user = await publicInviteLogin(code, phone);
-      setSessionInfo({
-        userId: user.user_id,
-        remainingToday: user.remaining_today,
-        dailyLimit: user.daily_limit,
-      });
-      setInviteCode("");
-      setPhoneNumber("");
-      await restoreSession();
-    } catch (error) {
-      setAuthState("logged_out");
-      setLoginError(error instanceof Error ? error.message : String(error));
-    }
+  const handleLogin = async (user: PublicAuthUserInfo) => {
+    applySessionInfo(user);
+    await restoreSession();
   };
 
   const handleLogout = async () => {
@@ -2127,15 +1892,7 @@ export default function PublicChatPage() {
           <LoadingCard />
         </Match>
         <Match when={publicChatView() === "login"}>
-          <LoginCard
-            inviteCode={inviteCode()}
-            phoneNumber={phoneNumber()}
-            loading={authState() === "logging_in"}
-            error={loginError()}
-            onInput={setInviteCode}
-            onPhoneInput={setPhoneNumber}
-            onSubmit={() => void handleLogin()}
-          />
+          <PublicLoginForm onLogin={handleLogin} />
         </Match>
         <Match when={publicChatView() === "chat"}>
           {/* Fixed container below the 56px PublicNav */}
