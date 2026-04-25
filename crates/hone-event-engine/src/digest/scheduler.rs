@@ -299,22 +299,34 @@ impl DigestScheduler {
                     );
                     continue;
                 }
+                // 区分两类「未展示」:
+                // - **curation/topic-memory 噪音**(opinion_blog 重复、PR-wire、同 ticker
+                //   第 5 条新闻 …):用户**完全不需要看见**,footer 不再提及。它们仍写
+                //   delivery_log,通过 `/missed` 可以查到。
+                // - **`max_items_per_batch` 单批数量上限截断**:这些是**真有内容**只是
+                //   挤不进当批,footer 才提示"另 N 条因数量上限未展示,/missed 查看"。
+                let noise_omitted_count = omitted_events.len();
+                let mut cap_overflow = 0usize;
                 if self.max_items_per_batch > 0 && filtered.len() > self.max_items_per_batch {
                     let truncated = filtered.split_off(self.max_items_per_batch);
                     let dropped_ids: Vec<String> = truncated.iter().map(|e| e.id.clone()).collect();
-                    let dropped = dropped_ids.len();
+                    cap_overflow = dropped_ids.len();
                     omitted_events.extend(truncated);
                     tracing::info!(
                         actor = %actor_key_str,
-                        dropped,
-                        curated = omitted_events.len().saturating_sub(dropped),
+                        cap_overflow,
+                        noise_omitted = noise_omitted_count,
                         kept = filtered.len(),
                         dropped_ids = ?dropped_ids,
                         "digest truncated to avoid info flooding"
                     );
                 }
-                let overflow = omitted_events.len();
-                let body = render_digest(&label, &filtered, overflow, self.sink.format_for(&actor));
+                let body = render_digest(
+                    &label,
+                    &filtered,
+                    cap_overflow,
+                    self.sink.format_for(&actor),
+                );
                 let send_result = self.sink.send(&actor, &body).await;
                 if let Some(store) = &self.store {
                     let batch_id = format!("digest-batch:{date}@{window}:{}", filtered.len());
@@ -364,7 +376,8 @@ impl DigestScheduler {
                     window = %window,
                     items = filtered.len(),
                     item_ids = ?item_ids,
-                    overflow,
+                    cap_overflow,
+                    noise_omitted = noise_omitted_count,
                     body_len = body.chars().count(),
                     body_preview = %body_preview(&body),
                     "digest delivered"

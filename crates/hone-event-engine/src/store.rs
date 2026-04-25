@@ -528,6 +528,98 @@ impl EventStore {
         Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
     }
 
+    /// 列出 `since` 之后某 actor 在 digest 流程里**被吞掉**的事件 + 各自的吞掉
+    /// 原因(curation 噪音过滤 / 单批数量上限 / 同 ticker 冷却 / 用户 prefs 过滤
+    /// 等)。供 `/missed` 斜杠命令查询。
+    ///
+    /// status 取值含义:
+    /// - `omitted` —— 被 curation 砍(per-symbol/source/domain cap、jaccard 同主题、
+    ///   `should_omit_from_digest` 把 opinion_blog 等噪音砍了)
+    /// - `capped` / `price_capped` —— `max_items_per_batch` 单批数量上限截断
+    /// - `cooled_down` / `price_cooled_down` —— 同 ticker / 同 symbol 冷却命中
+    /// - `filtered` —— 用户 prefs(`should_deliver`)主动过滤
+    pub fn list_missed_digest_items_since(
+        &self,
+        actor: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<(MarketEvent, String)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
+                   e.title, e.summary, e.url, e.source, e.payload_json, d.status
+            FROM delivery_log d
+            JOIN events e ON d.event_id = e.id
+            WHERE d.actor = ?1
+              AND d.channel IN ('digest_item', 'prefs')
+              AND d.status NOT IN ('sent', 'dryrun', 'queued')
+              AND d.sent_at_ts >= ?2
+            ORDER BY d.sent_at_ts DESC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+                row.get::<_, String>(10)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let (
+                id,
+                kind_json,
+                sev,
+                syms_json,
+                ts,
+                title,
+                summary,
+                url,
+                source,
+                payload_json,
+                status,
+            ) = r?;
+            let Ok(kind) = serde_json::from_str(&kind_json) else {
+                continue;
+            };
+            let severity = match sev.as_str() {
+                "high" => crate::event::Severity::High,
+                "medium" => crate::event::Severity::Medium,
+                _ => crate::event::Severity::Low,
+            };
+            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let payload: serde_json::Value =
+                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+                continue;
+            };
+            out.push((
+                MarketEvent {
+                    id,
+                    kind,
+                    severity,
+                    symbols,
+                    occurred_at,
+                    title,
+                    summary,
+                    url,
+                    source,
+                    payload,
+                },
+                status,
+            ));
+        }
+        Ok(out)
+    }
+
     /// 列出 `since` 之后某 actor 已经成功推送过的 event_id 集合。
     /// 与 `list_recent_digest_item_events` 的区别:这里**不 JOIN events 表**,
     /// 因此能覆盖"只在 delivery_log 留痕"的合成事件(例如

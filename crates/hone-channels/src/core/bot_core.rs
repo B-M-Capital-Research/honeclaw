@@ -313,6 +313,15 @@ impl HoneBotCore {
             actor.cloned(),
         )));
 
+        // 让用户通过 `/missed` 或自然语言查回 digest/router 主动筛掉的事件。
+        // event store 路径与 web-api `bootstrap_event_engine` 约定一致:
+        // `<data_dir>/events.sqlite3`。actor 强制绑定调用方 —— 工具层面也
+        // 不允许查别人。
+        registry.register(Box::new(hone_tools::MissedEventsTool::new(
+            self.configured_data_dir().join("events.sqlite3"),
+            actor.cloned(),
+        )));
+
         if let Some(actor) = actor.cloned() {
             let sandbox_base = sandbox_base_dir();
             registry.register(Box::new(hone_tools::LocalListFilesTool::new(

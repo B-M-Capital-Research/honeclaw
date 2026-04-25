@@ -253,11 +253,15 @@ fn render_digest_appends_overflow_footer_when_truncated() {
         7,
         crate::renderer::RenderFormat::Plain,
     );
-    // 标题里的总数应为 events + overflow = 10 条
+    // 标题里的总数应为 events + cap_overflow = 10 条
     assert!(body.contains("· 10 条"), "title 应显示总量,body = {body}");
     assert!(
-        body.contains("另 7 条已省略"),
-        "应附加 overflow footer,body = {body}"
+        body.contains("另 7 条因数量上限未展示"),
+        "应附加 cap-overflow footer,body = {body}"
+    );
+    assert!(
+        body.contains("/missed"),
+        "footer 应指向 /missed 斜杠命令,body = {body}"
     );
 }
 
@@ -265,7 +269,14 @@ fn render_digest_appends_overflow_footer_when_truncated() {
 fn render_digest_omits_footer_when_no_overflow() {
     let events: Vec<MarketEvent> = (0..2).map(|i| ev(&format!("e{i}"), "AAPL")).collect();
     let body = render_digest("盘前摘要", &events, 0, crate::renderer::RenderFormat::Plain);
-    assert!(!body.contains("已省略"), "无 overflow 时不应出现省略提示");
+    assert!(
+        !body.contains("未展示"),
+        "无 cap_overflow 时不应出现 footer"
+    );
+    assert!(
+        !body.contains("/missed"),
+        "无 cap_overflow 时不应推 /missed"
+    );
 }
 
 #[test]
@@ -642,16 +653,21 @@ async fn scheduler_caps_batch_and_prioritizes_high_severity() {
     let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
     let sink = Arc::new(SpySink::default());
     let a = actor("u1");
-    // 5 条 Low + 1 条 Medium;cap=3 应保留 1 Medium + 2 Low(排序后)
-    for i in 0..5 {
-        let mut e = ev(&format!("low-{i}"), "AAPL");
+    // 5 条 Low(每条 distinct ticker + distinct source,绕过 per-symbol/source
+    // curation cap)+ 1 条 Medium。max_items_per_batch=3 应留 3 条,1 Medium
+    // + 2 条 Low(按 score 排序)。剩下 3 条进 cap_overflow,在 footer 提示。
+    let lows = ["AAPL", "MSFT", "GOOGL", "AMZN", "META"];
+    for (i, sym) in lows.iter().enumerate() {
+        let mut e = ev(&format!("low-{i}"), sym);
         e.severity = Severity::Low;
         e.title = format!("LOW-{i}");
+        e.source = format!("test-source-{i}");
         buf.enqueue(&a, &e).unwrap();
     }
     let mut mev = ev("mid-1", "AAPL");
     mev.severity = Severity::Medium;
     mev.title = "MID-KEEP".into();
+    mev.source = "test-source-mid".into();
     buf.enqueue(&a, &mev).unwrap();
 
     let sched = DigestScheduler::new(buf, sink.clone(), "08:30", "17:00")
@@ -665,12 +681,17 @@ async fn scheduler_caps_batch_and_prioritizes_high_severity() {
     let calls = sink.0.lock().unwrap();
     assert_eq!(calls.len(), 1);
     let body = &calls[0];
-    // 总条数应为 6 (3 kept + 3 overflow)
+    // 6 条事件全部通过 curation(distinct symbol + source);cap=3 砍掉 3 条进
+    // cap_overflow。title 应为 3 kept + 3 cap_overflow = 6 条。
     assert!(body.contains("· 6 条"), "body = {body}");
     // Medium 优先保留
     assert!(body.contains("MID-KEEP"), "Medium 应被保留,body = {body}");
-    // 溢出提示
-    assert!(body.contains("另 3 条已省略"), "body = {body}");
+    // 溢出提示反映 cap_overflow
+    assert!(body.contains("另 3 条因数量上限未展示"), "body = {body}");
+    assert!(
+        body.contains("/missed"),
+        "footer 应推 /missed,body = {body}"
+    );
 }
 
 #[tokio::test]
