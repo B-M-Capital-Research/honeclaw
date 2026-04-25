@@ -19,6 +19,15 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 07:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6506-6516` 覆盖 `小米30港元破位预警`、`全天原油价格3小时播报`、小米/CAI/TEM 破位、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；11 条 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=6509`（`TEM破位预警`，`2026-04-26T07:00:09.520840+08:00`）与 `6513`（`RKLB异动监控`，`2026-04-26T07:00:25.137545+08:00`）继续落成 `parse_kind=JsonEmptyStatus`；`run_id=6506`（`小米30港元破位预警`）、`6507`（`全天原油价格3小时播报`）、`6510`（`CAI破位预警`）、`6512`（`ASTS 重大异动心跳监控`）、`6514`（`Monitor_Watchlist_11`）与 `6516`（`持仓重大事件心跳检测`）则继续漂移到 `PlainTextSuppressed`，说明最新整点窗口依旧没有任何“首字符即 `{`”的稳定结构化首包。
+    - `run_id=6508`（`小米破位预警`，`2026-04-26T07:00:08.825555+08:00`）虽被吸收到 `parse_kind=JsonNoop`，但 `raw_preview` 只返回“数据获取失败，无法判断当前价格状态”；同一时间窗 `sidecar.log` 的 `07:00:03.972-07:00:08.149` 已连续记录多次 `data_fetch` 成功，说明最新坏态不只是不输出纯 JSON，还会在已有行情结果时退化成假性“数据不可用” noop。
+    - `run_id=6511`（`ORCL 大事件监控`，`2026-04-26T07:00:14.460292+08:00`）落成 `parse_kind=ContextOverflowNoop`；`sidecar.log` 同秒明确记录本轮先命中 `LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)`，再被调度器吸收到 noop。该样本延续了既有“overflow 已被兜底、不再重开已修复缺陷”的结论，但也进一步证明当前线上仍依赖后台降级，而不是上游稳定履约结构化协议。
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 07:00:06.874-07:00:44.268` 同批 `HeartbeatDiag` 日志继续统一记录 `starts_with_json=false`；其中 `job=持仓重大事件心跳检测` 的 `raw_chars=2058`、`job=TEM大事件心跳监控` 的 `raw_chars=2900`，表明坏态仍覆盖长篇自然语言解释，而不是少量格式毛刺。
+    - 结论：到 `2026-04-26 07:00` 为止，heartbeat 最新整点窗口仍没有任何稳定的纯 JSON 首包样本，并继续混合出现 `JsonEmptyStatus`、`PlainTextSuppressed`、假性“数据不可用” `JsonNoop` 与 `ContextOverflowNoop`；状态保持 `Fixing`、严重等级维持 `P2`。
   - 2026-04-26 06:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6485-6494` 覆盖 CAI/小米/TEM 破位、`小米30港元破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；10 条 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`。
