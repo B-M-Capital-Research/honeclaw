@@ -149,6 +149,7 @@ pub struct StartedServer {
     pub state: Arc<InnerAppState>,
     pub admin_port: u16,
     pub public_port: Option<u16>,
+    pub task_handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
 // ── 全局唯一 LogBuffer ──────────────────────────────────────────────────────
@@ -262,6 +263,7 @@ pub async fn start_server(
     skills_dir: Option<&Path>,
     deployment_mode: &str,
 ) -> Result<StartedServer, String> {
+    let mut task_handles = Vec::new();
     let mut config =
         HoneConfig::from_file(config_path).map_err(|e| format!("配置加载失败: {e}"))?;
     config.apply_runtime_overrides(data_dir, skills_dir, Some(Path::new(config_path)));
@@ -363,7 +365,7 @@ pub async fn start_server(
     // ── UDP 日志接收（收集各 channel sidecar 的日志）────────────────
     let udp_port = state.core.config.logging.udp_port.unwrap_or(18118);
     let udp_log_buffer = log_buffer.clone();
-    tokio::spawn(async move {
+    task_handles.push(tokio::spawn(async move {
         let addr = format!("127.0.0.1:{udp_port}");
         if let Ok(socket) = tokio::net::UdpSocket::bind(&addr).await {
             info!("UDP log server listening on {addr}");
@@ -376,7 +378,7 @@ pub async fn start_server(
                 }
             }
         }
-    });
+    }));
 
     // ── 事件引擎（主动消息 feed，默认 enabled=false；config 开启后启动）──
     {
@@ -402,7 +404,7 @@ pub async fn start_server(
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
         let sink = build_event_engine_sink(&state.core.config, &engine_cfg);
         let news_classifier = build_event_engine_news_classifier(&state.core.config);
-        tokio::spawn(async move {
+        task_handles.push(tokio::spawn(async move {
             let mut engine = hone_event_engine::EventEngine::new(engine_cfg, fmp_cfg)
                 .with_store_path(events_db)
                 .with_events_jsonl_path(Some(events_jsonl))
@@ -419,7 +421,7 @@ pub async fn start_server(
             if let Err(e) = engine.start().await {
                 tracing::warn!("event engine start failed: {e}");
             }
-        });
+        }));
     }
 
     // ── 调度器 ─────────────────────────────────────────────────────
@@ -428,43 +430,63 @@ pub async fn start_server(
         scheduler_channels.insert(0, "imessage".to_string());
     }
     let (scheduler, event_rx) = state.core.create_scheduler(scheduler_channels);
-    tokio::spawn(async move { scheduler.start().await });
+    task_handles.push(tokio::spawn(async move { scheduler.start().await }));
     let state_for_scheduler = state.clone();
-    tokio::spawn(async move { handle_scheduler_events(state_for_scheduler, event_rx).await });
+    task_handles.push(tokio::spawn(async move {
+        handle_scheduler_events(state_for_scheduler, event_rx).await
+    }));
 
     // ── 绑定管理端口（默认 8077，可通过 HONE_WEB_PORT 覆盖）─────────────
     let bind_addr = format!("127.0.0.1:{}", runtime_port());
-    let listener = tokio::net::TcpListener::bind(&bind_addr)
-        .await
-        .map_err(|e| format!("无法绑定端口 {bind_addr}: {e}"))?;
+    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            for handle in task_handles {
+                handle.abort();
+            }
+            return Err(format!("无法绑定端口 {bind_addr}: {e}"));
+        }
+    };
     let port = listener
         .local_addr()
         .map_err(|e| format!("获取端口失败: {e}"))?
         .port();
 
-    // ── 启动管理端 Axum 服务 ───────────────────────────────────────
-    let admin_app = build_admin_app(state.clone());
-    tokio::spawn(async move {
-        axum::serve(listener, admin_app).await.ok();
-    });
-
-    let public_port = if let Some(configured_public_port) = runtime_public_port() {
+    let public_listener = if let Some(configured_public_port) = runtime_public_port() {
         let public_bind_addr = format!("127.0.0.1:{configured_public_port}");
-        let public_listener = tokio::net::TcpListener::bind(&public_bind_addr)
-            .await
-            .map_err(|e| format!("无法绑定用户端口 {public_bind_addr}: {e}"))?;
+        let public_listener = match tokio::net::TcpListener::bind(&public_bind_addr).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                for handle in task_handles {
+                    handle.abort();
+                }
+                return Err(format!("无法绑定用户端口 {public_bind_addr}: {e}"));
+            }
+        };
         let public_port = public_listener
             .local_addr()
             .map_err(|e| format!("获取用户端口失败: {e}"))?
             .port();
-        let public_app = build_public_app(state.clone());
-        tokio::spawn(async move {
-            axum::serve(public_listener, public_app).await.ok();
-        });
-        Some(public_port)
+        Some((public_listener, public_port))
     } else {
         None
     };
+    let public_port = public_listener
+        .as_ref()
+        .map(|(_, public_port)| *public_port);
+
+    // ── 启动管理端 Axum 服务 ───────────────────────────────────────
+    let admin_app = build_admin_app(state.clone());
+    task_handles.push(tokio::spawn(async move {
+        axum::serve(listener, admin_app).await.ok();
+    }));
+
+    if let Some((public_listener, _)) = public_listener {
+        let public_app = build_public_app(state.clone());
+        task_handles.push(tokio::spawn(async move {
+            axum::serve(public_listener, public_app).await.ok();
+        }));
+    }
 
     info!("Hone Web API 管理端已启动，端口 {port}");
     if let Some(public_port) = public_port {
@@ -474,5 +496,6 @@ pub async fn start_server(
         state,
         admin_port: port,
         public_port,
+        task_handles,
     })
 }

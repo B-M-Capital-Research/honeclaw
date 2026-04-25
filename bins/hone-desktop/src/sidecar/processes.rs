@@ -81,7 +81,7 @@ pub(super) fn preflight_startup_locks(app: &AppHandle) -> Result<(), String> {
 }
 
 fn stop_web_server(manager: &mut DesktopBackendManager) {
-    if let Some(handle) = manager.web_server_task.take() {
+    for handle in std::mem::take(&mut manager.web_server_tasks) {
         handle.abort();
     }
 }

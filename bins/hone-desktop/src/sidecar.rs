@@ -292,8 +292,8 @@ struct DesktopBackendManager {
     resolved_base_url: Option<String>,
     meta: Option<MetaInfo>,
     last_error: Option<String>,
-    /// 内嵌 Axum 服务任务句柄（bundled 模式）
-    web_server_task: Option<tokio::task::JoinHandle<()>>,
+    /// 内嵌 Web API 及其 per-startup 后台任务句柄（bundled 模式）
+    web_server_tasks: Vec<tokio::task::JoinHandle<()>>,
     /// bundled 模式下的 hone-console-page 生命周期锁
     bundled_web_lock: Option<hone_core::ProcessLockGuard>,
     /// 各 channel sidecar 子进程（imessage / discord / feishu / telegram）
@@ -583,6 +583,7 @@ async fn connect_backend_inner(
                         guard.last_error = None;
                         guard.diagnostics = Some(diagnostics.clone());
                         guard.bundled_web_lock = Some(web_lock);
+                        guard.web_server_tasks = started.task_handles;
                     }
 
                     // 对于同进程内嵌服务，绑定成功本身已经足够说明 API 已就绪；
@@ -1299,7 +1300,7 @@ fmp:
         assert_eq!(seeded.answer.api_key, "sk-or-fallback");
         assert_eq!(seeded.answer.model, "google/gemini-3.1-pro-preview");
         assert_eq!(seeded.answer.variant, "high");
-        assert_eq!(seeded.answer.max_tool_calls, 1);
+        assert_eq!(seeded.answer.max_tool_calls, 3);
     }
 
     #[test]
@@ -1569,6 +1570,21 @@ fmp:
         assert_eq!(
             manager.resolved_base_url.as_deref(),
             Some("http://127.0.0.1:3000")
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_managed_children_clears_web_server_tasks() {
+        let mut manager = DesktopBackendManager::default();
+        manager
+            .web_server_tasks
+            .push(tokio::spawn(async { std::future::pending::<()>().await }));
+
+        stop_managed_children(&mut manager);
+
+        assert!(
+            manager.web_server_tasks.is_empty(),
+            "bundled restart must not leave old web-api task handles behind"
         );
     }
 }
