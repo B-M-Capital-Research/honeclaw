@@ -5,8 +5,8 @@ import { join } from "node:path"
 const pagesDir = import.meta.dir
 
 describe("desktop runner visibility contract", () => {
-  it("exposes codex_acp on the desktop start page", () => {
-    const source = readFileSync(join(pagesDir, "start.tsx"), "utf8")
+  it("exposes codex_acp on the dashboard page", () => {
+    const source = readFileSync(join(pagesDir, "dashboard.tsx"), "utf8")
     expect(source).toContain('runner: "codex_acp"')
     expect(source).toContain('name: "Codex ACP"')
   })

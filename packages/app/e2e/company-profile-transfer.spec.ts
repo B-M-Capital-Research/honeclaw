@@ -264,8 +264,9 @@ test("company profile transfer exports and backs up before conflict replace", as
     },
   })
 
-  await page.goto("/memory?tab=profiles")
-  await page.getByRole("button", { name: /discord \/ alice · watchlist/i }).click()
+  // 新 IA: /users/:actorKey/profiles 直接落到目标 actor 的画像 tab,
+  // actorKey 格式:channel|channel_scope|user_id → discord|watchlist|alice
+  await page.goto("/users/discord%7Cwatchlist%7Calice/profiles")
 
   await expect(page.getByRole("button", { name: "导出当前空间" })).toBeVisible()
   await page.getByRole("button", { name: "导出当前空间" }).click()
@@ -293,7 +294,8 @@ test("company profile transfer exports and backs up before conflict replace", as
 
   await expect(page.getByText("导入完成", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "下载导入前备份" })).toBeVisible()
-  await expect(page.getByText("本次更新")).toBeVisible()
+  // 导入完成后,被替换/新增的画像在顶部横向选择条上应有"更新"徽章
+  await expect(page.getByText("更新", { exact: true }).first()).toBeVisible()
 })
 
 test("company profile transfer imports directly when preview has no conflicts", async ({
@@ -381,8 +383,9 @@ test("company profile transfer imports directly when preview has no conflicts", 
     },
   })
 
-  await page.goto("/memory?tab=profiles")
-  await page.getByRole("button", { name: /discord \/ alice · watchlist/i }).click()
+  // 新 IA: /users/:actorKey/profiles 直接落到目标 actor 的画像 tab,
+  // actorKey 格式:channel|channel_scope|user_id → discord|watchlist|alice
+  await page.goto("/users/discord%7Cwatchlist%7Calice/profiles")
 
   await page
     .locator('input[type="file"]')

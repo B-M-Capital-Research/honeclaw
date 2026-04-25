@@ -23,12 +23,11 @@ const PublicSiteRoadmapPage = lazy(() => import("@/pages/public-roadmap"))
 const PublicSiteMePage = lazy(() => import("@/pages/public-me"))
 const PublicSiteTermsPage = lazy(() => import("@/pages/public-terms"))
 const PublicSitePrivacyPage = lazy(() => import("@/pages/public-privacy"))
-const StartPage = lazy(() => import("@/pages/start"))
+const DashboardPage = lazy(() => import("@/pages/dashboard"))
 const SessionsPage = lazy(() => import("@/pages/sessions"))
 const SkillsPage = lazy(() => import("@/pages/skills"))
 const TasksPage = lazy(() => import("@/pages/tasks"))
-const PortfolioPage = lazy(() => import("@/pages/portfolio"))
-const MemoryPage = lazy(() => import("@/pages/memory"))
+const UsersPage = lazy(() => import("@/pages/users"))
 const ResearchPage = lazy(() => import("@/pages/research"))
 const LlmAuditPage = lazy(() => import("@/pages/llm-audit"))
 const LogsPage = lazy(() => import("@/pages/logs"))
@@ -113,12 +112,25 @@ function AdminSurface() {
           <Router>
             <Route path="/" component={HomePage} />
             <Route path="/" component={ConsoleLayout}>
-              <Route path="/start" component={StartPage} />
+              <Route path="/dashboard" component={DashboardPage} />
+              <Route path="/start" component={() => <Navigate href="/dashboard" />} />
               <Route path="/sessions/:userId?" component={SessionsPage} />
               <Route path="/skills/:skillId?" component={SkillsPage} />
               <Route path="/tasks/:taskId?" component={TasksPage} />
-              <Route path="/memory" component={MemoryPage} />
-              <Route path="/portfolio/:userId?" component={PortfolioPage} />
+              <Route path="/users/:actorKey?/:tab?" component={UsersPage} />
+              {/* 旧路径兼容:推迟到下一个版本删除 */}
+              <Route path="/memory" component={() => <Navigate href="/users" />} />
+              <Route
+                path="/portfolio/:userId?"
+                component={(props: any) => {
+                  // SolidJS Router 给的 params 已经 URL-decoded,Navigate 会再次编码,
+                  // 因此这里直接传原始字符串,不要再 encodeURIComponent。
+                  const id: string | undefined = props.params?.userId
+                  return (
+                    <Navigate href={id ? `/users/${id}/portfolio` : "/users"} />
+                  )
+                }}
+              />
               <Route path="/research/:taskId?" component={ResearchPage} />
               <Route path="/llm-audit" component={LlmAuditPage} />
               <Route path="/logs" component={LogsPage} />

@@ -1,9 +1,9 @@
 import { Button } from "@hone-financial/ui/button"
 import { EmptyState } from "@hone-financial/ui/empty-state"
 import { Input } from "@hone-financial/ui/input"
-import { For, Show, createSignal } from "solid-js"
+import { For, Show, createEffect, createSignal } from "solid-js"
 import { Portal } from "solid-js/web"
-import { useNavigate } from "@solidjs/router"
+import { useNavigate, useSearchParams } from "@solidjs/router"
 import { useResearch } from "@/context/research"
 import type { ResearchTask } from "@/lib/types"
 
@@ -45,9 +45,20 @@ function StatusBadge(props: { task: ResearchTask }) {
 export function ResearchList() {
   const navigate = useNavigate()
   const research = useResearch()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [companyInput, setCompanyInput] = createSignal("")
   const [starting, setStarting] = createSignal(false)
   const [confirmName, setConfirmName] = createSignal<string | null>(null)
+
+  // 接受 ?symbol=AAPL 自动预填(供 SymbolDrawer "启动研究" 跳转使用)
+  createEffect(() => {
+    const sym = typeof searchParams.symbol === "string" ? searchParams.symbol : ""
+    if (sym && !companyInput()) {
+      setCompanyInput(sym.toUpperCase())
+      // 用过即清,避免反复回填
+      setSearchParams({ symbol: undefined }, { replace: true })
+    }
+  })
 
   const handleConfirmOpen = () => {
     const name = companyInput().trim()

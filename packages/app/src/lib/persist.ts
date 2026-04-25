@@ -4,10 +4,12 @@ const readAtKey = "hone.console.readAt"
 const researchTasksKey = "hone.console.researchTasks"
 
 export type StoredModule =
+  | "dashboard"
   | "start"
   | "sessions"
   | "skills"
   | "tasks"
+  | "users"
   | "portfolio"
   | "memory"
   | "research"

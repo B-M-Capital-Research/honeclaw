@@ -10,10 +10,11 @@ export default function HomePage() {
   if (consoleState.state.module === "settings") {
     return <Navigate href="/settings" />
   }
-  // sessions 模块保留原有行为；其余模块（含 start）均回到开始页
+  // sessions 模块保留原有行为
   if (consoleState.state.module === "sessions") {
     const target = consoleState.state.lastUserId
-    return <Navigate href={target ? `/sessions/${encodeURIComponent(target)}` : "/start"} />
+    return <Navigate href={target ? `/sessions/${encodeURIComponent(target)}` : "/dashboard"} />
   }
-  return <Navigate href="/start" />
+  // 默认进入 dashboard 概览页
+  return <Navigate href="/dashboard" />
 }

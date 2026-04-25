@@ -5,6 +5,7 @@ import { Show, For } from "solid-js"
 import { usePortfolio } from "@/context/portfolio"
 import { actorLabel } from "@/lib/actors"
 import type { HoldingInfo } from "@/lib/types"
+import { SymbolLink } from "./symbol-link"
 
 export function PortfolioDetail() {
     const portfolio = usePortfolio()
@@ -113,7 +114,7 @@ export function PortfolioDetail() {
                                             {(holding) => (
                                                 <tr class="border-b border-[color:var(--border)] hover:bg-black/5 transition-colors">
                                                     <td class="py-3 px-4">
-                                                        <div class="font-medium uppercase">{holding.symbol}</div>
+                                                        <SymbolLink symbol={holding.symbol} />
                                                         <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-[color:var(--text-muted)]">
                                                             <span class="rounded-full border border-[color:var(--border)] px-2 py-0.5">
                                                                 {horizonLabel(holding.holding_horizon)}
@@ -157,8 +158,8 @@ export function PortfolioDetail() {
                                             {(holding) => (
                                                 <tr class="border-b border-[color:var(--border)] hover:bg-black/5 transition-colors">
                                                     <td class="py-3 px-4">
-                                                        <div class="font-medium uppercase flex items-center gap-2">
-                                                            {holding.symbol}
+                                                        <div class="flex items-center gap-2">
+                                                            <SymbolLink symbol={holding.symbol} />
                                                             <span class="rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-normal text-amber-700">
                                                                 关注
                                                             </span>

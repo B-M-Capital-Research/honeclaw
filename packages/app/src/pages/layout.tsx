@@ -1,23 +1,25 @@
-import { useLocation, useParams } from "@solidjs/router"
+import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { createEffect, type ParentProps } from "solid-js"
 import { SidebarNav } from "@/components/sidebar-nav"
 import { ChannelStatusBadge } from "@/components/channel-status-badge"
 import { SessionList } from "@/components/session-list"
 import { SkillList } from "@/components/skill-list"
+import { ActorList } from "@/components/actor-list"
+import { SymbolDrawer } from "@/components/symbol-drawer"
+import { SymbolDrawerProvider } from "@/context/symbol-drawer"
 import { useConsole } from "@/context/console"
 import { useSessions } from "@/context/sessions"
 import { useSkills } from "@/context/skills"
 import { useTasks } from "@/context/tasks"
-import { usePortfolio } from "@/context/portfolio"
 import { useResearch } from "@/context/research"
 import { useBackend } from "@/context/backend"
 import { TaskList } from "@/components/task-list"
-import { PortfolioList } from "@/components/portfolio-list"
 import { ResearchList } from "@/components/research-list"
-import { parseActorKey } from "@/lib/actors"
+import { actorKey } from "@/lib/actors"
 
 export default function ConsoleLayout(props: ParentProps) {
   const location = useLocation()
+  const navigate = useNavigate()
   const params = useParams()
   const consoleState = useConsole()
   const backend = useBackend()
@@ -25,21 +27,18 @@ export default function ConsoleLayout(props: ParentProps) {
   const skills = useSkills()
 
   const tasks = useTasks()
-  const portfolio = usePortfolio()
   const research = useResearch()
 
   createEffect(() => {
     const p = location.pathname
-    if (p.startsWith("/start")) {
-      consoleState.setModule("start")
+    if (p.startsWith("/dashboard") || p.startsWith("/start")) {
+      consoleState.setModule("dashboard")
     } else if (p.startsWith("/skills")) {
       consoleState.setModule("skills")
     } else if (p.startsWith("/tasks")) {
       consoleState.setModule("tasks")
-    } else if (p.startsWith("/memory")) {
-      consoleState.setModule("memory")
-    } else if (p.startsWith("/portfolio")) {
-      consoleState.setModule("portfolio")
+    } else if (p.startsWith("/users")) {
+      consoleState.setModule("users")
     } else if (p.startsWith("/research")) {
       consoleState.setModule("research")
     } else if (p.startsWith("/llm-audit")) {
@@ -75,20 +74,24 @@ export default function ConsoleLayout(props: ParentProps) {
   })
 
   createEffect(() => {
-    const actor = parseActorKey(params.userId ? decodeURIComponent(params.userId) : undefined)
-    if (location.pathname.startsWith("/portfolio")) {
-      portfolio.selectActor(actor)
-    }
-  })
-
-  createEffect(() => {
     const taskId = params.taskId ? decodeURIComponent(params.taskId) : undefined
     if (location.pathname.startsWith("/research")) {
       research.selectTask(taskId ?? null)
     }
   })
 
+  const usersCurrentKey = () =>
+    params.actorKey ? decodeURIComponent(params.actorKey) : ""
+
+  const onSelectUserActor = (actor: { channel: string; user_id: string; channel_scope?: string }) => {
+    const k = encodeURIComponent(actorKey(actor))
+    // 保留当前 tab,默认 portfolio
+    const tab = (params.tab as string) || "portfolio"
+    navigate(`/users/${k}/${tab}`)
+  }
+
   return (
+    <SymbolDrawerProvider>
     <div class="flex h-screen min-h-0 overflow-hidden">
       <SidebarNav />
 
@@ -104,7 +107,9 @@ export default function ConsoleLayout(props: ParentProps) {
           {consoleState.state.module === "sessions" ? <SessionList /> : null}
           {consoleState.state.module === "skills" ? <SkillList /> : null}
           {consoleState.state.module === "tasks" ? <TaskList /> : null}
-          {consoleState.state.module === "portfolio" ? <PortfolioList /> : null}
+          {consoleState.state.module === "users" ? (
+            <ActorList currentKey={usersCurrentKey()} onSelect={onSelectUserActor} />
+          ) : null}
           {consoleState.state.module === "research" ? <ResearchList /> : null}
           {/* logs 模块不需要侧边列表，main 区域全宽展示 */}
           <main class="min-h-0 min-w-0 flex-1 overflow-hidden p-3 md:p-4">
@@ -117,6 +122,8 @@ export default function ConsoleLayout(props: ParentProps) {
           </main>
         </div>
       </div>
+      <SymbolDrawer />
     </div>
+    </SymbolDrawerProvider>
   )
 }

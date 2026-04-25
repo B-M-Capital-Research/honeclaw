@@ -2,6 +2,7 @@ import { createResource, createSignal, For, Show } from "solid-js"
 import { getAuditRecordDetail, getAuditRecords } from "@/lib/api"
 import type { AuditQueryFilter, AuditRecordSummary, LlmAuditRecord } from "@/lib/types"
 import { useBackend } from "@/context/backend"
+import { EntityRefLink } from "@/components/entity-ref-link"
 
 function shortTime(ts: string): string {
     if (!ts) return ""
@@ -245,9 +246,31 @@ export default function LlmAuditPage() {
                                                 onClick={() => setSelectedId(row.id)}
                                             >
                                                 <td class="whitespace-nowrap px-4 py-2 text-[color:var(--text-secondary)]">{shortTime(row.created_at)}</td>
-                                                <td class="px-3 py-2 truncate max-w-[120px]" title={`${row.actor_user_id || "无"} / ${row.session_id}`}>
-                                                    <div class="text-[color:var(--text-primary)] truncate">{row.actor_user_id || "-"}</div>
-                                                    <div class="text-[10px] text-[color:var(--text-muted)] truncate">{row.session_id}</div>
+                                                <td class="px-3 py-2 max-w-[180px]" title={`${row.actor_user_id || "无"} / ${row.session_id}`}>
+                                                    <div class="flex flex-col gap-1">
+                                                        <Show
+                                                            when={row.actor_user_id && row.actor_channel}
+                                                            fallback={
+                                                                <span class="text-[10px] text-[color:var(--text-muted)]">-</span>
+                                                            }
+                                                        >
+                                                            <EntityRefLink
+                                                                kind="actor"
+                                                                id={row.actor_user_id!}
+                                                                channel={row.actor_channel}
+                                                                scope={row.actor_scope}
+                                                                compact
+                                                            />
+                                                        </Show>
+                                                        <Show when={row.session_id}>
+                                                            <EntityRefLink
+                                                                kind="session"
+                                                                id={row.session_id}
+                                                                label={row.session_id.replace(/^Actor_/, "").slice(0, 14) + "…"}
+                                                                compact
+                                                            />
+                                                        </Show>
+                                                    </div>
                                                 </td>
                                                 <td class="px-3 py-2">
                                                     <div class="text-[color:var(--text-primary)]">{row.provider}</div>
@@ -326,6 +349,28 @@ export default function LlmAuditPage() {
                                 <Show when={!detailData.loading ? detailData() : null} fallback={<div class="text-[color:var(--text-muted)]">加载中...</div>}>
                                     {(detail) => (
                                         <>
+                                            <Show when={detail().actor_user_id || detail().session_id}>
+                                                <div class="rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-3 font-sans">
+                                                    <h4 class="mb-2 font-bold text-[color:var(--text-muted)] text-[10px] uppercase tracking-wider">关联实体</h4>
+                                                    <div class="flex flex-wrap gap-1.5">
+                                                        <Show when={detail().actor_user_id && detail().actor_channel}>
+                                                            <EntityRefLink
+                                                                kind="actor"
+                                                                id={detail().actor_user_id!}
+                                                                channel={detail().actor_channel}
+                                                                scope={detail().actor_scope}
+                                                            />
+                                                        </Show>
+                                                        <Show when={detail().session_id}>
+                                                            <EntityRefLink
+                                                                kind="session"
+                                                                id={detail().session_id}
+                                                                label={detail().session_id.replace(/^Actor_/, "").slice(0, 18) + "…"}
+                                                            />
+                                                        </Show>
+                                                    </div>
+                                                </div>
+                                            </Show>
                                             <Show when={detail().error}>
                                                 <div class="rounded-md border border-rose-500/30 bg-rose-500/10 p-3">
                                                     <h4 class="mb-2 font-bold text-rose-400 text-[10px] uppercase tracking-wider">错误信息</h4>

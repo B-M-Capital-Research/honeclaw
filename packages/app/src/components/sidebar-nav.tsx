@@ -56,11 +56,11 @@ export function SidebarNav() {
         </div>
       </div>
 
-      {/* 主导航 */}
+      {/* 工作台 */}
       <div class="mt-10 space-y-2">
         <div class="flex items-center gap-2">
           <div class="min-w-0 flex-1">
-            <NavLink href="/start" label="开始" />
+            <NavLink href="/dashboard" label="概览" also={["/start"]} />
           </div>
           <a
             href={publicHref()}
@@ -75,16 +75,28 @@ export function SidebarNav() {
             </svg>
           </a>
         </div>
-        <NavLink href="/sessions" label="会话" />
-        <Show when={backend.hasCapability("skills")}><NavLink href="/skills" label="技能管理" /></Show>
-        <Show when={backend.hasCapability("cron_jobs")}><NavLink href="/tasks" label="任务中心" /></Show>
-        <NavLink href="/memory" label="记忆" also={["/portfolio"]} />
-        <Show when={backend.hasCapability("research")}><NavLink href="/research" label="个股研究" /></Show>
       </div>
 
-      {/* 系统分组（紧靠底部状态卡之上） */}
+      {/* 用户视角 */}
+      <div class="mt-6 space-y-2">
+        <div class="px-4 pb-1 text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">用户视角</div>
+        <NavLink href="/sessions" label="会话" />
+        <NavLink href="/users" label="用户档案" also={["/memory", "/portfolio"]} />
+        <Show when={backend.hasCapability("cron_jobs")}><NavLink href="/tasks" label="推送任务" /></Show>
+      </div>
+
+      {/* 研究 */}
+      <Show when={backend.hasCapability("research")}>
+        <div class="mt-6 space-y-2">
+          <div class="px-4 pb-1 text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">研究</div>
+          <NavLink href="/research" label="个股研究" />
+        </div>
+      </Show>
+
+      {/* 系统分组(紧靠底部状态卡之上) */}
       <div class="mt-auto space-y-2 pb-3">
         <div class="px-4 pb-1 text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">系统</div>
+        <Show when={backend.hasCapability("skills")}><NavLink href="/skills" label="技能管理" /></Show>
         <Show when={backend.hasCapability("llm_audit")}><NavLink href="/llm-audit" label="LLM 审计" /></Show>
         <Show when={backend.hasCapability("logs")}><NavLink href="/logs" label="日志" /></Show>
         <NavLink href="/settings" label="设置" />

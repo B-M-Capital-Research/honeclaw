@@ -256,6 +256,7 @@ sessions/
 node_modules/
 packages/app/dist/
 playwright-report/
+test-results/
 bins/hone-desktop/binaries/
 bins/hone-desktop/tauri.generated.conf.json
 local/

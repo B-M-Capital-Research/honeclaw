@@ -125,59 +125,45 @@ export function CompanyProfileDetail() {
             </div>
           </div>
 
-          <div class="flex min-h-0 flex-1 overflow-hidden">
-            {/* 左侧：垂直列出当前空间的画像 */}
-            <Show when={(profiles.profiles() ?? []).length > 0}>
-              <div class="flex w-[240px] shrink-0 flex-col border-r border-[color:var(--border)] bg-[color:var(--panel)]">
-                <div class="shrink-0 border-b border-[color:var(--border)] px-4 py-3">
-                  <div class="flex items-center justify-between">
-                    <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                      当前空间画像
-                    </div>
-                    <div class="text-xs text-[color:var(--text-muted)]">
-                      {(profiles.profiles() ?? []).length} 家
-                    </div>
-                  </div>
-                </div>
-
-                <div class="hf-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
-                  <div class="flex flex-col gap-1">
-                    <For each={profiles.profiles() ?? []}>
-                      {(item) => (
-                        <button
-                          type="button"
-                          class={[
-                            "w-full rounded-md border px-3 py-2 text-left transition",
-                            profiles.state.currentProfileId === item.profile_id
-                              ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
-                              : "border-transparent bg-transparent hover:bg-[color:var(--surface)] hover:border-[color:var(--border)]",
-                          ].join(" ")}
-                          onClick={() => profiles.selectProfile(item.profile_id)}
-                        >
-                          <div class="truncate text-sm font-medium text-[color:var(--text-primary)]">
-                            {item.title}
-                          </div>
-                          <div class="mt-1 flex items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
-                            <span class="flex-1 truncate">{formatDate(item.updated_at)}</span>
-                            <Show
-                              when={profiles.state.highlightedProfileIds.includes(
-                                item.profile_id,
-                              )}
-                            >
-                              <span class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 font-medium text-[10px] text-emerald-700">
-                                更新
-                              </span>
-                            </Show>
-                          </div>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </div>
+          {/* 顶部横向公司选择条 — 取代原来的 240px 内嵌列,避免在 /users 下三层嵌套 */}
+          <Show when={(profiles.profiles() ?? []).length > 0}>
+            <div class="hf-scrollbar shrink-0 overflow-x-auto border-b border-[color:var(--border)] bg-[color:var(--panel)] px-6 py-2">
+              <div class="flex min-w-max items-center gap-2">
+                <span class="shrink-0 text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
+                  公司画像 ({(profiles.profiles() ?? []).length})
+                </span>
+                <For each={profiles.profiles() ?? []}>
+                  {(item) => (
+                    <button
+                      type="button"
+                      class={[
+                        "shrink-0 rounded-md border px-3 py-1 text-xs transition",
+                        profiles.state.currentProfileId === item.profile_id
+                          ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--text-primary)]"
+                          : "border-[color:var(--border)] bg-[color:var(--surface)] text-[color:var(--text-secondary)] hover:border-[color:var(--accent)]/50 hover:text-[color:var(--text-primary)]",
+                      ].join(" ")}
+                      onClick={() => profiles.selectProfile(item.profile_id)}
+                      title={`${item.title} · ${formatDate(item.updated_at)}`}
+                    >
+                      <span class="font-medium">{item.title}</span>
+                      <Show
+                        when={profiles.state.highlightedProfileIds.includes(
+                          item.profile_id,
+                        )}
+                      >
+                        <span class="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">
+                          更新
+                        </span>
+                      </Show>
+                    </button>
+                  )}
+                </For>
               </div>
-            </Show>
+            </div>
+          </Show>
 
-            {/* 右侧：主视图（预览、文档等） */}
+          <div class="flex min-h-0 flex-1 overflow-hidden">
+            {/* 主视图（预览、文档等） */}
             <div class="hf-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5 bg-[color:var(--surface)]">
 
             <Show when={transferError()}>
