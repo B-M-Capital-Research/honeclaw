@@ -5,6 +5,13 @@
 - **严重等级**: P3
 - **状态**: Fixed
 - **证据来源**:
+  - 2026-04-26 线上复核：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6361`，`job_id=j_379acc40`，`job_name=TEM 每日动态监控`，`executed_at=2026-04-26T00:01:30.415080+08:00`
+    - 本轮已正确落成 `execution_status=noop`、`message_send_status=skipped_noop`、`should_deliver=0`、`delivered=0`
+    - `run_id=6362`，`job_id=j_5f0b686a`，`job_name=RKLB 每日动态监控`，`executed_at=2026-04-26T00:02:11.656192+08:00`
+    - 本轮同样已正确落成 `noop + skipped_noop`
+    - `data/runtime/logs/web.log.2026-04-25` 同秒记录 `SchedulerDiag skip_signal ...` 与 `[Feishu] 心跳任务未命中，本轮不发送`
+    - 说明“正文已判断应跳过却仍继续外发”的旧缺陷在当前线上样本里已不再复现；残留的 session 写库污染另拆到 [`feishu_scheduler_noop_reply_persisted_to_direct_session.md`](./feishu_scheduler_noop_reply_persisted_to_direct_session.md)
   - 最新复发证据：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=5257`，`job_id=j_101f5e64`，`job_name=AAOI 每日动态监控`，`executed_at=2026-04-24T00:01:07.356294+08:00`
     - 本轮落成 `execution_status=completed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`
@@ -91,6 +98,12 @@
 - 新增回归测试：
   - `cargo test -p hone-channels skip_delivery_signal_detected`
   - `cargo test -p hone-channels scheduler::tests`
+
+## 2026-04-26 巡检结论
+
+- 最新 `TEM` / `RKLB 每日动态监控` 已稳定收口为 `noop + skipped_noop`，运行日志同步明确写出 `skip_signal` 与 `本轮不发送`。
+- 因此这条缺陷维持 `Fixed`：当前线上不再是“应跳过却仍外发长文”。
+- 但同一时间窗发现新的状态边界问题：未发送长文仍被写入 direct session，已拆分为独立缺陷 [`feishu_scheduler_noop_reply_persisted_to_direct_session.md`](./feishu_scheduler_noop_reply_persisted_to_direct_session.md) 跟踪。
 
 ## 下一步建议
 
