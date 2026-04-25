@@ -290,6 +290,45 @@ fmp.stock_split_calendar|5
 
 - `delivery_log` 在同一窗口也继续记录 `queued / filtered / no_actor`，说明 router/digest 仍在处理新增事件；本轮没有新增 `high` 事件，因此没有新的 `sent` 并不改变“Truth Social source 持续断流”这一定性。
 
+## Latest巡检 Update
+
+- 2026-04-25T14:58:29Z：在本次巡检时间窗 `2026-04-25T10:27:54.485Z` 之后，这个 enabled source 仍然没有恢复；冷启动和后续小时轮询继续稳定返回同一种 `HTTP 403 + text/html` 拦截页：
+
+```text
+data/runtime/logs/web.log.2026-04-25:851:[2026-04-25 10:31:18.634] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-25:861:[2026-04-25 10:31:19.797] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:957:[2026-04-25 10:38:25.555] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-25:969:[2026-04-25 10:38:26.687] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1166:[2026-04-25 14:38:28.559] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1192:[2026-04-25 15:38:28.424] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1261:[2026-04-25 16:38:28.523] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1288:[2026-04-25 17:38:28.469] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1375:[2026-04-25 18:38:28.453] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1407:[2026-04-25 19:38:28.666] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1464:[2026-04-25 20:38:28.479] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1519:[2026-04-25 21:38:28.419] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1592:[2026-04-25 22:28:58.015] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-25:1603:[2026-04-25 22:28:59.319] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+```
+
+- 同一增量窗口里，`data/events.sqlite3` 仍然没有任何新 `truth_social.%` 事件，说明这个 source 到现在仍是完全断流；对照的 `telegram.watcherguru` 也没有新增，但至少保留了历史最近值 `2026-04-24 22:06:55 UTC`：
+
+```text
+SELECT count(*) FROM events WHERE source LIKE 'truth_social.%' AND created_at_ts >= 1777112874;
+0
+
+SELECT datetime(max(created_at_ts),'unixepoch') FROM events WHERE source LIKE 'truth_social.%';
+NULL
+
+SELECT count(*) FROM events WHERE source='telegram.watcherguru' AND created_at_ts >= 1777112874;
+0
+
+SELECT datetime(max(created_at_ts),'unixepoch') FROM events WHERE source='telegram.watcherguru';
+2026-04-24 22:06:55
+```
+
+- 这次增量窗口内其它 event-engine 主链路仍然前进：`MultiChannelSink` 在 `10:31:18Z`、`10:38:25Z`、`22:28:58Z` 三次成功装配；`telegram` heartbeat `updated_at=2026-04-25T14:30:32.017236Z`，没有心跳陈旧；`fmp.earning_calendar` / `fmp.stock_dividend_calendar` / `fmp.economic_calendar` / `fmp.stock_split_calendar` / `fmp.quote` 近 24h 仍都有新记录。因此本轮新增证据继续把问题限定在 Truth Social source 自身，而不是整个 poller cadence、sink 装配或 FMP feed 一起失效。
+
 ## Date Observed
 
 `2026-04-24T04:05:20Z`
