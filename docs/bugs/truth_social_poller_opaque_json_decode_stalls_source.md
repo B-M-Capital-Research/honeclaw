@@ -250,6 +250,46 @@ telegram.watcherguru|40|2026-04-24 22:06:55
 
 - 本轮其它 event-engine 主链路没有一起劣化：`poller ok` 最大间隔约 319 秒，没有 >15 分钟停摆；`event_engine.dryrun=false` 且 `MultiChannelSink` 仍反复装配成功；`fmp.earning_calendar` / `fmp.stock_dividend_calendar` / `fmp.economic_calendar` / `fmp.stock_split_calendar` / `fmp.quote` 近 24h 仍都有新记录。因此这次补充继续把影响限定在 Truth Social source 自身，而不是整个 poller cadence、sink 装配或 FMP feed 断流。
 
+## Latest巡检 Update
+
+- 2026-04-25T10:34:24Z：在上次巡检时间 `2026-04-25T06:26:23.700Z` 之后，Truth Social `statuses` 403 又连续出现了 4 次，而且仍是同一种 `text/html` 拦截页形态：
+
+```text
+data/runtime/logs/web.log.2026-04-25:1166:[2026-04-25 14:38:28.559] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1192:[2026-04-25 15:38:28.424] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1261:[2026-04-25 16:38:28.523] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1288:[2026-04-25 17:38:28.469] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+```
+
+- 同一增量窗口里，`data/events.sqlite3` 仍然没有任何 `truth_social.%` 行，说明这个 enabled source 在本轮没有恢复出数：
+
+```text
+SELECT source, COUNT(*), datetime(MAX(created_at_ts),'unixepoch')
+FROM events
+WHERE source LIKE 'truth_social.%'
+GROUP BY source;
+-- no rows
+```
+
+- 其它 event-engine 主链路在同一窗口仍持续前进，因此这次新增证据继续把坏态限定在 Truth Social source 自身，而不是整个引擎停摆：
+
+```text
+SELECT source, count(*)
+FROM events
+WHERE created_at_ts >= strftime('%s','2026-04-25T06:26:23.700Z')
+GROUP BY source
+ORDER BY count(*) DESC;
+
+fmp.stock_news:defenseworld.net|32
+fmp.economic_calendar|22
+fmp.stock_news:seekingalpha.com|12
+fmp.stock_news:prnewswire.com|7
+fmp.stock_split_calendar|5
+...
+```
+
+- `delivery_log` 在同一窗口也继续记录 `queued / filtered / no_actor`，说明 router/digest 仍在处理新增事件；本轮没有新增 `high` 事件，因此没有新的 `sent` 并不改变“Truth Social source 持续断流”这一定性。
+
 ## Date Observed
 
 `2026-04-24T04:05:20Z`
