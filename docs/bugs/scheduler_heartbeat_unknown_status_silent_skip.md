@@ -19,6 +19,15 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 05:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6463-6472` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测`；10 条 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=6467`（`RKLB异动监控`，`2026-04-26T05:00:22.060292+08:00`）与 `run_id=6471`（`TEM大事件心跳监控`，`2026-04-26T05:00:30.751077+08:00`）继续落成 `parse_kind=JsonEmptyStatus`；`raw_preview` 仍先在 `<think>` 中复盘新闻、价格与闭市时段判断，外层没有稳定的状态 JSON 首包。
+    - `run_id=6463`（`全天原油价格3小时播报`）、`6468`（`Monitor_Watchlist_11`）、`6470`（`ASTS 重大异动心跳监控`）、`6472`（`ORCL 大事件监控`）与 `6462`（`持仓重大事件心跳检测`）则继续漂移到 `PlainTextSuppressed`；尤其 `run_id=6462` 的 `raw_preview` 已直接生成“当前持仓 ASTS / RKLB / TEM / ORCL 的事件监控持续运行中，下次推送仅在出现高价值增量时触发”这类可读总结，但仍被当作静默 heartbeat 吞掉，说明解析器吸收的已不只是尾部 `{}`，而是整段自然语言结论。
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 05:00:06.658-05:00:44.164` 同批 `HeartbeatDiag` 日志继续统一记录 `starts_with_json=false`；`job=持仓重大事件心跳检测`、`job=全天原油价格3小时播报`、`job=CAI破位预警`、`job=Monitor_Watchlist_11`、`job=ASTS 重大异动心跳监控` 与 `job=ORCL 大事件监控` 明确都落成 `parse_kind=PlainTextSuppressed`。
+    - `2026-04-26 05:00:13.736-05:00:14.407` 同窗再次连续出现 Tavily `usage limit` 告警，但 heartbeat 最终仍统一被兜底成 `skipped_noop`；说明最近一小时没有形成新的独立发送故障，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-26 05:00` 为止，heartbeat 坏态继续停留在“没有任何纯 JSON 首包样本”，且 `PlainTextSuppressed` 已吞掉完整自然语言结论；状态保持 `Fixing`、严重等级维持 `P2`。
   - 2026-04-26 04:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6440-6450` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测`；其中除原油播报外，其余 10 条再次全部落成 `noop + skipped_noop + delivered=0`。
