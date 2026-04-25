@@ -593,7 +593,7 @@ const CONTENT_ZH = {
         {
           title: "1. 协议接受与生效",
           body: [
-            { kind: "p", parts: ["欢迎使用 Hone（以下简称“我们”或“本服务”）。本《用户协议》（以下简称“本协议”）是您与本服务运营方之间就您使用本服务所订立的有效合同。"] },
+            { kind: "p", parts: ["欢迎使用 Hone（以下简称“本服务”）。本服务由 ", { strong: "杭州巴芒科技有限责任公司" }, "（以下简称“我们”）运营。本《用户协议》（以下简称“本协议”）是您与我们之间就您使用本服务所订立的有效合同。"] },
             { kind: "p", parts: ["您在勾选同意或继续使用本服务时，即视为您已充分阅读并同意本协议全部条款。若您不同意本协议任何条款，请立即停止使用本服务。"] },
           ],
         },
@@ -614,17 +614,22 @@ const CONTENT_ZH = {
         {
           title: "4. 用户行为规范",
           body: [
-            { kind: "p", parts: ["使用本服务时，您承诺不从事下列行为："] },
+            { kind: "p", parts: ["使用本服务时，您承诺不从事下列行为，包括但不限于："] },
             {
               kind: "ul",
               items: [
-                ["违反国家法律法规或公序良俗；"],
-                ["侵犯他人合法权益，包括知识产权、隐私权、商业秘密等；"],
+                ["违反中华人民共和国法律法规、社会主义核心价值观或公序良俗；"],
+                ["危害国家安全、国家荣誉与利益，煽动颠覆国家政权、推翻社会主义制度，或破坏国家统一与领土完整；"],
+                ["煽动民族仇恨、民族歧视，破坏民族团结，或宣扬恐怖主义、极端主义、暴力；"],
+                ["制作、复制、传播淫秽色情、赌博、毒品或其他违法信息；"],
+                ["通过提示词或其他方式诱导本服务输出违反前述规定的内容，包括但不限于政治敏感、反华、虚假信息、歧视性或仇恨性言论；"],
+                ["侵犯他人合法权益，包括知识产权、隐私权、名誉权、商业秘密等；"],
                 ["对本服务进行反向工程、爬取、批量自动化访问、漏洞利用或其他形式的滥用；"],
                 ["上传或传播恶意代码、垃圾信息、违法或不良信息；"],
                 ["冒用他人身份或伪造账号信息。"],
               ],
             },
+            { kind: "p", parts: ["若您违反前述规定，我们有权立即暂停或终止您的账号、保留相关证据，必要时向有权机关报告。由此产生的全部法律责任由您本人承担。"] },
           ],
         },
         {
@@ -652,7 +657,7 @@ const CONTENT_ZH = {
           title: "8. 免责与责任限制",
           body: [
             { kind: "p", parts: ["在适用法律允许的最大范围内，本服务以“现状”和“现有”方式提供。我们不对服务的连续性、准确性、完整性、及时性作出任何明示或默示保证。"] },
-            { kind: "p", parts: ["因您依赖本服务输出内容作出的投资或交易决定所导致的任何损失，除依法应承担的责任外，我们不对此承担责任。我们的累计赔偿责任以您过去 12 个月内为本服务实际支付的费用为限。"] },
+            { kind: "p", parts: ["本服务目前以免费形式提供。在适用法律允许的最大范围内，我们不对您因使用或无法使用本服务而遭受的任何直接或间接损失（包括但不限于投资或交易损失、数据丢失、利润损失等）承担金钱赔偿责任。"] },
           ],
         },
         {
@@ -666,13 +671,15 @@ const CONTENT_ZH = {
           title: "10. 争议解决与法律适用",
           body: [
             { kind: "p", parts: ["本协议的订立、效力、解释、履行及争议解决，均适用中华人民共和国大陆地区法律（不含港澳台地区法律）。"] },
-            { kind: "p", parts: ["因本协议引起的或与之相关的任何争议，双方应首先协商解决；协商不成的，任何一方可向运营方主要办公地有管辖权的人民法院提起诉讼。"] },
+            { kind: "p", parts: ["因本协议引起的或与之相关的任何争议，双方应首先协商解决；协商不成的，任何一方均可向运营方所在地（浙江省杭州市）有管辖权的人民法院提起诉讼。"] },
           ],
         },
         {
           title: "11. 联系方式",
           body: [
-            { kind: "p", parts: ["若您对本协议有任何疑问、意见或建议，可通过本服务“个人页面”中的反馈入口联系我们。我们将在合理时间内回复并处理。"] },
+            { kind: "p", parts: ["若您对本协议有任何疑问、意见或建议，请在本项目 GitHub 仓库提交 issue 联系我们："] },
+            { kind: "p", parts: [{ code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }] },
+            { kind: "p", parts: ["我们将在合理时间内回复并处理。"] },
           ],
         },
       ] as LegalSection[],
@@ -684,7 +691,7 @@ const CONTENT_ZH = {
         {
           title: "1. 引言与适用范围",
           body: [
-            { kind: "p", parts: ["本《隐私政策》说明 Hone（以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 Hone 网站及客户端使用本服务的全部场景。"] },
+            { kind: "p", parts: ["本《隐私政策》说明 Hone（运营方为 ", { strong: "杭州巴芒科技有限责任公司" }, "，以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 Hone 网站及客户端使用本服务的全部场景。"] },
             { kind: "p", parts: ["请您在使用本服务前完整阅读本政策。继续使用本服务即视为您已充分了解并同意本政策。"] },
           ],
         },
@@ -783,7 +790,9 @@ const CONTENT_ZH = {
         {
           title: "11. 联系方式",
           body: [
-            { kind: "p", parts: ["若您对本政策或您的个人信息处理有任何疑问、意见或投诉，可通过本服务“个人页面”中的反馈入口联系我们。我们将在合理时间内回复并妥善处理。"] },
+            { kind: "p", parts: ["若您对本政策或您的个人信息处理有任何疑问、意见或投诉，请在本项目 GitHub 仓库提交 issue 联系我们："] },
+            { kind: "p", parts: [{ code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }] },
+            { kind: "p", parts: ["我们将在合理时间内回复并妥善处理。"] },
           ],
         },
       ] as LegalSection[],
@@ -793,7 +802,7 @@ const CONTENT_ZH = {
   footer: {
     tagline: "磨砺认知，剔除噪音",
     mantra: "磨砺认知 · 剔除噪音 · OPEN FINANCIAL CONSOLE",
-    copyright: "© 2025 B&M Capital Research. Open source, MIT License.",
+    copyright: "© 2026 杭州巴芒科技有限责任公司. Open source, MIT License.",
     columns: {
       product: {
         title: "产品",
@@ -802,6 +811,8 @@ const CONTENT_ZH = {
           { label: "路线图", href: "/roadmap" },
           { label: "对话", href: "/chat" },
           { label: "个人", href: "/me" },
+          { label: "用户协议", href: "/terms" },
+          { label: "隐私政策", href: "/privacy" },
         ],
       },
       resources: {
@@ -1400,7 +1411,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "1. Acceptance & effective date",
           body: [
-            { kind: "p", parts: ["Welcome to Hone (\"we\" or \"the service\"). These Terms of Service (\"Terms\") form a binding agreement between you and the operator of the service regarding your use of the service."] },
+            { kind: "p", parts: ["Welcome to Hone (\"the service\"). The service is operated by ", { strong: "Hangzhou Bamang Technology Co., Ltd." }, " (\"we\"). These Terms of Service (\"Terms\") form a binding agreement between you and us regarding your use of the service."] },
             { kind: "p", parts: ["By checking the agreement box or continuing to use the service, you confirm that you have read and accept these Terms in full. If you disagree with any clause, stop using the service immediately."] },
           ],
         },
@@ -1421,17 +1432,22 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "4. Acceptable use",
           body: [
-            { kind: "p", parts: ["When using the service, you agree not to:"] },
+            { kind: "p", parts: ["When using the service, you agree not to (including but not limited to):"] },
             {
               kind: "ul",
               items: [
-                ["violate any applicable laws, regulations, or public order;"],
-                ["infringe on others' rights, including intellectual property, privacy, or trade secrets;"],
+                ["violate the laws and regulations of the People's Republic of China, the core socialist values, or public order and morals;"],
+                ["endanger national security, honor, or interests; incite subversion of state power or the socialist system; or undermine national unity or territorial integrity;"],
+                ["incite ethnic hatred or discrimination, undermine ethnic unity, or promote terrorism, extremism, or violence;"],
+                ["produce, reproduce, or distribute pornographic, gambling, drug-related, or other unlawful content;"],
+                ["use prompts or any other means to induce the service to produce content that violates the above (including but not limited to politically sensitive material, anti-China content, disinformation, or discriminatory or hateful speech);"],
+                ["infringe on others' rights, including intellectual property, privacy, reputation, or trade secrets;"],
                 ["reverse-engineer, scrape, bulk-automate, exploit vulnerabilities, or otherwise abuse the service;"],
                 ["upload or distribute malware, spam, or unlawful or harmful content;"],
                 ["impersonate others or falsify account information."],
               ],
             },
+            { kind: "p", parts: ["If you violate the above, we may immediately suspend or terminate your account, preserve relevant evidence, and report to competent authorities where necessary. You bear sole legal responsibility for any consequences."] },
           ],
         },
         {
@@ -1459,7 +1475,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           title: "8. Disclaimers & limitation of liability",
           body: [
             { kind: "p", parts: ["To the maximum extent permitted by applicable law, the service is provided \"as is\" and \"as available.\" We make no express or implied warranty of continuity, accuracy, completeness, or timeliness."] },
-            { kind: "p", parts: ["Except for liability we cannot disclaim under law, we are not responsible for losses arising from any investment or trading decision you make in reliance on service output. Our cumulative liability is capped at the fees you actually paid for the service in the preceding 12 months."] },
+            { kind: "p", parts: ["The service is currently provided free of charge. To the maximum extent permitted by applicable law, we are not liable for any direct or indirect monetary loss you suffer from using or being unable to use the service (including but not limited to investment or trading losses, data loss, or lost profits)."] },
           ],
         },
         {
@@ -1473,13 +1489,15 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           title: "10. Governing law & dispute resolution",
           body: [
             { kind: "p", parts: ["The formation, validity, interpretation, performance, and dispute resolution of these Terms are governed by the laws of mainland China (excluding Hong Kong SAR, Macao SAR, and Taiwan)."] },
-            { kind: "p", parts: ["Any dispute arising from or related to these Terms should first be addressed by good-faith negotiation. If negotiation fails, either party may bring a claim before the competent people's court at the operator's principal place of business."] },
+            { kind: "p", parts: ["Any dispute arising from or related to these Terms should first be addressed by good-faith negotiation. If negotiation fails, either party may bring a claim before the competent people's court at the operator's place of registration (Hangzhou, Zhejiang Province)."] },
           ],
         },
         {
           title: "11. Contact",
           body: [
-            { kind: "p", parts: ["If you have any questions, comments, or suggestions about these Terms, reach us through the feedback entry on the \"Account\" page. We will respond within a reasonable period."] },
+            { kind: "p", parts: ["If you have any questions, comments, or suggestions about these Terms, please open an issue on the project's GitHub repository:"] },
+            { kind: "p", parts: [{ code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }] },
+            { kind: "p", parts: ["We will respond within a reasonable period."] },
           ],
         },
       ] as LegalSection[],
@@ -1491,7 +1509,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "1. Introduction & scope",
           body: [
-            { kind: "p", parts: ["This Privacy Policy describes how Hone (\"we\") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the Hone website or client."] },
+            { kind: "p", parts: ["This Privacy Policy describes how Hone (operated by ", { strong: "Hangzhou Bamang Technology Co., Ltd." }, ", \"we\") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the Hone website or client."] },
             { kind: "p", parts: ["Please read this policy in full before using the service. Continuing to use it means you have understood and accepted the policy."] },
           ],
         },
@@ -1590,7 +1608,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "11. Contact",
           body: [
-            { kind: "p", parts: ["If you have questions, comments, or complaints about this policy or how your data is handled, reach us through the feedback entry on the \"Account\" page. We will respond and address them within a reasonable period."] },
+            { kind: "p", parts: ["If you have questions, comments, or complaints about this policy or how your data is handled, please open an issue on the project's GitHub repository:"] },
+            { kind: "p", parts: [{ code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }] },
+            { kind: "p", parts: ["We will respond and address them within a reasonable period."] },
           ],
         },
       ] as LegalSection[],
@@ -1600,7 +1620,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   footer: {
     tagline: "Sharpen cognition, strip the noise.",
     mantra: "SHARPEN COGNITION · STRIP THE NOISE · OPEN FINANCIAL CONSOLE",
-    copyright: "© 2025 B&M Capital Research. Open source, MIT License.",
+    copyright: "© 2026 Hangzhou Bamang Technology Co., Ltd. Open source, MIT License.",
     columns: {
       product: {
         title: "Product",
@@ -1609,6 +1629,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           { label: "Roadmap", href: "/roadmap" },
           { label: "Chat", href: "/chat" },
           { label: "Account", href: "/me" },
+          { label: "Terms of Service", href: "/terms" },
+          { label: "Privacy Policy", href: "/privacy" },
         ],
       },
       resources: {
