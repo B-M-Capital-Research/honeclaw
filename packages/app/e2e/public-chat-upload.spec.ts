@@ -75,6 +75,7 @@ async function installPublicChatMocks(page: Page) {
           success_count: 0,
           in_flight: 0,
           remaining_today: 20,
+          has_password: true,
         },
       })
       return
