@@ -222,6 +222,34 @@ telegram.watcherguru|40|2026-04-24 22:06:55
 
 - 这次补充把“重启后会不会恢复”的疑点也排除了：最新 `MultiChannelSink` 装配完成后，Truth Social poller 仍在冷启动阶段立即拿到 `403 text/html`，因此坏态仍然限定在 enabled Truth Social source 自身。
 
+## Latest巡检 Update
+
+- 2026-04-25T06:33:21Z：在 `2026-04-25T02:25:52Z` 之后，这个 source 仍然没有恢复，而且在两次新的冷启动后都立即复现 `403 text/html`，随后按小时继续失败：
+
+```text
+data/runtime/logs/web.log.2026-04-25:851:[2026-04-25 10:31:18.634] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-25:861:[2026-04-25 10:31:19.797] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:957:[2026-04-25 10:38:25.555] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-25:969:[2026-04-25 10:38:26.687] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1064:[2026-04-25 11:38:28.046] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1115:[2026-04-25 12:38:28.297] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1140:[2026-04-25 13:38:28.343] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+```
+
+- 同一增量窗口里，`data/events.sqlite3` 依旧查不到任何 `truth_social.%` 事件；而 `telegram.watcherguru` 仍停在旧值 `40`、最近一条 `created_at_ts=2026-04-24 22:06:55 UTC`，说明 Truth Social 至少没有因为这两次重启而恢复出数：
+
+```text
+SELECT source, count(*), datetime(max(created_at_ts),'unixepoch')
+FROM events
+WHERE source LIKE 'truth_social.%'
+GROUP BY source;
+-- no rows
+
+telegram.watcherguru|40|2026-04-24 22:06:55
+```
+
+- 本轮其它 event-engine 主链路没有一起劣化：`poller ok` 最大间隔约 319 秒，没有 >15 分钟停摆；`event_engine.dryrun=false` 且 `MultiChannelSink` 仍反复装配成功；`fmp.earning_calendar` / `fmp.stock_dividend_calendar` / `fmp.economic_calendar` / `fmp.stock_split_calendar` / `fmp.quote` 近 24h 仍都有新记录。因此这次补充继续把影响限定在 Truth Social source 自身，而不是整个 poller cadence、sink 装配或 FMP feed 断流。
+
 ## Date Observed
 
 `2026-04-24T04:05:20Z`
