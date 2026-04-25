@@ -19,6 +19,15 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 06:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6485-6494` 覆盖 CAI/小米/TEM 破位、`小米30港元破位预警`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；10 条 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=6485`（`CAI破位预警`，`2026-04-26T06:00:10.625453+08:00`）、`6488`（`Monitor_Watchlist_11`，`2026-04-26T06:00:27.082441+08:00`）、`6490`（`小米破位预警`，`2026-04-26T06:00:27.817699+08:00`）、`6492`（`ASTS 重大异动心跳监控`，`2026-04-26T06:00:35.845587+08:00`）、`6493`（`TEM大事件心跳监控`，`2026-04-26T06:00:45.266211+08:00`）与 `6494`（`持仓重大事件心跳检测`，`2026-04-26T06:01:17.036619+08:00`）统一记录 `parse_kind=JsonEmptyStatus`、`starts_with_json=false`；说明最新窗口仍没有任何“首字符即 `{`”的稳定结构化首包。
+    - `run_id=6486`（`TEM破位预警`，`2026-04-26T06:00:10.723642+08:00`）、`6489`（`RKLB异动监控`，`2026-04-26T06:00:27.595712+08:00`）与 `6491`（`ORCL 大事件监控`，`2026-04-26T06:00:35.729697+08:00`）继续漂移到 `PlainTextSuppressed`；`raw_preview` 明确显示模型先输出整段条件判断、新闻复盘和价格解释，再被调度器整体吞掉。
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 06:00:10.624-06:01:17.035` 同批 `HeartbeatDiag` 日志继续统一记录 `starts_with_json=false`；其中 `job=持仓重大事件心跳检测` 的 `raw_chars=8381`、`job=TEM大事件心跳监控` 的 `raw_chars=5256`，表明坏态已经稳定扩展到长篇自然语言解释，而不是只在尾部多包一层 JSON。
+    - `2026-04-26 06:00:13.731-06:00:14.339` 同窗再次出现 Tavily `usage limit` 告警，但 `Monitor_Watchlist_11` / `RKLB异动监控` / `ORCL 大事件监控` 最终仍统一落成 `skipped_noop`；说明最近一小时没有形成新的独立发送故障，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-26 06:01` 为止，heartbeat 最新窗口仍没有任何稳定的纯 JSON 首包样本，且 `JsonEmptyStatus` 与 `PlainTextSuppressed` 两类坏态都在持续复现；状态保持 `Fixing`、严重等级维持 `P2`。
   - 2026-04-26 05:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6463-6472` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测`；10 条 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`。
