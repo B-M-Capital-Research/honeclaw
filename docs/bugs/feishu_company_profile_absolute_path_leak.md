@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-24 19:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
   - `session_id=Actor_feishu__direct__ou_5f6ac070b0b574f2bc3ba49f9678b675a3`
@@ -20,6 +20,18 @@
 2. 系统完成画像建档，并在最终回复里同时汇报“已创建两份文件”。
 3. 汇报内容直接包含本机绝对文件路径和 Markdown 文件链接，路径中暴露了本地仓库根目录、渠道 sandbox 结构和用户 open_id 作用域。
 4. 用户虽然知道“画像已建好”，但拿到的是只对本机调试者有意义的内部路径，而不是面向 Feishu 用户的业务结果摘要。
+
+## 2026-04-26 修复
+
+- 在 `crates/hone-channels/src/runtime.rs` 的共享 `sanitize_user_visible_output(...)` 中加入本地绝对路径与本地 Markdown 文件链接脱敏：
+  - `[...]( /Users/... )` 这类本地文件链接会改写成不含绝对路径的纯文本标签；
+  - 裸 `/Users/...` / `C:\...` 路径会统一收口成 `<absolute-path>/<basename>`，不再泄露仓库根目录、sandbox 结构或 open_id 作用域。
+- 该规则位于共享出站净化层，因此会覆盖公司画像建档回复以及其它外部渠道上的同类本地文件路径外泄。
+- 新增 `crates/hone-channels/src/runtime.rs` 回归测试，覆盖本地 Markdown 文件链接与绝对路径掩码行为。
+
+## 2026-04-26 验证
+
+- `cargo test -p hone-channels sanitize_user_visible_output_ -- --nocapture`
 
 ## 期望效果
 

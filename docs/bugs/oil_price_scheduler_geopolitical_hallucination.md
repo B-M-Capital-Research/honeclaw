@@ -17,6 +17,21 @@
   - 启发式判据（`SANE_KEYWORDS` 命中 + 两个冲突数字都出现则视为 pass）：两个 case 全部 `pass=true`。这是首次在生产真实模型上实测「报价字段一致性约束」确实生效，不只是 prompt 写得好看。
   - 未做：OpenRouter 侧 `deepseek/deepseek-v4-pro` 对照跑返回 404（模型名在 OpenRouter 不存在），待确认正确的 deepseek 版本后补跑。
 - **证据来源**:
+  - 2026-04-26 03:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6426`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-04-26T03:00:41.702388+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `should_deliver=1`
+    - `delivered=1`
+    - `response_preview` 仍向用户发送：`WTI原油：$94.40/桶，较昨收$95.85下跌$1.45（-1.51%）`、`布伦特原油：约$105/桶（4月25日收盘参考价）`，并继续把 `巴基斯坦方面披露美伊或开启第二轮和平谈判`、`市场预期伊朗原油重返全球供应`、`周末前避险情绪升温`、`地缘风险溢价面临收缩压力` 组织成确定性变动原因。
+    - 这说明即使 4 月 25 日 21:01 已经确认“价格一致性约束无法约束原因归因”，到 4 月 26 日 03:00 的最新真实送达里，模型仍继续把未经明确来源核验的地缘叙事包装成确定性事实；问题没有自然收敛。
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 03:00:41.702` 对应 run 仍显示该任务成功送达；`detail_json` 记录 `parse_kind=JsonTriggered`、`starts_with_json=false`，`raw_preview` 先在 `<think>` 中整理 WTI/Brent 数据，再直接输出上述归因，没有给出可追溯来源、发布时间或“搜索降级时只报价格”的降级说明。
+    - 同一时间窗 `03:00:11.xxx` 再次出现 Tavily `usage limit` 告警，但播报仍然成功投递完整地缘归因，说明当前不是链路失败，而是质量性错误继续稳定出站。
+    - 结论：到 `2026-04-26 03:00` 为止，这条缺陷仍在真实用户可见播报中活跃；状态保持 `Fixing`、严重等级维持 `P2`。
   - 2026-04-25 21:01 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6290`

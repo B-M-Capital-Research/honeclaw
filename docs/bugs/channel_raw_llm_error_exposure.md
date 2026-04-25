@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 21:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实回归：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f69970af6b0ef6ce8e233ef0e0cc0bd79`
@@ -51,6 +51,20 @@
 3. `AgentSession` 把原始 `err.to_string()` 作为 `response.error` 往上抛。
 4. Feishu 失败分支直接执行 `format!("抱歉，处理出错了: {}", truncated)`，把截断后的原始错误拼进给用户的展示文本。
 5. 用户侧看到的不是产品化错误提示，而是底层 provider/协议细节；随后只能追问“咋回事”。
+
+## 2026-04-26 修复
+
+- 在 `crates/hone-channels/src/runtime.rs` 扩展 `looks_internal_error_detail(...)`，把 `Falling back from WebSockets to HTTPS transport`、`unexpected status`、`backend-api/codex/responses`、`cf-ray` 等 Codex/OpenAI 传输回退痕迹统一判定为内部错误细节，继续收口成通用失败提示。
+- 在 `crates/hone-channels/src/response_finalizer.rs` 增加成功态兜底：如果最终正文混入上述内部传输痕迹，不再把污染文本当作正式回复发送，而是直接降级为现有空回复 fallback，避免“内部错误 + 半成品答案”一并投递给用户。
+- 新增回归测试：
+  - `crates/hone-channels/src/runtime.rs`：覆盖 transport trace 错误文案收口。
+  - `crates/hone-channels/src/agent_session/tests.rs`：覆盖 success=true 但正文混入内部传输痕迹时的 finalizer fallback。
+
+## 2026-04-26 验证
+
+- `cargo test -p hone-channels sanitize_user_visible_output_ -- --nocapture`
+- `cargo test -p hone-channels user_visible_error_message_ -- --nocapture`
+- `cargo test -p hone-channels finalize_agent_response_suppresses_internal_transport_error_fragments -- --nocapture`
 
 ## 期望效果
 

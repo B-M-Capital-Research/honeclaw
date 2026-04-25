@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-26 03:08 CST
+最后更新：2026-04-26 04:18 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：25
-- 已修复 / 已关闭：51
+- 活跃待修复：23
+- 已修复 / 已关闭：53
 - 历史分析 / 部分止血：4
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -29,14 +29,12 @@
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
-| 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-23 巡检未找到已提交修复覆盖 Codex WebSocket/HTTPS 回退、`wss://chatgpt.com/backend-api/codex/responses`、`cf-ray`、`unexpected status 403` 等内部传输残留；不能维持 Fixed | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-25 20:40 Feishu 直聊 `高通 AI200 / AI250` 新样本仍把 `Context compacted` 混进最终正文；当前只把它视为可接受副作用，未视为已修复 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-25 21:01 `全天原油价格3小时播报` 仍把 `霍尔木兹海峡供应担忧缓解`、`美伊第二轮谈判预期`、`全球库存偏低` 写成确定性原因；4 月 24 日的价格一致性约束未覆盖原因归因降级 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-26 03:00 `全天原油价格3小时播报` 仍把 `巴基斯坦方面披露美伊或开启第二轮和平谈判`、`伊朗原油重返供应`、`地缘风险溢价收缩` 写成确定性原因；现有修复仍只覆盖价格一致性 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu scheduler 命中 `skip_signal` 后仍把未发送长文落进 direct session，污染后续上下文 | P2 | New | 2026-04-26 00:01/00:02 的 `TEM`、`RKLB 每日动态监控` 均已落成 `noop + skipped_noop` 且日志明确写“本轮不发送”，但同一 direct session 仍新增两条 assistant final，并把 `sessions.last_message_preview` 顶到未送达的 RKLB 简报 | [feishu_scheduler_noop_reply_persisted_to_direct_session.md](./feishu_scheduler_noop_reply_persisted_to_direct_session.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-26 02:00 最新 11 条 heartbeat 里除 `持仓重大事件心跳检测` 外再次全部 `noop + skipped_noop`；即便 `run_id=6406` 成功送达，仍是 `starts_with_json=false + JsonTriggered`，说明上游 JSON 契约仍未恢复 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-26 04:00 最新 11 条 heartbeat 里除原油播报外再次全部 `noop + skipped_noop`；`ASTS 重大异动心跳监控` 已产出带 `triggered_rules` 的尾部 JSON 却仍被判成 `JsonEmptyStatus`，并新增 `PlainTextSuppressed` 漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
-| Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-04-24 18:59 用户请求“帮我建ccld公司画像”后，assistant final 直接返回 `[/Users/.../company_profiles/ccld/profile.md]` 与事件文件路径；画像创建成功，但对外泄露了本机 sandbox 路径，因此按不影响主功能的 P3 跟踪 | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-26 02:30 `小米破位预警` 再次从前一窗口的 `noop` 漂移到 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
@@ -54,6 +52,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | Fixed | 2026-04-26 已扩展共享错误净化规则覆盖 WebSocket/HTTPS 回退痕迹，并在 finalizer 阻断“内部错误 + 半成品正文”作为成功答复出站；相关 `hone-channels` 定向测试通过 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 公开面认证与限流安全审计发现多个高/中风险问题 | P1/P2 | Fixed | 2026-04-20 已修复公开登录限流维度、Secure Cookie 配置、workflow runner `validateCode`、邀请码熵和认证态闪烁问题 | [public_auth_security_audit_2026_04_20.md](./public_auth_security_audit_2026_04_20.md) |
 | Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | Fixed | 2026-04-17 已让 quota 拒绝直接返回用户态额度文案，并在拒绝前补最小 user-turn 落库；20:00 真实会话已再次返回“已达到今日对话上限（12/12）” | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Release app / 渠道进程仍可被 legacy `config_runtime.yaml` 驱动，导致 runner 改完后 live 服务不立即生效 | P1 | Fixed | 2026-04-16 已让 desktop 忽略 legacy override，并更新 release runbook 到 canonical/effective config 启动方式 | [desktop_release_runner_legacy_config_source.md](./desktop_release_runner_legacy_config_source.md) |
@@ -103,6 +102,7 @@
 | Feishu 直聊纯文本 15 支股票池请求误触 `image_understanding`，最终只分析 9 支并要求用户补 6 支代码 | P3 | Fixed | 2026-04-20 在 image_understanding SKILL.md 补 when_to_use 约束（仅在有图片附件时触发）；在 SkillTool 系统提示补全局约束：纯文本请求禁止调用图片/PDF 附件类 skill | [feishu_direct_watchlist_text_request_misfires_image_skill.md](./feishu_direct_watchlist_text_request_misfires_image_skill.md) |
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | Fixed | 2026-04-20 在 multi-agent handoff 文本中添加 CRITICAL 约束：search transcript 中有成功 data_fetch/quote 结果时，answer 禁止输出"链路阻断/数据未完成校验"等降级文案 | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
 | Feishu 直聊询问 skill 时误报"没有该 skill"，并把内部约束直接当答案返回 | P3 | Fixed | 2026-04-20 扩展 handoff CRITICAL 约束覆盖 discover_skills/skill_tool 结果；在 DEFAULT_FINANCE_DOMAIN_POLICY 补内部策略外泄约束：禁止以「系统纪律」口吻暴露内部规则 | [feishu_direct_skill_query_internal_policy_leak.md](./feishu_direct_skill_query_internal_policy_leak.md) |
+| Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | Fixed | 2026-04-26 已在共享出站净化层收口本地 Markdown 文件链接与绝对路径，渠道回复不再暴露 repo/sandbox/open_id 路径；相关 `hone-channels` 定向测试通过 | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | Feishu 定时汇总已送达但未执行最新资讯检索，静默退化为非实时摘要 | P3 | Closed | 2026-04-19 12:00 同一任务已不再复现 `tool_calls=0 + completed`；本轮改为执行 15 次 `data_fetch` 后触发 overflow fallback，旧伪完成形态关闭并转由新缺陷跟踪 | [feishu_scheduler_daily_company_digest_skips_realtime_research.md](./feishu_scheduler_daily_company_digest_skips_realtime_research.md) |
 
 ## 历史分析 / 部分止血
