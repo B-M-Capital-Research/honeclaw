@@ -77,6 +77,10 @@ subtle = "2"
 # HTML 解析 (Telegram 公开频道 web preview)
 scraper = "0.20"
 
+# 密码哈希 (public web auth)
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["getrandom"] }
+
 # Internal crates
 hone-core = { path = "crates/hone-core" }
 hone-llm = { path = "crates/hone-llm" }

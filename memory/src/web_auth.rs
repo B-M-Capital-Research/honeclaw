@@ -4,7 +4,8 @@ use std::sync::Mutex;
 use hone_core::{HoneError, HoneResult, beijing_now, beijing_now_rfc3339};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
-const SESSION_TTL_DAYS: i64 = 30;
+pub const SESSION_TTL_DAYS_LONG: i64 = 30;
+pub const SESSION_TTL_DAYS_SHORT: i64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebInviteUser {
@@ -14,6 +15,10 @@ pub struct WebInviteUser {
     pub created_at: String,
     pub last_login_at: Option<String>,
     pub revoked_at: Option<String>,
+    pub password_hash: Option<String>,
+    pub password_set_at: Option<String>,
+    pub tos_accepted_at: Option<String>,
+    pub tos_version: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +102,10 @@ impl WebAuthStorage {
         )
         .map_err(sql_err)?;
         ensure_column(&conn, "web_invite_users", "revoked_at", "TEXT")?;
+        ensure_column(&conn, "web_invite_users", "password_hash", "TEXT")?;
+        ensure_column(&conn, "web_invite_users", "password_set_at", "TEXT")?;
+        ensure_column(&conn, "web_invite_users", "tos_accepted_at", "TEXT")?;
+        ensure_column(&conn, "web_invite_users", "tos_version", "TEXT")?;
         Ok(())
     }
 
@@ -131,6 +140,10 @@ impl WebAuthStorage {
             created_at,
             last_login_at: None,
             revoked_at: None,
+            password_hash: None,
+            password_set_at: None,
+            tos_accepted_at: None,
+            tos_version: None,
         })
     }
 
@@ -139,7 +152,8 @@ impl WebAuthStorage {
         let mut stmt = conn
             .prepare(
                 "
-                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at
+                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                       password_hash, password_set_at, tos_accepted_at, tos_version
                 FROM web_invite_users
                 ORDER BY created_at DESC
                 ",
@@ -159,7 +173,8 @@ impl WebAuthStorage {
         let conn = self.conn.lock().map_err(lock_err)?;
         conn.query_row(
             "
-            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at
+            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                       password_hash, password_set_at, tos_accepted_at, tos_version
             FROM web_invite_users
             WHERE invite_code = ?1
             ",
@@ -174,7 +189,8 @@ impl WebAuthStorage {
         let conn = self.conn.lock().map_err(lock_err)?;
         conn.query_row(
             "
-            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at
+            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                       password_hash, password_set_at, tos_accepted_at, tos_version
             FROM web_invite_users
             WHERE user_id = ?1
             ",
@@ -194,7 +210,7 @@ impl WebAuthStorage {
         let phone_number = normalize_phone_number(phone_number);
         let now = beijing_now();
         let created_at = now.to_rfc3339();
-        let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS)).to_rfc3339();
+        let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
         let token = uuid::Uuid::new_v4().to_string();
         let conn = self.conn.lock().map_err(lock_err)?;
         purge_expired_sessions_inner(&conn, &created_at)?;
@@ -203,7 +219,8 @@ impl WebAuthStorage {
         let user = tx
             .query_row(
                 "
-                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at
+                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                       password_hash, password_set_at, tos_accepted_at, tos_version
                 FROM web_invite_users
                 WHERE invite_code = ?1 AND phone_number = ?2 AND revoked_at IS NULL
                 ",
@@ -254,7 +271,8 @@ impl WebAuthStorage {
         let user = tx
             .query_row(
                 "
-                SELECT u.user_id, u.invite_code, u.phone_number, u.created_at, u.last_login_at, u.revoked_at
+                SELECT u.user_id, u.invite_code, u.phone_number, u.created_at, u.last_login_at, u.revoked_at,
+                       u.password_hash, u.password_set_at, u.tos_accepted_at, u.tos_version
                 FROM web_auth_sessions s
                 JOIN web_invite_users u ON u.user_id = s.user_id
                 WHERE s.session_token = ?1 AND s.expires_at > ?2 AND u.revoked_at IS NULL
@@ -265,15 +283,16 @@ impl WebAuthStorage {
             .optional()
             .map_err(sql_err)?;
         if user.is_some() {
-            let next_expiry =
-                (beijing_now() + chrono::Duration::days(SESSION_TTL_DAYS)).to_rfc3339();
+            // 不做 sliding expiry:`expires_at` 由 session 创建时选择的 TTL
+            // (1 天 / 30 天) 决定,访问只更新 `last_seen_at`。否则"不勾选保持登录"
+            // 的短 TTL 会被每次访问延到长 TTL,违背用户意图。
             tx.execute(
                 "
                 UPDATE web_auth_sessions
-                SET last_seen_at = ?2, expires_at = ?3
+                SET last_seen_at = ?2
                 WHERE session_token = ?1
                 ",
-                params![session_token, now, next_expiry],
+                params![session_token, now],
             )
             .map_err(sql_err)?;
         }
@@ -371,6 +390,129 @@ impl WebAuthStorage {
         Ok(Some(WebInviteMutation {
             invite,
             cleared_session_count,
+        }))
+    }
+
+    /// 查询已设置密码、未吊销的用户,用于手机号+密码登录校验。
+    pub fn find_by_phone_password_ready(
+        &self,
+        phone_number: &str,
+    ) -> HoneResult<Option<WebInviteUser>> {
+        let phone = normalize_phone_number(phone_number);
+        if phone.is_empty() {
+            return Ok(None);
+        }
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.query_row(
+            "
+            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                   password_hash, password_set_at, tos_accepted_at, tos_version
+            FROM web_invite_users
+            WHERE phone_number = ?1 AND revoked_at IS NULL AND password_hash IS NOT NULL
+            ",
+            params![phone],
+            map_invite_user,
+        )
+        .optional()
+        .map_err(sql_err)
+    }
+
+    /// 首次设置密码 / 同时记录协议接受。用于"强制设密码" guard。
+    ///
+    /// 返回 Ok(true) 表示成功写入,Ok(false) 表示用户已经有密码(调用方应走
+    /// change_password 路径避免覆写)或用户不存在。
+    pub fn set_password(
+        &self,
+        user_id: &str,
+        password_hash: &str,
+        tos_version: &str,
+    ) -> HoneResult<bool> {
+        let now = beijing_now_rfc3339();
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let updated = conn
+            .execute(
+                "
+                UPDATE web_invite_users
+                SET password_hash = ?2,
+                    password_set_at = ?3,
+                    tos_accepted_at = ?3,
+                    tos_version = ?4
+                WHERE user_id = ?1 AND password_hash IS NULL
+                ",
+                params![user_id, password_hash, now, tos_version],
+            )
+            .map_err(sql_err)?;
+        Ok(updated > 0)
+    }
+
+    /// 已设置密码后用于修改密码(/me 页)。不动 tos_accepted_at / tos_version。
+    pub fn change_password(&self, user_id: &str, password_hash: &str) -> HoneResult<bool> {
+        let now = beijing_now_rfc3339();
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let updated = conn
+            .execute(
+                "
+                UPDATE web_invite_users
+                SET password_hash = ?2, password_set_at = ?3
+                WHERE user_id = ?1 AND password_hash IS NOT NULL
+                ",
+                params![user_id, password_hash, now],
+            )
+            .map_err(sql_err)?;
+        Ok(updated > 0)
+    }
+
+    /// 按 user_id 创建 session,TTL 由调用方指定(密码登录根据"保持登录"勾选
+    /// 选择 long / short)。会清掉该用户的其它活跃 session,更新 last_login_at。
+    pub fn create_session_for_user(
+        &self,
+        user_id: &str,
+        ttl_days: i64,
+    ) -> HoneResult<Option<WebInviteSession>> {
+        let now = beijing_now();
+        let created_at = now.to_rfc3339();
+        let expires_at = (now + chrono::Duration::days(ttl_days)).to_rfc3339();
+        let token = uuid::Uuid::new_v4().to_string();
+
+        let conn = self.conn.lock().map_err(lock_err)?;
+        purge_expired_sessions_inner(&conn, &created_at)?;
+
+        let tx = conn.unchecked_transaction().map_err(sql_err)?;
+        let Some(user) = find_invite_user_tx(&tx, user_id)? else {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(None);
+        };
+        if user.revoked_at.is_some() {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(None);
+        }
+
+        tx.execute(
+            "
+            UPDATE web_invite_users
+            SET last_login_at = ?2
+            WHERE user_id = ?1
+            ",
+            params![&user.user_id, &created_at],
+        )
+        .map_err(sql_err)?;
+        delete_sessions_for_user_tx(&tx, &user.user_id)?;
+        tx.execute(
+            "
+            INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ",
+            params![&token, &user.user_id, &created_at, &expires_at, &created_at],
+        )
+        .map_err(sql_err)?;
+        tx.commit().map_err(sql_err)?;
+
+        Ok(Some(WebInviteSession {
+            session_token: token,
+            user_id: user.user_id,
+            created_at: created_at.clone(),
+            expires_at,
+            last_seen_at: created_at,
         }))
     }
 }
@@ -479,13 +621,18 @@ fn map_invite_user(row: &Row<'_>) -> rusqlite::Result<WebInviteUser> {
         created_at: row.get(3)?,
         last_login_at: row.get(4)?,
         revoked_at: row.get(5)?,
+        password_hash: row.get(6)?,
+        password_set_at: row.get(7)?,
+        tos_accepted_at: row.get(8)?,
+        tos_version: row.get(9)?,
     })
 }
 
 fn find_invite_user_tx(tx: &Transaction<'_>, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
     tx.query_row(
         "
-        SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at
+        SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                       password_hash, password_set_at, tos_accepted_at, tos_version
         FROM web_invite_users
         WHERE user_id = ?1
         ",
@@ -534,7 +681,9 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str)
 
 #[cfg(test)]
 mod tests {
-    use super::{SESSION_TTL_DAYS, WebAuthStorage, generate_invite_code};
+    use super::{
+        SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage, generate_invite_code,
+    };
     use rusqlite::Connection;
 
     fn test_storage() -> WebAuthStorage {
@@ -592,7 +741,7 @@ mod tests {
             (chrono::DateTime::parse_from_rfc3339(&session.expires_at).expect("expiry")
                 - chrono::DateTime::parse_from_rfc3339(&session.created_at).expect("created"))
             .num_days(),
-            SESSION_TTL_DAYS
+            SESSION_TTL_DAYS_LONG
         );
     }
 
@@ -802,5 +951,114 @@ mod tests {
         assert_eq!(listed[0].user_id, created.user_id);
         assert_eq!(listed[0].phone_number, "13800138000");
         assert_eq!(listed[0].revoked_at, None);
+        assert_eq!(listed[0].password_hash, None);
+        assert_eq!(listed[0].password_set_at, None);
+        assert_eq!(listed[0].tos_accepted_at, None);
+        assert_eq!(listed[0].tos_version, None);
+    }
+
+    #[test]
+    fn set_password_roundtrip_and_find_by_phone() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+        assert_eq!(created.password_hash, None);
+        assert!(
+            storage
+                .find_by_phone_password_ready("13800138000")
+                .expect("find")
+                .is_none(),
+            "未设密码的账号不应被 password-ready 查询命中"
+        );
+
+        let ok = storage
+            .set_password(&created.user_id, "argon2-hash-v1", "1.0")
+            .expect("set password");
+        assert!(ok);
+
+        let found = storage
+            .find_by_phone_password_ready("13800138000")
+            .expect("find")
+            .expect("user exists");
+        assert_eq!(found.user_id, created.user_id);
+        assert_eq!(found.password_hash.as_deref(), Some("argon2-hash-v1"));
+        assert_eq!(found.tos_version.as_deref(), Some("1.0"));
+        assert!(found.password_set_at.is_some());
+        assert!(found.tos_accepted_at.is_some());
+
+        // set_password 对已有密码的用户应为幂等禁止(返回 false)。
+        let second = storage
+            .set_password(&created.user_id, "another-hash", "1.0")
+            .expect("second set");
+        assert!(!second, "已有密码的账号不能再 set_password");
+        let still = storage
+            .find_by_phone_password_ready("13800138000")
+            .expect("find")
+            .expect("user");
+        assert_eq!(still.password_hash.as_deref(), Some("argon2-hash-v1"));
+
+        // change_password 更新但保留 tos。
+        let changed = storage
+            .change_password(&created.user_id, "argon2-hash-v2")
+            .expect("change password");
+        assert!(changed);
+        let after = storage
+            .find_by_phone_password_ready("13800138000")
+            .expect("find")
+            .expect("user");
+        assert_eq!(after.password_hash.as_deref(), Some("argon2-hash-v2"));
+        assert_eq!(after.tos_version.as_deref(), Some("1.0"));
+    }
+
+    #[test]
+    fn create_session_for_user_respects_ttl_parameter() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+
+        let short = storage
+            .create_session_for_user(&created.user_id, SESSION_TTL_DAYS_SHORT)
+            .expect("short")
+            .expect("session");
+        let span = (chrono::DateTime::parse_from_rfc3339(&short.expires_at).unwrap()
+            - chrono::DateTime::parse_from_rfc3339(&short.created_at).unwrap())
+        .num_hours();
+        assert!((23..=25).contains(&span), "short TTL ≈ 24h, got {span}h");
+
+        let long = storage
+            .create_session_for_user(&created.user_id, SESSION_TTL_DAYS_LONG)
+            .expect("long")
+            .expect("session");
+        let span_days = (chrono::DateTime::parse_from_rfc3339(&long.expires_at).unwrap()
+            - chrono::DateTime::parse_from_rfc3339(&long.created_at).unwrap())
+        .num_days();
+        assert_eq!(span_days, SESSION_TTL_DAYS_LONG);
+
+        // 新 session 应踢掉上一个短期 session。
+        assert!(
+            storage
+                .authenticate_session(&short.session_token)
+                .expect("auth")
+                .is_none()
+        );
+        assert!(
+            storage
+                .authenticate_session(&long.session_token)
+                .expect("auth")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn create_session_for_user_rejects_revoked() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+        storage
+            .set_invite_revoked(&created.user_id, true)
+            .expect("revoke")
+            .expect("invite");
+
+        let attempt = storage
+            .create_session_for_user(&created.user_id, SESSION_TTL_DAYS_LONG)
+            .expect("attempt");
+        assert!(attempt.is_none(), "revoked 用户不能创建 session");
     }
 }

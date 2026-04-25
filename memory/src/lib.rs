@@ -5,6 +5,7 @@
 pub mod company_profile;
 pub mod cron_job;
 pub mod llm_audit;
+pub mod password;
 pub mod portfolio;
 pub mod quota;
 pub mod session;
@@ -46,4 +47,6 @@ pub use session::{
     session_message_text, session_message_to_agent_messages, session_message_to_normalized,
 };
 pub use session_sqlite::InterruptedSessionInfo;
-pub use web_auth::{WebAuthStorage, WebInviteSession, WebInviteUser};
+pub use web_auth::{
+    SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage, WebInviteSession, WebInviteUser,
+};

@@ -14,4 +14,6 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 rusqlite = { workspace = true }
+argon2 = { workspace = true }
+password-hash = { workspace = true }
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
