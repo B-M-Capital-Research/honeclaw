@@ -329,6 +329,45 @@ SELECT datetime(max(created_at_ts),'unixepoch') FROM events WHERE source='telegr
 
 - 这次增量窗口内其它 event-engine 主链路仍然前进：`MultiChannelSink` 在 `10:31:18Z`、`10:38:25Z`、`22:28:58Z` 三次成功装配；`telegram` heartbeat `updated_at=2026-04-25T14:30:32.017236Z`，没有心跳陈旧；`fmp.earning_calendar` / `fmp.stock_dividend_calendar` / `fmp.economic_calendar` / `fmp.stock_split_calendar` / `fmp.quote` 近 24h 仍都有新记录。因此本轮新增证据继续把问题限定在 Truth Social source 自身，而不是整个 poller cadence、sink 装配或 FMP feed 一起失效。
 
+- 2026-04-25T18:40:57Z：在这次 automation 的增量窗口 `2026-04-25T14:29:25.291Z` 之后，同一故障继续跨两次重启和后续小时轮询复现；新增样本已经把坏态延长到 `2026-04-26 01:47:56 +08`，而 `events` 表里依旧查不到任何 `truth_social.%` 行：
+
+```text
+data/runtime/logs/web.log.2026-04-25:1674:[2026-04-25 23:29:00.259] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1712:[2026-04-26 00:29:00.461] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1753:[2026-04-26 00:43:11.906] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1921:[2026-04-26 00:47:54.879] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:1992:[2026-04-26 01:47:56.278] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+
+SELECT count(*) FROM events WHERE source LIKE 'truth_social.%';
+0
+
+SELECT datetime(max(occurred_at_ts),'unixepoch') FROM events WHERE source LIKE 'truth_social.%';
+NULL
+```
+
+- 同一时间窗里，其他启用 source 和出口链路仍在推进，所以这不是“整条 event-engine 停摆”：
+
+```text
+SELECT source, count(*) FROM events
+WHERE occurred_at_ts >= strftime('%s','now','-24 hours')
+  AND source IN (
+    'fmp.earning_calendar',
+    'fmp.stock_dividend_calendar',
+    'fmp.economic_calendar',
+    'fmp.stock_split_calendar',
+    'fmp.quote'
+  )
+GROUP BY source;
+
+fmp.earning_calendar|12980
+fmp.stock_dividend_calendar|3298
+fmp.economic_calendar|694
+fmp.stock_split_calendar|76
+fmp.quote|8
+```
+
+- 这次巡检还确认 digest buffer 的代码真相源位于 `data/digest_buffer/`（`crates/hone-event-engine/src/engine.rs:62,243-245`），而不是旧约定里的 `data/runtime/telegram__direct__*.jsonl`；最新 flush 归档 `data/digest_buffer/telegram__direct__8039067465.flushed-1777141853` 与 `web.log.2026-04-25:2015-2016` 的 `digest buffer rotated` / `digest delivered` 对上了时间，进一步说明异常仍然局限在 Truth Social source。
+
 ## Date Observed
 
 `2026-04-24T04:05:20Z`
