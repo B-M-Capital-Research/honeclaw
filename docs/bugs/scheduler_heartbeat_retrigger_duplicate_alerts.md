@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-26 01:30-02:01 最新巡检样本：
+      - `job_name=持仓重大事件心跳检测`
+      - `run_id=6394`，`executed_at=2026-04-26T01:30:53.216343+08:00`，仍是 `noop + skipped_noop + delivered=0`；`sidecar.log` 明确把“上一轮已提醒的 RKLB/ORCL/ASTS 旧事件”作为去重基线。
+      - 仅约 30 分钟后，同一任务 `run_id=6406`，`executed_at=2026-04-26T02:01:21.369126+08:00`，再次落成 `completed + sent + delivered=1`。
+      - `response_preview` 又把 `RKLB 盘前跌幅超 5%` 与 `Blue Origin 4 月 25 日发布新版 Blue Ring 太空拖船` 组合成“重大事件检测”送达；但同一 `Blue Origin/RKLB 竞争威胁 + 显著下跌` 主题已经在 `run_id=6337`（`2026-04-25T23:01:25.769298+08:00`）送达，本轮之间没有看到新的独立公司公告，只是重新包装同一 4 月 25 日旧事件。
+      - `data/runtime/logs/sidecar.log` 在 `2026-04-26 02:01:17.634-02:01:17.635` 同步记录 `parse_kind=JsonTriggered` 与成功 `deliver`；`raw_preview` 仍以 `<think>` 开头，显式复盘 “quote data shows the pre-market session with dayHigh 86.41 and current price 79.68” 后再次判定触发，说明当前去重仍依赖模型临场重述，而不是稳定的“已提醒事实”集合。
+      - 这组最新样本说明重复提醒缺陷仍然活跃，并继续表现为“同一持仓 heartbeat 在中间多个 `noop` 窗口后，又把同一旧催化重新包装成新增送达”。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-24 10:31-11:00 最新巡检样本：
       - `job_name=ORCL 大事件监控`
       - `run_id=5504`，`executed_at=2026-04-24T10:31:05.712383+08:00`，落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`

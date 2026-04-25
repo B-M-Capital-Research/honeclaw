@@ -19,6 +19,15 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 02:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6396-6406` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 与 `持仓重大事件心跳检测`；其中除 `run_id=6406` 外，其余 10 条再次全部落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=6406`（`持仓重大事件心跳检测`，`2026-04-26T02:01:21.369126+08:00`）虽然最终落成 `completed + sent + delivered=1`，但 `detail_json.scheduler.parse_kind=JsonTriggered` 且 `starts_with_json=false`，说明成功送达样本也仍依赖非 JSON 首包。
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 02:00:20.097` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，仍先写大段时间换算和价格分析，再尾部补 `{}`。
+    - `2026-04-26 02:01:17.634` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonTriggered`，`raw_preview` 仍以 `<think>` 长段分析 RKLB 盘前跌幅与 Blue Origin 竞争动态开头，最后才抽取送达正文。
+    - 同一时间窗 `02:00:43.xxx` 再次连续出现 Tavily `usage limit` 告警，但 heartbeat 最终仍被吸收到 `JsonEmptyStatus` / `JsonTriggered` 兜底路径；说明最近一小时没有形成新的独立投递故障，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-26 02:00` 为止，heartbeat 最新窗口依旧没有任何“首字符即 `{` 的单段 JSON”稳定样本；当前只是解析器继续吸收漂移输出，状态与严重等级保持不变。
   - 2026-04-26 01:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6374-6384` 覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ORCL 大事件监控` 与 `持仓重大事件心跳检测`，11 条 heartbeat 全部再次落成 `noop + skipped_noop + delivered=0`。
