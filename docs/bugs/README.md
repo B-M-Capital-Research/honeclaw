@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-24 20:03 CST
+最后更新：2026-04-25 22:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -31,9 +31,9 @@
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-23 巡检未找到已提交修复覆盖 Codex WebSocket/HTTPS 回退、`wss://chatgpt.com/backend-api/codex/responses`、`cf-ray`、`unexpected status 403` 等内部传输残留；不能维持 Fixed | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-24 决定不在 sanitize 层剥离字面 `Context compacted`（跨 ACP 不好识别），compact 识别改由 `acp_common.rs::ingest_acp_usage_update` 的 input token 骤降触发；字面 marker 的少量透出视为可接受 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-24 已在 `DEFAULT_FINANCE_DOMAIN_POLICY` 末尾追加「报价字段一致性约束」（同标的/同时间/同合约口径 + 数学一致）；LLM e2e `finance_consistency_llm_smoke` 在 MiniMax 上 2 case 全 pass，模型在硬冲突 case 直接拒发播报、列表标出矛盾；OpenRouter 对照模型名待用户确认后补跑。注：15:01 `全天原油价格3小时播报` 的复现样本发生在策略生效前 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-25 21:01 `全天原油价格3小时播报` 仍把 `霍尔木兹海峡供应担忧缓解`、`美伊第二轮谈判预期`、`全球库存偏低` 写成确定性原因；4 月 24 日的价格一致性约束未覆盖原因归因降级 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-24 20:01-20:02 最新 heartbeat 仍统一 `starts_with_json=false`；`ORCL 大事件监控`、`Monitor_Watchlist_11` 与 `持仓重大事件心跳检测` 再次全部落成 `noop + skipped_noop`，没有任何样本恢复为纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-25 21:01-21:32 最新 heartbeat 仍统一 `starts_with_json=false`；`ORCL 大事件监控`、`Monitor_Watchlist_11` 与 `持仓重大事件心跳检测` 连续两批再次全部落成 `noop + skipped_noop`，没有任何样本恢复为纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-04-24 18:59 用户请求“帮我建ccld公司画像”后，assistant final 直接返回 `[/Users/.../company_profiles/ccld/profile.md]` 与事件文件路径；画像创建成功，但对外泄露了本机 sandbox 路径，因此按不影响主功能的 P3 跟踪 | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-24 10:31 的 `ORCL 大事件监控` 刚发送 `SMCI 大单取消`，11:00 的 `持仓重大事件心跳检测` 又把同一 ORCL 旧事实重新包装成新增送达，出现同目标跨 job 重复提醒 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixing (2026-04-24)
+- **状态**: Fixing (2026-04-25)
 
 ## 修复动作（2026-04-24）
 
@@ -19,6 +19,17 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-25 21:01-21:32 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6286` `Monitor_Watchlist_11`、`run_id=6287` `ORCL 大事件监控`、`run_id=6291` `持仓重大事件心跳检测` 在 `21:01` 这一批全部落成 `noop + skipped_noop + delivered=0`；`run_id=6299`、`6300`、`6302` 在 `21:31-21:32` 下一批再次全部落成同一结果。
+    - 同批 `run_id=6292-6301` 还覆盖 `全天原油价格3小时播报`、小米/TEM/CAI 破位、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 等 heartbeat；除 21:00 整点原油任务外，其余任务依旧没有任何一条恢复成“纯 JSON 首包 + 明确状态”的稳定样本。
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-25 21:01:46.027` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonNoop`，`raw_preview` 继续以 `<think>` 大段英文分析开头。
+    - `2026-04-25 21:31:17.525` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=JsonNoop`，先输出价格和涨跌幅推理，再在尾部补状态 JSON。
+    - `2026-04-25 21:31:19.475` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=JsonNoop`，逐项 ticker 检查仍写在 `<think>` 中。
+    - `2026-04-25 21:32:06.156` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonNoop`，在补跑 `web_search` / `data_fetch` 后仍靠尾部 JSON 兜底。
+    - 同窗口 `21:31:18-21:31:40` 还连续出现 Tavily `usage limit` 告警，但最终仍只被归并成 `noop + skipped_noop`；说明本轮没有形成新的独立发送故障，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-25 21:32` 为止，最新一小时 heartbeat 结构化输出仍没有任何样本恢复成“首字符即 `{` 的单段 JSON”；当前只是解析器继续吸收上游结构漂移，状态与严重等级保持不变。
   - 2026-04-24 20:01-20:02 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=5703` `ORCL 大事件监控`、`run_id=5708` `Monitor_Watchlist_11`、`run_id=5713` `持仓重大事件心跳检测` 在 `19:31` 之后的下一批最新窗口里再次全部落成 `noop + skipped_noop + delivered=0`
