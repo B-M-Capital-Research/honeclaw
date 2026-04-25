@@ -31,6 +31,26 @@ pub struct PublicInviteLoginRequest {
 }
 
 #[derive(Deserialize)]
+pub struct PublicPasswordLoginRequest {
+    pub phone_number: Option<String>,
+    pub password: Option<String>,
+    #[serde(default)]
+    pub remember: bool,
+}
+
+#[derive(Deserialize)]
+pub struct PublicSetPasswordRequest {
+    pub new_password: Option<String>,
+    pub tos_version: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PublicChangePasswordRequest {
+    pub current_password: Option<String>,
+    pub new_password: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct PublicChatRequest {
     pub message: Option<String>,
     pub attachments: Option<Vec<PublicChatAttachmentInput>>,
@@ -165,6 +185,9 @@ pub struct PublicAuthUserInfo {
     pub success_count: u32,
     pub in_flight: u32,
     pub remaining_today: u32,
+    pub has_password: bool,
+    pub tos_accepted_at: Option<String>,
+    pub tos_version: Option<String>,
 }
 
 #[derive(Serialize)]

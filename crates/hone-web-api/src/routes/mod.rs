@@ -177,6 +177,12 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
 
     let public_api = Router::new()
         .route("/auth/invite-login", post(public::handle_invite_login))
+        .route("/auth/password-login", post(public::handle_password_login))
+        .route("/auth/set-password", post(public::handle_set_password))
+        .route(
+            "/auth/change-password",
+            post(public::handle_change_password),
+        )
         .route("/auth/logout", post(public::handle_logout))
         .route("/auth/me", get(public::handle_me))
         .route("/history", get(public::handle_history))

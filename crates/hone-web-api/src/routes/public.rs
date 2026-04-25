@@ -18,7 +18,8 @@ use crate::routes::chat::build_chat_sse;
 use crate::routes::history::history_from_messages;
 use crate::state::{AppState, PushEvent};
 use crate::types::{
-    PublicAuthUserInfo, PublicChatRequest, PublicInviteLoginRequest, PublicUploadedAttachment,
+    PublicAuthUserInfo, PublicChangePasswordRequest, PublicChatRequest, PublicInviteLoginRequest,
+    PublicPasswordLoginRequest, PublicSetPasswordRequest, PublicUploadedAttachment,
 };
 
 /// Upper bounds enforced when users upload files through the public chat.
@@ -27,7 +28,28 @@ const PUBLIC_UPLOAD_MAX_FILES: usize = 4;
 const PUBLIC_UPLOAD_MAX_BYTES: usize = 10 * 1024 * 1024;
 
 const WEB_SESSION_COOKIE: &str = "hone_web_session";
-const WEB_SESSION_MAX_AGE_SECS: i64 = 30 * 24 * 60 * 60;
+const WEB_SESSION_MAX_AGE_LONG_SECS: i64 = 30 * 24 * 60 * 60;
+const WEB_SESSION_MAX_AGE_SHORT_SECS: i64 = 24 * 60 * 60;
+
+/// 与 memory::web_auth 中的 TTL 常量保持一致。
+const SESSION_TTL_DAYS_LONG: i64 = hone_memory::SESSION_TTL_DAYS_LONG;
+const SESSION_TTL_DAYS_SHORT: i64 = hone_memory::SESSION_TTL_DAYS_SHORT;
+
+/// 当前生效的协议版本。改动 /terms /privacy 文本时手动 bump,
+/// 并让已登录用户重新勾选接受(可后续增强)。
+pub(crate) const TOS_VERSION: &str = "1.0";
+
+fn validate_password_strength(value: &str) -> Result<(), &'static str> {
+    if !(8..=128).contains(&value.chars().count()) {
+        return Err("密码长度需在 8-128 之间");
+    }
+    let has_digit = value.chars().any(|ch| ch.is_ascii_digit());
+    let has_letter = value.chars().any(|ch| ch.is_ascii_alphabetic());
+    if !(has_digit && has_letter) {
+        return Err("密码需同时包含字母和数字");
+    }
+    Ok(())
+}
 
 pub(crate) async fn handle_invite_login(
     State(state): State<Arc<AppState>>,
@@ -77,7 +99,11 @@ pub(crate) async fn handle_invite_login(
                     .into_response();
                     response.headers_mut().append(
                         header::SET_COOKIE,
-                        build_session_cookie(&session.session_token, &headers),
+                        build_session_cookie(
+                            &session.session_token,
+                            &headers,
+                            WEB_SESSION_MAX_AGE_LONG_SECS,
+                        ),
                     );
                     response
                 }
@@ -109,6 +135,275 @@ pub(crate) async fn handle_invite_login(
         Err(error) => crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("邀请码登录失败: {error}"),
+        ),
+    }
+}
+
+pub(crate) async fn handle_password_login(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<PublicPasswordLoginRequest>,
+) -> Response {
+    let phone_number = match crate::routes::require_phone_number(request.phone_number, "手机号")
+    {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let password = request
+        .password
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+    if password.is_empty() {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, "缺少密码");
+    }
+
+    let ip_key = public_client_key(&headers);
+    let phone_key = format!("phone:{phone_number}");
+    for key in [&ip_key, &phone_key] {
+        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
+            state.public_auth_limiter.check(key)
+        {
+            return json_rate_limited(retry_after_secs);
+        }
+    }
+
+    let user = match state.web_auth.find_by_phone_password_ready(&phone_number) {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询用户失败: {error}"),
+            );
+        }
+    };
+
+    let Some(user) = user else {
+        return password_login_failed(&state, &ip_key, &phone_key);
+    };
+    let hash = user.password_hash.as_deref().unwrap_or_default();
+    let verified = match hone_memory::password::verify_password(&password, hash) {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("验证密码失败: {error}"),
+            );
+        }
+    };
+    if !verified {
+        return password_login_failed(&state, &ip_key, &phone_key);
+    }
+
+    let ttl_days = if request.remember {
+        SESSION_TTL_DAYS_LONG
+    } else {
+        SESSION_TTL_DAYS_SHORT
+    };
+    let max_age_secs = if request.remember {
+        WEB_SESSION_MAX_AGE_LONG_SECS
+    } else {
+        WEB_SESSION_MAX_AGE_SHORT_SECS
+    };
+    let session = match state
+        .web_auth
+        .create_session_for_user(&user.user_id, ttl_days)
+    {
+        Ok(Some(session)) => session,
+        Ok(None) => {
+            return crate::routes::json_error(StatusCode::UNAUTHORIZED, "账号不可用，请联系管理员");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("创建登录态失败: {error}"),
+            );
+        }
+    };
+
+    state.public_auth_limiter.record_success(&ip_key);
+    state.public_auth_limiter.record_success(&phone_key);
+    let refreshed = match state.web_auth.find_invite_user(&session.user_id) {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "用户已丢失");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取用户失败: {error}"),
+            );
+        }
+    };
+    let user_id = refreshed.user_id.clone();
+    let mut response = Json(json!({
+        "user": to_public_auth_user(&state, &user_id, refreshed),
+    }))
+    .into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        build_session_cookie(&session.session_token, &headers, max_age_secs),
+    );
+    response
+}
+
+fn password_login_failed(state: &AppState, ip_key: &str, phone_key: &str) -> Response {
+    let mut rate_limited = None;
+    for key in [ip_key, phone_key] {
+        if let Some(retry_after_secs) = state.public_auth_limiter.record_failure(key) {
+            rate_limited = Some(json_rate_limited(retry_after_secs));
+        }
+    }
+    rate_limited.unwrap_or_else(|| {
+        crate::routes::json_error(StatusCode::UNAUTHORIZED, "手机号或密码不正确")
+    })
+}
+
+pub(crate) async fn handle_set_password(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<PublicSetPasswordRequest>,
+) -> Response {
+    let user = match require_public_user(&state, &headers) {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    if user.password_hash.is_some() {
+        return crate::routes::json_error(
+            StatusCode::CONFLICT,
+            "账号已设置过密码，请走修改密码流程",
+        );
+    }
+    let new_password = request.new_password.unwrap_or_default();
+    if let Err(msg) = validate_password_strength(&new_password) {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, msg);
+    }
+    let tos_version = request.tos_version.unwrap_or_default();
+    if tos_version.trim().is_empty() {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, "需同意用户协议与隐私政策");
+    }
+    if tos_version.trim() != TOS_VERSION {
+        return crate::routes::json_error(
+            StatusCode::BAD_REQUEST,
+            "协议版本已更新，请刷新页面后重新确认",
+        );
+    }
+
+    let hash = match hone_memory::password::hash_password(&new_password) {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("密码加密失败: {error}"),
+            );
+        }
+    };
+    let updated = match state
+        .web_auth
+        .set_password(&user.user_id, &hash, TOS_VERSION)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("保存密码失败: {error}"),
+            );
+        }
+    };
+    if !updated {
+        return crate::routes::json_error(StatusCode::CONFLICT, "账号状态异常，请重新登录");
+    }
+
+    // 轮换 session token 防会话固定。保留原 TTL(设密码过程发生在已登录
+    // session 内,而这一次的 session 还是邀请码走 long TTL 建立的,这里保持
+    // long)。
+    let session = match state
+        .web_auth
+        .create_session_for_user(&user.user_id, SESSION_TTL_DAYS_LONG)
+    {
+        Ok(Some(session)) => session,
+        Ok(None) => {
+            return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "刷新登录态失败");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("刷新登录态失败: {error}"),
+            );
+        }
+    };
+    let refreshed = state
+        .web_auth
+        .find_invite_user(&session.user_id)
+        .ok()
+        .flatten();
+    let body = match refreshed {
+        Some(user) => {
+            let user_id = user.user_id.clone();
+            json!({ "user": to_public_auth_user(&state, &user_id, user) })
+        }
+        None => json!({ "ok": true }),
+    };
+    let mut response = Json(body).into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        build_session_cookie(
+            &session.session_token,
+            &headers,
+            WEB_SESSION_MAX_AGE_LONG_SECS,
+        ),
+    );
+    response
+}
+
+pub(crate) async fn handle_change_password(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<PublicChangePasswordRequest>,
+) -> Response {
+    let user = match require_public_user(&state, &headers) {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    let current_password = request.current_password.unwrap_or_default();
+    let new_password = request.new_password.unwrap_or_default();
+    let Some(existing_hash) = user.password_hash.clone() else {
+        return crate::routes::json_error(StatusCode::CONFLICT, "账号尚未设置密码");
+    };
+
+    let verified = match hone_memory::password::verify_password(&current_password, &existing_hash) {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("验证密码失败: {error}"),
+            );
+        }
+    };
+    if !verified {
+        return crate::routes::json_error(StatusCode::UNAUTHORIZED, "当前密码不正确");
+    }
+    if let Err(msg) = validate_password_strength(&new_password) {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, msg);
+    }
+    if new_password == current_password {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, "新密码不能与当前密码相同");
+    }
+
+    let new_hash = match hone_memory::password::hash_password(&new_password) {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("密码加密失败: {error}"),
+            );
+        }
+    };
+    match state.web_auth.change_password(&user.user_id, &new_hash) {
+        Ok(true) => Json(json!({ "ok": true })).into_response(),
+        Ok(false) => crate::routes::json_error(StatusCode::CONFLICT, "账号状态异常，请重新登录"),
+        Err(error) => crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("保存新密码失败: {error}"),
         ),
     }
 }
@@ -505,14 +800,18 @@ fn read_session_token(headers: &HeaderMap) -> Option<String> {
     })
 }
 
-fn build_session_cookie(session_token: &str, headers: &HeaderMap) -> HeaderValue {
+fn build_session_cookie(
+    session_token: &str,
+    headers: &HeaderMap,
+    max_age_secs: i64,
+) -> HeaderValue {
     let secure_attr = if request_is_secure(headers) {
         "; Secure"
     } else {
         ""
     };
     HeaderValue::from_str(&format!(
-        "{WEB_SESSION_COOKIE}={session_token}; Path=/; HttpOnly; SameSite=Strict{secure_attr}; Max-Age={WEB_SESSION_MAX_AGE_SECS}"
+        "{WEB_SESSION_COOKIE}={session_token}; Path=/; HttpOnly; SameSite=Strict{secure_attr}; Max-Age={max_age_secs}"
     ))
     .expect("valid session cookie")
 }
@@ -670,13 +969,17 @@ fn to_public_auth_user(
         success_count,
         in_flight,
         remaining_today,
+        has_password: user.password_hash.is_some(),
+        tos_accepted_at: user.tos_accepted_at,
+        tos_version: user.tos_version,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        build_session_cookie, clear_session_cookie, normalize_invite_code, public_client_key,
+        WEB_SESSION_MAX_AGE_LONG_SECS, WEB_SESSION_MAX_AGE_SHORT_SECS, build_session_cookie,
+        clear_session_cookie, normalize_invite_code, public_client_key, validate_password_strength,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
@@ -726,7 +1029,7 @@ mod tests {
             HeaderValue::from_static("https://chat.example.com"),
         );
 
-        let cookie_value = build_session_cookie("token", &headers);
+        let cookie_value = build_session_cookie("token", &headers, WEB_SESSION_MAX_AGE_LONG_SECS);
         let cookie = cookie_value.to_str().expect("cookie");
         let cleared_value = clear_session_cookie(&headers);
         let cleared = cleared_value.to_str().expect("cookie");
@@ -753,7 +1056,7 @@ mod tests {
 
         // When env is set to "true", Secure flag should be on even without https headers.
         let headers = HeaderMap::new();
-        let cookie = build_session_cookie("tok", &headers)
+        let cookie = build_session_cookie("tok", &headers, WEB_SESSION_MAX_AGE_LONG_SECS)
             .to_str()
             .expect("cookie")
             .to_string();
@@ -766,7 +1069,7 @@ mod tests {
             header::ORIGIN,
             HeaderValue::from_static("https://chat.example.com"),
         );
-        let cookie2 = build_session_cookie("tok", &https_headers)
+        let cookie2 = build_session_cookie("tok", &https_headers, WEB_SESSION_MAX_AGE_LONG_SECS)
             .to_str()
             .expect("cookie")
             .to_string();
@@ -777,14 +1080,48 @@ mod tests {
     }
 
     #[test]
+    fn cookie_max_age_reflects_remember_choice() {
+        let _guard = crate::test_env_lock().lock().unwrap();
+        let _env = EnvVarGuard::unset(SECURE_COOKIE_ENV);
+        let headers = HeaderMap::new();
+
+        let long_cookie = build_session_cookie("tok", &headers, WEB_SESSION_MAX_AGE_LONG_SECS)
+            .to_str()
+            .expect("cookie")
+            .to_string();
+        assert!(long_cookie.contains(&format!("Max-Age={WEB_SESSION_MAX_AGE_LONG_SECS}")));
+
+        let short_cookie = build_session_cookie("tok", &headers, WEB_SESSION_MAX_AGE_SHORT_SECS)
+            .to_str()
+            .expect("cookie")
+            .to_string();
+        assert!(short_cookie.contains(&format!("Max-Age={WEB_SESSION_MAX_AGE_SHORT_SECS}")));
+        assert_eq!(WEB_SESSION_MAX_AGE_SHORT_SECS, 86_400);
+        assert_eq!(WEB_SESSION_MAX_AGE_LONG_SECS, 30 * 86_400);
+    }
+
+    #[test]
+    fn password_strength_rules() {
+        assert!(validate_password_strength("abc12345").is_ok());
+        assert!(validate_password_strength("abcdefgh").is_err(), "no digit");
+        assert!(validate_password_strength("12345678").is_err(), "no letter");
+        assert!(validate_password_strength("aB1").is_err(), "too short");
+        assert!(
+            validate_password_strength(&"a1".repeat(70)).is_err(),
+            "too long"
+        );
+    }
+
+    #[test]
     fn empty_env_secure_cookie_falls_back_to_headers() {
         let _guard = crate::test_env_lock().lock().unwrap();
         let _env = EnvVarGuard::set(SECURE_COOKIE_ENV, "");
 
-        let cookie_without_https = build_session_cookie("tok", &HeaderMap::new())
-            .to_str()
-            .expect("cookie")
-            .to_string();
+        let cookie_without_https =
+            build_session_cookie("tok", &HeaderMap::new(), WEB_SESSION_MAX_AGE_LONG_SECS)
+                .to_str()
+                .expect("cookie")
+                .to_string();
         assert!(
             !cookie_without_https.contains("Secure"),
             "empty env should not force Secure"
@@ -795,10 +1132,11 @@ mod tests {
             header::ORIGIN,
             HeaderValue::from_static("https://chat.example.com"),
         );
-        let cookie_with_https = build_session_cookie("tok", &https_headers)
-            .to_str()
-            .expect("cookie")
-            .to_string();
+        let cookie_with_https =
+            build_session_cookie("tok", &https_headers, WEB_SESSION_MAX_AGE_LONG_SECS)
+                .to_str()
+                .expect("cookie")
+                .to_string();
         assert!(
             cookie_with_https.contains("Secure"),
             "empty env should fall back to https headers"
