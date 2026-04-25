@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-26 02:12 CST
+最后更新：2026-04-26 03:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -38,7 +38,7 @@
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-04-24 18:59 用户请求“帮我建ccld公司画像”后，assistant final 直接返回 `[/Users/.../company_profiles/ccld/profile.md]` 与事件文件路径；画像创建成功，但对外泄露了本机 sandbox 路径，因此按不影响主功能的 P3 跟踪 | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-23 01:00 `Monitor_Watchlist_11` 再次落成 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
+| Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-26 02:30 `小米破位预警` 再次从前一窗口的 `noop` 漂移到 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Fixing | 2026-04-21 19:30 `Monitor_Watchlist_11` 继续命中 `https://api.minimaxi.com/v1/chat/completions` 发送失败；20:00 同批主要漂移到 `JsonUnknownStatus`，传输吸震仍未稳定收口 | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-23 04:03 与 06:03 `GetUpdates` 仍连接中断；listener 只记录 error 并重试，缺少持久健康状态；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |

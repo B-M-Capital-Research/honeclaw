@@ -5,6 +5,14 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6416`，`job_id=j_671d3cd3`，`job_name=小米破位预警`，`executed_at=2026-04-26T02:30:35.863853+08:00`
+    - 本轮落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`should_deliver=0`、`delivered=0`
+    - `error_message=max_iterations_exceeded:6`
+    - 对比同任务紧邻窗口：
+      - `run_id=6400`，`executed_at=2026-04-26T02:00:13.646457+08:00`，仍是 `noop + skipped_noop`
+      - `run_id=6420`，`executed_at=2026-04-26T03:00:13.951450+08:00`，又回到 `noop + skipped_noop`
+    - 这说明最近一小时内同一 heartbeat 模板仍会在正常 `noop` 与 `max_iterations_exceeded:6 + skipped_error` 之间抖动；用户侧无法区分是“条件未命中”还是“这一轮根本没跑完”
   - 最新真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=4715`，`job_id=j_ab7e8fb1`，`job_name=Monitor_Watchlist_11`，`executed_at=2026-04-23T01:00:21.205650+08:00`
     - 本轮落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`should_deliver=0`、`delivered=0`
@@ -73,6 +81,7 @@
 
 ## 当前实现效果
 
+- `2026-04-26 02:30` 的 `小米破位预警` 把这条缺陷重新带回最近一小时真实窗口：前一窗口 `02:00` 还是正常 `noop`，`02:30` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，到 `03:00` 又回到 `noop`。这说明 heartbeat 触顶失败仍在当前生产时段活跃，并且会在同一 job 上抖动复现。
 - `2026-04-23 01:00` 的 `Monitor_Watchlist_11` 再次把这条缺陷带回最近一小时真实窗口：前一轮 `00:30` 还是正常 `noop`，下一轮直接退化成 `max_iterations_exceeded:6 + skipped_error`，且 `delivered=0`。这说明 heartbeat 触顶失败仍在生产活跃，并且不局限于单只股票或单一事件监控模板。
 - `2026-04-20 21:01` 的 `TEM大事件心跳监控` 再次把这条缺陷带回真实窗口：前一轮 `20:30` 还是正常 `noop`，下一轮直接退化成 `已达最大迭代次数 6 + skipped_error`，而同批次其它 heartbeat 又混有 `JsonUnknownStatus`。这说明 heartbeat 触顶失败会和结构化状态退化叠加出现。
 - `2026-04-20 18:00` 的 `全天原油价格3小时播报` 再次把这条缺陷带回最近一小时真实窗口：前一轮 `17:30` 还是正常 `noop`，`18:00` 直接退化成 `已达最大迭代次数 6 + skipped_error`，到 `18:30` 又回到 `noop`。这说明 heartbeat 触顶失败仍在生产活跃，只是故障对象从早晨的 `ASTS` 再次漂移回历史老问题任务 `原油播报`。
@@ -89,6 +98,7 @@
 
 ## 根因判断
 
+- `2026-04-26 02:30` 的 `小米破位预警` 新样本说明，这个根因不只影响“大事件监控”或多标的 watchlist；即使是单 ticker 价格阈值 heartbeat，也仍可能在正常 `noop` 与 `max_iterations=6` 静默失败之间摆动。
 - `2026-04-23 01:00` 的 `Monitor_Watchlist_11` 新样本说明，这个根因也会影响多标的 watchlist heartbeat；即使前一窗口可正常 `noop`，下一窗口仍可能直接撞到 `max_iterations=6` 后静默失败。
 - `2026-04-20 21:01` 的 `TEM大事件心跳监控` 样本说明，这个根因不依赖时间型 heartbeat 或 ASTS 那种重复旧事件；即使是另一条事件监控模板，也可能直接撞到 `max_iterations=6` 后静默失败。
 - `2026-04-20 18:00` 的 `全天原油价格3小时播报` 新样本说明，这个根因并不依赖 ASTS 那种“旧事件反复消费”的复杂上下文；即使是时间型 heartbeat，也仍可能在本轮推理中直接撞到 `max_iterations=6` 后静默失败。
