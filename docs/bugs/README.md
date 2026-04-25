@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-25 22:03 CST
+最后更新：2026-04-25 23:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -33,7 +33,7 @@
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-25 20:40 Feishu 直聊 `高通 AI200 / AI250` 新样本仍把 `Context compacted` 混进最终正文；当前只把它视为可接受副作用，未视为已修复 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-25 21:01 `全天原油价格3小时播报` 仍把 `霍尔木兹海峡供应担忧缓解`、`美伊第二轮谈判预期`、`全球库存偏低` 写成确定性原因；4 月 24 日的价格一致性约束未覆盖原因归因降级 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-25 21:01-21:32 最新 heartbeat 仍统一 `starts_with_json=false`；`ORCL 大事件监控`、`Monitor_Watchlist_11` 与 `持仓重大事件心跳检测` 连续两批再次全部落成 `noop + skipped_noop`，没有任何样本恢复为纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-25 22:30-23:01 最新 heartbeat 仍统一 `starts_with_json=false`；22:30 与 23:00 两批继续大面积 `noop + skipped_noop`，且 `持仓重大事件心跳检测` 22:30 刚被静默跳过、23:01 又在同一结构漂移下触发发送，说明上游 JSON 契约仍未恢复 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-04-24 18:59 用户请求“帮我建ccld公司画像”后，assistant final 直接返回 `[/Users/.../company_profiles/ccld/profile.md]` 与事件文件路径；画像创建成功，但对外泄露了本机 sandbox 路径，因此按不影响主功能的 P3 跟踪 | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-24 10:31 的 `ORCL 大事件监控` 刚发送 `SMCI 大单取消`，11:00 的 `持仓重大事件心跳检测` 又把同一 ORCL 旧事实重新包装成新增送达，出现同目标跨 job 重复提醒 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |

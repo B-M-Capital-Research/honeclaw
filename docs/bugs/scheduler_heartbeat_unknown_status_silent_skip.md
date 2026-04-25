@@ -19,6 +19,17 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-25 22:30-23:01 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6320` `Monitor_Watchlist_11`、`run_id=6321` `持仓重大事件心跳检测`、`run_id=6322` `ORCL 大事件监控` 在 `22:30` 这一批再次全部落成 `noop + skipped_noop + delivered=0`；`run_id=6334`、`6335` 在 `23:00` 下一批继续落成同一结果。
+    - 同批 `run_id=6315-6325` 与 `6326-6335` 还覆盖 `全天原油价格3小时播报`、CAI/小米/TEM 破位、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 等 heartbeat；除 `23:01` 的 `run_id=6337` 外，没有任何一条恢复成“首字符即 `{` 的单段 JSON”稳定样本。
+    - `run_id=6337`（`持仓重大事件心跳检测`，`2026-04-25T23:01:25.769298+08:00`）虽然最终落成 `completed + sent + delivered=1`，但 `detail_json.scheduler.parse_kind=JsonTriggered` 且 `starts_with_json=false`，`raw_preview` 仍以 `<think>` 长段分析开头后再抽取触发正文，说明成功送达并不代表上游契约已恢复。
+    - `data/runtime/logs/web.log.2026-04-25`
+    - `2026-04-25 22:30:22.508` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，先展开逐项价格比较，再把 `{}` 留在尾部。
+    - `2026-04-25 22:30:27.582` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonNoop`，明明同批已经拿到 ORCL 新闻与上轮提醒时间，仍只能靠尾部 JSON 兜底。
+    - `2026-04-25 23:00:31.886` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=JsonNoop`，继续先写价格/时间戳推理，再尾部补状态。
+    - `2026-04-25 23:01:23.829` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonTriggered`，同样以 `<think>` 开头，只是这次尾部 JSON 被解析为触发并成功送达。
+    - 结论：到 `2026-04-25 23:01` 为止，heartbeat 公共输出仍持续依赖“自由文本/`<think>` + 尾部 JSON”兜底；22:30 的静默跳过与 23:01 的成功送达共存，说明解析器只是在吸收漂移，不能视为结构化契约已经恢复。
   - 2026-04-25 21:01-21:32 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6286` `Monitor_Watchlist_11`、`run_id=6287` `ORCL 大事件监控`、`run_id=6291` `持仓重大事件心跳检测` 在 `21:01` 这一批全部落成 `noop + skipped_noop + delivered=0`；`run_id=6299`、`6300`、`6302` 在 `21:31-21:32` 下一批再次全部落成同一结果。
