@@ -196,6 +196,32 @@ GROUP BY source;
 
 - `data/runtime/logs/web.log.2026-04-24` 在这些 403 前后仍持续出现 `poller ok`，因此这次补充继续把影响限定在 Truth Social source 自身，而不是整个 event-engine cadence 或 sink 装配失败。
 
+## Latest巡检 Update
+
+- 2026-04-25T02:32:11Z：在 `2026-04-24T22:25:31Z` 之后，Truth Social `statuses` 403 在新日志文件里继续复现，而且重启后立即失败：
+
+```text
+data/runtime/logs/web.log.2026-04-25:11:[2026-04-25 08:06:52.901] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:487:[2026-04-25 09:06:52.603] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:729:[2026-04-25 10:00:58.732] INFO  event engine sink: MultiChannelSink 已装配
+data/runtime/logs/web.log.2026-04-25:744:[2026-04-25 10:00:58.738] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-25:760:[2026-04-25 10:01:00.026] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+```
+
+- 同一巡检窗口里，`data/events.sqlite3` 对 `source LIKE 'truth_social.%'` 仍然没有任何事件，而 Telegram social source 继续有历史产出：
+
+```text
+SELECT source, count(*), datetime(max(created_at_ts),'unixepoch')
+FROM events
+WHERE source LIKE 'truth_social.%'
+GROUP BY source;
+-- no rows
+
+telegram.watcherguru|40|2026-04-24 22:06:55
+```
+
+- 这次补充把“重启后会不会恢复”的疑点也排除了：最新 `MultiChannelSink` 装配完成后，Truth Social poller 仍在冷启动阶段立即拿到 `403 text/html`，因此坏态仍然限定在 enabled Truth Social source 自身。
+
 ## Date Observed
 
 `2026-04-24T04:05:20Z`

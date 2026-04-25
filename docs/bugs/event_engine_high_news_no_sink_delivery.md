@@ -336,6 +336,43 @@ data/runtime/logs/web.log.2026-04-24:4408:[2026-04-25 04:36:52.405] INFO  dispat
 
 - The event payload in `data/events.jsonl` remains a trusted-source merger headline with `severity="high"` and `symbols=["IHRT"]`, so the latest evidence still points to routing/subscription coverage rather than upstream classification noise.
 
+## Latest巡检 Update
+
+- 2026-04-25T02:32:11Z: after `2026-04-24T22:25:31Z`, the same routing gap recurred again. `data/events.sqlite3` stored one new trusted-source High Reuters news row, and its only delivery evidence was `router|no_actor|high`:
+
+```text
+created=2026-04-25 00:06:52 UTC
+occurred=2026-04-24 19:36:21 UTC
+source=fmp.stock_news:reuters.com
+severity=high
+id=news:https://www.reuters.com/world/us-judge-dismisses-musks-fraud-claims-openai-case-plans-proceed-trial-2026-04-24/
+title=US judge dismisses Musk's fraud claims in OpenAI case, plans to proceed to trial
+symbols=["P-OPEA"]
+source_class=trusted
+legal_ad_template=0
+delivery=router|no_actor|high|2026-04-25 00:06:52
+```
+
+- The local log window around the same second again shows `dispatch skipped: no matching actor`, with no `sink delivered` or `[dryrun sink]` evidence in the incremental window:
+
+```text
+data/runtime/logs/web.log.2026-04-25:4:[2026-04-25 08:06:51.977] INFO  poller ok
+data/runtime/logs/web.log.2026-04-25:5:[2026-04-25 08:06:52.231] INFO  dispatch skipped: no matching actor
+data/runtime/logs/web.log.2026-04-25:6:[2026-04-25 08:06:52.251] INFO  dispatch skipped: no matching actor
+data/runtime/logs/web.log.2026-04-25:7:[2026-04-25 08:06:52.262] INFO  dispatch skipped: no matching actor
+data/runtime/logs/web.log.2026-04-25:8:[2026-04-25 08:06:52.273] INFO  dispatch skipped: no matching actor
+data/runtime/logs/web.log.2026-04-25:9:[2026-04-25 08:06:52.286] INFO  dispatch skipped: no matching actor
+data/runtime/logs/web.log.2026-04-25:10:[2026-04-25 08:06:52.288] INFO  poller ok
+```
+
+- This keeps the issue scoped to routing coverage rather than sink assembly or dryrun mode: the same incremental window later logged digest sends and a real sink assembly, while `config.yaml` still has `event_engine.dryrun=false`:
+
+```text
+data/runtime/logs/web.log.2026-04-25:476:[2026-04-25 09:00:52.600] INFO  digest delivered
+data/runtime/logs/web.log.2026-04-25:478:[2026-04-25 09:00:53.188] INFO  digest delivered
+data/runtime/logs/web.log.2026-04-25:729:[2026-04-25 10:00:58.732] INFO  event engine sink: MultiChannelSink 已装配
+```
+
 ## Severity
 
 sev2. The affected events are high severity and one is a safety recall while another is a guidance cut; if they should match the user, the current evidence trail makes the miss silent rather than auditable.
