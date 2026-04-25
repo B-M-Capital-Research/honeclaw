@@ -1,5 +1,5 @@
 // password-setup-guard.tsx — 强制设密码 Modal
-// 当 user.has_password === false 时拦截整张页面;成功后回调父层刷新 user
+// 当 user.has_password === false 时拦截整张页面；成功后回调父层刷新 user
 
 import { Show, createMemo, createSignal, type ParentProps } from "solid-js"
 import { useNavigate } from "@solidjs/router"
@@ -8,6 +8,7 @@ import { PublicCheckbox } from "./public-checkbox"
 import { PublicPasswordField } from "./public-password-field"
 import { setPublicPassword, publicLogout } from "@/lib/api"
 import { checkPasswordStrength } from "@/lib/password"
+import { CONTENT } from "@/lib/public-content"
 import { TOS_VERSION } from "@/lib/tos"
 import type { PublicAuthUserInfo } from "@/lib/types"
 
@@ -61,7 +62,7 @@ export function PasswordSetupGuard(props: Props) {
     <>
       {props.children}
       <Show when={props.user.has_password === false}>
-        <PublicModal open={true} title="首次登录:请设置密码" blockClose width="460px">
+        <PublicModal open={true} title={CONTENT.auth.guard.title} blockClose width="460px">
           <div style={{ display: "flex", "flex-direction": "column", gap: "16px" }}>
             <p
               style={{
@@ -71,56 +72,58 @@ export function PasswordSetupGuard(props: Props) {
                 color: "#475569",
               }}
             >
-              为保护账号安全,请设置一个个人密码。设置后,你将通过手机号 + 密码登录,无需再使用邀请码。
+              {CONTENT.auth.guard.hint}
             </p>
 
             <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-              <Label>新密码</Label>
+              <Label>{CONTENT.auth.guard.new_label}</Label>
               <PublicPasswordField
                 value={pwd()}
                 onInput={setPwd}
-                placeholder="至少 8 位,含字母与数字"
+                placeholder={CONTENT.auth.guard.new_placeholder}
                 showRules
                 autoComplete="new-password"
-                ariaLabel="新密码"
+                ariaLabel={CONTENT.auth.guard.new_label}
               />
             </div>
 
             <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-              <Label>确认密码</Label>
+              <Label>{CONTENT.auth.guard.confirm_label}</Label>
               <PublicPasswordField
                 value={confirm()}
                 onInput={setConfirm}
-                placeholder="再输入一次"
+                placeholder={CONTENT.auth.guard.confirm_placeholder}
                 autoComplete="new-password"
-                ariaLabel="确认密码"
+                ariaLabel={CONTENT.auth.guard.confirm_label}
                 onEnter={submit}
               />
               <Show when={confirm().length > 0 && !matches()}>
-                <span style={{ "font-size": "11.5px", color: "#dc2626" }}>两次输入的密码不一致</span>
+                <span style={{ "font-size": "11.5px", color: "#dc2626" }}>
+                  {CONTENT.auth.guard.error_mismatch}
+                </span>
               </Show>
             </div>
 
             <PublicCheckbox checked={agreed()} onChange={setAgreed}>
-              我已阅读并同意{" "}
+              {CONTENT.auth.tos.prefix}
               <a
                 href="/terms"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: "#d97706", "text-decoration": "underline" }}
               >
-                《用户协议》
-              </a>{" "}
-              和{" "}
+                {CONTENT.auth.tos.terms}
+              </a>
+              {CONTENT.auth.tos.and}
               <a
                 href="/privacy"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: "#d97706", "text-decoration": "underline" }}
               >
-                《隐私政策》
+                {CONTENT.auth.tos.privacy}
               </a>
-              (v{TOS_VERSION})
+              {CONTENT.auth.tos.version_template.replace("{version}", TOS_VERSION)}
             </PublicCheckbox>
 
             <Show when={error()}>
@@ -154,7 +157,7 @@ export function PasswordSetupGuard(props: Props) {
                   "font-family": "inherit",
                 }}
               >
-                暂不设置 · 退出登录
+                {CONTENT.auth.guard.button_skip}
               </button>
               <button
                 type="button"
@@ -172,7 +175,7 @@ export function PasswordSetupGuard(props: Props) {
                   "font-family": "inherit",
                 }}
               >
-                {submitting() ? "保存中…" : "保存并继续"}
+                {submitting() ? CONTENT.auth.guard.loading : CONTENT.auth.guard.button_submit}
               </button>
             </div>
           </div>

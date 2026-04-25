@@ -194,7 +194,7 @@ test("forced first-login: set password → logout → login with phone + passwor
   await page.goto("/me")
 
   // The setup guard pops a non-closable modal because user.has_password=false.
-  const guardTitle = page.getByText("首次登录:请设置密码")
+  const guardTitle = page.getByText("首次登录：请设置密码")
   await expect(guardTitle).toBeVisible()
 
   // No close button (blockClose is honored).
@@ -252,7 +252,7 @@ test("password-rules live hints + submit button gating", async ({ page }) => {
   })
 
   await page.goto("/me")
-  await expect(page.getByText("首次登录:请设置密码")).toBeVisible()
+  await expect(page.getByText("首次登录：请设置密码")).toBeVisible()
 
   const newField = page.getByLabel("新密码")
   const submit = page.getByRole("button", { name: "保存并继续" })

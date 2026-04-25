@@ -1,6 +1,8 @@
 // Mirror of backend `validate_password_strength` in routes/public.rs.
 // Length 8..=128, must contain at least one digit AND one ASCII letter.
 
+import { CONTENT } from "./public-content";
+
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
 
@@ -23,15 +25,17 @@ export function checkPasswordStrength(plain: string): PasswordCheck {
   if (!lengthOk) {
     return {
       ok: false,
-      reason: `密码长度需 ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} 位`,
+      reason: CONTENT.auth.password_error.length_template
+        .replace("{min}", String(PASSWORD_MIN_LENGTH))
+        .replace("{max}", String(PASSWORD_MAX_LENGTH)),
       rules,
     };
   }
   if (!hasDigit) {
-    return { ok: false, reason: "密码至少包含一位数字", rules };
+    return { ok: false, reason: CONTENT.auth.password_error.no_digit, rules };
   }
   if (!hasLetter) {
-    return { ok: false, reason: "密码至少包含一位字母", rules };
+    return { ok: false, reason: CONTENT.auth.password_error.no_letter, rules };
   }
   return { ok: true, rules };
 }

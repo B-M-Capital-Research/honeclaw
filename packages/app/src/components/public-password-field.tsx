@@ -2,6 +2,7 @@
 
 import { Show, createMemo, createSignal, type JSX } from "solid-js"
 import { checkPasswordStrength } from "@/lib/password"
+import { CONTENT } from "@/lib/public-content"
 
 type Props = {
   value: string
@@ -26,7 +27,7 @@ export function PublicPasswordField(props: Props): JSX.Element {
           value={props.value}
           aria-label={props.ariaLabel}
           autocomplete={props.autoComplete ?? "current-password"}
-          placeholder={props.placeholder ?? "密码"}
+          placeholder={props.placeholder ?? CONTENT.auth.password_field.default_placeholder}
           disabled={props.disabled}
           onInput={(e) => props.onInput(e.currentTarget.value)}
           onKeyDown={(e) => {
@@ -61,7 +62,7 @@ export function PublicPasswordField(props: Props): JSX.Element {
           type="button"
           onClick={() => setReveal((r) => !r)}
           tabIndex={-1}
-          aria-label={reveal() ? "隐藏密码" : "显示密码"}
+          aria-label={reveal() ? CONTENT.auth.password_field.hide_aria : CONTENT.auth.password_field.show_aria}
           style={{
             position: "absolute",
             right: "8px",
@@ -105,9 +106,9 @@ export function PublicPasswordField(props: Props): JSX.Element {
       </div>
       <Show when={props.showRules && props.value.length > 0}>
         <div style={{ display: "flex", "flex-direction": "column", gap: "4px", "font-size": "11.5px" }}>
-          <Rule ok={check().rules.lengthOk} text="8–128 位" />
-          <Rule ok={check().rules.hasLetter} text="至少一个字母" />
-          <Rule ok={check().rules.hasDigit} text="至少一个数字" />
+          <Rule ok={check().rules.lengthOk} text={CONTENT.auth.password_field.rule_length} />
+          <Rule ok={check().rules.hasLetter} text={CONTENT.auth.password_field.rule_letter} />
+          <Rule ok={check().rules.hasDigit} text={CONTENT.auth.password_field.rule_digit} />
         </div>
       </Show>
     </div>

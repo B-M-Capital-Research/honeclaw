@@ -340,7 +340,7 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
           </ActionBtn>
           <Show when={props.user.has_password}>
             <ActionBtn variant="default" onClick={() => setChangeOpen(true)}>
-              修改密码
+              {CONTENT.auth.change_password.open_button}
             </ActionBtn>
           </Show>
           <ActionBtn variant="danger" onClick={props.onLogout}>
@@ -430,8 +430,9 @@ function ChangePasswordModal(props: { open: boolean; onClose: () => void }) {
     }
   }
 
+  const CP = CONTENT.auth.change_password
   return (
-    <PublicModal open={props.open} title="修改密码" onClose={close}>
+    <PublicModal open={props.open} title={CP.title} onClose={close}>
       <Show
         when={!done()}
         fallback={
@@ -444,7 +445,7 @@ function ChangePasswordModal(props: { open: boolean; onClose: () => void }) {
                 "line-height": "1.6",
               }}
             >
-              ✓ 密码已更新。下次登录请使用新密码。
+              {CP.success}
             </p>
             <div style={{ display: "flex", "justify-content": "flex-end" }}>
               <button
@@ -462,7 +463,7 @@ function ChangePasswordModal(props: { open: boolean; onClose: () => void }) {
                   "font-weight": "600",
                 }}
               >
-                好的
+                {CP.button_ok}
               </button>
             </div>
           </div>
@@ -470,38 +471,38 @@ function ChangePasswordModal(props: { open: boolean; onClose: () => void }) {
       >
         <div style={{ display: "flex", "flex-direction": "column", gap: "14px" }}>
           <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-            <FieldLabel>当前密码</FieldLabel>
+            <FieldLabel>{CP.current_label}</FieldLabel>
             <PublicPasswordField
               value={current()}
               onInput={setCurrent}
               autoComplete="current-password"
-              ariaLabel="当前密码"
-              placeholder="当前密码"
+              ariaLabel={CP.current_aria}
+              placeholder={CP.current_placeholder}
             />
           </div>
           <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-            <FieldLabel>新密码</FieldLabel>
+            <FieldLabel>{CP.new_label}</FieldLabel>
             <PublicPasswordField
               value={next()}
               onInput={setNext}
               autoComplete="new-password"
-              ariaLabel="新密码"
-              placeholder="至少 8 位,含字母与数字"
+              ariaLabel={CP.new_aria}
+              placeholder={CP.new_placeholder}
               showRules
             />
           </div>
           <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-            <FieldLabel>确认新密码</FieldLabel>
+            <FieldLabel>{CP.confirm_label}</FieldLabel>
             <PublicPasswordField
               value={confirmPwd()}
               onInput={setConfirmPwd}
               autoComplete="new-password"
-              ariaLabel="确认新密码"
-              placeholder="再输入一次"
+              ariaLabel={CP.confirm_aria}
+              placeholder={CP.confirm_placeholder}
               onEnter={submit}
             />
             <Show when={confirmPwd().length > 0 && !matches()}>
-              <span style={{ "font-size": "11.5px", color: "#dc2626" }}>两次输入的密码不一致</span>
+              <span style={{ "font-size": "11.5px", color: "#dc2626" }}>{CP.error_mismatch}</span>
             </Show>
           </div>
           <Show when={error()}>
@@ -523,7 +524,7 @@ function ChangePasswordModal(props: { open: boolean; onClose: () => void }) {
                 "font-size": "13px",
               }}
             >
-              取消
+              {CONTENT.common.cancel}
             </button>
             <button
               type="button"
@@ -541,7 +542,7 @@ function ChangePasswordModal(props: { open: boolean; onClose: () => void }) {
                 "font-weight": "600",
               }}
             >
-              {submitting() ? "保存中…" : "保存"}
+              {submitting() ? CP.loading : CP.button_submit}
             </button>
           </div>
         </div>

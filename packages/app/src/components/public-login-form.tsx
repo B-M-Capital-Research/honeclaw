@@ -1,12 +1,13 @@
-// public-login-form.tsx — /me 和 /chat 共用的登录卡(tab: 密码登录 / 邀请码激活)
+// public-login-form.tsx — /me 和 /chat 共用的登录卡（tab: 密码登录 / 邀请码激活）
 //
-// 默认展示"密码登录";"邀请码激活"用于新用户首次进入。顶部一行引导文案 +
-// 每个 tab 下一行小字,让用户不用猜该选哪边。
+// 默认展示"密码登录"；"邀请码激活"用于新用户首次进入。顶部一行引导文案 +
+// 每个 tab 下一行小字，让用户不用猜该选哪边。
 
 import { Show, createMemo, createSignal, type JSX, type ParentProps } from "solid-js"
 import { PublicCheckbox } from "./public-checkbox"
 import { PublicPasswordField } from "./public-password-field"
 import { publicInviteLogin, publicPasswordLogin } from "@/lib/api"
+import { CONTENT } from "@/lib/public-content"
 import { normalizeInviteCode, normalizePhoneNumber } from "@/lib/public-chat"
 import { TOS_VERSION } from "@/lib/tos"
 import type { PublicAuthUserInfo } from "@/lib/types"
@@ -116,10 +117,10 @@ export function PublicLoginForm(props: Props) {
               "letter-spacing": "-0.01em",
             }}
           >
-            {props.title ?? "登录 Hone"}
+            {props.title ?? CONTENT.auth.login.title}
           </h1>
           <p style={{ "font-size": "13px", color: "#64748b", margin: "0", "line-height": "1.6" }}>
-            {props.subtitle ?? "老用户请使用密码登录;新用户请用邀请码激活账号。"}
+            {props.subtitle ?? CONTENT.auth.login.subtitle}
           </p>
         </div>
 
@@ -153,7 +154,7 @@ export function PublicLoginForm(props: Props) {
               style={tabBtnStyle(tab() === "password")}
               data-testid="tab-password"
             >
-              密码登录
+              {CONTENT.auth.login.tab_password}
             </button>
             <button
               type="button"
@@ -164,7 +165,7 @@ export function PublicLoginForm(props: Props) {
               style={tabBtnStyle(tab() === "invite")}
               data-testid="tab-invite"
             >
-              邀请码激活
+              {CONTENT.auth.login.tab_invite}
             </button>
           </div>
 
@@ -180,22 +181,22 @@ export function PublicLoginForm(props: Props) {
           >
             <Show
               when={tab() === "password"}
-              fallback="新用户首次进入:凭收到的邀请码激活账号,激活后请设置个人密码。"
+              fallback={CONTENT.auth.login.hint_invite}
             >
-              已有账号:使用手机号 + 个人密码登录。
+              {CONTENT.auth.login.hint_password}
             </Show>
           </p>
 
           {/* Phone (shared) */}
           <div style={{ display: "flex", "flex-direction": "column", "margin-bottom": "12px" }}>
-            <FieldLabel>手机号</FieldLabel>
+            <FieldLabel>{CONTENT.auth.login.phone_label}</FieldLabel>
             <TextInput
               value={phoneNumber()}
               onInput={setPhoneNumber}
               type="tel"
-              placeholder="例如 13800138000"
+              placeholder={CONTENT.auth.login.phone_placeholder}
               autoComplete="tel"
-              ariaLabel="手机号"
+              ariaLabel={CONTENT.auth.login.phone_aria}
             />
           </div>
 
@@ -204,31 +205,31 @@ export function PublicLoginForm(props: Props) {
             when={tab() === "password"}
             fallback={
               <div style={{ display: "flex", "flex-direction": "column", "margin-bottom": "12px" }}>
-                <FieldLabel>邀请码</FieldLabel>
+                <FieldLabel>{CONTENT.auth.login.invite_label}</FieldLabel>
                 <TextInput
                   value={inviteCode()}
                   onInput={setInviteCode}
-                  placeholder="HONE-XXXXXX-XXXXXX"
-                  ariaLabel="邀请码"
+                  placeholder={CONTENT.auth.login.invite_placeholder}
+                  ariaLabel={CONTENT.auth.login.invite_aria}
                   onEnter={submitInvite}
                 />
               </div>
             }
           >
             <div style={{ display: "flex", "flex-direction": "column", "margin-bottom": "12px" }}>
-              <FieldLabel>密码</FieldLabel>
+              <FieldLabel>{CONTENT.auth.login.password_label}</FieldLabel>
               <PublicPasswordField
                 value={password()}
                 onInput={setPassword}
-                placeholder="您的密码"
+                placeholder={CONTENT.auth.login.password_placeholder}
                 autoComplete="current-password"
-                ariaLabel="密码"
+                ariaLabel={CONTENT.auth.login.password_aria}
                 onEnter={submitPassword}
               />
             </div>
             <div style={{ "margin-bottom": "12px" }}>
               <PublicCheckbox checked={remember()} onChange={setRemember}>
-                <span style={{ "font-size": "13px" }}>保持登录(30 天)</span>
+                <span style={{ "font-size": "13px" }}>{CONTENT.auth.login.remember_30d}</span>
               </PublicCheckbox>
             </div>
           </Show>
@@ -248,7 +249,11 @@ export function PublicLoginForm(props: Props) {
           <SubmitButton
             disabled={tab() === "password" ? !passwordReady() : !inviteReady()}
             loading={submitting()}
-            label={tab() === "password" ? "登录" : "激活并登录"}
+            label={
+              tab() === "password"
+                ? CONTENT.auth.login.submit_password
+                : CONTENT.auth.login.submit_invite
+            }
             onClick={tab() === "password" ? submitPassword : submitInvite}
           />
         </div>
@@ -343,25 +348,25 @@ function ErrorBox(props: { message: string }) {
 function TosLink() {
   return (
     <>
-      我已阅读并同意{" "}
+      {CONTENT.auth.tos.prefix}
       <a
         href="/terms"
         target="_blank"
         rel="noopener noreferrer"
         style={{ color: "#d97706", "text-decoration": "underline" }}
       >
-        《用户协议》
-      </a>{" "}
-      和{" "}
+        {CONTENT.auth.tos.terms}
+      </a>
+      {CONTENT.auth.tos.and}
       <a
         href="/privacy"
         target="_blank"
         rel="noopener noreferrer"
         style={{ color: "#d97706", "text-decoration": "underline" }}
       >
-        《隐私政策》
+        {CONTENT.auth.tos.privacy}
       </a>
-      (v{TOS_VERSION})
+      {CONTENT.auth.tos.version_template.replace("{version}", TOS_VERSION)}
     </>
   )
 }
@@ -393,7 +398,7 @@ function SubmitButton(props: {
         transition: "background 0.15s ease",
       }}
     >
-      {props.loading ? "登录中…" : props.label}
+      {props.loading ? CONTENT.auth.login.loading : props.label}
     </button>
   )
 }

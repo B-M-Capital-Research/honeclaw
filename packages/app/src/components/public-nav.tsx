@@ -42,11 +42,13 @@ export function PublicNav() {
     return transparent() ? "rgba(255,255,255,0.08)" : "rgba(245,158,11,0.08)"
   }
 
+  // NOTE: store `labelKey` (not pre-resolved strings) so each render re-reads
+  // the CONTENT proxy inside JSX and tracks the locale signal.
   const links = [
-    { label: C.home, path: "/" },
-    { label: C.roadmap, path: "/roadmap" },
-    { label: C.me, path: "/me" },
-  ]
+    { labelKey: "home", path: "/" },
+    { labelKey: "roadmap", path: "/roadmap" },
+    { labelKey: "me", path: "/me" },
+  ] as const
 
   const go = (path: string) => {
     navigate(path)
@@ -116,7 +118,7 @@ export function PublicNav() {
                   color: getLinkColor(l.path),
                 }}
               >
-                {l.label}
+                {C[l.labelKey]}
               </button>
             )}
           </For>
@@ -176,7 +178,7 @@ export function PublicNav() {
               border: transparent() ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.10)",
             }}
           >
-            <For each={[{ code: "zh" as const, label: C.locale_zh }, { code: "en" as const, label: C.locale_en }]}>
+            <For each={[{ code: "zh" as const, labelKey: "locale_zh" as const }, { code: "en" as const, labelKey: "locale_en" as const }]}>
               {(opt) => {
                 const active = () => useLocale() === opt.code
                 return (
@@ -206,7 +208,7 @@ export function PublicNav() {
                       transition: "color 0.2s, background 0.2s",
                     }}
                   >
-                    {opt.label}
+                    {C[opt.labelKey]}
                   </button>
                 )
               }}
@@ -296,7 +298,7 @@ export function PublicNav() {
                     width: "100%",
                   }}
                 >
-                  {l.label}
+                  {C[l.labelKey]}
                 </button>
               )}
             </For>

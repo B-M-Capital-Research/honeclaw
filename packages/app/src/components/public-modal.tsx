@@ -3,6 +3,7 @@
 
 import { Show, type JSX, type ParentProps, createEffect, onCleanup } from "solid-js"
 import { Portal } from "solid-js/web"
+import { CONTENT } from "@/lib/public-content"
 
 type Props = ParentProps<{
   open: boolean
@@ -86,7 +87,7 @@ export function PublicModal(props: Props) {
                   <button
                     type="button"
                     onClick={() => props.onClose?.()}
-                    aria-label="关闭"
+                    aria-label={CONTENT.common.close_aria}
                     style={{
                       width: "30px",
                       height: "30px",

@@ -10,6 +10,15 @@
 
 import { useLocale } from "./i18n"
 
+// ── Legal copy structured nodes (terms & privacy) ────────────────────────────
+// Rich prose is modeled as a typed block tree so ZH/EN stay parallel and the
+// pages render via a tiny interpreter instead of embedding JSX in content.
+export type LegalInline = string | { strong: string } | { code: string }
+export type LegalBlock =
+  | { kind: "p"; parts: LegalInline[] }
+  | { kind: "ul"; items: LegalInline[][] }
+export type LegalSection = { title: string; body: LegalBlock[] }
+
 const CONTENT_ZH = {
   nav: {
     logo_tagline: "OPEN FINANCIAL CONSOLE",
@@ -493,6 +502,291 @@ const CONTENT_ZH = {
       daily_limit: "每日额度",
       used_today: "今日已用",
       remaining: "剩余次数",
+    },
+  },
+
+  auth: {
+    login: {
+      title: "登录 Hone",
+      subtitle: "老用户请使用密码登录；新用户请用邀请码激活账号。",
+      tab_password: "密码登录",
+      tab_invite: "邀请码激活",
+      hint_password: "已有账号：使用手机号 + 个人密码登录。",
+      hint_invite: "新用户首次进入：凭收到的邀请码激活账号，激活后请设置个人密码。",
+      phone_label: "手机号",
+      phone_placeholder: "例如 13800138000",
+      phone_aria: "手机号",
+      password_label: "密码",
+      password_placeholder: "您的密码",
+      password_aria: "密码",
+      invite_label: "邀请码",
+      invite_placeholder: "HONE-XXXXXX-XXXXXX",
+      invite_aria: "邀请码",
+      remember_30d: "保持登录（30 天）",
+      submit_password: "登录",
+      submit_invite: "激活并登录",
+      loading: "登录中…",
+    },
+    guard: {
+      title: "首次登录：请设置密码",
+      hint: "为保护账号安全，请设置一个个人密码。设置后，你将通过手机号 + 密码登录，无需再使用邀请码。",
+      new_label: "新密码",
+      new_placeholder: "至少 8 位，含字母与数字",
+      confirm_label: "确认密码",
+      confirm_placeholder: "再输入一次",
+      error_mismatch: "两次输入的密码不一致",
+      button_skip: "暂不设置 · 退出登录",
+      button_submit: "保存并继续",
+      loading: "保存中…",
+    },
+    password_field: {
+      default_placeholder: "密码",
+      show_aria: "显示密码",
+      hide_aria: "隐藏密码",
+      rule_length: "8–128 位",
+      rule_letter: "至少一个字母",
+      rule_digit: "至少一个数字",
+    },
+    change_password: {
+      open_button: "修改密码",
+      title: "修改密码",
+      current_label: "当前密码",
+      current_placeholder: "当前密码",
+      current_aria: "当前密码",
+      new_label: "新密码",
+      new_placeholder: "至少 8 位，含字母与数字",
+      new_aria: "新密码",
+      confirm_label: "确认新密码",
+      confirm_placeholder: "再输入一次",
+      confirm_aria: "确认新密码",
+      error_mismatch: "两次输入的密码不一致",
+      success: "✓ 密码已更新。下次登录请使用新密码。",
+      button_ok: "好的",
+      button_submit: "保存",
+      loading: "保存中…",
+    },
+    password_error: {
+      length_template: "密码长度需 {min}–{max} 位",
+      no_digit: "密码至少包含一位数字",
+      no_letter: "密码至少包含一位字母",
+    },
+    tos: {
+      prefix: "我已阅读并同意",
+      terms: "《用户协议》",
+      and: "和",
+      privacy: "《隐私政策》",
+      version_template: "（v{version}）",
+    },
+  },
+
+  common: {
+    cancel: "取消",
+    close_aria: "关闭",
+  },
+
+  legal: {
+    version_banner_template: "v{version} · {date} 生效",
+    terms: {
+      page_title: "用户协议",
+      intro: "请仔细阅读以下条款。继续使用 Hone 即表示您接受本协议。",
+      sections: [
+        {
+          title: "1. 协议接受与生效",
+          body: [
+            { kind: "p", parts: ["欢迎使用 Hone（以下简称“我们”或“本服务”）。本《用户协议》（以下简称“本协议”）是您与本服务运营方之间就您使用本服务所订立的有效合同。"] },
+            { kind: "p", parts: ["您在勾选同意或继续使用本服务时，即视为您已充分阅读并同意本协议全部条款。若您不同意本协议任何条款，请立即停止使用本服务。"] },
+          ],
+        },
+        {
+          title: "2. 服务说明",
+          body: [
+            { kind: "p", parts: ["Hone 是一款面向个人投资者的研究与决策辅助工具，提供资料检索、对话式研究、投资笔记、定时提醒等能力。"] },
+            { kind: "p", parts: [{ strong: "本服务不构成任何形式的投资建议、要约或推荐。" }, "本服务输出的全部内容仅供参考，任何投资决策均应由您本人独立作出并自行承担相应风险与后果。"] },
+          ],
+        },
+        {
+          title: "3. 账号与密码",
+          body: [
+            { kind: "p", parts: ["您需要使用经我们登记的手机号作为账号，并设置个人密码用于身份验证。您应妥善保管账号密码，不得将账号借予他人使用。"] },
+            { kind: "p", parts: ["您应对在您账号下发生的所有行为负责。若发现账号被未经授权使用，您应立即通知我们并修改密码。"] },
+          ],
+        },
+        {
+          title: "4. 用户行为规范",
+          body: [
+            { kind: "p", parts: ["使用本服务时，您承诺不从事下列行为："] },
+            {
+              kind: "ul",
+              items: [
+                ["违反国家法律法规或公序良俗；"],
+                ["侵犯他人合法权益，包括知识产权、隐私权、商业秘密等；"],
+                ["对本服务进行反向工程、爬取、批量自动化访问、漏洞利用或其他形式的滥用；"],
+                ["上传或传播恶意代码、垃圾信息、违法或不良信息；"],
+                ["冒用他人身份或伪造账号信息。"],
+              ],
+            },
+          ],
+        },
+        {
+          title: "5. 内容与知识产权",
+          body: [
+            { kind: "p", parts: ["本服务及其相关界面、文案、代码、商标等所有相关知识产权归我们或合法权利人所有，受著作权法及相关法律法规保护。"] },
+            { kind: "p", parts: ["您在本服务中输入的内容（包括对话、笔记、附件等）的著作权归您本人所有。您授予我们必要的、为提供和改进本服务所需的非排他性使用权。"] },
+          ],
+        },
+        {
+          title: "6. 第三方服务与数据源",
+          body: [
+            { kind: "p", parts: ["本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎等第三方服务以完成功能交付。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。"] },
+            { kind: "p", parts: ["您理解并同意，在调用第三方服务的过程中，我们可能向第三方传递必要的请求内容。我们将依照第三方服务条款选择正规、可信的合作方。"] },
+          ],
+        },
+        {
+          title: "7. 服务变更、中断与终止",
+          body: [
+            { kind: "p", parts: ["我们可能因升级维护、安全事件、不可抗力或经营调整等原因暂停、变更或终止部分或全部服务。我们将在合理范围内事先通过本服务内通知或其他方式告知。"] },
+            { kind: "p", parts: ["若您严重违反本协议，我们有权立即暂停或终止向您提供服务，并保留依法追究责任的权利。"] },
+          ],
+        },
+        {
+          title: "8. 免责与责任限制",
+          body: [
+            { kind: "p", parts: ["在适用法律允许的最大范围内，本服务以“现状”和“现有”方式提供。我们不对服务的连续性、准确性、完整性、及时性作出任何明示或默示保证。"] },
+            { kind: "p", parts: ["因您依赖本服务输出内容作出的投资或交易决定所导致的任何损失，除依法应承担的责任外，我们不对此承担责任。我们的累计赔偿责任以您过去 12 个月内为本服务实际支付的费用为限。"] },
+          ],
+        },
+        {
+          title: "9. 协议变更与通知",
+          body: [
+            { kind: "p", parts: ["我们可能根据法律法规或业务调整需要修改本协议。修改后的协议将在本服务内公布，并标明版本号与生效日期。"] },
+            { kind: "p", parts: ["重大修改将以站内提醒等方式提示您再次确认。若您在协议变更后继续使用本服务，即视为您接受修改后的协议。"] },
+          ],
+        },
+        {
+          title: "10. 争议解决与法律适用",
+          body: [
+            { kind: "p", parts: ["本协议的订立、效力、解释、履行及争议解决，均适用中华人民共和国大陆地区法律（不含港澳台地区法律）。"] },
+            { kind: "p", parts: ["因本协议引起的或与之相关的任何争议，双方应首先协商解决；协商不成的，任何一方可向运营方主要办公地有管辖权的人民法院提起诉讼。"] },
+          ],
+        },
+        {
+          title: "11. 联系方式",
+          body: [
+            { kind: "p", parts: ["若您对本协议有任何疑问、意见或建议，可通过本服务“个人页面”中的反馈入口联系我们。我们将在合理时间内回复并处理。"] },
+          ],
+        },
+      ] as LegalSection[],
+    },
+    privacy: {
+      page_title: "隐私政策",
+      intro: "我们在乎您的数据。本政策说明 Hone 如何处理您的个人信息。",
+      sections: [
+        {
+          title: "1. 引言与适用范围",
+          body: [
+            { kind: "p", parts: ["本《隐私政策》说明 Hone（以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 Hone 网站及客户端使用本服务的全部场景。"] },
+            { kind: "p", parts: ["请您在使用本服务前完整阅读本政策。继续使用本服务即视为您已充分了解并同意本政策。"] },
+          ],
+        },
+        {
+          title: "2. 我们收集的信息",
+          body: [
+            { kind: "p", parts: ["为提供服务，我们会按最小必要原则收集下列类别的信息："] },
+            {
+              kind: "ul",
+              items: [
+                [{ strong: "账号信息：" }, "手机号（作为账号识别）、邀请码（用于初次注册）、密码哈希（我们仅存储 Argon2id 哈希，绝不存储明文密码）；"],
+                [{ strong: "使用数据：" }, "对话记录、提问与回复内容、上传的附件、笔记与定时任务；"],
+                [{ strong: "设备与日志：" }, "IP 地址、浏览器类型、访问时间戳、错误日志、Cookie 标识；"],
+                [{ strong: "授权事件：" }, "用户协议与隐私政策的接受版本与时间。"],
+              ],
+            },
+          ],
+        },
+        {
+          title: "3. 使用目的",
+          body: [
+            { kind: "p", parts: ["我们使用上述信息用于以下目的："] },
+            {
+              kind: "ul",
+              items: [
+                ["身份认证、登录会话维持、账号风控与频率限制；"],
+                ["调用大型语言模型与外部数据源以完成您发起的查询；"],
+                ["记录会话上下文以提供连续对话能力；"],
+                ["系统故障排查、安全事件响应与服务优化。"],
+              ],
+            },
+          ],
+        },
+        {
+          title: "4. 存储、保留期与安全",
+          body: [
+            { kind: "p", parts: ["您的账号与对话数据默认存储于本服务的本地 SQLite 数据库中。密码采用 ", { strong: "Argon2id" }, " 算法配合随机盐进行哈希存储，我们无法恢复您的明文密码。"] },
+            { kind: "p", parts: ["我们采用 HTTPS 加密传输、最小权限访问控制、密码哈希等技术与管理措施，保护您的信息安全。在法律允许范围内，我们将在为完成相应目的所必需的期间内保留您的信息。"] },
+          ],
+        },
+        {
+          title: "5. 信息共享与第三方",
+          body: [
+            { kind: "p", parts: ["为完成您发起的查询，我们可能将您输入的相关内容传递给以下类别的第三方服务方："] },
+            {
+              kind: "ul",
+              items: [
+                ["大型语言模型提供方（用于生成回复）；"],
+                ["行情数据与搜索数据源（用于补充查询所需的市场或公开信息）。"],
+              ],
+            },
+            { kind: "p", parts: ["除上述必要场景以及法律法规另有规定外，我们不会向任何第三方出售或出租您的个人信息。"] },
+          ],
+        },
+        {
+          title: "6. Cookie 与追踪",
+          body: [
+            { kind: "p", parts: ["我们使用名为 ", { code: "hone_web_session" }, " 的 HTTP-only Cookie 维持登录态。该 Cookie 在您勾选“保持登录”时有效期为 30 天，否则为 1 天。"] },
+            { kind: "p", parts: ["我们不使用第三方广告追踪 Cookie。"] },
+          ],
+        },
+        {
+          title: "7. 未成年人保护",
+          body: [
+            { kind: "p", parts: ["本服务面向 18 周岁以上具有完全民事行为能力的成年人。若您是未成年人，请在监护人指导下使用本服务。我们不会主动收集未成年人的个人信息。"] },
+          ],
+        },
+        {
+          title: "8. 跨境传输",
+          body: [
+            { kind: "p", parts: ["若我们调用的语言模型或数据源服务器位于中华人民共和国大陆地区以外，您的相关查询内容可能被传输至境外。我们会选择具备合规资质的合作方，并采取必要的安全措施。"] },
+          ],
+        },
+        {
+          title: "9. 用户权利",
+          body: [
+            { kind: "p", parts: ["就您的个人信息，您依法享有下列权利："] },
+            {
+              kind: "ul",
+              items: [
+                ["访问、更正您的账号资料；"],
+                ["修改您的登录密码；"],
+                ["请求删除您的账号及关联数据；"],
+                ["撤回您此前给出的同意。"],
+              ],
+            },
+            { kind: "p", parts: ["您可在“个人页面”中行使前三项权利，或通过下文联系方式与我们联系。撤回同意可能导致您无法继续使用部分功能。"] },
+          ],
+        },
+        {
+          title: "10. 政策更新",
+          body: [
+            { kind: "p", parts: ["我们可能根据法律法规变化或业务调整需要更新本政策。更新后的政策将在本服务内公布，并标明版本号与生效日期；重大变更将以站内提醒等方式向您提示。"] },
+          ],
+        },
+        {
+          title: "11. 联系方式",
+          body: [
+            { kind: "p", parts: ["若您对本政策或您的个人信息处理有任何疑问、意见或投诉，可通过本服务“个人页面”中的反馈入口联系我们。我们将在合理时间内回复并妥善处理。"] },
+          ],
+        },
+      ] as LegalSection[],
     },
   },
 
@@ -1015,6 +1309,291 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       daily_limit: "Daily quota",
       used_today: "Used today",
       remaining: "Remaining",
+    },
+  },
+
+  auth: {
+    login: {
+      title: "Sign in to Hone",
+      subtitle: "Existing users sign in with a password; new users activate with an invite code.",
+      tab_password: "Password",
+      tab_invite: "Invite code",
+      hint_password: "Already have an account: sign in with phone + password.",
+      hint_invite: "First time in: activate your account with the invite code you received, then set a personal password.",
+      phone_label: "Phone",
+      phone_placeholder: "e.g. +1 555 0134",
+      phone_aria: "Phone",
+      password_label: "Password",
+      password_placeholder: "Your password",
+      password_aria: "Password",
+      invite_label: "Invite code",
+      invite_placeholder: "HONE-XXXXXX-XXXXXX",
+      invite_aria: "Invite code",
+      remember_30d: "Keep me signed in (30 days)",
+      submit_password: "Sign in",
+      submit_invite: "Activate & sign in",
+      loading: "Signing in…",
+    },
+    guard: {
+      title: "First sign-in: set a password",
+      hint: "Set a personal password to protect your account. From now on you'll sign in with phone + password — no invite code needed.",
+      new_label: "New password",
+      new_placeholder: "At least 8 chars, with letters and numbers",
+      confirm_label: "Confirm password",
+      confirm_placeholder: "Type it again",
+      error_mismatch: "Passwords do not match",
+      button_skip: "Skip for now · Sign out",
+      button_submit: "Save & continue",
+      loading: "Saving…",
+    },
+    password_field: {
+      default_placeholder: "Password",
+      show_aria: "Show password",
+      hide_aria: "Hide password",
+      rule_length: "8–128 characters",
+      rule_letter: "At least one letter",
+      rule_digit: "At least one digit",
+    },
+    change_password: {
+      open_button: "Change password",
+      title: "Change password",
+      current_label: "Current password",
+      current_placeholder: "Current password",
+      current_aria: "Current password",
+      new_label: "New password",
+      new_placeholder: "At least 8 chars, with letters and numbers",
+      new_aria: "New password",
+      confirm_label: "Confirm new password",
+      confirm_placeholder: "Type it again",
+      confirm_aria: "Confirm new password",
+      error_mismatch: "Passwords do not match",
+      success: "✓ Password updated. Use the new password next time you sign in.",
+      button_ok: "Got it",
+      button_submit: "Save",
+      loading: "Saving…",
+    },
+    password_error: {
+      length_template: "Password must be {min}–{max} characters",
+      no_digit: "Password must contain at least one digit",
+      no_letter: "Password must contain at least one letter",
+    },
+    tos: {
+      prefix: "I have read and agree to the ",
+      terms: "Terms of Service",
+      and: " and ",
+      privacy: "Privacy Policy",
+      version_template: " (v{version})",
+    },
+  },
+
+  common: {
+    cancel: "Cancel",
+    close_aria: "Close",
+  },
+
+  legal: {
+    version_banner_template: "v{version} · effective {date}",
+    terms: {
+      page_title: "Terms of Service",
+      intro: "Please read the following carefully. Continuing to use Hone means you accept these terms.",
+      sections: [
+        {
+          title: "1. Acceptance & effective date",
+          body: [
+            { kind: "p", parts: ["Welcome to Hone (\"we\" or \"the service\"). These Terms of Service (\"Terms\") form a binding agreement between you and the operator of the service regarding your use of the service."] },
+            { kind: "p", parts: ["By checking the agreement box or continuing to use the service, you confirm that you have read and accept these Terms in full. If you disagree with any clause, stop using the service immediately."] },
+          ],
+        },
+        {
+          title: "2. Service description",
+          body: [
+            { kind: "p", parts: ["Hone is a research and decision-assistant tool for individual investors, offering information retrieval, conversational research, investment notes, and scheduled reminders."] },
+            { kind: "p", parts: [{ strong: "The service does not constitute investment advice, an offer, or a recommendation of any kind." }, " All output from the service is for reference only; every investment decision is yours to make and yours to bear."] },
+          ],
+        },
+        {
+          title: "3. Account & password",
+          body: [
+            { kind: "p", parts: ["You sign in with a phone number we have registered and set a personal password for authentication. Keep your credentials safe and do not share your account with others."] },
+            { kind: "p", parts: ["You are responsible for everything that happens under your account. If you notice unauthorized access, notify us and change your password immediately."] },
+          ],
+        },
+        {
+          title: "4. Acceptable use",
+          body: [
+            { kind: "p", parts: ["When using the service, you agree not to:"] },
+            {
+              kind: "ul",
+              items: [
+                ["violate any applicable laws, regulations, or public order;"],
+                ["infringe on others' rights, including intellectual property, privacy, or trade secrets;"],
+                ["reverse-engineer, scrape, bulk-automate, exploit vulnerabilities, or otherwise abuse the service;"],
+                ["upload or distribute malware, spam, or unlawful or harmful content;"],
+                ["impersonate others or falsify account information."],
+              ],
+            },
+          ],
+        },
+        {
+          title: "5. Content & intellectual property",
+          body: [
+            { kind: "p", parts: ["All intellectual property rights in the service — interface, copy, code, marks, and related materials — belong to us or our lawful rights holders, protected by copyright and related laws."] },
+            { kind: "p", parts: ["Content you input (conversations, notes, attachments, etc.) remains yours. You grant us a non-exclusive license, limited to what is necessary to operate and improve the service."] },
+          ],
+        },
+        {
+          title: "6. Third-party services & data sources",
+          body: [
+            { kind: "p", parts: ["The service may call third-party large language models (LLMs), market data, search engines, and similar providers to deliver features. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements."] },
+            { kind: "p", parts: ["You understand and agree that, when calling a third-party service, we may transmit the necessary request content. We will choose reputable and trustworthy partners in line with their terms."] },
+          ],
+        },
+        {
+          title: "7. Service changes, suspension & termination",
+          body: [
+            { kind: "p", parts: ["We may suspend, change, or terminate part or all of the service for upgrades, maintenance, security incidents, force majeure, or business adjustments. We will give reasonable prior notice through in-service messages or other channels."] },
+            { kind: "p", parts: ["If you materially breach these Terms, we may suspend or terminate your access immediately and reserve the right to pursue remedies under the law."] },
+          ],
+        },
+        {
+          title: "8. Disclaimers & limitation of liability",
+          body: [
+            { kind: "p", parts: ["To the maximum extent permitted by applicable law, the service is provided \"as is\" and \"as available.\" We make no express or implied warranty of continuity, accuracy, completeness, or timeliness."] },
+            { kind: "p", parts: ["Except for liability we cannot disclaim under law, we are not responsible for losses arising from any investment or trading decision you make in reliance on service output. Our cumulative liability is capped at the fees you actually paid for the service in the preceding 12 months."] },
+          ],
+        },
+        {
+          title: "9. Changes to these Terms",
+          body: [
+            { kind: "p", parts: ["We may revise these Terms to reflect changes in law or our business. Updated Terms will be published in-service with a version number and effective date."] },
+            { kind: "p", parts: ["Material changes will be surfaced via in-service notice for reconfirmation. Continuing to use the service after an update means you accept the revised Terms."] },
+          ],
+        },
+        {
+          title: "10. Governing law & dispute resolution",
+          body: [
+            { kind: "p", parts: ["The formation, validity, interpretation, performance, and dispute resolution of these Terms are governed by the laws of mainland China (excluding Hong Kong SAR, Macao SAR, and Taiwan)."] },
+            { kind: "p", parts: ["Any dispute arising from or related to these Terms should first be addressed by good-faith negotiation. If negotiation fails, either party may bring a claim before the competent people's court at the operator's principal place of business."] },
+          ],
+        },
+        {
+          title: "11. Contact",
+          body: [
+            { kind: "p", parts: ["If you have any questions, comments, or suggestions about these Terms, reach us through the feedback entry on the \"Account\" page. We will respond within a reasonable period."] },
+          ],
+        },
+      ] as LegalSection[],
+    },
+    privacy: {
+      page_title: "Privacy Policy",
+      intro: "We care about your data. This policy explains how Hone handles your personal information.",
+      sections: [
+        {
+          title: "1. Introduction & scope",
+          body: [
+            { kind: "p", parts: ["This Privacy Policy describes how Hone (\"we\") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the Hone website or client."] },
+            { kind: "p", parts: ["Please read this policy in full before using the service. Continuing to use it means you have understood and accepted the policy."] },
+          ],
+        },
+        {
+          title: "2. Information we collect",
+          body: [
+            { kind: "p", parts: ["To provide the service, we collect the following categories of information under the principle of data minimization:"] },
+            {
+              kind: "ul",
+              items: [
+                [{ strong: "Account info:" }, " phone number (as account identifier), invite code (for initial registration), and a password hash (we only store the Argon2id hash; we never store plaintext passwords);"],
+                [{ strong: "Usage data:" }, " conversation history, prompts and responses, uploaded attachments, notes, and scheduled tasks;"],
+                [{ strong: "Device & logs:" }, " IP address, browser type, access timestamps, error logs, cookie identifiers;"],
+                [{ strong: "Consent events:" }, " the version and time at which you accepted the Terms and this policy."],
+              ],
+            },
+          ],
+        },
+        {
+          title: "3. How we use it",
+          body: [
+            { kind: "p", parts: ["We use the above information for the following purposes:"] },
+            {
+              kind: "ul",
+              items: [
+                ["authentication, session maintenance, account risk control, and rate limiting;"],
+                ["calling large language models and external data sources to fulfill your queries;"],
+                ["recording session context to enable continuous conversation;"],
+                ["troubleshooting, security incident response, and service optimization."],
+              ],
+            },
+          ],
+        },
+        {
+          title: "4. Storage, retention & security",
+          body: [
+            { kind: "p", parts: ["Your account and conversation data are stored in the service's local SQLite database by default. Passwords are hashed with ", { strong: "Argon2id" }, " and a random salt; we cannot recover plaintext passwords."] },
+            { kind: "p", parts: ["We protect your information with HTTPS in transit, least-privilege access controls, password hashing, and other technical and organizational measures. Within the limits of applicable law, we retain information only for as long as necessary to meet the stated purposes."] },
+          ],
+        },
+        {
+          title: "5. Sharing & third parties",
+          body: [
+            { kind: "p", parts: ["To fulfill your queries we may transmit relevant input to the following categories of third-party service providers:"] },
+            {
+              kind: "ul",
+              items: [
+                ["large language model providers (to generate responses);"],
+                ["market data and search data sources (to supplement queries with market or public information)."],
+              ],
+            },
+            { kind: "p", parts: ["Except for the necessary scenarios above or as otherwise required by law, we do not sell or lease your personal information to any third party."] },
+          ],
+        },
+        {
+          title: "6. Cookies & tracking",
+          body: [
+            { kind: "p", parts: ["We use an HTTP-only cookie named ", { code: "hone_web_session" }, " to maintain your sign-in state. Its lifetime is 30 days when you check \"Keep me signed in,\" otherwise 1 day."] },
+            { kind: "p", parts: ["We do not use third-party advertising tracking cookies."] },
+          ],
+        },
+        {
+          title: "7. Minors",
+          body: [
+            { kind: "p", parts: ["The service is intended for adults aged 18 or older with full legal capacity. If you are a minor, please use the service under a guardian's supervision. We do not actively collect personal information from minors."] },
+          ],
+        },
+        {
+          title: "8. Cross-border transfers",
+          body: [
+            { kind: "p", parts: ["If the language model or data source servers we call are located outside mainland China, the related query content may be transmitted overseas. We will choose partners with appropriate compliance credentials and apply necessary security measures."] },
+          ],
+        },
+        {
+          title: "9. Your rights",
+          body: [
+            { kind: "p", parts: ["You have the following rights regarding your personal information:"] },
+            {
+              kind: "ul",
+              items: [
+                ["access and correct your account details;"],
+                ["change your sign-in password;"],
+                ["request deletion of your account and associated data;"],
+                ["withdraw a consent you previously granted."],
+              ],
+            },
+            { kind: "p", parts: ["You can exercise the first three rights on the \"Account\" page, or contact us via the channel below. Withdrawing consent may render parts of the service unavailable."] },
+          ],
+        },
+        {
+          title: "10. Policy updates",
+          body: [
+            { kind: "p", parts: ["We may update this policy to reflect legal or business changes. Updated policies will be published in-service with a version number and effective date; material changes will be surfaced via in-service notice."] },
+          ],
+        },
+        {
+          title: "11. Contact",
+          body: [
+            { kind: "p", parts: ["If you have questions, comments, or complaints about this policy or how your data is handled, reach us through the feedback entry on the \"Account\" page. We will respond and address them within a reasonable period."] },
+          ],
+        },
+      ] as LegalSection[],
     },
   },
 
