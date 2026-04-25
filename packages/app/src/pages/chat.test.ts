@@ -26,6 +26,10 @@ describe("resolvePublicChatView", () => {
     expect(resolvePublicChatView("logged_out")).toBe("login");
     expect(resolvePublicChatView("logging_in")).toBe("login");
   });
+
+  it("renders the chat shell so the password-setup overlay can sit above it", () => {
+    expect(resolvePublicChatView("needs_password")).toBe("chat");
+  });
 });
 
 describe("toPublicChatMessages", () => {

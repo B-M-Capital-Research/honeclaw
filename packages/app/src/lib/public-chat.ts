@@ -5,6 +5,7 @@ export type PublicChatAuthState =
   | "loading"
   | "logged_out"
   | "logging_in"
+  | "needs_password"
   | "ready";
 
 export type PublicChatView = "loading" | "login" | "chat";
@@ -47,7 +48,7 @@ export function normalizePhoneNumber(value: string) {
 export function resolvePublicChatView(
   authState: PublicChatAuthState,
 ): PublicChatView {
-  if (authState === "ready") return "chat";
+  if (authState === "ready" || authState === "needs_password") return "chat";
   if (authState === "loading") return "loading";
   return "login";
 }

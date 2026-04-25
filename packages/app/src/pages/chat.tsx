@@ -14,6 +14,7 @@ import {
 import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
 import { PublicNav } from "@/components/public-nav";
+import { PasswordSetupGuard } from "@/components/password-setup-guard";
 import "./public-site.css";
 import {
   connectPublicEvents,
@@ -1544,6 +1545,7 @@ export default function PublicChatPage() {
   const [loginError, setLoginError] = createSignal("");
   const [inviteCode, setInviteCode] = createSignal("");
   const [phoneNumber, setPhoneNumber] = createSignal("");
+  const [currentUser, setCurrentUser] = createSignal<PublicAuthUserInfo | null>(null);
   const [messages, setMessages] = createStore<ChatMessage[]>([]);
   const [draft, setDraft] = createSignal("");
   const [sendError, setSendError] = createSignal("");
@@ -1645,6 +1647,7 @@ export default function PublicChatPage() {
       remainingToday: user.remaining_today,
       dailyLimit: user.daily_limit,
     });
+    setCurrentUser(user);
     setLoginError("");
   };
 
@@ -1659,13 +1662,15 @@ export default function PublicChatPage() {
       replaceHistoryMessages(toPublicChatMessages(history));
       // Transition to "ready" only after history is loaded so the UI
       // doesn't flash an empty chat view while messages are still loading.
-      setAuthState("ready");
+      // 首次登录未设密码用户落到 needs_password,聊天 UI 仍渲染但被 guard 覆盖。
+      setAuthState(user.has_password ? "ready" : "needs_password");
       await ensurePushEvents();
       if (generation !== sessionSyncGeneration) return;
       scrollToBottom();
     } catch (error) {
       if (generation !== sessionSyncGeneration) return;
       setSessionInfo(null);
+      setCurrentUser(null);
       clearMessages();
       setAuthState("logged_out");
       if (error instanceof Error && !isAuthExpiredError(error)) {
@@ -1744,6 +1749,7 @@ export default function PublicChatPage() {
       if (generation !== sessionSyncGeneration) return;
       if (isAuthExpiredError(error)) {
         setSessionInfo(null);
+        setCurrentUser(null);
         clearMessages();
         setAuthState("logged_out");
         return;
@@ -1802,6 +1808,7 @@ export default function PublicChatPage() {
     setDraft("");
     setSendError("");
     setSessionInfo(null);
+    setCurrentUser(null);
     setAuthState("logged_out");
   };
 
@@ -2367,6 +2374,17 @@ export default function PublicChatPage() {
               </div>
             </Show>
           </div>
+          <Show when={authState() === "needs_password" && currentUser()}>
+            {(u) => (
+              <PasswordSetupGuard
+                user={u()}
+                onPasswordSet={(updated) => {
+                  setCurrentUser(updated);
+                  setAuthState("ready");
+                }}
+              />
+            )}
+          </Show>
         </Match>
       </Switch>
     </>
