@@ -297,6 +297,41 @@ test("login submit gated on ToS checkbox", async ({ page }) => {
   await expect(submit).toBeEnabled()
 })
 
+test("clicking ToS / Privacy links inside checkbox row does not toggle the box", async ({
+  page,
+}) => {
+  await installPublicAuthMocks(page, {
+    hasPassword: true,
+    storedPassword: STORED_PASSWORD,
+    loggedIn: false,
+  })
+
+  await page.goto("/me")
+
+  const tosBox = page.getByRole("checkbox").nth(1)
+  await expect(tosBox).toHaveAttribute("aria-checked", "false")
+
+  // Both links must open in a new tab (target=_blank) and not flip the box
+  const termsLink = page.getByRole("link", { name: "用户协议" })
+  const privacyLink = page.getByRole("link", { name: "隐私政策" })
+  await expect(termsLink).toHaveAttribute("target", "_blank")
+  await expect(termsLink).toHaveAttribute("href", "/terms")
+  await expect(privacyLink).toHaveAttribute("target", "_blank")
+  await expect(privacyLink).toHaveAttribute("href", "/privacy")
+
+  // Click the link itself — Playwright Modifier swallows the new-tab open,
+  // but the in-page side-effect (toggle) is what we are protecting against.
+  await termsLink.click({ modifiers: ["Meta"] })
+  await expect(tosBox).toHaveAttribute("aria-checked", "false")
+
+  await privacyLink.click({ modifiers: ["Meta"] })
+  await expect(tosBox).toHaveAttribute("aria-checked", "false")
+
+  // Sanity: clicking the actual checkbox cell still works
+  await tosBox.click()
+  await expect(tosBox).toHaveAttribute("aria-checked", "true")
+})
+
 test("change password from logged-in view: wrong current → error, correct → success", async ({
   page,
 }) => {

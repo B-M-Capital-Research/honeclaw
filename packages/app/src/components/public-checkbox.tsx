@@ -18,6 +18,10 @@ export function PublicCheckbox(props: Props): JSX.Element {
   return (
     <label
       onClick={(e) => {
+        // 让 children 中的 <a>(如用户协议 / 隐私政策链接)保留默认行为,
+        // 否则 label 的 preventDefault 会拦截链接跳转并把点击当成 toggle
+        const target = e.target as HTMLElement | null
+        if (target?.closest("a")) return
         e.preventDefault()
         toggle()
       }}
