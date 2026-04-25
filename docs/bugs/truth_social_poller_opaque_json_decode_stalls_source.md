@@ -368,6 +368,34 @@ fmp.quote|8
 
 - 这次巡检还确认 digest buffer 的代码真相源位于 `data/digest_buffer/`（`crates/hone-event-engine/src/engine.rs:62,243-245`），而不是旧约定里的 `data/runtime/telegram__direct__*.jsonl`；最新 flush 归档 `data/digest_buffer/telegram__direct__8039067465.flushed-1777141853` 与 `web.log.2026-04-25:2015-2016` 的 `digest buffer rotated` / `digest delivered` 对上了时间，进一步说明异常仍然局限在 Truth Social source。
 
+- 2026-04-25T22:35:00Z：在本次 automation 的增量窗口 `2026-04-25T18:30:56.025Z` 之后，这个 enabled source 继续按小时节拍稳定返回同一种 `HTTP 403 + text/html` 拦截页；新增样本已经覆盖到 `2026-04-26 05:47:56 +08`，而本地库里依旧没有任何 `truth_social.%` 事件：
+
+```text
+data/runtime/logs/web.log.2026-04-25:2029:[2026-04-26 02:47:56.042] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:2057:[2026-04-26 03:47:56.116] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:2109:[2026-04-26 04:47:56.008] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-25:2138:[2026-04-26 05:47:56.176] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+
+SELECT source, COUNT(*), datetime(MAX(created_at_ts),'unixepoch')
+FROM events
+WHERE source LIKE 'truth_social.%'
+GROUP BY source;
+-- no rows
+```
+
+- 同一增量窗口里，`telegram.watcherguru` 仍有历史最近值，且 `poller ok` 节拍连续，没有出现 `>15m` 的停摆缺口；因此这次补充继续把影响限定在 Truth Social source 自身，而不是整个 event-engine cadence：
+
+```text
+SELECT source, COUNT(*), datetime(MAX(created_at_ts),'unixepoch')
+FROM events
+WHERE source='telegram.watcherguru'
+GROUP BY source;
+
+telegram.watcherguru|43|2026-04-25 19:47:59
+```
+
+- 代码真相源仍未变化：`config.yaml:141-144` 里 `truth_social_accounts` 明确启用了 `realDonaldTrump`，`interval_secs=3600`；运行时 `global_digest scheduler starting` 和连续 `poller ok` 都还在，说明当前坏态依旧是“单一 enabled source 被上游 HTML 403 页面长期拦截”，不是启动路径或 sink 装配的新回归。
+
 ## Date Observed
 
 `2026-04-24T04:05:20Z`
