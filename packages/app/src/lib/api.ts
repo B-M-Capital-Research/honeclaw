@@ -199,6 +199,46 @@ export async function publicInviteLogin(
   return payload.user;
 }
 
+export async function publicPasswordLogin(input: {
+  phone_number: string;
+  password: string;
+  remember: boolean;
+}) {
+  const response = await apiFetch("/api/public/auth/password-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  return payload.user;
+}
+
+export async function setPublicPassword(input: {
+  new_password: string;
+  tos_version: string;
+}) {
+  const response = await apiFetch("/api/public/auth/set-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  return payload.user;
+}
+
+export async function changePublicPassword(input: {
+  current_password: string;
+  new_password: string;
+}) {
+  const response = await apiFetch("/api/public/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  return payload.user;
+}
+
 export async function publicLogout() {
   const response = await apiFetch("/api/public/auth/logout", {
     method: "POST",

@@ -83,6 +83,9 @@ export type PublicAuthUserInfo = {
   success_count: number;
   in_flight: number;
   remaining_today: number;
+  has_password: boolean;
+  tos_accepted_at?: string;
+  tos_version?: string;
 };
 
 export type MetaInfo = {

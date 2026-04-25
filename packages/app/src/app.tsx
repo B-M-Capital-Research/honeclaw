@@ -21,6 +21,8 @@ const PublicChatPage = lazy(() => import("@/pages/chat"))
 const PublicSiteHomePage = lazy(() => import("@/pages/public-home"))
 const PublicSiteRoadmapPage = lazy(() => import("@/pages/public-roadmap"))
 const PublicSiteMePage = lazy(() => import("@/pages/public-me"))
+const PublicSiteTermsPage = lazy(() => import("@/pages/public-terms"))
+const PublicSitePrivacyPage = lazy(() => import("@/pages/public-privacy"))
 const StartPage = lazy(() => import("@/pages/start"))
 const SessionsPage = lazy(() => import("@/pages/sessions"))
 const SkillsPage = lazy(() => import("@/pages/skills"))
@@ -92,6 +94,8 @@ function PublicSurface() {
             <Route path="/" component={PublicSiteHomePage} />
             <Route path="/roadmap" component={PublicSiteRoadmapPage} />
             <Route path="/me" component={PublicSiteMePage} />
+            <Route path="/terms" component={PublicSiteTermsPage} />
+            <Route path="/privacy" component={PublicSitePrivacyPage} />
             <Route path="/chat" component={PublicChatPage} />
             <Route path="*" component={() => <Navigate href="/" />} />
           </Router>
