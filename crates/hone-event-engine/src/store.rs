@@ -528,6 +528,35 @@ impl EventStore {
         Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
     }
 
+    /// 列出 `since` 之后某 actor 已经成功推送过的 event_id 集合。
+    /// 与 `list_recent_digest_item_events` 的区别:这里**不 JOIN events 表**,
+    /// 因此能覆盖"只在 delivery_log 留痕"的合成事件(例如
+    /// `digest.synth.earnings_countdown`,scheduler 自己造的事件不会写
+    /// `events` 表)。专供 synth 跨 flush 去重用。
+    pub fn delivered_event_ids_since(
+        &self,
+        actor: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<std::collections::HashSet<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT DISTINCT event_id FROM delivery_log
+            WHERE actor = ?1
+              AND status IN ('sent', 'dryrun')
+              AND sent_at_ts >= ?2
+            "#,
+        )?;
+        let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
+            row.get::<_, String>(0)
+        })?;
+        let mut out = std::collections::HashSet::new();
+        for r in rows.flatten() {
+            out.insert(r);
+        }
+        Ok(out)
+    }
+
     pub fn list_recent_digest_item_events(
         &self,
         actor: &str,
@@ -1125,5 +1154,56 @@ mod tests {
         let removed = store.purge_events_older_than(30).unwrap();
         assert_eq!(removed, 1);
         assert_eq!(store.count_events().unwrap(), 1);
+    }
+
+    /// `delivered_event_ids_since` 是 digest synth 跨 flush 去重的底座 ——
+    /// 必须只收 status=sent/dryrun、必须按 actor 隔离、必须**不需要 events 表
+    /// 行**(synth 事件不会写 events 表,只在 delivery_log 留痕)。
+    #[test]
+    fn delivered_event_ids_since_filters_by_actor_status_and_time() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let actor = "tg::::u1";
+        let other = "tg::::u2";
+        let earlier = chrono::Utc::now() - chrono::Duration::hours(1);
+
+        // synth 事件本身不写 events 表,直接 log_delivery 也应能查出来
+        store
+            .log_delivery(
+                "synth:earnings:GOOGL:2026-04-29:countdown:2026-04-26",
+                actor,
+                "digest_item",
+                Severity::Medium,
+                "sent",
+                None,
+            )
+            .unwrap();
+        // queued 不算已投递
+        store
+            .log_delivery(
+                "synth:earnings:BE:2026-04-28:countdown:2026-04-26",
+                actor,
+                "digest_item",
+                Severity::Medium,
+                "queued",
+                None,
+            )
+            .unwrap();
+        // 其他 actor 不应混入本 actor 的结果
+        store
+            .log_delivery(
+                "ev-other",
+                other,
+                "digest_item",
+                Severity::Medium,
+                "sent",
+                None,
+            )
+            .unwrap();
+
+        let ids = store.delivered_event_ids_since(actor, earlier).unwrap();
+        assert!(ids.contains("synth:earnings:GOOGL:2026-04-29:countdown:2026-04-26"));
+        assert!(!ids.contains("synth:earnings:BE:2026-04-28:countdown:2026-04-26"));
+        assert!(!ids.contains("ev-other"));
     }
 }

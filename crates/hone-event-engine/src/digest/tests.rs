@@ -90,6 +90,34 @@ fn price_enqueue_replaces_same_symbol_day_with_latest_event() {
     assert_eq!(drained[1].id, "news-1");
 }
 
+/// 回归:`price_digest_key` 之前带 `window`,导致 band(window=day)+ close
+/// (window=close)在同 symbol 同日各占一条,digest 里就出现两条几乎重复的
+/// 价格行。修复后无论 window 是什么,同 symbol 同日只留最后一条。
+#[test]
+fn price_enqueue_collapses_band_and_close_for_same_symbol_day() {
+    let dir = tempdir().unwrap();
+    let buf = DigestBuffer::new(dir.path()).unwrap();
+    let a = actor("u1");
+
+    // intraday band crossing
+    let mut band = price_ev("price_band:AMD:2026-04-24:up:1200", "AMD", 13.92);
+    if let EventKind::PriceAlert { ref mut window, .. } = band.kind {
+        *window = "day".into();
+    }
+    // end-of-day close summary,window=close
+    let mut close = price_ev("price_close:AMD:2026-04-24", "AMD", 13.91);
+    if let EventKind::PriceAlert { ref mut window, .. } = close.kind {
+        *window = "close".into();
+    }
+
+    buf.enqueue(&a, &band).unwrap();
+    buf.enqueue(&a, &close).unwrap();
+
+    let drained = buf.drain_actor(&a).unwrap();
+    assert_eq!(drained.len(), 1, "band + close 应只剩一条");
+    assert_eq!(drained[0].id, "price_close:AMD:2026-04-24");
+}
+
 #[test]
 fn drain_leaves_no_unflushed_file() {
     let dir = tempdir().unwrap();
@@ -523,6 +551,34 @@ fn curation_dedupes_similar_same_symbol_news_titles() {
 
     let curated = curate_digest_events(vec![first, similar]);
     assert_eq!(curated.len(), 1, "同 symbol 同主题相似标题应折叠");
+}
+
+/// 回归:同一国家同一指标的多个 Macro 条目(如加拿大零售销售
+/// `Retail Sales MoM` / `Retail Sales MoM (Mar)`)以前不进 jaccard
+/// 去重,会把 digest 顶端被同主题宏观噪音占满。
+#[test]
+fn curation_dedupes_macro_topics_for_same_country_indicator() {
+    fn macro_ev(id: &str, title: &str) -> MarketEvent {
+        let mut m = ev(id, "");
+        m.kind = EventKind::MacroEvent;
+        m.severity = Severity::Medium;
+        m.symbols = Vec::new();
+        m.title = title.to_string();
+        m.source = "fmp.economic_calendar".into();
+        m
+    }
+
+    let curated = curate_digest_events(vec![
+        macro_ev("m1", "[CA] Retail Sales MoM"),
+        macro_ev("m2", "[CA] Retail Sales MoM (Mar)"),
+        macro_ev("m3", "[CA] Retail Sales Ex Autos MoM (Feb)"),
+    ]);
+    assert_eq!(
+        curated.len(),
+        1,
+        "三条同国同指标的 macro 应折叠成一条,实际 {curated:?}"
+    );
+    assert_eq!(curated[0].id, "m1");
 }
 
 #[test]

@@ -231,7 +231,26 @@ impl DigestScheduler {
                         Vec::new()
                     }
                 };
-                let synths = synth_by_actor.remove(&actor).unwrap_or_default();
+                // synth 事件每 tick 重算同 id(`synth:earnings:GOOGL:2026-04-29:countdown:2026-04-26`),
+                // 所以 08:30 推过的 GOOGL 倒计时,17:00 不应再推一遍。查 delivery_log
+                // 拿同 actor 同日已成功投递的 event_id 集合做过滤。
+                let mut synths = synth_by_actor.remove(&actor).unwrap_or_default();
+                if let Some(store) = &self.store {
+                    let day_start_utc = local_day_start_utc(now, self.tz_offset_hours);
+                    if let Ok(seen) = store.delivered_event_ids_since(&actor_key_str, day_start_utc)
+                    {
+                        let pre_count = synths.len();
+                        synths.retain(|ev| !seen.contains(&ev.id));
+                        if synths.len() < pre_count {
+                            tracing::info!(
+                                actor = %actor_key_str,
+                                window = %window,
+                                dropped = pre_count - synths.len(),
+                                "synth countdown filtered (already delivered today)"
+                            );
+                        }
+                    }
+                }
                 let mut events = buffered;
                 events.extend(synths);
                 if events.is_empty() {
@@ -355,6 +374,26 @@ impl DigestScheduler {
         }
         Ok(flushed)
     }
+}
+
+/// 当前 UTC 时刻按给定 `tz_offset_hours` 解释成本地日的 00:00,然后还原成
+/// UTC。给 synth 跨 flush 去重的 `delivered_event_ids_since(since=...)` 用。
+fn local_day_start_utc(
+    now: chrono::DateTime<chrono::Utc>,
+    tz_offset_hours: i32,
+) -> chrono::DateTime<chrono::Utc> {
+    use chrono::{NaiveTime, TimeZone};
+    let offset =
+        FixedOffset::east_opt(tz_offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
+    let local = offset.from_utc_datetime(&now.naive_utc());
+    let midnight = local
+        .date_naive()
+        .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+    offset
+        .from_local_datetime(&midnight)
+        .single()
+        .map(|l| l.with_timezone(&chrono::Utc))
+        .unwrap_or(now)
 }
 
 fn log_omitted_digest_items(

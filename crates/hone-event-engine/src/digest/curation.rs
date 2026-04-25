@@ -280,9 +280,17 @@ fn digest_title_dedupe_key(event: &MarketEvent) -> Option<String> {
 }
 
 fn digest_topic_tokens(event: &MarketEvent) -> Option<(String, HashSet<String>)> {
+    // 把 MacroEvent 也纳入话题去重:加拿大零售销售(`Retail Sales MoM` 与
+    // `Retail Sales MoM (Mar)` 与 `Retail Sales Ex Autos MoM (Feb)`)三条
+    // 标题 jaccard 相似度都 ≥ 0.55,以前不去重会让 digest 顶端被同主题
+    // 宏观噪音占满。Earnings/PriceAlert 等事件依然不进话题去重——它们的
+    // 标题模式化太强(`AAPL earnings tomorrow`),容易误判成同主题。
     if !matches!(
         event.kind,
-        EventKind::NewsCritical | EventKind::PressRelease | EventKind::SocialPost
+        EventKind::NewsCritical
+            | EventKind::PressRelease
+            | EventKind::SocialPost
+            | EventKind::MacroEvent
     ) {
         return None;
     }
@@ -318,6 +326,7 @@ fn kind_topic_tag(kind: &EventKind) -> &'static str {
     match kind {
         EventKind::SocialPost => "social",
         EventKind::PressRelease => "press",
+        EventKind::MacroEvent => "macro",
         _ => "news",
     }
 }

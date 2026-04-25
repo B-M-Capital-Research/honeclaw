@@ -190,8 +190,13 @@ fn sanitize(s: &str) -> String {
         .collect()
 }
 
+/// 同 symbol 同日的所有 PriceAlert(无论 window 是 day band 还是 close)共用
+/// 一个 key,buffer 只留最后一条。原来 key 带 `window` 时,band(intraday)+
+/// close(end-of-day)会各占一条,digest 里就重复出现 `AMD 跨过 +12% 档` 和
+/// `AMD +13.91%` 两条几乎一样的价格行。"最新写入胜出"对用户够用——盘后
+/// close 总是最后到,代表当天的总结性涨跌幅。
 fn price_digest_key(event: &MarketEvent) -> Option<String> {
-    let EventKind::PriceAlert { window, .. } = &event.kind else {
+    let EventKind::PriceAlert { .. } = &event.kind else {
         return None;
     };
     let symbol = event.symbols.first()?.to_uppercase();
@@ -207,5 +212,5 @@ fn price_digest_key(event: &MarketEvent) -> Option<String> {
                 .format("%Y-%m-%d")
                 .to_string()
         });
-    Some(format!("{symbol}:{date}:{window}"))
+    Some(format!("{symbol}:{date}"))
 }
