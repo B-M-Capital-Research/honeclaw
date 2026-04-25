@@ -10,6 +10,7 @@ pub mod daily_report;
 pub mod digest;
 pub mod event;
 pub mod fmp;
+pub mod global_digest;
 pub mod news_classifier;
 pub mod polisher;
 pub mod pollers;

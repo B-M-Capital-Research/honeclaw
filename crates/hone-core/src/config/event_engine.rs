@@ -28,6 +28,9 @@ pub struct EventEngineConfig {
     #[serde(default)]
     pub earnings: EarningsConfig,
 
+    #[serde(default)]
+    pub global_digest: GlobalDigestConfig,
+
     /// 全局禁用的 event kind 标签列表（`kind_tag` 字符串，如 `"press_release"`）。
     /// Router 在 per-user prefs 之前先过一遍；入库仍然发生（便于日报统计），
     /// 只是不分发给任何 actor。部署方用于关闭噪音类事件。
@@ -59,6 +62,7 @@ impl Default for EventEngineConfig {
             renderer: RendererConfig::default(),
             sources: Sources::default(),
             earnings: EarningsConfig::default(),
+            global_digest: GlobalDigestConfig::default(),
             disabled_kinds: Vec::new(),
             news_importance_prompt: default_news_importance_prompt(),
             news_classifier_model: default_news_classifier_model(),
@@ -99,6 +103,89 @@ impl Default for EarningsConfig {
 
 fn default_earnings_window_days() -> i64 {
     14
+}
+
+/// 全局 digest 配置 —— LLM 精读后每天 N 次推送的"今日全球要闻"。
+///
+/// 与 per-actor digest 完全独立:per-actor 走 ticker 命中 → buffer → flush;
+/// 全局 digest 则不挂 ticker,从 store 取候选池(trusted-source High/Medium news +
+/// macro_event) → Pass 1 廉价模型批量打分聚类 → Pass 2 抓原文 + 强模型精读
+/// → 渲染单条 broadcast 给所有 direct actor(prefs.global_digest_enabled=true)。
+///
+/// 默认 `enabled=false`,需要先设 `schedules` 才会触发。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalDigestConfig {
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// admin 视角时区,用于解释 `schedules` 里的本地时刻。
+    #[serde(default = "default_global_digest_tz")]
+    pub timezone: String,
+
+    /// 一天 N 次的本地时刻列表(`"HH:MM"`,按 `timezone` 解释)。
+    /// 空数组 = 即使 `enabled=true` 也不会触发。
+    #[serde(default)]
+    pub schedules: Vec<String>,
+
+    /// 候选池的回看窗口(小时)。第一次推送 / 兜底用;后续以"距上次成功推送"为准。
+    #[serde(default = "default_global_digest_lookback_hours")]
+    pub lookback_hours: u32,
+
+    /// Pass 1 模型 —— 候选池批量打分 + cluster + 一句话 takeaway。便宜模型即可。
+    #[serde(default = "default_global_digest_pass1_model")]
+    pub pass1_model: String,
+
+    /// Pass 2 模型 —— 抓原文后精读、最终排序、写短评。需要相对聪明。
+    #[serde(default = "default_global_digest_pass2_model")]
+    pub pass2_model: String,
+
+    /// Pass 1 排序后送 Pass 2 精读的候选数上限。
+    #[serde(default = "default_global_digest_pass2_top_n")]
+    pub pass2_top_n: u32,
+
+    /// 单次推送最终保留的条数上限。Pass 2 可以再剔除,但不会超过这个数。
+    #[serde(default = "default_global_digest_final_pick_n")]
+    pub final_pick_n: u32,
+
+    /// Pass 2 是否抓原文(GET 文章 URL → html2text)。失败 fallback 到事件本体的
+    /// FMP `text` 摘要。关闭则始终只用 FMP 文本。
+    #[serde(default = "default_true")]
+    pub fetch_full_text: bool,
+}
+
+impl Default for GlobalDigestConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            timezone: default_global_digest_tz(),
+            schedules: Vec::new(),
+            lookback_hours: default_global_digest_lookback_hours(),
+            pass1_model: default_global_digest_pass1_model(),
+            pass2_model: default_global_digest_pass2_model(),
+            pass2_top_n: default_global_digest_pass2_top_n(),
+            final_pick_n: default_global_digest_final_pick_n(),
+            fetch_full_text: true,
+        }
+    }
+}
+
+fn default_global_digest_tz() -> String {
+    "Asia/Shanghai".into()
+}
+fn default_global_digest_lookback_hours() -> u32 {
+    24
+}
+fn default_global_digest_pass1_model() -> String {
+    "amazon/nova-lite-v1".into()
+}
+fn default_global_digest_pass2_model() -> String {
+    "x-ai/grok-4.1-fast".into()
+}
+fn default_global_digest_pass2_top_n() -> u32 {
+    15
+}
+fn default_global_digest_final_pick_n() -> u32 {
+    8
 }
 
 fn default_enabled() -> bool {
@@ -405,6 +492,12 @@ pub struct Sources {
     /// 空列表 = 不启用。每条配置对应一个独立 poller loop。
     #[serde(default)]
     pub truth_social_accounts: Vec<TruthSocialAccountConfig>,
+
+    /// 通用 RSS 新闻源(global_digest 用)。POC 验证 FMP 漏掉 Bloomberg(93%)/
+    /// SpaceNews(100%)/STAT(100%)的关键料,这些 RSS 直接把高 ROI 的料补回来。
+    /// 入库 source 标 `rss:{handle}`,collector 一并拉。空列表 = 不启用。
+    #[serde(default)]
+    pub rss_feeds: Vec<RssFeedConfig>,
 }
 
 impl Default for Sources {
@@ -420,6 +513,7 @@ impl Default for Sources {
             earnings_surprise: true,
             telegram_channels: Vec::new(),
             truth_social_accounts: Vec::new(),
+            rss_feeds: Vec::new(),
         }
     }
 }
@@ -456,6 +550,21 @@ fn default_social_interval() -> u64 {
 }
 fn default_social_interval_slow() -> u64 {
     60 * 60
+}
+
+/// 通用 RSS 新闻源配置。`handle` 是该源的稳定标签,会写进 `MarketEvent.source =
+/// "rss:{handle}"`,后续 collector / dedup / log 都按它寻找。`url` 是 RSS 2.0 feed
+/// 的 GET 地址。`interval_secs` 默认 30 分钟,与社交源同档。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RssFeedConfig {
+    pub handle: String,
+    pub url: String,
+    #[serde(default = "default_rss_interval")]
+    pub interval_secs: u64,
+}
+
+fn default_rss_interval() -> u64 {
+    30 * 60
 }
 
 fn default_true() -> bool {

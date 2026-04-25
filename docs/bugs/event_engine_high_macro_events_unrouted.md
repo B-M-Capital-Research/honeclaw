@@ -1,5 +1,9 @@
 # Bug: event-engine high macro events are stored but not routed
 
+状态：`Fixed`
+
+修复进展:2026-04-26 已修复。macro_event 现在通过新的 `global_digest` 管道处理:每用户 prefs 默认 `global_digest_floor_macro_picks=1`,LLM 在 Pass 2 personalize 时**至少保留 1 条**宏观/地缘/油价/联储/政策类硬料,标 `category="macro_floor"`,并主动构造"对持仓的潜在波及"传导链(POC 实测:Macron Hormuz 条目自动写出"对 GEV/VST/BE 核电/燃料电池数据中心电力叙事潜在波及")。原 `subscription.rs::registry_from_portfolios` 的 social_global 中 `macro_event` 全员广播保留(用于真即时的 router 路径),但 daily 全球 digest 才是宏观事件主路 —— 因为 LLM 精读后再推,信噪比远高于裸 SQL 匹配的 keyword-based 高优分。
+
 ## Summary
 
 `fmp.economic_calendar` stored many `severity=high` macro events after the last巡检, but none had delivery rows, and many were low-impact calendar items promoted only by broad keyword matching.

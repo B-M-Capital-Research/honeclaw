@@ -114,6 +114,10 @@ const TRUSTED_NEWS_DOMAINS: &[&str] = &[
     "fda.gov",
     "treasury.gov",
     "federalreserve.gov",
+    // 全球 digest RSS 源域名也算 trusted —— 让 source_class 分类一致(避免 RSS 来的
+    // 帖子被打成 uncertain 走多余 LLM 仲裁)。
+    "spacenews.com",
+    "statnews.com",
 ];
 
 /// 来源信誉分类。

@@ -1,5 +1,9 @@
 # Bug: event-engine marks legal-ad style stock news as high severity
 
+状态：`Fixed`
+
+修复进展：2026-04-25 确认已修复。`crates/hone-event-engine/src/pollers/news.rs` 的 `classify_severity` 第一步即调用 `is_legal_ad_title`，命中 SHAREHOLDER ALERT / class action lawsuit 等模板标题强制 Low；同时 `pr_wire` / `opinion_blog` 整域降级，关键词命中也维持 Low。律所广告模板不再进入 High 路径。
+
 ## Summary
 
 The news poller classified many template shareholder-alert / class-action solicitation articles as `severity=high`, creating high-priority noise from broad keyword matches.

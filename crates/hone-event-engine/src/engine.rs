@@ -18,7 +18,7 @@ use crate::digest::{self, DigestBuffer, DigestScheduler};
 use crate::fmp::FmpClient;
 use crate::news_classifier;
 use crate::polisher::{BodyPolisher, NoopPolisher};
-use crate::pollers::{TelegramChannelPoller, TruthSocialPoller};
+use crate::pollers::{RssNewsPoller, TelegramChannelPoller, TruthSocialPoller};
 use crate::prefs::{FilePrefsStorage, PrefsProvider};
 use crate::router::{LogSink, NotificationRouter, OutboundSink};
 use crate::spawner::{
@@ -44,6 +44,10 @@ pub struct EventEngine {
     sink: Arc<dyn OutboundSink>,
     polisher: Arc<dyn BodyPolisher>,
     news_classifier: Option<Arc<dyn news_classifier::NewsClassifier>>,
+    /// LLM provider 用于 global_digest 的 Curator(Pass 1 + Pass 2)。
+    /// 缺省 None → global_digest 调度器不会启动,即使 config.global_digest.enabled=true
+    /// 也只 warn 不报错。
+    global_digest_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
     retention_days: i64,
 }
 
@@ -61,6 +65,7 @@ impl EventEngine {
             sink: Arc::new(LogSink),
             polisher: Arc::new(NoopPolisher),
             news_classifier: None,
+            global_digest_provider: None,
             retention_days: 30,
         }
     }
@@ -123,6 +128,13 @@ impl EventEngine {
         classifier: Arc<dyn news_classifier::NewsClassifier>,
     ) -> Self {
         self.news_classifier = Some(classifier);
+        self
+    }
+
+    /// 注入 LLM provider 用于 global_digest 的 Curator(Pass 1 + Pass 2)。
+    /// 缺省 None → global_digest 不会启动(即使 config.global_digest.enabled=true 也只 warn)。
+    pub fn with_global_digest_provider(mut self, provider: Arc<dyn hone_llm::LlmProvider>) -> Self {
+        self.global_digest_provider = Some(provider);
         self
     }
 
@@ -516,6 +528,79 @@ impl EventEngine {
                 "truth_social poller starting"
             );
             spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+        }
+        // 通用 RSS 源 —— global_digest 的核心数据补充。事件直接落 source="rss:{handle}"
+        // 入 events 表,collector 与 FMP news 一同拉,curator 不区分来源。
+        for cfg in &sources.rss_feeds {
+            let poller = RssNewsPoller::new(
+                cfg.handle.clone(),
+                cfg.url.clone(),
+                Duration::from_secs(cfg.interval_secs),
+            );
+            info!(
+                handle = %cfg.handle,
+                url = %cfg.url,
+                interval_secs = cfg.interval_secs,
+                "rss feed poller starting"
+            );
+            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+        }
+
+        // ── 全局 digest scheduler ─────────────────────────────────────
+        // LLM 精读后每天 N 次的"今日全球要闻"。每分钟 tick 检查 schedule 命中。
+        if self.engine_cfg.global_digest.enabled {
+            if self.engine_cfg.global_digest.schedules.is_empty() {
+                warn!(
+                    "global_digest enabled 但 schedules 为空 —— 不会触发。在 config 里加 schedules: [\"HH:MM\", ...]"
+                );
+            } else if let Some(provider) = self.global_digest_provider.clone() {
+                let portfolio_storage =
+                    Arc::new(hone_memory::PortfolioStorage::new(&self.portfolio_dir));
+                let fmp_arc = Arc::new(client.clone());
+                let curator = Arc::new(crate::global_digest::Curator::new(
+                    provider,
+                    self.engine_cfg.global_digest.pass1_model.clone(),
+                    self.engine_cfg.global_digest.pass2_model.clone(),
+                ));
+                let fetcher = Arc::new(crate::global_digest::ArticleFetcher::new());
+                let audience_cache_dir = self
+                    .store_path
+                    .parent()
+                    .map(|p| p.join("company_profiles"))
+                    .unwrap_or_else(|| PathBuf::from("./data/company_profiles"));
+                let scheduler = Arc::new(crate::global_digest::GlobalDigestScheduler::new(
+                    self.engine_cfg.global_digest.clone(),
+                    store.clone(),
+                    fmp_arc,
+                    portfolio_storage,
+                    prefs_storage.clone(),
+                    self.sink.clone(),
+                    curator,
+                    fetcher,
+                    audience_cache_dir,
+                    self.daily_report_dir.clone(),
+                ));
+                info!(
+                    schedules = ?self.engine_cfg.global_digest.schedules,
+                    timezone = %self.engine_cfg.global_digest.timezone,
+                    pass1_model = %self.engine_cfg.global_digest.pass1_model,
+                    pass2_model = %self.engine_cfg.global_digest.pass2_model,
+                    "global_digest scheduler starting"
+                );
+                tokio::spawn(async move {
+                    let mut ticker = tokio::time::interval(Duration::from_secs(60));
+                    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                    loop {
+                        ticker.tick().await;
+                        let now = chrono::Utc::now();
+                        let _ = scheduler.tick(now).await;
+                    }
+                });
+            } else {
+                warn!(
+                    "global_digest enabled 但未注入 LLM provider —— 调度器跳过。在 EventEngine builder 里调 .with_global_digest_provider()"
+                );
+            }
         }
 
         Ok(())

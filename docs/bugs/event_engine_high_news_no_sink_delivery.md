@@ -1,5 +1,9 @@
 # Bug: event-engine high news events had no sink delivery evidence
 
+状态：`Fixed`
+
+修复进展:2026-04-26 已修复。trusted-source 高优新闻即使没匹配到 portfolio ticker(即原始 router 路径会落 `router|no_actor`),现在通过新建的 `crates/hone-event-engine/src/global_digest/` 管道处理:collector 拉所有 trusted source(FMP + RSS Bloomberg/SpaceNews/STAT)的 High/Medium news 进候选池 → curator Pass 1 (nova-lite-v1) 批量打分聚类 → fetcher 抓原文(UA + google referer 绕反爬) → curator Pass 2 (grok-4.1-fast) 精读 + 写短评 → 每个 direct + global_digest_enabled 的 actor 单独跑 personalize(用其 thesis 重排 + macro_floor 兜底)→ broadcast。配置 `event_engine.global_digest.enabled=true` + 填 `schedules: ["HH:MM",...]` 即启用。POC 验证一天 2 次 cost ≈ $0.012/天/全用户。原始 `router|no_actor` skip 路径保留(仍是 LLM 仲裁不感兴趣的事件的归宿),但现在不再静默 —— 只是不再走即时 sink。
+
 ## Summary
 
 Trusted-source `severity=high` stock news can still fall through to `router/no_actor` without any sink delivery, even when the active direct actor has `portfolio_only=false` and other High events in the same window deliver normally.

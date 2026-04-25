@@ -12,7 +12,6 @@ imessage:
   db_path: "~/Library/Messages/chat.db"
   poll_interval: 2 # polling interval in seconds
 
-
 # Feishu channel config (Rust business process + Go official SDK facade)
 feishu:
   enabled: false
@@ -42,7 +41,6 @@ feishu:
   # Timeout, in seconds, for waiting on the facade long connection at startup
   startup_timeout_seconds: 20
 
-
 # Telegram Bot config
 telegram:
   enabled: false
@@ -58,7 +56,6 @@ telegram:
   chat_scope: DM_ONLY
   # Maximum length of a single message (Telegram sendMessage limit is about 4096)
   max_message_length: 3500
-
 
 # Discord Bot config
 discord:
@@ -99,7 +96,6 @@ group_context:
   compress_threshold_bytes: 49152
   # Keep the latest N messages after compression
   retain_recent_after_compress: 8
-
 
 # Discord channel watcher (for cron: poll channel messages -> append locally -> speak or warn when needed)
 discord_watch:
@@ -149,8 +145,6 @@ discord_watch:
     # Only reply when the input contains a question / help / opinion-seeking signal
     require_question_like: true
 
-
-
 # Nano Banana Pro image generation config
 nano_banana:
   enabled: true
@@ -169,14 +163,12 @@ nano_banana:
   download_dir: "gen_images"
   extra_params: {}
 
-
 # Financial Modeling Prep API config
 fmp:
   # Financial Modeling Prep API key
   api_key: ""
   base_url: "https://financialmodelingprep.com/api"
   timeout: 30
-
 
 # Proactive event engine: polls FMP for market events, deduplicates, and
 # dispatches to subscribers (per-holding or global). High-severity events push
@@ -196,11 +188,11 @@ event_engine:
   poll_intervals:
     # 新闻。最小推荐 300 (5m)，典型 600-1800 (10-30m)，最大 3600 (1h)。
     # 低于 300 时 FMP 返回不会更新，只是多烧配额。
-    news_secs: 900              # 15 min
+    news_secs: 900 # 15 min
     # 盘中价格异动。最小推荐 60 (1m)，典型 180-600 (3-10m)，最大 900 (15m)。
     # 降到 60 时 N 只持仓 × 每分钟一次 quote，会显著吃 FMP 配额；
     # 非交易时段 poller 会自动 skip，不必担心夜里空烧。
-    price_secs: 300             # 5 min
+    price_secs: 300 # 5 min
   digest:
     # Pre/post-market digests fire at these local times in the configured timezone.
     # Defaults target CN users: pre_market rolls the overnight queue into a morning
@@ -277,18 +269,49 @@ event_engine:
   earnings:
     window_days: 14
 
+  # 全局 digest —— LLM 精读后每天 N 次推送的"今日全球要闻"。
+  # 与 ticker 命中的 per-actor digest 完全独立:
+  # - 候选池 = trusted-source High/Medium news + 临近 high macro_event(不挂 ticker 也算)
+  # - Pass 1 (pass1_model) 廉价模型批量打分 + cluster + 一句话 takeaway
+  # - Pass 2 (pass2_model) 抓原文(若 fetch_full_text=true) + 强模型精读 + 短评 + 排序
+  # - 渲染单条 broadcast 给所有 prefs.global_digest_enabled=true 的 direct actor
+  # 默认 enabled=false。需要先填 schedules 才会触发。
+  global_digest:
+    enabled: false
+    timezone: Asia/Shanghai
+    schedules: [] # 例如 ["07:30", "21:00"] —— 一天 N 次,按 timezone 解释
+    lookback_hours: 24 # 候选池回看窗口,以及"距上次成功推送"的兜底
+    pass1_model: amazon/nova-lite-v1 # 便宜模型,~$0.06/M input
+    pass2_model: x-ai/grok-4.1-fast # 价格 $0.20/$0.50 per M,2M context,带 reasoning
+    pass2_top_n: 15 # Pass 1 排序后送 Pass 2 精读的候选数上限
+    final_pick_n: 8 # 单次推送最终保留的条数上限
+    fetch_full_text: true # Pass 2 是否 GET 原文 → html2text;失败 fallback FMP text
+
   # Per-poller 开关。每个字段对应 hone-event-engine 内一个 spawn_*_poller 调用,
   # 设成 false 即直接 skip 该 poller 的 tick(最省 FMP 配额)。
   # 想要"poller 仍跑、只是 router 丢弃某 kind"的兜底关法,改用下方 disabled_kinds。
   sources:
-    news: true               # /v3/stock_news → NewsCritical
-    price: true              # /v3/quote 按 watch pool 拉 → PriceAlert / 52W / VolumeSpike
-    earnings_calendar: true  # /v3/earning_calendar → EarningsUpcoming
-    corp_action: true        # 拆股 / 分红日历 → Split / Dividend
-    sec_filings: true        # SEC 8-K per-ticker → SecFiling
-    macro_calendar: true     # /v3/economic_calendar → MacroEvent
-    analyst_grade: true      # 按 watch pool 拉 → AnalystGrade
-    earnings_surprise: true  # 按 watch pool 拉 → EarningsReleased
+    news: true # /v3/stock_news → NewsCritical
+    price: true # /v3/quote 按 watch pool 拉 → PriceAlert / 52W / VolumeSpike
+    earnings_calendar: true # /v3/earning_calendar → EarningsUpcoming
+    corp_action: true # 拆股 / 分红日历 → Split / Dividend
+    sec_filings: true # SEC 8-K per-ticker → SecFiling
+    macro_calendar: true # /v3/economic_calendar → MacroEvent
+    analyst_grade: true # 按 watch pool 拉 → AnalystGrade
+    earnings_surprise: true # 按 watch pool 拉 → EarningsReleased
+    # 通用 RSS 新闻源 —— 给 global_digest 候选池补 FMP 漏掉的料。
+    # POC 验证 FMP 漏掉 Bloomberg 93%、SpaceNews 100%、STAT News 100% 的关键料。
+    # 入 events 表 source = "rss:{handle}",collector 与 FMP news 一同拉。
+    rss_feeds:
+      - handle: bloomberg_markets
+        url: https://feeds.bloomberg.com/markets/news.rss
+        interval_secs: 1800
+      - handle: spacenews
+        url: https://spacenews.com/feed/
+        interval_secs: 3600
+      - handle: stat_news
+        url: https://www.statnews.com/feed/
+        interval_secs: 3600
   # 全局 event kind 黑名单。router 在 per-user NotificationPrefs 之前先过一遍;
   # 入库仍然发生(便于日报 / 统计),只是不再分发给任何 actor。即使用户把某个
   # kind 放进 allow_kinds,在这里禁用后仍然不会推。合法 tag:
@@ -302,7 +325,6 @@ event_engine:
   # back to the code default. Keep CI/tests mocked; use real API only for manual
   # live-quality checks.
   news_classifier_model: "amazon/nova-lite-v1"
-
 
 llm:
   provider: openrouter
@@ -326,7 +348,6 @@ llm:
     max_retries: 3
     max_tokens: 32768
 
-
 storage:
   base_path: "./data"
   sessions_dir: "./data/sessions"
@@ -349,7 +370,6 @@ logging:
   rotation: "20 MB"
   retention: "14 days"
   compression: "zip"
-
 
 admins:
   # iMessage admin handle list (phone number or Apple ID)
@@ -377,7 +397,6 @@ admins:
   # Env var name used when runtime_admin_registration_passphrase is empty
   runtime_admin_registration_passphrase_env: "HONE_ADMIN_REGISTER_PASSPHRASE"
 
-
 web:
   # Bearer token for the Web console (recommended for remote deployments; can be left empty locally)
   auth_token: ""
@@ -390,7 +409,6 @@ web:
   local_workflow_validate_code: ""
   # Env var name used when local_workflow_validate_code is empty
   local_workflow_validate_code_env: "HONE_REPORT_VALIDATE_CODE"
-
 
 security:
   # Whether KB queries are isolated by actor/session (recommended to avoid cross-user retrieval)
@@ -426,7 +444,6 @@ security:
       - "curl | sh"
       - "wget | sh"
 
-
 agent:
   # Recommended: multi-agent | codex_acp | opencode_acp. Legacy: function_calling | gemini_cli | codex_cli.
   # gemini_acp is disabled at runtime and kept below only for migration/reference.
@@ -446,7 +463,7 @@ agent:
   system_prompt_path: "./soul.md"
   gemini_acp:
     command: "gemini"
-    args: ["--experimental-acp", "--sandbox", "--approval-mode", "plan"]
+    args: [ "--experimental-acp", "--sandbox", "--approval-mode", "plan" ]
     # Optional; if unset, reuse the local gemini-cli login state
     api_key_env: "GEMINI_API_KEY"
     # Optional; empty uses the gemini CLI default model
@@ -468,7 +485,7 @@ agent:
     extra_config_overrides: []
   opencode:
     command: "opencode"
-    args: ["acp"]
+    args: [ "acp" ]
     # Leave empty to inherit your local opencode global config (~/.config/opencode/opencode.json/jsonc)
     model: ""
     # Optional; only used when Hone explicitly overrides the opencode model
@@ -499,14 +516,12 @@ search:
   topic: "general"
   max_results: 5
 
-
 tools:
   web_search:
     enabled: true
 
   portfolio:
     enabled: true
-
 
 server:
   host: "127.0.0.1"

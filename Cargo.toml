@@ -77,6 +77,9 @@ subtle = "2"
 # HTML 解析 (Telegram 公开频道 web preview)
 scraper = "0.20"
 
+# XML / RSS 解析 (global_digest RSS poller)
+quick-xml = "0.36"
+
 # 密码哈希 (public web auth)
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["getrandom"] }

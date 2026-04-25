@@ -404,6 +404,15 @@ pub async fn start_server(
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
         let sink = build_event_engine_sink(&state.core.config, &engine_cfg);
         let news_classifier = build_event_engine_news_classifier(&state.core.config);
+        // global_digest 也走 OpenRouter,与 news_classifier 用同一 provider
+        let global_digest_provider: Option<Arc<dyn LlmProvider>> =
+            match OpenRouterProvider::from_config(&state.core.config) {
+                Ok(p) => Some(Arc::new(p)),
+                Err(e) => {
+                    tracing::warn!("global_digest LLM provider 不可用: {e}");
+                    None
+                }
+            };
         task_handles.push(tokio::spawn(async move {
             let mut engine = hone_event_engine::EventEngine::new(engine_cfg, fmp_cfg)
                 .with_store_path(events_db)
@@ -417,6 +426,9 @@ pub async fn start_server(
             }
             if let Some(c) = news_classifier {
                 engine = engine.with_news_classifier(c);
+            }
+            if let Some(p) = global_digest_provider {
+                engine = engine.with_global_digest_provider(p);
             }
             if let Err(e) = engine.start().await {
                 tracing::warn!("event engine start failed: {e}");

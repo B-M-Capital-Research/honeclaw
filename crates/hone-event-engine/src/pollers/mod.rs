@@ -10,6 +10,7 @@ pub mod earnings_surprise;
 pub mod macro_events;
 pub mod news;
 pub mod price;
+pub mod rss;
 pub mod social;
 
 pub use analyst_grade::AnalystGradePoller;
@@ -19,4 +20,5 @@ pub use earnings_surprise::EarningsSurprisePoller;
 pub use macro_events::MacroPoller;
 pub use news::NewsPoller;
 pub use price::PricePoller;
+pub use rss::RssNewsPoller;
 pub use social::{TelegramChannelPoller, TruthSocialPoller};

@@ -714,6 +714,99 @@ impl EventStore {
         Ok(out)
     }
 
+    /// 按 `occurred_at_ts` 拉一段窗口内的 News + Macro 事件,供 global_digest
+    /// collector 二次过滤(source_class / legal_ad / 已广播)。**不**做 source class
+    /// 解析——那是 collector 的职责;这里只做 SQL 层能高效完成的过滤
+    /// (kind / severity / 时间窗口 / source 前缀)。
+    pub fn list_global_digest_news_candidates(
+        &self,
+        since: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<MarketEvent>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
+                   title, summary, url, source, payload_json
+            FROM events
+            WHERE occurred_at_ts >= ?1
+              AND occurred_at_ts < ?2
+              AND severity IN ('high', 'medium')
+              AND (source LIKE 'fmp.stock_news:%' OR source LIKE 'rss:%')
+              AND kind_json LIKE '%news_critical%'
+            ORDER BY occurred_at_ts DESC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![since.timestamp(), until.timestamp()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let (id, kind_json, sev, syms_json, ts, title, summary, url, source, payload_json) = r?;
+            let Ok(kind) = serde_json::from_str(&kind_json) else {
+                continue;
+            };
+            let severity = match sev.as_str() {
+                "high" => crate::event::Severity::High,
+                "medium" => crate::event::Severity::Medium,
+                _ => crate::event::Severity::Low,
+            };
+            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let payload: serde_json::Value =
+                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+                continue;
+            };
+            out.push(MarketEvent {
+                id,
+                kind,
+                severity,
+                symbols,
+                occurred_at,
+                title,
+                summary,
+                url,
+                source,
+                payload,
+            });
+        }
+        Ok(out)
+    }
+
+    /// 列出某 channel 在 `since` 之后所有 actor 的成功投递 event_id 集合。
+    /// 用于 global_digest 跨批次去重——一旦某条新闻被某次 broadcast 推过,后续
+    /// 批次不再纳入候选池。
+    pub fn broadcasted_event_ids_since(
+        &self,
+        channel: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<std::collections::HashSet<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT DISTINCT event_id FROM delivery_log
+            WHERE channel = ?1
+              AND status IN ('sent', 'dryrun')
+              AND sent_at_ts >= ?2
+            "#,
+        )?;
+        let rows = stmt.query_map(params![channel, since.timestamp()], |row| {
+            row.get::<_, String>(0)
+        })?;
+        Ok(rows.flatten().collect())
+    }
+
     /// Append-only 追加一条推送审计。同一 (event, actor) 可以多行，表达
     /// queued → sent / failed 等状态迁移。`body` 是实际下发给 sink 的正文（含
     /// LLM 润色后的结果），用于回放对账；digest 入队阶段传 `None`（flush

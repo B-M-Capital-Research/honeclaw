@@ -26,6 +26,7 @@
 //! }
 //! ```
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -79,6 +80,21 @@ pub struct NotificationPrefs {
     /// 当 router 能从事件 payload 读到 portfolio_weight / portfolio_weight_pct 时，
     /// 高仓位标的允许使用更敏感的用户阈值直推；低仓位仍受系统最小直推阈值保护。
     pub large_position_weight_pct: Option<f64>,
+    /// 是否接收"今日全球要闻"全局 digest(LLM 精读后每天 N 次推送)。
+    /// 与 ticker 命中的 per-actor digest 完全独立。默认开启。
+    pub global_digest_enabled: bool,
+    /// 全局 digest Pass 2 personalize 时使用的"投资风格"自由文本。
+    /// 例如:"长期叙事派,重视行业结构性叙事,轻视短期估值/技术形态/分析师评级"。
+    /// LLM 会按此风格剔除用户视角下的噪音。`None` → 走 baseline 排序,不做风格过滤。
+    pub investment_global_style: Option<String>,
+    /// 每个 ticker 的投资逻辑(thesis)。LLM 在 personalize 时按此重排:印证 thesis 的
+    /// 优先,反证保留并标注,thesis 视角下的噪音剔除。例如 `MU → "看 NAND/DRAM 长期
+    /// 稀缺性,噪音是估值过热/单日大涨大跌"`。`None` / 空 map → 不做 per-ticker 重排。
+    pub investment_theses: Option<HashMap<String, String>>,
+    /// 即使 `investment_theses` 把所有宏观料剔除,Pass 2 personalize 也至少保留多少条
+    /// macro_floor 条目(联储/地缘/油价/政策等大盘背景)。POC 验证 1 条足够 —— 用户
+    /// 需要知道叙事可能被宏观证伪。0 = 关闭 floor。
+    pub global_digest_floor_macro_picks: u32,
 }
 
 impl Default for NotificationPrefs {
@@ -100,8 +116,16 @@ impl Default for NotificationPrefs {
             price_high_pct_up_override: None,
             price_high_pct_down_override: None,
             large_position_weight_pct: None,
+            global_digest_enabled: true,
+            investment_global_style: None,
+            investment_theses: None,
+            global_digest_floor_macro_picks: default_floor_macro_picks(),
         }
     }
+}
+
+fn default_floor_macro_picks() -> u32 {
+    1
 }
 
 impl NotificationPrefs {
@@ -420,6 +444,14 @@ mod tests {
             price_high_pct_up_override: Some(6.0),
             price_high_pct_down_override: Some(5.0),
             large_position_weight_pct: Some(20.0),
+            global_digest_enabled: false,
+            investment_global_style: Some("长期叙事派".into()),
+            investment_theses: Some({
+                let mut m = HashMap::new();
+                m.insert("AAPL".into(), "看现金流 + 回购".into());
+                m
+            }),
+            global_digest_floor_macro_picks: 2,
         };
         store.save(&a, &p).unwrap();
         let loaded = store.load(&a);
@@ -446,6 +478,20 @@ mod tests {
         assert_eq!(loaded.price_high_pct_up_override, Some(6.0));
         assert_eq!(loaded.price_high_pct_down_override, Some(5.0));
         assert_eq!(loaded.large_position_weight_pct, Some(20.0));
+        assert!(!loaded.global_digest_enabled);
+        assert_eq!(
+            loaded.investment_global_style.as_deref(),
+            Some("长期叙事派")
+        );
+        assert_eq!(
+            loaded
+                .investment_theses
+                .as_ref()
+                .and_then(|m| m.get("AAPL"))
+                .map(String::as_str),
+            Some("看现金流 + 回购")
+        );
+        assert_eq!(loaded.global_digest_floor_macro_picks, 2);
     }
 
     #[test]
@@ -461,6 +507,9 @@ mod tests {
         assert!(p.price_high_pct_up_override.is_none());
         assert!(p.price_high_pct_down_override.is_none());
         assert!(p.large_position_weight_pct.is_none());
+        assert!(p.investment_global_style.is_none());
+        assert!(p.investment_theses.is_none());
+        assert_eq!(p.global_digest_floor_macro_picks, 1);
     }
 
     #[test]

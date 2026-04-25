@@ -1,5 +1,9 @@
 # Bug: event-engine price poller logged a transient FMP quote fetch failure
 
+状态：`Closed`
+
+关闭原因：2026-04-25 不可复现。原始观察就是单 tick 网络抖动，下一 tick 自愈，`fmp.quote` 数据流未中断。fixed-interval ticker + warn-only 已经是合适的处理；想加重试要么覆盖到所有 poller 一起设计（参见 `event_engine_poller_cadence_stall_without_restart`），要么单独包装这一个会和其他 poller 行为不一致，留作后续 cadence supervisor 工作的一部分而不是单点修复。
+
 ## Summary
 
 The price poller hit a transient FMP quote request transport failure during the 24h scan, while later poller ticks and `fmp.quote` events show the source did not fully断流.

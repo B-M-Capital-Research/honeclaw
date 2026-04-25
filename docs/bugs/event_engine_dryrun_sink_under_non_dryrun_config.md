@@ -1,5 +1,9 @@
 # Bug: event-engine logged dryrun high sends while config dryrun was false
 
+状态：`Closed`
+
+关闭原因：2026-04-25 不可复现。`LogSink` 已在 2026-04-21 起 override `success_status()` → `"dryrun"`（见 `crates/hone-event-engine/src/router/sink.rs:49-51`），因此后续即使误用 dryrun sink 也不会再被 `delivery_log` 标 `sent`，可观测性问题已闭环。当前进程稳定使用 `MultiChannelSink`，巡检窗口未再出现 `[dryrun sink]` 输出。仅遗留的历史风险是 2026-04-21 那两条被标 `sent` 实则未发的 high 事件——这两条一条是 GEV 财报预告（已过窗口）、一条是 AAPL SEC filing（已过当日），不需要补发。
+
 ## Summary
 
 During the `20:29` event-engine start, high-severity events were recorded as `sent` while the only visible outbound evidence was `[dryrun sink]`, despite `config.yaml` setting `event_engine.dryrun=false`.

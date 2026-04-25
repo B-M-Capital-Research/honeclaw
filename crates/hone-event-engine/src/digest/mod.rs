@@ -18,7 +18,7 @@ mod buffer;
 mod curation;
 mod render;
 mod scheduler;
-mod time_window;
+pub(crate) mod time_window;
 
 #[cfg(test)]
 mod tests;

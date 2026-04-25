@@ -1057,6 +1057,7 @@ async fn live_social_engine_e2e() {
             extract_cashtags: true,
         }],
         truth_social_accounts: Vec::<TruthSocialAccountConfig>::new(),
+        rss_feeds: Vec::new(),
     };
 
     let engine = EventEngine::new(engine_cfg, FmpConfig::default())

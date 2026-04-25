@@ -1,6 +1,8 @@
 # Bug: event-engine social/event-source pollers log repeated decode failures
 
-Latest update 2026-04-24: `TruthSocialPoller` 已补偿 HTTP 失败日志，见 `docs/bugs/truth_social_poller_opaque_json_decode_stalls_source.md`。后续 generic `poll failed: error decoding response body` 若仍出现，应能在 Truth Social 路径看到 status / content-type / body prefix；若仍只有 opaque 文本，则需要继续检查非 Truth Social 的 `EventSource` 或日志格式化层。
+状态：`Closed`
+
+关闭原因：2026-04-25 确认已修复。`TruthSocialPoller` 现在所有 HTTP 失败都带 status / content-type / body prefix（`data/runtime/logs/web.log.2026-04-25` 示例：`poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html body_prefix=<!DOCTYPE html>…`），原始的 opaque `error decoding response body: expected value at line 1 column 1` 在最新巡检窗口内未再出现。当前 Truth Social 持续 403 是上游访问策略问题，已在 `docs/bugs/truth_social_poller_opaque_json_decode_stalls_source.md` 单独跟踪，与本 bug 关注的「日志可观测性缺失」是两件事。
 
 ## Summary
 

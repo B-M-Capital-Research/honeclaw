@@ -1,5 +1,9 @@
 # Bug: event-engine enabled channel heartbeat write hit ENOSPC
 
+状态：`Closed`
+
+关闭原因：2026-04-25 不可复现。仅有 2026-04-21 21:28 一条 ENOSPC 警告，进程随后自愈、磁盘也回到 ~46Gi available；后续巡检窗口未再出现 ENOSPC。「无 durable unhealthy state」是设计取舍——磁盘满本就是宿主机问题，加 unhealthy 状态会把所有 channel 一起拖死，不划算。
+
 ## Summary
 
 An enabled runtime channel lost a heartbeat write tick because the heartbeat snapshot write returned `No space left on device`.
