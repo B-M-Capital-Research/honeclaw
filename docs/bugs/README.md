@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-25 22:05 CST
+最后更新：2026-04-25 22:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -30,7 +30,7 @@
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | New | 2026-04-23 巡检未找到已提交修复覆盖 Codex WebSocket/HTTPS 回退、`wss://chatgpt.com/backend-api/codex/responses`、`cf-ray`、`unexpected status 403` 等内部传输残留；不能维持 Fixed | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
-| 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-24 决定不在 sanitize 层剥离字面 `Context compacted`（跨 ACP 不好识别），compact 识别改由 `acp_common.rs::ingest_acp_usage_update` 的 input token 骤降触发；字面 marker 的少量透出视为可接受 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
+| 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-25 20:40 Feishu 直聊 `高通 AI200 / AI250` 新样本仍把 `Context compacted` 混进最终正文；当前只把它视为可接受副作用，未视为已修复 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-25 21:01 `全天原油价格3小时播报` 仍把 `霍尔木兹海峡供应担忧缓解`、`美伊第二轮谈判预期`、`全球库存偏低` 写成确定性原因；4 月 24 日的价格一致性约束未覆盖原因归因降级 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-25 21:01-21:32 最新 heartbeat 仍统一 `starts_with_json=false`；`ORCL 大事件监控`、`Monitor_Watchlist_11` 与 `持仓重大事件心跳检测` 连续两批再次全部落成 `noop + skipped_noop`，没有任何样本恢复为纯 JSON 首包 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
