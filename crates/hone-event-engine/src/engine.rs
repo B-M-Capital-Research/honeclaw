@@ -18,13 +18,15 @@ use crate::digest::{self, DigestBuffer, DigestScheduler};
 use crate::fmp::FmpClient;
 use crate::news_classifier;
 use crate::polisher::{BodyPolisher, NoopPolisher};
-use crate::pollers::{RssNewsPoller, TelegramChannelPoller};
+use crate::pollers::{
+    EarningsPoller, MacroPoller, NewsPoller, RssNewsPoller, TelegramChannelPoller,
+};
 use crate::prefs::{FilePrefsStorage, PrefsProvider};
 use crate::router::{LogSink, NotificationRouter, OutboundSink};
+use crate::source::SourceSchedule;
 use crate::spawner::{
-    spawn_analyst_grade_poller, spawn_corp_action_poller, spawn_earnings_poller,
-    spawn_earnings_surprise_poller, spawn_event_source, spawn_macro_poller, spawn_news_poller,
-    spawn_price_poller,
+    spawn_analyst_grade_poller, spawn_corp_action_poller, spawn_earnings_surprise_poller,
+    spawn_event_source, spawn_price_poller,
 };
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
@@ -399,25 +401,27 @@ impl EventEngine {
         );
 
         if fmp_available && sources.earnings_calendar {
-            spawn_earnings_poller(
+            let poller = EarningsPoller::new(
                 client.clone(),
-                store.clone(),
-                router.clone(),
-                tz_offset,
-                pre_prefetch.clone(),
-                post_prefetch.clone(),
-                self.engine_cfg.earnings.window_days,
-            );
+                SourceSchedule::CronAligned {
+                    pre_prefetch: pre_prefetch.clone(),
+                    post_prefetch: post_prefetch.clone(),
+                    tz_offset,
+                },
+            )
+            .with_window_days(self.engine_cfg.earnings.window_days);
+            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
         } else if fmp_available {
             info!("earnings_calendar poller disabled by config.sources.earnings_calendar=false");
         }
         if fmp_available && sources.news {
-            spawn_news_poller(
+            let poller = NewsPoller::new(
                 client.clone(),
-                store.clone(),
-                router.clone(),
-                Duration::from_secs(self.engine_cfg.poll_intervals.news_secs),
+                SourceSchedule::FixedInterval(Duration::from_secs(
+                    self.engine_cfg.poll_intervals.news_secs,
+                )),
             );
+            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
         } else if fmp_available {
             info!("news poller disabled by config.sources.news=false");
         }
@@ -439,14 +443,15 @@ impl EventEngine {
             );
         }
         if fmp_available && sources.macro_calendar {
-            spawn_macro_poller(
+            let poller = MacroPoller::new(
                 client.clone(),
-                store.clone(),
-                router.clone(),
-                tz_offset,
-                pre_prefetch.clone(),
-                post_prefetch.clone(),
+                SourceSchedule::CronAligned {
+                    pre_prefetch: pre_prefetch.clone(),
+                    post_prefetch: post_prefetch.clone(),
+                    tz_offset,
+                },
             );
+            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
         } else if fmp_available {
             info!("macro poller disabled by config.sources.macro_calendar=false");
         }

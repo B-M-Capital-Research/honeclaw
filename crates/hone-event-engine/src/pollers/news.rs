@@ -6,11 +6,13 @@
 //! - id 直接用文章 URL 做稳定去重；缺 URL 则回落到 "title+date" 组合
 //! - 关键词库先内置一组保守的"高影响"词（破产、SEC 调查、召回、被起诉、CEO 辞任、收购等）
 
+use async_trait::async_trait;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use serde_json::Value;
 
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
+use crate::source::{EventSource, SourceSchedule};
 
 /// 标题反模板:律所/股东集体诉讼广告类的固定话术。命中即强制 Severity::Low,
 /// 不再走关键词升级。覆盖 globenewswire 等 PR wire 发布的常见 SHAREHOLDER ALERT
@@ -215,10 +217,11 @@ pub struct NewsPoller {
     tickers: Option<Vec<String>>,
     page_limit: u32,
     keywords: Vec<String>,
+    schedule: SourceSchedule,
 }
 
 impl NewsPoller {
-    pub fn new(client: FmpClient) -> Self {
+    pub fn new(client: FmpClient, schedule: SourceSchedule) -> Self {
         Self {
             client,
             tickers: None,
@@ -227,6 +230,7 @@ impl NewsPoller {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            schedule,
         }
     }
 
@@ -250,8 +254,19 @@ impl NewsPoller {
         }
         self
     }
+}
 
-    pub async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+#[async_trait]
+impl EventSource for NewsPoller {
+    fn name(&self) -> &str {
+        "fmp.news"
+    }
+
+    fn schedule(&self) -> SourceSchedule {
+        self.schedule.clone()
+    }
+
+    async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
         let mut path = format!("/v3/stock_news?limit={}", self.page_limit);
         if let Some(ts) = &self.tickers {
             path.push_str("&tickers=");
@@ -799,7 +814,11 @@ mod tests {
             timeout: 30,
         };
         let client = FmpClient::from_config(&cfg);
-        let poller = NewsPoller::new(client).with_page_limit(5);
+        let poller = NewsPoller::new(
+            client,
+            SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+        )
+        .with_page_limit(5);
         let events = poller.poll().await.expect("FMP poll failed");
         println!("news events pulled: {}", events.len());
         for ev in events.iter().take(5) {

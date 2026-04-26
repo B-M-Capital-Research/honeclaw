@@ -9,22 +9,26 @@
 //! - 整条 lifecycle 仍共享 `EventKind::EarningsUpcoming`,用户把它放进
 //!   `blocked_kinds` 就能一次静音 teaser + 所有倒计时
 
+use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, NaiveDate, TimeZone, Utc};
 use serde_json::Value;
 
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
+use crate::source::{EventSource, SourceSchedule};
 
 pub struct EarningsPoller {
     client: FmpClient,
     window_days: i64,
+    schedule: SourceSchedule,
 }
 
 impl EarningsPoller {
-    pub fn new(client: FmpClient) -> Self {
+    pub fn new(client: FmpClient, schedule: SourceSchedule) -> Self {
         Self {
             client,
             window_days: 14,
+            schedule,
         }
     }
 
@@ -32,9 +36,19 @@ impl EarningsPoller {
         self.window_days = days;
         self
     }
+}
 
-    /// 拉取一次窗口内的财报日历，返回事件列表。
-    pub async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+#[async_trait]
+impl EventSource for EarningsPoller {
+    fn name(&self) -> &str {
+        "fmp.earnings"
+    }
+
+    fn schedule(&self) -> SourceSchedule {
+        self.schedule.clone()
+    }
+
+    async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
         let today = Utc::now().date_naive();
         let to = today + ChronoDuration::days(self.window_days);
         let path = format!(
@@ -345,6 +359,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_fmp_earnings_smoke() {
+        use std::time::Duration;
         let key = std::env::var("HONE_FMP_API_KEY").expect("需要 HONE_FMP_API_KEY");
         let cfg = hone_core::config::FmpConfig {
             api_key: key,
@@ -353,7 +368,10 @@ mod tests {
             timeout: 30,
         };
         let client = crate::fmp::FmpClient::from_config(&cfg);
-        let poller = EarningsPoller::new(client);
+        let poller = EarningsPoller::new(
+            client,
+            SourceSchedule::FixedInterval(Duration::from_secs(60)),
+        );
         let events = poller.poll().await.expect("FMP poll failed");
         println!("earnings events pulled: {}", events.len());
         for ev in events.iter().take(5) {

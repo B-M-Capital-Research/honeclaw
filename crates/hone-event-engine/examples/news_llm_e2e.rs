@@ -71,13 +71,18 @@ async fn main() -> Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(50);
 
-    let mut poller = NewsPoller::new(fmp).with_page_limit(page_limit);
+    let mut poller = NewsPoller::new(
+        fmp,
+        hone_event_engine::source::SourceSchedule::FixedInterval(std::time::Duration::from_secs(
+            60,
+        )),
+    )
+    .with_page_limit(page_limit);
     if !tickers.is_empty() {
         poller = poller.with_tickers(tickers.clone());
         println!("限定 tickers: {}", tickers.join(","));
     }
-    let events = poller
-        .poll()
+    let events = hone_event_engine::source::EventSource::poll(&poller)
         .await
         .with_context(|| "FMP /v3/stock_news 调用失败")?;
 
