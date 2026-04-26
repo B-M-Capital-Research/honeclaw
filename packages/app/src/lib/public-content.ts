@@ -512,7 +512,8 @@ const CONTENT_ZH = {
       tab_password: "密码登录",
       tab_invite: "邀请码激活",
       hint_password: "已有账号：使用手机号 + 个人密码登录。",
-      hint_invite: "新用户首次进入：凭收到的邀请码激活账号，激活后请设置个人密码。",
+      hint_invite:
+        "新用户首次进入：凭邀请码激活账号。没有邀请码？可加微信 xiaobamang6677 或发邮件到 bamangkeji@163.com 获取；也务必帮忙点一个 Star。",
       phone_label: "手机号",
       phone_placeholder: "例如 13800138000",
       phone_aria: "手机号",
@@ -1330,7 +1331,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       tab_password: "Password",
       tab_invite: "Invite code",
       hint_password: "Already have an account: sign in with phone + password.",
-      hint_invite: "First time in: activate your account with the invite code you received, then set a personal password.",
+      hint_invite:
+        "First time in: activate your account with an invite code. Need one? Add WeChat xiaobamang6677 or email bamangkeji@163.com; please also star us on GitHub.",
       phone_label: "Phone",
       phone_placeholder: "e.g. +1 555 0134",
       phone_aria: "Phone",
