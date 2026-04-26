@@ -19,6 +19,16 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 17:00-18:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6729-6761` 覆盖 `17:00`、`17:30` 与 `18:00-18:01` 三个连续窗口；`全天原油价格3小时播报`、`持仓重大事件心跳检测`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 与多条破位预警在最新一小时全部仍落成 `noop + skipped_noop + delivered=0`
+    - 关键样本的 `detail_json` 仍明确保留结构化坏态，而不是恢复为稳定契约：
+      - `run_id=6729`（`2026-04-26T17:00:06.391824+08:00`，`全天原油价格3小时播报`）`parse_kind=PlainTextSuppressed`，`raw_preview` 仍以 `<think>` 开头解释“当前不是触发小时”
+      - `run_id=6734`（`2026-04-26T17:00:27.700264+08:00`，`TEM大事件心跳监控`）`parse_kind=PlainTextSuppressed`，`raw_chars=1882`
+      - `run_id=6739`（`2026-04-26T17:01:01.936928+08:00`，`持仓重大事件心跳检测`）`parse_kind=PlainTextSuppressed`，`raw_chars=2775`
+      - `run_id=6754`（`2026-04-26T18:00:11.706454+08:00`，`持仓重大事件心跳检测`）从 17:01 的 `PlainTextSuppressed` 漂移成 `JsonEmptyStatus`，`raw_preview` 仍先输出“这是一个心跳探针（heartbeat probe）请求”
+      - `run_id=6761`（`2026-04-26T18:00:54.100831+08:00`，`全天原油价格3小时播报`）继续为 `PlainTextSuppressed`，`raw_preview` 仍先展开 WTI/Brent 价格解释
+    - 结论：到 `2026-04-26 18:01` 为止，最新一小时虽然没有再升级出新的 `JsonUnknownStatus + execution_failed`，但 heartbeat 并未恢复为“首字符即 `{` 的单段 JSON”；坏态只是从显式失败回摆到 `PlainTextSuppressed/JsonEmptyStatus + noop` 的静默吸收，根因仍然活跃
   - 2026-04-26 15:30-16:01 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - 最近一小时没有新的直聊 `session_messages` 落库，最新真实异常继续集中在 heartbeat 链路；`run_id=6696-6717` 覆盖 `15:30` 与 `16:00-16:01` 两个窗口
