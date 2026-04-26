@@ -697,13 +697,13 @@ function Composer(props: {
   createEffect(() => { if (!props.isSending && taRef) taRef.focus(); });
 
   return (
-    <div style={{ padding: "16px 24px 32px", background: "transparent", "flex-shrink": "0", position: "relative", "z-index": "20" }}>
+    <div class="public-chat-composer" style={{ padding: "16px 24px 32px", background: "transparent", "flex-shrink": "0", position: "relative", "z-index": "20" }}>
       <input ref={imgInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "image"); }} />
       <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "file"); }} />
 
       <AttachMenu open={menuOpen()} onClose={() => setMenuOpen(false)} onPickImage={() => imgInputRef?.click()} onPickFile={() => fileInputRef?.click()} />
 
-      <div style={{ position: "relative", "max-width": "900px", margin: "0 auto", "border-radius": "28px", border: focused() ? "2px solid #000" : "2px solid #f1f5f9", background: "#fff", "box-shadow": focused() ? "0 20px 60px rgba(0,0,0,0.08)" : "0 10px 30px rgba(0,0,0,0.03)", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
+      <div class="public-chat-composer-box" style={{ position: "relative", "max-width": "900px", margin: "0 auto", "border-radius": "28px", border: focused() ? "2px solid #000" : "2px solid #f1f5f9", background: "#fff", "box-shadow": focused() ? "0 20px 60px rgba(0,0,0,0.08)" : "0 10px 30px rgba(0,0,0,0.03)", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
         <AttachPreview items={props.attachments} onRemove={props.onRemoveAttachment} />
         <div style={{ display: "flex", "align-items": "flex-end", gap: "8px", padding: "8px 12px" }}>
           <button type="button" class="pub-attach-btn" style={{ width: "48px", height: "48px" }} onClick={() => setMenuOpen(!menuOpen())}>
@@ -713,7 +713,7 @@ function Composer(props: {
             onKeyDown={(e) => { if (!e.isComposing && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend()) props.onSend(); } }}
             onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
             style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "12px 8px", "font-size": "16px", "font-weight": "600", "line-height": "1.6", color: "#0f172a", "max-height": "200px", "min-height": "48px" }} />
-          <button type="button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "48px", height: "48px", "border-radius": "16px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", transition: "all 0.2s" }}>
+          <button type="button" class="public-chat-send-button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "48px", height: "48px", "border-radius": "16px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", transition: "all 0.2s" }}>
             <svg viewBox="0 0 20 20" width="20" height="20" fill={canSend() ? "white" : "#94a3b8"}><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
           </button>
         </div>
@@ -785,8 +785,16 @@ export default function PublicChatPage() {
     }
   };
 
-  onMount(() => { void restoreSession(); });
-  onCleanup(() => { activeController?.abort(); });
+  onMount(() => {
+    document.documentElement.classList.add("public-chat-scroll-lock");
+    document.body.classList.add("public-chat-scroll-lock");
+    void restoreSession();
+  });
+  onCleanup(() => {
+    activeController?.abort();
+    document.documentElement.classList.remove("public-chat-scroll-lock");
+    document.body.classList.remove("public-chat-scroll-lock");
+  });
 
   const handleSend = async () => {
     const text = draft().trim();
@@ -837,7 +845,7 @@ export default function PublicChatPage() {
   };
 
   return (
-    <div class="hone-landing-v4" style={{ height: "100vh", display: "flex", "flex-direction": "column" }}>
+    <div class="hone-landing-v4 public-chat-page" style={{ height: "100vh", display: "flex", "flex-direction": "column" }}>
       <AnimatedBackground />
       <Header />
 
@@ -852,7 +860,7 @@ export default function PublicChatPage() {
           <Show when={currentUser()} fallback={<LoadingCard />}>
             {(user) => (
               <PasswordSetupGuard user={user()} onPasswordSet={applyPublicUser}>
-                <div style={{ flex: "1", display: "flex", "flex-direction": "column", "padding-top": "80px", position: "relative", "z-index": "10", overflow: "hidden" }}>
+                <div class="public-chat-shell" style={{ flex: "1", display: "flex", "flex-direction": "column", "padding-top": "80px", position: "relative", "z-index": "10", overflow: "hidden" }}>
             
             {/* Session Strip */}
             <div class="public-chat-session-strip" style={{ display: "flex", "justify-content": "center", padding: "12px" }}>
@@ -865,7 +873,7 @@ export default function PublicChatPage() {
             </div>
 
             {/* Message List */}
-            <div ref={scrollRef} onScroll={handleMessagesScroll} style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}>
+            <div ref={scrollRef} class="public-chat-messages" onScroll={handleMessagesScroll} style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}>
               <div style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}>
                 <Show when={hasOlderMessages()}>
                   <div style={{ "text-align": "center", color: "#94a3b8", "font-size": "12px", "font-weight": "700", padding: "4px 0 18px" }}>
@@ -919,8 +927,58 @@ export default function PublicChatPage() {
       </Show>
 
       <style>{`
+        html.public-chat-scroll-lock,
+        body.public-chat-scroll-lock,
+        body.public-chat-scroll-lock #root {
+          height: 100dvh !important;
+          min-height: 100dvh !important;
+          overflow: hidden !important;
+          overscroll-behavior: none;
+        }
+        .public-chat-page {
+          height: 100dvh !important;
+          max-height: 100dvh;
+          overflow: hidden;
+        }
+        .public-chat-shell {
+          min-height: 0;
+        }
+        .public-chat-messages {
+          min-height: 0;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+        }
         .public-chat-composer-input::placeholder { color: #94a3b8; font-size: 10px; font-weight: 500; }
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
+          .public-chat-shell {
+            padding-top: 64px !important;
+          }
+          .public-chat-messages {
+            padding-top: 12px !important;
+            padding-bottom: 8px !important;
+          }
+          .public-chat-messages > div {
+            padding-right: 14px !important;
+            padding-left: 14px !important;
+          }
+          .public-chat-composer {
+            padding: 8px 12px calc(10px + env(safe-area-inset-bottom)) !important;
+          }
+          .public-chat-composer-box {
+            border-radius: 20px !important;
+          }
+          .public-chat-composer .pub-attach-btn,
+          .public-chat-send-button {
+            width: 42px !important;
+            height: 42px !important;
+            border-radius: 14px !important;
+            flex: 0 0 42px;
+          }
+          .public-chat-composer-input {
+            min-height: 42px !important;
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+          }
           .public-chat-session-strip { display: none !important; }
         }
         .btn-stop-thinking { background: #f1f5f9; color: #64748b; border: none; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
