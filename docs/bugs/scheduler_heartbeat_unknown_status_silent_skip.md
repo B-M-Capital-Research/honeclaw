@@ -34,6 +34,29 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 04:00 最新巡检样本：
+    - 最近一小时唯一新增真实会话是 `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`，`2026-04-27T04:00:00+08:00` 收到 `Oil_Price_Monitor_Closing` 触发词后，`2026-04-27T04:01:34+08:00` 已正常落库完整 assistant final；说明本轮没有新增“直聊无回复/半成品回复”根因，异常仍集中在 heartbeat 公共契约。
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=7182`（`ASTS 重大异动心跳监控`，`2026-04-27T04:00:05.996234+08:00`）落成 `noop + skipped_noop`，`parse_kind=JsonEmptyStatus`
+      - `run_id=7183`（`全天原油价格3小时播报`，`2026-04-27T04:00:08.476909+08:00`）落成 `noop + skipped_noop`，`parse_kind=JsonEmptyStatus`
+      - `run_id=7184`（`TEM破位预警`，`2026-04-27T04:00:08.650697+08:00`）落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出不是结构化 JSON，任务已标记失败`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7185`（`ORCL 大事件监控`，`2026-04-27T04:00:09.128771+08:00`）落成 `noop + skipped_noop`，`parse_kind=JsonNoop`
+      - `run_id=7186`（`CAI破位预警`，`2026-04-27T04:00:09.754196+08:00`）落成 `noop + skipped_noop`，`parse_kind=JsonNoop`
+      - `run_id=7187`（`持仓重大事件心跳检测`，`2026-04-27T04:00:09.818922+08:00`）落成 `execution_failed + skipped_error`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7188`（`小米30港元破位预警`，`2026-04-27T04:00:12.340674+08:00`）落成 `noop + skipped_noop`，`parse_kind=JsonEmptyStatus`
+      - `run_id=7189`（`小米破位预警`，`2026-04-27T04:00:14.337549+08:00`）落成 `noop + skipped_noop`，`parse_kind=JsonEmptyStatus`
+      - `run_id=7190`（`RKLB异动监控`，`2026-04-27T04:00:23.418288+08:00`）落成 `execution_failed + skipped_error`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7191`（`Monitor_Watchlist_11`，`2026-04-27T04:00:23.666381+08:00`）落成 `execution_failed + skipped_error`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7192`（`TEM大事件心跳监控`，`2026-04-27T04:00:25.179974+08:00`）落成 `execution_failed + skipped_error`，`parse_kind=PlainTextSuppressed`
+    - `data/runtime/logs/sidecar.log`
+      - `04:00:05.995` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，`raw_preview` 仍是 `<think>...</think>` 包裹的 `{"noop": true, ...}`
+      - `04:00:08.476` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，正文仍先输出时间判断解释后才给 `{ "type":"noop" ... }`
+      - `04:00:08.649` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，只返回自然语言价格说明
+      - `04:00:09.127` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=JsonNoop`，payload 仍包在 ```json 代码块内
+      - `04:00:09.817` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，返回“系统运行正常”式自然语言
+      - `04:00:14.336` `job=小米破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，`raw_preview` 仍是 `<think>...</think>` 后接 `{"type":"noop",...}`
+      - `04:00:23.417`、`04:00:23.665`、`04:00:25.178` 分别对应 `RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`，继续先输出整段行情/新闻复盘，再被记成 `PlainTextSuppressed`
+    - 结论：到 `2026-04-27 04:00` 为止，最近一小时的真实直聊已恢复正常，但 heartbeat 公共 JSON 契约仍没有恢复成“首字符即 { 的单段 JSON”。坏态不再只是“静默 noop”，而是继续在 `noop + skipped_noop` 与 `execution_failed + skipped_error` 之间漂移，因此本单保持 `New`、严重等级保持 `P2`。
   - 2026-04-27 03:00 最新巡检样本：
     - 最近一小时没有新的直聊 / Web 会话落库：`data/sessions.sqlite3` 中最新 `last_message_at` 仍停留在 `2026-04-27 01:39:22+08:00`（Feishu）与 `2026-04-27 00:42:57+08:00`（Web），因此本轮真实异常继续集中在 heartbeat/scheduler 链路。
     - `data/runtime/logs/sidecar.log`
