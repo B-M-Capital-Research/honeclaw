@@ -30,6 +30,26 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 23:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 最近一小时的最新整点窗口 `run_id=6954-6964` 再次没有任何 heartbeat 恢复成“首字符即 `{` 的单段 JSON”：
+      - `run_id=6954`（`持仓重大事件心跳检测`，`2026-04-26T23:00:11.894183+08:00`）继续落成 `noop + skipped_noop + delivered=0`，`detail_json.scheduler.parse_kind=JsonEmptyStatus`
+      - `run_id=6956`（`全天原油价格3小时播报`，`2026-04-26T23:00:12.260849+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=6957`（`小米30港元破位预警`，`2026-04-26T23:00:17.803649+08:00`）继续落成 `execution_failed + skipped_error + delivered=0`
+      - `run_id=6960`（`Monitor_Watchlist_11`，`2026-04-26T23:00:30.912438+08:00`）继续落成 `noop + skipped_noop + delivered=0`，`parse_kind=JsonEmptyStatus`
+      - `run_id=6962`（`ASTS 重大异动心跳监控`，`2026-04-26T23:00:34.244620+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=6963`（`ORCL 大事件监控`，`2026-04-26T23:00:38.539337+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=6964`（`TEM大事件心跳监控`，`2026-04-26T23:00:42.287393+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+    - `data/runtime/logs/web.log.2026-04-26`
+      - `23:00:11.893` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，`raw_preview` 直接把心跳任务解释成 “system/heartbeat probe”
+      - `23:00:12.201` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `23:00:12.260` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `23:00:17.802` `job=小米30港元破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `23:00:30.911` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `23:00:34.244` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `23:00:38.538` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `23:00:42.287` `job=TEM大事件心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - 结论：到 `2026-04-26 23:00` 为止，这条公共 heartbeat 契约仍在 `JsonEmptyStatus` 与 `PlainTextSuppressed` 之间漂移；22:00 窗口出现的 `JsonMalformed`/`parse failure escalated` 不是单次抖动，最新整点仍有多条任务继续被静默 noop 或显式失败吸收
   - 2026-04-26 22:00 最新巡检样本：
     - `data/runtime/logs/desktop_release_app.log`
     - `2026-04-26 22:00:10.937` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，先输出价格解释，再被 scheduler 吸收成“本轮不发送”

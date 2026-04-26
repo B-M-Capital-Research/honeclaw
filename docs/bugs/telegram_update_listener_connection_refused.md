@@ -5,6 +5,16 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - 2026-04-26 22:20-22:31 最新运行日志：
+    - `data/runtime/logs/desktop.log`
+      - `2026-04-26 22:20:48.104` bundled runtime 再次启动 managed channels。
+      - `2026-04-26 22:20:48.990` 继续记录 `managed channel telegram skipped because it exited during startup`。
+      - `2026-04-26 22:31:01.520` 又重启一轮 bundled runtime。
+      - `2026-04-26 22:31:02.423` 再次出现 `managed channel telegram skipped because it exited during startup`。
+    - `data/sessions.sqlite3`
+      - 最近 Telegram 会话仍停留在 `Actor_telegram__direct__8039067465`，`updated_at=2026-03-18T11:06:59.182313+08:00`
+      - 最近一小时仍无任何 `actor_channel='telegram'` 新会话或消息落库
+    - 结论：到 `2026-04-26 22:31` 为止，Telegram 渠道在 21:03 的“旧进程占锁/启动即退出”之后仍未恢复；bundled runtime 连续两次重试都没把 listener 拉回可用状态
   - 2026-04-26 21:03 最新运行日志：
     - `data/runtime/logs/desktop.log`
       - `2026-04-26 21:03:29.627` bundled runtime 再次启动 managed channels。
@@ -64,6 +74,7 @@
 
 ## 当前实现效果
 
+- 2026-04-26 22:31 CST 最新窗口显示，Telegram 渠道在 `21:03` 被记录为“旧进程仍占启动锁”之后并没有恢复；`desktop.log` 在 `22:20:48.990` 和 `22:31:02.423` 连续两次再次记录 `managed channel telegram skipped because it exited during startup`，而 `sessions` 中最近 Telegram 会话仍停在 `2026-03-18`。
 - 2026-04-26 21:03 CST 最新窗口显示，Telegram 已经不只是 `Invalid bot token` 或 `GetUpdates` 网络失败；bundled runtime 再次尝试拉起 sidecar 时，`hone-telegram.release-restart.log` 直接报“旧的 Telegram Bot 进程仍占用启动锁”，desktop 则继续把渠道记成 `managed channel telegram skipped because it exited during startup`。当前入站链路仍完全没有恢复，最近 Telegram 会话依旧停在 2026-03-18。
 - 2026-04-22 14:03 CST 最新样本仍在 `data/runtime/logs/web.log:2167` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
 - 2026-04-23 04:03 CST 与 06:03 CST 最新窗口继续复现 `GetUpdates` 连接中断：`data/runtime/logs/web.log.2026-04-22:1196` 和 `:1326` 均记录 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。对应错误处理入口仍是 `bins/hone-telegram/src/handler.rs:220-230`，除 `TerminatedByOtherGetUpdates` 外只记录 error 并依赖 listener 后续重试，没有持久健康状态或用户侧告警。
