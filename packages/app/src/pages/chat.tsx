@@ -20,6 +20,15 @@ import { PasswordSetupGuard } from "@/components/password-setup-guard";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
+import {
+  initPublicPrefs,
+  publicFontScale,
+  publicTheme,
+  setPublicFontScale,
+  setPublicTheme,
+  type PublicFontScale,
+  type PublicTheme,
+} from "@/lib/public-prefs";
 import "./public-site.css";
 import {
   getPublicAuthMe,
@@ -85,6 +94,66 @@ function AnimatedBackground() {
   )
 }
 
+function PrefsButton() {
+  const [open, setOpen] = createSignal(false);
+  const fsLabel: Record<PublicFontScale, string> = { s: "小", m: "标准", l: "大", xl: "特大" };
+  const themeOptions: { value: PublicTheme; label: string }[] = [
+    { value: "auto", label: "跟随系统" },
+    { value: "light", label: "浅色" },
+    { value: "dark", label: "深色" },
+  ];
+
+  const close = () => setOpen(false);
+
+  return (
+    <div class="hone-prefs">
+      <button
+        type="button"
+        class="hone-prefs-trigger"
+        aria-label="字号与主题"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span class="hone-prefs-trigger-aa">Aa</span>
+      </button>
+      <Show when={open()}>
+        <div class="hone-prefs-backdrop" onClick={close} />
+        <div class="hone-prefs-panel" role="dialog">
+          <div class="hone-prefs-section-title">字号</div>
+          <div class="hone-prefs-fs-row">
+            <For each={["s", "m", "l", "xl"] as const}>
+              {(size) => (
+                <button
+                  type="button"
+                  class={"hone-prefs-fs-btn" + (publicFontScale() === size ? " is-active" : "")}
+                  data-size={size}
+                  onClick={() => setPublicFontScale(size)}
+                >
+                  <span>A</span>
+                  <span class="hone-prefs-fs-label">{fsLabel[size]}</span>
+                </button>
+              )}
+            </For>
+          </div>
+          <div class="hone-prefs-section-title" style={{ "margin-top": "10px" }}>主题</div>
+          <div class="hone-prefs-theme-row">
+            <For each={themeOptions}>
+              {(opt) => (
+                <button
+                  type="button"
+                  class={"hone-prefs-theme-btn" + (publicTheme() === opt.value ? " is-active" : "")}
+                  onClick={() => setPublicTheme(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
 function Header() {
   const navigate = useNavigate()
   const [stars] = createResource(fetchGithubStars)
@@ -113,6 +182,8 @@ function Header() {
           <button onClick={() => setLocale("zh")} class={useLocale() === "zh" ? "active" : ""}>中</button>
           <button onClick={() => setLocale("en")} class={useLocale() === "en" ? "active" : ""}>EN</button>
         </div>
+
+        <PrefsButton />
 
         <div style={{ display: "flex", gap: "10px" }}>
           <button onClick={() => navigate("/roadmap")} class="btn-roadmap-nav mobile-hide">
@@ -951,6 +1022,7 @@ export default function PublicChatPage() {
   });
 
   onMount(() => {
+    initPublicPrefs();
     document.documentElement.classList.add("public-chat-scroll-lock");
     document.body.classList.add("public-chat-scroll-lock");
     void restoreSession({ resetWindow: true });
@@ -1204,6 +1276,176 @@ export default function PublicChatPage() {
         .public-chat-page .lang-switch button { min-height: 28px; }
         .public-chat-page .btn-chat-nav,
         .public-chat-page .btn-roadmap-nav { min-height: 34px; padding: 0 16px; }
+
+        /* ── Prefs button + popover ───────────────────────────────────── */
+        .hone-prefs { position: relative; display: inline-flex; }
+        .hone-prefs-trigger {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px; height: 36px;
+          border-radius: 10px;
+          border: none;
+          background: transparent;
+          color: #475569;
+          cursor: pointer;
+          font-weight: 800;
+          transition: background 0.2s, color 0.2s;
+        }
+        .hone-prefs-trigger:hover { background: #f1f5f9; color: #0f172a; }
+        .hone-prefs-trigger-aa { font-size: 15px; letter-spacing: -0.04em; }
+        .hone-prefs-backdrop { position: fixed; inset: 0; z-index: 998; background: transparent; }
+        .hone-prefs-panel {
+          position: absolute;
+          right: 0; top: calc(100% + 8px);
+          z-index: 999;
+          width: 240px;
+          padding: 12px;
+          background: #fff;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 14px;
+          box-shadow: 0 16px 40px rgba(15,23,42,0.16);
+        }
+        .hone-prefs-section-title {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #94a3b8;
+          margin: 0 0 6px 4px;
+        }
+        .hone-prefs-fs-row, .hone-prefs-theme-row { display: grid; gap: 4px; }
+        .hone-prefs-fs-row { grid-template-columns: repeat(4, 1fr); }
+        .hone-prefs-theme-row { grid-template-columns: repeat(3, 1fr); }
+        .hone-prefs-fs-btn, .hone-prefs-theme-btn {
+          border: 1.5px solid #e2e8f0;
+          background: #fff;
+          border-radius: 10px;
+          padding: 8px 4px;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          color: #475569;
+          font-weight: 700;
+          font-size: 12px;
+          transition: border-color 0.15s, background 0.15s, color 0.15s;
+        }
+        .hone-prefs-fs-btn:hover, .hone-prefs-theme-btn:hover { border-color: #cbd5e1; }
+        .hone-prefs-fs-btn.is-active,
+        .hone-prefs-theme-btn.is-active {
+          background: #0f172a; color: #fff; border-color: #0f172a;
+        }
+        .hone-prefs-fs-btn[data-size="s"]  > span:first-child { font-size: 11px; }
+        .hone-prefs-fs-btn[data-size="m"]  > span:first-child { font-size: 14px; }
+        .hone-prefs-fs-btn[data-size="l"]  > span:first-child { font-size: 18px; }
+        .hone-prefs-fs-btn[data-size="xl"] > span:first-child { font-size: 22px; line-height: 1; }
+        .hone-prefs-fs-btn .hone-prefs-fs-label { font-size: 10px; font-weight: 600; opacity: 0.65; }
+        .hone-prefs-theme-btn { padding: 10px 4px; min-height: 38px; justify-content: center; }
+
+        /* ── Font scale variants ─────────────────────────────────────── */
+        /* Desktop baselines from the central markdown CSS are ~16px; the
+           mobile @media block resets to 13.5px. We override both. */
+        [data-chat-fs="s"]  .public-chat-messages .hf-markdown { font-size: 14.5px; }
+        [data-chat-fs="m"]  .public-chat-messages .hf-markdown { font-size: 16px; }
+        [data-chat-fs="l"]  .public-chat-messages .hf-markdown { font-size: 18.5px; line-height: 1.7; }
+        [data-chat-fs="xl"] .public-chat-messages .hf-markdown { font-size: 22px; line-height: 1.75; }
+        [data-chat-fs="l"]  .public-chat-messages .pub-msg-bubble--user { font-size: 18px; }
+        [data-chat-fs="xl"] .public-chat-messages .pub-msg-bubble--user { font-size: 21px; }
+
+        /* ── Dark theme ──────────────────────────────────────────────── */
+        [data-theme="dark"] .public-chat-page { background: #0a0e16; }
+        [data-theme="dark"] .public-chat-page .animated-bg .circle { opacity: 0.06 !important; }
+        [data-theme="dark"] .page-header {
+          background: rgba(10,14,22,0.85) !important;
+          border-bottom-color: rgba(255,255,255,0.06) !important;
+        }
+        [data-theme="dark"] .header-logo span { color: #e5e7eb !important; }
+        [data-theme="dark"] .lang-switch {
+          background: rgba(255,255,255,0.04) !important;
+          border-color: rgba(255,255,255,0.08) !important;
+        }
+        [data-theme="dark"] .lang-switch button { color: #94a3b8; }
+        [data-theme="dark"] .lang-switch button.active { background: #f1f5f9 !important; color: #0a0e16 !important; }
+        [data-theme="dark"] .btn-chat-nav { background: #f1f5f9 !important; color: #0a0e16 !important; }
+        [data-theme="dark"] .btn-roadmap-nav { color: #94a3b8 !important; border-color: #1f2937 !important; }
+        [data-theme="dark"] .icon-btn-ghost { color: #94a3b8; }
+        [data-theme="dark"] .icon-btn-ghost:hover { background: rgba(255,255,255,0.06); color: #e5e7eb; }
+        [data-theme="dark"] .star-badge { background: rgba(255,255,255,0.06); color: #cbd5e1; }
+        [data-theme="dark"] .divider-v { background: rgba(255,255,255,0.08); }
+
+        [data-theme="dark"] .hone-prefs-trigger { color: #cbd5e1; }
+        [data-theme="dark"] .hone-prefs-trigger:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        [data-theme="dark"] .hone-prefs-panel {
+          background: #131b2c; border-color: #1f2937;
+          box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+        }
+        [data-theme="dark"] .hone-prefs-section-title { color: #64748b; }
+        [data-theme="dark"] .hone-prefs-fs-btn,
+        [data-theme="dark"] .hone-prefs-theme-btn {
+          background: #1a2332; border-color: #1f2937; color: #cbd5e1;
+        }
+        [data-theme="dark"] .hone-prefs-fs-btn.is-active,
+        [data-theme="dark"] .hone-prefs-theme-btn.is-active {
+          background: #f1f5f9; color: #0a0e16; border-color: #f1f5f9;
+        }
+
+        [data-theme="dark"] .public-chat-session-strip > div {
+          background: rgba(19,27,44,0.7) !important;
+          border-color: #1f2937 !important;
+        }
+        [data-theme="dark"] .public-chat-session-strip span,
+        [data-theme="dark"] .public-chat-session-strip button { color: #cbd5e1 !important; }
+        [data-theme="dark"] .public-chat-session-strip button[style*="ef4444"] { color: #f87171 !important; }
+
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant {
+          background: #131b2c !important;
+          border-color: #1f2937 !important;
+          box-shadow: 0 1px 6px rgba(0,0,0,0.25) !important;
+        }
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant,
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown,
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown * { color: #e5e7eb !important; }
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown strong { color: #f8fafc !important; }
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown a { color: #60a5fa !important; }
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown code {
+          background: rgba(255,255,255,0.08) !important; color: #f8fafc !important;
+        }
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown table { border-color: #1f2937 !important; }
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown th,
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--assistant .hf-markdown td { border-color: #1f2937 !important; }
+        [data-theme="dark"] .public-chat-messages .pub-msg-bubble--user {
+          background: #1e293b !important;
+          box-shadow: 0 1px 6px rgba(0,0,0,0.3) !important;
+        }
+
+        [data-theme="dark"] .public-chat-composer-box {
+          background: #131b2c !important;
+          border-color: #1f2937 !important;
+          box-shadow: 0 4px 18px rgba(0,0,0,0.3) !important;
+        }
+        [data-theme="dark"] .public-chat-composer-input { color: #e5e7eb !important; }
+        [data-theme="dark"] .public-chat-composer-input::placeholder { color: #64748b !important; }
+        [data-theme="dark"] .pub-attach-btn { color: #94a3b8 !important; }
+        [data-theme="dark"] .pub-attach-btn:hover { color: #e5e7eb !important; background: rgba(255,255,255,0.06) !important; }
+        [data-theme="dark"] .public-chat-send-button[disabled] { background: #1f2937 !important; }
+        [data-theme="dark"] .public-chat-send-button[disabled] svg { fill: #475569 !important; }
+
+        [data-theme="dark"] .public-chat-composer-status {
+          background: rgba(19,27,44,0.95) !important;
+          border-color: #1f2937 !important;
+          color: #cbd5e1 !important;
+        }
+        [data-theme="dark"] .public-chat-composer-status.is-done {
+          background: rgba(6,78,59,0.45) !important;
+          border-color: rgba(16,185,129,0.4) !important;
+          color: #6ee7b7 !important;
+        }
+        [data-theme="dark"] .public-chat-composer-status-time { color: #94a3b8 !important; }
+        [data-theme="dark"] .public-chat-composer-status-stop { background: #f1f5f9 !important; color: #0a0e16 !important; }
+        [data-theme="dark"] .public-chat-composer-status-stop:hover { background: #ef4444 !important; color: #fff !important; }
+
         @media (max-width: 768px) {
           .public-chat-composer-status { border-radius: 11px; }
           /* Density target: WeChat-like — small font, tight line-height,
@@ -1254,6 +1496,9 @@ export default function PublicChatPage() {
           .public-chat-page .lang-switch { padding: 1px !important; }
           .public-chat-page .lang-switch button { min-height: 22px !important; min-width: 26px !important; padding: 0 6px !important; font-size: 11px !important; }
           .public-chat-page .btn-chat-nav { min-height: 28px !important; padding: 0 12px !important; font-size: 12px !important; }
+          .hone-prefs-trigger { width: 28px !important; height: 28px !important; border-radius: 8px !important; }
+          .hone-prefs-trigger-aa { font-size: 13px !important; }
+          .hone-prefs-panel { width: 220px !important; right: -4px !important; padding: 10px !important; }
           .public-chat-shell {
             padding-top: 46px !important;
           }
