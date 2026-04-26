@@ -34,6 +34,19 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 03:00 最新巡检样本：
+    - 最近一小时没有新的直聊 / Web 会话落库：`data/sessions.sqlite3` 中最新 `last_message_at` 仍停留在 `2026-04-27 01:39:22+08:00`（Feishu）与 `2026-04-27 00:42:57+08:00`（Web），因此本轮真实异常继续集中在 heartbeat/scheduler 链路。
+    - `data/runtime/logs/sidecar.log`
+      - `03:00:09.335` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `03:00:10.831` `job=小米30港元破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `03:00:15.988` `job=CAI破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `03:00:23.776` `job=RKLB异动监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `03:00:27.775` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `03:00:31.184` `job=TEM大事件心跳监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `03:00:34.164` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `03:01:01.676` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - 同一 `03:00:12-03:00:35` 窗口继续伴随多轮 Tavily `usage limit` 告警，但 `web_search` 仍能在部分轮次回落成 `tool_execute_success`；说明最近一小时没有形成新的独立检索或投递故障，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-27 03:01` 为止，最近一小时没有新的真实用户会话可佐证其它链路异常，而 heartbeat 任务仍无一条恢复成“首字符即 `{` 的单段 JSON”稳定形态；状态继续维持 `New`，严重等级保持 `P2`。
   - 2026-04-27 02:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - 整点窗口 `run_id=7093-7103` 继续没有任何 heartbeat 恢复成“首字符即 `{` 的单段 JSON”：
