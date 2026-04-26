@@ -1633,3 +1633,21 @@
 - 如果后面还观察到 heartbeat 在 `JsonNoop` 和 `JsonUnknownStatus` 之间抖动，可以继续收紧 prompt / parser 契约，让模型在末尾 JSON 收口更稳定。
 - 需要把 `PlainTextSuppressed` 这类“无合法状态但被压制成空结果”的场景也纳入失败收口，否则 watchlist 任务会继续以 `skipped_noop` 伪装成功。
 - 如需更强的运维可观测性，可以再把 `parse_kind` 聚合到状态页或告警面板，而不只停留在 `cron_job_runs.detail_json`。
+
+## 最新真实样本复核（2026-04-26 13:30-14:00 CST）
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - 最近一小时内新增两窗 heartbeat：`13:30` 的 `run_id=6652-6661` 与 `14:00` 的 `run_id=6663-6673`，11 条任务全部仍落成 `noop + skipped_noop + delivered=0`
+  - `13:30` 窗口里，`run_id=6652`（`全天原油价格3小时播报`）、`6658`（`RKLB异动监控`）、`6659`（`Monitor_Watchlist_11`）与 `6660`（`TEM大事件心跳监控`）继续落成 `parse_kind=PlainTextSuppressed`；`6653/6654/6655/6656/6657/6661` 则继续为 `JsonEmptyStatus`
+  - `14:00` 窗口里，`run_id=6663-6673` 再次全量停留在 `noop + skipped_noop`，没有任何一条恢复为“首字符即 `{` 的单段 JSON”；从最近一小时巡检视角看，heartbeat 公共契约仍未恢复到可称为稳定的状态
+- `data/runtime/logs/sidecar.log`
+  - `2026-04-26 13:30:07.045`，`全天原油价格3小时播报` 的 `raw_preview` 仍是 `<think>...</think>\n\nnoop`，被记为 `starts_with_json=false parse_kind=PlainTextSuppressed`
+  - `2026-04-26 13:30:08.797`，`CAI破位预警` 输出 `<think>...</think>\n\n{\"noop\":true}`，继续被记为 `JsonEmptyStatus`
+  - `2026-04-26 13:30:18.793` 与 `13:30:27.587`，`RKLB异动监控` 和 `Monitor_Watchlist_11` 继续先输出长段自然语言复盘，再被吸收为 `PlainTextSuppressed`
+  - `2026-04-26 13:30:30.213`，`TEM大事件心跳监控` 的 `raw_chars=3268`，整段价格/新闻说明前面仍保留 `<think>`，最终仍被静默吞成 `skipped_noop`
+  - 同窗还连续出现 Tavily `usage limit` 告警，但 `RKLB异动监控`、`Monitor_Watchlist_11`、`小米破位预警` 最终都没有升级成新的独立发送故障，仍落回这条 heartbeat 结构化协议缺陷的既有坏态
+- 这批 13:30-14:00 样本说明，`2026-04-24` 引入的 `<think>` 清洗与 parser 收紧仍没有让最新线上 heartbeat 恢复成稳定纯 JSON 首包：
+  - 简单时间窗判断任务仍会输出自然语言 `noop`；
+  - 简单阈值预警仍会输出缺少合法状态字段的 JSON 片段；
+  - 复杂 watchlist / 大事件模板则继续输出整段自然语言解释后被后台静默吸收。
+- 因此本单继续维持 `Fixing`、严重等级保持 `P2`。本轮没有发现需要拆分的新根因；最近一小时新增证据仍完全落在“heartbeat 输出结构持续漂移，链路以 `skipped_noop` 吸收”的既有缺陷范围内。
