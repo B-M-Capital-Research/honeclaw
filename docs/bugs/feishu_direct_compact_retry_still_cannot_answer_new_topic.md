@@ -3,14 +3,14 @@
 - **发现时间**: 2026-04-18 00:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixing
+- **状态**: Later
 
 ## 修复进展（2026-04-26）
 
 - 已确认 `CONTEXT_OVERFLOW_FALLBACK_MESSAGE` 的代码常量为用户态 `/compact` 文案，不再包含 `<absolute-path>` 占位符；最新线上样本里的占位符需要随新构建复核是否消失。
 - 已将 Answer 阶段空成功重试耗尽路径改为 `success=false + error`，避免“有 search 结果但 answer 两次空回复”继续被上层当作正常成功。
 - 已在共享净化层剥离独立 `Context compacted` / `Conversation compacted` marker 行，减少自动 compact 标记进入最终回复的概率。
-- 状态继续保持 `Fixing`：旧会话能否在 compact 后稳定完成新话题，仍需要真实 Feishu 直聊窗口复核。
+- 状态调整为 `Later`：当前已完成可落地止血，不再占活跃修复队列；若旧会话在 compact 后仍稳定无法完成新话题，再改回 `New`。
 - **证据来源**:
   - 2026-04-26 10:54-10:57 最新样本：
     - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`

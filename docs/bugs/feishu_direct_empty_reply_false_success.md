@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Later
 - **证据来源**:
   - 2026-04-26 09:52-09:57 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
@@ -242,4 +242,4 @@
 - Feishu 直聊因此会走失败分支持久化/发送用户态 fallback，不再在 `MsgFlow/feishu done ... success=true` 层面把空成功伪装成正常回答。
 - Feishu scheduler 也会把同类 fallback 记为 `execution_failed`，与 `feishu_scheduler_empty_reply_false_success` 的台账修复一致。
 - 已验证：`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`。
-- 状态继续保持 `Fixing`：伪成功已代码止血；runner 为什么仍会空成功仍是后续根因项。
+- 状态调整为 `Later`：伪成功已代码止血；后续若再次出现空成功被记为正常完成，再改回 `New`。runner 为什么仍会空成功可由新的复现样本或独立根因项继续跟踪。

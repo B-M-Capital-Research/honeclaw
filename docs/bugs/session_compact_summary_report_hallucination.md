@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing（compact 文本透出为当前接受状态；compact 识别已迁移到 usage drop，不再依赖字面 marker）
+- **状态**: Later
 
 ## 2026-04-24 决策
 
@@ -26,7 +26,7 @@
 - 仅匹配整行 marker，保留后续真实回答正文，降低误删正文中普通 `context/compact` 词的风险。
 - 已补回归：`sanitize_user_visible_output_drops_acp_compact_marker_lines`。
 - 已验证：`cargo test -p hone-channels sanitize_user_visible_output`。
-- 状态继续保持 `Fixing`：用户可见 marker 外泄已代码止血；历史 compact summary 语义污染和真实窗口仍需继续观察。
+- 状态调整为 `Later`：用户可见 marker 外泄已代码止血；后续若历史 compact summary 语义污染或 marker 外泄再次复现，再改回 `New`。
 
 - 2026-04-25 20:37-20:40 最新同小时状态变化复核：
    - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`

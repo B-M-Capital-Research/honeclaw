@@ -1,9 +1,9 @@
 # Non-P1 Fixing Bug Batch
 
 - title: Non-P1 Fixing Bug Batch
-- status: in_progress
+- status: done
 - created_at: 2026-04-26
-- updated_at: 2026-04-26
+- updated_at: 2026-04-26 15:05 CST
 - owner: codex
 - related_files:
   - `crates/hone-channels/src/prompt.rs`
@@ -42,12 +42,13 @@
 - `cargo test -p hone-feishu failed_reply_text`
 - `cargo test -p hone-feishu`
 - `cargo test -p hone-channels`
-- 待真实 scheduler / heartbeat 窗口继续复核是否还有线上样本复现。
+- 相关缺陷已按当前治理口径改为 `Later`；若真实 scheduler / heartbeat 窗口再次复现，同一缺陷改回 `New`。
 
 ## Documentation Sync
 
 - 同步更新 `docs/bugs/README.md` 与相关 bug 文档的修复进展。
-- 由于缺陷仍需真实窗口复核，本计划保持 `in_progress`，暂不归档。
+- 2026-04-26 按新治理口径将“只待真实窗口复核”的缺陷改为 `Later`，并从活跃待修复队列移出。
+- 本计划已完成并归档到 `docs/archive/plans/non-p1-fixing-bug-batch.md`。
 
 ## Risks / Open Questions
 

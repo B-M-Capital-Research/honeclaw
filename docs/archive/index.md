@@ -4,6 +4,18 @@ Last updated: 2026-04-26
 
 ## 2026-04-26
 
+### Non-P1 Fixing Bug Batch
+
+- Status: done
+- Date: 2026-04-26
+- Plan: `docs/archive/plans/non-p1-fixing-bug-batch.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: `0e917fe fix scheduler fixing bug batch`
+- Related runbooks / regressions: `cargo test -p hone-channels scheduler::tests`, `cargo test -p hone-channels prompt::tests`, `cargo test -p hone-channels`, `cargo test -p hone-feishu failed_reply_text`, `git diff --check`
+- Current conclusion: 非 P1 `Fixing` 批次已完成代码止血与文档同步；按新口径，已代码修复但只待真实窗口复核的缺陷统一标记为 `Later`，不再占活跃队列，后续复现时改回 `New`
+- Next entry point: `docs/bugs/README.md#later--待复现`
+
 ### Remove Truth Social Source
 
 - Status: done

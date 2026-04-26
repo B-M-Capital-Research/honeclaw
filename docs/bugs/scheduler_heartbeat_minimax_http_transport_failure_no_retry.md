@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixing
+- **状态**: Later
 
 ## 修复进展（2026-04-26）
 
@@ -14,7 +14,7 @@
   - `operation timed out`
   - `tcp connect error`
 - heartbeat scheduler 调用 MiniMax 辅助模型走 OpenAI-compatible provider，因此该 provider 级吸震已覆盖本单记录的 `https://api.minimaxi.com/v1/chat/completions` 发送失败形态。
-- 状态继续保持 `Fixing`：仍需真实 heartbeat 窗口观察是否还有同类成批传输失败；若仍复现，再评估是否需要更多重试、退避或 provider fallback。
+- 状态调整为 `Later`：provider 级吸震已覆盖当前失败形态，不再占活跃修复队列；若真实 heartbeat 窗口仍有同类成批传输失败，再改回 `New` 并评估更多重试、退避或 provider fallback。
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-21 19:30-20:00 最新巡检样本：

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-24 09:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Later
 
 ## 观测落地（2026-04-24）
 
@@ -133,4 +133,4 @@
   - `detail.delivery_key=<scheduler delivery_key>`
 - 这样即使后续 agent run 卡住、进程中断或收尾逻辑没有执行，台账也能看到“本轮确实触发并进入运行中”，不再表现为完全缺失。
 - 已验证：`cargo test -p hone-feishu failed_reply_text`（同包编译通过；完整 Feishu 回归见本轮批次计划）。
-- 状态继续保持 `Fixing`：台账缺失已代码止血，后续仍需真实长任务窗口复核是否还会停在 `running/pending`，以及是否需要进一步补超时终结器。
+- 状态调整为 `Later`：台账缺失已代码止血；后续若真实长任务窗口仍停在 `running/pending`，或证明需要补超时终结器，再改回 `New`。

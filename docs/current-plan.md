@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-04-26
-状态：有 7 个活跃任务
+状态：有 6 个活跃任务
 
 ## 说明
 
@@ -24,10 +24,6 @@
   - 状态：`in_progress`
   - 计划：`docs/current-plans/feishu-p1-reliability-batch.md`
   - 摘要：集中修复当前活跃的 Feishu `P1` 缺陷；本轮已补 Feishu 出站短重试、scheduler `running/pending` 起始台账、空回复失败态、timeout partial 清洗和 compact marker 可见净化
-- **Non-P1 Fixing Bug Batch**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/non-p1-fixing-bug-batch.md`
-  - 摘要：继续收口活跃队列中非 P1 的 `Fixing` 缺陷；本轮覆盖 Discord 空成功失败态、heartbeat 自然语言坏态失败化、MiniMax provider 传输重试确认，以及原油/大宗商品归因约束
 - **Feishu 直聊 placeholder 假启动与 release runner 生效链路修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/feishu-direct-placeholder-followup-fix.md`
