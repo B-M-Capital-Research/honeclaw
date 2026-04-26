@@ -45,6 +45,8 @@ export default function ConsoleLayout(props: ParentProps) {
       consoleState.setModule("llm-audit")
     } else if (p.startsWith("/logs")) {
       consoleState.setModule("logs")
+    } else if (p.startsWith("/task-health")) {
+      consoleState.setModule("task-health")
     } else if (p.startsWith("/settings")) {
       consoleState.setModule("settings")
     } else {
