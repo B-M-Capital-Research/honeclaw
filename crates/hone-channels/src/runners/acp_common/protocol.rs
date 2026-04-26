@@ -438,14 +438,10 @@ async fn handle_acp_permission_request(
     decision: AcpPermissionDecision,
     log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<(), AgentSessionError> {
-    let request_id =
-        payload
-            .get("id")
-            .and_then(|value| value.as_u64())
-            .ok_or(AgentSessionError {
-                kind: AgentSessionErrorKind::Io,
-                message: format!("{runner_label} acp permission request missing id"),
-            })?;
+    let request_id = payload.get("id").cloned().ok_or(AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: format!("{runner_label} acp permission request missing id"),
+    })?;
     let params = payload.get("params").cloned().unwrap_or(Value::Null);
     let tool_title = params
         .get("toolCall")

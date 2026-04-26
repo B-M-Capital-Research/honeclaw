@@ -1327,14 +1327,10 @@ async fn handle_opencode_permission_request(
     emitter: &Arc<dyn AgentRunnerEmitter>,
     log_ctx: &AcpEventLogContext,
 ) -> Result<(), AgentSessionError> {
-    let request_id =
-        payload
-            .get("id")
-            .and_then(|value| value.as_u64())
-            .ok_or(AgentSessionError {
-                kind: AgentSessionErrorKind::Io,
-                message: "opencode acp permission request missing id".to_string(),
-            })?;
+    let request_id = payload.get("id").cloned().ok_or(AgentSessionError {
+        kind: AgentSessionErrorKind::Io,
+        message: "opencode acp permission request missing id".to_string(),
+    })?;
     let params = payload.get("params").cloned().unwrap_or(Value::Null);
     let tool_title = params
         .get("toolCall")

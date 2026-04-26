@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-26 12:18 CST
+最后更新：2026-04-26 12:25 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,7 +15,7 @@
 ## 当前概览
 
 - 活跃待修复：26
-- 已修复 / 已关闭：50
+- 已修复 / 已关闭：51
 - 历史分析 / 部分止血：4
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -90,6 +90,7 @@
 | Release runtime 缺少稳定 supervisor 时会丢失固定 `8077` 端口或整组进程退出，导致 Desktop 周期性掉线 | P1 | Fixed | `ea5229b` 已为 release helper 收口到 `.app` 启动形态、统一 `honeclaw/target` cache、并让 `launch.sh` 持续写入 `data/runtime/current.pid` 供重启链路可靠接管 | [desktop_release_runtime_supervision_gap.md](./desktop_release_runtime_supervision_gap.md) |
 | OpenAI-compatible 搜索阶段出现 tool-call 协议错位，`invalid params` 失败被统一收口成通用失败提示 | P1 | Fixed | 2026-04-16 已补齐搜索上下文清洗：同时移除历史 `tool` 与残留 assistant `tool_calls`，定向回归测试与 desktop release build 已通过 | [openai_compatible_tool_call_protocol_mismatch_invalid_params.md](./openai_compatible_tool_call_protocol_mismatch_invalid_params.md) |
 | Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | Fixed | 2026-04-26 00:01/00:02 最新 `TEM`、`RKLB 每日动态监控` 已稳定落成 `noop + skipped_noop` 且日志明确“不发送”；残留的 session 落库污染已拆到新缺陷跟踪 | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
+| Feishu 直聊遇到 Codex ACP 字符串权限请求 id 后整轮失败 | P1 | Fixed | 2026-04-26 已确认 Codex ACP 0.12.0 权限请求 id 为字符串 UUID；权限响应改为原样 echo JSON-RPC id，并补字符串 id 回归测试 | [feishu_codex_acp_permission_string_id.md](./feishu_codex_acp_permission_string_id.md) |
 | Event-engine 收盘大幅波动永远不会即时推送 | P2 | Fixed | 2026-04-24 已让超过 high 阈值的 `price_close` 生成 High，并允许 per-actor price override 覆盖 close；普通 close 仍走 digest，`hone-event-engine` 相关测试与真实模型 baseline 通过 | [event_engine_close_price_alerts_never_immediate.md](./event_engine_close_price_alerts_never_immediate.md) |
 | Event-engine digest 省略项不可审计且低信号新闻/宏观/评级噪声挤入摘要 | P2 | Fixed | 2026-04-24 已把省略项写入 `digest_item omitted`，导出脚本新增 `digest_omitted`；同时过滤 Low news、opinion/pr-wire convergence、无标的低优先级社交、远期 macro 和 no-op analyst hold；baseline fixture 扩到 43 条 / 15 条 LLM | [event_engine_digest_omitted_items_and_low_signal_noise.md](./event_engine_digest_omitted_items_and_low_signal_noise.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | Fixed | 2026-04-24 16:46 `请详细分析下谷歌` 真实会话已连续成功写入 actor sandbox 下的 `company_profiles/alphabet/*`；同小时 `acp-events.log` 未再出现 `目录不存在: company_profiles` | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
