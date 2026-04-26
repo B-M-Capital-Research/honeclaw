@@ -13,7 +13,7 @@ Why the name Hone:
 </p>
 
 <p align="center">
-  <strong>English</strong> | <a href="./readme.md">简体中文</a>  | <strong>💬 Community:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a> 
+  <strong>English</strong> | <a href="./README_ZH.md">简体中文</a> | <strong>Website:</strong> <a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>💬 Community:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
 </p>
 
 ---
@@ -24,6 +24,8 @@ Honeclaw (or simply Hone) is an open-source personal investment research assista
 
 It integrates into your daily workflow across multiple platforms, helping you track developments at companies you hold, enforce strict investment discipline, run scheduled monitoring tasks, and counter emotional trading impulses with rational data and logic.
 
+The public product website is now live at **[hone-claw.com](https://hone-claw.com)**. It introduces Hone from the user-facing angle: what Hone is, how public chat works, how portfolio monitoring and scheduled tasks fit into daily research, and where to find the roadmap, GitHub repo, Bilibili, and YouTube demos.
+
 <p align="center">
   <img src="./resources/hone_introduction.jpg" alt="Hone Introduction - Your Financial Assistant" width="80%">
 </p>
@@ -33,11 +35,12 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 # 2. ✨ Key Features
 
 
--  🧠 An Absolutely Rational Investment Research Core: It does not flatter and does not follow blindly. When you make investment decisions, it cross-checks them against data and predefined discipline, identifying flaws in your reasoning. 
--  📱 Seamless Cross-Platform Access: Supports iMessage, Lark, Telegram, and Discord, so you can engage with your investment brain anytime, anywhere. 
--  📊 Position Monitoring and Discipline Management: Set your take-profit and stop-loss levels, add-to-position logic, and key indicators to watch, and Hone will monitor the market for you like a cold, vigilant sentinel. 
--  ⏰ Powerful Scheduled Tasks (Cron Jobs): Supports complex scheduled monitoring tasks, such as pre-market briefings, post-market summaries, and automatic analysis after specific earnings releases. 
--  ⚡ Extreme Performance: Built entirely in Rust at the core, with very low memory usage and exceptionally strong concurrent processing capabilities, ensuring millisecond-level responsiveness for messages across multiple platforms.
+- 🧠 **An Absolutely Rational Core**: It does not flatter and does not follow blindly. When you make investment decisions, it cross-checks them against data and predefined discipline, identifying flaws in your reasoning.
+- 📱 **Seamless Cross-Platform Access**: Supports Web, iMessage, Lark, Telegram, and Discord, so you can engage with your investment brain anytime, anywhere.
+- 🗂️ **Company Portraits & Long-term Memory**: Hone can continuously accumulate company profiles and event timelines in Markdown, helping you preserve thesis, key operating metrics, risks, and major developments as a reusable long-term research asset.
+- 📊 **Position Monitoring & Discipline**: Set your take-profit and stop-loss levels, add-to-position logic, and key indicators to watch, and Hone will monitor the market for you like a cold, vigilant sentinel.
+- ⏰ **Powerful Scheduled Tasks (Cron Jobs)**: Supports complex scheduled monitoring tasks, such as pre-market briefings, post-market summaries, and automatic analysis after specific earnings releases.
+- ⚡ **Rust-powered Extreme Performance**: Built entirely in Rust at the core, ensuring millisecond-level responsiveness for messages across multiple platforms with minimal footprint.
 
 <p align="center">
   <a href="./resources/hone_channels.jpg" target="_blank">
@@ -50,7 +53,19 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 </p>
 
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="Hone honepage - Your Financial Assistant" width="100%">
+  <a href="https://hone-claw.com" target="_blank">
+    <img src="./resources/hone_official_site.png" alt="Hone official website - hone-claw.com" width="100%">
+  </a>
+</p>
+<p align="center">
+  <em>Official website: <a href="https://hone-claw.com">hone-claw.com</a> introduces Hone’s public chat, portfolio tracking, scheduled tasks, long-term company memory, cross-platform notifications, and roadmap.</em>
+</p>
+
+<p align="center">
+  <img src="./resources/company_profile.png" alt="Company Portraits - Long-Term Research Memory Dashboard" width="100%">
+</p>
+<p align="center">
+  <em>Company Portraits Dashboard: A centralized UI to manage long-term research memories, sync thesis developments from chats, and review your customized company knowledge base.</em>
 </p>
 
 # 3. 🏗️ Getting Started
@@ -63,34 +78,42 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 
 ### Tech stack
 
-- **System core**: Rust  
-- **Backend**: Rust  
-- **Client** (desktop): Rust  
-- **Frontend**: TypeScript
+- **System core**: Rust (Tokio, Axum, SSE)
+- **Backend**: Rust
+- **Client** (desktop): Rust (Tauri)
+- **Frontend**: SolidJS + Tailwind v4
 
 ### Supported channels
 
-- Mac app (macOS)
-- Feishu (Lark)
-- Discord
-- Telegram
-- iMessage
+- **Web Console**: Modern browser interface with interactive charts.
+- **Mac App**: Native macOS desktop experience.
+- **IM Integration**: Feishu (Lark), Discord, Telegram, iMessage.
 
 ## Installation and Launch
 
-1. Clone the repository
-
-```shell 
-git clone https://github.com/B-M-Capital-Research/honeclaw.git
-cd honeclaw
-```
-
-2. One-click launch
-
-The repo ships with a launch script that compiles and starts the full local stack:
+### Option A. One-line Install (macOS/Linux)
 
 ```shell
-chmod +x launch.sh
+curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash
+hone-cli doctor
+hone-cli onboard
+hone-cli start
+```
+
+### Option B. Homebrew (macOS/Linux)
+
+```shell
+brew install B-M-Capital-Research/honeclaw/honeclaw
+hone-cli doctor
+hone-cli onboard
+hone-cli start
+```
+
+### Option C. Development Mode
+
+```shell
+git clone https://github.com/B-M-Capital-Research/honeclaw.git
+cd honeclaw
 ./launch.sh --desktop
 ```
 
@@ -169,13 +192,9 @@ These cover areas such as:
   
 If you are interested in accessing these capabilities, feel free to reach out to us:
 
-1. - [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93) — follow for investment research content
-
-![BM YTB](./resources/bm_youtube.jpg)
-
-
-2. - [Discord](https://discord.gg/TyDNfYXDGF): see the invite link (https://discord.gg/TyDNfYXDGF) to join our community channel
-
+1. [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93)
+2. [BiliBili: 巴芒投资](https://space.bilibili.com/224670487)
+3. [Discord Community](https://discord.gg/TyDNfYXDGF)
 
 # 6. 🤝 Contributing
 
@@ -189,4 +208,14 @@ Contributors:
 
 📄 License
 
-This project is open-sourced under the Apache-2.0 license.
+This project is open-sourced under the MIT license.
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=B-M-Capital-Research%2Fhoneclaw&type=date&logscale=&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=B-M-Capital-Research/honeclaw&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=B-M-Capital-Research/honeclaw&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=B-M-Capital-Research/honeclaw&type=date&legend=top-left" />
+ </picture>
+</a>

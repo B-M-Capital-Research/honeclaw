@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>简体中文</strong> | <a href="./README.md">English</a>  | <strong>💬 社群:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
+  <strong>简体中文</strong> | <a href="./README.md">English</a> | <strong>官网：</strong><a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>💬 社群:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
 </p>
 
 ---
@@ -21,6 +21,8 @@
 Honeclaw（或称 Hone）是一个使用 **Rust** 编写的开源个人投研辅助助手。与市面上习惯于附和用户的“闲聊机器人”不同，Honeclaw 被设计为一个**具备冷静思考能力、客观且克制的投研大脑**。
 
 它通过多端渠道（Web 桌面、飞书、Discord、Telegram、iMessages）无缝接入你的日常工作流，帮助你跟踪持仓公司动态、执行严格的投资纪律、运行自动化监控任务，并在你面对波动产生情绪化交易冲动时，提供理性的数据与逻辑对抗。
+
+用户端官网已上线：**[hone-claw.com](https://hone-claw.com)**。官网从普通用户视角介绍 Hone 是什么、公开聊天如何使用、持仓监控与定时任务如何嵌入日常投研，以及产品路线图、GitHub、Bilibili 和 YouTube 演示入口。
 
 <p align="center">
   <img src="./resources/hone_introduction_zh.jpg" alt="Hone Introduction - Your Financial Assistant" width="80%">
@@ -48,7 +50,12 @@ Honeclaw（或称 Hone）是一个使用 **Rust** 编写的开源个人投研辅
 </p>
 
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="Hone 聊天界面" width="100%">
+  <a href="https://hone-claw.com" target="_blank">
+    <img src="./resources/hone_official_site.png" alt="Hone 官网 - hone-claw.com" width="100%">
+  </a>
+</p>
+<p align="center">
+  <em>官网：<a href="https://hone-claw.com">hone-claw.com</a> 介绍 Hone 的公开对话、持仓追踪、定时任务、长期公司画像、跨平台通知和产品路线图。</em>
 </p>
 
 <p align="center">

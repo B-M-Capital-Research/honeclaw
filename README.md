@@ -13,7 +13,7 @@ Why the name Hone:
 </p>
 
 <p align="center">
-  <strong>English</strong> | <a href="./README_ZH.md">简体中文</a>  | <strong>💬 Community:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
+  <strong>English</strong> | <a href="./README_ZH.md">简体中文</a> | <strong>Website:</strong> <a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>💬 Community:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
 </p>
 
 ---
@@ -23,6 +23,8 @@ Why the name Hone:
 Honeclaw (or simply Hone) is an open-source personal investment research assistant written in Rust. Unlike the “chatbots” on the market that are accustomed to agreeing with users, Honeclaw is designed as a co-pilot for investment research that is capable of calm thinking, objective judgment, and disciplined restraint.
 
 It integrates into your daily workflow across multiple platforms, helping you track developments at companies you hold, enforce strict investment discipline, run scheduled monitoring tasks, and counter emotional trading impulses with rational data and logic.
+
+The public product website is now live at **[hone-claw.com](https://hone-claw.com)**. It introduces Hone from the user-facing angle: what Hone is, how public chat works, how portfolio monitoring and scheduled tasks fit into daily research, and where to find the roadmap, GitHub repo, Bilibili, and YouTube demos.
 
 <p align="center">
   <img src="./resources/hone_introduction.jpg" alt="Hone Introduction - Your Financial Assistant" width="80%">
@@ -50,7 +52,12 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 </p>
 
 <p align="center">
-  <img src="./resources/hone_page.jpg" alt="Hone Main UI - Chat with your Financial Assistant" width="100%">
+  <a href="https://hone-claw.com" target="_blank">
+    <img src="./resources/hone_official_site.png" alt="Hone official website - hone-claw.com" width="100%">
+  </a>
+</p>
+<p align="center">
+  <em>Official website: <a href="https://hone-claw.com">hone-claw.com</a> introduces Hone’s public chat, portfolio tracking, scheduled tasks, long-term company memory, cross-platform notifications, and roadmap.</em>
 </p>
 
 <p align="center">
