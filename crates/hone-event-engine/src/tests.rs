@@ -465,8 +465,13 @@ async fn live_portfolio_backtest_push() {
     ));
 
     // 4) EarningsPoller —— 14 天窗口；filter 到持仓
-    let earn_poller = EarningsPoller::new(fmp.clone());
-    let earn_all = earn_poller.poll().await.expect("EarningsPoller poll 失败");
+    let earn_poller = EarningsPoller::new(
+        fmp.clone(),
+        crate::source::SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+    );
+    let earn_all = crate::source::EventSource::poll(&earn_poller)
+        .await
+        .expect("EarningsPoller poll 失败");
     let holdings_set: std::collections::HashSet<&str> =
         symbols.iter().map(|s| s.as_str()).collect();
     let earn_filt: Vec<_> = earn_all
@@ -476,10 +481,15 @@ async fn live_portfolio_backtest_push() {
     println!("EarningsEvents (持仓过滤后): {}", earn_filt.len());
 
     // 5) NewsPoller —— 只拉持仓相关；拿 high + 全部 low 预览
-    let news_poller = NewsPoller::new(fmp.clone())
-        .with_tickers(symbols.clone())
-        .with_page_limit(40);
-    let news_all = news_poller.poll().await.expect("NewsPoller poll 失败");
+    let news_poller = NewsPoller::new(
+        fmp.clone(),
+        crate::source::SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+    )
+    .with_tickers(symbols.clone())
+    .with_page_limit(40);
+    let news_all = crate::source::EventSource::poll(&news_poller)
+        .await
+        .expect("NewsPoller poll 失败");
     println!(
         "NewsEvents: {} (High {} / Low {})",
         news_all.len(),

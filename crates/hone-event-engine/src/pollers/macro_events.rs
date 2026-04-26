@@ -5,11 +5,13 @@
 //! - symbols 为空（宏观事件靠 `GlobalSubscription` 分发给所有 actor）
 //! - id 稳定：`macro:{COUNTRY}:{DATE}:{EVENT_SLUG}`
 
+use async_trait::async_trait;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use serde_json::Value;
 
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
+use crate::source::{EventSource, SourceSchedule};
 
 /// 默认高影响宏观事件名关键词（小写匹配事件标题）。
 const DEFAULT_HIGH_MACRO_KEYWORDS: &[&str] = &[
@@ -43,10 +45,11 @@ pub struct MacroPoller {
     client: FmpClient,
     window_days: i64,
     keywords: Vec<String>,
+    schedule: SourceSchedule,
 }
 
 impl MacroPoller {
-    pub fn new(client: FmpClient) -> Self {
+    pub fn new(client: FmpClient, schedule: SourceSchedule) -> Self {
         Self {
             client,
             window_days: 7,
@@ -54,6 +57,7 @@ impl MacroPoller {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            schedule,
         }
     }
 
@@ -68,8 +72,19 @@ impl MacroPoller {
         }
         self
     }
+}
 
-    pub async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+#[async_trait]
+impl EventSource for MacroPoller {
+    fn name(&self) -> &str {
+        "fmp.macro"
+    }
+
+    fn schedule(&self) -> SourceSchedule {
+        self.schedule.clone()
+    }
+
+    async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
         let today = Utc::now().date_naive();
         let to = today + chrono::Duration::days(self.window_days);
         let path = format!(
@@ -297,7 +312,10 @@ mod tests {
             timeout: 30,
         };
         let client = FmpClient::from_config(&cfg);
-        let poller = MacroPoller::new(client);
+        let poller = MacroPoller::new(
+            client,
+            SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+        );
         let events = poller.poll().await.expect("FMP poll failed");
         println!("macro events pulled: {}", events.len());
         for ev in events.iter().take(10) {

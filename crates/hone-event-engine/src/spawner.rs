@@ -16,60 +16,11 @@ use tracing::{info, warn};
 use crate::digest;
 use crate::fmp::FmpClient;
 use crate::pipeline::{cron_aligned_loop, log_poller_error, process_events, run_once};
-use crate::pollers::{
-    AnalystGradePoller, CorpActionPoller, EarningsPoller, EarningsSurprisePoller, MacroPoller,
-    NewsPoller, PricePoller,
-};
+use crate::pollers::{AnalystGradePoller, CorpActionPoller, EarningsSurprisePoller, PricePoller};
 use crate::router::NotificationRouter;
 use crate::source::{EventSource, SourceSchedule};
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
-
-pub(crate) fn spawn_earnings_poller(
-    client: FmpClient,
-    store: Arc<EventStore>,
-    router: Arc<NotificationRouter>,
-    tz_offset: i32,
-    pre_prefetch: String,
-    post_prefetch: String,
-    window_days: i64,
-) {
-    tokio::spawn(async move {
-        let poller = Arc::new(EarningsPoller::new(client).with_window_days(window_days));
-        let action = move || {
-            let poller = poller.clone();
-            let store = store.clone();
-            let router = router.clone();
-            Box::pin(async move {
-                match poller.poll().await {
-                    Ok(events) => process_events("earnings", events, &store, &router).await,
-                    Err(e) => log_poller_error("earnings", "fmp.earning_calendar", "calendar", &e),
-                }
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        };
-        cron_aligned_loop("earnings", tz_offset, pre_prefetch, post_prefetch, action).await;
-    });
-}
-
-pub(crate) fn spawn_news_poller(
-    client: FmpClient,
-    store: Arc<EventStore>,
-    router: Arc<NotificationRouter>,
-    interval: Duration,
-) {
-    tokio::spawn(async move {
-        let poller = NewsPoller::new(client);
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match poller.poll().await {
-                Ok(events) => process_events("news", events, &store, &router).await,
-                Err(e) => log_poller_error("news", "fmp.stock_news", "stock_news", &e),
-            }
-        }
-    });
-}
 
 pub(crate) fn spawn_corp_action_poller(
     client: FmpClient,
@@ -142,31 +93,6 @@ pub(crate) fn spawn_corp_action_poller(
             action,
         )
         .await;
-    });
-}
-
-pub(crate) fn spawn_macro_poller(
-    client: FmpClient,
-    store: Arc<EventStore>,
-    router: Arc<NotificationRouter>,
-    tz_offset: i32,
-    pre_prefetch: String,
-    post_prefetch: String,
-) {
-    tokio::spawn(async move {
-        let poller = Arc::new(MacroPoller::new(client));
-        let action = move || {
-            let poller = poller.clone();
-            let store = store.clone();
-            let router = router.clone();
-            Box::pin(async move {
-                match poller.poll().await {
-                    Ok(events) => process_events("macro", events, &store, &router).await,
-                    Err(e) => log_poller_error("macro", "fmp.economic_calendar", "calendar", &e),
-                }
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        };
-        cron_aligned_loop("macro", tz_offset, pre_prefetch, post_prefetch, action).await;
     });
 }
 
@@ -293,13 +219,14 @@ pub(crate) fn spawn_price_poller(
 }
 
 /// 通用事件源 spawn 入口:依据 `source.schedule()` 分发到 FixedInterval 或
-/// CronAligned 两条循环。新增第三方监听源(Telegram / RSS / ...)只需
-/// 实现 `EventSource` trait,调用一次本函数即可接入 store + router 主链路,
+/// CronAligned 两条循环。新增第三方监听源(Telegram / RSS / ...)或 FMP poller
+/// 都只需实现 `EventSource` trait,调用一次本函数即可接入 store + router 主链路,
 /// 不需要再复制 spawn/ticker/process_events 的模板。
 ///
-/// 注:FMP 旧链路(7 个 `spawn_*_poller`)暂未迁移到此路径——它们 action
-/// 语义更复杂(watch pool 过滤、compound fetch 等),暂保持原样,后续可选
-/// 择性用 `FnSource` 包装迁移。
+/// 进度:earnings / news / macro 已迁;analyst_grade / earnings_surprise /
+/// corp_action / sec_filings / price 仍保留专属 `spawn_*_poller`,在 Stage 1
+/// Group B-D 中分别迁移(它们额外携带 watch pool / 双 endpoint / 状态固化等
+/// 需要先在 poller 内部消化的语义)。
 pub(crate) fn spawn_event_source(
     source: Arc<dyn EventSource>,
     store: Arc<EventStore>,
