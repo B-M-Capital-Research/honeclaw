@@ -19,6 +19,13 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 09:00-09:01 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6554-6563` 覆盖 `TEM大事件心跳监控`、`TEM破位预警`、CAI/小米破位、`全天原油价格3小时播报`、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 与 `ASTS 重大异动心跳监控`；其中 `6554` 为 `JsonNoop`，`6555` 为 `JsonEmptyStatus`，`6559/6563` 为 `PlainTextSuppressed`，同窗仍没有任何一条恢复成“首字符即 `{` 的单段 JSON”。
+    - `run_id=6564`（`持仓重大事件心跳检测`，`2026-04-26T09:01:09.470901+08:00`）进一步升级为 `execution_failed + skipped_error + delivered=0`，`detail_json.scheduler.parse_kind=JsonUnknownStatus`，`raw_chars=9063`，`starts_with_json=false`
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 09:01:09.469-09:01:09.470` 同轮 `HeartbeatDiag` 先记录 `parse_kind=JsonUnknownStatus`，随后直接记录 `parse failure escalated`；说明坏态已经不只是静默 `noop`，而是会在同一根因下升级成显式执行失败
+    - 结论：到 `2026-04-26 09:01` 为止，heartbeat 最新窗口继续在 `JsonNoop`、`JsonEmptyStatus`、`PlainTextSuppressed` 与 `JsonUnknownStatus` 间漂移，结构化契约仍未恢复
   - 2026-04-26 08:01 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6528-6538` 覆盖 `全天原油价格3小时播报`、`持仓重大事件心跳检测`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 与 `TEM大事件心跳监控`；11 条 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`。

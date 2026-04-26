@@ -5,6 +5,16 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-26 08:35-08:36 最新真实 scheduler 样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6552`，`job_name=每日有色化工标的新闻追踪`，`executed_at=2026-04-26T08:35:34.116742+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+    - `run_id=6553`，`job_name=创新药持仓每日动态推送`，`executed_at=2026-04-26T08:36:28.421193+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+    - 两条 `response_preview` 都是同一条通用 fallback：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - `session_id=Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732`
+    - `2026-04-26T08:37:04.308008+08:00` 与 `2026-04-26T08:37:54.760643+08:00` 两次 answer 都再次记录 `stop_reason=end_turn success=true reply_chars=0`
+    - `2026-04-26T08:38:13.702451+08:00` 日志记录 `empty successful response persisted as fallback`
+    - `2026-04-26T08:38:13.705848+08:00` 同轮 `MsgFlow/feishu done ... success=true ... reply.chars=35`
+    - 说明 08:01 的 `HoneClaw每日使用Tips` 不是孤例；到 08:36 为止，至少又有两条 Feishu 定时任务继续以“answer 空成功 -> 通用 fallback -> cron_job_runs.completed+sent”的伪成功形态收口
   - 2026-04-26 08:01 最新真实 scheduler 样本：
     - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
     - `2026-04-26T08:01:00.036629+08:00` 用户消息：`[定时任务触发] 任务名称：HoneClaw每日使用Tips...`
@@ -51,6 +61,7 @@
 
 ## 当前实现效果
 
+- `2026-04-26 08:35-08:36` 的 `每日有色化工标的新闻追踪` 与 `创新药持仓每日动态推送` 再次证明，scheduler 伪成功不是单个 Tips 任务的局部坏态，而是同一小时内可在不同定时任务模板上连续复现。
 - `2026-04-26 08:01` 的 `HoneClaw每日使用Tips` 最新样本说明，用户侧零字节正文虽然已被非空 fallback 止血，但 Answer 阶段的空成功根因仍活跃，且 scheduler 仍把本轮记成 `completed + sent + delivered=1`。
 - `j_856e457e` 等旧样本可见原始坏态：任务正文存在、搜索工具已执行、最终 assistant 仍为零字节。
 - `sidecar.log` / `web.log` 明确识别到 `empty reply` 与 `empty successful response persisted as fallback`，但 `multi_agent.answer.done`、`MsgFlow/feishu done` 和调度落库仍全部走成功路径。
@@ -85,6 +96,15 @@
   - `cron_job_runs.run_id=6539` 仍被记为 `completed + sent + delivered=1`。
 - 这说明 2026-04-16 的修补只解决了“不要发送零字节正文”，没有解决“scheduler 把空成功 fallback 误记为任务成功完成”。
 - 因此本单状态从 `Fixed` 调整回 `Fixing`：用户侧空白消息症状已缓解，但 scheduler 主功能链路仍会在真实生产任务中退化成通用 fallback，并被台账伪装成成功。
+
+## 最新真实样本复核（2026-04-26 09:01 CST）
+
+- `run_id=6552`（`每日有色化工标的新闻追踪`）与 `run_id=6553`（`创新药持仓每日动态推送`）把同一缺陷从“08:01 的短 Tips 任务”扩展到“08:30 批量日常播报任务”：
+  - 两条任务都已经 `completed + sent + delivered=1`；
+  - 用户可见正文都只是统一 fallback，而不是任务要求的行业/持仓简报；
+  - 同轮 `sidecar.log` 仍能看到 `reply_chars=0`、`empty reply` 与 `empty successful response persisted as fallback` 完整链路。
+- 这说明当前止血仍只覆盖“不要发空白消息”，没有覆盖“scheduler 不要把 fallback 误记为成功交付”。
+- 因此本单继续维持 `Fixing`，严重等级继续保持 `P1`。
 
 ## 下一步建议
 
