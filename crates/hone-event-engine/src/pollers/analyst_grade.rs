@@ -12,22 +12,31 @@
 //! id 稳定：`grade:{SYMBOL}:{publishedDate}:{gradingCompany}`。FMP 同一条评级
 //! 记录在后续拉取中 `publishedDate`+`gradingCompany` 基本不变，去重安全。
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use serde_json::Value;
 
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
+use crate::source::{EventSource, SourceSchedule};
+use crate::subscription::SharedRegistry;
 
 pub struct AnalystGradePoller {
     client: FmpClient,
     lookback_days: i64,
+    registry: Arc<SharedRegistry>,
+    schedule: SourceSchedule,
 }
 
 impl AnalystGradePoller {
-    pub fn new(client: FmpClient) -> Self {
+    pub fn new(client: FmpClient, registry: Arc<SharedRegistry>, schedule: SourceSchedule) -> Self {
         Self {
             client,
             lookback_days: 3,
+            registry,
+            schedule,
         }
     }
 
@@ -36,8 +45,9 @@ impl AnalystGradePoller {
         self
     }
 
-    /// 按 watch pool 拉每一只票最近的评级变更。调用方一般把持仓 union 传入。
-    pub async fn poll(&self, tickers: &[String]) -> anyhow::Result<Vec<MarketEvent>> {
+    /// 按指定 ticker 列表拉评级变更。`EventSource::poll` 调它,从 registry 取
+    /// watch pool 后传入;测试可以直接用任意 ticker 列表调本函数(不需要 registry)。
+    pub async fn fetch(&self, tickers: &[String]) -> anyhow::Result<Vec<MarketEvent>> {
         let mut out = Vec::new();
         let cutoff = Utc::now() - chrono::Duration::days(self.lookback_days);
         for t in tickers {
@@ -48,6 +58,25 @@ impl AnalystGradePoller {
             }
         }
         Ok(out)
+    }
+}
+
+#[async_trait]
+impl EventSource for AnalystGradePoller {
+    fn name(&self) -> &str {
+        "fmp.analyst_grade"
+    }
+
+    fn schedule(&self) -> SourceSchedule {
+        self.schedule.clone()
+    }
+
+    async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+        let symbols = self.registry.load().watch_pool();
+        if symbols.is_empty() {
+            return Ok(vec![]);
+        }
+        self.fetch(&symbols).await
     }
 }
 
@@ -204,6 +233,8 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_fmp_analyst_grade_smoke() {
+        use crate::subscription::SubscriptionRegistry;
+
         let key = std::env::var("HONE_FMP_API_KEY").expect("需要 HONE_FMP_API_KEY");
         let cfg = hone_core::config::FmpConfig {
             api_key: key,
@@ -212,9 +243,15 @@ mod tests {
             timeout: 30,
         };
         let client = FmpClient::from_config(&cfg);
-        let poller = AnalystGradePoller::new(client).with_lookback_days(14);
+        let registry = Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new()));
+        let poller = AnalystGradePoller::new(
+            client,
+            registry,
+            SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+        )
+        .with_lookback_days(14);
         let events = poller
-            .poll(&["AAPL".into(), "NVDA".into()])
+            .fetch(&["AAPL".into(), "NVDA".into()])
             .await
             .expect("FMP poll failed");
         println!("analyst grade events pulled: {}", events.len());

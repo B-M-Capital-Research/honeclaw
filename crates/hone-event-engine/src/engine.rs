@@ -19,15 +19,13 @@ use crate::fmp::FmpClient;
 use crate::news_classifier;
 use crate::polisher::{BodyPolisher, NoopPolisher};
 use crate::pollers::{
-    EarningsPoller, MacroPoller, NewsPoller, RssNewsPoller, TelegramChannelPoller,
+    AnalystGradePoller, EarningsPoller, EarningsSurprisePoller, MacroPoller, NewsPoller,
+    RssNewsPoller, TelegramChannelPoller,
 };
 use crate::prefs::{FilePrefsStorage, PrefsProvider};
 use crate::router::{LogSink, NotificationRouter, OutboundSink};
 use crate::source::SourceSchedule;
-use crate::spawner::{
-    spawn_analyst_grade_poller, spawn_corp_action_poller, spawn_earnings_surprise_poller,
-    spawn_event_source, spawn_price_poller,
-};
+use crate::spawner::{spawn_corp_action_poller, spawn_event_source, spawn_price_poller};
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
 use hone_core::config::{EventEngineConfig, FmpConfig};
@@ -473,29 +471,33 @@ impl EventEngine {
         }
         // 分析师评级、财报 surprise：两个都按 watch pool 逐 ticker 拉。
         // 初次 tick 之前 watch pool 为空就跳过——用户新增持仓后下一个 tick 生效。
+        // poller 自身持 Arc<SharedRegistry>,每次 poll 内部取最新 watch_pool,
+        // 不需要 spawn 端再做 capture/clone。
         if fmp_available && sources.analyst_grade {
-            spawn_analyst_grade_poller(
+            let poller = AnalystGradePoller::new(
                 client.clone(),
-                store.clone(),
-                router.clone(),
                 registry.clone(),
-                tz_offset,
-                pre_prefetch.clone(),
-                post_prefetch.clone(),
+                SourceSchedule::CronAligned {
+                    pre_prefetch: pre_prefetch.clone(),
+                    post_prefetch: post_prefetch.clone(),
+                    tz_offset,
+                },
             );
+            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
         } else if fmp_available {
             info!("analyst_grade poller disabled by config.sources.analyst_grade=false");
         }
         if fmp_available && sources.earnings_surprise {
-            spawn_earnings_surprise_poller(
+            let poller = EarningsSurprisePoller::new(
                 client.clone(),
-                store.clone(),
-                router.clone(),
                 registry.clone(),
-                tz_offset,
-                pre_prefetch.clone(),
-                post_prefetch.clone(),
+                SourceSchedule::CronAligned {
+                    pre_prefetch: pre_prefetch.clone(),
+                    post_prefetch: post_prefetch.clone(),
+                    tz_offset,
+                },
             );
+            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
         } else if fmp_available {
             info!("earnings_surprise poller disabled by config.sources.earnings_surprise=false");
         }
