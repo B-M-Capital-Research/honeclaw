@@ -19,6 +19,14 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 15:30-16:01 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 最近一小时没有新的直聊 `session_messages` 落库，最新真实异常继续集中在 heartbeat 链路；`run_id=6696-6717` 覆盖 `15:30` 与 `16:00-16:01` 两个窗口
+    - `15:30` 窗口里，`run_id=6696`（`持仓重大事件心跳检测`，`2026-04-26T15:30:09.293136+08:00`）从前一窗 `6694` 的 `PlainTextSuppressed + noop` 漂移成 `execution_failed + skipped_error + delivered=0`，`error_message=heartbeat 输出包含未知状态，任务已标记失败`
+    - `run_id=6696.detail_json` 明确记录 `parse_kind=JsonUnknownStatus`、`starts_with_json=false`，`raw_preview` 为 `<think>...</think>` 后再包一层 ```json {"status":"ok","timestamp":"2026-04-26T15:30:00+08:00","ready":true}```；这不是心跳契约允许的 `noop/triggered` 状态，却仍由同一公共协议漂移触发
+    - 同一 `15:30` 窗口其余 heartbeat 仍未恢复：`6704`（`RKLB异动监控`）与 `6705`（`TEM大事件心跳监控`）继续 `noop + skipped_noop`，说明不是整批 scheduler 停摆，而是坏态在同一批次继续分化为 `JsonUnknownStatus` 与 `PlainTextSuppressed`
+    - `16:00-16:01` 下一窗中，`run_id=6716`（`持仓重大事件心跳检测`）又回落成 `noop + skipped_noop + delivered=0`，但 `detail_json` 仍是 `parse_kind=PlainTextSuppressed`、`starts_with_json=false`、`raw_chars=7117`；`6707/6711/6714/6715/6717` 也全部只是继续 `noop + skipped_noop`
+    - 结论：到 `2026-04-26 16:01` 为止，heartbeat 结构化协议仍处于“上一窗升级为 `JsonUnknownStatus + execution_failed`，下一窗又退回 `PlainTextSuppressed + noop`”的抖动态；没有任何任务恢复成稳定纯 JSON 首包
   - 2026-04-26 14:30-15:01 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `14:30` 窗口的 `run_id=6674-6684` 继续没有任何一条恢复成“首字符即 `{` 的单段 JSON”；`6675`（`全天原油价格3小时播报`）、`6680`（`RKLB异动监控`）、`6681`（`Monitor_Watchlist_11`）与 `6684`（`TEM大事件心跳监控`）继续落成 `PlainTextSuppressed`，`6676`（`TEM破位预警`）、`6678`（`小米破位预警`）与 `6682`（`ORCL 大事件监控`）继续为 `JsonEmptyStatus`
