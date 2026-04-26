@@ -42,8 +42,8 @@ pub use news_classifier::{
 };
 pub use polisher::{BodyPolisher, LlmPolisher, NoopPolisher, parse_polish_levels};
 pub use pollers::{
-    AnalystGradePoller, CorpActionPoller, EarningsPoller, EarningsSurprisePoller, MacroPoller,
-    NewsPoller, PricePoller, TelegramChannelPoller,
+    AnalystGradePoller, CorpActionCalendarPoller, EarningsPoller, EarningsSurprisePoller,
+    MacroPoller, NewsPoller, PricePoller, SecFilingsPoller, TelegramChannelPoller,
 };
 pub use prefs::{
     AllowAllPrefs, FilePrefsStorage, NotificationPrefs, PrefsProvider, SharedPrefs, kind_tag,

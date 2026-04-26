@@ -386,6 +386,14 @@ pub async fn start_server(
         let fmp_cfg = state.core.config.fmp.clone();
         let portfolio_dir = state.core.config.storage.portfolio_dir.clone();
         let notif_prefs_dir = state.core.config.storage.notif_prefs_dir.clone();
+        // task_runs.jsonl 跟 heartbeat sidecar 同级 (data/runtime/);
+        // 启动时清理 14 天前的旧文件 (failure 只 warn,不影响启动)。
+        let task_runs_dir = hone_core::task_observer::task_runs_dir(&state.core.config);
+        hone_core::task_observer::purge_old_task_runs(
+            &task_runs_dir,
+            hone_core::TASK_RUNS_RETENTION_DAYS,
+        );
+        let task_runs_dir_arc = std::sync::Arc::new(task_runs_dir.clone());
         let (events_db, events_jsonl, digest_dir) = {
             // 与 sessions.sqlite3 同目录：events.sqlite3 + events.jsonl + digest_buffer/
             let session_db =
@@ -425,6 +433,7 @@ pub async fn start_server(
                 .clone();
             let prefs_dir_clone = notif_prefs_dir.clone();
             let portfolio_dir_clone = portfolio_dir.clone();
+            let thesis_task_runs_dir = task_runs_dir_arc.clone();
             task_handles.push(tokio::spawn(async move {
                 let prefs_storage =
                     match hone_event_engine::prefs::FilePrefsStorage::new(&prefs_dir_clone) {
@@ -456,11 +465,13 @@ pub async fn start_server(
                     portfolio_storage,
                     sandbox_base,
                     hone_event_engine::global_digest::DEFAULT_DISTILL_INTERVAL_HOURS,
+                    Some(thesis_task_runs_dir),
                 )
                 .await;
             }));
         }
 
+        let engine_task_runs_dir = task_runs_dir.clone();
         task_handles.push(tokio::spawn(async move {
             let mut engine = hone_event_engine::EventEngine::new(engine_cfg, fmp_cfg)
                 .with_store_path(events_db)
@@ -468,6 +479,7 @@ pub async fn start_server(
                 .with_portfolio_dir(portfolio_dir)
                 .with_prefs_dir(notif_prefs_dir)
                 .with_digest_dir(digest_dir)
+                .with_task_runs_dir(Some(engine_task_runs_dir))
                 .with_sink(sink);
             if let Some(p) = polisher {
                 engine = engine.with_polisher(p);

@@ -17,15 +17,16 @@ use crate::daily_report::DailyReport;
 use crate::digest::{self, DigestBuffer, DigestScheduler};
 use crate::fmp::FmpClient;
 use crate::news_classifier;
+use crate::pipeline;
 use crate::polisher::{BodyPolisher, NoopPolisher};
 use crate::pollers::{
-    AnalystGradePoller, EarningsPoller, EarningsSurprisePoller, MacroPoller, NewsPoller,
-    RssNewsPoller, TelegramChannelPoller,
+    AnalystGradePoller, CorpActionCalendarPoller, EarningsPoller, EarningsSurprisePoller,
+    MacroPoller, NewsPoller, PricePoller, RssNewsPoller, SecFilingsPoller, TelegramChannelPoller,
 };
 use crate::prefs::{FilePrefsStorage, PrefsProvider};
 use crate::router::{LogSink, NotificationRouter, OutboundSink};
 use crate::source::SourceSchedule;
-use crate::spawner::{spawn_corp_action_poller, spawn_event_source, spawn_price_poller};
+use crate::spawner::spawn_event_source;
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
 use hone_core::config::{EventEngineConfig, FmpConfig};
@@ -41,6 +42,10 @@ pub struct EventEngine {
     digest_dir: PathBuf,
     prefs_dir: PathBuf,
     daily_report_dir: PathBuf,
+    /// 周期任务观测落盘目录(对齐 heartbeat 的 `data/runtime/`)。
+    /// `None` 关闭——所有 task 仍会跑、仍会 tracing,只是不写 task_runs.jsonl。
+    /// 用 Arc 让多个 spawn 调用共用一份 PathBuf,避免每个 task 都 clone PathBuf。
+    task_runs_dir: Option<Arc<PathBuf>>,
     sink: Arc<dyn OutboundSink>,
     polisher: Arc<dyn BodyPolisher>,
     news_classifier: Option<Arc<dyn news_classifier::NewsClassifier>>,
@@ -62,12 +67,21 @@ impl EventEngine {
             digest_dir: PathBuf::from("./data/digest_buffer"),
             prefs_dir: PathBuf::from("./data/notif_prefs"),
             daily_report_dir: PathBuf::from("./data/daily_reports"),
+            task_runs_dir: None,
             sink: Arc::new(LogSink),
             polisher: Arc::new(NoopPolisher),
             news_classifier: None,
             global_digest_provider: None,
             retention_days: 30,
         }
+    }
+
+    /// 周期任务观测落盘目录(`data/runtime/task_runs.YYYY-MM-DD.jsonl`)。
+    /// `None`(默认)关闭。建议传入 `hone_core::task_observer::task_runs_dir(&config)`
+    /// 跟 heartbeat 同级。
+    pub fn with_task_runs_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.task_runs_dir = dir.map(Arc::new);
+        self
     }
 
     pub fn with_store_path(mut self, path: impl Into<PathBuf>) -> Self {
@@ -165,6 +179,15 @@ impl EventEngine {
         {
             warn!(
                 "event engine news upgrade guards disabled; window convergence bursts will not be capped"
+            );
+        }
+
+        let task_runs_dir = self.task_runs_dir.clone();
+        if let Some(dir) = task_runs_dir.as_deref() {
+            info!(
+                task_runs = %dir.display(),
+                retention_days = hone_core::TASK_RUNS_RETENTION_DAYS,
+                "task observer enabled"
             );
         }
 
@@ -307,63 +330,59 @@ impl EventEngine {
             offset_hours = tz_offset,
             "digest scheduler timezone resolved"
         );
-        let scheduler = DigestScheduler::new(
-            digest_buffer.clone(),
-            self.sink.clone(),
-            self.engine_cfg.digest.pre_market.clone(),
-            self.engine_cfg.digest.post_market.clone(),
-        )
-        .with_tz_offset_hours(tz_offset)
-        .with_store(store.clone())
-        .with_registry(registry.clone())
-        .with_prefs(prefs_storage.clone())
-        .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize)
-        .with_min_gap_minutes(self.engine_cfg.digest.min_gap_minutes);
-        tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_secs(60));
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            let mut fired = std::collections::HashSet::new();
-            let mut last_date = String::new();
-            loop {
-                ticker.tick().await;
-                let now = chrono::Utc::now();
-                // 跨日后清空 fired 集合，避免长期堆积。
-                let today = digest::local_date_key(now, tz_offset);
-                if today != last_date {
-                    fired.clear();
-                    last_date = today;
-                }
-                if let Err(e) = scheduler.tick_once(now, &mut fired).await {
-                    warn!("digest scheduler tick failed: {e:#}");
-                }
-            }
-        });
+        let scheduler = Arc::new(
+            DigestScheduler::new(
+                digest_buffer.clone(),
+                self.sink.clone(),
+                self.engine_cfg.digest.pre_market.clone(),
+                self.engine_cfg.digest.post_market.clone(),
+            )
+            .with_tz_offset_hours(tz_offset)
+            .with_store(store.clone())
+            .with_registry(registry.clone())
+            .with_prefs(prefs_storage.clone())
+            .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize)
+            .with_min_gap_minutes(self.engine_cfg.digest.min_gap_minutes),
+        );
+        tokio::spawn(pipeline::cron_minute_tick(
+            "internal.digest_scheduler",
+            tz_offset,
+            task_runs_dir.clone(),
+            move |now, fired| {
+                let scheduler = scheduler.clone();
+                Box::pin(async move {
+                    // tick_once 返回本轮触发的 actor 数,本骨架不消费,只关心成败
+                    scheduler.tick_once(now, fired).await.map(|_| ())
+                })
+            },
+        ));
 
         // DailyReport —— 本地 22:00 每 60s tick 一次,把当日分布落盘到
         // `data/daily_reports/YYYY-MM-DD.md` + 一行 tracing::info。
         // 不通过 sink 推给用户:这是给我自己看的引擎运营日志。
-        let daily_report = DailyReport::new(store.clone(), self.daily_report_dir.clone())
-            .with_tz_offset_hours(tz_offset);
-        tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_secs(60));
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            let mut fired = std::collections::HashSet::new();
-            let mut last_date = String::new();
-            loop {
-                ticker.tick().await;
-                let now = chrono::Utc::now();
-                let today = digest::local_date_key(now, tz_offset);
-                if today != last_date {
-                    fired.clear();
-                    last_date = today;
-                }
-                match daily_report.tick_once(now, &mut fired).await {
-                    Ok(n) if n > 0 => info!(sent = n, "daily report fanout"),
-                    Ok(_) => {}
-                    Err(e) => warn!("daily report tick failed: {e:#}"),
-                }
-            }
-        });
+        let daily_report = Arc::new(
+            DailyReport::new(store.clone(), self.daily_report_dir.clone())
+                .with_tz_offset_hours(tz_offset),
+        );
+        tokio::spawn(pipeline::cron_minute_tick(
+            "internal.daily_report",
+            tz_offset,
+            task_runs_dir.clone(),
+            move |now, fired| {
+                let daily_report = daily_report.clone();
+                Box::pin(async move {
+                    let n = daily_report.tick_once(now, fired).await?;
+                    if n > 0 {
+                        info!(
+                            task = "internal.daily_report",
+                            sent = n,
+                            "daily report fanout"
+                        );
+                    }
+                    Ok(())
+                })
+            },
+        ));
 
         info!(
             watch_pool_size = registry.load().watch_pool().len(),
@@ -408,7 +427,12 @@ impl EventEngine {
                 },
             )
             .with_window_days(self.engine_cfg.earnings.window_days);
-            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
+            );
         } else if fmp_available {
             info!("earnings_calendar poller disabled by config.sources.earnings_calendar=false");
         }
@@ -419,26 +443,57 @@ impl EventEngine {
                     self.engine_cfg.poll_intervals.news_secs,
                 )),
             );
-            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
+            );
         } else if fmp_available {
             info!("news poller disabled by config.sources.news=false");
         }
-        if fmp_available && (sources.corp_action || sources.sec_filings) {
-            spawn_corp_action_poller(
+        // corp_action 与 sec_filings 现在是两个独立 EventSource(原 CorpActionPoller
+        // 已拆为 CorpActionCalendarPoller + SecFilingsPoller),各自的 enable flag
+        // 直接控制是否 spawn 自己——不再把两者塞进同一个 task。
+        if fmp_available && sources.corp_action {
+            let poller = CorpActionCalendarPoller::new(
                 client.clone(),
+                SourceSchedule::CronAligned {
+                    pre_prefetch: pre_prefetch.clone(),
+                    post_prefetch: post_prefetch.clone(),
+                    tz_offset,
+                },
+            );
+            spawn_event_source(
+                Arc::new(poller),
                 store.clone(),
                 router.clone(),
-                registry.clone(),
-                tz_offset,
-                pre_prefetch.clone(),
-                post_prefetch.clone(),
-                sources.corp_action,
-                sources.sec_filings,
+                task_runs_dir.clone(),
             );
         } else if fmp_available {
-            info!(
-                "corp_action poller fully disabled by config.sources.corp_action=false and sources.sec_filings=false"
+            info!("corp_action calendar poller disabled by config.sources.corp_action=false");
+        }
+        if fmp_available && sources.sec_filings {
+            // sec_recent_hours=48:每次 tick 只把"过去 48h 新出现的"8-K 送入 store;
+            // store.insert_event 幂等 IGNORE 保证同一 filing 不会触发两次 dispatch。
+            let poller = SecFilingsPoller::new(
+                client.clone(),
+                registry.clone(),
+                SourceSchedule::CronAligned {
+                    pre_prefetch: pre_prefetch.clone(),
+                    post_prefetch: post_prefetch.clone(),
+                    tz_offset,
+                },
+            )
+            .with_sec_recent_hours(48);
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
             );
+        } else if fmp_available {
+            info!("sec filings poller disabled by config.sources.sec_filings=false");
         }
         if fmp_available && sources.macro_calendar {
             let poller = MacroPoller::new(
@@ -449,22 +504,35 @@ impl EventEngine {
                     tz_offset,
                 },
             );
-            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
+            );
         } else if fmp_available {
             info!("macro poller disabled by config.sources.macro_calendar=false");
         }
-        // PricePoller 每 tick 从 SharedRegistry 读最新 watch pool。
-        // 若此刻为空就 skip tick；用户新增持仓后下个 tick 就能生效。
+        // PricePoller 每 tick 从 SharedRegistry 读最新 watch pool;
+        // 空则 EventSource::poll 直接返回 Ok(vec![]),用户新增持仓后下个 tick 就能生效。
         if fmp_available && sources.price {
-            spawn_price_poller(
+            let poller = PricePoller::new(
                 client.clone(),
-                store.clone(),
-                router.clone(),
                 registry.clone(),
+                SourceSchedule::FixedInterval(Duration::from_secs(
+                    self.engine_cfg.poll_intervals.price_secs,
+                )),
+            )
+            .with_thresholds(
                 self.engine_cfg.thresholds.price_alert_low_pct,
                 self.engine_cfg.thresholds.price_alert_high_pct,
-                self.engine_cfg.thresholds.price_realert_step_pct,
-                Duration::from_secs(self.engine_cfg.poll_intervals.price_secs),
+            )
+            .with_realert_step_pct(self.engine_cfg.thresholds.price_realert_step_pct);
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
             );
         } else if fmp_available {
             info!("price poller disabled by config.sources.price=false");
@@ -483,7 +551,12 @@ impl EventEngine {
                     tz_offset,
                 },
             );
-            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
+            );
         } else if fmp_available {
             info!("analyst_grade poller disabled by config.sources.analyst_grade=false");
         }
@@ -497,7 +570,12 @@ impl EventEngine {
                     tz_offset,
                 },
             );
-            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
+            );
         } else if fmp_available {
             info!("earnings_surprise poller disabled by config.sources.earnings_surprise=false");
         }
@@ -521,7 +599,12 @@ impl EventEngine {
                 extract_cashtags = cfg.extract_cashtags,
                 "telegram channel poller starting"
             );
-            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
+            );
         }
         // 通用 RSS 源 —— global_digest 的核心数据补充。事件直接落 source="rss:{handle}"
         // 入 events 表,collector 与 FMP news 一同拉,curator 不区分来源。
@@ -537,7 +620,12 @@ impl EventEngine {
                 interval_secs = cfg.interval_secs,
                 "rss feed poller starting"
             );
-            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
+            );
         }
 
         // ── 全局 digest scheduler ─────────────────────────────────────

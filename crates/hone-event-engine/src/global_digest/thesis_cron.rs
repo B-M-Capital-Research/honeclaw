@@ -170,18 +170,23 @@ fn actor_dbg(a: &ActorIdentity) -> String {
 /// 把 distill_tick 包装成长期运行的循环,适合 `tokio::spawn`。
 ///
 /// 每小时 tick 一次,实际触发由 `distill_tick` 里的 staleness 判断决定。
+///
+/// `task_runs_dir` 不为 `None` 时每次 tick 末尾会写一行
+/// `data/runtime/task_runs.YYYY-MM-DD.jsonl`(Stage 3 任务观测,跟 heartbeat 同级)。
 pub async fn distill_cron_loop(
     distiller: Arc<dyn ThesisDistiller>,
     prefs: Arc<dyn PrefsProvider>,
     portfolio_storage: Arc<PortfolioStorage>,
     sandbox_base: PathBuf,
     interval_hours: i64,
+    task_runs_dir: Option<std::sync::Arc<PathBuf>>,
 ) {
     let mut ticker = tokio::time::interval(Duration::from_secs(3600));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         ticker.tick().await;
         let now = Utc::now();
+        let started_at = now;
         let (t, s) = distill_tick(
             distiller.as_ref(),
             prefs.as_ref(),
@@ -193,11 +198,22 @@ pub async fn distill_cron_loop(
         .await;
         if t > 0 {
             info!(
+                task = "thesis_cron",
                 triggered = t,
                 skipped = s,
                 "thesis distill cron tick complete"
             );
         }
+        if let Some(dir) = task_runs_dir.as_deref() {
+            // distill_tick 只返回成败计数,本身不抛 Err(失败 actor 已在内部 warn);
+            // 整条 tick 总是 Ok,outcome 用 triggered 数区分:>0 → ok, =0 → skipped。
+            if t > 0 {
+                hone_core::task_observer::record_ok(dir, "thesis_cron", started_at, t as u64);
+            } else {
+                hone_core::task_observer::record_skipped(dir, "thesis_cron", started_at);
+            }
+        }
+        let _ = s; // s 已经在 info! 用了,这里再次 silenced 让无 task_runs_dir 路径通过 warning
     }
 }
 

@@ -1,32 +1,43 @@
-//! CorpActionPoller — 拉取公司行动类事件：拆股 / 分红 / SEC filings。
+//! 公司行动两个独立事件源:`CorpActionCalendarPoller`(splits + dividends)
+//! 与 `SecFilingsPoller`(SEC 8-K)。
 //!
-//! MVP 行为：
-//! - `v3/stock_split_calendar` + `v3/stock_dividend_calendar`：未来窗口日历
-//! - `v3/sec_filings/{ticker}?type=8-K`：最近 8-K（需知 ticker）
-//! - Severity：splits/dividends=Medium，8-K=High
-//! - id 稳定：`split:{SYM}:{DATE}` / `div:{SYM}:{EXDATE}` / `sec:{SYM}:{ACCESSION}`
+//! 历史:这两件事最初共用一个 `CorpActionPoller`,但它们的"调度依赖"完全不同
+//! ——日历只看时间(不需要 watch pool),SEC 8-K 必须按持仓 ticker 逐个拉。
+//! 把它们硬塞进同一个 EventSource 会让 `poll()` 无法干净地表达"先拉日历再
+//! per-symbol 拉 sec",所以拆成两个 source。两者共用本文件里的纯函数
+//! `events_from_splits` / `events_from_dividends` / `events_from_sec_filings`。
 //!
-//! 目前只实现日历（不需要 ticker），SEC filings 需要逐 ticker 拉，留给调用方
-//! 用 `fetch_sec_filings(ticker)` 做批量。
+//! Severity:splits/dividends=Medium,8-K=High。
+//! id 稳定:`split:{SYM}:{DATE}` / `div:{SYM}:{EXDATE}` / `sec:{SYM}:{ACCESSION}`。
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use serde_json::Value;
+use tracing::warn;
 
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
+use crate::source::{EventSource, SourceSchedule};
+use crate::subscription::SharedRegistry;
 
-pub struct CorpActionPoller {
+// ─────────────────────────────────────────────────────────────────────────────
+// CorpActionCalendarPoller —— splits + dividends 日历
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct CorpActionCalendarPoller {
     client: FmpClient,
     window_days: i64,
-    sec_recent_hours: i64,
+    schedule: SourceSchedule,
 }
 
-impl CorpActionPoller {
-    pub fn new(client: FmpClient) -> Self {
+impl CorpActionCalendarPoller {
+    pub fn new(client: FmpClient, schedule: SourceSchedule) -> Self {
         Self {
             client,
             window_days: 30,
-            sec_recent_hours: 48,
+            schedule,
         }
     }
 
@@ -34,19 +45,19 @@ impl CorpActionPoller {
         self.window_days = days;
         self
     }
+}
 
-    /// SEC 8-K 的时效性窗口:`fetch_sec_filings` 只保留 `occurred_at` 在
-    /// 过去这么多小时内的条目。默认 48h——每天定时跑两次也只推"新出现"的 8-K,
-    /// 避免把两周前的老 filing 反复推送。真实的幂等性由上层 `EventStore` 保证;
-    /// 这里的窗口只是减少"冷启动首次运行时把所有历史 8-K 当新事件一次性 dispatch"
-    /// 的冲击。
-    pub fn with_sec_recent_hours(mut self, hours: i64) -> Self {
-        self.sec_recent_hours = hours;
-        self
+#[async_trait]
+impl EventSource for CorpActionCalendarPoller {
+    fn name(&self) -> &str {
+        "fmp.corp_action"
     }
 
-    /// 拉取拆股 + 分红日历，合并为事件列表。
-    pub async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+    fn schedule(&self) -> SourceSchedule {
+        self.schedule.clone()
+    }
+
+    async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
         let today = Utc::now().date_naive();
         let to = today + chrono::Duration::days(self.window_days);
         let from_str = today.format("%Y-%m-%d").to_string();
@@ -58,22 +69,53 @@ impl CorpActionPoller {
         let splits_path = format!("/v3/stock_split_calendar?from={from_str}&to={to_str}");
         match self.client.get_json(&splits_path).await {
             Ok(v) => out.extend(events_from_splits(&v)),
-            Err(e) => tracing::warn!("split calendar fetch failed: {e:#}"),
+            Err(e) => warn!("split calendar fetch failed: {e:#}"),
         }
 
         // Dividends
         let div_path = format!("/v3/stock_dividend_calendar?from={from_str}&to={to_str}");
         match self.client.get_json(&div_path).await {
             Ok(v) => out.extend(events_from_dividends(&v)),
-            Err(e) => tracing::warn!("dividend calendar fetch failed: {e:#}"),
+            Err(e) => warn!("dividend calendar fetch failed: {e:#}"),
         }
 
         Ok(out)
     }
+}
 
-    /// 拉取某 ticker 的最近 SEC 8-K。仅保留 `occurred_at` 在
-    /// `sec_recent_hours` 窗口内的;更老的记录忽略——上游已经见过,不值得再推。
-    pub async fn fetch_sec_filings(&self, ticker: &str) -> anyhow::Result<Vec<MarketEvent>> {
+// ─────────────────────────────────────────────────────────────────────────────
+// SecFilingsPoller —— per-symbol 8-K 拉取
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct SecFilingsPoller {
+    client: FmpClient,
+    sec_recent_hours: i64,
+    registry: Arc<SharedRegistry>,
+    schedule: SourceSchedule,
+}
+
+impl SecFilingsPoller {
+    pub fn new(client: FmpClient, registry: Arc<SharedRegistry>, schedule: SourceSchedule) -> Self {
+        Self {
+            client,
+            sec_recent_hours: 48,
+            registry,
+            schedule,
+        }
+    }
+
+    /// SEC 8-K 的时效性窗口:`fetch` 只保留 `occurred_at` 在过去这么多小时
+    /// 内的条目。默认 48h——每天定时跑两次只推"新出现"的 8-K,避免把两周前
+    /// 的老 filing 反复推送。真实的幂等性由 `EventStore` 保证;窗口只是减少
+    /// "冷启动首次运行时把所有历史 8-K 当新事件一次性 dispatch"的冲击。
+    pub fn with_sec_recent_hours(mut self, hours: i64) -> Self {
+        self.sec_recent_hours = hours;
+        self
+    }
+
+    /// 拉取某 ticker 的最近 SEC 8-K。`EventSource::poll` 会从 registry 取
+    /// watch_pool 后逐个调本函数;测试可以直接传任意 ticker 调它。
+    pub async fn fetch(&self, ticker: &str) -> anyhow::Result<Vec<MarketEvent>> {
         let path = format!("/v3/sec_filings/{ticker}?type=8-K&page=0");
         let raw = self.client.get_json(&path).await?;
         let cutoff = Utc::now() - chrono::Duration::hours(self.sec_recent_hours);
@@ -83,6 +125,41 @@ impl CorpActionPoller {
             .collect())
     }
 }
+
+#[async_trait]
+impl EventSource for SecFilingsPoller {
+    fn name(&self) -> &str {
+        "fmp.sec_filings"
+    }
+
+    fn schedule(&self) -> SourceSchedule {
+        self.schedule.clone()
+    }
+
+    async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+        let symbols = self.registry.load().watch_pool();
+        if symbols.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut out = Vec::new();
+        for sym in &symbols {
+            match self.fetch(sym).await {
+                Ok(v) => out.extend(v),
+                Err(e) => warn!(
+                    poller = "fmp.sec_filings",
+                    symbol = %sym,
+                    degraded = true,
+                    "per-symbol fetch failed: {e:#}"
+                ),
+            }
+        }
+        Ok(out)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 纯函数:FMP JSON → MarketEvent
+// ─────────────────────────────────────────────────────────────────────────────
 
 fn events_from_splits(raw: &Value) -> Vec<MarketEvent> {
     let arr = match raw.as_array() {
@@ -289,7 +366,10 @@ mod tests {
             timeout: 30,
         };
         let client = FmpClient::from_config(&cfg);
-        let poller = CorpActionPoller::new(client);
+        let poller = CorpActionCalendarPoller::new(
+            client,
+            SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+        );
         let events = poller.poll().await.expect("FMP poll failed");
         println!("corp_action events pulled: {}", events.len());
         for ev in events.iter().take(5) {

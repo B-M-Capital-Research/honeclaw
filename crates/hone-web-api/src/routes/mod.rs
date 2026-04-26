@@ -16,6 +16,7 @@ pub(crate) mod public;
 pub(crate) mod public_digest;
 pub(crate) mod research;
 pub(crate) mod skills;
+pub(crate) mod task_runs;
 pub(crate) mod users;
 pub(crate) mod web_users;
 
@@ -176,6 +177,7 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .route("/llm-audit/{id}", get(llm_audit::handle_llm_audit_detail))
         .route("/logs", get(logs::handle_logs))
         .route("/logs/stream", get(logs::handle_logs_stream))
+        .route("/admin/task-runs", get(task_runs::handle_task_runs))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_api_auth,

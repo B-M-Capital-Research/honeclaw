@@ -12,6 +12,7 @@ pub mod error;
 pub mod heartbeat;
 pub mod logging;
 pub mod process_lock;
+pub mod task_observer;
 pub mod text;
 pub mod time;
 pub mod tool_event;
@@ -35,6 +36,11 @@ pub use process_lock::{
     PROCESS_LOCK_IMESSAGE, PROCESS_LOCK_TELEGRAM, ProcessLockError, ProcessLockGuard,
     acquire_process_lock, acquire_runtime_process_lock, format_lock_failure_message,
     preflight_process_locks, process_lock_path, runtime_lock_dir,
+};
+pub use task_observer::{
+    TASK_RUNS_RETENTION_DAYS, TaskOutcome, TaskRunRecord, purge_old_task_runs,
+    read_recent_task_runs, record_failed, record_ok, record_skipped, record_task_run,
+    task_runs_dir, task_runs_path,
 };
 pub use text::{truncate_chars, truncate_chars_append};
 pub use time::{BEIJING_OFFSET_SECS, beijing_now, beijing_now_rfc3339, beijing_offset};

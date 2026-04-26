@@ -1,182 +1,86 @@
-//! 把各个 poller 包成独立 tokio 任务的 `spawn_*` 入口集合。
+//! `spawn_event_source` —— 唯一的 EventSource 任务驱动入口。
 //!
-//! 每个函数只做三件事:
-//! 1. 构造 poller 实例并 `Arc::new`;
-//! 2. 用 `move ||` 拼一个 action closure,捕获 `store`/`router`/`registry`;
-//! 3. `tokio::spawn` 后调 `pipeline::cron_aligned_loop` 或自家 ticker 循环。
+//! Stage 1 重构完成后(2026-04-26),所有 FMP / RSS / 社交源都用同一条
+//! 路径接入:`impl EventSource` → 调一次 `spawn_event_source(Arc::new(poller),
+//! store, router)` 即可。FixedInterval / CronAligned 两种调度策略由
+//! `source.schedule()` 返回值决定,本函数内嵌两条循环,不再有专属
+//! `spawn_*_poller` 函数。
 //!
-//! 原来 `start()` 一坨 500+ 行的 spawn 代码全部挪到这里,`engine.rs::start()`
-//! 只负责配置解析 + 决定是否 spawn。分离后两边都能独立读懂。
+//! 内部细节:
+//! - 冷启动立即拉一次,避免用户重启 Hone 后等到下一 tick 才有数据
+//! - `MissedTickBehavior::Delay` 防止长任务恢复后突发风暴
+//! - CronAligned 分支跨日时清空 `fired` HashSet 避免内存堆积
+//! - 失败只 `warn!` 不上抛(Tier-A 失败处理,见 docs/conventions/periodic_tasks.md)
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use chrono::Utc;
+use hone_core::task_observer;
 use tracing::{info, warn};
 
 use crate::digest;
-use crate::fmp::FmpClient;
-use crate::pipeline::{cron_aligned_loop, log_poller_error, process_events, run_once};
-use crate::pollers::{CorpActionPoller, PricePoller};
+use crate::pipeline::run_once;
 use crate::router::NotificationRouter;
 use crate::source::{EventSource, SourceSchedule};
 use crate::store::EventStore;
-use crate::subscription::SharedRegistry;
 
-pub(crate) fn spawn_corp_action_poller(
-    client: FmpClient,
-    store: Arc<EventStore>,
-    router: Arc<NotificationRouter>,
-    registry: Arc<SharedRegistry>,
-    tz_offset: i32,
-    pre_prefetch: String,
-    post_prefetch: String,
-    corp_action_enabled: bool,
-    sec_filings_enabled: bool,
+/// 跑一次 source.poll() 并把成败写入 task_runs.jsonl(若提供了 dir)。
+/// 抽出来避免 FixedInterval / CronAligned 两条循环重复观测样板。
+async fn run_once_observed(
+    task: &str,
+    source: &dyn EventSource,
+    store: &EventStore,
+    router: &NotificationRouter,
+    task_runs_dir: Option<&PathBuf>,
 ) {
-    tokio::spawn(async move {
-        if !corp_action_enabled {
-            info!(
-                "corp_action dividend/split fetch disabled by config.sources.corp_action=false; sec_filings 仍按设置运行"
+    let started_at = Utc::now();
+    match run_once(task, source, store, router).await {
+        Ok(()) => {
+            if let Some(dir) = task_runs_dir {
+                // run_once 内部自己 process_events,不返回 items 数;落盘只标 outcome=ok。
+                // 真实条数已经在 process_events 的 tracing 行里(total= / new= / sent=),
+                // task_runs.jsonl 的角色是"任务级心跳",不重复存事件级数据。
+                task_observer::record_ok(dir, task, started_at, 0);
+            }
+        }
+        Err(e) => {
+            warn!(
+                poller = %task,
+                source = %task,
+                url_class = "event_source",
+                degraded = true,
+                "poll failed: {e:#}"
             );
+            if let Some(dir) = task_runs_dir {
+                task_observer::record_failed(dir, task, started_at, &format!("{e:#}"));
+            }
         }
-        if !sec_filings_enabled {
-            info!("sec filings fetch disabled by config.sources.sec_filings=false");
-        }
-        // sec_recent_hours=48:每次 tick 只把"过去 48h 新出现的"8-K 送入 store;
-        // store.insert_event 幂等 IGNORE 保证同一 filing 不会触发两次 dispatch。
-        let poller = Arc::new(CorpActionPoller::new(client).with_sec_recent_hours(48));
-        let action = move || {
-            let poller = poller.clone();
-            let store = store.clone();
-            let router = router.clone();
-            let registry = registry.clone();
-            Box::pin(async move {
-                if corp_action_enabled {
-                    match poller.poll().await {
-                        Ok(events) => process_events("corp_action", events, &store, &router).await,
-                        Err(e) => log_poller_error("corp_action", "fmp.calendar", "calendar", &e),
-                    }
-                }
-                if !sec_filings_enabled {
-                    return;
-                }
-                let symbols = registry.load().watch_pool();
-                if symbols.is_empty() {
-                    return;
-                }
-                let mut sec_events = Vec::new();
-                for sym in &symbols {
-                    match poller.fetch_sec_filings(sym).await {
-                        Ok(v) => sec_events.extend(v),
-                        Err(e) => {
-                            warn!(
-                                poller = "sec_filings",
-                                source = "fmp.sec_filings",
-                                url_class = "per_symbol",
-                                symbol = %sym,
-                                degraded = true,
-                                "poller fetch failed: {e:#}"
-                            );
-                        }
-                    }
-                }
-                if !sec_events.is_empty() {
-                    process_events("sec_filings", sec_events, &store, &router).await;
-                }
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        };
-        cron_aligned_loop(
-            "corp_action",
-            tz_offset,
-            pre_prefetch,
-            post_prefetch,
-            action,
-        )
-        .await;
-    });
+    }
 }
 
-pub(crate) fn spawn_price_poller(
-    client: FmpClient,
-    store: Arc<EventStore>,
-    router: Arc<NotificationRouter>,
-    registry: Arc<SharedRegistry>,
-    low_pct: f64,
-    high_pct: f64,
-    realert_step_pct: f64,
-    interval: Duration,
-) {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut last_pool: Vec<String> = vec![];
-        loop {
-            ticker.tick().await;
-            // 每 tick 都取最新快照；registry 热刷新会自动反映新增/变更的持仓。
-            let symbols = registry.load().watch_pool();
-            if symbols.is_empty() {
-                continue;
-            }
-            if symbols != last_pool {
-                info!(size = symbols.len(), "price watch pool updated");
-                last_pool = symbols.clone();
-            }
-            let poller = PricePoller::new(client.clone())
-                .with_symbols(symbols)
-                .with_thresholds(low_pct, high_pct)
-                .with_realert_step_pct(realert_step_pct);
-            match poller.poll().await {
-                Ok(events) => process_events("price", events, &store, &router).await,
-                Err(e) => log_poller_error("price", "fmp.quote", "quote", &e),
-            }
-        }
-    });
-}
-
-/// 通用事件源 spawn 入口:依据 `source.schedule()` 分发到 FixedInterval 或
-/// CronAligned 两条循环。新增第三方监听源(Telegram / RSS / ...)或 FMP poller
-/// 都只需实现 `EventSource` trait,调用一次本函数即可接入 store + router 主链路,
-/// 不需要再复制 spawn/ticker/process_events 的模板。
-///
-/// 进度:earnings / news / macro / analyst_grade / earnings_surprise 已迁;
-/// corp_action / sec_filings / price 仍保留专属 `spawn_*_poller`,在 Stage 1
-/// Group C / D 中分别迁移(它们携带双 endpoint 拆分 / 状态固化等需要先在
-/// poller 内部消化的语义)。
 pub(crate) fn spawn_event_source(
     source: Arc<dyn EventSource>,
     store: Arc<EventStore>,
     router: Arc<NotificationRouter>,
+    task_runs_dir: Option<Arc<PathBuf>>,
 ) {
     let name: String = source.name().to_string();
+    let task_label = format!("poller.{name}");
     let schedule = source.schedule();
     tokio::spawn(async move {
+        let dir_ref = task_runs_dir.as_deref();
         match schedule {
             SourceSchedule::FixedInterval(interval) => {
-                // 冷启动立即拉一次,避免用户重启后等到下一 tick 才有数据。
-                if let Err(e) = run_once(&name, &*source, &store, &router).await {
-                    warn!(
-                        poller = %name,
-                        source = %name,
-                        url_class = "event_source",
-                        degraded = true,
-                        "initial poll failed: {e:#}"
-                    );
-                }
+                run_once_observed(&task_label, &*source, &store, &router, dir_ref).await;
                 let mut ticker = tokio::time::interval(interval);
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                // 第一次 tick 立刻返回(已在 run_once 做过冷启动),跳过一次。
+                // 第一次 tick 立刻返回(已在 run_once_observed 做过冷启动),跳过一次。
                 ticker.tick().await;
                 loop {
                     ticker.tick().await;
-                    if let Err(e) = run_once(&name, &*source, &store, &router).await {
-                        warn!(
-                            poller = %name,
-                            source = %name,
-                            url_class = "event_source",
-                            degraded = true,
-                            "poll failed: {e:#}"
-                        );
-                    }
+                    run_once_observed(&task_label, &*source, &store, &router, dir_ref).await;
                 }
             }
             SourceSchedule::CronAligned {
@@ -184,16 +88,7 @@ pub(crate) fn spawn_event_source(
                 post_prefetch,
                 tz_offset,
             } => {
-                // 冷启动先跑一次,然后每 60s 检查是否命中 pre/post 窗口。
-                if let Err(e) = run_once(&name, &*source, &store, &router).await {
-                    warn!(
-                        poller = %name,
-                        source = %name,
-                        url_class = "event_source",
-                        degraded = true,
-                        "initial poll failed: {e:#}"
-                    );
-                }
+                run_once_observed(&task_label, &*source, &store, &router, dir_ref).await;
                 let mut ticker = tokio::time::interval(Duration::from_secs(60));
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
                 let mut fired: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -215,15 +110,7 @@ pub(crate) fn spawn_event_source(
                             continue;
                         }
                         info!(poller = %name, window = label, hhmm = %hhmm, "cron-aligned source firing");
-                        if let Err(e) = run_once(&name, &*source, &store, &router).await {
-                            warn!(
-                                poller = %name,
-                                source = %name,
-                                url_class = "event_source",
-                                degraded = true,
-                                "poll failed: {e:#}"
-                            );
-                        }
+                        run_once_observed(&task_label, &*source, &store, &router, dir_ref).await;
                     }
                 }
             }

@@ -14,7 +14,7 @@ pub mod rss;
 pub mod social;
 
 pub use analyst_grade::AnalystGradePoller;
-pub use corp_action::CorpActionPoller;
+pub use corp_action::{CorpActionCalendarPoller, SecFilingsPoller};
 pub use earnings::EarningsPoller;
 pub use earnings_surprise::EarningsSurprisePoller;
 pub use macro_events::MacroPoller;

@@ -99,6 +99,7 @@ export function SidebarNav() {
         <Show when={backend.hasCapability("skills")}><NavLink href="/skills" label="技能管理" /></Show>
         <Show when={backend.hasCapability("llm_audit")}><NavLink href="/llm-audit" label="LLM 审计" /></Show>
         <Show when={backend.hasCapability("logs")}><NavLink href="/logs" label="日志" /></Show>
+        <NavLink href="/task-health" label="任务健康" />
         <NavLink href="/settings" label="设置" />
       </div>
 
