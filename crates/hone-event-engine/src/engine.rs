@@ -558,33 +558,47 @@ impl EventEngine {
                     Arc::new(hone_memory::PortfolioStorage::new(&self.portfolio_dir));
                 let fmp_arc = Arc::new(client.clone());
                 let curator = Arc::new(crate::global_digest::Curator::new(
-                    provider,
+                    provider.clone(),
                     self.engine_cfg.global_digest.pass1_model.clone(),
                     self.engine_cfg.global_digest.pass2_model.clone(),
                 ));
                 let fetcher = Arc::new(crate::global_digest::ArticleFetcher::new());
+                let event_deduper: Arc<dyn crate::global_digest::EventDeduper> =
+                    if self.engine_cfg.global_digest.event_dedupe_enabled {
+                        Arc::new(crate::global_digest::LlmEventDeduper::new(
+                            provider.clone(),
+                            self.engine_cfg.global_digest.event_dedupe_model.clone(),
+                        ))
+                    } else {
+                        Arc::new(crate::global_digest::PassThroughDeduper)
+                    };
                 let audience_cache_dir = self
                     .store_path
                     .parent()
                     .map(|p| p.join("company_profiles"))
                     .unwrap_or_else(|| PathBuf::from("./data/company_profiles"));
-                let scheduler = Arc::new(crate::global_digest::GlobalDigestScheduler::new(
-                    self.engine_cfg.global_digest.clone(),
-                    store.clone(),
-                    fmp_arc,
-                    portfolio_storage,
-                    prefs_storage.clone(),
-                    self.sink.clone(),
-                    curator,
-                    fetcher,
-                    audience_cache_dir,
-                    self.daily_report_dir.clone(),
-                ));
+                let scheduler = Arc::new(
+                    crate::global_digest::GlobalDigestScheduler::new(
+                        self.engine_cfg.global_digest.clone(),
+                        store.clone(),
+                        fmp_arc,
+                        portfolio_storage,
+                        prefs_storage.clone(),
+                        self.sink.clone(),
+                        curator,
+                        fetcher,
+                        audience_cache_dir,
+                        self.daily_report_dir.clone(),
+                    )
+                    .with_event_deduper(event_deduper),
+                );
                 info!(
                     schedules = ?self.engine_cfg.global_digest.schedules,
                     timezone = %self.engine_cfg.global_digest.timezone,
                     pass1_model = %self.engine_cfg.global_digest.pass1_model,
                     pass2_model = %self.engine_cfg.global_digest.pass2_model,
+                    event_dedupe = self.engine_cfg.global_digest.event_dedupe_enabled,
+                    event_dedupe_model = %self.engine_cfg.global_digest.event_dedupe_model,
                     "global_digest scheduler starting"
                 );
                 tokio::spawn(async move {
@@ -596,6 +610,8 @@ impl EventEngine {
                         let _ = scheduler.tick(now).await;
                     }
                 });
+                // 注:thesis 蒸馏 cron 在 hone-web-api 启动时单独 spawn,
+                // 这里不能 spawn 是因为 hone-event-engine 不依赖 hone-channels(避免循环)。
             } else {
                 warn!(
                     "global_digest enabled 但未注入 LLM provider —— 调度器跳过。在 EventEngine builder 里调 .with_global_digest_provider()"

@@ -768,7 +768,7 @@ fn filter_public_push(
     }
 }
 
-fn require_public_user(
+pub(crate) fn require_public_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<hone_memory::WebInviteUser, Response> {

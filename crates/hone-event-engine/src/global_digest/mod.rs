@@ -18,9 +18,12 @@
 pub mod audience;
 pub mod collector;
 pub mod curator;
+pub mod event_dedupe;
 pub mod fetcher;
 pub mod renderer;
 pub mod scheduler;
+pub mod thesis_cron;
+pub mod thesis_distill;
 
 pub use audience::{AudienceBuilder, AudienceContext, BriefSource, CompanyBrief};
 pub use collector::{CandidateCollector, GlobalDigestCandidate};
@@ -28,6 +31,17 @@ pub use curator::{
     BaselineCuratedItem, Curator, PersonalizedItem, PickCategory, RankedCandidate, ThesisRelation,
     UserThesis,
 };
+pub use event_dedupe::{
+    ClusterAudit, DedupeStats, EventDeduper, LlmEventDeduper, PassThroughDeduper,
+};
 pub use fetcher::{ArticleBody, ArticleFetcher, ArticleSource};
 pub use renderer::render_global_digest;
 pub use scheduler::GlobalDigestScheduler;
+pub use thesis_cron::{
+    DEFAULT_DISTILL_INTERVAL_HOURS, MIN_RETRY_INTERVAL_HOURS, TriggerReason, WEEKLY_REFRESH_HOURS,
+    distill_cron_loop, distill_tick, should_trigger,
+};
+pub use thesis_distill::{
+    DistilledTheses, LlmThesisDistiller, ProfileSource, ThesisDistiller, actor_sandbox_dir,
+    distill_and_persist_one, distill_for_actor, extract_tickers, merge_into_prefs, scan_profiles,
+};

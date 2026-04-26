@@ -34,9 +34,10 @@ use hone_core::config::{
     ConfigMutation, GlobalDigestConfig, RssFeedConfig, apply_overlay_mutations,
 };
 
-use crate::routes::json_error;
+use crate::routes::{json_error, require_actor};
 use crate::runtime::runtime_config_path;
 use crate::state::AppState;
+use crate::types::UserIdQuery;
 
 const NEEDS_RESTART_HINT: &str =
     "改动已写入 config.overrides.yaml。事件引擎需重启 web-api 进程才会按新值生效";
@@ -103,6 +104,12 @@ fn validate_global_digest(cfg: &GlobalDigestConfig) -> Result<(), Response> {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             "global_digest.pass1_model / pass2_model 不能为空",
+        ));
+    }
+    if cfg.event_dedupe_enabled && cfg.event_dedupe_model.trim().is_empty() {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "global_digest.event_dedupe_enabled=true 时 event_dedupe_model 不能为空",
         ));
     }
     Ok(())
@@ -330,6 +337,263 @@ pub(crate) async fn handle_update_rss_feed(
     }
 }
 
+// ─────────────────────────── thesis context (admin view) ──────────
+
+/// GET /api/event-engine/thesis-context?channel=&user_id=&channel_scope=
+///
+/// 管理端查看任意 actor 的蒸馏 thesis 与画像 inventory。和 public 端
+/// `/api/public/digest-context` 内容一致,但 actor 由 query 指定而非 session。
+pub(crate) async fn handle_get_thesis_context(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<UserIdQuery>,
+) -> Response {
+    let actor = match require_actor(params.channel, params.user_id, params.channel_scope) {
+        Ok(a) => a,
+        Err(resp) => return resp,
+    };
+
+    let prefs_storage = match hone_event_engine::prefs::FilePrefsStorage::new(
+        &state.core.config.storage.notif_prefs_dir,
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("打开 prefs 失败: {e}"),
+            );
+        }
+    };
+    use hone_event_engine::prefs::PrefsProvider;
+    let prefs = prefs_storage.load(&actor);
+
+    let portfolio_storage =
+        hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
+    let holdings: Vec<String> = match portfolio_storage.load(&actor) {
+        Ok(Some(p)) => p.holdings.iter().map(|h| h.symbol.clone()).collect(),
+        _ => Vec::new(),
+    };
+
+    let sandbox_base = hone_channels::sandbox_base_dir();
+    let sandbox_root = hone_event_engine::global_digest::actor_sandbox_dir(&sandbox_base, &actor);
+    let profile_summaries = list_profile_summaries_admin(&sandbox_root);
+
+    Json(json!({
+        "actor": {
+            "channel": actor.channel,
+            "user_id": actor.user_id,
+            "channel_scope": actor.channel_scope,
+        },
+        "investment_global_style": prefs.investment_global_style,
+        "investment_theses": prefs.investment_theses.clone().unwrap_or_default(),
+        "global_digest_enabled": prefs.global_digest_enabled,
+        "global_digest_floor_macro_picks": prefs.global_digest_floor_macro_picks,
+        "last_thesis_distilled_at": prefs.last_thesis_distilled_at,
+        "thesis_distill_skipped": prefs.thesis_distill_skipped,
+        "holdings": holdings,
+        "profile_list": profile_summaries,
+    }))
+    .into_response()
+}
+
+/// GET /api/event-engine/company-profile?channel=&user_id=&channel_scope=&ticker=
+///
+/// 管理端查看任意 actor 任意 ticker 的完整画像 markdown。read-only。
+pub(crate) async fn handle_get_actor_company_profile(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<AdminProfileQuery>,
+) -> Response {
+    let actor = match require_actor(
+        params.channel.clone(),
+        params.user_id.clone(),
+        params.channel_scope.clone(),
+    ) {
+        Ok(a) => a,
+        Err(resp) => return resp,
+    };
+    let target = params.ticker.trim().to_uppercase();
+    if target.is_empty() {
+        return json_error(StatusCode::BAD_REQUEST, "ticker 不能为空");
+    }
+    let _ = &state; // silence unused
+    let sandbox_base = hone_channels::sandbox_base_dir();
+    let sandbox_root = hone_event_engine::global_digest::actor_sandbox_dir(&sandbox_base, &actor);
+    let profiles = hone_event_engine::global_digest::scan_profiles(&sandbox_root, None);
+    match profiles.iter().find(|p| p.ticker == target) {
+        Some(p) => Json(json!({
+            "ticker": p.ticker,
+            "dir": p.dir_name,
+            "markdown": p.markdown,
+        }))
+        .into_response(),
+        None => json_error(
+            StatusCode::NOT_FOUND,
+            format!(
+                "actor={}/{} 没有 ticker={target} 的画像",
+                actor.channel, actor.user_id
+            ),
+        ),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct AdminProfileQuery {
+    pub channel: Option<String>,
+    pub user_id: Option<String>,
+    pub channel_scope: Option<String>,
+    pub ticker: String,
+}
+
+/// 扫 sandbox/company_profiles 列出所有画像的元信息(摘要)。
+fn list_profile_summaries_admin(sandbox_root: &PathBuf) -> Vec<serde_json::Value> {
+    let cp = sandbox_root.join("company_profiles");
+    if !cp.is_dir() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let entries = match std::fs::read_dir(&cp) {
+        Ok(e) => e,
+        Err(_) => return out,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let dir_name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        let profile_md = path.join("profile.md");
+        if !profile_md.is_file() {
+            continue;
+        }
+        let md = match std::fs::read_to_string(&profile_md) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let tickers = hone_event_engine::global_digest::extract_tickers(&md);
+        let title = md
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim_start_matches('#')
+            .trim();
+        let preview: String = md.chars().take(200).collect();
+        let bytes = md.len();
+        out.push(json!({
+            "dir": dir_name,
+            "tickers": tickers,
+            "title": title,
+            "preview": preview,
+            "bytes": bytes,
+        }));
+    }
+    out
+}
+
+// ─────────────────────────── thesis distill manual ─────────────────
+
+/// POST /api/event-engine/thesis-distill?channel=&user_id=&channel_scope=
+///
+/// 立即对指定 actor 跑一次 thesis 蒸馏 —— admin 调试 / 用户主动刷新用。
+/// 平时由 web-api 启动的 cron 每 7 天自动跑,不需要走这条。
+pub(crate) async fn handle_distill_thesis_now(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<UserIdQuery>,
+) -> Response {
+    let actor = match require_actor(params.channel, params.user_id, params.channel_scope) {
+        Ok(a) => a,
+        Err(resp) => return resp,
+    };
+
+    // portfolio + holdings
+    let portfolio_storage =
+        hone_memory::PortfolioStorage::new(&state.core.config.storage.portfolio_dir);
+    let portfolio = match portfolio_storage.load(&actor) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return json_error(
+                StatusCode::NOT_FOUND,
+                "actor 没有 portfolio,无法蒸馏 thesis(请先建仓)",
+            );
+        }
+        Err(e) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读 portfolio 失败: {e}"),
+            );
+        }
+    };
+    let holdings: Vec<String> = portfolio
+        .holdings
+        .iter()
+        .map(|h| h.symbol.clone())
+        .collect();
+    if holdings.is_empty() {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            "portfolio 持仓为空,无法蒸馏 thesis",
+        );
+    }
+
+    // LLM provider
+    let provider: Arc<dyn hone_llm::LlmProvider> =
+        match hone_llm::OpenRouterProvider::from_config(&state.core.config) {
+            Ok(p) => Arc::new(p),
+            Err(e) => {
+                return json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("OpenRouter provider 不可用: {e}"),
+                );
+            }
+        };
+    let model = state
+        .core
+        .config
+        .event_engine
+        .global_digest
+        .event_dedupe_model
+        .clone();
+    let distiller = hone_event_engine::global_digest::LlmThesisDistiller::new(provider, model);
+
+    let prefs_storage = match hone_event_engine::prefs::FilePrefsStorage::new(
+        &state.core.config.storage.notif_prefs_dir,
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("打开 prefs 目录失败: {e}"),
+            );
+        }
+    };
+
+    let sandbox_base = hone_channels::sandbox_base_dir();
+    let updated = match hone_event_engine::global_digest::distill_and_persist_one(
+        &distiller,
+        &prefs_storage,
+        &sandbox_base,
+        &actor,
+        &holdings,
+    )
+    .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            return json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("蒸馏失败: {e}"));
+        }
+    };
+
+    Json(json!({
+        "ok": true,
+        "theses_count": updated.investment_theses.as_ref().map(|m| m.len()).unwrap_or(0),
+        "global_style_set": updated.investment_global_style.is_some(),
+        "skipped_tickers": updated.thesis_distill_skipped,
+        "last_distilled_at": updated.last_thesis_distilled_at,
+    }))
+    .into_response()
+}
+
 /// DELETE /api/event-engine/rss-feeds/{handle}
 pub(crate) async fn handle_delete_rss_feed(
     State(state): State<Arc<AppState>>,
@@ -371,6 +635,8 @@ mod tests {
             pass2_top_n: top_n,
             final_pick_n: pick_n,
             fetch_full_text: true,
+            event_dedupe_enabled: true,
+            event_dedupe_model: "x-ai/grok-4.1-fast".into(),
         }
     }
 

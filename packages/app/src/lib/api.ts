@@ -258,6 +258,57 @@ export async function getPublicHistory() {
   return payload.messages ?? [];
 }
 
+// ── Public digest context (read-only thesis + profiles surface) ─────────
+
+export type ProfileSummary = {
+  dir: string;
+  tickers: string[];
+  title: string;
+  preview: string;
+  bytes: number;
+};
+
+export type DigestContext = {
+  actor: { channel: string; user_id: string };
+  investment_global_style: string | null;
+  investment_theses: Record<string, string>;
+  global_digest_enabled: boolean;
+  global_digest_floor_macro_picks: number;
+  last_thesis_distilled_at: string | null;
+  thesis_distill_skipped: string[];
+  holdings: string[];
+  profile_list: ProfileSummary[];
+};
+
+export async function getDigestContext(): Promise<DigestContext> {
+  const response = await apiFetch("/api/public/digest-context");
+  return parseJson<DigestContext>(response);
+}
+
+export async function refreshDigestContext(): Promise<{
+  ok: boolean;
+  theses_count: number;
+  global_style_set: boolean;
+  skipped_tickers: string[];
+  last_distilled_at: string | null;
+}> {
+  const response = await apiFetch("/api/public/digest-context/refresh", {
+    method: "POST",
+  });
+  return parseJson(response);
+}
+
+export async function getCompanyProfileMarkdown(ticker: string): Promise<{
+  ticker: string;
+  dir: string;
+  markdown: string;
+}> {
+  const response = await apiFetch(
+    `/api/public/company-profile?ticker=${encodeURIComponent(ticker)}`,
+  );
+  return parseJson(response);
+}
+
 export type PublicUploadedAttachment = {
   path: string;
   name: string;

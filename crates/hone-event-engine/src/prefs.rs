@@ -95,6 +95,15 @@ pub struct NotificationPrefs {
     /// macro_floor 条目(联储/地缘/油价/政策等大盘背景)。POC 验证 1 条足够 —— 用户
     /// 需要知道叙事可能被宏观证伪。0 = 关闭 floor。
     pub global_digest_floor_macro_picks: u32,
+    /// **系统蒸馏元数据**(2026-04-26 起):`investment_theses` / `investment_global_style`
+    /// 由后台 cron 周扫用户 sandbox `company_profiles/*/profile.md` 自动蒸馏写入,
+    /// 用户不再通过 NL tool 直接编辑。本字段是 RFC3339 时间戳记录最近一次蒸馏成功时刻,
+    /// 让前端可以展示"上次更新"和判断是否需要手动刷一次。`None` = 还没蒸过(老数据兼容)。
+    pub last_thesis_distilled_at: Option<String>,
+    /// 蒸馏过程中跳过的 ticker(无 profile / LLM 失败 / 画像没有 ticker 标识)。
+    /// 用于前端提示"这些持仓还没有画像或最近一次蒸馏失败"。
+    #[serde(default)]
+    pub thesis_distill_skipped: Vec<String>,
 }
 
 impl Default for NotificationPrefs {
@@ -120,6 +129,8 @@ impl Default for NotificationPrefs {
             investment_global_style: None,
             investment_theses: None,
             global_digest_floor_macro_picks: default_floor_macro_picks(),
+            last_thesis_distilled_at: None,
+            thesis_distill_skipped: Vec::new(),
         }
     }
 }
@@ -452,6 +463,8 @@ mod tests {
                 m
             }),
             global_digest_floor_macro_picks: 2,
+            last_thesis_distilled_at: Some("2026-04-26T09:00:00Z".into()),
+            thesis_distill_skipped: vec!["XYZ".into()],
         };
         store.save(&a, &p).unwrap();
         let loaded = store.load(&a);
@@ -492,6 +505,11 @@ mod tests {
             Some("看现金流 + 回购")
         );
         assert_eq!(loaded.global_digest_floor_macro_picks, 2);
+        assert_eq!(
+            loaded.last_thesis_distilled_at.as_deref(),
+            Some("2026-04-26T09:00:00Z")
+        );
+        assert_eq!(loaded.thesis_distill_skipped, vec!["XYZ".to_string()]);
     }
 
     #[test]

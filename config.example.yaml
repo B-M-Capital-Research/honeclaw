@@ -286,6 +286,11 @@ event_engine:
     pass2_top_n: 15 # Pass 1 排序后送 Pass 2 精读的候选数上限
     final_pick_n: 8 # 单次推送最终保留的条数上限
     fetch_full_text: true # Pass 2 是否 GET 原文 → html2text;失败 fallback FMP text
+    # 事件级去重(POC 验证 2026-04-26 加):collector 之后 / Pass1 之前,用强 LLM
+    # 把同事件多源报道合并成 1 条代表,避免 picks 被 5 条 Hormuz 这种重复挤满。
+    # 必须用强模型,nova-lite 这种会过度归类成 theme(把不同事件合到大筐里)。
+    event_dedupe_enabled: true
+    event_dedupe_model: x-ai/grok-4.1-fast
 
   # Per-poller 开关。每个字段对应 hone-event-engine 内一个 spawn_*_poller 调用,
   # 设成 false 即直接 skip 该 poller 的 tick(最省 FMP 配额)。

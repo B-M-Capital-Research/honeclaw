@@ -151,6 +151,17 @@ pub struct GlobalDigestConfig {
     /// FMP `text` 摘要。关闭则始终只用 FMP 文本。
     #[serde(default = "default_true")]
     pub fetch_full_text: bool,
+
+    /// **事件级去重**(POC 验证 2026-04-26 修):collector 之后、Pass1 之前,用强
+    /// LLM 把同一具体事件的多源报道合成 1 条代表,避免 picks 被同事件不同包装挤满。
+    /// 关闭(false)时退回 Pass1 自带的 cluster id dedup(已知不可靠)。
+    #[serde(default = "default_true")]
+    pub event_dedupe_enabled: bool,
+
+    /// 事件级 dedup 用的 LLM 模型。POC 验证 grok-4.1-fast 在 17-236 候选量级上
+    /// 稳定保守(只合明显同事件)。务必用强模型,nova-lite 这种会过度归类成 theme。
+    #[serde(default = "default_event_dedupe_model")]
+    pub event_dedupe_model: String,
 }
 
 impl Default for GlobalDigestConfig {
@@ -165,8 +176,14 @@ impl Default for GlobalDigestConfig {
             pass2_top_n: default_global_digest_pass2_top_n(),
             final_pick_n: default_global_digest_final_pick_n(),
             fetch_full_text: true,
+            event_dedupe_enabled: true,
+            event_dedupe_model: default_event_dedupe_model(),
         }
     }
+}
+
+fn default_event_dedupe_model() -> String {
+    "x-ai/grok-4.1-fast".into()
 }
 
 fn default_global_digest_tz() -> String {

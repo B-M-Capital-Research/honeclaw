@@ -35,6 +35,9 @@ use crate::fmp::FmpClient;
 use crate::global_digest::audience::AudienceBuilder;
 use crate::global_digest::collector::{CandidateCollector, GLOBAL_DIGEST_CHANNEL};
 use crate::global_digest::curator::{BaselineCuratedItem, Curator, PersonalizedItem, UserThesis};
+use crate::global_digest::event_dedupe::{
+    ClusterAudit, DedupeStats, EventDeduper, PassThroughDeduper,
+};
 use crate::global_digest::fetcher::{ArticleFetcher, ArticleSource};
 use crate::global_digest::renderer::render_global_digest;
 use crate::prefs::PrefsProvider;
@@ -54,6 +57,7 @@ pub struct GlobalDigestScheduler {
     sink: Arc<dyn OutboundSink>,
     curator: Arc<Curator>,
     fetcher: Arc<ArticleFetcher>,
+    event_deduper: Arc<dyn EventDeduper>,
     audience_cache_dir: PathBuf,
     daily_report_dir: PathBuf,
     fired_today: Mutex<HashSet<String>>, // {date}@{HH:MM}
@@ -84,11 +88,18 @@ impl GlobalDigestScheduler {
             sink,
             curator,
             fetcher,
+            event_deduper: Arc::new(PassThroughDeduper),
             audience_cache_dir: audience_cache_dir.into(),
             daily_report_dir: daily_report_dir.into(),
             fired_today: Mutex::new(HashSet::new()),
             tz_offset,
         }
+    }
+
+    /// 注入事件级去重器。`config.event_dedupe_enabled=false` 时即使注入也走 pass-through。
+    pub fn with_event_deduper(mut self, deduper: Arc<dyn EventDeduper>) -> Self {
+        self.event_deduper = deduper;
+        self
     }
 
     /// 单 tick:检查所有 schedule,命中且未触发 → 跑一次 run。返回触发的 schedule 数。
@@ -129,15 +140,46 @@ impl GlobalDigestScheduler {
 
         // 2. collect
         let collector = CandidateCollector::new(&self.store);
-        let candidates = collector.collect(
+        let raw_candidates = collector.collect(
             now,
             self.config.lookback_hours,
             self.config.lookback_hours.saturating_add(2),
         )?;
-        if candidates.is_empty() {
+        if raw_candidates.is_empty() {
             self.write_audit_no_candidates(now, schedule);
             return Ok(());
         }
+
+        // 2.5 event-level dedup(grok 二阶段聚类,失败降级透传)
+        let raw_count = raw_candidates.len();
+        let (candidates, dedupe_stats, dedupe_audits) = if self.config.event_dedupe_enabled {
+            self.event_deduper.dedupe(raw_candidates).await
+        } else {
+            (
+                raw_candidates,
+                DedupeStats {
+                    input: raw_count,
+                    clusters: raw_count,
+                    multi_clusters: 0,
+                    silent_drops_recovered: 0,
+                    fell_back_to_pass_through: false,
+                },
+                Vec::new(),
+            )
+        };
+        if dedupe_stats.fell_back_to_pass_through {
+            warn!(
+                input = dedupe_stats.input,
+                "event_dedupe fell back to pass-through (LLM call or parse failed)"
+            );
+        }
+        info!(
+            raw = dedupe_stats.input,
+            clusters = dedupe_stats.clusters,
+            multi = dedupe_stats.multi_clusters,
+            recovered = dedupe_stats.silent_drops_recovered,
+            "event_dedupe done"
+        );
 
         // 3. Pass 1
         let ranked = self
@@ -168,7 +210,14 @@ impl GlobalDigestScheduler {
                 Vec::new()
             }
         };
-        self.write_audit(now, schedule, candidates.len(), &baseline);
+        self.write_audit(
+            now,
+            schedule,
+            candidates.len(),
+            &baseline,
+            &dedupe_stats,
+            &dedupe_audits,
+        );
 
         // 6. fan-out personalize
         let direct_actors = self.collect_direct_actors();
@@ -321,10 +370,25 @@ impl GlobalDigestScheduler {
         schedule: &str,
         n_cands: usize,
         baseline: &[BaselineCuratedItem],
+        dedupe_stats: &DedupeStats,
+        dedupe_audits: &[ClusterAudit],
     ) {
         let date = local_date_key(now, self.tz_offset);
+        let dedupe_note = if dedupe_stats.fell_back_to_pass_through {
+            " dedupe=pass-through(LLM 失败)".to_string()
+        } else if dedupe_stats.input == dedupe_stats.clusters {
+            String::new()
+        } else {
+            format!(
+                " dedupe={}→{}({} 簇合并, {} 救回)",
+                dedupe_stats.input,
+                dedupe_stats.clusters,
+                dedupe_stats.multi_clusters,
+                dedupe_stats.silent_drops_recovered
+            )
+        };
         let mut s = format!(
-            "## {date} {schedule} — candidates={n_cands} baseline_picks={}\n",
+            "## {date} {schedule} — candidates={n_cands} baseline_picks={}{dedupe_note}\n",
             baseline.len()
         );
         for it in baseline {
@@ -340,6 +404,22 @@ impl GlobalDigestScheduler {
                     .collect::<String>(),
                 it.comment.chars().take(120).collect::<String>(),
             ));
+        }
+        // 把 dedup 多簇 audit 写在末尾,便于诊断
+        let multi_audits: Vec<&ClusterAudit> = dedupe_audits
+            .iter()
+            .filter(|a| !a.merged_event_ids.is_empty())
+            .collect();
+        if !multi_audits.is_empty() {
+            s.push_str("  dedupe-clusters:\n");
+            for a in multi_audits {
+                s.push_str(&format!(
+                    "    {} kept={} merged={}\n",
+                    a.id,
+                    a.kept_event_id,
+                    a.merged_event_ids.join(",")
+                ));
+            }
         }
         s.push('\n');
         self.append_audit(&date, &s);

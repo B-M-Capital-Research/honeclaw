@@ -413,6 +413,54 @@ pub async fn start_server(
                     None
                 }
             };
+
+        // ── Thesis 蒸馏 cron(每 7 天扫一次,独立 task,挂掉不影响 digest)──
+        if let Some(p) = global_digest_provider.clone() {
+            let distill_model = state
+                .core
+                .config
+                .event_engine
+                .global_digest
+                .event_dedupe_model
+                .clone();
+            let prefs_dir_clone = notif_prefs_dir.clone();
+            let portfolio_dir_clone = portfolio_dir.clone();
+            task_handles.push(tokio::spawn(async move {
+                let prefs_storage =
+                    match hone_event_engine::prefs::FilePrefsStorage::new(&prefs_dir_clone) {
+                        Ok(s) => Arc::new(s) as Arc<dyn hone_event_engine::prefs::PrefsProvider>,
+                        Err(e) => {
+                            tracing::warn!(
+                                "thesis distill cron: prefs storage 打开失败: {e},cron 不启动"
+                            );
+                            return;
+                        }
+                    };
+                let portfolio_storage =
+                    Arc::new(hone_memory::PortfolioStorage::new(&portfolio_dir_clone));
+                let sandbox_base = hone_channels::sandbox_base_dir();
+                let distiller =
+                    Arc::new(hone_event_engine::global_digest::LlmThesisDistiller::new(
+                        p,
+                        distill_model.clone(),
+                    ));
+                tracing::info!(
+                    model = %distill_model,
+                    sandbox_base = %sandbox_base.display(),
+                    interval_hours = hone_event_engine::global_digest::DEFAULT_DISTILL_INTERVAL_HOURS,
+                    "thesis distill cron starting"
+                );
+                hone_event_engine::global_digest::distill_cron_loop(
+                    distiller,
+                    prefs_storage,
+                    portfolio_storage,
+                    sandbox_base,
+                    hone_event_engine::global_digest::DEFAULT_DISTILL_INTERVAL_HOURS,
+                )
+                .await;
+            }));
+        }
+
         task_handles.push(tokio::spawn(async move {
             let mut engine = hone_event_engine::EventEngine::new(engine_cfg, fmp_cfg)
                 .with_store_path(events_db)

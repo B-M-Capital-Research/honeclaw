@@ -13,6 +13,7 @@ pub(crate) mod meta;
 pub(crate) mod notification_prefs;
 pub(crate) mod portfolio;
 pub(crate) mod public;
+pub(crate) mod public_digest;
 pub(crate) mod research;
 pub(crate) mod skills;
 pub(crate) mod users;
@@ -113,6 +114,18 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
                 .delete(event_engine_admin::handle_delete_rss_feed),
         )
         .route(
+            "/event-engine/thesis-distill",
+            post(event_engine_admin::handle_distill_thesis_now),
+        )
+        .route(
+            "/event-engine/thesis-context",
+            get(event_engine_admin::handle_get_thesis_context),
+        )
+        .route(
+            "/event-engine/company-profile",
+            get(event_engine_admin::handle_get_actor_company_profile),
+        )
+        .route(
             "/company-profiles/actors",
             get(company_profiles::handle_company_profile_spaces),
         )
@@ -207,6 +220,18 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/image", get(public::handle_public_image))
         .route("/file", get(public::handle_public_file))
         .route("/events", get(public::handle_events))
+        .route(
+            "/digest-context",
+            get(public_digest::handle_get_digest_context),
+        )
+        .route(
+            "/digest-context/refresh",
+            post(public_digest::handle_refresh_digest_context),
+        )
+        .route(
+            "/company-profile",
+            get(public_digest::handle_get_company_profile),
+        )
         .layer(cors)
         .with_state(state.clone());
 
