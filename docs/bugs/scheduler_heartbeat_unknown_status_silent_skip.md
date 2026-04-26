@@ -19,6 +19,15 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 08:01 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6528-6538` 覆盖 `全天原油价格3小时播报`、`持仓重大事件心跳检测`、CAI/小米/TEM 破位、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 与 `TEM大事件心跳监控`；11 条 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`。
+    - `run_id=6529`（`持仓重大事件心跳检测`，`2026-04-26T08:01:05.448274+08:00`）、`6532`（`TEM破位预警`，`2026-04-26T08:01:11.277000+08:00`）与 `6533`（`RKLB异动监控`，`2026-04-26T08:01:11.691249+08:00`）继续落成 `parse_kind=JsonEmptyStatus`、`starts_with_json=false`；其中 `6529` 明明已经输出一段完整 ```json``` `{"type":"noop","reason":"...下一批次检查窗口：08:30。"}`，仍因首包不是 `{` 被吸收到静默 skip。
+    - `run_id=6535`（`ORCL 大事件监控`，`2026-04-26T08:01:24.053354+08:00`）与 `6538`（`TEM大事件心跳监控`，`2026-04-26T08:01:34.709166+08:00`）进一步漂移到 `PlainTextSuppressed`，`raw_preview` 继续是整段价格、时间戳和新闻解释，而不是结构化状态。
+    - `run_id=6530`（`CAI破位预警`）、`6531`（`小米30港元破位预警`）、`6534`（`Monitor_Watchlist_11`）、`6536`（`小米破位预警`）与 `6537`（`ASTS 重大异动心跳监控`）同样统一保留 `starts_with_json=false`；最新整点后窗口仍没有任何一条恢复成“首字符即 `{` 的单段 JSON”样本。
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 08:01:05.448-08:01:34.709` 同批 `HeartbeatDiag` 日志继续统一记录 `starts_with_json=false`；`job=ORCL 大事件监控` 的 `raw_chars=2213`、`job=TEM大事件心跳监控` 的 `raw_chars=2651` 与 `job=ASTS 重大异动心跳监控` 的 `raw_chars=3288` 说明坏态仍覆盖长篇自然语言解释，而不是少量格式噪音。
+    - 结论：到 `2026-04-26 08:01` 为止，heartbeat 最新窗口仍没有任何稳定的纯 JSON 首包样本，并继续在 `JsonEmptyStatus` 与 `PlainTextSuppressed` 两类坏态之间漂移；状态保持 `Fixing`、严重等级维持 `P2`。
   - 2026-04-26 07:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6506-6516` 覆盖 `小米30港元破位预警`、`全天原油价格3小时播报`、小米/CAI/TEM 破位、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控` 与 `持仓重大事件心跳检测`；11 条 heartbeat 再次全部落成 `noop + skipped_noop + delivered=0`。

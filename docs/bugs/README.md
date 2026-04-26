@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-26 07:14 CST
+最后更新：2026-04-26 08:16 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：23
-- 已修复 / 已关闭：53
+- 活跃待修复：24
+- 已修复 / 已关闭：52
 - 历史分析 / 部分止血：4
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -25,6 +25,7 @@
 | --- | --- | --- | --- | --- |
 | Feishu scheduler 部分定时任务已进入执行和工具调用，但长期卡住且没有 `cron_job_runs` 记录 | P1 | Fixing | 2026-04-24 20:00 两个老问题任务（`A股盘后高景气产业链推演`、`美股盘前与持仓新闻综述`）再次进入 `agent.run` 与实际工具调用，但到 20:03 仍没有 `session.persist_assistant` / `done`，`cron_job_runs` 最新记录仍停在 4 月 23 日 | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-23 18:55 用户在“未收到 `.md` 文件”排查会话里仅补一句 `这个`，仍被 `planning_sentence_suppressed` 收口成通用失败 fallback；说明根因已影响简单澄清/追问链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Fixing | 2026-04-26 08:01 `HoneClaw每日使用Tips` 两次 answer 均落成 `reply_chars=0`，最终只发送通用 fallback；`cron_job_runs.run_id=6539` 仍记为 `completed + sent + delivered=1` | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-21 21:02 `OWALERT_PreMarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；正文已落库但用户侧未送达 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
@@ -33,7 +34,7 @@
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-26 03:00 `全天原油价格3小时播报` 仍把 `巴基斯坦方面披露美伊或开启第二轮和平谈判`、`伊朗原油重返供应`、`地缘风险溢价收缩` 写成确定性原因；现有修复仍只覆盖价格一致性 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu scheduler 命中 `skip_signal` 后仍把未发送长文落进 direct session，污染后续上下文 | P2 | New | 2026-04-26 00:01/00:02 的 `TEM`、`RKLB 每日动态监控` 均已落成 `noop + skipped_noop` 且日志明确写“本轮不发送”，但同一 direct session 仍新增两条 assistant final，并把 `sessions.last_message_preview` 顶到未送达的 RKLB 简报 | [feishu_scheduler_noop_reply_persisted_to_direct_session.md](./feishu_scheduler_noop_reply_persisted_to_direct_session.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-26 07:00 最新 11 条 heartbeat 再次全部 `noop + skipped_noop`；`TEM破位预警`、`RKLB异动监控` 仍回到 `JsonEmptyStatus`，`小米破位预警` 还在已有 `data_fetch` 成功时退化成假性“数据获取失败” noop，`ORCL 大事件监控` 继续靠 `ContextOverflowNoop` 兜底 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-26 08:01 最新 11 条 heartbeat 再次全部 `noop + skipped_noop`；`持仓重大事件心跳检测`、`TEM破位预警`、`RKLB异动监控` 继续是 `JsonEmptyStatus`，`ORCL 大事件监控` 与 `TEM大事件心跳监控` 进一步漂移到 `PlainTextSuppressed` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-26 02:30 `小米破位预警` 再次从前一窗口的 `noop` 漂移到 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
@@ -75,7 +76,6 @@
 | 定时任务达到上限后，Agent 未经用户确认就批量删除已有任务 | P1 | Fixed | 2026-04-16 已为 `cron_job remove` 增加显式确认屏障；未确认前只返回候选任务与确认指引，不再直接删除 | [scheduler_task_limit_auto_cleanup_without_confirmation.md](./scheduler_task_limit_auto_cleanup_without_confirmation.md) |
 | 定时任务链路绕过统一输出净化，向用户投递内部思考与未清洗富文本 | P1 | Fixed | 2026-04-16 已为 scheduler 公共出站补统一可见文本净化，并为 Telegram scheduler 补 HTML 公共清洗 | [scheduled_output_sanitization_gap.md](./scheduled_output_sanitization_gap.md) |
 | 成功会话仍把原始 multi-agent transcript 落库到 assistant 历史，污染后续上下文 | P2 | Fixed | 2026-04-16 已让 assistant 持久化只写 `final` 文本，并把工具调用改存到 metadata，避免污染会话索引与 sqlite runtime 预览 | [session_persist_assistant_transcript_pollution.md](./session_persist_assistant_transcript_pollution.md) |
-| Feishu 定时任务在 Answer 阶段返回空回复后，调度台账仍记为 `completed + sent` | P1 | Fixed | 2026-04-16 已通过共享空成功判定修复收口，scheduler 不再发送或记录零字节正文 | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
 | Discord 定时任务在 Answer 阶段返回空回复时被记为成功执行，但最终未向用户送达 | P2 | Fixed | 2026-04-16 已通过共享空成功判定修复收口，不再因为只剩搜索工具调用而把空 answer 视为成功 | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 | Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | Fixed | 2026-04-16 已让 direct scheduler 优先使用绑定 actor 的 `open_id`，并收紧 mobile 识别避免把 `open_id` 误判成手机号 | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Feishu 图片附件会向用户发送内部 skill transcript，并夹带未清洗的中间协议 | P1 | Fixed | 2026-04-16 已让成功持久化统一只写最终可见文本与 tool-call metadata，不再把 runner `context_messages` 原样落库成 transcript | [feishu_attachment_internal_transcript_leak.md](./feishu_attachment_internal_transcript_leak.md) |
