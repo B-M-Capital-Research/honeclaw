@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 17:10 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixing
+- **状态**: Later
 - **证据来源**:
   - 2026-04-26 09:30-09:33 最新真实 scheduler 样本：
     - `session_id=Session_discord__group__g_3a1469549745654468692_3ac_3a1469549746518622371`
@@ -84,6 +84,13 @@
   - “正文为空但保留搜索阶段工具调用”的结果不再被视为有效成功
   - 重试耗尽后会降级成非空兜底文案，因此 Discord scheduler 不再落到 `response_preview=''` 且 `send_failed` 的空回复静默漏发
 - 该修复和 `feishu_direct_empty_reply_false_success.md`、`feishu_scheduler_empty_reply_false_success.md` 共享同一底层根因和回归证明。
+
+## 修复进展（2026-04-26）
+
+- 已进一步把 `empty_success_exhausted` 路径从“非空 fallback 且 `success=true`”改为 `success=false + error=EMPTY_SUCCESS_FALLBACK_MESSAGE`。
+- Discord scheduler 依据 `execute_scheduler_event` 返回的 `error` 决定 `execution_status`；因此后续 Answer 阶段空成功耗尽重试时，应落成 `execution_failed`，不再记为 `completed + sent + delivered=1`。
+- 已更新共享回归测试 `empty_success_with_tool_calls_uses_fallback_after_retries`，验证有工具调用但最终空回复时不再是成功态。
+- 状态调整为 `Later`：共享失败态已修复，不再占活跃修复队列；若真实 Discord scheduler 仍把空回复 fallback 记为 `completed`，再改回 `New`。
 
 ## 2026-04-26 状态回退结论
 

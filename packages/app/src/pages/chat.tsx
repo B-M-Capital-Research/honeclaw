@@ -1,9 +1,12 @@
+// chat.tsx — Hone Public Site Chat (v4 - Styled to match Landing Page)
+
 import { Logo } from "@hone-financial/ui/logo";
 import { Markdown } from "@hone-financial/ui/markdown";
 import {
   createMemo,
   createSignal,
   createEffect,
+  createResource,
   For,
   Match,
   onCleanup,
@@ -13,9 +16,10 @@ import {
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
-import { PublicNav } from "@/components/public-nav";
 import { PasswordSetupGuard } from "@/components/password-setup-guard";
 import { PublicLoginForm } from "@/components/public-login-form";
+import { CONTENT } from "@/lib/public-content";
+import { setLocale, useLocale } from "@/lib/i18n";
 import "./public-site.css";
 import {
   connectPublicEvents,
@@ -41,8 +45,85 @@ import type {
   PublicChatMessage as ChatMessage,
 } from "@/lib/public-chat";
 
+// ── GitHub Star Fetching ─────────────────────────────────────────────────────
+async function fetchGithubStars() {
+  try {
+    const res = await fetch("https://api.github.com/repos/B-M-Capital-Research/honeclaw")
+    const data = await res.json()
+    return data.stargazers_count || "..."
+  } catch (e) {
+    return "..."
+  }
+}
+
+// ── Icons ────────────────────────────────────────────────────────────────────
+const ICONS = {
+  Chat: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  ),
+  Github: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+  ),
+  Youtube: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.016 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.016 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+  ),
+  Bilibili: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.883 0 17.373v-7.36c.036-1.51.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.277 1.277 0 0 1-.388-.933c0-.346.138-.64.414-.88a1.277 1.277 0 0 1 .906-.36c.345 0 .647.127.906.38l2.227 2.12h4.72l2.227-2.12c.27-.253.57-.38.906-.38.365 0 .65.12.853.36.277.24.414.534.414.88 0 .346-.13.653-.387.92zm-12.48 5.387c-.331.03-.593.15-.786.36-.193.21-.29.473-.29.787v3.507c0 .313.097.576.29.786.193.21.455.33.786.36.331-.03.593-.15.786-.36.193-.21.29-.473.29-.786v-3.507c0-.314-.097-.577-.29-.787-.193-.21-.455-.33-.786-.36zm10.707 0c-.331.03-.593.15-.786.36-.193.21-.29.473-.29.787v3.507c0 .313.097.576.29.786.193.21.455.33.786.36.345-.03.607-.15.786-.36.193-.21.29-.473.29-.786v-3.507c0-.314-.097-.577-.29-.787-.193-.21-.455-.33-.786-.36zM18 19.04H6.013c-.113 0-.17.053-.17.16 0 .12.057.18.17.18H18c.113 0 .17-.06.17-.18 0-.107-.057-.16-.17-.16z"/></svg>
+  )
+}
+
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
 const MAX_ATTACHMENTS = 4;
+
+function AnimatedBackground() {
+  return (
+    <div class="animated-bg">
+      <div class="circle circle-1"></div>
+      <div class="circle circle-2"></div>
+      <div class="circle circle-3"></div>
+    </div>
+  )
+}
+
+function Header() {
+  const navigate = useNavigate()
+  const [stars] = createResource(fetchGithubStars)
+  const C = CONTENT.nav
+
+  return (
+    <header class="page-header">
+      <div onClick={() => navigate("/")} class="header-logo">
+        <img src="/logo.svg" alt="Hone" />
+        <span>Hone</span>
+      </div>
+
+      <div class="header-actions">
+        <div class="header-socials mobile-hide">
+          <a href="https://www.youtube.com/@HoneFinancial" target="_blank" class="icon-btn-ghost"><ICONS.Youtube /></a>
+          <a href="https://www.bilibili.com/video/BV1ByXNBGET5/" target="_blank" class="icon-btn-ghost"><ICONS.Bilibili /></a>
+          <a href="https://github.com/B-M-Capital-Research/honeclaw" target="_blank" class="star-badge">
+            <ICONS.Github />
+            <span>{stars() || "..."}</span>
+          </a>
+        </div>
+
+        <div class="divider-v mobile-hide" />
+
+        <div class="lang-switch">
+          <button onClick={() => setLocale("zh")} class={useLocale() === "zh" ? "active" : ""}>中</button>
+          <button onClick={() => setLocale("en")} class={useLocale() === "en" ? "active" : ""}>EN</button>
+        </div>
+
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button onClick={() => navigate("/roadmap")} class="btn-roadmap-nav mobile-hide">
+            {useLocale() === 'zh' ? '产品路线图' : 'Roadmap'}
+          </button>
+          <button onClick={() => navigate("/chat")} class="btn-chat-nav">{C.chat}</button>
+        </div>
+      </div>
+    </header>
+  )
+}
 
 function publicAttachmentUrl(att: PublicChatAttachment): string {
   if (att.previewUrl) return att.previewUrl;
@@ -84,27 +165,14 @@ function renamePasteFile(file: File) {
   });
 }
 
-function formatElapsed(startedAt?: number) {
-  if (!startedAt) return "0s";
-  const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remain = seconds % 60;
-  return `${minutes}m ${remain}s`;
-}
-
-
 function LoadingCard() {
   return (
     <div
       style={{
-        background: "#f8fafc",
         "min-height": "100vh",
-        "padding-top": "56px",
         display: "flex",
         "align-items": "center",
         "justify-content": "center",
-        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
       }}
     >
       <div
@@ -113,44 +181,39 @@ function LoadingCard() {
           width: "100%",
           padding: "0 24px",
           "text-align": "center",
+          position: "relative",
+          "z-index": "10",
         }}
       >
         <div
           style={{
-            padding: "40px 28px",
-            "border-radius": "16px",
-            border: "1px solid rgba(0,0,0,0.08)",
-            background: "#fff",
-            "box-shadow": "0 4px 24px rgba(0,0,0,0.06)",
+            padding: "48px 32px",
+            "border-radius": "24px",
+            border: "1.5px solid #f1f5f9",
+            background: "rgba(255, 255, 255, 0.9)",
+            "backdrop-filter": "blur(10px)",
+            "box-shadow": "0 20px 50px rgba(0,0,0,0.05)",
           }}
         >
           <div
             style={{
-              width: "44px",
-              height: "44px",
+              width: "56px",
+              height: "56px",
               "border-radius": "50%",
-              background: "#f59e0b",
-              "box-shadow": "0 6px 20px rgba(245,158,11,0.28)",
+              background: "#000",
               display: "flex",
               "align-items": "center",
               "justify-content": "center",
-              margin: "0 auto 20px",
+              margin: "0 auto 24px",
             }}
           >
-            <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" />
+            <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" />
           </div>
-          <h1
-            style={{
-              "font-size": "18px",
-              "font-weight": "700",
-              color: "#0f172a",
-              margin: "0 0 8px",
-            }}
-          >
-            正在恢复登录状态
+          <h1 style={{ "font-size": "22px", "font-weight": "800", color: "#0f172a", margin: "0 0 12px" }}>
+            正在恢复对话
           </h1>
-          <p style={{ "font-size": "13px", color: "#94a3b8", margin: "0", "line-height": "1.7" }}>
-            校验当前会话，恢复聊天内容和长连接更新
+          <p style={{ "font-size": "15px", color: "#64748b", margin: "0", "line-height": "1.6" }}>
+            正在校验当前会话并恢复聊天历史
           </p>
         </div>
       </div>
@@ -160,14 +223,14 @@ function LoadingCard() {
 
 function assistantMarkdownClass(extra: string = "") {
   return [
-    "break-words text-[14px] leading-[1.75] text-[#0f172a]",
+    "break-words text-[16px] leading-[1.8] text-[#1e293b]",
     "[&_*]:max-w-full",
-    "[&_p]:my-0 [&_p+*]:mt-2",
-    "[&_strong]:text-[#0f172a] [&_strong]:font-semibold",
-    "[&_pre]:mt-3 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border-0 [&_pre]:shadow-none",
-    "[&_code]:rounded [&_code]:bg-black/[0.06] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[12px] [&_code]:font-[var(--font-mono,'JetBrains_Mono',monospace)]",
-    "[&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5",
-    "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-black/12 [&_blockquote]:pl-3 [&_blockquote]:text-[#64748b]",
+    "[&_p]:my-0 [&_p+*]:mt-3",
+    "[&_strong]:text-[#0f172a] [&_strong]:font-bold",
+    "[&_pre]:mt-4 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-2xl [&_pre]:border-0 [&_pre]:shadow-none",
+    "[&_code]:rounded-lg [&_code]:bg-black/[0.05] [&_code]:px-2 [&_code]:py-1 [&_code]:text-[14px] [&_code]:font-[var(--font-mono,'JetBrains_Mono',monospace)]",
+    "[&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1",
+    "[&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-black/5 [&_blockquote]:pl-4 [&_blockquote]:text-[#64748b] [&_blockquote]:italic",
     extra,
   ].join(" ");
 }
@@ -193,8 +256,7 @@ function AssistantBody(props: { content: string; white?: boolean }) {
               <img
                 src={part.value}
                 alt=""
-                class="hone-assistant-image mt-2 max-w-full cursor-zoom-in rounded-lg"
-                data-testid="assistant-inline-image"
+                class="hone-assistant-image mt-3 max-w-full cursor-zoom-in rounded-xl shadow-sm"
               />
             </Match>
             <Match when={part.type === "text"}>
@@ -221,11 +283,11 @@ function ImageMosaic(props: {
         <div
           style={{
             display: "grid",
-            "grid-template-columns": `repeat(${count() === 2 ? 2 : 2}, 1fr)`,
-            gap: "2px",
-            "border-radius": "12px",
+            "grid-template-columns": `repeat(2, 1fr)`,
+            gap: "4px",
+            "border-radius": "16px",
             overflow: "hidden",
-            "max-width": "380px",
+            "max-width": "420px",
             "aspect-ratio": count() === 2 ? "2 / 1" : "1 / 1",
           }}
         >
@@ -252,7 +314,6 @@ function ImageMosaic(props: {
                     "object-fit": "cover",
                     display: "block",
                   }}
-                  data-testid="user-attachment-image"
                 />
               </div>
             )}
@@ -263,10 +324,10 @@ function ImageMosaic(props: {
       <div
         onClick={() => props.onOpen(0)}
         style={{
-          "border-radius": "12px",
+          "border-radius": "16px",
           overflow: "hidden",
           cursor: "zoom-in",
-          "max-width": "380px",
+          "max-width": "420px",
           "line-height": "0",
           position: "relative",
         }}
@@ -275,7 +336,6 @@ function ImageMosaic(props: {
           src={publicAttachmentUrl(props.images[0]!)}
           alt={props.images[0]!.name}
           style={{ width: "100%", height: "auto", display: "block" }}
-          data-testid="user-attachment-image"
         />
       </div>
     </Show>
@@ -285,44 +345,43 @@ function ImageMosaic(props: {
 function FileCard(props: { file: PublicChatAttachment; inUserBubble?: boolean }) {
   const ext = () => fileExtension(props.file.name);
   const iconBg = () =>
-    props.inUserBubble ? "rgba(255,255,255,0.22)" : "rgba(245,158,11,0.12)";
-  const iconColor = () => (props.inUserBubble ? "#fff" : "#d97706");
+    props.inUserBubble ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.05)";
+  const iconColor = () => (props.inUserBubble ? "#fff" : "#1e293b");
   const textColor = () =>
     props.inUserBubble ? "rgba(255,255,255,0.95)" : "#0f172a";
   const subColor = () =>
-    props.inUserBubble ? "rgba(255,255,255,0.75)" : "#64748b";
+    props.inUserBubble ? "rgba(255,255,255,0.7)" : "#64748b";
   return (
     <div
       style={{
         display: "flex",
         "align-items": "center",
-        gap: "12px",
-        padding: "8px 10px",
+        gap: "14px",
+        padding: "12px 14px",
         background: props.inUserBubble
-          ? "rgba(255,255,255,0.10)"
-          : "rgba(0,0,0,0.02)",
+          ? "rgba(255,255,255,0.12)"
+          : "#fff",
         border: props.inUserBubble
-          ? "1px solid rgba(255,255,255,0.15)"
-          : "1px solid rgba(0,0,0,0.06)",
-        "border-radius": "10px",
-        "min-width": "220px",
+          ? "1.5px solid rgba(255,255,255,0.2)"
+          : "1.5px solid #f1f5f9",
+        "border-radius": "16px",
+        "min-width": "260px",
       }}
-      data-testid="attachment-file-card"
     >
       <div
         style={{
-          width: "40px",
-          height: "40px",
-          "border-radius": "8px",
+          width: "44px",
+          height: "44px",
+          "border-radius": "10px",
           background: iconBg(),
           display: "flex",
           "align-items": "center",
           "justify-content": "center",
           "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-          "font-size": "10px",
-          "font-weight": "700",
+          "font-size": "11px",
+          "font-weight": "800",
           color: iconColor(),
-          "letter-spacing": "0.04em",
+          "letter-spacing": "0.05em",
           "flex-shrink": "0",
         }}
       >
@@ -331,9 +390,8 @@ function FileCard(props: { file: PublicChatAttachment; inUserBubble?: boolean })
       <div style={{ flex: "1", "min-width": "0" }}>
         <div
           style={{
-            "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-            "font-size": "13px",
-            "font-weight": "600",
+            "font-size": "15px",
+            "font-weight": "700",
             color: textColor(),
             "white-space": "nowrap",
             overflow: "hidden",
@@ -346,9 +404,9 @@ function FileCard(props: { file: PublicChatAttachment; inUserBubble?: boolean })
           <div
             style={{
               "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-              "font-size": "11px",
+              "font-size": "12px",
               color: subColor(),
-              "margin-top": "2px",
+              "margin-top": "3px",
             }}
           >
             {formatBytes(props.file.size)}
@@ -382,31 +440,25 @@ function UserBubble(props: {
       style={{
         display: "flex",
         "justify-content": "flex-end",
-        "margin-bottom": "12px",
+        "margin-bottom": "20px",
       }}
     >
       <div
         style={{
-          "max-width": "72%",
-          background: "#f59e0b",
+          "max-width": "80%",
+          background: "#000",
           color: "#fff",
-          "border-radius": "18px 18px 4px 18px",
-          padding: imageOnly() ? "4px" : "11px 16px",
-          "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-          "font-size": "14px",
-          "line-height": "1.65",
-          "box-shadow": "0 2px 8px rgba(245,158,11,0.20)",
+          "border-radius": "24px 24px 4px 24px",
+          padding: imageOnly() ? "6px" : "14px 20px",
+          "font-size": "16px",
+          "line-height": "1.7",
+          "box-shadow": "0 10px 30px rgba(0,0,0,0.1)",
           "white-space": "pre-wrap",
           "word-break": "break-word",
         }}
       >
         <Show when={images().length > 0}>
-          <div
-            style={{
-              "margin-bottom":
-                hasText() || files().length > 0 ? "8px" : "0",
-            }}
-          >
+          <div style={{ "margin-bottom": hasText() || files().length > 0 ? "10px" : "0" }}>
             <ImageMosaic
               images={images()}
               inUserBubble
@@ -415,14 +467,7 @@ function UserBubble(props: {
           </div>
         </Show>
         <Show when={files().length > 0}>
-          <div
-            style={{
-              display: "flex",
-              "flex-direction": "column",
-              gap: "6px",
-              "margin-bottom": hasText() ? "8px" : "0",
-            }}
-          >
+          <div style={{ display: "flex", "flex-direction": "column", gap: "8px", "margin-bottom": hasText() ? "10px" : "0" }}>
             <For each={files()}>
               {(file) => <FileCard file={file} inUserBubble />}
             </For>
@@ -448,62 +493,30 @@ function AssistantBubble(props: {
       style={{
         display: "flex",
         "justify-content": "flex-start",
-        "margin-bottom": "12px",
+        "margin-bottom": "20px",
       }}
     >
       <div
         style={{
-          "max-width": "78%",
-          background: "#fff",
-          border: "1px solid rgba(0,0,0,0.09)",
-          "border-radius": "4px 18px 18px 18px",
-          padding: "12px 16px",
-          "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-          color: "#0f172a",
-          "box-shadow": "0 1px 4px rgba(0,0,0,0.05)",
+          "max-width": "85%",
+          background: "rgba(255, 255, 255, 0.9)",
+          backdrop_filter: "blur(10px)",
+          border: "1.5px solid #f1f5f9",
+          "border-radius": "4px 24px 24px 24px",
+          padding: "16px 20px",
+          color: "#1e293b",
+          "box-shadow": "0 4px 20px rgba(0,0,0,0.02)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            "align-items": "center",
-            gap: "6px",
-            "margin-bottom": "9px",
-          }}
-        >
-          <span
-            style={{
-              width: "7px",
-              height: "7px",
-              "border-radius": "50%",
-              background: "#f59e0b",
-              display: "inline-block",
-              "flex-shrink": "0",
-            }}
-          />
-          <span
-            style={{
-              "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-              "font-size": "11px",
-              "font-weight": "600",
-              "letter-spacing": "0.15em",
-              "text-transform": "uppercase",
-              color: "#64748b",
-            }}
-          >
+        <div style={{ display: "flex", "align-items": "center", gap: "8px", "margin-bottom": "12px" }}>
+          <span style={{ width: "8px", height: "8px", "border-radius": "50%", background: "#f59e0b", display: "inline-block" }} />
+          <span style={{ "font-size": "13px", "font-weight": "800", "letter-spacing": "0.1em", "text-transform": "uppercase", color: "#64748b" }}>
             HONE
           </span>
         </div>
         <AssistantBody content={props.content} />
         <Show when={nonImageAttachments().length > 0}>
-          <div
-            style={{
-              display: "flex",
-              "flex-direction": "column",
-              gap: "6px",
-              "margin-top": "12px",
-            }}
-          >
+          <div style={{ display: "flex", "flex-direction": "column", gap: "8px", "margin-top": "16px" }}>
             <For each={nonImageAttachments()}>
               {(file) => <FileCard file={file} />}
             </For>
@@ -542,178 +555,55 @@ function PendingBubble(props: {
   const terminal = () => props.message.phase === "error";
   const labelText = () => {
     switch (props.message.phase) {
-      case "error":
-        return "HONE 出错了";
-      case "streaming":
-        return "HONE 输出中";
-      case "running":
-        return "HONE 执行中";
-      default:
-        return "HONE 思考中";
+      case "error": return "HONE 出错了";
+      case "streaming": return "HONE 输出中";
+      case "running": return "HONE 执行中";
+      default: return "HONE 思考中";
     }
   };
   const showDots = () => !props.message.content && !terminal();
 
   return (
-    <div
-      class="pub-msg-in"
-      style={{
-        display: "flex",
-        "justify-content": "flex-start",
-        "margin-bottom": "12px",
-      }}
-    >
+    <div class="pub-msg-in" style={{ display: "flex", "justify-content": "flex-start", "margin-bottom": "20px" }}>
       <div
         style={{
-          "max-width": "78%",
-          "min-width": "200px",
+          "max-width": "85%",
+          "min-width": "240px",
           background: "#fff",
-          border: terminal()
-            ? "1px solid rgba(239,68,68,0.22)"
-            : "1px solid rgba(0,0,0,0.09)",
-          "border-radius": "4px 18px 18px 18px",
-          padding: "12px 16px",
-          "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-          color: "#0f172a",
-          "box-shadow": "0 1px 4px rgba(0,0,0,0.05)",
+          border: terminal() ? "2px solid rgba(239,68,68,0.2)" : "1.5px solid #f1f5f9",
+          "border-radius": "4px 24px 24px 24px",
+          padding: "16px 20px",
+          "box-shadow": "0 10px 30px rgba(0,0,0,0.03)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            "align-items": "center",
-            "justify-content": "space-between",
-            gap: "8px",
-            "margin-bottom": props.message.content ? "10px" : "0",
-          }}
-        >
-          <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
-            <span
-              class={
-                props.message.phase === "thinking" ||
-                props.message.phase === "streaming"
-                  ? "pub-pulsedot"
-                  : ""
-              }
-              style={{
-                width: "7px",
-                height: "7px",
-                "border-radius": "50%",
-                display: "inline-block",
-                "flex-shrink": "0",
-                background: terminal() ? "#ef4444" : "#f59e0b",
-              }}
-            />
-            <span
-              style={{
-                "font-size": "11px",
-                "font-weight": "600",
-                "letter-spacing": "0.15em",
-                "text-transform": "uppercase",
-                color: "#64748b",
-              }}
-            >
+        <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", gap: "10px", "margin-bottom": props.message.content ? "12px" : "0" }}>
+          <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+            <span class={props.message.phase === "thinking" || props.message.phase === "streaming" ? "pub-pulsedot" : ""}
+              style={{ width: "8px", height: "8px", "border-radius": "50%", background: terminal() ? "#ef4444" : "#f59e0b" }} />
+            <span style={{ "font-size": "13px", "font-weight": "800", "letter-spacing": "0.1em", "text-transform": "uppercase", color: "#64748b" }}>
               {labelText()}
             </span>
-            <span
-              style={{
-                "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-                "font-size": "10px",
-                color: "rgba(0,0,0,0.20)",
-              }}
-            >
+            <span style={{ "font-family": "var(--font-mono)", "font-size": "12px", color: "rgba(0,0,0,0.2)" }}>
               {elapsed()}s
             </span>
           </div>
-          <Show
-            when={!terminal()}
-            fallback={
-              <button
-                type="button"
-                onClick={props.onDismiss}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "#64748b",
-                  "font-size": "12px",
-                  padding: "0 2px",
-                }}
-              >
-                ✕
-              </button>
-            }
-          >
-            <button
-              type="button"
-              onClick={props.onStop}
-              style={{
-                display: "inline-flex",
-                "align-items": "center",
-                gap: "4px",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "2px 6px",
-                "border-radius": "4px",
-                "font-size": "11px",
-                color: "#64748b",
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(239,68,68,0.08)";
-                e.currentTarget.style.color = "#ef4444";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "none";
-                e.currentTarget.style.color = "#64748b";
-              }}
-            >
-              <span
-                style={{
-                  width: "6px",
-                  height: "6px",
-                  "border-radius": "1px",
-                  background: "currentColor",
-                  display: "inline-block",
-                }}
-              />
-              停止
-            </button>
+          <Show when={!terminal()} fallback={<button onClick={props.onDismiss} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", "font-size": "14px" }}>✕</button>}>
+            <button onClick={props.onStop} class="btn-stop-thinking">停止</button>
           </Show>
         </div>
 
         <Show when={showDots()}>
-          <div style={{ display: "flex", gap: "4px", padding: "4px 0" }}>
-            <span class="pub-dot1" />
-            <span class="pub-dot2" />
-            <span class="pub-dot3" />
+          <div style={{ display: "flex", gap: "6px", padding: "8px 0" }}>
+            <span class="pub-dot1" /><span class="pub-dot2" /><span class="pub-dot3" />
           </div>
         </Show>
 
         <Show when={(props.message.steps?.length ?? 0) > 0}>
-          <ul
-            style={{
-              margin: props.message.content ? "0 0 8px" : "4px 0 0",
-              padding: "0",
-              "list-style": "none",
-              "font-size": "12px",
-              "line-height": "1.7",
-              color: "#64748b",
-            }}
-          >
+          <ul style={{ margin: props.message.content ? "0 0 12px" : "8px 0 0", padding: "0", "list-style": "none", "font-size": "13px", "line-height": "1.8", color: "#64748b" }}>
             <For each={props.message.steps}>
               {(step) => (
-                <li
-                  style={{
-                    display: "flex",
-                    "align-items": "flex-start",
-                    gap: "6px",
-                    "word-break": "break-word",
-                  }}
-                >
-                  <span style={{ color: "#f59e0b", "flex-shrink": "0" }}>•</span>
-                  <span>{step}</span>
+                <li style={{ display: "flex", "align-items": "flex-start", gap: "8px" }}>
+                  <span style={{ color: "#f59e0b" }}>•</span><span>{step}</span>
                 </li>
               )}
             </For>
@@ -721,22 +611,14 @@ function PendingBubble(props: {
         </Show>
 
         <Show when={props.message.content}>
-          <div style={{ "white-space": "pre-wrap", "word-break": "break-word" }}>
+          <div style={{ "white-space": "pre-wrap" }}>
             <AssistantBody content={props.message.content} />
-            <Show when={props.message.phase === "streaming"}>
-              <span class="pub-cursor" />
-            </Show>
+            <Show when={props.message.phase === "streaming"}><span class="pub-cursor" /></Show>
           </div>
         </Show>
 
         <Show when={terminal()}>
-          <div
-            style={{
-              "font-size": "13px",
-              color: "#ef4444",
-              "margin-top": "4px",
-            }}
-          >
+          <div style={{ "font-size": "14px", color: "#ef4444", "margin-top": "6px", "font-weight": "600" }}>
             {props.message.statusText || "请求出错，请重试。"}
           </div>
         </Show>
@@ -745,132 +627,27 @@ function PendingBubble(props: {
   );
 }
 
-function AttachPreview(props: {
-  items: PublicChatAttachment[];
-  onRemove: (index: number) => void;
-}) {
+function AttachPreview(props: { items: PublicChatAttachment[]; onRemove: (index: number) => void; }) {
   return (
     <Show when={props.items.length > 0}>
-      <div
-        style={{
-          display: "flex",
-          gap: "8px",
-          padding: "10px 14px",
-          "flex-wrap": "wrap",
-          "border-bottom": "1px solid rgba(0,0,0,0.05)",
-        }}
-        data-testid="composer-attach-preview"
-      >
+      <div style={{ display: "flex", gap: "10px", padding: "12px 16px", "flex-wrap": "wrap", "border-bottom": "1.5px solid #f8fafc" }}>
         <For each={props.items}>
           {(item, index) => (
-            <div style={{ position: "relative", "flex-shrink": "0" }}>
-              <Show
-                when={item.kind === "image"}
-                fallback={
-                  <div
-                    style={{
-                      width: "180px",
-                      height: "64px",
-                      padding: "0 10px",
-                      display: "flex",
-                      "align-items": "center",
-                      gap: "10px",
-                      "border-radius": "8px",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                      background: "rgba(0,0,0,0.02)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        "border-radius": "6px",
-                        background: "rgba(245,158,11,0.12)",
-                        display: "flex",
-                        "align-items": "center",
-                        "justify-content": "center",
-                        "font-family":
-                          "var(--font-mono, 'JetBrains Mono', monospace)",
-                        "font-size": "10px",
-                        "font-weight": "700",
-                        color: "#d97706",
-                        "flex-shrink": "0",
-                      }}
-                    >
-                      {fileExtension(item.name)}
-                    </div>
-                    <div style={{ flex: "1", "min-width": "0" }}>
-                      <div
-                        style={{
-                          "font-size": "12px",
-                          "font-weight": "600",
-                          color: "#0f172a",
-                          "white-space": "nowrap",
-                          overflow: "hidden",
-                          "text-overflow": "ellipsis",
-                        }}
-                      >
-                        {item.name}
-                      </div>
-                      <div
-                        style={{
-                          "font-family":
-                            "var(--font-mono, 'JetBrains Mono', monospace)",
-                          "font-size": "10px",
-                          color: "#64748b",
-                        }}
-                      >
-                        {formatBytes(item.size)}
-                      </div>
-                    </div>
+            <div style={{ position: "relative" }}>
+              <Show when={item.kind === "image"} fallback={
+                <div style={{ width: "200px", height: "72px", padding: "0 12px", display: "flex", "align-items": "center", gap: "12px", "border-radius": "12px", border: "1.5px solid #f1f5f9", background: "#fcfdfe" }}>
+                  <div style={{ width: "40px", height: "40px", "border-radius": "8px", background: "rgba(245,158,11,0.1)", display: "flex", "align-items": "center", "justify-content": "center", "font-family": "var(--font-mono)", "font-size": "11px", "font-weight": "800", color: "#d97706" }}>{fileExtension(item.name)}</div>
+                  <div style={{ flex: "1", "min-width": "0" }}>
+                    <div style={{ "font-size": "13px", "font-weight": "700", color: "#0f172a", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{item.name}</div>
+                    <div style={{ "font-family": "var(--font-mono)", "font-size": "11px", color: "#94a3b8" }}>{formatBytes(item.size)}</div>
                   </div>
-                }
-              >
-                <div
-                  style={{
-                    width: "64px",
-                    height: "64px",
-                    "border-radius": "8px",
-                    overflow: "hidden",
-                    border: "1px solid rgba(0,0,0,0.06)",
-                  }}
-                >
-                  <img
-                    src={publicAttachmentUrl(item)}
-                    alt={item.name}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      "object-fit": "cover",
-                    }}
-                  />
+                </div>
+              }>
+                <div style={{ width: "72px", height: "72px", "border-radius": "12px", overflow: "hidden", border: "1.5px solid #f1f5f9" }}>
+                  <img src={publicAttachmentUrl(item)} alt={item.name} style={{ width: "100%", height: "100%", "object-fit": "cover" }} />
                 </div>
               </Show>
-              <button
-                type="button"
-                onClick={() => props.onRemove(index())}
-                aria-label="移除附件"
-                style={{
-                  position: "absolute",
-                  top: "-6px",
-                  right: "-6px",
-                  width: "20px",
-                  height: "20px",
-                  "border-radius": "10px",
-                  background: "#0f172a",
-                  color: "#fff",
-                  border: "2px solid #fff",
-                  cursor: "pointer",
-                  "font-size": "11px",
-                  "line-height": "1",
-                  display: "flex",
-                  "align-items": "center",
-                  "justify-content": "center",
-                  "box-shadow": "0 2px 6px rgba(0,0,0,0.2)",
-                }}
-              >
-                ✕
-              </button>
+              <button onClick={() => props.onRemove(index())} style={{ position: "absolute", top: "-8px", right: "-8px", width: "24px", height: "24px", "border-radius": "12px", background: "#000", color: "#fff", border: "2.5px solid #fff", cursor: "pointer", "font-size": "12px", display: "flex", "align-items": "center", "justify-content": "center", "box-shadow": "0 4px 10px rgba(0,0,0,0.2)" }}>✕</button>
             </div>
           )}
         </For>
@@ -879,173 +656,35 @@ function AttachPreview(props: {
   );
 }
 
-function AttachMenu(props: {
-  open: boolean;
-  onClose: () => void;
-  onPickImage: () => void;
-  onPickFile: () => void;
-}) {
+function AttachMenu(props: { open: boolean; onClose: () => void; onPickImage: () => void; onPickFile: () => void; }) {
   return (
     <Show when={props.open}>
       <div class="pub-attach-backdrop" onClick={props.onClose} />
-      <div class="pub-attach-menu" data-testid="composer-attach-menu">
-        <div class="pub-attach-sheet-handle" aria-hidden="true" />
-        <button
-          type="button"
-          class="pub-attach-item"
-          data-testid="composer-pick-image"
-          onClick={() => {
-            props.onPickImage();
-            props.onClose();
-          }}
-        >
-          <span class="pub-attach-icon" aria-hidden="true">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="3" y="5" width="18" height="14" rx="2.5" />
-              <circle cx="8.5" cy="10" r="1.5" />
-              <path d="M21 15l-5-5-8 9" />
-            </svg>
+      <div class="pub-attach-menu" style={{ "border-radius": "20px", padding: "8px", "min-width": "240px", bottom: "80px", "box-shadow": "0 20px 50px rgba(0,0,0,0.15)" }}>
+        <button type="button" class="pub-attach-item" onClick={() => { props.onPickImage(); props.onClose(); }}>
+          <span class="pub-attach-icon" style={{ "background": "#f1f5f9" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="8.5" cy="10" r="1.5" /><path d="M21 15l-5-5-8 9" /></svg>
           </span>
-          <span class="pub-attach-label">
-            <span class="pub-attach-label-title">图片</span>
-            <span class="pub-attach-label-sub">照片与截图</span>
-          </span>
+          <span class="pub-attach-label"><span class="pub-attach-label-title" style={{ "font-size": "15px" }}>图片</span><span class="pub-attach-label-sub">照片与截图</span></span>
         </button>
-        <button
-          type="button"
-          class="pub-attach-item"
-          data-testid="composer-pick-file"
-          onClick={() => {
-            props.onPickFile();
-            props.onClose();
-          }}
-        >
-          <span class="pub-attach-icon" aria-hidden="true">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
-              <path d="M14 3v5h5" />
-              <path d="M9 13h6M9 17h4" />
-            </svg>
+        <button type="button" class="pub-attach-item" onClick={() => { props.onPickFile(); props.onClose(); }}>
+          <span class="pub-attach-icon" style={{ "background": "#f1f5f9" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h4" /></svg>
           </span>
-          <span class="pub-attach-label">
-            <span class="pub-attach-label-title">文件</span>
-            <span class="pub-attach-label-sub">PDF · 文档 · 其他</span>
-          </span>
+          <span class="pub-attach-label"><span class="pub-attach-label-title" style={{ "font-size": "15px" }}>文件</span><span class="pub-attach-label-sub">PDF · 文档 · 其他</span></span>
         </button>
-      </div>
-    </Show>
-  );
-}
-
-function Lightbox(props: {
-  images: PublicChatAttachment[];
-  index: number;
-  onClose: () => void;
-  onNav: (delta: number) => void;
-}) {
-  createEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
-      if (event.key === "ArrowLeft") props.onNav(-1);
-      if (event.key === "ArrowRight") props.onNav(1);
-    };
-    window.addEventListener("keydown", handler);
-    onCleanup(() => window.removeEventListener("keydown", handler));
-  });
-
-  const image = () => props.images[props.index];
-
-  return (
-    <Show when={image()}>
-      <div
-        onClick={props.onClose}
-        style={{
-          position: "fixed",
-          inset: "0",
-          background: "rgba(15,23,42,0.92)",
-          "z-index": "1000",
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "center",
-          padding: "40px",
-          cursor: "zoom-out",
-        }}
-        data-testid="chat-lightbox"
-      >
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onClose();
-          }}
-          aria-label="关闭"
-          style={{
-            position: "absolute",
-            top: "20px",
-            right: "20px",
-            width: "40px",
-            height: "40px",
-            "border-radius": "20px",
-            background: "rgba(255,255,255,0.10)",
-            border: "none",
-            cursor: "pointer",
-            color: "#fff",
-            "font-size": "20px",
-            display: "flex",
-            "align-items": "center",
-            "justify-content": "center",
-          }}
-        >
-          ✕
-        </button>
-        <img
-          src={publicAttachmentUrl(image()!)}
-          alt={image()!.name}
-          onClick={(event) => event.stopPropagation()}
-          style={{
-            "max-width": "90%",
-            "max-height": "90%",
-            "object-fit": "contain",
-            "border-radius": "8px",
-            "box-shadow": "0 10px 40px rgba(0,0,0,0.6)",
-          }}
-        />
       </div>
     </Show>
   );
 }
 
 function Composer(props: {
-  draft: string;
-  onDraftChange: (v: string) => void;
-  attachments: PublicChatAttachment[];
-  onRemoveAttachment: (index: number) => void;
+  draft: string; onDraftChange: (v: string) => void;
+  attachments: PublicChatAttachment[]; onRemoveAttachment: (index: number) => void;
   onPickFiles: (files: File[], kind: "image" | "file") => void;
-  uploadError: string;
-  onDismissUploadError: () => void;
-  uploading: boolean;
-  onSend: () => void;
-  onStop: () => void;
-  isSending: boolean;
-  remaining: number | undefined;
+  uploadError: string; onDismissUploadError: () => void;
+  uploading: boolean; onSend: () => void; onStop: () => void;
+  isSending: boolean; remaining: number | undefined;
 }) {
   const [focused, setFocused] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -1053,278 +692,31 @@ function Composer(props: {
   let imgInputRef: HTMLInputElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
 
-  const canSend = () =>
-    !props.isSending &&
-    !props.uploading &&
-    (!!props.draft.trim() || props.attachments.length > 0) &&
-    (props.remaining === undefined || props.remaining > 0);
+  const canSend = () => !props.isSending && !props.uploading && (!!props.draft.trim() || props.attachments.length > 0) && (props.remaining === undefined || props.remaining > 0);
 
-  createEffect(() => {
-    if (!props.isSending && taRef) taRef.focus();
-  });
-
-  const onKey = (e: KeyboardEvent) => {
-    if (e.isComposing) return;
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      if (canSend()) props.onSend();
-    }
-  };
-
-  const onPaste = (e: ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items || items.length === 0) return;
-    const images: File[] = [];
-    const others: File[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]!;
-      if (item.kind !== "file") continue;
-      const file = item.getAsFile();
-      if (!file) continue;
-      // Pasted screenshots often come through with an empty or generic
-      // filename; stamp a readable one so history/preview/upload are clear.
-      const named =
-        file.name && file.name !== "image.png"
-          ? file
-          : renamePasteFile(file);
-      if (named.type.startsWith("image/")) images.push(named);
-      else others.push(named);
-    }
-    if (images.length === 0 && others.length === 0) return;
-    e.preventDefault();
-    if (images.length > 0) props.onPickFiles(images, "image");
-    if (others.length > 0) props.onPickFiles(others, "file");
-  };
+  createEffect(() => { if (!props.isSending && taRef) taRef.focus(); });
 
   return (
-    <div
-      style={{
-        padding: "8px 20px 16px",
-        "border-top": "1px solid rgba(0,0,0,0.08)",
-        background: "#fff",
-        "flex-shrink": "0",
-        position: "relative",
-      }}
-    >
-      <input
-        ref={imgInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        style={{ display: "none" }}
-        data-testid="composer-image-input"
-        onChange={(event) => {
-          const files = event.currentTarget.files
-            ? Array.from(event.currentTarget.files)
-            : [];
-          event.currentTarget.value = "";
-          if (files.length) props.onPickFiles(files, "image");
-        }}
-      />
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        style={{ display: "none" }}
-        data-testid="composer-file-input"
-        onChange={(event) => {
-          const files = event.currentTarget.files
-            ? Array.from(event.currentTarget.files)
-            : [];
-          event.currentTarget.value = "";
-          if (files.length) props.onPickFiles(files, "file");
-        }}
-      />
+    <div style={{ padding: "16px 24px 32px", background: "transparent", "flex-shrink": "0", position: "relative", "z-index": "20" }}>
+      <input ref={imgInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "image"); }} />
+      <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "file"); }} />
 
-      <AttachMenu
-        open={menuOpen()}
-        onClose={() => setMenuOpen(false)}
-        onPickImage={() => imgInputRef?.click()}
-        onPickFile={() => fileInputRef?.click()}
-      />
+      <AttachMenu open={menuOpen()} onClose={() => setMenuOpen(false)} onPickImage={() => imgInputRef?.click()} onPickFile={() => fileInputRef?.click()} />
 
-      <Show when={props.uploadError}>
-        <div
-          style={{
-            margin: "0 0 6px",
-            padding: "8px 12px",
-            "border-radius": "8px",
-            border: "1px solid rgba(239,68,68,0.20)",
-            background: "rgba(239,68,68,0.05)",
-            "font-size": "12px",
-            color: "#ef4444",
-            display: "flex",
-            "justify-content": "space-between",
-            "align-items": "center",
-            gap: "12px",
-          }}
-          data-testid="composer-upload-error"
-        >
-          <span>{props.uploadError}</span>
-          <button
-            type="button"
-            onClick={props.onDismissUploadError}
-            aria-label="关闭错误"
-            style={{
-              background: "none",
-              border: "none",
-              color: "#ef4444",
-              cursor: "pointer",
-              "font-size": "12px",
-            }}
-          >
-            ✕
+      <div style={{ position: "relative", "max-width": "900px", margin: "0 auto", "border-radius": "28px", border: focused() ? "2px solid #000" : "2px solid #f1f5f9", background: "#fff", "box-shadow": focused() ? "0 20px 60px rgba(0,0,0,0.08)" : "0 10px 30px rgba(0,0,0,0.03)", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
+        <AttachPreview items={props.attachments} onRemove={props.onRemoveAttachment} />
+        <div style={{ display: "flex", "align-items": "flex-end", gap: "8px", padding: "8px 12px" }}>
+          <button type="button" class="pub-attach-btn" style={{ width: "48px", height: "48px" }} onClick={() => setMenuOpen(!menuOpen())}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" /></svg>
+          </button>
+          <textarea ref={taRef} rows={1} placeholder={props.remaining === 0 ? "今日额度已用完" : "输入问题，开始投研纪律对话..."} value={props.draft} disabled={props.isSending} onInput={(e) => props.onDraftChange(e.currentTarget.value)}
+            onKeyDown={(e) => { if (!e.isComposing && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend()) props.onSend(); } }}
+            onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+            style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "12px 8px", "font-size": "16px", "font-weight": "600", "line-height": "1.6", color: "#0f172a", "max-height": "200px", "min-height": "48px" }} />
+          <button type="button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "48px", height: "48px", "border-radius": "16px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", transition: "all 0.2s" }}>
+            <svg viewBox="0 0 20 20" width="20" height="20" fill={canSend() ? "white" : "#94a3b8"}><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
           </button>
         </div>
-      </Show>
-
-      <div
-        style={{
-          position: "relative",
-          "border-radius": "20px",
-          border: focused()
-            ? "1px solid #f59e0b"
-            : "1px solid rgba(0,0,0,0.10)",
-          background: "#fff",
-          "box-shadow": focused()
-            ? "0 4px 20px rgba(245,158,11,0.12)"
-            : "0 2px 8px rgba(0,0,0,0.05)",
-          transition: "border-color 0.2s, box-shadow 0.2s",
-          overflow: "hidden",
-        }}
-      >
-        <AttachPreview
-          items={props.attachments}
-          onRemove={props.onRemoveAttachment}
-        />
-
-        <div
-          style={{
-            display: "flex",
-            "align-items": "flex-end",
-            gap: "4px",
-            padding: "4px 6px 4px 4px",
-          }}
-        >
-          <button
-            type="button"
-            class="pub-attach-btn"
-            onClick={() => setMenuOpen(!menuOpen())}
-            aria-label="附件"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen()}
-            data-open={menuOpen() ? "true" : "false"}
-            data-testid="composer-attach-button"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
-
-          <textarea
-            ref={taRef}
-            rows={1}
-            placeholder={
-              props.remaining === 0 ? "今日额度已用完" : "消息..."
-            }
-            value={props.draft}
-            disabled={props.isSending}
-            onInput={(e) => props.onDraftChange(e.currentTarget.value)}
-            onKeyDown={onKey}
-            onPaste={onPaste}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            style={{
-              flex: "1",
-              resize: "none",
-              border: "none",
-              outline: "none",
-              background: "transparent",
-              padding: "10px 6px",
-              "font-family":
-                "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-              "font-size": "14px",
-              "line-height": "1.55",
-              color: "#0f172a",
-              "max-height": "160px",
-              "min-height": "38px",
-            }}
-          />
-
-          <button
-            type="button"
-            onClick={() => canSend() && props.onSend()}
-            disabled={!canSend()}
-            aria-label="发送"
-            data-testid="composer-send-button"
-            style={{
-              width: "38px",
-              height: "38px",
-              "border-radius": "10px",
-              background: canSend() ? "#f59e0b" : "rgba(0,0,0,0.07)",
-              border: "none",
-              cursor: canSend() ? "pointer" : "default",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-              transition: "all 0.2s",
-              "flex-shrink": "0",
-            }}
-          >
-            <svg
-              viewBox="0 0 20 20"
-              width="16"
-              height="16"
-              fill={canSend() ? "white" : "rgba(0,0,0,0.25)"}
-            >
-              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          "justify-content": "space-between",
-          "margin-top": "6px",
-          padding: "0 6px",
-        }}
-      >
-        <span style={{ "font-size": "10px", color: "rgba(0,0,0,0.30)" }}>
-          Shift + Enter 换行 · 拖拽或粘贴图片上传
-        </span>
-        <Show when={props.uploading}>
-          <span style={{ "font-size": "10px", color: "#f59e0b" }}>
-            正在上传附件…
-          </span>
-        </Show>
-        <Show when={props.isSending}>
-          <button
-            type="button"
-            onClick={props.onStop}
-            style={{
-              padding: "2px 8px",
-              "border-radius": "5px",
-              border: "1px solid rgba(0,0,0,0.10)",
-              background: "#fff",
-              "font-size": "10px",
-              color: "#64748b",
-              cursor: "pointer",
-            }}
-          >
-            停止
-          </button>
-        </Show>
       </div>
     </div>
   );
@@ -1338,812 +730,160 @@ export default function PublicChatPage() {
   const [draft, setDraft] = createSignal("");
   const [sendError, setSendError] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
-  const [pendingAttachments, setPendingAttachments] = createStore<
-    PublicChatAttachment[]
-  >([]);
+  const [pendingAttachments, setPendingAttachments] = createStore<PublicChatAttachment[]>([]);
   const [uploadError, setUploadError] = createSignal("");
   const [uploading, setUploading] = createSignal(false);
-  const [lightbox, setLightbox] = createSignal<{
-    images: PublicChatAttachment[];
-    index: number;
-  } | null>(null);
-  const [dragActive, setDragActive] = createSignal(false);
-  const [sessionInfo, setSessionInfo] = createSignal<{
-    userId: string;
-    remainingToday: number;
-    dailyLimit: number;
-  } | null>(null);
+  const [lightbox, setLightbox] = createSignal<{ images: PublicChatAttachment[]; index: number; } | null>(null);
+  const [sessionInfo, setSessionInfo] = createSignal<{ userId: string; remainingToday: number; dailyLimit: number; } | null>(null);
   let eventSource: EventSource | null = null;
   let activeController: AbortController | null = null;
   let scrollRef: HTMLDivElement | undefined;
   let sessionSyncGeneration = 0;
 
-  const isAuthExpiredError = (error: unknown) =>
-    error instanceof Error && /401|未登录|过期/.test(error.message);
-
-  const scrollToBottom = () => {
-    requestAnimationFrame(() => {
-      if (!scrollRef) return;
-      scrollRef.scrollTop = scrollRef.scrollHeight;
-    });
-  };
-
-  const findMessageIndex = (id: string) =>
-    messages.findIndex((message) => message.id === id);
-
-  const clearMessages = () => {
-    setMessages(reconcile([], { key: "id" }));
-  };
-
-  const appendMessage = (message: ChatMessage) => {
-    setMessages(messages.length, message);
-  };
-
-  const appendMessages = (...nextMessages: ChatMessage[]) => {
-    const start = messages.length;
-    nextMessages.forEach((message, offset) => {
-      setMessages(start + offset, message);
-    });
-  };
-
-  const replaceHistoryMessages = (nextMessages: ChatMessage[]) => {
-    setMessages(reconcile(nextMessages, { key: "id" }));
-  };
-
-  const removeMessageById = (id: string) => {
-    setMessages(
-      reconcile(
-        messages.filter((message) => message.id !== id),
-        { key: "id" },
-      ),
-    );
-  };
-
-  const patchMessageAtIndex = (index: number, patch: Partial<ChatMessage>) => {
-    const current = messages[index];
-    if (!current) return;
-
-    if ("content" in patch && patch.content !== current.content) {
-      setMessages(index, "content", patch.content ?? "");
-    }
-    if ("phase" in patch && patch.phase !== current.phase) {
-      setMessages(index, "phase", patch.phase);
-    }
-    if ("statusText" in patch && patch.statusText !== current.statusText) {
-      setMessages(index, "statusText", patch.statusText);
-    }
-    if ("startedAt" in patch && patch.startedAt !== current.startedAt) {
-      setMessages(index, "startedAt", patch.startedAt);
-    }
-    if ("steps" in patch && patch.steps !== current.steps) {
-      setMessages(index, "steps", patch.steps);
-    }
-    if ("attachments" in patch && patch.attachments !== current.attachments) {
-      setMessages(index, "attachments", patch.attachments);
-    }
-  };
-
-  const patchMessageById = (id: string, patch: Partial<ChatMessage>) => {
-    const index = findMessageIndex(id);
-    if (index < 0) return;
-    patchMessageAtIndex(index, patch);
-  };
-
-  const applySessionInfo = (user: PublicAuthUserInfo) => {
-    setSessionInfo({
-      userId: user.user_id,
-      remainingToday: user.remaining_today,
-      dailyLimit: user.daily_limit,
-    });
-    setCurrentUser(user);
-  };
+  const scrollToBottom = () => { requestAnimationFrame(() => { if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight; }); };
 
   const restoreSession = async () => {
     const generation = ++sessionSyncGeneration;
     try {
       const user = await getPublicAuthMe();
       if (generation !== sessionSyncGeneration) return;
-      applySessionInfo(user);
+      setSessionInfo({ userId: user.user_id, remainingToday: user.remaining_today, dailyLimit: user.daily_limit });
+      setCurrentUser(user);
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
-      replaceHistoryMessages(toPublicChatMessages(history));
-      // Transition to "ready" only after history is loaded so the UI
-      // doesn't flash an empty chat view while messages are still loading.
-      // 首次登录未设密码用户落到 needs_password,聊天 UI 仍渲染但被 guard 覆盖。
+      setMessages(reconcile(toPublicChatMessages(history), { key: "id" }));
       setAuthState(user.has_password ? "ready" : "needs_password");
-      await ensurePushEvents();
-      if (generation !== sessionSyncGeneration) return;
       scrollToBottom();
-    } catch (error) {
-      if (generation !== sessionSyncGeneration) return;
-      setSessionInfo(null);
-      setCurrentUser(null);
-      clearMessages();
+    } catch {
       setAuthState("logged_out");
     }
   };
 
-  const publicChatView = () => resolvePublicChatView(authState());
-
-  const ensurePushEvents = async () => {
-    if (eventSource) return;
-    let nextEventSource: EventSource | null = null;
-    try {
-      nextEventSource = await connectPublicEvents();
-      nextEventSource.addEventListener("scheduled_message", (event) => {
-        const data = JSON.parse(event.data || "{}") as { text?: string };
-        if (!data.text?.trim()) return;
-        appendMessage({
-          id: messageId(),
-          role: "assistant",
-          content: data.text ?? "",
-          phase: "done",
-          steps: [],
-        });
-        scrollToBottom();
-      });
-      nextEventSource.addEventListener("push_message", (event) => {
-        const data = JSON.parse(event.data || "{}") as { text?: string };
-        if (!data.text?.trim()) return;
-        appendMessage({
-          id: messageId(),
-          role: "assistant",
-          content: data.text ?? "",
-          phase: "done",
-          steps: [],
-        });
-        scrollToBottom();
-      });
-      nextEventSource.onerror = () => {
-        nextEventSource?.close();
-        if (eventSource === nextEventSource) {
-          eventSource = null;
-        }
-      };
-      eventSource = nextEventSource;
-    } catch {
-      nextEventSource?.close();
-      if (eventSource === nextEventSource) {
-        eventSource = null;
-      }
-    }
-  };
-
-  // Called after a send finishes (success OR error OR abort). We intentionally
-  // DO NOT re-fetch history here: the SSE stream already delivered the full
-  // assistant content into local state, and history IDs (hash-based, derived
-  // from index+role+content) don't match the UUIDs on the locally-appended
-  // user/assistant pair. A reconcile(history) would blow away the bubbles the
-  // user just saw — which is exactly the "占位符突然消失" bug that showed up
-  // when the backend hadn't finished persisting the round yet.
-  //
-  // Only refresh the quota/session strip. If the backend pushes or schedules
-  // a later message, ensurePushEvents() handles it. A hard refresh via page
-  // reload still goes through restoreSession() which DOES re-pull history.
-  const refreshSessionAfterSend = async () => {
-    const generation = ++sessionSyncGeneration;
-    try {
-      const user = await getPublicAuthMe();
-      if (generation !== sessionSyncGeneration) return;
-      applySessionInfo(user);
-      if (!eventSource) {
-        await ensurePushEvents();
-      }
-    } catch (error) {
-      if (generation !== sessionSyncGeneration) return;
-      if (isAuthExpiredError(error)) {
-        setSessionInfo(null);
-        setCurrentUser(null);
-        clearMessages();
-        setAuthState("logged_out");
-        return;
-      }
-      if (error instanceof Error) {
-        setSendError(error.message);
-      }
-    }
-  };
-
-  onMount(() => {
-    void restoreSession();
-  });
-
-  onCleanup(() => {
-    eventSource?.close();
-    activeController?.abort();
-  });
-
-  createEffect(() => {
-    messages.length;
-    scrollToBottom();
-  });
-
-  const handleLogin = async (user: PublicAuthUserInfo) => {
-    applySessionInfo(user);
-    await restoreSession();
-  };
-
-  const handleLogout = async () => {
-    activeController?.abort();
-    activeController = null;
-    eventSource?.close();
-    eventSource = null;
-    await publicLogout();
-    clearMessages();
-    setDraft("");
-    setSendError("");
-    setSessionInfo(null);
-    setCurrentUser(null);
-    setAuthState("logged_out");
-  };
-
-  const appendAssistantStep = (messageIdValue: string, step: string) => {
-    const normalized = step.trim();
-    if (!normalized) return;
-    const index = findMessageIndex(messageIdValue);
-    if (index < 0) return;
-    const steps = messages[index]?.steps ?? [];
-    if (steps.includes(normalized)) return;
-    patchMessageAtIndex(index, { steps: [...steps, normalized] });
-  };
-
-  const revokePreviewUrl = (att: PublicChatAttachment) => {
-    if (att.previewUrl) {
-      try {
-        URL.revokeObjectURL(att.previewUrl);
-      } catch {
-        /* noop */
-      }
-    }
-  };
-
-  const clearPendingAttachments = () => {
-    for (const att of pendingAttachments) revokePreviewUrl(att);
-    setPendingAttachments(reconcile([], { key: "path" }));
-  };
-
-  const handlePickFiles = async (files: File[], _kind: "image" | "file") => {
-    if (!files.length) return;
-    setUploadError("");
-    const room = MAX_ATTACHMENTS - pendingAttachments.length;
-    if (room <= 0) {
-      setUploadError(`最多只能附加 ${MAX_ATTACHMENTS} 个文件`);
-      return;
-    }
-    const accepted = files.slice(0, room);
-    if (files.length > room) {
-      setUploadError(`最多只能附加 ${MAX_ATTACHMENTS} 个文件，已截断多余项`);
-    }
-
-    const previewStart = pendingAttachments.length;
-    const previews: PublicChatAttachment[] = accepted.map((file) => ({
-      path: `__uploading__${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`,
-      name: file.name,
-      kind: classifyKind(file),
-      size: file.size,
-      previewUrl: file.type.startsWith("image/")
-        ? URL.createObjectURL(file)
-        : undefined,
-    }));
-    previews.forEach((preview, offset) => {
-      setPendingAttachments(previewStart + offset, preview);
-    });
-
-    setUploading(true);
-    try {
-      const uploaded = await uploadPublicAttachments(accepted);
-      uploaded.forEach((item, offset) => {
-        const existing = pendingAttachments[previewStart + offset];
-        setPendingAttachments(previewStart + offset, {
-          path: item.path,
-          name: item.name,
-          kind: item.kind,
-          size: item.size,
-          previewUrl: existing?.previewUrl,
-        });
-      });
-      if (uploaded.length < accepted.length) {
-        // Trim trailing previews whose upload was rejected silently.
-        for (let i = accepted.length - 1; i >= uploaded.length; i--) {
-          const idx = previewStart + i;
-          const stale = pendingAttachments[idx];
-          if (stale) revokePreviewUrl(stale);
-          setPendingAttachments(
-            reconcile(
-              [...pendingAttachments].filter((_, j) => j !== idx),
-              { key: "path" },
-            ),
-          );
-        }
-      }
-    } catch (error) {
-      for (let i = accepted.length - 1; i >= 0; i--) {
-        const idx = previewStart + i;
-        const stale = pendingAttachments[idx];
-        if (stale) revokePreviewUrl(stale);
-      }
-      setPendingAttachments(
-        reconcile(
-          pendingAttachments.slice(0, previewStart),
-          { key: "path" },
-        ),
-      );
-      setUploadError(
-        error instanceof Error ? error.message : "上传失败，请重试",
-      );
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleRemoveAttachment = (index: number) => {
-    const target = pendingAttachments[index];
-    if (!target) return;
-    revokePreviewUrl(target);
-    setPendingAttachments(
-      reconcile(
-        pendingAttachments.filter((_, i) => i !== index),
-        { key: "path" },
-      ),
-    );
-  };
-
-  const handleOpenLightbox = (
-    images: PublicChatAttachment[],
-    index: number,
-  ) => {
-    if (!images.length) return;
-    setLightbox({ images, index });
-  };
-
-  const handleNavLightbox = (delta: number) => {
-    const current = lightbox();
-    if (!current) return;
-    const next =
-      (current.index + delta + current.images.length) % current.images.length;
-    setLightbox({ images: current.images, index: next });
-  };
-
-  const handleDragEnter = (event: DragEvent) => {
-    if (!event.dataTransfer?.types?.includes("Files")) return;
-    event.preventDefault();
-    setDragActive(true);
-  };
-
-  const handleDragOver = (event: DragEvent) => {
-    if (!event.dataTransfer?.types?.includes("Files")) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  };
-
-  const handleDragLeave = (event: DragEvent) => {
-    if (event.currentTarget === event.target) {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (event: DragEvent) => {
-    if (!event.dataTransfer?.files?.length) return;
-    event.preventDefault();
-    setDragActive(false);
-    const files = Array.from(event.dataTransfer.files);
-    const kind = files.every((f) => f.type.startsWith("image/"))
-      ? "image"
-      : "file";
-    void handlePickFiles(files, kind);
-  };
+  onMount(() => { void restoreSession(); });
+  onCleanup(() => { eventSource?.close(); activeController?.abort(); });
+  createEffect(() => { messages.length; scrollToBottom(); });
 
   const handleSend = async () => {
     const text = draft().trim();
     const atts = [...pendingAttachments];
-    const hasReadyAtts = atts.every((att) => !att.path.startsWith("__uploading__"));
-    if (
-      (!text && atts.length === 0) ||
-      authState() !== "ready" ||
-      activeController ||
-      uploading() ||
-      !hasReadyAtts
-    )
-      return;
+    if ((!text && atts.length === 0) || authState() !== "ready" || isSending() || uploading()) return;
+    
     const assistantId = messageId();
-    setSendError("");
     setDraft("");
     setIsSending(true);
-    appendMessages(
-      {
-        id: messageId(),
-        role: "user",
-        content: text,
-        attachments: atts.map((a) => ({
-          path: a.path,
-          name: a.name,
-          kind: a.kind,
-          size: a.size,
-          previewUrl: a.previewUrl,
-        })),
-      },
-      {
-        id: assistantId,
-        role: "assistant",
-        content: "",
-        phase: "thinking",
-        statusText: "Hone 思考中",
-        startedAt: Date.now(),
-        steps: [],
-      },
-    );
-    clearPendingAttachments();
+    setMessages(messages.length, { id: messageId(), role: "user", content: text, attachments: atts });
+    setMessages(messages.length, { id: assistantId, role: "assistant", content: "", phase: "thinking", statusText: "Hone 思考中", startedAt: Date.now(), steps: [] });
+    setPendingAttachments(reconcile([], { key: "path" }));
     scrollToBottom();
 
     const controller = new AbortController();
     activeController = controller;
-
-    const attachmentInputs: PublicChatAttachmentInput[] = atts.map((a) => ({
-      path: a.path,
-      name: a.name,
-    }));
-
     try {
-      const stream = await sendPublicChat(
-        text,
-        attachmentInputs,
-        controller.signal,
-      );
+      const stream = await sendPublicChat(text, atts.map(a => ({ path: a.path, name: a.name })), controller.signal);
       const reader = stream.getReader();
       const decoder = new TextDecoder();
-      let pending = "";
-
+      let pendingSse = "";
       while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        pending += decoder.decode(chunk.value, { stream: true });
-        const parsed = parseSseChunks(pending);
-        pending = parsed.pending;
-
-        for (const event of parsed.events) {
-          if (event.event === "run_started") {
-            patchMessageById(assistantId, {
-              phase: "thinking",
-              statusText: "Hone 思考中",
-            });
+        const { done, value } = await reader.read();
+        if (done) break;
+        pendingSse += decoder.decode(value, { stream: true });
+        const parsed = parseSseChunks(pendingSse);
+        pendingSse = parsed.pending;
+        for (const ev of parsed.events) {
+          if (ev.event === "assistant_delta") {
+            const index = messages.findIndex(m => m.id === assistantId);
+            if (index >= 0) setMessages(index, "content", messages[index].content + (ev.data.content ?? ""));
           }
-
-          if (event.event === "tool_call") {
-            if (event.data.status === "start") {
-              const tool = event.data.tool?.trim() ?? "";
-              const detail = (event.data.text ?? event.data.reasoning ?? "").trim();
-              const step = tool
-                ? detail
-                  ? `正在调用 Tool: ${tool} · ${detail}`
-                  : `正在调用 Tool: ${tool}`
-                : detail || "处理中…";
-              appendAssistantStep(assistantId, step);
-              patchMessageById(assistantId, {
-                phase: "running",
-                statusText: step,
-              });
-            }
-          }
-
-          if (event.event === "assistant_delta") {
-            const content = event.data.content ?? "";
-            const index = findMessageIndex(assistantId);
-            if (index >= 0) {
-              patchMessageAtIndex(index, {
-                phase: "streaming",
-                statusText: "整理正式回复",
-                content: messages[index].content + content,
-              });
-            }
-          }
-
-          if (event.event === "run_error" || event.event === "error") {
-            const messageText =
-              event.event === "run_error"
-                ? (event.data.message ?? "处理失败，请重试")
-                : (event.data.text ?? "处理失败，请重试");
-            patchMessageById(assistantId, {
-              phase: "error",
-              statusText: messageText,
-            });
-          }
-
-          if (event.event === "run_finished") {
-            const index = findMessageIndex(assistantId);
-            if (index >= 0) {
-              const message = messages[index];
-              patchMessageAtIndex(index, {
-                phase: event.data.success === false ? "error" : "done",
-                statusText:
-                  event.data.success === false
-                    ? message.statusText || "处理失败，请重试"
-                    : message.content
-                      ? ""
-                      : "本轮没有返回正文",
-              });
-            }
+          if (ev.event === "run_finished") {
+            const index = messages.findIndex(m => m.id === assistantId);
+            if (index >= 0) setMessages(index, "phase", "done");
           }
         }
       }
-    } catch (error) {
-      const messageText =
-        error instanceof Error && error.name === "AbortError"
-          ? "本轮请求已停止"
-          : error instanceof Error
-            ? error.message
-            : String(error);
-      setSendError(messageText);
-      patchMessageById(assistantId, {
-        phase: "error",
-        statusText: messageText,
-      });
+    } catch (e) {
+      const index = messages.findIndex(m => m.id === assistantId);
+      if (index >= 0) setMessages(index, { phase: "error", statusText: String(e) });
     } finally {
-      activeController = null;
       setIsSending(false);
-      void refreshSessionAfterSend();
+      void restoreSession();
     }
   };
 
   return (
-    <>
-      <PublicNav />
+    <div class="hone-landing-v4" style={{ height: "100vh", display: "flex", "flex-direction": "column" }}>
+      <AnimatedBackground />
+      <Header />
+
       <Switch>
-        <Match when={publicChatView() === "loading"}>
+        <Match when={authState() === "loading"}>
           <LoadingCard />
         </Match>
-        <Match when={publicChatView() === "login"}>
-          <PublicLoginForm onLogin={handleLogin} />
+        <Match when={authState() === "logged_out"}>
+          <PublicLoginForm onLogin={restoreSession} />
         </Match>
-        <Match when={publicChatView() === "chat"}>
-          {/* Fixed container below the 56px PublicNav */}
-          <div
-            style={{
-              position: "fixed",
-              top: "56px",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              display: "flex",
-              "flex-direction": "column",
-              background: "#fff",
-            }}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            {/* Session strip — 34px */}
-            <div
-              style={{
-                height: "34px",
-                display: "flex",
-                "align-items": "center",
-                "justify-content": "space-between",
-                padding: "0 20px",
-                "border-top": "1px solid rgba(0,0,0,0.06)",
-                "border-bottom": "1px solid rgba(0,0,0,0.08)",
-                background: "#fafbfc",
-                "flex-shrink": "0",
+        <Match when={authState() === "ready" || authState() === "needs_password"}>
+          <div style={{ flex: "1", display: "flex", "flex-direction": "column", "padding-top": "80px", position: "relative", "z-index": "10", overflow: "hidden" }}>
+            
+            {/* Session Strip */}
+            <div style={{ display: "flex", "justify-content": "center", padding: "12px" }}>
+               <div style={{ background: "rgba(255,255,255,0.7)", "backdrop-filter": "blur(10px)", padding: "6px 20px", "border-radius": "100px", border: "1.5px solid #f1f5f9", display: "flex", gap: "20px", "align-items": "center", "font-size": "13px", "font-weight": "700" }}>
+                 <span style={{ color: "#64748b" }}>{sessionInfo()?.dailyLimit ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}` : "无限额度"}</span>
+                 <div style={{ width: "1px", height: "12px", background: "#e2e8f0" }} />
+                 <button onClick={() => navigate("/me")} style={{ border: "none", background: "none", cursor: "pointer", color: "#000", "font-weight": "800" }}>{sessionInfo()?.userId}</button>
+                 <button onClick={() => { publicLogout(); setAuthState("logged_out"); }} style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444" }}>退出</button>
+               </div>
+            </div>
+
+            {/* Message List */}
+            <div ref={scrollRef} style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}>
+              <div style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}>
+                <For each={messages}>
+                  {(msg) => (
+                    <Switch>
+                      <Match when={msg.role === "user"}>
+                        <UserBubble content={msg.content} attachments={msg.attachments} onOpenImage={(imgs, i) => setLightbox({ images: imgs, index: i })} />
+                      </Match>
+                      <Match when={msg.role === "assistant" && msg.phase === "done"}>
+                        <AssistantBubble content={msg.content} attachments={msg.attachments} />
+                      </Match>
+                      <Match when={msg.role === "assistant" && msg.phase !== "done"}>
+                        <PendingBubble message={msg} onStop={() => activeController?.abort()} onDismiss={() => {}} />
+                      </Match>
+                    </Switch>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <Composer 
+              draft={draft()} onDraftChange={setDraft} 
+              attachments={pendingAttachments} onRemoveAttachment={(i) => setPendingAttachments(pendingAttachments.filter((_, j) => j !== i))}
+              onPickFiles={async (files) => {
+                setUploading(true);
+                try {
+                  const uploaded = await uploadPublicAttachments(files);
+                  setPendingAttachments([...pendingAttachments, ...uploaded.map(u => ({ ...u, kind: u.kind as any }))]);
+                } finally { setUploading(false); }
               }}
-            >
-              <span style={{ "font-size": "12px", color: "#64748b" }}>
-                {sessionInfo()?.dailyLimit
-                  ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}`
-                  : "当前实例未启用次数限制"}
-              </span>
-              <div style={{ display: "flex", "align-items": "center", gap: "10px" }}>
-                <button
-                  type="button"
-                  onClick={() => navigate("/me")}
-                  style={{
-                    "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
-                    "font-size": "11px",
-                    color: "#64748b",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "0",
-                  }}
-                >
-                  {sessionInfo()?.userId ?? "个人"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleLogout()}
-                  style={{
-                    padding: "3px 10px",
-                    "border-radius": "5px",
-                    border: "1px solid rgba(0,0,0,0.09)",
-                    background: "#fff",
-                    "font-size": "11px",
-                    cursor: "pointer",
-                    color: "#64748b",
-                  }}
-                >
-                  退出登录
-                </button>
-              </div>
-            </div>
-
-            {/* Messages list */}
-            <div
-              ref={scrollRef}
-              style={{
-                flex: "1",
-                "overflow-y": "auto",
-                padding: "20px 0",
-                "scroll-behavior": "smooth",
-              }}
-            >
-              <div style={{ "max-width": "760px", margin: "0 auto", padding: "0 24px" }}>
-                <Show
-                  when={messages.length > 0}
-                  fallback={
-                    <div
-                      style={{
-                        display: "flex",
-                        "flex-direction": "column",
-                        "align-items": "center",
-                        "justify-content": "center",
-                        "text-align": "center",
-                        padding: "48px 16px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          padding: "12px 24px",
-                          "border-radius": "999px",
-                          background: "rgba(245,158,11,0.08)",
-                          border: "1px solid rgba(245,158,11,0.18)",
-                        }}
-                      >
-                        <Logo class="h-8 w-auto" />
-                      </div>
-                      <h1
-                        style={{
-                          "font-size": "28px",
-                          "font-weight": "700",
-                          color: "#0f172a",
-                          margin: "20px 0 10px",
-                          "letter-spacing": "-0.02em",
-                        }}
-                      >
-                        问 Hone 一个问题
-                      </h1>
-                      <p
-                        style={{
-                          "font-size": "14px",
-                          "line-height": "1.75",
-                          color: "#64748b",
-                          "max-width": "480px",
-                          margin: "0",
-                        }}
-                      >
-                        这里没有侧边栏，也没有多会话切换。输入问题后，Hone
-                        会先展示思考和工具执行过程，再把同一张回复卡片更新成最终答案。
-                      </p>
-                    </div>
-                  }
-                >
-                  <For each={messages}>
-                    {(message) => (
-                      <Show
-                        when={message.role === "user"}
-                        fallback={
-                          <Show
-                            when={
-                              !message.phase ||
-                              message.phase === "done"
-                            }
-                            fallback={
-                              <PendingBubble
-                                message={message}
-                                onStop={() => activeController?.abort()}
-                                onDismiss={() => {
-                                  removeMessageById(message.id);
-                                }}
-                              />
-                            }
-                          >
-                            <AssistantBubble
-                              content={message.content}
-                              attachments={message.attachments}
-                            />
-                          </Show>
-                        }
-                      >
-                        <UserBubble
-                          content={message.content}
-                          attachments={message.attachments}
-                          onOpenImage={handleOpenLightbox}
-                        />
-                      </Show>
-                    )}
-                  </For>
-                </Show>
-                <div style={{ height: "8px" }} />
-              </div>
-            </div>
-
-            {/* Composer */}
-            <div style={{ "max-width": "760px", width: "100%", margin: "0 auto", padding: "0 4px" }}>
-              <Show when={sendError()}>
-                <div
-                  style={{
-                    margin: "0 24px 4px",
-                    padding: "8px 12px",
-                    "border-radius": "8px",
-                    border: "1px solid rgba(239,68,68,0.20)",
-                    background: "rgba(239,68,68,0.05)",
-                    "font-size": "12px",
-                    color: "#ef4444",
-                  }}
-                >
-                  {sendError()}
-                </div>
-              </Show>
-              <Composer
-                draft={draft()}
-                onDraftChange={setDraft}
-                attachments={[...pendingAttachments]}
-                onRemoveAttachment={handleRemoveAttachment}
-                onPickFiles={(files, kind) => void handlePickFiles(files, kind)}
-                uploadError={uploadError()}
-                onDismissUploadError={() => setUploadError("")}
-                uploading={uploading()}
-                onSend={() => void handleSend()}
-                onStop={() => activeController?.abort()}
-                isSending={isSending()}
-                remaining={sessionInfo()?.remainingToday}
-              />
-            </div>
-
-            <Show when={lightbox()}>
-              <Lightbox
-                images={lightbox()!.images}
-                index={lightbox()!.index}
-                onClose={() => setLightbox(null)}
-                onNav={handleNavLightbox}
-              />
-            </Show>
-
-            <Show when={dragActive()}>
-              <div
-                style={{
-                  position: "absolute",
-                  inset: "0",
-                  "pointer-events": "none",
-                  background: "rgba(245,158,11,0.08)",
-                  border: "2px dashed rgba(245,158,11,0.45)",
-                  "z-index": "40",
-                  display: "flex",
-                  "align-items": "center",
-                  "justify-content": "center",
-                  "font-family":
-                    "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
-                  "font-size": "14px",
-                  "font-weight": "600",
-                  color: "#d97706",
-                }}
-                data-testid="chat-drop-overlay"
-              >
-                释放文件以上传
-              </div>
-            </Show>
+              uploadError={uploadError()} onDismissUploadError={() => setUploadError("")}
+              uploading={uploading()} onSend={handleSend} onStop={() => activeController?.abort()}
+              isSending={isSending()} remaining={sessionInfo()?.remainingToday}
+            />
           </div>
-          <Show when={authState() === "needs_password" && currentUser()}>
-            {(u) => (
-              <PasswordSetupGuard
-                user={u()}
-                onPasswordSet={(updated) => {
-                  setCurrentUser(updated);
-                  setAuthState("ready");
-                }}
-              />
-            )}
-          </Show>
         </Match>
       </Switch>
-    </>
+
+      <Show when={lightbox()}>
+        <div class="lightbox-overlay" onClick={() => setLightbox(null)}>
+          <img src={publicAttachmentUrl(lightbox()!.images[lightbox()!.index]!)} class="lightbox-img" />
+          <button class="lightbox-close">×</button>
+        </div>
+      </Show>
+
+      <style>{`
+        .btn-stop-thinking { background: #f1f5f9; color: #64748b; border: none; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .btn-stop-thinking:hover { background: #fee2e2; color: #ef4444; }
+      `}</style>
+    </div>
   );
 }

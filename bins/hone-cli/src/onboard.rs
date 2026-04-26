@@ -49,7 +49,7 @@ use crate::{CliChatScope, start};
 
 /// Onboard 总共的步骤数,供 step_header 显示「N/TOTAL」。
 /// runner → channels → admins → providers → apply → follow-up。
-const ONBOARD_TOTAL_STEPS: usize = 5;
+const ONBOARD_TOTAL_STEPS: usize = 6;
 
 /// `hone-cli onboard` 的命令行参数(目前为空,保留结构以便将来扩展 `--skip`、
 /// `--runner` 等非交互覆盖)。
@@ -284,6 +284,35 @@ fn print_onboard_block(title: &str, lines: &[&str]) {
     for line in lines {
         bullet(line);
     }
+}
+
+// 让部署者明确感知到「新用户被静默订阅了什么」——目前没有可配置入口,
+// 想改默认得改源码。这里只做告知,不写 mutation。
+fn print_notifications_awareness_step() {
+    step_header(5, ONBOARD_TOTAL_STEPS, "Notifications");
+    print_onboard_block(
+        "新用户默认行为",
+        &[
+            "Global digest:默认对所有新用户**开启**,LLM 精读后每天按窗口推送到 chat。",
+            "Per-event 通知:默认开启(Severity::Low 起、不限 portfolio)。",
+            "Thesis 自动蒸馏:后台 cron 周扫 sandbox `company_profiles/*/profile.md`,无需用户操作。",
+        ],
+    );
+    print_onboard_block(
+        "终端用户如何调整",
+        &[
+            "用自然语言告诉 bot 即可,例如「关闭 digest」「不要每天推送」「只看 portfolio」。",
+            "对应 `notification_prefs_tool`,无需 Web UI。",
+        ],
+    );
+    print_onboard_block(
+        "如何改默认值",
+        &[
+            "默认值在 `crates/hone-event-engine/src/prefs.rs::NotificationPrefs::default()`。",
+            "目前没有 config.yaml 入口;想改默认只能改源码后重新编译。",
+        ],
+    );
+    hint_line("此步骤纯告知,不写任何配置;下一步进入 Apply。");
 }
 
 // ── Discord token-specific 恢复决策。和 prompts 里的 channel recovery 类似,
@@ -1116,7 +1145,9 @@ pub(crate) async fn run_onboard(
     )?);
     mutations.extend(build_provider_onboard_mutations(&theme, &config)?);
 
-    step_header(5, ONBOARD_TOTAL_STEPS, "Apply");
+    print_notifications_awareness_step();
+
+    step_header(6, ONBOARD_TOTAL_STEPS, "Apply");
     let result = apply_mutations_and_generate(&paths, &mutations)?;
     ok_line(&format!(
         "{}(共写入 {} 条字段)",

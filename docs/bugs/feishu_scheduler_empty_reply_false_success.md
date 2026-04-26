@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 21:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Later
 - **证据来源**:
   - 2026-04-26 12:00-12:01 最新真实 scheduler 样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
@@ -138,9 +138,12 @@
   - 非 heartbeat 定时任务若最终只产出统一空回复 fallback，会返回 `error=Some(...)`；
   - Feishu scheduler 落库时将写成 `execution_failed`，不再继续伪装成 `completed + sent + delivered=1`；
   - fallback 仍可作为用户态失败提示发送，避免用户完全静默。
+- 同日追加收紧 `crates/hone-channels/src/agent_session/core.rs`：`empty_success_exhausted` 本身改为 `response.success=false`，让所有渠道在更上游就能识别这不是正常完成。
 - 已补回归：`scheduler_detects_empty_success_fallback_as_failure_content`。
-- 已验证：`cargo test -p hone-channels scheduler::tests`。
-- 状态继续保持 `Fixing`：台账伪成功已代码止血；真正让 Answer 阶段产出合格任务正文还需要后续修 runner / prompt / retry 根因。
+- 已验证：
+  - `cargo test -p hone-channels scheduler::tests`
+  - `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`
+- 状态调整为 `Later`：台账伪成功已代码止血；后续若 scheduler 再把空回复 fallback 记为 `completed + sent`，改回 `New`。真正让 Answer 阶段产出合格任务正文可由新的复现样本或独立根因项继续跟踪。
 
 ## 回归验证
 

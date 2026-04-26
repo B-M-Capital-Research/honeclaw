@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing（compact 文本透出为当前接受状态；compact 识别已迁移到 usage drop，不再依赖字面 marker）
+- **状态**: Later
 
 ## 2026-04-24 决策
 
@@ -16,6 +16,17 @@
 - 继续盯 `session_messages` 里是否出现 `Context compacted\n` 开头 assistant final；若产生明显用户投诉（而不仅是 marker 透出），再评估按 runner 做针对性收口。
 - compact 幻觉（假摘要回灌为正式回答）已由 2026-04-23 架构改造修复，这部分不受本次决策影响。
 - **证据来源**:
+
+## 修复进展（2026-04-26）
+
+- 已重新在共享用户可见净化层 `crates/hone-channels/src/runtime.rs` 增加独立 compact marker 行剥离：
+  - `Context compacted`
+  - `Conversation compacted`
+  - 大小写变体与行尾中英文句号/冒号等轻微变体
+- 仅匹配整行 marker，保留后续真实回答正文，降低误删正文中普通 `context/compact` 词的风险。
+- 已补回归：`sanitize_user_visible_output_drops_acp_compact_marker_lines`。
+- 已验证：`cargo test -p hone-channels sanitize_user_visible_output`。
+- 状态调整为 `Later`：用户可见 marker 外泄已代码止血；后续若历史 compact summary 语义污染或 marker 外泄再次复现，再改回 `New`。
 
 - 2026-04-25 20:37-20:40 最新同小时状态变化复核：
    - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`

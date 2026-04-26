@@ -20,7 +20,7 @@ use hone_channels::ingress::{
 };
 use hone_channels::outbound::{ReasoningVisibility, attach_stream_activity_probe};
 use hone_channels::prompt::PromptOptions;
-use hone_channels::runtime::user_visible_error_message;
+use hone_channels::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use hone_channels::think::{ThinkRenderStyle, ThinkStreamFormatter, render_think_blocks};
 use hone_core::{ActorIdentity, SessionIdentity};
 use serde_json::{Value, json};
@@ -80,15 +80,41 @@ fn build_failed_reply_text(
     final_text: &str,
     error: Option<&str>,
 ) -> String {
-    let display = if saw_stream_delta && !final_text.trim().is_empty() {
-        format!(
-            "{}\n\n_(处理中发生错误，内容可能不完整)_",
-            final_text.trim()
-        )
+    let partial = sanitize_failed_partial_reply(final_text);
+    let display = if saw_stream_delta && !partial.is_empty() {
+        format!("{}\n\n_(处理中发生错误，内容可能不完整)_", partial)
     } else {
         user_visible_error_message(error)
     };
     prepend_reply_prefix(reply_prefix, &display)
+}
+
+fn sanitize_failed_partial_reply(text: &str) -> String {
+    let sanitized = sanitize_user_visible_output(text).content;
+    let kept = sanitized
+        .lines()
+        .filter(|line| !looks_like_progress_trace_line(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    kept.trim().to_string()
+}
+
+fn looks_like_progress_trace_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    trimmed.starts_with("正在调用 Tool:")
+        || trimmed.starts_with("正在调用 tool:")
+        || trimmed.starts_with("正在调用工具")
+        || trimmed.starts_with("正在执行：")
+        || trimmed.starts_with("Tool: ")
+        || trimmed.starts_with("工具调用")
+        || trimmed.contains("hone/data_fetch")
+        || trimmed.contains("hone/web_search")
+        || trimmed.contains("hone/skill_tool")
+        || trimmed.contains("tool_call")
+        || trimmed.contains("runner.stage=")
 }
 
 fn persist_visible_assistant_message(
@@ -1550,6 +1576,19 @@ mod tests {
                 Some("opencode acp session/prompt idle timeout (180s)"),
             ),
             "@alice 阶段性结果\n\n_(处理中发生错误，内容可能不完整)_"
+        );
+    }
+
+    #[test]
+    fn failed_reply_text_drops_tool_progress_only_partial_stream() {
+        assert_eq!(
+            build_failed_reply_text(
+                None,
+                true,
+                "正在调用 Tool: hone/skill_tool\n正在执行：rg --files company_profiles\nTool: hone/data_fetch",
+                Some("codex acp session/prompt idle timeout (180s)"),
+            ),
+            "抱歉，处理超时了。请稍后再试。"
         );
     }
 

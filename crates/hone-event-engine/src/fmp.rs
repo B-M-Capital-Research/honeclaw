@@ -21,11 +21,17 @@ pub struct FmpClient {
 impl FmpClient {
     pub fn from_config(cfg: &FmpConfig) -> Self {
         let pool = cfg.effective_key_pool();
+        // 显式启用 gzip:earning_calendar / stock_dividend_calendar 未压缩响应
+        // 体可达数 MB,在 30s timeout 内拉不完(参考 v0.4.x 修复记录)。
+        let http = reqwest::Client::builder()
+            .gzip(true)
+            .build()
+            .expect("reqwest client init");
         Self {
             keys: pool.keys().to_vec(),
             base_url: cfg.base_url.trim_end_matches('/').to_string(),
             timeout: Duration::from_secs(cfg.timeout),
-            http: reqwest::Client::new(),
+            http,
         }
     }
 

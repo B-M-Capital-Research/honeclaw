@@ -23,7 +23,7 @@
 - **Feishu P1 直聊与定时任务可靠性修复批次**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/feishu-p1-reliability-batch.md`
-  - 摘要：集中修复当前活跃的 Feishu `P1` 缺陷；本轮已为 Feishu token/send/reply/update 出站请求补短重试，并让 scheduler 不再把空回复通用 fallback 记为 `completed + sent`
+  - 摘要：集中修复当前活跃的 Feishu `P1` 缺陷；本轮已补 Feishu 出站短重试、scheduler `running/pending` 起始台账、空回复失败态、timeout partial 清洗和 compact marker 可见净化
 - **Feishu 直聊 placeholder 假启动与 release runner 生效链路修复**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/feishu-direct-placeholder-followup-fix.md`

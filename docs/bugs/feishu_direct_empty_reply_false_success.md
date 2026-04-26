@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Later
 - **证据来源**:
   - 2026-04-26 09:52-09:57 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
@@ -246,3 +246,14 @@
   - 用户侧止血是否成立：看是否还出现空 assistant / 空分段发送。
   - 根因是否修复：看 `empty successful response` 重试与 `persisted as fallback` 是否仍在真实会话里出现。
 - 结合同轮 `local_list_files/local_search_files` 连续失败链路排查，为何简单个股问答仍会在有 `data_fetch` 的前提下走到空成功收口，而不是形成可消费答案。
+
+## 修复进展（2026-04-26）
+
+- 已在 `crates/hone-channels/src/agent_session/core.rs` 将 `empty_success_exhausted` 从“成功 + fallback 正文”改为“失败 + fallback error”：
+  - `response.success=false`
+  - `response.content=EMPTY_SUCCESS_FALLBACK_MESSAGE`
+  - `response.error=EMPTY_SUCCESS_FALLBACK_MESSAGE`
+- Feishu 直聊因此会走失败分支持久化/发送用户态 fallback，不再在 `MsgFlow/feishu done ... success=true` 层面把空成功伪装成正常回答。
+- Feishu scheduler 也会把同类 fallback 记为 `execution_failed`，与 `feishu_scheduler_empty_reply_false_success` 的台账修复一致。
+- 已验证：`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`。
+- 状态调整为 `Later`：伪成功已代码止血；后续若再次出现空成功被记为正常完成，再改回 `New`。runner 为什么仍会空成功可由新的复现样本或独立根因项继续跟踪。

@@ -114,7 +114,7 @@ fn default_fmp_base() -> String {
     "https://financialmodelingprep.com/api".to_string()
 }
 fn default_fmp_timeout() -> u64 {
-    30
+    60
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

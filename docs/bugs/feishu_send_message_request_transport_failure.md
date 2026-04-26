@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-21 13:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Later
 - **证据来源**:
   - 2026-04-21 15:37 最新直聊出站失败样本：
     - `data/runtime/logs/web.log`
@@ -102,4 +102,4 @@
   - 不重试 `400` 等业务错误，保留现有 `HTTP 400` fallback 到 standalone send 的逻辑。
 - 同步覆盖直聊 placeholder update 与 scheduler standalone send 两条路径，降低“内容已生成并落库但 Feishu 瞬时传输失败导致用户收不到”的概率。
 - 已验证：`cargo test -p hone-feishu`。
-- 状态暂置 `Fixing`：代码止血已落地，仍需下一轮真实 Feishu 出站窗口复核是否还出现同类 `error sending request for url (...)`。
+- 状态调整为 `Later`：代码止血已落地，不再占活跃修复队列；若下一轮真实 Feishu 出站窗口仍出现同类 `error sending request for url (...)`，再改回 `New`。

@@ -144,7 +144,7 @@ impl AgentSession {
 
         if last_result.response.success && last_result.response.content.trim().is_empty() {
             tracing::warn!(
-                "[AgentSession] empty successful response persisted as fallback runner={} session_id={}",
+                "[AgentSession] empty successful response exhausted retries runner={} session_id={}",
                 runner_name,
                 session_id
             );
@@ -157,7 +157,9 @@ impl AgentSession {
                 self.message_id.as_deref(),
                 None,
             );
+            last_result.response.success = false;
             last_result.response.content = EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string();
+            last_result.response.error = Some(EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string());
         }
 
         last_result
