@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Later
+- **状态**: New
 
 ## 修复进展（2026-04-26）
 
@@ -14,6 +14,7 @@
 - 这样长篇自然语言、价格解释、新闻摘要等坏态不会继续被当作“未命中”吞掉，排障时能直接看到结构化契约被模型违反。
 - `JsonEmptyStatus` 暂时保留为 noop，以兼容历史 prompt 允许的裸 `{}`；若后续生产证明它也主要来自坏态，再单独升级判定策略。
 - 已补回归测试 `heartbeat_plain_text_marks_execution_failed`。
+- 但 `2026-04-26 18:30` 最新真实窗口里，`run_id=6764`（`全天原油价格3小时播报`）已经再次落成 `execution_failed + skipped_error`，`detail_json.scheduler.parse_kind=JsonMalformed`、`starts_with_json=false`；说明生产模型仍会输出非合法 JSON，本缺陷不能继续停留在 `Later`。
 
 ## 修复动作（2026-04-24）
 
@@ -29,6 +30,12 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 18:30 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6764`（`2026-04-26T18:30:10.584010+08:00`，`全天原油价格3小时播报`）最新状态为 `execution_status=execution_failed`、`message_send_status=skipped_error`、`delivered=0`
+    - 同条 `detail_json` 已不再是此前的 `PlainTextSuppressed/JsonEmptyStatus`，而是明确记录 `parse_kind=JsonMalformed`、`raw_chars=1147`、`starts_with_json=false`
+    - `raw_preview` 仍以 `<think>` 开头，先解释“当前时间 18:30、小时 18、分钟不满足条件”，说明模型依旧在结构化契约外输出自由文本；只是这次尾部 JSON 已经损坏到无法解析
+    - 结论：到 `2026-04-26 18:30` 为止，本缺陷已从“坏态被静默 noop 吸收”再次升级成“坏态被显式失败”，证明根因仍在生产活跃，应从 `Later` 改回 `New`
   - 2026-04-26 17:00-18:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6729-6761` 覆盖 `17:00`、`17:30` 与 `18:00-18:01` 三个连续窗口；`全天原油价格3小时播报`、`持仓重大事件心跳检测`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 与多条破位预警在最新一小时全部仍落成 `noop + skipped_noop + delivered=0`

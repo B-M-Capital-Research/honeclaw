@@ -5,6 +5,16 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - 2026-04-26 19:01-19:03 最新运行日志：
+    - `data/runtime/logs/desktop.log`
+      - `2026-04-26 19:01:59.349` bundled runtime 再次启动 managed channels。
+      - `2026-04-26 19:02:00.722` 记录 `managed channel telegram skipped because it exited during startup`。
+      - `2026-04-26 19:03:14.733` 随后又重启一轮 bundled runtime；`2026-04-26 19:03:16.088` 再次出现同样的 `managed channel telegram skipped because it exited during startup`。
+    - `data/runtime/logs/desktop_release_screen_current.log`
+      - `2026-04-26T11:02:01.569991Z` 与 `2026-04-26T11:03:17.058629Z` 连续两次报 `无法获取 Telegram Bot 信息: A Telegram's error: Invalid bot token`
+      - 两次报错后都立即跟着 `sidecar terminated code=Some(1)`，说明 Telegram 不是进入 `GetUpdates` 后再退避，而是启动校验阶段直接退出
+    - `data/sessions.sqlite3`
+      - 最近一小时仍无任何 `channel='telegram'` 新消息落库，最近 Telegram 会话依旧停在 `2026-03-18`
   - 最近一小时运行日志：`data/runtime/logs/web.log`
     - `2026-04-22 11:14:41.977` Telegram Bot 再次启动。
     - `2026-04-22 11:14:43.273` 随即报 `无法获取 Telegram Bot 信息: A Telegram's error: Invalid bot token`。
@@ -47,6 +57,7 @@
 
 - 2026-04-22 14:03 CST 最新样本仍在 `data/runtime/logs/web.log:2167` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
 - 2026-04-23 04:03 CST 与 06:03 CST 最新窗口继续复现 `GetUpdates` 连接中断：`data/runtime/logs/web.log.2026-04-22:1196` 和 `:1326` 均记录 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。对应错误处理入口仍是 `bins/hone-telegram/src/handler.rs:220-230`，除 `TerminatedByOtherGetUpdates` 外只记录 error 并依赖 listener 后续重试，没有持久健康状态或用户侧告警。
+- 2026-04-26 19:01-19:03 CST 最新窗口显示问题仍未止血：bundled runtime 两次尝试拉起 Telegram sidecar，都在 `bot.get_me()` 阶段直接报 `Invalid bot token` 并退出；`desktop.log` 同步把渠道标成 `managed channel telegram skipped because it exited during startup`，最近 Telegram 会话仍无新增落库。
 - 2026-04-23 10:53-11:03 CST 最新窗口再次出现连续 `GetUpdates` 网络失败，其中 `10:53:55` 到 `11:03:29` 基本按退避节奏重复 `Connection refused (os error 61)`；12:54 CST 又出现 `operation timed out`，14:03 CST 又回到 `connection closed before message completed`。本轮 event-engine 巡检没有调用 Telegram API。
 - 2026-04-22 12:03 CST 同一窗口还出现 `data/runtime/logs/web.log:2125` 的 `GetUpdates` 连接中断；`telegram.pid=75490` 和 heartbeat 均存活，说明这是监听请求层面的持续错误，而不是 Telegram sidecar 进程已退出。
 - 到 `2026-04-22 11:14` 最新 release app 窗口，Telegram Bot 再次启动后仍立即报 `Invalid bot token`；`11:32` 又出现启动记录，但没有新的 Telegram 会话落库。
