@@ -678,6 +678,56 @@ function AttachMenu(props: { open: boolean; onClose: () => void; onPickImage: ()
   );
 }
 
+function ComposerStatus(props: { message: ChatMessage | undefined; onStop: () => void; justFinished: boolean }) {
+  const [elapsed, setElapsed] = createSignal(0);
+
+  createEffect(() => {
+    const m = props.message;
+    if (!m || !m.startedAt) {
+      setElapsed(0);
+      return;
+    }
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - (m.startedAt ?? 0)) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    onCleanup(() => clearInterval(timer));
+  });
+
+  const labelText = (m: ChatMessage) => {
+    switch (m.phase) {
+      case "streaming": return "HONE 输出中";
+      case "running": return "HONE 执行中";
+      default: return "HONE 思考中";
+    }
+  };
+
+  return (
+    <Show when={props.message || props.justFinished}>
+      <div
+        class={"public-chat-composer-status" + (props.justFinished ? " is-done" : "")}
+        role="status"
+        aria-live="polite"
+      >
+        <Show when={props.message} fallback={
+          <>
+            <span class="public-chat-composer-status-dot done" />
+            <span class="public-chat-composer-status-label">本轮已完成</span>
+          </>
+        }>
+          {(m) => (
+            <>
+              <span class="public-chat-composer-status-dot pulsing" />
+              <span class="public-chat-composer-status-label">{labelText(m())}</span>
+              <span class="public-chat-composer-status-time">{elapsed()}s</span>
+              <button type="button" class="public-chat-composer-status-stop" onClick={props.onStop}>停止</button>
+            </>
+          )}
+        </Show>
+      </div>
+    </Show>
+  );
+}
+
 function Composer(props: {
   draft: string; onDraftChange: (v: string) => void;
   attachments: PublicChatAttachment[]; onRemoveAttachment: (index: number) => void;
@@ -685,6 +735,7 @@ function Composer(props: {
   uploadError: string; onDismissUploadError: () => void;
   uploading: boolean; onSend: () => void; onStop: () => void;
   isSending: boolean; remaining: number | undefined;
+  pendingMessage: ChatMessage | undefined; justFinished: boolean;
 }) {
   const [focused, setFocused] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -698,6 +749,7 @@ function Composer(props: {
 
   return (
     <div class="public-chat-composer" style={{ padding: "16px 24px 32px", background: "transparent", "flex-shrink": "0", position: "relative", "z-index": "20" }}>
+      <ComposerStatus message={props.pendingMessage} onStop={props.onStop} justFinished={props.justFinished} />
       <input ref={imgInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "image"); }} />
       <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "file"); }} />
 
@@ -736,14 +788,34 @@ export default function PublicChatPage() {
   const [sessionInfo, setSessionInfo] = createSignal<{ userId: string; remainingToday: number; dailyLimit: number; } | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = createSignal(HISTORY_PAGE_SIZE);
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
+  const [justFinished, setJustFinished] = createSignal(false);
   let activeController: AbortController | null = null;
   let scrollRef: HTMLDivElement | undefined;
+  let messagesInnerRef: HTMLDivElement | undefined;
   let sessionSyncGeneration = 0;
+  let stickToBottom = true;
+  let lastScrollTop = 0;
+  let suppressScrollDetect = 0;
+  let justFinishedTimer: number | undefined;
 
-  const scrollToBottom = () => { requestAnimationFrame(() => { if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight; }); };
-  const nearBottom = () => !scrollRef || scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight < 120;
+  const scrollToBottom = () => {
+    requestAnimationFrame(() => {
+      if (!scrollRef) return;
+      suppressScrollDetect = scrollRef.scrollHeight;
+      scrollRef.scrollTop = scrollRef.scrollHeight;
+      lastScrollTop = scrollRef.scrollTop;
+    });
+  };
+  const distanceFromBottom = () => scrollRef ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight : 0;
   const visibleMessages = createMemo(() => selectVisibleRecentMessages(messages, visibleMessageCount()));
   const hasOlderMessages = () => visibleMessageCount() < messages.length;
+  const pendingAssistantMessage = createMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "assistant" && m.phase && m.phase !== "done" && m.phase !== "error") return m;
+    }
+    return undefined;
+  });
 
   const loadOlderMessages = () => {
     if (!scrollRef || !hasOlderMessages() || loadingOlderMessages()) return;
@@ -754,14 +826,66 @@ export default function PublicChatPage() {
     requestAnimationFrame(() => {
       if (scrollRef) {
         scrollRef.scrollTop = previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
+        lastScrollTop = scrollRef.scrollTop;
       }
       setLoadingOlderMessages(false);
     });
   };
 
   const handleMessagesScroll = () => {
-    if (scrollRef && scrollRef.scrollTop <= 24) loadOlderMessages();
+    if (!scrollRef) return;
+    const top = scrollRef.scrollTop;
+    const dist = distanceFromBottom();
+    // Skip the synthetic scroll event we just produced via scrollToBottom.
+    if (suppressScrollDetect && Math.abs(scrollRef.scrollHeight - suppressScrollDetect) < 2 && dist < 4) {
+      lastScrollTop = top;
+      suppressScrollDetect = 0;
+      return;
+    }
+    suppressScrollDetect = 0;
+    if (top < lastScrollTop - 2) {
+      // user-initiated scroll up
+      stickToBottom = dist < 80;
+    } else if (dist < 80) {
+      stickToBottom = true;
+    }
+    lastScrollTop = top;
+    if (top <= 24) loadOlderMessages();
   };
+
+  const flashJustFinished = () => {
+    setJustFinished(true);
+    if (justFinishedTimer !== undefined) window.clearTimeout(justFinishedTimer);
+    justFinishedTimer = window.setTimeout(() => setJustFinished(false), 2400);
+  };
+
+  // Keep the composer pinned to the visible viewport when the user pinch-zooms
+  // or the soft keyboard opens, so it remains reachable without zooming back out.
+  createEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : undefined;
+    if (!vv) return;
+    const update = () => {
+      const delta = (vv.offsetTop + vv.height) - window.innerHeight;
+      document.documentElement.style.setProperty("--composer-vv-shift", `${Math.min(0, delta)}px`);
+    };
+    update();
+    vv.addEventListener("scroll", update);
+    vv.addEventListener("resize", update);
+    onCleanup(() => {
+      vv.removeEventListener("scroll", update);
+      vv.removeEventListener("resize", update);
+      document.documentElement.style.removeProperty("--composer-vv-shift");
+    });
+  });
+
+  // When the inner messages content grows (streaming, new message), keep the
+  // viewport glued to the bottom unless the user has explicitly scrolled away.
+  createEffect(() => {
+    if (!messagesInnerRef || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => { if (stickToBottom) scrollToBottom(); });
+    ro.observe(messagesInnerRef);
+    onCleanup(() => ro.disconnect());
+  });
 
   const applyPublicUser = (user: PublicAuthUserInfo) => {
     setSessionInfo({ userId: user.user_id, remainingToday: user.remaining_today, dailyLimit: user.daily_limit });
@@ -769,7 +893,7 @@ export default function PublicChatPage() {
     setAuthState(user.has_password ? "ready" : "needs_password");
   };
 
-  const restoreSession = async () => {
+  const restoreSession = async (options: { resetWindow?: boolean } = {}) => {
     const generation = ++sessionSyncGeneration;
     try {
       const user = await getPublicAuthMe();
@@ -777,9 +901,15 @@ export default function PublicChatPage() {
       applyPublicUser(user);
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
-      setVisibleMessageCount(HISTORY_PAGE_SIZE);
-      setMessages(reconcile(toPublicChatMessages(history), { key: "id" }));
-      scrollToBottom();
+      const next = toPublicChatMessages(history);
+      if (options.resetWindow) {
+        setVisibleMessageCount(HISTORY_PAGE_SIZE);
+      } else {
+        // Preserve user's current viewing window; never shrink it on a sync.
+        setVisibleMessageCount((c) => Math.max(c, Math.min(next.length, HISTORY_PAGE_SIZE)));
+      }
+      setMessages(reconcile(next, { key: "id" }));
+      if (options.resetWindow) scrollToBottom();
     } catch {
       setAuthState("logged_out");
     }
@@ -788,10 +918,11 @@ export default function PublicChatPage() {
   onMount(() => {
     document.documentElement.classList.add("public-chat-scroll-lock");
     document.body.classList.add("public-chat-scroll-lock");
-    void restoreSession();
+    void restoreSession({ resetWindow: true });
   });
   onCleanup(() => {
     activeController?.abort();
+    if (justFinishedTimer !== undefined) window.clearTimeout(justFinishedTimer);
     document.documentElement.classList.remove("public-chat-scroll-lock");
     document.body.classList.remove("public-chat-scroll-lock");
   });
@@ -804,8 +935,12 @@ export default function PublicChatPage() {
     const assistantId = messageId();
     setDraft("");
     setIsSending(true);
+    // Send action is an explicit user intent to follow the new content.
+    stickToBottom = true;
     setMessages(messages.length, { id: messageId(), role: "user", content: text, attachments: atts });
     setMessages(messages.length, { id: assistantId, role: "assistant", content: "", phase: "thinking", statusText: "Hone 思考中", startedAt: Date.now(), steps: [] });
+    // Keep all existing + new messages in view; never shrink the visible window.
+    setVisibleMessageCount((c) => Math.max(c + 2, HISTORY_PAGE_SIZE));
     setPendingAttachments(reconcile([], { key: "path" }));
     scrollToBottom();
 
@@ -824,14 +959,16 @@ export default function PublicChatPage() {
         pendingSse = parsed.pending;
         for (const ev of parsed.events) {
           if (ev.event === "assistant_delta") {
-            const shouldFollow = nearBottom();
             const index = messages.findIndex(m => m.id === assistantId);
-            if (index >= 0) setMessages(index, "content", messages[index].content + (ev.data.content ?? ""));
-            if (shouldFollow) scrollToBottom();
+            if (index >= 0) {
+              setMessages(index, { content: messages[index].content + (ev.data.content ?? ""), phase: "streaming" });
+            }
+            if (stickToBottom) scrollToBottom();
           }
           if (ev.event === "run_finished") {
             const index = messages.findIndex(m => m.id === assistantId);
             if (index >= 0) setMessages(index, "phase", "done");
+            flashJustFinished();
           }
         }
       }
@@ -840,6 +977,7 @@ export default function PublicChatPage() {
       if (index >= 0) setMessages(index, { phase: "error", statusText: String(e) });
     } finally {
       setIsSending(false);
+      flashJustFinished();
       void restoreSession();
     }
   };
@@ -854,7 +992,7 @@ export default function PublicChatPage() {
           <LoadingCard />
         </Match>
         <Match when={authState() === "logged_out"}>
-          <PublicLoginForm onLogin={restoreSession} />
+          <PublicLoginForm onLogin={() => restoreSession({ resetWindow: true })} />
         </Match>
         <Match when={authState() === "ready" || authState() === "needs_password"}>
           <Show when={currentUser()} fallback={<LoadingCard />}>
@@ -874,7 +1012,7 @@ export default function PublicChatPage() {
 
             {/* Message List */}
             <div ref={scrollRef} class="public-chat-messages" onScroll={handleMessagesScroll} style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}>
-              <div style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}>
+              <div ref={messagesInnerRef} style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}>
                 <Show when={hasOlderMessages()}>
                   <div style={{ "text-align": "center", color: "#94a3b8", "font-size": "12px", "font-weight": "700", padding: "4px 0 18px" }}>
                     {loadingOlderMessages() ? "加载中..." : "上滑加载更早消息"}
@@ -898,8 +1036,8 @@ export default function PublicChatPage() {
               </div>
             </div>
 
-                  <Composer 
-                    draft={draft()} onDraftChange={setDraft} 
+                  <Composer
+                    draft={draft()} onDraftChange={setDraft}
                     attachments={pendingAttachments} onRemoveAttachment={(i) => setPendingAttachments(pendingAttachments.filter((_, j) => j !== i))}
                     onPickFiles={async (files) => {
                       setUploading(true);
@@ -911,6 +1049,7 @@ export default function PublicChatPage() {
                     uploadError={uploadError()} onDismissUploadError={() => setUploadError("")}
                     uploading={uploading()} onSend={handleSend} onStop={() => activeController?.abort()}
                     isSending={isSending()} remaining={sessionInfo()?.remainingToday}
+                    pendingMessage={pendingAssistantMessage()} justFinished={justFinished()}
                   />
                 </div>
               </PasswordSetupGuard>
@@ -948,8 +1087,89 @@ export default function PublicChatPage() {
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
         }
+        /* Keep the composer pinned to the visible viewport when the user
+           pinch-zooms or the soft keyboard pushes the layout viewport up. */
+        .public-chat-composer {
+          transform: translateY(var(--composer-vv-shift, 0px));
+          transition: transform 0.12s ease-out;
+          will-change: transform;
+        }
+        .public-chat-composer-status {
+          max-width: 900px;
+          margin: 0 auto 8px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 6px 14px;
+          background: rgba(255,255,255,0.92);
+          backdrop-filter: blur(10px);
+          border: 1.5px solid #f1f5f9;
+          border-radius: 100px;
+          box-shadow: 0 6px 18px rgba(15,23,42,0.06);
+          font-size: 13px;
+          font-weight: 700;
+          color: #475569;
+          width: fit-content;
+        }
+        .public-chat-composer-status.is-done {
+          color: #047857;
+          border-color: rgba(16,185,129,0.25);
+          background: rgba(236,253,245,0.95);
+        }
+        .public-chat-composer-status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #f59e0b;
+          flex-shrink: 0;
+        }
+        .public-chat-composer-status-dot.done { background: #10b981; }
+        .public-chat-composer-status-dot.pulsing { animation: hone-status-pulse 1.4s ease-in-out infinite; }
+        @keyframes hone-status-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.35); opacity: 0.55; }
+        }
+        .public-chat-composer-status-label { letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; }
+        .public-chat-composer-status-time { font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; color: #94a3b8; }
+        .public-chat-composer-status-stop {
+          margin-left: 6px;
+          background: #f1f5f9;
+          color: #475569;
+          border: none;
+          padding: 3px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: background 0.2s, color 0.2s;
+        }
+        .public-chat-composer-status-stop:hover { background: #fee2e2; color: #ef4444; }
+        /* Markdown tables: keep them inside the bubble on narrow screens. */
+        .public-chat-messages .hf-markdown table {
+          display: block;
+          max-width: 100%;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        .public-chat-messages .hf-markdown th,
+        .public-chat-messages .hf-markdown td {
+          white-space: nowrap;
+        }
         .public-chat-composer-input::placeholder { color: #94a3b8; font-size: 10px; font-weight: 500; }
         @media (max-width: 768px) {
+          .public-chat-composer-status {
+            font-size: 12px;
+            padding: 5px 12px;
+            margin-bottom: 6px;
+          }
+          .public-chat-messages .hf-markdown {
+            font-size: 15px;
+          }
+          .public-chat-messages .hf-markdown th,
+          .public-chat-messages .hf-markdown td {
+            padding: 0.55rem 0.7rem;
+            font-size: 13px;
+          }
           .public-chat-shell {
             padding-top: 64px !important;
           }
