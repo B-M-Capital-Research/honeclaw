@@ -77,6 +77,14 @@ export function PublicLoginForm(props: Props) {
     }
   }
 
+  const submitCurrentTab = () => {
+    if (tab() === "password") {
+      void submitPassword()
+      return
+    }
+    void submitInvite()
+  }
+
   const tabBtnStyle = (active: boolean): JSX.CSSProperties => ({
     flex: "1",
     padding: "10px 8px",
@@ -254,7 +262,7 @@ export function PublicLoginForm(props: Props) {
                 ? CONTENT.auth.login.submit_password
                 : CONTENT.auth.login.submit_invite
             }
-            onClick={tab() === "password" ? submitPassword : submitInvite}
+            onClick={submitCurrentTab}
           />
         </div>
       </div>

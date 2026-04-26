@@ -70,37 +70,37 @@ const CONTENT_ZH = {
   cases: {
     section_label: "真实工作流",
     section_sub: "Hone 如何融入你的投研日常",
-    placeholder_suffix: "场景演示截图（占位）",
+    placeholder_suffix: "场景演示截图",
     items: [
       {
         tag: "个股分析",
         title: "系统性深度研究一家公司",
         body: "从财务数据到行业竞争格局，Hone 帮你构建完整研究框架，记录每一个关键假设和风险因子。",
-        image: "/company_profile.png",
+        image: "/hone_introduction_zh.jpg",
       },
       {
         tag: "持仓追踪",
         title: "追踪持仓，主动提醒关键节点",
         body: "设置止盈止损逻辑，Hone 定时检查持仓状态，在你设定的条件触发时主动推送提醒。",
-        image: null as string | null,
+        image: "/hone_work_zh.jpg",
       },
       {
         tag: "定时任务",
         title: "每周五自动触发复盘 Skill",
         body: "用 Cron 任务把固定工作流交给 Hone 自动完成。每周复盘、月度总结——无需手动触发。",
-        image: null as string | null,
+        image: "/hone_page.jpg",
       },
       {
         tag: "长期画像",
         title: "建立公司专属研究档案",
         body: "每次研究结果自动归档到公司画像，下次提问直接调用历史上下文，越用越聪明。",
-        image: "/hone_solution.jpg" as string | null,
+        image: "/hone_solution_zh.jpg",
       },
       {
         tag: "跨平台通知",
         title: "在 iMessage / Lark 收到 Hone",
         body: "不只是网页。Hone 通过 iMessage、Lark、Discord 等渠道主动联系你，在你最顺手的地方工作。",
-        image: "/hone_channels.jpg" as string | null,
+        image: "/hone_channels_zh.jpg",
       },
     ],
   },
@@ -110,11 +110,11 @@ const CONTENT_ZH = {
     title: "老王讲 Hone：投研 AI Agent 的实际用法",
     description:
       "从开户到深度研究，10 分钟了解 Hone 如何改变你的投研工作流。完整演示个股分析、持仓追踪、定时任务等核心场景。",
-    video_url: "",
-    thumbnail: "/hone_introduction.jpg",
+    video_url: "https://www.bilibili.com/video/BV1ByXNBGET5/",
+    thumbnail: "/hone_introduction_zh.jpg",
     duration: "约 10 分钟",
     coverage: "视频涵盖：个股深度研究、持仓追踪、定时任务、多端接入演示",
-    url_placeholder: "视频链接待配置（替换 video_url）",
+    url_placeholder: "视频链接待配置",
   },
 
   capabilities: {
@@ -928,7 +928,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     title: "Lao Wang on Hone: the research AI agent in practice",
     description:
       "From onboarding to deep research, learn in ten minutes how Hone changes the way you work. Full walkthrough of stock analysis, portfolio tracking, scheduled tasks, and more.",
-    video_url: "",
+    video_url: "https://www.youtube.com/watch?v=hJr-81OdYcQ",
     thumbnail: "/hone_introduction.jpg",
     duration: "~10 min",
     coverage: "Covered: deep single-stock research, portfolio tracking, scheduled tasks, multi-channel demo",

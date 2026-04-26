@@ -2,7 +2,7 @@
 
 /*
  * The admin console UI styles lock scroll on html/body/#root for its
- * own internal scroll containers. Override everything here for the
+ * own internal scroll containers. Force override everything here for the
  * public-facing surface so the browser window scrolls normally.
  */
 html,
@@ -15,6 +15,7 @@ body,
 
 body {
   overflow-x: hidden !important;
+  background-color: #fff;
 }
 
 /* Ensure sensible text color base for public pages */

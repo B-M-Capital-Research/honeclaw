@@ -32,12 +32,12 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 
 # 2. ✨ Key Features
 
-- 🧠 An Absolutely Rational Investment Research Core: It does not flatter and does not follow blindly. When you make investment decisions, it cross-checks them against data and predefined discipline, identifying flaws in your reasoning.
-- 📱 Seamless Cross-Platform Access: Supports iMessage, Lark, Telegram, and Discord, so you can engage with your investment brain anytime, anywhere.
-- 🗂️ Company Portraits for Long-Term Research Memory: Hone can continuously accumulate company profiles and event timelines in Markdown, helping you preserve thesis, key operating metrics, risks, and major developments as a reusable long-term research asset.
-- 📊 Position Monitoring and Discipline Management: Set your take-profit and stop-loss levels, add-to-position logic, and key indicators to watch, and Hone will monitor the market for you like a cold, vigilant sentinel.
-- ⏰ Powerful Scheduled Tasks (Cron Jobs): Supports complex scheduled monitoring tasks, such as pre-market briefings, post-market summaries, and automatic analysis after specific earnings releases.
-- ⚡ Extreme Performance: Built entirely in Rust at the core, with very low memory usage and exceptionally strong concurrent processing capabilities, ensuring millisecond-level responsiveness for messages across multiple platforms.
+- 🧠 **An Absolutely Rational Core**: It does not flatter and does not follow blindly. When you make investment decisions, it cross-checks them against data and predefined discipline, identifying flaws in your reasoning.
+- 📱 **Seamless Cross-Platform Access**: Supports Web, iMessage, Lark, Telegram, and Discord, so you can engage with your investment brain anytime, anywhere.
+- 🗂️ **Company Portraits & Long-term Memory**: Hone can continuously accumulate company profiles and event timelines in Markdown, helping you preserve thesis, key operating metrics, risks, and major developments as a reusable long-term research asset.
+- 📊 **Position Monitoring & Discipline**: Set your take-profit and stop-loss levels, add-to-position logic, and key indicators to watch, and Hone will monitor the market for you like a cold, vigilant sentinel.
+- ⏰ **Powerful Scheduled Tasks (Cron Jobs)**: Supports complex scheduled monitoring tasks, such as pre-market briefings, post-market summaries, and automatic analysis after specific earnings releases.
+- ⚡ **Rust-powered Extreme Performance**: Built entirely in Rust at the core, ensuring millisecond-level responsiveness for messages across multiple platforms with minimal footprint.
 
 <p align="center">
   <a href="./resources/hone_channels.jpg" target="_blank">
@@ -69,22 +69,20 @@ It integrates into your daily workflow across multiple platforms, helping you tr
 
 ### Tech stack
 
-- **System core**: Rust
+- **System core**: Rust (Tokio, Axum, SSE)
 - **Backend**: Rust
-- **Client** (desktop): Rust
-- **Frontend**: TypeScript
+- **Client** (desktop): Rust (Tauri)
+- **Frontend**: SolidJS + Tailwind v4 (Ultra-fast, Clean UI)
 
 ### Supported channels
 
-- Mac app (macOS)
-- Feishu (Lark)
-- Discord
-- Telegram
-- iMessage
+- **Web Console**: Modern browser interface with interactive charts.
+- **Mac App**: Native macOS desktop experience.
+- **IM Integration**: Feishu (Lark), Discord, Telegram, iMessage.
 
 ## Installation and Launch
 
-### Option A. Install the macOS/Linux CLI bundle with `curl | bash`
+### Option A. One-line Install (macOS/Linux)
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash
@@ -93,11 +91,7 @@ hone-cli onboard
 hone-cli start
 ```
 
-This path installs the GitHub release bundle under `~/.honeclaw`, writes a `hone-cli` wrapper into the first writable user-facing bin directory already present in your `PATH` when possible, and falls back to `~/.local/bin` otherwise. That lets you start the local runtime directly with `hone-cli start` instead of `./launch.sh`.
-
-If you choose `opencode_acp` during onboarding, Hone now expects you to finish provider/auth/default-model setup in local `opencode` first, then simply reuses that local OpenCode config by default.
-
-### Option B. Install the same CLI bundle with Homebrew
+### Option B. Homebrew (macOS/Linux)
 
 ```shell
 brew install B-M-Capital-Research/honeclaw/honeclaw
@@ -106,65 +100,13 @@ hone-cli onboard
 hone-cli start
 ```
 
-The standard Homebrew tap (`B-M-Capital-Research/homebrew-honeclaw`) installs the same GitHub release bundle under Homebrew `libexec`, then exposes a `hone-cli` wrapper that seeds `~/.honeclaw/config.yaml` on first run so the runtime layout stays aligned with the `curl | bash` path.
-
-### Option C. Clone the repository for development
-
-1. Clone the repository
+### Option C. Development Mode
 
 ```shell
 git clone https://github.com/B-M-Capital-Research/honeclaw.git
 cd honeclaw
-```
-
-2. One-click launch
-
-The repo ships with a launch script that compiles and starts the full local stack:
-
-```shell
-chmod +x launch.sh
 ./launch.sh --desktop
 ```
-
-### What the first repo startup does
-
-Running `./launch.sh --desktop` walks through **environment prep → builds → process bring-up** in order. The **first** full run usually takes about **10 minutes** (depends on network and CPU).
-
-1. **Runtimes & dependencies**: Ensures tools like `bun` and `rustup` are available and installs/syncs project dependencies.
-2. **Build**
-   - **Rust backend**: `hone-desktop` (shell), `hone-web-api` (core API), and per-channel **sidecars**.
-   - **Frontend**: SolidJS + Vite desktop UI, loaded by the shell.
-3. **Bring-up**: Starts the local web stack and data layer under a supervisor and **opens** the desktop window.
-
-### After the window opens: choose the Agent’s inference backend
-
-You now decide whether the Agent uses a **local CLI** or an **OpenAI-compatible cloud API**.
-
-1. Click **⚙️ Settings** in the lower-left of the main window.
-2. In the **Agent / inference** section, pick one path:
-   - **Local engine (zero config)**: If `gemini cli` or `codex` is installed and running, Hone can discover it—select it from the dropdown; usually no extra fields.
-   - **Cloud API (recommended)**: Otherwise, configure any **OpenAI-compatible** HTTP API (base URL, API key, etc., per provider).
-     - **Suggested pairing**: `OpenRouter` + `Gemini 3.1 Pro` or `Gemini 3.1 Flash`.
-     - **Note**: In our testing, this pairing balances reasoning depth, latency, and context throughput well.
-
-The next section’s screenshots show the full **model and channel** setup.
-
-## After startup, configure models and channels in the client app settings
-
-<p align="center">
-  <a href="./resources/hone_page.jpg" target="_blank">
-    <img src="./resources/hone_page.jpg" alt="Desktop app home: start a conversation" width="400">
-  </a>
-  &nbsp;&nbsp;
-  <a href="./resources/hone_setting.jpg" target="_blank">
-    <img src="./resources/hone_setting.jpg" alt="Settings: models and channels" width="400">
-  </a>
-</p>
-<p align="center">
-  <em>Left: desktop home—main chat surface, start talking to Hone right away.</em>
-  &nbsp;&nbsp;
-  <em>Right: Settings—inference backend (cloud or local) and channels such as Feishu, Discord, Telegram, and iMessage.</em>
-</p>
 
 ---
 
@@ -183,9 +125,7 @@ The next section’s screenshots show the full **model and channel** setup.
 </tr>
 </table>
 
-These screenshots are illustrative only—Honeclaw supports **many more workflows and setups** you can unlock as you go.
-
-[`CASES_EN.md`](CASES_EN.md) collects **real-style Q&A examples** from Hone (single-stock logic, follow-up questions, daily portfolio-aware suggestions, deep dives, scheduled tasks, theme scouting, and macro). They are laid out as a two-column table on GitHub for quick reading.
+[`CASES_EN.md`](CASES_EN.md) collects **real-world Q&A examples** covering single-stock logic, daily suggestions, deep dives, and macro analysis.
 
 # 5. 💡 A Note from the Maintainer
 
@@ -193,30 +133,15 @@ These screenshots are illustrative only—Honeclaw supports **many more workflow
 
 To comply with open-source licensing requirements, a number of **professional valuation tools, investment research workflows, and proprietary knowledge bases** are not included in this public repository.
 
-These cover areas such as:
-
-- Advanced DCF and relative-valuation models
-- Sector-specific deep-research workflows
-- Curated investment research knowledge bases (e.g., earnings transcripts, analyst report libraries)
-
 If you are interested in accessing these capabilities, feel free to reach out to us:
 
-1. [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93) — follow for investment research content
-
-![BM YTB](./resources/bm_youtube.jpg)
-
-2. [BiliBili: 巴芒投资](https://space.bilibili.com/224670487) — follow for investment research content
-
-3. [Discord](https://discord.gg/TyDNfYXDGF): see the invite link (https://discord.gg/TyDNfYXDGF) to join our community channel
+1. [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93)
+2. [BiliBili: 巴芒投资](https://space.bilibili.com/224670487)
+3. [Discord Community](https://discord.gg/TyDNfYXDGF)
 
 # 6. 🤝 Contributing
 
-Honeclaw is committed to becoming the most professional open-source personal investment research infrastructure in the open-source community. If you are interested in Rust backend development, large language model prompt engineering, or financial data analysis, you are welcome to submit a PR.
-
-Contributors:
-
-- [chet-zzz](https://github.com/chet-zzz)
-- [Finn-Fengming](https://github.com/Finn-Fengming)
+We welcome all forms of contributions! Whether it's Rust backend dev, LLM prompt engineering, or financial data analysis.
 
 📄 License
 
