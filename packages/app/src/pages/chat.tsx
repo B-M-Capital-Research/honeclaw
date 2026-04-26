@@ -436,7 +436,7 @@ function UserBubble(props: {
 
   return (
     <div
-      class="pub-msg-in"
+      class="pub-msg-in pub-msg-row"
       style={{
         display: "flex",
         "justify-content": "flex-end",
@@ -444,6 +444,7 @@ function UserBubble(props: {
       }}
     >
       <div
+        class="pub-msg-bubble pub-msg-bubble--user"
         style={{
           "max-width": "80%",
           background: "#000",
@@ -489,7 +490,7 @@ function AssistantBubble(props: {
   );
   return (
     <div
-      class="pub-msg-in"
+      class="pub-msg-in pub-msg-row"
       style={{
         display: "flex",
         "justify-content": "flex-start",
@@ -497,6 +498,7 @@ function AssistantBubble(props: {
       }}
     >
       <div
+        class="pub-msg-bubble pub-msg-bubble--assistant"
         style={{
           "max-width": "85%",
           background: "rgba(255, 255, 255, 0.9)",
@@ -508,7 +510,7 @@ function AssistantBubble(props: {
           "box-shadow": "0 4px 20px rgba(0,0,0,0.02)",
         }}
       >
-        <div style={{ display: "flex", "align-items": "center", gap: "8px", "margin-bottom": "12px" }}>
+        <div class="pub-msg-bubble__brand" style={{ display: "flex", "align-items": "center", gap: "8px", "margin-bottom": "12px" }}>
           <span style={{ width: "8px", height: "8px", "border-radius": "50%", background: "#f59e0b", display: "inline-block" }} />
           <span style={{ "font-size": "13px", "font-weight": "800", "letter-spacing": "0.1em", "text-transform": "uppercase", color: "#64748b" }}>
             HONE
@@ -561,14 +563,12 @@ function PendingBubble(props: {
       default: return "HONE 思考中";
     }
   };
-  const showDots = () => !props.message.content && !terminal();
-
   return (
-    <div class="pub-msg-in" style={{ display: "flex", "justify-content": "flex-start", "margin-bottom": "20px" }}>
+    <div class="pub-msg-in pub-msg-row" style={{ display: "flex", "justify-content": "flex-start", "margin-bottom": "20px" }}>
       <div
+        class="pub-msg-bubble pub-msg-bubble--assistant"
         style={{
           "max-width": "85%",
-          "min-width": "240px",
           background: "#fff",
           border: terminal() ? "2px solid rgba(239,68,68,0.2)" : "1.5px solid #f1f5f9",
           "border-radius": "4px 24px 24px 24px",
@@ -576,25 +576,21 @@ function PendingBubble(props: {
           "box-shadow": "0 10px 30px rgba(0,0,0,0.03)",
         }}
       >
-        <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", gap: "10px", "margin-bottom": props.message.content ? "12px" : "0" }}>
-          <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
-            <span class={props.message.phase === "thinking" || props.message.phase === "streaming" ? "pub-pulsedot" : ""}
-              style={{ width: "8px", height: "8px", "border-radius": "50%", background: terminal() ? "#ef4444" : "#f59e0b" }} />
-            <span style={{ "font-size": "13px", "font-weight": "800", "letter-spacing": "0.1em", "text-transform": "uppercase", color: "#64748b" }}>
-              {labelText()}
-            </span>
-            <span style={{ "font-family": "var(--font-mono)", "font-size": "12px", color: "rgba(0,0,0,0.2)" }}>
-              {elapsed()}s
-            </span>
-          </div>
-          <Show when={!terminal()} fallback={<button onClick={props.onDismiss} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", "font-size": "14px" }}>✕</button>}>
-            <button onClick={props.onStop} class="btn-stop-thinking">停止</button>
-          </Show>
-        </div>
-
-        <Show when={showDots()}>
-          <div style={{ display: "flex", gap: "6px", padding: "8px 0" }}>
-            <span class="pub-dot1" /><span class="pub-dot2" /><span class="pub-dot3" />
+        {/* The header status row only shows in error state — for the
+            normal thinking/streaming flow the composer-side status strip
+            is the single source of truth (avoids duplicate "HONE 思考中"). */}
+        <Show when={terminal()}>
+          <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", gap: "10px", "margin-bottom": props.message.content ? "12px" : "0" }}>
+            <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+              <span style={{ width: "8px", height: "8px", "border-radius": "50%", background: "#ef4444" }} />
+              <span style={{ "font-size": "13px", "font-weight": "800", "letter-spacing": "0.1em", "text-transform": "uppercase", color: "#64748b" }}>
+                {labelText()}
+              </span>
+              <span style={{ "font-family": "var(--font-mono)", "font-size": "12px", color: "rgba(0,0,0,0.35)" }}>
+                {elapsed()}s
+              </span>
+            </div>
+            <button onClick={props.onDismiss} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", "font-size": "14px" }}>✕</button>
           </div>
         </Show>
 
@@ -758,18 +754,18 @@ function Composer(props: {
 
       <AttachMenu open={menuOpen()} onClose={() => setMenuOpen(false)} onPickImage={() => imgInputRef?.click()} onPickFile={() => fileInputRef?.click()} />
 
-      <div class="public-chat-composer-box" style={{ position: "relative", "max-width": "900px", margin: "0 auto", "border-radius": "28px", border: focused() ? "2px solid #000" : "2px solid #f1f5f9", background: "#fff", "box-shadow": focused() ? "0 20px 60px rgba(0,0,0,0.08)" : "0 10px 30px rgba(0,0,0,0.03)", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
+      <div class="public-chat-composer-box" style={{ position: "relative", "max-width": "900px", margin: "0 auto", "border-radius": "22px", border: focused() ? "2px solid #000" : "2px solid #f1f5f9", background: "#fff", "box-shadow": focused() ? "0 20px 60px rgba(0,0,0,0.08)" : "0 10px 30px rgba(0,0,0,0.03)", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
         <AttachPreview items={props.attachments} onRemove={props.onRemoveAttachment} />
-        <div style={{ display: "flex", "align-items": "flex-end", gap: "8px", padding: "8px 12px" }}>
-          <button type="button" class="pub-attach-btn" style={{ width: "48px", height: "48px" }} onClick={() => setMenuOpen(!menuOpen())}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" /></svg>
+        <div class="public-chat-composer-row" style={{ display: "flex", "align-items": "center", gap: "6px", padding: "6px 10px" }}>
+          <button type="button" class="pub-attach-btn" style={{ width: "36px", height: "36px", "flex-shrink": "0" }} onClick={() => setMenuOpen(!menuOpen())}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" /></svg>
           </button>
           <textarea ref={taRef} class="public-chat-composer-input" rows={1} placeholder={quotaExhausted() ? "今日额度已用完" : "输入问题，开始投研纪律对话..."} value={props.draft} disabled={props.isSending} onInput={(e) => props.onDraftChange(e.currentTarget.value)}
             onKeyDown={(e) => { if (!e.isComposing && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend()) props.onSend(); } }}
             onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-            style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "12px 8px", "font-size": "16px", "font-weight": "600", "line-height": "1.6", color: "#0f172a", "max-height": "200px", "min-height": "48px" }} />
-          <button type="button" class="public-chat-send-button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "48px", height: "48px", "border-radius": "16px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", transition: "all 0.2s" }}>
-            <svg viewBox="0 0 20 20" width="20" height="20" fill={canSend() ? "white" : "#94a3b8"}><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+            style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "8px 6px", "font-size": "15px", "font-weight": "500", "line-height": "1.5", color: "#0f172a", "max-height": "200px", "min-height": "36px" }} />
+          <button type="button" class="public-chat-send-button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "36px", height: "36px", "border-radius": "12px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", "flex-shrink": "0", transition: "all 0.2s" }}>
+            <svg viewBox="0 0 20 20" width="16" height="16" fill={canSend() ? "white" : "#94a3b8"}><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
           </button>
         </div>
       </div>
@@ -792,6 +788,11 @@ export default function PublicChatPage() {
   const [visibleMessageCount, setVisibleMessageCount] = createSignal(HISTORY_PAGE_SIZE);
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
   const [justFinished, setJustFinished] = createSignal(false);
+  // When set, the server has an in-flight assistant run for which we have
+  // no local streaming context — typically because the page was refreshed
+  // mid-response. Until the answer arrives, show the same "思考中" status
+  // and poll history so the reply lands without manual refresh.
+  const [backgroundPending, setBackgroundPending] = createSignal<{ since: number } | null>(null);
   let activeController: AbortController | null = null;
   let scrollRef: HTMLDivElement | undefined;
   let messagesInnerRef: HTMLDivElement | undefined;
@@ -817,6 +818,13 @@ export default function PublicChatPage() {
       const m = messages[i];
       if (m.role === "assistant" && m.phase && m.phase !== "done" && m.phase !== "error") return m;
     }
+    return undefined;
+  });
+  const composerPendingMessage = createMemo<ChatMessage | undefined>(() => {
+    const local = pendingAssistantMessage();
+    if (local) return local;
+    const bg = backgroundPending();
+    if (bg) return { id: "_background", role: "assistant", content: "", phase: "thinking", startedAt: bg.since };
     return undefined;
   });
 
@@ -912,11 +920,35 @@ export default function PublicChatPage() {
         setVisibleMessageCount((c) => Math.max(c, Math.min(next.length, HISTORY_PAGE_SIZE)));
       }
       setMessages(reconcile(next, { key: "id" }));
+      // If the server has a run in flight and we're not the one streaming
+      // it (e.g. page was just refreshed mid-answer), surface a "思考中"
+      // status until the reply lands.
+      const lastIsUser = next.length > 0 && next[next.length - 1]!.role === "user";
+      if (user.in_flight > 0 && lastIsUser && !isSending()) {
+        setBackgroundPending((prev) => prev ?? { since: Date.now() });
+      } else {
+        setBackgroundPending(null);
+      }
       if (options.resetWindow) scrollToBottom();
     } catch {
       setAuthState("logged_out");
     }
   };
+
+  // Poll while the server still owes us an answer we can't stream locally.
+  createEffect(() => {
+    if (!backgroundPending() || isSending()) return;
+    const id = window.setInterval(() => { void restoreSession(); }, 3000);
+    onCleanup(() => clearInterval(id));
+  });
+
+  // Flash "本轮已完成" when a background-pending run resolves.
+  let bgPrev = false;
+  createEffect(() => {
+    const cur = !!backgroundPending();
+    if (bgPrev && !cur && !isSending()) flashJustFinished();
+    bgPrev = cur;
+  });
 
   onMount(() => {
     document.documentElement.classList.add("public-chat-scroll-lock");
@@ -1030,7 +1062,7 @@ export default function PublicChatPage() {
                       <Match when={msg.role === "assistant" && msg.phase === "done"}>
                         <AssistantBubble content={msg.content} attachments={msg.attachments} />
                       </Match>
-                      <Match when={msg.role === "assistant" && msg.phase !== "done"}>
+                      <Match when={msg.role === "assistant" && msg.phase !== "done" && (msg.content || msg.phase === "error")}>
                         <PendingBubble message={msg} onStop={() => activeController?.abort()} onDismiss={() => {}} />
                       </Match>
                     </Switch>
@@ -1052,7 +1084,7 @@ export default function PublicChatPage() {
                     uploadError={uploadError()} onDismissUploadError={() => setUploadError("")}
                     uploading={uploading()} onSend={handleSend} onStop={() => activeController?.abort()}
                     isSending={isSending()} remaining={sessionInfo()?.remainingToday} dailyLimit={sessionInfo()?.dailyLimit}
-                    pendingMessage={pendingAssistantMessage()} justFinished={justFinished()}
+                    pendingMessage={composerPendingMessage()} justFinished={justFinished()}
                   />
                 </div>
               </PasswordSetupGuard>
@@ -1104,20 +1136,19 @@ export default function PublicChatPage() {
           align-items: center;
           gap: 10px;
           padding: 6px 14px;
-          background: rgba(255,255,255,0.92);
+          background: rgba(255,255,255,0.94);
           backdrop-filter: blur(10px);
-          border: 1.5px solid #f1f5f9;
-          border-radius: 100px;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 14px;
           box-shadow: 0 6px 18px rgba(15,23,42,0.06);
           font-size: 13px;
           font-weight: 700;
-          color: #475569;
-          width: fit-content;
+          color: #334155;
         }
         .public-chat-composer-status.is-done {
           color: #047857;
-          border-color: rgba(16,185,129,0.25);
-          background: rgba(236,253,245,0.95);
+          border-color: rgba(16,185,129,0.3);
+          background: rgba(236,253,245,0.96);
         }
         .public-chat-composer-status-dot {
           width: 8px;
@@ -1133,20 +1164,28 @@ export default function PublicChatPage() {
           50% { transform: scale(1.35); opacity: 0.55; }
         }
         .public-chat-composer-status-label { letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; }
-        .public-chat-composer-status-time { font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; color: #94a3b8; }
+        .public-chat-composer-status-time {
+          margin-left: auto;
+          font-family: var(--font-mono, 'JetBrains Mono', monospace);
+          font-size: 12px;
+          color: #64748b;
+          font-variant-numeric: tabular-nums;
+        }
         .public-chat-composer-status-stop {
-          margin-left: 6px;
-          background: #f1f5f9;
-          color: #475569;
+          background: #0f172a;
+          color: #fff;
           border: none;
-          padding: 3px 10px;
+          padding: 4px 12px;
           border-radius: 999px;
           font-size: 11px;
           font-weight: 700;
           cursor: pointer;
-          transition: background 0.2s, color 0.2s;
+          transition: background 0.2s;
         }
-        .public-chat-composer-status-stop:hover { background: #fee2e2; color: #ef4444; }
+        .public-chat-composer-status-stop:hover { background: #ef4444; }
+        /* Tone down the homepage's animated background blobs on the chat
+           page — they distract from the conversation content. */
+        .public-chat-page .animated-bg .circle { opacity: 0.18; filter: blur(80px); }
         /* Markdown tables: keep them inside the bubble on narrow screens. */
         .public-chat-messages .hf-markdown table {
           display: block;
@@ -1158,54 +1197,101 @@ export default function PublicChatPage() {
         .public-chat-messages .hf-markdown td {
           white-space: nowrap;
         }
-        .public-chat-composer-input::placeholder { color: #94a3b8; font-size: 10px; font-weight: 500; }
+        .public-chat-composer-input::placeholder { color: #94a3b8; font-size: 14px; font-weight: 500; }
+        /* Header right side: equalize visual heights so the lang pill and the
+           对话 button look truly center-aligned, and trim some vertical bulk. */
+        .public-chat-page .lang-switch { padding: 2px; }
+        .public-chat-page .lang-switch button { min-height: 28px; }
+        .public-chat-page .btn-chat-nav,
+        .public-chat-page .btn-roadmap-nav { min-height: 34px; padding: 0 16px; }
         @media (max-width: 768px) {
           .public-chat-composer-status {
             font-size: 12px;
             padding: 5px 12px;
             margin-bottom: 6px;
+            border-radius: 12px;
           }
+          /* Density: fit roughly 50% more content per screen on mobile,
+             without feeling cramped. Smaller fonts, tighter bubbles, less
+             gap between turns. */
           .public-chat-messages .hf-markdown {
-            font-size: 15px;
+            font-size: 14px;
+            line-height: 1.6;
+          }
+          .public-chat-messages .hf-markdown p,
+          .public-chat-messages .hf-markdown ul,
+          .public-chat-messages .hf-markdown ol,
+          .public-chat-messages .hf-markdown table,
+          .public-chat-messages .hf-markdown pre,
+          .public-chat-messages .hf-markdown blockquote {
+            margin: 0.6rem 0;
           }
           .public-chat-messages .hf-markdown th,
           .public-chat-messages .hf-markdown td {
-            padding: 0.55rem 0.7rem;
-            font-size: 13px;
+            padding: 0.4rem 0.55rem;
+            font-size: 12.5px;
           }
+          .public-chat-messages .pub-msg-row {
+            margin-bottom: 10px !important;
+          }
+          .public-chat-messages .pub-msg-bubble {
+            max-width: 92% !important;
+            border-radius: 16px !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.04) !important;
+          }
+          .public-chat-messages .pub-msg-bubble--assistant {
+            padding: 10px 12px !important;
+            border-radius: 4px 16px 16px 16px !important;
+          }
+          .public-chat-messages .pub-msg-bubble--user {
+            padding: 8px 12px !important;
+            font-size: 14.5px !important;
+            line-height: 1.55 !important;
+            border-radius: 16px 16px 4px 16px !important;
+          }
+          /* The HONE brand row inside each assistant bubble is redundant
+             on mobile (the bubble shape already tells you it's HONE) and
+             eats 30+ px of vertical space per turn. */
+          .public-chat-messages .pub-msg-bubble__brand { display: none !important; }
+          .public-chat-page .page-header { height: 56px !important; }
+          .public-chat-page .lang-switch button { min-height: 26px !important; }
+          .public-chat-page .btn-chat-nav { min-height: 32px !important; padding: 0 14px !important; }
           .public-chat-shell {
-            padding-top: 64px !important;
+            padding-top: 56px !important;
           }
           .public-chat-messages {
-            padding-top: 12px !important;
-            padding-bottom: 8px !important;
+            padding-top: 8px !important;
+            padding-bottom: 4px !important;
           }
           .public-chat-messages > div {
             padding-right: 14px !important;
             padding-left: 14px !important;
           }
           .public-chat-composer {
-            padding: 8px 12px calc(10px + env(safe-area-inset-bottom)) !important;
+            padding: 6px 10px calc(8px + env(safe-area-inset-bottom)) !important;
           }
           .public-chat-composer-box {
-            border-radius: 20px !important;
+            border-radius: 18px !important;
+          }
+          .public-chat-composer-row {
+            padding: 5px 8px !important;
+            gap: 4px !important;
           }
           .public-chat-composer .pub-attach-btn,
           .public-chat-send-button {
-            width: 42px !important;
-            height: 42px !important;
-            border-radius: 14px !important;
-            flex: 0 0 42px;
+            width: 34px !important;
+            height: 34px !important;
+            border-radius: 11px !important;
+            flex: 0 0 34px;
           }
           .public-chat-composer-input {
-            min-height: 42px !important;
-            padding-top: 8px !important;
-            padding-bottom: 8px !important;
+            min-height: 34px !important;
+            padding-top: 6px !important;
+            padding-bottom: 6px !important;
+            font-size: 15px !important;
           }
           .public-chat-session-strip { display: none !important; }
         }
-        .btn-stop-thinking { background: #f1f5f9; color: #64748b; border: none; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
-        .btn-stop-thinking:hover { background: #fee2e2; color: #ef4444; }
       `}</style>
     </div>
   );
