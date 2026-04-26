@@ -4,6 +4,18 @@ Last updated: 2026-04-26
 
 ## 2026-04-26
 
+### 后端部署文档与 public chat 顶部菜单修复
+
+- Status: done
+- Date: 2026-04-26
+- Plan: `docs/archive/plans/backend-deployment-and-public-chat-nav.md`
+- Handoff: `docs/handoffs/2026-04-26-backend-deployment-public-chat-nav.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `docs/runbooks/backend-deployment.md`, `bun run typecheck:web`, `bun run build:web:public`, Chrome/Playwright local preview screenshots for `/chat`
+- Current conclusion: 后端部署流程已落到 runbook，公开文档统一使用后端 origin 口径；public chat 顶部菜单样式已收敛到共享 public CSS，Cloudflare Pages SPA fallback 已加入 public 静态资源
+- Next entry point: `docs/runbooks/backend-deployment.md`
+
 ### Non-P1 Fixing Bug Batch
 
 - Status: done

@@ -227,8 +227,8 @@ export default function PublicHomePage() {
               </div>
             </div>
 
-            <div class="carousel-image" onClick={() => setEnlargeImg(current().image)}>
-              <img src={current().image} class="feature-img" />
+            <div class="carousel-image" onClick={() => current().image && setEnlargeImg(current().image)}>
+              <img src={current().image || undefined} class="feature-img" />
               <div class="zoom-hint">{useLocale() === 'zh' ? '查看详情' : 'Zoom In'}</div>
             </div>
           </div>

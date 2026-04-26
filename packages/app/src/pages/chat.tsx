@@ -22,7 +22,6 @@ import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
 import "./public-site.css";
 import {
-  connectPublicEvents,
   getPublicAuthMe,
   getPublicHistory,
   publicLogout,
@@ -500,7 +499,7 @@ function AssistantBubble(props: {
         style={{
           "max-width": "85%",
           background: "rgba(255, 255, 255, 0.9)",
-          backdrop_filter: "blur(10px)",
+          "backdrop-filter": "blur(10px)",
           border: "1.5px solid #f1f5f9",
           "border-radius": "4px 24px 24px 24px",
           padding: "16px 20px",
@@ -735,7 +734,6 @@ export default function PublicChatPage() {
   const [uploading, setUploading] = createSignal(false);
   const [lightbox, setLightbox] = createSignal<{ images: PublicChatAttachment[]; index: number; } | null>(null);
   const [sessionInfo, setSessionInfo] = createSignal<{ userId: string; remainingToday: number; dailyLimit: number; } | null>(null);
-  let eventSource: EventSource | null = null;
   let activeController: AbortController | null = null;
   let scrollRef: HTMLDivElement | undefined;
   let sessionSyncGeneration = 0;
@@ -760,7 +758,7 @@ export default function PublicChatPage() {
   };
 
   onMount(() => { void restoreSession(); });
-  onCleanup(() => { eventSource?.close(); activeController?.abort(); });
+  onCleanup(() => { activeController?.abort(); });
   createEffect(() => { messages.length; scrollToBottom(); });
 
   const handleSend = async () => {
