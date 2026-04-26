@@ -34,6 +34,22 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 06:00 最新巡检样本：
+    - 最近一小时没有新增普通直聊 / Web 用户提问落库；`data/sessions.sqlite3` 里最新新增可见会话仍是 `session_id=Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的 05:00 定时任务成功样本，说明本轮新增异常仍集中在 heartbeat 公共契约。
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `05:30` 窗口 `run_id=7253-7263` 中，`全天原油价格3小时播报`、`小米30港元破位预警`、`TEM破位预警`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`小米破位预警` 先后落成 `execution_failed + skipped_error`；仅 `持仓重大事件心跳检测`、`CAI破位预警`、`RKLB异动监控` 保持 `noop + skipped_noop`
+      - `06:00` 窗口 `run_id=7275-7285` 中，`TEM破位预警`、`小米破位预警`、`全天原油价格3小时播报`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`TEM大事件心跳监控` 落成 `execution_failed + skipped_error`；`CAI破位预警`、`小米30港元破位预警`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 继续落成 `noop + skipped_noop`
+    - `data/runtime/logs/sidecar.log`
+      - `05:30:06.229` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，正文直接输出“当前北京时间 05:30，不在指定播报时间窗口…”
+      - `05:30:09.607` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `05:30:09.724` `job=小米30港元破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `06:00:09.924` `job=小米30港元破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `06:00:15.135` `job=小米破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `06:00:24.572` `job=RKLB异动监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `06:00:31.144`、`06:00:31.380`、`06:00:32.097`、`06:00:33.894` 分别对应 `全天原油价格3小时播报`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`TEM大事件心跳监控`，继续先输出整段行情/新闻复盘，再被记成 `PlainTextSuppressed`
+      - `06:00:45.514` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+    - 同一 `05:30` 与 `06:00` 窗口继续出现 Tavily `usage limit` 告警，但 `web_search` 最终仍有 `tool_execute_success`；说明最近一小时没有形成新的独立检索中断，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-27 06:00` 为止，heartbeat 公共契约不只没有恢复，反而在半点与整点窗口都维持“部分显式失败 + 部分伪 noop”混合态；状态保持 `New`、严重等级维持 `P2`。
   - 2026-04-27 05:00 最新巡检样本：
     - 最近一小时没有新的普通直聊 / Web 用户提问落库；最新新增可见会话是 `session_id=Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的定时任务 `科技成长赛道大盘极值与情绪监控`，已在 `2026-04-27T05:02:19+08:00` 正常完成并发送，说明本轮没有新增“直聊无回复/半成品回复”根因，异常仍集中在 heartbeat 公共契约。
     - `data/sessions.sqlite3` -> `cron_job_runs`
