@@ -6,6 +6,7 @@
 
 - 英文：`README.md`
 - 中文：`README_ZH.md`
+- 完整 Wiki：`docs/wiki.md`
 - 交互式系统架构图：`resources/architecture.html`
 - 协作与 CI 约定：`AGENTS.md`、`CONTRIBUTING.md`
 
@@ -15,7 +16,7 @@
 
 Use this folder for **engineering docs and collaboration context**. It contains both durable project documentation and task-tracking materials such as plans, handoffs, archive indexes, and runbooks.
 
-Canonical public docs: root `README.md`, `README_ZH.md`, `resources/architecture.html`, `AGENTS.md`, and `CONTRIBUTING.md`.
+Canonical public docs: root `README.md`, `README_ZH.md`, `docs/wiki.md`, `resources/architecture.html`, `AGENTS.md`, and `CONTRIBUTING.md`.
 
 ## Recommended structure
 

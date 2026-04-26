@@ -48,6 +48,15 @@ prompt = """
 - 对质量类问题，必须附带具体会话证据，例如 session_id、时间窗、消息摘要或日志时间点；不要只写主观感受
 - 如果发现导航表和单个 bug 文档不一致，先以实际 bug 文档和代码/日志证据为准修正导航表，再继续本轮巡检
 
+P1 GitHub issue 规则：
+- 只要本轮新增或确认一个仍为活跃状态的 `P1` 缺陷，除了维护 `docs/bugs/` 文档外，还必须用 `gh issue create` 提交一个 GitHub issue 记录
+- 如果 `command -v gh` 找不到命令，优先尝试使用 `~/.local/bin/gh`
+- issue 内容必须脱敏，只保留简略问题摘要、影响范围、严重等级、状态和对应 bug 文档路径；不要包含 session 原文、用户私密内容、账号、手机号、token、绝对本机路径、日志大段原文或内部 prompt
+- issue 标题建议格式：`[P1][hone-scanner] <简短脱敏标题>`
+- issue 正文必须包含：`Reporter: hone-scanner`、`Severity: P1`、`Status: <New/Approved/Fixing>`、`Bug doc: docs/bugs/<file>.md`、`CC: @chet-zzz @Finn-Fengming`
+- 如果同一缺陷已经有对应 GitHub issue，不要重复创建；在 bug 文档或导航表中保留已有 issue 链接即可
+- 如果 `gh` 未安装、未登录、无仓库权限或 issue 创建失败，不要泄露敏感细节；在对应 bug 文档中记录“GitHub issue 创建失败/待补”，并保留简短失败原因
+
 缺陷分类白名单：
 - `Bug Type`: `System Error` 或 `Business Error`
 - `Severity`: `P0`、`P1`、`P2`、`P3`
@@ -77,7 +86,7 @@ prompt = """
 - 如果只是单次轻微波动、证据不足，或更像主观偏好差异，不要建档
 
 Git 规则：
-- 只允许修改 `docs/bugs/` 下相关文档，包括 `docs/bugs/README.md`
+- 只允许修改 `docs/bugs/` 下相关文档，包括 `docs/bugs/README.md`；遇到活跃 `P1` 时允许额外通过 `gh issue create` 创建一条脱敏 GitHub issue
 - 开始前先检查工作区；如果不干净，不要直接跳过，而是先查看具体脏文件和 diff，判断哪些属于本任务、哪些不属于本任务
 - 对于不属于本任务的本地改动，先在安全前提下清理工作区：恢复已跟踪文件、删除本任务无关的未跟踪文件，然后再继续本轮巡检
 - 对于本任务自己将要更新的 `docs/bugs/` 文档，可以正常保留并继续

@@ -30,6 +30,8 @@ Honeclaw（或称 Hone）是一个使用 **Rust** 编写的开源个人投研辅
 
 **系统架构**：[交互式架构图 (HTML)](./resources/architecture.html) — 克隆仓库后，在本地用浏览器打开该文件即可查看。
 
+**完整 Wiki**：[仓库目录、启动方式与排障指南](./docs/wiki.md) — 包含目录说明、运行时布局、安装路径、源码启动模式、端口、配置、验证与常见问题。
+
 # 2. ✨ 核心特性 (Key Features)
 
 - 🧠 **绝对理性的投研内核**：不附和、不盲从。在你做出投资决策时，它会基于数据和预设纪律进行交叉验证，指出你的逻辑漏洞。
@@ -86,6 +88,8 @@ Honeclaw（或称 Hone）是一个使用 **Rust** 编写的开源个人投研辅
 - **IM 集成**: 飞书 (Feishu / Lark)、Discord、Telegram、iMessage。
 
 ## 安装与启动
+
+完整启动矩阵、目录说明、端口、配置和排障请看 [Hone Wiki](./docs/wiki.md)。
 
 ### 方案 A：通过 `curl | bash` 安装 (macOS/Linux)
 

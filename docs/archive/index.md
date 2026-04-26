@@ -331,7 +331,7 @@ Use this file as the historical entry point for completed or paused work that sh
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
 - Related runbooks / regressions: `sqlite3 data/sessions.sqlite3 '.tables'`, `sqlite3 data/sessions.sqlite3 'pragma table_info(session_messages);'`, `find data/runtime -maxdepth 2 -type f`
-- Current conclusion: 每小时 `bug` automation 现在会优先巡检最近一小时真实会话与运行日志，并把“AI 返回不及预期、结构/格式错误、返回质量不佳但不影响功能链路”的问题统一按 `P3` 建档；只有真正影响功能链路、正确性、稳定性或投递结果的问题，才继续提升到 `P0`-`P2`
+- Current conclusion: 每小时 `bug` automation 现在会优先巡检最近一小时真实会话与运行日志，并把“AI 返回不及预期、结构/格式错误、返回质量不佳但不影响功能链路”的问题统一按 `P3` 建档；只有真正影响功能链路、正确性、稳定性或投递结果的问题，才继续提升到 `P0`-`P2`。2026-04-26 起，新增或确认仍活跃的 `P1` 还必须通过 `gh issue create` 创建脱敏 GitHub issue，正文标记 `Reporter: hone-scanner` 并 `CC: @chet-zzz @Finn-Fengming`
 - Next entry point: `docs/handoffs/2026-04-15-hourly-bug-audit-automation.md`
 
 ### Desktop 日志接口与 multi-agent 运行态恢复

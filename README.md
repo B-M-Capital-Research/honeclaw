@@ -32,6 +32,8 @@ The public product website is now live at **[hone-claw.com](https://hone-claw.co
 
 **Architecture**: [Interactive system architecture (HTML)](./resources/architecture.html) — after cloning the repo, open this file in a browser locally to view the diagram.
 
+**Wiki**: [Complete repository guide and startup wiki](./docs/wiki.md) — includes the directory map, runtime layout, install paths, source startup modes, ports, configuration, verification, and troubleshooting.
+
 # 2. ✨ Key Features
 
 - 🧠 **An Absolutely Rational Core**: It does not flatter and does not follow blindly. When you make investment decisions, it cross-checks them against data and predefined discipline, identifying flaws in your reasoning.
@@ -88,6 +90,8 @@ The public product website is now live at **[hone-claw.com](https://hone-claw.co
 - **IM Integration**: Feishu (Lark), Discord, Telegram, iMessage.
 
 ## Installation and Launch
+
+For the full startup matrix, directory guide, ports, configuration, and troubleshooting notes, see the [Hone Wiki](./docs/wiki.md).
 
 ### Option A. One-line Install (macOS/Linux)
 
