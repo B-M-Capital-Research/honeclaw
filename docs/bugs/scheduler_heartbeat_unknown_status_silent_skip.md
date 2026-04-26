@@ -30,6 +30,13 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 19:30-20:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 最近一小时的两批 heartbeat 已从“单条任务偶发失败”升级成“大面积结构化契约失效”：
+      - `19:30` 窗口里，`run_id=6800`（`Monitor_Watchlist_11`）、`6801`（`TEM大事件心跳监控`）、`6804`（`RKLB异动监控`）与 `6805`（`持仓重大事件心跳检测`）都已落成 `execution_failed + skipped_error + delivered=0`
+      - `20:00` 窗口里，`run_id=6818`（`全天原油价格3小时播报`）、`6819`（`小米30港元破位预警`）、`6820`（`CAI破位预警`）、`6821`（`TEM破位预警`）、`6822`（`ASTS 重大异动心跳监控`）、`6824`（`Monitor_Watchlist_11`）、`6825`（`TEM大事件心跳监控`）、`6826`（`ORCL 大事件监控`）与 `6827`（`持仓重大事件心跳检测`）继续落成 `execution_failed + skipped_error + delivered=0`
+      - 同批只有 `run_id=6823`（`RKLB异动监控`）和 `6817`（`小米破位预警`）仍停留在 `noop + skipped_noop`，说明当前不是个别任务 prompt 漂移，而是 heartbeat 公共结构化契约在整批任务中持续失效
+    - 结论：到 `2026-04-26 20:00` 为止，这个问题已经不只是“部分任务被静默跳过”，而是最近一小时连续两窗让多条 heartbeat 直接记为 `execution_failed`；状态维持 `New`，严重等级保持 `P2`
   - 2026-04-26 18:30 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6764`（`2026-04-26T18:30:10.584010+08:00`，`全天原油价格3小时播报`）最新状态为 `execution_status=execution_failed`、`message_send_status=skipped_error`、`delivered=0`
