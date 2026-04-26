@@ -5,6 +5,16 @@
 - **严重等级**: P2
 - **状态**: Fixing (2026-04-25)
 
+## 修复进展（2026-04-26）
+
+- 已在 `crates/hone-channels/src/scheduler.rs` 将 `PlainTextSuppressed` 执行层结果从静默 noop 提升为显式失败：
+  - `execution_status=execution_failed`
+  - `message_send_status=skipped_error`
+  - `error_message=heartbeat 输出不是结构化 JSON，任务已标记失败`
+- 这样长篇自然语言、价格解释、新闻摘要等坏态不会继续被当作“未命中”吞掉，排障时能直接看到结构化契约被模型违反。
+- `JsonEmptyStatus` 暂时保留为 noop，以兼容历史 prompt 允许的裸 `{}`；若后续生产证明它也主要来自坏态，再单独升级判定策略。
+- 已补回归测试 `heartbeat_plain_text_marks_execution_failed`。
+
 ## 修复动作（2026-04-24）
 
 - `crates/hone-channels/src/runtime.rs`：新增公共工具 `strip_internal_reasoning_blocks`，负责在判契约前剥掉 `<think>...</think>` / `<tool_code>...</tool_code>` / `[TOOL_CALL]...[/TOOL_CALL]` 等 runner 内部块。`sanitize_user_visible_output` 与 heartbeat parser 共用同一条规则，避免两条链路对「什么算内部 reasoning」各自为政。

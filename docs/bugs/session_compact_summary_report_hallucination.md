@@ -17,6 +17,17 @@
 - compact 幻觉（假摘要回灌为正式回答）已由 2026-04-23 架构改造修复，这部分不受本次决策影响。
 - **证据来源**:
 
+## 修复进展（2026-04-26）
+
+- 已重新在共享用户可见净化层 `crates/hone-channels/src/runtime.rs` 增加独立 compact marker 行剥离：
+  - `Context compacted`
+  - `Conversation compacted`
+  - 大小写变体与行尾中英文句号/冒号等轻微变体
+- 仅匹配整行 marker，保留后续真实回答正文，降低误删正文中普通 `context/compact` 词的风险。
+- 已补回归：`sanitize_user_visible_output_drops_acp_compact_marker_lines`。
+- 已验证：`cargo test -p hone-channels sanitize_user_visible_output`。
+- 状态继续保持 `Fixing`：用户可见 marker 外泄已代码止血；历史 compact summary 语义污染和真实窗口仍需继续观察。
+
 - 2026-04-25 20:37-20:40 最新同小时状态变化复核：
    - `session_id=Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`
    - 用户在 `2026-04-25T20:37:01.635125+08:00` 发起真实 Feishu 直聊问题 `高通去年10月发布的ai数据中心的芯片有未来发展空间吗？目前进展如何？`

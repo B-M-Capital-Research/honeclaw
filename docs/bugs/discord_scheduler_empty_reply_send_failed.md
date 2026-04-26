@@ -85,6 +85,13 @@
   - 重试耗尽后会降级成非空兜底文案，因此 Discord scheduler 不再落到 `response_preview=''` 且 `send_failed` 的空回复静默漏发
 - 该修复和 `feishu_direct_empty_reply_false_success.md`、`feishu_scheduler_empty_reply_false_success.md` 共享同一底层根因和回归证明。
 
+## 修复进展（2026-04-26）
+
+- 已进一步把 `empty_success_exhausted` 路径从“非空 fallback 且 `success=true`”改为 `success=false + error=EMPTY_SUCCESS_FALLBACK_MESSAGE`。
+- Discord scheduler 依据 `execute_scheduler_event` 返回的 `error` 决定 `execution_status`；因此后续 Answer 阶段空成功耗尽重试时，应落成 `execution_failed`，不再记为 `completed + sent + delivered=1`。
+- 已更新共享回归测试 `empty_success_with_tool_calls_uses_fallback_after_retries`，验证有工具调用但最终空回复时不再是成功态。
+- 状态继续保持 `Fixing`：仍需真实 Discord scheduler 窗口确认台账从 `completed` 转为 `execution_failed`。
+
 ## 2026-04-26 状态回退结论
 
 - 最新 `run_id=6578` 证明 Discord scheduler 这条链路已经回归，但表现形态从 `send_failed + 空 response_preview` 变成了 `sent + delivered=1 + 通用 fallback`。

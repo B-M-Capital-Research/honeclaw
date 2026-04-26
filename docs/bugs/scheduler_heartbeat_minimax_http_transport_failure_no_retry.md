@@ -4,6 +4,17 @@
 - **Bug Type**: System Error
 - **严重等级**: P2
 - **状态**: Fixing
+
+## 修复进展（2026-04-26）
+
+- 代码层确认 `crates/hone-llm/src/openai_compatible.rs` 已在 `chat` 与 `chat_with_tools` 两条路径对主要瞬时传输错误执行一次短重试，覆盖：
+  - `error sending request`
+  - `connection reset`
+  - `connection closed before message completed`
+  - `operation timed out`
+  - `tcp connect error`
+- heartbeat scheduler 调用 MiniMax 辅助模型走 OpenAI-compatible provider，因此该 provider 级吸震已覆盖本单记录的 `https://api.minimaxi.com/v1/chat/completions` 发送失败形态。
+- 状态继续保持 `Fixing`：仍需真实 heartbeat 窗口观察是否还有同类成批传输失败；若仍复现，再评估是否需要更多重试、退避或 provider fallback。
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-21 19:30-20:00 最新巡检样本：

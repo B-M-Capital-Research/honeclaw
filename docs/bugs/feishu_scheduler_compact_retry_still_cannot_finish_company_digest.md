@@ -4,6 +4,12 @@
 - **Bug Type**: System Error
 - **严重等级**: P2
 - **状态**: Fixing
+
+## 修复进展（2026-04-26）
+
+- 已确认共享 overflow fallback 文案在代码中为用户态 `/compact`，并通过运行时净化层剥离独立 compact marker 行，降低 fallback/compact 标记污染 scheduler 出站正文的概率。
+- 已将空成功重试耗尽改为 `success=false + error`，scheduler 旧会话若在 compact 后仍遇到 Answer 空回复，应保持失败态而不是被记为完成。
+- 当前还没有改变 scheduler 长会话的保留窗口或日报专属重试策略，因此状态继续保持 `Fixing`；仍需真实日报窗口验证是否能从“失败提示已送达”恢复到实际日报交付。
 - **证据来源**:
   - 2026-04-26 09:05 最新 scheduler 样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`

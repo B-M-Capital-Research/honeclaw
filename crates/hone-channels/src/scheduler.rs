@@ -205,6 +205,9 @@ fn heartbeat_parse_error_message(parse_kind: &HeartbeatParseKind) -> Option<Stri
         HeartbeatParseKind::JsonMalformed => {
             Some("heartbeat 输出不是合法 JSON，任务已标记失败".to_string())
         }
+        HeartbeatParseKind::PlainTextSuppressed => {
+            Some("heartbeat 输出不是结构化 JSON，任务已标记失败".to_string())
+        }
         _ => None,
     }
 }
@@ -755,6 +758,21 @@ mod tests {
                 HeartbeatParseKind::PlainTextSuppressed
             )
         );
+    }
+
+    #[test]
+    fn heartbeat_plain_text_marks_execution_failed() {
+        let execution = heartbeat_execution_from_content(
+            "闪迪股价已低于 520，当前 519.7（检查时间：09:30）",
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(
+            execution.error.as_deref(),
+            Some("heartbeat 输出不是结构化 JSON，任务已标记失败")
+        );
+        assert_eq!(execution.metadata["parse_kind"], "PlainTextSuppressed");
+        assert_eq!(execution.metadata["heartbeat_model"], "model-x");
     }
 
     #[test]

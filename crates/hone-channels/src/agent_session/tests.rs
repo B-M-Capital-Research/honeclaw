@@ -373,8 +373,12 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         )
         .await;
 
-    assert!(result.response.success);
+    assert!(!result.response.success);
     assert_eq!(result.response.content, EMPTY_SUCCESS_FALLBACK_MESSAGE);
+    assert_eq!(
+        result.response.error.as_deref(),
+        Some(EMPTY_SUCCESS_FALLBACK_MESSAGE)
+    );
     assert_eq!(result.response.tool_calls_made.len(), 1);
 
     let _ = std::fs::remove_dir_all(root);

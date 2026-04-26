@@ -27,6 +27,25 @@ pub(crate) async fn handle_scheduler_events(
         let state_clone = state.clone();
         tokio::spawn(async move {
             let storage = state_clone.core.cron_job_storage();
+            let _ = storage.record_execution_event(
+                &event.actor,
+                &event.job_id,
+                &event.job_name,
+                &event.channel_target,
+                event.heartbeat,
+                CronJobExecutionInput {
+                    execution_status: "running".to_string(),
+                    message_send_status: "pending".to_string(),
+                    should_deliver: true,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: json!({
+                        "delivery_key": event.delivery_key,
+                        "phase": "started",
+                    }),
+                },
+            );
             let result = run_scheduled_task(&state_clone, &event).await;
             if !result.should_deliver {
                 info!(

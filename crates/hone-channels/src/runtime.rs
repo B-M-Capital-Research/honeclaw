@@ -214,6 +214,10 @@ static RE_INTERNAL_PROTOCOL_LINE: LazyLock<regex::Regex> = LazyLock::new(|| {
     )
     .expect("valid regex")
 });
+static RE_COMPACT_MARKER_LINE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(?i)^\s*(context|conversation)\s+compacted[\s\.\u{3002}:：-]*$")
+        .expect("valid regex")
+});
 static RE_ABSOLUTE_PATH: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?P<prefix>^|[\s\(\[\{<"'`])(?P<path>(?:[A-Za-z]:[\\/]|/)[^\s<>"'`]+)"#)
         .expect("valid regex")
@@ -300,6 +304,10 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
             continue;
         }
         if RE_INTERNAL_PROTOCOL_LINE.is_match(trimmed) || is_tool_call_content(trimmed) {
+            removed_internal = true;
+            continue;
+        }
+        if RE_COMPACT_MARKER_LINE.is_match(trimmed) {
             removed_internal = true;
             continue;
         }
@@ -594,7 +602,7 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_user_visible_output_keeps_acp_compact_marker_lines() {
+    fn sanitize_user_visible_output_drops_acp_compact_marker_lines() {
         for variant in [
             "Context compacted",
             "context compacted.",
@@ -604,14 +612,14 @@ mod tests {
             let raw = format!("{}\n模型对本轮的真实回答内容。", variant);
             let sanitized = sanitize_user_visible_output(&raw);
             assert!(
-                sanitized.content.contains(variant.trim()),
-                "variant {variant:?} should remain visible"
+                !sanitized.content.contains(variant.trim()),
+                "variant {variant:?} should be removed"
             );
             assert!(
                 sanitized.content.contains("模型对本轮的真实回答内容。"),
                 "real reply should still remain visible for {variant:?}"
             );
-            assert!(!sanitized.removed_internal);
+            assert!(sanitized.removed_internal);
         }
     }
 
