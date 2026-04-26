@@ -30,6 +30,18 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 21:00 最新巡检样本：
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 21:00:04.541` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，最新窗口仍直接输出“本次为定时检查，无需推送”
+    - `2026-04-26 21:00:07.439` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，先写自然语言 Oracle 行情解释，再补“暂无触发事项”
+    - `2026-04-26 21:00:13.938` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，继续把阈值判断写在 `<think>` 外层自由文本里
+    - `2026-04-26 21:00:27.160` `job=RKLB异动监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+    - `2026-04-26 21:00:27.684` `job=TEM大事件心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - `2026-04-26 21:00:28.892` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - `2026-04-26 21:00:35.975` `job=小米破位预警`：`starts_with_json=false`、`parse_kind=JsonMalformed`；紧接着 `21:00:35.975-21:00:35.976` 连续记录 `malformed heartbeat json suppressed` 与 `parse failure escalated`
+    - `2026-04-26 21:00:37.739` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，仍输出完整油价摘要而不是单段 JSON 契约
+    - `2026-04-26 21:00:41.921` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - 结论：到 `2026-04-26 21:00` 为止，heartbeat 并未从 19:30/20:00 的批量失败中恢复；同一公共链路仍同时出现 `PlainTextSuppressed`、`JsonEmptyStatus` 与 `JsonMalformed` 三种坏态，说明根因仍是生产中的结构化契约漂移，而非个别任务 prompt 偶发抖动
   - 2026-04-26 19:30-20:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - 最近一小时的两批 heartbeat 已从“单条任务偶发失败”升级成“大面积结构化契约失效”：
