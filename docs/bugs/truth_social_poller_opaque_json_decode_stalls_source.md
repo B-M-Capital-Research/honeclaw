@@ -396,6 +396,39 @@ telegram.watcherguru|43|2026-04-25 19:47:59
 
 - 代码真相源仍未变化：`config.yaml:141-144` 里 `truth_social_accounts` 明确启用了 `realDonaldTrump`，`interval_secs=3600`；运行时 `global_digest scheduler starting` 和连续 `poller ok` 都还在，说明当前坏态依旧是“单一 enabled source 被上游 HTML 403 页面长期拦截”，不是启动路径或 sink 装配的新回归。
 
+- 2026-04-26T02:41:45Z：在本次 automation 的增量窗口 `2026-04-25T22:31:56.743Z` 之后，同一故障跨 `09:00` global digest 正常运行和 `10:12` backend 重启后仍继续复现；新增样本已经覆盖到 `2026-04-26 10:12:07 +08`，而 `events` 表里依旧查不到任何 `truth_social.%` 行：
+
+```text
+data/runtime/logs/web.log.2026-04-26:585:[2026-04-26 08:47:56.057] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-26:635:[2026-04-26 09:47:55.846] WARN  poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+data/runtime/logs/web.log.2026-04-26:671:[2026-04-26 10:12:06.359] INFO  truth_social poller starting
+data/runtime/logs/web.log.2026-04-26:685:[2026-04-26 10:12:07.422] WARN  initial poll failed: truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix="<!DOCTYPE html> ..."
+
+SELECT count(*) FROM events WHERE source LIKE 'truth_social.%';
+0
+
+SELECT datetime(max(created_at_ts),'unixepoch') FROM events WHERE source LIKE 'truth_social.%';
+NULL
+```
+
+- 同一增量窗口里，其他链路仍在持续前进，说明这不是“social 子系统整体停摆”或“09:00 digest/10:12 restart 之后自动恢复”：
+
+```text
+SELECT count(*), datetime(max(created_at_ts),'unixepoch')
+FROM events
+WHERE source='telegram.watcherguru';
+
+44|2026-04-26 01:17:58
+
+data/runtime/logs/web.log.2026-04-26:594:[2026-04-26 09:00:53.555] INFO  global digest run starting
+data/runtime/logs/web.log.2026-04-26:612:[2026-04-26 09:01:53.534] INFO  global digest sent
+data/runtime/logs/web.log.2026-04-26:613:[2026-04-26 09:02:11.788] INFO  global digest sent
+data/runtime/logs/web.log.2026-04-26:744:[2026-04-26 10:32:08.804] INFO  poller ok
+```
+
+- 这批新证据把当前坏态进一步收敛为：Truth Social source 本身在真实运行中继续稳定拿到 `403 text/html` 拦截页，而 restart / global_digest / 其他 social & FMP source 都没有把它带回正常产出。
+
 ## Date Observed
 
-`2026-04-24T04:05:20Z`
+First observed: `2026-04-24T04:05:20Z`
+Latest reconfirmed: `2026-04-26T02:41:45Z`
