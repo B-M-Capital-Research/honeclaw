@@ -326,8 +326,12 @@ async fn live_telegram_push_llm_polished_demo() {
 #[tokio::test]
 #[ignore]
 async fn live_portfolio_backtest_push() {
-    use crate::pollers::{CorpActionPoller, EarningsPoller, NewsPoller, PricePoller};
+    use crate::pollers::{
+        CorpActionCalendarPoller, EarningsPoller, NewsPoller, PricePoller, SecFilingsPoller,
+    };
     use crate::renderer::RenderFormat;
+    use crate::source::{EventSource, SourceSchedule};
+    use crate::subscription::{SharedRegistry, SubscriptionRegistry};
 
     let token = std::env::var("HONE_TG_BOT_TOKEN").expect("需要 HONE_TG_BOT_TOKEN");
     let chat_id = std::env::var("HONE_TG_CHAT_ID").expect("需要 HONE_TG_CHAT_ID");
@@ -375,10 +379,19 @@ async fn live_portfolio_backtest_push() {
 
     // 3) PricePoller —— 阈值放宽到 1% 以看出所有异动；同时拿到 quote 原始 payload
     //    用于合成盘前快照（含 P&L）。
-    let price_poller = PricePoller::new(fmp.clone())
-        .with_symbols(symbols.clone())
-        .with_thresholds(1.0, 5.0);
-    let price_events = price_poller.poll().await.expect("PricePoller poll 失败");
+    // 测试不走 EventSource::poll（不依赖 registry）,直接用 fetch(symbols) 喂持仓列表。
+    let price_registry =
+        std::sync::Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new()));
+    let price_poller = PricePoller::new(
+        fmp.clone(),
+        price_registry,
+        SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+    )
+    .with_thresholds(1.0, 5.0);
+    let price_events = price_poller
+        .fetch(&symbols)
+        .await
+        .expect("PricePoller poll 失败");
     println!("PriceEvents: {}", price_events.len());
 
     // 额外拉一次 v3/quote 拿原始价格（PricePoller 只在阈值触发时输出事件）
@@ -503,11 +516,14 @@ async fn live_portfolio_backtest_push() {
             .count(),
     );
 
-    // 6) CorpActionPoller —— 日历 filter 到持仓 + 每只 ticker 拉最近 8-K
+    // 6) CorpActionCalendar + SecFilings —— 现在是两个独立 EventSource。
     //    sec_recent_hours=72: 只推过去 72h 的 8-K,老文件 FMP 每次拉都会返回
     //    但上游已经消化过,再推就是刷屏。
-    let ca_poller = CorpActionPoller::new(fmp.clone()).with_sec_recent_hours(72);
-    let ca_calendar = ca_poller.poll().await.unwrap_or_else(|e| {
+    let cal_poller = CorpActionCalendarPoller::new(
+        fmp.clone(),
+        SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+    );
+    let ca_calendar = EventSource::poll(&cal_poller).await.unwrap_or_else(|e| {
         println!("CorpAction calendar 失败（跳过）: {e:#}");
         vec![]
     });
@@ -515,9 +531,17 @@ async fn live_portfolio_backtest_push() {
         .into_iter()
         .filter(|e| e.symbols.iter().any(|s| holdings_set.contains(s.as_str())))
         .collect();
+    let sec_registry =
+        std::sync::Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new()));
+    let sec_poller = SecFilingsPoller::new(
+        fmp.clone(),
+        sec_registry,
+        SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+    )
+    .with_sec_recent_hours(72);
     let mut sec_events = Vec::new();
     for sym in &symbols {
-        match ca_poller.fetch_sec_filings(sym).await {
+        match sec_poller.fetch(sym).await {
             Ok(v) => sec_events.extend(v),
             Err(e) => println!("SEC 8-K {sym} 失败: {e:#}"),
         }

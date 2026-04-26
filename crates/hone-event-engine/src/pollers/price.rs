@@ -7,11 +7,16 @@
 //! - id 稳定：`price:{SYM}:{YYYY-MM-DD}` / `52h:{SYM}:{YYYY-MM-DD}` / `52l:{SYM}:{YYYY-MM-DD}`
 //!   每交易日最多一次，避免重复推送。
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Timelike, Utc};
 use serde_json::Value;
 
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
+use crate::source::{EventSource, SourceSchedule};
+use crate::subscription::SharedRegistry;
 
 const FRESH_QUOTE_MAX_AGE_SECS: i64 = 15 * 60;
 const CLOSING_QUOTE_MAX_AGE_SECS: i64 = 20 * 60 * 60;
@@ -19,7 +24,8 @@ const FUTURE_QUOTE_MAX_SKEW_SECS: i64 = 5 * 60;
 
 pub struct PricePoller {
     client: FmpClient,
-    symbols: Vec<String>,
+    registry: Arc<SharedRegistry>,
+    schedule: SourceSchedule,
     low_pct: f64,
     high_pct: f64,
     realert_step_pct: f64,
@@ -28,20 +34,16 @@ pub struct PricePoller {
 }
 
 impl PricePoller {
-    pub fn new(client: FmpClient) -> Self {
+    pub fn new(client: FmpClient, registry: Arc<SharedRegistry>, schedule: SourceSchedule) -> Self {
         Self {
             client,
-            symbols: vec![],
+            registry,
+            schedule,
             low_pct: 5.0,
             high_pct: 10.0,
             realert_step_pct: 2.0,
             near_hi_lo_tolerance: 0.001,
         }
-    }
-
-    pub fn with_symbols(mut self, symbols: Vec<String>) -> Self {
-        self.symbols = symbols;
-        self
     }
 
     pub fn with_thresholds(mut self, low_pct: f64, high_pct: f64) -> Self {
@@ -55,11 +57,14 @@ impl PricePoller {
         self
     }
 
-    pub async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
-        if self.symbols.is_empty() {
+    /// 按指定 ticker 列表批量查 quote。`EventSource::poll` 内部从 registry
+    /// 取 watch_pool 后调它;测试可以直接传任意 ticker。watch_pool 为空时
+    /// 调用方应直接返回 Ok(vec![])(本函数会照样发请求,用于显式测试)。
+    pub async fn fetch(&self, symbols: &[String]) -> anyhow::Result<Vec<MarketEvent>> {
+        if symbols.is_empty() {
             return Ok(vec![]);
         }
-        let joined = self.symbols.join(",");
+        let joined = symbols.join(",");
         let path = format!("/v3/quote/{joined}");
         let raw = self.client.get_json(&path).await?;
         Ok(events_from_quotes_at(
@@ -70,6 +75,25 @@ impl PricePoller {
             self.near_hi_lo_tolerance,
             Utc::now(),
         ))
+    }
+}
+
+#[async_trait]
+impl EventSource for PricePoller {
+    fn name(&self) -> &str {
+        "fmp.price"
+    }
+
+    fn schedule(&self) -> SourceSchedule {
+        self.schedule.clone()
+    }
+
+    async fn poll(&self) -> anyhow::Result<Vec<MarketEvent>> {
+        let symbols = self.registry.load().watch_pool();
+        if symbols.is_empty() {
+            return Ok(vec![]);
+        }
+        self.fetch(&symbols).await
     }
 }
 
@@ -638,6 +662,8 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_fmp_price_smoke() {
+        use crate::subscription::SubscriptionRegistry;
+
         let key = std::env::var("HONE_FMP_API_KEY").expect("需要 HONE_FMP_API_KEY");
         let cfg = hone_core::config::FmpConfig {
             api_key: key,
@@ -646,10 +672,17 @@ mod tests {
             timeout: 30,
         };
         let client = FmpClient::from_config(&cfg);
-        let poller = PricePoller::new(client)
-            .with_symbols(vec!["AAPL".into(), "MSFT".into(), "NVDA".into()])
-            .with_thresholds(0.1, 5.0); // 很敏感，确保能看到产出
-        let events = poller.poll().await.expect("FMP poll failed");
+        let registry = Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new()));
+        let poller = PricePoller::new(
+            client,
+            registry,
+            SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
+        )
+        .with_thresholds(0.1, 5.0); // 很敏感，确保能看到产出
+        let events = poller
+            .fetch(&["AAPL".into(), "MSFT".into(), "NVDA".into()])
+            .await
+            .expect("FMP poll failed");
         println!("price events pulled: {}", events.len());
         for ev in events.iter().take(10) {
             println!("  [{:?}] {} · {}", ev.severity, ev.title, ev.summary);

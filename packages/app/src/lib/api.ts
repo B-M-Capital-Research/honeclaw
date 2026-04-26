@@ -584,6 +584,50 @@ export async function getLogs(): Promise<LogEntry[]> {
   return payload.logs ?? [];
 }
 
+// ── Task runs (周期任务观测) ────────────────────────────────────────────────
+
+export type TaskOutcome = "ok" | "skipped" | "failed";
+
+export interface TaskRunRecord {
+  task: string;
+  started_at: string;
+  ended_at: string;
+  outcome: TaskOutcome;
+  items: number;
+  error?: string | null;
+}
+
+export interface TaskSummary {
+  last_seen_at: string | null;
+  runs_24h: number;
+  ok_24h: number;
+  skipped_24h: number;
+  failed_24h: number;
+  last_error: string | null;
+  last_failure_at: string | null;
+}
+
+export interface TaskRunsResponse {
+  runs: TaskRunRecord[];
+  summary_by_task: Record<string, TaskSummary>;
+  runtime_dir: string;
+}
+
+export async function getTaskRuns(opts?: {
+  days?: number;
+  limit?: number;
+  task?: string;
+}): Promise<TaskRunsResponse> {
+  const params = new URLSearchParams();
+  if (opts?.days != null) params.set("days", String(opts.days));
+  if (opts?.limit != null) params.set("limit", String(opts.limit));
+  if (opts?.task) params.set("task", opts.task);
+  const qs = params.toString();
+  const path = qs ? `/api/admin/task-runs?${qs}` : "/api/admin/task-runs";
+  const response = await apiFetch(path);
+  return parseJson<TaskRunsResponse>(response);
+}
+
 /** 连接实时日志 SSE 流 */
 export async function connectLogStream() {
   return createEventSource("/api/logs/stream");

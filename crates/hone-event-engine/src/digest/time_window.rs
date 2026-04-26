@@ -2,7 +2,8 @@
 //!
 //! 两层抽象:
 //! - **自由函数**(`in_window` / `shift_hhmm_earlier` / `local_date_key`)是简单的
-//!   `FixedOffset` 小时级封装,供 `engine` 和 `pipeline::cron_aligned_loop` 复用;
+//!   `FixedOffset` 小时级封装,供 `engine` 和 `spawner::spawn_event_source` 内嵌
+//!   的 cron-aligned 分支复用;
 //! - **`EffectiveTz`** 是 per-actor 的调度器内部抽象:优先解析 IANA 名称(尊重
 //!   DST/历史偏移),失败才退回 FixedOffset。这样用户在 prefs 里写
 //!   `"timezone": "America/New_York"` 时能正确处理夏/冬令时切换。
