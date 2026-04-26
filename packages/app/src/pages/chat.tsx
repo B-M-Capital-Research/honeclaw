@@ -96,13 +96,11 @@ function AnimatedBackground() {
 
 function PrefsButton() {
   const [open, setOpen] = createSignal(false);
-  const fsLabel: Record<PublicFontScale, string> = { s: "小", m: "标准", l: "大", xl: "特大" };
   const themeOptions: { value: PublicTheme; label: string }[] = [
-    { value: "auto", label: "跟随系统" },
-    { value: "light", label: "浅色" },
-    { value: "dark", label: "深色" },
+    { value: "auto", label: "自动" },
+    { value: "light", label: "浅" },
+    { value: "dark", label: "深" },
   ];
-
   const close = () => setOpen(false);
 
   return (
@@ -111,42 +109,44 @@ function PrefsButton() {
         type="button"
         class="hone-prefs-trigger"
         aria-label="字号与主题"
+        aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
       >
-        <span class="hone-prefs-trigger-aa">Aa</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19l5.5-13 5.5 13M6.5 14h6M16 19h4M16 13h4M16 7h4" />
+        </svg>
       </button>
       <Show when={open()}>
         <div class="hone-prefs-backdrop" onClick={close} />
         <div class="hone-prefs-panel" role="dialog">
-          <div class="hone-prefs-section-title">字号</div>
-          <div class="hone-prefs-fs-row">
-            <For each={["s", "m", "l", "xl"] as const}>
-              {(size) => (
-                <button
-                  type="button"
-                  class={"hone-prefs-fs-btn" + (publicFontScale() === size ? " is-active" : "")}
-                  data-size={size}
-                  onClick={() => setPublicFontScale(size)}
-                >
-                  <span>A</span>
-                  <span class="hone-prefs-fs-label">{fsLabel[size]}</span>
-                </button>
-              )}
-            </For>
+          <div class="hone-prefs-row">
+            <span class="hone-prefs-label">字号</span>
+            <div class="hone-prefs-segmented">
+              <For each={["s", "m", "l", "xl"] as const}>
+                {(size) => (
+                  <button
+                    type="button"
+                    class={"hone-prefs-seg" + (publicFontScale() === size ? " is-active" : "")}
+                    data-size={size}
+                    onClick={() => setPublicFontScale(size)}
+                  >A</button>
+                )}
+              </For>
+            </div>
           </div>
-          <div class="hone-prefs-section-title" style={{ "margin-top": "10px" }}>主题</div>
-          <div class="hone-prefs-theme-row">
-            <For each={themeOptions}>
-              {(opt) => (
-                <button
-                  type="button"
-                  class={"hone-prefs-theme-btn" + (publicTheme() === opt.value ? " is-active" : "")}
-                  onClick={() => setPublicTheme(opt.value)}
-                >
-                  {opt.label}
-                </button>
-              )}
-            </For>
+          <div class="hone-prefs-row">
+            <span class="hone-prefs-label">主题</span>
+            <div class="hone-prefs-segmented">
+              <For each={themeOptions}>
+                {(opt) => (
+                  <button
+                    type="button"
+                    class={"hone-prefs-seg hone-prefs-seg--text" + (publicTheme() === opt.value ? " is-active" : "")}
+                    onClick={() => setPublicTheme(opt.value)}
+                  >{opt.label}</button>
+                )}
+              </For>
+            </div>
           </div>
         </div>
       </Show>
@@ -1277,72 +1277,88 @@ export default function PublicChatPage() {
         .public-chat-page .btn-chat-nav,
         .public-chat-page .btn-roadmap-nav { min-height: 34px; padding: 0 16px; }
 
-        /* ── Prefs button + popover ───────────────────────────────────── */
+        /* ── Prefs trigger + popover ─────────────────────────────────── */
         .hone-prefs { position: relative; display: inline-flex; }
         .hone-prefs-trigger {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 36px; height: 36px;
-          border-radius: 10px;
+          width: 32px; height: 32px;
+          border-radius: 999px;
           border: none;
           background: transparent;
-          color: #475569;
+          color: #64748b;
           cursor: pointer;
-          font-weight: 800;
-          transition: background 0.2s, color 0.2s;
+          transition: background 0.18s, color 0.18s;
         }
-        .hone-prefs-trigger:hover { background: #f1f5f9; color: #0f172a; }
-        .hone-prefs-trigger-aa { font-size: 15px; letter-spacing: -0.04em; }
+        .hone-prefs-trigger:hover,
+        .hone-prefs-trigger[aria-expanded="true"] { background: #f1f5f9; color: #0f172a; }
         .hone-prefs-backdrop { position: fixed; inset: 0; z-index: 998; background: transparent; }
         .hone-prefs-panel {
           position: absolute;
-          right: 0; top: calc(100% + 8px);
+          right: 0; top: calc(100% + 10px);
           z-index: 999;
           width: 240px;
-          padding: 12px;
-          background: #fff;
-          border: 1.5px solid #e2e8f0;
+          padding: 10px 12px;
+          background: rgba(255,255,255,0.96);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border: 1px solid rgba(15,23,42,0.08);
           border-radius: 14px;
-          box-shadow: 0 16px 40px rgba(15,23,42,0.16);
+          box-shadow: 0 12px 36px rgba(15,23,42,0.14);
+          animation: hone-prefs-pop 0.14s ease-out;
         }
-        .hone-prefs-section-title {
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: #94a3b8;
-          margin: 0 0 6px 4px;
+        @keyframes hone-prefs-pop {
+          from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .hone-prefs-fs-row, .hone-prefs-theme-row { display: grid; gap: 4px; }
-        .hone-prefs-fs-row { grid-template-columns: repeat(4, 1fr); }
-        .hone-prefs-theme-row { grid-template-columns: repeat(3, 1fr); }
-        .hone-prefs-fs-btn, .hone-prefs-theme-btn {
-          border: 1.5px solid #e2e8f0;
-          background: #fff;
-          border-radius: 10px;
-          padding: 8px 4px;
-          cursor: pointer;
-          display: flex;
-          flex-direction: column;
+        .hone-prefs-row {
+          display: grid;
+          grid-template-columns: 36px 1fr;
           align-items: center;
-          gap: 2px;
-          color: #475569;
-          font-weight: 700;
+          gap: 10px;
+          padding: 4px 0;
+        }
+        .hone-prefs-row + .hone-prefs-row { border-top: 1px solid rgba(15,23,42,0.06); }
+        .hone-prefs-label {
           font-size: 12px;
-          transition: border-color 0.15s, background 0.15s, color 0.15s;
+          color: #64748b;
+          font-weight: 600;
         }
-        .hone-prefs-fs-btn:hover, .hone-prefs-theme-btn:hover { border-color: #cbd5e1; }
-        .hone-prefs-fs-btn.is-active,
-        .hone-prefs-theme-btn.is-active {
-          background: #0f172a; color: #fff; border-color: #0f172a;
+        .hone-prefs-segmented {
+          display: grid;
+          grid-auto-flow: column;
+          grid-auto-columns: 1fr;
+          gap: 2px;
+          padding: 2px;
+          background: #f1f5f9;
+          border-radius: 9px;
         }
-        .hone-prefs-fs-btn[data-size="s"]  > span:first-child { font-size: 11px; }
-        .hone-prefs-fs-btn[data-size="m"]  > span:first-child { font-size: 14px; }
-        .hone-prefs-fs-btn[data-size="l"]  > span:first-child { font-size: 18px; }
-        .hone-prefs-fs-btn[data-size="xl"] > span:first-child { font-size: 22px; line-height: 1; }
-        .hone-prefs-fs-btn .hone-prefs-fs-label { font-size: 10px; font-weight: 600; opacity: 0.65; }
-        .hone-prefs-theme-btn { padding: 10px 4px; min-height: 38px; justify-content: center; }
+        .hone-prefs-seg {
+          border: none;
+          background: transparent;
+          color: #64748b;
+          cursor: pointer;
+          border-radius: 7px;
+          padding: 5px 0;
+          font-weight: 700;
+          letter-spacing: -0.01em;
+          line-height: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+        }
+        .hone-prefs-seg.is-active {
+          background: #fff;
+          color: #0f172a;
+          box-shadow: 0 1px 3px rgba(15,23,42,0.1), 0 1px 1px rgba(15,23,42,0.04);
+        }
+        .hone-prefs-seg[data-size="s"]  { font-size: 11px; }
+        .hone-prefs-seg[data-size="m"]  { font-size: 13px; }
+        .hone-prefs-seg[data-size="l"]  { font-size: 16px; }
+        .hone-prefs-seg[data-size="xl"] { font-size: 19px; }
+        .hone-prefs-seg--text { font-size: 12px; padding: 6px 0; }
 
         /* ── Font scale variants ─────────────────────────────────────── */
         /* Desktop baselines from the central markdown CSS are ~16px; the
@@ -1375,20 +1391,22 @@ export default function PublicChatPage() {
         [data-theme="dark"] .star-badge { background: rgba(255,255,255,0.06); color: #cbd5e1; }
         [data-theme="dark"] .divider-v { background: rgba(255,255,255,0.08); }
 
-        [data-theme="dark"] .hone-prefs-trigger { color: #cbd5e1; }
-        [data-theme="dark"] .hone-prefs-trigger:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        [data-theme="dark"] .hone-prefs-trigger { color: #94a3b8; }
+        [data-theme="dark"] .hone-prefs-trigger:hover,
+        [data-theme="dark"] .hone-prefs-trigger[aria-expanded="true"] {
+          background: rgba(255,255,255,0.06); color: #fff;
+        }
         [data-theme="dark"] .hone-prefs-panel {
-          background: #131b2c; border-color: #1f2937;
+          background: rgba(19,27,44,0.95);
+          border-color: rgba(255,255,255,0.08);
           box-shadow: 0 16px 40px rgba(0,0,0,0.5);
         }
-        [data-theme="dark"] .hone-prefs-section-title { color: #64748b; }
-        [data-theme="dark"] .hone-prefs-fs-btn,
-        [data-theme="dark"] .hone-prefs-theme-btn {
-          background: #1a2332; border-color: #1f2937; color: #cbd5e1;
-        }
-        [data-theme="dark"] .hone-prefs-fs-btn.is-active,
-        [data-theme="dark"] .hone-prefs-theme-btn.is-active {
-          background: #f1f5f9; color: #0a0e16; border-color: #f1f5f9;
+        [data-theme="dark"] .hone-prefs-row + .hone-prefs-row { border-top-color: rgba(255,255,255,0.06); }
+        [data-theme="dark"] .hone-prefs-label { color: #94a3b8; }
+        [data-theme="dark"] .hone-prefs-segmented { background: rgba(255,255,255,0.06); }
+        [data-theme="dark"] .hone-prefs-seg { color: #94a3b8; }
+        [data-theme="dark"] .hone-prefs-seg.is-active {
+          background: #1f2937; color: #fff; box-shadow: none;
         }
 
         [data-theme="dark"] .public-chat-session-strip > div {
@@ -1496,9 +1514,24 @@ export default function PublicChatPage() {
           .public-chat-page .lang-switch { padding: 1px !important; }
           .public-chat-page .lang-switch button { min-height: 22px !important; min-width: 26px !important; padding: 0 6px !important; font-size: 11px !important; }
           .public-chat-page .btn-chat-nav { min-height: 28px !important; padding: 0 12px !important; font-size: 12px !important; }
-          .hone-prefs-trigger { width: 28px !important; height: 28px !important; border-radius: 8px !important; }
-          .hone-prefs-trigger-aa { font-size: 13px !important; }
-          .hone-prefs-panel { width: 220px !important; right: -4px !important; padding: 10px !important; }
+          .hone-prefs-trigger { width: 28px !important; height: 28px !important; }
+          .hone-prefs-trigger svg { width: 14px !important; height: 14px !important; }
+          /* Pin to viewport so the popover can't slide off-screen behind
+             other header items, regardless of where the trigger sits. */
+          .hone-prefs-panel {
+            position: fixed !important;
+            top: 50px !important;
+            right: 8px !important;
+            left: auto !important;
+            width: auto !important;
+            min-width: 220px !important;
+            max-width: calc(100vw - 16px) !important;
+            padding: 8px 10px !important;
+          }
+          .hone-prefs-row { grid-template-columns: 32px 1fr !important; gap: 8px !important; padding: 3px 0 !important; }
+          .hone-prefs-label { font-size: 11px !important; }
+          .hone-prefs-seg { padding: 4px 0 !important; }
+          .hone-prefs-seg--text { padding: 5px 0 !important; }
           .public-chat-shell {
             padding-top: 46px !important;
           }
