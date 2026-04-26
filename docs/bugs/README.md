@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-26 10:16 CST
+最后更新：2026-04-26 11:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -34,10 +34,10 @@
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-26 03:00 `全天原油价格3小时播报` 仍把 `巴基斯坦方面披露美伊或开启第二轮和平谈判`、`伊朗原油重返供应`、`地缘风险溢价收缩` 写成确定性原因；现有修复仍只覆盖价格一致性 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu scheduler 命中 `skip_signal` 后仍把未发送长文落进 direct session，污染后续上下文 | P2 | New | 2026-04-26 00:01/00:02 的 `TEM`、`RKLB 每日动态监控` 均已落成 `noop + skipped_noop` 且日志明确写“本轮不发送”，但同一 direct session 仍新增两条 assistant final，并把 `sessions.last_message_preview` 顶到未送达的 RKLB 简报 | [feishu_scheduler_noop_reply_persisted_to_direct_session.md](./feishu_scheduler_noop_reply_persisted_to_direct_session.md) |
-| Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | Fixing | 2026-04-26 09:47 旧会话追问“今周美股是否需要减仓位？”后，09:50 compact 重试仍失败；用户可见文案还泄露 `发送 <absolute-path>/compact` 占位符 | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
+| Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | Fixing | 2026-04-26 10:54 用户改问 `INTC` 是否适合买入；search 已成功拿到 3 次工具结果，但 answer 两次 `reply_chars=0`，10:57 仍退回 compact fallback 且继续外泄 `发送 <absolute-path>/compact` | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | Fixing | 2026-04-26 09:05 `核心观察池早间简报` 再次落成 `execution_failed + sent + delivered=1`，`response_preview` 仍是 overflow fallback，并带 `发送 <absolute-path>/compact` 占位符 | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Discord 定时任务在 Answer 阶段返回空/无效回复后，仍被记为成功执行 | P2 | Fixing | 2026-04-26 09:33 `每日美股降息概率推送` 在执行 `skill_tool fed_rate_cut_analysis` 后仍只落成通用 fallback；`cron_job_runs.run_id=6578` 记为 `completed + sent + delivered=1` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-26 09:01 最新窗口继续 `starts_with_json=false` 漂移；`持仓重大事件心跳检测` 更升级到 `run_id=6564 execution_failed + skipped_error`，`parse_kind=JsonUnknownStatus` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-26 10:30-11:00 最新两窗继续全量 `starts_with_json=false`；`小米破位预警 run_id=6596` 与 `ORCL 大事件监控 run_id=6610` 已升级到 `execution_failed + skipped_error`，`parse_kind=JsonMalformed` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-26 02:30 `小米破位预警` 再次从前一窗口的 `noop` 漂移到 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |

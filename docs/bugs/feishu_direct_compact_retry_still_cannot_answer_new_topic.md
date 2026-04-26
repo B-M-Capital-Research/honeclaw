@@ -5,6 +5,16 @@
 - **严重等级**: P2
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-26 10:54-10:57 最新样本：
+    - `session_id=Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`
+    - `2026-04-26T10:54:31.930285+08:00` 用户在旧直聊会话切到新问题：`你帮我分析一下英特尔，因为我想周一买一些，是否合适？`
+    - `data/runtime/logs/sidecar.log` 记录本轮 search 先成功执行 `data_fetch snapshot INTC`、`local_list_files path="company_profiles"` 与 `data_fetch financials INTC`，随后 `2026-04-26T02:56:43.375084Z` 落成 `stage=search.done success=true iterations=3 tool_calls=3`
+    - 紧接着 answer 阶段两次都再次记录 `stop_reason=end_turn success=true reply_chars=0`：
+      - `2026-04-26T02:56:47.183635Z`
+      - 首轮已触发 `empty successful response, retrying attempt=2/2`
+    - `2026-04-26T02:57:03.474700Z` 重试后的 search 又回落成 `stage=search.done success=false iterations=2 tool_calls=2`
+    - `2026-04-26T02:57:03.522915Z` 最终日志仍以 `当前会话上下文过长...请直接继续提问重点、发送 /compact，或开启一个新会话后再试。` 收口；`2026-04-26T10:57:03.554786+08:00` 的 `session_messages` / `sessions.last_message_preview` 却向用户写成 `发送 <absolute-path>/compact`
+    - 结论：最新一小时内，同类旧会话失败不但仍然活跃，而且在“有完整 search 结果”的前提下依旧无法进入有效 answer，并继续外泄新的占位符格式
   - 2026-04-26 09:47-09:50 最新样本：
     - `session_id=Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768`
     - `2026-04-26T09:47:44.192950+08:00` 用户在旧会话里切到新问题：`今周美股是否需要减仓位？`
@@ -115,6 +125,7 @@
 ## 2026-04-26 状态回退结论
 
 - `2026-04-20` 的“已修复”结论不能继续成立：最新旧会话 `Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` 在新问题 `今周美股是否需要减仓位？` 上再次复现 compact 后仍失败。
+- `2026-04-26 10:57` 的 `INTC` 样本进一步说明，问题已经不是“search 直接失败才触发 fallback”这么简单：本轮 search 先完整成功，answer 两次都空返回，随后才二次回落成 compact fallback。
 - 这次失败不是历史脏样本残留：
   - 会话先完成 auto compact；
   - 两次 answer 都走到 `reply_chars=0`；

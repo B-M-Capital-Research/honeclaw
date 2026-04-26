@@ -19,6 +19,16 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 10:30-11:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `10:30` 窗口的 `run_id=6590-6600` 继续全量落在 `starts_with_json=false` 坏态；其中 `run_id=6596`（`小米破位预警`，`2026-04-26T10:30:20.155971+08:00`）已从普通 `noop` 漂移到 `execution_failed + skipped_error`，`error_message=heartbeat 输出不是合法 JSON，任务已标记失败`，`parse_kind=JsonMalformed`
+    - 同一窗口 `run_id=6600`（`持仓重大事件心跳检测`，`2026-04-26T10:30:33.893069+08:00`）虽然业务语义上已整理出 ORCL 分析师评级摘要，但 `detail_json.raw_preview` 仍是 `<think>...</think>` 后拼接 `{"推送内容":[...]}`，缺少契约要求的 `status` 字段，最终仍被吸收为 `noop + skipped_noop`
+    - `11:00` 窗口的 `run_id=6601-6611` 再次没有任何一条恢复成“首字符即 `{` 的单段 JSON”；`run_id=6603/6605/6607/6609` 为 `JsonEmptyStatus`，`6604/6606/6608/6611` 为 `PlainTextSuppressed`
+    - `run_id=6610`（`ORCL 大事件监控`，`2026-04-26T11:00:31.515330+08:00`）进一步升级为 `execution_failed + skipped_error + delivered=0`，`parse_kind=JsonMalformed`，`raw_chars=2906`
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 10:30:20.155-10:30:20.156` 先记录 `parse_kind=JsonMalformed`、`malformed heartbeat json suppressed`，随后对 `小米破位预警` 直接 `parse failure escalated`
+    - `2026-04-26 11:00:31.513-11:00:31.516` 对 `ORCL 大事件监控` 再次重复同样的 `JsonMalformed -> parse failure escalated` 升级链路
+    - 结论：到 `2026-04-26 11:00` 为止，heartbeat 并未恢复为稳定的结构化契约输出，反而在 `JsonEmptyStatus` / `PlainTextSuppressed` 的长期漂移之外，新增多条 `JsonMalformed` 升级失败样本
   - 2026-04-26 09:00-09:01 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6554-6563` 覆盖 `TEM大事件心跳监控`、`TEM破位预警`、CAI/小米破位、`全天原油价格3小时播报`、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 与 `ASTS 重大异动心跳监控`；其中 `6554` 为 `JsonNoop`，`6555` 为 `JsonEmptyStatus`，`6559/6563` 为 `PlainTextSuppressed`，同窗仍没有任何一条恢复成“首字符即 `{` 的单段 JSON”。
