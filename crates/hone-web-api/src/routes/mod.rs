@@ -2,6 +2,7 @@ pub(crate) mod auth;
 pub(crate) mod chat;
 pub(crate) mod company_profiles;
 pub(crate) mod cron;
+pub(crate) mod event_engine_admin;
 pub(crate) mod events;
 pub(crate) mod files;
 pub(crate) mod history;
@@ -95,6 +96,21 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .route(
             "/notification-prefs",
             get(notification_prefs::handle_get_prefs).put(notification_prefs::handle_put_prefs),
+        )
+        .route(
+            "/event-engine/global-digest",
+            get(event_engine_admin::handle_get_global_digest)
+                .put(event_engine_admin::handle_put_global_digest),
+        )
+        .route(
+            "/event-engine/rss-feeds",
+            get(event_engine_admin::handle_list_rss_feeds)
+                .post(event_engine_admin::handle_create_rss_feed),
+        )
+        .route(
+            "/event-engine/rss-feeds/{handle}",
+            put(event_engine_admin::handle_update_rss_feed)
+                .delete(event_engine_admin::handle_delete_rss_feed),
         )
         .route(
             "/company-profiles/actors",

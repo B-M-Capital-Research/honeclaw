@@ -31,10 +31,10 @@ pub use channels::{
     GroupContextConfig, IMessageConfig, TelegramConfig,
 };
 pub use event_engine::{
-    DigestConfig as EventEngineDigestConfig, EventEngineConfig,
+    DigestConfig as EventEngineDigestConfig, EventEngineConfig, GlobalDigestConfig,
     PollIntervals as EventEnginePollIntervals, RendererConfig as EventEngineRendererConfig,
-    Sources as EventEngineSources, TelegramChannelConfig, Thresholds as EventEngineThresholds,
-    TruthSocialAccountConfig, tz_offset_hours,
+    RssFeedConfig, Sources as EventEngineSources, TelegramChannelConfig,
+    Thresholds as EventEngineThresholds, TruthSocialAccountConfig, tz_offset_hours,
 };
 pub use materialize::{
     canonical_config_candidate, effective_config_path, generate_effective_config,
@@ -42,8 +42,8 @@ pub use materialize::{
 };
 pub use mutation::{
     ConfigApplyPlan, ConfigMutation, ConfigMutationResult, apply_config_mutations,
-    classify_config_paths, is_sensitive_config_path, read_config_path_value,
-    redact_sensitive_value,
+    apply_overlay_mutations, classify_config_paths, is_sensitive_config_path,
+    read_config_path_value, redact_sensitive_value,
 };
 pub use server::{
     FmpConfig, LoggingConfig, NanoBananaConfig, SearchConfig, SecurityConfig, StorageConfig,

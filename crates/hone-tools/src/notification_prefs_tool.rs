@@ -105,7 +105,38 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         "digest_windows": prefs.digest_windows,
         "price_high_pct_override": prefs.price_high_pct_override,
         "immediate_kinds": prefs.immediate_kinds,
+        "global_digest_enabled": prefs.global_digest_enabled,
+        "investment_global_style": prefs.investment_global_style,
+        "investment_theses": prefs.investment_theses,
+        "global_digest_floor_macro_picks": prefs.global_digest_floor_macro_picks,
     })
+}
+
+fn parse_bool_flag(value: &Value, action: &str) -> HoneResult<bool> {
+    match value {
+        Value::Bool(b) => Ok(*b),
+        Value::String(s) => Ok(matches!(
+            s.trim().to_ascii_lowercase().as_str(),
+            "true" | "1" | "yes" | "on"
+        )),
+        _ => Err(HoneError::Tool(format!("{action} 需要 true/false"))),
+    }
+}
+
+fn parse_ticker(s: &str) -> HoneResult<String> {
+    let t = s.trim().to_ascii_uppercase();
+    if t.is_empty() {
+        return Err(HoneError::Tool("ticker 不能为空".into()));
+    }
+    if !t
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    {
+        return Err(HoneError::Tool(format!(
+            "ticker {t:?} 含非法字符;只允许字母/数字/./-"
+        )));
+    }
+    Ok(t)
 }
 
 #[async_trait]
@@ -123,6 +154,14 @@ impl Tool for NotificationPrefsTool {
          set_digest_windows 设本地 HH:MM 摘要时刻列表(传 [] 则关 digest)、\
          set_price_high_pct 调价格异动即时推阈值 (0<x≤50,如 3.5)、\
          set_immediate_kinds 指定哪些 kind 强制升 High 即时推。\
+         全局要闻 digest(LLM 精读后每天 N 次的全球新闻):\
+         set_global_digest_enabled 开关、\
+         set_investment_style 设置投资风格自由文本(如\"长期叙事派,重视行业稀缺性,轻视估值/技术形态\";空串清空)、\
+         upsert_thesis 增/改一只股票的投资逻辑(value={\"ticker\":\"MU\",\"thesis\":\"看 NAND/DRAM 长期稀缺性\"})、\
+         delete_thesis 删一只(value=\"MU\")、clear_all_theses 全清、get_theses 列出所有 thesis、\
+         set_macro_floor_picks 设置宏观料底线条数(0-5,即使 thesis 全剔也至少保留 N 条联储/地缘/油价)。\
+         **重要**:用户用自然语言聊\"我对 X 的看法是...\"、\"我重视长期叙事\"、\"全球要闻别再推了\" \
+         这类时,主动调对应 action,无需让用户自己说出 action 名。\
          kind tag 必须选自:earnings_upcoming / earnings_released / news_critical / \
          press_release / price_alert / weekly52_high / weekly52_low / volume_spike / \
          dividend / split / buyback / sec_filing / analyst_grade / macro_event / \
@@ -150,6 +189,13 @@ impl Tool for NotificationPrefsTool {
                     "set_digest_windows".into(),
                     "set_price_high_pct".into(),
                     "set_immediate_kinds".into(),
+                    "set_global_digest_enabled".into(),
+                    "set_investment_style".into(),
+                    "upsert_thesis".into(),
+                    "delete_thesis".into(),
+                    "clear_all_theses".into(),
+                    "get_theses".into(),
+                    "set_macro_floor_picks".into(),
                     "reset".into(),
                 ]),
                 items: None,
@@ -163,8 +209,13 @@ impl Tool for NotificationPrefsTool {
                     allow_kinds/block_kinds/set_immediate_kinds 传 JSON 数组 (例 [\"news_critical\"]);\
                     set_timezone 传 IANA 名 (例 \"Asia/Shanghai\");\
                     set_digest_windows 传 HH:MM 数组 (例 [\"19:00\",\"02:30\",\"09:00\"],空数组关 digest);\
-                    set_price_high_pct 传数字 (0<x≤50,例 3.5)。\
-                    其它 action 不需要此参数。"
+                    set_price_high_pct 传数字 (0<x≤50,例 3.5);\
+                    set_global_digest_enabled 传 true/false;\
+                    set_investment_style 传字符串 (空串清空);\
+                    upsert_thesis 传对象 {\"ticker\":\"MU\",\"thesis\":\"看 NAND/DRAM 长期稀缺性\"};\
+                    delete_thesis 传 ticker 字符串 (例 \"MU\");\
+                    set_macro_floor_picks 传整数 0-5 (默认 1)。\
+                    get/get_theses/clear_all_theses/clear_allow/clear_block/enable/disable/reset 不需要 value。"
                     .to_string(),
                 required: false,
                 r#enum: None,
@@ -293,6 +344,87 @@ impl Tool for NotificationPrefsTool {
                 let tags = extract_string_array(&value)?;
                 validate_tags(&tags)?;
                 prefs.immediate_kinds = if tags.is_empty() { None } else { Some(tags) };
+            }
+            "set_global_digest_enabled" => {
+                prefs.global_digest_enabled = parse_bool_flag(&value, "set_global_digest_enabled")?;
+            }
+            "set_investment_style" => {
+                let raw = value.as_str().ok_or_else(|| {
+                    HoneError::Tool(
+                        "set_investment_style 需要字符串 (空串清空,例 \"长期叙事派,重视行业稀缺性\")"
+                            .into(),
+                    )
+                })?;
+                let trimmed = raw.trim();
+                prefs.investment_global_style = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+            }
+            "upsert_thesis" => {
+                let obj = value.as_object().ok_or_else(|| {
+                    HoneError::Tool(
+                        "upsert_thesis 需要对象 {\"ticker\":\"MU\",\"thesis\":\"...\"}".into(),
+                    )
+                })?;
+                let ticker_raw = obj
+                    .get("ticker")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| HoneError::Tool("upsert_thesis: 缺少 ticker 字符串".into()))?;
+                let thesis = obj
+                    .get("thesis")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| HoneError::Tool("upsert_thesis: 缺少 thesis 字符串".into()))?
+                    .trim()
+                    .to_string();
+                if thesis.is_empty() {
+                    return Err(HoneError::Tool(
+                        "thesis 不能为空;若想删除请用 delete_thesis".into(),
+                    ));
+                }
+                let ticker = parse_ticker(ticker_raw)?;
+                let map = prefs
+                    .investment_theses
+                    .get_or_insert_with(std::collections::HashMap::new);
+                map.insert(ticker, thesis);
+            }
+            "delete_thesis" => {
+                let ticker_raw = value.as_str().ok_or_else(|| {
+                    HoneError::Tool("delete_thesis 需要 ticker 字符串 (例 \"MU\")".into())
+                })?;
+                let ticker = parse_ticker(ticker_raw)?;
+                if let Some(map) = prefs.investment_theses.as_mut() {
+                    map.remove(&ticker);
+                    if map.is_empty() {
+                        prefs.investment_theses = None;
+                    }
+                }
+            }
+            "clear_all_theses" => {
+                prefs.investment_theses = None;
+            }
+            "get_theses" => {
+                let theses = prefs.investment_theses.clone().unwrap_or_default();
+                return Ok(json!({
+                    "status": "ok",
+                    "theses": theses,
+                    "count": theses.len(),
+                }));
+            }
+            "set_macro_floor_picks" => {
+                let n = match &value {
+                    Value::Number(n) => n.as_u64(),
+                    Value::String(s) => s.trim().parse::<u64>().ok(),
+                    _ => None,
+                }
+                .ok_or_else(|| HoneError::Tool("set_macro_floor_picks 需要整数 (0-5)".into()))?;
+                if n > 5 {
+                    return Err(HoneError::Tool(format!(
+                        "macro_floor_picks 必须在 [0, 5] 范围,收到 {n}"
+                    )));
+                }
+                prefs.global_digest_floor_macro_picks = n as u32;
             }
             "reset" => {
                 prefs = NotificationPrefs::default();
@@ -540,6 +672,201 @@ mod tests {
             .unwrap();
         let out = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(out["prefs"]["immediate_kinds"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn set_global_digest_enabled_round_trips() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        // 默认为 true
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["global_digest_enabled"], json!(true));
+
+        tool.execute(json!({"action":"set_global_digest_enabled","value":false}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["global_digest_enabled"], json!(false));
+
+        // 字符串形式也接受
+        tool.execute(json!({"action":"set_global_digest_enabled","value":"true"}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["global_digest_enabled"], json!(true));
+    }
+
+    #[tokio::test]
+    async fn set_investment_style_writes_and_clears_on_empty() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action":"set_investment_style",
+            "value":"长期叙事派,重视 NAND/DRAM 长期稀缺性"
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(
+            out["prefs"]["investment_global_style"],
+            json!("长期叙事派,重视 NAND/DRAM 长期稀缺性")
+        );
+
+        // 空串 = 清空
+        tool.execute(json!({"action":"set_investment_style","value":""}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["investment_global_style"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn upsert_thesis_normalizes_ticker_and_persists() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        // ticker 小写也能被规范化
+        tool.execute(json!({
+            "action":"upsert_thesis",
+            "value":{"ticker":"mu","thesis":"看 NAND/DRAM 长期稀缺性"}
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get_theses"})).await.unwrap();
+        assert_eq!(out["count"], json!(1));
+        assert_eq!(out["theses"]["MU"], json!("看 NAND/DRAM 长期稀缺性"));
+
+        // 同 ticker 再写一次 = 替换
+        tool.execute(json!({
+            "action":"upsert_thesis",
+            "value":{"ticker":"MU","thesis":"换个角度:HBM 拐点"}
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get_theses"})).await.unwrap();
+        assert_eq!(out["count"], json!(1));
+        assert_eq!(out["theses"]["MU"], json!("换个角度:HBM 拐点"));
+
+        // 写第二只
+        tool.execute(json!({
+            "action":"upsert_thesis",
+            "value":{"ticker":"SNDK","thesis":"NAND 减产周期"}
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get_theses"})).await.unwrap();
+        assert_eq!(out["count"], json!(2));
+    }
+
+    #[tokio::test]
+    async fn upsert_thesis_rejects_empty_thesis_and_invalid_ticker() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        let err = tool
+            .execute(json!({
+                "action":"upsert_thesis",
+                "value":{"ticker":"MU","thesis":"   "}
+            }))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("不能为空"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+
+        let err = tool
+            .execute(json!({
+                "action":"upsert_thesis",
+                "value":{"ticker":"M U!","thesis":"x"}
+            }))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("非法字符"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_thesis_removes_one_and_clears_map_when_empty() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action":"upsert_thesis",
+            "value":{"ticker":"MU","thesis":"a"}
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({
+            "action":"upsert_thesis",
+            "value":{"ticker":"SNDK","thesis":"b"}
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({"action":"delete_thesis","value":"MU"}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get_theses"})).await.unwrap();
+        assert_eq!(out["count"], json!(1));
+        assert!(out["theses"].get("MU").is_none());
+
+        // 删完最后一只 → map 应清成 None
+        tool.execute(json!({"action":"delete_thesis","value":"sndk"}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["investment_theses"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn clear_all_theses_resets_to_none() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action":"upsert_thesis",
+            "value":{"ticker":"AAPL","thesis":"现金流回购"}
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({"action":"clear_all_theses"}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["investment_theses"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn set_macro_floor_picks_validates_range() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({"action":"set_macro_floor_picks","value":3}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["global_digest_floor_macro_picks"], json!(3));
+
+        // 0 合法(关闭 floor)
+        tool.execute(json!({"action":"set_macro_floor_picks","value":0}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["global_digest_floor_macro_picks"], json!(0));
+
+        // 超过 5 拒绝
+        let err = tool
+            .execute(json!({"action":"set_macro_floor_picks","value":99}))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("[0, 5]"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+
+        // 字符串数字也接受
+        tool.execute(json!({"action":"set_macro_floor_picks","value":"2"}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["global_digest_floor_macro_picks"], json!(2));
     }
 
     #[tokio::test]

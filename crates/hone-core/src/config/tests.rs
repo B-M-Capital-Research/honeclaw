@@ -596,6 +596,122 @@ agent:
 }
 
 #[test]
+fn test_apply_overlay_mutations_writes_only_to_overlay() {
+    let dir = temp_test_dir("overlay-mutations");
+    let config_path = dir.join("config.yaml");
+    let overlay_path = runtime_overlay_path(&config_path);
+    let base = r#"# user comments must survive
+event_engine:
+  global_digest:
+    enabled: false
+    schedules: ["09:00"]
+    pass2_top_n: 15
+"#;
+    std::fs::write(&config_path, base).unwrap();
+
+    let result = apply_overlay_mutations(
+        &config_path,
+        &[
+            ConfigMutation::Set {
+                path: "event_engine.global_digest.enabled".to_string(),
+                value: Value::Bool(true),
+            },
+            ConfigMutation::Set {
+                path: "event_engine.global_digest.schedules".to_string(),
+                value: Value::Sequence(vec![
+                    Value::String("09:00".to_string()),
+                    Value::String("21:00".to_string()),
+                ]),
+            },
+        ],
+    )
+    .unwrap();
+
+    // base 不变,注释保留
+    let base_after = std::fs::read_to_string(&config_path).unwrap();
+    assert!(base_after.contains("# user comments must survive"));
+    assert!(base_after.contains("enabled: false"));
+
+    // overlay 文件存在,且内容只包含改动部分
+    assert!(overlay_path.exists());
+    let overlay_text = std::fs::read_to_string(&overlay_path).unwrap();
+    assert!(overlay_text.contains("enabled: true"));
+    assert!(overlay_text.contains("21:00"));
+    assert!(!overlay_text.contains("pass2_top_n")); // 未改动的字段不该出现
+
+    // 启动时合并后的 effective config 反映改动
+    assert!(result.config.event_engine.global_digest.enabled);
+    assert_eq!(
+        result.config.event_engine.global_digest.schedules,
+        vec!["09:00".to_string(), "21:00".to_string()]
+    );
+    // 未改动的字段保持 base 值
+    assert_eq!(result.config.event_engine.global_digest.pass2_top_n, 15);
+}
+
+#[test]
+fn test_apply_overlay_mutations_unset_removes_from_overlay() {
+    let dir = temp_test_dir("overlay-unset");
+    let config_path = dir.join("config.yaml");
+    let overlay_path = runtime_overlay_path(&config_path);
+    std::fs::write(
+        &config_path,
+        "event_engine:\n  global_digest:\n    enabled: false\n",
+    )
+    .unwrap();
+
+    apply_overlay_mutations(
+        &config_path,
+        &[ConfigMutation::Set {
+            path: "event_engine.global_digest.enabled".to_string(),
+            value: Value::Bool(true),
+        }],
+    )
+    .unwrap();
+    assert!(overlay_path.exists());
+
+    apply_overlay_mutations(
+        &config_path,
+        &[ConfigMutation::Unset {
+            path: "event_engine.global_digest.enabled".to_string(),
+        }],
+    )
+    .unwrap();
+    // overlay 整个 mapping 空了 → write_overlay_patch 会删文件
+    assert!(!overlay_path.exists());
+
+    // effective 回到 base 值
+    let cfg = HoneConfig::from_file(&config_path).unwrap();
+    assert!(!cfg.event_engine.global_digest.enabled);
+}
+
+#[test]
+fn test_apply_overlay_mutations_rejects_invalid_merged_config() {
+    let dir = temp_test_dir("overlay-invalid");
+    let config_path = dir.join("config.yaml");
+    std::fs::write(&config_path, "feishu:\n  chat_scope: ALL\n").unwrap();
+
+    // 写一个让 HoneConfig 解析失败的值(非法 ChatScope)
+    let err = apply_overlay_mutations(
+        &config_path,
+        &[ConfigMutation::Set {
+            path: "feishu.chat_scope".to_string(),
+            value: Value::String("NOT_A_SCOPE".to_string()),
+        }],
+    )
+    .unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("配置") || msg.contains("invalid") || msg.contains("解析"),
+        "msg={msg}"
+    );
+
+    // overlay 不应被写入(校验失败应在 write 之前)
+    let overlay_path = runtime_overlay_path(&config_path);
+    assert!(!overlay_path.exists());
+}
+
+#[test]
 fn test_redact_sensitive_value_masks_scalars_and_sequences() {
     assert_eq!(
         redact_sensitive_value(

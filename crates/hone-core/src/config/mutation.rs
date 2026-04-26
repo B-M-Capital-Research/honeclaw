@@ -16,8 +16,9 @@ use std::path::Path;
 use super::HoneConfig;
 use super::channels::ChatScope;
 use super::yaml::{
-    atomic_write_yaml, get_value_at_segments, parse_config_path, read_yaml_value,
-    set_value_at_segments, unset_value_at_segments, yaml_revision,
+    atomic_write_yaml, get_value_at_segments, merge_yaml_value, parse_config_path, read_yaml_value,
+    runtime_overlay_path, set_value_at_segments, unset_value_at_segments, write_overlay_patch,
+    yaml_revision,
 };
 
 #[derive(Debug, Clone)]
@@ -108,6 +109,91 @@ pub fn read_config_path_value(config_path: &Path, path: &str) -> crate::HoneResu
     let current = read_yaml_value(config_path)?;
     let segments = parse_config_path(path)?;
     Ok(get_value_at_segments(&current, &segments)?.cloned())
+}
+
+/// 与 [`apply_config_mutations`] 同语义,但写到 **overlay** 文件
+/// (`<config>.overrides.yaml`),不动 base config —— 避免改写用户手写的 yaml
+/// 注释。启动时 [`super::HoneConfig::from_file`] 自动 merge overlay,无需额外
+/// 钩子。
+///
+/// 返回的 `config` 是 base + overlay 合并后的 effective view;`config_revision`
+/// 取自合并后的快照(任一侧改了都会变)。
+///
+/// 适用场景:管理端"改 schedules / 切换 model / 加 RSS 源"等运行时旋钮 ——
+/// 这类字段 yaml 注释不重要,但不希望覆盖整份 config.yaml。
+pub fn apply_overlay_mutations(
+    config_path: &Path,
+    mutations: &[ConfigMutation],
+) -> crate::HoneResult<ConfigMutationResult> {
+    let overlay_path = runtime_overlay_path(config_path);
+    let mut overlay = if overlay_path.exists() {
+        read_yaml_value(&overlay_path)?
+    } else {
+        Value::Mapping(Mapping::new())
+    };
+    if overlay.is_null() {
+        overlay = Value::Mapping(Mapping::new());
+    }
+
+    let changed_paths: Vec<String> = mutations
+        .iter()
+        .map(|mutation| match mutation {
+            ConfigMutation::Set { path, .. } | ConfigMutation::Unset { path } => path.clone(),
+        })
+        .collect();
+
+    for mutation in mutations {
+        match mutation {
+            ConfigMutation::Set { path, value } => {
+                let segments = parse_config_path(path)?;
+                set_value_at_segments(&mut overlay, &segments, value.clone())?;
+            }
+            ConfigMutation::Unset { path } => {
+                let segments = parse_config_path(path)?;
+                unset_value_at_segments(&mut overlay, &segments)?;
+            }
+        }
+    }
+
+    // 校验 base + 新 overlay 是否仍能解析为合法 HoneConfig。
+    let base = if config_path.exists() {
+        read_yaml_value(config_path)?
+    } else {
+        Value::Mapping(Mapping::new())
+    };
+    let mut effective = if base.is_null() {
+        Value::Mapping(Mapping::new())
+    } else {
+        base
+    };
+    merge_yaml_value(&mut effective, overlay.clone());
+    HoneConfig::from_merged_value(effective.clone())?;
+
+    // 递归剔除空 mapping —— `unset` 留下的 `{event_engine: {global_digest: {}}}`
+    // 在 write_overlay_patch 顶层检查里仍算"非空",会留下无意义的覆盖文件。
+    prune_empty_mappings(&mut overlay);
+    write_overlay_patch(&overlay_path, Some(overlay))?;
+    Ok(ConfigMutationResult {
+        config: HoneConfig::from_file(config_path)?,
+        config_revision: yaml_revision(&effective)?,
+        apply: classify_config_paths(&changed_paths),
+    })
+}
+
+/// 递归丢弃 mapping 里值为空 mapping 的键。`Sequence` / 标量保持不变。
+fn prune_empty_mappings(value: &mut Value) {
+    if let Value::Mapping(map) = value {
+        let keys: Vec<Value> = map.keys().cloned().collect();
+        for key in keys {
+            if let Some(child) = map.get_mut(&key) {
+                prune_empty_mappings(child);
+            }
+            let drop = matches!(map.get(&key), Some(Value::Mapping(child)) if child.is_empty());
+            if drop {
+                map.remove(&key);
+            }
+        }
+    }
 }
 
 pub fn apply_config_mutations(
