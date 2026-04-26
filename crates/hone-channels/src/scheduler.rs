@@ -195,6 +195,7 @@ pub struct ScheduledTaskExecution {
     pub content: String,
     pub error: Option<String>,
     pub metadata: Value,
+    pub session_id: Option<String>,
 }
 
 fn heartbeat_parse_error_message(parse_kind: &HeartbeatParseKind) -> Option<String> {
@@ -234,6 +235,7 @@ fn heartbeat_execution_from_content(
             content: String::new(),
             error: Some(error),
             metadata,
+            session_id: None,
         };
     }
 
@@ -243,6 +245,7 @@ fn heartbeat_execution_from_content(
             content: String::new(),
             error: None,
             metadata,
+            session_id: None,
         },
         HeartbeatOutcome::Deliver(message) => {
             let sanitized_message = sanitize_scheduler_delivery_text(&message);
@@ -260,6 +263,7 @@ fn heartbeat_execution_from_content(
                         "deliver_preview": truncate_for_log(message.trim(), 200),
                         "sanitized_empty": true,
                     }),
+                    session_id: None,
                 };
             }
             let deliver_preview = truncate_for_log(message.trim(), 200);
@@ -275,8 +279,37 @@ fn heartbeat_execution_from_content(
                     "raw_preview": raw_preview,
                     "deliver_preview": deliver_preview,
                 }),
+                session_id: None,
             }
         }
+    }
+}
+
+fn rollback_skipped_scheduler_assistant_turn(
+    storage: &hone_memory::SessionStorage,
+    session_id: &str,
+    content: &str,
+) {
+    if session_id.is_empty() || content.trim().is_empty() {
+        return;
+    }
+
+    match storage.remove_last_message_if_matches(session_id, "assistant", content) {
+        Ok(true) => tracing::info!(
+            "[SchedulerDiag] rolled back skipped assistant turn session_id={} chars={}",
+            session_id,
+            content.chars().count(),
+        ),
+        Ok(false) => tracing::warn!(
+            "[SchedulerDiag] skipped assistant rollback missed tail session_id={} chars={}",
+            session_id,
+            content.chars().count(),
+        ),
+        Err(err) => tracing::warn!(
+            "[SchedulerDiag] skipped assistant rollback failed session_id={} err={}",
+            session_id,
+            err,
+        ),
     }
 }
 
@@ -420,8 +453,9 @@ pub async fn execute_scheduler_event(
     mut run_options: AgentRunOptions,
 ) -> ScheduledTaskExecution {
     if !event.heartbeat {
-        let result = run_scheduled_task(core, event, prompt_options, run_options).await;
+        let result = run_scheduled_task(core.clone(), event, prompt_options, run_options).await;
         let response = result.response;
+        let session_id = result.session_id;
         return if response.success {
             let sanitized = sanitize_scheduler_delivery_text(&response.content);
             if is_empty_success_fallback(&sanitized) {
@@ -438,6 +472,7 @@ pub async fn execute_scheduler_event(
                     metadata: json!({
                         "failure_kind": "empty_success_fallback",
                     }),
+                    session_id: Some(session_id),
                 }
             } else if has_skip_delivery_signal(&sanitized) {
                 tracing::info!(
@@ -446,11 +481,17 @@ pub async fn execute_scheduler_event(
                     event.job_name,
                     sanitized.chars().count(),
                 );
+                rollback_skipped_scheduler_assistant_turn(
+                    &core.session_storage,
+                    &session_id,
+                    &sanitized,
+                );
                 ScheduledTaskExecution {
                     should_deliver: false,
                     content: sanitized,
                     error: None,
                     metadata: Value::Null,
+                    session_id: Some(session_id),
                 }
             } else {
                 ScheduledTaskExecution {
@@ -458,6 +499,7 @@ pub async fn execute_scheduler_event(
                     content: sanitized,
                     error: None,
                     metadata: Value::Null,
+                    session_id: Some(session_id),
                 }
             }
         } else {
@@ -467,6 +509,7 @@ pub async fn execute_scheduler_event(
                 content: String::new(),
                 error: sanitized_error,
                 metadata: Value::Null,
+                session_id: Some(session_id),
             }
         };
     }
@@ -554,6 +597,7 @@ pub async fn execute_scheduler_event(
                         "heartbeat_model": heartbeat_model,
                         "parse_kind": parse_kind_label,
                     }),
+                    session_id: None,
                 }
             } else {
                 tracing::warn!(
@@ -571,6 +615,7 @@ pub async fn execute_scheduler_event(
                     metadata: json!({
                         "heartbeat_model": heartbeat_model,
                     }),
+                    session_id: None,
                 }
             }
         }
@@ -681,10 +726,11 @@ mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, has_skip_delivery_signal,
         heartbeat_execution_from_content, inspect_heartbeat_result, is_empty_success_fallback,
-        sanitize_scheduler_delivery_text,
+        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
     };
     use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
     use hone_core::ActorIdentity;
+    use hone_memory::{SessionStorage, session_message_text};
     use hone_scheduler::SchedulerEvent;
     use serde_json::Value;
 
@@ -864,6 +910,40 @@ mod tests {
             EMPTY_SUCCESS_FALLBACK_MESSAGE
         )));
         assert!(!is_empty_success_fallback("这是正常的定时任务输出"));
+    }
+
+    #[test]
+    fn skip_signal_rolls_back_persisted_assistant_turn() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_scheduler_skip_rollback_{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("feishu", "ou_skip", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        let skipped_content =
+            "TEM 今日未出现新的公司级实质催化或风险证伪信号，按规则可跳过正式推送";
+
+        storage
+            .add_message(&session_id, "user", "[定时任务触发] TEM", None)
+            .expect("add user");
+        storage
+            .add_message(&session_id, "assistant", skipped_content, None)
+            .expect("add assistant");
+
+        rollback_skipped_scheduler_assistant_turn(&storage, &session_id, skipped_content);
+
+        let messages = storage
+            .get_messages(&session_id, None)
+            .expect("get messages");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(session_message_text(&messages[0]), "[定时任务触发] TEM");
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

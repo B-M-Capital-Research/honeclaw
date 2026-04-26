@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-26 00:12 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b`
@@ -62,8 +62,21 @@
 - 旧修复只解决了“命中 skip 时不要投递”，没有同步收紧“命中 skip 时不要写入用户会话历史”的状态边界。
 - 该问题与 `session_persist_assistant_transcript_pollution` 不同：这里落库的文本已是净化后的 final，但它本身不应进入 direct session，因为本轮实际没有出站。
 
-## 下一步建议
+## 修复情况（2026-04-26 18:06 CST）
 
-- 将 scheduler 的 `should_deliver=false` 判定前移到 `session.persist_assistant` 之前，或在 noop 路径显式跳过用户会话写库。
-- 若需要保留这类“未送达但已生成”的内容，单独写入 `cron_job_runs.detail_json`、审计表或专用诊断日志，不要污染 direct session。
-- 回归至少覆盖 `每日动态监控` 场景下的两条样本：`无新增催化 -> skip_signal -> skipped_noop -> session_messages 不新增 assistant final`。
+- 已在 [`/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/scheduler.rs`](/Users/fengming2/Desktop/honeclaw/crates/hone-channels/src/scheduler.rs) 为 `skip_signal` 收口补回滚逻辑：
+  - 非 heartbeat scheduler 命中 `skip_signal` 后，会立即撤回刚刚通过通用成功路径落进 session 的 assistant final；
+  - 回滚只在“最后一条消息确实是本轮 skip 长文”时生效，避免误删用户后续真实对话。
+- 已在 [`/Users/fengming2/Desktop/honeclaw/memory/src/session.rs`](/Users/fengming2/Desktop/honeclaw/memory/src/session.rs) 增加原子 `remove_last_message_if_matches(...)`，供 scheduler 安全回滚尾部污染消息。
+- 这次修复只收紧“未送达长文不得进入 direct session”的状态边界，不改变 `cron_job_runs` 的 `noop + skipped_noop` 收口，也不影响真正需要投递的 scheduler 内容。
+
+## 验证
+
+- `cargo test -p hone-memory remove_last_message_if_matches_only_removes_matching_tail -- --nocapture`
+- `cargo test -p hone-channels scheduler::tests -- --nocapture`
+- `cargo check -p hone-channels -p hone-memory`
+
+## 后续观察点
+
+- 需要下一条真实 Feishu `skip_signal` 样本复核：确认 `session_messages` 与 `sessions.last_message_preview` 不再新增未送达 assistant final。
+- 本次未改变 scheduler 注入的 `[定时任务触发]` user turn；若后续发现这些 internal trigger 也会稳定污染 direct 上下文，应另立缺陷单独收口。

@@ -902,6 +902,39 @@ impl SessionStorage {
         Ok(true)
     }
 
+    /// 仅当最后一条消息的 `role` 与文本都匹配时，将其原子回滚。
+    ///
+    /// 主要用于 scheduler 在判定“本轮不发送”后，撤回刚刚通过通用成功路径
+    /// 落入 direct session 的 assistant final，避免污染真实用户上下文。
+    pub fn remove_last_message_if_matches(
+        &self,
+        session_id: &str,
+        role: &str,
+        content: &str,
+    ) -> hone_core::HoneResult<bool> {
+        let lock = get_session_lock(session_id);
+        let _guard = lock.lock().unwrap();
+
+        let Some(mut session) = self.load_session(session_id)? else {
+            return Ok(false);
+        };
+
+        let Some(last) = session.messages.last() else {
+            return Ok(false);
+        };
+
+        if last.role != role || session_message_text(last).trim() != content.trim() {
+            return Ok(false);
+        }
+
+        session.messages.pop();
+        session.updated_at = hone_core::beijing_now_rfc3339();
+        session.version = default_session_version();
+        self.write_session(session_id, &session)?;
+
+        Ok(true)
+    }
+
     /// 获取消息列表
     pub fn get_messages(
         &self,
@@ -1346,6 +1379,50 @@ mod tests {
         let msgs = storage.get_messages(&session_id, Some(2)).expect("get");
         let contents: Vec<_> = msgs.iter().map(session_message_text).collect();
         assert_eq!(contents, vec!["m2", "m3"]);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn remove_last_message_if_matches_only_removes_matching_tail() {
+        let root = make_temp_dir("hone_memory_test_remove_last_matching");
+        let storage = SessionStorage::new(&root);
+        let session_id = storage.create_session(None, None, None).expect("create");
+
+        storage
+            .add_message(&session_id, "user", "[定时任务触发] TEM", None)
+            .expect("add user");
+        storage
+            .add_message(
+                &session_id,
+                "assistant",
+                "TEM 今日未出现新的公司级实质催化或风险证伪信号，按规则可跳过正式推送",
+                None,
+            )
+            .expect("add assistant");
+
+        let removed = storage
+            .remove_last_message_if_matches(
+                &session_id,
+                "assistant",
+                "TEM 今日未出现新的公司级实质催化或风险证伪信号，按规则可跳过正式推送",
+            )
+            .expect("remove");
+        assert!(removed);
+
+        let msgs = storage.get_messages(&session_id, None).expect("get");
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].role, "user");
+        assert_eq!(session_message_text(&msgs[0]), "[定时任务触发] TEM");
+
+        let removed_again = storage
+            .remove_last_message_if_matches(
+                &session_id,
+                "assistant",
+                "TEM 今日未出现新的公司级实质催化或风险证伪信号，按规则可跳过正式推送",
+            )
+            .expect("remove again");
+        assert!(!removed_again);
 
         let _ = std::fs::remove_dir_all(root);
     }
