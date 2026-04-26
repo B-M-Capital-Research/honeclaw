@@ -132,8 +132,19 @@
 - 继续把 `reply_chars=0`、`empty successful response persisted as fallback`、`cron_job_runs.response_preview=通用 fallback` 的组合视为当前主监控信号，而不只盯零字节消息。
 - 回归至少覆盖 `HoneClaw每日使用Tips` 这类无工具、短文本 scheduler 任务：出现空 answer 时要么自动补出合格 tip，要么明确记失败并重试，而不是向用户发送通用失败文案。
 
+## 修复进展（2026-04-26）
+
+- 已在 `crates/hone-channels/src/scheduler.rs` 把 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 从“正常可投递内容”提升为 scheduler 失败信号：
+  - 非 heartbeat 定时任务若最终只产出统一空回复 fallback，会返回 `error=Some(...)`；
+  - Feishu scheduler 落库时将写成 `execution_failed`，不再继续伪装成 `completed + sent + delivered=1`；
+  - fallback 仍可作为用户态失败提示发送，避免用户完全静默。
+- 已补回归：`scheduler_detects_empty_success_fallback_as_failure_content`。
+- 已验证：`cargo test -p hone-channels scheduler::tests`。
+- 状态继续保持 `Fixing`：台账伪成功已代码止血；真正让 Answer 阶段产出合格任务正文还需要后续修 runner / prompt / retry 根因。
+
 ## 回归验证
 
+- `cargo test -p hone-channels scheduler::tests`
 - `cargo test -p hone-channels should_return_runner_result_ -- --nocapture`
 - `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries -- --nocapture`
 - `cargo check -p hone-channels`

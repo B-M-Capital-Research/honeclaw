@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-21 08:04 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-21 11:22 用户侧最新反馈：
@@ -84,3 +84,13 @@
 - 修复后优先复核两个场景：
   - 普通 Feishu 定时日报是否恢复送达
   - 已触发的 heartbeat 告警是否能在 `deliver_preview` 之后真正发出
+
+## 修复进展（2026-04-26）
+
+- 已在 `bins/hone-feishu/src/client.rs` 为 `tenant_access_token/internal` 请求补有限传输重试：
+  - 最多 3 次；
+  - 重试请求传输错误、`429` 与 `5xx`；
+  - `4xx` 认证/配置错误仍立即返回，避免掩盖真实配置问题。
+- 同一重试封装也用于 Feishu 发送、回复、更新消息请求，保证 token 获取恢复后后续出站阶段也具备基本吸震。
+- 已验证：`cargo test -p hone-feishu`。
+- 状态暂置 `Fixing`：代码止血已落地，仍需下一轮真实 scheduler / heartbeat 投递窗口确认 `tenant_access_token/internal` 抖动不再整批打成 `send_failed`。

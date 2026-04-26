@@ -3,13 +3,15 @@
 - title: Feishu P1 直聊与定时任务可靠性修复批次
 - status: in_progress
 - created_at: 2026-04-17 10:05 CST
-- updated_at: 2026-04-17 10:45 CST
+- updated_at: 2026-04-26 13:20 CST
 - owner: Codex
 - related_files:
   - `bins/hone-feishu/src/handler.rs`
   - `bins/hone-feishu/src/outbound.rs`
   - `bins/hone-feishu/src/client.rs`
+  - `bins/hone-feishu/src/scheduler.rs`
   - `crates/hone-channels/src/agent_session.rs`
+  - `crates/hone-channels/src/scheduler.rs`
   - `docs/bugs/README.md`
   - `docs/bugs/feishu_direct_empty_reply_false_success.md`
   - `docs/bugs/feishu_direct_cron_job_iteration_exhaustion_no_reply.md`
@@ -47,12 +49,16 @@
   - Feishu `update_message` / `reply_message` 返回 `HTTP 400` 时改走 standalone send 回退
   - direct scheduler 无 placeholder 的多段发送不再默认使用 reply 链路
   - Feishu handler 增加 join/panic 兜底与 `handler.session_run` 边界日志
+  - Feishu client 为 `tenant_access_token/internal`、send/reply/update message 补 3 次短重试，吸收传输错误、`429` 与 `5xx`
+  - `hone-channels` scheduler 将 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 识别为失败信号，避免通用 fallback 继续记为 `completed + sent`
 - 已验证：
   - `cargo test -p hone-feishu`
   - `cargo test -p hone-channels`
+  - `cargo test -p hone-channels scheduler::tests`
 - 待验证：
   - 下一条真实 Feishu 直聊空回复 / busy 样本
   - 下一轮真实 Feishu scheduler 直达任务送达窗口
+  - 下一轮真实 `tenant_access_token/internal` 或 `im/v1/messages` 传输抖动是否被短重试吸收
 
 ## Documentation Sync
 

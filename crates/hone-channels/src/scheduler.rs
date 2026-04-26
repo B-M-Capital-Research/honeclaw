@@ -12,6 +12,7 @@ use crate::execution::{
     ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService,
 };
 use crate::prompt::{PromptOptions, build_prompt_bundle};
+use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
 use crate::runtime::{
     is_context_overflow_error, sanitize_user_visible_output, strip_internal_reasoning_blocks,
@@ -286,6 +287,10 @@ fn sanitize_scheduler_delivery_text(text: &str) -> String {
     kept_lines.trim().to_string()
 }
 
+fn is_empty_success_fallback(text: &str) -> bool {
+    text.trim() == EMPTY_SUCCESS_FALLBACK_MESSAGE
+}
+
 fn is_scheduler_protocol_residue(line: &str) -> bool {
     let trimmed = line.trim();
     if trimmed.is_empty() || !(trimmed.starts_with('{') && trimmed.ends_with('}')) {
@@ -416,7 +421,22 @@ pub async fn execute_scheduler_event(
         let response = result.response;
         return if response.success {
             let sanitized = sanitize_scheduler_delivery_text(&response.content);
-            if has_skip_delivery_signal(&sanitized) {
+            if is_empty_success_fallback(&sanitized) {
+                tracing::warn!(
+                    "[SchedulerDiag] empty_success_fallback job_id={} job={} chars={}",
+                    event.job_id,
+                    event.job_name,
+                    sanitized.chars().count(),
+                );
+                ScheduledTaskExecution {
+                    should_deliver: true,
+                    content: String::new(),
+                    error: Some(sanitized),
+                    metadata: json!({
+                        "failure_kind": "empty_success_fallback",
+                    }),
+                }
+            } else if has_skip_delivery_signal(&sanitized) {
                 tracing::info!(
                     "[SchedulerDiag] skip_signal job_id={} job={} chars={}",
                     event.job_id,
@@ -657,9 +677,10 @@ async fn run_heartbeat_task(
 mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, has_skip_delivery_signal,
-        heartbeat_execution_from_content, inspect_heartbeat_result,
+        heartbeat_execution_from_content, inspect_heartbeat_result, is_empty_success_fallback,
         sanitize_scheduler_delivery_text,
     };
+    use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
     use hone_core::ActorIdentity;
     use hone_scheduler::SchedulerEvent;
     use serde_json::Value;
@@ -815,6 +836,16 @@ mod tests {
         let raw = r#"{"status":"triggered","message":"今晚 20:30 继续复盘"}"#;
         let sanitized = sanitize_scheduler_delivery_text(raw);
         assert_eq!(sanitized, raw);
+    }
+
+    #[test]
+    fn scheduler_detects_empty_success_fallback_as_failure_content() {
+        assert!(is_empty_success_fallback(EMPTY_SUCCESS_FALLBACK_MESSAGE));
+        assert!(is_empty_success_fallback(&format!(
+            "\n{}\n",
+            EMPTY_SUCCESS_FALLBACK_MESSAGE
+        )));
+        assert!(!is_empty_success_fallback("这是正常的定时任务输出"));
     }
 
     #[test]

@@ -1,10 +1,15 @@
-use reqwest::{Client, multipart};
+use reqwest::{Client, Response, StatusCode, multipart};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::sync::RwLock;
+use tokio::time::sleep;
+
+const FEISHU_REQUEST_MAX_ATTEMPTS: usize = 3;
+const FEISHU_RETRY_DELAYS: [Duration; FEISHU_REQUEST_MAX_ATTEMPTS - 1] =
+    [Duration::from_millis(500), Duration::from_millis(1500)];
 
 #[derive(Clone)]
 pub struct FeishuApiClient {
@@ -62,16 +67,17 @@ impl FeishuApiClient {
             }
         }
 
-        let resp = self
-            .http
-            .post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")
-            .json(&TokenRequest {
-                app_id: &self.app_id,
-                app_secret: &self.app_secret,
-            })
-            .send()
-            .await
-            .map_err(|e| format!("Feishu token request failed: {e}"))?;
+        let resp = send_feishu_request_with_retry(
+            self.http
+                .post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")
+                .json(&TokenRequest {
+                    app_id: &self.app_id,
+                    app_secret: &self.app_secret,
+                }),
+            "Feishu token request",
+        )
+        .await
+        .map_err(|e| format!("Feishu token request failed: {e}"))?;
 
         if !resp.status().is_success() {
             return Err(format!("Feishu token auth failed: HTTP {}", resp.status()));
@@ -147,14 +153,12 @@ impl FeishuApiClient {
             );
         }
 
-        let resp = self
-            .http
-            .post(&url)
-            .bearer_auth(token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("Feishu send message request failed: {e}"))?;
+        let resp = send_feishu_request_with_retry(
+            self.http.post(&url).bearer_auth(token).json(&body),
+            "Feishu send message request",
+        )
+        .await
+        .map_err(|e| format!("Feishu send message request failed: {e}"))?;
 
         #[derive(Deserialize)]
         struct SendResp {
@@ -209,14 +213,12 @@ impl FeishuApiClient {
             );
         }
 
-        let resp = self
-            .http
-            .post(&url)
-            .bearer_auth(token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("Feishu reply message request failed: {e}"))?;
+        let resp = send_feishu_request_with_retry(
+            self.http.post(&url).bearer_auth(token).json(&body),
+            "Feishu reply message request",
+        )
+        .await
+        .map_err(|e| format!("Feishu reply message request failed: {e}"))?;
 
         #[derive(Deserialize)]
         struct ReplyResp {
@@ -264,14 +266,12 @@ impl FeishuApiClient {
             "content": content,
         });
 
-        let resp = self
-            .http
-            .patch(&url)
-            .bearer_auth(token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("Feishu update message request failed: {e}"))?;
+        let resp = send_feishu_request_with_retry(
+            self.http.patch(&url).bearer_auth(token).json(&body),
+            "Feishu update message request",
+        )
+        .await
+        .map_err(|e| format!("Feishu update message request failed: {e}"))?;
 
         #[derive(Deserialize)]
         struct UpdateResp {
@@ -328,14 +328,15 @@ impl FeishuApiClient {
             .text("image_type", "message")
             .part("image", part);
 
-        let resp = self
-            .http
-            .post("https://open.feishu.cn/open-apis/im/v1/images")
-            .bearer_auth(token)
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| format!("Feishu upload image request failed: {e}"))?;
+        let resp = send_feishu_request_with_retry(
+            self.http
+                .post("https://open.feishu.cn/open-apis/im/v1/images")
+                .bearer_auth(token)
+                .multipart(form),
+            "Feishu upload image request",
+        )
+        .await
+        .map_err(|e| format!("Feishu upload image request failed: {e}"))?;
 
         #[derive(Deserialize)]
         struct UploadImageResp {
@@ -725,6 +726,66 @@ impl FeishuApiClient {
     }
 }
 
+async fn send_feishu_request_with_retry(
+    request: reqwest::RequestBuilder,
+    label: &str,
+) -> Result<Response, String> {
+    if request.try_clone().is_none() {
+        tracing::debug!("{label} is not cloneable; sending without retry");
+        return request.send().await.map_err(|err| err.to_string());
+    }
+
+    for attempt in 1..=FEISHU_REQUEST_MAX_ATTEMPTS {
+        let next_request = request
+            .try_clone()
+            .expect("cloneability checked before retry loop");
+
+        match next_request.send().await {
+            Ok(resp)
+                if should_retry_feishu_status(resp.status()) && should_retry_attempt(attempt) =>
+            {
+                let status = resp.status();
+                tracing::warn!(
+                    "{} returned retryable status {}; retrying attempt {}/{}",
+                    label,
+                    status,
+                    attempt + 1,
+                    FEISHU_REQUEST_MAX_ATTEMPTS
+                );
+                sleep(feishu_retry_delay(attempt)).await;
+            }
+            Ok(resp) => return Ok(resp),
+            Err(err) if should_retry_attempt(attempt) => {
+                tracing::warn!(
+                    "{} transport error on attempt {}/{}: {}; retrying",
+                    label,
+                    attempt,
+                    FEISHU_REQUEST_MAX_ATTEMPTS,
+                    err
+                );
+                sleep(feishu_retry_delay(attempt)).await;
+            }
+            Err(err) => return Err(err.to_string()),
+        }
+    }
+
+    Err(format!(
+        "{label} failed after {FEISHU_REQUEST_MAX_ATTEMPTS} attempts"
+    ))
+}
+
+fn should_retry_attempt(attempt: usize) -> bool {
+    attempt < FEISHU_REQUEST_MAX_ATTEMPTS
+}
+
+fn feishu_retry_delay(attempt: usize) -> Duration {
+    FEISHU_RETRY_DELAYS[attempt.saturating_sub(1).min(FEISHU_RETRY_DELAYS.len() - 1)]
+}
+
+fn should_retry_feishu_status(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+}
+
 fn image_mime_type(path: &str) -> &'static str {
     match Path::new(path)
         .extension()
@@ -755,8 +816,10 @@ fn first_batch_get_open_id(data: Option<serde_json::Value>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::first_batch_get_open_id;
+    use super::{feishu_retry_delay, first_batch_get_open_id, should_retry_feishu_status};
+    use reqwest::StatusCode;
     use serde_json::json;
+    use std::time::Duration;
 
     #[test]
     fn first_batch_get_open_id_prefers_first_match() {
@@ -777,5 +840,24 @@ mod tests {
             ]
         })));
         assert!(open_id.is_none());
+    }
+
+    #[test]
+    fn retry_status_only_matches_transient_feishu_failures() {
+        assert!(should_retry_feishu_status(StatusCode::TOO_MANY_REQUESTS));
+        assert!(should_retry_feishu_status(
+            StatusCode::INTERNAL_SERVER_ERROR
+        ));
+        assert!(should_retry_feishu_status(StatusCode::BAD_GATEWAY));
+        assert!(!should_retry_feishu_status(StatusCode::BAD_REQUEST));
+        assert!(!should_retry_feishu_status(StatusCode::UNAUTHORIZED));
+        assert!(!should_retry_feishu_status(StatusCode::OK));
+    }
+
+    #[test]
+    fn retry_delay_is_bounded_for_all_attempt_values() {
+        assert_eq!(feishu_retry_delay(1), Duration::from_millis(500));
+        assert_eq!(feishu_retry_delay(2), Duration::from_millis(1500));
+        assert_eq!(feishu_retry_delay(99), Duration::from_millis(1500));
     }
 }

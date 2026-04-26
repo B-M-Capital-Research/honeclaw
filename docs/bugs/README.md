@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-26 12:25 CST
+最后更新：2026-04-26 13:20 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -25,10 +25,10 @@
 | --- | --- | --- | --- | --- |
 | Feishu scheduler 部分定时任务已进入执行和工具调用，但长期卡住且没有 `cron_job_runs` 记录 | P1 | Fixing | 2026-04-24 20:00 两个老问题任务（`A股盘后高景气产业链推演`、`美股盘前与持仓新闻综述`）再次进入 `agent.run` 与实际工具调用，但到 20:03 仍没有 `session.persist_assistant` / `done`，`cron_job_runs` 最新记录仍停在 4 月 23 日 | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-26 09:52 用户提问“我的定时任务”时，执行 7 次 `data_fetch` 后仍连续 3 次 `reply_chars=0`，09:57 只落成通用 fallback | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Fixing | 2026-04-26 12:00 `每日公司资讯与分析总结` 搜索已执行 7 次 `data_fetch` + 1 次 `cron_job list`，但两轮 answer 仍 `reply_chars=0`；`run_id=6634` 继续记为 `completed + sent + delivered=1` | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
+| Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Fixing | 2026-04-26 已把 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 提升为 scheduler 失败信号；后续 Feishu scheduler 应落成 `execution_failed`，不再伪装 `completed + sent + delivered=1`，仍待真实窗口复核 | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-21 21:02 `OWALERT_PreMarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；正文已落库但用户侧未送达 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
-| Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
+| Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | Fixing | 2026-04-26 已为 `tenant_access_token/internal` 请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；等待真实 scheduler / heartbeat 窗口复核 | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
+| Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | Fixing | 2026-04-26 已为 Feishu send/reply/update 出站请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；等待真实直聊和 scheduler 出站窗口复核 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | New | 2026-04-21 20:25 用户要求日报击球区补区间值，20:29 仅收到“处理超时”；日志仍是 `codex acp session/prompt idle timeout (180s)` + `state_5.sqlite migration 23 ... missing`，说明 15:14-15:32 的失败形态继续活跃 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Fixing | 2026-04-25 20:40 Feishu 直聊 `高通 AI200 / AI250` 新样本仍把 `Context compacted` 混进最终正文；当前只把它视为可接受副作用，未视为已修复 | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixing | 2026-04-26 03:00 `全天原油价格3小时播报` 仍把 `巴基斯坦方面披露美伊或开启第二轮和平谈判`、`伊朗原油重返供应`、`地缘风险溢价收缩` 写成确定性原因；现有修复仍只覆盖价格一致性 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |

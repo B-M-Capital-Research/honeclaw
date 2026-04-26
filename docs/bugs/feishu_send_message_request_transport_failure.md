@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-21 13:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - 2026-04-21 15:37 最新直聊出站失败样本：
     - `data/runtime/logs/web.log`
@@ -93,3 +93,13 @@
 - 为 Feishu 出站 `send message request failed: error sending request for url (...)` 补有限重试，优先覆盖定时任务和直聊最终回复。
 - 对已经生成且落库但发送失败的消息，增加可补偿状态或重发队列，避免用户侧永久丢失答案。
 - 后续巡检重点观察 `data/runtime/logs/web.log` 与 `cron_job_runs` 中 `im/v1/messages?receive_id_type=open_id` 的同类传输失败是否继续扩散。
+
+## 修复进展（2026-04-26）
+
+- 已在 `bins/hone-feishu/src/client.rs` 为 Feishu `send_message`、`reply_message`、`update_message` 出站请求补有限传输重试：
+  - 最多 3 次；
+  - 仅重试请求传输错误、`429` 与 `5xx`；
+  - 不重试 `400` 等业务错误，保留现有 `HTTP 400` fallback 到 standalone send 的逻辑。
+- 同步覆盖直聊 placeholder update 与 scheduler standalone send 两条路径，降低“内容已生成并落库但 Feishu 瞬时传输失败导致用户收不到”的概率。
+- 已验证：`cargo test -p hone-feishu`。
+- 状态暂置 `Fixing`：代码止血已落地，仍需下一轮真实 Feishu 出站窗口复核是否还出现同类 `error sending request for url (...)`。
