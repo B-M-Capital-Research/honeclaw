@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-26 11:02 CST
+最后更新：2026-04-26 12:18 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -25,7 +25,7 @@
 | --- | --- | --- | --- | --- |
 | Feishu scheduler 部分定时任务已进入执行和工具调用，但长期卡住且没有 `cron_job_runs` 记录 | P1 | Fixing | 2026-04-24 20:00 两个老问题任务（`A股盘后高景气产业链推演`、`美股盘前与持仓新闻综述`）再次进入 `agent.run` 与实际工具调用，但到 20:03 仍没有 `session.persist_assistant` / `done`，`cron_job_runs` 最新记录仍停在 4 月 23 日 | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-26 09:52 用户提问“我的定时任务”时，执行 7 次 `data_fetch` 后仍连续 3 次 `reply_chars=0`，09:57 只落成通用 fallback | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Fixing | 2026-04-26 08:35-08:36 `每日有色化工标的新闻追踪`、`创新药持仓每日动态推送` 又连续落成通用 fallback；`cron_job_runs.run_id=6552/6553` 仍记为 `completed + sent + delivered=1` | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
+| Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Fixing | 2026-04-26 12:00 `每日公司资讯与分析总结` 搜索已执行 7 次 `data_fetch` + 1 次 `cron_job list`，但两轮 answer 仍 `reply_chars=0`；`run_id=6634` 继续记为 `completed + sent + delivered=1` | [feishu_scheduler_empty_reply_false_success.md](./feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-21 21:02 `OWALERT_PreMarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；正文已落库但用户侧未送达 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | New | 2026-04-21 08:04-09:04 至少 11 条 Feishu 定时任务跨多个目标统一落成 `send_failed`；11:22 用户明确反馈“今天你的指令工作怎么没发”，对应 08:34-08:49 多条早报/盘前任务仍卡死在 `tenant_access_token/internal` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | New | 2026-04-21 15:37 直聊 `AI工业革命下一个爆发板块` 已生成 3561 字并落库，但 placeholder update 端点 `im/v1/messages/{message_id}` 传输失败；15:00 定时任务 `send message` 端点也仍失败 | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
@@ -37,7 +37,7 @@
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | Fixing | 2026-04-26 10:54 用户改问 `INTC` 是否适合买入；search 已成功拿到 3 次工具结果，但 answer 两次 `reply_chars=0`，10:57 仍退回 compact fallback 且继续外泄 `发送 <absolute-path>/compact` | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | Fixing | 2026-04-26 09:05 `核心观察池早间简报` 再次落成 `execution_failed + sent + delivered=1`，`response_preview` 仍是 overflow fallback，并带 `发送 <absolute-path>/compact` 占位符 | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Discord 定时任务在 Answer 阶段返回空/无效回复后，仍被记为成功执行 | P2 | Fixing | 2026-04-26 09:33 `每日美股降息概率推送` 在执行 `skill_tool fed_rate_cut_analysis` 后仍只落成通用 fallback；`cron_job_runs.run_id=6578` 记为 `completed + sent + delivered=1` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-26 10:30-11:00 最新两窗继续全量 `starts_with_json=false`；`小米破位预警 run_id=6596` 与 `ORCL 大事件监控 run_id=6610` 已升级到 `execution_failed + skipped_error`，`parse_kind=JsonMalformed` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | Fixing | 2026-04-26 11:30-12:00 最新两窗仍无任何纯 JSON 首包；`小米破位预警 run_id=6622/6627` 继续 `JsonEmptyStatus`，`全天原油价格3小时播报 run_id=6628` 与 `RKLB/TEM/ASTS` 继续 `PlainTextSuppressed` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-26 02:30 `小米破位预警` 再次从前一窗口的 `noop` 漂移到 `execution_failed + skipped_error`，`error=max_iterations_exceeded:6` 且 `delivered=0`；heartbeat 触顶仍无用户态降级 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |

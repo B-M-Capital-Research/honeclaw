@@ -19,6 +19,17 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 11:30-12:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `11:30` 窗口的 `run_id=6612-6622` 再次没有任何一条恢复成“首字符即 `{` 的单段 JSON”；其中 `run_id=6622`（`小米破位预警`，`2026-04-26T11:30:30.668363+08:00`）继续落成 `noop + skipped_noop`，日志记录 `starts_with_json=false parse_kind=JsonEmptyStatus`
+    - `12:00` 窗口的 `run_id=6623-6633` 同样全量停留在 `noop + skipped_noop + delivered=0`；`run_id=6628`（`全天原油价格3小时播报`）、`6630`（`RKLB异动监控`）、`6631`（`ASTS 重大异动心跳监控`）与 `6632`（`TEM大事件心跳监控`）继续落成 `parse_kind=PlainTextSuppressed`，`run_id=6624`（`小米30港元破位预警`）与 `6633`（`ORCL 大事件监控`）继续是 `JsonEmptyStatus`
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 12:00:16.032-12:00:16.033`，`小米破位预警` 的 `raw_preview` 仍是 `<think>...</think>` 后拼接 `{\"code\":\"noop\",...}`，不是契约要求的单段状态 JSON
+    - `2026-04-26 12:00:23.551-12:00:23.553`，`全天原油价格3小时播报` 继续落成 `PlainTextSuppressed`，`raw_preview` 先长篇列出 WTI/Brent 数据与原因分析，再被静默吞掉
+    - `2026-04-26 12:00:24.803-12:00:24.804`，`Monitor_Watchlist_11` 继续把 ```json` 数组包在 `<think>` 后面，仍被判成 `JsonEmptyStatus`
+    - `2026-04-26 12:00:26.594-12:00:37.148`，`RKLB异动监控`、`ASTS 重大异动心跳监控` 与 `TEM大事件心跳监控` 连续三条都继续落成 `PlainTextSuppressed`
+    - `2026-04-26 12:00:43.817-12:00:43.818`，`ORCL 大事件监控` 仍是 `starts_with_json=false parse_kind=JsonEmptyStatus`
+    - 结论：到 `2026-04-26 12:00` 为止，heartbeat 最新两窗仍没有任何稳定的纯 JSON 首包样本，坏态继续在 `JsonEmptyStatus` 与 `PlainTextSuppressed` 间漂移；虽然这轮没有新增 `execution_failed`，但监控主链路仍建立在“错误输出被静默吸收”为 `noop` 的脆弱状态上
   - 2026-04-26 10:30-11:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `10:30` 窗口的 `run_id=6590-6600` 继续全量落在 `starts_with_json=false` 坏态；其中 `run_id=6596`（`小米破位预警`，`2026-04-26T10:30:20.155971+08:00`）已从普通 `noop` 漂移到 `execution_failed + skipped_error`，`error_message=heartbeat 输出不是合法 JSON，任务已标记失败`，`parse_kind=JsonMalformed`

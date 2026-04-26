@@ -5,6 +5,17 @@
 - **严重等级**: P1
 - **状态**: Fixing
 - **证据来源**:
+  - 2026-04-26 12:00-12:01 最新真实 scheduler 样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6634`，`job_name=每日公司资讯与分析总结`，`executed_at=2026-04-26T12:01:20.673842+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
+    - `response_preview` 仍是同一条通用 fallback：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
+    - `2026-04-26T12:00:05.226-12:00:15.874+08:00` 搜索阶段已成功执行至少 7 次 `data_fetch`，且 `12:00:14.235` 的 Tavily 超额只影响单个 `web_search` key，`12:00:15.754` 仍记录 `web_search` 成功
+    - `2026-04-26T12:00:41.133725+08:00` 首轮 answer 再次记录 `stop_reason=end_turn success=true reply_chars=0`
+    - `2026-04-26T12:01:16.877572+08:00` 第二轮 answer 再次记录 `stop_reason=end_turn success=true reply_chars=0`
+    - `2026-04-26T12:01:16.879372+08:00` 日志再次记录 `empty successful response persisted as fallback`
+    - `2026-04-26T12:01:16.888548+08:00` 同轮 `MsgFlow/feishu done ... success=true ... reply.chars=35`
+    - 说明即使搜索阶段已经拿到行情与定时任务列表证据，scheduler 仍会在两轮空 answer 后把任务降级成通用 fallback，并继续记成 `completed + sent + delivered=1`
   - 2026-04-26 08:35-08:36 最新真实 scheduler 样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6552`，`job_name=每日有色化工标的新闻追踪`，`executed_at=2026-04-26T08:35:34.116742+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`
@@ -104,6 +115,15 @@
   - 用户可见正文都只是统一 fallback，而不是任务要求的行业/持仓简报；
   - 同轮 `sidecar.log` 仍能看到 `reply_chars=0`、`empty reply` 与 `empty successful response persisted as fallback` 完整链路。
 - 这说明当前止血仍只覆盖“不要发空白消息”，没有覆盖“scheduler 不要把 fallback 误记为成功交付”。
+- 因此本单继续维持 `Fixing`，严重等级继续保持 `P1`。
+
+## 最新真实样本复核（2026-04-26 12:01 CST）
+
+- `run_id=6634`（`每日公司资讯与分析总结`）证明这条缺陷已经从 08:00 批量日报继续蔓延到 12:00 的独立公司资讯汇总任务：
+  - 搜索阶段已拿到 7 次 `data_fetch` 与 1 次 `cron_job action="list"` 的成功结果，说明并非“没有工具证据可写”；
+  - 两轮 answer 仍都以 `reply_chars=0` 结束，最后只靠通用 fallback 对用户止血；
+  - `cron_job_runs` 仍把本轮记成 `completed + sent + delivered=1`，继续掩盖“任务没有按要求完成”的真实失败。
+- 同轮 search transcript 还混入了上一个用户问题“我的定时任务”的工作笔记与任务列表，但这次真正导致用户失败的直接症状仍是 answer 空成功，而不是搜索阶段无结果；因此继续归并在本单跟踪，不单独拆新缺陷。
 - 因此本单继续维持 `Fixing`，严重等级继续保持 `P1`。
 
 ## 下一步建议
