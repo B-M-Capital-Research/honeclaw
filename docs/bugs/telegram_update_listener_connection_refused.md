@@ -5,6 +5,15 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - 2026-04-26 21:03 最新运行日志：
+    - `data/runtime/logs/desktop.log`
+      - `2026-04-26 21:03:29.627` bundled runtime 再次启动 managed channels。
+      - `2026-04-26 21:03:30.951` 继续记录 `managed channel telegram skipped because it exited during startup`。
+    - `data/runtime/logs/hone-telegram.release-restart.log`
+      - `2026-04-26T13:03:31.568213Z` 直接报 `检测到旧的 Telegram Bot 进程仍占用启动锁，hone-telegram 不会启动。请先清理之前的进程后再重试。`
+    - `data/sessions.sqlite3`
+      - 最近 Telegram 会话仍停留在 `Actor_telegram__direct__8039067465`，`updated_at=2026-03-18T11:06:59.182313+08:00`
+      - 最近一小时仍无任何 `channel='telegram'` 新消息落库
   - 2026-04-26 19:01-19:03 最新运行日志：
     - `data/runtime/logs/desktop.log`
       - `2026-04-26 19:01:59.349` bundled runtime 再次启动 managed channels。
@@ -43,8 +52,8 @@
 ## 端到端链路
 
 1. Telegram 渠道进程启动后需要先完成 bot token 校验，再进入 `getUpdates` 长轮询。
-2. 最新 release app 窗口里，进程在启动阶段因 `Invalid bot token` 退出，desktop 只记录 managed channel skipped；较早窗口即使进入 listener，也会在 `GetUpdates` 阶段持续连接超时或拒绝。
-3. 当前实现没有把“凭据无效导致 sidecar 退出”和“长轮询网络失败”恢复到可用入站状态。
+2. 最新 release app 窗口里，进程甚至会在启动锁阶段就被旧进程拦住；更早窗口则在 `bot.get_me()` 阶段因 `Invalid bot token` 退出，desktop 统一只记录 managed channel skipped；再早窗口即使进入 listener，也会在 `GetUpdates` 阶段持续连接超时或拒绝。
+3. 当前实现没有把“旧进程占锁导致无法拉起”、“凭据无效导致 sidecar 退出”和“长轮询网络失败”恢复到可用入站状态。
 4. 因为 Telegram 渠道无法稳定进入可监听状态，新的 Telegram 用户消息无法进入正常处理链路，也不会落到 `sessions` / `session_messages`。
 
 ## 期望效果
@@ -55,6 +64,7 @@
 
 ## 当前实现效果
 
+- 2026-04-26 21:03 CST 最新窗口显示，Telegram 已经不只是 `Invalid bot token` 或 `GetUpdates` 网络失败；bundled runtime 再次尝试拉起 sidecar 时，`hone-telegram.release-restart.log` 直接报“旧的 Telegram Bot 进程仍占用启动锁”，desktop 则继续把渠道记成 `managed channel telegram skipped because it exited during startup`。当前入站链路仍完全没有恢复，最近 Telegram 会话依旧停在 2026-03-18。
 - 2026-04-22 14:03 CST 最新样本仍在 `data/runtime/logs/web.log:2167` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
 - 2026-04-23 04:03 CST 与 06:03 CST 最新窗口继续复现 `GetUpdates` 连接中断：`data/runtime/logs/web.log.2026-04-22:1196` 和 `:1326` 均记录 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。对应错误处理入口仍是 `bins/hone-telegram/src/handler.rs:220-230`，除 `TerminatedByOtherGetUpdates` 外只记录 error 并依赖 listener 后续重试，没有持久健康状态或用户侧告警。
 - 2026-04-26 19:01-19:03 CST 最新窗口显示问题仍未止血：bundled runtime 两次尝试拉起 Telegram sidecar，都在 `bot.get_me()` 阶段直接报 `Invalid bot token` 并退出；`desktop.log` 同步把渠道标成 `managed channel telegram skipped because it exited during startup`，最近 Telegram 会话仍无新增落库。
@@ -81,13 +91,13 @@
 
 ## 根因判断
 
-- 最新直接触发点是 Telegram bot token 无效，导致 sidecar 在进入长轮询前退出；此前样本还覆盖 TCP 连接拒绝与连接超时两种形态。
-- 因此当前根因不再只能解释为网络可达性、代理/DNS、上游屏蔽或本机出站链路问题；还必须核对 release app / runtime 配置实际读取到的 Telegram bot token 是否为空、过期、被替换或来自错误配置源。
+- 最新直接触发点已经扩展到三类：旧 Telegram 进程残留并持续占用启动锁、Telegram bot token 无效导致 sidecar 在进入长轮询前退出，以及此前已经观测到的 TCP 连接拒绝/连接超时。
+- 因此当前根因不再只能解释为网络可达性、代理/DNS、上游屏蔽或 bot token 配置错误；还必须核对 bundled runtime 的旧进程回收与启动锁释放链路，确认 restart 后是否仍残留僵尸或孤儿 sidecar。
 - 目前没有证据表明这是已有 Feishu/Heartbeat 缺陷的同根因复用，应作为独立渠道故障跟踪。
 
 ## 下一步建议
 
-- 优先核对 release app 当前读取的 Telegram bot token 来源、是否与生产 bot 一致、是否被错误配置覆盖；随后再排查当前环境到 `api.telegram.org` 的网络可达性、代理/防火墙、DNS 解析与证书链路。
+- 优先核对 bundled runtime 为什么在 `previous managed children stopped` 之后仍留下占用 Telegram 启动锁的旧进程；随后再核对当前读取的 Telegram bot token 来源、是否与生产 bot 一致、是否被错误配置覆盖，并补排查当前环境到 `api.telegram.org` 的网络可达性、代理/防火墙、DNS 解析与证书链路。
 - 修复后优先验证两件事：
   1. `sidecar.log` 不再出现 `Invalid bot token`，也不再持续出现 `GetUpdates ... Connection refused` / timeout
   2. Telegram 新消息能重新写入 `sessions` / `session_messages`

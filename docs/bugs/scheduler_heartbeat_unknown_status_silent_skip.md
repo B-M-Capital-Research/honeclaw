@@ -30,6 +30,18 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 22:00 最新巡检样本：
+    - `data/runtime/logs/desktop_release_app.log`
+    - `2026-04-26 22:00:10.937` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，先输出价格解释，再被 scheduler 吸收成“本轮不发送”
+    - `2026-04-26 22:00:13.609` `job=CAI破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - `2026-04-26 22:00:13.826` `job=小米破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，继续把“周日休市、待周一确认”写成自然语言结果
+    - `2026-04-26 22:00:14.284` `job=小米30港元破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - `2026-04-26 22:00:30.260` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - `2026-04-26 22:00:33.148` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+    - `2026-04-26 22:00:34.344` `job=TEM大事件心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - `2026-04-26 22:00:37.363` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - `2026-04-26 22:00:49.599` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonMalformed`；紧接着记录 `malformed heartbeat json suppressed` 与 `parse failure escalated`
+    - 结论：到 `2026-04-26 22:00` 为止，heartbeat 公共结构化契约仍未恢复；坏态继续在 `PlainTextSuppressed`、`JsonEmptyStatus` 与 `JsonMalformed` 之间漂移，且最新窗口已跨过 21:00 后再次复现，不是单个整点批次抖动
   - 2026-04-26 21:00 最新巡检样本：
     - `data/runtime/logs/sidecar.log`
     - `2026-04-26 21:00:04.541` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，最新窗口仍直接输出“本次为定时检查，无需推送”
