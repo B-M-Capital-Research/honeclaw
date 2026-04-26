@@ -293,7 +293,7 @@ pub(crate) fn spawn_price_poller(
 }
 
 /// 通用事件源 spawn 入口:依据 `source.schedule()` 分发到 FixedInterval 或
-/// CronAligned 两条循环。新增第三方监听源(Telegram / Truth Social / ...)只需
+/// CronAligned 两条循环。新增第三方监听源(Telegram / RSS / ...)只需
 /// 实现 `EventSource` trait,调用一次本函数即可接入 store + router 主链路,
 /// 不需要再复制 spawn/ticker/process_events 的模板。
 ///

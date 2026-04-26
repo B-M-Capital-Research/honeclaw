@@ -333,8 +333,7 @@ fn kind_topic_tag(kind: &EventKind) -> &'static str {
 
 fn is_low_quality_social_source(event: &MarketEvent) -> bool {
     let source = event.source.to_ascii_lowercase();
-    matches!(event.kind, EventKind::SocialPost)
-        && (source.contains("watcherguru") || source.contains("truth_social"))
+    matches!(event.kind, EventKind::SocialPost) && source.contains("watcherguru")
 }
 
 const DIGEST_STOPWORDS: &[&str] = &[

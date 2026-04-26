@@ -1001,7 +1001,7 @@ async fn daily_report_roundtrip() {
 async fn live_social_engine_e2e() {
     use hone_core::ActorIdentity;
     use hone_core::config::event_engine::Sources;
-    use hone_core::config::{FmpConfig, TelegramChannelConfig, TruthSocialAccountConfig};
+    use hone_core::config::{FmpConfig, TelegramChannelConfig};
     use hone_memory::PortfolioStorage;
     use hone_memory::portfolio::{Holding, Portfolio};
 
@@ -1056,7 +1056,6 @@ async fn live_social_engine_e2e() {
             interval_secs: 1800,
             extract_cashtags: true,
         }],
-        truth_social_accounts: Vec::<TruthSocialAccountConfig>::new(),
         rss_feeds: Vec::new(),
     };
 

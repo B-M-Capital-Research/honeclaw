@@ -505,11 +505,6 @@ pub struct Sources {
     #[serde(default)]
     pub telegram_channels: Vec<TelegramChannelConfig>,
 
-    /// Truth Social 公开账号监听(Mastodon 兼容 API),产出 `SocialPost`。
-    /// 空列表 = 不启用。每条配置对应一个独立 poller loop。
-    #[serde(default)]
-    pub truth_social_accounts: Vec<TruthSocialAccountConfig>,
-
     /// 通用 RSS 新闻源(global_digest 用)。POC 验证 FMP 漏掉 Bloomberg(93%)/
     /// SpaceNews(100%)/STAT(100%)的关键料,这些 RSS 直接把高 ROI 的料补回来。
     /// 入库 source 标 `rss:{handle}`,collector 一并拉。空列表 = 不启用。
@@ -529,7 +524,6 @@ impl Default for Sources {
             analyst_grade: true,
             earnings_surprise: true,
             telegram_channels: Vec::new(),
-            truth_social_accounts: Vec::new(),
             rss_feeds: Vec::new(),
         }
     }
@@ -549,24 +543,8 @@ pub struct TelegramChannelConfig {
     pub extract_cashtags: bool,
 }
 
-/// Truth Social 公开账号配置。
-///
-/// 首次 poll 时若未提供 `account_id` 会 fallback 到 `/api/v2/search?q=@<username>`
-/// 解析一次并在实例内存中缓存。想避免每次启动都 resolve 一遍,可手动填 `account_id`。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TruthSocialAccountConfig {
-    pub username: String,
-    #[serde(default)]
-    pub account_id: Option<String>,
-    #[serde(default = "default_social_interval_slow")]
-    pub interval_secs: u64,
-}
-
 fn default_social_interval() -> u64 {
     30 * 60
-}
-fn default_social_interval_slow() -> u64 {
-    60 * 60
 }
 
 /// 通用 RSS 新闻源配置。`handle` 是该源的稳定标签,会写进 `MarketEvent.source =

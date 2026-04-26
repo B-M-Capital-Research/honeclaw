@@ -164,7 +164,7 @@ impl NotificationRouter {
         prefs: &NotificationPrefs,
     ) -> Option<MarketEvent> {
         // 仅对 NewsCritical / SocialPost 的 Low + uncertain 源走 LLM 路径;其它类型直接跳过。
-        // SocialPost 由 Telegram / Truth Social 等社交 poller 产出,payload.source_class
+        // SocialPost 由 Telegram 等社交 poller 产出,payload.source_class
         // 一律写 "uncertain",所以每条帖子都经 LLM 仲裁判是否升 Medium。
         if !matches!(event.kind, EventKind::NewsCritical | EventKind::SocialPost)
             || event.severity != Severity::Low

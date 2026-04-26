@@ -1,6 +1,6 @@
 //! `EventSource` trait —— 事件源的统一抽象。
 //!
-//! 所有产出 `MarketEvent` 的上游(FMP poller / Telegram 频道 / Truth Social 账号等)
+//! 所有产出 `MarketEvent` 的上游(FMP poller / Telegram 频道 / RSS feed 等)
 //! 都实现此 trait,由 [`crate::lib::spawn_event_source`] 按 `schedule()` 统一拉起。
 //!
 //! 关键设计:
@@ -18,7 +18,7 @@ use crate::event::MarketEvent;
 /// 事件源调度方式。
 ///
 /// - `FixedInterval`:冷启动立即拉一次,之后每 `duration` 周期拉一次。适合
-///   持续有新内容的源(FMP news/price、Telegram 频道、Truth Social 账号)。
+///   持续有新内容的源(FMP news/price、Telegram 频道、RSS feed)。
 /// - `CronAligned`:冷启动立即拉一次,之后每 60s 检查本地时刻是否命中
 ///   `pre_prefetch` 或 `post_prefetch`(`"HH:MM"` 格式,按 `tz_offset` 做本地化)。
 ///   适合按交易所开收盘时间对齐的源(FMP earnings/macro/corp_action 等)。
@@ -35,7 +35,7 @@ pub enum SourceSchedule {
 #[async_trait]
 pub trait EventSource: Send + Sync {
     /// 稳定标识,形如 `"fmp.news"` / `"telegram.watcherguru"` /
-    /// `"truth_social.realdonaldtrump"`。进日志 `poller` 字段;不用于事件 id。
+    /// `"rss:bloomberg_markets"`。进日志 `poller` 字段;不用于事件 id。
     fn name(&self) -> &str;
 
     /// 调度策略,由 `spawn_event_source` 决定用哪条循环跑。

@@ -14,8 +14,8 @@
 
 ## 当前概览
 
-- 活跃待修复：27
-- 已修复 / 已关闭：49
+- 活跃待修复：26
+- 已修复 / 已关闭：50
 - 历史分析 / 部分止血：4
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -48,7 +48,6 @@
 | Event-engine high stock-news events lack sink delivery evidence | P2 | New | 2026-04-22 18:52 UTC 新增 `FLYYQ` high MarketWatch 事件仍无 `delivery_log` sink 行；同窗口也无 `sink delivered` 日志 | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |
 | Event-engine marks legal-ad style stock news as high severity | P2 | New | 2026-04-22 巡检确认 `class action` / `shareholder alert` 等律所模板在 24h high 事件中持续占比过高，可能消耗 high cap 并污染即时提醒 | [event_engine_legal_news_high_severity_noise.md](./event_engine_legal_news_high_severity_noise.md) |
 | Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | New | 2026-04-22 OpenRouter 403 / 反序列化失败让 uncertain-source 新闻 LLM 仲裁返回 `None`，重要新闻可能退回低优先级 digest 路径 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
-| Truth Social / generic event-source pollers repeat opaque decode failures | P2 | Fixing | 2026-04-24 已给 Truth Social search/statuses 响应补 `status`、`content_type`、`body_prefix` 诊断；真实断流根因仍需下一条 live 补偿日志确认 | [truth_social_poller_opaque_json_decode_stalls_source.md](./truth_social_poller_opaque_json_decode_stalls_source.md) / [event_engine_social_source_decode_failures.md](./event_engine_social_source_decode_failures.md) |
 | Event-engine window convergence upgrade bursts crowd digest quality | P3 | New | 2026-04-23 08:22:42 CST 单秒再次出现 25 条 `Low→Medium` 窗口收敛提级，超过巡检阈值；poller 与 sink 正常，问题集中在路由降噪 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
 | Event-engine high macro events are stored but not routed | P2 | New | 2026-04-23 已确认是工程规则问题：先将 high macro 样本从 77 收敛到预计 15；即时路由因会提前推未来 7 天日历而暂不打开 | [event_engine_high_macro_events_unrouted.md](./event_engine_high_macro_events_unrouted.md) |
 
@@ -56,6 +55,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Truth Social source 持续 403 断流 | P2 | Closed | 2026-04-26 已完全移除 Truth Social source：删除 poller、配置类型、engine 装配和 `config.yaml` 启用项，后续不再启动该 source | [truth_social_poller_opaque_json_decode_stalls_source.md](./truth_social_poller_opaque_json_decode_stalls_source.md) |
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | Fixed | 2026-04-26 已扩展共享错误净化规则覆盖 WebSocket/HTTPS 回退痕迹，并在 finalizer 阻断“内部错误 + 半成品正文”作为成功答复出站；相关 `hone-channels` 定向测试通过 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 公开面认证与限流安全审计发现多个高/中风险问题 | P1/P2 | Fixed | 2026-04-20 已修复公开登录限流维度、Secure Cookie 配置、workflow runner `validateCode`、邀请码熵和认证态闪烁问题 | [public_auth_security_audit_2026_04_20.md](./public_auth_security_audit_2026_04_20.md) |
 | Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | Fixed | 2026-04-17 已让 quota 拒绝直接返回用户态额度文案，并在拒绝前补最小 user-turn 落库；20:00 真实会话已再次返回“已达到今日对话上限（12/12）” | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |

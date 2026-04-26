@@ -18,7 +18,7 @@ use crate::digest::{self, DigestBuffer, DigestScheduler};
 use crate::fmp::FmpClient;
 use crate::news_classifier;
 use crate::polisher::{BodyPolisher, NoopPolisher};
-use crate::pollers::{RssNewsPoller, TelegramChannelPoller, TruthSocialPoller};
+use crate::pollers::{RssNewsPoller, TelegramChannelPoller};
 use crate::prefs::{FilePrefsStorage, PrefsProvider};
 use crate::router::{LogSink, NotificationRouter, OutboundSink};
 use crate::spawner::{
@@ -172,7 +172,7 @@ impl EventEngine {
         let fmp_available = client.has_keys();
         if !fmp_available {
             warn!(
-                "event engine: FMP key missing — FMP pollers 不会启动,仅社交源(Telegram/Truth Social)照常运行"
+                "event engine: FMP key missing — FMP pollers 不会启动,仅非 FMP 源(Telegram/RSS)照常运行"
             );
         }
 
@@ -496,7 +496,7 @@ impl EventEngine {
         }
 
         // ── 社交源监听(通用 EventSource trait)─────────────────────────
-        // Telegram channel web preview + Truth Social Mastodon API。
+        // Telegram channel web preview。
         // 事件一律 Low + payload.source_class="uncertain",交给 router 的
         // LLM 仲裁链路按"是否重要"决定升 Medium 即时推(见 router.rs
         // maybe_llm_upgrade_for_actor)。symbols 多数为空,靠 social
@@ -513,19 +513,6 @@ impl EventEngine {
                 interval_secs = cfg.interval_secs,
                 extract_cashtags = cfg.extract_cashtags,
                 "telegram channel poller starting"
-            );
-            spawn_event_source(Arc::new(poller), store.clone(), router.clone());
-        }
-        for cfg in &sources.truth_social_accounts {
-            let poller = TruthSocialPoller::new(
-                cfg.username.clone(),
-                cfg.account_id.clone(),
-                Duration::from_secs(cfg.interval_secs),
-            );
-            info!(
-                username = %cfg.username,
-                interval_secs = cfg.interval_secs,
-                "truth_social poller starting"
             );
             spawn_event_source(Arc::new(poller), store.clone(), router.clone());
         }

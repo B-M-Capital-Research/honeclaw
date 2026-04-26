@@ -1,6 +1,8 @@
 # Bug: Truth Social poller 用不透明响应掩盖并持续触发 source 断流
 
-状态：`Fixing`
+状态：`Closed`
+
+关闭原因：2026-04-26 已按产品决策彻底移除 Truth Social source。`config.yaml` 已删除 `event_engine.sources.truth_social_accounts`；`crates/hone-core/src/config/event_engine.rs` 不再暴露 `TruthSocialAccountConfig`；`crates/hone-event-engine/src/engine.rs` 不再装配 `TruthSocialPoller`；`crates/hone-event-engine/src/pollers/social/truth_social.rs` 已删除。后续 event-engine 不会启动该 poller，历史 `HTTP 403 + text/html` 断流不再作为活跃缺陷跟踪。
 
 最新进展：2026-04-24 已补偿日志，且本轮巡检看到了第一条 live 样本。`TruthSocialPoller` 现在确实会把 search / statuses 响应先读成文本，再在非 2xx 或 JSON 解码失败时输出 `status`、`content_type` 与截断 `body_prefix`；`data/runtime/logs/web.log.2026-04-24:614` 已明确记录 `truth_social statuses HTTP 403 Forbidden content_type=text/html; charset=UTF-8 body_prefix=...`。这说明“日志不可定位 / 不可排障”的缺口已收口，但 `truth_social.realdonaldtrump` source 依旧 0 条事件，当前问题已经从“opaque decode 难排查”收敛为“enabled source 在真实运行中持续被 403 HTML 响应拦截”。
 

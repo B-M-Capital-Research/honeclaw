@@ -34,7 +34,7 @@ pub use event_engine::{
     DigestConfig as EventEngineDigestConfig, EventEngineConfig, GlobalDigestConfig,
     PollIntervals as EventEnginePollIntervals, RendererConfig as EventEngineRendererConfig,
     RssFeedConfig, Sources as EventEngineSources, TelegramChannelConfig,
-    Thresholds as EventEngineThresholds, TruthSocialAccountConfig, tz_offset_hours,
+    Thresholds as EventEngineThresholds, tz_offset_hours,
 };
 pub use materialize::{
     canonical_config_candidate, effective_config_path, generate_effective_config,

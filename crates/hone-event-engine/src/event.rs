@@ -50,7 +50,7 @@ pub enum EventKind {
     MacroEvent,
     PortfolioPreMarket,
     PortfolioPostMarket,
-    /// 第三方社交源帖子 (Telegram channel / Truth Social 等)。severity 默认 Low,
+    /// 第三方社交源帖子 (Telegram channel 等)。severity 默认 Low,
     /// router 的 LLM 仲裁链路按 `payload.source_class == "uncertain"` 决定是否升 Medium。
     SocialPost,
 }

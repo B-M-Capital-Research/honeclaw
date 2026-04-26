@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-04-24
+Last updated: 2026-04-26
+
+## 2026-04-26
+
+### Remove Truth Social Source
+
+- Status: done
+- Date: 2026-04-26
+- Plan: N/A, single-session deletion did not need dynamic plan tracking
+- Handoff: `docs/handoffs/2026-04-26-remove-truth-social-source.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo fmt --all -- --check`, `cargo test -p hone-event-engine --lib`, `cargo check -p hone-web-api`
+- Current conclusion: Truth Social 已从 event-engine 活跃 source 集合删除；`truth_social_accounts` 配置、`TruthSocialPoller` 模块、engine 装配、主配置启用项和本机 ignored effective config 均已移除，历史 403 断流 bug 标记为 Closed
+- Next entry point: `docs/handoffs/2026-04-26-remove-truth-social-source.md`
 
 ## 2026-04-24
 

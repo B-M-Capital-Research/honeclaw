@@ -21,4 +21,4 @@ pub use macro_events::MacroPoller;
 pub use news::NewsPoller;
 pub use price::PricePoller;
 pub use rss::RssNewsPoller;
-pub use social::{TelegramChannelPoller, TruthSocialPoller};
+pub use social::TelegramChannelPoller;
