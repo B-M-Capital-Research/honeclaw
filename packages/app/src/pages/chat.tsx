@@ -1248,11 +1248,14 @@ export default function PublicChatPage() {
              on mobile (the bubble shape already tells you it's HONE) and
              eats 30+ px of vertical space per turn. */
           .public-chat-messages .pub-msg-bubble__brand { display: none !important; }
-          .public-chat-page .page-header { height: 56px !important; }
-          .public-chat-page .lang-switch button { min-height: 26px !important; }
-          .public-chat-page .btn-chat-nav { min-height: 32px !important; padding: 0 14px !important; }
+          .public-chat-page .page-header { height: 46px !important; padding: 0 12px !important; }
+          .public-chat-page .header-logo img { height: 22px !important; }
+          .public-chat-page .header-logo span { font-size: 16px !important; }
+          .public-chat-page .lang-switch { padding: 1px !important; }
+          .public-chat-page .lang-switch button { min-height: 22px !important; min-width: 26px !important; padding: 0 6px !important; font-size: 11px !important; }
+          .public-chat-page .btn-chat-nav { min-height: 28px !important; padding: 0 12px !important; font-size: 12px !important; }
           .public-chat-shell {
-            padding-top: 56px !important;
+            padding-top: 46px !important;
           }
           .public-chat-messages {
             padding-top: 6px !important;
@@ -1263,29 +1266,32 @@ export default function PublicChatPage() {
             padding-left: 12px !important;
           }
           .public-chat-composer {
-            padding: 4px 8px calc(6px + env(safe-area-inset-bottom)) !important;
+            padding: 3px 8px calc(4px + env(safe-area-inset-bottom)) !important;
           }
           .public-chat-composer-box {
-            border-radius: 16px !important;
+            border-radius: 14px !important;
+            border-width: 1.5px !important;
           }
           .public-chat-composer-row {
-            padding: 3px 6px !important;
-            gap: 4px !important;
+            padding: 2px 5px !important;
+            gap: 3px !important;
           }
           .public-chat-composer .pub-attach-btn,
           .public-chat-send-button {
-            width: 32px !important;
-            height: 32px !important;
-            border-radius: 10px !important;
-            flex: 0 0 32px;
+            width: 28px !important;
+            height: 28px !important;
+            border-radius: 9px !important;
+            flex: 0 0 28px;
           }
+          .public-chat-composer .pub-attach-btn svg,
+          .public-chat-send-button svg { width: 15px !important; height: 15px !important; }
           .public-chat-composer-input {
-            min-height: 32px !important;
-            max-height: 140px !important;
-            padding-top: 5px !important;
-            padding-bottom: 5px !important;
-            font-size: 14.5px !important;
-            line-height: 1.4 !important;
+            min-height: 28px !important;
+            max-height: 120px !important;
+            padding-top: 4px !important;
+            padding-bottom: 4px !important;
+            font-size: 14px !important;
+            line-height: 1.35 !important;
           }
           .public-chat-composer-status {
             font-size: 11.5px !important;
