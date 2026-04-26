@@ -16,7 +16,7 @@ use tracing::{info, warn};
 use crate::digest;
 use crate::fmp::FmpClient;
 use crate::pipeline::{cron_aligned_loop, log_poller_error, process_events, run_once};
-use crate::pollers::{AnalystGradePoller, CorpActionPoller, EarningsSurprisePoller, PricePoller};
+use crate::pollers::{CorpActionPoller, PricePoller};
 use crate::router::NotificationRouter;
 use crate::source::{EventSource, SourceSchedule};
 use crate::store::EventStore;
@@ -96,91 +96,6 @@ pub(crate) fn spawn_corp_action_poller(
     });
 }
 
-pub(crate) fn spawn_analyst_grade_poller(
-    client: FmpClient,
-    store: Arc<EventStore>,
-    router: Arc<NotificationRouter>,
-    registry: Arc<SharedRegistry>,
-    tz_offset: i32,
-    pre_prefetch: String,
-    post_prefetch: String,
-) {
-    tokio::spawn(async move {
-        let poller = Arc::new(AnalystGradePoller::new(client));
-        let action = move || {
-            let poller = poller.clone();
-            let store = store.clone();
-            let router = router.clone();
-            let registry = registry.clone();
-            Box::pin(async move {
-                let symbols = registry.load().watch_pool();
-                if symbols.is_empty() {
-                    return;
-                }
-                match poller.poll(&symbols).await {
-                    Ok(events) => process_events("analyst_grade", events, &store, &router).await,
-                    Err(e) => {
-                        log_poller_error("analyst_grade", "fmp.analyst_grade", "per_symbol", &e)
-                    }
-                }
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        };
-        cron_aligned_loop(
-            "analyst_grade",
-            tz_offset,
-            pre_prefetch,
-            post_prefetch,
-            action,
-        )
-        .await;
-    });
-}
-
-pub(crate) fn spawn_earnings_surprise_poller(
-    client: FmpClient,
-    store: Arc<EventStore>,
-    router: Arc<NotificationRouter>,
-    registry: Arc<SharedRegistry>,
-    tz_offset: i32,
-    pre_prefetch: String,
-    post_prefetch: String,
-) {
-    tokio::spawn(async move {
-        let poller = Arc::new(EarningsSurprisePoller::new(client));
-        let action = move || {
-            let poller = poller.clone();
-            let store = store.clone();
-            let router = router.clone();
-            let registry = registry.clone();
-            Box::pin(async move {
-                let symbols = registry.load().watch_pool();
-                if symbols.is_empty() {
-                    return;
-                }
-                match poller.poll(&symbols).await {
-                    Ok(events) => {
-                        process_events("earnings_surprise", events, &store, &router).await
-                    }
-                    Err(e) => log_poller_error(
-                        "earnings_surprise",
-                        "fmp.earnings_surprise",
-                        "per_symbol",
-                        &e,
-                    ),
-                }
-            }) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        };
-        cron_aligned_loop(
-            "earnings_surprise",
-            tz_offset,
-            pre_prefetch,
-            post_prefetch,
-            action,
-        )
-        .await;
-    });
-}
-
 pub(crate) fn spawn_price_poller(
     client: FmpClient,
     store: Arc<EventStore>,
@@ -223,10 +138,10 @@ pub(crate) fn spawn_price_poller(
 /// 都只需实现 `EventSource` trait,调用一次本函数即可接入 store + router 主链路,
 /// 不需要再复制 spawn/ticker/process_events 的模板。
 ///
-/// 进度:earnings / news / macro 已迁;analyst_grade / earnings_surprise /
+/// 进度:earnings / news / macro / analyst_grade / earnings_surprise 已迁;
 /// corp_action / sec_filings / price 仍保留专属 `spawn_*_poller`,在 Stage 1
-/// Group B-D 中分别迁移(它们额外携带 watch pool / 双 endpoint / 状态固化等
-/// 需要先在 poller 内部消化的语义)。
+/// Group C / D 中分别迁移(它们携带双 endpoint 拆分 / 状态固化等需要先在
+/// poller 内部消化的语义)。
 pub(crate) fn spawn_event_source(
     source: Arc<dyn EventSource>,
     store: Arc<EventStore>,
