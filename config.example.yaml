@@ -168,7 +168,7 @@ fmp:
   # Financial Modeling Prep API key
   api_key: ""
   base_url: "https://financialmodelingprep.com/api"
-  timeout: 30
+  timeout: 60
 
 # Proactive event engine: polls FMP for market events, deduplicates, and
 # dispatches to subscribers (per-holding or global). High-severity events push
