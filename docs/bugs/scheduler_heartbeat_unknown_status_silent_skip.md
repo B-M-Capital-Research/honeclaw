@@ -34,6 +34,33 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 05:00 最新巡检样本：
+    - 最近一小时没有新的普通直聊 / Web 用户提问落库；最新新增可见会话是 `session_id=Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 的定时任务 `科技成长赛道大盘极值与情绪监控`，已在 `2026-04-27T05:02:19+08:00` 正常完成并发送，说明本轮没有新增“直聊无回复/半成品回复”根因，异常仍集中在 heartbeat 公共契约。
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=7230`（`持仓重大事件心跳检测`，`2026-04-27T05:00:04+08:00`）落成 `execution_failed + skipped_error`，`error_message=heartbeat 输出不是结构化 JSON，任务已标记失败`
+      - `run_id=7231`（`全天原油价格3小时播报`，`2026-04-27T05:00:05+08:00`）落成 `execution_failed + skipped_error`
+      - `run_id=7232`（`TEM破位预警`，`2026-04-27T05:00:09+08:00`）落成 `noop + skipped_noop`
+      - `run_id=7233`（`CAI破位预警`，`2026-04-27T05:00:09+08:00`）落成 `execution_failed + skipped_error`
+      - `run_id=7234`（`小米破位预警`，`2026-04-27T05:00:14+08:00`）落成 `noop + skipped_noop`
+      - `run_id=7235`（`小米30港元破位预警`，`2026-04-27T05:00:14+08:00`）落成 `noop + skipped_noop`
+      - `run_id=7236`（`RKLB异动监控`，`2026-04-27T05:00:24+08:00`）落成 `execution_failed + skipped_error`
+      - `run_id=7237`（`Monitor_Watchlist_11`，`2026-04-27T05:00:30+08:00`）落成 `noop + skipped_noop`
+      - `run_id=7238`（`ORCL 大事件监控`，`2026-04-27T05:00:38+08:00`）落成 `noop + skipped_noop`
+      - `run_id=7239`（`TEM大事件心跳监控`，`2026-04-27T05:00:51+08:00`）落成 `noop + skipped_noop`
+      - `run_id=7240`（`ASTS 重大异动心跳监控`，`2026-04-27T05:01:43+08:00`）落成 `noop + skipped_noop`
+    - `data/runtime/logs/sidecar.log`
+      - `05:00:05.384` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，继续先输出自然语言播报说明再被记为失败
+      - `05:00:09.646` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=JsonNoop`
+      - `05:00:09.885` `job=CAI破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `05:00:14.332` `job=小米破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `05:00:14.652` `job=小米30港元破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `05:00:24.339` `job=RKLB异动监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `05:00:30.754` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `05:00:38.215` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=JsonNoop`
+      - `05:00:51.355` `job=TEM大事件心跳监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `05:01:43.618` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+    - 同一时间窗还连续出现 Tavily `usage limit` 告警，但 `web_search` 仍能在部分轮次回落成 `tool_execute_success`；说明本轮没有形成新的独立检索或投递故障，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-27 05:00` 为止，heartbeat 仍在 `PlainTextSuppressed`、`JsonEmptyStatus` 与 `JsonNoop` 之间漂移，并继续让多条任务落成 `execution_failed + skipped_error` 或 `noop + skipped_noop`；状态保持 `New`、严重等级维持 `P2`。
   - 2026-04-27 04:00 最新巡检样本：
     - 最近一小时唯一新增真实会话是 `session_id=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`，`2026-04-27T04:00:00+08:00` 收到 `Oil_Price_Monitor_Closing` 触发词后，`2026-04-27T04:01:34+08:00` 已正常落库完整 assistant final；说明本轮没有新增“直聊无回复/半成品回复”根因，异常仍集中在 heartbeat 公共契约。
     - `data/sessions.sqlite3` -> `cron_job_runs`
