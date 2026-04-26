@@ -285,6 +285,50 @@ export async function getDigestContext(): Promise<DigestContext> {
   return parseJson<DigestContext>(response);
 }
 
+// ── Admin: thesis context for any actor ─────────────────────────────────
+
+export type AdminThesisContext = DigestContext & {
+  actor: { channel: string; user_id: string; channel_scope?: string | null };
+};
+
+export async function getAdminThesisContext(
+  actor: ActorRef,
+): Promise<AdminThesisContext> {
+  const q = actorQuery(actor);
+  const response = await apiFetch(`/api/event-engine/thesis-context?${q}`);
+  return parseJson<AdminThesisContext>(response);
+}
+
+export async function getAdminCompanyProfile(
+  actor: ActorRef,
+  ticker: string,
+): Promise<{ ticker: string; dir: string; markdown: string }> {
+  const p = new URLSearchParams({
+    channel: actor.channel,
+    user_id: actor.user_id,
+    ticker,
+  });
+  if (actor.channel_scope) p.set("channel_scope", actor.channel_scope);
+  const response = await apiFetch(
+    `/api/event-engine/company-profile?${p.toString()}`,
+  );
+  return parseJson(response);
+}
+
+export async function adminTriggerThesisDistill(actor: ActorRef): Promise<{
+  ok: boolean;
+  theses_count: number;
+  global_style_set: boolean;
+  skipped_tickers: string[];
+  last_distilled_at: string | null;
+}> {
+  const q = actorQuery(actor);
+  const response = await apiFetch(`/api/event-engine/thesis-distill?${q}`, {
+    method: "POST",
+  });
+  return parseJson(response);
+}
+
 export async function refreshDigestContext(): Promise<{
   ok: boolean;
   theses_count: number;
