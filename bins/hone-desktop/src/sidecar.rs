@@ -243,8 +243,11 @@ fn desktop_meta_from_config(config: &HoneConfig, deployment_mode: &str) -> MetaI
         "skills".to_string(),
         "cron_jobs".to_string(),
         "portfolio".to_string(),
+        "company_profiles".to_string(),
+        "company_profile_transfer".to_string(),
         "research".to_string(),
         "llm_audit".to_string(),
+        "web_invites".to_string(),
     ];
 
     if deployment_mode == "local" {
@@ -1114,6 +1117,23 @@ mod tests {
             1,
             "backend transition should never run concurrently"
         );
+    }
+
+    #[test]
+    fn bundled_desktop_meta_exposes_web_api_capabilities() {
+        let config = HoneConfig::default();
+        let meta = desktop_meta_from_config(&config, "local");
+
+        for capability in [
+            "company_profiles",
+            "company_profile_transfer",
+            "web_invites",
+        ] {
+            assert!(
+                meta.capabilities.iter().any(|value| value == capability),
+                "bundled desktop meta should expose {capability}"
+            );
+        }
     }
 
     async fn run_with_config_write_lock(

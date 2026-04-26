@@ -70,6 +70,22 @@ export function toPublicChatMessages(
     }));
 }
 
+export function selectVisibleRecentMessages<T>(
+  messages: readonly T[],
+  visibleCount: number,
+): T[] {
+  if (visibleCount <= 0) return [];
+  return messages.slice(Math.max(0, messages.length - visibleCount));
+}
+
+export function nextVisibleMessageCount(
+  totalMessages: number,
+  currentVisibleCount: number,
+  pageSize: number,
+) {
+  return Math.min(totalMessages, Math.max(0, currentVisibleCount) + pageSize);
+}
+
 function toPublicAttachments(
   items: HistoryAttachment[],
 ): PublicChatAttachment[] {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
+  nextVisibleMessageCount,
   normalizeInviteCode,
   normalizePhoneNumber,
   resolvePublicChatView,
+  selectVisibleRecentMessages,
   toPublicChatMessages,
 } from "@/lib/public-chat";
 import type { HistoryMsg } from "@/lib/types";
@@ -65,5 +67,20 @@ describe("toPublicChatMessages", () => {
     expect(next.slice(0, base.length).map((message) => message.id)).toEqual(
       base.map((message) => message.id),
     );
+  });
+});
+
+describe("public chat history window", () => {
+  it("starts from the most recent messages", () => {
+    expect(selectVisibleRecentMessages([1, 2, 3, 4, 5], 3)).toEqual([
+      3, 4, 5,
+    ]);
+    expect(selectVisibleRecentMessages([1, 2], 10)).toEqual([1, 2]);
+  });
+
+  it("expands the visible window without exceeding total history", () => {
+    expect(nextVisibleMessageCount(100, 24, 24)).toBe(48);
+    expect(nextVisibleMessageCount(40, 24, 24)).toBe(40);
+    expect(nextVisibleMessageCount(10, -1, 24)).toBe(10);
   });
 });

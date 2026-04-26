@@ -31,6 +31,8 @@ import {
 import { buildApiUrl } from "@/lib/backend";
 import { parseMessageContent, messageId } from "@/lib/messages";
 import {
+  nextVisibleMessageCount,
+  selectVisibleRecentMessages,
   stripAttachmentMarkers,
   toPublicChatMessages,
 } from "@/lib/public-chat";
@@ -71,6 +73,7 @@ const ICONS = {
 
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
 const MAX_ATTACHMENTS = 4;
+const HISTORY_PAGE_SIZE = 24;
 
 function AnimatedBackground() {
   return (
@@ -731,11 +734,34 @@ export default function PublicChatPage() {
   const [uploading, setUploading] = createSignal(false);
   const [lightbox, setLightbox] = createSignal<{ images: PublicChatAttachment[]; index: number; } | null>(null);
   const [sessionInfo, setSessionInfo] = createSignal<{ userId: string; remainingToday: number; dailyLimit: number; } | null>(null);
+  const [visibleMessageCount, setVisibleMessageCount] = createSignal(HISTORY_PAGE_SIZE);
+  const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
   let activeController: AbortController | null = null;
   let scrollRef: HTMLDivElement | undefined;
   let sessionSyncGeneration = 0;
 
   const scrollToBottom = () => { requestAnimationFrame(() => { if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight; }); };
+  const nearBottom = () => !scrollRef || scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight < 120;
+  const visibleMessages = createMemo(() => selectVisibleRecentMessages(messages, visibleMessageCount()));
+  const hasOlderMessages = () => visibleMessageCount() < messages.length;
+
+  const loadOlderMessages = () => {
+    if (!scrollRef || !hasOlderMessages() || loadingOlderMessages()) return;
+    const previousScrollHeight = scrollRef.scrollHeight;
+    const previousScrollTop = scrollRef.scrollTop;
+    setLoadingOlderMessages(true);
+    setVisibleMessageCount((current) => nextVisibleMessageCount(messages.length, current, HISTORY_PAGE_SIZE));
+    requestAnimationFrame(() => {
+      if (scrollRef) {
+        scrollRef.scrollTop = previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
+      }
+      setLoadingOlderMessages(false);
+    });
+  };
+
+  const handleMessagesScroll = () => {
+    if (scrollRef && scrollRef.scrollTop <= 24) loadOlderMessages();
+  };
 
   const applyPublicUser = (user: PublicAuthUserInfo) => {
     setSessionInfo({ userId: user.user_id, remainingToday: user.remaining_today, dailyLimit: user.daily_limit });
@@ -751,6 +777,7 @@ export default function PublicChatPage() {
       applyPublicUser(user);
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
+      setVisibleMessageCount(HISTORY_PAGE_SIZE);
       setMessages(reconcile(toPublicChatMessages(history), { key: "id" }));
       scrollToBottom();
     } catch {
@@ -760,7 +787,6 @@ export default function PublicChatPage() {
 
   onMount(() => { void restoreSession(); });
   onCleanup(() => { activeController?.abort(); });
-  createEffect(() => { messages.length; scrollToBottom(); });
 
   const handleSend = async () => {
     const text = draft().trim();
@@ -790,8 +816,10 @@ export default function PublicChatPage() {
         pendingSse = parsed.pending;
         for (const ev of parsed.events) {
           if (ev.event === "assistant_delta") {
+            const shouldFollow = nearBottom();
             const index = messages.findIndex(m => m.id === assistantId);
             if (index >= 0) setMessages(index, "content", messages[index].content + (ev.data.content ?? ""));
+            if (shouldFollow) scrollToBottom();
           }
           if (ev.event === "run_finished") {
             const index = messages.findIndex(m => m.id === assistantId);
@@ -837,9 +865,14 @@ export default function PublicChatPage() {
             </div>
 
             {/* Message List */}
-            <div ref={scrollRef} style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}>
+            <div ref={scrollRef} onScroll={handleMessagesScroll} style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}>
               <div style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}>
-                <For each={messages}>
+                <Show when={hasOlderMessages()}>
+                  <div style={{ "text-align": "center", color: "#94a3b8", "font-size": "12px", "font-weight": "700", padding: "4px 0 18px" }}>
+                    {loadingOlderMessages() ? "加载中..." : "上滑加载更早消息"}
+                  </div>
+                </Show>
+                <For each={visibleMessages()}>
                   {(msg) => (
                     <Switch>
                       <Match when={msg.role === "user"}>
