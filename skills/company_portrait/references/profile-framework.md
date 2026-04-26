@@ -11,6 +11,24 @@
 - 当长期判断已经变化时，直接改正文，不要在原句后面不断打补丁
 - 用自然语言、表格、项目符号都可以，但不要强行填 schema
 
+## 必须的文件头
+
+`profile.md` 第一行必须是 YAML frontmatter，至少声明 `ticker`：
+
+```markdown
+---
+ticker: GOOGL
+---
+
+# Alphabet (GOOGL)
+```
+
+- 双 ticker 用斜杠分隔，如 `ticker: GOOGL / GOOG`
+- 目录 `<profile_id>` 用 lowercase ticker（双 ticker 写 `googl-goog`），不要用公司名
+- frontmatter 是下游 thesis 蒸馏 / global digest 识别 ticker 的**唯一可靠路径**；缺了这一行，整份画像会被悄悄跳过
+
+可选的额外 frontmatter 字段：`name`、`exchange`、`updated`，按需写。
+
 ## 推荐 section
 
 ### 投资主张

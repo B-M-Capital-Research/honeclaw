@@ -19,6 +19,22 @@ aliases:
 - 当前 actor 用户空间下的 `company_profiles/<profile_id>/profile.md`：当前仍然成立的主画像，不写流水账
 - 当前 actor 用户空间下的 `company_profiles/<profile_id>/events/*.md`：事件驱动的 thesis change log
 
+`<profile_id>` **必须是 lowercase 的美股 ticker**（双股票的公司用 `googl-goog` 这种连字符形式），不要用公司名（不要写 `circle`、`ciena`、`rocket-lab` 这种）。下游 thesis 蒸馏靠 ticker 把画像和持仓对齐，目录名跑偏会让画像被悄悄忽略。
+
+`profile.md` **首行必须是 YAML frontmatter**，至少包含 `ticker` 字段：
+
+```markdown
+---
+ticker: GOOGL
+---
+
+# Alphabet (GOOGL)
+
+...
+```
+
+双 ticker 公司写 `ticker: GOOGL / GOOG`。frontmatter 是下游识别的唯一可靠路径——标题随便写都行（`# Alphabet`、`# GOOGL`、`# Alphabet 母公司画像` 都允许），但 frontmatter 缺失会让这份画像在 thesis 蒸馏 / global digest 里彻底失效。
+
 当前运行时还没有独立 `research_notes` 存储层。需要保留“为什么这么判断、证据、当时怎么搜的”时，先写进事件正文与 `refs`，不要假装系统里已经存在单独研究笔记文件。
 
 默认语言跟随当前用户对话语言；除非用户明确要求，或引用材料必须保留原文，否则不要无故切换语言。
@@ -73,6 +89,7 @@ company_profiles/<profile_id>/events/<date>-<event_type>-<slug>.md
 
 ## 严格规则
 
+- **profile_id 必须是 lowercase 美股 ticker**（双 ticker 用 `googl-goog`）；profile.md 顶部必须有 `ticker:` frontmatter，否则下游 thesis 蒸馏直接忽略这份画像
 - 用户发起新的系统性公司调研时，默认沉淀到长期画像；除非用户明确拒绝，否则不要因为缺少二次确认而跳过建档
 - 只要本轮研究产出了值得长期复用的内容，就应主动记录到画像或事件，尤其是用户自己的看法、偏好或约束、你们此前已经达成一致的判断逻辑，以及本轮估值判断、估值区间或估值锚点
 - 所有建档、改写、追加事件，都应优先通过 runner 原生文件读写完成
