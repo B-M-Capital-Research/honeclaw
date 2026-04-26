@@ -27,12 +27,10 @@ import {
   publicLogout,
   sendPublicChat,
   uploadPublicAttachments,
-  type PublicChatAttachmentInput,
 } from "@/lib/api";
 import { buildApiUrl } from "@/lib/backend";
 import { parseMessageContent, messageId } from "@/lib/messages";
 import {
-  resolvePublicChatView,
   stripAttachmentMarkers,
   toPublicChatMessages,
 } from "@/lib/public-chat";
@@ -727,7 +725,6 @@ export default function PublicChatPage() {
   const [currentUser, setCurrentUser] = createSignal<PublicAuthUserInfo | null>(null);
   const [messages, setMessages] = createStore<ChatMessage[]>([]);
   const [draft, setDraft] = createSignal("");
-  const [sendError, setSendError] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
   const [pendingAttachments, setPendingAttachments] = createStore<PublicChatAttachment[]>([]);
   const [uploadError, setUploadError] = createSignal("");
@@ -740,17 +737,21 @@ export default function PublicChatPage() {
 
   const scrollToBottom = () => { requestAnimationFrame(() => { if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight; }); };
 
+  const applyPublicUser = (user: PublicAuthUserInfo) => {
+    setSessionInfo({ userId: user.user_id, remainingToday: user.remaining_today, dailyLimit: user.daily_limit });
+    setCurrentUser(user);
+    setAuthState(user.has_password ? "ready" : "needs_password");
+  };
+
   const restoreSession = async () => {
     const generation = ++sessionSyncGeneration;
     try {
       const user = await getPublicAuthMe();
       if (generation !== sessionSyncGeneration) return;
-      setSessionInfo({ userId: user.user_id, remainingToday: user.remaining_today, dailyLimit: user.daily_limit });
-      setCurrentUser(user);
+      applyPublicUser(user);
       const history = await getPublicHistory();
       if (generation !== sessionSyncGeneration) return;
       setMessages(reconcile(toPublicChatMessages(history), { key: "id" }));
-      setAuthState(user.has_password ? "ready" : "needs_password");
       scrollToBottom();
     } catch {
       setAuthState("logged_out");
@@ -820,7 +821,10 @@ export default function PublicChatPage() {
           <PublicLoginForm onLogin={restoreSession} />
         </Match>
         <Match when={authState() === "ready" || authState() === "needs_password"}>
-          <div style={{ flex: "1", display: "flex", "flex-direction": "column", "padding-top": "80px", position: "relative", "z-index": "10", overflow: "hidden" }}>
+          <Show when={currentUser()} fallback={<LoadingCard />}>
+            {(user) => (
+              <PasswordSetupGuard user={user()} onPasswordSet={applyPublicUser}>
+                <div style={{ flex: "1", display: "flex", "flex-direction": "column", "padding-top": "80px", position: "relative", "z-index": "10", overflow: "hidden" }}>
             
             {/* Session Strip */}
             <div style={{ display: "flex", "justify-content": "center", padding: "12px" }}>
@@ -853,21 +857,24 @@ export default function PublicChatPage() {
               </div>
             </div>
 
-            <Composer 
-              draft={draft()} onDraftChange={setDraft} 
-              attachments={pendingAttachments} onRemoveAttachment={(i) => setPendingAttachments(pendingAttachments.filter((_, j) => j !== i))}
-              onPickFiles={async (files) => {
-                setUploading(true);
-                try {
-                  const uploaded = await uploadPublicAttachments(files);
-                  setPendingAttachments([...pendingAttachments, ...uploaded.map(u => ({ ...u, kind: u.kind as any }))]);
-                } finally { setUploading(false); }
-              }}
-              uploadError={uploadError()} onDismissUploadError={() => setUploadError("")}
-              uploading={uploading()} onSend={handleSend} onStop={() => activeController?.abort()}
-              isSending={isSending()} remaining={sessionInfo()?.remainingToday}
-            />
-          </div>
+                  <Composer 
+                    draft={draft()} onDraftChange={setDraft} 
+                    attachments={pendingAttachments} onRemoveAttachment={(i) => setPendingAttachments(pendingAttachments.filter((_, j) => j !== i))}
+                    onPickFiles={async (files) => {
+                      setUploading(true);
+                      try {
+                        const uploaded = await uploadPublicAttachments(files);
+                        setPendingAttachments([...pendingAttachments, ...uploaded.map(u => ({ ...u, kind: u.kind as any }))]);
+                      } finally { setUploading(false); }
+                    }}
+                    uploadError={uploadError()} onDismissUploadError={() => setUploadError("")}
+                    uploading={uploading()} onSend={handleSend} onStop={() => activeController?.abort()}
+                    isSending={isSending()} remaining={sessionInfo()?.remainingToday}
+                  />
+                </div>
+              </PasswordSetupGuard>
+            )}
+          </Show>
         </Match>
       </Switch>
 
