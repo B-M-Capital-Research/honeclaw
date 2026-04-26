@@ -855,7 +855,7 @@ export default function PublicChatPage() {
                 <div style={{ flex: "1", display: "flex", "flex-direction": "column", "padding-top": "80px", position: "relative", "z-index": "10", overflow: "hidden" }}>
             
             {/* Session Strip */}
-            <div style={{ display: "flex", "justify-content": "center", padding: "12px" }}>
+            <div class="public-chat-session-strip" style={{ display: "flex", "justify-content": "center", padding: "12px" }}>
                <div style={{ background: "rgba(255,255,255,0.7)", "backdrop-filter": "blur(10px)", padding: "6px 20px", "border-radius": "100px", border: "1.5px solid #f1f5f9", display: "flex", gap: "20px", "align-items": "center", "font-size": "13px", "font-weight": "700" }}>
                  <span style={{ color: "#64748b" }}>{sessionInfo()?.dailyLimit ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}` : "无限额度"}</span>
                  <div style={{ width: "1px", height: "12px", background: "#e2e8f0" }} />
@@ -919,7 +919,10 @@ export default function PublicChatPage() {
       </Show>
 
       <style>{`
-        .public-chat-composer-input::placeholder { color: #94a3b8; font-size: 14px; font-weight: 500; }
+        .public-chat-composer-input::placeholder { color: #94a3b8; font-size: 10px; font-weight: 500; }
+        @media (max-width: 640px) {
+          .public-chat-session-strip { display: none !important; }
+        }
         .btn-stop-thinking { background: #f1f5f9; color: #64748b; border: none; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
         .btn-stop-thinking:hover { background: #fee2e2; color: #ef4444; }
       `}</style>

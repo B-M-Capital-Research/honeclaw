@@ -28,9 +28,11 @@ use axum::Router;
 use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, patch, post, put};
-use axum::{http::StatusCode, response::Response};
-use tower_http::cors::Any;
-use tower_http::cors::CorsLayer;
+use axum::{
+    http::{Method, StatusCode},
+    response::Response,
+};
+use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::runtime::{public_web_dist_dir, web_dist_dir};
@@ -202,9 +204,10 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
     let web_dist = public_web_dist_dir();
     let index_path = web_dist.join("index.html");
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::mirror_request())
+        .allow_methods(AllowMethods::list([Method::GET, Method::POST]))
+        .allow_headers(AllowHeaders::mirror_request())
+        .allow_credentials(true);
 
     let public_api = Router::new()
         .route("/auth/invite-login", post(public::handle_invite_login))

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import {
+  apiFetch,
   buildApiUrl,
   buildAuthHeaders,
   defaultBackendConfig,
@@ -98,5 +99,20 @@ describe("backend runtime helpers", () => {
     })
     expect(hasRuntimeCapability("logs")).toBe(true)
     expect(hasRuntimeCapability("local_file_proxy")).toBe(false)
+  })
+
+  test("apiFetch includes cookies for public auth refreshes", async () => {
+    const originalFetch = globalThis.fetch
+    let captured: RequestInit | undefined
+    globalThis.fetch = ((_: RequestInfo | URL, init?: RequestInit) => {
+      captured = init
+      return Promise.resolve(new Response("{}", { status: 200 }))
+    }) as typeof fetch
+    try {
+      await apiFetch("/api/public/auth/me")
+      expect(captured?.credentials).toBe("include")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })

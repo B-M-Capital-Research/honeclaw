@@ -128,6 +128,7 @@ export function buildAuthHeaders(headers?: HeadersInit, bearerToken = runtimeSta
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
   return fetch(buildApiUrl(path), {
+    credentials: "include",
     ...init,
     headers: buildAuthHeaders(init.headers),
   })
