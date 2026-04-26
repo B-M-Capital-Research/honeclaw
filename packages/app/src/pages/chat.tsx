@@ -760,10 +760,10 @@ function Composer(props: {
           <button type="button" class="pub-attach-btn" style={{ width: "36px", height: "36px", "flex-shrink": "0" }} onClick={() => setMenuOpen(!menuOpen())}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" /></svg>
           </button>
-          <textarea ref={taRef} class="public-chat-composer-input" rows={1} placeholder={quotaExhausted() ? "今日额度已用完" : "输入问题，开始投研纪律对话..."} value={props.draft} disabled={props.isSending} onInput={(e) => props.onDraftChange(e.currentTarget.value)}
+          <textarea ref={taRef} class="public-chat-composer-input" rows={1} placeholder={quotaExhausted() ? "今日额度已用完" : "向 Hone 提问…"} value={props.draft} disabled={props.isSending} onInput={(e) => props.onDraftChange(e.currentTarget.value)}
             onKeyDown={(e) => { if (!e.isComposing && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend()) props.onSend(); } }}
             onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-            style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "8px 6px", "font-size": "15px", "font-weight": "500", "line-height": "1.5", color: "#0f172a", "max-height": "200px", "min-height": "36px" }} />
+            style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "6px 6px", "font-size": "15px", "font-weight": "500", "line-height": "1.5", color: "#0f172a", "max-height": "180px", "min-height": "32px", overflow: "hidden auto" }} />
           <button type="button" class="public-chat-send-button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "36px", height: "36px", "border-radius": "12px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", "flex-shrink": "0", transition: "all 0.2s" }}>
             <svg viewBox="0 0 20 20" width="16" height="16" fill={canSend() ? "white" : "#94a3b8"}><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
           </button>
@@ -1205,18 +1205,13 @@ export default function PublicChatPage() {
         .public-chat-page .btn-chat-nav,
         .public-chat-page .btn-roadmap-nav { min-height: 34px; padding: 0 16px; }
         @media (max-width: 768px) {
-          .public-chat-composer-status {
-            font-size: 12px;
-            padding: 5px 12px;
-            margin-bottom: 6px;
-            border-radius: 12px;
-          }
-          /* Density: fit roughly 50% more content per screen on mobile,
-             without feeling cramped. Smaller fonts, tighter bubbles, less
-             gap between turns. */
+          .public-chat-composer-status { border-radius: 11px; }
+          /* Density target: WeChat-like — small font, tight line-height,
+             minimal bubble padding, ~6px between turns. Don't go below
+             this without cramping the text. */
           .public-chat-messages .hf-markdown {
-            font-size: 14px;
-            line-height: 1.6;
+            font-size: 13.5px;
+            line-height: 1.45;
           }
           .public-chat-messages .hf-markdown p,
           .public-chat-messages .hf-markdown ul,
@@ -1224,30 +1219,30 @@ export default function PublicChatPage() {
           .public-chat-messages .hf-markdown table,
           .public-chat-messages .hf-markdown pre,
           .public-chat-messages .hf-markdown blockquote {
-            margin: 0.6rem 0;
+            margin: 0.45rem 0;
           }
           .public-chat-messages .hf-markdown th,
           .public-chat-messages .hf-markdown td {
-            padding: 0.4rem 0.55rem;
-            font-size: 12.5px;
+            padding: 0.32rem 0.5rem;
+            font-size: 12px;
           }
           .public-chat-messages .pub-msg-row {
-            margin-bottom: 10px !important;
+            margin-bottom: 6px !important;
           }
           .public-chat-messages .pub-msg-bubble {
-            max-width: 92% !important;
-            border-radius: 16px !important;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.04) !important;
+            max-width: 94% !important;
+            border-radius: 14px !important;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.04) !important;
           }
           .public-chat-messages .pub-msg-bubble--assistant {
-            padding: 10px 12px !important;
-            border-radius: 4px 16px 16px 16px !important;
+            padding: 8px 11px !important;
+            border-radius: 4px 14px 14px 14px !important;
           }
           .public-chat-messages .pub-msg-bubble--user {
-            padding: 8px 12px !important;
-            font-size: 14.5px !important;
-            line-height: 1.55 !important;
-            border-radius: 16px 16px 4px 16px !important;
+            padding: 7px 11px !important;
+            font-size: 14px !important;
+            line-height: 1.45 !important;
+            border-radius: 14px 14px 4px 14px !important;
           }
           /* The HONE brand row inside each assistant bubble is redundant
              on mobile (the bubble shape already tells you it's HONE) and
@@ -1260,36 +1255,47 @@ export default function PublicChatPage() {
             padding-top: 56px !important;
           }
           .public-chat-messages {
-            padding-top: 8px !important;
-            padding-bottom: 4px !important;
+            padding-top: 6px !important;
+            padding-bottom: 2px !important;
           }
           .public-chat-messages > div {
-            padding-right: 14px !important;
-            padding-left: 14px !important;
+            padding-right: 12px !important;
+            padding-left: 12px !important;
           }
           .public-chat-composer {
-            padding: 6px 10px calc(8px + env(safe-area-inset-bottom)) !important;
+            padding: 4px 8px calc(6px + env(safe-area-inset-bottom)) !important;
           }
           .public-chat-composer-box {
-            border-radius: 18px !important;
+            border-radius: 16px !important;
           }
           .public-chat-composer-row {
-            padding: 5px 8px !important;
+            padding: 3px 6px !important;
             gap: 4px !important;
           }
           .public-chat-composer .pub-attach-btn,
           .public-chat-send-button {
-            width: 34px !important;
-            height: 34px !important;
-            border-radius: 11px !important;
-            flex: 0 0 34px;
+            width: 32px !important;
+            height: 32px !important;
+            border-radius: 10px !important;
+            flex: 0 0 32px;
           }
           .public-chat-composer-input {
-            min-height: 34px !important;
-            padding-top: 6px !important;
-            padding-bottom: 6px !important;
-            font-size: 15px !important;
+            min-height: 32px !important;
+            max-height: 140px !important;
+            padding-top: 5px !important;
+            padding-bottom: 5px !important;
+            font-size: 14.5px !important;
+            line-height: 1.4 !important;
           }
+          .public-chat-composer-status {
+            font-size: 11.5px !important;
+            padding: 4px 10px !important;
+            margin-bottom: 4px !important;
+            gap: 8px !important;
+          }
+          .public-chat-composer-status-label { font-size: 11px !important; }
+          .public-chat-composer-status-time { font-size: 11px !important; }
+          .public-chat-composer-status-stop { padding: 3px 9px !important; font-size: 10.5px !important; }
           .public-chat-session-strip { display: none !important; }
         }
       `}</style>
