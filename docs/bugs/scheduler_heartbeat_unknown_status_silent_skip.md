@@ -19,6 +19,14 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 12:30-13:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `12:30` 窗口的 `run_id=6635-6640` 再次全量落成 `noop + skipped_noop + delivered=0`；其中 `run_id=6635`（`全天原油价格3小时播报`）、`6637`（`TEM破位预警`）与 `6639`（`CAI破位预警`）继续为 `PlainTextSuppressed`，`6638`（`TEM大事件心跳监控`）与 `6640`（`小米破位预警`）继续为 `JsonEmptyStatus`
+    - `13:00` 窗口的 `run_id=6641-6651` 同样没有任何一条恢复成“首字符即 `{` 的单段 JSON”；`6641`（`全天原油价格3小时播报`）、`6642`（`持仓重大事件心跳检测`）、`6643`（`TEM破位预警`）、`6648`（`TEM大事件心跳监控`）、`6650`（`ORCL 大事件监控`）与 `6651`（`小米破位预警`）继续落成 `PlainTextSuppressed`，`6644/6645/6646/6647/6649` 继续为 `JsonEmptyStatus`
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 12:30:11.227-12:30:13.829`，`TEM大事件心跳监控`、`CAI破位预警` 与 `小米破位预警` 连续三条仍以 `<think>...</think>` 开头；外层分别落成 `{\"triggered\":false,\"reason\":\"no_event\"}`、长段自由文本分析、以及 `{\"message\":\"noop\"...}`，全部不是契约要求的单段状态 JSON
+    - `2026-04-26 13:00:20.176-13:00:41.491`，`Monitor_Watchlist_11`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控` 与 `小米破位预警` 继续在 `JsonEmptyStatus` / `PlainTextSuppressed` 间漂移；`持仓重大事件心跳检测` 的 `raw_preview` 甚至直接退化成自由文本 `系统运行正常。当前时间 2026-04-26 13:00:00`
+    - 结论：到 `2026-04-26 13:00` 为止，heartbeat 最新两窗仍没有任何稳定的纯 JSON 首包样本，且坏态已经覆盖“系统探针被答成自然语言”这类明显偏离心跳契约的返回；状态维持 `Fixing`、严重等级维持 `P2`
   - 2026-04-26 11:30-12:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `11:30` 窗口的 `run_id=6612-6622` 再次没有任何一条恢复成“首字符即 `{` 的单段 JSON”；其中 `run_id=6622`（`小米破位预警`，`2026-04-26T11:30:30.668363+08:00`）继续落成 `noop + skipped_noop`，日志记录 `starts_with_json=false parse_kind=JsonEmptyStatus`
