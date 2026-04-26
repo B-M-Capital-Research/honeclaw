@@ -102,9 +102,27 @@ function PrefsButton() {
     { value: "dark", label: "深" },
   ];
   const close = () => setOpen(false);
+  let rootRef: HTMLDivElement | undefined;
+
+  // Close on outside click + Esc. Document-level listeners avoid the
+  // stacking-context pitfalls of a transparent backdrop sitting under a
+  // position:fixed header.
+  createEffect(() => {
+    if (!open()) return;
+    const onPointer = (e: PointerEvent) => {
+      if (rootRef && !rootRef.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey);
+    });
+  });
 
   return (
-    <div class="hone-prefs">
+    <div class="hone-prefs" ref={rootRef}>
       <button
         type="button"
         class="hone-prefs-trigger"
@@ -117,7 +135,6 @@ function PrefsButton() {
         </svg>
       </button>
       <Show when={open()}>
-        <div class="hone-prefs-backdrop" onClick={close} />
         <div class="hone-prefs-panel" role="dialog">
           <div class="hone-prefs-row">
             <span class="hone-prefs-label">字号</span>
@@ -1293,7 +1310,6 @@ export default function PublicChatPage() {
         }
         .hone-prefs-trigger:hover,
         .hone-prefs-trigger[aria-expanded="true"] { background: #f1f5f9; color: #0f172a; }
-        .hone-prefs-backdrop { position: fixed; inset: 0; z-index: 998; background: transparent; }
         .hone-prefs-panel {
           position: absolute;
           right: 0; top: calc(100% + 10px);
