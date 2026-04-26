@@ -851,3 +851,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: N/A
 - Current conclusion: `docs/current-plan.md` 已从 10 个活跃任务收口到 4 个；6 个长期失焦或仅剩占位语义的计划已移入 `docs/archive/plans/`
 - Next entry point: `docs/handoffs/2026-04-16-current-plan-cleanup.md`
+
+### Public Website Mobile Responsive Pass
+
+- Status: done
+- Date: 2026-04-26
+- Plan: `docs/archive/plans/public-mobile-responsive-pass.md`
+- Handoff: `docs/handoffs/2026-04-26-public-mobile-responsive-pass.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `bun run build:web:public`, `bun run typecheck:web`, Playwright mobile overflow audit
+- Current conclusion: 公开站共享移动端样式已收口，首页、对话页、路线图和基础文档页在 360/390/430/768 宽度下不再横向撑宽，header 保持在视口内
+- Next entry point: `packages/app/src/pages/public-site.css`

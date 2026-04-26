@@ -18,6 +18,20 @@ body {
   background-color: #fff;
 }
 
+/* Public pages are content-heavy and include page-local style blocks. Keep
+   padding and borders inside declared widths so mobile layouts cannot drift. */
+.pub-page *,
+.pub-page *::before,
+.pub-page *::after,
+.hone-landing-v4 *,
+.hone-landing-v4 *::before,
+.hone-landing-v4 *::after,
+.hone-roadmap-v4 *,
+.hone-roadmap-v4 *::before,
+.hone-roadmap-v4 *::after {
+  box-sizing: border-box;
+}
+
 /* Ensure sensible text color base for public pages */
 .pub-page {
   color: #0f172a;
@@ -606,34 +620,52 @@ body {
 /* ── Mobile ── */
 @media (max-width: 768px) {
   .page-header {
-    height: 64px;
-    padding: 0 18px;
+    height: 64px !important;
+    padding: 0 16px !important;
+    gap: 10px !important;
+    min-width: 0 !important;
   }
   .header-logo {
-    gap: 9px;
+    gap: 9px !important;
+    min-width: 0 !important;
+    flex: 0 1 auto !important;
   }
   .header-logo img {
-    height: 28px;
+    height: 28px !important;
   }
   .header-logo span {
-    font-size: 18px;
+    max-width: 96px !important;
+    overflow: hidden !important;
+    font-size: 18px !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
   }
   .header-actions {
-    gap: 10px;
+    gap: 8px !important;
+    min-width: 0 !important;
+    flex: 0 1 auto !important;
   }
+  .header-socials,
+  .divider-v,
   .mobile-hide {
     display: none !important;
   }
-  .lang-switch button {
-    min-width: 30px;
-    min-height: 26px;
-    padding: 0 7px;
-    font-size: 11px;
+  .lang-switch {
+    flex-shrink: 0 !important;
+    border-radius: 999px !important;
   }
+  .lang-switch button {
+    min-width: 30px !important;
+    min-height: 26px !important;
+    padding: 0 7px !important;
+    font-size: 11px !important;
+  }
+  .btn-roadmap-nav,
   .btn-chat-nav {
-    min-height: 36px;
-    padding: 0 16px;
-    font-size: 13px;
+    min-height: 36px !important;
+    padding: 0 14px !important;
+    font-size: 13px !important;
+    flex-shrink: 0 !important;
   }
 
   .pub-nav-links {
@@ -736,6 +768,181 @@ body {
   .pub-install-tabs {
     overflow-x: auto;
   }
+
+  .hone-landing-v4,
+  .hone-roadmap-v4 {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .hone-landing-v4 .main-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-right: 16px !important;
+    padding-left: 16px !important;
+  }
+
+  .hone-landing-v4 .hero-section {
+    padding-top: 64px !important;
+    gap: 24px !important;
+  }
+
+  .hone-landing-v4 .hero-logo-tag {
+    width: 100% !important;
+  }
+
+  .hone-landing-v4 .hero-tagline {
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .hone-landing-v4 .hero-btns {
+    width: 100% !important;
+    gap: 10px !important;
+  }
+
+  .hone-landing-v4 .btn-primary.refined,
+  .hone-landing-v4 .btn-secondary.refined {
+    justify-content: center !important;
+    max-width: 100% !important;
+  }
+
+  .hone-landing-v4 .video-container,
+  .hone-landing-v4 .video-wrapper {
+    max-width: 100% !important;
+  }
+
+  .hone-landing-v4 .video-wrapper {
+    border-radius: 18px !important;
+  }
+
+  .hone-landing-v4 .section-separator {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+    margin: 56px 0 32px !important;
+  }
+
+  .hone-landing-v4 .section-separator .line {
+    display: none !important;
+  }
+
+  .hone-landing-v4 .carousel-nav {
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 14px !important;
+    overflow-x: auto !important;
+    padding: 8px 2px 14px !important;
+    scroll-snap-type: x proximity;
+  }
+
+  .hone-landing-v4 .nav-item {
+    flex: 0 0 auto !important;
+    scroll-snap-align: start;
+  }
+
+  .hone-landing-v4 .carousel-section,
+  .hone-landing-v4 .carousel-container,
+  .hone-landing-v4 .carousel-text,
+  .hone-landing-v4 .carousel-image {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .hone-landing-v4 .carousel-container {
+    gap: 28px !important;
+  }
+
+  .hone-roadmap-v4 .main-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 96px 16px 40px !important;
+    overflow-x: hidden !important;
+  }
+
+  .hone-roadmap-v4 .roadmap-hero {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 48px !important;
+  }
+
+  .hone-roadmap-v4 .roadmap-hero .meta {
+    letter-spacing: 0.12em !important;
+  }
+
+  .hone-roadmap-v4 .roadmap-hero .title,
+  .hone-roadmap-v4 .roadmap-hero .subtitle,
+  .hone-roadmap-v4 .card-title,
+  .hone-roadmap-v4 .card-intro,
+  .hone-roadmap-v4 .bottom-cta h2 {
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .hone-roadmap-v4 .roadmap-grid,
+  .hone-roadmap-v4 .roadmap-card,
+  .hone-roadmap-v4 .phases-container,
+  .hone-roadmap-v4 .matrix-container,
+  .hone-roadmap-v4 .phase,
+  .hone-roadmap-v4 .matrix-group,
+  .hone-roadmap-v4 .code-block {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .hone-roadmap-v4 .roadmap-grid {
+    gap: 24px !important;
+  }
+
+  .hone-roadmap-v4 .roadmap-card {
+    padding: 22px !important;
+    border-radius: 22px !important;
+  }
+
+  .hone-roadmap-v4 .phases-container,
+  .hone-roadmap-v4 .matrix-container {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 20px !important;
+  }
+
+  .hone-roadmap-v4 .phase-list,
+  .hone-roadmap-v4 .phase-list li,
+  .hone-roadmap-v4 .matrix-row,
+  .hone-roadmap-v4 .row-name {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .hone-roadmap-v4 .phase-list li {
+    align-items: flex-start !important;
+  }
+
+  .hone-roadmap-v4 .code-block {
+    padding: 18px !important;
+    border-radius: 14px !important;
+    overflow-x: auto !important;
+  }
+
+  .hone-roadmap-v4 .code-block pre {
+    margin: 0 !important;
+    white-space: pre-wrap !important;
+  }
+
+  .hone-roadmap-v4 .code-block code {
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .hone-roadmap-v4 .bottom-cta {
+    margin-top: 48px !important;
+    padding: 32px 20px !important;
+    border-radius: 26px !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -753,5 +960,67 @@ body {
 
   .pub-footer-grid {
     grid-template-columns: 1fr;
+  }
+
+  .header-logo span {
+    max-width: 72px !important;
+  }
+
+  .btn-roadmap-nav,
+  .btn-chat-nav {
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .hone-landing-v4 .hero-logo {
+    height: 82px !important;
+  }
+
+  .hone-landing-v4 .hero-tagline {
+    font-size: 24px !important;
+    line-height: 1.25 !important;
+  }
+
+  .hone-landing-v4 .feature-title {
+    font-size: 26px !important;
+  }
+
+  .hone-roadmap-v4 .roadmap-hero .title {
+    font-size: 34px !important;
+    line-height: 1.15 !important;
+  }
+
+  .hone-roadmap-v4 .roadmap-hero .subtitle {
+    font-size: 16px !important;
+  }
+
+  .hone-roadmap-v4 .card-title,
+  .hone-roadmap-v4 .bottom-cta h2 {
+    font-size: 24px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .page-header {
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .header-logo span {
+    display: none !important;
+  }
+
+  .lang-switch button {
+    min-width: 28px !important;
+    padding-right: 6px !important;
+    padding-left: 6px !important;
+  }
+
+  .btn-roadmap-nav,
+  .btn-chat-nav {
+    min-height: 34px !important;
+    padding-right: 10px !important;
+    padding-left: 10px !important;
+    font-size: 12px !important;
   }
 }
