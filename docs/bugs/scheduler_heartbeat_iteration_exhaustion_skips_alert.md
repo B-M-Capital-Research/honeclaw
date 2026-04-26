@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6693`，`job_id=j_671d3cd3`，`job_name=小米破位预警`，`executed_at=2026-04-26T15:00:45.699117+08:00`
+    - 本轮再次落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`should_deliver=0`、`delivered=0`
+    - `error_message=max_iterations_exceeded:6`
+    - 对比同任务紧邻窗口：
+      - `run_id=6678`，`executed_at=2026-04-26T14:30:11.313085+08:00`，仍是 `noop + skipped_noop`
+      - 同一 `15:00` 批次其余 heartbeat 大多继续是 `noop + skipped_noop`，说明不是整批 scheduler 停摆，而是同一 job 再次单独撞到迭代上限
+  - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+    - `2026-04-26 15:00:45.697-15:00:45.698` 连续记录：
+      - `run_finish ... success=false error="max_iterations_exceeded:6"`
+      - `runner_error ... error="max_iterations_exceeded:6"`
+      - 随后直接 `心跳任务未命中，本轮不发送: job=小米破位预警`
+    - 同一时间窗前后，`RKLB异动监控`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控` 与 `持仓重大事件心跳检测` 仍在 `PlainTextSuppressed` / `JsonEmptyStatus` 坏态下收口为 `noop`；这进一步说明 `max_iterations=6` 仍会和 heartbeat 结构化坏态交替出现
+  - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=6416`，`job_id=j_671d3cd3`，`job_name=小米破位预警`，`executed_at=2026-04-26T02:30:35.863853+08:00`
     - 本轮落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`should_deliver=0`、`delivered=0`
     - `error_message=max_iterations_exceeded:6`
@@ -81,6 +94,7 @@
 
 ## 当前实现效果
 
+- `2026-04-26 15:00` 的 `小米破位预警` 再次把这条缺陷带回最近一小时真实窗口：前一窗口 `14:30` 还是正常 `noop`，`15:00` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，且同批其它 heartbeat 仍多数只是 `noop`。这说明 heartbeat 触顶失败并未收口，而是在同一 job 上持续抖动复现。
 - `2026-04-26 02:30` 的 `小米破位预警` 把这条缺陷重新带回最近一小时真实窗口：前一窗口 `02:00` 还是正常 `noop`，`02:30` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，到 `03:00` 又回到 `noop`。这说明 heartbeat 触顶失败仍在当前生产时段活跃，并且会在同一 job 上抖动复现。
 - `2026-04-23 01:00` 的 `Monitor_Watchlist_11` 再次把这条缺陷带回最近一小时真实窗口：前一轮 `00:30` 还是正常 `noop`，下一轮直接退化成 `max_iterations_exceeded:6 + skipped_error`，且 `delivered=0`。这说明 heartbeat 触顶失败仍在生产活跃，并且不局限于单只股票或单一事件监控模板。
 - `2026-04-20 21:01` 的 `TEM大事件心跳监控` 再次把这条缺陷带回真实窗口：前一轮 `20:30` 还是正常 `noop`，下一轮直接退化成 `已达最大迭代次数 6 + skipped_error`，而同批次其它 heartbeat 又混有 `JsonUnknownStatus`。这说明 heartbeat 触顶失败会和结构化状态退化叠加出现。
@@ -98,6 +112,7 @@
 
 ## 根因判断
 
+- `2026-04-26 15:00` 的 `小米破位预警` 新样本说明，这个根因截至当前巡检窗口仍未止血；同一 job 在 `14:30` 还是 `noop`，到 `15:00` 又再次独立撞到 `max_iterations=6`，说明 heartbeat 触顶不是一次性偶发波动。
 - `2026-04-26 02:30` 的 `小米破位预警` 新样本说明，这个根因不只影响“大事件监控”或多标的 watchlist；即使是单 ticker 价格阈值 heartbeat，也仍可能在正常 `noop` 与 `max_iterations=6` 静默失败之间摆动。
 - `2026-04-23 01:00` 的 `Monitor_Watchlist_11` 新样本说明，这个根因也会影响多标的 watchlist heartbeat；即使前一窗口可正常 `noop`，下一窗口仍可能直接撞到 `max_iterations=6` 后静默失败。
 - `2026-04-20 21:01` 的 `TEM大事件心跳监控` 样本说明，这个根因不依赖时间型 heartbeat 或 ASTS 那种重复旧事件；即使是另一条事件监控模板，也可能直接撞到 `max_iterations=6` 后静默失败。

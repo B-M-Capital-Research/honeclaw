@@ -19,6 +19,16 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-26 14:30-15:01 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `14:30` 窗口的 `run_id=6674-6684` 继续没有任何一条恢复成“首字符即 `{` 的单段 JSON”；`6675`（`全天原油价格3小时播报`）、`6680`（`RKLB异动监控`）、`6681`（`Monitor_Watchlist_11`）与 `6684`（`TEM大事件心跳监控`）继续落成 `PlainTextSuppressed`，`6676`（`TEM破位预警`）、`6678`（`小米破位预警`）与 `6682`（`ORCL 大事件监控`）继续为 `JsonEmptyStatus`
+    - `14:00` 窗口的 `run_id=6673`（`持仓重大事件心跳检测`）同样继续落成 `noop + skipped_noop`，`detail_json.scheduler.parse_kind=PlainTextSuppressed`，`raw_chars=2325`
+    - `15:00-15:01` 窗口里，除 `run_id=6693` 的 `小米破位预警` 升级成独立跟踪的 `max_iterations_exceeded:6` 外，`6694`（`持仓重大事件心跳检测`）与 `6695`（`全天原油价格3小时播报`）继续落成 `PlainTextSuppressed`，没有任何 heartbeat 恢复为稳定纯 JSON 首包
+    - `data/runtime/logs/sidecar.log`
+    - `2026-04-26 14:30:22.288-14:31:26.623`，`RKLB异动监控`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控` 与 `TEM大事件心跳监控` 连续记录 `starts_with_json=false parse_kind=PlainTextSuppressed`
+    - `2026-04-26 14:30:27.699-14:30:27.700`，`ORCL 大事件监控` 继续记录 `starts_with_json=false parse_kind=JsonEmptyStatus`
+    - `2026-04-26 15:00:30.877-15:01:03.536`，`RKLB异动监控`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 与 `全天原油价格3小时播报` 再次全部记录 `starts_with_json=false`，其中至少 5 条继续为 `PlainTextSuppressed`
+    - 结论：到 `2026-04-26 15:01` 为止，heartbeat 最近三窗仍没有任何稳定的纯 JSON 首包样本；坏态继续在 `PlainTextSuppressed` 与 `JsonEmptyStatus` 间漂移，且与 `max_iterations_exceeded:6` 的执行失败并存
   - 2026-04-26 12:30-13:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - `12:30` 窗口的 `run_id=6635-6640` 再次全量落成 `noop + skipped_noop + delivered=0`；其中 `run_id=6635`（`全天原油价格3小时播报`）、`6637`（`TEM破位预警`）与 `6639`（`CAI破位预警`）继续为 `PlainTextSuppressed`，`6638`（`TEM大事件心跳监控`）与 `6640`（`小米破位预警`）继续为 `JsonEmptyStatus`
