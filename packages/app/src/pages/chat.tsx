@@ -734,7 +734,7 @@ function Composer(props: {
   onPickFiles: (files: File[], kind: "image" | "file") => void;
   uploadError: string; onDismissUploadError: () => void;
   uploading: boolean; onSend: () => void; onStop: () => void;
-  isSending: boolean; remaining: number | undefined;
+  isSending: boolean; remaining: number | undefined; dailyLimit: number | undefined;
   pendingMessage: ChatMessage | undefined; justFinished: boolean;
 }) {
   const [focused, setFocused] = createSignal(false);
@@ -743,7 +743,10 @@ function Composer(props: {
   let imgInputRef: HTMLInputElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
 
-  const canSend = () => !props.isSending && !props.uploading && (!!props.draft.trim() || props.attachments.length > 0) && (props.remaining === undefined || props.remaining > 0);
+  // dailyLimit falsy (0/undefined) means unlimited — see session strip.
+  const isCapped = () => !!props.dailyLimit && props.dailyLimit > 0;
+  const quotaExhausted = () => isCapped() && props.remaining === 0;
+  const canSend = () => !props.isSending && !props.uploading && (!!props.draft.trim() || props.attachments.length > 0) && !quotaExhausted();
 
   createEffect(() => { if (!props.isSending && taRef) taRef.focus(); });
 
@@ -761,7 +764,7 @@ function Composer(props: {
           <button type="button" class="pub-attach-btn" style={{ width: "48px", height: "48px" }} onClick={() => setMenuOpen(!menuOpen())}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" /></svg>
           </button>
-          <textarea ref={taRef} class="public-chat-composer-input" rows={1} placeholder={props.remaining === 0 ? "今日额度已用完" : "输入问题，开始投研纪律对话..."} value={props.draft} disabled={props.isSending} onInput={(e) => props.onDraftChange(e.currentTarget.value)}
+          <textarea ref={taRef} class="public-chat-composer-input" rows={1} placeholder={quotaExhausted() ? "今日额度已用完" : "输入问题，开始投研纪律对话..."} value={props.draft} disabled={props.isSending} onInput={(e) => props.onDraftChange(e.currentTarget.value)}
             onKeyDown={(e) => { if (!e.isComposing && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend()) props.onSend(); } }}
             onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
             style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "12px 8px", "font-size": "16px", "font-weight": "600", "line-height": "1.6", color: "#0f172a", "max-height": "200px", "min-height": "48px" }} />
@@ -1048,7 +1051,7 @@ export default function PublicChatPage() {
                     }}
                     uploadError={uploadError()} onDismissUploadError={() => setUploadError("")}
                     uploading={uploading()} onSend={handleSend} onStop={() => activeController?.abort()}
-                    isSending={isSending()} remaining={sessionInfo()?.remainingToday}
+                    isSending={isSending()} remaining={sessionInfo()?.remainingToday} dailyLimit={sessionInfo()?.dailyLimit}
                     pendingMessage={pendingAssistantMessage()} justFinished={justFinished()}
                   />
                 </div>
