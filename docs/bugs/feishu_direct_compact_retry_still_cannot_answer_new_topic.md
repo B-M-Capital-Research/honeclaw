@@ -3,8 +3,15 @@
 - **发现时间**: 2026-04-18 00:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: Fixing
 - **证据来源**:
+  - 2026-04-26 09:47-09:50 最新样本：
+    - `session_id=Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768`
+    - `2026-04-26T09:47:44.192950+08:00` 用户在旧会话里切到新问题：`今周美股是否需要减仓位？`
+    - `2026-04-26T01:49:45.707117Z` 与 `2026-04-26T01:50:14.754148Z` 两次 answer 都再次记录 `stop_reason=end_turn success=true reply_chars=0`
+    - 同轮 `sidecar.log` 记录 `empty successful response, retrying attempt=1/2` 与 `attempt=2/2`，随后 `2026-04-26T01:50:34.817286Z` search 重试仍落成 `success=false iterations=2 tool_calls=7`
+    - `2026-04-26T01:50:34.841693Z` 日志最终仍以 `当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。` 收口
+    - `data/sessions.sqlite3` 中同轮 assistant final 与 `sessions.last_message_preview` 最终却写成 `发送 <absolute-path>/compact`，说明旧缺陷不仅回归，用户可见 fallback 文案还出现了新的占位符泄露
   - `data/sessions.sqlite3` -> `session_messages`
     - 2026-04-18 22:47-22:58 最近一小时最新样本：
       - `session_id=Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1`
@@ -104,3 +111,13 @@
 - 优先审视 `context_overflow_recovery` 在 direct session 中的保留窗口、summary 长度与重试策略，确认“开启新话题”时是否应更激进地丢弃旧活跃窗口。
 - 为“compact 成功但 retry 仍失败”的路径补独立可观测标记，区分是真正再次超窗、search 早停，还是 answer 阶段被短路。
 - 给直聊场景补一条回归验证：同一 session 在长历史后切到新话题时，自动 compact 后仍应能完成至少一条新问题答复，而不是长期卡在统一 fallback。
+
+## 2026-04-26 状态回退结论
+
+- `2026-04-20` 的“已修复”结论不能继续成立：最新旧会话 `Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` 在新问题 `今周美股是否需要减仓位？` 上再次复现 compact 后仍失败。
+- 这次失败不是历史脏样本残留：
+  - 会话先完成 auto compact；
+  - 两次 answer 都走到 `reply_chars=0`；
+  - 最终重试后的 search 仍 `success=false`，用户只收到“当前会话上下文过长”的 fallback。
+- 同轮用户可见文案还把建议命令写成了 `发送 <absolute-path>/compact`，因此当前既有主功能失败，也有附带的格式占位符泄露。
+- 因此本单状态从 `Fixed` 调整回 `Fixing`，严重等级继续保持 `P2`。

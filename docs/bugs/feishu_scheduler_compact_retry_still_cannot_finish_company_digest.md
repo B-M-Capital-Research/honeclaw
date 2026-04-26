@@ -3,8 +3,18 @@
 - **发现时间**: 2026-04-19 12:22 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: Fixing
 - **证据来源**:
+  - 2026-04-26 09:05 最新 scheduler 样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=6566`
+    - `job_name=核心观察池早间简报`
+    - `executed_at=2026-04-26T09:05:52+08:00`
+    - `execution_status=execution_failed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `response_preview=当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 <absolute-path>/compact，或开启一个新会话后再试。`
+    - 这说明 scheduler 旧会话 compact 失败并未停留在 2026-04-19 的历史窗口；到最新小时仍会把 overflow fallback 当成已送达结果，而且用户可见文案还出现了 `<absolute-path>/compact` 占位符泄露
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=2923`
     - `job_id=j_7c688485`
@@ -71,3 +81,9 @@
 - 为 scheduler 长会话补专门的 compact/retry 策略，避免沿用 direct session 的统一 fallback 文案直接结束日报任务。
 - 增加回归：同一 `每日公司资讯与分析总结` 会话在旧历史下触发时，compact 后仍应至少产出一条结构化日报或受控部分完成态。
 - 补齐台账一致性检查，确保 `cron_job_runs.response_preview`、会话落库和用户实际收到的文案在失败分支上保持一致。
+
+## 2026-04-26 状态回退结论
+
+- `run_id=6566` 证明本单在最新小时重新活跃，`2026-04-20` 的“已修复”结论不能继续成立。
+- 当前坏态仍然是 scheduler 旧会话 compact 后无法完成播报，并把 overflow fallback 作为已送达正文写入台账；这与 2026-04-19 的根因和影响面一致，不需要新建重复缺陷。
+- 因此本单状态从 `Fixed` 调整回 `Fixing`，严重等级继续保持 `P2`。
