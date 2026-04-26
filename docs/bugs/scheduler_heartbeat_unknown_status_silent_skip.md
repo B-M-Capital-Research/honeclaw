@@ -30,6 +30,27 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 00:00 最新巡检样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 最近一小时跨日整点窗口 `run_id=7002-7012` 仍没有任何 heartbeat 恢复成“首字符即 `{` 的单段 JSON”：
+      - `run_id=7002`（`ASTS 重大异动心跳监控`，`2026-04-27T00:00:08.076826+08:00`）继续落成 `noop + skipped_noop + delivered=0`，`parse_kind=JsonEmptyStatus`
+      - `run_id=7003`（`小米破位预警`，`2026-04-27T00:00:09.650784+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7004`（`ORCL 大事件监控`，`2026-04-27T00:00:09.780328+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7005`（`TEM破位预警`，`2026-04-27T00:00:12.286718+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7006`（`小米30港元破位预警`，`2026-04-27T00:00:12.975780+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7008`（`RKLB异动监控`，`2026-04-27T00:00:21.941832+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7010`（`TEM大事件心跳监控`，`2026-04-27T00:00:39.259294+08:00`）继续落成 `noop + skipped_noop + delivered=0`，`parse_kind=JsonEmptyStatus`
+      - `run_id=7011`（`持仓重大事件心跳检测`，`2026-04-27T00:00:44.695363+08:00`）落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=PlainTextSuppressed`
+      - `run_id=7012`（`全天原油价格3小时播报`，`2026-04-27T00:01:39.593880+08:00`）则继续退化成 `runner_error=max_iterations_exceeded:6`
+    - `data/runtime/logs/sidecar.log`
+      - `00:00:08.076` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，`raw_preview` 仍以 `<think>` 开头并把 JSON 包在代码块里
+      - `00:00:09.650` `job=小米破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，正文直接写“未获取到有效价格数据，本轮返回 noop”
+      - `00:00:09.779` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，继续把任务误解成 `system-level heartbeat/health check probe`
+      - `00:00:12.285` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `00:00:12.975` `job=小米30港元破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `00:00:14.374` `job=CAI破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `00:01:39.592` `job=全天原油价格3小时播报`：`run_finish success=false error="max_iterations_exceeded:6"`，最新窗口没有回到合法 heartbeat 契约
+    - 结论：到 `2026-04-27 00:00` 为止，这条公共 heartbeat 契约仍在 `JsonEmptyStatus`、`PlainTextSuppressed` 与 `max_iterations_exceeded` 之间漂移；22:00-23:00 的坏态没有随跨日重跑恢复
   - 2026-04-26 23:00 最新巡检样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
     - 最近一小时的最新整点窗口 `run_id=6954-6964` 再次没有任何 heartbeat 恢复成“首字符即 `{` 的单段 JSON”：

@@ -70,6 +70,22 @@
 - 已在 [`/Users/fengming2/Desktop/honeclaw/memory/src/session.rs`](/Users/fengming2/Desktop/honeclaw/memory/src/session.rs) 增加原子 `remove_last_message_if_matches(...)`，供 scheduler 安全回滚尾部污染消息。
 - 这次修复只收紧“未送达长文不得进入 direct session”的状态边界，不改变 `cron_job_runs` 的 `noop + skipped_noop` 收口，也不影响真正需要投递的 scheduler 内容。
 
+## 修复复核（2026-04-27 00:02 CST）
+
+- 最近一小时真实会话：`data/sessions.sqlite3` -> `session_messages`
+  - `session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b`
+  - 最新 `ordinal=35` / `2026-04-27T00:00:00.590819+08:00` 仅保留 `[定时任务触发] RKLB 每日动态监控`
+  - 最新 `ordinal=36` / `2026-04-27T00:02:37.006774+08:00` 仅保留下一条 `[定时任务触发] TEM 每日动态监控`
+  - `ordinal=35/36` 之间没有新增 assistant final，说明本轮 `RKLB` skip 长文没有再污染 direct session 尾部
+- 最近一小时调度台账：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=7013` / `job_name=RKLB 每日动态监控` / `executed_at=2026-04-27T00:02:37.005008+08:00`
+  - 本轮已正确收口为 `execution_status=noop`、`message_send_status=skipped_noop`、`delivered=0`
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-04-27 00:02:36.975` 先记录 `SchedulerDiag skip_signal job_id=j_5f0b686a job=RKLB 每日动态监控 chars=1403`
+  - `2026-04-27 00:02:37.004` 紧接着记录 `SchedulerDiag rolled back skipped assistant turn session_id=Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b chars=1403`
+  - 同秒继续记录 `[Feishu] 心跳任务未命中，本轮不发送: job=RKLB 每日动态监控`
+- 结论：最新真实窗口里，`skip_signal` 长文已经先被识别、再被回滚，session 尾部不再残留未送达 assistant final；本单维持 `Fixed`
+
 ## 验证
 
 - `cargo test -p hone-memory remove_last_message_if_matches_only_removes_matching_tail -- --nocapture`
