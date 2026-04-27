@@ -7,6 +7,11 @@
 
 ## 修复进展（2026-04-26）
 
+- `2026-04-27 13:00` 最新真实窗口仍未恢复，且坏态继续在同一批 heartbeat 任务之间漂移：
+  - `run_id=7615`（`小米30港元破位预警`）、`7618`（`CAI破位预警`）、`7621`（`ORCL 大事件监控`）、`7623`（`TEM大事件心跳监控`）、`7624`（`ASTS 重大异动心跳监控`）、`7625`（`持仓重大事件心跳检测`）继续落成 `execution_failed + skipped_error + delivered=0`
+  - 同窗 `run_id=7616`（`TEM破位预警`）、`7617`（`全天原油价格3小时播报`）、`7619`（`小米破位预警`）、`7620`（`RKLB异动监控`）、`7622`（`Monitor_Watchlist_11`）则继续落成 `noop + skipped_noop + delivered=0`
+  - 最新坏态已经不只是“未知状态”或“空 JSON”，而是大量 `<think>...</think>` 包裹自然语言总结后直接输出 `noop`、中文说明或整段监控播报，被统一吸收到 `parse_kind=PlainTextSuppressed`
+  - 说明 12:00 之后到 13:01 之间，heartbeat 公共 JSON 契约仍没有恢复出任何“首字符即 `{` 的单段 JSON”成功样本
 - 已在 `crates/hone-channels/src/scheduler.rs` 将 `PlainTextSuppressed` 执行层结果从静默 noop 提升为显式失败：
   - `execution_status=execution_failed`
   - `message_send_status=skipped_error`
@@ -34,6 +39,24 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 13:00 最新巡检样本：
+    - 最近一小时新增普通会话只有 3 条成功样本：
+      - Feishu `分析一下纳微半导体NVTS` 于 `13:01:31+08:00` 落成完整 `final`
+      - Feishu `国内做高端POM的有哪几家公司？云天化算是吗？` 于 `12:56:24+08:00` 落成完整 `final`
+      - Feishu `美股核能股票中最看好哪个？` 于 `12:12:40+08:00` 已在本轮时间窗内保持成功
+      - 说明最近一小时没有新增 direct / Web 主链路失败，新增异常仍集中在 heartbeat 公共契约
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `12:30` 窗口 `run_id=7593-7603` 里，`持仓重大事件心跳检测`、`TEM破位预警`、`小米30港元破位预警`、`全天原油价格3小时播报`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`RKLB异动监控` 都落成 `execution_failed + skipped_error + delivered=0`
+      - 同窗 `CAI破位预警`、`ORCL 大事件监控`、`小米破位预警`、`TEM大事件心跳监控` 则继续落成 `noop + skipped_noop + delivered=0`
+      - `13:00` 窗口 `run_id=7615-7625` 里，`小米30港元破位预警`、`CAI破位预警`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 继续落成 `execution_failed + skipped_error + delivered=0`
+      - 同窗 `TEM破位预警`、`全天原油价格3小时播报`、`小米破位预警`、`RKLB异动监控`、`Monitor_Watchlist_11` 继续落成 `noop + skipped_noop + delivered=0`
+      - 两个窗口合计 22 条 heartbeat 已结束样本全部 `delivered=0`；其中 13 条显式失败、9 条继续伪装成 noop，说明到 `13:01` 为止仍没有任何恢复样本
+    - `data/sessions.sqlite3` -> `cron_job_runs.detail_json`
+      - `run_id=7625`（`持仓重大事件心跳检测`）`parse_kind=PlainTextSuppressed`，`raw_preview` 以 `<think>\nNow let me synthesize all the data for this 30-minute heartbeat check...` 开头，随后直接输出整段持仓监控总结
+      - `run_id=7618`（`CAI破位预警`）`parse_kind=PlainTextSuppressed`，`raw_preview` 为 `<think>...No action needed.</think>\n\nCAI 当前价 $20.21... 条件未触发，本轮返回 noop。`
+      - `run_id=7615`（`小米30港元破位预警`）`parse_kind=PlainTextSuppressed`，`raw_preview` 为 `<think>...Condition not met. Return noop.</think>\n\nnoop`
+      - `run_id=7624`（`ASTS 重大异动心跳监控`）与 `7621`（`ORCL 大事件监控`）同样都是 `<think>` 后接自然语言分析，再被统一抑制成显式失败
+    - 结论：到 `2026-04-27 13:01` 为止，本缺陷仍稳定在线，且 13:00 最新坏态已经收敛到大量 `PlainTextSuppressed` 样本；状态维持 `New`、严重等级维持 `P2`。
   - 2026-04-27 12:00 最新巡检样本：
     - 最近一小时新增普通会话只有 4 条成功样本：
       - Feishu `每日公司资讯与分析总结` 于 `12:02:30+08:00` 落成完整 `final`
