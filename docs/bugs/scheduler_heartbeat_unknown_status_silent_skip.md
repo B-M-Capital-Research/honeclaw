@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-04-27 21:00` 最近一小时真实窗口确认这条缺陷仍未止血，而且 20:30 的坏态又继续漂到 21:00：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`20:30` 窗口已有 `run_id=7957/7959/7961/7962` 等 heartbeat 落成 `execution_failed + skipped_error + delivered=0`；到 `21:00` 窗口又出现 `run_id=7980`（`持仓重大事件心跳检测`）、`7981`（`TEM破位预警`）、`7984`（`小米破位预警`）、`7985`（`Monitor_Watchlist_11`）、`7988`（`全天原油价格3小时播报`）、`7990`（`TEM大事件心跳监控`）继续落成 `execution_failed + skipped_error + delivered=0`。
+  - 同窗只有 `run_id=7982`（`小米30港元破位预警`）、`7983`（`CAI破位预警`）、`7986`（`ASTS 重大异动心跳监控`）、`7987`（`RKLB异动监控`）、`7989`（`ORCL 大事件监控`）保留 `noop + skipped_noop + delivered=0`；说明最新窗口依旧是“部分显式失败、部分伪 noop”混跑，而不是恢复到统一安全静默。
+  - `data/runtime/logs/sidecar.log` / `cron_job_runs.detail_json` 证明这些显式失败样本大多仍是非结构化 noop 或自然语言正文被错误收口：
+    - `run_id=7980` `raw_preview` 直接写“系统运行正常，当前时间 2026-04-27 21:00 北京时间。等待用户指令或市场事件触发。”
+    - `run_id=7981` `raw_preview` 写“当前价高于触发价，条件未触发，本轮应返回 noop。”
+    - `run_id=7984` `raw_preview` 写“数据源暂时不可用，因此无法验证价格。”
+    - `run_id=7988` `raw_preview` 甚至输出完整的 `【原油行情播报】2026年4月27日 21:00（北京时间）...`
+  - 同一 `21:00-21:02` 窗口普通 Feishu scheduler 另有多条常规定时任务因为 `codex acp prompt ended before tool completion` 失败，但 heartbeat 样本的坏态仍集中在 JSON / 状态契约漂移，说明这条缺陷并没有被普通 scheduler 的新故障掩盖掉。
+- 结论：到 `2026-04-27 21:02` 为止，本缺陷仍稳定活跃，且最新窗口继续把“未触发 / 应静默 / 无法核验 / 实际播报正文”混收口为 `skipped_error` 或伪 `noop`；状态维持 `Fixing`，严重等级维持 `P2`。
+
 - `2026-04-27 20:00` 最近一小时真实窗口确认这条缺陷仍在来回漂移，而且 19:30 的短暂缓和并没有形成稳定止血：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`19:30` 窗口共有 11 条 heartbeat 完成样本；其中 `run_id=7902`（`全天原油价格3小时播报`）与 `7906`（`小米破位预警`）落成 `execution_failed + skipped_error + delivered=0`，其余 `7901/7903/7904/7905/7907/7908/7909/7910/7911` 都是 `noop + skipped_noop + delivered=0`。
   - 但 `20:00` 窗口立即又回落为“多数静默失败、少数伪 noop”：`run_id=7925`（`全天原油价格3小时播报`）、`7926`（`CAI破位预警`）、`7927`（`TEM破位预警`）、`7929`（`小米30港元破位预警`）、`7930`（`ASTS 重大异动心跳监控`）、`7933`（`RKLB异动监控`）、`7935`（`持仓重大事件心跳检测`）全部落成 `execution_failed + skipped_error + delivered=0`；只有 `7928`（`TEM大事件心跳监控`）、`7932`（`Monitor_Watchlist_11`）、`7934`（`ORCL 大事件监控`）保留 `noop + skipped_noop + delivered=0`。
