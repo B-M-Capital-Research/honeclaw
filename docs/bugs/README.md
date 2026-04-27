@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-27 07:10 CST
+最后更新：2026-04-27 08:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,10 +15,10 @@
 
 ## 当前概览
 
-- 活跃待修复：16
+- 活跃待修复：15
 - Later / 待复现：10
-- 已修复 / 已关闭：52
-- 历史分析 / 部分止血：4
+- 已修复 / 已关闭：56
+- 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
 ## 活跃待修复
@@ -31,16 +31,15 @@
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-04-26 13:10 用户追问“我现在有哪些定时任务”仍只收到统一 fallback；同一会话 09:52 的“我的定时任务”已失败过一次，说明 `empty_success_exhausted` 止血未覆盖真实直聊主链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-27 06:30 与 07:00 最新两轮仍未恢复：18 条已结束 heartbeat 中有 14 条落成 `execution_failed + skipped_error`，其余继续在 `JsonEmptyStatus` 伪装成 `noop + skipped_noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-27 07:30 与 08:00 最新两轮仍未恢复：22 条已结束 heartbeat 全部 `delivered=0`，其中 7 条落成 `execution_failed + skipped_error`，其余继续在 `JsonEmptyStatus` 伪装成 `noop + skipped_noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-26 15:00 `小米破位预警` 再次从 14:30 的 `noop` 漂移到 `execution_failed + skipped_error`，`run_id=6693` 仍是 `error=max_iterations_exceeded:6` 且 `delivered=0` | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
+| Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | New | 2026-04-24 最新重启中 `hone-telegram` 在 `bot.get_me()` 阶段超时退出，但 `telegram.pid` 与 `telegram.heartbeat.json` 仍残留并指向 dead pid，状态页与巡检会持续误报 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-26 22:20/22:31 bundled runtime 在同一小时内连续两次重试 Telegram，但 `desktop.log` 仍记 `managed channel telegram skipped because it exited during startup`；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
-| Event-engine price poller 单次 FMP quote 抓取失败 | P3 | New | 2026-04-22 12:03 quote 批量请求连接被关闭；后续 poller 恢复且 `fmp.quote` 近 24h 有记录，暂按单 tick 丢失跟踪 | [event_engine_price_poller_transient_fetch_failure.md](./event_engine_price_poller_transient_fetch_failure.md) |
-| Event-engine high stock-news events lack sink delivery evidence | P2 | New | 2026-04-22 18:52 UTC 新增 `FLYYQ` high MarketWatch 事件仍无 `delivery_log` sink 行；同窗口也无 `sink delivered` 日志 | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |
-| Event-engine marks legal-ad style stock news as high severity | P2 | New | 2026-04-22 巡检确认 `class action` / `shareholder alert` 等律所模板在 24h high 事件中持续占比过高，可能消耗 high cap 并污染即时提醒 | [event_engine_legal_news_high_severity_noise.md](./event_engine_legal_news_high_severity_noise.md) |
+| Disabled channel 跳过启动后仍残留 stale pid 文件 | P3 | New | 2026-04-23 `discord.enabled=false` 与 `feishu.enabled=false` 都已明确跳过启动，但 `data/runtime/*.pid` 仍保留 dead pid，主要污染巡检与状态判断，不直接影响用户链路因此定级 P3 | [disabled_channel_pid_files_survive_skipped_startup.md](./disabled_channel_pid_files_survive_skipped_startup.md) |
+| Event-engine `immediate_kinds` 把低信号新闻重新提级成即时推送 | P3 | New | 2026-04-24 已确认 `opinion_blog` 低信号新闻虽然在 poller 侧被降为 `low`，仍会被 actor 级 `immediate_kinds=[\"news_critical\"]` 改写成 `sink|high|sent`；属于提醒质量退化，不影响主功能链路因此定级 P3 | [event_engine_immediate_kinds_resurrects_low_signal_news.md](./event_engine_immediate_kinds_resurrects_low_signal_news.md) |
 | Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | New | 2026-04-22 OpenRouter 403 / 反序列化失败让 uncertain-source 新闻 LLM 仲裁返回 `None`，重要新闻可能退回低优先级 digest 路径 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
 | Event-engine window convergence upgrade bursts crowd digest quality | P3 | New | 2026-04-23 08:22:42 CST 单秒再次出现 25 条 `Low→Medium` 窗口收敛提级，超过巡检阈值；poller 与 sink 正常，问题集中在路由降噪 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
-| Event-engine high macro events are stored but not routed | P2 | New | 2026-04-23 已确认是工程规则问题：先将 high macro 样本从 77 收敛到预计 15；即时路由因会提前推未来 7 天日历而暂不打开 | [event_engine_high_macro_events_unrouted.md](./event_engine_high_macro_events_unrouted.md) |
 
 ## Later / 待复现
 
@@ -100,7 +99,12 @@
 | Feishu 直聊遇到 Codex ACP 字符串权限请求 id 后整轮失败 | P1 | Fixed | 2026-04-26 已确认 Codex ACP 0.12.0 权限请求 id 为字符串 UUID；权限响应改为原样 echo JSON-RPC id，并补字符串 id 回归测试 | [feishu_codex_acp_permission_string_id.md](./feishu_codex_acp_permission_string_id.md) |
 | Event-engine 收盘大幅波动永远不会即时推送 | P2 | Fixed | 2026-04-24 已让超过 high 阈值的 `price_close` 生成 High，并允许 per-actor price override 覆盖 close；普通 close 仍走 digest，`hone-event-engine` 相关测试与真实模型 baseline 通过 | [event_engine_close_price_alerts_never_immediate.md](./event_engine_close_price_alerts_never_immediate.md) |
 | Event-engine digest 省略项不可审计且低信号新闻/宏观/评级噪声挤入摘要 | P2 | Fixed | 2026-04-24 已把省略项写入 `digest_item omitted`，导出脚本新增 `digest_omitted`；同时过滤 Low news、opinion/pr-wire convergence、无标的低优先级社交、远期 macro 和 no-op analyst hold；baseline fixture 扩到 43 条 / 15 条 LLM | [event_engine_digest_omitted_items_and_low_signal_noise.md](./event_engine_digest_omitted_items_and_low_signal_noise.md) |
+| Event-engine trusted-source high 新闻缺少 sink 直送证据 | P2 | Fixed | 2026-04-26 已改由 `global_digest` 管道承接 trusted-source High/Medium news；原 `router|no_actor` 不再意味着静默漏投，只是不再走即时 sink | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |
+| Event-engine 宏观高优事件只入库不路由 | P2 | Fixed | 2026-04-26 已让 `macro_event` 进入 `global_digest` 主路径，并通过 `global_digest_floor_macro_picks=1` 保证每用户至少保留 1 条宏观硬料 | [event_engine_high_macro_events_unrouted.md](./event_engine_high_macro_events_unrouted.md) |
+| Event-engine 将律所广告模板误判为 high severity | P2 | Fixed | 2026-04-25 已在新闻分类阶段把 `SHAREHOLDER ALERT` / `class action` 等法律营销模板强制降到 Low，并同步压低 `pr_wire` / `opinion_blog` 域名 | [event_engine_legal_news_high_severity_noise.md](./event_engine_legal_news_high_severity_noise.md) |
+| Event-engine social/event-source poller 重复记录 opaque decode failure | P2 | Closed | 2026-04-25 已补 status/content-type/body prefix 观测信息，原始 `error decoding response body` 坏日志在最新巡检窗口内未再出现；剩余 Truth Social 403 已转单独缺陷跟踪 | [event_engine_social_source_decode_failures.md](./event_engine_social_source_decode_failures.md) |
 | 深度分析链路持续访问不存在的 `company_profiles` 相对路径，长期画像记忆被静默跳过 | P3 | Fixed | 2026-04-24 16:46 `请详细分析下谷歌` 真实会话已连续成功写入 actor sandbox 下的 `company_profiles/alphabet/*`；同小时 `acp-events.log` 未再出现 `目录不存在: company_profiles` | [company_profiles_relative_path_misses_actor_sandbox.md](./company_profiles_relative_path_misses_actor_sandbox.md) |
+| Event-engine price poller 单次 FMP quote 抓取失败 | P3 | Closed | 2026-04-25 已确认只是单 tick 网络抖动；下一 tick 自愈，`fmp.quote` 数据流未中断，不再按活跃缺陷跟踪 | [event_engine_price_poller_transient_fetch_failure.md](./event_engine_price_poller_transient_fetch_failure.md) |
 | Heartbeat 监控任务触发 `context window exceeds limit` 后缺少恢复，故障会在不同任务间漂移复现 | P2 | Fixed | 2026-04-20 heartbeat context overflow 改为 ContextOverflowNoop（skipped_noop），本轮跳过下轮正常重试 | [scheduler_heartbeat_context_window_limit_no_recovery.md](./scheduler_heartbeat_context_window_limit_no_recovery.md) |
 | ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | Fixed | 2026-04-20 heartbeat prompt 补加时间一致性、价格时间口径、重复事件三条约束规则 | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |
 | Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | Fixed | 2026-04-20 在 JsonTriggered 分支补 `unwrap_nested_json_message`，将 `{"trigger":"..."}` 等嵌套 JSON 对象字段自动提取为纯文本 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
@@ -119,5 +123,6 @@
 | --- | --- | --- | --- | --- |
 | Event-engine logged dryrun high sends while config dryrun was false | P2 | Approved | 2026-04-22 最新进程已装配 `MultiChannelSink` 且无新增 `[dryrun sink]`，但历史高优先级事件可能只打印却被记 `sent`，未自动重放 | [event_engine_dryrun_sink_under_non_dryrun_config.md](./event_engine_dryrun_sink_under_non_dryrun_config.md) |
 | Event-engine enabled channel heartbeat write hit ENOSPC | P2 | Approved | 2026-04-22 后续 heartbeat 与磁盘空间恢复，原始 `No space left on device` 写失败仍缺持久 degraded 状态与容量根因 | [event_engine_heartbeat_enospc_write_failure.md](./event_engine_heartbeat_enospc_write_failure.md) |
+| Event-engine poller cadence 曾无重启静默停摆 104 分钟 | P2 | Approved | 2026-04-24 已确认存在长达 104 分钟无 `poller ok` 且无新事件入库的停摆窗口；当前仍缺 per-source timeout / supervisor，因此保留为历史分析项 | [event_engine_poller_cadence_stall_without_restart.md](./event_engine_poller_cadence_stall_without_restart.md) |
 | opencode ACP `session/prompt timeout (300s)` 问题分析 | - | Fixed | 2026-04-13 已收口到 ACP runners 公共等待逻辑 | [opencode_acp_prompt_timeout.md](./opencode_acp_prompt_timeout.md) |
 | opencode ACP 相关的 Prompt 泄露与缓存失效问题分析 | - | Partial | Prompt Echo 已止血；完整多轮 message 级缓存复用仍未实现 | [opencode_prompt_issues.md](./opencode_prompt_issues.md) |

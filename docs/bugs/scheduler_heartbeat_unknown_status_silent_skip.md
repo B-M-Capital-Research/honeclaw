@@ -34,6 +34,25 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 08:00 最新巡检样本：
+    - 最近一小时新增可见会话仅有 `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 的 08:00 定时任务串行执行样本：`HoneClaw每日使用Tips` 于 `08:00:15+08:00` 成功发送，`每日宏观与AI早报` 于 `08:02:19+08:00` 成功发送；没有新的普通 direct/web 用户提问失败样本，说明本轮新增异常仍集中在 heartbeat 公共契约。
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `07:30` 窗口 `run_id=7341-7351` 中，`全天原油价格3小时播报`、`Monitor_Watchlist_11`、`小米破位预警` 落成 `execution_failed + skipped_error`；`CAI破位预警`、`TEM破位预警`、`小米30港元破位预警`、`RKLB异动监控`、`TEM大事件心跳监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 均落成 `noop + skipped_noop`
+      - `08:00` 窗口 `run_id=7367-7378` 中，`CAI破位预警`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`持仓重大事件心跳检测` 落成 `execution_failed + skipped_error`；`全天原油价格3小时播报`、`小米30港元破位预警`、`TEM破位预警`、`RKLB异动监控`、`ORCL 大事件监控`、`小米破位预警`、`ASTS 重大异动心跳监控` 继续落成 `noop + skipped_noop`
+      - 两个窗口合计 22 条 heartbeat 已结束样本全部 `delivered=0`；其中 7 条显式失败、15 条继续伪装成 noop，说明 06:30/07:00 之后并没有恢复出任何真正稳定的“首字符即 { 的单段 JSON”成功样本
+    - `data/runtime/logs/sidecar.log`
+      - `07:30:08.106` `job=CAI破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，且 `raw_preview` 仍是 `<think>` 后包 ```json```
+      - `07:30:12.746` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，继续直接输出“原油市场早间快报”自然语言正文
+      - `07:30:19.557` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `07:30:27.642` `job=小米破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `07:30:56.135` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `08:00:07.566` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `08:00:13.914` `job=CAI破位预警`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `08:00:31.117` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `08:00:34.024` `job=TEM大事件心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `08:00:40.781` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+    - 同一时间窗虽然继续出现 Tavily `usage limit` 告警，但 `web_search` 最终仍有 `tool_execute_success`，且两个 08:00 非 heartbeat 定时任务已成功送达；因此最近一小时没有形成新的独立检索中断或发送链路故障，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-27 08:02` 为止，这条缺陷依旧维持“部分 `PlainTextSuppressed` 显式失败 + 部分 `JsonEmptyStatus` 伪 noop”混合坏态；状态保持 `New`、严重等级维持 `P2`。
   - 2026-04-27 07:00 最新巡检样本：
     - `data/sessions.sqlite3`
       - 最近一小时没有新增普通直聊 / Web 用户提问落库；最新可见会话仍停留在 `2026-04-27 05:02:19+08:00` 的 Feishu 定时任务成功样本，说明本轮新增异常继续集中在 heartbeat 公共契约，而不是新的 direct/web 对话链路。
