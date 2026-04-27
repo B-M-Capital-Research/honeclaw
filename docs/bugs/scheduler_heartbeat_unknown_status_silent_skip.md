@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-04-28 03:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且 02:30 的坏态在 03:00 又完整延续了一轮：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`02:30` 窗口 `run_id=8244-8254` 中，只有 `8246`（`TEM破位预警`）、`8247`（`CAI破位预警`）、`8251`（`ORCL 大事件监控`）、`8252`（`Monitor_Watchlist_11`）、`8253`（`TEM大事件心跳监控`）落成 `noop + skipped_noop + delivered=0`；`8244`（`全天原油价格3小时播报`）、`8245`（`小米30港元破位预警`）、`8248`（`RKLB异动监控`）、`8249`（`ASTS 重大异动心跳监控`）、`8250`（`小米破位预警`）、`8254`（`持仓重大事件心跳检测`）全部落成 `execution_failed + skipped_error + delivered=0`。
+  - 同库 `03:00` 窗口 `run_id=8266-8276` 进一步恶化为“10 败 1 伪 noop”：只有 `8272`（`ORCL 大事件监控`）保留 `noop + skipped_noop + delivered=0`；`8266`（`CAI破位预警`）、`8267`（`TEM破位预警`）、`8268`（`全天原油价格3小时播报`）、`8269`（`小米30港元破位预警`）、`8270`（`小米破位预警`）、`8271`（`RKLB异动监控`）、`8273`（`Monitor_Watchlist_11`）、`8274`（`ASTS 重大异动心跳监控`）、`8275`（`TEM大事件心跳监控`）、`8276`（`持仓重大事件心跳检测`）全部落成 `execution_failed + skipped_error + delivered=0`。
+  - `data/runtime/logs/sidecar.log` 证明上述样本依旧没有恢复成合法结构化状态：
+    - `02:30:10.946` `CAI破位预警`：`parse_kind=JsonEmptyStatus`，仍把 “Current price ($20.045) is well above the 52-week low...” 包在 `<think>` 后，再以自然语言 `noop` 收口。
+    - `02:30:18.660` `ASTS 重大异动心跳监控`：`parse_kind=PlainTextSuppressed`，继续输出整段价格/时间戳分析，而不是单段 JSON。
+    - `02:30:57.830` `持仓重大事件心跳检测`：`parse_kind=PlainTextSuppressed`，仍把 ASTS/TEM/RKLB 等持仓监控总结写成自由文本。
+    - `03:00:16.079` `全天原油价格3小时播报`：`parse_kind=PlainTextSuppressed`，在 Tavily 全量失效后直接输出“底层数据链路暂时阻断……本次播报终止。请稍后重试。”，但仍不是调度契约要求的结构化失败/`noop`。
+    - `03:00:17.120` `小米30港元破位预警`：`parse_kind=PlainTextSuppressed`，先在 `<think>` 中自行核对价格阈值，再返回自然语言“应保持静默”。
+    - `03:00:25.625` `ORCL 大事件监控`：`parse_kind=JsonEmptyStatus`，继续把长段估值/行情分析包在 `<think>` 后面。
+    - `03:00:56.086` `持仓重大事件心跳检测`：`parse_kind=PlainTextSuppressed`，最新一轮又把 `BlueBird 7 failure`、`FCC commercial authority granted` 等长段事件摘要直接写出。
+  - 同窗 Tavily 检索额度/鉴权拒绝继续并发加重退化：`03:00:13.772-03:00:16.923` 连续记录 4 个 key 全部被 usage limit / quota 拒绝，最终仍回落为 `tool_execute_success name=web_search`，随后 heartbeat 继续用自然语言 `noop` 或长段分析收口。
+  - 结论：到 `2026-04-28 03:00` 为止，本缺陷仍稳定活跃，而且最新窗口已从“显式失败 / 伪 noop 混合”继续恶化到 10 条显式失败、仅 1 条伪 `noop`；状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 02:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:30`、`02:00` 两个窗口都没有恢复出任何合法单段 JSON：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`01:30` 窗口 `run_id=8200-8210` 中，只有 `8200`（`Monitor_Watchlist_11`）与 `8205`（`RKLB异动监控`）落成 `noop + skipped_noop + delivered=0`；`8201`（`小米30港元破位预警`）、`8202`（`CAI破位预警`）、`8203`（`TEM破位预警`）、`8204`（`小米破位预警`）、`8206`（`全天原油价格3小时播报`）、`8207`（`ASTS 重大异动心跳监控`）、`8208`（`TEM大事件心跳监控`）、`8209`（`持仓重大事件心跳检测`）、`8210`（`ORCL 大事件监控`）全部落成 `execution_failed + skipped_error + delivered=0`。
   - 同库 `02:00` 窗口 `run_id=8222-8232` 继续是混合坏态：`8225`（`TEM破位预警`）、`8226`（`ORCL 大事件监控`）、`8228`（`CAI破位预警`）、`8232`（`ASTS 重大异动心跳监控`）落成 `noop + skipped_noop + delivered=0`；`8222`（`全天原油价格3小时播报`）、`8223`（`持仓重大事件心跳检测`）、`8224`（`小米30港元破位预警`）、`8227`（`小米破位预警`）、`8229`（`Monitor_Watchlist_11`）、`8230`（`RKLB异动监控`）、`8231`（`TEM大事件心跳监控`）落成 `execution_failed + skipped_error + delivered=0`。

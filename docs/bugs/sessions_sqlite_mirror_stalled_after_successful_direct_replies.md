@@ -6,6 +6,10 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+    - `2026-04-28 03:05 CST` 复核 `SELECT MAX(last_message_at), MAX(updated_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034097+08:00`
+    - `2026-04-28 03:05 CST` 复核 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;`，同样仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 同时 `cron_job_runs` 已继续写到 `2026-04-28T03:00:56.089238+08:00`，说明最新一小时 sqlite 文件本身仍可写，但会话镜像链路继续静默停滞。
+  - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 02:01 CST` 复核 `SELECT MAX(updated_at), MAX(imported_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - `2026-04-28 02:01 CST` 复核 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;`，同样停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - `session_id=Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 在 sqlite 中最新 `updated_at` 仍是 `2026-04-25T14:58:40.220819+08:00`，没有任何 2026-04-28 00:36、00:39、00:45 的新 user/assistant turn
@@ -41,6 +45,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-28 03:05 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，与上一轮 `02:01` 巡检相比没有前进一步。
 - 到 `2026-04-28 02:01 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`。
 - 同一时间窗内，至少 3 条 Feishu 直聊已经完成 `persist_assistant + reply.send + success=true`，但都没有进入 sqlite 会话镜像。
 - `cron_job_runs` 仍在 `01:30`、`02:00` 持续正常更新，说明不是整个 sqlite 数据面停摆，而是会话镜像专用链路失效或卡住。
