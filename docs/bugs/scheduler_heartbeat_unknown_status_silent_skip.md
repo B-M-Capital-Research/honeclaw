@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-04-28 06:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且 05:30 的坏态在 06:00 进一步向“显式失败”漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`05:30` 窗口共有 11 条 heartbeat 完成样本，其中 `8385`（`小米破位预警`）、`8389`（`Monitor_Watchlist_11`）、`8391`（`ORCL 大事件监控`）、`8404`（`小米30港元破位预警`）落成 `execution_failed + skipped_error + delivered=0`，其余 7 条仍落成 `noop + skipped_noop + delivered=0`。
+  - 同库 `06:00` 窗口共有 11 条 heartbeat 完成样本，已恶化为“7 败 4 伪 `noop`”：
+    - `8404`（`小米30港元破位预警`）、`8405`（`CAI破位预警`）、`8406`（`TEM破位预警`）、`8407`（`小米破位预警`）、`8409`（`全天原油价格3小时播报`）、`8410`（`Monitor_Watchlist_11`）、`8414`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error + delivered=0`
+    - `8408`（`ORCL 大事件监控`）、`8411`（`RKLB异动监控`）、`8412`（`TEM大事件心跳监控`）、`8413`（`ASTS 重大异动心跳监控`）落成 `noop + skipped_noop + delivered=0`
+  - `data/runtime/logs/sidecar.log` 证明上述样本依旧不是契约要求的单段 JSON：
+    - `06:00:19.564` 同窗 4 个 Tavily key 连续被 usage limit / quota 拒绝，日志明确记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层仍回落为 `tool_execute_success name=web_search`
+    - `06:00:22.549` `小米破位预警`：`parse_kind=PlainTextSuppressed`，继续把阈值检查过程写成自然语言说明
+    - `06:00:23.487` `ORCL 大事件监控`：`parse_kind=JsonEmptyStatus`，仍把整段行情分析包在 `<think>` 后面
+    - `06:00:23.993` `全天原油价格3小时播报`：`parse_kind=PlainTextSuppressed`，在搜索与行情链路不可用时输出整段“当前无法核验油价”的自由文本，而不是合法失败/`noop` JSON
+    - `06:00:25.575` `Monitor_Watchlist_11`：`parse_kind=PlainTextSuppressed`，批量 ticker 检查过程继续直接外溢
+    - `06:00:45.531` `持仓重大事件心跳检测`：`parse_kind=PlainTextSuppressed`，继续把跨持仓新闻扫描总结写成自由文本
+  - 同窗没有新增 direct / Web 主链路成功或失败会话落库，最近一小时新增异常仍集中在 heartbeat 公共结构化契约；状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 05:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `04:30` 与 `05:00` 两轮坏态都没有恢复出任何合法单段 JSON：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`04:30` 窗口 `run_id=8335-8345` 中，`8336`（`持仓重大事件心跳检测`）、`8337`（`小米30港元破位预警`）、`8338`（`TEM破位预警`）、`8340`（`小米破位预警`）、`8341`（`TEM大事件心跳监控`）、`8345`（`ASTS 重大异动心跳监控`）落成 `execution_failed + skipped_error + delivered=0`；`8335`（`全天原油价格3小时播报`）、`8339`（`CAI破位预警`）、`8342`（`RKLB异动监控`）、`8343`（`Monitor_Watchlist_11`）、`8344`（`ORCL 大事件监控`）落成 `noop + skipped_noop + delivered=0`。
   - 同库 `05:00` 窗口 `run_id=8359-8369` 继续恶化为“8 败 2 伪 noop”：`8359`（`全天原油价格3小时播报`）、`8361`（`CAI破位预警`）、`8362`（`小米30港元破位预警`）、`8363`（`小米破位预警`）、`8364`（`RKLB异动监控`）、`8365`（`Monitor_Watchlist_11`）、`8366`（`ORCL 大事件监控`）、`8368`（`ASTS 重大异动心跳监控`）、`8369`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error + delivered=0`；只有 `8360`（`TEM破位预警`）与 `8367`（`TEM大事件心跳监控`）保留 `noop + skipped_noop + delivered=0`。
