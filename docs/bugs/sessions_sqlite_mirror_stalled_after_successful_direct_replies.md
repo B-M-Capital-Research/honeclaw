@@ -6,8 +6,8 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
-    - `SELECT MAX(updated_at), MAX(imported_at) FROM sessions;` 返回最新会话镜像仍停在 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.034386+08:00`
-    - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 同样停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - `2026-04-28 02:01 CST` 复核 `SELECT MAX(updated_at), MAX(imported_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - `2026-04-28 02:01 CST` 复核 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;`，同样停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - `session_id=Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 在 sqlite 中最新 `updated_at` 仍是 `2026-04-25T14:58:40.220819+08:00`，没有任何 2026-04-28 00:36、00:39、00:45 的新 user/assistant turn
   - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
     - `2026-04-28 00:37:14.355`：同一 session 的消息 `om_x100b51cd46bb3ca0c42e2d3b53c9d81` 已记录 `step=session.persist_assistant detail=done`
@@ -22,8 +22,8 @@
     - `2026-04-27T16:45:41.110999+00:00` 对同一 `sessionId=019dcf06-7784-7d83-b840-461b3d122744` 返回 `stopReason=end_turn`
     - 说明 00:45 这轮不仅发送链路成功，ACP answer 也完成了最终收口
   - 对照同库其它表：`data/sessions.sqlite3` -> `cron_job_runs`
-    - 最新记录仍能写到 `run_id=8188`，`executed_at=2026-04-28T01:00:28.872442+08:00`
-    - 说明 sqlite 文件本身并未整体停写，停滞集中在 `sessions` / `session_messages` 镜像链路
+    - `01:30` 窗口 `run_id=8200-8210`、`02:00` 窗口 `run_id=8222-8232` 仍持续写入同一个 sqlite 文件
+    - 例如 `run_id=8232` 的 `executed_at=2026-04-28T02:00:41.592070+08:00` 已存在，说明 sqlite 文件本身并未整体停写，停滞集中在 `sessions` / `session_messages` 镜像链路
 
 ## 端到端链路
 
@@ -41,9 +41,9 @@
 
 ## 当前实现效果
 
-- 到 `2026-04-28 01:05 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`。
+- 到 `2026-04-28 02:01 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`。
 - 同一时间窗内，至少 3 条 Feishu 直聊已经完成 `persist_assistant + reply.send + success=true`，但都没有进入 sqlite 会话镜像。
-- `cron_job_runs` 仍在 `01:00` 正常更新，说明不是整个 sqlite 数据面停摆，而是会话镜像专用链路失效或卡住。
+- `cron_job_runs` 仍在 `01:30`、`02:00` 持续正常更新，说明不是整个 sqlite 数据面停摆，而是会话镜像专用链路失效或卡住。
 
 ## 用户影响
 
