@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+    - `2026-04-28 04:03 CST` 复核 `SELECT MAX(last_message_at), MAX(updated_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034097+08:00`
+    - `2026-04-28 04:03 CST` 复核 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;`，同样仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 同时 `cron_job_runs` 已继续写到 `2026-04-28T04:01:13.314715+08:00`，说明最新一小时 sqlite 文件本身仍可写，但会话镜像链路继续静默停滞。
+  - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+    - `2026-04-28 04:01:08.855`：`session=Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 已记录 `step=session.persist_assistant detail=done`
+    - 同一时间点继续记录 `done ... success=true elapsed_ms=67733 iterations=1 tools=7`
+    - 这轮说明即使到 04:01 仍有新的 Feishu 直聊/调度直达会话完成最终持久化与成功收口，但 `sessions.sqlite3` 会话镜像依旧没有前进
+  - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 03:05 CST` 复核 `SELECT MAX(last_message_at), MAX(updated_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034097+08:00`
     - `2026-04-28 03:05 CST` 复核 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;`，同样仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - 同时 `cron_job_runs` 已继续写到 `2026-04-28T03:00:56.089238+08:00`，说明最新一小时 sqlite 文件本身仍可写，但会话镜像链路继续静默停滞。
@@ -45,6 +53,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-28 04:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，且在 `04:01` 又有新的成功会话完成 `persist_assistant` 之后依然没有前进一步。
 - 到 `2026-04-28 03:05 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，与上一轮 `02:01` 巡检相比没有前进一步。
 - 到 `2026-04-28 02:01 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`。
 - 同一时间窗内，至少 3 条 Feishu 直聊已经完成 `persist_assistant + reply.send + success=true`，但都没有进入 sqlite 会话镜像。

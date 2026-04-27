@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-28 03:08 CST
+最后更新：2026-04-28 04:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,8 +15,8 @@
 
 ## 当前概览
 
-- 活跃待修复：19
-- Later / 待复现：10
+- 活跃待修复：20
+- Later / 待复现：9
 - 已修复 / 已关闭：58
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -33,10 +33,11 @@
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-04-26 13:10 用户追问“我现在有哪些定时任务”仍只收到统一 fallback；同一会话 09:52 的“我的定时任务”已失败过一次，说明 `empty_success_exhausted` 止血未覆盖真实直聊主链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 定时任务把“没有活跃 SSE 控制台监听者”直接记成 `send_failed`，离线晨报无法被视为已送达 | P2 | New | 2026-04-27 09:02 Web 晨报 `j_183bee8d` 已生成并写入会话，但 `cron_job_runs.run_id=7445` 仍落成 `completed + send_failed + delivered=0`，`detail_json.console_event_sent=false` 指向投递判定依赖实时 SSE 订阅 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Feishu 直聊已成功 `persist_assistant + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-28 03:05 再次复核 `sessions` / `session_messages` 仍卡在 `2026-04-27 16:54:20+08:00`；但同库 `cron_job_runs` 已继续写到 `03:00:56`，说明停滞仍只集中在会话镜像链路 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-28 03:00 最新两轮窗口继续无一条恢复成合法单段 JSON；`03:00` 窗口 11 条 heartbeat 里仅 `ORCL` 保留伪 `noop`，其余 10 条全部落成 `execution_failed + skipped_error` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Feishu 直聊已成功 `persist_assistant + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-28 04:03 再次复核 `sessions` / `session_messages` 仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `04:01` 又有成功会话落成 `persist_assistant + success=true`，但镜像仍未前进 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-28 04:00 最新两轮窗口继续无一条恢复成合法单段 JSON；`04:00` 窗口 11 条 heartbeat 里 5 条显式失败、6 条伪 `noop/overflow noop`，仍无恢复样本 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-27 `小米破位预警` 在 20:00 先落成 `max_iterations_exceeded:6 + skipped_error`，21:00 又漂回 `heartbeat 输出不是结构化 JSON`；同一 job 仍在“触顶失败 / 结构化失败”间交替 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-28 04:01 `Oil_Price_Monitor_Closing` 再次成功送达，但正文仍把“美伊和平谈判停滞、霍尔木兹海峡运输仍受限制”写成 Reuters/WSJ 已共同确认的确定性主线；此前 `Later` 止血确认失效 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | New | 2026-04-24 最新重启中 `hone-telegram` 在 `bot.get_me()` 阶段超时退出，但 `telegram.pid` 与 `telegram.heartbeat.json` 仍残留并指向 dead pid，状态页与巡检会持续误报 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Disabled channel 跳过启动后仍残留 stale pid 文件 | P3 | New | 2026-04-23 `discord.enabled=false` 与 `feishu.enabled=false` 都已明确跳过启动，但 `data/runtime/*.pid` 仍保留 dead pid，主要污染巡检与状态判断，不直接影响用户链路因此定级 P3 | [disabled_channel_pid_files_survive_skipped_startup.md](./disabled_channel_pid_files_survive_skipped_startup.md) |
@@ -54,7 +55,6 @@
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | Later | 2026-04-26 已为 `tenant_access_token/internal` 请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；若真实窗口继续复现再改回 `New` | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | Later | 2026-04-26 已为 Feishu send/reply/update 出站请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；若真实出站窗口继续复现再改回 `New` | [feishu_send_message_request_transport_failure.md](./feishu_send_message_request_transport_failure.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Later | 2026-04-26 已在共享净化层剥离独立 `Context compacted` / `Conversation compacted` marker 行并保留真实正文；若 marker 或 summary 污染再次复现再改回 `New` | [session_compact_summary_report_hallucination.md](./session_compact_summary_report_hallucination.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Later | 2026-04-26 已补原油/大宗商品归因约束：地缘、供给、库存、航运等原因必须有本轮来源与时间戳，无法核验时只报价格并声明暂不归因；若真实播报继续复现再改回 `New` | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | Later | 2026-04-26 已把 compact fallback 固定为用户态 `/compact` 文案，并将 answer 空成功重试耗尽改为失败态；若旧会话新话题仍稳定失败再改回 `New` | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | Later | 2026-04-26 已统一 overflow fallback 文案并保留执行失败态；若真实日报窗口继续只投失败提示再改回 `New` | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Discord 定时任务在 Answer 阶段返回空/无效回复后，仍被记为成功执行 | P2 | Later | 2026-04-26 已通过共享 `empty_success_exhausted -> success=false + error` 修复，Discord scheduler 后续会把通用 fallback 记为 `execution_failed` 而不是 `completed + sent`；若再次伪成功再改回 `New` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |

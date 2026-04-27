@@ -3,7 +3,27 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Later
+- **状态**: New
+
+## 最新进展（2026-04-28 04:01 CST）
+
+- `Oil_Price_Monitor_Closing` 在最新真实窗口再次成功送达，但正文继续把未核验的地缘叙事写成确定性事实：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=8322`
+    - `job_name=Oil_Price_Monitor_Closing`
+    - `executed_at=2026-04-28T04:01:13.314715+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `should_deliver=1`
+    - `delivered=1`
+    - `response_preview` 直接向用户发送：`Reuters和WSJ均指向同一条主线：美伊和平谈判停滞，霍尔木兹海峡运输仍受限制，导致市场继续给原油供应风险溢价。`
+    - 同条回复还给出 `Brent接近109美元、WTI接近97美元` 并据此推导 `COHR` / `RKLB` 的尾盘防守判断，但没有说明上述地缘因果是否来自本轮可追溯、同时间窗的已核验来源。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-04-28 04:00:01.107` 记录 scheduler 真实收到了 `Oil_Price_Monitor_Closing` 触发输入。
+    - `2026-04-28 04:01:08.855` 记录同一会话 `step=session.persist_assistant detail=done` 与 `done ... success=true elapsed_ms=67733`，说明这不是只出现在中间日志里的草稿，而是已经完成持久化并成功外发的最终可见回复。
+  - `data/runtime/logs/acp-events.log`
+    - `2026-04-27T20:01:06-20:01:08Z` 连续流出最终 answer chunk，正文仍把 `美伊和平谈判停滞`、`霍尔木兹海峡运输仍受限制` 作为“Reuters 和 WSJ 均指向”的确定性结论输出，并附外链 URL；没有出现“原因未核验/暂不归因”的降级表述。
+- 结论：这说明 2026-04-26 标记为 `Later` 的 prompt 级止血没有在真实原油盘后播报里稳定生效；同一根因已在最新真实窗口复现，应从 `Later` 改回 `New` 并重新进入活跃待修复队列。
 
 ## 修复进展（2026-04-26）
 
