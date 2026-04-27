@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 16:12 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
@@ -202,11 +202,23 @@
 - 从 `2026-04-20 08:54:47` 的日志顺序看，当前链路没有把“仍有新的 tool start 事件”视为禁止收口的信号。
 - `TEMPUS AI` 最新样本还表明，这类提前收口不仅会输出“我正在补数据”的短句，也会把“我需要先看画像模板/决定是否回写”的内部执行计划直接暴露给用户。
 
+## 修复情况（2026-04-27）
+
+- 已在 `crates/hone-channels/src/runners/acp_common/ingest.rs` 新增共享完整性判定：ACP `stopReason=end_turn` 只有在 `pending_tool_calls` 为空时才算成功；若仍有未完成工具，runner 统一改判为失败。
+- `codex_acp`、`opencode_acp`、`gemini_acp` 现在都会把“tool 尚未完成就结束”的场景收口为失败，而不是继续把当下的过程句当成 `success=true` 的最终答复。
+- 已在 `bins/hone-feishu/src/handler.rs` 的失败收口中补充“过渡计划句”过滤；如果 partial stream 只剩 `我先核验...`、`下一步补...` 一类过渡句，则直接回退到产品化错误文案，不再把半成品正文发给用户。
+- 这轮修复覆盖的是“工具未完成却提前收口”的共享根因；尚未包含 `idle timeout`、`reply_chars=0` 这类其它 Answer 失败形态，因此相关 P1 缺陷继续独立跟踪。
+
+## 回归验证
+
+- `cargo test -p hone-channels acp_prompt_`
+- `cargo test -p hone-channels user_visible_error_message_`
+- `cargo test -p hone-feishu failed_reply_text_`
+
 ## 下一步建议
 
-- 优先排查 Feishu 直聊 answer 出站链路如何判定 `final`，确认是否会把中间计划句、画像准备句或进度句提前视为最终可发送文本。
-- 对 `session.persist_assistant` / `done` 增加约束：若同一轮仍存在新的 tool start 事件，或最后一条可见文本明显是计划句/过渡句/`todo`/计划治理口径，不应直接结束本轮。
-- 对 ACP `session/request_permission` / 工具审批 pending 增加渠道态处理：Feishu 直聊不能只持久化工具轨迹，应返回可执行的授权说明、降级文案，或明确告知本轮没有完成任务更新。
+- 继续观察真实线上样本，重点区分“unfinished tool 提前收口”是否消失，以及剩余失败是否都转移到独立的 timeout / empty-success 缺陷。
+- 对 ACP `session/request_permission` / 工具审批 pending 仍应补专门的渠道态处理：本轮只是把它们从“半成品成功”改成“明确失败”，尚未把授权需求转成可执行的用户交互。
 - 为这类样本补质量巡检信号：
   - 用户请求是分析型长答
   - `reply.chars` 极短

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-22 22:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
   - `session_id=Actor_web__direct__web-user-e05f5e5f74a3`
@@ -43,8 +43,18 @@
 - Web direct 的 final 判定可能没有过滤“下一步补...”这类过渡句，导致研究计划被当成可见最终答复。
 - 该形态与 Feishu 直聊已有 `feishu_direct_partial_reply_before_tool_completion.md` 同类，但影响渠道、证据会话和用户入口不同；当前先按 Web 独立受影响链路建档，后续若确认共享收口逻辑，可合并根因修复。
 
+## 修复情况（2026-04-27）
+
+- 已确认根因位于共享 ACP Answer 收口，而不是 Web 渠道专有出站逻辑：`stopReason=end_turn` 过去不会检查是否仍有未完成工具，导致过程句在 Web 直聊里也可能被记成 `success=true` final。
+- 本轮已在 `crates/hone-channels/src/runners/acp_common/ingest.rs` 增加完整性门槛，并同步落到 `codex_acp`、`opencode_acp`、`gemini_acp` 三个 runner；若 tool 尚未完成，整轮改判失败，不再把过渡句持久化成成功答复。
+- 由于 Web 出站本来就不会保留失败时的 partial stream，这个共享修复会直接把同类坏态从“半成品成功”收敛为“明确失败提示”，避免用户必须靠二次追问才能拿到真正的下一轮执行。
+
+## 回归验证
+
+- `cargo test -p hone-channels acp_prompt_`
+- `cargo test -p hone-channels user_visible_error_message_`
+
 ## 下一步建议
 
-- 在 Web direct 出站前增加过程句识别：包含 `下一步补`、`我会按...框架来判断` 但没有给出结论的内容，不应作为最终答案。
 - 将这类样本纳入质量巡检：用户问题包含 `值不值得`、`能不能买`、`加一些`，但 final 没有明确判断或动作边界时标记异常。
-- 如果 Web 与 Feishu 复用同一 answer 收口逻辑，应统一增加“过渡句 final”门禁，而不是只在渠道层补丁处理。
+- 继续观察是否还有“tool 已完成但模型只产出过渡句”的新样本；若仍存在，那将是不同于本轮 `unfinished tool` 的剩余根因。

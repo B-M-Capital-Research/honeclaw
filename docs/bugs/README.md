@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-27 18:10 CST
+最后更新：2026-04-27 19:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：17
+- 活跃待修复：15
 - Later / 待复现：10
-- 已修复 / 已关闭：57
+- 已修复 / 已关闭：59
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -27,13 +27,11 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-21 21:02 `OWALERT_PreMarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；正文已落库但用户侧未送达 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Fixing | 2026-04-26 已清洗失败 partial stream 中的工具/进度轨迹，idle timeout/state migration 后用户只看到产品化失败文案，不再落库半成品工具轨迹；底层 timeout 仍待追 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
-| Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | New | 2026-04-27 08:30 `j_acce16a6` 实际按 `schedule.hour=8/minute=30` 触发，但同一 job 的 prompt 仍写 `每个交易日 20:45`；assistant 正文直接承认“不是你设定的20:45触发时点” | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
-| Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-04-26 13:10 用户追问“我现在有哪些定时任务”仍只收到统一 fallback；同一会话 09:52 的“我的定时任务”已失败过一次，说明 `empty_success_exhausted` 止血未覆盖真实直聊主链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 定时任务把“没有活跃 SSE 控制台监听者”直接记成 `send_failed`，离线晨报无法被视为已送达 | P2 | New | 2026-04-27 09:02 Web 晨报 `j_183bee8d` 已生成并写入会话，但 `cron_job_runs.run_id=7445` 仍落成 `completed + send_failed + delivered=0`，`detail_json.console_event_sent=false` 指向投递判定依赖实时 SSE 订阅 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-27 17:30 最新窗口中 11 条 heartbeat 已结束样本有 9 条从 `skipped_error` 漂成 `execution_failed + sent + delivered=1`；`sidecar.log` 证明这些原始输出大多仍是“未触发 / 无需提醒”的 plain text noop 结论 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-27 18:03 全量短暂漂成伪 `noop` 后，18:30/19:00 又回落为“多数 `execution_failed + skipped_error`、少数伪 `noop`”；`sidecar.log` 证明失败样本原始输出仍大多是“未触发 / 无需提醒”的自然语言 noop 结论 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-27 13:30 `小米破位预警` 再次从 13:00 的 `noop` 漂移到 `execution_failed + skipped_error`，`run_id=7642` 仍是 `error=max_iterations_exceeded:6` 且 `delivered=0`；14:00 同一 job 又漂移成结构化失败 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | New | 2026-04-24 最新重启中 `hone-telegram` 在 `bot.get_me()` 阶段超时退出，但 `telegram.pid` 与 `telegram.heartbeat.json` 仍残留并指向 dead pid，状态页与巡检会持续误报 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
@@ -100,6 +98,8 @@
 | Feishu 每日动态监控在“无新增催化应跳过”时仍照常推送长文 | P3 | Fixed | 2026-04-26 00:01/00:02 最新 `TEM`、`RKLB 每日动态监控` 已稳定落成 `noop + skipped_noop` 且日志明确“不发送”；残留的 session 落库污染已拆到新缺陷跟踪 | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | Feishu scheduler 命中 `skip_signal` 后仍把未发送长文落进 direct session，污染后续上下文 | P2 | Fixed | 2026-04-27 00:02 最新 `RKLB 每日动态监控` 已先触发 `skip_signal`，随后日志记录 `rolled back skipped assistant turn`；同一 direct session 最新 `ordinal=35/36` 只剩 scheduler user turn，不再新增未送达 assistant final | [feishu_scheduler_noop_reply_persisted_to_direct_session.md](./feishu_scheduler_noop_reply_persisted_to_direct_session.md) |
 | Feishu 直聊遇到 Codex ACP 字符串权限请求 id 后整轮失败 | P1 | Fixed | 2026-04-26 已确认 Codex ACP 0.12.0 权限请求 id 为字符串 UUID；权限响应改为原样 echo JSON-RPC id，并补字符串 id 回归测试 | [feishu_codex_acp_permission_string_id.md](./feishu_codex_acp_permission_string_id.md) |
+| Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | Fixed | 2026-04-27 已在共享 ACP runner 增加 `unfinished tool` 成功门槛，并在 Feishu 失败收口中过滤 `我先核验...` 等过渡计划句；相关 `hone-channels` / `hone-feishu` 定向回归通过 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
+| Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | Fixed | 2026-04-27 已确认与 Feishu 共用同一 ACP 提前收口根因；共享 runner 改为 `unfinished tool => failure` 后，不再把过程句记成成功 final | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Event-engine 收盘大幅波动永远不会即时推送 | P2 | Fixed | 2026-04-24 已让超过 high 阈值的 `price_close` 生成 High，并允许 per-actor price override 覆盖 close；普通 close 仍走 digest，`hone-event-engine` 相关测试与真实模型 baseline 通过 | [event_engine_close_price_alerts_never_immediate.md](./event_engine_close_price_alerts_never_immediate.md) |
 | Event-engine digest 省略项不可审计且低信号新闻/宏观/评级噪声挤入摘要 | P2 | Fixed | 2026-04-24 已把省略项写入 `digest_item omitted`，导出脚本新增 `digest_omitted`；同时过滤 Low news、opinion/pr-wire convergence、无标的低优先级社交、远期 macro 和 no-op analyst hold；baseline fixture 扩到 43 条 / 15 条 LLM | [event_engine_digest_omitted_items_and_low_signal_noise.md](./event_engine_digest_omitted_items_and_low_signal_noise.md) |
 | Event-engine trusted-source high 新闻缺少 sink 直送证据 | P2 | Fixed | 2026-04-26 已改由 `global_digest` 管道承接 trusted-source High/Medium news；原 `router|no_actor` 不再意味着静默漏投，只是不再走即时 sink | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |
