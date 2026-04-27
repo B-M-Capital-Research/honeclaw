@@ -15,6 +15,21 @@ use serde_json::Value;
 use super::CronJobStorage;
 use super::types::{CronJobExecutionInput, CronJobExecutionRecord};
 
+/// 跨任务列举执行记录的过滤条件。所有时间字段使用东八区 RFC3339 字符串
+/// (与 `cron_job_runs.executed_at` 的写入格式一致),按字符串比较即可。
+#[derive(Debug, Default, Clone)]
+pub struct ExecutionFilter {
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub channel: Option<String>,
+    pub user_id: Option<String>,
+    pub job_id: Option<String>,
+    pub execution_status: Option<String>,
+    pub message_send_status: Option<String>,
+    pub heartbeat_only: Option<bool>,
+    pub limit: usize,
+}
+
 impl CronJobStorage {
     pub fn record_execution_event(
         &self,
@@ -103,6 +118,105 @@ impl CronJobStorage {
             .map_err(sqlite_err)?;
         let rows = stmt
             .query_map(params![job_id, limit as i64], |row| {
+                let detail_raw: String = row.get(15)?;
+                let detail = serde_json::from_str(&detail_raw).unwrap_or(Value::Null);
+                Ok(CronJobExecutionRecord {
+                    run_id: row.get(0)?,
+                    job_id: row.get(1)?,
+                    job_name: row.get(2)?,
+                    channel: row.get(3)?,
+                    user_id: row.get(4)?,
+                    channel_scope: row.get(5)?,
+                    channel_target: row.get(6)?,
+                    heartbeat: row.get::<_, i64>(7)? != 0,
+                    executed_at: row.get(8)?,
+                    execution_status: row.get(9)?,
+                    message_send_status: row.get(10)?,
+                    should_deliver: row.get::<_, i64>(11)? != 0,
+                    delivered: row.get::<_, i64>(12)? != 0,
+                    response_preview: row.get(13)?,
+                    error_message: row.get(14)?,
+                    detail,
+                })
+            })
+            .map_err(sqlite_err)?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(sqlite_err)?);
+        }
+        Ok(out)
+    }
+
+    /// 跨任务查询执行记录,用于管理端"推送日志"页。filter 中的所有字段都是
+    /// `AND` 连接;`limit` 必须 > 0,调用方负责裁剪到合理上限。
+    pub fn list_recent_executions(
+        &self,
+        filter: &ExecutionFilter,
+    ) -> HoneResult<Vec<CronJobExecutionRecord>> {
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(Vec::new());
+        };
+        let mut sql = String::from(
+            "
+            SELECT
+                run_id, job_id, job_name,
+                actor_channel, actor_user_id, actor_channel_scope,
+                channel_target, heartbeat,
+                executed_at, execution_status, message_send_status,
+                should_deliver, delivered, response_preview, error_message, detail_json
+            FROM cron_job_runs
+            WHERE 1=1
+            ",
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if let Some(since) = filter.since.as_deref().filter(|s| !s.is_empty()) {
+            sql.push_str(" AND executed_at >= ?");
+            params.push(Box::new(since.to_string()));
+        }
+        if let Some(until) = filter.until.as_deref().filter(|s| !s.is_empty()) {
+            sql.push_str(" AND executed_at <= ?");
+            params.push(Box::new(until.to_string()));
+        }
+        if let Some(channel) = filter.channel.as_deref().filter(|s| !s.is_empty()) {
+            sql.push_str(" AND actor_channel = ?");
+            params.push(Box::new(channel.to_string()));
+        }
+        if let Some(user_id) = filter.user_id.as_deref().filter(|s| !s.is_empty()) {
+            sql.push_str(" AND actor_user_id = ?");
+            params.push(Box::new(user_id.to_string()));
+        }
+        if let Some(job_id) = filter.job_id.as_deref().filter(|s| !s.is_empty()) {
+            sql.push_str(" AND job_id = ?");
+            params.push(Box::new(job_id.to_string()));
+        }
+        if let Some(status) = filter
+            .execution_status
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
+            sql.push_str(" AND execution_status = ?");
+            params.push(Box::new(status.to_string()));
+        }
+        if let Some(status) = filter
+            .message_send_status
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
+            sql.push_str(" AND message_send_status = ?");
+            params.push(Box::new(status.to_string()));
+        }
+        if let Some(true) = filter.heartbeat_only {
+            sql.push_str(" AND heartbeat = 1");
+        }
+        sql.push_str(" ORDER BY executed_at DESC, run_id DESC LIMIT ?");
+        let limit = filter.limit.max(1);
+        params.push(Box::new(limit as i64));
+
+        let mut stmt = conn.prepare(&sql).map_err(sqlite_err)?;
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(param_refs.iter()), |row| {
                 let detail_raw: String = row.get(15)?;
                 let detail = serde_json::from_str(&detail_raw).unwrap_or(Value::Null);
                 Ok(CronJobExecutionRecord {

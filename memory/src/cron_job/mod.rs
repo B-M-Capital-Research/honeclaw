@@ -17,6 +17,7 @@ pub mod schedule;
 pub mod storage;
 pub mod types;
 
+pub use history::ExecutionFilter;
 pub use types::{
     CronJob, CronJobData, CronJobExecutionInput, CronJobExecutionRecord, CronJobUpdate,
     CronSchedule, MAX_ENABLED_JOBS_PER_ACTOR, PendingUpdate, cron_enabled_limit_error,

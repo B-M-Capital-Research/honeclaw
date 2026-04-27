@@ -47,6 +47,8 @@ export default function ConsoleLayout(props: ParentProps) {
       consoleState.setModule("logs")
     } else if (p.startsWith("/task-health")) {
       consoleState.setModule("task-health")
+    } else if (p.startsWith("/notifications")) {
+      consoleState.setModule("notifications")
     } else if (p.startsWith("/settings")) {
       consoleState.setModule("settings")
     } else {

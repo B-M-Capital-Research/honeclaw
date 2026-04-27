@@ -16,6 +16,7 @@ export type StoredModule =
   | "llm-audit"
   | "logs"
   | "task-health"
+  | "notifications"
   | "settings"
 
 export type StoredSelection = {

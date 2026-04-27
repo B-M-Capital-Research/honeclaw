@@ -633,6 +633,78 @@ export async function connectLogStream() {
   return createEventSource("/api/logs/stream");
 }
 
+// ── 推送日志 API (cron 执行记录跨任务聚合) ────────────────────────────────
+
+export interface NotificationRecord {
+  run_id: number;
+  job_id: string;
+  job_name: string;
+  channel: string;
+  user_id: string;
+  channel_scope?: string | null;
+  channel_target: string;
+  heartbeat: boolean;
+  executed_at: string;
+  execution_status: string;
+  message_send_status: string;
+  should_deliver: boolean;
+  delivered: boolean;
+  response_preview?: string | null;
+  error_message?: string | null;
+  detail?: unknown;
+}
+
+export interface NotificationHistogramBucket {
+  bucket_start: string;
+  total: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+}
+
+export interface NotificationsSummary {
+  total: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  duplicate_suppressed: number;
+  distinct_users: number;
+}
+
+export interface NotificationsResponse {
+  records: NotificationRecord[];
+  histogram_24h: NotificationHistogramBucket[];
+  summary_24h: NotificationsSummary;
+}
+
+export interface NotificationsQuery {
+  since?: string;
+  until?: string;
+  channel?: string;
+  user_id?: string;
+  job_id?: string;
+  execution_status?: string;
+  message_send_status?: string;
+  heartbeat_only?: boolean;
+  limit?: number;
+}
+
+export async function getNotifications(
+  q: NotificationsQuery = {},
+): Promise<NotificationsResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(q)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  const qs = params.toString();
+  const path = qs
+    ? `/api/admin/notifications?${qs}`
+    : "/api/admin/notifications";
+  const response = await apiFetch(path);
+  return parseJson<NotificationsResponse>(response);
+}
+
 // ── LLM Audit API ─────────────────────────────────────────────────────────────
 
 import type {

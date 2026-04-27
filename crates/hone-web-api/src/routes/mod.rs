@@ -11,6 +11,7 @@ pub(crate) mod llm_audit;
 pub(crate) mod logs;
 pub(crate) mod meta;
 pub(crate) mod notification_prefs;
+pub(crate) mod notifications;
 pub(crate) mod portfolio;
 pub(crate) mod public;
 pub(crate) mod public_digest;
@@ -180,6 +181,10 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .route("/logs", get(logs::handle_logs))
         .route("/logs/stream", get(logs::handle_logs_stream))
         .route("/admin/task-runs", get(task_runs::handle_task_runs))
+        .route(
+            "/admin/notifications",
+            get(notifications::handle_notifications),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_api_auth,

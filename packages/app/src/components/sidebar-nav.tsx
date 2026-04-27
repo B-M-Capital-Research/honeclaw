@@ -83,6 +83,7 @@ export function SidebarNav() {
         <NavLink href="/sessions" label="会话" />
         <NavLink href="/users" label="用户档案" also={["/memory", "/portfolio"]} />
         <Show when={backend.hasCapability("cron_jobs")}><NavLink href="/tasks" label="推送任务" /></Show>
+        <Show when={backend.hasCapability("cron_jobs")}><NavLink href="/notifications" label="推送日志" /></Show>
       </div>
 
       {/* 研究 */}
