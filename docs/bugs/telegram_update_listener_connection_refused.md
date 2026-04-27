@@ -5,6 +5,18 @@
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+  - 2026-04-27 17:34-18:02 最新运行日志：
+    - `data/runtime/logs/sidecar.log`
+      - `2026-04-27 17:34:49.701` release app 重启后再次启动 `hone-telegram`。
+      - `2026-04-27 17:34:50.751` 立即报 `无法获取 Telegram Bot 信息: A Telegram's error: Invalid bot token`，随后 `17:34:50.752` 记录 `sidecar terminated code=Some(1)`。
+      - `2026-04-27 18:02:26.620` 新一轮 runtime restart 后又一次启动 Telegram。
+      - `2026-04-27 18:02:27.447` 同样报 `Invalid bot token`，`18:02:27.449` 再次 `sidecar terminated code=Some(1)`。
+    - `data/runtime/logs/desktop.log`
+      - `2026-04-27 17:34:49.271` 与 `18:02:26.192` 两轮 bundled runtime 都尝试拉起 Telegram sidecar，说明当前不是“服务未尝试启动”，而是每次启动都在校验阶段直接退出。
+    - `data/sessions.sqlite3`
+      - 最近 Telegram 会话仍停留在 `Actor_telegram__direct__8039067465`，`updated_at=2026-03-18T11:06:59.182313+08:00`
+      - 最近一小时仍无任何 `actor_channel='telegram'` 新会话或消息落库。
+    - 结论：到 `2026-04-27 18:02` 为止，Telegram listener 仍完全不可用；最近两轮 runtime restart 都没能越过 `bot.get_me()` 校验阶段。
   - 2026-04-26 22:20-22:31 最新运行日志：
     - `data/runtime/logs/desktop.log`
       - `2026-04-26 22:20:48.104` bundled runtime 再次启动 managed channels。
@@ -74,6 +86,7 @@
 
 ## 当前实现效果
 
+- 2026-04-27 18:02 CST 最新窗口显示，Telegram 渠道在 `17:34` 与 `18:02` 两次 runtime restart 中都再次命中 `bot.get_me()` 的 `Invalid bot token` 并立即退出；最近 Telegram 会话时间戳仍停在 `2026-03-18`，说明当前故障已经持续跨越多轮重启。
 - 2026-04-26 22:31 CST 最新窗口显示，Telegram 渠道在 `21:03` 被记录为“旧进程仍占启动锁”之后并没有恢复；`desktop.log` 在 `22:20:48.990` 和 `22:31:02.423` 连续两次再次记录 `managed channel telegram skipped because it exited during startup`，而 `sessions` 中最近 Telegram 会话仍停在 `2026-03-18`。
 - 2026-04-26 21:03 CST 最新窗口显示，Telegram 已经不只是 `Invalid bot token` 或 `GetUpdates` 网络失败；bundled runtime 再次尝试拉起 sidecar 时，`hone-telegram.release-restart.log` 直接报“旧的 Telegram Bot 进程仍占用启动锁”，desktop 则继续把渠道记成 `managed channel telegram skipped because it exited during startup`。当前入站链路仍完全没有恢复，最近 Telegram 会话依旧停在 2026-03-18。
 - 2026-04-22 14:03 CST 最新样本仍在 `data/runtime/logs/web.log:2167` 报 `Telegram update listener error ... GetUpdates): connection closed before message completed`；本轮只读巡检没有调用 Telegram API。
