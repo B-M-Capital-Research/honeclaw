@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-27 13:15 CST
+最后更新：2026-04-27 14:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -33,8 +33,8 @@
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-04-26 13:10 用户追问“我现在有哪些定时任务”仍只收到统一 fallback；同一会话 09:52 的“我的定时任务”已失败过一次，说明 `empty_success_exhausted` 止血未覆盖真实直聊主链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 定时任务把“没有活跃 SSE 控制台监听者”直接记成 `send_failed`，离线晨报无法被视为已送达 | P2 | New | 2026-04-27 09:02 Web 晨报 `j_183bee8d` 已生成并写入会话，但 `cron_job_runs.run_id=7445` 仍落成 `completed + send_failed + delivered=0`，`detail_json.console_event_sent=false` 指向投递判定依赖实时 SSE 订阅 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-27 13:00 最新窗口仍未恢复：`持仓重大事件心跳检测`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控` 等继续把 `<think>` 后的自然语言总结落成 `execution_failed + skipped_error`，其余任务仍混出 `noop + skipped_noop`，两窗 22 条样本全部 `delivered=0` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-26 15:00 `小米破位预警` 再次从 14:30 的 `noop` 漂移到 `execution_failed + skipped_error`，`run_id=6693` 仍是 `error=max_iterations_exceeded:6` 且 `delivered=0` | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
+| Heartbeat 定时任务结构化状态退化后被静默跳过，监控提醒可能长期失效 | P2 | New | 2026-04-27 14:00 最新窗口仍未恢复：`持仓重大事件心跳检测`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`小米破位预警` 等继续把 `<think>` 后的自然语言总结落成 `execution_failed + skipped_error`，其余任务仍混出 `noop + skipped_noop`；13:30/14:00 两窗 22 条样本全部 `delivered=0` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-27 13:30 `小米破位预警` 再次从 13:00 的 `noop` 漂移到 `execution_failed + skipped_error`，`run_id=7642` 仍是 `error=max_iterations_exceeded:6` 且 `delivered=0`；14:00 同一 job 又漂移成结构化失败 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | New | 2026-04-24 最新重启中 `hone-telegram` 在 `bot.get_me()` 阶段超时退出，但 `telegram.pid` 与 `telegram.heartbeat.json` 仍残留并指向 dead pid，状态页与巡检会持续误报 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-26 22:20/22:31 bundled runtime 在同一小时内连续两次重试 Telegram，但 `desktop.log` 仍记 `managed channel telegram skipped because it exited during startup`；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
