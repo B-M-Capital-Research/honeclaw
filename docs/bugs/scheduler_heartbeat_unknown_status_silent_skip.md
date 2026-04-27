@@ -7,6 +7,13 @@
 
 ## 修复进展（2026-04-26）
 
+- `2026-04-27 16:00` 最新真实窗口仍未恢复，而且 15:30 的混合坏态在下一窗继续漂移，没有形成任何可送达提醒：
+  - `15:30` 窗口里 `run_id=7726`（`持仓重大事件心跳检测`）、`7728`（`全天原油价格3小时播报`）、`7729`（`小米30港元破位预警`）、`7731`（`TEM破位预警`）、`7732`（`小米破位预警`）、`7733`（`Monitor_Watchlist_11`）、`7735`（`TEM大事件心跳监控`）落成 `execution_failed + skipped_error + delivered=0`；`run_id=7725`（`ASTS 重大异动心跳监控`）、`7727`（`ORCL 大事件监控`）、`7730`（`CAI破位预警`）、`7734`（`RKLB异动监控`）则继续漂成 `noop + skipped_noop + delivered=0`
+  - `16:00` 窗口 `run_id=7747`（`小米30港元破位预警`）、`7748`（`CAI破位预警`）、`7751`（`全天原油价格3小时播报`）、`7753`（`TEM大事件心跳监控`）、`7754`（`RKLB异动监控`）、`7755`（`ASTS 重大异动心跳监控`）、`7756`（`Monitor_Watchlist_11`）继续落成 `execution_failed + skipped_error + delivered=0`
+  - 同窗 `run_id=7749`（`TEM破位预警`）、`7750`（`小米破位预警`）、`7752`（`ORCL 大事件监控`）、`7757`（`持仓重大事件心跳检测`）又退回 `noop + skipped_noop + delivered=0`，说明同一批 heartbeat 任务仍在显式失败与伪 `noop` 之间摆动
+  - `sidecar.log` 进一步显示坏态细节还在漂移：`15:30:05` 的 `ASTS 重大异动心跳监控` 已退化成只输出 `<think> + <minimax:tool_call>` 的 `parse_kind=Empty`，`15:30:05` 的 `持仓重大事件心跳检测` 直接把“收到，当前系统正常运行...”这类直聊探针话术写进 `parse_kind=PlainTextSuppressed`，`16:00:19` 的 `全天原油价格3小时播报` 则在命中触发窗口时输出“底层数据链路暂时阻断，WTI 与布伦特报价无法获取”，仍被吞成 `PlainTextSuppressed`
+  - `16:00:14-16:00:17` 同窗继续出现 4 个 Tavily key 全部额度/鉴权拒绝，但 `web_search` 仍记录 `tool_execute_success`；说明最近一小时没有形成新的独立搜索中断缺陷，主问题仍是 heartbeat 公共 JSON 契约持续漂移
+- 结论：到 `2026-04-27 16:00` 为止，本缺陷仍稳定在线；最新一小时正常新增会话只有两条 Feishu 直聊成功样本，新增异常仍集中在 heartbeat 公共契约，状态维持 `New`、严重等级维持 `P2`。
 - `2026-04-27 15:00` 最新真实窗口仍未恢复，且 14:30 混合坏态到 15:00 继续稳定复现：
   - `run_id=7703`（`小米30港元破位预警`）、`7704`（`CAI破位预警`）、`7705`（`小米破位预警`）、`7707`（`全天原油价格3小时播报`）、`7709`（`TEM大事件心跳监控`）、`7711`（`ASTS 重大异动心跳监控`）、`7713`（`持仓重大事件心跳检测`）继续落成 `execution_failed + skipped_error + delivered=0`
   - 同窗 `run_id=7706`（`TEM破位预警`）、`7708`（`RKLB异动监控`）、`7710`（`ORCL 大事件监控`）、`7712`（`Monitor_Watchlist_11`）仍落成 `noop + skipped_noop + delivered=0`
@@ -51,6 +58,31 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 16:00 最新巡检样本：
+    - 最近一小时新增普通会话只有 2 条 Feishu 直聊成功样本：
+      - `Actor_feishu__direct__ou_5f58ff884640e647a1792f618f45209251` 于 `2026-04-27T15:41:30+08:00` 返回完整 `final`
+      - `Actor_feishu__direct__ou_5fe40dc70caa78ad6cb0185c21b53c4732` 于 `2026-04-27T15:51:07+08:00` 返回完整 `final`
+      - 说明最近一小时没有新增 direct / Web 主链路失败，新增异常继续集中在 heartbeat 公共契约
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `15:30` 窗口 `run_id=7725-7735` 中，`持仓重大事件心跳检测`、`全天原油价格3小时播报`、`小米30港元破位预警`、`TEM破位预警`、`小米破位预警`、`Monitor_Watchlist_11`、`TEM大事件心跳监控` 落成 `execution_failed + skipped_error + delivered=0`
+      - 同窗 `ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`CAI破位预警`、`RKLB异动监控` 落成 `noop + skipped_noop + delivered=0`
+      - `16:00` 窗口 `run_id=7747-7757` 中，`小米30港元破位预警`、`CAI破位预警`、`全天原油价格3小时播报`、`TEM大事件心跳监控`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11` 落成 `execution_failed + skipped_error + delivered=0`
+      - 同窗 `TEM破位预警`、`小米破位预警`、`ORCL 大事件监控`、`持仓重大事件心跳检测` 落成 `noop + skipped_noop + delivered=0`
+      - 两个窗口合计 22 条已结束 heartbeat 中有 14 条显式失败、8 条伪 `noop`，全部 `delivered=0`，说明最新一小时依然没有恢复出任何稳定可送达的结构化 heartbeat 提醒
+    - `data/runtime/logs/sidecar.log`
+      - `15:30:05.643` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=Empty`，内容只剩 `<think>` 和 `<minimax:tool_call>`，连外层说明都没有
+      - `15:30:05.961` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，直接输出“收到，当前系统正常运行。如有持仓跟踪、个股研究或市场分析需求...”
+      - `15:30:07.236` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，把带 ```json``` fenced block 的“未触发”说明继续吞成 noop
+      - `15:30:21.270` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，把整段逐 ticker 检查过程当作自然语言输出
+      - `16:00:13.732` `job=TEM破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+      - `16:00:16.837` `job=小米破位预警`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，同时同窗 Tavily 4 个 key 全部额度拒绝但 `web_search` 仍回落成 `tool_execute_success`
+      - `16:00:19.472` `job=全天原油价格3小时播报`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，正文直接输出“当前北京时间 16:00，已触发原油播报时间窗口，但底层数据链路暂时阻断...”
+      - `16:00:24.278` `job=TEM大事件心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `16:00:26.713` `job=RKLB异动监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `16:00:27.514` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `16:00:30.013` `job=Monitor_Watchlist_11`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`
+      - `16:00:39.635` `job=持仓重大事件心跳检测`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`
+    - 结论：到 `2026-04-27 16:00` 为止，这条缺陷继续维持“`PlainTextSuppressed` 显式失败 + `JsonEmptyStatus` / `Empty` 伪 noop”混合坏态，状态保持 `New`、严重等级维持 `P2`。
   - 2026-04-27 15:00 最新巡检样本：
     - 最近一小时新增普通会话只有 1 条成功样本：
       - Feishu `以太坊突然暴跌是什么情况` 于 `14:54:22+08:00` 落成完整 `final`
