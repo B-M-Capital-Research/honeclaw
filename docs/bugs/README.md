@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-27 08:12 CST
+最后更新：2026-04-27 09:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,7 +15,7 @@
 
 ## 当前概览
 
-- 活跃待修复：15
+- 活跃待修复：16
 - Later / 待复现：10
 - 已修复 / 已关闭：56
 - 历史分析 / 部分止血：5
@@ -28,6 +28,7 @@
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-21 21:02 `OWALERT_PreMarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；正文已落库但用户侧未送达 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Fixing | 2026-04-26 已清洗失败 partial stream 中的工具/进度轨迹，idle timeout/state migration 后用户只看到产品化失败文案，不再落库半成品工具轨迹；底层 timeout 仍待追 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | New | 2026-04-23 13:27 用户要求“携程，价值分析”，日志显示本轮已调用 `data_fetch`/`web_search`/本地工具，但最终只把 96 字“已校验到 TCOM...”过程性片段记为 `success=true` 并发送，正式价值分析缺失；同根因仍活跃 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
+| Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | New | 2026-04-27 08:30 `j_acce16a6` 实际按 `schedule.hour=8/minute=30` 触发，但同一 job 的 prompt 仍写 `每个交易日 20:45`；assistant 正文直接承认“不是你设定的20:45触发时点” | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | New | 2026-04-22 21:19 Web 用户问“最近BABA值不值得加一些”，assistant final 只返回“下一步补财务和估值质量”；21:20 用户追问“不需要，直接告诉我吧”后才拿到正式判断，不影响投递链路因此定级 P3 | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-04-26 13:10 用户追问“我现在有哪些定时任务”仍只收到统一 fallback；同一会话 09:52 的“我的定时任务”已失败过一次，说明 `empty_success_exhausted` 止血未覆盖真实直聊主链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
