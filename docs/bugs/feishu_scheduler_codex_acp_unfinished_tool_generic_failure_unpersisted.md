@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 21:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **GitHub Issue**: [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -76,6 +76,19 @@
 - `sidecar.log` 明确显示这些 run 的底层错误都属于 `codex acp prompt ended before tool completion`，并非用户 prompt 内容各自独立失败。
 - 但 `sessions` / `session_messages` 侧没有相应的 scheduler 注入或 assistant 失败消息，说明当前“已发送”的唯一证据只剩 scheduler 台账。
 - 这不是单条任务质量波动，而是 Feishu scheduler 主链路在最近一小时出现成批退化。
+
+## 2026-04-27 止血修复
+
+- 已先按用户侧安全优先完成止血：内部失败不再转换成“抱歉，这次处理失败了。请稍后再试。”外发给用户。
+- `crates/hone-channels/src/runtime.rs` 新增 `user_visible_error_message_or_none(...)`：`codex acp`、timeout、provider/protocol 等内部错误返回 `None`，只允许足够具体、可直接面向用户的错误文本通过。
+- `crates/hone-channels/src/scheduler.rs` 在非 heartbeat scheduler 失败分支改为：当错误不可外发时 `should_deliver=false`，并记录 `suppressed generic failure fallback` 日志，不再把空正文 + 通用错误记成可投递消息。
+- `crates/hone-channels/src/outbound.rs` 的共享 outbound 失败分支同样只在存在具体用户态错误时调用 `send_error`，否则静默记录。
+- `bins/hone-feishu/src/handler.rs` 直聊失败分支改为：若已有真实 partial stream 正文则发送正文并标注可能不完整；若只有内部错误、panic、空回复或重启恢复中断，则只写日志，不再补发“请稍后再试”类兜底。
+- 已验证：
+  - `cargo test -p hone-channels user_visible_error_message -- --nocapture`
+  - `cargo test -p hone-feishu failed_reply_text_ -- --nocapture`
+  - `cargo check -p hone-channels -p hone-feishu -p hone-discord -p hone-telegram`
+- 待真实窗口继续验证：底层 `codex acp prompt ended before tool completion` 仍是上游根因，本轮只保证这类失败不再污染用户侧消息；后续还需要在 ACP runner 层继续修复 pending tool 收口质量。
 
 ## 用户影响
 
