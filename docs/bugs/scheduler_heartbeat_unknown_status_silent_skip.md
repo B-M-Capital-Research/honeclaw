@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-04-28 01:00` 最近一小时真实窗口确认这条缺陷仍未止血，而且 `00:00` 的坏态在下一轮继续原样延续：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`01:00` 窗口最新 8 条 heartbeat 样本里，`run_id=8181`（`小米破位预警`）与 `8184`（`ORCL 大事件监控`）落成 `noop + skipped_noop + delivered=0`；`8182`（`小米30港元破位预警`）、`8183`（`全天原油价格3小时播报`）、`8185`（`Monitor_Watchlist_11`）、`8186`（`RKLB异动监控`）、`8187`（`TEM大事件心跳监控`）落成 `execution_failed + skipped_error + delivered=0`；`8188`（`ASTS 重大异动心跳监控`）继续是 `noop + skipped_noop + delivered=0`。
+  - `data/runtime/logs/sidecar.log` 证明这些样本依旧没有恢复成调度契约要求的单段 JSON：
+    - `01:00:10.058` `TEM破位预警`：`parse_kind=PlainTextSuppressed`，正文仍是 `<think>` 后接 `**状态：noop**`。
+    - `01:00:12.337` `CAI破位预警`：`parse_kind=PlainTextSuppressed`，直接输出“当前价 $20.29……条件未触发，返回 noop”。
+    - `01:00:12.526` `小米破位预警`：`parse_kind=JsonEmptyStatus`，继续把 fenced JSON 包在 `<think>` 之后。
+    - `01:00:21.926` `全天原油价格3小时播报`：`parse_kind=PlainTextSuppressed`，在 Tavily 4 个 key 全部额度拒绝后仍输出“近期上涨主因未完成校验，以下为框架推演：OPEC+ 减产延续、地缘风险升温……”。
+    - `01:00:23.788` `ORCL 大事件监控`：`parse_kind=JsonEmptyStatus`，仍把时间戳换算过程和长段自然语言分析写进 `raw_preview`。
+    - `01:00:27.413` `TEM大事件心跳监控`、`01:00:28.870` `ASTS 重大异动心跳监控`：分别继续落在 `PlainTextSuppressed` / `JsonEmptyStatus`。
+  - 同时，`data/runtime/logs/sidecar.log` 显示 `00:36`、`00:39`、`00:45` 至少 3 条 Feishu 直聊已成功 `session.persist_assistant + reply.send`；但 `data/sessions.sqlite3` 的 `sessions/session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`。这说明本轮不能再把“sqlite 中没有新直聊会话”简单视为业务安静，存在并行的会话镜像停更缺陷，详见 [`sessions_sqlite_mirror_stalled_after_successful_direct_replies.md`](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md)。
+  - 结论：到 `2026-04-28 01:00` 为止，本缺陷仍稳定活跃，且最新窗口继续维持“显式失败 / 伪 noop”混合坏态；状态维持 `Fixing`，严重等级维持 `P2`。
+
 - `2026-04-28 00:00` 最近一小时真实窗口确认这条缺陷跨日后仍未止血，而且坏态继续维持“多数显式失败、少数伪 `noop`”的混合形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`00:00` 窗口 11 条 heartbeat 已结束样本里，`run_id=8131`（`小米30港元破位预警`）、`8132`（`CAI破位预警`）、`8134`（`小米破位预警`）、`8135`（`Monitor_Watchlist_11`）、`8136`（`ASTS 重大异动心跳监控`）、`8137`（`TEM大事件心跳监控`）、`8138`（`ORCL 大事件监控`）、`8140`（`RKLB异动监控`）、`8141`（`持仓重大事件心跳检测`）都落成 `execution_failed + skipped_error + delivered=0`，错误统一是 `heartbeat 输出不是结构化 JSON，任务已标记失败`。
   - 同窗只有 `run_id=8133`（`TEM破位预警`）与 `8139`（`全天原油价格3小时播报`）保留 `noop + skipped_noop + delivered=0`；说明最新窗口仍不是统一安全静默，而是“显式失败 / 伪 noop”并存。
