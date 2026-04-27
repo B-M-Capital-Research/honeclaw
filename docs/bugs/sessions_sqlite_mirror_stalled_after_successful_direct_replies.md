@@ -1,6 +1,6 @@
 # Bug: Feishu 直聊已成功持久化并发送，但 `sessions.sqlite3` 会话镜像停留在前一日下午
 
-- **发现时间**: 2026-04-28 01:08 CST
+- **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
 - **状态**: New
@@ -41,7 +41,7 @@
 
 ## 当前实现效果
 
-- 到 `2026-04-28 01:08 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`。
+- 到 `2026-04-28 01:05 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`。
 - 同一时间窗内，至少 3 条 Feishu 直聊已经完成 `persist_assistant + reply.send + success=true`，但都没有进入 sqlite 会话镜像。
 - `cron_job_runs` 仍在 `01:00` 正常更新，说明不是整个 sqlite 数据面停摆，而是会话镜像专用链路失效或卡住。
 
