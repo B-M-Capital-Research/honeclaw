@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-04-28 00:00` 最近一小时真实窗口确认这条缺陷跨日后仍未止血，而且坏态继续维持“多数显式失败、少数伪 `noop`”的混合形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`00:00` 窗口 11 条 heartbeat 已结束样本里，`run_id=8131`（`小米30港元破位预警`）、`8132`（`CAI破位预警`）、`8134`（`小米破位预警`）、`8135`（`Monitor_Watchlist_11`）、`8136`（`ASTS 重大异动心跳监控`）、`8137`（`TEM大事件心跳监控`）、`8138`（`ORCL 大事件监控`）、`8140`（`RKLB异动监控`）、`8141`（`持仓重大事件心跳检测`）都落成 `execution_failed + skipped_error + delivered=0`，错误统一是 `heartbeat 输出不是结构化 JSON，任务已标记失败`。
+  - 同窗只有 `run_id=8133`（`TEM破位预警`）与 `8139`（`全天原油价格3小时播报`）保留 `noop + skipped_noop + delivered=0`；说明最新窗口仍不是统一安全静默，而是“显式失败 / 伪 noop”并存。
+  - `data/runtime/logs/sidecar.log` 与 `cron_job_runs.detail_json` 证明这些失败样本依旧主要是 `<think>` 包裹的自然语言或 fenced JSON，而不是真正满足契约的单段结构化状态：
+    - `00:00:11.660` `小米30港元破位预警`：`parse_kind=PlainTextSuppressed`，正文仍是“当前价格 31.1 港元 > 30，不触发任何提醒”后接 `noop`。
+    - `00:00:11.918` `CAI破位预警`：`parse_kind=PlainTextSuppressed`，直接输出“无操作（未触发）”。
+    - `00:00:16.336` `TEM破位预警`：`parse_kind=JsonEmptyStatus`，虽然尝试返回 JSON，但仍被 `<think>` 包裹且不是调度契约要求的首字符即 `{` 单段状态。
+    - `00:00:32.921` `TEM大事件心跳监控`：`parse_kind=PlainTextSuppressed`，还在错误解读 quote 时间戳，`raw_preview` 明写 `1777305608 ... approximately January 6, 2026`，随后继续输出长段自然语言分析。
+    - `00:00:35.496` `全天原油价格3小时播报`：`parse_kind=JsonEmptyStatus`，搜索不可用时仍试图输出 fenced JSON 播报，只保留 WTI、缺少 Brent，并以“现在输出最终的JSON格式播报”收尾。
+    - `00:00:48.007` `持仓重大事件心跳检测`：`parse_kind=PlainTextSuppressed`，继续把 ASTS/RKLB/TEM/ORCL 的整段监控总结写进 `<think>` 后被吞掉。
+  - 同窗普通 scheduler 未整体故障：`run_id=8142`（`TEM 每日动态监控`）落成 `noop + skipped_noop`，`run_id=8143`（`AAOI 每日动态监控`）落成 `completed + sent + delivered=1`。说明跨日后的主问题仍集中在 heartbeat 公共 JSON / 状态契约，而不是调度整体停摆。
+- 结论：到 `2026-04-28 00:02` 为止，本缺陷仍稳定活跃，且最新窗口新增了“错误换算时间戳后继续输出自然语言分析”的坏态，但仍属于同一 heartbeat 结构化收口缺陷，而不是新的独立根因；状态维持 `Fixing`，严重等级维持 `P2`。
+
 - `2026-04-27 23:00` 最近一小时真实窗口确认这条缺陷仍未止血，而且最新窗口的“坏输出”进一步收敛成被静默吞掉的非结构化 `noop` / JSON 代码块：
   - `data/runtime/logs/sidecar.log` 显示，`23:00` 窗口 11 条 heartbeat 样本全部 `run_finish success=true`，但 `parse_kind` 仍全部落在 `PlainTextSuppressed` 或 `JsonEmptyStatus`，没有任何一条恢复成“首字符即 { 的单段 JSON”。
   - 代表样本：
