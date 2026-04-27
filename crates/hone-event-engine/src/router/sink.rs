@@ -15,8 +15,9 @@ use crate::renderer::RenderFormat;
 pub trait OutboundSink: Send + Sync {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()>;
 
-    /// 成功送达后写入 delivery_log 的 status。真实 sink 返回 `sent`;dryrun sink
-    /// 返回 `dryrun`，避免 dryrun 被统计成真实 ack。
+    /// 成功送达后写入 delivery_log 的 status。真实 sink 返回 `sent`;LogSink
+    /// fallback 返回 `dryrun`,避免"渠道没注册被打到 fallback"的事件被
+    /// `count_high_sent_since` 等查询当成真实 ack 计数。
     fn success_status(&self) -> &'static str {
         "sent"
     }
@@ -33,7 +34,9 @@ pub trait OutboundSink: Send + Sync {
     }
 }
 
-/// 默认 Sink：把渲染后的消息写 tracing::info，用于 dryrun 与测试。
+/// 默认 Sink:把渲染后的消息写 tracing::info,用作 `MultiChannelSink` 在
+/// 用户的 actor.channel 没注册到真 sink 时的 fallback,以及测试。落 delivery_log
+/// 时 status 标 `dryrun`,与真实 `sent` 区分。
 pub struct LogSink;
 
 #[async_trait]

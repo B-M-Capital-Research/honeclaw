@@ -47,9 +47,6 @@ pub struct EventEngineConfig {
     /// 留空时装配层回退到默认值。
     #[serde(default = "default_news_classifier_model")]
     pub news_classifier_model: String,
-
-    #[serde(default = "default_dryrun")]
-    pub dryrun: bool,
 }
 
 impl Default for EventEngineConfig {
@@ -66,7 +63,6 @@ impl Default for EventEngineConfig {
             disabled_kinds: Vec::new(),
             news_importance_prompt: default_news_importance_prompt(),
             news_classifier_model: default_news_classifier_model(),
-            dryrun: default_dryrun(),
         }
     }
 }
@@ -207,10 +203,6 @@ fn default_global_digest_final_pick_n() -> u32 {
 
 fn default_enabled() -> bool {
     false
-}
-
-fn default_dryrun() -> bool {
-    true
 }
 
 /// **v0.1.46 破坏性简化**:只保留 `news_secs` / `price_secs` 这两类**真实时效性敏感**

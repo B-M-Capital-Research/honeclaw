@@ -93,18 +93,10 @@ fn build_event_engine_news_classifier(
 
 /// 按 config 组装真实 OutboundSink(事件引擎的渠道出口)。
 ///
-/// - `dryrun=true` → 一律 LogSink,方便验证引擎行为却不真的骚扰用户
-/// - 否则按每个 channel 的 `enabled` 以及必要凭据是否就绪,逐个 attach 真 sink
+/// - 按每个 channel 的 `enabled` 以及必要凭据是否就绪,逐个 attach 真 sink
 ///   到 MultiChannelSink 上;未 attach 的渠道 fall back 到 LogSink
 /// - 没有 channel 启用(极端情况) → 退化成纯 LogSink,语义不变
-fn build_event_engine_sink(
-    core_cfg: &HoneConfig,
-    engine_cfg: &EventEngineConfig,
-) -> Arc<dyn OutboundSink> {
-    if engine_cfg.dryrun {
-        info!("event engine sink: dryrun=true,使用 LogSink");
-        return Arc::new(LogSink);
-    }
+fn build_event_engine_sink(core_cfg: &HoneConfig) -> Arc<dyn OutboundSink> {
     let mut multi = MultiChannelSink::with_log_fallback();
     if core_cfg.telegram.enabled && !core_cfg.telegram.bot_token.trim().is_empty() {
         multi = multi.with_channel(
@@ -410,7 +402,7 @@ pub async fn start_server(
         };
         // 可选 LLM 润色：当 llm_polish_for 非空且 llm provider 可用时装配 LlmPolisher。
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
-        let sink = build_event_engine_sink(&state.core.config, &engine_cfg);
+        let sink = build_event_engine_sink(&state.core.config);
         let news_classifier = build_event_engine_news_classifier(&state.core.config);
         // global_digest 也走 OpenRouter,与 news_classifier 用同一 provider
         let global_digest_provider: Option<Arc<dyn LlmProvider>> =

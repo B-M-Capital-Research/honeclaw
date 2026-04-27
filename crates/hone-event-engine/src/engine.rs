@@ -162,7 +162,6 @@ impl EventEngine {
             news_secs = self.engine_cfg.poll_intervals.news_secs,
             price_secs = self.engine_cfg.poll_intervals.price_secs,
             prefetch_offset_mins = self.engine_cfg.digest.prefetch_offset_mins,
-            dryrun = self.engine_cfg.dryrun,
             store = %self.store_path.display(),
             portfolio = %self.portfolio_dir.display(),
             "event engine starting"
