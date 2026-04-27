@@ -285,6 +285,12 @@ fn heartbeat_execution_from_content(
     }
 }
 
+fn is_unfinished_tool_failure(error: &str) -> bool {
+    let lower = error.trim().to_ascii_lowercase();
+    lower.contains("codex acp prompt ended before tool completion")
+        || lower.contains("prompt ended before tool completion")
+}
+
 fn rollback_skipped_scheduler_assistant_turn(
     storage: &hone_memory::SessionStorage,
     session_id: &str,
@@ -503,12 +509,45 @@ pub async fn execute_scheduler_event(
                 }
             }
         } else {
-            let sanitized_error = Some(user_visible_error_message(response.error.as_deref()));
+            let raw_error = response.error.as_deref().unwrap_or("");
+            let failure_kind = if is_unfinished_tool_failure(raw_error) {
+                "unfinished_tool"
+            } else {
+                "execution_failed"
+            };
+            let sanitized_error = user_visible_error_message(response.error.as_deref());
+            tracing::warn!(
+                "[SchedulerDiag] task_failed job_id={} job={} failure_kind={} session_id={}",
+                event.job_id,
+                event.job_name,
+                failure_kind,
+                session_id,
+            );
+            // 把失败提示回写到会话 transcript，保证用户和巡检后续可追溯本轮执行
+            match core
+                .session_storage
+                .add_message(&session_id, "assistant", &sanitized_error, None)
+            {
+                Ok(_) => tracing::info!(
+                    "[SchedulerDiag] persisted failure to transcript job_id={} session_id={} failure_kind={}",
+                    event.job_id,
+                    session_id,
+                    failure_kind,
+                ),
+                Err(err) => tracing::warn!(
+                    "[SchedulerDiag] failed to persist failure to transcript job_id={} session_id={} err={}",
+                    event.job_id,
+                    session_id,
+                    err,
+                ),
+            }
             ScheduledTaskExecution {
                 should_deliver: true,
                 content: String::new(),
-                error: sanitized_error,
-                metadata: Value::Null,
+                error: Some(sanitized_error),
+                metadata: json!({
+                    "failure_kind": failure_kind,
+                }),
                 session_id: Some(session_id),
             }
         };
@@ -726,7 +765,8 @@ mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, has_skip_delivery_signal,
         heartbeat_execution_from_content, inspect_heartbeat_result, is_empty_success_fallback,
-        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
+        is_unfinished_tool_failure, rollback_skipped_scheduler_assistant_turn,
+        sanitize_scheduler_delivery_text,
     };
     use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
     use hone_core::ActorIdentity;
@@ -1141,5 +1181,74 @@ mod tests {
         assert!(prompt.contains("盘中涨跌幅超过 X%"));
         assert!(prompt.contains("不允许用日内高点相对昨收"));
         assert!(prompt.contains("本轮必须返回 noop"));
+    }
+
+    #[test]
+    fn is_unfinished_tool_failure_detects_codex_acp_error() {
+        assert!(is_unfinished_tool_failure(
+            "codex acp prompt ended before tool completion: Searching the Web, Searching the Web"
+        ));
+        assert!(is_unfinished_tool_failure(
+            "codex acp prompt ended before tool completion: Searching the Web"
+        ));
+        assert!(is_unfinished_tool_failure(
+            "Codex ACP Prompt Ended Before Tool Completion: hone/data_fetch"
+        ));
+        assert!(is_unfinished_tool_failure(
+            "prompt ended before tool completion: Searching the Web"
+        ));
+        assert!(!is_unfinished_tool_failure(
+            "codex acp stream closed before response"
+        ));
+        assert!(!is_unfinished_tool_failure(
+            "opencode acp session/prompt idle timeout (180s)"
+        ));
+        assert!(!is_unfinished_tool_failure("LLM 错误: bad_request_error"));
+        assert!(!is_unfinished_tool_failure(""));
+    }
+
+    #[test]
+    fn unfinished_tool_failure_is_persisted_to_session_transcript() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_scheduler_failure_persist_{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("feishu", "ou_failtest", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+
+        // Simulate the user turn that AgentSession::run writes before the runner fails
+        storage
+            .add_message(&session_id, "user", "[定时任务触发] 每日仓位复盘", None)
+            .expect("add user");
+
+        // The sanitized failure message that execute_scheduler_event writes.
+        // user_visible_error_message("codex acp prompt ended before tool completion: ...")
+        // returns GENERIC_USER_ERROR_MESSAGE because the raw error matches "codex acp".
+        let failure_message = "抱歉，这次处理失败了。请稍后再试。";
+        storage
+            .add_message(&session_id, "assistant", failure_message, None)
+            .expect("add assistant failure");
+
+        let messages = storage
+            .get_messages(&session_id, None)
+            .expect("get messages");
+        assert_eq!(
+            messages.len(),
+            2,
+            "both user turn and failure message should be in transcript"
+        );
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(
+            session_message_text(&messages[0]),
+            "[定时任务触发] 每日仓位复盘"
+        );
+        assert_eq!(messages[1].role, "assistant");
+        assert_eq!(session_message_text(&messages[1]), failure_message);
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }

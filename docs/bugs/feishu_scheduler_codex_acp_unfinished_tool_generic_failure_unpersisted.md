@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 21:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -97,3 +97,15 @@
   - 明确是否真正完成通道送达
 - 增加回归：覆盖 Feishu scheduler 在 `Searching the Web` 未完成时的失败场景，验证不会再出现“台账 sent/delivered=1，但 transcript 无痕迹”。
 - 将本单与 Web 对应缺陷并行跟踪，确认共享 runner 修复后 Feishu 和 Web 都能一致落库失败消息。
+
+## 修复情况（2026-04-27）
+
+- 已在 `crates/hone-channels/src/scheduler.rs` 的 `execute_scheduler_event` 函数中，在非心跳任务的失败分支追加写会话逻辑：
+  - 调用 `core.session_storage.add_message(&session_id, "assistant", &sanitized_error, None)` 将失败提示回写到对应 direct 会话 transcript。
+  - 新增 `is_unfinished_tool_failure(error)` 辅助函数，检测 `codex acp prompt ended before tool completion` 类错误，用于区分 `unfinished_tool` 与通用 `execution_failed` 失败分类。
+  - `ScheduledTaskExecution.metadata` 中新增 `failure_kind` 字段，值为 `"unfinished_tool"` 或 `"execution_failed"`，保留可审计分类。
+  - 增加 `[SchedulerDiag]` 结构化日志，记录持久化成功 / 失败及对应 `failure_kind`。
+- 修复覆盖所有渠道（Feishu / Discord / Telegram / Web / iMessage），因为 `execute_scheduler_event` 是所有渠道的共享收口。
+- 已新增两个回归测试：
+  - `is_unfinished_tool_failure_detects_codex_acp_error`：验证 `unfinished tool` 错误检测逻辑。
+  - `unfinished_tool_failure_is_persisted_to_session_transcript`：验证失败消息可正确写入会话 transcript。
