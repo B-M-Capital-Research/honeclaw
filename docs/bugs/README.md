@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-27 13:10 CST
+最后更新：2026-04-27 13:15 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,7 +17,7 @@
 
 - 活跃待修复：17
 - Later / 待复现：10
-- 已修复 / 已关闭：56
+- 已修复 / 已关闭：57
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -62,6 +62,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Global digest Pass1 模型在 42-61 候选下塌成 1/2/3 三档,且 collector SQL 把 FMP trusted-Low 全砍光 | P1 | Fixed | 2026-04-27 POC 实测后:Pass1 默认从 `amazon/nova-lite-v1` 切到 `x-ai/grok-4.1-fast`(score 分布恢复 5 档,Iran/Hormuz 11 条自动合 1 簇);collector SQL 改为非对称门槛,FMP trusted 域允许 Low 进池(GOOGL 财报预告等 thesis 硬料不再被砍) | [global_digest_pass1_model_collapse_and_severity_gate.md](./global_digest_pass1_model_collapse_and_severity_gate.md) |
 | Truth Social source 持续 403 断流 | P2 | Closed | 2026-04-26 已完全移除 Truth Social source：删除 poller、配置类型、engine 装配和 `config.yaml` 启用项，后续不再启动该 source | [truth_social_poller_opaque_json_decode_stalls_source.md](./truth_social_poller_opaque_json_decode_stalls_source.md) |
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | Fixed | 2026-04-26 已扩展共享错误净化规则覆盖 WebSocket/HTTPS 回退痕迹，并在 finalizer 阻断“内部错误 + 半成品正文”作为成功答复出站；相关 `hone-channels` 定向测试通过 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |
 | 公开面认证与限流安全审计发现多个高/中风险问题 | P1/P2 | Fixed | 2026-04-20 已修复公开登录限流维度、Secure Cookie 配置、workflow runner `validateCode`、邀请码熵和认证态闪烁问题 | [public_auth_security_audit_2026_04_20.md](./public_auth_security_audit_2026_04_20.md) |

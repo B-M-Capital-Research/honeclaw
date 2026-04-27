@@ -193,7 +193,7 @@ fn default_global_digest_lookback_hours() -> u32 {
     24
 }
 fn default_global_digest_pass1_model() -> String {
-    "amazon/nova-lite-v1".into()
+    "x-ai/grok-4.1-fast".into()
 }
 fn default_global_digest_pass2_model() -> String {
     "x-ai/grok-4.1-fast".into()

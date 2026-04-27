@@ -297,13 +297,16 @@ mod tests {
     }
 
     #[test]
-    fn drops_low_severity() {
+    fn keeps_low_severity_when_fmp_source_class_is_trusted() {
+        // 2026-04-27 POC 复盘后:trusted 域 FMP 即便 severity=Low 也进候选池。
+        // 之前 pollers::news::classify_severity 只在命中 distress/M&A 关键词时升 High,
+        // 导致 GOOGL 财报预告等 thesis 硬料被砍。Pass1 LLM 会自行打低分压住噪音。
         let store = open_store();
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store
             .insert_event(&news_event(
-                "n_low",
-                "noise",
+                "n_low_trusted",
+                "Wall Street's Super Bowl: Alphabet, Amazon, Microsoft and Meta report",
                 "reuters.com",
                 "trusted",
                 false,
@@ -311,6 +314,36 @@ mod tests {
                 now - chrono::Duration::hours(1),
             ))
             .unwrap();
+        let candidates = CandidateCollector::new(&store)
+            .collect(now, 24, 24)
+            .unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].event.id, "n_low_trusted");
+    }
+
+    #[test]
+    fn still_drops_low_severity_for_pr_wire_or_opinion_blog() {
+        // 非 trusted 域(opinion_blog/pr_wire/uncertain)继续按严格 high/medium 门槛,
+        // 防止 seekingalpha listicle、律所 PR 灌进来。
+        let store = open_store();
+        let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
+        for (id, site, sc) in [
+            ("n_low_opinion", "seekingalpha.com", "opinion_blog"),
+            ("n_low_pr", "globenewswire.com", "pr_wire"),
+            ("n_low_uncertain", "marketbeat.com", "uncertain"),
+        ] {
+            store
+                .insert_event(&news_event(
+                    id,
+                    "low-quality content",
+                    site,
+                    sc,
+                    false,
+                    Severity::Low,
+                    now - chrono::Duration::hours(1),
+                ))
+                .unwrap();
+        }
         let candidates = CandidateCollector::new(&store)
             .collect(now, 24, 24)
             .unwrap();

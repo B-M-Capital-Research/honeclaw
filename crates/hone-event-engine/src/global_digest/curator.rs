@@ -1,6 +1,6 @@
 //! 全局 digest curator —— LLM 两段式精读管道。
 //!
-//! Pass 1(本文件):便宜模型批量打分 + cluster 聚类 + 一句话 takeaway。
+//! Pass 1(本文件):批量打分 + cluster 聚类 + 一句话 takeaway。
 //!   - prompt 用 POC 验证过的"5 分锚点 + 具体例子"版本,避免两极化
 //!   - cluster id 由 LLM 一次性输出(同事件不同媒体合并),不需要算法 dedup
 //!   - 输出按 cluster 取分最高,按 score 降序截 top_n
@@ -8,11 +8,14 @@
 //! Pass 2 baseline / personalize 在同模块的 pass2_baseline / pass2_personalize 里。
 //!
 //! POC 验证(见 SKILL `poc-driven-feature-design`):
-//! - grok-4.1-fast / nova-lite-v1 都能稳定输出严格 JSON
-//! - 100 候选下分布健康(5/4/3/2/1 ≈ 22/13/13/36/16),无两极化
+//! - **必须用 grok-4.1-fast 或更强模型**。2026-04-27 复盘 POC 实测 nova-lite-v1 在
+//!   42-61 候选量级下塌成 1/2/3 三档,完全没有 4/5;同时 cluster id 给得过细
+//!   (Iran/Hormuz/Oil/Gold 5+ 个独立 cluster),thematic dedup 失效。
+//!   grok-4.1-fast 在同 prompt 给出健康 5/4/3/2/1 分布,且自动把 11 条 Iran 主题
+//!   合到一个 cluster。代价 3× ($0.001 → $0.003/run),绝对值仍 < 1¢。
 //! - 174 候选下 cluster dedup 仍准确(174→124,iran-war 一次合 21)
 //! - 带 audience brief 后 LLM 自动推 NVDA/Intel/TSM 是 AMD 同行
-//! - Pass 1 cost ≈ $0.004 / 100 候选
+//! - Pass 1 cost ≈ $0.003 / 60 候选 / grok-4.1-fast
 
 use std::collections::HashMap;
 use std::sync::Arc;
