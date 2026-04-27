@@ -34,6 +34,23 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 11:00 最新巡检样本：
+    - 最近一小时新增普通会话只有 3 条成功样本：
+      - Feishu `液冷标的推荐` 于 `11:02:54+08:00` 落成完整 `final`
+      - Feishu `ASTS 和 TMDX 对比` 于 `11:02:48+08:00` 落成完整 `final`
+      - Feishu `真有液冷设备的公司` 于 `10:57:05+08:00` 已在上一轮成功落成
+      - 说明最新窗口没有新增 direct / Web 主链路失败，新增异常仍集中在 heartbeat 公共契约
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `11:00` 窗口最新已结束 heartbeat 样本里，`run_id=7533`（`ORCL 大事件监控`）落成 `execution_failed + skipped_error + delivered=0`
+      - 同窗 `run_id=7534`（`持仓重大事件心跳检测`）落成 `noop + skipped_noop + delivered=0`，但 `detail_json.heartbeat_model=MiniMax-M2.7-highspeed` 且 `parse_kind=ContextOverflowNoop`
+      - 同窗 `run_id=7535`（`ASTS 重大异动心跳监控`）继续落成 `noop + skipped_noop + delivered=0`，`parse_kind=JsonEmptyStatus`、`raw_chars=11420`
+      - 说明到 `11:01` 为止，本缺陷仍在同一窗口内同时混出 `PlainTextSuppressed`、`ContextOverflowNoop` 与 `JsonEmptyStatus` 三种坏态，且当轮样本仍全部 `delivered=0`
+    - `data/runtime/logs/sidecar.log`
+      - `11:00:57.244` `job=持仓重大事件心跳检测`：`run_finish ... success=false error="LLM 错误: bad_request_error: invalid params, context window exceeds limit (2013)"`，随后 `11:00:57.246` 被吸收到 `parse_kind=ContextOverflowNoop`
+      - `11:01:10.076` `job=ASTS 重大异动心跳监控`：`starts_with_json=false`、`parse_kind=JsonEmptyStatus`，`raw_chars=11420`
+      - `11:00:33.087` `job=ORCL 大事件监控`：`starts_with_json=false`、`parse_kind=PlainTextSuppressed`，并落成 `execution_failed + skipped_error`
+    - 同一 `11:00:13` 与 `11:00:52` 窗口继续出现 Tavily `usage limit` 告警，但 `10:57-11:02` 的 Feishu 直聊样本最终都成功收口；因此最近一小时没有形成新的独立检索中断或 direct 链路故障，主问题仍是 heartbeat 公共 JSON 契约持续漂移。
+    - 结论：到 `2026-04-27 11:02` 为止，本缺陷仍稳定在线，且坏态集合再次扩大到 `ContextOverflowNoop`；状态维持 `New`、严重等级维持 `P2`。
   - 2026-04-27 10:00 最新巡检样本：
     - 最近一小时新增普通会话只有 4 条成功样本：
       - Discord `每日美股降息概率推送` 于 `09:31:23+08:00` 落成 `completed + sent`
