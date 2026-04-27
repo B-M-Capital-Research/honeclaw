@@ -34,6 +34,24 @@
 - 生产 sub_model (`google/gemini-3.1-pro-preview`) 仍需要依赖值班收集的 `run_id` + `parse_kind` 统计，确认 `starts_with_json=true` 比例显著回升。
 - 若仍看到 `parse_kind=JsonEmptyStatus` 或 `<think>` 外自由文本，应回归 6a 规则是否被模型忽略。
 - **证据来源**:
+  - 2026-04-27 12:00 最新巡检样本：
+    - 最近一小时新增普通会话只有 4 条成功样本：
+      - Feishu `每日公司资讯与分析总结` 于 `12:02:30+08:00` 落成完整 `final`
+      - Feishu `比较一下oklo和xe` 于 `11:46:58+08:00` 落成完整 `final`
+      - Feishu `给我分析一下etn吗` 于 `11:31:39+08:00` 落成完整 `final`
+      - Feishu `请详细分析下 aph` 于 `11:08:05+08:00` 已在上一轮成功落成
+      - 说明最近一小时没有新增 direct / Web 主链路失败，新增异常仍集中在 heartbeat 公共契约
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `12:00` 窗口最新已结束 heartbeat 样本里，`run_id=7573`（`CAI破位预警`）落成 `execution_failed + skipped_error + delivered=0`，错误为 `heartbeat 输出包含未知状态，任务已标记失败`
+      - 同窗 `run_id=7571`（`持仓重大事件心跳检测`）与 `run_id=7570`（`TEM大事件心跳监控`）继续落成 `noop + skipped_noop + delivered=0`
+      - `run_id=7577`（`ORCL 大事件监控`）、`run_id=7578`（`全天原油价格3小时播报`）、`run_id=7579`（`Monitor_Watchlist_11`）、`run_id=7580`（`ASTS 重大异动心跳监控`）同窗再次落成 `execution_failed + skipped_error + delivered=0`
+      - 说明到 `12:02` 为止，本缺陷仍在同一窗口内同时混出 `JsonUnknownStatus`、`PlainTextSuppressed` 与 `noop + skipped_noop` 三类坏态，且当轮 heartbeat 样本仍全部 `delivered=0`
+    - `data/runtime/logs/sidecar.log`
+      - `12:00:11.692` `job=CAI破位预警`：`parse failure escalated ... parse_kind=JsonUnknownStatus`，`preview` 直接以 `<think>\nLet me analyze the data:` 开头，随后输出“当前价格高于 $16.28，因此未触发”的自然语言分析
+      - `12:00:16.476-12:00:17.611` 同窗再次连续出现 Tavily `usage limit` 告警，但 `12:02` 的 Feishu 定时汇总样本仍成功收口，说明检索额度告警没有形成新的独立主链路故障
+      - `12:00:21.689` `job=ORCL 大事件监控`：继续落成 `execution_failed + skipped_error`
+      - `12:00:30.583` `job=ASTS 重大异动心跳监控`：继续落成 `execution_failed + skipped_error`
+    - 结论：到 `2026-04-27 12:02` 为止，本缺陷仍稳定在线，且最新坏态已明确包含 `<think>` 包裹的未知状态正文；状态维持 `New`、严重等级维持 `P2`。
   - 2026-04-27 11:00 最新巡检样本：
     - 最近一小时新增普通会话只有 3 条成功样本：
       - Feishu `液冷标的推荐` 于 `11:02:54+08:00` 落成完整 `final`
