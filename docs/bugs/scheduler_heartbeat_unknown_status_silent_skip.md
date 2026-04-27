@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-04-27 23:00` 最近一小时真实窗口确认这条缺陷仍未止血，而且最新窗口的“坏输出”进一步收敛成被静默吞掉的非结构化 `noop` / JSON 代码块：
+  - `data/runtime/logs/sidecar.log` 显示，`23:00` 窗口 11 条 heartbeat 样本全部 `run_finish success=true`，但 `parse_kind` 仍全部落在 `PlainTextSuppressed` 或 `JsonEmptyStatus`，没有任何一条恢复成“首字符即 { 的单段 JSON”。
+  - 代表样本：
+    - `23:00:09.873` `全天原油价格3小时播报`：`parse_kind=PlainTextSuppressed`，原文写明“23 点不在 [0,3,6,9,12,15,18,21]，应保持静默”，但返回体仍是 `<think> ... </think>` 加 `` `noop` ``。
+    - `23:00:10.552` `小米30港元破位预警`：`parse_kind=PlainTextSuppressed`，直接输出“31.1 港元，高于 30 港元触发线，本轮无需提醒”。
+    - `23:00:23.261` `小米破位预警`：`parse_kind=JsonEmptyStatus`，即使包了一段 ```json``` 代码块，正文仍只是“数据链路阻断，无法获取实时行情”之类的自然语言说明，而非调度契约要求的结构化状态。
+    - `23:00:25.711` `ORCL 大事件监控`、`23:00:33.294` `Monitor_Watchlist_11`、`23:00:42.574` `持仓重大事件心跳检测`、`23:01:05.801` `TEM大事件心跳监控` 都继续把长段逐项分析写进 `<think>` 后再被收口。
+  - 同窗未见新的 direct / Web 主链路故障；最新直聊 `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 仍在 `23:01:16` 正常完成并送达，说明问题继续局限在 heartbeat 公共 JSON / 状态契约。
+- 结论：到 `2026-04-27 23:01` 为止，本缺陷仍稳定活跃，且最新窗口说明模型现在会把“未触发”解释包装成 plain text、反引号 `noop` 或 fenced JSON 代码块后被静默吞掉；状态维持 `Fixing`，严重等级维持 `P2`。
+
 - `2026-04-27 22:00` 最近一小时真实窗口确认这条缺陷仍未止血，而且 `21:30` 的混合坏态到 `22:00` 继续原样延续：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`22:00` 窗口里 `run_id=8036`（`TEM破位预警`）、`8037`（`CAI破位预警`）、`8039`（`小米破位预警`）、`8041`（`全天原油价格3小时播报`）、`8043`（`TEM大事件心跳监控`）、`8044`（`ORCL 大事件监控`）、`8046`（`持仓重大事件心跳检测`）继续落成 `execution_failed + skipped_error + delivered=0`。
   - 同窗只有 `run_id=8040`（`RKLB异动监控`）、`8042`（`Monitor_Watchlist_11`）、`8045`（`ASTS 重大异动心跳监控`）保留 `noop + skipped_noop + delivered=0`；说明最新窗口仍然不是统一安全静默，而是“多数显式失败、少数伪 noop”并存。

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-27 22:08 CST
+最后更新：2026-04-27 23:16 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：17
+- 活跃待修复：18
 - Later / 待复现：10
-- 已修复 / 已关闭：59
+- 已修复 / 已关闭：58
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -28,11 +28,12 @@
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-21 21:02 `OWALERT_PreMarket` 再次落成 `completed + send_failed`，错误体仍是 `code=99992361 / open_id cross app`；正文已落库但用户侧未送达 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Fixing | 2026-04-27 已先完成用户侧止血：scheduler / shared outbound / Feishu 直聊不再把 `codex acp prompt ended before tool completion`、timeout、panic、空回复等内部失败转换成“抱歉，这次处理失败了。请稍后再试。”外发；上游 ACP pending tool 根因仍待继续收口 | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Fixing | 2026-04-26 已清洗失败 partial stream 中的工具/进度轨迹，idle timeout/state migration 后用户只看到产品化失败文案，不再落库半成品工具轨迹；底层 timeout 仍待追 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
+| Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | New | 2026-04-27 21:33 `desktop.log` 再次连续 22 次报 `Address already in use (os error 48)`，直到 `21:33:26` 才恢复；此前 `Fixed` 的端口冲突已确认回归，GitHub issue [#24](https://github.com/B-M-Capital-Research/honeclaw/issues/24) 已登记 | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |
 | Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | New | 2026-04-27 08:30 `j_acce16a6` 实际按 `schedule.hour=8/minute=30` 触发，但同一 job 的 prompt 仍写 `每个交易日 20:45`；assistant 正文直接承认“不是你设定的20:45触发时点” | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-04-26 13:10 用户追问“我现在有哪些定时任务”仍只收到统一 fallback；同一会话 09:52 的“我的定时任务”已失败过一次，说明 `empty_success_exhausted` 止血未覆盖真实直聊主链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 定时任务把“没有活跃 SSE 控制台监听者”直接记成 `send_failed`，离线晨报无法被视为已送达 | P2 | New | 2026-04-27 09:02 Web 晨报 `j_183bee8d` 已生成并写入会话，但 `cron_job_runs.run_id=7445` 仍落成 `completed + send_failed + delivered=0`，`detail_json.console_event_sent=false` 指向投递判定依赖实时 SSE 订阅 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-27 22:00 继续维持“多数 `execution_failed + skipped_error`、少数伪 `noop`”混跑；`CAI/小米/原油/持仓监控` 等样本原始输出仍是“条件未触发”“数据暂不可核验”“完整原油播报”等非结构化正文 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-27 23:00 最新窗口仍无一条恢复成合法单段 JSON；`原油/小米/ORCL/持仓监控` 等样本继续把 `<think>`、反引号 `noop` 或 fenced JSON 代码块当最终输出 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-27 `小米破位预警` 在 20:00 先落成 `max_iterations_exceeded:6 + skipped_error`，21:00 又漂回 `heartbeat 输出不是结构化 JSON`；同一 job 仍在“触顶失败 / 结构化失败”间交替 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | New | 2026-04-24 最新重启中 `hone-telegram` 在 `bot.get_me()` 阶段超时退出，但 `telegram.pid` 与 `telegram.heartbeat.json` 仍残留并指向 dead pid，状态页与巡检会持续误报 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
@@ -69,7 +70,6 @@
 | Feishu 用户达到当日对话额度上限后仍只收到“稍后再试”，且最新 user turn 不落库 | P1 | Fixed | 2026-04-17 已让 quota 拒绝直接返回用户态额度文案，并在拒绝前补最小 user-turn 落库；20:00 真实会话已再次返回“已达到今日对话上限（12/12）” | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Release app / 渠道进程仍可被 legacy `config_runtime.yaml` 驱动，导致 runner 改完后 live 服务不立即生效 | P1 | Fixed | 2026-04-16 已让 desktop 忽略 legacy override，并更新 release runbook 到 canonical/effective config 启动方式 | [desktop_release_runner_legacy_config_source.md](./desktop_release_runner_legacy_config_source.md) |
 | Desktop Agent 设置页缺少 `codex_acp` runner 入口，实际已切到 Codex ACP 时仍无法一致展示 | P2 | Fixed | 2026-04-16 已补齐 settings/start 两处 runner 可见入口与检测提示，UI 与 live config 重新对齐 | [desktop_codex_acp_runner_ui_gap.md](./desktop_codex_acp_runner_ui_gap.md) |
-| Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | Fixed | 2026-04-25 已让 web-api 返回 per-startup task handles，desktop 重启 bundled runtime 前会 abort 旧 Axum listener / scheduler / event-engine task，避免同进程重启留下 8077 孤儿 listener | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |
 | 飞书渠道消息发错位（跨用户投递） | P0 | Fixed | 2026-03-25 已修复 | [feishu_message_misrouting.md](./feishu_message_misrouting.md) |
 | 飞书定时任务重复投递 | P1 | Fixed | 2026-03-25 已修复 | [feishu_scheduler_duplicate_delivery.md](./feishu_scheduler_duplicate_delivery.md) |
 | 多代理内部思考与工具协议文本泄漏到用户回复 | P1 | Fixed | `12a5352` 已修复并补齐输出净化 | [multi_agent_internal_output_leak.md](./multi_agent_internal_output_leak.md) |
