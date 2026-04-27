@@ -6,6 +6,10 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+    - `2026-04-28 07:03 CST` 复核 `SELECT MAX(last_message_at), MAX(updated_at), MAX(imported_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 同时 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 但同库 `cron_job_runs` 已继续写到 `2026-04-28T07:00:40.541211+08:00`，说明最新一小时 sqlite 文件本身仍可写，而会话镜像链路继续静默停滞超过 14 小时。
+  - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 04:03 CST` 复核 `SELECT MAX(last_message_at), MAX(updated_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034097+08:00`
     - `2026-04-28 04:03 CST` 复核 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;`，同样仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - 同时 `cron_job_runs` 已继续写到 `2026-04-28T04:01:13.314715+08:00`，说明最新一小时 sqlite 文件本身仍可写，但会话镜像链路继续静默停滞。
@@ -53,6 +57,7 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-28 07:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 07:00:40+08:00`。
 - 到 `2026-04-28 04:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，且在 `04:01` 又有新的成功会话完成 `persist_assistant` 之后依然没有前进一步。
 - 到 `2026-04-28 03:05 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，与上一轮 `02:01` 巡检相比没有前进一步。
 - 到 `2026-04-28 02:01 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`。

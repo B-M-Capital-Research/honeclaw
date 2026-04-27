@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-28 06:07 CST
+最后更新：2026-04-28 07:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -33,8 +33,8 @@
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-04-26 13:10 用户追问“我现在有哪些定时任务”仍只收到统一 fallback；同一会话 09:52 的“我的定时任务”已失败过一次，说明 `empty_success_exhausted` 止血未覆盖真实直聊主链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 定时任务把“没有活跃 SSE 控制台监听者”直接记成 `send_failed`，离线晨报无法被视为已送达 | P2 | New | 2026-04-27 09:02 Web 晨报 `j_183bee8d` 已生成并写入会话，但 `cron_job_runs.run_id=7445` 仍落成 `completed + send_failed + delivered=0`，`detail_json.console_event_sent=false` 指向投递判定依赖实时 SSE 订阅 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Feishu 直聊已成功 `persist_assistant + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-28 04:03 再次复核 `sessions` / `session_messages` 仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `04:01` 又有成功会话落成 `persist_assistant + success=true`，但镜像仍未前进 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-28 06:00 最新两轮窗口仍无一条恢复成合法单段 JSON；`06:00` 窗口 11 条 heartbeat 里 7 条显式失败、4 条伪 `noop`，且 4 个 Tavily key 同窗全部额度/鉴权拒绝 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Feishu 直聊已成功 `persist_assistant + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-28 07:03 再次复核 `sessions` / `session_messages` 仍卡在 `2026-04-27 16:54:20+08:00`；但同库 `cron_job_runs` 已写到 `2026-04-28 07:00:40+08:00`，说明 sqlite 文件可写而镜像链路仍停滞 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-28 07:00 最新两轮窗口仍无一条恢复成合法单段 JSON；`07:00` 窗口 11 条 heartbeat 里 7 条显式失败、4 条伪 `noop`，并继续出现 `JsonMalformed` / fenced JSON / 纯文本 `noop` 坏态 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-27 `小米破位预警` 在 20:00 先落成 `max_iterations_exceeded:6 + skipped_error`，21:00 又漂回 `heartbeat 输出不是结构化 JSON`；同一 job 仍在“触顶失败 / 结构化失败”间交替 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | New | 2026-04-23 08:30 `ADTN财报后总结` 的 prompt 明确写“2026年5月5日早上执行”，但配置只保留 `hour=8/minute=30/repeat=once`，在 2026-04-23 被提前触发并置为 disabled | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-28 04:01 `Oil_Price_Monitor_Closing` 再次成功送达，但正文仍把“美伊和平谈判停滞、霍尔木兹海峡运输仍受限制”写成 Reuters/WSJ 已共同确认的确定性主线；此前 `Later` 止血确认失效 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |

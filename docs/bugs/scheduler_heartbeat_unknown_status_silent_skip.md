@@ -7,6 +7,28 @@
 
 ## 修复进展
 
+- `2026-04-28 07:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `06:30` 到 `07:00` 仍没有任何一条 heartbeat 恢复成合法单段 JSON：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`06:30` 窗口共有 11 条 heartbeat 完成样本，其中 `8433`（`TEM大事件心跳监控`）、`8434`（`Monitor_Watchlist_11`）、`8435`（`ORCL 大事件监控`）、`8436`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error + delivered=0`，其余 7 条仍落成 `noop + skipped_noop + delivered=0`。
+  - 同库 `07:00` 窗口共有 11 条 heartbeat 完成样本，再次漂回“7 败 4 伪 `noop`”：
+    - `8450`（`小米30港元破位预警`）、`8451`（`CAI破位预警`）、`8452`（`TEM破位预警`）、`8454`（`Monitor_Watchlist_11`）、`8455`（`TEM大事件心跳监控`）、`8457`（`ORCL 大事件监控`）、`8458`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error + delivered=0`
+    - `8448`（`全天原油价格3小时播报`）、`8449`（`小米破位预警`）、`8453`（`RKLB异动监控`）、`8456`（`ASTS 重大异动心跳监控`）落成 `noop + skipped_noop + delivered=0`
+  - `data/runtime/logs/sidecar.log` 证明上述样本依旧不是契约要求的单段 JSON，而且坏态枚举还在扩散：
+    - `06:30:08.606` `TEM破位预警`：`parse_kind=PlainTextSuppressed`，输出 `<think>...</think>\n\nnoop`
+    - `06:30:09.899` `CAI破位预警`：`parse_kind=JsonNoop`，把价格解释包在 `<think>` 后再输出结构化对象
+    - `06:30:14.069` `ASTS 重大异动心跳监控`：`parse_kind=PlainTextSuppressed`，继续整段外溢价格与旧新闻分析
+    - `06:30:23.973` `Monitor_Watchlist_11`：`parse_kind=PlainTextSuppressed`，逐 ticker 检查过程继续外溢
+    - `06:30:27.305` `ORCL 大事件监控`：`parse_kind=JsonMalformed`，日志同时记录 `malformed heartbeat json suppressed` 与 `parse failure escalated`
+    - `07:00:08.622` `小米破位预警`：`parse_kind=JsonEmptyStatus`，坏态退化成 `<think>...</think>` 后接 fenced ```json``` 块
+    - `07:00:11.947` `CAI破位预警`：`parse_kind=PlainTextSuppressed`，输出中文说明“当前价 $19.93，未跌破 52 周低点...”
+    - `07:00:19.728` `TEM破位预警`：`parse_kind=PlainTextSuppressed`，直接输出“**结论：未触发。**”
+    - `07:00:23.190` `RKLB异动监控`：`parse_kind=JsonEmptyStatus`，继续把大段新闻检查总结包在 `<think>` 后
+    - `07:00:24.876` `TEM大事件心跳监控`：`parse_kind=PlainTextSuppressed`，仅返回 `<think>\nNoop - 正常心跳探针。\n</think>\n\nnoop`
+    - `07:00:29.298` `ASTS 重大异动心跳监控`：`parse_kind=JsonEmptyStatus`
+    - `07:00:40.157` `ORCL 大事件监控`：`parse_kind=PlainTextSuppressed`，输出 3.6k 字分析正文后才尝试收口
+    - `07:00:40.539` `持仓重大事件心跳检测`：`parse_kind=PlainTextSuppressed`，继续把跨持仓新闻综述写成自由文本
+  - 同窗 `06:30:13-06:30:14` 再次出现 4 个 Tavily key 全部 usage limit / 鉴权拒绝，但工具层仍记录 `tool_execute_success name=web_search`，说明外部检索降级仍在持续放大这条公共结构化契约缺陷。
+  - 同窗没有新增 direct / Web 主链路成功或失败会话落库，最近一小时新增异常仍集中在 heartbeat 公共结构化契约；状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 06:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且 05:30 的坏态在 06:00 进一步向“显式失败”漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`05:30` 窗口共有 11 条 heartbeat 完成样本，其中 `8385`（`小米破位预警`）、`8389`（`Monitor_Watchlist_11`）、`8391`（`ORCL 大事件监控`）、`8404`（`小米30港元破位预警`）落成 `execution_failed + skipped_error + delivered=0`，其余 7 条仍落成 `noop + skipped_noop + delivered=0`。
   - 同库 `06:00` 窗口共有 11 条 heartbeat 完成样本，已恶化为“7 败 4 伪 `noop`”：
