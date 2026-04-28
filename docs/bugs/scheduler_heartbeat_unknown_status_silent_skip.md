@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-04-28 09:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且最新整点窗口仍没有任何一条 heartbeat 恢复成合法单段 JSON：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`09:00` 窗口共有 11 条 heartbeat 完成样本：
+    - `execution_failed + skipped_error + delivered=0`：`8561`（`ORCL 大事件监控`）、`8562`（`TEM大事件心跳监控`）、`8563`（`TEM破位预警`）、`8565`（`小米30港元破位预警`）、`8567`（`RKLB异动监控`）、`8568`（`全天原油价格3小时播报`）、`8569`（`Monitor_Watchlist_11`）、`8570`（`ASTS 重大异动心跳监控`）、`8571`（`持仓重大事件心跳检测`）
+    - `noop + skipped_noop + delivered=0`：`8564`（`CAI破位预警`）、`8566`（`小米破位预警`）
+  - `data/runtime/logs/sidecar.log` 证明上述样本依旧不是契约要求的单段 JSON，而且坏态继续在多种形态间漂移：
+    - `09:00:12.107` `TEM大事件心跳监控`：`parse_kind=PlainTextSuppressed`，输出 `<think>...</think>` 后包裹 fenced ```json``` 结果
+    - `09:00:13.545` `TEM破位预警`：`parse_kind=PlainTextSuppressed`，输出 `<think>...</think>\n\nnoop`
+    - `09:00:14.413` `CAI破位预警`：`parse_kind=JsonEmptyStatus`，在 `<think>` 后再吐 `{"message":"noop"}` 风格坏态
+    - `09:00:16.135` `小米30港元破位预警`：`parse_kind=PlainTextSuppressed`，把“静默，无需提醒”写成正文
+    - `09:00:16.850` `小米破位预警`：`parse_kind=JsonEmptyStatus`
+    - `09:00:42.346` `持仓重大事件心跳检测`：`parse_kind=PlainTextSuppressed`，继续输出跨持仓长篇自然语言综述
+  - 同一 `09:00` 窗口并非 scheduler 全局停摆：`run_id=8572`、`8574`、`8575` 三条非 heartbeat 定时任务都在 `09:01` 落成 `completed + sent + delivered=1`。
+  - 结论：到 `2026-04-28 09:02` 为止，本缺陷仍稳定在线，而且最新整点窗口已经进一步恶化为“9 条显式失败 + 2 条伪 `noop`”；状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 08:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且最新整点窗口仍没有任何一条 heartbeat 恢复成合法单段 JSON：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`08:00` 窗口共有 11 条 heartbeat 完成样本：
     - `execution_failed + skipped_error + delivered=0`：`8496`（`小米30港元破位预警`）、`8497`（`Monitor_Watchlist_11`）、`8498`（`全天原油价格3小时播报`）、`8499`（`TEM破位预警`）、`8503`（`小米破位预警`）、`8506`（`持仓重大事件心跳检测`）

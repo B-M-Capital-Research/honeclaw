@@ -8,6 +8,17 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=8573`
+  - `job_id=j_183bee8d`
+  - `job_name=09:00 美股AI与航空科技晨报`
+  - `actor_channel=web`
+  - `executed_at=2026-04-28T09:01:31.177909+08:00`
+  - `execution_status=completed`
+  - `message_send_status=send_failed`
+  - `delivered=0`
+  - `detail_json={"console_event_sent":false,"scheduler":null}`
+  - `response_preview` 已包含完整晨报开头：`北京时间 2026 年 4 月 28 日 09:00，今天的主线很集中：AI 基础设施正在进入财报验证窗口`
+- `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=7445`
   - `job_id=j_183bee8d`
   - `job_name=09:00 美股AI与航空科技晨报`
@@ -39,6 +50,7 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 - Web scheduler 把“是否存在活跃 SSE 控制台监听者”当成唯一送达判断。
 - 同一条晨报正文已经写进会话，后续打开会话仍可读到，但台账仍记为 `send_failed`，说明系统把“离线可追溯”和“实时推送”混成了一个成功条件。
+- 该问题在 `2026-04-28 09:01` 对同一 job 再次原样复现：最新 `run_id=8573` 与前一天 `run_id=7445` 都是 `completed + send_failed + detail_json.console_event_sent=false`，说明它不是单次偶发，而是稳定的离线送达判定缺口。
 
 ## 用户影响
 
