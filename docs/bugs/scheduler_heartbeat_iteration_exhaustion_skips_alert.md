@@ -6,6 +6,21 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=9521`，`job_id=j_9ee85d42`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-04-29T04:02:19.013362+08:00`
+    - 本轮再次落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`should_deliver=0`、`delivered=0`
+    - `error_message=max_iterations_exceeded:6`
+    - 对比同一 job 紧邻窗口：
+      - `run_id=9489`，`executed_at=2026-04-29T03:30:54.977151+08:00`，上一窗口仍是 `noop + skipped_noop + parse_kind=Empty`
+      - `run_id=9521` 同窗并非全批失败；`run_id=9518`（`Oil_Price_Monitor_Closing`）与 `run_id=9516/9517` 仍分别落成 `completed + sent`
+    - 这说明最近一小时内，同一 heartbeat job 仍会在 `Empty + skipped_noop`、`max_iterations_exceeded:6 + skipped_error` 与同批其它任务的正常送达之间摆动；用户侧依然无法区分“条件未命中”还是“这一轮根本没跑完”
+  - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+    - `2026-04-29 04:02:06.822-04:02:19.013` 同窗先后记录 `local_list_files`、`local_read_file` 工具执行成功
+    - 紧接着 `04:02:19.013-04:02:19.016` 连续记录：
+      - `run_finish ... success=false error="max_iterations_exceeded:6"`
+      - `runner_error ... error="max_iterations_exceeded:6"`
+      - 随后直接 `心跳任务未命中，本轮不发送: job=Cerebras IPO与业务进展心跳监控`
+    - 说明这轮触顶失败不是 scheduler 全批停摆；而是在本地工具已成功返回后，heartbeat/function-calling 链路仍继续耗尽迭代预算
+  - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=9025`，`job_id=j_9ee85d42`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-04-28T18:30:35.625298+08:00`
     - 本轮再次落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`should_deliver=0`、`delivered=0`
     - `error_message=max_iterations_exceeded:6`
@@ -135,6 +150,8 @@
 
 ## 当前实现效果
 
+- `2026-04-29 04:02` 的 `Cerebras IPO与业务进展心跳监控` 最新样本说明，这条缺陷在本轮最近一小时仍活跃：前一窗口 `03:30` 还是 `Empty + skipped_noop`，`04:02` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，而同一 `04:00` 批次的 `Oil_Price_Monitor_Closing`、`ORCL 大事件监控`、`小米破位预警` 仍能正常 `completed + sent`。
+- 这说明 heartbeat 触顶失败不需要整批 scheduler 停摆就会单独出现，而且在本地工具已经成功执行后仍会把整轮提醒静默吞掉；用户依然无法区分是“未命中”还是“本轮根本没跑完”。
 - `2026-04-28 18:30` 的 `Cerebras IPO与业务进展心跳监控` 最新样本说明，这条缺陷在本轮最近一小时仍活跃：前一整点 `18:01` 还是 `noop`，`18:30` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，到 `19:00` 又漂回 `JsonNoop + skipped_noop`。
 - 同窗还新增了 `local_search_files ... valid UTF-8` 工具错误，说明 heartbeat 触顶失败不再只是上游 LLM 自身抖动，已经开始混入本地检索异常并共同放大迭代耗尽。
 - `2026-04-27 21:00` 的 `小米破位预警` 最新样本说明，这条缺陷在本轮最近一小时仍活跃：`run_id=7984` / `job_id=j_671d3cd3` 落成 `execution_failed + skipped_error + delivered=0`，`error_message=heartbeat 输出不是结构化 JSON，任务已标记失败`，说明同一 job 在 `20:00` 刚出现 `max_iterations_exceeded:6` 后，下一窗口又漂移回另一类 heartbeat 结构化失败。

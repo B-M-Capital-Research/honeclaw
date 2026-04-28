@@ -7,6 +7,21 @@
 
 ## 修复进展
 
+- `2026-04-29 04:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `03:30-04:02` 两轮 heartbeat 窗口继续在 `JsonEmptyStatus / Empty / JsonNoop / execution_failed` 之间漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `25` 条 started 行、`18` 条 `noop + skipped_noop`、`5` 条 `completed + sent` 与 `2` 条 `execution_failed + skipped_error`。
+  - `03:30` 窗口仍有明显结构化退化：
+    - `parse_kind=JsonEmptyStatus`：`9493`（`Monitor_Watchlist_11`），`raw_preview` 直接泄露整包 watchlist 数据对象而不是受支持状态 JSON
+    - `parse_kind=Empty`：`9485`（`小米破位预警`）、`9489`（`Cerebras IPO与业务进展心跳监控`）
+    - 同窗也有 `JsonTriggered` 与 `completed + sent`（`9491`、`9494`），说明并非整批 scheduler 停摆，而是同批状态契约继续漂移
+  - `04:00` 窗口继续混跑：
+    - `parse_kind=Empty`：`9511`（`RKLB异动监控`）、`9515`（`ASTS 重大异动心跳监控`）
+    - `parse_kind=JsonNoop`：`9520`（`Monitor_Watchlist_11`），说明同一 job 在半小时内从 `JsonEmptyStatus` 又漂回另一种 `noop` 形态
+    - `execution_failed + skipped_error`：`9519`（`持仓重大事件心跳检测`，`error decoding response body`）、`9521`（`Cerebras IPO与业务进展心跳监控`，`max_iterations_exceeded:6`）
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账编码差异：
+    - `03:31:09.251` `Monitor_Watchlist_11` 记录 `parse_kind=JsonEmptyStatus raw_preview="{\"data\":[...]}"`
+    - `04:02:00.676` `持仓重大事件心跳检测` 记录 `runner_error ... error="LLM 错误: http error: error decoding response body"`
+    - `04:02:19.013` `Cerebras IPO与业务进展心跳监控` 记录 `runner_error ... error="max_iterations_exceeded:6"`
+  - 结论：到 `2026-04-29 04:02` 为止，本单仍稳定活跃；最新一小时已经从“静默 `noop` 漂移”进一步扩大成“`noop / sent / skipped_error` 混跑”，状态维持 `Fixing`、严重等级维持 `P2`。
 - `2026-04-29 03:03` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `02:30-03:01` 两轮 heartbeat 窗口继续在 `JsonNoop / Empty / JsonTriggered` 之间漂移，同时 Tavily 全 key 失败后 `web_search` 仍被工具层记成功：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `heartbeat=1 AND datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `24` 条 started 行和 `24` 条完成样本；完成样本里仍以 `noop + skipped_noop` 为主（`23` 条），只有 `1` 条真正 `completed + sent`。
   - `02:30` 窗口继续是 `11 noop + 1 completed` 的抖动态：
