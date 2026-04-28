@@ -8,6 +8,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 03:03 CST` 再次复核，started 残留继续在最新 `02:30`、`03:00` 两个 heartbeat 窗口实时新增：
+    - `02:30` 窗口 started 行为 `run_id=9424-9435`，同窗终态另起为 `run_id=9436-9447`
+    - `03:00` 窗口 started 行为 `run_id=9448-9459`，同窗终态另起为 `run_id=9460-9471`
+    - 其中 `run_id=9443`（`小米30港元破位预警`）已落成 `completed + sent + delivered=1`，但同窗 started 行 `run_id=9432` 仍永久保留 `running + pending`
+    - `03:00` 窗口的 12 个 job 则全部在一分钟内另起终态行，其中 `9460-9471` 全部已收口为 `noop + skipped_noop`，但 started 行 `9448-9459` 仍全部保留
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时坏态仍是占比最高的状态：
+    - `running + pending = 24`
+    - `noop + skipped_noop = 23`
+    - `completed + sent = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1352` 条，较 `02:03` 巡检时的 `1328` 继续上升，说明 started 行仍在随着半小时轮询稳定堆积
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 02:03 CST` 再次复核，started 残留继续在最新 `01:30`、`02:00` 两个 heartbeat 窗口实时新增：
     - `01:30` 窗口 started 行为 `run_id=9376-9387`，同窗终态另起为 `run_id=9388-9399`
     - `02:00` 窗口 started 行为 `run_id=9400-9411`，同窗终态另起为 `run_id=9412-9423`
@@ -163,6 +174,9 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-29 03:03 CST` 为止，最近一小时全量 scheduler 聚合里的 `running + pending` 仍为 `24` 条，继续高于同窗真正已收口的 `completed + sent = 1`。
+- `02:30` 与 `03:00` 新窗再次证明坏态持续实时产生：`run_id=9432` 这类 started 行写出后不到半分钟，同一 delivery window 的终态就已另起为 `run_id=9443 completed + sent`，而 `03:00` 整窗 `9448-9459` 也都在一分钟内另起为 `9460-9471 noop + skipped_noop`；started 行仍不会被覆盖。
+- 全库 `running + pending` 残留总量已升到 `1352` 条，较 `02:03` 的 `1328` 继续上涨，说明半小时巡检窗口每推进一轮都会继续留下新 started 脏行。
 - 到 `2026-04-29 01:03 CST` 为止，最近两小时聚合里的 `running + pending` 已达到 `52` 条，其中 heartbeat 残留 `48` 条、普通 scheduler 残留 `4` 条，仍高于同窗真正已收口的 `completed + sent = 3`。
 - `00:30` 与 `01:00` 新窗再次证明坏态持续实时产生：`run_id=9336/9362` 这类 started 行写出后不到一分钟，同一 delivery window 的终态就已经另起为 `9347/9370` 的 `completed + sent`，started 行仍不会被覆盖。
 - 全库 `running + pending` 残留总量已升到 `1304` 条，较 `00:03` 的 `1280` 继续上涨，说明半小时巡检窗口每推进一轮都会继续留下新 started 脏行。

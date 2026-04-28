@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-04-29 03:03` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `02:30-03:01` 两轮 heartbeat 窗口继续在 `JsonNoop / Empty / JsonTriggered` 之间漂移，同时 Tavily 全 key 失败后 `web_search` 仍被工具层记成功：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `heartbeat=1 AND datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `24` 条 started 行和 `24` 条完成样本；完成样本里仍以 `noop + skipped_noop` 为主（`23` 条），只有 `1` 条真正 `completed + sent`。
+  - `02:30` 窗口继续是 `11 noop + 1 completed` 的抖动态：
+    - `parse_kind=Empty`：`9436`（`CAI破位预警`）、`9437`（`全天原油价格3小时播报`）、`9438`（`TEM大事件心跳监控`）、`9439`（`Cerebras IPO与业务进展心跳监控`）、`9440`（`ASTS 重大异动心跳监控`）、`9441`（`RKLB异动监控`）、`9442`（`TEM破位预警`）、`9444`（`小米破位预警`）、`9445`（`ORCL 大事件监控`）、`9446`（`Monitor_Watchlist_11`）、`9447`（`持仓重大事件心跳检测`）
+    - `parse_kind=JsonTriggered`：`9443`（`小米30港元破位预警`）成功送达
+  - `03:00` 窗口再次漂成 `Empty / JsonNoop` 的混合形态：
+    - `parse_kind=Empty`：`9460`（`RKLB异动监控`）、`9461`（`小米破位预警`）、`9462`（`全天原油价格3小时播报`）、`9463`（`CAI破位预警`）、`9465`（`TEM大事件心跳监控`）、`9466`（`ORCL 大事件监控`）、`9467`（`Cerebras IPO与业务进展心跳监控`）、`9468`（`ASTS 重大异动心跳监控`）、`9469`（`Monitor_Watchlist_11`）、`9470`（`小米30港元破位预警`）、`9471`（`持仓重大事件心跳检测`）
+    - `parse_kind=JsonNoop`：`9464`（`TEM破位预警`）
+  - `data/runtime/logs/sidecar.log` 证明同窗 Tavily 检索继续处于“全 key 失败但工具层伪成功”的退化形态：
+    - `03:00:20.567-03:00:21.275` 连续记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`
+    - 但坏态后仍继续记录 `tool_execute_success name=web_search`，并最终让 `全天原油价格3小时播报`、`小米30港元破位预警` 等多条 heartbeat 收口为 `Empty` 或 `JsonNoop`
+  - 结论：到 `2026-04-29 03:03` 为止，本单仍稳定活跃；最新两轮 heartbeat 仍未恢复成稳定纯 JSON 协议，状态维持 `Fixing`、严重等级维持 `P2`。
 - `2026-04-29 02:03` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `01:30-02:02` 两轮 heartbeat 窗口继续在 `JsonNoop / Empty / JsonTriggered` 之间漂移，同时 Tavily 全 key 失败后 `web_search` 仍被工具层记成功：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `heartbeat=1 AND datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `24` 条 started 行和 `24` 条完成样本；完成样本里仍以 `noop + skipped_noop` 为主（`22` 条），只有 `2` 条真正 `completed + sent`。
   - `01:30` 窗口继续是 `11 noop + 1 completed` 的抖动态：

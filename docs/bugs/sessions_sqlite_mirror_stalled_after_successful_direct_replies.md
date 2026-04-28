@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 03:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T03:01:38.036394+08:00`（`run_id=9471`，`持仓重大事件心跳检测`），且最近一小时已新增 `48` 条 run，说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-29 03:00:13-03:01:38` 连续记录 12 个 Feishu heartbeat job 的 `run_finish` / `parse_kind` 收口，以及 `02:30:20` 的 `run_id=9443` 成功送达，说明最新一小时调度主链路仍在真实推进。
+  - 但 `data/sessions.sqlite3` 最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，说明即使调度台账继续写入，同一 sqlite 文件里的会话镜像表仍完全没有前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 02:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -258,6 +266,12 @@
 3. 出站链路继续成功分段发送，`reply.send` 记录 `segments.sent`。
 4. 按预期，这轮 user / assistant turn 应同步进入 `data/sessions.sqlite3` 的 `sessions` 与 `session_messages`。
 5. 实际上 sqlite 会话镜像仍停在前一日下午，导致最近成功会话在巡检和任何依赖该镜像的功能里完全不可见。
+
+## 当前实现效果
+
+- 到 `2026-04-29 03:03 CST` 为止，`sessions` / `session_messages` 的最新时间戳仍停在 `2026-04-27T16:54:20+08:00`，距离当前已超过 34 小时。
+- 最近一小时 `cron_job_runs` 继续新增 `48` 条调度记录，并且 `02:30` 窗口仍有 `run_id=9443` 成功送达；说明 sqlite 文件本身还在持续写入，但会话镜像表完全没有跟上。
+- 这已经不只是“直聊成功但镜像缺失”，而是任何依赖 `sessions` / `session_messages` 的最近窗口巡检都会被迫失明；因此状态维持 `New`、严重等级维持 `P2`。
 
 ## 期望效果
 
