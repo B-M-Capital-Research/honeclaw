@@ -173,6 +173,31 @@ body {
 .star-badge:hover {
   background: #e2e8f0;
 }
+.pub-contact-link,
+.header-contact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pub-contact-link::before,
+.header-contact-link::before {
+  content: "@";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 800;
+}
+.pub-contact-label {
+  color: #94a3b8;
+  font-weight: 600;
+}
 .divider-v {
   width: 1px;
   height: 24px;
@@ -648,6 +673,23 @@ body {
   .header-socials,
   .divider-v,
   .mobile-hide {
+    display: none !important;
+  }
+  .header-contact-link {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    border-radius: 999px !important;
+  }
+  .header-contact-link::before {
+    width: 20px;
+    height: 20px;
+  }
+  .header-contact-text,
+  .pub-contact-email,
+  .pub-contact-label {
     display: none !important;
   }
   .lang-switch {

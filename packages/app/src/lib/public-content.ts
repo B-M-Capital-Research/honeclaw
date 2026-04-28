@@ -29,6 +29,11 @@ const CONTENT_ZH = {
     menu_aria: "菜单",
     locale_zh: "中文",
     locale_en: "EN",
+    contact_label: "联系",
+    contact_wechat_label: "微信",
+    contact_email_label: "邮箱",
+    contact_wechat: "xiaobamang6677",
+    contact_email: "bm@hone-claw.com",
     github_url: "https://github.com/B-M-Capital-Research/honeclaw",
   },
 
@@ -513,7 +518,7 @@ const CONTENT_ZH = {
       tab_invite: "邀请码激活",
       hint_password: "已有账号：使用手机号 + 个人密码登录。",
       hint_invite:
-        "新用户首次进入：凭邀请码激活账号。没有邀请码？可加微信 xiaobamang6677 或发邮件到 bamangkeji@163.com 获取；也务必帮忙点一个 Star。",
+        "新用户首次进入：凭邀请码激活账号。没有邀请码？可加微信 xiaobamang6677 或发邮件到 bm@hone-claw.com 获取；也务必帮忙点一个 Star。",
       phone_label: "手机号",
       phone_placeholder: "例如 13800138000",
       phone_aria: "手机号",
@@ -848,6 +853,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     menu_aria: "Menu",
     locale_zh: "中文",
     locale_en: "EN",
+    contact_label: "Contact",
+    contact_wechat_label: "WeChat",
+    contact_email_label: "Email",
+    contact_wechat: "xiaobamang6677",
+    contact_email: "bm@hone-claw.com",
     github_url: "https://github.com/B-M-Capital-Research/honeclaw",
   },
 
@@ -1332,7 +1342,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       tab_invite: "Invite code",
       hint_password: "Already have an account: sign in with phone + password.",
       hint_invite:
-        "First time in: activate your account with an invite code. Need one? Add WeChat xiaobamang6677 or email bamangkeji@163.com; please also star us on GitHub.",
+        "First time in: activate your account with an invite code. Need one? Add WeChat xiaobamang6677 or email bm@hone-claw.com; please also star us on GitHub.",
       phone_label: "Phone",
       phone_placeholder: "e.g. +1 555 0134",
       phone_aria: "Phone",

@@ -41,6 +41,7 @@ export function PublicNav() {
     if (page() !== path) return "transparent"
     return transparent() ? "rgba(255,255,255,0.08)" : "rgba(245,158,11,0.08)"
   }
+  const contactHref = () => `mailto:${C.contact_email}`
 
   // NOTE: store `labelKey` (not pre-resolved strings) so each render re-reads
   // the CONTENT proxy inside JSX and tracks the locale signal.
@@ -145,6 +146,31 @@ export function PublicNav() {
           >
             {C.chat}
           </button>
+
+          <a
+            href={contactHref()}
+            class="pub-contact-link"
+            title={`${C.contact_wechat_label}: ${C.contact_wechat}`}
+            aria-label={`${C.contact_email_label}: ${C.contact_email}`}
+            style={{
+              "margin-left": "10px",
+              "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+              "font-size": "12px",
+              "font-weight": "600",
+              color: transparent() ? "rgba(255,255,255,0.78)" : "#334155",
+              "text-decoration": "none",
+              padding: "6px 10px",
+              "border-radius": "6px",
+              border: transparent() ? "1px solid rgba(255,255,255,0.18)" : "1px solid rgba(0,0,0,0.10)",
+              background: transparent() ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.84)",
+              transition: "all 0.2s",
+              "letter-spacing": "0",
+              "white-space": "nowrap",
+            }}
+          >
+            <span class="pub-contact-label">{C.contact_label}</span>
+            <span class="pub-contact-email">{C.contact_email}</span>
+          </a>
 
           <a
             href={C.github_url}
@@ -338,6 +364,31 @@ export function PublicNav() {
             >
               GitHub ↗
             </a>
+          </div>
+          <div
+            class="pub-mobile-contact"
+            style={{
+              "margin-top": "14px",
+              padding: "12px",
+              "border-radius": "12px",
+              border: "1px solid rgba(15,23,42,0.08)",
+              background: "#f8fafc",
+              "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+            }}
+          >
+            <div style={{ "font-size": "12px", "font-weight": "700", color: "#64748b", "margin-bottom": "8px" }}>
+              {C.contact_label}
+            </div>
+            <div style={{ display: "grid", gap: "6px", "font-size": "13px", color: "#0f172a" }}>
+              <div>
+                <span style={{ color: "#64748b" }}>{C.contact_wechat_label}: </span>
+                <span style={{ "font-weight": "700" }}>{C.contact_wechat}</span>
+              </div>
+              <a href={contactHref()} style={{ color: "#0f172a", "font-weight": "700", "text-decoration": "none", "word-break": "break-word" }}>
+                <span style={{ color: "#64748b", "font-weight": "500" }}>{C.contact_email_label}: </span>
+                {C.contact_email}
+              </a>
+            </div>
           </div>
         </div>
       </Show>

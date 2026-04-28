@@ -34,13 +34,34 @@ function Header() {
       </div>
 
       <div class="header-actions">
+        <a
+          href={`mailto:${C.contact_email}`}
+          class="header-contact-link"
+          title={`${C.contact_wechat_label}: ${C.contact_wechat}`}
+          aria-label={`${C.contact_email_label}: ${C.contact_email}`}
+          style={{
+            padding: "0 12px",
+            height: "34px",
+            "border-radius": "999px",
+            border: "1.5px solid #e2e8f0",
+            background: "rgba(255,255,255,0.72)",
+            color: "#334155",
+            "text-decoration": "none",
+            "font-size": "12px",
+            "font-weight": "700",
+            "white-space": "nowrap",
+          }}
+        >
+          <span class="header-contact-text">{C.contact_email}</span>
+        </a>
+
         <div class="lang-switch">
           <button onClick={() => setLocale("zh")} class={useLocale() === "zh" ? "active" : ""}>中</button>
           <button onClick={() => setLocale("en")} class={useLocale() === "en" ? "active" : ""}>EN</button>
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>
-          <button onClick={() => navigate("/")} class="btn-roadmap-nav">
+          <button onClick={() => navigate("/")} class="btn-roadmap-nav mobile-hide">
             {useLocale() === 'zh' ? '返回首页' : 'Home'}
           </button>
           <button onClick={() => navigate("/chat")} class="btn-chat-nav">{C.chat}</button>
