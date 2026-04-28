@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-04-28 21:01` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `21:00-21:01` 的最新整点窗口继续在 `JsonNoop / Empty` 间混跑，同时 Tavily 全 key 已不可用却仍被工具层记成功：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= datetime('now','-1 hour')` 聚合，最近一小时 heartbeat 相关坏态已扩大到 `parse_kind=JsonNoop 141`、`parse_kind=Empty 107`。
+  - 其中 `21:00` 整点新窗已落成 12 条 heartbeat 完成样本，仍全部收口为 `noop + skipped_noop + delivered=0`，但结构化契约继续不统一：
+    - `parse_kind=JsonNoop`：`9150`（`TEM破位预警`）、`9151`（`全天原油价格3小时播报`）、`9152`（`CAI破位预警`）、`9153`（`小米30港元破位预警`）、`9155`（`RKLB异动监控`）、`9157`（`持仓重大事件心跳检测`）、`9158`（`TEM大事件心跳监控`）、`9160`（`ORCL 大事件监控`）、`9161`（`ASTS 重大异动心跳监控`）
+    - `parse_kind=Empty`：`9154`（`小米破位预警`）、`9156`（`Monitor_Watchlist_11`）、`9159`（`Cerebras IPO与业务进展心跳监控`）
+  - `data/runtime/logs/sidecar.log` 证明同窗 Tavily 检索仍在“全 key 失败但工具层伪成功”的退化形态下运行：
+    - `21:00:20.857-21:00:37.398` 至少 5 次连续记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`
+    - 但对应紧接着仍记录 `tool_execute_success name=web_search`
+  - 同窗空返回继续被吞成合法 `noop`：
+    - `21:00:47.555` `小米破位预警`：`parse_kind=Empty raw_preview=""`
+    - `21:01:05.958` `Monitor_Watchlist_11`：`parse_kind=Empty raw_preview=""`
+    - `21:01:20.302` `Cerebras IPO与业务进展心跳监控`：`parse_kind=Empty raw_preview=""`
+  - 结论：到 `2026-04-28 21:01` 为止，本单仍稳定活跃；最新整点窗口只是从 `20:00` 的“6 Empty / 6 JsonNoop”漂到“3 Empty / 9 JsonNoop”，但坏态本身没有收口，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 20:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `20:00-20:02` 的最新整点窗口继续维持 `JsonNoop / Empty` 混跑：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`20:00` 窗口目前已落成 12 条 heartbeat 完成样本，全部收口为 `noop + skipped_noop + delivered=0`，但结构化契约仍不统一：
     - `parse_kind=JsonNoop`：`9091`（`全天原油价格3小时播报`）、`9093`（`TEM破位预警`）、`9095`（`RKLB异动监控`）、`9097`（`ORCL 大事件监控`）、`9101`（`小米30港元破位预警`）、`9102`（`Monitor_Watchlist_11`）

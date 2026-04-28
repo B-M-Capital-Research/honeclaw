@@ -8,6 +8,20 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-28 21:01 CST` 再次复核，started 残留继续在最新 `20:00`、`20:30`、`21:00` 三个窗口滚动累积，而且已不只停留在 heartbeat：
+    - `20:00` 窗口 started 行为 `run_id=9077-9090`，同窗终态另起为 `run_id=9091-9103`
+    - `20:30` 窗口 started 行为 `run_id=9110-9119`，同窗终态另起为 `run_id=9120-9133`
+    - `21:00` 窗口 started 行为 `run_id=9134-9149`，其中 heartbeat/普通 scheduler 的终态又另起为 `run_id=9150-9164`
+    - 仅最近一小时窗口内，新增 `running + pending` 残留已扩大到 `523` 条；其中 `21:00` 同窗 `晚9点盘前推演(XME及加密ETF)`、`持仓与关注股交易日晚间合并研判`、`美股盘前分析与个股推荐` 虽已分别落成 `run_id=9162/9163/9164` 的 `completed + sent + delivered=1`，原 started 行 `run_id=9140/9147/9141` 仍保留 `running + pending`
+  - 按 `executed_at >= datetime('now','-1 hour')` 的最近一小时全量 scheduler 聚合，当前坏态已进一步扩大为：
+    - `running + pending = 523`
+    - `noop + skipped_noop = 326`
+    - `execution_failed + skipped_error = 163`
+    - `completed + sent = 34`
+    - `completed + send_failed = 2`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1199` 条，较 `20:02` 巡检时的 `1169` 继续上升，说明新窗 started 行仍在持续堆积
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-28 20:02 CST` 再次复核，最新 `19:00`、`19:30`、`20:00` 三个窗口继续把 started 行与终态行拆成两批记录：
     - `19:00` 窗口 started 行为 `run_id=9029-9040`，同窗终态行另起为 `run_id=9041-9052`
     - `19:30` 窗口 started 行为 `run_id=9053-9064`，同窗终态行另起为 `run_id=9065-9076`
@@ -103,6 +117,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-28 21:01 CST` 为止，最近一小时全量 scheduler 聚合里的 `running + pending` 已抬升到 `523` 条，全库残留总量升到 `1199` 条。
+- `21:00` 新窗再次证明坏态仍在实时产生：`run_id=9140/9141/9147` 等 started 行写出后不到三分钟，终态就已另起为 `9162/9164/9163` 的 `completed + sent`，started 行仍不会被覆盖。
 - 最近一小时 `cron_job_runs` 汇总到 `2026-04-28 19:01 CST` 时，仅 heartbeat 三个窗口就已累计 `36` 条 `running + pending` 残留；按最近一小时全量 scheduler 聚合则进一步放大到 `446` 条 `running + pending`。
 - `19:00` 新窗再次证明坏态不是历史遗留脏数据：`run_id=9029-9040` 的 started 行刚写出不到两分钟，同窗终态就已经另起为 `9041-9052`，started 行仍不会被覆盖。
 - 最近一小时 `cron_job_runs` 汇总到 `2026-04-28 18:03 CST` 已进一步扩大成 `24` 条 `running + pending` 残留，对应两个窗口各 `12` 条 started 行全部没有收口。
