@@ -6,6 +6,17 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+    - `2026-04-28 12:02 CST` 复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时没有任何新增镜像。
+    - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 但同库 `cron_job_runs` 已继续写到 `2026-04-28T12:02:08.803575+08:00`（`run_id=8716`，`每日公司资讯与分析总结`，`completed + sent + delivered=1`），说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+  - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+    - `2026-04-28 12:00:00.471`：Feishu scheduler 直达 session `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 记录新的 `recv` 与 `step=session.persist_user detail=done`
+    - `2026-04-28 12:02:03.414`：同一 session 完成 `step=session.persist_assistant detail=done`
+    - `2026-04-28 12:02:03.414331Z`：同一轮落成 `done ... success=true elapsed_ms=122928 iterations=1 tools=1(Tool: hone/skill_tool) reply.chars=3979`
+    - `2026-04-28T12:02:08.803575+08:00`：同窗 `cron_job_runs.run_id=8716` 记录这轮任务已 `completed + sent + delivered=1`
+    - 说明到 `12:02` 为止，至少又有 1 条新的 Feishu 成功会话完整走完执行与发送，但 sqlite 会话镜像仍没有任何推进。
+  - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 11:01 CST` 复核：`sessions` 与 `session_messages` 最近一小时仍然没有任何新 `updated_at` / `last_message_at` / `timestamp` / `imported_at`。
     - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍停在 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -105,6 +116,8 @@
 ## 当前实现效果
 
 - 到 `2026-04-28 11:01 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 11:01:19+08:00`。
+- 到 `2026-04-28 12:02 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 12:02:08+08:00`。
+- 到 `2026-04-28 12:02` 为止，至少又有 1 条 Feishu scheduler 直达会话完成 `recv -> session.persist_assistant -> success=true -> delivered=1`，但仍没有任何一条进入 sqlite 会话镜像。
 - 到 `2026-04-28 10:51` 为止，至少又有 1 条 Feishu 直聊成功完成 `persist_assistant + reply.send + success=true`，但仍没有任何一条进入 sqlite 会话镜像。
 - 到 `2026-04-28 10:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 10:00:43+08:00`。
 - 到 `2026-04-28 09:33` 为止，至少又有 2 条 Discord 群聊 turn 完成 `persist_user/persist_assistant + reply.send + success=true`，但仍没有任何一条进入 sqlite 会话镜像。
