@@ -7,6 +7,28 @@
 
 ## 修复进展
 
+- `2026-04-28 10:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且坏态进一步漂移到 `ContextOverflowNoop` 与自然语言 `noop` 混合：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`09:30` 与 `10:00` 两个窗口合计共有 22 条 heartbeat 完成样本，仍然没有任何一条恢复成合法单段 JSON。
+  - `09:30` 窗口：
+    - `execution_failed + skipped_error + delivered=0`：`8589`（`小米30港元破位预警`）、`8591`（`小米破位预警`）、`8592`（`ORCL 大事件监控`）、`8593`（`ASTS 重大异动心跳监控`）、`8594`（`RKLB异动监控`）、`8596`（`Monitor_Watchlist_11`）
+    - `noop + skipped_noop + delivered=0`：`8587`（`全天原油价格3小时播报`）、`8588`（`CAI破位预警`）、`8590`（`TEM破位预警`）、`8595`（`TEM大事件心跳监控`）、`8597`（`持仓重大事件心跳检测`）
+  - `10:00` 窗口：
+    - `execution_failed + skipped_error + delivered=0`：`8610`（`全天原油价格3小时播报`）、`8611`（`小米30港元破位预警`）、`8612`（`小米破位预警`）、`8613`（`TEM破位预警`）、`8616`（`TEM大事件心跳监控`）、`8619`（`ASTS 重大异动心跳监控`）、`8620`（`Monitor_Watchlist_11`）
+    - `noop + skipped_noop + delivered=0`：`8614`（`CAI破位预警`）、`8615`（`ORCL 大事件监控`）、`8617`（`RKLB异动监控`）、`8618`（`持仓重大事件心跳检测`）
+  - `data/runtime/logs/sidecar.log` 证明上述样本依旧不是契约要求的单段 JSON，而且坏态继续扩散：
+    - `10:00:11.034` `小米30港元破位预警`：`parse_kind=PlainTextSuppressed`，`<think>` 后直接输出 `noop`
+    - `10:00:12.939` `小米破位预警`：`parse_kind=PlainTextSuppressed`，直接输出“当前关键数据未完成校验，无法给出精确结论”
+    - `10:00:13.167` `TEM破位预警`：`parse_kind=PlainTextSuppressed`，输出英文自然语言判定“不触发”
+    - `10:00:13.446` `CAI破位预警`：`parse_kind=JsonEmptyStatus`
+    - `10:00:21.591` `ORCL 大事件监控`：`parse_kind=ContextOverflowNoop`，上游直接报 `context window exceeds limit (2013)` 后被当成 `noop`
+    - `10:00:21.800` `TEM大事件心跳监控`：`parse_kind=PlainTextSuppressed`
+    - `10:00:23.201` `RKLB异动监控`：`parse_kind=JsonEmptyStatus`
+    - `10:00:31.856` `持仓重大事件心跳检测`：`parse_kind=ContextOverflowNoop`，同样以 `context window exceeds limit (2013)` 收口为伪 `noop`
+    - `10:00:33.144` `ASTS 重大异动心跳监控`：`parse_kind=PlainTextSuppressed`
+    - `10:00:43.428` `Monitor_Watchlist_11`：`parse_kind=PlainTextSuppressed`
+  - 同一时间窗并非 scheduler 全局停摆：`run_id=8598`（`每日美股降息概率推送`）在 `2026-04-28T09:31:29.956753+08:00` 仍成功送达 `completed + sent + delivered=1`。
+  - 结论：到 `2026-04-28 10:03` 为止，这条缺陷仍稳定在线，且最新整点窗口已经从“`PlainTextSuppressed` / `JsonEmptyStatus` 摆动”继续恶化为“结构化坏态 + `ContextOverflowNoop` 混合漂移”；状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 09:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且最新整点窗口仍没有任何一条 heartbeat 恢复成合法单段 JSON：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`09:00` 窗口共有 11 条 heartbeat 完成样本：
     - `execution_failed + skipped_error + delivered=0`：`8561`（`ORCL 大事件监控`）、`8562`（`TEM大事件心跳监控`）、`8563`（`TEM破位预警`）、`8565`（`小米30港元破位预警`）、`8567`（`RKLB异动监控`）、`8568`（`全天原油价格3小时播报`）、`8569`（`Monitor_Watchlist_11`）、`8570`（`ASTS 重大异动心跳监控`）、`8571`（`持仓重大事件心跳检测`）
