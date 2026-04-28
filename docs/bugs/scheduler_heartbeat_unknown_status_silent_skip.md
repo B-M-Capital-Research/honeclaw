@@ -7,6 +7,21 @@
 
 ## 修复进展
 
+- `2026-04-28 14:00` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `14:00-14:01` 的最新整点窗口继续在 `JsonNoop / Empty` 间混跑，并额外叠加了 Tavily 全 key 不可用但工具层仍记成功的质量退化：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`14:00` 窗口目前已落成 12 条 heartbeat 完成样本，仍全部是 `noop + skipped_noop + delivered=0`，没有任何一条恢复成稳定单一契约或进入 `triggered/sent`。
+  - 最新 12 条样本分布如下：
+    - `parse_kind=JsonNoop`：`8802`（`TEM破位预警`）、`8803`（`CAI破位预警`）、`8805`（`全天原油价格3小时播报`）、`8806`（`小米30港元破位预警`）、`8809`（`Cerebras IPO与业务进展心跳监控`）、`8810`（`RKLB异动监控`）
+    - `parse_kind=Empty`：`8801`（`ASTS 重大异动心跳监控`）、`8804`（`TEM大事件心跳监控`）、`8807`（`持仓重大事件心跳检测`）、`8808`（`小米破位预警`）、`8811`（`Monitor_Watchlist_11`）、`8812`（`ORCL 大事件监控`）
+  - `data/runtime/logs/sidecar.log` 证明这批 `Empty` 样本仍是 `raw_chars=0` 的空返回却被当成合法 `noop`：
+    - `14:00:24.321` `ASTS 重大异动心跳监控`：`parse_kind=Empty raw_preview=""`
+    - `14:00:31.195` `TEM大事件心跳监控`：`parse_kind=Empty raw_preview=""`
+    - `14:00:36.043` `持仓重大事件心跳检测`：`parse_kind=Empty raw_preview=""`
+    - `14:00:46.220` `小米破位预警`：`parse_kind=Empty raw_preview=""`
+    - `14:01:13.348` `Monitor_Watchlist_11`：`parse_kind=Empty raw_preview=""`
+    - `14:01:25.926` `ORCL 大事件监控`：`parse_kind=Empty raw_preview=""`
+  - 同窗 `14:00:43.967-14:00:46.889` 还连续两次触发 `web_search`，4 个 Tavily key 全部因 quota / usage limit 被拒绝，日志明确记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层仍回落为 `tool_execute_success name=web_search`；说明 heartbeat 链路不仅没有恢复到单一结构化状态，还继续在“搜索工具不可用但流程记成功”的退化条件下运行。
+  - 结论：到 `2026-04-28 14:01` 为止，本单仍稳定活跃；最新整点窗口延续 `JsonNoop / Empty` 混跑，且 Tavily 配额耗尽继续放大“伪成功 + 静默跳过”的质量风险，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 13:00` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `12:30` 的单次真实触发并没有带来结构化链路整体恢复；同一小时其余 heartbeat 继续在 `JsonNoop / Empty` 间混跑：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`12:30` 与 `13:00` 两个窗口共有 23 条 heartbeat 完成样本；其中只有 `run_id=8739`（`持仓重大事件心跳检测`）在 `12:31:02+08:00` 落成 `completed + sent + delivered=1`，其余 22 条仍全部是 `noop + skipped_noop + delivered=0`。
   - `12:30` 窗口 11 条未触发 heartbeat 样本分布如下：
