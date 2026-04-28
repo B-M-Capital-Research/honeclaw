@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 01:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T01:01:16.946107+08:00`（`run_id=9375`，`Monitor_Watchlist_11`），说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-04-29 01:03:08`：Feishu 直聊 `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 新收到一条图片消息，已记录 `step=message.accepted`
+  - `2026-04-29 01:03:10`：同一条消息继续记录 `step=session.persist_user detail=done`，说明新 user turn 已进入运行时持久化链路
+  - 同一时刻还记录 `step=reply.placeholder detail=sent` 与 `step=agent.run detail=start`；`01:03:30` 已进入 `runner.tool` / `acp.permission`
+  - 这说明即使到 `01:03`，真实会话流量仍在继续进入 direct 链路，但 sqlite 会话镜像仍没有任何前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 00:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -247,6 +257,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-29 01:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-29 01:01:16+08:00`。
+- 到 `2026-04-29 01:03` 为止，最新 Feishu 图片直聊已完成 `message.accepted + session.persist_user + placeholder + agent.run`，但 sqlite 会话镜像仍没有任何前移，说明停滞不只影响 assistant 收口后的回写，也已覆盖最新 user turn 镜像。
 - 到 `2026-04-29 00:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-29 00:02:43+08:00`。
 - 到 `2026-04-28 23:58` 为止，最近一小时至少又有 3 条 Feishu 直聊成功完成 `persist_assistant + success=true + reply.send` 语义，但仍没有任何一条进入 sqlite 会话镜像。
 - 到 `2026-04-28 22:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 22:02:07+08:00`。

@@ -8,6 +8,20 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 01:03 CST` 再次复核，started 残留继续在最新 `00:30`、`01:00` 两个 heartbeat 窗口实时新增，而且普通 scheduler 的 started 行也还在同窗并存：
+    - `00:30` 窗口 started 行为 `run_id=9328-9339`，同窗终态另起为 `run_id=9340-9351`
+    - `01:00` 窗口 heartbeat started 行为 `run_id=9352-9363`，同窗终态另起为 `run_id=9364-9375`
+    - 其中 `run_id=9347`（`小米30港元破位预警`）与 `run_id=9370`（`小米破位预警`）都已分别落成 `completed + sent + delivered=1`，但同窗 started 行 `9336` 与 `9362` 仍永久保留 `running + pending`
+  - 按 `datetime(executed_at) >= datetime('now','-2 hours')` 聚合，最近两小时坏态仍是占比最高的状态：
+    - `running + pending + heartbeat=1 = 48`
+    - `noop + skipped_noop + heartbeat=1 = 46`
+    - `running + pending + heartbeat=0 = 4`
+    - `noop + skipped_noop + heartbeat=0 = 3`
+    - `completed + sent + heartbeat=1 = 2`
+    - `completed + sent + heartbeat=0 = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1304` 条，较 `00:03` 巡检时的 `1280` 继续上升，说明 started 行仍在随着半小时轮询稳定堆积
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 00:03 CST` 再次复核，started 残留继续在最新 `23:30`、`00:00` 两个 heartbeat 窗口实时新增，而且普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
     - `23:30` 窗口 started 行为 `run_id=9272-9284`，同窗终态另起为 `run_id=9285-9297`
     - `00:00` 窗口 heartbeat started 行为 `run_id=9298-9310`，同窗终态另起为 `run_id=9313-9324`
@@ -139,6 +153,9 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-29 01:03 CST` 为止，最近两小时聚合里的 `running + pending` 已达到 `52` 条，其中 heartbeat 残留 `48` 条、普通 scheduler 残留 `4` 条，仍高于同窗真正已收口的 `completed + sent = 3`。
+- `00:30` 与 `01:00` 新窗再次证明坏态持续实时产生：`run_id=9336/9362` 这类 started 行写出后不到一分钟，同一 delivery window 的终态就已经另起为 `9347/9370` 的 `completed + sent`，started 行仍不会被覆盖。
+- 全库 `running + pending` 残留总量已升到 `1304` 条，较 `00:03` 的 `1280` 继续上涨，说明半小时巡检窗口每推进一轮都会继续留下新 started 脏行。
 - 到 `2026-04-29 00:03 CST` 为止，最近一小时全量 scheduler 聚合里的 `running + pending` 仍为 `28` 条，继续高于同窗真正已收口的 `completed + sent = 1`。
 - `00:00` 同窗的普通 scheduler 样本再次证明坏态不只存在于 heartbeat：`run_id=9300/9301` 先落成 `running + pending`，同一 delivery window 的真实终态另起为 `run_id=9325/9326 noop + skipped_noop`。
 - 全库 `running + pending` 残留总量已升到 `1280` 条，较 `22:02` 的 `1227` 继续上涨，说明新窗 started 行仍在持续堆积。

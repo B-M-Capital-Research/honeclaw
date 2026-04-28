@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-29 00:30-01:01 最新巡检样本：
+      - `job_name=小米30港元破位预警`
+      - `run_id=9347`，`executed_at=2026-04-29T00:30:32.629273+08:00`，已落成 `completed + sent + delivered=1`
+      - `response_preview` 明确写出 `当前价 29.92 港元，跌破 30 港元心理止损/观察线`，说明 `00:30` 这一轮已经把“小米跌破 30 港元”作为触发事实送达。
+      - 仅约 30 分钟后，同一用户目标下另一条 heartbeat `job_name=小米破位预警` 的 `run_id=9370`，`executed_at=2026-04-29T01:00:37.550335+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把同一 `最新价 29.92 港元 / 跌破 30 港元` 条件重新包装成 `【小米集团 01810.HK 破位预警】` 送达；两轮之间没有看到新的收盘、开盘或额外公司级催化，只是同一阈值状态在跨 job 的半小时窗口里被再次发送。
+      - `data/runtime/logs/sidecar.log` 在 `2026-04-29 01:00:35.339-01:00:35.339` 同步记录 `job_id=j_671d3cd3` 的 `parse_kind=JsonTriggered` 与成功 `deliver`；同窗其它同类 heartbeat 大多仍是 `Empty` 或 `JsonNoop`，说明当前重复提醒并不是由整批重跑导致，而是去重基线未能跨小米两条预警任务共享。
+      - 这组最新样本说明重复提醒缺陷仍然活跃，并已扩散到“同一价格阈值由不同 heartbeat job 在相邻窗口重复送达”的形态。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-26 01:30-02:01 最新巡检样本：
       - `job_name=持仓重大事件心跳检测`
       - `run_id=6394`，`executed_at=2026-04-26T01:30:53.216343+08:00`，仍是 `noop + skipped_noop + delivered=0`；`sidecar.log` 明确把“上一轮已提醒的 RKLB/ORCL/ASTS 旧事件”作为去重基线。
