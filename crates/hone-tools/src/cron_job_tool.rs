@@ -46,7 +46,7 @@ impl Tool for CronJobTool {
     }
 
     fn description(&self) -> &str {
-        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。remove 属于破坏性操作：必须先拿到精确 job_id，再显式传入 confirm=\"yes\" 才会真正删除；未确认前工具只会返回候选任务和确认指引。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。"
+        "管理定时任务（每日/每周/工作日/交易日/心跳检测）。支持操作：list（列出所有任务）、add（添加任务）、remove（删除任务）、update（修改任务）。update/remove 可通过 job_id 或 name 定位任务，name 支持模糊匹配（含子串即可）。remove 属于破坏性操作：必须先拿到精确 job_id，再显式传入 confirm=\"yes\" 才会真正删除；未确认前工具只会返回候选任务和确认指引。对于没有具体执行时间、而是按条件轮询的任务，请使用 repeat=heartbeat；heartbeat 任务会每 30 分钟检查一次条件。\n\n**与 quiet_hours 的关系**：用户在 notification_prefs 设了 quiet_hours 后，所有 cron 任务**默认遵守**该勿扰区间——区间内到点的任务会被静音跳过（cron_job_runs 落 metadata.skipped='quiet_hours'）。若某条 cron 必须严守原时刻不能被静音（如盘前 06:55 复盘），update 时传 bypass_quiet_hours=true。add 暂不接受该字段，新建任务默认遵守 quiet_hours。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -148,6 +148,16 @@ impl Tool for CronJobTool {
                         .to_string(),
                 required: false,
                 r#enum: Some(vec!["yes".into()]),
+                items: None,
+            },
+            ToolParameter {
+                name: "bypass_quiet_hours".to_string(),
+                param_type: "boolean".to_string(),
+                description:
+                    "仅 update 使用；true=该任务忽略用户的 quiet_hours 静音区间，到点照常执行（如 06:55 盘前复盘）；false（默认）=遵守 quiet_hours，区间内被静音跳过"
+                        .to_string(),
+                required: false,
+                r#enum: None,
                 items: None,
             },
         ]
@@ -314,6 +324,7 @@ impl Tool for CronJobTool {
                         .filter_map(|item| item.as_str().map(|s| s.to_string()))
                         .collect::<Vec<_>>()
                 });
+                let bypass_quiet_hours = args.get("bypass_quiet_hours").and_then(|v| v.as_bool());
                 // Only treat `name` as a field to update when job_id is also provided;
                 // otherwise `name` is the search query.
                 let new_name: Option<String> = if !job_id.is_empty() {
@@ -415,6 +426,7 @@ impl Tool for CronJobTool {
                     enabled: None,
                     channel_target: None,
                     tags,
+                    bypass_quiet_hours,
                 };
 
                 match storage.update_job(&resolved_id, Some(actor), update, self.admin_bypass)? {

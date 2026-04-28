@@ -15,6 +15,7 @@ pub mod notification_prefs_tool;
 pub mod portfolio_tool;
 pub mod registry;
 pub mod restart_hone;
+pub mod schedule_view;
 pub mod skill_registry;
 pub mod skill_runtime;
 pub mod skill_tool;

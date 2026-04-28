@@ -13,7 +13,8 @@ use async_trait::async_trait;
 use hone_core::{ActorIdentity, HoneError, HoneResult};
 use hone_event_engine::Severity;
 use hone_event_engine::prefs::{
-    ALL_KIND_TAGS, FilePrefsStorage, NotificationPrefs, PrefsProvider, first_invalid_kind_tag,
+    ALL_KIND_TAGS, FilePrefsStorage, NotificationPrefs, PrefsProvider, QuietHours,
+    first_invalid_kind_tag,
 };
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -23,13 +24,27 @@ use crate::base::{Tool, ToolParameter};
 pub struct NotificationPrefsTool {
     prefs_dir: PathBuf,
     actor: Option<ActorIdentity>,
+    /// `get_overview` 聚合视图所需的上下文。HoneBotCore 构造时必传,
+    /// 保证用户问「我的推送怎么配的」时拿到的是含 cron + 全局 digest 的完整表格。
+    cron_jobs_dir: PathBuf,
+    global_digest: crate::schedule_view::GlobalDigestSlice,
+    portfolio_defaults: crate::schedule_view::PortfolioDigestDefaults,
 }
 
 impl NotificationPrefsTool {
-    pub fn new(prefs_dir: impl Into<PathBuf>, actor: Option<ActorIdentity>) -> Self {
+    pub fn new(
+        prefs_dir: impl Into<PathBuf>,
+        actor: Option<ActorIdentity>,
+        cron_jobs_dir: impl Into<PathBuf>,
+        global_digest: crate::schedule_view::GlobalDigestSlice,
+        portfolio_defaults: crate::schedule_view::PortfolioDigestDefaults,
+    ) -> Self {
         Self {
             prefs_dir: prefs_dir.into(),
             actor,
+            cron_jobs_dir: cron_jobs_dir.into(),
+            global_digest,
+            portfolio_defaults,
         }
     }
 
@@ -109,6 +124,11 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         "investment_global_style": prefs.investment_global_style,
         "investment_theses": prefs.investment_theses,
         "global_digest_floor_macro_picks": prefs.global_digest_floor_macro_picks,
+        "quiet_hours": prefs.quiet_hours.as_ref().map(|qh| json!({
+            "from": qh.from,
+            "to": qh.to,
+            "exempt_kinds": qh.exempt_kinds,
+        })),
     })
 }
 
@@ -140,6 +160,16 @@ impl Tool for NotificationPrefsTool {
          set_immediate_kinds 指定哪些 kind 强制升 High 即时推。\
          全局要闻 digest:set_global_digest_enabled 开关、\
          set_macro_floor_picks 设置宏观料底线条数(0-5)。\
+         **概览类问题**(用户问\"我的推送怎么配的\"/\"推送日程\"/\"都什么时候推什么\"/\"quiet 设了没\"等):\
+         调 get_overview 拿到拍平后的全部推送时刻 + 即时推配置 + quiet_hours,返回里有 display_text \
+         字段已经按调用方所在渠道(Discord 用代码块表 / Telegram 用 <pre> / Feishu+iMessage 用列表)\
+         渲染好,**直接整段 relay 给用户**,不要 dump 原始 prefs JSON,也不要把 display_text 拆开重写。\
+         勿扰时段(quiet_hours):set_quiet_hours 传 {from:\"23:00\", to:\"07:00\", exempt_kinds?:[...]} \
+         在区间内 hold 一切 immediate 推送 + 跳过 digest 触发,到 to 时刻把 hold 住的事件 + \
+         buffer 累积的 Medium/Low 合并成一条早间合集发出;过保鲜期事件直接 drop \
+         (PriceAlert/VolumeSpike 2h, Weekly52 8h, Social 12h, 其它事实性事件不过期)。\
+         exempt_kinds 命中的 kind 即使在 quiet 内仍立即推(例如想财报夜里也响:[\"earnings_released\"])。\
+         clear_quiet_hours 关掉勿扰。\
          **注意**:每只持仓的 thesis 与整体 investment_style 现在由系统每周自动从用户\
          自己写的公司画像(走 company_portrait skill)蒸馏,**不再支持手动通过本工具编辑**。\
          若用户问\"为什么我的 thesis 是 X / 想改 Y\",指引他更新对应公司画像即可,\
@@ -173,6 +203,9 @@ impl Tool for NotificationPrefsTool {
                     "set_immediate_kinds".into(),
                     "set_global_digest_enabled".into(),
                     "set_macro_floor_picks".into(),
+                    "set_quiet_hours".into(),
+                    "clear_quiet_hours".into(),
+                    "get_overview".into(),
                     "reset".into(),
                 ]),
                 items: None,
@@ -188,7 +221,9 @@ impl Tool for NotificationPrefsTool {
                     set_digest_windows 传 HH:MM 数组 (例 [\"19:00\",\"02:30\",\"09:00\"],空数组关 digest);\
                     set_price_high_pct 传数字 (0<x≤50,例 3.5);\
                     set_global_digest_enabled 传 true/false;\
-                    set_macro_floor_picks 传整数 0-5 (默认 1)。\
+                    set_macro_floor_picks 传整数 0-5 (默认 1);\
+                    set_quiet_hours 传 JSON 对象 {\"from\":\"HH:MM\", \"to\":\"HH:MM\", \"exempt_kinds\":[\"earnings_released\", ...]} (exempt_kinds 可省);\
+                    clear_quiet_hours 不需要 value。\
                     get/clear_allow/clear_block/enable/disable/reset 不需要 value。"
                     .to_string(),
                 required: false,
@@ -212,6 +247,29 @@ impl Tool for NotificationPrefsTool {
         match action.as_str() {
             "get" => {
                 return Ok(json!({ "status": "ok", "prefs": prefs_to_json(&prefs) }));
+            }
+            "get_overview" => {
+                // 拿全部推送时刻拍平视图:持仓 digest / 全局 digest / cron / 即时推 / quiet_hours。
+                // 构造时已强制注入 cron_jobs_dir + global_digest + portfolio_defaults,这里直接组装。
+                // 渲染按 actor.channel 选格式:Discord/Telegram 用 monospace 代码块表,
+                // Feishu/iMessage 用项目符号列表(后两者不支持 markdown/HTML)。
+                let overview = crate::schedule_view::build_overview(
+                    &self.prefs_dir,
+                    &self.cron_jobs_dir,
+                    &actor,
+                    &self.global_digest,
+                    &self.portfolio_defaults,
+                    chrono::Utc::now(),
+                )
+                .map_err(|e| HoneError::Tool(format!("聚合推送日程失败: {e}")))?;
+                let fmt = crate::schedule_view::channel_render_format(&actor.channel);
+                let display_text = crate::schedule_view::render_overview(&overview, fmt);
+                return Ok(json!({
+                    "status": "ok",
+                    "overview": serde_json::to_value(&overview).unwrap_or(Value::Null),
+                    "display_text": display_text,
+                    "render_format": format!("{fmt:?}"),
+                }));
             }
             "enable" => {
                 prefs.enabled = true;
@@ -336,6 +394,47 @@ impl Tool for NotificationPrefsTool {
                 }
                 prefs.global_digest_floor_macro_picks = n as u32;
             }
+            "set_quiet_hours" => {
+                let obj = value.as_object().ok_or_else(|| {
+                    HoneError::Tool(
+                        "set_quiet_hours 需要对象 {from, to, exempt_kinds?},例 {\"from\":\"23:00\",\"to\":\"07:00\"}"
+                            .into(),
+                    )
+                })?;
+                let from = obj
+                    .get("from")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| HoneError::Tool("set_quiet_hours 缺少 from (HH:MM)".into()))?
+                    .trim()
+                    .to_string();
+                let to = obj
+                    .get("to")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| HoneError::Tool("set_quiet_hours 缺少 to (HH:MM)".into()))?
+                    .trim()
+                    .to_string();
+                validate_hhmm(&from)?;
+                validate_hhmm(&to)?;
+                if from == to {
+                    return Err(HoneError::Tool(
+                        "set_quiet_hours 的 from 与 to 不能相等(空区间);若想全天静音请用 disable"
+                            .into(),
+                    ));
+                }
+                let exempt_kinds: Vec<String> = match obj.get("exempt_kinds") {
+                    Some(v) if !v.is_null() => extract_string_array(v)?,
+                    _ => Vec::new(),
+                };
+                validate_tags(&exempt_kinds)?;
+                prefs.quiet_hours = Some(QuietHours {
+                    from,
+                    to,
+                    exempt_kinds,
+                });
+            }
+            "clear_quiet_hours" => {
+                prefs.quiet_hours = None;
+            }
             "reset" => {
                 prefs = NotificationPrefs::default();
             }
@@ -358,7 +457,22 @@ mod tests {
 
     fn mk(dir: &std::path::Path) -> NotificationPrefsTool {
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
-        NotificationPrefsTool::new(dir.to_path_buf(), Some(actor))
+        let cron_dir = dir.join("__test_cron__");
+        std::fs::create_dir_all(&cron_dir).unwrap();
+        NotificationPrefsTool::new(
+            dir.to_path_buf(),
+            Some(actor),
+            cron_dir,
+            crate::schedule_view::GlobalDigestSlice {
+                enabled: true,
+                timezone: "Asia/Shanghai".into(),
+                schedules: vec!["07:30".into(), "21:00".into()],
+            },
+            crate::schedule_view::PortfolioDigestDefaults {
+                pre_market: "08:30".into(),
+                post_market: "09:00".into(),
+            },
+        )
     }
 
     #[tokio::test]
@@ -644,11 +758,201 @@ mod tests {
     #[tokio::test]
     async fn missing_actor_is_rejected() {
         let dir = tempdir().unwrap();
-        let tool = NotificationPrefsTool::new(dir.path().to_path_buf(), None);
+        let cron_dir = dir.path().join("__test_cron__");
+        std::fs::create_dir_all(&cron_dir).unwrap();
+        let tool = NotificationPrefsTool::new(
+            dir.path().to_path_buf(),
+            None,
+            cron_dir,
+            crate::schedule_view::GlobalDigestSlice {
+                enabled: false,
+                timezone: "Asia/Shanghai".into(),
+                schedules: vec![],
+            },
+            crate::schedule_view::PortfolioDigestDefaults {
+                pre_market: "08:30".into(),
+                post_market: "09:00".into(),
+            },
+        );
         let err = tool.execute(json!({"action":"get"})).await.unwrap_err();
         match err {
             HoneError::Tool(msg) => assert!(msg.contains("actor 身份")),
             other => panic!("unexpected err {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn set_quiet_hours_round_trips() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_quiet_hours",
+            "value": { "from": "23:00", "to": "07:00", "exempt_kinds": ["earnings_released"] },
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["quiet_hours"]["from"], json!("23:00"));
+        assert_eq!(out["prefs"]["quiet_hours"]["to"], json!("07:00"));
+        assert_eq!(
+            out["prefs"]["quiet_hours"]["exempt_kinds"],
+            json!(["earnings_released"])
+        );
+    }
+
+    #[tokio::test]
+    async fn set_quiet_hours_without_exempt_defaults_to_empty() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_quiet_hours",
+            "value": { "from": "22:30", "to": "06:30" },
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["quiet_hours"]["exempt_kinds"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn set_quiet_hours_validates_hhmm() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        let err = tool
+            .execute(json!({
+                "action": "set_quiet_hours",
+                "value": { "from": "25:00", "to": "07:00" },
+            }))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("HH:MM"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn set_quiet_hours_rejects_equal_from_to() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        let err = tool
+            .execute(json!({
+                "action": "set_quiet_hours",
+                "value": { "from": "07:00", "to": "07:00" },
+            }))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("空区间"), "msg={msg}"),
+            other => panic!("unexpected err {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn set_quiet_hours_rejects_invalid_kind() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        let err = tool
+            .execute(json!({
+                "action": "set_quiet_hours",
+                "value": { "from": "23:00", "to": "07:00", "exempt_kinds": ["not_a_real_kind"] },
+            }))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => assert!(msg.contains("未知") || msg.contains("kind")),
+            other => panic!("unexpected err {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_overview_returns_display_text_and_overview() {
+        let dir = tempdir().unwrap();
+        // mk() 用的是 telegram actor → display_text 应是 <pre> 包的等宽块
+        let tool = mk(dir.path());
+        let out = tool.execute(json!({"action":"get_overview"})).await.unwrap();
+        assert_eq!(out["status"], json!("ok"));
+        let txt = out["display_text"].as_str().expect("display_text");
+        assert!(txt.contains("你的推送日程"));
+        assert!(txt.contains("时刻"));
+        // telegram → 走 <pre>
+        assert!(txt.contains("<pre>"));
+        // 不应再出现 markdown table 字符
+        assert!(!txt.contains("| --- |"));
+        assert_eq!(out["render_format"], json!("TelegramHtml"));
+        let entries = out["overview"]["schedule"].as_array().unwrap();
+        assert_eq!(entries.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn get_overview_for_discord_actor_uses_codeblock() {
+        let dir = tempdir().unwrap();
+        let actor = ActorIdentity::new("discord", "u1", None::<&str>).unwrap();
+        let cron_dir = dir.path().join("cron");
+        std::fs::create_dir_all(&cron_dir).unwrap();
+        let tool = NotificationPrefsTool::new(
+            dir.path().to_path_buf(),
+            Some(actor),
+            cron_dir,
+            crate::schedule_view::GlobalDigestSlice {
+                enabled: true,
+                timezone: "Asia/Shanghai".into(),
+                schedules: vec!["07:30".into(), "21:00".into()],
+            },
+            crate::schedule_view::PortfolioDigestDefaults {
+                pre_market: "08:30".into(),
+                post_market: "09:00".into(),
+            },
+        );
+        let out = tool.execute(json!({"action":"get_overview"})).await.unwrap();
+        let txt = out["display_text"].as_str().unwrap();
+        assert!(txt.contains("```"), "discord 应用代码块: {txt}");
+        assert!(!txt.contains("<pre>"));
+        assert_eq!(out["render_format"], json!("DiscordMarkdown"));
+    }
+
+    #[tokio::test]
+    async fn get_overview_for_imessage_uses_plain_list() {
+        let dir = tempdir().unwrap();
+        let actor = ActorIdentity::new("imessage", "u1", None::<&str>).unwrap();
+        let cron_dir = dir.path().join("cron");
+        std::fs::create_dir_all(&cron_dir).unwrap();
+        let tool = NotificationPrefsTool::new(
+            dir.path().to_path_buf(),
+            Some(actor),
+            cron_dir,
+            crate::schedule_view::GlobalDigestSlice {
+                enabled: true,
+                timezone: "Asia/Shanghai".into(),
+                schedules: vec!["07:30".into(), "21:00".into()],
+            },
+            crate::schedule_view::PortfolioDigestDefaults {
+                pre_market: "08:30".into(),
+                post_market: "09:00".into(),
+            },
+        );
+        let out = tool.execute(json!({"action":"get_overview"})).await.unwrap();
+        let txt = out["display_text"].as_str().unwrap();
+        assert!(!txt.contains("```"));
+        assert!(!txt.contains("<pre>"));
+        assert!(txt.contains("• "), "imessage 应该是项目符号列表: {txt}");
+        assert_eq!(out["render_format"], json!("Plain"));
+    }
+
+    #[tokio::test]
+    async fn clear_quiet_hours_removes_field() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_quiet_hours",
+            "value": { "from": "23:00", "to": "07:00" },
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({"action":"clear_quiet_hours"}))
+            .await
+            .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["quiet_hours"], json!(null));
     }
 }

@@ -179,6 +179,7 @@ impl CronJobStorage {
             tags,
             created_at: Some(now),
             last_run_at: None,
+            bypass_quiet_hours: false,
         };
 
         let job_value = serde_json::to_value(&job).unwrap_or_default();
@@ -241,6 +242,9 @@ impl CronJobStorage {
             }
             if let Some(tags) = updates.tags.clone() {
                 job.tags = normalized_tags(tags, &job.schedule.repeat);
+            }
+            if let Some(bypass) = updates.bypass_quiet_hours {
+                job.bypass_quiet_hours = bypass;
             }
             Ok(())
         })

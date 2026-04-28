@@ -1922,3 +1922,117 @@ async fn event_without_subscribers_is_no_op() {
     assert_eq!(pending, 0);
     assert!(sink.calls.lock().unwrap().is_empty());
 }
+
+/// 构造一个跨当前 UTC 分钟的 quiet_hours 区间(±30min,跨午夜安全)。
+/// 这样测试不论何时跑都在区间内。
+fn quiet_hours_around_now() -> crate::prefs::QuietHours {
+    use chrono::Timelike;
+    let now = Utc::now();
+    let now_min = now.hour() as i32 * 60 + now.minute() as i32;
+    let from_m = ((now_min - 30).rem_euclid(24 * 60)) as u32;
+    let to_m = ((now_min + 30).rem_euclid(24 * 60)) as u32;
+    crate::prefs::QuietHours {
+        from: format!("{:02}:{:02}", from_m / 60, from_m % 60),
+        to: format!("{:02}:{:02}", to_m / 60, to_m % 60),
+        exempt_kinds: Vec::new(),
+    }
+}
+
+fn router_with_quiet_hours_for_aapl(
+    qh: crate::prefs::QuietHours,
+) -> (
+    NotificationRouter,
+    Arc<CapturingSink>,
+    Arc<EventStore>,
+    tempfile::TempDir,
+) {
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["AAPL".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let prefs_dir = dir.path().join("prefs");
+    let prefs_storage = crate::prefs::FilePrefsStorage::new(&prefs_dir).unwrap();
+    let mut prefs = crate::prefs::NotificationPrefs::default();
+    prefs.quiet_hours = Some(qh);
+    // 测试统一用 UTC 解释 quiet 区间,避免 router 默认 CST 偏移让 around_now 窗口失准
+    prefs.timezone = Some("UTC".into());
+    crate::prefs::PrefsProvider::save(&prefs_storage, &actor("u1"), &prefs).unwrap();
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_prefs(Arc::new(prefs_storage));
+    (router, sink, store, dir)
+}
+
+#[tokio::test]
+async fn quiet_held_logs_status_and_skips_sink() {
+    let qh = quiet_hours_around_now();
+    let (router, sink, store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let mut event = ev(Severity::High);
+    event.id = "earnings_in_quiet".into();
+    store.insert_event(&event).unwrap();
+    let (sent, pending) = router.dispatch(&event).await.unwrap();
+    assert_eq!(sent, 0, "High event should NOT go to sink during quiet_hours");
+    assert_eq!(pending, 0, "should not enqueue to digest either");
+    assert!(
+        sink.calls.lock().unwrap().is_empty(),
+        "sink must not be called"
+    );
+    // 用公开 API 验证 quiet_held 行存在
+    let since = Utc::now() - chrono::Duration::minutes(1);
+    let held = store
+        .list_quiet_held_since("imessage::::u1", since)
+        .unwrap();
+    assert_eq!(held.len(), 1, "should have exactly 1 quiet_held event");
+    assert_eq!(held[0].0.id, "earnings_in_quiet");
+}
+
+#[tokio::test]
+async fn exempt_kind_bypasses_quiet_hold() {
+    let mut qh = quiet_hours_around_now();
+    qh.exempt_kinds = vec!["earnings_released".into()];
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let event = ev(Severity::High); // EarningsReleased
+    let (sent, _pending) = router.dispatch(&event).await.unwrap();
+    assert_eq!(sent, 1, "exempt kind must still go to sink during quiet");
+    assert_eq!(sink.calls.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn quiet_outside_window_does_not_hold() {
+    use chrono::Timelike;
+    // 把 quiet 区间设到现在的反面(+11h..+12h),保证 now 不在内
+    let now = Utc::now();
+    let from_h = (now.hour() + 11) % 24;
+    let to_h = (now.hour() + 12) % 24;
+    let qh = crate::prefs::QuietHours {
+        from: format!("{:02}:00", from_h),
+        to: format!("{:02}:00", to_h),
+        exempt_kinds: Vec::new(),
+    };
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let event = ev(Severity::High);
+    let (sent, _pending) = router.dispatch(&event).await.unwrap();
+    assert_eq!(sent, 1);
+    assert_eq!(sink.calls.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn quiet_does_not_hold_medium_to_digest() {
+    // 验证 quiet_hours 只拦 High,Medium 仍走 digest enqueue
+    let qh = quiet_hours_around_now();
+    let (router, sink, _store, _tmp) = router_with_quiet_hours_for_aapl(qh);
+    let event = ev(Severity::Medium);
+    let (sent, pending) = router.dispatch(&event).await.unwrap();
+    assert_eq!(sent, 0);
+    assert_eq!(pending, 1, "Medium event should still enqueue to digest");
+    assert!(sink.calls.lock().unwrap().is_empty());
+}

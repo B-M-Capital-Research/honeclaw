@@ -211,6 +211,7 @@ mod tests {
                 tags: Vec::new(),
                 created_at: None,
                 last_run_at: None,
+                bypass_quiet_hours: false,
             }],
             pending_updates: Vec::new(),
         };

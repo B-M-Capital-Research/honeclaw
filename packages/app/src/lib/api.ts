@@ -705,6 +705,54 @@ export async function getNotifications(
   return parseJson<NotificationsResponse>(response);
 }
 
+// ── 推送日程 API (per-actor 拍平视图) ────────────────────────────────────────
+
+export type ScheduleSource = "portfolio_digest" | "global_digest" | "cron_job";
+
+export interface ScheduleEntry {
+  time_local: string;
+  source: ScheduleSource;
+  content_hint: string;
+  frequency: string;
+  job_id?: string | null;
+  will_be_held_by_quiet: boolean;
+  bypass_quiet_hours: boolean;
+  edit_hint: string;
+}
+
+export interface QuietHoursView {
+  from: string;
+  to: string;
+  exempt_kinds: string[];
+}
+
+export interface ImmediateConfig {
+  enabled: boolean;
+  min_severity: string;
+  portfolio_only: boolean;
+  price_high_pct?: number | null;
+  allow_kinds?: string[] | null;
+  blocked_kinds: string[];
+  immediate_kinds?: string[] | null;
+  exempt_in_quiet: string[];
+}
+
+export interface ScheduleOverview {
+  actor: string;
+  timezone: string;
+  quiet_hours?: QuietHoursView | null;
+  schedule: ScheduleEntry[];
+  immediate: ImmediateConfig;
+}
+
+export async function getSchedule(actor: string): Promise<ScheduleOverview> {
+  const params = new URLSearchParams();
+  params.set("actor", actor);
+  const path = `/api/admin/schedule?${params.toString()}`;
+  const response = await apiFetch(path);
+  return parseJson<ScheduleOverview>(response);
+}
+
 // ── LLM Audit API ─────────────────────────────────────────────────────────────
 
 import type {

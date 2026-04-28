@@ -221,6 +221,7 @@ pub struct CronJobUpsertRequest {
     pub enabled: Option<bool>,
     pub channel_target: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub bypass_quiet_hours: Option<bool>,
 }
 
 #[derive(Deserialize)]

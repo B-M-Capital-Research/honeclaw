@@ -48,6 +48,7 @@ fn make_event(job_name: &str, task_prompt: &str) -> SchedulerEvent {
         tags: Vec::new(),
         heartbeat: true,
         last_delivered_previews: Vec::new(),
+        bypass_quiet_hours: false,
     }
 }
 

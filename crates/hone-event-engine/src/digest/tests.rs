@@ -933,6 +933,273 @@ async fn per_actor_windows_and_timezones_fire_independently() {
     assert_eq!(n2, 0, "23:00 UTC 两个本地窗口都不命中");
 }
 
+/// quiet_flush 端到端：在 quiet_hours.to 时刻把 router 在区间内 hold 的 High 事件
+/// + buffer 里 Medium/Low 累积事件合并发出，stale 事件 drop 写审计。
+#[tokio::test]
+async fn quiet_flush_merges_held_and_buffered_at_to_minute() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider, QuietHours};
+    use crate::router::OutboundSink;
+    use crate::store::EventStore;
+    use async_trait::async_trait;
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct SpySink(Mutex<Vec<String>>);
+    #[async_trait]
+    impl OutboundSink for SpySink {
+        async fn send(&self, _a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+            self.0.lock().unwrap().push(body.into());
+            Ok(())
+        }
+    }
+
+    let dir = tempdir().unwrap();
+    let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let sink = Arc::new(SpySink::default());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+
+    let a = actor("u1");
+    let actor_key_str = "imessage::::u1";
+
+    // 1. 模拟 router 在 quiet 期间 hold 一条 High EarningsReleased
+    let held_event = MarketEvent {
+        id: "earn-held".into(),
+        kind: EventKind::EarningsReleased,
+        severity: Severity::High,
+        symbols: vec!["AAPL".into()],
+        occurred_at: Utc::now() - chrono::Duration::hours(2), // 财报永不过期
+        title: "AAPL beat".into(),
+        summary: "EPS beat".into(),
+        url: None,
+        source: "fmp.earning".into(),
+        payload: serde_json::Value::Null,
+    };
+    store.insert_event(&held_event).unwrap();
+    store
+        .log_delivery(
+            &held_event.id,
+            actor_key_str,
+            "sink",
+            Severity::High,
+            "quiet_held",
+            None,
+        )
+        .unwrap();
+
+    // 2. 模拟 buffer 累积一条 Medium 财报预告(非 stale)
+    let buffered = ev("earn-upcoming", "MSFT");
+    buf.enqueue(&a, &buffered).unwrap();
+    store.insert_event(&buffered).unwrap();
+
+    // 3. 配 prefs:quiet 23:00-07:00,timezone=UTC,所以 UTC 07:00 = 命中 to
+    prefs
+        .save(
+            &a,
+            &NotificationPrefs {
+                quiet_hours: Some(QuietHours {
+                    from: "23:00".into(),
+                    to: "07:00".into(),
+                    exempt_kinds: Vec::new(),
+                }),
+                timezone: Some("UTC".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let sched = DigestScheduler::new(buf, sink.clone(), "08:30", "17:00")
+        .with_store(store.clone())
+        .with_prefs(prefs)
+        .with_tz_offset_hours(0); // UTC
+
+    // UTC 07:00:命中 quiet.to,触发 quiet_flush
+    let now = Utc.with_ymd_and_hms(2026, 4, 28, 7, 0, 0).unwrap();
+    let mut fired = HashSet::new();
+    let n = sched.tick_once(now, &mut fired).await.unwrap();
+    assert_eq!(n, 1, "应该发出 1 条 quiet_flush");
+
+    let bodies = sink.0.lock().unwrap();
+    assert_eq!(bodies.len(), 1);
+    let body = &bodies[0];
+    assert!(body.contains("晨间静音合集"), "label 应包含合集名: {body}");
+    assert!(body.contains("AAPL"), "应包含 held 的 AAPL: {body}");
+    assert!(body.contains("MSFT"), "应包含 buffered 的 MSFT: {body}");
+}
+
+#[tokio::test]
+async fn quiet_flush_drops_stale_held_events() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider, QuietHours};
+    use crate::router::OutboundSink;
+    use crate::store::EventStore;
+    use async_trait::async_trait;
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct SpySink(Mutex<Vec<String>>);
+    #[async_trait]
+    impl OutboundSink for SpySink {
+        async fn send(&self, _a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+            self.0.lock().unwrap().push(body.into());
+            Ok(())
+        }
+    }
+
+    let dir = tempdir().unwrap();
+    let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let sink = Arc::new(SpySink::default());
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+
+    let a = actor("u1");
+    let actor_key_str = "imessage::::u1";
+
+    // 一条 8 小时前的 PriceAlert(shelf_life=2h),应被 drop
+    let now = Utc.with_ymd_and_hms(2026, 4, 28, 7, 0, 0).unwrap();
+    let stale_price = MarketEvent {
+        id: "price-stale".into(),
+        kind: EventKind::PriceAlert {
+            pct_change_bps: 600,
+            window: "day".into(),
+        },
+        severity: Severity::High,
+        symbols: vec!["AAPL".into()],
+        occurred_at: now - chrono::Duration::hours(8),
+        title: "AAPL +6%".into(),
+        summary: String::new(),
+        url: None,
+        source: "fmp.quote".into(),
+        payload: serde_json::Value::Null,
+    };
+    store.insert_event(&stale_price).unwrap();
+    store
+        .log_delivery(
+            &stale_price.id,
+            actor_key_str,
+            "sink",
+            Severity::High,
+            "quiet_held",
+            None,
+        )
+        .unwrap();
+
+    // 一条 1 小时前的 PriceAlert,仍在保鲜期
+    let fresh_price = MarketEvent {
+        id: "price-fresh".into(),
+        kind: EventKind::PriceAlert {
+            pct_change_bps: 700,
+            window: "day".into(),
+        },
+        severity: Severity::High,
+        symbols: vec!["TSLA".into()],
+        occurred_at: now - chrono::Duration::minutes(60),
+        title: "TSLA +7%".into(),
+        summary: String::new(),
+        url: None,
+        source: "fmp.quote".into(),
+        payload: serde_json::Value::Null,
+    };
+    store.insert_event(&fresh_price).unwrap();
+    store
+        .log_delivery(
+            &fresh_price.id,
+            actor_key_str,
+            "sink",
+            Severity::High,
+            "quiet_held",
+            None,
+        )
+        .unwrap();
+
+    prefs
+        .save(
+            &a,
+            &NotificationPrefs {
+                quiet_hours: Some(QuietHours {
+                    from: "23:00".into(),
+                    to: "07:00".into(),
+                    exempt_kinds: Vec::new(),
+                }),
+                timezone: Some("UTC".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let sched = DigestScheduler::new(buf, sink.clone(), "08:30", "17:00")
+        .with_store(store.clone())
+        .with_prefs(prefs)
+        .with_tz_offset_hours(0);
+
+    let mut fired = HashSet::new();
+    let n = sched.tick_once(now, &mut fired).await.unwrap();
+    assert_eq!(n, 1);
+
+    let body = sink.0.lock().unwrap()[0].clone();
+    assert!(body.contains("TSLA"), "fresh price 应在合集里: {body}");
+    assert!(!body.contains("AAPL"), "stale price 应被 drop: {body}");
+}
+
+#[tokio::test]
+async fn quiet_flush_inside_quiet_window_skips_normal_digest() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider, QuietHours};
+    use crate::router::OutboundSink;
+    use async_trait::async_trait;
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct SpySink(Mutex<Vec<String>>);
+    #[async_trait]
+    impl OutboundSink for SpySink {
+        async fn send(&self, _a: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+            self.0.lock().unwrap().push(body.into());
+            Ok(())
+        }
+    }
+
+    let dir = tempdir().unwrap();
+    let buf = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let sink = Arc::new(SpySink::default());
+    let prefs = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+
+    let a = actor("u1");
+    // buffer 里塞个 Medium,在 quiet 区间内不应触发 digest
+    buf.enqueue(&a, &ev("e1", "AAPL")).unwrap();
+    // actor 设了 02:00 这种正好在 quiet 内的 digest_window
+    prefs
+        .save(
+            &a,
+            &NotificationPrefs {
+                quiet_hours: Some(QuietHours {
+                    from: "23:00".into(),
+                    to: "07:00".into(),
+                    exempt_kinds: Vec::new(),
+                }),
+                digest_windows: Some(vec!["02:00".into()]),
+                timezone: Some("UTC".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let sched = DigestScheduler::new(buf, sink.clone(), "08:30", "17:00")
+        .with_prefs(prefs)
+        .with_tz_offset_hours(0);
+
+    // UTC 02:00:在 quiet 内,且本来应触发 02:00 digest_window
+    let now = Utc.with_ymd_and_hms(2026, 4, 28, 2, 0, 0).unwrap();
+    let mut fired = HashSet::new();
+    let n = sched.tick_once(now, &mut fired).await.unwrap();
+    assert_eq!(n, 0, "quiet 内不应该 fire");
+    assert!(
+        sink.0.lock().unwrap().is_empty(),
+        "sink 不应被调用,buffer 留到 quiet.to"
+    );
+}
+
 #[tokio::test]
 async fn per_actor_empty_windows_disables_digest_entirely() {
     use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};

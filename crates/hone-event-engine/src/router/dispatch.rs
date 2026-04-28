@@ -16,6 +16,7 @@
 
 use tracing::info;
 
+use crate::digest::time_window::EffectiveTz;
 use crate::event::{MarketEvent, Severity};
 use crate::prefs::kind_tag;
 use crate::renderer::{self, RenderFormat};
@@ -256,6 +257,41 @@ impl NotificationRouter {
                                 "last_high_sink_send_for_symbol failed for {sym}: {e:#}"
                             );
                         }
+                    }
+                }
+            }
+            // quiet_hours hold:用户设了勿扰时段且当前时刻在区间内,High 即时推不发,
+            // 写 delivery_log status='quiet_held',留给 DigestScheduler 在 quiet.to
+            // 时刻的 quiet_flush 合集里复活(过保鲜期则 drop)。Medium/Low 走原 digest
+            // 路径,DigestScheduler 在 quiet 区间内会跳过 fire,buffer 自然累积到 to。
+            // exempt_kinds 命中的 kind 即使在 quiet 内仍然立即推。
+            if matches!(effective_sev, Severity::High) {
+                if let Some(qh) = user_prefs.quiet_hours.as_ref() {
+                    let tz = EffectiveTz::from_actor_prefs(
+                        user_prefs.timezone.as_deref(),
+                        self.tz_offset_hours,
+                    );
+                    let now = chrono::Utc::now();
+                    let kind_t = kind_tag(&event.kind);
+                    let exempt = qh.exempt_kinds.iter().any(|t| t == kind_t);
+                    if !exempt && tz.in_quiet_window(now, &qh.from, &qh.to) {
+                        let _ = self.store.log_delivery(
+                            &event.id,
+                            &actor_key(&actor),
+                            "sink",
+                            sev,
+                            "quiet_held",
+                            None,
+                        );
+                        tracing::info!(
+                            actor = %actor_key(&actor),
+                            event_id = %event.id,
+                            kind = %kind_t,
+                            quiet_from = %qh.from,
+                            quiet_to = %qh.to,
+                            "High event held by quiet_hours, will be flushed at quiet.to"
+                        );
+                        continue;
                     }
                 }
             }

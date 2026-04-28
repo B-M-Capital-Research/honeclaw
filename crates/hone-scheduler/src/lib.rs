@@ -25,6 +25,9 @@ pub struct SchedulerEvent {
     pub heartbeat: bool,
     /// 最近几轮已送达的提醒摘要，仅 heartbeat 任务填充，用于去重判断
     pub last_delivered_previews: Vec<(String, String)>,
+    /// 是否绕过用户的 quiet_hours 静音。来源是 `CronJob.bypass_quiet_hours`，
+    /// 默认 false（cron 任务遵守用户的勿扰时段）。
+    pub bypass_quiet_hours: bool,
 }
 
 /// 定时任务调度器
@@ -120,6 +123,7 @@ impl HoneScheduler {
                 tags: job.tags.clone(),
                 heartbeat: job.is_heartbeat(),
                 last_delivered_previews,
+                bypass_quiet_hours: job.bypass_quiet_hours,
             };
 
             // 先发送事件，成功后再标记已执行；

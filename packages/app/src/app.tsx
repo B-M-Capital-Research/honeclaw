@@ -34,6 +34,7 @@ const LlmAuditPage = lazy(() => import("@/pages/llm-audit"))
 const LogsPage = lazy(() => import("@/pages/logs"))
 const TaskHealthPage = lazy(() => import("@/pages/task-health"))
 const NotificationsPage = lazy(() => import("@/pages/notifications"))
+const SchedulePage = lazy(() => import("@/pages/schedule"))
 const SettingsPage = lazy(() => import("@/pages/settings"))
 const APP_SURFACE = import.meta.env.VITE_HONE_APP_SURFACE === "public" ? "public" : "admin"
 
@@ -140,6 +141,7 @@ function AdminSurface() {
               <Route path="/logs" component={LogsPage} />
               <Route path="/task-health" component={TaskHealthPage} />
               <Route path="/notifications" component={NotificationsPage} />
+              <Route path="/schedule" component={SchedulePage} />
               <Route path="/settings" component={SettingsPage} />
             </Route>
           </Router>

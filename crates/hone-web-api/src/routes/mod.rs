@@ -16,6 +16,7 @@ pub(crate) mod portfolio;
 pub(crate) mod public;
 pub(crate) mod public_digest;
 pub(crate) mod research;
+pub(crate) mod schedule;
 pub(crate) mod skills;
 pub(crate) mod task_runs;
 pub(crate) mod users;
@@ -185,6 +186,7 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
             "/admin/notifications",
             get(notifications::handle_notifications),
         )
+        .route("/admin/schedule", get(schedule::handle_schedule))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_api_auth,

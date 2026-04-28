@@ -17,6 +17,7 @@ export type StoredModule =
   | "logs"
   | "task-health"
   | "notifications"
+  | "schedule"
   | "settings"
 
 export type StoredSelection = {

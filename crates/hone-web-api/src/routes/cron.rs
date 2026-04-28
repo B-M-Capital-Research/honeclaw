@@ -206,6 +206,7 @@ pub(crate) async fn handle_update_cron_job(
         enabled: req.enabled,
         channel_target: normalize_optional_string(req.channel_target),
         tags: req.tags,
+        bypass_quiet_hours: req.bypass_quiet_hours,
     };
 
     let admin_bypass = state.core.is_admin_actor(&resolved_actor);

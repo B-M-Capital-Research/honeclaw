@@ -12,6 +12,7 @@ pub mod error;
 pub mod heartbeat;
 pub mod logging;
 pub mod process_lock;
+pub mod quiet;
 pub mod task_observer;
 pub mod text;
 pub mod time;

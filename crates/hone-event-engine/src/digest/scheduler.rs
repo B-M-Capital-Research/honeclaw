@@ -150,11 +150,26 @@ impl DigestScheduler {
             }
         }
 
-        // 合并 actor 集合:buffer 待 flush ∪ synth 命中。
+        // 合并 actor 集合:buffer 待 flush ∪ synth 命中 ∪ 有 quiet_held 行的 actor。
+        // 后者必要:router 在 quiet 期间 hold 的 High 事件**只**写 delivery_log,
+        // 不入 buffer;若不在这里把这些 actor 拉进来,quiet_flush 永远不会被触发。
         let mut actors: std::collections::HashSet<ActorIdentity> =
             self.buffer.list_pending_actors().into_iter().collect();
         for a in synth_by_actor.keys() {
             actors.insert(a.clone());
+        }
+        if let Some(store) = &self.store {
+            let since = now - chrono::Duration::hours(12);
+            match store.list_actors_with_quiet_held_since(since) {
+                Ok(keys) => {
+                    for key in keys {
+                        if let Some(a) = actor_from_key(&key) {
+                            actors.insert(a);
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!("list_actors_with_quiet_held_since failed: {e:#}"),
+            }
         }
 
         for actor in actors {
@@ -176,15 +191,50 @@ impl DigestScheduler {
                 Some(v) => v.to_vec(),
                 None => vec![self.pre_market.clone(), self.post_market.clone()],
             };
-            if actor_windows.is_empty() {
-                continue;
-            }
             let actor_key_str = format!(
                 "{}::{}::{}",
                 actor.channel,
                 actor.channel_scope.clone().unwrap_or_default(),
                 actor.user_id
             );
+            // quiet_hours：用户设了勿扰区间时,本 actor 的 digest 触发完全让位给
+            // quiet_flush —— 区间内一律 continue 让 buffer 自然累积;命中 to 分钟
+            // 时调 run_quiet_flush,把 router 在区间内 hold 的 High + buffer 里
+            // 累积的 Medium/Low + (本来在 to 时刻 fire 的) digest_windows 的料
+            // 全部合并成一条早间合集。
+            if let Some(qh) = user_prefs.quiet_hours.as_ref() {
+                if effective_tz.in_quiet_window(now, &qh.from, &qh.to) {
+                    tracing::trace!(
+                        actor = %actor_key_str,
+                        quiet_from = %qh.from,
+                        quiet_to = %qh.to,
+                        "actor inside quiet_hours, skip all digest fires"
+                    );
+                    continue;
+                }
+                if effective_tz.at_quiet_to_minute(now, &qh.to) {
+                    let date = effective_tz.date_key(now);
+                    let fire_key = format!("{actor_key_str}::{date}@quiet_flush@{}", qh.to);
+                    if !already_fired_today.insert(fire_key) {
+                        continue;
+                    }
+                    match self
+                        .run_quiet_flush(&actor, &actor_key_str, &user_prefs, qh, now)
+                        .await
+                    {
+                        Ok(true) => flushed += 1,
+                        Ok(false) => {}
+                        Err(e) => tracing::warn!(
+                            actor = %actor_key_str,
+                            "quiet_flush failed: {e:#}"
+                        ),
+                    }
+                    continue;
+                }
+            }
+            if actor_windows.is_empty() {
+                continue;
+            }
             for window in &actor_windows {
                 if !effective_tz.in_window(now, window) {
                     continue;
@@ -387,6 +437,214 @@ impl DigestScheduler {
         }
         Ok(flushed)
     }
+
+    /// 在 `quiet_hours.to` 时刻触发的早间合集。把 router 期间 hold 的事件 + buffer
+    /// 里累积的 Medium/Low 合并发一条。过保鲜期的 hold 事件直接 drop 并写
+    /// `delivery_log status='quiet_dropped'` 审计。
+    ///
+    /// 返回 `true` = 实际发出了一条；`false` = 候选为空 / 全部噪音被过滤。
+    async fn run_quiet_flush(
+        &self,
+        actor: &ActorIdentity,
+        actor_key_str: &str,
+        user_prefs: &crate::prefs::NotificationPrefs,
+        qh: &crate::prefs::QuietHours,
+        now: DateTime<Utc>,
+    ) -> anyhow::Result<bool> {
+        // 1. 拉 router 在 quiet 期间 hold 住的事件。since=now-12h 覆盖任意 quiet 跨度。
+        let since = now - chrono::Duration::hours(12);
+        let mut held: Vec<MarketEvent> = Vec::new();
+        let mut dropped_stale = 0usize;
+        if let Some(store) = &self.store {
+            match store.list_quiet_held_since(actor_key_str, since) {
+                Ok(rows) => {
+                    for (event, _sent_at) in rows {
+                        if event.kind.is_fresh(event.occurred_at, now) {
+                            held.push(event);
+                        } else {
+                            // 过保鲜期 → 写审计,不进合集
+                            let _ = store.log_delivery(
+                                &event.id,
+                                actor_key_str,
+                                "sink",
+                                event.severity,
+                                "quiet_dropped",
+                                None,
+                            );
+                            dropped_stale += 1;
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!(
+                    actor = %actor_key_str,
+                    "list_quiet_held_since failed: {e:#}"
+                ),
+            }
+        }
+        // 2. drain buffer 里 quiet 期间累积的 Medium/Low(router 早就 enqueue 进去了)
+        let buffered = match self.buffer.drain_actor(actor) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("drain_actor failed in quiet_flush: {e:#}");
+                Vec::new()
+            }
+        };
+        // 3. 按 event_id 去重合并(同一事件被 hold 又入 buffer 极少见,但保险起见)
+        let mut seen_ids: std::collections::HashSet<String> =
+            held.iter().map(|e| e.id.clone()).collect();
+        let mut events = held;
+        for ev in buffered {
+            if seen_ids.insert(ev.id.clone()) {
+                events.push(ev);
+            }
+        }
+        if events.is_empty() && dropped_stale == 0 {
+            tracing::info!(
+                actor = %actor_key_str,
+                quiet_to = %qh.to,
+                "quiet_flush: nothing held or buffered, skip"
+            );
+            return Ok(false);
+        }
+        // 4. 复用现有过滤管线:prefs.should_deliver → topic memory → curation → cap
+        let mut filtered: Vec<MarketEvent> = events
+            .into_iter()
+            .filter(|e| user_prefs.should_deliver(e))
+            .collect();
+        if filtered.is_empty() {
+            tracing::info!(
+                actor = %actor_key_str,
+                quiet_to = %qh.to,
+                dropped_stale,
+                "quiet_flush: all candidates filtered by prefs"
+            );
+            return Ok(false);
+        }
+        filtered.sort_by(|a, b| {
+            digest_score(b)
+                .cmp(&digest_score(a))
+                .then_with(|| b.occurred_at.cmp(&a.occurred_at))
+        });
+        let mut omitted_events = Vec::new();
+        if let Some(store) = &self.store {
+            let memory =
+                suppress_recent_digest_topics_with_omitted(actor_key_str, filtered, store, now);
+            filtered = memory.kept;
+            omitted_events.extend(memory.omitted);
+        }
+        let curation = curate_digest_events_with_omitted_at(filtered, now);
+        filtered = curation.kept;
+        omitted_events.extend(curation.omitted);
+        if filtered.is_empty() {
+            if let Some(store) = &self.store {
+                log_omitted_digest_items(store, actor_key_str, &omitted_events);
+            }
+            tracing::info!(
+                actor = %actor_key_str,
+                quiet_to = %qh.to,
+                omitted = omitted_events.len(),
+                dropped_stale,
+                "quiet_flush: skipped after curation/topic memory"
+            );
+            return Ok(false);
+        }
+        let noise_omitted_count = omitted_events.len();
+        let mut cap_overflow = 0usize;
+        if self.max_items_per_batch > 0 && filtered.len() > self.max_items_per_batch {
+            let truncated = filtered.split_off(self.max_items_per_batch);
+            cap_overflow = truncated.len();
+            omitted_events.extend(truncated);
+        }
+        let label = format!("晨间静音合集 · {}", qh.to);
+        let body = render_digest(&label, &filtered, cap_overflow, self.sink.format_for(actor));
+        let send_result = self.sink.send(actor, &body).await;
+        if let Some(store) = &self.store {
+            let date = effective_tz_date_key(user_prefs, self.tz_offset_hours, now);
+            let batch_id = format!("quiet-flush:{date}@{}:{}", qh.to, filtered.len());
+            let status = if send_result.is_ok() {
+                self.sink.success_status()
+            } else {
+                "failed"
+            };
+            let _ = store.log_delivery(
+                &batch_id,
+                actor_key_str,
+                "digest",
+                filtered[0].severity,
+                status,
+                Some(&body),
+            );
+            if send_result.is_ok() {
+                for item in &filtered {
+                    let _ = store.log_delivery(
+                        &item.id,
+                        actor_key_str,
+                        "digest_item",
+                        item.severity,
+                        status,
+                        None,
+                    );
+                }
+                log_omitted_digest_items(store, actor_key_str, &omitted_events);
+            }
+        }
+        match send_result {
+            Ok(()) => {
+                tracing::info!(
+                    actor = %actor_key_str,
+                    quiet_to = %qh.to,
+                    items = filtered.len(),
+                    cap_overflow,
+                    noise_omitted = noise_omitted_count,
+                    dropped_stale,
+                    body_len = body.chars().count(),
+                    body_preview = %body_preview(&body),
+                    "quiet_flush delivered"
+                );
+                Ok(true)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    actor = %actor_key_str,
+                    quiet_to = %qh.to,
+                    body_len = body.chars().count(),
+                    body_preview = %body_preview(&body),
+                    "quiet_flush sink failed: {e:#}"
+                );
+                Ok(false)
+            }
+        }
+    }
+}
+
+fn effective_tz_date_key(
+    prefs: &crate::prefs::NotificationPrefs,
+    fallback_offset_hours: i32,
+    now: DateTime<Utc>,
+) -> String {
+    EffectiveTz::from_actor_prefs(prefs.timezone.as_deref(), fallback_offset_hours).date_key(now)
+}
+
+/// `delivery_log.actor` 列存的是 `channel::scope::user_id` 的字符串(`actor_key`
+/// 函数生成),这里反向解析回 `ActorIdentity`。scope 为空 → direct session。
+/// 解析失败返回 None,调用方 skip 即可。
+fn actor_from_key(key: &str) -> Option<ActorIdentity> {
+    let parts: Vec<&str> = key.splitn(3, "::").collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let channel = parts[0];
+    let scope = parts[1];
+    let user_id = parts[2];
+    if channel.is_empty() || user_id.is_empty() {
+        return None;
+    }
+    let scope_opt: Option<String> = if scope.is_empty() {
+        None
+    } else {
+        Some(scope.to_string())
+    };
+    ActorIdentity::new(channel, user_id, scope_opt).ok()
 }
 
 /// 当前 UTC 时刻按给定 `tz_offset_hours` 解释成本地日的 00:00,然后还原成

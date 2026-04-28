@@ -104,7 +104,18 @@ pub struct NotificationPrefs {
     /// 用于前端提示"这些持仓还没有画像或最近一次蒸馏失败"。
     #[serde(default)]
     pub thesis_distill_skipped: Vec<String>,
+    /// 勿扰时段 —— 用户希望"晚 X 点后别推、早 Y 点合并发我"。`None` = 不启用。
+    /// 区间内：所有 immediate sink 推送被 hold 写 `delivery_log.status='quiet_held'`，
+    /// digest fire 也跳过；`to` 时刻触发 `quiet_flush` 把 hold 住的事件 + buffer 里
+    /// 累积的 Medium/Low 合并成一条早间合集，过保鲜期事件直接 drop。
+    /// 跨午夜（from > to）由 EffectiveTz::in_quiet_window 处理。
+    pub quiet_hours: Option<QuietHours>,
 }
+
+/// 勿扰时段配置。本地时刻按 `NotificationPrefs.timezone` 解释（缺省走全局 digest tz）。
+/// 实际定义在 `hone_core::quiet::QuietHours`，这里 re-export 让 hone-channels 等
+/// 不依赖 event-engine 的 crate 也能使用。
+pub use hone_core::quiet::QuietHours;
 
 impl Default for NotificationPrefs {
     fn default() -> Self {
@@ -131,6 +142,7 @@ impl Default for NotificationPrefs {
             global_digest_floor_macro_picks: default_floor_macro_picks(),
             last_thesis_distilled_at: None,
             thesis_distill_skipped: Vec::new(),
+            quiet_hours: None,
         }
     }
 }
@@ -360,6 +372,33 @@ mod tests {
     }
 
     #[test]
+    fn quiet_hours_serde_roundtrip_with_exempt_kinds() {
+        let prefs = NotificationPrefs {
+            quiet_hours: Some(QuietHours {
+                from: "23:00".into(),
+                to: "07:00".into(),
+                exempt_kinds: vec!["earnings_released".into()],
+            }),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&prefs).expect("serialize");
+        let loaded: NotificationPrefs = serde_json::from_str(&json).expect("deserialize");
+        let qh = loaded.quiet_hours.expect("quiet_hours present");
+        assert_eq!(qh.from, "23:00");
+        assert_eq!(qh.to, "07:00");
+        assert_eq!(qh.exempt_kinds, vec!["earnings_released".to_string()]);
+    }
+
+    #[test]
+    fn old_prefs_without_quiet_hours_loads_with_none() {
+        // 模拟老 JSON：没有 quiet_hours 字段
+        let json = r#"{"enabled":true,"portfolio_only":false}"#;
+        let loaded: NotificationPrefs = serde_json::from_str(json).expect("deserialize");
+        assert!(loaded.quiet_hours.is_none());
+        assert!(loaded.enabled);
+    }
+
+    #[test]
     fn default_prefs_allow_everything() {
         let p = NotificationPrefs::default();
         assert!(p.should_deliver(&ev(EventKind::NewsCritical, Severity::Low, vec!["AAPL"])));
@@ -465,6 +504,11 @@ mod tests {
             global_digest_floor_macro_picks: 2,
             last_thesis_distilled_at: Some("2026-04-26T09:00:00Z".into()),
             thesis_distill_skipped: vec!["XYZ".into()],
+            quiet_hours: Some(QuietHours {
+                from: "23:00".into(),
+                to: "07:00".into(),
+                exempt_kinds: vec!["earnings_released".into()],
+            }),
         };
         store.save(&a, &p).unwrap();
         let loaded = store.load(&a);

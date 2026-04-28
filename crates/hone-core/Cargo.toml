@@ -12,6 +12,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
 futures.workspace = true

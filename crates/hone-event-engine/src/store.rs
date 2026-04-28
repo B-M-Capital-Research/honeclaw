@@ -649,6 +649,116 @@ impl EventStore {
         Ok(out)
     }
 
+    /// 列出在 `since` 之后有 `quiet_held` 行的 distinct actor key。供 DigestScheduler
+    /// 在 quiet.to 分钟把这些 actor 也加入 tick 迭代集合 —— 否则只 buffer 为空、
+    /// 仅靠 router hold 的 actor 永远等不到 quiet_flush。
+    pub fn list_actors_with_quiet_held_since(
+        &self,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT DISTINCT actor FROM delivery_log
+            WHERE channel = 'sink'
+              AND status = 'quiet_held'
+              AND sent_at_ts >= ?1
+            "#,
+        )?;
+        let rows = stmt.query_map(params![since.timestamp()], |row| row.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// 列出某 actor 在 `since` 之后被 router 因 quiet_hours hold 住的事件。
+    /// 用于 `quiet_flush` 在 `quiet_hours.to` 时刻把这批事件按保鲜期筛选后合并发送。
+    /// 返回 `(MarketEvent, sent_at_ts)`，`sent_at_ts` 是当初被 hold 时刻（用于排序）。
+    /// LEFT JOIN 风格：events 表里查不到的 hold 行（synth/已被清理）直接跳过。
+    pub fn list_quiet_held_since(
+        &self,
+        actor: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<(MarketEvent, i64)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT e.id, e.kind_json, e.severity, e.symbols_json, e.occurred_at_ts,
+                   e.title, e.summary, e.url, e.source, e.payload_json, d.sent_at_ts
+            FROM delivery_log d
+            JOIN events e ON d.event_id = e.id
+            WHERE d.actor = ?1
+              AND d.channel = 'sink'
+              AND d.status = 'quiet_held'
+              AND d.sent_at_ts >= ?2
+            ORDER BY d.sent_at_ts ASC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![actor, since.timestamp()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+                row.get::<_, i64>(10)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let (
+                id,
+                kind_json,
+                sev,
+                syms_json,
+                ts,
+                title,
+                summary,
+                url,
+                source,
+                payload_json,
+                sent_at,
+            ) = r?;
+            let Ok(kind) = serde_json::from_str(&kind_json) else {
+                continue;
+            };
+            let severity = match sev.as_str() {
+                "high" => crate::event::Severity::High,
+                "medium" => crate::event::Severity::Medium,
+                _ => crate::event::Severity::Low,
+            };
+            let symbols: Vec<String> = serde_json::from_str(&syms_json).unwrap_or_default();
+            let payload: serde_json::Value =
+                serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null);
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(ts, 0) else {
+                continue;
+            };
+            out.push((
+                MarketEvent {
+                    id,
+                    kind,
+                    severity,
+                    symbols,
+                    occurred_at,
+                    title,
+                    summary,
+                    url,
+                    source,
+                    payload,
+                },
+                sent_at,
+            ));
+        }
+        Ok(out)
+    }
+
     pub fn list_recent_digest_item_events(
         &self,
         actor: &str,

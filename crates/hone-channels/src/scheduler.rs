@@ -130,6 +130,52 @@ fn unwrap_nested_json_message(text: &str) -> String {
     text.to_string()
 }
 
+/// 直接从 `notif_prefs_dir/{actor_slug}.json` 读 actor 的 quiet_hours + timezone。
+/// 不依赖 hone-event-engine,只解析需要的两个字段；老 prefs JSON 缺字段返回 None。
+/// 第二个返回值是 actor 的 timezone（IANA 名），用于 `quiet_window_active` 解释 from/to。
+fn load_actor_quiet_hours(
+    core: &HoneBotCore,
+    actor: &hone_core::ActorIdentity,
+) -> Option<(hone_core::quiet::QuietHours, Option<String>)> {
+    #[derive(serde::Deserialize)]
+    struct Probe {
+        #[serde(default)]
+        timezone: Option<String>,
+        #[serde(default)]
+        quiet_hours: Option<hone_core::quiet::QuietHours>,
+    }
+    let dir = std::path::Path::new(&core.config.storage.notif_prefs_dir);
+    // 与 hone-event-engine::prefs::actor_slug 保持一致(scope 为空时用 "direct"
+    // 占位,字符按 alnum/'-' 之外替换 '_'),否则文件路径不匹配,quiet_hours 永远
+    // 读不到。这里复制实现避免引入 hone-event-engine 依赖。
+    let scope = actor
+        .channel_scope
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("direct");
+    let sanitize = |s: &str| -> String {
+        s.chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect()
+    };
+    let slug = format!(
+        "{}__{}__{}",
+        sanitize(&actor.channel),
+        sanitize(scope),
+        sanitize(&actor.user_id)
+    );
+    let path = dir.join(format!("{slug}.json"));
+    let text = std::fs::read_to_string(&path).ok()?;
+    let probe: Probe = serde_json::from_str(&text).ok()?;
+    Some((probe.quiet_hours?, probe.timezone))
+}
+
 fn truncate_for_log(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();
@@ -452,6 +498,38 @@ pub async fn execute_scheduler_event(
     prompt_options: PromptOptions,
     mut run_options: AgentRunOptions,
 ) -> ScheduledTaskExecution {
+    // quiet_hours 拦截:除非任务显式 bypass,否则在用户的勿扰区间内全部跳过执行,
+    // 避免 cron 任务在半夜把模型唤醒推送。落 metadata.skipped='quiet_hours' 供巡检。
+    if !event.bypass_quiet_hours {
+        if let Some((qh, tz_name)) = load_actor_quiet_hours(&core, &event.actor) {
+            if hone_core::quiet::quiet_window_active(
+                tz_name.as_deref(),
+                8,
+                &qh.from,
+                &qh.to,
+                chrono::Utc::now(),
+            ) {
+                tracing::info!(
+                    job_id = %event.job_id,
+                    job = %event.job_name,
+                    quiet_from = %qh.from,
+                    quiet_to = %qh.to,
+                    "[SchedulerDiag] cron skipped by quiet_hours"
+                );
+                return ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: None,
+                    metadata: json!({
+                        "skipped": "quiet_hours",
+                        "quiet_from": qh.from,
+                        "quiet_to": qh.to,
+                    }),
+                    session_id: None,
+                };
+            }
+        }
+    }
     if !event.heartbeat {
         let result = run_scheduled_task(core.clone(), event, prompt_options, run_options).await;
         let response = result.response;
@@ -724,15 +802,21 @@ async fn run_heartbeat_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, has_skip_delivery_signal,
-        heartbeat_execution_from_content, inspect_heartbeat_result, is_empty_success_fallback,
+        HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, execute_scheduler_event,
+        has_skip_delivery_signal, heartbeat_execution_from_content, inspect_heartbeat_result,
+        is_empty_success_fallback, load_actor_quiet_hours,
         rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
     };
+    use crate::HoneBotCore;
+    use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
+    use crate::prompt::PromptOptions;
     use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
-    use hone_core::ActorIdentity;
+    use hone_core::config::HoneConfig;
+    use hone_core::{ActorIdentity, quiet::QuietHours};
     use hone_memory::{SessionStorage, session_message_text};
     use hone_scheduler::SchedulerEvent;
     use serde_json::Value;
+    use std::sync::Arc;
 
     #[test]
     fn heartbeat_exact_noop_is_suppressed() {
@@ -1042,6 +1126,7 @@ mod tests {
             tags: vec![],
             heartbeat: true,
             last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
         };
 
         let prompt = build_scheduled_prompt(&event);
@@ -1073,6 +1158,7 @@ mod tests {
                     "BlueBird 7 发射".to_string(),
                 ),
             ],
+            bypass_quiet_hours: false,
         };
 
         let prompt = build_scheduled_prompt(&event);
@@ -1097,6 +1183,7 @@ mod tests {
             tags: vec![],
             heartbeat: true,
             last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
         };
 
         let prompt = build_scheduled_prompt(&event);
@@ -1135,11 +1222,172 @@ mod tests {
             tags: vec![],
             heartbeat: true,
             last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
         };
 
         let prompt = build_scheduled_prompt(&event);
         assert!(prompt.contains("盘中涨跌幅超过 X%"));
         assert!(prompt.contains("不允许用日内高点相对昨收"));
         assert!(prompt.contains("本轮必须返回 noop"));
+    }
+
+    fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {
+        let mut config = HoneConfig::default();
+        let root = prefs_dir.parent().unwrap();
+        config.storage.notif_prefs_dir = prefs_dir.to_string_lossy().to_string();
+        config.storage.sessions_dir = root.join("sessions").to_string_lossy().to_string();
+        config.storage.session_sqlite_db_path =
+            root.join("sessions.sqlite3").to_string_lossy().to_string();
+        config.storage.llm_audit_db_path =
+            root.join("llm_audit.sqlite3").to_string_lossy().to_string();
+        config.storage.portfolio_dir = root.join("portfolio").to_string_lossy().to_string();
+        config.storage.cron_jobs_dir = root.join("cron_jobs").to_string_lossy().to_string();
+        config.storage.gen_images_dir = root.join("gen_images").to_string_lossy().to_string();
+        Arc::new(HoneBotCore::new(config))
+    }
+
+    fn write_prefs_with_quiet(prefs_dir: &std::path::Path, actor: &ActorIdentity, qh: QuietHours) {
+        std::fs::create_dir_all(prefs_dir).unwrap();
+        let scope = actor
+            .channel_scope
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("direct");
+        let slug = format!("{}__{}__{}", actor.channel, scope, actor.user_id);
+        let body = serde_json::json!({
+            "timezone": "UTC",
+            "quiet_hours": { "from": qh.from, "to": qh.to, "exempt_kinds": qh.exempt_kinds },
+        });
+        std::fs::write(
+            prefs_dir.join(format!("{slug}.json")),
+            serde_json::to_string(&body).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn quiet_hours_around_now() -> QuietHours {
+        use chrono::Timelike;
+        let now = chrono::Utc::now();
+        let now_min = now.hour() as i32 * 60 + now.minute() as i32;
+        let from_m = ((now_min - 30).rem_euclid(24 * 60)) as u32;
+        let to_m = ((now_min + 30).rem_euclid(24 * 60)) as u32;
+        QuietHours {
+            from: format!("{:02}:{:02}", from_m / 60, from_m % 60),
+            to: format!("{:02}:{:02}", to_m / 60, to_m % 60),
+            exempt_kinds: Vec::new(),
+        }
+    }
+
+    fn make_event(actor: ActorIdentity, bypass: bool) -> SchedulerEvent {
+        SchedulerEvent {
+            actor,
+            job_id: "j_quiet_test".into(),
+            job_name: "quiet test".into(),
+            task_prompt: "noop".into(),
+            channel: "imessage".into(),
+            channel_scope: None,
+            channel_target: "test".into(),
+            delivery_key: "k1".into(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: bypass,
+        }
+    }
+
+    #[test]
+    fn load_actor_quiet_hours_returns_none_when_file_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefs_dir = dir.path().join("notif_prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("imessage", "ghost", None::<String>).unwrap();
+        assert!(load_actor_quiet_hours(&core, &actor).is_none());
+    }
+
+    #[test]
+    fn load_actor_quiet_hours_reads_field_correctly() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefs_dir = dir.path().join("notif_prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
+        write_prefs_with_quiet(
+            &prefs_dir,
+            &actor,
+            QuietHours {
+                from: "23:00".into(),
+                to: "07:00".into(),
+                exempt_kinds: vec!["earnings_released".into()],
+            },
+        );
+        let (qh, tz) = load_actor_quiet_hours(&core, &actor).expect("present");
+        assert_eq!(qh.from, "23:00");
+        assert_eq!(qh.to, "07:00");
+        assert_eq!(qh.exempt_kinds, vec!["earnings_released".to_string()]);
+        assert_eq!(tz.as_deref(), Some("UTC"));
+    }
+
+    #[tokio::test]
+    async fn execute_scheduler_event_skips_during_quiet_hours() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefs_dir = dir.path().join("notif_prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
+        write_prefs_with_quiet(&prefs_dir, &actor, quiet_hours_around_now());
+
+        let event = make_event(actor, /* bypass */ false);
+        let mut run_options = AgentRunOptions::default();
+        run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
+        let result =
+            execute_scheduler_event(core, &event, PromptOptions::default(), run_options).await;
+
+        assert!(!result.should_deliver, "quiet 内不应送达");
+        assert!(result.session_id.is_none(), "skipped 不应携带 session_id");
+        assert_eq!(
+            result.metadata.get("skipped").and_then(|v| v.as_str()),
+            Some("quiet_hours")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_scheduler_event_with_bypass_does_not_short_circuit_on_quiet() {
+        // bypass=true → 不应在 quiet_hours 这一步早退;后续会走真实调度逻辑(没 LLM 配置会失败,
+        // 但不会落 metadata.skipped='quiet_hours'),足以证明 quiet 闸门没拦下来。
+        let dir = tempfile::tempdir().unwrap();
+        let prefs_dir = dir.path().join("notif_prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
+        write_prefs_with_quiet(&prefs_dir, &actor, quiet_hours_around_now());
+
+        let event = make_event(actor, /* bypass */ true);
+        let mut run_options = AgentRunOptions::default();
+        run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
+        let result =
+            execute_scheduler_event(core, &event, PromptOptions::default(), run_options).await;
+        assert_ne!(
+            result.metadata.get("skipped").and_then(|v| v.as_str()),
+            Some("quiet_hours"),
+            "bypass=true 应避开 quiet_hours 早退分支"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_scheduler_event_no_quiet_set_does_not_skip() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefs_dir = dir.path().join("notif_prefs");
+        std::fs::create_dir_all(&prefs_dir).unwrap();
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("imessage", "u1", None::<String>).unwrap();
+        // 不写 prefs 文件 → quiet_hours None → 不拦截
+        let event = make_event(actor, /* bypass */ false);
+        let mut run_options = AgentRunOptions::default();
+        run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
+        let result =
+            execute_scheduler_event(core, &event, PromptOptions::default(), run_options).await;
+        assert_ne!(
+            result.metadata.get("skipped").and_then(|v| v.as_str()),
+            Some("quiet_hours"),
+            "无 quiet_hours 不应 skip"
+        );
     }
 }

@@ -27,6 +27,7 @@ pub struct CronJobUpdate {
     pub enabled: Option<bool>,
     pub channel_target: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub bypass_quiet_hours: Option<bool>,
 }
 
 /// Cron 任务数据
@@ -64,6 +65,10 @@ pub struct CronJob {
     pub created_at: Option<String>,
     #[serde(default)]
     pub last_run_at: Option<String>,
+    /// 是否绕过 quiet_hours 静音。默认 false（cron 任务遵守用户的勿扰时段）；
+    /// 用户可对个别需要严守时间的任务（如 06:55 盘前复盘）显式打开。
+    #[serde(default)]
+    pub bypass_quiet_hours: bool,
 }
 
 fn default_true() -> bool {
