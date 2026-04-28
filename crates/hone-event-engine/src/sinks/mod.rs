@@ -9,7 +9,9 @@
 //! 只需"把已经渲染好的一段文字投到对端"即可。
 
 pub mod discord;
+pub mod discord_embed;
 pub mod feishu;
+pub mod feishu_card;
 pub mod imessage;
 pub mod multi;
 pub mod telegram;

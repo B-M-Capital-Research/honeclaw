@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use hone_core::ActorIdentity;
 use tracing::info;
 
+use crate::digest::DigestPayload;
 use crate::renderer::RenderFormat;
 
 #[async_trait]
@@ -31,6 +32,22 @@ pub trait OutboundSink: Send + Sync {
     /// MultiChannelSink 这类按 actor.channel 分发的 sink 需要按目标渠道选择格式。
     fn format_for(&self, _actor: &ActorIdentity) -> RenderFormat {
         self.format()
+    }
+
+    /// digest 推送的结构化入口。default 实现退回到 `send(actor, fallback_body)`
+    /// 的纯字符串路径,确保所有现有 sink 不改也能跑(行为零变化)。富文本能力强
+    /// 的渠道(Discord embed / Feishu interactive card / Telegram MarkdownV2)在
+    /// 各自 sink 里 override,直接消化结构化 payload 并丢弃 fallback_body。
+    ///
+    /// **MultiChannelSink 必须 override** 这个方法转发到内层 sink 的 `send_digest`,
+    /// 否则 Discord 走 multi 时永远走 fallback —— 见 `multi.rs`。
+    async fn send_digest(
+        &self,
+        actor: &ActorIdentity,
+        _payload: &DigestPayload,
+        fallback_body: &str,
+    ) -> anyhow::Result<()> {
+        self.send(actor, fallback_body).await
     }
 }
 

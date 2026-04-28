@@ -19,6 +19,7 @@ use async_trait::async_trait;
 use hone_core::ActorIdentity;
 use tracing::{debug, warn};
 
+use crate::digest::DigestPayload;
 use crate::renderer::RenderFormat;
 use crate::router::{LogSink, OutboundSink};
 
@@ -85,6 +86,40 @@ impl OutboundSink for MultiChannelSink {
             s.format_for(actor)
         } else {
             self.fallback.format_for(actor)
+        }
+    }
+
+    /// 必须 override:default 实现会忽略 payload 走 `self.send`,multi 里那条路径
+    /// 就是 `MultiChannelSink::send`,但内层 sink 的富文本 override 必须看到 payload
+    /// 才能生效。这里把 payload 透传给目标 channel 的 sink 自己处理。
+    async fn send_digest(
+        &self,
+        actor: &ActorIdentity,
+        payload: &DigestPayload,
+        fallback_body: &str,
+    ) -> anyhow::Result<()> {
+        if let Some(s) = self.sinks.get(&actor.channel) {
+            match s.send_digest(actor, payload, fallback_body).await {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    warn!(
+                        channel = %actor.channel,
+                        user = %actor.user_id,
+                        "channel digest sink failed, falling back to log: {e:#}"
+                    );
+                    self.fallback
+                        .send_digest(actor, payload, fallback_body)
+                        .await
+                }
+            }
+        } else {
+            debug!(
+                channel = %actor.channel,
+                "no sink registered for channel; dispatching digest to fallback"
+            );
+            self.fallback
+                .send_digest(actor, payload, fallback_body)
+                .await
         }
     }
 }
@@ -154,5 +189,50 @@ mod tests {
             .with_channel("discord", Arc::new(Spy(Mutex::new(Vec::new()))));
         let actor = ActorIdentity::new("discord", "u1", None::<String>).unwrap();
         assert_eq!(sink.format_for(&actor), RenderFormat::DiscordMarkdown);
+    }
+
+    /// MultiChannelSink 必须把 send_digest 透传给内层 sink,否则富文本 override
+    /// 拿不到 payload。这条测试锁死这个行为——回归 trait default 实现就会失败。
+    #[tokio::test]
+    async fn send_digest_routes_to_inner_sink() {
+        use crate::digest::DigestPayload;
+        use crate::event::Severity;
+
+        struct DigestSpy(Mutex<usize>);
+        #[async_trait]
+        impl OutboundSink for DigestSpy {
+            async fn send(&self, _actor: &ActorIdentity, _body: &str) -> anyhow::Result<()> {
+                anyhow::bail!("send() should not be called when send_digest path is correct")
+            }
+            async fn send_digest(
+                &self,
+                _actor: &ActorIdentity,
+                _payload: &DigestPayload,
+                _fallback_body: &str,
+            ) -> anyhow::Result<()> {
+                *self.0.lock().unwrap() += 1;
+                Ok(())
+            }
+        }
+
+        let inner = Arc::new(DigestSpy(Mutex::new(0)));
+        let fb = Arc::new(LogSink);
+        let sink = MultiChannelSink::new(fb).with_channel("discord", inner.clone());
+        let actor = ActorIdentity::new("discord", "u1", None::<String>).unwrap();
+        let payload = DigestPayload {
+            label: "test".into(),
+            items: vec![],
+            cap_overflow: 0,
+            max_severity: Severity::Low,
+            generated_at: chrono::Utc::now(),
+        };
+        sink.send_digest(&actor, &payload, "fallback")
+            .await
+            .unwrap();
+        assert_eq!(
+            *inner.0.lock().unwrap(),
+            1,
+            "应路由到 inner sink 的 send_digest"
+        );
     }
 }

@@ -19,8 +19,10 @@ use hone_core::ActorIdentity;
 use serde::Deserialize;
 use tokio::sync::RwLock;
 
+use crate::digest::DigestPayload;
 use crate::renderer::RenderFormat;
 use crate::router::OutboundSink;
+use crate::sinks::feishu_card::build_feishu_card;
 
 const FEISHU_TOKEN_URL: &str =
     "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
@@ -106,16 +108,15 @@ impl FeishuSink {
     }
 }
 
-#[async_trait]
-impl OutboundSink for FeishuSink {
-    async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+impl FeishuSink {
+    async fn post_message(
+        &self,
+        actor: &ActorIdentity,
+        msg_type: &str,
+        content: String,
+    ) -> anyhow::Result<()> {
         let token = self.token().await?;
         let (receive_id_type, receive_id) = Self::receive_target(actor);
-        let (msg_type, content) = if is_feishu_post_content(body) {
-            ("post", body.to_string())
-        } else {
-            ("text", serde_json::json!({ "text": body }).to_string())
-        };
         let resp = self
             .client
             .post(format!(
@@ -140,9 +141,35 @@ impl OutboundSink for FeishuSink {
         }
         Ok(())
     }
+}
+
+#[async_trait]
+impl OutboundSink for FeishuSink {
+    async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
+        let (msg_type, content) = if is_feishu_post_content(body) {
+            ("post", body.to_string())
+        } else {
+            ("text", serde_json::json!({ "text": body }).to_string())
+        };
+        self.post_message(actor, msg_type, content).await
+    }
 
     fn format(&self) -> RenderFormat {
         RenderFormat::FeishuPost
+    }
+
+    /// digest 走 interactive card 富文本路径 —— 三色 header + bucket 化 markdown
+    /// 块,链接走原生 markdown 锚文本。`fallback_body` 仅在卡片构造失败兜底,
+    /// 当前实现不会失败。
+    async fn send_digest(
+        &self,
+        actor: &ActorIdentity,
+        payload: &DigestPayload,
+        _fallback_body: &str,
+    ) -> anyhow::Result<()> {
+        let card = build_feishu_card(payload);
+        self.post_message(actor, "interactive", card.to_string())
+            .await
     }
 }
 

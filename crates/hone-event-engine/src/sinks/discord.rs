@@ -15,8 +15,10 @@ use hone_core::ActorIdentity;
 use serde::Deserialize;
 use tokio::sync::RwLock;
 
+use crate::digest::DigestPayload;
 use crate::renderer::RenderFormat;
 use crate::router::OutboundSink;
+use crate::sinks::discord_embed::build_discord_embed_message;
 
 const DISCORD_API_BASE: &str = "https://discord.com/api/v10";
 
@@ -93,20 +95,59 @@ impl DiscordSink {
         }
         Ok(())
     }
+
+    async fn send_payload_to_channel(
+        &self,
+        channel_id: &str,
+        payload: serde_json::Value,
+    ) -> anyhow::Result<()> {
+        let resp = self
+            .client
+            .post(format!("{DISCORD_API_BASE}/channels/{channel_id}/messages"))
+            .header("Authorization", self.auth_header())
+            .json(&payload)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let detail = resp.text().await.unwrap_or_default();
+            anyhow::bail!("discord send {status}: {detail}");
+        }
+        Ok(())
+    }
+
+    async fn resolve_target_channel(&self, actor: &ActorIdentity) -> anyhow::Result<String> {
+        match actor.channel_scope.as_deref() {
+            Some(scope) if scope != "direct" => Ok(Self::channel_id_for_group(scope)),
+            _ => self.dm_channel_id(&actor.user_id).await,
+        }
+    }
 }
 
 #[async_trait]
 impl OutboundSink for DiscordSink {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
-        let channel_id = match actor.channel_scope.as_deref() {
-            Some(scope) if scope != "direct" => Self::channel_id_for_group(scope),
-            _ => self.dm_channel_id(&actor.user_id).await?,
-        };
+        let channel_id = self.resolve_target_channel(actor).await?;
         self.send_to_channel(&channel_id, body).await
     }
 
     fn format(&self) -> RenderFormat {
         RenderFormat::DiscordMarkdown
+    }
+
+    /// digest 走 embed 富文本路径 —— `flags=4` 抑制 URL 自动 unfurl,主色按
+    /// `payload.max_severity` 三档变色,bucket 化分组。`fallback_body` 仅在 embed
+    /// 构造失败的极端情况下做兜底(目前 build_discord_embed_message 不会失败,但
+    /// 保留参数让 trait 默认路径仍能工作)。
+    async fn send_digest(
+        &self,
+        actor: &ActorIdentity,
+        payload: &DigestPayload,
+        _fallback_body: &str,
+    ) -> anyhow::Result<()> {
+        let channel_id = self.resolve_target_channel(actor).await?;
+        let body = build_discord_embed_message(payload, chrono::Utc::now());
+        self.send_payload_to_channel(&channel_id, body).await
     }
 }
 

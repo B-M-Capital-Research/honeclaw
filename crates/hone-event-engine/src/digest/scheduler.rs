@@ -25,7 +25,7 @@ use super::buffer::DigestBuffer;
 use super::curation::{
     curate_digest_events_with_omitted_at, digest_score, suppress_recent_digest_topics_with_omitted,
 };
-use super::render::render_digest;
+use super::render::{build_digest_payload, render_digest};
 use super::time_window::EffectiveTz;
 
 pub struct DigestScheduler {
@@ -377,7 +377,8 @@ impl DigestScheduler {
                     cap_overflow,
                     self.sink.format_for(&actor),
                 );
-                let send_result = self.sink.send(&actor, &body).await;
+                let payload = build_digest_payload(label.clone(), &filtered, cap_overflow);
+                let send_result = self.sink.send_digest(&actor, &payload, &body).await;
                 if let Some(store) = &self.store {
                     let batch_id = format!("digest-batch:{date}@{window}:{}", filtered.len());
                     let status = if send_result.is_ok() {
@@ -557,7 +558,8 @@ impl DigestScheduler {
         }
         let label = format!("晨间静音合集 · {}", qh.to);
         let body = render_digest(&label, &filtered, cap_overflow, self.sink.format_for(actor));
-        let send_result = self.sink.send(actor, &body).await;
+        let payload = build_digest_payload(label.clone(), &filtered, cap_overflow);
+        let send_result = self.sink.send_digest(actor, &payload, &body).await;
         if let Some(store) = &self.store {
             let date = effective_tz_date_key(user_prefs, self.tz_offset_hours, now);
             let batch_id = format!("quiet-flush:{date}@{}:{}", qh.to, filtered.len());
