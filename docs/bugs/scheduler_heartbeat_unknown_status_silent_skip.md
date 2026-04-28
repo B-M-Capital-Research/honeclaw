@@ -7,6 +7,22 @@
 
 ## 修复进展
 
+- `2026-04-28 11:00` 最近一小时真实窗口确认这条缺陷仍未收口，而且坏态又从 `PlainTextSuppressed / JsonEmptyStatus / ContextOverflowNoop` 漂到 `Empty` 空输出：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`10:30` 到 `11:01` 共 23 条 heartbeat 完成样本；其中 `10:30` 窗口另有 8 条 provider 反序列化 `400` 失败，已拆到独立缺陷 [`scheduler_heartbeat_deepseek_deserialize_400_failures.md`](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) 跟踪。
+  - 对本单仍相关的坏态看，`11:00` 窗口 12 条 heartbeat 已全部切到 `moonshotai/kimi-k2.5`，但仍没有恢复成稳定健康态：
+    - `parse_kind=JsonNoop`：`8656`（`小米30港元破位预警`）、`8662`（`全天原油价格3小时播报`）、`8663`（`TEM破位预警`）、`8666`（`TEM大事件心跳监控`）
+    - `parse_kind=Empty`：`8655`（`CAI破位预警`）、`8657`（`ASTS 重大异动心跳监控`）、`8658`（`小米破位预警`）、`8659`（`ORCL 大事件监控`）、`8660`（`Cerebras IPO与业务进展心跳监控`）、`8661`（`RKLB异动监控`）、`8664`（`持仓重大事件心跳检测`）、`8665`（`Monitor_Watchlist_11`）
+  - `data/runtime/logs/sidecar.log` 证明这批 `Empty` 不是合法 `noop`，而是 `raw_chars=0` 的空返回却仍被当成 `noop + skipped_noop`：
+    - `11:00:12.512` `CAI破位预警`：`parse_kind=Empty raw_preview=""`
+    - `11:00:22.156` `ASTS 重大异动心跳监控`：`parse_kind=Empty raw_preview=""`
+    - `11:00:22.158` `小米破位预警`：`parse_kind=Empty raw_preview=""`
+    - `11:00:27.698` `ORCL 大事件监控`：`parse_kind=Empty raw_preview=""`
+    - `11:00:28.582` `Cerebras IPO与业务进展心跳监控`：`parse_kind=Empty raw_preview=""`
+    - `11:00:30.467` `RKLB异动监控`：`parse_kind=Empty raw_preview=""`
+    - `11:00:51.112` `持仓重大事件心跳检测`：`parse_kind=Empty raw_preview=""`
+    - `11:01:18.531` `Monitor_Watchlist_11`：`parse_kind=Empty raw_preview=""`
+  - 结论：到 `2026-04-28 11:01` 为止，本单仍稳定活跃；虽然 `11:00` 窗口不再是 10:00 的自然语言坏态，但空字符串被吞成 `noop` 仍属于同一 heartbeat 状态契约退化，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 10:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且坏态进一步漂移到 `ContextOverflowNoop` 与自然语言 `noop` 混合：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`09:30` 与 `10:00` 两个窗口合计共有 22 条 heartbeat 完成样本，仍然没有任何一条恢复成合法单段 JSON。
   - `09:30` 窗口：
