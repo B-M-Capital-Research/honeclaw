@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 05:01 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T05:02:00.569156+08:00`，且最近一小时已新增 `54` 条 run，说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-29 04:31:57` 仍记录 Feishu 直聊 `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=2866`。
+  - 同一近窗还存在 heartbeat 真正收口：`run_id=9541`（`小米30港元破位预警`）在 `04:30:37` 落成 `completed + sent + delivered=1`，`run_id=9546`（`持仓重大事件心跳检测`）在 `04:31:20` 落成 `completed + sent + delivered=1`。
+  - 这说明到 `05:01` 为止，真实 direct / scheduler 主链路仍在工作；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 04:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

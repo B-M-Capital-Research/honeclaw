@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-04-29 05:01` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `04:30-05:02` 两轮 heartbeat 窗口继续在 `JsonTriggered / JsonNoop / execution_failed / started` 之间漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `26` 条 started 行、`23` 条 `noop + skipped_noop`、`4` 条 `completed + sent` 与 `1` 条 `execution_failed + skipped_error`。
+  - `04:30` 窗口并未恢复成稳定单一状态：
+    - `completed + sent`：`9541`（`小米30港元破位预警`）、`9546`（`持仓重大事件心跳检测`）
+    - `noop + skipped_noop`：`9533-9540`、`9542-9545`
+    - 其中 `run_id=9546` 的正文仍把 `ASTS FCC 商业授权已推送过` 写进本轮提醒，说明状态虽能收口为 `sent`，内容增量判断仍与其它 heartbeat 坏态交织
+  - `05:00` 窗口继续混跑：
+    - `noop + skipped_noop`：`9561`（`全天原油价格3小时播报`）、`9565`（`小米破位预警`）、`9566`（`TEM大事件心跳监控`）、`9568`（`Cerebras IPO与业务进展心跳监控`）、`9569`（`小米30港元破位预警`）、`9570`（`持仓重大事件心跳检测`）、`9571`（`ASTS 重大异动心跳监控`）
+    - 同窗 started 行 `9548-9560` 又先落成 `running + pending`，说明“started 残留”和 heartbeat 状态漂移仍在同步发生
+  - 结论：到 `2026-04-29 05:01` 为止，本单仍稳定活跃；最新一小时依旧不是稳定纯 JSON 契约，而是 `noop / sent / failed / started` 混跑，状态维持 `Fixing`、严重等级维持 `P2`。
 - `2026-04-29 04:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `03:30-04:02` 两轮 heartbeat 窗口继续在 `JsonEmptyStatus / Empty / JsonNoop / execution_failed` 之间漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `25` 条 started 行、`18` 条 `noop + skipped_noop`、`5` 条 `completed + sent` 与 `2` 条 `execution_failed + skipped_error`。
   - `03:30` 窗口仍有明显结构化退化：

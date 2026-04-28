@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=9521`，`job_id=j_9ee85d42`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-04-29T04:02:19.013950+08:00`
+    - 本轮再次落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`delivered=0`
+    - `error_message=max_iterations_exceeded:6`
+    - 对比同一 job 紧邻窗口：
+      - `run_id=9536`，`executed_at=2026-04-29T04:30:19.349602+08:00`，下一窗口又漂回 `noop + skipped_noop`
+      - `run_id=9568`，`executed_at=2026-04-29T05:00:52.521986+08:00`，再下一窗口继续保持 `noop + skipped_noop`
+      - 同一最近一小时内，其它 heartbeat 仍能正常收口：`run_id=9541`（`小米30港元破位预警`）与 `run_id=9546`（`持仓重大事件心跳检测`）都落成 `completed + sent`
+    - 这说明同一 heartbeat job 仍会在 `max_iterations_exceeded:6 + skipped_error` 与后续 `noop + skipped_noop` 之间摆动；用户侧依然无法区分“条件未命中”还是“上一窗其实根本没跑完”
+  - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=9521`，`job_id=j_9ee85d42`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-04-29T04:02:19.013362+08:00`
     - 本轮再次落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`should_deliver=0`、`delivered=0`
     - `error_message=max_iterations_exceeded:6`
@@ -150,6 +159,8 @@
 
 ## 当前实现效果
 
+- `2026-04-29 05:01` 的后续两个窗口进一步证明，这条缺陷在最近一小时仍活跃：`04:02` 的 `Cerebras IPO与业务进展心跳监控` 先落成 `max_iterations_exceeded:6 + skipped_error`，但 `04:30` 与 `05:00` 又连续漂回 `noop + skipped_noop`；同一小时内其它 heartbeat 仍可正常 `completed + sent`。
+- 这说明 heartbeat 触顶失败不会留下稳定“失败后待恢复”的状态，而是直接被下一窗伪装成正常未命中；用户依然无法从台账判断上一窗到底是“无新增”还是“整轮其实没跑完”。
 - `2026-04-29 04:02` 的 `Cerebras IPO与业务进展心跳监控` 最新样本说明，这条缺陷在本轮最近一小时仍活跃：前一窗口 `03:30` 还是 `Empty + skipped_noop`，`04:02` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，而同一 `04:00` 批次的 `Oil_Price_Monitor_Closing`、`ORCL 大事件监控`、`小米破位预警` 仍能正常 `completed + sent`。
 - 这说明 heartbeat 触顶失败不需要整批 scheduler 停摆就会单独出现，而且在本地工具已经成功执行后仍会把整轮提醒静默吞掉；用户依然无法区分是“未命中”还是“本轮根本没跑完”。
 - `2026-04-28 18:30` 的 `Cerebras IPO与业务进展心跳监控` 最新样本说明，这条缺陷在本轮最近一小时仍活跃：前一整点 `18:01` 还是 `noop`，`18:30` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，到 `19:00` 又漂回 `JsonNoop + skipped_noop`。
