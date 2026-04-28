@@ -7,6 +7,25 @@
 
 ## 修复进展
 
+- `2026-04-28 23:03` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `23:00-23:02` 的最新整点窗口继续在 `JsonNoop / Empty` 间混跑，同时 Tavily 全 key 已不可用却仍被工具层记成功：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`heartbeat=1 AND executed_at >= '2026-04-28T23:00:00+08:00'` 的最新整点窗口已落成 12 条 heartbeat 完成样本，仍全部收口为 `noop + skipped_noop + delivered=0`，且结构化契约继续不统一：
+    - `parse_kind=Empty`：`9259`（`TEM破位预警`）、`9261`（`小米破位预警`）、`9262`（`小米30港元破位预警`）、`9264`（`Cerebras IPO与业务进展心跳监控`）、`9265`（`RKLB异动监控`）、`9266`（`Monitor_Watchlist_11`）、`9267`（`ASTS 重大异动心跳监控`）、`9268`（`持仓重大事件心跳检测`）、`9270`（`TEM大事件心跳监控`）
+    - `parse_kind=JsonNoop`：`9260`（`全天原油价格3小时播报`）、`9263`（`CAI破位预警`）、`9271`（`ORCL 大事件监控`）
+  - `data/runtime/logs/sidecar.log` 证明同窗空返回继续被吞成合法 `noop`：
+    - `23:00:13.315` `TEM破位预警`：`parse_kind=Empty raw_preview=""`
+    - `23:00:15.410` `小米破位预警`：`parse_kind=Empty raw_preview=""`
+    - `23:00:20.226` `小米30港元破位预警`：`parse_kind=Empty raw_preview=""`
+    - `23:00:28.507` `Cerebras IPO与业务进展心跳监控`：`parse_kind=Empty raw_preview=""`
+    - `23:00:31.267` `RKLB异动监控`：`parse_kind=Empty raw_preview=""`
+    - `23:00:32.244` `Monitor_Watchlist_11`：`parse_kind=Empty raw_preview=""`
+    - `23:00:51.613` `ASTS 重大异动心跳监控`：`run_finish success=true content_chars=0` 且 `parse_kind=Empty raw_preview=""`
+    - `23:01:09.843` `持仓重大事件心跳检测`：`run_finish success=true content_chars=0` 且 `parse_kind=Empty raw_preview=""`
+    - `23:01:14.270` `TEM大事件心跳监控`：`run_finish success=true content_chars=0` 且 `parse_kind=Empty raw_preview=""`
+  - 同窗 Tavily 检索仍处于“全 key 失败但工具层伪成功”的退化形态：
+    - `23:00:18.807` 与 `23:00:22.439` 连续记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`
+    - 但两次失败后都紧接着记录 `tool_execute_success name=web_search`
+  - 结论：到 `2026-04-28 23:03` 为止，本单仍稳定活跃；最新整点窗口从 `22:00` 的“7 Empty / 5 JsonNoop”进一步漂到“9 Empty / 3 JsonNoop”，坏态继续扩大，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 22:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `22:00-22:02` 的最新整点窗口继续在 `JsonNoop / Empty` 间混跑，同时 Tavily 全 key 已不可用却仍被工具层记成功：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-04-28T22:00:00+08:00'` 聚合，最新整点 12 条 heartbeat 完成样本仍全部收口为 `noop + skipped_noop + delivered=0`，但结构化契约继续不统一：
     - `parse_kind=Empty`：`9210`（`持仓重大事件心跳检测`）、`9211`（`Monitor_Watchlist_11`）、`9212`（`小米破位预警`）、`9213`（`RKLB异动监控`）、`9216`（`ORCL 大事件监控`）、`9218`（`TEM大事件心跳监控`）、`9220`（`Cerebras IPO与业务进展心跳监控`）

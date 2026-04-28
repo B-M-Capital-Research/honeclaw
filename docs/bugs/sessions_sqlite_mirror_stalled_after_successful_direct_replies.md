@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-28 23:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-28T23:01:47.434997+08:00`（`run_id=9271`，`ORCL 大事件监控`），说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-04-28 22:33:31`：Feishu 直聊 `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 记录 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=1169`
+  - `2026-04-28 22:33:35`：同一条消息继续记录 `step=reply.send detail=segments.sent=1/1`
+  - `2026-04-28 22:43:33`：Feishu 直聊 `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1` 记录 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=1654`
+  - `2026-04-28 22:43:42`：同一条消息继续记录 `step=reply.send detail=segments.sent=2/2`
+  - `2026-04-28 23:01:08`：Feishu 直聊 `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 再次记录 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=1728`
+  - 同一时间窗内 `cron_job_runs.run_id=9269` 也已把 `核心观察股池晚间快报` 写成 `completed + sent + delivered=1`
+  - 说明到 `23:01` 为止，最近一小时至少又有 4 条 Feishu 成功直聊/直达完整走完执行、持久化与发送，但 sqlite 会话镜像仍没有任何前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-28 22:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
