@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+    - `2026-04-28 20:02 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
+    - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+    - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 但同库 `cron_job_runs` 已继续写到 `2026-04-28T20:02:29.449255+08:00`（`run_id=9105`，`美股盘前与持仓新闻综述`），说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+  - 最近一小时运行日志：`data/runtime/logs/web.log.2026-04-28`
+    - `2026-04-28 19:41:16-19:42:30`：Feishu 直聊 `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 记录 `message.accepted -> session.persist_assistant detail=done -> success=true -> reply.send detail=segments.sent=2/2`
+    - `2026-04-28 19:43:34-19:44:36`：另一条 Feishu 直聊 `Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 再次完整走完 `message.accepted -> session.persist_assistant detail=done -> success=true -> reply.send detail=segments.sent=1/1`
+    - 说明到 `19:44` 为止，最近一小时至少又有 2 条新的 Feishu 成功直聊完整走完执行、持久化与发送，但 sqlite 会话镜像仍没有任何推进。
+  - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 19:01 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
     - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
     - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

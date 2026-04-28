@@ -6,6 +6,12 @@
 - **状态**: Fixing
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
+  - 2026-04-28 19:10 最近一小时最新样本：
+    - `data/runtime/logs/web.log.2026-04-28`
+      - `19:10:02.903` 再次记录 `channel sink failed, falling back to log: feishu send HTTP 400 Bad Request`，返回体仍是 `code=99992361`、`msg="open_id cross app"`，并带新的 `log_id=20260428191002FFEF81CF094F1F3A5E68`
+      - `19:10:20.374` 与 `19:10:43.402` 同一窗口又连续两次命中同样的 `open_id cross app` 返回体，对应新 `log_id=202604281910201AA21839C7340E39087F` 与 `20260428191043969C752591093B37588E`
+      - 三次失败后都只剩 `[dryrun sink] 今日全球要闻 · 6/7 条 · 2026-04-28`，说明故障点仍是“已生成 digest 标题/正文，但最终 Feishu sink send API 被拒”
+      - 同窗 `19:10:02.921`、`19:10:20.391`、`19:10:43.424` 仍分别记录 `global digest sent`，说明上游 global digest 调度本身没有停摆，坏态继续集中在最终 Feishu 发送链路
   - 2026-04-28 08:00 最近一小时最新样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=8507`，`job_id=j_6547def8`，`job_name=每日美股收盘与持仓早报`，`executed_at=2026-04-28T08:02:34.000419+08:00`

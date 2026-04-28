@@ -8,6 +8,24 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-28 20:02 CST` 再次复核，最新 `19:00`、`19:30`、`20:00` 三个窗口继续把 started 行与终态行拆成两批记录：
+    - `19:00` 窗口 started 行为 `run_id=9029-9040`，同窗终态行另起为 `run_id=9041-9052`
+    - `19:30` 窗口 started 行为 `run_id=9053-9064`，同窗终态行另起为 `run_id=9065-9076`
+    - `20:00` 窗口 heartbeat started 行为 `run_id=9077-9090` 中的 12 条 heartbeat，终态行另起为 `run_id=9091-9103`
+    - 这意味着仅最近一小时 3 个 heartbeat 窗口内，就又累计留下 `36` 条未被终态覆盖的 started 行；若把 `20:00` 同窗两条 Feishu 非 heartbeat scheduler（`run_id=9082/9083`）也计入 started 残留，最近一小时新增 `running/pending` 已达到 `38` 条
+  - 按 `executed_at >= 2026-04-28T19:00:00+08:00` 的最近一小时全量 scheduler 聚合，坏态进一步扩大：
+    - `running + pending = 38`
+    - `noop + skipped_noop = 36`
+    - `completed + sent = 2`
+    - `completed + send_failed = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1169` 条，说明这已经不是单个小时窗的短暂噪声
+- 最近一小时真实运行语义对照：
+  - `run_id=9104`（`A股盘后高景气产业链推演`）在 `2026-04-28T20:02:12.491329+08:00` 已成功落成 `completed + sent + delivered=1`
+  - `run_id=9105`（`美股盘前与持仓新闻综述`）在 `2026-04-28T20:02:29.449255+08:00` 也已成功落成 `completed + sent + delivered=1`
+  - 但同窗对应的 started 行 `run_id=9083` / `9082` 仍永久保留 `running + pending`
+  - 说明该缺陷已经不只污染 heartbeat 台账，也开始覆盖最近一小时的普通 Feishu scheduler 成功任务
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-28 19:01 CST` 再次复核，最新 `19:00` heartbeat 窗口继续把 started 行与终态行拆成两批记录：
     - started 行为 `run_id=9029-9040`，`executed_at=2026-04-28T19:00:00.534475+08:00` 到 `19:00:00.543875+08:00`，12 个 job 全部仍是 `execution_status=running`、`message_send_status=pending`
     - 同窗终态行则另起为 `run_id=9041-9052`，在 `19:00:30.019454+08:00` 到 `19:01:48.874222+08:00` 之间全部落成 `noop + skipped_noop`
