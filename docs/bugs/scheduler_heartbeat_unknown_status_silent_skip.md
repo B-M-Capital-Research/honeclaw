@@ -7,6 +7,23 @@
 
 ## 修复进展
 
+- `2026-04-29 06:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `05:30-06:02` 两轮 heartbeat 窗口继续在 `JsonTriggered / JsonNoop / Empty / started` 之间漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `24` 条 started 行、`22` 条 `noop + skipped_noop` 与 `2` 条 `completed + sent`。
+  - `05:30` 窗口并未恢复成稳定单一状态：
+    - `completed + sent`：`9591`（`ASTS 重大异动心跳监控`）
+    - `noop + skipped_noop`：`9586-9590`、`9592-9597`
+    - 同窗 started 行 `9574-9585` 仍先落成 `running + pending`，说明 heartbeat 状态漂移与 started 残留继续同步发生
+  - `06:00` 窗口继续混跑：
+    - `completed + sent`：`9611`（`全天原油价格3小时播报`）
+    - `parse_kind=Empty`：`9614`（`Cerebras IPO与业务进展心跳监控`）、`9616`（`RKLB异动监控`）、`9619`（`Monitor_Watchlist_11`），对应 `sidecar.log` 的 `raw_chars=0 starts_with_json=false`
+    - `parse_kind=JsonNoop`：`9610`、`9612`、`9613`、`9615`、`9617`、`9618`、`9620`、`9621`
+    - 同窗 started 行 `9598-9609` 又先落成 `running + pending`，说明“空输出吞成 noop”和“started 残留”仍在同窗并存
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账编码差异：
+    - `06:00:41.359-06:00:41.360`：`Cerebras IPO与业务进展心跳监控` 继续记录 `parse_kind=Empty raw_preview=""`
+    - `06:00:50.128-06:00:50.131`：`RKLB异动监控` 继续记录 `parse_kind=Empty raw_preview=""`
+    - `06:01:38.639-06:01:38.641`：`Monitor_Watchlist_11` 继续记录 `parse_kind=Empty raw_preview=""`
+    - `06:00:17-06:00:26` 与 `06:00:43-06:00:44`：同窗 Tavily 继续连续 4 key 配额失败并输出 `Tavily 搜索当前不可用`，但工具层仍回写 `tool_execute_success name=web_search`
+  - 结论：到 `2026-04-29 06:02` 为止，本单仍稳定活跃；最新一小时依旧不是稳定纯 JSON 契约，而是 `noop / sent / Empty / started` 混跑，状态维持 `Fixing`、严重等级维持 `P2`。
 - `2026-04-29 05:01` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `04:30-05:02` 两轮 heartbeat 窗口继续在 `JsonTriggered / JsonNoop / execution_failed / started` 之间漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `26` 条 started 行、`23` 条 `noop + skipped_noop`、`4` 条 `completed + sent` 与 `1` 条 `execution_failed + skipped_error`。
   - `04:30` 窗口并未恢复成稳定单一状态：

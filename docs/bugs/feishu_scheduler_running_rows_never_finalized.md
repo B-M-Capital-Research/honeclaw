@@ -8,6 +8,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 06:02 CST` 再次复核，started 残留继续在最新 `05:30`、`06:00` 两个 heartbeat 窗口实时新增：
+    - `05:30` 窗口 started 行为 `run_id=9574-9585`，同窗终态另起为 `run_id=9586-9597`
+    - `06:00` 窗口 started 行为 `run_id=9598-9609`，同窗终态另起为 `run_id=9610-9621`
+    - 其中 `run_id=9591`（`ASTS 重大异动心跳监控`）与 `run_id=9611`（`全天原油价格3小时播报`）都已分别落成 `completed + sent + delivered=1`，但同窗 started 行 `9581` 与 `9606` 仍永久保留 `running + pending`
+    - `run_id=9590/9593/9595/9597` 与 `9614/9616/9619/9620` 这类终态都已经收口为 `noop + skipped_noop`，但对应 started 行 `9578/9585/9576/9582` 与 `9608/9599/9602/9598` 也同样没有被覆盖
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时坏态仍是占比最高的状态：
+    - `running + pending = 24`
+    - `noop + skipped_noop = 22`
+    - `completed + sent = 2`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1427` 条，较 `05:01` 巡检时的 `1403` 继续上升，说明 started 行仍在随着半小时轮询稳定堆积
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 05:01 CST` 再次复核，started 残留继续在最新 `04:30`、`05:00` 两个 heartbeat 窗口实时新增：
     - `04:30` 窗口 started 行为 `run_id=9522-9532`，同窗终态另起为 `run_id=9533-9546`
     - `05:00` 窗口 started 行为 `run_id=9548-9560`，而同窗终态已开始另起为 `run_id=9561-9571`
@@ -198,6 +209,9 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-29 06:02 CST` 为止，最近一小时全量 scheduler 聚合里的 `running + pending` 仍为 `24` 条，继续高于同窗真正已收口的 `completed + sent = 2`。
+- `05:30` 与 `06:00` 新窗再次证明坏态持续实时产生：`run_id=9581/9606` 这类 started 行写出后不到两分钟，同一 delivery window 的终态就已经另起为 `9591 completed + sent` 与 `9611 completed + sent`，而 `9578/9585/9576/9582` 与 `9608/9599/9602/9598` 这种 started 行即便对应终态在 `9590/9593/9595/9597` 与 `9614/9616/9619/9620` 已落成 `noop + skipped_noop` 也仍不会被覆盖。
+- 全库 `running + pending` 残留总量已升到 `1427` 条，较 `05:01` 的 `1403` 继续上涨，说明半小时巡检窗口每推进一轮都会继续留下新 started 脏行。
 - 到 `2026-04-29 05:01 CST` 为止，最近一小时全量 scheduler 聚合里的 `running + pending` 仍为 `26` 条，继续高于同窗真正已收口的 `completed + sent = 4`。
 - `04:30` 与 `05:00` 新窗再次证明坏态持续实时产生：`run_id=9525/9526` 这类 started 行写出后不到两分钟，同一 delivery window 的终态就已经另起为 `9541 completed + sent` 与 `9546 completed + sent`，而 `9552/9553/9556/9559` 这种 started 行即便对应终态在 `9568-9571` 已落成 `noop + skipped_noop` 也仍不会被覆盖。
 - 全库 `running + pending` 残留总量已升到 `1403` 条，较 `04:02` 的 `1377` 继续上涨，说明半小时巡检窗口每推进一轮都会继续留下新 started 脏行。
