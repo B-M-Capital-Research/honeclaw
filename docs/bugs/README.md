@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-28 18:20 CST
+最后更新：2026-04-28 17:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：15
+- 活跃待修复：17
 - Later / 待复现：9
-- 已修复 / 已关闭：64
+- 已修复 / 已关闭：63
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -31,6 +31,8 @@
 | Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | New | 2026-04-27 08:30 `j_acce16a6` 实际按 `schedule.hour=8/minute=30` 触发，但同一 job 的 prompt 仍写 `每个交易日 20:45`；assistant 正文直接承认“不是你设定的20:45触发时点” | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-04-26 13:10 用户追问“我现在有哪些定时任务”仍只收到统一 fallback；同一会话 09:52 的“我的定时任务”已失败过一次，说明 `empty_success_exhausted` 止血未覆盖真实直聊主链路 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | New | 2026-04-28 17:02 最近两小时 12 个 Feishu heartbeat job 都累积了 4 条 started 残留；同一 `delivery_key` 又各自另起 `noop/completed/execution_failed` 终态，导致活跃运行数被系统性抬高 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-28 17:02 再次复核 `sessions` / `session_messages` 仍卡在 `2026-04-27 16:54:20+08:00`；而 `cron_job_runs` 已继续写到 `17:02:04`，说明镜像停滞又延长了一小时 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-28 15:00 最新窗口再次复现：`run_id=8858` 在 `moonshotai/kimi-k2.5` 下因超长上下文触发上游 `maximum context length`，最终仍只落成 `invalid type: integer 400` | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-28 16:00 最新整点 12 条 heartbeat 中 9 条仍是 `noop + skipped_noop`，另有 3 条同秒漂到 `error decoding response body -> skipped_error`，继续缺少稳定单一契约 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-27 `小米破位预警` 在 20:00 先落成 `max_iterations_exceeded:6 + skipped_error`，21:00 又漂回 `heartbeat 输出不是结构化 JSON`；同一 job 仍在“触顶失败 / 结构化失败”间交替 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
@@ -61,7 +63,6 @@
 | --- | --- | --- | --- | --- |
 | Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | Fixed | 2026-04-28 已在 bundled runtime dirty restart 前先停止旧 managed children，避免旧内嵌 Web server 在 lock preflight / 新绑定前继续占用 `127.0.0.1:8077`；`cargo check -p hone-desktop --tests` 通过 | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |
 | Web 定时任务把“没有活跃 SSE 控制台监听者”直接记成 `send_failed`，离线晨报无法被视为已送达 | P2 | Fixed | 2026-04-28 已拆分 Web scheduler 的会话落库送达与实时 SSE 观测；离线无订阅者不再记 `send_failed`，`console_event_sent=false` 保留在 detail 中 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-04-28 已将 `server.session_sqlite_shadow_write_enabled` 默认值和示例配置改为 `true`，本机 `config.yaml` 已确认开启；后续成功会话会重新写入 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | Fixed | 2026-04-28 `CronSchedule` 新增 `date`，cron tool / Web API / scheduler event 均透传；未到目标日期的一次性任务不会被判定 due，定向回归通过 | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | Fixed | 2026-04-28 `hone-telegram` 在空 token 或 `bot.get_me()` 失败时从 `run()` 返回而非 `process::exit`，让 lock / heartbeat 正常 Drop 清理；`cargo check -p hone-telegram --tests` 通过 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
 | Event-engine `immediate_kinds` 把低信号新闻重新提级成即时推送 | P3 | Fixed | 2026-04-28 actor 级 `immediate_kinds` 对 `news_critical` / `press_release` 不再升级已被分类器降为 Low 的新闻；新增回归测试通过 | [event_engine_immediate_kinds_resurrects_low_signal_news.md](./event_engine_immediate_kinds_resurrects_low_signal_news.md) |
