@@ -8,6 +8,15 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-28 18:03 CST` 再次复核，started 残留在最新整点窗口继续累积：
+    - 最近一小时聚合结果已变成 `running + pending = 24`、`noop + skipped_noop = 24`、`completed + sent = 1`
+    - 说明 `17:30` 与 `18:00` 两个 heartbeat 窗口都各自额外留下 12 条 started 行，而终态行继续另起新记录
+  - `18:00` 窗口的 started 行为 `run_id=8981-8992`，对应 job 包含 `ASTS 重大异动心跳监控`、`全天原油价格3小时播报`、`小米30港元破位预警`、`RKLB异动监控`、`持仓重大事件心跳检测`、`CAI破位预警`、`小米破位预警`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`TEM破位预警`、`Cerebras IPO与业务进展心跳监控`、`ORCL 大事件监控`
+  - 同一批 job 的终态行继续单独存在：
+    - `run_id=8993-9003` 在 `18:00:18-18:01:32` 已分别落成 `noop + skipped_noop`
+    - `run_id=8985`（`持仓重大事件心跳检测`）的终态还继续延后到 `2026-04-28T18:02:14.065110+08:00` 才新增 `run_id=9004` 对应的 `noop + skipped_noop`
+  - 这说明 started 行不是短暂延迟；即使终态已在同一窗口内补齐，原 started 行也不会被覆盖或关闭
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-28 17:02 CST` 复核最近两小时 Feishu heartbeat 类任务后，发现 12 个 job 都同时存在：
     - 预写的 `execution_status=running`、`message_send_status=pending`
     - 同一 `delivery_key` 对应的终态行（`noop/skipped_noop`、`completed/sent` 或 `execution_failed/skipped_error`）
@@ -65,6 +74,7 @@
 
 ## 当前实现效果
 
+- 最近一小时 `cron_job_runs` 汇总到 `2026-04-28 18:03 CST` 已进一步扩大成 `24` 条 `running + pending` 残留，对应两个窗口各 `12` 条 started 行全部没有收口。
 - 最近一小时 `cron_job_runs` 汇总里，`running + pending` 反而是最多的组合，达到 24 条；同窗真正终态只有 23 条。
 - 对同一个 job / 同一个 `delivery_key`，数据库会同时出现 `running/pending` 与终态行。
 - 这会把活跃运行中的数量系统性抬高，并让人工巡检难以分辨“真卡住”与“已经完成但 started 行未清理”。
