@@ -7,6 +7,25 @@
 
 ## 修复进展
 
+- `2026-04-29 07:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `06:30-07:02` 两轮 heartbeat 窗口继续在 `JsonTriggered / JsonNoop / JsonMalformed / Empty / started` 之间漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `24` 条 started 行、`20` 条 `noop + skipped_noop`、`3` 条 `completed + sent` 与 `1` 条 `execution_failed + skipped_error`。
+  - `06:30` 窗口并未恢复成稳定单一状态：
+    - `completed + sent`：`9639`（`小米破位预警`）、`9643`（`ORCL 大事件监控`）
+    - `execution_failed + skipped_error`：`9638`（`小米30港元破位预警`）
+    - `noop + skipped_noop`：`9634-9637`、`9640-9642`、`9644-9645`
+    - 同窗 started 行 `9622-9633` 仍先落成 `running + pending`，说明 heartbeat 状态漂移与 started 残留继续同步发生
+  - `07:00` 窗口继续混跑：
+    - `completed + sent`：`9669`（`持仓重大事件心跳检测`）
+    - `parse_kind=Empty`：`9659`（`小米破位预警`）、`9660`（`TEM破位预警`）、`9661`（`ORCL 大事件监控`）、`9663`（`CAI破位预警`）
+    - `parse_kind=JsonNoop`：`9658`、`9662`、`9664`、`9665`、`9667`、`9668`
+    - `parse_kind=fenced JsonNoop`：`9666`（`ASTS 重大异动心跳监控`）在日志里输出 ````json {"status":"noop"} ````
+    - 同窗 started 行 `9646-9657` 又先落成 `running + pending`，说明“空输出吞成 noop”“fenced JSON 被兼容吞下”和“started 残留”仍在同窗并存
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账编码差异：
+    - `06:30:22.090-06:30:22.093`：`小米30港元破位预警` 记录 `parse_kind=JsonMalformed`、`malformed heartbeat json suppressed` 与 `parse failure escalated`
+    - `07:00:25.851`、`07:00:30.315`、`07:00:33.914`、`07:00:34.404`：`小米破位预警`、`TEM破位预警`、`ORCL 大事件监控`、`CAI破位预警` 继续记录 `parse_kind=Empty raw_preview=""`
+    - `07:00:34.223`：`ASTS 重大异动心跳监控` 继续记录 `parse_kind=JsonNoop raw_preview="```json\n{\"status\":\"noop\"}\n```"`
+    - `07:00:22-07:00:25`：同窗 Tavily 继续连续 4 key 配额失败并输出 `Tavily 搜索当前不可用`，但工具层仍回写 `tool_execute_success name=web_search`
+  - 结论：到 `2026-04-29 07:02` 为止，本单仍稳定活跃；最新一小时依旧不是稳定纯 JSON 契约，而是 `noop / sent / malformed / Empty / started` 混跑，状态维持 `Fixing`、严重等级维持 `P2`。
 - `2026-04-29 06:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `05:30-06:02` 两轮 heartbeat 窗口继续在 `JsonTriggered / JsonNoop / Empty / started` 之间漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `24` 条 started 行、`22` 条 `noop + skipped_noop` 与 `2` 条 `completed + sent`。
   - `05:30` 窗口并未恢复成稳定单一状态：

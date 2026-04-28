@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-29 06:30-07:02 最新巡检样本：
+      - `job_name=小米30港元破位预警`
+      - `run_id=9638`，`executed_at=2026-04-29T06:30:22.092003+08:00`，落成 `execution_failed + skipped_error + delivered=0`
+      - 对应 `sidecar.log` 在 `06:30:22.090-06:30:22.093` 记录 `parse_kind=JsonMalformed` 与 `malformed heartbeat json suppressed`，说明这一条 job 自己已经识别到“小米跌破 30 港元”条件，但因为结构化 JSON 失真而没有送达。
+      - 仅 3 秒后，同一时间窗的兄弟 heartbeat `job_name=小米破位预警` 的 `run_id=9639`，`executed_at=2026-04-29T06:30:25.928254+08:00`，落成 `completed + sent + delivered=1`
+      - `response_preview` 又把同一 `29.92 港元跌破 30 港元` 条件重新包装成 `【小米破位预警】` 送达；这说明当前链路并没有跨 job 共享稳定的“本窗已判定/已触发事实”基线，一条 job 因结构化失败丢掉后，另一条 job 仍会把同一条件当作新触发再次发送。
+      - 到 `07:01:43`，原始 `小米30港元破位预警` 同 job 又退回 `parse_kind=Empty + skipped_noop`，而不是继承 `06:30` 已判定过的跌破事实，说明重复/漏发判断仍依赖每轮临场输出形态，不是稳定持久的事件状态。
+      - 同一小时里 `job_name=持仓重大事件心跳检测` 的 `run_id=9669`（`2026-04-29T07:02:07.462383+08:00`）又把 `ASTS FCC批准商业授权` 作为 `高价值增量` 送达；该 FCC 旧催化已在更早多个 heartbeat 窗口反复出现，进一步说明跨 job 去重基线仍缺失。
+      - 这组最新样本说明重复提醒缺陷仍然活跃，并继续表现为“一个 job 因结构化失败丢失后，兄弟 job 立刻重发同一条件”与“持仓聚合 job 继续把旧催化视作新增”两种形态。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-29 00:30-01:01 最新巡检样本：
       - `job_name=小米30港元破位预警`
       - `run_id=9347`，`executed_at=2026-04-29T00:30:32.629273+08:00`，已落成 `completed + sent + delivered=1`

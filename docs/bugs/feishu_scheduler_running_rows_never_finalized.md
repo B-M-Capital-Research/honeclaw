@@ -8,6 +8,18 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 07:02 CST` 再次复核，started 残留继续在最新 `22:30`、`23:00` 两个 heartbeat 窗口实时新增：
+    - `22:30` 窗口 started 行为 `run_id=9622-9633`，同窗终态另起为 `run_id=9634-9645`
+    - `23:00` 窗口 started 行为 `run_id=9646-9657`，同窗终态已开始另起为 `run_id=9658-9669`
+    - 其中 `run_id=9639`（`小米破位预警`）、`9643`（`ORCL 大事件监控`）与 `9669`（`持仓重大事件心跳检测`）都已分别落成 `completed + sent + delivered=1`，但同窗 started 行 `9633`、`9627` 与 `9646` 仍永久保留 `running + pending`
+    - `run_id=9638` 还已落成 `execution_failed + skipped_error`，但对应 started 行 `9626` 同样没有被覆盖；`9658-9668` 里大多已回写为 `noop + skipped_noop`，对应 `9647-9657` 这批 started 行也仍继续残留
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时坏态仍是占比最高的状态：
+    - `running + pending = 24`
+    - `noop + skipped_noop = 20`
+    - `completed + sent = 3`
+    - `execution_failed + skipped_error = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1451` 条，较 `06:02` 巡检时的 `1427` 继续上升，说明 started 行仍在随着半小时轮询稳定堆积
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 06:02 CST` 再次复核，started 残留继续在最新 `05:30`、`06:00` 两个 heartbeat 窗口实时新增：
     - `05:30` 窗口 started 行为 `run_id=9574-9585`，同窗终态另起为 `run_id=9586-9597`
     - `06:00` 窗口 started 行为 `run_id=9598-9609`，同窗终态另起为 `run_id=9610-9621`
