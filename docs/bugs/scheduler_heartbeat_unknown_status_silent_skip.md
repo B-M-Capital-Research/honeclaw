@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-04-29 02:03` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `01:30-02:02` 两轮 heartbeat 窗口继续在 `JsonNoop / Empty / JsonTriggered` 之间漂移，同时 Tavily 全 key 失败后 `web_search` 仍被工具层记成功：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `heartbeat=1 AND datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `24` 条 started 行和 `24` 条完成样本；完成样本里仍以 `noop + skipped_noop` 为主（`22` 条），只有 `2` 条真正 `completed + sent`。
+  - `01:30` 窗口继续是 `11 noop + 1 completed` 的抖动态：
+    - `parse_kind=Empty`：`9388`（`RKLB异动监控`）、`9391`（`ASTS 重大异动心跳监控`）、`9392`（`小米30港元破位预警`）、`9394`（`Monitor_Watchlist_11`）、`9395`（`持仓重大事件心跳检测`）、`9397`（`小米破位预警`）
+    - `parse_kind=JsonNoop`：`9389`（`TEM破位预警`）、`9390`（`全天原油价格3小时播报`）、`9393`（`CAI破位预警`）、`9396`（`TEM大事件心跳监控`）、`9399`（`Cerebras IPO与业务进展心跳监控`）
+    - `run_id=9398`（`ORCL 大事件监控`）成功送达
+  - `02:00` 窗口再次漂成 `Empty / JsonNoop / completed` 的混合形态：
+    - `parse_kind=Empty`：`9413`（`TEM破位预警`）、`9416`（`ORCL 大事件监控`）、`9417`（`TEM大事件心跳监控`）、`9420`（`持仓重大事件心跳检测`）
+    - `parse_kind=JsonNoop`：`9412`（`CAI破位预警`）、`9414`（`全天原油价格3小时播报`）、`9415`（`RKLB异动监控`）、`9418`（`Cerebras IPO与业务进展心跳监控`）、`9419`（`小米破位预警`）、`9421`（`小米30港元破位预警`）、`9422`（`Monitor_Watchlist_11`）
+    - `run_id=9423`（`ASTS 重大异动心跳监控`）成功送达
+  - `data/runtime/logs/sidecar.log` 证明同窗 Tavily 检索继续处于“全 key 失败但工具层伪成功”的退化形态：
+    - `02:00:15-02:00:24` 两轮都连续记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`
+    - 但坏态后仍继续记录 `tool_execute_success name=web_search`，并最终让多条 heartbeat 收口为 `Empty` 或 `JsonNoop`
+  - 结论：到 `2026-04-29 02:03` 为止，本单仍稳定活跃；最新两轮 heartbeat 仍未恢复成稳定纯 JSON 协议，状态维持 `Fixing`、严重等级维持 `P2`。
 - `2026-04-29 01:03` 最近两小时真实窗口确认这条缺陷仍未收口，而且 `00:30-01:01` 两轮 heartbeat 窗口继续在 `JsonNoop / Empty / JsonTriggered` 之间漂移，同时 Tavily 全 key 失败后 `web_search` 仍被工具层记成功：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `heartbeat=1 AND datetime(executed_at) >= datetime('now','-2 hours')` 聚合，最近两小时已落成 `48` 条 `running + pending` started 行和 `48` 条完成样本；完成样本里仍以 `noop + skipped_noop` 为主（`46` 条），只有 `2` 条真正 `completed + sent`。
   - `00:30` 窗口继续是 `10 noop + 1 completed + 1 running->completed` 的抖动态，其中 `run_id=9347`（`小米30港元破位预警`）成功送达，其余 `9340-9346/9348-9351` 仍全部落成 `noop + skipped_noop`。

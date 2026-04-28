@@ -8,6 +8,16 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 02:03 CST` 再次复核，started 残留继续在最新 `01:30`、`02:00` 两个 heartbeat 窗口实时新增：
+    - `01:30` 窗口 started 行为 `run_id=9376-9387`，同窗终态另起为 `run_id=9388-9399`
+    - `02:00` 窗口 started 行为 `run_id=9400-9411`，同窗终态另起为 `run_id=9412-9423`
+    - 其中 `run_id=9398`（`ORCL 大事件监控`）与 `run_id=9423`（`ASTS 重大异动心跳监控`）都已分别落成 `completed + sent + delivered=1`，但同窗 started 行 `9378` 与 `9411` 仍永久保留 `running + pending`
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时坏态仍是占比最高的状态：
+    - `running + pending = 24`
+    - `noop + skipped_noop = 22`
+    - `completed + sent = 2`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1328` 条，较 `01:03` 巡检时的 `1304` 继续上升，说明 started 行仍在随着半小时轮询稳定堆积
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 01:03 CST` 再次复核，started 残留继续在最新 `00:30`、`01:00` 两个 heartbeat 窗口实时新增，而且普通 scheduler 的 started 行也还在同窗并存：
     - `00:30` 窗口 started 行为 `run_id=9328-9339`，同窗终态另起为 `run_id=9340-9351`
     - `01:00` 窗口 heartbeat started 行为 `run_id=9352-9363`，同窗终态另起为 `run_id=9364-9375`

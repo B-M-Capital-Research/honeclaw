@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 02:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T02:02:13.953788+08:00`（`run_id=9423`，`ASTS 重大异动心跳监控`），且最近一小时已新增 `48` 条 run，说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-04-29 01:44:35`：Feishu 直聊 `Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` 收到新一轮消息并进入 `step=agent.run detail=start`
+  - `2026-04-29 01:46:41`：同一条消息记录 `step=session.persist_assistant detail=done`，并在同秒落成 `done ... success=true reply.chars=2386`
+  - `2026-04-29 01:46:44`：同一条消息继续记录 `step=reply.send detail=segments.sent=2/2`
+  - 这说明到 `01:46` 为止，真实 Feishu 直聊仍能完整走完执行、持久化与发送，但 sqlite 会话镜像仍没有任何前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 01:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
