@@ -59,7 +59,9 @@ pub(crate) fn finalize_agent_response(
             session_id,
             sanitized.removed_internal
         );
+        response.success = false;
         response.content = EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string();
+        response.error = Some(EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string());
         outcome.fallback_reason = Some("sanitized_empty_success");
     } else if is_transitional_planning_sentence(sanitized.content.trim()) {
         tracing::warn!(
@@ -68,7 +70,9 @@ pub(crate) fn finalize_agent_response(
             session_id,
             sanitized.content.trim().chars().count()
         );
+        response.success = false;
         response.content = EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string();
+        response.error = Some(EMPTY_SUCCESS_FALLBACK_MESSAGE.to_string());
         outcome.fallback_reason = Some("planning_sentence_suppressed");
     } else {
         response.content = sanitized.content;

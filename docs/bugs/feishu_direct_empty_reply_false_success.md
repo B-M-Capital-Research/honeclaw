@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **证据来源**:
   - 2026-04-26 13:10-13:11 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
@@ -244,6 +244,27 @@
   - 13:10 的 `我现在有哪些定时任务` 再次命中三次 `reply_chars=0`；
   - 用户在同一会话里仍拿不到任何可消费的任务列表答复。
 - 因此本单继续维持 `Fixing`，严重等级继续保持 `P1`；本轮没有发现新根因，仍属于既有 `empty_success_exhausted` 活跃复现。
+
+## 修复进展（2026-04-28）
+
+- 已在 `crates/hone-channels/src/response_finalizer.rs` 收口两类此前仍会被记成 `success=true` 的伪成功终态：
+  - `sanitized_empty_success`
+  - `planning_sentence_suppressed`
+- 这两类终态现在都会统一改写为：
+  - `response.success=false`
+  - `response.content=EMPTY_SUCCESS_FALLBACK_MESSAGE`
+  - `response.error=Some(EMPTY_SUCCESS_FALLBACK_MESSAGE)`
+- 直接影响：
+  - `handler.session_run completed success=true reply.chars=35` 这一层伪成功台账不应再继续出现在上述两类坏态上；
+  - scheduler / outbound / 渠道侧会把它们当成失败收口，而不是正常完成；
+  - 后续巡检可以更准确地区分“真实完成”与“fallback 遮蔽的无效 Answer”。
+- 已补自动化回归：
+  - `cargo test -p hone-channels finalize_agent_response_marks_sanitized_empty_success_as_failure -- --nocapture`
+  - `cargo test -p hone-channels finalize_agent_response_marks_planning_sentence_as_failure -- --nocapture`
+  - `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries -- --nocapture`
+  - `cargo test -p hone-feishu failed_reply_text_ -- --nocapture`
+  - `cargo check -p hone-channels -p hone-feishu`
+- 本轮仍未完全闭环“为什么 Answer 最终会落到空/过渡句”这一上游根因，因此状态维持 `Fixing`，不转 `Fixed`。
 
 ## 下一步建议（更新于 2026-04-19 23:10 CST）
 

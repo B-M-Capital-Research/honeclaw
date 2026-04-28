@@ -30,7 +30,8 @@ use std::time::Duration;
 
 use crate::HoneBotCore;
 use crate::response_finalizer::{
-    EMPTY_SUCCESS_FALLBACK_MESSAGE, normalize_local_image_references, response_leaks_system_prompt,
+    EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response, normalize_local_image_references,
+    response_leaks_system_prompt,
 };
 use crate::run_event::RunEvent;
 use crate::runners::{
@@ -775,6 +776,58 @@ fn response_leaks_system_prompt_detects_prefixed_echo() {
         "\n### System Instructions ###\nsecret"
     ));
     assert!(!response_leaks_system_prompt("正常回复"));
+}
+
+#[test]
+fn finalize_agent_response_marks_sanitized_empty_success_as_failure() {
+    let root = make_temp_dir("hone_channels_finalize_sanitized_empty");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut response = AgentResponse {
+        content: "   ".to_string(),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(!response.success);
+    assert_eq!(response.content, EMPTY_SUCCESS_FALLBACK_MESSAGE);
+    assert_eq!(
+        response.error.as_deref(),
+        Some(EMPTY_SUCCESS_FALLBACK_MESSAGE)
+    );
+    assert_eq!(outcome.fallback_reason, Some("sanitized_empty_success"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn finalize_agent_response_marks_planning_sentence_as_failure() {
+    let root = make_temp_dir("hone_channels_finalize_planning_sentence");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let mut response = AgentResponse {
+        content: "我先查一下你现有的定时任务。".to_string(),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(!response.success);
+    assert_eq!(response.content, EMPTY_SUCCESS_FALLBACK_MESSAGE);
+    assert_eq!(
+        response.error.as_deref(),
+        Some(EMPTY_SUCCESS_FALLBACK_MESSAGE)
+    );
+    assert_eq!(outcome.fallback_reason, Some("planning_sentence_suppressed"));
+
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
