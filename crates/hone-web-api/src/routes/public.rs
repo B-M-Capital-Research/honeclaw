@@ -9,9 +9,11 @@ use axum::response::{IntoResponse, Response, sse::Event, sse::KeepAlive, sse::Ss
 use serde_json::json;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
+use tracing::warn;
 use uuid::Uuid;
 
 use hone_core::ActorIdentity;
+use hone_memory::WebSessionAuthResult;
 
 use crate::public_auth::PublicAuthLimitStatus;
 use crate::routes::chat::build_chat_sse;
@@ -772,14 +774,43 @@ pub(crate) fn require_public_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<hone_memory::WebInviteUser, Response> {
-    let token = read_session_token(headers)
-        .ok_or_else(|| crate::routes::json_error(StatusCode::UNAUTHORIZED, "未登录"))?;
-    match state.web_auth.authenticate_session(&token) {
-        Ok(Some(user)) => Ok(user),
-        Ok(None) => Err(crate::routes::json_error(
+    let Some(token) = read_session_token(headers) else {
+        warn!("public auth rejected: missing session cookie");
+        return Err(crate::routes::json_error(
             StatusCode::UNAUTHORIZED,
-            "登录已过期，请重新输入邀请码",
-        )),
+            "未登录",
+        ));
+    };
+    match state.web_auth.authenticate_session_detailed(&token) {
+        Ok(WebSessionAuthResult::Authenticated(user)) => Ok(user),
+        Ok(WebSessionAuthResult::Missing) => {
+            warn!("public auth rejected: session token not found");
+            Err(crate::routes::json_error(
+                StatusCode::UNAUTHORIZED,
+                "登录已过期，请重新输入邀请码",
+            ))
+        }
+        Ok(WebSessionAuthResult::Expired { user_id }) => {
+            warn!(%user_id, "public auth rejected: session expired");
+            Err(crate::routes::json_error(
+                StatusCode::UNAUTHORIZED,
+                "登录已过期，请重新输入邀请码",
+            ))
+        }
+        Ok(WebSessionAuthResult::UserRevoked { user_id }) => {
+            warn!(%user_id, "public auth rejected: user revoked");
+            Err(crate::routes::json_error(
+                StatusCode::UNAUTHORIZED,
+                "登录已过期，请重新输入邀请码",
+            ))
+        }
+        Ok(WebSessionAuthResult::UserMissing { user_id }) => {
+            warn!(%user_id, "public auth rejected: session user missing");
+            Err(crate::routes::json_error(
+                StatusCode::UNAUTHORIZED,
+                "登录已过期，请重新输入邀请码",
+            ))
+        }
         Err(error) => Err(crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("验证登录态失败: {error}"),

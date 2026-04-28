@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-04-15
+Last updated: 2026-04-28
 
 ## Source of Truth and Document Priority
 
@@ -60,6 +60,7 @@ Last updated: 2026-04-15
 - Company portraits should preserve not only the current conclusion but also enough rationale to make future review possible: `profile.md` should keep the current thesis, key operating metrics, valuation frame, risk ledger, and disconfirming conditions, while event docs should retain why the event mattered, supporting evidence / refs, and a compact research trail when no standalone research-notes layer exists yet
 - Before analyzing a company, if the current actor sandbox already contains portraits for similar companies, Hone should inspect those related portraits first and reuse the same macro / industry narrative unless a company-specific variable clearly justifies a different conclusion. Cross-company differences should be explained by company-level facts, not by silently rewriting the shared macro thesis.
 - Non-local Web console deployments must enable a Bearer token
+- Public web auth must use server-side sessions backed by an HttpOnly `hone_web_session` cookie. New session tokens must be high-entropy random values and only their hash may be persisted; legacy plaintext session rows may be accepted only as a compatibility path until they expire or are rotated. Auth rejection logs must not include raw cookie or session token values.
 - `ChatMode` describes only the message shape (`direct` / `group`) and does not determine session ownership; shared group context must explicitly go through `SessionIdentity`
 - `ActorIdentity` and `SessionIdentity` must stay separate: the former is for permissions, quota, sandbox, and private-data isolation, while the latter is for context recovery and session persistence
 - Global finance-domain constraints are injected at runtime by `crates/hone-channels/src/prompt.rs`: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, keep greetings short, and require macro / market narrative analysis to distinguish noise from thesis-changing evidence. Do not flip between conflicting narratives on a few days of price action or a single headline unless the prior hypothesis has been explicitly falsified, and do not override these core rules only in a single channel or in a local config.

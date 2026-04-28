@@ -83,6 +83,7 @@ quick-xml = "0.36"
 # 密码哈希 (public web auth)
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["getrandom"] }
+sha2 = "0.10"
 
 # Internal crates
 hone-core = { path = "crates/hone-core" }

@@ -33,6 +33,7 @@ import "./public-site.css";
 import {
   getPublicAuthMe,
   getPublicHistory,
+  isUnauthorizedApiError,
   publicLogout,
   sendPublicChat,
   uploadPublicAttachments,
@@ -1018,8 +1019,11 @@ export default function PublicChatPage() {
         setBackgroundPending(null);
       }
       if (options.resetWindow) scrollToBottom();
-    } catch {
-      setAuthState("logged_out");
+    } catch (error) {
+      if (generation !== sessionSyncGeneration) return;
+      if (isUnauthorizedApiError(error)) {
+        setAuthState("logged_out");
+      }
     }
   };
 

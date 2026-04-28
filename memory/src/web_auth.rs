@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use hone_core::{HoneError, HoneResult, beijing_now, beijing_now_rfc3339};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
+use sha2::{Digest, Sha256};
 
 pub const SESSION_TTL_DAYS_LONG: i64 = 30;
 pub const SESSION_TTL_DAYS_SHORT: i64 = 1;
@@ -34,6 +35,15 @@ pub struct WebInviteSession {
 pub struct WebInviteMutation {
     pub invite: WebInviteUser,
     pub cleared_session_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebSessionAuthResult {
+    Authenticated(WebInviteUser),
+    Missing,
+    Expired { user_id: String },
+    UserRevoked { user_id: String },
+    UserMissing { user_id: String },
 }
 
 pub struct WebAuthStorage {
@@ -211,7 +221,8 @@ impl WebAuthStorage {
         let now = beijing_now();
         let created_at = now.to_rfc3339();
         let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
-        let token = uuid::Uuid::new_v4().to_string();
+        let token = generate_session_token();
+        let token_hash = hash_session_token(&token);
         let conn = self.conn.lock().map_err(lock_err)?;
         purge_expired_sessions_inner(&conn, &created_at)?;
 
@@ -249,7 +260,13 @@ impl WebAuthStorage {
             INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
             VALUES (?1, ?2, ?3, ?4, ?5)
             ",
-            params![&token, &user.user_id, &created_at, &expires_at, &created_at],
+            params![
+                &token_hash,
+                &user.user_id,
+                &created_at,
+                &expires_at,
+                &created_at
+            ],
         )
         .map_err(sql_err)?;
         tx.commit().map_err(sql_err)?;
@@ -264,47 +281,99 @@ impl WebAuthStorage {
     }
 
     pub fn authenticate_session(&self, session_token: &str) -> HoneResult<Option<WebInviteUser>> {
+        match self.authenticate_session_detailed(session_token)? {
+            WebSessionAuthResult::Authenticated(user) => Ok(Some(user)),
+            WebSessionAuthResult::Missing
+            | WebSessionAuthResult::Expired { .. }
+            | WebSessionAuthResult::UserRevoked { .. }
+            | WebSessionAuthResult::UserMissing { .. } => Ok(None),
+        }
+    }
+
+    pub fn authenticate_session_detailed(
+        &self,
+        session_token: &str,
+    ) -> HoneResult<WebSessionAuthResult> {
         let now = beijing_now_rfc3339();
+        let token_hash = hash_session_token(session_token);
         let conn = self.conn.lock().map_err(lock_err)?;
-        purge_expired_sessions_inner(&conn, &now)?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
+        let session = tx
+            .query_row(
+                "
+                SELECT session_token, user_id, expires_at
+                FROM web_auth_sessions
+                WHERE session_token = ?1 OR session_token = ?2
+                ",
+                params![&token_hash, session_token],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(sql_err)?;
+        let Some((stored_token, user_id, expires_at)) = session else {
+            tx.commit().map_err(sql_err)?;
+            return Ok(WebSessionAuthResult::Missing);
+        };
+        if expires_at <= now {
+            tx.execute(
+                "DELETE FROM web_auth_sessions WHERE session_token = ?1",
+                params![&stored_token],
+            )
+            .map_err(sql_err)?;
+            tx.commit().map_err(sql_err)?;
+            return Ok(WebSessionAuthResult::Expired { user_id });
+        }
+
         let user = tx
             .query_row(
                 "
                 SELECT u.user_id, u.invite_code, u.phone_number, u.created_at, u.last_login_at, u.revoked_at,
                        u.password_hash, u.password_set_at, u.tos_accepted_at, u.tos_version
-                FROM web_auth_sessions s
-                JOIN web_invite_users u ON u.user_id = s.user_id
-                WHERE s.session_token = ?1 AND s.expires_at > ?2 AND u.revoked_at IS NULL
+                FROM web_invite_users u
+                WHERE u.user_id = ?1
                 ",
-                params![session_token, now],
+                params![&user_id],
                 map_invite_user,
             )
             .optional()
             .map_err(sql_err)?;
-        if user.is_some() {
-            // 不做 sliding expiry:`expires_at` 由 session 创建时选择的 TTL
-            // (1 天 / 30 天) 决定,访问只更新 `last_seen_at`。否则"不勾选保持登录"
-            // 的短 TTL 会被每次访问延到长 TTL,违背用户意图。
-            tx.execute(
-                "
-                UPDATE web_auth_sessions
-                SET last_seen_at = ?2
-                WHERE session_token = ?1
-                ",
-                params![session_token, now],
-            )
-            .map_err(sql_err)?;
+        let Some(user) = user else {
+            tx.commit().map_err(sql_err)?;
+            return Ok(WebSessionAuthResult::UserMissing { user_id });
+        };
+        if user.revoked_at.is_some() {
+            tx.commit().map_err(sql_err)?;
+            return Ok(WebSessionAuthResult::UserRevoked { user_id });
         }
+
+        // 不做 sliding expiry:`expires_at` 由 session 创建时选择的 TTL
+        // (1 天 / 30 天) 决定,访问只更新 `last_seen_at`。否则"不勾选保持登录"
+        // 的短 TTL 会被每次访问延到长 TTL,违背用户意图。
+        tx.execute(
+            "
+            UPDATE web_auth_sessions
+            SET last_seen_at = ?2
+            WHERE session_token = ?1
+            ",
+            params![&stored_token, now],
+        )
+        .map_err(sql_err)?;
         tx.commit().map_err(sql_err)?;
-        Ok(user)
+        Ok(WebSessionAuthResult::Authenticated(user))
     }
 
     pub fn delete_session(&self, session_token: &str) -> HoneResult<()> {
+        let token_hash = hash_session_token(session_token);
         let conn = self.conn.lock().map_err(lock_err)?;
         conn.execute(
-            "DELETE FROM web_auth_sessions WHERE session_token = ?1",
-            params![session_token],
+            "DELETE FROM web_auth_sessions WHERE session_token = ?1 OR session_token = ?2",
+            params![&token_hash, session_token],
         )
         .map_err(sql_err)?;
         Ok(())
@@ -472,7 +541,8 @@ impl WebAuthStorage {
         let now = beijing_now();
         let created_at = now.to_rfc3339();
         let expires_at = (now + chrono::Duration::days(ttl_days)).to_rfc3339();
-        let token = uuid::Uuid::new_v4().to_string();
+        let token = generate_session_token();
+        let token_hash = hash_session_token(&token);
 
         let conn = self.conn.lock().map_err(lock_err)?;
         purge_expired_sessions_inner(&conn, &created_at)?;
@@ -502,7 +572,13 @@ impl WebAuthStorage {
             INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
             VALUES (?1, ?2, ?3, ?4, ?5)
             ",
-            params![&token, &user.user_id, &created_at, &expires_at, &created_at],
+            params![
+                &token_hash,
+                &user.user_id,
+                &created_at,
+                &expires_at,
+                &created_at
+            ],
         )
         .map_err(sql_err)?;
         tx.commit().map_err(sql_err)?;
@@ -542,6 +618,26 @@ fn generate_invite_code() -> String {
         &token[10..15],
         &token[15..20]
     )
+}
+
+fn generate_session_token() -> String {
+    // 2 x UUID v4 gives 256 bits of CSPRNG-backed entropy and stays
+    // cookie-safe without extra encoding.
+    format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
+}
+
+fn hash_session_token(session_token: &str) -> String {
+    let digest = Sha256::digest(session_token.as_bytes());
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut out, "{byte:02x}");
+    }
+    out
 }
 
 fn normalize_invite_code(invite_code: &str) -> String {
@@ -682,9 +778,11 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str)
 #[cfg(test)]
 mod tests {
     use super::{
-        SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage, generate_invite_code,
+        SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage, WebSessionAuthResult,
+        generate_invite_code, generate_session_token, hash_session_token,
     };
-    use rusqlite::Connection;
+    use hone_core::beijing_now;
+    use rusqlite::{Connection, params};
 
     fn test_storage() -> WebAuthStorage {
         let root = std::env::temp_dir().join(format!("hone_web_auth_{}", uuid::Uuid::new_v4()));
@@ -706,6 +804,14 @@ mod tests {
             .filter(|c| c.is_ascii_hexdigit())
             .collect();
         assert_eq!(hex_chars.len(), 20, "hex chars in random part: {code}");
+    }
+
+    #[test]
+    fn session_token_has_256_bits_of_hex_entropy() {
+        let token = generate_session_token();
+
+        assert_eq!(token.len(), 64);
+        assert!(token.chars().all(|ch| ch.is_ascii_hexdigit()));
     }
 
     #[test]
@@ -736,12 +842,99 @@ mod tests {
             .expect("user");
 
         assert_eq!(authed.user_id, created.user_id);
+        let conn = storage.conn.lock().expect("conn");
+        let stored_token: String = conn
+            .query_row(
+                "SELECT session_token FROM web_auth_sessions WHERE user_id = ?1",
+                params![&created.user_id],
+                |row| row.get(0),
+            )
+            .expect("stored token");
+        assert_eq!(stored_token, hash_session_token(&session.session_token));
+        assert_ne!(stored_token, session.session_token);
         assert!(session.expires_at > session.created_at);
         assert_eq!(
             (chrono::DateTime::parse_from_rfc3339(&session.expires_at).expect("expiry")
                 - chrono::DateTime::parse_from_rfc3339(&session.created_at).expect("created"))
             .num_days(),
             SESSION_TTL_DAYS_LONG
+        );
+    }
+
+    #[test]
+    fn legacy_plaintext_session_tokens_remain_accepted_during_migration() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+        let now = beijing_now();
+        let created_at = now.to_rfc3339();
+        let expires_at = (now + chrono::Duration::days(SESSION_TTL_DAYS_LONG)).to_rfc3339();
+        let legacy_token = "legacy-plaintext-session-token";
+        {
+            let conn = storage.conn.lock().expect("conn");
+            conn.execute(
+                "
+                INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                ",
+                params![
+                    legacy_token,
+                    &created.user_id,
+                    &created_at,
+                    &expires_at,
+                    &created_at
+                ],
+            )
+            .expect("insert legacy session");
+        }
+
+        let authed = storage
+            .authenticate_session(legacy_token)
+            .expect("auth")
+            .expect("user");
+
+        assert_eq!(authed.user_id, created.user_id);
+    }
+
+    #[test]
+    fn detailed_auth_reports_expired_and_missing_sessions() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+        let now = beijing_now();
+        let created_at = (now - chrono::Duration::days(2)).to_rfc3339();
+        let expires_at = (now - chrono::Duration::days(1)).to_rfc3339();
+        let raw_token = "expired-session-token";
+        let token_hash = hash_session_token(raw_token);
+        {
+            let conn = storage.conn.lock().expect("conn");
+            conn.execute(
+                "
+                INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                ",
+                params![
+                    &token_hash,
+                    &created.user_id,
+                    &created_at,
+                    &expires_at,
+                    &created_at
+                ],
+            )
+            .expect("insert expired session");
+        }
+
+        assert_eq!(
+            storage
+                .authenticate_session_detailed(raw_token)
+                .expect("auth"),
+            WebSessionAuthResult::Expired {
+                user_id: created.user_id
+            }
+        );
+        assert_eq!(
+            storage
+                .authenticate_session_detailed("not-a-real-token")
+                .expect("auth"),
+            WebSessionAuthResult::Missing
         );
     }
 

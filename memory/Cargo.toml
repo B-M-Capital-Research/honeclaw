@@ -16,4 +16,5 @@ chrono = { workspace = true }
 rusqlite = { workspace = true }
 argon2 = { workspace = true }
 password-hash = { workspace = true }
+sha2 = { workspace = true }
 zip = { version = "0.6", default-features = false, features = ["deflate"] }

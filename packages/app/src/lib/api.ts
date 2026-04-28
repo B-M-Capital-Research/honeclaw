@@ -25,6 +25,22 @@ import type {
 import type { ActorRef } from "./actors";
 import { apiFetch, createEventSource } from "./backend";
 
+export class ApiError extends Error {
+  status: number;
+  statusText: string;
+
+  constructor(message: string, response: Response) {
+    super(message);
+    this.name = "ApiError";
+    this.status = response.status;
+    this.statusText = response.statusText;
+  }
+}
+
+export function isUnauthorizedApiError(error: unknown) {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
 async function parseJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const text = await response.text();
@@ -35,7 +51,7 @@ async function parseJson<T>(response: Response): Promise<T> {
     } catch {
       message = "";
     }
-    throw new Error(message || text || response.statusText);
+    throw new ApiError(message || text || response.statusText, response);
   }
   return response.json() as Promise<T>;
 }
@@ -167,7 +183,7 @@ export async function sendChat(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || response.statusText);
+    throw new ApiError(text || response.statusText, response);
   }
 
   if (!response.body) {

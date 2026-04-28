@@ -49,4 +49,5 @@ pub use session::{
 pub use session_sqlite::InterruptedSessionInfo;
 pub use web_auth::{
     SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage, WebInviteSession, WebInviteUser,
+    WebSessionAuthResult,
 };
