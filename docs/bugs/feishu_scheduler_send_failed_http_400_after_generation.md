@@ -4,7 +4,16 @@
 - **Bug Type**: System Error
 - **严重等级**: P1
 - **状态**: Fixing
+- **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
+  - 2026-04-28 08:00 最近一小时最新样本：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=8507`，`job_id=j_6547def8`，`job_name=每日美股收盘与持仓早报`，`executed_at=2026-04-28T08:02:34.000419+08:00`
+      - 本轮再次落成 `execution_status=completed`、`message_send_status=sent`、`delivered=1`，说明同一 `08:00` 窗口里正常日报链路仍可送达，故障并非 Feishu 出站全局不可用
+    - `data/runtime/logs/sidecar.log`
+      - `2026-04-28 08:00:50.373` 继续记录 `channel sink failed, falling back to log: feishu send HTTP 400 Bad Request`，返回体仍是 `code=99992361`、`msg="open_id cross app"`，并带新的 `log_id=202604280800507B74587E8735DEF5DAB5`
+      - 紧接着同一日志打印 `[dryrun sink] {"zh_cn":{"title":"【要闻】 $NVDA · 📄 SEC 8-K"...}}`，说明失败点仍是“已生成卡片正文，但最终 Feishu send API 被拒”
+      - `2026-04-28 08:00:50.377` 同窗还有其它 `sink delivered` 样本，进一步证明这不是全局 sink/网络中断，而是同一类目标/标识域仍会稳定触发 `open_id cross app`
   - 2026-04-21 21:02 最近一小时最新样本：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=4136`，`job_id=j_f02dfce5`，`job_name=OWALERT_PreMarket`，`executed_at=2026-04-21T21:02:48.696425+08:00`
@@ -158,6 +167,7 @@
 
 ## 当前实现效果
 
+- `2026-04-28 08:00` 的真实窗口说明，这条缺陷仍在最新一小时活跃：同一时窗里普通 `每日美股收盘与持仓早报` 已成功 `completed + sent + delivered=1`，但事件推送链路仍在 `08:00:50.373` 命中 `HTTP 400 / code=99992361 / open_id cross app`，且失败后只剩 dryrun log，用户侧收不到这条已生成的卡片。
 - `2026-04-21 21:02` 的 `OWALERT_PreMarket` 说明，这条缺陷在最新巡检窗口仍活跃：同一目标又一次落成 `completed + send_failed + code=99992361/open_id cross app`，用户仍收不到已经生成并落库的盘前扫描。
 - `2026-04-20 21:31` 的 `Oil_Price_Monitor_Premarket` 说明，在 `21:01` 的盘前扫描失败后，同一目标的盘前油价播报又再次落成 `completed + send_failed + code=99992361/open_id cross app`。
 - 这次 `response_preview` 已经是完整油价正文开头，不再叠加 `GEV earnings reminder` 那种 72 字计划句；因此最新小时窗进一步收敛出站根因仍独立存在，不能再归因于 answer 侧半成品收口。
@@ -185,6 +195,7 @@
 
 ## 根因判断
 
+- `2026-04-28 08:00` 同窗里既有 `run_id=8507` 这种正常 `completed + sent + delivered=1` 的日报，也有 `08:00:50.373` 的 `open_id cross app` 发送失败；这进一步收敛出问题不在 Feishu token、全局网络或全部发送请求，而仍在某一类事件 sink 最终选择的 `receive_id/open_id` 标识域。
 - `2026-04-21 21:02` 的 `OWALERT_PreMarket` 新样本进一步说明，问题仍不依赖某一份特定 prompt 或某一天的模板；只要命中同一目标，scheduler 最终发送到 Feishu API 时仍可能收到 `open_id cross app`。
 - `2026-04-20 21:31` 的 `Oil_Price_Monitor_Premarket` 样本说明，问题不依赖某一份特定 prompt 或持仓扫描模板；即使是另一条油价播报任务，只要命中同一目标，scheduler 最终发送到 Feishu API 时仍会稳定收到 `open_id cross app`。
 - `2026-04-20 21:01` 的 `OWALERT_PreMarket` 与 `20:00` 的 `GEV earnings reminder` 连续两轮都命中相同 `code=99992361 / open_id cross app`，且都指向同一 `actor_user_id`，进一步说明问题核心仍在 scheduler 最终投递时选择/复用的 Feishu 标识域，而不是某一轮 answer 内容刚好异常。

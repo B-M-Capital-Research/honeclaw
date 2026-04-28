@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-04-28 08:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且最新整点窗口仍没有任何一条 heartbeat 恢复成合法单段 JSON：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`08:00` 窗口共有 11 条 heartbeat 完成样本：
+    - `execution_failed + skipped_error + delivered=0`：`8496`（`小米30港元破位预警`）、`8497`（`Monitor_Watchlist_11`）、`8498`（`全天原油价格3小时播报`）、`8499`（`TEM破位预警`）、`8503`（`小米破位预警`）、`8506`（`持仓重大事件心跳检测`）
+    - `noop + skipped_noop + delivered=0`：`8500`（`TEM大事件心跳监控`）、`8501`（`CAI破位预警`）、`8502`（`ASTS 重大异动心跳监控`）、`8504`（`RKLB异动监控`）、`8505`（`ORCL 大事件监控`）
+  - `data/runtime/logs/sidecar.log` 证明上述样本仍不是契约要求的单段 JSON，而且坏态继续在多种形态间漂移：
+    - `08:00:07.566` `全天原油价格3小时播报`：`parse_kind=JsonEmptyStatus`
+    - `08:00:13.914` `CAI破位预警`：`parse_kind=PlainTextSuppressed`
+    - `08:00:31.168` `RKLB异动监控`：`parse_kind=JsonEmptyStatus`
+    - `08:00:31.769` `ORCL 大事件监控`：`parse_kind=JsonEmptyStatus`
+    - `08:00:34.024` `TEM大事件心跳监控`：`parse_kind=PlainTextSuppressed`
+    - `08:00:42.693` `持仓重大事件心跳检测`：`parse_kind=PlainTextSuppressed`
+  - 同一 `08:00` 窗口并非 scheduler 或 Feishu 全局中断：`run_id=8507`（`每日美股收盘与持仓早报`）已在 `2026-04-28T08:02:34.000419+08:00` 落成 `completed + sent + delivered=1`。
+  - 结论：到 `2026-04-28 08:04` 为止，本缺陷仍稳定在线；最新整点窗口继续维持“6 条显式失败 + 5 条伪 `noop`”的混合坏态，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 07:00` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `06:30` 到 `07:00` 仍没有任何一条 heartbeat 恢复成合法单段 JSON：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`06:30` 窗口共有 11 条 heartbeat 完成样本，其中 `8433`（`TEM大事件心跳监控`）、`8434`（`Monitor_Watchlist_11`）、`8435`（`ORCL 大事件监控`）、`8436`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error + delivered=0`，其余 7 条仍落成 `noop + skipped_noop + delivered=0`。
   - 同库 `07:00` 窗口共有 11 条 heartbeat 完成样本，再次漂回“7 败 4 伪 `noop`”：

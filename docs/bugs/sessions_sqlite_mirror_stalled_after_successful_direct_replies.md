@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+    - `2026-04-28 08:04 CST` 复核 `SELECT MAX(last_message_at), MAX(updated_at), MAX(imported_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 同时 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 但同库 `cron_job_runs` 已继续写到 `2026-04-28T08:02:34.000419+08:00`，说明最新一小时 sqlite 文件本身仍可写，而会话镜像链路继续静默停滞超过 15 小时。
+  - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+    - `2026-04-28 08:00:01.199`：`session=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a` 已记录新的 scheduler 直达消息 `recv`
+    - `2026-04-28 08:02:30.249`：同一 session 已记录 `step=session.persist_assistant detail=done`
+    - `2026-04-28 08:02:30.249923Z`：同一 session 紧接着落成 `done ... success=true elapsed_ms=149038 iterations=1 tools=16 ... reply.chars=2939`
+    - 说明 `08:00` 这轮 Feishu 直达链路已经完整完成持久化与成功收口，但 sqlite 会话镜像依旧没有前进
+  - 最近一小时 ACP 事件：`data/runtime/logs/acp-events.log`
+    - `2026-04-28T00:02:32.238585+00:00` 对同一 `sessionId=019dcc3c-631c-7e03-9495-fa75695f36f1` 持续写出 `agent_message_chunk`
+    - `2026-04-28T00:02:55.884506+00:00` 到 `00:02:57.488371+00:00` 继续完成 `web_search` MCP 工具调用与 `status=unavailable` 结果回写
+    - 说明这轮不仅主链路成功，连 ACP session/update 事件也持续推进；缺口仍集中在 sqlite 镜像没有把新 turn 写进 `sessions` / `session_messages`
+  - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 07:03 CST` 复核 `SELECT MAX(last_message_at), MAX(updated_at), MAX(imported_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - 同时 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍停在 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - 但同库 `cron_job_runs` 已继续写到 `2026-04-28T07:00:40.541211+08:00`，说明最新一小时 sqlite 文件本身仍可写，而会话镜像链路继续静默停滞超过 14 小时。
@@ -57,6 +70,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-28 08:04 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 08:02:34+08:00`。
+- 到 `2026-04-28 08:02` 为止，至少又有 1 条 Feishu scheduler 直达会话完成 `recv -> agent.run -> session.persist_assistant -> success=true`，但仍没有进入 sqlite 会话镜像。
 - 到 `2026-04-28 07:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 07:00:40+08:00`。
 - 到 `2026-04-28 04:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，且在 `04:01` 又有新的成功会话完成 `persist_assistant` 之后依然没有前进一步。
 - 到 `2026-04-28 03:05 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，与上一轮 `02:01` 巡检相比没有前进一步。
