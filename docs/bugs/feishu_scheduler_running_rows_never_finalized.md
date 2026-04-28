@@ -8,6 +8,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-28 19:01 CST` 再次复核，最新 `19:00` heartbeat 窗口继续把 started 行与终态行拆成两批记录：
+    - started 行为 `run_id=9029-9040`，`executed_at=2026-04-28T19:00:00.534475+08:00` 到 `19:00:00.543875+08:00`，12 个 job 全部仍是 `execution_status=running`、`message_send_status=pending`
+    - 同窗终态行则另起为 `run_id=9041-9052`，在 `19:00:30.019454+08:00` 到 `19:01:48.874222+08:00` 之间全部落成 `noop + skipped_noop`
+    - 这意味着仅 heartbeat 窗口内，`18:00`、`18:30`、`19:00` 三个批次已经累计留下 `36` 条未被终态覆盖的 started 行
+  - 若按最近一小时全量 scheduler 聚合，坏态已经不只是 heartbeat 局部噪声：
+    - `running + pending = 446`
+    - `noop + skipped_noop = 278`
+    - `execution_failed + skipped_error = 163`
+    - `completed + sent = 5`
+    - 说明 started 行残留已经成为最近一小时里占比最高的台账状态，而不是边缘偶发
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-28 18:03 CST` 再次复核，started 残留在最新整点窗口继续累积：
     - 最近一小时聚合结果已变成 `running + pending = 24`、`noop + skipped_noop = 24`、`completed + sent = 1`
     - 说明 `17:30` 与 `18:00` 两个 heartbeat 窗口都各自额外留下 12 条 started 行，而终态行继续另起新记录
@@ -74,6 +85,8 @@
 
 ## 当前实现效果
 
+- 最近一小时 `cron_job_runs` 汇总到 `2026-04-28 19:01 CST` 时，仅 heartbeat 三个窗口就已累计 `36` 条 `running + pending` 残留；按最近一小时全量 scheduler 聚合则进一步放大到 `446` 条 `running + pending`。
+- `19:00` 新窗再次证明坏态不是历史遗留脏数据：`run_id=9029-9040` 的 started 行刚写出不到两分钟，同窗终态就已经另起为 `9041-9052`，started 行仍不会被覆盖。
 - 最近一小时 `cron_job_runs` 汇总到 `2026-04-28 18:03 CST` 已进一步扩大成 `24` 条 `running + pending` 残留，对应两个窗口各 `12` 条 started 行全部没有收口。
 - 最近一小时 `cron_job_runs` 汇总里，`running + pending` 反而是最多的组合，达到 24 条；同窗真正终态只有 23 条。
 - 对同一个 job / 同一个 `delivery_key`，数据库会同时出现 `running/pending` 与终态行。
