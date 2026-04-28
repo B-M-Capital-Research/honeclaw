@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+    - `2026-04-28 13:01 CST` 复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
+    - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+    - 但同库 `cron_job_runs` 已继续写到 `2026-04-28T13:01:45.211635+08:00`（`run_id=8764`，`持仓重大事件心跳检测`），说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+  - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+    - `2026-04-28 12:30:59.969`：`持仓重大事件心跳检测` 完成 `run_id=8739`，记录 `deliver job_id=j_db12f27f ... parse_kind=JsonTriggered`
+    - `2026-04-28T12:31:02.817388+08:00`：同一 run 在 `cron_job_runs` 落成 `completed + sent + delivered=1`
+    - `2026-04-28 13:01:45.210`：下一窗口同一 job 又落成 `parse_kind=JsonNoop`，并在 `2026-04-28T13:01:45.211635+08:00` 写入 `cron_job_runs`
+    - 说明到 `13:01` 为止，至少又有一轮新的 scheduler 会话结果完整进入 runtime / `cron_job_runs`，但 sqlite 会话镜像仍没有任何推进。
+  - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 12:02 CST` 复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时没有任何新增镜像。
     - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
     - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -115,6 +125,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-28 13:01 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 13:01:45+08:00`。
+- 到 `2026-04-28 12:31` 与 `13:01` 为止，至少又有 1 条 heartbeat scheduler 会话结果分别完成 `deliver` 或 `noop` 收口并写入 `cron_job_runs`，但仍没有任何一条进入 sqlite 会话镜像。
 - 到 `2026-04-28 11:01 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 11:01:19+08:00`。
 - 到 `2026-04-28 12:02 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 12:02:08+08:00`。
 - 到 `2026-04-28 12:02` 为止，至少又有 1 条 Feishu scheduler 直达会话完成 `recv -> session.persist_assistant -> success=true -> delivered=1`，但仍没有任何一条进入 sqlite 会话镜像。

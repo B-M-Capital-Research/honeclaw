@@ -7,6 +7,25 @@
 
 ## 修复进展
 
+- `2026-04-28 13:00` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `12:30` 的单次真实触发并没有带来结构化链路整体恢复；同一小时其余 heartbeat 继续在 `JsonNoop / Empty` 间混跑：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`12:30` 与 `13:00` 两个窗口共有 23 条 heartbeat 完成样本；其中只有 `run_id=8739`（`持仓重大事件心跳检测`）在 `12:31:02+08:00` 落成 `completed + sent + delivered=1`，其余 22 条仍全部是 `noop + skipped_noop + delivered=0`。
+  - `12:30` 窗口 11 条未触发 heartbeat 样本分布如下：
+    - `parse_kind=JsonNoop`：`8731`（`全天原油价格3小时播报`）、`8732`（`RKLB异动监控`）、`8733`（`小米30港元破位预警`）、`8735`（`TEM破位预警`）、`8736`（`ASTS 重大异动心跳监控`）、`8740`（`TEM大事件心跳监控`）
+    - `parse_kind=Empty`：`8729`（`CAI破位预警`）、`8730`（`ORCL 大事件监控`）、`8734`（`Monitor_Watchlist_11`）、`8737`（`Cerebras IPO与业务进展心跳监控`）、`8738`（`小米破位预警`）
+  - `13:00` 窗口 11 条 heartbeat 完成样本分布如下：
+    - `parse_kind=JsonNoop`：`8753`（`小米30港元破位预警`）、`8755`（`全天原油价格3小时播报`）、`8758`（`TEM破位预警`）、`8762`（`ASTS 重大异动心跳监控`）、`8763`（`Monitor_Watchlist_11`）、`8764`（`持仓重大事件心跳检测`）
+    - `parse_kind=Empty`：`8754`（`TEM大事件心跳监控`）、`8756`（`RKLB异动监控`）、`8757`（`小米破位预警`）、`8759`（`ORCL 大事件监控`）、`8760`（`CAI破位预警`）、`8761`（`Cerebras IPO与业务进展心跳监控`）
+  - `data/runtime/logs/sidecar.log` 证明这些 `Empty` 样本仍是 `raw_chars=0` 的空返回却被当成合法 `noop`：
+    - `12:30:35.790` `Monitor_Watchlist_11`：`parse_kind=Empty raw_preview=""`
+    - `12:30:47.775` `Cerebras IPO与业务进展心跳监控`：`parse_kind=Empty raw_preview=""`
+    - `12:30:53.087` `小米破位预警`：`parse_kind=Empty raw_preview=""`
+    - `13:00:27.575` `RKLB异动监控`：`parse_kind=Empty raw_preview=""`
+    - `13:00:34.839` `ORCL 大事件监控`：`parse_kind=Empty raw_preview=""`
+    - `13:00:37.808` `CAI破位预警`：`parse_kind=Empty raw_preview=""`
+    - `13:00:57.038` `Cerebras IPO与业务进展心跳监控`：`parse_kind=Empty raw_preview=""`
+  - `12:30:59.969` 的 `run_id=8739` 虽然成功触发并发送 ASTS 提醒，但这只说明单条触发型样本可送达；同一小时 22 条未触发 heartbeat 仍靠 `JsonNoop` 或空输出兜底，没有恢复成稳定单一契约形态。
+  - 结论：到 `2026-04-28 13:01` 为止，本单仍稳定活跃；最新一小时只是从 `12:00` 的 `JsonNoop / Empty / JsonEmptyStatus` 混跑收敛到 `JsonNoop / Empty` 混跑，但空字符串仍被吞成 `noop`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-28 12:00` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `parse_kind` 只是从大面积 `Empty` 漂到 `JsonNoop / Empty / JsonEmptyStatus` 混跑，并未恢复成稳定健康态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`11:30` 与 `12:00` 两个窗口的 heartbeat 样本仍全部落成 `noop + skipped_noop + delivered=0`，没有任何一条进入明确 `triggered/sent` 或稳定单一契约形态。
   - `12:00` 窗口 12 条 heartbeat 完成样本分布如下：
