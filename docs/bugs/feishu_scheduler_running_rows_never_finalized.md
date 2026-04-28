@@ -8,6 +8,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 00:03 CST` 再次复核，started 残留继续在最新 `23:30`、`00:00` 两个 heartbeat 窗口实时新增，而且普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
+    - `23:30` 窗口 started 行为 `run_id=9272-9284`，同窗终态另起为 `run_id=9285-9297`
+    - `00:00` 窗口 heartbeat started 行为 `run_id=9298-9310`，同窗终态另起为 `run_id=9313-9324`
+    - 同窗普通 scheduler 也继续复现：`run_id=9300`（`RKLB 每日动态监控`）与 `9301`（`TEM 每日动态监控`）在 `00:00:00` 先写成 `running + pending`，随后另起 `run_id=9325/9326` 并在 `00:01:42`、`00:02:43` 落成 `noop + skipped_noop`
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 的最近一小时全量 scheduler 聚合，当前坏态仍是窗口内占比最高的状态：
+    - `running + pending = 28`
+    - `noop + skipped_noop = 26`
+    - `completed + sent = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1280` 条，较 `22:02` 巡检时的 `1227` 继续上升，说明 started 行没有随着整点轮询推进被自动收口
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-28 22:02 CST` 再次复核，started 残留继续在最新 `21:30`、`22:00` 两个窗口实时新增，而且普通 scheduler 与 heartbeat 仍共用同一种“started 行不 finalize”的坏态：
     - `21:30` 窗口 started 行为 `run_id=9166-9180`，同窗终态另起为 `run_id=9181-9195`
     - `22:00` 窗口 heartbeat started 行为 `run_id=9198-9209`，同窗终态又另起为 `run_id=9210-9221`
@@ -128,6 +139,9 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-29 00:03 CST` 为止，最近一小时全量 scheduler 聚合里的 `running + pending` 仍为 `28` 条，继续高于同窗真正已收口的 `completed + sent = 1`。
+- `00:00` 同窗的普通 scheduler 样本再次证明坏态不只存在于 heartbeat：`run_id=9300/9301` 先落成 `running + pending`，同一 delivery window 的真实终态另起为 `run_id=9325/9326 noop + skipped_noop`。
+- 全库 `running + pending` 残留总量已升到 `1280` 条，较 `22:02` 的 `1227` 继续上涨，说明新窗 started 行仍在持续堆积。
 - 到 `2026-04-28 22:02 CST` 为止，最近一小时全量 scheduler 聚合里的 `running + pending` 仍为 `28` 条，继续高于同窗真正已收口的 `completed + sent = 5`。
 - `21:35` 的普通 scheduler 样本再次证明坏态不只存在于 heartbeat：`run_id=9196` 先落成 `running + pending`，同一 delivery window 的真实终态另起为 `run_id=9197 completed + sent + delivered=1`。
 - 全库 `running + pending` 残留总量已升到 `1227` 条，较 `21:01` 的 `1199` 继续上涨，说明新窗 started 行仍在持续堆积。

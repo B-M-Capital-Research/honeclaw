@@ -6,6 +6,19 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 00:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T00:02:43.931648+08:00`（`run_id=9326`，`TEM 每日动态监控`），说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-04-28 23:44:29`：Feishu 直聊 `Actor_feishu__direct__ou_5fcd8d8940cb280ac50df027d46bd9f56c` 记录 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=2201`
+  - `2026-04-28 23:44:32`：同一条消息继续记录 `step=reply.send detail=segments.sent=2/2`
+  - `2026-04-28 23:49:02`：同一 session 再次记录 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=2211`
+  - `2026-04-28 23:49:07`：同一条消息继续记录 `step=reply.send detail=segments.sent=2/2`
+  - `2026-04-28 23:58:17`：Feishu 直聊 `Actor_feishu__direct__ou_5f64ee7ca7af22d44a83a31054e6fb92a3` 再次记录 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=1395`
+  - `2026-04-28 23:58:18`：同一条消息继续记录 `step=reply.send detail=segments.sent=1/1`
+  - 说明到 `23:58` 为止，最近一小时至少又有 3 条 Feishu 成功直聊完整走完执行、持久化与发送，但 sqlite 会话镜像仍没有任何前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-28 23:03 CST` 再次复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -234,6 +247,8 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-29 00:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-29 00:02:43+08:00`。
+- 到 `2026-04-28 23:58` 为止，最近一小时至少又有 3 条 Feishu 直聊成功完成 `persist_assistant + success=true + reply.send` 语义，但仍没有任何一条进入 sqlite 会话镜像。
 - 到 `2026-04-28 22:03 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 22:02:07+08:00`。
 - 到 `2026-04-28 21:45` 为止，最近一小时至少又有 10 条 Feishu 直聊成功完成 `persist_assistant + success=true + reply.send` 语义，但仍没有任何一条进入 sqlite 会话镜像。
 - 到 `2026-04-28 21:01 CST` 为止，`data/sessions.sqlite3` 的 `sessions` / `session_messages` 最新时间仍停在 `2026-04-27 16:54:20+08:00`，而 `cron_job_runs` 已继续前进到 `2026-04-28 21:02:20+08:00`。

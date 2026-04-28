@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-28 23:03 CST
+最后更新：2026-04-29 00:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -32,10 +32,10 @@
 | Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | New | 2026-04-27 08:30 `j_acce16a6` 实际按 `schedule.hour=8/minute=30` 触发，但同一 job 的 prompt 仍写 `每个交易日 20:45`；assistant 正文直接承认“不是你设定的20:45触发时点” | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-26 02:01 `持仓重大事件心跳检测` 又把 `RKLB + Blue Origin Blue Ring` 旧主题重新送达；同主题已在 2026-04-25 23:01 发过一次，中间多个窗口虽 `noop` 但未形成稳定去重基线 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-28 已把 `sanitized_empty_success` / `planning_sentence_suppressed` 从伪成功改为失败态并补回归，后续继续观察上游 Answer 空/过渡句根因是否仍复现 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | New | 2026-04-28 22:02 最近一小时 `running+pending` 仍为 `28` 条且高于 `completed+sent=5`；全库残留升到 `1227`，`21:35` 普通 scheduler 仍留下 started 行 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-28 23:03 再次复核 `sessions` / `session_messages` 仍卡在 `2026-04-27 16:54:20+08:00`；`cron_job_runs` 已写到 `23:01:47`，最近一小时至少又有 4 条 Feishu 成功直聊未入镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | New | 2026-04-29 00:03 最近一小时 `running+pending` 仍为 `28` 条且高于 `completed+sent=1`；全库残留升到 `1280`，`00:00` 两条每日监控也继续留下 started 行 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 00:03 再次复核 `sessions` / `session_messages` 仍卡在 `2026-04-27 16:54:20+08:00`；`cron_job_runs` 已写到 `00:02:43`，最近一小时至少又有 3 条 Feishu 成功直聊未入镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-28 15:00 最新窗口再次复现：`run_id=8858` 在 `moonshotai/kimi-k2.5` 下因超长上下文触发上游 `maximum context length`，最终仍只落成 `invalid type: integer 400` | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-28 23:03 最新整点 12 条 heartbeat 仍全部记成 `noop + skipped_noop`，其中 `9` 条继续是 `parse_kind=Empty`；同窗 Tavily 两轮 4 key 全失败后 `web_search` 仍记成功 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 00:03 最近一小时连续两轮 heartbeat 共 `24` 条完成样本仍全部记成 `noop + skipped_noop`；最新 `00:00` 窗口继续是 `7 Empty / 5 JsonNoop`，同窗 Tavily 4 key 全失败 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-28 18:30 `Cerebras IPO与业务进展心跳监控` 再次落成 `max_iterations_exceeded:6 + skipped_error`；同一 job 到 19:00 又漂回 `JsonNoop + skipped_noop`，仍在“触顶失败 / 伪 noop”间交替 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-28 04:01 `Oil_Price_Monitor_Closing` 再次成功送达，但正文仍把“美伊和平谈判停滞、霍尔木兹海峡运输仍受限制”写成 Reuters/WSJ 已共同确认的确定性主线；此前 `Later` 止血确认失效 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
