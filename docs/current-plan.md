@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-04-26
-状态：有 6 个活跃任务
+最后更新：2026-04-28
+状态：有 7 个活跃任务
 
 ## 说明
 
@@ -16,6 +16,10 @@
 
 ## 活跃任务
 
+- **Active Bug Burn-down 2026-04-28**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；本轮已从 21 个活跃缺陷降到 15 个，闭环 Web scheduler 离线送达、session sqlite mirror、once 日期、desktop 8077、Telegram GetMe 残留与 event-engine Low news 提级等可控根因；剩余项继续按共享契约加固，不对不可控网络或模型波动做脆弱特判
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

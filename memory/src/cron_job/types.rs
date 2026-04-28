@@ -83,6 +83,9 @@ pub struct CronSchedule {
     pub repeat: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weekday: Option<u32>,
+    /// Absolute Beijing date for one-shot jobs, formatted as YYYY-MM-DD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
 }
 
 /// 待确认更新

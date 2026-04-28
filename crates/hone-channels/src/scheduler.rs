@@ -404,11 +404,6 @@ fn is_scheduler_protocol_residue(line: &str) -> bool {
             .any(|key| user_visible_keys.contains(&key.as_str()))
 }
 
-fn is_max_iterations_error(text: &str) -> bool {
-    let normalized = text.trim().to_ascii_lowercase();
-    normalized.contains("已达最大迭代次数") || normalized.contains("max iterations")
-}
-
 /// 检测定时任务正文中是否包含明确的"跳过推送"信号。
 /// 仅匹配直接声明"本次跳过推送"或"无需发送"的短语，避免误拦截合法内容。
 pub(crate) fn has_skip_delivery_signal(text: &str) -> bool {
@@ -473,8 +468,16 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
         );
     }
     let trigger_note = format!(
-        "[定时任务触发] 任务名称：{}。请执行以下指令：",
-        event.job_name
+        "[定时任务触发] 任务名称：{}。\n权威触发配置：repeat={}{}，北京时间 {:02}:{:02}。如果下面的用户任务正文里出现了不同的日期或时间，以这里的权威触发配置为准，不要在回复中声称本轮不是设定触发时点。\n请执行以下指令：",
+        event.job_name,
+        event.schedule_repeat,
+        event
+            .schedule_date
+            .as_deref()
+            .map(|date| format!(", date={date}"))
+            .unwrap_or_default(),
+        event.schedule_hour,
+        event.schedule_minute
     );
     format!("{}\n\n{}", trigger_note, event.task_prompt)
 }
@@ -652,8 +655,6 @@ pub async fn execute_scheduler_event(
         Err(error) => {
             let (parse_kind_label, treat_as_noop) = if is_context_overflow_error(&error) {
                 ("ContextOverflowNoop", true)
-            } else if is_max_iterations_error(&error) {
-                ("MaxIterationsNoop", true)
             } else {
                 ("", false)
             };
@@ -1125,6 +1126,10 @@ mod tests {
             push: Value::Null,
             tags: vec![],
             heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
             last_delivered_previews: vec![],
             bypass_quiet_hours: false,
         };
@@ -1148,6 +1153,10 @@ mod tests {
             push: Value::Null,
             tags: vec![],
             heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
             last_delivered_previews: vec![
                 (
                     "2026-04-20T05:01:00+08:00".to_string(),
@@ -1182,6 +1191,10 @@ mod tests {
             push: Value::Null,
             tags: vec![],
             heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
             last_delivered_previews: vec![],
             bypass_quiet_hours: false,
         };
@@ -1221,6 +1234,10 @@ mod tests {
             push: Value::Null,
             tags: vec![],
             heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
             last_delivered_previews: vec![],
             bypass_quiet_hours: false,
         };
@@ -1291,6 +1308,10 @@ mod tests {
             push: Value::Null,
             tags: vec![],
             heartbeat: false,
+            schedule_hour: 9,
+            schedule_minute: 30,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
             last_delivered_previews: vec![],
             bypass_quiet_hours: bypass,
         }

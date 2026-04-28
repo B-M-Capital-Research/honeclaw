@@ -1,8 +1,16 @@
 # Bug: Telegram startup GetMe timeout leaves dead pid and heartbeat residue
 
+- **状态**: Fixed
+
 ## Summary
 
 `telegram.enabled=true` 的最新一次重启里，`hone-telegram` 在 `bot.get_me()` 阶段超时后直接 `std::process::exit(1)`，导致进程已经退出，但 `data/runtime/telegram.pid` 与 `data/runtime/telegram.heartbeat.json` 仍残留并指向 dead pid；巡检会把它识别成 enabled 渠道僵尸 pid，后续如果无人处理还会很快演变成陈旧 heartbeat。
+
+## 修复与验证
+
+- 2026-04-28: `bins/hone-telegram/src/handler.rs` 在空 token 或 `bot.get_me()` 失败时改为从 `run()` 返回，不再调用 `std::process::exit(1)`。
+- 这样 `ChannelRuntimeBootstrap` 持有的 process lock 与 heartbeat 可以正常 Drop，避免启动校验失败后遗留 dead pid / heartbeat 文件。
+- 2026-04-28: `cargo check -p hone-telegram --tests`
 
 ## Observed Symptoms
 

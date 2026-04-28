@@ -11,7 +11,8 @@ use uuid::Uuid;
 use super::CronJobStorage;
 use super::schedule::{
     DUE_WINDOW_MINUTES, is_holiday, is_trading_day, is_workday, job_existed_before_slot,
-    normalized_repeat, normalized_tags, validate_schedule,
+    normalize_schedule_date, normalized_repeat, normalized_tags, validate_schedule,
+    validate_schedule_date,
 };
 use super::types::{
     CronJob, CronJobData, CronJobUpdate, CronSchedule, MAX_ENABLED_JOBS_PER_ACTOR,
@@ -125,6 +126,7 @@ impl CronJobStorage {
         task_prompt: &str,
         channel_target: &str,
         weekday: Option<u32>,
+        date: Option<String>,
         push: Option<serde_json::Value>,
         enabled: bool,
         tags: Option<Vec<String>>,
@@ -153,6 +155,10 @@ impl CronJobStorage {
         ) {
             return serde_json::json!({"success": false, "error": error});
         }
+        let date = normalize_schedule_date(date);
+        if let Err(error) = validate_schedule_date(repeat, date.as_deref()) {
+            return serde_json::json!({"success": false, "error": error});
+        }
 
         let job_id = format!("j_{}", &Uuid::new_v4().to_string()[..8]);
         let now = hone_core::beijing_now_rfc3339();
@@ -165,6 +171,7 @@ impl CronJobStorage {
                 minute,
                 repeat: repeat.to_string(),
                 weekday,
+                date,
             },
             task_prompt: task_prompt.to_string(),
             push: push.unwrap_or_else(|| serde_json::json!({"type": "analysis"})),
@@ -217,7 +224,8 @@ impl CronJobStorage {
             if let Some(name) = updates.name.clone() {
                 job.name = name;
             }
-            if let Some(schedule) = updates.schedule.clone() {
+            if let Some(mut schedule) = updates.schedule.clone() {
+                schedule.date = normalize_schedule_date(schedule.date);
                 validate_schedule(
                     Some(schedule.hour),
                     Some(schedule.minute),
@@ -225,6 +233,8 @@ impl CronJobStorage {
                     schedule.weekday,
                 )
                 .map_err(hone_core::HoneError::Tool)?;
+                validate_schedule_date(&schedule.repeat, schedule.date.as_deref())
+                    .map_err(hone_core::HoneError::Tool)?;
                 job.schedule = schedule;
                 job.tags = normalized_tags(job.tags.clone(), &job.schedule.repeat);
             }
@@ -399,6 +409,14 @@ impl CronJobStorage {
                 }
 
                 let repeat_kind = normalized_repeat(&job.schedule.repeat, &job.tags);
+                if repeat_kind == "once"
+                    && let Some(date) = job.schedule.date.as_deref()
+                    && chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                        .map(|scheduled_day| scheduled_day != current_day)
+                        .unwrap_or(true)
+                {
+                    continue;
+                }
                 match repeat_kind {
                     "weekly" => {
                         if job.schedule.weekday != Some(current_weekday) {

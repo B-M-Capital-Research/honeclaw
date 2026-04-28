@@ -216,6 +216,7 @@ pub struct CronJobUpsertRequest {
     pub minute: Option<u32>,
     pub repeat: Option<String>,
     pub weekday: Option<u32>,
+    pub date: Option<String>,
     pub task_prompt: Option<String>,
     pub push: Option<Value>,
     pub enabled: Option<bool>,

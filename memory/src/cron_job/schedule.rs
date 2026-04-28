@@ -63,6 +63,25 @@ pub(super) fn validate_schedule(
     Ok(())
 }
 
+pub(super) fn validate_schedule_date(repeat: &str, date: Option<&str>) -> Result<(), String> {
+    let Some(date) = date.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    if !repeat.eq_ignore_ascii_case("once") {
+        return Err("date 仅支持 repeat=once 的一次性任务".to_string());
+    }
+    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .map(|_| ())
+        .map_err(|_| format!("date 须为 YYYY-MM-DD，收到 {date}"))
+}
+
+pub(super) fn normalize_schedule_date(date: Option<String>) -> Option<String> {
+    date.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        (!trimmed.is_empty()).then_some(trimmed)
+    })
+}
+
 pub(super) fn normalized_tags(tags: Vec<String>, repeat: &str) -> Vec<String> {
     let mut out = Vec::new();
     for tag in tags {

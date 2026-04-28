@@ -107,6 +107,7 @@ pub(crate) async fn handle_create_cron_job(
         &task_prompt,
         &channel_target,
         req.weekday,
+        req.date,
         req.push,
         enabled,
         req.tags,
@@ -179,20 +180,27 @@ pub(crate) async fn handle_update_cron_job(
         || req.minute.is_some()
         || req.repeat.is_some()
         || req.weekday.is_some()
+        || req.date.is_some()
     {
         let repeat = req
             .repeat
             .clone()
             .unwrap_or_else(|| existing.schedule.repeat.clone());
+        let date = if repeat.eq_ignore_ascii_case("once") {
+            req.date.clone().or(existing.schedule.date.clone())
+        } else {
+            None
+        };
         Some(CronSchedule {
             hour: req.hour.unwrap_or(existing.schedule.hour),
             minute: req.minute.unwrap_or(existing.schedule.minute),
-            weekday: if repeat == "weekly" {
+            weekday: if repeat.eq_ignore_ascii_case("weekly") {
                 req.weekday.or(existing.schedule.weekday)
             } else {
                 None
             },
             repeat,
+            date,
         })
     } else {
         None

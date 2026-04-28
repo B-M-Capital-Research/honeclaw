@@ -1756,6 +1756,55 @@ async fn per_actor_immediate_kinds_promotes_weekly52_high() {
 }
 
 #[tokio::test]
+async fn per_actor_immediate_kinds_does_not_resurrect_low_signal_news() {
+    use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
+
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["AAOI".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let prefs_store = Arc::new(FilePrefsStorage::new(dir.path().join("prefs")).unwrap());
+    prefs_store
+        .save(
+            &actor("u1"),
+            &NotificationPrefs {
+                immediate_kinds: Some(vec!["news_critical".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store,
+        digest,
+    )
+    .with_prefs(prefs_store);
+
+    let news = MarketEvent {
+        id: "news:AAOI:low".into(),
+        kind: EventKind::NewsCritical,
+        severity: Severity::Low,
+        symbols: vec!["AAOI".into()],
+        occurred_at: Utc::now(),
+        title: "AAOI 低信号新闻".into(),
+        summary: String::new(),
+        url: None,
+        source: "opinion_blog".into(),
+        payload: serde_json::Value::Null,
+    };
+    let (sent, pending) = router.dispatch(&news).await.unwrap();
+    assert_eq!(sent, 0, "Low news must not be forced into sink");
+    assert_eq!(pending, 1, "Low news can still queue normally for digest");
+    assert!(sink.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn per_actor_immediate_kinds_skips_noop_analyst_grade() {
     use crate::prefs::{FilePrefsStorage, NotificationPrefs, PrefsProvider};
 
@@ -1980,7 +2029,10 @@ async fn quiet_held_logs_status_and_skips_sink() {
     event.id = "earnings_in_quiet".into();
     store.insert_event(&event).unwrap();
     let (sent, pending) = router.dispatch(&event).await.unwrap();
-    assert_eq!(sent, 0, "High event should NOT go to sink during quiet_hours");
+    assert_eq!(
+        sent, 0,
+        "High event should NOT go to sink during quiet_hours"
+    );
     assert_eq!(pending, 0, "should not enqueue to digest either");
     assert!(
         sink.calls.lock().unwrap().is_empty(),

@@ -364,6 +364,7 @@ function AssistantBody(props: { content: string; white?: boolean }) {
           <Switch>
             <Match when={part.type === "image"}>
               <img
+                data-testid="assistant-inline-image"
                 src={part.value}
                 alt=""
                 class="hone-assistant-image mt-3 max-w-full cursor-zoom-in rounded-xl shadow-sm"
@@ -416,6 +417,7 @@ function ImageMosaic(props: {
                 }}
               >
                 <img
+                  data-testid="user-attachment-image"
                   src={publicAttachmentUrl(img)}
                   alt={img.name}
                   style={{
@@ -443,6 +445,7 @@ function ImageMosaic(props: {
         }}
       >
         <img
+          data-testid="user-attachment-image"
           src={publicAttachmentUrl(props.images[0]!)}
           alt={props.images[0]!.name}
           style={{ width: "100%", height: "auto", display: "block" }}
@@ -736,7 +739,7 @@ function PendingBubble(props: {
 function AttachPreview(props: { items: PublicChatAttachment[]; onRemove: (index: number) => void; }) {
   return (
     <Show when={props.items.length > 0}>
-      <div style={{ display: "flex", gap: "10px", padding: "12px 16px", "flex-wrap": "wrap", "border-bottom": "1.5px solid #f8fafc" }}>
+      <div data-testid="composer-attach-preview" style={{ display: "flex", gap: "10px", padding: "12px 16px", "flex-wrap": "wrap", "border-bottom": "1.5px solid #f8fafc" }}>
         <For each={props.items}>
           {(item, index) => (
             <div style={{ position: "relative" }}>
@@ -853,13 +856,24 @@ function Composer(props: {
   const isCapped = () => !!props.dailyLimit && props.dailyLimit > 0;
   const quotaExhausted = () => isCapped() && props.remaining === 0;
   const canSend = () => !props.isSending && !props.uploading && (!!props.draft.trim() || props.attachments.length > 0) && !quotaExhausted();
+  const handlePaste = (e: ClipboardEvent) => {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const files = items
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => !!file)
+      .map(renamePasteFile);
+    if (files.length === 0) return;
+    e.preventDefault();
+    props.onPickFiles(files, "image");
+  };
 
   createEffect(() => { if (!props.isSending && taRef) taRef.focus(); });
 
   return (
     <div class="public-chat-composer" style={{ padding: "16px 24px 32px", background: "transparent", "flex-shrink": "0", position: "relative", "z-index": "20" }}>
       <ComposerStatus message={props.pendingMessage} onStop={props.onStop} justFinished={props.justFinished} />
-      <input ref={imgInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "image"); }} />
+      <input data-testid="composer-image-input" ref={imgInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "image"); }} />
       <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "file"); }} />
 
       <AttachMenu open={menuOpen()} onClose={() => setMenuOpen(false)} onPickImage={() => imgInputRef?.click()} onPickFile={() => fileInputRef?.click()} />
@@ -867,14 +881,15 @@ function Composer(props: {
       <div class="public-chat-composer-box" style={{ position: "relative", "max-width": "900px", margin: "0 auto", "border-radius": "22px", border: focused() ? "2px solid #000" : "2px solid #f1f5f9", background: "#fff", "box-shadow": focused() ? "0 20px 60px rgba(0,0,0,0.08)" : "0 10px 30px rgba(0,0,0,0.03)", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
         <AttachPreview items={props.attachments} onRemove={props.onRemoveAttachment} />
         <div class="public-chat-composer-row" style={{ display: "flex", "align-items": "center", gap: "6px", padding: "6px 10px" }}>
-          <button type="button" class="pub-attach-btn" style={{ width: "36px", height: "36px", "flex-shrink": "0" }} onClick={() => setMenuOpen(!menuOpen())}>
+          <button data-testid="composer-attach-button" type="button" class="pub-attach-btn" style={{ width: "36px", height: "36px", "flex-shrink": "0" }} onClick={() => setMenuOpen(!menuOpen())}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" /></svg>
           </button>
           <textarea ref={taRef} class="public-chat-composer-input" rows={1} placeholder={quotaExhausted() ? "今日额度已用完" : "向 Hone 提问…"} value={props.draft} disabled={props.isSending} onInput={(e) => props.onDraftChange(e.currentTarget.value)}
             onKeyDown={(e) => { if (!e.isComposing && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend()) props.onSend(); } }}
+            onPaste={handlePaste}
             onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
             style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "6px 6px", "font-size": "15px", "font-weight": "500", "line-height": "1.5", color: "#0f172a", "max-height": "180px", "min-height": "32px", overflow: "hidden auto" }} />
-          <button type="button" class="public-chat-send-button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "36px", height: "36px", "border-radius": "12px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", "flex-shrink": "0", transition: "all 0.2s" }}>
+          <button data-testid="composer-send-button" type="button" class="public-chat-send-button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "36px", height: "36px", "border-radius": "12px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", "flex-shrink": "0", transition: "all 0.2s" }}>
             <svg viewBox="0 0 20 20" width="16" height="16" fill={canSend() ? "white" : "#94a3b8"}><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
           </button>
         </div>

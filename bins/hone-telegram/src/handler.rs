@@ -180,7 +180,7 @@ pub(crate) async fn run() {
     let token = core.config.telegram.bot_token.trim().to_string();
     if token.is_empty() {
         warn!("⚠️  未设置 telegram.bot_token，请在 config.yaml 中配置");
-        std::process::exit(1);
+        return;
     }
 
     let bot = Bot::new(token);
@@ -188,7 +188,7 @@ pub(crate) async fn run() {
         Ok(me) => me,
         Err(e) => {
             error!("无法获取 Telegram Bot 信息: {e}");
-            std::process::exit(1);
+            return;
         }
     };
     let bot_id = me.user.id.0;

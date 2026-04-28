@@ -242,7 +242,7 @@ pub struct StorageConfig {
     pub sessions_dir: String,
     #[serde(default = "default_session_sqlite_db_path")]
     pub session_sqlite_db_path: String,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub session_sqlite_shadow_write_enabled: bool,
     #[serde(default = "default_session_runtime_backend")]
     pub session_runtime_backend: String,

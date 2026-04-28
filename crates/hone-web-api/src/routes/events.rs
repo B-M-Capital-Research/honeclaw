@@ -88,6 +88,25 @@ pub(crate) async fn handle_scheduler_events(
         let state_clone = state.clone();
         tokio::spawn(async move {
             let storage = state_clone.core.cron_job_storage();
+            let _ = storage.record_execution_event(
+                &event.actor,
+                &event.job_id,
+                &event.job_name,
+                &event.channel_target,
+                event.heartbeat,
+                CronJobExecutionInput {
+                    execution_status: "running".to_string(),
+                    message_send_status: "pending".to_string(),
+                    should_deliver: true,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: json!({
+                        "delivery_key": event.delivery_key,
+                        "phase": "started",
+                    }),
+                },
+            );
             let result = run_scheduled_task(&state_clone, &event).await;
             if !result.should_deliver {
                 let _ = storage.record_execution_event(
@@ -136,16 +155,13 @@ pub(crate) async fn handle_scheduler_events(
             });
 
             // 2. 若是 iMessage 渠道，把结果通过 hone-imessage 内置 HTTP 服务投递给用户
-            let mut message_send_status = if push_result.is_ok() {
-                "sent".to_string()
-            } else {
-                "send_failed".to_string()
-            };
-            let mut delivered = push_result.is_ok();
+            let mut message_send_status = "sent".to_string();
+            let mut delivered = true;
             let mut error_message = result.error.clone();
             let mut detail = json!({
                 "scheduler": result.metadata,
                 "console_event_sent": push_result.is_ok(),
+                "delivery_channel": event.channel.clone(),
             });
             if event.channel == "imessage" {
                 let url = format!(
@@ -216,6 +232,7 @@ pub(crate) async fn handle_scheduler_events(
                     "scheduler": result.metadata,
                     "console_event_sent": push_result.is_ok(),
                     "imessage_http_delivery": delivered,
+                    "delivery_channel": event.channel.clone(),
                 });
             }
             let _ = storage.record_execution_event(

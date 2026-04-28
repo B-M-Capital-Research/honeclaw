@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 16:04 CST` 复核：`sessions` 与 `session_messages` 的 `MAX(updated_at/last_message_at/imported_at/timestamp)` 仍全部卡在 `2026-04-27T16:54:20+08:00`，最近一小时依旧没有任何新增镜像。
@@ -78,6 +78,7 @@
     - `2026-04-28 09:32:32.094`：同一 session 继续 `step=reply.send detail=segments.sent=1`
     - `2026-04-28 09:33:33.245`：同一 session 第二轮追问 `退订所有消息` 再次完成 `step=session.persist_assistant detail=done`
     - `2026-04-28 09:33:33.245299Z`：同一轮落成 `done ... success=true elapsed_ms=35011 iterations=1 tools=3 ... reply.chars=85`
+
     - 说明最近一小时不仅 Feishu，会话主链路在 Discord 也有真实成功 turn，但 sqlite 会话镜像依旧完全没有前进。
   - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
     - `2026-04-28 09:02 CST` 复核 `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;`，最新会话镜像仍停在 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -139,6 +140,12 @@
   - 对照同库其它表：`data/sessions.sqlite3` -> `cron_job_runs`
     - `01:30` 窗口 `run_id=8200-8210`、`02:00` 窗口 `run_id=8222-8232` 仍持续写入同一个 sqlite 文件
     - 例如 `run_id=8232` 的 `executed_at=2026-04-28T02:00:41.592070+08:00` 已存在，说明 sqlite 文件本身并未整体停写，停滞集中在 `sessions` / `session_messages` 镜像链路
+
+## 修复与验证
+
+- 2026-04-28: `crates/hone-core/src/config/server.rs` 将 `server.session_sqlite_shadow_write_enabled` 的 serde 默认值改为 `true`，`config.example.yaml` 也同步改为 `true`。
+- 2026-04-28: 本机 `config.yaml` 已确认该开关为 `true`，后续成功直聊和 scheduler 会话应重新写入 `sessions.sqlite3` 镜像。
+- 2026-04-28: `cargo check -p hone-memory -p hone-scheduler -p hone-tools -p hone-web-api -p hone-event-engine -p hone-channels --tests`
 
 ## 端到端链路
 

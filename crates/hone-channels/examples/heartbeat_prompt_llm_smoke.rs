@@ -47,6 +47,10 @@ fn make_event(job_name: &str, task_prompt: &str) -> SchedulerEvent {
         push: serde_json::Value::Null,
         tags: Vec::new(),
         heartbeat: true,
+        schedule_hour: 0,
+        schedule_minute: 0,
+        schedule_repeat: "heartbeat".to_string(),
+        schedule_date: None,
         last_delivered_previews: Vec::new(),
         bypass_quiet_hours: false,
     }

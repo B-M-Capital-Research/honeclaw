@@ -103,6 +103,19 @@ impl NotificationRouter {
         if let Some(kinds) = prefs.immediate_kinds.as_deref() {
             let tag = kind_tag(&event.kind);
             if kinds.iter().any(|k| k == tag) {
+                if matches!(
+                    event.kind,
+                    EventKind::NewsCritical | EventKind::PressRelease
+                ) && matches!(sev, Severity::Low)
+                {
+                    tracing::info!(
+                        event_id = %event.id,
+                        kind = %tag,
+                        source = %event.source,
+                        "immediate_kinds override skipped for Low-signal news"
+                    );
+                    return sev;
+                }
                 if is_noop_analyst_grade(event) {
                     tracing::info!(
                         event_id = %event.id,

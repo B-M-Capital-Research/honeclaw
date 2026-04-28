@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-23 09:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话与消息落库：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f1fdfeceacb0f2ece1a2c88c5a7d17e34`
@@ -39,10 +39,9 @@
 
 ## 当前实现效果
 
-- 当前任务配置没有可机器判定的 `date` / `run_at` 字段，只剩 `hour`、`minute` 和 `repeat=once`。
-- 调度器把 `2026-04-23 08:30 CST` 识别为到期并实际投递。
-- Agent 层避免了进一步伪造财报复盘，这是内容质量层面的保护；但调度链路仍然已经错误触发并向用户发送了不该在当天发送的提醒。
-- 一次性任务执行后禁用，导致用户真正需要的 `2026-05-05` 财报后提醒可能不会再触发。
+- 2026-04-28 修复后，`CronSchedule` 新增结构化 `date` 字段，仅允许 `repeat=once` 使用。
+- `memory/src/cron_job/storage.rs` 在触发前校验 `repeat=once + date`，当前北京时间日期未到目标日时不会返回 due job，因此不会提前投递或禁用未来一次性提醒。
+- `cron_job` 工具与 Web cron API 已同步支持保存和更新 `date`，scheduler event 也会把权威触发配置传给渠道执行层。
 
 ## 用户影响
 
@@ -59,7 +58,10 @@
 
 ## 下一步建议
 
-- 为一次性任务新增结构化 `run_at` 或 `date + hour + minute + timezone` 字段，并在保存、展示、触发和迁移路径中统一使用。
-- 对既有 `repeat=once` 且 prompt 内含未来绝对日期的任务做一次迁移或健康检查，避免继续被第一个同名时分提前触发。
-- 执行前增加守卫：如果当前日期早于任务 prompt 中明确的未来日期，应该落成 `skipped_not_due`，不得投递，也不得禁用 once 任务。
-- 补回归测试覆盖“2026-05-05 08:30 once 任务在 2026-04-23 08:30 不触发，且在目标日触发后才禁用”。
+- 后续可单独做一次历史任务健康检查，把 prompt 中含明确未来日期但旧配置缺少 `schedule.date` 的存量任务迁移到结构化日期；本次代码已防止新建和已带日期任务再次提前触发。
+
+## 修复与验证
+
+- 2026-04-28: `CronSchedule` 新增 `date`，cron tool / Web API / schedule view / scheduler event 同步透传。
+- 2026-04-28: `memory/src/cron_job/storage.rs` 在 due job 判断中跳过未到目标日期的一次性任务。
+- 2026-04-28: `cargo test -p hone-memory once_jobs_with_future_date_do_not_run_today --lib`

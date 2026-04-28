@@ -140,8 +140,9 @@ pub fn build_overview(
             job_id: None,
             will_be_held_by_quiet: time_in_quiet(window, prefs.quiet_hours.as_ref()),
             bypass_quiet_hours: false,
-            edit_hint: "notification_prefs(action=\"set_digest_windows\", value=[\"08:30\",\"19:00\"])"
-                .to_string(),
+            edit_hint:
+                "notification_prefs(action=\"set_digest_windows\", value=[\"08:30\",\"19:00\"])"
+                    .to_string(),
         });
     }
 
@@ -511,7 +512,9 @@ fn convert_to_actor_tz(
             let off = FixedOffset::east_opt(8 * 3600).unwrap();
             let date = off.from_utc_datetime(&now.naive_utc()).date_naive();
             let naive = date.and_time(t);
-            off.from_local_datetime(&naive).single()?.with_timezone(&Utc)
+            off.from_local_datetime(&naive)
+                .single()?
+                .with_timezone(&Utc)
         }
     };
     let local = match dst {
@@ -601,6 +604,7 @@ mod tests {
             "u1",
             None,
             None,
+            None,
             true,
             None,
             true,
@@ -617,11 +621,16 @@ mod tests {
             "u1",
             None,
             None,
+            None,
             true,
             None,
             true,
         );
-        assert_eq!(r2["success"], serde_json::json!(true), "add_job 2 failed: {r2}");
+        assert_eq!(
+            r2["success"],
+            serde_json::json!(true),
+            "add_job 2 failed: {r2}"
+        );
 
         let (gd, pd) = defaults();
         let ov = build_overview(&prefs_dir, &cron_dir, &actor(), &gd, &pd, Utc::now()).unwrap();
@@ -631,10 +640,7 @@ mod tests {
             .iter()
             .find(|e| e.content_hint == "夜半监控")
             .expect("found cron 02:00");
-        assert!(
-            nighty.will_be_held_by_quiet,
-            "02:00 cron 应被 quiet 吞掉"
-        );
+        assert!(nighty.will_be_held_by_quiet, "02:00 cron 应被 quiet 吞掉");
         let post = ov
             .schedule
             .iter()

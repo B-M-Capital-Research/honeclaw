@@ -494,6 +494,19 @@ async fn connect_backend_inner(
                 }
             }
 
+            // Stop the in-process web API and channel sidecars before lock preflight.
+            // Otherwise a dirty bundled runtime can conflict with its own previous
+            // console lock and keep the old listener alive until the port bind fails.
+            {
+                let mut guard = desktop.inner.lock().unwrap();
+                stop_managed_children(&mut guard);
+            }
+            log_desktop(
+                app,
+                "INFO",
+                "bundled runtime previous managed children stopped",
+            );
+
             if let Err(message) = preflight_bundled_runtime_locks(app) {
                 log_desktop(app, "ERROR", &message);
                 show_startup_error_dialog(&message);
@@ -505,17 +518,6 @@ async fn connect_backend_inner(
                 return Ok(backend_status_snapshot(&guard));
             }
             log_desktop(app, "INFO", "bundled runtime preflight locks passed");
-
-            // 先停掉旧任务
-            {
-                let mut guard = desktop.inner.lock().unwrap();
-                stop_managed_children(&mut guard);
-            }
-            log_desktop(
-                app,
-                "INFO",
-                "bundled runtime previous managed children stopped",
-            );
 
             // 启动 Axum 服务（port=0，OS 分配可用端口）
             let config_path_str = runtime.config_path.to_string_lossy().to_string();

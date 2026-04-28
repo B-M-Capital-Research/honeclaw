@@ -23,6 +23,10 @@ pub struct SchedulerEvent {
     pub push: serde_json::Value,
     pub tags: Vec<String>,
     pub heartbeat: bool,
+    pub schedule_hour: u32,
+    pub schedule_minute: u32,
+    pub schedule_repeat: String,
+    pub schedule_date: Option<String>,
     /// 最近几轮已送达的提醒摘要，仅 heartbeat 任务填充，用于去重判断
     pub last_delivered_previews: Vec<(String, String)>,
     /// 是否绕过用户的 quiet_hours 静音。来源是 `CronJob.bypass_quiet_hours`，
@@ -122,6 +126,10 @@ impl HoneScheduler {
                 push: job.push.clone(),
                 tags: job.tags.clone(),
                 heartbeat: job.is_heartbeat(),
+                schedule_hour: job.schedule.hour,
+                schedule_minute: job.schedule.minute,
+                schedule_repeat: job.schedule.repeat.clone(),
+                schedule_date: job.schedule.date.clone(),
                 last_delivered_previews,
                 bypass_quiet_hours: job.bypass_quiet_hours,
             };

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-25
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 2026-04-25 用户反馈：基础设置选择 Agent 配置后出现红色弹窗，提示 `后端未连接：无法绑定端口 127.0.0.1:8077: Address already in use (os error 48)`，随后页面挂掉
   - 2026-04-27 21:33:00-21:33:25 `data/runtime/logs/desktop.log` 连续 22 次报 `embedded web server start failed: 无法绑定端口 127.0.0.1:8077: Address already in use (os error 48)`；直到 `21:33:26.688` 才重新拿回端口
@@ -56,6 +56,10 @@
 - 2026-04-27：
   - 最新真实窗口再次出现同型 `8077` 端口占用回归，说明既有修复没有覆盖全部 restart 时序；状态从 `Fixed` 改回 `New`，等待重新定位剩余竞态或重复启动入口。
   - 已登记 GitHub issue：[Issue #24](https://github.com/B-M-Capital-Research/honeclaw/issues/24)（脱敏摘要）
+- 2026-04-28：
+  - `bins/hone-desktop/src/sidecar.rs` 在 bundled runtime dirty restart 路径中提前执行 `stop_managed_children(...)`，确保旧内嵌 Web server 与渠道 sidecar 在 bundled runtime lock preflight 前先被停止。
+  - 这次修复针对 2026-04-27 回归窗口里的剩余时序竞态：旧 listener 不再有机会在新一轮 preflight / bind 前继续占住 `127.0.0.1:8077`。
+  - 状态重新切为 `Fixed`；若后续真实 Desktop 设置切换仍出现同型端口占用，再以新的日志窗口重新打开。
 
 ## 验证
 
@@ -63,6 +67,7 @@
 - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop sidecar::tests -- --nocapture`
 - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop`
 - `git diff --check`
+- 2026-04-28: `cargo check -p hone-desktop --tests`
 
 说明：本次自动化验证覆盖了 web-api 启动返回 task handles、desktop sidecar 停止路径清理 handles、以及 Agent settings 重启链路的既有回归测试。完整 GUI 点击验证需要使用本次提交重新打包后的 Desktop app。
 

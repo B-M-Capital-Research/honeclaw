@@ -115,6 +115,15 @@ impl Tool for CronJobTool {
                 items: None,
             },
             ToolParameter {
+                name: "date".to_string(),
+                param_type: "string".to_string(),
+                description: "一次性任务的绝对日期（仅 repeat=once 使用，格式 YYYY-MM-DD，北京时间）"
+                    .to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
                 name: "tags".to_string(),
                 param_type: "array".to_string(),
                 description: "任务标签；heartbeat 任务建议包含 heartbeat 标签".to_string(),
@@ -207,6 +216,10 @@ impl Tool for CronJobTool {
                     .get("weekday")
                     .and_then(|v| v.as_u64())
                     .map(|w| w as u32);
+                let date = args
+                    .get("date")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
                 let result = storage.add_job(
                     actor,
@@ -217,6 +230,7 @@ impl Tool for CronJobTool {
                     task_prompt,
                     &self.channel_target,
                     weekday,
+                    date,
                     None,
                     true,
                     tags,
@@ -311,6 +325,9 @@ impl Tool for CronJobTool {
                 if let Some(repeat) = args.get("repeat") {
                     updates.insert("repeat".into(), repeat.clone());
                 }
+                if let Some(date) = args.get("date") {
+                    updates.insert("date".into(), date.clone());
+                }
                 let weekday = args
                     .get("weekday")
                     .and_then(|v| v.as_u64())
@@ -388,11 +405,21 @@ impl Tool for CronJobTool {
                     || updates.contains_key("minute")
                     || updates.contains_key("repeat")
                     || weekday.is_some()
+                    || updates.contains_key("date")
                 {
                     let repeat = updates
                         .get("repeat")
                         .and_then(|v| v.as_str())
                         .unwrap_or(existing_job.schedule.repeat.as_str());
+                    let date = if repeat.eq_ignore_ascii_case("once") {
+                        updates
+                            .get("date")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .or(existing_job.schedule.date.clone())
+                    } else {
+                        None
+                    };
                     Some(CronSchedule {
                         hour: updates
                             .get("hour")
@@ -410,6 +437,7 @@ impl Tool for CronJobTool {
                             None
                         },
                         repeat: repeat.to_string(),
+                        date,
                     })
                 } else {
                     None

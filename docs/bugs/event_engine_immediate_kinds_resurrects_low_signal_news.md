@@ -1,8 +1,16 @@
 # Bug: event-engine immediate_kinds resurrects low-signal news into immediate high pushes
 
+- **状态**: Fixed
+
 ## Summary
 
 `pollers/news.rs` and `router.rs::maybe_upgrade_news` both intentionally keep `source_class=opinion_blog` news at `low`, but a per-actor `immediate_kinds=["news_critical"]` override later rewrites the same event to `high` and sends it immediately. In the latest window, this caused a Zacks "Top Momentum Stock" article for `VST` to bypass digest and hit the real Telegram sink.
+
+## Fix / Verification
+
+- 2026-04-28: `crates/hone-event-engine/src/router/policy.rs` now refuses to apply `immediate_kinds` upgrades for `news_critical` / `press_release` when the current event severity is already `Low`.
+- This keeps actor-level immediate preferences from resurrecting news the classifier and source policy deliberately demoted as low-signal.
+- 2026-04-28: `cargo test -p hone-event-engine per_actor_immediate_kinds_does_not_resurrect_low_signal_news --lib`
 
 ## Observed Symptoms
 

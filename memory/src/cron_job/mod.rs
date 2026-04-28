@@ -88,6 +88,7 @@ mod tests {
             &actor.user_id,
             None,
             None,
+            None,
             true,
             None,
             false,
@@ -110,6 +111,7 @@ mod tests {
             "u1",
             None,
             None,
+            None,
             true,
             None,
             false,
@@ -124,6 +126,7 @@ mod tests {
             "weekly",
             "task",
             "u1",
+            None,
             None,
             None,
             true,
@@ -151,6 +154,7 @@ mod tests {
             "daily",
             "send report",
             "u1",
+            None,
             None,
             None,
             true,
@@ -201,6 +205,7 @@ mod tests {
                     minute,
                     repeat: "daily".to_string(),
                     weekday: None,
+                    date: None,
                 },
                 task_prompt: "task".to_string(),
                 push: serde_json::json!({"type": "analysis"}),
@@ -253,6 +258,7 @@ mod tests {
             "+86123",
             None,
             None,
+            None,
             true,
             None,
             false,
@@ -301,6 +307,7 @@ mod tests {
                 "alice",
                 None,
                 None,
+                None,
                 true,
                 None,
                 false,
@@ -316,6 +323,7 @@ mod tests {
                 "daily",
                 "task two",
                 "alice",
+                None,
                 None,
                 None,
                 true,
@@ -360,6 +368,7 @@ mod tests {
             "alice",
             None,
             None,
+            None,
             false,
             None,
             false,
@@ -391,6 +400,7 @@ mod tests {
             "daily",
             "task",
             "alice",
+            None,
             None,
             None,
             false,
@@ -446,6 +456,7 @@ mod tests {
             "ou_heartbeat",
             None,
             None,
+            None,
             true,
             Some(vec!["heartbeat".to_string()]),
             false,
@@ -494,6 +505,7 @@ mod tests {
             "ou_catch_up",
             None,
             None,
+            None,
             true,
             None,
             false,
@@ -537,6 +549,7 @@ mod tests {
             "ou_new_job",
             None,
             None,
+            None,
             true,
             None,
             false,
@@ -564,6 +577,38 @@ mod tests {
     }
 
     #[test]
+    fn once_jobs_with_future_date_do_not_run_today() {
+        let dir = make_temp_dir("hone_cron_storage_once_date");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("feishu", "ou_once", None);
+        let today = hone_core::beijing_now().date_naive();
+        let tomorrow = today + chrono::Duration::days(1);
+
+        let add = storage.add_job(
+            &actor,
+            "future once",
+            Some(8),
+            Some(30),
+            "once",
+            "task",
+            "ou_once",
+            None,
+            Some(tomorrow.format("%Y-%m-%d").to_string()),
+            None,
+            true,
+            None,
+            false,
+        );
+        assert_eq!(add["success"], true);
+
+        let due = storage.get_due_jobs(12, 0, today.weekday().num_days_from_monday(), &["feishu"]);
+        assert!(
+            due.is_empty(),
+            "future one-shot job must not be catch-up executed today"
+        );
+    }
+
+    #[test]
     fn execution_records_are_persisted_in_sqlite() {
         let dir = make_temp_dir("hone_cron_storage_exec_records");
         let sqlite_path = dir.join("sessions.sqlite3");
@@ -578,6 +623,7 @@ mod tests {
             "daily",
             "task",
             "ou_exec",
+            None,
             None,
             None,
             true,
