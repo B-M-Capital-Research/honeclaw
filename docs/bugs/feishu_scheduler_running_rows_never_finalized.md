@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -301,8 +301,11 @@
 - 终态链路当前更像是“另起一条 run”，而不是“完成 started 行”。
 - 这与 [`feishu_scheduler_run_stuck_without_cron_job_run.md`](./feishu_scheduler_run_stuck_without_cron_job_run.md) 是相关但独立的后续问题：旧问题是没有 started 行；当前问题是 started 行写出来后没有被 finalize。
 
-## 下一步建议
+## 修复记录
 
-- 按 `delivery_key` 或等价唯一键，把 started 行与终态行收敛成同一条 `cron_job_runs` 记录。
-- 若历史兼容必须保留多行，也应在 started 行补一个明确的 closed/superseded 标记，并让默认巡检查询过滤掉已终结的 started 行。
-- 增加一个只读巡检规则：同一 `delivery_key` 若同时存在 `phase=started` 和终态行，则记录为台账异常，而不是普通运行中。
+- 2026-04-29: `memory/src/cron_job/history.rs` 的 `CronJobStorage::record_execution_event` 会在终态写入时按同一 actor / job / target / heartbeat / `delivery_key` 查找最近的 `running + pending` started 行，并原地更新为终态记录；找不到匹配 started 行时仍保留原有 insert 行为。
+- 回归验证：`cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`。
+
+## 后续建议
+
+- 可另做一次历史数据清理，把既有已完成窗口里的旧 `running + pending` 悬挂行标记为 superseded 或迁移为终态；本次代码修复只阻止新窗口继续产生同类脏行。

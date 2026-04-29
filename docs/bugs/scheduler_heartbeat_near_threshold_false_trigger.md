@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -64,8 +64,11 @@
 - 这与已修复的 ORCL/ASTS 高低点口径混算不同；本次样本里正文已经明确承认没有达到 `8%`，说明缺口更偏向“缺少 triggered 前的数值硬校验”。
 - 同时它与 watchlist 的近阈值误报表现相似，提示“接近阈值也算触发”的语义漂移并不只存在于多标的 watchlist。
 
-## 下一步建议
+## 修复记录
 
-- 为 heartbeat `triggered` 结果增加机器可校验的数值字段，例如 `metric`, `threshold`, `observed_value`, `comparison_passed`，并在发送前校验。
-- 在 ASTS / ORCL / watchlist 这类价格阈值模板里明确禁止把“接近阈值”“距离阈值不远”“建议关注波动”解释成 `triggered`。
-- 为单标的 heartbeat 增加回归样本：当最新涨跌幅仅 `-6.89%`、阈值为 `-8%` 时必须返回 `noop` 或独立的 `near_threshold`，不得发送正式提醒。
+- 2026-04-29: `crates/hone-channels/src/scheduler.rs` 在 heartbeat 送达前增加近阈值保险闸：`跌幅 -6.89% 接近 8% / 仅差约 1.1 个百分点` 这类承认未达到阈值的 `triggered` 文案会被抑制，不再进入用户可见发送链路。
+- 回归验证：`cargo test -p hone-channels heartbeat_near_threshold_trigger_is_suppressed -- --nocapture`。
+
+## 后续建议
+
+- 后续仍可把 heartbeat `triggered` 结果升级成机器可校验的数值字段，例如 `metric`, `threshold`, `observed_value`, `comparison_passed`，进一步减少模型自由文本判断空间。

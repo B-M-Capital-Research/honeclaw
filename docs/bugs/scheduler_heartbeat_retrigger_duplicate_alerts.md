@@ -470,3 +470,8 @@
 - `crates/hone-channels/src/scheduler.rs` 在 heartbeat `JsonTriggered` 送达前新增确定性近似去重。
 - 规则会把本轮 message 与最近已送达 previews 做 token overlap；同一催化/事件窗口高度重合时，落成 `duplicate_suppressed`，不再依赖模型自行遵守 prompt 里的去重要求。
 - 验证：`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib`。
+
+## 修复补充（2026-04-29）
+
+- `crates/hone-scheduler/src/lib.rs` 将 heartbeat 去重基线从“同一个 job 的最近送达”扩展为“同一 actor 的最近 heartbeat 送达”，覆盖兄弟 job 在半小时轮询里重发同一催化的样本。
+- 验证：`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`。

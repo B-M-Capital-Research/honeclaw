@@ -4,7 +4,7 @@
 
 use chrono::{Datelike, FixedOffset, Timelike, Utc};
 use hone_core::ActorIdentity;
-use hone_memory::CronJobStorage;
+use hone_memory::{CronJobStorage, cron_job::ExecutionFilter};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
@@ -103,14 +103,7 @@ impl HoneScheduler {
 
         for (actor, job) in due_jobs {
             let last_delivered_previews = if job.is_heartbeat() {
-                self.storage
-                    .list_execution_records(&job.id, 5)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|r| r.delivered && r.response_preview.is_some())
-                    .take(3)
-                    .map(|r| (r.executed_at, r.response_preview.unwrap_or_default()))
-                    .collect()
+                load_heartbeat_delivery_history(&self.storage, &actor)
             } else {
                 Vec::new()
             };
@@ -152,6 +145,27 @@ impl HoneScheduler {
     }
 }
 
+fn load_heartbeat_delivery_history(
+    storage: &CronJobStorage,
+    actor: &ActorIdentity,
+) -> Vec<(String, String)> {
+    let filter = ExecutionFilter {
+        channel: Some(actor.channel.clone()),
+        user_id: Some(actor.user_id.clone()),
+        heartbeat_only: Some(true),
+        limit: 20,
+        ..ExecutionFilter::default()
+    };
+    storage
+        .list_recent_executions(&filter)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.delivered && r.response_preview.is_some())
+        .take(8)
+        .map(|r| (r.executed_at, r.response_preview.unwrap_or_default()))
+        .collect()
+}
+
 fn scheduled_delivery_key(
     job: &hone_memory::cron_job::CronJob,
     now: &chrono::DateTime<chrono::FixedOffset>,
@@ -176,4 +190,72 @@ fn scheduled_delivery_key(
         job.schedule.hour,
         job.schedule.minute
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hone_memory::cron_job::CronJobExecutionInput;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{prefix}_{}_{}", std::process::id(), ts));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn heartbeat_history_includes_actor_cross_job_deliveries() {
+        let dir = make_temp_dir("hone_scheduler_cross_job_history");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = ActorIdentity::new("feishu", "ou_cross_job", None::<String>).expect("actor");
+
+        storage
+            .record_execution_event(
+                &actor,
+                "job-a",
+                "小米破位预警",
+                "ou_cross_job",
+                true,
+                CronJobExecutionInput {
+                    execution_status: "completed".to_string(),
+                    message_send_status: "sent".to_string(),
+                    should_deliver: true,
+                    delivered: true,
+                    response_preview: Some("小米跌破 30 港元，当前 29.8 港元".to_string()),
+                    error_message: None,
+                    detail: serde_json::json!({"delivery_key": "a-1"}),
+                },
+            )
+            .expect("record job a");
+        storage
+            .record_execution_event(
+                &actor,
+                "job-b",
+                "持仓重大事件心跳检测",
+                "ou_cross_job",
+                true,
+                CronJobExecutionInput {
+                    execution_status: "noop".to_string(),
+                    message_send_status: "skipped_noop".to_string(),
+                    should_deliver: false,
+                    delivered: false,
+                    response_preview: Some("未命中".to_string()),
+                    error_message: None,
+                    detail: serde_json::json!({"delivery_key": "b-1"}),
+                },
+            )
+            .expect("record job b noop");
+
+        let history = load_heartbeat_delivery_history(&storage, &actor);
+        assert_eq!(history.len(), 1);
+        assert!(history[0].1.contains("小米跌破 30 港元"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

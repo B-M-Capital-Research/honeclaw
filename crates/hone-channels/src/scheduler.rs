@@ -131,6 +131,54 @@ fn unwrap_nested_json_message(text: &str) -> String {
     text.to_string()
 }
 
+fn heartbeat_near_threshold_without_crossing(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if compact.is_empty() {
+        return false;
+    }
+
+    let threshold_terms = [
+        "阈值",
+        "警戒线",
+        "警戒阈值",
+        "触发价",
+        "触发线",
+        "条件线",
+        "threshold",
+        "triggerprice",
+        "triggerline",
+    ];
+    let proximity_terms = [
+        "接近",
+        "临近",
+        "靠近",
+        "距离",
+        "仅差",
+        "差约",
+        "未达到",
+        "尚未达到",
+        "未越过",
+        "未跌破",
+        "未突破",
+        "仍高于",
+        "仍低于",
+        "上方区间",
+        "观察区间",
+        "near",
+        "approach",
+        "approaching",
+        "shortof",
+        "notyet",
+    ];
+
+    threshold_terms.iter().any(|term| compact.contains(term))
+        && proximity_terms.iter().any(|term| compact.contains(term))
+}
+
 /// 直接从 `notif_prefs_dir/{actor_slug}.json` 读 actor 的 quiet_hours + timezone。
 /// 不依赖 hone-event-engine,只解析需要的两个字段；老 prefs JSON 缺字段返回 None。
 /// 第二个返回值是 actor 的 timezone（IANA 名），用于 `quiet_window_active` 解释 from/to。
@@ -368,6 +416,23 @@ fn heartbeat_execution_from_content(
                 };
             }
             let deliver_preview = truncate_for_log(message.trim(), 200);
+            if heartbeat_near_threshold_without_crossing(&sanitized_message) {
+                return ScheduledTaskExecution {
+                    should_deliver: false,
+                    content: String::new(),
+                    error: None,
+                    metadata: json!({
+                        "heartbeat_model": heartbeat_model,
+                        "parse_kind": format!("{:?}", parse_kind),
+                        "raw_chars": raw_chars,
+                        "starts_with_json": starts_with_json,
+                        "raw_preview": raw_preview,
+                        "deliver_preview": deliver_preview,
+                        "near_threshold_suppressed": true,
+                    }),
+                    session_id: None,
+                };
+            }
             ScheduledTaskExecution {
                 should_deliver: true,
                 content: sanitized_message,
@@ -951,6 +1016,27 @@ mod tests {
                 "闪迪股价已低于 520，当前 519.7（检查时间：09:30）".to_string()
             )
         );
+    }
+
+    #[test]
+    fn heartbeat_near_threshold_trigger_is_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"ASTS 最新价格 $71.88，相对昨收 $77.20 跌幅 -6.89%，触发原因：单日涨跌幅（跌）接近 8% 警戒阈值，且距离 8% 仅差约 1.1 个百分点。"}"#,
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(execution.error, None);
+        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+    }
+
+    #[test]
+    fn heartbeat_watchlist_above_trigger_price_is_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"ASTS 当前 71.88，触发价≤69.83，仍高于触发价但已进入触发价上方区间，建议关注。"}"#,
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
     }
 
     #[test]

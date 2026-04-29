@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-04-29 00:00 CST
+- updated_at: 2026-04-29 10:45 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -58,7 +58,11 @@ Clear the current active bug queue as far as software changes can responsibly do
   - fixed `launch.sh` zombie child detection for disabled channel pid cleanup
   - suppressed internal Feishu scheduler failure fallbacks for `codex acp prompt ended before tool completion`
   - reviewed event-engine news classifier and convergence guard code paths and moved stale active docs to `Fixed`
-- 2026-04-28: Active bug queue is now 2. Remaining items are Feishu direct empty/invalid answer fallback quality and Telegram invalid token/live connectivity.
+- 2026-04-29: Rebased the burn-down work onto latest `origin/main`, then closed four newly active scheduler defects:
+  - heartbeat near-threshold false triggers now hit a shared `near_threshold_suppressed` send gate instead of reaching the user when the message itself admits the threshold was only approached
+  - Feishu scheduler terminal execution events now update the matching `running + pending` started row by `delivery_key`
+  - heartbeat duplicate history now includes the same actor's recent heartbeat deliveries across sibling jobs, not only the current job
+- 2026-04-29: Active bug queue is now 3. Remaining active items are Feishu direct empty/invalid answer quality, `sessions.sqlite3` mirror stalled evidence, and Telegram invalid token/live connectivity. Telegram remains a credential/live configuration issue; do not add hard-coded compatibility behavior for it.
 
 ## Validation
 
@@ -86,10 +90,18 @@ Completed this round:
 - `cargo test -p hone-channels user_visible_error_message_or_none --lib`
 - `cargo check -p hone-memory -p hone-llm -p hone-channels --tests`
 - `bash -n launch.sh`
+- `cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`
+- `cargo test -p hone-channels heartbeat_near_threshold_trigger_is_suppressed -- --nocapture`
+- `cargo test -p hone-channels heartbeat_watchlist_above_trigger_price_is_suppressed -- --nocapture`
+- `cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`
+- `cargo check -p hone-memory -p hone-scheduler -p hone-channels --tests`
+- `bun run test:web`
+- `HONE_DATA_DIR=/tmp/honeclaw-validate-runtime HONE_WEB_PORT=18087 HONE_PUBLIC_WEB_PORT=18088 HONE_DISABLE_AUTO_OPEN=1 cargo run -p hone-console-page` 启动隔离用户端实例，in-app browser 打开 `http://127.0.0.1:18088/chat`，确认登录页可渲染且 console error 为 0
 
 Known verification limitation:
 
 - `bash scripts/ci/check_fmt_changed.sh` cannot run under the system Bash 3 environment because it uses `mapfile`; changed Rust files were formatted directly with `rustfmt --edition 2024`.
+- 本轮再次尝试 `bash scripts/ci/check_fmt_changed.sh`，仍因系统 Bash 3 缺少 `mapfile` 失败；已改用 `rustfmt --edition 2024 --check` 覆盖本轮改动 Rust 文件。
 
 ## Documentation Sync
 

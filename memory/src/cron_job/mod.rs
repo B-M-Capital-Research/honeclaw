@@ -738,4 +738,77 @@ mod tests {
         assert!(records[0].delivered);
         assert_eq!(records[0].detail["sent_segments"], 1);
     }
+
+    #[test]
+    fn execution_terminal_event_updates_matching_pending_row() {
+        let dir = make_temp_dir("hone_cron_storage_exec_update_pending");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("feishu", "ou_exec_update", None);
+
+        let add = storage.add_job(
+            &actor,
+            "daily report",
+            Some(9),
+            Some(0),
+            "daily",
+            "task",
+            "ou_exec_update",
+            None,
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+
+        storage
+            .record_execution_event(
+                &actor,
+                &job_id,
+                "daily report",
+                "ou_exec_update",
+                false,
+                CronJobExecutionInput {
+                    execution_status: "running".to_string(),
+                    message_send_status: "pending".to_string(),
+                    should_deliver: false,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: serde_json::json!({"phase": "started", "delivery_key": "k-1"}),
+                },
+            )
+            .expect("record started");
+
+        storage
+            .record_execution_event(
+                &actor,
+                &job_id,
+                "daily report",
+                "ou_exec_update",
+                false,
+                CronJobExecutionInput {
+                    execution_status: "completed".to_string(),
+                    message_send_status: "sent".to_string(),
+                    should_deliver: true,
+                    delivered: true,
+                    response_preview: Some("final report".to_string()),
+                    error_message: None,
+                    detail: serde_json::json!({"phase": "terminal", "delivery_key": "k-1"}),
+                },
+            )
+            .expect("record terminal");
+
+        let records = storage
+            .list_execution_records(&job_id, 10)
+            .expect("list execution records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].execution_status, "completed");
+        assert_eq!(records[0].message_send_status, "sent");
+        assert!(records[0].delivered);
+        assert_eq!(records[0].response_preview.as_deref(), Some("final report"));
+        assert_eq!(records[0].detail["phase"], "terminal");
+    }
 }

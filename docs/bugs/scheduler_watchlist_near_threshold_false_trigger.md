@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-29 08:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -63,8 +63,11 @@
 - 由于输出最终仍符合结构化 `{"status":"triggered"}`，调度器没有额外做数值校验，导致错误判断被直接送达用户。
 - 这与已修复的“用日内高低点/振幅代替涨跌幅阈值”不同，本次问题集中在 watchlist 模板把“接近阈值”当成“命中阈值”。
 
-## 下一步建议
+## 修复记录
 
-- 为 watchlist 条件增加机器可校验的结构化字段，例如 `comparator`, `threshold`, `observed_value`, `distance_pct`，并在 `triggered` 时强校验比较关系成立。
-- 在 heartbeat prompt 中明确禁止把“接近阈值”“进入观察区间”“首次靠近均线区域”等模糊表述收口为 `triggered`。
-- 为多标的 watchlist 新增回归测试：价格仍高于 `≤threshold` 时只能返回 `noop` 或 `near_threshold`，不得发送正式提醒。
+- 2026-04-29: `crates/hone-channels/src/scheduler.rs` 在 heartbeat 送达前增加近阈值保险闸：触发文案如果同时包含阈值/触发价语义与“接近、距离、仅差、仍高于、观察区间”等未越线表述，会落为 `near_threshold_suppressed`，不再作为正式提醒发送。
+- 回归验证：`cargo test -p hone-channels heartbeat_watchlist_above_trigger_price_is_suppressed -- --nocapture`。
+
+## 后续建议
+
+- 后续仍可把 watchlist 条件升级成机器可校验字段，例如 `comparator`, `threshold`, `observed_value`, `distance_pct`，进一步减少模型自由文本判断空间。

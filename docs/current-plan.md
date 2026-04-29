@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；本轮已从 21 个活跃缺陷降到 2 个，继续闭环 cron schedule/prompt 错配、OpenAI-compatible numeric 4xx 错误解析、heartbeat 重复提醒/空结构输出/迭代预算收口、原油 heartbeat 来源归因约束、disabled channel zombie pid 清理、event-engine Feishu current-app open_id 解析、Web scheduler 失败落库、Feishu scheduler 内部错误外发抑制，并复核 event-engine classifier / convergence guard 已具备代码收口；剩余项继续按共享契约加固，不对不可控网络或模型波动做脆弱特判
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；本轮已从 21 个活跃缺陷降到 3 个，继续闭环 cron schedule/prompt 错配、OpenAI-compatible numeric 4xx 错误解析、heartbeat 重复提醒/近阈值误报/空结构输出/迭代预算收口、原油 heartbeat 来源归因约束、disabled channel zombie pid 清理、event-engine Feishu current-app open_id 解析、Web scheduler 失败落库、Feishu scheduler running/pending 终态覆盖、Feishu scheduler 内部错误外发抑制，并复核 event-engine classifier / convergence guard 已具备代码收口；剩余项继续按共享契约加固，不对不可控网络、凭据或模型波动做脆弱特判
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`
