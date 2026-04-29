@@ -653,8 +653,10 @@ export async function connectLogStream() {
 
 export interface NotificationRecord {
   run_id: number;
+  record_source: "cron_job" | "event_engine" | string;
   job_id: string;
   job_name: string;
+  event_kind?: string | null;
   channel: string;
   user_id: string;
   channel_scope?: string | null;
@@ -698,6 +700,7 @@ export interface NotificationsQuery {
   until?: string;
   channel?: string;
   user_id?: string;
+  channel_scope?: string;
   job_id?: string;
   execution_status?: string;
   message_send_status?: string;
@@ -723,7 +726,7 @@ export async function getNotifications(
 
 // ── 推送日程 API (per-actor 拍平视图) ────────────────────────────────────────
 
-export type ScheduleSource = "portfolio_digest" | "global_digest" | "cron_job";
+export type ScheduleSource = "digest" | "cron_job";
 
 export interface ScheduleEntry {
   time_local: string;

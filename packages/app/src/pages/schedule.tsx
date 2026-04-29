@@ -1,22 +1,21 @@
-import { For, Show, createSignal, onMount } from "solid-js"
+import { For, Show, createSignal } from "solid-js"
+import { ActorSelect } from "@/components/actor-select"
 import {
   getSchedule,
   type ScheduleEntry,
   type ScheduleOverview,
   type ScheduleSource,
 } from "@/lib/api"
+import { actorKey as uiActorKey, type ActorRef } from "@/lib/actors"
 
 const SOURCE_LABEL: Record<ScheduleSource, string> = {
-  portfolio_digest: "持仓 digest",
-  global_digest: "全球要闻",
+  digest: "Digest",
   cron_job: "自定义",
 }
 
 function sourceBadgeClass(s: ScheduleSource): string {
   switch (s) {
-    case "portfolio_digest":
-      return "text-blue-300 bg-blue-500/15"
-    case "global_digest":
+    case "digest":
       return "text-purple-300 bg-purple-500/15"
     case "cron_job":
       return "text-emerald-300 bg-emerald-500/15"
@@ -29,28 +28,26 @@ function activeCellClass(held: boolean): string {
     : "text-emerald-300 bg-emerald-500/15"
 }
 
-function actorKey(channel: string, userId: string, scope: string): string {
-  return `${channel.trim()}::${scope.trim()}::${userId.trim()}`
+function scheduleActorKey(actor: ActorRef): string {
+  return `${actor.channel.trim()}::${(actor.channel_scope ?? "").trim()}::${actor.user_id.trim()}`
 }
 
 export default function SchedulePage() {
-  const [channel, setChannel] = createSignal("imessage")
-  const [userId, setUserId] = createSignal("")
-  const [scope, setScope] = createSignal("")
+  const [selectedActor, setSelectedActor] = createSignal<ActorRef | null>(null)
   const [overview, setOverview] = createSignal<ScheduleOverview | null>(null)
   const [loading, setLoading] = createSignal(false)
   const [err, setErr] = createSignal<string | null>(null)
 
-  async function refresh() {
-    if (!userId().trim()) {
-      setErr("请输入 user_id")
+  async function refresh(actor = selectedActor()) {
+    if (!actor) {
+      setErr("请选择用户")
       setOverview(null)
       return
     }
     setLoading(true)
     setErr(null)
     try {
-      const data = await getSchedule(actorKey(channel(), userId(), scope()))
+      const data = await getSchedule(scheduleActorKey(actor))
       setOverview(data)
     } catch (e) {
       setErr(String(e))
@@ -60,10 +57,6 @@ export default function SchedulePage() {
     }
   }
 
-  onMount(() => {
-    // 不自动 refresh —— 等用户输入 user_id
-  })
-
   return (
     <div class="flex h-full min-h-0 flex-col gap-4 p-4 text-sm">
       <div class="flex flex-wrap items-center gap-3">
@@ -71,37 +64,14 @@ export default function SchedulePage() {
           推送日程
         </h1>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>渠道</span>
-          <select
-            value={channel()}
-            onChange={(e) => setChannel(e.currentTarget.value)}
-            class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
-          >
-            <option value="imessage">iMessage</option>
-            <option value="telegram">Telegram</option>
-            <option value="discord">Discord</option>
-            <option value="feishu">飞书</option>
-          </select>
-        </div>
-        <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>scope</span>
-          <input
-            value={scope()}
-            placeholder="(留空 = direct)"
-            onInput={(e) => setScope(e.currentTarget.value)}
-            class="w-40 rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
-          />
-        </div>
-        <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>user_id</span>
-          <input
-            value={userId()}
-            placeholder="user_id"
-            onInput={(e) => setUserId(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void refresh()
+          <span>用户</span>
+          <ActorSelect
+            value={selectedActor() ? uiActorKey(selectedActor()!) : ""}
+            onChange={(actor) => {
+              setSelectedActor(actor)
+              if (actor) void refresh(actor)
+              else setOverview(null)
             }}
-            class="w-44 rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
           />
         </div>
         <button

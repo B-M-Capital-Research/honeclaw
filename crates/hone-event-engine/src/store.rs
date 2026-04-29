@@ -31,6 +31,38 @@ pub struct EventStore {
     jsonl_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct DeliveryLogFilter {
+    pub since_ts: Option<i64>,
+    pub until_ts: Option<i64>,
+    pub actor: Option<String>,
+    pub actor_channel: Option<String>,
+    pub actor_user_id: Option<String>,
+    pub event_id: Option<String>,
+    pub status: Option<String>,
+    pub delivery_channel: Option<String>,
+    pub top_level_only: bool,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeliveryLogRecord {
+    pub id: i64,
+    pub event_id: String,
+    pub actor: String,
+    pub channel: String,
+    pub severity: String,
+    pub sent_at_ts: i64,
+    pub status: String,
+    pub body: Option<String>,
+    pub event_title: Option<String>,
+    pub event_summary: Option<String>,
+    pub event_kind: Option<String>,
+    pub event_source: Option<String>,
+    pub event_url: Option<String>,
+    pub event_symbols: Vec<String>,
+}
+
 impl EventStore {
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         if let Some(parent) = path.as_ref().parent() {
@@ -963,6 +995,103 @@ impl EventStore {
         )?;
         Ok(())
     }
+
+    pub fn list_recent_delivery_logs(
+        &self,
+        filter: &DeliveryLogFilter,
+    ) -> anyhow::Result<Vec<DeliveryLogRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = String::from(
+            r#"
+            SELECT
+                d.id, d.event_id, d.actor, d.channel, d.severity,
+                d.sent_at_ts, d.status, d.body,
+                e.title, e.summary, e.kind_json, e.source, e.url, e.symbols_json
+            FROM delivery_log d
+            LEFT JOIN events e ON e.id = d.event_id
+            WHERE 1=1
+            "#,
+        );
+        let mut values: Vec<SqlValue> = Vec::new();
+
+        if let Some(ts) = filter.since_ts {
+            sql.push_str(" AND d.sent_at_ts >= ?");
+            values.push(SqlValue::Integer(ts));
+        }
+        if let Some(ts) = filter.until_ts {
+            sql.push_str(" AND d.sent_at_ts <= ?");
+            values.push(SqlValue::Integer(ts));
+        }
+        if let Some(actor) = filter.actor.as_deref().filter(|v| !v.is_empty()) {
+            sql.push_str(" AND d.actor = ?");
+            values.push(SqlValue::Text(actor.to_string()));
+        } else {
+            if let Some(channel) = filter.actor_channel.as_deref().filter(|v| !v.is_empty()) {
+                sql.push_str(" AND d.actor LIKE ?");
+                values.push(SqlValue::Text(format!("{channel}::%")));
+            }
+            if let Some(user_id) = filter.actor_user_id.as_deref().filter(|v| !v.is_empty()) {
+                sql.push_str(" AND d.actor LIKE ?");
+                values.push(SqlValue::Text(format!("%::{user_id}")));
+            }
+        }
+        if let Some(event_id) = filter.event_id.as_deref().filter(|v| !v.is_empty()) {
+            sql.push_str(" AND d.event_id = ?");
+            values.push(SqlValue::Text(event_id.to_string()));
+        }
+        if let Some(status) = filter.status.as_deref().filter(|v| !v.is_empty()) {
+            sql.push_str(" AND d.status = ?");
+            values.push(SqlValue::Text(status.to_string()));
+        }
+        if let Some(channel) = filter.delivery_channel.as_deref().filter(|v| !v.is_empty()) {
+            sql.push_str(" AND d.channel = ?");
+            values.push(SqlValue::Text(channel.to_string()));
+        }
+        if filter.top_level_only {
+            sql.push_str(" AND d.channel NOT IN ('router', 'digest_item', 'global_digest_item')");
+        }
+
+        sql.push_str(" ORDER BY d.sent_at_ts DESC, d.id DESC LIMIT ?");
+        values.push(SqlValue::Integer(filter.limit.max(1) as i64));
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), |row| {
+            let kind_json: Option<String> = row.get(10)?;
+            let symbols_json: Option<String> = row.get(13)?;
+            let event_kind = kind_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+                .and_then(|value| {
+                    value
+                        .get("type")
+                        .and_then(|type_value| type_value.as_str())
+                        .map(str::to_string)
+                });
+            let event_symbols = symbols_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+                .unwrap_or_default();
+            Ok(DeliveryLogRecord {
+                id: row.get(0)?,
+                event_id: row.get(1)?,
+                actor: row.get(2)?,
+                channel: row.get(3)?,
+                severity: row.get(4)?,
+                sent_at_ts: row.get(5)?,
+                status: row.get(6)?,
+                body: row.get(7)?,
+                event_title: row.get(8)?,
+                event_summary: row.get(9)?,
+                event_kind,
+                event_source: row.get(11)?,
+                event_url: row.get(12)?,
+                event_symbols,
+            })
+        })?;
+
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(anyhow::Error::from)
+    }
 }
 
 /// 按 `source` 分组的事件入库数——用于 daily report 展示"各 poller 产出多少"。
@@ -1148,6 +1277,85 @@ mod tests {
             )
             .unwrap();
         assert_eq!(last_status, "sent");
+    }
+
+    #[test]
+    fn list_recent_delivery_logs_keeps_operator_level_rows() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        store
+            .log_delivery(
+                "ev-no-actor",
+                "event_engine::::no_actor",
+                "router",
+                Severity::Low,
+                "no_actor",
+                None,
+            )
+            .unwrap();
+        store
+            .log_delivery(
+                "ev-item",
+                "discord::::u1",
+                "digest_item",
+                Severity::Medium,
+                "omitted",
+                None,
+            )
+            .unwrap();
+        store
+            .log_delivery(
+                "ev-sink",
+                "discord::::u1",
+                "sink",
+                Severity::High,
+                "sent",
+                Some("body"),
+            )
+            .unwrap();
+
+        let rows = store
+            .list_recent_delivery_logs(&DeliveryLogFilter {
+                top_level_only: true,
+                limit: 20,
+                ..DeliveryLogFilter::default()
+            })
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].event_id, "ev-sink");
+        assert_eq!(rows[0].channel, "sink");
+    }
+
+    #[test]
+    fn list_recent_delivery_logs_exposes_event_kind_type() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let mut event = sample_event("ev-kind");
+        event.kind = EventKind::SecFiling {
+            form: "8-K".to_string(),
+        };
+        store.insert_event(&event).unwrap();
+        store
+            .log_delivery(
+                "ev-kind",
+                "discord::::u1",
+                "sink",
+                Severity::High,
+                "sent",
+                Some("body"),
+            )
+            .unwrap();
+
+        let rows = store
+            .list_recent_delivery_logs(&DeliveryLogFilter {
+                actor: Some("discord::::u1".to_string()),
+                top_level_only: true,
+                limit: 20,
+                ..DeliveryLogFilter::default()
+            })
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].event_kind.as_deref(), Some("sec_filing"));
     }
 
     #[test]

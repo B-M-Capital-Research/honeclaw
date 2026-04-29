@@ -6,6 +6,7 @@ import {
   onCleanup,
   onMount,
 } from "solid-js"
+import { ActorSelect } from "@/components/actor-select"
 import {
   getNotifications,
   type NotificationHistogramBucket,
@@ -13,6 +14,7 @@ import {
   type NotificationsQuery,
   type NotificationsSummary,
 } from "@/lib/api"
+import { actorKey, type ActorRef } from "@/lib/actors"
 import { formatShanghaiDateTime } from "@/lib/time"
 
 // ── 状态映射(对齐 task-detail.tsx 的 sendStatusLabel/executionStatusLabel) ──
@@ -20,9 +22,19 @@ import { formatShanghaiDateTime } from "@/lib/time"
 const SEND_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "全部发送状态" },
   { value: "sent", label: "已发送" },
-  { value: "skipped_noop", label: "未发送(未命中)" },
+  { value: "dryrun", label: "Dry run" },
+  { value: "queued", label: "已排队" },
+  { value: "quiet_held", label: "静音暂存" },
+  { value: "filtered", label: "偏好过滤" },
+  { value: "capped", label: "上限降级" },
+  { value: "cooled_down", label: "冷却降级" },
+  { value: "price_capped", label: "价格上限降级" },
+  { value: "price_cooled_down", label: "价格冷却降级" },
+  { value: "omitted", label: "摘要省略" },
+  { value: "skipped_noop", label: "未发送(未命中/排队)" },
   { value: "skipped_error", label: "未发送(执行失败)" },
   { value: "send_failed", label: "发送失败" },
+  { value: "failed", label: "发送失败(event)" },
   { value: "target_resolution_failed", label: "目标解析失败" },
   { value: "duplicate_suppressed", label: "已拦截重复发送" },
 ]
@@ -52,13 +64,23 @@ function execLabel(s: string): string {
 function sendBadgeClass(s: string): string {
   switch (s) {
     case "sent":
+    case "dryrun":
       return "text-emerald-300 bg-emerald-500/15"
     case "send_failed":
+    case "failed":
     case "target_resolution_failed":
     case "skipped_error":
       return "text-rose-300 bg-rose-500/15"
     case "duplicate_suppressed":
+    case "quiet_held":
+    case "queued":
+    case "capped":
+    case "cooled_down":
+    case "price_capped":
+    case "price_cooled_down":
       return "text-amber-300 bg-amber-500/15"
+    case "filtered":
+    case "omitted":
     case "skipped_noop":
       return "text-[color:var(--text-muted)] bg-white/5"
     default:
@@ -76,11 +98,55 @@ function bucketHourLabel(iso: string): string {
   })
 }
 
+function recordSourceLabel(source: string): string {
+  switch (source) {
+    case "cron_job":
+      return "cron"
+    case "event_engine":
+      return "event"
+    default:
+      return source || "—"
+  }
+}
+
+function eventKindLabel(kind?: string | null): string {
+  switch (kind) {
+    case "earnings_upcoming":
+      return "财报预告"
+    case "earnings_released":
+      return "财报发布"
+    case "earnings_call_transcript":
+      return "财报电话会"
+    case "news_critical":
+      return "重点新闻"
+    case "price_alert":
+      return "价格异动"
+    case "weekly52_high":
+      return "52周新高"
+    case "weekly52_low":
+      return "52周新低"
+    case "dividend":
+      return "分红"
+    case "split":
+      return "拆股"
+    case "sec_filing":
+      return "SEC 文件"
+    case "analyst_grade":
+      return "分析师评级"
+    case "macro_event":
+      return "宏观事件"
+    case "social_post":
+      return "社媒动态"
+    default:
+      return kind || "—"
+  }
+}
+
 // ── 组件 ─────────────────────────────────────────────────────────────────────
 
 export default function NotificationsPage() {
   const [channel, setChannel] = createSignal("")
-  const [userId, setUserId] = createSignal("")
+  const [selectedActor, setSelectedActor] = createSignal<ActorRef | null>(null)
   const [execStatus, setExecStatus] = createSignal("")
   const [sendStatus, setSendStatus] = createSignal("")
   const [hours, setHours] = createSignal<number>(24)
@@ -109,10 +175,12 @@ export default function NotificationsPage() {
     setErr(null)
     try {
       const sinceDate = new Date(Date.now() - hours() * 3600 * 1000)
+      const actor = selectedActor()
       const q: NotificationsQuery = {
         since: sinceDate.toISOString(),
-        channel: channel() || undefined,
-        user_id: userId().trim() || undefined,
+        channel: actor?.channel ?? (channel() || undefined),
+        user_id: actor?.user_id,
+        channel_scope: actor?.channel_scope,
         execution_status: execStatus() || undefined,
         message_send_status: sendStatus() || undefined,
         limit: limit(),
@@ -170,11 +238,12 @@ export default function NotificationsPage() {
           <span>渠道</span>
           <select
             value={channel()}
+            disabled={!!selectedActor()}
             onChange={(e) => {
               setChannel(e.currentTarget.value)
               void refresh()
             }}
-            class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
+            class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)] disabled:opacity-50"
           >
             <For each={CHANNEL_OPTIONS}>
               {(o) => <option value={o.value}>{o.label}</option>}
@@ -183,12 +252,14 @@ export default function NotificationsPage() {
         </div>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
           <span>用户</span>
-          <input
-            value={userId()}
-            placeholder="user_id"
-            onInput={(e) => setUserId(e.currentTarget.value)}
-            onChange={() => void refresh()}
-            class="w-32 rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
+          <ActorSelect
+            allowAll
+            allLabel="全部用户"
+            value={selectedActor() ? actorKey(selectedActor()!) : ""}
+            onChange={(actor) => {
+              setSelectedActor(actor)
+              void refresh()
+            }}
           />
         </div>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
@@ -322,6 +393,7 @@ export default function NotificationsPage() {
                 <th class="px-3 py-2 text-left font-normal">时间</th>
                 <th class="px-3 py-2 text-left font-normal">用户</th>
                 <th class="px-3 py-2 text-left font-normal">渠道</th>
+                <th class="px-3 py-2 text-left font-normal">事件类型</th>
                 <th class="px-3 py-2 text-left font-normal">任务</th>
                 <th class="px-3 py-2 text-left font-normal">发送状态</th>
                 <th class="px-3 py-2 text-left font-normal">摘要</th>
@@ -333,7 +405,7 @@ export default function NotificationsPage() {
                 fallback={
                   <tr>
                     <td
-                      colspan={6}
+                      colspan={7}
                       class="px-3 py-8 text-center text-[color:var(--text-muted)]"
                     >
                       该窗口内没有匹配的推送记录。
@@ -363,12 +435,21 @@ export default function NotificationsPage() {
                       </td>
                       <td class="px-3 py-2 text-[11px] text-[color:var(--text-secondary)]">
                         {r.channel}
+                        <div class="font-mono text-[10px] text-[color:var(--text-muted)]">
+                          {r.channel_target}
+                        </div>
+                      </td>
+                      <td class="px-3 py-2">
+                        <span class="inline-block rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)]">
+                          {eventKindLabel(r.event_kind)}
+                        </span>
                       </td>
                       <td class="px-3 py-2">
                         <div class="font-medium text-[color:var(--text-primary)]">
                           {r.job_name}
                         </div>
                         <div class="text-[10px] text-[color:var(--text-muted)]">
+                          {recordSourceLabel(r.record_source)} ·{" "}
                           {execLabel(r.execution_status)}
                           <Show when={r.heartbeat}>
                             <span class="ml-1 rounded bg-white/5 px-1 py-[1px] text-[9px] uppercase">
@@ -479,6 +560,8 @@ function RecordDrawer(props: {
         </div>
 
         <dl class="mt-4 grid grid-cols-3 gap-x-3 gap-y-2 text-[12px]">
+          <DetailItem label="来源" value={recordSourceLabel(props.record.record_source)} />
+          <DetailItem label="事件类型" value={eventKindLabel(props.record.event_kind)} />
           <DetailItem label="用户" value={props.record.user_id} />
           <DetailItem label="渠道" value={props.record.channel} />
           <DetailItem

@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-04-26
+Last updated: 2026-04-29
+
+## 2026-04-29
+
+### Admin Notification Log and Actor Picker
+
+- Status: done
+- Date: 2026-04-29
+- Plan: `docs/archive/plans/admin-notification-log-actor-picker.md`
+- Handoff: `docs/handoffs/2026-04-29-admin-notification-log-actor-picker.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-web-api routes::notifications`, `cargo test -p hone-event-engine list_recent_delivery_logs`, `cargo test -p hone-event-engine store::tests::delivery_log_is_append_only_across_retries`, `bun --filter @hone-financial/app typecheck`, `git diff --check`
+- Current conclusion: 管理端推送日志已从只读 cron 执行记录改为合并 cron 与 event-engine `delivery_log`；默认排除 no-actor router 与 digest item 内部行，避免真实 Discord / sink 送达记录被淹没；前端现在显示 `events.kind_json.type` 的业务事件类型，推送日志和推送日程均改为 actor 下拉选择
+- Next entry point: `docs/handoffs/2026-04-29-admin-notification-log-actor-picker.md`
 
 ## 2026-04-26
 
