@@ -5,6 +5,7 @@
 use chrono::{Datelike, FixedOffset, Timelike, Utc};
 use hone_core::ActorIdentity;
 use hone_memory::{CronJobStorage, cron_job::ExecutionFilter};
+use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
@@ -32,6 +33,30 @@ pub struct SchedulerEvent {
     /// 是否绕过用户的 quiet_hours 静音。来源是 `CronJob.bypass_quiet_hours`，
     /// 默认 false（cron 任务遵守用户的勿扰时段）。
     pub bypass_quiet_hours: bool,
+}
+
+/// Ensure cron execution history can finalize the pre-written `running/pending` row.
+///
+/// `CronJobStorage::record_execution_event` matches terminal records to started
+/// records by a top-level `detail.delivery_key`. Scheduler execution metadata is
+/// often a domain-specific object and may not carry that key, so channel
+/// handlers should wrap every terminal detail through this helper before
+/// recording it.
+pub fn execution_detail_with_delivery_key(detail: Value, delivery_key: &str) -> Value {
+    let mut object = match detail {
+        Value::Object(map) => map,
+        other => {
+            let mut map = serde_json::Map::new();
+            if !other.is_null() {
+                map.insert("scheduler".to_string(), other);
+            }
+            map
+        }
+    };
+    object
+        .entry("delivery_key".to_string())
+        .or_insert_with(|| Value::String(delivery_key.to_string()));
+    Value::Object(object)
 }
 
 /// 定时任务调度器
@@ -257,5 +282,34 @@ mod tests {
         assert!(history[0].1.contains("小米跌破 30 港元"));
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn execution_detail_with_delivery_key_preserves_metadata() {
+        let detail = execution_detail_with_delivery_key(
+            serde_json::json!({
+                "parse_kind": "JsonNoop",
+                "heartbeat_model": "model-a",
+            }),
+            "delivery-123",
+        );
+
+        assert_eq!(detail["delivery_key"], "delivery-123");
+        assert_eq!(detail["parse_kind"], "JsonNoop");
+        assert_eq!(detail["heartbeat_model"], "model-a");
+    }
+
+    #[test]
+    fn execution_detail_with_delivery_key_wraps_non_object_metadata() {
+        let detail = execution_detail_with_delivery_key(Value::Null, "delivery-123");
+        assert_eq!(detail["delivery_key"], "delivery-123");
+        assert!(detail.get("scheduler").is_none());
+
+        let detail = execution_detail_with_delivery_key(
+            serde_json::json!(["metadata", "array"]),
+            "delivery-456",
+        );
+        assert_eq!(detail["delivery_key"], "delivery-456");
+        assert_eq!(detail["scheduler"][0], "metadata");
     }
 }

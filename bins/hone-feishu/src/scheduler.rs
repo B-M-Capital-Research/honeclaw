@@ -4,7 +4,7 @@ use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
-use hone_scheduler::SchedulerEvent;
+use hone_scheduler::{SchedulerEvent, execution_detail_with_delivery_key};
 use serde_json::json;
 use tracing::{error, info, warn};
 
@@ -73,7 +73,10 @@ pub(crate) async fn handle_scheduler_events(
                         delivered: false,
                         response_preview: None,
                         error_message: result.error.clone(),
-                        detail: result.metadata.clone(),
+                        detail: execution_detail_with_delivery_key(
+                            result.metadata.clone(),
+                            &event.delivery_key,
+                        ),
                     },
                 );
                 return;
@@ -111,7 +114,10 @@ pub(crate) async fn handle_scheduler_events(
                                 delivered: false,
                                 response_preview: Some(response.clone()),
                                 error_message: Some(err.to_string()),
-                                detail: result.metadata.clone(),
+                                detail: execution_detail_with_delivery_key(
+                                    result.metadata.clone(),
+                                    &event.delivery_key,
+                                ),
                             },
                         );
                         return;
@@ -142,7 +148,10 @@ pub(crate) async fn handle_scheduler_events(
                         delivered: false,
                         response_preview: Some(response.clone()),
                         error_message: Some(err.to_string()),
-                        detail: result.metadata.clone(),
+                        detail: execution_detail_with_delivery_key(
+                            result.metadata.clone(),
+                            &event.delivery_key,
+                        ),
                     },
                 );
                 return;
@@ -173,11 +182,13 @@ pub(crate) async fn handle_scheduler_events(
                         delivered: false,
                         response_preview: Some(response.clone()),
                         error_message: result.error.clone(),
-                        detail: json!({
-                            "receive_id": receive_id,
-                            "delivery_key": event.delivery_key,
-                            "scheduler": result.metadata,
-                        }),
+                        detail: execution_detail_with_delivery_key(
+                            json!({
+                                "receive_id": receive_id,
+                                "scheduler": result.metadata,
+                            }),
+                            &event.delivery_key,
+                        ),
                     },
                 );
                 return;
@@ -215,11 +226,13 @@ pub(crate) async fn handle_scheduler_events(
                         delivered: false,
                         response_preview: Some(response.clone()),
                         error_message: Some(err.to_string()),
-                        detail: json!({
-                            "receive_id": receive_id,
-                            "delivery_key": event.delivery_key,
-                            "scheduler": result.metadata,
-                        }),
+                        detail: execution_detail_with_delivery_key(
+                            json!({
+                                "receive_id": receive_id,
+                                "scheduler": result.metadata,
+                            }),
+                            &event.delivery_key,
+                        ),
                     },
                 );
             } else {
@@ -240,11 +253,13 @@ pub(crate) async fn handle_scheduler_events(
                         delivered: true,
                         response_preview: Some(response),
                         error_message: result.error.clone(),
-                        detail: json!({
-                            "receive_id": receive_id,
-                            "delivery_key": event.delivery_key,
-                            "scheduler": result.metadata,
-                        }),
+                        detail: execution_detail_with_delivery_key(
+                            json!({
+                                "receive_id": receive_id,
+                                "scheduler": result.metadata,
+                            }),
+                            &event.delivery_key,
+                        ),
                     },
                 );
             }

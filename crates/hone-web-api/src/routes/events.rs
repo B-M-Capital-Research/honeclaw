@@ -15,7 +15,7 @@ use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
 use hone_memory::session_message_text;
-use hone_scheduler::SchedulerEvent;
+use hone_scheduler::{SchedulerEvent, execution_detail_with_delivery_key};
 
 use crate::routes::normalized_query_actor;
 use crate::state::{AppState, PushEvent};
@@ -147,7 +147,10 @@ pub(crate) async fn handle_scheduler_events(
                             failure_trace
                                 .then(|| "内部错误已抑制，已写入用户可见失败提示".to_string())
                         }),
-                        detail: result.metadata.clone(),
+                        detail: execution_detail_with_delivery_key(
+                            result.metadata.clone(),
+                            &event.delivery_key,
+                        ),
                     },
                 );
                 return;
@@ -272,7 +275,7 @@ pub(crate) async fn handle_scheduler_events(
                     delivered,
                     response_preview: Some(response),
                     error_message,
-                    detail,
+                    detail: execution_detail_with_delivery_key(detail, &event.delivery_key),
                 },
             );
         });

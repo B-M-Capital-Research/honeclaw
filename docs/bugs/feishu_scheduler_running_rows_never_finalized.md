@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -362,12 +362,20 @@
 - 高概率是 2026-04-26 为止血“无台账”问题加入的 started 行写入逻辑，只负责 insert，不负责在终态阶段按 `delivery_key` 回写同一条记录。
 - 终态链路当前更像是“另起一条 run”，而不是“完成 started 行”。
 - 这与 [`feishu_scheduler_run_stuck_without_cron_job_run.md`](./feishu_scheduler_run_stuck_without_cron_job_run.md) 是相关但独立的后续问题：旧问题是没有 started 行；当前问题是 started 行写出来后没有被 finalize。
+- 2026-04-29 23:07 CST 复核代码后确认，存储层已经支持按顶层 `detail.delivery_key` 原地更新 pending row，但 Feishu / Web 终态多条分支写入的是 `result.metadata` 或嵌套 `scheduler` 对象，heartbeat/noop/error 这类终态没有把 `delivery_key` 放在 `detail` 顶层，导致存储层匹配条件永远不成立并回退为 insert。
 
 ## 修复记录
 
 - 2026-04-29: `memory/src/cron_job/history.rs` 的 `CronJobStorage::record_execution_event` 会在终态写入时按同一 actor / job / target / heartbeat / `delivery_key` 查找最近的 `running + pending` started 行，并原地更新为终态记录；找不到匹配 started 行时仍保留原有 insert 行为。
 - 回归验证：`cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`。
 - 2026-04-29 18:02 CST: 当前 live `cron_job_runs` 再次出现 started 行与终态行并存，说明上述修复尚未实际生效、未覆盖当前运行链路，或已被后续路径绕开；本缺陷因此从 `Fixed` 改回 `New`。
+- 2026-04-29 23:07 CST: `crates/hone-scheduler/src/lib.rs` 新增 `execution_detail_with_delivery_key(...)`，并在 `bins/hone-feishu/src/scheduler.rs`、`crates/hone-web-api/src/routes/events.rs` 的所有终态台账写入分支统一补齐顶层 `delivery_key`；现有 `CronJobStorage::record_execution_event` 可以覆盖 started 行，不再把 no-op / skipped_error / sent / send_failed 终态另起第二条 run。
+- 关联 GitHub Issue：暂无独立 open issue；本轮已检查 open issues #22 / #24 / #25，未发现与该 started-row 台账根因重复的 issue。
+- 回归验证：
+  - `cargo test -p hone-scheduler execution_detail_with_delivery_key -- --nocapture`
+  - `cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`
+  - `cargo check -p hone-scheduler -p hone-web-api -p hone-feishu`
+  - `git diff --check`
 
 ## 后续建议
 
