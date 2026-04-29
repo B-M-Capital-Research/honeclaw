@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-04-29 09:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `09:00-09:02` 的最新一轮已经从“空输出吞成 noop”进一步回退到“明明给出 triggered JSON，却因前缀污染被压成 failure”：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `35` 条 started 行、`21` 条 `noop + skipped_noop`、`16` 条 `completed + sent`、`1` 条 `completed + send_failed` 与 `1` 条 `execution_failed + skipped_error`。
+  - `09:00` heartbeat 窗口并未恢复成稳定单一状态：
+    - `parse_kind=Empty`：`9782`（`RKLB异动监控`）与 `9784`（`Monitor_Watchlist_11`）在日志里继续记录 `raw_chars=0 starts_with_json=false raw_preview=""`
+    - `parse_kind=JsonNoop`：`9781`、`9783`、`9785-9791`
+    - `parse_kind=JsonTriggered + sent`：`9793`（`全天原油价格3小时播报`）仍成功送达
+    - `parse_kind=PlainTextSuppressed + skipped_error`：`9795`（`持仓重大事件心跳检测`）在 `09:02` 落成 `execution_failed + skipped_error`
+    - 同窗 started 行 `9766-9780` 又先落成 `running + pending`，说明 heartbeat 状态漂移与 started 残留继续同步发生
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账编码差异：
+    - `09:00:20.408`：`RKLB异动监控` 继续记录 `parse_kind=Empty raw_preview=""`
+    - `09:00:30.732`：`Monitor_Watchlist_11` 继续记录 `parse_kind=Empty raw_preview=""`
+    - `09:01:22.650-09:01:22.651`：`全天原油价格3小时播报` 仍能落成 `parse_kind=JsonTriggered` 并送达，说明并非整批 scheduler 全面停摆
+    - `09:02:16.654-09:02:16.655`：`持仓重大事件心跳检测` 明明已经给出 `{"status":"triggered","message":"ASTS持仓警报..."}`，却因为前缀混入 `</think>` 被记成 `starts_with_json=false parse_kind=PlainTextSuppressed`，随后渠道侧仍打印“心跳任务未命中，本轮不发送”
+  - 结论：到 `2026-04-29 09:02` 为止，本单不仅继续活跃，而且最新坏态已经覆盖“空输出被吸成 noop”“合法 triggered JSON 因前缀污染被压成 failed”与“渠道日志仍错报未命中”三条并存路径，状态维持 `Fixing`、严重等级维持 `P2`。
 - `2026-04-29 08:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `07:30-08:01` 两轮 heartbeat / scheduler 窗口继续在 `JsonTriggered / JsonNoop / Empty / started` 之间漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `28` 条 started 行、`22` 条 `noop + skipped_noop` 与 `3` 条 `completed + sent`。
   - `07:30` 窗口并未恢复成稳定单一状态：
