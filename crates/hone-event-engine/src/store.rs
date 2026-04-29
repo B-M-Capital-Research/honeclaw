@@ -251,7 +251,7 @@ impl EventStore {
 
     /// 列出未来 `within_days` 天内的 `EarningsUpcoming` teaser 事件。
     ///
-    /// 用于 `DigestScheduler` 在每次 flush 时刻把"今天应该提醒 T-3/T-2/T-1"
+    /// 用于 `UnifiedDigestScheduler` 在每个 slot 触发时把"今天应该提醒 T-3/T-2/T-1"
     /// 的财报现算出来(见 `pollers::earnings::synthesize_countdowns`),这样
     /// 即使 poller 的 cron tick 漂移也不会让倒计时 off-by-one。
     pub fn list_upcoming_earnings(
@@ -649,7 +649,7 @@ impl EventStore {
         Ok(out)
     }
 
-    /// 列出在 `since` 之后有 `quiet_held` 行的 distinct actor key。供 DigestScheduler
+    /// 列出在 `since` 之后有 `quiet_held` 行的 distinct actor key。供 UnifiedDigestScheduler
     /// 在 quiet.to 分钟把这些 actor 也加入 tick 迭代集合 —— 否则只 buffer 为空、
     /// 仅靠 router hold 的 actor 永远等不到 quiet_flush。
     pub fn list_actors_with_quiet_held_since(

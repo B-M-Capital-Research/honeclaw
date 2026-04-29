@@ -1,8 +1,11 @@
-//! Unified digest pipeline —— personal `DigestScheduler` 与 `GlobalDigestScheduler`
-//! 合并后的单一推送链路。commit 1 落地类型基座(`types`),commit 2 落地 source 抽象
-//! (`sources` + `collector`),scheduler / curator 由后续 commit 接入。
+//! Unified digest pipeline —— per-actor digest 与全球要闻 digest 合并后的单一推送链路。
 //!
-//! 设计要点见 `/Users/bytedance/.claude/plans/global-digest-soft-pumpkin.md`。
+//! 各子模块职责:
+//! - `types` — `ItemOrigin` / `FloorTag` / `DigestSlot` / `ThesisRelation` 跨层共享类型
+//! - `sources` — `BufferSource` / `SynthSource` / `GlobalNewsSource` 抽象 `UnifiedCandidate` 流
+//! - `collector` — 三 source 编排 + per-actor 关联 + price-latest 去重保留
+//! - `floor` — High severity / earnings T-N / `immediate_kinds` 绕过 LLM 的 prepend 队
+//! - `scheduler` — 60s tick + 共享 Pass 1/baseline + per-actor fan-out personalize
 
 pub mod collector;
 pub mod floor;

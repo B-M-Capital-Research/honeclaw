@@ -3,8 +3,8 @@
 //! **Read-time derivation**(v0.1.46 重构):
 //! - Poller 只产出"事实":`earnings:{SYMBOL}:{DATE}` teaser(Medium),id 稳定,
 //!   EventStore 去重保证同一场财报只入库一次,Poller 的 cron 漂移不影响推送精度
-//! - T-3/T-2/T-1 每日倒计时**不再由 Poller 产出**,改由 `DigestScheduler` 在
-//!   每次 flush 时刻根据 `now` 现算(见 `synthesize_countdowns`)——这样用户
+//! - T-3/T-2/T-1 每日倒计时**不再由 Poller 产出**,改由 `UnifiedDigestScheduler` 在
+//!   每个 slot 触发时刻根据 `now` 现算(见 `synthesize_countdowns`)——这样用户
 //!   重启时机、poller 漂移、跨时区都不会让倒计时 off-by-one
 //! - 整条 lifecycle 仍共享 `EventKind::EarningsUpcoming`,用户把它放进
 //!   `blocked_kinds` 就能一次静音 teaser + 所有倒计时
@@ -122,7 +122,7 @@ fn events_from_calendar(raw: &Value) -> Vec<MarketEvent> {
 }
 
 /// 根据一批已入库的 earnings teaser + 当前本地日期,现算出 T-3/T-2/T-1 倒计时
-/// "虚拟事件"列表。用于 `DigestScheduler` 在 flush 时刻覆盖到每个 actor 的推送
+/// "虚拟事件"列表。用于 `UnifiedDigestScheduler` 在 slot 触发时覆盖到每个 actor 的推送
 /// payload 上;这些事件**不入库**,不会触发 dedup,天然幂等。
 ///
 /// 输入 `teasers` 应是 `EventStore::list_upcoming_earnings` 的结果(今天到未来
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn poller_never_emits_countdown_events() {
-        // v0.1.46 起 poller 只产 teaser,倒计时由 DigestScheduler 现算
+        // v0.1.46 起 poller 只产 teaser,倒计时由 UnifiedDigestScheduler 现算
         let raw = serde_json::json!([
             {"symbol": "AAPL", "date": "2026-04-30"},
             {"symbol": "MSFT", "date": "2026-05-02"},

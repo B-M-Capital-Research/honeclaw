@@ -1,13 +1,11 @@
-//! Unified digest 类型基座。后续 commit 会把 personal `DigestScheduler` 与
-//! `GlobalDigestScheduler` 合并到本模块,这里先把跨 commit 引用的公共类型立起来:
+//! Unified digest 类型基座 —— `UnifiedDigestScheduler` 跨 source / curator /
+//! 渲染各层共享的小类型:
 //!
 //! - `ItemOrigin` — `DigestItem` 的来源标签,渲染层据此决定 emoji / 排序。
 //! - `FloorTag` — High severity / earnings T-N / `immediate_kinds` 等绕过 LLM 的
 //!   优先级标签;floor 条目永远 prepend 到 payload 顶部,不被 max_items_per_batch 挤掉。
 //! - `ThesisRelation` — Pass 2 personalize 标记一条 item 与用户 thesis 的关系。
 //! - `DigestSlot` — 用户自定义的 digest 触发槽位(替代旧 `digest_windows` 字符串数组)。
-//!
-//! commit 1:仅类型定义 + serde,没有任何行为接入。
 
 use serde::{Deserialize, Serialize};
 

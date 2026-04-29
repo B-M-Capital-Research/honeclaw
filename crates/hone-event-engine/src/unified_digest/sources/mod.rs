@@ -1,6 +1,6 @@
 //! Unified digest 的"源"层 —— 把 buffer drain / synth 倒计时 / global news
-//! 统一抽象成 `UnifiedCandidate` 流。commit 2 落地三个 source + 组合器,
-//! 未接入 scheduler;旧 `DigestScheduler` / `GlobalDigestScheduler` 仍主跑。
+//! 统一抽象成 `UnifiedCandidate` 流。三个 source + 组合器由
+//! `UnifiedDigestScheduler` 在每个 slot 触发时编排。
 
 pub mod buffer;
 pub mod global;
