@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 16:02 CST
+最后更新：2026-04-29 17:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -26,8 +26,8 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-28 已把 `sanitized_empty_success` / `planning_sentence_suppressed` 从伪成功改为失败态并补回归，后续继续观察上游 Answer 空/过渡句根因是否仍复现 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 11:30 `ORCL 大事件监控` `run_id=9912` 把 `跌幅 4.07%` 写成“接近 5% 阈值”并送达；同根因更早已在 `10:01` 的 ASTS `run_id=9844` 把 `-6.89%` 包装成“接近 8%” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 16:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同库 `cron_job_runs` 已继续写到 `2026-04-29 16:02:14+08:00`，且 `15:49` Feishu 直聊仍正常 `end_turn` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 17:01 `ASTS 重大异动心跳监控` `run_id=10183` 已把 `status=triggered` 送达，但正文同时承认“未达到 8% 阈值”；同根因更早已在 `11:30` 的 ORCL `run_id=9912` 把 `跌幅 4.07%` 写成“接近 5% 阈值” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 17:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `16:20` Feishu 直聊已完整走完 `persist_assistant -> reply.send -> end_turn`，同库 `cron_job_runs` 也继续写到 `2026-04-29 17:01:39+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 16:02 最新整点窗口继续混跑：`run_id=10130` 再次把 `Cerebras IPO与业务进展心跳监控` 打成“输出不是结构化 JSON”，`run_id=10135` 让 `ORCL 大事件监控` 漂到 `missing field id + skipped_error`，同窗其余任务仍多为 `noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-29 15:02 `Monitor_Watchlist_11` `run_id=10087` 再次把 `ASTS 71.88` 写成“已低于触发价 69.83”并送达；同 job 在 `14:30` 仍是 `noop`，说明线上已复发 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |

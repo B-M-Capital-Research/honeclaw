@@ -8,6 +8,18 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=10183`
+  - `job_id=j_fc7749ca`
+  - `job_name=ASTS 重大异动心跳监控`
+  - `executed_at=2026-04-29T17:01:39.662237+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `response_preview` 明确写出：`触发条件：单日涨跌幅超过 8%`，随后正文又承认 `当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛`，但本轮仍以正式触发提醒送达。
+- `data/runtime/logs/sidecar.log`
+  - `2026-04-29 17:01:34.563-17:01:34.564` 记录同一 `job_id=j_fc7749ca` 收口为 `parse_kind=JsonTriggered` 并执行 `deliver`，`raw_preview` / `deliver_preview` 都直接写出 `当前跌幅未达到 8% 阈值`。
+  - 这说明最新复发已不只是“接近 8% 警戒阈值”的措辞漂移，而是 `status=triggered` 与正文结论正面自相矛盾。
+- `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=9912`
   - `job_id=j_39a96b7a`
   - `job_name=ORCL 大事件监控`
@@ -61,6 +73,8 @@
 
 ## 当前实现效果
 
+- `2026-04-29 17:01` 的 `ASTS 重大异动心跳监控` 再次把 `{"status":"triggered"}` 送达给用户，但正文明确承认 `当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛`。
+- 这说明线上最新坏态已经不只是“接近阈值也算触发”，而是触发状态与结论文本直接自相矛盾，用户会收到一条自称“已触发”但正文说“未触发”的告警。
 - `2026-04-29 10:01` 的 `ASTS 重大异动心跳监控` 把 `跌幅 -6.89%` 解释成“接近 8% 警戒阈值”，并成功送达。
 - `2026-04-29 11:30` 的 `ORCL 大事件监控` 又把 `跌幅 4.07%` 解释成“接近 5% 阈值”，同样成功送达；`12:01` 下一窗口立即恢复 `noop`。
 - 两条文案都没有声称价格真的越过阈值，而是明确承认“接近阈值”，却仍返回 `JsonTriggered`，说明当前链路会把观察性提示直接升级成用户可见触发告警。
@@ -80,6 +94,7 @@
 
 - 2026-04-29: `crates/hone-channels/src/scheduler.rs` 在 heartbeat 送达前增加近阈值保险闸：`跌幅 -6.89% 接近 8% / 仅差约 1.1 个百分点` 这类承认未达到阈值的 `triggered` 文案会被抑制，不再进入用户可见发送链路。
 - 回归验证：`cargo test -p hone-channels heartbeat_near_threshold_trigger_is_suppressed -- --nocapture`。
+- 2026-04-29 17:01 最新真实窗口再次确认 ASTS 仍复发：`run_id=10183` 在正文已明确写出 `当前跌幅未达到 8% 阈值` 的前提下，仍落成 `completed + sent + delivered=1`；说明当前保护尚未覆盖“触发条件声明 + 正文否认命中”这一新变体。
 - 2026-04-29 11:30-12:01 最新真实窗口仍复现回归：`run_id=9912` 把 ORCL `跌幅 4.07%` 写成“接近 5% 阈值”并送达，下一窗口 `run_id=9941` 才恢复 `noop`；说明近阈值保险闸尚未稳定覆盖所有单标的 heartbeat 变体，本单改回 `New`。
 
 ## 后续建议
