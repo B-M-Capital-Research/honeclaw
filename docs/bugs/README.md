@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 09:10 CST
+最后更新：2026-04-29 10:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,7 +15,7 @@
 
 ## 当前概览
 
-- 活跃待修复：19
+- 活跃待修复：20
 - Later / 待复现：9
 - 已修复 / 已关闭：62
 - 历史分析 / 部分止血：5
@@ -31,10 +31,11 @@
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Fixing | 2026-04-26 已清洗失败 partial stream 中的工具/进度轨迹，idle timeout/state migration 后用户只看到产品化失败文案，不再落库半成品工具轨迹；底层 timeout 仍待追 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | New | 2026-04-27 08:30 `j_acce16a6` 实际按 `schedule.hour=8/minute=30` 触发，但同一 job 的 prompt 仍写 `每个交易日 20:45`；assistant 正文直接承认“不是你设定的20:45触发时点” | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-29 07:30 `Monitor_Watchlist_11` 的 ASTS 条件线是 `≤69.83`，但 `run_id=9692` 仍把 `71.88` 包装成“已跌破触发价上方区间”并成功送达；`08:01` 同一 job 又恢复 `noop` | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
+| ASTS heartbeat 把“接近 8% 警戒阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 10:01 `ASTS 重大异动心跳监控` 前一窗口 `run_id=9818` 还是 `noop`，下一窗口 `run_id=9844` 却把 `跌幅 -6.89%` 写成“接近 8% 警戒阈值”并落成 `completed + sent + delivered=1` | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-29 07:02 同一“小米跌破 30 港元”条件在 `06:30` 被一条预警因 `JsonMalformed` 丢弃后，又由兄弟 job 成功送达；`07:02` 持仓 heartbeat 还继续重发 ASTS FCC 旧催化，说明跨 job 去重基线仍缺失 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-28 已把 `sanitized_empty_success` / `planning_sentence_suppressed` 从伪成功改为失败态并补回归，后续继续观察上游 Answer 空/过渡句根因是否仍复现 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | New | 2026-04-29 09:02 最近一小时已漂到 `35` 条 `running+pending`；全库残留继续升到 `1514`，`08:45/09:00` 普通 scheduler 与 heartbeat 同窗继续实时新增 started 行 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 09:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；最近一小时已有多条 Feishu 直聊在 `09:00:58/09:01:20/09:01:56` 落成 `persist_assistant + done success=true`，仍未带动任何镜像前移 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 10:03 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；最新 Feishu 直聊已在 `09:37:48/09:42:38` 落成 `persist_assistant + done success=true` 并成功发送 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-28 15:00 最新窗口再次复现：`run_id=8858` 在 `moonshotai/kimi-k2.5` 下因超长上下文触发上游 `maximum context length`，最终仍只落成 `invalid type: integer 400` | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 09:02 最近一小时 heartbeat 已漂成 `21 noop / 1 skipped_error / 16 sent / 35 started`；`09:02` `持仓重大事件心跳检测` 继续把 `</think>{"status":"triggered"}` 判成 `PlainTextSuppressed` 并误记“未命中” | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-29 05:01 `Cerebras IPO与业务进展心跳监控` 在 `04:02` 触顶失败后，`04:30/05:00` 又漂回 `noop`；同一 job 仍在“触顶失败 / 伪 noop”间交替 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |

@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 10:03 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T10:01:20.670987+08:00`，最近一小时聚合仍有 `24` 条 `running + pending`、`22` 条 `noop + skipped_noop`、`3` 条 `completed + sent`，说明 sqlite 文件本身继续写入最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-29 09:31:22` 记录 Discord 群聊 `Session_discord__group__g_3a1469549745654468692_3ac_3a1469549746518622371` 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=2372`。
+  - `2026-04-29 09:37:48` 记录 Feishu 直聊 `Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=2763`，并在 `09:37:51` 成功 `reply.send segments.sent=2/2`。
+  - `2026-04-29 09:42:38` 又记录 Feishu 直聊 `Actor_feishu__direct__ou_5f6ac070b0b574f2bc3ba49f9678b675a3` 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=4743`，并在 `09:42:44` 成功 `reply.send segments.sent=4/4`。
+  - 这说明到 `10:03` 为止，不仅 Feishu direct，Discord 群聊主链路也仍在真实成功收口；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 09:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
