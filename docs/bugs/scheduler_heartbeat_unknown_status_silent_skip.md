@@ -15,6 +15,19 @@
 
 ## 修复进展
 
+- `2026-04-29 23:06` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `22:00-23:02` 的最新两轮继续混跑 `Empty / JsonNoop / completed sent / started`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口已落成 `599` 条 started 行、`510` 条 `noop + skipped_noop`、`71` 条 `completed + sent`、`19` 条 `execution_failed + skipped_error` 与 `2` 条 `completed + send_failed`；说明 started 残留与结构化漂移仍在同步扩大。
+  - `23:00` heartbeat 窗口继续没有收口成稳定纯 JSON 协议：
+    - `noop + skipped_noop`：`10486-10495`、`10498`
+    - `completed + sent`：`10497`（`持仓重大事件心跳检测`）
+    - started 行 `10473-10485` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `23:00:20.686-23:00:21.981`：同窗连续多次记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层随后仍回写 `tool_execute_success name=web_search`
+    - `23:00:21.336`：`TEM大事件心跳监控` 记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `23:00:46.646`：`CAI破位预警` 同样记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `23:01:15.488`：`ORCL 大事件监控` 继续记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+  - 结论：到 `2026-04-29 23:06` 为止，本单仍稳定活跃；最新窗口虽然出现 `10497 completed + sent` 的成功样本，但更多 heartbeat 任务继续在 `Empty / JsonNoop / started` 之间漂移，并持续伴随 Tavily 全 key 失败后的 `web_search` 伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-29 22:06` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `21:30-22:00` 的最新两轮继续混跑 `PlainTextSuppressed / skipped_error / JsonNoop / started`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口已落成 `28` 条 started 行、`21` 条 `noop + skipped_noop`、`6` 条 `completed + sent` 与 `2` 条 `execution_failed + skipped_error`。
   - `21:30` 窗口坏态继续并存：

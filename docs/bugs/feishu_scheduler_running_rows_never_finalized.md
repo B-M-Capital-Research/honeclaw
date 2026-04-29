@@ -8,6 +8,15 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 23:06 CST` 再次复核，started-row finalize 缺陷在最新 `22:30`、`23:00` 两个窗口继续实时新增：
+    - `22:30` 窗口先写入 `run_id=10449-10460` 共 `12` 条 started 行，全部为 `execution_status=running`、`message_send_status=pending`
+    - 同窗终态随后另起为 `run_id=10461-10472`：其中 `10461-10471` 已落成 `noop + skipped_noop`，`10472`（`持仓重大事件心跳检测`）已落成 `completed + sent + delivered=1`
+    - `23:00` 窗口又先写入 `run_id=10473-10485` 共 `13` 条 started 行，其中既包含 12 条 heartbeat，也包含普通 scheduler `核心观察股池晚间快报`
+    - 同窗终态随后另起为 `run_id=10486-10498`：其中 `10486-10495` 与 `10498` 已落成 `noop + skipped_noop`，`10496`（`核心观察股池晚间快报`）与 `10497`（`持仓重大事件心跳检测`）已落成 `completed + sent`
+    - 但对应 started 行 `10449-10460` 与 `10473-10485` 仍全部保留，说明无论终态是 `sent` 还是 `noop`，都不会覆盖原 started 行
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1864` 条，较 `22:06` 巡检记录里的 `1839` 再增 `25` 条，说明每推进一轮新窗口仍会继续堆积 started 脏行
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 22:06 CST` 再次复核，started-row finalize 缺陷在最新 `21:30`、`22:00` 两个窗口继续实时新增：
     - `21:30` 窗口先写入 `run_id=10423` 共 `1` 条 started 行，对应普通 scheduler `科技核心股池 · 晚间击球区快报`
     - 同窗终态随后另起为 `run_id=10424`，已落成 `completed + sent + delivered=1`
