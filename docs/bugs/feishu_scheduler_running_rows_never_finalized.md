@@ -8,6 +8,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 11:02 CST` 再次复核，started 残留继续在最新 `10:30`、`11:00` 两个 heartbeat 窗口实时新增：
+    - `10:30` 窗口先写入 `run_id=9846-9857` 共 `12` 条 started 行，覆盖 `Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测`、`全天原油价格3小时播报` 等整批 heartbeat job
+    - 同窗终态随后另起为 `run_id=9858-9869`，其中 `9869`（`持仓重大事件心跳检测`）已落成 `completed + sent + delivered=1`，其余大多已回写为 `noop + skipped_noop`
+    - `11:00` 窗口又先写入 `run_id=9870-9881` 共 `12` 条 started 行；截至 `11:02`，同窗终态已另起为 `run_id=9882-9893`，其中 `9892`（`小米破位预警`）已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
+    - 但对应 started 行 `9846-9857` 与 `9870-9881` 仍全部保留 `running + pending`，说明 started 行不会被任何一种终态覆盖，即使同窗已经成功送达或显式 `noop`
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时坏态继续稳定存在：
+    - `running + pending = 24`
+    - `noop + skipped_noop = 22`
+    - `completed + sent = 2`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1562` 条，较 `09:02` 巡检时的 `1514` 再增 `48` 条，说明这条缺陷继续按“每新增一轮 started 行就永久堆积”的模式稳定恶化
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 09:02 CST` 再次复核，started 残留继续在最新 `08:45`、`09:00` 两个窗口实时新增，而且普通 scheduler 与 heartbeat 在同一小时窗同时复现：
     - `08:45` 窗口普通 scheduler 先写入 `run_id=9764`（`A股盘前高景气产业链推演`）`running + pending`，随后另起 `run_id=9765` 并在 `08:46:11` 落成 `completed + sent + delivered=1`
     - `09:00` 窗口又先写入 `run_id=9766-9780` 共 `15` 条 started 行，其中既包含 heartbeat，也包含 `09:00 美股AI与航空科技晨报`、`早9点市场复盘(XME及加密ETF)`、`核心观察池早间简报`、`特斯拉与火箭实验室新闻日报`

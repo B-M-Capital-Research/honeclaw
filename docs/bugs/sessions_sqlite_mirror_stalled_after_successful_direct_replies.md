@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 11:03 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T11:01:32.449820+08:00`，说明 sqlite 文件本身仍在持续接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-29 10:32:25-10:33:14` 记录 Feishu 直聊 `Actor_feishu__direct__ou_5fcd8d8940cb280ac50df027d46bd9f56c` 完整走完 `agent.prepare -> agent.run -> session.persist_assistant -> done success=true -> reply.send segments.sent=2/2`。
+  - 同窗 `10:32:45` 还出现同一 session 的 `direct.busy`，表明真实用户流量仍在继续进入直聊主链路，而不是最近一小时没有新会话。
+  - 这说明到 `11:03` 为止，Feishu direct 真实成功收口与 busy 互斥保护都仍在工作；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 10:03 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

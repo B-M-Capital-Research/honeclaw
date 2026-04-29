@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 10:10 CST
+最后更新：2026-04-29 11:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -34,8 +34,8 @@
 | ASTS heartbeat 把“接近 8% 警戒阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 10:01 `ASTS 重大异动心跳监控` 前一窗口 `run_id=9818` 还是 `noop`，下一窗口 `run_id=9844` 却把 `跌幅 -6.89%` 写成“接近 8% 警戒阈值”并落成 `completed + sent + delivered=1` | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-29 07:02 同一“小米跌破 30 港元”条件在 `06:30` 被一条预警因 `JsonMalformed` 丢弃后，又由兄弟 job 成功送达；`07:02` 持仓 heartbeat 还继续重发 ASTS FCC 旧催化，说明跨 job 去重基线仍缺失 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-28 已把 `sanitized_empty_success` / `planning_sentence_suppressed` 从伪成功改为失败态并补回归，后续继续观察上游 Answer 空/过渡句根因是否仍复现 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | New | 2026-04-29 09:02 最近一小时已漂到 `35` 条 `running+pending`；全库残留继续升到 `1514`，`08:45/09:00` 普通 scheduler 与 heartbeat 同窗继续实时新增 started 行 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 10:03 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；最新 Feishu 直聊已在 `09:37:48/09:42:38` 落成 `persist_assistant + done success=true` 并成功发送 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | New | 2026-04-29 11:02 最近一小时 `10:30/11:00` 两个 heartbeat 窗口继续各新增 12 条 started 行；`running+pending` 仍有 `24` 条，全库残留升到 `1562` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 11:03 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；最新 Feishu 直聊已在 `10:33:12/10:33:14` 落成 `persist_assistant + done success=true` 并成功发送 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-28 15:00 最新窗口再次复现：`run_id=8858` 在 `moonshotai/kimi-k2.5` 下因超长上下文触发上游 `maximum context length`，最终仍只落成 `invalid type: integer 400` | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 09:02 最近一小时 heartbeat 已漂成 `21 noop / 1 skipped_error / 16 sent / 35 started`；`09:02` `持仓重大事件心跳检测` 继续把 `</think>{"status":"triggered"}` 判成 `PlainTextSuppressed` 并误记“未命中” | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-29 05:01 `Cerebras IPO与业务进展心跳监控` 在 `04:02` 触顶失败后，`04:30/05:00` 又漂回 `noop`；同一 job 仍在“触顶失败 / 伪 noop”间交替 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
