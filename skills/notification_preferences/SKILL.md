@@ -14,16 +14,15 @@ allowed-tools:
 
 ## 合法 kind tag
 
-`allow_kinds` / `block_kinds` 的值必须从以下 16 个里选,其它值会被工具直接拒绝:
+`allow_kinds` / `block_kinds` 的值必须从以下里选,其它值会被工具直接拒绝:
 
 ```
-earnings_upcoming, earnings_released,
-news_critical, press_release,
-price_alert, weekly52_high, weekly52_low, volume_spike,
-dividend, split, buyback,
+earnings_upcoming, earnings_released, earnings_call_transcript,
+news_critical,
+price_alert, weekly52_high, weekly52_low,
+dividend, split,
 sec_filing, analyst_grade,
-macro_event,
-portfolio_pre_market, portfolio_post_market
+macro_event, social_post
 ```
 
 ## 常见意图 → 工具调用
@@ -36,7 +35,7 @@ portfolio_pre_market, portfolio_post_market
 | "一般的也推吧" | `notification_prefs(action="set_min_severity", value="medium")` |
 | "只推我持仓相关的" | `notification_prefs(action="set_portfolio_only", value=true)` |
 | "什么都推" | `notification_prefs(action="set_portfolio_only", value=false)` |
-| "不要新闻 / 不要分析师评级" | `notification_prefs(action="block_kinds", value=["news_critical","press_release","analyst_grade"])` |
+| "不要新闻 / 不要分析师评级" | `notification_prefs(action="block_kinds", value=["news_critical","analyst_grade"])` |
 | "只要财报和 SEC" | `notification_prefs(action="allow_kinds", value=["earnings_released","earnings_upcoming","sec_filing"])` |
 | "别再限制 kind 了" | `notification_prefs(action="clear_allow")` 或 `clear_block` |
 | "看看现在是什么设置" | `notification_prefs(action="get")` |

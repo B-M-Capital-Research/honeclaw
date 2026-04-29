@@ -74,12 +74,12 @@ fn validate_prefs(prefs: &NotificationPrefs) -> Result<(), Response> {
             }
         }
     }
-    if let Some(windows) = &prefs.digest_windows {
-        for w in windows {
-            if chrono::NaiveTime::parse_from_str(w, "%H:%M").is_err() {
+    if let Some(slots) = &prefs.digest_slots {
+        for s in slots {
+            if chrono::NaiveTime::parse_from_str(&s.time, "%H:%M").is_err() {
                 return Err(json_error(
                     StatusCode::BAD_REQUEST,
-                    format!("digest_windows 含非法时刻 {w:?},必须是 HH:MM (24h)"),
+                    format!("digest_slots 含非法时刻 {:?},必须是 HH:MM (24h)", s.time),
                 ));
             }
         }

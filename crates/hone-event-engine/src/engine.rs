@@ -29,7 +29,7 @@ use crate::source::SourceSchedule;
 use crate::spawner::spawn_event_source;
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
-use crate::unified_digest::UnifiedDigestScheduler;
+use crate::unified_digest::{DigestSlot, UnifiedDigestScheduler};
 use hone_core::config::{EventEngineConfig, FmpConfig};
 
 /// 事件引擎句柄。`start()` 只 `spawn` 各 poller 任务并立即返回——
@@ -264,10 +264,17 @@ impl EventEngine {
         }
 
         let digest_buffer = Arc::new(DigestBuffer::new(&self.digest_dir)?);
+        let default_slot_summary = self
+            .engine_cfg
+            .digest
+            .default_slots
+            .iter()
+            .map(|s| s.time.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
         info!(
             digest = %self.digest_dir.display(),
-            pre_market = %self.engine_cfg.digest.pre_market,
-            post_market = %self.engine_cfg.digest.post_market,
+            default_slots = %default_slot_summary,
             "digest buffer ready"
         );
 
@@ -350,8 +357,18 @@ impl EventEngine {
             fetcher.clone(),
             audience_cache_dir.clone(),
             self.daily_report_dir.clone(),
-            self.engine_cfg.digest.pre_market.clone(),
-            self.engine_cfg.digest.post_market.clone(),
+            self.engine_cfg
+                .digest
+                .default_slots
+                .iter()
+                .enumerate()
+                .map(|(idx, s)| DigestSlot {
+                    id: format!("default_{idx}"),
+                    time: s.time.clone(),
+                    label: s.label.clone(),
+                    floor_macro: None,
+                })
+                .collect(),
         )
         .with_tz_offset_hours(tz_offset)
         .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize)
@@ -441,25 +458,24 @@ impl EventEngine {
         // 这种兜底关法,改用 EventEngineConfig.disabled_kinds。
         //
         // v0.1.46 开始:earnings / corp_action / macro / analyst_grade / earnings_surprise
-        // 这 5 个日频 poller 改为 **cron-aligned**:在 `pre_market - offset` /
-        // `post_market - offset` 各跑一次,保证 digest flush 时用到的数据永远是刚拉的。
-        // 同时冷启动时每个 poller 立即跑一次,避免用户重启后等到下一个 flush 窗口。
-        // news / price 节奏本来就快(分钟级),继续用固定 interval。
+        // 这 5 个日频 poller 改为 **cron-aligned**:在每个 default slot 前 prefetch_offset_mins
+        // 跑一次,保证 digest flush 时用到的数据永远是刚拉的。冷启动时每个 poller 立即跑
+        // 一次,避免用户重启后等到下一个 flush 窗口。news / price 节奏本来就快(分钟级),
+        // 继续用固定 interval。
         let sources = &self.engine_cfg.sources;
-        let pre_prefetch = digest::shift_hhmm_earlier(
-            &self.engine_cfg.digest.pre_market,
-            self.engine_cfg.digest.prefetch_offset_mins,
-        );
-        let post_prefetch = digest::shift_hhmm_earlier(
-            &self.engine_cfg.digest.post_market,
-            self.engine_cfg.digest.prefetch_offset_mins,
-        );
+        let prefetch_at: Vec<String> = self
+            .engine_cfg
+            .digest
+            .default_slots
+            .iter()
+            .map(|s| {
+                digest::shift_hhmm_earlier(&s.time, self.engine_cfg.digest.prefetch_offset_mins)
+            })
+            .collect();
         info!(
-            pre_market = %self.engine_cfg.digest.pre_market,
-            post_market = %self.engine_cfg.digest.post_market,
+            default_slots = %default_slot_summary,
             prefetch_offset_mins = self.engine_cfg.digest.prefetch_offset_mins,
-            pre_prefetch = %pre_prefetch,
-            post_prefetch = %post_prefetch,
+            prefetch_at = %prefetch_at.join(", "),
             "cron-aligned poller prefetch windows resolved"
         );
 
@@ -467,8 +483,7 @@ impl EventEngine {
             let poller = EarningsPoller::new(
                 client.clone(),
                 SourceSchedule::CronAligned {
-                    pre_prefetch: pre_prefetch.clone(),
-                    post_prefetch: post_prefetch.clone(),
+                    prefetch_at: prefetch_at.clone(),
                     tz_offset,
                 },
             )
@@ -505,8 +520,7 @@ impl EventEngine {
             let poller = CorpActionCalendarPoller::new(
                 client.clone(),
                 SourceSchedule::CronAligned {
-                    pre_prefetch: pre_prefetch.clone(),
-                    post_prefetch: post_prefetch.clone(),
+                    prefetch_at: prefetch_at.clone(),
                     tz_offset,
                 },
             );
@@ -526,8 +540,7 @@ impl EventEngine {
                 client.clone(),
                 registry.clone(),
                 SourceSchedule::CronAligned {
-                    pre_prefetch: pre_prefetch.clone(),
-                    post_prefetch: post_prefetch.clone(),
+                    prefetch_at: prefetch_at.clone(),
                     tz_offset,
                 },
             )
@@ -545,8 +558,7 @@ impl EventEngine {
             let poller = MacroPoller::new(
                 client.clone(),
                 SourceSchedule::CronAligned {
-                    pre_prefetch: pre_prefetch.clone(),
-                    post_prefetch: post_prefetch.clone(),
+                    prefetch_at: prefetch_at.clone(),
                     tz_offset,
                 },
             );
@@ -592,8 +604,7 @@ impl EventEngine {
                 client.clone(),
                 registry.clone(),
                 SourceSchedule::CronAligned {
-                    pre_prefetch: pre_prefetch.clone(),
-                    post_prefetch: post_prefetch.clone(),
+                    prefetch_at: prefetch_at.clone(),
                     tz_offset,
                 },
             );
@@ -611,8 +622,7 @@ impl EventEngine {
                 client.clone(),
                 registry.clone(),
                 SourceSchedule::CronAligned {
-                    pre_prefetch: pre_prefetch.clone(),
-                    post_prefetch: post_prefetch.clone(),
+                    prefetch_at: prefetch_at.clone(),
                     tz_offset,
                 },
             );

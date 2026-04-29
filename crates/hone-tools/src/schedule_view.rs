@@ -1,7 +1,7 @@
 //! `schedule_view` —— per-actor "我的推送日程"聚合视图。
 //!
 //! 一个共享的 build_overview 函数，把散落在 3 个地方的推送时间拍平成一张表：
-//! - Digest slots(per-actor `digest_windows` / `digest_slots` 优先,缺省全局 pre/post-market)
+//! - Digest slots(per-actor `digest_slots` 优先,缺省全局 pre/post-market)
 //!   — UnifiedDigestScheduler 上线后持仓事件 + 全球要闻同槽推送,不再分离两条
 //! - 自定义 cron jobs (含 bypass_quiet_hours 标记 + would_be_skipped_by_quiet)
 //! - 即时推阈值 (kind 黑/白名单 + price_high_pct + min_severity)
@@ -78,12 +78,17 @@ pub struct ImmediateConfig {
     pub exempt_in_quiet: Vec<String>,
 }
 
-/// Unified digest 全局默认槽位时刻（从 `event_engine.digest.pre_market/post_market` 读取,
-/// 用户未自定义 `digest_slots` / `digest_windows` 时回退到这两个时刻）。
+/// Unified digest 全局默认槽位时刻（从 `event_engine.digest.default_slots` 读取,
+/// 用户未自定义 `prefs.digest_slots` 时回退到这组时刻）。
 #[derive(Debug, Clone)]
 pub struct DigestDefaults {
-    pub pre_market: String,
-    pub post_market: String,
+    pub slots: Vec<DigestDefaultSlot>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DigestDefaultSlot {
+    pub time: String,
+    pub label: Option<String>,
 }
 
 /// 主入口：聚合一名 actor 的全部推送时刻视图。
@@ -118,14 +123,11 @@ pub fn build_overview(
             .iter()
             .map(|s| (s.time.clone(), s.label.clone()))
             .collect(),
-        None => match prefs.digest_windows.as_deref() {
-            Some(v) if v.is_empty() => Vec::new(), // 用户主动关
-            Some(v) => v.iter().map(|t| (t.clone(), None)).collect(),
-            None => vec![
-                (digest_defaults.pre_market.clone(), None),
-                (digest_defaults.post_market.clone(), None),
-            ],
-        },
+        None => digest_defaults
+            .slots
+            .iter()
+            .map(|s| (s.time.clone(), s.label.clone()))
+            .collect(),
     };
     for (window, label) in &slot_entries {
         let hint = label
@@ -140,7 +142,7 @@ pub fn build_overview(
             will_be_held_by_quiet: time_in_quiet(window, prefs.quiet_hours.as_ref()),
             bypass_quiet_hours: false,
             edit_hint:
-                "notification_prefs(action=\"set_digest_windows\", value=[\"08:30\",\"19:00\"])"
+                "notification_prefs(action=\"set_digest_slots\", value=[{\"id\":\"premarket\",\"time\":\"08:30\"},{\"id\":\"postmarket\",\"time\":\"19:00\"}])"
                     .to_string(),
         });
     }
@@ -480,8 +482,16 @@ mod tests {
 
     fn defaults() -> DigestDefaults {
         DigestDefaults {
-            pre_market: "08:30".into(),
-            post_market: "09:00".into(),
+            slots: vec![
+                DigestDefaultSlot {
+                    time: "08:30".into(),
+                    label: Some("盘前摘要".into()),
+                },
+                DigestDefaultSlot {
+                    time: "09:00".into(),
+                    label: Some("晨间摘要".into()),
+                },
+            ],
         }
     }
 

@@ -217,7 +217,7 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 /// 1. **`(EventKind tag, primary_symbol)`** —— 同公司同类事件才有可能算重复,
 ///    跨 ticker 永不合并;
 /// 2. **kind-specific normalized key** —— `EarningsUpcoming` 用 `payload.report_date`
-///    把 "T-3"/"T-2"/"T-1"/"on date" 4 条折成 1 条;`NewsCritical`/`PressRelease`
+///    把 "T-3"/"T-2"/"T-1"/"on date" 4 条折成 1 条;`NewsCritical`
 ///    取 `url` 的 `host+path` 归一化合并多源转载;其它 kind 用 `event.id`。
 ///
 /// 设计选择:不做 LLM 标题相似度去重——成本太高。仅按"明显语义同一"的硬规则压。
@@ -248,7 +248,7 @@ fn dedup_key(ev: &MarketEvent) -> String {
             .and_then(|v| v.as_str())
             .map(String::from)
             .unwrap_or_else(|| ev.id.clone()),
-        EventKind::NewsCritical | EventKind::PressRelease => ev
+        EventKind::NewsCritical => ev
             .url
             .as_deref()
             .filter(|u| !u.is_empty())
@@ -265,14 +265,11 @@ fn kind_tag(kind: &EventKind) -> &'static str {
         EventKind::EarningsReleased => "earnings_released",
         EventKind::EarningsCallTranscript => "earnings_transcript",
         EventKind::NewsCritical => "news",
-        EventKind::PressRelease => "press",
         EventKind::PriceAlert { .. } => "price",
         EventKind::Weekly52High => "week_high",
         EventKind::Weekly52Low => "week_low",
-        EventKind::VolumeSpike => "volume",
         EventKind::Dividend => "dividend",
         EventKind::Split => "split",
-        EventKind::Buyback => "buyback",
         EventKind::SecFiling { .. } => "sec",
         EventKind::AnalystGrade => "grade",
         EventKind::MacroEvent => "macro",

@@ -16,7 +16,9 @@ use chrono::Utc;
 use serde::Deserialize;
 
 use hone_core::ActorIdentity;
-use hone_tools::schedule_view::{DigestDefaults, ScheduleOverview, build_overview};
+use hone_tools::schedule_view::{
+    DigestDefaultSlot, DigestDefaults, ScheduleOverview, build_overview,
+};
 
 use crate::state::AppState;
 
@@ -39,8 +41,16 @@ pub(crate) async fn handle_schedule(
 
     let cfg = &state.core.config;
     let digest_defaults = DigestDefaults {
-        pre_market: cfg.event_engine.digest.pre_market.clone(),
-        post_market: cfg.event_engine.digest.post_market.clone(),
+        slots: cfg
+            .event_engine
+            .digest
+            .default_slots
+            .iter()
+            .map(|s| DigestDefaultSlot {
+                time: s.time.clone(),
+                label: s.label.clone(),
+            })
+            .collect(),
     };
 
     let prefs_dir = std::path::Path::new(&cfg.storage.notif_prefs_dir);

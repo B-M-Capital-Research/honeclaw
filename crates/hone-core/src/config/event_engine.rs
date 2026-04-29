@@ -31,7 +31,7 @@ pub struct EventEngineConfig {
     #[serde(default)]
     pub global_digest: GlobalDigestConfig,
 
-    /// 全局禁用的 event kind 标签列表（`kind_tag` 字符串，如 `"press_release"`）。
+    /// 全局禁用的 event kind 标签列表（`kind_tag` 字符串，如 `"social_post"`）。
     /// Router 在 per-user prefs 之前先过一遍；入库仍然发生（便于日报统计），
     /// 只是不分发给任何 actor。部署方用于关闭噪音类事件。
     #[serde(default)]
@@ -102,8 +102,7 @@ fn default_earnings_window_days() -> i64 {
 }
 
 /// 全局 digest LLM 子配置 —— 从 commit 3 起,unified pipeline 复用本配置承载
-/// curator / fetcher / event_dedupe 旋钮;`schedules` 字段已不再用于触发(由
-/// per-actor `prefs.digest_slots` 定时),仅保留以兼容旧 `config.yaml`。
+/// curator / fetcher / event_dedupe 旋钮。触发改由 per-actor `prefs.digest_slots` 驱动。
 ///
 /// 候选池(trusted-source High/Medium news + macro_event)由 unified scheduler
 /// 在每个 slot 触发时拉取,经 Pass 1 聚类 + Pass 2 精读后,与 buffer/synth 候选
@@ -115,14 +114,9 @@ pub struct GlobalDigestConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// admin 视角时区,用于解释 `schedules` 里的本地时刻。
+    /// admin 视角时区,目前仅用于历史日志解释;实际触发时刻由 actor `prefs.digest_slots` 决定。
     #[serde(default = "default_global_digest_tz")]
     pub timezone: String,
-
-    /// 一天 N 次的本地时刻列表(`"HH:MM"`,按 `timezone` 解释)。
-    /// 空数组 = 即使 `enabled=true` 也不会触发。
-    #[serde(default)]
-    pub schedules: Vec<String>,
 
     /// 候选池的回看窗口(小时)。第一次推送 / 兜底用;后续以"距上次成功推送"为准。
     #[serde(default = "default_global_digest_lookback_hours")]
@@ -166,7 +160,6 @@ impl Default for GlobalDigestConfig {
         Self {
             enabled: false,
             timezone: default_global_digest_tz(),
-            schedules: Vec::new(),
             lookback_hours: default_global_digest_lookback_hours(),
             pass1_model: default_global_digest_pass1_model(),
             pass2_model: default_global_digest_pass2_model(),
@@ -239,30 +232,33 @@ fn default_price_interval() -> u64 {
     5 * 60
 }
 
+/// 单个默认 digest slot 时刻。`label` 缺省时,scheduler 渲染成 `定时摘要 · HH:MM`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultDigestSlot {
+    pub time: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
 /// Digest 触发窗口配置。
 ///
-/// `timezone` 默认 Asia/Shanghai（UTC+8）。两条固定窗口：
-/// * `pre_market` — 本地"早班"窗口，默认 08:30，用于在 CN 用户开工前把待推送的
-///   Medium/Low 事件合并推一条。
-/// * `post_market` — 本地"盘后"窗口，默认 09:00。因为美股盘后收于北京时间凌晨，
-///   直接在收盘时推送会把人吵醒；改到早上 8~10 点（可配置），让用户起床后看到
-///   隔夜美股汇总。
+/// `timezone` 默认 Asia/Shanghai（UTC+8）。`default_slots` 是 actor 没自定义
+/// `prefs.digest_slots` 时的兜底触发时刻。默认两个槽:
+/// * 08:30 "盘前摘要" — CN 用户开工前合并推送一条。
+/// * 09:00 "晨间摘要" — 美股盘后收于北京凌晨,延后到早上推送以免半夜打扰。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DigestConfig {
     #[serde(default = "default_tz")]
     pub timezone: String,
-    #[serde(default = "default_pre_market")]
-    pub pre_market: String,
-    #[serde(default = "default_post_market")]
-    pub post_market: String,
+    #[serde(default = "default_default_slots")]
+    pub default_slots: Vec<DefaultDigestSlot>,
     /// 单条摘要最多渲染多少事件，超出截断并附"另 N 条已省略"。0 = 不限制。
     #[serde(default = "default_max_items_per_batch")]
     pub max_items_per_batch: u32,
     /// **cron-aligned poller** 在 flush 窗口前多少分钟执行拉取。v0.1.46 新增:
     /// earnings / corp_action / macro / analyst_grade / earnings_surprise 这 5 个
-    /// 24h 节奏的 poller 不再用固定 interval 轮询,而是在 `pre_market - offset` /
-    /// `post_market - offset` 各跑一次,保证推送数据永远是 flush 前刚拉的。
-    /// 默认 30min;数值越小,数据越新但留给 EventStore/Router 处理的缓冲越紧。
+    /// 24h 节奏的 poller 不再用固定 interval 轮询,而是在每个 default slot - offset 跑一次,
+    /// 保证推送数据永远是 flush 前刚拉的。默认 30min。
     #[serde(default = "default_prefetch_offset_mins")]
     pub prefetch_offset_mins: u32,
     /// 同一 actor 两次 digest 之间的最小间隔。用于用户配置了很多窗口时避免
@@ -275,8 +271,7 @@ impl Default for DigestConfig {
     fn default() -> Self {
         Self {
             timezone: default_tz(),
-            pre_market: default_pre_market(),
-            post_market: default_post_market(),
+            default_slots: default_default_slots(),
             max_items_per_batch: default_max_items_per_batch(),
             prefetch_offset_mins: default_prefetch_offset_mins(),
             min_gap_minutes: default_min_gap_minutes(),
@@ -294,12 +289,18 @@ fn default_min_gap_minutes() -> u32 {
 fn default_tz() -> String {
     "Asia/Shanghai".into()
 }
-fn default_pre_market() -> String {
-    "08:30".into()
-}
-fn default_post_market() -> String {
-    // 美股隔夜收盘摘要延后到北京时间早上 9 点推送，避免半夜打扰。
-    "09:00".into()
+fn default_default_slots() -> Vec<DefaultDigestSlot> {
+    vec![
+        DefaultDigestSlot {
+            time: "08:30".into(),
+            label: Some("盘前摘要".into()),
+        },
+        DefaultDigestSlot {
+            // 美股隔夜收盘摘要延后到北京时间早上 9 点推送,避免半夜打扰。
+            time: "09:00".into(),
+            label: Some("晨间摘要".into()),
+        },
+    ]
 }
 fn default_max_items_per_batch() -> u32 {
     20
@@ -471,7 +472,7 @@ pub struct Sources {
     /// `spawn_news_poller` —— FMP /v3/stock_news,产出 NewsCritical
     #[serde(default = "default_true")]
     pub news: bool,
-    /// `spawn_price_poller` —— FMP /v3/quote 按 watch pool 拉,产出 PriceAlert/52W/VolumeSpike
+    /// `spawn_price_poller` —— FMP /v3/quote 按 watch pool 拉,产出 PriceAlert/52W
     #[serde(default = "default_true")]
     pub price: bool,
     /// `spawn_earnings_poller` —— FMP /v3/earning_calendar,产出 EarningsUpcoming

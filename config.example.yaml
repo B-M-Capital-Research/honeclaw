@@ -192,23 +192,23 @@ event_engine:
     # 非交易时段 poller 会自动 skip，不必担心夜里空烧。
     price_secs: 300 # 5 min
   digest:
-    # 管理员视角默认槽位时刻 —— 在 actor 没有自定义 prefs.digest_slots /
-    # digest_windows 时,UnifiedDigestScheduler 会用这两个时刻作为默认 slot 触发推送。
-    # Defaults target CN users: pre_market rolls the overnight queue into a morning
-    # briefing; post_market is deliberately delayed to 09:00 Beijing (instead of
-    # US-close 16:00 ET / 04:00 Beijing) so the US overnight summary arrives after
-    # users wake up.
+    # 管理员视角默认槽位时刻 —— 在 actor 没有自定义 prefs.digest_slots 时,
+    # UnifiedDigestScheduler 用这组时刻作为默认 slot 触发推送。每个 slot 可配
+    # `time`(本地 HH:MM)和可选 `label`(渲染 header 用)。
+    # Defaults target CN users: 08:30 卷起夜里队列成早间摘要;09:00 把美股盘后(BJ 凌晨)
+    # 隔夜汇总延后到醒来后,避免半夜打扰。
     timezone: Asia/Shanghai
-    pre_market: "08:30"
-    post_market: "09:00"
+    default_slots:
+      - {time: "08:30", label: "盘前摘要"}
+      - {time: "09:00", label: "晨间摘要"}
     # Max items rendered per digest flush. Events beyond this (sorted by severity
     # desc, occurred_at desc) are dropped with a "…… 另 N 条已省略" footer so a
     # Low-severity storm can't bury the user. 0 disables the cap.
     max_items_per_batch: 20
-    # v0.1.46 新增:cron-aligned poller 在 flush 窗口前多少分钟执行拉取。
+    # v0.1.46 新增:cron-aligned poller 在每个 default slot 时刻前多少分钟执行拉取。
     # earnings / corp_action / macro / analyst_grade / earnings_surprise 5 个 24h 节奏
-    # 的 poller 不再按固定 interval 轮询,而是在 pre_market - offset / post_market - offset
-    # 各跑一次,保证推送数据永远是 flush 前刚拉的。
+    # 的 poller 不再按固定 interval 轮询,而是在 default_slots 各 slot 前 offset 跑一次,
+    # 保证推送数据永远是 flush 前刚拉的。
     # 默认 30:数值越小数据越新,但留给 EventStore/Router 的缓冲越紧;低于 5 不推荐。
     prefetch_offset_mins: 30
     # 同一用户两次 digest 的最小间隔。用户配置多个窗口时，避免 09:00/12:00/16:00
@@ -268,9 +268,9 @@ event_engine:
   earnings:
     window_days: 14
 
-  # 全局 digest LLM 子配置 —— 从 commit 3 起,UnifiedDigestScheduler 在每个 slot
-  # 触发时把这一节作为 GlobalNewsSource 的旋钮使用。`schedules` 字段已不再用于
-  # 触发(改由 per-actor `prefs.digest_slots` 定时),仅保留以兼容旧 YAML。
+  # 全局 digest LLM 子配置 —— UnifiedDigestScheduler 在每个 slot 触发时把这一节
+  # 作为 GlobalNewsSource 的旋钮使用。触发完全由 per-actor `prefs.digest_slots` 驱动,
+  # 这里不再有调度时刻。
   # 候选池流水:
   # - 候选池 = trusted-source High/Medium news + 临近 high macro_event(不挂 ticker 也算)
   # - Pass 1 (pass1_model) 廉价模型批量打分 + cluster + 一句话 takeaway
@@ -281,7 +281,6 @@ event_engine:
   global_digest:
     enabled: false
     timezone: Asia/Shanghai
-    schedules: [] # 已废弃 —— 触发由 prefs.digest_slots 主导;保留字段仅作 YAML 兼容
     lookback_hours: 24 # 候选池回看窗口
     pass1_model: amazon/nova-lite-v1 # 便宜模型,~$0.06/M input
     pass2_model: x-ai/grok-4.1-fast # 价格 $0.20/$0.50 per M,2M context,带 reasoning
@@ -299,7 +298,7 @@ event_engine:
   # 想要"poller 仍跑、只是 router 丢弃某 kind"的兜底关法,改用下方 disabled_kinds。
   sources:
     news: true # /v3/stock_news → NewsCritical
-    price: true # /v3/quote 按 watch pool 拉 → PriceAlert / 52W / VolumeSpike
+    price: true # /v3/quote 按 watch pool 拉 → PriceAlert / Weekly52High / Weekly52Low
     earnings_calendar: true # /v3/earning_calendar → EarningsUpcoming
     corp_action: true # 拆股 / 分红日历 → Split / Dividend
     sec_filings: true # SEC 8-K per-ticker → SecFiling
@@ -323,9 +322,9 @@ event_engine:
   # 入库仍然发生(便于日报 / 统计),只是不再分发给任何 actor。即使用户把某个
   # kind 放进 allow_kinds,在这里禁用后仍然不会推。合法 tag:
   #   earnings_upcoming, earnings_released, earnings_call_transcript,
-  #   news_critical, press_release,
-  #   price_alert, weekly52_high, weekly52_low, volume_spike,
-  #   dividend, split, buyback, sec_filing, analyst_grade,
+  #   news_critical,
+  #   price_alert, weekly52_high, weekly52_low,
+  #   dividend, split, sec_filing, analyst_grade,
   #   macro_event, social_post
   disabled_kinds: []
   # OpenRouter model used by the uncertain-source news classifier. Empty falls

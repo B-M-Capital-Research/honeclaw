@@ -103,10 +103,7 @@ impl NotificationRouter {
         if let Some(kinds) = prefs.immediate_kinds.as_deref() {
             let tag = kind_tag(&event.kind);
             if kinds.iter().any(|k| k == tag) {
-                if matches!(
-                    event.kind,
-                    EventKind::NewsCritical | EventKind::PressRelease
-                ) && matches!(sev, Severity::Low)
+                if matches!(event.kind, EventKind::NewsCritical) && matches!(sev, Severity::Low)
                 {
                     tracing::info!(
                         event_id = %event.id,
@@ -239,17 +236,14 @@ fn is_legal_ad_event(event: &MarketEvent) -> bool {
 
 pub(super) fn event_category(event: &MarketEvent) -> &'static str {
     match event.kind {
-        EventKind::PriceAlert { .. }
-        | EventKind::Weekly52High
-        | EventKind::Weekly52Low
-        | EventKind::VolumeSpike => "price",
-        EventKind::NewsCritical | EventKind::PressRelease | EventKind::SocialPost => "news",
+        EventKind::PriceAlert { .. } | EventKind::Weekly52High | EventKind::Weekly52Low => "price",
+        EventKind::NewsCritical | EventKind::SocialPost => "news",
         EventKind::SecFiling { .. } => "filing",
         EventKind::EarningsUpcoming
         | EventKind::EarningsReleased
         | EventKind::EarningsCallTranscript => "earnings",
         EventKind::MacroEvent => "macro",
-        EventKind::Dividend | EventKind::Split | EventKind::Buyback => "corp_action",
+        EventKind::Dividend | EventKind::Split => "corp_action",
         EventKind::AnalystGrade => "analyst",
     }
 }

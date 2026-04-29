@@ -75,9 +75,8 @@ pub struct UnifiedDigestScheduler {
     audience_cache_dir: PathBuf,
     daily_report_dir: PathBuf,
 
-    /// 缺省 slot:用户没设 `digest_slots`/`digest_windows` 时回退到这两个时刻。
-    pre_market: String,
-    post_market: String,
+    /// 缺省 slot:用户没设 `prefs.digest_slots` 时回退到这组时刻。
+    default_slots: Vec<DigestSlot>,
     /// 全局 IANA 时区的 UTC 偏移(小时),actor `prefs.timezone` 缺失时兜底。
     tz_offset_hours: i32,
 
@@ -111,8 +110,7 @@ impl UnifiedDigestScheduler {
         fetcher: Arc<ArticleFetcher>,
         audience_cache_dir: impl Into<PathBuf>,
         daily_report_dir: impl Into<PathBuf>,
-        pre_market: impl Into<String>,
-        post_market: impl Into<String>,
+        default_slots: Vec<DigestSlot>,
     ) -> Self {
         Self {
             buffer,
@@ -127,8 +125,7 @@ impl UnifiedDigestScheduler {
             event_deduper: Arc::new(PassThroughDeduper),
             audience_cache_dir: audience_cache_dir.into(),
             daily_report_dir: daily_report_dir.into(),
-            pre_market: pre_market.into(),
-            post_market: post_market.into(),
+            default_slots,
             tz_offset_hours: 8,
             max_items_per_batch: 20,
             min_gap_minutes: 0,
@@ -301,13 +298,9 @@ impl UnifiedDigestScheduler {
             }
 
             // ── 解析 actor 的 slot 列表 ───────────────────────────────
-            let slots: Vec<DigestSlot> = match user_prefs.effective_digest_slots() {
-                Some(v) => v,
-                None => vec![
-                    DigestSlot::from_legacy_window(self.pre_market.clone()),
-                    DigestSlot::from_legacy_window(self.post_market.clone()),
-                ],
-            };
+            let slots: Vec<DigestSlot> = user_prefs
+                .effective_digest_slots()
+                .unwrap_or_else(|| self.default_slots.clone());
             if slots.is_empty() {
                 continue; // 用户主动关 digest
             }
@@ -413,9 +406,10 @@ impl UnifiedDigestScheduler {
                 };
 
                 // ── 4) 合并 → prefs filter → floor 分类 ───────────────
-                let label = slot.label.clone().unwrap_or_else(|| {
-                    default_label_for(&slot.time, &self.pre_market, &self.post_market)
-                });
+                let label = slot
+                    .label
+                    .clone()
+                    .unwrap_or_else(|| format!("定时摘要 · {}", slot.time));
 
                 let mut floor_events: Vec<MarketEvent> = Vec::new();
                 let mut other_events: Vec<MarketEvent> = Vec::new();
@@ -1031,16 +1025,6 @@ fn effective_tz_date_key(
     now: DateTime<Utc>,
 ) -> String {
     EffectiveTz::from_actor_prefs(prefs.timezone.as_deref(), fallback_offset_hours).date_key(now)
-}
-
-fn default_label_for(time: &str, pre_market: &str, post_market: &str) -> String {
-    if time == pre_market {
-        format!("盘前摘要 · {time}")
-    } else if time == post_market {
-        format!("晨间摘要 · {time}")
-    } else {
-        format!("盘中摘要 · {time}")
-    }
 }
 
 fn log_omitted_digest_items(store: &EventStore, actor_key: &str, omitted: &[MarketEvent]) {

@@ -604,7 +604,7 @@ fn test_apply_overlay_mutations_writes_only_to_overlay() {
 event_engine:
   global_digest:
     enabled: false
-    schedules: ["09:00"]
+    lookback_hours: 24
     pass2_top_n: 15
 "#;
     std::fs::write(&config_path, base).unwrap();
@@ -617,11 +617,8 @@ event_engine:
                 value: Value::Bool(true),
             },
             ConfigMutation::Set {
-                path: "event_engine.global_digest.schedules".to_string(),
-                value: Value::Sequence(vec![
-                    Value::String("09:00".to_string()),
-                    Value::String("21:00".to_string()),
-                ]),
+                path: "event_engine.global_digest.lookback_hours".to_string(),
+                value: Value::Number(48.into()),
             },
         ],
     )
@@ -636,15 +633,12 @@ event_engine:
     assert!(overlay_path.exists());
     let overlay_text = std::fs::read_to_string(&overlay_path).unwrap();
     assert!(overlay_text.contains("enabled: true"));
-    assert!(overlay_text.contains("21:00"));
+    assert!(overlay_text.contains("48"));
     assert!(!overlay_text.contains("pass2_top_n")); // 未改动的字段不该出现
 
     // 启动时合并后的 effective config 反映改动
     assert!(result.config.event_engine.global_digest.enabled);
-    assert_eq!(
-        result.config.event_engine.global_digest.schedules,
-        vec!["09:00".to_string(), "21:00".to_string()]
-    );
+    assert_eq!(result.config.event_engine.global_digest.lookback_hours, 48);
     // 未改动的字段保持 base 值
     assert_eq!(result.config.event_engine.global_digest.pass2_top_n, 15);
 }

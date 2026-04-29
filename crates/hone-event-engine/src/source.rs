@@ -20,14 +20,13 @@ use crate::event::MarketEvent;
 /// - `FixedInterval`:冷启动立即拉一次,之后每 `duration` 周期拉一次。适合
 ///   持续有新内容的源(FMP news/price、Telegram 频道、RSS feed)。
 /// - `CronAligned`:冷启动立即拉一次,之后每 60s 检查本地时刻是否命中
-///   `pre_prefetch` 或 `post_prefetch`(`"HH:MM"` 格式,按 `tz_offset` 做本地化)。
+///   `prefetch_at` 列表中的任一时刻(`"HH:MM"` 格式,按 `tz_offset` 做本地化)。
 ///   适合按交易所开收盘时间对齐的源(FMP earnings/macro/corp_action 等)。
 #[derive(Debug, Clone)]
 pub enum SourceSchedule {
     FixedInterval(Duration),
     CronAligned {
-        pre_prefetch: String,
-        post_prefetch: String,
+        prefetch_at: Vec<String>,
         tz_offset: i32,
     },
 }

@@ -84,8 +84,7 @@ pub(crate) fn spawn_event_source(
                 }
             }
             SourceSchedule::CronAligned {
-                pre_prefetch,
-                post_prefetch,
+                prefetch_at,
                 tz_offset,
             } => {
                 run_once_observed(&task_label, &*source, &store, &router, dir_ref).await;
@@ -101,15 +100,15 @@ pub(crate) fn spawn_event_source(
                         fired.clear();
                         last_date = today.clone();
                     }
-                    for (label, hhmm) in [("pre", &pre_prefetch), ("post", &post_prefetch)] {
+                    for hhmm in &prefetch_at {
                         if !digest::in_window(now, hhmm, tz_offset) {
                             continue;
                         }
-                        let key = format!("{today}@{label}@{hhmm}");
+                        let key = format!("{today}@{hhmm}");
                         if !fired.insert(key) {
                             continue;
                         }
-                        info!(poller = %name, window = label, hhmm = %hhmm, "cron-aligned source firing");
+                        info!(poller = %name, hhmm = %hhmm, "cron-aligned source firing");
                         run_once_observed(&task_label, &*source, &store, &router, dir_ref).await;
                     }
                 }

@@ -855,7 +855,7 @@ async fn low_news_stays_low_without_same_day_signal() {
 
 #[tokio::test]
 async fn globally_disabled_kind_is_dropped_before_prefs() {
-    // 部署方把 press_release 放入全局黑名单。即便订阅命中,dispatch 也应
+    // 部署方把 social_post 放入全局黑名单。即便订阅命中,dispatch 也应
     // 返回 (0, 0),既不 sink 也不 enqueue,且 delivery_log 无记录。
     let mut reg = SubscriptionRegistry::new();
     reg.register(Box::new(PortfolioSubscription::new(
@@ -872,21 +872,21 @@ async fn globally_disabled_kind_is_dropped_before_prefs() {
         store.clone(),
         digest,
     )
-    .with_disabled_kinds(["press_release"]);
+    .with_disabled_kinds(["social_post"]);
 
-    let pr = MarketEvent {
-        id: "pr:AAPL:1".into(),
-        kind: EventKind::PressRelease,
+    let blocked = MarketEvent {
+        id: "social:AAPL:1".into(),
+        kind: EventKind::SocialPost,
         severity: Severity::High,
         symbols: vec!["AAPL".into()],
         occurred_at: Utc::now(),
-        title: "AAPL announces".into(),
+        title: "AAPL chatter".into(),
         summary: String::new(),
         url: None,
         source: "test".into(),
         payload: serde_json::Value::Null,
     };
-    let (sent, pending) = router.dispatch(&pr).await.unwrap();
+    let (sent, pending) = router.dispatch(&blocked).await.unwrap();
     assert_eq!(sent, 0);
     assert_eq!(pending, 0);
     assert!(sink.calls.lock().unwrap().is_empty());

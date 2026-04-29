@@ -16,6 +16,7 @@ use hone_event_engine::prefs::{
     ALL_KIND_TAGS, FilePrefsStorage, NotificationPrefs, PrefsProvider, QuietHours,
     first_invalid_kind_tag,
 };
+use hone_event_engine::unified_digest::DigestSlot;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -70,7 +71,7 @@ fn parse_severity(raw: &str) -> HoneResult<Severity> {
 
 fn extract_string_array(value: &Value) -> HoneResult<Vec<String>> {
     let arr = value.as_array().ok_or_else(|| {
-        HoneError::Tool("value 必须是字符串数组,例如 [\"news_critical\",\"press_release\"]".into())
+        HoneError::Tool("value 必须是字符串数组,例如 [\"news_critical\",\"sec_filing\"]".into())
     })?;
     let mut out = Vec::with_capacity(arr.len());
     for item in arr {
@@ -114,7 +115,6 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         "allow_kinds": prefs.allow_kinds,
         "blocked_kinds": prefs.blocked_kinds,
         "timezone": prefs.timezone,
-        "digest_windows": prefs.digest_windows,
         "digest_slots": prefs.digest_slots,
         "price_high_pct_override": prefs.price_high_pct_override,
         "immediate_kinds": prefs.immediate_kinds,
@@ -140,7 +140,7 @@ impl Tool for NotificationPrefsTool {
          set_portfolio_only 只推持仓相关、allow_kinds 设置白名单、block_kinds 设置黑名单、\
          clear_allow/clear_block 清空对应列表、reset 恢复默认。\
          per-actor 推送节奏:set_timezone 设本人 IANA 时区(如 Asia/Shanghai、America/New_York)、\
-         set_digest_windows 设本地 HH:MM 摘要时刻列表(传 [] 则关 digest)、\
+         set_digest_slots 设 digest 触发槽位(传 HH:MM 数组,每个时刻自动建一个 default slot;传 [] 关 digest)、\
          set_price_high_pct 调价格异动即时推阈值 (0<x≤50,如 3.5)、\
          set_immediate_kinds 指定哪些 kind 强制升 High 即时推。\
          **概览类问题**(用户问\"我的推送怎么配的\"/\"推送日程\"/\"都什么时候推什么\"/\"quiet 设了没\"等):\
@@ -150,17 +150,16 @@ impl Tool for NotificationPrefsTool {
          勿扰时段(quiet_hours):set_quiet_hours 传 {from:\"23:00\", to:\"07:00\", exempt_kinds?:[...]} \
          在区间内 hold 一切 immediate 推送 + 跳过 digest 触发,到 to 时刻把 hold 住的事件 + \
          buffer 累积的 Medium/Low 合并成一条早间合集发出;过保鲜期事件直接 drop \
-         (PriceAlert/VolumeSpike 2h, Weekly52 8h, Social 12h, 其它事实性事件不过期)。\
+         (PriceAlert 2h, Weekly52 8h, Social 12h, 其它事实性事件不过期)。\
          exempt_kinds 命中的 kind 即使在 quiet 内仍立即推(例如想财报夜里也响:[\"earnings_released\"])。\
          clear_quiet_hours 关掉勿扰。\
          **注意**:每只持仓的 thesis 与整体 investment_style 现在由系统每周自动从用户\
          自己写的公司画像(走 company_portrait skill)蒸馏,**不再支持手动通过本工具编辑**。\
          若用户问\"为什么我的 thesis 是 X / 想改 Y\",指引他更新对应公司画像即可,\
          系统会在下次蒸馏(默认 7 天周期)自动反映。\
-         kind tag 必须选自:earnings_upcoming / earnings_released / news_critical / \
-         press_release / price_alert / weekly52_high / weekly52_low / volume_spike / \
-         dividend / split / buyback / sec_filing / analyst_grade / macro_event / \
-         social_post。"
+         kind tag 必须选自:earnings_upcoming / earnings_released / earnings_call_transcript / \
+         news_critical / price_alert / weekly52_high / weekly52_low / dividend / split / \
+         sec_filing / analyst_grade / macro_event / social_post。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -181,7 +180,7 @@ impl Tool for NotificationPrefsTool {
                     "clear_allow".into(),
                     "clear_block".into(),
                     "set_timezone".into(),
-                    "set_digest_windows".into(),
+                    "set_digest_slots".into(),
                     "set_price_high_pct".into(),
                     "set_immediate_kinds".into(),
                     "set_quiet_hours".into(),
@@ -199,7 +198,7 @@ impl Tool for NotificationPrefsTool {
                     set_portfolio_only 传 true/false;\
                     allow_kinds/block_kinds/set_immediate_kinds 传 JSON 数组 (例 [\"news_critical\"]);\
                     set_timezone 传 IANA 名 (例 \"Asia/Shanghai\");\
-                    set_digest_windows 传 HH:MM 数组 (例 [\"19:00\",\"02:30\",\"09:00\"],空数组关 digest);\
+                    set_digest_slots 传 HH:MM 数组 (例 [\"19:00\",\"02:30\",\"09:00\"],空数组关 digest);\
                     set_price_high_pct 传数字 (0<x≤50,例 3.5);\
                     set_quiet_hours 传 JSON 对象 {\"from\":\"HH:MM\", \"to\":\"HH:MM\", \"exempt_kinds\":[\"earnings_released\", ...]} (exempt_kinds 可省);\
                     clear_quiet_hours 不需要 value。\
@@ -309,26 +308,31 @@ impl Tool for NotificationPrefsTool {
                     prefs.timezone = Some(trimmed.to_string());
                 }
             }
-            "set_digest_windows" => {
+            "set_digest_slots" => {
                 let arr = value.as_array().ok_or_else(|| {
                     HoneError::Tool(
-                        "set_digest_windows 需要 HH:MM 字符串数组,例 [\"19:00\",\"09:00\"];传 [] 关 digest".into(),
+                        "set_digest_slots 需要 HH:MM 字符串数组,例 [\"19:00\",\"09:00\"];传 [] 关 digest".into(),
                     )
                 })?;
-                let mut wins: Vec<String> = Vec::with_capacity(arr.len());
-                for item in arr {
+                let mut slots: Vec<DigestSlot> = Vec::with_capacity(arr.len());
+                for (idx, item) in arr.iter().enumerate() {
                     let s = item
                         .as_str()
-                        .ok_or_else(|| HoneError::Tool("digest_windows 元素必须是字符串".into()))?
+                        .ok_or_else(|| HoneError::Tool("digest_slots 元素必须是 HH:MM 字符串".into()))?
                         .trim()
                         .to_string();
                     if s.is_empty() {
                         continue;
                     }
                     validate_hhmm(&s)?;
-                    wins.push(s);
+                    slots.push(DigestSlot {
+                        id: format!("slot_{idx}"),
+                        time: s,
+                        label: None,
+                        floor_macro: None,
+                    });
                 }
-                prefs.digest_windows = Some(wins);
+                prefs.digest_slots = Some(slots);
             }
             "set_price_high_pct" => {
                 let pct = match &value {
@@ -425,8 +429,16 @@ mod tests {
             Some(actor),
             cron_dir,
             crate::schedule_view::DigestDefaults {
-                pre_market: "08:30".into(),
-                post_market: "09:00".into(),
+                slots: vec![
+                    crate::schedule_view::DigestDefaultSlot {
+                        time: "08:30".into(),
+                        label: Some("盘前摘要".into()),
+                    },
+                    crate::schedule_view::DigestDefaultSlot {
+                        time: "09:00".into(),
+                        label: Some("晨间摘要".into()),
+                    },
+                ],
             },
         )
     }
@@ -486,7 +498,7 @@ mod tests {
         .unwrap();
         tool.execute(json!({
             "action": "block_kinds",
-            "value": ["press_release"]
+            "value": ["social_post"]
         }))
         .await
         .unwrap();
@@ -495,7 +507,7 @@ mod tests {
             out["prefs"]["allow_kinds"],
             json!(["earnings_released", "sec_filing"])
         );
-        assert_eq!(out["prefs"]["blocked_kinds"], json!(["press_release"]));
+        assert_eq!(out["prefs"]["blocked_kinds"], json!(["social_post"]));
     }
 
     #[tokio::test]
@@ -555,24 +567,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_digest_windows_round_trips_and_validates_format() {
+    async fn set_digest_slots_round_trips_and_validates_format() {
         let dir = tempdir().unwrap();
         let tool = mk(dir.path());
         tool.execute(json!({
-            "action": "set_digest_windows",
+            "action": "set_digest_slots",
             "value": ["19:00", "02:30", "09:00"]
         }))
         .await
         .unwrap();
         let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(
-            out["prefs"]["digest_windows"],
-            json!(["19:00", "02:30", "09:00"])
-        );
+        let times: Vec<String> = out["prefs"]["digest_slots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["time"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(times, vec!["19:00", "02:30", "09:00"]);
 
         // 非法格式被拒
         let err = tool
-            .execute(json!({"action":"set_digest_windows","value":["25:99"]}))
+            .execute(json!({"action":"set_digest_slots","value":["25:99"]}))
             .await
             .unwrap_err();
         match err {
@@ -581,11 +596,11 @@ mod tests {
         }
 
         // 空数组允许 = 关 digest
-        tool.execute(json!({"action":"set_digest_windows","value":[]}))
+        tool.execute(json!({"action":"set_digest_slots","value":[]}))
             .await
             .unwrap();
         let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["digest_windows"], json!([]));
+        assert_eq!(out["prefs"]["digest_slots"], json!([]));
     }
 
     #[tokio::test]
@@ -664,8 +679,16 @@ mod tests {
             None,
             cron_dir,
             crate::schedule_view::DigestDefaults {
-                pre_market: "08:30".into(),
-                post_market: "09:00".into(),
+                slots: vec![
+                    crate::schedule_view::DigestDefaultSlot {
+                        time: "08:30".into(),
+                        label: Some("盘前摘要".into()),
+                    },
+                    crate::schedule_view::DigestDefaultSlot {
+                        time: "09:00".into(),
+                        label: Some("晨间摘要".into()),
+                    },
+                ],
             },
         );
         let err = tool.execute(json!({"action":"get"})).await.unwrap_err();
@@ -792,8 +815,16 @@ mod tests {
             Some(actor),
             cron_dir,
             crate::schedule_view::DigestDefaults {
-                pre_market: "08:30".into(),
-                post_market: "09:00".into(),
+                slots: vec![
+                    crate::schedule_view::DigestDefaultSlot {
+                        time: "08:30".into(),
+                        label: Some("盘前摘要".into()),
+                    },
+                    crate::schedule_view::DigestDefaultSlot {
+                        time: "09:00".into(),
+                        label: Some("晨间摘要".into()),
+                    },
+                ],
             },
         );
         let out = tool
@@ -817,8 +848,16 @@ mod tests {
             Some(actor),
             cron_dir,
             crate::schedule_view::DigestDefaults {
-                pre_market: "08:30".into(),
-                post_market: "09:00".into(),
+                slots: vec![
+                    crate::schedule_view::DigestDefaultSlot {
+                        time: "08:30".into(),
+                        label: Some("盘前摘要".into()),
+                    },
+                    crate::schedule_view::DigestDefaultSlot {
+                        time: "09:00".into(),
+                        label: Some("晨间摘要".into()),
+                    },
+                ],
             },
         );
         let out = tool

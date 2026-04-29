@@ -74,20 +74,16 @@ pub enum KindBucket {
 impl KindBucket {
     pub fn from_kind(kind: &EventKind) -> Self {
         match kind {
-            EventKind::PriceAlert { .. }
-            | EventKind::Weekly52High
-            | EventKind::Weekly52Low
-            | EventKind::VolumeSpike => KindBucket::Price,
+            EventKind::PriceAlert { .. } | EventKind::Weekly52High | EventKind::Weekly52Low => {
+                KindBucket::Price
+            }
             EventKind::EarningsUpcoming
             | EventKind::EarningsReleased
             | EventKind::EarningsCallTranscript => KindBucket::Earnings,
-            EventKind::NewsCritical | EventKind::PressRelease | EventKind::SecFiling { .. } => {
-                KindBucket::NewsFiling
+            EventKind::NewsCritical | EventKind::SecFiling { .. } => KindBucket::NewsFiling,
+            EventKind::Dividend | EventKind::Split | EventKind::AnalystGrade => {
+                KindBucket::CorpAction
             }
-            EventKind::Dividend
-            | EventKind::Split
-            | EventKind::Buyback
-            | EventKind::AnalystGrade => KindBucket::CorpAction,
             EventKind::MacroEvent => KindBucket::Macro,
             EventKind::SocialPost => KindBucket::Social,
         }

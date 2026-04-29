@@ -71,14 +71,6 @@ fn validate_global_digest(cfg: &GlobalDigestConfig) -> Result<(), Response> {
             ),
         ));
     }
-    for s in &cfg.schedules {
-        if chrono::NaiveTime::parse_from_str(s, "%H:%M").is_err() {
-            return Err(json_error(
-                StatusCode::BAD_REQUEST,
-                format!("global_digest.schedules 含非法时刻 {s:?},必须是 HH:MM (24h)"),
-            ));
-        }
-    }
     if cfg.final_pick_n == 0 {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
@@ -622,11 +614,10 @@ pub(crate) async fn handle_delete_rss_feed(
 mod tests {
     use super::*;
 
-    fn cfg(schedules: Vec<&str>, top_n: u32, pick_n: u32) -> GlobalDigestConfig {
+    fn cfg(top_n: u32, pick_n: u32) -> GlobalDigestConfig {
         GlobalDigestConfig {
             enabled: true,
             timezone: "Asia/Shanghai".into(),
-            schedules: schedules.into_iter().map(String::from).collect(),
             lookback_hours: 24,
             pass1_model: "amazon/nova-lite-v1".into(),
             pass2_model: "x-ai/grok-4.1-fast".into(),
@@ -640,12 +631,12 @@ mod tests {
 
     #[test]
     fn validate_global_digest_passes_on_canonical_config() {
-        assert!(validate_global_digest(&cfg(vec!["09:00", "21:00"], 15, 8)).is_ok());
+        assert!(validate_global_digest(&cfg(15, 8)).is_ok());
     }
 
     #[test]
     fn validate_global_digest_rejects_unknown_timezone() {
-        let mut c = cfg(vec!["09:00"], 15, 8);
+        let mut c = cfg(15, 8);
         c.timezone = "Mars/Olympus".into();
         let err = validate_global_digest(&c).unwrap_err();
         let body = format!("{:?}", err);
@@ -653,20 +644,14 @@ mod tests {
     }
 
     #[test]
-    fn validate_global_digest_rejects_bad_schedule_format() {
-        let c = cfg(vec!["25:99"], 15, 8);
-        assert!(validate_global_digest(&c).is_err());
-    }
-
-    #[test]
     fn validate_global_digest_rejects_zero_final_pick_n() {
-        let c = cfg(vec!["09:00"], 5, 0);
+        let c = cfg(5, 0);
         assert!(validate_global_digest(&c).is_err());
     }
 
     #[test]
     fn validate_global_digest_rejects_top_n_below_pick_n() {
-        let c = cfg(vec!["09:00"], 3, 8);
+        let c = cfg(3, 8);
         assert!(validate_global_digest(&c).is_err());
     }
 

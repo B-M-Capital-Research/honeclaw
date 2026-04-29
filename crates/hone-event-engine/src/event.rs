@@ -32,17 +32,14 @@ pub enum EventKind {
     EarningsReleased,
     EarningsCallTranscript,
     NewsCritical,
-    PressRelease,
     PriceAlert {
         pct_change_bps: i64,
         window: String,
     },
     Weekly52High,
     Weekly52Low,
-    VolumeSpike,
     Dividend,
     Split,
-    Buyback,
     SecFiling {
         form: String,
     },
@@ -59,8 +56,8 @@ impl EventKind {
     /// 隔夜仍有阅读价值）。原则：**仅盘中市场微观状态会过期**。
     pub fn shelf_life(&self) -> Option<Duration> {
         match self {
-            // 盘中价格/成交量微观状态：过夜失效
-            EventKind::PriceAlert { .. } | EventKind::VolumeSpike => Some(Duration::hours(2)),
+            // 盘中价格微观状态：过夜失效
+            EventKind::PriceAlert { .. } => Some(Duration::hours(2)),
             // 52 周高低虽然技术性强，跨开盘后仍能用一段时间
             EventKind::Weekly52High | EventKind::Weekly52Low => Some(Duration::hours(8)),
             // 社交流热度衰减快，但少数 trusted 源也可能值得隔夜看
@@ -70,10 +67,8 @@ impl EventKind {
             | EventKind::EarningsReleased
             | EventKind::EarningsCallTranscript
             | EventKind::NewsCritical
-            | EventKind::PressRelease
             | EventKind::Dividend
             | EventKind::Split
-            | EventKind::Buyback
             | EventKind::SecFiling { .. }
             | EventKind::AnalystGrade
             | EventKind::MacroEvent => None,
@@ -157,10 +152,6 @@ mod tests {
             Some(Duration::hours(2))
         );
         assert_eq!(
-            EventKind::VolumeSpike.shelf_life(),
-            Some(Duration::hours(2))
-        );
-        assert_eq!(
             EventKind::Weekly52High.shelf_life(),
             Some(Duration::hours(8))
         );
@@ -178,10 +169,8 @@ mod tests {
         assert_eq!(EventKind::EarningsUpcoming.shelf_life(), None);
         assert_eq!(EventKind::EarningsCallTranscript.shelf_life(), None);
         assert_eq!(EventKind::NewsCritical.shelf_life(), None);
-        assert_eq!(EventKind::PressRelease.shelf_life(), None);
         assert_eq!(EventKind::Dividend.shelf_life(), None);
         assert_eq!(EventKind::Split.shelf_life(), None);
-        assert_eq!(EventKind::Buyback.shelf_life(), None);
         assert_eq!(
             EventKind::SecFiling { form: "8-K".into() }.shelf_life(),
             None

@@ -1023,13 +1023,8 @@ fn severity_tag(s: &crate::event::Severity) -> &'static str {
 
 fn category_kind_tags(category: &str) -> Option<&'static [&'static str]> {
     match category {
-        "price" => Some(&[
-            "price_alert",
-            "weekly52_high",
-            "weekly52_low",
-            "volume_spike",
-        ]),
-        "news" => Some(&["news_critical", "press_release", "social_post"]),
+        "price" => Some(&["price_alert", "weekly52_high", "weekly52_low"]),
+        "news" => Some(&["news_critical", "social_post"]),
         "filing" => Some(&["sec_filing"]),
         "earnings" => Some(&[
             "earnings_upcoming",
@@ -1037,7 +1032,7 @@ fn category_kind_tags(category: &str) -> Option<&'static [&'static str]> {
             "earnings_call_transcript",
         ]),
         "macro" => Some(&["macro_event"]),
-        "corp_action" => Some(&["dividend", "split", "buyback"]),
+        "corp_action" => Some(&["dividend", "split"]),
         "analyst" => Some(&["analyst_grade"]),
         _ => None,
     }

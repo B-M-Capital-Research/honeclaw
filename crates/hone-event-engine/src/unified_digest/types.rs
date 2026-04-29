@@ -5,7 +5,7 @@
 //! - `FloorTag` — High severity / earnings T-N / `immediate_kinds` 等绕过 LLM 的
 //!   优先级标签;floor 条目永远 prepend 到 payload 顶部,不被 max_items_per_batch 挤掉。
 //! - `ThesisRelation` — Pass 2 personalize 标记一条 item 与用户 thesis 的关系。
-//! - `DigestSlot` — 用户自定义的 digest 触发槽位(替代旧 `digest_windows` 字符串数组)。
+//! - `DigestSlot` — 用户自定义的 digest 触发槽位。
 
 use serde::{Deserialize, Serialize};
 
@@ -56,9 +56,6 @@ pub enum ThesisRelation {
 
 /// 用户自定义的 digest 触发槽位。一条 slot = 一次 push;`time` 按
 /// `prefs.timezone`(回退全局 unified_digest.timezone)解释为本地时刻。
-///
-/// 旧 `prefs.digest_windows: Vec<String>` 反序列化时自动 wrap 为
-/// `Vec<DigestSlot>`,见 `crate::unified_digest::migration::slots_from_windows`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DigestSlot {
     /// 稳定 ID,用于在 NL tool 里指定要改哪个 slot(例 `"premarket"` / `"postmarket"`)。
@@ -76,12 +73,10 @@ pub struct DigestSlot {
 }
 
 impl DigestSlot {
-    /// 默认 slot id —— 旧 `digest_windows: Vec<String>` 升级时附加,
-    /// 单 slot 时直接用这个 id。
+    /// 默认 slot id —— 全局默认 slot 在 actor 没自定义 prefs.digest_slots 时使用。
     pub const DEFAULT_ID: &'static str = "default";
 
     /// 从单一 `"HH:MM"` 字符串构造一个最小 slot(id = `default`,无 label / floor)。
-    /// 仅由 migration 路径使用。
     pub fn from_legacy_window(time: impl Into<String>) -> Self {
         Self {
             id: Self::DEFAULT_ID.into(),

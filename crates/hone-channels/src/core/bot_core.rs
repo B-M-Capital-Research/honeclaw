@@ -311,8 +311,17 @@ impl HoneBotCore {
         // 同时强制注入 overview 上下文(cron_jobs_dir + unified digest 默认槽位时刻),
         // 让 get_overview action 总能给出完整的「我的推送日程」拍平视图,无 partial 分支。
         let overview_digest_defaults = hone_tools::schedule_view::DigestDefaults {
-            pre_market: self.config.event_engine.digest.pre_market.clone(),
-            post_market: self.config.event_engine.digest.post_market.clone(),
+            slots: self
+                .config
+                .event_engine
+                .digest
+                .default_slots
+                .iter()
+                .map(|s| hone_tools::schedule_view::DigestDefaultSlot {
+                    time: s.time.clone(),
+                    label: s.label.clone(),
+                })
+                .collect(),
         };
         registry.register(Box::new(hone_tools::NotificationPrefsTool::new(
             &self.config.storage.notif_prefs_dir,

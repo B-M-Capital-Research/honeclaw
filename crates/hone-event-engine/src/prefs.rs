@@ -56,15 +56,8 @@ pub struct NotificationPrefs {
     /// 用户所在 IANA 时区,如 `"Asia/Shanghai"`、`"America/New_York"`。
     /// `None` → 沿用全局 `digest.timezone`。仅影响 digest 窗口的本地时刻解释。
     pub timezone: Option<String>,
-    /// 用户希望触发 digest 的本地时刻列表(`"HH:MM"`,按 `timezone` 解释)。
-    /// `None` → 沿用全局 `[pre_market, post_market]`。`Some(vec![])` = 完全关 digest。
-    ///
-    /// **DEPRECATED**(unified digest commit 1 起):新代码用 `digest_slots`。
-    /// 老 JSON 反序列化仍走本字段;调用方通过 `effective_digest_slots()` 取最终 slot 列表。
-    pub digest_windows: Option<Vec<String>>,
     /// Unified digest 的触发槽位列表。每条 slot = 一次推送。
-    /// `None` → 回退 `digest_windows`(若也是 `None` 则走全局默认);`Some(vec![])` = 关闭。
-    /// commit 1 仅落地字段 + serde,行为接入由 commit 3 的 `UnifiedDigestScheduler`。
+    /// `None` → 走全局默认 `event_engine.digest.default_slots`;`Some(vec![])` = 完全关 digest。
     pub digest_slots: Option<Vec<DigestSlot>>,
     /// 价格异动即时推阈值(百分点,绝对值)。`None` → 沿用全局
     /// `thresholds.price_alert_high_pct`(目前 6.0)。例如 `Some(3.5)` = 任何
@@ -128,7 +121,6 @@ impl Default for NotificationPrefs {
             blocked_kinds: Vec::new(),
             news_importance_prompt: None,
             timezone: None,
-            digest_windows: None,
             digest_slots: None,
             price_high_pct_override: None,
             immediate_kinds: None,
@@ -179,18 +171,10 @@ impl NotificationPrefs {
         true
     }
 
-    /// 取最终 slot 列表:优先 `digest_slots`,缺失时把老 `digest_windows: Vec<String>`
-    /// 用 `DigestSlot::from_legacy_window` wrap。两者皆 `None` → 返回 `None`(走全局默认)。
-    /// `Some(vec![])` 语义 = 用户关掉 digest,保持原行为。
+    /// 取最终 slot 列表:`Some(slots)` 用 actor 自定义,`None` → 走全局默认。
+    /// `Some(vec![])` = 用户关掉 digest。
     pub fn effective_digest_slots(&self) -> Option<Vec<DigestSlot>> {
-        if let Some(slots) = &self.digest_slots {
-            return Some(slots.clone());
-        }
-        self.digest_windows.as_ref().map(|w| {
-            w.iter()
-                .map(|t| DigestSlot::from_legacy_window(t.clone()))
-                .collect()
-        })
+        self.digest_slots.clone()
     }
 
     pub fn source_blocked(&self, source: &str) -> bool {
@@ -215,14 +199,11 @@ pub fn kind_tag(kind: &EventKind) -> &'static str {
         EventKind::EarningsReleased => "earnings_released",
         EventKind::EarningsCallTranscript => "earnings_call_transcript",
         EventKind::NewsCritical => "news_critical",
-        EventKind::PressRelease => "press_release",
         EventKind::PriceAlert { .. } => "price_alert",
         EventKind::Weekly52High => "weekly52_high",
         EventKind::Weekly52Low => "weekly52_low",
-        EventKind::VolumeSpike => "volume_spike",
         EventKind::Dividend => "dividend",
         EventKind::Split => "split",
-        EventKind::Buyback => "buyback",
         EventKind::SecFiling { .. } => "sec_filing",
         EventKind::AnalystGrade => "analyst_grade",
         EventKind::MacroEvent => "macro_event",
@@ -237,14 +218,11 @@ pub const ALL_KIND_TAGS: &[&str] = &[
     "earnings_released",
     "earnings_call_transcript",
     "news_critical",
-    "press_release",
     "price_alert",
     "weekly52_high",
     "weekly52_low",
-    "volume_spike",
     "dividend",
     "split",
-    "buyback",
     "sec_filing",
     "analyst_grade",
     "macro_event",
@@ -491,8 +469,7 @@ mod tests {
             blocked_kinds: vec!["news_critical".into()],
             news_importance_prompt: None,
             timezone: Some("America/New_York".into()),
-            digest_windows: Some(vec!["07:00".into(), "18:00".into()]),
-            digest_slots: None,
+            digest_slots: Some(vec![DigestSlot::from_legacy_window("07:00")]),
             price_high_pct_override: Some(3.5),
             immediate_kinds: Some(vec!["weekly52_high".into(), "analyst_grade".into()]),
             quiet_mode: true,
@@ -523,8 +500,11 @@ mod tests {
         assert_eq!(loaded.allow_kinds.as_deref(), Some(&["split".into()][..]));
         assert_eq!(loaded.timezone.as_deref(), Some("America/New_York"));
         assert_eq!(
-            loaded.digest_windows.as_deref(),
-            Some(&["07:00".to_string(), "18:00".to_string()][..])
+            loaded.digest_slots.as_deref().map(|s| s
+                .iter()
+                .map(|x| x.time.clone())
+                .collect::<Vec<_>>()),
+            Some(vec!["07:00".to_string()])
         );
         assert_eq!(loaded.price_high_pct_override, Some(3.5));
         assert_eq!(
@@ -563,7 +543,7 @@ mod tests {
     fn new_per_actor_fields_default_to_none() {
         let p = NotificationPrefs::default();
         assert!(p.timezone.is_none());
-        assert!(p.digest_windows.is_none());
+        assert!(p.digest_slots.is_none());
         assert!(p.price_high_pct_override.is_none());
         assert!(p.immediate_kinds.is_none());
         assert!(!p.quiet_mode);
@@ -589,7 +569,7 @@ mod tests {
         .unwrap();
         let p = store.load(&a);
         assert!(p.timezone.is_none());
-        assert!(p.digest_windows.is_none());
+        assert!(p.digest_slots.is_none());
         assert!(p.price_high_pct_override.is_none());
         assert!(p.immediate_kinds.is_none());
         assert!(!p.quiet_mode);
@@ -642,17 +622,14 @@ mod tests {
             EarningsReleased,
             EarningsCallTranscript,
             NewsCritical,
-            PressRelease,
             PriceAlert {
                 pct_change_bps: 100,
                 window: "5m".into(),
             },
             Weekly52High,
             Weekly52Low,
-            VolumeSpike,
             Dividend,
             Split,
-            Buyback,
             SecFiling {
                 form: String::new(),
             },
@@ -679,9 +656,8 @@ mod tests {
     }
 
     #[test]
-    fn effective_digest_slots_prefers_slots_field() {
+    fn effective_digest_slots_returns_user_slots_when_set() {
         let p = NotificationPrefs {
-            digest_windows: Some(vec!["07:00".into()]),
             digest_slots: Some(vec![DigestSlot {
                 id: "premarket".into(),
                 time: "08:30".into(),
@@ -697,23 +673,7 @@ mod tests {
     }
 
     #[test]
-    fn effective_digest_slots_wraps_legacy_windows() {
-        let p = NotificationPrefs {
-            digest_windows: Some(vec!["07:00".into(), "19:00".into()]),
-            digest_slots: None,
-            ..Default::default()
-        };
-        let slots = p.effective_digest_slots().unwrap();
-        assert_eq!(slots.len(), 2);
-        // 全部 wrap 成 default id —— 后续 commit 看 id 区分时
-        // legacy 数据落到同一个 slot 里(commit 5 的 migration 会重写 id)。
-        assert!(slots.iter().all(|s| s.id == DigestSlot::DEFAULT_ID));
-        assert_eq!(slots[0].time, "07:00");
-        assert_eq!(slots[1].time, "19:00");
-    }
-
-    #[test]
-    fn effective_digest_slots_returns_none_when_both_absent() {
+    fn effective_digest_slots_returns_none_when_unset() {
         let p = NotificationPrefs::default();
         assert!(p.effective_digest_slots().is_none());
     }
@@ -729,16 +689,12 @@ mod tests {
     }
 
     #[test]
-    fn old_prefs_without_digest_slots_loads_with_none() {
-        // 老 JSON 没有 digest_slots 字段 → serde(default) 应得到 None,
-        // digest_windows 仍可继续填(commit 1 不破坏旧行为)。
+    fn legacy_digest_windows_field_is_silently_ignored() {
+        // 删字段后老 JSON 里残留的 digest_windows 应被 serde 默默忽略,不报错。
         let json = r#"{"enabled":true,"digest_windows":["07:00","19:00"]}"#;
         let loaded: NotificationPrefs = serde_json::from_str(json).expect("deserialize");
         assert!(loaded.digest_slots.is_none());
-        assert_eq!(
-            loaded.digest_windows.as_deref(),
-            Some(&["07:00".to_string(), "19:00".to_string()][..])
-        );
+        assert!(loaded.enabled);
     }
 
     #[test]

@@ -171,7 +171,7 @@ pub(crate) fn digest_score(event: &MarketEvent) -> i32 {
         EventKind::EarningsReleased | EventKind::SecFiling { .. } => 50,
         EventKind::EarningsCallTranscript => 15,
         EventKind::PriceAlert { ref window, .. } if window != "close" => 35,
-        EventKind::Dividend | EventKind::Split | EventKind::Buyback => 30,
+        EventKind::Dividend | EventKind::Split => 30,
         EventKind::MacroEvent => 20,
         EventKind::NewsCritical => 10,
         EventKind::SocialPost => -35,
@@ -259,7 +259,7 @@ fn event_domain_key(event: &MarketEvent) -> Option<String> {
 fn digest_title_dedupe_key(event: &MarketEvent) -> Option<String> {
     if !matches!(
         event.kind,
-        EventKind::NewsCritical | EventKind::PressRelease | EventKind::SocialPost
+        EventKind::NewsCritical | EventKind::SocialPost
     ) {
         return None;
     }
@@ -287,10 +287,7 @@ fn digest_topic_tokens(event: &MarketEvent) -> Option<(String, HashSet<String>)>
     // 标题模式化太强(`AAPL earnings tomorrow`),容易误判成同主题。
     if !matches!(
         event.kind,
-        EventKind::NewsCritical
-            | EventKind::PressRelease
-            | EventKind::SocialPost
-            | EventKind::MacroEvent
+        EventKind::NewsCritical | EventKind::SocialPost | EventKind::MacroEvent
     ) {
         return None;
     }
@@ -325,7 +322,6 @@ fn token_jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
 fn kind_topic_tag(kind: &EventKind) -> &'static str {
     match kind {
         EventKind::SocialPost => "social",
-        EventKind::PressRelease => "press",
         EventKind::MacroEvent => "macro",
         _ => "news",
     }
