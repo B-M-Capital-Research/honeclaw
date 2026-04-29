@@ -3,9 +3,23 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 证据来源
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=10643`
+  - `job_id=j_fc7749ca`
+  - `job_name=ASTS 重大异动心跳监控`
+  - `executed_at=2026-04-30T02:00:58.810628+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `response_preview` 明确写出：`ASTS 基本面积事件触发... 当前股价 $69.61（昨收 $71.88），日内跌幅 -3.16%，未触及 8% 涨跌幅阈值`
+  - 这说明最新复发已经跨日延续到 `2026-04-30 02:00` 窗口，且坏态仍是 `status=triggered` 与正文结论直接自相矛盾。
+- `data/runtime/logs/sidecar.log`
+  - `2026-04-30 02:00:55.564-02:00:55.565` 记录同一 `job_id=j_fc7749ca` 收口为 `parse_kind=JsonTriggered` 并执行 `deliver`，`raw_preview` / `deliver_preview` 都直接写出 `未触及 8% 涨跌幅阈值`。
+  - 这说明 `2026-04-29 19:04` 补上的近阈值保险闸没有稳定覆盖最新 ASTS 变体；线上仍会把“未命中阈值”的文案作为正式提醒送达。
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=10183`
@@ -73,6 +87,8 @@
 
 ## 当前实现效果
 
+- `2026-04-30 02:00` 的 `ASTS 重大异动心跳监控` 再次把 `{"status":"triggered"}` 送达给用户，但正文明确承认 `日内跌幅 -3.16%，未触及 8% 涨跌幅阈值`。
+- 这说明线上最新坏态没有收口到单日样本，而是跨日后继续把“事件存在但价格条件未命中”的观察性提示升级成正式触发提醒。
 - `2026-04-29 17:01` 的 `ASTS 重大异动心跳监控` 再次把 `{"status":"triggered"}` 送达给用户，但正文明确承认 `当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛`。
 - 这说明线上最新坏态已经不只是“接近阈值也算触发”，而是触发状态与结论文本直接自相矛盾，用户会收到一条自称“已触发”但正文说“未触发”的告警。
 - `2026-04-29 10:01` 的 `ASTS 重大异动心跳监控` 把 `跌幅 -6.89%` 解释成“接近 8% 警戒阈值”，并成功送达。
@@ -92,6 +108,7 @@
 
 ## 修复记录
 
+- 2026-04-30 02:00 最新真实窗口再次确认 ASTS 仍复发：`run_id=10643` 在正文已明确写出 `日内跌幅 -3.16%，未触及 8% 涨跌幅阈值` 的前提下，仍落成 `completed + sent + delivered=1`；说明当前保护仍未稳定覆盖“事件触发 + 价格阈值否认命中”的跨日变体，本单继续保持 `New`。
 - 2026-04-29: `crates/hone-channels/src/scheduler.rs` 在 heartbeat 送达前增加近阈值保险闸：`跌幅 -6.89% 接近 8% / 仅差约 1.1 个百分点` 这类承认未达到阈值的 `triggered` 文案会被抑制，不再进入用户可见发送链路。
 - 回归验证：`cargo test -p hone-channels heartbeat_near_threshold_trigger_is_suppressed -- --nocapture`。
 - 2026-04-29 17:01 最新真实窗口再次确认 ASTS 仍复发：`run_id=10183` 在正文已明确写出 `当前跌幅未达到 8% 阈值` 的前提下，仍落成 `completed + sent + delivered=1`；说明当前保护尚未覆盖“触发条件声明 + 正文否认命中”这一新变体。

@@ -15,6 +15,22 @@
 
 ## 修复进展
 
+- `2026-04-30 02:04` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:30-02:02` 的最新两轮继续混跑 `started / JsonNoop / JsonTriggered / PlainTextSuppressed / skipped_error`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour') AND heartbeat=1` 聚合，最近窗口已落成 `24` 条 started 行、`21` 条 `noop + skipped_noop`、`2` 条 `completed + sent` 与 `1` 条 `execution_failed + skipped_error`。
+  - `01:30` 窗口仍未恢复成稳定单一状态：
+    - `noop + skipped_noop`：`10617`（`ASTS 重大异动心跳监控`）、`10622`（`Cerebras IPO与业务进展心跳监控`）、`10624`（`Monitor_Watchlist_11`）
+    - started 行 `10605-10616` 仍先落成 `running + pending`
+  - `02:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `completed + sent`：`10643`（`ASTS 重大异动心跳监控`）、`10650`（`Monitor_Watchlist_11`）
+    - `execution_failed + skipped_error + parse_kind=PlainTextSuppressed`：`10646`（`Cerebras IPO与业务进展心跳监控`）
+    - started 行 `10625-10637` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `02:00:40.611-02:00:42.313`：同窗连续多次记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层随后仍回写 `tool_execute_success name=web_search`
+    - `02:00:55.564-02:00:55.565`：`ASTS 重大异动心跳监控` 记录 `parse_kind=JsonTriggered`，正文却同时承认 `当前股价 $69.61（昨收 $71.88），日内跌幅 -3.16%，未触及 8% 涨跌幅阈值`
+    - `02:01:07.130-02:01:07.131`：`Cerebras IPO与业务进展心跳监控` 继续记录 `starts_with_json=false parse_kind=PlainTextSuppressed`，`raw_preview` 明确是“当前搜索不可用...按规则返回 noop”，随后渠道侧仍打印“心跳任务未命中，本轮不发送”
+    - `02:02:41.951`：`Monitor_Watchlist_11` 同窗又能落成 `parse_kind=JsonTriggered` 并送达，说明结构化漂移仍是同批任务内分化，而不是整批 scheduler 停摆
+  - 结论：到 `2026-04-30 02:04` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / JsonTriggered / PlainTextSuppressed / skipped_error`，并持续伴随 Tavily 全 key 失败后的 `web_search` 伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 01:01` 最近一小时真实窗口确认这条缺陷跨日后仍未收口，而且 `00:30-01:01` 的最新两轮继续混跑 `started / Empty / JsonNoop / completed + sent`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour') AND heartbeat=1` 聚合，最近窗口已落成 `24` 条 started 行、`22` 条 `noop + skipped_noop` 与 `1` 条 `completed + sent`。
   - `00:30` 窗口仍未恢复成稳定单一状态：

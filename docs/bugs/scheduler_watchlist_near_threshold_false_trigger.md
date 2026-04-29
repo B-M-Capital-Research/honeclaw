@@ -3,9 +3,23 @@
 - **发现时间**: 2026-04-29 08:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 证据来源
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=10650`
+  - `job_id=j_ab7e8fb1`
+  - `job_name=Monitor_Watchlist_11`
+  - `executed_at=2026-04-30T02:02:44.245952+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `response_preview` 直接写出：`【ASTS 触发提醒】... 最新价 $69.51，已跌破触发价 $69.83`
+  - 这说明最新复发已跨日持续到 `2026-04-30 02:02`，而且 watchlist 仍把“刚好接近配置线”的比较结果直接写成“已跌破触发价”并正式送达。
+- `data/runtime/logs/sidecar.log`
+  - `2026-04-30 02:02:41.951` 同一 `job_id=j_ab7e8fb1` 记录 `parse_kind=JsonTriggered`，`raw_preview` 与 `deliver_preview` 都把 `当前价 $69.51` 写成 `已跌破触发价 $69.83`，然后执行实际投递。
+  - 这说明 `2026-04-29 19:04` 补上的 watchlist 数值自检没有稳定覆盖当前线上变体；同一根因仍会在跨日窗口继续误触发。
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=10087`
@@ -63,6 +77,8 @@
 
 ## 当前实现效果
 
+- `2026-04-30 02:02` 的 `Monitor_Watchlist_11` 再次把 `ASTS 69.51` 与阈值 `≤69.83` 组织成正式 `triggered + sent`，且文案直接写成“已跌破触发价”。
+- 这说明此前的 watchlist 数值自检没有稳定证明线上收口；跨日后这条链路仍会把临界附近样本直接升级成正式触发提醒。
 - `2026-04-29 15:02` 的 `Monitor_Watchlist_11` 再次把 `ASTS 71.88` 与阈值 `≤69.83` 误报成“已低于触发价 $69.83”，并成功发送 `completed + sent`。
 - 这说明此前的近阈值保险闸并没有稳定覆盖 watchlist 当前变体；问题不仅复发，而且已经从“接近阈值”升级成直接篡改比较方向。
 - `2026-04-29 07:30` 的 `Monitor_Watchlist_11` 把 `ASTS 71.88` 与阈值 `≤69.83` 的差距 `2.9%` 包装成“已跌破触发价上方区间”，并成功发送 `completed + sent`。
@@ -82,6 +98,7 @@
 
 ## 修复记录
 
+- 2026-04-30 02:02 最新真实窗口确认线上仍复发：`run_id=10650` 把 `ASTS 69.51` 直接写成“已跌破触发价 69.83”并送达，说明当前 watchlist 保护没有稳定覆盖最新 prompt/文案变体；本单继续保持 `New`。
 - 2026-04-29: `crates/hone-channels/src/scheduler.rs` 在 heartbeat 送达前增加近阈值保险闸：触发文案如果同时包含阈值/触发价语义与“接近、距离、仅差、仍高于、观察区间”等未越线表述，会落为 `near_threshold_suppressed`，不再作为正式提醒发送。
 - 回归验证：`cargo test -p hone-channels heartbeat_watchlist_above_trigger_price_is_suppressed -- --nocapture`。
 - 2026-04-29 15:02 最新真实窗口确认线上仍复发：`run_id=10087` 把 `ASTS 71.88` 明确写成“已低于触发价 69.83”并送达，说明当前保护没有稳定覆盖 watchlist 最新 prompt/文案变体；本单状态改回 `New`。
