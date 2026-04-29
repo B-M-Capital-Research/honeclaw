@@ -88,7 +88,7 @@ fn resource_or_repo_path(app: &AppHandle, resource: &str) -> PathBuf {
 fn is_legacy_runtime_config_path(path: &Path) -> bool {
     path.file_name()
         .and_then(|value| value.to_str())
-        .map(|value| value == "config_runtime.yaml")
+        .map(|value| matches!(value, "config_runtime.yaml" | "effective-config.yaml"))
         .unwrap_or(false)
 }
 
@@ -405,10 +405,21 @@ mod tests {
             Some(PathBuf::from("/tmp/home")),
         );
 
-        assert_eq!(
-            resolved,
-            PathBuf::from("/tmp/project/data/runtime/effective-config.yaml")
+        assert_eq!(resolved, PathBuf::from("/tmp/home/config.yaml"));
+    }
+
+    #[test]
+    fn desktop_canonical_config_path_ignores_generated_effective_config_override() {
+        let resolved = desktop_canonical_config_path_from_overrides(
+            Path::new("/tmp/desktop-config"),
+            Some(PathBuf::from(
+                "/tmp/project/data/runtime/effective-config.yaml",
+            )),
+            None,
+            None,
         );
+
+        assert_eq!(resolved, PathBuf::from("/tmp/desktop-config/config.yaml"));
     }
 
     #[test]

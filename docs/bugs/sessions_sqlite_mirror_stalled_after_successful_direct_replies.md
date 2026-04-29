@@ -3,7 +3,8 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+- **GitHub Issue**: 无
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 15:03 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
@@ -353,6 +354,10 @@
 
 ## 修复与验证
 
+- 2026-04-29: 复核发现 `config.yaml` 中 `storage.session_sqlite_shadow_write_enabled=true`，但 `data/runtime/effective-config.yaml` 仍为 `false`；这会让 Desktop / sidecar 子进程在读取旧 runtime 快照时继续禁用会话 SQLite shadow write，解释了 JSON 会话主链路正常而 `sessions` / `session_messages` 镜像停在旧时间点的症状。
+- 2026-04-29: `bins/hone-desktop/src/sidecar/runtime_env.rs` 已禁止 Desktop 把 `data/runtime/effective-config.yaml` 当作 canonical config 输入；若环境变量误指向 generated runtime config，会回退到真正的用户配置或 desktop canonical config，再重新生成 fresh `effective-config.yaml`，避免旧快照把 SQLite mirror 开关回退为关闭。
+- 2026-04-29: 验证通过：`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env::tests::desktop_canonical_config_path_ -- --nocapture`。
+- 说明：本轮没有重启本机 Desktop/runtime；修复在下一次 Desktop 生成 runtime effective config 时生效。
 - 2026-04-28: `crates/hone-core/src/config/server.rs` 将 `server.session_sqlite_shadow_write_enabled` 的 serde 默认值改为 `true`，`config.example.yaml` 也同步改为 `true`。
 - 2026-04-28: 本机 `config.yaml` 已确认该开关为 `true`，后续成功直聊和 scheduler 会话应重新写入 `sessions.sqlite3` 镜像。
 - 2026-04-28: `cargo check -p hone-memory -p hone-scheduler -p hone-tools -p hone-web-api -p hone-event-engine -p hone-channels --tests`
@@ -367,9 +372,10 @@
 
 ## 当前实现效果
 
+- 2026-04-29 修复后，Desktop canonical config 解析不再接受 `effective-config.yaml` 这种 generated runtime 快照作为源配置；旧快照里的 `session_sqlite_shadow_write_enabled=false` 不会继续覆盖 canonical 配置。
 - 到 `2026-04-29 03:03 CST` 为止，`sessions` / `session_messages` 的最新时间戳仍停在 `2026-04-27T16:54:20+08:00`，距离当前已超过 34 小时。
 - 最近一小时 `cron_job_runs` 继续新增 `48` 条调度记录，并且 `02:30` 窗口仍有 `run_id=9443` 成功送达；说明 sqlite 文件本身还在持续写入，但会话镜像表完全没有跟上。
-- 这已经不只是“直聊成功但镜像缺失”，而是任何依赖 `sessions` / `session_messages` 的最近窗口巡检都会被迫失明；因此状态维持 `New`、严重等级维持 `P2`。
+- 这已经不只是“直聊成功但镜像缺失”，而是任何依赖 `sessions` / `session_messages` 的最近窗口巡检都会被迫失明；本轮已从 runtime config 物化路径修复旧快照覆盖根因，状态切为 `Fixed`，严重等级维持 `P2`。
 
 ## 期望效果
 
@@ -424,12 +430,13 @@
 
 ## 根因判断
 
-- 高概率是 `sessions` / `session_messages` 的异步镜像或导入链路在 `2026-04-27 16:54` 后停滞，而不是 Feishu 直聊主执行链路失败。
-- `cron_job_runs` 仍能持续写入同一个 sqlite 文件，说明数据库文件可写、进程也未整体失活；问题更像是“会话镜像专属 writer / importer / flush 路径卡住”。
+- 根因收敛为 Desktop runtime config 物化路径可能把旧的 `data/runtime/effective-config.yaml` 当作 canonical config 继续使用；该旧快照里 `storage.session_sqlite_shadow_write_enabled=false`，导致运行态 `SessionStorage` 没有初始化 SQLite shadow writer。
+- 因此 `sessions` / `session_messages` 并不是异步 writer 卡死，而是运行态配置继续关闭了会话镜像写入。
+- `cron_job_runs` 仍能持续写入同一个 sqlite 文件，说明数据库文件可写、进程也未整体失活；结合 runtime effective config 差异，问题集中在会话镜像写入开关被旧快照关闭。
 - 这与 [`web_scheduler_codex_acp_unfinished_tool_send_failed.md`](./web_scheduler_codex_acp_unfinished_tool_send_failed.md) 不同：那条缺陷是单轮 scheduler 既未落库也未送达；本条证据里 direct 会话已经成功送达，但 sqlite 镜像整体没有跟上。
 
 ## 下一步建议
 
-- 先排查 `sessions` / `session_messages` 的 writer、importer、checkpoint 或队列消费者是否在 `2026-04-27 16:54` 后卡住。
+- 下一次本地 Desktop/runtime 启动后，复核启动日志中的 `session.shadow_sqlite.enabled=true`，并确认新的直聊或 scheduler turn 会推进 `sessions` / `session_messages` 的 `MAX(imported_at)`。
 - 增加“会话镜像最新时间 vs 实际成功 `reply.send` 时间”的 lag 监控，避免再次只能靠人工巡检发现。
 - 对成功会话补一条只读诊断，确认真实会话源文件是否已更新、是否只是 sqlite 镜像缺失，而不是更早的持久化链路已分叉。
