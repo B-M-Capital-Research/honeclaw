@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-19 10:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-29 06:30-07:02 最新巡检样本：
@@ -464,3 +464,9 @@
 - 为 heartbeat 的 `triggered` 分支补充最近一次已发送事件摘要或事件哈希，避免相同事件在短时间窗口内重复推送。
 - 对事件型任务增加“新增进展”判定，例如只有当事件状态从“计划中”变为“已发射/延期/失败”或出现新的公告时间点时才再次提醒。
 - 在回归样本里补一条“同一事件跨四个轮询窗口重复出现”的测试，验证不会因旧事实常驻搜索结果而持续重发。
+
+## 修复情况（2026-04-28）
+
+- `crates/hone-channels/src/scheduler.rs` 在 heartbeat `JsonTriggered` 送达前新增确定性近似去重。
+- 规则会把本轮 message 与最近已送达 previews 做 token overlap；同一催化/事件窗口高度重合时，落成 `duplicate_suppressed`，不再依赖模型自行遵守 prompt 里的去重要求。
+- 验证：`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib`。

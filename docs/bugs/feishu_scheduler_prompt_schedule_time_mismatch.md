@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 09:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话与消息落库：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
@@ -85,3 +85,10 @@
 - 为持久化任务增加健康检查：读取 `task_prompt` 中的 `【触发时间】` 与结构化 `schedule` 比对，发现冲突则阻断执行并告警。
 - 巡检现有 `data/cron_jobs/*.json`，把所有同类 `schedule/prompt` 错配任务列出来并修正；本轮扫描暂只发现 `j_acce16a6` 一条。
 - 补回归测试覆盖“更新 recurring 任务触发时间后，`schedule` 与 `task_prompt` 同步变更，且只在新时点触发”。
+
+## 修复情况（2026-04-28）
+
+- `memory/src/cron_job/schedule.rs` 新增 `prompt_declared_schedule_time` / `prompt_schedule_conflict`，只解析 `【触发时间】` 所在行里的 `HH:MM`。
+- `CronJobStorage::add_job` / `update_job` 会拒绝 prompt 声明时间与结构化 schedule 不一致的新写入。
+- `CronJobStorage::get_due_jobs` 会跳过历史错配任务并记录 warning，避免坏数据继续按错误结构化时间投递。
+- 验证：`cargo test -p hone-memory prompt_schedule_time_mismatch --lib`。

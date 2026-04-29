@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-04-28 18:20 CST
+- updated_at: 2026-04-29 00:00 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -12,6 +12,8 @@
   - `crates/hone-event-engine/src/**`
   - `crates/hone-web-api/src/routes/**`
   - `memory/src/**`
+  - `crates/hone-llm/src/openai_compatible.rs`
+  - `launch.sh`
   - `bins/hone-desktop/src/**`
   - `packages/app/src/**`
 - related_docs:
@@ -44,7 +46,19 @@ Clear the current active bug queue as far as software changes can responsibly do
   - scheduler event now carries authoritative schedule fields into the channel prompt
   - heartbeat max-iteration failures are no longer treated as compatibility noops
   - web/imessage scheduler now records an initial `running + pending` run before executing
-- 2026-04-28: Active bug queue is now 15. Remaining items are mostly Feishu target identity / ACP runner completion, OpenRouter/provider response diagnostics, heartbeat structural stability/dedup, oil-price fact quality, disabled-channel stale pid cleanup, and event-engine classifier/convergence quality.
+- 2026-04-28: Continued the burn-down and moved the active queue from 15 to 2:
+  - blocked cron jobs whose prompt `【触发时间】HH:MM` conflicts with structured schedule, including historical bad data at due-time scan
+  - hardened OpenAI-compatible 4xx handling so numeric `error.code` responses preserve the real upstream message instead of collapsing to serde `invalid type`
+  - added deterministic heartbeat duplicate suppression against recently delivered previews
+  - made empty heartbeat output and empty-status JSON fail the heartbeat contract instead of silently becoming `noop`
+  - raised heartbeat auxiliary function-calling max iterations from 6 to 10 so shared heartbeat execution has enough budget without model/provider-specific hacks
+  - strengthened heartbeat source attribution rules so oil/geopolitics claims cannot cite Reuters/WSJ/Bloomberg/official sources unless current tool results substantiate that source
+  - added single-contact current-app open_id resolution for event-engine Feishu direct sends to avoid stale cross-app actor ids
+  - made Web scheduler persist a user-visible failure message for failed runs, including internally-suppressed unfinished-tool failures
+  - fixed `launch.sh` zombie child detection for disabled channel pid cleanup
+  - suppressed internal Feishu scheduler failure fallbacks for `codex acp prompt ended before tool completion`
+  - reviewed event-engine news classifier and convergence guard code paths and moved stale active docs to `Fixed`
+- 2026-04-28: Active bug queue is now 2. Remaining items are Feishu direct empty/invalid answer fallback quality and Telegram invalid token/live connectivity.
 
 ## Validation
 
@@ -61,6 +75,17 @@ Completed this round:
 - `cargo check -p hone-telegram --tests`
 - `cargo check -p hone-desktop --tests`
 - `cargo test -p hone-channels heartbeat_prompt --lib`
+- `cargo test -p hone-memory prompt_schedule_time_mismatch --lib`
+- `cargo test -p hone-llm extracts_ --lib`
+- `cargo test -p hone-channels heartbeat_duplicate_preview_match --lib`
+- `cargo test -p hone-channels heartbeat_prompt_requires_source_grounding_for_geopolitics --lib`
+- `cargo test -p hone-channels heartbeat_empty --lib`
+- `cargo test -p hone-event-engine direct_contact --lib`
+- `cargo test -p hone-event-engine first_batch_get_open_id --lib`
+- `cargo test -p hone-web-api scheduler_failure_trace_required --lib`
+- `cargo test -p hone-channels user_visible_error_message_or_none --lib`
+- `cargo check -p hone-memory -p hone-llm -p hone-channels --tests`
+- `bash -n launch.sh`
 
 Known verification limitation:
 

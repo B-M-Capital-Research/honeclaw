@@ -16,12 +16,13 @@ use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
 use crate::runtime::{
     is_context_overflow_error, sanitize_user_visible_output, strip_internal_reasoning_blocks,
-    user_visible_error_message,
+    user_visible_error_message_or_none,
 };
 use crate::{AgentSession, HoneBotCore};
 
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
+const HEARTBEAT_MAX_ITERATIONS: u32 = 10;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum HeartbeatOutcome {
@@ -183,6 +184,56 @@ fn truncate_for_log(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect::<String>() + "..."
 }
 
+fn normalized_similarity_tokens(text: &str) -> std::collections::BTreeSet<String> {
+    text.split(|ch: char| {
+        ch.is_whitespace()
+            || matches!(
+                ch,
+                ',' | '.'
+                    | ';'
+                    | ':'
+                    | '，'
+                    | '。'
+                    | '；'
+                    | '：'
+                    | '、'
+                    | '('
+                    | ')'
+                    | '（'
+                    | '）'
+                    | '['
+                    | ']'
+                    | '【'
+                    | '】'
+            )
+    })
+    .map(|token| token.trim().to_ascii_lowercase())
+    .filter(|token| token.chars().count() >= 3)
+    .collect()
+}
+
+fn heartbeat_duplicate_preview_match(
+    message: &str,
+    delivered_previews: &[(String, String)],
+) -> Option<String> {
+    let message_tokens = normalized_similarity_tokens(message);
+    if message_tokens.len() < 4 {
+        return None;
+    }
+    for (_, preview) in delivered_previews {
+        let preview_tokens = normalized_similarity_tokens(preview);
+        if preview_tokens.len() < 4 {
+            continue;
+        }
+        let shared = message_tokens.intersection(&preview_tokens).count();
+        let smaller = message_tokens.len().min(preview_tokens.len());
+        if shared >= 4 && shared * 100 >= smaller * 70 {
+            return Some(truncate_for_log(preview.trim(), 200));
+        }
+    }
+    None
+}
+
 pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatParseKind) {
     // 先剥掉 runner 的 `<think>` / `<tool_code>` 等 reasoning 块，避免 balanced-brace
     // 扫描把 think 块里演示用的 JSON 片段（例如 `{}` / `{"status":"..."}`）误当成
@@ -246,6 +297,10 @@ pub struct ScheduledTaskExecution {
 
 fn heartbeat_parse_error_message(parse_kind: &HeartbeatParseKind) -> Option<String> {
     match parse_kind {
+        HeartbeatParseKind::Empty => Some("heartbeat 输出为空，任务已标记失败".to_string()),
+        HeartbeatParseKind::JsonEmptyStatus => {
+            Some("heartbeat 输出缺少状态字段，任务已标记失败".to_string())
+        }
         HeartbeatParseKind::JsonUnknownStatus => {
             Some("heartbeat 输出包含未知状态，任务已标记失败".to_string())
         }
@@ -461,7 +516,8 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 8. 价格时间口径约束：引用股价时，必须核实价格的时间戳。若市场已停盘、股票停牌或价格来自上一交易日，必须在 message 中明确标注（最新可得价格为停牌前/上一交易日），不允许把旧价格包装成事件发生后的即时市场反应。\n\
 9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
 10. 若最新可得价格相对昨收尚未达到阈值，但日内高点、日内低点或盘中振幅达到阈值，且任务没有明确要求这些口径，本轮必须返回 noop，不允许触发。\n\
-11. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\
+11. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\n\
+12. 来源归因约束：引用 Reuters、WSJ、Bloomberg、官方公告等来源时，必须确认本轮工具结果明确出现该来源与对应事实；没有明确来源时，只能写“未核验/市场传闻/需继续确认”，不得把地缘政治、谈判、航运限制等叙述写成已被权威媒体共同确认的事实。\
 {}\
 \n以下是需要检查的用户条件：\n{}",
             event.job_name, history_section, event.task_prompt
@@ -584,12 +640,22 @@ pub async fn execute_scheduler_event(
                 }
             }
         } else {
-            let sanitized_error = Some(user_visible_error_message(response.error.as_deref()));
+            let sanitized_error = user_visible_error_message_or_none(response.error.as_deref());
+            if sanitized_error.is_none() {
+                tracing::warn!(
+                    "[SchedulerDiag] suppressed internal failure fallback job_id={} job={} error=\"{}\"",
+                    event.job_id,
+                    event.job_name,
+                    response.error.as_deref().unwrap_or("").replace('\n', "\\n"),
+                );
+            }
             ScheduledTaskExecution {
-                should_deliver: true,
+                should_deliver: sanitized_error.is_some(),
                 content: String::new(),
                 error: sanitized_error,
-                metadata: Value::Null,
+                metadata: json!({
+                    "failure_kind": "internal_error_suppressed",
+                }),
                 session_id: Some(session_id),
             }
         };
@@ -650,7 +716,31 @@ pub async fn execute_scheduler_event(
                     deliver_preview.replace('\n', "\\n"),
                 );
             }
-            heartbeat_execution_from_content(&content, &heartbeat_model)
+            let mut execution = heartbeat_execution_from_content(&content, &heartbeat_model);
+            if execution.should_deliver
+                && let Some(matched_preview) = heartbeat_duplicate_preview_match(
+                    &execution.content,
+                    &event.last_delivered_previews,
+                )
+            {
+                tracing::info!(
+                    "[HeartbeatDiag] duplicate_suppressed job_id={} job={} target={} matched_preview=\"{}\"",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                    matched_preview.replace('\n', "\\n"),
+                );
+                execution.should_deliver = false;
+                execution.content.clear();
+                execution.error = None;
+                execution.metadata = json!({
+                    "heartbeat_model": heartbeat_model,
+                    "parse_kind": format!("{:?}", parse_kind),
+                    "duplicate_suppressed": true,
+                    "matched_preview": matched_preview,
+                });
+            }
+            execution
         }
         Err(error) => {
             let (parse_kind_label, treat_as_noop) = if is_context_overflow_error(&error) {
@@ -748,7 +838,9 @@ async fn run_heartbeat_task(
             .unwrap_or_default(),
         session_metadata: std::collections::HashMap::new(),
         model_override: run_options.model_override.clone(),
-        runner_selection: ExecutionRunnerSelection::AuxiliaryFunctionCalling { max_iterations: 6 },
+        runner_selection: ExecutionRunnerSelection::AuxiliaryFunctionCalling {
+            max_iterations: HEARTBEAT_MAX_ITERATIONS,
+        },
         allowed_tools: None,
         max_tool_calls: None,
         prompt_audit: None,
@@ -804,9 +896,10 @@ async fn run_heartbeat_task(
 mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, execute_scheduler_event,
-        has_skip_delivery_signal, heartbeat_execution_from_content, inspect_heartbeat_result,
-        is_empty_success_fallback, load_actor_quiet_hours,
-        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
+        has_skip_delivery_signal, heartbeat_duplicate_preview_match,
+        heartbeat_execution_from_content, inspect_heartbeat_result, is_empty_success_fallback,
+        load_actor_quiet_hours, rollback_skipped_scheduler_assistant_turn,
+        sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -1073,20 +1166,41 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_empty_json_is_noop_not_failure() {
+    fn heartbeat_empty_json_marks_execution_failed() {
         let (outcome, parse_kind) = inspect_heartbeat_result("{}");
         assert_eq!(parse_kind, HeartbeatParseKind::JsonEmptyStatus);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
         let execution = heartbeat_execution_from_content("{}", "model-x");
         assert!(!execution.should_deliver);
-        assert!(execution.error.is_none());
+        assert_eq!(
+            execution.error.as_deref(),
+            Some("heartbeat 输出缺少状态字段，任务已标记失败")
+        );
     }
 
     #[test]
-    fn heartbeat_think_plus_empty_json_is_noop() {
+    fn heartbeat_think_plus_empty_json_marks_execution_failed() {
         let (outcome, parse_kind) = inspect_heartbeat_result("<think>reasoning</think>\n\n{}");
         assert_eq!(parse_kind, HeartbeatParseKind::JsonEmptyStatus);
         assert_eq!(outcome, HeartbeatOutcome::Noop);
+        let execution =
+            heartbeat_execution_from_content("<think>reasoning</think>\n\n{}", "model-x");
+        assert!(!execution.should_deliver);
+        assert_eq!(
+            execution.error.as_deref(),
+            Some("heartbeat 输出缺少状态字段，任务已标记失败")
+        );
+    }
+
+    #[test]
+    fn heartbeat_empty_output_marks_execution_failed() {
+        let execution = heartbeat_execution_from_content("", "model-x");
+        assert!(!execution.should_deliver);
+        assert_eq!(
+            execution.error.as_deref(),
+            Some("heartbeat 输出为空，任务已标记失败")
+        );
+        assert_eq!(execution.metadata["parse_kind"], "Empty");
     }
 
     #[test]
@@ -1178,6 +1292,30 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_duplicate_preview_match_suppresses_same_event() {
+        let message = "【RKLB 重大事件提醒】Blue Origin Blue Ring 与 Rocket Lab 相关合作再次被报道，检查时间 02:01";
+        let previews = vec![(
+            "2026-04-25T23:01:00+08:00".to_string(),
+            "【RKLB 重大事件提醒】Blue Origin Blue Ring 与 Rocket Lab 相关合作已触发提醒，检查时间 23:01"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_some());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_new_event() {
+        let message = "【ASTS 重大事件提醒】公司宣布新的卫星发射窗口，检查时间 02:01";
+        let previews = vec![(
+            "2026-04-25T23:01:00+08:00".to_string(),
+            "【RKLB 重大事件提醒】Blue Origin Blue Ring 与 Rocket Lab 相关合作已触发提醒"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
     fn heartbeat_prompt_no_history_section_when_empty() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("feishu", "ou_abc", None::<String>).expect("actor"),
@@ -1246,6 +1384,34 @@ mod tests {
         assert!(prompt.contains("盘中涨跌幅超过 X%"));
         assert!(prompt.contains("不允许用日内高点相对昨收"));
         assert!(prompt.contains("本轮必须返回 noop"));
+    }
+
+    #[test]
+    fn heartbeat_prompt_requires_source_grounding_for_geopolitics() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "播报 WTI/Brent，并说明地缘政治影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("来源归因约束"));
+        assert!(prompt.contains("必须确认本轮工具结果明确出现该来源"));
+        assert!(prompt.contains("未核验/市场传闻/需继续确认"));
     }
 
     fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {

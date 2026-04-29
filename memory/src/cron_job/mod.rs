@@ -577,6 +577,83 @@ mod tests {
     }
 
     #[test]
+    fn add_job_rejects_prompt_schedule_time_mismatch() {
+        let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_add");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("feishu", "ou_real", None);
+
+        let result = storage.add_job(
+            &actor,
+            "美股盘后AI及高景气产业链推演",
+            Some(8),
+            Some(30),
+            "trading_day",
+            "【触发时间】每个交易日 20:45（交易日）\n请执行复盘。",
+            "ou_real",
+            None,
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+
+        assert_eq!(result["success"], false);
+        assert!(
+            result["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("与结构化 schedule 08:30 不一致")
+        );
+    }
+
+    #[test]
+    fn due_jobs_skip_existing_prompt_schedule_time_mismatch() {
+        let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_due");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("feishu", "ou_real", None);
+        let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
+        let hour = now_bj.hour() as u32;
+        let minute = now_bj.minute() as u32;
+
+        let data = CronJobData {
+            actor: Some(actor.clone()),
+            user_id: actor.user_id.clone(),
+            jobs: vec![CronJob {
+                id: "j_mismatch".to_string(),
+                name: "错配任务".to_string(),
+                schedule: CronSchedule {
+                    hour,
+                    minute,
+                    repeat: "daily".to_string(),
+                    weekday: None,
+                    date: None,
+                },
+                task_prompt: "【触发时间】每天 20:45\n执行任务".to_string(),
+                push: serde_json::json!({"type": "analysis"}),
+                enabled: true,
+                channel: "feishu".to_string(),
+                channel_scope: None,
+                channel_target: actor.user_id.clone(),
+                tags: Vec::new(),
+                created_at: None,
+                last_run_at: None,
+                bypass_quiet_hours: false,
+            }],
+            pending_updates: Vec::new(),
+        };
+        storage.save_jobs(&actor, &data).expect("save");
+
+        let due = storage.get_due_jobs(
+            hour as i32,
+            minute as i32,
+            now_bj.weekday().num_days_from_monday(),
+            &["feishu"],
+        );
+        assert!(due.is_empty());
+    }
+
+    #[test]
     fn once_jobs_with_future_date_do_not_run_today() {
         let dir = make_temp_dir("hone_cron_storage_once_date");
         let storage = CronJobStorage::new(&dir);

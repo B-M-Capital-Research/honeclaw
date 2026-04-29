@@ -144,3 +144,9 @@ sev3. The burst currently appears to feed digest rather than immediate push, but
 ## Date Observed
 
 2026-04-21T18:08:42Z
+
+## Fix Update
+
+- 2026-04-28: 复核当前 `hone-core` 配置默认值已启用 `event_engine.thresholds.news_upgrade_per_symbol_per_tick=3` 与 `news_upgrade_per_tick=12`。
+- `NotificationRouter` 已有 per-symbol / per-tick guard 与回归测试覆盖，未显式配置时不再落到 `0 = disabled` 的无限流状态。
+- 状态调整为 `Fixed`；若真实运行配置显式写 `0` 再次关闭 guard，应作为配置风险或新回归处理。

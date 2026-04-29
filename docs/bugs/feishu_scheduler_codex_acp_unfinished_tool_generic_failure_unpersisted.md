@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 21:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Later
 - **GitHub Issue**: [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -110,3 +110,10 @@
   - 明确是否真正完成通道送达
 - 增加回归：覆盖 Feishu scheduler 在 `Searching the Web` 未完成时的失败场景，验证不会再出现“台账 sent/delivered=1，但 transcript 无痕迹”。
 - 将本单与 Web 对应缺陷并行跟踪，确认共享 runner 修复后 Feishu 和 Web 都能一致落库失败消息。
+
+## 修复进展（2026-04-28）
+
+- `crates/hone-channels/src/runtime.rs` 新增 `user_visible_error_message_or_none(...)`：`codex acp prompt ended before tool completion`、协议错误、provider 细节等内部错误返回 `None`，timeout 仍保留用户可理解的超时文案。
+- `crates/hone-channels/src/scheduler.rs` 在非 heartbeat scheduler 失败分支使用该函数；内部错误不再外发通用“抱歉，这次处理失败了”，而是落成 `should_deliver=false`、`skipped_error`，并在 metadata 记录 `failure_kind=internal_error_suppressed`。
+- 验证：`cargo test -p hone-channels user_visible_error_message_or_none --lib`。
+- 上游 ACP pending-tool 根因仍由 Web / ACP 共享缺陷继续跟踪；本单从 Feishu “通用失败外发 + transcript 无痕迹”活跃队列移入 `Later`，若真实窗口继续出现同形态再改回 `New`。

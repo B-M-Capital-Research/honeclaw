@@ -116,10 +116,16 @@ fn build_event_engine_sink(core_cfg: &HoneConfig) -> Arc<dyn OutboundSink> {
     {
         multi = multi.with_channel(
             "feishu",
-            Arc::new(FeishuSink::new(
-                core_cfg.feishu.app_id.clone(),
-                core_cfg.feishu.app_secret.clone(),
-            )),
+            Arc::new(
+                FeishuSink::new(
+                    core_cfg.feishu.app_id.clone(),
+                    core_cfg.feishu.app_secret.clone(),
+                )
+                .with_single_direct_contact_fallback(
+                    &core_cfg.feishu.allow_emails,
+                    &core_cfg.feishu.allow_mobiles,
+                ),
+            ),
         );
     }
     if core_cfg.imessage.enabled {

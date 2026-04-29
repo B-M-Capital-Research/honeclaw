@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,6 +14,7 @@ use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
+use hone_memory::session_message_text;
 use hone_scheduler::SchedulerEvent;
 
 use crate::routes::normalized_query_actor;
@@ -109,6 +111,18 @@ pub(crate) async fn handle_scheduler_events(
             );
             let result = run_scheduled_task(&state_clone, &event).await;
             if !result.should_deliver {
+                let failure_trace = scheduler_failure_trace_required(&result);
+                let response = if failure_trace {
+                    Some(format!(
+                        "定时任务「{}」执行出错，请稍后重试。",
+                        event.job_name
+                    ))
+                } else {
+                    None
+                };
+                if let Some(response) = response.as_deref() {
+                    persist_web_scheduler_failure(&state_clone, &event, &result, response);
+                }
                 let _ = storage.record_execution_event(
                     &event.actor,
                     &event.job_id,
@@ -116,20 +130,23 @@ pub(crate) async fn handle_scheduler_events(
                     &event.channel_target,
                     event.heartbeat,
                     CronJobExecutionInput {
-                        execution_status: if result.error.is_some() {
+                        execution_status: if failure_trace {
                             "execution_failed".to_string()
                         } else {
                             "noop".to_string()
                         },
-                        message_send_status: if result.error.is_some() {
+                        message_send_status: if failure_trace {
                             "skipped_error".to_string()
                         } else {
                             "skipped_noop".to_string()
                         },
                         should_deliver: false,
                         delivered: false,
-                        response_preview: None,
-                        error_message: result.error.clone(),
+                        response_preview: response,
+                        error_message: result.error.clone().or_else(|| {
+                            failure_trace
+                                .then(|| "内部错误已抑制，已写入用户可见失败提示".to_string())
+                        }),
                         detail: result.metadata.clone(),
                     },
                 );
@@ -140,6 +157,9 @@ pub(crate) async fn handle_scheduler_events(
             } else {
                 result.content.clone()
             };
+            if result.error.is_some() {
+                persist_web_scheduler_failure(&state_clone, &event, &result, &response);
+            }
 
             // 1. 推送到 Web 控制台 SSE（供控制台页面实时展示）
             let push_result = state_clone.push_tx.send(PushEvent {
@@ -287,4 +307,101 @@ async fn run_scheduled_task(
         info!("⏰ [{}] 定时任务完成", actor.user_id);
     }
     result
+}
+
+fn scheduler_failure_trace_required(result: &scheduler::ScheduledTaskExecution) -> bool {
+    result.error.is_some()
+        || result
+            .metadata
+            .get("failure_kind")
+            .and_then(|value| value.as_str())
+            == Some("internal_error_suppressed")
+}
+
+fn persist_web_scheduler_failure(
+    state: &AppState,
+    event: &SchedulerEvent,
+    result: &scheduler::ScheduledTaskExecution,
+    response: &str,
+) {
+    if event.channel != "web" {
+        return;
+    }
+    let Some(session_id) = result.session_id.as_deref() else {
+        return;
+    };
+    match state.core.session_storage.get_messages(session_id, Some(1)) {
+        Ok(messages) => {
+            if let Some(last) = messages.last() {
+                if last.role == "assistant" && session_message_text(last).trim() == response.trim()
+                {
+                    return;
+                }
+            }
+        }
+        Err(err) => {
+            warn!(
+                "⏰ [Web] 定时任务失败提示落库前读取会话失败: session={} job={} err={}",
+                session_id, event.job_name, err
+            );
+        }
+    }
+
+    let mut metadata = HashMap::new();
+    metadata.insert("channel".to_string(), json!("web"));
+    metadata.insert("source".to_string(), json!("scheduler"));
+    metadata.insert("scheduler_failure".to_string(), json!(true));
+    metadata.insert("job_id".to_string(), json!(event.job_id.clone()));
+    metadata.insert("job_name".to_string(), json!(event.job_name.clone()));
+    metadata.insert(
+        "delivery_key".to_string(),
+        json!(event.delivery_key.clone()),
+    );
+    if let Some(error) = result.error.as_deref() {
+        metadata.insert("error".to_string(), json!(error));
+    }
+    if let Err(err) =
+        state
+            .core
+            .session_storage
+            .add_message(session_id, "assistant", response, Some(metadata))
+    {
+        warn!(
+            "⏰ [Web] 定时任务失败提示落库失败: session={} job={} err={}",
+            session_id, event.job_name, err
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn scheduled_result(error: Option<&str>, metadata: Value) -> scheduler::ScheduledTaskExecution {
+        scheduler::ScheduledTaskExecution {
+            should_deliver: false,
+            content: String::new(),
+            error: error.map(str::to_string),
+            metadata,
+            session_id: Some("session-1".to_string()),
+        }
+    }
+
+    #[test]
+    fn scheduler_failure_trace_required_keeps_internal_suppressed_web_failures() {
+        let result = scheduled_result(
+            None,
+            json!({
+                "failure_kind": "internal_error_suppressed",
+            }),
+        );
+        assert!(scheduler_failure_trace_required(&result));
+    }
+
+    #[test]
+    fn scheduler_failure_trace_required_ignores_clean_noop() {
+        let result = scheduled_result(None, json!({ "parse_kind": "JsonNoop" }));
+        assert!(!scheduler_failure_trace_required(&result));
+    }
 }

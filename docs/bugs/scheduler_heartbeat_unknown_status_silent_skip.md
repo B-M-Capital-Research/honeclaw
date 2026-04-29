@@ -3,7 +3,15 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixing
+- **状态**: Fixed
+
+## 修复进展（2026-04-28）
+
+- 已在 `crates/hone-channels/src/scheduler.rs` 收紧 heartbeat 结构化契约：
+  - 空字符串输出不再被吞成合法 `noop`，改为 `heartbeat 输出为空，任务已标记失败`。
+  - `{}` 或缺失 `status` 的空 JSON 不再被吞成合法 `noop`，改为 `heartbeat 输出缺少状态字段，任务已标记失败`。
+  - 结合此前已有的 plain text、malformed JSON、unknown status 失败收口，heartbeat 坏态不再在“伪静默跳过”和“显式失败”之间漂移；只有明确 `{"status":"noop"}` 或 `[[HEARTBEAT_NOOP]]` 才走 `skipped_noop`。
+- 已补/更新回归：`heartbeat_empty_json_marks_execution_failed`、`heartbeat_think_plus_empty_json_marks_execution_failed`、`heartbeat_empty_output_marks_execution_failed`。
 
 ## 修复进展
 

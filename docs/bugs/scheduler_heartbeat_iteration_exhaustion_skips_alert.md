@@ -3,7 +3,16 @@
 - **发现时间**: 2026-04-20 06:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Later
+
+## 修复进展（2026-04-28）
+
+- 已在 `crates/hone-channels/src/scheduler.rs` 将 heartbeat auxiliary function-calling 的最大迭代预算从固定 `6` 提升到 `10`：
+  - 这是 heartbeat 公共执行预算加固，不针对某个 provider、模型或单个 job 做特殊兼容。
+  - 结构化失败台账仍保留；若 10 次预算仍耗尽，会继续落为 `skipped_error`，不会伪装成 `noop`。
+  - 本轮同时已收紧空输出/空 JSON/非结构化文本的 heartbeat 契约，因此用户和巡检可以区分“合法未触发”和“执行失败”。
+- 状态调整为 `Later`：当前代码侧已提升预算并避免伪静默；若真实窗口继续出现 `max_iterations_exceeded:10` 或等价触顶失败，再改回 `New`。
+
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=9521`，`job_id=j_9ee85d42`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-04-29T04:02:19.013950+08:00`

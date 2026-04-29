@@ -75,6 +75,41 @@ pub(super) fn validate_schedule_date(repeat: &str, date: Option<&str>) -> Result
         .map_err(|_| format!("date 须为 YYYY-MM-DD，收到 {date}"))
 }
 
+pub(super) fn prompt_declared_schedule_time(prompt: &str) -> Option<(u32, u32)> {
+    prompt
+        .lines()
+        .filter(|line| line.contains("触发时间"))
+        .find_map(extract_hh_mm)
+}
+
+pub(super) fn prompt_schedule_conflict(job: &CronJob) -> Option<(u32, u32)> {
+    if job.is_heartbeat() {
+        return None;
+    }
+    let (hour, minute) = prompt_declared_schedule_time(&job.task_prompt)?;
+    ((hour, minute) != (job.schedule.hour, job.schedule.minute)).then_some((hour, minute))
+}
+
+fn extract_hh_mm(text: &str) -> Option<(u32, u32)> {
+    let chars = text.chars().collect::<Vec<_>>();
+    for idx in 0..chars.len().saturating_sub(4) {
+        if !chars[idx].is_ascii_digit()
+            || !chars[idx + 1].is_ascii_digit()
+            || !matches!(chars[idx + 2], ':' | '：')
+            || !chars[idx + 3].is_ascii_digit()
+            || !chars[idx + 4].is_ascii_digit()
+        {
+            continue;
+        }
+        let hour = chars[idx].to_digit(10)? * 10 + chars[idx + 1].to_digit(10)?;
+        let minute = chars[idx + 3].to_digit(10)? * 10 + chars[idx + 4].to_digit(10)?;
+        if hour <= 23 && minute <= 59 {
+            return Some((hour, minute));
+        }
+    }
+    None
+}
+
 pub(super) fn normalize_schedule_date(date: Option<String>) -> Option<String> {
     date.and_then(|value| {
         let trimmed = value.trim().to_string();

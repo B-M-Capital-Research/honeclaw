@@ -20,6 +20,9 @@ use crate::provider::{ChatResponse, ChatResult, FunctionCall, LlmProvider, Messa
 #[derive(Clone)]
 pub struct OpenAiCompatibleProvider {
     client: Client<OpenAIConfig>,
+    http_client: reqwest::Client,
+    api_key: String,
+    base_url: String,
     pub model: String,
     pub max_tokens: u16,
 }
@@ -43,11 +46,15 @@ impl OpenAiCompatibleProvider {
         max_tokens: u16,
     ) -> hone_core::HoneResult<Self> {
         let http_client = Self::build_http_client(timeout_secs)?;
+        let base_url = base_url.trim_end_matches('/').to_string();
         let openai_config = OpenAIConfig::new()
             .with_api_key(api_key)
-            .with_api_base(base_url.trim_end_matches('/'));
+            .with_api_base(&base_url);
         Ok(Self {
-            client: Client::with_config(openai_config).with_http_client(http_client),
+            client: Client::with_config(openai_config).with_http_client(http_client.clone()),
+            http_client,
+            api_key: api_key.to_string(),
+            base_url,
             model: model.to_string(),
             max_tokens,
         })
@@ -158,6 +165,159 @@ impl OpenAiCompatibleProvider {
         }
         Ok(out)
     }
+
+    async fn post_chat_completion(
+        &self,
+        request: &async_openai::types::CreateChatCompletionRequest,
+    ) -> hone_core::HoneResult<Value> {
+        let response = self
+            .http_client
+            .post(format!("{}/chat/completions", self.base_url))
+            .bearer_auth(&self.api_key)
+            .json(request)
+            .send()
+            .await
+            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+        if !status.is_success() {
+            return Err(hone_core::HoneError::Llm(format!(
+                "upstream HTTP {}: {}",
+                status.as_u16(),
+                extract_error_message(&body)
+            )));
+        }
+        serde_json::from_str::<Value>(&body).map_err(|e| {
+            hone_core::HoneError::Llm(format!(
+                "failed to deserialize api response: {}; body_prefix={}",
+                e,
+                truncate_error_body(&body, 500)
+            ))
+        })
+    }
+
+    fn usage_from_value(value: &Value) -> Option<crate::provider::TokenUsage> {
+        let usage = value.get("usage")?;
+        Some(crate::provider::TokenUsage {
+            prompt_tokens: usage
+                .get("prompt_tokens")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok()),
+            completion_tokens: usage
+                .get("completion_tokens")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok()),
+            total_tokens: usage
+                .get("total_tokens")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok()),
+        })
+    }
+
+    fn content_from_value(value: &Value) -> String {
+        value
+            .get("choices")
+            .and_then(|v| v.as_array())
+            .and_then(|choices| choices.first())
+            .and_then(|choice| choice.get("message"))
+            .and_then(|message| message.get("content"))
+            .and_then(|content| content.as_str())
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    fn tool_calls_from_value(value: &Value) -> Option<Vec<ToolCall>> {
+        let calls = value
+            .get("choices")?
+            .as_array()?
+            .first()?
+            .get("message")?
+            .get("tool_calls")?
+            .as_array()?;
+        Some(
+            calls
+                .iter()
+                .map(|tc| {
+                    let function = tc.get("function").unwrap_or(&Value::Null);
+                    let arguments = match function.get("arguments") {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(other) => other.to_string(),
+                        None => String::new(),
+                    };
+                    ToolCall {
+                        id: tc
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        call_type: tc
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("function")
+                            .to_string(),
+                        function: FunctionCall {
+                            name: function
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string(),
+                            arguments,
+                        },
+                    }
+                })
+                .collect(),
+        )
+    }
+}
+
+fn truncate_error_body(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    text.chars().take(max_chars).collect::<String>() + "..."
+}
+
+fn extract_error_message(body: &str) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return truncate_error_body(body.trim(), 500);
+    };
+    let error = value.get("error").unwrap_or(&value);
+    let message = error
+        .get("message")
+        .or_else(|| error.get("msg"))
+        .or_else(|| error.get("detail"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| truncate_error_body(body.trim(), 500));
+    let code = error.get("code").or_else(|| value.get("code"));
+    match code {
+        Some(Value::String(code)) if !code.is_empty() => format!("{message} (code: {code})"),
+        Some(Value::Number(code)) => format!("{message} (code: {code})"),
+        _ => message,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_error_message;
+
+    #[test]
+    fn extracts_numeric_provider_error_code_without_serde_shape_failure() {
+        let body = r#"{"error":{"message":"maximum context length exceeded","code":400}}"#;
+        assert_eq!(
+            extract_error_message(body),
+            "maximum context length exceeded (code: 400)"
+        );
+    }
+
+    #[test]
+    fn extracts_alt_error_message_fields() {
+        let body = r#"{"msg":"bad request","code":999}"#;
+        assert_eq!(extract_error_message(body), "bad request (code: 999)");
+    }
 }
 
 /// Returns true for transient HTTP transport errors that are worth retrying once.
@@ -208,6 +368,13 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 Err(err) => {
                     let msg = err.to_string();
                     let hone_err = hone_core::HoneError::Llm(msg.clone());
+                    if matches!(err, async_openai::error::OpenAIError::JSONDeserialize(_)) {
+                        let value = self.post_chat_completion(&request).await?;
+                        return Ok(ChatResult {
+                            content: Self::content_from_value(&value),
+                            usage: Self::usage_from_value(&value),
+                        });
+                    }
                     if attempt == 0 && is_retryable_transport_error(&msg) {
                         tracing::warn!("[openai_compatible] chat transport error, retrying: {msg}");
                         last_err = Some(hone_err);
@@ -273,6 +440,14 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 Err(err) => {
                     let msg = err.to_string();
                     let hone_err = hone_core::HoneError::Llm(msg.clone());
+                    if matches!(err, async_openai::error::OpenAIError::JSONDeserialize(_)) {
+                        let value = self.post_chat_completion(&request).await?;
+                        return Ok(ChatResponse {
+                            content: Self::content_from_value(&value),
+                            tool_calls: Self::tool_calls_from_value(&value),
+                            usage: Self::usage_from_value(&value),
+                        });
+                    }
                     if attempt == 0 && is_retryable_transport_error(&msg) {
                         tracing::warn!(
                             "[openai_compatible] chat_with_tools transport error, retrying: {msg}"

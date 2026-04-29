@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 11:06 CST
+最后更新：2026-04-29 10:30 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：20
-- Later / 待复现：9
-- 已修复 / 已关闭：62
+- 活跃待修复：7
+- Later / 待复现：14
+- 已修复 / 已关闭：72
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -25,26 +25,13 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Fixing | 2026-04-28 19:10 `global digest` 同窗连续 3 次命中 `code=99992361 / open_id cross app`，失败后只剩 dryrun sink；GitHub issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 已登记 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Web 定时任务在离线或无活跃 SSE 监听者时仍被记成 `send_failed`，已修复结论在 `09:02` 再次回归失效 | P2 | New | 2026-04-29 09:02 `09:00 美股AI与航空科技晨报` `run_id=9796` 已生成完整晨报开头，但 `cron_job_runs` 仍写成 `completed + send_failed + console_event_sent=false` | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Fixing | 2026-04-27 已先完成用户侧止血：scheduler / shared outbound / Feishu 直聊不再把 `codex acp prompt ended before tool completion`、timeout、panic、空回复等内部失败转换成“抱歉，这次处理失败了。请稍后再试。”外发；上游 ACP pending tool 根因仍待继续收口 | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
-| Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Fixing | 2026-04-26 已清洗失败 partial stream 中的工具/进度轨迹，idle timeout/state migration 后用户只看到产品化失败文案，不再落库半成品工具轨迹；底层 timeout 仍待追 | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
-| Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | New | 2026-04-27 08:30 `j_acce16a6` 实际按 `schedule.hour=8/minute=30` 触发，但同一 job 的 prompt 仍写 `每个交易日 20:45`；assistant 正文直接承认“不是你设定的20:45触发时点” | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-29 07:30 `Monitor_Watchlist_11` 的 ASTS 条件线是 `≤69.83`，但 `run_id=9692` 仍把 `71.88` 包装成“已跌破触发价上方区间”并成功送达；`08:01` 同一 job 又恢复 `noop` | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | ASTS heartbeat 把“接近 8% 警戒阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 10:01 `ASTS 重大异动心跳监控` 前一窗口 `run_id=9818` 还是 `noop`，下一窗口 `run_id=9844` 却把 `跌幅 -6.89%` 写成“接近 8% 警戒阈值”并落成 `completed + sent + delivered=1` | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | New | 2026-04-29 07:02 同一“小米跌破 30 港元”条件在 `06:30` 被一条预警因 `JsonMalformed` 丢弃后，又由兄弟 job 成功送达；`07:02` 持仓 heartbeat 还继续重发 ASTS FCC 旧催化，说明跨 job 去重基线仍缺失 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-28 已把 `sanitized_empty_success` / `planning_sentence_suppressed` 从伪成功改为失败态并补回归，后续继续观察上游 Answer 空/过渡句根因是否仍复现 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | New | 2026-04-29 11:02 最近一小时 `10:30/11:00` 两个 heartbeat 窗口继续各新增 12 条 started 行；`running+pending` 仍有 `24` 条，全库残留升到 `1562` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 11:03 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；最新 Feishu 直聊已在 `10:33:12/10:33:14` 落成 `persist_assistant + done success=true` 并成功发送 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-28 15:00 最新窗口再次复现：`run_id=8858` 在 `moonshotai/kimi-k2.5` 下因超长上下文触发上游 `maximum context length`，最终仍只落成 `invalid type: integer 400` | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 09:02 最近一小时 heartbeat 已漂成 `21 noop / 1 skipped_error / 16 sent / 35 started`；`09:02` `持仓重大事件心跳检测` 继续把 `</think>{"status":"triggered"}` 判成 `PlainTextSuppressed` 并误记“未命中” | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | New | 2026-04-29 05:01 `Cerebras IPO与业务进展心跳监控` 在 `04:02` 触顶失败后，`04:30/05:00` 又漂回 `noop`；同一 job 仍在“触顶失败 / 伪 noop”间交替 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-28 04:01 `Oil_Price_Monitor_Closing` 再次成功送达，但正文仍把“美伊和平谈判停滞、霍尔木兹海峡运输仍受限制”写成 Reuters/WSJ 已共同确认的确定性主线；此前 `Later` 止血确认失效 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | New | 2026-04-29 09:02 最近一小时已漂到 `35` 条 `running+pending`；全库残留继续升到 `1514`，`08:45/09:00` 普通 scheduler 与 heartbeat 同窗继续实时新增 started 行 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 10:03 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；最新 Feishu 直聊已在 `09:37:48/09:42:38` 落成 `persist_assistant + done success=true` 并成功发送 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
-| Disabled channel 跳过启动后仍残留 stale pid 文件 | P3 | New | 2026-04-23 `discord.enabled=false` 与 `feishu.enabled=false` 都已明确跳过启动，但 `data/runtime/*.pid` 仍保留 dead pid，主要污染巡检与状态判断，不直接影响用户链路因此定级 P3 | [disabled_channel_pid_files_survive_skipped_startup.md](./disabled_channel_pid_files_survive_skipped_startup.md) |
-| Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | New | 2026-04-22 OpenRouter 403 / 反序列化失败让 uncertain-source 新闻 LLM 仲裁返回 `None`，重要新闻可能退回低优先级 digest 路径 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
-| Event-engine window convergence upgrade bursts crowd digest quality | P3 | New | 2026-04-23 08:22:42 CST 单秒再次出现 25 条 `Low→Medium` 窗口收敛提级，超过巡检阈值；poller 与 sink 正常，问题集中在路由降噪 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
-| Web 定时任务在 Codex ACP 提前 `end_turn` 且仍有未完成搜索工具时整轮失败，失败提示既未落库也未送达 | P2 | New | 2026-04-27 20:01 `英伟达每日消息` `run_id=7936` 落成 `execution_failed + send_failed + delivered=0`；`acp-events.log` 仅看到持续流式 chunk 与 `stopReason=end_turn`，但 `sessions` / `session_messages` 到巡检时仍停在 2026-04-26 23:01，说明这轮既没写进会话，也没通过 Web scheduler 送达 | [web_scheduler_codex_acp_unfinished_tool_send_failed.md](./web_scheduler_codex_acp_unfinished_tool_send_failed.md) |
 
 ## Later / 待复现
 
@@ -59,6 +46,11 @@
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | Later | 2026-04-26 已统一 overflow fallback 文案并保留执行失败态；若真实日报窗口继续只投失败提示再改回 `New` | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Discord 定时任务在 Answer 阶段返回空/无效回复后，仍被记为成功执行 | P2 | Later | 2026-04-26 已通过共享 `empty_success_exhausted -> success=false + error` 修复，Discord scheduler 后续会把通用 fallback 记为 `execution_failed` 而不是 `completed + sent`；若再次伪成功再改回 `New` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Later | 2026-04-26 代码确认 OpenAI-compatible provider 已对 `error sending request`、连接重置、超时等传输错误执行一次短重试，覆盖 heartbeat MiniMax 主要失败形态；若生产窗口继续复现再改回 `New` | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
+| Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Later | 2026-04-28 已再次收口 scheduler 失败分支：`codex acp prompt ended before tool completion` 等内部错误不再外发通用抱歉，台账落 `skipped_error` 并保留 `internal_error_suppressed` 分类；上游 ACP pending-tool 根因若真实窗口继续造成任务失败，再改回 `New` | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Later | 2026-04-28 已把 heartbeat prompt 的来源归因约束提升到调度层：未在当前工具结果中核验 Reuters/WSJ/Bloomberg/官方等来源时，不得把地缘叙述写成确定性归因；若真实窗口继续复现再改回 `New` | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Later | 2026-04-28 event-engine Feishu sink 对单用户安装新增 current-app open_id 解析缓存：若配置中只有一个 allow_mobile/allow_email，事件推送会先通过 Feishu API 解析当前 app 绑定的 open_id，不再直接复用可能跨 app 的历史 `actor.user_id`；待真实窗口复核 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
+| Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Later | 2026-04-28 当前代码已对 idle timeout / state migration / 纯工具轨迹 partial 做用户态失败文案和落库清洗；底层 Codex ACP state DB 迁移类失败属于外部 runner 状态，若真实窗口仍无用户可见失败回复再改回 `New` | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
+| Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | Later | 2026-04-28 heartbeat auxiliary function-calling 预算从固定 6 次提升到 10 次，并保留结构化失败台账；这是共享预算加固，不对某个 provider/model 做特判，若真实窗口继续触顶再改回 `New` | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 
 ## 已修复 / 已关闭
 
@@ -68,6 +60,14 @@
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | Fixed | 2026-04-28 `CronSchedule` 新增 `date`，cron tool / Web API / scheduler event 均透传；未到目标日期的一次性任务不会被判定 due，定向回归通过 | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | Fixed | 2026-04-28 `hone-telegram` 在空 token 或 `bot.get_me()` 失败时从 `run()` 返回而非 `process::exit`，让 lock / heartbeat 正常 Drop 清理；`cargo check -p hone-telegram --tests` 通过 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
 | Event-engine `immediate_kinds` 把低信号新闻重新提级成即时推送 | P3 | Fixed | 2026-04-28 actor 级 `immediate_kinds` 对 `news_critical` / `press_release` 不再升级已被分类器降为 Low 的新闻；新增回归测试通过 | [event_engine_immediate_kinds_resurrects_low_signal_news.md](./event_engine_immediate_kinds_resurrects_low_signal_news.md) |
+| Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | Fixed | 2026-04-28 `CronJobStorage` 新增 prompt `【触发时间】HH:MM` 与结构化 schedule 一致性校验：新增/更新错配任务会被拒绝，历史错配任务到点也会被跳过并告警；定向回归通过 | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | Fixed | 2026-04-28 heartbeat 送达前新增确定性近似去重：模型即使再次输出同一催化，若与最近已送达 preview 高度重合，会落为 `duplicate_suppressed` 不再投递；定向回归通过 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-04-28 OpenAI-compatible provider 对 SDK 反序列化失败新增 raw HTTP 兜底解析，保留 provider 真实 `HTTP 400` body / numeric code，不再只剩 serde `invalid type`；定向回归通过 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
+| Disabled channel 跳过启动后仍残留 stale pid 文件 | P3 | Fixed | 2026-04-28 `launch.sh` 在启动检查时识别 zombie child 并执行 `wait`，disabled channel 以 `CHANNEL_DISABLED_EXIT_CODE` 退出时会稳定删除 pid 文件；`bash -n launch.sh` 通过 | [disabled_channel_pid_files_survive_skipped_startup.md](./disabled_channel_pid_files_survive_skipped_startup.md) |
+| Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | Fixed | 2026-04-28 复核当前实现已在 provider error / unparseable response 时走 deterministic fallback 并写缓存与结构化日志，且本轮 OpenAI-compatible numeric error 解析已加固；该路径不再返回 `None` 造成静默降级 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
+| Event-engine window convergence upgrade bursts crowd digest quality | P3 | Fixed | 2026-04-28 复核当前配置默认值已启用 `news_upgrade_per_symbol_per_tick=3` 与 `news_upgrade_per_tick=12`，router per-tick/per-symbol guard 已有回归覆盖；旧 active 记录对应的“未配置导致 guard 关闭”不再成立 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-04-28 heartbeat 空输出与 `{}` / 缺失 `status` 的空 JSON 不再被吞成合法 `noop`，而是统一落为结构化失败；结合 plain text / malformed / unknown status 既有失败收口，坏态不再在伪静默和失败间漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Web 定时任务在 Codex ACP 提前 `end_turn` 且仍有未完成搜索工具时整轮失败，失败提示既未落库也未送达 | P2 | Fixed | 2026-04-28 Web scheduler 对失败任务补会话级失败提示落库；即使底层内部错误被抑制、不向用户暴露细节，也会在 transcript 中留下产品化失败消息，台账同步保留 `skipped_error` / failure trace | [web_scheduler_codex_acp_unfinished_tool_send_failed.md](./web_scheduler_codex_acp_unfinished_tool_send_failed.md) |
 | Global digest Pass1 模型在 42-61 候选下塌成 1/2/3 三档,且 collector SQL 把 FMP trusted-Low 全砍光 | P1 | Fixed | 2026-04-27 POC 实测后:Pass1 默认从 `amazon/nova-lite-v1` 切到 `x-ai/grok-4.1-fast`(score 分布恢复 5 档,Iran/Hormuz 11 条自动合 1 簇);collector SQL 改为非对称门槛,FMP trusted 域允许 Low 进池(GOOGL 财报预告等 thesis 硬料不再被砍) | [global_digest_pass1_model_collapse_and_severity_gate.md](./global_digest_pass1_model_collapse_and_severity_gate.md) |
 | Truth Social source 持续 403 断流 | P2 | Closed | 2026-04-26 已完全移除 Truth Social source：删除 poller、配置类型、engine 装配和 `config.yaml` 启用项，后续不再启动该 source | [truth_social_poller_opaque_json_decode_stalls_source.md](./truth_social_poller_opaque_json_decode_stalls_source.md) |
 | 渠道失败分支再次把底层 LLM/传输报错直接拼进用户回复 | P1 | Fixed | 2026-04-26 已扩展共享错误净化规则覆盖 WebSocket/HTTPS 回退痕迹，并在 finalizer 阻断“内部错误 + 半成品正文”作为成功答复出站；相关 `hone-channels` 定向测试通过 | [channel_raw_llm_error_exposure.md](./channel_raw_llm_error_exposure.md) |

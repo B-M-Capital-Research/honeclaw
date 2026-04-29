@@ -348,6 +348,21 @@ pub fn user_visible_error_message(raw: Option<&str>) -> String {
     sanitized
 }
 
+pub fn user_visible_error_message_or_none(raw: Option<&str>) -> Option<String> {
+    let sanitized = raw
+        .map(sanitize_user_visible_output)
+        .map(|value| value.content.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    let lowered = sanitized.to_ascii_lowercase();
+    if lowered.contains("timeout") || lowered.contains("timed out") {
+        return Some(TIMEOUT_USER_ERROR_MESSAGE.to_string());
+    }
+    if looks_internal_error_detail(&sanitized, &lowered) {
+        return None;
+    }
+    Some(sanitized)
+}
+
 fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
     sanitized.contains("LLM 错误")
         || sanitized.contains("HTTP 错误")
@@ -638,6 +653,22 @@ mod tests {
         let err =
             user_visible_error_message(Some("opencode acp session/prompt idle timeout (180s)"));
         assert_eq!(err, TIMEOUT_USER_ERROR_MESSAGE);
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_suppresses_internal_acp_errors() {
+        let err = user_visible_error_message_or_none(Some(
+            "codex acp prompt ended before tool completion: Searching the Web",
+        ));
+        assert!(err.is_none());
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_keeps_timeout_errors() {
+        let err = user_visible_error_message_or_none(Some(
+            "codex acp session/prompt idle timeout (180s)",
+        ));
+        assert_eq!(err.as_deref(), Some(TIMEOUT_USER_ERROR_MESSAGE));
     }
 
     #[test]

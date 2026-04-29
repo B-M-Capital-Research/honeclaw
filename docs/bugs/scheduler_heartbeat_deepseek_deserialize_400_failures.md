@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
     - `2026-04-28 15:00` 窗口最新完成样本里，`run_id=8858`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
@@ -70,3 +70,9 @@
 - 先排查 heartbeat 公共 OpenAI-compatible 错误解析，确认对上游 `HTTP 400` 的字段类型假设为什么会在不同 provider 下都失败。
 - 为 heartbeat provider 错误补最小可观测性：至少记录上游状态码、错误字段类型和 provider 名，而不是只留下二次反序列化报错。
 - 若 heartbeat 继续依赖多 provider，应补 provider 级 fallback 或短重试，并在上下文超限时优先保留原始 `maximum context length` 诊断，避免再次被二次反序列化掩盖。
+
+## 修复情况（2026-04-28）
+
+- `crates/hone-llm/src/openai_compatible.rs` 在 SDK `JSONDeserialize` 失败时改用 raw HTTP 兜底请求解析，非 2xx 响应会保留 `HTTP status`、错误 `message` 与数字或字符串 `code`。
+- 该修复不为某个 provider 特判，只处理 OpenAI-compatible 错误体 schema 兼容性，避免把真实 `maximum context length` / 403 等原因压扁成 serde `invalid type`。
+- 验证：`cargo test -p hone-llm extracts_ --lib`。

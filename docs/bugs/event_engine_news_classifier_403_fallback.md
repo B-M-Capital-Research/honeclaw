@@ -111,3 +111,9 @@ sev2. The failure directly affects quality routing for uncertain-source financia
 ## Date Observed
 
 2026-04-22T10:11:32Z
+
+## Fix Update
+
+- 2026-04-28: 复核当前 `crates/hone-event-engine/src/news_classifier.rs` 已在 provider error 与不可解析响应时走 `deterministic_fallback(event)`，并把 fallback 写入 L1/L2 cache；该路径不再返回 `None` 让 uncertain-source 新闻静默退回“未仲裁”。
+- 同轮 `crates/hone-llm/src/openai_compatible.rs` 对 numeric `error.code` 增加 raw HTTP 兜底解析，后续 403/400 错误会保留真实 provider message，而不是只剩 `invalid type: integer`。
+- 状态调整为 `Fixed`；若后续需要做 classifier health/circuit breaker，可另开观测增强项，不再阻塞本缺陷关闭。

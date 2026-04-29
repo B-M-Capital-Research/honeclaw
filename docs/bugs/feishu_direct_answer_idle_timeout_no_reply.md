@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 23:12 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Later
 - **修复提交**:
   - `02d01d2 fix channel error message sanitization`
   - `3e769d7 test feishu timeout fallback reply`
@@ -119,6 +119,14 @@
   - 真正有用户可读阶段性正文时，仍保留“内容可能不完整”的收尾提示。
 - 已补回归：`failed_reply_text_drops_tool_progress_only_partial_stream`。
 - 状态从 `New` 调整为 `Fixing`：用户可见“半成品工具轨迹”已代码止血；Answer 阶段 idle timeout / state migration 的底层原因仍需继续观察与修复。
+
+## 修复进展（2026-04-28）
+
+- 本轮复核当前失败收口后，将该单从 `Fixing` 调整为 `Later`：
+  - Feishu 失败回复构造已经会把 idle timeout 映射为 `抱歉，处理超时了。请稍后再试。`。
+  - 纯工具/进度轨迹 partial 会被丢弃，不再作为 assistant 正文污染用户会话。
+  - `codex acp` / `session/prompt` / state migration 一类内部细节会被共享净化层压成产品化失败文案，不直接外露。
+- 剩余的 Codex ACP state DB migration / idle timeout 属于外部 runner 状态和长尾模型收敛问题；当前代码侧已保证“失败可见、失败落库、不发工具轨迹”。若后续真实 Feishu 直聊再次出现“placeholder 后完全没有 assistant 失败回复”，再改回 `New`。
 
 ## 结论
 

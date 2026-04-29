@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Later
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
   - 2026-04-28 19:10 最近一小时最新样本：
@@ -224,6 +224,15 @@
 - 本轮先按“多段 direct scheduler 发送链路不稳定”收口：
   - `bins/hone-feishu/src/outbound.rs` 现在对 `receive_id_type=open_id` 且没有 placeholder 的多段消息，不再默认把后续分段走 `reply_message`；会直接逐段 standalone send。
   - 如果 `update_message` 或 `reply_message` 仍返回 `HTTP 400`，同一分段会自动回退到 standalone send，而不是整轮直接 `send_failed`。
+
+## 修复进展（2026-04-28）
+
+- 已在 `crates/hone-event-engine/src/sinks/feishu.rs` 为 event-engine Feishu sink 增加 current-app open_id 解析缓存：
+  - 单用户安装场景下，如果 `feishu.allow_mobiles` 或 `feishu.allow_emails` 只有一个稳定联系人，事件推送会先通过 Feishu `batch_get_id?user_id_type=open_id` 解析当前 app 绑定的 open_id。
+  - 只有唯一联系人时才启用该 fallback；配置里有多个 email/mobile 或通配 `*` 时不会猜测映射，避免跨用户误投。
+  - 群聊仍继续走 `chat_id`，不受 direct open_id fallback 影响。
+- `crates/hone-web-api/src/lib.rs` 组装 event-engine sink 时已把 `feishu.allow_emails` / `feishu.allow_mobiles` 传入该 fallback。
+- 状态调整为 `Later`：这条缺陷的最新证据来自 event-engine sink，而不是 Feishu scheduler facade；代码已停止直接依赖可能跨 app 的历史 `actor.user_id`。下一次真实事件窗口若仍返回 `code=99992361 / open_id cross app`，再改回 `New` 并继续追 sender/actor 映射。
 - `bins/hone-feishu/src/client.rs` 也已补发信失败时的响应体日志，后续再出现 400 时不再只剩裸 `Bad Request`，而会带上 Feishu body 摘要，便于继续定位 payload 差异。
 - 自动化验证已通过：
   - `cargo test -p hone-feishu`

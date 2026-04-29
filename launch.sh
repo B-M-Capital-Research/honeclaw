@@ -74,6 +74,14 @@ pid_is_running() {
   [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
 }
 
+pid_is_zombie() {
+  local pid="$1"
+  local state=""
+  [[ -n "$pid" ]] || return 1
+  state="$(ps -p "$pid" -o stat= 2>/dev/null | awk '{print $1}' || true)"
+  [[ "$state" == Z* ]]
+}
+
 wait_for_exit() {
   local pid="$1"
   local timeout="${2:-6}"
@@ -227,7 +235,7 @@ start_hone_bin() {
   echo "$pid" > "$(pid_file "$service_name")"
 
   sleep 1
-  if ! pid_is_running "$pid"; then
+  if ! pid_is_running "$pid" || pid_is_zombie "$pid"; then
     local status=0
     wait "$pid" || status=$?
     if [[ "$status" -eq "$CHANNEL_DISABLED_EXIT_CODE" ]]; then

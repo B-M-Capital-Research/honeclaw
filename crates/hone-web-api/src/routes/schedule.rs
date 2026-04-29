@@ -32,8 +32,12 @@ pub(crate) async fn handle_schedule(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ScheduleQuery>,
 ) -> Result<Json<ScheduleOverview>, (StatusCode, String)> {
-    let actor = parse_actor_key(&q.actor)
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, format!("invalid actor key: {}", q.actor)))?;
+    let actor = parse_actor_key(&q.actor).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("invalid actor key: {}", q.actor),
+        )
+    })?;
 
     let cfg = &state.core.config;
     let global = GlobalDigestSlice {

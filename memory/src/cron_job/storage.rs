@@ -11,8 +11,8 @@ use uuid::Uuid;
 use super::CronJobStorage;
 use super::schedule::{
     DUE_WINDOW_MINUTES, is_holiday, is_trading_day, is_workday, job_existed_before_slot,
-    normalize_schedule_date, normalized_repeat, normalized_tags, validate_schedule,
-    validate_schedule_date,
+    normalize_schedule_date, normalized_repeat, normalized_tags, prompt_schedule_conflict,
+    validate_schedule, validate_schedule_date,
 };
 use super::types::{
     CronJob, CronJobData, CronJobUpdate, CronSchedule, MAX_ENABLED_JOBS_PER_ACTOR,
@@ -188,6 +188,18 @@ impl CronJobStorage {
             last_run_at: None,
             bypass_quiet_hours: false,
         };
+        if let Some((declared_hour, declared_minute)) = prompt_schedule_conflict(&job) {
+            return serde_json::json!({
+                "success": false,
+                "error": format!(
+                    "task_prompt 声明的触发时间 {:02}:{:02} 与结构化 schedule {:02}:{:02} 不一致",
+                    declared_hour,
+                    declared_minute,
+                    job.schedule.hour,
+                    job.schedule.minute
+                )
+            });
+        }
 
         let job_value = serde_json::to_value(&job).unwrap_or_default();
         data.jobs.push(job);
@@ -240,6 +252,12 @@ impl CronJobStorage {
             }
             if let Some(task_prompt) = updates.task_prompt.clone() {
                 job.task_prompt = task_prompt;
+            }
+            if let Some((declared_hour, declared_minute)) = prompt_schedule_conflict(job) {
+                return Err(hone_core::HoneError::Tool(format!(
+                    "task_prompt 声明的触发时间 {:02}:{:02} 与结构化 schedule {:02}:{:02} 不一致",
+                    declared_hour, declared_minute, job.schedule.hour, job.schedule.minute
+                )));
             }
             if let Some(push) = updates.push.clone() {
                 job.push = push;
@@ -380,6 +398,18 @@ impl CronJobStorage {
                 // Channel 过滤：每个 scheduler 只处理属于自己渠道的任务，
                 // 避免多进程共享存储时跨渠道误标记（cross-process mark race）。
                 if !channels.is_empty() && !channels.contains(&job.channel.as_str()) {
+                    continue;
+                }
+                if let Some((declared_hour, declared_minute)) = prompt_schedule_conflict(job) {
+                    warn!(
+                        "skipping cron job with schedule/prompt mismatch: job_id={} job={} schedule={:02}:{:02} prompt={:02}:{:02}",
+                        job.id,
+                        job.name,
+                        job.schedule.hour,
+                        job.schedule.minute,
+                        declared_hour,
+                        declared_minute
+                    );
                     continue;
                 }
 

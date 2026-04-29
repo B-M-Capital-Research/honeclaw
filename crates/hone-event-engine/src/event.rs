@@ -162,10 +162,22 @@ mod tests {
             .shelf_life(),
             Some(Duration::hours(2))
         );
-        assert_eq!(EventKind::VolumeSpike.shelf_life(), Some(Duration::hours(2)));
-        assert_eq!(EventKind::Weekly52High.shelf_life(), Some(Duration::hours(8)));
-        assert_eq!(EventKind::Weekly52Low.shelf_life(), Some(Duration::hours(8)));
-        assert_eq!(EventKind::SocialPost.shelf_life(), Some(Duration::hours(12)));
+        assert_eq!(
+            EventKind::VolumeSpike.shelf_life(),
+            Some(Duration::hours(2))
+        );
+        assert_eq!(
+            EventKind::Weekly52High.shelf_life(),
+            Some(Duration::hours(8))
+        );
+        assert_eq!(
+            EventKind::Weekly52Low.shelf_life(),
+            Some(Duration::hours(8))
+        );
+        assert_eq!(
+            EventKind::SocialPost.shelf_life(),
+            Some(Duration::hours(12))
+        );
         assert_eq!(
             EventKind::PortfolioPreMarket.shelf_life(),
             Some(Duration::hours(6))

@@ -3,7 +3,16 @@
 - **发现时间**: 2026-04-27 20:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复进展（2026-04-28）
+
+- 已在 `crates/hone-web-api/src/routes/events.rs` 为 Web scheduler 失败链路补会话级失败提示落库：
+  - 非 heartbeat 调度任务失败时，若 `scheduler::ScheduledTaskExecution` 带用户可见错误，会把 `定时任务「...」执行出错，请稍后重试。` 写入对应 Web 会话。
+  - 即使底层错误被共享调度层标记为 `failure_kind=internal_error_suppressed`、不应向用户暴露内部细节，Web transcript 仍会留下产品化失败消息，避免“cron 台账有 run，但用户会话无痕迹”。
+  - 写入前会检查最后一条 assistant 是否已是同一失败提示，避免重复落库。
+- 已补 `scheduler_failure_trace_required_*` 单元测试，锁住内部错误抑制时仍需要用户可追溯失败痕迹、正常 noop 不应写失败提示。
+
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=7936`
