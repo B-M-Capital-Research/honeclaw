@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-04-30 01:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；同一库里的 `cron_job_runs` 已推进到 `2026-04-30 01:01:33+08:00`，说明即便最近一小时主要只有 scheduler 继续落库，会话镜像链路也仍完全没有恢复。
   - `2026-04-30 00:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `00:01` 与 `00:02` 两条 Feishu 直聊继续走完 `session.persist_assistant -> done success=true`，说明跨日后镜像停滞仍在持续扩大。
   - `2026-04-29 23:06 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `22:38` 与 `23:01` 两条 Feishu 直聊继续分别走完 `session.persist_assistant -> done success=true -> reply.send`，说明镜像停滞仍在持续扩大。
   - `2026-04-29 22:06 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `22:01-22:02` 两条 Feishu 直聊继续分别走完 `session.persist_assistant -> done success=true -> reply.send`，说明镜像停滞仍在持续扩大。
@@ -17,6 +18,10 @@
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-30 01:01 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 同一库里最近一小时 `cron_job_runs` 已继续写到 `2026-04-30T01:01:33.442072+08:00`；最近 5 分钟最新 run 仍持续推进到 `run_id=10601`，说明跨日后调度结果持续落库，而会话镜像链路继续静默停滞。
   - `2026-04-30 00:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

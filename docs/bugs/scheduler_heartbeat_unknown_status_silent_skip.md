@@ -15,6 +15,23 @@
 
 ## 修复进展
 
+- `2026-04-30 01:01` 最近一小时真实窗口确认这条缺陷跨日后仍未收口，而且 `00:30-01:01` 的最新两轮继续混跑 `started / Empty / JsonNoop / completed + sent`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour') AND heartbeat=1` 聚合，最近窗口已落成 `24` 条 started 行、`22` 条 `noop + skipped_noop` 与 `1` 条 `completed + sent`。
+  - `00:30` 窗口仍未恢复成稳定单一状态：
+    - `completed + sent`：`10578`（`RKLB异动监控`）
+    - `noop + skipped_noop + parse_kind=Empty`：`10576`（`持仓重大事件心跳检测`）
+    - started 行 `10567-10577` 仍先落成 `running + pending`
+  - `01:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `noop + skipped_noop + parse_kind=Empty`：`10596`（`TEM大事件心跳监控`）、`10597`（`Monitor_Watchlist_11`）
+    - `noop + skipped_noop + starts_with_json=false parse_kind=JsonNoop`：`10595`（`TEM破位预警`），`raw_preview="</think>{\"status\":\"noop\"}"`
+    - `noop + skipped_noop`：`10591-10594`、`10598-10601`
+    - started 行 `10579-10590` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `01:00:48.229-01:00:50.827`：同窗连续多次记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层随后仍回写 `tool_execute_success name=web_search`
+    - `01:00:58.791`：`TEM破位预警` 记录 `raw_chars=25 starts_with_json=false parse_kind=JsonNoop raw_preview="</think>{\"status\":\"noop\"}"`
+    - `01:00:58.900` 与 `01:01:03.790`：`TEM大事件心跳监控`、`Monitor_Watchlist_11` 继续记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+  - 结论：到 `2026-04-30 01:01` 为止，本单仍稳定活跃；跨日后最新窗口继续混跑 `started / Empty / JsonNoop / sent`，并持续伴随 Tavily 全 key 失败后的 `web_search` 伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 00:03` 最近一小时真实窗口确认这条缺陷跨日后仍未收口，而且 `23:30-00:02` 的最新两轮继续混跑 `started / Empty / PlainTextSuppressed / JsonTriggered / sent`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口已落成 `28` 条 started 行、`20` 条 `noop + skipped_noop`、`5` 条 `completed + sent` 与 `2` 条 `execution_failed + skipped_error`。
   - `23:30` 窗口仍未恢复成稳定单一状态：
