@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 23:07 CST
+最后更新：2026-04-30 00:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -26,9 +26,9 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 23:06 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `22:38` 与 `23:01` 两条 Feishu 直聊继续走完 `persist_assistant -> done success=true -> reply.send` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 00:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `00:01` 与 `00:02` 两条 Feishu 直聊继续走完 `persist_assistant -> done success=true` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-29 19:30 `run_id=10300` 再次把上游 `maximum context length` 400 压扁成 `invalid type: integer \`400\``；说明 2026-04-28 的 raw HTTP 兜底解析修复没有稳定收口生产链路 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 23:06 最新 `22:00-23:02` 窗口继续混跑：`10487-10495` 落成 `noop + skipped_noop`、`10497` 落成 `completed + sent`，但 `10473-10485` started 行仍先残留；同窗 `TEM/CAI/ORCL` 等任务继续输出 `parse_kind=Empty`，且 Tavily 4 个 key 再次全失败后 `web_search` 仍记 success | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 00:03 最新 `23:30-00:02` 窗口继续混跑：`10541/10549` 落成 `execution_failed + skipped_error + PlainTextSuppressed`、`10548` 落成 `noop + skipped_noop + Empty`、`10547` 落成 `completed + sent`，但 `10499-10511` 与 `10524-10536` started 行仍先残留；同窗 Tavily 4 个 key 再次全失败后 `web_search` 仍记 success | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | New | 2026-04-29 20:01 `英伟达每日消息` `run_id=10323` 再次落成 `completed + send_failed + console_event_sent=false`，正文已完整生成但离线 Web scheduler 仍被误记为发送失败 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |

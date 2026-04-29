@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-04-30 00:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `00:01` 与 `00:02` 两条 Feishu 直聊继续走完 `session.persist_assistant -> done success=true`，说明跨日后镜像停滞仍在持续扩大。
   - `2026-04-29 23:06 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `22:38` 与 `23:01` 两条 Feishu 直聊继续分别走完 `session.persist_assistant -> done success=true -> reply.send`，说明镜像停滞仍在持续扩大。
   - `2026-04-29 22:06 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `22:01-22:02` 两条 Feishu 直聊继续分别走完 `session.persist_assistant -> done success=true -> reply.send`，说明镜像停滞仍在持续扩大。
   - `2026-04-29 21:08 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `21:01-21:02` 三条 Feishu 直聊继续分别走完 `session.persist_assistant -> done success=true`，说明镜像停滞仍在持续扩大。
@@ -16,6 +17,14 @@
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-30 00:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 同一库里最近一小时 `cron_job_runs` 已继续写到 `2026-04-30T00:02:57.523734+08:00`，说明跨日后调度与直聊结果仍在持续落库，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-30 00:01:09.281-00:01:09.282` 记录 Feishu 直聊会话 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 落成 `session.persist_assistant detail=done -> done success=true reply.chars=1867`。
+  - 同日志在 `2026-04-30 00:02:50.813-00:02:50.814` 记录同一会话下一轮任务再次落成 `session.persist_assistant detail=done -> done success=true reply.chars=1500`。
+  - 这说明到 `00:02-00:03` 为止，真实 Feishu 会话仍在跨日后持续完成持久化与收口，而 `sessions` / `session_messages` 继续完全没有同步进去。
   - `2026-04-29 23:06 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

@@ -15,6 +15,24 @@
 
 ## 修复进展
 
+- `2026-04-30 00:03` 最近一小时真实窗口确认这条缺陷跨日后仍未收口，而且 `23:30-00:02` 的最新两轮继续混跑 `started / Empty / PlainTextSuppressed / JsonTriggered / sent`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口已落成 `28` 条 started 行、`20` 条 `noop + skipped_noop`、`5` 条 `completed + sent` 与 `2` 条 `execution_failed + skipped_error`。
+  - `23:30` 窗口仍未恢复成稳定单一状态：
+    - `completed + sent`：`10518`（`ASTS 重大异动心跳监控`）
+    - `noop + skipped_noop + parse_kind=Empty`：`10514`（`小米破位预警`）、`10519`（`Cerebras IPO与业务进展心跳监控`）
+    - started 行 `10499-10511` 仍先落成 `running + pending`
+  - `00:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `execution_failed + skipped_error + parse_kind=PlainTextSuppressed`：`10541`（`RKLB异动监控`）、`10549`（`ORCL 大事件监控`）
+    - `noop + skipped_noop + parse_kind=Empty`：`10548`（`小米破位预警`）
+    - `completed + sent`：`10547`（`Monitor_Watchlist_11`，`parse_kind=JsonTriggered`，正文直接触发 `ASTS` 买入预警）
+    - started 行 `10524-10536` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `00:00:27.869-00:00:30.589`：同窗连续多次记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层随后仍回写 `tool_execute_success name=web_search`
+    - `00:00:47.478`：`小米破位预警` 记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `00:00:51.743`：`ORCL 大事件监控` 继续记录 `raw_chars=66 starts_with_json=false parse_kind=PlainTextSuppressed raw_preview="（检查完成：ORCL 当日涨跌幅为 -1.66%...）"`
+    - `00:00:30.381`：`Monitor_Watchlist_11` 同窗又能落成 `parse_kind=JsonTriggered` 并送达，说明结构化漂移仍是同批任务内分化，而不是整批 scheduler 停摆
+  - 结论：到 `2026-04-30 00:03` 为止，本单仍稳定活跃；跨日后最新窗口继续混跑 `started / Empty / PlainTextSuppressed / JsonTriggered / sent`，并持续伴随 Tavily 全 key 失败后的 `web_search` 伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-29 23:06` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `22:00-23:02` 的最新两轮继续混跑 `Empty / JsonNoop / completed sent / started`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口已落成 `599` 条 started 行、`510` 条 `noop + skipped_noop`、`71` 条 `completed + sent`、`19` 条 `execution_failed + skipped_error` 与 `2` 条 `completed + send_failed`；说明 started 残留与结构化漂移仍在同步扩大。
   - `23:00` heartbeat 窗口继续没有收口成稳定纯 JSON 协议：
