@@ -15,6 +15,24 @@
 
 ## 修复进展
 
+- `2026-04-29 20:08` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `19:30-20:02` 的最新两轮已经继续从 `JsonEmptyStatus / PlainTextSuppressed` 漂到“带内部推理前缀的 `JsonNoop` / HTTP body decode failure / started 残留”混跑：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour') AND heartbeat=1` 聚合，最近窗口已落成 `24` 条 started 行、`21` 条 `noop + skipped_noop` 与 `2` 条 `execution_failed + skipped_error`；另有 `1` 条 Web scheduler `completed + send_failed`，说明同窗其它渠道仍在继续工作。
+  - `19:30` 窗口坏态继续共存：
+    - `execution_failed + skipped_error`：`10300`（`持仓重大事件心跳检测`，`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string`）
+    - `noop + skipped_noop`：`10292-10299`、`10301-10303`
+    - started 行 `10280-10291` 仍先落成 `running + pending`
+    - `data/runtime/logs/sidecar.log` 同窗继续出现 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层随后仍回写 `tool_execute_success name=web_search`
+  - `20:00` 窗口坏态没有收口成单一 JSON 协议：
+    - `execution_failed + skipped_error`：`10328`（`ORCL 大事件监控`，`LLM 错误: http error: error decoding response body`）
+    - `noop + skipped_noop`：`10318-10327`
+    - 其中 `10320`（`Cerebras IPO与业务进展心跳监控`）虽然最终落成 `noop + skipped_noop`，但 `detail_json.raw_preview` 明确包含 `**内部推理过程（不对外输出）**` 前缀，且 `starts_with_json=false`
+    - `10323`（Web `英伟达每日消息`）同时落成 `completed + send_failed`，说明并非整批 scheduler 全面停摆
+    - started 行 `10304-10317` 仍继续残留 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `20:02:13.924-20:02:13.925`：`CAI破位预警` 记录 `starts_with_json=false parse_kind=JsonNoop`，`raw_preview` 直接带 `**内部判定过程（不对外输出）**`，但仍被压成未命中
+    - `20:02:01.009-20:02:01.010`：`ORCL 大事件监控` 记录 `runner_error ... error="LLM 错误: http error: error decoding response body"`，随后渠道侧仍打印“心跳任务未命中，本轮不发送”
+  - 结论：到 `2026-04-29 20:08` 为止，本单仍稳定活跃；最新两轮 heartbeat 继续混跑 `JsonNoop(带内部前缀) / skipped_error / started`，并持续伴随 Tavily 全 key 失败后的 `web_search` 伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-29 19:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `18:30-19:02` 两轮 heartbeat 窗口继续从 `JsonEmptyStatus / noop / skipped_error` 漂到 `PlainTextSuppressed / skipped_error`：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour') AND heartbeat=1` 聚合，最近窗口已落成 `24` 条 started 行、`22` 条 `noop + skipped_noop` 与 `2` 条 `execution_failed + skipped_error`。
   - `18:30` 窗口仍未恢复成稳定单一状态：

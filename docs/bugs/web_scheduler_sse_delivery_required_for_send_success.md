@@ -7,6 +7,24 @@
 
 ## 证据来源
 
+- `2026-04-29 20:01` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=10323`
+    - `job_id=j_f42bfebd`
+    - `job_name=英伟达每日消息`
+    - `actor_channel=web`
+    - `executed_at=2026-04-29T20:01:14.101352+08:00`
+    - `execution_status=completed`
+    - `message_send_status=send_failed`
+    - `delivered=0`
+    - `should_deliver=1`
+    - `detail_json={"console_event_sent":false,"scheduler":null}`
+    - `response_preview` 已包含完整 NVDA 摘要开头与结构化段落，说明正文已生成完成，但调度台账再次把离线 Web 任务记成 `send_failed`
+  - 同表历史对照：
+    - `run_id=9099`（`2026-04-28 20:01:19+08:00`）是同一 `job_id=j_f42bfebd` 的前一日复现，最新 `10323` 说明这个晚间 job 也已经连续两天落成相同坏态
+  - 结论：
+    - 到 `2026-04-29 20:01` 为止，这条缺陷不仅限于晨报 job，连 `20:00` 的 `英伟达每日消息` 也继续稳定落成 `completed + send_failed + console_event_sent=false`
+
 - `2026-04-29 09:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=9796`
@@ -87,6 +105,8 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 ## 当前实现效果
 
+- `2026-04-29 20:01` 的 `英伟达每日消息` 说明，这条缺陷在最新一小时窗口仍未退出活跃态：正文已完整生成，但 `cron_job_runs` 依旧再次记成 `completed + send_failed + console_event_sent=false`。
+- 同一 `job_id=j_f42bfebd` 已连续两天（`2026-04-28`、`2026-04-29`）在 `20:00` 窗口复现，说明这不是单个晨报 job 的特例，而是 Web scheduler 的通用离线送达判定仍未收口。
 - `2026-04-29 09:02` 的 `09:00 美股AI与航空科技晨报` 说明，这条缺陷在当前最新窗口仍未退出活跃态：正文已完整生成并落成带结构化小标题的晨报，但 `cron_job_runs` 依旧再次记成 `completed + send_failed + console_event_sent=false`。
 - 同一 `job_id=j_183bee8d` 已连续三天（`2026-04-27`、`2026-04-28`、`2026-04-29`）都落成相同坏态，说明 `2026-04-28` 写入的修复结论并未在线上稳定生效。
 - `2026-04-28 20:01` 的 `英伟达每日消息` 说明，这条缺陷已经从 `Fixed` 回退为在线复现：正文已成功生成并记录 `session.persist_assistant detail=done`，但 `cron_job_runs` 仍再次落成 `completed + send_failed + console_event_sent=false`。
