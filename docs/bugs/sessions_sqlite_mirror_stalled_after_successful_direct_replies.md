@@ -6,6 +6,11 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 14:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T14:02:00.911705+08:00`，说明 sqlite 文件本身仍在持续接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 13:15 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

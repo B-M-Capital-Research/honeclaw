@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 13:15 CST
+最后更新：2026-04-29 14:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,8 +27,8 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-28 已把 `sanitized_empty_success` / `planning_sentence_suppressed` 从伪成功改为失败态并补回归，后续继续观察上游 Answer 空/过渡句根因是否仍复现 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 11:30 `ORCL 大事件监控` `run_id=9912` 把 `跌幅 4.07%` 写成“接近 5% 阈值”并送达；同根因更早已在 `10:01` 的 ASTS `run_id=9844` 把 `-6.89%` 包装成“接近 8%” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 13:15 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；`12:07` Web 直聊“心跳检测，请简短回复 OK”已在 ACP 流里产出 `OK + end_turn`，`13:02` 的 scheduler run 也已继续写入同库 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 13:02 最新窗口仍复现 `parse_kind=Empty raw_chars=0` 被记成 `noop + skipped_noop`；`run_id=9981/9982/9986` 分别命中 `Cerebras`、`ASTS`、`小米破位预警`，说明 README 之前的 `Fixed` 结论与现网证据不符 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 14:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同库 `cron_job_runs` 已继续写到 `2026-04-29 14:02:00+08:00`，说明只有会话镜像链路静默停滞 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 14:02 最新两轮已从 `parse_kind=Empty` 继续漂到 `noop/sent/skipped_error` 混跑；`run_id=10015` 与 `10039` 分别让 `持仓重大事件心跳检测`、`ORCL 大事件监控` 落成 `error decoding response body + skipped_error`，同窗 Tavily 仍全 key 失败后伪记 `web_search` 成功 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## Later / 待复现

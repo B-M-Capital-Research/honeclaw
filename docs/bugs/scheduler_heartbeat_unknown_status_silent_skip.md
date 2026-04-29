@@ -15,6 +15,23 @@
 
 ## 修复进展
 
+- `2026-04-29 14:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且最新两轮已经从 README 里记录的 `parse_kind=Empty` 继续漂到 `noop / sent / skipped_error` 混跑，同时 Tavily 全 key 失败后 `web_search` 仍被工具层记成功：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-70 minutes') AND heartbeat=1` 聚合，最近窗口已落成 `36` 条 started 行、`32` 条 `noop + skipped_noop`、`2` 条 `completed + sent` 与 `2` 条 `execution_failed + skipped_error`。
+  - `13:30` 窗口继续混跑：
+    - `completed + sent`：`10011`（`ASTS 重大异动心跳监控`）
+    - `execution_failed + skipped_error`：`10015`（`持仓重大事件心跳检测`，`LLM 错误: http error: error decoding response body`）
+    - `noop + skipped_noop`：`10004-10010`、`10012-10014`
+  - `14:00` 窗口仍未恢复成稳定单一状态：
+    - `completed + sent`：`10030`（`TEM大事件心跳监控`）
+    - `execution_failed + skipped_error`：`10039`（`ORCL 大事件监控`，`LLM 错误: http error: error decoding response body`）
+    - `noop + skipped_noop`：`10028-10029`、`10031-10038`
+    - started 行 `10016-10027` 仍先落成 `running + pending`，说明状态漂移与 started 残留继续同步发生
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账编码差异：
+    - `14:00:28.180`、`14:00:35.819`、`14:00:36.814`：同窗连续记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但随后仍回写 `tool_execute_success name=web_search`
+    - `14:00:42.978-14:00:42.979`：`TEM大事件心跳监控` 正常落成 `parse_kind=JsonTriggered` 并送达，说明并非整批 scheduler 全面停摆
+    - `14:02:00.909-14:02:00.911`：`ORCL 大事件监控` 记录 `runner_error ... error="LLM 错误: http error: error decoding response body"`，随后渠道侧仍打印“心跳任务未命中，本轮不发送”
+  - 结论：到 `2026-04-29 14:02` 为止，本单仍稳定活跃；最新窗口虽然暂未再次出现大面积 `Empty`，但依旧维持 `noop / sent / skipped_error / started` 混跑，并持续伴随搜索工具伪成功与错误态被统一压成“未命中”，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-29 13:15` 最近一小时真实窗口确认 README 里的 `Fixed` 结论不成立，而且 `12:30-13:02` 的最新一轮仍在持续把空返回吞成 `noop + skipped_noop`：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最新窗口仍有多条 `parse_kind=Empty` 终态继续被记为合法 `noop`：
     - `run_id=9966`（`Cerebras IPO与业务进展心跳监控`，`12:30:42`）记录 `raw_chars=0 raw_preview="" parse_kind=Empty`
