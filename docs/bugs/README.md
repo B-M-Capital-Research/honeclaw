@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 12:02 CST
+最后更新：2026-04-29 13:15 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：4
+- 活跃待修复：5
 - Later / 待复现：14
-- 已修复 / 已关闭：74
+- 已修复 / 已关闭：73
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -27,7 +27,8 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-28 已把 `sanitized_empty_success` / `planning_sentence_suppressed` 从伪成功改为失败态并补回归，后续继续观察上游 Answer 空/过渡句根因是否仍复现 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 11:30 `ORCL 大事件监控` `run_id=9912` 把 `跌幅 4.07%` 写成“接近 5% 阈值”并送达；同根因更早已在 `10:01` 的 ASTS `run_id=9844` 把 `-6.89%` 包装成“接近 8%” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
-| Feishu / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 12:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同库 `cron_job_runs` 已写到 `run_id=9942`，Feishu 直聊也在 `12:01:40` 落成 `persist_assistant + done success=true` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 13:15 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；`12:07` Web 直聊“心跳检测，请简短回复 OK”已在 ACP 流里产出 `OK + end_turn`，`13:02` 的 scheduler run 也已继续写入同库 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 13:02 最新窗口仍复现 `parse_kind=Empty raw_chars=0` 被记成 `noop + skipped_noop`；`run_id=9981/9982/9986` 分别命中 `Cerebras`、`ASTS`、`小米破位预警`，说明 README 之前的 `Fixed` 结论与现网证据不符 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## Later / 待复现
@@ -65,7 +66,6 @@
 | Disabled channel 跳过启动后仍残留 stale pid 文件 | P3 | Fixed | 2026-04-28 `launch.sh` 在启动检查时识别 zombie child 并执行 `wait`，disabled channel 以 `CHANNEL_DISABLED_EXIT_CODE` 退出时会稳定删除 pid 文件；`bash -n launch.sh` 通过 | [disabled_channel_pid_files_survive_skipped_startup.md](./disabled_channel_pid_files_survive_skipped_startup.md) |
 | Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | Fixed | 2026-04-28 复核当前实现已在 provider error / unparseable response 时走 deterministic fallback 并写缓存与结构化日志，且本轮 OpenAI-compatible numeric error 解析已加固；该路径不再返回 `None` 造成静默降级 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
 | Event-engine window convergence upgrade bursts crowd digest quality | P3 | Fixed | 2026-04-28 复核当前配置默认值已启用 `news_upgrade_per_symbol_per_tick=3` 与 `news_upgrade_per_tick=12`，router per-tick/per-symbol guard 已有回归覆盖；旧 active 记录对应的“未配置导致 guard 关闭”不再成立 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-04-28 heartbeat 空输出与 `{}` / 缺失 `status` 的空 JSON 不再被吞成合法 `noop`，而是统一落为结构化失败；结合 plain text / malformed / unknown status 既有失败收口，坏态不再在伪静默和失败间漂移 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Web 定时任务在 Codex ACP 提前 `end_turn` 且仍有未完成搜索工具时整轮失败，失败提示既未落库也未送达 | P2 | Fixed | 2026-04-28 Web scheduler 对失败任务补会话级失败提示落库；即使底层内部错误被抑制、不向用户暴露细节，也会在 transcript 中留下产品化失败消息，台账同步保留 `skipped_error` / failure trace | [web_scheduler_codex_acp_unfinished_tool_send_failed.md](./web_scheduler_codex_acp_unfinished_tool_send_failed.md) |
 | Global digest Pass1 模型在 42-61 候选下塌成 1/2/3 三档,且 collector SQL 把 FMP trusted-Low 全砍光 | P1 | Fixed | 2026-04-27 POC 实测后:Pass1 默认从 `amazon/nova-lite-v1` 切到 `x-ai/grok-4.1-fast`(score 分布恢复 5 档,Iran/Hormuz 11 条自动合 1 簇);collector SQL 改为非对称门槛,FMP trusted 域允许 Low 进池(GOOGL 财报预告等 thesis 硬料不再被砍) | [global_digest_pass1_model_collapse_and_severity_gate.md](./global_digest_pass1_model_collapse_and_severity_gate.md) |
 | Truth Social source 持续 403 断流 | P2 | Closed | 2026-04-26 已完全移除 Truth Social source：删除 poller、配置类型、engine 装配和 `config.yaml` 启用项，后续不再启动该 source | [truth_social_poller_opaque_json_decode_stalls_source.md](./truth_social_poller_opaque_json_decode_stalls_source.md) |

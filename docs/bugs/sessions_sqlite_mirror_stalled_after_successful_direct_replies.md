@@ -1,10 +1,19 @@
-# Bug: Feishu 直聊已成功持久化并发送，但 `sessions.sqlite3` 会话镜像停留在前一日下午
+# Bug: 成功直聊 / Web 会话已收口，但 `sessions.sqlite3` 会话镜像停留在前一日下午
 
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
 - **状态**: New
 - **证据来源**:
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 13:15 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T13:02:06.762643+08:00`，说明 sqlite 文件本身仍在持续接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/acp-events.log` 在 `2026-04-29T04:07:31.548462Z` 记录 Web 会话 `Actor_web__direct__web-user-e05f5e5f74a3` 收到用户输入 `心跳检测，请简短回复 OK`。
+  - 同一 session 在 `2026-04-29T04:07:41.653348Z` 输出 `agent_message_chunk text="OK"`，并在 `2026-04-29T04:07:42.001475Z` 落成 `stopReason=end_turn`。
+  - 这说明到 `12:07` 为止，Web direct 真实会话也已正常收口，而不是只有 Feishu/Discord 还在推进；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 12:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

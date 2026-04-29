@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: Fixing
 
 ## 修复进展（2026-04-28）
 
@@ -14,6 +14,19 @@
 - 已补/更新回归：`heartbeat_empty_json_marks_execution_failed`、`heartbeat_think_plus_empty_json_marks_execution_failed`、`heartbeat_empty_output_marks_execution_failed`。
 
 ## 修复进展
+
+- `2026-04-29 13:15` 最近一小时真实窗口确认 README 里的 `Fixed` 结论不成立，而且 `12:30-13:02` 的最新一轮仍在持续把空返回吞成 `noop + skipped_noop`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最新窗口仍有多条 `parse_kind=Empty` 终态继续被记为合法 `noop`：
+    - `run_id=9966`（`Cerebras IPO与业务进展心跳监控`，`12:30:42`）记录 `raw_chars=0 raw_preview="" parse_kind=Empty`
+    - `run_id=9981`（`Cerebras IPO与业务进展心跳监控`，`13:00:34`）记录 `raw_chars=0 raw_preview="" parse_kind=Empty`
+    - `run_id=9982`（`ASTS 重大异动心跳监控`，`13:00:41`）记录 `raw_chars=0 raw_preview="" parse_kind=Empty`
+    - `run_id=9986`（`小米破位预警`，`13:01:13`）记录 `raw_chars=0 raw_preview="" parse_kind=Empty`
+  - 这些样本的 `execution_status/message_send_status` 仍然都是 `noop + skipped_noop + delivered=0`，没有升级成结构化失败态。
+  - `data/runtime/logs/sidecar.log` 同步记录：
+    - `2026-04-29 13:00:34.507`：`Cerebras IPO与业务进展心跳监控` `parse_kind=Empty raw_preview=""`
+    - `2026-04-29 13:00:41.748`：`ASTS 重大异动心跳监控` `parse_kind=Empty raw_preview=""`
+    - `2026-04-29 13:01:13.097`：`小米破位预警` `parse_kind=Empty raw_preview=""`
+  - 结论：到 `2026-04-29 13:15` 为止，线上仍存在“空 heartbeat 输出被当成合法 noop 吞掉”的旧坏态，因此本单状态回调为 `Fixing`，并重新进入活跃缺陷队列。
 
 - `2026-04-29 09:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `09:00-09:02` 的最新一轮已经从“空输出吞成 noop”进一步回退到“明明给出 triggered JSON，却因前缀污染被压成 failure”：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `35` 条 started 行、`21` 条 `noop + skipped_noop`、`16` 条 `completed + sent`、`1` 条 `completed + send_failed` 与 `1` 条 `execution_failed + skipped_error`。
