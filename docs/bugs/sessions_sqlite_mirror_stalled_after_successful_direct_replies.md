@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 08:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T08:01:24.384569+08:00`，且最近一小时已新增 `53` 条终态 / started 样本，说明 sqlite 文件本身仍在接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-29 07:33:00-07:33:03` 仍记录 Feishu 直聊 `Actor_feishu__direct__ou_5f75e4930f5e04de8b0412821553c1abe3` 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=3431 -> step=reply.send detail=segments.sent=3/3`。
+  - 同一 session 在 `07:37:34-07:37:37` 又再次完整走完 `persist_assistant -> done success=true -> reply.send`，说明真实 direct 链路在同一最近一小时内连续成功两轮。
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-29 07:52:50-07:52:55` 还记录另一条 Feishu 直聊 `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 落成 `persist_assistant -> done success=true reply.chars=6355 -> reply.send segments.sent=4/4`。
+  - 这说明到 `08:02` 为止，真实 direct 主链路仍在持续工作；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 07:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

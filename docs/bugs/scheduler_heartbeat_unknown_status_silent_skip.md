@@ -7,6 +7,24 @@
 
 ## 修复进展
 
+- `2026-04-29 08:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `07:30-08:01` 两轮 heartbeat / scheduler 窗口继续在 `JsonTriggered / JsonNoop / Empty / started` 之间漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `28` 条 started 行、`22` 条 `noop + skipped_noop` 与 `3` 条 `completed + sent`。
+  - `07:30` 窗口并未恢复成稳定单一状态：
+    - `completed + sent`：`9687`（`小米30港元破位预警`）、`9692`（`Monitor_Watchlist_11`）
+    - `parse_kind=Empty`：`9684`（`ORCL 大事件监控`）继续记录 `raw_chars=0 starts_with_json=false`
+    - `parse_kind=JsonNoop`：`9682-9686`、`9688-9691`、`9693`
+    - 同窗 started 行 `9678-9681` 与 `9679-9693` 仍先落成 `running + pending`，说明 heartbeat 状态漂移与 started 残留继续同步发生
+  - `08:00` 窗口继续混跑：
+    - `completed + sent`：`9711`（`HoneClaw每日使用Tips`）
+    - `parse_kind=Empty`：`9714`（`Cerebras IPO与业务进展心跳监控`）
+    - `parse_kind=JsonNoop`：`9710`、`9712-9713`、`9715-9721`
+    - 同窗 started 行 `9694-9709` 又先落成 `running + pending`，说明“空输出吞成 noop”和“started 残留”仍在同窗并存
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账编码差异：
+    - `07:30:59.518-07:30:59.519`：`Monitor_Watchlist_11` 记录 `parse_kind=JsonTriggered`，正文却把 `ASTS 71.88` 包装成“距触发价 69.83 仅差 2.9% 也算已触发”，说明结构化成功并不等于判定健康
+    - `07:30:15.262`：`ORCL 大事件监控` 继续记录 `parse_kind=Empty raw_preview=""`
+    - `08:00:40.573`：`Cerebras IPO与业务进展心跳监控` 继续记录 `parse_kind=Empty raw_preview=""`
+    - `08:00:48.170-08:00:48.908`：同窗 Tavily 继续连续 4 key 配额失败并输出 `Tavily 搜索当前不可用`，但工具层仍回写 `tool_execute_success name=web_search`
+  - 结论：到 `2026-04-29 08:02` 为止，本单仍稳定活跃；最新一小时依旧不是稳定纯 JSON 契约，而是 `noop / sent / Empty / started` 混跑，并继续伴随搜索工具伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
 - `2026-04-29 07:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `06:30-07:02` 两轮 heartbeat 窗口继续在 `JsonTriggered / JsonNoop / JsonMalformed / Empty / started` 之间漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时已落成 `24` 条 started 行、`20` 条 `noop + skipped_noop`、`3` 条 `completed + sent` 与 `1` 条 `execution_failed + skipped_error`。
   - `06:30` 窗口并未恢复成稳定单一状态：
