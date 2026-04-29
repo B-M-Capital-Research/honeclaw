@@ -15,6 +15,22 @@
 
 ## 修复进展
 
+- `2026-04-29 16:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `15:00-16:02` 的最新两轮又从 README 里记录的 `error decoding response body` 漂到了“非结构化 JSON失败 + provider 协议反序列化失败 + noop 混跑”：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-04-29T15:00:00+08:00' AND heartbeat=1` 统计，最近窗口已落成 `36` 条 started 行、`26` 条 `noop + skipped_noop`、`3` 条 `completed + sent` 与 `4` 条 `execution_failed + skipped_error`。
+  - `15:00` 窗口继续混跑：
+    - `completed + sent`：`10076`（`全天原油价格3小时播报`）、`10085`（`持仓重大事件心跳检测`）、`10087`（`Monitor_Watchlist_11`）
+    - `execution_failed + skipped_error`：`10082`（`Cerebras IPO与业务进展心跳监控`，`heartbeat 输出不是结构化 JSON`）、`10086`（`ASTS 重大异动心跳监控`，`LLM 错误: http error: error decoding response body`）
+    - `noop + skipped_noop`：`10077-10081`、`10083-10084`
+  - `16:00` 窗口仍未恢复成稳定单一状态：
+    - `execution_failed + skipped_error`：`10130`（`Cerebras IPO与业务进展心跳监控`，`heartbeat 输出不是结构化 JSON`）、`10135`（`ORCL 大事件监控`，`LLM 错误: failed to deserialize api response: missing field id at line 259 column 58`）
+    - `noop + skipped_noop`：`10124-10129`、`10131-10134`
+    - started 行 `10112-10123` 仍先落成 `running + pending`，说明状态漂移与 started 残留继续同步发生
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账编码差异：
+    - `2026-04-29 16:02:14.859` 同窗直接打印 provider 原始错误片段 `{\"error\":{\"message\":\"Provider returned error\",\"code\":400}}`
+    - 同秒紧接着记录 `run_finish ... success=false error="LLM 错误: failed to deserialize api response: missing field \`id\` at line 259 column 58"` 与 `runner_error ... model=moonshotai/kimi-k2.5`
+    - 随后渠道侧仍打印 `心跳任务未命中，本轮不发送: job=ORCL 大事件监控`，说明用户态/台账态仍把解析失败压扁成“未命中”
+  - 结论：到 `2026-04-29 16:02` 为止，本单仍稳定活跃；当前坏态已覆盖 `noop / sent / 非结构化 JSON失败 / provider 协议反序列化失败 / started` 并存，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-29 14:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且最新两轮已经从 README 里记录的 `parse_kind=Empty` 继续漂到 `noop / sent / skipped_error` 混跑，同时 Tavily 全 key 失败后 `web_search` 仍被工具层记成功：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-70 minutes') AND heartbeat=1` 聚合，最近窗口已落成 `36` 条 started 行、`32` 条 `noop + skipped_noop`、`2` 条 `completed + sent` 与 `2` 条 `execution_failed + skipped_error`。
   - `13:30` 窗口继续混跑：

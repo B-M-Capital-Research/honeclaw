@@ -3,9 +3,20 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
+- **修复结论复核**:
+  - `2026-04-29 16:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，而 `cron_job_runs` 与 Feishu direct `end_turn` 已继续推进到同日 `16:02` / `15:49`。
+  - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 16:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T16:02:14.826213+08:00`，其中 `run_id=10135` 已落成最新 heartbeat 终态，说明 sqlite 文件本身仍在持续接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/acp-events.log` 在 `2026-04-29T07:49:17.068900Z` 记录 Feishu 直聊会话 `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 落成 `stopReason=end_turn`。
+  - 同一会话在 `2026-04-29T07:49:16.224859Z` 前持续输出 `agent_message_chunk`，正文最终收口到“我已经为 CIEN 建立了长期公司画像。”，说明最近一小时并非没有真实直聊完成，只是 `sessions` / `session_messages` 仍完全没有同步进去。
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 15:03 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
