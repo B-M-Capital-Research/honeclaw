@@ -13,10 +13,15 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, Utc};
 
 use crate::event::{EventKind, MarketEvent, Severity};
+use crate::unified_digest::{FloorTag, ItemOrigin, ThesisRelation};
 
 /// 单条 digest 条目的结构化表示。`headline` 是已经过 `digest_event_title()`
 /// 处理(SocialPost 取首行)的展示标题;`primary_symbol` 取 `symbols.first()`
 /// 大写化后的 cashtag 内容(不含 `$` 前缀)。
+///
+/// `origin` / `floor` / `comment` / `thesis_relation` 是 unified digest pipeline
+/// commit 1 加入的字段——旧 `DigestScheduler` 产物默认 `Buffered + None`,
+/// commit 3 起由 `unified_digest::collector` / `curator` 填充。
 #[derive(Debug, Clone)]
 pub struct DigestItem {
     pub id: String,
@@ -26,6 +31,14 @@ pub struct DigestItem {
     pub headline: String,
     pub url: Option<String>,
     pub occurred_at: DateTime<Utc>,
+    /// 来源标签——决定渲染层 emoji / 排序。旧 pipeline 全部 `Buffered`。
+    pub origin: ItemOrigin,
+    /// 命中 floor 时填充,绕过 LLM 排序、永远 prepend。
+    pub floor: Option<FloorTag>,
+    /// Pass 2 personalize 产出的中文短评;LLM 失败或未走 unified pipeline 时为 `None`。
+    pub comment: Option<String>,
+    /// 该条与用户 thesis 的关系——渲染层据此打 ✅/❌ 标记。
+    pub thesis_relation: Option<ThesisRelation>,
 }
 
 /// 一批 digest 推送的载荷。`items` 已 dedup 且保留 scheduler 排好的顺序,
@@ -130,6 +143,10 @@ pub(crate) fn item_from_event(event: &MarketEvent, headline: String) -> DigestIt
             .filter(|u| !u.is_empty())
             .map(String::from),
         occurred_at: event.occurred_at,
+        origin: ItemOrigin::Buffered,
+        floor: None,
+        comment: None,
+        thesis_relation: None,
     }
 }
 
@@ -146,6 +163,10 @@ mod tests {
             headline: "h".into(),
             url: None,
             occurred_at: Utc::now(),
+            origin: ItemOrigin::Buffered,
+            floor: None,
+            comment: None,
+            thesis_relation: None,
         }
     }
 

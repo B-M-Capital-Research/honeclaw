@@ -34,6 +34,7 @@ use hone_core::ActorIdentity;
 use serde::{Deserialize, Serialize};
 
 use crate::event::{EventKind, MarketEvent, Severity};
+use crate::unified_digest::DigestSlot;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -57,7 +58,14 @@ pub struct NotificationPrefs {
     pub timezone: Option<String>,
     /// 用户希望触发 digest 的本地时刻列表(`"HH:MM"`,按 `timezone` 解释)。
     /// `None` → 沿用全局 `[pre_market, post_market]`。`Some(vec![])` = 完全关 digest。
+    ///
+    /// **DEPRECATED**(unified digest commit 1 起):新代码用 `digest_slots`。
+    /// 老 JSON 反序列化仍走本字段;调用方通过 `effective_digest_slots()` 取最终 slot 列表。
     pub digest_windows: Option<Vec<String>>,
+    /// Unified digest 的触发槽位列表。每条 slot = 一次推送。
+    /// `None` → 回退 `digest_windows`(若也是 `None` 则走全局默认);`Some(vec![])` = 关闭。
+    /// commit 1 仅落地字段 + serde,行为接入由 commit 3 的 `UnifiedDigestScheduler`。
+    pub digest_slots: Option<Vec<DigestSlot>>,
     /// 价格异动即时推阈值(百分点,绝对值)。`None` → 沿用全局
     /// `thresholds.price_alert_high_pct`(目前 6.0)。例如 `Some(3.5)` = 任何
     /// `|pct| >= 3.5%` 的 PriceAlert 在本 actor 路由阶段升 High。
@@ -128,6 +136,7 @@ impl Default for NotificationPrefs {
             news_importance_prompt: None,
             timezone: None,
             digest_windows: None,
+            digest_slots: None,
             price_high_pct_override: None,
             immediate_kinds: None,
             quiet_mode: false,
@@ -181,6 +190,20 @@ impl NotificationPrefs {
             }
         }
         true
+    }
+
+    /// 取最终 slot 列表:优先 `digest_slots`,缺失时把老 `digest_windows: Vec<String>`
+    /// 用 `DigestSlot::from_legacy_window` wrap。两者皆 `None` → 返回 `None`(走全局默认)。
+    /// `Some(vec![])` 语义 = 用户关掉 digest,保持原行为。
+    pub fn effective_digest_slots(&self) -> Option<Vec<DigestSlot>> {
+        if let Some(slots) = &self.digest_slots {
+            return Some(slots.clone());
+        }
+        self.digest_windows.as_ref().map(|w| {
+            w.iter()
+                .map(|t| DigestSlot::from_legacy_window(t.clone()))
+                .collect()
+        })
     }
 
     pub fn source_blocked(&self, source: &str) -> bool {
@@ -486,6 +509,7 @@ mod tests {
             news_importance_prompt: None,
             timezone: Some("America/New_York".into()),
             digest_windows: Some(vec!["07:00".into(), "18:00".into()]),
+            digest_slots: None,
             price_high_pct_override: Some(3.5),
             immediate_kinds: Some(vec!["weekly52_high".into(), "analyst_grade".into()]),
             quiet_mode: true,
@@ -675,6 +699,69 @@ mod tests {
         assert_eq!(
             first_invalid_kind_tag(["earnings_released", "not_a_tag"]),
             Some("not_a_tag")
+        );
+    }
+
+    #[test]
+    fn effective_digest_slots_prefers_slots_field() {
+        let p = NotificationPrefs {
+            digest_windows: Some(vec!["07:00".into()]),
+            digest_slots: Some(vec![DigestSlot {
+                id: "premarket".into(),
+                time: "08:30".into(),
+                label: Some("盘前".into()),
+                floor_macro: Some(2),
+            }]),
+            ..Default::default()
+        };
+        let slots = p.effective_digest_slots().unwrap();
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].id, "premarket");
+        assert_eq!(slots[0].time, "08:30");
+    }
+
+    #[test]
+    fn effective_digest_slots_wraps_legacy_windows() {
+        let p = NotificationPrefs {
+            digest_windows: Some(vec!["07:00".into(), "19:00".into()]),
+            digest_slots: None,
+            ..Default::default()
+        };
+        let slots = p.effective_digest_slots().unwrap();
+        assert_eq!(slots.len(), 2);
+        // 全部 wrap 成 default id —— 后续 commit 看 id 区分时
+        // legacy 数据落到同一个 slot 里(commit 5 的 migration 会重写 id)。
+        assert!(slots.iter().all(|s| s.id == DigestSlot::DEFAULT_ID));
+        assert_eq!(slots[0].time, "07:00");
+        assert_eq!(slots[1].time, "19:00");
+    }
+
+    #[test]
+    fn effective_digest_slots_returns_none_when_both_absent() {
+        let p = NotificationPrefs::default();
+        assert!(p.effective_digest_slots().is_none());
+    }
+
+    #[test]
+    fn effective_digest_slots_preserves_empty_disable_semantics() {
+        let p = NotificationPrefs {
+            digest_slots: Some(vec![]),
+            ..Default::default()
+        };
+        // Some([]) 必须保留 —— 用户主动关 digest 的语义。
+        assert_eq!(p.effective_digest_slots(), Some(vec![]));
+    }
+
+    #[test]
+    fn old_prefs_without_digest_slots_loads_with_none() {
+        // 老 JSON 没有 digest_slots 字段 → serde(default) 应得到 None,
+        // digest_windows 仍可继续填(commit 1 不破坏旧行为)。
+        let json = r#"{"enabled":true,"digest_windows":["07:00","19:00"]}"#;
+        let loaded: NotificationPrefs = serde_json::from_str(json).expect("deserialize");
+        assert!(loaded.digest_slots.is_none());
+        assert_eq!(
+            loaded.digest_windows.as_deref(),
+            Some(&["07:00".to_string(), "19:00".to_string()][..])
         );
     }
 

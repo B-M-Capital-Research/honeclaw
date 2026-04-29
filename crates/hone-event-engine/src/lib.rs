@@ -21,6 +21,7 @@ pub mod sinks;
 pub mod source;
 pub mod store;
 pub mod subscription;
+pub mod unified_digest;
 
 // ── 内部子 module:engine 主体 + spawn 模板 + 共享 pipeline ──
 // 保持 crate 私有:EventEngine 通过下面的 pub use 暴露,其它三个不外露。

@@ -198,6 +198,10 @@ mod tests {
             headline: headline.into(),
             url: url.map(String::from),
             occurred_at: Utc::now(),
+            origin: crate::unified_digest::ItemOrigin::Buffered,
+            floor: None,
+            comment: None,
+            thesis_relation: None,
         }
     }
 
