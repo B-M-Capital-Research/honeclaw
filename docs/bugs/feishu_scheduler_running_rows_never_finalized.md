@@ -8,6 +8,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 19:02 CST` 再次复核，started-row finalize 缺陷在最新 `18:30`、`19:00` 两个 heartbeat 窗口继续实时新增：
+    - `18:30` 窗口先写入 `run_id=10232-10243` 共 `12` 条 started 行，全部为 `execution_status=running`、`message_send_status=pending`
+    - 同窗终态随后另起为 `run_id=10244-10255`：其中 `10244-10254` 已落成 `noop + skipped_noop`，`10255`（`持仓重大事件心跳检测`）已落成 `execution_failed + skipped_error`
+    - `19:00` 窗口又先写入 `run_id=10256-10267` 共 `12` 条 started 行；同窗终态另起为 `run_id=10268-10279`，其中 `10268-10278` 多数已落成 `noop + skipped_noop`，`10279`（`Cerebras IPO与业务进展心跳监控`）已落成 `execution_failed + skipped_error`
+    - 但对应 started 行 `10232-10243` 与 `10256-10267` 仍全部保留，说明无论终态是 `noop` 还是 `skipped_error`，都不会覆盖原 started 行
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍然同时存在：
+    - `running + pending = 24`
+    - `noop + skipped_noop = 22`
+    - `execution_failed + skipped_error = 2`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1755` 条，较 `18:02` 巡检记录里的 `1731` 再增 `24` 条，说明每推进一轮新窗口仍会继续堆积 started 脏行
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 18:02 CST` 再次复核，已标记 `Fixed` 的 started-row finalize 问题在当前 live 数据里仍然活跃：
     - `18:00` 窗口再次先写入 `run_id=10208-10219` 共 `12` 条 started 行，全部为 `execution_status=running`、`message_send_status=pending`
     - 同窗终态随后另起为 `run_id=10220-10231`：其中 `10220-10230` 多数已落成 `noop + skipped_noop`，`10231`（`持仓重大事件心跳检测`）已落成 `execution_failed + skipped_error`

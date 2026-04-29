@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 18:03 CST
+最后更新：2026-04-29 19:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,9 +27,9 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 17:01 `ASTS 重大异动心跳监控` `run_id=10183` 已把 `status=triggered` 送达，但正文同时承认“未达到 8% 阈值”；同根因更早已在 `11:30` 的 ORCL `run_id=9912` 把 `跌幅 4.07%` 写成“接近 5% 阈值” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 17:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `16:20` Feishu 直聊已完整走完 `persist_assistant -> reply.send -> end_turn`，同库 `cron_job_runs` 也继续写到 `2026-04-29 17:01:39+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 16:02 最新整点窗口继续混跑：`run_id=10130` 再次把 `Cerebras IPO与业务进展心跳监控` 打成“输出不是结构化 JSON”，`run_id=10135` 让 `ORCL 大事件监控` 漂到 `missing field id + skipped_error`，同窗其余任务仍多为 `noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，已标记 Fixed 的 started 行 finalize 缺陷复发 | P3 | New | 2026-04-29 18:02 最新 `18:00` heartbeat 窗口再次同时留下 `run_id=10208-10219` started 行与 `10220-10231` 终态行；全库 `running + pending` 残留升到 `1731` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 19:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `18:47-18:48` Feishu 直聊已完整走完 `persist_assistant -> reply.send -> end_turn`，同库 `cron_job_runs` 也继续写到 `2026-04-29 19:01:59+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 19:02 最新两轮继续混跑：`18:30` 的 `run_id=10247` 仍把 `Cerebras IPO与业务进展心跳监控` 记成 `JsonEmptyStatus {}` 并压成未命中，`19:01` 的 `run_id=10279` 又因 `PlainTextSuppressed` 内部推理文本落成 `skipped_error`；同窗 Tavily 全 key 失败后 `web_search` 仍被记成功 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，已标记 Fixed 的 started 行 finalize 缺陷复发 | P3 | New | 2026-04-29 19:02 最新 `18:30` 与 `19:00` heartbeat 窗口继续同时留下 `run_id=10232-10243`、`10256-10267` started 行及各自终态行；全库 `running + pending` 残留升到 `1755` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-29 15:02 `Monitor_Watchlist_11` `run_id=10087` 再次把 `ASTS 71.88` 写成“已低于触发价 69.83”并送达；同 job 在 `14:30` 仍是 `noop`，说明线上已复发 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 

@@ -15,6 +15,23 @@
 
 ## 修复进展
 
+- `2026-04-29 19:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `18:30-19:02` 两轮 heartbeat 窗口继续从 `JsonEmptyStatus / noop / skipped_error` 漂到 `PlainTextSuppressed / skipped_error`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour') AND heartbeat=1` 聚合，最近窗口已落成 `24` 条 started 行、`22` 条 `noop + skipped_noop` 与 `2` 条 `execution_failed + skipped_error`。
+  - `18:30` 窗口仍未恢复成稳定单一状态：
+    - `execution_failed + skipped_error`：`10255`（`持仓重大事件心跳检测`，`LLM 错误: http error: error decoding response body`）
+    - `noop + skipped_noop`：`10244-10254`
+    - 同窗 `10243-10254` 之前另有 `12` 条 started 行，说明状态漂移与 started 残留继续同步发生。
+    - `data/runtime/logs/sidecar.log` 同步显示 `10247`（`Cerebras IPO与业务进展心跳监控`）仍把 `raw_preview="{}"` 记成 `parse_kind=JsonEmptyStatus`，随后渠道侧继续打印“心跳任务未命中，本轮不发送”。
+  - `19:00` 窗口坏态继续扩大：
+    - `execution_failed + skipped_error`：`10279`（`Cerebras IPO与业务进展心跳监控`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）
+    - `noop + skipped_noop`：`10268-10278`
+    - started 行 `10256-10267` 仍先落成 `running + pending`，说明“started 残留”和结构化坏态继续并存。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账编码差异：
+    - `19:00:35-19:01:54` 同窗连续多次记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层仍回写 `tool_execute_success name=web_search`
+    - `19:01:59.329`：`Cerebras IPO与业务进展心跳监控` 记录 `raw_chars=434 starts_with_json=false parse_kind=PlainTextSuppressed`，`raw_preview` 直接出现 `**内部推理过程（不对外输出）**` 与四轮检索关键词摘要
+    - 随后渠道侧仍打印“心跳任务未命中，本轮不发送”，而 `cron_job_runs` 已把该轮记为 `execution_failed + skipped_error`
+  - 结论：到 `2026-04-29 19:02` 为止，本单仍稳定活跃；最新坏态已经从 `JsonEmptyStatus / noop / skipped_error` 进一步扩大成 `PlainTextSuppressed / skipped_error / started` 混跑，并继续伴随 Tavily 全 key 失败后的 `web_search` 伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-29 16:02` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `15:00-16:02` 的最新两轮又从 README 里记录的 `error decoding response body` 漂到了“非结构化 JSON失败 + provider 协议反序列化失败 + noop 混跑”：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-04-29T15:00:00+08:00' AND heartbeat=1` 统计，最近窗口已落成 `36` 条 started 行、`26` 条 `noop + skipped_noop`、`3` 条 `completed + sent` 与 `4` 条 `execution_failed + skipped_error`。
   - `15:00` 窗口继续混跑：

@@ -6,10 +6,20 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-04-29 19:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `18:47-18:48` 的 Feishu 直聊已完整走完 `session.persist_assistant -> reply.send -> ACP end_turn`，说明会话镜像停滞仍在持续。
   - `2026-04-29 17:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `16:20` 的 Feishu 直聊已完整走完 `session.persist_assistant -> reply.send -> ACP end_turn`，说明这不是“最近一小时没有真实会话”。
   - `2026-04-29 16:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，而 `cron_job_runs` 与 Feishu direct `end_turn` 已继续推进到同日 `16:02` / `15:49`。
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 19:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T19:01:59.329336+08:00`，说明 sqlite 文件本身仍在持续接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-29 18:47:40.419-18:48:44.780` 记录 Feishu 直聊会话 `Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` 完整走完 `message.accepted -> session.persist_assistant detail=done -> done success=true reply.chars=829 -> reply.send segments.sent=1/1`。
+  - `data/runtime/logs/acp-events.log` 在 `2026-04-29T10:48:43.692666Z` 记录同一 session 落成 `stopReason=end_turn`。
+  - 这说明到 `18:48` 为止，真实 Feishu 会话已正常完成持久化、发送与 ACP 收口，而 `sessions` / `session_messages` 仍完全没有同步进去。
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 17:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
