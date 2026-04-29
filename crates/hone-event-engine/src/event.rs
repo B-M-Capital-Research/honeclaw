@@ -48,8 +48,6 @@ pub enum EventKind {
     },
     AnalystGrade,
     MacroEvent,
-    PortfolioPreMarket,
-    PortfolioPostMarket,
     /// 第三方社交源帖子 (Telegram channel 等)。severity 默认 Low,
     /// router 的 LLM 仲裁链路按 `payload.source_class == "uncertain"` 决定是否升 Medium。
     SocialPost,
@@ -67,10 +65,6 @@ impl EventKind {
             EventKind::Weekly52High | EventKind::Weekly52Low => Some(Duration::hours(8)),
             // 社交流热度衰减快，但少数 trusted 源也可能值得隔夜看
             EventKind::SocialPost => Some(Duration::hours(12)),
-            // PortfolioPre/Post 本身就是窗口聚合产物，过窗口失效
-            EventKind::PortfolioPreMarket | EventKind::PortfolioPostMarket => {
-                Some(Duration::hours(6))
-            }
             // 事实性事件 —— 永不过期
             EventKind::EarningsUpcoming
             | EventKind::EarningsReleased
@@ -177,14 +171,6 @@ mod tests {
         assert_eq!(
             EventKind::SocialPost.shelf_life(),
             Some(Duration::hours(12))
-        );
-        assert_eq!(
-            EventKind::PortfolioPreMarket.shelf_life(),
-            Some(Duration::hours(6))
-        );
-        assert_eq!(
-            EventKind::PortfolioPostMarket.shelf_life(),
-            Some(Duration::hours(6))
         );
 
         // 事实性事件 → None,永不过期

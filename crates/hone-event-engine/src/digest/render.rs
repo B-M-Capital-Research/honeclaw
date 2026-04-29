@@ -276,8 +276,6 @@ fn kind_tag(kind: &EventKind) -> &'static str {
         EventKind::SecFiling { .. } => "sec",
         EventKind::AnalystGrade => "grade",
         EventKind::MacroEvent => "macro",
-        EventKind::PortfolioPreMarket => "portfolio_pre",
-        EventKind::PortfolioPostMarket => "portfolio_post",
         EventKind::SocialPost => "social",
     }
 }

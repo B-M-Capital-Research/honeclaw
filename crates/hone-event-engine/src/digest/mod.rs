@@ -15,10 +15,9 @@
 //! `pub use` 保持 `hone_event_engine::digest::*` 路径稳定。
 
 mod buffer;
-mod curation;
+pub(crate) mod curation;
 mod payload;
-mod render;
-mod scheduler;
+pub(crate) mod render;
 pub(crate) mod time_window;
 
 #[cfg(test)]
@@ -27,5 +26,4 @@ mod tests;
 pub use buffer::DigestBuffer;
 pub use payload::{DigestItem, DigestPayload, KindBucket, group_by_kind_bucket};
 pub use render::{build_digest_payload, render_digest};
-pub use scheduler::DigestScheduler;
 pub use time_window::{in_window, local_date_key, shift_hhmm_earlier};

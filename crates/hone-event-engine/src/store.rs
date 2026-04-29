@@ -1039,7 +1039,6 @@ fn category_kind_tags(category: &str) -> Option<&'static [&'static str]> {
         "macro" => Some(&["macro_event"]),
         "corp_action" => Some(&["dividend", "split", "buyback"]),
         "analyst" => Some(&["analyst_grade"]),
-        "portfolio" => Some(&["portfolio_pre_market", "portfolio_post_market"]),
         _ => None,
     }
 }

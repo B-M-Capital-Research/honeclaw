@@ -21,7 +21,6 @@ pub mod curator;
 pub mod event_dedupe;
 pub mod fetcher;
 pub mod renderer;
-pub mod scheduler;
 pub mod thesis_cron;
 pub mod thesis_distill;
 
@@ -36,7 +35,6 @@ pub use event_dedupe::{
 };
 pub use fetcher::{ArticleBody, ArticleFetcher, ArticleSource};
 pub use renderer::render_global_digest;
-pub use scheduler::GlobalDigestScheduler;
 pub use thesis_cron::{
     DEFAULT_DISTILL_INTERVAL_HOURS, MIN_RETRY_INTERVAL_HOURS, TriggerReason, WEEKLY_REFRESH_HOURS,
     distill_cron_loop, distill_tick, should_trigger,

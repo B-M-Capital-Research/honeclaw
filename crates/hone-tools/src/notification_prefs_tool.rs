@@ -177,7 +177,7 @@ impl Tool for NotificationPrefsTool {
          kind tag 必须选自:earnings_upcoming / earnings_released / news_critical / \
          press_release / price_alert / weekly52_high / weekly52_low / volume_spike / \
          dividend / split / buyback / sec_filing / analyst_grade / macro_event / \
-         portfolio_pre_market / portfolio_post_market。"
+         social_post。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -870,7 +870,10 @@ mod tests {
         let dir = tempdir().unwrap();
         // mk() 用的是 telegram actor → display_text 应是 <pre> 包的等宽块
         let tool = mk(dir.path());
-        let out = tool.execute(json!({"action":"get_overview"})).await.unwrap();
+        let out = tool
+            .execute(json!({"action":"get_overview"}))
+            .await
+            .unwrap();
         assert_eq!(out["status"], json!("ok"));
         let txt = out["display_text"].as_str().expect("display_text");
         assert!(txt.contains("你的推送日程"));
@@ -904,7 +907,10 @@ mod tests {
                 post_market: "09:00".into(),
             },
         );
-        let out = tool.execute(json!({"action":"get_overview"})).await.unwrap();
+        let out = tool
+            .execute(json!({"action":"get_overview"}))
+            .await
+            .unwrap();
         let txt = out["display_text"].as_str().unwrap();
         assert!(txt.contains("```"), "discord 应用代码块: {txt}");
         assert!(!txt.contains("<pre>"));
@@ -931,7 +937,10 @@ mod tests {
                 post_market: "09:00".into(),
             },
         );
-        let out = tool.execute(json!({"action":"get_overview"})).await.unwrap();
+        let out = tool
+            .execute(json!({"action":"get_overview"}))
+            .await
+            .unwrap();
         let txt = out["display_text"].as_str().unwrap();
         assert!(!txt.contains("```"));
         assert!(!txt.contains("<pre>"));

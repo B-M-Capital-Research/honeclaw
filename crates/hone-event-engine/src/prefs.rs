@@ -239,8 +239,6 @@ pub fn kind_tag(kind: &EventKind) -> &'static str {
         EventKind::SecFiling { .. } => "sec_filing",
         EventKind::AnalystGrade => "analyst_grade",
         EventKind::MacroEvent => "macro_event",
-        EventKind::PortfolioPreMarket => "portfolio_pre_market",
-        EventKind::PortfolioPostMarket => "portfolio_post_market",
         EventKind::SocialPost => "social_post",
     }
 }
@@ -263,8 +261,6 @@ pub const ALL_KIND_TAGS: &[&str] = &[
     "sec_filing",
     "analyst_grade",
     "macro_event",
-    "portfolio_pre_market",
-    "portfolio_post_market",
     "social_post",
 ];
 
@@ -680,8 +676,6 @@ mod tests {
             },
             AnalystGrade,
             MacroEvent,
-            PortfolioPreMarket,
-            PortfolioPostMarket,
             SocialPost,
         ];
         for k in &sample {

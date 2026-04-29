@@ -69,8 +69,6 @@ pub enum KindBucket {
     CorpAction,
     Macro,
     Social,
-    /// PortfolioPreMarket / PortfolioPostMarket 兜底,正常不会出现在 digest 里。
-    Other,
 }
 
 impl KindBucket {
@@ -92,7 +90,6 @@ impl KindBucket {
             | EventKind::AnalystGrade => KindBucket::CorpAction,
             EventKind::MacroEvent => KindBucket::Macro,
             EventKind::SocialPost => KindBucket::Social,
-            EventKind::PortfolioPreMarket | EventKind::PortfolioPostMarket => KindBucket::Other,
         }
     }
 
@@ -106,7 +103,6 @@ impl KindBucket {
             KindBucket::CorpAction => "🏢 公司行动",
             KindBucket::Macro => "🌐 宏观",
             KindBucket::Social => "🗣 社交",
-            KindBucket::Other => "📂 其它",
         }
     }
 }
@@ -210,10 +206,6 @@ mod tests {
         assert_eq!(
             KindBucket::from_kind(&EventKind::SocialPost),
             KindBucket::Social
-        );
-        assert_eq!(
-            KindBucket::from_kind(&EventKind::PortfolioPreMarket),
-            KindBucket::Other
         );
     }
 

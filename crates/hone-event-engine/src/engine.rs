@@ -14,7 +14,7 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 use crate::daily_report::DailyReport;
-use crate::digest::{self, DigestBuffer, DigestScheduler};
+use crate::digest::{self, DigestBuffer};
 use crate::fmp::FmpClient;
 use crate::news_classifier;
 use crate::pipeline;
@@ -29,6 +29,7 @@ use crate::source::SourceSchedule;
 use crate::spawner::spawn_event_source;
 use crate::store::EventStore;
 use crate::subscription::SharedRegistry;
+use crate::unified_digest::UnifiedDigestScheduler;
 use hone_core::config::{EventEngineConfig, FmpConfig};
 
 /// 事件引擎句柄。`start()` 只 `spawn` 各 poller 任务并立即返回——
@@ -321,38 +322,84 @@ impl EventEngine {
             );
         }
 
-        // DigestScheduler：每 60s 检查一次本地时间，命中 pre/post-market 触发 flush。
-        // 分钟级分辨率已由 in_window 保障；`already_fired_today` 防止同分钟重触发。
+        // UnifiedDigestScheduler：取代旧 DigestScheduler + GlobalDigestScheduler 双 spawn,
+        // 每 60s tick 一次,以 actor × digest_slots 触发,每个 slot 跨 actor 共享一份
+        // `audience+pass1+fetch+baseline`,personalize fan-out 走 per-actor。
         let tz_offset = hone_core::config::tz_offset_hours(&self.engine_cfg.digest.timezone);
         info!(
             timezone = %self.engine_cfg.digest.timezone,
             offset_hours = tz_offset,
-            "digest scheduler timezone resolved"
+            "unified digest scheduler timezone resolved"
         );
-        let scheduler = Arc::new(
-            DigestScheduler::new(
-                digest_buffer.clone(),
-                self.sink.clone(),
-                self.engine_cfg.digest.pre_market.clone(),
-                self.engine_cfg.digest.post_market.clone(),
-            )
-            .with_tz_offset_hours(tz_offset)
-            .with_store(store.clone())
-            .with_registry(registry.clone())
-            .with_prefs(prefs_storage.clone())
-            .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize)
-            .with_min_gap_minutes(self.engine_cfg.digest.min_gap_minutes),
-        );
+        let portfolio_storage = Arc::new(hone_memory::PortfolioStorage::new(&self.portfolio_dir));
+        let fmp_arc = Arc::new(client.clone());
+        let audience_cache_dir = self
+            .store_path
+            .parent()
+            .map(|p| p.join("company_profiles"))
+            .unwrap_or_else(|| PathBuf::from("./data/company_profiles"));
+        let fetcher = Arc::new(crate::global_digest::ArticleFetcher::new());
+        let mut unified = UnifiedDigestScheduler::new(
+            digest_buffer.clone(),
+            self.sink.clone(),
+            store.clone(),
+            fmp_arc.clone(),
+            portfolio_storage.clone(),
+            prefs_storage.clone(),
+            registry.clone(),
+            fetcher.clone(),
+            audience_cache_dir.clone(),
+            self.daily_report_dir.clone(),
+            self.engine_cfg.digest.pre_market.clone(),
+            self.engine_cfg.digest.post_market.clone(),
+        )
+        .with_tz_offset_hours(tz_offset)
+        .with_max_items_per_batch(self.engine_cfg.digest.max_items_per_batch as usize)
+        .with_min_gap_minutes(self.engine_cfg.digest.min_gap_minutes)
+        .with_lookback_hours(self.engine_cfg.global_digest.lookback_hours)
+        .with_pass2_top_n(self.engine_cfg.global_digest.pass2_top_n)
+        .with_final_pick_n(self.engine_cfg.global_digest.final_pick_n)
+        .with_fetch_full_text(self.engine_cfg.global_digest.fetch_full_text)
+        .with_event_dedupe_enabled(self.engine_cfg.global_digest.event_dedupe_enabled);
+        if self.engine_cfg.global_digest.enabled {
+            if let Some(provider) = self.global_digest_provider.clone() {
+                let curator = Arc::new(crate::global_digest::Curator::new(
+                    provider.clone(),
+                    self.engine_cfg.global_digest.pass1_model.clone(),
+                    self.engine_cfg.global_digest.pass2_model.clone(),
+                ));
+                unified = unified.with_curator(curator);
+                if self.engine_cfg.global_digest.event_dedupe_enabled {
+                    let event_deduper: Arc<dyn crate::global_digest::EventDeduper> =
+                        Arc::new(crate::global_digest::LlmEventDeduper::new(
+                            provider.clone(),
+                            self.engine_cfg.global_digest.event_dedupe_model.clone(),
+                        ));
+                    unified = unified.with_event_deduper(event_deduper);
+                }
+                info!(
+                    pass1_model = %self.engine_cfg.global_digest.pass1_model,
+                    pass2_model = %self.engine_cfg.global_digest.pass2_model,
+                    event_dedupe = self.engine_cfg.global_digest.event_dedupe_enabled,
+                    event_dedupe_model = %self.engine_cfg.global_digest.event_dedupe_model,
+                    "unified digest curator wired (global news enabled)"
+                );
+            } else {
+                warn!(
+                    "global_digest enabled but no LLM provider injected — global news section will be empty until .with_global_digest_provider() is called"
+                );
+            }
+        } else {
+            info!("global_digest disabled — unified digest will only ship buffered + synth items");
+        }
+        let scheduler = Arc::new(unified);
         tokio::spawn(pipeline::cron_minute_tick(
-            "internal.digest_scheduler",
+            "internal.unified_digest_scheduler",
             tz_offset,
             task_runs_dir.clone(),
             move |now, fired| {
                 let scheduler = scheduler.clone();
-                Box::pin(async move {
-                    // tick_once 返回本轮触发的 actor 数,本骨架不消费,只关心成败
-                    scheduler.tick_once(now, fired).await.map(|_| ())
-                })
+                Box::pin(async move { scheduler.tick_once(now, fired).await.map(|_| ()) })
             },
         ));
 
@@ -627,78 +674,8 @@ impl EventEngine {
             );
         }
 
-        // ── 全局 digest scheduler ─────────────────────────────────────
-        // LLM 精读后每天 N 次的"今日全球要闻"。每分钟 tick 检查 schedule 命中。
-        if self.engine_cfg.global_digest.enabled {
-            if self.engine_cfg.global_digest.schedules.is_empty() {
-                warn!(
-                    "global_digest enabled 但 schedules 为空 —— 不会触发。在 config 里加 schedules: [\"HH:MM\", ...]"
-                );
-            } else if let Some(provider) = self.global_digest_provider.clone() {
-                let portfolio_storage =
-                    Arc::new(hone_memory::PortfolioStorage::new(&self.portfolio_dir));
-                let fmp_arc = Arc::new(client.clone());
-                let curator = Arc::new(crate::global_digest::Curator::new(
-                    provider.clone(),
-                    self.engine_cfg.global_digest.pass1_model.clone(),
-                    self.engine_cfg.global_digest.pass2_model.clone(),
-                ));
-                let fetcher = Arc::new(crate::global_digest::ArticleFetcher::new());
-                let event_deduper: Arc<dyn crate::global_digest::EventDeduper> =
-                    if self.engine_cfg.global_digest.event_dedupe_enabled {
-                        Arc::new(crate::global_digest::LlmEventDeduper::new(
-                            provider.clone(),
-                            self.engine_cfg.global_digest.event_dedupe_model.clone(),
-                        ))
-                    } else {
-                        Arc::new(crate::global_digest::PassThroughDeduper)
-                    };
-                let audience_cache_dir = self
-                    .store_path
-                    .parent()
-                    .map(|p| p.join("company_profiles"))
-                    .unwrap_or_else(|| PathBuf::from("./data/company_profiles"));
-                let scheduler = Arc::new(
-                    crate::global_digest::GlobalDigestScheduler::new(
-                        self.engine_cfg.global_digest.clone(),
-                        store.clone(),
-                        fmp_arc,
-                        portfolio_storage,
-                        prefs_storage.clone(),
-                        self.sink.clone(),
-                        curator,
-                        fetcher,
-                        audience_cache_dir,
-                        self.daily_report_dir.clone(),
-                    )
-                    .with_event_deduper(event_deduper),
-                );
-                info!(
-                    schedules = ?self.engine_cfg.global_digest.schedules,
-                    timezone = %self.engine_cfg.global_digest.timezone,
-                    pass1_model = %self.engine_cfg.global_digest.pass1_model,
-                    pass2_model = %self.engine_cfg.global_digest.pass2_model,
-                    event_dedupe = self.engine_cfg.global_digest.event_dedupe_enabled,
-                    event_dedupe_model = %self.engine_cfg.global_digest.event_dedupe_model,
-                    "global_digest scheduler starting"
-                );
-                tokio::spawn(async move {
-                    let mut ticker = tokio::time::interval(Duration::from_secs(60));
-                    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                    loop {
-                        ticker.tick().await;
-                        let now = chrono::Utc::now();
-                        let _ = scheduler.tick(now).await;
-                    }
-                });
-                // 注:thesis 蒸馏 cron 在 hone-web-api 启动时单独 spawn,
-                // 这里不能 spawn 是因为 hone-event-engine 不依赖 hone-channels(避免循环)。
-            } else {
-                warn!(
-                    "global_digest enabled 但未注入 LLM provider —— 调度器跳过。在 EventEngine builder 里调 .with_global_digest_provider()"
-                );
-            }
-        }
+        // 注:thesis 蒸馏 cron 在 hone-web-api 启动时单独 spawn,
+        // 这里不能 spawn 是因为 hone-event-engine 不依赖 hone-channels(避免循环)。
 
         Ok(())
     }

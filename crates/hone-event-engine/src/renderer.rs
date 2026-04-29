@@ -157,8 +157,6 @@ fn kind_label(kind: &EventKind) -> String {
         EventKind::SecFiling { form } => format!("📄 SEC {form}"),
         EventKind::AnalystGrade => "⭐ 评级变动".into(),
         EventKind::MacroEvent => "🌐 宏观".into(),
-        EventKind::PortfolioPreMarket => "🌅 盘前速览".into(),
-        EventKind::PortfolioPostMarket => "🌇 盘后速览".into(),
         EventKind::SocialPost => "🗣 社交".into(),
     }
 }
@@ -181,7 +179,6 @@ fn kind_short(kind: &EventKind) -> Option<String> {
         EventKind::AnalystGrade => "[评级]".into(),
         EventKind::MacroEvent => "[宏观]".into(),
         EventKind::SocialPost => "[社交]".into(),
-        _ => return None,
     })
 }
 

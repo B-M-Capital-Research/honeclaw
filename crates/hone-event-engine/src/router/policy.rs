@@ -251,7 +251,6 @@ pub(super) fn event_category(event: &MarketEvent) -> &'static str {
         EventKind::MacroEvent => "macro",
         EventKind::Dividend | EventKind::Split | EventKind::Buyback => "corp_action",
         EventKind::AnalystGrade => "analyst",
-        EventKind::PortfolioPreMarket | EventKind::PortfolioPostMarket => "portfolio",
     }
 }
 

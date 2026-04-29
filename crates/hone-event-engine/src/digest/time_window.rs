@@ -84,7 +84,7 @@ impl EffectiveTz {
         }
     }
 
-    pub(super) fn date_key(&self, now: DateTime<Utc>) -> String {
+    pub(crate) fn date_key(&self, now: DateTime<Utc>) -> String {
         let (y, m, d) = match self {
             EffectiveTz::Iana(tz) => {
                 let local = tz.from_utc_datetime(&now.naive_utc());

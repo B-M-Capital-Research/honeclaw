@@ -5,9 +5,13 @@
 //! 设计要点见 `/Users/bytedance/.claude/plans/global-digest-soft-pumpkin.md`。
 
 pub mod collector;
+pub mod floor;
+pub mod scheduler;
 pub mod sources;
 pub mod types;
 
 pub use collector::UnifiedCollector;
+pub use floor::classify_floor;
+pub use scheduler::UnifiedDigestScheduler;
 pub use sources::{BufferSource, GlobalNewsSource, SynthSource, UnifiedCandidate};
 pub use types::{DigestSlot, FloorTag, ItemOrigin, ThesisRelation};

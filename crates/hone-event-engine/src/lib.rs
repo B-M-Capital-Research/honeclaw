@@ -33,7 +33,7 @@ mod spawner;
 mod tests;
 
 pub use daily_report::DailyReport;
-pub use digest::{DigestBuffer, DigestScheduler};
+pub use digest::DigestBuffer;
 pub use engine::EventEngine;
 pub use event::{EventKind, MarketEvent, Severity};
 pub use fmp::FmpClient;
@@ -58,3 +58,4 @@ pub use subscription::{
     GlobalSubscription, PortfolioSubscription, SharedRegistry, Subscription, SubscriptionRegistry,
     registry_from_portfolios,
 };
+pub use unified_digest::UnifiedDigestScheduler;

@@ -22,9 +22,9 @@ pub(super) const DIGEST_MAX_ITEMS_PER_DOMAIN: usize = 2;
 pub(super) const DIGEST_MACRO_LOOKAHEAD_HOURS: i64 = 48;
 
 #[derive(Debug)]
-pub(super) struct DigestCuration {
-    pub(super) kept: Vec<MarketEvent>,
-    pub(super) omitted: Vec<MarketEvent>,
+pub(crate) struct DigestCuration {
+    pub(crate) kept: Vec<MarketEvent>,
+    pub(crate) omitted: Vec<MarketEvent>,
 }
 
 impl DigestCuration {
