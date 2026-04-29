@@ -70,8 +70,9 @@ pub struct DigestSlot {
     /// 渲染 header 用的中文 label(例 `"盘前要闻"`)。`None` → 渲染时取 id。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    /// 该 slot 的 macro floor 条数。`None` → 走 prefs.global_digest_floor_macro_picks
-    /// 兜底(commit 5 把顶层字段下沉到 slot 里后,本字段成为唯一来源)。
+    /// 该 slot 的 macro floor 条数。`None` → 走 scheduler 兜底(`DEFAULT_FLOOR_MACRO_PICKS = 1`)。
+    /// 即使 thesis 把所有宏观料剔除,Pass 2 personalize 至少保留这么多条 macro_floor,
+    /// 让用户看到大盘背景。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub floor_macro: Option<u32>,
 }

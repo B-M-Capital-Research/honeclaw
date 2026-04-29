@@ -25,10 +25,9 @@ pub struct NotificationPrefsTool {
     prefs_dir: PathBuf,
     actor: Option<ActorIdentity>,
     /// `get_overview` 聚合视图所需的上下文。HoneBotCore 构造时必传,
-    /// 保证用户问「我的推送怎么配的」时拿到的是含 cron + 全局 digest 的完整表格。
+    /// 保证用户问「我的推送怎么配的」时拿到的是含 cron + unified digest 的完整表格。
     cron_jobs_dir: PathBuf,
-    global_digest: crate::schedule_view::GlobalDigestSlice,
-    portfolio_defaults: crate::schedule_view::PortfolioDigestDefaults,
+    digest_defaults: crate::schedule_view::DigestDefaults,
 }
 
 impl NotificationPrefsTool {
@@ -36,15 +35,13 @@ impl NotificationPrefsTool {
         prefs_dir: impl Into<PathBuf>,
         actor: Option<ActorIdentity>,
         cron_jobs_dir: impl Into<PathBuf>,
-        global_digest: crate::schedule_view::GlobalDigestSlice,
-        portfolio_defaults: crate::schedule_view::PortfolioDigestDefaults,
+        digest_defaults: crate::schedule_view::DigestDefaults,
     ) -> Self {
         Self {
             prefs_dir: prefs_dir.into(),
             actor,
             cron_jobs_dir: cron_jobs_dir.into(),
-            global_digest,
-            portfolio_defaults,
+            digest_defaults,
         }
     }
 
@@ -118,29 +115,17 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         "blocked_kinds": prefs.blocked_kinds,
         "timezone": prefs.timezone,
         "digest_windows": prefs.digest_windows,
+        "digest_slots": prefs.digest_slots,
         "price_high_pct_override": prefs.price_high_pct_override,
         "immediate_kinds": prefs.immediate_kinds,
-        "global_digest_enabled": prefs.global_digest_enabled,
         "investment_global_style": prefs.investment_global_style,
         "investment_theses": prefs.investment_theses,
-        "global_digest_floor_macro_picks": prefs.global_digest_floor_macro_picks,
         "quiet_hours": prefs.quiet_hours.as_ref().map(|qh| json!({
             "from": qh.from,
             "to": qh.to,
             "exempt_kinds": qh.exempt_kinds,
         })),
     })
-}
-
-fn parse_bool_flag(value: &Value, action: &str) -> HoneResult<bool> {
-    match value {
-        Value::Bool(b) => Ok(*b),
-        Value::String(s) => Ok(matches!(
-            s.trim().to_ascii_lowercase().as_str(),
-            "true" | "1" | "yes" | "on"
-        )),
-        _ => Err(HoneError::Tool(format!("{action} 需要 true/false"))),
-    }
 }
 
 #[async_trait]
@@ -158,8 +143,6 @@ impl Tool for NotificationPrefsTool {
          set_digest_windows 设本地 HH:MM 摘要时刻列表(传 [] 则关 digest)、\
          set_price_high_pct 调价格异动即时推阈值 (0<x≤50,如 3.5)、\
          set_immediate_kinds 指定哪些 kind 强制升 High 即时推。\
-         全局要闻 digest:set_global_digest_enabled 开关、\
-         set_macro_floor_picks 设置宏观料底线条数(0-5)。\
          **概览类问题**(用户问\"我的推送怎么配的\"/\"推送日程\"/\"都什么时候推什么\"/\"quiet 设了没\"等):\
          调 get_overview 拿到拍平后的全部推送时刻 + 即时推配置 + quiet_hours,返回里有 display_text \
          字段已经按调用方所在渠道(Discord 用代码块表 / Telegram 用 <pre> / Feishu+iMessage 用列表)\
@@ -201,8 +184,6 @@ impl Tool for NotificationPrefsTool {
                     "set_digest_windows".into(),
                     "set_price_high_pct".into(),
                     "set_immediate_kinds".into(),
-                    "set_global_digest_enabled".into(),
-                    "set_macro_floor_picks".into(),
                     "set_quiet_hours".into(),
                     "clear_quiet_hours".into(),
                     "get_overview".into(),
@@ -220,8 +201,6 @@ impl Tool for NotificationPrefsTool {
                     set_timezone 传 IANA 名 (例 \"Asia/Shanghai\");\
                     set_digest_windows 传 HH:MM 数组 (例 [\"19:00\",\"02:30\",\"09:00\"],空数组关 digest);\
                     set_price_high_pct 传数字 (0<x≤50,例 3.5);\
-                    set_global_digest_enabled 传 true/false;\
-                    set_macro_floor_picks 传整数 0-5 (默认 1);\
                     set_quiet_hours 传 JSON 对象 {\"from\":\"HH:MM\", \"to\":\"HH:MM\", \"exempt_kinds\":[\"earnings_released\", ...]} (exempt_kinds 可省);\
                     clear_quiet_hours 不需要 value。\
                     get/clear_allow/clear_block/enable/disable/reset 不需要 value。"
@@ -249,16 +228,15 @@ impl Tool for NotificationPrefsTool {
                 return Ok(json!({ "status": "ok", "prefs": prefs_to_json(&prefs) }));
             }
             "get_overview" => {
-                // 拿全部推送时刻拍平视图:持仓 digest / 全局 digest / cron / 即时推 / quiet_hours。
-                // 构造时已强制注入 cron_jobs_dir + global_digest + portfolio_defaults,这里直接组装。
+                // 拿全部推送时刻拍平视图:unified digest slots / cron / 即时推 / quiet_hours。
+                // 构造时已强制注入 cron_jobs_dir + digest_defaults,这里直接组装。
                 // 渲染按 actor.channel 选格式:Discord/Telegram 用 monospace 代码块表,
                 // Feishu/iMessage 用项目符号列表(后两者不支持 markdown/HTML)。
                 let overview = crate::schedule_view::build_overview(
                     &self.prefs_dir,
                     &self.cron_jobs_dir,
                     &actor,
-                    &self.global_digest,
-                    &self.portfolio_defaults,
+                    &self.digest_defaults,
                     chrono::Utc::now(),
                 )
                 .map_err(|e| HoneError::Tool(format!("聚合推送日程失败: {e}")))?;
@@ -377,23 +355,6 @@ impl Tool for NotificationPrefsTool {
                 validate_tags(&tags)?;
                 prefs.immediate_kinds = if tags.is_empty() { None } else { Some(tags) };
             }
-            "set_global_digest_enabled" => {
-                prefs.global_digest_enabled = parse_bool_flag(&value, "set_global_digest_enabled")?;
-            }
-            "set_macro_floor_picks" => {
-                let n = match &value {
-                    Value::Number(n) => n.as_u64(),
-                    Value::String(s) => s.trim().parse::<u64>().ok(),
-                    _ => None,
-                }
-                .ok_or_else(|| HoneError::Tool("set_macro_floor_picks 需要整数 (0-5)".into()))?;
-                if n > 5 {
-                    return Err(HoneError::Tool(format!(
-                        "macro_floor_picks 必须在 [0, 5] 范围,收到 {n}"
-                    )));
-                }
-                prefs.global_digest_floor_macro_picks = n as u32;
-            }
             "set_quiet_hours" => {
                 let obj = value.as_object().ok_or_else(|| {
                     HoneError::Tool(
@@ -463,12 +424,7 @@ mod tests {
             dir.to_path_buf(),
             Some(actor),
             cron_dir,
-            crate::schedule_view::GlobalDigestSlice {
-                enabled: true,
-                timezone: "Asia/Shanghai".into(),
-                schedules: vec!["07:30".into(), "21:00".into()],
-            },
-            crate::schedule_view::PortfolioDigestDefaults {
+            crate::schedule_view::DigestDefaults {
                 pre_market: "08:30".into(),
                 post_market: "09:00".into(),
             },
@@ -699,63 +655,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_global_digest_enabled_round_trips() {
-        let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
-        // 默认为 true
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["global_digest_enabled"], json!(true));
-
-        tool.execute(json!({"action":"set_global_digest_enabled","value":false}))
-            .await
-            .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["global_digest_enabled"], json!(false));
-
-        // 字符串形式也接受
-        tool.execute(json!({"action":"set_global_digest_enabled","value":"true"}))
-            .await
-            .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["global_digest_enabled"], json!(true));
-    }
-
-    #[tokio::test]
-    async fn set_macro_floor_picks_validates_range() {
-        let dir = tempdir().unwrap();
-        let tool = mk(dir.path());
-        tool.execute(json!({"action":"set_macro_floor_picks","value":3}))
-            .await
-            .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["global_digest_floor_macro_picks"], json!(3));
-
-        // 0 合法(关闭 floor)
-        tool.execute(json!({"action":"set_macro_floor_picks","value":0}))
-            .await
-            .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["global_digest_floor_macro_picks"], json!(0));
-
-        // 超过 5 拒绝
-        let err = tool
-            .execute(json!({"action":"set_macro_floor_picks","value":99}))
-            .await
-            .unwrap_err();
-        match err {
-            HoneError::Tool(msg) => assert!(msg.contains("[0, 5]"), "msg={msg}"),
-            other => panic!("unexpected err {other:?}"),
-        }
-
-        // 字符串数字也接受
-        tool.execute(json!({"action":"set_macro_floor_picks","value":"2"}))
-            .await
-            .unwrap();
-        let out = tool.execute(json!({"action":"get"})).await.unwrap();
-        assert_eq!(out["prefs"]["global_digest_floor_macro_picks"], json!(2));
-    }
-
-    #[tokio::test]
     async fn missing_actor_is_rejected() {
         let dir = tempdir().unwrap();
         let cron_dir = dir.path().join("__test_cron__");
@@ -764,12 +663,7 @@ mod tests {
             dir.path().to_path_buf(),
             None,
             cron_dir,
-            crate::schedule_view::GlobalDigestSlice {
-                enabled: false,
-                timezone: "Asia/Shanghai".into(),
-                schedules: vec![],
-            },
-            crate::schedule_view::PortfolioDigestDefaults {
+            crate::schedule_view::DigestDefaults {
                 pre_market: "08:30".into(),
                 post_market: "09:00".into(),
             },
@@ -884,7 +778,7 @@ mod tests {
         assert!(!txt.contains("| --- |"));
         assert_eq!(out["render_format"], json!("TelegramHtml"));
         let entries = out["overview"]["schedule"].as_array().unwrap();
-        assert_eq!(entries.len(), 4);
+        assert_eq!(entries.len(), 2);
     }
 
     #[tokio::test]
@@ -897,12 +791,7 @@ mod tests {
             dir.path().to_path_buf(),
             Some(actor),
             cron_dir,
-            crate::schedule_view::GlobalDigestSlice {
-                enabled: true,
-                timezone: "Asia/Shanghai".into(),
-                schedules: vec!["07:30".into(), "21:00".into()],
-            },
-            crate::schedule_view::PortfolioDigestDefaults {
+            crate::schedule_view::DigestDefaults {
                 pre_market: "08:30".into(),
                 post_market: "09:00".into(),
             },
@@ -927,12 +816,7 @@ mod tests {
             dir.path().to_path_buf(),
             Some(actor),
             cron_dir,
-            crate::schedule_view::GlobalDigestSlice {
-                enabled: true,
-                timezone: "Asia/Shanghai".into(),
-                schedules: vec!["07:30".into(), "21:00".into()],
-            },
-            crate::schedule_view::PortfolioDigestDefaults {
+            crate::schedule_view::DigestDefaults {
                 pre_market: "08:30".into(),
                 post_market: "09:00".into(),
             },

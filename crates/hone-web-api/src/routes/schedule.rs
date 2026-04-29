@@ -1,11 +1,11 @@
 //! 管理端"我的推送日程" — `GET /api/admin/schedule?actor=channel::scope::user_id`。
 //!
-//! 把散落在 4 个地方的推送时间拍平成一张表，供前端 `/schedule` 页面与 NL 工具
+//! 把散落在 3 个地方的推送时间拍平成一张表，供前端 `/schedule` 页面与 NL 工具
 //! `notification_prefs.get_overview` 共享同一份事实源。
 //!
 //! 实现是 thin wrapper：所有聚合逻辑都在 `hone_tools::schedule_view::build_overview`
-//! 里。本文件只负责：解析查询参数、绑定 admin 配置（global digest schedules /
-//! portfolio pre/post-market）、把结果渲染成 JSON 返回。
+//! 里。本文件只负责:解析查询参数、绑定 admin 配置(unified digest 默认槽位时刻),
+//! 把结果渲染成 JSON 返回。
 
 use std::sync::Arc;
 
@@ -16,9 +16,7 @@ use chrono::Utc;
 use serde::Deserialize;
 
 use hone_core::ActorIdentity;
-use hone_tools::schedule_view::{
-    GlobalDigestSlice, PortfolioDigestDefaults, ScheduleOverview, build_overview,
-};
+use hone_tools::schedule_view::{DigestDefaults, ScheduleOverview, build_overview};
 
 use crate::state::AppState;
 
@@ -40,12 +38,7 @@ pub(crate) async fn handle_schedule(
     })?;
 
     let cfg = &state.core.config;
-    let global = GlobalDigestSlice {
-        enabled: cfg.event_engine.global_digest.enabled,
-        timezone: cfg.event_engine.global_digest.timezone.clone(),
-        schedules: cfg.event_engine.global_digest.schedules.clone(),
-    };
-    let portfolio = PortfolioDigestDefaults {
+    let digest_defaults = DigestDefaults {
         pre_market: cfg.event_engine.digest.pre_market.clone(),
         post_market: cfg.event_engine.digest.post_market.clone(),
     };
@@ -53,7 +46,7 @@ pub(crate) async fn handle_schedule(
     let prefs_dir = std::path::Path::new(&cfg.storage.notif_prefs_dir);
     let cron_dir = std::path::Path::new(&cfg.storage.cron_jobs_dir);
 
-    let overview = build_overview(prefs_dir, cron_dir, &actor, &global, &portfolio, Utc::now())
+    let overview = build_overview(prefs_dir, cron_dir, &actor, &digest_defaults, Utc::now())
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,

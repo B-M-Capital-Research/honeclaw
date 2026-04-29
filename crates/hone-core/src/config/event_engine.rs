@@ -101,14 +101,15 @@ fn default_earnings_window_days() -> i64 {
     14
 }
 
-/// 全局 digest 配置 —— LLM 精读后每天 N 次推送的"今日全球要闻"。
+/// 全局 digest LLM 子配置 —— 从 commit 3 起,unified pipeline 复用本配置承载
+/// curator / fetcher / event_dedupe 旋钮;`schedules` 字段已不再用于触发(由
+/// per-actor `prefs.digest_slots` 定时),仅保留以兼容旧 `config.yaml`。
 ///
-/// 与 per-actor digest 完全独立:per-actor 走 ticker 命中 → buffer → flush;
-/// 全局 digest 则不挂 ticker,从 store 取候选池(trusted-source High/Medium news +
-/// macro_event) → Pass 1 廉价模型批量打分聚类 → Pass 2 抓原文 + 强模型精读
-/// → 渲染单条 broadcast 给所有 direct actor(prefs.global_digest_enabled=true)。
+/// 候选池(trusted-source High/Medium news + macro_event)由 unified scheduler
+/// 在每个 slot 触发时拉取,经 Pass 1 聚类 + Pass 2 精读后,与 buffer/synth 候选
+/// 在 per-actor fan-out 阶段合流。
 ///
-/// 默认 `enabled=false`,需要先设 `schedules` 才会触发。
+/// 默认 `enabled=false`。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalDigestConfig {
     #[serde(default)]

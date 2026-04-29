@@ -272,7 +272,7 @@ event_engine:
   # - 候选池 = trusted-source High/Medium news + 临近 high macro_event(不挂 ticker 也算)
   # - Pass 1 (pass1_model) 廉价模型批量打分 + cluster + 一句话 takeaway
   # - Pass 2 (pass2_model) 抓原文(若 fetch_full_text=true) + 强模型精读 + 短评 + 排序
-  # - 渲染单条 broadcast 给所有 prefs.global_digest_enabled=true 的 direct actor
+  # - 渲染单条 broadcast 给所有未把 "global" 列入 prefs.blocked_origins(暂未引入)的 direct actor
   # 默认 enabled=false。需要先填 schedules 才会触发。
   global_digest:
     enabled: false

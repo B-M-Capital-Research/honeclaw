@@ -49,6 +49,10 @@ use crate::unified_digest::{DigestSlot, FloorTag, GlobalNewsSource, ItemOrigin, 
 /// 与旧 `GlobalDigestScheduler` 保持一致 —— 4 并发抓全文实测最稳。
 const FETCH_CONCURRENCY: usize = 4;
 
+/// `slot.floor_macro` 缺省时的兜底值:即使 thesis 把所有宏观料剔除,Pass 2
+/// personalize 也至少保留 1 条 macro_floor,让用户看到大盘背景。
+const DEFAULT_FLOOR_MACRO_PICKS: u32 = 1;
+
 /// 一组共享的 Pass 1 / fetch / Pass 2 baseline 产物。同一 slot 一个 tick 内
 /// **只算一次**,后续命中同 slot 的 actor 直接复用做 personalize fan-out。
 #[derive(Clone)]
@@ -371,21 +375,17 @@ impl UnifiedDigestScheduler {
                 let cache_key = format!("{date}@{}@{}", slot.id, slot.time);
                 let global_cache = self.get_or_build_global_cache(&cache_key, now, slot).await;
 
-                // ── 3) per-actor personalize(若用户没屏蔽 global) ──
-                let want_global = self.global_allowed_for(&user_prefs);
-                let personalized: Vec<PersonalizedItem> = if want_global
-                    && global_cache
-                        .as_ref()
-                        .is_some_and(|c| !c.picks_with_bodies.is_empty())
+                // ── 3) per-actor personalize(curator + 非空候选才进 LLM) ──
+                let personalized: Vec<PersonalizedItem> = if global_cache
+                    .as_ref()
+                    .is_some_and(|c| !c.picks_with_bodies.is_empty())
                 {
                     let cache = global_cache.as_ref().unwrap();
                     let thesis = UserThesis {
                         global_style: user_prefs.investment_global_style.as_deref(),
                         theses: user_prefs.investment_theses.as_ref(),
                     };
-                    let floor_macro = slot
-                        .floor_macro
-                        .unwrap_or(user_prefs.global_digest_floor_macro_picks);
+                    let floor_macro = slot.floor_macro.unwrap_or(DEFAULT_FLOOR_MACRO_PICKS);
                     match self.curator.as_ref() {
                         Some(curator) => match curator
                             .pass2_personalize(
@@ -931,12 +931,6 @@ impl UnifiedDigestScheduler {
                 Ok(false)
             }
         }
-    }
-
-    /// 用户没有屏蔽 global news origin 时返回 true。`blocked_origins` 字段尚未
-    /// 加入 prefs(commit 5),目前只看 `global_digest_enabled`(commit 5 删)。
-    fn global_allowed_for(&self, prefs: &NotificationPrefs) -> bool {
-        prefs.global_digest_enabled
     }
 
     fn append_audit(&self, date: &str, body: &str) {

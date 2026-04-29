@@ -308,14 +308,9 @@ impl HoneBotCore {
 
         // 终端用户通过自然语言调推送偏好——构造时硬绑定 actor,只能改自己那份。
         // 目录必须与 event-engine `with_prefs_dir` 使用同一个,否则写进去 router 读不到。
-        // 同时强制注入 overview 上下文(cron_jobs_dir + global digest + portfolio digest 默认时刻),
+        // 同时强制注入 overview 上下文(cron_jobs_dir + unified digest 默认槽位时刻),
         // 让 get_overview action 总能给出完整的「我的推送日程」拍平视图,无 partial 分支。
-        let overview_global = hone_tools::schedule_view::GlobalDigestSlice {
-            enabled: self.config.event_engine.global_digest.enabled,
-            timezone: self.config.event_engine.global_digest.timezone.clone(),
-            schedules: self.config.event_engine.global_digest.schedules.clone(),
-        };
-        let overview_portfolio = hone_tools::schedule_view::PortfolioDigestDefaults {
+        let overview_digest_defaults = hone_tools::schedule_view::DigestDefaults {
             pre_market: self.config.event_engine.digest.pre_market.clone(),
             post_market: self.config.event_engine.digest.post_market.clone(),
         };
@@ -323,8 +318,7 @@ impl HoneBotCore {
             &self.config.storage.notif_prefs_dir,
             actor.cloned(),
             &self.config.storage.cron_jobs_dir,
-            overview_global,
-            overview_portfolio,
+            overview_digest_defaults,
         )));
 
         // 让用户通过 `/missed` 或自然语言查回 digest/router 主动筛掉的事件。

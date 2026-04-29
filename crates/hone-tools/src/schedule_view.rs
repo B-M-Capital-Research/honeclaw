@@ -1,8 +1,8 @@
 //! `schedule_view` —— per-actor "我的推送日程"聚合视图。
 //!
-//! 一个共享的 build_overview 函数，把散落在 4 个地方的推送时间拍平成一张表：
-//! - 持仓 digest 时刻 (per-actor `digest_windows` 优先,缺省全局 pre/post-market)
-//! - 全局要闻 digest 时刻 (admin 配置,仅在 prefs.global_digest_enabled=true 时纳入)
+//! 一个共享的 build_overview 函数，把散落在 3 个地方的推送时间拍平成一张表：
+//! - Digest slots(per-actor `digest_windows` / `digest_slots` 优先,缺省全局 pre/post-market)
+//!   — UnifiedDigestScheduler 上线后持仓事件 + 全球要闻同槽推送,不再分离两条
 //! - 自定义 cron jobs (含 bypass_quiet_hours 标记 + would_be_skipped_by_quiet)
 //! - 即时推阈值 (kind 黑/白名单 + price_high_pct + min_severity)
 //! - quiet_hours 区间
@@ -10,7 +10,7 @@
 //! 同一份后端逻辑给 NL `notification_prefs.get_overview` 工具和 admin 后台
 //! `/api/admin/schedule` 共用,确保用户从 chat 看到的表跟 admin 后台一致。
 
-use chrono::{DateTime, FixedOffset, NaiveTime, TimeZone, Timelike, Utc};
+use chrono::{DateTime, NaiveTime, Timelike, Utc};
 use hone_core::ActorIdentity;
 use hone_core::quiet::QuietHours;
 use hone_event_engine::Severity;
@@ -60,8 +60,8 @@ pub struct ScheduleEntry {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScheduleSource {
-    PortfolioDigest,
-    GlobalDigest,
+    /// UnifiedDigestScheduler 推送槽位(持仓事件 + 全球要闻同槽合发)。
+    Digest,
     CronJob,
 }
 
@@ -78,19 +78,10 @@ pub struct ImmediateConfig {
     pub exempt_in_quiet: Vec<String>,
 }
 
-/// 全局 digest 配置（从 `event_engine.global_digest` 节读取，传入即可）。
+/// Unified digest 全局默认槽位时刻（从 `event_engine.digest.pre_market/post_market` 读取,
+/// 用户未自定义 `digest_slots` / `digest_windows` 时回退到这两个时刻）。
 #[derive(Debug, Clone)]
-pub struct GlobalDigestSlice {
-    pub enabled: bool,
-    /// admin 配置的 IANA 时区（用于解释 schedules）
-    pub timezone: String,
-    /// "HH:MM" 列表，例 ["07:30", "21:00"]
-    pub schedules: Vec<String>,
-}
-
-/// 持仓 digest 全局默认（从 `event_engine.digest` 节读取）。
-#[derive(Debug, Clone)]
-pub struct PortfolioDigestDefaults {
+pub struct DigestDefaults {
     pub pre_market: String,
     pub post_market: String,
 }
@@ -100,9 +91,8 @@ pub fn build_overview(
     prefs_dir: &Path,
     cron_jobs_dir: &Path,
     actor: &ActorIdentity,
-    global_digest: &GlobalDigestSlice,
-    portfolio_defaults: &PortfolioDigestDefaults,
-    now: DateTime<Utc>,
+    digest_defaults: &DigestDefaults,
+    _now: DateTime<Utc>,
 ) -> anyhow::Result<ScheduleOverview> {
     let prefs_storage = FilePrefsStorage::new(prefs_dir)?;
     let prefs = prefs_storage.load(actor);
@@ -122,20 +112,29 @@ pub fn build_overview(
 
     let mut schedule: Vec<ScheduleEntry> = Vec::new();
 
-    // 1. 持仓 digest
-    let portfolio_windows: Vec<String> = match prefs.digest_windows.as_deref() {
-        Some(v) if v.is_empty() => Vec::new(), // 用户主动关
-        Some(v) => v.to_vec(),
-        None => vec![
-            portfolio_defaults.pre_market.clone(),
-            portfolio_defaults.post_market.clone(),
-        ],
+    // 1. Unified digest slots —— 持仓事件 + 全球要闻同槽合发
+    let slot_entries: Vec<(String, Option<String>)> = match prefs.digest_slots.as_deref() {
+        Some(slots) => slots
+            .iter()
+            .map(|s| (s.time.clone(), s.label.clone()))
+            .collect(),
+        None => match prefs.digest_windows.as_deref() {
+            Some(v) if v.is_empty() => Vec::new(), // 用户主动关
+            Some(v) => v.iter().map(|t| (t.clone(), None)).collect(),
+            None => vec![
+                (digest_defaults.pre_market.clone(), None),
+                (digest_defaults.post_market.clone(), None),
+            ],
+        },
     };
-    for window in &portfolio_windows {
+    for (window, label) in &slot_entries {
+        let hint = label
+            .clone()
+            .unwrap_or_else(|| "今日资讯（持仓 + 全球要闻）".to_string());
         schedule.push(ScheduleEntry {
             time_local: window.clone(),
-            source: ScheduleSource::PortfolioDigest,
-            content_hint: "持仓相关事件汇总".to_string(),
+            source: ScheduleSource::Digest,
+            content_hint: hint,
             frequency: "daily".to_string(),
             job_id: None,
             will_be_held_by_quiet: time_in_quiet(window, prefs.quiet_hours.as_ref()),
@@ -146,26 +145,7 @@ pub fn build_overview(
         });
     }
 
-    // 2. 全局要闻 digest（仅当用户未关闭 + admin 开启）
-    if prefs.global_digest_enabled && global_digest.enabled {
-        for window in &global_digest.schedules {
-            let local_time = convert_to_actor_tz(window, &global_digest.timezone, &timezone, now)
-                .unwrap_or_else(|| window.clone());
-            schedule.push(ScheduleEntry {
-                time_local: local_time.clone(),
-                source: ScheduleSource::GlobalDigest,
-                content_hint: "今日全球要闻".to_string(),
-                frequency: "daily".to_string(),
-                job_id: None,
-                will_be_held_by_quiet: time_in_quiet(&local_time, prefs.quiet_hours.as_ref()),
-                bypass_quiet_hours: false,
-                edit_hint: "notification_prefs(action=\"set_global_digest_enabled\", value=false) 关掉; 时刻由管理员维护"
-                    .to_string(),
-            });
-        }
-    }
-
-    // 3. 自定义 cron jobs
+    // 2. 自定义 cron jobs
     for job in jobs.iter().filter(|j| j.enabled) {
         let time_local = format!("{:02}:{:02}", job.schedule.hour, job.schedule.minute);
         let frequency = describe_cron_frequency(job);
@@ -408,8 +388,7 @@ fn write_immediate_section(out: &mut String, overview: &ScheduleOverview) {
 
 fn source_label(s: ScheduleSource) -> &'static str {
     match s {
-        ScheduleSource::PortfolioDigest => "持仓 digest",
-        ScheduleSource::GlobalDigest => "全球要闻",
+        ScheduleSource::Digest => "Digest",
         ScheduleSource::CronJob => "自定义",
     }
 }
@@ -489,41 +468,6 @@ fn time_in_quiet(local_hhmm: &str, qh: Option<&QuietHours>) -> bool {
     }
 }
 
-/// 把全局 digest 的 HH:MM 在 admin 时区下解释，再转成 actor 时区下的 HH:MM。
-/// 用于让用户在自己时区里看到全球 digest 的命中时刻。
-fn convert_to_actor_tz(
-    src_hhmm: &str,
-    src_tz: &str,
-    dst_tz: &str,
-    now: DateTime<Utc>,
-) -> Option<String> {
-    let t = NaiveTime::parse_from_str(src_hhmm, "%H:%M").ok()?;
-    let src = src_tz.parse::<chrono_tz::Tz>().ok();
-    let dst = dst_tz.parse::<chrono_tz::Tz>().ok();
-    let utc = match src {
-        Some(tz) => {
-            let local = tz.from_utc_datetime(&now.naive_utc());
-            let date = local.date_naive();
-            let naive = date.and_time(t);
-            tz.from_local_datetime(&naive).single()?.with_timezone(&Utc)
-        }
-        None => {
-            // src tz 不可解析,假定 UTC+8 (与 EventEngine 默认一致)
-            let off = FixedOffset::east_opt(8 * 3600).unwrap();
-            let date = off.from_utc_datetime(&now.naive_utc()).date_naive();
-            let naive = date.and_time(t);
-            off.from_local_datetime(&naive)
-                .single()?
-                .with_timezone(&Utc)
-        }
-    };
-    let local = match dst {
-        Some(tz) => tz.from_utc_datetime(&utc.naive_utc()),
-        None => return Some(src_hhmm.to_string()),
-    };
-    Some(format!("{:02}:{:02}", local.hour(), local.minute()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,43 +478,33 @@ mod tests {
         ActorIdentity::new("imessage", "u1", None::<String>).unwrap()
     }
 
-    fn defaults() -> (GlobalDigestSlice, PortfolioDigestDefaults) {
-        (
-            GlobalDigestSlice {
-                enabled: true,
-                timezone: "Asia/Shanghai".into(),
-                schedules: vec!["07:30".into(), "21:00".into()],
-            },
-            PortfolioDigestDefaults {
-                pre_market: "08:30".into(),
-                post_market: "09:00".into(),
-            },
-        )
+    fn defaults() -> DigestDefaults {
+        DigestDefaults {
+            pre_market: "08:30".into(),
+            post_market: "09:00".into(),
+        }
     }
 
     #[test]
-    fn build_overview_with_no_cron_or_prefs_returns_global_defaults() {
+    fn build_overview_with_no_cron_or_prefs_returns_default_slots() {
         let dir = tempdir().unwrap();
         let prefs_dir = dir.path().join("prefs");
         let cron_dir = dir.path().join("cron");
         std::fs::create_dir_all(&prefs_dir).unwrap();
         std::fs::create_dir_all(&cron_dir).unwrap();
-        let (gd, pd) = defaults();
-        let ov = build_overview(&prefs_dir, &cron_dir, &actor(), &gd, &pd, Utc::now()).unwrap();
-        // 无 prefs → 默认 4 条:08:30/09:00 持仓 + 07:30/21:00 全球
-        assert_eq!(ov.schedule.len(), 4);
+        let pd = defaults();
+        let ov = build_overview(&prefs_dir, &cron_dir, &actor(), &pd, Utc::now()).unwrap();
+        // 无 prefs → 默认 2 条 unified digest slot
+        assert_eq!(ov.schedule.len(), 2);
         assert!(ov.quiet_hours.is_none());
         assert!(ov.immediate.enabled); // 默认 true
         assert!(
             ov.schedule
                 .iter()
-                .any(|e| e.source == ScheduleSource::PortfolioDigest && e.time_local == "08:30")
+                .all(|e| e.source == ScheduleSource::Digest)
         );
-        assert!(
-            ov.schedule
-                .iter()
-                .any(|e| e.source == ScheduleSource::GlobalDigest && e.time_local == "07:30")
-        );
+        assert!(ov.schedule.iter().any(|e| e.time_local == "08:30"));
+        assert!(ov.schedule.iter().any(|e| e.time_local == "09:00"));
     }
 
     #[test]
@@ -632,8 +566,8 @@ mod tests {
             "add_job 2 failed: {r2}"
         );
 
-        let (gd, pd) = defaults();
-        let ov = build_overview(&prefs_dir, &cron_dir, &actor(), &gd, &pd, Utc::now()).unwrap();
+        let pd = defaults();
+        let ov = build_overview(&prefs_dir, &cron_dir, &actor(), &pd, Utc::now()).unwrap();
 
         let nighty = ov
             .schedule
@@ -670,8 +604,8 @@ mod tests {
         let cron_dir = dir.path().join("cron");
         std::fs::create_dir_all(&prefs_dir).unwrap();
         std::fs::create_dir_all(&cron_dir).unwrap();
-        let (gd, pd) = defaults();
-        build_overview(&prefs_dir, &cron_dir, &actor(), &gd, &pd, Utc::now()).unwrap()
+        let pd = defaults();
+        build_overview(&prefs_dir, &cron_dir, &actor(), &pd, Utc::now()).unwrap()
     }
 
     #[test]

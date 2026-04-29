@@ -385,8 +385,6 @@ pub(crate) async fn handle_get_thesis_context(
         },
         "investment_global_style": prefs.investment_global_style,
         "investment_theses": prefs.investment_theses.clone().unwrap_or_default(),
-        "global_digest_enabled": prefs.global_digest_enabled,
-        "global_digest_floor_macro_picks": prefs.global_digest_floor_macro_picks,
         "last_thesis_distilled_at": prefs.last_thesis_distilled_at,
         "thesis_distill_skipped": prefs.thesis_distill_skipped,
         "holdings": holdings,
