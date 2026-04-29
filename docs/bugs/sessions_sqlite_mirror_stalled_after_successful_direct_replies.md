@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-04-30 03:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；同一库里的 `cron_job_runs` 已推进到 `2026-04-30 03:01:44+08:00`，且最近一小时新增 `48` 条 run，说明跨到 `03:00` 窗口后会话镜像链路仍完全没有恢复。
   - `2026-04-30 02:04 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；同一库里的 `cron_job_runs` 已推进到 `2026-04-30 02:02:44+08:00`，且最近一小时新增 `48` 条 run，说明跨日后不仅 heartbeat 台账持续落库，会话镜像链路仍完全没有恢复。
   - `2026-04-30 01:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；同一库里的 `cron_job_runs` 已推进到 `2026-04-30 01:01:33+08:00`，说明即便最近一小时主要只有 scheduler 继续落库，会话镜像链路也仍完全没有恢复。
   - `2026-04-30 00:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但 `00:01` 与 `00:02` 两条 Feishu 直聊继续走完 `session.persist_assistant -> done success=true`，说明跨日后镜像停滞仍在持续扩大。
@@ -19,6 +20,10 @@
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-30 03:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而同窗 `cron_job_runs=48`，说明 sqlite 文件仍在持续接收最新调度结果，但会话镜像链路完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 同一库里最近一小时 `cron_job_runs` 已继续写到 `2026-04-30T03:01:44.366016+08:00`；最新 run 已推进到 `run_id=10698`，说明跨到 `03:00` 窗口后 scheduler 结果仍持续落库，而会话镜像链路继续静默停滞。
   - `2026-04-30 02:04 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而同窗 `cron_job_runs=48`，说明 sqlite 文件仍在持续接收最新调度结果，但会话镜像链路完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -32,6 +37,8 @@
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - 同一库里最近一小时 `cron_job_runs` 已继续写到 `2026-04-30T00:02:57.523734+08:00`，说明跨日后调度与直聊结果仍在持续落库，而会话镜像链路继续静默停滞。
 - 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-30 03:00:17-03:01:44` 继续记录整轮 heartbeat `run_finish` / `parse_kind` 收口，最新 run 已推进到 `ORCL 大事件监控` `run_id=10698`。
+  - 这说明到 `03:01-03:02` 为止，最近一小时真实 scheduler 主链路仍在持续推进，而 `sessions` / `session_messages` 仍完全没有同步进去。
   - `data/runtime/logs/sidecar.log` 在 `2026-04-30 02:00:55.564-02:00:55.565` 记录 `ASTS 重大异动心跳监控` 落成 `parse_kind=JsonTriggered -> deliver`；同日志在 `02:01:07.130-02:01:07.131` 记录 `Cerebras IPO与业务进展心跳监控` 落成 `execution_failed + skipped_error`，并在 `02:02:41.951` 记录 `Monitor_Watchlist_11` 再次 `parse_kind=JsonTriggered -> deliver`。
   - 这说明到 `02:02-02:03` 为止，最近一小时真实 scheduler 主链路仍在继续完成成功送达与失败收口，而 `sessions` / `session_messages` 继续完全没有同步进去。
   - `data/runtime/logs/sidecar.log` 在 `2026-04-30 00:01:09.281-00:01:09.282` 记录 Feishu 直聊会话 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 落成 `session.persist_assistant detail=done -> done success=true reply.chars=1867`。
