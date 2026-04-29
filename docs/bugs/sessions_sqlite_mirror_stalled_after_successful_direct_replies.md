@@ -6,6 +6,15 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 12:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T12:01:43.737411+08:00`，其中 `run_id=9942`（`每日公司资讯与分析总结`）已落成 `completed + sent + delivered=1`，说明 sqlite 文件本身仍在持续接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-29 12:01:40.437` 记录 Feishu 直聊 `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=3007`。
+  - 同一最近窗口 `data/runtime/logs/acp-events.log` 在 `2026-04-29T04:01:40.429194Z` 记录同 session `stopReason=end_turn`，说明 ACP 主链路已正常收口，而不是只看到半成品流式输出。
+  - 这说明到 `12:02` 为止，真实 Feishu 会话与 scheduler 结果仍在继续成功收口；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 11:03 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，会话镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
