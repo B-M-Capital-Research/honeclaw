@@ -258,6 +258,38 @@
   - `handler.session_run completed success=true reply.chars=35` 这一层伪成功台账不应再继续出现在上述两类坏态上；
   - scheduler / outbound / 渠道侧会把它们当成失败收口，而不是正常完成；
   - 后续巡检可以更准确地区分“真实完成”与“fallback 遮蔽的无效 Answer”。
+
+## 修复进展（2026-04-29 18:02 CST）
+
+- 针对 `2026-04-26 09:52` / `13:10` 两次“我的定时任务 / 我现在有哪些定时任务”真实样本，本轮继续收紧上游 multi-agent 搜索阶段，而不是只在下游继续兜底 fallback：
+  - `crates/hone-channels/src/runners/multi_agent.rs` 的 search guidance 现在显式要求：涉及列出 / 查看 / 更新 / 删除用户定时任务或提醒时，优先调用 `cron_job`，不要先误用 `data_fetch` / `web_search`
+  - 对 `这个` / `那个` / `上一条` 这类短澄清，search guidance 现在要求“直接答或只问一个简短澄清问题”，避免继续产出会被 `planning_sentence_suppressed` 判空的过渡句
+  - 当 search 阶段已经通过可信本地状态工具拿到足够答案时，multi-agent 现在允许 `cron_job` / `portfolio` 结果直接短路返回，不再强制进入更容易空回复的 ACP answer 阶段
+- 新增自动化回归：
+  - `trusted_local_tool_answer_can_return_directly`
+  - `live_market_tool_answer_still_requires_answer_stage`
+  - 并保留现有 `local_file_tool_calls_also_force_answer_stage`，确认普通本地文件检索不会被误放宽成直返
+
+## 当前验证（2026-04-29 18:02 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels trusted_local_tool_answer_can_return_directly -- --nocapture`
+  - `cargo test -p hone-channels live_market_tool_answer_still_requires_answer_stage -- --nocapture`
+  - `cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings -- --nocapture`
+  - `cargo test -p hone-channels local_file_tool_calls_also_force_answer_stage -- --nocapture`
+  - `cargo test -p hone-channels runners::multi_agent::tests -- --nocapture`
+  - `cargo check -p hone-channels`
+- 尚缺真实窗口复核：
+  - 下一条 Feishu 直聊“我的定时任务 / 我现在有哪些定时任务”样本，确认是否不再误跑行情工具，也不再落回统一 fallback
+  - 下一条短澄清样本（如“这个”），确认是否不再因为过渡句被判空
+
+## 当前结论（2026-04-29 18:02 CST）
+
+- 本轮修复把当前最可证实的上游误路由问题收口到了 multi-agent：
+  - 先减少“本该是任务治理 / 本地状态查询，却被搜索阶段带去行情工具”的概率；
+  - 再减少“本地状态答案已经齐备，却仍被强制送进 answer 阶段”的概率。
+- 这能直接覆盖最新活跃样本里最明确的一类失败入口，但还没有新的真实 Feishu 样本证明全部空/无效 Answer 根因已消失。
+- 因此本单状态继续维持 `Fixing`，暂不更新为 `Fixed`；若下一条真实 task-list / 短澄清样本恢复正常，可再评估是否降级或关闭。
 - 已补自动化回归：
   - `cargo test -p hone-channels finalize_agent_response_marks_sanitized_empty_success_as_failure -- --nocapture`
   - `cargo test -p hone-channels finalize_agent_response_marks_planning_sentence_as_failure -- --nocapture`

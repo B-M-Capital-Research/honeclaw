@@ -25,7 +25,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-28 已把 `sanitized_empty_success` / `planning_sentence_suppressed` 从伪成功改为失败态并补回归，后续继续观察上游 Answer 空/过渡句根因是否仍复现 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 17:01 `ASTS 重大异动心跳监控` `run_id=10183` 已把 `status=triggered` 送达，但正文同时承认“未达到 8% 阈值”；同根因更早已在 `11:30` 的 ORCL `run_id=9912` 把 `跌幅 4.07%` 写成“接近 5% 阈值” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 17:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `16:20` Feishu 直聊已完整走完 `persist_assistant -> reply.send -> end_turn`，同库 `cron_job_runs` 也继续写到 `2026-04-29 17:01:39+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 16:02 最新整点窗口继续混跑：`run_id=10130` 再次把 `Cerebras IPO与业务进展心跳监控` 打成“输出不是结构化 JSON”，`run_id=10135` 让 `ORCL 大事件监控` 漂到 `missing field id + skipped_error`，同窗其余任务仍多为 `noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |

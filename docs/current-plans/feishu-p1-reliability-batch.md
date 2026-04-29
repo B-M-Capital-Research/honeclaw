@@ -3,7 +3,7 @@
 - title: Feishu P1 直聊与定时任务可靠性修复批次
 - status: in_progress
 - created_at: 2026-04-17 10:05 CST
-- updated_at: 2026-04-26 14:20 CST
+- updated_at: 2026-04-29 18:02 CST
 - owner: Codex
 - related_files:
   - `bins/hone-feishu/src/handler.rs`
@@ -55,6 +55,9 @@
   - `empty_success_exhausted` 改为 `success=false + fallback error`，直聊和 scheduler 都不再把空回复 fallback 记成正常完成
   - Feishu 失败 partial stream 会丢弃工具/进度轨迹，idle timeout/state migration 后只给用户产品化失败文案
   - 共享输出净化层重新剥离独立 `Context compacted` / `Conversation compacted` marker 行，保留后续真实正文
+  - multi-agent search guidance 现在显式要求“我的定时任务 / 提醒 / 更新任务”等请求优先调用 `cron_job`，避免先误入 `data_fetch` / `web_search`
+  - multi-agent 现在允许 `cron_job` / `portfolio` 这类可信本地状态结果在搜索阶段直接短路返回，避免已经拿到本地答案后再进入容易产出空/过渡句的 answer 阶段
+  - multi-agent search guidance 对 `这个` / `那个` / `上一条` 这类短澄清补充了“直接答或只问一个澄清问题”的约束，减少 `planning_sentence_suppressed`
 - 已验证：
   - `cargo test -p hone-feishu`
   - `cargo test -p hone-channels`
@@ -62,8 +65,11 @@
   - `cargo test -p hone-feishu failed_reply_text`
   - `cargo test -p hone-channels sanitize_user_visible_output`
   - `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`
+  - `cargo test -p hone-channels runners::multi_agent::tests -- --nocapture`
+  - `cargo check -p hone-channels`
 - 待验证：
-  - 下一条真实 Feishu 直聊空回复 / busy 样本
+  - 下一条真实 Feishu 直聊“我的定时任务 / 我现在有哪些定时任务”样本
+  - 下一条真实 Feishu 直聊短澄清（如“这个”）样本
   - 下一轮真实 Feishu scheduler 直达任务送达窗口
   - 下一轮真实 `tenant_access_token/internal` 或 `im/v1/messages` 传输抖动是否被短重试吸收
   - 下一条真实 compact 后回复是否还会以 `Context compacted` 开头

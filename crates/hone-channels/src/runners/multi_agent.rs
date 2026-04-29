@@ -181,14 +181,18 @@ Verified search tool transcript (JSON):\n{}",
             .any(|call| matches!(call.name.as_str(), "web_search" | "data_fetch"))
     }
 
+    fn is_trusted_local_direct_return_tool(&self, tool_name: &str) -> bool {
+        matches!(tool_name, "cron_job" | "portfolio")
+    }
+
     fn build_search_input(&self, runtime_input: &str) -> String {
         format!(
-            "{runtime_input}\n\n[SEARCH STAGE GUIDANCE]\nDecide whether tool use is actually needed for this turn.\nUse `web_search` or `data_fetch` when the answer depends on fresh external facts, live market data, recent news, or other time-sensitive information.\nUse `local_list_files`, `local_search_files`, or `local_read_file` when the answer may exist in the current actor sandbox as local persisted state, such as `company_profiles/`, uploaded files, runtime artifacts, or other user-local notes.\nTreat network search and local file inspection as equal search methods. If local files may materially improve accuracy, inspect them before saying you do not have memory, history, or filesystem access.\nThese local file tools are read-only and scoped to the current actor sandbox only. Do not assume access outside that sandbox.\nDo not call tools just to satisfy workflow.\nIf you do use tools, keep your final search-stage note as a compact internal memo in plain text only.\nDo not use HTML, XML-like tags, Markdown headings, Markdown tables, or channel-specific presentation styles in the search-stage note.\nFocus on factual takeaways and unresolved gaps, not polished formatting.\nGreetings, short meta-chat, and other low-cost turns may be answered directly without tools."
+            "{runtime_input}\n\n[SEARCH STAGE GUIDANCE]\nDecide whether tool use is actually needed for this turn.\nUse `web_search` or `data_fetch` when the answer depends on fresh external facts, live market data, recent news, or other time-sensitive information.\nUse `local_list_files`, `local_search_files`, or `local_read_file` when the answer may exist in the current actor sandbox as local persisted state, such as `company_profiles/`, uploaded files, runtime artifacts, or other user-local notes.\nFor scheduled-task or reminder-management requests such as listing, checking, updating, or deleting the user's tasks, use `cron_job` first (for example `cron_job(action=\"list\")`) instead of market-data tools. Do not substitute `data_fetch` or `web_search` unless the user explicitly asked for fresh external facts.\nIf the user is asking about portfolio state or watchlist state that already lives locally, prefer the dedicated local/state tools before market/news tools.\nTreat network search and local file inspection as equal search methods. If local files may materially improve accuracy, inspect them before saying you do not have memory, history, or filesystem access.\nThese local file tools are read-only and scoped to the current actor sandbox only. Do not assume access outside that sandbox.\nDo not call tools just to satisfy workflow.\nIf you do use tools and one trusted local/state lookup already fully resolves the request, return a concise user-ready answer directly instead of a planning memo.\nIf the user message is a short greeting, acknowledgment, or deictic follow-up such as '这个' / '那个' / '上一条', answer directly or ask one brief clarification question. Do not emit a transitional planning sentence as the final output.\nIf you do use tools and still need the answer stage, keep your final search-stage note as a compact internal memo in plain text only.\nDo not use HTML, XML-like tags, Markdown headings, Markdown tables, or channel-specific presentation styles in the search-stage note.\nFocus on factual takeaways and unresolved gaps, not polished formatting.\nGreetings, short meta-chat, and other low-cost turns may be answered directly without tools."
         )
     }
 
     fn should_return_search_response_directly(&self, search_response: &AgentResponse) -> bool {
-        if !search_response.success || !search_response.tool_calls_made.is_empty() {
+        if !search_response.success {
             return false;
         }
         let sanitized = sanitize_user_visible_output(&search_response.content);
@@ -196,7 +200,7 @@ Verified search tool transcript (JSON):\n{}",
             return false;
         }
         let content = sanitized.content.trim();
-        if content.len() > 120 || content.contains('\n') {
+        if content.len() > 240 || content.contains('\n') {
             return false;
         }
 
@@ -219,7 +223,19 @@ Verified search tool transcript (JSON):\n{}",
         .iter()
         .any(|marker| content.contains(marker) || lowered.contains(marker));
 
-        !looks_like_working_note
+        if looks_like_working_note {
+            return false;
+        }
+
+        if search_response.tool_calls_made.is_empty() {
+            return true;
+        }
+
+        search_response.tool_calls_made.len() <= 3
+            && search_response
+                .tool_calls_made
+                .iter()
+                .all(|call| self.is_trusted_local_direct_return_tool(&call.name))
     }
 
     fn merge_context_messages(
@@ -453,7 +469,8 @@ impl AgentRunner for MultiAgentRunner {
                 .emit(AgentRunnerEvent::Progress {
                     stage: "multi_agent.search.direct_return",
                     detail: Some(format!(
-                        "tool_calls=0 content_len={} elapsed_ms={}",
+                        "tool_calls={} content_len={} elapsed_ms={}",
+                        search_response.tool_calls_made.len(),
                         search_response.content.len(),
                         search_elapsed_ms
                     )),
@@ -740,6 +757,9 @@ mod tests {
         assert!(
             input.contains("Use `local_list_files`, `local_search_files`, or `local_read_file`")
         );
+        assert!(input.contains("use `cron_job` first"));
+        assert!(input.contains("trusted local/state lookup already fully resolves"));
+        assert!(input.contains("deictic follow-up"));
         assert!(input.contains("equal search methods"));
         assert!(input.contains("plain text only"));
         assert!(input.contains("Do not use HTML"));
@@ -828,6 +848,45 @@ mod tests {
 
         assert!(!runner.should_return_search_response_directly(&response));
         assert!(!runner.has_live_search_tool_call(&response.tool_calls_made));
+    }
+
+    #[test]
+    fn trusted_local_tool_answer_can_return_directly() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "你当前有 3 个定时任务：1. 早报 09:00；2. 财报提醒 20:30；3. ASTS 价格提醒。"
+                .to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "cron_job".to_string(),
+                arguments: json!({"action": "list"}),
+                result: json!({"success": true, "jobs": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}),
+                tool_call_id: None,
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        assert!(runner.should_return_search_response_directly(&response));
+    }
+
+    #[test]
+    fn live_market_tool_answer_still_requires_answer_stage() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "AAPL 最新报价 210.31，盘前跌 0.4%。".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "data_fetch".to_string(),
+                arguments: json!({"data_type": "quote", "symbol": "AAPL"}),
+                result: json!({"price": 210.31}),
+                tool_call_id: None,
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        assert!(!runner.should_return_search_response_directly(&response));
     }
 
     #[test]
