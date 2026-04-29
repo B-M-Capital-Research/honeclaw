@@ -8,6 +8,14 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 21:08 CST` 再次复核，started-row finalize 缺陷在最新 `20:30`、`21:00` 两个窗口继续实时新增：
+    - `20:30` 窗口先写入 `run_id=10333-10346` 共 `14` 条 started 行，全部为 `execution_status=running`、`message_send_status=pending`
+    - 同窗终态随后另起为 `run_id=10347-10360`：其中 `10347-10355` 与 `10357-10359` 已分别落成 `noop + skipped_noop` 或 `completed + sent`，`10356`（`ORCL 大事件监控`）落成 `execution_failed + skipped_error`
+    - `21:00` 窗口又先写入 `run_id=10361-10376` 共 `16` 条 started 行，其中既包含 12 条 heartbeat，也包含 `美股盘前分析与个股推荐`、`晚9点盘前推演(XME及加密ETF)`、`持仓与关注股交易日晚间合并研判` 与 `OWALERT_PreMarket`
+    - 同窗终态已另起为 `run_id=10377-10391`：其中 `10383`、`10386`、`10389`、`10390` 已落成 `completed + sent`，其余大多落成 `noop + skipped_noop`
+    - 但对应 started 行 `10333-10346` 与 `10361-10376` 仍全部保留，说明无论终态是 `sent`、`noop` 还是 `skipped_error`，都不会覆盖原 started 行
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1811` 条，较 `20:08` 巡检记录里的 `1781` 再增 `30` 条，说明每推进一轮新窗口仍会继续堆积 started 脏行
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 20:08 CST` 再次复核，started-row finalize 缺陷在最新 `19:30`、`20:00` 两个 heartbeat 窗口继续实时新增：
     - `19:30` 窗口先写入 `run_id=10280-10291` 共 `12` 条 started 行，全部为 `execution_status=running`、`message_send_status=pending`
     - 同窗终态随后另起为 `run_id=10292-10303`：其中 `10292-10299` 与 `10301-10303` 已落成 `noop + skipped_noop`，`10300`（`持仓重大事件心跳检测`）已落成 `execution_failed + skipped_error`

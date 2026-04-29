@@ -15,6 +15,16 @@
 
 ## 修复进展
 
+- `2026-04-29 21:08` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `20:00-21:02` 的最新两轮继续从 `PlainTextSuppressed` 漂到“带内部推理前缀的 `JsonNoop` / started 残留”混跑：
+  - `20:00` 窗口坏态继续扩散：
+    - `execution_failed + skipped_error`：`10328`（`ORCL 大事件监控`，`LLM 错误: http error: error decoding response body`）
+    - `noop + skipped_noop`：`10320`（`Cerebras IPO与业务进展心跳监控`）、`10330`（`CAI破位预警`）都把带 `**内部推理过程（不对外输出）**` / `**内部判定过程（不对外输出）**` 前缀的文本压成了 `JsonNoop`
+  - `20:30` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `execution_failed + skipped_error`：`10356`（`ORCL 大事件监控`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）
+    - `noop + skipped_noop`：`10384`（`Monitor_Watchlist_11`，`raw_preview` 以“重新校验数据后返回正确结果。”开头）、`10380`（`ORCL 大事件监控`，`raw_preview` 直接泄露 `**关键数据：**` 列表）都仍被压成 `JsonNoop`
+  - `21:00` 窗口 started 行 `10361-10376` 仍先落成 `running + pending`，说明结构化坏态与 started 残留继续同步发生。
+  - 结论：到 `2026-04-29 21:08` 为止，本单仍稳定活跃；最新窗口继续混跑 `JsonNoop(带内部前缀) / PlainTextSuppressed / started`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-29 20:08` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `19:30-20:02` 的最新两轮已经继续从 `JsonEmptyStatus / PlainTextSuppressed` 漂到“带内部推理前缀的 `JsonNoop` / HTTP body decode failure / started 残留”混跑：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour') AND heartbeat=1` 聚合，最近窗口已落成 `24` 条 started 行、`21` 条 `noop + skipped_noop` 与 `2` 条 `execution_failed + skipped_error`；另有 `1` 条 Web scheduler `completed + send_failed`，说明同窗其它渠道仍在继续工作。
   - `19:30` 窗口坏态继续共存：
