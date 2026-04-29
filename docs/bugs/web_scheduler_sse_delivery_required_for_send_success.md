@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 10:18 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -134,3 +134,4 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 - 2026-04-28: `crates/hone-web-api/src/routes/events.rs` 将 Web scheduler 的 SSE 结果降为观测字段，不再决定 `message_send_status`。
 - 2026-04-28: `cargo check -p hone-memory -p hone-scheduler -p hone-tools -p hone-web-api -p hone-event-engine -p hone-channels --tests`
+- 2026-04-30: 本轮复核当前 `crates/hone-web-api/src/routes/events.rs` 代码，Web 渠道在 agent 成功生成并写入会话后默认 `message_send_status=sent`、`delivered=true`；`push_tx.send(...)` 的结果只写入 `detail.console_event_sent`。这与期望语义一致，活跃队列中的 `New` 状态属于文档滞后。

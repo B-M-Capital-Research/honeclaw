@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 03:03 CST
+最后更新：2026-04-30 03:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：7
 - Later / 待复现：14
-- 已修复 / 已关闭：71
+- 已修复 / 已关闭：73
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -27,13 +27,11 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 03:02 再次复核最近一小时 `sessions=0 / session_messages=0 / cron_job_runs=48`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同库最新 run 已推进到 `2026-04-30 03:01:44+08:00`，说明镜像停滞仍在持续 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-29 19:30 `run_id=10300` 再次把上游 `maximum context length` 400 压扁成 `invalid type: integer \`400\``；说明 2026-04-28 的 raw HTTP 兜底解析修复没有稳定收口生产链路 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 03:03 最新 `02:30-03:01` 窗口继续混跑：`10687-10698` 全落成 `noop + skipped_noop`、`10675-10686` 仍先残留 `running + pending`，同窗 `Empty` 与 `JsonNoop` 继续并存；Tavily 4 个 key 再次全失败后 `web_search` 仍记 success | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-30 02:00 `ASTS 重大异动心跳监控` `run_id=10643` 再次落成 `completed + sent`，但正文同时承认 `日内跌幅 -3.16%，未触及 8% 涨跌幅阈值`，说明近阈值误触发仍在活跃 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-30 02:02 `Monitor_Watchlist_11` `run_id=10650` 再次把 `ASTS 69.51` 写成“已跌破触发价 69.83”并送达，说明 watchlist 误触发链路仍未收口 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
-| Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | New | 2026-04-29 20:01 `英伟达每日消息` `run_id=10323` 再次落成 `completed + send_failed + console_event_sent=false`，正文已完整生成但离线 Web scheduler 仍被误记为发送失败 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 
 ## Later / 待复现
 
@@ -58,6 +56,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-04-30 已把 raw HTTP 兜底解析补到 `OpenRouterProvider` 多 key 路径，SDK `JSONDeserialize` 后会保留 `upstream HTTP 400`、真实 message 与数字/字符串 code；`cargo test -p hone-llm openrouter -- --nocapture` 与 `cargo check -p hone-llm --tests` 通过 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
+| Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | Fixed | 2026-04-30 复核当前代码已将 SSE 结果降为 `detail.console_event_sent` 观测字段；Web scheduler 成功生成并落库后仍记 `sent + delivered=true`，活跃状态属于文档滞后 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，已标记 Fixed 的 started 行 finalize 缺陷复发 | P3 | Fixed | 2026-04-29 23:07 已在 Feishu / Web scheduler 终态台账写入分支统一补顶层 `delivery_key`，让存储层可原地覆盖 started 行；`hone-scheduler` / `hone-memory` 定向回归与相关 `cargo check` 通过 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | Fixed | 2026-04-28 已在 bundled runtime dirty restart 前先停止旧 managed children，避免旧内嵌 Web server 在 lock preflight / 新绑定前继续占用 `127.0.0.1:8077`；`cargo check -p hone-desktop --tests` 通过 | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | Fixed | 2026-04-28 `CronSchedule` 新增 `date`，cron tool / Web API / scheduler event 均透传；未到目标日期的一次性任务不会被判定 due，定向回归通过 | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |

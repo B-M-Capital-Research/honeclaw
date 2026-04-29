@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 19:30` 窗口最新完成样本里，`run_id=10300`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
@@ -87,3 +87,18 @@
 - 该修复不为某个 provider 特判，只处理 OpenAI-compatible 错误体 schema 兼容性，避免把真实 `maximum context length` / 403 等原因压扁成 serde `invalid type`。
 - 验证：`cargo test -p hone-llm extracts_ --lib`。
 - `2026-04-29 19:30` 的 `run_id=10300` 说明上述修复结论未稳定覆盖当前生产 heartbeat 链路；本单由 `Fixed` 回调为 `New`，待重新核查实际生效路径。
+
+## 修复情况（2026-04-30）
+
+- 本轮复核确认 heartbeat 的 OpenRouter 模型路径走 `OpenRouterProvider`，而不是已修过的 `OpenAiCompatibleProvider`，因此仍会直接把 SDK 的 `JSONDeserialize` 错误向上抛出。
+- `crates/hone-llm/src/openrouter.rs` 已为 OpenRouter 多 key provider 补同类 raw HTTP 兜底解析：
+  - 每个 key 同时保存 SDK client 与 raw HTTP 所需的 `reqwest::Client` / API key / base URL。
+  - 当 SDK 因 provider 错误体 schema 变化触发 `JSONDeserialize` 时，用同一请求重放一次 raw HTTP。
+  - 非 2xx 响应保留 `upstream HTTP <status>`、错误 `message`，并兼容数字或字符串 `code`。
+- 该修复不特判 DeepSeek、Moonshot 或某个模型，只收窄 OpenRouter 兼容错误体解析边界，避免 `maximum context length` 这类真实上游原因再次被压成 `invalid type: integer 400`。
+
+## 回归验证（2026-04-30）
+
+- `cargo test -p hone-llm openrouter -- --nocapture`
+- `rustfmt --edition 2024 --check crates/hone-llm/src/openrouter.rs`
+- `cargo check -p hone-llm --tests`
