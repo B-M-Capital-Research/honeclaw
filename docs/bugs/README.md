@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 17:02 CST
+最后更新：2026-04-29 18:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：6
+- 活跃待修复：7
 - Later / 待复现：14
-- 已修复 / 已关闭：72
+- 已修复 / 已关闭：71
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -29,6 +29,7 @@
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 17:01 `ASTS 重大异动心跳监控` `run_id=10183` 已把 `status=triggered` 送达，但正文同时承认“未达到 8% 阈值”；同根因更早已在 `11:30` 的 ORCL `run_id=9912` 把 `跌幅 4.07%` 写成“接近 5% 阈值” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 17:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `16:20` Feishu 直聊已完整走完 `persist_assistant -> reply.send -> end_turn`，同库 `cron_job_runs` 也继续写到 `2026-04-29 17:01:39+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 16:02 最新整点窗口继续混跑：`run_id=10130` 再次把 `Cerebras IPO与业务进展心跳监控` 打成“输出不是结构化 JSON”，`run_id=10135` 让 `ORCL 大事件监控` 漂到 `missing field id + skipped_error`，同窗其余任务仍多为 `noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，已标记 Fixed 的 started 行 finalize 缺陷复发 | P3 | New | 2026-04-29 18:02 最新 `18:00` heartbeat 窗口再次同时留下 `run_id=10208-10219` started 行与 `10220-10231` 终态行；全库 `running + pending` 残留升到 `1731` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-29 15:02 `Monitor_Watchlist_11` `run_id=10087` 再次把 `ASTS 71.88` 写成“已低于触发价 69.83”并送达；同 job 在 `14:30` 仍是 `noop`，说明线上已复发 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 
@@ -61,7 +62,6 @@
 | Event-engine `immediate_kinds` 把低信号新闻重新提级成即时推送 | P3 | Fixed | 2026-04-28 actor 级 `immediate_kinds` 对 `news_critical` / `press_release` 不再升级已被分类器降为 Low 的新闻；新增回归测试通过 | [event_engine_immediate_kinds_resurrects_low_signal_news.md](./event_engine_immediate_kinds_resurrects_low_signal_news.md) |
 | Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | Fixed | 2026-04-28 `CronJobStorage` 新增 prompt `【触发时间】HH:MM` 与结构化 schedule 一致性校验：新增/更新错配任务会被拒绝，历史错配任务到点也会被跳过并告警；定向回归通过 | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | Fixed | 2026-04-29 heartbeat 送达前去重从“同 job 最近送达”扩展为“同 actor 最近 heartbeat 送达”，兄弟 job 重复同一催化也会进入 `duplicate_suppressed`；定向回归通过 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| Feishu scheduler 预写的 `running/pending` 台账不会被终态覆盖，长期残留为悬挂运行中 | P3 | Fixed | 2026-04-29 `CronJobStorage::record_execution_event` 会用同一 `delivery_key` 的终态覆盖最近的 `running + pending` started 行，不再为同一调度窗口另起终态记录并永久悬挂；定向回归通过 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-04-28 OpenAI-compatible provider 对 SDK 反序列化失败新增 raw HTTP 兜底解析，保留 provider 真实 `HTTP 400` body / numeric code，不再只剩 serde `invalid type`；定向回归通过 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Disabled channel 跳过启动后仍残留 stale pid 文件 | P3 | Fixed | 2026-04-28 `launch.sh` 在启动检查时识别 zombie child 并执行 `wait`，disabled channel 以 `CHANNEL_DISABLED_EXIT_CODE` 退出时会稳定删除 pid 文件；`bash -n launch.sh` 通过 | [disabled_channel_pid_files_survive_skipped_startup.md](./disabled_channel_pid_files_survive_skipped_startup.md) |
 | Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | Fixed | 2026-04-28 复核当前实现已在 provider error / unparseable response 时走 deterministic fallback 并写缓存与结构化日志，且本轮 OpenAI-compatible numeric error 解析已加固；该路径不再返回 `None` 造成静默降级 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |

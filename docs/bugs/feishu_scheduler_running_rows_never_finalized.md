@@ -3,10 +3,19 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 
 ## 证据来源
 
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 18:02 CST` 再次复核，已标记 `Fixed` 的 started-row finalize 问题在当前 live 数据里仍然活跃：
+    - `18:00` 窗口再次先写入 `run_id=10208-10219` 共 `12` 条 started 行，全部为 `execution_status=running`、`message_send_status=pending`
+    - 同窗终态随后另起为 `run_id=10220-10231`：其中 `10220-10230` 多数已落成 `noop + skipped_noop`，`10231`（`持仓重大事件心跳检测`）已落成 `execution_failed + skipped_error`
+    - 但对应 started 行 `10208-10219` 仍全部保留，说明“终态覆盖 started 行”的修复结论在当前运行态并不成立
+  - 以绝对时间窗 `executed_at >= 2026-04-29T09:02:29+08:00` 统计，最近一小时仍然同时存在：
+    - `running + pending = 217`
+    - 其它已收口终态合计 `219`（其中 `noop + skipped_noop = 196`、`completed + sent = 15`、`execution_failed + skipped_error = 7`、`completed + send_failed = 1`）
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1731` 条，较 `17:02` 巡检记录里的 `1682` 再增 `49` 条，说明每推进一轮新窗口仍会继续堆积 started 脏行
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 11:02 CST` 再次复核，started 残留继续在最新 `10:30`、`11:00` 两个 heartbeat 窗口实时新增：
     - `10:30` 窗口先写入 `run_id=9846-9857` 共 `12` 条 started 行，覆盖 `Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测`、`全天原油价格3小时播报` 等整批 heartbeat job
@@ -256,6 +265,9 @@
 
 ## 当前实现效果
 
+- 到 `2026-04-29 18:02 CST` 为止，最近一小时绝对时间窗里的 `running + pending` 仍有 `217` 条，与同窗其它 `219` 条终态几乎一比一并存，说明 started 行与终态行仍被拆成两批记录而不是单条收口。
+- `18:00` 新窗再次证明坏态依旧实时产生：`run_id=10208-10219` 刚写出不到三分钟，同窗终态就已经另起为 `10220-10231`，但 `10208-10219` 仍全部保留 `running + pending`。
+- 全库 `running + pending` 残留总量已升到 `1731` 条，较 `17:02` 巡检记录里的 `1682` 再增 `49` 条，说明“已修复”结论至少没有在当前 live runtime 生效。
 - 到 `2026-04-29 08:02 CST` 为止，最近一小时全量 scheduler 聚合里的 `running + pending` 已升到 `28` 条，继续高于同窗真正已收口的 `completed + sent = 3`。
 - `07:30` 与 `08:00` 新窗再次证明坏态持续实时产生：`run_id=9679/9678` 这类 started 行写出后不到一分钟，同一 delivery window 的真实终态就已经另起为 `9687/9692` 的 `completed + sent`；`run_id=9695` 与 `9694/9696-9709` 这批 started 行即便对应终态在 `9711` 和 `9710/9712-9721` 已收口为 `completed + sent` 或 `noop + skipped_noop`，也仍不会被覆盖。
 - 全库 `running + pending` 残留总量已升到 `1479` 条，较 `07:02` 的 `1451` 继续上涨，说明整点与半点窗口每推进一轮都会继续留下新 started 脏行。
@@ -305,6 +317,7 @@
 
 - 2026-04-29: `memory/src/cron_job/history.rs` 的 `CronJobStorage::record_execution_event` 会在终态写入时按同一 actor / job / target / heartbeat / `delivery_key` 查找最近的 `running + pending` started 行，并原地更新为终态记录；找不到匹配 started 行时仍保留原有 insert 行为。
 - 回归验证：`cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`。
+- 2026-04-29 18:02 CST: 当前 live `cron_job_runs` 再次出现 started 行与终态行并存，说明上述修复尚未实际生效、未覆盖当前运行链路，或已被后续路径绕开；本缺陷因此从 `Fixed` 改回 `New`。
 
 ## 后续建议
 
