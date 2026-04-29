@@ -3,10 +3,25 @@
 - **发现时间**: 2026-04-29 08:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 证据来源
 
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=10087`
+  - `job_id=j_ab7e8fb1`
+  - `job_name=Monitor_Watchlist_11`
+  - `executed_at=2026-04-29T15:02:18.827501+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `response_preview` 直接写出：`【价格提醒】ASTS触发买入条件。当前价格$71.88，已低于触发价$69.83`
+  - 这次不再只是“距触发价仅差 2.9%”，而是把 `71.88 > 69.83` 的事实直接改写成“已低于触发价”，随后正式送达，说明同一 watchlist 误触发链路在最新窗口仍活跃，而且错误表述更激进。
+- `data/runtime/logs/sidecar.log`
+  - `2026-04-29 15:02:16.188` 同一 `job_id=j_ab7e8fb1` 记录 `parse_kind=JsonTriggered`，`raw_preview` 与 `deliver_preview` 都把 `当前价格$71.88` 写成 `已低于触发价$69.83`，然后执行实际投递。
+- 最近一小时同链路对照：
+  - `2026-04-29 14:30:35.580` 同一 `Monitor_Watchlist_11` 还正常落成 `{"status":"noop"}` 并记录 `心跳任务未命中，本轮不发送`。
+  - 仅半小时后 `15:02` 就在没有真实跌破 `69.83` 的前提下改成 `triggered + sent`，说明这不是稳定穿线后的连续提醒，而是 watchlist 条件判断再次漂移。
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=9692`
   - `job_id=j_ab7e8fb1`
@@ -48,6 +63,8 @@
 
 ## 当前实现效果
 
+- `2026-04-29 15:02` 的 `Monitor_Watchlist_11` 再次把 `ASTS 71.88` 与阈值 `≤69.83` 误报成“已低于触发价 $69.83”，并成功发送 `completed + sent`。
+- 这说明此前的近阈值保险闸并没有稳定覆盖 watchlist 当前变体；问题不仅复发，而且已经从“接近阈值”升级成直接篡改比较方向。
 - `2026-04-29 07:30` 的 `Monitor_Watchlist_11` 把 `ASTS 71.88` 与阈值 `≤69.83` 的差距 `2.9%` 包装成“已跌破触发价上方区间”，并成功发送 `completed + sent`。
 - `2026-04-29 08:01` 的同一 job 又立即恢复 `noop + skipped_noop`。
 - 同窗其它 ASTS heartbeat 没有给出一致的真实触发证据，说明当前 watchlist 模板允许“接近阈值”的自然语言被错误收口成正式触发结果。
@@ -59,7 +76,7 @@
 
 ## 根因判断
 
-- 初步判断不是发送链路或通用 JSON 解析失败，而是 watchlist heartbeat 的条件语义被模型放宽了：从“价格必须穿过阈值”漂成“进入阈值上方观察区间也算触发”。
+- 初步判断不是发送链路或通用 JSON 解析失败，而是 watchlist heartbeat 的条件语义仍被模型放宽了：从“价格必须穿过阈值”漂成“进入阈值上方观察区间也算触发”，最新样本甚至把比较方向直接写反。
 - 由于输出最终仍符合结构化 `{"status":"triggered"}`，调度器没有额外做数值校验，导致错误判断被直接送达用户。
 - 这与已修复的“用日内高低点/振幅代替涨跌幅阈值”不同，本次问题集中在 watchlist 模板把“接近阈值”当成“命中阈值”。
 
@@ -67,6 +84,7 @@
 
 - 2026-04-29: `crates/hone-channels/src/scheduler.rs` 在 heartbeat 送达前增加近阈值保险闸：触发文案如果同时包含阈值/触发价语义与“接近、距离、仅差、仍高于、观察区间”等未越线表述，会落为 `near_threshold_suppressed`，不再作为正式提醒发送。
 - 回归验证：`cargo test -p hone-channels heartbeat_watchlist_above_trigger_price_is_suppressed -- --nocapture`。
+- 2026-04-29 15:02 最新真实窗口确认线上仍复发：`run_id=10087` 把 `ASTS 71.88` 明确写成“已低于触发价 69.83”并送达，说明当前保护没有稳定覆盖 watchlist 最新 prompt/文案变体；本单状态改回 `New`。
 
 ## 后续建议
 

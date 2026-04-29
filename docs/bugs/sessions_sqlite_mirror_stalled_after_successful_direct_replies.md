@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-29 15:03 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
+  - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - 但同库 `cron_job_runs` 已继续写到 `2026-04-29T15:02:18.827501+08:00`，且最近一小时已有 `790` 条调度 run，说明 sqlite 文件本身仍在持续接收最新调度结果，而会话镜像链路继续静默停滞。
+- 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/acp-events.log` 在 `2026-04-29T06:05:46.674896Z` 记录 Web 会话 `Actor_web__direct__web-user-e05f5e5f74a3` 输出 `agent_message_chunk text="OK"`，并在 `2026-04-29T06:05:47.021782Z` 落成 `stopReason=end_turn`。
+  - 这说明到 `14:05-14:06` 为止，Web direct 真实会话也已正常收口，而不是最近一小时没有用户链路成功完成；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
+- 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
   - `2026-04-29 14:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，镜像上界继续完全不动。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
