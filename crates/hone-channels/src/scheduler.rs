@@ -1,4 +1,7 @@
-use std::sync::{Arc, LazyLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use hone_scheduler::SchedulerEvent;
@@ -23,6 +26,8 @@ use crate::{AgentSession, HoneBotCore};
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
 const HEARTBEAT_MAX_ITERATIONS: u32 = 10;
+const SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE: &str =
+    "本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。";
 
 static RE_HEARTBEAT_CURRENT_BEFORE_TRIGGER_PRICE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
@@ -543,6 +548,55 @@ fn rollback_skipped_scheduler_assistant_turn(
     }
 }
 
+fn persist_suppressed_scheduler_failure_turn(
+    storage: &hone_memory::SessionStorage,
+    session_id: &str,
+    failure_kind: &str,
+) {
+    if session_id.is_empty() {
+        return;
+    }
+
+    match storage.get_messages(session_id, Some(1)) {
+        Ok(messages) => {
+            if messages.last().is_some_and(|message| {
+                message.role == "assistant"
+                    && hone_memory::session_message_text(message)
+                        == SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE
+            }) {
+                return;
+            }
+        }
+        Err(err) => {
+            tracing::warn!(
+                "[SchedulerDiag] failed to inspect session before failure transcript session_id={} err={}",
+                session_id,
+                err
+            );
+            return;
+        }
+    }
+
+    let mut metadata = HashMap::new();
+    metadata.insert("scheduler_failure".to_string(), Value::Bool(true));
+    metadata.insert(
+        "failure_kind".to_string(),
+        Value::String(failure_kind.to_string()),
+    );
+    if let Err(err) = storage.add_message(
+        session_id,
+        "assistant",
+        SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
+        Some(metadata),
+    ) {
+        tracing::warn!(
+            "[SchedulerDiag] failed to persist scheduler failure transcript session_id={} err={}",
+            session_id,
+            err
+        );
+    }
+}
+
 fn sanitize_scheduler_delivery_text(text: &str) -> String {
     let sanitized = sanitize_user_visible_output(text).content;
     let kept_lines = sanitized
@@ -776,6 +830,11 @@ pub async fn execute_scheduler_event(
                     event.job_id,
                     event.job_name,
                     response.error.as_deref().unwrap_or("").replace('\n', "\\n"),
+                );
+                persist_suppressed_scheduler_failure_turn(
+                    &core.session_storage,
+                    &session_id,
+                    "internal_error_suppressed",
                 );
             }
             ScheduledTaskExecution {
@@ -1024,10 +1083,11 @@ async fn run_heartbeat_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        HeartbeatOutcome, HeartbeatParseKind, build_scheduled_prompt, execute_scheduler_event,
-        has_skip_delivery_signal, heartbeat_duplicate_preview_match,
-        heartbeat_execution_from_content, inspect_heartbeat_result, is_empty_success_fallback,
-        load_actor_quiet_hours, rollback_skipped_scheduler_assistant_turn,
+        HeartbeatOutcome, HeartbeatParseKind, SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
+        build_scheduled_prompt, execute_scheduler_event, has_skip_delivery_signal,
+        heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
+        inspect_heartbeat_result, is_empty_success_fallback, load_actor_quiet_hours,
+        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
         sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
@@ -1292,6 +1352,60 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "user");
         assert_eq!(session_message_text(&messages[0]), "[定时任务触发] TEM");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn suppressed_scheduler_failure_persists_single_transcript_marker() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_scheduler_failure_marker_{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+        let storage = SessionStorage::new(&root);
+        let actor = ActorIdentity::new("feishu", "ou_failure", None::<String>).expect("actor");
+        let session_id = storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+
+        storage
+            .add_message(&session_id, "user", "[定时任务触发] 盘前复盘", None)
+            .expect("add user");
+        persist_suppressed_scheduler_failure_turn(
+            &storage,
+            &session_id,
+            "internal_error_suppressed",
+        );
+        persist_suppressed_scheduler_failure_turn(
+            &storage,
+            &session_id,
+            "internal_error_suppressed",
+        );
+
+        let messages = storage
+            .get_messages(&session_id, None)
+            .expect("get messages");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[1].role, "assistant");
+        assert_eq!(
+            session_message_text(&messages[1]),
+            SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE
+        );
+        let metadata = messages[1].metadata.as_ref().expect("metadata");
+        assert_eq!(
+            metadata
+                .get("scheduler_failure")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            metadata
+                .get("failure_kind")
+                .and_then(|value| value.as_str()),
+            Some("internal_error_suppressed")
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }

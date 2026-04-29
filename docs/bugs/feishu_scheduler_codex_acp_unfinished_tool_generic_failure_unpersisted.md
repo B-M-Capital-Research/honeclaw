@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 21:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Later
+- **状态**: Fixed
 - **GitHub Issue**: [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -117,3 +117,15 @@
 - `crates/hone-channels/src/scheduler.rs` 在非 heartbeat scheduler 失败分支使用该函数；内部错误不再外发通用“抱歉，这次处理失败了”，而是落成 `should_deliver=false`、`skipped_error`，并在 metadata 记录 `failure_kind=internal_error_suppressed`。
 - 验证：`cargo test -p hone-channels user_visible_error_message_or_none --lib`。
 - 上游 ACP pending-tool 根因仍由 Web / ACP 共享缺陷继续跟踪；本单从 Feishu “通用失败外发 + transcript 无痕迹”活跃队列移入 `Later`，若真实窗口继续出现同形态再改回 `New`。
+
+## 修复进展（2026-04-30）
+
+- `crates/hone-channels/src/scheduler.rs` 在非 heartbeat scheduler 的内部失败抑制分支新增会话落库补偿：当 `codex acp prompt ended before tool completion` 等内部错误被判定不可外发时，仍会向对应 direct session 追加一条脱敏 assistant 记录：`本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。`
+- 该补偿只写 transcript，不恢复 Feishu 通道外发；调度台账仍保持 `should_deliver=false` / `skipped_error` / `failure_kind=internal_error_suppressed`，避免把内部 runner 错误或通用抱歉重新推给用户。
+- 新增回归 `suppressed_scheduler_failure_persists_single_transcript_marker`，覆盖失败记录可追溯且重复调用不会连续刷同一失败 marker。
+- 验证：
+  - `cargo test -p hone-channels suppressed_scheduler_failure_persists_single_transcript_marker --lib -- --nocapture`
+  - `cargo test -p hone-channels user_visible_error_message_or_none --lib -- --nocapture`
+  - `cargo test -p hone-channels scheduler::tests --lib -- --nocapture`
+  - `cargo check -p hone-channels`
+- 当前结论：Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) 描述的“内部失败不回写会话、transcript 无痕迹”已由本轮代码补偿闭环；上游 ACP pending-tool 质量问题仍属于 runner 层后续优化，不在本单继续扩大处理。

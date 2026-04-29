@@ -16,8 +16,8 @@
 ## 当前概览
 
 - 活跃待修复：8
-- Later / 待复现：14
-- 已修复 / 已关闭：73
+- Later / 待复现：13
+- 已修复 / 已关闭：74
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -47,7 +47,6 @@
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | Later | 2026-04-26 已统一 overflow fallback 文案并保留执行失败态；若真实日报窗口继续只投失败提示再改回 `New` | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Discord 定时任务在 Answer 阶段返回空/无效回复后，仍被记为成功执行 | P2 | Later | 2026-04-26 已通过共享 `empty_success_exhausted -> success=false + error` 修复，Discord scheduler 后续会把通用 fallback 记为 `execution_failed` 而不是 `completed + sent`；若再次伪成功再改回 `New` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Later | 2026-04-26 代码确认 OpenAI-compatible provider 已对 `error sending request`、连接重置、超时等传输错误执行一次短重试，覆盖 heartbeat MiniMax 主要失败形态；若生产窗口继续复现再改回 `New` | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
-| Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Later | 2026-04-28 已再次收口 scheduler 失败分支：`codex acp prompt ended before tool completion` 等内部错误不再外发通用抱歉，台账落 `skipped_error` 并保留 `internal_error_suppressed` 分类；上游 ACP pending-tool 根因若真实窗口继续造成任务失败，再改回 `New` | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Later | 2026-04-28 已把 heartbeat prompt 的来源归因约束提升到调度层：未在当前工具结果中核验 Reuters/WSJ/Bloomberg/官方等来源时，不得把地缘叙述写成确定性归因；若真实窗口继续复现再改回 `New` | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Later | 2026-04-28 event-engine Feishu sink 对单用户安装新增 current-app open_id 解析缓存：若配置中只有一个 allow_mobile/allow_email，事件推送会先通过 Feishu API 解析当前 app 绑定的 open_id，不再直接复用可能跨 app 的历史 `actor.user_id`；待真实窗口复核 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Later | 2026-04-28 当前代码已对 idle timeout / state migration / 纯工具轨迹 partial 做用户态失败文案和落库清洗；底层 Codex ACP state DB 迁移类失败属于外部 runner 状态，若真实窗口仍无用户可见失败回复再改回 `New` | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
@@ -57,6 +56,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Fixed | 2026-04-30 非 heartbeat scheduler 内部失败抑制分支新增会话落库补偿：不可外发的 `codex acp prompt ended before tool completion` 等错误会在 direct session 追加脱敏失败记录，台账仍保持 `skipped_error`；`hone-channels` scheduler/runtime 定向回归与 `cargo check -p hone-channels` 通过；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-04-30 已把 raw HTTP 兜底解析补到 `OpenRouterProvider` 多 key 路径，SDK `JSONDeserialize` 后会保留 `upstream HTTP 400`、真实 message 与数字/字符串 code；`cargo test -p hone-llm openrouter -- --nocapture` 与 `cargo check -p hone-llm --tests` 通过 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | Fixed | 2026-04-30 复核当前代码已将 SSE 结果降为 `detail.console_event_sent` 观测字段；Web scheduler 成功生成并落库后仍记 `sent + delivered=true`，活跃状态属于文档滞后 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，已标记 Fixed 的 started 行 finalize 缺陷复发 | P3 | Fixed | 2026-04-29 23:07 已在 Feishu / Web scheduler 终态台账写入分支统一补顶层 `delivery_key`，让存储层可原地覆盖 started 行；`hone-scheduler` / `hone-memory` 定向回归与相关 `cargo check` 通过 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
