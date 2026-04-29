@@ -15,6 +15,19 @@
 
 ## 修复进展
 
+- `2026-04-30 06:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `05:30-06:01` 的最新两轮继续混跑 `started / JsonNoop / Empty / skipped_noop`，仅 `持仓重大事件心跳检测` 单条落成 `completed + sent`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`10801-10812`（`05:30`）与 `10825-10836`（`06:00`）；随后终态仍分裂成 `10813-10824` 与 `10837-10847` 的 `noop + skipped_noop`，只有 `run_id=10848`（`持仓重大事件心跳检测`）在 `06:01:01` 落成 `completed + sent`，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `05:30` 窗口仍未恢复成稳定单一状态：
+    - `parse_kind=Empty`：`ORCL 大事件监控`、`Cerebras IPO与业务进展心跳监控`、`TEM大事件心跳监控`、`TEM破位预警`、`持仓重大事件心跳检测`、`小米破位预警`、`RKLB异动监控`
+    - `parse_kind=JsonNoop`：`小米30港元破位预警`、`CAI破位预警`、`ASTS 重大异动心跳监控`、`全天原油价格3小时播报`、`Monitor_Watchlist_11`
+  - `06:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `parse_kind=Empty`：`CAI破位预警`、`小米30港元破位预警`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`TEM破位预警`、`TEM大事件心跳监控`、`ORCL 大事件监控`、`小米破位预警`、`Monitor_Watchlist_11`、`Cerebras IPO与业务进展心跳监控`、`全天原油价格3小时播报`
+    - `parse_kind=JsonTriggered`：`持仓重大事件心跳检测` 在 `06:00:58` 送达 `【RKLB 重大合同触发】...`
+    - 同窗 `06:00:11-06:00:12` 继续连续命中 4 个 Tavily key 配额/鉴权失败，随后 `tool_execute_success name=web_search` 仍照常写回，说明工具层伪成功仍与 heartbeat 漂移并存。
+    - 其余 started 行 `10825-10836` 仍先落成 `running + pending`，说明 “started 残留” 与 `Empty/JsonTriggered` 混跑仍在同步发生。
+  - `data/sessions.sqlite3` 还能直接看到同批不是整组 scheduler 停摆：`run_id=10848` 的 `response_preview` 已成功写入 `【RKLB 重大合同触发】...`，而同窗其它 job 仍统一记成 `skipped_noop`。
+  - 结论：到 `2026-04-30 06:03` 为止，本单仍稳定活跃；最新窗口虽然没有出现新的误发失败提示，但并未恢复成稳定结构化协议，而是继续在 `started / JsonNoop / Empty` 之间漂移，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 05:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `04:30-05:01` 的最新两轮继续混跑 `started / JsonNoop / Empty / skipped_noop`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`10749-10761`（`04:30`）与 `10775-10787`（`05:00`）；随后终态仍分裂成 `10762-10773` 与 `10788-10800` 的 `noop + skipped_noop`，没有恢复成单一稳定的结构化 `noop` 协议。
   - `04:30` 窗口仍未恢复成稳定单一状态：
