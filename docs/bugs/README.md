@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 04:23 CST
+最后更新：2026-04-30 05:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,9 +27,8 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | New | 2026-04-30 每日完整打包已生成 `.app` 和 `.dmg`，但启动打包后的 `.app/Contents/MacOS/hone-desktop` 时卡在 `CFUserNotificationDisplayAlert`，`18077/18088` 均无监听 | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 04:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `cron_job_runs` 已推进到 `2026-04-30 04:01:50+08:00`，且 `Oil_Price_Monitor_Closing` 已真实送达 `completed + sent` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-29 19:30 `run_id=10300` 再次把上游 `maximum context length` 400 压扁成 `invalid type: integer \`400\``；说明 2026-04-28 的 raw HTTP 兜底解析修复没有稳定收口生产链路 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 04:02 最新 `03:30-04:01` 窗口继续混跑：`10736-10746` 全落成 `noop + skipped_noop`、`10723-10735` 仍先残留 `running + pending`；同窗 `Empty` 与 `JsonNoop` 继续并存，Tavily 4 个 key 再次全失败后 `web_search` 仍记 success | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 05:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `data/sessions/*.json` 已继续写到 `05:00:42+08:00`，`cron_job_runs` 也推进到 `2026-04-30 05:01:04+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 05:02 最新 `04:30-05:01` 窗口继续混跑：`10762-10773`、`10788-10800` 全落成 `noop + skipped_noop`、`10749-10761` 与 `10775-10787` 仍先残留 `running + pending`；同窗 `Empty` 与 `JsonNoop` 继续并存，Tavily 4 个 key 再次全失败后 `web_search` 仍记 success | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-30 02:00 `ASTS 重大异动心跳监控` `run_id=10643` 再次落成 `completed + sent`，但正文同时承认 `日内跌幅 -3.16%，未触及 8% 涨跌幅阈值`，说明近阈值误触发仍在活跃 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-30 02:02 `Monitor_Watchlist_11` `run_id=10650` 再次把 `ASTS 69.51` 写成“已跌破触发价 69.83”并送达，说明 watchlist 误触发链路仍未收口 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |

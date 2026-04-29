@@ -15,6 +15,22 @@
 
 ## 修复进展
 
+- `2026-04-30 05:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `04:30-05:01` 的最新两轮继续混跑 `started / JsonNoop / Empty / skipped_noop`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`10749-10761`（`04:30`）与 `10775-10787`（`05:00`）；随后终态仍分裂成 `10762-10773` 与 `10788-10800` 的 `noop + skipped_noop`，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `04:30` 窗口仍未恢复成稳定单一状态：
+    - `parse_kind=Empty`：`小米30港元破位预警`、`全天原油价格3小时播报`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`TEM破位预警`、`RKLB异动监控`、`持仓重大事件心跳检测`、`Monitor_Watchlist_11`、`Cerebras IPO与业务进展心跳监控`
+    - `parse_kind=JsonNoop`：`CAI破位预警`、`小米破位预警`、`TEM大事件心跳监控`
+  - `05:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `parse_kind=Empty`：`小米破位预警`、`TEM破位预警`、`ORCL 大事件监控`、`小米30港元破位预警`、`全天原油价格3小时播报`、`持仓重大事件心跳检测`、`RKLB异动监控`、`CAI破位预警`、`Cerebras IPO与业务进展心跳监控`
+    - `parse_kind=JsonNoop`：`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`
+    - 同窗 `科技成长赛道大盘极值与情绪监控` 作为非 heartbeat scheduler 仍能在 `run_id=10799` 落成 `completed + sent`，说明不是整批 scheduler 停摆。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `04:30:13.219`、`04:30:13.740`、`04:30:16.661`、`04:30:27.651`、`04:30:30.223`、`04:30:32.133`、`04:30:50.058`、`04:30:51.158`、`04:30:56.060`：多条 heartbeat 继续记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `04:30:20.526`、`04:30:49.901`：同窗又有 `CAI破位预警`、`TEM大事件心跳监控` 落成 `parse_kind=JsonNoop`
+    - `05:00:26.114`、`05:00:38.076`、`05:01:04.032`：`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控` 再次落成 `parse_kind=JsonNoop`
+    - `05:00:33.692-05:00:35.505`：同一轮连续 4 次记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但每次随后仍回写 `tool_execute_success name=web_search`
+  - 结论：到 `2026-04-30 05:02` 为止，本单仍稳定活跃；最新窗口虽然没有再误发 `completed + sent`，但并未恢复成稳定结构化协议，而是继续在 `started / JsonNoop / Empty` 之间漂移，并持续伴随 Tavily 全 key 失败后的 `web_search` 伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 04:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `03:30-04:01` 的最新两轮继续混跑 `started / JsonNoop / Empty / skipped_noop`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-70 minutes') AND heartbeat=1` 聚合，最近窗口已落成 `24` 条 started 行与 `24` 条 `noop + skipped_noop`；没有恢复成单一稳定的结构化 `noop` 协议。
   - `03:30` 窗口仍未恢复成稳定单一状态：

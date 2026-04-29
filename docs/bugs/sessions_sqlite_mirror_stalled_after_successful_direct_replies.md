@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-04-30 05:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions/Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44.json` 已更新到 `2026-04-30T05:00:42.358709+08:00`，`cron_job_runs` 也推进到 `2026-04-30T05:01:04.034093+08:00`，说明真实会话源文件与调度台账都在继续前进，只有 sqlite 会话镜像完全停滞。
   - `2026-04-30 04:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同库 `cron_job_runs` 已推进到 `2026-04-30 04:01:50+08:00`，且 `Oil_Price_Monitor_Closing` 在 `run_id=10747` 已落成 `completed + sent`，说明即使真实直聊与 scheduler 都继续成功收口，会话镜像链路仍完全没有恢复。
   - `2026-04-30 03:02 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；同一库里的 `cron_job_runs` 已推进到 `2026-04-30 03:01:44+08:00`，且最近一小时新增 `48` 条 run，说明跨到 `03:00` 窗口后会话镜像链路仍完全没有恢复。
   - `2026-04-30 02:04 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；同一库里的 `cron_job_runs` 已推进到 `2026-04-30 02:02:44+08:00`，且最近一小时新增 `48` 条 run，说明跨日后不仅 heartbeat 台账持续落库，会话镜像链路仍完全没有恢复。
@@ -21,6 +22,10 @@
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-30 05:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而同窗 `data/sessions` 最新文件已推进到 `2026-04-30T05:00:42.358709+08:00`、`cron_job_runs` 已推进到 `2026-04-30T05:01:04.034093+08:00`。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `ls -lt data/sessions | head` 显示最近更新的真实会话源文件分别是 `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44.json`（`Apr 30 05:00`）与 `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595.json`（`Apr 30 04:32`），说明最近一小时并非没有真实会话写盘。
   - `2026-04-30 04:02 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而同窗最新 `cron_job_runs` 已推进到 `2026-04-30T04:01:50.696462+08:00`。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -42,6 +47,10 @@
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - 同一库里最近一小时 `cron_job_runs` 已继续写到 `2026-04-30T00:02:57.523734+08:00`，说明跨日后调度与直聊结果仍在持续落库，而会话镜像链路继续静默停滞。
 - 最近一小时运行日志与会话主链路对照：
+  - `data/sessions/Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44.json` 记录该会话 `updated_at=2026-04-30T05:00:42.358709+08:00`，末尾最新 assistant 消息时间为 `2026-04-30T05:00:42.358119+08:00`，正文已正常产出完整盘后结论。
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-30 05:00:42.359-05:00:42.360` 记录同一 Feishu 直聊会话 `Actor_feishu__direct__ou_5f895bed1573d53053e89bfc382b523a44` 完整走完 `step=session.persist_assistant detail=done -> done success=true reply.chars=954`。
+  - 同窗 `cron_job_runs.run_id=10800` 还记录 `TEM大事件心跳监控` 已在 `05:01:04` 落成 `noop + skipped_noop`，说明到 `05:02` 为止 scheduler 台账也仍在持续写入。
+  - 这说明到 `05:02` 为止，真实直聊源文件、runtime 日志和 scheduler 台账都在继续前进；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
   - `data/runtime/logs/sidecar.log` 在 `2026-04-30 04:00:01-04:01:46` 继续记录 Feishu 直聊 `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 完整进入 `step=agent.run`、执行 `data_fetch` / `web_search`，并最终落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=1567`。
   - 同一窗口 `cron_job_runs.run_id=10747` 还记录 `Oil_Price_Monitor_Closing` 于 `04:01:50` 落成 `completed + sent + delivered=1`。
   - 这说明到 `04:02` 为止，不仅 heartbeat 台账继续写入，真实直聊与原油定时播报也仍在成功收口；缺口仍集中在 `sessions` / `session_messages` 镜像完全不前移。
