@@ -15,6 +15,21 @@
 
 ## 修复进展
 
+- `2026-04-29 22:06` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `21:30-22:00` 的最新两轮继续混跑 `PlainTextSuppressed / skipped_error / JsonNoop / started`，同时 Tavily 4 key 全失败后 `web_search` 仍回写 success：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口已落成 `28` 条 started 行、`21` 条 `noop + skipped_noop`、`6` 条 `completed + sent` 与 `2` 条 `execution_failed + skipped_error`。
+  - `21:30` 窗口坏态继续并存：
+    - `execution_failed + skipped_error`：`10419`（`持仓重大事件心跳检测`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）
+    - `completed + sent`：`10420`（`美股开盘持仓监控`）、`10421`（`Oil_Price_Monitor_Premarket`）、`10422`（`彩票组合风险监控与买卖点提醒`）、`10424`（`科技核心股池 · 晚间击球区快报`）
+  - `22:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `execution_failed + skipped_error`：`10440`（`ORCL 大事件监控`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）
+    - `noop + skipped_noop`：`10437-10439`、`10441-10447`
+    - `completed + sent`：`10448`（`Monitor_Watchlist_11`）
+    - started 行 `10425-10436` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `22:00:23.709-22:00:23.710`：`ORCL 大事件监控` 记录 `raw_chars=561 starts_with_json=false parse_kind=PlainTextSuppressed`，`raw_preview` 直接带 `**推理过程（内部，不输出）：**` 前缀，但渠道侧仍打印“心跳任务未命中，本轮不发送”
+    - `22:00:15.191-22:00:20.857`：同窗连续多次记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但工具层随后仍回写 `tool_execute_success name=web_search`
+  - 结论：到 `2026-04-29 22:06` 为止，本单仍稳定活跃；最新窗口继续混跑 `JsonNoop / PlainTextSuppressed / skipped_error / started`，并继续伴随 Tavily 全 key 失败后的 `web_search` 伪成功，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-29 21:08` 最近一小时真实窗口确认这条缺陷仍未收口，而且 `20:00-21:02` 的最新两轮继续从 `PlainTextSuppressed` 漂到“带内部推理前缀的 `JsonNoop` / started 残留”混跑：
   - `20:00` 窗口坏态继续扩散：
     - `execution_failed + skipped_error`：`10328`（`ORCL 大事件监控`，`LLM 错误: http error: error decoding response body`）

@@ -8,6 +8,14 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-29 22:06 CST` 再次复核，started-row finalize 缺陷在最新 `21:30`、`22:00` 两个窗口继续实时新增：
+    - `21:30` 窗口先写入 `run_id=10423` 共 `1` 条 started 行，对应普通 scheduler `科技核心股池 · 晚间击球区快报`
+    - 同窗终态随后另起为 `run_id=10424`，已落成 `completed + sent + delivered=1`
+    - `22:00` 窗口又先写入 `run_id=10425-10436` 共 `12` 条 started 行，全部为 `execution_status=running`、`message_send_status=pending`
+    - 同窗终态随后另起为 `run_id=10437-10448`：其中 `10437-10439`、`10441-10447` 已落成 `noop + skipped_noop`，`10440`（`ORCL 大事件监控`）落成 `execution_failed + skipped_error`，`10448` 落成 `completed + sent`
+    - 但对应 started 行 `10423` 与 `10425-10436` 仍全部保留，说明无论终态是 `sent`、`noop` 还是 `skipped_error`，都不会覆盖原 started 行
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `1839` 条，较 `21:08` 巡检记录里的 `1811` 再增 `28` 条，说明每推进一轮新窗口仍会继续堆积 started 脏行
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 21:08 CST` 再次复核，started-row finalize 缺陷在最新 `20:30`、`21:00` 两个窗口继续实时新增：
     - `20:30` 窗口先写入 `run_id=10333-10346` 共 `14` 条 started 行，全部为 `execution_status=running`、`message_send_status=pending`
     - 同窗终态随后另起为 `run_id=10347-10360`：其中 `10347-10355` 与 `10357-10359` 已分别落成 `noop + skipped_noop` 或 `completed + sent`，`10356`（`ORCL 大事件监控`）落成 `execution_failed + skipped_error`
