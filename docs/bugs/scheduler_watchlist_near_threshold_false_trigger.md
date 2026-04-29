@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-29 08:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -85,6 +85,7 @@
 - 2026-04-29: `crates/hone-channels/src/scheduler.rs` 在 heartbeat 送达前增加近阈值保险闸：触发文案如果同时包含阈值/触发价语义与“接近、距离、仅差、仍高于、观察区间”等未越线表述，会落为 `near_threshold_suppressed`，不再作为正式提醒发送。
 - 回归验证：`cargo test -p hone-channels heartbeat_watchlist_above_trigger_price_is_suppressed -- --nocapture`。
 - 2026-04-29 15:02 最新真实窗口确认线上仍复发：`run_id=10087` 把 `ASTS 71.88` 明确写成“已低于触发价 69.83”并送达，说明当前保护没有稳定覆盖 watchlist 最新 prompt/文案变体；本单状态改回 `New`。
+- 2026-04-29 19:04: 本轮在近阈值保险闸中加入 watchlist 数值自检：当消息声明低于/跌破 `触发价≤...`，但同一文本里的当前价仍高于触发价时，调度器会把该 `triggered` 输出抑制为 `near_threshold_suppressed`。回归覆盖 `当前价格$71.88，已低于触发价$69.83` 变体；验证命令：`cargo test -p hone-channels heartbeat_ -- --nocapture`。
 
 ## 后续建议
 

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use hone_scheduler::SchedulerEvent;
@@ -23,6 +23,20 @@ use crate::{AgentSession, HoneBotCore};
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
 const HEARTBEAT_MAX_ITERATIONS: u32 = 10;
+
+static RE_HEARTBEAT_CURRENT_BEFORE_TRIGGER_PRICE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+            r"(?is)(?:当前(?:价格|价)?|最新(?:价格|价)?|current(?:\s*price)?)[^\d]{0,20}\$?\s*(?P<current>\d+(?:\.\d+)?)[\s\S]{0,120}(?:触发价|触发线|配置线|trigger\s*price|trigger\s*line)[^\d]{0,20}\$?\s*(?P<threshold>\d+(?:\.\d+)?)",
+        )
+        .expect("valid heartbeat trigger price regex")
+});
+
+static RE_HEARTBEAT_TRIGGER_PRICE_BEFORE_CURRENT: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+            r"(?is)(?:触发价|触发线|配置线|trigger\s*price|trigger\s*line)[^\d]{0,20}\$?\s*(?P<threshold>\d+(?:\.\d+)?)[\s\S]{0,120}(?:当前(?:价格|价)?|最新(?:价格|价)?|current(?:\s*price)?)[^\d]{0,20}\$?\s*(?P<current>\d+(?:\.\d+)?)",
+        )
+        .expect("valid heartbeat trigger price regex")
+});
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum HeartbeatOutcome {
@@ -145,8 +159,10 @@ fn heartbeat_near_threshold_without_crossing(text: &str) -> bool {
         "阈值",
         "警戒线",
         "警戒阈值",
+        "门槛",
         "触发价",
         "触发线",
+        "配置线",
         "条件线",
         "threshold",
         "triggerprice",
@@ -160,7 +176,14 @@ fn heartbeat_near_threshold_without_crossing(text: &str) -> bool {
         "仅差",
         "差约",
         "未达到",
+        "未达",
+        "没有达到",
         "尚未达到",
+        "未触及",
+        "尚未触及",
+        "没有触及",
+        "未命中",
+        "未满足",
         "未越过",
         "未跌破",
         "未突破",
@@ -175,8 +198,49 @@ fn heartbeat_near_threshold_without_crossing(text: &str) -> bool {
         "notyet",
     ];
 
-    threshold_terms.iter().any(|term| compact.contains(term))
-        && proximity_terms.iter().any(|term| compact.contains(term))
+    let has_near_threshold_language = threshold_terms.iter().any(|term| compact.contains(term))
+        && proximity_terms.iter().any(|term| compact.contains(term));
+    has_near_threshold_language || heartbeat_lower_trigger_price_contradiction(text, &compact)
+}
+
+fn heartbeat_lower_trigger_price_contradiction(text: &str, compact: &str) -> bool {
+    let claims_lower_trigger = [
+        "触发价≤",
+        "触发价<=",
+        "触发线≤",
+        "触发线<=",
+        "配置线≤",
+        "配置线<=",
+        "低于触发价",
+        "跌破触发价",
+        "低于触发线",
+        "跌破触发线",
+        "低于配置线",
+        "跌破配置线",
+        "belowtriggerprice",
+        "undertriggerprice",
+    ]
+    .iter()
+    .any(|term| compact.contains(term));
+    if !claims_lower_trigger {
+        return false;
+    }
+
+    [
+        RE_HEARTBEAT_CURRENT_BEFORE_TRIGGER_PRICE.captures(text),
+        RE_HEARTBEAT_TRIGGER_PRICE_BEFORE_CURRENT.captures(text),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|captures| {
+        let current = captures
+            .name("current")
+            .and_then(|m| m.as_str().parse::<f64>().ok());
+        let threshold = captures
+            .name("threshold")
+            .and_then(|m| m.as_str().parse::<f64>().ok());
+        matches!((current, threshold), (Some(current), Some(threshold)) if current > threshold)
+    })
 }
 
 /// 直接从 `notif_prefs_dir/{actor_slug}.json` 读 actor 的 quiet_hours + timezone。
@@ -1030,12 +1094,34 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_explicit_below_threshold_denial_is_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"触发条件：单日涨跌幅超过 8%。ASTS 当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛，本轮仅建议观察。"}"#,
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(execution.error, None);
+        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+    }
+
+    #[test]
     fn heartbeat_watchlist_above_trigger_price_is_suppressed() {
         let execution = heartbeat_execution_from_content(
             r#"{"status":"triggered","message":"ASTS 当前 71.88，触发价≤69.83，仍高于触发价但已进入触发价上方区间，建议关注。"}"#,
             "model-x",
         );
         assert!(!execution.should_deliver);
+        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+    }
+
+    #[test]
+    fn heartbeat_watchlist_contradictory_lower_trigger_price_is_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"【价格提醒】ASTS触发买入条件。当前价格$71.88，已低于触发价$69.83。"}"#,
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(execution.error, None);
         assert_eq!(execution.metadata["near_threshold_suppressed"], true);
     }
 

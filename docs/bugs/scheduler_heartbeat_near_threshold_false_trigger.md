@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -96,6 +96,7 @@
 - 回归验证：`cargo test -p hone-channels heartbeat_near_threshold_trigger_is_suppressed -- --nocapture`。
 - 2026-04-29 17:01 最新真实窗口再次确认 ASTS 仍复发：`run_id=10183` 在正文已明确写出 `当前跌幅未达到 8% 阈值` 的前提下，仍落成 `completed + sent + delivered=1`；说明当前保护尚未覆盖“触发条件声明 + 正文否认命中”这一新变体。
 - 2026-04-29 11:30-12:01 最新真实窗口仍复现回归：`run_id=9912` 把 ORCL `跌幅 4.07%` 写成“接近 5% 阈值”并送达，下一窗口 `run_id=9941` 才恢复 `noop`；说明近阈值保险闸尚未稳定覆盖所有单标的 heartbeat 变体，本单改回 `New`。
+- 2026-04-29 19:04: 本轮补强同一保险闸，新增 `门槛 / 未触及 / 未命中 / 未满足 / 未达` 等否认命中措辞覆盖；`触发条件：超过 8%` 但正文写出 `当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛` 的 `triggered` 输出会被落成 `near_threshold_suppressed`，不再投递。回归验证：`cargo test -p hone-channels heartbeat_ -- --nocapture`。
 
 ## 后续建议
 

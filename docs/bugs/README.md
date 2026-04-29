@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-29 19:02 CST
+最后更新：2026-04-29 19:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：7
+- 活跃待修复：5
 - Later / 待复现：14
-- 已修复 / 已关闭：71
+- 已修复 / 已关闭：73
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -26,12 +26,10 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-29 17:01 `ASTS 重大异动心跳监控` `run_id=10183` 已把 `status=triggered` 送达，但正文同时承认“未达到 8% 阈值”；同根因更早已在 `11:30` 的 ORCL `run_id=9912` 把 `跌幅 4.07%` 写成“接近 5% 阈值” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-29 19:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但 `18:47-18:48` Feishu 直聊已完整走完 `persist_assistant -> reply.send -> end_turn`，同库 `cron_job_runs` 也继续写到 `2026-04-29 19:01:59+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-29 19:02 最新两轮继续混跑：`18:30` 的 `run_id=10247` 仍把 `Cerebras IPO与业务进展心跳监控` 记成 `JsonEmptyStatus {}` 并压成未命中，`19:01` 的 `run_id=10279` 又因 `PlainTextSuppressed` 内部推理文本落成 `skipped_error`；同窗 Tavily 全 key 失败后 `web_search` 仍被记成功 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，已标记 Fixed 的 started 行 finalize 缺陷复发 | P3 | New | 2026-04-29 19:02 最新 `18:30` 与 `19:00` heartbeat 窗口继续同时留下 `run_id=10232-10243`、`10256-10267` started 行及各自终态行；全库 `running + pending` 残留升到 `1755` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
-| Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-29 15:02 `Monitor_Watchlist_11` `run_id=10087` 再次把 `ASTS 71.88` 写成“已低于触发价 69.83”并送达；同 job 在 `14:30` 仍是 `noop`，说明线上已复发 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 
 ## Later / 待复现
 
@@ -56,6 +54,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | Fixed | 2026-04-29 19:04 已扩展 heartbeat 近阈值保险闸，覆盖“未达到阈值 / 未触及门槛”等否认命中变体；`cargo test -p hone-channels heartbeat_ -- --nocapture` 通过 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
+| Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-04-29 19:04 已为 watchlist 触发文案补当前价 vs 触发价数值自检，`71.88 > 69.83` 却宣称低于触发价的 `triggered` 会被抑制；`cargo test -p hone-channels heartbeat_ -- --nocapture` 通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | Fixed | 2026-04-28 已在 bundled runtime dirty restart 前先停止旧 managed children，避免旧内嵌 Web server 在 lock preflight / 新绑定前继续占用 `127.0.0.1:8077`；`cargo check -p hone-desktop --tests` 通过 | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | Fixed | 2026-04-28 `CronSchedule` 新增 `date`，cron tool / Web API / scheduler event 均透传；未到目标日期的一次性任务不会被判定 due，定向回归通过 | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | Fixed | 2026-04-28 `hone-telegram` 在空 token 或 `bot.get_me()` 失败时从 `run()` 返回而非 `process::exit`，让 lock / heartbeat 正常 Drop 清理；`cargo check -p hone-telegram --tests` 通过 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
