@@ -15,6 +15,12 @@
 
 ## 修复进展
 
+- `2026-04-30 08:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `07:30-08:01` 的最新两轮已经从整批 `Empty` 漂回 `JsonNoop + JsonTriggered + started` 混跑：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`07:30` 窗口的 `run_id=10909-10920` 先整批落成 `noop + skipped_noop`；`08:00` 窗口又先写入 `run_id=10922-10936` 共 `15` 条 started 行，当前已知终态只覆盖到 `10937-10945`。
+  - `08:00` 窗口继续没有收口成稳定纯 JSON 协议：`全天原油价格3小时播报`、`小米30港元破位预警`、`CAI破位预警`、`TEM破位预警`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`小米破位预警` 都回到 `parse_kind=JsonNoop`；`RKLB异动监控` 在 `run_id=10943` 又落成 `parse_kind=JsonTriggered + completed + sent`；其余 `10922-10936` started 行仍残留 `running + pending`。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：`08:00:33.766`、`08:00:53.708`、`08:00:57.530`、`08:01:00.798`、`08:01:06.448`、`08:01:15.840`、`08:01:19.337` 继续记录多条 heartbeat `parse_kind=JsonNoop`；`08:01:16.470` 的 `RKLB异动监控` 则记录 `parse_kind=JsonTriggered` 并执行 `deliver`。
+  - 结论：到 `2026-04-30 08:03` 为止，本单仍稳定活跃；最新窗口已从 `07:00` 的整批 `Empty` 再次漂回 `JsonNoop + JsonTriggered + started` 混跑，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 07:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `06:30-07:00` 的最新两轮继续混跑 `started / Empty / skipped_noop`，并且 `07:00` 整批 heartbeat 全部退化成空字符串收口：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`10849-10860`（`06:30`）与 `10873-10884`（`07:00`）；随后终态仍分裂成 `10861-10872` 与 `10885-10896` 的 `noop + skipped_noop`，没有恢复成单一稳定的结构化 `noop` 协议。
   - `06:30` 窗口仍未恢复成稳定单一状态：

@@ -3,9 +3,16 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 
 ## 证据来源
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-30 08:04 CST` 再次复核，started-row finalize 缺陷在最新 `08:00` 窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
+    - `08:00` 窗口先写入 `run_id=10922-10936` 共 `15` 条 started 行，包含 12 条 heartbeat 与 3 条普通 scheduler（`每日宏观与AI早报`、`每日美股收盘与持仓早报`、`每日持仓分析早报`）
+    - 截至 `08:04`，同窗终态只另起到 `run_id=10937-10945`：`10937-10945` 已分别落成 `noop + skipped_noop` 或 `completed + sent`，其中 `10943`（`RKLB异动监控`）已成功送达
+    - 但对应 started 行 `10922-10936` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent` 还是 `noop`，都不会覆盖原 started 行
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `2091` 条，较 `2026-04-29 23:06` 巡检记录里的 `1864` 再增 `227` 条；最近一小时新增残留也已达 `28` 条，说明这条缺陷并未修复，而是在持续堆积。
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-29 23:06 CST` 再次复核，started-row finalize 缺陷在最新 `22:30`、`23:00` 两个窗口继续实时新增：
@@ -366,6 +373,7 @@
 
 ## 修复记录
 
+- 2026-04-30 08:04 最新真实窗口再次确认本单仍活跃：`08:00` 同窗 `run_id=10922-10936` 的 15 条 started 行与 `run_id=10937-10945` 的终态行继续并存，全库 `running + pending` 残留已升到 `2091`；因此此前 `Fixed` 结论不成立，本单状态调回 `New`。
 - 2026-04-29: `memory/src/cron_job/history.rs` 的 `CronJobStorage::record_execution_event` 会在终态写入时按同一 actor / job / target / heartbeat / `delivery_key` 查找最近的 `running + pending` started 行，并原地更新为终态记录；找不到匹配 started 行时仍保留原有 insert 行为。
 - 回归验证：`cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`。
 - 2026-04-29 18:02 CST: 当前 live `cron_job_runs` 再次出现 started 行与终态行并存，说明上述修复尚未实际生效、未覆盖当前运行链路，或已被后续路径绕开；本缺陷因此从 `Fixed` 改回 `New`。

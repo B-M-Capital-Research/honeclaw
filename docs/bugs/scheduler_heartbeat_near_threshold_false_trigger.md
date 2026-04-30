@@ -8,6 +8,20 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=10943`
+  - `job_id=j_1241aad0`
+  - `job_name=RKLB异动监控`
+  - `executed_at=2026-04-30T08:01:18.374082+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `response_preview` 明确写出：`RKLB异动提醒... 最新价$77.02，较前收$78.59下跌-2.00%，未触发涨跌幅8%阈值`
+  - 这说明最新复发已经不再局限于 ASTS / ORCL，而是扩展到 `RKLB异动监控`：正文明确承认“未触发 8% 阈值”，链路仍以正式 `triggered` 提醒送达用户。
+- `data/runtime/logs/sidecar.log`
+  - `2026-04-30 08:01:16.470-08:01:16.473` 记录同一 `job_id=j_1241aad0` 收口为 `parse_kind=JsonTriggered` 并执行 `deliver`，`raw_preview` / `deliver_preview` 都直接写出 `未触发涨跌幅8%阈值`。
+  - 这说明当前线上坏态不是单个 ASTS 模板特例，而是“正文否认命中阈值，结构化状态仍给 triggered”这条单标的 heartbeat 误报链路继续扩散。
+
+- `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=10643`
   - `job_id=j_fc7749ca`
   - `job_name=ASTS 重大异动心跳监控`
@@ -87,6 +101,8 @@
 
 ## 当前实现效果
 
+- `2026-04-30 08:01` 的 `RKLB异动监控` 把 `{"status":"triggered"}` 送达给用户，但正文明确承认 `较前收下跌 -2.00%，未触发涨跌幅8%阈值`。
+- 这说明线上最新坏态已从 ASTS / ORCL 继续扩展到 RKLB：只要存在重大事件叙述，模型仍会把“事件成立但价格条件未命中”的观察性提示升级成正式触发提醒。
 - `2026-04-30 02:00` 的 `ASTS 重大异动心跳监控` 再次把 `{"status":"triggered"}` 送达给用户，但正文明确承认 `日内跌幅 -3.16%，未触及 8% 涨跌幅阈值`。
 - 这说明线上最新坏态没有收口到单日样本，而是跨日后继续把“事件存在但价格条件未命中”的观察性提示升级成正式触发提醒。
 - `2026-04-29 17:01` 的 `ASTS 重大异动心跳监控` 再次把 `{"status":"triggered"}` 送达给用户，但正文明确承认 `当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛`。
@@ -108,6 +124,7 @@
 
 ## 修复记录
 
+- 2026-04-30 08:01 最新真实窗口再次确认本单仍在扩散：`run_id=10943` 把 `RKLB异动监控` 的 `未触发涨跌幅8%阈值` 文案仍落成 `completed + sent + delivered=1`；说明当前保护没有稳定覆盖“事件触发 + 价格阈值明确否认命中”的单标的 heartbeat 新变体，本单继续保持 `New`。
 - 2026-04-30 02:00 最新真实窗口再次确认 ASTS 仍复发：`run_id=10643` 在正文已明确写出 `日内跌幅 -3.16%，未触及 8% 涨跌幅阈值` 的前提下，仍落成 `completed + sent + delivered=1`；说明当前保护仍未稳定覆盖“事件触发 + 价格阈值否认命中”的跨日变体，本单继续保持 `New`。
 - 2026-04-29: `crates/hone-channels/src/scheduler.rs` 在 heartbeat 送达前增加近阈值保险闸：`跌幅 -6.89% 接近 8% / 仅差约 1.1 个百分点` 这类承认未达到阈值的 `triggered` 文案会被抑制，不再进入用户可见发送链路。
 - 回归验证：`cargo test -p hone-channels heartbeat_near_threshold_trigger_is_suppressed -- --nocapture`。
