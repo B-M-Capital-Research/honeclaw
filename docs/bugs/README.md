@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 23:20 CST
+最后更新：2026-05-01 00:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -26,7 +26,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixing | 2026-04-30 23:20 本轮补 Feishu scheduler 历史 `ou_...` direct target 的 current-app 解析 fallback；但 `22:33` event-engine 价格异动卡片四连发 `open_id cross app` 仍是最新活跃证据，本单不恢复 Fixed | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 23:01 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但同窗真实 Feishu 直聊仍在 `22:33:36-22:33:43` 成功 `persist_assistant + completed + reply.send` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 00:04 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `23:45-23:51` 两条真实 Feishu 直聊仍成功 `persist_assistant + completed + reply.send`，`data/sessions/*.json` 也已更新到 `2026-05-01 00:03:28+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 23:01 最新 `22:30-23:01` 窗口继续混跑 `started + noop + execution_failed + sent`；`11702-11723` 继续残留 started 行，`TEM破位预警` 又退化成 `PlainTextSuppressed -> heartbeat 输出不是结构化 JSON`，`TEM大事件心跳监控` 同窗仍会实际送达 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-30 16:01 `Cerebras IPO与业务进展心跳监控` 再次命中 `maximum context length`，但最终仍被压扁成 `invalid type: integer 400`；此前“Fixed”结论与单文档现状不一致，现已纠正回活跃队列 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-30 18:02 `Monitor_Watchlist_11` 的 `run_id=11458` 再次把 `ASTS 69.85` 写成“已触及或低于触发价 69.83”并成功送达；此前 `Fixed` 结论已失效 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
