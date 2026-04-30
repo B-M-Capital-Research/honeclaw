@@ -15,6 +15,13 @@
 
 ## 修复进展
 
+- `2026-04-30 09:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `08:30-09:03` 的最新两轮继续混跑 `JsonNoop + JsonTriggered + skipped_error + started`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`08:30` 窗口先写入 `run_id=10954-10970` 共 `17` 条 started 行，随后终态另起为 `10972-10983` 的 `noop + skipped_noop`、`completed + sent` 与 `execution_failed + skipped_error`；`09:00` 窗口又先写入 `run_id=10993-11007` 共 `15` 条 started 行，当前终态只覆盖到 `11008-11023`。
+  - `08:30` 窗口并未恢复成稳定单一状态：`Monitor_Watchlist_11` 在 `run_id=10981` 又落成 `parse_kind=JsonTriggered + completed + sent`；`ASTS 重大异动心跳监控` 在 `run_id=10977` 也落成 `parse_kind=JsonTriggered + completed + sent`，但正文同时承认 `未达到单日8%涨跌幅阈值`；`CAI破位预警` 则在 `run_id=10976` 落成 `execution_failed + skipped_error`
+  - `09:00` 窗口继续没有收口成稳定纯 JSON 协议：`小米破位预警`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`小米30港元破位预警`、`持仓重大事件心跳检测`、`CAI破位预警`、`TEM大事件心跳监控`、`ORCL 大事件监控`、`TEM破位预警` 大多回到 `parse_kind=JsonNoop`；`Monitor_Watchlist_11` 在 `run_id=11023` 又落成 `execution_failed + skipped_error`，错误为 `LLM 错误: http error: error decoding response body`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：`09:01:01.378`、`09:01:03.604`、`09:01:06.067`、`09:01:07.577`、`09:01:08.400`、`09:01:18.403`、`09:01:19.014`、`09:01:24.773`、`09:01:41.668` 继续记录多条 heartbeat `parse_kind=JsonNoop`；`09:01:59.412` 的 `全天原油价格3小时播报` 则又落成 `parse_kind=JsonTriggered` 并执行 `deliver`
+  - 结论：到 `2026-04-30 09:03` 为止，本单仍稳定活跃；最新窗口已从 `07:00` 的整批 `Empty` 漂回 `JsonNoop + JsonTriggered + skipped_error + started` 混跑，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 08:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `07:30-08:01` 的最新两轮已经从整批 `Empty` 漂回 `JsonNoop + JsonTriggered + started` 混跑：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`07:30` 窗口的 `run_id=10909-10920` 先整批落成 `noop + skipped_noop`；`08:00` 窗口又先写入 `run_id=10922-10936` 共 `15` 条 started 行，当前已知终态只覆盖到 `10937-10945`。
   - `08:00` 窗口继续没有收口成稳定纯 JSON 协议：`全天原油价格3小时播报`、`小米30港元破位预警`、`CAI破位预警`、`TEM破位预警`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`小米破位预警` 都回到 `parse_kind=JsonNoop`；`RKLB异动监控` 在 `run_id=10943` 又落成 `parse_kind=JsonTriggered + completed + sent`；其余 `10922-10936` started 行仍残留 `running + pending`。

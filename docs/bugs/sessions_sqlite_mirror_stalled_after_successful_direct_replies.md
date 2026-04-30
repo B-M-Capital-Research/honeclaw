@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-04-30 09:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions` 最近更新的 15 个真实会话文件已继续推进到 `2026-04-30 09:01:41+08:00`，其中 Web `09:00 美股AI与航空科技晨报` 与 3 条 Feishu 直聊都已完整写盘，说明会话源文件和主链路仍在前进，而 sqlite 会话镜像完全不前移。
   - `2026-04-30 08:03 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions` 最近更新的 9 个真实会话文件已继续推进到 `2026-04-30 08:01:09+08:00`，且 `sidecar.log` 在 `07:30-07:52` 连续记录 4 条 Feishu 直聊走完 `session.persist_assistant -> reply.send`，说明会话源文件和主链路仍在前进，而 sqlite 会话镜像完全不前移。
   - `2026-04-30 07:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions/Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c.json` 已更新到 `2026-04-30T06:53:52.749437+08:00`，最近一小时还有另外 3 个 JSON 会话文件继续写盘到 `06:06-06:49`，说明缺口仍只落在 sqlite 会话镜像链路。
   - `2026-04-30 06:03 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 已更新到 `2026-04-30T05:05:21.674390+08:00`，`cron_job_runs` 也推进到 `2026-04-30T06:01:01.049863+08:00`，说明最新一小时不仅 scheduler 继续写库，连 Web 真实会话健康检查都已成功回盘，只有 sqlite 会话镜像完全停滞。
@@ -25,6 +26,9 @@
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-30 09:01 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而同窗 `data/sessions` 最近更新的真实会话文件已推进到 `2026-04-30 09:01:10`（`核心观察池早间简报`）、`09:01:13`（`特斯拉与火箭实验室新闻日报`）、`09:01:37`（Web `09:00 美股AI与航空科技晨报`）与 `09:01:41`（`早9点市场复盘(XME及加密ETF)`）。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - `2026-04-30 08:03 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而同窗 `data/sessions` 最近更新的 9 个真实会话文件已推进到 `2026-04-30 07:05:21`（Web `OK` 心跳）、`07:07:31/07:08:29`（两条 Feishu 直聊）、`07:37:14`、`07:42:31`、`07:52:42`、`08:00:50`（`每日宏观与AI早报` 触发后写盘）与 `08:01:09`（用户追问 `请详细分析下 sofi`）。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
@@ -60,6 +64,8 @@
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
   - 同一库里最近一小时 `cron_job_runs` 已继续写到 `2026-04-30T00:02:57.523734+08:00`，说明跨日后调度与直聊结果仍在持续落库，而会话镜像链路继续静默停滞。
 - 最近一小时运行日志与会话主链路对照：
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-30 09:01:10.867-09:01:41.809` 连续记录 3 条 Feishu 直聊 / scheduler 会话 `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773`、`Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2`、`Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda` 完整走完 `step=session.persist_assistant detail=done -> done success=true`。
+  - 同窗 `data/sessions/Actor_web__direct__web-user-ba50cb9401c0.json` 也已写到 `updated_at=2026-04-30T09:01:37.948966+08:00`，末尾 assistant final 为完整 `09:00 美股AI与航空科技晨报`，说明真实 Web 会话也在继续写盘，但 sqlite 镜像完全未跟上。
   - `data/runtime/logs/sidecar.log` 在 `2026-04-30 07:30:17.170-07:52:44.240` 连续记录 4 条 Feishu 直聊会话 `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21`、`Actor_feishu__direct__ou_5ff0946a82698f7d16d9a5684696c84185`、`Actor_feishu__direct__ou_5f75e4930f5e04de8b0412821553c1abe3`、`Actor_feishu__direct__ou_5f636d6d7c80d333e41b86ae79d07adca8` 完整走完 `step=session.persist_assistant detail=done -> done success=true` 与 `reply.send segments.sent=2/2~4/4`。
   - 同窗对应 `data/sessions/*.json` 已分别写到 `2026-04-30T08:01:09.891364+08:00`、`07:37:14.514530+08:00`、`07:42:31.340613+08:00` 与 `07:52:42.207503+08:00`，说明真实会话源文件持续前进，而 sqlite 镜像完全未跟上。
   - `data/runtime/logs/sidecar.log` 在 `2026-04-30 06:16:41.804-06:16:45.370` 记录 Feishu 直聊会话 `Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c` 完整走完 `step=session.persist_assistant detail=done -> done success=true reply.chars=4193 -> reply.send segments.sent=3/3`。

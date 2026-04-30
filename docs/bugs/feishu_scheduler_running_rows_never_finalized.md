@@ -8,6 +8,13 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-30 09:03 CST` 再次复核，started-row finalize 缺陷在最新 `08:30`、`09:00` 两个窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
+    - `08:30` 窗口先写入 `run_id=10954-10971` 共 `18` 条 started 行，包含 12 条 heartbeat 与 6 条普通 scheduler；随后终态另起为 `10972-10992`，其中 `10981/10982/10984-10992` 已分别落成 `completed + sent` 或 `noop + skipped_noop`
+    - `09:00` 窗口又先写入 `run_id=10993-11007` 共 `15` 条 started 行；截至 `09:03`，同窗终态只另起到 `11008-11023`，其中 `11013/11014/11020/11021` 已落成 `completed + sent`，`11018` 落成 `completed + send_failed`，`11023` 落成 `execution_failed + skipped_error`
+    - 但对应 started 行 `10954-10971` 与 `10993-11007` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent`、`send_failed`、`skipped_noop` 还是 `skipped_error`，都不会覆盖原 started 行
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `2126` 条；按最近 `70` 分钟统计，新增残留也已达到 `51` 条，说明这条缺陷仍在持续堆积。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-30 08:04 CST` 再次复核，started-row finalize 缺陷在最新 `08:00` 窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
     - `08:00` 窗口先写入 `run_id=10922-10936` 共 `15` 条 started 行，包含 12 条 heartbeat 与 3 条普通 scheduler（`每日宏观与AI早报`、`每日美股收盘与持仓早报`、`每日持仓分析早报`）
     - 截至 `08:04`，同窗终态只另起到 `run_id=10937-10945`：`10937-10945` 已分别落成 `noop + skipped_noop` 或 `completed + sent`，其中 `10943`（`RKLB异动监控`）已成功送达
