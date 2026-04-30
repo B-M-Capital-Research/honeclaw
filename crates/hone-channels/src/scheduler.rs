@@ -31,7 +31,7 @@ const SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE: &str =
 
 static RE_HEARTBEAT_CURRENT_BEFORE_TRIGGER_PRICE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
-            r"(?is)(?:当前(?:价格|价)?|最新(?:价格|价)?|current(?:\s*price)?)[^\d]{0,20}\$?\s*(?P<current>\d+(?:\.\d+)?)[\s\S]{0,120}(?:触发价|触发线|配置线|trigger\s*price|trigger\s*line)[^\d]{0,20}\$?\s*(?P<threshold>\d+(?:\.\d+)?)",
+            r"(?is)(?:当前(?:价格|价)?|最新(?:价格|价)?|现价|收盘价|跌至|跌到|降至|回落至|current(?:\s*price)?)[^\d]{0,20}\$?\s*(?P<current>\d+(?:\.\d+)?)[\s\S]{0,120}(?:触发价|触发线|配置线|trigger\s*price|trigger\s*line)[^\d]{0,20}\$?\s*(?P<threshold>\d+(?:\.\d+)?)",
         )
         .expect("valid heartbeat trigger price regex")
 });
@@ -222,6 +222,12 @@ fn heartbeat_lower_trigger_price_contradiction(text: &str, compact: &str) -> boo
         "触发线<=",
         "配置线≤",
         "配置线<=",
+        "触及或低于触发价",
+        "触及或低于触发线",
+        "触及或低于配置线",
+        "触及或跌破触发价",
+        "触及或跌破触发线",
+        "触及或跌破配置线",
         "低于触发价",
         "跌破触发价",
         "低于触发线",
@@ -1206,6 +1212,17 @@ mod tests {
     fn heartbeat_watchlist_contradictory_lower_trigger_price_is_suppressed() {
         let execution = heartbeat_execution_from_content(
             r#"{"status":"triggered","message":"【价格提醒】ASTS触发买入条件。当前价格$71.88，已低于触发价$69.83。"}"#,
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(execution.error, None);
+        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+    }
+
+    #[test]
+    fn heartbeat_watchlist_touch_or_below_above_trigger_price_is_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"【触发条件】ASTS 跌至 69.85，已触及或低于触发价 69.83。"}"#,
             "model-x",
         );
         assert!(!execution.should_deliver);

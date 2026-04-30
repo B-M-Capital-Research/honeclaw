@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-29 08:02 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -90,8 +90,9 @@
 
 ## 当前实现效果
 
-- `2026-04-30 18:02` 的 `Monitor_Watchlist_11` 再次把 `ASTS 69.85` 与阈值 `≤69.83` 组织成正式 `triggered + sent`，且文案直接写成“已触及或低于触发价”。
-- 这说明此前的 watchlist 数值自检没有稳定覆盖“已触及或低于”这类最新文案变体；问题不是历史样本解读偏差，而是最近一小时仍在 live 误发。
+- `2026-05-01 07:04` 本轮已补齐 watchlist 数值自检的最新文案变体：`ASTS 跌至 69.85，已触及或低于触发价 69.83` 会解析为 `current=69.85`、`threshold=69.83`，并因 `current > threshold` 被抑制为 `near_threshold_suppressed`，不再送达用户。
+- 修复点在 `crates/hone-channels/src/scheduler.rs`：价格识别词扩展到 `跌至/跌到/降至/回落至/现价/收盘价` 等 watchlist 常见写法；触发声明词扩展到 `触及或低于/触及或跌破` 触发价/触发线/配置线。
+- 该保护仍只在文本同时声明低于/跌破/触及下行触发线且解析出的当前价高于阈值时触发；真实低于触发价的样本不被误拦截。
 - `2026-04-30 02:02` 的 `Monitor_Watchlist_11` 再次把 `ASTS 69.51` 与阈值 `≤69.83` 组织成正式 `triggered + sent`，且文案直接写成“已跌破触发价”。
 - 这说明此前的 watchlist 数值自检没有稳定证明线上收口；跨日后这条链路仍会把临界附近样本直接升级成正式触发提醒。
 - `2026-04-29 15:02` 的 `Monitor_Watchlist_11` 再次把 `ASTS 71.88` 与阈值 `≤69.83` 误报成“已低于触发价 $69.83”，并成功发送 `completed + sent`。
@@ -113,6 +114,7 @@
 
 ## 修复记录
 
+- 2026-05-01 07:04: 本轮修复最新 `69.85 > 69.83` 漏网变体。`crates/hone-channels/src/scheduler.rs` 的 watchlist 送达前数值自检现在能识别“跌至 69.85”这类当前价写法，并把“已触及或低于触发价 69.83”纳入下行触发声明；当当前价仍高于阈值时，`triggered` 输出会落成 `near_threshold_suppressed`。新增回归 `heartbeat_watchlist_touch_or_below_above_trigger_price_is_suppressed`；验证命令：`cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture`。
 - 2026-04-30 18:02: 最新真实窗口再次确认本单仍活跃：`run_id=11458` 把 `ASTS 69.85` 明确写成“已触及或低于触发价 69.83”并送达，说明 `2026-04-30 15:03` 的“旧样本已被数值自检覆盖”结论不能覆盖当前线上变体；本单状态从 `Fixed` 调回 `New`。
 - 2026-04-30 15:03: 复核最新 `run_id=10650` 样本后确认，文案中的 `ASTS 69.51` 已低于 `触发价 69.83`，该样本本身不再证明“价格仍高于配置线却误发”。旧的 `71.88 > 69.83` 比较方向写反样本已由送达前数值自检覆盖：同一文本若声明低于/跌破触发价但解析出的当前价仍高于触发价，会落成 `near_threshold_suppressed`。回归验证：`cargo test -p hone-channels heartbeat_ -- --nocapture`。
 - 2026-04-30 02:02 最新真实窗口确认线上仍复发：`run_id=10650` 把 `ASTS 69.51` 直接写成“已跌破触发价 69.83”并送达，说明当前 watchlist 保护没有稳定覆盖最新 prompt/文案变体；本单继续保持 `New`。
