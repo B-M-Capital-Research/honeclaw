@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-04-30 10:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions` 最近更新的真实会话文件已继续推进到 `2026-04-30 09:31:20+08:00`（Discord `每日美股降息概率推送`）与 `09:51:52+08:00`（Feishu `分析vst`），说明 Discord / Feishu 成功会话源文件仍在持续写盘，而 sqlite 会话镜像完全不前移。
   - `2026-04-30 09:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions` 最近更新的 15 个真实会话文件已继续推进到 `2026-04-30 09:01:41+08:00`，其中 Web `09:00 美股AI与航空科技晨报` 与 3 条 Feishu 直聊都已完整写盘，说明会话源文件和主链路仍在前进，而 sqlite 会话镜像完全不前移。
   - `2026-04-30 08:03 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions` 最近更新的 9 个真实会话文件已继续推进到 `2026-04-30 08:01:09+08:00`，且 `sidecar.log` 在 `07:30-07:52` 连续记录 4 条 Feishu 直聊走完 `session.persist_assistant -> reply.send`，说明会话源文件和主链路仍在前进，而 sqlite 会话镜像完全不前移。
   - `2026-04-30 07:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions/Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c.json` 已更新到 `2026-04-30T06:53:52.749437+08:00`，最近一小时还有另外 3 个 JSON 会话文件继续写盘到 `06:06-06:49`，说明缺口仍只落在 sqlite 会话镜像链路。
@@ -26,6 +27,10 @@
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-30 10:01 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而同窗 `data/sessions` 最近更新的真实会话文件已推进到 `2026-04-30 09:31:20`（Discord `每日美股降息概率推送`）与 `09:51:52`（Feishu `分析vst`）。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
+  - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-30 09:31:20` 记录 Discord 群聊 `Session_discord__group__g_3a1469549745654468692_3ac_3a1469549746518622371` 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=2193`；同一窗口 `09:51:52` 又记录 Feishu 直聊 `Actor_feishu__direct__ou_5f0e57a9914d61ae96d437cdeb65e43593` 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=2824 -> step=reply.send segments.sent=2/2`。这说明最近一小时不仅 JSON 会话源文件继续前进，主链路也继续真实成功收口，但 sqlite 会话镜像仍完全停摆。
   - `2026-04-30 09:01 CST` 再次复核：最近一小时增量查询仍是 `sessions=0`、`session_messages=0`，而同窗 `data/sessions` 最近更新的真实会话文件已推进到 `2026-04-30 09:01:10`（`核心观察池早间简报`）、`09:01:13`（`特斯拉与火箭实验室新闻日报`）、`09:01:37`（Web `09:00 美股AI与航空科技晨报`）与 `09:01:41`（`早9点市场复盘(XME及加密ETF)`）。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`
