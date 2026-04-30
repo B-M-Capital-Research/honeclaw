@@ -8,6 +8,18 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-01 04:01 CST` 再次复核，started-row finalize 缺陷在最新 `03:30`、`04:00` 两个窗口继续实时新增，而且最近一小时几乎整窗都被这类“started 行不 finalize”的坏态占满：
+    - `03:30` 窗口先写入 `run_id=11928-11940` 共 `13` 条 started 行；随后终态另起为 `11941-11951`，其中大多已落成 `noop + skipped_noop`
+    - `04:00` 窗口又先写入 `run_id=11952-11964` 共 `13` 条 started 行；同窗终态随后另起为 `11965-11977`，其中 `11974` 已落成 `completed + sent + delivered=1`，其余大多已落成 `noop + skipped_noop`
+    - 但对应 started 行 `11928-11940` 与 `11952-11964` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent` 还是 `skipped_noop`，都不会覆盖原 started 行
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour') AND actor_channel='feishu'` 聚合，最近一小时仍同时存在：
+    - `running + pending = 725`
+    - `noop + skipped_noop = 605`
+    - `completed + sent = 91`
+    - `execution_failed + skipped_error = 30`
+  - 同一小时总行数已达到 `1450`，而 `running + pending` 单独就占到一半；说明这不再只是某一批 heartbeat 的局部脏数据，而是 Feishu scheduler 整体最近一小时都在持续堆积 started 残留。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-30 23:01 CST` 再次复核，started-row finalize 缺陷在最新 `22:30`、`23:00` 两个窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
     - `22:30` 窗口先写入 `run_id=11678-11689` 共 `12` 条 started 行，全部为 heartbeat；随后终态另起为 `11690-11701`，其中 `11696` 已落成 `completed + sent + delivered=1`，其余大多已落成 `noop + skipped_noop`
     - `23:00` 窗口又先写入 `run_id=11702-11714` 共 `13` 条 started 行，其中既包含 12 条 heartbeat，也包含普通 scheduler `核心观察股池晚间快报`

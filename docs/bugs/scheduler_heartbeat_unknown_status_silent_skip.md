@@ -15,6 +15,24 @@
 
 ## 修复进展
 
+- `2026-05-01 04:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `03:30-04:01` 的最新两轮仍在混跑 `started + noop + sent`，只是这轮没有恰好再显式落成 `execution_failed`；结构化协议仍未恢复正常：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11928-11940`（`03:30`）与 `11952-11964`（`04:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
+  - 按 `executed_at >= datetime('now','-1 hour') AND actor_channel='feishu'` 聚合，最近一小时仍同时存在：
+    - `running + pending = 725`
+    - `noop + skipped_noop = 605`
+    - `sent = 91`
+    - `execution_failed = 30`
+  - `03:30-04:01` 的最新 heartbeat 样本继续没有收口成稳定纯 JSON 协议：
+    - `noop + skipped_noop`：`11941-11951`、`11965-11977`
+    - started 行残留：`11928-11940`、`11952-11964`
+    - `completed + sent`：`11974`（`Oil_Price_Monitor_Closing`）
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `03:30:47.190`：`小米破位预警` 继续记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `04:00:28.527`：`持仓重大事件心跳检测` 再次记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `04:00:27.681`：`小米30港元破位预警` 又落成 `starts_with_json=true parse_kind=JsonEmptyStatus raw_preview="{}"`
+    - `04:00:40.078-04:00:40.796`：同窗再次连续记录 Tavily `usage limit` / `鉴权被拒绝`，但随后仍回写 `tool_execute_success name=web_search`
+  - 结论：到 `2026-05-01 04:01` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonEmptyStatus / JsonNoop / sent`，且 Tavily 全 key 失败后的 `web_search` 伪成功仍在并存，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 03:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `02:30-03:03` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并继续出现“非 JSON 长文本被吞成 `JsonNoop`”与悬挂 started 行并存：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11880-11891`（`02:30`）与 `11904-11915`（`03:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
   - `03:00-03:03` 窗口并未恢复成稳定单一状态：

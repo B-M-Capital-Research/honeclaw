@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-01 03:05 CST
+最后更新：2026-05-01 04:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -25,14 +25,14 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 03:03 再次复核最近一小时 `sessions_last_hour=0 / messages_last_hour=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `cron_job_runs` 已推进到 `03:01:49`，`data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 也继续刷新到 `02:04:42` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 03:03 最新 `02:30-03:03` 窗口继续混跑 `started + noop + execution_failed + sent`；`11904-11915` started 行仍残留，`Cerebras IPO与业务进展心跳监控` 还把非 JSON 英文解释文本误吞成 `JsonNoop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 04:01 最近一小时再次是 `sessions_last_hour=0 / messages_last_hour=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `cron_job_runs` 已推进到 `04:01:56`，Feishu 直聊 `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595.json` 也已刷新到 `04:01:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 04:01 最新 `03:30-04:01` 窗口继续混跑 `running + pending / noop + skipped_noop / sent`；`11952-11964` started 行仍残留，`小米破位预警` 与 `持仓重大事件心跳检测` 继续落成 `parse_kind=Empty` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-01 03:01 `持仓重大事件心跳检测` 的 `run_id=11923` 再次命中 `maximum context length`，但最终仍被压扁成 `invalid type: integer 400`；此前“Fixed”结论与单文档现状不一致，现已纠正回活跃队列 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-30 18:02 `Monitor_Watchlist_11` 的 `run_id=11458` 再次把 `ASTS 69.85` 写成“已触及或低于触发价 69.83”并成功送达；此前 `Fixed` 结论已失效 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Feishu 直聊切到非金融新话题时，仍误入 `stock_research` 并沿用旧 `LITE` 上下文 | P3 | New | 2026-04-30 18:59 用户只问 `AMD的电脑CPU是什么名字`，链路却先展开 `stock_research`、`LITE OR Lumentum OR optical OR photonics` 检索和光通信财报搜索，29 秒后才答回 CPU 命名 | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
-| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-04-30 23:01 `22:00` 与 `23:00` 两窗的 started 行仍与后续终态并存；全库 `running + pending` 残留已升到 `2477`，最近一小时聚合仍有 `36` 条 `running + pending` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 04:01 最近一小时 Feishu `cron_job_runs` 已膨胀到 `1450` 行，其中 `running + pending=725`、`noop + skipped_noop=605`、`sent=91`；started 行仍与各类终态并存 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 03:00 `TEM大事件心跳监控` 的 `run_id=11917` 又把 `01:00` 已提醒过的 Investor Day / TIME / 财报旧事件正式送达；期间没有新的独立公告或合作落地 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-30 15:01 `全天原油价格3小时播报` 再次 `completed + sent`，正文在自认“数据链路暂时受限”后仍把中东/OPEC+/库存/需求叙述写成确定性主因 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-01 04:01 `Oil_Price_Monitor_Closing` 再次 `completed + sent`，Tavily 4 key 全部额度耗尽后，正文仍把“中东风险高位回落”写成确定性结论并据此判断科技股尾盘风险偏好恢复 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 

@@ -5,6 +5,23 @@
 - **严重等级**: P2
 - **状态**: New
 
+## 最新进展（2026-05-01 04:01 CST）
+
+- `Oil_Price_Monitor_Closing` 在最近一小时真实窗口再次成功送达，且正文继续把未核验的地缘/宏观归因写成确定性事实：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=11974`
+    - `job_name=Oil_Price_Monitor_Closing`
+    - `executed_at=2026-05-01T04:01:02.613973+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `response_preview` 直接向用户发送：`结论是：油价今天从中东风险高位回落，未形成尾盘继续压制科技股的主线。`
+    - 同条回复继续把 `CNBC口径显示，Brent在4月30日盘中曾因美伊冲突风险冲至约126美元高位，随后回落至约114.22美元`、`Trading Economics口径显示，WTI相关原油报价约105.74美元，较前一日回落` 组织成“共同结论一致”的确定性叙事，并据此下结论 `科技股风险偏好恢复`；正文没有把这些原因归因降级成“待核验/仅供参考”。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-01 04:00:11.651-04:00:12.385` 与 `04:00:40.078-04:00:40.796` 同窗连续记录 Tavily 4 个 key 全部因 `usage limit` / `鉴权被拒绝` 失败，但 `web_search` 仍回写 `tool_execute_success`
+    - `2026-05-01 04:01:00.018` 同一会话仍落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=1302`，说明这不是中间草稿，而是已持久化并成功外发的最终可见回复
+- 结论：到 `2026-05-01 04:01` 为止，这条质量缺陷继续活跃；搜索链路在同窗明显降级后，播报正文仍把“中东风险高位回落 -> 科技股风险偏好恢复”包装成确定性结论，因此状态维持 `New`、严重等级维持 `P2`。
+
 ## 最新进展（2026-04-30 15:01 CST）
 
 - `全天原油价格3小时播报` 在最近一小时真实窗口再次成功送达，且正文继续把未核验的宏观/地缘归因写成确定性事实：
