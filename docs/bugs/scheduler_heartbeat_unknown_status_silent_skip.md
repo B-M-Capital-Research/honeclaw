@@ -15,6 +15,13 @@
 
 ## 修复进展
 
+- `2026-04-30 15:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `14:30-15:01` 的最新两轮继续混跑 `Empty + JsonNoop + JsonTriggered + started`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`14:30` 窗口先写入 `run_id=11267-11278` 共 `12` 条 started 行，随后终态分裂成 `11279-11290` 的 `noop + skipped_noop` 与 `11287` 的 `completed + sent`；`15:00` 窗口又先写入 `run_id=11291-11302` 共 `12` 条 started 行，随后终态继续分裂成 `11303-11314` 的 `noop + skipped_noop` 与 `11311` 的 `completed + sent`。
+  - `15:00` 窗口并未恢复成稳定单一状态：`Cerebras IPO与业务进展心跳监控` 与 `持仓重大事件心跳检测` 在 `15:01:05-15:01:07` 落成 `parse_kind=Empty + noop + skipped_noop`；`RKLB异动监控`、`ORCL 大事件监控`、`CAI破位预警`、`TEM大事件心跳监控`、`TEM破位预警`、`Monitor_Watchlist_11`、`小米破位预警`、`小米30港元破位预警` 则继续落成 `parse_kind=JsonNoop`；但 `全天原油价格3小时播报` 在 `run_id=11311` 又回到 `parse_kind=JsonTriggered + completed + sent`。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：`15:01:05.313` 与 `15:01:07.507` 继续记录多条 heartbeat `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`；`15:01:47.197` 与 `15:01:47.433` 又继续记录 `parse_kind=JsonNoop`；`15:01:12.849-15:01:12.850` 则记录 `全天原油价格3小时播报` 落成 `parse_kind=JsonTriggered` 并执行 `deliver`。
+  - 同窗 `15:00:41.563-15:00:43.326` 继续连续记录 Tavily `usage limit` / `鉴权被拒绝`，但随后仍回写 `tool_execute_success name=web_search`；说明工具层伪成功仍与 heartbeat 结构化漂移并存。
+  - 结论：到 `2026-04-30 15:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，且 `15:00` 原油播报再次在检索降级下成功外发，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 14:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `13:30-14:01` 的最新两轮继续混跑 `JsonNoop + JsonTriggered + Empty + execution_failed + started`：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`13:30` 窗口先写入 `run_id=11219-11230` 共 `12` 条 started 行，随后终态另起为 `11231-11242` 的 `noop + skipped_noop`、`completed + sent` 与 `execution_failed + skipped_error`；`14:00` 窗口又先写入 `run_id=11243-11254` 共 `12` 条 started 行，随后终态分裂成 `11255-11266` 的 `noop + skipped_noop` 与 `completed + sent`。
   - `13:30` 窗口并未恢复成稳定单一状态：`全天原油价格3小时播报`、`CAI破位预警`、`TEM大事件心跳监控`、`Cerebras IPO与业务进展心跳监控`、`TEM破位预警`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`持仓重大事件心跳检测` 都落成 `parse_kind=JsonNoop`；`小米破位预警` 在 `run_id=11241` 落成 `parse_kind=JsonTriggered + completed + sent`，但同窗 `小米30港元破位预警` 在 `run_id=11242` 又退化成 `execution_failed + skipped_error`，错误体为 `LLM 错误: http error: error decoding response body`。

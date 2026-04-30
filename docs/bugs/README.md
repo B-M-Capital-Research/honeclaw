@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 14:10 CST
+最后更新：2026-04-30 15:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,8 +15,8 @@
 
 ## 当前概览
 
-- 活跃待修复：10
-- Later / 待复现：13
+- 活跃待修复：11
+- Later / 待复现：12
 - 已修复 / 已关闭：72
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
@@ -28,12 +28,13 @@
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | New | 2026-04-30 每日完整打包已生成 `.app` 和 `.dmg`，但启动打包后的 `.app/Contents/MacOS/hone-desktop` 时卡在 `CFUserNotificationDisplayAlert`，`18077/18088` 均无监听 | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 13:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `data/sessions/` 近 70 分钟仍刷新 3 个真实会话文件，Feishu 直聊 `Actor_feishu__direct__ou_5f64e...` 也已在 `12:30:53` 成功回盘 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 14:02 最新 `13:30-14:01` 两轮继续混跑 `Empty + JsonNoop + JsonTriggered + execution_failed + started`；`11219-11254` started 行仍残留 `running + pending`，且 `小米30港元破位预警` 新增 `http error: error decoding response body` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 15:02 最新 `14:30-15:01` 两轮继续混跑 `Empty + JsonNoop + JsonTriggered + started`；`11267-11302` started 行仍残留 `running + pending`，且 `15:00` 原油播报在 Tavily 全 key 降级下再次 `completed + sent` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-30 13:00 `RKLB异动监控` `run_id=11216` 再次落成 `completed + sent`，但正文同时承认 `涨跌幅未超过8%阈值`；同一小时用户还直接反馈“这些老新闻不要重复发” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-30 02:02 `Monitor_Watchlist_11` `run_id=10650` 再次把 `ASTS 69.51` 写成“已跌破触发价 69.83”并送达，说明 watchlist 误触发链路仍未收口 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | New | 2026-04-30 09:01 `09:00 美股AI与航空科技晨报` `run_id=11018` 再次落成 `completed + send_failed + delivered=0`，但同一 Web 会话已写入完整晨报正文，说明该缺陷仍在 live 复现 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-04-30 14:02 `13:30` 与 `14:00` 两窗的 started 行仍与后续终态并存；全库 `running + pending` 残留已升到 `2247`，最近 70 分钟新增 `370` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-04-30 `RKLB异动监控` 已在 `10:30` 送出旧合同提醒，用户 `12:28` 明确投诉“昨天也发了好多次”，但 `13:00` 同一旧合同仍再次送达，说明去重回归已重新影响真实用户 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-04-30 用户 `12:28` 已明确投诉 RKLB 旧合同重复提醒，但 `13:00` 的 `RKLB异动监控` 与 `14:30` 的 `持仓重大事件心跳检测` 仍继续把同一合同重新送达 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-30 15:01 `全天原油价格3小时播报` 再次 `completed + sent`，正文在自认“数据链路暂时受限”后仍把中东/OPEC+/库存/需求叙述写成确定性主因 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
@@ -50,7 +51,6 @@
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | Later | 2026-04-26 已统一 overflow fallback 文案并保留执行失败态；若真实日报窗口继续只投失败提示再改回 `New` | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Discord 定时任务在 Answer 阶段返回空/无效回复后，仍被记为成功执行 | P2 | Later | 2026-04-26 已通过共享 `empty_success_exhausted -> success=false + error` 修复，Discord scheduler 后续会把通用 fallback 记为 `execution_failed` 而不是 `completed + sent`；若再次伪成功再改回 `New` | [discord_scheduler_empty_reply_send_failed.md](./discord_scheduler_empty_reply_send_failed.md) |
 | Heartbeat 定时任务命中 MiniMax HTTP 发送失败后仍整轮失败，09:00 到 12:00 多个窗口大面积静默失效 | P2 | Later | 2026-04-26 代码确认 OpenAI-compatible provider 已对 `error sending request`、连接重置、超时等传输错误执行一次短重试，覆盖 heartbeat MiniMax 主要失败形态；若生产窗口继续复现再改回 `New` | [scheduler_heartbeat_minimax_http_transport_failure_no_retry.md](./scheduler_heartbeat_minimax_http_transport_failure_no_retry.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Later | 2026-04-28 已把 heartbeat prompt 的来源归因约束提升到调度层：未在当前工具结果中核验 Reuters/WSJ/Bloomberg/官方等来源时，不得把地缘叙述写成确定性归因；若真实窗口继续复现再改回 `New` | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Feishu 直达定时任务已生成最终播报，但发送阶段持续返回 `HTTP 400 Bad Request` 导致用户收不到提醒 | P1 | Later | 2026-04-28 event-engine Feishu sink 对单用户安装新增 current-app open_id 解析缓存：若配置中只有一个 allow_mobile/allow_email，事件推送会先通过 Feishu API 解析当前 app 绑定的 open_id，不再直接复用可能跨 app 的历史 `actor.user_id`；待真实窗口复核 | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊在 Answer 阶段触发 idle timeout / Codex state migration 错误后整轮无最终回复 | P1 | Later | 2026-04-28 当前代码已对 idle timeout / state migration / 纯工具轨迹 partial 做用户态失败文案和落库清洗；底层 Codex ACP state DB 迁移类失败属于外部 runner 状态，若真实窗口仍无用户可见失败回复再改回 `New` | [feishu_direct_answer_idle_timeout_no_reply.md](./feishu_direct_answer_idle_timeout_no_reply.md) |
 | Heartbeat 重大事件监控触发 `已达最大迭代次数 6` 后整轮跳过，用户收不到应发提醒 | P2 | Later | 2026-04-28 heartbeat auxiliary function-calling 预算从固定 6 次提升到 10 次，并保留结构化失败台账；这是共享预算加固，不对某个 provider/model 做特判，若真实窗口继续触顶再改回 `New` | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
