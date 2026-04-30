@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 16:02 CST
+最后更新：2026-04-30 17:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,11 +27,11 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 16:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `data/sessions/` 近 70 分钟仍刷新 1 个真实会话文件，Feishu 直聊 `Actor_feishu__direct__ou_5f44e...` 也已在 `15:25:29` 成功回盘 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 16:02 最新 `15:30-16:01` 两轮继续混跑 `noop + execution_failed + started`；`11323-11350` started 行仍残留 `running + pending`，且 `16:01` 的 `Cerebras IPO与业务进展心跳监控` 又退化成 `invalid type: integer 400` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 17:03 最新 `16:30-17:01` 两轮继续混跑 `noop + execution_failed + started`；`11363-11398` started 行仍残留 `running + pending`，且 `TEM大事件心跳监控`、`持仓重大事件心跳检测` 又退化成 `PlainTextSuppressed -> heartbeat 输出不是结构化 JSON` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-30 16:01 `Cerebras IPO与业务进展心跳监控` 再次命中 `maximum context length`，但最终仍被压扁成 `invalid type: integer 400`；此前“Fixed”结论与单文档现状不一致，现已纠正回活跃队列 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | New | 2026-04-30 09:01 `09:00 美股AI与航空科技晨报` `run_id=11018` 再次落成 `completed + send_failed + delivered=0`，但同一 Web 会话已写入完整晨报正文，说明该缺陷仍在 live 复现 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-04-30 14:02 `13:30` 与 `14:00` 两窗的 started 行仍与后续终态并存；全库 `running + pending` 残留已升到 `2247`，最近 70 分钟新增 `370` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-04-30 用户 `12:28` 已明确投诉 RKLB 旧合同重复提醒，但 `13:00` 的 `RKLB异动监控` 与 `14:30` 的 `持仓重大事件心跳检测` 仍继续把同一合同重新送达 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-04-30 用户 `12:28` 已明确投诉 RKLB 旧合同重复提醒，而 `13:00`、`14:30`、`16:30` 三个窗口仍继续把同一 RKLB 合同/TEM 投资者日重复送达；`17:01` 内部摘要还显式写出“上一轮16:30已推送” | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-30 15:01 `全天原油价格3小时播报` 再次 `completed + sent`，正文在自认“数据链路暂时受限”后仍把中东/OPEC+/库存/需求叙述写成确定性主因 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |

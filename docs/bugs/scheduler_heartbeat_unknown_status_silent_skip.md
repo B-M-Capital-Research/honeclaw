@@ -15,6 +15,13 @@
 
 ## 修复进展
 
+- `2026-04-30 17:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `16:30-17:01` 的最新两轮继续混跑 `started + noop + execution_failed`，并再次暴露 `PlainTextSuppressed -> skipped_error` 漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`16:30` 窗口先写入 `run_id=11363-11374` 共 `12` 条 started 行，随后终态分裂成 `11375-11381`、`11383-11385` 的 `noop + skipped_noop`，以及 `11382`（`小米30港元破位预警`）与 `11386`（`持仓重大事件心跳检测`）的 `completed + sent`；`17:00` 窗口又先写入 `run_id=11387-11398` 共 `12` 条 started 行，随后终态继续分裂成 `11399-11401`、`11403-11408`、`11410` 的 `noop + skipped_noop`，并新增 `11402`（`TEM大事件心跳监控`）与 `11409`（`持仓重大事件心跳检测`）的 `execution_failed + skipped_error`。
+  - `17:00` 窗口并未恢复成稳定单一状态：`小米破位预警`、`TEM破位预警`、`小米30港元破位预警`、`全天原油价格3小时播报`、`CAI破位预警`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`Cerebras IPO与业务进展心跳监控` 都落成 `noop + skipped_noop`；但 `TEM大事件心跳监控` 与 `持仓重大事件心跳检测` 在同窗又退化成 `execution_failed + skipped_error`，错误体统一为 `heartbeat 输出不是结构化 JSON，任务已标记失败`。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：`17:00:56.288-17:00:56.289` 记录 `TEM大事件心跳监控` `raw_chars=242 starts_with_json=false parse_kind=PlainTextSuppressed`，正文明确写出“我检查了 TEM 的各项条件”；`17:01:22.507-17:01:22.508` 又记录 `持仓重大事件心跳检测` `raw_chars=419 starts_with_json=false parse_kind=PlainTextSuppressed`，原文以“数据摘要（内部分析用，不输出）”开头并显式写出 `RKLB 4月29日公告1.9亿美元国防订单（上一轮16:30已推送）`。
+  - 同窗 `17:00:33.712-17:00:35.537` 与 `17:01:10.751-17:01:13.070` 继续连续记录 Tavily `usage limit` / `鉴权被拒绝`，但 `web_search` 最终仍回写 `tool_execute_success`；说明工具层降级与 heartbeat 结构化漂移仍在并存。
+  - 结论：到 `2026-04-30 17:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / noop / execution_failed`，且 `PlainTextSuppressed` 仍会在部分 job 上退化成显式失败，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 16:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `15:30-16:01` 的最新两轮继续混跑 `Empty + JsonNoop + execution_failed + started`：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`15:30` 窗口先写入 `run_id=11323-11338` 的 started 行，随后终态分裂成 `11327-11338` 的 `noop + skipped_noop` 与 `11335` 的 `completed + sent`；`16:00` 窗口又先写入 `run_id=11339-11350` 共 `12` 条 started 行，随后终态继续分裂成 `11351-11361` 的 `noop + skipped_noop`，以及 `11362` 的 `execution_failed + skipped_error`。
   - `16:00` 窗口并未恢复成稳定单一状态：`全天原油价格3小时播报`、`ORCL 大事件监控`、`CAI破位预警`、`TEM破位预警`、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`小米30港元破位预警`、`TEM大事件心跳监控`、`持仓重大事件心跳检测` 都落成 `noop + skipped_noop`；但 `Cerebras IPO与业务进展心跳监控` 在 `run_id=11362` 又退化成 `execution_failed + skipped_error`，错误体为 `LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 316`。
