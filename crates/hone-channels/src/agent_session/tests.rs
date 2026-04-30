@@ -825,7 +825,10 @@ fn finalize_agent_response_marks_planning_sentence_as_failure() {
         response.error.as_deref(),
         Some(EMPTY_SUCCESS_FALLBACK_MESSAGE)
     );
-    assert_eq!(outcome.fallback_reason, Some("planning_sentence_suppressed"));
+    assert_eq!(
+        outcome.fallback_reason,
+        Some("planning_sentence_suppressed")
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -1503,7 +1506,7 @@ async fn run_success_commits_daily_conversation_quota() {
 }
 
 #[tokio::test]
-async fn run_rejects_over_daily_limit_without_persisting_user_message() {
+async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     let root = make_temp_dir("hone_channels_quota_reject");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
@@ -1534,20 +1537,20 @@ async fn run_rejects_over_daily_limit_without_persisting_user_message() {
     let result = session.run("hello", AgentRunOptions::default()).await;
 
     assert!(!result.response.success);
+    let error = result.response.error.unwrap_or_default();
+    assert!(error.contains("已达到今日对话上限"));
     assert!(
-        result
-            .response
-            .error
-            .unwrap_or_default()
-            .contains("已达到今日对话上限")
+        !error.contains("工具执行错误"),
+        "quota rejection should stay user-facing, got: {error}"
     );
     assert_eq!(llm.chat_with_tools_calls(), 0);
-    assert!(
-        core.session_storage
-            .get_messages(&actor.session_id(), None)
-            .expect("messages")
-            .is_empty()
-    );
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("messages");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].role, "user");
+    assert_eq!(messages[0].content[0].text.as_deref(), Some("hello"));
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)

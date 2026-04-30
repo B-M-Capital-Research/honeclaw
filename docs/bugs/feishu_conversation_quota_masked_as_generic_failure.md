@@ -3,7 +3,7 @@
 - 发现时间：2026-04-16 15:52 CST
 - Bug Type：Business Error
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：[#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26)
 
 ## 证据来源
@@ -94,6 +94,19 @@
 - 同一文件的 quota 拒绝分支现在会先补最小 `session.persist_user` 审计落库，再返回失败结果；因此即使本轮被额度拦截，session 历史里也能看到用户真实输入。
 - 这条修复不增加 `success_count`，仍会保持 quota 拒绝不计入成功对话数；新增回归测试已覆盖“明确 quota 文案 + user turn 落库 + 不触发 LLM”三件事。
 - 代码层曾完成一轮修复并通过 crate 级验证，但 `2026-04-30 22:36` 的真实 Feishu 流量已证明当前运行态出现回归/变体：旧问题不但没有保持 `Fixed`，还退化成“无最终回复”。本单现恢复为 `New`。
+
+## 修复情况（2026-04-30）
+
+- `crates/hone-channels/src/agent_session/core.rs` 将 quota 拒绝从 `HoneError::Tool(...)` 改为用户态 `HoneError::Other(...)`，避免 Feishu 失败收口把“已达到今日对话上限”误判为内部工具错误并 suppress。
+- 同一 quota 拒绝分支在返回失败前补写当前 user turn，并记录 `session.persist_user=quota_rejected`，因此即使不进入 LLM，也能在会话历史中追溯用户输入。
+- 该路径不预留也不提交 quota，不会增加 `success_count`，仍保持超限请求不计入成功对话数。
+- 回归测试 `run_rejects_over_daily_limit_with_user_turn_and_friendly_error` 覆盖：
+  - 返回明确 quota 文案且不带 `工具执行错误` 前缀。
+  - 不调用 LLM。
+  - 会话历史写入 1 条 user turn。
+  - quota 计数保持 `success_count=daily_limit / in_flight=0`。
+- 验证：
+  - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
 
 ## 回归验证
 

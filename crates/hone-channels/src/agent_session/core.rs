@@ -729,7 +729,7 @@ impl AgentSession {
             ConversationQuotaReserveResult::Reserved(reservation) => Ok(Some(reservation)),
             ConversationQuotaReserveResult::Bypassed => Ok(None),
             ConversationQuotaReserveResult::Rejected(snapshot) => {
-                Err(hone_core::HoneError::Tool(format!(
+                Err(hone_core::HoneError::Other(format!(
                     "已达到今日对话上限（{}/{}，北京时间 {}），请明天再试",
                     snapshot.success_count + snapshot.in_flight,
                     snapshot.limit,
@@ -781,6 +781,34 @@ impl AgentSession {
         let quota_guard = match self.reserve_conversation_quota(options.quota_mode) {
             Ok(reservation) => QuotaReservationGuard::new(self.core.clone(), reservation),
             Err(err) => {
+                let _ = self.core.session_storage.add_message(
+                    &session_id,
+                    "user",
+                    user_input,
+                    self.message_metadata.user.clone(),
+                );
+                self.emit(AgentSessionEvent::UserMessage {
+                    content: user_input.to_string(),
+                })
+                .await;
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &session_id,
+                    "session.persist_user",
+                    "quota_rejected",
+                    self.message_id.as_deref(),
+                    None,
+                );
+                self.core.log_message_received(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &self.channel_target,
+                    &session_id,
+                    user_input,
+                    self.recv_extra.as_deref(),
+                    self.message_id.as_deref(),
+                );
                 return self
                     .fail_run(
                         session_id,

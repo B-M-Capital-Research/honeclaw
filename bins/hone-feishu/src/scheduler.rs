@@ -9,7 +9,7 @@ use serde_json::json;
 use tracing::{error, info, warn};
 
 use crate::handler::{
-    resolve_receive_id, scheduler_receive_id_for_target, validate_scheduler_receive_id,
+    resolve_scheduler_receive_id, scheduler_receive_id_for_target, validate_scheduler_receive_id,
 };
 use crate::outbound::{scheduled_send_idempotency, send_rendered_messages};
 use crate::types::AppState;
@@ -90,7 +90,14 @@ pub(crate) async fn handle_scheduler_events(
             {
                 overridden
             } else {
-                match resolve_receive_id(&state_clone.facade, &event.channel_target).await {
+                match resolve_scheduler_receive_id(
+                    &state_clone.facade,
+                    &event.channel_target,
+                    &state_clone.core.config.feishu.allow_emails,
+                    &state_clone.core.config.feishu.allow_mobiles,
+                )
+                .await
+                {
                     Ok(id) => id,
                     Err(err) => {
                         error!(

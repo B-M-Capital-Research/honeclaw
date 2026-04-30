@@ -1384,6 +1384,52 @@ pub(crate) async fn resolve_receive_id(
     Ok(target.to_string())
 }
 
+pub(crate) async fn resolve_scheduler_receive_id(
+    facade: &FeishuApiClient,
+    channel_target: &str,
+    allow_emails: &[String],
+    allow_mobiles: &[String],
+) -> hone_core::HoneResult<String> {
+    let target = scheduler_resolution_target(channel_target, allow_emails, allow_mobiles);
+    resolve_receive_id(facade, target.as_deref().unwrap_or(channel_target)).await
+}
+
+fn scheduler_resolution_target<'a>(
+    channel_target: &'a str,
+    allow_emails: &'a [String],
+    allow_mobiles: &'a [String],
+) -> Option<&'a str> {
+    let target = channel_target.trim();
+    if target.contains('@') || looks_like_mobile(target) {
+        return None;
+    }
+    if !looks_like_feishu_open_id(target) {
+        return None;
+    }
+    single_direct_contact_target(allow_emails, allow_mobiles)
+}
+
+fn single_direct_contact_target<'a>(
+    allow_emails: &'a [String],
+    allow_mobiles: &'a [String],
+) -> Option<&'a str> {
+    let emails: Vec<_> = allow_emails
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty() && *value != "*")
+        .collect();
+    let mobiles: Vec<_> = allow_mobiles
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty() && *value != "*")
+        .collect();
+    match (emails.as_slice(), mobiles.as_slice()) {
+        ([email], []) => Some(*email),
+        ([], [mobile]) => Some(*mobile),
+        _ => None,
+    }
+}
+
 fn looks_like_mobile(target: &str) -> bool {
     let trimmed = target.trim();
     if trimmed.is_empty() {
@@ -1397,6 +1443,10 @@ fn looks_like_mobile(target: &str) -> bool {
     }
     let normalized = normalize_mobile(target);
     !normalized.is_empty() && normalized.chars().filter(|ch| ch.is_ascii_digit()).count() >= 7
+}
+
+fn looks_like_feishu_open_id(target: &str) -> bool {
+    target.trim().starts_with("ou_")
 }
 
 pub(crate) fn scheduler_receive_id_for_target(
@@ -1535,6 +1585,60 @@ mod tests {
         assert!(!looks_like_mobile("ou_e31244b1208749f16773dce0c822801a"));
         assert!(looks_like_mobile("+8613800138000"));
         assert!(looks_like_mobile("138-0013-8000"));
+    }
+
+    #[test]
+    fn scheduler_resolution_target_re_resolves_stale_open_id_with_unique_contact() {
+        let emails = vec!["alice@example.com".to_string()];
+        let mobiles = vec!["+8613800138000".to_string()];
+
+        assert_eq!(
+            scheduler_resolution_target("ou_stale", &emails, &[]),
+            Some("alice@example.com")
+        );
+        assert_eq!(
+            scheduler_resolution_target("ou_stale", &[], &mobiles),
+            Some("+8613800138000")
+        );
+        assert_eq!(
+            scheduler_resolution_target("alice@example.com", &emails, &[]),
+            None
+        );
+        assert_eq!(
+            scheduler_resolution_target("+8613800138000", &[], &mobiles),
+            None
+        );
+    }
+
+    #[test]
+    fn scheduler_resolution_target_does_not_guess_ambiguous_contacts() {
+        assert_eq!(
+            scheduler_resolution_target(
+                "ou_stale",
+                &["alice@example.com".to_string()],
+                &["+8613800138000".to_string()],
+            ),
+            None
+        );
+        assert_eq!(
+            scheduler_resolution_target(
+                "ou_stale",
+                &[
+                    "alice@example.com".to_string(),
+                    "bob@example.com".to_string()
+                ],
+                &[],
+            ),
+            None
+        );
+        assert_eq!(
+            scheduler_resolution_target("ou_stale", &["*".to_string()], &[]),
+            None
+        );
+        assert_eq!(
+            scheduler_resolution_target("plain-target", &["alice@example.com".to_string()], &[]),
+            None
+        );
     }
 
     #[test]

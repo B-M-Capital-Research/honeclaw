@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
   - 2026-04-30 22:33 最近一小时最新样本：
@@ -246,3 +246,17 @@
   - `cargo test -p hone-feishu`
   - `cargo test -p hone-channels`
 - 但 `2026-04-17 21:32` 的下一轮真实 scheduler 窗口已经再次复现 `Oil_Price_Monitor_Premarket -> completed + send_failed + HTTP 400`；说明当前修复还没有收口到生产链路，本单继续保持 `Fixing`。
+
+## 修复进展（2026-04-30 bug-2）
+
+- 本轮根据 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 复核后补齐 Feishu scheduler 仍可能遗留的 open_id 直传缺口：
+  - `bins/hone-feishu/src/handler.rs` 新增 scheduler 专用解析入口；当历史任务的 `channel_target` 直接保存为 `ou_...` open_id，且当前 Feishu 配置只包含一个稳定 `allow_email` 或一个稳定 `allow_mobile` 时，会先用该联系人通过 Feishu API 重新解析 current-app-scoped open_id。
+  - 多联系人、通配 `*`、email 与 mobile 同时存在等无法唯一确认收件人的配置不会猜测映射，仍保持原有目标，避免误投。
+  - 已有 email / mobile 目标继续走原本的 Feishu API 解析；群聊与普通非 open_id 目标不受影响。
+- 新增回归覆盖：
+  - stale `ou_...` 目标在唯一 email / mobile 配置下会改走联系人解析。
+  - ambiguous / wildcard / plain target 不会猜测 fallback。
+- 验证：
+  - `cargo test -p hone-feishu scheduler_resolution_target -- --nocapture`
+  - `cargo test -p hone-feishu direct_scheduler_always_falls_through_to_api_resolution -- --nocapture`
+- 当前结论：本轮只闭合 Feishu scheduler 历史 `ou_...` direct target 继续直传的本地可修缺口；`2026-04-30 22:33` event-engine 价格异动卡片四连发 `code=99992361 / open_id cross app` 仍是更新鲜证据，因此本单保持 `Fixing`，不恢复为 `Fixed`。
