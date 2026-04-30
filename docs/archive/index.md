@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
+
+## 2026-04-30
+
+### Feishu P1 直聊与定时任务可靠性修复批次
+
+- Status: done
+- Date: 2026-04-30
+- Plan: `docs/archive/plans/feishu-p1-reliability-batch.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-channels runners::multi_agent::tests`, `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`, `cargo check -p hone-channels`
+- Current conclusion: 活跃 Feishu `P1` 已全部移出活跃队列；multi-agent 对 `cron_job` / `portfolio` 可信本地结果的直返放宽到多行与较长正文，避免“我的定时任务”这类本地状态答案已生成却仍被硬送进容易空回复的 answer 阶段
+- Next entry point: `docs/bugs/README.md#活跃待修复`
 
 ## 2026-04-29
 

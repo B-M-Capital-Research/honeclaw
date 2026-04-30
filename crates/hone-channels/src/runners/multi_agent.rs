@@ -200,10 +200,6 @@ Verified search tool transcript (JSON):\n{}",
             return false;
         }
         let content = sanitized.content.trim();
-        if content.len() > 240 || content.contains('\n') {
-            return false;
-        }
-
         let lowered = content.to_ascii_lowercase();
         let looks_like_working_note = [
             "我先",
@@ -227,15 +223,22 @@ Verified search tool transcript (JSON):\n{}",
             return false;
         }
 
-        if search_response.tool_calls_made.is_empty() {
-            return true;
-        }
-
-        search_response.tool_calls_made.len() <= 3
+        let only_trusted_local_tools = !search_response.tool_calls_made.is_empty()
+            && search_response.tool_calls_made.len() <= 3
             && search_response
                 .tool_calls_made
                 .iter()
-                .all(|call| self.is_trusted_local_direct_return_tool(&call.name))
+                .all(|call| self.is_trusted_local_direct_return_tool(&call.name));
+
+        if only_trusted_local_tools {
+            return true;
+        }
+
+        if content.len() > 240 || content.contains('\n') {
+            return false;
+        }
+
+        search_response.tool_calls_made.is_empty()
     }
 
     fn merge_context_messages(
@@ -860,6 +863,52 @@ mod tests {
                 name: "cron_job".to_string(),
                 arguments: json!({"action": "list"}),
                 result: json!({"success": true, "jobs": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}),
+                tool_call_id: None,
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        assert!(runner.should_return_search_response_directly(&response));
+    }
+
+    #[test]
+    fn multiline_trusted_local_tool_answer_can_return_directly() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "你当前有 3 个定时任务：\n1. 早报：每天 09:00\n2. 财报提醒：每天 20:30\n3. ASTS 价格提醒：heartbeat"
+                .to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "cron_job".to_string(),
+                arguments: json!({"action": "list"}),
+                result: json!({
+                    "success": true,
+                    "jobs": [{"id": "1"}, {"id": "2"}, {"id": "3"}]
+                }),
+                tool_call_id: None,
+            }],
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        assert!(runner.should_return_search_response_directly(&response));
+    }
+
+    #[test]
+    fn long_trusted_local_tool_answer_can_return_directly() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "你当前有 3 个定时任务：早报每天 09:00，财报提醒每天 20:30，ASTS 价格提醒按 heartbeat 每 30 分钟轮询，并且都遵守 quiet_hours。"
+                .repeat(3),
+            tool_calls_made: vec![ToolCallMade {
+                name: "cron_job".to_string(),
+                arguments: json!({"action": "list"}),
+                result: json!({
+                    "success": true,
+                    "jobs": [{"id": "1"}, {"id": "2"}, {"id": "3"}]
+                }),
                 tool_call_id: None,
             }],
             iterations: 1,

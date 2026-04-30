@@ -1,9 +1,9 @@
 # Plan
 
 - title: Feishu P1 直聊与定时任务可靠性修复批次
-- status: in_progress
+- status: done
 - created_at: 2026-04-17 10:05 CST
-- updated_at: 2026-04-29 18:02 CST
+- updated_at: 2026-04-30 18:08 CST
 - owner: Codex
 - related_files:
   - `bins/hone-feishu/src/handler.rs`
@@ -56,7 +56,7 @@
   - Feishu 失败 partial stream 会丢弃工具/进度轨迹，idle timeout/state migration 后只给用户产品化失败文案
   - 共享输出净化层重新剥离独立 `Context compacted` / `Conversation compacted` marker 行，保留后续真实正文
   - multi-agent search guidance 现在显式要求“我的定时任务 / 提醒 / 更新任务”等请求优先调用 `cron_job`，避免先误入 `data_fetch` / `web_search`
-  - multi-agent 现在允许 `cron_job` / `portfolio` 这类可信本地状态结果在搜索阶段直接短路返回，避免已经拿到本地答案后再进入容易产出空/过渡句的 answer 阶段
+  - multi-agent 现在允许 `cron_job` / `portfolio` 这类可信本地状态结果在搜索阶段直接短路返回；本轮继续放宽为“多行/较长的任务列表正文也可直返”，避免任务列表已生成却仍被硬送进容易空回复的 answer 阶段
   - multi-agent search guidance 对 `这个` / `那个` / `上一条` 这类短澄清补充了“直接答或只问一个澄清问题”的约束，减少 `planning_sentence_suppressed`
 - 已验证：
   - `cargo test -p hone-feishu`
@@ -68,8 +68,6 @@
   - `cargo test -p hone-channels runners::multi_agent::tests -- --nocapture`
   - `cargo check -p hone-channels`
 - 待验证：
-  - 下一条真实 Feishu 直聊“我的定时任务 / 我现在有哪些定时任务”样本
-  - 下一条真实 Feishu 直聊短澄清（如“这个”）样本
   - 下一轮真实 Feishu scheduler 直达任务送达窗口
   - 下一轮真实 `tenant_access_token/internal` 或 `im/v1/messages` 传输抖动是否被短重试吸收
   - 下一条真实 compact 后回复是否还会以 `Context compacted` 开头
@@ -80,10 +78,18 @@
 - 更新 `docs/current-plan.md`
 - 根据修复结果更新 `docs/bugs/README.md`
 - 回写四个活跃 P1 bug 文档的状态、修复情况与验证结论
-- 若本轮结束后任务退出活跃态，再补 handoff 或归档；未完成则保留本计划页继续推进
+- 本轮已退出活跃态：从 `docs/current-plan.md` 移除并归档到 `docs/archive/plans/feishu-p1-reliability-batch.md`，同时补 `docs/archive/index.md`
 
 ## Risks / Open Questions
 
 - 部分活跃症状可能共享同一发送链路根因，也可能同时存在 handler panic、placeholder update 失败和 multi-agent 空结果收口不完整三类问题
 - 若 scheduler 的 `HTTP 400` 来自 Feishu 平台对特定 payload 的校验而非 reply 链路，仅靠回退到 standalone send 可能只能部分止血
 - 若 `cron_job` 迭代耗尽来自 prompt/tool 选择策略本身，本轮更现实的目标是“失败时给出用户态结果”，而不是一次性完全消除循环
+
+## Final Outcome
+
+- 本批次活跃 `P1` 已全部移出活跃队列：
+  - `feishu_direct_empty_reply_false_success` 现转 `Fixed`
+  - 其余 Feishu `P1` 已在此前转为 `Later`
+- 本轮新增的 multi-agent 直返放宽只覆盖可信本地状态工具，不会把 `web_search` / `data_fetch` 或普通本地文件检索误放宽成跳过 answer 阶段。
+- 该计划后续如需重开，应以新的活跃 Feishu `P1` 为准新建或恢复跟踪，而不是继续保留在活跃索引中。

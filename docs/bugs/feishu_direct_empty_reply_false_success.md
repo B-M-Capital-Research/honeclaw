@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Fixed
 - **证据来源**:
   - 2026-04-26 13:10-13:11 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
@@ -316,3 +316,30 @@
 - Feishu scheduler 也会把同类 fallback 记为 `execution_failed`，与 `feishu_scheduler_empty_reply_false_success` 的台账修复一致。
 - 已验证：`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`。
 - `2026-04-26 13:10-13:11` 同一用户再次追问“我现在有哪些定时任务”仍直接落成统一 fallback，说明止血没有把 Feishu 直聊主链路恢复到可消费答复；状态改回 `New`。
+
+## 修复进展（2026-04-30 18:08 CST）
+
+- 本轮继续修 `crates/hone-channels/src/runners/multi_agent.rs` 的“搜索阶段直返”判定，而不是只在 answer 失败后继续兜底：
+  - 只要 search 阶段返回的是 `cron_job` / `portfolio` 这类可信本地状态工具结果，即便正文是多行任务列表或长度超过 240 字，也允许直接返回；
+  - 仍然保留对 working note / 过渡句的拦截，也没有放宽 `web_search`、`data_fetch` 或普通本地文件检索的 answer 阶段要求。
+- 这直接覆盖了 `2026-04-26 09:52` / `13:10` 两条“我的定时任务 / 我现在有哪些定时任务”样本的核心断点：
+  - 之前 search 已经有机会拿到本地任务列表，但因为“多行/较长正文”不满足直返门槛，结果仍被硬送进更容易 `reply_chars=0` 的 ACP answer 阶段；
+  - 现在同类任务列表正文不再因为长度或换行被降级回 answer。
+
+## 当前验证（2026-04-30 18:08 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels runners::multi_agent::tests`
+  - `cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`
+  - `cargo check -p hone-channels`
+- 新增回归覆盖：
+  - `multiline_trusted_local_tool_answer_can_return_directly`
+  - `long_trusted_local_tool_answer_can_return_directly`
+- 仍未做的运行态复核：
+  - 下一条真实 Feishu “我的定时任务 / 我现在有哪些定时任务”样本
+  - 下一条真实短澄清样本（如“这个”）
+
+## 当前结论（2026-04-30 18:08 CST）
+
+- 该缺陷最新活跃样本里最明确、最可安全闭环的代码缺口已补齐：可信本地任务列表不会再因多行/长正文被误送 answer 阶段。
+- 因此本单从活跃 `Fixing` 转为 `Fixed`，移出活跃队列；若后续真实 Feishu 样本再次出现同类 fallback，可基于新证据重新改回 `New`。
