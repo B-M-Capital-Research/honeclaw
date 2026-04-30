@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 12:02 CST
+最后更新：2026-04-30 13:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：10
 - Later / 待复现：13
-- 已修复 / 已关闭：73
+- 已修复 / 已关闭：72
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -27,12 +27,13 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | New | 2026-04-30 每日完整打包已生成 `.app` 和 `.dmg`，但启动打包后的 `.app/Contents/MacOS/hone-desktop` 时卡在 `CFUserNotificationDisplayAlert`，`18077/18088` 均无监听 | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 12:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `data/sessions/` 近 70 分钟仍刷新 5 个真实会话文件，Feishu 直聊 `Actor_feishu__direct__ou_5f391...` 也已在 `12:01:53` 成功 `persist_assistant` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 12:02 最新 `11:30-12:01` 两轮继续混跑 `Empty + JsonNoop + JsonTriggered + started`；`11145-11157` started 行仍残留 `running + pending`，但 `11165/11166` 又分别落成 `completed + sent` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-30 08:01 `RKLB异动监控` `run_id=10943` 再次落成 `completed + sent`，但正文同时承认 `下跌 -2.00%，未触发涨跌幅8%阈值`，说明单标的近阈值误触发已扩展到 RKLB | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 13:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `data/sessions/` 近 70 分钟仍刷新 3 个真实会话文件，Feishu 直聊 `Actor_feishu__direct__ou_5f64e...` 也已在 `12:30:53` 成功回盘 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 13:03 最新 `12:30-13:00` 两轮继续混跑 `Empty + JsonNoop + JsonTriggered + started`；`11197-11210` started 行仍残留 `running + pending`，且同窗新增 `local_search_files` UTF-8 错误 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-30 13:00 `RKLB异动监控` `run_id=11216` 再次落成 `completed + sent`，但正文同时承认 `涨跌幅未超过8%阈值`；同一小时用户还直接反馈“这些老新闻不要重复发” | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-30 02:02 `Monitor_Watchlist_11` `run_id=10650` 再次把 `ASTS 69.51` 写成“已跌破触发价 69.83”并送达，说明 watchlist 误触发链路仍未收口 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | New | 2026-04-30 09:01 `09:00 美股AI与航空科技晨报` `run_id=11018` 再次落成 `completed + send_failed + delivered=0`，但同一 Web 会话已写入完整晨报正文，说明该缺陷仍在 live 复现 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-04-30 09:03 `08:30` 与 `09:00` 两窗的 started 行仍与后续终态并存；全库 `running + pending` 残留已升到 `2126`，最近 70 分钟新增 `51` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-04-30 `RKLB异动监控` 已在 `10:30` 送出旧合同提醒，用户 `12:28` 明确投诉“昨天也发了好多次”，但 `13:00` 同一旧合同仍再次送达，说明去重回归已重新影响真实用户 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
@@ -66,7 +67,6 @@
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | Fixed | 2026-04-28 `hone-telegram` 在空 token 或 `bot.get_me()` 失败时从 `run()` 返回而非 `process::exit`，让 lock / heartbeat 正常 Drop 清理；`cargo check -p hone-telegram --tests` 通过 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |
 | Event-engine `immediate_kinds` 把低信号新闻重新提级成即时推送 | P3 | Fixed | 2026-04-28 actor 级 `immediate_kinds` 对 `news_critical` / `press_release` 不再升级已被分类器降为 Low 的新闻；新增回归测试通过 | [event_engine_immediate_kinds_resurrects_low_signal_news.md](./event_engine_immediate_kinds_resurrects_low_signal_news.md) |
 | Feishu 定时任务持久化 `schedule` 与 prompt 触发时间错配，`20:45` 任务在 `08:30` 被错时执行 | P2 | Fixed | 2026-04-28 `CronJobStorage` 新增 prompt `【触发时间】HH:MM` 与结构化 schedule 一致性校验：新增/更新错配任务会被拒绝，历史错配任务到点也会被跳过并告警；定向回归通过 | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在半小时轮询里反复送达 | P3 | Fixed | 2026-04-29 heartbeat 送达前去重从“同 job 最近送达”扩展为“同 actor 最近 heartbeat 送达”，兄弟 job 重复同一催化也会进入 `duplicate_suppressed`；定向回归通过 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Disabled channel 跳过启动后仍残留 stale pid 文件 | P3 | Fixed | 2026-04-28 `launch.sh` 在启动检查时识别 zombie child 并执行 `wait`，disabled channel 以 `CHANNEL_DISABLED_EXIT_CODE` 退出时会稳定删除 pid 文件；`bash -n launch.sh` 通过 | [disabled_channel_pid_files_survive_skipped_startup.md](./disabled_channel_pid_files_survive_skipped_startup.md) |
 | Event-engine news classifier 403 errors downgraded uncertain-source review | P2 | Fixed | 2026-04-28 复核当前实现已在 provider error / unparseable response 时走 deterministic fallback 并写缓存与结构化日志，且本轮 OpenAI-compatible numeric error 解析已加固；该路径不再返回 `None` 造成静默降级 | [event_engine_news_classifier_403_fallback.md](./event_engine_news_classifier_403_fallback.md) |
 | Event-engine window convergence upgrade bursts crowd digest quality | P3 | Fixed | 2026-04-28 复核当前配置默认值已启用 `news_upgrade_per_symbol_per_tick=3` 与 `news_upgrade_per_tick=12`，router per-tick/per-symbol guard 已有回归覆盖；旧 active 记录对应的“未配置导致 guard 关闭”不再成立 | [event_engine_window_convergence_upgrade_burst.md](./event_engine_window_convergence_upgrade_burst.md) |

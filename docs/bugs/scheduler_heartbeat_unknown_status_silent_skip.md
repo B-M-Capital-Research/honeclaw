@@ -15,6 +15,13 @@
 
 ## 修复进展
 
+- `2026-04-30 13:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `12:30-13:00` 的最新两轮继续混跑 `JsonNoop + JsonTriggered + Empty + started`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`12:30` 窗口先写入 `run_id=11171-11182` 共 `12` 条 started 行，随后终态另起为 `11183-11196` 的 `noop + skipped_noop`；`13:00` 窗口又先写入 `run_id=11197-11210` 共 `14` 条 started 行，随后终态分裂成 `11211-11222` 的 `noop + skipped_noop` 与 `completed + sent`。
+  - `13:00` 窗口并未恢复成稳定单一状态：`ORCL 大事件监控`、`小米破位预警`、`ASTS 重大异动心跳监控`、`Cerebras IPO与业务进展心跳监控`、`小米30港元破位预警` 都落成 `parse_kind=Empty + noop + skipped_noop`；`TEM破位预警`、`CAI破位预警`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 落成 `parse_kind=JsonNoop`；但 `RKLB异动监控` 在 `run_id=11216` 又落成 `parse_kind=JsonTriggered + completed + sent`，`持仓重大事件心跳检测` 在 `run_id=11218` 也落成 `parse_kind=JsonTriggered + completed + sent`。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：`13:00:14.668`、`13:00:22.122`、`13:00:24.500`、`13:00:25.305` 继续记录多条 heartbeat `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`；`13:00:19.443`、`13:00:19.761`、`13:00:21.106`、`13:00:37.109` 又继续记录多条 `parse_kind=JsonNoop`；而 `13:00:28.749` 与 `13:00:47.766` 分别记录 `RKLB异动监控`、`持仓重大事件心跳检测` 落成 `parse_kind=JsonTriggered` 并执行 `deliver`。
+  - 同窗 `13:00:16.855`、`13:00:17.911` 继续记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，且 `13:00:20.681` 还新增 `tool_execute_error name=local_search_files error=IO 错误: stream did not contain valid UTF-8`；但 heartbeat 总体仍被记为工具结果已消费完成，说明坏态继续与工具层伪成功/局部失败并存。
+  - 结论：到 `2026-04-30 13:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，并叠加 Tavily 全 key 失败与 `local_search_files` UTF-8 错误，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 12:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `11:30-12:01` 的最新两轮继续混跑 `JsonNoop + JsonTriggered + Empty + started`：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`11:30` 窗口先写入 `run_id=11121-11132` 共 `12` 条 started 行，随后终态另起为 `11133-11144` 的整批 `noop + skipped_noop`；`12:00` 窗口又先写入 `run_id=11145-11157` 共 `13` 条 started 行，随后终态分裂成 `11158-11169` 的 `noop + skipped_noop`、`11165-11166` 的 `completed + sent`，以及非 heartbeat `11170` 的 `每日公司资讯与分析总结 completed + sent`。
   - `12:00` 窗口并未恢复成稳定单一状态：`ORCL 大事件监控`、`RKLB异动监控`、`小米破位预警`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 都落成 `parse_kind=Empty + noop + skipped_noop`；`CAI破位预警`、`TEM破位预警`、`Monitor_Watchlist_11`、`全天原油价格3小时播报`、`Cerebras IPO与业务进展心跳监控` 落成 `parse_kind=JsonNoop`；但 `小米30港元破位预警` 在 `run_id=11165` 又落成 `parse_kind=JsonTriggered + completed + sent`，`持仓重大事件心跳检测` 在 `run_id=11166` 也落成 `parse_kind=JsonTriggered + completed + sent`。
