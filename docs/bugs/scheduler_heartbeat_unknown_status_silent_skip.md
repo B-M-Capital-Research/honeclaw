@@ -15,6 +15,18 @@
 
 ## 修复进展
 
+- `2026-04-30 23:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `22:30-23:01` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并再次暴露“同一批 heartbeat 一边实际送达、一边退化成非结构化文本失败”：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11678-11689`（`22:30`）与 `11702-11714`（`23:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `23:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `execution_failed + skipped_error`：`11716`（`TEM破位预警`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）
+    - `completed + sent`：`11721`（`核心观察股池晚间快报`，非 heartbeat 但同窗 started 行也不 finalize）、`11723`（`TEM大事件心跳监控`）
+    - `noop + skipped_noop`：`11715`、`11717-11720`、`11722`、`11724-11727`
+    - started 行 `11702-11714` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `23:00:54.008-23:00:54.010`：`TEM破位预警` 记录 `parse_kind=PlainTextSuppressed`，`raw_preview` 直接写出“当前TEM（Tempus AI）最新价格为$54.065，高于$39.01的止损线，未触发条件。”，随后仍被记成 `heartbeat 输出不是结构化 JSON`
+    - `23:01:16.592-23:01:16.594`：同窗 `TEM大事件心跳监控` 又能落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-04-30 23:01` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / noop / execution_failed / sent`，且 `PlainTextSuppressed` 仍会在部分 job 上退化成显式失败，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 22:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `21:30-22:02` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并再次暴露“上一轮已送达后，下一轮仍退化成非结构化推理文本”：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`22:00` 窗口先写入 `11654-11665` 共 `12` 条 started 行；随后终态仍分裂成 `11666-11677`，没有恢复成单一稳定的结构化 `noop` 协议。
   - `22:00` 窗口并未恢复成稳定单一状态：

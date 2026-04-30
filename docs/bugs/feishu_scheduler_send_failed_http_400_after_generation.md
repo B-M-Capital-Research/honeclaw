@@ -3,9 +3,15 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Later
+- **状态**: New
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
+  - 2026-04-30 22:33 最近一小时最新样本：
+    - `data/runtime/logs/acp-events.log`
+      - `22:33:03.251`、`22:33:08.142` 连续两次记录 `channel sink failed, falling back to log: feishu send HTTP 400 Bad Request`，返回体明确 `code=99992361`、`msg="open_id cross app"`；紧接着只剩 `[dryrun sink]` 的 `RKLB 跨过 +6% 档` 事件卡片
+      - `22:33:11.720`、`22:33:16.559` 同一窗口又连续两次命中同样的 `open_id cross app` 返回体，对应 `TEM 跨过 +6% 档` 事件卡片；四次失败都带新的 Feishu `log_id`
+      - 同窗还持续有其它 `sink delivered` 样本，说明不是 Feishu 出站全局不可用，而是同一类事件 sink 目标再次稳定触发 `open_id cross app`
+    - 这说明 `2026-04-28` 记录为止血的 current-app open_id fallback 还没有覆盖当前生产事件链路；到 `2026-04-30 22:33` 为止，本单已经从 `Later` 回到活跃复现，应恢复为 `New`
   - 2026-04-28 19:10 最近一小时最新样本：
     - `data/runtime/logs/web.log.2026-04-28`
       - `19:10:02.903` 再次记录 `channel sink failed, falling back to log: feishu send HTTP 400 Bad Request`，返回体仍是 `code=99992361`、`msg="open_id cross app"`，并带新的 `log_id=20260428191002FFEF81CF094F1F3A5E68`
@@ -173,6 +179,7 @@
 
 ## 当前实现效果
 
+- `2026-04-30 22:33` 的最近一小时最新样本说明，这条缺陷已经重新回到活跃态：同一窗口里 `RKLB`、`TEM` 两类事件卡片都已生成，但最终 Feishu sink 连续四次命中 `code=99992361 / open_id cross app`，用户只剩 dryrun log，看不到真实推送。
 - `2026-04-28 08:00` 的真实窗口说明，这条缺陷仍在最新一小时活跃：同一时窗里普通 `每日美股收盘与持仓早报` 已成功 `completed + sent + delivered=1`，但事件推送链路仍在 `08:00:50.373` 命中 `HTTP 400 / code=99992361 / open_id cross app`，且失败后只剩 dryrun log，用户侧收不到这条已生成的卡片。
 - `2026-04-21 21:02` 的 `OWALERT_PreMarket` 说明，这条缺陷在最新巡检窗口仍活跃：同一目标又一次落成 `completed + send_failed + code=99992361/open_id cross app`，用户仍收不到已经生成并落库的盘前扫描。
 - `2026-04-20 21:31` 的 `Oil_Price_Monitor_Premarket` 说明，在 `21:01` 的盘前扫描失败后，同一目标的盘前油价播报又再次落成 `completed + send_failed + code=99992361/open_id cross app`。
@@ -201,6 +208,7 @@
 
 ## 根因判断
 
+- `2026-04-30 22:33` 的四连发 `open_id cross app` 说明，当前 event-engine / sink 实际发送路径仍有一段没有用到 `2026-04-28` 所说的 current-app open_id fallback，或者 fallback 命中的联系人集与真实发送对象仍不一致。
 - `2026-04-28 08:00` 同窗里既有 `run_id=8507` 这种正常 `completed + sent + delivered=1` 的日报，也有 `08:00:50.373` 的 `open_id cross app` 发送失败；这进一步收敛出问题不在 Feishu token、全局网络或全部发送请求，而仍在某一类事件 sink 最终选择的 `receive_id/open_id` 标识域。
 - `2026-04-21 21:02` 的 `OWALERT_PreMarket` 新样本进一步说明，问题仍不依赖某一份特定 prompt 或某一天的模板；只要命中同一目标，scheduler 最终发送到 Feishu API 时仍可能收到 `open_id cross app`。
 - `2026-04-20 21:31` 的 `Oil_Price_Monitor_Premarket` 样本说明，问题不依赖某一份特定 prompt 或持仓扫描模板；即使是另一条油价播报任务，只要命中同一目标，scheduler 最终发送到 Feishu API 时仍会稳定收到 `open_id cross app`。
@@ -225,14 +233,14 @@
   - `bins/hone-feishu/src/outbound.rs` 现在对 `receive_id_type=open_id` 且没有 placeholder 的多段消息，不再默认把后续分段走 `reply_message`；会直接逐段 standalone send。
   - 如果 `update_message` 或 `reply_message` 仍返回 `HTTP 400`，同一分段会自动回退到 standalone send，而不是整轮直接 `send_failed`。
 
-## 修复进展（2026-04-28）
+## 修复进展（2026-04-28 / 2026-04-30 复核）
 
 - 已在 `crates/hone-event-engine/src/sinks/feishu.rs` 为 event-engine Feishu sink 增加 current-app open_id 解析缓存：
   - 单用户安装场景下，如果 `feishu.allow_mobiles` 或 `feishu.allow_emails` 只有一个稳定联系人，事件推送会先通过 Feishu `batch_get_id?user_id_type=open_id` 解析当前 app 绑定的 open_id。
   - 只有唯一联系人时才启用该 fallback；配置里有多个 email/mobile 或通配 `*` 时不会猜测映射，避免跨用户误投。
   - 群聊仍继续走 `chat_id`，不受 direct open_id fallback 影响。
 - `crates/hone-web-api/src/lib.rs` 组装 event-engine sink 时已把 `feishu.allow_emails` / `feishu.allow_mobiles` 传入该 fallback。
-- 状态调整为 `Later`：这条缺陷的最新证据来自 event-engine sink，而不是 Feishu scheduler facade；代码已停止直接依赖可能跨 app 的历史 `actor.user_id`。下一次真实事件窗口若仍返回 `code=99992361 / open_id cross app`，再改回 `New` 并继续追 sender/actor 映射。
+- `2026-04-30 22:33` 最近一小时真实事件窗口已再次连续返回 `code=99992361 / open_id cross app`，因此本单按约定从 `Later` 调回 `New`，继续作为活跃 `P1` 跟踪；已有 GitHub Issue `#25` 继续沿用。
 - `bins/hone-feishu/src/client.rs` 也已补发信失败时的响应体日志，后续再出现 400 时不再只剩裸 `Bad Request`，而会带上 Feishu body 摘要，便于继续定位 payload 差异。
 - 自动化验证已通过：
   - `cargo test -p hone-feishu`
