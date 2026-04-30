@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-05-01 03:03 CST` 最近一小时再次确认 sqlite 会话镜像完全无增量：`sessions_last_hour=0`、`messages_last_hour=0`，且 `sessions.updated_at` / `sessions.last_message_at` 与 `session_messages.timestamp` 上界仍全部停在 `2026-04-27 16:54:20+08:00`。但同窗 `cron_job_runs` 已继续推进到 `2026-05-01 03:01:49+08:00`，`data/sessions/` 最近 70 分钟仍刷新出 `Actor_web__direct__web-user-e05f5e5f74a3.json`，其 `updated_at` 已到 `2026-05-01 02:04:42+08:00` 且最后一轮 `02:04:30-02:04:42` Web 健康检查已正常写入 `OK`。说明最近一小时真实会话文件与 heartbeat 台账仍在前进，而 sqlite 会话镜像依旧完全卡死。
   - `2026-05-01 02:03 CST` 最近一小时再次确认 sqlite 会话镜像完全无增量：`sessions_last_hour=0`、`messages_last_hour=0`，且 `sessions.updated_at` / `sessions.last_message_at` / `sessions.imported_at` 与 `session_messages.timestamp` / `imported_at` 上界仍全部停在 `2026-04-27 16:54:20+08:00`。但同窗 `cron_job_runs` 已继续推进到 `2026-05-01 02:01:12+08:00`，`data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 也在 `2026-05-01 01:04:10+08:00` 继续刷新，说明最近一小时真实会话文件与 scheduler 台账仍在前进，而 sqlite 会话镜像依旧完全卡死。
   - `2026-05-01 01:02 CST` 最近一小时再次确认 sqlite 会话镜像完全无增量：`sessions_recent=0`、`messages_recent=0`，且 `sessions.updated_at` / `sessions.last_message_at` / `sessions.imported_at` 与 `session_messages.timestamp` / `imported_at` 上界仍全部停在 `2026-04-27 16:54:20+08:00`。但同窗 `cron_job_runs` 已继续推进到 `2026-05-01 01:01:22+08:00`，`data/sessions/` 最近 70 分钟仍刷新出 `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652.json`、`Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`、`Actor_web__direct__web-user-e05f5e5f74a3.json` 等 5 个真实会话文件，最新 ACP 事件也在 `00:28:20` 继续落成 `stopReason=end_turn`。说明最近一小时真实会话文件、scheduler 台账和 ACP 收口仍在前进，而 sqlite 会话镜像依旧完全卡死。
   - `2026-05-01 00:04 CST` 最近一小时再次确认 sqlite 会话镜像完全无增量：`sessions_recent=0`、`messages_recent=0`，且 `sessions.updated_at` / `session_messages.timestamp` / `imported_at` 上界仍全部停在 `2026-04-27 16:54:20+08:00`。但同窗 `data/sessions/Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768.json` 与 `Actor_feishu__direct__ou_5f03129a3b3ef1e1f93caa23989cdb5554.json` 已分别推进到 `2026-04-30 23:45:13+08:00` 与 `23:51:43+08:00`，对应 `sidecar.log` 也继续记录 `session.persist_assistant -> completed success=true -> reply.send`；同时同目录最新会话文件已刷新到 `2026-05-01 00:03:28+08:00`，说明最近一小时真实会话源文件与主链路仍在持续前进，而 sqlite 会话镜像仍完全卡死。
@@ -38,6 +39,11 @@
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-05-01 03:03 CST` 再次复核：`SELECT COUNT(*) FROM sessions WHERE datetime(updated_at) >= datetime('now','-1 hour');` 与 `SELECT COUNT(*) FROM session_messages WHERE datetime(timestamp) >= datetime('now','-1 hour');` 仍是 `0 / 0`。
+  - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 与 `SELECT MAX(timestamp) FROM session_messages;` 仍全部停在 `2026-04-27T16:54:20+08:00`。
+  - 同库 `cron_job_runs` 最近一小时却继续新增 `48` 条 heartbeat 记录，最大 `executed_at` 已到 `2026-05-01T03:01:49.924064+08:00`，说明并不是整个 sqlite 库都冻结，停摆仍只落在会话镜像链路。
+  - `find data/sessions -type f -mmin -70` 本轮仍能看到最近一小时继续刷新的真实会话文件：`Actor_web__direct__web-user-e05f5e5f74a3.json`。
+  - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 的 `updated_at` 已到 `2026-05-01T02:04:42.261582+08:00`，且最后两条消息仍是 `2026-05-01T02:04:30.087382+08:00` 用户 `心跳检测，请简短回复 OK` 与 `2026-05-01T02:04:42.260647+08:00` assistant `OK`，这进一步说明真实会话主链路仍在推进，而 sqlite 镜像没有跟上。
   - `2026-05-01 01:02 CST` 再次复核：`SELECT COUNT(*) FROM sessions WHERE datetime(COALESCE(updated_at,last_message_at,imported_at)) >= datetime('now','-1 hour');` 与 `SELECT COUNT(*) FROM session_messages WHERE datetime(COALESCE(timestamp,imported_at)) >= datetime('now','-1 hour');` 仍是 `0 / 0`。
   - `SELECT MAX(updated_at), MAX(last_message_at), MAX(imported_at) FROM sessions;` 与 `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍全部停在 `2026-04-27T16:54:20+08:00`。
   - 同库 `cron_job_runs` 最近一小时却继续新增 `49` 条记录，最大 `executed_at` 已到 `2026-05-01T01:01:22.995163+08:00`，说明并不是整个 sqlite 库都冻结，停摆只落在会话镜像链路。

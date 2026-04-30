@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-01 03:00-03:03` 窗口最新完成样本里，`run_id=11923`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
+  - 同一条 run 的 `error_message` 仍保持同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 314`
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-05-01 03:01:16.418` 上游先返回真实 bad request：`This endpoint's maximum context length is 262144 tokens. However, you requested about 746997 tokens...`
+  - `2026-05-01 03:01:16.458-03:01:16.461` heartbeat 链路随后没有把这条上游 `HTTP 400` 正确保留，而是再次塌缩成 `failed to deserialize api response: invalid type: integer \`400\``
+  - 这说明 `2026-04-30` 记录的 OpenRouter raw HTTP 兜底解析修复结论仍未稳定覆盖当前生产 heartbeat 链路；当前活跃问题仍是“上游 400 被二次反序列化错误掩盖”
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-30 16:01` 窗口最新完成样本里，`run_id=11362`（`Cerebras IPO与业务进展心跳监控`）再次落成 `execution_failed + skipped_error + delivered=0`
   - 同一条 run 的 `error_message` 仍保持同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 316`
 - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
@@ -63,6 +70,8 @@
 
 ## 当前实现效果
 
+- `2026-05-01 03:01` 的 `run_id=11923` 说明，这条缺陷在当前生产窗口依然活跃：同一类 `maximum context length` 上游 400 仍被压扁成 `invalid type: integer \`400\``，而且当前样本已经从 `Cerebras IPO与业务进展心跳监控` 扩散回 `持仓重大事件心跳检测`。
+- 当前不能把本单视为 `Fixed`；最新真实窗口已经再次复现相同错误形态，因此状态维持 `New` 并继续留在活跃缺陷队列。
 - `2026-04-30 16:01` 的 `run_id=11362` 说明，这条缺陷在当前生产窗口依然活跃：同一类 `maximum context length` 上游 400 仍被压扁成 `invalid type: integer \`400\``。
 - 当前不能把本单视为 `Fixed`；最新真实窗口已经再次复现相同错误形态，因此状态维持 `New` 并继续留在活跃缺陷队列。
 - `2026-04-29 19:30` 的 `run_id=10300` 说明，这条缺陷并未随着 `2026-04-28` 的修复结论退出线上：同一类 `maximum context length` 上游 400 仍被压扁成 `invalid type: integer \`400\``。

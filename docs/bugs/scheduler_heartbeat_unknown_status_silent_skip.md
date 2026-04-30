@@ -15,6 +15,19 @@
 
 ## 修复进展
 
+- `2026-05-01 03:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `02:30-03:03` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并继续出现“非 JSON 长文本被吞成 `JsonNoop`”与悬挂 started 行并存：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11880-11891`（`02:30`）与 `11904-11915`（`03:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `03:00-03:03` 窗口并未恢复成稳定单一状态：
+    - `execution_failed + skipped_error`：`11923`（`持仓重大事件心跳检测`，`LLM 错误: failed to deserialize api response: invalid type: integer \`400\``）
+    - `completed + sent`：`11917`（`TEM大事件心跳监控`）
+    - `noop + skipped_noop`：`11916`、`11918-11922`、`11924-11927`
+    - started 行 `11904-11915` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `03:01:04.947`：`Cerebras IPO与业务进展心跳监控` 记录 `starts_with_json=false parse_kind=JsonNoop raw_preview="Since the web_search tool returned unavailable status, I cannot verify..."`，说明非结构化英文解释文本仍会被直接压成 `noop`
+    - `03:01:16.418-03:01:16.461`：同窗 `持仓重大事件心跳检测` 再次因为上游 `maximum context length` 失败落成 `execution_failed + skipped_error`
+    - `03:00:48.791-03:00:48.792`：`TEM大事件心跳监控` 又能落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-01 03:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / noop / execution_failed / sent`，而且非 JSON 解释文本依旧会在部分 job 上被误吞成 `JsonNoop`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 02:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:30-02:01` 的最新两轮虽然表面全部回落成 `noop + skipped_noop`，但结构化协议仍未恢复正常，继续同时暴露 started 残留、`Empty` 漂移、工具伪成功与本地检索错误：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近 70 分钟 heartbeat 仍同时保留 `36` 条 `running + pending` started 行与 `35` 条 `noop + skipped_noop` 终态；仅 `run_id=11826`（`TEM大事件心跳监控`）在 `01:00:53` 继续实际 `completed + sent`。最新 `02:00` 批次则再次把 `11856-11867` 预写 started 行与 `11868-11879` 的后续终态并存落库，没有恢复成单一稳定的结构化 `noop` 协议。
   - `02:00` 窗口并未真正恢复成健康结构化协议：
