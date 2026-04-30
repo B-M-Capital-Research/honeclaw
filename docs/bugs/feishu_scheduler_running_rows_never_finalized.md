@@ -8,6 +8,18 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-01 07:03 CST` 再次复核，started-row finalize 缺陷在最新 `07:00` 窗口继续实时新增，而且这一轮已经同时覆盖 `noop`、`sent` 与 `execution_failed` 三种终态：
+    - `07:00` 窗口先写入 `run_id=12102-12113` 共 `12` 条 started 行，全部为 heartbeat
+    - 同窗终态随后另起为 `12114-12125`：其中 `12114-12124` 大多已落成 `noop + skipped_noop`，`12125`（`RKLB异动监控`）则落成 `execution_failed + skipped_error`
+    - 但对应 started 行 `12102-12113` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `skipped_noop` 还是 `skipped_error`，都不会覆盖原 started 行
+  - 按 `executed_at >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 799`
+    - `noop + skipped_noop = 671`
+    - `completed + sent = 98`
+    - `execution_failed + skipped_error = 31`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量仍在最近一小时继续增加；这说明该缺陷并不是某个窗口内的临时脏数据，而是每一轮 heartbeat started 行都会稳定留存。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-01 06:02 CST` 再次复核，started-row finalize 缺陷在最新 `05:30`、`06:00` 两个窗口继续实时新增，而且最近一小时的坏态比例还在继续放大：
     - `05:30` 窗口先写入 `run_id=12030-12041` 共 `12` 条 started 行，全部为 heartbeat；随后终态另起为 `12042-12053`，其中 `12049`、`12053` 已落成 `completed + sent + delivered=1`，其余大多已落成 `noop + skipped_noop`
     - `06:00` 窗口又先写入 `run_id=12054-12065` 共 `12` 条 started 行；截至 `06:02`，同窗终态已另起为 `12066-12077`，目前全部落成 `noop + skipped_noop`

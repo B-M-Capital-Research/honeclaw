@@ -15,6 +15,20 @@
 
 ## 修复进展
 
+- `2026-05-01 07:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `06:30-07:02` 的最新两轮仍在混跑 `started + noop + sent + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`06:30` 窗口继续先写入 `run_id=12089-12100` 共 `12` 条 started 行；随后终态另起为 `12101`、`12114-12124`，其中 `12097`（`小米30港元破位预警`）已落成 `completed + sent`，其余 `12090-12096`、`12098-12101`、`12114-12124` 大多已落成 `noop + skipped_noop`。`07:00` 窗口又先写入 `12102-12113` 共 `12` 条 started 行，随后 `12114-12124` 落成 `noop + skipped_noop`，`12125`（`RKLB异动监控`）落成 `execution_failed + skipped_error`；但两批 started 行仍全部保留 `running + pending`，没有恢复成单一稳定终态。
+  - 按 `executed_at >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 799`
+    - `noop + skipped_noop = 671`
+    - `sent = 98`
+    - `execution_failed = 31`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `06:30:36.004`、`06:30:52.918`：`CAI破位预警`、`持仓重大事件心跳检测` 继续记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `06:30:45.952`：`小米30港元破位预警` 又能落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `07:00:21.376`、`07:00:23.318`、`07:00:27.166`、`07:00:33.318`、`07:00:33.730`、`07:00:36.964`、`07:00:39.275`：`CAI破位预警`、`Cerebras IPO与业务进展心跳监控`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`持仓重大事件心跳检测`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 同窗再次落成 `parse_kind=Empty`
+    - `07:02:14.989`：`RKLB异动监控` 在同一批里新增 `success=false error="LLM 错误: http error: error decoding response body"`，说明这条公共链路缺陷仍会在 `Empty / JsonNoop / JsonTriggered / skipped_error` 之间漂移
+  - 结论：到 `2026-05-01 07:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / skipped_error`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 06:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `05:30-06:02` 的最新两轮仍在混跑 `started + noop + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`05:30` 窗口继续先写入 `run_id=12030-12041` 共 `12` 条 started 行；随后终态另起为 `12042-12053`，其中 `12049`（`小米破位预警`）与 `12053`（`持仓重大事件心跳检测`）已落成 `completed + sent`，其余 `12042-12048`、`12050-12052` 均落成 `noop + skipped_noop`。`06:00` 窗口又先写入 `12054-12065` 共 `12` 条 started 行，随后 `12066-12077` 全部回落成 `noop + skipped_noop`；但两批 started 行仍全部保留 `running + pending`，没有恢复成单一稳定终态。
   - 按 `executed_at >= datetime('now','-1 hour') AND actor_channel='feishu'` 聚合，最近一小时仍同时存在：
