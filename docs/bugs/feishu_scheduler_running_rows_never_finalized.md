@@ -8,6 +8,19 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-30 21:05 CST` 再次复核，started-row finalize 缺陷在最新 `20:30`、`21:00` 两个窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
+    - `20:30` 窗口先写入 `run_id=11562-11575` 共 `14` 条 started 行，包含 12 条 heartbeat 与 2 条普通 scheduler（`美股盘前宏观与财报日历梳理`、`每日仓位复盘`）；随后终态另起为 `11576-11589`，其中 `11578/11588/11589` 已落成 `completed + sent + delivered=1`，`11581` 落成 `execution_failed + skipped_error`，其余均为 `noop + skipped_noop`
+    - `21:00` 窗口又先写入 `run_id=11590-11605` 共 `16` 条 started 行，其中既包含 12 条 heartbeat，也包含 `持仓与关注股交易日晚间合并研判`、`OWALERT_PreMarket`、`晚9点盘前推演(XME及加密ETF)`、`美股盘前分析与个股推荐`
+    - 同窗终态随后另起为 `11606-11621`：`11607/11613/11619/11620/11621` 已落成 `completed + sent + delivered=1`，其余 heartbeat 大多落成 `noop + skipped_noop`
+    - 但对应 started 行 `11562-11575` 与 `11590-11605` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent`、`skipped_noop` 还是 `skipped_error`，都不会覆盖原 started 行
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 31`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 8`
+    - `execution_failed + skipped_error = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `2424` 条，较 `2026-04-30 14:02` 巡检记录里的 `2247` 再增 `177` 条，说明这条缺陷仍在随每个调度窗口稳定堆积。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-30 14:02 CST` 再次复核，started-row finalize 缺陷在最新 `13:30`、`14:00` 两个窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
     - `13:30` 窗口先写入 `run_id=11219-11230` 共 `12` 条 started 行，全部为 heartbeat；随后终态另起为 `11231-11242`，其中 `11231-11240` 已落成 `noop + skipped_noop`，`11241` 落成 `completed + sent + delivered=1`，`11242` 落成 `execution_failed + skipped_error`
     - `14:00` 窗口又先写入 `run_id=11243-11254` 共 `12` 条 started 行；截至 `14:02`，同窗终态已另起为 `11255-11266`，其中 `11255-11260`、`11262-11266` 已分别落成 `noop + skipped_noop`，`11261` 已落成 `completed + sent + delivered=1`

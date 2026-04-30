@@ -15,6 +15,23 @@
 
 ## 修复进展
 
+- `2026-04-30 21:05` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `20:30-21:02` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并继续出现 `PlainTextSuppressed` 与 `Empty` 漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11562-11575`（`20:30`）与 `11590-11605`（`21:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `20:30` 窗口仍未恢复成稳定单一状态：
+    - `execution_failed + skipped_error`：`11581`（`RKLB异动监控`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）
+    - `completed + sent`：`11578`（`小米30港元破位预警`）
+    - `noop + skipped_noop`：`11576-11577`、`11579-11580`、`11582-11587`
+    - 其中 `11582`（`持仓重大事件心跳检测`）在同窗继续落成 `parse_kind=Empty + noop + skipped_noop`
+  - `21:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `completed + sent`：`11607`（`ASTS 重大异动心跳监控`，`parse_kind=JsonTriggered`）
+    - `noop + skipped_noop`：`11606`、`11608-11618`
+    - started 行 `11590-11605` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `20:30:34`：`RKLB异动监控` 记录 `parse_kind=PlainTextSuppressed`，`raw_preview` 直接以 `**分析推理（内部不输出）：**` 开头，随后被记成 `heartbeat 输出不是结构化 JSON`
+    - `20:30:37`：`持仓重大事件心跳检测` 继续记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `21:00:53`：同窗 `ASTS 重大异动心跳监控` 又能落成 `parse_kind=JsonTriggered` 并实际送达，说明结构化漂移仍是同批任务内分化，而不是整批 scheduler 停摆
+  - 结论：到 `2026-04-30 21:05` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / noop / execution_failed / sent`，且 `PlainTextSuppressed` 与 `Empty` 仍会在部分 job 上漂成失败或静默跳过，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 18:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `17:30-18:01` 的最新两轮继续混跑 `started + noop + execution_failed + sent`，并再次暴露 `PlainTextSuppressed -> skipped_error` 漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11411-11423`（`17:30`）与 `11435-11446`（`18:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
   - `17:30` 窗口仍未恢复成稳定单一状态：
