@@ -15,6 +15,20 @@
 
 ## 修复进展
 
+- `2026-05-01 05:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `05:00-05:02` 的最新一轮仍在混跑 `started + noop + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`05:00` 窗口继续先写入 `run_id=12004-12016` 共 `13` 条 started 行；随后终态另起为 `12017-12029`，其中 `12027`（`科技成长赛道大盘极值与情绪监控`）已落成 `completed + sent`，其余 `12017-12026`、`12028-12029` 均落成 `noop + skipped_noop`。但 started 行 `12004-12016` 仍全部保留 `running + pending`，没有恢复成单一稳定终态。
+  - 按 `executed_at >= datetime('now','-1 hour') AND actor_channel='feishu'` 聚合，最近一小时仍同时存在：
+    - `running + pending = 751`
+    - `noop + skipped_noop = 627`
+    - `sent = 94`
+    - `execution_failed = 30`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `05:00:12.684`：`TEM破位预警` 继续记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `05:00:12.805`：`CAI破位预警` 再次记录 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+    - `05:00:17.080`：`全天原油价格3小时播报` 回落成 `parse_kind=JsonNoop raw_preview="{\"status\":\"noop\"}"`
+    - `05:01:57.491`：`持仓重大事件心跳检测` 又落成 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`
+  - 结论：到 `2026-05-01 05:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / sent`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 04:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `03:30-04:01` 的最新两轮仍在混跑 `started + noop + sent`，只是这轮没有恰好再显式落成 `execution_failed`；结构化协议仍未恢复正常：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11928-11940`（`03:30`）与 `11952-11964`（`04:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
   - 按 `executed_at >= datetime('now','-1 hour') AND actor_channel='feishu'` 聚合，最近一小时仍同时存在：
