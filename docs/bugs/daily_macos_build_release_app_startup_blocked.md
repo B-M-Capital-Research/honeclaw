@@ -3,7 +3,7 @@
 - 发现时间：2026-04-30 04:23 CST
 - Bug Type：Desktop release runtime / daily build validation
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - 证据来源：`honeclaw-mac` 每日 macOS 完整打包验证，本地执行 `env CARGO_TARGET_DIR=/Users/ecohnoch/Library/Caches/honeclaw/target bun run build:desktop` 后启动打包产物
 
 ## 端到端链路
@@ -50,18 +50,29 @@
 
 ## 下一步建议
 
-1. 在 `prepare_desktop_startup` 或 `show_startup_error_dialog` 前后补充非 UI 日志，确保启动阻塞的具体 message 写入 runtime `desktop.log` 或 stderr。
-2. 复核 packaged app 并行启动时是否会受已有 `/Applications/Hone Financial.app` 日常实例、bundle id、或启动锁判断影响；本轮未停止既有真实桌面进程。
-3. 为每日验证增加可自动化的 startup failure probe：错误 dialog 不应是唯一证据出口。
-4. 修复后重新执行 `honeclaw-mac` 完整链路，要求 `.app` / `.dmg` / `/api/meta` / public page / channel disabled 状态全部通过。
+1. 下一次每日完整打包验证应重新执行 `.app` / `.dmg` / `/api/meta` / public page / channel disabled 链路，确认 release app 不再被 UI dialog 挂起。
+2. 若仍无法拉起 backend，优先查看隔离 runtime 的 `desktop.log` 与 stderr 中的 `desktop startup blocked before backend bootstrap` 记录，而不是只依赖 macOS dialog。
+3. 若失败原因指向真实端口或锁冲突，再按 `docs/runbooks/desktop-release-app-runtime.md` 的 stale lock / pid 清理流程定位。
+
+## 修复进展（2026-04-30）
+
+- `bins/hone-desktop/src/sidecar.rs` 将 startup error dialog 改为后台线程显示，避免 `CFUserNotificationDisplayAlert` 在主线程阻塞自动化启动/退出路径。
+- `bins/hone-desktop/src/commands.rs` 在 setup 阶段 `prepare_desktop_startup(...)` 失败时先写入 desktop runtime log，并同步输出 stderr：`Hone Startup Blocked: ...`。每日验证后续即使仍失败，也能拿到可判定错误文本。
+- 新增 `HONE_SUPPRESS_STARTUP_DIALOG=1` / `CI=1` 抑制开关，供无交互 smoke test 或 CI 环境显式禁用原生 dialog。
+- 新增回归测试覆盖 dialog 走非阻塞 spawn 路径，以及抑制开关的 truthy 值解析。
 
 ## 验证结果
 
-- 构建打包：通过。
-- `.app` 存在性：通过，mtime `2026-04-30 04:14:01 CST`。
-- `.dmg` 存在性：通过，mtime `2026-04-30 04:14:40 CST`。
-- 隔离配置生成：通过，外部渠道均为 disabled。
-- release app 启动：失败，进程卡在 startup dialog。
-- API 验证：失败，`18077` connection refused。
-- public 页面验证：失败，`18088` connection refused。
-- 清理结果：已终止本轮验证进程并移除本轮 `hone-desktop.lock`；未停止或改动已有日常 Hone 进程。
+- 2026-04-30 04:23 原始每日构建：
+  - 构建打包：通过。
+  - `.app` 存在性：通过，mtime `2026-04-30 04:14:01 CST`。
+  - `.dmg` 存在性：通过，mtime `2026-04-30 04:14:40 CST`。
+  - 隔离配置生成：通过，外部渠道均为 disabled。
+  - release app 启动：失败，进程卡在 startup dialog。
+  - API 验证：失败，`18077` connection refused。
+  - public 页面验证：失败，`18088` connection refused。
+  - 清理结果：已终止本轮验证进程并移除本轮 `hone-desktop.lock`；未停止或改动已有日常 Hone 进程。
+- 2026-04-30 11:09 修复验证：
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop startup_error_dialog -- --nocapture`
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests`
+  - `git diff --check`

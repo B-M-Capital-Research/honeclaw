@@ -151,6 +151,7 @@ pub(crate) fn run_desktop_app() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             if let Err(error) = crate::sidecar::prepare_desktop_startup(app.handle().clone()) {
+                crate::sidecar::record_startup_error(app.handle(), &error);
                 crate::sidecar::show_startup_error_dialog(&error);
                 return Err(std::io::Error::other(error).into());
             }

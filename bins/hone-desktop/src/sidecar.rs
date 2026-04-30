@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use hone_core::HoneConfig;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
-use rfd::{MessageButtons, MessageDialog, MessageLevel};
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime;
 use tauri::{AppHandle, Manager, State};
@@ -18,6 +17,9 @@ use tauri_plugin_shell::{
     ShellExt,
     process::{CommandChild, CommandEvent},
 };
+
+#[cfg(not(test))]
+use rfd::{MessageButtons, MessageDialog, MessageLevel};
 
 mod processes;
 mod runtime_env;
@@ -373,13 +375,55 @@ fn validate_meta(meta: MetaInfo) -> Result<MetaInfo, String> {
     }
 }
 
+pub(crate) fn record_startup_error(app: &AppHandle, message: &str) {
+    log_desktop(
+        app,
+        "ERROR",
+        format!("desktop startup blocked before backend bootstrap: {message}"),
+    );
+    eprintln!("Hone Startup Blocked: {message}");
+}
+
+fn startup_error_dialog_suppressed_from_env_value(value: Option<&str>) -> bool {
+    matches!(
+        value.map(|raw| raw.trim().to_ascii_lowercase()),
+        Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    )
+}
+
+fn startup_error_dialog_suppressed() -> bool {
+    startup_error_dialog_suppressed_from_env_value(
+        env::var("HONE_SUPPRESS_STARTUP_DIALOG").ok().as_deref(),
+    ) || startup_error_dialog_suppressed_from_env_value(env::var("CI").ok().as_deref())
+}
+
+#[cfg(not(test))]
+fn spawn_startup_error_dialog(message: String) {
+    let _ = std::thread::Builder::new()
+        .name("hone-startup-error-dialog".to_string())
+        .spawn(move || {
+            let _ = MessageDialog::new()
+                .set_level(MessageLevel::Error)
+                .set_title("Hone Startup Blocked")
+                .set_description(&message)
+                .set_buttons(MessageButtons::Ok)
+                .show();
+        });
+}
+
+#[cfg(test)]
+static STARTUP_ERROR_DIALOG_SPAWNS: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(test)]
+fn spawn_startup_error_dialog(_message: String) {
+    STARTUP_ERROR_DIALOG_SPAWNS.fetch_add(1, Ordering::SeqCst);
+}
+
 pub(crate) fn show_startup_error_dialog(message: &str) {
-    let _ = MessageDialog::new()
-        .set_level(MessageLevel::Error)
-        .set_title("Hone Startup Blocked")
-        .set_description(message)
-        .set_buttons(MessageButtons::Ok)
-        .show();
+    if startup_error_dialog_suppressed() {
+        return;
+    }
+    spawn_startup_error_dialog(message.to_string());
 }
 
 impl DesktopBackendManager {
@@ -1135,6 +1179,26 @@ mod tests {
                 meta.capabilities.iter().any(|value| value == capability),
                 "bundled desktop meta should expose {capability}"
             );
+        }
+    }
+
+    #[test]
+    fn startup_error_dialog_uses_nonblocking_spawn_path() {
+        STARTUP_ERROR_DIALOG_SPAWNS.store(0, Ordering::SeqCst);
+
+        show_startup_error_dialog("startup failed during smoke test");
+
+        assert_eq!(STARTUP_ERROR_DIALOG_SPAWNS.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn startup_error_dialog_suppression_parses_truthy_env_values() {
+        for value in ["1", "true", "TRUE", "yes", "on", " on "] {
+            assert!(startup_error_dialog_suppressed_from_env_value(Some(value)));
+        }
+
+        for value in [None, Some(""), Some("0"), Some("false"), Some("off")] {
+            assert!(!startup_error_dialog_suppressed_from_env_value(value));
         }
     }
 
