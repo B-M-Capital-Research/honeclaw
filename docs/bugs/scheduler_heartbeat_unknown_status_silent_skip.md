@@ -15,6 +15,19 @@
 
 ## 修复进展
 
+- `2026-05-01 01:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:30-01:01` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并继续在 `PlainTextSuppressed / Empty / JsonEmptyStatus / JsonTriggered` 之间漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11784/11785/11788/11792/11793`（`00:30`）与 `11811/11814-11817`（`01:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `00:30-01:01` 窗口并未恢复成稳定单一状态：
+    - `execution_failed + skipped_error`：`11804`（`持仓重大事件心跳检测`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）、`11807`（`TEM大事件心跳监控`，`LLM 错误: http error: error decoding response body`）
+    - `completed + sent`：`11826`（`TEM大事件心跳监控`）
+    - `noop + skipped_noop`：`11799`、`11801`、`11806`、`11820`、`11828`、`11829`、`11831`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `00:31:08.126-00:31:08.127`：`持仓重大事件心跳检测` 记录 `parse_kind=PlainTextSuppressed`，`raw_preview` 明确以 `**内部推理（不对外输出）：**` 开头，并写出“最近一轮已提醒事件（4月30日23:31）...没有新的独立事件窗口”，随后仍被记成 `heartbeat 输出不是结构化 JSON`
+    - `01:00:21.614` 与 `01:01:10.629`：`小米破位预警`、`Cerebras IPO与业务进展心跳监控` 又分别落成 `parse_kind=Empty`
+    - `01:01:22.994`：同窗 `持仓重大事件心跳检测` 又回落成 `parse_kind=JsonEmptyStatus raw_preview="{}"`
+    - `01:00:48.563-01:00:48.564`：同一批里 `TEM大事件心跳监控` 又能落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-01 01:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / noop / execution_failed / sent`，且 `PlainTextSuppressed`、空字符串与空 JSON 仍会在部分 job 上漂成失败或静默跳过，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 23:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `22:30-23:01` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并再次暴露“同一批 heartbeat 一边实际送达、一边退化成非结构化文本失败”：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11678-11689`（`22:30`）与 `11702-11714`（`23:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
   - `23:00` 窗口继续没有收口成稳定纯 JSON 协议：

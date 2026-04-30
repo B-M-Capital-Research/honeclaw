@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-05-01 00:30-01:01 最新巡检样本：
+      - `job_name=TEM大事件心跳监控`
+      - `run_id=11826`，`executed_at=2026-05-01T01:00:53.541726+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把 `4月28日入选 TIME 2026 十大健康与生命科学公司`、`4月23日 USC 医学院合作`、`5月5日财报`、`5月29日 Investor Day` 与同一轮 `+9.12%` 价格异动打包成 `【TEM大事件监控触发】` 送达；其中 Investor Day 旧公告与这组持续性公司事件此前已在 `4月30日 23:31` 最近一轮提醒中出现，并没有新的独立公告、合作落地或财务更新。
+      - 同窗 `job_name=持仓重大事件心跳检测` 的 `run_id=11804` 虽然在 `00:31:08` 落成 `execution_failed + skipped_error`，但 `sidecar.log` 的 `raw_preview` 已明确写出 `最近一轮已提醒事件（4月30日23:31）包含：TEM于4月29日公告将于5月29日举办首次投资者日...这是同一个投资者日事件的后续价格走势，没有新的独立事件窗口或新的公告`。
+      - 这说明系统自己能够识别 TEM 当前窗口没有新增独立事件，但单标的 heartbeat 仍在同一小时窗口把同一批旧事件重新包装为 `triggered + sent`。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-30 18:00-18:02 最新巡检样本：
       - `job_name=RKLB异动监控`
       - `run_id=11457`，`executed_at=2026-04-30T18:01:58.090530+08:00`，再次落成 `completed + sent + delivered=1`
