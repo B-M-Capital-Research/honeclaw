@@ -15,6 +15,19 @@
 
 ## 修复进展
 
+- `2026-04-30 22:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `21:30-22:02` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并再次暴露“上一轮已送达后，下一轮仍退化成非结构化推理文本”：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`22:00` 窗口先写入 `11654-11665` 共 `12` 条 started 行；随后终态仍分裂成 `11666-11677`，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `22:00` 窗口并未恢复成稳定单一状态：
+    - `execution_failed + skipped_error`：`11667`（`ASTS 重大异动心跳监控`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）
+    - `completed + sent`：`11677`（`小米破位预警`）
+    - `noop + skipped_noop`：`11666`、`11668-11676`
+    - started 行 `11654-11665` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `22:00:19.813` 同窗先出现 `openrouter.ai/api/v1/chat/completions` 传输错误并自动重试，说明上游并非完全稳定。
+    - `22:01:00.926`：`ASTS 重大异动心跳监控` 记录 `parse_kind=PlainTextSuppressed`，`raw_preview` 直接以 `**推理过程（不输出）：**` 开头，正文还明确承认 `4月22日FCC批准事件已在【最近已送达】列表中（4月30日21:00已触发）`，但链路仍将其记成 `heartbeat 输出不是结构化 JSON`。
+    - `22:01:20.041`：同窗 `Cerebras IPO与业务进展心跳监控` 又能落成 `parse_kind=JsonNoop raw_preview="{\"status\":\"noop\"}"`，说明结构化漂移仍是同批任务内分化，而不是整批 scheduler 停摆。
+  - 结论：到 `2026-04-30 22:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / noop / execution_failed / sent`，且已送达旧事件在下一轮仍会退化成 `PlainTextSuppressed` 推理文本，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 21:05` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `20:30-21:02` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并继续出现 `PlainTextSuppressed` 与 `Empty` 漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11562-11575`（`20:30`）与 `11590-11605`（`21:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
   - `20:30` 窗口仍未恢复成稳定单一状态：
