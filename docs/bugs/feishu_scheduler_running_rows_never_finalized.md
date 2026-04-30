@@ -8,6 +8,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-01 06:02 CST` 再次复核，started-row finalize 缺陷在最新 `05:30`、`06:00` 两个窗口继续实时新增，而且最近一小时的坏态比例还在继续放大：
+    - `05:30` 窗口先写入 `run_id=12030-12041` 共 `12` 条 started 行，全部为 heartbeat；随后终态另起为 `12042-12053`，其中 `12049`、`12053` 已落成 `completed + sent + delivered=1`，其余大多已落成 `noop + skipped_noop`
+    - `06:00` 窗口又先写入 `run_id=12054-12065` 共 `12` 条 started 行；截至 `06:02`，同窗终态已另起为 `12066-12077`，目前全部落成 `noop + skipped_noop`
+    - 但对应 started 行 `12030-12041` 与 `12054-12065` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent` 还是 `skipped_noop`，都不会覆盖原 started 行
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour') AND actor_channel='feishu'` 聚合，最近一小时仍同时存在：
+    - `running + pending = 24`
+    - `noop + skipped_noop = 22`
+    - `completed + sent = 2`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `2652` 条，较 `2026-05-01 05:03` 巡检记录里的 `2628` 再增 `24` 条，说明这条缺陷仍在随每个半小时 heartbeat 窗口稳定堆积。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-01 05:03 CST` 再次复核，started-row finalize 缺陷在最新 `05:00` 窗口继续实时新增，而且普通 scheduler 与 heartbeat 仍共用同一种“started 行不 finalize”的坏态：
     - `05:00` 窗口先写入 `run_id=12004-12016` 共 `13` 条 started 行，其中既包含 12 条 heartbeat，也包含普通 scheduler `科技成长赛道大盘极值与情绪监控`
     - 同窗终态随后另起为 `12017-12029`：其中 `12027` 已落成 `completed + sent + delivered=1`，其余大多已落成 `noop + skipped_noop`
