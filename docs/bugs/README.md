@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 10:05 CST
+最后更新：2026-04-30 11:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,7 +27,7 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | New | 2026-04-30 每日完整打包已生成 `.app` 和 `.dmg`，但启动打包后的 `.app/Contents/MacOS/hone-desktop` 时卡在 `CFUserNotificationDisplayAlert`，`18077/18088` 均无监听 | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 10:01 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 JSON 会话已继续写到 Discord `09:31:20+08:00` 与 Feishu `09:51:52+08:00`，但 sqlite 会话镜像完全不前移 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 11:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 Feishu 真实直聊已推进到 `10:44:52+08:00` 并落成 `ACP end_turn`，但 sqlite 会话镜像完全不前移 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 09:03 最新 `08:30-09:03` 两轮继续混跑 `JsonNoop + JsonTriggered + skipped_error + started`；`Monitor_Watchlist_11` `run_id=11023` 已落成 `execution_failed + skipped_error`，同窗 started 行仍残留 `running + pending` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-04-30 08:01 `RKLB异动监控` `run_id=10943` 再次落成 `completed + sent`，但正文同时承认 `下跌 -2.00%，未触发涨跌幅8%阈值`，说明单标的近阈值误触发已扩展到 RKLB | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-30 02:02 `Monitor_Watchlist_11` `run_id=10650` 再次把 `ASTS 69.51` 写成“已跌破触发价 69.83”并送达，说明 watchlist 误触发链路仍未收口 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
