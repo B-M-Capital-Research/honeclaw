@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 15:05 CST
+最后更新：2026-04-30 16:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：10
 - Later / 待复现：12
-- 已修复 / 已关闭：74
+- 已修复 / 已关闭：73
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0`；最高待修优先级为 `P1`
 
@@ -26,9 +26,9 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-04-29 已补 multi-agent 搜索阶段对 `cron_job`/短澄清的优先分流，并允许可信本地状态结果直返；`hone-channels` 定向回归通过，待下一条真实 Feishu 样本复核 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | New | 2026-04-30 每日完整打包已生成 `.app` 和 `.dmg`，但启动打包后的 `.app/Contents/MacOS/hone-desktop` 时卡在 `CFUserNotificationDisplayAlert`，`18077/18088` 均无监听 | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 13:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `data/sessions/` 近 70 分钟仍刷新 3 个真实会话文件，Feishu 直聊 `Actor_feishu__direct__ou_5f64e...` 也已在 `12:30:53` 成功回盘 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 15:02 最新 `14:30-15:01` 两轮继续混跑 `Empty + JsonNoop + JsonTriggered + started`；`11267-11302` started 行仍残留 `running + pending`，且 `15:00` 原油播报在 Tavily 全 key 降级下再次 `completed + sent` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 16:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `data/sessions/` 近 70 分钟仍刷新 1 个真实会话文件，Feishu 直聊 `Actor_feishu__direct__ou_5f44e...` 也已在 `15:25:29` 成功回盘 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 16:02 最新 `15:30-16:01` 两轮继续混跑 `noop + execution_failed + started`；`11323-11350` started 行仍残留 `running + pending`，且 `16:01` 的 `Cerebras IPO与业务进展心跳监控` 又退化成 `invalid type: integer 400` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-30 16:01 `Cerebras IPO与业务进展心跳监控` 再次命中 `maximum context length`，但最终仍被压扁成 `invalid type: integer 400`；此前“Fixed”结论与单文档现状不一致，现已纠正回活跃队列 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | New | 2026-04-30 09:01 `09:00 美股AI与航空科技晨报` `run_id=11018` 再次落成 `completed + send_failed + delivered=0`，但同一 Web 会话已写入完整晨报正文，说明该缺陷仍在 live 复现 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-04-30 14:02 `13:30` 与 `14:00` 两窗的 started 行仍与后续终态并存；全库 `running + pending` 残留已升到 `2247`，最近 70 分钟新增 `370` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-04-30 用户 `12:28` 已明确投诉 RKLB 旧合同重复提醒，但 `13:00` 的 `RKLB异动监控` 与 `14:30` 的 `持仓重大事件心跳检测` 仍继续把同一合同重新送达 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
@@ -61,7 +61,6 @@
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-04-30 复核 `ASTS 69.51 < 69.83` 不再证明“高于配置线误发”；旧 `71.88 > 69.83` 写反样本已由数值自检覆盖，定向 heartbeat 回归通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | Fixed | 2026-04-30 startup error dialog 改为后台线程显示，并在 setup preflight 失败时写入 `desktop.log` 与 stderr；新增无交互抑制开关和 hone-desktop 定向回归，避免每日 `.app` smoke test 再卡在 `CFUserNotificationDisplayAlert` | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
 | Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Fixed | 2026-04-30 非 heartbeat scheduler 内部失败抑制分支新增会话落库补偿：不可外发的 `codex acp prompt ended before tool completion` 等错误会在 direct session 追加脱敏失败记录，台账仍保持 `skipped_error`；`hone-channels` scheduler/runtime 定向回归与 `cargo check -p hone-channels` 通过；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
-| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-04-30 已把 raw HTTP 兜底解析补到 `OpenRouterProvider` 多 key 路径，SDK `JSONDeserialize` 后会保留 `upstream HTTP 400`、真实 message 与数字/字符串 code；`cargo test -p hone-llm openrouter -- --nocapture` 与 `cargo check -p hone-llm --tests` 通过 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | Fixed | 2026-04-28 已在 bundled runtime dirty restart 前先停止旧 managed children，避免旧内嵌 Web server 在 lock preflight / 新绑定前继续占用 `127.0.0.1:8077`；`cargo check -p hone-desktop --tests` 通过 | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | Fixed | 2026-04-28 `CronSchedule` 新增 `date`，cron tool / Web API / scheduler event 均透传；未到目标日期的一次性任务不会被判定 due，定向回归通过 | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | Fixed | 2026-04-28 `hone-telegram` 在空 token 或 `bot.get_me()` 失败时从 `run()` 返回而非 `process::exit`，让 lock / heartbeat 正常 Drop 清理；`cargo check -p hone-telegram --tests` 通过 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |

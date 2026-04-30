@@ -15,6 +15,13 @@
 
 ## 修复进展
 
+- `2026-04-30 16:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `15:30-16:01` 的最新两轮继续混跑 `Empty + JsonNoop + execution_failed + started`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`15:30` 窗口先写入 `run_id=11323-11338` 的 started 行，随后终态分裂成 `11327-11338` 的 `noop + skipped_noop` 与 `11335` 的 `completed + sent`；`16:00` 窗口又先写入 `run_id=11339-11350` 共 `12` 条 started 行，随后终态继续分裂成 `11351-11361` 的 `noop + skipped_noop`，以及 `11362` 的 `execution_failed + skipped_error`。
+  - `16:00` 窗口并未恢复成稳定单一状态：`全天原油价格3小时播报`、`ORCL 大事件监控`、`CAI破位预警`、`TEM破位预警`、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`RKLB异动监控`、`小米30港元破位预警`、`TEM大事件心跳监控`、`持仓重大事件心跳检测` 都落成 `noop + skipped_noop`；但 `Cerebras IPO与业务进展心跳监控` 在 `run_id=11362` 又退化成 `execution_failed + skipped_error`，错误体为 `LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 316`。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：`16:01:06.653`、`16:01:09.455`、`16:01:11.680` 继续记录多条 `parse_kind=JsonNoop` / `raw_chars=18` 或 `raw_chars=0` 的 noop 样本；但 `16:01:18.988-16:01:19.051` 同窗又记录上游 `maximum context length` 超限后塌缩成 `invalid type: integer \`400\`` 的 runner error。
+  - 同窗 `16:01:02-16:01:04` 继续连续记录 Tavily `usage limit` / `鉴权被拒绝`，说明工具层降级和 heartbeat 结构化漂移仍在并存。
+  - 结论：到 `2026-04-30 16:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / noop / execution_failed`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 15:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `14:30-15:01` 的最新两轮继续混跑 `Empty + JsonNoop + JsonTriggered + started`：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`14:30` 窗口先写入 `run_id=11267-11278` 共 `12` 条 started 行，随后终态分裂成 `11279-11290` 的 `noop + skipped_noop` 与 `11287` 的 `completed + sent`；`15:00` 窗口又先写入 `run_id=11291-11302` 共 `12` 条 started 行，随后终态继续分裂成 `11303-11314` 的 `noop + skipped_noop` 与 `11311` 的 `completed + sent`。
   - `15:00` 窗口并未恢复成稳定单一状态：`Cerebras IPO与业务进展心跳监控` 与 `持仓重大事件心跳检测` 在 `15:01:05-15:01:07` 落成 `parse_kind=Empty + noop + skipped_noop`；`RKLB异动监控`、`ORCL 大事件监控`、`CAI破位预警`、`TEM大事件心跳监控`、`TEM破位预警`、`Monitor_Watchlist_11`、`小米破位预警`、`小米30港元破位预警` 则继续落成 `parse_kind=JsonNoop`；但 `全天原油价格3小时播报` 在 `run_id=11311` 又回到 `parse_kind=JsonTriggered + completed + sent`。
