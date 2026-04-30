@@ -8,6 +8,13 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-04-30 14:02 CST` 再次复核，started-row finalize 缺陷在最新 `13:30`、`14:00` 两个窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
+    - `13:30` 窗口先写入 `run_id=11219-11230` 共 `12` 条 started 行，全部为 heartbeat；随后终态另起为 `11231-11242`，其中 `11231-11240` 已落成 `noop + skipped_noop`，`11241` 落成 `completed + sent + delivered=1`，`11242` 落成 `execution_failed + skipped_error`
+    - `14:00` 窗口又先写入 `run_id=11243-11254` 共 `12` 条 started 行；截至 `14:02`，同窗终态已另起为 `11255-11266`，其中 `11255-11260`、`11262-11266` 已分别落成 `noop + skipped_noop`，`11261` 已落成 `completed + sent + delivered=1`
+    - 但对应 started 行 `11219-11230` 与 `11243-11254` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent`、`skipped_noop` 还是 `skipped_error`，都不会覆盖原 started 行
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `2247` 条；按最近 `70` 分钟统计，新增残留也已达到 `370` 条，同时同窗另有 `315` 条 `noop + skipped_noop`、`47` 条 `completed + sent`、`9` 条 `execution_failed + skipped_error` 与 `1` 条 `completed + send_failed`，说明这条缺陷仍在持续堆积。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-04-30 09:03 CST` 再次复核，started-row finalize 缺陷在最新 `08:30`、`09:00` 两个窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
     - `08:30` 窗口先写入 `run_id=10954-10971` 共 `18` 条 started 行，包含 12 条 heartbeat 与 6 条普通 scheduler；随后终态另起为 `10972-10992`，其中 `10981/10982/10984-10992` 已分别落成 `completed + sent` 或 `noop + skipped_noop`
     - `09:00` 窗口又先写入 `run_id=10993-11007` 共 `15` 条 started 行；截至 `09:03`，同窗终态只另起到 `11008-11023`，其中 `11013/11014/11020/11021` 已落成 `completed + sent`，`11018` 落成 `completed + send_failed`，`11023` 落成 `execution_failed + skipped_error`
