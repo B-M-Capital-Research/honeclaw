@@ -187,9 +187,15 @@ fn heartbeat_near_threshold_without_crossing(text: &str) -> bool {
         "未触及",
         "尚未触及",
         "没有触及",
+        "未触发",
+        "没有触发",
+        "尚未触发",
         "未命中",
         "未满足",
         "未越过",
+        "未超过",
+        "没有超过",
+        "尚未超过",
         "未跌破",
         "未突破",
         "仍高于",
@@ -1157,6 +1163,28 @@ mod tests {
     fn heartbeat_explicit_below_threshold_denial_is_suppressed() {
         let execution = heartbeat_execution_from_content(
             r#"{"status":"triggered","message":"触发条件：单日涨跌幅超过 8%。ASTS 当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛，本轮仅建议观察。"}"#,
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(execution.error, None);
+        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+    }
+
+    #[test]
+    fn heartbeat_explicit_not_triggered_threshold_is_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"RKLB异动提醒：最新价$77.02，较前收$78.59下跌-2.00%，未触发涨跌幅8%阈值，仅记录重大事件观察。"}"#,
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(execution.error, None);
+        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+    }
+
+    #[test]
+    fn heartbeat_explicit_not_exceeding_threshold_is_suppressed() {
+        let execution = heartbeat_execution_from_content(
+            r#"{"status":"triggered","message":"RKLB触发重大订单提醒：当前股价$77.02，涨跌幅未超过8%阈值，合同事件仅作观察。"}"#,
             "model-x",
         );
         assert!(!execution.should_deliver);
