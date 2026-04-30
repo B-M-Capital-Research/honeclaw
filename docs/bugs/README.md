@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-04-30 18:08 CST
+最后更新：2026-04-30 18:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：10
 - Later / 待复现：12
-- 已修复 / 已关闭：74
+- 已修复 / 已关闭：73
 - 历史分析 / 部分止血：5
 - 当前活跃队列中没有 `P0` / `P1`；最高待修优先级为 `P2`
 
@@ -26,11 +26,12 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-04-30 16:02 再次复核最近一小时 `sessions=0 / session_messages=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；同窗 `data/sessions/` 近 70 分钟仍刷新 1 个真实会话文件，Feishu 直聊 `Actor_feishu__direct__ou_5f44e...` 也已在 `15:25:29` 成功回盘 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 17:03 最新 `16:30-17:01` 两轮继续混跑 `noop + execution_failed + started`；`11363-11398` started 行仍残留 `running + pending`，且 `TEM大事件心跳监控`、`持仓重大事件心跳检测` 又退化成 `PlainTextSuppressed -> heartbeat 输出不是结构化 JSON` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-04-30 18:03 最新 `17:30-18:01` 两轮继续混跑 `started + noop + execution_failed + sent`；`11411-11446` started 行仍残留 `running + pending`，且 `ORCL 大事件监控`、`Cerebras IPO与业务进展心跳监控` 又退化成 `PlainTextSuppressed -> heartbeat 输出不是结构化 JSON` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-04-30 16:01 `Cerebras IPO与业务进展心跳监控` 再次命中 `maximum context length`，但最终仍被压扁成 `invalid type: integer 400`；此前“Fixed”结论与单文档现状不一致，现已纠正回活跃队列 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | New | 2026-04-30 09:01 `09:00 美股AI与航空科技晨报` `run_id=11018` 再次落成 `completed + send_failed + delivered=0`，但同一 Web 会话已写入完整晨报正文，说明该缺陷仍在 live 复现 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
+| Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | New | 2026-04-30 18:02 `Monitor_Watchlist_11` 的 `run_id=11458` 再次把 `ASTS 69.85` 写成“已触及或低于触发价 69.83”并成功送达；此前 `Fixed` 结论已失效 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-04-30 14:02 `13:30` 与 `14:00` 两窗的 started 行仍与后续终态并存；全库 `running + pending` 残留已升到 `2247`，最近 70 分钟新增 `370` 条 | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-04-30 用户 `12:28` 已明确投诉 RKLB 旧合同重复提醒，而 `13:00`、`14:30`、`16:30` 三个窗口仍继续把同一 RKLB 合同/TEM 投资者日重复送达；`17:01` 内部摘要还显式写出“上一轮16:30已推送” | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-04-30 18:02 `RKLB异动监控` 的 `run_id=11457` 又把 4 月 29 日旧合同正式送达；同窗 `持仓重大事件心跳检测` 刚在 `18:01:32` 内部摘要写明“上一轮16:30已推送” | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-04-30 15:01 `全天原油价格3小时播报` 再次 `completed + sent`，正文在自认“数据链路暂时受限”后仍把中东/OPEC+/库存/需求叙述写成确定性主因 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
@@ -58,7 +59,6 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-04-30 已放宽 multi-agent 对 `cron_job`/`portfolio` 可信本地结果的直返门槛，多行和较长任务列表也不再被强制送进易空回复的 answer 阶段；`cargo test -p hone-channels runners::multi_agent::tests`、`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`、`cargo check -p hone-channels` 通过 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | Fixed | 2026-04-30 送达前保险闸补 `未触发 / 没有触发 / 尚未触发` 与 `未超过 / 没有超过 / 尚未超过` 等否认触发措辞；RKLB `未触发涨跌幅8%阈值` / `涨跌幅未超过8%阈值` 变体会被压成 `near_threshold_suppressed`；定向 heartbeat 回归通过 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
-| Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-04-30 复核 `ASTS 69.51 < 69.83` 不再证明“高于配置线误发”；旧 `71.88 > 69.83` 写反样本已由数值自检覆盖，定向 heartbeat 回归通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | Fixed | 2026-04-30 startup error dialog 改为后台线程显示，并在 setup preflight 失败时写入 `desktop.log` 与 stderr；新增无交互抑制开关和 hone-desktop 定向回归，避免每日 `.app` smoke test 再卡在 `CFUserNotificationDisplayAlert` | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
 | Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Fixed | 2026-04-30 非 heartbeat scheduler 内部失败抑制分支新增会话落库补偿：不可外发的 `codex acp prompt ended before tool completion` 等错误会在 direct session 追加脱敏失败记录，台账仍保持 `skipped_error`；`hone-channels` scheduler/runtime 定向回归与 `cargo check -p hone-channels` 通过；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
 | Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | Fixed | 2026-04-28 已在 bundled runtime dirty restart 前先停止旧 managed children，避免旧内嵌 Web server 在 lock preflight / 新绑定前继续占用 `127.0.0.1:8077`；`cargo check -p hone-desktop --tests` 通过 | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |

@@ -15,6 +15,24 @@
 
 ## 修复进展
 
+- `2026-04-30 18:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `17:30-18:01` 的最新两轮继续混跑 `started + noop + execution_failed + sent`，并再次暴露 `PlainTextSuppressed -> skipped_error` 漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11411-11423`（`17:30`）与 `11435-11446`（`18:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `17:30` 窗口仍未恢复成稳定单一状态：
+    - `execution_failed + skipped_error`：`11423`（`小米30港元破位预警`，`heartbeat 输出不是结构化 JSON，任务已标记失败`）
+    - `completed + sent`：`11425`（`ASTS 重大异动心跳监控`，正文继续把 `FCC于4月22日批准AST SpaceMobile商业授权` 当作触发事件）、`11429`（`小米破位预警`）
+    - `noop + skipped_noop`：`11424`、`11426-11428`、`11430-11434`
+  - `18:00` 窗口继续没有收口成稳定纯 JSON 协议：
+    - `execution_failed + skipped_error`：`11450`（`ORCL 大事件监控`）、`11451`（`Cerebras IPO与业务进展心跳监控`）
+    - `completed + sent`：`11457`（`RKLB异动监控`）、`11458`（`Monitor_Watchlist_11`）
+    - `noop + skipped_noop`：`11447-11449`、`11452-11456`
+    - started 行 `11435-11446` 仍先落成 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `18:01:09.561`：`ORCL 大事件监控` 记录 `starts_with_json=false parse_kind=PlainTextSuppressed`，`raw_preview` 明确是“根据检查结果...”的长文本分析，随后被记成 `heartbeat 输出不是结构化 JSON`
+    - `18:01:13.021`：`Cerebras IPO与业务进展心跳监控` 同样记录 `starts_with_json=false parse_kind=PlainTextSuppressed`，正文承认“搜索返回不可用状态...根据用户条件规则，条件未满足，返回 noop”，但链路仍记成 `execution_failed + skipped_error`
+    - `18:01:55.677` 与 `18:02:23.588`：同窗 `RKLB异动监控`、`Monitor_Watchlist_11` 又能落成 `parse_kind=JsonTriggered` 并实际送达，说明结构化漂移仍是同批任务内分化，而不是整批 scheduler 停摆
+    - `18:00:47.333-18:00:48.077`：同一轮继续连续记录 4 次 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但每次随后仍回写 `tool_execute_success name=web_search`
+  - 结论：到 `2026-04-30 18:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / noop / execution_failed / sent`，且 `PlainTextSuppressed` 仍会在部分 job 上退化成显式失败，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 17:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `16:30-17:01` 的最新两轮继续混跑 `started + noop + execution_failed`，并再次暴露 `PlainTextSuppressed -> skipped_error` 漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`16:30` 窗口先写入 `run_id=11363-11374` 共 `12` 条 started 行，随后终态分裂成 `11375-11381`、`11383-11385` 的 `noop + skipped_noop`，以及 `11382`（`小米30港元破位预警`）与 `11386`（`持仓重大事件心跳检测`）的 `completed + sent`；`17:00` 窗口又先写入 `run_id=11387-11398` 共 `12` 条 started 行，随后终态继续分裂成 `11399-11401`、`11403-11408`、`11410` 的 `noop + skipped_noop`，并新增 `11402`（`TEM大事件心跳监控`）与 `11409`（`持仓重大事件心跳检测`）的 `execution_failed + skipped_error`。
   - `17:00` 窗口并未恢复成稳定单一状态：`小米破位预警`、`TEM破位预警`、`小米30港元破位预警`、`全天原油价格3小时播报`、`CAI破位预警`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`ORCL 大事件监控`、`Monitor_Watchlist_11`、`Cerebras IPO与业务进展心跳监控` 都落成 `noop + skipped_noop`；但 `TEM大事件心跳监控` 与 `持仓重大事件心跳检测` 在同窗又退化成 `execution_failed + skipped_error`，错误体统一为 `heartbeat 输出不是结构化 JSON，任务已标记失败`。

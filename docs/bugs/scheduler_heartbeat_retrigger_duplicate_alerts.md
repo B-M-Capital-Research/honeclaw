@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-04-30 18:00-18:02 最新巡检样本：
+      - `job_name=RKLB异动监控`
+      - `run_id=11457`，`executed_at=2026-04-30T18:01:58.090530+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把 `Rocket Lab于4月29日宣布赢得1.9亿美元国防合同` 包装成 `【RKLB异动提醒】` 送达；同一合同此前已在 `run_id=11216`（`13:00`）与 `run_id=11386`（`16:30` 聚合 heartbeat）反复送达，本轮之间没有新的合同公告、金额更新或独立公司级新催化。
+      - 同窗 `job_name=持仓重大事件心跳检测` 的 `run_id=11455` 已落回 `noop + skipped_noop`，而 `sidecar.log` 在 `18:01:32.507-18:01:32.508` 的 `raw_preview` 还明确写出 `RKLB 4月29日公告1.9亿美元国防订单（上一轮16:30已推送）`，说明系统自己能够识别这条消息已在上一轮送达，但单标的 heartbeat 仍在 26 秒后把同一旧合同再次当作新触发送达。
+      - 这组最新样本说明重复提醒缺陷仍然活跃，并且已经从“跨 job 重复”继续扩散为“聚合 heartbeat 已承认上一轮推送过，单标的 heartbeat 仍在同一小时窗口再次重报同一旧合同”的形态。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-04-30 16:30-17:01 最新巡检样本：
       - `job_name=小米30港元破位预警`
       - `run_id=11382`，`executed_at=2026-04-30T16:31:04.704739+08:00`，再次落成 `completed + sent + delivered=1`
