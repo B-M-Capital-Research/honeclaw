@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 10:18 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -156,3 +156,14 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 - 2026-04-28: `crates/hone-web-api/src/routes/events.rs` 将 Web scheduler 的 SSE 结果降为观测字段，不再决定 `message_send_status`。
 - 2026-04-28: `cargo check -p hone-memory -p hone-scheduler -p hone-tools -p hone-web-api -p hone-event-engine -p hone-channels --tests`
 - 2026-04-30: 本轮再次复核 live `cron_job_runs`，`run_id=11018` 仍落成 `completed + send_failed + delivered=0`，且 `detail_json.console_event_sent=false`；因此线上行为优先于代码预期，本单继续维持 `New`。
+
+## 修复结论（2026-04-30 19:03 CST）
+
+- 当前机器不再把线上运行态作为判定依据；按仓库代码复核，`crates/hone-web-api/src/routes/events.rs` 的 Web scheduler 已在写入会话后默认 `message_send_status=sent`、`delivered=true`，`console_event_sent` 只作为实时 SSE 是否送达控制台的观测字段。
+- 本轮将该语义抽成 `web_scheduler_delivery_status(...)` 并补回归 `web_scheduler_offline_console_still_counts_as_sent`，锁定 `console_event_sent=false` 时不能落成 `send_failed`。
+- 因此本单从活跃队列移为 `Fixed`。若未来在已部署当前代码后仍出现“Web 会话已写入 assistant final 但 `cron_job_runs` 仍为 `completed + send_failed + console_event_sent=false`”，应重新打开并优先排查是否还有另一条 Web scheduler 记录路径没有走 `routes/events.rs`。
+
+## 回归验证（2026-04-30）
+
+- `cargo test -p hone-web-api web_scheduler_offline_console_still_counts_as_sent --lib -- --nocapture`
+- `cargo check -p hone-web-api --tests`

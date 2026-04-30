@@ -59,6 +59,12 @@ pub(crate) async fn handle_events(
     Sse::new(init.chain(stream)).keep_alive(KeepAlive::default())
 }
 
+fn web_scheduler_delivery_status(_console_event_sent: bool) -> (String, bool) {
+    // Web scheduled results are already persisted to the conversation by this point.
+    // The SSE event only controls whether an online console sees the update in real time.
+    ("sent".to_string(), true)
+}
+
 /// 接收调度器事件，为每个触发的任务启动独立处理协程
 pub(crate) async fn handle_scheduler_events(
     state: Arc<AppState>,
@@ -178,8 +184,8 @@ pub(crate) async fn handle_scheduler_events(
             });
 
             // 2. 若是 iMessage 渠道，把结果通过 hone-imessage 内置 HTTP 服务投递给用户
-            let mut message_send_status = "sent".to_string();
-            let mut delivered = true;
+            let (mut message_send_status, mut delivered) =
+                web_scheduler_delivery_status(push_result.is_ok());
             let mut error_message = result.error.clone();
             let mut detail = json!({
                 "scheduler": result.metadata,
@@ -406,5 +412,13 @@ mod tests {
     fn scheduler_failure_trace_required_ignores_clean_noop() {
         let result = scheduled_result(None, json!({ "parse_kind": "JsonNoop" }));
         assert!(!scheduler_failure_trace_required(&result));
+    }
+
+    #[test]
+    fn web_scheduler_offline_console_still_counts_as_sent() {
+        let (message_send_status, delivered) = web_scheduler_delivery_status(false);
+
+        assert_eq!(message_send_status, "sent");
+        assert!(delivered);
     }
 }
