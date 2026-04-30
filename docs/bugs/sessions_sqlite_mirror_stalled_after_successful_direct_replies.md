@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+  - `2026-04-30 12:02 CST` 最近一小时继续没有任何 sqlite 会话镜像增量：`sessions_recent=0`、`messages_recent=0`，且 `sessions.updated_at` / `session_messages.timestamp` 上界仍停在 `2026-04-27 16:54:20+08:00`。但同窗 `data/sessions/` 最近 70 分钟仍新增/刷新了 5 个真实会话文件，其中 Feishu 直聊 `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 在 `12:00:01-12:01:53 CST` 走完 `agent.run -> session.persist_assistant -> done success=true`，对应 JSON 会话文件也已更新；另外同窗 Web 直聊与 3 条 Feishu 直聊 session JSON 也继续前移，说明最近一小时真实会话仍在持续成功收口，而 sqlite 会话镜像完全不前移。
   - `2026-04-30 11:02 CST` 最近一小时继续没有任何 sqlite 会话镜像增量：`sessions_last_hour=0`、`messages_last_hour=0`，且 `sessions.updated_at` / `session_messages.timestamp` 上界仍停在 `2026-04-27 16:54:20+08:00`。但同窗真实 Feishu 直聊 `Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21` 已在 `10:41:39-10:44:52 CST` 走完 `recv -> agent.run -> ACP stopReason=end_turn`，对应 `data/sessions/*.json` 文件也更新到 `2026-04-30 10:44:52 CST`，说明最近一小时真实会话仍在成功收口，而 sqlite 会话镜像完全不前移。
   - `2026-04-30 10:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions` 最近更新的真实会话文件已继续推进到 `2026-04-30 09:31:20+08:00`（Discord `每日美股降息概率推送`）与 `09:51:52+08:00`（Feishu `分析vst`），说明 Discord / Feishu 成功会话源文件仍在持续写盘，而 sqlite 会话镜像完全不前移。
   - `2026-04-30 09:01 CST` 最新真实窗口继续显示 `sessions` / `session_messages` 最近一小时增量都为 `0`，镜像上界仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `data/sessions` 最近更新的 15 个真实会话文件已继续推进到 `2026-04-30 09:01:41+08:00`，其中 Web `09:00 美股AI与航空科技晨报` 与 3 条 Feishu 直聊都已完整写盘，说明会话源文件和主链路仍在前进，而 sqlite 会话镜像完全不前移。
@@ -28,6 +29,10 @@
   - 因此此前“Desktop canonical config 解析已修复该问题”的结论不能覆盖当前运行态，本单状态从 `Fixed` 调回 `New`，继续留在活跃缺陷队列。
 - **证据来源**:
 - 最近一小时真实会话镜像状态：`data/sessions.sqlite3` -> `sessions` / `session_messages`
+  - `2026-04-30 12:02 CST` 再次复核：`SELECT 'sessions_recent', count(*) FROM sessions WHERE datetime(COALESCE(updated_at,last_message_at,imported_at)) >= datetime('now','-1 hour');` 与 `SELECT 'messages_recent', count(*) FROM session_messages WHERE datetime(COALESCE(timestamp,imported_at)) >= datetime('now','-1 hour');` 仍是 `0 / 0`。
+  - `SELECT datetime(max(updated_at),'localtime') FROM sessions;` 与 `SELECT datetime(max(timestamp),'localtime') FROM session_messages;` 仍是 `2026-04-27 16:54:20` / `2026-04-27 16:54:20`。
+  - `find data/sessions -type f -mmin -70` 仍能看到 5 个最近更新的真实会话文件：`Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c.json`、`Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`、`Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5.json`、`Actor_feishu__direct__ou_5f9e9e0bfe7deb3f65197e75892a377e21.json`、`Actor_web__direct__web-user-e05f5e5f74a3.json`。
+  - `data/runtime/logs/sidecar.log` 在 `2026-04-30 12:00:01.353` 记录 Feishu 直聊 `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 进入 `agent.prepare / agent.run`，并在 `12:01:53.538-12:01:53.546` 记录同 session 落成 `step=session.persist_assistant detail=done -> done ... success=true reply.chars=3052`。这说明最近一小时真实直聊确实继续完成了最终回答，而 sqlite 会话镜像仍完全停摆。
   - `2026-04-30 11:02 CST` 再次复核：`SELECT count(*) FROM sessions WHERE datetime(COALESCE(updated_at,last_message_at)) >= datetime('now','-1 hour');` 与 `SELECT count(*) FROM session_messages WHERE datetime(COALESCE(timestamp,imported_at)) >= datetime('now','-1 hour');` 仍是 `0 / 0`。
   - `SELECT MAX(updated_at), MAX(last_message_at) FROM sessions;` 仍是 `2026-04-27T16:54:20.034097+08:00` / `2026-04-27T16:54:20.033926+08:00`
   - `SELECT MAX(timestamp), MAX(imported_at) FROM session_messages;` 仍是 `2026-04-27T16:54:20.033926+08:00` / `2026-04-27T16:54:20.034386+08:00`

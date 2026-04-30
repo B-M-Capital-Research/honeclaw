@@ -15,6 +15,13 @@
 
 ## 修复进展
 
+- `2026-04-30 12:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `11:30-12:01` 的最新两轮继续混跑 `JsonNoop + JsonTriggered + Empty + started`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`11:30` 窗口先写入 `run_id=11121-11132` 共 `12` 条 started 行，随后终态另起为 `11133-11144` 的整批 `noop + skipped_noop`；`12:00` 窗口又先写入 `run_id=11145-11157` 共 `13` 条 started 行，随后终态分裂成 `11158-11169` 的 `noop + skipped_noop`、`11165-11166` 的 `completed + sent`，以及非 heartbeat `11170` 的 `每日公司资讯与分析总结 completed + sent`。
+  - `12:00` 窗口并未恢复成稳定单一状态：`ORCL 大事件监控`、`RKLB异动监控`、`小米破位预警`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控` 都落成 `parse_kind=Empty + noop + skipped_noop`；`CAI破位预警`、`TEM破位预警`、`Monitor_Watchlist_11`、`全天原油价格3小时播报`、`Cerebras IPO与业务进展心跳监控` 落成 `parse_kind=JsonNoop`；但 `小米30港元破位预警` 在 `run_id=11165` 又落成 `parse_kind=JsonTriggered + completed + sent`，`持仓重大事件心跳检测` 在 `run_id=11166` 也落成 `parse_kind=JsonTriggered + completed + sent`。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：`12:00:16.916`、`12:00:24.158`、`12:00:28.091`、`12:00:38.169`、`12:01:23.574` 继续记录多条 heartbeat `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`；`12:00:43.946`、`12:00:45.933`、`12:00:52.741`、`12:01:08.128`、`12:01:42.634` 又继续记录多条 `parse_kind=JsonNoop`；而 `12:00:52.535` 与 `12:01:05.043` 分别记录 `小米30港元破位预警`、`持仓重大事件心跳检测` 落成 `parse_kind=JsonTriggered` 并执行 `deliver`。
+  - 同窗 `12:00:15.734`、`12:00:29.761`、`12:00:30.744`、`12:00:31.952`、`12:00:33.498` 以及 `12:01:18.507`、`12:01:20.068`、`12:01:21.052` 继续记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但随后仍回写 `tool_execute_success name=web_search`，说明外部检索伪成功仍与 heartbeat 结构化漂移并存。
+  - 结论：到 `2026-04-30 12:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，且 started 残留与 Tavily 全 key 失败后的 `web_search` 伪成功仍在同步发生，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-04-30 09:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `08:30-09:03` 的最新两轮继续混跑 `JsonNoop + JsonTriggered + skipped_error + started`：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`08:30` 窗口先写入 `run_id=10954-10970` 共 `17` 条 started 行，随后终态另起为 `10972-10983` 的 `noop + skipped_noop`、`completed + sent` 与 `execution_failed + skipped_error`；`09:00` 窗口又先写入 `run_id=10993-11007` 共 `15` 条 started 行，当前终态只覆盖到 `11008-11023`。
   - `08:30` 窗口并未恢复成稳定单一状态：`Monitor_Watchlist_11` 在 `run_id=10981` 又落成 `parse_kind=JsonTriggered + completed + sent`；`ASTS 重大异动心跳监控` 在 `run_id=10977` 也落成 `parse_kind=JsonTriggered + completed + sent`，但正文同时承认 `未达到单日8%涨跌幅阈值`；`CAI破位预警` 则在 `run_id=10976` 落成 `execution_failed + skipped_error`
