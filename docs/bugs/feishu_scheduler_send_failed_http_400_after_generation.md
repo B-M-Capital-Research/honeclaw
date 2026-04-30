@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Fixed
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
   - 2026-04-30 22:33 最近一小时最新样本：
@@ -260,3 +260,21 @@
   - `cargo test -p hone-feishu scheduler_resolution_target -- --nocapture`
   - `cargo test -p hone-feishu direct_scheduler_always_falls_through_to_api_resolution -- --nocapture`
 - 当前结论：本轮只闭合 Feishu scheduler 历史 `ou_...` direct target 继续直传的本地可修缺口；`2026-04-30 22:33` event-engine 价格异动卡片四连发 `code=99992361 / open_id cross app` 仍是更新鲜证据，因此本单保持 `Fixing`，不恢复为 `Fixed`。
+
+## 修复进展（2026-05-01 bug-2）
+
+- 本轮根据 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 与 `2026-04-30 22:33` event-engine 价格异动卡片四连发 `open_id cross app` 复核后，继续收口 event-engine Feishu sink 的 current-app open_id fallback：
+  - `crates/hone-event-engine/src/sinks/feishu.rs` 原先只在配置里“唯一 email 或唯一 mobile，且二者不能同时存在”时启用联系人解析；如果单用户安装同时保留同一人的 email 和 mobile，fallback 会被关闭，event-engine 仍会把 `actor.user_id` 里的历史 `ou_...` 直接作为 `open_id` 发送。
+  - 现在 fallback 会把所有非空、非通配的稳定 email/mobile 一起提交给 Feishu `batch_get_id?user_id_type=open_id`；只有返回结果去重后恰好是一个 current-app open_id 时才使用，返回 0 个或多个不同用户时视为无法唯一确认，不猜测映射。
+  - 群聊仍继续走 `chat_id`；没有稳定联系人或联系人解析不唯一时，保留原有 direct actor 发送逻辑，避免多用户配置误投。
+- 新增/调整回归覆盖：
+  - 同时配置 email + mobile 时会进入 direct fallback 候选，而不是关闭 fallback。
+  - `batch_get_id` 返回同一个 user_id 的重复记录会解析为唯一 open_id。
+  - `batch_get_id` 返回多个不同 user_id 时会拒绝 fallback，避免跨用户误投。
+- 验证：
+  - `cargo test -p hone-event-engine direct_contact --lib -- --nocapture`
+  - `cargo test -p hone-event-engine unique_batch_get_open_id --lib -- --nocapture`
+  - `cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`
+  - `rustfmt --edition 2024 --check crates/hone-event-engine/src/sinks/feishu.rs`
+  - `cargo check -p hone-event-engine -p hone-web-api --tests`
+- 当前结论：本轮闭合了 event-engine 价格异动卡片仍绕过 current-app open_id fallback 的本地可修缺口，并保留“解析结果唯一才替换”的误投保护；本缺陷更新为 `Fixed`。当前机器不是生产机器，未用线上健康检查或真实投递作为判定依据。

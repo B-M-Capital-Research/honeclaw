@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-04-29 10:45 CST
+- updated_at: 2026-05-01 03:05 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -63,6 +63,7 @@ Clear the current active bug queue as far as software changes can responsibly do
   - Feishu scheduler terminal execution events now update the matching `running + pending` started row by `delivery_key`
   - heartbeat duplicate history now includes the same actor's recent heartbeat deliveries across sibling jobs, not only the current job
 - 2026-04-29: Active bug queue is now 3. Remaining active items are Feishu direct empty/invalid answer quality, `sessions.sqlite3` mirror stalled evidence, and Telegram invalid token/live connectivity. Telegram remains a credential/live configuration issue; do not add hard-coded compatibility behavior for it.
+- 2026-05-01: Closed the active P1 Feishu `open_id cross app` event-engine regression by widening the Feishu direct current-app fallback from “exactly one email or exactly one mobile” to “all stable contacts resolve to exactly one open_id”. This covers single-user configs that keep both email and mobile while preserving the no-guessing rule for ambiguous multi-user contact sets.
 
 ## Validation
 
@@ -97,6 +98,11 @@ Completed this round:
 - `cargo check -p hone-memory -p hone-scheduler -p hone-channels --tests`
 - `bun run test:web`
 - `HONE_DATA_DIR=/tmp/honeclaw-validate-runtime HONE_WEB_PORT=18087 HONE_PUBLIC_WEB_PORT=18088 HONE_DISABLE_AUTO_OPEN=1 cargo run -p hone-console-page` 启动隔离用户端实例，in-app browser 打开 `http://127.0.0.1:18088/chat`，确认登录页可渲染且 console error 为 0
+- `cargo test -p hone-event-engine direct_contact --lib -- --nocapture`
+- `cargo test -p hone-event-engine unique_batch_get_open_id --lib -- --nocapture`
+- `cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`
+- `rustfmt --edition 2024 --check crates/hone-event-engine/src/sinks/feishu.rs`
+- `cargo check -p hone-event-engine -p hone-web-api --tests`
 
 Known verification limitation:
 

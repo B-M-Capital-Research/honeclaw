@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-01 03:03 CST
+最后更新：2026-05-01 03:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,17 +15,16 @@
 
 ## 当前概览
 
-- 活跃待修复：11
+- 活跃待修复：10
 - Later / 待复现：11
-- 已修复 / 已关闭：75
+- 已修复 / 已关闭：76
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixing | 2026-04-30 23:20 本轮补 Feishu scheduler 历史 `ou_...` direct target 的 current-app 解析 fallback；但 `22:33` event-engine 价格异动卡片四连发 `open_id cross app` 仍是最新活跃证据，本单不恢复 Fixed | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 03:03 再次复核最近一小时 `sessions_last_hour=0 / messages_last_hour=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `cron_job_runs` 已推进到 `03:01:49`，`data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 也继续刷新到 `02:04:42` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 03:03 最新 `02:30-03:03` 窗口继续混跑 `started + noop + execution_failed + sent`；`11904-11915` started 行仍残留，`Cerebras IPO与业务进展心跳监控` 还把非 JSON 英文解释文本误吞成 `JsonNoop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-01 03:01 `持仓重大事件心跳检测` 的 `run_id=11923` 再次命中 `maximum context length`，但最终仍被压扁成 `invalid type: integer 400`；此前“Fixed”结论与单文档现状不一致，现已纠正回活跃队列 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
@@ -57,6 +56,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-01 event-engine Feishu direct fallback 从“唯一 email 或唯一 mobile”放宽为“所有稳定联系人解析后只产生一个 current-app open_id 才使用”，覆盖单用户配置同时保留 email+mobile 时 fallback 被关闭的缺口；`cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-04-30 quota 拒绝改为用户态错误并在拒绝前写入 user turn；Feishu 失败收口会向 placeholder 回写“已达到今日对话上限”而不是吞掉最终回复；`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-04-30 已放宽 multi-agent 对 `cron_job`/`portfolio` 可信本地结果的直返门槛，多行和较长任务列表也不再被强制送进易空回复的 answer 阶段；`cargo test -p hone-channels runners::multi_agent::tests`、`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`、`cargo check -p hone-channels` 通过 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | Fixed | 2026-04-30 送达前保险闸补 `未触发 / 没有触发 / 尚未触发` 与 `未超过 / 没有超过 / 尚未超过` 等否认触发措辞；RKLB `未触发涨跌幅8%阈值` / `涨跌幅未超过8%阈值` 变体会被压成 `near_threshold_suppressed`；定向 heartbeat 回归通过 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
