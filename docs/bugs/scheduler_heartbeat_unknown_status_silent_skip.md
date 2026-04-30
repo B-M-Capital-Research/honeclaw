@@ -15,6 +15,18 @@
 
 ## 修复进展
 
+- `2026-05-01 02:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:30-02:01` 的最新两轮虽然表面全部回落成 `noop + skipped_noop`，但结构化协议仍未恢复正常，继续同时暴露 started 残留、`Empty` 漂移、工具伪成功与本地检索错误：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近 70 分钟 heartbeat 仍同时保留 `36` 条 `running + pending` started 行与 `35` 条 `noop + skipped_noop` 终态；仅 `run_id=11826`（`TEM大事件心跳监控`）在 `01:00:53` 继续实际 `completed + sent`。最新 `02:00` 批次则再次把 `11856-11867` 预写 started 行与 `11868-11879` 的后续终态并存落库，没有恢复成单一稳定的结构化 `noop` 协议。
+  - `02:00` 窗口并未真正恢复成健康结构化协议：
+    - `noop + skipped_noop`：`11868-11879`
+    - `running + pending` 残留：`11856-11867`
+    - 最近 70 分钟聚合仍是 `running_pending=36`、`noop_skipped=35`、`sent=1`，说明 started 行持续悬挂的问题没有消失，只是这轮未再显式落成 `execution_failed`。
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `02:00:37.737`、`02:00:41.665`、`02:00:42.034`、`02:00:46.479`、`02:00:48.175`、`02:01:12.309`：`ASTS 重大异动心跳监控`、`小米破位预警`、`Monitor_Watchlist_11`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`Cerebras IPO与业务进展心跳监控` 同批再次记录 `parse_kind=Empty raw_preview=""`
+    - `02:00:24.652`、`02:00:35.844`、`02:00:52.202`、`02:01:06.900`、`02:01:07.942`、`02:01:08.954`：同窗继续连续记录 `Tavily 搜索当前不可用：已尝试 4 个 API Key，但都因额度或鉴权被拒绝`，但每次随后仍回写 `tool_execute_success name=web_search`
+    - `02:00:29.452`：同批还新增 `tool_execute_error name=local_search_files error=IO 错误: stream did not contain valid UTF-8`
+  - 结论：到 `2026-05-01 02:03` 为止，本单仍稳定活跃；最新窗口虽然暂时没有再显式记出 `execution_failed`，但 heartbeat 仍继续混跑 `started / Empty / JsonNoop / sent` 的历史坏态残影，且 started 行悬挂、Tavily 全 key 失败后 `web_search` 伪成功、`local_search_files` UTF-8 错误仍在同批发生，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 01:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:30-01:01` 的最新两轮仍在混跑 `started + noop + execution_failed + sent`，并继续在 `PlainTextSuppressed / Empty / JsonEmptyStatus / JsonTriggered` 之间漂移：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近窗口继续先写入两批 started 行：`11784/11785/11788/11792/11793`（`00:30`）与 `11811/11814-11817`（`01:00`）；到巡检时这些 started 行仍与后续终态并存，没有恢复成单一稳定的结构化 `noop` 协议。
   - `00:30-01:01` 窗口并未恢复成稳定单一状态：
