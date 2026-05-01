@@ -1,0 +1,4 @@
+interface:
+  display_name: "Event Engine Push Review"
+  short_description: "Audit per-actor event-engine push quality."
+  default_prompt: "Review event-engine pushes for a specific actor or date window, identify duplicates, noisy sends, timing issues, and useful filtered-out events."
