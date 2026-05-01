@@ -21,7 +21,8 @@ use crate::pipeline;
 use crate::polisher::{BodyPolisher, NoopPolisher};
 use crate::pollers::{
     AnalystGradePoller, CorpActionCalendarPoller, EarningsPoller, EarningsSurprisePoller,
-    MacroPoller, NewsPoller, PricePoller, RssNewsPoller, SecFilingsPoller, TelegramChannelPoller,
+    ExtendedHoursPoller, MacroPoller, NewsPoller, PricePoller, RssNewsPoller, SecFilingsPoller,
+    TelegramChannelPoller,
 };
 use crate::prefs::{FilePrefsStorage, PrefsProvider};
 use crate::router::{LogSink, NotificationRouter, OutboundSink};
@@ -596,6 +597,26 @@ impl EventEngine {
             );
         } else if fmp_available {
             info!("price poller disabled by config.sources.price=false");
+        }
+        // ExtendedHoursPoller 每 30min 拉一次 1min K(extended=true),只在 ET pre/post
+        // 窗口工作 —— 窗口外 poll() 直接 no-op,几乎零 FMP 开销。补 PricePoller 在
+        // pre/post timestamp 不更新被 stale-skip 的盲区(GOOGL 2026-04-29 财报夜整夜
+        // 无推送的根因)。低/高阈值复用全局 thresholds.price_alert_{low,high}_pct;
+        // per-actor `price_high_pct_override` 经 router 同样路径升级 Low→High。
+        if fmp_available && sources.extended_hours {
+            let poller = ExtendedHoursPoller::new(client.clone(), registry.clone())
+                .with_thresholds(
+                    self.engine_cfg.thresholds.price_alert_low_pct,
+                    self.engine_cfg.thresholds.price_alert_high_pct,
+                );
+            spawn_event_source(
+                Arc::new(poller),
+                store.clone(),
+                router.clone(),
+                task_runs_dir.clone(),
+            );
+        } else if fmp_available {
+            info!("extended_hours poller disabled by config.sources.extended_hours=false");
         }
         // 分析师评级、财报 surprise：两个都按 watch pool 逐 ticker 拉。
         // 初次 tick 之前 watch pool 为空就跳过——用户新增持仓后下一个 tick 生效。

@@ -1079,6 +1079,7 @@ async fn live_social_engine_e2e() {
     engine_cfg.sources = Sources {
         news: false,
         price: false,
+        extended_hours: false,
         earnings_calendar: false,
         corp_action: false,
         sec_filings: false,
