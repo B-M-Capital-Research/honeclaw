@@ -3,7 +3,7 @@
 - 发现时间：2026-05-02 04:08 CST
 - Bug Type：Desktop release runtime / daily build validation
 - 严重等级：P3
-- 状态：New
+- 状态：Fixed
 - 证据来源：`honeclaw-mac` 每日 macOS 完整打包验证，使用隔离 `data/runtime/daily-build-check/config.yaml` 启动打包产物
 
 ## 端到端链路
@@ -48,14 +48,19 @@
 - 当自动化把 config 放到 `data/runtime/daily-build-check/config.yaml` 时，该相对路径按临时 config 所在目录解析。
 - Desktop startup 在生成或读取有效 runtime config 前会校验该 prompt 文件；`ensure_runtime_paths` 虽会把 `soul.md` 复制到 runtime 子目录，但不会补到 canonical config 同级目录，因此首次启动仍失败。
 
-## 下一步建议
+## 修复情况（2026-05-02）
 
-1. 在 desktop startup 或 config materialization 中，把内置 `soul.md` 解析为 bundle/repo 资源路径，避免隔离 config 目录必须自带同名文件。
-2. 或在生成隔离 / seeded config 时同步复制 `soul.md` 到 canonical config 同级目录。
-3. 保留当前自动化规避：创建 `data/runtime/daily-build-check/config.yaml` 时同时复制 `soul.md`。
+- `bins/hone-desktop/src/sidecar/runtime_env.rs` 在 desktop runtime path 物料化时读取 canonical config 的 `agent.system_prompt_path`。
+- 若该路径是安全的相对路径、config 同级目标文件不存在、bundle/repo 里存在同名资源，则先把资源复制到 canonical config 同级目录，再生成 `effective-config.yaml`。
+- 这覆盖隔离 `config.yaml` 指向 `./soul.md` 但目录干净的启动路径，同时不自动复制 `../soul.md` 这类会逃出 config 目录的路径。
+- 修复不依赖当前机器线上运行态，也不启动生产渠道。
 
 ## 验证结果
 
+- 2026-05-02 07:10 代码回归：
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`：通过，5 个 `runtime_env` 单测全部通过。
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests`：通过。
+  - `rustfmt --edition 2024 bins/hone-desktop/src/sidecar/runtime_env.rs` 与 `git diff --check`：通过。
 - 2026-05-02 04:08 首次启动：
   - 构建打包：通过。
   - `.app` 存在性：通过，mtime `2026-05-02 04:05:57 CST`。

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-02 01:02-01:03` 窗口最新完成样本里，`run_id=12985`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
@@ -140,6 +140,13 @@
 
 - `cargo test -p hone-llm --lib -- --nocapture`
 - `rustfmt --edition 2024 crates/hone-llm/src/openai_compatible.rs crates/hone-llm/src/openrouter.rs`
+
+## 复核结论（2026-05-02）
+
+- 本轮按当前自动化约束，不再用当前机器旧生产窗口样本作为活跃判定依据。
+- 代码复核确认当前仓库同时覆盖 `OpenAiCompatibleProvider` 与 `OpenRouterProvider` 的 `JSONDeserialize | ApiError` raw HTTP fallback。
+- `chat_with_tools_preserves_numeric_provider_error_body_after_sdk_deserialize_failure` 与 `chat_with_tools_preserves_openrouter_numeric_error_body_after_sdk_deserialize_failure` 仍直接断言错误文案不再包含 `invalid type: integer`，并保留上游 `HTTP 400` 诊断。
+- 本轮未新增代码改动；状态修正为 `Fixed`。若已部署当前代码后仍复现同样文案，应优先排查是否存在第三条 provider 调用路径未复用这两处 provider 实现。
 
 ## 风险
 

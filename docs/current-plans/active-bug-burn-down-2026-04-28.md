@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-01 23:05 CST
+- updated_at: 2026-05-02 07:18 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -67,6 +67,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-01: Closed the active P1 Feishu `open_id cross app` event-engine regression by widening the Feishu direct current-app fallback from “exactly one email or exactly one mobile” to “all stable contacts resolve to exactly one open_id”. This covers single-user configs that keep both email and mobile while preserving the no-guessing rule for ambiguous multi-user contact sets.
 - 2026-05-01: Closed the active P2 watchlist near-threshold regression by extending the heartbeat send gate to parse watchlist price phrases such as `跌至 69.85` and suppress `triggered` outputs that claim `已触及或低于触发价 69.83` while the parsed current price is still above the configured lower trigger line.
 - 2026-05-01: Closed the reopened P1 Feishu direct quota rejection bug by preserving quota rejection text before internal-error suppression, including wrapped forms such as `工具执行错误: 已达到今日对话上限...`, and by logging Feishu failure fallback sends as `reply.send failure_fallback` so placeholder updates are auditable.
+- 2026-05-02: Closed the daily macOS isolated-config `soul.md` startup bug by copying safe relative `system_prompt_path` assets from bundle/repo resources into the canonical config directory before desktop runtime config loads it. Also moved two stale active entries back to `Fixed` based on current code/test evidence instead of old production samples: Web scheduler offline SSE delivery status and provider numeric `HTTP 400` error preservation.
 
 ## Validation
 
@@ -112,6 +113,10 @@ Completed this round:
 - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
 - `cargo check -p hone-channels -p hone-feishu --tests`
 - `rustfmt --edition 2024 --check crates/hone-channels/src/runtime.rs bins/hone-feishu/src/handler.rs`
+- `rustfmt --edition 2024 bins/hone-desktop/src/sidecar/runtime_env.rs`
+- `git diff --check`
+- `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`
+- `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests`
 - `git diff --check`
 - `cargo test -p hone-llm openrouter -- --nocapture`
 - `cargo test -p hone-event-engine --lib`

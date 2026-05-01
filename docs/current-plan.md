@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-01
+最后更新：2026-05-02
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-04-30 追加收口 event-engine digest 可读性，宏观/财报行补关键数值，新闻链接按渠道渲染为来源域名锚文本；2026-05-01 继续闭环 watchlist near-threshold 误触发，并修复 Feishu direct quota 拒绝被内部错误包装后静默吞掉的问题；剩余活跃项继续按共享契约加固，不对不可控网络、凭据或模型波动做脆弱特判
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-02 闭环 daily macOS isolated config 缺 `soul.md` 启动失败，并按当前代码/测试证据把 Web scheduler 离线 SSE 送达和 provider numeric `HTTP 400` 错误解析移回 `Fixed`；剩余活跃项继续按共享契约加固，不对不可控网络、凭据或模型波动做脆弱特判
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

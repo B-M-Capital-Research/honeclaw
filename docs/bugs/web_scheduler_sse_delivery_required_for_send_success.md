@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 10:18 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -203,6 +203,13 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 - 当前机器不再把线上运行态作为判定依据；按仓库代码复核，`crates/hone-web-api/src/routes/events.rs` 的 Web scheduler 已在写入会话后默认 `message_send_status=sent`、`delivered=true`，`console_event_sent` 只作为实时 SSE 是否送达控制台的观测字段。
 - 本轮将该语义抽成 `web_scheduler_delivery_status(...)` 并补回归 `web_scheduler_offline_console_still_counts_as_sent`，锁定 `console_event_sent=false` 时不能落成 `send_failed`。
 - 因此本单从活跃队列移为 `Fixed`。若未来在已部署当前代码后仍出现“Web 会话已写入 assistant final 但 `cron_job_runs` 仍为 `completed + send_failed + console_event_sent=false`”，应重新打开并优先排查是否还有另一条 Web scheduler 记录路径没有走 `routes/events.rs`。
+
+## 复核结论（2026-05-02）
+
+- 本轮按当前自动化约束，不再用当前机器旧生产窗口样本作为活跃判定依据。
+- 代码复核确认 `web_scheduler_delivery_status(false)` 仍返回 `sent + delivered=true`，`console_event_sent=false` 只保留为观测字段。
+- 回归 `web_scheduler_offline_console_still_counts_as_sent` 仍是本缺陷的直接证明；本轮未改代码，仅修正 bug 台账中由旧运行态样本造成的活跃状态回退。
+- 状态维持 `Fixed`。
 
 ## 回归验证（2026-04-30）
 

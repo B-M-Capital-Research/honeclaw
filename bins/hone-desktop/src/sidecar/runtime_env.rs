@@ -1,8 +1,9 @@
 use super::*;
 use hone_core::config::{
-    generate_effective_config, promote_legacy_runtime_agent_settings,
+    generate_effective_config, promote_legacy_runtime_agent_settings, read_yaml_value,
     seed_canonical_config_from_source,
 };
+use std::path::Component;
 
 pub(super) fn normalize_base_url(raw: &str) -> String {
     raw.trim().trim_end_matches('/').to_string()
@@ -83,6 +84,82 @@ fn resource_or_repo_path(app: &AppHandle, resource: &str) -> PathBuf {
         .map(|dir| dir.join(resource))
         .filter(|path| path.exists())
         .unwrap_or_else(|| repo_root().join(resource))
+}
+
+fn relative_system_prompt_asset(config_path: &Path) -> Result<Option<PathBuf>, String> {
+    let value = read_yaml_value(config_path).map_err(|e| e.to_string())?;
+    let prompt_path = value
+        .as_mapping()
+        .and_then(|root| root.get(serde_yaml::Value::String("agent".to_string())))
+        .and_then(|agent| agent.as_mapping())
+        .and_then(|agent| agent.get(serde_yaml::Value::String("system_prompt_path".to_string())))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+
+    if prompt_path.is_empty() {
+        return Ok(None);
+    }
+
+    let relative = PathBuf::from(prompt_path);
+    if relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::Prefix(_) | Component::RootDir
+            )
+        })
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(relative))
+}
+
+fn copy_relative_system_prompt_asset_from(
+    config_path: &Path,
+    resolve_source: impl Fn(&Path) -> PathBuf,
+) -> Result<(), String> {
+    let Some(relative) = relative_system_prompt_asset(config_path)? else {
+        return Ok(());
+    };
+    let Some(config_dir) = config_path.parent() else {
+        return Ok(());
+    };
+
+    let destination = config_dir.join(&relative);
+    if destination.exists() {
+        return Ok(());
+    }
+
+    let source = resolve_source(&relative);
+    if !source.exists() {
+        return Ok(());
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "无法创建 system_prompt_path 资源目录 {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::copy(&source, &destination).map_err(|e| {
+        format!(
+            "无法复制 system_prompt_path 资源 {} -> {}: {e}",
+            source.display(),
+            destination.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn ensure_desktop_system_prompt_asset(app: &AppHandle, config_path: &Path) -> Result<(), String> {
+    copy_relative_system_prompt_asset_from(config_path, |relative| {
+        let resource = relative.to_string_lossy();
+        resource_or_repo_path(app, resource.as_ref())
+    })
 }
 
 fn is_legacy_runtime_config_path(path: &Path) -> bool {
@@ -364,6 +441,7 @@ pub(super) fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, Stri
             )
         },
     )?;
+    ensure_desktop_system_prompt_asset(app, &config_path)?;
 
     let effective_config_path = runtime_dir.join("effective-config.yaml");
     generate_effective_config(&config_path, &effective_config_path)
@@ -434,5 +512,73 @@ mod tests {
         );
 
         assert_eq!(resolved, PathBuf::from("/tmp/project/config.yaml"));
+    }
+
+    #[test]
+    fn desktop_prompt_asset_copy_fills_missing_config_sibling() {
+        let dir = env::temp_dir().join(format!(
+            "hone-desktop-prompt-asset-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+        let config_dir = dir.join("config");
+        let resource_dir = dir.join("resources");
+        fs::create_dir_all(&config_dir).expect("config dir should exist");
+        fs::create_dir_all(&resource_dir).expect("resource dir should exist");
+        let config_path = config_dir.join("config.yaml");
+        fs::write(
+            &config_path,
+            r#"
+agent:
+  system_prompt_path: "./soul.md"
+  runner: codex_cli
+"#,
+        )
+        .expect("config should write");
+        fs::write(resource_dir.join("soul.md"), "desktop prompt")
+            .expect("resource prompt should write");
+
+        copy_relative_system_prompt_asset_from(&config_path, |relative| {
+            resource_dir.join(relative)
+        })
+        .expect("prompt asset should copy");
+
+        assert_eq!(
+            fs::read_to_string(config_dir.join("soul.md")).expect("prompt should exist"),
+            "desktop prompt"
+        );
+        let config = HoneConfig::from_file(&config_path).expect("config should load prompt");
+        assert_eq!(config.agent.system_prompt, "desktop prompt");
+    }
+
+    #[test]
+    fn desktop_prompt_asset_copy_skips_parent_relative_paths() {
+        let dir = env::temp_dir().join(format!(
+            "hone-desktop-prompt-parent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("temp dir should exist");
+        let config_path = dir.join("config.yaml");
+        fs::write(
+            &config_path,
+            r#"
+agent:
+  system_prompt_path: "../soul.md"
+"#,
+        )
+        .expect("config should write");
+
+        assert!(
+            relative_system_prompt_asset(&config_path)
+                .expect("config should parse")
+                .is_none()
+        );
     }
 }

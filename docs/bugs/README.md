@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 07:12 CST
+最后更新：2026-05-02 07:18 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：6
 - Later / 待复现：11
-- 已修复 / 已关闭：80
+- 已修复 / 已关闭：82
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
@@ -26,14 +26,11 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 07:12 最近一小时再次确认 `sessions` / `session_messages` 上界仍共同卡在 `2026-04-27 16:54:20+08:00`，而 Feishu 直聊真实会话在 `06:57-06:59` 仍完成 `persist_assistant + reply.send segments.sent=3/3`，同库 `cron_job_runs` 也已推进到 `2026-05-02 07:00:40+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 20:02 `英伟达每日消息` 的 `run_id=12732` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 07:12 最新 `06:30-07:01` 窗口继续混跑 `running + pending=22 / noop + skipped_noop=20 / completed + sent=1 / execution_failed + skipped_error=1`；`ORCL 大事件监控` 在 `07:00` 再次 `JsonTriggered + deliver`，其余 started 行仍悬挂未收口 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-02 07:12 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=22`、`noop + skipped_noop=20`、`completed + sent=1`、`execution_failed + skipped_error=1`；全库悬挂 `running + pending` 总量已升到 `3237`，比上轮再增 `22` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-01 23:01 `核心观察股池晚间快报` 再次把 24 支标的统一降成“击球区待确认”；同症状已连续出现在 `2026-04-30 21:35`、`2026-05-01 21:35` 与 `2026-05-01 23:00` 三个窗口，说明先前 `Fixed` 结论失效且影响面已覆盖不同观察池日报模板 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-02 06:04 `run_id=13202` 再次把“标普上调 2026 年剩余时间油价预期”“全球需求增加且供需趋于不平衡”组织成确定性主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
-| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-02 01:12 `持仓重大事件心跳检测` 的 `run_id=12985` 再次落成 `execution_failed + skipped_error`，错误恢复为 `invalid type: integer 400, expected a string`；说明 2026-05-01 标记的 `Fixed` 结论未在真实 heartbeat 窗口生效 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
-| Daily macOS build 隔离配置目录缺少 `soul.md` 时 release app setup panic | P3 | New | 2026-05-02 04:09 首次隔离启动因 `system_prompt_path` 解析到 `data/runtime/daily-build-check/./soul.md` 缺失而失败；复制 repo `soul.md` 到临时配置目录后，同一 `.app` 已通过 `/api/meta`、用户端 200、渠道 disabled 与清理验证 | [daily_macos_build_isolated_config_missing_soul.md](./daily_macos_build_isolated_config_missing_soul.md) |
 
 ## Later / 待复现
 
@@ -56,6 +53,8 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发，最终落库虽为 `OK` 但实时链路已泄露内部 prompt | P1 | Fixed | 2026-05-02 ACP `agent_message_chunk` ingest 层新增 chunk 级 prompt echo 过滤；命中 `### System Instructions ###`、`### Skill Context ###`、`【Session 上下文】`、`turn-0 可用技能索引` 等内部标记时不进入 `full_reply` / `pending_assistant_content`，也不 emit 用户可见 `StreamDelta`；同 chunk 内真实前缀会保留并截断后续内部 prompt；`cargo test -p hone-channels acp_common --lib -- --nocapture` 通过；关联 Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) | [web_direct_session_update_prompt_echo_leak.md](./web_direct_session_update_prompt_echo_leak.md) |
+| Daily macOS build 隔离配置目录缺少 `soul.md` 时 release app setup panic | P3 | Fixed | 2026-05-02 desktop runtime path 物料化会在 canonical config 指向安全相对 `system_prompt_path` 且同级文件缺失时，从 bundle/repo 资源补齐 `soul.md`；同时跳过 `../` 逃逸路径；`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests` 通过；无关联 GitHub Issue | [daily_macos_build_isolated_config_missing_soul.md](./daily_macos_build_isolated_config_missing_soul.md) |
+| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-05-02 复核当前仓库 `OpenAiCompatibleProvider` / `OpenRouterProvider` 已对 `JSONDeserialize | ApiError` 走 raw HTTP fallback，`chat_with_tools` 回归明确断言不再输出 `invalid type: integer`；旧运行态样本不再作为本轮活跃判定依据；无关联 GitHub Issue | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | Fixed | 2026-05-02 heartbeat 已送达预览去重新增日期、金额、英文实体与 CJK n-gram 事实 token，覆盖 `RKLB 4月29日 1.9 亿美元国防合同` 这类旧催化换写法后叠加近阈值价格观察再次触发的路径；既有近阈值硬拦截仍覆盖 `接近但未达 / 未超过 / 未触及` 等否认越线文案；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | Fixed | 2026-05-02 `heartbeat_duplicate_preview_match` 不再只依赖标点/空格整词重合，补强中英混写旧事件相似度；`TEM` 的 `TIME / USC / 5月5日财报` 组合旧催化、`RKLB 4月29日 1.9 亿美元国防合同` 换写法会落成 `duplicate_suppressed`，同 ticker 新独立事件负例保留；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-05-01 23:05 共享错误净化层将“已达到今日对话上限”提升为业务拒绝优先级，即使被 `工具执行错误` / `渠道错误` 等内部前缀包裹也会保留 quota 文案；Feishu 失败兜底成功更新 placeholder / 发送后会记录 `reply.send failure_fallback`，避免巡检再误判为无最终发送；`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text -- --nocapture`、`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
