@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 03:03 CST
+最后更新：2026-05-02 03:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：11
+- 活跃待修复：9
 - Later / 待复现：11
-- 已修复 / 已关闭：77
+- 已修复 / 已关闭：79
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
@@ -29,9 +29,7 @@
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 02:03 最近一小时再次确认 `sessions` 与 `session_messages` 新增仍为 `0`，镜像上界继续卡在 `2026-04-27 16:54:20+08:00`；但原始 Web 会话源文件已继续刷新到 `02:03:12/02:03:25` 并正常落下 `OK` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 20:02 `英伟达每日消息` 的 `run_id=12732` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 03:03 最新 `02:00-03:01` 窗口继续混跑 `running + pending=33 / noop + skipped_noop=28 / execution_failed + skipped_error=3 / completed + sent=2`；`ORCL` 与 `全天原油价格3小时播报` 正常 `sent`，但 `TEM大事件心跳监控`、`持仓重大事件心跳检测` 又退化到 `error decoding response body`，且 `CAI破位预警` 的 `noop` 仍夹带推理痕迹 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-05-01 15:02 `持仓重大事件心跳检测` 的 `run_id=12511` 再次落成 `completed + sent`，正文仍写 `RKLB当前$82.51...上涨+7.13%，突破5%阈值`，同时继续把 `4月29日` 旧合同包装成本轮“重大增量”；同窗 `RKLB异动监控` 则刚在 `15:00` 回落 `noop`，说明旧事件被错误升级到组合级触发链路 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-02 03:03 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=33`、`noop + skipped_noop=28`、`execution_failed + skipped_error=3`、`completed + sent=2`；全库悬挂 `running + pending` 总量已升到 `3149`，比上轮再增 `22` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 21:02 `TEM大事件心跳监控` 的 `run_id=12788` 又把 `5月5日财报`、`TIME 榜单`、`USC 合作` 等旧催化重新送达；这些事实已在 `08:02`、`17:31` 等窗口重复出现，中间多个窗口已回到 `noop`/`Empty`，期间没有新的独立公告 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-01 23:01 `核心观察股池晚间快报` 再次把 24 支标的统一降成“击球区待确认”；同症状已连续出现在 `2026-04-30 21:35`、`2026-05-01 21:35` 与 `2026-05-01 23:00` 三个窗口，说明先前 `Fixed` 结论失效且影响面已覆盖不同观察池日报模板 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-02 03:03 `run_id=13070` 再次把“2026 年需求前景偏弱”“霍尔木兹海峡局势提供支撑”组织成确定性主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-02 01:12 `持仓重大事件心跳检测` 的 `run_id=12985` 再次落成 `execution_failed + skipped_error`，错误恢复为 `invalid type: integer 400, expected a string`；说明 2026-05-01 标记的 `Fixed` 结论未在真实 heartbeat 窗口生效 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
@@ -57,6 +55,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | Fixed | 2026-05-02 heartbeat 已送达预览去重新增日期、金额、英文实体与 CJK n-gram 事实 token，覆盖 `RKLB 4月29日 1.9 亿美元国防合同` 这类旧催化换写法后叠加近阈值价格观察再次触发的路径；既有近阈值硬拦截仍覆盖 `接近但未达 / 未超过 / 未触及` 等否认越线文案；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | Fixed | 2026-05-02 `heartbeat_duplicate_preview_match` 不再只依赖标点/空格整词重合，补强中英混写旧事件相似度；`TEM` 的 `TIME / USC / 5月5日财报` 组合旧催化、`RKLB 4月29日 1.9 亿美元国防合同` 换写法会落成 `duplicate_suppressed`，同 ticker 新独立事件负例保留；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-05-01 23:05 共享错误净化层将“已达到今日对话上限”提升为业务拒绝优先级，即使被 `工具执行错误` / `渠道错误` 等内部前缀包裹也会保留 quota 文案；Feishu 失败兜底成功更新 placeholder / 发送后会记录 `reply.send failure_fallback`，避免巡检再误判为无最终发送；`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text -- --nocapture`、`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Feishu 直聊切到非金融新话题时，仍误入 `stock_research` 并沿用旧 `LITE` 上下文 | P3 | Fixed | 2026-05-01 当前 user turn 在普通和带接收元信息的 prompt 拼装中统一置于历史摘要 / skill context / session context 之后，且领域策略明确非金融问题必须先短路拒绝、不得调用 `stock_research` / `data_fetch` / `web_search` 或沿用旧 ticker；`cargo test -p hone-channels prompt::tests:: --lib -- --nocapture`、`cargo test -p hone-channels turn_builder::tests::runtime_input_with_recv_extra_keeps_current_turn_last --lib -- --nocapture` 通过；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-01 event-engine Feishu direct fallback 从“唯一 email 或唯一 mobile”放宽为“所有稳定联系人解析后只产生一个 current-app open_id 才使用”，覆盖单用户配置同时保留 email+mobile 时 fallback 被关闭的缺口；`cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |

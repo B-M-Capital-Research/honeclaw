@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-19 10:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-05-01 21:00-21:02 最新巡检样本：
@@ -551,3 +551,10 @@
 
 - `crates/hone-scheduler/src/lib.rs` 将 heartbeat 去重基线从“同一个 job 的最近送达”扩展为“同一 actor 的最近 heartbeat 送达”，覆盖兄弟 job 在半小时轮询里重发同一催化的样本。
 - 验证：`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`。
+
+## 修复补充（2026-05-02）
+
+- `crates/hone-channels/src/scheduler.rs` 补强 `heartbeat_duplicate_preview_match` 的事实相似度判断：在原有 token overlap 外，新增日期、金额、英文实体与 CJK n-gram 事实 token，避免 `TEM` 的 `TIME / USC / 5月5日财报` 组合旧催化、`RKLB 4月29日 1.9 亿美元国防合同` 这类中英混写旧事件因换写法绕过去重。
+- 回归覆盖同一旧事件大幅改写后仍应 `duplicate_suppressed`，以及同 ticker 新独立事件不能被误拦。
+- 验证：`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`。
+- 关联 GitHub Issue：无（2026-05-02 检查 open issues 为 0）。

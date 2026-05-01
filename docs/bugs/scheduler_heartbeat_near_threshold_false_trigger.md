@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -189,6 +189,7 @@
 
 ## 修复记录
 
+- 2026-05-02 03:05: 本轮补强 heartbeat 已送达预览去重，覆盖最新样本中“近阈值价格观察 + 旧合同/旧催化”被组合级或单标的 heartbeat 重新包装成正式触发的路径：`RKLB 4月29日 1.9 亿美元国防合同` 这类中英混写旧事件即使换写法也会命中 `duplicate_suppressed`；既有近阈值硬拦截仍覆盖 `接近但未达 / 未超过 / 未触及` 等明确否认越线文案。回归验证：`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue。
 - 2026-05-01 15:18: 最新真实窗口再次确认本单仍活跃：`run_id=12511` 把组合级 `持仓重大事件心跳检测` 中的 `RKLB当前$82.51...上涨+7.13%` 与 `4月29日` 旧合同再次落成 `completed + sent + delivered=1`；说明同一近阈值/旧事件误报已经扩散到组合级 heartbeat。
 - 2026-05-01 13:03: 最新真实窗口再次确认本单仍活跃：`run_id=12420` 把 `RKLB异动监控` 的 `已接近但未达8%阈值` 文案再次落成 `completed + sent + delivered=1`；说明同一根因在 `09:30` 之后没有收敛，继续维持 `New`。
 - 2026-05-01 10:02: 最新真实窗口再次确认本单回归：`run_id=12263` 把 `RKLB异动监控` 的 `接近但未达8%阈值` 文案又落成 `completed + sent + delivered=1`；此前 `Fixed` 结论失效，本单状态改回 `New` 并重新进入活跃队列。

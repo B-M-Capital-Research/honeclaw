@@ -43,6 +43,21 @@ static RE_HEARTBEAT_TRIGGER_PRICE_BEFORE_CURRENT: LazyLock<regex::Regex> = LazyL
         .expect("valid heartbeat trigger price regex")
 });
 
+static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?ix)
+        (?:\d{1,4}年)?\d{1,2}月\d{1,2}日
+        |
+        \d+(?:\.\d+)?\s*(?:亿|万)?\s*(?:美元|美金|港元|人民币|元)
+        |
+        [A-Za-z][A-Za-z0-9.-]{1,}
+        |
+        \d+(?:\.\d+)?%?
+        ",
+    )
+    .expect("valid heartbeat fact token regex")
+});
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum HeartbeatOutcome {
     Noop,
@@ -313,32 +328,107 @@ fn truncate_for_log(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect::<String>() + "..."
 }
 
+fn heartbeat_similarity_stop_token(token: &str) -> bool {
+    matches!(
+        token,
+        "已触发"
+            | "再次"
+            | "当前"
+            | "大事"
+            | "重大事"
+            | "重大事件"
+            | "公司"
+            | "价格"
+            | "任务"
+            | "今日"
+            | "已经"
+            | "异动"
+            | "提醒"
+            | "事件提"
+            | "件提"
+            | "检查"
+            | "检查时"
+            | "查时"
+            | "查时间"
+            | "时间"
+            | "最新"
+            | "本轮"
+            | "条件"
+            | "监控"
+            | "触发"
+            | "重大"
+    )
+}
+
+fn heartbeat_is_cjk(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{3400}'..='\u{4DBF}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{F900}'..='\u{FAFF}'
+            | '\u{20000}'..='\u{2A6DF}'
+            | '\u{2A700}'..='\u{2B73F}'
+            | '\u{2B740}'..='\u{2B81F}'
+            | '\u{2B820}'..='\u{2CEAF}'
+    )
+}
+
+fn heartbeat_insert_similarity_token(
+    tokens: &mut std::collections::BTreeSet<String>,
+    token: String,
+) {
+    let normalized = token
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if normalized.chars().count() < 2 || heartbeat_similarity_stop_token(&normalized) {
+        return;
+    }
+    tokens.insert(normalized);
+}
+
+fn heartbeat_insert_cjk_similarity_tokens(
+    tokens: &mut std::collections::BTreeSet<String>,
+    segment: &str,
+) {
+    let chars = segment.chars().collect::<Vec<_>>();
+    match chars.len() {
+        0 | 1 => return,
+        2..=8 => heartbeat_insert_similarity_token(tokens, chars.iter().collect()),
+        _ => {}
+    }
+
+    for width in [2usize, 3usize] {
+        if chars.len() < width {
+            continue;
+        }
+        for window in chars.windows(width) {
+            heartbeat_insert_similarity_token(tokens, window.iter().collect());
+        }
+    }
+}
+
 fn normalized_similarity_tokens(text: &str) -> std::collections::BTreeSet<String> {
-    text.split(|ch: char| {
-        ch.is_whitespace()
-            || matches!(
-                ch,
-                ',' | '.'
-                    | ';'
-                    | ':'
-                    | '，'
-                    | '。'
-                    | '；'
-                    | '：'
-                    | '、'
-                    | '('
-                    | ')'
-                    | '（'
-                    | '）'
-                    | '['
-                    | ']'
-                    | '【'
-                    | '】'
-            )
-    })
-    .map(|token| token.trim().to_ascii_lowercase())
-    .filter(|token| token.chars().count() >= 3)
-    .collect()
+    let mut tokens = std::collections::BTreeSet::new();
+    for matched in RE_HEARTBEAT_FACT_TOKEN.find_iter(text) {
+        heartbeat_insert_similarity_token(&mut tokens, matched.as_str().to_string());
+    }
+
+    let mut cjk_segment = String::new();
+    for ch in text.chars() {
+        if heartbeat_is_cjk(ch) {
+            cjk_segment.push(ch);
+        } else if !cjk_segment.is_empty() {
+            heartbeat_insert_cjk_similarity_tokens(&mut tokens, &cjk_segment);
+            cjk_segment.clear();
+        }
+    }
+    if !cjk_segment.is_empty() {
+        heartbeat_insert_cjk_similarity_tokens(&mut tokens, &cjk_segment);
+    }
+
+    tokens
 }
 
 fn heartbeat_duplicate_preview_match(
@@ -356,7 +446,9 @@ fn heartbeat_duplicate_preview_match(
         }
         let shared = message_tokens.intersection(&preview_tokens).count();
         let smaller = message_tokens.len().min(preview_tokens.len());
-        if shared >= 4 && shared * 100 >= smaller * 70 {
+        let strong_match = shared >= 4 && shared * 100 >= smaller * 70;
+        let reworded_fact_match = shared >= 5;
+        if strong_match || reworded_fact_match {
             return Some(truncate_for_log(preview.trim(), 200));
         }
     }
@@ -1635,12 +1727,47 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_duplicate_preview_match_suppresses_reworded_cjk_event() {
+        let message = "【TEM大事件触发提醒】TEM 当前上涨 +10.92%，5月5日财报、TIME 2026 健康与生命科学公司十强、USC 战略合作继续发酵。";
+        let previews = vec![(
+            "2026-05-01T17:31:01+08:00".to_string(),
+            "【TEM 价格异动触发】4月28日 TIME 榜单、USC 合作、5月5日财报已提醒，检查时间 17:31。"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_some());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_suppresses_reworded_contract_event() {
+        let message =
+            "【RKLB重大订单】Rocket Lab 于4月29日获批 1.9 亿美元国防合同，本轮价格接近阈值。";
+        let previews = vec![(
+            "2026-04-30T13:00:31+08:00".to_string(),
+            "RKLB异动提醒：Rocket Lab 4月29日宣布赢得1.9亿美元国防合同，已发送。".to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_some());
+    }
+
+    #[test]
     fn heartbeat_duplicate_preview_match_allows_new_event() {
         let message = "【ASTS 重大事件提醒】公司宣布新的卫星发射窗口，检查时间 02:01";
         let previews = vec![(
             "2026-04-25T23:01:00+08:00".to_string(),
             "【RKLB 重大事件提醒】Blue Origin Blue Ring 与 Rocket Lab 相关合作已触发提醒"
                 .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_new_same_ticker_event() {
+        let message = "【TEM大事件提醒】TEM 宣布新的 FDA 批准结果，检查时间 02:01。";
+        let previews = vec![(
+            "2026-05-01T17:31:01+08:00".to_string(),
+            "【TEM 价格异动触发】4月28日 TIME 榜单、USC 合作、5月5日财报已提醒。".to_string(),
         )];
 
         assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
