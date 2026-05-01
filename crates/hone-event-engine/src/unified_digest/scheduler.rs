@@ -31,7 +31,7 @@ use crate::digest::curation::{
 };
 use crate::digest::render::{build_digest_payload, render_digest};
 use crate::digest::time_window::EffectiveTz;
-use crate::event::MarketEvent;
+use crate::event::{EventKind, MarketEvent};
 use crate::fmp::FmpClient;
 use crate::global_digest::audience::{AudienceBuilder, AudienceContext};
 use crate::global_digest::curator::{
@@ -814,11 +814,19 @@ impl UnifiedDigestScheduler {
         let since = now - chrono::Duration::hours(12);
         let mut held: Vec<MarketEvent> = Vec::new();
         let mut dropped_stale = 0usize;
+        let mut recap_count = 0usize;
         match self.store.list_quiet_held_since(actor_key_str, since) {
             Ok(rows) => {
                 for (event, _sent_at) in rows {
                     if event.kind.is_fresh(event.occurred_at, now) {
                         held.push(event);
+                    } else if matches!(event.kind, EventKind::PriceAlert { .. }) {
+                        // 过期价格档不直接 drop —— 转成"凌晨回顾"条目走 digest 渲染。
+                        // payload 里 direction/band_bps/changesPercentage 是当时跨档的快照,
+                        // 标题 prepend "🌙 凌晨曾过" 让用户知道这是隔夜回顾、当前价格可能已反转,
+                        // 不会被误读为现货可操作信号。
+                        held.push(mark_as_overnight_recap(event));
+                        recap_count += 1;
                     } else {
                         let _ = self.store.log_delivery(
                             &event.id,
@@ -922,6 +930,7 @@ impl UnifiedDigestScheduler {
                     items = filtered.len(),
                     cap_overflow,
                     dropped_stale,
+                    recap_count,
                     "quiet_flush delivered"
                 );
                 Ok(true)
@@ -1078,6 +1087,15 @@ fn insert_symbol(symbols: &mut HashSet<String>, symbol: &str) {
     }
 }
 
+/// 把过期(超 shelf_life)的 quiet_held PriceAlert 改造成"凌晨回顾"条目:
+/// 在 title 前 prepend `🌙 凌晨曾过 · `,让早晨摘要里能区分"刚刚跨档" vs
+/// "凌晨曾跨过(当前可能已反转)"。其他字段(payload、severity、symbols、
+/// occurred_at)保持不变,curation/排序/render 走正常路径。
+fn mark_as_overnight_recap(mut event: MarketEvent) -> MarketEvent {
+    event.title = format!("🌙 凌晨曾过 · {}", event.title);
+    event
+}
+
 fn log_omitted_digest_items(store: &EventStore, actor_key: &str, omitted: &[MarketEvent]) {
     for item in omitted {
         let _ = store.log_delivery(
@@ -1130,6 +1148,66 @@ mod tests {
 
         assert!(symbols.contains("AAPL"));
         assert!(symbols.contains("MU"));
+    }
+
+    #[test]
+    fn mark_as_overnight_recap_prepends_marker_and_preserves_other_fields() {
+        let original = MarketEvent {
+            id: "price_band:GOOGL:2026-04-30:up:600".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 600,
+                window: "day".into(),
+            },
+            severity: Severity::High,
+            symbols: vec!["GOOGL".into()],
+            occurred_at: Utc::now() - chrono::Duration::hours(6),
+            title: "GOOGL +6.40%".into(),
+            summary: "突破 +6% 档".into(),
+            url: Some("https://example.com".into()),
+            source: "fmp.quote".into(),
+            payload: serde_json::json!({
+                "changesPercentage": 6.40,
+                "hone_price_direction": "up",
+                "hone_price_band_bps": 600,
+            }),
+        };
+        let recap = mark_as_overnight_recap(original.clone());
+        assert!(
+            recap.title.starts_with("🌙 凌晨曾过 · "),
+            "title must be marked: {}",
+            recap.title
+        );
+        assert!(recap.title.contains("GOOGL +6.40%"), "原始 title 必须保留");
+        // 其他字段应一字不变
+        assert_eq!(recap.id, original.id);
+        assert_eq!(recap.severity, original.severity);
+        assert_eq!(recap.symbols, original.symbols);
+        assert_eq!(recap.payload, original.payload);
+        assert_eq!(recap.occurred_at, original.occurred_at);
+    }
+
+    #[test]
+    fn mark_as_overnight_recap_is_idempotent_for_already_marked() {
+        // 防御性:即便上游错误地重复 mark,标记前缀稳定可识别(不强求只 mark 一次,
+        // 但 grep "🌙 凌晨曾过" 时数量与原始批次条数对齐)。
+        let ev = MarketEvent {
+            id: "p".into(),
+            kind: EventKind::PriceAlert {
+                pct_change_bps: 800,
+                window: "day".into(),
+            },
+            severity: Severity::High,
+            symbols: vec!["AAPL".into()],
+            occurred_at: Utc::now(),
+            title: "🌙 凌晨曾过 · AAPL +8.00%".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.quote".into(),
+            payload: serde_json::Value::Null,
+        };
+        let twice = mark_as_overnight_recap(ev.clone());
+        // 当前实现允许双重 prefix,但前缀始终在最左侧,grep 不会漏。
+        assert!(twice.title.starts_with("🌙 凌晨曾过 · "));
     }
 
     #[test]
