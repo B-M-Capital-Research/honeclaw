@@ -7,6 +7,25 @@
 
 ## 修复进展
 
+- `2026-05-02 01:12` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:00-01:03` 的最新三轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-05-02T00:00:00+08:00'` 聚合，最近窗口仍同时存在：
+    - `running + pending = 36`
+    - `noop + skipped_noop = 30`
+    - `completed + sent = 3`
+    - `execution_failed + skipped_error = 3`
+  - `00:00` 与 `01:00` 两批 heartbeat started 行仍先分别以 `run_id=12915-12928`、`12965-12976` 保留为 `running + pending`，随后同窗终态又另起为：
+    - `12935` `全天原油价格3小时播报` -> `completed + sent`
+    - `12938` `Monitor_Watchlist_11` -> `execution_failed + skipped_error`
+    - `12983` `ORCL 大事件监控` -> `completed + sent`
+    - `12985` `持仓重大事件心跳检测` -> `execution_failed + skipped_error`
+    - 其余同窗任务大多继续回落成 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `2026-05-02 00:01:19.115-00:01:19.116`：`全天原油价格3小时播报` 在零点窗口落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-02 00:02:02.053-00:02:02.054`：`Monitor_Watchlist_11` 同窗退化成 `LLM 错误: http error: error decoding response body`
+    - `2026-05-02 01:02:17.104-01:02:17.105`：`ORCL 大事件监控` 在 01:00 窗口再次落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-02 01:02:52.134`：`持仓重大事件心跳检测` 又退化成 `LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string`
+  - 结论：到 `2026-05-02 01:12` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / JsonNoop / JsonTriggered / skipped_error`，且失败形态已经同时覆盖 `error decoding response body` 与 `invalid type: integer 400`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 00:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `23:30-00:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-05-01T23:00:00+08:00'` 聚合，最近窗口仍同时存在：
     - `running + pending = 38`

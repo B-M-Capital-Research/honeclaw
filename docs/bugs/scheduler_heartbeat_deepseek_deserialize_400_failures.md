@@ -3,8 +3,14 @@
 - **发现时间**: 2026-04-28 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-02 01:02-01:03` 窗口最新完成样本里，`run_id=12985`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
+  - 同一条 run 的 `error_message` 再次回到同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 316`
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-05-02 01:02:52.134` 同窗任务终态直接记录为上述二次反序列化错误，说明 `2026-05-01` 标记为 `Fixed` 的修复结论并未在当前真实 heartbeat 窗口生效。
+  - 同批次 `ORCL 大事件监控` 仍能在 `01:02:17.104-01:02:17.105` 落成 `JsonTriggered + deliver`，而 `Monitor_Watchlist_11` 则在 `00:02:02.053-00:02:02.054` 退化成 `error decoding response body`；这说明当前复发仍属于 heartbeat 公共 provider 错误解析层的离散失效，而不是整批调度停摆。
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-01 14:30-14:31` 窗口最新完成样本里，`run_id=12484`（`ORCL 大事件监控`）再次落成 `execution_failed + skipped_error + delivered=0`
   - 同一条 run 的 `error_message` 仍保持同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 314`
@@ -78,7 +84,7 @@
 
 - `2026-05-01` 本轮代码修复后，heartbeat 当前使用的 `llm.auxiliary -> OpenAiCompatibleProvider` 与备用 `OpenRouterProvider` 都会在 SDK `JSONDeserialize` 之外，对 `ApiError` 类上游非 2xx / schema 失败继续走 raw HTTP 兜底，不再只依赖单一 serde 失败分支。
 - 同时补了 `chat_with_tools` 分支的数值 `code=400` 回归测试；这是 heartbeat 实际使用的调用路径，能直接覆盖此前线上 `function_calling` 任务把上游 bad request 压成 `invalid type: integer 400` 的场景。
-- 本轮没有重启现网服务，也没有等待下一次真实 heartbeat 窗口复核，因此这里先标记为 `Fixed`，待后续运行态确认 `cron_job_runs.error_message` 已切换为保留原始 `upstream HTTP 400 ... maximum context length ... (code: 400)` 后再视情况升为 `Closed`。
+- 但 `2026-05-02 01:02` 的 `run_id=12985` 说明上述修复结论并未在真实 heartbeat 窗口生效；本单由 `Fixed` 回调为 `New`，待重新核查当前运行实例究竟命中了哪条 provider / SDK 错误路径。
 
 ## 用户影响
 
