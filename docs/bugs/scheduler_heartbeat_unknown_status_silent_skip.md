@@ -15,6 +15,20 @@
 
 ## 修复进展
 
+- `2026-05-01 12:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `11:30-12:03` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`11:30` 窗口继续先写入 `run_id=12334-12344` 共 `11` 条 heartbeat started 行；随后终态另起为 `12345-12355`，其中 `12354`（`Cerebras IPO与业务进展心跳监控`）落成 `parse_kind=JsonTriggered + completed + sent`，其余任务回落成 `noop + skipped_noop`。`12:00` 窗口又先写入 `12356-12367` 共 `12` 条 started 行；截至巡检时，终态仅看到 `12368-12378` 回落为 `noop + skipped_noop`，而 `12379` 是同窗普通 scheduler `每日公司资讯与分析总结` 的 `completed + sent`。两批 heartbeat started 行仍全部保留 `running + pending`。
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 23`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 2`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `11:30:37.969-11:30:37.970`：`Cerebras IPO与业务进展心跳监控` 落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `12:00:42.531-12:00:42.532`：`TEM大事件心跳监控` 同窗再次落成 `raw_chars=0 starts_with_json=false parse_kind=Empty`
+    - `12:00:46.154-12:00:46.156`：`Monitor_Watchlist_11` 同窗再次落成 `parse_kind=Empty`
+    - `12:00:54.718-12:00:54.719`：`Cerebras IPO与业务进展心跳监控` 在新一批里又回摆成 `parse_kind=JsonNoop`
+    - `12:01:08.443-12:01:08.444`：`持仓重大事件心跳检测` 再次落成 `parse_kind=Empty`
+  - 结论：到 `2026-05-01 12:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 11:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `10:30-11:00` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`10:30` 窗口继续先写入 `run_id=12290-12300` 共 `11` 条 heartbeat started 行；随后终态另起为 `12301-12311`，全部回落成 `noop + skipped_noop`。`11:00` 窗口又先写入 `12312-12322` 共 `11` 条 heartbeat started 行；截至巡检时，终态另起为 `12323-12333`，其中 `12323/12324/12326/12327/12328/12329/12330/12331/12332/12333` 落成 `noop + skipped_noop`，`12325`（`小米30港元破位预警`）落成 `parse_kind=JsonTriggered + completed + sent`。两批 started 行仍全部保留 `running + pending`。
   - 按 `executed_at >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
