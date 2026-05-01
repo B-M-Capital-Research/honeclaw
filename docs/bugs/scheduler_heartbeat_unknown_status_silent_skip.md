@@ -7,6 +7,23 @@
 
 ## 修复进展
 
+- `2026-05-01 17:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `16:30-17:03` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`16:30` 窗口继续先写入 `run_id=12556-12566` 共 `11` 条 heartbeat started 行；随后终态另起为 `12567-12577`，其中 `12577`（`Cerebras IPO与业务进展心跳监控`）落成 `completed + sent`，其余任务回落成 `noop + skipped_noop`。`17:00` 窗口又先写入 `12578-12588` 共 `11` 条 started 行；随后终态另起为 `12589-12599`，其中 `12593`（`小米30港元破位预警`）落成 `completed + sent`，`12598`（`Cerebras IPO与业务进展心跳监控`）与 `12599`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。两批 heartbeat started 行仍全部保留 `running + pending`。
+  - 按 `executed_at >= '2026-05-01T16:03:10+08:00'` 聚合，最近一小时仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 18`
+    - `completed + sent = 2`
+    - `execution_failed + skipped_error = 2`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `17:00:28.610`：`TEM破位预警` 回到 `parse_kind=JsonNoop`
+    - `17:00:30.399`：`全天原油价格3小时播报` 同窗回到 `parse_kind=JsonNoop`
+    - `17:00:58.858`：`CAI破位预警` 回到 `parse_kind=JsonNoop`
+    - `17:01:09.184`：`ASTS 重大异动心跳监控` 落成 `raw_chars=0 starts_with_json=false parse_kind=Empty raw_preview=""`，却仍被记成 `noop + skipped_noop`
+    - `17:01:17.692`：`TEM大事件心跳监控` 同窗再次落成 `parse_kind=Empty`，也仍被记成 `noop + skipped_noop`
+    - `17:01:10.048`：`小米30港元破位预警` 又能落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `17:02:32.351`、`17:02:38.549`：`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测` 在同一批里又落成 `success=false error="LLM 错误: http error: error decoding response body"`
+  - 结论：到 `2026-05-01 17:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / skipped_error`，而空输出仍会被吞成 `noop + skipped_noop`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 16:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `15:30-16:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`15:30` 窗口继续先写入 `run_id=12512-12522` 共 `11` 条 heartbeat started 行；随后终态另起为 `12523-12533`，其中 `12532`（`TEM大事件心跳监控`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。`16:00` 窗口又先写入 `12534-12544` 共 `11` 条 started 行；截至巡检时，终态已另起为 `12545-12555`，其中 `12555`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。两批 heartbeat started 行仍全部保留 `running + pending`。
   - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
