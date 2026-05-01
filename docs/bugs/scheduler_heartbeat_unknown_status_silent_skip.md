@@ -7,6 +7,24 @@
 
 ## 修复进展
 
+- `2026-05-02 03:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `02:00-03:01` 的最新三轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-70 minutes')` 聚合，最近窗口仍同时存在：
+    - `running + pending = 33`
+    - `noop + skipped_noop = 28`
+    - `execution_failed + skipped_error = 3`
+    - `completed + sent = 2`
+  - 最近 70 分钟内的同窗终态继续混杂：
+    - `13069` `ORCL 大事件监控` -> `completed + sent`
+    - `13070` `全天原油价格3小时播报` -> `completed + sent`
+    - `13051` `TEM大事件心跳监控` -> `execution_failed + skipped_error`，错误为 `http error: error decoding response body`
+    - `13052` `持仓重大事件心跳检测` -> `execution_failed + skipped_error`，错误同样回到 `http error: error decoding response body`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `2026-05-02 02:30:35.913-02:30:35.914`：`CAI破位预警` 最终虽然被记成 `noop + skipped_noop`，但 `raw_preview` 明确夹带 `根据返回的数据...如果价格未跌破阈值，输出{\"status\":\"noop\"}。</think...`，说明“未命中”路径仍依赖从带推理痕迹的自由文本尾部抽取结构化状态，而不是稳定的纯 JSON 契约。
+    - `2026-05-02 03:00:38.872-03:00:38.873`：`ORCL 大事件监控` 在 03:00 窗口再次落成 `parse_kind=JsonTriggered` 并实际 `deliver`。
+    - `2026-05-02 03:00:52.513-03:00:52.514`：`全天原油价格3小时播报` 在同窗再次落成 `parse_kind=JsonTriggered` 并实际 `deliver`。
+    - `2026-05-02 03:00:54.633-03:00:54.634`：`持仓重大事件心跳检测` 又回落成 `parse_kind=JsonNoop`，说明同类 heartbeat 仍在 `triggered / noop / skipped_error` 之间漂移。
+  - 结论：到 `2026-05-02 03:03` 为止，本单仍稳定活跃；最新窗口不只继续混跑 `started / JsonNoop / JsonTriggered / skipped_error`，还再次暴露了“自由文本 + 推理痕迹尾部抽 JSON”的脆弱未命中路径，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 02:20` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:00-02:03` 的最新三轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error / completed + send_failed`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-05-02T01:00:00+08:00'` 聚合，最近窗口仍同时存在：
     - `running + pending = 637`
