@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：8
 - Later / 待复现：11
-- 已修复 / 已关闭：77
+- 已修复 / 已关闭：79
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
@@ -32,7 +32,6 @@
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-05-01 15:02 `持仓重大事件心跳检测` 的 `run_id=12511` 再次落成 `completed + sent`，正文仍写 `RKLB当前$82.51...上涨+7.13%，突破5%阈值`，同时继续把 `4月29日` 旧合同包装成本轮“重大增量”；同窗 `RKLB异动监控` 则刚在 `15:00` 回落 `noop`，说明旧事件被错误升级到组合级触发链路 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 14:12 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=356`、`noop + skipped_noop=309`、`completed + sent=42`、`execution_failed + skipped_error=5`、`completed + send_failed=1`；最新 `13:30` 与 `14:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2846` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 17:30 `RKLB异动监控` 的 `run_id=12616` 与 `TEM大事件心跳监控` 的 `run_id=12618` 又把 `4月29日 RKLB 国防合同`、`TIME / Investor Day` 等旧催化重新送达；两条 job 在本轮前一小时里都刚出现过 `noop` 或 `Empty`，期间没有新的独立公告 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-01 15:01 `全天原油价格3小时播报` 的 `run_id=12509` 再次 `completed + sent`，正文仍把“2月28日中东军事行动及霍尔木兹海峡实质关闭”写成确定性主因；同窗 Tavily 退化仍未阻止这类未核验归因出站 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## Later / 待复现
@@ -62,6 +61,7 @@
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-05-01 watchlist 送达前数值自检补齐“跌至 69.85，已触及或低于触发价 69.83”变体；当前价仍高于下行触发价时会落成 `near_threshold_suppressed`；`cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture` 通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | Fixed | 2026-04-30 startup error dialog 改为后台线程显示，并在 setup preflight 失败时写入 `desktop.log` 与 stderr；新增无交互抑制开关和 hone-desktop 定向回归，避免每日 `.app` smoke test 再卡在 `CFUserNotificationDisplayAlert` | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
 | Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Fixed | 2026-04-30 非 heartbeat scheduler 内部失败抑制分支新增会话落库补偿：不可外发的 `codex acp prompt ended before tool completion` 等错误会在 direct session 追加脱敏失败记录，台账仍保持 `skipped_error`；`hone-channels` scheduler/runtime 定向回归与 `cargo check -p hone-channels` 通过；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixed | 2026-05-01 `web_search` 在 Tavily 未配置 key 或全 key 因额度 / 鉴权 / 临时故障不可用时改为返回工具错误，不再把空 `status=unavailable` 结果记成 `tool_execute_success`；高风险归因链路后续不能把搜索降级当作已核验来源；`cargo test -p hone-tools web_search --lib -- --nocapture`、`cargo check -p hone-tools --tests` 通过 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Web 定时任务仅在活跃 SSE 控制台存在时才会被记为已送达 | P2 | Fixed | 2026-04-30 当前代码确认 Web scheduler 已把 SSE 推送结果降为观测字段，正文落库后默认 `sent + delivered=true`；本轮补 `web_scheduler_offline_console_still_counts_as_sent` 回归，锁定离线控制台不再落成 `send_failed` | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | Fixed | 2026-04-28 已在 bundled runtime dirty restart 前先停止旧 managed children，避免旧内嵌 Web server 在 lock preflight / 新绑定前继续占用 `127.0.0.1:8077`；`cargo check -p hone-desktop --tests` 通过 | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | Fixed | 2026-04-28 `CronSchedule` 新增 `date`，cron tool / Web API / scheduler event 均透传；未到目标日期的一次性任务不会被判定 due，定向回归通过 | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |

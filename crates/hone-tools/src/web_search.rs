@@ -170,14 +170,6 @@ impl WebSearchTool {
             )
         }
     }
-
-    fn unavailable_tool_result() -> Value {
-        serde_json::json!({
-            "status": "unavailable",
-            "results": [],
-            "answer": Value::Null
-        })
-    }
 }
 
 #[async_trait]
@@ -206,7 +198,10 @@ impl Tool for WebSearchTool {
 
         if self.keys.is_empty() {
             tracing::warn!(tool = "web_search", "tavily keys are empty");
-            return Ok(Self::unavailable_tool_result());
+            return Err(hone_core::HoneError::Tool(
+                "Tavily 搜索当前不可用：未配置可用的 Tavily API Key。请更新可用的 Tavily Key 后重试。"
+                    .to_string(),
+            ));
         }
 
         let mut key_rejected_count = 0usize;
@@ -241,7 +236,10 @@ impl Tool for WebSearchTool {
             "{}",
             self.final_user_error_message(key_rejected_count, temporary_failures)
         );
-        Ok(Self::unavailable_tool_result())
+        Err(hone_core::HoneError::Tool(self.final_user_error_message(
+            key_rejected_count,
+            temporary_failures,
+        )))
     }
 }
 
@@ -350,14 +348,61 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_with_empty_keys_returns_sanitized_unavailable_payload() {
+    async fn execute_with_empty_keys_returns_sanitized_error() {
         let tool = WebSearchTool::new(vec![], 5);
-        let result = tool
+        let error = tool
             .execute(serde_json::json!({"query": "oil"}))
             .await
-            .expect("execute");
-        assert_eq!(result["status"], "unavailable");
-        assert!(result.get("error").is_none());
-        assert!(result["results"].as_array().is_some());
+            .expect_err("missing keys should be a tool error");
+        let message = error.to_string();
+        assert!(message.contains("Tavily 搜索当前不可用"));
+        assert!(!message.contains("support@tavily.com"));
+        assert!(!message.contains("upgrade your plan"));
+    }
+
+    #[tokio::test]
+    async fn execute_with_failed_keys_returns_sanitized_error() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    let mut buf = [0_u8; 4096];
+                    let _ = socket.read(&mut buf).await;
+                    let body = r#"{"detail":{"error":"This request exceeds your plan's set usage limit. Please upgrade your plan or contact support@tavily.com"}}"#;
+                    let response = format!(
+                        "HTTP/1.1 429 Too Many Requests\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+
+        let tool = WebSearchTool {
+            keys: vec!["key1".to_string(), "key2".to_string()],
+            max_results: 5,
+            endpoint: format!("http://{addr}"),
+            http: reqwest::Client::new(),
+        };
+
+        let error = tool
+            .execute(serde_json::json!({"query": "oil"}))
+            .await
+            .expect_err("failed keys should be a tool error");
+        let message = error.to_string();
+        assert!(message.contains("Tavily 搜索当前"), "{message}");
+        assert!(!message.contains("support@tavily.com"), "{message}");
+        assert!(!message.contains("upgrade your plan"), "{message}");
     }
 }

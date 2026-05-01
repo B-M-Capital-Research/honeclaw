@@ -3,7 +3,17 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复进展（2026-05-01 19:07 CST）
+
+- `crates/hone-tools/src/web_search.rs` 将 Tavily 未配置 key、全 key 因额度 / 鉴权 / 临时故障不可用时的返回从 `Ok({"status":"unavailable","results":[]})` 改为 `HoneError::Tool(...)`。
+- 这会让 `ToolRegistry` 与 function-calling runner 把搜索降级识别为工具失败，而不是继续记录 `tool_execute_success` 并给后续模型一个看似成功的空搜索证据；错误文案保持脱敏，不包含 Tavily 原始支持邮箱、升级提示或 key 细节。
+- 这不是针对单次 Tavily 波动的特判，而是通用错误边界修复：外部搜索不可用时必须显式失败，原油 / 宏观 / 地缘归因链路不能再把“空成功搜索”当作已核验来源。
+- 验证：
+  - `cargo test -p hone-tools web_search --lib -- --nocapture`
+  - `cargo check -p hone-tools --tests`
+- 状态调整为 `Fixed`。后续若已部署当前代码后仍出现“全 key 不可用但 `web_search` 被记为成功，并据此输出确定性高风险归因”，应重新打开并优先排查是否还有其它搜索工具路径返回空成功。
 
 ## 最新进展（2026-05-01 15:18 CST）
 
