@@ -54,6 +54,7 @@
 - 若该路径是安全的相对路径、config 同级目标文件不存在、bundle/repo 里存在同名资源，则先把资源复制到 canonical config 同级目录，再生成 `effective-config.yaml`。
 - 这覆盖隔离 `config.yaml` 指向 `./soul.md` 但目录干净的启动路径，同时不自动复制 `../soul.md` 这类会逃出 config 目录的路径。
 - 修复不依赖当前机器线上运行态，也不启动生产渠道。
+- 修复提交：`5bf2ccb`。
 
 ## 验证结果
 
