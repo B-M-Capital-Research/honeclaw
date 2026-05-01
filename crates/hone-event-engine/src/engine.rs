@@ -535,7 +535,7 @@ impl EventEngine {
             // sec_recent_hours=48:每次 tick 只把"过去 48h 新出现的"filing 送入 store;
             // store.insert_event 幂等 IGNORE 保证同一 filing 不会触发两次 dispatch。
             // forms 默认覆盖 8-K / 10-Q / 10-K / S-1 / DEF 14A,severity 由 form 决定。
-            let poller = SecFilingsPoller::new(
+            let mut poller = SecFilingsPoller::new(
                 client.clone(),
                 registry.clone(),
                 SourceSchedule::CronAligned {
@@ -545,6 +545,31 @@ impl EventEngine {
             )
             .with_sec_recent_hours(48)
             .with_forms(self.engine_cfg.sec_filings.forms.clone());
+            // enrichment:enabled=true + 注入了 LlmProvider(复用 global_digest 那个) →
+            // 给每条 SecFiling 挂一段 ~200 字 thesis-investor 摘要(payload.llm_summary)。
+            // 任一条件不满足都只是降级到原 form/link body,不影响 filing 推送本身。
+            let enr = &self.engine_cfg.sec_filings.enrichment;
+            if enr.enabled {
+                if let Some(provider) = self.global_digest_provider.clone() {
+                    let summarizer: Arc<dyn crate::pollers::sec_enrichment::SecFilingSummarizer> =
+                        Arc::new(crate::pollers::sec_enrichment::LlmSecFilingSummarizer::new(
+                            provider,
+                            enr.model.clone(),
+                            enr.max_summary_tokens,
+                            enr.user_agent.clone(),
+                        ));
+                    poller = poller.with_summarizer(summarizer);
+                    info!(
+                        model = %enr.model,
+                        ua = %enr.user_agent,
+                        "sec_filings enrichment enabled (LLM 摘要)"
+                    );
+                } else {
+                    warn!(
+                        "sec_filings.enrichment.enabled=true 但未注入 LlmProvider —— filing 摘要降级到 form/link body"
+                    );
+                }
+            }
             spawn_event_source(
                 Arc::new(poller),
                 store.clone(),

@@ -20,6 +20,7 @@ use tracing::warn;
 
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
+use crate::pollers::sec_enrichment::SecFilingSummarizer;
 use crate::source::{EventSource, SourceSchedule};
 use crate::subscription::SharedRegistry;
 
@@ -94,6 +95,7 @@ pub struct SecFilingsPoller {
     forms: Vec<String>,
     registry: Arc<SharedRegistry>,
     schedule: SourceSchedule,
+    summarizer: Option<Arc<dyn SecFilingSummarizer>>,
 }
 
 impl SecFilingsPoller {
@@ -104,6 +106,7 @@ impl SecFilingsPoller {
             forms: default_forms(),
             registry,
             schedule,
+            summarizer: None,
         }
     }
 
@@ -123,10 +126,24 @@ impl SecFilingsPoller {
         self
     }
 
+    /// 注入 LLM 摘要器。事件构造完成后,poller 会逐个调
+    /// `summarizer.summarize(&event)`,把返回字符串写到
+    /// `event.payload["llm_summary"]`,renderer 优先渲染该字段。
+    /// `None`(默认)→ enrichment 通道关闭,filing 走原 form/link body。
+    pub fn with_summarizer(mut self, summarizer: Arc<dyn SecFilingSummarizer>) -> Self {
+        self.summarizer = Some(summarizer);
+        self
+    }
+
     /// 拉取某 ticker 在 form whitelist 上的最近 SEC filings。每个 form 一次
     /// HTTP(FMP `/v3/sec_filings` 必须按 type 过滤,不支持一次取多 type)。
     /// 单个 form fetch 失败只 warn 不中断 —— 一个 form 的 transient 错误不该
     /// 让整个 ticker 这一 tick 失踪。
+    ///
+    /// enrichment:若注入了 `summarizer`,在事件构造完成后逐个调摘要器,把
+    /// 返回字符串写到 `payload.llm_summary`(失败 / None 时跳过,走 fallback)。
+    /// 顺序而非并发——同 tick 通常只 0–2 条新 filing 进入 cutoff 窗口,
+    /// join_all 收益不抵复杂度。
     pub async fn fetch(&self, ticker: &str) -> anyhow::Result<Vec<MarketEvent>> {
         let cutoff = Utc::now() - chrono::Duration::hours(self.sec_recent_hours);
         let mut out = Vec::new();
@@ -146,6 +163,15 @@ impl SecFilingsPoller {
                     degraded = true,
                     "form fetch failed: {e:#}"
                 ),
+            }
+        }
+        if let Some(summarizer) = &self.summarizer {
+            for ev in out.iter_mut() {
+                if let Some(summary) = summarizer.summarize(ev).await {
+                    if let Some(obj) = ev.payload.as_object_mut() {
+                        obj.insert("llm_summary".into(), Value::String(summary));
+                    }
+                }
             }
         }
         Ok(out)
@@ -446,6 +472,47 @@ mod tests {
             {"date": "2026-05-01"}      // 缺 symbol
         ]));
         assert!(splits.is_empty());
+    }
+
+    /// summarizer 注入 → fetch 后 payload.llm_summary 应被填充。本测试没法
+    /// 触发真实 fetch 流(没有 watch_pool / FmpClient 真实 API),所以直接构造
+    /// 一个事件 vec,模拟 enrichment loop 的行为。
+    #[tokio::test]
+    async fn enrichment_fills_llm_summary_in_payload() {
+        use crate::pollers::sec_enrichment::SecFilingSummarizer;
+        use async_trait::async_trait;
+
+        struct StubSummarizer;
+        #[async_trait]
+        impl SecFilingSummarizer for StubSummarizer {
+            async fn summarize(&self, event: &MarketEvent) -> Option<String> {
+                Some(format!("LLM 摘要 for {}", event.id))
+            }
+        }
+
+        let raw = serde_json::json!([
+            {
+                "symbol": "TSLA",
+                "type": "10-Q",
+                "fillingDate": "2026-04-20",
+                "finalLink": "https://sec.gov/q.htm"
+            }
+        ]);
+        let mut events = events_from_sec_filings(&raw, "TSLA");
+        let summarizer: Arc<dyn SecFilingSummarizer> = Arc::new(StubSummarizer);
+        for ev in events.iter_mut() {
+            if let Some(s) = summarizer.summarize(ev).await {
+                if let Some(o) = ev.payload.as_object_mut() {
+                    o.insert("llm_summary".into(), serde_json::Value::String(s));
+                }
+            }
+        }
+        let summary = events[0]
+            .payload
+            .get("llm_summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        assert!(summary.starts_with("LLM 摘要 for sec:TSLA:"));
     }
 
     #[tokio::test]
