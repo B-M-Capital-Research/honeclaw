@@ -10,7 +10,9 @@ import {
   getUsers,
   listPortfolioActors,
   putNotificationPrefs,
+  type DigestSlot,
   type NotificationPrefs,
+  type QuietHoursPrefs,
 } from "@/lib/api";
 import {
   actorKey,
@@ -27,9 +29,10 @@ const DEFAULT_PREFS: NotificationPrefs = {
   allow_kinds: null,
   blocked_kinds: [],
   timezone: null,
-  digest_windows: null,
+  digest_slots: null,
   price_high_pct_override: null,
   immediate_kinds: null,
+  quiet_hours: null,
 };
 
 type RosterEntry = {
@@ -37,6 +40,24 @@ type RosterEntry = {
   prefs: NotificationPrefs;
   kindTags: string[];
 };
+
+/** 与后端 schedule_view::time_in_quiet 的语义一致:from==to 视为空区间(永远 false);
+ *  from<to 同日区间 [from,to);from>to 跨午夜 [from,24)∪[0,to)。纯 HH:MM 比较,
+ *  不依赖 now/timezone(slot 时间和 quiet 区间用同一时区解释)。 */
+function timeFallsInQuiet(hhmm: string, qh: QuietHoursPrefs | null): boolean {
+  if (!qh) return false;
+  const toMin = (s: string) => {
+    const [h, m] = s.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return -1;
+    return h * 60 + m;
+  };
+  const t = toMin(hhmm);
+  const f = toMin(qh.from);
+  const o = toMin(qh.to);
+  if (t < 0 || f < 0 || o < 0) return false;
+  if (f === o) return false;
+  return f < o ? t >= f && t < o : t >= f || t < o;
+}
 
 function sameActor(a?: ActorRef, b?: ActorRef) {
   if (!a || !b) return false;
@@ -81,17 +102,19 @@ function summarize(p: NotificationPrefs): string {
   if (p.blocked_kinds && p.blocked_kinds.length)
     parts.push(`黑名单 ${p.blocked_kinds.length}`);
   if (p.timezone) parts.push(`TZ=${p.timezone}`);
-  if (p.digest_windows) {
+  if (p.digest_slots) {
     parts.push(
-      p.digest_windows.length === 0
+      p.digest_slots.length === 0
         ? "关 digest"
-        : `digest×${p.digest_windows.length}`,
+        : `digest×${p.digest_slots.length}`,
     );
   }
   if (p.price_high_pct_override != null)
     parts.push(`⚡${p.price_high_pct_override}%`);
   if (p.immediate_kinds && p.immediate_kinds.length)
     parts.push(`强升 ${p.immediate_kinds.length}`);
+  if (p.quiet_hours)
+    parts.push(`🌙${p.quiet_hours.from}–${p.quiet_hours.to}`);
   return `启用 · ${parts.join(" · ")}`;
 }
 
@@ -270,31 +293,83 @@ export function NotificationPreferencesCard() {
     });
   };
 
-  // digest_windows 操作:null = 沿用全局,[] = 关 digest,[..] = 自定义。
-  const [windowDraft, setWindowDraft] = createSignal("");
+  // digest_slots 操作:null = 沿用全局 default_slots,[] = 关 digest,[..] = 自定义。
+  // 每个 slot 是 {id, time, label?, floor_macro?},UI 只编辑 time;新增时给 id
+  // `slot_<n>`,label/floor_macro 留空(后端默认即可),已存在 slot 的 label/floor_macro
+  // 如果是后端蒸馏出来的会原样透传不破坏。
+  const [slotDraft, setSlotDraft] = createSignal("");
   const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-  const sortedUniqueWindows = (list: string[]): string[] =>
-    Array.from(new Set(list)).sort();
-  const addWindow = () => {
-    const v = windowDraft().trim();
+  const sortedSlots = (list: DigestSlot[]): DigestSlot[] =>
+    [...list].sort((a, b) => a.time.localeCompare(b.time));
+  const addSlot = () => {
+    const v = slotDraft().trim();
+    if (!HHMM_RE.test(v)) return;
+    editCurrent((p) => {
+      const existing = p.digest_slots ?? [];
+      if (existing.some((s) => s.time === v)) return p; // 同时刻去重
+      const id = `slot_${existing.length}`;
+      return {
+        ...p,
+        digest_slots: sortedSlots([...existing, { id, time: v }]),
+      };
+    });
+    setSlotDraft("");
+  };
+  const removeSlot = (id: string) => {
+    editCurrent((p) => ({
+      ...p,
+      digest_slots: (p.digest_slots ?? []).filter((s) => s.id !== id),
+    }));
+  };
+  const resetSlotsToGlobal = () => {
+    editCurrent((p) => ({ ...p, digest_slots: null }));
+  };
+  const muteAllDigest = () => {
+    editCurrent((p) => ({ ...p, digest_slots: [] }));
+  };
+
+  // quiet_hours 操作:null = 关勿扰;{from,to,exempt_kinds} = 启用。from==to 等价于
+  // 全天静音的歧义形式,后端会拒绝(空区间永远 false),UI 提示用户避免。
+  const setQuietFrom = (raw: string) => {
+    const v = raw.trim();
     if (!HHMM_RE.test(v)) return;
     editCurrent((p) => ({
       ...p,
-      digest_windows: sortedUniqueWindows([...(p.digest_windows ?? []), v]),
+      quiet_hours: {
+        from: v,
+        to: p.quiet_hours?.to ?? "08:00",
+        exempt_kinds: p.quiet_hours?.exempt_kinds ?? [],
+      },
     }));
-    setWindowDraft("");
   };
-  const removeWindow = (hhmm: string) => {
+  const setQuietTo = (raw: string) => {
+    const v = raw.trim();
+    if (!HHMM_RE.test(v)) return;
     editCurrent((p) => ({
       ...p,
-      digest_windows: (p.digest_windows ?? []).filter((w) => w !== hhmm),
+      quiet_hours: {
+        from: p.quiet_hours?.from ?? "00:00",
+        to: v,
+        exempt_kinds: p.quiet_hours?.exempt_kinds ?? [],
+      },
     }));
   };
-  const resetWindowsToGlobal = () => {
-    editCurrent((p) => ({ ...p, digest_windows: null }));
+  const enableQuiet = () => {
+    editCurrent((p) =>
+      p.quiet_hours
+        ? p
+        : { ...p, quiet_hours: { from: "00:00", to: "08:00", exempt_kinds: [] } },
+    );
   };
-  const muteAllDigest = () => {
-    editCurrent((p) => ({ ...p, digest_windows: [] }));
+  const clearQuiet = () => {
+    editCurrent((p) => ({ ...p, quiet_hours: null }));
+  };
+  const toggleQuietExempt = (tag: string) => {
+    editCurrent((p) => {
+      if (!p.quiet_hours) return p;
+      const next = toggleTag(p.quiet_hours.exempt_kinds, tag);
+      return { ...p, quiet_hours: { ...p.quiet_hours, exempt_kinds: next } };
+    });
   };
 
   const handleTimezoneInput = (raw: string) => {
@@ -574,25 +649,33 @@ export function NotificationPreferencesCard() {
                 Digest 时刻 (本地 HH:MM;不设 = 沿用全局,清空 = 关 digest)
               </span>
               <div class="flex flex-wrap items-center gap-1">
-                <Show when={currentPrefs().digest_windows === null}>
+                <Show when={currentPrefs().digest_slots === null}>
                   <span class="text-[10px] italic text-[color:var(--text-secondary)]">
-                    当前:沿用全局 pre/post-market
+                    当前:沿用全局 default_slots
                   </span>
                 </Show>
-                <Show when={currentPrefs().digest_windows?.length === 0}>
+                <Show when={currentPrefs().digest_slots?.length === 0}>
                   <span class="rounded-md border border-amber-500 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-500">
                     关 digest(只接收 immediate sink)
                   </span>
                 </Show>
-                <For each={currentPrefs().digest_windows ?? []}>
-                  {(hhmm) => (
-                    <span class="inline-flex items-center gap-1 rounded-md border border-emerald-500 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] text-emerald-600">
-                      {hhmm}
+                <For each={currentPrefs().digest_slots ?? []}>
+                  {(slot) => (
+                    <span
+                      class="inline-flex items-center gap-1 rounded-md border border-emerald-500 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] text-emerald-600"
+                      title={slot.label ?? slot.id}
+                    >
+                      {slot.time}
+                      <Show when={slot.label}>
+                        <span class="font-sans not-italic opacity-70">
+                          · {slot.label}
+                        </span>
+                      </Show>
                       <button
                         type="button"
                         class="-mr-0.5 rounded text-emerald-700 hover:text-rose-500"
                         title="移除"
-                        onClick={() => removeWindow(hhmm)}
+                        onClick={() => removeSlot(slot.id)}
                       >
                         ×
                       </button>
@@ -604,28 +687,28 @@ export function NotificationPreferencesCard() {
                 <input
                   type="time"
                   class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 font-mono text-xs"
-                  value={windowDraft()}
-                  onInput={(e) => setWindowDraft(e.currentTarget.value)}
+                  value={slotDraft()}
+                  onInput={(e) => setSlotDraft(e.currentTarget.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      addWindow();
+                      addSlot();
                     }
                   }}
                 />
                 <button
                   type="button"
                   class="rounded-md border border-emerald-500 px-2 py-1 text-[11px] text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-40"
-                  disabled={!HHMM_RE.test(windowDraft().trim())}
-                  onClick={addWindow}
+                  disabled={!HHMM_RE.test(slotDraft().trim())}
+                  onClick={addSlot}
                 >
                   + 添加
                 </button>
                 <button
                   type="button"
                   class="rounded-md border border-[color:var(--border)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
-                  onClick={resetWindowsToGlobal}
-                  title="清掉自定义 → 沿用全局 pre/post-market"
+                  onClick={resetSlotsToGlobal}
+                  title="清掉自定义 → 沿用全局 default_slots"
                 >
                   恢复全局
                 </button>
@@ -638,6 +721,21 @@ export function NotificationPreferencesCard() {
                   关 digest
                 </button>
               </div>
+              <Show
+                when={(() => {
+                  const slots = currentPrefs().digest_slots ?? [];
+                  const qh = currentPrefs().quiet_hours;
+                  if (!qh) return false;
+                  return slots.some((s) => timeFallsInQuiet(s.time, qh));
+                })()}
+              >
+                <span class="rounded-md border border-rose-500/50 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-500">
+                  ⚠️ 部分 slot 落在 quiet_hours{" "}
+                  {currentPrefs().quiet_hours!.from}–
+                  {currentPrefs().quiet_hours!.to} 内,scheduler 不会触发它们;
+                  改时间或缩短 quiet 区间。
+                </span>
+              </Show>
             </div>
 
             <label class="flex flex-col gap-1 text-[11px]">
@@ -685,6 +783,97 @@ export function NotificationPreferencesCard() {
                   }}
                 </For>
               </div>
+            </div>
+
+            <div class="space-y-1.5 rounded-md border border-dashed border-[color:var(--border)] p-2.5">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="font-semibold text-[color:var(--text-secondary)]">
+                  勿扰时段 quiet_hours
+                </span>
+                <Show
+                  when={currentPrefs().quiet_hours}
+                  fallback={
+                    <button
+                      type="button"
+                      class="rounded-md border border-[color:var(--accent)] px-2 py-0.5 text-[10px] text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10"
+                      onClick={enableQuiet}
+                    >
+                      启用(默认 00:00–08:00)
+                    </button>
+                  }
+                >
+                  <button
+                    type="button"
+                    class="rounded-md border border-rose-500 px-2 py-0.5 text-[10px] text-rose-500 hover:bg-rose-500/10"
+                    onClick={clearQuiet}
+                  >
+                    关闭勿扰
+                  </button>
+                </Show>
+              </div>
+              <Show when={currentPrefs().quiet_hours}>
+                <div class="flex flex-wrap items-center gap-2 text-[11px]">
+                  <label class="flex items-center gap-1">
+                    <span class="text-[color:var(--text-secondary)]">从</span>
+                    <input
+                      type="time"
+                      class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-0.5 font-mono text-xs"
+                      value={currentPrefs().quiet_hours!.from}
+                      onInput={(e) => setQuietFrom(e.currentTarget.value)}
+                    />
+                  </label>
+                  <label class="flex items-center gap-1">
+                    <span class="text-[color:var(--text-secondary)]">到</span>
+                    <input
+                      type="time"
+                      class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-0.5 font-mono text-xs"
+                      value={currentPrefs().quiet_hours!.to}
+                      onInput={(e) => setQuietTo(e.currentTarget.value)}
+                    />
+                  </label>
+                  <span class="text-[10px] italic text-[color:var(--text-secondary)]">
+                    本地 HH:MM(按 prefs.timezone 解释,from&gt;to 跨午夜)
+                  </span>
+                </div>
+                <Show
+                  when={
+                    currentPrefs().quiet_hours!.from ===
+                    currentPrefs().quiet_hours!.to
+                  }
+                >
+                  <span class="rounded-md border border-rose-500/50 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-500">
+                    from == to 是空区间,后端会拒绝;改成不同时刻或关闭勿扰。
+                  </span>
+                </Show>
+                <div class="text-[10px] text-[color:var(--text-secondary)]">
+                  exempt_kinds(命中即使在 quiet 内仍立即推,常用 earnings_released)
+                </div>
+                <div class="flex flex-wrap gap-1">
+                  <For each={currentKindTags()}>
+                    {(tag) => {
+                      const selected = () =>
+                        (currentPrefs().quiet_hours?.exempt_kinds ?? []).includes(
+                          tag,
+                        );
+                      return (
+                        <button
+                          type="button"
+                          class="rounded-md border px-2 py-0.5 text-[11px]"
+                          classList={{
+                            "border-sky-500 bg-sky-500/10 text-sky-600":
+                              selected(),
+                            "border-[color:var(--border)] text-[color:var(--text-secondary)]":
+                              !selected(),
+                          }}
+                          onClick={() => toggleQuietExempt(tag)}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              </Show>
             </div>
           </div>
 

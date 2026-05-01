@@ -895,6 +895,26 @@ export async function applyImportCompanyProfiles(
 
 // ── 通知偏好 API ──────────────────────────────────────────────────────────
 
+/** 单个 digest 槽位 —— 后端 v0.4.x 起的新 schema(替代旧 digest_windows: string[])。
+ *  时刻按 prefs.timezone 解释为本地 HH:MM;label 用于渲染 header,floor_macro 控制
+ *  Pass 2 personalize 至少保留几条 macro_floor。前端编辑面板只渲染/写 id+time,
+ *  label/floor_macro 透传不破坏。 */
+export type DigestSlot = {
+  id: string;
+  time: string;
+  label?: string | null;
+  floor_macro?: number | null;
+};
+
+/** 勿扰时段:from/to 都是 prefs.timezone 解释的本地 HH:MM。在区间内 hold immediate
+ *  推送 + 跳过 digest 触发,到 to 时刻一次性 quiet_flush;exempt_kinds 命中的 kind
+ *  即使在 quiet 内也立即推。 */
+export type QuietHoursPrefs = {
+  from: string;
+  to: string;
+  exempt_kinds: string[];
+};
+
 export type NotificationPrefs = {
   enabled: boolean;
   portfolio_only: boolean;
@@ -903,12 +923,14 @@ export type NotificationPrefs = {
   blocked_kinds: string[];
   /** IANA 时区名;null = 沿用全局 digest.timezone */
   timezone: string | null;
-  /** 本地 HH:MM 列表;null = 沿用全局 [pre_market, post_market];[] = 关 digest */
-  digest_windows: string[] | null;
+  /** digest 触发槽位列表;null = 沿用全局 default_slots;[] = 关 digest */
+  digest_slots: DigestSlot[] | null;
   /** 价格异动即时推阈值(百分点);null = 沿用全局 thresholds.price_alert_high_pct */
   price_high_pct_override: number | null;
   /** 强制升 High 即时推的 kind tag 列表;null/[] = 不强升 */
   immediate_kinds: string[] | null;
+  /** 勿扰时段,null = 不启用 */
+  quiet_hours: QuietHoursPrefs | null;
 };
 
 export type NotificationPrefsBundle = {
