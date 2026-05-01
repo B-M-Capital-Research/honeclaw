@@ -112,11 +112,15 @@ fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<M
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let severity = severity_from_action(&action);
+            let target_change = target_change_from_news_title(
+                item.get("newsTitle").and_then(|v| v.as_str()).unwrap_or(""),
+            );
+            let severity = severity_from_action(&action, target_change.as_ref());
             let title = format!(
                 "{ticker} · {grading_company} {}",
-                summarize_action(&action, &new_grade, &prev_grade)
+                summarize_action(&action, &new_grade, &prev_grade, target_change.as_ref())
             );
+            let summary = summarize_payload(&new_grade, &prev_grade, target_change.as_ref());
             let url = item
                 .get("newsURL")
                 .and_then(|v| v.as_str())
@@ -128,7 +132,7 @@ fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<M
                 symbols: vec![ticker.to_string()],
                 occurred_at,
                 title,
-                summary: format!("{prev_grade} → {new_grade}"),
+                summary,
                 url,
                 source: "fmp.upgrades_downgrades".into(),
                 payload: item.clone(),
@@ -137,7 +141,23 @@ fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<M
         .collect()
 }
 
-fn severity_from_action(action: &str) -> Severity {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TargetChange {
+    direction: TargetDirection,
+    new_target: Option<String>,
+    old_target: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TargetDirection {
+    Raised,
+    Lowered,
+}
+
+fn severity_from_action(action: &str, target_change: Option<&TargetChange>) -> Severity {
+    if target_change.is_some() && matches!(action, "hold" | "maintained" | "reiterated" | "") {
+        return Severity::Medium;
+    }
     match action {
         "downgrade" => Severity::High,
         "upgrade" | "initiated" | "target-raised" | "target-lowered" => Severity::Medium,
@@ -145,7 +165,29 @@ fn severity_from_action(action: &str) -> Severity {
     }
 }
 
-fn summarize_action(action: &str, new_grade: &str, prev_grade: &str) -> String {
+fn summarize_action(
+    action: &str,
+    new_grade: &str,
+    prev_grade: &str,
+    target_change: Option<&TargetChange>,
+) -> String {
+    if let Some(target_change) = target_change {
+        let direction = match target_change.direction {
+            TargetDirection::Raised => "上调目标价",
+            TargetDirection::Lowered => "下调目标价",
+        };
+        let target = format_target_transition(target_change);
+        let rating = if new_grade.is_empty() {
+            String::new()
+        } else {
+            format!(" · 评级 {new_grade}")
+        };
+        return if target.is_empty() {
+            format!("{direction}{rating}")
+        } else {
+            format!("{direction} {target}{rating}")
+        };
+    }
     match action {
         "downgrade" => format!("下调至 {new_grade}（原 {prev_grade}）"),
         "upgrade" => format!("上调至 {new_grade}（原 {prev_grade}）"),
@@ -156,6 +198,83 @@ fn summarize_action(action: &str, new_grade: &str, prev_grade: &str) -> String {
         other if !other.is_empty() => format!("{other} · {new_grade}"),
         _ => new_grade.to_string(),
     }
+}
+
+fn summarize_payload(
+    new_grade: &str,
+    prev_grade: &str,
+    target_change: Option<&TargetChange>,
+) -> String {
+    if let Some(target_change) = target_change {
+        let target = format_target_transition(target_change);
+        let rating = if prev_grade.is_empty() && new_grade.is_empty() {
+            String::new()
+        } else if prev_grade.trim().eq_ignore_ascii_case(new_grade.trim()) {
+            format!("评级 {new_grade}")
+        } else {
+            format!("评级 {prev_grade} → {new_grade}")
+        };
+        return match (target.is_empty(), rating.is_empty()) {
+            (false, false) => format!("目标价 {target} · {rating}"),
+            (false, true) => format!("目标价 {target}"),
+            (true, false) => rating,
+            (true, true) => String::new(),
+        };
+    }
+    format!("{prev_grade} → {new_grade}")
+}
+
+fn format_target_transition(target_change: &TargetChange) -> String {
+    match (&target_change.old_target, &target_change.new_target) {
+        (Some(old), Some(new)) => format!("{old} → {new}"),
+        (None, Some(new)) => format!("至 {new}"),
+        (Some(old), None) => format!("原 {old}"),
+        (None, None) => String::new(),
+    }
+}
+
+fn target_change_from_news_title(title: &str) -> Option<TargetChange> {
+    let lower = title.to_ascii_lowercase();
+    let direction = if lower.contains("price target raised")
+        || lower.contains("target raised")
+        || lower.contains("raises price target")
+    {
+        TargetDirection::Raised
+    } else if lower.contains("price target lowered")
+        || lower.contains("target lowered")
+        || lower.contains("lowers price target")
+    {
+        TargetDirection::Lowered
+    } else {
+        return None;
+    };
+    let amounts = dollar_amounts(title);
+    Some(TargetChange {
+        direction,
+        new_target: amounts.first().cloned(),
+        old_target: amounts.get(1).cloned(),
+    })
+}
+
+fn dollar_amounts(title: &str) -> Vec<String> {
+    let chars: Vec<char> = title.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        if chars[i] != '$' {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        i += 1;
+        while i < chars.len() && (chars[i].is_ascii_digit() || matches!(chars[i], '.' | ',')) {
+            i += 1;
+        }
+        if i > start + 1 {
+            out.push(chars[start..i].iter().collect());
+        }
+    }
+    out
 }
 
 fn parse_fmp_datetime(s: &str) -> Option<DateTime<Utc>> {
@@ -214,6 +333,29 @@ mod tests {
         let raw = serde_json::json!([sample_grade("maintained", 0)]);
         let events = events_from_grades(&raw, "AAPL", Utc::now() - chrono::Duration::days(7));
         assert_eq!(events[0].severity, Severity::Low);
+    }
+
+    #[test]
+    fn hold_with_price_target_change_is_medium_and_readable() {
+        let mut row = sample_grade("hold", 0);
+        row["newGrade"] = Value::String("Overweight".into());
+        row["previousGrade"] = Value::String("Overweight".into());
+        row["newsTitle"] =
+            Value::String("Alphabet price target raised to $405 from $360 at Barclays".into());
+        row["gradingCompany"] = Value::String("Barclays".into());
+        let raw = serde_json::json!([row]);
+
+        let events = events_from_grades(&raw, "GOOGL", Utc::now() - chrono::Duration::days(7));
+
+        assert_eq!(events[0].severity, Severity::Medium);
+        assert!(
+            events[0]
+                .title
+                .contains("GOOGL · Barclays 上调目标价 $360 → $405 · 评级 Overweight"),
+            "title = {}",
+            events[0].title
+        );
+        assert_eq!(events[0].summary, "目标价 $360 → $405 · 评级 Overweight");
     }
 
     #[test]

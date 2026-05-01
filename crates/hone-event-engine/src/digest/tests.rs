@@ -538,6 +538,34 @@ fn curation_dedupes_similar_same_symbol_news_titles() {
     assert_eq!(curated.len(), 1, "同 symbol 同主题相似标题应折叠");
 }
 
+#[test]
+fn curation_dedupes_same_social_lifecycle_update() {
+    let mut first = ev("social-powell-before", "");
+    first.kind = EventKind::SocialPost;
+    first.severity = Severity::Medium;
+    first.symbols.clear();
+    first.source = "telegram.watcherguru".into();
+    first.title =
+        "Today, Jerome Powell will deliver his last FOMC press conference as Federal Reserve Chair"
+            .into();
+    first.payload = serde_json::json!({ "raw_text": first.title });
+
+    let mut duplicate = first.clone();
+    duplicate.id = "social-powell-after".into();
+    duplicate.title =
+        "JUST IN: Jerome Powell officially delivers his final FOMC press conference as Federal Reserve Chair. End of an era."
+            .into();
+    duplicate.payload = serde_json::json!({ "raw_text": duplicate.title });
+
+    let curated = curate_digest_events(vec![first, duplicate]);
+    assert_eq!(
+        curated.len(),
+        1,
+        "同一社交流生命周期事件的 before/after 文案应折叠"
+    );
+    assert_eq!(curated[0].id, "social-powell-before");
+}
+
 /// 回归:同一国家同一指标的多个 Macro 条目(如加拿大零售销售
 /// `Retail Sales MoM` / `Retail Sales MoM (Mar)`)以前不进 jaccard
 /// 去重,会把 digest 顶端被同主题宏观噪音占满。

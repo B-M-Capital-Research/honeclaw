@@ -260,7 +260,7 @@ fn closing_move_severity(abs_pct: f64, high_pct: f64) -> Severity {
     if abs_pct >= high_pct {
         Severity::High
     } else {
-        Severity::Low
+        Severity::Medium
     }
 }
 
@@ -631,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn close_quote_below_high_pct_remains_low_severity() {
+    fn close_quote_below_high_pct_is_medium_digest_signal() {
         let close_time = Utc.with_ymd_and_hms(2026, 4, 22, 20, 0, 1).unwrap();
         let now = Utc.with_ymd_and_hms(2026, 4, 23, 0, 2, 42).unwrap();
         let raw = serde_json::json!([
@@ -644,7 +644,7 @@ mod tests {
             .find(|e| matches!(e.kind, EventKind::PriceAlert { .. }))
             .unwrap();
         assert_eq!(price.id, "price_close:AMD:2026-04-22");
-        assert_eq!(price.severity, Severity::Low);
+        assert_eq!(price.severity, Severity::Medium);
     }
 
     #[test]

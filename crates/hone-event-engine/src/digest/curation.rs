@@ -257,21 +257,11 @@ fn event_domain_key(event: &MarketEvent) -> Option<String> {
 }
 
 fn digest_title_dedupe_key(event: &MarketEvent) -> Option<String> {
-    if !matches!(
-        event.kind,
-        EventKind::NewsCritical | EventKind::SocialPost
-    ) {
+    if !matches!(event.kind, EventKind::NewsCritical | EventKind::SocialPost) {
         return None;
     }
     let title = super::render::digest_event_title(event);
-    let normalized: Vec<String> = title
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter_map(|token| {
-            let token = token.trim().to_ascii_lowercase();
-            (token.len() > 2).then_some(token)
-        })
-        .take(10)
-        .collect();
+    let normalized: Vec<String> = digest_title_tokens(&title).into_iter().take(10).collect();
     if normalized.is_empty() {
         return None;
     }
@@ -291,22 +281,45 @@ fn digest_topic_tokens(event: &MarketEvent) -> Option<(String, HashSet<String>)>
     ) {
         return None;
     }
-    let tokens: HashSet<String> = super::render::digest_event_title(event)
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter_map(|token| {
-            let token = token.trim().to_ascii_lowercase();
-            if token.len() <= 2 || DIGEST_STOPWORDS.contains(&token.as_str()) {
-                None
-            } else {
-                Some(token)
-            }
-        })
+    let tokens: HashSet<String> = digest_title_tokens(&super::render::digest_event_title(event))
+        .into_iter()
         .collect();
     if tokens.len() < 3 {
         return None;
     }
     let symbol = primary_symbol_key(event).unwrap_or_else(|| "-".into());
     Some((format!("{symbol}:{}", kind_topic_tag(&event.kind)), tokens))
+}
+
+fn digest_title_tokens(title: &str) -> Vec<String> {
+    title
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter_map(|token| {
+            normalize_digest_token(token).and_then(|token| {
+                if DIGEST_STOPWORDS.contains(&token.as_str()) {
+                    None
+                } else {
+                    Some(token)
+                }
+            })
+        })
+        .collect()
+}
+
+fn normalize_digest_token(token: &str) -> Option<String> {
+    let token = token.trim().to_ascii_lowercase();
+    if token.len() <= 2 {
+        return None;
+    }
+    Some(match token.as_str() {
+        "delivers" | "delivered" | "delivering" => "deliver".into(),
+        "raises" | "raised" | "raising" => "raise".into(),
+        "lowers" | "lowered" | "lowering" => "lower".into(),
+        "boosts" | "boosted" | "boosting" => "boost".into(),
+        "jumps" | "jumped" | "rallies" | "rallied" => "rally".into(),
+        "final" => "last".into(),
+        _ => token,
+    })
 }
 
 fn token_jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
@@ -335,6 +348,8 @@ fn is_low_quality_social_source(event: &MarketEvent) -> bool {
 const DIGEST_STOPWORDS: &[&str] = &[
     "the",
     "and",
+    "are",
+    "but",
     "for",
     "with",
     "from",
@@ -345,6 +360,16 @@ const DIGEST_STOPWORDS: &[&str] = &[
     "into",
     "over",
     "under",
+    "will",
+    "his",
+    "her",
+    "its",
+    "their",
+    "just",
+    "today",
+    "officially",
+    "end",
+    "era",
     "says",
     "said",
     "stock",

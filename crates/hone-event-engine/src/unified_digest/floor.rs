@@ -11,7 +11,7 @@
 //! `MacroFloor` 不在此处分类,由 curator Pass 2 personalize 输出
 //! `PickCategory::MacroFloor` 时由 scheduler 直接打 floor 标签。
 
-use crate::event::{MarketEvent, Severity};
+use crate::event::{MarketEvent, Severity, is_noop_analyst_grade};
 use crate::prefs::{NotificationPrefs, kind_tag};
 use crate::unified_digest::FloorTag;
 
@@ -24,6 +24,9 @@ pub fn classify_floor(event: &MarketEvent, prefs: &NotificationPrefs) -> Option<
     }
     if let Some(immediates) = &prefs.immediate_kinds {
         let tag = kind_tag(&event.kind);
+        if is_noop_analyst_grade(event) {
+            return None;
+        }
         if immediates.iter().any(|t| t == tag) {
             return Some(FloorTag::UserImmediate);
         }
@@ -84,6 +87,22 @@ mod tests {
             Severity::Medium,
         );
         assert_eq!(classify_floor(&e, &prefs), Some(FloorTag::UserImmediate));
+    }
+
+    #[test]
+    fn immediate_kinds_does_not_floor_noop_analyst_grade() {
+        let mut prefs = NotificationPrefs::default();
+        prefs.immediate_kinds = Some(vec!["analyst_grade".into()]);
+        let mut e = ev("grade-1", EventKind::AnalystGrade, Severity::Low);
+        e.source = "fmp.upgrades_downgrades".into();
+        e.summary = "Overweight → Overweight".into();
+        e.payload = serde_json::json!({
+            "action": "hold",
+            "previousGrade": "Overweight",
+            "newGrade": "Overweight"
+        });
+
+        assert_eq!(classify_floor(&e, &prefs), None);
     }
 
     #[test]

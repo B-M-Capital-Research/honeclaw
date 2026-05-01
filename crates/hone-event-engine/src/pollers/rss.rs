@@ -103,6 +103,9 @@ impl RssNewsPoller {
         if item.link.trim().is_empty() || item.title.trim().is_empty() {
             return None;
         }
+        if is_low_signal_video_item(&item) {
+            return None;
+        }
         let occurred_at = item.pub_date.unwrap_or(now);
         // payload 模拟 FMP shape,让 collector / curator 复用同一解析路径
         let payload = json!({
@@ -130,6 +133,14 @@ impl RssNewsPoller {
             payload,
         })
     }
+}
+
+fn is_low_signal_video_item(item: &RssItem) -> bool {
+    let link = item.link.to_ascii_lowercase();
+    let title = item.title.to_ascii_lowercase();
+    link.contains("/news/videos/")
+        || title.contains("| the opening trade")
+        || title.contains("| bloomberg surveillance")
 }
 
 /// 解析 RSS 2.0 feed,抽 `<channel>/<item>` 列表。
@@ -322,6 +333,26 @@ mod tests {
         // 只有第三条 title+link 都非空
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].title, "real");
+    }
+
+    #[test]
+    fn into_event_skips_bloomberg_video_recaps() {
+        let poller = RssNewsPoller::new(
+            "bloomberg_markets",
+            "https://feeds.bloomberg.com/markets/news.rss",
+            Duration::from_secs(3600),
+        );
+        let item = RssItem {
+            title:
+                "Trump Signals No Letup of Naval Blockade, Tech Results on Deck | The Opening Trade 4/29/2026"
+                    .into(),
+            link: "https://www.bloomberg.com/news/videos/2026-04-29/the-opening-trade-4-29-2026-video"
+                .into(),
+            pub_date: Some(Utc::now()),
+            summary: "A broad market video recap.".into(),
+        };
+
+        assert!(poller.into_event(item, Utc::now()).is_none());
     }
 
     #[test]

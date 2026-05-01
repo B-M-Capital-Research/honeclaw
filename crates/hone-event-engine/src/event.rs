@@ -122,9 +122,56 @@ pub fn is_noop_analyst_grade(event: &MarketEvent) -> bool {
     if !matches!(action.as_str(), "hold" | "maintained" | "reiterated") {
         return false;
     }
+    if analyst_grade_has_target_change(event) {
+        return false;
+    }
     let previous = normalized_grade(event.payload.get("previousGrade").and_then(|v| v.as_str()));
     let new = normalized_grade(event.payload.get("newGrade").and_then(|v| v.as_str()));
     !new.is_empty() && previous == new
+}
+
+fn analyst_grade_has_target_change(event: &MarketEvent) -> bool {
+    let news_title = event
+        .payload
+        .get("newsTitle")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    news_title.contains("price target raised")
+        || news_title.contains("price target lowered")
+        || news_title.contains("target raised")
+        || news_title.contains("target lowered")
+        || target_field_changed(event)
+}
+
+fn target_field_changed(event: &MarketEvent) -> bool {
+    let old = first_payload_f64(
+        &event.payload,
+        &[
+            "previousPriceTarget",
+            "oldPriceTarget",
+            "previousTargetPrice",
+            "oldTargetPrice",
+        ],
+    );
+    let new = first_payload_f64(
+        &event.payload,
+        &[
+            "newPriceTarget",
+            "priceTarget",
+            "targetPrice",
+            "newTargetPrice",
+        ],
+    );
+    match (old, new) {
+        (Some(old), Some(new)) => (old - new).abs() > f64::EPSILON,
+        _ => false,
+    }
+}
+
+fn first_payload_f64(payload: &serde_json::Value, keys: &[&str]) -> Option<f64> {
+    keys.iter()
+        .find_map(|key| payload.get(*key).and_then(|v| v.as_f64()))
 }
 
 fn normalized_grade(raw: Option<&str>) -> String {
@@ -271,6 +318,29 @@ mod tests {
                 "action": "target-raised",
                 "previousGrade": "Outperform",
                 "newGrade": "Outperform"
+            }),
+        };
+
+        assert!(!is_noop_analyst_grade(&ev));
+    }
+
+    #[test]
+    fn target_change_news_title_with_hold_action_is_not_noop_grade() {
+        let ev = MarketEvent {
+            id: "grade:GOOGL:test".into(),
+            kind: EventKind::AnalystGrade,
+            severity: Severity::Low,
+            symbols: vec!["GOOGL".into()],
+            occurred_at: Utc::now(),
+            title: "GOOGL · Barclays hold · Overweight".into(),
+            summary: "Overweight → Overweight".into(),
+            url: None,
+            source: "fmp.upgrades_downgrades".into(),
+            payload: serde_json::json!({
+                "action": "hold",
+                "previousGrade": "Overweight",
+                "newGrade": "Overweight",
+                "newsTitle": "Alphabet price target raised to $405 from $360 at Barclays"
             }),
         };
 

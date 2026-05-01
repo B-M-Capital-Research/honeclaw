@@ -267,6 +267,7 @@ impl UnifiedDigestScheduler {
                 continue;
             }
             let user_prefs = self.prefs.load(&actor);
+            let focus_symbols = actor_focus_symbols(&self.portfolio_storage, &actor, &user_prefs);
             let effective_tz =
                 EffectiveTz::from_actor_prefs(user_prefs.timezone.as_deref(), self.tz_offset_hours);
             let actor_key_str = actor_key(&actor);
@@ -438,6 +439,17 @@ impl UnifiedDigestScheduler {
                 for pi in &personalized {
                     let ev = pi.candidate.event.clone();
                     if !user_prefs.should_deliver(&ev) {
+                        continue;
+                    }
+                    if !global_pick_matches_actor_focus(&ev, &focus_symbols) {
+                        let _ = self.store.log_delivery(
+                            &ev.id,
+                            &actor_key_str,
+                            "global_digest_item",
+                            ev.severity,
+                            "filtered_focus",
+                            None,
+                        );
                         continue;
                     }
                     let force_floor = match pi.category {
@@ -1027,6 +1039,45 @@ fn effective_tz_date_key(
     EffectiveTz::from_actor_prefs(prefs.timezone.as_deref(), fallback_offset_hours).date_key(now)
 }
 
+fn actor_focus_symbols(
+    storage: &PortfolioStorage,
+    actor: &ActorIdentity,
+    prefs: &NotificationPrefs,
+) -> HashSet<String> {
+    let mut symbols = HashSet::new();
+    if let Ok(Some(portfolio)) = storage.load(actor) {
+        for holding in portfolio.holdings {
+            insert_symbol(&mut symbols, &holding.symbol);
+            if let Some(underlying) = holding.underlying.as_deref() {
+                insert_symbol(&mut symbols, underlying);
+            }
+        }
+    }
+    if let Some(theses) = prefs.investment_theses.as_ref() {
+        for symbol in theses.keys() {
+            insert_symbol(&mut symbols, symbol);
+        }
+    }
+    symbols
+}
+
+fn global_pick_matches_actor_focus(event: &MarketEvent, focus_symbols: &HashSet<String>) -> bool {
+    if focus_symbols.is_empty() || event.symbols.is_empty() {
+        return true;
+    }
+    event
+        .symbols
+        .iter()
+        .any(|symbol| focus_symbols.contains(&symbol.trim().to_ascii_uppercase()))
+}
+
+fn insert_symbol(symbols: &mut HashSet<String>, symbol: &str) {
+    let symbol = symbol.trim().to_ascii_uppercase();
+    if !symbol.is_empty() {
+        symbols.insert(symbol);
+    }
+}
+
 fn log_omitted_digest_items(store: &EventStore, actor_key: &str, omitted: &[MarketEvent]) {
     for item in omitted {
         let _ = store.log_delivery(
@@ -1037,5 +1088,59 @@ fn log_omitted_digest_items(store: &EventStore, actor_key: &str, omitted: &[Mark
             "omitted",
             None,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event::{EventKind, Severity};
+    use std::collections::{HashMap, HashSet};
+    use tempfile::tempdir;
+
+    fn actor() -> ActorIdentity {
+        ActorIdentity::new("telegram", "u1", None::<&str>).unwrap()
+    }
+
+    fn news(symbols: Vec<&str>) -> MarketEvent {
+        MarketEvent {
+            id: "news:1".into(),
+            kind: EventKind::NewsCritical,
+            severity: Severity::Medium,
+            symbols: symbols.into_iter().map(str::to_string).collect(),
+            occurred_at: Utc::now(),
+            title: "news".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.stock_news:cnbc.com".into(),
+            payload: serde_json::json!({"source_class": "trusted"}),
+        }
+    }
+
+    #[test]
+    fn actor_focus_symbols_include_portfolio_and_theses() {
+        let dir = tempdir().unwrap();
+        let storage = PortfolioStorage::new(dir.path());
+        let actor = actor();
+        storage.upsert_watch(&actor, "AAPL", "stock").unwrap();
+        let mut prefs = NotificationPrefs::default();
+        prefs.investment_theses = Some(HashMap::from([("MU".to_string(), "memory".to_string())]));
+
+        let symbols = actor_focus_symbols(&storage, &actor, &prefs);
+
+        assert!(symbols.contains("AAPL"));
+        assert!(symbols.contains("MU"));
+    }
+
+    #[test]
+    fn global_pick_focus_filter_drops_non_focus_symbol_news() {
+        let focus = HashSet::from(["AAPL".to_string(), "MU".to_string()]);
+
+        assert!(!global_pick_matches_actor_focus(
+            &news(vec!["META"]),
+            &focus
+        ));
+        assert!(global_pick_matches_actor_focus(&news(vec!["AAPL"]), &focus));
+        assert!(global_pick_matches_actor_focus(&news(vec![]), &focus));
     }
 }
