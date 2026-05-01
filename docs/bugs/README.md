@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 04:01 CST
+最后更新：2026-05-02 04:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,7 +15,7 @@
 
 ## 当前概览
 
-- 活跃待修复：8
+- 活跃待修复：9
 - Later / 待复现：11
 - 已修复 / 已关闭：80
 - 历史分析 / 部分止血：5
@@ -33,6 +33,7 @@
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-02 03:03 `run_id=13070` 再次把“2026 年需求前景偏弱”“霍尔木兹海峡局势提供支撑”组织成确定性主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-02 01:12 `持仓重大事件心跳检测` 的 `run_id=12985` 再次落成 `execution_failed + skipped_error`，错误恢复为 `invalid type: integer 400, expected a string`；说明 2026-05-01 标记的 `Fixed` 结论未在真实 heartbeat 窗口生效 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
+| Daily macOS build 隔离配置目录缺少 `soul.md` 时 release app setup panic | P3 | New | 2026-05-02 04:09 首次隔离启动因 `system_prompt_path` 解析到 `data/runtime/daily-build-check/./soul.md` 缺失而失败；复制 repo `soul.md` 到临时配置目录后，同一 `.app` 已通过 `/api/meta`、用户端 200、渠道 disabled 与清理验证 | [daily_macos_build_isolated_config_missing_soul.md](./daily_macos_build_isolated_config_missing_soul.md) |
 
 ## Later / 待复现
 
