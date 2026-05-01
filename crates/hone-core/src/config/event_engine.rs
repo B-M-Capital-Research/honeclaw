@@ -484,6 +484,13 @@ pub struct Sources {
     /// `spawn_price_poller` —— FMP /v3/quote 按 watch pool 拉,产出 PriceAlert/52W
     #[serde(default = "default_true")]
     pub price: bool,
+    /// `spawn_extended_hours_poller` —— FMP /v3/historical-chart/1min?extended=true 按
+    /// watch pool 拉,30min cadence,只在 ET 04:00-09:30 / 16:00-20:00 工作。盘前/盘后
+    /// 振幅 ≥ 用户阈值时产出 PriceAlert{window: "pre"|"post"}。FMP 常规 quote endpoint
+    /// 不在 extended hours 更新 timestamp,会被 PricePoller 判 stale 跳过(根因:GOOGL
+    /// 财报夜整夜无推送),本通道补这块盲区。
+    #[serde(default = "default_true")]
+    pub extended_hours: bool,
     /// `spawn_earnings_poller` —— FMP /v3/earning_calendar,产出 EarningsUpcoming
     #[serde(default = "default_true")]
     pub earnings_calendar: bool,
@@ -520,6 +527,7 @@ impl Default for Sources {
         Self {
             news: true,
             price: true,
+            extended_hours: true,
             earnings_calendar: true,
             corp_action: true,
             sec_filings: true,
