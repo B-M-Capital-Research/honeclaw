@@ -250,6 +250,133 @@ async fn same_symbol_cooldown_demotes_second_high_to_digest() {
     assert_eq!(s3 + p3, 0, "未订阅 NVDA,不应 dispatch");
 }
 
+fn analyst_grade_ev(id: &str, symbol: &str, firm: &str) -> MarketEvent {
+    MarketEvent {
+        id: id.into(),
+        kind: EventKind::AnalystGrade,
+        severity: Severity::High,
+        symbols: vec![symbol.into()],
+        occurred_at: Utc::now(),
+        title: format!("{symbol} {firm} upgrade"),
+        summary: String::new(),
+        url: None,
+        source: "fmp.grade".into(),
+        payload: serde_json::json!({"gradingCompany": firm, "action": "upgrade"}),
+    }
+}
+
+#[tokio::test]
+async fn analyst_grade_two_firms_same_symbol_both_pass() {
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["SNDK".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_same_symbol_cooldown_minutes(60);
+
+    let goldman = analyst_grade_ev("grade:SNDK:t1:Goldman Sachs", "SNDK", "Goldman Sachs");
+    store.insert_event(&goldman).unwrap();
+    assert_eq!(router.dispatch(&goldman).await.unwrap(), (1, 0));
+
+    // 同 ticker 不同投行,60min 冷却内仍应直推
+    let raymond = analyst_grade_ev("grade:SNDK:t2:Raymond James", "SNDK", "Raymond James");
+    store.insert_event(&raymond).unwrap();
+    assert_eq!(
+        router.dispatch(&raymond).await.unwrap(),
+        (1, 0),
+        "不同投行不应被同 ticker cooldown 互相阻塞"
+    );
+    assert_eq!(sink.calls.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn analyst_grade_same_firm_same_symbol_demotes() {
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["SNDK".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_same_symbol_cooldown_minutes(60);
+
+    let first = analyst_grade_ev("grade:SNDK:t1:Goldman Sachs", "SNDK", "Goldman Sachs");
+    store.insert_event(&first).unwrap();
+    assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
+
+    // 同投行同 ticker 60min 内仍应降级 —— 防"同投行刷数据"
+    let second = analyst_grade_ev("grade:SNDK:t2:Goldman Sachs", "SNDK", "Goldman Sachs");
+    store.insert_event(&second).unwrap();
+    assert_eq!(
+        router.dispatch(&second).await.unwrap(),
+        (0, 1),
+        "同投行同 ticker 应被冷却"
+    );
+}
+
+#[tokio::test]
+async fn analyst_grade_missing_grading_company_falls_back_to_global_cooldown() {
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["SNDK".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_same_symbol_cooldown_minutes(60);
+
+    // payload 没 gradingCompany,firm = None,走旧的 analyst 共冷却(防御性 fallback)
+    let mk = |id: &str| MarketEvent {
+        id: id.into(),
+        kind: EventKind::AnalystGrade,
+        severity: Severity::High,
+        symbols: vec!["SNDK".into()],
+        occurred_at: Utc::now(),
+        title: "grade no firm".into(),
+        summary: String::new(),
+        url: None,
+        source: "fmp.grade".into(),
+        payload: serde_json::json!({"action": "upgrade"}),
+    };
+    let a = mk("grade:SNDK:t1:unknown_a");
+    store.insert_event(&a).unwrap();
+    assert_eq!(router.dispatch(&a).await.unwrap(), (1, 0));
+
+    let b = mk("grade:SNDK:t2:unknown_b");
+    store.insert_event(&b).unwrap();
+    assert_eq!(
+        router.dispatch(&b).await.unwrap(),
+        (0, 1),
+        "缺 gradingCompany 时应回落到全 analyst 共冷却"
+    );
+}
+
 #[tokio::test]
 async fn cooldown_zero_means_no_throttle() {
     let mut reg = SubscriptionRegistry::new();

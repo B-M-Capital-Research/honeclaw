@@ -17,7 +17,7 @@
 use tracing::info;
 
 use crate::digest::time_window::EffectiveTz;
-use crate::event::{MarketEvent, Severity};
+use crate::event::{EventKind, MarketEvent, Severity};
 use crate::prefs::kind_tag;
 use crate::renderer::{self, RenderFormat};
 
@@ -224,6 +224,8 @@ impl NotificationRouter {
             }
             // 同 ticker 冷却:如果事件还是 High,且 cooldown>0,检查任一 symbol 最近一次
             // High+sink+sent 的时间戳,若在冷却窗口内则降级进 digest。
+            // AnalystGrade 额外按 gradingCompany 拆冷却 key —— 同 ticker 不同投行
+            // 同分钟到达视为独立信号,不互相冷却(同投行同 ticker 仍受 60min 冷却约束)。
             if matches!(effective_sev, Severity::High)
                 && self.same_symbol_cooldown_minutes > 0
                 && !event.symbols.is_empty()
@@ -231,11 +233,21 @@ impl NotificationRouter {
             {
                 let cutoff = chrono::Utc::now()
                     - chrono::Duration::minutes(self.same_symbol_cooldown_minutes as i64);
+                let firm: Option<String> = if matches!(event.kind, EventKind::AnalystGrade) {
+                    event
+                        .payload
+                        .get("gradingCompany")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                } else {
+                    None
+                };
                 for sym in &event.symbols {
                     match self.store.last_high_sink_send_for_symbol_category(
                         &actor_key(&actor),
                         sym,
                         event_category(event),
+                        firm.as_deref(),
                     ) {
                         Ok(Some(ts)) if ts >= cutoff => {
                             tracing::info!(

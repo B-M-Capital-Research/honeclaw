@@ -421,15 +421,19 @@ impl EventStore {
         actor: &str,
         symbol: &str,
     ) -> anyhow::Result<Option<DateTime<Utc>>> {
-        self.last_high_sink_send_for_symbol_category(actor, symbol, "all")
+        self.last_high_sink_send_for_symbol_category(actor, symbol, "all", None)
     }
 
     /// 该 actor 针对 symbol + category 最近一次 High 成功送达 sink 的时刻。
+    /// `firm` 仅当 category 命中 kind 列表时附加 `payload_json.gradingCompany` 过滤,
+    /// 用于把 AnalystGrade 的冷却 key 拆到 (symbol, firm) 粒度,这样同 ticker 不同
+    /// 投行同分钟到达不会互相冷却。其他 category 一律传 `None`。
     pub fn last_high_sink_send_for_symbol_category(
         &self,
         actor: &str,
         symbol: &str,
         category: &str,
+        firm: Option<&str>,
     ) -> anyhow::Result<Option<DateTime<Utc>>> {
         if category == "all" {
             return self.last_high_sink_send_for_symbol_all(actor, symbol);
@@ -439,6 +443,11 @@ impl EventStore {
         };
         let predicates = vec!["e.kind_json LIKE ?"; tags.len()].join(" OR ");
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
+        let firm_clause = if firm.is_some() {
+            "AND json_extract(e.payload_json, '$.gradingCompany') = ?"
+        } else {
+            ""
+        };
         let sql = format!(
             r#"
             SELECT MAX(d.sent_at_ts) FROM delivery_log d
@@ -449,13 +458,17 @@ impl EventStore {
               AND d.channel = 'sink'
               AND e.symbols_json LIKE ?
               AND ({predicates})
+              {firm_clause}
             "#
         );
-        let mut values = Vec::with_capacity(2 + tags.len());
+        let mut values = Vec::with_capacity(2 + tags.len() + firm.is_some() as usize);
         values.push(SqlValue::Text(actor.to_string()));
         values.push(SqlValue::Text(needle));
         for tag in tags {
             values.push(SqlValue::Text(format!("%\"{tag}\"%")));
+        }
+        if let Some(f) = firm {
+            values.push(SqlValue::Text(f.to_string()));
         }
         let conn = self.conn.lock().unwrap();
         let row: Option<i64> = conn.query_row(&sql, params_from_iter(values), |row| {
@@ -1515,6 +1528,65 @@ mod tests {
         assert!(
             store
                 .last_high_sink_send_for_symbol(actor, "TSLA")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn last_high_sink_send_with_firm_filter_distinguishes_grading_company() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let actor = "tg::::u1";
+
+        let mk = |id: &str, firm: &str| MarketEvent {
+            id: id.into(),
+            kind: EventKind::AnalystGrade,
+            severity: Severity::High,
+            symbols: vec!["SNDK".into()],
+            occurred_at: Utc::now(),
+            title: "grade".into(),
+            summary: String::new(),
+            url: None,
+            source: "fmp.grade".into(),
+            payload: serde_json::json!({"gradingCompany": firm}),
+        };
+        let goldman = mk("g1", "Goldman Sachs");
+        let raymond = mk("r1", "Raymond James");
+        store.insert_event(&goldman).unwrap();
+        store.insert_event(&raymond).unwrap();
+        store
+            .log_delivery("g1", actor, "sink", Severity::High, "sent", None)
+            .unwrap();
+
+        // 不带 firm 过滤 → 命中 Goldman 的 sent
+        assert!(
+            store
+                .last_high_sink_send_for_symbol_category(actor, "SNDK", "analyst", None)
+                .unwrap()
+                .is_some()
+        );
+        // 带 firm = Goldman → 命中
+        assert!(
+            store
+                .last_high_sink_send_for_symbol_category(
+                    actor,
+                    "SNDK",
+                    "analyst",
+                    Some("Goldman Sachs"),
+                )
+                .unwrap()
+                .is_some()
+        );
+        // 带 firm = Raymond James → 没记录,应返回 None
+        assert!(
+            store
+                .last_high_sink_send_for_symbol_category(
+                    actor,
+                    "SNDK",
+                    "analyst",
+                    Some("Raymond James"),
+                )
                 .unwrap()
                 .is_none()
         );
