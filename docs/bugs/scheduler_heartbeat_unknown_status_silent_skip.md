@@ -7,6 +7,41 @@
 
 ## 修复进展
 
+- `2026-05-02 00:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `23:30-00:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-05-01T23:00:00+08:00'` 聚合，最近窗口仍同时存在：
+    - `running + pending = 38`
+    - `noop + skipped_noop = 29`
+    - `completed + sent = 6`
+    - `execution_failed + skipped_error = 1`
+  - `23:30` 这批 heartbeat started 行仍先以 `run_id=12897-12903` 保留为 `running + pending`，随后同窗终态又另起为：
+    - `12904` `全天原油价格3小时播报` -> `noop + skipped_noop`
+    - `12906` `ORCL 大事件监控` -> `noop + skipped_noop`
+    - `12908` `持仓重大事件心跳检测` -> `noop + skipped_noop`
+    - `12909` `RKLB异动监控` -> `noop + skipped_noop`
+    - `12910` `小米30港元破位预警` -> `completed + sent`
+    - `12911` `Cerebras IPO与业务进展心跳监控` -> `noop + skipped_noop`
+    - `12912` `TEM大事件心跳监控` -> `noop + skipped_noop`
+    - `12913` `Monitor_Watchlist_11` -> `noop + skipped_noop`
+    - `12914` `ASTS 重大异动心跳监控` -> `noop + skipped_noop`
+  - `00:00` 这一轮又先写入 `run_id=12915-12928` 的 started 行；截至巡检时，同窗终态已另起为：
+    - `12918` `ASTS 重大异动心跳监控` -> `noop + skipped_noop`
+    - `12919` `TEM破位预警` -> `noop + skipped_noop`
+    - `12921` `TEM大事件心跳监控` -> `noop + skipped_noop`
+    - `12926` `RKLB异动监控` -> `noop + skipped_noop`
+    - `12930` `CAI破位预警` -> `noop + skipped_noop`
+    - `12931` `Cerebras IPO与业务进展心跳监控` -> `noop + skipped_noop`
+    - `12932` `TEM大事件心跳监控` -> `noop + skipped_noop`
+    - `12933` `TEM破位预警` -> `noop + skipped_noop`
+    - `12935` `全天原油价格3小时播报` -> `completed + sent`
+    - `12936` `持仓重大事件心跳检测` -> `noop + skipped_noop`
+    - `12937` `ASTS 重大异动心跳监控` -> `noop + skipped_noop`
+    - `12938` `Monitor_Watchlist_11` -> `execution_failed + skipped_error`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `2026-05-02 00:01:19.115-00:01:19.116`：`全天原油价格3小时播报` 在零点窗口落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-02 00:01:22.819-00:01:22.821`：`持仓重大事件心跳检测` 回到 `parse_kind=JsonNoop`
+    - `2026-05-02 00:02:02.053-00:02:02.054`：`Monitor_Watchlist_11` 同窗又退化成 `LLM 错误: http error: error decoding response body`
+  - 结论：到 `2026-05-02 00:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / JsonNoop / JsonTriggered / skipped_error`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 23:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `22:30-23:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`22:30` 窗口先写入 `run_id=12847-12857` 共 `11` 条 heartbeat started 行；随后终态另起为 `12858-12866`，全部回落成 `noop + skipped_noop`。`23:00` 窗口又先写入 `12867-12878` 共 `12` 条 started 行；截至巡检时，终态已另起为 `12879-12890`，其中 `12884`（`ORCL 大事件监控`）落成 `completed + sent`，其余任务回落成 `noop + skipped_noop`。两批 started 行仍全部保留 `running + pending`。
   - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
