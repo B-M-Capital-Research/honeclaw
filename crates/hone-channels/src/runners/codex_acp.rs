@@ -27,13 +27,13 @@ use super::types::{
 const CODEX_ACP_SESSION_KEY: &str = "codex_acp_session_id";
 const MIN_CODEX_VERSION: CliVersion = CliVersion {
     major: 0,
-    minor: 115,
+    minor: 125,
     patch: 0,
 };
 const MIN_CODEX_ACP_VERSION: CliVersion = CliVersion {
     major: 0,
-    minor: 9,
-    patch: 5,
+    minor: 12,
+    patch: 0,
 };
 
 pub struct CodexAcpRunner {

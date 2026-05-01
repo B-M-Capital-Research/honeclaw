@@ -477,12 +477,12 @@ agent:
   codex_acp:
     command: "codex-acp"
     args: []
-    # Startup checks: codex >= 0.115.0 and codex-acp == 0.9.5; otherwise fail with an upgrade or switch-version hint
+    # Startup checks: codex >= 0.125.0 and codex-acp >= 0.12.0; update both CLIs before using gpt-5.5
     codex_command: "codex"
     # Explicit ACP session model; empty uses the codex-acp default model
     model: "gpt-5.5"
     # Reasoning effort passed to Codex as model_reasoning_effort; for example low|medium|high|xhigh
-    variant: "medium"
+    variant: "high"
     # Recommended: keep workspace-write + never, and let Hone run inside the actor sandbox
     sandbox_mode: "workspace-write"
     approval_policy: "never"

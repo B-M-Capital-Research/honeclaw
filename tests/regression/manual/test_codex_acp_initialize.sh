@@ -92,7 +92,7 @@ sleep 2
 
 echo "[INFO] initialize ACP session"
 send_jsonrpc '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}'
-if ! wait_for_pattern '"id":1,"result"' 30; then
+if ! wait_for_pattern '"id":1' 30; then
   echo "[FAIL] codex acp initialize did not return a result" >&2
   echo "--- stdout ---" >&2
   cat "$STDOUT_LOG" >&2 || true
@@ -101,8 +101,29 @@ if ! wait_for_pattern '"id":1,"result"' 30; then
   exit 1
 fi
 
-if ! grep -q '"version":"0.9.5"' "$STDOUT_LOG"; then
-  echo "[FAIL] codex acp initialize did not report adapter version 0.9.5" >&2
+if ! python3 - "$STDOUT_LOG" <<'PY'
+import json
+import re
+import sys
+
+minimum = (0, 12, 0)
+for line in open(sys.argv[1], encoding="utf-8"):
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    version = (
+        payload.get("result", {})
+        .get("agentInfo", {})
+        .get("version", "")
+    )
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
+    if match and tuple(map(int, match.groups())) >= minimum:
+        sys.exit(0)
+sys.exit(1)
+PY
+then
+  echo "[FAIL] codex acp initialize did not report adapter version >= 0.12.0" >&2
   echo "--- stdout ---" >&2
   cat "$STDOUT_LOG" >&2 || true
   exit 1
@@ -115,7 +136,7 @@ EOF
 
 echo "[INFO] creating codex ACP session with Hone MCP bridge"
 send_jsonrpc "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"$ROOT_DIR\",\"mcpServers\":[{\"name\":\"hone\",\"command\":\"$HONE_MCP_BIN\",\"args\":[],\"env\":$MCP_ENV}]}}"
-if ! wait_for_pattern '"id":2,"result"' 45; then
+if ! wait_for_pattern '"id":2' 45; then
   echo "[FAIL] codex acp session/new did not succeed" >&2
   echo "--- stdout ---" >&2
   cat "$STDOUT_LOG" >&2 || true
@@ -124,7 +145,23 @@ if ! wait_for_pattern '"id":2,"result"' 45; then
   exit 1
 fi
 
-SESSION_ID="$(LC_ALL=C sed -n 's/.*"id":2,"result":{"sessionId":"\([^"]*\)".*/\1/p' "$STDOUT_LOG" | tail -n 1)"
+SESSION_ID="$(python3 - "$STDOUT_LOG" <<'PY'
+import json
+import sys
+
+for line in open(sys.argv[1], encoding="utf-8"):
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if payload.get("id") == 2:
+        session_id = payload.get("result", {}).get("sessionId", "")
+        if session_id:
+            print(session_id)
+            sys.exit(0)
+sys.exit(1)
+PY
+)"
 if [[ -z "$SESSION_ID" ]]; then
   echo "[FAIL] could not extract sessionId from session/new response" >&2
   echo "--- stdout ---" >&2

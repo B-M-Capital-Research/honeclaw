@@ -451,13 +451,13 @@ fn codex_version_matrix_accepts_minimum_validated_pair() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 115,
+            minor: 125,
             patch: 0,
         },
         CliVersion {
             major: 0,
-            minor: 9,
-            patch: 5,
+            minor: 12,
+            patch: 0,
         },
     );
     assert!(result.is_ok());
@@ -468,12 +468,12 @@ fn codex_version_matrix_accepts_newer_adapter() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 115,
+            minor: 125,
             patch: 0,
         },
         CliVersion {
             major: 0,
-            minor: 11,
+            minor: 12,
             patch: 1,
         },
     );
@@ -485,13 +485,13 @@ fn codex_version_matrix_rejects_old_codex() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 105,
+            minor: 124,
             patch: 0,
         },
         CliVersion {
             major: 0,
-            minor: 9,
-            patch: 5,
+            minor: 12,
+            patch: 0,
         },
     );
     assert!(
@@ -506,13 +506,13 @@ fn codex_version_matrix_rejects_old_adapter() {
     let result = validate_codex_version_matrix(
         CliVersion {
             major: 0,
-            minor: 115,
+            minor: 125,
             patch: 0,
         },
         CliVersion {
             major: 0,
-            minor: 9,
-            patch: 4,
+            minor: 11,
+            patch: 1,
         },
     );
     assert!(

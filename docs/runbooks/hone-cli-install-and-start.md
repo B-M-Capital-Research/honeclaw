@@ -1,6 +1,6 @@
 # Runbook: Hone CLI Install And Start
 
-Last updated: 2026-04-12
+Last updated: 2026-04-30
 
 ## When To Use
 
@@ -144,9 +144,20 @@ Runner install references shown by onboarding:
   - Official guide: [OpenAI Codex CLI – Getting Started](https://help.openai.com/en/articles/11096431)
 - `Codex ACP`
   - Install `codex` first, then install `codex-acp`
-  - Minimum requirement: `codex-acp >= 0.9.5`
-  - Recommended update command: `npm install -g @zed-industries/codex-acp@latest`
-  - If you need to pin to the minimum validated floor: `npm install -g @zed-industries/codex-acp@0.9.5`
+  - Minimum validated combination for `gpt-5.5`: `codex >= 0.125.0` and `codex-acp >= 0.12.0`
+  - Recommended update command: `npm install -g @openai/codex@latest @zed-industries/codex-acp@latest`
+  - 2026-04-30 validation note: `codex` stayed on `0.125.0`, while `codex-acp` upgraded from `0.11.1` to `0.12.0`; `gpt-5.5` failed with HTTP 400 before the adapter upgrade and passed after it.
+  - Recommended Hone config:
+
+    ```yaml
+    agent:
+      runner: codex_acp
+      codex_acp:
+        model: gpt-5.5
+        variant: high
+    ```
+
+  - Restart the Hone runtime after changing this config; existing processes keep their previous effective config snapshot.
   - Official adapter repo: [zed-industries/codex-acp](https://github.com/zed-industries/codex-acp)
 - `OpenCode ACP`
   - Install: `curl -fsSL https://opencode.ai/install | bash`
