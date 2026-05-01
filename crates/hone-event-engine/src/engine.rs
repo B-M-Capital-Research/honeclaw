@@ -532,8 +532,9 @@ impl EventEngine {
             info!("corp_action calendar poller disabled by config.sources.corp_action=false");
         }
         if fmp_available && sources.sec_filings {
-            // sec_recent_hours=48:每次 tick 只把"过去 48h 新出现的"8-K 送入 store;
+            // sec_recent_hours=48:每次 tick 只把"过去 48h 新出现的"filing 送入 store;
             // store.insert_event 幂等 IGNORE 保证同一 filing 不会触发两次 dispatch。
+            // forms 默认覆盖 8-K / 10-Q / 10-K / S-1 / DEF 14A,severity 由 form 决定。
             let poller = SecFilingsPoller::new(
                 client.clone(),
                 registry.clone(),
@@ -542,7 +543,8 @@ impl EventEngine {
                     tz_offset,
                 },
             )
-            .with_sec_recent_hours(48);
+            .with_sec_recent_hours(48)
+            .with_forms(self.engine_cfg.sec_filings.forms.clone());
             spawn_event_source(
                 Arc::new(poller),
                 store.clone(),

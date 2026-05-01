@@ -267,6 +267,33 @@ event_engine:
   earnings:
     window_days: 14
 
+  # SEC filings poller 配置。
+  # forms: 每 tick 对每只 watchlist ticker 拉哪些 form 类型。FMP 的 /v3/sec_filings
+  #   必须按 type 过滤,不支持一次取多 type;每个 form 一次 HTTP。
+  #   Severity 由 form 决定(代码硬映射,不在 config 里):
+  #     8-K / S-1            → High(突发披露 / 增发,稀释信号)
+  #     10-Q / 10-K          → Medium(季报 / 年报)
+  #     DEF 14A              → Low(委托书 / 治理薪酬)
+  #   想关掉某 form 直接从这里删掉它,不需要改代码。空数组等于关闭整个 poller。
+  # enrichment: 是否给 SEC filing 调 LLM 生成 ~200 字业务摘要(thesis-investor
+  #   视角:跳过 GAAP 数字,抓 backlog / 资本配置 / 风险因子新增)。
+  #   POC 实证 grok-4.1-fast 在 11 持仓 × 一年 ~70 条 filing 上 ≈ $0.82/年,质量、
+  #   成本、延迟均第一。失败 fallback 走原始 form/link body,不阻塞推送。
+  sec_filings:
+    forms:
+      - 8-K
+      - 10-Q
+      - 10-K
+      - S-1
+      - DEF 14A
+    enrichment:
+      enabled: true
+      model: x-ai/grok-4.1-fast
+      max_summary_tokens: 800
+      # SEC EDGAR 强制要求 User-Agent 包含联系邮箱,否则会被限流或拒绝。
+      # 部署方应改成自己的真实联系邮箱(SEC 不强制可达,但需有公司 / 产品名 + 邮箱)。
+      user_agent: "honeclaw event-engine ops@honeclaw.local"
+
   # 全局 digest LLM 子配置 —— UnifiedDigestScheduler 在每个 slot 触发时把这一节
   # 作为 GlobalNewsSource 的旋钮使用。触发完全由 per-actor `prefs.digest_slots` 驱动,
   # 这里不再有调度时刻。
@@ -304,7 +331,7 @@ event_engine:
     price: true # /v3/quote 按 watch pool 拉 → PriceAlert / Weekly52High / Weekly52Low
     earnings_calendar: true # /v3/earning_calendar → EarningsUpcoming
     corp_action: true # 拆股 / 分红日历 → Split / Dividend
-    sec_filings: true # SEC 8-K per-ticker → SecFiling
+    sec_filings: true # SEC filings per-ticker → SecFiling(form whitelist 见上方 sec_filings.forms)
     macro_calendar: true # /v3/economic_calendar → MacroEvent
     analyst_grade: true # 按 watch pool 拉 → AnalystGrade
     earnings_surprise: true # 按 watch pool 拉 → EarningsReleased

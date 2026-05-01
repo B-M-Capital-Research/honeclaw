@@ -29,6 +29,9 @@ pub struct EventEngineConfig {
     pub earnings: EarningsConfig,
 
     #[serde(default)]
+    pub sec_filings: SecFilingsConfig,
+
+    #[serde(default)]
     pub global_digest: GlobalDigestConfig,
 
     /// 全局禁用的 event kind 标签列表（`kind_tag` 字符串，如 `"social_post"`）。
@@ -59,6 +62,7 @@ impl Default for EventEngineConfig {
             renderer: RendererConfig::default(),
             sources: Sources::default(),
             earnings: EarningsConfig::default(),
+            sec_filings: SecFilingsConfig::default(),
             global_digest: GlobalDigestConfig::default(),
             disabled_kinds: Vec::new(),
             news_importance_prompt: default_news_importance_prompt(),
@@ -99,6 +103,85 @@ impl Default for EarningsConfig {
 
 fn default_earnings_window_days() -> i64 {
     14
+}
+
+/// SEC filings poller 配置。
+///
+/// `forms` 决定 `SecFilingsPoller` 每 tick 对每只 watchlist ticker 拉哪些 form 类型。
+/// 默认覆盖 8-K(突发披露,High)/ 10-Q(季报,Medium)/ 10-K(年报,Medium)/
+/// S-1(IPO 或追加发行,High)/ DEF 14A(委托书,Low)。Severity 由 `events_from_sec_filings`
+/// 在事件构造时按 form 类型映射,**不是**在 config 里配置。
+///
+/// `enrichment` 子配置控制是否调 LLM 给每条 filing 生成 ~200 字业务摘要(thesis-investor
+/// 视角,跳过 GAAP 数字、抓 backlog/资本配置/风险)。POC 实证 grok-4.1-fast 在 11 持仓
+/// 一年 ~70 条 filing × $0.012 ≈ $0.82/年,质量、成本、延迟均第一。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecFilingsConfig {
+    #[serde(default = "default_sec_forms")]
+    pub forms: Vec<String>,
+    #[serde(default)]
+    pub enrichment: SecFilingsEnrichmentConfig,
+}
+
+impl Default for SecFilingsConfig {
+    fn default() -> Self {
+        Self {
+            forms: default_sec_forms(),
+            enrichment: SecFilingsEnrichmentConfig::default(),
+        }
+    }
+}
+
+fn default_sec_forms() -> Vec<String> {
+    vec![
+        "8-K".into(),
+        "10-Q".into(),
+        "10-K".into(),
+        "S-1".into(),
+        "DEF 14A".into(),
+    ]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecFilingsEnrichmentConfig {
+    /// 是否给 SEC filing 事件调 LLM 生成业务摘要;关闭则只走原始 form/link body。
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// LLM 模型名(OpenRouter 风格)。POC 验证 `x-ai/grok-4.1-fast` 质量、成本、延迟均最佳。
+    #[serde(default = "default_sec_summary_model")]
+    pub model: String,
+    /// 摘要 max_tokens 上限。grok-4.1-fast 在 ~200 字目标下,800 token 充足且不会被截断。
+    #[serde(default = "default_sec_summary_max_tokens")]
+    pub max_summary_tokens: u32,
+    /// fetch SEC.gov 时使用的 User-Agent。**SEC 强制要求格式包含联系邮箱**,否则会被
+    /// 限流或拒绝。空字符串则不调 enrichment(关闭通道)。
+    #[serde(default = "default_sec_user_agent")]
+    pub user_agent: String,
+}
+
+impl Default for SecFilingsEnrichmentConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            model: default_sec_summary_model(),
+            max_summary_tokens: default_sec_summary_max_tokens(),
+            user_agent: default_sec_user_agent(),
+        }
+    }
+}
+
+fn default_sec_summary_model() -> String {
+    "x-ai/grok-4.1-fast".into()
+}
+
+fn default_sec_summary_max_tokens() -> u32 {
+    800
+}
+
+fn default_sec_user_agent() -> String {
+    // 占位邮箱:部署方应改成自己的联系邮箱。SEC 不要求邮箱真实可达,但要求格式有
+    // 公司/产品名 + 邮箱;长期不改有被 rate-limit 的风险。
+    "honeclaw event-engine ops@honeclaw.local".into()
 }
 
 /// 全局 digest LLM 子配置 —— 从 commit 3 起,unified pipeline 复用本配置承载
