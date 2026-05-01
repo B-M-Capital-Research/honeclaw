@@ -7,6 +7,27 @@
 
 ## 修复进展
 
+- `2026-05-02 04:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `03:00-04:01` 的最新三轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-90 minutes')` 聚合，最近窗口仍同时存在：
+    - `running + pending = 33`
+    - `noop + skipped_noop = 27`
+    - `completed + sent = 5`
+    - `execution_failed + skipped_error = 2`
+  - 最近 90 分钟内可见的同窗终态继续混杂：
+    - `13092` `小米30港元破位预警` -> `completed + sent`
+    - `13095` `ASTS 重大异动心跳监控` -> `completed + sent`
+    - `13096` `Cerebras IPO与业务进展心跳监控` -> `completed + sent`
+    - `13110` `TEM大事件心跳监控` -> `noop + skipped_noop`
+    - `13111` `ORCL 大事件监控` -> `noop + skipped_noop`
+    - `13113` `小米30港元破位预警` -> `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在相邻窗口继续摇摆：
+    - `2026-05-02 03:30:41.761-03:30:42.600`：`持仓重大事件心跳检测` 与 `Monitor_Watchlist_11` 同窗继续落成 `parse_kind=Empty raw_chars=0 raw_preview=""`
+    - `2026-05-02 04:00:34.724`：`TEM大事件心跳监控` 在 `run_finish success=true content_chars=0` 后仍被记成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 04:00:37.292`：`ORCL 大事件监控` 同窗也再次落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 04:01:02.308`：`小米30港元破位预警` 从上一窗 `completed + sent` 直接回摆为 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 04:01:46.757`：`Monitor_Watchlist_11` 又在同一小时后段恢复为 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-02 04:01` 为止，本单仍稳定活跃；故障已不只表现为 `skipped_error`，还持续表现为 `content_chars=0 / parse_kind=Empty` 被静默吸收到 `noop + skipped_noop`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 03:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `02:00-03:01` 的最新三轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-70 minutes')` 聚合，最近窗口仍同时存在：
     - `running + pending = 33`

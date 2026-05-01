@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 03:13 CST
+最后更新：2026-05-02 04:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -25,10 +25,10 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 02:03 最近一小时再次确认 `sessions` 与 `session_messages` 新增仍为 `0`，镜像上界继续卡在 `2026-04-27 16:54:20+08:00`；但原始 Web 会话源文件已继续刷新到 `02:03:12/02:03:25` 并正常落下 `OK` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 04:01 最近一小时再次确认 `sessions` / `session_messages` / `imported_at` 新增仍全为 `0`，镜像上界继续卡在 `2026-04-27 16:54:20+08:00`；但同库 `cron_job_runs` 已继续推进到 `2026-05-02 04:01:46+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 20:02 `英伟达每日消息` 的 `run_id=12732` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 03:03 最新 `02:00-03:01` 窗口继续混跑 `running + pending=33 / noop + skipped_noop=28 / execution_failed + skipped_error=3 / completed + sent=2`；`ORCL` 与 `全天原油价格3小时播报` 正常 `sent`，但 `TEM大事件心跳监控`、`持仓重大事件心跳检测` 又退化到 `error decoding response body`，且 `CAI破位预警` 的 `noop` 仍夹带推理痕迹 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-02 03:03 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=33`、`noop + skipped_noop=28`、`execution_failed + skipped_error=3`、`completed + sent=2`；全库悬挂 `running + pending` 总量已升到 `3149`，比上轮再增 `22` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 04:01 最新 `03:00-04:01` 窗口继续混跑 `running + pending=33 / noop + skipped_noop=27 / completed + sent=5 / execution_failed + skipped_error=2`；`03:30` 仍有 `ASTS`/`小米`/`Cerebras` 成功送达，但 `04:00` 同批又出现 `TEM大事件心跳监控`、`ORCL 大事件监控`、`小米30港元破位预警` 的 `parse_kind=Empty + raw_chars=0` 静默跳过 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-02 04:01 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=33`、`noop + skipped_noop=27`、`completed + sent=5`、`execution_failed + skipped_error=2`；全库悬挂 `running + pending` 总量已升到 `3171`，比上轮再增 `22` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-01 23:01 `核心观察股池晚间快报` 再次把 24 支标的统一降成“击球区待确认”；同症状已连续出现在 `2026-04-30 21:35`、`2026-05-01 21:35` 与 `2026-05-01 23:00` 三个窗口，说明先前 `Fixed` 结论失效且影响面已覆盖不同观察池日报模板 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-02 03:03 `run_id=13070` 再次把“2026 年需求前景偏弱”“霍尔木兹海峡局势提供支撑”组织成确定性主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-02 01:12 `持仓重大事件心跳检测` 的 `run_id=12985` 再次落成 `execution_failed + skipped_error`，错误恢复为 `invalid type: integer 400, expected a string`；说明 2026-05-01 标记的 `Fixed` 结论未在真实 heartbeat 窗口生效 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
