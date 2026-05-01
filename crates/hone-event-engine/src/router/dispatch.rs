@@ -7,7 +7,7 @@
 //! 3. **解析订阅**:从 `SharedRegistry` 拿到匹配的 (actor, sev) 列表,空则 (0,0);
 //! 4. **per-actor 过滤** loop:LLM 仲裁 / per_actor severity override / quiet
 //!    mode / close-alert demote / prefs filter / high_daily_cap / price band
-//!    cap+gap / same-symbol cooldown;
+//!    advance 规则 / same-symbol cooldown;
 //! 5. **路由**:High → polish + sink.send + delivery_log;
 //!    Medium/Low → digest.enqueue + delivery_log。
 //!
