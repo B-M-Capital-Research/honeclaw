@@ -3,7 +3,7 @@
 - 发现时间：2026-04-16 15:52 CST
 - Bug Type：Business Error
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：[#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26)
 
 ## 证据来源
@@ -148,15 +148,36 @@
   - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
 - 关联 GitHub Issue：[#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26)
 
+## 修复情况（2026-05-01 23:05）
+
+- `crates/hone-channels/src/runtime.rs` 将“已达到今日对话上限”提升为共享错误净化层的业务拒绝优先级：即使错误文本被 `工具执行错误:`、`渠道错误:` 等内部前缀包裹，也会截取并保留明确 quota 文案，不再被 `looks_internal_error_detail(...)` 压成通用失败提示。
+- `user_visible_error_message_or_none(...)` 同步保留 quota 业务拒绝，避免后续任一调用方把 quota 错误当作“不可外发 generic fallback”静默吞掉。
+- `bins/hone-feishu/src/handler.rs` 在失败兜底和空回复兜底成功更新 placeholder / standalone send 后新增 `reply.send failure_fallback` / `reply.send empty_fallback` 结构化步骤；发送失败时也记录 `reply.send ... failed`，后续巡检不再只能靠缺失 `reply.send` 推断用户是否收到最终提示。
+- 新增回归覆盖：
+  - wrapped quota 错误在共享净化层仍返回“已达到今日对话上限...”。
+  - Feishu handler 在已有 placeholder partial 时仍优先显示 wrapped quota 文案。
+  - 既有 `AgentSession::run()` quota 拒绝 user turn 落库路径继续通过。
+- 当前结论：本单从活跃 `New` 切回 `Fixed`；若真实窗口再次出现 quota 拒绝后既无 `session.persist_user=quota_rejected` 又无 `reply.send failure_fallback`，再以新样本重开。
+- 验证：
+  - `cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`
+  - `cargo test -p hone-feishu failed_reply_text -- --nocapture`
+  - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
+  - `cargo check -p hone-channels -p hone-feishu --tests`
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/runtime.rs bins/hone-feishu/src/handler.rs`
+  - `git diff --check`
+
 ## 回归验证
 
 - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
 - `cargo test -p hone-channels`
 - `cargo check -p hone-channels`
 - `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session.rs`
+- `cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`
+- `cargo test -p hone-feishu failed_reply_text -- --nocapture`
+- `cargo check -p hone-channels -p hone-feishu --tests`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/runtime.rs bins/hone-feishu/src/handler.rs`
 
 ## 下一步建议
 
-- 优先检查 `bins/hone-feishu/src/handler.rs` 里 `suppressed generic failure fallback` 与 quota 错误的交互，确保 `已达到今日对话上限` 不会再被当作需要 suppress 的 generic failure。
-- 继续补结构化日志字段，例如 `failure_kind=quota_rejected`，便于监控和 bug 巡检直接聚类。
-- 建议补一条 Feishu handler 级回归，直接锁住“quota 拒绝时必须发送用户态额度提示，而且不能丢 user turn”这一渠道侧契约。
+- 下个真实 quota 触顶窗口复核 `session.persist_user=quota_rejected` 与 `reply.send failure_fallback` 是否同时出现。
+- 若仍有“placeholder 后无最终提示”样本，优先核对 Feishu `update_message` / standalone fallback 的返回体，而不是再修改 quota 判定本身。

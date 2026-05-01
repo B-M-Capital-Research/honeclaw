@@ -336,6 +336,10 @@ pub fn user_visible_error_message(raw: Option<&str>) -> String {
         return GENERIC_USER_ERROR_MESSAGE.to_string();
     };
 
+    if let Some(message) = quota_rejection_user_message(&sanitized) {
+        return message;
+    }
+
     let lowered = sanitized.to_ascii_lowercase();
     if lowered.contains("timeout") || lowered.contains("timed out") {
         return TIMEOUT_USER_ERROR_MESSAGE.to_string();
@@ -353,6 +357,9 @@ pub fn user_visible_error_message_or_none(raw: Option<&str>) -> Option<String> {
         .map(sanitize_user_visible_output)
         .map(|value| value.content.trim().to_string())
         .filter(|value| !value.is_empty())?;
+    if let Some(message) = quota_rejection_user_message(&sanitized) {
+        return Some(message);
+    }
     let lowered = sanitized.to_ascii_lowercase();
     if lowered.contains("timeout") || lowered.contains("timed out") {
         return Some(TIMEOUT_USER_ERROR_MESSAGE.to_string());
@@ -361,6 +368,13 @@ pub fn user_visible_error_message_or_none(raw: Option<&str>) -> Option<String> {
         return None;
     }
     Some(sanitized)
+}
+
+fn quota_rejection_user_message(sanitized: &str) -> Option<String> {
+    let start = sanitized.find("已达到今日对话上限")?;
+    let rest = sanitized[start..].trim();
+    let first_line = rest.lines().next().unwrap_or(rest).trim();
+    (!first_line.is_empty()).then(|| first_line.to_string())
 }
 
 fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
@@ -656,11 +670,33 @@ mod tests {
     }
 
     #[test]
+    fn user_visible_error_message_preserves_wrapped_quota_rejection() {
+        let err = user_visible_error_message(Some(
+            "工具执行错误: 已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试",
+        ));
+        assert_eq!(
+            err,
+            "已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"
+        );
+    }
+
+    #[test]
     fn user_visible_error_message_or_none_suppresses_internal_acp_errors() {
         let err = user_visible_error_message_or_none(Some(
             "codex acp prompt ended before tool completion: Searching the Web",
         ));
         assert!(err.is_none());
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_preserves_quota_rejection() {
+        let err = user_visible_error_message_or_none(Some(
+            "渠道错误: 已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试",
+        ));
+        assert_eq!(
+            err.as_deref(),
+            Some("已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试")
+        );
     }
 
     #[test]

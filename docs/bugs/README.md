@@ -15,17 +15,16 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：8
 - Later / 待复现：11
-- 已修复 / 已关闭：78
+- 已修复 / 已关闭：79
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | New | 2026-05-01 19:02 最近一小时再次复现：同一 Feishu 直聊 session 在 `message.accepted -> reply.placeholder` 后直接落成 `completed success=false reply_chars=0`，随后记录 `suppressed generic failure fallback: ... 已达到今日对话上限（12/12）`；本轮仍无 `session.persist_user`、`session.persist_assistant` 或 `reply.send`，说明先前 `Fixed` 结论失效，关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 23:02 最近一小时再次确认 `sessions_last_hour=0 / messages_last_hour=0`，`sessions` / `session_messages` 上界仍卡在 `2026-04-27 16:54:20+08:00`；但 Feishu 直聊源文件继续刷新到 `22:29:28/22:30:23`，原始会话镜像还新增 `23:01:14` 的晚间快报正文，`cron_job_runs` 则继续推进到 `23:02:57+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 20:02 `英伟达每日消息` 的 `run_id=12732` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 23:02 最新 `22:30-23:02` 两轮 heartbeat 继续混跑 `running + pending=22 / noop + skipped_noop=18 / completed + sent=1`；`Monitor_Watchlist_11`、`持仓重大事件`、`TEM`、`Cerebras`、`小米30港元` 等继续回到 `parse_kind=Empty/JsonNoop`，同窗只有 `ORCL` 真突破 5% 阈值并落成正式 `JsonTriggered + sent` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
@@ -55,6 +54,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-05-01 23:05 共享错误净化层将“已达到今日对话上限”提升为业务拒绝优先级，即使被 `工具执行错误` / `渠道错误` 等内部前缀包裹也会保留 quota 文案；Feishu 失败兜底成功更新 placeholder / 发送后会记录 `reply.send failure_fallback`，避免巡检再误判为无最终发送；`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text -- --nocapture`、`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Feishu 直聊切到非金融新话题时，仍误入 `stock_research` 并沿用旧 `LITE` 上下文 | P3 | Fixed | 2026-05-01 当前 user turn 在普通和带接收元信息的 prompt 拼装中统一置于历史摘要 / skill context / session context 之后，且领域策略明确非金融问题必须先短路拒绝、不得调用 `stock_research` / `data_fetch` / `web_search` 或沿用旧 ticker；`cargo test -p hone-channels prompt::tests:: --lib -- --nocapture`、`cargo test -p hone-channels turn_builder::tests::runtime_input_with_recv_extra_keeps_current_turn_last --lib -- --nocapture` 通过；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-01 event-engine Feishu direct fallback 从“唯一 email 或唯一 mobile”放宽为“所有稳定联系人解析后只产生一个 current-app open_id 才使用”，覆盖单用户配置同时保留 email+mobile 时 fallback 被关闭的缺口；`cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-04-30 已放宽 multi-agent 对 `cron_job`/`portfolio` 可信本地结果的直返门槛，多行和较长任务列表也不再被强制送进易空回复的 answer 阶段；`cargo test -p hone-channels runners::multi_agent::tests`、`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`、`cargo check -p hone-channels` 通过 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |

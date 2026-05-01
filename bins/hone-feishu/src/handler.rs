@@ -904,8 +904,17 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         if let Some(ck) = &cardkit_session {
             ck.close(&preprocess_markdown_for_feishu(&display, true))
                 .await;
+            state.core.log_message_step(
+                "feishu",
+                &log_user,
+                &session_id,
+                "reply.send",
+                "failure_fallback cardkit.close",
+                Some(&msg.message_id),
+                None,
+            );
         } else {
-            if let Err(err) = update_or_send_plain_text(
+            match update_or_send_plain_text(
                 &state.facade,
                 &outbound_receive_id,
                 outbound_receive_id_type,
@@ -914,7 +923,29 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             )
             .await
             {
-                warn!("[Feishu] 发送失败兜底消息失败: {}", err);
+                Ok(sent_segments) => {
+                    state.core.log_message_step(
+                        "feishu",
+                        &log_user,
+                        &session_id,
+                        "reply.send",
+                        &format!("failure_fallback segments.sent={sent_segments}"),
+                        Some(&msg.message_id),
+                        None,
+                    );
+                }
+                Err(err) => {
+                    warn!("[Feishu] 发送失败兜底消息失败: {}", err);
+                    state.core.log_message_step(
+                        "feishu",
+                        &log_user,
+                        &session_id,
+                        "reply.send",
+                        "failure_fallback failed",
+                        Some(&msg.message_id),
+                        None,
+                    );
+                }
             }
         }
         return;
@@ -933,8 +964,17 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
         );
         if let Some(ck) = &cardkit_session {
             ck.close(&fallback).await;
+            state.core.log_message_step(
+                "feishu",
+                &log_user,
+                &session_id,
+                "reply.send",
+                "empty_fallback cardkit.close",
+                Some(&msg.message_id),
+                None,
+            );
         } else {
-            if let Err(err) = update_or_send_plain_text(
+            match update_or_send_plain_text(
                 &state.facade,
                 &outbound_receive_id,
                 outbound_receive_id_type,
@@ -943,7 +983,29 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
             )
             .await
             {
-                warn!("[Feishu] 发送空回复兜底消息失败: {}", err);
+                Ok(sent_segments) => {
+                    state.core.log_message_step(
+                        "feishu",
+                        &log_user,
+                        &session_id,
+                        "reply.send",
+                        &format!("empty_fallback segments.sent={sent_segments}"),
+                        Some(&msg.message_id),
+                        None,
+                    );
+                }
+                Err(err) => {
+                    warn!("[Feishu] 发送空回复兜底消息失败: {}", err);
+                    state.core.log_message_step(
+                        "feishu",
+                        &log_user,
+                        &session_id,
+                        "reply.send",
+                        "empty_fallback failed",
+                        Some(&msg.message_id),
+                        None,
+                    );
+                }
             }
         }
         return;
@@ -1700,6 +1762,19 @@ mod tests {
                 true,
                 THINKING_PLACEHOLDER_TEXT,
                 Some("已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"),
+            ),
+            "已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"
+        );
+    }
+
+    #[test]
+    fn failed_reply_text_keeps_wrapped_quota_error_over_placeholder_partial() {
+        assert_eq!(
+            build_failed_reply_text(
+                None,
+                true,
+                THINKING_PLACEHOLDER_TEXT,
+                Some("工具执行错误: 已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"),
             ),
             "已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"
         );

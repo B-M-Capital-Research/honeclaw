@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-01 10:35 CST
+- updated_at: 2026-05-01 23:05 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -66,6 +66,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-04-30: Addressed event-engine digest readability feedback from the last 24h push log review: macro digest rows now include actual/expected/previous values or a clear future publish time, earnings surprise rows label EPS explicitly, and digest links render as source-host anchors in Telegram HTML, Discord embeds, and Feishu cards while retaining exact href targets.
 - 2026-05-01: Closed the active P1 Feishu `open_id cross app` event-engine regression by widening the Feishu direct current-app fallback from “exactly one email or exactly one mobile” to “all stable contacts resolve to exactly one open_id”. This covers single-user configs that keep both email and mobile while preserving the no-guessing rule for ambiguous multi-user contact sets.
 - 2026-05-01: Closed the active P2 watchlist near-threshold regression by extending the heartbeat send gate to parse watchlist price phrases such as `跌至 69.85` and suppress `triggered` outputs that claim `已触及或低于触发价 69.83` while the parsed current price is still above the configured lower trigger line.
+- 2026-05-01: Closed the reopened P1 Feishu direct quota rejection bug by preserving quota rejection text before internal-error suppression, including wrapped forms such as `工具执行错误: 已达到今日对话上限...`, and by logging Feishu failure fallback sends as `reply.send failure_fallback` so placeholder updates are auditable.
 
 ## Validation
 
@@ -106,6 +107,12 @@ Completed this round:
 - `rustfmt --edition 2024 --check crates/hone-event-engine/src/sinks/feishu.rs`
 - `cargo check -p hone-event-engine -p hone-web-api --tests`
 - `cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture`
+- `cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`
+- `cargo test -p hone-feishu failed_reply_text -- --nocapture`
+- `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
+- `cargo check -p hone-channels -p hone-feishu --tests`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/runtime.rs bins/hone-feishu/src/handler.rs`
+- `git diff --check`
 - `cargo test -p hone-llm openrouter -- --nocapture`
 - `cargo test -p hone-event-engine --lib`
 - `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
