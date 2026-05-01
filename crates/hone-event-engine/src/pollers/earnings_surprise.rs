@@ -138,7 +138,7 @@ fn events_from_surprises(
                 symbols: vec![ticker.to_string()],
                 occurred_at,
                 title: format!("{ticker} 财报 {direction} {pct:+.1}%"),
-                summary: format!("实际 {actual:.2} / 预期 {est:.2}"),
+                summary: format!("EPS 实际 {actual:.2} / 预期 {est:.2}"),
                 url,
                 source: "fmp.earnings_surprises".into(),
                 payload: item.clone(),
@@ -171,7 +171,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].severity, Severity::High);
         assert!(events[0].title.contains("超预期"));
-        assert!(events[0].summary.contains("2.30"));
+        assert!(events[0].summary.contains("EPS 实际 2.30 / 预期 2.00"));
         assert_eq!(
             events[0].id,
             format!(

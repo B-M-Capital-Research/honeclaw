@@ -90,7 +90,7 @@ impl KindBucket {
     }
 
     /// 渲染时的小标题前缀(emoji + 中文)。Discord embed 的 field name、
-    /// Feishu card 的 div 标题、Telegram MarkdownV2 的 section header 都用它。
+    /// Feishu card 的 div 标题、Telegram HTML 的 section header 都用它。
     pub fn header_label(self) -> &'static str {
         match self {
             KindBucket::Price => "💹 价格异动",

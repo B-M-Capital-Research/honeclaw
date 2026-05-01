@@ -210,6 +210,69 @@ fn render_digest_recovers_social_title_from_raw_text() {
 }
 
 #[test]
+fn render_digest_includes_macro_values() {
+    let mut event = ev("macro-1", "");
+    event.kind = EventKind::MacroEvent;
+    event.symbols.clear();
+    event.title = "[US] CPI MoM (Mar)".into();
+    event.summary = "实际 0.3 · 预期 0.2 · 前值 0.1".into();
+
+    let body = render_digest(
+        "盘前摘要 · 19:00",
+        &[event],
+        0,
+        crate::renderer::RenderFormat::Plain,
+    );
+
+    assert!(
+        body.contains("[US] CPI MoM (Mar) · 实际 0.3 · 预期 0.2 · 前值 0.1"),
+        "body = {body}"
+    );
+}
+
+#[test]
+fn render_digest_includes_macro_time_when_values_are_missing() {
+    let mut event = ev("macro-1", "");
+    event.kind = EventKind::MacroEvent;
+    event.symbols.clear();
+    event.occurred_at = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap();
+    event.title = "[US] ISM Manufacturing PMI (Apr)".into();
+    event.summary.clear();
+
+    let body = render_digest(
+        "盘前摘要 · 19:00",
+        &[event],
+        0,
+        crate::renderer::RenderFormat::Plain,
+    );
+
+    assert!(
+        body.contains("[US] ISM Manufacturing PMI (Apr) · 待公布 05-01 22:00 UTC+8"),
+        "body = {body}"
+    );
+}
+
+#[test]
+fn render_digest_includes_earnings_metric_name() {
+    let mut event = ev("earnings-1", "GOOGL");
+    event.kind = EventKind::EarningsReleased;
+    event.title = "GOOGL 财报 超预期 +93.6%".into();
+    event.summary = "EPS 实际 5.11 / 预期 2.64".into();
+
+    let body = render_digest(
+        "盘前摘要 · 19:00",
+        &[event],
+        0,
+        crate::renderer::RenderFormat::Plain,
+    );
+
+    assert!(
+        body.contains("GOOGL 财报 超预期 +93.6% · EPS 实际 5.11 / 预期 2.64"),
+        "body = {body}"
+    );
+}
+
+#[test]
 fn render_digest_adds_compact_source_link_for_plain() {
     let mut event = ev("news-1", "AAPL");
     event.title = "Apple supplier update".into();
@@ -230,7 +293,7 @@ fn render_digest_adds_compact_source_link_for_plain() {
 }
 
 #[test]
-fn render_digest_adds_icon_link_for_telegram_and_discord() {
+fn render_digest_adds_source_link_for_telegram_and_discord() {
     let mut event = ev("news-1", "AAPL");
     event.url = Some("https://news.example.com/path/to/story".into());
 
@@ -241,7 +304,8 @@ fn render_digest_adds_icon_link_for_telegram_and_discord() {
         crate::renderer::RenderFormat::TelegramHtml,
     );
     assert!(
-        telegram.contains(r#"<a href="https://news.example.com/path/to/story">🔗</a>"#),
+        telegram
+            .contains(r#"<a href="https://news.example.com/path/to/story">news.example.com</a>"#),
         "telegram = {telegram}"
     );
 
@@ -252,7 +316,7 @@ fn render_digest_adds_icon_link_for_telegram_and_discord() {
         crate::renderer::RenderFormat::DiscordMarkdown,
     );
     assert!(
-        discord.contains("[🔗](https://news.example.com/path/to/story)"),
+        discord.contains("[news.example.com](https://news.example.com/path/to/story)"),
         "discord = {discord}"
     );
 }

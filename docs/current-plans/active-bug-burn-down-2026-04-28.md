@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-01 07:04 CST
+- updated_at: 2026-05-01 10:35 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -63,6 +63,7 @@ Clear the current active bug queue as far as software changes can responsibly do
   - Feishu scheduler terminal execution events now update the matching `running + pending` started row by `delivery_key`
   - heartbeat duplicate history now includes the same actor's recent heartbeat deliveries across sibling jobs, not only the current job
 - 2026-04-29: Active bug queue is now 3. Remaining active items are Feishu direct empty/invalid answer quality, `sessions.sqlite3` mirror stalled evidence, and Telegram invalid token/live connectivity. Telegram remains a credential/live configuration issue; do not add hard-coded compatibility behavior for it.
+- 2026-04-30: Addressed event-engine digest readability feedback from the last 24h push log review: macro digest rows now include actual/expected/previous values or a clear future publish time, earnings surprise rows label EPS explicitly, and digest links render as source-host anchors in Telegram HTML, Discord embeds, and Feishu cards while retaining exact href targets.
 - 2026-05-01: Closed the active P1 Feishu `open_id cross app` event-engine regression by widening the Feishu direct current-app fallback from “exactly one email or exactly one mobile” to “all stable contacts resolve to exactly one open_id”. This covers single-user configs that keep both email and mobile while preserving the no-guessing rule for ambiguous multi-user contact sets.
 - 2026-05-01: Closed the active P2 watchlist near-threshold regression by extending the heartbeat send gate to parse watchlist price phrases such as `跌至 69.85` and suppress `triggered` outputs that claim `已触及或低于触发价 69.83` while the parsed current price is still above the configured lower trigger line.
 
@@ -106,11 +107,18 @@ Completed this round:
 - `cargo check -p hone-event-engine -p hone-web-api --tests`
 - `cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture`
 - `cargo test -p hone-llm openrouter -- --nocapture`
+- `cargo test -p hone-event-engine --lib`
+- `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+- `OPENROUTER_API_KEY=<config value> env RUN_EVENT_ENGINE_LLM_BASELINE=1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`；15/15 live OpenRouter baseline matched, reported cost `0.000640`.
+- `HONE_FMP_API_KEY=<config value> cargo test -p hone-event-engine pollers::news::tests::live_fmp_news_smoke --lib -- --ignored --nocapture`
+- `HONE_FMP_API_KEY=<config value> cargo test -p hone-event-engine pollers::macro_events::tests::live_fmp_macro_smoke --lib -- --ignored --nocapture`
+- Live FMP digest probe against `telegram::::8039067465` holdings (`TEM,RKLB,MU,CAI,COHR,GOOGL,AAPL,SNDK,GEV,AAOI,VST,BE,AMD`) produced 50 news events, 737 macro events, 5 holding-matched news rows, and channel-rendered source-host links.
 
 Known verification limitation:
 
 - `bash scripts/ci/check_fmt_changed.sh` cannot run under the system Bash 3 environment because it uses `mapfile`; changed Rust files were formatted directly with `rustfmt --edition 2024`.
 - 本轮再次尝试 `bash scripts/ci/check_fmt_changed.sh`，仍因系统 Bash 3 缺少 `mapfile` 失败；已改用 `rustfmt --edition 2024 --check` 覆盖本轮改动 Rust 文件。
+- `cargo fmt --all -- --check` still fails on pre-existing formatting drift outside this patch (`crates/hone-channels/src/agent_session/tests.rs`, `crates/hone-core/src/quiet.rs`, `crates/hone-event-engine/src/digest/curation.rs`, `crates/hone-event-engine/src/prefs.rs`, `crates/hone-event-engine/src/router/policy.rs`, `crates/hone-tools/src/notification_prefs_tool.rs`); touched event-engine files pass direct `rustfmt --edition 2024 --check`.
 
 ## Documentation Sync
 

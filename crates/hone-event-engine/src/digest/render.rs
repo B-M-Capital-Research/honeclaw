@@ -3,11 +3,11 @@
 //!
 //! 五件事:
 //! - `build_digest_payload` —— 投影 + dedup,产出结构化 `DigestPayload`,无格式
-//!   依赖。富文本 sink(Discord embed / Feishu card / Telegram MarkdownV2)直接吃
+//!   依赖。富文本 sink(Discord embed / Feishu card / Telegram HTML)直接吃
 //!   这个 payload 自己渲染。
 //! - 主入口 `render_digest` —— 内部 `build_digest_payload` 然后按 `RenderFormat`
-//!   分发,拼 header 行 + `• head · title · 🔗` 条目;对外签名/字节级输出与之前
-//!   保持一致。
+//!   分发,拼 header 行 + `• head · title · link` 条目；Plain 保留紧凑来源,
+//!   HTML/Markdown 输出 host 锚文本。
 //! - `render_digest_feishu_post` —— 特殊路径,因为飞书是 struct 化 post,需要自己
 //!   构造 json;
 //! - `digest_event_title` —— SocialPost 截取 `payload.raw_text` 第一段非空行作为
@@ -18,6 +18,7 @@
 
 use std::collections::HashSet;
 
+use chrono::{FixedOffset, Utc};
 use hone_core::truncate_chars_append;
 
 use crate::event::{EventKind, MarketEvent, Severity};
@@ -189,17 +190,55 @@ fn render_digest_feishu_post(
 }
 
 pub(super) fn digest_event_title(event: &MarketEvent) -> String {
-    if matches!(event.kind, EventKind::SocialPost) {
+    let title = if matches!(event.kind, EventKind::SocialPost) {
         if let Some(first_line) = event
             .payload
             .get("raw_text")
             .and_then(|v| v.as_str())
             .and_then(first_non_empty_line)
         {
-            return truncate_chars(first_line, DIGEST_SOCIAL_TITLE_MAX_CHARS);
+            truncate_chars(first_line, DIGEST_SOCIAL_TITLE_MAX_CHARS)
+        } else {
+            event.title.clone()
         }
+    } else {
+        event.title.clone()
+    };
+    match digest_event_detail(event) {
+        Some(detail) if !detail.is_empty() && !title.contains(&detail) => {
+            format!("{title} · {detail}")
+        }
+        _ => title,
     }
-    event.title.clone()
+}
+
+fn digest_event_detail(event: &MarketEvent) -> Option<String> {
+    match event.kind {
+        EventKind::MacroEvent => {
+            let summary = event.summary.trim();
+            if !summary.is_empty() {
+                Some(summary.to_string())
+            } else {
+                let label = if event.occurred_at > Utc::now() {
+                    "待公布"
+                } else {
+                    "时间"
+                };
+                Some(format!(
+                    "{label} {} UTC+8",
+                    event
+                        .occurred_at
+                        .with_timezone(&FixedOffset::east_opt(8 * 3600)?)
+                        .format("%m-%d %H:%M")
+                ))
+            }
+        }
+        EventKind::EarningsReleased => {
+            let summary = event.summary.trim();
+            (!summary.is_empty()).then(|| summary.to_string())
+        }
+        _ => None,
+    }
 }
 
 fn first_non_empty_line(text: &str) -> Option<&str> {

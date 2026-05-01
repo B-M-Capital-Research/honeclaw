@@ -124,13 +124,13 @@ fn events_from_calendar(raw: &Value, keywords: &[String]) -> Vec<MarketEvent> {
             let actual = item.get("actual").and_then(|v| v.as_f64());
             let mut summary_parts: Vec<String> = Vec::new();
             if let Some(v) = actual {
-                summary_parts.push(format!("actual {v}"));
+                summary_parts.push(format!("实际 {v}"));
             }
             if let Some(v) = estimate {
-                summary_parts.push(format!("est {v}"));
+                summary_parts.push(format!("预期 {v}"));
             }
             if let Some(v) = previous {
-                summary_parts.push(format!("prev {v}"));
+                summary_parts.push(format!("前值 {v}"));
             }
             let summary = summary_parts.join(" · ");
 
@@ -234,7 +234,7 @@ mod tests {
         assert_eq!(events[1].severity, Severity::Low);
         assert!(events[0].symbols.is_empty());
         assert!(events[0].id.starts_with("macro:US:2026-05-13:cpi"));
-        assert!(events[0].summary.contains("est 3.1"));
+        assert!(events[0].summary.contains("预期 3.1"));
     }
 
     #[test]

@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 
 use crate::digest::{DigestItem, DigestPayload, group_by_kind_bucket};
 use crate::event::Severity;
+use crate::renderer::link_label;
 
 pub fn build_feishu_card(payload: &DigestPayload) -> Value {
     let total = payload.total();
@@ -100,7 +101,7 @@ fn render_bucket_markdown(items: &[&DigestItem]) -> String {
         out.push_str(it.headline.trim());
         if let Some(url) = &it.url {
             // 飞书 lark_md / markdown 都支持 [text](url) 锚
-            out.push_str(&format!(" [🔗]({url})"));
+            out.push_str(&format!(" [{}]({url})", link_label(url)));
         }
     }
     out
@@ -240,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn card_renders_link_anchor_in_markdown() {
+    fn card_renders_link_source_anchor_in_markdown() {
         let items = vec![item(
             EventKind::NewsCritical,
             Severity::High,
@@ -251,7 +252,10 @@ mod tests {
         let p = payload_with(items, Severity::High, 0);
         let card = build_feishu_card(&p);
         let md = card["elements"][1]["content"].as_str().unwrap();
-        assert!(md.contains("[🔗](https://example.com/path)"), "md = {md}");
+        assert!(
+            md.contains("[example.com](https://example.com/path)"),
+            "md = {md}"
+        );
         assert!(md.contains("**$MU**"));
     }
 

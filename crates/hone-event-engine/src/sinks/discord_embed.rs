@@ -8,7 +8,7 @@
 //!   (黄) / Low=0x5865F2(Blurple),让用户扫一眼就知道这批有没有要紧条目。
 //! - **embed.fields**:每个非空 KindBucket 一个 inline=false field,name 是 emoji
 //!   header + bucket 内 dedup 后的条目数,value 是逐条 markdown 文本。
-//! - **链接处理**:每条尾部追加 ` [→](url)`(短锚文本),`flags=4` 抑制消息文字
+//! - **链接处理**:每条尾部追加 ` [host](url)`(短锚文本),`flags=4` 抑制消息文字
 //!   里 URL 的 unfurl 大卡片;embed 内手填 link 不受影响。
 //! - **长度边界**:Discord 单 field value ≤1024,embed 总和 ≤6000——greedy 装箱,
 //!   超出在 field 末尾追加 `…还有 N 条`,全局溢出落到 footer。
@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 
 use crate::digest::{DigestItem, DigestPayload, KindBucket, group_by_kind_bucket};
 use crate::event::Severity;
+use crate::renderer::link_label;
 
 /// Discord 单 field value 字符上限。
 const FIELD_VALUE_MAX: usize = 1024;
@@ -148,9 +149,9 @@ fn build_field(
     (name, value, consumed)
 }
 
-/// 单条 item 渲染:`• **$AAPL** {headline} [→](url)`。
+/// 单条 item 渲染:`• **$AAPL** {headline} [host](url)`。
 /// `headline` 不做 markdown 转义——Discord embed 里 markdown 控制字符当字面量也
-/// 不会泄露成格式,且转义会让财报标题里的 `*` 之类变难看。链接锚文本只有 `→`,
+/// 不会泄露成格式,且转义会让财报标题里的 `*` 之类变难看。链接锚文本只有 source host,
 /// 避免长 URL 在 embed 内霸屏。
 fn render_item_line(it: &DigestItem) -> String {
     let mut out = String::from("• ");
@@ -159,7 +160,7 @@ fn render_item_line(it: &DigestItem) -> String {
     }
     out.push_str(it.headline.trim());
     if let Some(url) = &it.url {
-        out.push_str(&format!(" [→]({url})"));
+        out.push_str(&format!(" [{}]({url})", link_label(url)));
     }
     out
 }
@@ -321,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn embed_renders_link_arrow_anchor() {
+    fn embed_renders_link_source_anchor() {
         let items = vec![item(
             EventKind::NewsCritical,
             Severity::High,
@@ -333,8 +334,8 @@ mod tests {
         let msg = build_discord_embed_message(&p, Utc::now());
         let value = msg["embeds"][0]["fields"][0]["value"].as_str().unwrap();
         assert!(
-            value.contains("[→](https://www.cnbc.com/2026/04/27/memory.html)"),
-            "应使用箭头锚文本,value = {value}"
+            value.contains("[cnbc.com](https://www.cnbc.com/2026/04/27/memory.html)"),
+            "应使用来源域名锚文本,value = {value}"
         );
     }
 

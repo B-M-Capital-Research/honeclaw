@@ -208,20 +208,25 @@ pub fn render_link_icon(url: &str, fmt: RenderFormat) -> String {
     match fmt {
         RenderFormat::Plain => format!("🔗 {}", link_label(url)),
         RenderFormat::TelegramHtml => {
-            format!("<a href=\"{}\">🔗</a>", escape_html_attr(url))
+            format!(
+                "<a href=\"{}\">{}</a>",
+                escape_html_attr(url),
+                escape_html(&link_label(url)),
+            )
         }
-        RenderFormat::DiscordMarkdown => format!("[🔗]({url})"),
+        RenderFormat::DiscordMarkdown => format!("[{}]({url})", escape_md(&link_label(url))),
         RenderFormat::FeishuPost => "🔗".into(),
     }
 }
 
-fn link_label(url: &str) -> String {
+pub(crate) fn link_label(url: &str) -> String {
     let without_scheme = url
         .trim_start_matches("https://")
         .trim_start_matches("http://");
     without_scheme
         .split('/')
         .next()
+        .map(|host| host.strip_prefix("www.").unwrap_or(host))
         .filter(|s| !s.is_empty())
         .unwrap_or(url)
         .to_string()
