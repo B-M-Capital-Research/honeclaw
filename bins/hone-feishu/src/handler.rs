@@ -81,12 +81,21 @@ fn build_failed_reply_text(
     error: Option<&str>,
 ) -> String {
     let partial = sanitize_failed_partial_reply(final_text);
-    let display = if saw_stream_delta && !partial.is_empty() {
+    let user_visible_error = user_visible_error_message(error);
+    let display = if should_prefer_error_over_partial(error) {
+        user_visible_error
+    } else if saw_stream_delta && !partial.is_empty() {
         format!("{}\n\n_(处理中发生错误，内容可能不完整)_", partial)
     } else {
-        user_visible_error_message(error)
+        user_visible_error
     };
     prepend_reply_prefix(reply_prefix, &display)
+}
+
+fn should_prefer_error_over_partial(error: Option<&str>) -> bool {
+    error
+        .map(|value| value.contains("已达到今日对话上限"))
+        .unwrap_or(false)
 }
 
 fn sanitize_failed_partial_reply(text: &str) -> String {
@@ -1680,6 +1689,19 @@ mod tests {
                 Some("opencode acp session/prompt idle timeout (180s)"),
             ),
             "@alice 阶段性结果\n\n_(处理中发生错误，内容可能不完整)_"
+        );
+    }
+
+    #[test]
+    fn failed_reply_text_keeps_quota_error_over_placeholder_partial() {
+        assert_eq!(
+            build_failed_reply_text(
+                None,
+                true,
+                THINKING_PLACEHOLDER_TEXT,
+                Some("已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"),
+            ),
+            "已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试"
         );
     }
 

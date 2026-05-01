@@ -212,13 +212,13 @@ pub(crate) fn compose_runtime_input(
         sections.push(context.to_string());
     }
 
-    sections.push(format!("【本轮用户输入】\n{}", user_input.trim()));
-
     if let Some(session_context) =
         Some(bundle.session_context.trim()).filter(|value| !value.is_empty())
     {
         sections.push(session_context.to_string());
     }
+
+    sections.push(format!("【本轮用户输入】\n{}", user_input.trim()));
 
     sections.join("\n\n")
 }
@@ -246,5 +246,37 @@ pub(crate) fn compose_invoked_skill_runtime_input(
         format!("{invoked_prompt}\n\n【User Task After Invoking This Skill】\n{supplement}")
     } else {
         invoked_prompt.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prompt::PromptBundle;
+
+    #[test]
+    fn runtime_input_with_recv_extra_keeps_current_turn_last() {
+        let bundle = PromptBundle {
+            static_system: String::new(),
+            conversation_context: Some(
+                "【历史会话总结】\n旧 LITE stock_research 上下文".to_string(),
+            ),
+            session_context: "【Session 上下文】\n当前时间：2026-05-01 12:00:00".to_string(),
+        };
+
+        let input = compose_runtime_input(
+            &bundle,
+            "AMD的电脑CPU是什么名字",
+            Some("【接收消息元信息】"),
+        );
+        let extra_pos = input.find("【接收消息元信息】").expect("extra section");
+        let history_pos = input.find("旧 LITE").expect("history section");
+        let session_pos = input.find("【Session 上下文】").expect("session section");
+        let current_pos = input.find("【本轮用户输入】").expect("current turn");
+
+        assert!(extra_pos < current_pos);
+        assert!(history_pos < current_pos);
+        assert!(session_pos < current_pos);
+        assert!(input.ends_with("AMD的电脑CPU是什么名字"));
     }
 }

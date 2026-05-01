@@ -3,7 +3,7 @@
 - 发现时间：2026-04-16 15:52 CST
 - Bug Type：Business Error
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：[#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26)
 
 ## 证据来源
@@ -120,6 +120,15 @@
   - quota 计数保持 `success_count=daily_limit / in_flight=0`。
 - 验证：
   - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
+
+## 修复情况（2026-05-01）
+
+- `bins/hone-feishu/src/handler.rs` 的失败收口新增 quota 业务拒绝优先级保护：当错误为“已达到今日对话上限”时，即使 placeholder 或 stream probe 已留下 partial 文本，也必须优先向用户展示 quota 文案，而不是保留 placeholder / partial 或退回通用失败文案。
+- 会话层 `AgentSession::run()` 既有 quota 拒绝 user turn 落库路径保持不变，本轮补 Feishu handler 级回归，覆盖“quota 错误优先于 placeholder partial”这一渠道侧契约。
+- 验证：
+  - `cargo test -p hone-feishu failed_reply_text_keeps_quota_error_over_placeholder_partial -- --nocapture`
+  - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`
+- 关联 GitHub Issue：[#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26)
 
 ## 回归验证
 

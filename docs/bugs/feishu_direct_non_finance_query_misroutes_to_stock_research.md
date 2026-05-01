@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-30 19:08 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions/Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768.json`
     - `2026-04-30T18:59:08.334712+08:00` 用户真实输入：`AMD的电脑CPU是什么名字`
@@ -56,3 +56,10 @@
 - 在 direct 路由前增加非金融意图短路，优先执行领域边界拒绝，而不是先进入股票研究技能。
 - 为“长金融会话后切到泛知识问题”补一条回归，验证不会再触发 `stock_research`、旧 ticker 或财经搜索。
 - 在 search/skill 入口增加一致性检查：若当前 user turn 不含金融研究意图，禁止继承上一轮 active skill context。
+
+## 修复记录
+
+- 2026-05-01 15:07 CST：当前 user turn 在 `PromptBundle::compose_user_input` 与带接收元信息的 `compose_runtime_input` 中统一放到历史摘要、旧 skill context 与 session context 之后，避免旧 `stock_research` / `LITE` 上下文在提示末尾压过本轮问题。
+- 领域边界策略新增明确约束：本轮用户输入优先于历史摘要、旧技能上下文和上一轮标的；当前问题明显不是金融/投研请求时必须先短路回复，不得调用 `stock_research`、`data_fetch`、`web_search` 或沿用旧 ticker / 旧 skill context。
+- 回归验证：`cargo test -p hone-channels prompt::tests:: --lib -- --nocapture`、`cargo test -p hone-channels turn_builder::tests::runtime_input_with_recv_extra_keeps_current_turn_last --lib -- --nocapture`。
+- 关联 GitHub Issue：无。
