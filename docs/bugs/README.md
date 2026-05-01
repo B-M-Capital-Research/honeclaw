@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-01 20:10 CST
+最后更新：2026-05-01 21:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -26,12 +26,12 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | New | 2026-05-01 19:02 最近一小时再次复现：同一 Feishu 直聊 session 在 `message.accepted -> reply.placeholder` 后直接落成 `completed success=false reply_chars=0`，随后记录 `suppressed generic failure fallback: ... 已达到今日对话上限（12/12）`；本轮仍无 `session.persist_user`、`session.persist_assistant` 或 `reply.send`，说明先前 `Fixed` 结论失效，关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 20:01 最近一小时仍是 `sessions_last_hour=0 / messages_last_hour=0`，各渠道 `sessions.max(updated_at)` 继续停在 `feishu=2026-04-27 16:54:20+08:00`、`web=2026-04-27 09:02:12+08:00`；但原始 session 文件已继续刷新到 `feishu=20:01:46`、`web=20:02:00`，`cron_job_runs` 也继续写到 `20:02:38+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 21:03 最近一小时仍是 `sessions_last_hour=0 / messages_last_hour=0`，`sessions` / `session_messages` 上界继续卡在 `2026-04-27 16:54:20+08:00`；但原始 session 文件已继续刷新到 `feishu=21:02:38/21:02:58`、`web=20:02:00`，`cron_job_runs` 也继续写到 `21:03:01+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 20:02 `英伟达每日消息` 的 `run_id=12732` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 20:02 最新 `20:00-20:02` 窗口继续混跑 `running + pending=23 / noop + skipped_noop=21 / completed + sent=1 / execution_failed + skipped_error=1 / completed + send_failed=1`；`RKLB`、`CAI`、`原油播报`、`小米/TEM/ASTS` 等继续回到 `parse_kind=Empty/JsonNoop` 却仍被吞成 `noop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 21:03 最新 `20:00-21:02` 两轮 heartbeat 继续混跑 `running + pending=33 / noop + skipped_noop=28 / completed + sent=2 / execution_failed + skipped_error=3`；`ORCL`、`持仓重大事件`、`RKLB`、`ASTS` 等仍回到 `parse_kind=Empty/JsonNoop`，`CAI` 与 `原油播报` 又分别退化成 `EOF` 和 `error decoding response body` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-05-01 15:02 `持仓重大事件心跳检测` 的 `run_id=12511` 再次落成 `completed + sent`，正文仍写 `RKLB当前$82.51...上涨+7.13%，突破5%阈值`，同时继续把 `4月29日` 旧合同包装成本轮“重大增量”；同窗 `RKLB异动监控` 则刚在 `15:00` 回落 `noop`，说明旧事件被错误升级到组合级触发链路 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 14:12 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=356`、`noop + skipped_noop=309`、`completed + sent=42`、`execution_failed + skipped_error=5`、`completed + send_failed=1`；最新 `13:30` 与 `14:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2846` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 17:30 `RKLB异动监控` 的 `run_id=12616` 与 `TEM大事件心跳监控` 的 `run_id=12618` 又把 `4月29日 RKLB 国防合同`、`TIME / Investor Day` 等旧催化重新送达；两条 job 在本轮前一小时里都刚出现过 `noop` 或 `Empty`，期间没有新的独立公告 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 21:02 `TEM大事件心跳监控` 的 `run_id=12788` 又把 `5月5日财报`、`TIME 榜单`、`USC 合作` 等旧催化重新送达；这些事实已在 `08:02`、`17:31` 等窗口重复出现，中间多个窗口已回到 `noop`/`Empty`，期间没有新的独立公告 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## Later / 待复现

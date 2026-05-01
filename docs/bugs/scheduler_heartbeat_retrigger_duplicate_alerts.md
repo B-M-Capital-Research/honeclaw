@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-05-01 21:00-21:02 最新巡检样本：
+      - `job_name=TEM大事件心跳监控`
+      - `run_id=12788`，`executed_at=2026-05-01T21:02:04.218459+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把 `5月5日财报`、`TIME 2026 健康与生命科学公司十强`、`USC 战略合作` 与同一轮 `+10.92%` 价格异动打包成 `【TEM大事件触发提醒】` 送达；这些持续性公司事件此前已在 `run_id=12174`（`08:02`）、`run_id=12618`（`17:31`）等窗口重复送达，期间没有新的独立公告、合作落地或财务更新。
+      - 同一批 heartbeat 在 `21:00:42` 的 `持仓重大事件心跳检测`、`21:00:57` 的 `RKLB异动监控` 已分别回落成 `noop + skipped_noop` 与 `parse_kind=JsonNoop`，说明这不是“整批行情普遍触发”，而是 TEM 单标的 heartbeat 再次把旧催化重新包装成当前提醒。
+      - `data/runtime/logs/sidecar.log` 在 `21:01:48.063-21:02:04.218` 同步记录 `parse_kind=JsonTriggered` 与成功 `deliver`，说明这不是台账重放，而是模型在 `21:00` 窗口再次把同一批旧事实判成当前触发。
+      - 这组最新样本说明重复提醒缺陷仍然活跃，并继续集中在 TEM 链路：中间已有多个窗口回到 `noop` 或 `Empty`，但旧催化仍会在数小时轮询里再次被包装成新提醒。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-05-01 17:30-17:31 最新巡检样本：
       - `job_name=TEM大事件心跳监控`
       - `run_id=12618`，`executed_at=2026-05-01T17:31:01+08:00`，再次落成 `completed + sent + delivered=1`
