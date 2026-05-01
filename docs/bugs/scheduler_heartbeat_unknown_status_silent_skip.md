@@ -15,6 +15,19 @@
 
 ## 修复进展
 
+- `2026-05-01 08:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `07:30-08:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`07:30` 窗口继续先写入 `run_id=12126-12137` 共 `12` 条 started 行；随后终态另起为 `12138-12147`，其中 `12138/12142/12144/12146` 落成 `parse_kind=JsonNoop + noop + skipped_noop`，`12139/12140/12141/12143/12145/12147` 落成 `parse_kind=Empty + noop + skipped_noop`。`08:00` 窗口又先写入 `12148-12162` 共 `15` 条 started 行；截至巡检时，终态另起为 `12163-12175`，其中 `12163/12166/12169/12171/12173` 落成 `parse_kind=JsonNoop + noop + skipped_noop`，`12164/12167/12168/12170/12172` 落成 `parse_kind=Empty + noop + skipped_noop`，`12174`（`TEM大事件心跳监控`）则又落成 `parse_kind=JsonTriggered + completed + sent`。两批 started 行仍全部保留 `running + pending`，没有恢复成单一稳定终态。
+  - 按 `executed_at >= datetime('now','-1 hour') AND actor_channel='feishu'` 聚合，最近一小时仍同时存在：
+    - `running + pending = 26`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 3`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `07:30:15.577`：`Cerebras IPO与业务进展心跳监控` 落成 `parse_kind=JsonNoop`
+    - `07:30:18.208`、`07:30:20.935`、`07:30:28.886`、`07:30:42.931`：`ORCL 大事件监控`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 同窗再次落成 `parse_kind=Empty`
+    - `08:00:22.351`、`08:00:39.454`、`08:00:47.914`、`08:01:18.742`：`Cerebras IPO与业务进展心跳监控`、`ORCL 大事件监控`、`持仓重大事件心跳检测`、`Monitor_Watchlist_11` 新一轮继续落成 `parse_kind=Empty`
+    - `08:02:08.730`：`TEM大事件心跳监控` 在同批里又落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-01 08:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 07:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `06:30-07:02` 的最新两轮仍在混跑 `started + noop + sent + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`06:30` 窗口继续先写入 `run_id=12089-12100` 共 `12` 条 started 行；随后终态另起为 `12101`、`12114-12124`，其中 `12097`（`小米30港元破位预警`）已落成 `completed + sent`，其余 `12090-12096`、`12098-12101`、`12114-12124` 大多已落成 `noop + skipped_noop`。`07:00` 窗口又先写入 `12102-12113` 共 `12` 条 started 行，随后 `12114-12124` 落成 `noop + skipped_noop`，`12125`（`RKLB异动监控`）落成 `execution_failed + skipped_error`；但两批 started 行仍全部保留 `running + pending`，没有恢复成单一稳定终态。
   - 按 `executed_at >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
