@@ -318,7 +318,9 @@ impl Tool for NotificationPrefsTool {
                 for (idx, item) in arr.iter().enumerate() {
                     let s = item
                         .as_str()
-                        .ok_or_else(|| HoneError::Tool("digest_slots 元素必须是 HH:MM 字符串".into()))?
+                        .ok_or_else(|| {
+                            HoneError::Tool("digest_slots 元素必须是 HH:MM 字符串".into())
+                        })?
                         .trim()
                         .to_string();
                     if s.is_empty() {
@@ -331,6 +333,25 @@ impl Tool for NotificationPrefsTool {
                         label: None,
                         floor_macro: None,
                     });
+                }
+                // 任何 slot 落在现有 quiet_hours 内会被 scheduler 跳过(scheduler.rs:277
+                // 在 quiet 窗内 continue,然后只在 quiet_to 那一分钟跑 quiet_flush),
+                // 等于配置静默失效。这里 hard error,逼 LLM 自动改时间或先 clear_quiet_hours。
+                if let Some(qh) = prefs.quiet_hours.as_ref() {
+                    let bad: Vec<String> = slots
+                        .iter()
+                        .filter(|s| crate::schedule_view::time_in_quiet(&s.time, Some(qh)))
+                        .map(|s| s.time.clone())
+                        .collect();
+                    if !bad.is_empty() {
+                        return Err(HoneError::Tool(format!(
+                            "digest slot 时间 [{}] 落在 quiet_hours {}–{} 内,scheduler 不会触发;\
+                             改 slot 时间或先 clear_quiet_hours / 缩短 quiet 区间。",
+                            bad.join(", "),
+                            qh.from,
+                            qh.to,
+                        )));
+                    }
                 }
                 prefs.digest_slots = Some(slots);
             }
@@ -391,11 +412,30 @@ impl Tool for NotificationPrefsTool {
                     _ => Vec::new(),
                 };
                 validate_tags(&exempt_kinds)?;
-                prefs.quiet_hours = Some(QuietHours {
-                    from,
-                    to,
-                    exempt_kinds,
-                });
+                // 反向校验:新 quiet 区间会吞掉现有 digest_slots(同样会被 scheduler 跳过),
+                // 报错让用户先调 slot。
+                let candidate = QuietHours {
+                    from: from.clone(),
+                    to: to.clone(),
+                    exempt_kinds: exempt_kinds.clone(),
+                };
+                if let Some(slots) = prefs.digest_slots.as_ref() {
+                    let bad: Vec<String> = slots
+                        .iter()
+                        .filter(|s| crate::schedule_view::time_in_quiet(&s.time, Some(&candidate)))
+                        .map(|s| s.time.clone())
+                        .collect();
+                    if !bad.is_empty() {
+                        return Err(HoneError::Tool(format!(
+                            "新 quiet_hours {}–{} 会吞掉现有 digest slot [{}],它们将不再触发;\
+                             请先 set_digest_slots 调整时间,或缩短 quiet 区间。",
+                            from,
+                            to,
+                            bad.join(", "),
+                        )));
+                    }
+                }
+                prefs.quiet_hours = Some(candidate);
             }
             "clear_quiet_hours" => {
                 prefs.quiet_hours = None;
@@ -886,5 +926,109 @@ mod tests {
             .unwrap();
         let out = tool.execute(json!({"action":"get"})).await.unwrap();
         assert_eq!(out["prefs"]["quiet_hours"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn set_digest_slots_rejects_slot_inside_existing_quiet() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_quiet_hours",
+            "value": { "from": "00:00", "to": "08:00" },
+        }))
+        .await
+        .unwrap();
+        let err = tool
+            .execute(json!({
+                "action": "set_digest_slots",
+                "value": ["02:30", "09:00"]
+            }))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => {
+                assert!(msg.contains("02:30"), "msg={msg}");
+                assert!(msg.contains("quiet_hours"), "msg={msg}");
+            }
+            other => panic!("unexpected err {other:?}"),
+        }
+        // 落盘的 slots 应保持未变(default 即 None)
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["digest_slots"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn set_digest_slots_outside_quiet_succeeds() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_quiet_hours",
+            "value": { "from": "00:00", "to": "08:00" },
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({
+            "action": "set_digest_slots",
+            "value": ["09:00", "19:00"]
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        let times: Vec<String> = out["prefs"]["digest_slots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["time"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(times, vec!["09:00", "19:00"]);
+    }
+
+    #[tokio::test]
+    async fn set_quiet_hours_rejects_when_existing_slot_falls_in() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_digest_slots",
+            "value": ["02:30", "09:00"]
+        }))
+        .await
+        .unwrap();
+        let err = tool
+            .execute(json!({
+                "action": "set_quiet_hours",
+                "value": { "from": "00:00", "to": "08:00" },
+            }))
+            .await
+            .unwrap_err();
+        match err {
+            HoneError::Tool(msg) => {
+                assert!(msg.contains("吞掉"), "msg={msg}");
+                assert!(msg.contains("02:30"), "msg={msg}");
+            }
+            other => panic!("unexpected err {other:?}"),
+        }
+        // quiet 没落盘
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["quiet_hours"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn set_quiet_hours_safe_when_no_slot_overlap() {
+        let dir = tempdir().unwrap();
+        let tool = mk(dir.path());
+        tool.execute(json!({
+            "action": "set_digest_slots",
+            "value": ["09:00", "19:00"]
+        }))
+        .await
+        .unwrap();
+        tool.execute(json!({
+            "action": "set_quiet_hours",
+            "value": { "from": "23:00", "to": "07:00" },
+        }))
+        .await
+        .unwrap();
+        let out = tool.execute(json!({"action":"get"})).await.unwrap();
+        assert_eq!(out["prefs"]["quiet_hours"]["from"], json!("23:00"));
     }
 }

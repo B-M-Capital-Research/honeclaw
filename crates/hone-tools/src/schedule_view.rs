@@ -444,7 +444,7 @@ fn describe_cron_frequency(job: &CronJob) -> String {
 
 /// 判断给定本地 HH:MM 是否落在 quiet_hours 区间内。语义跟
 /// `hone_core::quiet::quiet_window_active` 对齐，但只看本地时刻不需要 now。
-fn time_in_quiet(local_hhmm: &str, qh: Option<&QuietHours>) -> bool {
+pub(crate) fn time_in_quiet(local_hhmm: &str, qh: Option<&QuietHours>) -> bool {
     let Some(qh) = qh else {
         return false;
     };
