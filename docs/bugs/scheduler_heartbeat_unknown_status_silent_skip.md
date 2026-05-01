@@ -15,6 +15,27 @@
 
 ## 修复进展
 
+- `2026-05-01 14:12` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `13:30-14:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error / completed + send_failed`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`13:30` 窗口继续先写入 `run_id=12424-12434` 共 `11` 条 heartbeat started 行；随后终态另起为 `12435-12445`，其中 `12444`（`TEM大事件心跳监控`）落成 `completed + sent`，`12445`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。`14:00` 窗口又先写入 `12446-12456` 共 `11` 条 started 行；截至巡检时，终态已另起为 `12457-12466`，其中多数回落成 `noop + skipped_noop`，但两批 heartbeat started 行仍全部保留 `running + pending`。
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 356`
+    - `noop + skipped_noop = 309`
+    - `completed + sent = 42`
+    - `execution_failed + skipped_error = 5`
+    - `completed + send_failed = 1`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `13:31:02.610`：`TEM大事件心跳监控` 落成 `completed + sent`
+    - `13:31:24.126`：`持仓重大事件心跳检测` 同窗回落 `noop + skipped_noop`
+    - `14:00:18.428-14:00:18.429`：`全天原油价格3小时播报` 回到 `parse_kind=JsonNoop`
+    - `14:00:21.079-14:00:21.080`：`CAI破位预警` 回到 `parse_kind=Empty`
+    - `14:00:22.946-14:00:22.947`：`TEM破位预警` 回到 `parse_kind=JsonNoop`
+    - `14:00:52.223`：`ASTS 重大异动心跳监控` 回到 `parse_kind=JsonNoop`
+    - `14:00:57.137-14:00:57.138`：`Monitor_Watchlist_11` 再次落成 `parse_kind=Empty`
+    - `14:00:57.748`：`RKLB异动监控` 同窗回到 `parse_kind=JsonNoop`
+    - `14:01:44.817`：`ORCL 大事件监控` 回到 `parse_kind=JsonNoop`
+    - `14:02:21.065`：`持仓重大事件心跳检测` 在下一条终态里才回落 `noop + skipped_noop`
+  - 结论：到 `2026-05-01 14:12` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / skipped_error / send_failed`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 13:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `12:30-13:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`12:30` 窗口继续先写入 `run_id=12380-12390` 共 `11` 条 heartbeat started 行；随后终态另起为 `12391-12401`，其中 `12401`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。`13:00` 窗口又先写入 `12402-12412` 共 `11` 条 started 行；随后终态另起为 `12413-12423`，其中 `12420`（`RKLB异动监控`）与 `12422`（`小米30港元破位预警`）落成 `parse_kind=JsonTriggered + completed + sent`，其余任务回落成 `noop + skipped_noop`。两批 heartbeat started 行仍全部保留 `running + pending`。
   - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：

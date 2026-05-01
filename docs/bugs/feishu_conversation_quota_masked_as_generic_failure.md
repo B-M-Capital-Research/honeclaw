@@ -3,10 +3,23 @@
 - 发现时间：2026-04-16 15:52 CST
 - Bug Type：Business Error
 - 严重等级：P1
-- 状态：Fixed
+- 状态：New
 - GitHub Issue：[#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26)
 
 ## 证据来源
+
+- 2026-05-01 12:59 最近一小时新增复现：
+  - 运行日志：
+    - `data/runtime/logs/sidecar.log`
+    - `2026-05-01 12:59:13.198` 记录 `step=message.accepted user=+8616620121491 text_chars=8`
+    - `2026-05-01 12:59:14.502` 紧接着发送 `step=reply.placeholder`
+    - `2026-05-01 12:59:14.508` 同一 session 直接落成 `step=handler.session_run ... completed success=false reply_chars=0`
+    - `2026-05-01 12:59:14.509` 同一秒再次记录 `suppressed generic failure fallback: ... 已达到今日对话上限（12/12，北京时间 2026-05-01），请明天再试`
+    - 同窗没有对应的 `session.persist_user`、`session.persist_assistant` 或 `reply.send`
+  - 会话快照：
+    - `data/sessions/Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json`
+    - 文件最后两条消息仍是 `2026-05-01T06:04:50.527230+08:00` 的 user turn `DJT适合加仓吗` 与 `2026-05-01T06:06:31.075388+08:00` 的 assistant 回复；`12:59` 这轮新 user turn 和任何 quota 提示都没有写入
+  - 这说明旧缺陷不只是 `2026-04-30 22:36` 的一次性回归，而是在 `2026-05-01 12:59` 继续以同一链路稳定复现：quota 触顶后仍是“placeholder 后无最终回复 + 无 user turn 落库”
 
 - 2026-04-30 22:36 最近一小时新增复现：
   - 运行日志：
@@ -69,24 +82,24 @@
 
 ## 当前实现效果
 
-- 最新坏态已经比 `2026-04-16` 更差：`2026-04-30 22:36` 的真实样本里，用户命中 quota 后只看到 placeholder，随后既没有“已达到今日对话上限”的友好提示，也没有通用失败兜底。
+- 最新坏态已经比 `2026-04-16` 更差，而且到 `2026-05-01 12:59` 仍未恢复：用户命中 quota 后只看到 placeholder，随后既没有“已达到今日对话上限”的友好提示，也没有通用失败兜底。
 - 同窗日志明确显示 handler 知道真实错误是 `已达到今日对话上限（12/12）`，但又因为 `suppressed generic failure fallback` 把最终用户态回复整轮吞掉。
-- `data/sessions/Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c.json` 也证明最新 user turn 没有进入会话历史；文件仍停在上一轮 `22:35:49` 的 assistant 成功答复。
+- `data/sessions/Actor_feishu__direct__ou_5f0e001c305cfc075babe830a9b2c6079c.json` 与 `data/sessions/Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json` 都证明最新 user turn 没有进入会话历史；后者在 `2026-05-01 12:59` 复现时仍停在 `06:06:31+08:00` 的上一轮 assistant 成功答复。
 - 因此当前不是单纯“文案不友好”，而是 quota 拒绝在 Feishu 直聊里再次退化成“无最终回复 + 无 user turn 落库”的功能性故障。
 
 ## 用户影响
 
 - 受影响用户会被稳定阻断，而且现在连“明天再试”的明确提示都看不到，只会感知为机器人卡住或吞消息。
-- 最新真实样本里，placeholder 发出后整轮无最终回复，属于 Feishu 直聊主链路的明显功能失败，因此维持 `P1`。
+- `2026-04-30 22:36` 与 `2026-05-01 12:59` 两个真实样本里，placeholder 发出后都整轮无最终回复，属于 Feishu 直聊主链路的明显功能失败，因此维持 `P1`。
 - 由于最新 user turn 未落库，排障与客服支持会丢失关键信息，容易把 quota 问题误归因为系统故障。
 
 ## 根因判断
 
-- `2026-04-30 22:36` 的日志说明，底层 quota 判定本身仍然存在，而且 handler 也拿到了业务拒绝文案；但 Feishu 失败收口又把这类 quota 错误误判成“generic failure fallback 应 suppress”，导致最终用户态文案被整轮吞掉。
+- `2026-04-30 22:36` 与 `2026-05-01 12:59` 的日志都说明，底层 quota 判定本身仍然存在，而且 handler 也拿到了业务拒绝文案；但 Feishu 失败收口又把这类 quota 错误误判成“generic failure fallback 应 suppress”，导致最终用户态文案被整轮吞掉。
 - 根因一：`AgentSession::run()` 在 `reserve_conversation_quota()` 被拒绝时直接 `fail_run()`，该路径发生在 `session.persist_user` 之前，因此用户消息不会写入会话。
 - 根因二：Feishu handler 当前对 `response.success == false` 统一使用通用失败文案收口，没有把业务拒绝类错误映射成用户可理解的专用提示。
 - 根因三：当前外层可观测性对“系统失败”和“业务规则拒绝”的区分不够，导致真实原因被掩盖。
-- 最近一小时的 `22:36` 复现说明问题不依赖特定消息内容；只要当日额度已达上限，这条链路当前就会稳定退化成“placeholder 后无最终回复”。
+- 最近两次真实窗口（`2026-04-30 22:36`、`2026-05-01 12:59`）都说明问题不依赖特定消息内容；只要当日额度已达上限，这条链路当前就会稳定退化成“placeholder 后无最终回复”。
 
 ## 修复情况（2026-04-17）
 

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-01 13:03 CST
+最后更新：2026-05-01 14:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,23 +15,24 @@
 
 ## 当前概览
 
-- 活跃待修复：10
+- 活跃待修复：11
 - Later / 待复现：11
-- 已修复 / 已关闭：76
+- 已修复 / 已关闭：75
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
+- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 13:03 最近一小时再次是 `sessions_last_hour=0 / messages_last_hour=0`，镜像上界仍全部卡在 `2026-04-27 16:54:20+08:00`；但同窗 Web 健康检查已在 `04:04:40Z` 正常回 `OK` 并 `end_turn`，`cron_job_runs` 也继续推进，说明真实会话继续收口而 sqlite 会话镜像完全不动 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | New | 2026-05-01 12:59 同一老会话再次只出现 `message.accepted -> reply.placeholder -> handler.session_run success=false -> suppressed generic failure fallback`；源文件 `data/sessions/Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json` 仍停在 `06:06:31+08:00`，说明 quota 拒绝依旧会吞掉最终回复且不写入本轮 user turn；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 14:12 最近一小时再次是 `sessions_last_hour=0 / messages_last_hour=0`，镜像上界仍全部卡在 `2026-04-27 16:54:20+08:00`；同库 `cron_job_runs` 已继续写到 `14:02:21+08:00`，而 Feishu 源会话 `Actor_feishu__direct__ou_5f680...42c.json` 今天已更新到 `06:06:31+08:00`，但 sqlite 对应行仍停在 `2026-04-25 14:41:03+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=12244` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整晨报正文，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 13:03 最新 `12:30-13:01` 窗口继续混跑 `running + pending=334 / noop + skipped_noop=289 / completed + sent=41 / skipped_error=5`；started 行仍残留，`TEM/TEM大事件/ORCL` 再次漂到 `parse_kind=Empty`，`持仓重大事件` 同窗又落成 `error decoding response body` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 14:12 最新 `13:30-14:02` 窗口继续混跑 `running + pending=356 / noop + skipped_noop=309 / completed + sent=42 / skipped_error=5 / send_failed=1`；started 行仍残留，`持仓重大事件` 新增到 `run_id=12466` 才回落 `noop`，但最近一小时仍保留 `run_id=12401` 的 `error decoding response body` 失败样本 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-01 03:01 `持仓重大事件心跳检测` 的 `run_id=11923` 再次命中 `maximum context length`，但最终仍被压扁成 `invalid type: integer 400`；此前“Fixed”结论与单文档现状不一致，现已纠正回活跃队列 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-05-01 13:03 `RKLB异动监控` 的 `run_id=12420` 再次落成 `completed + sent`，但正文仍明确写出 `+7.13%（已接近但未达8%阈值）`，同时继续把 `4月29日` 的旧合同包装成本轮触发理由 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu 直聊切到非金融新话题时，仍误入 `stock_research` 并沿用旧 `LITE` 上下文 | P3 | New | 2026-04-30 18:59 用户只问 `AMD的电脑CPU是什么名字`，链路却先展开 `stock_research`、`LITE OR Lumentum OR optical OR photonics` 检索和光通信财报搜索，29 秒后才答回 CPU 命名 | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
-| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 13:03 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=334`、`noop + skipped_noop=289`、`completed + sent=41`、`execution_failed + skipped_error=5`；最新 `12:30` 与 `13:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2824` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 14:12 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=356`、`noop + skipped_noop=309`、`completed + sent=42`、`execution_failed + skipped_error=5`、`completed + send_failed=1`；最新 `13:30` 与 `14:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2846` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 08:02 `TEM大事件心跳监控` 的 `run_id=12174` 又把 `01:00/03:00` 已提醒过的 USC 合作 / TIME / Investor Day 旧事件正式送达；中间 `07:30` 窗口刚回落成 `noop`，期间没有新的独立公告或合作落地 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-01 04:01 `Oil_Price_Monitor_Closing` 再次 `completed + sent`，Tavily 4 key 全部额度耗尽后，正文仍把“中东风险高位回落”写成确定性结论并据此判断科技股尾盘风险偏好恢复 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
@@ -58,7 +59,6 @@
 | --- | --- | --- | --- | --- |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | Fixed | 2026-05-01 `local_search_files` 目录递归搜索遇到二进制、非 UTF-8 或不可读文件时改为跳过单文件并继续检索，避免 actor sandbox 内单个坏文件把观察池击球区配置搜索整轮打断；`cargo test -p hone-tools directory_search_skips_non_text_files_without_aborting --lib -- --nocapture`、`cargo test -p hone-tools local_files --lib -- --nocapture`、`cargo check -p hone-tools --tests` 通过；下个真实简报窗口建议复测输出 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-01 event-engine Feishu direct fallback 从“唯一 email 或唯一 mobile”放宽为“所有稳定联系人解析后只产生一个 current-app open_id 才使用”，覆盖单用户配置同时保留 email+mobile 时 fallback 被关闭的缺口；`cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-04-30 quota 拒绝改为用户态错误并在拒绝前写入 user turn；Feishu 失败收口会向 placeholder 回写“已达到今日对话上限”而不是吞掉最终回复；`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-04-30 已放宽 multi-agent 对 `cron_job`/`portfolio` 可信本地结果的直返门槛，多行和较长任务列表也不再被强制送进易空回复的 answer 阶段；`cargo test -p hone-channels runners::multi_agent::tests`、`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`、`cargo check -p hone-channels` 通过 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-05-01 watchlist 送达前数值自检补齐“跌至 69.85，已触及或低于触发价 69.83”变体；当前价仍高于下行触发价时会落成 `near_threshold_suppressed`；`cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture` 通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | Fixed | 2026-04-30 startup error dialog 改为后台线程显示，并在 setup preflight 失败时写入 `desktop.log` 与 stderr；新增无交互抑制开关和 hone-desktop 定向回归，避免每日 `.app` smoke test 再卡在 `CFUserNotificationDisplayAlert` | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
