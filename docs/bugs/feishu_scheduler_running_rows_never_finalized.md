@@ -8,6 +8,21 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-01 11:02 CST` 再次复核，started-row finalize 缺陷在最新 `10:30`、`11:00` 两个窗口继续实时新增，而且 heartbeat 仍共用同一种“started 行不 finalize”的坏态：
+    - `10:30` 窗口先写入 `run_id=12290-12300` 共 `11` 条 started 行，全部为 heartbeat
+    - 同窗终态随后另起为 `12301-12311`，目前全部已落成 `noop + skipped_noop`
+    - `11:00` 窗口又先写入 `run_id=12312-12322` 共 `11` 条 started 行，全部为 heartbeat
+    - 同窗终态随后另起为 `12323-12333`：其中 `12325` 已落成 `completed + sent + delivered=1`，其余均为 `noop + skipped_noop`
+    - 但对应 started 行 `12290-12300` 与 `12312-12322` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent` 还是 `skipped_noop`，都不会覆盖原 started 行
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 289`
+    - `noop + skipped_noop = 249`
+    - `completed + sent = 37`
+    - `execution_failed + skipped_error = 4`
+    - `completed + send_failed = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `2779` 条，较 `2026-05-01 09:02` 巡检记录里的 `2726` 再增 `53` 条，说明这条缺陷仍在随每个半小时 heartbeat 窗口稳定堆积。
+
+ - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-01 09:02 CST` 再次复核，started-row finalize 缺陷在最新 `08:30`、`09:00` 两个窗口继续实时新增，而且 heartbeat 与普通 scheduler 仍共用同一种“started 行不 finalize”的坏态：
     - `08:30` 窗口先写入 `run_id=12180-12192` 共 `13` 条 started 行，其中既包含 12 条 heartbeat，也包含普通 scheduler `Hone_AI_Morning_Briefing`
     - 同窗终态随后另起为 `12196-12213`：其中 `12202`、`12206`、`12207-12210`、`12212-12213` 已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
