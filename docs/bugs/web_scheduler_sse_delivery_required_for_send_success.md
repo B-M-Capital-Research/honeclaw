@@ -7,6 +7,25 @@
 
 ## 证据来源
 
+- `2026-05-01 20:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=12732`
+    - `job_id=j_3e8981c4`
+    - `job_name=英伟达每日消息`
+    - `actor_channel=web`
+    - `executed_at=2026-05-01T20:02:00.405110+08:00`
+    - `execution_status=completed`
+    - `message_send_status=send_failed`
+    - `delivered=0`
+    - `should_deliver=1`
+    - `detail_json={"console_event_sent":false,"scheduler":null}`
+    - `response_preview` 已包含完整 NVDA 摘要开头与结构化段落，说明正文已生成完成，但离线 Web 任务再次被记成 `send_failed`
+  - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json`
+    - 同一 Web 会话 `updated_at=2026-05-01T20:02:00.403487+08:00`
+    - 末尾 assistant final 已完整写入 NVDA 摘要正文，覆盖股价、财报、Rubin、capex 和机构观点
+  - 结论：
+    - 到 `2026-05-01 20:02` 为止，这条缺陷在 `20:00` 晚间 job 上继续 live 复现；“正文已落库但离线 SSE 无监听”依旧会被记成 `completed + send_failed + console_event_sent=false`
+
 - `2026-05-01 09:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=12244`
