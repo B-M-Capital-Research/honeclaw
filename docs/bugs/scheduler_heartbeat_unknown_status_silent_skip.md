@@ -15,6 +15,23 @@
 
 ## 修复进展
 
+- `2026-05-01 13:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `12:30-13:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`12:30` 窗口继续先写入 `run_id=12380-12390` 共 `11` 条 heartbeat started 行；随后终态另起为 `12391-12401`，其中 `12401`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。`13:00` 窗口又先写入 `12402-12412` 共 `11` 条 started 行；随后终态另起为 `12413-12423`，其中 `12420`（`RKLB异动监控`）与 `12422`（`小米30港元破位预警`）落成 `parse_kind=JsonTriggered + completed + sent`，其余任务回落成 `noop + skipped_noop`。两批 heartbeat started 行仍全部保留 `running + pending`。
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 334`
+    - `noop + skipped_noop = 289`
+    - `completed + sent = 41`
+    - `execution_failed + skipped_error = 5`
+    - `completed + send_failed = 1`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `12:32:15.826`：`持仓重大事件心跳检测` 在同一批里新增 `success=false error="LLM 错误: http error: error decoding response body"`
+    - `13:00:13.614-13:00:13.615`：`TEM破位预警` 再次落成 `raw_chars=0 starts_with_json=false parse_kind=Empty`
+    - `13:00:24.673-13:00:24.674`：`ORCL 大事件监控` 回落成 `parse_kind=Empty`
+    - `13:00:32.347-13:00:32.348`：`TEM大事件心跳监控` 同窗再次落成 `parse_kind=Empty`
+    - `13:00:35.414-13:00:35.415`：`CAI破位预警` 回到 `parse_kind=JsonNoop`
+    - `13:00:47.850-13:00:47.851`：`ASTS 重大异动心跳监控` 回到 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-01 13:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / skipped_error`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 12:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `11:30-12:03` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`11:30` 窗口继续先写入 `run_id=12334-12344` 共 `11` 条 heartbeat started 行；随后终态另起为 `12345-12355`，其中 `12354`（`Cerebras IPO与业务进展心跳监控`）落成 `parse_kind=JsonTriggered + completed + sent`，其余任务回落成 `noop + skipped_noop`。`12:00` 窗口又先写入 `12356-12367` 共 `12` 条 started 行；截至巡检时，终态仅看到 `12368-12378` 回落为 `noop + skipped_noop`，而 `12379` 是同窗普通 scheduler `每日公司资讯与分析总结` 的 `completed + sent`。两批 heartbeat started 行仍全部保留 `running + pending`。
   - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
