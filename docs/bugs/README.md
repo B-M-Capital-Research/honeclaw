@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 05:04 CST
+最后更新：2026-05-02 06:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -25,12 +25,12 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 05:04 最近一小时再次确认 `sessions` / `session_messages` 上界仍共同卡在 `2026-04-27 16:54:20+08:00`，而源会话文件已继续刷新到 `Feishu 04:39`、`Web 04:04`，同库 `cron_job_runs` 也已推进到 `2026-05-02 05:01:36+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 06:04 最近一小时再次确认 `sessions` / `session_messages` 上界仍共同卡在 `2026-04-27 16:54:20+08:00`，而源会话文件已继续刷新到 `Feishu 05:22`、`Web 05:05`，同库 `cron_job_runs` 也已推进到 `2026-05-02 06:00:02+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 20:02 `英伟达每日消息` 的 `run_id=12732` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 05:04 最新 `04:00-05:01` 窗口继续混跑 `running + pending=22 / noop + skipped_noop=20 / completed + sent=1 / execution_failed + skipped_error=1`；同一任务 `ORCL 大事件监控` 在相邻窗口内继续在 `skipped_error` 与 `JsonTriggered + sent` 之间回摆 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-02 05:04 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=22`、`noop + skipped_noop=20`、`completed + sent=1`、`execution_failed + skipped_error=1`；全库悬挂 `running + pending` 总量已升到 `3193`，比上轮再增 `22` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 06:04 最新 `05:00-06:01` 窗口继续混跑 `running + pending=22 / noop + skipped_noop=20 / completed + sent=2`；同一轮里 `全天原油价格3小时播报` 再次落成 `JsonTriggered + deliver`，其余 heartbeat started 行仍悬挂未收口 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-02 06:04 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=22`、`noop + skipped_noop=20`、`completed + sent=2`；全库悬挂 `running + pending` 总量已升到 `3215`，比上轮再增 `22` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-01 23:01 `核心观察股池晚间快报` 再次把 24 支标的统一降成“击球区待确认”；同症状已连续出现在 `2026-04-30 21:35`、`2026-05-01 21:35` 与 `2026-05-01 23:00` 三个窗口，说明先前 `Fixed` 结论失效且影响面已覆盖不同观察池日报模板 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-02 03:03 `run_id=13070` 再次把“2026 年需求前景偏弱”“霍尔木兹海峡局势提供支撑”组织成确定性主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-02 06:04 `run_id=13202` 再次把“标普上调 2026 年剩余时间油价预期”“全球需求增加且供需趋于不平衡”组织成确定性主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-02 01:12 `持仓重大事件心跳检测` 的 `run_id=12985` 再次落成 `execution_failed + skipped_error`，错误恢复为 `invalid type: integer 400, expected a string`；说明 2026-05-01 标记的 `Fixed` 结论未在真实 heartbeat 窗口生效 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Daily macOS build 隔离配置目录缺少 `soul.md` 时 release app setup panic | P3 | New | 2026-05-02 04:09 首次隔离启动因 `system_prompt_path` 解析到 `data/runtime/daily-build-check/./soul.md` 缺失而失败；复制 repo `soul.md` 到临时配置目录后，同一 `.app` 已通过 `/api/meta`、用户端 200、渠道 disabled 与清理验证 | [daily_macos_build_isolated_config_missing_soul.md](./daily_macos_build_isolated_config_missing_soul.md) |

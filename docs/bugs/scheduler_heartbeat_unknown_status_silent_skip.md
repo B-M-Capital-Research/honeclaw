@@ -7,6 +7,23 @@
 
 ## 修复进展
 
+- `2026-05-02 06:04` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `05:00-06:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 20`
+    - `completed + sent = 2`
+  - 最近一小时内可见的同窗终态继续混杂：
+    - `13160` `ORCL 大事件监控` -> `completed + sent`
+    - `13162` `全天原油价格3小时播报` -> `completed + sent`
+    - `13174-13184` 这一轮其余 heartbeat 多数回落成 `noop + skipped_noop`
+    - `13185-13195` 新一轮 started 行截至巡检时仍全部保留 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `05:30` 与 `06:00` 窗口继续摇摆：
+    - `2026-05-02 05:30:14.232`：`ASTS 重大异动心跳监控` 在 `run_finish success=true content_chars=0` 后仍被记成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 05:30:17.202`、`05:30:17.573`、`05:30:17.807`：`ORCL 大事件监控`、`CAI破位预警`、`全天原油价格3小时播报` 同窗又回到 `parse_kind=JsonNoop`
+    - `2026-05-02 06:01:11.919-06:01:11.920`：`全天原油价格3小时播报` 在 06:00 窗口再次落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-02 06:01:24.389`：`Cerebras IPO与业务进展心跳监控` 同窗又回摆成 `parse_kind=Empty raw_chars=0`
+  - 结论：到 `2026-05-02 06:04` 为止，本单仍稳定活跃；最新窗口虽然没有新增 `skipped_error`，但 started 行继续悬挂，且 `Empty / JsonNoop / JsonTriggered` 仍在同窗混跑，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 05:04` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `04:00-05:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
     - `running + pending = 22`
