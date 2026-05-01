@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-05-01 23:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `22:30-23:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`22:30` 窗口先写入 `run_id=12847-12857` 共 `11` 条 heartbeat started 行；随后终态另起为 `12858-12866`，全部回落成 `noop + skipped_noop`。`23:00` 窗口又先写入 `12867-12878` 共 `12` 条 started 行；截至巡检时，终态已另起为 `12879-12890`，其中 `12884`（`ORCL 大事件监控`）落成 `completed + sent`，其余任务回落成 `noop + skipped_noop`。两批 started 行仍全部保留 `running + pending`。
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 18`
+    - `completed + sent = 1`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `22:30:11-22:31:35`：`全天原油价格3小时播报`、`CAI破位预警`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`RKLB异动监控`、`ASTS 重大异动心跳监控`、`TEM破位预警`、`持仓重大事件心跳检测`、`小米30港元破位预警`、`Monitor_Watchlist_11`、`Cerebras IPO与业务进展心跳监控` 同窗继续混出 `parse_kind=Empty / JsonNoop`
+    - `23:01:02.354`：`ORCL 大事件监控` 在新一轮落成 `parse_kind=JsonTriggered` 并实际 `deliver`，正文明确写出 `涨幅 +5.36%`，说明这次 `completed + sent` 是有效触发，不属于误报
+    - `23:01:34.059`、`23:01:55.680`、`23:02:57.035`：`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`持仓重大事件心跳检测` 在同窗继续分别落成 `parse_kind=Empty` 与 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-01 23:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，只是本轮没有再出现 `skipped_error`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 21:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `20:00-21:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `heartbeat=1 AND datetime(executed_at) >= datetime('now','-70 minutes')` 聚合，最近窗口仍同时存在：
     - `running + pending = 33`
