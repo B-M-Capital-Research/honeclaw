@@ -3,9 +3,28 @@
 - **发现时间**: 2026-04-27 10:18 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 证据来源
+
+- `2026-05-01 09:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=12244`
+    - `job_id=j_183bee8d`
+    - `job_name=09:00 美股AI与航空科技晨报`
+    - `actor_channel=web`
+    - `executed_at=2026-05-01T09:01:55.126331+08:00`
+    - `execution_status=completed`
+    - `message_send_status=send_failed`
+    - `delivered=0`
+    - `should_deliver=1`
+    - `detail_json={"console_event_sent":false,"scheduler":null}`
+    - `response_preview` 已包含完整晨报开头、`**最重要的 5 条**` 与 `今日关键日历与潜在催化`，说明正文已生成完成，但离线 Web 任务再次被记成 `send_failed`
+  - `data/sessions/Actor_web__direct__web-user-ba50cb9401c0.json`
+    - 同一 Web 会话 `updated_at=2026-05-01T09:01:55.124060+08:00`
+    - 末尾 assistant final 已完整写入晨报正文，覆盖 `SNDK`、`LHX`、`AAPL`、AI 存储链和下周网络/光通信财报窗口
+  - 结论：
+    - 到 `2026-05-01 09:02` 为止，这条缺陷仍在 live 复现；“正文已落库但离线 SSE 无监听”依旧会被记成 `completed + send_failed + console_event_sent=false`
 
 - `2026-04-30 09:01` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
   - `data/sessions.sqlite3` -> `cron_job_runs`
@@ -124,6 +143,8 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 ## 当前实现效果
 
+- `2026-05-01 09:02` 的 `09:00 美股AI与航空科技晨报` 说明，这条缺陷在最新生产窗口仍未退出活跃态：正文已完整生成并写入 Web 会话，但 `cron_job_runs` 依旧再次记成 `completed + send_failed + console_event_sent=false`。
+- 同一 `job_id=j_183bee8d` 目前已连续五天（`2026-04-27`、`2026-04-28`、`2026-04-29`、`2026-04-30`、`2026-05-01`）在 `09:00` 晨报窗口复现，说明当前线上行为仍未兑现“正文落库即可视为送达成功”的语义。
 - `2026-04-29 20:01` 的 `英伟达每日消息` 说明，这条缺陷在最新一小时窗口仍未退出活跃态：正文已完整生成，但 `cron_job_runs` 依旧再次记成 `completed + send_failed + console_event_sent=false`。
 - `2026-04-30 09:01` 的 `09:00 美股AI与航空科技晨报` 说明，这条缺陷在最新生产窗口仍未退出活跃态：正文已完整生成并写入 Web 会话，但 `cron_job_runs` 依旧再次记成 `completed + send_failed + console_event_sent=false`。
 - 同一 `job_id=j_f42bfebd` 已连续两天（`2026-04-28`、`2026-04-29`）在 `20:00` 窗口复现，说明这不是单个晨报 job 的特例，而是 Web scheduler 的通用离线送达判定仍未收口。
@@ -141,6 +162,7 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 ## 根因判断
 
+- `2026-05-01 09:02` 的第五次连续晨报复现说明，当前问题不是某次部署前后的短暂灰度差异，而是同一 Web scheduler job 在“用户离线 / 无活跃 SSE 订阅者”这一条件下仍稳定沿用旧的送达判定。
 - `2026-04-29 09:02` 的第三次连续晨报复现说明，当前问题不是某个单次会话写坏或单日 Web runtime 波动，而是同一 Web scheduler job 在“用户离线 / 无活跃 SSE 订阅者”这一条件下持续沿用旧的送达判定。
 - `2026-04-28 20:01` 的回归样本说明，当前生产链路仍把 `console_event_sent=false` 与 `message_send_status=send_failed` 绑定在一起，至少对 `run_id=9099` 没有兑现“正文落库即视为送达成功”的修复语义。
 - 根因不是 agent 生成失败，也不是会话持久化失败；同一 run 已经写入完整 assistant final。

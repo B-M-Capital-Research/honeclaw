@@ -15,6 +15,23 @@
 
 ## 修复进展
 
+- `2026-05-01 09:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `08:30-09:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / completed + send_failed`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`08:30` 窗口继续先写入 `run_id=12180-12191` 共 `12` 条 heartbeat started 行；随后终态另起为 `12196-12206`，其中 `12196/12197/12198/12199/12200/12201/12203/12204/12205` 落成 `parse_kind=JsonNoop + noop + skipped_noop`，`12202`、`12206` 落成 `parse_kind=JsonTriggered + completed + sent`。`09:00` 窗口又先写入 `12221-12229` 共 `9` 条 heartbeat started 行；截至巡检时，终态另起为 `12230-12241`，其中 `12230/12231/12232/12233/12234/12235/12236/12237/12241` 落成 `noop + skipped_noop`，`12238`、`12240` 落成 `parse_kind=JsonTriggered + completed + sent`。两批 started 行仍全部保留 `running + pending`。
+  - 按 `executed_at >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 245`
+    - `noop + skipped_noop = 208`
+    - `completed + sent = 33`
+    - `execution_failed + skipped_error = 4`
+    - `completed + send_failed = 1`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `08:30:41.524`：`Monitor_Watchlist_11` 落成 `parse_kind=JsonNoop`
+    - `08:31:32.904`：`持仓重大事件心跳检测` 落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `09:00:10.859`、`09:00:33.061`、`09:00:40.190`、`09:00:51.257`：`小米30港元破位预警`、`Monitor_Watchlist_11`、`Cerebras IPO与业务进展心跳监控`、`ORCL 大事件监控` 同窗再次落成 `parse_kind=Empty`
+    - `09:00:51.808`：`全天原油价格3小时播报` 又回摆成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `09:01:07.523`：`持仓重大事件心跳检测` 同窗再次落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `09:01:15.484`：`TEM大事件心跳监控` 又回落成 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-01 09:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 08:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `07:30-08:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`07:30` 窗口继续先写入 `run_id=12126-12137` 共 `12` 条 started 行；随后终态另起为 `12138-12147`，其中 `12138/12142/12144/12146` 落成 `parse_kind=JsonNoop + noop + skipped_noop`，`12139/12140/12141/12143/12145/12147` 落成 `parse_kind=Empty + noop + skipped_noop`。`08:00` 窗口又先写入 `12148-12162` 共 `15` 条 started 行；截至巡检时，终态另起为 `12163-12175`，其中 `12163/12166/12169/12171/12173` 落成 `parse_kind=JsonNoop + noop + skipped_noop`，`12164/12167/12168/12170/12172` 落成 `parse_kind=Empty + noop + skipped_noop`，`12174`（`TEM大事件心跳监控`）则又落成 `parse_kind=JsonTriggered + completed + sent`。两批 started 行仍全部保留 `running + pending`，没有恢复成单一稳定终态。
   - 按 `executed_at >= datetime('now','-1 hour') AND actor_channel='feishu'` 聚合，最近一小时仍同时存在：

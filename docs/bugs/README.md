@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-01 08:03 CST
+最后更新：2026-05-01 09:18 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：10
 - Later / 待复现：11
-- 已修复 / 已关闭：77
+- 已修复 / 已关闭：76
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
@@ -25,14 +25,15 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 08:03 最近一小时再次是 `sessions_last_hour=0 / messages_last_hour=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `cron_job_runs` 已推进到 `08:02:42`，`sidecar.log` 也继续出现 `session.persist_assistant -> done success=true`，说明真实会话仍完成而 sqlite 镜像完全不动 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 08:03 最新 `07:30-08:02` 窗口继续混跑 `running + pending=26 / noop + skipped_noop=21 / completed + sent=3`；`12148-12162` started 行仍残留，`Cerebras`/`ORCL`/`持仓重大事件`/`Monitor_Watchlist_11` 再次落成 `parse_kind=Empty`，`TEM大事件` 又回摆成 `JsonTriggered + sent` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 09:02 最近一小时再次是 `sessions_last_hour=0 / messages_last_hour=0`，镜像仍卡在 `2026-04-27 16:54:20+08:00`；但同窗 `cron_job_runs` 已推进到 `09:01:55`，Web 晨报会话 JSON 也已刷新到 `09:01:55`，说明真实会话仍完成而 sqlite 镜像完全不动 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=12244` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整晨报正文，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 09:02 最新 `08:30-09:01` 窗口继续混跑 `running + pending=245 / noop + skipped_noop=208 / completed + sent=33 / completed + send_failed=1`；`08:30` 与 `09:00` 两批 started 行仍残留，`小米30港元`/`Monitor_Watchlist_11`/`Cerebras`/`ORCL` 再次落成 `parse_kind=Empty`，原油与持仓 heartbeat 又回摆成 `JsonTriggered + sent` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-01 03:01 `持仓重大事件心跳检测` 的 `run_id=11923` 再次命中 `maximum context length`，但最终仍被压扁成 `invalid type: integer 400`；此前“Fixed”结论与单文档现状不一致，现已纠正回活跃队列 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Feishu 直聊切到非金融新话题时，仍误入 `stock_research` 并沿用旧 `LITE` 上下文 | P3 | New | 2026-04-30 18:59 用户只问 `AMD的电脑CPU是什么名字`，链路却先展开 `stock_research`、`LITE OR Lumentum OR optical OR photonics` 检索和光通信财报搜索，29 秒后才答回 CPU 命名 | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
-| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 08:03 最近一小时 Feishu `cron_job_runs` 仍同时存在 `running + pending=26`、`noop + skipped_noop=21`、`completed + sent=3`；最新 `07:30` 与 `08:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2702` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
+| Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 09:02 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=245`、`noop + skipped_noop=208`、`completed + sent=33`、`completed + send_failed=1`；最新 `08:30` 与 `09:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2726` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 08:02 `TEM大事件心跳监控` 的 `run_id=12174` 又把 `01:00/03:00` 已提醒过的 USC 合作 / TIME / Investor Day 旧事件正式送达；中间 `07:30` 窗口刚回落成 `noop`，期间没有新的独立公告或合作落地 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-01 04:01 `Oil_Price_Monitor_Closing` 再次 `completed + sent`，Tavily 4 key 全部额度耗尽后，正文仍把“中东风险高位回落”写成确定性结论并据此判断科技股尾盘风险偏好恢复 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
-| 核心观察股池晚间快报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-04-29 23:00 `run_id=10496` 已成功送达，但正文明确写出“未找到本地完整击球区配置”；同任务 `2026-04-28 23:00` 的 `run_id=9269` 仍能稳定输出 `MSFT $335-350`、`GOOGL $255-275` 等固定击球区 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
+| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-01 09:01 最近一小时 `核心观察池早间简报` 再次写出“除 LITE 外，其余击球区未在当前资料中完成备案”；说明问题已从 4 月 29 日晚间快报扩散到同一观察池的早间简报链路 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## Later / 待复现
