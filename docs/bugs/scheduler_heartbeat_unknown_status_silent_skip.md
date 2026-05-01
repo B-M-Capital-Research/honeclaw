@@ -7,6 +7,21 @@
 
 ## 修复进展
 
+- `2026-05-02 02:20` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:00-02:03` 的最新三轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error / completed + send_failed`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-05-02T01:00:00+08:00'` 聚合，最近窗口仍同时存在：
+    - `running + pending = 637`
+    - `noop + skipped_noop = 543`
+    - `completed + sent = 76`
+    - `execution_failed + skipped_error = 19`
+    - `completed + send_failed = 2`
+  - 最近一小时内能看到的同窗终态继续混杂：
+    - `12983` `ORCL 大事件监控` -> `completed + sent`
+    - `13004` `小米30港元破位预警` -> `completed + sent`
+    - `13007` `持仓重大事件心跳检测` -> `completed + sent`
+    - `12985` `持仓重大事件心跳检测` -> `execution_failed + skipped_error`，错误为 `invalid type: integer 400`
+    - `13029` `持仓重大事件心跳检测` -> `execution_failed + skipped_error`，错误又回到 `http error: error decoding response body`
+  - 结论：到 `2026-05-02 02:20` 为止，本单仍稳定活跃；最新窗口继续在“同类 heartbeat 有时成功、有时 `skipped_error`、started 行仍悬挂”的坏态之间漂移，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 01:12` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:00-01:03` 的最新三轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `executed_at >= '2026-05-02T00:00:00+08:00'` 聚合，最近窗口仍同时存在：
     - `running + pending = 36`

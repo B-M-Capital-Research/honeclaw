@@ -1,0 +1,63 @@
+# Bug: Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发
+
+- **发现时间**: 2026-05-02 02:20 CST
+- **Bug Type**: System Error
+- **严重等级**: P1
+- **状态**: New
+- **GitHub Issue**: [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28)
+
+## 证据来源
+
+- 最近一小时真实会话：
+  - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json`
+  - `2026-05-02T02:03:12.015076+08:00` 用户输入：`心跳检测，请简短回复 OK`
+  - `2026-05-02T02:03:25.140545+08:00` 最终 assistant 落库仅为 `OK`
+- 最近一小时运行日志：
+  - `data/runtime/logs/acp-events.log`
+  - `2026-05-01T18:03:16.054696+00:00` 同一 Web session 收到 `session/update -> agent_message_chunk`
+  - 该 chunk 正文直接以 `### System Instructions ###` 开头，并展开整段系统提示、领域边界、skill context、turn-0 技能索引、当前会话时间与 `会话 ID`
+  - 同轮后续仍在 `2026-05-01T18:03:16.570403+00:00` 继续记录携带相同 prompt 包的 `content.text`，最终到 `2026-05-01T18:03:33.765689+00:00` 才以 `stopReason=end_turn` 收口
+- 对照说明：
+  - 会话 JSON 尾部最终只有 `OK`，说明这次不是“最终持久化正文污染”
+  - 问题集中在 Web 实时 `session/update` 流：中途向客户端外发了不应暴露的 prompt/skill 内部文本
+
+## 端到端链路
+
+1. Web 用户发送简单健康检查：`心跳检测，请简短回复 OK`。
+2. 运行链路本应只回一个极短的 `OK`。
+3. 但同一轮 `acp-events.log` 先向 Web 侧写出 `agent_message_chunk`，正文不是答案，而是整段 `### System Instructions ###` prompt 包。
+4. 该 chunk 内含系统规则、技能说明、turn-0 技能索引和会话元信息。
+5. 最终落库仍只有 `OK`，说明后置持久化净化或收口逻辑工作了，但实时流式外发边界已经失守。
+
+## 期望效果
+
+- Web `session/update` 流只能向客户端外发用户可见正文，不应发送 `### System Instructions ###`、skill prompt、工具契约、技能索引或内部会话元信息。
+- 即使 runner 中途产生 prompt echo 或 context 包回流，也必须在 chunk 级别被拦截或清空，而不是等最终 `final` 才净化。
+- 简单 `OK` 健康检查不应在中间阶段产生任何长篇内部文本。
+
+## 当前实现效果
+
+- 最近一小时这条 Web 会话最终落库仍是正常的 `OK`，但流式更新里先后出现了超长内部 prompt 文本。
+- 泄露内容不是单一一句状态标记，而是完整的系统约束与技能索引，敏感度明显高于普通格式噪音。
+- 这说明当前链路对最终 answer 有一定净化，但对 `session/update -> agent_message_chunk` 没有同等级防护。
+
+## 用户影响
+
+- 这是功能性安全边界缺陷，不是单纯文案质量问题。
+- 如果前端实时渲染这些 chunk，用户会直接看到内部系统提示、技能清单和运行约束，属于明确的内部 prompt 泄露。
+- 即使前端未完整渲染，服务端事件流与排障视图也已被污染，说明产品边界不可靠。
+- 因为问题涉及内部提示外泄且在当前活跃窗口真实复现，所以定级为 `P1`。
+
+## 根因判断
+
+- 现象表明“最终回复净化”和“流式 chunk 外发”走了不同边界：
+  - 最终持久化/收口只保留了 `OK`
+  - 中途 `session/update` 却把 prompt 包当作普通 `agent_message_chunk` 发出
+- 更像是 runner/桥接层把内部 `content.text` 或 prompt 包错误映射成了用户可见消息更新，而不是单纯的历史落库污染。
+- 旧的 prompt echo 止血主要覆盖“最终回复前缀是 `### System Instructions ###`”的场景；这次复现说明 chunk 级外发链路仍有独立缺口。
+
+## 下一步建议
+
+- 优先在 Web `session/update` 出站层补 chunk 级净化，命中 `### System Instructions ###`、`【Session 上下文】`、`turn-0 可用技能索引`、大段 skill prompt 展开时直接丢弃。
+- 核对当前 Codex/Web runner 是否把内部 prompt 包错误写进 `content.text` 更新事件；必要时区分“调试内容”和“用户可见正文”通道。
+- 用同一条 `心跳检测，请简短回复 OK` 在 Web 前端做一次实时复现，确认用户侧是否能肉眼看到泄露 chunk。
