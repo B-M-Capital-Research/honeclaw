@@ -15,6 +15,21 @@
 
 ## 修复进展
 
+- `2026-05-01 10:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `09:30-10:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`09:30` 窗口继续先写入 `run_id=12245-12255` 共 `11` 条 heartbeat started 行；随后终态另起为 `12256-12266`，其中 `12256/12257/12258/12259/12260/12261/12262/12265/12266` 落成 `noop + skipped_noop`，`12263`（`RKLB异动监控`）落成 `parse_kind=JsonTriggered + completed + sent`。`10:00` 窗口又先写入 `12268-12278` 共 `11` 条 heartbeat started 行；截至巡检时，终态另起为 `12279-12289`，其中 `12279/12280/12281/12282/12283/12284/12286/12287/12288/12289` 落成 `noop + skipped_noop`，`12285`（`TEM大事件心跳监控`）落成 `parse_kind=JsonTriggered + completed + sent`。两批 started 行仍全部保留 `running + pending`。
+  - 按 `executed_at >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 20`
+    - `completed + sent = 3`
+  - `data/runtime/logs/web.log.2026-05-01` 证明这不是单纯台账归类差异：
+    - `09:30:16.202`：`TEM大事件心跳监控` 落成 `parse_kind=Empty`
+    - `09:30:26.415`：`RKLB异动监控` 又回摆成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `09:30:27.682`：`Monitor_Watchlist_11` 仍落成 `parse_kind=JsonNoop`
+    - `09:30:39.071`、`09:30:52.036`：`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测` 回落成 `parse_kind=JsonNoop`
+    - `10:00:20.273`、`10:00:26.598`、`10:00:48.148`：`持仓重大事件心跳检测`、`Monitor_Watchlist_11`、`ORCL 大事件监控` 同窗再次落成 `parse_kind=Empty`
+    - `10:00:34.857`：`TEM大事件心跳监控` 在同批里又落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-01 10:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 09:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `08:30-09:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / completed + send_failed`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`08:30` 窗口继续先写入 `run_id=12180-12191` 共 `12` 条 heartbeat started 行；随后终态另起为 `12196-12206`，其中 `12196/12197/12198/12199/12200/12201/12203/12204/12205` 落成 `parse_kind=JsonNoop + noop + skipped_noop`，`12202`、`12206` 落成 `parse_kind=JsonTriggered + completed + sent`。`09:00` 窗口又先写入 `12221-12229` 共 `9` 条 heartbeat started 行；截至巡检时，终态另起为 `12230-12241`，其中 `12230/12231/12232/12233/12234/12235/12236/12237/12241` 落成 `noop + skipped_noop`，`12238`、`12240` 落成 `parse_kind=JsonTriggered + completed + sent`。两批 started 行仍全部保留 `running + pending`。
   - 按 `executed_at >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
