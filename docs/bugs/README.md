@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-01 15:18 CST
+最后更新：2026-05-01 16:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -25,9 +25,9 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 15:18 最近一小时再次是 `sessions_last_hour=0 / messages_last_hour=0 / imported_last_hour=0`，镜像上界仍全部卡在 `2026-04-27 16:54:20+08:00`；同库 `cron_job_runs` 已继续写到 `15:02:33+08:00`，而 Feishu 源会话 `Actor_feishu__direct__ou_5f680...42c.json` 文件 `updated_at` 已推进到 `14:11:28+08:00`，但 sqlite 对应行仍停在 `2026-04-25 14:41:03+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 16:02 最近一小时再次是 `sessions_last_hour=0 / messages_last_hour=0 / imported_last_hour=0`，镜像上界仍全部卡在 `2026-04-27 16:54:20+08:00`；同库 `cron_job_runs` 已继续写到 `16:02:32+08:00`，而最近两条 Feishu 源会话 JSON 已推进到 `15:16:21+08:00` 与 `15:38:43+08:00`，sqlite 对应行却仍停在 `2026-04-27` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=12244` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整晨报正文，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 15:18 最新 `14:30-15:02` 窗口继续混跑 `running + pending=378 / noop + skipped_noop=328 / completed + sent=44 / execution_failed + skipped_error=6 / completed + send_failed=1`；started 行仍残留，且 `15:01` 的 `Cerebras IPO与业务进展心跳监控` 新增 `parse_kind=JsonMalformed -> malformed heartbeat json suppressed -> skipped_error` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 16:02 最新 `15:30-16:02` 窗口继续混跑 `running + pending=378 / noop + skipped_noop=342 / execution_failed + skipped_error=9`；started 行仍残留，且 `15:31` 的 `TEM大事件心跳监控` 新增 `parse_kind=PlainTextSuppressed`，`16:02` 的 `持仓重大事件心跳检测` 又落成 `error decoding response body` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-01 14:30 `ORCL 大事件监控` 的 `run_id=12484` 再次落成 `execution_failed + skipped_error`，`error_message` 仍是 `failed to deserialize api response: invalid type: integer 400`；这次出现在 `moonshotai/kimi-k2.5` 路径，说明公共 400 解析缺口仍未止血 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-05-01 15:02 `持仓重大事件心跳检测` 的 `run_id=12511` 再次落成 `completed + sent`，正文仍写 `RKLB当前$82.51...上涨+7.13%，突破5%阈值`，同时继续把 `4月29日` 旧合同包装成本轮“重大增量”；同窗 `RKLB异动监控` 则刚在 `15:00` 回落 `noop`，说明旧事件被错误升级到组合级触发链路 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 14:12 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=356`、`noop + skipped_noop=309`、`completed + sent=42`、`execution_failed + skipped_error=5`、`completed + send_failed=1`；最新 `13:30` 与 `14:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2846` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |

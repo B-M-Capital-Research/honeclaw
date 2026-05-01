@@ -7,6 +7,22 @@
 
 ## 修复进展
 
+- `2026-05-01 16:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `15:30-16:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / execution_failed + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`15:30` 窗口继续先写入 `run_id=12512-12522` 共 `11` 条 heartbeat started 行；随后终态另起为 `12523-12533`，其中 `12532`（`TEM大事件心跳监控`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。`16:00` 窗口又先写入 `12534-12544` 共 `11` 条 started 行；截至巡检时，终态已另起为 `12545-12555`，其中 `12555`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。两批 heartbeat started 行仍全部保留 `running + pending`。
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 378`
+    - `noop + skipped_noop = 342`
+    - `completed + sent = 27`
+    - `execution_failed + skipped_error = 9`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异：
+    - `15:30:14.670`：`TEM破位预警` 落成 `parse_kind=Empty`
+    - `15:30:19.927`：`ORCL 大事件监控` 同窗回到 `parse_kind=Empty`
+    - `15:31:21.543`：`TEM大事件心跳监控` 新增 `parse_kind=PlainTextSuppressed`，`raw_preview` 直接外泄“当前时间早于财报发布预定时间…由于我无法确定上一轮心...”这类非 JSON 解释文本，最终落成 `heartbeat 输出不是结构化 JSON，任务已标记失败`
+    - `16:00:24.265`、`16:00:31.938`、`16:00:49.653`、`16:01:35.579`：`TEM破位预警`、`CAI破位预警`、`TEM大事件心跳监控`、`Monitor_Watchlist_11` 在新一轮继续落成 `parse_kind=Empty`
+    - `16:00:30.857`、`16:00:43.087`、`16:01:02.553`、`16:01:09.942`、`16:01:12.909`：`全天原油价格3小时播报`、`ASTS 重大异动心跳监控`、`RKLB异动监控`、`Cerebras IPO与业务进展心跳监控`、`ORCL 大事件监控` 同窗回到 `parse_kind=JsonNoop`
+    - `16:02:32.186`：`持仓重大事件心跳检测` 又新增 `success=false error="LLM 错误: http error: error decoding response body"`，说明同一条公共收口链路仍会在 `Empty / JsonNoop / PlainTextSuppressed / skipped_error` 之间漂移
+  - 结论：到 `2026-05-01 16:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / PlainTextSuppressed / skipped_error`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-01 15:18` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `14:30-15:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error / completed + send_failed`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`14:30` 窗口继续先写入 `run_id=12468-12478` 共 `11` 条 heartbeat started 行；随后终态另起为 `12479-12489`，其中 `12484`（`ORCL 大事件监控`）落成 `execution_failed + skipped_error`，`12489`（`Cerebras IPO与业务进展心跳监控`）落成 `completed + sent`，其余任务回落成 `noop + skipped_noop`。`15:00` 窗口又先写入 `12490-12500` 共 `11` 条 started 行；随后终态另起为 `12501-12511`，其中 `12507`（`小米30港元破位预警`）、`12509`（`全天原油价格3小时播报`）、`12511`（`持仓重大事件心跳检测`）落成 `completed + sent`，`12510`（`Cerebras IPO与业务进展心跳监控`）落成 `execution_failed + skipped_error`，其余任务回落成 `noop + skipped_noop`。两批 heartbeat started 行仍全部保留 `running + pending`。
   - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
