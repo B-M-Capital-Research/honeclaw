@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-05-01 17:30-17:31 最新巡检样本：
+      - `job_name=TEM大事件心跳监控`
+      - `run_id=12618`，`executed_at=2026-05-01T17:31:01+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把 `4月28日 TIME 榜单`、`4月29日宣布 5月29 日 Investor Day` 与同一轮 `+10.92%` 价格异动重新打包成 `【TEM 价格异动触发提醒】` 送达；这些持续性公司事件此前已在 `run_id=12174`（`08:02`）送达，期间没有新的独立公告、合作落地或财务更新，而同一 job 在 `17:01:17` 还刚回落成 `parse_kind=Empty`
+      - `job_name=RKLB异动监控`
+      - `run_id=12616`，`executed_at=2026-05-01T17:30:47+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把 `4月29日 Rocket Lab 获批 1.9 亿美元国防合同` 包装成当前窗口的 `重大订单消息` 送达；同一合同此前已在 `4月30日 10:30/13:00/18:02` 与 `5月1日 15:02` 等多个窗口反复送达，本轮之间没有新的合同公告、金额更新或独立公司级新催化，而且同一 job 在 `17:02:04` 还刚回落成 `noop + skipped_noop`
+      - `data/runtime/logs/sidecar.log` 在 `17:30:44.956`、`17:30:59.593` 同步记录两条 job 的 `parse_kind=JsonTriggered` 与成功 `deliver`，说明这不是台账重放，而是模型在 `17:30` 窗口再次把同一批旧催化判成当前触发
+      - 这组最新样本说明重复提醒缺陷仍然活跃，并且已经同时覆盖 `TEM` 与 `RKLB`：两条单标的 heartbeat 都会在中间已出现 `noop` / `Empty` 的情况下，再把旧催化重新包装成新提醒。它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-05-01 08:00-08:02 最新巡检样本：
       - `job_name=TEM大事件心跳监控`
       - `run_id=12174`，`executed_at=2026-05-01T08:02:11+08:00`，再次落成 `completed + sent + delivered=1`
