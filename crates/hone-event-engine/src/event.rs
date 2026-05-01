@@ -32,6 +32,16 @@ pub enum EventKind {
     EarningsReleased,
     EarningsCallTranscript,
     NewsCritical,
+    /// `window` 取值约定:
+    /// - `"day"`   — 常规盘中 PricePoller 产出(`changesPercentage` = 当日涨跌幅)
+    /// - `"close"` — 收盘 quote 命中(美股 ET 16:00 附近,`policy::is_price_close_alert`
+    ///   据此判 quiet_mode 不允许立即推)
+    /// - `"pre"` / `"post"` — ExtendedHoursPoller 产出(盘前/盘后 30min 振幅,
+    ///   `changesPercentage` 是带方向的振幅幅度)
+    ///
+    /// **关键不变量**:`window != "close"` 在 `policy::quiet_mode_allows_immediate`
+    /// 里被允许在 quiet_mode 即时推 —— pre/post 自然继承这条策略,quiet_hours 仍
+    /// 走 hold→Fix #2 overnight recap。
     PriceAlert {
         pct_change_bps: i64,
         window: String,
