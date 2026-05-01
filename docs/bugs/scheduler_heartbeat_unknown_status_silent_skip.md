@@ -7,6 +7,27 @@
 
 ## 修复进展
 
+- `2026-05-02 05:04` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `04:00-05:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 20`
+    - `completed + sent = 1`
+    - `execution_failed + skipped_error = 1`
+  - 最近一小时内可见的同窗终态继续混杂：
+    - `13160` `ORCL 大事件监控` -> `completed + sent`
+    - `13140` `ORCL 大事件监控` -> `execution_failed + skipped_error`，错误为 `LLM 错误: http error: error decoding response body`
+    - `13153` `TEM大事件心跳监控` -> `noop + skipped_noop`
+    - `13155` `RKLB异动监控` -> `noop + skipped_noop`
+    - `13159` `持仓重大事件心跳检测` -> `noop + skipped_noop`
+    - `13152` `全天原油价格3小时播报` -> `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在最近三轮继续摇摆：
+    - `2026-05-02 04:00:34.724`：`TEM大事件心跳监控` 在 `run_finish success=true content_chars=0` 后仍被记成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 04:00:37.292`：`ORCL 大事件监控` 同窗也再次落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 04:31:11.463`、`04:31:15.953`：`持仓重大事件心跳检测` 与 `ASTS 重大异动心跳监控` 又继续回摆成 `parse_kind=Empty`
+    - `2026-05-02 05:00:51.328`、`05:01:07.966`：`RKLB异动监控` 与 `持仓重大事件心跳检测` 在 05:00 窗口再次落成 `parse_kind=Empty`
+    - `2026-05-02 05:01:16.954-05:01:16.955`：`ORCL 大事件监控` 同窗又恢复为 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-02 05:04` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / skipped_error`，且同一任务（如 `ORCL 大事件监控`）可在相邻窗口从 `skipped_error` 直接回摆到 `JsonTriggered + sent`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 04:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `03:00-04:01` 的最新三轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-90 minutes')` 聚合，最近窗口仍同时存在：
     - `running + pending = 33`

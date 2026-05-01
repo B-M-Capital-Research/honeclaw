@@ -8,6 +8,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-02 05:04 CST` 再次复核，started-row finalize 缺陷在最新 `04:00`、`04:30`、`05:00` 三个窗口继续实时新增，而且 heartbeat started 行仍与终态并存：
+    - `04:00` 窗口先写入 `run_id=13097-13107` 共 `11` 条 started 行；同窗终态随后另起为 `13108-13118`，其中 `13118` 已落成 `execution_failed + skipped_error`，其余多为 `noop + skipped_noop`
+    - `04:30` 窗口又先写入 `run_id=13119-13130` 共 `12` 条 started 行；同窗终态随后另起为 `13131-13140`，其中 `13140` 落成 `execution_failed + skipped_error`，其余多为 `noop + skipped_noop`
+    - `05:00` 窗口再先写入 `run_id=13141-13151` 共 `11` 条 started 行；同窗终态随后另起为 `13152-13162`，其中 `13160` 已落成 `completed + sent + delivered=1`，其余仍多为 `noop + skipped_noop`
+    - 但对应 started 行 `13097-13107`、`13119-13130`、`13141-13151` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent`、`skipped_noop` 还是 `skipped_error`，都不会覆盖原 started 行
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 20`
+    - `completed + sent = 1`
+    - `execution_failed + skipped_error = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `3193` 条，较 `2026-05-02 04:01` 巡检记录里的 `3171` 再增 `22` 条，说明这条缺陷在 `04:00`、`04:30` 与 `05:00` heartbeat 窗口里仍在稳定堆积。
   - `2026-05-02 04:01 CST` 再次复核，started-row finalize 缺陷在最新 `03:30`、`04:00` 两个窗口继续实时新增，而且 heartbeat started 行仍与终态并存：
     - `03:30` 窗口先写入 `run_id=13075-13085` 共 `11` 条 started 行；同窗终态随后另起为 `13086-13096`，其中 `13092`、`13095`、`13096` 已落成 `completed + sent + delivered=1`
     - `04:00` 窗口又先写入 `run_id=13097-13107` 共 `11` 条 started 行；截至巡检时，同窗终态已另起为 `13108-13117`，且 `13108-13117` 全部已落成 `noop + skipped_noop`
