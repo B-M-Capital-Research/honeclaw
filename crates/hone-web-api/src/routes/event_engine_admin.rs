@@ -626,6 +626,7 @@ mod tests {
             fetch_full_text: true,
             event_dedupe_enabled: true,
             event_dedupe_model: "x-ai/grok-4.1-fast".into(),
+            jina_api_key: None,
         }
     }
 

@@ -153,6 +153,14 @@ pub struct GlobalDigestConfig {
     /// 稳定保守(只合明显同事件)。务必用强模型,nova-lite 这种会过度归类成 theme。
     #[serde(default = "default_event_dedupe_model")]
     pub event_dedupe_model: String,
+
+    /// Jina Reader API key。Pass 2 直抓原文返回非 2xx(典型 reuters/wsj/barrons 401)
+    /// 时,带 key 走 `https://r.jina.ai/<url>` 二次抓取;Jina 用无头浏览器渲染 + 抽
+    /// 正文,对付费墙站点能拿到试读段落,对 Reuters 类反爬站点直接拿全文。空 / None
+    /// 时跳过这一层 fallback,直接落到事件本体的 FMP `text`。免费层 1M tokens/月,
+    /// jina.ai 邮箱注册即得。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jina_api_key: Option<String>,
 }
 
 impl Default for GlobalDigestConfig {
@@ -168,6 +176,7 @@ impl Default for GlobalDigestConfig {
             fetch_full_text: true,
             event_dedupe_enabled: true,
             event_dedupe_model: default_event_dedupe_model(),
+            jina_api_key: None,
         }
     }
 }

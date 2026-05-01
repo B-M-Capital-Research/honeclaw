@@ -345,7 +345,9 @@ impl EventEngine {
             .parent()
             .map(|p| p.join("company_profiles"))
             .unwrap_or_else(|| PathBuf::from("./data/company_profiles"));
-        let fetcher = Arc::new(crate::global_digest::ArticleFetcher::new());
+        let fetcher = Arc::new(crate::global_digest::ArticleFetcher::with_jina_api_key(
+            self.engine_cfg.global_digest.jina_api_key.clone(),
+        ));
         let mut unified = UnifiedDigestScheduler::new(
             digest_buffer.clone(),
             self.sink.clone(),
