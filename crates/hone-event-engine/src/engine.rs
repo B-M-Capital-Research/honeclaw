@@ -300,12 +300,7 @@ impl EventEngine {
         .with_high_daily_cap(self.engine_cfg.thresholds.high_severity_daily_cap)
         .with_same_symbol_cooldown_minutes(self.engine_cfg.thresholds.same_symbol_cooldown_minutes)
         .with_price_min_direct_pct(self.engine_cfg.thresholds.price_min_direct_pct)
-        .with_price_intraday_min_gap_minutes(
-            self.engine_cfg.thresholds.price_intraday_min_gap_minutes,
-        )
-        .with_price_symbol_direction_daily_cap(
-            self.engine_cfg.thresholds.price_symbol_direction_daily_cap,
-        )
+        .with_price_band_min_advance_pct(self.engine_cfg.thresholds.price_band_min_advance_pct)
         .with_price_close_direct_enabled(self.engine_cfg.thresholds.price_close_direct_enabled)
         .with_large_position_weight_pct(self.engine_cfg.thresholds.large_position_weight_pct)
         .with_macro_immediate_window(

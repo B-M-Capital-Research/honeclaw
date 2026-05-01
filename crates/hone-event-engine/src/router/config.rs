@@ -40,10 +40,10 @@ pub struct NotificationRouter {
     pub(super) same_symbol_cooldown_minutes: u32,
     /// 用户价格阈值覆盖的系统级最小即时推阈值。
     pub(super) price_min_direct_pct: f64,
-    /// 同一 actor + symbol + direction 两次价格 band 即时推的最小间隔。
-    pub(super) price_intraday_min_gap_minutes: u32,
-    /// 同一 actor + symbol + direction 每日本地日价格 band 即时推上限。
-    pub(super) price_symbol_direction_daily_cap: u32,
+    /// 价格 band 单一推送规则:新档 pct 必须比当日已 sink-sent 最大档 pct 高出
+    /// 本字段值,否则降级 digest。0 = 关闭(等于无脑全推);默认 2.0 = 「每跨一个
+    /// 新 band 必推」。替代旧的 daily cap + intraday gap 双保险机制。
+    pub(super) price_band_min_advance_pct: f64,
     /// 收盘价格异动是否允许即时推；默认只进入摘要。
     pub(super) price_close_direct_enabled: bool,
     /// 大仓位标的用用户敏感阈值直推的默认仓位权重门槛。
@@ -91,8 +91,7 @@ impl NotificationRouter {
             tz_offset_hours: 8,
             same_symbol_cooldown_minutes: 0,
             price_min_direct_pct: 6.0,
-            price_intraday_min_gap_minutes: 0,
-            price_symbol_direction_daily_cap: 0,
+            price_band_min_advance_pct: 0.0,
             price_close_direct_enabled: false,
             large_position_weight_pct: 20.0,
             macro_immediate_lookahead_hours: 6,
@@ -144,13 +143,9 @@ impl NotificationRouter {
         self
     }
 
-    pub fn with_price_intraday_min_gap_minutes(mut self, minutes: u32) -> Self {
-        self.price_intraday_min_gap_minutes = minutes;
-        self
-    }
-
-    pub fn with_price_symbol_direction_daily_cap(mut self, cap: u32) -> Self {
-        self.price_symbol_direction_daily_cap = cap;
+    /// 价格 band 单一推送规则的 advance 阈值(百分点)。0 = 关闭。
+    pub fn with_price_band_min_advance_pct(mut self, pct: f64) -> Self {
+        self.price_band_min_advance_pct = pct.max(0.0);
         self
     }
 

@@ -126,8 +126,7 @@ impl NotificationRouter {
             // cap=0 关闭该逻辑,与历史行为兼容。
             let mut demoted_by_cap = false;
             let mut demoted_by_cooldown = false;
-            let mut demoted_by_price_cap = false;
-            let mut demoted_by_price_gap = false;
+            let mut demoted_by_price_advance = false;
             let mut effective_sev = if matches!(sev, Severity::High) && self.high_daily_cap > 0 {
                 let since = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
                 let category = event_category(event);
@@ -158,66 +157,62 @@ impl NotificationRouter {
             } else {
                 sev
             };
-            if matches!(effective_sev, Severity::High) && is_intraday_price_band_alert(event) {
+            // 价格 band 单一推送规则:新档 pct 必须比当日已 sink-sent 最大档 pct
+            // 至少高出 `price_band_min_advance_pct`,否则降级 digest。这一条规则
+            // 替代了旧的 daily cap + intraday gap —— 因为 band id 已自带「同档位
+            // INSERT IGNORE」防重,所以不再需要时间 gap 兜底;`monotone 新高 + N」
+            // 既保护了「同档位反复震荡不刷屏」(任何 ≤max 的 band 都被挡),又允许
+            // 大行情按节奏全档位推送(每 +N pct 一条)。N=2.0 默认与 band step 一致,
+            // 等价于「每跨一个新 band 必推」。
+            if matches!(effective_sev, Severity::High)
+                && is_intraday_price_band_alert(event)
+                && self.price_band_min_advance_pct > 0.0
+            {
                 if let Some((symbol, direction)) = price_alert_symbol_direction(event) {
-                    if self.price_symbol_direction_daily_cap > 0 {
-                        let since = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
-                        match self.store.count_price_band_sent_since(
+                    let day_start = local_day_start(chrono::Utc::now(), self.tz_offset_hours);
+                    let current_bps = event
+                        .payload
+                        .get("hone_price_band_bps")
+                        .and_then(|v| v.as_i64());
+                    let min_advance_bps = (self.price_band_min_advance_pct * 100.0).round() as i64;
+                    match (
+                        current_bps,
+                        self.store.last_price_band_max_bps_for_symbol_direction(
                             &actor_key(&actor),
                             symbol,
                             direction,
-                            since,
-                        ) {
-                            Ok(n) if n >= self.price_symbol_direction_daily_cap as i64 => {
-                                tracing::info!(
-                                    actor = %actor_key(&actor),
-                                    event_id = %event.id,
-                                    source = %event.source,
-                                    symbol = %symbol,
-                                    direction = %direction,
-                                    today_price_bands = n,
-                                    cap = self.price_symbol_direction_daily_cap,
-                                    "price band demoted to digest (symbol-direction daily cap)"
-                                );
-                                demoted_by_price_cap = true;
-                                effective_sev = Severity::Medium;
-                            }
-                            Ok(_) => {}
-                            Err(e) => {
-                                tracing::warn!("count_price_band_sent_since failed: {e:#}");
-                            }
+                            day_start,
+                        ),
+                    ) {
+                        (Some(cur), Ok(Some(prev_max))) if cur < prev_max + min_advance_bps => {
+                            tracing::info!(
+                                actor = %actor_key(&actor),
+                                event_id = %event.id,
+                                source = %event.source,
+                                symbol = %symbol,
+                                direction = %direction,
+                                current_band_bps = cur,
+                                prev_max_band_bps = prev_max,
+                                min_advance_pct = self.price_band_min_advance_pct,
+                                "price band demoted to digest (no monotone advance ≥ min_advance_pct)"
+                            );
+                            demoted_by_price_advance = true;
+                            effective_sev = Severity::Medium;
                         }
-                    }
-                    if matches!(effective_sev, Severity::High)
-                        && self.price_intraday_min_gap_minutes > 0
-                    {
-                        let cutoff = chrono::Utc::now()
-                            - chrono::Duration::minutes(self.price_intraday_min_gap_minutes as i64);
-                        match self.store.last_price_band_sink_send_for_symbol_direction(
-                            &actor_key(&actor),
-                            symbol,
-                            direction,
-                        ) {
-                            Ok(Some(ts)) if ts >= cutoff => {
-                                tracing::info!(
-                                    actor = %actor_key(&actor),
-                                    event_id = %event.id,
-                                    source = %event.source,
-                                    symbol = %symbol,
-                                    direction = %direction,
-                                    last_sent_at = %ts,
-                                    gap_min = self.price_intraday_min_gap_minutes,
-                                    "price band demoted to digest (symbol-direction min gap)"
-                                );
-                                demoted_by_price_gap = true;
-                                effective_sev = Severity::Medium;
-                            }
-                            Ok(_) => {}
-                            Err(e) => {
-                                tracing::warn!(
-                                    "last_price_band_sink_send_for_symbol_direction failed for {symbol}: {e:#}"
-                                );
-                            }
+                        (Some(_), Ok(None)) => {
+                            // 当日首条 band —— 直接放行。
+                        }
+                        (Some(_), Ok(Some(_))) => {
+                            // 满足 advance 条件,继续直推。
+                        }
+                        (None, _) => {
+                            // current_bps 取不到,说明 payload 没写 band_bps 字段,
+                            // fallback 到放行(兼容旧事件 / 异常)。
+                        }
+                        (_, Err(e)) => {
+                            tracing::warn!(
+                                "last_price_band_max_bps_for_symbol_direction failed: {e:#}"
+                            );
                         }
                     }
                 }
@@ -371,10 +366,8 @@ impl NotificationRouter {
                             // (sev),方便事后 grep "high + capped/cooled_down" 对账。
                             let status = if demoted_by_cap {
                                 "capped"
-                            } else if demoted_by_price_cap {
-                                "price_capped"
-                            } else if demoted_by_price_gap {
-                                "price_cooled_down"
+                            } else if demoted_by_price_advance {
+                                "price_low_advance"
                             } else if demoted_by_cooldown {
                                 "cooled_down"
                             } else {

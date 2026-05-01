@@ -236,12 +236,11 @@ event_engine:
     # 价格异动跨档再提醒步长。high=6, step=2 时,盘中跨 +6/+8/+10
     # 或 -6/-8/-10 会形成独立事件；未跨新档只更新摘要最新态。
     price_realert_step_pct: 2.0
-    # 同一用户、同一 ticker、同一方向的价格 band 即时推最小间隔。
-    # 价格 band 不再走通用 same_symbol_cooldown,避免 +6 后把 +8 误挡住。
-    price_intraday_min_gap_minutes: 30
-    # 同一用户、同一 ticker、同一方向每日最多即时推几个价格 band。
-    # 默认 2:例如 +6/+8 推送,+10 只更新摘要。
-    price_symbol_direction_daily_cap: 2
+    # 价格 band 单一推送规则(v0.5.2 起替代旧 cap+gap 双保险):新档 pct 必须比
+    # 当日已 sink-sent 的最大档高出本字段值,否则降级 digest。0 = 关闭(无脑全推)。
+    # 默认 2.0 与 price_realert_step_pct 一致,意为「每跨一个新 band 必推」 ——
+    # 避免大行情长尾失声(POC 实证 AAOI 6→16 序列 cap=2 仅 6/8,advance=2 全 6 档)。
+    price_band_min_advance_pct: 2.0
     # 收盘 price_close 默认只进摘要,避免美股收盘在北京时间凌晨即时打扰。
     price_close_direct_enabled: false
     large_position_weight_pct: 20.0

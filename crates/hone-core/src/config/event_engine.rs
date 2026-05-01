@@ -365,14 +365,19 @@ pub struct Thresholds {
     /// +6/+8/+10 或 -6/-8/-10 会形成独立 band 事件。
     #[serde(default = "default_price_realert_step_pct")]
     pub price_realert_step_pct: f64,
-    /// 同一 actor + symbol + direction 两次价格 band 即时推的最小间隔。
-    /// 0 = 不启用。用于替代通用同 ticker cooldown 对价格 band 的误伤。
-    #[serde(default = "default_price_intraday_min_gap_minutes")]
-    pub price_intraday_min_gap_minutes: u32,
-    /// 同一 actor + symbol + direction 每个本地日最多即时推多少个价格 band。
-    /// 0 = 不启用。
-    #[serde(default = "default_price_symbol_direction_daily_cap")]
-    pub price_symbol_direction_daily_cap: u32,
+    /// **价格 band 单一推送规则(v0.5.2 起替代旧 cap+gap 双保险)**:
+    /// 同 actor + symbol + direction 内,新到 band 的档位 pct 必须比当日已 sink-sent
+    /// 的最大档 pct 至少高出本字段值,才被允许直推;否则降级进 digest。
+    ///
+    /// 与旧机制相比:band id 已自带「同档位 INSERT IGNORE」,所以不需要时间 gap 兜底
+    /// 防重;daily cap 在 N=2 时退化为「监控所有 monotone 新高」—— 既不会在大行情
+    /// 长尾失声,也不会被同档位震荡刷屏。POC(2026-05-02)实证 AAOI 6→8→10→12→14→16
+    /// 序列下,N=2 给出全部 6 档(用户原 cap=2 仅 6/8 严重失声)。
+    ///
+    /// 0 = 关闭推送限制(等于无脑全推);默认 2.0 与 `price_realert_step_pct`
+    /// 一致,意为「每跨一个新 band 必推」。
+    #[serde(default = "default_price_band_min_advance_pct")]
+    pub price_band_min_advance_pct: f64,
     /// 收盘 price_close 是否允许即时推。默认 false,避免美股收盘在北京凌晨打扰。
     #[serde(default = "default_price_close_direct_enabled")]
     pub price_close_direct_enabled: bool,
@@ -399,8 +404,7 @@ impl Default for Thresholds {
             news_upgrade_per_tick: default_news_upgrade_per_tick(),
             price_min_direct_pct: default_price_min_direct_pct(),
             price_realert_step_pct: default_price_realert_step_pct(),
-            price_intraday_min_gap_minutes: default_price_intraday_min_gap_minutes(),
-            price_symbol_direction_daily_cap: default_price_symbol_direction_daily_cap(),
+            price_band_min_advance_pct: default_price_band_min_advance_pct(),
             price_close_direct_enabled: default_price_close_direct_enabled(),
             large_position_weight_pct: default_large_position_weight_pct(),
             macro_immediate_lookahead_hours: default_macro_immediate_lookahead_hours(),
@@ -445,11 +449,8 @@ fn default_price_min_direct_pct() -> f64 {
 fn default_price_realert_step_pct() -> f64 {
     2.0
 }
-fn default_price_intraday_min_gap_minutes() -> u32 {
-    30
-}
-fn default_price_symbol_direction_daily_cap() -> u32 {
-    2
+fn default_price_band_min_advance_pct() -> f64 {
+    2.0
 }
 fn default_price_close_direct_enabled() -> bool {
     false

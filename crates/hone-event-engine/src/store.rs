@@ -500,21 +500,25 @@ impl EventStore {
         Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
     }
 
-    pub fn count_price_band_sent_since(
+    /// 返回 `since` 之后 actor 在 (symbol, direction) 上**已被 sink 推过的最大
+    /// band bps**(从 `price_band:SYM:DATE:up:BPS` 的 id 末段解析)。供 dispatch
+    /// 的「monotone 新高 + N」单一推送规则用 —— 新档 pct 必须比该值高出
+    /// `price_band_min_advance_pct` 才允许直推,否则降级 digest。
+    pub fn last_price_band_max_bps_for_symbol_direction(
         &self,
         actor: &str,
         symbol: &str,
         direction: &str,
         since: DateTime<Utc>,
-    ) -> anyhow::Result<i64> {
+    ) -> anyhow::Result<Option<i64>> {
         let Some(pattern) = price_band_id_pattern(symbol, direction) else {
-            return Ok(0);
+            return Ok(None);
         };
         let needle = format!("%\"{}\"%", symbol.to_uppercase());
         let conn = self.conn.lock().unwrap();
-        let n: i64 = conn.query_row(
+        let mut stmt = conn.prepare(
             r#"
-            SELECT COUNT(*) FROM delivery_log d
+            SELECT e.id FROM delivery_log d
             JOIN events e ON d.event_id = e.id
             WHERE d.actor = ?1
               AND d.severity = 'high'
@@ -524,38 +528,18 @@ impl EventStore {
               AND e.symbols_json LIKE ?3
               AND e.id LIKE ?4
             "#,
-            params![actor, since.timestamp(), needle, pattern],
-            |row| row.get(0),
         )?;
-        Ok(n)
-    }
-
-    pub fn last_price_band_sink_send_for_symbol_direction(
-        &self,
-        actor: &str,
-        symbol: &str,
-        direction: &str,
-    ) -> anyhow::Result<Option<DateTime<Utc>>> {
-        let Some(pattern) = price_band_id_pattern(symbol, direction) else {
-            return Ok(None);
-        };
-        let needle = format!("%\"{}\"%", symbol.to_uppercase());
-        let conn = self.conn.lock().unwrap();
-        let row: Option<i64> = conn.query_row(
-            r#"
-            SELECT MAX(d.sent_at_ts) FROM delivery_log d
-            JOIN events e ON d.event_id = e.id
-            WHERE d.actor = ?1
-              AND d.severity = 'high'
-              AND d.status = 'sent'
-              AND d.channel = 'sink'
-              AND e.symbols_json LIKE ?2
-              AND e.id LIKE ?3
-            "#,
-            params![actor, needle, pattern],
-            |row| row.get::<_, Option<i64>>(0),
-        )?;
-        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+        let rows = stmt.query_map(params![actor, since.timestamp(), needle, pattern], |row| {
+            row.get::<_, String>(0)
+        })?;
+        let mut max_bps: Option<i64> = None;
+        for r in rows {
+            let id = r?;
+            if let Some(bps) = parse_bps_from_band_id(&id) {
+                max_bps = Some(max_bps.map_or(bps, |m| m.max(bps)));
+            }
+        }
+        Ok(max_bps)
     }
 
     pub fn last_digest_success_at(&self, actor: &str) -> anyhow::Result<Option<DateTime<Utc>>> {
@@ -1178,6 +1162,13 @@ fn category_kind_tags(category: &str) -> Option<&'static [&'static str]> {
         "analyst" => Some(&["analyst_grade"]),
         _ => None,
     }
+}
+
+fn parse_bps_from_band_id(id: &str) -> Option<i64> {
+    if !id.starts_with("price_band:") {
+        return None;
+    }
+    id.rsplit(':').next().and_then(|s| s.parse::<i64>().ok())
 }
 
 fn price_band_id_pattern(symbol: &str, direction: &str) -> Option<String> {

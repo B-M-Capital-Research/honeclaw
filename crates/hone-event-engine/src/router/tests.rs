@@ -407,7 +407,9 @@ async fn cooldown_zero_means_no_throttle() {
 }
 
 #[tokio::test]
-async fn price_band_uses_price_specific_gap_instead_of_generic_symbol_cooldown() {
+async fn price_band_bypasses_generic_same_symbol_cooldown() {
+    // 价格 band 的限流走自己的 advance 规则,不应被通用 same_symbol_cooldown
+    // 误伤。AAOI 6→8 即两条单调新高,advance=2 下都应直推。
     let mut reg = SubscriptionRegistry::new();
     reg.register(Box::new(PortfolioSubscription::new(
         actor("u1"),
@@ -424,8 +426,7 @@ async fn price_band_uses_price_specific_gap_instead_of_generic_symbol_cooldown()
         digest,
     )
     .with_same_symbol_cooldown_minutes(60)
-    .with_price_intraday_min_gap_minutes(0)
-    .with_price_symbol_direction_daily_cap(0);
+    .with_price_band_min_advance_pct(2.0);
 
     let first = price_band_ev("AAOI", "up", 600, 6.18);
     let second = price_band_ev("AAOI", "up", 800, 8.12);
@@ -436,13 +437,15 @@ async fn price_band_uses_price_specific_gap_instead_of_generic_symbol_cooldown()
     assert_eq!(
         router.dispatch(&second).await.unwrap(),
         (1, 0),
-        "价格 band 应绕开通用同 ticker cooldown"
+        "价格 band 应绕开通用同 ticker cooldown 走自己的 advance 规则"
     );
     assert_eq!(sink.calls.lock().unwrap().len(), 2);
 }
 
 #[tokio::test]
-async fn price_band_min_gap_demotes_next_band_to_digest() {
+async fn price_band_advance_rule_demotes_band_below_min_advance() {
+    // 6% 已 sink-sent 后,7% / 6% / 5% 都不满足 monotone 新高 + 2pct,应降级。
+    // 8% 满足(8 ≥ 6 + 2),允许直推。这是 advance 规则的核心防震荡职责。
     let mut reg = SubscriptionRegistry::new();
     reg.register(Box::new(PortfolioSubscription::new(
         actor("u1"),
@@ -458,54 +461,35 @@ async fn price_band_min_gap_demotes_next_band_to_digest() {
         store.clone(),
         digest,
     )
-    .with_price_intraday_min_gap_minutes(60)
-    .with_price_symbol_direction_daily_cap(0);
+    .with_price_band_min_advance_pct(2.0);
 
     let first = price_band_ev("AAOI", "up", 600, 6.18);
-    let second = price_band_ev("AAOI", "up", 800, 8.12);
+    // 同档位再来一次 —— id 相同,理论上 INSERT IGNORE 已挡掉,但 dispatch 层
+    // 也应直接降级(不依赖 store 防重)。
+    let same_again = price_band_ev("AAOI", "up", 600, 6.50);
+    let advanced = price_band_ev("AAOI", "up", 800, 8.12);
     store.insert_event(&first).unwrap();
-    store.insert_event(&second).unwrap();
+    store.insert_event(&same_again).unwrap();
+    store.insert_event(&advanced).unwrap();
 
     assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
-    assert_eq!(router.dispatch(&second).await.unwrap(), (0, 1));
-    assert_eq!(sink.calls.lock().unwrap().len(), 1);
-}
-
-#[tokio::test]
-async fn price_band_symbol_direction_daily_cap_demotes_third_band() {
-    let mut reg = SubscriptionRegistry::new();
-    reg.register(Box::new(PortfolioSubscription::new(
-        actor("u1"),
-        vec!["AAOI".into()],
-    )));
-    let sink = Arc::new(CapturingSink::default());
-    let dir = tempdir().unwrap();
-    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
-    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
-    let router = NotificationRouter::new(
-        Arc::new(SharedRegistry::from_registry(reg)),
-        sink.clone(),
-        store.clone(),
-        digest,
-    )
-    .with_price_intraday_min_gap_minutes(0)
-    .with_price_symbol_direction_daily_cap(2);
-
-    let first = price_band_ev("AAOI", "up", 600, 6.18);
-    let second = price_band_ev("AAOI", "up", 800, 8.12);
-    let third = price_band_ev("AAOI", "up", 1000, 10.35);
-    for event in [&first, &second, &third] {
-        store.insert_event(event).unwrap();
-    }
-
-    assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
-    assert_eq!(router.dispatch(&second).await.unwrap(), (1, 0));
-    assert_eq!(router.dispatch(&third).await.unwrap(), (0, 1));
+    assert_eq!(
+        router.dispatch(&same_again).await.unwrap(),
+        (0, 1),
+        "同档位再来一次应降级(未达新高 + 2pct)"
+    );
+    assert_eq!(
+        router.dispatch(&advanced).await.unwrap(),
+        (1, 0),
+        "8% 满足 6+2=8 应直推"
+    );
     assert_eq!(sink.calls.lock().unwrap().len(), 2);
 }
 
 #[tokio::test]
-async fn price_band_direction_cap_is_independent_for_reversal() {
+async fn price_band_advance_rule_passes_full_aaoi_2026_05_01_sequence() {
+    // POC 标志案例:AAOI 2026-05-01 序列 6→8→10→12→14→16,在 advance=2 规则下
+    // 应当全部 6 条直推 —— 旧 cap=2 仅给 6/8 严重失声,这条测试锁死回归。
     let mut reg = SubscriptionRegistry::new();
     reg.register(Box::new(PortfolioSubscription::new(
         actor("u1"),
@@ -521,10 +505,52 @@ async fn price_band_direction_cap_is_independent_for_reversal() {
         store.clone(),
         digest,
     )
-    .with_price_intraday_min_gap_minutes(0)
-    .with_price_symbol_direction_daily_cap(1);
+    .with_price_band_min_advance_pct(2.0);
 
-    let up = price_band_ev("AAOI", "up", 600, 6.18);
+    let bands = [
+        price_band_ev("AAOI", "up", 600, 6.18),
+        price_band_ev("AAOI", "up", 800, 8.12),
+        price_band_ev("AAOI", "up", 1000, 10.35),
+        price_band_ev("AAOI", "up", 1200, 12.50),
+        price_band_ev("AAOI", "up", 1400, 14.20),
+        price_band_ev("AAOI", "up", 1600, 16.30),
+    ];
+    for ev in &bands {
+        store.insert_event(ev).unwrap();
+    }
+    for ev in &bands {
+        assert_eq!(
+            router.dispatch(ev).await.unwrap(),
+            (1, 0),
+            "band {} 应直推(monotone 新高 + 2pct)",
+            ev.id,
+        );
+    }
+    assert_eq!(sink.calls.lock().unwrap().len(), 6);
+}
+
+#[tokio::test]
+async fn price_band_advance_rule_separates_up_and_down_lanes() {
+    // 上行 lane 推过的最大档不应阻挡下行 lane 的首条 band —— direction 相反应
+    // 视为独立信号(行情反转的开盘锤入,值得告知)。
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["AAOI".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_price_band_min_advance_pct(2.0);
+
+    let up = price_band_ev("AAOI", "up", 1200, 12.50);
     let down = price_band_ev("AAOI", "down", 600, -6.30);
     store.insert_event(&up).unwrap();
     store.insert_event(&down).unwrap();
@@ -533,8 +559,41 @@ async fn price_band_direction_cap_is_independent_for_reversal() {
     assert_eq!(
         router.dispatch(&down).await.unwrap(),
         (1, 0),
-        "正向 cap 不应挡住负向独立 lane"
+        "down lane 是独立通道,不该被 up lane 的 max_band 影响"
     );
+    assert_eq!(sink.calls.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn price_band_advance_rule_disabled_when_zero() {
+    // advance=0 关闭单一规则,所有 band 都直推 —— 与「无脑全推」语义一致,
+    // 仅靠 INSERT IGNORE 防同档位重复。
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["AAOI".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest,
+    )
+    .with_price_band_min_advance_pct(0.0);
+
+    let first = price_band_ev("AAOI", "up", 800, 8.10);
+    // 反过来推 6%(在 advance>0 下会被降级),advance=0 应允许直推。
+    let lower = price_band_ev("AAOI", "up", 600, 6.20);
+    store.insert_event(&first).unwrap();
+    store.insert_event(&lower).unwrap();
+
+    assert_eq!(router.dispatch(&first).await.unwrap(), (1, 0));
+    assert_eq!(router.dispatch(&lower).await.unwrap(), (1, 0));
+    assert_eq!(sink.calls.lock().unwrap().len(), 2);
 }
 
 #[tokio::test]
