@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-01 18:01 CST
+最后更新：2026-05-01 18:28 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：8
 - Later / 待复现：11
-- 已修复 / 已关闭：77
+- 已修复 / 已关闭：78
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
@@ -28,7 +28,6 @@
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-01 18:01 最近一小时再次是 `sessions_last_hour=0 / messages_last_hour=0`，各渠道 `sessions.max(updated_at)` 仍停在 `feishu=2026-04-27 16:54:20+08:00`、`web=2026-04-27 09:02:12+08:00`；但同库 `cron_job_runs` 已继续写到 `18:01:18+08:00`，`sidecar.log` 也刚记录 Feishu 直聊 `17:34:33-17:34:37` 完整走完 `persist_assistant -> reply.send` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=12244` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整晨报正文，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-01 18:01 最新 `17:30-18:01` 窗口继续混跑 `running + pending=22 / noop + skipped_noop=18 / completed + sent=3 / execution_failed + skipped_error=2`；18:00 新一轮里 `ASTS`、`CAI`、`TEM大事件`、`原油播报`、`持仓重大事件`、`RKLB` 又回到 `parse_kind=Empty` 却仍被记成 `noop`，`小米30港元破位预警` 甚至把 code fence 包裹的 JSON 吞成 `JsonNoop` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-01 14:30 `ORCL 大事件监控` 的 `run_id=12484` 再次落成 `execution_failed + skipped_error`，`error_message` 仍是 `failed to deserialize api response: invalid type: integer 400`；这次出现在 `moonshotai/kimi-k2.5` 路径，说明公共 400 解析缺口仍未止血 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-05-01 15:02 `持仓重大事件心跳检测` 的 `run_id=12511` 再次落成 `completed + sent`，正文仍写 `RKLB当前$82.51...上涨+7.13%，突破5%阈值`，同时继续把 `4月29日` 旧合同包装成本轮“重大增量”；同窗 `RKLB异动监控` 则刚在 `15:00` 回落 `noop`，说明旧事件被错误升级到组合级触发链路 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 14:12 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=356`、`noop + skipped_noop=309`、`completed + sent=42`、`execution_failed + skipped_error=5`、`completed + send_failed=1`；最新 `13:30` 与 `14:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2846` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 17:30 `RKLB异动监控` 的 `run_id=12616` 与 `TEM大事件心跳监控` 的 `run_id=12618` 又把 `4月29日 RKLB 国防合同`、`TIME / Investor Day` 等旧催化重新送达；两条 job 在本轮前一小时里都刚出现过 `noop` 或 `Empty`，期间没有新的独立公告 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
@@ -101,6 +100,7 @@
 | Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixed | 2026-04-20 已将 `已达最大迭代次数 N` 改为机器可读 key `max_iterations_exceeded:N`，并在净化层过滤 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直聊在处理中遭遇 runtime 重启风暴，placeholder 发出后整轮无最终回复 | P1 | Fixed | 2026-04-20 已在 `run()` 启动时扫描 30 分钟内 `last_message_role=user` 的直聊会话并补发失败提示，同时落库 assistant 失败消息防止重复 | [feishu_direct_runtime_restart_interrupts_inflight_reply.md](./feishu_direct_runtime_restart_interrupts_inflight_reply.md) |
 | MiniMax 搜索阶段 HTTP 发送失败后缺少自动重试与降级，用户仅收到通用失败提示 | P2 | Fixed | 2026-04-20 已在 `openai_compatible.rs` 的 `chat` / `chat_with_tools` 中对传输层错误补一次自动重试（2 秒间隔） | [minimax_search_http_transport_failure_no_retry.md](./minimax_search_http_transport_failure_no_retry.md) |
+| Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-05-01 已确认 heartbeat 实际走 `llm.auxiliary` 的 `OpenAiCompatibleProvider`（当前 base URL 指向 OpenRouter）；本轮把 raw HTTP 兜底从仅 `JSONDeserialize` 扩到 `ApiError`/schema 失败，并补 `chat_with_tools` 回归测试，代码侧不再应把上游 400 压扁成整数反序列化错误；待下一个真实 heartbeat 窗口复核 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Feishu 每日动态监控遇到 `codex acp stream closed before response` 后台账仍记为已发送 | P2 | Fixed | 2026-04-20 已将 `codex acp`/`stream closed before response`/`acp stream` 加入 `looks_internal_error_detail`，发送时自动替换为通用失败文案 | [feishu_scheduler_codex_acp_stream_closed_false_sent.md](./feishu_scheduler_codex_acp_stream_closed_false_sent.md) |
 | Heartbeat 将日内高点/区间振幅误判为涨跌幅阈值并发送错误触发提醒 | P2 | Fixed | 2026-04-24 已在 `scheduler.rs` 的 heartbeat prompt 明确“盘中涨跌幅”默认按最新价相对昨收判断，禁止用日内高点/低点或振幅替代；`cargo test -p hone-channels scheduler::tests` 通过 | [scheduler_heartbeat_orcl_intraday_range_false_trigger.md](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) |
 | Feishu 直聊消息在已有同 session 任务处理中时仍先发送 placeholder，但未真正进入 agent 主链路 | P1 | Fixed | 2026-04-18 19:01 最新真实 busy 样本已只发送 `direct.busy` 并跳过 placeholder，live 复核通过 | [feishu_direct_placeholder_without_agent_run.md](./feishu_direct_placeholder_without_agent_run.md) |

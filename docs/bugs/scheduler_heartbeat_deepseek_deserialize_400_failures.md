@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-01 14:30-14:31` 窗口最新完成样本里，`run_id=12484`（`ORCL 大事件监控`）再次落成 `execution_failed + skipped_error + delivered=0`
@@ -76,18 +76,9 @@
 
 ## 当前实现效果
 
-- `2026-05-01 14:30` 的 `run_id=12484` 说明，这条缺陷在当前生产窗口依然活跃：`ORCL 大事件监控` 再次被压扁成 `invalid type: integer \`400\``，而不是保留真实上游 bad request 细节。
-- 当前不能把本单视为 `Fixed`；最新真实窗口已经再次复现相同错误形态，因此状态维持 `New` 并继续留在活跃缺陷队列。
-- `2026-05-01 03:01` 的 `run_id=11923` 说明，这条缺陷在当前生产窗口依然活跃：同一类 `maximum context length` 上游 400 仍被压扁成 `invalid type: integer \`400\``，而且当前样本已经从 `Cerebras IPO与业务进展心跳监控` 扩散回 `持仓重大事件心跳检测`。
-- 当前不能把本单视为 `Fixed`；最新真实窗口已经再次复现相同错误形态，因此状态维持 `New` 并继续留在活跃缺陷队列。
-- `2026-04-30 16:01` 的 `run_id=11362` 说明，这条缺陷在当前生产窗口依然活跃：同一类 `maximum context length` 上游 400 仍被压扁成 `invalid type: integer \`400\``。
-- 当前不能把本单视为 `Fixed`；最新真实窗口已经再次复现相同错误形态，因此状态维持 `New` 并继续留在活跃缺陷队列。
-- `2026-04-29 19:30` 的 `run_id=10300` 说明，这条缺陷并未随着 `2026-04-28` 的修复结论退出线上：同一类 `maximum context length` 上游 400 仍被压扁成 `invalid type: integer \`400\``。
-- 当前不能再把本单视为 `Fixed`；最新真实窗口已经再次复现相同错误形态，因此状态回调为 `New` 并重新进入活跃缺陷队列。
-- `10:30` 窗口里 8 条 heartbeat 被同一个 `deepseek/deepseek-v4-pro` 反序列化错误整轮打断。
-- `15:00` 窗口里 `run_id=8858` 又在 `moonshotai/kimi-k2.5` 下复现同一类二次反序列化失败；sidecar 已明确给出真实上游原因是 `maximum context length` 超限，但最终落库错误仍只剩 `invalid type: integer 400`
-- 同批并非所有 heartbeat 都应触发业务提醒，因为仍有 3 条样本成功收口为 `JsonNoop`。
-- 这说明当前问题已经扩大为“上游 bad request 被公共错误解析掩盖”，而不是仅限于某个 provider 的单次协议兼容。
+- `2026-05-01` 本轮代码修复后，heartbeat 当前使用的 `llm.auxiliary -> OpenAiCompatibleProvider` 与备用 `OpenRouterProvider` 都会在 SDK `JSONDeserialize` 之外，对 `ApiError` 类上游非 2xx / schema 失败继续走 raw HTTP 兜底，不再只依赖单一 serde 失败分支。
+- 同时补了 `chat_with_tools` 分支的数值 `code=400` 回归测试；这是 heartbeat 实际使用的调用路径，能直接覆盖此前线上 `function_calling` 任务把上游 bad request 压成 `invalid type: integer 400` 的场景。
+- 本轮没有重启现网服务，也没有等待下一次真实 heartbeat 窗口复核，因此这里先标记为 `Fixed`，待后续运行态确认 `cron_job_runs.error_message` 已切换为保留原始 `upstream HTTP 400 ... maximum context length ... (code: 400)` 后再视情况升为 `Closed`。
 
 ## 用户影响
 
@@ -100,12 +91,12 @@
 - 直接触发点是上游 provider 返回 `HTTP 400` 错误体时，当前 OpenAI-compatible 解析预期过窄，导致 `400` 整数状态字段之类的内容在反序列化时再次失败。
 - `10:30` 的 DeepSeek 样本与 `15:00` 的 Moonshot 样本共用同一种二次报错，且后者还能从 sidecar 看到真实上游错误是 `maximum context length`；这更像是公共错误解析缺陷，而不是某个单独 provider 的偶发兼容问题。
 - 现有 heartbeat 链路缺少对这类 provider bad request 的稳态吸震，因此错误直接暴露成 `execution_failed + skipped_error`。
+- `2026-05-01` 复核代码路径后确认，heartbeat 的 `AuxiliaryFunctionCalling` 实际优先取 `llm.auxiliary`，当前生产配置把它指到了 `https://openrouter.ai/api/v1`，因此线上主故障路径首先落在 `OpenAiCompatibleProvider::chat_with_tools`，而不是此前文档里假设的 `OpenRouterProvider` 主链路。
 
 ## 下一步建议
 
-- 先排查 heartbeat 公共 OpenAI-compatible 错误解析，确认对上游 `HTTP 400` 的字段类型假设为什么会在不同 provider 下都失败。
-- 为 heartbeat provider 错误补最小可观测性：至少记录上游状态码、错误字段类型和 provider 名，而不是只留下二次反序列化报错。
-- 若 heartbeat 继续依赖多 provider，应补 provider 级 fallback 或短重试，并在上下文超限时优先保留原始 `maximum context length` 诊断，避免再次被二次反序列化掩盖。
+- 观察下一次真实 heartbeat 窗口，确认 `cron_job_runs.error_message` 不再出现 `invalid type: integer 400`，而是保留 `upstream HTTP 400` 与真实 bad request 文案。
+- 若后续仍有同类失败，再补 provider 名 / 状态码 / body schema 的显式日志，进一步缩短线上归因路径。
 
 ## 修复情况（2026-04-28）
 
@@ -128,3 +119,23 @@
 - `cargo test -p hone-llm openrouter -- --nocapture`
 - `rustfmt --edition 2024 --check crates/hone-llm/src/openrouter.rs`
 - `cargo check -p hone-llm --tests`
+
+## 修复情况（2026-05-01）
+
+- 复核后确认 heartbeat 实际走 `AuxiliaryFunctionCalling`，当前生产配置优先命中 `llm.auxiliary` 的 `OpenAiCompatibleProvider`，且该 provider 的 `base_url` 指向 OpenRouter；此前仅修 `OpenRouterProvider` 不足以覆盖线上主路径。
+- `crates/hone-llm/src/openai_compatible.rs`
+  - raw HTTP 兜底触发条件从仅 `JSONDeserialize` 扩到 `JSONDeserialize | ApiError`，避免 SDK 在不同非 2xx / schema 失败分支下绕过原始错误体保留。
+  - 新增 `chat_with_tools_preserves_numeric_provider_error_body_after_sdk_deserialize_failure`，直接覆盖 heartbeat 使用的 tool-calling 分支。
+- `crates/hone-llm/src/openrouter.rs`
+  - 同步把 raw HTTP 兜底触发条件放宽到 `JSONDeserialize | ApiError`，避免备用 OpenRouter provider 与主路径继续分叉。
+  - 新增对应的 `chat_with_tools` 回归测试，保证两条 provider 实现保持一致。
+
+## 回归验证（2026-05-01）
+
+- `cargo test -p hone-llm --lib -- --nocapture`
+- `rustfmt --edition 2024 crates/hone-llm/src/openai_compatible.rs crates/hone-llm/src/openrouter.rs`
+
+## 风险
+
+- 本轮未做运行态复验，因为任务约束明确不重启服务；真实进程仍需在下一个 heartbeat 窗口验证是否已拿到新的 provider 错误保留形态。
+- 若上游后续再返回更非标准的错误体（例如既不是 OpenAI error wrapper，也没有 `message/msg/detail`），当前逻辑仍只保证不再把数值 `code` 重新压扁为 serde 整数类型错误。

@@ -354,6 +354,14 @@ fn extract_error_message(body: &str) -> String {
     }
 }
 
+fn should_retry_with_raw_http(error: &async_openai::error::OpenAIError) -> bool {
+    matches!(
+        error,
+        async_openai::error::OpenAIError::JSONDeserialize(_)
+            | async_openai::error::OpenAIError::ApiError(_)
+    )
+}
+
 #[async_trait]
 impl LlmProvider for OpenRouterProvider {
     async fn chat(
@@ -391,7 +399,7 @@ impl LlmProvider for OpenRouterProvider {
                 }
                 Err(e) => {
                     last_err = e.to_string();
-                    if matches!(e, async_openai::error::OpenAIError::JSONDeserialize(_)) {
+                    if should_retry_with_raw_http(&e) {
                         match Self::post_chat_completion(client, &request).await {
                             Ok(value) => {
                                 return Ok(ChatResult {
@@ -470,7 +478,7 @@ impl LlmProvider for OpenRouterProvider {
                 }
                 Err(e) => {
                     last_err = e.to_string();
-                    if matches!(e, async_openai::error::OpenAIError::JSONDeserialize(_)) {
+                    if should_retry_with_raw_http(&e) {
                         match Self::post_chat_completion(client, &request).await {
                             Ok(value) => {
                                 return Ok(ChatResponse {
@@ -586,6 +594,47 @@ mod tests {
                     tool_call_id: None,
                     name: None,
                 }],
+                None,
+            )
+            .await
+            .expect_err("numeric provider error should remain an error");
+        let msg = err.to_string();
+        assert!(msg.contains("upstream HTTP 400"), "{msg}");
+        assert!(msg.contains("maximum context length exceeded"), "{msg}");
+        assert!(msg.contains("code: 400"), "{msg}");
+        assert!(!msg.contains("invalid type: integer"), "{msg}");
+        assert!(
+            requests.load(Ordering::SeqCst) >= 2,
+            "SDK path plus raw HTTP fallback should both hit the mock server"
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_with_tools_preserves_openrouter_numeric_error_body_after_sdk_deserialize_failure()
+    {
+        let (base_url, requests) = spawn_numeric_error_server().await;
+        let provider =
+            OpenRouterProvider::new_with_base_url("test-key", &base_url, "test-model", 16);
+        let err = provider
+            .chat_with_tools(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("hello".to_string()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "demo_tool",
+                        "description": "demo",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    }
+                })],
                 None,
             )
             .await

@@ -300,9 +300,25 @@ fn extract_error_message(body: &str) -> String {
     }
 }
 
+fn should_retry_with_raw_http(error: &async_openai::error::OpenAIError) -> bool {
+    matches!(
+        error,
+        async_openai::error::OpenAIError::JSONDeserialize(_)
+            | async_openai::error::OpenAIError::ApiError(_)
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::extract_error_message;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    use super::*;
 
     #[test]
     fn extracts_numeric_provider_error_code_without_serde_shape_failure() {
@@ -317,6 +333,77 @@ mod tests {
     fn extracts_alt_error_message_fields() {
         let body = r#"{"msg":"bad request","code":999}"#;
         assert_eq!(extract_error_message(body), "bad request (code: 999)");
+    }
+
+    #[tokio::test]
+    async fn chat_with_tools_preserves_numeric_provider_error_body_after_sdk_deserialize_failure() {
+        let (base_url, requests) = spawn_numeric_error_server().await;
+        let provider = OpenAiCompatibleProvider::new("test-key", &base_url, "test-model", 30, 16)
+            .expect("provider");
+        let err = provider
+            .chat_with_tools(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("hello".to_string()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "demo_tool",
+                        "description": "demo",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    }
+                })],
+                None,
+            )
+            .await
+            .expect_err("numeric provider error should remain an error");
+        let msg = err.to_string();
+        assert!(msg.contains("upstream HTTP 400"), "{msg}");
+        assert!(msg.contains("maximum context length exceeded"), "{msg}");
+        assert!(msg.contains("code: 400"), "{msg}");
+        assert!(!msg.contains("invalid type: integer"), "{msg}");
+        assert!(
+            requests.load(Ordering::SeqCst) >= 2,
+            "SDK path plus raw HTTP fallback should both hit the mock server"
+        );
+    }
+
+    async fn spawn_numeric_error_server() -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        let requests = Arc::new(AtomicUsize::new(0));
+        let requests_for_task = requests.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                requests_for_task.fetch_add(1, Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let mut buf = [0_u8; 4096];
+                    let _ = socket.read(&mut buf).await;
+                    let body =
+                        r#"{"error":{"message":"maximum context length exceeded","code":400}}"#;
+                    let response = format!(
+                        "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), requests)
     }
 }
 
@@ -368,7 +455,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 Err(err) => {
                     let msg = err.to_string();
                     let hone_err = hone_core::HoneError::Llm(msg.clone());
-                    if matches!(err, async_openai::error::OpenAIError::JSONDeserialize(_)) {
+                    if should_retry_with_raw_http(&err) {
                         let value = self.post_chat_completion(&request).await?;
                         return Ok(ChatResult {
                             content: Self::content_from_value(&value),
@@ -440,7 +527,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 Err(err) => {
                     let msg = err.to_string();
                     let hone_err = hone_core::HoneError::Llm(msg.clone());
-                    if matches!(err, async_openai::error::OpenAIError::JSONDeserialize(_)) {
+                    if should_retry_with_raw_http(&err) {
                         let value = self.post_chat_completion(&request).await?;
                         return Ok(ChatResponse {
                             content: Self::content_from_value(&value),
