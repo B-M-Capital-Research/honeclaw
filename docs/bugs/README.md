@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-01 21:08 CST
+最后更新：2026-05-01 22:10 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：8
+- 活跃待修复：9
 - Later / 待复现：11
-- 已修复 / 已关闭：79
+- 已修复 / 已关闭：78
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
@@ -32,6 +32,7 @@
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | New | 2026-05-01 15:02 `持仓重大事件心跳检测` 的 `run_id=12511` 再次落成 `completed + sent`，正文仍写 `RKLB当前$82.51...上涨+7.13%，突破5%阈值`，同时继续把 `4月29日` 旧合同包装成本轮“重大增量”；同窗 `RKLB异动监控` 则刚在 `15:00` 回落 `noop`，说明旧事件被错误升级到组合级触发链路 | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 14:12 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=356`、`noop + skipped_noop=309`、`completed + sent=42`、`execution_failed + skipped_error=5`、`completed + send_failed=1`；最新 `13:30` 与 `14:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2846` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 21:02 `TEM大事件心跳监控` 的 `run_id=12788` 又把 `5月5日财报`、`TIME 榜单`、`USC 合作` 等旧催化重新送达；这些事实已在 `08:02`、`17:31` 等窗口重复出现，中间多个窗口已回到 `noop`/`Empty`，期间没有新的独立公告 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-01 21:35 `科技核心股池 · 晚间击球区快报` 再次把 24 支标的统一降成“击球区待确认”；同症状已连续出现在 `2026-04-30 21:35` 与 `2026-05-01 21:35` 两个晚间窗口，说明先前 `Fixed` 结论失效 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## Later / 待复现
@@ -55,7 +56,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊切到非金融新话题时，仍误入 `stock_research` 并沿用旧 `LITE` 上下文 | P3 | Fixed | 2026-05-01 当前 user turn 在普通和带接收元信息的 prompt 拼装中统一置于历史摘要 / skill context / session context 之后，且领域策略明确非金融问题必须先短路拒绝、不得调用 `stock_research` / `data_fetch` / `web_search` 或沿用旧 ticker；`cargo test -p hone-channels prompt::tests:: --lib -- --nocapture`、`cargo test -p hone-channels turn_builder::tests::runtime_input_with_recv_extra_keeps_current_turn_last --lib -- --nocapture` 通过；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
-| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | Fixed | 2026-05-01 `local_search_files` 目录递归搜索遇到二进制、非 UTF-8 或不可读文件时改为跳过单文件并继续检索，避免 actor sandbox 内单个坏文件把观察池击球区配置搜索整轮打断；`cargo test -p hone-tools directory_search_skips_non_text_files_without_aborting --lib -- --nocapture`、`cargo test -p hone-tools local_files --lib -- --nocapture`、`cargo check -p hone-tools --tests` 通过；下个真实简报窗口建议复测输出 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-01 event-engine Feishu direct fallback 从“唯一 email 或唯一 mobile”放宽为“所有稳定联系人解析后只产生一个 current-app open_id 才使用”，覆盖单用户配置同时保留 email+mobile 时 fallback 被关闭的缺口；`cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-04-30 已放宽 multi-agent 对 `cron_job`/`portfolio` 可信本地结果的直返门槛，多行和较长任务列表也不再被强制送进易空回复的 answer 阶段；`cargo test -p hone-channels runners::multi_agent::tests`、`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`、`cargo check -p hone-channels` 通过 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-05-01 watchlist 送达前数值自检补齐“跌至 69.85，已触及或低于触发价 69.83”变体；当前价仍高于下行触发价时会落成 `near_threshold_suppressed`；`cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture` 通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |

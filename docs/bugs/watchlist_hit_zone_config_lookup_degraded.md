@@ -3,7 +3,32 @@
 - **发现时间**: 2026-04-29 23:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
+- **修复结论复核**:
+  - `2026-05-01 21:36 CST` 同链路缺陷在最近一小时真实窗口再次复现，先前 `Fixed` 结论失效：
+    - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
+      - `updated_at=2026-05-01T21:36:10.365924+08:00`
+      - 最新 `[定时任务触发] 任务名称：科技核心股池 · 晚间击球区快报` 仍要求“每个标的列出当前价格、击球区区间值、下一次财报时间”
+      - 实际 assistant final 继续写出 `除 LITE 外，其余击球区区间当前仍未完成备案，统一标注待确认`，并把 25 支观察池中的 24 支继续降成 `击球区待确认`
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=12822`
+      - `job_name=科技核心股池 · 晚间击球区快报`
+      - `executed_at=2026-05-01T21:36:15+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 继续原样写出：`除 LITE 外，其余击球区区间当前仍未完成备案，统一标注待确认`
+    - `data/runtime/logs/sidecar.log`
+      - `2026-05-01 21:35:30-21:35:45` 同会话连续执行 20+ 次 `Tool: hone/data_fetch`
+      - `2026-05-01 21:36:10.366` 整轮仍以 `success=true elapsed_ms=68369 tools=26(Tool: hone/data_fetch,Tool: hone/skill_tool) reply.chars=1371` 收口
+      - 最新窗口里没有再出现 `local_search_files` / `local_list_files` / `tool_failed`，说明当前坏态已经不再等同于 `2026-04-29` 记录里的“本地文件搜索被单个坏文件打断”
+  - `2026-04-30 21:36 CST` 同症状其实已在前一日晚间快报继续活跃：
+    - `cron_job_runs.run_id=11653`
+    - `job_name=科技核心股池 · 晚间击球区快报`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `response_preview` 同样写出 `除 LITE 外，其余击球区未完成校验，统一标注待确认`
+    - 说明 `2026-05-01` 的复现不是偶发回潮，而是至少连续两晚的稳定回退
 - **证据来源**:
   - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
     - `updated_at=2026-05-01T09:01:25.107409+08:00`
@@ -53,6 +78,7 @@
 
 - 当前任务主链路没有中断，`cron_job_runs` 与日志都显示这轮任务成功送达。
 - `2026-05-01 09:01` 的 `核心观察池早间简报` 说明，这条缺陷并非只影响晚间快报：同一观察池链路在最近一小时仍继续把除 `LITE` 外几乎所有标的的击球区统一降成“待确认”。
+- `2026-04-30 21:35` 与 `2026-05-01 21:35` 两个连续晚间窗口说明，这条缺陷在此前标记 `Fixed` 后仍持续影响相同 scheduler 链路，而不是只剩历史残留。
 - 但真正送达给用户的正文已经不再提供多数标的的固定击球区，只剩“待确认”占位。
 - 从上一日同任务对照看，配置并非天然缺失，因此这不是用户要求变更，而是当前任务在本地配置检索或上下文拼装阶段发生了退化。
 - 这是质量类缺陷。之所以定级为 `P3`，是因为任务仍成功生成并送达，价格与财报字段也仍可读；受损的是分析完整性和参考价值，而不是主功能链路可用性。
@@ -65,12 +91,12 @@
 
 ## 根因判断
 
-- 当前最可能的根因是本地击球区配置检索链路退化，而不是行情工具本身失效：价格和财报字段仍由 `data_fetch` 正常给出，但本地击球区信息没有被稳定恢复。
-- `2026-05-01 09:01` 的早间简报复现说明，问题不局限于某个晚间模板，而是同一观察池配置在不同 scheduler 任务间都没有被稳定恢复。
-- 日志里同轮出现 `local_list_files` / `local_search_files` 后立即 `acp.tool_failed`，与最终正文“未找到本地完整击球区配置”的自述一致。
-- 由于上一日同任务仍能稳定输出固定区间，这更像是新的独立受影响链路，不属于既有“compact summary 外泄”或“started 行不 finalize”缺陷的同根因重演。
+- `2026-04-29` 的首个坏样本里，本地击球区配置检索链路退化是明确放大器：日志同轮出现 `local_list_files` / `local_search_files` 后立即 `acp.tool_failed`，与正文“未找到本地完整击球区配置”的自述一致。
+- 但 `2026-04-30 21:35` 与 `2026-05-01 21:35` 的连续复现说明，当前活跃坏态已经不再依赖相同的工具失败形态：最新窗口只看到高频 `data_fetch` 与 `skill_tool`，没有再出现 `local_search_files` / `tool_failed`，最终仍把绝大多数击球区降成“待确认”。
+- 因此当前更可能是“观察池固定击球区记忆/配置注入在模板或答案拼装阶段继续缺失”，而不只是本地目录检索被单个坏文件打断。
+- 同一症状已经连续影响 `核心观察池早间简报` 与 `科技核心股池 · 晚间击球区快报`，说明问题不局限于单个 scheduler 模板，而是观察池区间恢复链路仍未稳定。
 
-## 修复情况（2026-05-01）
+## 修复情况（2026-05-01，已不足以覆盖当前坏态）
 
 - `crates/hone-tools/src/local_files.rs` 已加固 `local_search_files` 的目录递归搜索：遇到单个二进制、非 UTF-8 或不可读文件时跳过该文件并继续搜索其它文本文件，不再让整次本地配置检索直接失败。
 - 搜索结果新增 `skipped_binary_files`、`skipped_non_utf8_files`、`skipped_unreadable_files` 计数，保留可观测性，便于后续判断是否仍有坏文件污染 actor sandbox。
@@ -79,9 +105,10 @@
   - `cargo test -p hone-tools directory_search_skips_non_text_files_without_aborting --lib -- --nocapture`
   - `cargo test -p hone-tools local_files --lib -- --nocapture`
   - `cargo check -p hone-tools --tests`
-- 当前为源码层修复，后续真实 `核心观察池早间/晚间简报` 窗口仍建议复测是否恢复固定击球区输出。
+- 当前回看 `2026-04-30 21:35` 与 `2026-05-01 21:35` 两个真实晚间窗口，这组修复并没有恢复固定击球区输出；它至多解释了 `2026-04-29` 的单一放大器，但没有覆盖当前仍在生产中出现的退化形态。
 
 ## 下一步建议
 
-- 继续观察下一次 `核心观察池早间/晚间简报`，若 `local_search_files` 已成功但输出仍大面积“待确认”，应另开缺陷跟踪模板/答案阶段的质量闸。
+- 优先检查 `科技核心股池 · 晚间击球区快报` 与 `核心观察池早间简报` 当前从何处读取固定击球区；重点确认最近两晚是否已经不再走 `local_search_files`，而是直接丢失了观察池区间注入步骤。
+- 对 `2026-04-30 21:35` 与 `2026-05-01 21:35` 两个样本回放 prompt / tool transcript，确认 `skill_tool` 是否仍能读到观察池配置，还是 answer 阶段忽略了已存在的区间数据。
 - 若 `skipped_non_utf8_files` 长期非零，清理或隔离 actor sandbox 内的坏编码文件，降低检索噪声。
