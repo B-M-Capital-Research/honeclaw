@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 03:05 CST
+最后更新：2026-05-02 03:13 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,17 +15,16 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：8
 - Later / 待复现：11
-- 已修复 / 已关闭：79
+- 已修复 / 已关闭：80
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发，最终落库虽为 `OK` 但实时链路已泄露内部 prompt | P1 | New | 2026-05-02 02:03 最近一小时复现：Web `心跳检测，请简短回复 OK` 最终会话 JSON 仍只落 `OK`，但 `acp-events.log` 同轮先外发了一条以 `### System Instructions ###` 开头的超长 `agent_message_chunk`，正文包含系统提示、skill context、turn-0 技能索引与当前会话元信息；已建 Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) | [web_direct_session_update_prompt_echo_leak.md](./web_direct_session_update_prompt_echo_leak.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 02:03 最近一小时再次确认 `sessions` 与 `session_messages` 新增仍为 `0`，镜像上界继续卡在 `2026-04-27 16:54:20+08:00`；但原始 Web 会话源文件已继续刷新到 `02:03:12/02:03:25` 并正常落下 `OK` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-01 20:02 `英伟达每日消息` 的 `run_id=12732` 再次落成 `completed + send_failed + console_event_sent=false`；同一 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 03:03 最新 `02:00-03:01` 窗口继续混跑 `running + pending=33 / noop + skipped_noop=28 / execution_failed + skipped_error=3 / completed + sent=2`；`ORCL` 与 `全天原油价格3小时播报` 正常 `sent`，但 `TEM大事件心跳监控`、`持仓重大事件心跳检测` 又退化到 `error decoding response body`，且 `CAI破位预警` 的 `noop` 仍夹带推理痕迹 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
@@ -55,6 +54,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发，最终落库虽为 `OK` 但实时链路已泄露内部 prompt | P1 | Fixed | 2026-05-02 ACP `agent_message_chunk` ingest 层新增 chunk 级 prompt echo 过滤；命中 `### System Instructions ###`、`### Skill Context ###`、`【Session 上下文】`、`turn-0 可用技能索引` 等内部标记时不进入 `full_reply` / `pending_assistant_content`，也不 emit 用户可见 `StreamDelta`；同 chunk 内真实前缀会保留并截断后续内部 prompt；`cargo test -p hone-channels acp_common --lib -- --nocapture` 通过；关联 Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) | [web_direct_session_update_prompt_echo_leak.md](./web_direct_session_update_prompt_echo_leak.md) |
 | 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | Fixed | 2026-05-02 heartbeat 已送达预览去重新增日期、金额、英文实体与 CJK n-gram 事实 token，覆盖 `RKLB 4月29日 1.9 亿美元国防合同` 这类旧催化换写法后叠加近阈值价格观察再次触发的路径；既有近阈值硬拦截仍覆盖 `接近但未达 / 未超过 / 未触及` 等否认越线文案；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | Fixed | 2026-05-02 `heartbeat_duplicate_preview_match` 不再只依赖标点/空格整词重合，补强中英混写旧事件相似度；`TEM` 的 `TIME / USC / 5月5日财报` 组合旧催化、`RKLB 4月29日 1.9 亿美元国防合同` 换写法会落成 `duplicate_suppressed`，同 ticker 新独立事件负例保留；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-05-01 23:05 共享错误净化层将“已达到今日对话上限”提升为业务拒绝优先级，即使被 `工具执行错误` / `渠道错误` 等内部前缀包裹也会保留 quota 文案；Feishu 失败兜底成功更新 placeholder / 发送后会记录 `reply.send failure_fallback`，避免巡检再误判为无最终发送；`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text -- --nocapture`、`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |

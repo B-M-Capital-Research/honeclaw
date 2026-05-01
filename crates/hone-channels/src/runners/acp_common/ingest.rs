@@ -44,6 +44,12 @@ pub(crate) async fn ingest_acp_message_chunk(
     state: &mut AcpPromptState,
     emitter: &Arc<dyn AgentRunnerEmitter>,
 ) {
+    let Some(text) = user_visible_acp_message_chunk(text) else {
+        tracing::warn!("[acp] suppressed internal prompt echo agent_message_chunk");
+        return;
+    };
+    let text = text.as_str();
+
     if RE_ACP_COMPACT_STATUS_TEXT.is_match(text) {
         if !state.compact_detected {
             tracing::info!(
@@ -76,6 +82,30 @@ pub(crate) async fn ingest_acp_message_chunk(
             content: text.to_string(),
         })
         .await;
+}
+
+fn user_visible_acp_message_chunk(text: &str) -> Option<String> {
+    let first_marker = [
+        "### System Instructions ###",
+        "### System Prompt ###",
+        "### Skill Context ###",
+        "### Conversation Context ###",
+        "### User Prompt ###",
+        "### Available Skills ###",
+        "【Session 上下文】",
+        "turn-0 可用技能索引",
+    ]
+    .iter()
+    .filter_map(|marker| text.find(marker))
+    .min();
+
+    match first_marker {
+        Some(idx) => {
+            let trimmed = text[..idx].trim_end();
+            (!trimmed.trim().is_empty()).then(|| trimmed.to_string())
+        }
+        None => Some(text.to_string()),
+    }
 }
 
 /// 处理一条 ACP `usage_update`。共用 peak 跟踪 + "流内首次 used 与 prev_peak 比较"
@@ -149,12 +179,12 @@ pub(crate) async fn handle_acp_session_update_with_renderer(
 
             if let Some(state) = state.as_deref_mut() {
                 ingest_acp_message_chunk(text, state, emitter).await;
-            } else {
+            } else if let Some(text) = user_visible_acp_message_chunk(text) {
                 emitter
-                    .emit(AgentRunnerEvent::StreamDelta {
-                        content: text.to_string(),
-                    })
+                    .emit(AgentRunnerEvent::StreamDelta { content: text })
                     .await;
+            } else {
+                tracing::warn!("[acp] suppressed internal prompt echo agent_message_chunk");
             }
         }
         "agent_thought_chunk" => {

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-02 02:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28)
 
 ## 证据来源
@@ -56,8 +56,14 @@
 - 更像是 runner/桥接层把内部 `content.text` 或 prompt 包错误映射成了用户可见消息更新，而不是单纯的历史落库污染。
 - 旧的 prompt echo 止血主要覆盖“最终回复前缀是 `### System Instructions ###`”的场景；这次复现说明 chunk 级外发链路仍有独立缺口。
 
-## 下一步建议
+## 修复记录
 
-- 优先在 Web `session/update` 出站层补 chunk 级净化，命中 `### System Instructions ###`、`【Session 上下文】`、`turn-0 可用技能索引`、大段 skill prompt 展开时直接丢弃。
-- 核对当前 Codex/Web runner 是否把内部 prompt 包错误写进 `content.text` 更新事件；必要时区分“调试内容”和“用户可见正文”通道。
+- 2026-05-02 03:13: 在 `crates/hone-channels/src/runners/acp_common/ingest.rs` 的 ACP `agent_message_chunk` ingest 层增加 chunk 级 prompt echo 过滤。命中 `### System Instructions ###`、`### Skill Context ###`、`【Session 上下文】`、`turn-0 可用技能索引` 等内部 prompt 标记时，不再写入 `full_reply` / `pending_assistant_content`，也不再 emit 用户可见 `StreamDelta`；若同一 chunk 中内部标记前已有真实可见前缀，则只保留前缀并截断后续内部内容。
+- 回归测试覆盖完整内部 prompt chunk 丢弃、`OK` 前缀保留、既有 compact/boundary chunk 原样透传。
+- 验证：`cargo test -p hone-channels acp_common --lib -- --nocapture` 通过。
+- 关联 GitHub Issue：[#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28)。
+
+## 后续建议
+
+- 若后续出现新的 prompt echo 变体，优先扩展 ACP ingest 层的内部标记集合，保持“用户可见正文”和“调试/内部 prompt”通道分离。
 - 用同一条 `心跳检测，请简短回复 OK` 在 Web 前端做一次实时复现，确认用户侧是否能肉眼看到泄露 chunk。

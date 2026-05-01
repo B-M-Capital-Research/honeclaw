@@ -66,6 +66,46 @@ async fn handle_acp_session_update_marks_codex_compact_literal_chunk_without_dro
     );
 }
 
+#[tokio::test]
+async fn handle_acp_session_update_drops_internal_prompt_echo_chunk() {
+    let mut state = AcpPromptState::default();
+    let (emitter, deltas) = collecting_emitter();
+    let params = json!({
+        "update": {
+            "sessionUpdate": "agent_message_chunk",
+            "content": {
+                "text": "### System Instructions ###\nYou are Codex.\n### Skill Context ###\nturn-0 可用技能索引"
+            }
+        }
+    });
+
+    handle_acp_session_update(&params, &emitter, Some(&mut state)).await;
+
+    assert!(state.full_reply.is_empty());
+    assert!(state.pending_assistant_content.is_empty());
+    assert!(deltas.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn handle_acp_session_update_keeps_visible_prefix_before_prompt_echo() {
+    let mut state = AcpPromptState::default();
+    let (emitter, deltas) = collecting_emitter();
+    let params = json!({
+        "update": {
+            "sessionUpdate": "agent_message_chunk",
+            "content": {
+                "text": "OK\n### System Instructions ###\nYou are Codex.\n【Session 上下文】"
+            }
+        }
+    });
+
+    handle_acp_session_update(&params, &emitter, Some(&mut state)).await;
+
+    assert_eq!(state.full_reply, "OK");
+    assert_eq!(state.pending_assistant_content, "OK");
+    assert_eq!(deltas.lock().await.clone(), vec!["OK".to_string()]);
+}
+
 /// opencode 不推 compact 字面量，但内置 compact 后 session 体积 >50% 骤降。
 /// 我们以"流内首次 usage_update.used 与上轮 peak 比下降超 50%"作为信号，
 /// 同样置 compact_detected=true。
