@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：11
+- 活跃待修复：10
 - Later / 待复现：11
-- 已修复 / 已关闭：75
+- 已修复 / 已关闭：76
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
@@ -34,7 +34,6 @@
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-01 11:02 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=289`、`noop + skipped_noop=249`、`completed + sent=37`、`completed + send_failed=1`；最新 `10:30` 与 `11:00` 两批 started 行继续与后续终态并存，全库残留也已继续增至 `2779` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒，同一催化会在数小时轮询里反复送达 | P3 | New | 2026-05-01 08:02 `TEM大事件心跳监控` 的 `run_id=12174` 又把 `01:00/03:00` 已提醒过的 USC 合作 / TIME / Investor Day 旧事件正式送达；中间 `07:30` 窗口刚回落成 `noop`，期间没有新的独立公告或合作落地 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-01 04:01 `Oil_Price_Monitor_Closing` 再次 `completed + sent`，Tavily 4 key 全部额度耗尽后，正文仍把“中东风险高位回落”写成确定性结论并据此判断科技股尾盘风险偏好恢复 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
-| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-01 09:01 最近一小时 `核心观察池早间简报` 再次写出“除 LITE 外，其余击球区未在当前资料中完成备案”；说明问题已从 4 月 29 日晚间快报扩散到同一观察池的早间简报链路 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## Later / 待复现
@@ -57,6 +56,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | Fixed | 2026-05-01 `local_search_files` 目录递归搜索遇到二进制、非 UTF-8 或不可读文件时改为跳过单文件并继续检索，避免 actor sandbox 内单个坏文件把观察池击球区配置搜索整轮打断；`cargo test -p hone-tools directory_search_skips_non_text_files_without_aborting --lib -- --nocapture`、`cargo test -p hone-tools local_files --lib -- --nocapture`、`cargo check -p hone-tools --tests` 通过；下个真实简报窗口建议复测输出 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-01 event-engine Feishu direct fallback 从“唯一 email 或唯一 mobile”放宽为“所有稳定联系人解析后只产生一个 current-app open_id 才使用”，覆盖单用户配置同时保留 email+mobile 时 fallback 被关闭的缺口；`cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-04-30 quota 拒绝改为用户态错误并在拒绝前写入 user turn；Feishu 失败收口会向 placeholder 回写“已达到今日对话上限”而不是吞掉最终回复；`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-04-30 已放宽 multi-agent 对 `cron_job`/`portfolio` 可信本地结果的直返门槛，多行和较长任务列表也不再被强制送进易空回复的 answer 阶段；`cargo test -p hone-channels runners::multi_agent::tests`、`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`、`cargo check -p hone-channels` 通过 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |

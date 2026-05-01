@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-29 23:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
     - `updated_at=2026-05-01T09:01:25.107409+08:00`
@@ -70,8 +70,18 @@
 - 日志里同轮出现 `local_list_files` / `local_search_files` 后立即 `acp.tool_failed`，与最终正文“未找到本地完整击球区配置”的自述一致。
 - 由于上一日同任务仍能稳定输出固定区间，这更像是新的独立受影响链路，不属于既有“compact summary 外泄”或“started 行不 finalize”缺陷的同根因重演。
 
+## 修复情况（2026-05-01）
+
+- `crates/hone-tools/src/local_files.rs` 已加固 `local_search_files` 的目录递归搜索：遇到单个二进制、非 UTF-8 或不可读文件时跳过该文件并继续搜索其它文本文件，不再让整次本地配置检索直接失败。
+- 搜索结果新增 `skipped_binary_files`、`skipped_non_utf8_files`、`skipped_unreadable_files` 计数，保留可观测性，便于后续判断是否仍有坏文件污染 actor sandbox。
+- 单文件读取 / 单文件搜索仍保持严格错误边界，避免把非文本文件内容误当成有效配置。
+- 回归验证：
+  - `cargo test -p hone-tools directory_search_skips_non_text_files_without_aborting --lib -- --nocapture`
+  - `cargo test -p hone-tools local_files --lib -- --nocapture`
+  - `cargo check -p hone-tools --tests`
+- 当前为源码层修复，后续真实 `核心观察池早间/晚间简报` 窗口仍建议复测是否恢复固定击球区输出。
+
 ## 下一步建议
 
-- 回查 `核心观察股池晚间快报` 在 search/answer 阶段读取的本地配置来源，确认 `local_search_files` 失败后为何没有回退到上一轮已知击球区。
-- 为观察池/击球区类 scheduler 增加一条质量回归：当上一轮已有固定区间而本轮只剩“待确认”时，应判为异常而非成功送达。
-- 排查本地文件检索是否被非 UTF-8 文件、搜索范围污染或 actor sandbox 路径选择影响，避免再次把局部检索失败静默降级成用户可见缺字段长文。
+- 继续观察下一次 `核心观察池早间/晚间简报`，若 `local_search_files` 已成功但输出仍大面积“待确认”，应另开缺陷跟踪模板/答案阶段的质量闸。
+- 若 `skipped_non_utf8_files` 长期非零，清理或隔离 actor sandbox 内的坏编码文件，降低检索噪声。
