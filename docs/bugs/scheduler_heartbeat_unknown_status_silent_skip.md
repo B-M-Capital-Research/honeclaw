@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-05-02 18:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `17:30-18:00` 的最新两轮仍在混跑 `noop + skipped_noop / completed + sent`，结构化协议没有恢复成稳定单一形态：
+  - 本轮无法再从 `data/sessions.sqlite3` 补抓 `cron_job_runs` 增量明细，因为巡检窗口里可用的持久证据主要来自 `sidecar.log` 与原始 session JSON；但日志已经证明 heartbeat 输出形态继续在同一整点窗口内漂移。
+  - `data/runtime/logs/sidecar.log` 显示 `18:00` 同窗终态仍明显混杂：
+    - `2026-05-02 18:00:16.147`、`18:00:17.483`、`18:00:31.074`、`18:00:39.983`、`18:00:41.966`：`ASTS 重大异动心跳监控`、`小米30港元破位预警`、`ORCL 大事件监控`、`TEM大事件心跳监控`、`持仓重大事件心跳检测` 先后退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 18:00:21.366`、`18:00:36.343`、`18:00:57.032`：`TEM破位预警`、`Cerebras IPO与业务进展心跳监控`、`CAI破位预警` 同窗回摆成 `parse_kind=JsonNoop`
+    - `2026-05-02 18:00:37.576-18:00:37.578`：`全天原油价格3小时播报` 则又单独落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-02 18:02` 为止，本单仍稳定活跃；虽然这一小时暂未再出现 `skipped_error`，但同一整点窗口仍继续混跑 `Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 16:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `15:30-16:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / execution_failed + skipped_error / completed + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按最近一小时窗口聚合，仍同时存在：
     - `running + pending = 22`

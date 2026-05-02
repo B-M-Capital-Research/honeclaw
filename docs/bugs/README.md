@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 17:03 CST
+最后更新：2026-05-02 18:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -26,9 +26,9 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-05-02 17:35 已收紧 `response_finalizer` 的 `planning_sentence_suppressed` 判定：用户可见澄清问句与 `请先确认/请提供` 类补充请求不再被误杀，并补 `hone-channels` 回归测试；因本轮未重启服务、尚缺新的真实 Feishu 样本，先维持活跃 `Fixing` | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 17:03 最近一小时再次确认 `sessions` / `session_messages` 上界仍共同卡在 `2026-04-27 16:54:20+08:00`，且近一小时 `sessions_last_hour=0`、`messages_last_hour=0`；但最新 Feishu 会话 JSON 已刷新到 `16:59:45`，同一 `source_path` 在 sqlite 里仍停在 `2026-04-25 20:45:20+08:00`，`cron_job_runs` 也继续推进到 `2026-05-02 17:02:20+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 18:02 最近一小时再次确认 `sessions` / `session_messages` 仍共同卡在 `2026-04-27 16:54:20+08:00`，且近一小时 `sessions_last_hour=0`、`messages_last_hour=0`；但真实 Feishu session JSON 已继续刷新到 `17:37:24`，`sidecar.log` 也在 `17:14:03` 记录同一类直聊成功 `persist_assistant + reply.send` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-02 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=13348` 再次落成 `completed + send_failed`；同一 Web 会话 JSON 已写入完整晨报正文，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 16:03 最新 `15:30-16:02` 窗口继续混跑 `running + pending=22 / noop + skipped_noop=19 / completed + sent=2 / execution_failed + skipped_error=1`；`15:30` 同窗 `ORCL` 与 `小米30港元` 仍能 `JsonTriggered + deliver`，但 `16:00` 后 `原油/TEM/小米30/TEM破位` 又回落成 `JsonNoop` 或 `parse_kind=Empty`，`16:02` 的 `持仓重大事件心跳检测` 再次退化成 `error decoding response body` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 18:02 最新 `18:00` 窗口继续混跑：`ASTS/小米30/ORCL/TEM/持仓重大事件` 回落成 `parse_kind=Empty`，`TEM破位/Cerebras/CAI` 同窗为 `JsonNoop`，而 `全天原油价格3小时播报` 又单独落成 `JsonTriggered + deliver` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-02 11:03 最近一小时 `run_id=13412`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`，`sidecar.log` 同窗先记录真实上游 `maximum context length ... code:400`，随后仍被压扁成 `invalid type: integer \`400\``；此前 `Fixed` 结论回退 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-02 16:03 最近一小时 `cron_job_runs` 仍同时存在 `running + pending=22`、`noop + skipped_noop=19`、`completed + sent=2`、`execution_failed + skipped_error=1`；全库悬挂 `running + pending` 总量已升到 `3441`，比上轮再增 `22` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-02 09:02 `核心观察池早间简报` 的 `run_id=13349` 再次把 24 支标的统一降成“击球区待确认”；同症状已从 `2026-04-30 21:35`、`2026-05-01 21:35`、`2026-05-01 23:00` 延续到次日 `09:01` 早间窗口 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
