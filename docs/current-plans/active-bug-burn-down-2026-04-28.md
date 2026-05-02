@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-02 07:18 CST
+- updated_at: 2026-05-02 11:06 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -68,6 +68,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-01: Closed the active P2 watchlist near-threshold regression by extending the heartbeat send gate to parse watchlist price phrases such as `跌至 69.85` and suppress `triggered` outputs that claim `已触及或低于触发价 69.83` while the parsed current price is still above the configured lower trigger line.
 - 2026-05-01: Closed the reopened P1 Feishu direct quota rejection bug by preserving quota rejection text before internal-error suppression, including wrapped forms such as `工具执行错误: 已达到今日对话上限...`, and by logging Feishu failure fallback sends as `reply.send failure_fallback` so placeholder updates are auditable.
 - 2026-05-02: Closed the daily macOS isolated-config `soul.md` startup bug by copying safe relative `system_prompt_path` assets from bundle/repo resources into the canonical config directory before desktop runtime config loads it. Also moved two stale active entries back to `Fixed` based on current code/test evidence instead of old production samples: Web scheduler offline SSE delivery status and provider numeric `HTTP 400` error preservation.
+- 2026-05-02: Closed the Feishu scheduler started-row finalization regression by hardening both sides of the matching contract: scheduler terminal detail now replaces unusable `delivery_key` values, and cron history storage can safely fallback-update the latest recent `phase=started` pending row for the same actor/job/target/heartbeat when exact key matching fails.
 
 ## Validation
 
@@ -125,6 +126,9 @@ Completed this round:
 - `HONE_FMP_API_KEY=<config value> cargo test -p hone-event-engine pollers::news::tests::live_fmp_news_smoke --lib -- --ignored --nocapture`
 - `HONE_FMP_API_KEY=<config value> cargo test -p hone-event-engine pollers::macro_events::tests::live_fmp_macro_smoke --lib -- --ignored --nocapture`
 - Live FMP digest probe against `telegram::::8039067465` holdings (`TEM,RKLB,MU,CAI,COHR,GOOGL,AAPL,SNDK,GEV,AAOI,VST,BE,AMD`) produced 50 news events, 737 macro events, 5 holding-matched news rows, and channel-rendered source-host links.
+- `cargo test -p hone-scheduler execution_detail_with_delivery_key --lib -- --nocapture`
+- `cargo test -p hone-memory execution_terminal_event_ --lib -- --nocapture`
+- `cargo check -p hone-memory -p hone-scheduler -p hone-feishu --tests`
 
 Known verification limitation:
 

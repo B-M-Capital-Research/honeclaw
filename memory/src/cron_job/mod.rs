@@ -981,23 +981,88 @@ mod tests {
             )
             .expect("record terminal");
 
-        let records = storage
-            .list_execution_records(job_id, 10)
-            .expect("list");
+        let records = storage.list_execution_records(job_id, 10).expect("list");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].execution_status, "completed");
         assert_eq!(records[0].message_send_status, "sent");
         assert!(records[0].delivered);
     }
 
-    /// Reproduce the v0.5.0 terminal write that pre-dates commit 5b522b3 — the
-    /// noop terminal handed `result.metadata` straight in (just heartbeat
-    /// diagnostics, *no* delivery_key). The started row has delivery_key, but
-    /// the terminal does not, so `record_execution_event` skips the UPDATE
-    /// block entirely and INSERTs. Started row leaks. This matches every
-    /// heartbeat window observed in `feishu_scheduler_running_rows_never_finalized.md`.
     #[test]
-    fn pre_fix_v0_5_0_terminal_without_delivery_key_leaks_started_row() {
+    fn execution_terminal_event_falls_back_to_recent_started_row() {
+        let dir = make_temp_dir("hone_cron_storage_exec_update_recent_started");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("feishu", "ou_exec_update_fallback", None);
+
+        let add = storage.add_job(
+            &actor,
+            "heartbeat",
+            Some(9),
+            Some(0),
+            "heartbeat",
+            "task",
+            "ou_exec_update_fallback",
+            None,
+            None,
+            None,
+            true,
+            None,
+            true,
+        );
+        let job_id = add["job"]["id"].as_str().unwrap_or_default().to_string();
+
+        storage
+            .record_execution_event(
+                &actor,
+                &job_id,
+                "heartbeat",
+                "ou_exec_update_fallback",
+                true,
+                CronJobExecutionInput {
+                    execution_status: "running".to_string(),
+                    message_send_status: "pending".to_string(),
+                    should_deliver: true,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: serde_json::json!({"phase": "started", "delivery_key": "k-recent"}),
+                },
+            )
+            .expect("record started");
+
+        storage
+            .record_execution_event(
+                &actor,
+                &job_id,
+                "heartbeat",
+                "ou_exec_update_fallback",
+                true,
+                CronJobExecutionInput {
+                    execution_status: "noop".to_string(),
+                    message_send_status: "skipped_noop".to_string(),
+                    should_deliver: false,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: serde_json::json!({"phase": "terminal", "delivery_key": null}),
+                },
+            )
+            .expect("record terminal");
+
+        let records = storage
+            .list_execution_records(&job_id, 10)
+            .expect("list execution records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].execution_status, "noop");
+        assert_eq!(records[0].message_send_status, "skipped_noop");
+        assert_eq!(records[0].detail["phase"], "terminal");
+    }
+
+    /// Reproduce the v0.5.0 terminal write that handed raw heartbeat
+    /// diagnostics to storage without wrapping a top-level delivery_key.
+    #[test]
+    fn pre_fix_v0_5_0_terminal_without_delivery_key_finalizes_recent_started_row() {
         let dir = make_temp_dir("hone_cron_storage_pre_fix_terminal");
         let sqlite_path = dir.join("sessions.sqlite3");
         let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
@@ -1028,7 +1093,6 @@ mod tests {
             )
             .expect("record started");
 
-        // v0.5.0 terminal: raw heartbeat metadata, no delivery_key wrapper.
         storage
             .record_execution_event(
                 &actor,
@@ -1066,19 +1130,13 @@ mod tests {
             .query_row("SELECT count(*) FROM cron_job_runs", [], |row| row.get(0))
             .expect("count total");
 
-        // Documents the v0.5.0 hazard: terminal has no delivery_key, so the
-        // UPDATE precondition `input.detail.get("delivery_key")` fails →
-        // straight to INSERT → started row stranded as running+pending.
-        assert_eq!(stuck, 1, "v0.5.0 terminal without delivery_key leaks started row");
-        assert_eq!(total, 2, "started + new terminal both persist");
+        assert_eq!(stuck, 0);
+        assert_eq!(total, 1);
     }
 
-    /// Reproduce the suspected legacy hazard: a started row written *without*
-    /// `delivery_key` in detail (older binary, before commit 0e917fe). The
-    /// terminal record carries delivery_key, but the SELECT cannot match the
-    /// orphan started row → INSERT fallback → started row leaks forever.
+    /// Reproduce a legacy started row written without delivery_key in detail.
     #[test]
-    fn heartbeat_started_row_without_delivery_key_is_not_finalized() {
+    fn heartbeat_started_row_without_delivery_key_is_finalized_by_recent_started_fallback() {
         let dir = make_temp_dir("hone_cron_storage_legacy_started");
         let sqlite_path = dir.join("sessions.sqlite3");
         let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
@@ -1138,14 +1196,7 @@ mod tests {
             .query_row("SELECT count(*) FROM cron_job_runs", [], |row| row.get(0))
             .expect("count total");
 
-        // Document the current behavior: a legacy started row without
-        // delivery_key cannot be finalized by the current UPDATE. The fix
-        // should either backfill delivery_key on started rows or add a sweep
-        // that marks orphan started rows as failed/timed-out.
-        assert_eq!(
-            stuck, 1,
-            "current behavior: legacy started rows without delivery_key never finalize"
-        );
-        assert_eq!(total, 2, "started + new terminal both persist");
+        assert_eq!(stuck, 0);
+        assert_eq!(total, 1);
     }
 }

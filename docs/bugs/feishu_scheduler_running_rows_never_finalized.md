@@ -3,7 +3,8 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
+- **GitHub Issue**: 无
 
 ## 证据来源
 
@@ -662,6 +663,14 @@
 
 ## 修复记录
 
+- 2026-05-02 11:06 CST: 追加存储层与 scheduler detail 双重加固并重新将本单标记为 `Fixed`：
+  - `hone_scheduler::execution_detail_with_delivery_key(...)` 现在会覆盖空字符串、`null` 或非字符串的不可用 `delivery_key`，确保终态 metadata 顶层始终带有可匹配 key。
+  - `CronJobStorage::record_execution_event` 保留原有精确 `delivery_key` 更新逻辑；若终态 detail 的 key 不可用或精确匹配失败，则只在同 actor / job / target / heartbeat、`phase=started`、最近 2 小时内的最新 `running + pending` started 行上执行安全 fallback 更新，避免继续把同一 delivery window 拆成 started 行与终态行两条记录。
+  - 本轮不依赖当前机器线上运行态判定，只用代码与本地自动化回归证明新窗口不会继续产生同类成对脏行；既有历史悬挂行仍建议另行做数据清理。
+  - 验证：
+    - `cargo test -p hone-scheduler execution_detail_with_delivery_key --lib -- --nocapture`
+    - `cargo test -p hone-memory execution_terminal_event_ --lib -- --nocapture`
+    - `cargo check -p hone-memory -p hone-scheduler -p hone-feishu --tests`
 - 2026-04-30 08:04 最新真实窗口再次确认本单仍活跃：`08:00` 同窗 `run_id=10922-10936` 的 15 条 started 行与 `run_id=10937-10945` 的终态行继续并存，全库 `running + pending` 残留已升到 `2091`；因此此前 `Fixed` 结论不成立，本单状态调回 `New`。
 - 2026-04-29: `memory/src/cron_job/history.rs` 的 `CronJobStorage::record_execution_event` 会在终态写入时按同一 actor / job / target / heartbeat / `delivery_key` 查找最近的 `running + pending` started 行，并原地更新为终态记录；找不到匹配 started 行时仍保留原有 insert 行为。
 - 回归验证：`cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`。

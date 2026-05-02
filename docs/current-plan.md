@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-02 闭环 daily macOS isolated config 缺 `soul.md` 启动失败，并按当前代码/测试证据把 Web scheduler 离线 SSE 送达和 provider numeric `HTTP 400` 错误解析移回 `Fixed`；剩余活跃项继续按共享契约加固，不对不可控网络、凭据或模型波动做脆弱特判
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-02 闭环 Feishu scheduler started-row finalization、daily macOS isolated config 缺 `soul.md` 启动失败，并按当前代码/测试证据把 Web scheduler 离线 SSE 送达和 provider numeric `HTTP 400` 错误解析移回 `Fixed`；剩余活跃项继续按共享契约加固，不对不可控网络、凭据或模型波动做脆弱特判
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

@@ -53,9 +53,17 @@ pub fn execution_detail_with_delivery_key(detail: Value, delivery_key: &str) -> 
             map
         }
     };
-    object
-        .entry("delivery_key".to_string())
-        .or_insert_with(|| Value::String(delivery_key.to_string()));
+    let existing_key = object
+        .get("delivery_key")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .trim();
+    if existing_key.is_empty() {
+        object.insert(
+            "delivery_key".to_string(),
+            Value::String(delivery_key.to_string()),
+        );
+    }
     Value::Object(object)
 }
 
@@ -311,5 +319,28 @@ mod tests {
         );
         assert_eq!(detail["delivery_key"], "delivery-456");
         assert_eq!(detail["scheduler"][0], "metadata");
+    }
+
+    #[test]
+    fn execution_detail_with_delivery_key_overwrites_unusable_key() {
+        let detail = execution_detail_with_delivery_key(
+            serde_json::json!({
+                "delivery_key": null,
+                "parse_kind": "JsonNoop",
+            }),
+            "delivery-789",
+        );
+        assert_eq!(detail["delivery_key"], "delivery-789");
+        assert_eq!(detail["parse_kind"], "JsonNoop");
+
+        let detail = execution_detail_with_delivery_key(
+            serde_json::json!({
+                "delivery_key": "",
+                "parse_kind": "JsonTriggered",
+            }),
+            "delivery-abc",
+        );
+        assert_eq!(detail["delivery_key"], "delivery-abc");
+        assert_eq!(detail["parse_kind"], "JsonTriggered");
     }
 }
