@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 19:12 CST
+最后更新：2026-05-02 20:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,18 +15,19 @@
 
 ## 当前概览
 
-- 活跃待修复：9
+- 活跃待修复：10
 - Later / 待复现：11
 - 已修复 / 已关闭：80
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 2 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Web 直聊 `session/update` 仍把 skill prompt、工具原始回显与绝对路径作为 `tool_call_update.rawOutput` 外发 | P1 | New | 2026-05-02 20:03 最近一小时真实 Web session `019dca1a-9c4c-74e2-bebf-66d97c78e6b7` 再次把 `Scheduled Task Management` skill 全文、`/Users/fengming2/Desktop/honeclaw/skills/scheduled_task` 绝对路径、以及创建任务后的完整 `job` JSON 下发到 `session/update`；该问题不同于已修的 `agent_message_chunk` prompt echo，属于仍活跃的实时事件流泄漏；关联 Issue [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30) | [web_direct_tool_call_raw_output_leak.md](./web_direct_tool_call_raw_output_leak.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-05-02 17:35 已收紧 `response_finalizer` 的 `planning_sentence_suppressed` 判定：用户可见澄清问句与 `请先确认/请提供` 类补充请求不再被误杀，并补 `hone-channels` 回归测试；因本轮未重启服务、尚缺新的真实 Feishu 样本，先维持活跃 `Fixing` | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 19:12 再次确认 `sessions` / `session_messages` 上界仍共同卡在 `2026-04-27 16:54:20+08:00`，且近一小时增量仍为 `0`；但真实 Feishu session JSON 已继续刷新到 `18:33:31`，说明镜像停滞仍在持续 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 20:03 再次确认 `sessions` / `session_messages` 上界仍共同卡在 `2026-04-27 08:54:20`（sqlite 本地时间口径），且近一小时增量仍为 `0`；但 `cron_job_runs` 最近一小时继续新增 `45` 条、真实 Web session JSON 已刷新到 `20:02:07+08:00`，说明镜像停滞仍在持续 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-02 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=13348` 再次落成 `completed + send_failed`；同一 Web 会话 JSON 已写入完整晨报正文，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 19:12 最新 `19:00` 窗口终态虽全部记为 `noop + skipped_noop`，但 `sidecar.log` 同窗仍继续混跑 `parse_kind=Empty` 与 `JsonNoop`，结构化协议依旧没有恢复成稳定单一形态 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-02 11:03 最近一小时 `run_id=13412`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`，`sidecar.log` 同窗先记录真实上游 `maximum context length ... code:400`，随后仍被压扁成 `invalid type: integer \`400\``；此前 `Fixed` 结论回退 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
