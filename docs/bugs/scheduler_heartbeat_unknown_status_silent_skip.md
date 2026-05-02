@@ -7,6 +7,21 @@
 
 ## 修复进展
 
+- `2026-05-02 15:05` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `14:30-15:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按最近一小时窗口聚合，仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 1`
+  - 最近一小时内可见的同窗终态继续混杂：
+    - `13615` `Cerebras IPO与业务进展心跳监控` -> `completed + sent`
+    - `13606-13614`、`13616` 多数 heartbeat 继续回落成 `noop + skipped_noop`
+    - `13595-13605` 这一轮 started 行截至巡检时仍全部保留 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `15:00` 窗口继续摇摆：
+    - `2026-05-02 15:00:16.700`、`15:00:19.638`、`15:00:21.204`、`15:01:24.761`、`15:02:28.977`：`TEM破位预警`、`小米30港元破位预警`、`ASTS 重大异动心跳监控`、`持仓重大事件心跳检测`、`ORCL 大事件监控` 先后回落成 `parse_kind=JsonNoop`
+    - `2026-05-02 15:00:19.161`、`15:00:31.129`：`TEM大事件心跳监控`、`全天原油价格3小时播报` 同窗继续退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 15:01:34.205`：`Cerebras IPO与业务进展心跳监控` 则再次落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-02 15:05` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / sent`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 14:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `13:30-14:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按最近一小时窗口聚合，仍同时存在：
     - `running + pending = 22`
