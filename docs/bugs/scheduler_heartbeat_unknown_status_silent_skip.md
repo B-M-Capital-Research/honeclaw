@@ -7,6 +7,24 @@
 
 ## 修复进展
 
+- `2026-05-02 10:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `09:30-10:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 2`
+  - 最近一小时内可见的同窗终态继续混杂：
+    - `13365` `小米30港元破位预警` -> `completed + sent`
+    - `13372` `每日美股降息概率推送` -> `completed + sent`
+    - `13366-13371` 与 `13384-13394` 多数 heartbeat 继续回落成 `noop + skipped_noop`
+    - `13350-13361` 与 `13373-13383` 这两轮 started 行截至巡检时仍全部保留 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `09:30` 与 `10:00` 窗口继续摇摆：
+    - `2026-05-02 09:30:19.867-09:30:19.868`：`小米30港元破位预警` 在 JSON payload 下仍被解析成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-02 09:30:21.257`：`TEM大事件心跳监控` 同窗退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 09:30:23.215`、`09:30:24.369`：`ORCL 大事件监控` 与 `RKLB异动监控` 回到 `parse_kind=JsonNoop`
+    - `2026-05-02 10:00:39.038`、`10:00:42.388`：`TEM破位预警` 与 `TEM大事件心跳监控` 在 10:00 窗口继续落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 10:00:47.481`、`10:00:53.845`、`10:01:03.822`、`10:01:46.629`：`小米30港元破位预警`、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`Cerebras IPO与业务进展心跳监控` 同窗又回摆成 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-02 10:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，只是这一小时暂未新增 `skipped_error`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 08:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `07:30-08:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
     - `running + pending = 22`
