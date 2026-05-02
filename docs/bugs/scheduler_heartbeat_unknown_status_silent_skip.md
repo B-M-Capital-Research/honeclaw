@@ -7,6 +7,25 @@
 
 ## 修复进展
 
+- `2026-05-02 16:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `15:30-16:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / execution_failed + skipped_error / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按最近一小时窗口聚合，仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 19`
+    - `completed + sent = 2`
+    - `execution_failed + skipped_error = 1`
+  - 最近一小时内可见的同窗终态继续混杂：
+    - `13635` `ORCL 大事件监控` -> `completed + sent`
+    - `13637` `小米30港元破位预警` -> `completed + sent`
+    - `13650-13659` 多数 heartbeat 继续回落成 `noop + skipped_noop`
+    - `13660` `持仓重大事件心跳检测` -> `execution_failed + skipped_error`，错误为 `http error: error decoding response body`
+    - `13639-13649` 这一轮 started 行截至巡检时仍全部保留 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `15:30` 与 `16:00` 窗口继续摇摆：
+    - `2026-05-02 15:30:34.928-15:30:41.769`：`ORCL 大事件监控`、`小米30港元破位预警` 在 `15:30` 同窗先后落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-02 16:00:14.170`、`16:00:22.832`、`16:00:34.661`、`16:00:35.543`、`16:01:25.212`、`16:01:44.510`：`全天原油价格3小时播报`、`CAI破位预警`、`RKLB异动监控`、`Cerebras IPO与业务进展心跳监控`、`ORCL 大事件监控`、`ASTS 重大异动心跳监控` 又回摆成 `parse_kind=JsonNoop`
+    - `2026-05-02 16:00:19.288`、`16:00:31.313`、`16:00:32.078`：`TEM大事件心跳监控`、`小米30港元破位预警`、`TEM破位预警` 同窗继续退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 16:02:31.002-16:02:31.003`：`持仓重大事件心跳检测` 同窗又回落成 `runner_error ... error="LLM 错误: http error: error decoding response body"`
+  - 结论：到 `2026-05-02 16:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / skipped_error`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 15:05` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `14:30-15:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按最近一小时窗口聚合，仍同时存在：
     - `running + pending = 22`
