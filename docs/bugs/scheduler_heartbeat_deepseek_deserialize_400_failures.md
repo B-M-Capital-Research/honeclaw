@@ -3,8 +3,15 @@
 - **发现时间**: 2026-04-28 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-02 10:30-10:31` 窗口最新完成样本里，`run_id=13412`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
+  - 同一条 run 的 `error_message` 再次回到同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 314`
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-05-02 10:31:12.091` 同窗先记录真实上游 bad request：`This endpoint's maximum context length is 262144 tokens. However, you requested about 377581 tokens ... "code":400`
+  - `2026-05-02 10:31:12.116-10:31:12.119` heartbeat 链路随后仍把这条上游 `HTTP 400` 压回 `failed to deserialize api response: invalid type: integer \`400\``
+  - 同批次 `ORCL 大事件监控` 仍能在 `11:02:12.616-11:02:12.618` 落成 `JsonTriggered + deliver`，而 `Monitor_Watchlist_11` 则在 `11:02:02.320-11:02:02.321` 再次退化成 `error decoding response body`；这说明当前复发仍属于 heartbeat 公共 provider 错误解析层的离散失效，而不是整批调度停摆。
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-02 01:02-01:03` 窗口最新完成样本里，`run_id=12985`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
   - 同一条 run 的 `error_message` 再次回到同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 316`
@@ -84,7 +91,7 @@
 
 - `2026-05-01` 本轮代码修复后，heartbeat 当前使用的 `llm.auxiliary -> OpenAiCompatibleProvider` 与备用 `OpenRouterProvider` 都会在 SDK `JSONDeserialize` 之外，对 `ApiError` 类上游非 2xx / schema 失败继续走 raw HTTP 兜底，不再只依赖单一 serde 失败分支。
 - 同时补了 `chat_with_tools` 分支的数值 `code=400` 回归测试；这是 heartbeat 实际使用的调用路径，能直接覆盖此前线上 `function_calling` 任务把上游 bad request 压成 `invalid type: integer 400` 的场景。
-- 但 `2026-05-02 01:02` 的 `run_id=12985` 说明上述修复结论并未在真实 heartbeat 窗口生效；本单由 `Fixed` 回调为 `New`，待重新核查当前运行实例究竟命中了哪条 provider / SDK 错误路径。
+- 但 `2026-05-02 10:31` 的 `run_id=13412` 说明上述修复结论仍未在当前真实 heartbeat 窗口生效；本单继续维持 `New`，待重新核查当前运行实例究竟命中了哪条 provider / SDK 错误路径。
 
 ## 用户影响
 
@@ -146,7 +153,7 @@
 - 本轮按当前自动化约束，不再用当前机器旧生产窗口样本作为活跃判定依据。
 - 代码复核确认当前仓库同时覆盖 `OpenAiCompatibleProvider` 与 `OpenRouterProvider` 的 `JSONDeserialize | ApiError` raw HTTP fallback。
 - `chat_with_tools_preserves_numeric_provider_error_body_after_sdk_deserialize_failure` 与 `chat_with_tools_preserves_openrouter_numeric_error_body_after_sdk_deserialize_failure` 仍直接断言错误文案不再包含 `invalid type: integer`，并保留上游 `HTTP 400` 诊断。
-- 本轮未新增代码改动；状态修正为 `Fixed`。若已部署当前代码后仍复现同样文案，应优先排查是否存在第三条 provider 调用路径未复用这两处 provider 实现。
+- 但 `2026-05-02 10:31` 的最新真实 heartbeat 样本已经再次复现完全相同的坏态，说明仅凭仓库代码复核不足以维持 `Fixed` 结论；本轮状态回退为 `New`。若当前运行实例已部署最新代码，应优先排查是否存在第三条 provider 调用路径、旧二进制未重启，或 heartbeat 实际没有走到这两处 provider 实现。
 
 ## 风险
 

@@ -7,6 +7,26 @@
 
 ## 修复进展
 
+- `2026-05-02 11:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `10:30-11:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / execution_failed + skipped_error / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 19`
+    - `execution_failed + skipped_error = 2`
+    - `completed + sent = 1`
+  - 最近一小时内可见的同窗终态继续混杂：
+    - `13437` `ORCL 大事件监控` -> `completed + sent`
+    - `13412` `持仓重大事件心跳检测` -> `execution_failed + skipped_error`，错误为 `invalid type: integer \`400\``
+    - `13436` `Monitor_Watchlist_11` -> `execution_failed + skipped_error`，错误为 `http error: error decoding response body`
+    - `13428-13435` 与 `13438` 多数 heartbeat 继续回落成 `noop + skipped_noop`
+    - `13395-13405` 与 `13417-13427` 两轮 started 行截至巡检时仍全部保留 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `10:30` 与 `11:00` 窗口继续摇摆：
+    - `2026-05-02 10:31:12.091-10:31:12.119`：`持仓重大事件心跳检测` 先记录真实上游 `maximum context length ... "code":400`，随后仍被收口成 `invalid type: integer \`400\``
+    - `2026-05-02 10:31:15.806`：`Monitor_Watchlist_11` 在同窗先退化成 `run_finish success=true content_chars=0`，随后被解析为 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 11:00:29.334`、`11:00:31.928`：`全天原油价格3小时播报` 与 `小米30港元破位预警` 在 11:00 窗口继续回到 `JsonNoop` / `Empty`
+    - `2026-05-02 11:02:02.320-11:02:02.321`：`Monitor_Watchlist_11` 同窗又回落成 `error decoding response body`
+    - `2026-05-02 11:02:12.616-11:02:12.618`：`ORCL 大事件监控` 则再次落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-02 11:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / skipped_error`，且失败对象重新在 `持仓重大事件心跳检测` 与 `Monitor_Watchlist_11` 之间漂移，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 10:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `09:30-10:01` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
     - `running + pending = 22`
