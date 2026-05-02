@@ -161,3 +161,11 @@ tag 推上去只代表 workflow 被触发，不代表 tarball / Homebrew formula
 - `docs/archive/index.md`
 
 不需要时也应明确说明为什么不更新，避免“代码发了但上下文资产没同步”。
+
+## Architecture SVG
+
+`resources/architecture.svg` 是仓库的对外展示海报，里面硬编码了 poller 数、EventKind 数、agent runners、tool 数、channels、版本号、milestones 等。如果本次发版触达架构面，必须同步刷新。
+
+详细更新指南见 [architecture-svg.md](architecture-svg.md)。判断标准、待核对清单、核对脚本、渲染校验、提交方式都在那里。
+
+跳过时也要在 release notes 里写明“架构 SVG 不需要更新”。

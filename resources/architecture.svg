@@ -1,0 +1,961 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 2080" width="1800" height="2080" font-family="'Inter', 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif">
+  <defs>
+    <style><![CDATA[
+      .bg { fill: #f5efe2; }
+      .ink { fill: #1a1a2e; }
+      .sub { fill: #5a5a6e; }
+      .muted { fill: #8a8497; }
+
+      .serif { font-family: 'Georgia', 'Source Serif Pro', 'Noto Serif', 'PingFang SC', serif; }
+      .mono  { font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace; }
+
+      .wordmark { font-size: 64px; font-weight: 800; letter-spacing: 0.02em; fill: #1a1a2e; }
+      .wordmark-accent { fill: #e85d04; }
+      .tagline { font-size: 18px; font-style: italic; fill: #4a4a5e; }
+      .subtitle { font-size: 13px; fill: #6a6478; letter-spacing: 0.04em; }
+
+      .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; fill: #1a1a2e; text-transform: uppercase; }
+      .section-num { font-size: 10px; font-weight: 700; fill: #ffffff; }
+      .section-meta { font-size: 10px; fill: #8a8497; letter-spacing: 0.1em; }
+
+      .card-title { font-size: 13.5px; font-weight: 700; fill: #1a1a2e; }
+      .card-sub { font-size: 11px; fill: #5a5a6e; }
+      .card-detail { font-size: 10px; fill: #6a6478; }
+      .card-mono { font-size: 10px; fill: #6a6478; font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+      .card-accent { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; fill: #b8542a; }
+
+      .chip-text { font-size: 10.5px; font-weight: 600; fill: #1a1a2e; }
+      .chip-meta { font-size: 9px; fill: #6a6478; letter-spacing: 0.04em; }
+
+      .arrow-line { stroke: #b3a48d; stroke-width: 1.4; fill: none; }
+      .arrow-line-thick { stroke: #9b8c78; stroke-width: 2; fill: none; }
+      .arrow-label { font-size: 10px; fill: #9b8c78; letter-spacing: 0.06em; }
+      .arrow-label-bold { font-size: 11px; font-weight: 700; fill: #6a6478; letter-spacing: 0.1em; }
+
+      .new-tag-text { font-size: 8.5px; font-weight: 800; fill: #b8542a; letter-spacing: 0.08em; }
+
+      .footer-line { stroke: #d8cdb8; stroke-width: 1; }
+      .divider { stroke: #d8cdb8; stroke-width: 1; stroke-dasharray: 3 4; }
+    ]]></style>
+
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9b8c78"/>
+    </marker>
+    <marker id="arrowhead-sm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b3a48d"/>
+    </marker>
+    <marker id="arrowhead-rev" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 10 0 L 0 5 L 10 10 z" fill="#a83a5a"/>
+    </marker>
+  </defs>
+
+  <!-- ─── BACKGROUND ─── -->
+  <rect class="bg" x="0" y="0" width="1800" height="2080"/>
+  <rect x="32" y="32" width="1736" height="2016" fill="none" stroke="#d8cdb8" stroke-width="1"/>
+  <rect x="38" y="38" width="1724" height="2004" fill="none" stroke="#d8cdb8" stroke-width="0.5" opacity="0.6"/>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- HERO                                                          -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <g id="hero" transform="translate(72, 80)">
+    <g transform="translate(0, 0) scale(0.22)">
+      <path d="M 175 220 L 265 110 L 325 140 L 235 250 Z" fill="#e85d04"/>
+      <path d="M 175 220 L 175 250 L 235 280 L 235 250 Z" fill="#9d3c00"/>
+      <path d="M 235 250 L 235 280 L 325 170 L 325 140 Z" fill="#1d2024"/>
+      <path d="M 175 140 L 335 210 L 325 220 L 165 150 Z" fill="#f46000"/>
+      <path d="M 165 150 L 325 220 L 325 245 L 165 190 Z" fill="#2c3136"/>
+    </g>
+
+    <text x="100" y="48" class="wordmark serif">HONE<tspan class="wordmark-accent">CLAW</tspan></text>
+    <text x="102" y="78" class="tagline serif">A ruthless defender of your investment discipline.</text>
+    <text x="102" y="100" class="subtitle">Open-source personal investment research co-pilot · Rust core · 7 surfaces · 1 brain</text>
+
+    <g transform="translate(1380, 0)">
+      <rect x="0" y="6" width="280" height="98" fill="#fdfaf2" stroke="#d8cdb8"/>
+      <text x="14" y="26" class="section-meta">CURRENT RELEASE</text>
+      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.6.0</text>
+      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·02 — extended hours · LLM filings</text>
+      <text x="14" y="92" font-size="10" fill="#8a8497" letter-spacing="0.05em">github · B-M-Capital-Research/honeclaw · MIT</text>
+      <rect x="270" y="6" width="6" height="98" fill="#e85d04"/>
+    </g>
+
+    <!-- stats badges -->
+    <g transform="translate(0, 130)">
+      <g transform="translate(0, 0)">
+        <text x="0" y="0" class="section-meta">RUST CRATES</text>
+        <text x="0" y="22" font-size="22" font-weight="700" fill="#1a1a2e" class="serif">8</text>
+      </g>
+      <g transform="translate(110, 0)">
+        <text x="0" y="0" class="section-meta">CHANNEL BINS</text>
+        <text x="0" y="22" font-size="22" font-weight="700" fill="#1a1a2e" class="serif">8</text>
+      </g>
+      <g transform="translate(244, 0)">
+        <text x="0" y="0" class="section-meta">EVENT POLLERS</text>
+        <text x="0" y="22" font-size="22" font-weight="700" fill="#1a1a2e" class="serif">11</text>
+      </g>
+      <g transform="translate(388, 0)">
+        <text x="0" y="0" class="section-meta">EVENTKIND VARIANTS</text>
+        <text x="0" y="22" font-size="22" font-weight="700" fill="#1a1a2e" class="serif">13</text>
+      </g>
+      <g transform="translate(560, 0)">
+        <text x="0" y="0" class="section-meta">AGENT RUNNERS</text>
+        <text x="0" y="22" font-size="22" font-weight="700" fill="#1a1a2e" class="serif">5</text>
+      </g>
+      <g transform="translate(694, 0)">
+        <text x="0" y="0" class="section-meta">LLM TOOLS</text>
+        <text x="0" y="22" font-size="22" font-weight="700" fill="#1a1a2e" class="serif">14</text>
+      </g>
+      <g transform="translate(820, 0)">
+        <text x="0" y="0" class="section-meta">PUBLIC SITE</text>
+        <text x="0" y="22" font-size="14" font-weight="700" fill="#1a1a2e" class="serif">hone-claw.com</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- CROSS-PLATFORM REACH STRIP                                    -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <g id="surfaces-strip" transform="translate(72, 248)">
+    <text x="0" y="0" class="section-label">CROSS-PLATFORM REACH</text>
+    <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">CHAT &amp; PUSH SHARE ONE BACKBONE</text>
+
+    <g transform="translate(0, 14)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="220" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="62" fill="#3a5b9c"/>
+        <text x="14" y="22" class="card-title">Web Console</text>
+        <text x="14" y="40" class="card-sub">SSE chat · admin + public · :8077</text>
+        <text x="14" y="54" class="card-mono">hone-console-page · hone-web-api</text>
+      </g>
+      <g transform="translate(232, 0)">
+        <rect x="0" y="0" width="220" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="62" fill="#3a5b9c"/>
+        <text x="14" y="22" class="card-title">Desktop App</text>
+        <text x="14" y="40" class="card-sub">Tauri 2.0 · sidecar runtime</text>
+        <text x="14" y="54" class="card-mono">hone-desktop · packages/app</text>
+      </g>
+      <g transform="translate(464, 0)">
+        <rect x="0" y="0" width="200" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="62" fill="#3a5b9c"/>
+        <text x="14" y="22" class="card-title">Feishu / Lark</text>
+        <text x="14" y="40" class="card-sub">DM · Group · interactive cards</text>
+        <text x="14" y="54" class="card-mono">hone-feishu + Go SDK facade</text>
+      </g>
+      <g transform="translate(676, 0)">
+        <rect x="0" y="0" width="200" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="62" fill="#3a5b9c"/>
+        <text x="14" y="22" class="card-title">Discord</text>
+        <text x="14" y="40" class="card-sub">DM · Guild · embeds via serenity</text>
+        <text x="14" y="54" class="card-mono">hone-discord</text>
+      </g>
+      <g transform="translate(888, 0)">
+        <rect x="0" y="0" width="200" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="62" fill="#3a5b9c"/>
+        <text x="14" y="22" class="card-title">Telegram</text>
+        <text x="14" y="40" class="card-sub">DM · Group · HTML via teloxide</text>
+        <text x="14" y="54" class="card-mono">hone-telegram</text>
+      </g>
+      <g transform="translate(1100, 0)">
+        <rect x="0" y="0" width="200" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="62" fill="#3a5b9c"/>
+        <text x="14" y="22" class="card-title">iMessage</text>
+        <text x="14" y="40" class="card-sub">macOS chat.db poll · osascript</text>
+        <text x="14" y="54" class="card-mono">hone-imessage</text>
+      </g>
+      <g transform="translate(1312, 0)">
+        <rect x="0" y="0" width="220" height="62" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="62" fill="#3a5b9c"/>
+        <text x="14" y="22" class="card-title">MCP Server</text>
+        <text x="14" y="40" class="card-sub">stdio JSON-RPC · expose tools</text>
+        <text x="14" y="54" class="card-mono">hone-mcp · for Claude / IDE</text>
+      </g>
+      <g transform="translate(1544, 0)">
+        <rect x="0" y="0" width="112" height="62" rx="4" fill="#1a1a2e"/>
+        <text x="14" y="22" font-size="11" fill="#f0ece4" font-weight="700" letter-spacing="0.08em">CLI</text>
+        <text x="14" y="40" font-size="10" fill="#b8b0a0">doctor · onboard</text>
+        <text x="14" y="54" font-size="10" fill="#b8b0a0" font-family="monospace">hone-cli</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- ARCHITECTURE SECTION HEADER                                   -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <g transform="translate(72, 360)">
+    <text x="0" y="0" class="section-meta" letter-spacing="0.18em">ARCHITECTURE · DATA FLOW</text>
+    <text x="0" y="22" font-size="20" font-weight="700" fill="#1a1a2e" class="serif">From world signal to your inbox · 11 pollers, 1 brain, 7 surfaces</text>
+
+    <!-- Flow legend -->
+    <g transform="translate(1108, 0)">
+      <g transform="translate(0, 0)">
+        <line x1="0" y1="6" x2="40" y2="6" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+        <text x="48" y="10" font-size="10" fill="#5a5a6e" letter-spacing="0.04em">PROACTIVE PUSH (event engine → user)</text>
+      </g>
+      <g transform="translate(0, 22)">
+        <line x1="40" y1="6" x2="0" y2="6" stroke="#a83a5a" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrowhead-rev)"/>
+        <text x="48" y="10" font-size="10" fill="#5a5a6e" letter-spacing="0.04em">REACTIVE CHAT (user → brain → user)</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ─── LAYER 1: EXTERNAL SOURCES ─── -->
+  <g id="layer-sources" transform="translate(72, 410)">
+    <rect x="0" y="0" width="1656" height="124" fill="#fdfaf2" stroke="#d8cdb8"/>
+    <rect x="0" y="0" width="6" height="124" fill="#5d8b73"/>
+
+    <g transform="translate(20, 18)">
+      <rect x="-4" y="-12" width="22" height="22" fill="#5d8b73"/>
+      <text x="2" y="4" class="section-num">01</text>
+      <text x="32" y="4" class="section-label">EXTERNAL SOURCES</text>
+      <text x="220" y="4" class="section-meta">Markets · Filings · News · LLM</text>
+    </g>
+
+    <g transform="translate(28, 56)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="240" height="54" rx="3" fill="#f3ece0" stroke="#c8b898"/>
+        <text x="14" y="20" class="card-title">FMP Market Data</text>
+        <text x="14" y="36" class="card-sub">/v3/quote · /v3/historical-chart/1min</text>
+        <text x="14" y="48" class="card-detail">earnings calendar · grades · filings</text>
+      </g>
+      <g transform="translate(252, 0)">
+        <rect x="0" y="0" width="220" height="54" rx="3" fill="#f3ece0" stroke="#c8b898"/>
+        <text x="14" y="20" class="card-title">SEC EDGAR</text>
+        <text x="14" y="36" class="card-sub">8-K · 10-Q · 10-K · S-1 · DEF 14A</text>
+        <text x="14" y="48" class="card-detail">UA email mandatory · throttle on 403</text>
+      </g>
+      <g transform="translate(484, 0)">
+        <rect x="0" y="0" width="200" height="54" rx="3" fill="#f3ece0" stroke="#c8b898"/>
+        <text x="14" y="20" class="card-title">RSS · Newswires</text>
+        <text x="14" y="36" class="card-sub">Bloomberg · STAT · SpaceNews</text>
+        <text x="14" y="48" class="card-detail">trusted source class</text>
+      </g>
+      <g transform="translate(696, 0)">
+        <rect x="0" y="0" width="200" height="54" rx="3" fill="#f3ece0" stroke="#c8b898"/>
+        <text x="14" y="20" class="card-title">Telegram channels</text>
+        <text x="14" y="36" class="card-sub">/s/{handle} web preview scrape</text>
+        <text x="14" y="48" class="card-detail">cashtag &amp; theme · uncertain class</text>
+      </g>
+      <g transform="translate(908, 0)">
+        <rect x="0" y="0" width="220" height="54" rx="3" fill="#f3ece0" stroke="#c8b898"/>
+        <text x="14" y="20" class="card-title">Macro calendars</text>
+        <text x="14" y="36" class="card-sub">CPI · PCE · FOMC · NFP · GDP</text>
+        <text x="14" y="48" class="card-detail">FMP /v3/economic_calendar</text>
+      </g>
+      <g transform="translate(1140, 0)">
+        <rect x="0" y="0" width="240" height="54" rx="3" fill="#fff0d6" stroke="#e85d04"/>
+        <text x="14" y="20" class="card-title">OpenRouter LLM</text>
+        <text x="14" y="36" class="card-sub">grok-4.1-fast · GPT · Claude · Gemini</text>
+        <text x="14" y="48" class="card-detail">classifier · polisher · summarizer</text>
+      </g>
+      <g transform="translate(1392, 0)">
+        <rect x="0" y="0" width="200" height="54" rx="3" fill="#f3ece0" stroke="#c8b898"/>
+        <text x="14" y="20" class="card-title">User input</text>
+        <text x="14" y="36" class="card-sub">portfolio · prefs · queries</text>
+        <text x="14" y="48" class="card-detail">7 surfaces / 1 actor identity</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(72, 540)">
+    <line x1="828" y1="0" x2="828" y2="22" class="arrow-line" marker-end="url(#arrowhead-sm)"/>
+    <text x="836" y="16" class="arrow-label">poll · subscribe · scrape</text>
+  </g>
+
+  <!-- ─── LAYER 2: POLLERS ─── -->
+  <g id="layer-pollers" transform="translate(72, 568)">
+    <rect x="0" y="0" width="1656" height="200" fill="#fdfaf2" stroke="#d8cdb8"/>
+    <rect x="0" y="0" width="6" height="200" fill="#c8962a"/>
+
+    <g transform="translate(20, 18)">
+      <rect x="-4" y="-12" width="22" height="22" fill="#c8962a"/>
+      <text x="2" y="4" class="section-num">02</text>
+      <text x="32" y="4" class="section-label">POLLERS · event-engine intake (11)</text>
+      <text x="420" y="4" class="section-meta">crates/hone-event-engine/src/pollers/ · EventSource trait · FixedInterval ｜ CronAligned</text>
+    </g>
+
+    <!-- Row 1 -->
+    <g transform="translate(28, 50)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="158" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">PricePoller</text>
+        <text x="12" y="32" class="card-mono">price.rs</text>
+        <text x="12" y="46" class="card-detail">PriceAlert · 52H/52L</text>
+        <text x="12" y="56" class="card-detail">FMP /v3/quote · realert step</text>
+      </g>
+      <g transform="translate(170, 0)">
+        <rect x="0" y="0" width="200" height="60" rx="3" fill="#fff0d6" stroke="#e85d04"/>
+        <rect x="166" y="-7" width="42" height="14" fill="#fff0d6" stroke="#e85d04"/>
+        <text x="171" y="3" class="new-tag-text">v0.6 NEW</text>
+        <text x="12" y="18" class="card-title">ExtendedHoursPoller</text>
+        <text x="12" y="32" class="card-mono">extended_hours.rs · 30 min</text>
+        <text x="12" y="46" class="card-detail">PriceAlert window=pre|post</text>
+        <text x="12" y="56" class="card-detail">ET 04–09:30 · 16–20:00</text>
+      </g>
+      <g transform="translate(382, 0)">
+        <rect x="0" y="0" width="180" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">EarningsPoller</text>
+        <text x="12" y="32" class="card-mono">earnings.rs · cron</text>
+        <text x="12" y="46" class="card-detail">EarningsUpcoming · 14-day</text>
+        <text x="12" y="56" class="card-detail">T-N synth at digest flush</text>
+      </g>
+      <g transform="translate(574, 0)">
+        <rect x="0" y="0" width="200" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">EarningsSurprisePoller</text>
+        <text x="12" y="32" class="card-mono">earnings_surprise.rs</text>
+        <text x="12" y="46" class="card-detail">EarningsReleased</text>
+        <text x="12" y="56" class="card-detail">|surprise%| ≥ 5 → High</text>
+      </g>
+      <g transform="translate(786, 0)">
+        <rect x="0" y="0" width="186" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">AnalystGradePoller</text>
+        <text x="12" y="32" class="card-mono">analyst_grade.rs</text>
+        <text x="12" y="46" class="card-detail">downgrade=High · upg=Med</text>
+        <text x="12" y="56" class="card-detail">cooldown by gradingCompany</text>
+      </g>
+      <g transform="translate(984, 0)">
+        <rect x="0" y="0" width="180" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">CorpActionPoller</text>
+        <text x="12" y="32" class="card-mono">corp_action.rs</text>
+        <text x="12" y="46" class="card-detail">Split + Dividend (30-day)</text>
+        <text x="12" y="56" class="card-detail">FMP split + div calendar</text>
+      </g>
+      <g transform="translate(1176, 0)">
+        <rect x="0" y="0" width="184" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">NewsPoller</text>
+        <text x="12" y="32" class="card-mono">news.rs · per-symbol</text>
+        <text x="12" y="46" class="card-detail">NewsCritical · keyword + LLM</text>
+        <text x="12" y="56" class="card-detail">legal_ad / pr_wire blacklist</text>
+      </g>
+      <g transform="translate(1372, 0)">
+        <rect x="0" y="0" width="226" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">RssNewsPoller</text>
+        <text x="12" y="32" class="card-mono">rss.rs · trusted source class</text>
+        <text x="12" y="46" class="card-detail">global digest seed</text>
+        <text x="12" y="56" class="card-detail">Cloudflare-aware skip</text>
+      </g>
+    </g>
+
+    <!-- Row 2 -->
+    <g transform="translate(28, 122)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="186" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">MacroPoller</text>
+        <text x="12" y="32" class="card-mono">macro_events.rs</text>
+        <text x="12" y="46" class="card-detail">CPI · PCE · FOMC · NFP</text>
+        <text x="12" y="56" class="card-detail">GlobalSubscription</text>
+      </g>
+      <g transform="translate(226, 0)">
+        <rect x="0" y="0" width="226" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <text x="12" y="18" class="card-title">TelegramChannelPoller</text>
+        <text x="12" y="32" class="card-mono">social/* · DOM scrape</text>
+        <text x="12" y="46" class="card-detail">SocialPost (Low/uncertain)</text>
+        <text x="12" y="56" class="card-detail">cashtag extract optional</text>
+      </g>
+      <g transform="translate(464, 0)">
+        <rect x="0" y="0" width="380" height="60" rx="3" fill="#fff0d6" stroke="#e85d04"/>
+        <rect x="346" y="-7" width="42" height="14" fill="#fff0d6" stroke="#e85d04"/>
+        <text x="351" y="3" class="new-tag-text">v0.6 NEW</text>
+        <text x="12" y="18" class="card-title">SecFilingsPoller + LlmSecFilingSummarizer</text>
+        <text x="12" y="32" class="card-mono">sec_enrichment.rs</text>
+        <text x="12" y="46" class="card-detail">5 forms whitelist · 8-K/S-1=High · 10-Q/10-K=Med · DEF14A=Low</text>
+        <text x="12" y="56" class="card-detail">HTML→scraper→300k cap→grok-4.1-fast→payload.llm_summary (~200字)</text>
+      </g>
+      <g transform="translate(856, 0)">
+        <rect x="0" y="0" width="248" height="60" rx="3" fill="#f6efde" stroke="#c8b898"/>
+        <text x="12" y="18" class="card-title">Spawner / Source registry</text>
+        <text x="12" y="32" class="card-mono">spawner.rs · source.rs</text>
+        <text x="12" y="46" class="card-detail">SourceKey enum · per-source toggle</text>
+        <text x="12" y="56" class="card-detail">prefetch_at vector · holiday-blind</text>
+      </g>
+      <g transform="translate(1116, 0)">
+        <rect x="0" y="0" width="232" height="60" rx="3" fill="#f6efde" stroke="#c8b898"/>
+        <text x="12" y="18" class="card-title">Subscription registry</text>
+        <text x="12" y="32" class="card-mono">subscription.rs</text>
+        <text x="12" y="46" class="card-detail">Portfolio + Global · per-actor</text>
+        <text x="12" y="56" class="card-detail">watch_pool() drives symbol batch</text>
+      </g>
+      <g transform="translate(1360, 0)">
+        <rect x="0" y="0" width="238" height="60" rx="3" fill="#f6efde" stroke="#c8b898"/>
+        <text x="12" y="18" class="card-title">Stable event IDs · dedup</text>
+        <text x="12" y="32" class="card-mono">price:{SYM}:{DATE}</text>
+        <text x="12" y="46" class="card-detail">extended:{SYM}:{ET_DATE}:{pre|post}</text>
+        <text x="12" y="56" class="card-detail">SQLite INSERT OR IGNORE</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(72, 774)">
+    <line x1="828" y1="0" x2="828" y2="22" class="arrow-line" marker-end="url(#arrowhead-sm)"/>
+    <text x="836" y="16" class="arrow-label">RawEvent → store + pipeline</text>
+  </g>
+
+  <!-- ─── LAYER 3: EVENT ENGINE CORE ─── -->
+  <g id="layer-engine" transform="translate(72, 802)">
+    <rect x="0" y="0" width="1656" height="220" fill="#fdfaf2" stroke="#d8cdb8"/>
+    <rect x="0" y="0" width="6" height="220" fill="#c1633a"/>
+
+    <g transform="translate(20, 18)">
+      <rect x="-4" y="-12" width="22" height="22" fill="#c1633a"/>
+      <text x="2" y="4" class="section-num">03</text>
+      <text x="32" y="4" class="section-label">EVENT ENGINE CORE · classify · polish · route · digest</text>
+      <text x="640" y="4" class="section-meta">crates/hone-event-engine/src/{engine,pipeline,router,unified_digest,store,polisher}</text>
+    </g>
+
+    <!-- Pipeline stages -->
+    <g transform="translate(28, 52)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="178" height="68" rx="4" fill="#fbeee2" stroke="#c1633a"/>
+        <text x="14" y="22" class="card-title">Pipeline</text>
+        <text x="14" y="38" class="card-mono">pipeline.rs · engine.rs</text>
+        <text x="14" y="52" class="card-detail">RawEvent → norm</text>
+        <text x="14" y="64" class="card-detail">store.insert + dispatch</text>
+      </g>
+      <line x1="210" y1="34" x2="232" y2="34" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+
+      <g transform="translate(234, 0)">
+        <rect x="0" y="0" width="186" height="68" rx="4" fill="#fbeee2" stroke="#c1633a"/>
+        <text x="14" y="22" class="card-title">Classifier</text>
+        <text x="14" y="38" class="card-mono">news_classifier.rs</text>
+        <text x="14" y="52" class="card-detail">keyword + LLM upgrade</text>
+        <text x="14" y="64" class="card-detail">uncertain → Med (per-actor)</text>
+      </g>
+      <line x1="424" y1="34" x2="446" y2="34" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+
+      <g transform="translate(448, 0)">
+        <rect x="0" y="0" width="186" height="68" rx="4" fill="#fbeee2" stroke="#c1633a"/>
+        <text x="14" y="22" class="card-title">Polisher</text>
+        <text x="14" y="38" class="card-mono">polisher.rs</text>
+        <text x="14" y="52" class="card-detail">High events only</text>
+        <text x="14" y="64" class="card-detail">title + body LLM trim</text>
+      </g>
+      <line x1="638" y1="34" x2="660" y2="34" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+
+      <g transform="translate(662, 0)">
+        <rect x="0" y="0" width="320" height="68" rx="4" fill="#fbeee2" stroke="#c1633a"/>
+        <text x="14" y="22" class="card-title">Router · classify → policy → dispatch</text>
+        <text x="14" y="38" class="card-mono">router/{classify,policy,dispatch,stats,sink}.rs</text>
+        <text x="14" y="52" class="card-detail">apply_system_event_policy → resolve subs → per-actor loop</text>
+        <text x="14" y="64" class="card-detail">quiet_mode · daily cap · cooldown · advance threshold</text>
+      </g>
+      <line x1="986" y1="34" x2="1008" y2="34" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+
+      <g transform="translate(1010, 0)">
+        <rect x="0" y="0" width="194" height="68" rx="4" fill="#fbeee2" stroke="#c1633a"/>
+        <text x="14" y="22" class="card-title">Renderer</text>
+        <text x="14" y="38" class="card-mono">renderer.rs</text>
+        <text x="14" y="52" class="card-detail">per-sink fmt · 【要闻】tag</text>
+        <text x="14" y="64" class="card-detail">prefer payload.llm_summary</text>
+      </g>
+      <line x1="1208" y1="34" x2="1230" y2="34" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+
+      <g transform="translate(1232, 0)">
+        <rect x="0" y="0" width="226" height="68" rx="4" fill="#fbeee2" stroke="#c1633a"/>
+        <text x="14" y="22" class="card-title">UnifiedDigest (v0.5.0+)</text>
+        <text x="14" y="38" class="card-mono">unified_digest/{collector,floor,sources,scheduler}.rs</text>
+        <text x="14" y="52" class="card-detail">Pass1 baseline · Pass2 personalize</text>
+        <text x="14" y="64" class="card-detail">holdings + global news merged</text>
+      </g>
+      <line x1="1462" y1="34" x2="1484" y2="34" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+
+      <g transform="translate(1486, 0)">
+        <rect x="0" y="0" width="114" height="68" rx="4" fill="#fbeee2" stroke="#c1633a"/>
+        <text x="14" y="22" class="card-title">Sinks</text>
+        <text x="14" y="38" class="card-mono">sinks/*</text>
+        <text x="14" y="52" class="card-detail">multi.rs</text>
+        <text x="14" y="64" class="card-detail">fan-out</text>
+      </g>
+    </g>
+
+    <!-- Subsystem details -->
+    <g transform="translate(28, 138)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="328" height="70" rx="3" fill="#f6efde" stroke="#c8b898"/>
+        <text x="12" y="18" class="card-title">Router policies · v0.6.0 single rule</text>
+        <text x="12" y="33" class="card-sub" font-weight="700" fill="#b8542a">price_band_min_advance_pct (default 2.0)</text>
+        <text x="12" y="46" class="card-detail">replaces cap+gap+bypass · per (actor, sym, day)</text>
+        <text x="12" y="58" class="card-detail">quiet_hours hold + flush · shelf-life</text>
+        <text x="12" y="68" class="card-detail">cooldown by gradingCompany not symbol</text>
+      </g>
+      <g transform="translate(340, 0)">
+        <rect x="0" y="0" width="280" height="70" rx="3" fill="#f6efde" stroke="#c8b898"/>
+        <text x="12" y="18" class="card-title">Store · SQLite · data/events.db</text>
+        <text x="12" y="33" class="card-mono">events · engine_meta · delivery_log</text>
+        <text x="12" y="46" class="card-detail">id PK + INSERT OR IGNORE dedup</text>
+        <text x="12" y="58" class="card-detail">payload_json holds llm_summary</text>
+        <text x="12" y="68" class="card-detail">JSONL mirror + retention purge</text>
+      </g>
+      <g transform="translate(632, 0)">
+        <rect x="0" y="0" width="300" height="70" rx="3" fill="#f6efde" stroke="#c8b898"/>
+        <text x="12" y="18" class="card-title">Per-actor Prefs (JSON files)</text>
+        <text x="12" y="33" class="card-mono">data/notif_prefs/{ch}__{scope}__{uid}.json</text>
+        <text x="12" y="46" class="card-detail">digest_slots · quiet_hours · timezone</text>
+        <text x="12" y="58" class="card-detail">price_high_pct_override · immediate_kinds</text>
+        <text x="12" y="68" class="card-detail">investment_theses (digest Pass-2 LLM)</text>
+      </g>
+      <g transform="translate(944, 0)">
+        <rect x="0" y="0" width="320" height="70" rx="3" fill="#f6efde" stroke="#c8b898"/>
+        <text x="12" y="18" class="card-title">EventKind · 13 variants (post-v0.5.0)</text>
+        <text x="12" y="32" class="card-detail">PriceAlert{pct_bps, window} · 52H/52L</text>
+        <text x="12" y="44" class="card-detail">EarningsUpcoming · EarningsReleased · CallTranscript</text>
+        <text x="12" y="56" class="card-detail">NewsCritical · SocialPost · MacroEvent</text>
+        <text x="12" y="68" class="card-detail">Dividend · Split · SecFiling{form} · AnalystGrade</text>
+      </g>
+      <g transform="translate(1276, 0)">
+        <rect x="0" y="0" width="324" height="70" rx="3" fill="#f6efde" stroke="#c8b898"/>
+        <text x="12" y="18" class="card-title">Daily report · global digest</text>
+        <text x="12" y="33" class="card-mono">daily_report.rs · global_digest/*</text>
+        <text x="12" y="46" class="card-detail">event-level dedup · auto thesis distill</text>
+        <text x="12" y="58" class="card-detail">read-only admin surface</text>
+        <text x="12" y="68" class="card-detail">delivery_log: sent · pending_digest · quiet_held</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(72, 1028)">
+    <line x1="828" y1="0" x2="828" y2="22" class="arrow-line" marker-end="url(#arrowhead-sm)"/>
+    <text x="836" y="16" class="arrow-label">enrich event ↑ · drive turn ↓</text>
+  </g>
+
+  <!-- ─── LAYER 4: BRAIN ─── -->
+  <g id="layer-brain" transform="translate(72, 1056)">
+    <rect x="0" y="0" width="1656" height="240" fill="#fdfaf2" stroke="#d8cdb8"/>
+    <rect x="0" y="0" width="6" height="240" fill="#6b4f9c"/>
+
+    <g transform="translate(20, 18)">
+      <rect x="-4" y="-12" width="22" height="22" fill="#6b4f9c"/>
+      <text x="2" y="4" class="section-num">04</text>
+      <text x="32" y="4" class="section-label">INTELLIGENCE · agent runners · tool registry · llm provider</text>
+      <text x="660" y="4" class="section-meta">used by both PUSH (classify · polish · summarize) and CHAT (turn → respond)</text>
+    </g>
+
+    <g transform="translate(28, 50)">
+      <!-- Agent runners -->
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="500" height="180" rx="4" fill="#f3edf8" stroke="#9b85c2"/>
+        <rect x="0" y="0" width="3" height="180" fill="#6b4f9c"/>
+        <text x="16" y="22" class="card-title">Agent Runners (5) · AgentRunner trait</text>
+        <text x="16" y="37" class="card-mono">crates/hone-channels/src/runners/</text>
+        <text x="16" y="51" class="card-detail">turn_builder · think · response_finalizer · tool_reasoning</text>
+
+        <g transform="translate(16, 64)">
+          <rect x="0" y="0" width="148" height="48" rx="3" fill="#1a1a2e"/>
+          <text x="10" y="18" font-size="12" font-weight="700" fill="#f0ece4">Codex (ACP)</text>
+          <text x="10" y="32" font-size="9.5" fill="#b8b0a0">codex_acp.rs · default</text>
+          <text x="10" y="44" font-size="9.5" fill="#b8b0a0">claude-opus-4.1</text>
+        </g>
+        <g transform="translate(172, 64)">
+          <rect x="0" y="0" width="148" height="48" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
+          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">Gemini ACP</text>
+          <text x="10" y="32" font-size="9.5" fill="#5a5a6e">gemini_acp.rs</text>
+          <text x="10" y="44" font-size="9.5" fill="#5a5a6e">gemini-2.0</text>
+        </g>
+        <g transform="translate(328, 64)">
+          <rect x="0" y="0" width="148" height="48" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
+          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">OpenCode (ACP)</text>
+          <text x="10" y="32" font-size="9.5" fill="#5a5a6e">opencode_acp.rs</text>
+          <text x="10" y="44" font-size="9.5" fill="#5a5a6e">gpt-4o</text>
+        </g>
+
+        <g transform="translate(16, 120)">
+          <rect x="0" y="0" width="148" height="48" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
+          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">Gemini CLI</text>
+          <text x="10" y="32" font-size="9.5" fill="#5a5a6e">gemini_cli.rs · REST</text>
+          <text x="10" y="44" font-size="9.5" fill="#5a5a6e">gemini-2.0-flash</text>
+        </g>
+        <g transform="translate(172, 120)">
+          <rect x="0" y="0" width="304" height="48" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
+          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">Multi-Agent · multi_agent.rs</text>
+          <text x="10" y="32" font-size="9.5" fill="#5a5a6e">stage 1: function-calling search (auxiliary LLM)</text>
+          <text x="10" y="44" font-size="9.5" fill="#5a5a6e">stage 2: opencode answer · cascaded context</text>
+        </g>
+      </g>
+
+      <!-- Tool registry -->
+      <g transform="translate(516, 0)">
+        <rect x="0" y="0" width="640" height="180" rx="4" fill="#f3edf8" stroke="#9b85c2"/>
+        <rect x="0" y="0" width="3" height="180" fill="#6b4f9c"/>
+        <text x="16" y="22" class="card-title">Tool Registry (14 LLM tools) · OpenAI function-calling schema</text>
+        <text x="16" y="37" class="card-mono">crates/hone-tools/src/ · Tool trait · ToolRegistry · ToolExecutionGuard</text>
+
+        <g transform="translate(16, 50)">
+          <g transform="translate(0, 0)"><rect x="0" y="0" width="148" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">portfolio_tool</text></g>
+          <g transform="translate(156, 0)"><rect x="0" y="0" width="148" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">cron_job_tool</text></g>
+          <g transform="translate(312, 0)"><rect x="0" y="0" width="156" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">notification_prefs_tool</text></g>
+          <g transform="translate(476, 0)"><rect x="0" y="0" width="132" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">missed_events_tool</text></g>
+
+          <g transform="translate(0, 28)"><rect x="0" y="0" width="148" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">deep_research</text></g>
+          <g transform="translate(156, 28)"><rect x="0" y="0" width="148" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">web_search · Tavily</text></g>
+          <g transform="translate(312, 28)"><rect x="0" y="0" width="156" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">data_fetch · FMP</text></g>
+          <g transform="translate(476, 28)"><rect x="0" y="0" width="132" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">schedule_view</text></g>
+
+          <g transform="translate(0, 56)"><rect x="0" y="0" width="148" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">skill_tool</text></g>
+          <g transform="translate(156, 56)"><rect x="0" y="0" width="148" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">load_skill</text></g>
+          <g transform="translate(312, 56)"><rect x="0" y="0" width="156" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">discover_skills</text></g>
+          <g transform="translate(476, 56)"><rect x="0" y="0" width="132" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">restart_hone</text></g>
+
+          <g transform="translate(0, 84)"><rect x="0" y="0" width="304" height="22" rx="3" fill="#fdfaf2" stroke="#9b85c2"/><text x="8" y="15" class="chip-text">local_files · list / read / search</text></g>
+          <g transform="translate(312, 84)"><rect x="0" y="0" width="296" height="22" rx="3" fill="#1a1a2e"/><text x="8" y="15" font-size="10.5" font-weight="600" fill="#f0ece4">Skill runtime · system / custom / dynamic</text></g>
+
+          <g transform="translate(0, 116)">
+            <rect x="0" y="0" width="608" height="14" rx="2" fill="#fdfaf2" stroke="#d8cdb8"/>
+            <text x="8" y="11" font-size="9" fill="#6a6478" font-family="monospace">data/runtime/skill_registry.json · SkillDefinition · system_dir + custom_dir</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- LLM column -->
+      <g transform="translate(1172, 0)">
+        <rect x="0" y="0" width="428" height="180" rx="4" fill="#f3edf8" stroke="#9b85c2"/>
+        <rect x="0" y="0" width="3" height="180" fill="#6b4f9c"/>
+        <text x="16" y="22" class="card-title">LLM Provider · hone-llm</text>
+        <text x="16" y="37" class="card-mono">provider.rs · LlmProvider trait</text>
+        <text x="16" y="51" class="card-detail">chat() · chat_with_tools() · OpenAI msg fmt</text>
+
+        <g transform="translate(16, 64)">
+          <rect x="0" y="0" width="396" height="44" rx="3" fill="#fff0d6" stroke="#e85d04"/>
+          <text x="14" y="16" font-size="11" font-weight="700" fill="#1a1a2e">OpenRouter (main · default)</text>
+          <text x="14" y="30" font-size="10" fill="#5a5a6e">openrouter.rs · grok-4.1-fast (filings)</text>
+          <text x="14" y="42" font-size="10" fill="#5a5a6e">GPT · Claude · Gemini · per-task routing</text>
+        </g>
+
+        <g transform="translate(16, 116)">
+          <rect x="0" y="0" width="396" height="32" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
+          <text x="14" y="14" font-size="10.5" font-weight="700" fill="#1a1a2e">Auxiliary · OpenAI-compatible</text>
+          <text x="14" y="28" font-size="9.5" fill="#5a5a6e">openai_compatible.rs · base_url + key + model</text>
+        </g>
+
+        <g transform="translate(16, 152)">
+          <rect x="0" y="0" width="396" height="20" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
+          <text x="14" y="14" font-size="10" fill="#1a1a2e" font-family="monospace">api_key_pool.rs · multi-key fallback (LLM/Tavily/FMP)</text>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(72, 1300)">
+    <line x1="828" y1="0" x2="828" y2="22" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+    <text x="836" y="16" class="arrow-label-bold">drives turn · enriches event</text>
+  </g>
+
+  <!-- ─── LAYER 5: CHANNELS HUB ─── -->
+  <g id="layer-hub" transform="translate(72, 1328)">
+    <rect x="0" y="0" width="1656" height="200" fill="#fdfaf2" stroke="#d8cdb8"/>
+    <rect x="0" y="0" width="6" height="200" fill="#3a5b9c"/>
+
+    <g transform="translate(20, 18)">
+      <rect x="-4" y="-12" width="22" height="22" fill="#3a5b9c"/>
+      <text x="2" y="4" class="section-num">05</text>
+      <text x="32" y="4" class="section-label">CHANNELS HUB · the bus that connects everything</text>
+      <text x="540" y="4" class="section-meta">crates/hone-channels/src/ · 8 binaries plug into one HoneBotCore</text>
+    </g>
+
+    <!-- Row 1 -->
+    <g transform="translate(28, 50)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="200" height="64" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="12" y="18" class="card-title">Bootstrap · Runtime</text>
+        <text x="12" y="32" class="card-mono">bootstrap.rs · runtime.rs</text>
+        <text x="12" y="44" class="card-detail">load_runtime_config() · process lock</text>
+        <text x="12" y="56" class="card-detail">DEFAULT_MAX_SEGMENT_SIZE=400</text>
+      </g>
+      <g transform="translate(212, 0)">
+        <rect x="0" y="0" width="220" height="64" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="12" y="18" class="card-title">Ingress (chat-in) · Intercept</text>
+        <text x="12" y="32" class="card-mono">ingress.rs · core/intercept.rs</text>
+        <text x="12" y="44" class="card-detail">IncomingEnvelope · ChatMode (Direct/Group)</text>
+        <text x="12" y="56" class="card-detail">/register-admin · /report bypass</text>
+      </g>
+      <g transform="translate(444, 0)">
+        <rect x="0" y="0" width="220" height="64" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="12" y="18" class="card-title">Prompt Bundle · Turn Builder</text>
+        <text x="12" y="32" class="card-mono">prompt.rs · turn_builder.rs</text>
+        <text x="12" y="44" class="card-detail">finance · privacy · cron policy</text>
+        <text x="12" y="56" class="card-detail">skill listings (≤4000ch) · /skill-id expand</text>
+      </g>
+      <g transform="translate(676, 0)">
+        <rect x="0" y="0" width="216" height="64" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="12" y="18" class="card-title">Think · Tool Reasoning</text>
+        <text x="12" y="32" class="card-mono">think.rs · tool_reasoning.rs</text>
+        <text x="12" y="44" class="card-detail">Hidden / Markdown / TG-HTML / Plain</text>
+        <text x="12" y="56" class="card-detail">RunnerToolObserver per-tool labels</text>
+      </g>
+      <g transform="translate(904, 0)">
+        <rect x="0" y="0" width="220" height="64" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="12" y="18" class="card-title">Response Finalizer · Outbound</text>
+        <text x="12" y="32" class="card-mono">response_finalizer.rs · outbound.rs</text>
+        <text x="12" y="44" class="card-detail">empty-answer guard · prompt-leak block</text>
+        <text x="12" y="56" class="card-detail">stream segmentation · activity probe</text>
+      </g>
+      <g transform="translate(1136, 0)">
+        <rect x="0" y="0" width="220" height="64" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="12" y="18" class="card-title">Session Compactor</text>
+        <text x="12" y="32" class="card-mono">session_compactor.rs</text>
+        <text x="12" y="44" class="card-detail">group ≥20 msgs · 80K bytes trigger</text>
+        <text x="12" y="56" class="card-detail">retain ≤12K skill snapshots × 4</text>
+      </g>
+      <g transform="translate(1368, 0)">
+        <rect x="0" y="0" width="232" height="64" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="12" y="18" class="card-title">MCP Bridge · Sandbox</text>
+        <text x="12" y="32" class="card-mono">mcp_bridge.rs · sandbox.rs</text>
+        <text x="12" y="44" class="card-detail">spawn hone-mcp stdio · 6+ env</text>
+        <text x="12" y="56" class="card-detail">$HONE_DATA_DIR/agent-sandboxes/</text>
+      </g>
+    </g>
+
+    <!-- Row 2: HoneBotCore + traits -->
+    <g transform="translate(28, 124)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="476" height="60" rx="3" fill="#1a1a2e"/>
+        <text x="14" y="20" font-size="13" font-weight="700" fill="#f0ece4">HoneBotCore · core/bot_core.rs</text>
+        <text x="14" y="36" font-size="10.5" fill="#b8b0a0" font-family="monospace">create_tool_registry() · create_runner() · create_scheduler()</text>
+        <text x="14" y="50" font-size="10" fill="#b8b0a0">main + auxiliary LLM provider · session/quota/profile storage · runtime admin overrides</text>
+      </g>
+      <g transform="translate(488, 0)">
+        <rect x="0" y="0" width="408" height="60" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="14" y="20" class="card-title">Core traits (6) · core_traits/</text>
+        <text x="14" y="36" font-size="10.5" fill="#5a5a6e" font-family="monospace">AuditRecorder · AdminIntercept · PathResolver</text>
+        <text x="14" y="50" font-size="10.5" fill="#5a5a6e" font-family="monospace">RunnerFactory · ToolRegistryFactory · LlmProviderBundle</text>
+      </g>
+      <g transform="translate(908, 0)">
+        <rect x="0" y="0" width="324" height="60" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="14" y="20" class="card-title">Group context governance</text>
+        <text x="14" y="36" font-size="10.5" fill="#5a5a6e">pretrigger window · shared session · explicit trigger</text>
+        <text x="14" y="50" font-size="10" fill="#6a6478">recent_context_limit · compress_threshold · retain N</text>
+      </g>
+      <g transform="translate(1244, 0)">
+        <rect x="0" y="0" width="356" height="60" rx="3" fill="#e9eef9" stroke="#7d97c2"/>
+        <text x="14" y="20" class="card-title">ActorIdentity · SessionIdentity</text>
+        <text x="14" y="36" font-size="10" fill="#5a5a6e" font-family="monospace">Actor: channel · user_id · scope</text>
+        <text x="14" y="50" font-size="10" fill="#5a5a6e" font-family="monospace">Session: Direct | Group(scope) · per-actor history</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(72, 1532)">
+    <line x1="828" y1="0" x2="828" y2="22" class="arrow-line-thick" marker-end="url(#arrowhead)"/>
+    <text x="836" y="16" class="arrow-label-bold">render → channel-bin → user</text>
+  </g>
+
+  <!-- ─── LAYER 6: SINKS / OUTBOUND ─── -->
+  <g id="layer-sinks" transform="translate(72, 1560)">
+    <rect x="0" y="0" width="1656" height="100" fill="#fdfaf2" stroke="#d8cdb8"/>
+    <rect x="0" y="0" width="6" height="100" fill="#a83a5a"/>
+
+    <g transform="translate(20, 18)">
+      <rect x="-4" y="-12" width="22" height="22" fill="#a83a5a"/>
+      <text x="2" y="4" class="section-num">06</text>
+      <text x="32" y="4" class="section-label">SINKS · per-platform render adapters · OutboundSink trait</text>
+      <text x="540" y="4" class="section-meta">crates/hone-event-engine/src/sinks/ · multi.rs fan-out</text>
+    </g>
+
+    <g transform="translate(28, 46)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="200" height="42" rx="3" fill="#fbeef0" stroke="#c47a8c"/>
+        <text x="12" y="18" class="card-title" font-size="12">Discord embed (rich)</text>
+        <text x="12" y="32" class="card-mono">discord_embed · DM/Guild</text>
+      </g>
+      <g transform="translate(212, 0)">
+        <rect x="0" y="0" width="200" height="42" rx="3" fill="#fbeef0" stroke="#c47a8c"/>
+        <text x="12" y="18" class="card-title" font-size="12">Feishu interactive card</text>
+        <text x="12" y="32" class="card-mono">feishu_card.rs · post JSON</text>
+      </g>
+      <g transform="translate(424, 0)">
+        <rect x="0" y="0" width="200" height="42" rx="3" fill="#fbeef0" stroke="#c47a8c"/>
+        <text x="12" y="18" class="card-title" font-size="12">Telegram HTML</text>
+        <text x="12" y="32" class="card-mono">telegram.rs · digest bucket</text>
+      </g>
+      <g transform="translate(636, 0)">
+        <rect x="0" y="0" width="200" height="42" rx="3" fill="#fbeef0" stroke="#c47a8c"/>
+        <text x="12" y="18" class="card-title" font-size="12">iMessage plain</text>
+        <text x="12" y="32" class="card-mono">imessage.rs · osascript</text>
+      </g>
+      <g transform="translate(848, 0)">
+        <rect x="0" y="0" width="216" height="42" rx="3" fill="#fbeef0" stroke="#c47a8c"/>
+        <text x="12" y="18" class="card-title" font-size="12">Web Console SSE</text>
+        <text x="12" y="32" class="card-mono">hone-web-api · streaming</text>
+      </g>
+      <g transform="translate(1076, 0)">
+        <rect x="0" y="0" width="216" height="42" rx="3" fill="#fbeef0" stroke="#c47a8c"/>
+        <text x="12" y="18" class="card-title" font-size="12">Desktop Tauri</text>
+        <text x="12" y="32" class="card-mono">isolated prompt assets</text>
+      </g>
+      <g transform="translate(1304, 0)">
+        <rect x="0" y="0" width="294" height="42" rx="3" fill="#1a1a2e"/>
+        <text x="12" y="18" font-size="12" font-weight="700" fill="#f0ece4">multi.rs · MultiChannelSink</text>
+        <text x="12" y="32" font-size="10" fill="#b8b0a0">selects sink by actor/channel/kind · LogSink fallback</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- CONTROL PLANE: WEB API + STORAGE + FRONTEND                  -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <g transform="translate(72, 1696)">
+    <text x="0" y="0" class="section-meta" letter-spacing="0.18em">CONTROL PLANE · APIs · STORAGE · FRONTEND</text>
+    <text x="0" y="22" font-size="20" font-weight="700" fill="#1a1a2e" class="serif">What the user sees · how it persists</text>
+  </g>
+
+  <!-- Web API + Storage + Frontend tri-band -->
+  <g transform="translate(72, 1742)">
+    <!-- Web API -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="540" height="180" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+      <rect x="0" y="0" width="3" height="180" fill="#3a5b9c"/>
+      <text x="16" y="22" class="card-title">Web API · crates/hone-web-api/</text>
+      <text x="16" y="37" class="card-mono">routes/* · Axum · :8077 default</text>
+
+      <g transform="translate(16, 50)">
+        <g transform="translate(0, 0)"><rect x="0" y="0" width="120" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/auth/sse-ticket</text></g>
+        <g transform="translate(126, 0)"><rect x="0" y="0" width="80" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/meta</text></g>
+        <g transform="translate(212, 0)"><rect x="0" y="0" width="80" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/chat</text></g>
+        <g transform="translate(298, 0)"><rect x="0" y="0" width="92" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/history</text></g>
+        <g transform="translate(396, 0)"><rect x="0" y="0" width="116" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/portfolio</text></g>
+
+        <g transform="translate(0, 26)"><rect x="0" y="0" width="120" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/cron · /schedule</text></g>
+        <g transform="translate(126, 26)"><rect x="0" y="0" width="100" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/skills</text></g>
+        <g transform="translate(232, 26)"><rect x="0" y="0" width="100" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/research</text></g>
+        <g transform="translate(338, 26)"><rect x="0" y="0" width="84" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/events</text></g>
+        <g transform="translate(428, 26)"><rect x="0" y="0" width="84" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/users</text></g>
+
+        <g transform="translate(0, 52)"><rect x="0" y="0" width="148" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/notification_prefs</text></g>
+        <g transform="translate(154, 52)"><rect x="0" y="0" width="148" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/event_engine_admin</text></g>
+        <g transform="translate(308, 52)"><rect x="0" y="0" width="120" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/llm_audit</text></g>
+        <g transform="translate(434, 52)"><rect x="0" y="0" width="78" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/files</text></g>
+
+        <g transform="translate(0, 78)"><rect x="0" y="0" width="200" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/company_profiles · /task_runs</text></g>
+        <g transform="translate(206, 78)"><rect x="0" y="0" width="160" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/imessage · webhook</text></g>
+        <g transform="translate(372, 78)"><rect x="0" y="0" width="140" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/runtime/heartbeat</text></g>
+
+        <g transform="translate(0, 104)"><rect x="0" y="0" width="208" height="20" rx="2" fill="#1a1a2e"/><text x="6" y="14" font-size="9.5" fill="#f0ece4" font-family="monospace">/public/* · home/me/portfolio/...</text></g>
+        <g transform="translate(214, 104)"><rect x="0" y="0" width="298" height="20" rx="2" fill="#fbeef0" stroke="#c47a8c"/><text x="6" y="14" font-size="9.5" fill="#1a1a2e" font-family="monospace">PublicAuthLimiter · 8 fails / 10min → 15min block</text></g>
+      </g>
+    </g>
+
+    <!-- Storage / Persistence -->
+    <g transform="translate(556, 0)">
+      <rect x="0" y="0" width="540" height="180" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+      <rect x="0" y="0" width="3" height="180" fill="#7a6a52"/>
+      <text x="16" y="22" class="card-title">Storage · file system + SQLite</text>
+      <text x="16" y="37" class="card-mono">data/ · per-actor JSON · single SQLite</text>
+
+      <g transform="translate(16, 50)">
+        <rect x="0" y="0" width="510" height="36" rx="3" fill="#f5f0e6" stroke="#c8b898"/>
+        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">data/events.db · SQLite</text>
+        <text x="10" y="28" font-size="9.5" fill="#5a5a6e" font-family="monospace">events · engine_meta · delivery_log · INSERT OR IGNORE dedup</text>
+      </g>
+
+      <g transform="translate(0, 92)">
+        <rect x="0" y="0" width="510" height="32" rx="3" fill="#f5f0e6" stroke="#c8b898"/>
+        <text x="10" y="13" font-size="10" font-weight="700" fill="#1a1a2e">Per-actor prefs · data/notif_prefs/{ch}__{scope}__{uid}.json</text>
+        <text x="10" y="26" font-size="9.5" fill="#5a5a6e">digest_slots · quiet_hours · timezone · investment_theses · disabled_kinds</text>
+      </g>
+
+      <g transform="translate(0, 130)">
+        <rect x="0" y="0" width="250" height="36" rx="3" fill="#f5f0e6" stroke="#c8b898"/>
+        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">Sessions / portfolios / company_profiles</text>
+        <text x="10" y="28" font-size="9.5" fill="#5a5a6e">hone-memory crate · markdown</text>
+      </g>
+      <g transform="translate(258, 130)">
+        <rect x="0" y="0" width="252" height="36" rx="3" fill="#f5f0e6" stroke="#c8b898"/>
+        <text x="10" y="14" font-size="10" font-weight="700" fill="#1a1a2e">Skills · agent sandboxes</text>
+        <text x="10" y="28" font-size="9.5" fill="#5a5a6e" font-family="monospace">$HONE_DATA_DIR/agent-sandboxes/{ch}/{uid}/</text>
+      </g>
+    </g>
+
+    <!-- Frontend -->
+    <g transform="translate(1112, 0)">
+      <rect x="0" y="0" width="544" height="180" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+      <rect x="0" y="0" width="3" height="180" fill="#3a5b9c"/>
+      <text x="16" y="22" class="card-title">Frontend · packages/{app, ui}</text>
+      <text x="16" y="37" class="card-mono">SolidJS 1.9 · Vite 6 · Tailwind v4 · @solidjs/router</text>
+
+      <g transform="translate(16, 50)">
+        <text x="0" y="12" font-size="10.5" font-weight="700" fill="#1a3a70">Admin console · VITE_HONE_APP_SURFACE=admin</text>
+        <g transform="translate(0, 18)">
+          <g transform="translate(0, 0)"><rect x="0" y="0" width="86" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">dashboard</text></g>
+          <g transform="translate(92, 0)"><rect x="0" y="0" width="58" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">chat</text></g>
+          <g transform="translate(156, 0)"><rect x="0" y="0" width="76" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">sessions</text></g>
+          <g transform="translate(238, 0)"><rect x="0" y="0" width="62" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">skills</text></g>
+          <g transform="translate(306, 0)"><rect x="0" y="0" width="58" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">tasks</text></g>
+          <g transform="translate(370, 0)"><rect x="0" y="0" width="58" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">users</text></g>
+          <g transform="translate(434, 0)"><rect x="0" y="0" width="78" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">research</text></g>
+        </g>
+        <g transform="translate(0, 40)">
+          <g transform="translate(0, 0)"><rect x="0" y="0" width="78" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">schedule</text></g>
+          <g transform="translate(84, 0)"><rect x="0" y="0" width="68" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">settings</text></g>
+          <g transform="translate(158, 0)"><rect x="0" y="0" width="98" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">notifications</text></g>
+          <g transform="translate(262, 0)"><rect x="0" y="0" width="58" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">logs</text></g>
+          <g transform="translate(326, 0)"><rect x="0" y="0" width="84" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">llm-audit</text></g>
+          <g transform="translate(416, 0)"><rect x="0" y="0" width="96" height="18" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="13" font-size="9" fill="#1a3a70">task-health</text></g>
+        </g>
+      </g>
+
+      <g transform="translate(16, 130)">
+        <text x="0" y="12" font-size="10.5" font-weight="700" fill="#1a1a2e">Public site · hone-claw.com (white theme)</text>
+        <g transform="translate(0, 18)">
+          <g transform="translate(0, 0)"><rect x="0" y="0" width="62" height="18" rx="2" fill="#1a1a2e"/><text x="6" y="13" font-size="9" fill="#f0ece4">home</text></g>
+          <g transform="translate(68, 0)"><rect x="0" y="0" width="58" height="18" rx="2" fill="#1a1a2e"/><text x="6" y="13" font-size="9" fill="#f0ece4">/me</text></g>
+          <g transform="translate(132, 0)"><rect x="0" y="0" width="86" height="18" rx="2" fill="#1a1a2e"/><text x="6" y="13" font-size="9" fill="#f0ece4">portfolio</text></g>
+          <g transform="translate(224, 0)"><rect x="0" y="0" width="76" height="18" rx="2" fill="#1a1a2e"/><text x="6" y="13" font-size="9" fill="#f0ece4">roadmap</text></g>
+          <g transform="translate(306, 0)"><rect x="0" y="0" width="58" height="18" rx="2" fill="#1a1a2e"/><text x="6" y="13" font-size="9" fill="#f0ece4">terms</text></g>
+          <g transform="translate(370, 0)"><rect x="0" y="0" width="74" height="18" rx="2" fill="#1a1a2e"/><text x="6" y="13" font-size="9" fill="#f0ece4">privacy</text></g>
+          <g transform="translate(450, 0)"><rect x="0" y="0" width="62" height="18" rx="2" fill="#fff0d6" stroke="#e85d04"/><text x="6" y="13" font-size="9" fill="#b8542a">i18n zh/en</text></g>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- FEATURE HIGHLIGHTS (recent releases)                         -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <g transform="translate(72, 1948)">
+    <text x="0" y="0" class="section-meta" letter-spacing="0.18em">RECENT MILESTONES</text>
+    <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.6.0 · 2026·05·02</text>
+
+    <g transform="translate(0, 14)">
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
+        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.6.0 · PRE/POST-MARKET</text>
+        <text x="14" y="38" class="card-title">ExtendedHoursPoller</text>
+        <text x="14" y="54" class="card-detail">FMP /v3/historical-chart/1min · 30-min cron</text>
+        <text x="14" y="68" class="card-detail">ET 04–09:30 / 16–20:00 · 30-min amplitude alert</text>
+      </g>
+      <g transform="translate(416, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
+        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.6.0 · SINGLE RULE PRICE BAND</text>
+        <text x="14" y="38" class="card-title">price_band_min_advance_pct</text>
+        <text x="14" y="54" class="card-detail">replaces 3-knob cap+gap+bypass</text>
+        <text x="14" y="68" class="card-detail">advance ≥ N pct vs last sent · default 2.0</text>
+      </g>
+      <g transform="translate(832, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
+        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.6.0 · SEC FILINGS + LLM</text>
+        <text x="14" y="38" class="card-title">5-form whitelist + thesis summary</text>
+        <text x="14" y="54" class="card-detail">8-K · 10-Q · 10-K · S-1 · DEF 14A</text>
+        <text x="14" y="68" class="card-detail">grok-4.1-fast · ~$0.82/yr per 11 holdings</text>
+      </g>
+      <g transform="translate(1248, 0)">
+        <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.5 · v0.4 · v0.3 BACKBONE</text>
+        <text x="14" y="36" class="card-title">UnifiedDigest · Quiet Hours · Global Pipeline</text>
+        <text x="14" y="50" class="card-detail">v0.5: unified digest + EventKind cleanup</text>
+        <text x="14" y="62" class="card-detail">v0.4: rich-card sinks · shelf-life · per-channel schedule</text>
+        <text x="14" y="74" class="card-detail">v0.3: global digest · RSS · public auth + argon2</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ─── FOOTER ─── -->
+  <g id="footer" transform="translate(72, 2050)">
+    <line x1="0" y1="0" x2="1656" y2="0" class="footer-line"/>
+    <text x="0" y="20" font-size="10" fill="#8a8497" letter-spacing="0.1em">RUST · TOKIO · AXUM · SSE · TAURI 2 · SOLIDJS · TAILWIND v4 · OPENROUTER · SQLITE · ARGON2 · MCP · MIT</text>
+    <text x="1656" y="20" text-anchor="end" font-size="10" fill="#8a8497" letter-spacing="0.1em">HONE-CLAW.COM · DISCORD · BILIBILI · YOUTUBE · MAINTAINED BY 巴芒投研</text>
+  </g>
+</svg>

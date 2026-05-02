@@ -17,6 +17,8 @@ aliases:
 
 先读 [references/release-checklist.md](references/release-checklist.md)。它包含本仓库的版本号位置、release note 约束、验证基线、push/tag 顺序，以及常见失败处理。
 
+如果本次发版触达架构面（poller / EventKind / agent runner / tool / channel / crate 边界 / storage 布局 / frontend surface），还要读 [references/architecture-svg.md](references/architecture-svg.md)，按它把 `resources/architecture.svg` 一并刷新。
+
 ## 工作流
 
 1. 先确认这是“正式发版”而不是普通 push。
@@ -30,10 +32,11 @@ aliases:
    - 内容必须覆盖自上次 release 以来的真实用户影响
    - 中文在前，英文在后
 5. 如果这次 release 吸收了活跃任务里的重要工作，同步更新对应 plan / handoff / archive 文档，不要只改代码和 release note。
-6. 运行最小必要验证，并额外补改动面定向测试。
-7. 原子提交 release 相关改动；不要绕过 hook。
-8. 先把 `main` 推上去，再打 annotated tag，再把 tag 推上去。
-9. 最后明确汇报 commit、tag、验证结果，以及 release workflow 是否已经被触发。
+6. 如果本次发版触达架构面，按 [references/architecture-svg.md](references/architecture-svg.md) 刷新 `resources/architecture.svg`（hero 数字、layer 卡片、milestones、版本卡都要核对），并本地渲染确认无字体/越界回退。可跳过的，需在 release notes 里写一句“架构 SVG 不需要更新”。
+7. 运行最小必要验证，并额外补改动面定向测试。
+8. 原子提交 release 相关改动；不要绕过 hook。
+9. 先把 `main` 推上去，再打 annotated tag，再把 tag 推上去。
+10. 最后明确汇报 commit、tag、验证结果，以及 release workflow 是否已经被触发。
 
 ## 严格规则
 
