@@ -811,4 +811,341 @@ mod tests {
         assert_eq!(records[0].response_preview.as_deref(), Some("final report"));
         assert_eq!(records[0].detail["phase"], "terminal");
     }
+
+    /// Reproduce production sequence: 12 heartbeat jobs, two consecutive 30-min
+    /// windows each. Every (job, window) pair writes a started row then a noop
+    /// terminal — production observes started rows persisting as
+    /// `running + pending` across windows, so verify no orphan started rows
+    /// remain after both windows finish.
+    #[test]
+    fn heartbeat_started_rows_finalize_across_two_windows() {
+        let dir = make_temp_dir("hone_cron_storage_heartbeat_two_windows");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("feishu", "ou_heartbeat", None);
+
+        let job_names = [
+            "持仓重大事件心跳检测",
+            "TEM破位预警",
+            "CAI破位预警",
+            "ORCL 大事件监控",
+            "ASTS 重大异动心跳监控",
+            "Monitor_Watchlist_11",
+            "RKLB异动监控",
+            "全天原油价格3小时播报",
+            "小米30港元破位预警",
+            "Cerebras IPO与业务进展心跳监控",
+            "TEM大事件心跳监控",
+            "小米破位预警",
+        ];
+        let windows = ["2026-04-28:15:30:heartbeat", "2026-04-28:16:00:heartbeat"];
+
+        for window in &windows {
+            for (idx, job_name) in job_names.iter().enumerate() {
+                let job_id = format!("j_{idx:08x}");
+                let delivery_key = format!("{job_id}:{window}");
+                storage
+                    .record_execution_event(
+                        &actor,
+                        &job_id,
+                        job_name,
+                        &actor.user_id,
+                        true,
+                        CronJobExecutionInput {
+                            execution_status: "running".to_string(),
+                            message_send_status: "pending".to_string(),
+                            should_deliver: true,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: None,
+                            detail: serde_json::json!({
+                                "delivery_key": delivery_key,
+                                "phase": "started",
+                            }),
+                        },
+                    )
+                    .expect("record started");
+
+                storage
+                    .record_execution_event(
+                        &actor,
+                        &job_id,
+                        job_name,
+                        &actor.user_id,
+                        true,
+                        CronJobExecutionInput {
+                            execution_status: "noop".to_string(),
+                            message_send_status: "skipped_noop".to_string(),
+                            should_deliver: false,
+                            delivered: false,
+                            response_preview: None,
+                            error_message: None,
+                            detail: serde_json::json!({
+                                "delivery_key": delivery_key,
+                                "heartbeat_model": "model-x",
+                                "parse_kind": "Empty",
+                            }),
+                        },
+                    )
+                    .expect("record terminal");
+            }
+        }
+
+        let conn = rusqlite::Connection::open(&sqlite_path).expect("open conn");
+        let stuck: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM cron_job_runs WHERE execution_status='running' AND message_send_status='pending'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count stuck");
+        assert_eq!(
+            stuck, 0,
+            "no started row should remain running+pending after terminal noop"
+        );
+
+        let total: i64 = conn
+            .query_row("SELECT count(*) FROM cron_job_runs", [], |row| row.get(0))
+            .expect("count total");
+        let expected = (job_names.len() * windows.len()) as i64;
+        assert_eq!(
+            total, expected,
+            "exactly one row per (job, window) should remain"
+        );
+    }
+
+    /// Reproduce a Feishu-style terminal where `result.metadata` is wrapped via
+    /// `execution_detail_with_delivery_key`, producing a detail object with
+    /// `delivery_key` at top level, plus a `scheduler` sub-object — matches the
+    /// real production payload exactly.
+    #[test]
+    fn heartbeat_started_rows_finalize_with_scheduler_metadata_wrapper() {
+        let dir = make_temp_dir("hone_cron_storage_heartbeat_scheduler_wrap");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("feishu", "ou_heartbeat_wrap", None);
+
+        let job_id = "j_db12f27f";
+        let delivery_key = "j_db12f27f:2026-04-30:13:00:heartbeat";
+
+        storage
+            .record_execution_event(
+                &actor,
+                job_id,
+                "RKLB异动监控",
+                &actor.user_id,
+                true,
+                CronJobExecutionInput {
+                    execution_status: "running".to_string(),
+                    message_send_status: "pending".to_string(),
+                    should_deliver: true,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: serde_json::json!({
+                        "delivery_key": delivery_key,
+                        "phase": "started",
+                    }),
+                },
+            )
+            .expect("record started");
+
+        let terminal_detail = serde_json::json!({
+            "delivery_key": delivery_key,
+            "receive_id": "ou_heartbeat_wrap",
+            "scheduler": {
+                "heartbeat_model": "model-x",
+                "parse_kind": "JsonTriggered",
+                "raw_chars": 312,
+                "starts_with_json": true,
+                "raw_preview": "{\"status\":\"triggered\"}",
+                "deliver_preview": "RKLB 触发提醒",
+            },
+        });
+        storage
+            .record_execution_event(
+                &actor,
+                job_id,
+                "RKLB异动监控",
+                &actor.user_id,
+                true,
+                CronJobExecutionInput {
+                    execution_status: "completed".to_string(),
+                    message_send_status: "sent".to_string(),
+                    should_deliver: true,
+                    delivered: true,
+                    response_preview: Some("RKLB 触发提醒".to_string()),
+                    error_message: None,
+                    detail: terminal_detail,
+                },
+            )
+            .expect("record terminal");
+
+        let records = storage
+            .list_execution_records(job_id, 10)
+            .expect("list");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].execution_status, "completed");
+        assert_eq!(records[0].message_send_status, "sent");
+        assert!(records[0].delivered);
+    }
+
+    /// Reproduce the v0.5.0 terminal write that pre-dates commit 5b522b3 — the
+    /// noop terminal handed `result.metadata` straight in (just heartbeat
+    /// diagnostics, *no* delivery_key). The started row has delivery_key, but
+    /// the terminal does not, so `record_execution_event` skips the UPDATE
+    /// block entirely and INSERTs. Started row leaks. This matches every
+    /// heartbeat window observed in `feishu_scheduler_running_rows_never_finalized.md`.
+    #[test]
+    fn pre_fix_v0_5_0_terminal_without_delivery_key_leaks_started_row() {
+        let dir = make_temp_dir("hone_cron_storage_pre_fix_terminal");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("feishu", "ou_pre_fix", None);
+
+        let job_id = "j_654aef9b";
+        let delivery_key = "j_654aef9b:2026-04-28:15:30:heartbeat";
+
+        storage
+            .record_execution_event(
+                &actor,
+                job_id,
+                "小米30港元破位预警",
+                &actor.user_id,
+                true,
+                CronJobExecutionInput {
+                    execution_status: "running".to_string(),
+                    message_send_status: "pending".to_string(),
+                    should_deliver: true,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: serde_json::json!({
+                        "delivery_key": delivery_key,
+                        "phase": "started",
+                    }),
+                },
+            )
+            .expect("record started");
+
+        // v0.5.0 terminal: raw heartbeat metadata, no delivery_key wrapper.
+        storage
+            .record_execution_event(
+                &actor,
+                job_id,
+                "小米30港元破位预警",
+                &actor.user_id,
+                true,
+                CronJobExecutionInput {
+                    execution_status: "noop".to_string(),
+                    message_send_status: "skipped_noop".to_string(),
+                    should_deliver: false,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: serde_json::json!({
+                        "heartbeat_model": "model-x",
+                        "parse_kind": "JsonNoop",
+                        "raw_chars": 18,
+                        "starts_with_json": true,
+                        "raw_preview": "{\"status\":\"noop\"}",
+                    }),
+                },
+            )
+            .expect("record terminal");
+
+        let conn = rusqlite::Connection::open(&sqlite_path).expect("open conn");
+        let stuck: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM cron_job_runs WHERE execution_status='running' AND message_send_status='pending'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count stuck");
+        let total: i64 = conn
+            .query_row("SELECT count(*) FROM cron_job_runs", [], |row| row.get(0))
+            .expect("count total");
+
+        // Documents the v0.5.0 hazard: terminal has no delivery_key, so the
+        // UPDATE precondition `input.detail.get("delivery_key")` fails →
+        // straight to INSERT → started row stranded as running+pending.
+        assert_eq!(stuck, 1, "v0.5.0 terminal without delivery_key leaks started row");
+        assert_eq!(total, 2, "started + new terminal both persist");
+    }
+
+    /// Reproduce the suspected legacy hazard: a started row written *without*
+    /// `delivery_key` in detail (older binary, before commit 0e917fe). The
+    /// terminal record carries delivery_key, but the SELECT cannot match the
+    /// orphan started row → INSERT fallback → started row leaks forever.
+    #[test]
+    fn heartbeat_started_row_without_delivery_key_is_not_finalized() {
+        let dir = make_temp_dir("hone_cron_storage_legacy_started");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("feishu", "ou_legacy", None);
+
+        let job_id = "j_legacy";
+        storage
+            .record_execution_event(
+                &actor,
+                job_id,
+                "legacy heartbeat",
+                &actor.user_id,
+                true,
+                CronJobExecutionInput {
+                    execution_status: "running".to_string(),
+                    message_send_status: "pending".to_string(),
+                    should_deliver: true,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: serde_json::json!({"phase": "started"}),
+                },
+            )
+            .expect("record legacy started");
+
+        storage
+            .record_execution_event(
+                &actor,
+                job_id,
+                "legacy heartbeat",
+                &actor.user_id,
+                true,
+                CronJobExecutionInput {
+                    execution_status: "noop".to_string(),
+                    message_send_status: "skipped_noop".to_string(),
+                    should_deliver: false,
+                    delivered: false,
+                    response_preview: None,
+                    error_message: None,
+                    detail: serde_json::json!({
+                        "delivery_key": "j_legacy:2026-04-30:13:00:heartbeat",
+                        "heartbeat_model": "model-x",
+                    }),
+                },
+            )
+            .expect("record terminal");
+
+        let conn = rusqlite::Connection::open(&sqlite_path).expect("open conn");
+        let stuck: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM cron_job_runs WHERE execution_status='running' AND message_send_status='pending'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count stuck");
+        let total: i64 = conn
+            .query_row("SELECT count(*) FROM cron_job_runs", [], |row| row.get(0))
+            .expect("count total");
+
+        // Document the current behavior: a legacy started row without
+        // delivery_key cannot be finalized by the current UPDATE. The fix
+        // should either backfill delivery_key on started rows or add a sweep
+        // that marks orphan started rows as failed/timed-out.
+        assert_eq!(
+            stuck, 1,
+            "current behavior: legacy started rows without delivery_key never finalize"
+        );
+        assert_eq!(total, 2, "started + new terminal both persist");
+    }
 }
