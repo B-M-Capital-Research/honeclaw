@@ -9,6 +9,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-02 13:02 CST` 再次复核，started-row finalize 缺陷在最新 `12:30`、`13:00` 两个窗口继续实时新增，而且 heartbeat started 行仍与终态并存：
+    - `12:30` 窗口先写入 `run_id=13485-13495` 共 `11` 条 started 行；同窗终态随后另起为 `13496-13506`，其中 `13496-13506` 当前全部已落成 `noop + skipped_noop`
+    - `13:00` 窗口又先写入 `run_id=13507-13517` 共 `11` 条 started 行；同窗终态随后另起为 `13518-13528`，目前可见 `13518-13528` 全部已落成 `noop + skipped_noop`
+    - 但对应 started 行 `13485-13495` 与 `13507-13517` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明即便终态已全部收口为 `skipped_noop`，原 started 行也不会被覆盖
+  - 按 `datetime(executed_at) >= datetime('now','-70 minutes')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 34`
+    - `noop + skipped_noop = 33`
+    - `completed + sent = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `3375` 条，较 `2026-05-02 12:02` 巡检记录里的 `3353` 再增 `22` 条，说明这条缺陷在 `12:30` 与 `13:00` 窗口里仍在稳定堆积。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-02 12:02 CST` 再次复核，started-row finalize 缺陷在最新 `11:30`、`12:00` 两个窗口继续实时新增，而且 heartbeat started 行仍与终态并存：
     - `11:30` 窗口先写入 `run_id=13439-13449` 共 `11` 条 started 行；同窗终态随后另起为 `13450-13460`，其中 `13453` 已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
     - `12:00` 窗口又先写入 `run_id=13461-13472` 共 `12` 条 started 行；同窗终态随后另起为 `13473-13484`，其中 `13482` 已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
