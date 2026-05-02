@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-05-02 23:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `23:00-23:01` 的最新一轮仍在同窗混跑 `Empty / JsonNoop / skipped_noop`，结构化协议没有恢复成稳定单一形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`23:00` 窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=13953-13963` 先写入一批 `running + pending`
+    - 随后 `13964-13975` 另起终态，其中 `13974` 落成 `completed + sent`，其余多为 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `23:00` 同窗继续摇摆：
+    - `2026-05-02 23:00:12.167`：`ORCL 大事件监控` 落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 23:00:21.588`、`23:00:23.163`、`23:00:27.858`：`TEM破位预警`、`ASTS 重大异动心跳监控`、`小米30港元破位预警` 同窗落成 `parse_kind=JsonNoop`
+    - `2026-05-02 23:00:29.747`：`Monitor_Watchlist_11` 再次落成 `parse_kind=Empty raw_chars=0`
+  - 结论：到 `2026-05-02 23:01` 为止，本单仍稳定活跃；虽然这一小时没有新的 `skipped_error`，但最新整点窗口依旧继续混跑 `Empty / JsonNoop`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 22:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `22:00-22:02` 的最新一轮又从上一轮 `JsonNoop` 漂回 `execution_failed + skipped_error`，结构化协议没有恢复成稳定单一形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`22:00` 窗口继续维持“started 行另起、终态另起”的双轨形态：
     - `run_id=13908-13918` 先写入一批 `running + pending`
