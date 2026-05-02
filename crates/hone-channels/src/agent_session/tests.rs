@@ -834,6 +834,37 @@ fn finalize_agent_response_marks_planning_sentence_as_failure() {
 }
 
 #[test]
+fn transitional_clarification_question_is_not_treated_as_planning_sentence() {
+    assert!(!crate::runtime::is_transitional_planning_sentence(
+        "请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验当前价格、财报、估值倍数和同业，再判断估值是否合理。"
+    ));
+}
+
+#[test]
+fn finalize_agent_response_keeps_user_facing_clarification_question() {
+    let root = make_temp_dir("hone_channels_finalize_clarification_question");
+    std::fs::create_dir_all(&root).expect("create root");
+    let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new()));
+    let clarification = "请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验当前价格、财报、估值倍数和同业，再判断估值是否合理。";
+    let mut response = AgentResponse {
+        content: clarification.to_string(),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: true,
+        error: None,
+    };
+
+    let outcome = finalize_agent_response(&core, "session", "mock", &mut response);
+
+    assert!(response.success);
+    assert_eq!(response.content, clarification);
+    assert_eq!(response.error, None);
+    assert_eq!(outcome.fallback_reason, None);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn compose_invoked_skill_runtime_input_keeps_user_supplement_outside_skill_context() {
     let runtime_input = crate::turn_builder::compose_invoked_skill_runtime_input(
         "SKILL_PROMPT",

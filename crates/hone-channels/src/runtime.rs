@@ -455,6 +455,44 @@ pub(crate) fn is_transitional_planning_sentence(text: &str) -> bool {
     if char_count >= 200 || char_count == 0 {
         return false;
     }
+    if text.contains('？') || text.contains('?') {
+        return false;
+    }
+    let trimmed = text.trim_start();
+    let starts_like_internal_planning = [
+        "我先",
+        "我再",
+        "我需要先",
+        "我还缺",
+        "我需要补",
+        "先看本地",
+        "先补查",
+        "先调取",
+        "先核验",
+        "先抓取",
+        "还缺一件事",
+        "我还需要先",
+    ]
+    .iter()
+    .any(|pat| trimmed.starts_with(pat));
+    if !starts_like_internal_planning {
+        return false;
+    }
+    if [
+        "请先确认",
+        "请确认",
+        "先确认",
+        "请先提供",
+        "请提供",
+        "告诉我",
+        "发我",
+        "补充一下",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker))
+    {
+        return false;
+    }
     let patterns = [
         "我先",
         "我再",

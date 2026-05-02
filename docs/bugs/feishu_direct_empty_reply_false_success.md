@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixing
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
   - 2026-05-02 16:59 最新真实直聊样本：
@@ -158,6 +158,27 @@
 - 先复核 `response_finalizer` 对 `transitional planning sentence` 的判定边界，确认哪些“用户应该看到的澄清/确认句”被误杀；至少不能把要求确认 ticker 的可执行澄清句与内部计划句混为一类。
 - 重新比对 `reply_chars=0` 但 `success=true` 的最新日志路径，确认当前 Feishu 直聊链路为何没有落到 `EMPTY_SUCCESS_FALLBACK_MESSAGE`。
 - 在 bug 修复前，继续把 `reply.chars=0`、`empty reply`、`segments.sent=1/1` 组合视为高优先级回归信号；若 scheduler 或其它渠道也出现同类模式，再分别更新对应文档状态。
+
+## 修复进展（2026-05-02 17:35 CST）
+
+- 已在 `crates/hone-channels/src/runtime.rs` 收紧 `is_transitional_planning_sentence(...)` 的误杀边界：
+  - 只有明显以内部执行态起手的短句，才继续视为过渡计划句；
+  - 含 `?` / `？` 的用户可见澄清问句不再被压成空成功；
+  - 含 `请先确认` / `请提供` / `告诉我` / `发我` 等面向用户补充信息的短澄清，也不再因为句内出现 `我再` 被误判成内部计划。
+- 已补自动化回归，直接覆盖本轮 `toto估值是否合理` 的最新复现形态：
+  - `transitional_clarification_question_is_not_treated_as_planning_sentence`
+  - `finalize_agent_response_keeps_user_facing_clarification_question`
+- 本轮只收紧了 `planning_sentence_suppressed` 这一路径，没有放宽 `sanitized_empty_success` 或其它真正空输出的失败收口；纯内部执行态短句仍会继续被 fallback 拦下。
+- 由于当前任务不允许重启现有服务，也没有新的真实 Feishu 样本可直接复核，本单先更新为 `Fixing` 而不是 `Fixed`；下一条同类直聊若能把澄清句直接送达用户，再考虑转 `Fixed`。
+
+## 当前验证（2026-05-02 17:35 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels finalize_agent_response_marks_planning_sentence_as_failure -- --nocapture`
+  - `cargo test -p hone-channels transitional_clarification_question_is_not_treated_as_planning_sentence -- --nocapture`
+  - `cargo test -p hone-channels finalize_agent_response_keeps_user_facing_clarification_question -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs`
 
 ## 回归验证
 

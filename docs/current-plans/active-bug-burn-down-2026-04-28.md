@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-02 11:06 CST
+- updated_at: 2026-05-02 17:35 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -70,6 +70,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-02: Closed the daily macOS isolated-config `soul.md` startup bug by copying safe relative `system_prompt_path` assets from bundle/repo resources into the canonical config directory before desktop runtime config loads it. Also moved two stale active entries back to `Fixed` based on current code/test evidence instead of old production samples: Web scheduler offline SSE delivery status and provider numeric `HTTP 400` error preservation.
 - 2026-05-02 11:03: Latest bug ledger refresh reopened Web scheduler offline SSE and provider numeric `HTTP 400` based on newer local evidence; keep those active for separate review instead of carrying forward the stale Fixed conclusion.
 - 2026-05-02: Closed the Feishu scheduler started-row finalization regression by hardening both sides of the matching contract: scheduler terminal detail now replaces unusable `delivery_key` values, and cron history storage can safely fallback-update the latest recent `phase=started` pending row for the same actor/job/target/heartbeat when exact key matching fails.
+- 2026-05-02 17:35: Reopened P1 Feishu direct empty/invalid answer bug is now back to `Fixing` after narrowing `response_finalizer`'s `planning_sentence_suppressed` heuristic. Clarification questions such as “请先确认具体是哪只股票/资产的 ticker？” are no longer treated as empty-success fallbacks, and targeted `hone-channels` regression tests now cover both the helper and full finalizer path. No live Feishu runtime recheck yet because this automation does not restart services.
 
 ## Validation
 
@@ -130,6 +131,11 @@ Completed this round:
 - `cargo test -p hone-scheduler execution_detail_with_delivery_key --lib -- --nocapture`
 - `cargo test -p hone-memory execution_terminal_event_ --lib -- --nocapture`
 - `cargo check -p hone-memory -p hone-scheduler -p hone-feishu --tests`
+- `cargo test -p hone-channels finalize_agent_response_marks_planning_sentence_as_failure -- --nocapture`
+- `cargo test -p hone-channels transitional_clarification_question_is_not_treated_as_planning_sentence -- --nocapture`
+- `cargo test -p hone-channels finalize_agent_response_keeps_user_facing_clarification_question -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `rustfmt --edition 2024 crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs`
 
 Known verification limitation:
 
