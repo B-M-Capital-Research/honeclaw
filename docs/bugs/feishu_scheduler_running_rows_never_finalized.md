@@ -3,10 +3,21 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 
 ## 证据来源
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-02 12:02 CST` 再次复核，started-row finalize 缺陷在最新 `11:30`、`12:00` 两个窗口继续实时新增，而且 heartbeat started 行仍与终态并存：
+    - `11:30` 窗口先写入 `run_id=13439-13449` 共 `11` 条 started 行；同窗终态随后另起为 `13450-13460`，其中 `13453` 已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
+    - `12:00` 窗口又先写入 `run_id=13461-13472` 共 `12` 条 started 行；同窗终态随后另起为 `13473-13484`，其中 `13482` 已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
+    - 但对应 started 行 `13439-13449` 与 `13461-13472` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent` 还是 `skipped_noop`，原 started 行都不会被覆盖
+  - 按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近一小时仍同时存在：
+    - `running + pending = 23`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 2`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `3353` 条，较 `2026-05-02 11:03` 巡检记录里的 `3330` 再增 `23` 条，说明这条缺陷在 `11:30` 与 `12:00` 窗口里仍在稳定堆积。
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-02 11:03 CST` 再次复核，started-row finalize 缺陷在最新 `10:30`、`11:00` 两个窗口继续实时新增，而且 heartbeat started 行仍与终态并存：

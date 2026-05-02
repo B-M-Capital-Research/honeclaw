@@ -7,6 +7,24 @@
 
 ## 修复进展
 
+- `2026-05-02 12:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `11:30-12:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / completed + sent`，结构化协议没有恢复：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
+    - `running + pending = 23`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 2`
+  - 最近一小时内可见的同窗终态继续混杂：
+    - `13482` `每日公司资讯与分析总结` -> `completed + sent`
+    - `13453` `小米30港元破位预警` -> `completed + sent`
+    - `13450`、`13458-13460` 与 `13473-13484` 多数 heartbeat 继续回落成 `noop + skipped_noop`
+    - `13439-13449` 与 `13461-13472` 两轮 started 行截至巡检时仍全部保留 `running + pending`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `11:30` 与 `12:00` 窗口继续摇摆：
+    - `2026-05-02 12:00:40.862`：`持仓重大事件心跳检测` 在同窗再次落成 `run_finish success=true content_chars=0`，随后被收口成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 12:00:49.524`：`Monitor_Watchlist_11` 同窗继续落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 12:00:53.360`、`12:01:15.799`：`RKLB异动监控` 与 `TEM大事件心跳监控` 又回摆成 `parse_kind=JsonNoop`
+    - `2026-05-02 12:01:49.877`：`全天原油价格3小时播报` 同窗继续退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-02 12:02:29.929`：`ORCL 大事件监控` 在下一个终态样本里仍只是 `noop + skipped_noop`，没有恢复稳定触发/失败边界
+  - 结论：到 `2026-05-02 12:02` 为止，本单仍稳定活跃；最新窗口虽然暂未新增 `skipped_error`，但继续混跑 `started / Empty / JsonNoop / sent`，说明 heartbeat 结构化契约仍未恢复，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 11:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `10:30-11:02` 的最新两轮仍在混跑 `running + pending / noop + skipped_noop / execution_failed + skipped_error / completed + sent`，结构化协议没有恢复：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，按 `datetime(executed_at) >= datetime('now','-1 hour')` 聚合，最近窗口仍同时存在：
     - `running + pending = 22`
