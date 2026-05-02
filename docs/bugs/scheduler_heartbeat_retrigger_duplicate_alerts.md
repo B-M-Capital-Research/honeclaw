@@ -3,8 +3,18 @@
 - **发现时间**: 2026-04-19 10:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-05-03 06:30-07:01 最新巡检样本：
+      - `job_name=ORCL 大事件监控`
+      - `run_id=14311`，`executed_at=2026-05-03T06:31:01.884246+08:00`，落成 `completed + sent + delivered=1`
+      - `response_preview` 发送 `ORCL 触发价格异动监控条件。当前最新可得价格 $171.83，相对昨收 $161.39 上涨 6.47%，已超过 5% 阈值。数据来源时间戳：北京时间 2026-05-03 05:20 前后（美股周五收盘后，当前市场已停盘）。同时期有 OpenAI 作为关键合作伙伴的积极表态新闻。`
+      - 约 29 分钟后，同一用户目标下的 `job_name=持仓重大事件心跳检测`
+      - `run_id=14333`，`executed_at=2026-05-03T07:00:40.355318+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把同一 `ORCL 收于 $171.83 / +6.47% / OpenAI 相关正面表态` 重新包装成 `【ORCL 持仓异动】+6.47% 触发监控阈值` 送达；两轮之间没有新的价格窗口、公告落地或独立公司级新催化，只是从单标的 job 切到聚合持仓 job 后再次重报同一事实。
+      - `data/runtime/logs/sidecar.log` 在 `2026-05-03 06:31:00.091-06:31:00.093` 记录 `ORCL 大事件监控` 的 `parse_kind=JsonTriggered -> deliver`，并在 `2026-05-03 07:00:37.757-07:00:37.758` 记录 `持仓重大事件心跳检测` 的 `parse_kind=JsonTriggered -> deliver`；同一窗口里 `07:00:14.994` 的 `ORCL 大事件监控` 又回落成 `parse_kind=JsonNoop`。
+      - 这组最新样本说明“同一目标下跨 job 重复提醒旧事实”的缺陷在最新一小时真实窗口再次活跃复现；它不阻断主功能链路，但持续制造提醒噪音，因此状态从 `Fixed` 回退为 `New`，严重等级维持 `P3`。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-05-01 21:00-21:02 最新巡检样本：
       - `job_name=TEM大事件心跳监控`
