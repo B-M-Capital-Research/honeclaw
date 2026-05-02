@@ -54,6 +54,10 @@ pub(crate) struct TaskSummary {
     /// 最近一次失败的错误简述(取 24h 窗口内最近一次)。
     last_error: Option<String>,
     last_failure_at: Option<DateTime<Utc>>,
+    /// 最近一次失败之后又跑了多少次(ok/skipped 都算)。
+    /// `None` 表示 24h 内没失败过;`Some(0)` 表示当前最新一次就是失败;
+    /// `Some(N>0)` 表示已经从失败中恢复 N 次。前端用来区分「仍在烧」vs「已恢复」。
+    runs_since_last_failure: Option<u32>,
 }
 
 pub(crate) async fn handle_task_runs(
@@ -81,26 +85,37 @@ pub(crate) async fn handle_task_runs(
 
 fn build_summary(dir: &std::path::Path) -> HashMap<String, TaskSummary> {
     let cutoff = Utc::now() - chrono::Duration::hours(SUMMARY_WINDOW_HOURS);
+    // `read_recent_task_runs` 返回降序(最近在前)。先收集 24h 窗口内的记录,然后
+    // 按时间升序处理 —— 这样可以一次遍历同时算出 last_failure_at 和
+    // runs_since_last_failure(扫到 failed 重置计数器,扫到非 failed 累加)。
     let scan = hone_core::task_observer::read_recent_task_runs(dir, 1, SUMMARY_SCAN_LIMIT);
+    let mut window: Vec<&hone_core::TaskRunRecord> =
+        scan.iter().filter(|r| r.started_at >= cutoff).collect();
+    window.sort_by_key(|r| r.started_at);
+
     let mut out: HashMap<String, TaskSummary> = HashMap::new();
-    for run in &scan {
-        if run.started_at < cutoff {
-            continue;
-        }
+    for run in window {
         let entry = out.entry(run.task.clone()).or_default();
         entry.runs_24h += 1;
-        if entry.last_seen_at.is_none_or(|t| run.started_at > t) {
-            entry.last_seen_at = Some(run.started_at);
-        }
+        entry.last_seen_at = Some(run.started_at);
         match run.outcome {
-            hone_core::TaskOutcome::Ok => entry.ok_24h += 1,
-            hone_core::TaskOutcome::Skipped => entry.skipped_24h += 1,
+            hone_core::TaskOutcome::Ok => {
+                entry.ok_24h += 1;
+                if let Some(n) = entry.runs_since_last_failure.as_mut() {
+                    *n += 1;
+                }
+            }
+            hone_core::TaskOutcome::Skipped => {
+                entry.skipped_24h += 1;
+                if let Some(n) = entry.runs_since_last_failure.as_mut() {
+                    *n += 1;
+                }
+            }
             hone_core::TaskOutcome::Failed => {
                 entry.failed_24h += 1;
-                if entry.last_failure_at.is_none_or(|t| run.started_at > t) {
-                    entry.last_failure_at = Some(run.started_at);
-                    entry.last_error = run.error.clone();
-                }
+                entry.last_failure_at = Some(run.started_at);
+                entry.last_error = run.error.clone();
+                entry.runs_since_last_failure = Some(0);
             }
         }
     }

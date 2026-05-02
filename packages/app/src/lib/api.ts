@@ -621,6 +621,9 @@ export interface TaskSummary {
   failed_24h: number;
   last_error: string | null;
   last_failure_at: string | null;
+  /// 最近一次失败之后又跑了多少次(ok/skipped 都算)。
+  /// null = 24h 内没失败过;0 = 最新这次就是失败;>0 = 已恢复 N 次。
+  runs_since_last_failure: number | null;
 }
 
 export interface TaskRunsResponse {

@@ -224,10 +224,40 @@ export default function TaskHealthPage() {
                       </td>
                       <td class="px-3 py-2 text-right">{successRate(row)}</td>
                       <td
-                        class="max-w-[24rem] truncate px-3 py-2 text-left text-rose-300/80"
-                        title={row.last_error ?? ""}
+                        class="max-w-[24rem] px-3 py-2 text-left"
+                        title={
+                          row.last_failure_at
+                            ? `${row.last_failure_at}\n${row.last_error ?? ""}`
+                            : ""
+                        }
                       >
-                        {row.last_error ?? "—"}
+                        <Show
+                          when={row.last_error}
+                          fallback={
+                            <span class="text-[color:var(--text-muted)]">—</span>
+                          }
+                        >
+                          <div class="flex items-center gap-2 text-[10px] uppercase tracking-wide">
+                            <span class="text-[color:var(--text-muted)]">
+                              {relativeTime(row.last_failure_at)}
+                            </span>
+                            <Show
+                              when={(row.runs_since_last_failure ?? 0) > 0}
+                              fallback={
+                                <span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-300">
+                                  最新失败
+                                </span>
+                              }
+                            >
+                              <span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/80">
+                                已恢复 +{row.runs_since_last_failure}
+                              </span>
+                            </Show>
+                          </div>
+                          <div class="mt-0.5 truncate text-rose-300/80">
+                            {row.last_error}
+                          </div>
+                        </Show>
                       </td>
                     </tr>
                   )}
