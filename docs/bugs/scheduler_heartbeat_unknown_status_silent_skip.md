@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-05-03 00:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:00-00:01` 的最新一轮仍在同窗混跑 `Empty / JsonNoop / noop + skipped_noop`，结构化协议没有恢复成稳定单一形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`00:00` 窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=14000-14018` 先写入一批 `running + pending`
+    - 随后 `14018`（`持仓重大事件心跳检测`）、`14019`（`Cerebras IPO与业务进展心跳监控`）、`14021`（`ASTS 重大异动心跳监控`）等又另起终态，继续落成 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `00:00` 同窗继续摇摆：
+    - `2026-05-03 00:00:56.459`：`持仓重大事件心跳检测` 落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 00:00:59.864`：`Cerebras IPO与业务进展心跳监控` 同窗落成 `parse_kind=JsonNoop`
+    - `2026-05-03 00:01:06.608`：`ASTS 重大异动心跳监控` 同窗继续落成 `parse_kind=JsonNoop`
+    - `2026-05-03 00:01:34.372`：`TEM大事件心跳监控` 同窗也继续落成 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-03 00:01` 为止，本单仍稳定活跃；最新整点窗口继续混跑 `Empty / JsonNoop`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 23:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `23:00-23:01` 的最新一轮仍在同窗混跑 `Empty / JsonNoop / skipped_noop`，结构化协议没有恢复成稳定单一形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`23:00` 窗口继续维持“started 行另起、终态另起”的双轨形态：
     - `run_id=13953-13963` 先写入一批 `running + pending`
