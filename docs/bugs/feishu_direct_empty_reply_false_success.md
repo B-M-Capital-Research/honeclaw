@@ -3,8 +3,17 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
+- **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
+  - 2026-05-02 16:59 最新真实直聊样本：
+    - `session_id=Actor_feishu__direct__ou_5f0e57a9914d61ae96d437cdeb65e43593`
+    - `2026-05-02T16:59:25.533704+08:00` 用户提问：`toto估值是否合理`
+    - `data/runtime/logs/acp-events.log` 显示同轮先正常完成 `skill_tool`、`local_search_files`、`local_read_file`、`data_fetch`、`web_search`，随后在 `2026-05-02T08:59:44.892377Z-08:59:45.142219Z` 连续输出用户可见 `agent_message_chunk`，正文已经形成一段真实答复/澄清句：`...请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验当前价格、财报、估值倍数和同业，再判断估值是否合理。`
+    - 但 `data/runtime/logs/sidecar.log` 在 `2026-05-02T08:59:45.525818Z` 紧接着记录 `transitional planning sentence detected, treating as empty ... chars=136`，随后 `step=agent.run.fallback ... detail=planning_sentence_suppressed`
+    - `2026-05-02T16:59:45.526498+08:00` 最终 assistant 落库并发送的仍是通用 fallback：`这次没有成功产出完整回复。我已经自动重试过了，请再发一次，或换个问法。`
+    - 同轮 `sidecar.log` 继续记录 `done ... success=true ... reply.chars=35` 与 `step=reply.send ... segments.sent=1/1`，说明这不是 runner 显式失败，而是 Answer 输出被净化后判空并被伪成功收口
+    - 这不是独立新缺陷：根因仍是 Feishu 直聊 Answer 阶段把空/无效可见输出伪装成成功，只是最近一小时的坏态从“零字节 reply”漂移成“planning sentence 被判空后统一 fallback”
   - 2026-04-26 13:10-13:11 最新真实直聊样本：
     - `session_id=Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5`
     - `2026-04-26T13:10:39.109557+08:00` 用户追问：`我现在有哪些定时任务`
@@ -103,6 +112,8 @@
 
 ## 当前实现效果
 
+- `2026-05-02 16:59` 的最新样本说明，本缺陷在 README 已标记 `Fixed` 后仍然活跃，只是坏态继续演化：Answer 阶段不再一定是 `reply_chars=0`，而是先吐出一段计划/澄清句，再被 `response_finalizer` 认定为 `planning_sentence_suppressed` 并统一替换成 fallback。
+- 这意味着链路已经拿到了可消费的用户态文本，但当前“过渡句净化”规则仍会把它整体当作空答复处理，结果用户既没拿到实际澄清问题，也没拿到正式分析。
 - `2026-04-26 08:35` 的最新样本说明，即使用户只是发起一条普通的港股对比请求，链路仍会在两次 answer 都 `reply_chars=0` 后直接退化成通用 fallback；这不是“复杂画像/附件排查”的特例。
 - `2026-04-21 23:34` 的最新样本说明，问题已经从“空字符串直接外发”缓解为“无效 Answer 被判空并返回 fallback”，但底层仍不能稳定为简单直聊生成可消费答复。
 - `2026-04-23 10:36` 的最新样本进一步说明，fallback 止血会掩盖已经发生的业务副作用：画像文件实际已创建，但最终可见回复仍被替换成“没有成功产出完整回复”，用户无法确认任务完成情况，甚至可能重复请求造成画像重复写入或状态混乱。
@@ -116,12 +127,14 @@
 ## 用户影响
 
 - 这是功能性缺陷，不是单纯回答质量波动。用户明确要求的投研报告完全没有返回，任务实际失败。
+- `2026-05-02 16:59` 这条样本进一步说明，哪怕用户问题本身只是一个应该先澄清 ticker 的短问句，系统也会把本来应直接发给用户的澄清句吞掉并改发通用失败提示，用户无法继续当前任务。
 - 问题发生在 Feishu 直聊主链路，而不是边缘后台任务，直接影响用户能否完成一次正常问答，因此定级为 `P1`。
 - 该问题不属于 `P3` 质量类问题，因为它不是“答得不够好”，而是最终根本没有可消费内容。
 
 ## 根因判断
 
 - `opencode_acp` 能识别 `reply_chars=0` 和 `empty reply`，但当前没有把这类结果升级为硬失败。
+- 最新样本说明另一条同根因分支也仍然活跃：`response_finalizer` 会把某些真实用户态澄清/计划句直接判成 `transitional planning sentence`，随后走与空回复相同的 fallback 收口。
 - 多代理封装层把空回复继续当作 `answer.done success=true`，导致上层消息流无法区分“正常完成”和“零字节完成”。
 - Feishu 发送侧只看分段流程是否跑完，没有拦截空正文，因此把空 assistant 消息照常投递。
 
@@ -142,6 +155,7 @@
 
 ## 下一步建议
 
+- 先复核 `response_finalizer` 对 `transitional planning sentence` 的判定边界，确认哪些“用户应该看到的澄清/确认句”被误杀；至少不能把要求确认 ticker 的可执行澄清句与内部计划句混为一类。
 - 重新比对 `reply_chars=0` 但 `success=true` 的最新日志路径，确认当前 Feishu 直聊链路为何没有落到 `EMPTY_SUCCESS_FALLBACK_MESSAGE`。
 - 在 bug 修复前，继续把 `reply.chars=0`、`empty reply`、`segments.sent=1/1` 组合视为高优先级回归信号；若 scheduler 或其它渠道也出现同类模式，再分别更新对应文档状态。
 

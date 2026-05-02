@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-02 16:03 CST
+最后更新：2026-05-02 17:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,17 +15,18 @@
 
 ## 当前概览
 
-- 活跃待修复：8
+- 活跃待修复：9
 - Later / 待复现：11
-- 已修复 / 已关闭：81
+- 已修复 / 已关闭：80
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
+- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 16:03 最近一小时再次确认 `sessions` / `session_messages` 上界仍共同卡在 `2026-04-27 16:54:20+08:00`，且近一小时 `sessions_last_hour=0`、`messages_last_hour=0`；但最新 Feishu 会话 JSON 仍刷新到 `15:03`，最近直聊日志已走完 `session.persist_assistant -> reply.send segments.sent=1/1`，`cron_job_runs` 也继续推进到 `2026-05-02 16:02:31+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | New | 2026-05-02 16:59 真实直聊 `toto估值是否合理` 再次复现：ACP 已连续产出可见澄清句 chunk，但 `response_finalizer` 紧接着记录 `planning_sentence_suppressed`，最终用户只收到通用 fallback；该单此前标成 `Fixed`，现已回退为活跃 P1；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-02 17:03 最近一小时再次确认 `sessions` / `session_messages` 上界仍共同卡在 `2026-04-27 16:54:20+08:00`，且近一小时 `sessions_last_hour=0`、`messages_last_hour=0`；但最新 Feishu 会话 JSON 已刷新到 `16:59:45`，同一 `source_path` 在 sqlite 里仍停在 `2026-04-25 20:45:20+08:00`，`cron_job_runs` 也继续推进到 `2026-05-02 17:02:20+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-02 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=13348` 再次落成 `completed + send_failed`；同一 Web 会话 JSON 已写入完整晨报正文，说明“正文落库即送达”语义仍未在线上生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-02 16:03 最新 `15:30-16:02` 窗口继续混跑 `running + pending=22 / noop + skipped_noop=19 / completed + sent=2 / execution_failed + skipped_error=1`；`15:30` 同窗 `ORCL` 与 `小米30港元` 仍能 `JsonTriggered + deliver`，但 `16:00` 后 `原油/TEM/小米30/TEM破位` 又回落成 `JsonNoop` 或 `parse_kind=Empty`，`16:02` 的 `持仓重大事件心跳检测` 再次退化成 `error decoding response body` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-02 11:03 最近一小时 `run_id=13412`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`，`sidecar.log` 同窗先记录真实上游 `maximum context length ... code:400`，随后仍被压扁成 `invalid type: integer \`400\``；此前 `Fixed` 结论回退 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
@@ -61,7 +62,6 @@
 | Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-05-01 23:05 共享错误净化层将“已达到今日对话上限”提升为业务拒绝优先级，即使被 `工具执行错误` / `渠道错误` 等内部前缀包裹也会保留 quota 文案；Feishu 失败兜底成功更新 placeholder / 发送后会记录 `reply.send failure_fallback`，避免巡检再误判为无最终发送；`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text -- --nocapture`、`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./feishu_conversation_quota_masked_as_generic_failure.md) |
 | Feishu 直聊切到非金融新话题时，仍误入 `stock_research` 并沿用旧 `LITE` 上下文 | P3 | Fixed | 2026-05-01 当前 user turn 在普通和带接收元信息的 prompt 拼装中统一置于历史摘要 / skill context / session context 之后，且领域策略明确非金融问题必须先短路拒绝、不得调用 `stock_research` / `data_fetch` / `web_search` 或沿用旧 ticker；`cargo test -p hone-channels prompt::tests:: --lib -- --nocapture`、`cargo test -p hone-channels turn_builder::tests::runtime_input_with_recv_extra_keeps_current_turn_last --lib -- --nocapture` 通过；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-01 event-engine Feishu direct fallback 从“唯一 email 或唯一 mobile”放宽为“所有稳定联系人解析后只产生一个 current-app open_id 才使用”，覆盖单用户配置同时保留 email+mobile 时 fallback 被关闭的缺口；`cargo test -p hone-event-engine sinks::feishu --lib -- --nocapture`、`cargo check -p hone-event-engine -p hone-web-api --tests` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-04-30 已放宽 multi-agent 对 `cron_job`/`portfolio` 可信本地结果的直返门槛，多行和较长任务列表也不再被强制送进易空回复的 answer 阶段；`cargo test -p hone-channels runners::multi_agent::tests`、`cargo test -p hone-channels empty_success_with_tool_calls_uses_fallback_after_retries`、`cargo check -p hone-channels` 通过 | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-05-01 watchlist 送达前数值自检补齐“跌至 69.85，已触及或低于触发价 69.83”变体；当前价仍高于下行触发价时会落成 `near_threshold_suppressed`；`cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture` 通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | Fixed | 2026-04-30 startup error dialog 改为后台线程显示，并在 setup preflight 失败时写入 `desktop.log` 与 stderr；新增无交互抑制开关和 hone-desktop 定向回归，避免每日 `.app` smoke test 再卡在 `CFUserNotificationDisplayAlert` | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
 | Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Fixed | 2026-04-30 非 heartbeat scheduler 内部失败抑制分支新增会话落库补偿：不可外发的 `codex acp prompt ended before tool completion` 等错误会在 direct session 追加脱敏失败记录，台账仍保持 `skipped_error`；`hone-channels` scheduler/runtime 定向回归与 `cargo check -p hone-channels` 通过；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
