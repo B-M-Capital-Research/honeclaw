@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-05-02 22:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `22:00-22:02` 的最新一轮又从上一轮 `JsonNoop` 漂回 `execution_failed + skipped_error`，结构化协议没有恢复成稳定单一形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`22:00` 窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=13908-13918` 先写入一批 `running + pending`
+    - 随后 `13919-13929` 另起终态，其中 `13924`、`13919` 落成 `completed + sent`，`13921-13928` 多数回到 `noop + skipped_noop`，而 `13929`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在 `22:00` 同窗继续摇摆：
+    - `2026-05-02 22:00:44.502`、`22:00:25.656`：`ORCL 大事件监控`、`小米30港元破位预警` 落成 `completed + sent`
+    - `2026-05-02 22:01:16.944`、`22:01:02.091`：`Monitor_Watchlist_11`、`持仓重大事件心跳检测` 同窗先后落成 `parse_kind=JsonNoop`
+    - `2026-05-02 22:02:21.557-22:02:21.559`：`持仓重大事件心跳检测` 又回落成 `runner_error ... error="LLM 错误: http error: error decoding response body"`
+  - 结论：到 `2026-05-02 22:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / JsonNoop / completed + sent / skipped_error`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-02 21:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `20:30-21:01` 的最新两轮虽然 `cron_job_runs` 终态再次统一回落成 `noop + skipped_noop`，但 heartbeat 原始输出仍在同一整点窗口内混跑 `Empty` 与 `JsonNoop`，结构化协议依旧没有恢复成稳定单一形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最新两轮 heartbeat 仍然维持“started 行另起、终态另起”的双轨形态：
     - `20:30` 窗口 `run_id=13841-13849` 先写入一批 `running + pending`，随后 `13851-13860` 另起 `noop + skipped_noop`
