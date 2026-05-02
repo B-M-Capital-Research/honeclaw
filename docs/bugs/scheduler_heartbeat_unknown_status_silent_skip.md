@@ -7,6 +7,24 @@
 
 ## 修复进展
 
+- `2026-05-03 01:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:30-01:01` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / noop + skipped_noop / completed + sent / execution_failed + skipped_error`，结构化协议没有恢复成稳定单一形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近一小时窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 19`
+    - `completed + sent = 2`
+    - `execution_failed + skipped_error = 1`
+  - `00:30` 与 `01:00` 两个窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=14030-14040` 与 `14048-14058` 先写入两批 `running + pending`
+    - 随后 `14041-14047`、`14059-14069` 再另起终态，其中 `14043`（`小米30港元破位预警`）和 `14069`（`持仓重大事件心跳检测`）落成 `completed + sent`，`14046`（`持仓重大事件心跳检测`）又单独落成 `execution_failed + skipped_error`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在最新整点窗口继续摇摆：
+    - `2026-05-03 00:30:22.254`：`Monitor_Watchlist_11` 落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 00:30:24.241`、`00:30:30.173`、`00:32:06.097`：`RKLB异动监控`、`ASTS 重大异动心跳监控`、`Cerebras IPO与业务进展心跳监控` 同窗落成 `parse_kind=JsonNoop`
+    - `2026-05-03 00:31:29.541-00:31:29.595`：`持仓重大事件心跳检测` 又回落成 `runner_error ... error="LLM 错误: failed to deserialize api response: EOF while parsing a value at line 207 column 0"`
+    - `2026-05-03 01:00:26.719`：`Monitor_Watchlist_11` 再次落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 01:00:27.568`、`01:00:31.409`、`01:00:33.803`、`01:00:40.079`、`01:00:52.703`：`ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`TEM大事件心跳监控`、`Cerebras IPO与业务进展心跳监控`、`RKLB异动监控` 同窗继续落成 `parse_kind=JsonNoop`
+    - `2026-05-03 01:01:28.153`：`持仓重大事件心跳检测` 又恢复为 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-03 01:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / skipped_error`，而且同一 job 在 30 分钟内从 `EOF` 失败直接回摆到 `JsonTriggered + sent`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-03 00:01` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:00-00:01` 的最新一轮仍在同窗混跑 `Empty / JsonNoop / noop + skipped_noop`，结构化协议没有恢复成稳定单一形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`00:00` 窗口继续维持“started 行另起、终态另起”的双轨形态：
     - `run_id=14000-14018` 先写入一批 `running + pending`
