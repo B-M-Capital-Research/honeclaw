@@ -7,6 +7,22 @@
 
 ## 修复进展
 
+- `2026-05-03 04:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `03:30-04:01` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议没有恢复成稳定单一形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近一小时窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 20`
+    - `completed + sent = 2`
+  - `03:30` 与 `04:00` 两个窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=14158-14168` 与 `14180-14190` 先写入两批 `running + pending`
+    - 随后 `14169-14179`、`14191-14201` 再另起终态，其中 `14199`（`ORCL 大事件监控`）与 `14200`（`Cerebras IPO与业务进展心跳监控`）落成 `completed + sent`，其余多为 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在最新整点窗口继续摇摆：
+    - `2026-05-03 03:30:17.851`、`03:30:23.339`、`03:30:24.205`、`03:30:24.693`、`03:30:28.746`：`TEM破位预警`、`持仓重大事件心跳检测`、`ASTS 重大异动心跳监控`、`Cerebras IPO与业务进展心跳监控`、`Monitor_Watchlist_11` 先后落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 03:30:10.744`、`03:30:12.939`、`03:30:17.931`、`03:30:20.819`、`03:30:25.225`、`03:30:44.249`：`全天原油价格3小时播报`、`CAI破位预警`、`RKLB异动监控`、`小米30港元破位预警`、`TEM大事件心跳监控`、`ORCL 大事件监控` 同窗又回摆成 `parse_kind=JsonNoop`
+    - `2026-05-03 04:00:11.231`、`04:00:14.890`、`04:00:33.348`、`04:00:35.808`、`04:00:41.240`：`ASTS`、`CAI`、`持仓重大事件`、`RKLB`、`Monitor_Watchlist_11` 在下一窗又集中退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 04:00:54.645`、`04:01:01.826`：`ORCL 大事件监控` 与 `Cerebras IPO与业务进展心跳监控` 在同一 `04:00-04:01` 窗口回摆成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-03 04:00:11.873`、`04:00:13.719`、`04:00:29.436`、`04:01:26.434`：`TEM破位预警`、`全天原油价格3小时播报`、`TEM大事件心跳监控`、`小米30港元破位预警` 同窗继续回摆成 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-03 04:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，且同一批 heartbeat 在 `03:30` 先出现 `Cerebras Empty`、到 `04:01` 又直接回摆为 `Cerebras triggered + deliver`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-03 03:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `02:30-03:01` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议没有恢复成稳定单一形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近一小时窗口仍同时存在：
     - `running + pending = 22`
