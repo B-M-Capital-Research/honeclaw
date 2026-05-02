@@ -5,6 +5,23 @@
 - **严重等级**: P3
 - **状态**: New
 - **修复结论复核**:
+  - `2026-05-02 09:02 CST` 同链路缺陷在最近一小时真实窗口再次复现：
+    - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
+      - `updated_at=2026-05-02T09:01:29.928698+08:00`
+      - 最新 `[定时任务触发] 任务名称：核心观察池早间简报` 继续明确要求四段结构，并要求“列出每个标的的当前价格、击球区区间值、下一次财报时间”
+      - 实际 assistant final 再次写出 `除 LITE 外，其余 24 支标的击球区区间未在本轮数据链路中完成校验，全部标注为“待确认”`
+      - 同条回复的“击球区距离表”也只计算 `LITE`，其余 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META / BABA / AAOI / MU / SNDK / STX / WDC / COHR / GEV / TSLA / ORCL / TSM / GLW / CRDO / RKLB / INTC / BE / AMD` 统一降成 `击球区数据待确认，本轮不计算距离`
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=13349`
+      - `job_name=核心观察池早间简报`
+      - `executed_at=2026-05-02T09:01:32.694401+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 开头继续写出：`但除 LITE 外，其余 24 支击球区区间未在本轮数据链路中完成校验，全部标注为“待确认”`
+    - `data/runtime/logs/sidecar.log`
+      - `2026-05-02 09:00:02-09:01:29` 同会话继续跑完 `tools=25(Tool: hone/data_fetch)`，并以 `done success=true elapsed_ms=87651 reply.chars=2334` 收口
+      - 同窗没有新的 `tool_failed`，说明当前坏态依旧是“区间配置/记忆没有进入最终答案”，而不是主链路执行失败
   - `2026-05-01 23:01 CST` 同链路缺陷在最近一小时真实窗口再次复现：
     - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
       - `updated_at=2026-05-01T23:01:14.020643+08:00`
@@ -40,6 +57,7 @@
       - `2026-05-01 21:36:10.366` 整轮仍以 `success=true elapsed_ms=68369 tools=26(Tool: hone/data_fetch,Tool: hone/skill_tool) reply.chars=1371` 收口
       - 最新窗口里没有再出现 `local_search_files` / `local_list_files` / `tool_failed`，说明当前坏态已经不再等同于 `2026-04-29` 记录里的“本地文件搜索被单个坏文件打断”
 - `2026-05-01 23:01 CST` 的 `核心观察股池晚间快报` 与 `2026-05-01 21:36 CST` 的 `科技核心股池 · 晚间击球区快报` 说明，这条缺陷已同时影响两套观察池日报模板，而不再只限于单个晚间快报名字。
+- `2026-05-02 09:02 CST` 的 `核心观察池早间简报` 说明，这条缺陷仍持续影响同一观察池的早间链路，而且已从前一晚延续到次日盘前，不是只在单个晚间模板里偶发。
 - `2026-04-30 21:36 CST` 同症状其实已在前一日晚间快报继续活跃：
     - `cron_job_runs.run_id=11653`
     - `job_name=科技核心股池 · 晚间击球区快报`
