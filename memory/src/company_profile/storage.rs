@@ -480,7 +480,7 @@ impl CompanyProfileStorage {
         };
         if input.what_happened.trim().is_empty()
             && input.why_it_matters.trim().is_empty()
-            && input.thesis_effect.trim().is_empty()
+            && input.mainline_effect.trim().is_empty()
             && input.evidence.trim().is_empty()
             && input.research_log.trim().is_empty()
             && input.follow_up.trim().is_empty()
@@ -516,7 +516,7 @@ impl CompanyProfileStorage {
             event_type: input.event_type.trim().to_string(),
             occurred_at: input.occurred_at.trim().to_string(),
             captured_at: Utc::now().to_rfc3339(),
-            thesis_impact: input.thesis_impact.trim().to_string(),
+            mainline_impact: input.mainline_impact.trim().to_string(),
             changed_sections: unique_strings(&input.changed_sections),
             refs: unique_strings(&input.refs),
         };

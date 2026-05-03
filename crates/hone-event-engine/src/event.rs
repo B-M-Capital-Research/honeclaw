@@ -54,7 +54,7 @@ pub enum EventKind {
     /// (如 `"8-K"` / `"10-Q"` / `"10-K"` / `"S-1"` / `"DEF 14A"`)。
     /// Severity 由 `pollers::corp_action::events_from_sec_filings` 按 form 映射。
     /// payload 里可能存在 `"llm_summary"` 字符串字段(由 `pollers::sec_enrichment`
-    /// 写入,~200 字 thesis-investor 视角中文摘要),renderer 优先渲染该字段。
+    /// 写入,~200 字长期主线投资者视角中文摘要),renderer 优先渲染该字段。
     SecFiling {
         form: String,
     },

@@ -35,7 +35,7 @@ use crate::event::{EventKind, MarketEvent};
 use crate::fmp::FmpClient;
 use crate::global_digest::audience::{AudienceBuilder, AudienceContext};
 use crate::global_digest::curator::{
-    Curator, PersonalizedItem, PickCategory, RankedCandidate, UserThesis,
+    Curator, PersonalizedItem, PickCategory, RankedCandidate, UserMainline,
 };
 use crate::global_digest::event_dedupe::{EventDeduper, PassThroughDeduper};
 use crate::global_digest::fetcher::{ArticleBody, ArticleFetcher, ArticleSource};
@@ -49,7 +49,7 @@ use crate::unified_digest::{DigestSlot, FloorTag, GlobalNewsSource, ItemOrigin, 
 /// 与旧 `GlobalDigestScheduler` 保持一致 —— 4 并发抓全文实测最稳。
 const FETCH_CONCURRENCY: usize = 4;
 
-/// `slot.floor_macro` 缺省时的兜底值:即使 thesis 把所有宏观料剔除,Pass 2
+/// `slot.floor_macro` 缺省时的兜底值:即使主线把所有宏观料剔除,Pass 2
 /// personalize 也至少保留 1 条 macro_floor,让用户看到大盘背景。
 const DEFAULT_FLOOR_MACRO_PICKS: u32 = 1;
 
@@ -375,9 +375,9 @@ impl UnifiedDigestScheduler {
                     .is_some_and(|c| !c.picks_with_bodies.is_empty())
                 {
                     let cache = global_cache.as_ref().unwrap();
-                    let thesis = UserThesis {
-                        global_style: user_prefs.investment_global_style.as_deref(),
-                        theses: user_prefs.investment_theses.as_ref(),
+                    let mainline = UserMainline {
+                        style: user_prefs.mainline_style.as_deref(),
+                        by_ticker: user_prefs.mainline_by_ticker.as_ref(),
                     };
                     let floor_macro = slot.floor_macro.unwrap_or(DEFAULT_FLOOR_MACRO_PICKS);
                     match self.curator.as_ref() {
@@ -385,7 +385,7 @@ impl UnifiedDigestScheduler {
                             .pass2_personalize(
                                 cache.picks_with_bodies.clone(),
                                 &cache.audience,
-                                thesis,
+                                mainline,
                                 floor_macro,
                                 self.final_pick_n,
                             )
@@ -1062,7 +1062,7 @@ fn actor_focus_symbols(
             }
         }
     }
-    if let Some(theses) = prefs.investment_theses.as_ref() {
+    if let Some(theses) = prefs.mainline_by_ticker.as_ref() {
         for symbol in theses.keys() {
             insert_symbol(&mut symbols, symbol);
         }
@@ -1142,7 +1142,7 @@ mod tests {
         let actor = actor();
         storage.upsert_watch(&actor, "AAPL", "stock").unwrap();
         let mut prefs = NotificationPrefs::default();
-        prefs.investment_theses = Some(HashMap::from([("MU".to_string(), "memory".to_string())]));
+        prefs.mainline_by_ticker = Some(HashMap::from([("MU".to_string(), "memory".to_string())]));
 
         let symbols = actor_focus_symbols(&storage, &actor, &prefs);
 

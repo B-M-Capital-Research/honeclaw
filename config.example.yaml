@@ -275,7 +275,7 @@ event_engine:
   #     10-Q / 10-K          → Medium(季报 / 年报)
   #     DEF 14A              → Low(委托书 / 治理薪酬)
   #   想关掉某 form 直接从这里删掉它,不需要改代码。空数组等于关闭整个 poller。
-  # enrichment: 是否给 SEC filing 调 LLM 生成 ~200 字业务摘要(thesis-investor
+  # enrichment: 是否给 SEC filing 调 LLM 生成 ~200 字业务摘要(长期主线投资者
   #   视角:跳过 GAAP 数字,抓 backlog / 资本配置 / 风险因子新增)。
   #   POC 实证 grok-4.1-fast 在 11 持仓 × 一年 ~70 条 filing 上 ≈ $0.82/年,质量、
   #   成本、延迟均第一。失败 fallback 走原始 form/link body,不阻塞推送。

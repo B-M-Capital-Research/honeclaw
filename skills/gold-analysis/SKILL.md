@@ -23,6 +23,6 @@ Use this skill when the user asks about gold, gold-linked ETFs such as `GLD`, or
 
 ### Output Goal
 
-Deliver a concise research note that explains what is currently supporting or pressuring gold, what conditions would strengthen or weaken the thesis, and which indicators the user should keep monitoring. Keep the tone analytical and avoid direct buy or sell instructions.
+Deliver a concise research note that explains what is currently supporting or pressuring gold, what conditions would strengthen or weaken the investment mainline, and which indicators the user should keep monitoring. Keep the tone analytical and avoid direct buy or sell instructions.
 
 If the user wants a trend chart for gold, real yields, DXY, ETF flows, or a side-by-side miner comparison, use `chart_visualization` once you have the relevant numbers.

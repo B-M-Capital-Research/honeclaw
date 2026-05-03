@@ -300,7 +300,7 @@ mod tests {
     fn keeps_low_severity_when_fmp_source_class_is_trusted() {
         // 2026-04-27 POC 复盘后:trusted 域 FMP 即便 severity=Low 也进候选池。
         // 之前 pollers::news::classify_severity 只在命中 distress/M&A 关键词时升 High,
-        // 导致 GOOGL 财报预告等 thesis 硬料被砍。Pass1 LLM 会自行打低分压住噪音。
+        // 导致 GOOGL 财报预告等主线硬料被砍。Pass1 LLM 会自行打低分压住噪音。
         let store = open_store();
         let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
         store

@@ -88,15 +88,15 @@ pub struct ProfileEventMetadata {
     pub event_type: String,
     pub occurred_at: String,
     pub captured_at: String,
-    #[serde(default = "default_thesis_impact")]
-    pub thesis_impact: String,
+    #[serde(default = "default_mainline_impact", alias = "thesis_impact")]
+    pub mainline_impact: String,
     #[serde(default)]
     pub changed_sections: Vec<String>,
     #[serde(default)]
     pub refs: Vec<String>,
 }
 
-pub(crate) fn default_thesis_impact() -> String {
+pub(crate) fn default_mainline_impact() -> String {
     "unknown".to_string()
 }
 
@@ -199,8 +199,12 @@ pub struct CompanyProfileImportProfileSummary {
     pub stock_code: String,
     pub updated_at: String,
     pub event_count: usize,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub thesis_excerpt: String,
+    #[serde(
+        default,
+        skip_serializing_if = "String::is_empty",
+        alias = "thesis_excerpt"
+    )]
+    pub mainline_excerpt: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -362,12 +366,12 @@ pub struct AppendEventInput {
     pub title: String,
     pub event_type: String,
     pub occurred_at: String,
-    pub thesis_impact: String,
+    pub mainline_impact: String,
     pub changed_sections: Vec<String>,
     pub refs: Vec<String>,
     pub what_happened: String,
     pub why_it_matters: String,
-    pub thesis_effect: String,
+    pub mainline_effect: String,
     pub evidence: String,
     pub research_log: String,
     pub follow_up: String,

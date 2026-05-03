@@ -862,8 +862,8 @@ impl EventStore {
     /// - RSS 源(Bloomberg/SpaceNews/STAT 等):无脑 High,severity 不再二次过滤
     /// - FMP `trusted` 域(reuters/wsj/cnbc/marketwatch 等):允许 Low 进入候选池
     ///   —— `pollers::news::classify_severity` 只在命中 distress/M&A 关键词时才升 High,
-    ///   导致 GOOGL 财报预告、Tokyo Electron 半导体上下游等 thesis 硬料被砍。
-    ///   POC 实测 24h 多出 19 条 trusted-Low,其中 ~25% 是 thesis 相关硬料,
+    ///   导致 GOOGL 财报预告、Tokyo Electron 半导体上下游等主线硬料被砍。
+    ///   POC 实测 24h 多出 19 条 trusted-Low,其中 ~25% 是主线相关硬料,
     ///   工作日扩量 ~80-180 条仍在 Pass1 prompt 容量内。
     /// - FMP 非 trusted 域(opinion_blog / pr_wire / uncertain):仍按 high/medium 严格门槛,
     ///   防止 seekingalpha listicle、律所 PR 灌进来。

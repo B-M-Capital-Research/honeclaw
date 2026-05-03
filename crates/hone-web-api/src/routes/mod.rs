@@ -119,12 +119,12 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
                 .delete(event_engine_admin::handle_delete_rss_feed),
         )
         .route(
-            "/event-engine/thesis-distill",
-            post(event_engine_admin::handle_distill_thesis_now),
+            "/event-engine/mainline-distill",
+            post(event_engine_admin::handle_distill_mainline_now),
         )
         .route(
-            "/event-engine/thesis-context",
-            get(event_engine_admin::handle_get_thesis_context),
+            "/event-engine/mainline-context",
+            get(event_engine_admin::handle_get_mainline_context),
         )
         .route(
             "/event-engine/company-profile",

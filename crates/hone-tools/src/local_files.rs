@@ -632,7 +632,7 @@ mod tests {
         fs::create_dir_all(root.join("uploads")).expect("uploads dir");
         fs::write(
             root.join("company_profiles/aaoi/profile.md"),
-            "# AAOI\n\nTicker: AAOI\n\nThesis: optics vendor\n",
+            "# AAOI\n\nTicker: AAOI\n\n投资主线: optics vendor\n",
         )
         .expect("write profile");
         fs::write(

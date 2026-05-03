@@ -329,13 +329,13 @@ pub(crate) async fn handle_update_rss_feed(
     }
 }
 
-// ─────────────────────────── thesis context (admin view) ──────────
+// ─────────────────────────── 投资主线 context (admin view) ──────────
 
-/// GET /api/event-engine/thesis-context?channel=&user_id=&channel_scope=
+/// GET /api/event-engine/mainline-context?channel=&user_id=&channel_scope=
 ///
-/// 管理端查看任意 actor 的蒸馏 thesis 与画像 inventory。和 public 端
+/// 管理端查看任意 actor 的蒸馏投资主线与画像 inventory。和 public 端
 /// `/api/public/digest-context` 内容一致,但 actor 由 query 指定而非 session。
-pub(crate) async fn handle_get_thesis_context(
+pub(crate) async fn handle_get_mainline_context(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<UserIdQuery>,
 ) -> Response {
@@ -375,10 +375,10 @@ pub(crate) async fn handle_get_thesis_context(
             "user_id": actor.user_id,
             "channel_scope": actor.channel_scope,
         },
-        "investment_global_style": prefs.investment_global_style,
-        "investment_theses": prefs.investment_theses.clone().unwrap_or_default(),
-        "last_thesis_distilled_at": prefs.last_thesis_distilled_at,
-        "thesis_distill_skipped": prefs.thesis_distill_skipped,
+        "mainline_style": prefs.mainline_style,
+        "mainline_by_ticker": prefs.mainline_by_ticker.clone().unwrap_or_default(),
+        "last_mainline_distilled_at": prefs.last_mainline_distilled_at,
+        "mainline_distill_skipped": prefs.mainline_distill_skipped,
         "holdings": holdings,
         "profile_list": profile_summaries,
     }))
@@ -481,13 +481,13 @@ fn list_profile_summaries_admin(sandbox_root: &PathBuf) -> Vec<serde_json::Value
     out
 }
 
-// ─────────────────────────── thesis distill manual ─────────────────
+// ─────────────────────────── 投资主线手动蒸馏 ─────────────────────
 
-/// POST /api/event-engine/thesis-distill?channel=&user_id=&channel_scope=
+/// POST /api/event-engine/mainline-distill?channel=&user_id=&channel_scope=
 ///
-/// 立即对指定 actor 跑一次 thesis 蒸馏 —— admin 调试 / 用户主动刷新用。
+/// 立即对指定 actor 跑一次投资主线蒸馏 —— admin 调试 / 用户主动刷新用。
 /// 平时由 web-api 启动的 cron 每 7 天自动跑,不需要走这条。
-pub(crate) async fn handle_distill_thesis_now(
+pub(crate) async fn handle_distill_mainline_now(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<UserIdQuery>,
 ) -> Response {
@@ -504,7 +504,7 @@ pub(crate) async fn handle_distill_thesis_now(
         Ok(None) => {
             return json_error(
                 StatusCode::NOT_FOUND,
-                "actor 没有 portfolio,无法蒸馏 thesis(请先建仓)",
+                "actor 没有 portfolio,无法蒸馏投资主线(请先建仓)",
             );
         }
         Err(e) => {
@@ -522,7 +522,7 @@ pub(crate) async fn handle_distill_thesis_now(
     if holdings.is_empty() {
         return json_error(
             StatusCode::BAD_REQUEST,
-            "portfolio 持仓为空,无法蒸馏 thesis",
+            "portfolio 持仓为空,无法蒸馏投资主线",
         );
     }
 
@@ -544,7 +544,7 @@ pub(crate) async fn handle_distill_thesis_now(
         .global_digest
         .event_dedupe_model
         .clone();
-    let distiller = hone_event_engine::global_digest::LlmThesisDistiller::new(provider, model);
+    let distiller = hone_event_engine::global_digest::LlmMainlineDistiller::new(provider, model);
 
     let prefs_storage = match hone_event_engine::prefs::FilePrefsStorage::new(
         &state.core.config.storage.notif_prefs_dir,
@@ -576,10 +576,10 @@ pub(crate) async fn handle_distill_thesis_now(
 
     Json(json!({
         "ok": true,
-        "theses_count": updated.investment_theses.as_ref().map(|m| m.len()).unwrap_or(0),
-        "global_style_set": updated.investment_global_style.is_some(),
-        "skipped_tickers": updated.thesis_distill_skipped,
-        "last_distilled_at": updated.last_thesis_distilled_at,
+        "mainline_count": updated.mainline_by_ticker.as_ref().map(|m| m.len()).unwrap_or(0),
+        "mainline_style_set": updated.mainline_style.is_some(),
+        "skipped_tickers": updated.mainline_distill_skipped,
+        "last_distilled_at": updated.last_mainline_distilled_at,
     }))
     .into_response()
 }

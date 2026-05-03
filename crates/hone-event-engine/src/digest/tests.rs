@@ -1,6 +1,6 @@
 use super::*;
 use crate::event::{EventKind, MarketEvent, Severity};
-use chrono::{TimeZone, Utc};
+use chrono::{FixedOffset, TimeZone, Utc};
 use hone_core::ActorIdentity;
 use tempfile::tempdir;
 
@@ -232,10 +232,13 @@ fn render_digest_includes_macro_values() {
 
 #[test]
 fn render_digest_includes_macro_time_when_values_are_missing() {
+    // 用 now+2h 而不是硬编码绝对时间 —— renderer 按 `occurred_at > now()` 决定
+    // 用 "待公布" 还是 "时间",硬编码会随系统时钟漂移而 flake。
+    let occurred_at = Utc::now() + chrono::Duration::hours(2);
     let mut event = ev("macro-1", "");
     event.kind = EventKind::MacroEvent;
     event.symbols.clear();
-    event.occurred_at = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap();
+    event.occurred_at = occurred_at;
     event.title = "[US] ISM Manufacturing PMI (Apr)".into();
     event.summary.clear();
 
@@ -246,10 +249,12 @@ fn render_digest_includes_macro_time_when_values_are_missing() {
         crate::renderer::RenderFormat::Plain,
     );
 
-    assert!(
-        body.contains("[US] ISM Manufacturing PMI (Apr) · 待公布 05-01 22:00 UTC+8"),
-        "body = {body}"
-    );
+    let expected_time = occurred_at
+        .with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap())
+        .format("%m-%d %H:%M")
+        .to_string();
+    let needle = format!("[US] ISM Manufacturing PMI (Apr) · 待公布 {expected_time} UTC+8");
+    assert!(body.contains(&needle), "body = {body}");
 }
 
 #[test]

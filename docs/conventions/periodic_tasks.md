@@ -1,7 +1,7 @@
 # 周期性任务表达约定
 
 honeclaw 同时跑着事件源拉取、digest scheduler、daily report、retention cleanup、
-subscription 热刷新、thesis distill cron、heartbeat 等多套"长跑后台 task"。
+subscription 热刷新、mainline distill cron(投资主线蒸馏)、heartbeat 等多套"长跑后台 task"。
 本文沉淀 5 条 idiom 约定,目的是让"读代码的人无论看哪段周期任务,
 都能用同一个心智模型快速理解",并作为后续 PR 的对齐模板。
 
@@ -83,8 +83,8 @@ loop {
 
 | 字段 | 取值范围 | 说明 |
 |---|---|---|
-| `task` | 形如 `poller.fmp.earnings` / `internal.daily_report` / `thesis_cron` / `heartbeat.feishu` | 稳定标识,跟 `task_runs.jsonl` 的 task 字段一致 |
-| `outcome` | `ok` / `skipped` / `failed` | tick 结果。skipped 表示按业务策略主动跳过(如 thesis cron 的 staleness 判断),不是失败 |
+| `task` | 形如 `poller.fmp.earnings` / `internal.daily_report` / `mainline_cron` / `heartbeat.feishu` | 稳定标识,跟 `task_runs.jsonl` 的 task 字段一致 |
+| `outcome` | `ok` / `skipped` / `failed` | tick 结果。skipped 表示按业务策略主动跳过(如 mainline cron 的 staleness 判断),不是失败 |
 | `items` | 整数,可省 | 本次处理条数(事件、推送、蒸馏对象等) |
 | `degraded` | `true`,可省 | 仅指**上游网络降级**(API 限流、超时、5xx),不等同 `outcome=failed`。当一次 tick 部分上游失败但总体仍走完,用 `outcome=ok` + `degraded=true` |
 
@@ -98,7 +98,7 @@ loop {
 任何"上次跑了什么时候 / 跑过什么 key"的持久化字段:
 
 - **RFC3339 时间戳**:统一命名 `last_<verb>_at`
-  (已有:`last_thesis_distilled_at`、`cron_jobs.last_run_at`)。
+  (已有:`last_mainline_distilled_at`、`cron_jobs.last_run_at`)。
   `<verb>` 用过去式动词,不要用名词
   (`last_distill_at` ✗ → `last_distilled_at` ✓)
 - **内存 fired key**(防止同窗口重复触发):
@@ -121,7 +121,7 @@ loop {
 本身就够短(60s ~ 24h),下一 tick 自动恢复比手撸 backoff 简单且效果相当。
 
 适用:所有 event-engine pollers / digest scheduler / daily report / cleanup /
-hot-refresh / thesis_cron。
+hot-refresh / mainline_cron。
 
 ### Tier-B:consecutive_failures 计数 + 文件 sidecar
 

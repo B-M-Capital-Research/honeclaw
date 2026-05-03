@@ -1,6 +1,6 @@
 //! 全局 digest 内核 —— curator (Pass1+Pass2) / fetcher / audience / event_dedupe /
-//! thesis_distill。从 commit 3 起,scheduler 已合并进 `unified_digest::scheduler`,
-//! 本目录只保留为 unified pipeline 的 LLM 内核;`GlobalNewsSource` 在
+//! mainline_distill(投资主线蒸馏)。scheduler 在 `unified_digest::scheduler`,
+//! 本目录是 unified pipeline 的 LLM 内核;`GlobalNewsSource` 在
 //! `unified_digest::sources::global` 里 wrap `collector` 输出成 `UnifiedCandidate`。
 //!
 //! Pipeline(由 `unified_digest::scheduler` 编排):
@@ -17,26 +17,26 @@ pub mod collector;
 pub mod curator;
 pub mod event_dedupe;
 pub mod fetcher;
+pub mod mainline_cron;
+pub mod mainline_distill;
 pub mod renderer;
-pub mod thesis_cron;
-pub mod thesis_distill;
 
 pub use audience::{AudienceBuilder, AudienceContext, BriefSource, CompanyBrief};
 pub use collector::{CandidateCollector, GlobalDigestCandidate};
 pub use curator::{
-    BaselineCuratedItem, Curator, PersonalizedItem, PickCategory, RankedCandidate, ThesisRelation,
-    UserThesis,
+    BaselineCuratedItem, Curator, MainlineRelation, PersonalizedItem, PickCategory,
+    RankedCandidate, UserMainline,
 };
 pub use event_dedupe::{
     ClusterAudit, DedupeStats, EventDeduper, LlmEventDeduper, PassThroughDeduper,
 };
 pub use fetcher::{ArticleBody, ArticleFetcher, ArticleSource};
-pub use renderer::render_global_digest;
-pub use thesis_cron::{
+pub use mainline_cron::{
     DEFAULT_DISTILL_INTERVAL_HOURS, MIN_RETRY_INTERVAL_HOURS, TriggerReason, WEEKLY_REFRESH_HOURS,
     distill_cron_loop, distill_tick, should_trigger,
 };
-pub use thesis_distill::{
-    DistilledTheses, LlmThesisDistiller, ProfileSource, ThesisDistiller, actor_sandbox_dir,
+pub use mainline_distill::{
+    DistilledMainlines, LlmMainlineDistiller, MainlineDistiller, ProfileSource, actor_sandbox_dir,
     distill_and_persist_one, distill_for_actor, extract_tickers, merge_into_prefs, scan_profiles,
 };
+pub use renderer::render_global_digest;

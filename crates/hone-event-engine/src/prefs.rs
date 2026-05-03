@@ -84,20 +84,23 @@ pub struct NotificationPrefs {
     /// 全局 digest Pass 2 personalize 时使用的"投资风格"自由文本。
     /// 例如:"长期叙事派,重视行业结构性叙事,轻视短期估值/技术形态/分析师评级"。
     /// LLM 会按此风格剔除用户视角下的噪音。`None` → 走 baseline 排序,不做风格过滤。
-    pub investment_global_style: Option<String>,
-    /// 每个 ticker 的投资逻辑(thesis)。LLM 在 personalize 时按此重排:印证 thesis 的
-    /// 优先,反证保留并标注,thesis 视角下的噪音剔除。例如 `MU → "看 NAND/DRAM 长期
+    #[serde(alias = "investment_global_style")]
+    pub mainline_style: Option<String>,
+    /// 每个 ticker 的投资主线。LLM 在 personalize 时按此重排:印证主线的优先,
+    /// 证伪保留并标注,主线视角下的噪音剔除。例如 `MU → "看 NAND/DRAM 长期
     /// 稀缺性,噪音是估值过热/单日大涨大跌"`。`None` / 空 map → 不做 per-ticker 重排。
-    pub investment_theses: Option<HashMap<String, String>>,
-    /// **系统蒸馏元数据**(2026-04-26 起):`investment_theses` / `investment_global_style`
+    #[serde(alias = "investment_theses")]
+    pub mainline_by_ticker: Option<HashMap<String, String>>,
+    /// **系统蒸馏元数据**(2026-04-26 起):`mainline_by_ticker` / `mainline_style`
     /// 由后台 cron 周扫用户 sandbox `company_profiles/*/profile.md` 自动蒸馏写入,
     /// 用户不再通过 NL tool 直接编辑。本字段是 RFC3339 时间戳记录最近一次蒸馏成功时刻,
     /// 让前端可以展示"上次更新"和判断是否需要手动刷一次。`None` = 还没蒸过(老数据兼容)。
-    pub last_thesis_distilled_at: Option<String>,
+    #[serde(alias = "last_thesis_distilled_at")]
+    pub last_mainline_distilled_at: Option<String>,
     /// 蒸馏过程中跳过的 ticker(无 profile / LLM 失败 / 画像没有 ticker 标识)。
     /// 用于前端提示"这些持仓还没有画像或最近一次蒸馏失败"。
-    #[serde(default)]
-    pub thesis_distill_skipped: Vec<String>,
+    #[serde(default, alias = "thesis_distill_skipped")]
+    pub mainline_distill_skipped: Vec<String>,
     /// 勿扰时段 —— 用户希望"晚 X 点后别推、早 Y 点合并发我"。`None` = 不启用。
     /// 区间内：所有 immediate sink 推送被 hold 写 `delivery_log.status='quiet_held'`，
     /// digest fire 也跳过；`to` 时刻触发 `quiet_flush` 把 hold 住的事件 + buffer 里
@@ -130,10 +133,10 @@ impl Default for NotificationPrefs {
             price_high_pct_up_override: None,
             price_high_pct_down_override: None,
             large_position_weight_pct: None,
-            investment_global_style: None,
-            investment_theses: None,
-            last_thesis_distilled_at: None,
-            thesis_distill_skipped: Vec::new(),
+            mainline_style: None,
+            mainline_by_ticker: None,
+            last_mainline_distilled_at: None,
+            mainline_distill_skipped: Vec::new(),
             quiet_hours: None,
         }
     }
@@ -478,14 +481,14 @@ mod tests {
             price_high_pct_up_override: Some(6.0),
             price_high_pct_down_override: Some(5.0),
             large_position_weight_pct: Some(20.0),
-            investment_global_style: Some("长期叙事派".into()),
-            investment_theses: Some({
+            mainline_style: Some("长期叙事派".into()),
+            mainline_by_ticker: Some({
                 let mut m = HashMap::new();
                 m.insert("AAPL".into(), "看现金流 + 回购".into());
                 m
             }),
-            last_thesis_distilled_at: Some("2026-04-26T09:00:00Z".into()),
-            thesis_distill_skipped: vec!["XYZ".into()],
+            last_mainline_distilled_at: Some("2026-04-26T09:00:00Z".into()),
+            mainline_distill_skipped: vec!["XYZ".into()],
             quiet_hours: Some(QuietHours {
                 from: "23:00".into(),
                 to: "07:00".into(),
@@ -500,10 +503,10 @@ mod tests {
         assert_eq!(loaded.allow_kinds.as_deref(), Some(&["split".into()][..]));
         assert_eq!(loaded.timezone.as_deref(), Some("America/New_York"));
         assert_eq!(
-            loaded.digest_slots.as_deref().map(|s| s
-                .iter()
-                .map(|x| x.time.clone())
-                .collect::<Vec<_>>()),
+            loaded
+                .digest_slots
+                .as_deref()
+                .map(|s| s.iter().map(|x| x.time.clone()).collect::<Vec<_>>()),
             Some(vec!["07:00".to_string()])
         );
         assert_eq!(loaded.price_high_pct_override, Some(3.5));
@@ -520,23 +523,20 @@ mod tests {
         assert_eq!(loaded.price_high_pct_up_override, Some(6.0));
         assert_eq!(loaded.price_high_pct_down_override, Some(5.0));
         assert_eq!(loaded.large_position_weight_pct, Some(20.0));
-        assert_eq!(
-            loaded.investment_global_style.as_deref(),
-            Some("长期叙事派")
-        );
+        assert_eq!(loaded.mainline_style.as_deref(), Some("长期叙事派"));
         assert_eq!(
             loaded
-                .investment_theses
+                .mainline_by_ticker
                 .as_ref()
                 .and_then(|m| m.get("AAPL"))
                 .map(String::as_str),
             Some("看现金流 + 回购")
         );
         assert_eq!(
-            loaded.last_thesis_distilled_at.as_deref(),
+            loaded.last_mainline_distilled_at.as_deref(),
             Some("2026-04-26T09:00:00Z")
         );
-        assert_eq!(loaded.thesis_distill_skipped, vec!["XYZ".to_string()]);
+        assert_eq!(loaded.mainline_distill_skipped, vec!["XYZ".to_string()]);
     }
 
     #[test]
@@ -552,8 +552,36 @@ mod tests {
         assert!(p.price_high_pct_up_override.is_none());
         assert!(p.price_high_pct_down_override.is_none());
         assert!(p.large_position_weight_pct.is_none());
-        assert!(p.investment_global_style.is_none());
-        assert!(p.investment_theses.is_none());
+        assert!(p.mainline_style.is_none());
+        assert!(p.mainline_by_ticker.is_none());
+    }
+
+    #[test]
+    fn legacy_thesis_field_names_load_via_serde_alias() {
+        // 老 prefs JSON 用 thesis 字段名,新 schema 必须经 #[serde(alias)] 兼容,
+        // 否则线上已部署的 prefs 文件升级后读不出投资主线。
+        let json = r#"{
+            "enabled": true,
+            "investment_global_style": "长期叙事派",
+            "investment_theses": {"AAPL": "看现金流 + 回购"},
+            "last_thesis_distilled_at": "2026-04-26T09:00:00Z",
+            "thesis_distill_skipped": ["XYZ"]
+        }"#;
+        let p: NotificationPrefs =
+            serde_json::from_str(json).expect("legacy prefs JSON should load");
+        assert_eq!(p.mainline_style.as_deref(), Some("长期叙事派"));
+        assert_eq!(
+            p.mainline_by_ticker
+                .as_ref()
+                .and_then(|m| m.get("AAPL"))
+                .map(String::as_str),
+            Some("看现金流 + 回购")
+        );
+        assert_eq!(
+            p.last_mainline_distilled_at.as_deref(),
+            Some("2026-04-26T09:00:00Z")
+        );
+        assert_eq!(p.mainline_distill_skipped, vec!["XYZ".to_string()]);
     }
 
     #[test]

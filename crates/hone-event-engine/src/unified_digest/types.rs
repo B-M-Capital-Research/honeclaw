@@ -4,7 +4,7 @@
 //! - `ItemOrigin` — `DigestItem` 的来源标签,渲染层据此决定 emoji / 排序。
 //! - `FloorTag` — High severity / earnings T-N / `immediate_kinds` 等绕过 LLM 的
 //!   优先级标签;floor 条目永远 prepend 到 payload 顶部,不被 max_items_per_batch 挤掉。
-//! - `ThesisRelation` — Pass 2 personalize 标记一条 item 与用户 thesis 的关系。
+//! - `MainlineRelation` — Pass 2 personalize 标记一条 item 与用户投资主线的关系。
 //! - `DigestSlot` — 用户自定义的 digest 触发槽位。
 
 use serde::{Deserialize, Serialize};
@@ -42,15 +42,15 @@ pub enum FloorTag {
     MacroFloor,
 }
 
-/// Pass 2 personalize 标记的"该条与用户 thesis 的关系"。
+/// Pass 2 personalize 标记的"该条与用户投资主线的关系"。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ThesisRelation {
-    /// 印证用户对该 ticker 的看多/看空 thesis。
+pub enum MainlineRelation {
+    /// 印证用户对该 ticker 的看多/看空主线。
     Aligned,
-    /// 反证 thesis —— 强制保留并标注。
+    /// 证伪主线 —— 强制保留并标注。
     Counter,
-    /// 与任何 thesis 无明显关系(pure macro / 旁系)。
+    /// 与任何主线无明显关系(pure macro / 旁系)。
     Neutral,
 }
 
@@ -66,7 +66,7 @@ pub struct DigestSlot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     /// 该 slot 的 macro floor 条数。`None` → 走 scheduler 兜底(`DEFAULT_FLOOR_MACRO_PICKS = 1`)。
-    /// 即使 thesis 把所有宏观料剔除,Pass 2 personalize 至少保留这么多条 macro_floor,
+    /// 即使主线把所有宏观料剔除,Pass 2 personalize 至少保留这么多条 macro_floor,
     /// 让用户看到大盘背景。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub floor_macro: Option<u32>,
@@ -113,8 +113,8 @@ mod tests {
     }
 
     #[test]
-    fn thesis_relation_serde_snake_case() {
-        let json = serde_json::to_string(&ThesisRelation::Counter).unwrap();
+    fn mainline_relation_serde_snake_case() {
+        let json = serde_json::to_string(&MainlineRelation::Counter).unwrap();
         assert_eq!(json, "\"counter\"");
     }
 

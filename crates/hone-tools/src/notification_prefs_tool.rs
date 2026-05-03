@@ -118,8 +118,8 @@ fn prefs_to_json(prefs: &NotificationPrefs) -> Value {
         "digest_slots": prefs.digest_slots,
         "price_high_pct_override": prefs.price_high_pct_override,
         "immediate_kinds": prefs.immediate_kinds,
-        "investment_global_style": prefs.investment_global_style,
-        "investment_theses": prefs.investment_theses,
+        "mainline_style": prefs.mainline_style,
+        "mainline_by_ticker": prefs.mainline_by_ticker,
         "quiet_hours": prefs.quiet_hours.as_ref().map(|qh| json!({
             "from": qh.from,
             "to": qh.to,

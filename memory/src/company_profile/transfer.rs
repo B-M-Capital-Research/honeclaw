@@ -844,15 +844,20 @@ fn import_profile_summary(document: &CompanyProfileDocument) -> CompanyProfileIm
         stock_code: document.metadata.stock_code.clone(),
         updated_at: document.metadata.updated_at.clone(),
         event_count: document.events.len(),
-        thesis_excerpt: thesis_excerpt_from_markdown(&document.markdown),
+        mainline_excerpt: mainline_excerpt_from_markdown(&document.markdown),
     }
 }
 
-fn thesis_excerpt_from_markdown(markdown: &str) -> String {
+fn mainline_excerpt_from_markdown(markdown: &str) -> String {
     let (sections, extra_lines) = parse_profile_sections(markdown);
     let content = sections
         .iter()
-        .find(|(title, _)| title.trim().eq_ignore_ascii_case("Thesis"))
+        // 兼容旧 profile.md 仍使用 "## Thesis" 章节名(术语统一前的历史写法);
+        // 新模板写盘用 "## 投资主线"。两个标题名都视为投资主线 section。
+        .find(|(title, _)| {
+            let t = title.trim();
+            t.eq_ignore_ascii_case("Thesis") || t == "投资主线"
+        })
         .map(|(_, content)| content.trim().to_string())
         .or_else(|| {
             sections.iter().find_map(|(_, content)| {

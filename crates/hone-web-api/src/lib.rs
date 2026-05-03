@@ -420,7 +420,7 @@ pub async fn start_server(
                 }
             };
 
-        // ── Thesis 蒸馏 cron(每 7 天扫一次,独立 task,挂掉不影响 digest)──
+        // ── 投资主线蒸馏 cron(每 7 天扫一次,独立 task,挂掉不影响 digest)──
         if let Some(p) = global_digest_provider.clone() {
             let distill_model = state
                 .core
@@ -431,14 +431,14 @@ pub async fn start_server(
                 .clone();
             let prefs_dir_clone = notif_prefs_dir.clone();
             let portfolio_dir_clone = portfolio_dir.clone();
-            let thesis_task_runs_dir = task_runs_dir_arc.clone();
+            let mainline_task_runs_dir = task_runs_dir_arc.clone();
             task_handles.push(tokio::spawn(async move {
                 let prefs_storage =
                     match hone_event_engine::prefs::FilePrefsStorage::new(&prefs_dir_clone) {
                         Ok(s) => Arc::new(s) as Arc<dyn hone_event_engine::prefs::PrefsProvider>,
                         Err(e) => {
                             tracing::warn!(
-                                "thesis distill cron: prefs storage 打开失败: {e},cron 不启动"
+                                "mainline distill cron: prefs storage 打开失败: {e},cron 不启动"
                             );
                             return;
                         }
@@ -447,7 +447,7 @@ pub async fn start_server(
                     Arc::new(hone_memory::PortfolioStorage::new(&portfolio_dir_clone));
                 let sandbox_base = hone_channels::sandbox_base_dir();
                 let distiller =
-                    Arc::new(hone_event_engine::global_digest::LlmThesisDistiller::new(
+                    Arc::new(hone_event_engine::global_digest::LlmMainlineDistiller::new(
                         p,
                         distill_model.clone(),
                     ));
@@ -455,7 +455,7 @@ pub async fn start_server(
                     model = %distill_model,
                     sandbox_base = %sandbox_base.display(),
                     interval_hours = hone_event_engine::global_digest::DEFAULT_DISTILL_INTERVAL_HOURS,
-                    "thesis distill cron starting"
+                    "mainline distill cron starting"
                 );
                 hone_event_engine::global_digest::distill_cron_loop(
                     distiller,
@@ -463,7 +463,7 @@ pub async fn start_server(
                     portfolio_storage,
                     sandbox_base,
                     hone_event_engine::global_digest::DEFAULT_DISTILL_INTERVAL_HOURS,
-                    Some(thesis_task_runs_dir),
+                    Some(mainline_task_runs_dir),
                 )
                 .await;
             }));

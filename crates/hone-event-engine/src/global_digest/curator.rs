@@ -39,7 +39,7 @@ pub struct RankedCandidate {
     pub pass1_takeaway: String, // 一句话精炼
 }
 
-/// Pass 2 baseline 输出项(无 thesis,跨用户共享,落 daily_report 审计用)。
+/// Pass 2 baseline 输出项(无投资主线,跨用户共享,落 daily_report 审计用)。
 #[derive(Debug, Clone)]
 pub struct BaselineCuratedItem {
     pub candidate: GlobalDigestCandidate,
@@ -52,41 +52,44 @@ pub struct BaselineCuratedItem {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PickCategory {
-    /// 印证用户 thesis(rank 通常靠前)
-    ThesisAligned,
-    /// 反证 thesis(保留以警觉用户)
-    ThesisCounter,
-    /// 宏观底线 slot —— 即使 thesis 不关心,大盘背景必须保留至少 N 条
+    /// 印证用户投资主线(rank 通常靠前)
+    #[serde(alias = "thesis_aligned")]
+    MainlineAligned,
+    /// 证伪主线(保留以警觉用户)
+    #[serde(alias = "thesis_counter")]
+    MainlineCounter,
+    /// 宏观底线 slot —— 即使主线不关心,大盘背景必须保留至少 N 条
     MacroFloor,
 }
 
 impl PickCategory {
     fn from_str(s: &str) -> Self {
         match s {
-            "thesis_counter" => PickCategory::ThesisCounter,
+            "mainline_counter" | "thesis_counter" => PickCategory::MainlineCounter,
             "macro_floor" => PickCategory::MacroFloor,
-            _ => PickCategory::ThesisAligned,
+            _ => PickCategory::MainlineAligned,
         }
     }
 }
 
-/// thesis 对该 pick 的关系标记(短评里 LLM 用,渲染时也展示)。
+/// 投资主线对该 pick 的关系标记(短评里 LLM 用,渲染时也展示)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ThesisRelation {
+pub enum MainlineRelation {
     Aligned,
     Counter,
     Neutral,
     NotApplicable,
 }
 
-impl ThesisRelation {
+impl MainlineRelation {
     fn from_str(s: &str) -> Self {
         match s {
-            "印证" | "aligned" => ThesisRelation::Aligned,
-            "反证" | "counter" => ThesisRelation::Counter,
-            "中立" | "neutral" => ThesisRelation::Neutral,
-            _ => ThesisRelation::NotApplicable,
+            "印证" | "aligned" => MainlineRelation::Aligned,
+            // "反证" 是旧术语,统一为"证伪"后保留兼容 LLM prompt-cache 短期回吐
+            "证伪" | "反证" | "counter" => MainlineRelation::Counter,
+            "中立" | "neutral" => MainlineRelation::Neutral,
+            _ => MainlineRelation::NotApplicable,
         }
     }
 }
@@ -97,17 +100,17 @@ pub struct PersonalizedItem {
     pub candidate: GlobalDigestCandidate,
     pub article: ArticleBody,
     pub rank: u32,
-    pub comment: String, // ≤100 字,直接引用 thesis 关键词
+    pub comment: String, // ≤100 字,直接引用主线关键词
     pub category: PickCategory,
-    pub thesis_relation: ThesisRelation,
+    pub mainline_relation: MainlineRelation,
 }
 
-/// 用户投资逻辑输入。global_style + per-ticker theses。两个都为空时 personalize
+/// 用户投资主线输入。整体风格 + per-ticker 主线。两个都为空时 personalize
 /// 退化成 baseline 行为。
 #[derive(Debug, Clone, Default)]
-pub struct UserThesis<'a> {
-    pub global_style: Option<&'a str>,
-    pub theses: Option<&'a HashMap<String, String>>,
+pub struct UserMainline<'a> {
+    pub style: Option<&'a str>,
+    pub by_ticker: Option<&'a HashMap<String, String>>,
 }
 
 /// LLM 返回的 Pass 1 单项原始字段(不含 candidate)。
@@ -151,12 +154,12 @@ struct Pass2PersonalizeItem {
     #[serde(default)]
     url: String,
     comment: String,
-    /// "thesis_aligned" / "thesis_counter" / "macro_floor"
+    /// "mainline_aligned" / "mainline_counter" / "macro_floor"(兼容旧 thesis_* 值)
     #[serde(default)]
     category: String,
-    /// "印证" / "反证" / "中立" / "N/A" / 英文同义
-    #[serde(default)]
-    thesis_relation: String,
+    /// "印证" / "证伪" / "中立" / "N/A" / 英文同义("反证"为旧值兼容)
+    #[serde(default, alias = "thesis_relation")]
+    mainline_relation: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,20 +212,20 @@ impl Curator {
         Ok(rank_and_dedupe(candidates, parsed.items, top_n))
     }
 
-    /// Pass 2 personalize:每用户独立跑,带其 thesis + macro floor。
+    /// Pass 2 personalize:每用户独立跑,带其投资主线 + macro floor。
     ///
     /// 行为(POC 验证):
-    /// - 印证 thesis 优先(即使 Pass 1 中等分)
-    /// - 反证保留并标 ThesisCounter,LLM 必须在短评里点出"是否构成实质反证"
+    /// - 印证主线优先(即使 Pass 1 中等分)
+    /// - 证伪保留并标 MainlineCounter,LLM 必须在短评里点出"是否构成实质证伪"
     /// - 用户视角噪音(短期估值/技术见顶/单日波动/笼统泡沫论)直接剔除
-    /// - **macro_floor**:无论 thesis 怎么过滤,至少留 floor_macro 条 macro_floor 标记
+    /// - **macro_floor**:无论主线怎么过滤,至少留 floor_macro 条 macro_floor 标记
     ///   候选池真没够格的就不强加(metadata `floor_satisfied=false`,只 warn 不错)
-    /// - thesis 完全为空 → 退化成 baseline 行为(全部标 ThesisAligned + Neutral)
+    /// - 主线完全为空 → 退化成 baseline 行为(全部标 MainlineAligned + Neutral)
     pub async fn pass2_personalize(
         &self,
         picks_with_bodies: Vec<(RankedCandidate, ArticleBody)>,
         audience: &AudienceContext,
-        thesis: UserThesis<'_>,
+        mainline: UserMainline<'_>,
         floor_macro: u32,
         final_n: u32,
     ) -> anyhow::Result<Vec<PersonalizedItem>> {
@@ -232,7 +235,7 @@ impl Curator {
         let messages = build_pass2_personalize_messages(
             &picks_with_bodies,
             audience,
-            &thesis,
+            &mainline,
             floor_macro,
             final_n,
         );
@@ -262,7 +265,7 @@ impl Curator {
         Ok(map_pass2_personalize(picks_with_bodies, parsed.picks))
     }
 
-    /// Pass 2 baseline:用强模型看全文重排,无用户 thesis。**输出落 daily_report 审计**,
+    /// Pass 2 baseline:用强模型看全文重排,无用户投资主线。**输出落 daily_report 审计**,
     /// 不直接发给用户。所有用户共享同一份(节省成本)。
     pub async fn pass2_baseline(
         &self,
@@ -384,7 +387,7 @@ fn map_pass2_baseline(
 fn build_pass2_personalize_messages(
     picks_with_bodies: &[(RankedCandidate, ArticleBody)],
     audience: &AudienceContext,
-    thesis: &UserThesis<'_>,
+    mainline: &UserMainline<'_>,
     floor_macro: u32,
     final_n: u32,
 ) -> Vec<Message> {
@@ -392,21 +395,21 @@ fn build_pass2_personalize_messages(
     let system = format!(
         "你是金融新闻精读助手。Pass 1 已经初筛出 {n} 篇候选,你看到了原文(部分付费墙抓不到)。
 
-**关键 1**:用户有明确投资风格和个股逻辑(下方\"用户投资逻辑\"段)。请按用户视角:
-- 印证用户叙事的事件优先(即使 Pass1 中等分),标 category=\"thesis_aligned\"
-- 反证事件保留(用户需知道叙事是否被证伪),标 category=\"thesis_counter\",短评必须点出\"是否构成实质反证\"
+**关键 1**:用户有明确投资风格和个股投资主线(下方\"用户投资主线\"段)。请按用户视角:
+- 印证主线的事件优先(即使 Pass1 中等分),标 category=\"mainline_aligned\"
+- 证伪事件保留(用户需知道主线是否被证伪),标 category=\"mainline_counter\",短评必须点出\"是否构成实质证伪\"
 - 用户视角下的噪音(短期估值警告 / 技术见顶 / 单日涨跌评论 / 笼统泡沫论)直接剔除
 
-**关键 2:宏观底线 (floor)**:无论用户 thesis 怎么过滤,至少保留 **{floor_macro} 条**宏观/地缘/油价/联储/政策/重大监管类硬料,标 category=\"macro_floor\"。
+**关键 2:宏观底线 (floor)**:无论用户主线怎么过滤,至少保留 **{floor_macro} 条**宏观/地缘/油价/联储/政策/重大监管类硬料,标 category=\"macro_floor\"。
 - 这类事件不是噪音 —— 是大盘背景,可能波及所有持仓
 - 例:Hormuz 海峡危机、Iran-US 摩擦、Fed 政策、油价急涨急跌、关税/制裁立法、CPI/就业意外
 - 候选池里**根本没有**够格的宏观硬料(都是公司新闻),可以不强加,但要在输出 metadata 里 `floor_satisfied=false`
 
-短评 ≤100 字,直接引用用户叙事关键词;宏观条目用\"对持仓的潜在波及\"角度写。至多 {final_n} 条。
+短评 ≤100 字,直接引用用户主线关键词;宏观条目用\"对持仓的潜在波及\"角度写。至多 {final_n} 条。
 
 严格输出 JSON,无其它字符:
 {{
-  \"picks\":[{{\"idx\":0,\"rank\":1,\"title\":\"原标题\",\"url\":\"原URL\",\"comment\":\"≤100字\",\"category\":\"thesis_aligned/thesis_counter/macro_floor\",\"thesis_relation\":\"印证/中立/反证/N/A\"}}],
+  \"picks\":[{{\"idx\":0,\"rank\":1,\"title\":\"原标题\",\"url\":\"原URL\",\"comment\":\"≤100字\",\"category\":\"mainline_aligned/mainline_counter/macro_floor\",\"mainline_relation\":\"印证/中立/证伪/N/A\"}}],
   \"floor_satisfied\": true
 }}"
     );
@@ -436,10 +439,10 @@ fn build_pass2_personalize_messages(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let thesis_block = render_thesis_block(thesis);
+    let mainline_block = render_mainline_block(mainline);
 
     let user = format!(
-        "## 受众持仓概览\n{briefs_block}\n\n## 用户投资逻辑\n{thesis_block}\n\n## 候选全文\n{cand_block}"
+        "## 受众持仓概览\n{briefs_block}\n\n## 用户投资主线\n{mainline_block}\n\n## 候选全文\n{cand_block}"
     );
 
     vec![
@@ -460,16 +463,16 @@ fn build_pass2_personalize_messages(
     ]
 }
 
-fn render_thesis_block(thesis: &UserThesis<'_>) -> String {
+fn render_mainline_block(mainline: &UserMainline<'_>) -> String {
     let mut lines = Vec::new();
-    if let Some(style) = thesis.global_style {
+    if let Some(style) = mainline.style {
         lines.push(format!("### 全局风格\n{style}"));
     }
-    if let Some(theses) = thesis.theses {
-        if !theses.is_empty() {
-            lines.push("### 个股投资逻辑".to_string());
+    if let Some(by_ticker) = mainline.by_ticker {
+        if !by_ticker.is_empty() {
+            lines.push("### 个股投资主线".to_string());
             // 按 ticker 排序保证 prompt 稳定
-            let mut entries: Vec<_> = theses.iter().collect();
+            let mut entries: Vec<_> = by_ticker.iter().collect();
             entries.sort_by_key(|(k, _)| k.as_str());
             for (sym, txt) in entries {
                 lines.push(format!("- **{sym}**:{txt}"));
@@ -477,8 +480,8 @@ fn render_thesis_block(thesis: &UserThesis<'_>) -> String {
         }
     }
     if lines.is_empty() {
-        // 完全无 thesis → 给 LLM 一个明确指示退化到 baseline 风格
-        return "(用户未配置 thesis,按 baseline 排序即可。category 全部标 \"thesis_aligned\",thesis_relation 标 \"中立\"。)".to_string();
+        // 完全无投资主线 → 给 LLM 一个明确指示退化到 baseline 风格
+        return "(用户未配置投资主线,按 baseline 排序即可。category 全部标 \"mainline_aligned\",mainline_relation 标 \"中立\"。)".to_string();
     }
     lines.join("\n\n")
 }
@@ -509,7 +512,7 @@ fn map_pass2_personalize(
             rank: it.rank,
             comment: it.comment,
             category: PickCategory::from_str(&it.category),
-            thesis_relation: ThesisRelation::from_str(&it.thesis_relation),
+            mainline_relation: MainlineRelation::from_str(&it.mainline_relation),
         });
     }
     out.sort_by_key(|x| x.rank);
@@ -1041,89 +1044,105 @@ mod tests {
     async fn pass2_personalize_categorizes_picks() {
         // LLM 输出:GOOGL 印证、半导体见顶被剔除、Hormuz 作为 macro_floor
         let json = r#"{"picks":[
-            {"idx":0,"rank":1,"title":"GOOGL Anthropic","url":"u","comment":"印证 Gemini 飞轮","category":"thesis_aligned","thesis_relation":"印证"},
-            {"idx":2,"rank":2,"title":"Hormuz","url":"u","comment":"波及电力叙事","category":"macro_floor","thesis_relation":"N/A"}
+            {"idx":0,"rank":1,"title":"GOOGL Anthropic","url":"u","comment":"印证 Gemini 飞轮","category":"mainline_aligned","mainline_relation":"印证"},
+            {"idx":2,"rank":2,"title":"Hormuz","url":"u","comment":"波及电力叙事","category":"macro_floor","mainline_relation":"N/A"}
         ],"floor_satisfied":true}"#;
         let (curator, _) = make_curator(json);
-        let mut theses_map = HashMap::new();
-        theses_map.insert("GOOGL".into(), "看 Gemini 生态飞轮".into());
-        let thesis = UserThesis {
-            global_style: Some("长期叙事派"),
-            theses: Some(&theses_map),
+        let mut by_ticker = HashMap::new();
+        by_ticker.insert("GOOGL".into(), "看 Gemini 生态飞轮".into());
+        let mainline = UserMainline {
+            style: Some("长期叙事派"),
+            by_ticker: Some(&by_ticker),
         };
         let out = curator
-            .pass2_personalize(picks(), &audience(), thesis, 1, 8)
+            .pass2_personalize(picks(), &audience(), mainline, 1, 8)
             .await
             .unwrap();
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].rank, 1);
-        assert_eq!(out[0].category, PickCategory::ThesisAligned);
-        assert_eq!(out[0].thesis_relation, ThesisRelation::Aligned);
+        assert_eq!(out[0].category, PickCategory::MainlineAligned);
+        assert_eq!(out[0].mainline_relation, MainlineRelation::Aligned);
         assert_eq!(out[1].rank, 2);
         assert_eq!(out[1].category, PickCategory::MacroFloor);
-        assert_eq!(out[1].thesis_relation, ThesisRelation::NotApplicable);
+        assert_eq!(out[1].mainline_relation, MainlineRelation::NotApplicable);
     }
 
     #[tokio::test]
-    async fn pass2_personalize_empty_thesis_works_like_baseline() {
+    async fn pass2_personalize_empty_mainline_works_like_baseline() {
         let json = r#"{"picks":[
-            {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"thesis_aligned","thesis_relation":"中立"}
+            {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"}
         ]}"#;
         let (curator, _) = make_curator(json);
-        let thesis = UserThesis::default(); // 全 None
+        let mainline = UserMainline::default(); // 全 None
         let out = curator
-            .pass2_personalize(picks(), &audience(), thesis, 0, 8)
+            .pass2_personalize(picks(), &audience(), mainline, 0, 8)
             .await
             .unwrap();
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].thesis_relation, ThesisRelation::Neutral);
+        assert_eq!(out[0].mainline_relation, MainlineRelation::Neutral);
     }
 
     #[tokio::test]
     async fn pass2_personalize_handles_unknown_category_string() {
-        // LLM 返回的 category 字符串未在 enum 里 → fallback 到 ThesisAligned
+        // LLM 返回的 category 字符串未在 enum 里 → fallback 到 MainlineAligned
         let json = r#"{"picks":[
-            {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"weird_value","thesis_relation":"???"}
+            {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"weird_value","mainline_relation":"???"}
         ]}"#;
         let (curator, _) = make_curator(json);
         let out = curator
-            .pass2_personalize(picks(), &audience(), UserThesis::default(), 0, 8)
+            .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
             .await
             .unwrap();
-        assert_eq!(out[0].category, PickCategory::ThesisAligned);
-        assert_eq!(out[0].thesis_relation, ThesisRelation::NotApplicable);
+        assert_eq!(out[0].category, PickCategory::MainlineAligned);
+        assert_eq!(out[0].mainline_relation, MainlineRelation::NotApplicable);
     }
 
     #[tokio::test]
     async fn pass2_personalize_skips_invalid_idx() {
         let json = r#"{"picks":[
-            {"idx":99,"rank":1,"title":"x","url":"u","comment":"c","category":"thesis_aligned","thesis_relation":"中立"},
-            {"idx":1,"rank":2,"title":"y","url":"u","comment":"c","category":"thesis_aligned","thesis_relation":"中立"}
+            {"idx":99,"rank":1,"title":"x","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"},
+            {"idx":1,"rank":2,"title":"y","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"}
         ]}"#;
         let (curator, _) = make_curator(json);
         let out = curator
-            .pass2_personalize(picks(), &audience(), UserThesis::default(), 0, 8)
+            .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
             .await
             .unwrap();
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].candidate.event.id, "b");
     }
 
-    #[test]
-    fn render_thesis_block_empty_returns_baseline_hint() {
-        let block = render_thesis_block(&UserThesis::default());
-        assert!(block.contains("baseline"));
-        assert!(block.contains("thesis_aligned"));
+    #[tokio::test]
+    async fn pass2_personalize_accepts_legacy_thesis_field_names() {
+        // LLM prompt-cache 短期内可能仍按旧 prompt 输出 thesis_* —— 必须能反序列化通过
+        let json = r#"{"picks":[
+            {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"thesis_counter","thesis_relation":"反证"}
+        ]}"#;
+        let (curator, _) = make_curator(json);
+        let out = curator
+            .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
+            .await
+            .unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].category, PickCategory::MainlineCounter);
+        assert_eq!(out[0].mainline_relation, MainlineRelation::Counter);
     }
 
     #[test]
-    fn render_thesis_block_includes_global_style_and_per_ticker() {
+    fn render_mainline_block_empty_returns_baseline_hint() {
+        let block = render_mainline_block(&UserMainline::default());
+        assert!(block.contains("baseline"));
+        assert!(block.contains("mainline_aligned"));
+    }
+
+    #[test]
+    fn render_mainline_block_includes_global_style_and_per_ticker() {
         let mut m = HashMap::new();
         m.insert("MU".into(), "看 NAND 稀缺".into());
         m.insert("AAPL".into(), "看回购".into());
-        let block = render_thesis_block(&UserThesis {
-            global_style: Some("长期叙事派"),
-            theses: Some(&m),
+        let block = render_mainline_block(&UserMainline {
+            style: Some("长期叙事派"),
+            by_ticker: Some(&m),
         });
         assert!(block.contains("长期叙事派"));
         assert!(block.contains("MU"));

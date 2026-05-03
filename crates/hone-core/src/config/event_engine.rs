@@ -112,7 +112,7 @@ fn default_earnings_window_days() -> i64 {
 /// S-1(IPO 或追加发行,High)/ DEF 14A(委托书,Low)。Severity 由 `events_from_sec_filings`
 /// 在事件构造时按 form 类型映射,**不是**在 config 里配置。
 ///
-/// `enrichment` 子配置控制是否调 LLM 给每条 filing 生成 ~200 字业务摘要(thesis-investor
+/// `enrichment` 子配置控制是否调 LLM 给每条 filing 生成 ~200 字业务摘要(长期主线投资者
 /// 视角,跳过 GAAP 数字、抓 backlog/资本配置/风险)。POC 实证 grok-4.1-fast 在 11 持仓
 /// 一年 ~70 条 filing × $0.012 ≈ $0.82/年,质量、成本、延迟均第一。
 #[derive(Debug, Clone, Serialize, Deserialize)]

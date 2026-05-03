@@ -11,7 +11,7 @@
 //! 3. `scraper` 解析,纯文本抽取,丢 `<script>/<style>` 等噪声。截断到 ~300k
 //!    字符(实证 grok-4.1-fast 在 ~75k token 输入下稳定,留余量给 system prompt)。
 //! 4. 拼 system + user message,调 `LlmProvider::chat`,system prompt 锚定
-//!    thesis-investor 视角(跳过 GAAP 数字,抓 backlog / 资本配置 / 风险新增)。
+//!    长期主线投资者视角(跳过 GAAP 数字,抓 backlog / 资本配置 / 风险新增)。
 //! 5. (event_id, prompt_hash) 内存缓存,同一 filing 在多 tick 间只调 1 次 LLM
 //!    —— SEC poller `with_sec_recent_hours=48` 会让同一 filing 在窗口内被反复
 //!    见到。EventStore 幂等不阻止 fetch 路径上的 LLM 重复调用。
@@ -45,10 +45,10 @@ pub const MAX_FILING_CHARS: usize = 300_000;
 
 /// LLM 摘要默认 system prompt —— **不要随意改**。
 /// 与 POC `step3_summarize.py` 验证过的 prompt 完全一致。
-pub const DEFAULT_SYSTEM_PROMPT: &str = "你是一个长期叙事派投资者的分析助手。我会给你一份 SEC filing(10-Q 季报 / 10-K 年报 / 8-K / S-1 / DEF 14A 等)的全文,你需要用中文写一段 ~200 字的核心要点摘要,**严格遵守**以下原则:\n\n1. **不要重复 GAAP 数字**(收入 X 亿、净利润 Y 亿等),这些用户从财报新闻已知道\n2. **重点抓业务驱动信号**:大客户 / 大订单 / backlog 变化、产能 / 工厂进展、产品 line 节奏(新品发布 / 量产 ramp)、地区 mix 变化、定价 / 毛利结构性变化\n3. **重点抓新增风险**:Risk Factors 章节里**本次新增或显著修改**的条目(不要把模板风险全列一遍)、监管 / 诉讼 / 供应链异常、stock-based comp 大幅波动等隐藏信号\n4. **重点抓资本配置变化**:大额回购 / 派息变化、新债 / 偿债、并购 / 资产剥离、capex 节奏\n5. 不分点,自然段。开头一句直接讲「这份 filing 最值得 long-thesis 投资者关注的是 X」\n6. 保持克制。如果这份 filing 内容平淡(routine 季报),直接说「无显著新信号,routine」一行就够";
+pub const DEFAULT_SYSTEM_PROMPT: &str = "你是一个长期主线投资者的分析助手。我会给你一份 SEC filing(10-Q 季报 / 10-K 年报 / 8-K / S-1 / DEF 14A 等)的全文,你需要用中文写一段 ~200 字的核心要点摘要,**严格遵守**以下原则:\n\n1. **不要重复 GAAP 数字**(收入 X 亿、净利润 Y 亿等),这些用户从财报新闻已知道\n2. **重点抓业务驱动信号**:大客户 / 大订单 / backlog 变化、产能 / 工厂进展、产品 line 节奏(新品发布 / 量产 ramp)、地区 mix 变化、定价 / 毛利结构性变化\n3. **重点抓新增风险**:Risk Factors 章节里**本次新增或显著修改**的条目(不要把模板风险全列一遍)、监管 / 诉讼 / 供应链异常、stock-based comp 大幅波动等隐藏信号\n4. **重点抓资本配置变化**:大额回购 / 派息变化、新债 / 偿债、并购 / 资产剥离、capex 节奏\n5. 不分点,自然段。开头一句直接讲「这份 filing 最值得长期主线投资者关注的是 X」\n6. 保持克制。如果这份 filing 内容平淡(routine 季报),直接说「无显著新信号,routine」一行就够";
 
 /// SEC filing 摘要器。给 `MarketEvent`(必须是 `EventKind::SecFiling`)产出
-/// 一段 ~200 字中文 thesis-investor 摘要。
+/// 一段 ~200 字中文长期主线投资者摘要。
 #[async_trait]
 pub trait SecFilingSummarizer: Send + Sync {
     async fn summarize(&self, event: &MarketEvent) -> Option<String>;

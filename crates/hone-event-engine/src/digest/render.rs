@@ -241,7 +241,7 @@ fn digest_event_detail(event: &MarketEvent) -> Option<String> {
             // SEC filing 在 digest 里默认只有 form 名 + 日期,信息量近零。
             // 当 enrichment 写了 llm_summary 时,给 digest 行附上一段 ~120 字
             // 截断的 LLM 摘要 —— 让 10-Q / 10-K / DEF 14A 这些走 digest 路径
-            // 的 filing 也能看到 thesis-investor 视角的核心要点。原文链接仍在
+            // 的 filing 也能看到 长期主线投资者视角的核心要点。原文链接仍在
             // 事件 url 里,用户点进去可读全文。
             let summary = event
                 .payload
@@ -375,7 +375,7 @@ mod tests {
         );
         e.title = "TSLA filed 10-Q".into();
         // 200 字 LLM summary,应被 truncate 到 120 字符 + 省略号
-        let summary = "这份 filing 最值得 long-thesis 投资者关注的是 GE Vernova 的 backlog 同比增加 25%,其中海上风电订单成为主要驱动,反映客户对长期清洁能源转型的承诺。资本配置方面回购规模放缓,资金转向产能扩张。风险因子新增供应链关键稀土材料的地缘集中度。整体属于建设性季报。";
+        let summary = "这份 filing 最值得 长期主线投资者关注的是 GE Vernova 的 backlog 同比增加 25%,其中海上风电订单成为主要驱动,反映客户对长期清洁能源转型的承诺。资本配置方面回购规模放缓,资金转向产能扩张。风险因子新增供应链关键稀土材料的地缘集中度。整体属于建设性季报。";
         e.payload = serde_json::json!({"llm_summary": summary});
         let title = digest_event_title(&e);
         assert!(title.contains("TSLA filed 10-Q · 这份 filing 最值得"));

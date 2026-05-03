@@ -546,7 +546,7 @@ impl EventEngine {
             .with_sec_recent_hours(48)
             .with_forms(self.engine_cfg.sec_filings.forms.clone());
             // enrichment:enabled=true + 注入了 LlmProvider(复用 global_digest 那个) →
-            // 给每条 SecFiling 挂一段 ~200 字 thesis-investor 摘要(payload.llm_summary)。
+            // 给每条 SecFiling 挂一段 ~200 字长期主线投资者视角摘要(payload.llm_summary)。
             // 任一条件不满足都只是降级到原 form/link body,不影响 filing 推送本身。
             let enr = &self.engine_cfg.sec_filings.enrichment;
             if enr.enabled {
@@ -729,7 +729,7 @@ impl EventEngine {
             );
         }
 
-        // 注:thesis 蒸馏 cron 在 hone-web-api 启动时单独 spawn,
+        // 注:投资主线蒸馏 cron 在 hone-web-api 启动时单独 spawn,
         // 这里不能 spawn 是因为 hone-event-engine 不依赖 hone-channels(避免循环)。
 
         Ok(())

@@ -1,7 +1,7 @@
 //! 周期性任务的统一观测落盘 —— `data/runtime/task_runs.YYYY-MM-DD.jsonl`。
 //!
 //! 任何周期任务(EventSource poller / digest scheduler / daily_report /
-//! thesis_cron / cleanup 等)在每次 tick 末尾调一次 [`record_task_run`],
+//! mainline_cron / cleanup 等)在每次 tick 末尾调一次 [`record_task_run`],
 //! 把一条结构化记录追加到当日的 jsonl 文件。文件每天切一个,通过启动时
 //! 的清理保留 [`TASK_RUNS_RETENTION_DAYS`] 天。
 //!
@@ -34,7 +34,7 @@ pub const TASK_RUNS_RETENTION_DAYS: i64 = 14;
 /// 单次 tick 的成败结果。
 ///
 /// - `Ok` —— 命中并成功执行。
-/// - `Skipped` —— 按业务策略主动跳过(thesis cron staleness 没到 / digest 不在窗口内
+/// - `Skipped` —— 按业务策略主动跳过(mainline cron staleness 没到 / digest 不在窗口内
 ///   等),不是失败。
 /// - `Failed` —— 业务函数返回 Err。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,7 +59,7 @@ impl TaskOutcome {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRunRecord {
     /// 稳定标识,跟 tracing `task=` 字段一致。例:
-    /// `poller.fmp.earnings` / `internal.daily_report` / `thesis_cron`。
+    /// `poller.fmp.earnings` / `internal.daily_report` / `mainline_cron`。
     pub task: String,
     /// 本轮 tick 开始时刻 (UTC)。
     pub started_at: DateTime<Utc>,
@@ -274,7 +274,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         let dir = tmp.path();
         record_ok(dir, "poller.test", Utc::now(), 5);
-        record_skipped(dir, "thesis_cron", Utc::now());
+        record_skipped(dir, "mainline_cron", Utc::now());
         record_failed(dir, "internal.cleanup", Utc::now(), "disk full");
 
         let path = task_runs_path(dir, Utc::now().date_naive());

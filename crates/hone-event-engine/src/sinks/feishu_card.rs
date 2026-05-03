@@ -144,7 +144,7 @@ mod tests {
             origin: crate::unified_digest::ItemOrigin::Buffered,
             floor: None,
             comment: None,
-            thesis_relation: None,
+            mainline_relation: None,
         }
     }
 

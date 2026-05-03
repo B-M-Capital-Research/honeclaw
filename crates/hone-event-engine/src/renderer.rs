@@ -371,7 +371,7 @@ mod tests {
         });
         ev.summary = "2026-04-20".into();
         ev.payload = serde_json::json!({
-            "llm_summary": "这份 filing 最值得 long-thesis 投资者关注的是 GE Vernova 的 backlog 同比增加 25%。"
+            "llm_summary": "这份 filing 最值得 长期主线投资者关注的是 GE Vernova 的 backlog 同比增加 25%。"
         });
         let s = render_immediate(&ev, RenderFormat::Plain);
         assert!(

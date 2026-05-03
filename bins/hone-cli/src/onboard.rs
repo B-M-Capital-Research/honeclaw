@@ -295,7 +295,7 @@ fn print_notifications_awareness_step() {
         &[
             "Global digest:默认对所有新用户**开启**,LLM 精读后每天按窗口推送到 chat。",
             "Per-event 通知:默认开启(Severity::Low 起、不限 portfolio)。",
-            "Thesis 自动蒸馏:后台 cron 周扫 sandbox `company_profiles/*/profile.md`,无需用户操作。",
+            "投资主线自动蒸馏:后台 cron 周扫 sandbox `company_profiles/*/profile.md`,无需用户操作。",
         ],
     );
     print_onboard_block(

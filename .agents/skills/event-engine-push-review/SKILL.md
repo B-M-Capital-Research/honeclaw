@@ -208,7 +208,7 @@ Also scan for:
 
 ## Useful Filtered-Out Checks
 
-Review omitted, queued, capped, cooled-down, filtered, failed, and `no_actor` rows. Focus first on High/Medium severity, portfolio symbols, trusted sources, and explicit thesis-aligned tickers.
+Review omitted, queued, capped, cooled-down, filtered, failed, and `no_actor` rows. Focus first on High/Medium severity, portfolio symbols, trusted sources, and explicit mainline-aligned tickers.
 
 ```bash
 sqlite3 -header -column data/events.sqlite3 "

@@ -1,17 +1,17 @@
-//! Thesis 自动蒸馏 —— 把用户在 agent-sandbox 里写的 100-400 行公司画像,定期
-//! 蒸馏成 Pass2 personalize 期望的 1-2 句 thesis,写入 `NotificationPrefs.
-//! investment_theses` 字段。同时跨 ticker 提取 `investment_global_style`。
+//! 投资主线自动蒸馏 —— 把用户在 agent-sandbox 里写的 100-400 行公司画像,定期
+//! 蒸馏成 Pass2 personalize 期望的 1-2 句投资主线,写入 `NotificationPrefs.
+//! mainline_by_ticker` 字段。同时跨 ticker 提取 `mainline_style`。
 //!
 //! 设计要点:
 //! - **read-only on profile.md**:本模块只读用户画像,不改;写出方向只到 prefs。
 //! - **per-actor**:每个有 portfolio 的 actor 跑一次,扫他的 sandbox profile 目录。
-//! - **失败降级**:任一 ticker 蒸馏失败 → 跳过该 ticker(保留旧 thesis 不变),
+//! - **失败降级**:任一 ticker 蒸馏失败 → 跳过该 ticker(保留旧主线不变),
 //!   不让一个失败影响其他 ticker。
 //! - **整文喂 LLM**:不靠 section header 切分(framework 允许 agent 把用户视角
-//!   合并到 Thesis 主文 / 单列 用户视角 / 日期 update log,各种写法都常见),
+//!   合并到主线主文 / 单列 用户视角 / 日期 update log,各种写法都常见),
 //!   POC 验证整文喂 grok 1-2k tokens 完全 OK。
-//! - **持久化方式**:就地修改 prefs JSON 的 `investment_theses` /
-//!   `investment_global_style` / `last_thesis_distilled_at` 字段,
+//! - **持久化方式**:就地修改 prefs JSON 的 `mainline_by_ticker` /
+//!   `mainline_style` / `last_mainline_distilled_at` 字段,
 //!   curator 每次 dispatch 重读,无需 hot-reload。
 //!
 //! 路径约定:
@@ -39,9 +39,11 @@ pub struct ProfileSource {
 
 /// 蒸馏结果,准备写回 prefs。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct DistilledTheses {
-    pub theses: HashMap<String, String>,
-    pub global_style: Option<String>,
+pub struct DistilledMainlines {
+    #[serde(alias = "theses")]
+    pub by_ticker: HashMap<String, String>,
+    #[serde(alias = "global_style")]
+    pub style: Option<String>,
     pub last_distilled_at: Option<DateTime<Utc>>,
     /// 蒸馏中跳过的 ticker(LLM 失败 / 画像缺失等),便于诊断。
     pub skipped_tickers: Vec<String>,
@@ -49,18 +51,18 @@ pub struct DistilledTheses {
 
 /// 蒸馏抽象,生产实现走 LLM,测试可注入 stub。
 #[async_trait]
-pub trait ThesisDistiller: Send + Sync {
-    async fn distill_thesis(&self, ticker: &str, profile_md: &str) -> anyhow::Result<String>;
-    async fn distill_global_style(&self, all_profiles: &[ProfileSource]) -> anyhow::Result<String>;
+pub trait MainlineDistiller: Send + Sync {
+    async fn distill_mainline(&self, ticker: &str, profile_md: &str) -> anyhow::Result<String>;
+    async fn distill_style(&self, all_profiles: &[ProfileSource]) -> anyhow::Result<String>;
 }
 
 /// LLM 实现 —— 默认走 grok-4.1-fast(POC 验证质量好,速度可接受)。
-pub struct LlmThesisDistiller {
+pub struct LlmMainlineDistiller {
     provider: Arc<dyn LlmProvider>,
     model: String,
 }
 
-impl LlmThesisDistiller {
+impl LlmMainlineDistiller {
     pub fn new(provider: Arc<dyn LlmProvider>, model: impl Into<String>) -> Self {
         Self {
             provider,
@@ -70,9 +72,9 @@ impl LlmThesisDistiller {
 }
 
 const DISTILL_PROMPT: &str = "下面是用户对 {{TICKER}} 的长期投资档案(可能 50-400 行,各 section 散布:\
-正式 thesis、用户主观看法、估值偏好、风险红线、近期 update log)。\n\
+正式投资主线、用户主观看法、估值偏好、风险红线、近期 update log)。\n\
 \n\
-把它蒸馏成 **1-2 句中文 thesis**,给一个全球新闻 digest 系统看,用来过滤\"对该用户视角下噪音\
+把它蒸馏成 **1-2 句中文投资主线**,给一个全球新闻 digest 系统看,用来过滤\"对该用户视角下噪音\
 vs 实质信号\"。\n\
 \n\
 要求:\n\
@@ -80,14 +82,14 @@ vs 实质信号\"。\n\
 - 涵盖用户独有视角(如有)—— 例如用户重视的具体催化点 / 用户明确反对的指标\n\
 - 不要堆砌财务数字、不要写\"风险包括...\"的笼统结尾\n\
 - 风格:像投资人在简短自述,不像 Wikipedia 摘要\n\
-- 只输出 thesis 文字,不要 markdown 标题、不要前言\n\
+- 只输出主线文字,不要 markdown 标题、不要前言\n\
 \n\
 档案原文:\n\
 ---\n\
 {{PROFILE}}\n\
 ---\n";
 
-const STYLE_PROMPT: &str = "下面是同一个用户对 {{N}} 只持仓的长期画像 thesis 段落集合。\n\
+const STYLE_PROMPT: &str = "下面是同一个用户对 {{N}} 只持仓的长期画像主线段落集合。\n\
 请蒸馏出 **该用户的整体投资风格** —— 跨 ticker 反复出现的偏好、判断框架、明确反感。\n\
 \n\
 要求:\n\
@@ -101,8 +103,8 @@ const STYLE_PROMPT: &str = "下面是同一个用户对 {{N}} 只持仓的长期
 {{PROFILES_BLOCK}}\n";
 
 #[async_trait]
-impl ThesisDistiller for LlmThesisDistiller {
-    async fn distill_thesis(&self, ticker: &str, profile_md: &str) -> anyhow::Result<String> {
+impl MainlineDistiller for LlmMainlineDistiller {
+    async fn distill_mainline(&self, ticker: &str, profile_md: &str) -> anyhow::Result<String> {
         let prompt = DISTILL_PROMPT
             .replace("{{TICKER}}", ticker)
             .replace("{{PROFILE}}", profile_md);
@@ -120,12 +122,12 @@ impl ThesisDistiller for LlmThesisDistiller {
             .map_err(|e| anyhow::anyhow!("LLM call failed: {e}"))?;
         let trimmed = resp.content.trim().to_string();
         if trimmed.is_empty() {
-            anyhow::bail!("empty thesis output for {ticker}");
+            anyhow::bail!("empty mainline output for {ticker}");
         }
         Ok(trimmed)
     }
 
-    async fn distill_global_style(&self, all_profiles: &[ProfileSource]) -> anyhow::Result<String> {
+    async fn distill_style(&self, all_profiles: &[ProfileSource]) -> anyhow::Result<String> {
         if all_profiles.is_empty() {
             anyhow::bail!("no profiles to extract style from");
         }
@@ -206,7 +208,7 @@ pub fn scan_profiles(
         if tickers.is_empty() {
             tracing::warn!(
                 dir = %dir_name,
-                "thesis_distill: profile.md 没找到 ticker 标识,跳过"
+                "mainline_distill: profile.md 没找到 ticker 标识,跳过"
             );
             continue;
         }
@@ -289,55 +291,55 @@ fn is_plausible_ticker(s: &str) -> bool {
         && s.chars().any(|c| c.is_ascii_alphabetic())
 }
 
-/// 蒸馏一个 actor 的所有持仓 thesis + 整体风格。`holdings` 决定要蒸哪些 ticker;
+/// 蒸馏一个 actor 的所有持仓主线 + 整体风格。`holdings` 决定要蒸哪些 ticker;
 /// `provider`/`model` 注入由调用方组装。
 ///
 /// 行为:
 /// 1. scan_profiles(sandbox_root, Some(holdings)) → ProfileSource 列表
-/// 2. 并发蒸馏每只 ticker 的 thesis(任一失败 → 加入 skipped,继续)
-/// 3. 用全部 profile 蒸馏一条 global_style(失败 → None,不影响 thesis)
-/// 4. 返回 DistilledTheses(可序列化,调用方 merge 进 prefs JSON)
+/// 2. 并发蒸馏每只 ticker 的主线(任一失败 → 加入 skipped,继续)
+/// 3. 用全部 profile 蒸馏一条整体风格(失败 → None,不影响主线)
+/// 4. 返回 DistilledMainlines(可序列化,调用方 merge 进 prefs JSON)
 pub async fn distill_for_actor(
-    distiller: &dyn ThesisDistiller,
+    distiller: &dyn MainlineDistiller,
     sandbox_root: &Path,
     holdings: &[String],
-) -> DistilledTheses {
+) -> DistilledMainlines {
     let profiles = scan_profiles(sandbox_root, Some(holdings));
     if profiles.is_empty() {
-        return DistilledTheses {
-            theses: HashMap::new(),
-            global_style: None,
+        return DistilledMainlines {
+            by_ticker: HashMap::new(),
+            style: None,
             last_distilled_at: Some(Utc::now()),
             skipped_tickers: holdings.to_vec(),
         };
     }
 
-    // 并发蒸 thesis(每个独立 LLM call)
+    // 并发蒸主线(每个独立 LLM call)
     use futures::stream::{self, StreamExt};
     let results: Vec<(String, anyhow::Result<String>)> = stream::iter(profiles.iter().cloned())
         .map(|p| async move {
-            let r = distiller.distill_thesis(&p.ticker, &p.markdown).await;
+            let r = distiller.distill_mainline(&p.ticker, &p.markdown).await;
             (p.ticker, r)
         })
         .buffer_unordered(6)
         .collect()
         .await;
 
-    let mut theses: HashMap<String, String> = HashMap::new();
+    let mut by_ticker: HashMap<String, String> = HashMap::new();
     let mut skipped: Vec<String> = Vec::new();
     for (ticker, r) in results {
         match r {
             Ok(t) => {
-                theses.insert(ticker, t);
+                by_ticker.insert(ticker, t);
             }
             Err(e) => {
-                tracing::warn!(ticker = %ticker, "thesis distill failed: {e}");
+                tracing::warn!(ticker = %ticker, "mainline distill failed: {e}");
                 skipped.push(ticker);
             }
         }
     }
     // holdings 里没有 profile 的 ticker 也算 skipped
-    let covered: std::collections::HashSet<String> = theses.keys().cloned().collect();
+    let covered: std::collections::HashSet<String> = by_ticker.keys().cloned().collect();
     for h in holdings {
         let h_up = h.to_uppercase();
         if !covered.contains(&h_up) && !skipped.contains(&h_up) {
@@ -345,17 +347,17 @@ pub async fn distill_for_actor(
         }
     }
 
-    let global_style = match distiller.distill_global_style(&profiles).await {
+    let style = match distiller.distill_style(&profiles).await {
         Ok(s) => Some(s),
         Err(e) => {
-            tracing::warn!("global_style distill failed: {e}");
+            tracing::warn!("mainline style distill failed: {e}");
             None
         }
     };
 
-    DistilledTheses {
-        theses,
-        global_style,
+    DistilledMainlines {
+        by_ticker,
+        style,
         last_distilled_at: Some(Utc::now()),
         skipped_tickers: skipped,
     }
@@ -372,7 +374,7 @@ pub fn actor_sandbox_dir(base: &Path, actor: &ActorIdentity) -> PathBuf {
 ///
 /// 适合 admin "立即跑一次" 端点 / cron job 内部循环。
 pub async fn distill_and_persist_one(
-    distiller: &dyn ThesisDistiller,
+    distiller: &dyn MainlineDistiller,
     prefs_storage: &dyn crate::prefs::PrefsProvider,
     sandbox_base: &Path,
     actor: &ActorIdentity,
@@ -386,30 +388,30 @@ pub async fn distill_and_persist_one(
 /// 把蒸馏结果合并写回 actor 的 NotificationPrefs 文件。
 ///
 /// 行为:
-/// - 如果 `theses` 非空 → 覆盖整个 `investment_theses` 字段(系统全权管)
-/// - 如果 `theses` 为空(扫不到任何画像) → **不覆盖** 现有 theses,只更新 last_distilled_at
-///   和 skipped 列表。这样用户单次画像目录被误删不会立刻丢历史 thesis。
-/// - `global_style` 同样:有就覆盖,无就保留旧的
-/// - 总是更新 `last_thesis_distilled_at` 和 `thesis_distill_skipped`
+/// - 如果 `by_ticker` 非空 → 覆盖整个 `mainline_by_ticker` 字段(系统全权管)
+/// - 如果 `by_ticker` 为空(扫不到任何画像) → **不覆盖** 现有主线,只更新 last_distilled_at
+///   和 skipped 列表。这样用户单次画像目录被误删不会立刻丢历史主线。
+/// - `style` 同样:有就覆盖,无就保留旧的
+/// - 总是更新 `last_mainline_distilled_at` 和 `mainline_distill_skipped`
 ///
 /// 返回写入后的 prefs 副本。
 pub fn merge_into_prefs(
     prefs_storage: &dyn crate::prefs::PrefsProvider,
     actor: &ActorIdentity,
-    distilled: DistilledTheses,
+    distilled: DistilledMainlines,
 ) -> anyhow::Result<crate::prefs::NotificationPrefs> {
     let mut prefs = prefs_storage.load(actor);
-    if !distilled.theses.is_empty() {
-        prefs.investment_theses = Some(distilled.theses);
+    if !distilled.by_ticker.is_empty() {
+        prefs.mainline_by_ticker = Some(distilled.by_ticker);
     }
-    if distilled.global_style.is_some() {
-        prefs.investment_global_style = distilled.global_style;
+    if distilled.style.is_some() {
+        prefs.mainline_style = distilled.style;
     }
-    prefs.last_thesis_distilled_at = distilled
+    prefs.last_mainline_distilled_at = distilled
         .last_distilled_at
         .map(|t| t.to_rfc3339())
-        .or(prefs.last_thesis_distilled_at);
-    prefs.thesis_distill_skipped = distilled.skipped_tickers;
+        .or(prefs.last_mainline_distilled_at);
+    prefs.mainline_distill_skipped = distilled.skipped_tickers;
     prefs_storage
         .save(actor, &prefs)
         .map_err(|e| anyhow::anyhow!("save prefs: {e}"))?;
@@ -441,14 +443,14 @@ mod tests {
 
     #[test]
     fn extract_tickers_from_paren_in_title() {
-        let md = "# Rocket Lab (RKLB)\n\n## Thesis\n";
+        let md = "# Rocket Lab (RKLB)\n\n## 投资主线\n";
         assert_eq!(extract_tickers(md), vec!["RKLB".to_string()]);
     }
 
     #[test]
     fn extract_tickers_handles_chinese_paren() {
         // 真·全角括号 (U+FF08 / U+FF09) - 这是生产里 rocket-lab / caris-life-sciences 的真实写法
-        let md = "# Rocket Lab(RKLB)\n## Thesis";
+        let md = "# Rocket Lab(RKLB)\n## 投资主线";
         assert_eq!(extract_tickers(md), vec!["RKLB".to_string()]);
 
         // mixed: 半角 + 中文括号
@@ -481,8 +483,8 @@ mod tests {
         let cp = dir.path().join("company_profiles");
         std::fs::create_dir(&cp).unwrap();
         for (name, content) in &[
-            ("micron-technology", "# MU\n\nticker: MU\n\nThesis"),
-            ("rocket-lab", "# Rocket Lab (RKLB)\n\nThesis"),
+            ("micron-technology", "# MU\n\nticker: MU\n\n投资主线"),
+            ("rocket-lab", "# Rocket Lab (RKLB)\n\n投资主线"),
             ("alphabet", "ticker: GOOGL / GOOG\n"),
             ("garbage-no-ticker", "Just text without ticker marker"),
         ] {
@@ -532,20 +534,20 @@ mod tests {
 
     // Mock distiller
     struct MockDistiller {
-        thesis_calls: AtomicUsize,
+        mainline_calls: AtomicUsize,
         style_calls: AtomicUsize,
         fail_for_ticker: Option<String>,
     }
     #[async_trait]
-    impl ThesisDistiller for MockDistiller {
-        async fn distill_thesis(&self, ticker: &str, _profile: &str) -> anyhow::Result<String> {
-            self.thesis_calls.fetch_add(1, Ordering::SeqCst);
+    impl MainlineDistiller for MockDistiller {
+        async fn distill_mainline(&self, ticker: &str, _profile: &str) -> anyhow::Result<String> {
+            self.mainline_calls.fetch_add(1, Ordering::SeqCst);
             if self.fail_for_ticker.as_deref() == Some(ticker) {
                 anyhow::bail!("simulated failure");
             }
-            Ok(format!("thesis for {ticker}"))
+            Ok(format!("mainline for {ticker}"))
         }
-        async fn distill_global_style(&self, profiles: &[ProfileSource]) -> anyhow::Result<String> {
+        async fn distill_style(&self, profiles: &[ProfileSource]) -> anyhow::Result<String> {
             self.style_calls.fetch_add(1, Ordering::SeqCst);
             Ok(format!("style covering {} tickers", profiles.len()))
         }
@@ -557,7 +559,7 @@ mod tests {
         let cp = dir.path().join("company_profiles");
         std::fs::create_dir(&cp).unwrap();
         for (name, content) in &[
-            ("mu", "ticker: MU\n# Micron\nlong thesis content"),
+            ("mu", "ticker: MU\n# Micron\nlong mainline content"),
             ("rklb", "ticker: RKLB\n# Rocket Lab"),
         ] {
             let sub = cp.join(name);
@@ -565,18 +567,18 @@ mod tests {
             std::fs::write(sub.join("profile.md"), content).unwrap();
         }
         let mock = MockDistiller {
-            thesis_calls: AtomicUsize::new(0),
+            mainline_calls: AtomicUsize::new(0),
             style_calls: AtomicUsize::new(0),
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string(), "RKLB".to_string()];
         let result = distill_for_actor(&mock, dir.path(), &holdings).await;
-        assert_eq!(result.theses.len(), 2);
-        assert_eq!(result.theses["MU"], "thesis for MU");
-        assert!(result.global_style.is_some());
+        assert_eq!(result.by_ticker.len(), 2);
+        assert_eq!(result.by_ticker["MU"], "mainline for MU");
+        assert!(result.style.is_some());
         assert!(result.last_distilled_at.is_some());
         assert!(result.skipped_tickers.is_empty());
-        assert_eq!(mock.thesis_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(mock.mainline_calls.load(Ordering::SeqCst), 2);
         assert_eq!(mock.style_calls.load(Ordering::SeqCst), 1);
     }
 
@@ -591,14 +593,14 @@ mod tests {
             std::fs::write(sub.join("profile.md"), content).unwrap();
         }
         let mock = MockDistiller {
-            thesis_calls: AtomicUsize::new(0),
+            mainline_calls: AtomicUsize::new(0),
             style_calls: AtomicUsize::new(0),
             fail_for_ticker: Some("MU".into()),
         };
         let holdings = vec!["MU".to_string(), "RKLB".to_string()];
         let result = distill_for_actor(&mock, dir.path(), &holdings).await;
-        assert_eq!(result.theses.len(), 1);
-        assert_eq!(result.theses["RKLB"], "thesis for RKLB");
+        assert_eq!(result.by_ticker.len(), 1);
+        assert_eq!(result.by_ticker["RKLB"], "mainline for RKLB");
         assert!(result.skipped_tickers.contains(&"MU".to_string()));
     }
 
@@ -612,13 +614,13 @@ mod tests {
         std::fs::write(sub.join("profile.md"), "ticker: MU\n").unwrap();
 
         let mock = MockDistiller {
-            thesis_calls: AtomicUsize::new(0),
+            mainline_calls: AtomicUsize::new(0),
             style_calls: AtomicUsize::new(0),
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string(), "AAPL".to_string()];
         let result = distill_for_actor(&mock, dir.path(), &holdings).await;
-        assert_eq!(result.theses.len(), 1);
+        assert_eq!(result.by_ticker.len(), 1);
         assert!(result.skipped_tickers.contains(&"AAPL".to_string()));
     }
 
@@ -626,20 +628,20 @@ mod tests {
     async fn distill_for_actor_empty_dir_returns_empty_result() {
         let dir = tempdir().unwrap();
         let mock = MockDistiller {
-            thesis_calls: AtomicUsize::new(0),
+            mainline_calls: AtomicUsize::new(0),
             style_calls: AtomicUsize::new(0),
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string()];
         let result = distill_for_actor(&mock, dir.path(), &holdings).await;
-        assert!(result.theses.is_empty());
-        assert!(result.global_style.is_none());
+        assert!(result.by_ticker.is_empty());
+        assert!(result.style.is_none());
         assert!(result.skipped_tickers.contains(&"MU".to_string()));
-        assert_eq!(mock.thesis_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(mock.mainline_calls.load(Ordering::SeqCst), 0);
         assert_eq!(mock.style_calls.load(Ordering::SeqCst), 0);
     }
 
-    /// 用真实 LlmThesisDistiller 但用 mock provider,验证 prompt 构造正确。
+    /// 用真实 LlmMainlineDistiller 但用 mock provider,验证 prompt 构造正确。
     struct CapturePromptProvider {
         last_prompt: std::sync::Mutex<Option<String>>,
     }
@@ -648,7 +650,7 @@ mod tests {
         async fn chat(&self, messages: &[Message], _model: Option<&str>) -> HoneResult<ChatResult> {
             *self.last_prompt.lock().unwrap() = messages.first().and_then(|m| m.content.clone());
             Ok(ChatResult {
-                content: "蒸馏出的 thesis".into(),
+                content: "蒸馏出的 mainline".into(),
                 usage: None,
             })
         }
@@ -670,65 +672,65 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn merge_into_prefs_overwrites_theses_and_style_when_present() {
+    async fn merge_into_prefs_overwrites_mainlines_and_style_when_present() {
         use crate::prefs::{FilePrefsStorage, PrefsProvider};
         let dir = tempdir().unwrap();
         let storage = FilePrefsStorage::new(dir.path()).unwrap();
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
 
-        let mut theses = HashMap::new();
-        theses.insert("MU".to_string(), "MU thesis text".to_string());
-        theses.insert("RKLB".to_string(), "RKLB thesis text".to_string());
-        let distilled = DistilledTheses {
-            theses,
-            global_style: Some("style text".into()),
+        let mut by_ticker = HashMap::new();
+        by_ticker.insert("MU".to_string(), "MU mainline text".to_string());
+        by_ticker.insert("RKLB".to_string(), "RKLB mainline text".to_string());
+        let distilled = DistilledMainlines {
+            by_ticker,
+            style: Some("style text".into()),
             last_distilled_at: Some(Utc::now()),
             skipped_tickers: vec!["AAPL".into()],
         };
         let prefs = merge_into_prefs(&storage, &actor, distilled).unwrap();
-        assert_eq!(prefs.investment_theses.as_ref().unwrap().len(), 2);
-        assert_eq!(prefs.investment_global_style.as_deref(), Some("style text"));
-        assert!(prefs.last_thesis_distilled_at.is_some());
-        assert_eq!(prefs.thesis_distill_skipped, vec!["AAPL".to_string()]);
+        assert_eq!(prefs.mainline_by_ticker.as_ref().unwrap().len(), 2);
+        assert_eq!(prefs.mainline_style.as_deref(), Some("style text"));
+        assert!(prefs.last_mainline_distilled_at.is_some());
+        assert_eq!(prefs.mainline_distill_skipped, vec!["AAPL".to_string()]);
 
         // 重新加载验证落盘
         let reloaded = storage.load(&actor);
-        assert_eq!(reloaded.investment_theses.as_ref().unwrap().len(), 2);
+        assert_eq!(reloaded.mainline_by_ticker.as_ref().unwrap().len(), 2);
     }
 
     #[tokio::test]
-    async fn merge_into_prefs_preserves_old_theses_when_distilled_empty() {
+    async fn merge_into_prefs_preserves_old_mainlines_when_distilled_empty() {
         use crate::prefs::PrefsProvider;
         use crate::prefs::{FilePrefsStorage, NotificationPrefs};
         let dir = tempdir().unwrap();
         let storage = FilePrefsStorage::new(dir.path()).unwrap();
         let actor = ActorIdentity::new("telegram", "u1", None::<&str>).unwrap();
 
-        // 先写一份带 theses 的旧 prefs
+        // 先写一份带主线的旧 prefs
         let mut old = NotificationPrefs::default();
-        let mut old_theses = HashMap::new();
-        old_theses.insert("MU".into(), "old MU thesis".into());
-        old.investment_theses = Some(old_theses);
-        old.investment_global_style = Some("old style".into());
+        let mut old_by_ticker = HashMap::new();
+        old_by_ticker.insert("MU".into(), "old MU mainline".into());
+        old.mainline_by_ticker = Some(old_by_ticker);
+        old.mainline_style = Some("old style".into());
         storage.save(&actor, &old).unwrap();
 
-        // 蒸馏失败 → 空 theses + 空 style
-        let distilled = DistilledTheses {
-            theses: HashMap::new(),
-            global_style: None,
+        // 蒸馏失败 → 空主线 + 空 style
+        let distilled = DistilledMainlines {
+            by_ticker: HashMap::new(),
+            style: None,
             last_distilled_at: Some(Utc::now()),
             skipped_tickers: vec!["MU".into()],
         };
         let prefs = merge_into_prefs(&storage, &actor, distilled).unwrap();
-        // 旧 thesis 应保留(防止误删历史)
+        // 旧主线应保留(防止误删历史)
         assert_eq!(
-            prefs.investment_theses.as_ref().unwrap()["MU"],
-            "old MU thesis"
+            prefs.mainline_by_ticker.as_ref().unwrap()["MU"],
+            "old MU mainline"
         );
-        assert_eq!(prefs.investment_global_style.as_deref(), Some("old style"));
+        assert_eq!(prefs.mainline_style.as_deref(), Some("old style"));
         // skipped 仍更新 + last_distilled_at 仍写入
-        assert_eq!(prefs.thesis_distill_skipped, vec!["MU".to_string()]);
-        assert!(prefs.last_thesis_distilled_at.is_some());
+        assert_eq!(prefs.mainline_distill_skipped, vec!["MU".to_string()]);
+        assert!(prefs.last_mainline_distilled_at.is_some());
     }
 
     #[tokio::test]
@@ -736,16 +738,35 @@ mod tests {
         let provider = Arc::new(CapturePromptProvider {
             last_prompt: std::sync::Mutex::new(None),
         });
-        let distiller = LlmThesisDistiller::new(provider.clone(), "test-model");
+        let distiller = LlmMainlineDistiller::new(provider.clone(), "test-model");
         let result = distiller
-            .distill_thesis("RKLB", "long profile content")
+            .distill_mainline("RKLB", "long profile content")
             .await
             .unwrap();
-        assert_eq!(result, "蒸馏出的 thesis");
+        assert_eq!(result, "蒸馏出的 mainline");
         let prompt = provider.last_prompt.lock().unwrap().clone().unwrap();
         assert!(prompt.contains("RKLB"));
         assert!(prompt.contains("long profile content"));
         assert!(!prompt.contains("{{TICKER}}")); // template var 应已替换
         assert!(!prompt.contains("{{PROFILE}}"));
+    }
+
+    #[test]
+    fn distilled_mainlines_loads_legacy_field_names_via_alias() {
+        // 旧 DistilledTheses 序列化结构体可能存在内存运行时序列化(eg. test fixture / 跨进程传递);
+        // serde alias 兼容旧字段名 theses / global_style 即可平滑加载。
+        let json = r#"{
+            "theses": {"MU": "看 NAND 长期稀缺"},
+            "global_style": "长期叙事派",
+            "last_distilled_at": null,
+            "skipped_tickers": []
+        }"#;
+        let d: DistilledMainlines =
+            serde_json::from_str(json).expect("legacy DistilledTheses JSON should load");
+        assert_eq!(
+            d.by_ticker.get("MU").map(String::as_str),
+            Some("看 NAND 长期稀缺")
+        );
+        assert_eq!(d.style.as_deref(), Some("长期叙事派"));
     }
 }

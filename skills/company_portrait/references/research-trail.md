@@ -26,7 +26,7 @@
 - query: 用了哪些搜索词
 - reviewed: 看了哪些材料
 - support: 哪些事实支持当前判断
-- conflict: 哪些事实与旧 thesis 冲突
+- conflict: 哪些事实与旧 投资主线 冲突
 - writeback: 最终改了哪些 section / 写了什么事件
 ```
 

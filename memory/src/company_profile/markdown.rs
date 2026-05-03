@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 
 use chrono::{DateTime, NaiveDate, Utc};
 
-use super::types::{default_profile_status, default_thesis_impact};
+use super::types::{default_mainline_impact, default_profile_status};
 use super::{
     AppendEventInput, CompanyProfileEventDocument, IndustryTemplate, ProfileEventMetadata,
     ProfileMetadata, TrackingConfig,
@@ -183,7 +183,7 @@ fn infer_event_metadata(filename: &str, updated_at: Option<String>) -> ProfileEv
         event_type: infer_event_type_from_filename(filename),
         occurred_at: infer_occurred_at_from_filename(filename, &updated_at),
         captured_at: updated_at,
-        thesis_impact: default_thesis_impact(),
+        mainline_impact: default_mainline_impact(),
         changed_sections: Vec::new(),
         refs: Vec::new(),
     }
@@ -232,13 +232,13 @@ pub(super) fn render_event_markdown(
     let frontmatter =
         serde_yaml::to_string(metadata).unwrap_or_else(|_| "event_type: unknown\n".to_string());
     format!(
-        "---\n{}---\n\n# {}\n\n## 发生了什么\n{}\n\n## 为什么重要\n{}\n\n## 影响哪些画像 section\n{}\n\n## 对 thesis 的影响\n{}\n\n## 证据与来源\n{}\n\n## 本轮研究路径\n{}\n\n## 需要继续跟踪什么\n{}\n",
+        "---\n{}---\n\n# {}\n\n## 发生了什么\n{}\n\n## 为什么重要\n{}\n\n## 影响哪些画像 section\n{}\n\n## 对投资主线的影响\n{}\n\n## 证据与来源\n{}\n\n## 本轮研究路径\n{}\n\n## 需要继续跟踪什么\n{}\n",
         frontmatter,
         title.trim(),
         fallback_markdown(&input.what_happened),
         fallback_markdown(&input.why_it_matters),
         render_list_or_placeholder(&input.changed_sections, "暂无"),
-        fallback_markdown(&input.thesis_effect),
+        fallback_markdown(&input.mainline_effect),
         render_evidence_markdown(&input.evidence, &input.refs),
         fallback_markdown(&input.research_log),
         fallback_markdown(&input.follow_up),
@@ -363,8 +363,8 @@ pub(super) fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String,
             "待补充：这家公司当前最核心的长期判断、为何值得跟踪，以及现阶段最重要的一句话结论。".to_string(),
         ),
         (
-            "Thesis".to_string(),
-            "待补充：当前多空要点、判断为什么成立、最关键的 3-5 个观察变量，以及什么事实会证伪或改写 thesis。".to_string(),
+            "投资主线".to_string(),
+            "待补充：当前多空要点、判断为什么成立、最关键的 3-5 个观察变量，以及什么事实会证伪或改写主线。".to_string(),
         ),
         (
             "商业模式".to_string(),
@@ -408,7 +408,7 @@ pub(super) fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String,
         ),
         (
             "未决问题".to_string(),
-            "待补充：当前还未验证、但会显著影响 thesis 的问题列表。".to_string(),
+            "待补充：当前还未验证、但会显著影响投资主线 的问题列表。".to_string(),
         ),
         (
             "行业模板附录".to_string(),
@@ -425,19 +425,19 @@ pub(super) fn base_profile_sections(template: &IndustryTemplate) -> Vec<(String,
 fn template_tracking_markdown(template: &IndustryTemplate) -> String {
     match template {
         IndustryTemplate::General => {
-            "- 季度至少 review 一次\n- 财报/业绩会后必更\n- 重大事件（管理层、监管、资本配置、行业格局变化）触发更新\n- 估值进入关键区间时重看 thesis / 赔率 / 风险回报".to_string()
+            "- 季度至少 review 一次\n- 财报/业绩会后必更\n- 重大事件（管理层、监管、资本配置、行业格局变化）触发更新\n- 估值进入关键区间时重看投资主线 / 赔率 / 风险回报".to_string()
         }
         IndustryTemplate::Saas => {
-            "- 财报后核对 ARR / RPO / NRR / 留存 / deferred revenue 的方向是否改变 thesis\n- 观察 seat expansion、产品渗透与销售效率是否改善\n- 指引变化时同步检查估值假设与可持续增长判断".to_string()
+            "- 财报后核对 ARR / RPO / NRR / 留存 / deferred revenue 的方向是否改变投资主线\n- 观察 seat expansion、产品渗透与销售效率是否改善\n- 指引变化时同步检查估值假设与可持续增长判断".to_string()
         }
         IndustryTemplate::SemiconductorHardware => {
-            "- 跟踪 ASP、良率、产能利用率、库存周期与 capex\n- 设计 win / 产品 mix 变化若影响中期盈利能力，应更新 thesis\n- 行业景气和客户备货节奏变化时，重看估值框架和风险台账".to_string()
+            "- 跟踪 ASP、良率、产能利用率、库存周期与 capex\n- 设计 win / 产品 mix 变化若影响中期盈利能力，应更新投资主线\n- 行业景气和客户备货节奏变化时，重看估值框架和风险台账".to_string()
         }
         IndustryTemplate::Consumer => {
             "- 跟踪同店、复购率、客单价、渠道库存、促销强度\n- 品牌溢价与新品表现若出现拐点，应检查护城河与管理层判断\n- 观察库存/折扣是否正在侵蚀长期盈利质量".to_string()
         }
         IndustryTemplate::IndustrialDefense => {
-            "- 跟踪订单、积压订单、book-to-bill、交付节奏、产能利用率\n- 大客户签约/流失、项目延误、预算变化应写入事件并重看 thesis\n- 若订单质量或兑现节奏恶化，更新风险台账与估值假设".to_string()
+            "- 跟踪订单、积压订单、book-to-bill、交付节奏、产能利用率\n- 大客户签约/流失、项目延误、预算变化应写入事件并重看投资主线\n- 若订单质量或兑现节奏恶化，更新风险台账与估值假设".to_string()
         }
         IndustryTemplate::Financials => {
             "- 跟踪净息差、不良、拨备、资本充足率、负债成本\n- 若风险成本、资产质量或资本压力变化，应更新财务质量与 thesis\n- 利率环境或监管变化后，重看估值框架和核心风险".to_string()

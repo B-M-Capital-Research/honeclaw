@@ -56,10 +56,10 @@ fn create_profile_with_thesis(
         .expect("create profile");
 
     let mut sections = BTreeMap::new();
-    sections.insert("Thesis".to_string(), thesis.to_string());
+    sections.insert("投资主线".to_string(), thesis.to_string());
     storage
         .rewrite_sections(&document.profile_id, &sections)
-        .expect("rewrite thesis")
+        .expect("rewrite mainline")
         .expect("profile exists")
 }
 
@@ -127,7 +127,7 @@ fn create_profile_generates_markdown_template_and_industry_sections() {
     assert!(created);
     assert_eq!(document.profile_id, "SNOW");
     assert!(document.markdown.contains("## 投资主张"));
-    assert!(document.markdown.contains("## Thesis"));
+    assert!(document.markdown.contains("## 投资主线"));
     assert!(document.markdown.contains("## 关键经营指标"));
     assert!(document.markdown.contains("ARR"));
     assert!(
@@ -238,12 +238,12 @@ fn append_event_is_idempotent_by_filename() {
         title: "Q1 财报更新".to_string(),
         event_type: "earnings".to_string(),
         occurred_at: "2026-04-12T10:00:00Z".to_string(),
-        thesis_impact: "mixed".to_string(),
+        mainline_impact: "mixed".to_string(),
         changed_sections: vec!["财务质量".to_string(), "关键跟踪清单".to_string()],
         refs: vec!["earnings-call".to_string()],
         what_happened: "毛利率承压，但储能业务增长延续。".to_string(),
         why_it_matters: "汽车与储能盈利结构的分化，决定市场是否继续给予成长溢价。".to_string(),
-        thesis_effect: "汽车业务压力仍需观察，储能继续改善长期结构。".to_string(),
+        mainline_effect: "汽车业务压力仍需观察，储能继续改善长期结构。".to_string(),
         evidence: "电话会确认管理层仍把储能和 AI 基础设施视作中期投入重点。".to_string(),
         research_log: "- query: Tesla Q1 earnings margin storage\n- reviewed: earnings release, earnings call transcript, shareholder deck".to_string(),
         follow_up: "观察下一季交付和毛利率修复节奏。".to_string(),
@@ -647,12 +647,12 @@ fn export_bundle_contains_manifest_and_markdown_files() {
                 title: "Q1 更新".to_string(),
                 event_type: "earnings".to_string(),
                 occurred_at: "2026-04-19T10:00:00Z".to_string(),
-                thesis_impact: "positive".to_string(),
-                changed_sections: vec!["Thesis".to_string()],
+                mainline_impact: "positive".to_string(),
+                changed_sections: vec!["投资主线".to_string()],
                 refs: vec!["earnings-call".to_string()],
                 what_happened: "数据中心需求继续走强。".to_string(),
                 why_it_matters: "决定估值溢价是否继续扩张。".to_string(),
-                thesis_effect: "长期 thesis 强化。".to_string(),
+                mainline_effect: "长期主线强化。".to_string(),
                 evidence: "管理层确认订单能见度。".to_string(),
                 research_log: "checked earnings call".to_string(),
                 follow_up: "继续跟踪 capex。".to_string(),
@@ -891,12 +891,12 @@ fn describe_import_conflict_returns_section_and_event_diffs() {
                 title: "导入事件".to_string(),
                 event_type: "earnings".to_string(),
                 occurred_at: "2026-04-19T10:00:00Z".to_string(),
-                thesis_impact: "positive".to_string(),
-                changed_sections: vec!["Thesis".to_string()],
+                mainline_impact: "positive".to_string(),
+                changed_sections: vec!["投资主线".to_string()],
                 refs: vec![],
                 what_happened: "导入事件正文".to_string(),
                 why_it_matters: "导入事件影响".to_string(),
-                thesis_effect: "导入事件 thesis".to_string(),
+                mainline_effect: "导入事件主线".to_string(),
                 evidence: String::new(),
                 research_log: String::new(),
                 follow_up: String::new(),
@@ -921,19 +921,19 @@ fn describe_import_conflict_returns_section_and_event_diffs() {
         detail
             .available_section_titles
             .iter()
-            .any(|title| title == "Thesis")
+            .any(|title| title == "投资主线")
     );
     assert!(
         detail
             .section_diffs
             .iter()
-            .any(|section| section.section_title == "Thesis")
+            .any(|section| section.section_title == "投资主线")
     );
     let thesis = detail
         .section_diffs
         .iter()
-        .find(|section| section.section_title == "Thesis")
-        .expect("thesis diff");
+        .find(|section| section.section_title == "投资主线")
+        .expect("mainline diff");
     assert!(
         thesis
             .line_diff
@@ -969,12 +969,12 @@ fn apply_import_resolution_merges_selected_sections_and_imports_missing_events()
                 title: "导入事件".to_string(),
                 event_type: "earnings".to_string(),
                 occurred_at: "2026-04-19T10:00:00Z".to_string(),
-                thesis_impact: "positive".to_string(),
-                changed_sections: vec!["Thesis".to_string()],
+                mainline_impact: "positive".to_string(),
+                changed_sections: vec!["投资主线".to_string()],
                 refs: vec![],
                 what_happened: "导入事件正文".to_string(),
                 why_it_matters: "导入事件影响".to_string(),
-                thesis_effect: "导入事件 thesis".to_string(),
+                mainline_effect: "导入事件主线".to_string(),
                 evidence: String::new(),
                 research_log: String::new(),
                 follow_up: String::new(),
@@ -998,14 +998,14 @@ fn apply_import_resolution_merges_selected_sections_and_imports_missing_events()
             CompanyProfileImportResolutionInput {
                 imported_profile_id: "AAPL".to_string(),
                 strategy: CompanyProfileImportResolutionStrategy::MergeSections,
-                section_titles: vec!["Thesis".to_string()],
+                section_titles: vec!["投资主线".to_string()],
                 import_missing_events: true,
             },
         )
         .expect("merge resolution");
 
     assert!(result.merged_existing_profile);
-    assert_eq!(result.changed_sections, vec!["Thesis".to_string()]);
+    assert_eq!(result.changed_sections, vec!["投资主线".to_string()]);
     assert_eq!(result.imported_event_ids, vec![source_event.id.clone()]);
 
     let merged = target
