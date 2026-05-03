@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-20 06:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Later
+- **状态**: New
 
 ## 修复进展（2026-04-28）
 
@@ -12,8 +12,17 @@
   - 结构化失败台账仍保留；若 10 次预算仍耗尽，会继续落为 `skipped_error`，不会伪装成 `noop`。
   - 本轮同时已收紧空输出/空 JSON/非结构化文本的 heartbeat 契约，因此用户和巡检可以区分“合法未触发”和“执行失败”。
 - 状态调整为 `Later`：当前代码侧已提升预算并避免伪静默；若真实窗口继续出现 `max_iterations_exceeded:10` 或等价触顶失败，再改回 `New`。
+- 2026-05-03 20:31 CST 最新真实窗口表明，上述止血结论已失效：`run_id=14942`（`job_id=j_9ee85d42` / `Cerebras IPO与业务进展心跳监控`）再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；到 `21:01` 下一窗又直接漂回 `completed + sent + delivered=1`。这说明 live heartbeat 仍在触顶失败与后续回摆之间抖动，状态回退为 `New`。
 
 - **证据来源**:
+  - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=14942`，`job_id=j_9ee85d42`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-05-03T20:31:03.514042+08:00`
+    - 本轮再次落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`delivered=0`
+    - `error_message=max_iterations_exceeded:6`
+    - 对比同一 job 紧邻窗口：
+      - `run_id=14916`，`executed_at=2026-05-03T20:00:47.798740+08:00`，上一整点仍是 `noop + skipped_noop`
+      - `run_id=14965`，`executed_at=2026-05-03T21:01:18.239218+08:00`，下一整点直接回摆成 `completed + sent + delivered=1`
+    - 这说明最新真实窗口里，heartbeat 触顶失败仍会在下一窗被“恢复送达”掩盖；用户无法区分 20:30 这一窗到底是“没有增量”还是“本轮根本没跑完”
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=9521`，`job_id=j_9ee85d42`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-04-29T04:02:19.013950+08:00`
     - 本轮再次落成 `execution_status=execution_failed`、`message_send_status=skipped_error`、`delivered=0`
@@ -168,6 +177,8 @@
 
 ## 当前实现效果
 
+- `2026-05-03 20:31` 的最新 Cerebras 样本说明，这条缺陷已重新回到当前巡检窗口的活跃态：上一窗 `20:00` 还是 `noop`，`20:31` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，到 `21:01` 又变成 `completed + sent`。
+- 这说明 2026-04-28 所谓“提升预算并避免伪静默”的止血，在 live 窗口没有形成稳定结果；同一条 heartbeat 任务仍会在失败与下一窗成功之间来回摆动。
 - `2026-04-29 05:01` 的后续两个窗口进一步证明，这条缺陷在最近一小时仍活跃：`04:02` 的 `Cerebras IPO与业务进展心跳监控` 先落成 `max_iterations_exceeded:6 + skipped_error`，但 `04:30` 与 `05:00` 又连续漂回 `noop + skipped_noop`；同一小时内其它 heartbeat 仍可正常 `completed + sent`。
 - 这说明 heartbeat 触顶失败不会留下稳定“失败后待恢复”的状态，而是直接被下一窗伪装成正常未命中；用户依然无法从台账判断上一窗到底是“无新增”还是“整轮其实没跑完”。
 - `2026-04-29 04:02` 的 `Cerebras IPO与业务进展心跳监控` 最新样本说明，这条缺陷在本轮最近一小时仍活跃：前一窗口 `03:30` 还是 `Empty + skipped_noop`，`04:02` 直接退化成 `max_iterations_exceeded:6 + skipped_error`，而同一 `04:00` 批次的 `Oil_Price_Monitor_Closing`、`ORCL 大事件监控`、`小米破位预警` 仍能正常 `completed + sent`。
@@ -197,6 +208,8 @@
 
 ## 根因判断
 
+- 最新 `2026-05-03 20:31` 样本说明，live 服务很可能仍在运行旧预算或旧收口逻辑：文档宣称 heartbeat 预算已提升到 `10`，但生产台账仍再次出现 `max_iterations_exceeded:6`。
+- 因为 `21:01` 下一窗可直接成功送达，这更像是 heartbeat/function-calling 链路的预算/恢复逻辑没有真正稳定部署，而不是目标事件本身不再满足条件。
 - `2026-04-28 18:30` 的 `Cerebras IPO与业务进展心跳监控` 新样本说明，这个根因到本轮巡检窗口仍未止血；同一 job 在 `18:01` 还是 `noop`，到 `18:30` 又再次独立撞到 `max_iterations=6`，而 `19:00` 还能漂回 `JsonNoop`，说明 heartbeat 触顶失败与伪 `noop` 状态仍在同一批次内交替。
 - 同窗新增的 `local_search_files` UTF-8 读失败说明，heartbeat 触顶前的工具层异常现在也可能成为放大器；它未必是唯一根因，但已经进入这条失败链路的最近一小时真实证据。
 - `2026-04-27 21:00` 的 `小米破位预警` 新样本说明，这个根因到本轮巡检结束时仍未从同一任务上退出活跃窗口；`20:00` 是 `max_iterations_exceeded:6`，`21:00` 立即漂移成 `heartbeat 输出不是结构化 JSON`，说明 heartbeat 触顶失败和结构化状态退化仍然共享同一条不稳定收口链路。

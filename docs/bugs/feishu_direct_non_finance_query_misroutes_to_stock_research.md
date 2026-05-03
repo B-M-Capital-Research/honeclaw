@@ -3,8 +3,17 @@
 - **发现时间**: 2026-04-30 19:08 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
+  - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
+    - `2026-05-03T20:08:56.147849+08:00` 用户真实输入：`Hi hone，你了解深圳楼市吗？我现在是否适合买房？...`
+    - `2026-05-03T20:10:22.092457+08:00` assistant 直接输出了深圳楼市与置换买房建议，没有执行“仅支持金融相关话题”的边界拒绝
+    - `2026-05-03T20:10:31.976749+08:00` 用户再次追问同一非金融问题
+    - `2026-05-03T20:11:12.412706+08:00` assistant 再次给出详细买房置换/融资建议，说明这不是单次偶发
+  - `data/runtime/prompt-audit/feishu/latest-Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
+    - `runtime_input` 明确只包含深圳楼市 / 买房问题
+    - `system_prompt` 仍明确要求“如用户问题与金融无关，直接礼貌拒绝，并提醒仅支持金融相关话题”
+    - 最新复发样本里未再出现旧 `LITE` / `stock_research` 工具串扰，说明 2026-05-01 的“当前 turn 压过旧上下文”修复已部分生效，但最外层领域边界拒绝本身仍未执行
   - `data/sessions/Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768.json`
     - `2026-04-30T18:59:08.334712+08:00` 用户真实输入：`AMD的电脑CPU是什么名字`
     - `2026-04-30T18:59:37.137018+08:00` assistant 最终回复是 AMD CPU 命名科普，并未保持金融助手角色边界，也没有拒绝非金融问题
@@ -34,6 +43,8 @@
 
 ## 当前实现效果
 
+- `2026-05-03 20:08-20:11 CST` 的最新真实会话显示，即使没有再误入旧 `LITE` / `stock_research` 上下文，Feishu 直聊仍会把非金融“深圳楼市/买房”问题当成正常咨询直接回答。
+- 这说明 2026-05-01 的修复只止住了“旧证券上下文劫持”这一层退化，但“非金融问题必须直接拒绝”这一外层约束仍未在 live 链路生效。
 - 当前轮没有按领域边界拒绝非金融问题，而是输出了一条正常硬件回答。
 - 在输出前，链路继续展开 `stock_research`、`LITE` 本地检索和光通信财报搜索，说明旧金融上下文没有被当前 user turn 及时覆盖。
 - 最终答案虽然没有直接把 `LITE` 错答成 AMD CPU，但整轮仍出现明显的技能误路由、上下文污染和额外延迟。
@@ -47,6 +58,8 @@
 
 ## 根因判断
 
+- 最新样本说明，根因已从“旧 `stock_research` / `LITE` 上下文压过当前问题”收缩为“领域边界拒绝在 live Feishu 直聊里仍未真正生效”。
+- 也就是说，当前 turn 顺序修复大概率已阻止旧 ticker 劫持，但最外层的非金融短路仍没有在最终回答前拦住模型继续给生活类建议。
 - 直聊链路对“非金融新话题”的领域边界约束没有在路由前生效，导致模型继续尝试回答。
 - 搜索/技能选择阶段对“当前 turn 已脱离上一轮金融主题”的约束不够强，旧 skill context 仍被继承到本轮。
 - 目前缺少“当前 user turn 与首个技能/工具目标必须语义一致”的前置校验，所以即便最终文本答对，前面的 skill/tool 仍可能沿用旧金融上下文偏航。
@@ -63,3 +76,4 @@
 - 领域边界策略新增明确约束：本轮用户输入优先于历史摘要、旧技能上下文和上一轮标的；当前问题明显不是金融/投研请求时必须先短路回复，不得调用 `stock_research`、`data_fetch`、`web_search` 或沿用旧 ticker / 旧 skill context。
 - 回归验证：`cargo test -p hone-channels prompt::tests:: --lib -- --nocapture`、`cargo test -p hone-channels turn_builder::tests::runtime_input_with_recv_extra_keeps_current_turn_last --lib -- --nocapture`。
 - 关联 GitHub Issue：无。
+- 2026-05-03 20:11 CST：真实 Feishu 会话再次复发。最新样本不再体现旧 `LITE` / `stock_research` 串扰，但仍直接回答非金融“深圳楼市/买房”问题，说明 live 领域边界拒绝未真正生效；状态回退为 `New`。
