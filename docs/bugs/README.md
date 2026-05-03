@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-03 18:02 CST
+最后更新：2026-05-03 18:20 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,17 +15,16 @@
 
 ## 当前概览
 
-- 活跃待修复：12
+- 活跃待修复：11
 - Later / 待复现：11
-- 已修复 / 已关闭：74
+- 已修复 / 已关闭：75
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 2 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Web 直聊 `session/update` 仍把 skill prompt、工具原始回显与绝对路径作为 `tool_call_update.rawOutput` 外发 | P1 | New | 2026-05-02 20:03 最近一小时真实 Web session `019dca1a-9c4c-74e2-bebf-66d97c78e6b7` 再次把 `Scheduled Task Management` skill 全文、`/Users/fengming2/Desktop/honeclaw/skills/scheduled_task` 绝对路径、以及创建任务后的完整 `job` JSON 下发到 `session/update`；该问题不同于已修的 `agent_message_chunk` prompt echo，属于仍活跃的实时事件流泄漏；关联 Issue [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30) | [web_direct_tool_call_raw_output_leak.md](./web_direct_tool_call_raw_output_leak.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-05-02 17:35 已收紧 `response_finalizer` 的 `planning_sentence_suppressed` 判定：用户可见澄清问句与 `请先确认/请提供` 类补充请求不再被误杀，并补 `hone-channels` 回归测试；因本轮未重启服务、尚缺新的真实 Feishu 样本，先维持活跃 `Fixing` | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-03 18:02 再次确认 `sessions/session_messages` 上界仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时仍无增量；同库 `cron_job_runs` 已继续推进到 `run_id=14831 @ 18:01:02`，说明 sqlite 文件仍在写，但会话镜像表继续完全停滞 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-03 16:02 最新窗口里，`ORCL 大事件监控` 在 `15:30` 刚回落 `noop` 后，`16:00` 又把同一周末静态 `171.83 / +6.47% / OpenAI 利好` 条件重新包装成 `triggered + sent`；同窗 `持仓重大事件/小米30港元破位预警` 已回落 `noop`，说明重复回摆仍在继续 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
@@ -67,6 +66,7 @@
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-05-01 watchlist 送达前数值自检补齐“跌至 69.85，已触及或低于触发价 69.83”变体；当前价仍高于下行触发价时会落成 `near_threshold_suppressed`；`cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture` 通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./scheduler_watchlist_near_threshold_false_trigger.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | Fixed | 2026-04-30 startup error dialog 改为后台线程显示，并在 setup preflight 失败时写入 `desktop.log` 与 stderr；新增无交互抑制开关和 hone-desktop 定向回归，避免每日 `.app` smoke test 再卡在 `CFUserNotificationDisplayAlert` | [daily_macos_build_release_app_startup_blocked.md](./daily_macos_build_release_app_startup_blocked.md) |
 | Feishu 定时任务在 Codex ACP 未完成搜索工具时集中失败，只发通用抱歉且不回写会话 | P1 | Fixed | 2026-04-30 非 heartbeat scheduler 内部失败抑制分支新增会话落库补偿：不可外发的 `codex acp prompt ended before tool completion` 等错误会在 direct session 追加脱敏失败记录，台账仍保持 `skipped_error`；`hone-channels` scheduler/runtime 定向回归与 `cargo check -p hone-channels` 通过；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
+| Web 直聊 `session/update` 把 skill prompt、工具原始回显与绝对路径作为 `tool_call_update.rawOutput` 外发 | P1 | Fixed | 2026-05-03 已在共享 `SessionEventEmitter` 对用户态 `ToolStatus` 统一做路径相对化、内部 prompt 标记抑制与结构化 JSON payload 屏蔽；内部 transcript / `acp-events.log` 仍保留 raw evidence，用户态事件不再继续外发 skill prompt、`/Users/...` 绝对路径或完整 `job` JSON；`cargo test -p hone-channels session_event_emitter_ -- --nocapture` 与 `cargo check -p hone-channels --tests` 通过；关联 Issue [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30) | [web_direct_tool_call_raw_output_leak.md](./web_direct_tool_call_raw_output_leak.md) |
 | Desktop 基础设置切换 Agent 后旧内嵌 Web server 未停止，重启时撞上 8077 端口占用并让页面掉线 | P1 | Fixed | 2026-04-28 已在 bundled runtime dirty restart 前先停止旧 managed children，避免旧内嵌 Web server 在 lock preflight / 新绑定前继续占用 `127.0.0.1:8077`；`cargo check -p hone-desktop --tests` 通过 | [desktop_agent_switch_orphaned_web_server_port_conflict.md](./desktop_agent_switch_orphaned_web_server_port_conflict.md) |
 | 一次性定时任务丢失绝对日期，提前执行并禁用原本未来提醒 | P2 | Fixed | 2026-04-28 `CronSchedule` 新增 `date`，cron tool / Web API / scheduler event 均透传；未到目标日期的一次性任务不会被判定 due，定向回归通过 | [scheduler_once_absolute_date_lost.md](./scheduler_once_absolute_date_lost.md) |
 | Telegram startup `GetMe` 超时后遗留 dead pid 与 heartbeat 残骸 | P2 | Fixed | 2026-04-28 `hone-telegram` 在空 token 或 `bot.get_me()` 失败时从 `run()` 返回而非 `process::exit`，让 lock / heartbeat 正常 Drop 清理；`cargo check -p hone-telegram --tests` 通过 | [telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md](./telegram_getme_startup_exit_leaves_dead_pid_and_heartbeat.md) |

@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::runners::{AgentRunnerEmitter, AgentRunnerEvent};
-use crate::runtime::relativize_user_visible_paths;
+use crate::runtime::{relativize_user_visible_paths, sanitize_user_visible_output};
 
 use super::types::{AgentSessionEvent, AgentSessionListener};
 
@@ -31,14 +31,54 @@ fn truncate_event_detail(detail: &str, max_chars: usize) -> String {
     detail.chars().take(max_chars).collect::<String>() + "..."
 }
 
+fn contains_internal_progress_marker(text: &str) -> bool {
+    const MARKERS: &[&str] = &[
+        "### System Instructions ###",
+        "### System Prompt ###",
+        "### Skill Context ###",
+        "### Conversation Context ###",
+        "### User Prompt ###",
+        "### Available Skills ###",
+        "【Session 上下文】",
+        "【Invoked Skill Context】",
+        "turn-0 可用技能索引",
+        "Base directory for this skill:",
+    ];
+    MARKERS.iter().any(|marker| text.contains(marker))
+}
+
+fn looks_like_structured_tool_payload(text: &str) -> bool {
+    let trimmed = text.trim();
+    if !(trimmed.starts_with('{') || trimmed.starts_with('[')) {
+        return false;
+    }
+    serde_json::from_str::<serde_json::Value>(trimmed)
+        .map(|value| value.is_object() || value.is_array())
+        .unwrap_or(false)
+}
+
+fn sanitize_user_visible_event_text(value: &str, working_directory: &str) -> Option<String> {
+    let relativized = relativize_user_visible_paths(value, working_directory);
+    let sanitized = sanitize_user_visible_output(&relativized);
+    let text = sanitized.content.trim();
+    if text.is_empty() || contains_internal_progress_marker(text) {
+        return None;
+    }
+    if looks_like_structured_tool_payload(text) {
+        return None;
+    }
+    Some(text.to_string())
+}
+
 #[async_trait]
 impl AgentRunnerEmitter for SessionEventEmitter {
     async fn emit(&self, event: AgentRunnerEvent) {
         let event = match event {
             AgentRunnerEvent::Progress { stage, detail } => AgentRunnerEvent::Progress {
                 stage,
-                detail: detail
-                    .map(|value| relativize_user_visible_paths(&value, &self.working_directory)),
+                detail: detail.and_then(|value| {
+                    sanitize_user_visible_event_text(&value, &self.working_directory)
+                }),
             },
             AgentRunnerEvent::ToolStatus {
                 tool,
@@ -46,12 +86,15 @@ impl AgentRunnerEmitter for SessionEventEmitter {
                 message,
                 reasoning,
             } => AgentRunnerEvent::ToolStatus {
-                tool,
+                tool: sanitize_user_visible_event_text(&tool, &self.working_directory)
+                    .unwrap_or_else(|| "工具".to_string()),
                 status,
-                message: message
-                    .map(|value| relativize_user_visible_paths(&value, &self.working_directory)),
-                reasoning: reasoning
-                    .map(|value| relativize_user_visible_paths(&value, &self.working_directory)),
+                message: message.and_then(|value| {
+                    sanitize_user_visible_event_text(&value, &self.working_directory)
+                }),
+                reasoning: reasoning.and_then(|value| {
+                    sanitize_user_visible_event_text(&value, &self.working_directory)
+                }),
             },
             AgentRunnerEvent::Error { mut error } => {
                 error.message =

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-02 20:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30)
 
 ## 证据来源
@@ -65,12 +65,27 @@
 - `rawOutput` 当前仍按“可直接透传的调试字段”进入 Web `session/update`，缺少用户态净化与字段级裁剪。
 - 从旧样本看，问题不是某个单一 skill 的异常，而是 Web 侧对 `tool_call_update/rawOutput` 的统一下发策略缺口。
 
-## 下一步建议
+## 修复进展（2026-05-03 18:20 CST）
 
-- 优先在 Web `session/update` 出站层屏蔽或裁剪 `tool_call_update.rawOutput`，默认只保留安全的状态摘要。
-- 对 `tool_call_update` 增加用户态 contract test，覆盖：
-  - skill prompt 回显
-  - 结构化工具 JSON
-  - 命令执行回显
-  - `/Users/...` 绝对路径
-- 修复后用同一 Web session 类型复测，确认前端只看到必要的进度提示，而不再收到内部 prompt / raw payload。
+- 已在 `crates/hone-channels/src/agent_session/emitter.rs` 收口共享用户态事件出站：
+  - `RunEvent::ToolStatus` 的 `tool` / `message` / `reasoning` 现在统一先做路径相对化，再过 `sanitize_user_visible_output`
+  - 命中 `【Invoked Skill Context】`、`Base directory for this skill:`、`### System Instructions ###`、`turn-0 可用技能索引` 等内部 prompt 标记时，用户态字段直接抑制，不再继续外发
+  - 若 `tool_call_update` 文本本体是结构化 JSON / array payload，也会在用户态事件层被直接抑制；内部 transcript 与 `acp-events.log` 仍保留原始证据，便于恢复与排障
+- 这次修复与已完成的 `agent_message_chunk` prompt-echo 过滤形成互补：
+  - `agent_message_chunk` 继续在 ACP ingest 层拦截内部 prompt 正文
+  - `tool_call_update` / `ToolStatus` 则在 session emitter 层补齐用户态净化，避免 raw payload 经 `tool_call` SSE 或渠道进度事件漏出
+- 新增回归测试：
+  - `session_event_emitter_relativizes_user_visible_paths`
+  - `session_event_emitter_suppresses_internal_tool_status_payloads`
+
+## 当前验证（2026-05-03 18:20 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session/emitter.rs crates/hone-channels/src/agent_session/tests.rs`
+
+## 当前结论
+
+- 该缺陷的可控代码路径已补齐并有自动化回归覆盖，可从活跃队列移到 `Fixed`。
+- 本轮没有重启现有 Web 服务，因此未做 live SSE 复流；如需运行态复核，可在不重启生产实例的前提下，用隔离会话再次触发 `skill_tool` / `cron_job`，确认前端只看到简短工具状态，而不再看到 skill prompt、绝对路径或 `job` JSON。

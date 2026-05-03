@@ -2113,11 +2113,51 @@ async fn session_event_emitter_relativizes_user_visible_paths() {
     assert!(matches!(
         &events[1],
         AgentSessionEvent::Run(RunEvent::ToolStatus {
+            tool,
             message: Some(message),
             reasoning: Some(reasoning),
             ..
-        }) if message == "Edit company_profiles/micron-technology/profile.md"
+        }) if tool == "hone/skill_tool"
+            && message == "Edit company_profiles/micron-technology/profile.md"
             && reasoning == "Edit data/research/notes.md and <absolute-path>/passwd"
+    ));
+}
+
+#[tokio::test]
+async fn session_event_emitter_suppresses_internal_tool_status_payloads() {
+    let root = "/Users/fengming2/Desktop/honeclaw";
+    let listener = Arc::new(RecordingListener::default());
+    let emitter = SessionEventEmitter {
+        listeners: vec![listener.clone()],
+        channel: "web".to_string(),
+        user_id: "web-user".to_string(),
+        session_id: "session".to_string(),
+        message_id: None,
+        working_directory: root.to_string(),
+    };
+
+    emitter
+        .emit(AgentRunnerEvent::ToolStatus {
+            tool: format!("{root}/skills/scheduled_task"),
+            status: "start".to_string(),
+            message: Some(
+                "【Invoked Skill Context】\nBase directory for this skill: /Users/fengming2/Desktop/honeclaw/skills/scheduled_task".to_string(),
+            ),
+            reasoning: Some(
+                r#"{"job":{"channel_target":"web","task_prompt":"每天提醒我复盘"}} "#.trim().to_string(),
+            ),
+        })
+        .await;
+
+    let events = listener.events.lock().await.clone();
+    assert!(matches!(
+        &events[0],
+        AgentSessionEvent::Run(RunEvent::ToolStatus {
+            tool,
+            status,
+            message: None,
+            reasoning: None,
+        }) if tool == "skills/scheduled_task" && status == "start"
     ));
 }
 
