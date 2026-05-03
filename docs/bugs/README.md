@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-04 00:06 CST
+最后更新：2026-05-04 01:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -26,7 +26,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-05-02 17:35 已收紧 `response_finalizer` 的 `planning_sentence_suppressed` 判定：用户可见澄清问句与 `请先确认/请提供` 类补充请求不再被误杀，并补 `hone-channels` 回归测试；因本轮未重启服务、尚缺新的真实 Feishu 样本，先维持活跃 `Fixing` | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-04 00:02 再次确认 `sessions/session_messages` 上界仍共同卡在 `2026-04-27T16:54:20+08:00`；但真实 Feishu 会话源文件已继续刷新到 `00:01:50 / 23:40:42 / 23:04:05 / 23:01:10`，同库 `cron_job_runs` 也推进到 `run_id=15108`，说明 sqlite 文件仍在写、仅会话镜像表完全停滞 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-04 01:01 再次确认 `sessions/session_messages` 上界仍共同卡在 `2026-04-27T16:54:20+08:00`；但真实 Feishu 会话源文件已继续刷新到 `01:00:43 / 00:01:50`，同库 `cron_job_runs` 仍推进到 `run_id=15108`，说明 sqlite 文件仍在写、仅会话镜像表完全停滞 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-03 19:10 最新窗口里，`小米30港元破位预警` 在 `18:30` 刚回落 `noop` 后，`19:00` 又把同一周末静态 `29.02 港元 / 跌破 30 港元` 条件重新包装成 `triggered + sent`；同窗 `ORCL/RKLB/持仓重大事件` 已回落 `noop/Empty/JsonEmptyStatus`，说明重复回摆仍在继续 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-03 20:02 `20:00 英伟达每日消息` 的 `run_id=14919` 再次落成 `completed + send_failed`；对应 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义在线上仍未生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-04 00:02 最新 `00:00-00:01` 窗口里仍同步混跑 `Empty / JsonNoop / JsonTriggered`，且多条 heartbeat 继续先记 `success=true content_chars=0` 再落成 `parse_kind=Empty`，说明结构化协议仍未收敛 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
@@ -35,7 +35,7 @@
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-03 23:03 最新 `22:30` 与 `23:00` 窗口又新增 `23` 条 `running + pending` started 行且不被终态覆盖；即便同窗已有 `noop/sent` 终态，started 行仍悬挂；全库总量升到 `4138` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-03 23:01 `核心观察股池晚间快报` 再次把 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 及其余 17 支拓展股统一降成“击球区：待确认”；同症状已从 `2026-04-30 21:35`、`2026-05-01 21:35`、`2026-05-01 23:00`、`2026-05-02 09:01`、`2026-05-02 21:35`、`2026-05-02 23:01` 延续到最新窗口 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 直聊切到非金融新话题时，仍直接回答楼市/买房问题而未执行领域边界拒绝 | P3 | New | 2026-05-03 20:08-20:11 两轮真实 Feishu 会话都把“深圳楼市/是否适合买房”当成正常咨询直接回答；最新 prompt audit 仍保留“非金融问题应礼貌拒绝”的系统约束，说明 live 领域边界拒绝未真正生效 | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
-| Feishu 每日动态监控在“今日不触发新增重大推送”口径下再次把无新增长文照常发送 | P3 | New | 2026-05-03 00:02 `RKLB`、`TEM`、`AAOI 每日动态监控` 三轮都在正文里分别写出“今日不触发重大催化或风险证伪推送”/“今日不触发新增重大催化或风险证伪推送”/“今日不触发新增重大推送”，但 `cron_job_runs` 仍全部落成 `completed + sent + delivered=1`，对应 direct session 也连续写入 3 条 assistant final | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
+| Feishu 每日动态监控在“今日不触发新增重大推送”口径下再次把无新增长文照常发送 | P3 | New | 2026-05-04 00:02 `TEM`、`RKLB`、`AAOI 每日动态监控` 三轮都在正文里分别写出“今日不触发新增重大催化或风险证伪推送”/“今日不触发新增重大推送”，但 `cron_job_runs` 仍全部落成 `completed + sent + delivered=1`，对应 direct session 也连续写入 3 条 assistant final | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-02 21:03 `run_id=13881` 再次把“国际贸易关税政策不确定性”“伊朗原油相关供应风险”组织成确定性油价主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 

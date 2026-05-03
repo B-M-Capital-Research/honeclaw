@@ -5,6 +5,28 @@
 - **严重等级**: P3
 - **状态**: New
 - **证据来源**:
+  - `2026-05-04 00:02 CST` 最近一小时真实窗口再次确认本单仍活跃，且同一 direct session 连续三轮都把“今日不触发新增重大推送”写进正文后照常发送：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=15104` / `job_id=j_379acc40` / `job_name=TEM 每日动态监控` / `executed_at=2026-05-04T00:00:39.638643+08:00`
+      - `execution_status=completed`、`message_send_status=sent`、`should_deliver=1`、`delivered=1`
+      - `response_preview` 明确写入：`今日不触发新增重大催化或风险证伪推送`
+      - `run_id=15107` / `job_id=j_5f0b686a` / `job_name=RKLB 每日动态监控` / `executed_at=2026-05-04T00:01:19.088278+08:00`
+      - 同样落成 `completed + sent + delivered=1`
+      - `response_preview` 明确写入：`今日不触发新增重大催化或风险证伪推送`
+      - `run_id=15108` / `job_id=j_101f5e64` / `job_name=AAOI 每日动态监控` / `executed_at=2026-05-04T00:01:52.186813+08:00`
+      - 同样落成 `completed + sent + delivered=1`
+      - `response_preview` 明确写入：`今日不触发新增重大推送`
+    - `data/sessions/Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b.json`
+      - `2026-05-04T00:00:02.909275+08:00` 注入 `TEM 每日动态监控`
+      - `2026-05-04T00:00:37.924208+08:00` assistant final 正文已写明：`今日不触发新增重大催化或风险证伪推送`
+      - `2026-05-04T00:00:37.925640+08:00` 紧接着注入 `RKLB 每日动态监控`
+      - `2026-05-04T00:01:17.113387+08:00` assistant final 正文已写明：`今日不触发新增重大催化或风险证伪推送`
+      - `2026-05-04T00:01:17.119470+08:00` 再注入 `AAOI 每日动态监控`
+      - `2026-05-04T00:01:50.431450+08:00` assistant final 正文已写明：`今日不触发新增重大推送`
+    - `data/runtime/logs/sidecar.log`
+      - `2026-05-04 00:01:17.131`、`00:01:50.450` 同窗继续记录 `step=session.persist_assistant ... detail=done`
+      - 同窗没有出现 `SchedulerDiag skip_signal`、`rolled back skipped assistant turn` 或 `本轮不发送`
+    - 结论：到 `2026-05-04 00:02` 为止，最新线上窗口仍会把“正文已明确声明不触发新增推送”的每日动态监控任务记成 `completed + sent` 并写入 direct session，本单继续维持活跃 `New`。
   - `2026-05-03 00:02 CST` 最近一小时真实窗口确认本单重新活跃，且 2026-04-26 标记 `Fixed` 的 skip-signal 止血没有覆盖最新措辞：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=14020` / `job_id=j_5f0b686a` / `job_name=RKLB 每日动态监控` / `executed_at=2026-05-03T00:01:00+08:00`
@@ -89,6 +111,7 @@
 
 ## 当前实现效果
 
+- `2026-05-04 00:02` 的最新样本显示，`TEM`、`RKLB`、`AAOI 每日动态监控` 再次把“今日不触发新增重大催化或风险证伪推送”/“今日不触发新增重大推送”写进正文，但台账仍统一记成 `completed + sent + delivered=1`，且同一 direct session 连续新增三条 assistant final。
 - `2026-05-03 00:02` 的最新样本显示，`RKLB`、`TEM`、`AAOI 每日动态监控` 都已经把“今日不触发重大推送”写进正文，但台账仍统一记成 `completed + sent + delivered=1`，且 direct session 尾部连续新增三条 assistant final。
 - 相比 `2026-04-26` 已修复窗口，最新坏态不再使用 `按规则可跳过正式推送` / `不触发正式推送` 旧措辞，而是换成 `今日不触发重大催化或风险证伪推送`、`今日不触发新增重大推送` 等新变体后再次穿透发送过滤。
 - 2026-04-24 00:01 最新样本显示，`AAOI 每日动态监控` 已明确判断“未出现新的公司级实质催化或风险证伪信号，按规则可跳过正式推送”，但仍被记成 `completed + sent + delivered=1` 并向用户落库正式正文。
@@ -135,6 +158,12 @@
 - 最新 `RKLB` / `TEM` / `AAOI 每日动态监控` 已不再落成 `noop + skipped_noop`，而是全部回退到 `completed + sent + delivered=1`。
 - 最新 answer 不再使用 `按规则可跳过正式推送` 旧措辞，而是改写为 `今日不触发重大催化或风险证伪推送`、`今日不触发新增重大催化或风险证伪推送`、`今日不触发新增重大推送`，说明旧止血只是词表级匹配，当前又被新措辞绕过。
 - 因此本单状态从 `Fixed` 回退为 `New`，重新进入活跃缺陷队列；`feishu_scheduler_noop_reply_persisted_to_direct_session.md` 仍是独立边界问题，但不覆盖本轮“明知应跳过却仍实际发送”的主症状。
+
+## 2026-05-04 巡检结论
+
+- 最新 `TEM` / `RKLB` / `AAOI 每日动态监控` 在 `00:00-00:02` 窗口继续稳定复现同一坏态：正文先声明“今日不触发新增重大推送”，随后仍全部落成 `completed + sent + delivered=1`。
+- `cron_job_runs`、direct session JSON 与 `sidecar.log` 三个证据面完全一致，没有出现 `skip_signal` 或 `本轮不发送` 的任何收口迹象，说明这不是 sqlite 镜像滞后造成的假象。
+- 因此本单继续保持活跃 `New`，且最新坏态已经跨两天零点窗口连续复现，不再是单次措辞漂移。
 
 ## 下一步建议
 
