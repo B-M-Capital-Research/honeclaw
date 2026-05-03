@@ -274,7 +274,7 @@ export async function getPublicHistory() {
   return payload.messages ?? [];
 }
 
-// ── Public digest context (read-only thesis + profiles surface) ─────────
+// ── Public digest context (read-only mainline + profiles surface) ─────────
 
 export type ProfileSummary = {
   dir: string;
@@ -286,12 +286,12 @@ export type ProfileSummary = {
 
 export type DigestContext = {
   actor: { channel: string; user_id: string };
-  investment_global_style: string | null;
-  investment_theses: Record<string, string>;
+  mainline_style: string | null;
+  mainline_by_ticker: Record<string, string>;
   global_digest_enabled: boolean;
   global_digest_floor_macro_picks: number;
-  last_thesis_distilled_at: string | null;
-  thesis_distill_skipped: string[];
+  last_mainline_distilled_at: string | null;
+  mainline_distill_skipped: string[];
   holdings: string[];
   profile_list: ProfileSummary[];
 };
@@ -301,18 +301,18 @@ export async function getDigestContext(): Promise<DigestContext> {
   return parseJson<DigestContext>(response);
 }
 
-// ── Admin: thesis context for any actor ─────────────────────────────────
+// ── Admin: mainline context for any actor ─────────────────────────────────
 
-export type AdminThesisContext = DigestContext & {
+export type AdminMainlineContext = DigestContext & {
   actor: { channel: string; user_id: string; channel_scope?: string | null };
 };
 
-export async function getAdminThesisContext(
+export async function getAdminMainlineContext(
   actor: ActorRef,
-): Promise<AdminThesisContext> {
+): Promise<AdminMainlineContext> {
   const q = actorQuery(actor);
-  const response = await apiFetch(`/api/event-engine/thesis-context?${q}`);
-  return parseJson<AdminThesisContext>(response);
+  const response = await apiFetch(`/api/event-engine/mainline-context?${q}`);
+  return parseJson<AdminMainlineContext>(response);
 }
 
 export async function getAdminCompanyProfile(
@@ -331,15 +331,15 @@ export async function getAdminCompanyProfile(
   return parseJson(response);
 }
 
-export async function adminTriggerThesisDistill(actor: ActorRef): Promise<{
+export async function adminTriggerMainlineDistill(actor: ActorRef): Promise<{
   ok: boolean;
-  theses_count: number;
-  global_style_set: boolean;
+  mainline_count: number;
+  mainline_style_set: boolean;
   skipped_tickers: string[];
   last_distilled_at: string | null;
 }> {
   const q = actorQuery(actor);
-  const response = await apiFetch(`/api/event-engine/thesis-distill?${q}`, {
+  const response = await apiFetch(`/api/event-engine/mainline-distill?${q}`, {
     method: "POST",
   });
   return parseJson(response);
@@ -347,8 +347,8 @@ export async function adminTriggerThesisDistill(actor: ActorRef): Promise<{
 
 export async function refreshDigestContext(): Promise<{
   ok: boolean;
-  theses_count: number;
-  global_style_set: boolean;
+  mainline_count: number;
+  mainline_style_set: boolean;
   skipped_tickers: string[];
   last_distilled_at: string | null;
 }> {

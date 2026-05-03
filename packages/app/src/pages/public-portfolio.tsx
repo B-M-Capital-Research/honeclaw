@@ -1,4 +1,4 @@
-// public-portfolio.tsx — 用户的"投资上下文"页:展示系统蒸馏的 thesis、整体投资风格、
+// public-portfolio.tsx — 用户的"投资上下文"页:展示系统蒸馏的投资主线、整体投资风格、
 // sandbox 里的公司画像列表(read-only)。编辑画像走 /chat 与 agent 对话(company_portrait skill)。
 
 import { createSignal, For, onMount, Show } from "solid-js"
@@ -30,9 +30,9 @@ function formatTimestamp(iso: string | null): string {
   }
 }
 
-function ThesisCard(props: {
+function MainlineCard(props: {
   ticker: string
-  thesis: string | undefined
+  mainline: string | undefined
   hasProfile: boolean
   onView: () => void
   isSkipped: boolean
@@ -42,10 +42,10 @@ function ThesisCard(props: {
       style={{
         padding: "20px 22px",
         "border-radius": "12px",
-        border: props.thesis
+        border: props.mainline
           ? "1px solid rgba(0,0,0,0.08)"
           : "1px dashed rgba(245,158,11,0.30)",
-        background: props.thesis ? "#fff" : "rgba(245,158,11,0.04)",
+        background: props.mainline ? "#fff" : "rgba(245,158,11,0.04)",
         display: "flex",
         "flex-direction": "column",
         gap: "10px",
@@ -82,7 +82,7 @@ function ThesisCard(props: {
         </Show>
       </div>
       <Show
-        when={props.thesis}
+        when={props.mainline}
         fallback={
           <div style={{ "font-size": "13px", color: "#94a3b8", "line-height": "1.6" }}>
             <Show
@@ -94,7 +94,7 @@ function ThesisCard(props: {
                 </>
               }
             >
-              <strong style={{ color: "#d97706" }}>画像存在但 thesis 蒸馏失败 / 跳过</strong>
+              <strong style={{ color: "#d97706" }}>画像存在但投资主线蒸馏失败 / 跳过</strong>
               {props.isSkipped ? "(上次跳过)" : ""}—— 点"立即刷新"重试。
             </Show>
           </div>
@@ -107,7 +107,7 @@ function ThesisCard(props: {
             "line-height": "1.7",
           }}
         >
-          {props.thesis}
+          {props.mainline}
         </div>
       </Show>
     </div>
@@ -276,7 +276,7 @@ function PortfolioContextView() {
     try {
       const r = await refreshDigestContext()
       setRefreshMsg(
-        `蒸馏完成:${r.theses_count} 条 thesis,跳过 ${r.skipped_tickers.length} 只`,
+        `蒸馏完成:${r.mainline_count} 条投资主线,跳过 ${r.skipped_tickers.length} 只`,
       )
       await load()
     } catch (e) {
@@ -329,7 +329,7 @@ function PortfolioContextView() {
             投资上下文
           </h1>
           <p style={{ "font-size": "13px", color: "#64748b", "margin-top": "8px", "line-height": "1.7" }}>
-            系统每周自动从你的公司画像蒸馏 thesis,用于过滤全球 digest 的相关性。画像编辑请通过 /chat。
+            系统每周自动从你的公司画像蒸馏投资主线,用于过滤全球 digest 的相关性。画像编辑请通过 /chat。
           </p>
         </div>
 
@@ -367,12 +367,12 @@ function PortfolioContextView() {
                 }}
               >
                 <div style={{ "font-size": "13px", color: "#64748b" }}>
-                  上次蒸馏:<strong style={{ color: "#0f172a" }}>{formatTimestamp(c().last_thesis_distilled_at)}</strong>
-                  <Show when={c().thesis_distill_skipped.length > 0}>
+                  上次蒸馏:<strong style={{ color: "#0f172a" }}>{formatTimestamp(c().last_mainline_distilled_at)}</strong>
+                  <Show when={c().mainline_distill_skipped.length > 0}>
                     <span style={{ "margin-left": "16px" }}>
-                      跳过 {c().thesis_distill_skipped.length} 只:
+                      跳过 {c().mainline_distill_skipped.length} 只:
                       <span style={{ color: "#d97706", "font-family": "monospace" }}>
-                        {c().thesis_distill_skipped.join(", ")}
+                        {c().mainline_distill_skipped.join(", ")}
                       </span>
                     </span>
                   </Show>
@@ -436,19 +436,19 @@ function PortfolioContextView() {
                 </div>
                 <div style={{ "font-size": "14px", color: "#0f172a", "line-height": "1.7" }}>
                   <Show
-                    when={c().investment_global_style}
+                    when={c().mainline_style}
                     fallback={
                       <span style={{ color: "#94a3b8" }}>
                         尚未蒸馏 —— 至少要有 1 个公司画像才能产出整体风格。
                       </span>
                     }
                   >
-                    {c().investment_global_style}
+                    {c().mainline_style}
                   </Show>
                 </div>
               </div>
 
-              {/* Per-ticker thesis */}
+              {/* Per-ticker mainline */}
               <h2
                 style={{
                   "font-size": "16px",
@@ -457,7 +457,7 @@ function PortfolioContextView() {
                   margin: "24px 0 12px",
                 }}
               >
-                各持仓 Thesis ({c().holdings.length} 只)
+                各持仓投资主线 ({c().holdings.length} 只)
               </h2>
               <Show
                 when={c().holdings.length > 0}
@@ -486,11 +486,11 @@ function PortfolioContextView() {
                 >
                   <For each={c().holdings}>
                     {(ticker) => (
-                      <ThesisCard
+                      <MainlineCard
                         ticker={ticker}
-                        thesis={c().investment_theses[ticker]}
+                        mainline={c().mainline_by_ticker[ticker]}
                         hasProfile={profileTickers().has(ticker)}
-                        isSkipped={c().thesis_distill_skipped.includes(ticker)}
+                        isSkipped={c().mainline_distill_skipped.includes(ticker)}
                         onView={() => openProfile(ticker)}
                       />
                     )}

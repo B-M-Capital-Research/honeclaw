@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { For, Show, createEffect, createMemo } from "solid-js"
 import { CompanyProfileDetail } from "@/components/company-profile-detail"
 import { PortfolioDetail } from "@/components/portfolio-detail"
-import { UserThesisView } from "@/components/user-thesis-view"
+import { UserMainlineView } from "@/components/user-mainline-view"
 import { useBackend } from "@/context/backend"
 import { useCompanyProfiles } from "@/context/company-profiles"
 import { usePortfolio } from "@/context/portfolio"
@@ -12,12 +12,12 @@ import { useResearch } from "@/context/research"
 import { useSessions } from "@/context/sessions"
 import { actorFromUser, actorKey, parseActorKey, type ActorRef } from "@/lib/actors"
 
-type UsersTab = "portfolio" | "profiles" | "thesis" | "sessions" | "research"
+type UsersTab = "portfolio" | "profiles" | "mainline" | "sessions" | "research"
 
 const TAB_LIST: { id: UsersTab; label: string; capability?: string }[] = [
   { id: "portfolio", label: "持仓" },
   { id: "profiles", label: "公司画像", capability: "company_profiles" },
-  { id: "thesis", label: "蒸馏 thesis" },
+  { id: "mainline", label: "蒸馏投资主线" },
   { id: "sessions", label: "会话" },
   { id: "research", label: "相关研究", capability: "research" },
 ]
@@ -223,7 +223,7 @@ export default function UsersPage() {
 
   const tab = createMemo<UsersTab>(() => {
     const t = params.tab as UsersTab | undefined
-    if (t === "profiles" || t === "sessions" || t === "research" || t === "thesis") return t
+    if (t === "profiles" || t === "sessions" || t === "research" || t === "mainline") return t
     return "portfolio"
   })
 
@@ -302,8 +302,8 @@ export default function UsersPage() {
               <Show when={tab() === "profiles"}>
                 <CompanyProfileDetail />
               </Show>
-              <Show when={tab() === "thesis"}>
-                <UserThesisView actor={actor()} />
+              <Show when={tab() === "mainline"}>
+                <UserMainlineView actor={actor()} />
               </Show>
               <Show when={tab() === "sessions"}>
                 <UserSessionsView actor={actor()} />

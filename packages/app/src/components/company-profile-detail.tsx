@@ -24,7 +24,7 @@ function SummaryBlock(props: {
   title: string
   updatedAt: string
   eventCount: number
-  thesisExcerpt: string
+  mainlineExcerpt: string
 }) {
   return (
     <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
@@ -36,7 +36,7 @@ function SummaryBlock(props: {
         <span>{props.eventCount} 条事件</span>
       </div>
       <div class="mt-3 text-sm leading-6 text-[color:var(--text-secondary)]">
-        {props.thesisExcerpt || "未提取到 Thesis 摘要"}
+        {props.mainlineExcerpt || "未提取到投资主线摘要"}
       </div>
     </div>
   )
@@ -306,13 +306,13 @@ export function CompanyProfileDetail() {
                                   title="你当前的版本"
                                   updatedAt={conflict.existing.updated_at}
                                   eventCount={conflict.existing.event_count}
-                                  thesisExcerpt={conflict.existing.thesis_excerpt}
+                                  mainlineExcerpt={conflict.existing.mainline_excerpt}
                                 />
                                 <SummaryBlock
                                   title="导入版本"
                                   updatedAt={conflict.imported.updated_at}
                                   eventCount={conflict.imported.event_count}
-                                  thesisExcerpt={conflict.imported.thesis_excerpt}
+                                  mainlineExcerpt={conflict.imported.mainline_excerpt}
                                 />
                               </div>
 

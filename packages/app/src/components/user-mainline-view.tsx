@@ -1,9 +1,9 @@
-// 管理端 — 查看任意 actor 的系统蒸馏 thesis 与画像 inventory
+// 管理端 — 查看任意 actor 的系统蒸馏投资主线与画像 inventory
 //
 // 数据源:
-// - GET /api/event-engine/thesis-context?channel=&user_id=&channel_scope=
+// - GET /api/event-engine/mainline-context?channel=&user_id=&channel_scope=
 // - GET /api/event-engine/company-profile?...&ticker=
-// - POST /api/event-engine/thesis-distill?... (立即触发蒸馏)
+// - POST /api/event-engine/mainline-distill?... (立即触发蒸馏)
 //
 // 与 public 端 /portfolio 一致,但 actor 由 URL 决定而非 session。
 
@@ -11,10 +11,10 @@ import { createSignal, For, Show, createEffect } from "solid-js"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 import {
-  adminTriggerThesisDistill,
+  adminTriggerMainlineDistill,
   getAdminCompanyProfile,
-  getAdminThesisContext,
-  type AdminThesisContext,
+  getAdminMainlineContext,
+  type AdminMainlineContext,
 } from "@/lib/api"
 import type { ActorRef } from "@/lib/actors"
 
@@ -106,8 +106,8 @@ function ProfileMarkdownModal(props: {
   )
 }
 
-export function UserThesisView(props: { actor: ActorRef }) {
-  const [ctx, setCtx] = createSignal<AdminThesisContext | null>(null)
+export function UserMainlineView(props: { actor: ActorRef }) {
+  const [ctx, setCtx] = createSignal<AdminMainlineContext | null>(null)
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal<string | null>(null)
   const [refreshing, setRefreshing] = createSignal(false)
@@ -119,7 +119,7 @@ export function UserThesisView(props: { actor: ActorRef }) {
     setLoading(true)
     setError(null)
     try {
-      const data = await getAdminThesisContext(props.actor)
+      const data = await getAdminMainlineContext(props.actor)
       setCtx(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -140,9 +140,9 @@ export function UserThesisView(props: { actor: ActorRef }) {
     setRefreshing(true)
     setRefreshMsg(null)
     try {
-      const r = await adminTriggerThesisDistill(props.actor)
+      const r = await adminTriggerMainlineDistill(props.actor)
       setRefreshMsg(
-        `蒸馏完成:${r.theses_count} 条 thesis,跳过 ${r.skipped_tickers.length} 只`,
+        `蒸馏完成:${r.mainline_count} 条投资主线,跳过 ${r.skipped_tickers.length} 只`,
       )
       await load()
     } catch (e) {
@@ -186,13 +186,13 @@ export function UserThesisView(props: { actor: ActorRef }) {
               <div class="text-xs text-[color:var(--text-muted)]">
                 上次蒸馏:
                 <span class="text-[color:var(--text-primary)]">
-                  {formatTimestamp(c().last_thesis_distilled_at)}
+                  {formatTimestamp(c().last_mainline_distilled_at)}
                 </span>
-                <Show when={c().thesis_distill_skipped.length > 0}>
+                <Show when={c().mainline_distill_skipped.length > 0}>
                   <span class="ml-4">
-                    跳过 {c().thesis_distill_skipped.length} 只:
+                    跳过 {c().mainline_distill_skipped.length} 只:
                     <span class="ml-1 font-mono text-amber-400">
-                      {c().thesis_distill_skipped.join(", ")}
+                      {c().mainline_distill_skipped.join(", ")}
                     </span>
                   </span>
                 </Show>
@@ -219,21 +219,21 @@ export function UserThesisView(props: { actor: ActorRef }) {
               </div>
               <div class="text-sm leading-7 text-[color:var(--text-primary)]">
                 <Show
-                  when={c().investment_global_style}
+                  when={c().mainline_style}
                   fallback={
                     <span class="text-[color:var(--text-muted)]">
                       尚未蒸馏 — 至少需要一个公司画像。
                     </span>
                   }
                 >
-                  {c().investment_global_style}
+                  {c().mainline_style}
                 </Show>
               </div>
             </div>
 
-            {/* 持仓 thesis 卡片 */}
+            {/* 持仓投资主线卡片 */}
             <div class="mb-2 text-sm font-semibold">
-              各持仓 Thesis ({c().holdings.length})
+              各持仓投资主线 ({c().holdings.length})
             </div>
             <Show
               when={c().holdings.length > 0}
@@ -246,15 +246,15 @@ export function UserThesisView(props: { actor: ActorRef }) {
               <div class="mb-6 grid gap-3" style={{ "grid-template-columns": "repeat(auto-fill, minmax(280px, 1fr))" }}>
                 <For each={c().holdings}>
                   {(ticker) => {
-                    const thesis = c().investment_theses[ticker]
+                    const mainline = c().mainline_by_ticker[ticker]
                     const hasProfile = profileTickers().has(ticker)
-                    const isSkipped = c().thesis_distill_skipped.includes(ticker)
+                    const isSkipped = c().mainline_distill_skipped.includes(ticker)
                     return (
                       <div
                         class="flex flex-col gap-2 rounded-md border p-4"
                         classList={{
-                          "border-[color:var(--border)] bg-[color:var(--panel)]": !!thesis,
-                          "border-amber-500/30 bg-amber-500/5": !thesis,
+                          "border-[color:var(--border)] bg-[color:var(--panel)]": !!mainline,
+                          "border-amber-500/30 bg-amber-500/5": !mainline,
                         }}
                       >
                         <div class="flex items-baseline justify-between gap-2">
@@ -270,7 +270,7 @@ export function UserThesisView(props: { actor: ActorRef }) {
                           </Show>
                         </div>
                         <Show
-                          when={thesis}
+                          when={mainline}
                           fallback={
                             <div class="text-xs leading-6 text-[color:var(--text-muted)]">
                               <Show
@@ -283,7 +283,7 @@ export function UserThesisView(props: { actor: ActorRef }) {
                                 }
                               >
                                 <span class="font-semibold text-amber-400">
-                                  画像存在但 thesis 蒸馏失败
+                                  画像存在但投资主线蒸馏失败
                                 </span>
                                 {isSkipped ? "(上次跳过)" : ""},点"立即触发蒸馏"重试。
                               </Show>
@@ -291,7 +291,7 @@ export function UserThesisView(props: { actor: ActorRef }) {
                           }
                         >
                           <div class="text-sm leading-6 text-[color:var(--text-primary)]">
-                            {thesis}
+                            {mainline}
                           </div>
                         </Show>
                       </div>

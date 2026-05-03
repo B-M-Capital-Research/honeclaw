@@ -631,7 +631,7 @@ export type CompanyProfileImportProfileSummary = {
   stock_code: string;
   updated_at: string;
   event_count: number;
-  thesis_excerpt: string;
+  mainline_excerpt: string;
 };
 
 export type CompanyProfileImportConflict = {

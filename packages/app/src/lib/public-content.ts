@@ -333,7 +333,7 @@ const CONTENT_ZH = {
     skills: [
       { name: "stock_research", desc: "单只个股研究、估值框架、按条件筛选" },
       { name: "deep_stock_research", desc: "约 1–2 小时的深度研究任务（管理员）" },
-      { name: "company_portrait", desc: "维护公司画像、thesis、事件时间线" },
+      { name: "company_portrait", desc: "维护公司画像、投资主线、事件时间线" },
       { name: "portfolio_management", desc: "持仓增减、再平衡、Ticker 校验" },
       { name: "position_advice", desc: "结合行情与持仓给出加减仓建议" },
       { name: "valuation", desc: "估值方法选择与区间推断" },
