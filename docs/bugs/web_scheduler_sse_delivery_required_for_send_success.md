@@ -7,6 +7,25 @@
 
 ## 证据来源
 
+- `2026-05-03 20:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=14919`
+    - `job_id=j_f42bfebd`
+    - `job_name=英伟达每日消息`
+    - `actor_channel=web`
+    - `executed_at=2026-05-03T20:01:13.273810+08:00`
+    - `execution_status=completed`
+    - `message_send_status=send_failed`
+    - `delivered=0`
+    - `should_deliver=1`
+    - `detail_json={"console_event_sent":false,"scheduler":null}`
+    - `response_preview` 已包含完整 NVDA 摘要开头、事实段落与结构化小标题，说明正文已生成完成，但离线 Web 任务再次被记成 `send_failed`
+  - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json`
+    - 同一 Web 会话 `updated_at=2026-05-03T20:01:13.190573+08:00`
+    - 末尾 assistant final 已完整写入 NVDA 摘要正文，覆盖股价、财报、Rubin/Vera、客户 capex 与估值风险
+  - 结论：
+    - 到 `2026-05-03 20:02` 为止，这条缺陷在 `20:00` 晚间 job 上继续 live 复现；“正文已落库但离线 SSE 无监听”仍会被记成 `completed + send_failed + console_event_sent=false`
+
 - `2026-05-02 09:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=13348`
@@ -180,6 +199,7 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 ## 当前实现效果
 
+- `2026-05-03 20:02` 的 `英伟达每日消息` 说明，这条缺陷在最新生产窗口仍未退出活跃态：正文已完整生成并写入 Web 会话，但 `cron_job_runs` 依旧再次记成 `completed + send_failed + console_event_sent=false`。
 - `2026-05-03 09:02` 的 `09:00 美股AI与航空科技晨报` 说明，这条缺陷在最新生产窗口仍未退出活跃态：`cron_job_runs.run_id=14432` 再次落成 `completed + send_failed + delivered=0`，而 `response_preview` 已包含完整晨报开头，说明正文已生成完成但台账仍沿用离线 SSE 失败语义。
 - 同一 `job_id=j_183bee8d` 目前已连续七天（`2026-04-27`、`2026-04-28`、`2026-04-29`、`2026-04-30`、`2026-05-01`、`2026-05-02`、`2026-05-03`）在 `09:00` 晨报窗口复现，说明当前线上行为仍未兑现“正文落库即可视为送达成功”的语义。
 - `2026-05-02 09:02` 的 `09:00 美股AI与航空科技晨报` 说明，这条缺陷在最新生产窗口仍未退出活跃态：正文已完整生成并写入 Web 会话，但 `cron_job_runs` 依旧再次记成 `completed + send_failed`。
@@ -203,6 +223,7 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 ## 根因判断
 
+- `2026-05-03 20:02` 的最新晚间样本说明，这不是仅发生在 `09:00` 晨报 job 的单点问题；至少 `j_f42bfebd` 这条 `20:00` Web scheduler 也仍会在“正文已落库但无活跃 SSE 监听者”时落成 `send_failed`。
 - `2026-05-03 09:02` 的第七次连续晨报复现说明，这不是单日运行波动；至少当前巡检依赖的真实运行窗口里，Web scheduler 仍在把“落库成功但无实时 SSE 监听者”记成发送失败。
 - `2026-05-02 09:02` 的第六次连续晨报复现说明，这不是旧部署样本残留导致的文档噪音；至少当前巡检依赖的真实运行窗口里，Web scheduler 仍在把“落库成功但无实时 SSE 监听者”记成发送失败。
 - `2026-05-01 09:02` 的第五次连续晨报复现说明，当前问题不是某次部署前后的短暂灰度差异，而是同一 Web scheduler job 在“用户离线 / 无活跃 SSE 订阅者”这一条件下仍稳定沿用旧的送达判定。
@@ -238,6 +259,7 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 - 本轮继续优先按最近一小时真实运行窗口更新台账，而不是仅按仓库代码预期判定。
 - 真实生产样本 `run_id=14432` 再次落成 `completed + send_failed`，且 `response_preview` 已包含完整晨报正文开头，因此本缺陷继续维持 `New`。
+- `2026-05-03 20:02` 的 `run_id=14919` 又在 `英伟达每日消息` 晚间 job 上复现同样坏态，说明当前线上仍不是单个晨报任务在使用旧送达语义，而是 Web scheduler 的离线 SSE 判定整体没有收口。
 - 当前结论不变：代码里可能已有部分修复语义，但至少当前巡检看到的实际运行链路仍存在另一条活跃路径会把离线 SSE 视为发送失败。
 
 ## 回归验证（2026-04-30）

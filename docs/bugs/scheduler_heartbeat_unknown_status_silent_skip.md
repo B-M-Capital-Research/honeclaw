@@ -7,6 +7,23 @@
 
 ## 修复进展
 
+- `2026-05-03 20:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `19:30-20:02` 的最新两轮继续在同窗混跑 `running / Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议仍未收敛，且同一 job 会在 60 分钟内从 `JsonEmptyStatus` 再漂回 `Empty`：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮 heartbeat 窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 1`
+  - `19:30` 与 `20:00` 两个窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=14876-14886` 与 `14898-14908` 先写入两批 `running + pending`
+    - 随后 `14887-14897`、`14909-14919` 再另起终态，其中 `14891`（`ORCL 大事件监控`）落成 `completed + sent`，其余多为 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 与 `cron_job_runs.detail_json` 证明 heartbeat 输出形态在最新窗口继续摇摆：
+    - `2026-05-03 19:30:15.341`、`19:30:16.012`、`19:30:23.045`、`19:30:28.869`、`19:30:40.371`：`TEM大事件`、`CAI`、`ASTS`、`Cerebras`、`持仓重大事件` 在 `19:30` 同窗退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 19:30:11.909`、`19:30:28.443`、`19:30:29.655`、`19:30:40.745`：`原油`、`Watchlist`、`RKLB`、`小米30港元` 同窗回摆成 `parse_kind=JsonNoop`
+    - `2026-05-03 19:30:18.565-19:30:18.566`：`ORCL 大事件监控` 又在同窗落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-03 20:00:08.351`、`20:00:14.699`、`20:00:16.890`、`20:00:43.561`、`20:02:10.099`：`TEM破位`、`RKLB`、`ASTS`、`Watchlist`、`持仓重大事件` 在下一窗再次退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 20:00:08.560`、`20:00:33.754`、`20:00:34.314`、`20:00:47.800`、`20:00:49.722`、`20:00:54.789`：`原油`、`小米30港元`、`CAI`、`Cerebras`、`ORCL`、`TEM大事件` 同窗又回摆成 `parse_kind=JsonNoop`
+    - 同一 `持仓重大事件心跳检测` 在上一整点窗口还出现过 `2026-05-03 19:00:59.128 parse_kind=JsonEmptyStatus raw_preview="{}"`，到 `20:02:10.099` 又回摆成 `parse_kind=Empty`，说明无 `status` 空对象并没有收敛成稳定单一错误态
+  - 结论：到 `2026-05-03 20:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered / JsonEmptyStatus`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-03 19:10` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `18:30-19:01` 的最新两轮继续在同窗混跑 `running / Empty / JsonNoop / JsonTriggered / JsonEmptyStatus / noop + skipped_noop / completed + sent`，结构化协议不仅未收敛，反而出现新的空对象形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮 heartbeat 窗口仍同时存在：
     - `running + pending = 22`
