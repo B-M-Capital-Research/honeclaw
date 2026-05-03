@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-05-03 11:03 CST 最新巡检样本：
+      - `job_name=ORCL 大事件监控`
+      - `run_id=14521`，`executed_at=2026-05-03T11:01:07.558579+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 再次发送 `ORCL 171.83 / +6.47% / OpenAI 合作进展与市场预期提振`，并且正文自己注明“美股周末休市，当前时间（北京时间 2026-05-03 11:00:02）无实时交易，该价格为前一交易日（2026-05-01）收盘水平”
+      - 但同一批 `11:00` heartbeat started 行里，`持仓重大事件心跳检测` 的 `run_id=14519` 已在 `2026-05-03T11:00:46.544119+08:00` 回落成 `noop + skipped_noop`；同窗 `RKLB/TEM/ASTS/Cerebras/Watchlist/小米/CAI/TEM破位/原油` 也大多回落为 `noop`
+      - `data/runtime/logs/sidecar.log` 在 `2026-05-03 11:01:04.155-11:01:04.156 CST` 同步记录 `ORCL 大事件监控` 的 `parse_kind=JsonTriggered -> deliver`，而前一轮 `2026-05-03 10:30:18.304 CST` 同一 job 还刚回落成 `parse_kind=Empty`
+      - 这说明 ORCL 链路仍会在无新增交易窗口、无新增公司级独立催化的情况下，把同一静态收盘价与同一 OpenAI 叙事重新包装成“当前触发”再次送达。它不阻断主功能链路，但持续制造重复提醒噪音，因此维持 `P3`
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-05-03 09:00-09:02 最新巡检样本：
       - `job_name=ORCL 大事件监控`
       - `run_id=14422`，`executed_at=2026-05-03T09:00:16.991227+08:00`，落成 `noop + skipped_noop`
