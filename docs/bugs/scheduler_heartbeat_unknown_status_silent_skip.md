@@ -7,6 +7,22 @@
 
 ## 修复进展
 
+- `2026-05-04 06:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `05:30-06:00` 的最新两轮继续在同窗混跑 `started / Empty / JsonNoop / completed + sent`，结构化协议仍未收敛：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近一小时窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 1`
+  - `05:30` 与 `06:00` 两个窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `05:30` 窗口先写入 `run_id=15335-15345` 共 `11` 条 heartbeat started 行；随后 `run_id=15346-15356` 另起终态，其中 `15346`（`全天原油价格3小时播报`）回落 `JsonNoop`，其余多为 `Empty` 或 `JsonNoop`
+    - `06:00` 窗口又先写入 `run_id=15357-15367` 共 `11` 条 heartbeat started 行；随后 `run_id=15368-15378` 另起终态，其中 `15376`（`全天原油价格3小时播报`）落成 `completed + sent`，其余多为 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明 heartbeat 输出形态在最新窗口继续摇摆：
+    - `2026-05-04 05:30:13.491`、`05:30:08.660`、`05:30:31.975`、`05:30:42.493`：`CAI`、`原油`、`ASTS`、`Watchlist` 在 `05:30` 同窗回摆成 `parse_kind=JsonNoop`
+    - `2026-05-04 05:30:14.598`、`05:30:15.004`、`05:30:15.106`、`05:30:16.824`、`05:30:22.885`、`05:30:23.546`、`05:30:25.875`：`RKLB`、`TEM破位`、`小米30港元`、`TEM大事件`、`Cerebras`、`ORCL`、`持仓重大事件` 在同窗退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-04 06:00:30.163`、`06:00:33.214`、`06:00:40.101`、`06:00:43.446`：`TEM大事件`、`CAI`、`Cerebras`、`Watchlist` 在 `06:00` 下一窗回摆成 `parse_kind=JsonNoop`
+    - `2026-05-04 06:00:19.507`、`06:00:20.381`、`06:00:24.561`、`06:00:28.059`：`RKLB`、`ORCL`、`ASTS`、`小米30港元` 在同一 `06:00` 窗口又集中退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-04 06:00:36.245`：`全天原油价格3小时播报` 又在同一 `06:00` 窗口落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-04 06:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-04 05:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `04:30-05:01` 的最新两轮继续在同窗混跑 `JsonNoop / Empty / noop + skipped_noop / completed + sent`，结构化协议仍未收敛：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮窗口里 heartbeat started/terminal 仍继续双轨并存：
     - `04:30` 窗口先写入 `run_id=15287-15297` 共 `11` 条 heartbeat started 行；同窗终态随后另起为 `15299-15309`，全部回落成 `noop + skipped_noop`
