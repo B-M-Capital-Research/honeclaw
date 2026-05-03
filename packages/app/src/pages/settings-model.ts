@@ -5,8 +5,15 @@ import type {
   DesktopChannelSettings,
   DesktopChannelSettingsInput,
   FmpSettings,
+  MetaInfo,
   TavilySettings,
 } from "@/lib/types"
+
+export type LanguageDraft = "zh" | "en"
+
+export function defaultLanguageDraft(meta?: MetaInfo | null): LanguageDraft {
+  return meta?.language === "en" ? "en" : "zh"
+}
 
 export function defaultChannelDraft(): DesktopChannelSettingsInput {
   return {

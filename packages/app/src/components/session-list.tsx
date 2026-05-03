@@ -7,14 +7,16 @@ import { hasUnread } from "@/lib/filters";
 import { actorFromUser, actorLabel } from "@/lib/actors";
 import { useConsole } from "@/context/console";
 import { useSessions, ME_SESSION_ID } from "@/context/sessions";
+import { SESSIONS } from "@/lib/admin-content/sessions";
+import { tpl } from "@/lib/i18n";
 
 function relativeTime(value: string) {
-  if (!value) return "刚刚";
+  if (!value) return SESSIONS.list.relative.just_now;
   const diff = (Date.now() - new Date(value).getTime()) / 1000;
-  if (diff < 60) return "刚刚";
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)} 天前`;
+  if (diff < 60) return SESSIONS.list.relative.just_now;
+  if (diff < 3600) return tpl(SESSIONS.list.relative.minutes_ago, { count: Math.floor(diff / 60) });
+  if (diff < 86400) return tpl(SESSIONS.list.relative.hours_ago, { count: Math.floor(diff / 3600) });
+  if (diff < 604800) return tpl(SESSIONS.list.relative.days_ago, { count: Math.floor(diff / 86400) });
   const date = new Date(value);
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
@@ -44,7 +46,7 @@ export function SessionList() {
       case "cli":
         return "CLI";
       default:
-        return value || "未知";
+        return value || SESSIONS.list.channel_unknown;
     }
   };
 
@@ -68,16 +70,16 @@ export function SessionList() {
     <div class="flex h-full min-h-0 w-[320px] flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
       <div class="border-b border-[color:var(--border)] px-4 py-3">
         <div>
-          <div class="text-sm font-semibold tracking-tight">会话</div>
+          <div class="text-sm font-semibold tracking-tight">{SESSIONS.list.title}</div>
           <div class="mt-1 text-xs text-[color:var(--text-muted)]">
-            按渠道查看 session，并打开对应历史
+            {SESSIONS.list.subtitle}
           </div>
         </div>
         {/* 渠道隔离提示 */}
         <div class="mt-2 flex items-center gap-1.5 rounded-md bg-amber-400/10 px-2.5 py-1.5">
           <span class="shrink-0 text-amber-400">ℹ</span>
           <span class="text-[11px] leading-relaxed text-amber-300/80">
-            不同渠道的用户 ID 相互独立，无法共享上下文。
+            {SESSIONS.list.isolation_hint}
           </span>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
@@ -101,7 +103,7 @@ export function SessionList() {
           class="mt-3 h-8 text-xs"
           value={sessions.query()}
           onInput={(event) => sessions.setQuery(event.currentTarget.value)}
-          placeholder="搜索用户名"
+          placeholder={SESSIONS.list.search_placeholder}
         />
         <select
           class="mt-2 flex h-8 w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1 text-xs text-[color:var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]"
@@ -110,7 +112,7 @@ export function SessionList() {
             sessions.setChannelFilter(event.currentTarget.value)
           }
         >
-          <option value="all">全部渠道</option>
+          <option value="all">{SESSIONS.list.channel_all}</option>
           <For each={channelOptions()}>
             {(channel) => (
               <option value={channel}>{channelLabel(channel)}</option>
@@ -134,8 +136,8 @@ export function SessionList() {
             when={sessions.filteredUsers().length > 0}
             fallback={
               <EmptyState
-                title="还没有会话"
-                description="打开一个用户会话后，历史记录会出现在这里。"
+                title={SESSIONS.list.empty_title}
+                description={SESSIONS.list.empty_description}
               />
             }
           >
@@ -190,7 +192,7 @@ export function SessionList() {
                               </span>
                               <Show when={isMe()}>
                                 <span class="shrink-0 rounded-full bg-[color:var(--accent)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
-                                  默认
+                                  {SESSIONS.list.me_default_badge}
                                 </span>
                               </Show>
                             </div>
@@ -201,7 +203,7 @@ export function SessionList() {
                             </div>
                           </div>
                           <div class="mt-0.5 line-clamp-1 text-xs leading-5 text-[color:var(--text-secondary)]">
-                            {user.last_message || "暂无消息"}
+                            {user.last_message || SESSIONS.list.last_message_empty}
                           </div>
                           <div class="mt-2 flex items-center justify-between gap-2">
                             <div class="flex items-center gap-2">
@@ -210,12 +212,12 @@ export function SessionList() {
                               </span>
                               <Show when={user.session_kind === "group"}>
                                 <span class="rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--accent)]">
-                                  群共享
+                                  {SESSIONS.list.group_shared_badge}
                                 </span>
                               </Show>
                               <Show when={!isMe() || user.message_count > 0}>
                                 <span class="text-[11px] text-[color:var(--text-muted)]">
-                                  {user.message_count} 条历史记录
+                                  {tpl(SESSIONS.list.history_count, { count: user.message_count })}
                                 </span>
                               </Show>
                             </div>

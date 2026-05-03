@@ -22,6 +22,8 @@ import hljs from "highlight.js"
 import mermaid from "mermaid"
 import "highlight.js/styles/github.css"
 import "./research-preview.css"
+import { RESEARCH } from "@/lib/admin-content/research"
+import { useLocale } from "@/lib/i18n"
 
 // ── marked 配置 ───────────────────────────────────────────────────────────────
 
@@ -96,7 +98,7 @@ async function exportToPdf(companyName: string) {
     pdf.addImage(imgData, "JPEG", 0, 0, 210, 297, undefined, "FAST")
   }
 
-  pdf.save(`${companyName}_深度研究报告.pdf`)
+  pdf.save(`${companyName}${RESEARCH.preview.pdf_filename_suffix}.pdf`)
 }
 
 // ── 组件 Props ────────────────────────────────────────────────────────────────
@@ -232,17 +234,20 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
         })
         .catch((err) => {
           console.warn("Mermaid render error:", err)
-          el.innerHTML = `<pre style="color:#f44336;padding:12px;background:#ffebee;border-left:4px solid #f44336;border-radius:6px;font-size:13px;">❌ Mermaid 渲染错误: ${String(err)}</pre>`
+          el.innerHTML = `<pre style="color:#f44336;padding:12px;background:#ffebee;border-left:4px solid #f44336;border-radius:6px;font-size:13px;">${RESEARCH.preview.mermaid_error_prefix}${String(err)}</pre>`
         })
     })
   }
 
   // ── 今日日期 ───────────────────────────────────────────────────────────────
-  const today = new Date().toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
+  const today = () => {
+    const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
+    return new Date().toLocaleDateString(loc, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+  }
 
   // ── 渲染 ──────────────────────────────────────────────────────────────────
 
@@ -251,7 +256,7 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
       {/* 工具栏 */}
       <div class="research-preview-toolbar">
         <span class="research-preview-toolbar-title">
-          {props.companyName} · 深度研究报告
+          {props.companyName}{RESEARCH.preview.title_suffix}
         </span>
 
         {/* Tab 切换 */}
@@ -261,14 +266,14 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
             class={`rp-tab${tab() === "preview" ? " rp-tab-active" : ""}`}
             onClick={() => setTab("preview")}
           >
-            预览
+            {RESEARCH.preview.tab_preview}
           </button>
           <button
             type="button"
             class={`rp-tab${tab() === "source" ? " rp-tab-active" : ""}`}
             onClick={() => setTab("source")}
           >
-            源代码
+            {RESEARCH.preview.tab_source}
           </button>
         </div>
 
@@ -296,7 +301,7 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
                 "transition": "all 0.15s",
               }}
             >
-              {exporting() ? "导出中..." : "⬇ 导出 PDF"}
+              {exporting() ? RESEARCH.preview.exporting_button : RESEARCH.preview.export_button}
             </button>
           </Show>
         </div>
@@ -313,7 +318,7 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
             value={editMarkdown()}
             onInput={(e) => setEditMarkdown(e.currentTarget.value)}
             spellcheck={false}
-            placeholder="在此输入 Markdown 内容…"
+            placeholder={RESEARCH.preview.source_placeholder}
           />
         </div>
       </Show>
@@ -322,7 +327,7 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
       <Show when={tab() === "preview"}>
         <div class="research-preview-scroll">
           {pages().length === 0 ? (
-            <div class="research-preview-loading">渲染中…</div>
+            <div class="research-preview-loading">{RESEARCH.preview.rendering}</div>
           ) : (
             pages().map((pageHtml, i) => (
               <div class="rp-page" data-page={i + 1}>
@@ -332,10 +337,10 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
                 </div>
                 {/* 页眉 */}
                 <div class="rp-header">
-                  <span class="rp-header-left">{props.companyName} 深度研究报告</span>
+                  <span class="rp-header-left">{props.companyName}{RESEARCH.preview.header_suffix}</span>
                   <span class="rp-header-right">
                     <span class="rp-header-brand">Hone Financial</span>
-                    <span class="rp-header-date">{today}</span>
+                    <span class="rp-header-date">{today()}</span>
                   </span>
                 </div>
                 {/* 内容 */}
@@ -346,7 +351,7 @@ const ResearchPreview: Component<ResearchPreviewProps> = (props) => {
                 />
                 {/* 页脚 */}
                 <div class="rp-footer">
-                  <span class="rp-footer-left">本报告由 AI 自动生成，仅供参考</span>
+                  <span class="rp-footer-left">{RESEARCH.preview.footer_disclaimer}</span>
                   <span class="rp-footer-right">
                     {i + 1} / {pages().length}
                   </span>

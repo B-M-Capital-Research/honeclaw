@@ -13,6 +13,8 @@ import {
   type ActorListItem,
   type ActorRef,
 } from "@/lib/actors"
+import { USERS } from "@/lib/admin-content/users"
+import { tpl } from "@/lib/i18n"
 
 type ActorListProps = {
   currentKey: string
@@ -79,9 +81,9 @@ export function ActorList(props: ActorListProps) {
       <div class="border-b border-[color:var(--border)] px-4 py-3">
         <div class="flex items-center justify-between">
           <div>
-            <div class="text-sm font-semibold tracking-tight">用户档案</div>
+            <div class="text-sm font-semibold tracking-tight">{USERS.list.title}</div>
             <div class="text-xs text-[color:var(--text-muted)]">
-              合并持仓 / 画像 / 会话三处来源
+              {USERS.list.subtitle}
             </div>
           </div>
           <button
@@ -89,7 +91,7 @@ export function ActorList(props: ActorListProps) {
             class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--text-primary)]"
             onClick={() => setShowManual((v) => !v)}
           >
-            {showManual() ? "收起" : "手动输入"}
+            {showManual() ? USERS.list.manual_collapse : USERS.list.manual_open}
           </button>
         </div>
 
@@ -97,7 +99,7 @@ export function ActorList(props: ActorListProps) {
           class="mt-3 h-8 text-xs bg-[color:var(--surface)]"
           value={search()}
           onInput={(e) => setSearch(e.currentTarget.value)}
-          placeholder="搜索 user_id / 渠道 / scope"
+          placeholder={USERS.list.search_placeholder}
         />
 
         <Show when={showManual()}>
@@ -108,7 +110,7 @@ export function ActorList(props: ActorListProps) {
               onInput={(e) =>
                 setDraft((prev) => ({ ...prev, channel: e.currentTarget.value.trim() }))
               }
-              placeholder="渠道,如 imessage"
+              placeholder={USERS.list.manual_channel_placeholder}
             />
             <Input
               class="h-8 text-xs bg-[color:var(--surface)]"
@@ -116,7 +118,7 @@ export function ActorList(props: ActorListProps) {
               onInput={(e) =>
                 setDraft((prev) => ({ ...prev, user_id: e.currentTarget.value.trim() }))
               }
-              placeholder="用户 ID"
+              placeholder={USERS.list.manual_user_id_placeholder}
             />
             <Input
               class="h-8 text-xs bg-[color:var(--surface)]"
@@ -127,10 +129,10 @@ export function ActorList(props: ActorListProps) {
                   channel_scope: e.currentTarget.value.trim(),
                 }))
               }
-              placeholder="范围,可选"
+              placeholder={USERS.list.manual_scope_placeholder}
             />
             <Button class="h-8 w-full text-xs" onClick={submitManual}>
-              打开
+              {USERS.list.manual_submit}
             </Button>
           </div>
         </Show>
@@ -151,11 +153,11 @@ export function ActorList(props: ActorListProps) {
             when={filtered().length > 0}
             fallback={
               <EmptyState
-                title={search() ? "没有匹配的用户" : "暂无用户"}
+                title={search() ? USERS.list.empty_search_title : USERS.list.empty_title}
                 description={
                   search()
-                    ? "试试切换搜索词,或用上方手动输入定位特定 actor。"
-                    : "还没有人产生持仓 / 画像 / 会话,先让 IM 渠道接收消息或手动添加。"
+                    ? USERS.list.empty_search_description
+                    : USERS.list.empty_description
                 }
               />
             }
@@ -168,16 +170,16 @@ export function ActorList(props: ActorListProps) {
                   const stats = () => {
                     const parts: string[] = []
                     if (item.holdingsCount != null && item.holdingsCount > 0) {
-                      parts.push(`${item.holdingsCount} 持仓`)
+                      parts.push(tpl(USERS.list.stat_holdings, { count: item.holdingsCount }))
                     }
                     if (item.watchlistCount != null && item.watchlistCount > 0) {
-                      parts.push(`${item.watchlistCount} 关注`)
+                      parts.push(tpl(USERS.list.stat_watchlist, { count: item.watchlistCount }))
                     }
                     if (item.profileCount != null && item.profileCount > 0) {
-                      parts.push(`${item.profileCount} 画像`)
+                      parts.push(tpl(USERS.list.stat_profiles, { count: item.profileCount }))
                     }
-                    if (item.lastSessionTime) parts.push("会话")
-                    return parts.length > 0 ? parts.join(" · ") : "暂无数据"
+                    if (item.lastSessionTime) parts.push(USERS.list.stat_sessions)
+                    return parts.length > 0 ? parts.join(" · ") : USERS.list.stat_empty
                   }
                   return (
                     <button

@@ -4,42 +4,44 @@ import { Skeleton } from "@hone-financial/ui/skeleton"
 import { useNavigate } from "@solidjs/router"
 import { For, Show } from "solid-js"
 import { useSkills } from "@/context/skills"
+import { SKILLS } from "@/lib/admin-content/skills"
+import { tpl } from "@/lib/i18n"
 
 export function SkillList() {
   const navigate = useNavigate()
   const skills = useSkills()
-  const statusFilters = [
-    { value: "all", label: "全部" },
-    { value: "enabled", label: "已启用" },
-    { value: "disabled", label: "已禁用" },
+  const statusFilters = () => [
+    { value: "all", label: SKILLS.list.status_all },
+    { value: "enabled", label: SKILLS.list.status_enabled },
+    { value: "disabled", label: SKILLS.list.status_disabled },
   ] as const
-  const sourceFilters = [
-    { value: "all", label: "全部来源" },
-    { value: "system", label: "System" },
-    { value: "custom", label: "Custom" },
-    { value: "dynamic", label: "Dynamic" },
+  const sourceFilters = () => [
+    { value: "all", label: SKILLS.list.source_all },
+    { value: "system", label: SKILLS.list.source_system },
+    { value: "custom", label: SKILLS.list.source_custom },
+    { value: "dynamic", label: SKILLS.list.source_dynamic },
   ] as const
   const counts = () => skills.counts()
 
   return (
     <div class="flex h-full min-h-0 w-[320px] flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
       <div class="border-b border-[color:var(--border)] px-5 py-5">
-        <div class="text-lg font-semibold">技能管理</div>
-        <div class="mt-1 text-sm text-[color:var(--text-muted)]">注册表、启停状态与技能文档</div>
+        <div class="text-lg font-semibold">{SKILLS.list.title}</div>
+        <div class="mt-1 text-sm text-[color:var(--text-muted)]">{SKILLS.list.subtitle}</div>
         <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-[color:var(--text-muted)]">
-          <div class="rounded-md border border-[color:var(--border)] px-3 py-2">总数 {counts().total}</div>
-          <div class="rounded-md border border-[color:var(--border)] px-3 py-2">启用 {counts().enabled}</div>
-          <div class="rounded-md border border-[color:var(--border)] px-3 py-2">禁用 {counts().disabled}</div>
-          <div class="rounded-md border border-[color:var(--border)] px-3 py-2">Slash {counts().invocable}</div>
+          <div class="rounded-md border border-[color:var(--border)] px-3 py-2">{tpl(SKILLS.list.counts_total, { count: counts().total })}</div>
+          <div class="rounded-md border border-[color:var(--border)] px-3 py-2">{tpl(SKILLS.list.counts_enabled, { count: counts().enabled })}</div>
+          <div class="rounded-md border border-[color:var(--border)] px-3 py-2">{tpl(SKILLS.list.counts_disabled, { count: counts().disabled })}</div>
+          <div class="rounded-md border border-[color:var(--border)] px-3 py-2">{tpl(SKILLS.list.counts_invocable, { count: counts().invocable })}</div>
         </div>
         <input
           value={skills.state.query}
           onInput={(event) => skills.setQuery(event.currentTarget.value)}
-          placeholder="搜索 id、名称、alias"
+          placeholder={SKILLS.list.search_placeholder}
           class="mt-3 w-full rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-sm outline-none transition focus:border-[color:var(--accent)]"
         />
         <div class="mt-3 flex flex-wrap gap-2">
-          <For each={statusFilters}>
+          <For each={statusFilters()}>
             {(filter) => (
               <button
                 type="button"
@@ -57,7 +59,7 @@ export function SkillList() {
           </For>
         </div>
         <div class="mt-2 flex flex-wrap gap-2">
-          <For each={sourceFilters}>
+          <For each={sourceFilters()}>
             {(filter) => (
               <button
                 type="button"
@@ -84,7 +86,7 @@ export function SkillList() {
         <Show when={!skills.state.loading} fallback={<div class="space-y-3"><Skeleton class="h-24" /><Skeleton class="h-24" /><Skeleton class="h-24" /></div>}>
           <Show
             when={skills.filteredSkills().length > 0}
-            fallback={<EmptyState title="没有找到技能" description="请调整筛选条件，或检查 skills 目录与 SKILL.md。" />}
+            fallback={<EmptyState title={SKILLS.list.empty_title} description={SKILLS.list.empty_description} />}
           >
             <div class="space-y-2">
               <For each={skills.filteredSkills()}>
@@ -121,15 +123,15 @@ export function SkillList() {
                             disabled={updating()}
                             onChange={(event) => void skills.toggleSkill(skill.id, event.currentTarget.checked)}
                           />
-                          {skill.enabled ? "启用" : "禁用"}
+                          {skill.enabled ? SKILLS.list.toggle_enabled : SKILLS.list.toggle_disabled}
                         </label>
                       </div>
                       <div class="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">{skill.description}</div>
                       <div class="mt-3 flex flex-wrap gap-2">
                         <Badge>{skill.loaded_from}</Badge>
                         <Badge>{skill.context}</Badge>
-                        <Show when={skill.enabled} fallback={<Badge>disabled</Badge>}>
-                          <Show when={skill.user_invocable}><Badge>slash</Badge></Show>
+                        <Show when={skill.enabled} fallback={<Badge>{SKILLS.list.badge_disabled}</Badge>}>
+                          <Show when={skill.user_invocable}><Badge>{SKILLS.list.badge_slash}</Badge></Show>
                         </Show>
                         <For each={skill.allowed_tools}>{(tool) => <Badge>{tool}</Badge>}</For>
                       </div>

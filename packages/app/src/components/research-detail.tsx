@@ -2,6 +2,8 @@ import { Button } from "@hone-financial/ui/button"
 import { EmptyState } from "@hone-financial/ui/empty-state"
 import { Show, lazy, Suspense } from "solid-js"
 import { useResearch } from "@/context/research"
+import { RESEARCH } from "@/lib/admin-content/research"
+import { tpl, useLocale } from "@/lib/i18n"
 
 // 懒加载 Markdown 预览组件（含 marked/hljs/mermaid/html2canvas/jspdf，体积较大）
 const ResearchPreview = lazy(() => import("@/components/research-preview"))
@@ -79,9 +81,10 @@ export function ResearchDetail() {
   }
 
   const formatTime = (iso?: string | null) => {
-    if (!iso) return "—"
+    if (!iso) return RESEARCH.detail.time_dash
     try {
-      return new Date(iso).toLocaleString("zh-CN")
+      const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
+      return new Date(iso).toLocaleString(loc)
     } catch {
       return iso
     }
@@ -92,8 +95,8 @@ export function ResearchDetail() {
       when={task()}
       fallback={
         <EmptyState
-          title="从左侧选择或发起深度研究"
-          description="输入公司名称，AI 将自动完成深度研究，完成后直接在此展示报告。"
+          title={RESEARCH.detail.empty_title}
+          description={RESEARCH.detail.empty_description}
         />
       }
     >
@@ -102,9 +105,9 @@ export function ResearchDetail() {
           {/* 顶部标题栏 */}
           <div class="flex items-center justify-between border-b border-[color:var(--border)] px-6 py-4 shrink-0">
             <div>
-              <div class="text-xl font-semibold">{t().company_name} 深度研究</div>
+              <div class="text-xl font-semibold">{t().company_name}{RESEARCH.detail.title_suffix}</div>
               <div class="mt-1 text-xs text-[color:var(--text-muted)] font-mono">
-                task_id: {t().task_id}
+                {tpl(RESEARCH.detail.task_id_prefix, { id: t().task_id })}
               </div>
             </div>
             <Show when={t().status === "running" || t().status === "pending"}>
@@ -112,7 +115,7 @@ export function ResearchDetail() {
                 class="h-8 px-3 text-xs"
                 onClick={() => research.refreshTask(t().task_id)}
               >
-                刷新进度
+                {RESEARCH.detail.refresh_button}
               </Button>
             </Show>
           </div>
@@ -125,24 +128,24 @@ export function ResearchDetail() {
               <div class="flex-1 overflow-y-auto hf-scrollbar p-6 flex flex-col gap-6">
                 {/* 步骤指示器 */}
                 <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
-                  <div class="text-sm font-semibold mb-4">任务进度</div>
+                  <div class="text-sm font-semibold mb-4">{RESEARCH.detail.progress_section_title}</div>
                   <div class="space-y-4">
                     <StepIndicator
                       step={1}
                       current={currentStep()}
-                      label="AI 深度研究"
+                      label={RESEARCH.detail.step_1_label}
                       sublabel={
                         t().status === "running" || t().status === "pending"
-                          ? `进行中：${t().progress || "0%"}，预计需要约 2 小时`
+                          ? tpl(RESEARCH.detail.step_1_running, { progress: t().progress || "0%" })
                           : t().status === "completed"
-                            ? `已完成 · ${formatTime(t().completed_at)}`
+                            ? tpl(RESEARCH.detail.step_1_completed, { time: formatTime(t().completed_at) })
                             : undefined
                       }
                     />
                     <StepIndicator
                       step={2}
                       current={currentStep()}
-                      label="报告渲染完成，可在线查看"
+                      label={RESEARCH.detail.step_2_label}
                     />
                   </div>
                 </div>
@@ -151,12 +154,12 @@ export function ResearchDetail() {
                 <Show when={t().status === "running" || t().status === "pending"}>
                   <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
                     <div class="flex items-center justify-between mb-3">
-                      <div class="text-sm font-medium">研究进度</div>
+                      <div class="text-sm font-medium">{RESEARCH.detail.progress_card_title}</div>
                       <div class="text-sm font-bold text-[color:var(--accent)]">{t().progress || "0%"}</div>
                     </div>
                     <ProgressBar progress={t().progress || "0%"} />
                     <div class="mt-3 text-xs text-[color:var(--text-muted)]">
-                      每 10 秒自动刷新进度 · 启动时间：{formatTime(t().created_at)}
+                      {tpl(RESEARCH.detail.progress_auto_refresh, { time: formatTime(t().created_at) })}
                     </div>
                   </div>
                 </Show>
@@ -164,36 +167,36 @@ export function ResearchDetail() {
                 {/* 错误状态 */}
                 <Show when={t().status === "error"}>
                   <div class="rounded-lg border border-rose-200 bg-rose-50 p-5">
-                    <div class="text-sm font-semibold text-rose-600 mb-1">研究任务异常</div>
+                    <div class="text-sm font-semibold text-rose-600 mb-1">{RESEARCH.detail.error_title}</div>
                     <div class="text-xs text-rose-500">
-                      {t().error_message || "请联系管理员排查原因"}
+                      {t().error_message || RESEARCH.detail.error_default}
                     </div>
                   </div>
                 </Show>
 
                 {/* 任务信息 */}
                 <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
-                  <div class="text-sm font-semibold mb-3">任务信息</div>
+                  <div class="text-sm font-semibold mb-3">{RESEARCH.detail.info_title}</div>
                   <dl class="space-y-2 text-xs">
                     <div class="flex justify-between">
-                      <dt class="text-[color:var(--text-muted)]">公司名称</dt>
+                      <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_company_name}</dt>
                       <dd class="font-medium">{t().company_name}</dd>
                     </div>
                     <div class="flex justify-between">
-                      <dt class="text-[color:var(--text-muted)]">任务名称</dt>
+                      <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_task_name}</dt>
                       <dd class="font-mono text-[10px] truncate max-w-[220px]">{t().task_name}</dd>
                     </div>
                     <div class="flex justify-between">
-                      <dt class="text-[color:var(--text-muted)]">启动时间</dt>
+                      <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_started_at}</dt>
                       <dd>{formatTime(t().created_at)}</dd>
                     </div>
                     <div class="flex justify-between">
-                      <dt class="text-[color:var(--text-muted)]">最近更新</dt>
+                      <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_updated_at}</dt>
                       <dd>{formatTime(t().updated_at)}</dd>
                     </div>
                     <Show when={t().completed_at}>
                       <div class="flex justify-between">
-                        <dt class="text-[color:var(--text-muted)]">完成时间</dt>
+                        <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_completed_at}</dt>
                         <dd>{formatTime(t().completed_at)}</dd>
                       </div>
                     </Show>
@@ -208,7 +211,7 @@ export function ResearchDetail() {
                 <Suspense
                   fallback={
                     <div class="flex flex-1 h-full items-center justify-center text-sm text-[color:var(--text-muted)]">
-                      加载渲染器…
+                      {RESEARCH.detail.loading_renderer}
                     </div>
                   }
                 >

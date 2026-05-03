@@ -4,11 +4,13 @@ import { Markdown } from "@hone-financial/ui/markdown"
 import { For, Show } from "solid-js"
 import { actorLabel } from "@/lib/actors"
 import { useCompanyProfiles } from "@/context/company-profiles"
+import { COMPANY_PROFILES } from "@/lib/admin-content/company-profiles"
+import { tpl, useLocale } from "@/lib/i18n"
 
 function formatDate(iso?: string) {
-  if (!iso) return "—"
+  if (!iso) return COMPANY_PROFILES.detail.date_unknown
   try {
-    return new Date(iso).toLocaleString("zh-CN", {
+    return new Date(iso).toLocaleString(useLocale() === "zh" ? "zh-CN" : "en-US", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -32,11 +34,11 @@ function SummaryBlock(props: {
         {props.title}
       </div>
       <div class="mt-1 flex flex-wrap gap-3 text-[11px] text-[color:var(--text-muted)]">
-        <span>更新于：{formatDate(props.updatedAt)}</span>
-        <span>{props.eventCount} 条事件</span>
+        <span>{tpl(COMPANY_PROFILES.detail.summary_updated_at, { date: formatDate(props.updatedAt) })}</span>
+        <span>{tpl(COMPANY_PROFILES.detail.summary_event_count, { count: props.eventCount })}</span>
       </div>
       <div class="mt-3 text-sm leading-6 text-[color:var(--text-secondary)]">
-        {props.mainlineExcerpt || "未提取到投资主线摘要"}
+        {props.mainlineExcerpt || COMPANY_PROFILES.detail.summary_no_mainline}
       </div>
     </div>
   )
@@ -62,8 +64,8 @@ export function CompanyProfileDetail() {
       when={currentActor()}
       fallback={
         <EmptyState
-          title="先选择目标用户"
-          description="左侧先选一个用户空间，右侧才能查看、导出或导入公司画像。"
+          title={COMPANY_PROFILES.detail.empty_title}
+          description={COMPANY_PROFILES.detail.empty_description}
         />
       }
     >
@@ -87,10 +89,10 @@ export function CompanyProfileDetail() {
                 {actor().channel} / {actorLabel(actor())}
               </div>
               <div class="mt-1 flex flex-wrap gap-3 text-sm text-[color:var(--text-muted)]">
-                <span>画像空间</span>
-                <span>{(profiles.profiles() ?? []).length} 家公司</span>
+                <span>{COMPANY_PROFILES.detail.space_label}</span>
+                <span>{tpl(COMPANY_PROFILES.detail.company_count, { count: (profiles.profiles() ?? []).length })}</span>
                 <Show when={profile()}>
-                  <span>当前查看：{profile()!.title}</span>
+                  <span>{tpl(COMPANY_PROFILES.detail.current_viewing, { title: profile()!.title })}</span>
                 </Show>
               </div>
             </div>
@@ -102,10 +104,10 @@ export function CompanyProfileDetail() {
                 disabled={profiles.state.exporting}
                 onClick={() => void profiles.exportCurrentSpace().catch(() => undefined)}
               >
-                {profiles.state.exporting ? "导出中…" : "导出当前空间"}
+                {profiles.state.exporting ? COMPANY_PROFILES.detail.exporting_button : COMPANY_PROFILES.detail.export_button}
               </Button>
               <Button class="h-9 px-3 text-sm" onClick={openFilePicker}>
-                导入画像包
+                {COMPANY_PROFILES.detail.import_button}
               </Button>
               <Show when={profile()}>
                 <Button
@@ -113,13 +115,13 @@ export function CompanyProfileDetail() {
                   class="h-9 px-3 text-sm text-rose-500 hover:text-rose-600"
                   disabled={profiles.state.deleting}
                   onClick={async () => {
-                    if (!confirm(`确定彻底删除 ${profile()!.title} 的公司画像吗？`)) {
+                    if (!confirm(tpl(COMPANY_PROFILES.detail.delete_confirm, { title: profile()!.title }))) {
                       return
                     }
                     await profiles.removeProfile(profile()!.profile_id)
                   }}
                 >
-                  {profiles.state.deleting ? "删除中…" : "删除画像"}
+                  {profiles.state.deleting ? COMPANY_PROFILES.detail.deleting_button : COMPANY_PROFILES.detail.delete_button}
                 </Button>
               </Show>
             </div>
@@ -130,7 +132,7 @@ export function CompanyProfileDetail() {
             <div class="hf-scrollbar shrink-0 overflow-x-auto border-b border-[color:var(--border)] bg-[color:var(--panel)] px-6 py-2">
               <div class="flex min-w-max items-center gap-2">
                 <span class="shrink-0 text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
-                  公司画像 ({(profiles.profiles() ?? []).length})
+                  {tpl(COMPANY_PROFILES.detail.company_list_label, { count: (profiles.profiles() ?? []).length })}
                 </span>
                 <For each={profiles.profiles() ?? []}>
                   {(item) => (
@@ -152,7 +154,7 @@ export function CompanyProfileDetail() {
                         )}
                       >
                         <span class="ml-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">
-                          更新
+                          {COMPANY_PROFILES.detail.updated_badge}
                         </span>
                       </Show>
                     </button>
@@ -174,10 +176,13 @@ export function CompanyProfileDetail() {
 
             <Show when={result()}>
               <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                <div class="text-sm font-semibold text-emerald-800">导入完成</div>
+                <div class="text-sm font-semibold text-emerald-800">{COMPANY_PROFILES.detail.import_done_title}</div>
                 <div class="mt-1 text-sm text-emerald-700">
-                  新增 {result()!.imported_count} 家，替换 {result()!.replaced_count} 家，跳过{" "}
-                  {result()!.skipped_count} 家。
+                  {tpl(COMPANY_PROFILES.detail.import_done_summary, {
+                    imported: result()!.imported_count,
+                    replaced: result()!.replaced_count,
+                    skipped: result()!.skipped_count,
+                  })}
                 </div>
                 <Show when={profiles.state.transfer.backupBlob}>
                   <div class="mt-3">
@@ -186,7 +191,7 @@ export function CompanyProfileDetail() {
                       class="h-8 px-3 text-xs"
                       onClick={() => profiles.downloadBackup()}
                     >
-                      下载导入前备份
+                      {COMPANY_PROFILES.detail.download_backup_button}
                     </Button>
                   </div>
                 </Show>
@@ -206,11 +211,13 @@ export function CompanyProfileDetail() {
                     }}
                   >
                     <div class="text-base font-semibold text-[color:var(--text-primary)]">
-                      画像包已载入
+                      {COMPANY_PROFILES.detail.package_loaded_title}
                     </div>
                     <div class="mt-1 text-sm text-[color:var(--text-secondary)]">
-                      共 {currentPreview().profiles.length} 家公司，发现{" "}
-                      {currentPreview().conflict_count} 家冲突公司。
+                      {tpl(COMPANY_PROFILES.detail.package_loaded_summary, {
+                        profiles: currentPreview().profiles.length,
+                        conflicts: currentPreview().conflict_count,
+                      })}
                     </div>
                     <div class="mt-3 flex items-center justify-center gap-2">
                       <Button
@@ -218,24 +225,24 @@ export function CompanyProfileDetail() {
                         class="h-8 px-3 text-xs"
                         onClick={openFilePicker}
                       >
-                        重新选择画像包
+                        {COMPANY_PROFILES.detail.reselect_package_button}
                       </Button>
                       <Button
                         variant="ghost"
                         class="h-8 px-3 text-xs"
                         onClick={() => profiles.resetTransfer()}
                       >
-                        取消本次导入
+                        {COMPANY_PROFILES.detail.cancel_import_button}
                       </Button>
                     </div>
                   </div>
 
                   <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-                    <div class="text-sm font-semibold">导入扫描结果</div>
+                    <div class="text-sm font-semibold">{COMPANY_PROFILES.detail.scan_result_title}</div>
                     <div class="mt-2 grid gap-3 text-sm text-[color:var(--text-secondary)] md:grid-cols-3">
-                      <div>画像总数：{currentPreview().profiles.length}</div>
-                      <div>可直接导入：{currentPreview().importable_count}</div>
-                      <div>需要确认：{currentPreview().conflict_count}</div>
+                      <div>{tpl(COMPANY_PROFILES.detail.scan_total, { count: currentPreview().profiles.length })}</div>
+                      <div>{tpl(COMPANY_PROFILES.detail.scan_importable, { count: currentPreview().importable_count })}</div>
+                      <div>{tpl(COMPANY_PROFILES.detail.scan_need_confirm, { count: currentPreview().conflict_count })}</div>
                     </div>
                   </div>
 
@@ -244,10 +251,10 @@ export function CompanyProfileDetail() {
                     fallback={
                       <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
                         <div class="text-base font-semibold text-[color:var(--text-primary)]">
-                          当前空间没有冲突，可以直接导入。
+                          {COMPANY_PROFILES.detail.no_conflicts_title}
                         </div>
                         <div class="mt-2 text-sm text-[color:var(--text-secondary)]">
-                          这次会导入 {currentPreview().profiles.length} 家公司画像。
+                          {tpl(COMPANY_PROFILES.detail.no_conflicts_description, { count: currentPreview().profiles.length })}
                         </div>
                       </div>
                     }
@@ -256,10 +263,10 @@ export function CompanyProfileDetail() {
                       <div class="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                            冲突审阅
+                            {COMPANY_PROFILES.detail.conflicts_title}
                           </div>
                           <div class="mt-1 text-sm text-[color:var(--text-secondary)]">
-                            只需要决定这些已存在的公司要保留当前版本，还是改成导入版本。
+                            {COMPANY_PROFILES.detail.conflicts_description}
                           </div>
                         </div>
                         <div class="flex items-center gap-2">
@@ -268,14 +275,14 @@ export function CompanyProfileDetail() {
                             class="h-8 px-3 text-xs"
                             onClick={() => profiles.applyDecisionToAll("skip")}
                           >
-                            全部保留当前
+                            {COMPANY_PROFILES.detail.keep_all_button}
                           </Button>
                           <Button
                             variant="ghost"
                             class="h-8 px-3 text-xs"
                             onClick={() => profiles.applyDecisionToAll("replace")}
                           >
-                            全部用导入版本替换
+                            {COMPANY_PROFILES.detail.replace_all_button}
                           </Button>
                         </div>
                       </div>
@@ -303,13 +310,13 @@ export function CompanyProfileDetail() {
 
                               <div class="mt-4 grid gap-4 md:grid-cols-2">
                                 <SummaryBlock
-                                  title="你当前的版本"
+                                  title={COMPANY_PROFILES.detail.side_existing_title}
                                   updatedAt={conflict.existing.updated_at}
                                   eventCount={conflict.existing.event_count}
                                   mainlineExcerpt={conflict.existing.mainline_excerpt}
                                 />
                                 <SummaryBlock
-                                  title="导入版本"
+                                  title={COMPANY_PROFILES.detail.side_imported_title}
                                   updatedAt={conflict.imported.updated_at}
                                   eventCount={conflict.imported.event_count}
                                   mainlineExcerpt={conflict.imported.mainline_excerpt}
@@ -332,7 +339,7 @@ export function CompanyProfileDetail() {
                                     )
                                   }
                                 >
-                                  保留我当前的
+                                  {COMPANY_PROFILES.detail.keep_button}
                                 </Button>
                                 <Button
                                   class={[
@@ -348,7 +355,7 @@ export function CompanyProfileDetail() {
                                     )
                                   }
                                 >
-                                  用导入版本替换
+                                  {COMPANY_PROFILES.detail.replace_button}
                                 </Button>
                               </div>
                             </div>
@@ -364,7 +371,7 @@ export function CompanyProfileDetail() {
                       disabled={!profiles.transferReady() || profiles.state.transfer.applying}
                       onClick={() => void profiles.applyImport().catch(() => undefined)}
                     >
-                      {profiles.state.transfer.applying ? "导入中…" : "开始导入"}
+                      {profiles.state.transfer.applying ? COMPANY_PROFILES.detail.importing_button : COMPANY_PROFILES.detail.start_import_button}
                     </Button>
                   </div>
                 </div>
@@ -378,17 +385,17 @@ export function CompanyProfileDetail() {
                   <EmptyState
                     title={
                       (profiles.profiles() ?? []).length > 0
-                        ? "先选择一家公司"
-                        : "这个空间还没有公司画像"
+                        ? COMPANY_PROFILES.detail.pick_company_title
+                        : COMPANY_PROFILES.detail.empty_space_title
                     }
                     description={
                       (profiles.profiles() ?? []).length > 0
-                        ? "上面已经列出这个空间里的公司，点一家公司就能查看详情。"
-                        : "可以直接导入别人整理好的画像包，或者让 agent 为这个用户新建首份公司画像。"
+                        ? COMPANY_PROFILES.detail.pick_company_description
+                        : COMPANY_PROFILES.detail.empty_space_description
                     }
                     action={
                       <Button class="h-9 px-4 text-sm" onClick={openFilePicker}>
-                        选择画像包
+                        {COMPANY_PROFILES.detail.pick_package_button}
                       </Button>
                     }
                   />
@@ -398,9 +405,9 @@ export function CompanyProfileDetail() {
                   <div class="space-y-5">
                     <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
                       <div class="mb-3 flex items-center justify-between gap-3">
-                        <div class="text-sm font-semibold">画像主文件</div>
+                        <div class="text-sm font-semibold">{COMPANY_PROFILES.detail.main_file_title}</div>
                         <div class="text-xs text-[color:var(--text-muted)]">
-                          直接展示当前目录中的 `profile.md`
+                          {COMPANY_PROFILES.detail.main_file_subtitle}
                         </div>
                       </div>
                       <Markdown text={current().markdown} />
@@ -408,9 +415,9 @@ export function CompanyProfileDetail() {
 
                     <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
                       <div class="mb-3 flex items-center justify-between">
-                        <div class="text-sm font-semibold">事件文件</div>
+                        <div class="text-sm font-semibold">{COMPANY_PROFILES.detail.events_title}</div>
                         <div class="text-xs text-[color:var(--text-muted)]">
-                          {current().events.length} 条事件
+                          {tpl(COMPANY_PROFILES.detail.events_count, { count: current().events.length })}
                         </div>
                       </div>
 
@@ -418,7 +425,7 @@ export function CompanyProfileDetail() {
                         when={current().events.length > 0}
                         fallback={
                           <div class="text-sm text-[color:var(--text-muted)]">
-                            当前目录下还没有事件文件。
+                            {COMPANY_PROFILES.detail.events_empty}
                           </div>
                         }
                       >

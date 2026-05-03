@@ -11,10 +11,14 @@
 use dialoguer::theme::ColorfulTheme;
 
 use crate::display::{fail_line, ok_line, warn_line};
+use crate::i18n::{Lang, t, tpl};
 use crate::prompts::{normalize_credential_value, prompt_bool, prompt_visible_credential};
 use crate::reports::DoctorCheck;
 
 /// Discord token 的格式校验结论。`Warn` 表示可能有问题但仍允许保存。
+///
+/// 嵌入的 `&'static str` 是 i18n 翻译键(例如 `"discord_token.too_short"`),由调用方
+/// 通过 `t(lang, key)` 解析成对应语言的人类可读文案。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DiscordTokenValidation {
     Valid,
@@ -34,37 +38,50 @@ fn is_base64url_segment(value: &str) -> bool {
 pub(crate) fn validate_discord_token(value: &str) -> DiscordTokenValidation {
     let token = value.trim();
     if token.is_empty() {
-        return DiscordTokenValidation::Invalid("Token 不能为空。");
+        return DiscordTokenValidation::Invalid("discord_token.empty");
     }
 
     let segments = token.split('.').collect::<Vec<_>>();
     if segments.len() != 3 {
-        return DiscordTokenValidation::Invalid("Token 必须是三段结构（形如 xxx.yyy.zzz）。");
+        return DiscordTokenValidation::Invalid("discord_token.bad_segments");
     }
     if !segments.iter().all(|segment| is_base64url_segment(segment)) {
-        return DiscordTokenValidation::Invalid("Token 包含非法字符，应为 base64url 字符集。");
+        return DiscordTokenValidation::Invalid("discord_token.bad_charset");
     }
 
     let len = token.len();
     if len < 50 {
-        DiscordTokenValidation::Warn("Token 长度偏短，请确认是否粘贴完整。")
+        DiscordTokenValidation::Warn("discord_token.too_short")
     } else if len > 120 {
-        DiscordTokenValidation::Warn("Token 长度异常偏长，请检查是否重复粘贴。")
+        DiscordTokenValidation::Warn("discord_token.too_long")
     } else {
         DiscordTokenValidation::Valid
     }
 }
 
 /// 生成一条可塞进 `doctor` 报告的 DoctorCheck，详情里带长度用于肉眼 sanity check。
-pub(crate) fn discord_token_doctor_check(token: &str) -> DoctorCheck {
+pub(crate) fn discord_token_doctor_check(lang: Lang, token: &str) -> DoctorCheck {
     let token = token.trim();
     let len = token.len();
     let (status, detail) = match validate_discord_token(token) {
-        DiscordTokenValidation::Valid => {
-            ("ok", format!("Discord token 基本格式有效（长度={len}）。"))
-        }
-        DiscordTokenValidation::Warn(message) => ("warn", format!("{message}（长度={len}）。")),
-        DiscordTokenValidation::Invalid(message) => ("fail", format!("{message}（长度={len}）。")),
+        DiscordTokenValidation::Valid => (
+            "ok",
+            tpl(t(lang, "discord_token.doctor_ok"), &[("len", &len)]),
+        ),
+        DiscordTokenValidation::Warn(key) => (
+            "warn",
+            tpl(
+                t(lang, "discord_token.message_with_len"),
+                &[("message", &t(lang, key)), ("len", &len)],
+            ),
+        ),
+        DiscordTokenValidation::Invalid(key) => (
+            "fail",
+            tpl(
+                t(lang, "discord_token.message_with_len"),
+                &[("message", &t(lang, key)), ("len", &len)],
+            ),
+        ),
     };
     DoctorCheck {
         name: "discord-token-format".to_string(),
@@ -79,30 +96,41 @@ pub(crate) fn discord_token_doctor_check(token: &str) -> DoctorCheck {
 /// (`onboard::prompt_onboard_required_discord_token`)。
 pub(crate) fn prompt_optional_discord_token(
     theme: &ColorfulTheme,
+    lang: Lang,
     prompt: &str,
     current: &str,
     keep_note: bool,
 ) -> Result<Option<String>, String> {
     loop {
-        let Some(token) = prompt_visible_credential(theme, prompt, keep_note, current)? else {
+        let Some(token) = prompt_visible_credential(theme, lang, prompt, keep_note, current)?
+        else {
             return Ok(None);
         };
         let normalized_token = normalize_credential_value(&token);
         let len = normalized_token.len();
         match validate_discord_token(&normalized_token) {
             DiscordTokenValidation::Valid => {
-                ok_line(&format!("Token 格式有效(长度={len})。"));
+                ok_line(&tpl(
+                    t(lang, "discord_token.valid_with_len"),
+                    &[("len", &len)],
+                ));
                 return Ok(Some(normalized_token));
             }
-            DiscordTokenValidation::Warn(message) => {
-                warn_line(&format!("{message}(长度={len})。"));
-                if prompt_bool(theme, "仍然保存这个 Discord token?", false)? {
+            DiscordTokenValidation::Warn(key) => {
+                warn_line(&tpl(
+                    t(lang, "discord_token.message_with_len"),
+                    &[("message", &t(lang, key)), ("len", &len)],
+                ));
+                if prompt_bool(theme, t(lang, "discord_token.confirm_save"), false)? {
                     return Ok(Some(normalized_token));
                 }
             }
-            DiscordTokenValidation::Invalid(message) => {
-                fail_line(&format!("{message}(长度={len})。"));
-                if !prompt_bool(theme, "Token 格式异常,重新输入?", true)? {
+            DiscordTokenValidation::Invalid(key) => {
+                fail_line(&tpl(
+                    t(lang, "discord_token.message_with_len"),
+                    &[("message", &t(lang, key)), ("len", &len)],
+                ));
+                if !prompt_bool(theme, t(lang, "discord_token.confirm_retry"), true)? {
                     return Ok(None);
                 }
             }
@@ -128,7 +156,7 @@ mod tests {
         let token = format!("{}.{}.{}", "A".repeat(48), "b".repeat(6), "C".repeat(96));
         assert_eq!(
             validate_discord_token(&token),
-            DiscordTokenValidation::Warn("Token 长度异常偏长，请检查是否重复粘贴。")
+            DiscordTokenValidation::Warn("discord_token.too_long")
         );
     }
 
@@ -137,14 +165,14 @@ mod tests {
         let token = "not-a-discord-token";
         assert_eq!(
             validate_discord_token(token),
-            DiscordTokenValidation::Invalid("Token 必须是三段结构（形如 xxx.yyy.zzz）。")
+            DiscordTokenValidation::Invalid("discord_token.bad_segments")
         );
     }
 
     #[test]
     fn discord_token_doctor_check_reports_warning() {
         let token = format!("{}.{}.{}", "A".repeat(48), "b".repeat(6), "C".repeat(96));
-        let check = discord_token_doctor_check(&token);
+        let check = discord_token_doctor_check(Lang::Zh, &token);
         assert_eq!(check.name, "discord-token-format");
         assert_eq!(check.status, "warn");
         assert!(check.detail.contains("长度异常偏长"));

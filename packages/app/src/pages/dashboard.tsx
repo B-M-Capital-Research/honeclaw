@@ -5,27 +5,30 @@ import { useBackend } from "@/context/backend"
 import { useConsole } from "@/context/console"
 import { useResearch } from "@/context/research"
 import { useSessions, ME_SESSION_ID } from "@/context/sessions"
+import { tpl, useLocale } from "@/lib/i18n"
+import { DASH } from "@/lib/admin-content/dashboard"
 import type { AgentProvider } from "@/lib/types"
 
 type ChannelDef = {
   runner: AgentProvider
   name: string
-  desc: string
+  desc: () => string
   icon: string
 }
 
 const CHANNELS: ChannelDef[] = [
-  { runner: "multi-agent", name: "Multi-Agent", desc: "MiniMax 搜索 + Gemini 回答", icon: "∞" },
-  { runner: "codex_acp", name: "Codex ACP", desc: "通过 codex-acp 驱动当前会话", icon: "⌘" },
-  { runner: "opencode_acp", name: "自定义 OpenAI 协议", desc: "OpenAI compatible / 推荐 OpenRouter", icon: "⚡" },
-  { runner: "gemini_cli", name: "Gemini CLI", desc: "复用本机 Gemini 命令行", icon: "✦" },
-  { runner: "codex_cli", name: "Codex CLI", desc: "复用本机 Codex 命令行", icon: "◈" },
+  { runner: "multi-agent", name: "Multi-Agent", desc: () => DASH.channels.multi_agent_desc, icon: "∞" },
+  { runner: "codex_acp", name: "Codex ACP", desc: () => DASH.channels.codex_acp_desc, icon: "⌘" },
+  { runner: "opencode_acp", name: "", desc: () => DASH.channels.opencode_acp_desc, icon: "⚡" },
+  { runner: "gemini_cli", name: "Gemini CLI", desc: () => DASH.channels.gemini_cli_desc, icon: "✦" },
+  { runner: "codex_cli", name: "Codex CLI", desc: () => DASH.channels.codex_cli_desc, icon: "◈" },
 ]
 
 function formatTime(iso?: string): string {
   if (!iso) return ""
   try {
-    return new Date(iso).toLocaleString("zh-CN", {
+    const localeTag = useLocale() === "zh" ? "zh-CN" : "en-US"
+    return new Date(iso).toLocaleString(localeTag, {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
@@ -92,14 +95,15 @@ export default function DashboardPage() {
     return { total: channels.length, live }
   })
 
+  const channelLabel = (ch: ChannelDef) => ch.name || DASH.channels.opencode_acp_name
+
   return (
     <div class="hf-scrollbar h-full overflow-y-auto px-6 py-6">
       <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
-        {/* 状态面板 */}
         <div class="grid gap-3 md:grid-cols-3">
           <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
             <div class="text-[11px] uppercase tracking-widest text-[color:var(--text-muted)]">
-              后端连接
+              {DASH.status_panel.backend_label}
             </div>
             <div class="mt-1.5 flex items-center gap-2">
               <span
@@ -109,7 +113,9 @@ export default function DashboardPage() {
                 ].join(" ")}
               />
               <span class="text-sm font-medium text-[color:var(--text-primary)]">
-                {backend.state.connected ? "已连接" : "未连接"}
+                {backend.state.connected
+                  ? DASH.status_panel.backend_connected
+                  : DASH.status_panel.backend_disconnected}
               </span>
             </div>
             <Show when={!backend.state.connected && backend.state.error}>
@@ -121,10 +127,13 @@ export default function DashboardPage() {
 
           <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
             <div class="text-[11px] uppercase tracking-widest text-[color:var(--text-muted)]">
-              渠道
+              {DASH.status_panel.channels_label}
             </div>
             <div class="mt-1.5 text-sm font-medium text-[color:var(--text-primary)]">
-              {channelStatus().live} / {channelStatus().total} 在线
+              {tpl(DASH.status_panel.channels_summary, {
+                live: channelStatus().live,
+                total: channelStatus().total,
+              })}
             </div>
             <Show when={consoleState.channelError()}>
               <div class="mt-1 line-clamp-2 text-[11px] text-rose-400">
@@ -135,30 +144,31 @@ export default function DashboardPage() {
 
           <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
             <div class="text-[11px] uppercase tracking-widest text-[color:var(--text-muted)]">
-              进行中研究
+              {DASH.status_panel.active_research_label}
             </div>
             <div class="mt-1.5 text-sm font-medium text-[color:var(--text-primary)]">
-              {research.state.tasks.filter((t) => t.status === "running" || t.status === "pending").length} 个任务
+              {tpl(DASH.status_panel.active_research_summary, {
+                count: research.state.tasks.filter((t) => t.status === "running" || t.status === "pending").length,
+              })}
             </div>
             <button
               type="button"
               class="mt-1 text-[11px] text-[color:var(--accent)] hover:underline"
               onClick={() => navigate("/research")}
             >
-              打开研究模块 →
+              {DASH.status_panel.research_open_link}
             </button>
           </div>
         </div>
 
-        {/* 快速发起 */}
         <div class="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5 shadow-sm">
           <div class="mb-3 flex items-center justify-between">
             <div>
               <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                快速发起对话
+                {DASH.quick_chat.title}
               </div>
               <div class="text-[11px] text-[color:var(--text-muted)]">
-                输入问题直接发给 ME 渠道,Enter 发送
+                {DASH.quick_chat.subtitle}
               </div>
             </div>
             <div class="flex flex-wrap justify-end gap-2">
@@ -177,10 +187,10 @@ export default function DashboardPage() {
                       ].join(" ")}
                       disabled={!backend.state.isDesktop}
                       onClick={() => navigate("/settings#agent-settings")}
-                      title={`${ch.desc} · 点击前往配置`}
+                      title={tpl(DASH.quick_chat.runner_chip_title, { desc: ch.desc() })}
                     >
                       <span>{ch.icon}</span>
-                      <span class="font-medium">{ch.name}</span>
+                      <span class="font-medium">{channelLabel(ch)}</span>
                     </button>
                   )
                 }}
@@ -191,7 +201,7 @@ export default function DashboardPage() {
           <div class="relative overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] focus-within:border-[color:var(--accent)] transition-all">
             <textarea
               rows={3}
-              placeholder="输入你想探索的投研问题…"
+              placeholder={DASH.quick_chat.placeholder}
               class="min-h-[96px] w-full resize-none bg-transparent px-4 pb-12 pt-3 text-sm leading-relaxed text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-muted)]/70"
               value={input()}
               onInput={(e) => setInput(e.currentTarget.value)}
@@ -199,8 +209,8 @@ export default function DashboardPage() {
             />
             <div class="absolute bottom-0 left-0 right-0 flex items-center justify-between bg-gradient-to-t from-[color:var(--panel)] to-transparent px-3 py-2">
               <div class="text-[11px] text-[color:var(--text-muted)]/70">
-                <Show when={agentSettings.loading} fallback={<span>Shift + Enter 换行</span>}>
-                  <span class="animate-pulse">加载配置中…</span>
+                <Show when={agentSettings.loading} fallback={<span>{DASH.quick_chat.shift_enter_hint}</span>}>
+                  <span class="animate-pulse">{DASH.quick_chat.loading_settings}</span>
                 </Show>
               </div>
               <button
@@ -208,7 +218,7 @@ export default function DashboardPage() {
                 onClick={handleSend}
                 disabled={!input().trim()}
                 class="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--accent)] text-white transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:scale-100"
-                aria-label="发送"
+                aria-label={DASH.quick_chat.send_aria}
               >
                 <svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
                   <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
@@ -218,24 +228,23 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 两列:最近会话 + 进行中研究 */}
         <div class="grid gap-4 md:grid-cols-2">
           <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
             <div class="mb-3 flex items-center justify-between">
-              <div class="text-sm font-semibold">最近会话</div>
+              <div class="text-sm font-semibold">{DASH.recent.sessions_title}</div>
               <button
                 type="button"
                 class="text-[11px] text-[color:var(--accent)] hover:underline"
                 onClick={() => navigate("/sessions")}
               >
-                全部 →
+                {DASH.recent.sessions_view_all}
               </button>
             </div>
             <Show
               when={recentSessions().length > 0}
               fallback={
                 <div class="rounded-md border border-dashed border-[color:var(--border)] p-4 text-center text-[11px] text-[color:var(--text-muted)]">
-                  暂无最近会话
+                  {DASH.recent.sessions_empty}
                 </div>
               }
             >
@@ -258,7 +267,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <div class="mt-1 line-clamp-1 text-[11px] text-[color:var(--text-secondary)]">
-                        {u.last_message || "(空)"}
+                        {u.last_message || DASH.recent.last_message_empty}
                       </div>
                     </button>
                   )}
@@ -269,20 +278,20 @@ export default function DashboardPage() {
 
           <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
             <div class="mb-3 flex items-center justify-between">
-              <div class="text-sm font-semibold">进行中研究</div>
+              <div class="text-sm font-semibold">{DASH.recent.research_title}</div>
               <button
                 type="button"
                 class="text-[11px] text-[color:var(--accent)] hover:underline"
                 onClick={() => navigate("/research")}
               >
-                全部 →
+                {DASH.recent.research_view_all}
               </button>
             </div>
             <Show
               when={activeResearch().length > 0}
               fallback={
                 <div class="rounded-md border border-dashed border-[color:var(--border)] p-4 text-center text-[11px] text-[color:var(--text-muted)]">
-                  暂无研究任务
+                  {DASH.recent.research_empty}
                 </div>
               }
             >
@@ -303,7 +312,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <div class="mt-1 text-[10px] text-[color:var(--text-muted)]">
-                        创建于 {formatTime(t.created_at)}
+                        {tpl(DASH.recent.created_prefix, { time: formatTime(t.created_at) })}
                       </div>
                     </button>
                   )}

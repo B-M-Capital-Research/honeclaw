@@ -6,6 +6,7 @@ import { useNavigate } from "@solidjs/router"
 import { useTasks } from "@/context/tasks"
 import type { CronJobInfo } from "@/lib/types"
 import { formatShanghaiDateTime } from "@/lib/time"
+import { TASKS } from "@/lib/admin-content/tasks"
 
 export function TaskList() {
     const navigate = useNavigate()
@@ -15,7 +16,7 @@ export function TaskList() {
         job.schedule.repeat === "heartbeat" || (job.tags || []).includes("heartbeat")
 
     const formatNextRunAt = (dateString?: string) => {
-        if (!dateString) return "未调度"
+        if (!dateString) return TASKS.list.not_scheduled
         return formatShanghaiDateTime(dateString, {
             month: "2-digit",
             day: "2-digit",
@@ -30,8 +31,8 @@ export function TaskList() {
             <div class="border-b border-[color:var(--border)] px-4 py-3">
                 <div class="flex items-center justify-between">
                     <div>
-                        <div class="text-sm font-semibold tracking-tight">任务中心</div>
-                        <div class="text-xs text-[color:var(--text-muted)]">管理定时触发的工作流（东八区）</div>
+                        <div class="text-sm font-semibold tracking-tight">{TASKS.list.title}</div>
+                        <div class="text-xs text-[color:var(--text-muted)]">{TASKS.list.subtitle}</div>
                     </div>
                     <Button
                         variant="ghost"
@@ -40,7 +41,7 @@ export function TaskList() {
                             navigate("/tasks/new")
                         }}
                     >
-                        新建
+                        {TASKS.list.new_button}
                     </Button>
                 </div>
             </div>
@@ -58,7 +59,7 @@ export function TaskList() {
                 >
                     <Show
                         when={tasks.jobs() && tasks.jobs()!.length > 0}
-                        fallback={<EmptyState title="目前没有定时任务" description="点击右上角新建任务可以开始使用。" />}
+                        fallback={<EmptyState title={TASKS.list.empty_title} description={TASKS.list.empty_description} />}
                     >
                         <div class="space-y-2">
                             <For each={tasks.jobs()}>
@@ -90,20 +91,20 @@ export function TaskList() {
                                                         </div>
                                                         <div class="text-[11px] text-[color:var(--text-muted)]">
                                                             {isHeartbeatJob(job)
-                                                                ? "每30分钟"
+                                                                ? TASKS.list.every_30_minutes
                                                                 : `${job.schedule.hour.toString().padStart(2, "0")}:${job.schedule.minute.toString().padStart(2, "0")}`}
                                                         </div>
                                                     </div>
                                                     <Show when={isHeartbeatJob(job)}>
                                                         <div class="mt-1 inline-flex rounded-full border border-[color:var(--accent)]/30 bg-[color:var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
-                                                            心跳检测
+                                                            {TASKS.list.heartbeat_badge}
                                                         </div>
                                                     </Show>
                                                     <div class="mt-0.5 line-clamp-1 text-xs leading-5 text-[color:var(--text-secondary)]">
                                                         {job.task_prompt}
                                                     </div>
                                                     <div class="mt-2 text-[11px] text-[color:var(--text-muted)]">
-                                                        下一次: {isHeartbeatJob(job) ? "每 30 分钟检查一次" : formatNextRunAt(job.next_run_at)}
+                                                        {TASKS.list.next_run_label} {isHeartbeatJob(job) ? TASKS.list.next_run_heartbeat : formatNextRunAt(job.next_run_at)}
                                                     </div>
                                                 </div>
                                             </div>

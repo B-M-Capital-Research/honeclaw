@@ -9,6 +9,7 @@ import { createStore, produce } from "solid-js/store"
 import { getResearchStatus, startResearch } from "@/lib/api"
 import { readStoredResearchTasks, writeStoredResearchTasks } from "@/lib/persist"
 import type { ResearchTask } from "@/lib/types"
+import { RESEARCH } from "@/lib/admin-content/research"
 import { useBackend } from "./backend"
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ function createResearchState() {
           id: mockId,
           task_id: "test-task-id-00000000",
           task_name: "测试公司_0000000000_deepresearch",
-          company_name: "测试公司（TEST）",
+          company_name: RESEARCH.context.test_company_label,
           status: "completed",
           progress: "100%",
           created_at: now,
@@ -120,7 +121,7 @@ function createResearchState() {
 
       // ── 正常流程 ────────────────────────────────────────────────────────────
       if (!backend.state.connected || !backend.hasCapability("research")) {
-        throw new Error("当前 backend 不支持研究能力")
+        throw new Error(RESEARCH.context.backend_unsupported)
       }
       const resp = await startResearch(companyName)
 

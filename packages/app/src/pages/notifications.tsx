@@ -16,49 +16,59 @@ import {
 } from "@/lib/api"
 import { actorKey, type ActorRef } from "@/lib/actors"
 import { formatShanghaiDateTime } from "@/lib/time"
+import { NOTIFICATIONS } from "@/lib/admin-content/notifications"
+import { tpl, useLocale } from "@/lib/i18n"
 
 // ── 状态映射(对齐 task-detail.tsx 的 sendStatusLabel/executionStatusLabel) ──
 
-const SEND_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "", label: "全部发送状态" },
-  { value: "sent", label: "已发送" },
-  { value: "dryrun", label: "Dry run" },
-  { value: "queued", label: "已排队" },
-  { value: "quiet_held", label: "静音暂存" },
-  { value: "filtered", label: "偏好过滤" },
-  { value: "capped", label: "上限降级" },
-  { value: "cooled_down", label: "冷却降级" },
-  { value: "price_capped", label: "价格上限降级" },
-  { value: "price_cooled_down", label: "价格冷却降级" },
-  { value: "omitted", label: "摘要省略" },
-  { value: "skipped_noop", label: "未发送(未命中/排队)" },
-  { value: "skipped_error", label: "未发送(执行失败)" },
-  { value: "send_failed", label: "发送失败" },
-  { value: "failed", label: "发送失败(event)" },
-  { value: "target_resolution_failed", label: "目标解析失败" },
-  { value: "duplicate_suppressed", label: "已拦截重复发送" },
-]
+function sendStatusOptions(): Array<{ value: string; label: string }> {
+  const t = NOTIFICATIONS.send_status
+  return [
+    { value: "", label: t.all },
+    { value: "sent", label: t.sent },
+    { value: "dryrun", label: t.dryrun },
+    { value: "queued", label: t.queued },
+    { value: "quiet_held", label: t.quiet_held },
+    { value: "filtered", label: t.filtered },
+    { value: "capped", label: t.capped },
+    { value: "cooled_down", label: t.cooled_down },
+    { value: "price_capped", label: t.price_capped },
+    { value: "price_cooled_down", label: t.price_cooled_down },
+    { value: "omitted", label: t.omitted },
+    { value: "skipped_noop", label: t.skipped_noop },
+    { value: "skipped_error", label: t.skipped_error },
+    { value: "send_failed", label: t.send_failed },
+    { value: "failed", label: t.failed },
+    { value: "target_resolution_failed", label: t.target_resolution_failed },
+    { value: "duplicate_suppressed", label: t.duplicate_suppressed },
+  ]
+}
 
-const EXEC_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "", label: "全部执行状态" },
-  { value: "completed", label: "执行成功" },
-  { value: "noop", label: "未命中" },
-  { value: "execution_failed", label: "执行失败" },
-]
+function execStatusOptions(): Array<{ value: string; label: string }> {
+  const t = NOTIFICATIONS.exec_status
+  return [
+    { value: "", label: t.all },
+    { value: "completed", label: t.completed },
+    { value: "noop", label: t.noop },
+    { value: "execution_failed", label: t.execution_failed },
+  ]
+}
 
-const CHANNEL_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "", label: "全部渠道" },
-  { value: "telegram", label: "Telegram" },
-  { value: "discord", label: "Discord" },
-  { value: "feishu", label: "飞书" },
-  { value: "imessage", label: "iMessage" },
-]
+function channelOptions(): Array<{ value: string; label: string }> {
+  return [
+    { value: "", label: NOTIFICATIONS.channel.all },
+    { value: "telegram", label: "Telegram" },
+    { value: "discord", label: "Discord" },
+    { value: "feishu", label: NOTIFICATIONS.channel.feishu },
+    { value: "imessage", label: "iMessage" },
+  ]
+}
 
 function sendLabel(s: string): string {
-  return SEND_STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s ?? "—"
+  return sendStatusOptions().find((o) => o.value === s)?.label ?? s ?? "—"
 }
 function execLabel(s: string): string {
-  return EXEC_STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s ?? "—"
+  return execStatusOptions().find((o) => o.value === s)?.label ?? s ?? "—"
 }
 
 function sendBadgeClass(s: string): string {
@@ -91,7 +101,8 @@ function sendBadgeClass(s: string): string {
 function bucketHourLabel(iso: string): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return iso
-  return d.toLocaleString("zh-CN", {
+  const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
+  return d.toLocaleString(loc, {
     timeZone: "Asia/Shanghai",
     hour: "2-digit",
     hour12: false,
@@ -101,9 +112,9 @@ function bucketHourLabel(iso: string): string {
 function recordSourceLabel(source: string): string {
   switch (source) {
     case "cron_job":
-      return "cron"
+      return NOTIFICATIONS.source.cron
     case "event_engine":
-      return "event"
+      return NOTIFICATIONS.source.event
     default:
       return source || "—"
   }
@@ -112,31 +123,31 @@ function recordSourceLabel(source: string): string {
 function eventKindLabel(kind?: string | null): string {
   switch (kind) {
     case "earnings_upcoming":
-      return "财报预告"
+      return NOTIFICATIONS.event_kind.earnings_upcoming
     case "earnings_released":
-      return "财报发布"
+      return NOTIFICATIONS.event_kind.earnings_released
     case "earnings_call_transcript":
-      return "财报电话会"
+      return NOTIFICATIONS.event_kind.earnings_call_transcript
     case "news_critical":
-      return "重点新闻"
+      return NOTIFICATIONS.event_kind.news_critical
     case "price_alert":
-      return "价格异动"
+      return NOTIFICATIONS.event_kind.price_alert
     case "weekly52_high":
-      return "52周新高"
+      return NOTIFICATIONS.event_kind.weekly52_high
     case "weekly52_low":
-      return "52周新低"
+      return NOTIFICATIONS.event_kind.weekly52_low
     case "dividend":
-      return "分红"
+      return NOTIFICATIONS.event_kind.dividend
     case "split":
-      return "拆股"
+      return NOTIFICATIONS.event_kind.split
     case "sec_filing":
-      return "SEC 文件"
+      return NOTIFICATIONS.event_kind.sec_filing
     case "analyst_grade":
-      return "分析师评级"
+      return NOTIFICATIONS.event_kind.analyst_grade
     case "macro_event":
-      return "宏观事件"
+      return NOTIFICATIONS.event_kind.macro_event
     case "social_post":
-      return "社媒动态"
+      return NOTIFICATIONS.event_kind.social_post
     default:
       return kind || "—"
   }
@@ -215,10 +226,10 @@ export default function NotificationsPage() {
       {/* 顶栏 + 过滤器 */}
       <div class="flex flex-wrap items-center gap-3">
         <h1 class="text-lg font-semibold text-[color:var(--text-primary)]">
-          推送日志
+          {NOTIFICATIONS.page.title}
         </h1>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>窗口</span>
+          <span>{NOTIFICATIONS.page.window_label}</span>
           <select
             value={hours()}
             onChange={(e) => {
@@ -235,7 +246,7 @@ export default function NotificationsPage() {
           </select>
         </div>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>渠道</span>
+          <span>{NOTIFICATIONS.page.channel_label}</span>
           <select
             value={channel()}
             disabled={!!selectedActor()}
@@ -245,16 +256,16 @@ export default function NotificationsPage() {
             }}
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)] disabled:opacity-50"
           >
-            <For each={CHANNEL_OPTIONS}>
+            <For each={channelOptions()}>
               {(o) => <option value={o.value}>{o.label}</option>}
             </For>
           </select>
         </div>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>用户</span>
+          <span>{NOTIFICATIONS.page.user_label}</span>
           <ActorSelect
             allowAll
-            allLabel="全部用户"
+            allLabel={NOTIFICATIONS.page.all_users}
             value={selectedActor() ? actorKey(selectedActor()!) : ""}
             onChange={(actor) => {
               setSelectedActor(actor)
@@ -271,7 +282,7 @@ export default function NotificationsPage() {
             }}
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
           >
-            <For each={SEND_STATUS_OPTIONS}>
+            <For each={sendStatusOptions()}>
               {(o) => <option value={o.value}>{o.label}</option>}
             </For>
           </select>
@@ -285,7 +296,7 @@ export default function NotificationsPage() {
             }}
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
           >
-            <For each={EXEC_STATUS_OPTIONS}>
+            <For each={execStatusOptions()}>
               {(o) => <option value={o.value}>{o.label}</option>}
             </For>
           </select>
@@ -295,7 +306,7 @@ export default function NotificationsPage() {
           disabled={loading()}
           class="rounded border border-[color:var(--border)] px-3 py-1 text-xs hover:bg-white/5 disabled:opacity-50"
         >
-          {loading() ? "刷新中…" : "刷新"}
+          {loading() ? NOTIFICATIONS.page.refreshing_button : NOTIFICATIONS.page.refresh_button}
         </button>
       </div>
 
@@ -307,22 +318,22 @@ export default function NotificationsPage() {
 
       {/* 24h 汇总数字 */}
       <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <SummaryCard label="24h 总数" value={summary().total} />
-        <SummaryCard label="已发送" value={summary().sent} tone="ok" />
-        <SummaryCard label="发送失败" value={summary().failed} tone="bad" />
-        <SummaryCard label="主动跳过" value={summary().skipped} tone="muted" />
+        <SummaryCard label={NOTIFICATIONS.page.summary_total} value={summary().total} />
+        <SummaryCard label={NOTIFICATIONS.page.summary_sent} value={summary().sent} tone="ok" />
+        <SummaryCard label={NOTIFICATIONS.page.summary_failed} value={summary().failed} tone="bad" />
+        <SummaryCard label={NOTIFICATIONS.page.summary_skipped} value={summary().skipped} tone="muted" />
         <SummaryCard
-          label="重复拦截"
+          label={NOTIFICATIONS.page.summary_duplicate}
           value={summary().duplicate_suppressed}
           tone="warn"
         />
-        <SummaryCard label="覆盖用户" value={summary().distinct_users} />
+        <SummaryCard label={NOTIFICATIONS.page.summary_users} value={summary().distinct_users} />
       </section>
 
       {/* 24h 直方图 */}
       <section class="space-y-2">
         <div class="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">
-          24h 推送频率(每小时一桶,左→右 = 旧→新)
+          {NOTIFICATIONS.page.histogram_title}
         </div>
         <div class="rounded border border-[color:var(--border)] p-3">
           <div class="flex h-24 items-end gap-[2px]">
@@ -336,7 +347,13 @@ export default function NotificationsPage() {
                 return (
                   <div
                     class="group relative flex flex-1 flex-col justify-end"
-                    title={`${formatShanghaiDateTime(b.bucket_start)}\n总 ${b.total} · 发送 ${b.sent} · 失败 ${b.failed} · 跳过 ${b.skipped}`}
+                    title={tpl(NOTIFICATIONS.page.histogram_tooltip, {
+                      ts: formatShanghaiDateTime(b.bucket_start),
+                      total: b.total,
+                      sent: b.sent,
+                      failed: b.failed,
+                      skipped: b.skipped,
+                    })}
                   >
                     <div
                       class="flex w-full flex-col-reverse overflow-hidden rounded-sm bg-white/[0.04]"
@@ -360,20 +377,20 @@ export default function NotificationsPage() {
           <div class="mt-1 flex items-center justify-between text-[9px] text-[color:var(--text-muted)]">
             <span>
               <Show when={histogram().length > 0}>
-                {bucketHourLabel(histogram()[0].bucket_start)}时
+                {bucketHourLabel(histogram()[0].bucket_start)}{NOTIFICATIONS.page.histogram_hour_suffix}
               </Show>
             </span>
             <span class="flex items-center gap-3">
-              <Legend color="bg-emerald-500/70" label="发送" />
-              <Legend color="bg-rose-500/70" label="失败" />
-              <Legend color="bg-[color:var(--text-muted)]/30" label="跳过" />
+              <Legend color="bg-emerald-500/70" label={NOTIFICATIONS.page.legend_sent} />
+              <Legend color="bg-rose-500/70" label={NOTIFICATIONS.page.legend_failed} />
+              <Legend color="bg-[color:var(--text-muted)]/30" label={NOTIFICATIONS.page.legend_skipped} />
             </span>
             <span>
               <Show when={histogram().length > 0}>
                 {bucketHourLabel(
                   histogram()[histogram().length - 1].bucket_start,
                 )}
-                时
+                {NOTIFICATIONS.page.histogram_hour_suffix}
               </Show>
             </span>
           </div>
@@ -383,20 +400,20 @@ export default function NotificationsPage() {
       {/* 推送列表 */}
       <section class="flex min-h-0 flex-col gap-2">
         <div class="flex items-center justify-between text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">
-          <span>推送记录(最多 {limit()} 条,倒序)</span>
-          <span>共 {records().length} 条</span>
+          <span>{tpl(NOTIFICATIONS.page.list_caption, { limit: limit() })}</span>
+          <span>{tpl(NOTIFICATIONS.page.list_count, { count: records().length })}</span>
         </div>
         <div class="flex-1 overflow-auto rounded border border-[color:var(--border)]">
           <table class="w-full text-xs">
             <thead class="sticky top-0 bg-[color:var(--panel)] text-[color:var(--text-muted)]">
               <tr>
-                <th class="px-3 py-2 text-left font-normal">时间</th>
-                <th class="px-3 py-2 text-left font-normal">用户</th>
-                <th class="px-3 py-2 text-left font-normal">渠道</th>
-                <th class="px-3 py-2 text-left font-normal">事件类型</th>
-                <th class="px-3 py-2 text-left font-normal">任务</th>
-                <th class="px-3 py-2 text-left font-normal">发送状态</th>
-                <th class="px-3 py-2 text-left font-normal">摘要</th>
+                <th class="px-3 py-2 text-left font-normal">{NOTIFICATIONS.page.col_time}</th>
+                <th class="px-3 py-2 text-left font-normal">{NOTIFICATIONS.page.col_user}</th>
+                <th class="px-3 py-2 text-left font-normal">{NOTIFICATIONS.page.col_channel}</th>
+                <th class="px-3 py-2 text-left font-normal">{NOTIFICATIONS.page.col_event}</th>
+                <th class="px-3 py-2 text-left font-normal">{NOTIFICATIONS.page.col_job}</th>
+                <th class="px-3 py-2 text-left font-normal">{NOTIFICATIONS.page.col_send_status}</th>
+                <th class="px-3 py-2 text-left font-normal">{NOTIFICATIONS.page.col_summary}</th>
               </tr>
             </thead>
             <tbody>
@@ -408,7 +425,7 @@ export default function NotificationsPage() {
                       colspan={7}
                       class="px-3 py-8 text-center text-[color:var(--text-muted)]"
                     >
-                      该窗口内没有匹配的推送记录。
+                      {NOTIFICATIONS.page.empty_records}
                     </td>
                   </tr>
                 }
@@ -555,43 +572,43 @@ function RecordDrawer(props: {
             onClick={props.onClose}
             class="rounded border border-[color:var(--border)] px-2 py-1 text-xs hover:bg-white/5"
           >
-            关闭
+            {NOTIFICATIONS.page.drawer_close}
           </button>
         </div>
 
         <dl class="mt-4 grid grid-cols-3 gap-x-3 gap-y-2 text-[12px]">
-          <DetailItem label="来源" value={recordSourceLabel(props.record.record_source)} />
-          <DetailItem label="事件类型" value={eventKindLabel(props.record.event_kind)} />
-          <DetailItem label="用户" value={props.record.user_id} />
-          <DetailItem label="渠道" value={props.record.channel} />
+          <DetailItem label={NOTIFICATIONS.page.drawer_label_source} value={recordSourceLabel(props.record.record_source)} />
+          <DetailItem label={NOTIFICATIONS.page.drawer_label_event_kind} value={eventKindLabel(props.record.event_kind)} />
+          <DetailItem label={NOTIFICATIONS.page.drawer_label_user} value={props.record.user_id} />
+          <DetailItem label={NOTIFICATIONS.page.drawer_label_channel} value={props.record.channel} />
           <DetailItem
-            label="Channel Scope"
+            label={NOTIFICATIONS.page.drawer_label_channel_scope}
             value={props.record.channel_scope ?? "—"}
           />
-          <DetailItem label="目标" value={props.record.channel_target} />
+          <DetailItem label={NOTIFICATIONS.page.drawer_label_target} value={props.record.channel_target} />
           <DetailItem
-            label="执行状态"
+            label={NOTIFICATIONS.page.drawer_label_exec_status}
             value={execLabel(props.record.execution_status)}
           />
           <DetailItem
-            label="发送状态"
+            label={NOTIFICATIONS.page.drawer_label_send_status}
             value={sendLabel(props.record.message_send_status)}
           />
           <DetailItem
-            label="should_deliver"
+            label={NOTIFICATIONS.page.drawer_label_should_deliver}
             value={String(props.record.should_deliver)}
           />
           <DetailItem
-            label="delivered"
+            label={NOTIFICATIONS.page.drawer_label_delivered}
             value={String(props.record.delivered)}
           />
-          <DetailItem label="job_id" value={props.record.job_id} />
+          <DetailItem label={NOTIFICATIONS.page.drawer_label_job_id} value={props.record.job_id} />
         </dl>
 
         <Show when={props.record.response_preview}>
           <div class="mt-4">
             <div class="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">
-              响应预览
+              {NOTIFICATIONS.page.drawer_response_preview}
             </div>
             <pre class="mt-1 whitespace-pre-wrap rounded border border-[color:var(--border)] bg-black/20 p-2 text-[12px]">
               {props.record.response_preview}
@@ -602,7 +619,7 @@ function RecordDrawer(props: {
         <Show when={props.record.error_message}>
           <div class="mt-4">
             <div class="text-[10px] uppercase tracking-widest text-rose-300/80">
-              错误
+              {NOTIFICATIONS.page.drawer_error}
             </div>
             <pre class="mt-1 whitespace-pre-wrap rounded border border-rose-500/40 bg-rose-500/10 p-2 text-[12px] text-rose-200">
               {props.record.error_message}
@@ -619,7 +636,7 @@ function RecordDrawer(props: {
         >
           <div class="mt-4">
             <div class="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">
-              detail
+              {NOTIFICATIONS.page.drawer_detail}
             </div>
             <pre class="mt-1 whitespace-pre-wrap rounded border border-[color:var(--border)] bg-black/20 p-2 text-[11px] text-[color:var(--text-secondary)]">
               {JSON.stringify(props.record.detail, null, 2)}

@@ -54,6 +54,34 @@ pub use yaml::{
     runtime_overlay_path, write_overlay_patch,
 };
 
+/// UI / CLI 显示语言。仅影响管理员控制台、CLI 向导等运维侧文本；
+/// 与按用户偏好渲染的 Channel 回复语言相互独立。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Locale {
+    #[default]
+    Zh,
+    En,
+}
+
+impl Locale {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Zh => "zh",
+            Self::En => "en",
+        }
+    }
+
+    pub fn from_str_lossy(s: &str) -> Self {
+        let lower = s.trim().to_ascii_lowercase();
+        if lower.starts_with("zh") {
+            Self::Zh
+        } else {
+            Self::En
+        }
+    }
+}
+
 /// 顶层配置结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HoneConfig {
@@ -79,6 +107,9 @@ pub struct HoneConfig {
     pub logging: LoggingConfig,
     #[serde(default)]
     pub storage: StorageConfig,
+    /// UI / CLI 显示语言（zh / en）
+    #[serde(default)]
+    pub language: Locale,
     /// Agent system prompt 模板
     #[serde(default)]
     pub agent: AgentConfig,
@@ -172,6 +203,7 @@ impl Default for HoneConfig {
             search: SearchConfig::default(),
             logging: LoggingConfig::default(),
             storage: StorageConfig::default(),
+            language: Locale::default(),
             agent: AgentConfig::default(),
             admins: AdminConfig::default(),
             web: WebConfig::default(),

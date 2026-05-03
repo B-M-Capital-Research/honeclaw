@@ -33,6 +33,8 @@ import type {
   CompanyProfileSummary,
   UserInfo,
 } from "@/lib/types"
+import { COMPANY_PROFILES } from "@/lib/admin-content/company-profiles"
+import { tpl } from "@/lib/i18n"
 import { useBackend } from "./backend"
 
 type CompanyProfilesContextValue = ReturnType<typeof createCompanyProfilesState>
@@ -162,7 +164,7 @@ function createCompanyProfilesState() {
         actor,
         key: actorKey(actor),
         label: formatTargetLabel(actor),
-        description: `${summary.profile_count} 份画像`,
+        description: tpl(COMPANY_PROFILES.context.description_profile_count, { count: summary.profile_count }),
         source: "space" as const,
         profileCount: summary.profile_count,
         updatedAt: summary.updated_at,
@@ -181,7 +183,7 @@ function createCompanyProfilesState() {
         actor,
         key,
         label: formatTargetLabel(actor),
-        description: user.session_kind === "group" ? user.session_label : "已有会话",
+        description: user.session_kind === "group" ? user.session_label : COMPANY_PROFILES.context.description_existing_session,
         source: "session",
         sessionLastTime: user.last_time,
       })
@@ -203,7 +205,7 @@ function createCompanyProfilesState() {
       actor,
       key,
       label: formatTargetLabel(actor),
-      description: "手动指定目标",
+      description: COMPANY_PROFILES.context.description_manual_target,
       source: "manual" as const,
     }
   })
@@ -276,7 +278,7 @@ function createCompanyProfilesState() {
       if (state.currentProfileId === profileId) {
         setState("currentProfileId", "")
       }
-      toast.show("公司画像已删除")
+      toast.show(COMPANY_PROFILES.context.toast_profile_deleted)
     } finally {
       setState("deleting", false)
     }
@@ -289,7 +291,7 @@ function createCompanyProfilesState() {
     try {
       const payload = await exportCompanyProfiles(actor)
       triggerBlobDownload(payload.blob, payload.fileName)
-      toast.show("画像包已导出", formatTargetLabel(actor))
+      toast.show(COMPANY_PROFILES.context.toast_export_done_title, formatTargetLabel(actor))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setState("transfer", "error", message)
@@ -314,10 +316,10 @@ function createCompanyProfilesState() {
       const preview = await previewImportCompanyProfiles(actor, file)
       setState("transfer", "preview", preview)
       toast.show(
-        "画像包已扫描",
+        COMPANY_PROFILES.context.toast_scan_done_title,
         preview.conflict_count > 0
-          ? `发现 ${preview.conflict_count} 家冲突公司，需要你确认`
-          : `共 ${preview.profiles.length} 家公司，可直接导入`,
+          ? tpl(COMPANY_PROFILES.context.toast_scan_done_with_conflicts, { count: preview.conflict_count })
+          : tpl(COMPANY_PROFILES.context.toast_scan_done_no_conflicts, { count: preview.profiles.length }),
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -381,8 +383,12 @@ function createCompanyProfilesState() {
       }
 
       toast.show(
-        "画像导入完成",
-        `新增 ${result.imported_count} 家，替换 ${result.replaced_count} 家，跳过 ${result.skipped_count} 家`,
+        COMPANY_PROFILES.context.toast_import_done_title,
+        tpl(COMPANY_PROFILES.context.toast_import_done_summary, {
+          imported: result.imported_count,
+          replaced: result.replaced_count,
+          skipped: result.skipped_count,
+        }),
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

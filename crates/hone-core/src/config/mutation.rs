@@ -82,7 +82,7 @@ pub fn classify_config_paths(paths: &[String]) -> ConfigApplyPlan {
                 restarted_components.insert("feishu".to_string());
             }
             "agent" | "llm" | "group_context" | "admins" | "web" | "fmp" | "search"
-            | "nano_banana" | "x" => {
+            | "nano_banana" | "x" | "language" => {
                 applied_live = true;
             }
             "security" if path.trim_start().starts_with("security.tool_guard.") => {

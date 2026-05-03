@@ -5,21 +5,56 @@ use std::time::Duration;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 use chrono::Utc;
+use serde::Deserialize;
 use serde_json::json;
 
-use hone_core::config::HoneConfig;
+use hone_core::config::{ConfigMutation, HoneConfig, apply_overlay_mutations};
 use hone_core::{
     HEARTBEAT_STALE_AFTER_SECS, HeartbeatErrorRecord, ProcessHeartbeatSnapshot,
     read_heartbeat_error, read_process_heartbeat, runtime_heartbeat_error_path,
     runtime_heartbeat_path, scan_channel_processes,
 };
 
+use crate::routes::common::json_error;
 use crate::state::AppState;
 use crate::types::{ChannelProcessInfo, ChannelStatusInfo, MetaInfo};
 
+fn config_path_buf() -> std::path::PathBuf {
+    std::path::PathBuf::from(crate::runtime::runtime_config_path())
+}
+
 const API_VERSION: &str = "desktop-v1";
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PutLanguageBody {
+    pub language: String,
+}
+
+pub(crate) async fn handle_put_language(
+    State(_state): State<Arc<AppState>>,
+    Json(body): Json<PutLanguageBody>,
+) -> Response {
+    let normalized = body.language.trim().to_ascii_lowercase();
+    if normalized != "zh" && normalized != "en" {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            format!("language must be \"zh\" or \"en\", got {:?}", body.language),
+        );
+    }
+    let mutation = ConfigMutation::Set {
+        path: "language".into(),
+        value: serde_yaml::Value::String(normalized.clone()),
+    };
+    match apply_overlay_mutations(&config_path_buf(), &[mutation]) {
+        Ok(_) => Json(json!({ "language": normalized })).into_response(),
+        Err(e) => json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to write language: {e}"),
+        ),
+    }
+}
 
 pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     Json(json!(MetaInfo {
@@ -30,6 +65,7 @@ pub(crate) async fn handle_meta(State(state): State<Arc<AppState>>) -> impl Into
         api_version: API_VERSION.to_string(),
         capabilities: meta_capabilities(&state.core.config, &state.deployment_mode),
         deployment_mode: state.deployment_mode.clone(),
+        language: state.core.config.language.as_str().to_string(),
     }))
 }
 

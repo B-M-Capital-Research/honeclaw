@@ -1115,3 +1115,43 @@ agent:
     assert_eq!(config.agent.step_timeout_seconds, 120);
     assert_eq!(config.agent.overall_timeout_seconds, 600);
 }
+
+#[test]
+fn test_default_language_is_zh() {
+    let config = HoneConfig::default();
+    assert_eq!(config.language, super::Locale::Zh);
+}
+
+#[test]
+fn test_language_parses_en() {
+    let yaml = "language: en\n";
+    let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(config.language, super::Locale::En);
+}
+
+#[test]
+fn test_language_parses_zh() {
+    let yaml = "language: zh\n";
+    let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(config.language, super::Locale::Zh);
+}
+
+#[test]
+fn test_language_mutation_round_trip() {
+    let dir = temp_test_dir("language-mutation");
+    let config_path = dir.join("config.yaml");
+    std::fs::write(&config_path, "llm:\n  provider: openrouter\n").unwrap();
+
+    let result = apply_config_mutations(
+        &config_path,
+        &[ConfigMutation::Set {
+            path: "language".to_string(),
+            value: Value::String("en".to_string()),
+        }],
+    )
+    .unwrap();
+    assert_eq!(result.config.language, super::Locale::En);
+    assert!(result.apply.applied_live, "language is hot-reloadable");
+    assert!(!result.apply.restart_required);
+    assert!(result.apply.restarted_components.is_empty());
+}

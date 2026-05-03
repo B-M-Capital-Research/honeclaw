@@ -36,6 +36,7 @@ use crate::discord_token::{DiscordTokenValidation, validate_discord_token};
 use crate::display::{
     banner, bullet, fail_line, hint_line, ok_line, step_header, subsection, warn_line,
 };
+use crate::i18n::{Lang, detect_initial_lang, t, tpl};
 use crate::mutations::{ChannelKind, build_provider_api_key_mutations};
 use crate::prompts::{
     ProviderEmptyAction, RequiredFieldEmptyAction, RequiredFieldResolution,
@@ -48,8 +49,8 @@ use crate::yaml_io::{apply_message, apply_mutations_and_generate};
 use crate::{CliChatScope, start};
 
 /// Onboard 总共的步骤数,供 step_header 显示「N/TOTAL」。
-/// runner → channels → admins → providers → apply → follow-up。
-const ONBOARD_TOTAL_STEPS: usize = 6;
+/// language → runner → channels → admins → providers → notifications → apply。
+const ONBOARD_TOTAL_STEPS: usize = 7;
 
 /// `hone-cli onboard` 的命令行参数(目前为空,保留结构以便将来扩展 `--skip`、
 /// `--runner` 等非交互覆盖)。
@@ -96,11 +97,12 @@ impl OnboardRunnerKind {
     }
 }
 
+/// `description` 与 `notes` 都是 i18n 翻译键,真正展示前需通过 `t(lang, key)` 解析。
 #[derive(Clone, Copy)]
 struct RunnerOnboardSpec {
     kind: OnboardRunnerKind,
-    description: &'static str,
-    notes: &'static [&'static str],
+    description_key: &'static str,
+    note_keys: &'static [&'static str],
 }
 
 /// 渠道配置中每个必填字段的类型标签。用于统一驱动 prompt 循环。
@@ -112,72 +114,75 @@ enum ChannelRequiredField {
     DiscordBotToken,
 }
 
+/// `label_key` / `status_note_key` / `permission_note_keys` 全部是 i18n 翻译键,
+/// 调用方在展示前用 `t(lang, key)` 解析。
 #[derive(Clone, Copy)]
 struct ChannelOnboardSpec {
     kind: ChannelKind,
-    label: &'static str,
+    label_key: &'static str,
     /// 有些渠道在展示时需要附加警示(例如 Telegram 目前是实验性,iMessage 仅 macOS)。
-    status_note: Option<&'static str>,
+    status_note_key: Option<&'static str>,
     /// 「启用前置」级别的说明,展示给用户看清楚本地需要什么。
-    permission_notes: &'static [&'static str],
+    permission_note_keys: &'static [&'static str],
     /// 启用时必须收集的字段。
     required_fields: &'static [ChannelRequiredField],
     /// 该渠道是否需要在最后让用户选 chat_scope(iMessage 不支持,群聊模型差异)。
     supports_chat_scope: bool,
 }
 
+/// `label_key` / `prompt_key` / `note_keys` 都是 i18n 翻译键。
 #[derive(Clone, Copy)]
 struct ProviderOnboardSpec {
-    label: &'static str,
+    label_key: &'static str,
     key_path: &'static str,
     legacy_single_key_path: Option<&'static str>,
-    prompt: &'static str,
-    notes: &'static [&'static str],
+    prompt_key: &'static str,
+    note_keys: &'static [&'static str],
 }
 
 fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
     &[
         RunnerOnboardSpec {
             kind: OnboardRunnerKind::MultiAgent,
-            description: "默认推荐:search + answer 两段式,纯 HTTP 走 OpenRouter,不需要本机 CLI。",
-            notes: &[
-                "前置:一把可用的 OpenRouter API key(后面 Providers 环节会让你填)。",
-                "原理:第一段 search 用小模型拉证据,第二段 answer 用主模型总结。",
-                "适合:只有 API key、不想装 CLI 的用户。",
-                "需要在本机切换模型时,之后用 `hone-cli models set ...` 即可,不必重跑 onboard。",
+            description_key: "runner.multi_agent.description",
+            note_keys: &[
+                "runner.multi_agent.note_1",
+                "runner.multi_agent.note_2",
+                "runner.multi_agent.note_3",
+                "runner.multi_agent.note_4",
             ],
         },
         RunnerOnboardSpec {
             kind: OnboardRunnerKind::CodexCli,
-            description: "优先复用本机 codex CLI 登录态；适合已经能直接运行 codex 的用户。",
-            notes: &[
-                "前置：本机可执行 `codex --version`。",
-                "优点：不需要单独填写 OpenAI-compatible base URL / API key。",
-                "安装：`npm install -g @openai/codex`；已安装可用 `codex --upgrade` 更新。",
-                "官方说明：https://help.openai.com/en/articles/11096431",
+            description_key: "runner.codex_cli.description",
+            note_keys: &[
+                "runner.codex_cli.note_1",
+                "runner.codex_cli.note_2",
+                "runner.codex_cli.note_3",
+                "runner.codex_cli.note_4",
             ],
         },
         RunnerOnboardSpec {
             kind: OnboardRunnerKind::CodexAcp,
-            description: "通过 codex-acp 接入 ACP 协议；需要本机同时具备 codex 与 codex-acp。",
-            notes: &[
-                "前置：本机可执行 `codex --version` 与 `codex-acp --help`。",
-                "可额外配置 model / variant / sandbox policy。",
-                "安装：先装 `codex`，再装 `codex-acp`；Hone 当前最低要求是 `codex-acp >= 0.9.5`。",
-                "更新：`npm install -g @zed-industries/codex-acp@latest`。",
-                "官方说明：https://github.com/zed-industries/codex-acp",
+            description_key: "runner.codex_acp.description",
+            note_keys: &[
+                "runner.codex_acp.note_1",
+                "runner.codex_acp.note_2",
+                "runner.codex_acp.note_3",
+                "runner.codex_acp.note_4",
+                "runner.codex_acp.note_5",
             ],
         },
         RunnerOnboardSpec {
             kind: OnboardRunnerKind::OpencodeAcp,
-            description: "通过 `opencode acp` 接入本机 OpenCode；优先复用你已经在 opencode 里配好的 provider / model。",
-            notes: &[
-                "前置：本机可执行 `opencode --version`。",
-                "默认不在 Hone 首装里填写 provider / base URL / API key。",
-                "安装：`curl -fsSL https://opencode.ai/install | bash`。",
-                "官方说明：https://opencode.ai/docs/",
-                "请先在 `opencode` 里通过 `/connect` 或全局 `opencode.json` / `opencode.jsonc` 配好默认模型。",
-                "如果需要 Hone 显式覆盖 opencode 默认模型，再用 `hone-cli models set ...`。",
+            description_key: "runner.opencode_acp.description",
+            note_keys: &[
+                "runner.opencode_acp.note_1",
+                "runner.opencode_acp.note_2",
+                "runner.opencode_acp.note_3",
+                "runner.opencode_acp.note_4",
+                "runner.opencode_acp.note_5",
+                "runner.opencode_acp.note_6",
             ],
         },
     ]
@@ -187,24 +192,24 @@ fn channel_onboard_specs() -> &'static [ChannelOnboardSpec] {
     &[
         ChannelOnboardSpec {
             kind: ChannelKind::Imessage,
-            label: "iMessage",
-            status_note: Some("仅 macOS 可用。"),
-            permission_notes: &[
-                "需要 macOS。",
-                "需要给运行 hone-cli 的终端应用授予“完全磁盘访问权限”。",
-                "Hone 会轮询 `~/Library/Messages/chat.db`，并通过 AppleScript 发消息。",
+            label_key: "channel.imessage.label",
+            status_note_key: Some("channel.imessage.status_note"),
+            permission_note_keys: &[
+                "channel.imessage.note_1",
+                "channel.imessage.note_2",
+                "channel.imessage.note_3",
             ],
             required_fields: &[],
             supports_chat_scope: false,
         },
         ChannelOnboardSpec {
             kind: ChannelKind::Feishu,
-            label: "Feishu",
-            status_note: None,
-            permission_notes: &[
-                "需要飞书开放平台应用的 `app_id` 与 `app_secret`。",
-                "平台侧需要完成 Bot / 事件接入与长连接相关配置。",
-                "本地只负责写入必填配置，不会替你开通平台权限。",
+            label_key: "channel.feishu.label",
+            status_note_key: None,
+            permission_note_keys: &[
+                "channel.feishu.note_1",
+                "channel.feishu.note_2",
+                "channel.feishu.note_3",
             ],
             required_fields: &[
                 ChannelRequiredField::FeishuAppId,
@@ -214,24 +219,24 @@ fn channel_onboard_specs() -> &'static [ChannelOnboardSpec] {
         },
         ChannelOnboardSpec {
             kind: ChannelKind::Telegram,
-            label: "Telegram",
-            status_note: Some("当前仍偏实验/placeholder 模式，不建议当成熟生产渠道使用。"),
-            permission_notes: &[
-                "需要 BotFather 创建的 bot token。",
-                "需要把 bot 加入目标私聊或群聊。",
-                "如果想处理群聊普通消息，通常还需要检查 BotFather 的 privacy mode 设置。",
+            label_key: "channel.telegram.label",
+            status_note_key: Some("channel.telegram.status_note"),
+            permission_note_keys: &[
+                "channel.telegram.note_1",
+                "channel.telegram.note_2",
+                "channel.telegram.note_3",
             ],
             required_fields: &[ChannelRequiredField::TelegramBotToken],
             supports_chat_scope: true,
         },
         ChannelOnboardSpec {
             kind: ChannelKind::Discord,
-            label: "Discord",
-            status_note: None,
-            permission_notes: &[
-                "需要 Discord bot token。",
-                "需要把 bot 邀请进目标 server/channel。",
-                "至少要给 bot 查看频道、读取历史消息、发送消息等基础权限。",
+            label_key: "channel.discord.label",
+            status_note_key: None,
+            permission_note_keys: &[
+                "channel.discord.note_1",
+                "channel.discord.note_2",
+                "channel.discord.note_3",
             ],
             required_fields: &[ChannelRequiredField::DiscordBotToken],
             supports_chat_scope: true,
@@ -246,35 +251,29 @@ fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
         // 早期版本的 onboard 完全没问这个 key,新用户跑完向导发消息立刻报
         // 「openrouter.api_key 为空」,体验很差。
         ProviderOnboardSpec {
-            label: "OpenRouter",
+            label_key: "provider.openrouter.label",
             key_path: "llm.openrouter.api_keys",
             legacy_single_key_path: Some("llm.openrouter.api_key"),
-            prompt: "OpenRouter API keys（逗号分隔）",
-            notes: &[
-                "LLM 主路由。multi-agent / codex_* / nano_banana 都默认走这里。",
-                "如果你 runner=opencode_acp 且已在 opencode 里配好 provider,可以在下一步跳过。",
-                "支持一次填写多个 key,运行时会自动 fallback。",
+            prompt_key: "provider.openrouter.prompt",
+            note_keys: &[
+                "provider.openrouter.note_1",
+                "provider.openrouter.note_2",
+                "provider.openrouter.note_3",
             ],
         },
         ProviderOnboardSpec {
-            label: "FMP",
+            label_key: "provider.fmp.label",
             key_path: "fmp.api_keys",
             legacy_single_key_path: Some("fmp.api_key"),
-            prompt: "FMP API keys（逗号分隔）",
-            notes: &[
-                "用于 `data_fetch` 等金融数据能力。",
-                "支持一次填写多个 key，运行时会自动 fallback。",
-            ],
+            prompt_key: "provider.fmp.prompt",
+            note_keys: &["provider.fmp.note_1", "provider.fmp.note_2"],
         },
         ProviderOnboardSpec {
-            label: "Tavily",
+            label_key: "provider.tavily.label",
             key_path: "search.api_keys",
             legacy_single_key_path: None,
-            prompt: "Tavily API keys（逗号分隔）",
-            notes: &[
-                "用于 `web_search` 等联网搜索能力。",
-                "支持一次填写多个 key，运行时会自动 fallback。",
-            ],
+            prompt_key: "provider.tavily.prompt",
+            note_keys: &["provider.tavily.note_1", "provider.tavily.note_2"],
         },
     ]
 }
@@ -288,31 +287,31 @@ fn print_onboard_block(title: &str, lines: &[&str]) {
 
 // 让部署者明确感知到「新用户被静默订阅了什么」——目前没有可配置入口,
 // 想改默认得改源码。这里只做告知,不写 mutation。
-fn print_notifications_awareness_step() {
-    step_header(5, ONBOARD_TOTAL_STEPS, "Notifications");
+fn print_notifications_awareness_step(lang: Lang) {
+    step_header(6, ONBOARD_TOTAL_STEPS, t(lang, "step.notifications"));
     print_onboard_block(
-        "新用户默认行为",
+        t(lang, "notifications.defaults_title"),
         &[
-            "Global digest:默认对所有新用户**开启**,LLM 精读后每天按窗口推送到 chat。",
-            "Per-event 通知:默认开启(Severity::Low 起、不限 portfolio)。",
-            "投资主线自动蒸馏:后台 cron 周扫 sandbox `company_profiles/*/profile.md`,无需用户操作。",
+            t(lang, "notifications.defaults_1"),
+            t(lang, "notifications.defaults_2"),
+            t(lang, "notifications.defaults_3"),
         ],
     );
     print_onboard_block(
-        "终端用户如何调整",
+        t(lang, "notifications.user_adjust_title"),
         &[
-            "用自然语言告诉 bot 即可,例如「关闭 digest」「不要每天推送」「只看 portfolio」。",
-            "对应 `notification_prefs_tool`,无需 Web UI。",
+            t(lang, "notifications.user_adjust_1"),
+            t(lang, "notifications.user_adjust_2"),
         ],
     );
     print_onboard_block(
-        "如何改默认值",
+        t(lang, "notifications.change_default_title"),
         &[
-            "默认值在 `crates/hone-event-engine/src/prefs.rs::NotificationPrefs::default()`。",
-            "目前没有 config.yaml 入口;想改默认只能改源码后重新编译。",
+            t(lang, "notifications.change_default_1"),
+            t(lang, "notifications.change_default_2"),
         ],
     );
-    hint_line("此步骤纯告知,不写任何配置;下一步进入 Apply。");
+    hint_line(t(lang, "notifications.advance_hint"));
 }
 
 // ── Discord token-specific 恢复决策。和 prompts 里的 channel recovery 类似,
@@ -320,15 +319,22 @@ fn print_notifications_awareness_step() {
 
 fn prompt_discord_token_invalid_recovery_action(
     theme: &ColorfulTheme,
+    lang: Lang,
     channel_label: &str,
 ) -> Result<RequiredFieldEmptyAction, String> {
     let items = vec![
-        "重新输入 Discord bot token".to_string(),
-        format!("返回并禁用 {channel_label} 渠道"),
+        t(lang, "recovery.option_discord_token_retry").to_string(),
+        tpl(
+            t(lang, "recovery.option_disable_channel"),
+            &[("label", &channel_label)],
+        ),
     ];
     let idx = prompt_select_index(
         theme,
-        &format!("{channel_label} 的 Discord token 格式不合法，下一步？"),
+        &tpl(
+            t(lang, "recovery.discord_token_invalid_prompt"),
+            &[("label", &channel_label)],
+        ),
         &items,
         0,
     )?;
@@ -340,6 +346,7 @@ fn prompt_discord_token_invalid_recovery_action(
 
 fn prompt_onboard_required_text(
     theme: &ColorfulTheme,
+    lang: Lang,
     channel_label: &str,
     prompt: &str,
     current: &str,
@@ -352,9 +359,9 @@ fn prompt_onboard_required_text(
         if !current.trim().is_empty() {
             return Ok(Some(current.to_string()));
         }
-        match prompt_channel_recovery_action(theme, channel_label, prompt)? {
+        match prompt_channel_recovery_action(theme, lang, channel_label, prompt)? {
             RequiredFieldEmptyAction::Retry => {
-                println!("该字段为必填项，不能为空。");
+                println!("{}", t(lang, "channel.required_field_empty"));
             }
             RequiredFieldEmptyAction::DisableChannel => return Ok(None),
         }
@@ -363,19 +370,20 @@ fn prompt_onboard_required_text(
 
 fn prompt_onboard_required_secret(
     theme: &ColorfulTheme,
+    lang: Lang,
     channel_label: &str,
     prompt: &str,
     current: &str,
 ) -> Result<Option<String>, String> {
     loop {
-        let attempted = prompt_secret(theme, prompt, !current.trim().is_empty())?;
+        let attempted = prompt_secret(theme, lang, prompt, !current.trim().is_empty())?;
         let resolution = resolve_required_secret_attempt(attempted, current, || {
-            prompt_channel_recovery_action(theme, channel_label, prompt)
+            prompt_channel_recovery_action(theme, lang, channel_label, prompt)
         })?;
         match resolution {
             RequiredFieldResolution::Value(value) => return Ok(Some(value)),
             RequiredFieldResolution::Retry => {
-                println!("该字段为必填项，不能为空。");
+                println!("{}", t(lang, "channel.required_field_empty"));
             }
             RequiredFieldResolution::DisableChannel => return Ok(None),
         }
@@ -384,20 +392,21 @@ fn prompt_onboard_required_secret(
 
 fn prompt_onboard_required_token(
     theme: &ColorfulTheme,
+    lang: Lang,
     channel_label: &str,
     prompt: &str,
     current: &str,
 ) -> Result<Option<String>, String> {
     loop {
         let attempted =
-            prompt_visible_credential(theme, prompt, !current.trim().is_empty(), current)?;
+            prompt_visible_credential(theme, lang, prompt, !current.trim().is_empty(), current)?;
         let resolution = resolve_required_secret_attempt(attempted, current, || {
-            prompt_channel_recovery_action(theme, channel_label, prompt)
+            prompt_channel_recovery_action(theme, lang, channel_label, prompt)
         })?;
         match resolution {
             RequiredFieldResolution::Value(value) => return Ok(Some(value)),
             RequiredFieldResolution::Retry => {
-                println!("该字段为必填项，不能为空。");
+                println!("{}", t(lang, "channel.required_field_empty"));
             }
             RequiredFieldResolution::DisableChannel => return Ok(None),
         }
@@ -408,19 +417,20 @@ fn prompt_onboard_required_token(
 /// Warn 级别允许用户继续,Invalid 级别会触发 [`prompt_discord_token_invalid_recovery_action`]。
 fn prompt_onboard_required_discord_token(
     theme: &ColorfulTheme,
+    lang: Lang,
     channel_label: &str,
     prompt: &str,
     current: &str,
 ) -> Result<Option<String>, String> {
     loop {
         let attempted =
-            prompt_visible_credential(theme, prompt, !current.trim().is_empty(), current)?;
+            prompt_visible_credential(theme, lang, prompt, !current.trim().is_empty(), current)?;
         let resolution = match attempted {
             Some(value) => RequiredFieldResolution::Value(value),
             _ if !current.trim().is_empty() => {
                 RequiredFieldResolution::Value(normalize_credential_value(current))
             }
-            _ => match prompt_channel_recovery_action(theme, channel_label, prompt)? {
+            _ => match prompt_channel_recovery_action(theme, lang, channel_label, prompt)? {
                 RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
                 RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
             },
@@ -431,20 +441,33 @@ fn prompt_onboard_required_discord_token(
                 let len = normalized_value.len();
                 match validate_discord_token(&normalized_value) {
                     DiscordTokenValidation::Valid => {
-                        ok_line(&format!("Token 格式有效(长度={len})。"));
+                        ok_line(&tpl(
+                            t(lang, "discord_token.valid_with_len"),
+                            &[("len", &len)],
+                        ));
                         return Ok(Some(normalized_value));
                     }
-                    DiscordTokenValidation::Warn(message) => {
-                        warn_line(&format!("{message}(长度={len})。"));
-                        if prompt_bool(theme, "仍然使用这个 Discord token?", false)? {
+                    DiscordTokenValidation::Warn(key) => {
+                        warn_line(&tpl(
+                            t(lang, "discord_token.message_with_len"),
+                            &[("message", &t(lang, key)), ("len", &len)],
+                        ));
+                        if prompt_bool(theme, t(lang, "discord_token.confirm_use"), false)? {
                             return Ok(Some(normalized_value));
                         }
                     }
-                    DiscordTokenValidation::Invalid(message) => {
-                        fail_line(&format!("{message}(长度={len})。"));
-                        match prompt_discord_token_invalid_recovery_action(theme, channel_label)? {
+                    DiscordTokenValidation::Invalid(key) => {
+                        fail_line(&tpl(
+                            t(lang, "discord_token.message_with_len"),
+                            &[("message", &t(lang, key)), ("len", &len)],
+                        ));
+                        match prompt_discord_token_invalid_recovery_action(
+                            theme,
+                            lang,
+                            channel_label,
+                        )? {
                             RequiredFieldEmptyAction::Retry => {
-                                hint_line("请重新输入 Discord bot token。");
+                                hint_line(t(lang, "recovery.discord_token_retry_hint"));
                             }
                             RequiredFieldEmptyAction::DisableChannel => return Ok(None),
                         }
@@ -452,7 +475,7 @@ fn prompt_onboard_required_discord_token(
                 }
             }
             RequiredFieldResolution::Retry => {
-                println!("该字段为必填项，不能为空。");
+                println!("{}", t(lang, "channel.required_field_empty"));
             }
             RequiredFieldResolution::DisableChannel => return Ok(None),
         }
@@ -504,12 +527,13 @@ fn has_configured_provider_keys(
 
 fn prompt_onboard_provider_keys(
     theme: &ColorfulTheme,
+    lang: Lang,
     provider_label: &str,
     prompt: &str,
     current_configured: bool,
 ) -> Result<Option<Vec<String>>, String> {
     loop {
-        let attempted = prompt_secret(theme, prompt, current_configured)?;
+        let attempted = prompt_secret(theme, lang, prompt, current_configured)?;
         match attempted {
             Some(raw) => {
                 let keys = crate::mutations::parse_csv_values(&raw);
@@ -521,9 +545,9 @@ fn prompt_onboard_provider_keys(
             None => {}
         }
 
-        match prompt_provider_recovery_action(theme, provider_label)? {
+        match prompt_provider_recovery_action(theme, lang, provider_label)? {
             ProviderEmptyAction::Retry => {
-                println!("请至少输入一个有效 key，或选择跳过。");
+                println!("{}", t(lang, "provider.keys_required_or_skip"));
             }
             ProviderEmptyAction::Skip => return Ok(None),
         }
@@ -532,9 +556,10 @@ fn prompt_onboard_provider_keys(
 
 pub(crate) fn prompt_onboard_runner(
     theme: &ColorfulTheme,
+    lang: Lang,
     config: &hone_core::HoneConfig,
 ) -> Result<OnboardRunnerKind, String> {
-    step_header(1, ONBOARD_TOTAL_STEPS, "Runner");
+    step_header(2, ONBOARD_TOTAL_STEPS, t(lang, "step.runner"));
 
     let specs = runner_onboard_specs();
     // label 只放「title [badge]」,description 长文案下移到选定后再展开,
@@ -543,12 +568,12 @@ pub(crate) fn prompt_onboard_runner(
         .iter()
         .map(|spec| {
             let badge = match spec.kind.binary_probe() {
-                None => "no binary needed".to_string(),
+                None => t(lang, "runner.badge_no_binary").to_string(),
                 Some((binary, help_arg)) => {
                     if binary_check(binary, help_arg).available {
-                        format!("{binary} installed")
+                        tpl(t(lang, "runner.badge_installed"), &[("binary", &binary)])
                     } else {
-                        format!("{binary} missing")
+                        tpl(t(lang, "runner.badge_missing"), &[("binary", &binary)])
                     }
                 }
             };
@@ -561,10 +586,15 @@ pub(crate) fn prompt_onboard_runner(
         .unwrap_or(0);
 
     loop {
-        let idx = prompt_select_index(theme, "Choose the default runner", &labels, default)?;
+        let idx = prompt_select_index(theme, t(lang, "runner.choose_default"), &labels, default)?;
         let selected = specs[idx];
-        hint_line(selected.description);
-        print_onboard_block(selected.kind.title(), selected.notes);
+        hint_line(t(lang, selected.description_key));
+        let notes = selected
+            .note_keys
+            .iter()
+            .map(|key| t(lang, key))
+            .collect::<Vec<_>>();
+        print_onboard_block(selected.kind.title(), &notes);
 
         // 不依赖 binary(如 multi-agent)直接通过。
         let Some((binary, help_arg)) = selected.kind.binary_probe() else {
@@ -573,17 +603,19 @@ pub(crate) fn prompt_onboard_runner(
 
         let status = binary_check(binary, help_arg);
         if status.available {
-            ok_line(&format!("{binary} 已检测到可用。"));
+            ok_line(&tpl(
+                t(lang, "runner.binary_detected"),
+                &[("binary", &binary)],
+            ));
             return Ok(selected.kind);
         }
-        fail_line(&format!("{binary} 未检测到({})。", status.detail));
+        fail_line(&tpl(
+            t(lang, "runner.binary_missing_detail"),
+            &[("binary", &binary), ("detail", &status.detail)],
+        ));
         // 选 true 会继续用当前 runner(配置会写入,运行时才会因缺 binary 报错);
         // 选 false 会回到 runner 选单重新挑一个(最常见路径)。
-        if prompt_bool(
-            theme,
-            "缺少 binary,仍然保留这个 runner?(no = 返回重新选择 runner)",
-            false,
-        )? {
+        if prompt_bool(theme, t(lang, "runner.keep_without_binary"), false)? {
             return Ok(selected.kind);
         }
     }
@@ -591,6 +623,7 @@ pub(crate) fn prompt_onboard_runner(
 
 pub(crate) fn build_runner_onboard_mutations(
     theme: &ColorfulTheme,
+    lang: Lang,
     config: &hone_core::HoneConfig,
     runner: OnboardRunnerKind,
 ) -> Result<Vec<ConfigMutation>, String> {
@@ -606,18 +639,18 @@ pub(crate) fn build_runner_onboard_mutations(
             let _ = theme;
             let _ = config;
             print_onboard_block(
-                "Multi-Agent setup",
+                t(lang, "runner.multi_agent.setup_title"),
                 &[
-                    "本 runner 只会写入 `agent.runner = \"multi-agent\"`;",
-                    "实际跑起来需要一把 OpenRouter API key,Providers 环节会让你填。",
-                    "进阶:`multi-agent.search` / `answer` 两段模型可用 `hone-cli models set ...` 微调。",
+                    t(lang, "runner.multi_agent.setup_note_1"),
+                    t(lang, "runner.multi_agent.setup_note_2"),
+                    t(lang, "runner.multi_agent.setup_note_3"),
                 ],
             );
         }
         OnboardRunnerKind::CodexCli => {
             let codex_model = prompt_text(
                 theme,
-                "Codex CLI model（留空则使用 codex 默认模型）",
+                t(lang, "runner.codex_cli.model_prompt"),
                 &config.agent.codex_model,
             )?;
             mutations.push(ConfigMutation::Set {
@@ -626,8 +659,16 @@ pub(crate) fn build_runner_onboard_mutations(
             });
         }
         OnboardRunnerKind::CodexAcp => {
-            let model = prompt_text(theme, "Codex ACP model", &config.agent.codex_acp.model)?;
-            let variant = prompt_text(theme, "Codex ACP variant", &config.agent.codex_acp.variant)?;
+            let model = prompt_text(
+                theme,
+                t(lang, "runner.codex_acp.model_prompt"),
+                &config.agent.codex_acp.model,
+            )?;
+            let variant = prompt_text(
+                theme,
+                t(lang, "runner.codex_acp.variant_prompt"),
+                &config.agent.codex_acp.variant,
+            )?;
             mutations.extend([
                 ConfigMutation::Set {
                     path: "agent.codex_acp.model".to_string(),
@@ -644,22 +685,16 @@ pub(crate) fn build_runner_onboard_mutations(
             // Hone 不在首装里抢占 (避免把用户 opencode 里已有的 provider 登录态覆盖掉)。
             let _ = config;
             print_onboard_block(
-                "OpenCode ACP setup",
+                t(lang, "runner.opencode_acp.setup_title"),
                 &[
-                    "Hone 首装默认只切换 runner，不在这里强行写 provider / API key / model。",
-                    "请先用 `opencode` 自己完成 `/connect`、provider 选择和默认模型配置。",
-                    "如果之后需要 Hone 显式覆盖 opencode 默认模型，再运行 `hone-cli models set ...`。",
+                    t(lang, "runner.opencode_acp.setup_note_1"),
+                    t(lang, "runner.opencode_acp.setup_note_2"),
+                    t(lang, "runner.opencode_acp.setup_note_3"),
                 ],
             );
             // 不写入任何东西,只是给用户一个"我意识到你可能还没 /connect" 的心理反馈。
-            if !prompt_bool(
-                theme,
-                "你已经在 opencode 里 `/connect` 并选好默认模型了吗?",
-                true,
-            )? {
-                println!(
-                    "继续写入 runner 配置;请记得稍后执行 `opencode` 并 `/connect` 配好 provider,否则 Hone 起 chat 会立刻失败。"
-                );
+            if !prompt_bool(theme, t(lang, "runner.opencode_acp.confirm_connected"), true)? {
+                println!("{}", t(lang, "runner.opencode_acp.warn_not_connected"));
             }
         }
     }
@@ -669,21 +704,21 @@ pub(crate) fn build_runner_onboard_mutations(
 
 pub(crate) fn build_channel_onboard_mutations(
     theme: &ColorfulTheme,
+    lang: Lang,
     config: &hone_core::HoneConfig,
     enabled_channels: &mut Vec<ChannelKind>,
 ) -> Result<Vec<ConfigMutation>, String> {
     let mut mutations = Vec::new();
-    step_header(2, ONBOARD_TOTAL_STEPS, "Channels");
-    hint_line(
-        "每个渠道可以先跳过,之后用 `hone-cli onboard` / `hone-cli configure` / `hone-cli channels ...` 补配。",
-    );
+    step_header(3, ONBOARD_TOTAL_STEPS, t(lang, "step.channels"));
+    hint_line(t(lang, "channel.hint_skip"));
 
     for spec in channel_onboard_specs() {
+        let label = t(lang, spec.label_key);
         // iMessage 在非 macOS 平台不可用(依赖 AppleScript + chat.db),直接 skip
         // 以免让 Linux 用户对一个铁定用不了的 channel 回答一堆问题。
         if spec.kind == ChannelKind::Imessage && !cfg!(target_os = "macos") {
             println!();
-            hint_line("iMessage 渠道仅 macOS 可用,当前平台跳过。");
+            hint_line(t(lang, "channel.imessage.skipped_non_macos"));
             continue;
         }
 
@@ -695,7 +730,7 @@ pub(crate) fn build_channel_onboard_mutations(
         };
         let enabled = prompt_bool(
             theme,
-            &format!("Enable {} channel?", spec.label),
+            &tpl(t(lang, "channel.enable_prompt"), &[("label", &label)]),
             current_enabled,
         )?;
         let enabled_path = match spec.kind {
@@ -714,26 +749,26 @@ pub(crate) fn build_channel_onboard_mutations(
             continue;
         }
 
-        if let Some(status_note) = spec.status_note {
+        if let Some(status_note_key) = spec.status_note_key {
             println!();
-            println!("{}: {}", spec.label, status_note);
+            println!("{}: {}", label, t(lang, status_note_key));
         }
+        let permission_notes = spec
+            .permission_note_keys
+            .iter()
+            .map(|key| t(lang, key))
+            .collect::<Vec<_>>();
         print_onboard_block(
-            &format!("{} prerequisites", spec.label),
-            spec.permission_notes,
+            &tpl(t(lang, "channel.prerequisites_title"), &[("label", &label)]),
+            &permission_notes,
         );
 
         // 安全提醒:每个启用的 channel 默认的 allow_* 白名单都是空,
         // 空表等于「所有人都能触发」。onboard 不做详细白名单配置(太长),
         // 但必须让用户知道这件事,不然 bot 会对陌生人裸奔。
         println!();
-        warn_line(&format!(
-            "{} 渠道默认 allow 白名单为空,即所有联系人都能触发 Hone。",
-            spec.label
-        ));
-        hint_line(
-            "如需限定,onboard 完成后用 `hone-cli configure --section channels` 或直接编辑 config.yaml。",
-        );
+        warn_line(&tpl(t(lang, "channel.allow_warn"), &[("label", &label)]));
+        hint_line(t(lang, "channel.allow_hint"));
 
         // 必填字段循环:任一字段让用户选择「放弃整个渠道」都会把 channel_mutations
         // reset 成单条「enabled=false」并 break。
@@ -742,12 +777,16 @@ pub(crate) fn build_channel_onboard_mutations(
                 ChannelRequiredField::FeishuAppId => {
                     let Some(value) = prompt_onboard_required_text(
                         theme,
-                        spec.label,
-                        "Feishu app id",
+                        lang,
+                        label,
+                        t(lang, "channel.feishu.app_id_prompt"),
                         &config.feishu.app_id,
                     )?
                     else {
-                        println!("已返回并禁用 {} 渠道。", spec.label);
+                        println!(
+                            "{}",
+                            tpl(t(lang, "channel.disabled_via_recovery"), &[("label", &label)])
+                        );
                         channel_mutations = vec![ConfigMutation::Set {
                             path: enabled_path.to_string(),
                             value: Value::Bool(false),
@@ -762,12 +801,16 @@ pub(crate) fn build_channel_onboard_mutations(
                 ChannelRequiredField::FeishuAppSecret => {
                     let Some(value) = prompt_onboard_required_secret(
                         theme,
-                        spec.label,
-                        "Feishu app secret",
+                        lang,
+                        label,
+                        t(lang, "channel.feishu.app_secret_prompt"),
                         &config.feishu.app_secret,
                     )?
                     else {
-                        println!("已返回并禁用 {} 渠道。", spec.label);
+                        println!(
+                            "{}",
+                            tpl(t(lang, "channel.disabled_via_recovery"), &[("label", &label)])
+                        );
                         channel_mutations = vec![ConfigMutation::Set {
                             path: enabled_path.to_string(),
                             value: Value::Bool(false),
@@ -782,12 +825,16 @@ pub(crate) fn build_channel_onboard_mutations(
                 ChannelRequiredField::TelegramBotToken => {
                     let Some(value) = prompt_onboard_required_token(
                         theme,
-                        spec.label,
-                        "Telegram bot token",
+                        lang,
+                        label,
+                        t(lang, "channel.telegram.bot_token_prompt"),
                         &config.telegram.bot_token,
                     )?
                     else {
-                        println!("已返回并禁用 {} 渠道。", spec.label);
+                        println!(
+                            "{}",
+                            tpl(t(lang, "channel.disabled_via_recovery"), &[("label", &label)])
+                        );
                         channel_mutations = vec![ConfigMutation::Set {
                             path: enabled_path.to_string(),
                             value: Value::Bool(false),
@@ -802,12 +849,16 @@ pub(crate) fn build_channel_onboard_mutations(
                 ChannelRequiredField::DiscordBotToken => {
                     let Some(value) = prompt_onboard_required_discord_token(
                         theme,
-                        spec.label,
-                        "Discord bot token",
+                        lang,
+                        label,
+                        t(lang, "channel.discord.bot_token_prompt"),
                         &config.discord.bot_token,
                     )?
                     else {
-                        println!("已返回并禁用 {} 渠道。", spec.label);
+                        println!(
+                            "{}",
+                            tpl(t(lang, "channel.disabled_via_recovery"), &[("label", &label)])
+                        );
                         channel_mutations = vec![ConfigMutation::Set {
                             path: enabled_path.to_string(),
                             value: Value::Bool(false),
@@ -845,8 +896,11 @@ pub(crate) fn build_channel_onboard_mutations(
                 ChannelKind::Discord => config.discord.chat_scope,
                 ChannelKind::Imessage => hone_core::config::ChatScope::DmOnly,
             };
-            let scope =
-                prompt_chat_scope(theme, &format!("{} chat scope", spec.label), current_scope)?;
+            let scope = prompt_chat_scope(
+                theme,
+                &tpl(t(lang, "channel.chat_scope_prompt"), &[("label", &label)]),
+                current_scope,
+            )?;
             let scope_path = match spec.kind {
                 ChannelKind::Feishu => "feishu.chat_scope",
                 ChannelKind::Telegram => "telegram.chat_scope",
@@ -862,7 +916,7 @@ pub(crate) fn build_channel_onboard_mutations(
         if spec.kind == ChannelKind::Imessage {
             let target_handle = prompt_text(
                 theme,
-                "iMessage target handle（可选；留空表示监听所有会话）",
+                t(lang, "channel.imessage.target_handle_prompt"),
                 &config.imessage.target_handle,
             )?;
             channel_mutations.push(ConfigMutation::Set {
@@ -908,6 +962,7 @@ fn append_admin_mutation(path: &'static str, existing: &[String], value: String)
 /// 扩充或清理。
 pub(crate) fn build_admin_onboard_mutations(
     theme: &ColorfulTheme,
+    lang: Lang,
     config: &hone_core::HoneConfig,
     enabled_channels: &[ChannelKind],
 ) -> Result<Vec<ConfigMutation>, String> {
@@ -916,25 +971,19 @@ pub(crate) fn build_admin_onboard_mutations(
         return Ok(mutations);
     }
 
-    step_header(3, ONBOARD_TOTAL_STEPS, "Admins");
-    hint_line("管理员白名单决定谁能触发 `/register-admin` / `/report` / 重启 Hone 等管理指令。");
-    hint_line("不配就没人是 admin,本机所有人都触发不到管理能力。");
+    step_header(4, ONBOARD_TOTAL_STEPS, t(lang, "step.admins"));
+    hint_line(t(lang, "admin.hint_purpose"));
+    hint_line(t(lang, "admin.hint_empty"));
 
-    if !prompt_bool(theme, "把自己加为已启用渠道的 admin 白名单?", true)? {
-        hint_line(
-            "已跳过 admin 配置;之后可用 `hone-cli configure` 或直接编辑 config.yaml 的 `admins.*`。",
-        );
+    if !prompt_bool(theme, t(lang, "admin.add_self_prompt"), true)? {
+        hint_line(t(lang, "admin.skipped_hint"));
         return Ok(mutations);
     }
 
     for kind in enabled_channels {
         match kind {
             ChannelKind::Imessage => {
-                let value = prompt_text(
-                    theme,
-                    "iMessage admin handle(手机号带国家码,如 +8613800138000 或 Apple ID 邮箱;留空跳过)",
-                    "",
-                )?;
+                let value = prompt_text(theme, t(lang, "admin.imessage.handle_prompt"), "")?;
                 let value = value.trim();
                 if !value.is_empty() {
                     mutations.push(append_admin_mutation(
@@ -945,11 +994,7 @@ pub(crate) fn build_admin_onboard_mutations(
                 }
             }
             ChannelKind::Telegram => {
-                let value = prompt_text(
-                    theme,
-                    "Telegram admin user id(数字 ID,如 8039067465;可通过 @userinfobot 获取;留空跳过)",
-                    "",
-                )?;
+                let value = prompt_text(theme, t(lang, "admin.telegram.user_id_prompt"), "")?;
                 let value = value.trim();
                 if !value.is_empty() {
                     mutations.push(append_admin_mutation(
@@ -960,11 +1005,7 @@ pub(crate) fn build_admin_onboard_mutations(
                 }
             }
             ChannelKind::Discord => {
-                let value = prompt_text(
-                    theme,
-                    "Discord admin user id(数字 ID,18 位数,可在 Discord 开发者模式下右键用户头像复制;留空跳过)",
-                    "",
-                )?;
+                let value = prompt_text(theme, t(lang, "admin.discord.user_id_prompt"), "")?;
                 let value = value.trim();
                 if !value.is_empty() {
                     mutations.push(append_admin_mutation(
@@ -977,15 +1018,16 @@ pub(crate) fn build_admin_onboard_mutations(
             ChannelKind::Feishu => {
                 // 飞书管理员识别支持 3 种 id(平台接口不一定都给全),一次收一种即可。
                 let choices = vec![
-                    "邮箱(admin@example.com)".to_string(),
-                    "手机号(+8613800138000)".to_string(),
-                    "open_id(ou_xxx)".to_string(),
-                    "跳过".to_string(),
+                    t(lang, "admin.feishu.choice_email").to_string(),
+                    t(lang, "admin.feishu.choice_mobile").to_string(),
+                    t(lang, "admin.feishu.choice_open_id").to_string(),
+                    t(lang, "admin.feishu.choice_skip").to_string(),
                 ];
-                let idx = prompt_select_index(theme, "Feishu admin 用哪种 id 添加?", &choices, 0)?;
+                let idx =
+                    prompt_select_index(theme, t(lang, "admin.feishu.kind_prompt"), &choices, 0)?;
                 match idx {
                     0 => {
-                        let value = prompt_text(theme, "Feishu admin 邮箱", "")?;
+                        let value = prompt_text(theme, t(lang, "admin.feishu.email_prompt"), "")?;
                         if !value.trim().is_empty() {
                             mutations.push(append_admin_mutation(
                                 "admins.feishu_emails",
@@ -995,11 +1037,7 @@ pub(crate) fn build_admin_onboard_mutations(
                         }
                     }
                     1 => {
-                        let value = prompt_text(
-                            theme,
-                            "Feishu admin 手机号(推荐带国家码,如 +8613800138000)",
-                            "",
-                        )?;
+                        let value = prompt_text(theme, t(lang, "admin.feishu.mobile_prompt"), "")?;
                         if !value.trim().is_empty() {
                             mutations.push(append_admin_mutation(
                                 "admins.feishu_mobiles",
@@ -1009,7 +1047,8 @@ pub(crate) fn build_admin_onboard_mutations(
                         }
                     }
                     2 => {
-                        let value = prompt_text(theme, "Feishu admin open_id", "")?;
+                        let value =
+                            prompt_text(theme, t(lang, "admin.feishu.open_id_prompt"), "")?;
                         if !value.trim().is_empty() {
                             mutations.push(append_admin_mutation(
                                 "admins.feishu_open_ids",
@@ -1029,39 +1068,56 @@ pub(crate) fn build_admin_onboard_mutations(
 
 pub(crate) fn build_provider_onboard_mutations(
     theme: &ColorfulTheme,
+    lang: Lang,
     config: &hone_core::HoneConfig,
 ) -> Result<Vec<ConfigMutation>, String> {
     let mut mutations = Vec::new();
-    step_header(4, ONBOARD_TOTAL_STEPS, "Providers");
-    hint_line("OpenRouter / FMP / Tavily 都会要求你明确选择:现在填写,或本轮跳过。");
-    hint_line("跳过不会阻塞 onboarding,之后仍可用 `hone-cli configure --section providers` 补配。");
+    step_header(5, ONBOARD_TOTAL_STEPS, t(lang, "step.providers"));
+    hint_line(t(lang, "provider.hint_explicit"));
+    hint_line(t(lang, "provider.hint_skip_later"));
 
     for spec in provider_onboard_specs() {
+        let label = t(lang, spec.label_key);
         let current_configured = has_configured_provider_keys(spec, config);
-        print_onboard_block(&format!("{} API keys", spec.label), spec.notes);
+        let notes = spec
+            .note_keys
+            .iter()
+            .map(|key| t(lang, key))
+            .collect::<Vec<_>>();
+        print_onboard_block(
+            &tpl(t(lang, "provider.api_keys_title"), &[("label", &label)]),
+            &notes,
+        );
 
         if !prompt_bool(
             theme,
-            &format!("Configure {} API keys now?", spec.label),
+            &tpl(t(lang, "provider.configure_prompt"), &[("label", &label)]),
             current_configured,
         )? {
-            hint_line(&format!("已跳过 {} API key 配置。", spec.label));
+            hint_line(&tpl(t(lang, "provider.skip_message"), &[("label", &label)]));
             continue;
         }
 
-        if let Some(keys) =
-            prompt_onboard_provider_keys(theme, spec.label, spec.prompt, current_configured)?
-        {
+        if let Some(keys) = prompt_onboard_provider_keys(
+            theme,
+            lang,
+            label,
+            t(lang, spec.prompt_key),
+            current_configured,
+        )? {
             mutations.extend(build_provider_api_key_mutations(
                 spec.key_path,
                 spec.legacy_single_key_path,
                 keys,
             ));
-            ok_line(&format!("已保存 {} API keys。", spec.label));
+            ok_line(&tpl(t(lang, "provider.saved_message"), &[("label", &label)]));
         } else if current_configured {
-            hint_line(&format!("保留现有 {} API key 配置。", spec.label));
+            hint_line(&tpl(
+                t(lang, "provider.keep_existing_message"),
+                &[("label", &label)],
+            ));
         } else {
-            hint_line(&format!("已跳过 {} API key 配置。", spec.label));
+            hint_line(&tpl(t(lang, "provider.skip_message"), &[("label", &label)]));
         }
     }
 
@@ -1111,71 +1167,110 @@ mod tests {
     }
 }
 
+/// Step 1 — pick the console + CLI default language. The choice is persisted
+/// to `config.yaml.language` together with the rest of the onboard mutation
+/// set; the web admin reads it from `/api/meta` to bootstrap its locale on
+/// first load. Default selection comes from `LC_ALL` / `LANG`.
+fn prompt_onboard_language(theme: &ColorfulTheme) -> Result<Lang, String> {
+    step_header(1, ONBOARD_TOTAL_STEPS, t(Lang::En, "step.language"));
+    let detected = detect_initial_lang();
+    // Use the detected language for the prompt itself so the very first
+    // user-facing string already matches their environment.
+    let prompt = t(detected, "lang.prompt");
+    let items = vec![
+        t(detected, "lang.option_zh").to_string(),
+        t(detected, "lang.option_en").to_string(),
+    ];
+    let default_idx = match detected {
+        Lang::Zh => 0,
+        Lang::En => 1,
+    };
+    let idx = prompt_select_index(theme, prompt, &items, default_idx)?;
+    let chosen = if idx == 0 { Lang::Zh } else { Lang::En };
+    hint_line(t(chosen, "lang.note"));
+    Ok(chosen)
+}
+
 pub(crate) async fn run_onboard(
     config_path: Option<&Path>,
     _args: OnboardArgs,
 ) -> Result<(), String> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        return Err("`hone-cli onboard` 需要交互式终端（TTY）".to_string());
+        return Err(t(detect_initial_lang(), "tty.required").to_string());
     }
 
     let (config, paths) = load_cli_config(config_path, true).map_err(|e| e.to_string())?;
     let theme = ColorfulTheme::default();
 
-    banner(
-        "Hone onboarding",
-        "约 3–5 分钟,全程键盘即可。Ctrl+C 可安全退出:mutation 只在最后一步才写盘。",
-    );
-    hint_line("每个环节都可以跳过,之后再通过 `hone-cli onboard` 或其他 CLI 子命令补配。");
+    // Step 1 lives outside the original banner so the operator picks language
+    // before we commit to printing chrome strings in either locale.
+    let lang = prompt_onboard_language(&theme)?;
 
-    let runner = prompt_onboard_runner(&theme, &config)?;
-    let mut mutations = build_runner_onboard_mutations(&theme, &config, runner)?;
+    banner(t(lang, "banner.title"), t(lang, "banner.subtitle"));
+    hint_line(t(lang, "banner.hint"));
+
+    // The language choice persists alongside everything else collected below;
+    // applying it last-minute (rather than writing it eagerly in step 1)
+    // preserves the existing "Ctrl+C is safe — nothing has been written yet"
+    // contract.
+    let mut mutations: Vec<ConfigMutation> = vec![ConfigMutation::Set {
+        path: "language".into(),
+        value: Value::String(lang.as_str().to_string()),
+    }];
+
+    let runner = prompt_onboard_runner(&theme, lang, &config)?;
+    mutations.extend(build_runner_onboard_mutations(&theme, lang, &config, runner)?);
 
     // channel 里真正被 enable 的记一份,供 admin 环节按渠道收集对应 id。
     let mut enabled_channels: Vec<ChannelKind> = Vec::new();
     mutations.extend(build_channel_onboard_mutations(
         &theme,
+        lang,
         &config,
         &mut enabled_channels,
     )?);
     mutations.extend(build_admin_onboard_mutations(
         &theme,
+        lang,
         &config,
         &enabled_channels,
     )?);
-    mutations.extend(build_provider_onboard_mutations(&theme, &config)?);
+    mutations.extend(build_provider_onboard_mutations(&theme, lang, &config)?);
 
-    print_notifications_awareness_step();
+    print_notifications_awareness_step(lang);
 
-    step_header(6, ONBOARD_TOTAL_STEPS, "Apply");
+    step_header(7, ONBOARD_TOTAL_STEPS, t(lang, "step.apply"));
     let result = apply_mutations_and_generate(&paths, &mutations)?;
     ok_line(&format!(
-        "{}(共写入 {} 条字段)",
-        apply_message(&result.apply),
-        result.apply.changed_paths.len()
+        "{}{}",
+        apply_message(lang, &result.apply),
+        tpl(
+            t(lang, "apply.fields_written"),
+            &[("n", &result.apply.changed_paths.len())],
+        ),
     ));
-    hint_line(&format!(
-        "canonical config → {}",
-        paths.canonical_config_path.to_string_lossy()
+    hint_line(&tpl(
+        t(lang, "apply.canonical_path"),
+        &[("p", &paths.canonical_config_path.to_string_lossy())],
     ));
-    hint_line(&format!(
-        "effective config → {}",
-        paths.effective_config_path.to_string_lossy()
+    hint_line(&tpl(
+        t(lang, "apply.effective_path"),
+        &[("p", &paths.effective_config_path.to_string_lossy())],
     ));
 
-    if prompt_bool(&theme, "Run `hone-cli doctor` now?", true)? {
+    if prompt_bool(&theme, t(lang, "apply.run_doctor"), true)? {
         println!();
         print_doctor_report_text(build_doctor_report(config_path).await);
     }
 
-    if prompt_bool(&theme, "Start Hone now?", false)? {
+    if prompt_bool(&theme, t(lang, "apply.start_now"), false)? {
         println!();
         return start::run_start(config_path).await;
     }
 
-    banner("Onboarding complete", "下一步:");
-    bullet("`hone-cli status`   快速查当前配置");
-    bullet("`hone-cli doctor`   深度体检(路径 / binary / auth)");
-    bullet("`hone-cli start`    启动 Hone + 启用渠道");
+    banner(t(lang, "apply.complete"), t(lang, "apply.next_steps"));
+    bullet(t(lang, "apply.tip_status"));
+    bullet(t(lang, "apply.tip_doctor"));
+    bullet(t(lang, "apply.tip_start"));
     Ok(())
 }

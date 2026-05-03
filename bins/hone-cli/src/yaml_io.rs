@@ -18,18 +18,19 @@ use hone_core::config::{
 };
 
 use crate::common;
+use crate::i18n::{Lang, t, tpl};
 
-pub(crate) fn apply_message(plan: &ConfigApplyPlan) -> String {
+pub(crate) fn apply_message(lang: Lang, plan: &ConfigApplyPlan) -> String {
     if plan.restart_required {
-        return "配置已保存，需重启运行时".to_string();
+        return t(lang, "yaml.apply.saved_restart_required").to_string();
     }
     if !plan.restarted_components.is_empty() {
-        return format!(
-            "配置已保存，并需重启组件：{}",
-            plan.restarted_components.join(", ")
+        return tpl(
+            t(lang, "yaml.apply.saved_restart_components"),
+            &[("components", &plan.restarted_components.join(", "))],
         );
     }
-    "配置已保存，已立即生效".to_string()
+    t(lang, "yaml.apply.saved_live").to_string()
 }
 
 /// 把 mutations 写入 canonical config,然后立刻重生成 effective-config 快照,

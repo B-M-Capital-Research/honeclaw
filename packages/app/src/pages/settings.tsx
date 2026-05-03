@@ -42,6 +42,7 @@ import {
   defaultAgentSettings,
   defaultChannelDraft,
   defaultFmpSettings,
+  defaultLanguageDraft,
   defaultTavilySettings,
   hiddenApiKeys,
   isAgentSettingsRuntimeMismatch,
@@ -52,7 +53,10 @@ import {
   toChannelDraft,
   toggleMaskedKey,
   updateApiKeyList,
+  type LanguageDraft,
 } from "@/pages/settings-model";
+import { SETTINGS } from "@/lib/admin-content/settings";
+import { tpl } from "@/lib/i18n";
 
 function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
@@ -82,6 +86,36 @@ export default function SettingsPage() {
       return backend.loadChannelSettings();
     },
   );
+
+  // ── 界面语言 ────────────────────────────────────────────────────────────────
+  const [languageDraft, setLanguageDraft] = createSignal<LanguageDraft>(
+    defaultLanguageDraft(backend.state.meta),
+  );
+  const [languageSaving, setLanguageSaving] = createSignal(false);
+  const [languageMessage, setLanguageMessage] = createSignal("");
+  const [languageError, setLanguageError] = createSignal("");
+  createEffect(() => {
+    // Re-sync draft whenever the canonical meta language changes (e.g. after
+    // a save round-trip or another device pushed an update on reconnect).
+    setLanguageDraft(defaultLanguageDraft(backend.state.meta));
+  });
+  const languageDirty = createMemo(
+    () => languageDraft() !== defaultLanguageDraft(backend.state.meta),
+  );
+  const submitLanguage = async (event: Event) => {
+    event.preventDefault();
+    setLanguageSaving(true);
+    setLanguageMessage("");
+    setLanguageError("");
+    try {
+      await backend.saveLanguage(languageDraft());
+      setLanguageMessage(SETTINGS.language.saved);
+    } catch (e) {
+      setLanguageError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLanguageSaving(false);
+    }
+  };
 
   // ── Agent 基础设置 ──────────────────────────────────────────────────────────
   const [agentDraft, setAgentDraft] = createSignal<AgentSettings>(
@@ -197,7 +231,7 @@ export default function SettingsPage() {
     setFmpError("");
     try {
       await saveDesktopFmpSettings(fmpDraft());
-      setFmpMessage("已保存 FMP API Keys，内置后端已重启生效");
+      setFmpMessage(SETTINGS.data.fmp.saved);
     } catch (e) {
       setFmpError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -238,7 +272,7 @@ export default function SettingsPage() {
     setTavilyError("");
     try {
       await saveDesktopTavilySettings(tavilyDraft());
-      setTavilyMessage("已保存 Tavily API Keys，内置后端已重启生效");
+      setTavilyMessage(SETTINGS.data.tavily.saved);
     } catch (e) {
       setTavilyError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -485,7 +519,7 @@ export default function SettingsPage() {
     const phoneNumber = normalizePhoneNumber(invitePhoneNumber());
     if (!phoneNumber) {
       setInviteMessage("");
-      setInviteError("请输入手机号");
+      setInviteError(SETTINGS.invite.phone_required);
       return;
     }
     setInviteCreating(true);
@@ -496,12 +530,18 @@ export default function SettingsPage() {
       setWebInvites((current = []) => [created, ...current]);
       setInvitePhoneNumber("");
       setInviteMessage(
-        `已为 ${created.phone_number} 生成邀请码 ${created.invite_code}`,
+        tpl(SETTINGS.invite.created, {
+          phone: created.phone_number,
+          code: created.invite_code,
+        }),
       );
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(created.invite_code);
         setInviteMessage(
-          `已为 ${created.phone_number} 生成并复制邀请码 ${created.invite_code}`,
+          tpl(SETTINGS.invite.created_copied, {
+            phone: created.phone_number,
+            code: created.invite_code,
+          }),
         );
       }
     } catch (error) {
@@ -516,10 +556,10 @@ export default function SettingsPage() {
     setInviteError("");
     try {
       if (!navigator.clipboard?.writeText) {
-        throw new Error("当前环境不支持复制");
+        throw new Error(SETTINGS.invite.copy_unsupported);
       }
       await navigator.clipboard.writeText(code);
-      setInviteMessage(`已复制邀请码 ${code}`);
+      setInviteMessage(tpl(SETTINGS.invite.copied, { code }));
     } catch (error) {
       setInviteError(error instanceof Error ? error.message : String(error));
     }
@@ -541,7 +581,7 @@ export default function SettingsPage() {
   const handleDisableInvite = async (invite: WebInviteInfo) => {
     if (typeof window !== "undefined") {
       const confirmed = window.confirm(
-        `停用 ${invite.user_id} 的邀请码后，现有 Web 登录态会立即失效。继续吗？`,
+        tpl(SETTINGS.invite.disable_confirm, { userId: invite.user_id }),
       );
       if (!confirmed) return;
     }
@@ -577,7 +617,7 @@ export default function SettingsPage() {
   const handleResetInvite = async (invite: WebInviteInfo) => {
     if (typeof window !== "undefined") {
       const confirmed = window.confirm(
-        `将为 ${invite.user_id} 生成新邀请码，并让旧邀请码和现有 Web 登录态立即失效。继续吗？`,
+        tpl(SETTINGS.invite.reset_confirm, { userId: invite.user_id }),
       );
       if (!confirmed) return;
     }
@@ -590,7 +630,9 @@ export default function SettingsPage() {
       setInviteMessage(result.message);
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(result.invite.invite_code);
-        setInviteMessage(`${result.message}，新邀请码已复制`);
+        setInviteMessage(
+          tpl(SETTINGS.invite.reset_copied_suffix, { message: result.message }),
+        );
       }
     } catch (error) {
       setInviteError(error instanceof Error ? error.message : String(error));
@@ -601,13 +643,7 @@ export default function SettingsPage() {
 
   type TabKey = "agent" | "data" | "notify" | "channel" | "invite";
   const TAB_KEYS: TabKey[] = ["agent", "data", "notify", "channel", "invite"];
-  const TAB_LABELS: Record<TabKey, string> = {
-    agent: "Agent",
-    data: "数据源",
-    notify: "通知",
-    channel: "渠道",
-    invite: "邀请码",
-  };
+  const tabLabel = (key: TabKey): string => SETTINGS.tabs[key];
   const [searchParams, setSearchParams] = useSearchParams<{ tab?: string }>();
   const activeTab = (): TabKey => {
     const raw = searchParams.tab;
@@ -626,6 +662,69 @@ export default function SettingsPage() {
 
   return (
     <div class="mx-auto flex h-full max-w-4xl flex-col">
+      <form
+        onSubmit={submitLanguage}
+        class="mb-3 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5 shadow-sm"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <h2 class="text-base font-semibold text-[color:var(--text-primary)]">
+              {SETTINGS.language.title}
+            </h2>
+            <p class="mt-1 text-xs text-[color:var(--text-secondary)]">
+              {SETTINGS.language.subtitle}
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={!languageDirty() || languageSaving()}
+            class="shrink-0 rounded-md border border-[color:var(--accent)] bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition disabled:cursor-not-allowed disabled:border-[color:var(--border)] disabled:bg-transparent disabled:text-[color:var(--text-muted)]"
+          >
+            {languageSaving()
+              ? SETTINGS.language.saving
+              : SETTINGS.language.save}
+          </button>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-3">
+          <For each={["zh", "en"] as const}>
+            {(code) => (
+              <label
+                class={[
+                  "flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm cursor-pointer",
+                  languageDraft() === code
+                    ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--text-primary)]"
+                    : "border-[color:var(--border)] bg-[color:var(--panel)] text-[color:var(--text-secondary)] hover:border-[color:var(--accent)]/50",
+                ].join(" ")}
+              >
+                <input
+                  type="radio"
+                  name="settings-language"
+                  value={code}
+                  checked={languageDraft() === code}
+                  onChange={() => setLanguageDraft(code)}
+                  class="h-3.5 w-3.5"
+                />
+                {code === "zh"
+                  ? SETTINGS.language.option_zh
+                  : SETTINGS.language.option_en}
+              </label>
+            )}
+          </For>
+        </div>
+        <p class="mt-2 text-[11px] text-[color:var(--text-muted)]">
+          {SETTINGS.language.note}
+        </p>
+        <Show when={languageMessage()}>
+          <p class="mt-2 text-xs text-[color:var(--accent)]">
+            {languageMessage()}
+          </p>
+        </Show>
+        <Show when={languageError()}>
+          <p class="mt-2 text-xs text-red-500">
+            {SETTINGS.language.save_failed}: {languageError()}
+          </p>
+        </Show>
+      </form>
       <nav class="sticky top-0 z-10 -mx-1 flex gap-1 overflow-x-auto border-b border-[color:var(--border)] bg-[color:var(--surface)]/95 px-1 py-2 backdrop-blur">
         <For each={TAB_KEYS}>
           {(key) => (
@@ -642,7 +741,7 @@ export default function SettingsPage() {
                     : "text-[color:var(--text-secondary)] hover:bg-black/5 hover:text-[color:var(--text-primary)]",
                 ].join(" ")}
               >
-                {TAB_LABELS[key]}
+                {tabLabel(key)}
               </button>
             </Show>
           )}
@@ -659,10 +758,10 @@ export default function SettingsPage() {
         class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6 shadow-sm"
       >
         <h1 class="text-xl font-semibold text-[color:var(--text-primary)]">
-          基础设置
+          {SETTINGS.agent.title}
         </h1>
         <p class="mt-2 text-sm text-[color:var(--text-secondary)]">
-          选择 Agent 引擎并配置相关参数，保存后立即写入运行时配置。
+          {SETTINGS.agent.subtitle}
         </p>
 
         <fieldset
@@ -686,16 +785,15 @@ export default function SettingsPage() {
             <div class="flex items-start justify-between gap-3">
               <div>
                 <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                  Multi-Agent
+                  {SETTINGS.agent.multi_agent.name}
                 </div>
                 <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                  Search Agent 使用 MiniMax function calling，Answer Agent 使用
-                  opencode ACP 收束回复
+                  {SETTINGS.agent.multi_agent.description}
                 </div>
               </div>
               <Show when={agentDraft().runner === "multi-agent"}>
                 <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
-                  当前
+                  {SETTINGS.agent.current_badge}
                 </span>
               </Show>
             </div>
@@ -706,7 +804,7 @@ export default function SettingsPage() {
             >
               <div class="space-y-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
                 <div class="text-xs font-semibold text-[color:var(--text-primary)]">
-                  Search Agent (MiniMax / OpenAI-compatible)
+                  {SETTINGS.agent.multi_agent.search_title}
                 </div>
                 <input
                   type="url"
@@ -768,7 +866,9 @@ export default function SettingsPage() {
                     class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                     onClick={() => setShowSearchKey((v) => !v)}
                   >
-                    {showSearchKey() ? "隐藏" : "显示"}
+                    {showSearchKey()
+                      ? SETTINGS.agent.multi_agent.hide
+                      : SETTINGS.agent.multi_agent.show}
                   </button>
                 </div>
                 <input
@@ -796,8 +896,8 @@ export default function SettingsPage() {
                   onClick={() => void handleTestMultiAgentSearch()}
                 >
                   {searchTestStatus() === "checking"
-                    ? "测试中…"
-                    : "测试 Search Agent"}
+                    ? SETTINGS.agent.multi_agent.testing
+                    : SETTINGS.agent.multi_agent.test_search}
                 </button>
                 <Show when={searchTestStatus() !== "idle"}>
                   <div class="text-xs text-[color:var(--text-secondary)]">
@@ -808,7 +908,7 @@ export default function SettingsPage() {
 
               <div class="space-y-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
                 <div class="text-xs font-semibold text-[color:var(--text-primary)]">
-                  Answer Agent (OpenAI-compatible via opencode ACP)
+                  {SETTINGS.agent.multi_agent.answer_title}
                 </div>
                 <input
                   type="url"
@@ -888,7 +988,9 @@ export default function SettingsPage() {
                     class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                     onClick={() => setShowAnswerKey((v) => !v)}
                   >
-                    {showAnswerKey() ? "隐藏" : "显示"}
+                    {showAnswerKey()
+                      ? SETTINGS.agent.multi_agent.hide
+                      : SETTINGS.agent.multi_agent.show}
                   </button>
                 </div>
                 <input
@@ -917,8 +1019,8 @@ export default function SettingsPage() {
                     onClick={() => void handleTestMultiAgentAnswer()}
                   >
                     {answerTestStatus() === "checking"
-                      ? "测试中…"
-                      : "测试 Answer Agent"}
+                      ? SETTINGS.agent.multi_agent.testing
+                      : SETTINGS.agent.multi_agent.test_answer}
                   </button>
                   <button
                     type="button"
@@ -927,8 +1029,8 @@ export default function SettingsPage() {
                     onClick={() => void handleCheckOpencode()}
                   >
                     {opencodeCheckStatus() === "checking"
-                      ? "检测中…"
-                      : "检查 opencode"}
+                      ? SETTINGS.agent.multi_agent.checking
+                      : SETTINGS.agent.multi_agent.check_opencode}
                   </button>
                 </div>
                 <Show when={answerTestStatus() !== "idle"}>
@@ -958,16 +1060,15 @@ export default function SettingsPage() {
             <div class="flex items-start justify-between gap-3">
               <div>
                 <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                  OpenAI 协议渠道
+                  {SETTINGS.agent.openai.name}
                 </div>
                 <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                  兼容 OpenRouter、OpenAI 及任意 OpenAI-compatible 端点（通过
-                  opencode acp 驱动）
+                  {SETTINGS.agent.openai.description}
                 </div>
               </div>
               <Show when={agentDraft().runner === "opencode_acp"}>
                 <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
-                  当前
+                  {SETTINGS.agent.current_badge}
                 </span>
               </Show>
             </div>
@@ -980,7 +1081,7 @@ export default function SettingsPage() {
                   class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
                   for="openai-url"
                 >
-                  Base URL
+                  {SETTINGS.agent.openai.base_url_label}
                 </label>
                 <input
                   id="openai-url"
@@ -1003,7 +1104,7 @@ export default function SettingsPage() {
                   class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
                   for="openai-model"
                 >
-                  主模型
+                  {SETTINGS.agent.openai.model_label}
                 </label>
                 <input
                   id="openai-model"
@@ -1022,11 +1123,10 @@ export default function SettingsPage() {
 
               <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-soft)] p-3">
                 <p class="text-xs font-medium text-[color:var(--text-primary)]">
-                  Auxiliary 子模型链路
+                  {SETTINGS.agent.openai.auxiliary_title}
                 </p>
                 <p class="mt-1 text-[11px] text-[color:var(--text-muted)]">
-                  用于心跳检测、会话压缩等后台辅助任务，支持独立的
-                  OpenAI-compatible Base URL / API Key / Model。
+                  {SETTINGS.agent.openai.auxiliary_subtitle}
                 </p>
                 <div class="mt-3 space-y-3">
                   <div>
@@ -1034,7 +1134,7 @@ export default function SettingsPage() {
                       class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
                       for="auxiliary-url"
                     >
-                      Auxiliary Base URL
+                      {SETTINGS.agent.openai.auxiliary_url_label}
                     </label>
                     <input
                       id="auxiliary-url"
@@ -1062,7 +1162,7 @@ export default function SettingsPage() {
                       class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
                       for="auxiliary-model"
                     >
-                      Auxiliary Model
+                      {SETTINGS.agent.openai.auxiliary_model_label}
                     </label>
                     <input
                       id="auxiliary-model"
@@ -1090,7 +1190,7 @@ export default function SettingsPage() {
                       class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
                       for="auxiliary-apikey"
                     >
-                      Auxiliary API Key
+                      {SETTINGS.agent.openai.auxiliary_apikey_label}
                     </label>
                     <div class="relative">
                       <input
@@ -1118,7 +1218,9 @@ export default function SettingsPage() {
                         class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                         onClick={() => setShowAuxiliaryKey((v) => !v)}
                       >
-                        {showAuxiliaryKey() ? "隐藏" : "显示"}
+                        {showAuxiliaryKey()
+                          ? SETTINGS.agent.openai.hide
+                          : SETTINGS.agent.openai.show}
                       </button>
                     </div>
                   </div>
@@ -1131,7 +1233,7 @@ export default function SettingsPage() {
                   class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
                   for="openai-apikey"
                 >
-                  API Key
+                  {SETTINGS.agent.openai.api_key_label}
                 </label>
                 <div class="relative">
                   <input
@@ -1152,7 +1254,9 @@ export default function SettingsPage() {
                     class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                     onClick={() => setShowOpenaiKey((v) => !v)}
                   >
-                    {showOpenaiKey() ? "隐藏" : "显示"}
+                    {showOpenaiKey()
+                      ? SETTINGS.agent.openai.hide
+                      : SETTINGS.agent.openai.show}
                   </button>
                 </div>
               </div>
@@ -1218,7 +1322,7 @@ export default function SettingsPage() {
                   </Show>
                   <span>
                     {openaiTestStatus() === "checking"
-                      ? "连通测试中，请稍候…"
+                      ? SETTINGS.agent.openai.connection_testing_status
                       : openaiTestMessage()}
                   </span>
                 </div>
@@ -1237,7 +1341,7 @@ export default function SettingsPage() {
                 >
                   <span>
                     {auxiliaryTestStatus() === "checking"
-                      ? "Auxiliary 连通测试中，请稍候…"
+                      ? SETTINGS.agent.openai.auxiliary_testing_status
                       : auxiliaryTestMessage()}
                   </span>
                 </div>
@@ -1263,7 +1367,9 @@ export default function SettingsPage() {
                   disabled={openaiTestStatus() === "checking"}
                   onClick={() => void handleTestOpenAi()}
                 >
-                  {openaiTestStatus() === "checking" ? "测试中…" : "测试联通"}
+                  {openaiTestStatus() === "checking"
+                    ? SETTINGS.agent.openai.testing
+                    : SETTINGS.agent.openai.test_connection}
                 </button>
                 <button
                   type="button"
@@ -1272,8 +1378,8 @@ export default function SettingsPage() {
                   onClick={() => void handleTestAuxiliary()}
                 >
                   {auxiliaryTestStatus() === "checking"
-                    ? "测试中…"
-                    : "测试 Auxiliary"}
+                    ? SETTINGS.agent.openai.testing
+                    : SETTINGS.agent.openai.test_auxiliary}
                 </button>
                 <button
                   type="button"
@@ -1281,7 +1387,9 @@ export default function SettingsPage() {
                   disabled={agentSaving()}
                   onClick={(e) => void submitAgentSettings(e)}
                 >
-                  {agentSaving() ? "保存中…" : "保存"}
+                  {agentSaving()
+                    ? SETTINGS.agent.openai.saving
+                    : SETTINGS.agent.openai.save}
                 </button>
               </div>
             </div>
@@ -1300,16 +1408,19 @@ export default function SettingsPage() {
             <div class="flex items-start justify-between gap-3">
               <div>
                 <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                  Codex ACP
+                  {SETTINGS.agent.codex_acp.name}
                 </div>
                 <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                  使用 <code class="rounded bg-black/20 px-1">codex-acp</code>{" "}
-                  驱动当前 Agent，会话实际走 ACP 链路而不是 multi-agent。
+                  {SETTINGS.agent.codex_acp.description_prefix}
+                  <code class="rounded bg-black/20 px-1">
+                    {SETTINGS.agent.codex_acp.description_code}
+                  </code>
+                  {SETTINGS.agent.codex_acp.description_suffix}
                 </div>
               </div>
               <Show when={agentDraft().runner === "codex_acp"}>
                 <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
-                  当前
+                  {SETTINGS.agent.current_badge}
                 </span>
               </Show>
             </div>
@@ -1375,16 +1486,14 @@ export default function SettingsPage() {
                   </Show>
                   <span>
                     {codexAcpCheckStatus() === "checking"
-                      ? "检测中，请稍候…"
+                      ? SETTINGS.agent.codex_acp.checking_status
                       : codexAcpCheckMessage()}
                   </span>
                 </div>
               </Show>
 
               <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-3 text-xs text-[color:var(--text-secondary)]">
-                运行时配置当前来自 desktop canonical / effective config；如果
-                live listener 仍显示旧 runner，应继续核对 release sidecar
-                是否已按新配置重启。
+                {SETTINGS.agent.codex_acp.runtime_note}
               </div>
 
               <div class="flex gap-2 pt-1">
@@ -1395,8 +1504,8 @@ export default function SettingsPage() {
                   onClick={() => void handleCheckCodexAcp()}
                 >
                   {codexAcpCheckStatus() === "checking"
-                    ? "检测中…"
-                    : "测试联通"}
+                    ? SETTINGS.agent.codex_acp.checking
+                    : SETTINGS.agent.codex_acp.test_connection}
                 </button>
               </div>
             </div>
@@ -1415,17 +1524,19 @@ export default function SettingsPage() {
             <div class="flex items-start justify-between gap-3">
               <div>
                 <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                  Gemini CLI
+                  {SETTINGS.agent.gemini_cli.name}
                 </div>
                 <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                  使用本机安装的{" "}
-                  <code class="rounded bg-black/20 px-1">gemini</code> 命令行
-                  Agent
+                  {SETTINGS.agent.gemini_cli.description_prefix}
+                  <code class="rounded bg-black/20 px-1">
+                    {SETTINGS.agent.gemini_cli.description_code}
+                  </code>
+                  {SETTINGS.agent.gemini_cli.description_suffix}
                 </div>
               </div>
               <Show when={agentDraft().runner === "gemini_cli"}>
                 <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
-                  当前
+                  {SETTINGS.agent.current_badge}
                 </span>
               </Show>
             </div>
@@ -1492,7 +1603,7 @@ export default function SettingsPage() {
                   </Show>
                   <span>
                     {geminiCheckStatus() === "checking"
-                      ? "检测中，请稍候…"
+                      ? SETTINGS.agent.gemini_cli.checking_status
                       : geminiCheckMessage()}
                   </span>
                 </div>
@@ -1505,7 +1616,9 @@ export default function SettingsPage() {
                   disabled={geminiCheckStatus() === "checking"}
                   onClick={() => void handleCheckGemini()}
                 >
-                  {geminiCheckStatus() === "checking" ? "检测中…" : "测试联通"}
+                  {geminiCheckStatus() === "checking"
+                    ? SETTINGS.agent.gemini_cli.checking
+                    : SETTINGS.agent.gemini_cli.test_connection}
                 </button>
               </div>
             </div>
@@ -1524,17 +1637,19 @@ export default function SettingsPage() {
             <div class="flex items-start justify-between gap-3">
               <div>
                 <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                  Codex
+                  {SETTINGS.agent.codex_cli.name}
                 </div>
                 <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                  使用本机安装的{" "}
-                  <code class="rounded bg-black/20 px-1">codex</code> 命令行
-                  Agent
+                  {SETTINGS.agent.codex_cli.description_prefix}
+                  <code class="rounded bg-black/20 px-1">
+                    {SETTINGS.agent.codex_cli.description_code}
+                  </code>
+                  {SETTINGS.agent.codex_cli.description_suffix}
                 </div>
               </div>
               <Show when={agentDraft().runner === "codex_cli"}>
                 <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
-                  当前
+                  {SETTINGS.agent.current_badge}
                 </span>
               </Show>
             </div>
@@ -1601,7 +1716,7 @@ export default function SettingsPage() {
                   </Show>
                   <span>
                     {codexCheckStatus() === "checking"
-                      ? "检测中，请稍候…"
+                      ? SETTINGS.agent.codex_cli.checking_status
                       : codexCheckMessage()}
                   </span>
                 </div>
@@ -1614,7 +1729,9 @@ export default function SettingsPage() {
                   disabled={codexCheckStatus() === "checking"}
                   onClick={() => void handleCheckCodex()}
                 >
-                  {codexCheckStatus() === "checking" ? "检测中…" : "测试联通"}
+                  {codexCheckStatus() === "checking"
+                    ? SETTINGS.agent.codex_cli.checking
+                    : SETTINGS.agent.codex_cli.test_connection}
                 </button>
               </div>
             </div>
@@ -1631,12 +1748,10 @@ export default function SettingsPage() {
           <div class="flex items-start justify-between gap-4">
             <div>
               <h1 class="text-xl font-semibold text-[color:var(--text-primary)]">
-                Web 用户邀请码
+                {SETTINGS.invite.title}
               </h1>
               <p class="mt-2 text-sm text-[color:var(--text-secondary)]">
-                生成邀请码时会同步创建一个 `web`
-                用户，并将邀请码与手机号强绑定。用户通过 `/chat`
-                输入邀请码和手机号登录后，复用现有 12 次对话额度限制。
+                {SETTINGS.invite.subtitle}
               </p>
             </div>
             <div class="flex gap-2">
@@ -1645,7 +1760,7 @@ export default function SettingsPage() {
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:bg-black/5"
                 onClick={() => void refetchWebInvites()}
               >
-                刷新
+                {SETTINGS.invite.refresh}
               </button>
             </div>
           </div>
@@ -1653,7 +1768,7 @@ export default function SettingsPage() {
           <div class="mt-4 flex flex-col gap-3 rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4 lg:flex-row lg:items-end">
             <label class="flex-1">
               <div class="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
-                手机号
+                {SETTINGS.invite.phone_label}
               </div>
               <input
                 type="tel"
@@ -1663,7 +1778,7 @@ export default function SettingsPage() {
                     normalizePhoneNumber(event.currentTarget.value),
                   )
                 }
-                placeholder="生成邀请码前先输入手机号"
+                placeholder={SETTINGS.invite.phone_placeholder}
                 autocomplete="tel"
                 class="mt-2 w-full rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none transition focus:border-[color:var(--accent)]"
               />
@@ -1674,7 +1789,7 @@ export default function SettingsPage() {
               disabled={inviteCreating() || !invitePhoneNumber().trim()}
               onClick={() => void handleCreateInvite()}
             >
-              {inviteCreating() ? "生成中…" : "生成邀请码"}
+              {inviteCreating() ? SETTINGS.invite.creating : SETTINGS.invite.create}
             </button>
           </div>
 
@@ -1691,20 +1806,20 @@ export default function SettingsPage() {
 
           <div class="mt-6 overflow-hidden rounded-xl border border-[color:var(--border)]">
             <div class="grid grid-cols-[1.2fr_1fr_1.1fr_0.8fr_0.7fr_0.9fr_1fr_auto] gap-3 bg-[color:var(--panel)] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
-              <div>邀请码</div>
-              <div>手机号</div>
-              <div>Web 用户</div>
-              <div>状态</div>
-              <div>登录态</div>
-              <div>剩余次数</div>
-              <div>最近登录</div>
-              <div>操作</div>
+              <div>{SETTINGS.invite.table.code}</div>
+              <div>{SETTINGS.invite.table.phone}</div>
+              <div>{SETTINGS.invite.table.web_user}</div>
+              <div>{SETTINGS.invite.table.status}</div>
+              <div>{SETTINGS.invite.table.sessions}</div>
+              <div>{SETTINGS.invite.table.remaining}</div>
+              <div>{SETTINGS.invite.table.last_login}</div>
+              <div>{SETTINGS.invite.table.actions}</div>
             </div>
             <Show
               when={(webInvites() ?? []).length > 0}
               fallback={
                 <div class="px-4 py-8 text-sm text-[color:var(--text-secondary)]">
-                  还没有生成任何邀请码。
+                  {SETTINGS.invite.table.empty}
                 </div>
               }
             >
@@ -1716,7 +1831,7 @@ export default function SettingsPage() {
                         {invite.invite_code}
                       </div>
                       <div class="font-mono text-[color:var(--text-secondary)]">
-                        {invite.phone_number || "未绑定"}
+                        {invite.phone_number || SETTINGS.invite.table.phone_unbound}
                       </div>
                       <div class="text-[color:var(--text-secondary)]">
                         {invite.user_id}
@@ -1730,7 +1845,9 @@ export default function SettingsPage() {
                               : "bg-rose-500/10 text-rose-300",
                           ].join(" ")}
                         >
-                          {invite.enabled ? "已启用" : "已停用"}
+                          {invite.enabled
+                            ? SETTINGS.invite.table.enabled
+                            : SETTINGS.invite.table.disabled}
                         </span>
                       </div>
                       <div class="text-[color:var(--text-secondary)]">
@@ -1738,13 +1855,13 @@ export default function SettingsPage() {
                       </div>
                       <div class="text-[color:var(--text-secondary)]">
                         {invite.daily_limit === 0
-                          ? "不限"
+                          ? SETTINGS.invite.table.unlimited
                           : `${invite.remaining_today}/${invite.daily_limit}`}
                       </div>
                       <div class="text-[color:var(--text-secondary)]">
                         {invite.last_login_at
                           ? new Date(invite.last_login_at).toLocaleString()
-                          : "未登录"}
+                          : SETTINGS.invite.table.never_logged_in}
                       </div>
                       <div class="flex flex-wrap justify-end gap-2">
                         <button
@@ -1754,7 +1871,7 @@ export default function SettingsPage() {
                             void copyInviteCode(invite.invite_code)
                           }
                         >
-                          复制
+                          {SETTINGS.invite.table.copy}
                         </button>
                         <button
                           type="button"
@@ -1766,8 +1883,8 @@ export default function SettingsPage() {
                           onClick={() => void handleResetInvite(invite)}
                         >
                           {isInviteActionRunning(invite.user_id, "reset")
-                            ? "重置中…"
-                            : "重置"}
+                            ? SETTINGS.invite.table.resetting
+                            : SETTINGS.invite.table.reset}
                         </button>
                         <Show
                           when={invite.enabled}
@@ -1782,8 +1899,8 @@ export default function SettingsPage() {
                               onClick={() => void handleEnableInvite(invite)}
                             >
                               {isInviteActionRunning(invite.user_id, "enable")
-                                ? "启用中…"
-                                : "启用"}
+                                ? SETTINGS.invite.table.enabling
+                                : SETTINGS.invite.table.enable}
                             </button>
                           }
                         >
@@ -1797,8 +1914,8 @@ export default function SettingsPage() {
                             onClick={() => void handleDisableInvite(invite)}
                           >
                             {isInviteActionRunning(invite.user_id, "disable")
-                              ? "停用中…"
-                              : "停用"}
+                              ? SETTINGS.invite.table.disabling
+                              : SETTINGS.invite.table.disable}
                           </button>
                         </Show>
                       </div>
@@ -1832,11 +1949,11 @@ export default function SettingsPage() {
             </svg>
           </div>
           <h1 class="text-xl font-bold text-[color:var(--text-primary)]">
-            API 配置
+            {SETTINGS.data.title}
           </h1>
         </div>
         <p class="mt-2 text-sm text-[color:var(--text-secondary)]">
-          配置各类数据源和搜索服务的密钥。支持多 Key 轮换及自动重试。
+          {SETTINGS.data.subtitle}
         </p>
 
         <div class="mt-8 space-y-6">
@@ -1849,10 +1966,10 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <div class="text-sm font-bold text-[color:var(--text-primary)]">
-                    金融数据 API (Financial Modeling Prep)
+                    {SETTINGS.data.fmp.name}
                   </div>
                   <div class="mt-0.5 text-[10px] text-[color:var(--text-secondary)]">
-                    用于获取实时股票、报表等金融核心数据
+                    {SETTINGS.data.fmp.description}
                   </div>
                 </div>
               </div>
@@ -1877,7 +1994,7 @@ export default function SettingsPage() {
                       <div class="relative flex-1">
                         <input
                           type={showFmpKeys()[index] ? "text" : "password"}
-                          placeholder="FMP API Key"
+                          placeholder={SETTINGS.data.fmp.key_placeholder}
                           class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                           value={key()}
                           onInput={(e) =>
@@ -1937,7 +2054,7 @@ export default function SettingsPage() {
                             removeKey(setFmpDraft, setShowFmpKeys, index)
                           }
                         >
-                          删除
+                          {SETTINGS.data.fmp.remove}
                         </button>
                       </Show>
                     </div>
@@ -1949,14 +2066,14 @@ export default function SettingsPage() {
                     class="text-[10px] font-bold text-[color:var(--accent)]"
                     onClick={() => addKey(setFmpDraft, setShowFmpKeys)}
                   >
-                    + 添加 Key
+                    {SETTINGS.data.fmp.add_key}
                   </button>
                   <button
                     type="submit"
                     class="rounded bg-[color:var(--accent)] px-3 py-1 text-xs font-bold text-white shadow-sm"
                     disabled={fmpSaving()}
                   >
-                    {fmpSaving() ? "保存中..." : "保存 FMP"}
+                    {fmpSaving() ? SETTINGS.data.fmp.saving : SETTINGS.data.fmp.save}
                   </button>
                 </div>
               </fieldset>
@@ -1972,10 +2089,10 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <div class="text-sm font-bold text-[color:var(--text-primary)]">
-                    搜索 API (Tavily)
+                    {SETTINGS.data.tavily.name}
                   </div>
                   <div class="mt-0.5 text-[10px] text-[color:var(--text-secondary)]">
-                    用于联网获取最新信息、文章、网页内容
+                    {SETTINGS.data.tavily.description}
                   </div>
                 </div>
               </div>
@@ -2066,7 +2183,7 @@ export default function SettingsPage() {
                             removeKey(setTavilyDraft, setShowTavilyKeys, index)
                           }
                         >
-                          删除
+                          {SETTINGS.data.tavily.remove}
                         </button>
                       </Show>
                     </div>
@@ -2078,14 +2195,16 @@ export default function SettingsPage() {
                     class="text-[10px] font-bold text-[color:var(--accent)]"
                     onClick={() => addKey(setTavilyDraft, setShowTavilyKeys)}
                   >
-                    + 添加 Key
+                    {SETTINGS.data.tavily.add_key}
                   </button>
                   <button
                     type="submit"
                     class="rounded bg-[color:var(--accent)] px-3 py-1 text-xs font-bold text-white shadow-sm"
                     disabled={tavilySaving()}
                   >
-                    {tavilySaving() ? "保存中..." : "保存 Tavily"}
+                    {tavilySaving()
+                      ? SETTINGS.data.tavily.saving
+                      : SETTINGS.data.tavily.save}
                   </button>
                 </div>
               </fieldset>
@@ -2115,10 +2234,10 @@ export default function SettingsPage() {
           </div>
           <div>
             <h1 class="text-xl font-bold text-[color:var(--text-primary)]">
-              通知推送偏好
+              {SETTINGS.notify.title}
             </h1>
             <p class="mt-1 text-sm text-[color:var(--text-secondary)]">
-              代任意 actor 调整事件推送策略。终端用户自己也可以在渠道里用自然语言调整。
+              {SETTINGS.notify.subtitle}
             </p>
           </div>
         </div>
@@ -2155,10 +2274,10 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <h1 class="text-xl font-bold text-[color:var(--text-primary)]">
-                    渠道设置
+                    {SETTINGS.channel.title}
                   </h1>
                   <p class="mt-1 text-sm text-[color:var(--text-secondary)]">
-                    开启后 Hone 会通过对应渠道监听消息并进行 Agent 响应。
+                    {SETTINGS.channel.subtitle}
                   </p>
                 </div>
               </div>
@@ -2167,7 +2286,7 @@ export default function SettingsPage() {
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:bg-black/5"
                 onClick={() => void refetchDesktopChannelSettings()}
               >
-                刷新配置
+                {SETTINGS.channel.refresh}
               </button>
             </div>
 
@@ -2186,7 +2305,7 @@ export default function SettingsPage() {
                       </svg>
                     </div>
                     <div class="font-bold text-[color:var(--text-primary)]">
-                      飞书 (Feishu)
+                      {SETTINGS.channel.feishu.name}
                     </div>
                   </div>
                   <label class="relative inline-flex cursor-pointer items-center">
@@ -2208,11 +2327,11 @@ export default function SettingsPage() {
                   <div class="space-y-3 pt-2">
                     <div class="space-y-1">
                       <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
-                        App ID
+                        {SETTINGS.channel.feishu.app_id_label}
                       </label>
                       <input
                         type="text"
-                        placeholder="cli_..."
+                        placeholder={SETTINGS.channel.feishu.app_id_placeholder}
                         class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                         value={channelDraft().feishuAppId || ""}
                         onInput={(e) =>
@@ -2225,12 +2344,12 @@ export default function SettingsPage() {
                     </div>
                     <div class="space-y-1">
                       <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
-                        App Secret
+                        {SETTINGS.channel.feishu.app_secret_label}
                       </label>
                       <div class="relative">
                         <input
                           type={showFeishuSecret() ? "text" : "password"}
-                          placeholder="Secret"
+                          placeholder={SETTINGS.channel.feishu.app_secret_placeholder}
                           class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                           value={channelDraft().feishuAppSecret || ""}
                           onInput={(e) =>
@@ -2245,7 +2364,9 @@ export default function SettingsPage() {
                           class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                           onClick={() => setShowFeishuSecret((v) => !v)}
                         >
-                          {showFeishuSecret() ? "隐藏" : "显示"}
+                          {showFeishuSecret()
+                            ? SETTINGS.channel.feishu.hide
+                            : SETTINGS.channel.feishu.show}
                         </button>
                       </div>
                     </div>
@@ -2267,7 +2388,7 @@ export default function SettingsPage() {
                       </svg>
                     </div>
                     <div class="font-bold text-[color:var(--text-primary)]">
-                      Discord
+                      {SETTINGS.channel.discord.name}
                     </div>
                   </div>
                   <label class="relative inline-flex cursor-pointer items-center">
@@ -2288,12 +2409,12 @@ export default function SettingsPage() {
                 <Show when={channelDraft().discordEnabled}>
                   <div class="space-y-1 pt-2">
                     <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
-                      Bot Token
+                      {SETTINGS.channel.discord.bot_token_label}
                     </label>
                     <div class="relative">
                       <input
                         type={showDiscordToken() ? "text" : "password"}
-                        placeholder="Discord Bot Token"
+                        placeholder={SETTINGS.channel.discord.bot_token_placeholder}
                         class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                         value={channelDraft().discordBotToken || ""}
                         onInput={(e) =>
@@ -2308,7 +2429,9 @@ export default function SettingsPage() {
                         class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                         onClick={() => setShowDiscordToken((v) => !v)}
                       >
-                        {showDiscordToken() ? "隐藏" : "显示"}
+                        {showDiscordToken()
+                          ? SETTINGS.channel.discord.hide
+                          : SETTINGS.channel.discord.show}
                       </button>
                     </div>
                   </div>
@@ -2329,7 +2452,7 @@ export default function SettingsPage() {
                       </svg>
                     </div>
                     <div class="font-bold text-[color:var(--text-primary)]">
-                      Telegram
+                      {SETTINGS.channel.telegram.name}
                     </div>
                   </div>
                   <label class="relative inline-flex cursor-pointer items-center">
@@ -2350,12 +2473,12 @@ export default function SettingsPage() {
                 <Show when={channelDraft().telegramEnabled}>
                   <div class="space-y-1 pt-2">
                     <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
-                      Bot Token
+                      {SETTINGS.channel.telegram.bot_token_label}
                     </label>
                     <div class="relative">
                       <input
                         type={showTelegramToken() ? "text" : "password"}
-                        placeholder="Token"
+                        placeholder={SETTINGS.channel.telegram.bot_token_placeholder}
                         class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                         value={channelDraft().telegramBotToken || ""}
                         onInput={(e) =>
@@ -2370,7 +2493,9 @@ export default function SettingsPage() {
                         class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                         onClick={() => setShowTelegramToken((v) => !v)}
                       >
-                        {showTelegramToken() ? "隐藏" : "显示"}
+                        {showTelegramToken()
+                          ? SETTINGS.channel.telegram.hide
+                          : SETTINGS.channel.telegram.show}
                       </button>
                     </div>
                   </div>
@@ -2392,10 +2517,10 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <div class="font-bold text-[color:var(--text-primary)]">
-                        iMessage
+                        {SETTINGS.channel.imessage.name}
                       </div>
                       <div class="text-[10px] font-bold text-amber-600">
-                        ⚠️ Needs Full Disk Access
+                        {SETTINGS.channel.imessage.warning}
                       </div>
                     </div>
                   </div>
@@ -2419,14 +2544,16 @@ export default function SettingsPage() {
 
             <div class="mt-8 flex items-center justify-between border-t border-[color:var(--border)] pt-6">
               <div class="text-xs text-[color:var(--text-secondary)]">
-                同步设置将立即生效。
+                {SETTINGS.channel.sync_note}
               </div>
               <button
                 type="submit"
                 class="rounded-md bg-[color:var(--accent)] px-6 py-2 text-sm font-bold text-white shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
                 disabled={backend.state.saving}
               >
-                {backend.state.saving ? "同步中..." : "同步全部渠道"}
+                {backend.state.saving
+                  ? SETTINGS.channel.saving
+                  : SETTINGS.channel.save}
               </button>
             </div>
           </fieldset>

@@ -8,6 +8,8 @@ import {
   type ActorListItem,
   type ActorRef,
 } from "@/lib/actors"
+import { USERS } from "@/lib/admin-content/users"
+import { tpl } from "@/lib/i18n"
 
 type ActorSelectProps = {
   value: string
@@ -22,9 +24,9 @@ function optionLabel(item: ActorListItem): string {
   const parts = [item.actor.channel, item.actor.user_id]
   if (item.actor.channel_scope) parts.push(item.actor.channel_scope)
   const tags: string[] = []
-  if (item.holdingsCount) tags.push(`${item.holdingsCount} 持仓`)
-  if (item.profileCount) tags.push(`${item.profileCount} 画像`)
-  if (item.lastSessionTime) tags.push("会话")
+  if (item.holdingsCount) tags.push(tpl(USERS.select.tag_holdings, { count: item.holdingsCount }))
+  if (item.profileCount) tags.push(tpl(USERS.select.tag_profiles, { count: item.profileCount }))
+  if (item.lastSessionTime) tags.push(USERS.select.tag_sessions)
   return tags.length > 0 ? `${parts.join(" / ")} (${tags.join(", ")})` : parts.join(" / ")
 }
 
@@ -65,13 +67,13 @@ export function ActorSelect(props: ActorSelectProps) {
     >
       <Show
         when={options().length > 0}
-        fallback={<option value="">暂无可选用户</option>}
+        fallback={<option value="">{USERS.select.no_options}</option>}
       >
         <Show when={props.allowAll}>
-          <option value="">{props.allLabel ?? "全部用户"}</option>
+          <option value="">{props.allLabel ?? USERS.select.all_label}</option>
         </Show>
         <Show when={!props.allowAll && !props.value}>
-          <option value="">选择用户</option>
+          <option value="">{USERS.select.placeholder}</option>
         </Show>
         <For each={options()}>
           {(item) => <option value={actorKey(item.actor)}>{optionLabel(item)}</option>}

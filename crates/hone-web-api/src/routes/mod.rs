@@ -54,6 +54,7 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
 
     let api = Router::new()
         .route("/meta", get(meta::handle_meta))
+        .route("/language", put(meta::handle_put_language))
         .route("/auth/sse-ticket", post(auth::handle_sse_ticket))
         .route("/runtime/heartbeat", post(meta::handle_runtime_heartbeat))
         .route("/channels", get(meta::handle_channels))

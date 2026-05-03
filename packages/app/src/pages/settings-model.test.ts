@@ -5,6 +5,7 @@ import {
   appendMaskedKey,
   canSelectRunner,
   defaultAgentSettings,
+  defaultLanguageDraft,
   hiddenApiKeys,
   isAgentSettingsRuntimeMismatch,
   mergeAgentSettings,
@@ -15,6 +16,20 @@ import {
   toggleMaskedKey,
   updateApiKeyList,
 } from "./settings-model"
+import type { MetaInfo } from "@/lib/types"
+
+function metaWithLanguage(language?: "zh" | "en"): MetaInfo {
+  return {
+    name: "Hone",
+    version: "0.0.0-test",
+    channel: "imessage",
+    supportsImessage: false,
+    apiVersion: "desktop-v1",
+    capabilities: [],
+    deploymentMode: "local",
+    language,
+  }
+}
 
 describe("settings-model", () => {
   it("defaults multi-agent answer tool limit to three", () => {
@@ -86,6 +101,14 @@ describe("settings-model", () => {
   it("skips runner auto-save while a runner switch is already saving", () => {
     expect(canSelectRunner("opencode_acp", "multi-agent", true)).toBe(false)
     expect(canSelectRunner("opencode_acp", "multi-agent", false)).toBe(true)
+  })
+
+  it("derives language draft from meta with zh fallback", () => {
+    expect(defaultLanguageDraft(undefined)).toBe("zh")
+    expect(defaultLanguageDraft(null)).toBe("zh")
+    expect(defaultLanguageDraft(metaWithLanguage(undefined))).toBe("zh")
+    expect(defaultLanguageDraft(metaWithLanguage("zh"))).toBe("zh")
+    expect(defaultLanguageDraft(metaWithLanguage("en"))).toBe("en")
   })
 
   it("marks agent save result as runtime mismatch when bundled backend is disconnected", () => {

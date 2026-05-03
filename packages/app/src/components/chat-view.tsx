@@ -18,6 +18,7 @@ import { parseMessageContent } from "@/lib/messages";
 import { resolveSkillSlashCommand } from "@/lib/skill-command";
 import type { PendingState, TimelineMessage } from "@/lib/types";
 import { useSkills } from "@/context/skills";
+import { SESSIONS } from "@/lib/admin-content/sessions";
 
 type ChatRow =
   | {
@@ -61,17 +62,17 @@ function PendingBubble(props: {
   const phaseLabel = () => {
     switch (props.pending.phase) {
       case "queued":
-        return "发送中";
+        return SESSIONS.chat.pending.queued;
       case "thinking":
-        return "思考中";
+        return SESSIONS.chat.pending.thinking;
       case "running":
-        return "执行中";
+        return SESSIONS.chat.pending.running;
       case "streaming":
-        return "输出中";
+        return SESSIONS.chat.pending.streaming;
       case "error":
-        return "出错了";
+        return SESSIONS.chat.pending.error;
       case "timeout":
-        return "请求超时";
+        return SESSIONS.chat.pending.timeout;
     }
   };
 
@@ -115,7 +116,7 @@ function PendingBubble(props: {
                 type="button"
                 onClick={props.onDismiss}
                 class="text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-secondary)] transition-colors"
-                title="关闭"
+                title={SESSIONS.chat.dismiss_title}
               >
                 ✕
               </button>
@@ -126,10 +127,10 @@ function PendingBubble(props: {
               type="button"
               onClick={props.onStop}
               class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[color:var(--text-muted)] transition-colors hover:bg-rose-500/10 hover:text-rose-400"
-              title="停止"
+              title={SESSIONS.chat.stop_title}
             >
               <span class="h-1.5 w-1.5 rounded-sm bg-current" />
-              停止
+              {SESSIONS.chat.stop_button}
             </button>
           </Show>
         </div>
@@ -202,7 +203,7 @@ function MessageBubble(props: { message: TimelineMessage }) {
   if (isCompactBoundary()) {
     return (
       <div class="mx-auto py-2 text-center text-xs tracking-[0.14em] text-[color:var(--text-muted)]">
-        Conversation compacted
+        {SESSIONS.chat.conversation_compacted}
       </div>
     );
   }
@@ -217,7 +218,7 @@ function MessageBubble(props: { message: TimelineMessage }) {
     >
       <Show when={props.message.kind === "scheduled"}>
         <div class="mb-2 text-xs uppercase tracking-[0.2em] text-[color:var(--accent)]">
-          定时任务 {scheduledLabel() ? `· ${scheduledLabel()}` : ""}
+          {SESSIONS.chat.scheduled_label} {scheduledLabel() ? `· ${scheduledLabel()}` : ""}
         </div>
       </Show>
       <For each={parseMessageContent(props.message.content)}>
@@ -407,8 +408,8 @@ export function ChatView(props: { userId?: string }) {
       when={props.userId}
       fallback={
         <EmptyState
-          title="从左侧打开一个会话"
-          description="你可以查看共享会话历史，或者新建一个用户会话开始和 Hone 对话。"
+          title={SESSIONS.chat.empty_open_title}
+          description={SESSIONS.chat.empty_open_description}
         />
       }
     >
@@ -420,8 +421,8 @@ export function ChatView(props: { userId?: string }) {
             </div>
             <div class="mt-0.5 text-xs text-[color:var(--text-muted)]">
               {currentSession()?.session_kind === "group"
-                ? "共享群 session 历史（当前为只读浏览）"
-                : "实时流式响应与定时消息推送"}
+                ? SESSIONS.chat.header_subtitle_group
+                : SESSIONS.chat.header_subtitle_direct}
             </div>
           </div>
           <div class="flex items-center gap-2 text-sm text-[color:var(--text-secondary)]">
@@ -430,12 +431,12 @@ export function ChatView(props: { userId?: string }) {
               fallback={
                 <>
             <span class="h-2.5 w-2.5 rounded-full bg-[color:var(--success)]" />
-            在线
+            {SESSIONS.chat.status_online}
                 </>
               }
             >
               <span class="h-2.5 w-2.5 rounded-full bg-[color:var(--accent)] animate-pulse" />
-              <span class="text-[color:var(--accent)]">处理中</span>
+              <span class="text-[color:var(--accent)]">{SESSIONS.chat.status_processing}</span>
             </Show>
           </div>
         </div>
@@ -445,8 +446,8 @@ export function ChatView(props: { userId?: string }) {
             when={rows().length > 0}
             fallback={
               <EmptyState
-                title="暂无历史消息"
-                description="先发送一条消息，或者等待定时任务推送。"
+                title={SESSIONS.chat.no_messages_title}
+                description={SESSIONS.chat.no_messages_hint}
               />
             }
           >
@@ -480,7 +481,7 @@ export function ChatView(props: { userId?: string }) {
                 {(command) => (
                   <div class="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-2xl border border-[color:var(--border-strong)] bg-[color:var(--surface)] shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
                     <div class="border-b border-[color:var(--border)] px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--accent)]">
-                      Slash
+                      {SESSIONS.chat.slash_eyebrow}
                     </div>
                     <Show when={command().command.stage === "command"}>
                       <button
@@ -490,10 +491,10 @@ export function ChatView(props: { userId?: string }) {
                       >
                         <div class="flex items-center justify-between gap-3">
                           <div class="font-medium text-[color:var(--text-primary)]">
-                            /skill
+                            {SESSIONS.chat.slash_skill_search_label}
                           </div>
                           <div class="text-xs text-[color:var(--text-muted)]">
-                            搜索并触发技能
+                            {SESSIONS.chat.slash_skill_search_hint}
                           </div>
                         </div>
                       </button>
@@ -503,7 +504,7 @@ export function ChatView(props: { userId?: string }) {
                         when={command().matches.length > 0}
                         fallback={
                           <div class="px-4 py-3 text-sm text-[color:var(--text-secondary)]">
-                            没有找到匹配技能，继续输入更准确的关键词。
+                            {SESSIONS.chat.slash_no_match}
                           </div>
                         }
                       >
@@ -529,7 +530,7 @@ export function ChatView(props: { userId?: string }) {
                               </div>
                               <Show when={skill.aliases.length > 0}>
                                 <div class="mt-2 text-xs text-[color:var(--text-muted)]">
-                                  aliases: {skill.aliases.join(", ")}
+                                  {SESSIONS.chat.slash_aliases_prefix} {skill.aliases.join(", ")}
                                 </div>
                               </Show>
                             </button>
@@ -553,7 +554,7 @@ export function ChatView(props: { userId?: string }) {
                     void submitDraft();
                   }
                 }}
-                placeholder='给 Hone 发消息，或输入 "/skill 关键词" 搜索并触发技能...'
+                placeholder={SESSIONS.chat.composer_placeholder}
               />
             </div>
             <Show
@@ -568,7 +569,7 @@ export function ChatView(props: { userId?: string }) {
                       !slashSkill()?.command.query)
                   }
                 >
-                  发送
+                  {SESSIONS.chat.send_button}
                 </Button>
               }
             >
@@ -579,7 +580,7 @@ export function ChatView(props: { userId?: string }) {
                 onClick={handleStop}
               >
                 <span class="h-2 w-2 rounded-sm bg-current" />
-                停止
+                {SESSIONS.chat.stop_button}
               </Button>
             </Show>
           </div>

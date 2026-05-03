@@ -16,6 +16,8 @@ import {
   stopDesktopBundledBackend,
   supportsApiVersion,
 } from "@/lib/backend"
+import { hasLocaleOverride, setLocale } from "@/lib/i18n"
+import { putLanguage } from "@/lib/api"
 import type {
   AgentSettings,
   AgentSettingsUpdateResult,
@@ -25,6 +27,23 @@ import type {
   DesktopChannelSettingsUpdateResult,
   MetaInfo,
 } from "@/lib/types"
+
+let _localeBootstrapped = false
+
+/**
+ * Seed the global locale signal from the backend's configured `language`,
+ * but only on the very first successful meta fetch and only if the operator
+ * hasn't already pinned a per-device override via the sidebar switcher.
+ */
+function applyMetaLocaleBootstrap(meta?: MetaInfo): void {
+  if (_localeBootstrapped) return
+  if (!meta) return
+  const lang = meta.language
+  if (lang !== "zh" && lang !== "en") return
+  _localeBootstrapped = true
+  if (hasLocaleOverride()) return
+  setLocale(lang)
+}
 
 type LegacyMetaInfo = MetaInfo & {
   api_version?: string
@@ -93,6 +112,7 @@ function createBackendState() {
     connected: boolean
     error?: string
   }) => {
+    applyMetaLocaleBootstrap(input.meta)
     const compatible = input.meta ? supportsApiVersion(input.meta.apiVersion) : true
     const error =
       input.error ||
@@ -318,6 +338,12 @@ function createBackendState() {
       } finally {
         setState("saving", false)
       }
+    },
+    async saveLanguage(next: "zh" | "en"): Promise<"zh" | "en"> {
+      const stored = await putLanguage(next)
+      setLocale(stored)
+      setState("meta", (prev) => (prev ? { ...prev, language: stored } : prev))
+      return stored
     },
     async saveChannelSettings(settings: DesktopChannelSettingsInput): Promise<DesktopChannelSettingsUpdateResult> {
       if (!state.isDesktop) {

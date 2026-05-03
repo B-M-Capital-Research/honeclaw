@@ -17,6 +17,8 @@
 
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 
+use crate::i18n::{Lang, t, tpl};
+
 /// 必填项为空时,用户的 2 选 1 决策。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RequiredFieldEmptyAction {
@@ -127,14 +129,11 @@ pub(crate) fn prompt_bool(
 /// `keep_note=true` 会在提示里追加「留空保持现有值」。
 pub(crate) fn prompt_secret(
     theme: &ColorfulTheme,
+    lang: Lang,
     prompt: &str,
     keep_note: bool,
 ) -> Result<Option<String>, String> {
-    let prompt = if keep_note {
-        format!("{prompt}（留空保持现有值）")
-    } else {
-        prompt.to_string()
-    };
+    let prompt = decorate_keep_note_prompt(lang, prompt, keep_note);
     let value = Password::with_theme(theme)
         .with_prompt(prompt)
         .allow_empty_password(true)
@@ -147,15 +146,12 @@ pub(crate) fn prompt_secret(
 /// 与 [`prompt_secret`] 的区别：输入时显示、允许预填 `current`。
 pub(crate) fn prompt_visible_credential(
     theme: &ColorfulTheme,
+    lang: Lang,
     prompt: &str,
     keep_note: bool,
     current: &str,
 ) -> Result<Option<String>, String> {
-    let prompt = if keep_note {
-        format!("{prompt}（留空保持现有值）")
-    } else {
-        prompt.to_string()
-    };
+    let prompt = decorate_keep_note_prompt(lang, prompt, keep_note);
     let mut input = Input::<String>::with_theme(theme);
     input = input.with_prompt(prompt).allow_empty(true);
     if !current.is_empty() {
@@ -163,6 +159,18 @@ pub(crate) fn prompt_visible_credential(
     }
     let value = input.interact_text().map_err(|e| e.to_string())?;
     Ok(normalize_credential_value_opt(Some(&value)))
+}
+
+/// `prompt` 后追加一段「留空保持现有值」的提示。
+fn decorate_keep_note_prompt(lang: Lang, prompt: &str, keep_note: bool) -> String {
+    if !keep_note {
+        return prompt.to_string();
+    }
+    let suffix = match lang {
+        Lang::Zh => "（留空保持现有值）",
+        Lang::En => " (leave blank to keep existing)",
+    };
+    format!("{prompt}{suffix}")
 }
 
 pub(crate) fn prompt_select_index(
@@ -182,16 +190,23 @@ pub(crate) fn prompt_select_index(
 /// 必填项为空时让用户选:重试 / 回退并禁用整个渠道。
 pub(crate) fn prompt_channel_recovery_action(
     theme: &ColorfulTheme,
+    lang: Lang,
     channel_label: &str,
     field_label: &str,
 ) -> Result<RequiredFieldEmptyAction, String> {
     let items = vec![
-        "重试当前字段".to_string(),
-        format!("返回并禁用 {channel_label} 渠道"),
+        t(lang, "recovery.option_retry").to_string(),
+        tpl(
+            t(lang, "recovery.option_disable_channel"),
+            &[("label", &channel_label)],
+        ),
     ];
     let idx = prompt_select_index(
         theme,
-        &format!("{channel_label} 的必填项“{field_label}”为空，下一步？"),
+        &tpl(
+            t(lang, "recovery.channel_required_empty_prompt"),
+            &[("label", &channel_label), ("field", &field_label)],
+        ),
         &items,
         0,
     )?;
@@ -204,15 +219,22 @@ pub(crate) fn prompt_channel_recovery_action(
 /// Provider API key 为空时让用户选:重试 / 本轮跳过。
 pub(crate) fn prompt_provider_recovery_action(
     theme: &ColorfulTheme,
+    lang: Lang,
     provider_label: &str,
 ) -> Result<ProviderEmptyAction, String> {
     let items = vec![
-        "重试当前字段".to_string(),
-        format!("跳过 {provider_label} API key 配置"),
+        t(lang, "recovery.option_retry").to_string(),
+        tpl(
+            t(lang, "recovery.option_provider_skip"),
+            &[("label", &provider_label)],
+        ),
     ];
     let idx = prompt_select_index(
         theme,
-        &format!("{provider_label} API key 为空，下一步？"),
+        &tpl(
+            t(lang, "recovery.provider_empty_prompt"),
+            &[("label", &provider_label)],
+        ),
         &items,
         0,
     )?;

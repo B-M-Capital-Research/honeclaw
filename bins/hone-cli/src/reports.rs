@@ -317,7 +317,10 @@ pub(crate) async fn build_doctor_report(config_path: Option<&Path>) -> DoctorRep
                         detail: "配置解析成功".to_string(),
                     });
                     if non_empty(&config.discord.bot_token) {
-                        checks.push(discord_token_doctor_check(&config.discord.bot_token));
+                        checks.push(discord_token_doctor_check(
+                            crate::i18n::Lang::from_locale(config.language),
+                            &config.discord.bot_token,
+                        ));
                     }
                     if let Some(parent) = loaded_paths.canonical_config_path.parent() {
                         let readonly = std::fs::metadata(parent)

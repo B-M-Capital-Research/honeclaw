@@ -6,6 +6,8 @@ import { Portal } from "solid-js/web"
 import { useNavigate, useSearchParams } from "@solidjs/router"
 import { useResearch } from "@/context/research"
 import type { ResearchTask } from "@/lib/types"
+import { RESEARCH } from "@/lib/admin-content/research"
+import { useLocale } from "@/lib/i18n"
 
 // ── 状态徽章 ──────────────────────────────────────────────────────────────────
 
@@ -14,21 +16,21 @@ function StatusBadge(props: { task: ResearchTask }) {
     switch (props.task.status) {
       case "completed":
         if (props.task.answer_markdown) {
-          return { label: "报告就绪", dot: "bg-[color:var(--success)]", text: "text-[color:var(--success)]" }
+          return { label: RESEARCH.list.status.report_ready, dot: "bg-[color:var(--success)]", text: "text-[color:var(--success)]" }
         }
-        return { label: "完成", dot: "bg-[color:var(--success)]", text: "text-[color:var(--success)]" }
+        return { label: RESEARCH.list.status.completed, dot: "bg-[color:var(--success)]", text: "text-[color:var(--success)]" }
       case "running":
         return {
-          label: props.task.progress || "运行中",
+          label: props.task.progress || RESEARCH.list.status.running,
           dot: "bg-blue-400 animate-pulse",
           text: "text-blue-500",
         }
       case "pending":
-        return { label: "等待中", dot: "bg-black/15", text: "text-[color:var(--text-muted)]" }
+        return { label: RESEARCH.list.status.pending, dot: "bg-black/15", text: "text-[color:var(--text-muted)]" }
       case "error":
-        return { label: "异常", dot: "bg-rose-500", text: "text-rose-500" }
+        return { label: RESEARCH.list.status.error, dot: "bg-rose-500", text: "text-rose-500" }
       default:
-        return { label: "未知", dot: "bg-black/15", text: "text-[color:var(--text-muted)]" }
+        return { label: RESEARCH.list.status.unknown, dot: "bg-black/15", text: "text-[color:var(--text-muted)]" }
     }
   }
 
@@ -93,7 +95,8 @@ export function ResearchList() {
   const formatTime = (iso?: string) => {
     if (!iso) return ""
     try {
-      return new Date(iso).toLocaleString("zh-CN", {
+      const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
+      return new Date(iso).toLocaleString(loc, {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
@@ -108,14 +111,14 @@ export function ResearchList() {
     <div class="flex h-full min-h-0 w-[260px] flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
       {/* 头部：标题 + 输入框 */}
       <div class="border-b border-[color:var(--border)] px-4 py-3">
-        <div class="text-sm font-semibold tracking-tight">个股深度研究</div>
-        <div class="text-xs text-[color:var(--text-muted)] mt-0.5">输入公司名启动 AI 研究报告</div>
+        <div class="text-sm font-semibold tracking-tight">{RESEARCH.list.title}</div>
+        <div class="text-xs text-[color:var(--text-muted)] mt-0.5">{RESEARCH.list.subtitle}</div>
         <div class="mt-3 flex gap-2">
           <Input
             class="h-8 text-xs flex-1"
             value={companyInput()}
             onInput={(e) => setCompanyInput(e.currentTarget.value)}
-            placeholder="直接输入 公司的名字"
+            placeholder={RESEARCH.list.input_placeholder}
             disabled={starting()}
           />
           <Button
@@ -123,7 +126,7 @@ export function ResearchList() {
             onClick={handleConfirmOpen}
             disabled={!companyInput().trim() || starting()}
           >
-            {starting() ? "启动中" : "研究"}
+            {starting() ? RESEARCH.list.starting_button : RESEARCH.list.start_button}
           </Button>
         </div>
         <Show when={research.state.submitError}>
@@ -142,9 +145,9 @@ export function ResearchList() {
               class="w-[320px] rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5 shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div class="text-sm font-semibold text-[color:var(--text-primary)] mb-1">确认启动深度研究</div>
+              <div class="text-sm font-semibold text-[color:var(--text-primary)] mb-1">{RESEARCH.list.confirm_title}</div>
               <div class="text-xs text-[color:var(--text-muted)] mb-4">
-                即将对以下公司启动 AI 深度研究，该过程大约需要 1-2 小时：
+                {RESEARCH.list.confirm_description}
               </div>
               <div class="rounded-lg bg-[color:var(--accent-soft)] border border-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-[color:var(--accent)] text-center mb-5">
                 {confirmName()}
@@ -155,13 +158,13 @@ export function ResearchList() {
                   variant="outline"
                   onClick={handleCancel}
                 >
-                  取消
+                  {RESEARCH.list.confirm_cancel}
                 </Button>
                 <Button
                   class="h-8 px-4 text-xs"
                   onClick={() => void handleConfirm()}
                 >
-                  确认，开始研究
+                  {RESEARCH.list.confirm_submit}
                 </Button>
               </div>
             </div>
@@ -175,8 +178,8 @@ export function ResearchList() {
           when={research.state.tasks.length > 0}
           fallback={
             <EmptyState
-              title="暂无研究记录"
-              description="在上方输入公司名称，启动深度研究"
+              title={RESEARCH.list.empty_title}
+              description={RESEARCH.list.empty_description}
             />
           }
         >

@@ -96,6 +96,8 @@ export type MetaInfo = {
   apiVersion: string;
   capabilities: string[];
   deploymentMode: "local" | "remote";
+  /** Admin/console default UI language. "zh" or "en". Optional for backwards compat with older backends. */
+  language?: "zh" | "en";
 };
 
 export type BackendConfig = {

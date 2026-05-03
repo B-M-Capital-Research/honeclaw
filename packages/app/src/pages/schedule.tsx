@@ -7,10 +7,16 @@ import {
   type ScheduleSource,
 } from "@/lib/api"
 import { actorKey as uiActorKey, type ActorRef } from "@/lib/actors"
+import { SCHEDULE } from "@/lib/admin-content/schedule"
+import { tpl } from "@/lib/i18n"
 
-const SOURCE_LABEL: Record<ScheduleSource, string> = {
-  digest: "Digest",
-  cron_job: "自定义",
+function sourceLabel(s: ScheduleSource): string {
+  switch (s) {
+    case "digest":
+      return SCHEDULE.source.digest
+    case "cron_job":
+      return SCHEDULE.source.cron_job
+  }
 }
 
 function sourceBadgeClass(s: ScheduleSource): string {
@@ -40,7 +46,7 @@ export default function SchedulePage() {
 
   async function refresh(actor = selectedActor()) {
     if (!actor) {
-      setErr("请选择用户")
+      setErr(SCHEDULE.page.err_pick_user)
       setOverview(null)
       return
     }
@@ -61,10 +67,10 @@ export default function SchedulePage() {
     <div class="flex h-full min-h-0 flex-col gap-4 p-4 text-sm">
       <div class="flex flex-wrap items-center gap-3">
         <h1 class="text-lg font-semibold text-[color:var(--text-primary)]">
-          推送日程
+          {SCHEDULE.page.title}
         </h1>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>用户</span>
+          <span>{SCHEDULE.page.user_label}</span>
           <ActorSelect
             value={selectedActor() ? uiActorKey(selectedActor()!) : ""}
             onChange={(actor) => {
@@ -80,7 +86,7 @@ export default function SchedulePage() {
           disabled={loading()}
           class="rounded border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--text-primary)] hover:bg-white/5 disabled:opacity-50"
         >
-          {loading() ? "加载中…" : "查询"}
+          {loading() ? SCHEDULE.page.loading_button : SCHEDULE.page.query_button}
         </button>
       </div>
 
@@ -95,24 +101,24 @@ export default function SchedulePage() {
           <div class="flex flex-col gap-4">
             <div class="flex flex-wrap gap-3 text-xs">
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
-                <div class="text-[color:var(--text-muted)]">actor</div>
+                <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.actor}</div>
                 <div class="font-mono text-[color:var(--text-primary)]">
                   {data().actor}
                 </div>
               </div>
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
-                <div class="text-[color:var(--text-muted)]">时区</div>
+                <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.timezone}</div>
                 <div class="text-[color:var(--text-primary)]">
                   {data().timezone}
                 </div>
               </div>
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
-                <div class="text-[color:var(--text-muted)]">勿扰时段</div>
+                <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.quiet_hours}</div>
                 <div class="text-[color:var(--text-primary)]">
                   <Show
                     when={data().quiet_hours}
                     fallback={
-                      <span class="text-[color:var(--text-muted)]">未启用</span>
+                      <span class="text-[color:var(--text-muted)]">{SCHEDULE.card.quiet_disabled}</span>
                     }
                   >
                     {(qh) => (
@@ -120,7 +126,7 @@ export default function SchedulePage() {
                         🌙 {qh().from} – {qh().to}
                         <Show when={qh().exempt_kinds.length > 0}>
                           <span class="ml-2 text-[color:var(--text-muted)]">
-                            豁免: {qh().exempt_kinds.join(", ")}
+                            {tpl(SCHEDULE.card.quiet_exempt_prefix, { kinds: qh().exempt_kinds.join(", ") })}
                           </span>
                         </Show>
                       </>
@@ -129,17 +135,16 @@ export default function SchedulePage() {
                 </div>
               </div>
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
-                <div class="text-[color:var(--text-muted)]">即时推</div>
+                <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.immediate}</div>
                 <div class="text-[color:var(--text-primary)]">
-                  {data().immediate.enabled ? "✅ 启用" : "❌ 已 disable"}
-                  {" · 最低: "}
+                  {data().immediate.enabled ? SCHEDULE.card.immediate_enabled : SCHEDULE.card.immediate_disabled}
+                  {SCHEDULE.card.immediate_min_prefix}
                   {data().immediate.min_severity}
                   <Show when={data().immediate.portfolio_only}>
-                    {" · 仅持仓"}
+                    {SCHEDULE.card.immediate_only_portfolio}
                   </Show>
                   <Show when={data().immediate.price_high_pct != null}>
-                    {" · 价格阈值 "}
-                    {data().immediate.price_high_pct}%
+                    {tpl(SCHEDULE.card.immediate_price_threshold, { pct: data().immediate.price_high_pct ?? "" })}
                   </Show>
                 </div>
               </div>
@@ -149,12 +154,12 @@ export default function SchedulePage() {
               <table class="min-w-full text-xs">
                 <thead class="bg-white/5 text-[color:var(--text-muted)]">
                   <tr>
-                    <th class="px-3 py-2 text-left">时刻</th>
-                    <th class="px-3 py-2 text-left">类型</th>
-                    <th class="px-3 py-2 text-left">内容</th>
-                    <th class="px-3 py-2 text-left">频率</th>
-                    <th class="px-3 py-2 text-left">当日生效</th>
-                    <th class="px-3 py-2 text-left">操作提示</th>
+                    <th class="px-3 py-2 text-left">{SCHEDULE.table.col_time}</th>
+                    <th class="px-3 py-2 text-left">{SCHEDULE.table.col_type}</th>
+                    <th class="px-3 py-2 text-left">{SCHEDULE.table.col_content}</th>
+                    <th class="px-3 py-2 text-left">{SCHEDULE.table.col_freq}</th>
+                    <th class="px-3 py-2 text-left">{SCHEDULE.table.col_active}</th>
+                    <th class="px-3 py-2 text-left">{SCHEDULE.table.col_hint}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -166,7 +171,7 @@ export default function SchedulePage() {
                           colspan="6"
                           class="px-3 py-6 text-center text-[color:var(--text-muted)]"
                         >
-                          无定时推送（所有事件走即时推）
+                          {SCHEDULE.table.empty}
                         </td>
                       </tr>
                     }
@@ -181,7 +186,7 @@ export default function SchedulePage() {
                             <span
                               class={`rounded px-2 py-0.5 text-xs ${sourceBadgeClass(e.source)}`}
                             >
-                              {SOURCE_LABEL[e.source]}
+                              {sourceLabel(e.source)}
                             </span>
                           </td>
                           <td class="px-3 py-2 text-[color:var(--text-primary)]">
@@ -195,10 +200,10 @@ export default function SchedulePage() {
                               class={`rounded px-2 py-0.5 text-xs ${activeCellClass(e.will_be_held_by_quiet)}`}
                             >
                               {e.will_be_held_by_quiet
-                                ? "🌙 被静音吞"
+                                ? SCHEDULE.table.cell_quiet_held
                                 : e.bypass_quiet_hours
-                                  ? "✅ 强制不静音"
-                                  : "✅"}
+                                  ? SCHEDULE.table.cell_bypass_quiet
+                                  : SCHEDULE.table.cell_active}
                             </span>
                           </td>
                           <td class="px-3 py-2 font-mono text-[10px] text-[color:var(--text-muted)]">
@@ -223,7 +228,7 @@ export default function SchedulePage() {
               <div class="rounded border border-[color:var(--border)] bg-white/5 p-3 text-xs text-[color:var(--text-muted)]">
                 <Show when={data().immediate.blocked_kinds.length > 0}>
                   <div>
-                    屏蔽 kind:{" "}
+                    {SCHEDULE.filters.blocked_kinds}
                     <span class="text-[color:var(--text-primary)]">
                       {data().immediate.blocked_kinds.join(", ")}
                     </span>
@@ -236,7 +241,7 @@ export default function SchedulePage() {
                   }
                 >
                   <div>
-                    仅允许 kind:{" "}
+                    {SCHEDULE.filters.allow_kinds}
                     <span class="text-[color:var(--text-primary)]">
                       {data().immediate.allow_kinds!.join(", ")}
                     </span>
@@ -244,7 +249,7 @@ export default function SchedulePage() {
                 </Show>
                 <Show when={data().immediate.exempt_in_quiet.length > 0}>
                   <div>
-                    静音期间豁免:{" "}
+                    {SCHEDULE.filters.exempt_in_quiet}
                     <span class="text-[color:var(--text-primary)]">
                       {data().immediate.exempt_in_quiet.join(", ")}
                     </span>

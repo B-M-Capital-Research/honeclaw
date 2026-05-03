@@ -13,6 +13,8 @@ import type { LogEntry } from "@/lib/types"
 import { useBackend } from "@/context/backend"
 import { EntityRefLink } from "@/components/entity-ref-link"
 import { extractLogRefs, logMatchesUser } from "@/lib/log-refs"
+import { LOGS } from "@/lib/admin-content/logs"
+import { tpl } from "@/lib/i18n"
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -192,13 +194,13 @@ export default function LogsPage() {
         when={backend.hasCapability("logs")}
         fallback={
           <div class="flex h-full items-center justify-center rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] text-sm text-[color:var(--text-secondary)]">
-            当前 backend 未开放日志能力。
+            {LOGS.capability.unavailable}
           </div>
         }
       >
         {/* 工具栏 */}
         <div class="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-2.5">
-          <span class="text-sm font-semibold text-[color:var(--text-primary)] mr-1">日志</span>
+          <span class="text-sm font-semibold text-[color:var(--text-primary)] mr-1">{LOGS.toolbar.title}</span>
 
           {/* 级别过滤 */}
           <div class="flex gap-1.5 flex-wrap">
@@ -230,7 +232,7 @@ export default function LogsPage() {
           {/* 搜索 */}
           <input
             type="text"
-            placeholder="搜索日志…"
+            placeholder={LOGS.toolbar.search_placeholder}
             class="w-40 rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1 text-xs text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)] outline-none focus:border-[color:var(--accent)] transition"
             value={search()}
             onInput={(e) => setSearch(e.currentTarget.value)}
@@ -239,11 +241,11 @@ export default function LogsPage() {
           {/* 按用户筛选 */}
           <input
             type="text"
-            placeholder="按 user_id 筛选…"
+            placeholder={LOGS.toolbar.user_filter_placeholder}
             class="w-36 rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1 text-xs text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)] outline-none focus:border-[color:var(--accent)] transition"
             value={userFilter()}
             onInput={(e) => setUserFilter(e.currentTarget.value)}
-            title="只显示与该用户相关的日志(匹配结构化 actor 或 message 文本)"
+            title={LOGS.toolbar.user_filter_title}
           />
 
           {/* 操作按钮 */}
@@ -266,7 +268,7 @@ export default function LogsPage() {
                   <polygon points="5 3 19 12 5 21 5 3" />
                 </svg>
               </Show>
-              {paused() ? "继续" : "暂停"}
+              {paused() ? LOGS.toolbar.resume_button : LOGS.toolbar.pause_button}
             </button>
 
             <button
@@ -278,11 +280,11 @@ export default function LogsPage() {
                 <path d="M19 6l-1 14H6L5 6" />
                 <path d="M9 6V4h6v2" />
               </svg>
-              清空
+              {LOGS.toolbar.clear_button}
             </button>
 
             <span class="text-[11px] text-[color:var(--text-muted)]">
-              {filtered().length} 条
+              {tpl(LOGS.toolbar.count_label, { count: filtered().length })}
             </span>
 
             {/* 实时连接指示器 */}
@@ -294,7 +296,7 @@ export default function LogsPage() {
                 ].join(" ")}
               />
               <span class="text-[11px] text-[color:var(--text-muted)]">
-                {connected() ? "实时" : "断开"}
+                {connected() ? LOGS.toolbar.status_live : LOGS.toolbar.status_disconnected}
               </span>
             </div>
           </div>
@@ -316,7 +318,7 @@ export default function LogsPage() {
                   <line x1="16" y1="13" x2="8" y2="13" />
                   <line x1="16" y1="17" x2="8" y2="17" />
                 </svg>
-                <span class="font-sans text-sm">暂无匹配日志</span>
+                <span class="font-sans text-sm">{LOGS.list.empty}</span>
               </div>
             }
           >
@@ -402,7 +404,7 @@ export default function LogsPage() {
                     })()}
                     <Show when={entry.message_id}>
                       <span class="text-[9px] text-[color:var(--text-muted)] font-mono opacity-60 mt-0.5">
-                        MSG_ID: {entry.message_id}
+                        {tpl(LOGS.list.msg_id_prefix, { id: entry.message_id ?? "" })}
                       </span>
                     </Show>
                   </div>

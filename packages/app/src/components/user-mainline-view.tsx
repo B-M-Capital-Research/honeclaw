@@ -17,17 +17,22 @@ import {
   type AdminMainlineContext,
 } from "@/lib/api"
 import type { ActorRef } from "@/lib/actors"
+import { USERS } from "@/lib/admin-content/users"
+import { tpl, useLocale } from "@/lib/i18n"
 
 function formatTimestamp(iso: string | null): string {
-  if (!iso) return "尚未蒸馏"
+  if (!iso) return USERS.mainline.not_distilled
   try {
     const dt = new Date(iso)
     const days = Math.floor((Date.now() - dt.getTime()) / (24 * 3600 * 1000))
+    const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
     if (days === 0)
-      return `今天 ${dt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`
-    if (days === 1) return "1 天前"
-    if (days < 7) return `${days} 天前`
-    return dt.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" })
+      return tpl(USERS.mainline.today_at, {
+        time: dt.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" }),
+      })
+    if (days === 1) return USERS.mainline.days_ago_one
+    if (days < 7) return tpl(USERS.mainline.days_ago_other, { count: days })
+    return dt.toLocaleDateString(loc, { year: "numeric", month: "short", day: "numeric" })
   } catch {
     return iso
   }
@@ -77,7 +82,7 @@ function ProfileMarkdownModal(props: {
           onClick={(e) => e.stopPropagation()}
         >
           <div class="flex items-center justify-between border-b border-[color:var(--border)] px-5 py-3">
-            <div class="text-sm font-semibold">{props.ticker} · 公司画像</div>
+            <div class="text-sm font-semibold">{props.ticker}{USERS.mainline.modal_title_suffix}</div>
             <button
               type="button"
               class="text-lg text-[color:var(--text-muted)]"
@@ -88,7 +93,7 @@ function ProfileMarkdownModal(props: {
           </div>
           <div class="overflow-auto px-6 py-5 text-sm leading-7 text-[color:var(--text-primary)]">
             <Show when={loading()}>
-              <div class="text-[color:var(--text-muted)]">加载中…</div>
+              <div class="text-[color:var(--text-muted)]">{USERS.mainline.loading}</div>
             </Show>
             <Show when={error()}>
               <div class="text-red-400">{error()}</div>
@@ -98,7 +103,7 @@ function ProfileMarkdownModal(props: {
             </Show>
           </div>
           <div class="border-t border-[color:var(--border)] bg-[color:var(--surface-elevated,rgba(0,0,0,0.2))] px-5 py-2 text-xs text-[color:var(--text-muted)]">
-            画像由用户在 chat 里通过 company_portrait skill 维护,read-only。
+            {USERS.mainline.modal_footer}
           </div>
         </div>
       </div>
@@ -142,11 +147,18 @@ export function UserMainlineView(props: { actor: ActorRef }) {
     try {
       const r = await adminTriggerMainlineDistill(props.actor)
       setRefreshMsg(
-        `蒸馏完成:${r.mainline_count} 条投资主线,跳过 ${r.skipped_tickers.length} 只`,
+        tpl(USERS.mainline.distill_success, {
+          count: r.mainline_count,
+          skipped: r.skipped_tickers.length,
+        }),
       )
       await load()
     } catch (e) {
-      setRefreshMsg(`蒸馏失败:${e instanceof Error ? e.message : String(e)}`)
+      setRefreshMsg(
+        tpl(USERS.mainline.distill_failure, {
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      )
     } finally {
       setRefreshing(false)
     }
@@ -170,11 +182,11 @@ export function UserMainlineView(props: { actor: ActorRef }) {
   return (
     <div class="h-full overflow-auto p-6">
       <Show when={loading()}>
-        <div class="text-sm text-[color:var(--text-muted)]">加载中…</div>
+        <div class="text-sm text-[color:var(--text-muted)]">{USERS.mainline.loading}</div>
       </Show>
       <Show when={error()}>
         <div class="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          加载失败:{error()}
+          {tpl(USERS.mainline.load_error, { error: error() ?? "" })}
         </div>
       </Show>
 
@@ -184,13 +196,13 @@ export function UserMainlineView(props: { actor: ActorRef }) {
             {/* meta + 刷新 */}
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div class="text-xs text-[color:var(--text-muted)]">
-                上次蒸馏:
+                {USERS.mainline.last_distilled_label}
                 <span class="text-[color:var(--text-primary)]">
                   {formatTimestamp(c().last_mainline_distilled_at)}
                 </span>
                 <Show when={c().mainline_distill_skipped.length > 0}>
                   <span class="ml-4">
-                    跳过 {c().mainline_distill_skipped.length} 只:
+                    {tpl(USERS.mainline.skipped_prefix, { count: c().mainline_distill_skipped.length })}
                     <span class="ml-1 font-mono text-amber-400">
                       {c().mainline_distill_skipped.join(", ")}
                     </span>
@@ -203,7 +215,7 @@ export function UserMainlineView(props: { actor: ActorRef }) {
                 disabled={refreshing()}
                 class="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
-                {refreshing() ? "蒸馏中…" : "立即触发蒸馏"}
+                {refreshing() ? USERS.mainline.distilling_button : USERS.mainline.distill_button}
               </button>
             </div>
             <Show when={refreshMsg()}>
@@ -215,14 +227,14 @@ export function UserMainlineView(props: { actor: ActorRef }) {
             {/* 整体投资风格 */}
             <div class="mb-4 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
               <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
-                整体投资风格
+                {USERS.mainline.style_title}
               </div>
               <div class="text-sm leading-7 text-[color:var(--text-primary)]">
                 <Show
                   when={c().mainline_style}
                   fallback={
                     <span class="text-[color:var(--text-muted)]">
-                      尚未蒸馏 — 至少需要一个公司画像。
+                      {USERS.mainline.style_empty}
                     </span>
                   }
                 >
@@ -233,13 +245,13 @@ export function UserMainlineView(props: { actor: ActorRef }) {
 
             {/* 持仓投资主线卡片 */}
             <div class="mb-2 text-sm font-semibold">
-              各持仓投资主线 ({c().holdings.length})
+              {tpl(USERS.mainline.holdings_title, { count: c().holdings.length })}
             </div>
             <Show
               when={c().holdings.length > 0}
               fallback={
                 <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-                  该 actor 持仓为空。
+                  {USERS.mainline.holdings_empty}
                 </div>
               }
             >
@@ -265,7 +277,7 @@ export function UserMainlineView(props: { actor: ActorRef }) {
                               class="rounded border border-[color:var(--border)] px-2 py-0.5 text-[11px] hover:border-[color:var(--accent)]"
                               onClick={() => openProfile(ticker)}
                             >
-                              查看画像
+                              {USERS.mainline.view_profile}
                             </button>
                           </Show>
                         </div>
@@ -277,15 +289,15 @@ export function UserMainlineView(props: { actor: ActorRef }) {
                                 when={hasProfile}
                                 fallback={
                                   <>
-                                    <span class="font-semibold text-amber-400">没有公司画像</span>
-                                    {" — "}用户需在 chat 里建档。
+                                    <span class="font-semibold text-amber-400">{USERS.mainline.no_profile_label}</span>
+                                    {USERS.mainline.no_profile_hint}
                                   </>
                                 }
                               >
                                 <span class="font-semibold text-amber-400">
-                                  画像存在但投资主线蒸馏失败
+                                  {USERS.mainline.profile_distill_failed}
                                 </span>
-                                {isSkipped ? "(上次跳过)" : ""},点"立即触发蒸馏"重试。
+                                {isSkipped ? USERS.mainline.skipped_last_run : ""}{USERS.mainline.retry_hint}
                               </Show>
                             </div>
                           }
@@ -303,13 +315,13 @@ export function UserMainlineView(props: { actor: ActorRef }) {
 
             {/* 画像 inventory */}
             <div class="mb-2 text-sm font-semibold">
-              公司画像 inventory ({c().profile_list.length})
+              {tpl(USERS.mainline.profile_inventory_title, { count: c().profile_list.length })}
             </div>
             <Show
               when={c().profile_list.length > 0}
               fallback={
                 <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-                  该 actor sandbox 里还没有任何公司画像。
+                  {USERS.mainline.profile_inventory_empty}
                 </div>
               }
             >
@@ -334,7 +346,7 @@ export function UserMainlineView(props: { actor: ActorRef }) {
                           class="rounded border border-[color:var(--border)] px-2 py-1 text-[11px]"
                           onClick={() => openProfile(p.tickers[0])}
                         >
-                          查看
+                          {USERS.mainline.view}
                         </button>
                       </Show>
                     </div>

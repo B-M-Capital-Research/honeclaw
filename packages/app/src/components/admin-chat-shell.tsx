@@ -3,6 +3,7 @@ import { Show, createMemo } from "solid-js"
 import { ChatView } from "@/components/chat-view"
 import { useSessions } from "@/context/sessions"
 import { actorFromSessionId, actorFromUser, actorKey, type ActorRef } from "@/lib/actors"
+import { SESSIONS } from "@/lib/admin-content/sessions"
 
 /**
  * Admin 端会话页的外壳 — 在 ChatView 上方加一行 actor 工具条,
@@ -43,7 +44,7 @@ export function AdminChatShell(props: { userId?: string }) {
       <Show when={currentActor()}>
         {(actor) => (
           <div class="flex h-9 shrink-0 items-center gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-3 text-xs">
-            <span class="text-[color:var(--text-muted)]">当前用户</span>
+            <span class="text-[color:var(--text-muted)]">{SESSIONS.shell.current_user}</span>
             <span class="font-mono font-medium text-[color:var(--text-primary)]">
               {actor().user_id}
             </span>
@@ -58,25 +59,25 @@ export function AdminChatShell(props: { userId?: string }) {
                 type="button"
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--text-primary)]"
                 onClick={() => goUsers("portfolio")}
-                title="跳到该用户的持仓 tab"
+                title={SESSIONS.shell.portfolio_title}
               >
-                持仓
+                {SESSIONS.shell.portfolio_button}
               </button>
               <button
                 type="button"
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--text-primary)]"
                 onClick={() => goUsers("profiles")}
-                title="跳到该用户的公司画像"
+                title={SESSIONS.shell.profiles_title}
               >
-                画像
+                {SESSIONS.shell.profiles_button}
               </button>
               <button
                 type="button"
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--text-primary)]"
                 onClick={goNewTask}
-                title="为该用户新建推送任务"
+                title={SESSIONS.shell.new_task_title}
               >
-                推送任务
+                {SESSIONS.shell.new_task_button}
               </button>
             </div>
           </div>

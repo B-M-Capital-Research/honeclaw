@@ -6,6 +6,8 @@ import {
   onMount,
 } from "solid-js"
 import { getTaskRuns, type TaskRunRecord, type TaskSummary } from "@/lib/api"
+import { TASK_HEALTH } from "@/lib/admin-content/task-health"
+import { tpl, useLocale } from "@/lib/i18n"
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -18,7 +20,8 @@ function shortTime(iso: string | null | undefined): string {
   // "2026-04-26T12:34:56.789Z" → "12:34:56"
   const d = new Date(iso)
   if (isNaN(d.getTime())) return iso
-  return d.toLocaleTimeString("zh-CN", { hour12: false })
+  const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
+  return d.toLocaleTimeString(loc, { hour12: false })
 }
 
 function relativeTime(iso: string | null | undefined): string {
@@ -26,10 +29,10 @@ function relativeTime(iso: string | null | undefined): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return iso
   const secAgo = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000))
-  if (secAgo < 60) return `${secAgo}s ago`
-  if (secAgo < 3600) return `${Math.floor(secAgo / 60)}m ago`
-  if (secAgo < 86400) return `${Math.floor(secAgo / 3600)}h ago`
-  return `${Math.floor(secAgo / 86400)}d ago`
+  if (secAgo < 60) return tpl(TASK_HEALTH.relative.seconds_ago, { count: secAgo })
+  if (secAgo < 3600) return tpl(TASK_HEALTH.relative.minutes_ago, { count: Math.floor(secAgo / 60) })
+  if (secAgo < 86400) return tpl(TASK_HEALTH.relative.hours_ago, { count: Math.floor(secAgo / 3600) })
+  return tpl(TASK_HEALTH.relative.days_ago, { count: Math.floor(secAgo / 86400) })
 }
 
 function durationMs(start: string, end: string): number {
@@ -114,10 +117,10 @@ export default function TaskHealthPage() {
       {/* 顶栏 */}
       <div class="flex flex-wrap items-center gap-3">
         <h1 class="text-lg font-semibold text-[color:var(--text-primary)]">
-          任务健康
+          {TASK_HEALTH.page.title}
         </h1>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>窗口</span>
+          <span>{TASK_HEALTH.page.window_label}</span>
           <select
             value={days()}
             onChange={(e) => {
@@ -130,7 +133,7 @@ export default function TaskHealthPage() {
           </select>
         </div>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
-          <span>过滤 task</span>
+          <span>{TASK_HEALTH.page.filter_task_label}</span>
           <select
             value={taskFilter()}
             onChange={(e) => {
@@ -139,7 +142,7 @@ export default function TaskHealthPage() {
             }}
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
           >
-            <option value="">全部</option>
+            <option value="">{TASK_HEALTH.page.filter_all}</option>
             <For each={taskOptions()}>
               {(t) => <option value={t}>{t}</option>}
             </For>
@@ -150,7 +153,7 @@ export default function TaskHealthPage() {
           disabled={loading()}
           class="rounded border border-[color:var(--border)] px-3 py-1 text-xs hover:bg-white/5 disabled:opacity-50"
         >
-          {loading() ? "刷新中…" : "刷新"}
+          {loading() ? TASK_HEALTH.page.refreshing_button : TASK_HEALTH.page.refresh_button}
         </button>
         <Show when={runtimeDir()}>
           <span
@@ -171,20 +174,20 @@ export default function TaskHealthPage() {
       {/* 24h summary */}
       <section class="space-y-2">
         <div class="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">
-          24h 汇总(每个 task 一行)
+          {TASK_HEALTH.summary.eyebrow}
         </div>
         <div class="overflow-x-auto rounded border border-[color:var(--border)]">
           <table class="w-full text-xs">
             <thead class="bg-white/[0.03] text-[color:var(--text-muted)]">
               <tr>
-                <th class="px-3 py-2 text-left font-normal">Task</th>
-                <th class="px-3 py-2 text-right font-normal">最近一次</th>
-                <th class="px-3 py-2 text-right font-normal">24h 总</th>
-                <th class="px-3 py-2 text-right font-normal">ok</th>
-                <th class="px-3 py-2 text-right font-normal">skipped</th>
-                <th class="px-3 py-2 text-right font-normal">failed</th>
-                <th class="px-3 py-2 text-right font-normal">成功率</th>
-                <th class="px-3 py-2 text-left font-normal">最近错误</th>
+                <th class="px-3 py-2 text-left font-normal">{TASK_HEALTH.summary.col_task}</th>
+                <th class="px-3 py-2 text-right font-normal">{TASK_HEALTH.summary.col_last_seen}</th>
+                <th class="px-3 py-2 text-right font-normal">{TASK_HEALTH.summary.col_runs_24h}</th>
+                <th class="px-3 py-2 text-right font-normal">{TASK_HEALTH.summary.col_ok}</th>
+                <th class="px-3 py-2 text-right font-normal">{TASK_HEALTH.summary.col_skipped}</th>
+                <th class="px-3 py-2 text-right font-normal">{TASK_HEALTH.summary.col_failed}</th>
+                <th class="px-3 py-2 text-right font-normal">{TASK_HEALTH.summary.col_success_rate}</th>
+                <th class="px-3 py-2 text-left font-normal">{TASK_HEALTH.summary.col_last_error}</th>
               </tr>
             </thead>
             <tbody>
@@ -196,8 +199,7 @@ export default function TaskHealthPage() {
                       colspan={8}
                       class="px-3 py-6 text-center text-[color:var(--text-muted)]"
                     >
-                      过去 24h 没有 task_runs.jsonl 记录。检查 web-api 是否
-                      已经启动且 with_task_runs_dir 已配置。
+                      {TASK_HEALTH.summary.empty_no_records}
                     </td>
                   </tr>
                 }
@@ -245,12 +247,12 @@ export default function TaskHealthPage() {
                               when={(row.runs_since_last_failure ?? 0) > 0}
                               fallback={
                                 <span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-300">
-                                  最新失败
+                                  {TASK_HEALTH.summary.badge_latest_failure}
                                 </span>
                               }
                             >
                               <span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/80">
-                                已恢复 +{row.runs_since_last_failure}
+                                {tpl(TASK_HEALTH.summary.badge_recovered, { count: row.runs_since_last_failure ?? 0 })}
                               </span>
                             </Show>
                           </div>
@@ -271,18 +273,18 @@ export default function TaskHealthPage() {
       {/* runs 时间线 */}
       <section class="flex min-h-0 flex-col gap-2">
         <div class="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">
-          最近运行(最多 500 条,倒序)
+          {TASK_HEALTH.runs.eyebrow}
         </div>
         <div class="flex-1 overflow-auto rounded border border-[color:var(--border)]">
           <table class="w-full text-xs">
             <thead class="sticky top-0 bg-[color:var(--bg-elevated)] text-[color:var(--text-muted)]">
               <tr>
-                <th class="px-3 py-2 text-left font-normal">起始</th>
-                <th class="px-3 py-2 text-left font-normal">Task</th>
-                <th class="px-3 py-2 text-left font-normal">Outcome</th>
-                <th class="px-3 py-2 text-right font-normal">Items</th>
-                <th class="px-3 py-2 text-right font-normal">耗时</th>
-                <th class="px-3 py-2 text-left font-normal">错误</th>
+                <th class="px-3 py-2 text-left font-normal">{TASK_HEALTH.runs.col_started}</th>
+                <th class="px-3 py-2 text-left font-normal">{TASK_HEALTH.runs.col_task}</th>
+                <th class="px-3 py-2 text-left font-normal">{TASK_HEALTH.runs.col_outcome}</th>
+                <th class="px-3 py-2 text-right font-normal">{TASK_HEALTH.runs.col_items}</th>
+                <th class="px-3 py-2 text-right font-normal">{TASK_HEALTH.runs.col_duration}</th>
+                <th class="px-3 py-2 text-left font-normal">{TASK_HEALTH.runs.col_error}</th>
               </tr>
             </thead>
             <tbody>
@@ -294,7 +296,7 @@ export default function TaskHealthPage() {
                       colspan={6}
                       class="px-3 py-6 text-center text-[color:var(--text-muted)]"
                     >
-                      没有匹配的记录。
+                      {TASK_HEALTH.runs.empty_no_match}
                     </td>
                   </tr>
                 }

@@ -152,6 +152,8 @@ pub struct MetaInfo {
     pub api_version: String,
     pub capabilities: Vec<String>,
     pub deployment_mode: String,
+    /// 当前管理员控制台默认语言（"zh" / "en"）
+    pub language: String,
 }
 
 #[derive(Serialize)]

@@ -21,6 +21,8 @@ import {
   type ActorRef,
 } from "@/lib/actors";
 import type { UserInfo } from "@/lib/types";
+import { NOTIFICATIONS } from "@/lib/admin-content/notifications";
+import { tpl } from "@/lib/i18n";
 
 const DEFAULT_PREFS: NotificationPrefs = {
   enabled: true,
@@ -94,28 +96,28 @@ async function loadActorsList(): Promise<ActorRef[]> {
 }
 
 function summarize(p: NotificationPrefs): string {
-  if (!p.enabled) return "已关闭";
+  if (!p.enabled) return NOTIFICATIONS.prefs.summarize_disabled;
   const parts: string[] = [p.min_severity];
-  if (p.portfolio_only) parts.push("仅持仓");
+  if (p.portfolio_only) parts.push(NOTIFICATIONS.prefs.summarize_only_portfolio);
   if (p.allow_kinds && p.allow_kinds.length)
-    parts.push(`白名单 ${p.allow_kinds.length}`);
+    parts.push(tpl(NOTIFICATIONS.prefs.summarize_allow, { count: p.allow_kinds.length }));
   if (p.blocked_kinds && p.blocked_kinds.length)
-    parts.push(`黑名单 ${p.blocked_kinds.length}`);
-  if (p.timezone) parts.push(`TZ=${p.timezone}`);
+    parts.push(tpl(NOTIFICATIONS.prefs.summarize_block, { count: p.blocked_kinds.length }));
+  if (p.timezone) parts.push(tpl(NOTIFICATIONS.prefs.summarize_tz, { tz: p.timezone }));
   if (p.digest_slots) {
     parts.push(
       p.digest_slots.length === 0
-        ? "关 digest"
-        : `digest×${p.digest_slots.length}`,
+        ? NOTIFICATIONS.prefs.summarize_digest_off
+        : tpl(NOTIFICATIONS.prefs.summarize_digest_count, { count: p.digest_slots.length }),
     );
   }
   if (p.price_high_pct_override != null)
-    parts.push(`⚡${p.price_high_pct_override}%`);
+    parts.push(tpl(NOTIFICATIONS.prefs.summarize_price, { value: p.price_high_pct_override }));
   if (p.immediate_kinds && p.immediate_kinds.length)
-    parts.push(`强升 ${p.immediate_kinds.length}`);
+    parts.push(tpl(NOTIFICATIONS.prefs.summarize_immediate, { count: p.immediate_kinds.length }));
   if (p.quiet_hours)
-    parts.push(`🌙${p.quiet_hours.from}–${p.quiet_hours.to}`);
-  return `启用 · ${parts.join(" · ")}`;
+    parts.push(tpl(NOTIFICATIONS.prefs.summarize_quiet, { from: p.quiet_hours.from, to: p.quiet_hours.to }));
+  return `${NOTIFICATIONS.prefs.summarize_enabled_prefix} · ${parts.join(" · ")}`;
 }
 
 export function NotificationPreferencesCard() {
@@ -213,7 +215,10 @@ export function NotificationPreferencesCard() {
       patchEntry(actor, (e) => ({ ...e, prefs: saved }));
       if (sameActor(actor, currentActor())) setDetailDirty(false);
       setMessage(
-        `已保存 ${actor.channel} · ${actorLabel(actor)} 的推送偏好,下一条事件即刻生效`,
+        tpl(NOTIFICATIONS.prefs.save_success, {
+          channel: actor.channel,
+          label: actorLabel(actor),
+        }),
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -406,10 +411,10 @@ export function NotificationPreferencesCard() {
       <div class="flex items-center justify-between">
         <div>
           <div class="text-sm font-bold text-[color:var(--text-primary)]">
-            通知偏好(per-actor)
+            {NOTIFICATIONS.prefs.title}
           </div>
           <div class="mt-0.5 text-[10px] text-[color:var(--text-secondary)]">
-            上区:一键启停,切换即保存;下区:点一个 actor 做严重度 / 白黑名单细调
+            {NOTIFICATIONS.prefs.subtitle}
           </div>
         </div>
         <button
@@ -417,23 +422,23 @@ export function NotificationPreferencesCard() {
           class="rounded-md border border-[color:var(--border)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:text-[color:var(--text-primary)]"
           onClick={() => void refreshRoster()}
         >
-          刷新
+          {NOTIFICATIONS.prefs.refresh_button}
         </button>
       </div>
 
       <div class="mt-4">
         <div class="text-[11px] font-semibold text-[color:var(--text-secondary)]">
-          actor 列表
+          {NOTIFICATIONS.prefs.actor_list_label}
         </div>
         <div class="mt-2 divide-y divide-[color:var(--border)] rounded-md border border-[color:var(--border)] bg-[color:var(--surface)]">
           <Show when={rosterLoading()}>
             <div class="px-3 py-2 text-[11px] text-[color:var(--text-secondary)]">
-              加载中...
+              {NOTIFICATIONS.prefs.actor_loading}
             </div>
           </Show>
           <Show when={!rosterLoading() && roster().length === 0}>
             <div class="px-3 py-2 text-[11px] text-[color:var(--text-secondary)]">
-              还没有可选 actor(手动输入下方字段或先让渠道产生一条消息)
+              {NOTIFICATIONS.prefs.actor_empty}
             </div>
           </Show>
           <For each={roster()}>
@@ -469,7 +474,7 @@ export function NotificationPreferencesCard() {
                     class="flex items-center gap-1.5 text-[10px] text-[color:var(--text-secondary)]"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <span>{isSaving() ? "保存中..." : entry.prefs.enabled ? "推送中" : "已关"}</span>
+                    <span>{isSaving() ? NOTIFICATIONS.prefs.saving_label : entry.prefs.enabled ? NOTIFICATIONS.prefs.pushing_label : NOTIFICATIONS.prefs.off_label}</span>
                     <input
                       type="checkbox"
                       checked={entry.prefs.enabled}
@@ -492,7 +497,7 @@ export function NotificationPreferencesCard() {
       <div class="mt-3 grid grid-cols-3 gap-2">
         <input
           class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
-          placeholder="channel"
+          placeholder={NOTIFICATIONS.prefs.manual_channel_placeholder}
           value={manual().channel}
           onInput={(e) =>
             setManual({ ...manual(), channel: e.currentTarget.value })
@@ -500,7 +505,7 @@ export function NotificationPreferencesCard() {
         />
         <input
           class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
-          placeholder="user_id"
+          placeholder={NOTIFICATIONS.prefs.manual_user_placeholder}
           value={manual().user_id}
           onInput={(e) =>
             setManual({ ...manual(), user_id: e.currentTarget.value })
@@ -509,7 +514,7 @@ export function NotificationPreferencesCard() {
         <div class="flex gap-1">
           <input
             class="flex-1 rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
-            placeholder="channel_scope(可选)"
+            placeholder={NOTIFICATIONS.prefs.manual_scope_placeholder}
             value={manual().channel_scope ?? ""}
             onInput={(e) =>
               setManual({ ...manual(), channel_scope: e.currentTarget.value })
@@ -520,7 +525,7 @@ export function NotificationPreferencesCard() {
             class="rounded-md border border-[color:var(--border)] px-2 text-[11px]"
             onClick={applyManual}
           >
-            载入
+            {NOTIFICATIONS.prefs.manual_load}
           </button>
         </div>
       </div>
@@ -529,10 +534,13 @@ export function NotificationPreferencesCard() {
         <div class="mt-5 space-y-4 rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
           <div class="flex items-center justify-between">
             <div class="text-[11px] font-semibold text-[color:var(--text-primary)]">
-              细调 {currentActor()!.channel} · {actorLabel(currentActor()!)}
+              {tpl(NOTIFICATIONS.prefs.detail_title, {
+                channel: currentActor()!.channel,
+                label: actorLabel(currentActor()!),
+              })}
             </div>
             <div class="text-[10px] text-[color:var(--text-secondary)]">
-              启用/关闭回上方列表切换
+              {NOTIFICATIONS.prefs.detail_hint}
             </div>
           </div>
           <div class="flex items-center justify-between">
@@ -547,10 +555,10 @@ export function NotificationPreferencesCard() {
                   }))
                 }
               />
-              <span>仅持仓相关</span>
+              <span>{NOTIFICATIONS.prefs.portfolio_only}</span>
             </label>
             <label class="flex items-center gap-2 text-sm">
-              <span>最低严重度</span>
+              <span>{NOTIFICATIONS.prefs.min_severity}</span>
               <select
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
                 value={currentPrefs().min_severity}
@@ -571,7 +579,7 @@ export function NotificationPreferencesCard() {
 
           <div>
             <div class="text-[11px] font-semibold text-[color:var(--text-secondary)]">
-              白名单 allow_kinds(空 = 不启用白名单)
+              {NOTIFICATIONS.prefs.allow_kinds_label}
             </div>
             <div class="mt-1 flex flex-wrap gap-1">
               <For each={currentKindTags()}>
@@ -600,7 +608,7 @@ export function NotificationPreferencesCard() {
 
           <div>
             <div class="text-[11px] font-semibold text-[color:var(--text-secondary)]">
-              黑名单 blocked_kinds(优先级高于白名单)
+              {NOTIFICATIONS.prefs.block_kinds_label}
             </div>
             <div class="mt-1 flex flex-wrap gap-1">
               <For each={currentKindTags()}>
@@ -629,16 +637,16 @@ export function NotificationPreferencesCard() {
 
           <div class="space-y-3 rounded-md border border-dashed border-[color:var(--border)] p-3">
             <div class="text-[11px] font-semibold text-[color:var(--text-secondary)]">
-              推送节奏(per-actor;留空 = 沿用全局)
+              {NOTIFICATIONS.prefs.cadence_title}
             </div>
 
             <label class="flex flex-col gap-1 text-[11px]">
               <span class="text-[color:var(--text-secondary)]">
-                时区 (IANA, 例 Asia/Shanghai、America/New_York)
+                {NOTIFICATIONS.prefs.timezone_label}
               </span>
               <input
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
-                placeholder="留空 → 沿用全局 digest.timezone"
+                placeholder={NOTIFICATIONS.prefs.timezone_placeholder}
                 value={currentPrefs().timezone ?? ""}
                 onInput={(e) => handleTimezoneInput(e.currentTarget.value)}
               />
@@ -646,17 +654,17 @@ export function NotificationPreferencesCard() {
 
             <div class="flex flex-col gap-1.5 text-[11px]">
               <span class="text-[color:var(--text-secondary)]">
-                Digest 时刻 (本地 HH:MM;不设 = 沿用全局,清空 = 关 digest)
+                {NOTIFICATIONS.prefs.digest_label}
               </span>
               <div class="flex flex-wrap items-center gap-1">
                 <Show when={currentPrefs().digest_slots === null}>
                   <span class="text-[10px] italic text-[color:var(--text-secondary)]">
-                    当前:沿用全局 default_slots
+                    {NOTIFICATIONS.prefs.digest_inherit_global}
                   </span>
                 </Show>
                 <Show when={currentPrefs().digest_slots?.length === 0}>
                   <span class="rounded-md border border-amber-500 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-500">
-                    关 digest(只接收 immediate sink)
+                    {NOTIFICATIONS.prefs.digest_off_badge}
                   </span>
                 </Show>
                 <For each={currentPrefs().digest_slots ?? []}>
@@ -674,7 +682,7 @@ export function NotificationPreferencesCard() {
                       <button
                         type="button"
                         class="-mr-0.5 rounded text-emerald-700 hover:text-rose-500"
-                        title="移除"
+                        title={NOTIFICATIONS.prefs.digest_remove_title}
                         onClick={() => removeSlot(slot.id)}
                       >
                         ×
@@ -702,23 +710,23 @@ export function NotificationPreferencesCard() {
                   disabled={!HHMM_RE.test(slotDraft().trim())}
                   onClick={addSlot}
                 >
-                  + 添加
+                  {NOTIFICATIONS.prefs.digest_add_button}
                 </button>
                 <button
                   type="button"
                   class="rounded-md border border-[color:var(--border)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                   onClick={resetSlotsToGlobal}
-                  title="清掉自定义 → 沿用全局 default_slots"
+                  title={NOTIFICATIONS.prefs.digest_reset_global_title}
                 >
-                  恢复全局
+                  {NOTIFICATIONS.prefs.digest_reset_global}
                 </button>
                 <button
                   type="button"
                   class="rounded-md border border-amber-500 px-2 py-1 text-[11px] text-amber-500 hover:bg-amber-500/10"
                   onClick={muteAllDigest}
-                  title="设为空数组,即完全不发 digest"
+                  title={NOTIFICATIONS.prefs.digest_mute_title}
                 >
-                  关 digest
+                  {NOTIFICATIONS.prefs.digest_mute_button}
                 </button>
               </div>
               <Show
@@ -730,18 +738,17 @@ export function NotificationPreferencesCard() {
                 })()}
               >
                 <span class="rounded-md border border-rose-500/50 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-500">
-                  ⚠️ 部分 slot 落在 quiet_hours{" "}
-                  {currentPrefs().quiet_hours!.from}–
-                  {currentPrefs().quiet_hours!.to} 内,scheduler 不会触发它们;
-                  改时间或缩短 quiet 区间。
+                  {tpl(NOTIFICATIONS.prefs.digest_quiet_warning, {
+                    from: currentPrefs().quiet_hours!.from,
+                    to: currentPrefs().quiet_hours!.to,
+                  })}
                 </span>
               </Show>
             </div>
 
             <label class="flex flex-col gap-1 text-[11px]">
               <span class="text-[color:var(--text-secondary)]">
-                价格异动即时推阈值 (% 绝对值, 0&lt;x≤50;留空 = 沿用全局,
-                通常调低如 3.5 = 更敏感)
+                {NOTIFICATIONS.prefs.price_label}
               </span>
               <input
                 type="number"
@@ -749,7 +756,7 @@ export function NotificationPreferencesCard() {
                 min="0"
                 max="50"
                 class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1 text-xs"
-                placeholder="留空 → 沿用全局 thresholds.price_alert_high_pct"
+                placeholder={NOTIFICATIONS.prefs.price_placeholder}
                 value={currentPrefs().price_high_pct_override ?? ""}
                 onInput={(e) => handlePriceHighInput(e.currentTarget.value)}
               />
@@ -757,8 +764,7 @@ export function NotificationPreferencesCard() {
 
             <div>
               <div class="text-[11px] text-[color:var(--text-secondary)]">
-                强制升 High 即时推 immediate_kinds(命中元素无视 poller 给的
-                severity,直接 High 走 sink)
+                {NOTIFICATIONS.prefs.immediate_label}
               </div>
               <div class="mt-1 flex flex-wrap gap-1">
                 <For each={currentKindTags()}>
@@ -788,7 +794,7 @@ export function NotificationPreferencesCard() {
             <div class="space-y-1.5 rounded-md border border-dashed border-[color:var(--border)] p-2.5">
               <div class="flex items-center justify-between text-[11px]">
                 <span class="font-semibold text-[color:var(--text-secondary)]">
-                  勿扰时段 quiet_hours
+                  {NOTIFICATIONS.prefs.quiet_section}
                 </span>
                 <Show
                   when={currentPrefs().quiet_hours}
@@ -798,7 +804,7 @@ export function NotificationPreferencesCard() {
                       class="rounded-md border border-[color:var(--accent)] px-2 py-0.5 text-[10px] text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10"
                       onClick={enableQuiet}
                     >
-                      启用(默认 00:00–08:00)
+                      {NOTIFICATIONS.prefs.quiet_enable_button}
                     </button>
                   }
                 >
@@ -807,14 +813,14 @@ export function NotificationPreferencesCard() {
                     class="rounded-md border border-rose-500 px-2 py-0.5 text-[10px] text-rose-500 hover:bg-rose-500/10"
                     onClick={clearQuiet}
                   >
-                    关闭勿扰
+                    {NOTIFICATIONS.prefs.quiet_disable_button}
                   </button>
                 </Show>
               </div>
               <Show when={currentPrefs().quiet_hours}>
                 <div class="flex flex-wrap items-center gap-2 text-[11px]">
                   <label class="flex items-center gap-1">
-                    <span class="text-[color:var(--text-secondary)]">从</span>
+                    <span class="text-[color:var(--text-secondary)]">{NOTIFICATIONS.prefs.quiet_from}</span>
                     <input
                       type="time"
                       class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-0.5 font-mono text-xs"
@@ -823,7 +829,7 @@ export function NotificationPreferencesCard() {
                     />
                   </label>
                   <label class="flex items-center gap-1">
-                    <span class="text-[color:var(--text-secondary)]">到</span>
+                    <span class="text-[color:var(--text-secondary)]">{NOTIFICATIONS.prefs.quiet_to}</span>
                     <input
                       type="time"
                       class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-0.5 font-mono text-xs"
@@ -832,7 +838,7 @@ export function NotificationPreferencesCard() {
                     />
                   </label>
                   <span class="text-[10px] italic text-[color:var(--text-secondary)]">
-                    本地 HH:MM(按 prefs.timezone 解释,from&gt;to 跨午夜)
+                    {NOTIFICATIONS.prefs.quiet_hint}
                   </span>
                 </div>
                 <Show
@@ -842,11 +848,11 @@ export function NotificationPreferencesCard() {
                   }
                 >
                   <span class="rounded-md border border-rose-500/50 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-500">
-                    from == to 是空区间,后端会拒绝;改成不同时刻或关闭勿扰。
+                    {NOTIFICATIONS.prefs.quiet_invalid}
                   </span>
                 </Show>
                 <div class="text-[10px] text-[color:var(--text-secondary)]">
-                  exempt_kinds(命中即使在 quiet 内仍立即推,常用 earnings_released)
+                  {NOTIFICATIONS.prefs.quiet_exempt_hint}
                 </div>
                 <div class="flex flex-wrap gap-1">
                   <For each={currentKindTags()}>
@@ -879,7 +885,7 @@ export function NotificationPreferencesCard() {
 
           <div class="flex items-center justify-end gap-2">
             <Show when={detailDirty()}>
-              <span class="text-[10px] text-amber-500">有未保存改动</span>
+              <span class="text-[10px] text-amber-500">{NOTIFICATIONS.prefs.dirty_label}</span>
             </Show>
             <button
               type="button"
@@ -890,8 +896,8 @@ export function NotificationPreferencesCard() {
               onClick={() => void submitDetail()}
             >
               {savingKey() === actorKey(currentActor()!)
-                ? "保存中..."
-                : "保存细调"}
+                ? NOTIFICATIONS.prefs.save_detail_saving
+                : NOTIFICATIONS.prefs.save_detail_button}
             </button>
           </div>
         </div>

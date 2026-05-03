@@ -3,6 +3,7 @@ mod common;
 mod configure;
 mod discord_token;
 mod display;
+mod i18n;
 mod mutations;
 mod onboard;
 mod probe;
@@ -273,7 +274,10 @@ async fn run_cli() -> Result<(), String> {
                     path: args.path,
                     value: updated,
                 };
-                println!("{}", apply_message(&applied.apply));
+                println!(
+                    "{}",
+                    apply_message(i18n::resolve_lang(cli.config.as_deref()), &applied.apply)
+                );
                 println!("Updated {} in {}", result.path, result.config_path);
                 println!("value={}", value_to_pretty_text(&result.value));
                 Ok(())
@@ -303,7 +307,10 @@ async fn run_cli() -> Result<(), String> {
                 if args.json {
                     print_json(&result)
                 } else {
-                    println!("{}", apply_message(&applied.apply));
+                    println!(
+                    "{}",
+                    apply_message(i18n::resolve_lang(cli.config.as_deref()), &applied.apply)
+                );
                     println!("Unset {} in {}", result.path, result.config_path);
                     Ok(())
                 }
@@ -356,7 +363,10 @@ async fn run_cli() -> Result<(), String> {
                     .map_err(|e| e.to_string())?;
                 let mutations = build_model_mutations(&args)?;
                 let result = apply_mutations_and_generate(&paths, &mutations)?;
-                println!("{}", apply_message(&result.apply));
+                println!(
+                    "{}",
+                    apply_message(i18n::resolve_lang(cli.config.as_deref()), &result.apply)
+                );
                 println!(
                     "config={} effective={}",
                     paths.canonical_config_path.to_string_lossy(),
@@ -394,7 +404,10 @@ async fn run_cli() -> Result<(), String> {
                     .map_err(|e| e.to_string())?;
                 let mutations = build_channel_mutations(&args)?;
                 let result = apply_mutations_and_generate(&paths, &mutations)?;
-                println!("{}", apply_message(&result.apply));
+                println!(
+                    "{}",
+                    apply_message(i18n::resolve_lang(cli.config.as_deref()), &result.apply)
+                );
                 println!(
                     "config={} effective={}",
                     paths.canonical_config_path.to_string_lossy(),
@@ -418,7 +431,10 @@ async fn run_cli() -> Result<(), String> {
                         value: Value::Bool(true),
                     }],
                 )?;
-                println!("{}", apply_message(&result.apply));
+                println!(
+                    "{}",
+                    apply_message(i18n::resolve_lang(cli.config.as_deref()), &result.apply)
+                );
                 println!("Enabled {path}");
                 Ok(())
             }
@@ -438,7 +454,10 @@ async fn run_cli() -> Result<(), String> {
                         value: Value::Bool(false),
                     }],
                 )?;
-                println!("{}", apply_message(&result.apply));
+                println!(
+                    "{}",
+                    apply_message(i18n::resolve_lang(cli.config.as_deref()), &result.apply)
+                );
                 println!("Disabled {path}");
                 Ok(())
             }

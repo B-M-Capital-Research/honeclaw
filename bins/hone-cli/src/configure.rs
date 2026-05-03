@@ -56,6 +56,9 @@ fn sections_or_default(sections: &[ConfigureSection]) -> Vec<ConfigureSection> {
 pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> Result<(), String> {
     let (config, paths) = load_cli_config(config_path, true).map_err(|e| e.to_string())?;
     let theme = ColorfulTheme::default();
+    // `configure` keeps its existing wording; we resolve the persisted
+    // language only to feed the helpers that now require a `Lang` parameter.
+    let lang = crate::i18n::Lang::from_locale(config.language);
     let mut mutations = Vec::new();
 
     for section in sections_or_default(&args.sections) {
@@ -99,6 +102,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 });
                 if let Some(api_key) = prompt_secret(
                     &theme,
+                    lang,
                     "Primary API key",
                     is_sensitive_config_path("agent.opencode.api_key"),
                 )? {
@@ -126,7 +130,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                     path: "llm.openrouter.sub_model".to_string(),
                     value: Value::String(aux_model),
                 });
-                if let Some(api_key) = prompt_secret(&theme, "Auxiliary API key", true)? {
+                if let Some(api_key) = prompt_secret(&theme, lang, "Auxiliary API key", true)? {
                     mutations.push(ConfigMutation::Set {
                         path: "llm.auxiliary.api_key".to_string(),
                         value: Value::String(api_key),
@@ -165,7 +169,9 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                             .map_err(|e| e.to_string())?,
                     )),
                 });
-                if let Some(api_key) = prompt_secret(&theme, "Multi-agent search API key", true)? {
+                if let Some(api_key) =
+                    prompt_secret(&theme, lang, "Multi-agent search API key", true)?
+                {
                     mutations.push(ConfigMutation::Set {
                         path: "agent.multi_agent.search.api_key".to_string(),
                         value: Value::String(api_key),
@@ -213,7 +219,9 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                             .map_err(|e| e.to_string())?,
                     )),
                 });
-                if let Some(api_key) = prompt_secret(&theme, "Multi-agent answer API key", true)? {
+                if let Some(api_key) =
+                    prompt_secret(&theme, lang, "Multi-agent answer API key", true)?
+                {
                     mutations.push(ConfigMutation::Set {
                         path: "agent.multi_agent.answer.api_key".to_string(),
                         value: Value::String(api_key),
@@ -239,7 +247,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                     path: "feishu.app_id".to_string(),
                     value: Value::String(feishu_app_id),
                 });
-                if let Some(secret) = prompt_secret(&theme, "Feishu app secret", true)? {
+                if let Some(secret) = prompt_secret(&theme, lang, "Feishu app secret", true)? {
                     mutations.push(ConfigMutation::Set {
                         path: "feishu.app_secret".to_string(),
                         value: Value::String(secret),
@@ -254,6 +262,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 });
                 if let Some(token) = prompt_visible_credential(
                     &theme,
+                    lang,
                     "Telegram bot token",
                     true,
                     &config.telegram.bot_token,
@@ -272,6 +281,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 });
                 if let Some(token) = prompt_optional_discord_token(
                     &theme,
+                    lang,
                     "Discord bot token",
                     &config.discord.bot_token,
                     true,
@@ -285,7 +295,8 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
             ConfigureSection::Providers => {
                 // Provider keys 走 `*.api_keys` 数组格式;一次性粘贴逗号分隔的多个 key,
                 // 顺手把老的 `*.api_key` 单 key 字段清空,防止残留值被运行时当真 key。
-                if let Some(keys) = prompt_secret(&theme, "OpenRouter API keys（逗号分隔）", true)?
+                if let Some(keys) =
+                    prompt_secret(&theme, lang, "OpenRouter API keys（逗号分隔）", true)?
                 {
                     mutations.push(provider_key_mutation(
                         "llm.openrouter.api_keys",
@@ -296,7 +307,8 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                         value: Value::String(String::new()),
                     });
                 }
-                if let Some(keys) = prompt_secret(&theme, "FMP API keys（逗号分隔）", true)? {
+                if let Some(keys) = prompt_secret(&theme, lang, "FMP API keys（逗号分隔）", true)?
+                {
                     mutations.push(provider_key_mutation(
                         "fmp.api_keys",
                         parse_csv_values(&keys),
@@ -306,7 +318,8 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                         value: Value::String(String::new()),
                     });
                 }
-                if let Some(keys) = prompt_secret(&theme, "Tavily API keys（逗号分隔）", true)?
+                if let Some(keys) =
+                    prompt_secret(&theme, lang, "Tavily API keys（逗号分隔）", true)?
                 {
                     mutations.push(provider_key_mutation(
                         "search.api_keys",
@@ -318,7 +331,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
     }
 
     let result = apply_mutations_and_generate(&paths, &mutations)?;
-    println!("{}", apply_message(&result.apply));
+    println!("{}", apply_message(lang, &result.apply));
     println!(
         "config={} effective={}",
         paths.canonical_config_path.to_string_lossy(),

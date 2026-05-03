@@ -8,7 +8,7 @@
 //
 // Adding a key: add it to BOTH trees with parallel shape.
 
-import { useLocale } from "./i18n"
+import { makeContentProxy } from "./i18n"
 
 // ── Legal copy structured nodes (terms & privacy) ────────────────────────────
 // Rich prose is modeled as a typed block tree so ZH/EN stay parallel and the
@@ -1667,48 +1667,4 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   },
 }
 
-const SOURCES = { zh: CONTENT_ZH, en: CONTENT_EN } as const
-
-function resolveAt(path: readonly (string | symbol)[]): any {
-  let v: any = SOURCES[useLocale()]
-  for (const seg of path) {
-    if (v == null) return undefined
-    v = v[seg as any]
-  }
-  return v
-}
-
-function makeProxy(path: readonly (string | symbol)[]): any {
-  return new Proxy(Object.create(null), {
-    get(_target, key) {
-      if (typeof key === "symbol") {
-        // Let Solid / JS introspection (toPrimitive, iterator, etc.) pass through
-        // to the resolved value if it is an object.
-        const resolved = resolveAt(path)
-        return resolved == null ? undefined : (resolved as any)[key]
-      }
-      const next = resolveAt([...path, key])
-      if (next === null || next === undefined) return next
-      if (typeof next !== "object") return next
-      if (Array.isArray(next)) return next
-      return makeProxy([...path, key])
-    },
-    has(_target, key) {
-      const v = resolveAt(path)
-      return v != null && typeof v === "object" && key in (v as object)
-    },
-    ownKeys() {
-      const v = resolveAt(path)
-      if (v == null || typeof v !== "object") return []
-      return Reflect.ownKeys(v as object)
-    },
-    getOwnPropertyDescriptor(_target, key) {
-      const v = resolveAt(path)
-      if (v == null || typeof v !== "object") return undefined
-      if (!(key in (v as object))) return undefined
-      return { enumerable: true, configurable: true, writable: false, value: (v as any)[key] }
-    },
-  })
-}
-
-export const CONTENT = makeProxy([]) as typeof CONTENT_ZH
+export const CONTENT = makeContentProxy(CONTENT_ZH, CONTENT_EN as typeof CONTENT_ZH)

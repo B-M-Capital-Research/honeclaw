@@ -6,6 +6,8 @@ import { Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useTasks } from "@/context/tasks"
 import { formatShanghaiDateTime } from "@/lib/time"
+import { TASKS } from "@/lib/admin-content/tasks"
+import { tpl } from "@/lib/i18n"
 
 export function TaskDetail() {
     const navigate = useNavigate()
@@ -28,32 +30,32 @@ export function TaskDetail() {
     const executionStatusLabel = (status: string) => {
         switch (status) {
             case "completed":
-                return "执行成功"
+                return TASKS.detail.exec.completed
             case "noop":
-                return "未命中"
+                return TASKS.detail.exec.noop
             case "execution_failed":
-                return "执行失败"
+                return TASKS.detail.exec.execution_failed
             default:
-                return status || "未知"
+                return status || TASKS.detail.exec.unknown
         }
     }
 
     const sendStatusLabel = (status: string) => {
         switch (status) {
             case "sent":
-                return "已发送"
+                return TASKS.detail.send.sent
             case "skipped_noop":
-                return "未发送（未命中）"
+                return TASKS.detail.send.skipped_noop
             case "skipped_error":
-                return "未发送（执行失败）"
+                return TASKS.detail.send.skipped_error
             case "send_failed":
-                return "发送失败"
+                return TASKS.detail.send.send_failed
             case "target_resolution_failed":
-                return "目标解析失败"
+                return TASKS.detail.send.target_resolution_failed
             case "duplicate_suppressed":
-                return "已拦截重复发送"
+                return TASKS.detail.send.duplicate_suppressed
             default:
-                return status || "未知"
+                return status || TASKS.detail.send.unknown
         }
     }
 
@@ -80,14 +82,14 @@ export function TaskDetail() {
     return (
         <Show
             when={currentJob() || isNew()}
-            fallback={<EmptyState title="从左侧选择一个任务" description="你可以查看、新建或管理你的定时触发工作流。" />}
+            fallback={<EmptyState title={TASKS.detail.empty_title} description={TASKS.detail.empty_description} />}
         >
             <div class="flex h-full min-h-0 flex-col rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
                 <div class="flex items-center justify-between border-b border-[color:var(--border)] px-6 py-4">
                     <div>
-                        <div class="text-xl font-semibold">{isNew() ? "新建定时任务" : tasks.state.draft.name || "任务详情"}</div>
+                        <div class="text-xl font-semibold">{isNew() ? TASKS.detail.new_title : tasks.state.draft.name || TASKS.detail.fallback_title}</div>
                         <div class="mt-1 text-sm text-[color:var(--text-muted)]">
-                            {isNew() ? "设定触发条件和 Agent 执行动作" : `ID: ${currentJob()?.id}`}
+                            {isNew() ? TASKS.detail.new_subtitle : tpl(TASKS.detail.id_prefix, { id: currentJob()?.id ?? "" })}
                         </div>
                     </div>
                     <Show when={!isNew()}>
@@ -95,13 +97,13 @@ export function TaskDetail() {
                             <Button
                                 variant="outline"
                                 onClick={async () => {
-                                    if (confirm("确定要删除此任务吗？")) {
+                                    if (confirm(TASKS.detail.delete_confirm)) {
                                         await tasks.removeTask(currentJob()!.id)
                                         navigate("/tasks")
                                     }
                                 }}
                             >
-                                删除
+                                {TASKS.detail.delete_button}
                             </Button>
                             <Button
                                 variant={tasks.state.draft.enabled ? "outline" : "primary"}
@@ -109,7 +111,7 @@ export function TaskDetail() {
                                     await tasks.toggleTask(currentJob()!.id)
                                 }}
                             >
-                                {tasks.state.draft.enabled ? "停用任务" : "启用任务"}
+                                {tasks.state.draft.enabled ? TASKS.detail.disable_button : TASKS.detail.enable_button}
                             </Button>
                         </div>
                     </Show>
@@ -119,26 +121,26 @@ export function TaskDetail() {
                     <form class="mx-auto max-w-2xl space-y-6" onSubmit={handleSubmit}>
                         <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                             <div class="space-y-2">
-                                <label class="text-sm font-medium">任务名称</label>
+                                <label class="text-sm font-medium">{TASKS.detail.field_name}</label>
                                 <Input
                                     required
                                     value={tasks.state.draft.name || ""}
                                     onInput={(e) => tasks.setDraft("name", e.currentTarget.value)}
-                                    placeholder="例如：每日大盘早报"
+                                    placeholder={TASKS.detail.field_name_placeholder}
                                 />
                             </div>
                             <div class="space-y-2">
-                                <label class="text-sm font-medium">归属用户 (User ID)</label>
+                                <label class="text-sm font-medium">{TASKS.detail.field_user_id}</label>
                                 <Input
                                     required
                                     value={tasks.state.draft.user_id || ""}
                                     onInput={(e) => tasks.setDraft("user_id", e.currentTarget.value)}
-                                    placeholder="输入当前任务的所有者 ID"
+                                    placeholder={TASKS.detail.field_user_id_placeholder}
                                     disabled={!isNew()}
                                 />
                             </div>
                             <div class="space-y-2">
-                                <label class="text-sm font-medium">触发渠道</label>
+                                <label class="text-sm font-medium">{TASKS.detail.field_channel}</label>
                                 <select
                                     class="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm placeholder:text-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
                                     value={tasks.state.draft.channel || "telegram"}
@@ -149,24 +151,24 @@ export function TaskDetail() {
                                     <option value="discord">Discord</option>
                                     <Show when={tasks.state.draft.channel === "imessage"}>
                                         <option value="imessage" disabled>
-                                            iMessage (disabled)
+                                            {TASKS.detail.channel_imessage_disabled}
                                         </option>
                                     </Show>
                                 </select>
                             </div>
 
                             <div class="space-y-2">
-                                <label class="text-sm font-medium">群范围 (Channel Scope)</label>
+                                <label class="text-sm font-medium">{TASKS.detail.field_channel_scope}</label>
                                 <Input
                                     value={tasks.state.draft.channel_scope || ""}
                                     onInput={(e) => tasks.setDraft("channel_scope", e.currentTarget.value)}
-                                    placeholder="私聊留空，群聊可填 g:123:c:456"
+                                    placeholder={TASKS.detail.field_channel_scope_placeholder}
                                     disabled={!isNew()}
                                 />
                             </div>
 
                             <div class="space-y-2">
-                                <label class="text-sm font-medium">执行时间 (小时)</label>
+                                <label class="text-sm font-medium">{TASKS.detail.field_hour}</label>
                                 <Input
                                     type="number"
                                     min="0"
@@ -174,13 +176,13 @@ export function TaskDetail() {
                                     required={!isHeartbeatDraft()}
                                     value={tasks.state.draft.hour ?? ""}
                                     onInput={(e) => tasks.setDraft("hour", parseInt(e.currentTarget.value, 10))}
-                                    placeholder="0 - 23"
+                                    placeholder={TASKS.detail.field_hour_placeholder}
                                     disabled={isHeartbeatDraft()}
                                 />
                             </div>
 
                             <div class="space-y-2">
-                                <label class="text-sm font-medium">执行时间 (分钟)</label>
+                                <label class="text-sm font-medium">{TASKS.detail.field_minute}</label>
                                 <Input
                                     type="number"
                                     min="0"
@@ -188,13 +190,13 @@ export function TaskDetail() {
                                     required={!isHeartbeatDraft()}
                                     value={tasks.state.draft.minute ?? ""}
                                     onInput={(e) => tasks.setDraft("minute", parseInt(e.currentTarget.value, 10))}
-                                    placeholder="0 - 59"
+                                    placeholder={TASKS.detail.field_minute_placeholder}
                                     disabled={isHeartbeatDraft()}
                                 />
                             </div>
 
                             <div class="space-y-2">
-                                <label class="text-sm font-medium">重复频率</label>
+                                <label class="text-sm font-medium">{TASKS.detail.field_repeat}</label>
                                 <select
                                     class="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm placeholder:text-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
                                     value={tasks.state.draft.repeat || "daily"}
@@ -211,61 +213,61 @@ export function TaskDetail() {
                                         }
                                     }}
                                 >
-                                    <option value="once">单次 (Once)</option>
-                                    <option value="daily">每天 (Daily)</option>
-                                    <option value="workday">工作日 (Workday)</option>
-                                    <option value="trading_day">交易日 (Trading Day)</option>
-                                    <option value="holiday">节假日 (Holiday)</option>
-                                    <option value="weekly">每周 (Weekly)</option>
-                                    <option value="heartbeat">心跳检测 (Heartbeat)</option>
+                                    <option value="once">{TASKS.detail.repeat_once}</option>
+                                    <option value="daily">{TASKS.detail.repeat_daily}</option>
+                                    <option value="workday">{TASKS.detail.repeat_workday}</option>
+                                    <option value="trading_day">{TASKS.detail.repeat_trading_day}</option>
+                                    <option value="holiday">{TASKS.detail.repeat_holiday}</option>
+                                    <option value="weekly">{TASKS.detail.repeat_weekly}</option>
+                                    <option value="heartbeat">{TASKS.detail.repeat_heartbeat}</option>
                                 </select>
                                 <Show when={isHeartbeatDraft()}>
                                     <p class="text-[11px] text-[color:var(--text-muted)] mt-1">
-                                        心跳任务会每 30 分钟检查一次条件，不需要指定具体时刻。
+                                        {TASKS.detail.heartbeat_help}
                                     </p>
                                 </Show>
                             </div>
 
                             <Show when={tasks.state.draft.repeat === "weekly"}>
                                 <div class="space-y-2">
-                                    <label class="text-sm font-medium">周几执行 (针对 Weekly)</label>
+                                    <label class="text-sm font-medium">{TASKS.detail.field_weekday}</label>
                                     <Input
                                         type="number"
                                         min="0"
                                         max="6"
                                         value={tasks.state.draft.weekday !== undefined ? String(tasks.state.draft.weekday) : ""}
                                         onInput={(e) => tasks.setDraft("weekday", parseInt(e.currentTarget.value, 10))}
-                                        placeholder="0(周一) - 6(周日)"
+                                        placeholder={TASKS.detail.field_weekday_placeholder}
                                     />
-                                    <p class="text-[11px] text-[color:var(--text-muted)] mt-1">取值 0 - 6，其中 0 代表星期一</p>
+                                    <p class="text-[11px] text-[color:var(--text-muted)] mt-1">{TASKS.detail.weekday_help}</p>
                                 </div>
                             </Show>
                         </div>
 
                         <div class="space-y-2">
-                            <label class="text-sm font-medium">Target ID / UID (渠道目标)</label>
+                            <label class="text-sm font-medium">{TASKS.detail.field_target}</label>
                             <Input
                                 value={tasks.state.draft.channel_target || ""}
                                 onInput={(e) => tasks.setDraft("channel_target", e.currentTarget.value)}
-                                placeholder="缺省为当前用户"
+                                placeholder={TASKS.detail.field_target_placeholder}
                             />
-                            <p class="text-[11px] text-[color:var(--text-muted)]">如果是给特定群发，可以填群组 ID 或手机号。</p>
+                            <p class="text-[11px] text-[color:var(--text-muted)]">{TASKS.detail.field_target_help}</p>
                         </div>
 
                         <div class="space-y-2">
-                            <label class="text-sm font-medium">任务指令 (Task Prompt)</label>
+                            <label class="text-sm font-medium">{TASKS.detail.field_prompt}</label>
                             <Textarea
                                 required
                                 rows={5}
                                 value={tasks.state.draft.task_prompt || ""}
                                 onInput={(e) => tasks.setDraft("task_prompt", e.currentTarget.value)}
-                                placeholder="给 Agent 发送的确切指令，例如：总结昨天纳斯达克市场的核心科技股走势并提取关注点。"
+                                placeholder={TASKS.detail.field_prompt_placeholder}
                             />
                         </div>
 
                         <div class="pt-4 flex items-center justify-end border-t border-[color:var(--border)]">
                             <Button type="submit" disabled={tasks.state.submitting}>
-                                {tasks.state.submitting ? "保存中..." : "保存设置"}
+                                {tasks.state.submitting ? TASKS.detail.saving_button : TASKS.detail.save_button}
                             </Button>
                         </div>
 
@@ -273,13 +275,13 @@ export function TaskDetail() {
                             <div class="space-y-3 border-t border-[color:var(--border)] pt-6">
                                 <div class="flex items-center justify-between gap-3">
                                     <div>
-                                        <div class="text-base font-semibold">执行记录</div>
+                                        <div class="text-base font-semibold">{TASKS.detail.history_title}</div>
                                         <div class="text-xs text-[color:var(--text-muted)]">
-                                            所有时间统一按东八区（Asia/Shanghai）展示
+                                            {TASKS.detail.history_subtitle}
                                         </div>
                                     </div>
                                     <div class="text-xs text-[color:var(--text-muted)]">
-                                        最近 {tasks.executionRecords().length} 条
+                                        {tpl(TASKS.detail.history_count, { count: tasks.executionRecords().length })}
                                     </div>
                                 </div>
 
@@ -288,21 +290,21 @@ export function TaskDetail() {
                                         when={tasks.executionRecords().length > 0}
                                         fallback={
                                             <div class="px-4 py-8 text-center text-sm text-[color:var(--text-muted)]">
-                                                暂无执行记录
+                                                {TASKS.detail.history_empty}
                                             </div>
                                         }
                                     >
                                         <table class="min-w-full divide-y divide-[color:var(--border)] text-sm">
                                             <thead class="bg-black/5 text-left text-xs uppercase tracking-wide text-[color:var(--text-muted)]">
                                                 <tr>
-                                                    <th class="px-4 py-3 font-medium">时间</th>
-                                                    <th class="px-4 py-3 font-medium">执行状态</th>
-                                                    <th class="px-4 py-3 font-medium">发送结果</th>
+                                                    <th class="px-4 py-3 font-medium">{TASKS.detail.history_col_time}</th>
+                                                    <th class="px-4 py-3 font-medium">{TASKS.detail.history_col_exec}</th>
+                                                    <th class="px-4 py-3 font-medium">{TASKS.detail.history_col_send}</th>
                                                     <Show when={isHeartbeatDraft()}>
-                                                        <th class="px-4 py-3 font-medium">命中条件</th>
-                                                        <th class="px-4 py-3 font-medium">已发送</th>
+                                                        <th class="px-4 py-3 font-medium">{TASKS.detail.history_col_hit}</th>
+                                                        <th class="px-4 py-3 font-medium">{TASKS.detail.history_col_delivered}</th>
                                                     </Show>
-                                                    <th class="px-4 py-3 font-medium">摘要</th>
+                                                    <th class="px-4 py-3 font-medium">{TASKS.detail.history_col_summary}</th>
                                                 </tr>
                                             </thead>
                                             <tbody class="divide-y divide-[color:var(--border)]">
@@ -319,10 +321,10 @@ export function TaskDetail() {
                                                         </td>
                                                         <Show when={isHeartbeatDraft()}>
                                                             <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-primary)]">
-                                                                {record.should_deliver ? "是" : "否"}
+                                                                {record.should_deliver ? TASKS.detail.yes : TASKS.detail.no}
                                                             </td>
                                                             <td class="whitespace-nowrap px-4 py-3 text-[color:var(--text-primary)]">
-                                                                {record.delivered ? "是" : "否"}
+                                                                {record.delivered ? TASKS.detail.yes : TASKS.detail.no}
                                                             </td>
                                                         </Show>
                                                         <td class="max-w-[460px] px-4 py-3 text-[color:var(--text-secondary)]">
@@ -335,7 +337,7 @@ export function TaskDetail() {
                                                                 </Show>
                                                                 <Show when={isHeartbeatDraft() && record.detail}>
                                                                     <div class="text-[11px] text-[color:var(--text-muted)]">
-                                                                        parse_kind: {heartbeatParseKind(record.detail)}
+                                                                        {TASKS.detail.parse_kind_prefix} {heartbeatParseKind(record.detail)}
                                                                     </div>
                                                                 </Show>
                                                             </div>

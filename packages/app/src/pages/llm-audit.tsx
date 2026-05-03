@@ -3,6 +3,8 @@ import { getAuditRecordDetail, getAuditRecords } from "@/lib/api"
 import type { AuditQueryFilter, AuditRecordSummary, LlmAuditRecord } from "@/lib/types"
 import { useBackend } from "@/context/backend"
 import { EntityRefLink } from "@/components/entity-ref-link"
+import { LLM_AUDIT } from "@/lib/admin-content/llm-audit"
+import { tpl } from "@/lib/i18n"
 
 function shortTime(ts: string): string {
     if (!ts) return ""
@@ -159,26 +161,26 @@ export default function LlmAuditPage() {
             when={backend.hasCapability("llm_audit")}
             fallback={
                 <div class="flex h-full items-center justify-center rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] text-sm text-[color:var(--text-secondary)]">
-                    当前 backend 未开放 LLM 审计能力。
+                    {LLM_AUDIT.capability.unavailable}
                 </div>
             }
         >
         <div class="flex h-full flex-col overflow-hidden">
             {/* 工具栏 */}
             <div class="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-[color:var(--border)] bg-[color:var(--panel)] px-4 py-2.5">
-                <span class="text-sm font-semibold text-[color:var(--text-primary)] mr-1">LLM 审计</span>
+                <span class="text-sm font-semibold text-[color:var(--text-primary)] mr-1">{LLM_AUDIT.toolbar.title}</span>
 
                 <input
                     name="actor_user_id"
                     type="text"
-                    placeholder="过滤用户 ID"
+                    placeholder={LLM_AUDIT.toolbar.filter_user_placeholder}
                     class="w-32 rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1 text-xs text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)] outline-none focus:border-[color:var(--accent)] transition"
                     onChange={handleFilterChange}
                 />
                 <input
                     name="session_id"
                     type="text"
-                    placeholder="过滤 Session"
+                    placeholder={LLM_AUDIT.toolbar.filter_session_placeholder}
                     class="w-32 rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1 text-xs text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)] outline-none focus:border-[color:var(--accent)] transition"
                     onChange={handleFilterChange}
                 />
@@ -187,9 +189,9 @@ export default function LlmAuditPage() {
                     class="rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)] transition"
                     onChange={handleFilterChange}
                 >
-                    <option value="">全部状态</option>
-                    <option value="true">成功</option>
-                    <option value="false">失败</option>
+                    <option value="">{LLM_AUDIT.toolbar.status_all}</option>
+                    <option value="true">{LLM_AUDIT.toolbar.status_success}</option>
+                    <option value="false">{LLM_AUDIT.toolbar.status_failed}</option>
                 </select>
 
                 <div class="ml-auto flex items-center gap-2">
@@ -200,10 +202,10 @@ export default function LlmAuditPage() {
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
                         </svg>
-                        刷新
+                        {LLM_AUDIT.toolbar.refresh_button}
                     </button>
                     <span class="text-[11px] text-[color:var(--text-muted)]">
-                        共 {total()} 条
+                        {tpl(LLM_AUDIT.toolbar.total_count, { count: total() })}
                     </span>
                 </div>
             </div>
@@ -216,13 +218,13 @@ export default function LlmAuditPage() {
                         <table class="w-full text-left text-sm">
                             <thead class="sticky top-0 bg-[color:var(--panel)]">
                                 <tr class="border-b border-[color:var(--border)] text-[11px] font-semibold text-[color:var(--text-muted)] uppercase tracking-wider">
-                                    <th class="px-4 py-2 font-medium">时间</th>
-                                    <th class="px-3 py-2 font-medium">Actor / Session</th>
-                                    <th class="px-3 py-2 font-medium">服务 / 模型</th>
-                                    <th class="px-3 py-2 font-medium">操作</th>
-                                    <th class="px-3 py-2 font-medium text-center">状态</th>
-                                    <th class="px-3 py-2 font-medium text-right">Tokens</th>
-                                    <th class="px-3 py-2 font-medium text-right">耗时</th>
+                                    <th class="px-4 py-2 font-medium">{LLM_AUDIT.table.col_time}</th>
+                                    <th class="px-3 py-2 font-medium">{LLM_AUDIT.table.col_actor_session}</th>
+                                    <th class="px-3 py-2 font-medium">{LLM_AUDIT.table.col_provider_model}</th>
+                                    <th class="px-3 py-2 font-medium">{LLM_AUDIT.table.col_operation}</th>
+                                    <th class="px-3 py-2 font-medium text-center">{LLM_AUDIT.table.col_status}</th>
+                                    <th class="px-3 py-2 font-medium text-right">{LLM_AUDIT.table.col_tokens}</th>
+                                    <th class="px-3 py-2 font-medium text-right">{LLM_AUDIT.table.col_latency}</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-white/5 font-mono text-xs">
@@ -231,7 +233,7 @@ export default function LlmAuditPage() {
                                     fallback={
                                         <tr>
                                             <td colspan="7" class="p-8 text-center text-sm text-[color:var(--text-muted)]">
-                                                暂无审计记录
+                                                {LLM_AUDIT.table.empty}
                                             </td>
                                         </tr>
                                     }
@@ -246,7 +248,7 @@ export default function LlmAuditPage() {
                                                 onClick={() => setSelectedId(row.id)}
                                             >
                                                 <td class="whitespace-nowrap px-4 py-2 text-[color:var(--text-secondary)]">{shortTime(row.created_at)}</td>
-                                                <td class="px-3 py-2 max-w-[180px]" title={`${row.actor_user_id || "无"} / ${row.session_id}`}>
+                                                <td class="px-3 py-2 max-w-[180px]" title={`${row.actor_user_id || LLM_AUDIT.table.actor_user_none} / ${row.session_id}`}>
                                                     <div class="flex flex-col gap-1">
                                                         <Show
                                                             when={row.actor_user_id && row.actor_channel}
@@ -279,9 +281,9 @@ export default function LlmAuditPage() {
                                                 <td class="px-3 py-2 text-[color:var(--text-secondary)]">{row.operation}</td>
                                                 <td class="px-3 py-2 text-center">
                                                     {row.success ? (
-                                                        <span class="inline-block rounded px-2 py-0.5 text-[10px] font-semibold text-emerald-400 bg-emerald-400/10">成功</span>
+                                                        <span class="inline-block rounded px-2 py-0.5 text-[10px] font-semibold text-emerald-400 bg-emerald-400/10">{LLM_AUDIT.table.status_success}</span>
                                                     ) : (
-                                                        <span class="inline-block rounded px-2 py-0.5 text-[10px] font-semibold text-rose-400 bg-rose-400/10">失败</span>
+                                                        <span class="inline-block rounded px-2 py-0.5 text-[10px] font-semibold text-rose-400 bg-rose-400/10">{LLM_AUDIT.table.status_failed}</span>
                                                     )}
                                                 </td>
                                                 <td class="px-3 py-2 text-right">
@@ -310,17 +312,17 @@ export default function LlmAuditPage() {
                             disabled={filter().page === 1}
                             onClick={() => setFilter(p => ({ ...p, page: (p.page || 1) - 1 }))}
                         >
-                            上一页
+                            {LLM_AUDIT.pagination.prev}
                         </button>
                         <span class="text-[11px] text-[color:var(--text-muted)]">
-                            第 {filter().page || 1} 页
+                            {tpl(LLM_AUDIT.pagination.page_label, { page: filter().page || 1 })}
                         </span>
                         <button
                             class="rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={(filter().page || 1) * (filter().page_size || 50) >= total()}
                             onClick={() => setFilter(p => ({ ...p, page: (p.page || 1) + 1 }))}
                         >
-                            下一页
+                            {LLM_AUDIT.pagination.next}
                         </button>
                     </div>
                 </div>
@@ -329,7 +331,7 @@ export default function LlmAuditPage() {
                 <Show when={selectedId()}>
                     <div class="w-[40%] min-w-[300px] flex-shrink-0 flex flex-col border-l border-[color:var(--border)] bg-[color:var(--surface)]">
                         <div class="flex items-center justify-between border-b border-[color:var(--border)] px-4 py-3">
-                            <h3 class="font-medium text-[color:var(--text-primary)] text-sm">记录详情</h3>
+                            <h3 class="font-medium text-[color:var(--text-primary)] text-sm">{LLM_AUDIT.detail.title}</h3>
                             <button
                                 class="rounded-md p-1 hover:bg-black/5 hover:text-[color:var(--text-primary)] text-[color:var(--text-muted)] transition"
                                 onClick={() => setSelectedId(null)}
@@ -342,16 +344,16 @@ export default function LlmAuditPage() {
                         <div class="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-mono">
                             <Show when={!detailData.error} fallback={
                                 <div class="rounded-md border border-rose-500/30 bg-rose-500/10 p-4 text-center">
-                                    <div class="text-rose-400 text-sm font-medium mb-1">加载失败</div>
+                                    <div class="text-rose-400 text-sm font-medium mb-1">{LLM_AUDIT.detail.load_failed_title}</div>
                                     <div class="text-rose-300 text-xs">{String(detailData.error)}</div>
                                 </div>
                             }>
-                                <Show when={!detailData.loading ? detailData() : null} fallback={<div class="text-[color:var(--text-muted)]">加载中...</div>}>
+                                <Show when={!detailData.loading ? detailData() : null} fallback={<div class="text-[color:var(--text-muted)]">{LLM_AUDIT.detail.loading}</div>}>
                                     {(detail) => (
                                         <>
                                             <Show when={detail().actor_user_id || detail().session_id}>
                                                 <div class="rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-3 font-sans">
-                                                    <h4 class="mb-2 font-bold text-[color:var(--text-muted)] text-[10px] uppercase tracking-wider">关联实体</h4>
+                                                    <h4 class="mb-2 font-bold text-[color:var(--text-muted)] text-[10px] uppercase tracking-wider">{LLM_AUDIT.detail.related_entities}</h4>
                                                     <div class="flex flex-wrap gap-1.5">
                                                         <Show when={detail().actor_user_id && detail().actor_channel}>
                                                             <EntityRefLink
@@ -373,38 +375,38 @@ export default function LlmAuditPage() {
                                             </Show>
                                             <Show when={detail().error}>
                                                 <div class="rounded-md border border-rose-500/30 bg-rose-500/10 p-3">
-                                                    <h4 class="mb-2 font-bold text-rose-400 text-[10px] uppercase tracking-wider">错误信息</h4>
+                                                    <h4 class="mb-2 font-bold text-rose-400 text-[10px] uppercase tracking-wider">{LLM_AUDIT.detail.error_section}</h4>
                                                     <div class="text-rose-300 break-words whitespace-pre-wrap">{detail().error}</div>
                                                 </div>
                                             </Show>
                                             <Show when={detail().prompt_tokens != null || detail().completion_tokens != null}>
                                                 <div class="rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-3">
-                                                    <h4 class="mb-3 font-bold text-[color:var(--text-muted)] text-[10px] uppercase tracking-wider">Token 使用</h4>
+                                                    <h4 class="mb-3 font-bold text-[color:var(--text-muted)] text-[10px] uppercase tracking-wider">{LLM_AUDIT.detail.tokens_section}</h4>
                                                     <div class="flex items-center justify-between text-[11px] mb-2 last:mb-0">
-                                                        <span class="text-[color:var(--text-secondary)]">提示 (Prompt)</span>
+                                                        <span class="text-[color:var(--text-secondary)]">{LLM_AUDIT.detail.tokens_prompt}</span>
                                                         <span class="font-bold text-sky-400">{detail().prompt_tokens ?? 0}</span>
                                                     </div>
                                                     <div class="flex items-center justify-between text-[11px] mb-2 last:mb-0">
-                                                        <span class="text-[color:var(--text-secondary)]">补全 (Completion)</span>
+                                                        <span class="text-[color:var(--text-secondary)]">{LLM_AUDIT.detail.tokens_completion}</span>
                                                         <span class="font-bold text-emerald-400">{detail().completion_tokens ?? 0}</span>
                                                     </div>
                                                     <div class="mt-2 border-t border-white/5 pt-2 flex items-center justify-between text-[11px]">
-                                                        <span class="text-[color:var(--text-primary)] font-medium">总计 (Total)</span>
+                                                        <span class="text-[color:var(--text-primary)] font-medium">{LLM_AUDIT.detail.tokens_total}</span>
                                                         <span class="font-bold text-amber-400">{detail().total_tokens ?? (detail().prompt_tokens ?? 0) + (detail().completion_tokens ?? 0)}</span>
                                                     </div>
                                                 </div>
                                             </Show>
                                             <div>
-                                                <JsonInspector title="请求 JSON" value={detail().request} />
+                                                <JsonInspector title={LLM_AUDIT.detail.request_json} value={detail().request} />
                                             </div>
                                             <Show when={detail().response}>
                                                 <div>
-                                                    <JsonInspector title="响应 JSON" value={detail().response} />
+                                                    <JsonInspector title={LLM_AUDIT.detail.response_json} value={detail().response} />
                                                 </div>
                                             </Show>
                                             <Show when={detail().metadata && (Array.isArray(detail().metadata) || (isPlainObject(detail().metadata) && Object.keys(detail().metadata as object).length > 0))}>
                                                 <div>
-                                                    <JsonInspector title="元数据" value={detail().metadata} />
+                                                    <JsonInspector title={LLM_AUDIT.detail.metadata} value={detail().metadata} />
                                                 </div>
                                             </Show>
                                         </>

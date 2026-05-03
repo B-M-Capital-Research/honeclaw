@@ -6,6 +6,8 @@ import { usePortfolio } from "@/context/portfolio"
 import { actorLabel } from "@/lib/actors"
 import type { HoldingInfo } from "@/lib/types"
 import { SymbolLink } from "./symbol-link"
+import { PORTFOLIO } from "@/lib/admin-content/portfolio"
+import { tpl, useLocale } from "@/lib/i18n"
 
 export function PortfolioDetail() {
     const portfolio = usePortfolio()
@@ -31,13 +33,14 @@ export function PortfolioDetail() {
     }
 
     const formatMoney = (val: number) => {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val)
+        const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
+        return new Intl.NumberFormat(loc, { style: 'currency', currency: 'USD' }).format(val)
     }
 
     const horizonLabel = (value?: string) => {
-        if (value === "long_term") return "长持"
-        if (value === "short_term") return "短持"
-        return "未标记"
+        if (value === "long_term") return PORTFOLIO.detail.horizon_long
+        if (value === "short_term") return PORTFOLIO.detail.horizon_short
+        return PORTFOLIO.detail.horizon_unmarked
     }
 
     const renderActions = (holding: HoldingInfo) => (
@@ -46,18 +49,20 @@ export function PortfolioDetail() {
                 class="text-[color:var(--accent)] hover:underline text-xs mr-3"
                 onClick={() => portfolio.openForm(holding.symbol)}
             >
-                编辑
+                {PORTFOLIO.detail.edit_button}
             </button>
             <button
                 class="text-rose-500 hover:underline text-xs"
                 onClick={async () => {
-                    const label = holding.tracking_only ? "关注" : "持仓"
-                    if (confirm(`确定删除 ${holding.symbol} 这条${label}记录吗？`)) {
+                    const label = holding.tracking_only
+                        ? PORTFOLIO.detail.delete_label_watch
+                        : PORTFOLIO.detail.delete_label_holding
+                    if (confirm(tpl(PORTFOLIO.detail.delete_confirm, { symbol: holding.symbol, label }))) {
                         await portfolio.removeHolding(holding.symbol)
                     }
                 }}
             >
-                删除
+                {PORTFOLIO.detail.delete_button}
             </button>
         </>
     )
@@ -68,12 +73,12 @@ export function PortfolioDetail() {
     return (
         <Show
             when={portfolio.currentActor()}
-            fallback={<EmptyState title="从左侧定位主体持仓" description="你可以查看特定渠道主体的投资概况，或者为其手动调整持仓记录。" />}
+            fallback={<EmptyState title={PORTFOLIO.detail.empty_title} description={PORTFOLIO.detail.empty_description} />}
         >
             <div class="flex h-full min-h-0 flex-col bg-[color:var(--surface)]">
                 <div class="flex items-center justify-between border-b border-[color:var(--border)] px-6 py-4">
                     <div>
-                        <div class="text-xl font-semibold">持仓与关注概览</div>
+                        <div class="text-xl font-semibold">{PORTFOLIO.detail.header_title}</div>
                         <div class="mt-1 text-sm text-[color:var(--text-muted)]">
                             {actorLabel(portfolio.currentActor()!)} · {portfolio.currentActor()!.channel}
                         </div>
@@ -86,7 +91,7 @@ export function PortfolioDetail() {
                         }}
                         disabled={isEditing()}
                     >
-                        添加新持仓
+                        {PORTFOLIO.detail.add_button}
                     </Button>
                 </div>
 
@@ -95,18 +100,18 @@ export function PortfolioDetail() {
                     <div class="min-h-0 flex-1 overflow-y-auto hf-scrollbar p-6">
                         <Show
                             when={totalRecords() > 0}
-                            fallback={<EmptyState title="暂无持仓或关注数据" description="该用户当前没有任何资产或关注记录。" />}
+                            fallback={<EmptyState title={PORTFOLIO.detail.empty_records_title} description={PORTFOLIO.detail.empty_records_description} />}
                         >
                             <Show when={portfolio.holdingsList().length > 0}>
-                                <div class="mb-3 text-sm font-semibold">持仓</div>
+                                <div class="mb-3 text-sm font-semibold">{PORTFOLIO.detail.section_holdings}</div>
                                 <table class="w-full border-collapse text-left text-sm mb-8">
                                     <thead>
                                         <tr class="border-b border-[color:var(--border)]">
-                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)]">标的</th>
-                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-right">数量</th>
-                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-right">平均成本</th>
-                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-right">总成本基准</th>
-                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-center">操作</th>
+                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)]">{PORTFOLIO.detail.col_symbol}</th>
+                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-right">{PORTFOLIO.detail.col_shares}</th>
+                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-right">{PORTFOLIO.detail.col_avg_cost}</th>
+                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-right">{PORTFOLIO.detail.col_total_cost}</th>
+                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-center">{PORTFOLIO.detail.col_actions}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -120,10 +125,10 @@ export function PortfolioDetail() {
                                                                 {horizonLabel(holding.holding_horizon)}
                                                             </span>
                                                             <Show when={holding.strategy_notes}>
-                                                                <span>策略：{holding.strategy_notes}</span>
+                                                                <span>{PORTFOLIO.detail.strategy_label}{holding.strategy_notes}</span>
                                                             </Show>
                                                             <Show when={holding.notes}>
-                                                                <span>备注：{holding.notes}</span>
+                                                                <span>{PORTFOLIO.detail.notes_label}{holding.notes}</span>
                                                             </Show>
                                                         </div>
                                                     </td>
@@ -140,17 +145,17 @@ export function PortfolioDetail() {
 
                             <Show when={portfolio.watchlist().length > 0}>
                                 <div class="mb-3 text-sm font-semibold flex items-center gap-2">
-                                    关注列表
+                                    {PORTFOLIO.detail.section_watchlist}
                                     <span class="rounded-full bg-[color:var(--panel-strong)] border border-[color:var(--border)] px-2 py-0.5 text-xs font-normal text-[color:var(--text-muted)]">
-                                        仅订阅推送,不计入资金
+                                        {PORTFOLIO.detail.watchlist_badge}
                                     </span>
                                 </div>
                                 <table class="w-full border-collapse text-left text-sm mb-8">
                                     <thead>
                                         <tr class="border-b border-[color:var(--border)]">
-                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)]">标的</th>
-                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)]">备注</th>
-                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-center">操作</th>
+                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)]">{PORTFOLIO.detail.col_symbol}</th>
+                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)]">{PORTFOLIO.detail.col_notes}</th>
+                                            <th class="py-3 px-4 font-semibold text-[color:var(--text-secondary)] text-center">{PORTFOLIO.detail.col_actions}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -161,16 +166,16 @@ export function PortfolioDetail() {
                                                         <div class="flex items-center gap-2">
                                                             <SymbolLink symbol={holding.symbol} />
                                                             <span class="rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-normal text-amber-700">
-                                                                关注
+                                                                {PORTFOLIO.detail.watch_chip}
                                                             </span>
                                                         </div>
                                                     </td>
                                                     <td class="py-3 px-4 text-xs text-[color:var(--text-muted)]">
                                                         <Show when={holding.strategy_notes}>
-                                                            <span class="mr-3">策略：{holding.strategy_notes}</span>
+                                                            <span class="mr-3">{PORTFOLIO.detail.strategy_label}{holding.strategy_notes}</span>
                                                         </Show>
                                                         <Show when={holding.notes}>
-                                                            <span>备注：{holding.notes}</span>
+                                                            <span>{PORTFOLIO.detail.notes_label}{holding.notes}</span>
                                                         </Show>
                                                     </td>
                                                     <td class="py-3 px-4 text-center">{renderActions(holding)}</td>
@@ -182,24 +187,26 @@ export function PortfolioDetail() {
                             </Show>
 
                             <div class="mt-2 rounded-lg bg-[color:var(--panel-strong)] p-4 border border-[color:var(--border)]">
-                                <div class="text-sm font-semibold mb-2">组合统计概况</div>
+                                <div class="text-sm font-semibold mb-2">{PORTFOLIO.detail.summary_title}</div>
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div>
-                                        <div class="text-xs text-[color:var(--text-muted)]">持有标的数</div>
+                                        <div class="text-xs text-[color:var(--text-muted)]">{PORTFOLIO.detail.summary_holdings_count}</div>
                                         <div class="text-lg font-medium">{data()?.summary.holdings_count ?? 0}</div>
                                     </div>
                                     <div>
-                                        <div class="text-xs text-[color:var(--text-muted)]">关注标的数</div>
+                                        <div class="text-xs text-[color:var(--text-muted)]">{PORTFOLIO.detail.summary_watchlist_count}</div>
                                         <div class="text-lg font-medium">{data()?.summary.watchlist_count ?? 0}</div>
                                     </div>
                                     <div>
-                                        <div class="text-xs text-[color:var(--text-muted)]">总数量</div>
+                                        <div class="text-xs text-[color:var(--text-muted)]">{PORTFOLIO.detail.summary_total_shares}</div>
                                         <div class="text-lg font-medium">{data()?.summary.total_shares ?? 0}</div>
                                     </div>
                                     <div>
-                                        <div class="text-xs text-[color:var(--text-muted)]">上次更新时间</div>
+                                        <div class="text-xs text-[color:var(--text-muted)]">{PORTFOLIO.detail.summary_updated_at}</div>
                                         <div class="text-sm font-medium mt-1 truncate">
-                                            {data()?.summary.updated_at ? new Date(data()!.summary.updated_at!).toLocaleString() : "未知"}
+                                            {data()?.summary.updated_at
+                                                ? new Date(data()!.summary.updated_at!).toLocaleString(useLocale() === "zh" ? "zh-CN" : "en-US")
+                                                : PORTFOLIO.detail.summary_unknown}
                                         </div>
                                     </div>
                                 </div>
@@ -211,12 +218,12 @@ export function PortfolioDetail() {
                     <Show when={isEditing()}>
                         <div class="w-full md:w-[320px] md:border-l border-t md:border-t-0 border-[color:var(--border)] bg-[color:var(--panel)] p-6 shrink-0 hf-scrollbar overflow-y-auto">
                             <div class="flex items-center justify-between mb-6">
-                                <div class="font-semibold">{isNew() ? "新增持仓 / 关注" : `编辑 ${portfolio.state.draft.symbol}`}</div>
+                                <div class="font-semibold">{isNew() ? PORTFOLIO.detail.form_title_new : tpl(PORTFOLIO.detail.form_title_edit, { symbol: portfolio.state.draft.symbol ?? "" })}</div>
                                 <button
                                     onClick={() => portfolio.closeForm()}
                                     class="text-xs text-[color:var(--text-muted)] hover:text-black"
                                 >
-                                    取消
+                                    {PORTFOLIO.detail.form_cancel}
                                 </button>
                             </div>
 
@@ -227,23 +234,23 @@ export function PortfolioDetail() {
                                         checked={isWatchDraft()}
                                         onChange={(e) => portfolio.setDraft("tracking_only", e.currentTarget.checked)}
                                     />
-                                    <span>仅关注(无持仓,不计入资金统计)</span>
+                                    <span>{PORTFOLIO.detail.form_watch_only}</span>
                                 </label>
 
                                 <div class="space-y-2">
-                                    <label class="text-xs font-medium">股票代码 (Symbol)</label>
+                                    <label class="text-xs font-medium">{PORTFOLIO.detail.field_symbol}</label>
                                     <Input
                                         required
                                         disabled={!isNew()}
                                         class="h-9 uppercase"
                                         value={portfolio.state.draft.symbol || ""}
                                         onInput={(e) => portfolio.setDraft("symbol", e.currentTarget.value.toUpperCase())}
-                                        placeholder="AAPL"
+                                        placeholder={PORTFOLIO.detail.field_symbol_placeholder}
                                     />
                                 </div>
                                 <Show when={!isWatchDraft()}>
                                     <div class="space-y-2">
-                                        <label class="text-xs font-medium">持有数量 (Shares)</label>
+                                        <label class="text-xs font-medium">{PORTFOLIO.detail.field_shares}</label>
                                         <Input
                                             required
                                             type="number"
@@ -252,11 +259,11 @@ export function PortfolioDetail() {
                                             class="h-9"
                                             value={portfolio.state.draft.shares ?? ""}
                                             onInput={(e) => portfolio.setDraft("shares", parseFloat(e.currentTarget.value))}
-                                            placeholder="10.5"
+                                            placeholder={PORTFOLIO.detail.field_shares_placeholder}
                                         />
                                     </div>
                                     <div class="space-y-2">
-                                        <label class="text-xs font-medium">平均成本 (Avg Cost)</label>
+                                        <label class="text-xs font-medium">{PORTFOLIO.detail.field_avg_cost}</label>
                                         <Input
                                             required
                                             type="number"
@@ -264,12 +271,12 @@ export function PortfolioDetail() {
                                             class="h-9"
                                             value={portfolio.state.draft.avg_cost ?? ""}
                                             onInput={(e) => portfolio.setDraft("avg_cost", parseFloat(e.currentTarget.value))}
-                                            placeholder="-2.35 / 150.25"
+                                            placeholder={PORTFOLIO.detail.field_avg_cost_placeholder}
                                         />
                                     </div>
                                 </Show>
                                 <div class="space-y-2">
-                                    <label class="text-xs font-medium">持有期限倾向 (Horizon)</label>
+                                    <label class="text-xs font-medium">{PORTFOLIO.detail.field_horizon}</label>
                                     <select
                                         class="h-9 w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 text-sm"
                                         value={portfolio.state.draft.holding_horizon || ""}
@@ -277,33 +284,33 @@ export function PortfolioDetail() {
                                             portfolio.setDraft("holding_horizon", e.currentTarget.value as "long_term" | "short_term" | "")
                                         }
                                     >
-                                        <option value="">未标记</option>
-                                        <option value="long_term">长持</option>
-                                        <option value="short_term">短持</option>
+                                        <option value="">{PORTFOLIO.detail.horizon_unmarked}</option>
+                                        <option value="long_term">{PORTFOLIO.detail.horizon_long}</option>
+                                        <option value="short_term">{PORTFOLIO.detail.horizon_short}</option>
                                     </select>
                                 </div>
                                 <div class="space-y-2">
-                                    <label class="text-xs font-medium">特殊策略 (Strategy)</label>
+                                    <label class="text-xs font-medium">{PORTFOLIO.detail.field_strategy}</label>
                                     <Input
                                         class="h-9"
                                         value={portfolio.state.draft.strategy_notes || ""}
                                         onInput={(e) => portfolio.setDraft("strategy_notes", e.currentTarget.value)}
-                                        placeholder="例如：现金担保卖沽 / 财报事件驱动 / 核心长期仓位"
+                                        placeholder={PORTFOLIO.detail.field_strategy_placeholder}
                                     />
                                 </div>
                                 <div class="space-y-2">
-                                    <label class="text-xs font-medium">备注 (Notes)</label>
+                                    <label class="text-xs font-medium">{PORTFOLIO.detail.field_notes}</label>
                                     <Input
                                         class="h-9"
                                         value={portfolio.state.draft.notes || ""}
                                         onInput={(e) => portfolio.setDraft("notes", e.currentTarget.value)}
-                                        placeholder="选填"
+                                        placeholder={PORTFOLIO.detail.field_notes_placeholder}
                                     />
                                 </div>
 
                                 <div class="pt-4">
                                     <Button type="submit" class="w-full" disabled={portfolio.state.submitting}>
-                                        {portfolio.state.submitting ? "保存中..." : "保存"}
+                                        {portfolio.state.submitting ? PORTFOLIO.detail.saving_button : PORTFOLIO.detail.save_button}
                                     </Button>
                                 </div>
                             </form>

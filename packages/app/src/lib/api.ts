@@ -968,3 +968,13 @@ export async function putNotificationPrefs(
   const payload = await parseJson<{ prefs: NotificationPrefs }>(response);
   return payload.prefs;
 }
+
+export async function putLanguage(language: "zh" | "en"): Promise<"zh" | "en"> {
+  const response = await apiFetch("/api/language", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language }),
+  });
+  const payload = await parseJson<{ language: "zh" | "en" }>(response);
+  return payload.language;
+}
