@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-05-03 18:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `17:30-18:01` 的最新两轮继续在同窗混跑 `running / Empty / JsonNoop / noop + skipped_noop`，结构化协议仍未恢复成稳定单一形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮 heartbeat 窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 21`
+  - `17:30` 与 `18:00` 两个窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=14788-14798` 与 `14810-14820` 先写入两批 `running + pending`
+    - 随后 `14799-14809`、`14821-14831` 再另起终态，当前全部回落成 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明 heartbeat 输出形态在最新窗口继续摇摆：
+    - `2026-05-03 17:30:15.038`、`17:30:17.390`、`17:30:17.743`、`17:30:26.223`：`ORCL`、`ASTS`、`TEM破位`、`RKLB` 在 `17:30` 同窗退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 17:30:22.455`、`17:30:29.677`、`17:30:30.378`、`17:30:41.562`、`17:31:06.186`：`小米30港元`、`TEM大事件`、`全天原油价格3小时播报`、`持仓重大事件`、`Watchlist` 同窗回摆成 `parse_kind=JsonNoop`
+    - `2026-05-03 18:00:18.230`、`18:00:18.390`、`18:00:27.568`、`18:00:28.595`、`18:00:33.065`、`18:00:45.455`、`18:00:47.333`：`RKLB`、`CAI`、`ASTS`、`Watchlist`、`ORCL`、`原油`、`Cerebras` 在 `18:00` 下一窗又集中退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 18:00:26.783`、`18:00:36.944`、`18:00:53.421`、`18:01:02.949`：`TEM破位`、`TEM大事件`、`小米30港元`、`持仓重大事件` 同窗又回摆成 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-03 18:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-03 15:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `14:30-15:02` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议仍未恢复成稳定单一形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮 heartbeat 窗口仍同时存在：
     - `running + pending = 22`
