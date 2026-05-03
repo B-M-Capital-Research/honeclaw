@@ -5,10 +5,20 @@
 - **严重等级**: P3
 - **状态**: New
 - **证据来源**:
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-04 02:02 CST` 最新巡检样本：
+      - `job_name=小米30港元破位预警`
+      - `2026-05-04 01:30:27.406-01:30:27.407 CST` 同步记录 `parse_kind=JsonTriggered -> deliver`，正文再次使用同一周末静态 `29.02 港元 / 低于 30 港元阈值 / 港股已停盘` 条件
+      - 仅约 30 分钟后，同一 job 在 `2026-05-04 02:00:23.219 CST` 又回落成 `parse_kind=JsonNoop raw_preview="{\"status\":\"noop\"}"`，期间没有新的开盘、收盘、财报或独立公司催化
+      - `job_name=ORCL 大事件监控`
+      - `2026-05-04 01:30:37.374-01:30:37.374 CST` 同步记录 `parse_kind=JsonTriggered -> deliver`，再次把同一 `161.39 -> 171.83 / +6.47% / 最新可得价格为停牌前上一交易日收盘价` 组织成触发提醒
+      - 仅约 30 分钟后，同一 job 在 `2026-05-04 02:00:48.937 CST` 又回落成 `parse_kind=JsonNoop`
+      - 同窗其它 heartbeat 仍大量落成 `Empty` 或 `JsonNoop`，说明这不是整批心跳统一触发，而是相同旧事实在相邻窗口继续 `triggered -> noop` 回摆
+      - 这说明重复提醒缺陷在 `01:30-02:00` 最新窗口仍稳定活跃：同一周末静态价格事实在没有新增增量的情况下，先被重新送达，随后下一窗又回落 `noop`。它不阻断主功能链路，但持续制造重复提醒噪音，因此维持 `P3`
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `2026-05-03 19:10 CST` 最新巡检样本：
       - `job_name=小米30港元破位预警`
-      - `run_id=14870`，`executed_at=2026-05-03T19:00:26.644241+08:00`，再次落成 `completed + sent + delivered=1`
+        - `run_id=14870`，`executed_at=2026-05-03T19:00:26.644241+08:00`，再次落成 `completed + sent + delivered=1`
       - `response_preview` 再次发送同一 `小米 29.02 港元 / 跌破 30 港元 / 日内高点 29.88 / 低点 28.80 / 成交量 2.84 亿股 / 周末静态港股数据` 条件；而同一 job 在前一窗 `run_id=14851`（`18:30:29`）刚回落成 `noop + skipped_noop`
       - 同一 `19:00` 窗口里，`job_name=ORCL 大事件监控` 的 `run_id=14868` 已回落成 `noop + skipped_noop + parse_kind=Empty`，`job_name=持仓重大事件心跳检测` 的 `run_id=14874` 也回落成 `noop + skipped_noop + parse_kind=JsonEmptyStatus`，说明这不是整批 heartbeat 普遍触发，而是小米单条旧事实又在无新增增量窗口时被重新包装成提醒
       - `data/runtime/logs/sidecar.log` 在 `2026-05-03 19:00:22.246 CST` 同步记录 `小米30港元破位预警` 的 `parse_kind=JsonTriggered -> deliver`，而同条 job 在 `18:30:29.464` 还刚记录 `parse_kind=JsonNoop`

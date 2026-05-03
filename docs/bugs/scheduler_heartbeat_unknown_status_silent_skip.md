@@ -7,6 +7,12 @@
 
 ## 修复进展
 
+- `2026-05-04 02:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:00-02:00` 的三轮 heartbeat 继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议仍未收敛：
+  - `data/runtime/logs/sidecar.log` 显示 `01:00` 窗口先出现一批 `success=true content_chars=0`，随后同窗又分裂成 `TEM破位 / RKLB / ASTS / TEM大事件 / 持仓重大事件 / ORCL / Cerebras = parse_kind=Empty`，而 `原油 / CAI / Watchlist / 小米30港元 = parse_kind=JsonNoop`
+  - `01:30` 下一窗同样混跑：`TEM破位 / ASTS / RKLB / TEM大事件 / 持仓重大事件 = Empty`，`原油 / CAI / Watchlist / Cerebras = JsonNoop`，同时 `小米30港元` 与 `ORCL` 又回摆成 `parse_kind=JsonTriggered -> deliver`
+  - `02:00` 再下一窗继续分裂：`CAI / Cerebras / 持仓重大事件 / RKLB = Empty`，`原油 / TEM破位 / 小米30港元 / Watchlist / TEM大事件 / ASTS / ORCL = JsonNoop`
+  - 结论：到 `2026-05-04 02:02` 为止，这条缺陷仍稳定活跃；最新连续三窗继续混跑 `success=true + Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-04 00:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:00-00:01` 的最新一轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议仍未收敛：
   - `data/runtime/logs/sidecar.log` 显示本轮 heartbeat 仍先统一记 `run_finish ... success=true`，随后再按不同 `parse_kind` 分流：
     - `2026-05-04 00:00:14.461`、`00:00:16.439`、`00:00:16.533`、`00:00:21.780`、`00:00:27.856`、`00:00:29.440`、`00:00:50.807` 分别对应 `小米30港元`、`TEM大事件`、`CAI`、`持仓重大事件`、`RKLB`、`ASTS`、`Cerebras`，全部 `success=true content_chars=0`
