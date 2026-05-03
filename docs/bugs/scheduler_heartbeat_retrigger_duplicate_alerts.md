@@ -6,6 +6,16 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-05-03 09:00-09:02 最新巡检样本：
+      - `job_name=ORCL 大事件监控`
+      - `run_id=14422`，`executed_at=2026-05-03T09:00:16.991227+08:00`，落成 `noop + skipped_noop`
+      - 同窗 `data/runtime/logs/sidecar.log` 记录 `parse_kind=Empty raw_chars=0 raw_preview=""`
+      - 约 67 秒后，同一用户目标下的 `job_name=持仓重大事件心跳检测`
+      - `run_id=14431`，`executed_at=2026-05-03T09:01:24.749068+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把同一 `ORCL 最新收盘价171.83美元（昨收161.39）、日内涨幅+6.47%、OpenAI 相关利好推动大幅反弹` 重新包装成 `【持仓心跳检测 - 北京时间2026-05-03 09:00】` 内的 `ORCL（甲骨文）：价格异动触发`
+      - 两轮之间没有新的价格窗口、公告落地或独立公司级新催化；单标的 ORCL job 已在本窗显式回落 `noop/Empty`，但聚合持仓 heartbeat 仍把同一事实当成新增提醒再次送达
+      - 这组最新样本说明“同一目标下跨 job 重复提醒旧事实”的缺陷在 `09:00` 整点窗口继续活跃复现；它不阻断主功能链路，但持续制造提醒噪音，因此保持 `P3`
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-05-03 06:30-07:01 最新巡检样本：
       - `job_name=ORCL 大事件监控`
       - `run_id=14311`，`executed_at=2026-05-03T06:31:01.884246+08:00`，落成 `completed + sent + delivered=1`
