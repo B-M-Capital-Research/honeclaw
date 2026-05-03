@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-03 18:20 CST
+- updated_at: 2026-05-03 18:06 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -71,7 +71,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-02 11:03: Latest bug ledger refresh reopened Web scheduler offline SSE and provider numeric `HTTP 400` based on newer local evidence; keep those active for separate review instead of carrying forward the stale Fixed conclusion.
 - 2026-05-02: Closed the Feishu scheduler started-row finalization regression by hardening both sides of the matching contract: scheduler terminal detail now replaces unusable `delivery_key` values, and cron history storage can safely fallback-update the latest recent `phase=started` pending row for the same actor/job/target/heartbeat when exact key matching fails.
 - 2026-05-02 17:35: Reopened P1 Feishu direct empty/invalid answer bug is now back to `Fixing` after narrowing `response_finalizer`'s `planning_sentence_suppressed` heuristic. Clarification questions such as “请先确认具体是哪只股票/资产的 ticker？” are no longer treated as empty-success fallbacks, and targeted `hone-channels` regression tests now cover both the helper and full finalizer path. No live Feishu runtime recheck yet because this automation does not restart services.
-- 2026-05-03 18:20: Closed the active Web `tool_call_update.rawOutput` leak by hardening shared session event emission instead of transcript persistence: `SessionEventEmitter` now relativizes `ToolStatus.tool/message/reasoning`, suppresses internal prompt markers such as `【Invoked Skill Context】` / `Base directory for this skill:`, and drops structured JSON payloads from user-visible progress events while preserving raw ACP evidence for restore/debug. Targeted `hone-channels` emitter tests and `cargo check -p hone-channels --tests` passed. Feishu direct empty/invalid answer remains the only active P1 because this automation run does not restart services or generate new live Feishu samples.
+- 2026-05-03 18:06: Closed the active Web `tool_call_update.rawOutput` leak by hardening shared session event emission instead of transcript persistence: `SessionEventEmitter` now relativizes `ToolStatus.tool/message/reasoning`, suppresses internal prompt markers such as `【Invoked Skill Context】` / `Base directory for this skill:`, and drops structured JSON payloads from user-visible progress events while preserving raw ACP evidence for restore/debug. Targeted `hone-channels` emitter tests and `cargo check -p hone-channels --tests` passed. Feishu direct empty/invalid answer remains the only active P1 because this automation run does not restart services or generate new live Feishu samples.
 
 ## Validation
 

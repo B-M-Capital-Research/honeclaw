@@ -65,7 +65,7 @@
 - `rawOutput` 当前仍按“可直接透传的调试字段”进入 Web `session/update`，缺少用户态净化与字段级裁剪。
 - 从旧样本看，问题不是某个单一 skill 的异常，而是 Web 侧对 `tool_call_update/rawOutput` 的统一下发策略缺口。
 
-## 修复进展（2026-05-03 18:20 CST）
+## 修复进展（2026-05-03 18:06 CST）
 
 - 已在 `crates/hone-channels/src/agent_session/emitter.rs` 收口共享用户态事件出站：
   - `RunEvent::ToolStatus` 的 `tool` / `message` / `reasoning` 现在统一先做路径相对化，再过 `sanitize_user_visible_output`
@@ -78,7 +78,7 @@
   - `session_event_emitter_relativizes_user_visible_paths`
   - `session_event_emitter_suppresses_internal_tool_status_payloads`
 
-## 当前验证（2026-05-03 18:20 CST）
+## 当前验证（2026-05-03 18:06 CST）
 
 - 已通过：
   - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
