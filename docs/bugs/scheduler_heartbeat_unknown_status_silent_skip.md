@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-05-04 00:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `00:00-00:01` 的最新一轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议仍未收敛：
+  - `data/runtime/logs/sidecar.log` 显示本轮 heartbeat 仍先统一记 `run_finish ... success=true`，随后再按不同 `parse_kind` 分流：
+    - `2026-05-04 00:00:14.461`、`00:00:16.439`、`00:00:16.533`、`00:00:21.780`、`00:00:27.856`、`00:00:29.440`、`00:00:50.807` 分别对应 `小米30港元`、`TEM大事件`、`CAI`、`持仓重大事件`、`RKLB`、`ASTS`、`Cerebras`，全部 `success=true content_chars=0`
+    - 同批次解析结果又继续分裂：`00:00:14.462`、`00:00:16.440`、`00:00:16.533`、`00:00:21.781`、`00:00:27.856`、`00:00:29.440`、`00:00:50.807` 都是 `parse_kind=Empty raw_chars=0`
+    - `00:00:21.142` 的 `TEM破位预警` 与 `00:00:37.947` 的 `Monitor_Watchlist_11`、`00:01:08.866` 的 `ORCL 大事件监控` 同窗又回摆成 `parse_kind=JsonNoop`
+    - `00:00:31.271` 的 `全天原油价格3小时播报` 同窗落成 `parse_kind=JsonTriggered` 并实际发送
+  - 结论：到 `2026-05-04 00:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `success=true + Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-03 20:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `19:30-20:02` 的最新两轮继续在同窗混跑 `running / Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议仍未收敛，且同一 job 会在 60 分钟内从 `JsonEmptyStatus` 再漂回 `Empty`：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮 heartbeat 窗口仍同时存在：
     - `running + pending = 22`
