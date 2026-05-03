@@ -7,6 +7,20 @@
 
 ## 修复进展
 
+- `2026-05-03 13:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `12:30-13:00` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议仍未恢复成稳定单一形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮 heartbeat 窗口仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 20`
+    - `completed + sent = 2`
+  - `12:30` 与 `13:00` 两个窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=14568-14578` 与 `14590-14600` 先写入两批 `running + pending`
+    - 随后 `14579-14589`、`14601-14611` 再另起终态，其中 `14609`（`小米30港元破位预警`）与 `14611`（`持仓重大事件心跳检测`）落成 `completed + sent`，其余终态多为 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明 heartbeat 输出形态在最新整点窗口继续摇摆：
+    - `2026-05-03 13:00:19.006`、`13:00:20.633`、`13:00:22.650`、`13:00:31.128`：`ORCL`、`TEM大事件`、`ASTS`、`Cerebras` 在 `13:00` 同窗退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 13:00:15.240`、`13:00:25.988`、`13:00:41.362`：`CAI`、`RKLB`、`Watchlist` 同窗回摆成 `parse_kind=JsonNoop`
+    - `2026-05-03 13:00:32.534-13:00:32.535`、`13:00:42.854-13:00:42.854`：`小米30港元破位预警` 与 `持仓重大事件心跳检测` 又在同一 `13:00` 窗口落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+  - 结论：到 `2026-05-03 13:02` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / JsonTriggered`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-03 08:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `07:30-08:00` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / skipped_error / noop + skipped_noop`，结构化协议没有恢复成稳定单一形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近 90 分钟窗口仍同时存在：
     - `running + pending = 33`
