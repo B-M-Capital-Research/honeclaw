@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 2026-05-03 12:04 CST 最新巡检样本：
+      - `job_name=小米30港元破位预警`
+      - `run_id=14564`，`executed_at=2026-05-03T12:00:46.348961+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把同一 `小米 29.02 港元 / 跌破 30 港元 / 港股周末休市` 条件重新包装成 `已触及心理止损/观察线` 送达；而同一 job 在更早的 `run_id=14475`（`10:00:38`）与 `run_id=14303`（`06:30:20`）已经发送过同一静态周末价格
+      - 更关键的是，中间相邻三窗 `run_id=14492`（`10:30:17`）、`14513`（`11:00:14`）、`14539`（`11:30:23`）都已明确回落成 `noop + skipped_noop`，说明 `12:00` 这次不是持续触发同一窗口的重复投递，而是在没有新开盘、没有新财报、没有新的独立阈值跨越时，把同一静态跌破事实重新当成增量事件送达
+      - `data/runtime/logs/sidecar.log` 在 `2026-05-03 12:00:43.875-12:00:43.878 CST` 同步记录 `parse_kind=JsonTriggered -> deliver`，而 `11:30:23.373-11:30:23.375` 还刚记录同一 job 的 `parse_kind=JsonNoop`
+      - 这说明重复提醒缺陷已不仅体现在 ORCL / TEM / RKLB 等事件线，连单 ticker 阈值 heartbeat 也会在周末静态价格上经历多窗 `noop` 后重新回摆成 `triggered + sent`。它不阻断主功能链路，但持续制造重复提醒噪音，因此维持 `P3`
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - 2026-05-03 11:03 CST 最新巡检样本：
       - `job_name=ORCL 大事件监控`
       - `run_id=14521`，`executed_at=2026-05-03T11:01:07.558579+08:00`，再次落成 `completed + sent + delivered=1`
