@@ -9,6 +9,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-03 19:10 CST` 再次复核，started-row finalize 缺陷在最新 `18:30`、`19:00` 两个 heartbeat 窗口继续实时新增：
+    - `18:30` 窗口先写入 `run_id=14832-14842` 共 `11` 条 started 行；同窗终态随后另起为 `14843-14853`，当前全部已落成 `noop + skipped_noop`
+    - `19:00` 窗口又先写入 `run_id=14854-14864` 共 `11` 条 started 行；同窗终态随后另起为 `14865-14875`，其中 `14870`（`小米30港元破位预警`）已落成 `completed + sent + delivered=1`，其余终态多为 `noop + skipped_noop`
+    - 但对应 started 行 `14832-14842` 与 `14854-14864` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent` 还是 `skipped_noop`，原 started 行都不会被覆盖
+  - 按这两个最新 heartbeat 窗口聚合，当前仍同时存在：
+    - `running + pending = 22`
+    - `noop + skipped_noop = 21`
+    - `completed + sent = 1`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `4047` 条，较 `2026-05-03 18:02` 巡检记录里的 `4025` 再增 `22` 条，说明这条缺陷在 `18:30` 与 `19:00` 两个窗口里仍在持续堆积。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-03 18:02 CST` 再次复核，started-row finalize 缺陷在最新 `17:30`、`18:00` 两个 heartbeat 窗口继续实时新增：
     - `17:30` 窗口先写入 `run_id=14788-14798` 共 `11` 条 started 行；同窗终态随后另起为 `14799-14809`，当前全部已落成 `noop + skipped_noop`
     - `18:00` 窗口又先写入 `run_id=14810-14820` 共 `11` 条 started 行；同窗终态随后另起为 `14821-14831`，当前也全部已落成 `noop + skipped_noop`
