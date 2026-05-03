@@ -6,6 +6,14 @@
 - **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `2026-05-03 16:02 CST` 最新巡检样本：
+      - `job_name=ORCL 大事件监控`
+      - `run_id=14739`，`executed_at=2026-05-03T16:00:36.129466+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 再次发送同一 `ORCL 171.83 / +6.47% / OpenAI 相关利好 / 市场当前已收盘` 静态事实；而同一 job 在前一窗 `run_id=14717`（`15:30:27`）刚回落成 `noop + skipped_noop`
+      - 同一 `16:00` 窗口里，`job_name=持仓重大事件心跳检测` 的 `run_id=14743` 已回落成 `noop + skipped_noop`，`小米30港元破位预警` 的 `run_id=14734` 也回落成 `noop + skipped_noop`，说明这不是整批 heartbeat 普遍触发，而是 ORCL 单条旧事实又在无新增交易窗口时被重新包装成提醒
+      - `data/runtime/logs/sidecar.log` 在 `2026-05-03 16:00:32.411-16:00:32.412 CST` 同步记录 `ORCL 大事件监控` 的 `parse_kind=JsonTriggered -> deliver`，而同条 job 在 `15:30:27.314-15:30:27.315` 还刚记录 `parse_kind=JsonNoop`
+      - 这说明重复提醒缺陷在最新整点窗口继续活跃：同一周末静态收盘事实在上一窗已明确 `noop` 后，下一窗仍会重新回摆成 `triggered + sent`。它不阻断主功能链路，但持续制造重复提醒噪音，因此维持 `P3`
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - `2026-05-03 15:02 CST` 最新巡检样本：
       - `job_name=小米30港元破位预警`
       - `run_id=14694`，`executed_at=2026-05-03T15:00:24.012718+08:00`，再次落成 `completed + sent + delivered=1`
