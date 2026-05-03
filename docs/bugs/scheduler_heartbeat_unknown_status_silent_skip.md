@@ -7,6 +7,17 @@
 
 ## 修复进展
 
+- `2026-05-04 05:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `04:30-05:01` 的最新两轮继续在同窗混跑 `JsonNoop / Empty / noop + skipped_noop / completed + sent`，结构化协议仍未收敛：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮窗口里 heartbeat started/terminal 仍继续双轨并存：
+    - `04:30` 窗口先写入 `run_id=15287-15297` 共 `11` 条 heartbeat started 行；同窗终态随后另起为 `15299-15309`，全部回落成 `noop + skipped_noop`
+    - `05:00` 窗口又先写入 `run_id=15311-15318`、`15320-15322` 共 `11` 条 heartbeat started 行；同窗终态随后另起为 `15323-15330`、`15332-15334`，也全部回落成 `noop + skipped_noop`
+    - 同窗另有非 heartbeat 的 `OWALERT_PostMarket` 与 `科技成长赛道大盘极值与情绪监控` 分别落成 `completed + sent`，说明结构化坏态仍局限在 heartbeat 链路而未波及同批普通 scheduler 任务
+  - `data/runtime/logs/sidecar.log` 证明 heartbeat 输出形态在最新窗口继续摇摆：
+    - `2026-05-04 04:30:11.877`、`04:30:16.480`、`04:30:16.568`、`04:30:25.223`、`04:30:38.280`、`04:30:42.546`：`全天原油价格3小时播报`、`CAI`、`TEM破位`、`小米30港元`、`RKLB`、`Watchlist` 在 `04:30` 同窗回摆成 `parse_kind=JsonNoop`
+    - `2026-05-04 04:30:26.213`、`05:00:28.017`、`05:00:35.258`：`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测`、`TEM大事件心跳监控` 分别落成 `run_finish success=true content_chars=0`，随后被解析成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-04 05:00:11.402`、`05:00:16.199`、`05:00:22.630`、`05:00:26.479`、`05:00:36.106`、`05:00:57.931`、`05:01:01.964`：`TEM破位`、`CAI`、`全天原油价格3小时播报`、`RKLB`、`ASTS`、`Cerebras`、`小米30港元` 在 `05:00` 下一窗继续回摆成 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-04 05:02` 为止，本单仍稳定活跃；最新两窗继续混跑 `started / Empty / JsonNoop`，heartbeat 仍然先记 `success=true` 再分裂成不同 `parse_kind`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-04 03:02` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `02:30-03:01` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议仍未收敛：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮 heartbeat 窗口仍同时存在：
     - `running + pending = 22`

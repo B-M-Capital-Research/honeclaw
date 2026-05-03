@@ -9,6 +9,17 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-04 05:02 CST` 再次复核，started-row finalize 缺陷在最新 `04:30`、`05:00` 两个窗口继续实时新增：
+    - `04:30` 窗口先写入 `run_id=15287-15298` 共 `12` 条 started 行，其中新增的 `15298` 为非 heartbeat 的 `OWALERT_PostMarket`
+    - 同窗终态随后另起为 `15299-15310`；其中 `15310`（`OWALERT_PostMarket`）已落成 `completed + sent + delivered=1`，其余 `15299-15309` 均回落成 `noop + skipped_noop`
+    - `05:00` 窗口又先写入 `run_id=15311-15322` 共 `12` 条 started 行，其中新增的 `15319` 为非 heartbeat 的 `科技成长赛道大盘极值与情绪监控`
+    - 同窗终态随后另起为 `15323-15334`；其中 `15331`（`科技成长赛道大盘极值与情绪监控`）已落成 `completed + sent + delivered=1`，其余 `15323-15334` 均回落成 `noop + skipped_noop`
+    - 但对应 started 行 `15287-15298` 与 `15311-15322` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent` 还是 `skipped_noop`，原 started 行都不会被覆盖
+  - 按这两个最新窗口聚合，当前仍同时存在：
+    - `running + pending = 24`
+    - `noop + skipped_noop = 22`
+    - `completed + sent = 2`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `4276` 条，较 `2026-05-04 04:07` 巡检记录里的 `4252` 再增 `24` 条；最近一小时新增 started 残留再次同时覆盖 heartbeat 与非 heartbeat 的 `OWALERT_PostMarket`、`科技成长赛道大盘极值与情绪监控`，说明这条缺陷仍在持续堆积并继续扩散到普通 scheduler 任务。
   - `2026-05-04 04:07 CST` 再次复核，started-row finalize 缺陷在最新 `03:00`、`03:30`、`04:00` 三个窗口继续实时新增：
     - `03:00` 窗口先写入 `run_id=15219-15229` 共 `11` 条 started 行；同窗终态随后另起为 `15230-15240`，其中 `15240`（`全天原油价格3小时播报`）已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
     - `03:30` 窗口先写入 `run_id=15241-15251` 共 `11` 条 started 行；同窗终态随后另起为 `15252-15262`，其中 `15262`（`ORCL 大事件监控`）已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
