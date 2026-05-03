@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-04 06:02 CST
+最后更新：2026-05-04 07:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,9 +27,9 @@
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-05-02 17:35 已收紧 `response_finalizer` 的 `planning_sentence_suppressed` 判定：用户可见澄清问句与 `请先确认/请提供` 类补充请求不再被误杀，并补 `hone-channels` 回归测试；因本轮未重启服务、尚缺新的真实 Feishu 样本，先维持活跃 `Fixing` | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-04 06:02 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`；但最近一小时真实 Feishu 直聊源文件仍刷新到 `05:00:52`，最新 `科技成长赛道大盘极值与情绪监控` user/assistant 两轮已完整写进 JSON | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 02:02 最新窗口里，`小米30港元破位预警` 与 `ORCL 大事件监控` 在 `01:30` 又把同一周末静态价格事实送达，`02:00` 下一窗随即双双回落 `JsonNoop`；期间没有新的开盘、收盘或独立催化，说明重复回摆仍在继续 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 07:03 `小米30港元破位预警` 在 `06:30` 先回落 `noop + skipped_noop`，`07:01` 又把同一停盘静态 `29.02 港元` 跌破事实重新送达；期间没有新的开盘、收盘或独立催化，重复回摆仍在继续 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-03 20:02 `20:00 英伟达每日消息` 的 `run_id=14919` 再次落成 `completed + send_failed`；对应 Web 会话 JSON 已写入完整 NVDA 摘要，说明“正文落库即送达”语义在线上仍未生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-04 06:02 最新 `05:30 / 06:00` 两轮窗口继续同步混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop`；`06:00` 同窗里 `原油` 实际送达，其余 heartbeat 仍先记 `success=true` 再分裂成不同 `parse_kind` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-04 07:03 最新 `06:30 / 07:01` 两轮窗口继续同步混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop`；`07:01` 同窗里只有 `小米30港元` 实际送达，其余 heartbeat 仍先记 `success=true` 再分裂成不同 `parse_kind` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-03 15:02 最近一小时 `run_id=14654`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`，`sidecar.log` 同窗先记录真实上游 `maximum context length ... code:400`，随后仍被压扁成 `invalid type: integer \`400\``；`15:02` 下一窗虽回落 `noop`，但根因仍属间歇复发 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-04 05:02 最新 `04:30`、`05:00` 两个窗口又新增 `24` 条 `running + pending` started 行且不被终态覆盖；即便同窗已有 `noop/sent` 终态，started 行仍悬挂；全库总量升到 `4276` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
