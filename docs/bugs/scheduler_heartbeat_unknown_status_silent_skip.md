@@ -7,6 +7,23 @@
 
 ## 修复进展
 
+- `2026-05-03 08:03` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `07:30-08:00` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / skipped_error / noop + skipped_noop`，结构化协议没有恢复成稳定单一形态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近 90 分钟窗口仍同时存在：
+    - `running + pending = 33`
+    - `noop + skipped_noop = 31`
+    - `execution_failed + skipped_error = 1`
+    - `completed + sent = 1`
+  - `07:30` 与 `08:00` 两个窗口继续维持“started 行另起、终态另起”的双轨形态：
+    - `run_id=14334-14344` 与 `14356-14366` 先写入两批 `running + pending`
+    - 随后 `14345-14355`、`14367-14377` 再另起终态，其中 `14355`（`持仓重大事件心跳检测`）落成 `execution_failed + skipped_error`，其余终态多为 `noop + skipped_noop`
+  - `data/runtime/logs/sidecar.log` 证明这不是单纯台账归类差异，而是 heartbeat 输出形态在最新整点窗口继续摇摆：
+    - `2026-05-03 07:30:11.018`、`07:30:18.285`、`07:30:22.079`、`07:30:22.941`：`TEM破位`、`TEM大事件`、`ORCL`、`Monitor_Watchlist_11` 在 `07:30` 同窗退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 07:30:16.226`、`07:30:20.230`、`07:30:22.632`、`07:30:25.245`：`原油`、`CAI`、`RKLB`、`Cerebras` 同窗回摆成 `parse_kind=JsonNoop`
+    - `2026-05-03 07:30:34.083-07:30:34.084`：`持仓重大事件心跳检测` 又在同一 `07:30` 窗口落成 `invalid type: integer \`400\`` 的 `skipped_error`
+    - `2026-05-03 08:00:13.235`、`08:00:14.612`、`08:00:15.570`、`08:00:16.467`、`08:00:24.632`、`08:00:58.731`：`TEM大事件`、`RKLB`、`小米30港元`、`ORCL`、`Watchlist`、`持仓重大事件` 在下一窗又集中退化成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-03 08:00:13.055`、`08:00:16.414`、`08:00:17.707`、`08:00:27.985`、`08:00:35.437`：`原油`、`TEM破位`、`CAI`、`Cerebras`、`ASTS` 同窗继续回摆成 `parse_kind=JsonNoop`
+  - 结论：到 `2026-05-03 08:03` 为止，本单仍稳定活跃；最新窗口继续混跑 `started / Empty / JsonNoop / skipped_error`，且 `持仓重大事件` 已从 `07:00` 窗口的 `JsonTriggered + deliver` 回摆到 `07:30 skipped_error` 再回落成 `08:00 Empty`，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-03 07:04` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `06:30-07:00` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop / completed + sent`，结构化协议没有恢复成稳定单一形态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，最近两轮 heartbeat 窗口仍同时存在：
     - `running + pending = 22`

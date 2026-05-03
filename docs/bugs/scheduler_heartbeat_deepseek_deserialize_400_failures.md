@@ -6,6 +6,13 @@
 - **状态**: New
 - **证据来源**:
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-03 07:30-07:31` 窗口最新完成样本里，`run_id=14355`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
+  - 同一条 run 的 `error_message` 再次回到同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 314`
+- 最近一小时运行日志：`data/runtime/logs/sidecar.log`
+  - `2026-05-03 07:30:34.029` 同窗先记录真实上游 bad request：`This endpoint's maximum context length is 262144 tokens. However, you requested about 387379 tokens ... "code":400`
+  - `2026-05-03 07:30:34.083-07:30:34.084` heartbeat 链路随后仍把这条上游 `HTTP 400` 压回 `failed to deserialize api response: invalid type: integer \`400\``
+  - 同批次 `ORCL 大事件监控` 与 `TEM大事件心跳监控` 又分别在 `07:30:22.079`、`07:30:18.285` 退化成 `parse_kind=Empty`，说明当前复发仍属于 heartbeat 公共 provider 错误解析层的离散失效，而不是整批调度停摆。
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-02 10:30-10:31` 窗口最新完成样本里，`run_id=13412`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error + delivered=0`
   - 同一条 run 的 `error_message` 再次回到同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 314`
 - 最近一小时运行日志：`data/runtime/logs/sidecar.log`
