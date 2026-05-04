@@ -170,6 +170,11 @@ pub struct WebInviteInfo {
     pub created_at: String,
     pub last_login_at: Option<String>,
     pub revoked_at: Option<String>,
+    pub api_key_prefix: Option<String>,
+    pub api_key_created_at: Option<String>,
+    pub api_key_last_used_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
     pub enabled: bool,
     pub active_session_count: u32,
     pub daily_limit: u32,

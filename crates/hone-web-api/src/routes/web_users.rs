@@ -114,6 +114,46 @@ pub(crate) async fn handle_reset_invite(
     }
 }
 
+pub(crate) async fn handle_get_api_key(
+    State(state): State<Arc<AppState>>,
+    Path(user_id): Path<String>,
+) -> impl IntoResponse {
+    match state.web_auth.ensure_api_key_for_user(&user_id) {
+        Ok(Some(invite)) => Json(json!({
+            "invite": to_invite_info(&state, &user_id, invite),
+            "message": "已获取 API Key；明文仅显示一次，请妥善保存",
+        }))
+        .into_response(),
+        Ok(None) => {
+            crate::routes::json_error(axum::http::StatusCode::NOT_FOUND, "邀请码用户不存在")
+        }
+        Err(error) => crate::routes::json_error(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("获取 API Key 失败: {error}"),
+        ),
+    }
+}
+
+pub(crate) async fn handle_reset_api_key(
+    State(state): State<Arc<AppState>>,
+    Path(user_id): Path<String>,
+) -> impl IntoResponse {
+    match state.web_auth.reset_api_key_for_user(&user_id) {
+        Ok(Some(invite)) => Json(json!({
+            "invite": to_invite_info(&state, &user_id, invite),
+            "message": "已重置 API Key；旧 Key 已失效，新 Key 明文仅显示一次",
+        }))
+        .into_response(),
+        Ok(None) => {
+            crate::routes::json_error(axum::http::StatusCode::NOT_FOUND, "邀请码用户不存在")
+        }
+        Err(error) => crate::routes::json_error(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("重置 API Key 失败: {error}"),
+        ),
+    }
+}
+
 fn to_invite_info(
     state: &AppState,
     user_id: &str,
@@ -153,6 +193,10 @@ fn to_invite_info(
         created_at: invite.created_at,
         last_login_at: invite.last_login_at,
         revoked_at: invite.revoked_at,
+        api_key_prefix: invite.api_key_prefix,
+        api_key_created_at: invite.api_key_created_at,
+        api_key_last_used_at: invite.api_key_last_used_at,
+        api_key: invite.api_key_plaintext,
         enabled,
         active_session_count,
         daily_limit,

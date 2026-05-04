@@ -61,6 +61,10 @@ export type WebInviteInfo = {
   created_at: string;
   last_login_at?: string;
   revoked_at?: string;
+  api_key_prefix?: string;
+  api_key_created_at?: string;
+  api_key_last_used_at?: string;
+  api_key?: string;
   enabled: boolean;
   active_session_count: number;
   daily_limit: number;
@@ -141,6 +145,7 @@ export type AgentProvider =
   | "codex_cli"
   | "codex_acp"
   | "opencode_acp"
+  | "hone_cloud"
   | "multi-agent";
 
 export type MultiAgentSearchSettings = {
@@ -169,8 +174,14 @@ export type AuxiliarySettings = {
   model: string;
 };
 
+export type HoneCloudSettings = {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+};
+
 export type AgentSettings = {
-  /** function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent */
+  /** function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent | hone_cloud */
   runner: AgentProvider;
   /** codex_cli 专用；其他 provider 留空 */
   codexModel: string;
@@ -182,6 +193,8 @@ export type AgentSettings = {
   openaiApiKey: string;
   /** OpenAI-compatible auxiliary 配置，用于心跳/压缩等后台任务 */
   auxiliary?: AuxiliarySettings;
+  /** Hone Cloud 用户端服务配置 */
+  honeCloud?: HoneCloudSettings;
   /** multi-agent 双阶段设置 */
   multiAgent?: MultiAgentSettings;
 };

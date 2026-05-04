@@ -91,7 +91,7 @@ export async function createWebInvite(phoneNumber: string) {
 
 async function mutateWebInvite(
   userId: string,
-  action: "disable" | "enable" | "reset",
+  action: "disable" | "enable" | "reset" | "api-key" | "api-key/reset",
 ) {
   const response = await apiFetch(
     `/api/web-users/invites/${encodeURIComponent(userId)}/${action}`,
@@ -112,6 +112,14 @@ export async function enableWebInvite(userId: string) {
 
 export async function resetWebInvite(userId: string) {
   return mutateWebInvite(userId, "reset");
+}
+
+export async function getWebInviteApiKey(userId: string) {
+  return mutateWebInvite(userId, "api-key");
+}
+
+export async function resetWebInviteApiKey(userId: string) {
+  return mutateWebInvite(userId, "api-key/reset");
 }
 
 function actorQuery(actor: ActorRef) {

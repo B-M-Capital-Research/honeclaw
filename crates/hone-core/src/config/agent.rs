@@ -204,6 +204,8 @@ pub struct AgentConfig {
     #[serde(default)]
     pub opencode: OpencodeAcpConfig,
     #[serde(default)]
+    pub hone_cloud: HoneCloudConfig,
+    #[serde(default)]
     pub multi_agent: MultiAgentConfig,
 }
 
@@ -232,6 +234,7 @@ pub enum AgentRunnerKind {
     CodexCli,
     CodexAcp,
     OpencodeAcp,
+    HoneCloud,
     MultiAgent,
     Unknown,
 }
@@ -251,6 +254,7 @@ impl AgentRunnerKind {
             "codex_cli" => Self::CodexCli,
             "codex_acp" => Self::CodexAcp,
             "opencode_acp" => Self::OpencodeAcp,
+            "hone_cloud" => Self::HoneCloud,
             "multi-agent" => Self::MultiAgent,
             _ => Self::Unknown,
         }
@@ -264,6 +268,7 @@ impl AgentRunnerKind {
             Self::CodexCli => "codex_cli",
             Self::CodexAcp => "codex_acp",
             Self::OpencodeAcp => "opencode_acp",
+            Self::HoneCloud => "hone_cloud",
             Self::MultiAgent => "multi-agent",
             Self::Unknown => "unknown",
         }
@@ -291,6 +296,7 @@ impl AgentRunnerKind {
                 binary: "opencode",
                 arg: "--version",
             }),
+            Self::HoneCloud => None,
             Self::FunctionCalling | Self::Unknown => None,
         }
     }
@@ -329,7 +335,28 @@ impl Default for AgentConfig {
             gemini_acp: GeminiAcpConfig::default(),
             codex_acp: CodexAcpConfig::default(),
             opencode: OpencodeAcpConfig::default(),
+            hone_cloud: HoneCloudConfig::default(),
             multi_agent: MultiAgentConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HoneCloudConfig {
+    #[serde(default = "default_hone_cloud_base_url")]
+    pub base_url: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default = "default_hone_cloud_model")]
+    pub model: String,
+}
+
+impl Default for HoneCloudConfig {
+    fn default() -> Self {
+        Self {
+            base_url: default_hone_cloud_base_url(),
+            api_key: String::new(),
+            model: default_hone_cloud_model(),
         }
     }
 }
@@ -571,6 +598,14 @@ fn default_agent_runner() -> String {
     "function_calling".to_string()
 }
 
+fn default_hone_cloud_base_url() -> String {
+    "https://hone-claw.com".to_string()
+}
+
+fn default_hone_cloud_model() -> String {
+    "hone-cloud".to_string()
+}
+
 fn default_multi_agent_search_base_url() -> String {
     "https://api.minimaxi.com/v1".to_string()
 }
@@ -613,6 +648,9 @@ mod tests {
         let probe = kind.cli_probe().expect("codex acp probe");
         assert_eq!(probe.binary, "codex-acp");
         assert_eq!(probe.arg, "--help");
+        let cloud = AgentRunnerKind::from_config_value("hone_cloud");
+        assert_eq!(cloud.as_str(), "hone_cloud");
+        assert!(cloud.cli_probe().is_none());
         assert_eq!(
             serde_yaml::to_string(&AgentRunnerKind::MultiAgent)
                 .expect("serialize")

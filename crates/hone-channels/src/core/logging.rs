@@ -86,6 +86,19 @@ impl HoneBotCore {
                 printable_or_default(&self.config.agent.opencode.command, "opencode"),
                 self.config.agent.opencode.args
             ),
+            AgentRunnerKind::HoneCloud => tracing::info!(
+                "[Startup/{channel}] dialog.engine=hone_cloud base_url={} model={} api_key.source={}",
+                printable_or_default(
+                    &self.config.agent.hone_cloud.base_url,
+                    "https://hone-claw.com"
+                ),
+                printable_or_default(&self.config.agent.hone_cloud.model, "hone-cloud"),
+                if self.config.agent.hone_cloud.api_key.trim().is_empty() {
+                    "missing"
+                } else {
+                    "config"
+                }
+            ),
             AgentRunnerKind::MultiAgent => tracing::info!(
                 "[Startup/{channel}] dialog.engine=multi-agent search.base_url={} search.model={} answer.base_url={} answer.model={} answer.variant={} max_iterations={} max_tool_calls={}",
                 printable_or_default(&self.config.agent.multi_agent.search.base_url, "<empty>"),

@@ -34,7 +34,7 @@ use tokio::sync::mpsc;
 
 use crate::runners::{
     AgentRunner, CodexAcpRunner, CodexCliReasoningRunner, FunctionCallingReasoningRunner,
-    GeminiCliRunner, MultiAgentRunner, OpencodeAcpRunner, RunnerTimeouts,
+    GeminiCliRunner, HoneCloudRunner, MultiAgentRunner, OpencodeAcpRunner, RunnerTimeouts,
 };
 use crate::sandbox::sandbox_base_dir;
 use crate::session_compactor::SessionCompactor;
@@ -523,6 +523,10 @@ impl HoneBotCore {
                     runner_timeouts,
                 )))
             }
+            AgentRunnerKind::HoneCloud => Ok(Box::new(HoneCloudRunner::new(
+                self.config.agent.hone_cloud.clone(),
+                runner_timeouts,
+            ))),
             AgentRunnerKind::MultiAgent => {
                 let pool = self.config.llm.openrouter.effective_key_pool();
                 let mut answer_config = self.config.agent.opencode.clone();

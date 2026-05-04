@@ -20,6 +20,11 @@ pub struct WebInviteUser {
     pub password_set_at: Option<String>,
     pub tos_accepted_at: Option<String>,
     pub tos_version: Option<String>,
+    pub api_key_prefix: Option<String>,
+    pub api_key_created_at: Option<String>,
+    pub api_key_last_used_at: Option<String>,
+    /// One-time plaintext key returned only by create/generate/reset flows.
+    pub api_key_plaintext: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,6 +121,19 @@ impl WebAuthStorage {
         ensure_column(&conn, "web_invite_users", "password_set_at", "TEXT")?;
         ensure_column(&conn, "web_invite_users", "tos_accepted_at", "TEXT")?;
         ensure_column(&conn, "web_invite_users", "tos_version", "TEXT")?;
+        ensure_column(&conn, "web_invite_users", "api_key_hash", "TEXT")?;
+        ensure_column(&conn, "web_invite_users", "api_key_prefix", "TEXT")?;
+        ensure_column(&conn, "web_invite_users", "api_key_created_at", "TEXT")?;
+        ensure_column(&conn, "web_invite_users", "api_key_last_used_at", "TEXT")?;
+        conn.execute(
+            "
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_web_invite_users_api_key_hash
+                ON web_invite_users(api_key_hash)
+                WHERE api_key_hash IS NOT NULL
+            ",
+            [],
+        )
+        .map_err(sql_err)?;
         Ok(())
     }
 
@@ -126,10 +144,16 @@ impl WebAuthStorage {
         let conn = self.conn.lock().map_err(lock_err)?;
         let tx = conn.unchecked_transaction().map_err(sql_err)?;
         let invite_code = generate_unique_invite_code(&tx)?;
+        let api_key = generate_unique_api_key(&tx)?;
+        let api_key_hash = hash_api_key(&api_key);
+        let api_key_prefix = api_key_prefix(&api_key);
         tx.execute(
             "
-            INSERT INTO web_invite_users (user_id, invite_code, phone_number, created_at, last_login_at, revoked_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            INSERT INTO web_invite_users (
+                user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                api_key_hash, api_key_prefix, api_key_created_at, api_key_last_used_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             ",
             params![
                 &user_id,
@@ -137,6 +161,10 @@ impl WebAuthStorage {
                 &phone_number,
                 &created_at,
                 None::<String>,
+                None::<String>,
+                &api_key_hash,
+                &api_key_prefix,
+                &created_at,
                 None::<String>
             ],
         )
@@ -147,13 +175,17 @@ impl WebAuthStorage {
             user_id,
             invite_code,
             phone_number,
-            created_at,
+            created_at: created_at.clone(),
             last_login_at: None,
             revoked_at: None,
             password_hash: None,
             password_set_at: None,
             tos_accepted_at: None,
             tos_version: None,
+            api_key_prefix: Some(api_key_prefix),
+            api_key_created_at: Some(created_at),
+            api_key_last_used_at: None,
+            api_key_plaintext: Some(api_key),
         })
     }
 
@@ -163,7 +195,8 @@ impl WebAuthStorage {
             .prepare(
                 "
                 SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version
+                       password_hash, password_set_at, tos_accepted_at, tos_version,
+                       api_key_prefix, api_key_created_at, api_key_last_used_at
                 FROM web_invite_users
                 ORDER BY created_at DESC
                 ",
@@ -184,7 +217,8 @@ impl WebAuthStorage {
         conn.query_row(
             "
             SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version
+                       password_hash, password_set_at, tos_accepted_at, tos_version,
+                       api_key_prefix, api_key_created_at, api_key_last_used_at
             FROM web_invite_users
             WHERE invite_code = ?1
             ",
@@ -200,7 +234,8 @@ impl WebAuthStorage {
         conn.query_row(
             "
             SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version
+                       password_hash, password_set_at, tos_accepted_at, tos_version,
+                       api_key_prefix, api_key_created_at, api_key_last_used_at
             FROM web_invite_users
             WHERE user_id = ?1
             ",
@@ -209,6 +244,118 @@ impl WebAuthStorage {
         )
         .optional()
         .map_err(sql_err)
+    }
+
+    pub fn find_invite_user_by_api_key(&self, api_key: &str) -> HoneResult<Option<WebInviteUser>> {
+        let api_key = api_key.trim();
+        if api_key.is_empty() {
+            return Ok(None);
+        }
+        let now = beijing_now_rfc3339();
+        let api_key_hash = hash_api_key(api_key);
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let tx = conn.unchecked_transaction().map_err(sql_err)?;
+        let user = tx
+            .query_row(
+                "
+                SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                       password_hash, password_set_at, tos_accepted_at, tos_version,
+                       api_key_prefix, api_key_created_at, api_key_last_used_at
+                FROM web_invite_users
+                WHERE api_key_hash = ?1 AND revoked_at IS NULL
+                ",
+                params![&api_key_hash],
+                map_invite_user,
+            )
+            .optional()
+            .map_err(sql_err)?;
+        if let Some(user) = user {
+            tx.execute(
+                "
+                UPDATE web_invite_users
+                SET api_key_last_used_at = ?2
+                WHERE user_id = ?1
+                ",
+                params![&user.user_id, &now],
+            )
+            .map_err(sql_err)?;
+            let refreshed = find_invite_user_tx(&tx, &user.user_id)?.ok_or_else(|| {
+                HoneError::Storage("web invite disappeared during api key lookup".to_string())
+            })?;
+            tx.commit().map_err(sql_err)?;
+            Ok(Some(refreshed))
+        } else {
+            tx.commit().map_err(sql_err)?;
+            Ok(None)
+        }
+    }
+
+    pub fn ensure_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
+        let now = beijing_now_rfc3339();
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let tx = conn.unchecked_transaction().map_err(sql_err)?;
+        let Some(mut existing) = find_invite_user_tx(&tx, user_id)? else {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(None);
+        };
+        if existing.api_key_prefix.is_some() {
+            tx.commit().map_err(sql_err)?;
+            existing.api_key_plaintext = None;
+            return Ok(Some(existing));
+        }
+
+        let api_key = generate_unique_api_key(&tx)?;
+        let api_key_hash = hash_api_key(&api_key);
+        let prefix = api_key_prefix(&api_key);
+        tx.execute(
+            "
+            UPDATE web_invite_users
+            SET api_key_hash = ?2,
+                api_key_prefix = ?3,
+                api_key_created_at = ?4,
+                api_key_last_used_at = NULL
+            WHERE user_id = ?1
+            ",
+            params![user_id, &api_key_hash, &prefix, &now],
+        )
+        .map_err(sql_err)?;
+        let mut invite = find_invite_user_tx(&tx, user_id)?.ok_or_else(|| {
+            HoneError::Storage("web invite disappeared during api key generate".to_string())
+        })?;
+        tx.commit().map_err(sql_err)?;
+        invite.api_key_plaintext = Some(api_key);
+        Ok(Some(invite))
+    }
+
+    pub fn reset_api_key_for_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
+        let now = beijing_now_rfc3339();
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let tx = conn.unchecked_transaction().map_err(sql_err)?;
+        let Some(_) = find_invite_user_tx(&tx, user_id)? else {
+            tx.rollback().map_err(sql_err)?;
+            return Ok(None);
+        };
+        let api_key = generate_unique_api_key(&tx)?;
+        let api_key_hash = hash_api_key(&api_key);
+        let prefix = api_key_prefix(&api_key);
+        tx.execute(
+            "
+            UPDATE web_invite_users
+            SET api_key_hash = ?2,
+                api_key_prefix = ?3,
+                api_key_created_at = ?4,
+                api_key_last_used_at = NULL
+            WHERE user_id = ?1
+            ",
+            params![user_id, &api_key_hash, &prefix, &now],
+        )
+        .map_err(sql_err)?;
+        let mut invite = find_invite_user_tx(&tx, user_id)?.ok_or_else(|| {
+            HoneError::Storage("web invite disappeared during api key reset".to_string())
+        })?;
+        tx.commit().map_err(sql_err)?;
+        invite.api_key_plaintext = Some(api_key);
+        Ok(Some(invite))
     }
 
     pub fn create_session_for_invite(
@@ -231,7 +378,8 @@ impl WebAuthStorage {
             .query_row(
                 "
                 SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version
+                       password_hash, password_set_at, tos_accepted_at, tos_version,
+                       api_key_prefix, api_key_created_at, api_key_last_used_at
                 FROM web_invite_users
                 WHERE invite_code = ?1 AND phone_number = ?2 AND revoked_at IS NULL
                 ",
@@ -334,7 +482,8 @@ impl WebAuthStorage {
             .query_row(
                 "
                 SELECT u.user_id, u.invite_code, u.phone_number, u.created_at, u.last_login_at, u.revoked_at,
-                       u.password_hash, u.password_set_at, u.tos_accepted_at, u.tos_version
+                       u.password_hash, u.password_set_at, u.tos_accepted_at, u.tos_version,
+                       u.api_key_prefix, u.api_key_created_at, u.api_key_last_used_at
                 FROM web_invite_users u
                 WHERE u.user_id = ?1
                 ",
@@ -475,7 +624,8 @@ impl WebAuthStorage {
         conn.query_row(
             "
             SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                   password_hash, password_set_at, tos_accepted_at, tos_version
+                   password_hash, password_set_at, tos_accepted_at, tos_version,
+                   api_key_prefix, api_key_created_at, api_key_last_used_at
             FROM web_invite_users
             WHERE phone_number = ?1 AND revoked_at IS NULL AND password_hash IS NOT NULL
             ",
@@ -630,6 +780,16 @@ fn generate_session_token() -> String {
     )
 }
 
+fn generate_api_key() -> String {
+    // 2 x UUID v4 gives 256 bits of random hex material while keeping the key
+    // easy to copy into Authorization: Bearer headers.
+    format!(
+        "hck_{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
+}
+
 fn hash_session_token(session_token: &str) -> String {
     let digest = Sha256::digest(session_token.as_bytes());
     let mut out = String::with_capacity(digest.len() * 2);
@@ -638,6 +798,14 @@ fn hash_session_token(session_token: &str) -> String {
         let _ = write!(&mut out, "{byte:02x}");
     }
     out
+}
+
+fn hash_api_key(api_key: &str) -> String {
+    hash_session_token(api_key.trim())
+}
+
+fn api_key_prefix(api_key: &str) -> String {
+    api_key.chars().take(12).collect()
 }
 
 fn normalize_invite_code(invite_code: &str) -> String {
@@ -692,6 +860,28 @@ fn generate_unique_invite_code(tx: &Transaction<'_>) -> HoneResult<String> {
     ))
 }
 
+fn generate_unique_api_key(tx: &Transaction<'_>) -> HoneResult<String> {
+    for _ in 0..8 {
+        let api_key = generate_api_key();
+        let api_key_hash = hash_api_key(&api_key);
+        let existing = tx
+            .query_row(
+                "SELECT api_key_hash FROM web_invite_users WHERE api_key_hash = ?1",
+                params![&api_key_hash],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(sql_err)?;
+        if existing.is_none() {
+            return Ok(api_key);
+        }
+    }
+
+    Err(HoneError::Storage(
+        "failed to generate unique web api key".to_string(),
+    ))
+}
+
 fn ensure_parent_dir(path: &Path) -> HoneResult<()> {
     let parent = path
         .parent()
@@ -721,6 +911,10 @@ fn map_invite_user(row: &Row<'_>) -> rusqlite::Result<WebInviteUser> {
         password_set_at: row.get(7)?,
         tos_accepted_at: row.get(8)?,
         tos_version: row.get(9)?,
+        api_key_prefix: row.get(10)?,
+        api_key_created_at: row.get(11)?,
+        api_key_last_used_at: row.get(12)?,
+        api_key_plaintext: None,
     })
 }
 
@@ -728,7 +922,8 @@ fn find_invite_user_tx(tx: &Transaction<'_>, user_id: &str) -> HoneResult<Option
     tx.query_row(
         "
         SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
-                       password_hash, password_set_at, tos_accepted_at, tos_version
+                       password_hash, password_set_at, tos_accepted_at, tos_version,
+                       api_key_prefix, api_key_created_at, api_key_last_used_at
         FROM web_invite_users
         WHERE user_id = ?1
         ",
@@ -779,7 +974,7 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str)
 mod tests {
     use super::{
         SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT, WebAuthStorage, WebSessionAuthResult,
-        generate_invite_code, generate_session_token, hash_session_token,
+        generate_api_key, generate_invite_code, generate_session_token, hash_session_token,
     };
     use hone_core::beijing_now;
     use rusqlite::{Connection, params};
@@ -815,6 +1010,13 @@ mod tests {
     }
 
     #[test]
+    fn api_key_has_hone_cloud_prefix_and_entropy() {
+        let key = generate_api_key();
+        assert!(key.starts_with("hck_"));
+        assert_eq!(key.len(), 68);
+    }
+
+    #[test]
     fn create_and_list_invites_round_trip() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
@@ -826,6 +1028,71 @@ mod tests {
         assert_eq!(listed[0].phone_number, "13800138000");
         assert_eq!(listed[0].last_login_at, None);
         assert_eq!(listed[0].revoked_at, None);
+        assert!(
+            created
+                .api_key_plaintext
+                .as_deref()
+                .is_some_and(|key| key.starts_with("hck_"))
+        );
+        assert!(listed[0].api_key_plaintext.is_none());
+        assert_eq!(listed[0].api_key_prefix, created.api_key_prefix);
+    }
+
+    #[test]
+    fn api_key_lookup_updates_last_used_and_reset_invalidates_old_key() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+        let first_key = created.api_key_plaintext.clone().expect("api key");
+        let authed = storage
+            .find_invite_user_by_api_key(&first_key)
+            .expect("lookup")
+            .expect("user");
+        assert_eq!(authed.user_id, created.user_id);
+        assert!(authed.api_key_last_used_at.is_some());
+
+        let reset = storage
+            .reset_api_key_for_user(&created.user_id)
+            .expect("reset")
+            .expect("user");
+        let next_key = reset.api_key_plaintext.expect("new api key");
+        assert_ne!(first_key, next_key);
+        assert!(
+            storage
+                .find_invite_user_by_api_key(&first_key)
+                .expect("old lookup")
+                .is_none()
+        );
+        assert!(
+            storage
+                .find_invite_user_by_api_key(&next_key)
+                .expect("new lookup")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn existing_user_can_generate_api_key_once_without_plaintext_replay() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+        {
+            let conn = storage.conn.lock().expect("conn");
+            conn.execute(
+                "UPDATE web_invite_users SET api_key_hash = NULL, api_key_prefix = NULL, api_key_created_at = NULL WHERE user_id = ?1",
+                params![&created.user_id],
+            )
+            .expect("clear key");
+        }
+        let generated = storage
+            .ensure_api_key_for_user(&created.user_id)
+            .expect("generate")
+            .expect("user");
+        assert!(generated.api_key_plaintext.is_some());
+        let replay = storage
+            .ensure_api_key_for_user(&created.user_id)
+            .expect("replay")
+            .expect("user");
+        assert!(replay.api_key_plaintext.is_none());
+        assert_eq!(replay.api_key_prefix, generated.api_key_prefix);
     }
 
     #[test]

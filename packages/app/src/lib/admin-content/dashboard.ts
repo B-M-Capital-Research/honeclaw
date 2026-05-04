@@ -2,6 +2,7 @@ import { makeContentProxy } from "../i18n"
 
 const ZH = {
   channels: {
+    hone_cloud_desc: "使用 hone-claw.com 用户端服务",
     multi_agent_desc: "MiniMax 搜索 + Gemini 回答",
     codex_acp_desc: "通过 codex-acp 驱动当前会话",
     opencode_acp_name: "自定义 OpenAI 协议",
@@ -45,6 +46,7 @@ const ZH = {
 
 const EN: typeof ZH = {
   channels: {
+    hone_cloud_desc: "Use the hone-claw.com user service",
     multi_agent_desc: "MiniMax search + Gemini answer",
     codex_acp_desc: "Drive sessions via codex-acp",
     opencode_acp_name: "Custom OpenAI protocol",

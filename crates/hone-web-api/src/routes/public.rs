@@ -2,16 +2,23 @@ use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::Json;
 use axum::extract::{Multipart, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response, sse::Event, sse::KeepAlive, sse::Sse};
+use serde::Deserialize;
 use serde_json::json;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::warn;
 use uuid::Uuid;
 
+use hone_channels::agent_session::{
+    AgentRunOptions, AgentRunQuotaMode, AgentSession, AgentSessionEvent, AgentSessionListener,
+};
+use hone_channels::prompt::PromptOptions;
+use hone_channels::run_event::RunEvent;
 use hone_core::ActorIdentity;
 use hone_memory::WebSessionAuthResult;
 
@@ -40,6 +47,56 @@ const SESSION_TTL_DAYS_SHORT: i64 = hone_memory::SESSION_TTL_DAYS_SHORT;
 /// 当前生效的协议版本。改动 /terms /privacy 文本时手动 bump,
 /// 并让已登录用户重新勾选接受(可后续增强)。
 pub(crate) const TOS_VERSION: &str = "1.0";
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OpenAiChatCompletionRequest {
+    pub model: Option<String>,
+    #[serde(default)]
+    pub messages: Vec<OpenAiChatMessage>,
+    #[serde(default)]
+    pub stream: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OpenAiChatMessage {
+    pub role: String,
+    pub content: serde_json::Value,
+}
+
+struct OpenAiStreamListener {
+    tx: tokio::sync::mpsc::Sender<String>,
+    id: String,
+    model: String,
+    created: i64,
+}
+
+#[async_trait]
+impl AgentSessionListener for OpenAiStreamListener {
+    async fn on_event(&self, event: AgentSessionEvent) {
+        let content = match event {
+            AgentSessionEvent::Segment { text } => Some(text),
+            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => Some(content),
+            AgentSessionEvent::Done { response } if !response.success => Some(
+                response
+                    .error
+                    .unwrap_or_else(|| "Hone Cloud run failed".to_string()),
+            ),
+            _ => None,
+        };
+        if let Some(content) = content.filter(|value| !value.is_empty()) {
+            let _ = self
+                .tx
+                .send(openai_stream_chunk(
+                    &self.id,
+                    &self.model,
+                    self.created,
+                    Some(&content),
+                    None,
+                ))
+                .await;
+        }
+    }
+}
 
 fn validate_password_strength(value: &str) -> Result<(), &'static str> {
     if !(8..=128).contains(&value.chars().count()) {
@@ -497,6 +554,57 @@ pub(crate) async fn handle_chat(
     build_chat_sse(state, Ok(actor), combined_message, attachments_count).into_response()
 }
 
+pub(crate) async fn handle_openai_chat_completions(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<OpenAiChatCompletionRequest>,
+) -> Response {
+    let user = match require_public_api_key_user(&state, &headers) {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    let actor = match ActorIdentity::new("web", &user.user_id, Option::<String>::None) {
+        Ok(actor) => actor,
+        Err(error) => return crate::routes::json_error(StatusCode::BAD_REQUEST, error.to_string()),
+    };
+    let message = match last_openai_user_message(&request.messages) {
+        Some(message) if !message.trim().is_empty() => message.trim().to_string(),
+        _ => return crate::routes::json_error(StatusCode::BAD_REQUEST, "messages 缺少 user 内容"),
+    };
+    let model = request
+        .model
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("hone-cloud")
+        .trim()
+        .to_string();
+
+    if request.stream {
+        build_openai_chat_sse(state, actor, message, model).into_response()
+    } else {
+        let content = match run_public_api_chat_once(state, actor, message).await {
+            Ok(content) => content,
+            Err(response) => return response,
+        };
+        let id = format!("chatcmpl-{}", Uuid::new_v4().simple());
+        Json(json!({
+            "id": id,
+            "object": "chat.completion",
+            "created": chrono::Utc::now().timestamp(),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                },
+                "finish_reason": "stop",
+            }],
+        }))
+        .into_response()
+    }
+}
+
 pub(crate) async fn handle_upload(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -818,6 +926,38 @@ pub(crate) fn require_public_user(
     }
 }
 
+fn require_public_api_key_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<hone_memory::WebInviteUser, Response> {
+    let Some(api_key) = read_bearer_token(headers) else {
+        return Err(crate::routes::json_error(
+            StatusCode::UNAUTHORIZED,
+            "缺少 Authorization: Bearer API Key",
+        ));
+    };
+    match state.web_auth.find_invite_user_by_api_key(&api_key) {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => Err(crate::routes::json_error(
+            StatusCode::FORBIDDEN,
+            "API Key 无效或已停用",
+        )),
+        Err(error) => Err(crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("验证 API Key 失败: {error}"),
+        )),
+    }
+}
+
+fn read_bearer_token(headers: &HeaderMap) -> Option<String> {
+    let raw = headers.get(header::AUTHORIZATION)?.to_str().ok()?.trim();
+    raw.strip_prefix("Bearer ")
+        .or_else(|| raw.strip_prefix("bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
 fn read_session_token(headers: &HeaderMap) -> Option<String> {
     let cookies = headers.get(header::COOKIE)?.to_str().ok()?;
     cookies.split(';').find_map(|item| {
@@ -829,6 +969,175 @@ fn read_session_token(headers: &HeaderMap) -> Option<String> {
             None
         }
     })
+}
+
+fn last_openai_user_message(messages: &[OpenAiChatMessage]) -> Option<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "user")
+        .map(|message| openai_content_to_text(&message.content))
+}
+
+fn openai_content_to_text(content: &serde_json::Value) -> String {
+    if let Some(text) = content.as_str() {
+        return text.to_string();
+    }
+    if let Some(parts) = content.as_array() {
+        return parts
+            .iter()
+            .filter_map(|part| {
+                part.get("text")
+                    .and_then(|value| value.as_str())
+                    .map(ToString::to_string)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+    String::new()
+}
+
+async fn run_public_api_chat_once(
+    state: Arc<AppState>,
+    actor: ActorIdentity,
+    message: String,
+) -> Result<String, Response> {
+    if let Some(reply) = state
+        .core
+        .try_handle_intercept_command(&actor, &message)
+        .await
+    {
+        return Ok(reply);
+    }
+    let prompt_options = PromptOptions {
+        is_admin: state.core.is_admin_actor(&actor),
+        ..PromptOptions::default()
+    };
+    let session = AgentSession::new(state.core.clone(), actor.clone(), actor.user_id.clone())
+        .with_restore_max_messages(None)
+        .with_prompt_options(prompt_options)
+        .with_recv_extra(Some("openai_compatible_api=true".to_string()));
+    let run_options = AgentRunOptions {
+        timeout: Some(state.core.config.agent.overall_timeout()),
+        segmenter: None,
+        quota_mode: AgentRunQuotaMode::UserConversation,
+        model_override: None,
+    };
+    let result = session.run(&message, run_options).await;
+    if result.response.success {
+        Ok(result.response.content)
+    } else {
+        Err(crate::routes::json_error(
+            StatusCode::BAD_GATEWAY,
+            result
+                .response
+                .error
+                .unwrap_or_else(|| "Hone Cloud run failed".to_string()),
+        ))
+    }
+}
+
+fn build_openai_chat_sse(
+    state: Arc<AppState>,
+    actor: ActorIdentity,
+    message: String,
+    model: String,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<String>(64);
+    let id = format!("chatcmpl-{}", Uuid::new_v4().simple());
+    let created = chrono::Utc::now().timestamp();
+    tokio::spawn(async move {
+        if let Some(reply) = state
+            .core
+            .try_handle_intercept_command(&actor, &message)
+            .await
+        {
+            let _ = tx
+                .send(openai_stream_chunk(
+                    &id,
+                    &model,
+                    created,
+                    Some(&reply),
+                    None,
+                ))
+                .await;
+            let _ = tx
+                .send(openai_stream_chunk(
+                    &id,
+                    &model,
+                    created,
+                    None,
+                    Some("stop"),
+                ))
+                .await;
+            let _ = tx.send("[DONE]".to_string()).await;
+            return;
+        }
+        let prompt_options = PromptOptions {
+            is_admin: state.core.is_admin_actor(&actor),
+            ..PromptOptions::default()
+        };
+        let mut session =
+            AgentSession::new(state.core.clone(), actor.clone(), actor.user_id.clone())
+                .with_restore_max_messages(None)
+                .with_prompt_options(prompt_options)
+                .with_recv_extra(Some("openai_compatible_api=true".to_string()));
+        session.add_listener(Arc::new(OpenAiStreamListener {
+            tx: tx.clone(),
+            id: id.clone(),
+            model: model.clone(),
+            created,
+        }));
+        let run_options = AgentRunOptions {
+            timeout: Some(state.core.config.agent.overall_timeout()),
+            segmenter: None,
+            quota_mode: AgentRunQuotaMode::UserConversation,
+            model_override: None,
+        };
+        let result = session.run(&message, run_options).await;
+        let finish = if result.response.success {
+            "stop"
+        } else {
+            "error"
+        };
+        let _ = tx
+            .send(openai_stream_chunk(
+                &id,
+                &model,
+                created,
+                None,
+                Some(finish),
+            ))
+            .await;
+        let _ = tx.send("[DONE]".to_string()).await;
+    });
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+        .map(|data| Ok::<_, Infallible>(Event::default().data(data)));
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+fn openai_stream_chunk(
+    id: &str,
+    model: &str,
+    created: i64,
+    content: Option<&str>,
+    finish_reason: Option<&str>,
+) -> String {
+    let delta = content
+        .map(|text| json!({ "content": text }))
+        .unwrap_or_else(|| json!({}));
+    json!({
+        "id": id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "delta": delta,
+            "finish_reason": finish_reason,
+        }],
+    })
+    .to_string()
 }
 
 fn build_session_cookie(

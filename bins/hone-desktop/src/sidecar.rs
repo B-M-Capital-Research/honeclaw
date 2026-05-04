@@ -171,8 +171,19 @@ pub(crate) struct AuxiliarySettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct HoneCloudSettings {
+    #[serde(default)]
+    base_url: String,
+    #[serde(default)]
+    api_key: String,
+    #[serde(default)]
+    model: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSettings {
-    /// function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent
+    /// function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent | hone_cloud
     runner: String,
     /// codex_cli 专用，其他 provider 忽略
     codex_model: String,
@@ -187,6 +198,8 @@ pub(crate) struct AgentSettings {
     openai_api_key: String,
     #[serde(default)]
     auxiliary: Option<AuxiliarySettings>,
+    #[serde(default)]
+    hone_cloud: Option<HoneCloudSettings>,
     #[serde(default)]
     multi_agent: Option<MultiAgentSettings>,
 }
@@ -876,6 +889,11 @@ pub(crate) fn get_agent_settings_impl(app: AppHandle) -> Result<AgentSettings, S
         openai_model: config.agent.opencode.model.clone(),
         openai_api_key: config.agent.opencode.api_key.clone(),
         auxiliary: Some(seed_auxiliary_settings(&config)),
+        hone_cloud: Some(HoneCloudSettings {
+            base_url: config.agent.hone_cloud.base_url.clone(),
+            api_key: config.agent.hone_cloud.api_key.clone(),
+            model: config.agent.hone_cloud.model.clone(),
+        }),
         multi_agent: Some(seed_multi_agent_settings(&config)),
     })
 }
@@ -903,6 +921,22 @@ fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(&'static str, s
             serde_yaml::Value::String(settings.openai_api_key.clone()),
         ),
     ];
+    if let Some(hone_cloud) = &settings.hone_cloud {
+        updates.extend([
+            (
+                "agent.hone_cloud.base_url",
+                serde_yaml::Value::String(hone_cloud.base_url.clone()),
+            ),
+            (
+                "agent.hone_cloud.api_key",
+                serde_yaml::Value::String(hone_cloud.api_key.clone()),
+            ),
+            (
+                "agent.hone_cloud.model",
+                serde_yaml::Value::String(hone_cloud.model.clone()),
+            ),
+        ]);
+    }
     if let Some(auxiliary) = &settings.auxiliary {
         updates.extend([
             (
@@ -1077,8 +1111,7 @@ pub(crate) async fn test_openai_channel_impl(
     use reqwest::Client;
     use serde_json::json;
 
-    let base = url.trim_end_matches('/');
-    let endpoint = format!("{}/chat/completions", base);
+    let endpoint = resolve_openai_chat_completions_endpoint(&url);
 
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -1120,6 +1153,15 @@ pub(crate) async fn test_openai_channel_impl(
             ok: false,
             message: format!("请求失败：{}", e),
         }),
+    }
+}
+
+fn resolve_openai_chat_completions_endpoint(url: &str) -> String {
+    let base = url.trim().trim_end_matches('/');
+    if base.ends_with("/chat/completions") {
+        base.to_string()
+    } else {
+        format!("{base}/chat/completions")
     }
 }
 
@@ -1425,6 +1467,7 @@ fmp:
             openai_model: "openai/gpt-5.4".to_string(),
             openai_api_key: "sk-opencode".to_string(),
             auxiliary: None,
+            hone_cloud: None,
             multi_agent: Some(MultiAgentSettings {
                 search: MultiAgentSearchSettings {
                     base_url: "https://search.example/v1".to_string(),
@@ -1506,6 +1549,11 @@ fmp:
                 api_key: "sk-cp-aux".to_string(),
                 model: "MiniMax-M2.7-highspeed".to_string(),
             }),
+            hone_cloud: Some(HoneCloudSettings {
+                base_url: "https://hone-claw.com".to_string(),
+                api_key: "hck_test".to_string(),
+                model: "hone-cloud".to_string(),
+            }),
             multi_agent: Some(MultiAgentSettings {
                 search: MultiAgentSearchSettings {
                     base_url: "https://api.minimaxi.com/v1".to_string(),
@@ -1547,6 +1595,7 @@ fmp:
             openai_model: "google/gemini-2.5-pro-preview".to_string(),
             openai_api_key: String::new(),
             auxiliary: None,
+            hone_cloud: None,
             multi_agent: None,
         };
         let status = BackendStatusInfo {

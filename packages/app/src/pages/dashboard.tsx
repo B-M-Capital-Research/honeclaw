@@ -17,11 +17,10 @@ type ChannelDef = {
 }
 
 const CHANNELS: ChannelDef[] = [
-  { runner: "multi-agent", name: "Multi-Agent", desc: () => DASH.channels.multi_agent_desc, icon: "∞" },
+  { runner: "hone_cloud", name: "Hone Cloud", desc: () => DASH.channels.hone_cloud_desc, icon: "☁" },
   { runner: "codex_acp", name: "Codex ACP", desc: () => DASH.channels.codex_acp_desc, icon: "⌘" },
   { runner: "opencode_acp", name: "", desc: () => DASH.channels.opencode_acp_desc, icon: "⚡" },
   { runner: "gemini_cli", name: "Gemini CLI", desc: () => DASH.channels.gemini_cli_desc, icon: "✦" },
-  { runner: "codex_cli", name: "Codex CLI", desc: () => DASH.channels.codex_cli_desc, icon: "◈" },
 ]
 
 function formatTime(iso?: string): string {

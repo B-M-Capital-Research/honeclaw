@@ -5,6 +5,7 @@ mod codex_acp;
 #[allow(dead_code)]
 mod gemini_acp;
 mod gemini_cli;
+mod hone_cloud;
 mod multi_agent;
 mod opencode_acp;
 mod tool_reasoning;
@@ -14,6 +15,7 @@ pub use codex_acp::CodexAcpRunner;
 pub use gemini_cli::GeminiCliRunner;
 #[cfg(test)]
 pub(crate) use gemini_cli::stream_gemini_prompt;
+pub use hone_cloud::HoneCloudRunner;
 pub use multi_agent::MultiAgentRunner;
 pub use opencode_acp::OpencodeAcpRunner;
 pub use tool_reasoning::{CodexCliReasoningRunner, FunctionCallingReasoningRunner};

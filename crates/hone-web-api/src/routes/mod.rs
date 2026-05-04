@@ -79,6 +79,14 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
             "/web-users/invites/{user_id}/reset",
             post(web_users::handle_reset_invite),
         )
+        .route(
+            "/web-users/invites/{user_id}/api-key",
+            post(web_users::handle_get_api_key),
+        )
+        .route(
+            "/web-users/invites/{user_id}/api-key/reset",
+            post(web_users::handle_reset_api_key),
+        )
         .route("/skills", get(skills::handle_skills))
         .route("/skills/reset", post(skills::handle_skill_registry_reset))
         .route("/skills/{id}", get(skills::handle_skill_detail))
@@ -229,6 +237,10 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route("/auth/me", get(public::handle_me))
         .route("/history", get(public::handle_history))
         .route("/chat", post(public::handle_chat))
+        .route(
+            "/v1/chat/completions",
+            post(public::handle_openai_chat_completions),
+        )
         .route("/upload", post(public::handle_upload))
         .route("/image", get(public::handle_public_image))
         .route("/file", get(public::handle_public_file))

@@ -39,7 +39,7 @@ Last updated: 2026-04-19
 - `memory/`
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
   - `memory/src/company_profile/{mod,types,markdown,storage,transfer,tests}.rs` now splits company portraits into stable public types, Markdown/template parsing, actor-scoped storage CRUD, zip transfer helpers, and colocated regression tests; portraits still live under `company_profiles/<profile_id>/profile.md` plus append-only `events/*.md`, and both storage reads and transfer/import paths tolerate legacy plain Markdown files without frontmatter by synthesizing minimal metadata from titles, filenames, file mtimes, and bundle manifest timestamps
-  - `memory/src/web_auth.rs` keeps web invite users and public-login cookie sessions in the shared SQLite DB; one invite code maps to one stable `channel=web` actor
+  - `memory/src/web_auth.rs` keeps web invite users, hashed per-user Hone Cloud API keys, and public-login cookie sessions in the shared SQLite DB; one invite code maps to one stable `channel=web` actor
   - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间"
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
@@ -101,7 +101,7 @@ Last updated: 2026-04-19
   - `mod.rs`: runner exports
   - `types.rs`: shared runner trait / request / event / result types
   - `acp_common.rs`: shared helpers for ACP stdio / JSON-RPC
-  - `gemini_cli.rs`, `gemini_acp.rs`, `codex_acp.rs`, `opencode_acp.rs`, `multi_agent.rs`: runner implementations
+  - `gemini_cli.rs`, `gemini_acp.rs`, `codex_acp.rs`, `opencode_acp.rs`, `multi_agent.rs`, `hone_cloud.rs`: runner implementations; `hone_cloud` calls the public user service through the OpenAI-compatible `/api/public/v1/chat/completions` shape
 - Prompt layering: `crates/hone-channels/src/prompt.rs`
   - Injects the global finance-domain constraints in one place: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, and keep greetings short
 - Session compaction service: `crates/hone-channels/src/session_compactor.rs`
@@ -166,13 +166,13 @@ Last updated: 2026-04-19
   - `remote`: Tauri does not start a local backend; the frontend connects directly to a remote HTTP base URL
 - Persistent user config now lives in canonical `config.yaml`; CLI/start flows and desktop-managed sidecars export the generated `data/runtime/effective-config.yaml`, while settings surfaces mutate the canonical file through shared config services. Desktop dev/runtime uses the desktop config dir as the canonical location and may only promote missing values one-way from legacy `data/runtime/config_runtime.yaml`, including runner, multi-agent, enabled channels, Tavily search keys, and FMP keys
 - In packaged desktop mode, runtime data, locks, logs, and actor sandboxes live under the app sandbox data directory by default; the desktop host also hydrates key login-shell environment variables and exports bundled binary paths (`HONE_MCP_BIN`, bundled `opencode`, `HONE_AGENT_SANDBOX_DIR`) before starting the embedded backend or channel sidecars
-- Desktop agent settings now expose the primary opencode/OpenRouter model, a dedicated `llm.auxiliary` OpenAI-compatible background route for heartbeat/session compression, and the nested `multi-agent` search/answer config. `llm.openrouter.sub_model` remains only as the legacy fallback model name for the auxiliary path; it is not reused as the `multi-agent` search model
+- Desktop agent settings now expose Hone Cloud (`agent.hone_cloud.base_url/api_key/model`), the primary opencode/OpenRouter model, a dedicated `llm.auxiliary` OpenAI-compatible background route for heartbeat/session compression, and the nested legacy `multi-agent` search/answer config. `llm.openrouter.sub_model` remains only as the legacy fallback model name for the auxiliary path; it is not reused as the `multi-agent` search model
 - In `bundled` mode, Tauri also starts or stops `hone-imessage` / `hone-discord` / `hone-feishu` / `hone-telegram` according to the layered runtime config in the application data directory; each channel process now posts heartbeat snapshots carrying `channel + pid` back to the console backend via `HONE_CONSOLE_URL`, and `/api/channels` aggregates those live registrations into per-channel multi-process status. Desktop channel status also merges OS process scanning so duplicate listener processes are visible even when an older instance is not bound to the current backend heartbeat registry, and the desktop shell exposes a cleanup command that keeps only one process per channel. The legacy `runtime/*.heartbeat.json` files still exist as a compatibility fallback for non-desktop paths
 - Desktop log pages read from `/api/logs`; the backend route now merges the in-memory log ring with recent `data/runtime/logs/*.log` tails so bundled desktop mode can display channel/runtime logs even when they were written by sibling processes instead of the current web process
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`
 - Assistant message parser for inline local images: `packages/app/src/lib/messages.ts`
 - `hone-console-page` `/api/meta` handles version and capability negotiation
-- `hone-console-page` admin app only serves `/api/*` and console SPA on the admin port; the public app only serves `/api/public/*` plus `/chat` on the public port for invite-based web users
+- `hone-console-page` admin app only serves `/api/*` and console SPA on the admin port; the public app only serves `/api/public/*` plus `/chat` on the public port for invite-based web users. `/api/public/v1/chat/completions` is the API-key-authenticated OpenAI-compatible public chat endpoint used by Hone Cloud clients.
 - `hone-console-page` `/api/skills*` serves the skill management surface: registered listing, detail view, enable/disable mutation, and reset
 - `hone-console-page` `/api/company-profiles*` now serves actor-space listing, portrait detail, full deletion, and actor-scoped portrait bundle transfer (`export`, `import/preview`, `import/apply`) for actor-local portrait docs; portrait creation and section/event updates still rely on runner-native file operations inside the actor sandbox rather than dedicated mutation APIs
 - `packages/app/src/context/company-profiles.tsx` now acts as the memory-page transfer orchestrator: it merges portrait actor spaces with recent session users into one target-selector model, supports manual target entry for first-time imports, runs bundle preview/apply, keeps post-import highlights plus optional pre-import backup blobs, and auto-selects the first company in the current target space so the right panel does not fall back to a false empty state
@@ -202,7 +202,7 @@ Last updated: 2026-04-19
   - Change `packages/app/src/pages/*`
   - Change `packages/app/src/context/*` and / or `packages/app/src/lib/*`
   - If the backend API is insufficient, add the Web bin API
-  - Invite-based public user flows also require checking `memory/src/web_auth.rs` and `crates/hone-web-api/src/routes/public.rs` instead of wiring directly into the console-only `/api/chat` / `/api/history` / `/api/users` routes
+  - Invite-based public user flows also require checking `memory/src/web_auth.rs` and `crates/hone-web-api/src/routes/public.rs` instead of wiring directly into the console-only `/api/chat` / `/api/history` / `/api/users` routes; API-key based Hone Cloud access additionally touches `crates/hone-web-api/src/routes/web_users.rs` and `packages/app/src/pages/settings.tsx`
 - Adjusting desktop backend switching or sidecar lifecycle:
   - Change `bins/hone-desktop/src/{main.rs,commands.rs,sidecar.rs,tray.rs}`
   - If the change is process supervision, runtime env, or persisted overlay wiring, start with `bins/hone-desktop/src/sidecar/{processes,runtime_env,settings}.rs`

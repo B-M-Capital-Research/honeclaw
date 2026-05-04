@@ -481,9 +481,9 @@ security:
       - "wget | sh"
 
 agent:
-  # Recommended: multi-agent | codex_acp | opencode_acp. Legacy: function_calling | gemini_cli | codex_cli.
+  # Recommended: hone_cloud | codex_acp | opencode_acp. Legacy: multi-agent | function_calling | gemini_cli | codex_cli.
   # gemini_acp is disabled at runtime and kept below only for migration/reference.
-  runner: "multi-agent"
+  runner: "hone_cloud"
   # Only used when provider=codex_cli; empty means use the codex-cli default model
   codex_model: "gpt-5.3-codex"
   max_iterations: 100
@@ -530,6 +530,13 @@ agent:
     api_base_url: ""
     # Optional Hone-side API key override; leave empty to inherit local opencode auth/provider config
     api_key: ""
+  hone_cloud:
+    # Default user-facing service; runtime appends /api/public/v1/chat/completions when needed.
+    base_url: "https://hone-claw.com"
+    # Per-user Hone Cloud API key. Contact bm@hone-claw.com for an invite and key.
+    api_key: ""
+    # OpenAI-compatible model id placeholder used by the client request.
+    model: "hone-cloud"
   multi_agent:
     search:
       base_url: "https://api.minimaxi.com/v1"

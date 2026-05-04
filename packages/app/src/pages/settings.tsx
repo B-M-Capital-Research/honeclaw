@@ -23,7 +23,9 @@ import {
   disableWebInvite,
   enableWebInvite,
   getWebInvites,
+  getWebInviteApiKey,
   resetWebInvite,
+  resetWebInviteApiKey,
 } from "@/lib/api";
 import { NotificationPreferencesCard } from "@/components/notification-preferences-card";
 import type {
@@ -50,6 +52,7 @@ import {
   normalizeApiKeys,
   removeApiKey,
   removeMaskedKey,
+  resolveHoneCloudOpenAiBaseUrl,
   toChannelDraft,
   toggleMaskedKey,
   updateApiKeyList,
@@ -130,14 +133,17 @@ export default function SettingsPage() {
     "idle" | "checking" | "ok" | "error"
   >("idle");
   const [openaiTestMessage, setOpenaiTestMessage] = createSignal("");
+  const [honeCloudTestStatus, setHoneCloudTestStatus] = createSignal<
+    "idle" | "checking" | "ok" | "error"
+  >("idle");
+  const [honeCloudTestMessage, setHoneCloudTestMessage] = createSignal("");
+  const [showHoneCloudKey, setShowHoneCloudKey] = createSignal(false);
   const [showOpenaiKey, setShowOpenaiKey] = createSignal(false);
   const [auxiliaryTestStatus, setAuxiliaryTestStatus] = createSignal<
     "idle" | "checking" | "ok" | "error"
   >("idle");
   const [auxiliaryTestMessage, setAuxiliaryTestMessage] = createSignal("");
   const [showAuxiliaryKey, setShowAuxiliaryKey] = createSignal(false);
-  const [showSearchKey, setShowSearchKey] = createSignal(false);
-  const [showAnswerKey, setShowAnswerKey] = createSignal(false);
   const [showFeishuSecret, setShowFeishuSecret] = createSignal(false);
   const [showTelegramToken, setShowTelegramToken] = createSignal(false);
   const [showDiscordToken, setShowDiscordToken] = createSignal(false);
@@ -162,27 +168,10 @@ export default function SettingsPage() {
   >("idle");
   const [geminiCheckMessage, setGeminiCheckMessage] = createSignal("");
 
-  // Codex CLI 检测状态
-  const [codexCheckStatus, setCodexCheckStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
-  const [codexCheckMessage, setCodexCheckMessage] = createSignal("");
   const [codexAcpCheckStatus, setCodexAcpCheckStatus] = createSignal<
     "idle" | "checking" | "ok" | "error"
   >("idle");
   const [codexAcpCheckMessage, setCodexAcpCheckMessage] = createSignal("");
-  const [opencodeCheckStatus, setOpencodeCheckStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
-  const [opencodeCheckMessage, setOpencodeCheckMessage] = createSignal("");
-  const [searchTestStatus, setSearchTestStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
-  const [searchTestMessage, setSearchTestMessage] = createSignal("");
-  const [answerTestStatus, setAnswerTestStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
-  const [answerTestMessage, setAnswerTestMessage] = createSignal("");
 
   const [agentSettingsRes] = createResource(
     () => backend.state.isDesktop,
@@ -336,6 +325,24 @@ export default function SettingsPage() {
     }
   };
 
+  const handleTestHoneCloud = async () => {
+    setHoneCloudTestStatus("checking");
+    setHoneCloudTestMessage("");
+    try {
+      const d = agentDraft().honeCloud;
+      const result = await testDesktopOpenAiChannel(
+        resolveHoneCloudOpenAiBaseUrl(d?.baseUrl),
+        d?.model || "hone-cloud",
+        d?.apiKey ?? "",
+      );
+      setHoneCloudTestStatus(result.ok ? "ok" : "error");
+      setHoneCloudTestMessage(result.message);
+    } catch (e) {
+      setHoneCloudTestStatus("error");
+      setHoneCloudTestMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleTestAuxiliary = async () => {
     setAuxiliaryTestStatus("checking");
     setAuxiliaryTestMessage("");
@@ -368,20 +375,6 @@ export default function SettingsPage() {
     }
   };
 
-  // ── Codex CLI 检测 ──────────────────────────────────────────────────────────
-  const handleCheckCodex = async () => {
-    setCodexCheckStatus("checking");
-    setCodexCheckMessage("");
-    try {
-      const result = await checkDesktopAgentCli("codex_cli");
-      setCodexCheckStatus(result.ok ? "ok" : "error");
-      setCodexCheckMessage(result.message);
-    } catch (e) {
-      setCodexCheckStatus("error");
-      setCodexCheckMessage(e instanceof Error ? e.message : String(e));
-    }
-  };
-
   const handleCheckCodexAcp = async () => {
     setCodexAcpCheckStatus("checking");
     setCodexAcpCheckMessage("");
@@ -392,55 +385,6 @@ export default function SettingsPage() {
     } catch (e) {
       setCodexAcpCheckStatus("error");
       setCodexAcpCheckMessage(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const handleCheckOpencode = async () => {
-    setOpencodeCheckStatus("checking");
-    setOpencodeCheckMessage("");
-    try {
-      const result = await checkDesktopAgentCli("opencode_acp");
-      setOpencodeCheckStatus(result.ok ? "ok" : "error");
-      setOpencodeCheckMessage(result.message);
-    } catch (e) {
-      setOpencodeCheckStatus("error");
-      setOpencodeCheckMessage(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const handleTestMultiAgentSearch = async () => {
-    setSearchTestStatus("checking");
-    setSearchTestMessage("");
-    try {
-      const search = agentDraft().multiAgent?.search;
-      const result = await testDesktopOpenAiChannel(
-        search?.baseUrl ?? "",
-        search?.model ?? "",
-        search?.apiKey ?? "",
-      );
-      setSearchTestStatus(result.ok ? "ok" : "error");
-      setSearchTestMessage(result.message);
-    } catch (e) {
-      setSearchTestStatus("error");
-      setSearchTestMessage(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const handleTestMultiAgentAnswer = async () => {
-    setAnswerTestStatus("checking");
-    setAnswerTestMessage("");
-    try {
-      const answer = agentDraft().multiAgent?.answer;
-      const result = await testDesktopOpenAiChannel(
-        answer?.baseUrl ?? "",
-        answer?.model ?? "",
-        answer?.apiKey ?? "",
-      );
-      setAnswerTestStatus(result.ok ? "ok" : "error");
-      setAnswerTestMessage(result.message);
-    } catch (e) {
-      setAnswerTestStatus("error");
-      setAnswerTestMessage(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -530,18 +474,29 @@ export default function SettingsPage() {
       setWebInvites((current = []) => [created, ...current]);
       setInvitePhoneNumber("");
       setInviteMessage(
-        tpl(SETTINGS.invite.created, {
+        tpl(created.api_key ? SETTINGS.invite.created_with_api_key : SETTINGS.invite.created, {
           phone: created.phone_number,
           code: created.invite_code,
+          apiKey: created.api_key ?? "",
         }),
       );
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(created.invite_code);
+        await navigator.clipboard.writeText(
+          created.api_key
+            ? `Invite: ${created.invite_code}\nAPI Key: ${created.api_key}`
+            : created.invite_code,
+        );
         setInviteMessage(
-          tpl(SETTINGS.invite.created_copied, {
+          tpl(
+            created.api_key
+              ? SETTINGS.invite.created_with_api_key_copied
+              : SETTINGS.invite.created_copied,
+            {
             phone: created.phone_number,
             code: created.invite_code,
-          }),
+              apiKey: created.api_key ?? "",
+            },
+          ),
         );
       }
     } catch (error) {
@@ -575,7 +530,7 @@ export default function SettingsPage() {
 
   const isInviteActionRunning = (
     userId: string,
-    action: "disable" | "enable" | "reset",
+    action: "disable" | "enable" | "reset" | "api-key" | "api-key-reset",
   ) => inviteActionKey() === `${userId}:${action}`;
 
   const handleDisableInvite = async (invite: WebInviteInfo) => {
@@ -633,6 +588,62 @@ export default function SettingsPage() {
         setInviteMessage(
           tpl(SETTINGS.invite.reset_copied_suffix, { message: result.message }),
         );
+      }
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setInviteActionKey("");
+    }
+  };
+
+  const copyInviteApiKey = async (apiKey: string) => {
+    setInviteMessage("");
+    setInviteError("");
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error(SETTINGS.invite.copy_unsupported);
+      }
+      await navigator.clipboard.writeText(apiKey);
+      setInviteMessage(SETTINGS.invite.api_key_copied);
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleGetInviteApiKey = async (invite: WebInviteInfo) => {
+    setInviteMessage("");
+    setInviteError("");
+    setInviteActionKey(`${invite.user_id}:api-key`);
+    try {
+      const result = await getWebInviteApiKey(invite.user_id);
+      replaceInvite(result.invite);
+      setInviteMessage(result.message);
+      if (result.invite.api_key) {
+        await copyInviteApiKey(result.invite.api_key);
+      }
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setInviteActionKey("");
+    }
+  };
+
+  const handleResetInviteApiKey = async (invite: WebInviteInfo) => {
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        tpl(SETTINGS.invite.api_key_reset_confirm, { userId: invite.user_id }),
+      );
+      if (!confirmed) return;
+    }
+    setInviteMessage("");
+    setInviteError("");
+    setInviteActionKey(`${invite.user_id}:api-key-reset`);
+    try {
+      const result = await resetWebInviteApiKey(invite.user_id);
+      replaceInvite(result.invite);
+      setInviteMessage(result.message);
+      if (result.invite.api_key) {
+        await copyInviteApiKey(result.invite.api_key);
       }
     } catch (error) {
       setInviteError(error instanceof Error ? error.message : String(error));
@@ -772,91 +783,113 @@ export default function SettingsPage() {
           }
           class="mt-6 space-y-4 disabled:opacity-60"
         >
-          {/* ── 卡片 0：Multi-Agent ── */}
+          {/* ── 卡片 0：Hone Cloud ── */}
           <div
             class={[
               "rounded-xl border p-5 transition cursor-pointer",
-              agentDraft().runner === "multi-agent"
+              agentDraft().runner === "hone_cloud"
                 ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
                 : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
             ].join(" ")}
-            onClick={() => void selectRunner("multi-agent")}
+            onClick={() => void selectRunner("hone_cloud")}
           >
             <div class="flex items-start justify-between gap-3">
               <div>
                 <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                  {SETTINGS.agent.multi_agent.name}
+                  {SETTINGS.agent.hone_cloud.name}
                 </div>
                 <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                  {SETTINGS.agent.multi_agent.description}
+                  {SETTINGS.agent.hone_cloud.description}
                 </div>
               </div>
-              <Show when={agentDraft().runner === "multi-agent"}>
+              <Show when={agentDraft().runner === "hone_cloud"}>
                 <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
                   {SETTINGS.agent.current_badge}
                 </span>
               </Show>
             </div>
 
-            <div
-              class="mt-4 grid gap-4 md:grid-cols-2"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div class="space-y-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
-                <div class="text-xs font-semibold text-[color:var(--text-primary)]">
-                  {SETTINGS.agent.multi_agent.search_title}
-                </div>
+            <div class="mt-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div>
+                <label
+                  class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
+                  for="hone-cloud-url"
+                >
+                  {SETTINGS.agent.hone_cloud.base_url_label}
+                </label>
                 <input
+                  id="hone-cloud-url"
                   type="url"
-                  placeholder="https://api.minimaxi.com/v1"
-                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
-                  value={agentDraft().multiAgent?.search.baseUrl ?? ""}
+                  placeholder="https://hone-claw.com"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                  value={agentDraft().honeCloud?.baseUrl ?? ""}
                   onInput={(e) =>
                     setAgentDraft((prev) => ({
                       ...prev,
-                      multiAgent: {
-                        ...prev.multiAgent!,
-                        search: {
-                          ...prev.multiAgent!.search,
-                          baseUrl: e.currentTarget.value,
-                        },
+                      honeCloud: {
+                        ...(prev.honeCloud ?? {
+                          baseUrl: "https://hone-claw.com",
+                          apiKey: "",
+                          model: "hone-cloud",
+                        }),
+                        baseUrl: e.currentTarget.value,
                       },
                     }))
                   }
                 />
+              </div>
+              <div>
+                <label
+                  class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
+                  for="hone-cloud-model"
+                >
+                  {SETTINGS.agent.hone_cloud.model_label}
+                </label>
                 <input
+                  id="hone-cloud-model"
                   type="text"
-                  placeholder="MiniMax-M2.7-highspeed"
-                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
-                  value={agentDraft().multiAgent?.search.model ?? ""}
+                  placeholder="hone-cloud"
+                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                  value={agentDraft().honeCloud?.model ?? ""}
                   onInput={(e) =>
                     setAgentDraft((prev) => ({
                       ...prev,
-                      multiAgent: {
-                        ...prev.multiAgent!,
-                        search: {
-                          ...prev.multiAgent!.search,
-                          model: e.currentTarget.value,
-                        },
+                      honeCloud: {
+                        ...(prev.honeCloud ?? {
+                          baseUrl: "https://hone-claw.com",
+                          apiKey: "",
+                          model: "hone-cloud",
+                        }),
+                        model: e.currentTarget.value,
                       },
                     }))
                   }
                 />
+              </div>
+              <div>
+                <label
+                  class="mb-1 block text-xs font-medium text-[color:var(--text-primary)]"
+                  for="hone-cloud-key"
+                >
+                  {SETTINGS.agent.hone_cloud.api_key_label}
+                </label>
                 <div class="relative">
                   <input
-                    type={showSearchKey() ? "text" : "password"}
-                    placeholder="sk-cp-..."
-                    class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm"
-                    value={agentDraft().multiAgent?.search.apiKey ?? ""}
+                    id="hone-cloud-key"
+                    type={showHoneCloudKey() ? "text" : "password"}
+                    placeholder="hck_..."
+                    class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                    value={agentDraft().honeCloud?.apiKey ?? ""}
                     onInput={(e) =>
                       setAgentDraft((prev) => ({
                         ...prev,
-                        multiAgent: {
-                          ...prev.multiAgent!,
-                          search: {
-                            ...prev.multiAgent!.search,
-                            apiKey: e.currentTarget.value,
-                          },
+                        honeCloud: {
+                          ...(prev.honeCloud ?? {
+                            baseUrl: "https://hone-claw.com",
+                            apiKey: "",
+                            model: "hone-cloud",
+                          }),
+                          apiKey: e.currentTarget.value,
                         },
                       }))
                     }
@@ -864,185 +897,56 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
-                    onClick={() => setShowSearchKey((v) => !v)}
+                    onClick={() => setShowHoneCloudKey((v) => !v)}
                   >
-                    {showSearchKey()
-                      ? SETTINGS.agent.multi_agent.hide
-                      : SETTINGS.agent.multi_agent.show}
+                    {showHoneCloudKey()
+                      ? SETTINGS.agent.hone_cloud.hide
+                      : SETTINGS.agent.hone_cloud.show}
                   </button>
                 </div>
-                <input
-                  type="number"
-                  min="1"
-                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
-                  value={agentDraft().multiAgent?.search.maxIterations ?? 8}
-                  onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      multiAgent: {
-                        ...prev.multiAgent!,
-                        search: {
-                          ...prev.multiAgent!.search,
-                          maxIterations: Number(e.currentTarget.value || 0),
-                        },
-                      },
-                    }))
-                  }
-                />
+              </div>
+              <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-soft)] p-3 text-xs text-[color:var(--text-secondary)]">
+                {SETTINGS.agent.hone_cloud.contact_note}
+              </div>
+              <Show when={honeCloudTestStatus() !== "idle"}>
+                <div
+                  class={[
+                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+                    honeCloudTestStatus() === "checking"
+                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
+                      : honeCloudTestStatus() === "ok"
+                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
+                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
+                  ].join(" ")}
+                >
+                  <span>
+                    {honeCloudTestStatus() === "checking"
+                      ? SETTINGS.agent.hone_cloud.connection_testing_status
+                      : honeCloudTestMessage()}
+                  </span>
+                </div>
+              </Show>
+              <div class="flex gap-2 pt-1">
                 <button
                   type="button"
-                  class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs"
-                  disabled={searchTestStatus() === "checking"}
-                  onClick={() => void handleTestMultiAgentSearch()}
+                  class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
+                  disabled={honeCloudTestStatus() === "checking"}
+                  onClick={() => void handleTestHoneCloud()}
                 >
-                  {searchTestStatus() === "checking"
-                    ? SETTINGS.agent.multi_agent.testing
-                    : SETTINGS.agent.multi_agent.test_search}
+                  {honeCloudTestStatus() === "checking"
+                    ? SETTINGS.agent.hone_cloud.testing
+                    : SETTINGS.agent.hone_cloud.test_connection}
                 </button>
-                <Show when={searchTestStatus() !== "idle"}>
-                  <div class="text-xs text-[color:var(--text-secondary)]">
-                    {searchTestMessage()}
-                  </div>
-                </Show>
-              </div>
-
-              <div class="space-y-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
-                <div class="text-xs font-semibold text-[color:var(--text-primary)]">
-                  {SETTINGS.agent.multi_agent.answer_title}
-                </div>
-                <input
-                  type="url"
-                  placeholder="https://openrouter.ai/api/v1"
-                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
-                  value={agentDraft().multiAgent?.answer.baseUrl ?? ""}
-                  onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      multiAgent: {
-                        ...prev.multiAgent!,
-                        answer: {
-                          ...prev.multiAgent!.answer,
-                          baseUrl: e.currentTarget.value,
-                        },
-                      },
-                    }))
-                  }
-                />
-                <input
-                  type="text"
-                  placeholder="google/gemini-3.1-pro-preview"
-                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
-                  value={agentDraft().multiAgent?.answer.model ?? ""}
-                  onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      multiAgent: {
-                        ...prev.multiAgent!,
-                        answer: {
-                          ...prev.multiAgent!.answer,
-                          model: e.currentTarget.value,
-                        },
-                      },
-                    }))
-                  }
-                />
-                <input
-                  type="text"
-                  placeholder="high"
-                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
-                  value={agentDraft().multiAgent?.answer.variant ?? ""}
-                  onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      multiAgent: {
-                        ...prev.multiAgent!,
-                        answer: {
-                          ...prev.multiAgent!.answer,
-                          variant: e.currentTarget.value,
-                        },
-                      },
-                    }))
-                  }
-                />
-                <div class="relative">
-                  <input
-                    type={showAnswerKey() ? "text" : "password"}
-                    placeholder="sk-or-..."
-                    class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm"
-                    value={agentDraft().multiAgent?.answer.apiKey ?? ""}
-                    onInput={(e) =>
-                      setAgentDraft((prev) => ({
-                        ...prev,
-                        multiAgent: {
-                          ...prev.multiAgent!,
-                          answer: {
-                            ...prev.multiAgent!.answer,
-                            apiKey: e.currentTarget.value,
-                          },
-                        },
-                      }))
-                    }
-                  />
-                  <button
-                    type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-0.5 text-xs text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
-                    onClick={() => setShowAnswerKey((v) => !v)}
-                  >
-                    {showAnswerKey()
-                      ? SETTINGS.agent.multi_agent.hide
-                      : SETTINGS.agent.multi_agent.show}
-                  </button>
-                </div>
-                <input
-                  type="number"
-                  min="0"
-                  class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm"
-                  value={agentDraft().multiAgent?.answer.maxToolCalls ?? 3}
-                  onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      multiAgent: {
-                        ...prev.multiAgent!,
-                        answer: {
-                          ...prev.multiAgent!.answer,
-                          maxToolCalls: Number(e.currentTarget.value || 0),
-                        },
-                      },
-                    }))
-                  }
-                />
-                <div class="flex gap-2">
-                  <button
-                    type="button"
-                    class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs"
-                    disabled={answerTestStatus() === "checking"}
-                    onClick={() => void handleTestMultiAgentAnswer()}
-                  >
-                    {answerTestStatus() === "checking"
-                      ? SETTINGS.agent.multi_agent.testing
-                      : SETTINGS.agent.multi_agent.test_answer}
-                  </button>
-                  <button
-                    type="button"
-                    class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs"
-                    disabled={opencodeCheckStatus() === "checking"}
-                    onClick={() => void handleCheckOpencode()}
-                  >
-                    {opencodeCheckStatus() === "checking"
-                      ? SETTINGS.agent.multi_agent.checking
-                      : SETTINGS.agent.multi_agent.check_opencode}
-                  </button>
-                </div>
-                <Show when={answerTestStatus() !== "idle"}>
-                  <div class="text-xs text-[color:var(--text-secondary)]">
-                    {answerTestMessage()}
-                  </div>
-                </Show>
-                <Show when={opencodeCheckStatus() !== "idle"}>
-                  <div class="text-xs text-[color:var(--text-secondary)]">
-                    {opencodeCheckMessage()}
-                  </div>
-                </Show>
+                <button
+                  type="button"
+                  class="rounded-md border border-[color:var(--accent)] bg-[color:var(--accent-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-primary)] transition hover:opacity-90 disabled:opacity-50"
+                  disabled={agentSaving()}
+                  onClick={(e) => void submitAgentSettings(e)}
+                >
+                  {agentSaving()
+                    ? SETTINGS.agent.hone_cloud.saving
+                    : SETTINGS.agent.hone_cloud.save}
+                </button>
               </div>
             </div>
           </div>
@@ -1623,119 +1527,6 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
-
-          {/* ── 卡片 4：Codex CLI ── */}
-          <div
-            class={[
-              "rounded-xl border p-5 transition cursor-pointer",
-              agentDraft().runner === "codex_cli"
-                ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]"
-                : "border-[color:var(--border)] bg-[color:var(--panel)] hover:border-[color:var(--accent)]/50",
-            ].join(" ")}
-            onClick={() => void selectRunner("codex_cli")}
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <div class="text-sm font-semibold text-[color:var(--text-primary)]">
-                  {SETTINGS.agent.codex_cli.name}
-                </div>
-                <div class="mt-0.5 text-xs text-[color:var(--text-secondary)]">
-                  {SETTINGS.agent.codex_cli.description_prefix}
-                  <code class="rounded bg-black/20 px-1">
-                    {SETTINGS.agent.codex_cli.description_code}
-                  </code>
-                  {SETTINGS.agent.codex_cli.description_suffix}
-                </div>
-              </div>
-              <Show when={agentDraft().runner === "codex_cli"}>
-                <span class="shrink-0 rounded-full border border-[color:var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent)]">
-                  {SETTINGS.agent.current_badge}
-                </span>
-              </Show>
-            </div>
-
-            <div class="mt-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-              {/* 检测状态 */}
-              <Show when={codexCheckStatus() !== "idle"}>
-                <div
-                  class={[
-                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-                    codexCheckStatus() === "checking"
-                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
-                      : codexCheckStatus() === "ok"
-                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
-                  ].join(" ")}
-                >
-                  <Show when={codexCheckStatus() === "checking"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0 animate-spin"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        class="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        stroke-width="4"
-                      />
-                      <path
-                        class="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={codexCheckStatus() === "ok"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={codexCheckStatus() === "error"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </Show>
-                  <span>
-                    {codexCheckStatus() === "checking"
-                      ? SETTINGS.agent.codex_cli.checking_status
-                      : codexCheckMessage()}
-                  </span>
-                </div>
-              </Show>
-
-              <div class="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
-                  disabled={codexCheckStatus() === "checking"}
-                  onClick={() => void handleCheckCodex()}
-                >
-                  {codexCheckStatus() === "checking"
-                    ? SETTINGS.agent.codex_cli.checking
-                    : SETTINGS.agent.codex_cli.test_connection}
-                </button>
-              </div>
-            </div>
-          </div>
         </fieldset>
       </div>
 
@@ -1805,11 +1596,12 @@ export default function SettingsPage() {
           </Show>
 
           <div class="mt-6 overflow-hidden rounded-xl border border-[color:var(--border)]">
-            <div class="grid grid-cols-[1.2fr_1fr_1.1fr_0.8fr_0.7fr_0.9fr_1fr_auto] gap-3 bg-[color:var(--panel)] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+            <div class="grid grid-cols-[1.2fr_1fr_1.1fr_0.8fr_0.8fr_0.7fr_0.9fr_1fr_auto] gap-3 bg-[color:var(--panel)] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
               <div>{SETTINGS.invite.table.code}</div>
               <div>{SETTINGS.invite.table.phone}</div>
               <div>{SETTINGS.invite.table.web_user}</div>
               <div>{SETTINGS.invite.table.status}</div>
+              <div>{SETTINGS.invite.table.api_key}</div>
               <div>{SETTINGS.invite.table.sessions}</div>
               <div>{SETTINGS.invite.table.remaining}</div>
               <div>{SETTINGS.invite.table.last_login}</div>
@@ -1826,7 +1618,7 @@ export default function SettingsPage() {
               <div class="divide-y divide-[color:var(--border)]">
                 <For each={webInvites() ?? []}>
                   {(invite) => (
-                    <div class="grid grid-cols-[1.2fr_1fr_1.1fr_0.8fr_0.7fr_0.9fr_1fr_auto] items-center gap-3 px-4 py-3 text-sm">
+                    <div class="grid grid-cols-[1.2fr_1fr_1.1fr_0.8fr_0.8fr_0.7fr_0.9fr_1fr_auto] items-center gap-3 px-4 py-3 text-sm">
                       <div class="font-mono text-[color:var(--text-primary)]">
                         {invite.invite_code}
                       </div>
@@ -1849,6 +1641,9 @@ export default function SettingsPage() {
                             ? SETTINGS.invite.table.enabled
                             : SETTINGS.invite.table.disabled}
                         </span>
+                      </div>
+                      <div class="font-mono text-xs text-[color:var(--text-secondary)]">
+                        {invite.api_key_prefix || SETTINGS.invite.table.api_key_missing}
                       </div>
                       <div class="text-[color:var(--text-secondary)]">
                         {invite.active_session_count}
@@ -1885,6 +1680,32 @@ export default function SettingsPage() {
                           {isInviteActionRunning(invite.user_id, "reset")
                             ? SETTINGS.invite.table.resetting
                             : SETTINGS.invite.table.reset}
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded-md border border-[color:var(--border)] px-2.5 py-1 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
+                          disabled={isInviteActionRunning(
+                            invite.user_id,
+                            "api-key",
+                          )}
+                          onClick={() => void handleGetInviteApiKey(invite)}
+                        >
+                          {isInviteActionRunning(invite.user_id, "api-key")
+                            ? SETTINGS.invite.table.api_key_getting
+                            : SETTINGS.invite.table.api_key_get}
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded-md border border-[color:var(--border)] px-2.5 py-1 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
+                          disabled={isInviteActionRunning(
+                            invite.user_id,
+                            "api-key-reset",
+                          )}
+                          onClick={() => void handleResetInviteApiKey(invite)}
+                        >
+                          {isInviteActionRunning(invite.user_id, "api-key-reset")
+                            ? SETTINGS.invite.table.api_key_resetting
+                            : SETTINGS.invite.table.api_key_reset}
                         </button>
                         <Show
                           when={invite.enabled}

@@ -6,6 +6,7 @@ import {
   canSelectRunner,
   defaultAgentSettings,
   defaultLanguageDraft,
+  resolveHoneCloudOpenAiBaseUrl,
   hiddenApiKeys,
   isAgentSettingsRuntimeMismatch,
   mergeAgentSettings,
@@ -46,7 +47,13 @@ describe("settings-model", () => {
 
     expect(merged.runner).toBe("multi-agent")
     expect(merged.auxiliary?.baseUrl).toBe("https://api.minimaxi.com/v1")
+    expect(merged.honeCloud?.baseUrl).toBe("https://hone-claw.com")
     expect(merged.multiAgent?.search.maxIterations).toBe(8)
+  })
+
+  it("defaults to Hone Cloud runner settings", () => {
+    expect(defaultAgentSettings().runner).toBe("hone_cloud")
+    expect(defaultAgentSettings().honeCloud?.model).toBe("hone-cloud")
   })
 
   it("normalizes key lists and visibility lists", () => {
@@ -101,6 +108,20 @@ describe("settings-model", () => {
   it("skips runner auto-save while a runner switch is already saving", () => {
     expect(canSelectRunner("opencode_acp", "multi-agent", true)).toBe(false)
     expect(canSelectRunner("opencode_acp", "multi-agent", false)).toBe(true)
+  })
+
+  it("resolves Hone Cloud URLs as OpenAI-compatible bases", () => {
+    expect(resolveHoneCloudOpenAiBaseUrl("https://hone-claw.com")).toBe(
+      "https://hone-claw.com/api/public/v1",
+    )
+    expect(resolveHoneCloudOpenAiBaseUrl("https://hone-claw.com/api/public/v1")).toBe(
+      "https://hone-claw.com/api/public/v1",
+    )
+    expect(
+      resolveHoneCloudOpenAiBaseUrl(
+        "https://hone-claw.com/api/public/v1/chat/completions",
+      ),
+    ).toBe("https://hone-claw.com/api/public/v1")
   })
 
   it("derives language draft from meta with zh fallback", () => {

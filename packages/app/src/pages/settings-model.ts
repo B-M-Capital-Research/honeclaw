@@ -30,8 +30,13 @@ export function defaultChannelDraft(): DesktopChannelSettingsInput {
 
 export function defaultAgentSettings(): AgentSettings {
   return {
-    runner: "opencode_acp",
+    runner: "hone_cloud",
     codexModel: "",
+    honeCloud: {
+      baseUrl: "https://hone-claw.com",
+      apiKey: "",
+      model: "hone-cloud",
+    },
     openaiUrl: "https://openrouter.ai/api/v1",
     openaiModel: "google/gemini-2.5-pro-preview",
     openaiApiKey: "",
@@ -65,6 +70,7 @@ export function mergeAgentSettings(settings?: AgentSettings): AgentSettings {
     ...defaults,
     ...settings,
     auxiliary: settings.auxiliary ?? defaults.auxiliary,
+    honeCloud: settings.honeCloud ?? defaults.honeCloud,
     multiAgent: settings.multiAgent ?? defaults.multiAgent,
   }
 }
@@ -75,6 +81,17 @@ export function canSelectRunner(
   isSaving: boolean,
 ): boolean {
   return !isSaving && currentRunner !== nextRunner
+}
+
+export function resolveHoneCloudOpenAiBaseUrl(baseUrl?: string): string {
+  const trimmed = (baseUrl ?? "").trim().replace(/\/+$/, "") || "https://hone-claw.com"
+  if (trimmed.endsWith("/chat/completions")) {
+    return trimmed.slice(0, -"/chat/completions".length)
+  }
+  if (trimmed.endsWith("/v1")) {
+    return trimmed
+  }
+  return `${trimmed}/api/public/v1`
 }
 
 export function isAgentSettingsRuntimeMismatch(result: AgentSettingsUpdateResult): boolean {

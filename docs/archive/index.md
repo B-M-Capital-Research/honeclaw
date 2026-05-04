@@ -891,3 +891,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `bun run build:web:public`, `bun run typecheck:web`, Playwright mobile overflow audit
 - Current conclusion: 公开站共享移动端样式已收口，首页、对话页、路线图和基础文档页在 360/390/430/768 宽度下不再横向撑宽，header 保持在视口内
 - Next entry point: `packages/app/src/pages/public-site.css`
+
+### Hone Cloud Runner + Web User API Key
+
+- Status: done
+- Date: 2026-05-04
+- Plan: `docs/archive/plans/hone-cloud-runner-api-key.md`
+- Handoff: `docs/handoffs/2026-05-04-hone-cloud-runner-api-key.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-memory web_auth -- --nocapture`, `cargo check -p hone-web-api`, `cargo check -p hone-desktop`, `tsc -p packages/app/tsconfig.json --noEmit`
+- Current conclusion: 客户端新增可见 `Hone Cloud` runner，并隐藏 legacy multi-agent / standalone codex CLI 入口；Web 邀请码用户现在拥有只存 hash 的 per-user API Key，public app 提供 Bearer 鉴权的 OpenAI-compatible `/api/public/v1/chat/completions`
+- Next entry point: `docs/handoffs/2026-05-04-hone-cloud-runner-api-key.md`

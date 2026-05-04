@@ -23,8 +23,9 @@ pub mod yaml;
 
 pub use agent::{
     AdminConfig, AgentConfig, AgentRunnerKind, AgentRunnerProbe, AuxiliaryLlmConfig,
-    CodexAcpConfig, GeminiAcpConfig, KimiConfig, LlmConfig, MultiAgentAnswerConfig,
-    MultiAgentConfig, MultiAgentSearchConfig, OpenRouterConfig, OpencodeAcpConfig,
+    CodexAcpConfig, GeminiAcpConfig, HoneCloudConfig, KimiConfig, LlmConfig,
+    MultiAgentAnswerConfig, MultiAgentConfig, MultiAgentSearchConfig, OpenRouterConfig,
+    OpencodeAcpConfig,
 };
 pub use channels::{
     ChatScope, DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig,
