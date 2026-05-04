@@ -67,6 +67,7 @@
 
 ## 修复记录（2026-05-05 03:04 CST）
 
+- 修复提交：`5f8dd85`
 - 在 `crates/hone-channels/src/agent_session/emitter.rs` 将用户态事件净化扩展到 `RunEvent::StreamDelta`：
   - 命中内部 prompt / skill context marker 的 chunk 会被抑制；
   - 若内部 marker 前存在正常用户可见前缀，仅保留前缀；
