@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 03:04 CST
+最后更新：2026-05-05 04:08 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,17 +15,18 @@
 
 ## 当前概览
 
-- 活跃待修复：16
+- 活跃待修复：17
 - Later / 待复现：10
 - 已修复 / 已关闭：74
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 2 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-05-04 21:15 继续收紧 `multi_agent` 搜索阶段直返：简短、单段的本地文件确认答复现在可直接返回，不再被硬送进更容易空回复的 answer 阶段；已补 `hone-channels` 回归测试，但因本轮未重启服务、仍缺新的真实 Feishu 样本，先维持 `Fixing` | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
+| Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-05 04:07 release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下 `rw.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-04 06:02 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`；但最近一小时真实 Feishu 直聊源文件仍刷新到 `05:00:52`，最新 `科技成长赛道大盘极值与情绪监控` user/assistant 两轮已完整写进 JSON | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-04 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=15530` 再次落成 `completed + send_failed`；同一 `job_id=j_183bee8d` 已连续 8 天在 `09:00` 窗口复现，说明“正文落库即送达”语义在线上仍未生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
