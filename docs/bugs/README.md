@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-04 09:12 CST
+最后更新：2026-05-04 21:28 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,7 +15,7 @@
 
 ## 当前概览
 
-- 活跃待修复：13
+- 活跃待修复：14
 - Later / 待复现：10
 - 已修复 / 已关闭：74
 - 历史分析 / 部分止血：5
@@ -34,6 +34,7 @@
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-04 09:02 最新 `08:30`、`08:45`、`09:00` 三个窗口又新增 `33` 条 `running + pending` started 行且不被终态覆盖；即便同窗已有 `sent/noop` 终态，started 行仍悬挂；全库总量升到 `4375` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-04 09:01 `核心观察池早间简报` 的 `run_id=15533` 再次把 `MSFT / NVDA / GOOGL / AAPL` 等核心股统一降成“击球区：待确认”；同症状已从 `2026-04-30 21:35`、`2026-05-01 21:35/23:00`、`2026-05-02 09:01/21:35/23:01`、`2026-05-03 09:01/23:01` 延续到最新窗口 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
+| Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | New | 2026-05-04 08:32 `Hone_AI_Morning_Briefing` 的 `run_id=15500` 已明确写出“底层行情数据链路暂时阻断”，并回退到先前已核验的 `2026-05-01` 收盘口径；同窗 `sidecar.log` 连续多次 `acp.tool_failed` 后只靠 `web_search` 收口，但台账仍记为 `completed + sent` | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
 | Feishu 直聊切到非金融新话题时，仍直接回答楼市/买房问题而未执行领域边界拒绝 | P3 | New | 2026-05-03 20:08-20:11 两轮真实 Feishu 会话都把“深圳楼市/是否适合买房”当成正常咨询直接回答；最新 prompt audit 仍保留“非金融问题应礼貌拒绝”的系统约束，说明 live 领域边界拒绝未真正生效 | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
 | Feishu 每日动态监控在“今日不触发新增重大推送”口径下再次把无新增长文照常发送 | P3 | New | 2026-05-04 00:02 `TEM`、`RKLB`、`AAOI 每日动态监控` 三轮都在正文里分别写出“今日不触发新增重大催化或风险证伪推送”/“今日不触发新增重大推送”，但 `cron_job_runs` 仍全部落成 `completed + sent + delivered=1`，对应 direct session 也连续写入 3 条 assistant final | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-04 03:02 `run_id=15240` 再次把“OPEC+供应政策不确定性”“全球经济增速担忧”组织成确定性油价主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
