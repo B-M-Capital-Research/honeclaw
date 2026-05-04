@@ -5,6 +5,19 @@
 - **严重等级**: P3
 - **状态**: New
 - **证据来源**:
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `2026-05-04 08:04 CST` 最新巡检样本：
+      - `job_name=ORCL 大事件监控`
+      - `run_id=15464`，`executed_at=2026-05-04T08:00:45.191722+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 再次发送同一 `ORCL 171.83 / +6.47% / 当前时间为北京时间 2026-05-04 08:00 / 美股已收盘` 静态事实；而同一 job 在前一窗 `run_id=15442`（`07:30:33`）刚回落成 `noop + skipped_noop`
+      - `job_name=Cerebras IPO与业务进展心跳监控`
+      - `run_id=15465`，`executed_at=2026-05-04T08:01:27.029754+08:00`，再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把同一 `S-1/A pricing range = $22-$25 / 拟 5 月上市 / AWS Bedrock + OpenAI 协议` 旧事实重新包装成 `重大增量触发`；而同一 job 在前一窗 `run_id=15443`（`07:30:44`）刚回落成 `noop + skipped_noop`
+      - `job_name=持仓重大事件心跳检测`
+      - `run_id=15466`，`executed_at=2026-05-04T08:01:41.702191+08:00`，同窗再次落成 `completed + sent + delivered=1`
+      - `response_preview` 又把同一 `TEM 5月6日财报将至` 与 `ASTS BlueBird 7 deployments trouble（5月2日报道）` 组合成 `持仓事件提醒` 送达；而同一 job 在前一窗 `run_id=15444`（`07:30:44`）也刚回落成 `noop + skipped_noop`
+      - `data/runtime/logs/sidecar.log` 在 `2026-05-04 08:00:42.523-08:01:39.864 CST` 同步记录这三条 job 的 `parse_kind=JsonTriggered -> deliver`，同窗其它 heartbeat 大多仍回落成 `Empty` 或 `JsonNoop`
+      - 这说明重复提醒缺陷到 `2026-05-04 08:04` 仍稳定活跃：同一批停盘静态价格与已知旧催化在 `07:30` 窗口刚明确 `noop` 后，`08:00` 下一窗又被重新包装成提醒。它不阻断主功能链路，但持续制造重复提醒噪音，因此维持 `P3`
   - `data/runtime/logs/sidecar.log`
     - `2026-05-04 07:03 CST` 最新巡检样本：
       - `job_name=小米30港元破位预警`
