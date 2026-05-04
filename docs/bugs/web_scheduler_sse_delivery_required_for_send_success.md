@@ -7,6 +7,22 @@
 
 ## 证据来源
 
+- `2026-05-04 09:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=15530`
+    - `job_id=j_183bee8d`
+    - `job_name=09:00 美股AI与航空科技晨报`
+    - `actor_channel=web`
+    - `executed_at=2026-05-04T09:01:14.937220+08:00`
+    - `execution_status=completed`
+    - `message_send_status=send_failed`
+    - `delivered=0`
+    - `should_deliver=1`
+    - `detail_json={"console_event_sent":false,"scheduler":null}`
+    - `response_preview` 已包含完整晨报开头、结论段与 `最重要的 4 条`，说明正文已生成完成，但离线 Web 任务再次被记成 `send_failed`
+  - 结论：
+    - 到 `2026-05-04 09:02` 为止，这条缺陷在第八个连续 `09:00 美股AI与航空科技晨报` 窗口继续 live 复现；“正文已落库但离线 SSE 无监听”仍会被记成 `completed + send_failed + console_event_sent=false`
+
 - `2026-05-03 20:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=14919`
@@ -199,6 +215,8 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 ## 当前实现效果
 
+- `2026-05-04 09:02` 的 `09:00 美股AI与航空科技晨报` 说明，这条缺陷在最新生产窗口仍未退出活跃态：`cron_job_runs.run_id=15530` 再次落成 `completed + send_failed + delivered=0`，而 `response_preview` 已包含完整晨报开头、结论段与 `最重要的 4 条`，说明正文已生成完成但台账仍沿用离线 SSE 失败语义。
+- 同一 `job_id=j_183bee8d` 目前已连续八天（`2026-04-27`、`2026-04-28`、`2026-04-29`、`2026-04-30`、`2026-05-01`、`2026-05-02`、`2026-05-03`、`2026-05-04`）在 `09:00` 晨报窗口复现，说明当前线上行为仍未兑现“正文落库即可视为送达成功”的语义。
 - `2026-05-03 20:02` 的 `英伟达每日消息` 说明，这条缺陷在最新生产窗口仍未退出活跃态：正文已完整生成并写入 Web 会话，但 `cron_job_runs` 依旧再次记成 `completed + send_failed + console_event_sent=false`。
 - `2026-05-03 09:02` 的 `09:00 美股AI与航空科技晨报` 说明，这条缺陷在最新生产窗口仍未退出活跃态：`cron_job_runs.run_id=14432` 再次落成 `completed + send_failed + delivered=0`，而 `response_preview` 已包含完整晨报开头，说明正文已生成完成但台账仍沿用离线 SSE 失败语义。
 - 同一 `job_id=j_183bee8d` 目前已连续七天（`2026-04-27`、`2026-04-28`、`2026-04-29`、`2026-04-30`、`2026-05-01`、`2026-05-02`、`2026-05-03`）在 `09:00` 晨报窗口复现，说明当前线上行为仍未兑现“正文落库即可视为送达成功”的语义。

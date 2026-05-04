@@ -9,6 +9,20 @@
 ## 证据来源
 
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-04 09:02 CST` 再次复核，started-row finalize 缺陷在最新 `08:30`、`08:45`、`09:00` 三个窗口继续实时新增：
+    - `08:30` 窗口先写入 `run_id=15467-15484` 共 `18` 条 started 行，覆盖 `港股持仓与关注股早间行情研判`、`Hone_AI_Morning_Briefing`、`创新药持仓每日动态推送`、`闪迪(SNDK)每日行情与行业简报`、`每日有色化工标的新闻追踪` 等非 heartbeat 任务以及多条 heartbeat
+    - 同窗终态随后另起为 `15485-15502`；其中 `15495`、`15497-15502` 已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
+    - `08:45` 窗口又新增 `run_id=15503` 一条 started 行（`A股盘前高景气产业链推演`），后续终态 `15504` 已落成 `completed + sent + delivered=1`
+    - `09:00` 窗口再写入 `run_id=15505-15518` 共 `14` 条 started 行，覆盖 `特斯拉与火箭实验室新闻日报`、`核心观察池早间简报`、`早9点市场复盘(XME及加密ETF)` 与多条 heartbeat
+    - 同窗终态随后另起为 `15519-15533`；其中 `15525`、`15529`、`15532`、`15533` 已落成 `completed + sent + delivered=1`，其余多为 `noop + skipped_noop`
+    - 但对应 started 行 `15467-15484`、`15503` 与 `15505-15518` 仍全部保留 `execution_status=running`、`message_send_status=pending`，说明无论终态是 `sent` 还是 `skipped_noop`，原 started 行都不会被覆盖
+  - 按这三个最新窗口聚合，当前仍同时存在：
+    - `running + pending = 33`
+    - `noop + skipped_noop = 20`
+    - `completed + sent = 11`
+  - 全库聚合时，当前 `execution_status=running` 且 `message_send_status=pending` 的残留总量已升到 `4375` 条，较 `2026-05-04 05:02` 巡检记录里的 `4276` 再增 `99` 条；最近一小时新增 started 残留继续覆盖 heartbeat 与多条非 heartbeat 的晨报/简报任务，说明这条缺陷仍在持续堆积并继续扩散到普通 scheduler 任务。
+
+- 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-04 05:02 CST` 再次复核，started-row finalize 缺陷在最新 `04:30`、`05:00` 两个窗口继续实时新增：
     - `04:30` 窗口先写入 `run_id=15287-15298` 共 `12` 条 started 行，其中新增的 `15298` 为非 heartbeat 的 `OWALERT_PostMarket`
     - 同窗终态随后另起为 `15299-15310`；其中 `15310`（`OWALERT_PostMarket`）已落成 `completed + sent + delivered=1`，其余 `15299-15309` 均回落成 `noop + skipped_noop`
@@ -901,6 +915,9 @@
 - 巡检查询 `execution_status=running` 时，不应把已经 `noop`、`completed`、`execution_failed` 的历史窗口误判成仍在执行。
 
 ## 当前实现效果
+
+- `2026-05-04 09:02` 的最新三轮窗口说明，这条缺陷仍持续活跃：即使 `08:30`、`08:45`、`09:00` 同窗里已有 `completed + sent` 与 `noop + skipped_noop` 终态，started 行仍继续悬挂为 `running + pending`。
+- 当前 started 残留总量已升到 `4375` 条，且最近一小时不再只是 heartbeat，连 `港股持仓与关注股早间行情研判`、`核心观察池早间简报`、`特斯拉与火箭实验室新闻日报`、`A股盘前高景气产业链推演` 这类普通 scheduler 任务也继续堆积 started 行。
 
 - 到 `2026-04-29 18:02 CST` 为止，最近一小时绝对时间窗里的 `running + pending` 仍有 `217` 条，与同窗其它 `219` 条终态几乎一比一并存，说明 started 行与终态行仍被拆成两批记录而不是单条收口。
 - `18:00` 新窗再次证明坏态依旧实时产生：`run_id=10208-10219` 刚写出不到三分钟，同窗终态就已经另起为 `10220-10231`，但 `10208-10219` 仍全部保留 `running + pending`。
