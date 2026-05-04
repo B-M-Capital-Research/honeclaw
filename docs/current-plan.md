@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-02
+最后更新：2026-05-04
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-02 闭环 Feishu scheduler started-row finalization，并保留最新巡检重新打开的 Web scheduler 离线 SSE 与 provider numeric `HTTP 400` 项；剩余活跃项继续按共享契约加固，不对不可控网络、凭据或模型波动做脆弱特判
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-04 继续收紧活跃 P1 Feishu 直聊空/无效回复：简短本地文件确认答复现在可在 search 阶段直返，减少落入高失败率 answer 阶段的入口；剩余活跃项继续按共享契约加固，不对不可控网络、凭据或模型波动做脆弱特判
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

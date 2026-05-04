@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-03 18:06 CST
+- updated_at: 2026-05-04 21:15 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -72,6 +72,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-02: Closed the Feishu scheduler started-row finalization regression by hardening both sides of the matching contract: scheduler terminal detail now replaces unusable `delivery_key` values, and cron history storage can safely fallback-update the latest recent `phase=started` pending row for the same actor/job/target/heartbeat when exact key matching fails.
 - 2026-05-02 17:35: Reopened P1 Feishu direct empty/invalid answer bug is now back to `Fixing` after narrowing `response_finalizer`'s `planning_sentence_suppressed` heuristic. Clarification questions such as “请先确认具体是哪只股票/资产的 ticker？” are no longer treated as empty-success fallbacks, and targeted `hone-channels` regression tests now cover both the helper and full finalizer path. No live Feishu runtime recheck yet because this automation does not restart services.
 - 2026-05-03 18:06: Closed the active Web `tool_call_update.rawOutput` leak by hardening shared session event emission instead of transcript persistence: `SessionEventEmitter` now relativizes `ToolStatus.tool/message/reasoning`, suppresses internal prompt markers such as `【Invoked Skill Context】` / `Base directory for this skill:`, and drops structured JSON payloads from user-visible progress events while preserving raw ACP evidence for restore/debug. Targeted `hone-channels` emitter tests and `cargo check -p hone-channels --tests` passed. Feishu direct empty/invalid answer remains the only active P1 because this automation run does not restart services or generate new live Feishu samples.
+- 2026-05-04 21:15: Tightened the remaining active P1 Feishu direct-answer path again. `multi_agent` search results backed only by read-only local file tools (`local_list_files` / `local_search_files` / `local_read_file`) may now return directly when the answer is already concise and single-paragraph, which covers attachment / local-state confirmation turns that were still being forced into the more failure-prone ACP answer stage. Added targeted `hone-channels` tests to keep verbose local file summaries on the answer path while letting concise confirmations bypass it. No live Feishu runtime recheck yet because this automation does not restart services.
 
 ## Validation
 
@@ -140,6 +141,10 @@ Completed this round:
 - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
 - `cargo check -p hone-channels --tests`
 - `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session/emitter.rs crates/hone-channels/src/agent_session/tests.rs`
+- `cargo test -p hone-channels concise_local_file_answer_can_return_directly -- --nocapture`
+- `cargo test -p hone-channels multiline_local_file_summary_still_requires_answer_stage -- --nocapture`
+- `cargo test -p hone-channels runners::multi_agent::tests -- --nocapture`
+- `cargo check -p hone-channels --tests`
 
 Known verification limitation:
 

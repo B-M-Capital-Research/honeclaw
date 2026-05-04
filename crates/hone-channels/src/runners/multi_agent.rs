@@ -182,7 +182,21 @@ Verified search tool transcript (JSON):\n{}",
     }
 
     fn is_trusted_local_direct_return_tool(&self, tool_name: &str) -> bool {
-        matches!(tool_name, "cron_job" | "portfolio")
+        matches!(
+            tool_name,
+            "cron_job"
+                | "portfolio"
+                | "local_list_files"
+                | "local_search_files"
+                | "local_read_file"
+        )
+    }
+
+    fn is_local_file_direct_return_tool(&self, tool_name: &str) -> bool {
+        matches!(
+            tool_name,
+            "local_list_files" | "local_search_files" | "local_read_file"
+        )
     }
 
     fn build_search_input(&self, runtime_input: &str) -> String {
@@ -231,6 +245,13 @@ Verified search tool transcript (JSON):\n{}",
                 .all(|call| self.is_trusted_local_direct_return_tool(&call.name));
 
         if only_trusted_local_tools {
+            let includes_local_file_lookup = search_response
+                .tool_calls_made
+                .iter()
+                .any(|call| self.is_local_file_direct_return_tool(&call.name));
+            if includes_local_file_lookup {
+                return content.len() <= 240 && !content.contains('\n');
+            }
             return true;
         }
 
@@ -834,10 +855,32 @@ mod tests {
     }
 
     #[test]
-    fn local_file_tool_calls_also_force_answer_stage() {
+    fn concise_local_file_answer_can_return_directly() {
         let runner = make_runner();
         let response = AgentResponse {
-            content: "本地检索摘要".to_string(),
+            content: "当前附件目录里只有之前的图片，没有新的 Markdown 文件落进来。".to_string(),
+            tool_calls_made: vec![ToolCallMade {
+                name: "local_search_files".to_string(),
+                arguments: json!({"query": "AAOI", "path": "company_profiles"}),
+                result: json!({"matches": [{"path": "company_profiles/aaoi/profile.md"}]}),
+                tool_call_id: None,
+            }],
+            iterations: 2,
+            success: true,
+            error: None,
+        };
+
+        assert!(runner.should_return_search_response_directly(&response));
+        assert!(!runner.has_live_search_tool_call(&response.tool_calls_made));
+    }
+
+    #[test]
+    fn multiline_local_file_summary_still_requires_answer_stage() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content:
+                "我在本地找到了 3 份相关文件：\n1. company_profiles/aaoi/profile.md\n2. uploads/session-1/note.md\n3. uploads/session-1/chart.png"
+                    .to_string(),
             tool_calls_made: vec![ToolCallMade {
                 name: "local_search_files".to_string(),
                 arguments: json!({"query": "AAOI", "path": "company_profiles"}),

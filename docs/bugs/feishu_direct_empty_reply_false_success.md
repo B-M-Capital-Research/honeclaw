@@ -171,6 +171,14 @@
 - 本轮只收紧了 `planning_sentence_suppressed` 这一路径，没有放宽 `sanitized_empty_success` 或其它真正空输出的失败收口；纯内部执行态短句仍会继续被 fallback 拦下。
 - 由于当前任务不允许重启现有服务，也没有新的真实 Feishu 样本可直接复核，本单先更新为 `Fixing` 而不是 `Fixed`；下一条同类直聊若能把澄清句直接送达用户，再考虑转 `Fixed`。
 
+## 修复进展（2026-05-04 21:15 CST）
+
+- 本轮继续补 `crates/hone-channels/src/runners/multi_agent.rs` 的搜索阶段直返边界，覆盖“本地文件确认本身已足够回答用户，但仍被硬送进 answer 阶段”的剩余入口：
+  - `local_list_files` / `local_search_files` / `local_read_file` 这三类只读本地工具，如果搜索阶段已经产出简短、单段、用户可直接消费的确认答复，现在允许直接返回；
+  - 仍然保留对多行本地检索摘要、工作笔记和其它长文本的 answer 阶段要求，避免把原始文件枚举或不成形的检索摘要直接外发。
+- 这次收口直接针对 `2026-04-23 18:53-18:55` 那类“附件/本地状态已能在搜索阶段确认，但 answer 阶段空/无效回复又把结果打回统一 fallback”的坏态。
+- 由于当前任务不允许重启现有服务，也没有新的真实 Feishu 运行态样本，本单继续维持 `Fixing`；但这条剩余入口现在已有明确代码收口和自动化证明。
+
 ## 当前验证（2026-05-02 17:35 CST）
 
 - 已通过：
@@ -179,6 +187,14 @@
   - `cargo test -p hone-channels finalize_agent_response_keeps_user_facing_clarification_question -- --nocapture`
   - `cargo check -p hone-channels --tests`
   - `rustfmt --edition 2024 crates/hone-channels/src/runtime.rs crates/hone-channels/src/agent_session/tests.rs`
+
+## 当前验证（2026-05-04 21:15 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels concise_local_file_answer_can_return_directly -- --nocapture`
+  - `cargo test -p hone-channels multiline_local_file_summary_still_requires_answer_stage -- --nocapture`
+  - `cargo test -p hone-channels runners::multi_agent::tests -- --nocapture`
+  - `cargo check -p hone-channels --tests`
 
 ## 回归验证
 
