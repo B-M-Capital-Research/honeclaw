@@ -3,11 +3,18 @@
 - **发现时间**: 2026-05-02 20:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30)
 
 ## 证据来源
 
+- 最近一小时真实复发：
+  - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json`
+  - `2026-05-04T22:04:48.104718+08:00` 用户输入：`心跳检测，请简短回复 OK`
+  - `2026-05-04T22:05:03.185109+08:00` 最终 assistant 落库仍只有 `OK`
+  - 但 `data/runtime/logs/acp-events.log` 显示同一轮 `2026-05-04T14:04:49.066769+00:00` 与 `2026-05-04T14:04:49.067114+00:00` 再次收到 `session/update -> tool_call_update.rawOutput`
+  - 最新 `rawOutput` 仍直接展开 `【Invoked Skill Context】`、`Base directory for this skill: /Users/fengming2/Desktop/honeclaw/skills/scheduled_task`、完整 `Scheduled Task Management` skill 内容，以及 `cron_job(action=\"list\")` 返回的 `job` JSON
+  - 说明 2026-05-03 标记为 `Fixed` 后，Web `tool_call_update.rawOutput` 泄漏仍在 live session 中复发；只是最终会话文件继续被后置收口为 `OK`
 - 最近一小时真实会话：
   - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json`
   - `updated_at=2026-05-02T20:02:07.383458+08:00`
@@ -45,6 +52,7 @@
 
 ## 当前实现效果
 
+- `2026-05-04 22:04` 的最新 Web 会话说明，这条缺陷并未稳定消失：即便用户只是发健康检查，`session/load` / `session/update` 仍会把旧的 skill prompt 与工具回显重新外发。
 - 最近一小时同一 Web session 的 `tool_call_update.rawOutput` 直接携带完整 skill prompt 与工具返回。
 - 泄漏内容同时包含：
   - skill 基础目录绝对路径
@@ -61,6 +69,7 @@
 
 ## 根因判断
 
+- 最新复发形态说明，当前用户态净化没有覆盖 Web `session/load` 后重放出来的 `tool_call_update.rawOutput`，或 live runtime 并未真正走到 2026-05-03 的 emitter 层抑制逻辑。
 - 现有修复只覆盖了 `agent_message_chunk` 的 prompt echo 过滤，没有覆盖 `tool_call_update.rawOutput` 这一独立事件通道。
 - `rawOutput` 当前仍按“可直接透传的调试字段”进入 Web `session/update`，缺少用户态净化与字段级裁剪。
 - 从旧样本看，问题不是某个单一 skill 的异常，而是 Web 侧对 `tool_call_update/rawOutput` 的统一下发策略缺口。
@@ -87,5 +96,5 @@
 
 ## 当前结论
 
-- 该缺陷的可控代码路径已补齐并有自动化回归覆盖，可从活跃队列移到 `Fixed`。
-- 本轮没有重启现有 Web 服务，因此未做 live SSE 复流；如需运行态复核，可在不重启生产实例的前提下，用隔离会话再次触发 `skill_tool` / `cron_job`，确认前端只看到简短工具状态，而不再看到 skill prompt、绝对路径或 `job` JSON。
+- 2026-05-04 22:04 的真实 Web 会话已证明，这条缺陷不能继续维持 `Fixed`；本单应改回 `New`。
+- 修复时应优先核对 `session/load` replay、历史 event 缓存与 live `tool_call_update` 出站是否走了不同路径；只靠单元测试和静态 emitter 改动不足以证明运行态已止血。

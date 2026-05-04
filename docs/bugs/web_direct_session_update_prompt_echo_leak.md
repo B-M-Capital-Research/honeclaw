@@ -3,11 +3,17 @@
 - **发现时间**: 2026-05-02 02:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28)
 
 ## 证据来源
 
+- 最近一小时真实复发：
+  - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json`
+  - `2026-05-04T22:04:48.104718+08:00` 用户输入：`心跳检测，请简短回复 OK`
+  - `2026-05-04T22:05:03.185109+08:00` 最终 assistant 落库仍只有 `OK`
+  - 但 `data/runtime/logs/acp-events.log` 显示同一轮 `2026-05-04T14:04:49.150625+00:00` 再次收到 `session/update -> agent_message_chunk`，正文直接以 `### System Instructions ###` 开头，并再次展开完整系统提示、领域边界、skill 索引与 `【Session 上下文】`
+  - 说明 2026-05-02 标记为 `Fixed` 后，Web `session/update` prompt echo 仍可在真实 live session 中复发；只是最终会话文件继续被后置收口为 `OK`
 - 最近一小时真实会话：
   - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json`
   - `2026-05-02T02:03:12.015076+08:00` 用户输入：`心跳检测，请简短回复 OK`
@@ -37,6 +43,7 @@
 
 ## 当前实现效果
 
+- `2026-05-04 22:04` 的最新真实 Web 会话说明，这条缺陷并没有被稳定修掉：最终落库虽然仍被收口成 `OK`，但实时 `session/update` 事件再次整段外发系统提示。
 - 最近一小时这条 Web 会话最终落库仍是正常的 `OK`，但流式更新里先后出现了超长内部 prompt 文本。
 - 泄露内容不是单一一句状态标记，而是完整的系统约束与技能索引，敏感度明显高于普通格式噪音。
 - 这说明当前链路对最终 answer 有一定净化，但对 `session/update -> agent_message_chunk` 没有同等级防护。
@@ -50,6 +57,7 @@
 
 ## 根因判断
 
+- 最新复发形态说明，当前过滤并没有覆盖 Web `session/load` 后重放到前端的 `session/update` 事件，或相关防护没有真正进入当前 live runtime。
 - 现象表明“最终回复净化”和“流式 chunk 外发”走了不同边界：
   - 最终持久化/收口只保留了 `OK`
   - 中途 `session/update` 却把 prompt 包当作普通 `agent_message_chunk` 发出
@@ -65,5 +73,6 @@
 
 ## 后续建议
 
+- 先把本单从 `Fixed` 改回 `New`，修复时重点核对 `session/load` / 历史 event replay 是否绕过了 2026-05-02 新增的 chunk 级过滤。
 - 若后续出现新的 prompt echo 变体，优先扩展 ACP ingest 层的内部标记集合，保持“用户可见正文”和“调试/内部 prompt”通道分离。
 - 用同一条 `心跳检测，请简短回复 OK` 在 Web 前端做一次实时复现，确认用户侧是否能肉眼看到泄露 chunk。
