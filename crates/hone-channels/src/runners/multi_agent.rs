@@ -199,6 +199,32 @@ Verified search tool transcript (JSON):\n{}",
         )
     }
 
+    fn is_user_facing_clarification(&self, content: &str) -> bool {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return false;
+        }
+        if trimmed.contains('?') || trimmed.contains('？') {
+            return [
+                "请先确认",
+                "请确认",
+                "请提供",
+                "告诉我",
+                "发我",
+                "补充",
+                "确认标的",
+                "确认具体",
+                "哪只",
+                "哪个",
+            ]
+            .iter()
+            .any(|marker| trimmed.contains(marker));
+        }
+        ["请先确认", "请确认", "请提供", "告诉我", "发我"]
+            .iter()
+            .any(|marker| trimmed.starts_with(marker))
+    }
+
     fn build_search_input(&self, runtime_input: &str) -> String {
         format!(
             "{runtime_input}\n\n[SEARCH STAGE GUIDANCE]\nDecide whether tool use is actually needed for this turn.\nUse `web_search` or `data_fetch` when the answer depends on fresh external facts, live market data, recent news, or other time-sensitive information.\nUse `local_list_files`, `local_search_files`, or `local_read_file` when the answer may exist in the current actor sandbox as local persisted state, such as `company_profiles/`, uploaded files, runtime artifacts, or other user-local notes.\nFor scheduled-task or reminder-management requests such as listing, checking, updating, or deleting the user's tasks, use `cron_job` first (for example `cron_job(action=\"list\")`) instead of market-data tools. Do not substitute `data_fetch` or `web_search` unless the user explicitly asked for fresh external facts.\nIf the user is asking about portfolio state or watchlist state that already lives locally, prefer the dedicated local/state tools before market/news tools.\nTreat network search and local file inspection as equal search methods. If local files may materially improve accuracy, inspect them before saying you do not have memory, history, or filesystem access.\nThese local file tools are read-only and scoped to the current actor sandbox only. Do not assume access outside that sandbox.\nDo not call tools just to satisfy workflow.\nIf you do use tools and one trusted local/state lookup already fully resolves the request, return a concise user-ready answer directly instead of a planning memo.\nIf the user message is a short greeting, acknowledgment, or deictic follow-up such as '这个' / '那个' / '上一条', answer directly or ask one brief clarification question. Do not emit a transitional planning sentence as the final output.\nIf you do use tools and still need the answer stage, keep your final search-stage note as a compact internal memo in plain text only.\nDo not use HTML, XML-like tags, Markdown headings, Markdown tables, or channel-specific presentation styles in the search-stage note.\nFocus on factual takeaways and unresolved gaps, not polished formatting.\nGreetings, short meta-chat, and other low-cost turns may be answered directly without tools."
@@ -233,7 +259,7 @@ Verified search tool transcript (JSON):\n{}",
         .iter()
         .any(|marker| content.contains(marker) || lowered.contains(marker));
 
-        if looks_like_working_note {
+        if looks_like_working_note && !self.is_user_facing_clarification(content) {
             return false;
         }
 
@@ -832,6 +858,21 @@ mod tests {
         };
 
         assert!(!runner.should_return_search_response_directly(&response));
+    }
+
+    #[test]
+    fn user_facing_clarification_can_return_directly() {
+        let runner = make_runner();
+        let response = AgentResponse {
+            content: "请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验当前价格、财报、估值倍数和同业，再判断估值是否合理。"
+                .to_string(),
+            tool_calls_made: Vec::new(),
+            iterations: 1,
+            success: true,
+            error: None,
+        };
+
+        assert!(runner.should_return_search_response_directly(&response));
     }
 
     #[test]

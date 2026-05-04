@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 18:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixing
+- **状态**: Fixed
 - **GitHub Issue**: [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29)
 - **证据来源**:
   - 2026-05-02 16:59 最新真实直聊样本：
@@ -179,6 +179,18 @@
 - 这次收口直接针对 `2026-04-23 18:53-18:55` 那类“附件/本地状态已能在搜索阶段确认，但 answer 阶段空/无效回复又把结果打回统一 fallback”的坏态。
 - 由于当前任务不允许重启现有服务，也没有新的真实 Feishu 运行态样本，本单继续维持 `Fixing`；但这条剩余入口现在已有明确代码收口和自动化证明。
 
+## 修复进展（2026-05-05 07:03 CST）
+
+- 本轮继续补 `crates/hone-channels/src/runners/multi_agent.rs` 的搜索阶段直返判定，覆盖 `2026-05-02 16:59` 样本里的剩余误杀形态：
+  - 搜索阶段若已经产出用户可见澄清句，例如 `请先确认具体是哪只股票/资产的 ticker？确认标的后我再校验...`，不再因为命中 `先确认` / `我再` 等内部工作笔记 marker 被强制送入 answer 阶段。
+  - 这次只放宽用户可见澄清句；含 `web_search` / `data_fetch` 的 live market/news 检索摘要仍必须进入 answer 阶段，避免未成形材料直接外发。
+- 新增回归 `user_facing_clarification_can_return_directly`，与既有 `finalize_agent_response_keeps_user_facing_clarification_question` 一起覆盖“澄清句生成后不被 finalizer 或 multi-agent search 直返边界吞掉”。
+- 当前结论：已针对本缺陷已知的三条可本地收口入口完成代码闭环：
+  - 空 / 净化后空成功不再以 `success=true` 直接落库或发送；
+  - 用户可见澄清句不再被 `planning_sentence_suppressed` 误杀；
+  - 本地状态确认与澄清类 search 输出不再被硬送进更容易空回复的 answer 阶段。
+- 状态更新为 `Fixed`。后续若真实 Feishu 再出现新的 `empty_success_exhausted` 或 `planning_sentence_suppressed` 样本，应以新日志窗口重新打开本单或拆出更具体的 runner 缺陷。
+
 ## 当前验证（2026-05-02 17:35 CST）
 
 - 已通过：
@@ -193,6 +205,13 @@
 - 已通过：
   - `cargo test -p hone-channels concise_local_file_answer_can_return_directly -- --nocapture`
   - `cargo test -p hone-channels multiline_local_file_summary_still_requires_answer_stage -- --nocapture`
+  - `cargo test -p hone-channels runners::multi_agent::tests -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+
+## 当前验证（2026-05-05 07:03 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels user_facing_clarification_can_return_directly -- --nocapture`
   - `cargo test -p hone-channels runners::multi_agent::tests -- --nocapture`
   - `cargo check -p hone-channels --tests`
 

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 04:08 CST
+最后更新：2026-05-05 07:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,17 +15,16 @@
 
 ## 当前概览
 
-- 活跃待修复：17
+- 活跃待修复：16
 - Later / 待复现：10
-- 已修复 / 已关闭：74
+- 已修复 / 已关闭：75
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 2 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixing | 2026-05-04 21:15 继续收紧 `multi_agent` 搜索阶段直返：简短、单段的本地文件确认答复现在可直接返回，不再被硬送进更容易空回复的 answer 阶段；已补 `hone-channels` 回归测试，但因本轮未重启服务、仍缺新的真实 Feishu 样本，先维持 `Fixing` | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-05 04:07 release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下 `rw.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-04 06:02 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`；但最近一小时真实 Feishu 直聊源文件仍刷新到 `05:00:52`，最新 `科技成长赛道大盘极值与情绪监控` user/assistant 两轮已完整写进 JSON | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
@@ -63,6 +62,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊 live `session/update` 可能外发内部 prompt 与工具原始输出 | P1 | Fixed | 2026-05-05 03:04 共享 `SessionEventEmitter` 已对 `StreamDelta` 增加用户态净化，ACP ingest 也补拦 `【Invoked Skill Context】` / `Base directory for this skill:`，避免 Feishu 卡片/进度更新在最终答复净化前泄露内部 prompt、raw payload 或 ACP/provider 错误细节；修复提交 `5f8dd85`；`session_event_emitter_` / `acp_common` 定向回归、`cargo check -p hone-channels --tests` 与 `cargo test -p hone-channels --lib -- --nocapture` 通过；关联 Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |
+| Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-05 07:03 `multi_agent` 搜索阶段直返判定补充用户可见澄清识别；`请先确认具体是哪只股票/资产的 ticker？...` 这类澄清句不再因 `先确认` / `我再` 被当作内部工作笔记而送入 answer 阶段，减少已可消费澄清被 fallback 遮蔽的剩余入口；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发，最终落库虽为 `OK` 但实时链路已泄露内部 prompt | P1 | Fixed | 2026-05-04 Codex ACP 不再复用旧远端 `session/load`，每轮新建 ACP session 并用 Hone 本地 transcript/context 重建 prompt，切断历史 `agent_message_chunk` prompt 包回放入口；`cargo test -p hone-channels codex_acp_does_not_reuse_remote_session_metadata -- --nocapture`、`cargo test -p hone-channels acp_common --lib -- --nocapture`、`cargo test -p hone-channels session_event_emitter_ -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) | [web_direct_session_update_prompt_echo_leak.md](./web_direct_session_update_prompt_echo_leak.md) |
 | Web 直聊 `session/update` 把 skill prompt、工具原始回显与绝对路径作为 `tool_call_update.rawOutput` 外发 | P1 | Fixed | 2026-05-04 Codex ACP 禁用旧远端 `session/load` 复用，避免历史 tool updates、skill prompt、绝对路径与 raw payload 在新一轮回放；既有 `SessionEventEmitter` 用户态 ToolStatus 净化继续覆盖 live 事件；同组 `hone-channels` 回归与 `cargo check -p hone-channels --tests` 通过；关联 Issue [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30) | [web_direct_tool_call_raw_output_leak.md](./web_direct_tool_call_raw_output_leak.md) |
 | Daily macOS build 隔离配置目录缺少 `soul.md` 时 release app setup panic | P3 | Fixed | 2026-05-02 desktop runtime path 物料化会在 canonical config 指向安全相对 `system_prompt_path` 且同级文件缺失时，从 bundle/repo 资源补齐 `soul.md`；同时跳过 `../` 逃逸路径；修复提交 `5bf2ccb`；`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests` 通过；无关联 GitHub Issue | [daily_macos_build_isolated_config_missing_soul.md](./daily_macos_build_isolated_config_missing_soul.md) |
