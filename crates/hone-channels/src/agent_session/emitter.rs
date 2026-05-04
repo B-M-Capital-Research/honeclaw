@@ -2,8 +2,8 @@
 //! session 侧的 `AgentSessionEvent` 并多播给所有 listener 的转发器。
 //!
 //! 两个职责:
-//! 1. **路径脱敏**:把事件里的绝对路径压成相对路径(见
-//!    `relativize_user_visible_paths`),避免沙盒细节泄给 UI / 下游;
+//! 1. **用户态净化**:把流式正文 / 工具进度里的内部 prompt、原始 JSON payload
+//!    和绝对路径收口在 runner 边界内,避免沙盒细节泄给 UI / 下游;
 //! 2. **结构化日志**:每次 runner 事件额外在 sidecar.log 打一条 `runner_*`
 //!    state,方便运维拿 message_id 定位整条 flow。
 
@@ -31,20 +31,38 @@ fn truncate_event_detail(detail: &str, max_chars: usize) -> String {
     detail.chars().take(max_chars).collect::<String>() + "..."
 }
 
+const INTERNAL_PROGRESS_MARKERS: &[&str] = &[
+    "### System Instructions ###",
+    "### System Prompt ###",
+    "### Skill Context ###",
+    "### Conversation Context ###",
+    "### User Prompt ###",
+    "### Available Skills ###",
+    "【Session 上下文】",
+    "【Invoked Skill Context】",
+    "turn-0 可用技能索引",
+    "Base directory for this skill:",
+];
+
+fn first_internal_progress_marker(text: &str) -> Option<usize> {
+    INTERNAL_PROGRESS_MARKERS
+        .iter()
+        .filter_map(|marker| text.find(marker))
+        .min()
+}
+
+fn strip_internal_progress_suffix(text: &str) -> Option<String> {
+    match first_internal_progress_marker(text) {
+        Some(idx) => {
+            let prefix = text[..idx].trim_end();
+            (!prefix.trim().is_empty()).then(|| prefix.to_string())
+        }
+        None => Some(text.to_string()),
+    }
+}
+
 fn contains_internal_progress_marker(text: &str) -> bool {
-    const MARKERS: &[&str] = &[
-        "### System Instructions ###",
-        "### System Prompt ###",
-        "### Skill Context ###",
-        "### Conversation Context ###",
-        "### User Prompt ###",
-        "### Available Skills ###",
-        "【Session 上下文】",
-        "【Invoked Skill Context】",
-        "turn-0 可用技能索引",
-        "Base directory for this skill:",
-    ];
-    MARKERS.iter().any(|marker| text.contains(marker))
+    first_internal_progress_marker(text).is_some()
 }
 
 fn looks_like_structured_tool_payload(text: &str) -> bool {
@@ -57,14 +75,37 @@ fn looks_like_structured_tool_payload(text: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn looks_like_internal_runtime_detail(text: &str) -> bool {
+    let lowered = text.to_ascii_lowercase();
+    text.contains("LLM 错误")
+        || text.contains("HTTP 错误")
+        || text.contains("渠道错误")
+        || text.contains("工具执行错误")
+        || text.contains("序列化错误")
+        || text.contains("IO 错误")
+        || lowered.contains("bad_request_error")
+        || lowered.contains("invalid params")
+        || lowered.contains("tool_call_id")
+        || lowered.contains("tool call result")
+        || lowered.contains("function arguments")
+        || lowered.contains("session/prompt")
+        || lowered.contains("codex acp")
+        || lowered.contains("opencode acp")
+        || lowered.contains("acp stream")
+}
+
 fn sanitize_user_visible_event_text(value: &str, working_directory: &str) -> Option<String> {
-    let relativized = relativize_user_visible_paths(value, working_directory);
+    let clipped = strip_internal_progress_suffix(value)?;
+    let relativized = relativize_user_visible_paths(&clipped, working_directory);
     let sanitized = sanitize_user_visible_output(&relativized);
     let text = sanitized.content.trim();
     if text.is_empty() || contains_internal_progress_marker(text) {
         return None;
     }
     if looks_like_structured_tool_payload(text) {
+        return None;
+    }
+    if looks_like_internal_runtime_detail(text) {
         return None;
     }
     Some(text.to_string())
@@ -96,6 +137,14 @@ impl AgentRunnerEmitter for SessionEventEmitter {
                     sanitize_user_visible_event_text(&value, &self.working_directory)
                 }),
             },
+            AgentRunnerEvent::StreamDelta { content } => {
+                let Some(content) =
+                    sanitize_user_visible_event_text(&content, &self.working_directory)
+                else {
+                    return;
+                };
+                AgentRunnerEvent::StreamDelta { content }
+            }
             AgentRunnerEvent::Error { mut error } => {
                 error.message =
                     relativize_user_visible_paths(&error.message, &self.working_directory);

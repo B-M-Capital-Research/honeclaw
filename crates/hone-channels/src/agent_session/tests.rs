@@ -2161,6 +2161,56 @@ async fn session_event_emitter_suppresses_internal_tool_status_payloads() {
     ));
 }
 
+#[tokio::test]
+async fn session_event_emitter_suppresses_internal_stream_delta_payloads() {
+    let root = "/Users/fengming2/Desktop/honeclaw";
+    let listener = Arc::new(RecordingListener::default());
+    let emitter = SessionEventEmitter {
+        listeners: vec![listener.clone()],
+        channel: "feishu".to_string(),
+        user_id: "ou_redacted".to_string(),
+        session_id: "session".to_string(),
+        message_id: None,
+        working_directory: root.to_string(),
+    };
+
+    emitter
+        .emit(AgentRunnerEvent::StreamDelta {
+            content: "【Invoked Skill Context】\nBase directory for this skill: /Users/fengming2/Desktop/honeclaw/skills/scheduled_task\nrawOutput={\"job\":\"secret\"}".to_string(),
+        })
+        .await;
+
+    assert!(listener.events.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn session_event_emitter_keeps_visible_stream_delta_prefix_before_internal_payload() {
+    let root = "/Users/fengming2/Desktop/honeclaw";
+    let listener = Arc::new(RecordingListener::default());
+    let emitter = SessionEventEmitter {
+        listeners: vec![listener.clone()],
+        channel: "feishu".to_string(),
+        user_id: "ou_redacted".to_string(),
+        session_id: "session".to_string(),
+        message_id: None,
+        working_directory: root.to_string(),
+    };
+
+    emitter
+        .emit(AgentRunnerEvent::StreamDelta {
+            content:
+                "OK\n【Invoked Skill Context】\nBase directory for this skill: /Users/fengming2/Desktop/honeclaw/skills/scheduled_task"
+                    .to_string(),
+        })
+        .await;
+
+    let events = listener.events.lock().await.clone();
+    assert!(matches!(
+        &events[0],
+        AgentSessionEvent::Run(RunEvent::StreamDelta { content }) if content == "OK"
+    ));
+}
+
 #[cfg(unix)]
 async fn with_temp_env_var<F, Fut>(key: &str, value: &std::ffi::OsStr, f: F)
 where

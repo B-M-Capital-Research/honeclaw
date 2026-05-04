@@ -87,6 +87,26 @@ async fn handle_acp_session_update_drops_internal_prompt_echo_chunk() {
 }
 
 #[tokio::test]
+async fn handle_acp_session_update_drops_invoked_skill_context_chunk() {
+    let mut state = AcpPromptState::default();
+    let (emitter, deltas) = collecting_emitter();
+    let params = json!({
+        "update": {
+            "sessionUpdate": "agent_message_chunk",
+            "content": {
+                "text": "【Invoked Skill Context】\nBase directory for this skill: /Users/fengming2/Desktop/honeclaw/skills/scheduled_task\nrawOutput={\"job\":\"secret\"}"
+            }
+        }
+    });
+
+    handle_acp_session_update(&params, &emitter, Some(&mut state)).await;
+
+    assert!(state.full_reply.is_empty());
+    assert!(state.pending_assistant_content.is_empty());
+    assert!(deltas.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn handle_acp_session_update_keeps_visible_prefix_before_prompt_echo() {
     let mut state = AcpPromptState::default();
     let (emitter, deltas) = collecting_emitter();

@@ -93,7 +93,9 @@ fn user_visible_acp_message_chunk(text: &str) -> Option<String> {
         "### User Prompt ###",
         "### Available Skills ###",
         "【Session 上下文】",
+        "【Invoked Skill Context】",
         "turn-0 可用技能索引",
+        "Base directory for this skill:",
     ]
     .iter()
     .filter_map(|marker| text.find(marker))

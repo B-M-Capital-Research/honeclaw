@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 00:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)
 
 ## 证据来源
@@ -65,13 +65,29 @@
 - 当前用户态净化很可能只覆盖了最终回复或部分 Web emitter，没有覆盖 Feishu `agent_message_chunk` 与 `tool_call_update.rawOutput` 的 live 出站。
 - 同窗内同时出现 prompt echo、skill rawOutput、结构化工具结果和原始报错，说明缺口不是某个单一工具，而是 `session/update` 事件总体缺少字段级用户态裁剪。
 
-## 下一步建议
+## 修复记录（2026-05-05 03:04 CST）
 
-- 先复用 Web 两个 `session/update` 泄漏缺陷的修复思路，核对 Feishu 渠道是否绕过了同一套 emitter / sanitizer。
-- 优先在 live event 出站层禁止下发以下内容：
-  - `### System Instructions ###`
-  - `turn-0 可用技能索引`
-  - `【Invoked Skill Context】`
-  - `Base directory for this skill:`
-  - 结构化 `rawOutput` JSON / 原始工具报错
-- 修复后必须用真实 Feishu direct 会话再做一次 `00:00` 类定时触发复现，而不是只看单元测试或最终 session JSON。
+- 在 `crates/hone-channels/src/agent_session/emitter.rs` 将用户态事件净化扩展到 `RunEvent::StreamDelta`：
+  - 命中内部 prompt / skill context marker 的 chunk 会被抑制；
+  - 若内部 marker 前存在正常用户可见前缀，仅保留前缀；
+  - 结构化 JSON / array payload 与典型 ACP/provider 内部错误细节不会转发给监听者；
+  - 路径相对化与 sandbox 外绝对路径遮蔽继续沿用共享规则。
+- 在 `crates/hone-channels/src/runners/acp_common/ingest.rs` 扩展 `agent_message_chunk` marker 集合，直接阻断 `【Invoked Skill Context】` 与 `Base directory for this skill:` 污染 `full_reply` / `pending_assistant_content`。
+- 新增回归测试覆盖：
+  - Feishu channel 的 `StreamDelta` 内部 skill context 整段抑制；
+  - 可见 `OK` 前缀保留、内部 suffix 截断；
+  - ACP ingest 层不再把 invoked skill context chunk 写入回复状态。
+
+## 当前验证（2026-05-05 03:04 CST）
+
+- 已通过：
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/agent_session/emitter.rs crates/hone-channels/src/agent_session/tests.rs crates/hone-channels/src/runners/acp_common/ingest.rs crates/hone-channels/src/runners/acp_common/tests.rs`
+  - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
+  - `cargo test -p hone-channels acp_common --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `cargo test -p hone-channels --lib -- --nocapture`
+
+## 后续建议
+
+- 该修复是本地可验证的共享边界加固，不依赖生产日志或线上 Feishu 运行态。
+- GitHub Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) 建议在本轮提交推送后复测并关闭。
