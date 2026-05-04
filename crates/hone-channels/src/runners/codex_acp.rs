@@ -15,7 +15,7 @@ use crate::mcp_bridge::hone_mcp_servers;
 use super::acp_common::{
     ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpEventLogContext, AcpPermissionDecision,
     AcpPromptState, AcpRenderedToolStatus, AcpResponseTimeouts, AcpToolRenderPhase, CliVersion,
-    acp_prompt_succeeded, build_acp_prompt_text, create_acp_session, finalize_context_messages,
+    acp_prompt_succeeded, create_acp_session, finalize_context_messages,
     log_acp_prompt_stop_diagnostics, parse_cli_version, set_acp_session_model, wait_for_response,
     wait_for_response_with_timeouts_and_renderer, write_jsonrpc_request,
 };
@@ -35,6 +35,16 @@ const MIN_CODEX_ACP_VERSION: CliVersion = CliVersion {
     minor: 12,
     patch: 0,
 };
+
+pub(crate) fn reusable_codex_acp_session_id(
+    _session_metadata: &HashMap<String, Value>,
+) -> Option<String> {
+    // codex-acp can replay historical `session/update` events during `session/load`.
+    // Those replayed prompt/tool updates are raw ACP diagnostics, not current-turn
+    // user-visible output. Hone already restores local transcript context into each
+    // prompt, so fresh remote ACP sessions are the safer default.
+    None
+}
 
 pub struct CodexAcpRunner {
     config: CodexAcpConfig,
@@ -392,104 +402,29 @@ async fn run_codex_acp(
     })??;
     next_id += 1;
 
-    let existing_session_id = request
-        .session_metadata
-        .get(CODEX_ACP_SESSION_KEY)
-        .and_then(|value| value.as_str())
-        .map(|value| value.to_string())
-        .filter(|value| !value.trim().is_empty());
-
-    let (codex_session_id, seeded_from_local_context) =
-        if let Some(session_id) = existing_session_id {
-            write_jsonrpc_request(
-                &mut stdin,
-                next_id,
-                "session/load",
-                serde_json::json!({
-                    "sessionId": session_id,
-                    "cwd": request.working_directory,
-                    "mcpServers": mcp_servers.clone(),
-                }),
-                Some(&acp_log),
-            )
-            .await?;
-            match tokio::time::timeout(
-                startup_timeout,
-                wait_for_response(
-                    "codex",
-                    &mut reader,
-                    &mut stdin,
-                    next_id,
-                    None,
-                    None,
-                    Some(stderr_buf.clone()),
-                    Some(&acp_log),
-                ),
-            )
-            .await
-            {
-                Ok(Ok(_)) => {
-                    next_id += 1;
-                    (session_id, false)
-                }
-                Ok(Err(err)) => {
-                    tracing::warn!(
-                        "[AgentRunner/codex] failed to load ACP session {}, creating new one: {}",
-                        session_id,
-                        err.message
-                    );
-                    let new_session_id = create_acp_session(
-                        "codex",
-                        &mut stdin,
-                        &mut reader,
-                        next_id + 1,
-                        &request.working_directory,
-                        mcp_servers.clone(),
-                        startup_timeout,
-                        stderr_buf.clone(),
-                        Some(&acp_log),
-                    )
-                    .await?;
-                    next_id += 2;
-                    (new_session_id, true)
-                }
-                Err(_) => {
-                    tracing::warn!(
-                        "[AgentRunner/codex] ACP session/load timed out for {}, creating new one",
-                        session_id
-                    );
-                    let new_session_id = create_acp_session(
-                        "codex",
-                        &mut stdin,
-                        &mut reader,
-                        next_id + 1,
-                        &request.working_directory,
-                        mcp_servers.clone(),
-                        startup_timeout,
-                        stderr_buf.clone(),
-                        Some(&acp_log),
-                    )
-                    .await?;
-                    next_id += 2;
-                    (new_session_id, true)
-                }
-            }
-        } else {
-            let new_session_id = create_acp_session(
-                "codex",
-                &mut stdin,
-                &mut reader,
-                next_id,
-                &request.working_directory,
-                mcp_servers.clone(),
-                startup_timeout,
-                stderr_buf.clone(),
-                Some(&acp_log),
-            )
-            .await?;
-            next_id += 1;
-            (new_session_id, true)
-        };
+    if let Some(session_id) = reusable_codex_acp_session_id(&request.session_metadata) {
+        tracing::debug!(
+            "[AgentRunner/codex] session={} ignoring reusable acp session candidate={session_id}",
+            request.session_id,
+        );
+    }
+    tracing::info!(
+        "[AgentRunner/codex] session={} creating fresh acp session",
+        request.session_id,
+    );
+    let codex_session_id = create_acp_session(
+        "codex",
+        &mut stdin,
+        &mut reader,
+        next_id,
+        &request.working_directory,
+        mcp_servers.clone(),
+        startup_timeout,
+        stderr_buf.clone(),
+        Some(&acp_log),
+    )
+    .await?;
+    next_id += 1;
 
     metadata_updates.insert(
         CODEX_ACP_SESSION_KEY.to_string(),
@@ -519,15 +454,11 @@ async fn run_codex_acp(
             .and_then(|value| value.as_u64()),
         ..AcpPromptState::default()
     };
-    let prompt_text = if seeded_from_local_context {
-        build_codex_acp_prompt_text(
-            &request.system_prompt,
-            &request.runtime_input,
-            Some(&request.context),
-        )
-    } else {
-        build_acp_prompt_text(&request.system_prompt, &request.runtime_input)
-    };
+    let prompt_text = build_codex_acp_prompt_text(
+        &request.system_prompt,
+        &request.runtime_input,
+        Some(&request.context),
+    );
     write_jsonrpc_request(
         &mut stdin,
         next_id,

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-02 20:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30)
 
 ## 证据来源
@@ -98,3 +98,19 @@
 
 - 2026-05-04 22:04 的真实 Web 会话已证明，这条缺陷不能继续维持 `Fixed`；本单应改回 `New`。
 - 修复时应优先核对 `session/load` replay、历史 event 缓存与 live `tool_call_update` 出站是否走了不同路径；只靠单元测试和静态 emitter 改动不足以证明运行态已止血。
+
+## 修复记录（2026-05-04 23:06 CST）
+
+- 根因复核确认最新 `tool_call_update.rawOutput` 泄漏来自 Codex ACP 旧远端 session 的 `session/load` 历史回放，而不是当前轮 `SessionEventEmitter` 的 live tool status 映射。
+- 已在 `crates/hone-channels/src/runners/codex_acp.rs` 禁用旧远端 ACP session 复用：每轮新建 ACP session，并用 Hone 本地恢复的 transcript/context 作为 prompt 真相源，避免旧 tool updates、skill prompt 与绝对路径在新一轮被回放。
+- 既有 `SessionEventEmitter` 用户态净化仍继续覆盖当前轮 live `ToolStatus`：路径相对化、内部 prompt 标记抑制、结构化 JSON payload 屏蔽都保留。
+- 状态更新为 `Fixed`；关联 GitHub Issue [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30) 建议复测后关闭。
+
+## 当前验证（2026-05-04 23:06 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels codex_acp_does_not_reuse_remote_session_metadata -- --nocapture`
+  - `cargo test -p hone-channels acp_common --lib -- --nocapture`
+  - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/tests.rs`

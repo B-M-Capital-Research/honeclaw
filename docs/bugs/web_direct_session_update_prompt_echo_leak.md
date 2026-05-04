@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-02 02:20 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28)
 
 ## 证据来源
@@ -76,3 +76,19 @@
 - 先把本单从 `Fixed` 改回 `New`，修复时重点核对 `session/load` / 历史 event replay 是否绕过了 2026-05-02 新增的 chunk 级过滤。
 - 若后续出现新的 prompt echo 变体，优先扩展 ACP ingest 层的内部标记集合，保持“用户可见正文”和“调试/内部 prompt”通道分离。
 - 用同一条 `心跳检测，请简短回复 OK` 在 Web 前端做一次实时复现，确认用户侧是否能肉眼看到泄露 chunk。
+
+## 修复记录（2026-05-04 23:06 CST）
+
+- 根因复核确认最新复发集中在 Codex ACP 的旧远端 session 复用：`session/load` 会把历史 `session/update` 回放重新写进本轮 ACP 流，其中包含旧的 `agent_message_chunk` prompt 包。
+- 已将 `crates/hone-channels/src/runners/codex_acp.rs` 与 `opencode_acp` 对齐：即使 session metadata 中存在旧 `codex_acp_session_id`，也不再执行 `session/load`，每轮都新建 ACP session，并把 Hone 本地恢复的 transcript/context 注入 prompt。
+- 既有 ACP ingest 层 prompt echo 过滤继续保留，负责拦截当前轮 runner 自身产生的内部 prompt chunk；本次修复则切断旧 session replay 这一入口。
+- 状态更新为 `Fixed`；关联 GitHub Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) 建议复测后关闭。
+
+## 当前验证（2026-05-04 23:06 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels codex_acp_does_not_reuse_remote_session_metadata -- --nocapture`
+  - `cargo test -p hone-channels acp_common --lib -- --nocapture`
+  - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/runners/codex_acp.rs crates/hone-channels/src/runners/tests.rs`

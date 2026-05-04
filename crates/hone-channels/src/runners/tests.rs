@@ -20,7 +20,7 @@ use super::acp_common::{
 use super::codex_acp::{
     build_codex_acp_prompt_text, codex_acp_effective_args, configured_codex_model_id,
     configured_codex_reasoning_effort, patch_codex_session_update_params, render_codex_tool_status,
-    validate_codex_version_matrix,
+    reusable_codex_acp_session_id, validate_codex_version_matrix,
 };
 use super::gemini_acp::{
     configured_gemini_api_key_env, gemini_acp_effective_args, validate_gemini_version,
@@ -107,6 +107,17 @@ fn isolated_opencode_config_omits_provider_override_when_base_url_empty() {
     assert!(payload.get("provider").is_none());
     assert!(payload.get("model").is_none());
     assert_eq!(payload["permission"]["bash"], "deny");
+}
+
+#[test]
+fn codex_acp_does_not_reuse_remote_session_metadata() {
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "codex_acp_session_id".to_string(),
+        Value::String("old-remote-session".to_string()),
+    );
+
+    assert_eq!(reusable_codex_acp_session_id(&metadata), None);
 }
 
 fn make_temp_exec(dir: &Path, name: &str) -> PathBuf {

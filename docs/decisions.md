@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-04-24
+Last updated: 2026-05-04
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -72,7 +72,7 @@ Last updated: 2026-04-24
   - The Web chat SSE protocol is now `run_started / assistant_delta / tool_call / run_error / run_finished`
   - Session summaries are no longer encoded as fake `system` messages
   - The breaking config key moved from `agent.provider` to `agent.runner`
-- Note: `opencode_acp` now connects through `opencode acp` over stdio / JSON-RPC, and the ACP session id is written back into Hone session metadata for reuse across turns
+- Note: `opencode_acp` connects through `opencode acp` over stdio / JSON-RPC. Later runner hardening moved ACP continuity back to Hone's local transcript restore: `opencode_acp` and `codex_acp` both seed fresh ACP sessions from local context instead of relying on remote `session/load` replay.
 - Details: See `docs/adr/0002-agent-runtime-acp-refactor.md`
 
 ## D-2026-03-18-01 Make Dynamic Plans Opt-In

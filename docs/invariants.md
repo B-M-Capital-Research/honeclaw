@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-04-30
+Last updated: 2026-05-04
 
 ## Source of Truth and Document Priority
 
@@ -88,8 +88,9 @@ Last updated: 2026-04-30
 - `gemini_cli` in channel runtime must default to sandboxed execution and `approval-mode=plan`; it must no longer default to `yolo`
 - `gemini_acp` in channel runtime must also default to `approval-mode=plan`, but it must not force `--sandbox` right now: local Gemini CLI 0.33.1 exits before `initialize` when run with `--experimental-acp --sandbox`
 - `codex_acp` currently uses `codex-acp` over stdio / JSON-RPC; startup must verify the local runtime version first. The minimum validated combination for `gpt-5.5` is `codex >= 0.125.0` and `codex-acp >= 0.12.0`; otherwise fail fast with a clear upgrade command.
+- `codex_acp` must create a fresh ACP session for each Hone turn and seed it from Hone's restored local transcript/context. Do not use old `codex_acp_session_id` metadata to call ACP `session/load`; historical `session/update` replay can reintroduce prior prompt/tool events into the current user-visible stream.
 - `codex_acp` and `codex_cli` workspace-write mode may still read repo files outside the sandbox. The repo explicitly allows that for production channels today, so if they are used as the default runner, treat that out-of-bounds read risk as accepted and avoid mixing sensitive files with the channel runtime environment.
-- `opencode_acp` currently uses `opencode acp` over stdio / JSON-RPC; the ACP session id must be written back into Hone session metadata so a new ACP session is not created on every turn
+- `opencode_acp` currently uses `opencode acp` over stdio / JSON-RPC; like `codex_acp`, it must seed each fresh ACP session from Hone's restored local transcript/context rather than relying on remote session replay for continuity.
 - When `agent.opencode.model` / `api_base_url` / `api_key` are empty, Hone must inherit the user's local OpenCode config instead of shadowing `~/.config/opencode/opencode.json` via a separate config home
 - If `agent.opencode.model` is non-empty, Hone must call ACP `session/set_model` before `session/prompt`; `agent.opencode.variant` should be appended to `modelId` through the same call (for example `openrouter/openai/gpt-5.4/medium`) instead of relying on temporary selection state in the local opencode UI
 - The auxiliary heartbeat / session-compression path must stay separate from the main dialogue model. Prefer `llm.auxiliary` as the source of truth for that OpenAI-compatible background route; `llm.openrouter.sub_model` remains only as a legacy fallback and must not silently replace either the local OpenCode default model or the Hone-selected `agent.opencode.model`
