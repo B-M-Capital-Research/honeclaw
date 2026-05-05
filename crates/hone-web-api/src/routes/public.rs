@@ -372,9 +372,8 @@ pub(crate) async fn handle_set_password(
         return crate::routes::json_error(StatusCode::CONFLICT, "账号状态异常，请重新登录");
     }
 
-    // 轮换 session token 防会话固定。保留原 TTL(设密码过程发生在已登录
-    // session 内,而这一次的 session 还是邀请码走 long TTL 建立的,这里保持
-    // long)。
+    // 轮换当前 session token 防会话固定。普通登录允许多设备/自动化并存,
+    // 所以这里只清理当前 cookie 对应的旧 session,不踢掉其它活跃设备。
     let session = match state
         .web_auth
         .create_session_for_user(&user.user_id, SESSION_TTL_DAYS_LONG)
@@ -390,6 +389,11 @@ pub(crate) async fn handle_set_password(
             );
         }
     };
+    if let Some(old_token) = read_session_token(&headers)
+        && let Err(error) = state.web_auth.delete_session(&old_token)
+    {
+        warn!(%error, "failed to delete old public session after password setup");
+    }
     let refreshed = state
         .web_auth
         .find_invite_user(&session.user_id)

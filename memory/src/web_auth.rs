@@ -402,7 +402,6 @@ impl WebAuthStorage {
             params![&user.user_id, &created_at],
         )
         .map_err(sql_err)?;
-        delete_sessions_for_user_tx(&tx, &user.user_id)?;
         tx.execute(
             "
             INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
@@ -682,7 +681,8 @@ impl WebAuthStorage {
     }
 
     /// 按 user_id 创建 session,TTL 由调用方指定(密码登录根据"保持登录"勾选
-    /// 选择 long / short)。会清掉该用户的其它活跃 session,更新 last_login_at。
+    /// 选择 long / short)。普通登录不清理该用户的其它活跃 session,避免
+    /// 用户浏览器、自动化健康检查和多设备登录互相踢掉登录态。
     pub fn create_session_for_user(
         &self,
         user_id: &str,
@@ -716,7 +716,6 @@ impl WebAuthStorage {
             params![&user.user_id, &created_at],
         )
         .map_err(sql_err)?;
-        delete_sessions_for_user_tx(&tx, &user.user_id)?;
         tx.execute(
             "
             INSERT INTO web_auth_sessions (session_token, user_id, created_at, expires_at, last_seen_at)
@@ -1206,7 +1205,7 @@ mod tests {
     }
 
     #[test]
-    fn second_login_replaces_previous_session() {
+    fn repeated_invite_logins_keep_existing_sessions() {
         let storage = test_storage();
         let created = storage.create_invite_user("13800138000").expect("create");
         let first = storage
@@ -1222,7 +1221,7 @@ mod tests {
             storage
                 .authenticate_session(&first.session_token)
                 .expect("auth first")
-                .is_none()
+                .is_some()
         );
         assert!(
             storage
@@ -1234,7 +1233,7 @@ mod tests {
             storage
                 .count_active_sessions_for_user(&created.user_id)
                 .expect("count"),
-            1
+            2
         );
     }
 
@@ -1492,18 +1491,23 @@ mod tests {
         .num_days();
         assert_eq!(span_days, SESSION_TTL_DAYS_LONG);
 
-        // 新 session 应踢掉上一个短期 session。
         assert!(
             storage
                 .authenticate_session(&short.session_token)
                 .expect("auth")
-                .is_none()
+                .is_some()
         );
         assert!(
             storage
                 .authenticate_session(&long.session_token)
                 .expect("auth")
                 .is_some()
+        );
+        assert_eq!(
+            storage
+                .count_active_sessions_for_user(&created.user_id)
+                .expect("count"),
+            2
         );
     }
 

@@ -903,3 +903,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `cargo test -p hone-memory web_auth -- --nocapture`, `cargo check -p hone-web-api`, `cargo check -p hone-desktop`, `tsc -p packages/app/tsconfig.json --noEmit`
 - Current conclusion: 客户端新增可见 `Hone Cloud` runner，并隐藏 legacy multi-agent / standalone codex CLI 入口；Web 邀请码用户现在拥有只存 hash 的 per-user API Key，public app 提供 Bearer 鉴权的 OpenAI-compatible `/api/public/v1/chat/completions`
 - Next entry point: `docs/handoffs/2026-05-04-hone-cloud-runner-api-key.md`
+
+### Public Web Multi-Session Auth
+
+- Status: done
+- Date: 2026-05-05
+- Plan: `docs/archive/plans/public-web-multi-session-auth.md`
+- Handoff: `docs/handoffs/2026-05-05-public-web-multi-session-auth.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-memory web_auth -- --nocapture`, `cargo check -p hone-web-api -p hone-memory`, `cargo test -p hone-web-api public -- --nocapture`
+- Current conclusion: public web 普通登录不再清除同一用户其它活跃 session，避免每小时健康检查自动化、用户浏览器和多设备登录互相踢掉 `hone_web_session`
+- Next entry point: `memory/src/web_auth.rs`
