@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 15:04 CST
+最后更新：2026-05-05 16:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：18
+- 活跃待修复：19
 - Later / 待复现：9
-- 已修复 / 已关闭：75
+- 已修复 / 已关闭：74
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 4 条 `P1`；最高待修优先级为 `P1`
 
@@ -43,6 +43,7 @@
 | Feishu 每日动态监控在“今日不触发新增重大推送”口径下再次把无新增长文照常发送 | P3 | New | 2026-05-04 00:02 `TEM`、`RKLB`、`AAOI 每日动态监控` 三轮都在正文里分别写出“今日不触发新增重大催化或风险证伪推送”/“今日不触发新增重大推送”，但 `cron_job_runs` 仍全部落成 `completed + sent + delivered=1`，对应 direct session 也连续写入 3 条 assistant final | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./feishu_scheduler_daily_monitor_skip_rule_broken.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-04 03:02 `run_id=15240` 再次把“OPEC+ 供应政策不确定性”“全球经济增速担忧”组织成确定性油价主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
+| Feishu 直聊沿用旧证券上下文，图片问答后的追问再次被更早 `HROW` 旧话题劫持 | P3 | New | 2026-05-05 16:03 `Actor_feishu__direct__ou_5f6ac070b0b574f2bc3ba49f9678b675a3` 在 `12:58` 已完成 `Soitec` 截图分析后，`13:21` 用户只追问“回答问题”，`13:23` 却被重新答成 `HROW` 买点；同窗 `web.log.2026-05-05` 记录上一轮刚触发 `ACP compact detected` | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 
 ## Later / 待复现
 
@@ -129,7 +130,6 @@
 | ASTS 发射链路把预告与停牌前行情误报成已发射后的实时结果 | P2 | Fixed | 2026-04-20 heartbeat prompt 补加时间一致性、价格时间口径、重复事件三条约束规则 | [asts_launch_schedule_misread_as_completed_event.md](./asts_launch_schedule_misread_as_completed_event.md) |
 | Heartbeat 已触发提醒偶发向用户投递原始 JSON 载荷 | P3 | Fixed | 2026-04-20 在 JsonTriggered 分支补 `unwrap_nested_json_message`，将 `{"trigger":"..."}` 等嵌套 JSON 对象字段自动提取为纯文本 | [scheduler_heartbeat_trigger_json_payload_leak.md](./scheduler_heartbeat_trigger_json_payload_leak.md) |
 | Feishu 直聊把歧义股票简称 `lite` 直接猜成 Litecoin，未先澄清实体 | P3 | Fixed | 2026-04-20 在 DEFAULT_FINANCE_DOMAIN_POLICY 补实体歧义约束：多候选资产时必须先列出候选请用户确认，不允许直接猜测 | [feishu_ambiguous_lite_entity_guessed_as_litecoin.md](./feishu_ambiguous_lite_entity_guessed_as_litecoin.md) |
-| Feishu 直聊沿用旧证券上下文，用户问 `DRAM` 却被整轮答成 `SNDK` | P3 | Fixed | 2026-04-20 在 DEFAULT_FINANCE_DOMAIN_POLICY 补旧上下文漂移约束：工具调用目标必须由当前 user turn 推导，禁止套用旧 ticker | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./feishu_direct_stale_symbol_context_hijacks_new_query.md) |
 | Feishu 直聊个股分析把同一风险点在多段结构里重复展开，用户需额外指出"很多信息数据都是重复的" | P3 | Fixed | 2026-04-20 在 DEFAULT_COMPANY_PROFILE_POLICY 补长答去重约束：同一关键事实/风险点只在最相关章节展开一次，后续章节可引用不得重复 | [feishu_direct_analysis_redundant_risk_repetition.md](./feishu_direct_analysis_redundant_risk_repetition.md) |
 | Feishu 直聊纯文本 15 支股票池请求误触 `image_understanding`，最终只分析 9 支并要求用户补 6 支代码 | P3 | Fixed | 2026-04-20 在 image_understanding SKILL.md 补 when_to_use 约束（仅在有图片附件时触发）；在 SkillTool 系统提示补全局约束：纯文本请求禁止调用图片/PDF 附件类 skill | [feishu_direct_watchlist_text_request_misfires_image_skill.md](./feishu_direct_watchlist_text_request_misfires_image_skill.md) |
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | Fixed | 2026-04-20 在 multi-agent handoff 文本中添加 CRITICAL 约束：search transcript 中有成功 data_fetch/quote 结果时，answer 禁止输出"链路阻断/数据未完成校验"等降级文案 | [feishu_direct_quote_tool_result_ignored.md](./feishu_direct_quote_tool_result_ignored.md) |
