@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -92,7 +92,27 @@
   - 通过：`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
   - 通过：`cargo test -p hone-web-api scheduler_failure_trace_required --lib -- --nocapture`
   - 通过：`cargo check -p hone-channels -p hone-web-api --tests`
-  - 通过：`cargo check -p hone-feishu --tests`
-  - 已执行：`cargo fmt --all`
-  - 通过：`rustfmt --edition 2024 --config skip_children=true --check bins/hone-feishu/src/scheduler.rs crates/hone-channels/src/scheduler.rs crates/hone-web-api/src/routes/events.rs`
-  - 未完成：`bash scripts/ci/check_fmt_changed.sh` 在当前 macOS 系统 Bash 3.2 下因缺少 `mapfile` 退出，且本机没有 `/opt/homebrew/bin/bash` 或 `/usr/local/bin/bash` 可重跑；格式以 `cargo fmt --all` 兜底。
+- 通过：`cargo check -p hone-feishu --tests`
+- 已执行：`cargo fmt --all`
+- 通过：`rustfmt --edition 2024 --config skip_children=true --check bins/hone-feishu/src/scheduler.rs crates/hone-channels/src/scheduler.rs crates/hone-web-api/src/routes/events.rs`
+- 未完成：`bash scripts/ci/check_fmt_changed.sh` 在当前 macOS 系统 Bash 3.2 下因缺少 `mapfile` 退出，且本机没有 `/opt/homebrew/bin/bash` 或 `/usr/local/bin/bash` 可重跑；格式以 `cargo fmt --all` 兜底。
+
+## 状态更新（2026-05-05 17:12 CST）
+
+- 本轮巡检确认：该缺陷在修复记录之后仍持续复发，`Fixed` 结论不成立，状态回调为 `New`。
+- `data/sessions.sqlite3` 的 `cron_job_runs` 在 `2026-05-05T15:30`、`16:00`、`16:30` 三个窗口再次各出现 `11` 条 heartbeat 失败，全部落成 `execution_failed + skipped_error + delivered=0`。
+- `2026-05-05T16:00` 对应 `run_id=15801-15811`，`2026-05-05T16:30` 对应 `run_id=15812-15822`；覆盖 `TEM破位预警`、`RKLB异动监控`、`全天原油价格3小时播报`、`CAI破位预警`、`持仓重大事件心跳检测`、`Monitor_Watchlist_11`、`ASTS 重大异动心跳监控`、`小米30港元破位预警`、`Cerebras IPO与业务进展心跳监控`、`ORCL 大事件监控`、`TEM大事件心跳监控`。
+- `data/runtime/logs/web.log.2026-05-05` 在 `15:30:50-15:30:51` 与 `16:30:50-16:30:51` 继续记录多条 `failed deserialization ... "code":402`，随后每条 job 又落成对应 `HeartbeatDiag run_finish` / `runner_error`。
+- 到本轮巡检时，`2026-05-05 12:30` 到 `16:30` 已连续 `9` 个整点/半点 heartbeat 窗口、共 `99` 条 job 落成同根因失败，说明这不是单次上游抖动，而是仍在扩大的活跃生产故障。
+- 先前修复只改善了 provider 配额故障的可观测口径，并未消除 `HTTP 402` 本身，也没有阻止后续窗口继续整批漏发；因此本单应继续保留在活跃 `P1` 队列。
+
+## 状态更新（2026-05-05 20:01 CST）
+
+- 本轮巡检确认：故障在最近一小时继续活跃，且 `19:30` 与 `20:00` 两个窗口再次各有 `11` 条 heartbeat 全量失败。
+- `data/sessions.sqlite3` -> `cron_job_runs` 最近一小时汇总：
+  - `2026-05-05T19:30`：`11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`
+  - `2026-05-05T20:00`：`11/11` 条 heartbeat 再次落成 `execution_failed + skipped_error + delivered=0`
+  - `2026-05-05T20:01`：另有 `2` 条非 heartbeat 定时任务（Feishu `A股盘后高景气产业链推演`、Web `英伟达每日消息`）正常 `completed + sent`
+- `data/runtime/logs/web.log.2026-05-05` 在 `20:00:02.320-20:00:03.134` 继续连续记录 `TEM破位预警`、`原油价格3小时播报`、`Monitor_Watchlist_11`、`RKLB`、`ORCL`、`ASTS`、`Cerebras IPO`、`持仓重大事件`、`CAI` 等 heartbeat job 的 `runner_error`，错误统一为 `upstream HTTP 402 ... can only afford 10349 ... (code: 402)`。
+- 同窗存在正常送达的非 heartbeat 任务，说明当前不是 scheduler 全局停摆；故障仍集中在 heartbeat 调用 `moonshotai/kimi-k2.5` 的公共链路。
+- 到本轮巡检时，`2026-05-05 12:30` 到 `20:00` 已连续 `11` 个整点/半点 heartbeat 窗口、累计 `121` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
