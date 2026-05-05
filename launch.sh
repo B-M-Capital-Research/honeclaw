@@ -401,8 +401,13 @@ if [[ "$START_DESKTOP" == "1" ]]; then
     echo "[INFO] desktop mode: external backend/channel listeners disabled; desktop will manage its bundled runtime."
     write_desktop_backend_config_bundled
   fi
-  echo "[INFO] preparing Tauri sidecar binaries..."
-  bun run tauri:prep:dev -- --skip-dev-command
+  if [[ "$DESKTOP_REMOTE" == "1" ]]; then
+    echo "[INFO] preparing Tauri desktop shell config..."
+    bun run tauri:prep:dev -- --skip-dev-command --shell-only
+  else
+    echo "[INFO] preparing Tauri sidecar binaries..."
+    bun run tauri:prep:dev -- --skip-dev-command
+  fi
   ensure_port_available 3000 "desktop-frontend"
   echo "[INFO] starting frontend (vite)..."
   bun run dev:web &

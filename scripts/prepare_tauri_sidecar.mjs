@@ -26,7 +26,7 @@ const MACOS_EXTRA_EXTERNAL_BINS = ["opencode"];
 
 function usage() {
   console.error(
-    "usage: bun scripts/prepare_tauri_sidecar.mjs [debug|release] [--target-triple <triple>] [--skip-build] [--skip-dev-command] [--skip-build-command] [--json]",
+    "usage: bun scripts/prepare_tauri_sidecar.mjs [debug|release] [--target-triple <triple>] [--skip-build] [--skip-dev-command] [--skip-build-command] [--shell-only] [--json]",
   );
 }
 
@@ -171,6 +171,7 @@ function parseArgs(argv) {
   let skipBuild = false;
   let skipDevCommand = false;
   let skipBuildCommand = false;
+  let shellOnly = false;
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -199,6 +200,11 @@ function parseArgs(argv) {
       skipBuildCommand = true;
       continue;
     }
+    if (arg === "--shell-only") {
+      shellOnly = true;
+      skipBuild = true;
+      continue;
+    }
     if (arg === "--json") {
       json = true;
       continue;
@@ -206,7 +212,15 @@ function parseArgs(argv) {
     throw new Error(`unknown argument: ${arg}`);
   }
 
-  return { profile, targetTriple, skipBuild, skipDevCommand, skipBuildCommand, json };
+  return {
+    profile,
+    targetTriple,
+    skipBuild,
+    skipDevCommand,
+    skipBuildCommand,
+    shellOnly,
+    json,
+  };
 }
 
 function commandExists(command) {
@@ -447,6 +461,7 @@ function main() {
     skipBuild,
     skipDevCommand,
     skipBuildCommand,
+    shellOnly,
     json,
   } = options;
   if (!VALID_PROFILES.has(profile)) {
@@ -457,8 +472,8 @@ function main() {
   const scriptPath = fileURLToPath(import.meta.url);
   const rootDir = path.resolve(path.dirname(scriptPath), "..");
   const targetTriple = inputTargetTriple || detectTargetTriple(rootDir);
-  const sidecarBins = sidecarBinsForTarget(targetTriple);
-  const externalBins = externalBinsForTarget(targetTriple);
+  const sidecarBins = shellOnly ? [] : sidecarBinsForTarget(targetTriple);
+  const externalBins = shellOnly ? [] : externalBinsForTarget(targetTriple);
   const targetDir = path.join(rootDir, "target", targetTriple, profile);
   const destinationDir = path.join(rootDir, "bins", "hone-desktop", "binaries");
 
@@ -500,6 +515,7 @@ function main() {
           skipBuild,
           skipDevCommand,
           skipBuildCommand,
+          shellOnly,
           sidecarBins,
           externalBins,
           generatedConfigPath,
@@ -515,6 +531,9 @@ function main() {
   );
   if (skipBuild) {
     console.log("[INFO] skipped cargo build/copy and only refreshed generated config");
+  }
+  if (shellOnly) {
+    console.log("[INFO] generated desktop shell-only config without bundled sidecars");
   }
   if (skipDevCommand) {
     console.log("[INFO] generated config without beforeDevCommand");

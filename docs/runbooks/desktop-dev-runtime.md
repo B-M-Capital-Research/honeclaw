@@ -1,6 +1,6 @@
 # Runbook: Desktop Dev Runtime Isolation
 
-Last updated: 2026-03-28
+Last updated: 2026-05-05
 
 ## Why This Exists
 
@@ -26,6 +26,9 @@ We want a development model with two explicit guarantees:
   - Current development mode
   - Starts `tauri dev`, so Rust source changes can rebuild / relaunch the desktop host
   - Desktop bundled mode still owns the embedded backend and enabled channels
+- `./launch.sh --desktop --remote`
+  - Starts backend and enabled channel listeners outside the desktop host, writes remote backend config, then starts the Tauri desktop shell
+  - Generates a shell-only Tauri dev config and skips bundled sidecar preparation, so disabled channel sidecars do not block desktop UI smoke tests
 - `./launch.sh --release`
   - Release desktop mode
   - Builds and starts the release desktop binary directly, without `tauri dev`
