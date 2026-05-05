@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 11:09 CST
+最后更新：2026-05-05 12:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,23 +15,24 @@
 
 ## 当前概览
 
-- 活跃待修复：17
+- 活跃待修复：18
 - Later / 待复现：9
-- 已修复 / 已关闭：75
+- 已修复 / 已关闭：74
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 3 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 4 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-05 04:07 release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下 `rw.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
-| Feishu 直聊 `session/update` 会把系统提示、skill prompt、绝对路径与工具原始输出直接外发 | P1 | New | 2026-05-05 04:09 新 actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 再次复现：live `session/update` 连续外发油价分析 chunk、`Approve MCP tool call`、`market_analysis` skill prompt、`/Users/.../skills/market_analysis` 绝对路径和 `web_search` 原始 JSON；Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |
+| Feishu 直聊 `session/update` 会把系统提示、skill prompt、绝对路径与工具原始输出直接外发 | P1 | New | 2026-05-05 12:03 当前 `web.log.2026-05-05` 与 `acp-events.log` 新样本再次复现：新 actor `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 持续外发 `Approve MCP tool call`、shell 命令原文、`agent_message_chunk` 分析草稿和 `web_search` 原始 JSON；Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |
+| Feishu scheduler 发送前统一卡在 `tenant_access_token` 取票失效，生成完成的日报仍整批无法送达 | P1 | New | 2026-05-05 12:02 最近一小时继续活跃：`run_id=15703`（`Cerebras IPO与业务进展心跳监控`）已生成完整 `deliver_preview`，最终仍落成 `target_resolution_failed + delivered=0`，错误同为 `Invalid access token for authorization`；Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | New | 2026-05-05 05:23 `run_id=15655`（`科技成长赛道大盘极值与情绪监控`）再次落成 `completed + target_resolution_failed + delivered=0`；最新错误从旧的 actor/open_id 不一致漂到 `Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`，说明 direct scheduler 目标解析链路仍未恢复；Issue [#34](https://github.com/B-M-Capital-Research/honeclaw/issues/34) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 11:04 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但真实 Feishu 会话源文件已继续刷新到 `10:57:51`，同窗 `acp-events.log` 也记录 `stopReason=end_turn`，最新 user turn 与 assistant final 仍只写进 JSON、未同步进 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 12:02 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但 `web.log.2026-05-05` 已记录新的 Feishu direct 会话在 `11:45:55-11:45:57` 完成 `session.persist_assistant + reply.send`，另有新会话在 `12:00` 继续运行，仍未同步进 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat actor 级跨 job 去重把 `ORCL` / `持仓` 新触发误判成上一窗 `Cerebras IPO` 重复内容并直接漏发 | P2 | New | 2026-05-04 23:10 最新窗口里 `run_id=15588`（持仓重大事件）与 `15591`（ORCL）都先落成 `parse_kind=JsonTriggered`，却被 `duplicate_suppressed` 压成 `noop + skipped_noop`；两条 `matched_preview` 都错误指向 `22:30` 已送达的 `Cerebras IPO重大进展` | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 11:04 最新 `10:30 / 11:00` 两轮窗口继续在 `Empty / JsonEmptyStatus / JsonNoop` 之间切换；`10:30` 同窗里 `RKLB / CAI / ORCL / ASTS / Cerebras / TEM大事件` 批量落成 `skipped_error`，`持仓重大事件` 继续回摆成 `raw_preview=\"{}\"` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 12:02 最新 `11:30 / 12:00` 两轮窗口继续在 `Empty / JsonNoop / JsonTriggered` 之间切换；`11:30` 同窗里 `ORCL / TEM破位 / CAI / 持仓 / RKLB / ASTS` 批量落成 `skipped_error`，`12:00` 又出现 `小米 triggered + sent` 与 `ORCL parse_kind=JsonTriggered` 后被压成 `noop + skipped_noop` 的收口矛盾 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-03 15:02 最近一小时 `run_id=14654`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`，`sidecar.log` 同窗先记录真实上游 `maximum context length ... code:400`，随后仍被压扁成 `invalid type: integer \`400\``；`15:02` 下一窗虽回落 `noop`，但根因仍属间歇复发 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-04 09:02 最新 `08:30`、`08:45`、`09:00` 三个窗口又新增 `33` 条 `running + pending` started 行且不被终态覆盖；即便同窗已有 `sent/noop` 终态，started 行仍悬挂；全库总量升到 `4375` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
@@ -61,7 +62,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu scheduler 发送前统一卡在 `tenant_access_token` 请求失败，生成完成的日报与 heartbeat 告警都无法送达 | P1 | Fixed | 2026-05-05 11:09 在 2026-04-26 取票传输重试基础上，补 cached `Invalid access token` 恢复：Feishu 目标解析和发送 API 遇到 invalid-token 会清 token cache、重取 token 并重试一次；非 token 类 4xx 仍失败；关联 Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-05 07:03 `multi_agent` 搜索阶段直返判定补充用户可见澄清识别；`请先确认具体是哪只股票/资产的 ticker？...` 这类澄清句不再因 `先确认` / `我再` 被当作内部工作笔记而送入 answer 阶段，减少已可消费澄清被 fallback 遮蔽的剩余入口；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发，最终落库虽为 `OK` 但实时链路已泄露内部 prompt | P1 | Fixed | 2026-05-04 Codex ACP 不再复用旧远端 `session/load`，每轮新建 ACP session 并用 Hone 本地 transcript/context 重建 prompt，切断历史 `agent_message_chunk` prompt 包回放入口；`cargo test -p hone-channels codex_acp_does_not_reuse_remote_session_metadata -- --nocapture`、`cargo test -p hone-channels acp_common --lib -- --nocapture`、`cargo test -p hone-channels session_event_emitter_ -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) | [web_direct_session_update_prompt_echo_leak.md](./web_direct_session_update_prompt_echo_leak.md) |
 | Web 直聊 `session/update` 把 skill prompt、工具原始回显与绝对路径作为 `tool_call_update.rawOutput` 外发 | P1 | Fixed | 2026-05-04 Codex ACP 禁用旧远端 `session/load` 复用，避免历史 tool updates、skill prompt、绝对路径与 raw payload 在新一轮回放；既有 `SessionEventEmitter` 用户态 ToolStatus 净化继续覆盖 live 事件；同组 `hone-channels` 回归与 `cargo check -p hone-channels --tests` 通过；关联 Issue [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30) | [web_direct_tool_call_raw_output_leak.md](./web_direct_tool_call_raw_output_leak.md) |

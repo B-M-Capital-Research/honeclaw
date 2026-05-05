@@ -7,6 +7,19 @@
 
 ## 修复进展
 
+- `2026-05-05 12:02 CST` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `11:30-12:02` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered`，结构化协议仍未收敛成稳定单一状态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`11:30` 与 `12:00` 两个窗口继续在同一公共 heartbeat 链路里分裂成多种坏态与恢复态：
+    - `11:30` 窗口里，`run_id=15702`（`ORCL 大事件监控`）、`15705`（`TEM破位预警`）、`15708`（`CAI破位预警`）、`15709`（`持仓重大事件心跳检测`）、`15710`（`RKLB异动监控`）、`15711`（`ASTS 重大异动心跳监控`）全部落成 `execution_failed + skipped_error + delivered=0`，错误统一为 `heartbeat 输出为空，任务已标记失败`
+    - 同一 `11:30` 窗口里，`run_id=15701`（`全天原油价格3小时播报`）、`15704`（`小米30港元破位预警`）、`15706`（`Monitor_Watchlist_11`）、`15707`（`TEM大事件心跳监控`）又回落成 `noop + skipped_noop`
+    - `12:00` 窗口里，`run_id=15714`（`TEM大事件心跳监控`）、`15718`（`CAI破位预警`）、`15723`（`持仓重大事件心跳检测`）继续回摆成 `execution_failed + skipped_error + delivered=0`，错误仍是 `heartbeat 输出为空，任务已标记失败`
+    - 但同一 `12:00` 窗口里，`run_id=15712/15715/15716/15717/15719/15721/15722` 又分别回落成 `noop + skipped_noop`，`run_id=15713` 还落成 `completed + sent`，说明同批 heartbeat 依旧没有恢复成稳定单一协议，而是在 `Empty / JsonNoop / JsonTriggered` 之间继续漂移
+  - `data/runtime/logs/web.log.2026-05-05` 证明这不是单纯台账归类差异，而是 heartbeat 公共执行链路在同一窗口继续摇摆：
+    - `2026-05-05 12:01:04.028`、`12:01:05.112`、`12:02:06.509`：`TEM大事件 / CAI / 持仓重大事件` 在 `12:00` 同窗继续落成 `parse_kind=Empty raw_chars=0`
+    - `2026-05-05 12:01:11.021`、`12:01:15.425`、`12:01:17.302`、`12:01:40.094`、`12:01:40.258`、`12:02:05.404`：`TEM破位 / 原油 / ASTS / Cerebras / RKLB / Watchlist` 同窗又回摆成 `parse_kind=JsonNoop`
+    - `2026-05-05 12:01:22.228`：`小米30港元破位预警` 在同窗落成 `parse_kind=JsonTriggered` 并实际 `deliver`
+    - `2026-05-05 12:01:39.531-12:01:39.532`：`ORCL 大事件监控` 甚至出现 `parse_kind=JsonTriggered -> deliver_preview` 后又紧跟 `心跳任务未命中，本轮不发送`；sqlite 终态对应 `run_id=15721` 也被压成 `noop + skipped_noop`，说明当前窗口里连“触发/未触发”的收口口径都还在漂移
+  - 结论：到 `2026-05-05 12:02` 为止，本单仍稳定活跃；最新窗口已经从 `10:30/11:00` 的 `Empty / JsonEmptyStatus / JsonNoop` 混跑，回摆成 `Empty / JsonNoop / JsonTriggered` 同窗并存，且 `ORCL` 还出现“先 deliver 再 no-send”的收口矛盾，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-05 11:04 CST` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `10:30-11:02` 的最新两轮继续在同窗混跑 `Empty / JsonEmptyStatus / JsonNoop / duplicate_suppressed`，结构化协议仍未收敛成稳定单一状态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`10:30` 与 `11:00` 两个窗口继续在同一公共 heartbeat 链路里分裂成多种坏态与恢复态：
     - `10:30` 窗口里，`run_id=15679`（`RKLB异动监控`）、`15680`（`CAI破位预警`）、`15686`（`ORCL 大事件监控`）、`15687`（`ASTS 重大异动心跳监控`）、`15688`（`Cerebras IPO与业务进展心跳监控`）、`15689`（`TEM大事件心跳监控`）全部落成 `execution_failed + skipped_error + delivered=0`，错误统一为 `heartbeat 输出为空，任务已标记失败`

@@ -80,6 +80,25 @@
   - 本轮异常已经同时覆盖多个不同 actor / target / 任务模板，且全部发生在 Feishu 发送前置共享链路，不是单个 direct task 的局部坏态。
   - 因此本单必须重新回到活跃 P1 队列。
 
+## 状态更新（2026-05-05 12:02 CST）
+
+- 本轮巡检确认该缺陷在最近一小时继续活跃，并且已经从早间日报扩散到 heartbeat 实际触发后的最终送达阶段：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=15703` `Cerebras IPO与业务进展心跳监控`
+  - 上述 run 位于 `2026-05-05 11:31:30` 的最近一小时窗口，并且满足：
+    - `execution_status=completed`
+    - `message_send_status=target_resolution_failed`
+    - `delivered=0`
+    - `response_preview` 已经是完整触发正文
+    - `error_message=集成错误: Feishu resolve mobile api error 99991663: Invalid access token for authorization. Please make a request with token attached.`
+  - 同窗 `detail_json.parse_kind=JsonTriggered` 且带完整 `deliver_preview`，说明 heartbeat 已经完成“命中判断 + 生成正文”，仍在 Feishu 目标解析/发送前的共享鉴权链路上被拦截。
+- `data/runtime/logs/web.log.2026-05-05` 同时给出对应链路日志：
+  - `2026-05-05 11:31:29.263` `Cerebras IPO与业务进展心跳监控` 先记录 `parse_kind=JsonTriggered` 与 `deliver_preview`
+  - 随后台账终态仍落成 `target_resolution_failed + delivered=0`
+- 结论：
+  - 当前活跃坏态已不再局限于 `09:42-10:13` 那批日报任务；到 `11:31` 最近窗口，heartbeat 真正命中的提醒仍会被同一 `Invalid access token` 共享故障拦截。
+  - 因此本单继续保持活跃 `New`，严重等级维持 `P1`。
+
 ## 期望效果
 
 - Feishu scheduler 在最终发送前请求 `tenant_access_token/internal` 时，应至少具备基本重试与可恢复策略，而不是一次网络抖动就让整轮 `send_failed`。
