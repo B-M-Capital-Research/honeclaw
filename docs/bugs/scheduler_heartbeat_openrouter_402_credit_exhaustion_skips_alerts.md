@@ -61,3 +61,11 @@
 - 先按 P1 处理这条生产故障：确认 heartbeat 使用的 OpenRouter credits / 配额是否已耗尽，以及 `max_tokens` 是否明显高于当前预算。
 - 在 heartbeat runner 对 `HTTP 402` 增加专门错误分类与告警，不再复用 `noop` 文案。
 - 若短期无法恢复额度，先提供临时止血方案，例如收紧 `max_tokens` 或切换到可用 provider，避免后续整点窗口继续整批漏发。
+
+## 状态更新（2026-05-05 14:01 CST）
+
+- 本轮巡检确认：该缺陷在最近一小时内仍持续活跃，并且影响窗口继续扩大。
+- `data/runtime/logs/web.log.2026-05-05` 在当前窗口又新增两轮整批失败：
+  - `2026-05-05 13:30:50-13:30:53 CST` 再次出现多条 `failed deserialization of: {"error":{"message":"This request requires more credits...","code":402}}`，随后至少 `全天原油价格3小时播报`、`TEM大事件心跳监控` 落成 `run_finish + runner_error`。
+  - `2026-05-05 14:00:50-14:00:52 CST` 同类 `HTTP 402` 再次覆盖 `CAI`、`Monitor_Watchlist_11`、`Cerebras IPO`、`原油价格播报`、`TEM`、`持仓重大事件`、`ASTS`、`小米30港元破位`、`ORCL`、`TEM破位`、`RKLB` 等监控 job。
+- 这说明该故障并非 `12:30 / 13:00` 两个窗口的单次波动，而是在 `13:30` 与 `14:00` 窗口继续复发；到 `2026-05-05 14:01 CST` 为止，最近连续四个整点/半点 heartbeat 窗口都已出现 `HTTP 402 -> delivered=0` 的批量漏发形态。
