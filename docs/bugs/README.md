@@ -15,17 +15,16 @@
 
 ## 当前概览
 
-- 活跃待修复：18
+- 活跃待修复：17
 - Later / 待复现：10
 - 已修复 / 已关闭：73
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 3 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 2 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-05 04:07 release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下 `rw.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-05 04:07 release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下 `rw.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | New | 2026-05-05 05:23 `run_id=15655`（`科技成长赛道大盘极值与情绪监控`）再次落成 `completed + target_resolution_failed + delivered=0`；最新错误从旧的 actor/open_id 不一致漂到 `Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`，说明 direct scheduler 目标解析链路仍未恢复；Issue [#34](https://github.com/B-M-Capital-Research/honeclaw/issues/34) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 05:23 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`；但真实 Feishu 会话源文件已继续刷新到 `05:23:45` / `05:21:58`，最新 user turn 与 assistant final 仍只写进 JSON、未同步进 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
