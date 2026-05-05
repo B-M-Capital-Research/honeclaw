@@ -67,20 +67,7 @@ pub(crate) struct FeishuStreamListener {
 impl AgentSessionListener for FeishuStreamListener {
     async fn on_event(&self, event: AgentSessionEvent) {
         match event {
-            AgentSessionEvent::Run(RunEvent::StreamDelta { content }) => {
-                let rendered = {
-                    let mut formatter = self.think_formatter.write().unwrap();
-                    formatter.push_chunk(&content)
-                };
-                if !rendered.is_empty() {
-                    append_compacted(&mut self.buffer.write().unwrap(), &rendered);
-                }
-                if let Some(ck) = &self.cardkit {
-                    let text = self.buffer.read().unwrap().clone();
-                    let processed = preprocess_markdown_for_feishu(&text, false);
-                    ck.update(&processed).await;
-                }
-            }
+            AgentSessionEvent::Run(RunEvent::StreamDelta { .. }) => {}
             AgentSessionEvent::Done { .. } => {
                 let trailing = {
                     let mut formatter = self.think_formatter.write().unwrap();
@@ -169,8 +156,12 @@ impl AgentSessionListener for FeishuStreamListener {
 
 #[cfg(test)]
 mod tests {
-    use super::FeishuProgressTranscript;
+    use super::{FeishuProgressTranscript, FeishuStreamListener};
+    use hone_channels::agent_session::{AgentSessionEvent, AgentSessionListener};
+    use hone_channels::outbound::ReasoningVisibility;
+    use hone_channels::run_event::RunEvent;
     use hone_channels::think::{ThinkRenderStyle, render_think_blocks};
+    use std::sync::{Arc, RwLock};
 
     #[test]
     fn feishu_progress_transcript_appends_entries() {
@@ -214,5 +205,31 @@ mod tests {
     fn hidden_style_does_not_expose_think_text() {
         let rendered = render_think_blocks("<think>foo</think>\nbar", ThinkRenderStyle::Hidden);
         assert_eq!(rendered, "bar");
+    }
+
+    #[tokio::test]
+    async fn stream_delta_does_not_update_live_feishu_buffer() {
+        let buffer = Arc::new(RwLock::new("正在思考中...".to_string()));
+        let listener = FeishuStreamListener {
+            buffer: buffer.clone(),
+            cardkit: None,
+            reasoning_visibility: ReasoningVisibility::Full,
+            think_formatter: Arc::new(RwLock::new(
+                hone_channels::think::ThinkStreamFormatter::new(ThinkRenderStyle::Hidden),
+            )),
+        };
+
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::StreamDelta {
+                content: "### System Instructions ###\nsecret".to_string(),
+            }))
+            .await;
+        listener
+            .on_event(AgentSessionEvent::Run(RunEvent::StreamDelta {
+                content: "中间分析草稿".to_string(),
+            }))
+            .await;
+
+        assert_eq!(buffer.read().unwrap().as_str(), "正在思考中...");
     }
 }

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 00:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)
 - **修复结论复核**:
   - `2026-05-05 12:03 CST` 最近一小时又在新的 direct actor `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 复现，而且这次样本已经来自当前 `web.log.2026-05-05` 的 live 运行态，不再只是修复前旧进程残留。`data/runtime/logs/web.log.2026-05-05` 在 `12:01:05.489` 继续记录 `Tool: hone/skill_tool status=start`，紧接着 `12:01:05.489` 与 `12:02:22.494`、`12:02:38.721` 多次外发 `detail=codex:approved-for-session:Approve MCP tool call`；`12:02:07.663-12:02:07.967` 又把 `pwd && rg --files -g 'AGENTS.md' -g 'company_profiles/**' ...` 与 `date '+%Y-%m-%d %H:%M:%S %Z'` 作为 live runner tool 进度直接广播。对应 `data/runtime/logs/acp-events.log` 在 `2026-05-05T04:02:03.055968+00:00` 起持续把整段分析草稿拆成 `agent_message_chunk` 外发，`2026-05-05T04:02:44.629138+00:00` 与 `04:02:46.189088+00:00` 又继续把 `web_search` 原始 JSON / `rawOutput` 透传到 `tool_call_update`。这说明 `2026-05-05 10:15 CST` 记录的“已扩展到共享边界”的修复结论尚未在当前 live Feishu direct 路径生效，本单必须维持活跃 `New`。
@@ -129,6 +129,19 @@
 - `data/runtime/logs/web.log.2026-05-05` 同窗也继续记录同一会话在 `21:53:34`、`22:01:52` 调用 `Edit company_profiles/ASTS.md`、本地命令和搜索工具，说明这不是旧会话残留，而是当前 live Feishu direct 路径仍在消费未净化事件。
 - 这说明共享用户态边界虽然补了部分 marker，但 Feishu live `session/update` 仍会把系统提示、分析草稿和本地命令原始回显直接外发；本单继续维持活跃 `New`。
 
+## 修复记录（2026-05-06 07:07 CST）
+
+- 状态更新为 `Fixed`。
+- 本轮将 Feishu live 出站边界从“实时拼接 ACP `StreamDelta`”改为“只展示受控工具进度，最终回复只走 `response.content` 收口”：
+  - `FeishuStreamListener` 不再把 `RunEvent::StreamDelta` 写入占位卡片或 ticker 更新，避免系统提示、分析草稿、ACP 中间正文被当作 live 回复外发；
+  - Feishu handler 在 `response.content` 为空时只接受经过净化后的非 placeholder / 非工具进度缓冲，不再把“正在思考中...”或 bullet 进度误当成失败 partial / 成功 final；
+  - 该修复不依赖线上日志、Feishu 凭据或单次模型输出形态，属于渠道用户态边界的通用加固。
+- 新增/更新回归：
+  - `stream_delta_does_not_update_live_feishu_buffer`
+  - `failed_reply_text_drops_placeholder_only_partial_stream`
+  - `stream_buffer_visible_final_rejects_placeholder_and_progress`
+- 关联 GitHub Issue：[#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)。
+
 ## 当前验证（2026-05-05 03:04 CST）
 
 - 已通过：
@@ -147,6 +160,16 @@
   - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
   - `cargo test -p hone-channels runners::acp_common::tests -- --nocapture`
   - `cargo check -p hone-channels --tests`
+
+## 当前验证（2026-05-06 07:07 CST）
+
+- 已通过：
+  - `cargo test -p hone-feishu stream_delta_does_not_update_live_feishu_buffer -- --nocapture`
+  - `cargo test -p hone-feishu failed_reply_text_drops_placeholder_only_partial_stream -- --nocapture`
+  - `cargo test -p hone-feishu stream_buffer_visible_final_rejects_placeholder_and_progress -- --nocapture`
+  - `cargo test -p hone-feishu -- --nocapture`
+  - `cargo check -p hone-feishu --tests`
+  - `rustfmt --edition 2024 --check bins/hone-feishu/src/listener.rs bins/hone-feishu/src/handler.rs`
 
 ## 后续建议
 

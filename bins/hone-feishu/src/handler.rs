@@ -109,11 +109,12 @@ fn sanitize_failed_partial_reply(text: &str) -> String {
 }
 
 fn looks_like_progress_trace_line(line: &str) -> bool {
-    let trimmed = line.trim();
+    let trimmed = line.trim().trim_start_matches("- ").trim();
     if trimmed.is_empty() {
         return false;
     }
-    trimmed.starts_with("正在调用 Tool:")
+    trimmed == THINKING_PLACEHOLDER_TEXT
+        || trimmed.starts_with("正在调用 Tool:")
         || trimmed.starts_with("正在调用 tool:")
         || trimmed.starts_with("正在调用工具")
         || trimmed.starts_with("正在执行：")
@@ -124,6 +125,11 @@ fn looks_like_progress_trace_line(line: &str) -> bool {
         || trimmed.contains("hone/skill_tool")
         || trimmed.contains("tool_call")
         || trimmed.contains("runner.stage=")
+}
+
+fn stream_buffer_visible_final(text: &str) -> Option<String> {
+    let sanitized = sanitize_failed_partial_reply(text);
+    (!sanitized.is_empty()).then_some(sanitized)
 }
 
 fn persist_visible_assistant_message(
@@ -885,7 +891,8 @@ async fn process_incoming_message(state: Arc<AppState>, msg: FeishuIncomingMessa
     let saw_stream_delta = stream_probe.saw_stream_delta();
     let mut final_text = render_think_blocks(response.content.trim(), ThinkRenderStyle::Hidden);
     if final_text.is_empty() {
-        final_text = content_buf.read().unwrap().trim().to_string();
+        let buffer_text = content_buf.read().unwrap().trim().to_string();
+        final_text = stream_buffer_visible_final(&buffer_text).unwrap_or_default();
     }
 
     if !response.success {
@@ -1790,6 +1797,32 @@ mod tests {
                 Some("codex acp session/prompt idle timeout (180s)"),
             ),
             "抱歉，处理超时了。请稍后再试。"
+        );
+    }
+
+    #[test]
+    fn failed_reply_text_drops_placeholder_only_partial_stream() {
+        assert_eq!(
+            build_failed_reply_text(
+                None,
+                true,
+                THINKING_PLACEHOLDER_TEXT,
+                Some("codex acp session/prompt idle timeout (180s)"),
+            ),
+            "抱歉，处理超时了。请稍后再试。"
+        );
+    }
+
+    #[test]
+    fn stream_buffer_visible_final_rejects_placeholder_and_progress() {
+        assert_eq!(stream_buffer_visible_final(THINKING_PLACEHOLDER_TEXT), None);
+        assert_eq!(
+            stream_buffer_visible_final("正在思考中...\n- 正在执行：本地命令"),
+            None
+        );
+        assert_eq!(
+            stream_buffer_visible_final("最终答案"),
+            Some("最终答案".to_string())
         );
     }
 

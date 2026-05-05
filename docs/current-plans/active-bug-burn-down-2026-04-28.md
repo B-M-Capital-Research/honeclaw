@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-05 10:15 CST
+- updated_at: 2026-05-06 07:07 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -74,6 +74,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-03 18:06: Closed the active Web `tool_call_update.rawOutput` leak by hardening shared session event emission instead of transcript persistence: `SessionEventEmitter` now relativizes `ToolStatus.tool/message/reasoning`, suppresses internal prompt markers such as `【Invoked Skill Context】` / `Base directory for this skill:`, and drops structured JSON payloads from user-visible progress events while preserving raw ACP evidence for restore/debug. Targeted `hone-channels` emitter tests and `cargo check -p hone-channels --tests` passed. Feishu direct empty/invalid answer remains the only active P1 because this automation run does not restart services or generate new live Feishu samples.
 - 2026-05-04 21:15: Tightened the remaining active P1 Feishu direct-answer path again. `multi_agent` search results backed only by read-only local file tools (`local_list_files` / `local_search_files` / `local_read_file`) may now return directly when the answer is already concise and single-paragraph, which covers attachment / local-state confirmation turns that were still being forced into the more failure-prone ACP answer stage. Added targeted `hone-channels` tests to keep verbose local file summaries on the answer path while letting concise confirmations bypass it. No live Feishu runtime recheck yet because this automation does not restart services.
 - 2026-05-05 10:15: Re-closed the active Feishu `session/update` live leak at the shared boundary after the bug ledger re-opened on newer runtime samples. `SessionEventEmitter` now sanitizes `StreamDelta` with the same user-visible contract as `ToolStatus`, keeping visible prefixes while trimming suffixes that start at `### System Instructions ###` / `【Invoked Skill Context】` / `Base directory for this skill:` and dropping structured JSON payloads entirely. ACP chunk ingest also now suppresses `【Invoked Skill Context】` / `Base directory for this skill:` before they enter the session stream. Targeted `hone-channels` emitter + `acp_common` tests and `cargo check -p hone-channels --tests` passed. Live post-fix Feishu verification is still pending because this automation does not restart services.
+- 2026-05-06 07:07: Closed the reopened P1 Feishu `session/update` live leak by tightening the Feishu channel boundary itself. `FeishuStreamListener` no longer writes ACP `StreamDelta` chunks into placeholder cards, so analysis drafts / prompt echoes / raw stream fragments cannot be pushed live through Feishu; final replies still use `response.content`, and placeholder/tool-progress buffers are rejected as failed partials or success finals. `hone-feishu` unit tests, `cargo check -p hone-feishu --tests`, and direct rustfmt checks passed. Live deployment verification remains a follow-up because this machine is not production and the automation does not restart services.
 
 ## Validation
 
@@ -152,6 +153,12 @@ Completed this round:
 - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
 - `cargo test -p hone-channels runners::acp_common::tests -- --nocapture`
 - `cargo check -p hone-channels --tests`
+- `cargo test -p hone-feishu stream_delta_does_not_update_live_feishu_buffer -- --nocapture`
+- `cargo test -p hone-feishu failed_reply_text_drops_placeholder_only_partial_stream -- --nocapture`
+- `cargo test -p hone-feishu stream_buffer_visible_final_rejects_placeholder_and_progress -- --nocapture`
+- `cargo test -p hone-feishu -- --nocapture`
+- `cargo check -p hone-feishu --tests`
+- `rustfmt --edition 2024 --check bins/hone-feishu/src/listener.rs bins/hone-feishu/src/handler.rs`
 
 Known verification limitation:
 
