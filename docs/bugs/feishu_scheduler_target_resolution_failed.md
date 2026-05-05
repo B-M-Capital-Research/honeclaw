@@ -77,6 +77,27 @@
   - 发送时优先使用 `event.actor.user_id` 这一已绑定且稳定的 `open_id`
 - 这样既保留了历史上的防误投校验，又避免 direct 定时任务因为旧手机号/email target 漂移而长期卡在 `target_resolution_failed`。
 
+## 状态更新（2026-05-05 10:13 CST）
+
+- 本轮巡检确认这条缺陷在最近一小时不但仍活跃，而且已经从单个 job 的 contact lookup 失败扩成批量 direct scheduler 送达失败：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=15667-15672`
+      - `job_name=美股AI产业链盘后报告 / Hone_AI_Morning_Briefing / 每日有色化工标的新闻追踪 / 港股持仓与关注股早间行情研判 / 创新药持仓每日动态推送 / 闪迪(SNDK)每日行情与行业简报`
+      - `executed_at=2026-05-05T09:42:28-09:42:35+08:00`
+      - 全部落成 `execution_failed + target_resolution_failed + delivered=0`
+      - `error_message=集成错误: Feishu resolve mobile api error 99991663: Invalid access token for authorization. Please make a request with token attached.`
+    - `run_id=15674-15676`
+      - `job_name=早9点市场复盘(XME及加密ETF) / 特斯拉与火箭实验室新闻日报 / 核心观察池早间简报`
+      - `executed_at=2026-05-05T10:13:12-10:13:14+08:00`
+      - 继续落成 `execution_failed + target_resolution_failed + delivered=0`
+      - 其中 `run_id=15676` 仍是旧变体 `Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`，而 `15674-15675` 已切到同一 `Invalid access token for authorization` 文案
+    - 同窗对照：`run_id=15677`（`09:00 美股AI与航空科技晨报`，`actor_channel=web`）在 `2026-05-05T10:13:48.561901+08:00` 正常落成 `completed + sent + delivered=1`，说明最近窗口的异常集中在 Feishu direct scheduler 目标解析/鉴权链路，不是全局 scheduler 统一失效
+- 这次坏态比 `2026-05-05 05:23` 更严重：
+  - `05:23` 还是单个 `run_id=15655` 的 `batch_get_id` 传输失败
+  - 到 `09:42-10:13`，最近一小时已至少有 9 条 Feishu 定时任务在投递前统一死在 `target_resolution_failed`
+  - 错误口径同时混有 `batch_get_id` 传输失败与 `Invalid access token for authorization`，说明 direct target resolution 链路并未收敛到单一可恢复错误
+- 因此本单状态维持 `New`、严重等级维持 `P1`。
+
 ## 状态更新（2026-05-05 07:40 CST）
 
 - 本轮巡检确认该缺陷不能继续维持 `Fixed`：
