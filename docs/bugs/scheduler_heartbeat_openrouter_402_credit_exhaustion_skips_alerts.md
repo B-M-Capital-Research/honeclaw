@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -144,3 +144,17 @@
 - `data/runtime/logs/web.log.2026-05-05` 在 `23:00:01.938-23:00:04.187` 再次连续记录多条 `failed deserialization ... "code":402`，随后 `TEM大事件心跳监控`、`CAI破位预警`、`持仓重大事件心跳检测`、`ORCL 大事件监控`、`Cerebras IPO与业务进展心跳监控`、`Monitor_Watchlist_11`、`小米30港元破位预警`、`ASTS 重大异动心跳监控`、`全天原油价格3小时播报`、`RKLB异动监控` 等 heartbeat job 全部落成 `runner_error`，错误统一为 `can only afford 9103 ... (code: 402)`。
 - 同窗 `cron_job_runs` 里的非 heartbeat 任务 `run_id=15923`（`核心观察股池晚间快报`）已在 `23:01:27` 正常 `completed + sent + delivered=1`，说明当前不是 scheduler 全局停摆；故障仍集中在 heartbeat 调用 `moonshotai/kimi-k2.5` 的公共链路。
 - 到本轮巡检时，`2026-05-05 12:30` 到 `23:00` 已连续 `16` 个整点/半点 heartbeat 窗口、累计 `176` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
+
+## 修复记录（2026-05-05 23:09 CST）
+
+- 状态更新为 `Fixed`。
+- 本轮修复继续沿通用错误边界处理，不针对单次 OpenRouter 波动写特判：
+  - 保留上一轮已落地的 `provider_quota_exhausted` / `provider_http_error` 分类与非 noop 日志收口；
+  - 为 heartbeat 这类后台短检查单独把 auxiliary function-calling 的 completion token 上限固定为 `8192`，不再沿用全局 `llm.openrouter.max_tokens=32768` 或 `llm.auxiliary.max_tokens=32768`；
+  - 其它普通对话、长报告和非 heartbeat scheduler 不受该 token cap 影响。
+- 这直接覆盖最新证据里的 `can only afford 9103 ... max_tokens ... (code: 402)`：heartbeat 后续请求不会再以 `32768` 的 completion budget 打到同一配额边界。
+- 验证：
+  - 通过：`cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`
+  - 通过：`cargo test -p hone-channels heartbeat_provider_ --lib -- --nocapture`
+  - 通过：`cargo test -p hone-channels execution::tests::prepare_ --lib -- --nocapture`
+  - 通过：`cargo check -p hone-channels --tests`

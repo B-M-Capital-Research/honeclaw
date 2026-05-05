@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 23:02 CST
+最后更新：2026-05-05 23:09 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,18 +15,17 @@
 
 ## 当前概览
 
-- 活跃待修复：18
+- 活跃待修复：17
 - Later / 待复现：9
-- 已修复 / 已关闭：72
+- 已修复 / 已关闭：73
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 6 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 5 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-05 04:07 release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下 `rw.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
-| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | New | 2026-05-05 23:02 `22:30` 与 `23:00` 窗口再次各有 `11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`，而 `23:01` 同窗非 heartbeat 定时任务仍正常 `completed + sent`，说明故障继续集中打穿 heartbeat 公共链路；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Feishu 直聊 `session/update` 会把系统提示、skill prompt、绝对路径与工具原始输出直接外发 | P1 | New | 2026-05-05 22:02 同一 direct actor `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 在 `21:53-22:02` 再次实时外发 `session/prompt` 系统提示全文、`agent_message_chunk` 分析草稿，以及 `date`/`rg` 本地命令的 `rawOutput`；Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 取票失效，生成完成的日报仍整批无法送达 | P1 | New | 2026-05-05 12:02 最近一小时继续活跃：`run_id=15703`（`Cerebras IPO与业务进展心跳监控`）已生成完整 `deliver_preview`，最终仍落成 `target_resolution_failed + delivered=0`，错误同为 `Invalid access token for authorization`；Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | New | 2026-05-05 05:23 `run_id=15655`（`科技成长赛道大盘极值与情绪监控`）再次落成 `completed + target_resolution_failed + delivered=0`；最新错误从旧的 actor/open_id 不一致漂到 `Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`，说明 direct scheduler 目标解析链路仍未恢复；Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
@@ -65,6 +64,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-05 23:09 heartbeat 后台短检查的 auxiliary function-calling completion token 上限固定为 `8192`，不再沿用全局 `32768` 导致 OpenRouter credits / max_tokens 边界失败；既有 `provider_quota_exhausted` 可观测分类保留；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-05 07:03 `multi_agent` 搜索阶段直返判定补充用户可见澄清识别；`请先确认具体是哪只股票/资产的 ticker？...` 这类澄清句不再因 `先确认` / `我再` 被当作内部工作笔记而送入 answer 阶段，减少已可消费澄清被 fallback 遮蔽的剩余入口；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发，最终落库虽为 `OK` 但实时链路已泄露内部 prompt | P1 | Fixed | 2026-05-04 Codex ACP 不再复用旧远端 `session/load`，每轮新建 ACP session 并用 Hone 本地 transcript/context 重建 prompt，切断历史 `agent_message_chunk` prompt 包回放入口；`cargo test -p hone-channels codex_acp_does_not_reuse_remote_session_metadata -- --nocapture`、`cargo test -p hone-channels acp_common --lib -- --nocapture`、`cargo test -p hone-channels session_event_emitter_ -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) | [web_direct_session_update_prompt_echo_leak.md](./web_direct_session_update_prompt_echo_leak.md) |
 | Web 直聊 `session/update` 把 skill prompt、工具原始回显与绝对路径作为 `tool_call_update.rawOutput` 外发 | P1 | Fixed | 2026-05-04 Codex ACP 禁用旧远端 `session/load` 复用，避免历史 tool updates、skill prompt、绝对路径与 raw payload 在新一轮回放；既有 `SessionEventEmitter` 用户态 ToolStatus 净化继续覆盖 live 事件；同组 `hone-channels` 回归与 `cargo check -p hone-channels --tests` 通过；关联 Issue [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30) | [web_direct_tool_call_raw_output_leak.md](./web_direct_tool_call_raw_output_leak.md) |

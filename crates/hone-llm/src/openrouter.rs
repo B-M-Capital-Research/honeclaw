@@ -54,6 +54,14 @@ impl OpenRouterProvider {
 
     /// 从配置创建 Provider（支持多 Key）
     pub fn from_config(config: &hone_core::config::HoneConfig) -> hone_core::HoneResult<Self> {
+        Self::from_config_with_max_tokens(config, config.llm.openrouter.max_tokens as u16)
+    }
+
+    /// 从配置创建 Provider，并为本次用途覆盖 completion token 上限。
+    pub fn from_config_with_max_tokens(
+        config: &hone_core::config::HoneConfig,
+        max_tokens: u16,
+    ) -> hone_core::HoneResult<Self> {
         let pool = config.llm.openrouter.effective_key_pool();
 
         if pool.is_empty() {
@@ -83,7 +91,7 @@ impl OpenRouterProvider {
         Ok(Self {
             clients,
             model: config.llm.openrouter.model.clone(),
-            max_tokens: config.llm.openrouter.max_tokens as u16,
+            max_tokens,
         })
     }
 

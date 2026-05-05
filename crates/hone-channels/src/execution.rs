@@ -22,7 +22,10 @@ pub enum ExecutionMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionRunnerSelection {
     Configured,
-    AuxiliaryFunctionCalling { max_iterations: u32 },
+    AuxiliaryFunctionCalling {
+        max_iterations: u32,
+        max_tokens_override: Option<u16>,
+    },
 }
 
 #[derive(Clone)]
@@ -90,10 +93,18 @@ impl ExecutionService {
                 tool_registry,
                 request.model_override.as_deref(),
             )?,
-            ExecutionRunnerSelection::AuxiliaryFunctionCalling { max_iterations } => {
-                let llm = self.core.auxiliary_llm.clone().ok_or_else(|| {
-                    "execution prepare failed: auxiliary llm unavailable".to_string()
-                })?;
+            ExecutionRunnerSelection::AuxiliaryFunctionCalling {
+                max_iterations,
+                max_tokens_override,
+            } => {
+                let llm = if let Some(max_tokens) = max_tokens_override {
+                    self.core
+                        .create_auxiliary_llm_provider_with_max_tokens(max_tokens)?
+                } else {
+                    self.core.auxiliary_llm.clone().ok_or_else(|| {
+                        "execution prepare failed: auxiliary llm unavailable".to_string()
+                    })?
+                };
                 Box::new(FunctionCallingReasoningRunner::new(
                     llm,
                     Arc::new(tool_registry),
@@ -293,7 +304,10 @@ mod tests {
             .prepare(make_request(
                 actor,
                 ExecutionMode::TransientTask,
-                ExecutionRunnerSelection::AuxiliaryFunctionCalling { max_iterations: 6 },
+                ExecutionRunnerSelection::AuxiliaryFunctionCalling {
+                    max_iterations: 6,
+                    max_tokens_override: None,
+                },
             ))
             .expect("prepare should succeed");
 
@@ -309,7 +323,10 @@ mod tests {
         let err = match ExecutionService::new(core).prepare(make_request(
             actor,
             ExecutionMode::TransientTask,
-            ExecutionRunnerSelection::AuxiliaryFunctionCalling { max_iterations: 6 },
+            ExecutionRunnerSelection::AuxiliaryFunctionCalling {
+                max_iterations: 6,
+                max_tokens_override: None,
+            },
         )) {
             Ok(_) => panic!("prepare should fail without auxiliary llm"),
             Err(err) => err,

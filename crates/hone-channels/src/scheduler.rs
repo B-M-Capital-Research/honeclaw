@@ -26,6 +26,14 @@ use crate::{AgentSession, HoneBotCore};
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
 const HEARTBEAT_MAX_ITERATIONS: u32 = 10;
+const HEARTBEAT_MAX_TOKENS: u16 = 8192;
+
+fn heartbeat_runner_selection() -> ExecutionRunnerSelection {
+    ExecutionRunnerSelection::AuxiliaryFunctionCalling {
+        max_iterations: HEARTBEAT_MAX_ITERATIONS,
+        max_tokens_override: Some(HEARTBEAT_MAX_TOKENS),
+    }
+}
 const SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE: &str =
     "本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。";
 
@@ -1170,20 +1178,19 @@ async fn run_heartbeat_task(
             .unwrap_or_default(),
         session_metadata: std::collections::HashMap::new(),
         model_override: run_options.model_override.clone(),
-        runner_selection: ExecutionRunnerSelection::AuxiliaryFunctionCalling {
-            max_iterations: HEARTBEAT_MAX_ITERATIONS,
-        },
+        runner_selection: heartbeat_runner_selection(),
         allowed_tools: None,
         max_tool_calls: None,
         prompt_audit: None,
     })?;
     tracing::info!(
-        "[HeartbeatDiag] run_start job_id={} job={} target={} runner={} model_override={} timeout_secs={}",
+        "[HeartbeatDiag] run_start job_id={} job={} target={} runner={} model_override={} max_tokens={} timeout_secs={}",
         event.job_id,
         event.job_name,
         event.channel_target,
         execution.runner_name,
         run_options.model_override.as_deref().unwrap_or(""),
+        HEARTBEAT_MAX_TOKENS,
         timeout.map(|duration| duration.as_secs()).unwrap_or(0),
     );
     let result = execution
@@ -1230,12 +1237,14 @@ mod tests {
         HeartbeatOutcome, HeartbeatParseKind, SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
         build_scheduled_prompt, execute_scheduler_event, has_skip_delivery_signal,
         heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
-        heartbeat_execution_from_runner_error, inspect_heartbeat_result, is_empty_success_fallback,
-        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
-        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
+        heartbeat_execution_from_runner_error, heartbeat_runner_selection,
+        inspect_heartbeat_result, is_empty_success_fallback, load_actor_quiet_hours,
+        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
+        sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
+    use crate::execution::ExecutionRunnerSelection;
     use crate::prompt::PromptOptions;
     use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
     use hone_core::config::HoneConfig;
@@ -1720,6 +1729,22 @@ mod tests {
         assert!(!execution.should_deliver);
         assert!(execution.error.is_some());
         assert_eq!(execution.metadata["failure_kind"], "provider_http_error");
+    }
+
+    #[test]
+    fn heartbeat_runner_uses_capped_completion_budget() {
+        match heartbeat_runner_selection() {
+            ExecutionRunnerSelection::AuxiliaryFunctionCalling {
+                max_iterations,
+                max_tokens_override,
+            } => {
+                assert_eq!(max_iterations, 10);
+                assert_eq!(max_tokens_override, Some(8192));
+            }
+            ExecutionRunnerSelection::Configured => {
+                panic!("heartbeat must use auxiliary function-calling runner")
+            }
+        }
     }
 
     #[test]

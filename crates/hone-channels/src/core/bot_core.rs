@@ -144,6 +144,32 @@ impl HoneBotCore {
         Self::create_llm_provider(config)
     }
 
+    pub(crate) fn create_auxiliary_llm_provider_with_max_tokens(
+        &self,
+        max_tokens: u16,
+    ) -> Result<Arc<dyn LlmProvider>, String> {
+        if self.config.llm.auxiliary.is_configured() {
+            let api_key = self.config.llm.auxiliary.resolved_api_key();
+            if api_key.trim().is_empty() {
+                return Err("execution prepare failed: auxiliary API key is empty".to_string());
+            }
+
+            return OpenAiCompatibleProvider::new(
+                &api_key,
+                self.config.llm.auxiliary.base_url.trim(),
+                self.config.llm.auxiliary.model.trim(),
+                self.config.llm.auxiliary.timeout,
+                max_tokens,
+            )
+            .map(|provider| Arc::new(provider) as Arc<dyn LlmProvider>)
+            .map_err(|err| format!("execution prepare failed: auxiliary llm unavailable: {err}"));
+        }
+
+        OpenRouterProvider::from_config_with_max_tokens(&self.config, max_tokens)
+            .map(|provider| Arc::new(provider) as Arc<dyn LlmProvider>)
+            .map_err(|err| format!("execution prepare failed: auxiliary llm unavailable: {err}"))
+    }
+
     pub fn auxiliary_model_name(&self) -> String {
         let configured = self.config.llm.auxiliary.model.trim();
         if !configured.is_empty() {
