@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 23:09 CST
+最后更新：2026-05-06 03:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：17
+- 活跃待修复：16
 - Later / 待复现：9
-- 已修复 / 已关闭：73
+- 已修复 / 已关闭：74
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 5 条 `P1`；最高待修优先级为 `P1`
 
@@ -32,7 +32,6 @@
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | New | 2026-05-05 22:02 `web.log.2026-05-05` 在 `21:51:52` 与 `22:01:58` 两次记录 `code=99992361 / open_id cross app`，失败后只剩 `[dryrun sink]` 事件卡片，说明 live Feishu sink 仍未恢复；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 23:02 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但同窗 `23:01` 已有 Feishu direct 会话完成 `session.persist_assistant`，`cron_job_runs` 也继续新增 `completed + sent`，说明 sqlite 文件仍在写别的表而会话镜像继续完全停摆 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| Heartbeat actor 级跨 job 去重把 `ORCL` / `持仓` 新触发误判成上一窗 `Cerebras IPO` 重复内容并直接漏发 | P2 | New | 2026-05-04 23:10 最新窗口里 `run_id=15588`（持仓重大事件）与 `15591`（ORCL）都先落成 `parse_kind=JsonTriggered`，却被 `duplicate_suppressed` 压成 `noop + skipped_noop`；两条 `matched_preview` 都错误指向 `22:30` 已送达的 `Cerebras IPO重大进展` | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 12:02 最新 `11:30 / 12:00` 两轮窗口继续在 `Empty / JsonNoop / JsonTriggered` 之间切换；`11:30` 同窗里 `ORCL / TEM破位 / CAI / 持仓 / RKLB / ASTS` 批量落成 `skipped_error`，`12:00` 又出现 `小米 triggered + sent` 与 `ORCL parse_kind=JsonTriggered` 后被压成 `noop + skipped_noop` 的收口矛盾 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-03 15:02 最近一小时 `run_id=14654`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`，`sidecar.log` 同窗先记录真实上游 `maximum context length ... code:400`，随后仍被压扁成 `invalid type: integer \`400\``；`15:02` 下一窗虽回落 `noop`，但根因仍属间歇复发 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
@@ -64,6 +63,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat actor 级跨 job 去重把 `ORCL` / `持仓` 新触发误判成上一窗 `Cerebras IPO` 重复内容并直接漏发 | P2 | Fixed | 2026-05-06 heartbeat preview 去重新增实体 / ticker 锚点兼容检查：两边都有明确英文实体且无交集时不再进入宽松 overlap 抑制；`duplicate_suppressed` metadata 同步保留本轮 `suppressed_preview`，便于审计误抑制；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-05 23:09 heartbeat 后台短检查的 auxiliary function-calling completion token 上限固定为 `8192`，不再沿用全局 `32768` 导致 OpenRouter credits / max_tokens 边界失败；既有 `provider_quota_exhausted` 可观测分类保留；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-05 07:03 `multi_agent` 搜索阶段直返判定补充用户可见澄清识别；`请先确认具体是哪只股票/资产的 ticker？...` 这类澄清句不再因 `先确认` / `我再` 被当作内部工作笔记而送入 answer 阶段，减少已可消费澄清被 fallback 遮蔽的剩余入口；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./feishu_direct_empty_reply_false_success.md) |
 | Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发，最终落库虽为 `OK` 但实时链路已泄露内部 prompt | P1 | Fixed | 2026-05-04 Codex ACP 不再复用旧远端 `session/load`，每轮新建 ACP session 并用 Hone 本地 transcript/context 重建 prompt，切断历史 `agent_message_chunk` prompt 包回放入口；`cargo test -p hone-channels codex_acp_does_not_reuse_remote_session_metadata -- --nocapture`、`cargo test -p hone-channels acp_common --lib -- --nocapture`、`cargo test -p hone-channels session_event_emitter_ -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) | [web_direct_session_update_prompt_echo_leak.md](./web_direct_session_update_prompt_echo_leak.md) |

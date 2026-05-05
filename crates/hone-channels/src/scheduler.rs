@@ -66,6 +66,10 @@ static RE_HEARTBEAT_FACT_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
     .expect("valid heartbeat fact token regex")
 });
 
+static RE_HEARTBEAT_ENTITY_ANCHOR: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"[A-Za-z][A-Za-z0-9.-]{1,}").expect("valid heartbeat entity anchor regex")
+});
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum HeartbeatOutcome {
     Noop,
@@ -439,6 +443,57 @@ fn normalized_similarity_tokens(text: &str) -> std::collections::BTreeSet<String
     tokens
 }
 
+fn heartbeat_entity_anchor_stop_token(token: &str) -> bool {
+    matches!(
+        token,
+        "ai" | "api"
+            | "app"
+            | "aws"
+            | "bedrock"
+            | "cloud"
+            | "current"
+            | "daily"
+            | "event"
+            | "events"
+            | "ipo"
+            | "market"
+            | "monitor"
+            | "news"
+            | "openai"
+            | "price"
+            | "report"
+            | "research"
+            | "stock"
+            | "the"
+            | "update"
+            | "watchlist"
+    )
+}
+
+fn heartbeat_entity_anchor_tokens(text: &str) -> std::collections::BTreeSet<String> {
+    let mut tokens = std::collections::BTreeSet::new();
+    for matched in RE_HEARTBEAT_ENTITY_ANCHOR.find_iter(text) {
+        let token = matched.as_str().to_ascii_lowercase();
+        let normalized = token.trim_matches(|ch: char| ch == '.' || ch == '-');
+        if normalized.chars().count() < 2 || heartbeat_entity_anchor_stop_token(normalized) {
+            continue;
+        }
+        tokens.insert(normalized.to_string());
+    }
+    tokens
+}
+
+fn heartbeat_entity_anchors_compatible(message: &str, preview: &str) -> bool {
+    let message_entities = heartbeat_entity_anchor_tokens(message);
+    let preview_entities = heartbeat_entity_anchor_tokens(preview);
+    message_entities.is_empty()
+        || preview_entities.is_empty()
+        || message_entities
+            .intersection(&preview_entities)
+            .next()
+            .is_some()
+}
+
 fn heartbeat_duplicate_preview_match(
     message: &str,
     delivered_previews: &[(String, String)],
@@ -448,6 +503,9 @@ fn heartbeat_duplicate_preview_match(
         return None;
     }
     for (_, preview) in delivered_previews {
+        if !heartbeat_entity_anchors_compatible(message, preview) {
+            continue;
+        }
         let preview_tokens = normalized_similarity_tokens(preview);
         if preview_tokens.len() < 4 {
             continue;
@@ -1070,6 +1128,7 @@ pub async fn execute_scheduler_event(
                     &event.last_delivered_previews,
                 )
             {
+                let suppressed_preview = truncate_for_log(execution.content.trim(), 200);
                 tracing::info!(
                     "[HeartbeatDiag] duplicate_suppressed job_id={} job={} target={} matched_preview=\"{}\"",
                     event.job_id,
@@ -1085,6 +1144,7 @@ pub async fn execute_scheduler_event(
                     "parse_kind": format!("{:?}", parse_kind),
                     "duplicate_suppressed": true,
                     "matched_preview": matched_preview,
+                    "suppressed_preview": suppressed_preview,
                 });
             }
             execution
@@ -1854,6 +1914,30 @@ mod tests {
         let previews = vec![(
             "2026-04-25T23:01:00+08:00".to_string(),
             "【RKLB 重大事件提醒】Blue Origin Blue Ring 与 Rocket Lab 相关合作已触发提醒"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_cross_job_different_entities() {
+        let message = "【ORCL 大事件监控 | 检查时间: 2026-05-04 23:00 北京时间】ORCL 最新价 171.83 美元，OpenAI 合作叙事仍在发酵。";
+        let previews = vec![(
+            "2026-05-04T22:31:43+08:00".to_string(),
+            "【Cerebras IPO重大进展 | 检查时间: 2026-05-04 22:30 北京时间】Cerebras IPO 定价区间 22-25 美元，AWS Bedrock 与 OpenAI 协议兼容继续推进。"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_portfolio_alert_after_unrelated_ipo() {
+        let message = "【持仓重大事件心跳检测 | 检查时间: 2026-05-04 23:00 北京时间】TEM 财报窗口临近，ORCL 价格异动继续触发持仓重大事件观察。";
+        let previews = vec![(
+            "2026-05-04T22:31:43+08:00".to_string(),
+            "【Cerebras IPO重大进展 | 检查时间: 2026-05-04 22:30 北京时间】Cerebras IPO 定价区间 22-25 美元，AWS Bedrock 与 OpenAI 协议兼容继续推进。"
                 .to_string(),
         )];
 

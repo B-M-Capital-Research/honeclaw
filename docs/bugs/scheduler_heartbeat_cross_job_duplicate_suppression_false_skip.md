@@ -3,7 +3,7 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 
 ## 证据来源
 
@@ -81,8 +81,27 @@
 - 因此当上一窗 `Cerebras IPO` preview 足够长、包含大量通用财经词和事件模板词时，下一窗 `ORCL` / `持仓事件` 的触发正文可能被错误判成“高度相似”。
 - 现有台账在 `duplicate_suppressed` 路径下也没有保留本轮原始触发摘要，导致巡检时只能从 `parse_kind=JsonTriggered` 与 `matched_preview` 的矛盾间接反推漏发。
 
+## 修复记录（2026-05-06）
+
+- 状态更新为 `Fixed`。
+- `crates/hone-channels/src/scheduler.rs` 的 heartbeat preview 去重在进入宽松 overlap 判断前新增英文实体 / ticker 锚点兼容检查：
+  - 两边都能抽取到明确实体锚点且没有交集时，直接视为不同主题，不再用通用中文 n-gram overlap 抑制；
+  - `OpenAI`、`IPO`、`AWS`、`price`、`event` 等常见上下文词不作为实体锚点，避免跨公司叙事误连；
+  - 既有同事实改写样本（`RKLB` 合同、`TEM` 旧催化、`Blue Origin / Rocket Lab`）仍会被抑制。
+- `duplicate_suppressed` metadata 新增 `suppressed_preview`，保留本轮原始触发摘要，后续排查不再只能看到 `matched_preview`。
+- 新增回归样本覆盖：
+  - 上一窗 `Cerebras IPO` 已送达时，下一窗 `ORCL` 触发不得被压成 duplicate；
+  - 上一窗 `Cerebras IPO` 已送达时，下一窗 `持仓重大事件` 中的 `TEM / ORCL` 触发不得被压成 duplicate。
+
+## 当前验证（2026-05-06）
+
+- 已通过：
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+  - `cargo test -p hone-channels heartbeat_duplicate_preview_match -- --nocapture`
+  - `cargo test -p hone-channels scheduler::tests -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `git diff --check`
+
 ## 下一步建议
 
-- 先收紧 heartbeat 跨 job 去重键：至少要求 ticker、主题实体或事件主语一致，再允许进入 preview overlap 去重。
-- 在 `duplicate_suppressed` 终态里补记本轮原始 `raw_preview` / `deliver_preview` 摘要，避免漏发后完全丢失审计线索。
-- 增加回归样本：上一窗 `Cerebras IPO` 已送达时，下一窗 `ORCL +5%` 与 `持仓 TEM/ORCL` 触发不得被压成 `duplicate_suppressed`。
+- 部署后观察下一轮 heartbeat：若仍出现 `duplicate_suppressed=true` 且 `matched_preview` 与 `suppressed_preview` 属于不同 ticker / 主题，应继续扩展实体锚点或把去重键提升到更结构化的事件签名。
