@@ -578,8 +578,13 @@ pub(crate) fn render_codex_tool_status(
         };
     }
 
-    let rendered_command = render_codex_execute_command(update)
-        .unwrap_or_else(|| truncate_codex_execute_label(default_tool));
+    let rendered_command = render_codex_execute_command(update).unwrap_or_else(|| {
+        if is_codex_execute_update(update) {
+            "本地命令".to_string()
+        } else {
+            truncate_codex_execute_label(default_tool)
+        }
+    });
     let purpose_suffix = codex_execute_purpose(update)
         .map(|purpose| format!("；目的：{}", truncate_codex_purpose(&purpose)))
         .unwrap_or_default();
@@ -648,26 +653,10 @@ fn render_codex_execute_command(update: &Value) -> Option<String> {
                 .and_then(|value| value.get("command"))
         })
         .and_then(|value| value.as_array())?;
-    let parts = command
-        .iter()
-        .filter_map(|value| value.as_str())
-        .collect::<Vec<_>>();
-    if parts.is_empty() {
+    if command.is_empty() {
         return None;
     }
-
-    let text = if parts.len() >= 3
-        && matches!(
-            parts[0],
-            "/bin/zsh" | "zsh" | "/bin/bash" | "bash" | "/bin/sh" | "sh"
-        )
-        && parts[1] == "-lc"
-    {
-        parts[2].to_string()
-    } else {
-        parts.join(" ")
-    };
-    Some(truncate_codex_execute_label(&text))
+    Some("本地命令".to_string())
 }
 
 fn codex_execute_purpose(update: &Value) -> Option<String> {

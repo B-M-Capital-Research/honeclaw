@@ -414,14 +414,12 @@ impl FeishuApiClient {
 
         for attempt in 1..=FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS {
             let token = self.get_token().await?;
-            let resp = self
-                .http
-                .post(url)
-                .bearer_auth(&token)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| format!("Feishu resolve email request failed: {e}"))?;
+            let resp = send_feishu_request_with_retry(
+                self.http.post(url).bearer_auth(&token).json(&body),
+                "Feishu resolve email request",
+            )
+            .await
+            .map_err(|e| format!("Feishu resolve email request failed: {e}"))?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -486,14 +484,12 @@ impl FeishuApiClient {
 
         for attempt in 1..=FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS {
             let token = self.get_token().await?;
-            let resp = self
-                .http
-                .post(url)
-                .bearer_auth(&token)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| format!("Feishu resolve mobile request failed: {e}"))?;
+            let resp = send_feishu_request_with_retry(
+                self.http.post(url).bearer_auth(&token).json(&body),
+                "Feishu resolve mobile request",
+            )
+            .await
+            .map_err(|e| format!("Feishu resolve mobile request failed: {e}"))?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -953,6 +949,17 @@ mod tests {
         assert_eq!(feishu_retry_delay(1), Duration::from_millis(500));
         assert_eq!(feishu_retry_delay(2), Duration::from_millis(1500));
         assert_eq!(feishu_retry_delay(99), Duration::from_millis(1500));
+    }
+
+    #[test]
+    fn contact_lookup_json_request_is_cloneable_for_retry() {
+        let client = reqwest::Client::new();
+        let request = client
+            .post("https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id")
+            .bearer_auth("token")
+            .json(&json!({ "mobiles": ["+8613800138000"] }));
+
+        assert!(request.try_clone().is_some());
     }
 
     #[test]

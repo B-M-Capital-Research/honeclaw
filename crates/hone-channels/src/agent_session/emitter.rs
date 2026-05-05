@@ -42,6 +42,12 @@ const INTERNAL_PROGRESS_MARKERS: &[&str] = &[
     "【Invoked Skill Context】",
     "turn-0 可用技能索引",
     "Base directory for this skill:",
+    "codex:approved-for-session",
+    "opencode:approved-for-session",
+    "Approve MCP tool call",
+    "approved-for-session",
+    "rawOutput",
+    "rawInput",
 ];
 
 fn first_internal_progress_marker(text: &str) -> Option<usize> {
@@ -92,6 +98,10 @@ fn looks_like_internal_runtime_detail(text: &str) -> bool {
         || lowered.contains("codex acp")
         || lowered.contains("opencode acp")
         || lowered.contains("acp stream")
+        || lowered.contains("approve mcp tool call")
+        || lowered.contains("approved-for-session")
+        || lowered.contains("rawoutput")
+        || lowered.contains("rawinput")
 }
 
 fn sanitize_user_visible_event_text(value: &str, working_directory: &str) -> Option<String> {

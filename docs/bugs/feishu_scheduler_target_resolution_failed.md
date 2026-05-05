@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 22:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)
 - **证据来源**:
   - 最近一小时真实任务台账：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -142,4 +142,9 @@
 
 - GitHub Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) 仍以本缺陷文档为入口报告 Feishu direct scheduler `target_resolution_failed`。
 - 本轮代码修复覆盖 `target_resolution_failed` 中由 Feishu `Invalid access token` 触发的可恢复子类：`resolve_email` / `resolve_mobile` 会清 token cache、重取 token 并重试一次；详情见 [`feishu_scheduler_tenant_access_token_request_failure.md`](./feishu_scheduler_tenant_access_token_request_failure.md) 与 Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35)。
-- 本单仍保持 `New`：`run_id=15676` 这类 `batch_get_id` 联系人查询传输失败尚未在本轮修改中单独处理，应继续作为 Feishu direct scheduler 目标解析链路缺陷跟踪。
+- `2026-05-05 19:08 CST` 本轮继续修复 `run_id=15676` 这类 `batch_get_id` 联系人查询传输失败：`resolve_email` / `resolve_mobile` 的 contact lookup 请求已接入 Feishu 公共出站重试封装，传输错误、`429` 与 `5xx` 会按既有 3 次短重试处理；`4xx` 业务错误仍不被吞掉，避免重新引入跨 app / 找不到联系人等配置问题。
+- 状态更新为 `Fixed`：本轮闭环的是 contact lookup 传输失败的通用吸震能力；当前机器不再用生产 Feishu 窗口作为判定依据。
+- 新增/更新回归：
+  - `contact_lookup_json_request_is_cloneable_for_retry`
+  - `retry_status_only_matches_transient_feishu_failures`
+  - `invalid_access_token_errors_trigger_one_cache_refresh`

@@ -954,7 +954,7 @@ fn final_response_content_prefers_last_assistant_segment() {
 }
 
 #[test]
-fn codex_execute_renderer_truncates_long_command_and_appends_purpose() {
+fn codex_execute_renderer_hides_command_and_appends_purpose() {
     let long_script = "python - <<'PY'\n".to_string() + &"x".repeat(2400);
     let rendered = render_codex_tool_status(
         &serde_json::json!({
@@ -970,14 +970,13 @@ fn codex_execute_renderer_truncates_long_command_and_appends_purpose() {
         Some("default".to_string()),
     );
 
-    assert!(rendered.tool.contains("[truncated,"));
-    assert!(rendered.tool.starts_with("python - <<'PY'"));
+    assert_eq!(rendered.tool, "本地命令");
     assert_eq!(rendered.message, None);
     assert!(
         rendered
             .reasoning
             .as_deref()
-            .is_some_and(|value| value.starts_with("正在执行：python - <<'PY'"))
+            .is_some_and(|value| value.starts_with("正在执行：本地命令"))
     );
     assert!(
         rendered
@@ -1002,11 +1001,8 @@ fn codex_execute_renderer_formats_done_message() {
         None,
     );
 
-    assert_eq!(rendered.tool, "rtk ls -la uploads");
-    assert_eq!(
-        rendered.message.as_deref(),
-        Some("执行完成：rtk ls -la uploads")
-    );
+    assert_eq!(rendered.tool, "本地命令");
+    assert_eq!(rendered.message.as_deref(), Some("执行完成：本地命令"));
     assert_eq!(rendered.reasoning, None);
 }
 

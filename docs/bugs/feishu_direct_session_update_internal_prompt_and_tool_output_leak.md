@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 00:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)
 - **修复结论复核**:
   - `2026-05-05 12:03 CST` 最近一小时又在新的 direct actor `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 复现，而且这次样本已经来自当前 `web.log.2026-05-05` 的 live 运行态，不再只是修复前旧进程残留。`data/runtime/logs/web.log.2026-05-05` 在 `12:01:05.489` 继续记录 `Tool: hone/skill_tool status=start`，紧接着 `12:01:05.489` 与 `12:02:22.494`、`12:02:38.721` 多次外发 `detail=codex:approved-for-session:Approve MCP tool call`；`12:02:07.663-12:02:07.967` 又把 `pwd && rg --files -g 'AGENTS.md' -g 'company_profiles/**' ...` 与 `date '+%Y-%m-%d %H:%M:%S %Z'` 作为 live runner tool 进度直接广播。对应 `data/runtime/logs/acp-events.log` 在 `2026-05-05T04:02:03.055968+00:00` 起持续把整段分析草稿拆成 `agent_message_chunk` 外发，`2026-05-05T04:02:44.629138+00:00` 与 `04:02:46.189088+00:00` 又继续把 `web_search` 原始 JSON / `rawOutput` 透传到 `tool_call_update`。这说明 `2026-05-05 10:15 CST` 记录的“已扩展到共享边界”的修复结论尚未在当前 live Feishu direct 路径生效，本单必须维持活跃 `New`。
@@ -106,6 +106,18 @@
   - ACP `agent_message_chunk` marker 集补进 `【Invoked Skill Context】` 与 `Base directory for this skill:`，避免这类内容先污染 session 流，再被 Feishu 监听器消费。
 - `2026-05-05 12:03 CST` 已拿到 `web.log.2026-05-05` 与 `acp-events.log` 的新 live 样本，确认当前运行态仍在外发权限审批提示、shell 命令原文和 `web_search` 原始 JSON；因此此前 `Fixed` 结论失效，本单状态调回 `New`。
 
+## 修复记录（2026-05-05 19:08 CST）
+
+- 状态更新为 `Fixed`。
+- 本轮继续在共享用户态事件边界修复，而不是写 Feishu 渠道特判：
+  - `SessionEventEmitter` 的内部进度 marker 增补 `codex:approved-for-session`、`Approve MCP tool call`、`rawInput/rawOutput`，权限审批与原始 ACP payload 不再作为 live 进度细节外发。
+  - Codex ACP `execute` 工具状态不再渲染 shell 命令原文，只显示通用 `本地命令`，保留可解释的 `purpose` 摘要，避免把 `pwd && rg ...`、`date ...` 等内部命令泄给用户。
+- 新增/更新回归：
+  - `session_event_emitter_suppresses_permission_progress_payloads`
+  - `codex_execute_renderer_hides_command_and_appends_purpose`
+  - `codex_execute_renderer_formats_done_message`
+- 关联 GitHub Issue：[#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)。
+
 ## 当前验证（2026-05-05 03:04 CST）
 
 - 已通过：
@@ -127,5 +139,5 @@
 
 ## 后续建议
 
-- 下一条使用新代码的 Feishu direct / scheduler 样本，应重点检查 `session/update` 是否仍出现 `【Invoked Skill Context】`、`Base directory for this skill:`、结构化 JSON 或原始工具错误。
-- 在没有 post-fix live 样本前，GitHub Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) 仍建议保持打开；若新样本确认 live update 已净化，再转 `Closed`。
+- 下一条使用新代码的 Feishu direct / scheduler 样本，应重点检查 `session/update` 是否仍出现 `【Invoked Skill Context】`、`Base directory for this skill:`、结构化 JSON、权限审批标题、原始工具错误或 shell 命令原文。
+- 当前机器不再作为生产运行态判定来源；本轮只以本地代码边界和回归测试证明可闭环修复，GitHub Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) 建议部署后复测再关闭。

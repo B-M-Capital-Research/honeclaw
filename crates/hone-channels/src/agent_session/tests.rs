@@ -2124,6 +2124,33 @@ async fn session_event_emitter_relativizes_user_visible_paths() {
 }
 
 #[tokio::test]
+async fn session_event_emitter_suppresses_permission_progress_payloads() {
+    let root = "/Users/fengming2/Desktop/honeclaw";
+    let listener = Arc::new(RecordingListener::default());
+    let emitter = SessionEventEmitter {
+        listeners: vec![listener.clone()],
+        channel: "feishu".to_string(),
+        user_id: "ou_redacted".to_string(),
+        session_id: "session".to_string(),
+        message_id: None,
+        working_directory: root.to_string(),
+    };
+
+    emitter
+        .emit(AgentRunnerEvent::Progress {
+            stage: "acp.permission",
+            detail: Some("codex:approved-for-session:Approve MCP tool call".to_string()),
+        })
+        .await;
+
+    let events = listener.events.lock().await.clone();
+    assert!(matches!(
+        &events[0],
+        AgentSessionEvent::Run(RunEvent::Progress { detail: None, .. })
+    ));
+}
+
+#[tokio::test]
 async fn session_event_emitter_suppresses_internal_tool_status_payloads() {
     let root = "/Users/fengming2/Desktop/honeclaw";
     let listener = Arc::new(RecordingListener::default());
