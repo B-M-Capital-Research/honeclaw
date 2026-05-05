@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -77,3 +77,22 @@
   - `2026-05-05 14:30:49-14:30:52 CST` 连续记录多条 `failed deserialization of: {"error":{"message":"This request requires more credits...","code":402}}`，随后 `Monitor_Watchlist_11`、`全天原油价格3小时播报` 等 job 落成 `run_finish + runner_error`。
   - `2026-05-05 15:00:49-15:00:52 CST` 同类 `HTTP 402` 再次覆盖 `小米30港元破位预警`、`Cerebras IPO`、`Monitor_Watchlist_11`、`全天原油价格3小时播报`、`ORCL`、`ASTS`、`CAI`、`RKLB`、`持仓重大事件`、`TEM`、`TEM破位` 等监控 job。
 - 到 `2026-05-05 15:01 CST` 为止，最近连续六个整点/半点 heartbeat 窗口都已出现 `HTTP 402 -> delivered=0` 的批量漏发形态；这已不是单窗抖动，而是生产 heartbeat 公共链路持续失效。
+
+## 修复记录（2026-05-05 15:04 CST）
+
+- 状态更新为 `Fixed`。
+- 公共 heartbeat runner 已为上游 provider 失败补充 `failure_kind` 分类：
+  - `provider_quota_exhausted`：覆盖 `HTTP 402`、credits / balance / quota 耗尽等资源不足错误。
+  - `provider_http_error`：覆盖其它上游 `4xx/5xx` HTTP 失败。
+  - `runner_error`：保留为非 HTTP / 非 quota 的执行失败兜底。
+- Feishu 与 Web scheduler 外层日志已区分“条件未命中”和“执行失败”：只有无错误 noop 才继续记录“心跳任务未命中”；带 `error` 的 heartbeat 失败会记录为定时任务执行失败，并输出 `failure_kind`。
+- 本修复不针对单次 OpenRouter 波动写特殊兼容，也不假设当前机器生产状态；它只把可预见的 provider quota / HTTP 故障纳入稳定错误边界和可观测字段，避免继续被 noop 文案掩盖。
+- 验证：
+  - 通过：`cargo test -p hone-channels heartbeat_provider_ --lib -- --nocapture`
+  - 通过：`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+  - 通过：`cargo test -p hone-web-api scheduler_failure_trace_required --lib -- --nocapture`
+  - 通过：`cargo check -p hone-channels -p hone-web-api --tests`
+  - 通过：`cargo check -p hone-feishu --tests`
+  - 已执行：`cargo fmt --all`
+  - 通过：`rustfmt --edition 2024 --config skip_children=true --check bins/hone-feishu/src/scheduler.rs crates/hone-channels/src/scheduler.rs crates/hone-web-api/src/routes/events.rs`
+  - 未完成：`bash scripts/ci/check_fmt_changed.sh` 在当前 macOS 系统 Bash 3.2 下因缺少 `mapfile` 退出，且本机没有 `/opt/homebrew/bin/bash` 或 `/usr/local/bin/bash` 可重跑；格式以 `cargo fmt --all` 兜底。

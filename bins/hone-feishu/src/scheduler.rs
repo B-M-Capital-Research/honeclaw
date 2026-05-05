@@ -48,10 +48,21 @@ pub(crate) async fn handle_scheduler_events(
             );
             let result = run_scheduled_task(&state_clone, &event).await;
             if !result.should_deliver {
-                info!(
-                    "[Feishu] 心跳任务未命中，本轮不发送: job={} target={}",
-                    event.job_name, event.channel_target
-                );
+                if let Some(err) = result.error.as_deref() {
+                    error!(
+                        "[Feishu] 定时任务执行失败，本轮不发送: job={} target={} failure_kind={} err={}",
+                        event.job_name,
+                        event.channel_target,
+                        scheduler::scheduled_task_failure_kind(&result)
+                            .unwrap_or("execution_failed"),
+                        err.replace('\n', "\\n")
+                    );
+                } else {
+                    info!(
+                        "[Feishu] 心跳任务未命中，本轮不发送: job={} target={}",
+                        event.job_name, event.channel_target
+                    );
+                }
                 let _ = storage.record_execution_event(
                     &event.actor,
                     &event.job_id,

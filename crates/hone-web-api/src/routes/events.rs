@@ -309,7 +309,16 @@ async fn run_scheduled_task(
         scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options)
             .await;
     if !result.should_deliver {
-        info!("⏰ [{}] 心跳任务未命中，跳过发送", actor.user_id);
+        if let Some(err) = result.error.as_deref() {
+            error!(
+                "⏰ [{}] 定时任务执行失败，跳过发送: failure_kind={} err={}",
+                actor.user_id,
+                scheduler::scheduled_task_failure_kind(&result).unwrap_or("execution_failed"),
+                err.replace('\n', "\\n")
+            );
+        } else {
+            info!("⏰ [{}] 心跳任务未命中，跳过发送", actor.user_id);
+        }
     } else if let Some(err) = result.error.as_deref() {
         error!("⏰ [{}] 定时任务执行失败: {}", actor.user_id, err);
     } else {

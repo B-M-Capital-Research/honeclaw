@@ -624,6 +624,53 @@ fn heartbeat_execution_from_content(
     }
 }
 
+fn heartbeat_runner_failure_kind(error: &str) -> &'static str {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("upstream http 402")
+        || lower.contains("http 402")
+        || lower.contains("code: 402")
+        || lower.contains("requires more credits")
+        || lower.contains("insufficient credit")
+        || lower.contains("insufficient balance")
+        || lower.contains("quota exceeded")
+    {
+        return "provider_quota_exhausted";
+    }
+    if lower.contains("upstream http ")
+        || lower.contains("http 4")
+        || lower.contains("http 5")
+        || lower.contains("status: 4")
+        || lower.contains("status: 5")
+    {
+        return "provider_http_error";
+    }
+    "runner_error"
+}
+
+fn heartbeat_execution_from_runner_error(
+    error: String,
+    heartbeat_model: &str,
+) -> ScheduledTaskExecution {
+    let failure_kind = heartbeat_runner_failure_kind(&error);
+    ScheduledTaskExecution {
+        should_deliver: false,
+        content: String::new(),
+        error: Some(error),
+        metadata: json!({
+            "heartbeat_model": heartbeat_model,
+            "failure_kind": failure_kind,
+        }),
+        session_id: None,
+    }
+}
+
+pub fn scheduled_task_failure_kind(execution: &ScheduledTaskExecution) -> Option<&str> {
+    execution
+        .metadata
+        .get("failure_kind")
+        .and_then(|value| value.as_str())
+}
+
 fn rollback_skipped_scheduler_assistant_turn(
     storage: &hone_memory::SessionStorage,
     session_id: &str,
@@ -1062,22 +1109,15 @@ pub async fn execute_scheduler_event(
                 }
             } else {
                 tracing::warn!(
-                    "[HeartbeatDiag] runner_error job_id={} job={} target={} model={} error=\"{}\"",
+                    "[HeartbeatDiag] runner_error job_id={} job={} target={} model={} failure_kind={} error=\"{}\"",
                     event.job_id,
                     event.job_name,
                     event.channel_target,
                     heartbeat_model,
+                    heartbeat_runner_failure_kind(&error),
                     truncate_for_log(&error, 280).replace('\n', "\\n"),
                 );
-                ScheduledTaskExecution {
-                    should_deliver: false,
-                    content: String::new(),
-                    error: Some(error),
-                    metadata: json!({
-                        "heartbeat_model": heartbeat_model,
-                    }),
-                    session_id: None,
-                }
+                heartbeat_execution_from_runner_error(error, &heartbeat_model)
             }
         }
     }
@@ -1190,9 +1230,9 @@ mod tests {
         HeartbeatOutcome, HeartbeatParseKind, SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
         build_scheduled_prompt, execute_scheduler_event, has_skip_delivery_signal,
         heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
-        inspect_heartbeat_result, is_empty_success_fallback, load_actor_quiet_hours,
-        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
-        sanitize_scheduler_delivery_text,
+        heartbeat_execution_from_runner_error, inspect_heartbeat_result, is_empty_success_fallback,
+        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
+        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -1647,6 +1687,39 @@ mod tests {
             Some("heartbeat 输出不是合法 JSON，任务已标记失败")
         );
         assert_eq!(execution.metadata["parse_kind"], "JsonMalformed");
+    }
+
+    #[test]
+    fn heartbeat_provider_quota_error_is_classified() {
+        let execution = heartbeat_execution_from_runner_error(
+            "LLM 错误: upstream HTTP 402: This request requires more credits, or fewer max_tokens (code: 402)"
+                .to_string(),
+            "moonshotai/kimi-k2.5",
+        );
+        assert!(!execution.should_deliver);
+        assert_eq!(
+            execution.error.as_deref().unwrap().contains("HTTP 402"),
+            true
+        );
+        assert_eq!(
+            execution.metadata["failure_kind"],
+            "provider_quota_exhausted"
+        );
+        assert_eq!(
+            execution.metadata["heartbeat_model"],
+            "moonshotai/kimi-k2.5"
+        );
+    }
+
+    #[test]
+    fn heartbeat_provider_http_error_is_classified_without_noop() {
+        let execution = heartbeat_execution_from_runner_error(
+            "LLM 错误: upstream HTTP 500: provider unavailable".to_string(),
+            "model-x",
+        );
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_some());
+        assert_eq!(execution.metadata["failure_kind"], "provider_http_error");
     }
 
     #[test]
