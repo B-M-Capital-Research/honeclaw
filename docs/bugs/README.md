@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 12:03 CST
+最后更新：2026-05-05 13:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,11 +15,11 @@
 
 ## 当前概览
 
-- 活跃待修复：18
+- 活跃待修复：19
 - Later / 待复现：9
 - 已修复 / 已关闭：74
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 4 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 5 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
@@ -27,9 +27,10 @@
 | --- | --- | --- | --- | --- |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-05 04:07 release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下 `rw.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
 | Feishu 直聊 `session/update` 会把系统提示、skill prompt、绝对路径与工具原始输出直接外发 | P1 | New | 2026-05-05 12:03 当前 `web.log.2026-05-05` 与 `acp-events.log` 新样本再次复现：新 actor `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 持续外发 `Approve MCP tool call`、shell 命令原文、`agent_message_chunk` 分析草稿和 `web_search` 原始 JSON；Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |
+| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | New | 2026-05-05 13:02 最近一小时 `12:30` 与 `13:00` 两轮 heartbeat 共 `22` 条执行全部落成 `execution_failed + skipped_error + delivered=0`；运行日志先记录 `This request requires more credits, or fewer max_tokens (code: 402)`，随后渠道侧仍统一打印“心跳任务未命中，本轮不发送”；Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 取票失效，生成完成的日报仍整批无法送达 | P1 | New | 2026-05-05 12:02 最近一小时继续活跃：`run_id=15703`（`Cerebras IPO与业务进展心跳监控`）已生成完整 `deliver_preview`，最终仍落成 `target_resolution_failed + delivered=0`，错误同为 `Invalid access token for authorization`；Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | New | 2026-05-05 05:23 `run_id=15655`（`科技成长赛道大盘极值与情绪监控`）再次落成 `completed + target_resolution_failed + delivered=0`；最新错误从旧的 actor/open_id 不一致漂到 `Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`，说明 direct scheduler 目标解析链路仍未恢复；Issue [#34](https://github.com/B-M-Capital-Research/honeclaw/issues/34) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 12:02 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但 `web.log.2026-05-05` 已记录新的 Feishu direct 会话在 `11:45:55-11:45:57` 完成 `session.persist_assistant + reply.send`，另有新会话在 `12:00` 继续运行，仍未同步进 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 13:02 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但 `web.log.2026-05-05` 已记录新的 Feishu direct 会话在 `12:58:25-13:00:47` 完成 `agent.run -> session.persist_assistant -> reply.send`，仍未同步进 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat actor 级跨 job 去重把 `ORCL` / `持仓` 新触发误判成上一窗 `Cerebras IPO` 重复内容并直接漏发 | P2 | New | 2026-05-04 23:10 最新窗口里 `run_id=15588`（持仓重大事件）与 `15591`（ORCL）都先落成 `parse_kind=JsonTriggered`，却被 `duplicate_suppressed` 压成 `noop + skipped_noop`；两条 `matched_preview` 都错误指向 `22:30` 已送达的 `Cerebras IPO重大进展` | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 12:02 最新 `11:30 / 12:00` 两轮窗口继续在 `Empty / JsonNoop / JsonTriggered` 之间切换；`11:30` 同窗里 `ORCL / TEM破位 / CAI / 持仓 / RKLB / ASTS` 批量落成 `skipped_error`，`12:00` 又出现 `小米 triggered + sent` 与 `ORCL parse_kind=JsonTriggered` 后被压成 `noop + skipped_noop` 的收口矛盾 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
