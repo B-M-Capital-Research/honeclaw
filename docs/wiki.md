@@ -1,6 +1,6 @@
 # Hone Wiki
 
-Last updated: 2026-04-26
+Last updated: 2026-05-05
 
 This page is the practical wiki entry for Honeclaw. It explains the repository layout, the main runtime pieces, and the common ways to install, configure, start, stop, and verify the project.
 
@@ -193,8 +193,10 @@ Start backend and enabled channel listeners only:
 Start backend, enabled channels, and both admin/public Vite frontends:
 
 ```bash
-./launch.sh --web
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH ./launch.sh --web
 ```
+
+For the full source Web startup checklist and macOS Rollup/Node signing pitfall, see [`docs/runbooks/source-web-startup.md`](./runbooks/source-web-startup.md).
 
 Start desktop development mode where the desktop owns bundled backend/channel sidecars:
 
@@ -446,6 +448,16 @@ curl -fsSL https://bun.sh/install | bash
 exec "$SHELL" -l
 bun install
 ```
+
+### Vite fails with Rollup native addon code-signing errors on macOS
+
+If `bun run dev:web` or `./launch.sh --web` fails with `@rollup/rollup-darwin-arm64`, `ERR_DLOPEN_FAILED`, or a Team ID code-signing mismatch, make sure Homebrew Node comes before app-bundled Node in `PATH`:
+
+```bash
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH ./launch.sh --web
+```
+
+See the detailed source Web startup runbook: [`docs/runbooks/source-web-startup.md`](./runbooks/source-web-startup.md).
 
 ### Port already occupied
 
