@@ -708,3 +708,9 @@
 - 下一次本地 Desktop/runtime 启动后，复核启动日志中的 `session.shadow_sqlite.enabled=true`，并确认新的直聊或 scheduler turn 会推进 `sessions` / `session_messages` 的 `MAX(imported_at)`。
 - 增加“会话镜像最新时间 vs 实际成功 `reply.send` 时间”的 lag 监控，避免再次只能靠人工巡检发现。
 - 对成功会话补一条只读诊断，确认真实会话源文件是否已更新、是否只是 sqlite 镜像缺失，而不是更早的持久化链路已分叉。
+
+## 状态更新（2026-05-05 22:02 CST）
+
+- 本轮再次确认 sqlite 会话镜像仍完全无增量：`sessions.max(updated_at)` / `sessions.max(last_message_at)` 与 `session_messages.max(timestamp)` / `session_messages.max(imported_at)` 继续共同停在 `2026-04-27T16:54:20.03xxxx+08:00`，最近一小时 `sessions_last_hour=0`、`messages_last_hour=0`。
+- 但同窗 `data/runtime/logs/web.log.2026-05-05` 已记录同一条 Feishu direct 会话 `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 在 `21:54:59` 与 `22:02:10` 两轮连续完成 `step=session.persist_assistant detail=done -> done success=true`，并分别在 `21:55:03`、`22:02:12` 完成 `reply.send`。
+- 这说明 sqlite 文件本身和 live 会话主链路仍在持续写别的表/日志，但 `sessions` / `session_messages` 镜像链路依旧完全卡死，没有任何追平迹象；本单继续维持活跃 `New`。

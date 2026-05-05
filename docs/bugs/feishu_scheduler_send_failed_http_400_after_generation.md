@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
   - 2026-04-30 22:33 最近一小时最新样本：
@@ -278,3 +278,12 @@
   - `rustfmt --edition 2024 --check crates/hone-event-engine/src/sinks/feishu.rs`
   - `cargo check -p hone-event-engine -p hone-web-api --tests`
 - 当前结论：本轮闭合了 event-engine 价格异动卡片仍绕过 current-app open_id fallback 的本地可修缺口，并保留“解析结果唯一才替换”的误投保护；本缺陷更新为 `Fixed`。当前机器不是生产机器，未用线上健康检查或真实投递作为判定依据。
+
+## 状态更新（2026-05-05 22:02 CST）
+
+- 本轮巡检确认：该缺陷在最近一小时继续活跃，`Fixed` 结论不成立。
+- `data/runtime/logs/web.log.2026-05-05` 在同一观察窗内再次出现两次 live Feishu sink 失败：
+  - `2026-05-05 21:51:52.373`：`channel sink failed, falling back to log: feishu send HTTP 400 Bad Request`，返回体明确 `code=99992361`、`msg="open_id cross app"`；紧接着只剩 `[dryrun sink]` 的 `STX 跨过 +6% 档` 事件卡片；
+  - `2026-05-05 22:01:58.028`：同一错误再次出现，紧接着只剩 `[dryrun sink]` 的 `SNDK 跨过 +8% 档` 事件卡片。
+- 同窗还有大量 `sink delivered` 样本，说明不是 Feishu 出站全局不可用，而是某类 event-engine / scheduler 直达目标仍稳定命中 `open_id cross app`。
+- 该缺陷继续维持活跃 `New`，并沿用 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。

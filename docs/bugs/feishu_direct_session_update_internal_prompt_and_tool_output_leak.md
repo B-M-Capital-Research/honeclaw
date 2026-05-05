@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 00:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)
 - **修复结论复核**:
   - `2026-05-05 12:03 CST` 最近一小时又在新的 direct actor `Actor_feishu__direct__ou_5f39103ac18cf70a98afc6cfc7529120e5` 复现，而且这次样本已经来自当前 `web.log.2026-05-05` 的 live 运行态，不再只是修复前旧进程残留。`data/runtime/logs/web.log.2026-05-05` 在 `12:01:05.489` 继续记录 `Tool: hone/skill_tool status=start`，紧接着 `12:01:05.489` 与 `12:02:22.494`、`12:02:38.721` 多次外发 `detail=codex:approved-for-session:Approve MCP tool call`；`12:02:07.663-12:02:07.967` 又把 `pwd && rg --files -g 'AGENTS.md' -g 'company_profiles/**' ...` 与 `date '+%Y-%m-%d %H:%M:%S %Z'` 作为 live runner tool 进度直接广播。对应 `data/runtime/logs/acp-events.log` 在 `2026-05-05T04:02:03.055968+00:00` 起持续把整段分析草稿拆成 `agent_message_chunk` 外发，`2026-05-05T04:02:44.629138+00:00` 与 `04:02:46.189088+00:00` 又继续把 `web_search` 原始 JSON / `rawOutput` 透传到 `tool_call_update`。这说明 `2026-05-05 10:15 CST` 记录的“已扩展到共享边界”的修复结论尚未在当前 live Feishu direct 路径生效，本单必须维持活跃 `New`。
@@ -117,6 +117,17 @@
   - `codex_execute_renderer_hides_command_and_appends_purpose`
   - `codex_execute_renderer_formats_done_message`
 - 关联 GitHub Issue：[#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)。
+
+## 状态更新（2026-05-05 22:02 CST）
+
+- 本轮巡检确认：该缺陷在最近一小时继续活跃，`2026-05-05 19:08 CST` 的 `Fixed` 结论仍不成立。
+- `data/runtime/logs/acp-events.log` 在 `2026-05-05T13:53:00+00:00` 到 `14:02:00+00:00` 的 direct actor `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 新样本里再次复现多类 live 外泄：
+  - `session/prompt` 仍整段外发系统提示全文；
+  - `2026-05-05T13:53:30.026537+00:00` 起持续把分析草稿拆成 `agent_message_chunk` 实时外发；
+  - `2026-05-05T13:53:34.114003+00:00` 继续把 `date '+%Y-%m-%d %H:%M:%S %Z'` 的 `rawOutput` 直接透传；
+  - `2026-05-05T13:53:34.136961+00:00` 又把 `rg --files company_profiles ...` 的失败 `rawOutput` 和命令原文直接透传。
+- `data/runtime/logs/web.log.2026-05-05` 同窗也继续记录同一会话在 `21:53:34`、`22:01:52` 调用 `Edit company_profiles/ASTS.md`、本地命令和搜索工具，说明这不是旧会话残留，而是当前 live Feishu direct 路径仍在消费未净化事件。
+- 这说明共享用户态边界虽然补了部分 marker，但 Feishu live `session/update` 仍会把系统提示、分析草稿和本地命令原始回显直接外发；本单继续维持活跃 `New`。
 
 ## 当前验证（2026-05-05 03:04 CST）
 

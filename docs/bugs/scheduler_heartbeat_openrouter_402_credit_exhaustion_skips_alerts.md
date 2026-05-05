@@ -127,3 +127,10 @@
 - `data/runtime/logs/web.log.2026-05-05` 在 `21:00:02.001-21:00:02.592` 继续连续记录多条 `failed deserialization ... "code":402`，随后 `RKLB异动监控`、`ORCL 大事件监控`、`Cerebras IPO与业务进展心跳监控` 等 heartbeat job 落成 `runner_error`，错误统一为 `upstream HTTP 402 ... can only afford 10032 ... (code: 402)`。
 - 同窗存在正常送达的非 heartbeat 任务，说明当前不是 scheduler 全局停摆；故障仍集中在 heartbeat 调用 `moonshotai/kimi-k2.5` 的公共链路。
 - 到本轮巡检时，`2026-05-05 12:30` 到 `21:00` 已连续 `12` 个整点/半点 heartbeat 窗口、累计 `132` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
+
+## 状态更新（2026-05-05 22:02 CST）
+
+- 本轮巡检确认：故障在最近一小时继续活跃，且 `21:30` 与 `22:00` 两个窗口再次各有 `11` 条 heartbeat 全量失败。
+- `data/runtime/logs/web.log.2026-05-05` 在 `21:30:01.888-21:30:02.854` 与 `22:00:01.843-22:00:03.447` 再次连续记录多条 `failed deserialization ... "code":402`，随后 `TEM破位预警`、`ASTS 重大异动心跳监控`、`ORCL 大事件监控`、`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测`、`Monitor_Watchlist_11` 等 heartbeat job 全部落成 `runner_error`。
+- 同窗 `web.log.2026-05-05` 仍记录 Feishu direct 会话 `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 在 `21:54:59`、`22:02:10` 两轮正常 `session.persist_assistant -> reply.send`，说明当前不是调度器或 Feishu 出站全局不可用；故障继续集中在 heartbeat 调用 `moonshotai/kimi-k2.5` 的公共链路。
+- 到本轮巡检时，`2026-05-05 12:30` 到 `22:00` 已连续 `14` 个整点/半点 heartbeat 窗口、累计 `154` 条 job 落成同根因失败；本单继续维持活跃 `P1`。

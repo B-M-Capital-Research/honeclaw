@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 22:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)
 - **证据来源**:
   - 最近一小时真实任务台账：`data/sessions.sqlite3` -> `cron_job_runs`
