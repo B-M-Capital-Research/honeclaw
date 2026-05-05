@@ -10,6 +10,7 @@ use tokio::time::sleep;
 const FEISHU_REQUEST_MAX_ATTEMPTS: usize = 3;
 const FEISHU_RETRY_DELAYS: [Duration; FEISHU_REQUEST_MAX_ATTEMPTS - 1] =
     [Duration::from_millis(500), Duration::from_millis(1500)];
+const FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS: usize = 2;
 
 #[derive(Clone)]
 pub struct FeishuApiClient {
@@ -105,6 +106,10 @@ impl FeishuApiClient {
         Ok(token)
     }
 
+    async fn clear_token_cache(&self) {
+        *self.token_cache.write().await = None;
+    }
+
     pub async fn send_message(
         &self,
         receive_id: &str,
@@ -135,7 +140,6 @@ impl FeishuApiClient {
         content: &str,
         uuid: Option<&str>,
     ) -> Result<FeishuSendResult, String> {
-        let token = self.get_token().await?;
         let url = format!(
             "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type={receive_id_type}"
         );
@@ -153,13 +157,6 @@ impl FeishuApiClient {
             );
         }
 
-        let resp = send_feishu_request_with_retry(
-            self.http.post(&url).bearer_auth(token).json(&body),
-            "Feishu send message request",
-        )
-        .await
-        .map_err(|e| format!("Feishu send message request failed: {e}"))?;
-
         #[derive(Deserialize)]
         struct SendResp {
             code: i64,
@@ -167,29 +164,53 @@ impl FeishuApiClient {
             data: Option<FeishuSendResult>,
         }
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let error_body = resp.text().await.unwrap_or_default();
-            return Err(format!(
-                "Feishu send message failed: HTTP {} - {}",
-                status, error_body
-            ));
-        }
-
-        let send_resp: SendResp = resp
-            .json()
+        for attempt in 1..=FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS {
+            let token = self.get_token().await?;
+            let resp = send_feishu_request_with_retry(
+                self.http.post(&url).bearer_auth(&token).json(&body),
+                "Feishu send message request",
+            )
             .await
-            .map_err(|e| format!("Feishu send message json err: {e}"))?;
-        if send_resp.code != 0 {
-            return Err(format!(
-                "Feishu send message api error {}: {}",
-                send_resp.code, send_resp.msg
-            ));
+            .map_err(|e| format!("Feishu send message request failed: {e}"))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let error_body = resp.text().await.unwrap_or_default();
+                if should_refresh_feishu_token_for_http_error(status, &error_body)
+                    && should_retry_invalid_token_refresh(attempt)
+                {
+                    self.clear_token_cache().await;
+                    continue;
+                }
+                return Err(format!(
+                    "Feishu send message failed: HTTP {} - {}",
+                    status, error_body
+                ));
+            }
+
+            let send_resp: SendResp = resp
+                .json()
+                .await
+                .map_err(|e| format!("Feishu send message json err: {e}"))?;
+            if send_resp.code != 0 {
+                if is_feishu_invalid_access_token_error(send_resp.code, &send_resp.msg)
+                    && should_retry_invalid_token_refresh(attempt)
+                {
+                    self.clear_token_cache().await;
+                    continue;
+                }
+                return Err(format!(
+                    "Feishu send message api error {}: {}",
+                    send_resp.code, send_resp.msg
+                ));
+            }
+
+            return send_resp
+                .data
+                .ok_or_else(|| "No data in send message response".to_string());
         }
 
-        send_resp
-            .data
-            .ok_or_else(|| "No data in send message response".to_string())
+        Err("Feishu send message invalid token refresh exhausted".to_string())
     }
 
     pub async fn reply_message(
@@ -377,7 +398,6 @@ impl FeishuApiClient {
     }
 
     pub async fn resolve_email(&self, email: &str) -> Result<FeishuResolvedUser, String> {
-        let token = self.get_token().await?;
         let url =
             "https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id";
 
@@ -385,15 +405,6 @@ impl FeishuApiClient {
             "emails": [email]
         });
 
-        let resp = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("Feishu resolve email request failed: {e}"))?;
-
         #[derive(Deserialize)]
         struct BatchGetIdResp {
             code: i64,
@@ -401,30 +412,64 @@ impl FeishuApiClient {
             data: Option<serde_json::Value>,
         }
 
-        let batch_resp: BatchGetIdResp = resp
-            .json()
-            .await
-            .map_err(|e| format!("Feishu resolve email json err: {e}"))?;
-        if batch_resp.code != 0 {
-            return Err(format!(
-                "Feishu resolve email api error {}: {}",
-                batch_resp.code, batch_resp.msg
-            ));
+        for attempt in 1..=FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS {
+            let token = self.get_token().await?;
+            let resp = self
+                .http
+                .post(url)
+                .bearer_auth(&token)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| format!("Feishu resolve email request failed: {e}"))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                if should_refresh_feishu_token_for_http_error(status, &body)
+                    && should_retry_invalid_token_refresh(attempt)
+                {
+                    self.clear_token_cache().await;
+                    continue;
+                }
+                return Err(format!(
+                    "Feishu resolve email failed: HTTP {} - {}",
+                    status, body
+                ));
+            }
+
+            let batch_resp: BatchGetIdResp = resp
+                .json()
+                .await
+                .map_err(|e| format!("Feishu resolve email json err: {e}"))?;
+            if batch_resp.code != 0 {
+                if is_feishu_invalid_access_token_error(batch_resp.code, &batch_resp.msg)
+                    && should_retry_invalid_token_refresh(attempt)
+                {
+                    self.clear_token_cache().await;
+                    continue;
+                }
+                return Err(format!(
+                    "Feishu resolve email api error {}: {}",
+                    batch_resp.code, batch_resp.msg
+                ));
+            }
+
+            if let Some(user_id) = first_batch_get_open_id(batch_resp.data) {
+                return Ok(FeishuResolvedUser {
+                    email: email.to_string(),
+                    mobile: String::new(),
+                    open_id: user_id,
+                });
+            }
+
+            return Err(format!("No user found for email {}", email));
         }
 
-        if let Some(user_id) = first_batch_get_open_id(batch_resp.data) {
-            return Ok(FeishuResolvedUser {
-                email: email.to_string(),
-                mobile: String::new(),
-                open_id: user_id,
-            });
-        }
-
-        Err(format!("No user found for email {}", email))
+        Err("Feishu resolve email invalid token refresh exhausted".to_string())
     }
 
     pub async fn resolve_mobile(&self, mobile: &str) -> Result<FeishuResolvedUser, String> {
-        let token = self.get_token().await?;
         let url =
             "https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id";
 
@@ -432,15 +477,6 @@ impl FeishuApiClient {
             "mobiles": [mobile]
         });
 
-        let resp = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("Feishu resolve mobile request failed: {e}"))?;
-
         #[derive(Deserialize)]
         struct BatchGetIdResp {
             code: i64,
@@ -448,26 +484,61 @@ impl FeishuApiClient {
             data: Option<serde_json::Value>,
         }
 
-        let batch_resp: BatchGetIdResp = resp
-            .json()
-            .await
-            .map_err(|e| format!("Feishu resolve mobile json err: {e}"))?;
-        if batch_resp.code != 0 {
-            return Err(format!(
-                "Feishu resolve mobile api error {}: {}",
-                batch_resp.code, batch_resp.msg
-            ));
+        for attempt in 1..=FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS {
+            let token = self.get_token().await?;
+            let resp = self
+                .http
+                .post(url)
+                .bearer_auth(&token)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| format!("Feishu resolve mobile request failed: {e}"))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                if should_refresh_feishu_token_for_http_error(status, &body)
+                    && should_retry_invalid_token_refresh(attempt)
+                {
+                    self.clear_token_cache().await;
+                    continue;
+                }
+                return Err(format!(
+                    "Feishu resolve mobile failed: HTTP {} - {}",
+                    status, body
+                ));
+            }
+
+            let batch_resp: BatchGetIdResp = resp
+                .json()
+                .await
+                .map_err(|e| format!("Feishu resolve mobile json err: {e}"))?;
+            if batch_resp.code != 0 {
+                if is_feishu_invalid_access_token_error(batch_resp.code, &batch_resp.msg)
+                    && should_retry_invalid_token_refresh(attempt)
+                {
+                    self.clear_token_cache().await;
+                    continue;
+                }
+                return Err(format!(
+                    "Feishu resolve mobile api error {}: {}",
+                    batch_resp.code, batch_resp.msg
+                ));
+            }
+
+            if let Some(user_id) = first_batch_get_open_id(batch_resp.data) {
+                return Ok(FeishuResolvedUser {
+                    mobile: mobile.to_string(),
+                    email: String::new(),
+                    open_id: user_id,
+                });
+            }
+
+            return Err(format!("No user found for mobile {}", mobile));
         }
 
-        if let Some(user_id) = first_batch_get_open_id(batch_resp.data) {
-            return Ok(FeishuResolvedUser {
-                mobile: mobile.to_string(),
-                email: String::new(),
-                open_id: user_id,
-            });
-        }
-
-        Err(format!("No user found for mobile {}", mobile))
+        Err("Feishu resolve mobile invalid token refresh exhausted".to_string())
     }
 
     pub async fn download_resource(
@@ -786,6 +857,25 @@ fn should_retry_feishu_status(status: StatusCode) -> bool {
     status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
+fn should_retry_invalid_token_refresh(attempt: usize) -> bool {
+    attempt < FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS
+}
+
+fn should_refresh_feishu_token_for_http_error(status: StatusCode, body: &str) -> bool {
+    status == StatusCode::UNAUTHORIZED || contains_invalid_access_token_text(body)
+}
+
+fn is_feishu_invalid_access_token_error(code: i64, msg: &str) -> bool {
+    matches!(code, 99991663 | 99991668) || contains_invalid_access_token_text(msg)
+}
+
+fn contains_invalid_access_token_text(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    normalized.contains("invalid access token")
+        || normalized.contains("access token invalid")
+        || normalized.contains("tenant_access_token invalid")
+}
+
 fn image_mime_type(path: &str) -> &'static str {
     match Path::new(path)
         .extension()
@@ -816,7 +906,11 @@ fn first_batch_get_open_id(data: Option<serde_json::Value>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{feishu_retry_delay, first_batch_get_open_id, should_retry_feishu_status};
+    use super::{
+        feishu_retry_delay, first_batch_get_open_id, is_feishu_invalid_access_token_error,
+        should_refresh_feishu_token_for_http_error, should_retry_feishu_status,
+        should_retry_invalid_token_refresh,
+    };
     use reqwest::StatusCode;
     use serde_json::json;
     use std::time::Duration;
@@ -859,5 +953,31 @@ mod tests {
         assert_eq!(feishu_retry_delay(1), Duration::from_millis(500));
         assert_eq!(feishu_retry_delay(2), Duration::from_millis(1500));
         assert_eq!(feishu_retry_delay(99), Duration::from_millis(1500));
+    }
+
+    #[test]
+    fn invalid_access_token_errors_trigger_one_cache_refresh() {
+        assert!(is_feishu_invalid_access_token_error(
+            99991663,
+            "Invalid access token"
+        ));
+        assert!(is_feishu_invalid_access_token_error(
+            0,
+            "tenant_access_token invalid"
+        ));
+        assert!(should_refresh_feishu_token_for_http_error(
+            StatusCode::UNAUTHORIZED,
+            ""
+        ));
+        assert!(should_refresh_feishu_token_for_http_error(
+            StatusCode::BAD_REQUEST,
+            r#"{"msg":"Invalid access token"}"#
+        ));
+        assert!(should_retry_invalid_token_refresh(1));
+        assert!(!should_retry_invalid_token_refresh(2));
+        assert!(!is_feishu_invalid_access_token_error(
+            99992361,
+            "open_id cross app"
+        ));
     }
 }

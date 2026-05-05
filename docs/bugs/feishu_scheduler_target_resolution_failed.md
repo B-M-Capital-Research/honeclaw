@@ -137,3 +137,9 @@
 - `cargo check -p hone-feishu`
 - `rustfmt --edition 2024 --check bins/hone-feishu/src/handler.rs bins/hone-feishu/src/scheduler.rs`
 - `git diff --check`
+
+## 2026-05-05 bug-2 复核
+
+- GitHub Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) 仍以本缺陷文档为入口报告 Feishu direct scheduler `target_resolution_failed`。
+- 本轮代码修复覆盖 `target_resolution_failed` 中由 Feishu `Invalid access token` 触发的可恢复子类：`resolve_email` / `resolve_mobile` 会清 token cache、重取 token 并重试一次；详情见 [`feishu_scheduler_tenant_access_token_request_failure.md`](./feishu_scheduler_tenant_access_token_request_failure.md) 与 Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35)。
+- 本单仍保持 `New`：`run_id=15676` 这类 `batch_get_id` 联系人查询传输失败尚未在本轮修改中单独处理，应继续作为 Feishu direct scheduler 目标解析链路缺陷跟踪。

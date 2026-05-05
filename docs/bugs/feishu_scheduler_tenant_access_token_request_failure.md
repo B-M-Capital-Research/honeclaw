@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-21 08:04 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35)
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
@@ -127,4 +127,19 @@
 - 同一重试封装也用于 Feishu 发送、回复、更新消息请求，保证 token 获取恢复后后续出站阶段也具备基本吸震。
 - 已验证：`cargo test -p hone-feishu`。
 - 当时状态曾调整为 `Later`，因为代码止血已落地。
-- `2026-05-05 10:13 CST` 最近窗口已确认认证失效场景再次整批复现，因此状态重新调回 `New`。
+- `2026-05-05 10:13 CST` 最近窗口已确认认证失效场景再次整批复现，因此进入下方 2026-05-05 修复。
+
+## 修复进展（2026-05-05）
+
+- GitHub Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) 报告了同一 Feishu scheduler 出站链路的新形态：目标解析或发送阶段拿到 Feishu API 的 `Invalid access token` 返回后，已有 token cache 不会失效，导致同一坏 token 直接把本轮记成 `target_resolution_failed` 或 `send_failed`。
+- 已在 `bins/hone-feishu/src/client.rs` 增加 cached token 失效恢复：
+  - `send_message_with_receive_id_type`、`resolve_email`、`resolve_mobile` 遇到 Feishu HTTP 401、响应体包含 `Invalid access token`，或 API code/msg 明确是 invalid access token 时，会清空本地 `tenant_access_token` cache 并重取 token 后重试一次；
+  - `open_id cross app`、普通 `400`、联系人不存在等非 token 类业务错误仍立即失败，不被误吞；
+  - 既有 `tenant_access_token/internal` 传输错误、`429` 与 `5xx` 三次短重试保持不变。
+- 回归验证：
+  - `rustfmt --edition 2024 --check bins/hone-feishu/src/client.rs`
+  - `cargo test -p hone-feishu invalid_access_token_errors_trigger_one_cache_refresh -- --nocapture`
+  - `cargo test -p hone-feishu -- --nocapture`
+  - `cargo check -p hone-feishu`
+  - `git diff --check`
+- 状态调整为 `Fixed`：本轮修复的是可本地闭环的 cached invalid-token 通用恢复路径；当前机器不再用生产 Feishu 窗口作为判定依据。
