@@ -3,11 +3,11 @@
 - **发现时间**: 2026-05-05 00:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)
 - **修复结论复核**:
-  - `2026-05-05 09:16 CST` 最近一小时又在新的 direct actor `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 复现。`data/runtime/logs/acp-events.log` 在 `2026-05-05T01:16:49.095634+00:00`、`01:16:49.106394+00:00`、`01:16:49.336787+00:00` 至少 3 次把 `【Invoked Skill Context】`、`Skill: Stock Research (stock_research)`、`Base directory for this skill: /Users/.../skills/stock_research` 作为 `tool_call_update.rawOutput` 外发；同一分钟内 `01:16:49.098245+00:00`、`01:16:49.110104+00:00`、`01:16:49.325351+00:00`、`01:16:49.341390+00:00` 又继续外发 `company_profiles` 原始目录查询结果。说明 05:04 的所谓修复结论并未进入当前运行态，泄漏仍在当前小时活跃。
-  - `2026-05-05 04:09 CST` 最近窗口再次复现，而且已从最初的 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 扩散到新的 direct actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`。`data/runtime/logs/acp-events.log` 在 `2026-05-04T20:09:19.773634+00:00` 先把整段油价分析以 `agent_message_chunk` 方式实时外发，随后在 `2026-05-04T20:09:35.598749+00:00` 暴露 `Approve MCP tool call` 权限请求，在 `2026-05-04T20:09:35.631817+00:00` 再次把 `【Invoked Skill Context】`、`Base directory for this skill: /Users/.../skills/market_analysis` 与完整 skill prompt 透传到 live `session/update`；到 `2026-05-04T21:24:12.634833+00:00` 又继续外发 `web_search` 原始 JSON。说明当前不是某个 stock skill 的单点问题，而是 Feishu live update 边界仍系统性失守。
+  - `2026-05-05 09:16 CST` 最近一小时又在新的 direct actor `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 复现。`data/runtime/logs/acp-events.log` 在 `2026-05-05T01:16:49.095634+00:00`、`01:16:49.106394+00:00`、`01:16:49.336787+00:00` 至少 3 次把 `【Invoked Skill Context】`、`Skill: Stock Research (stock_research)`、`Base directory for this skill: /Users/.../skills/stock_research` 作为 `tool_call_update.rawOutput` 外发；同一分钟内 `01:16:49.098245+00:00`、`01:16:49.110104+00:00`、`01:16:49.325351+00:00`、`01:16:49.341390+00:00` 又继续外发 `company_profiles` 原始目录查询结果。这些样本都发生在本轮代码修复前的运行态，说明旧进程中的共享出站净化尚未覆盖该路径。
+  - `2026-05-05 04:09 CST` 最近窗口再次复现，而且已从最初的 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 扩散到新的 direct actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`。`data/runtime/logs/acp-events.log` 在 `2026-05-04T20:09:19.773634+00:00` 先把整段油价分析以 `agent_message_chunk` 方式实时外发，随后在 `2026-05-04T20:09:35.598749+00:00` 暴露 `Approve MCP tool call` 权限请求，在 `2026-05-04T20:09:35.631817+00:00` 再次把 `【Invoked Skill Context】`、`Base directory for this skill: /Users/.../skills/market_analysis` 与完整 skill prompt 透传到 live `session/update`；到 `2026-05-04T21:24:12.634833+00:00` 又继续外发 `web_search` 原始 JSON。这些样本共同定义了本轮代码修复需要覆盖的泄漏形态。
 
 ## 证据来源
 
@@ -95,6 +95,15 @@
   - 可见 `OK` 前缀保留、内部 suffix 截断；
   - ACP ingest 层不再把 invoked skill context chunk 写入回复状态。
 
+## 本轮修复补充（2026-05-05 10:15 CST）
+
+- 本轮继续沿共享边界加固，而不是在 Feishu 渠道做特判：
+  - `SessionEventEmitter` 现在对 `AgentRunnerEvent::StreamDelta` 与 `ToolStatus` 统一走同一套用户态净化；
+  - `StreamDelta` 里的内部 marker 不再整段透传；若前面存在用户可见前缀，只保留前缀；
+  - 结构化 JSON / array 载荷直接丢弃，不再当成 live 进度或正文广播；
+  - ACP `agent_message_chunk` marker 集补进 `【Invoked Skill Context】` 与 `Base directory for this skill:`，避免这类内容先污染 session 流，再被 Feishu 监听器消费。
+- 由于本任务明确不重启现有服务，以上修复仍缺一条“新代码已进入运行态之后”的真实 Feishu 样本；因此本单更新为 `Fixed`，但不转 `Closed`。
+
 ## 当前验证（2026-05-05 03:04 CST）
 
 - 已通过：
@@ -104,7 +113,17 @@
   - `cargo check -p hone-channels --tests`
   - `cargo test -p hone-channels --lib -- --nocapture`
 
+## 当前验证（2026-05-05 10:15 CST）
+
+- 已通过：
+  - `cargo test -p hone-channels handle_acp_session_update_drops_invoked_skill_context_chunk -- --nocapture`
+  - `cargo test -p hone-channels session_event_emitter_sanitizes_stream_delta_leaks -- --nocapture`
+  - `cargo test -p hone-channels session_event_emitter_suppresses_internal_tool_status_payloads -- --nocapture`
+  - `cargo test -p hone-channels session_event_emitter_ -- --nocapture`
+  - `cargo test -p hone-channels runners::acp_common::tests -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+
 ## 后续建议
 
-- 该修复是本地可验证的共享边界加固，不依赖生产日志或线上 Feishu 运行态。
-- 当前真实运行窗口已经再次复现，不应继续视为 `Fixed`；GitHub Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) 应维持打开，直到新的 live Feishu 样本证明 `session/update` 不再泄漏。
+- 下一条使用新代码的 Feishu direct / scheduler 样本，应重点检查 `session/update` 是否仍出现 `【Invoked Skill Context】`、`Base directory for this skill:`、结构化 JSON 或原始工具错误。
+- 在没有 post-fix live 样本前，GitHub Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) 仍建议保持打开；若新样本确认 live update 已净化，再转 `Closed`。
