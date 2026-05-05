@@ -116,3 +116,14 @@
 - `data/runtime/logs/web.log.2026-05-05` 在 `20:00:02.320-20:00:03.134` 继续连续记录 `TEM破位预警`、`原油价格3小时播报`、`Monitor_Watchlist_11`、`RKLB`、`ORCL`、`ASTS`、`Cerebras IPO`、`持仓重大事件`、`CAI` 等 heartbeat job 的 `runner_error`，错误统一为 `upstream HTTP 402 ... can only afford 10349 ... (code: 402)`。
 - 同窗存在正常送达的非 heartbeat 任务，说明当前不是 scheduler 全局停摆；故障仍集中在 heartbeat 调用 `moonshotai/kimi-k2.5` 的公共链路。
 - 到本轮巡检时，`2026-05-05 12:30` 到 `20:00` 已连续 `11` 个整点/半点 heartbeat 窗口、累计 `121` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
+
+## 状态更新（2026-05-05 21:02 CST）
+
+- 本轮巡检确认：故障在最近一小时继续活跃，且 `20:30` 与 `21:00` 两个窗口再次各有 `11` 条 heartbeat 全量失败。
+- `data/sessions.sqlite3` -> `cron_job_runs` 最近一小时汇总：
+  - `2026-05-05T20:30`：`11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`
+  - `2026-05-05T21:00`：`11/11` 条 heartbeat 再次落成 `execution_failed + skipped_error + delivered=0`
+  - `2026-05-05T21:01`：另有 `2` 条非 heartbeat 定时任务（Feishu `晚9点盘前推演(XME及加密ETF)`、`美股盘前分析与个股推荐`）正常 `completed + sent`
+- `data/runtime/logs/web.log.2026-05-05` 在 `21:00:02.001-21:00:02.592` 继续连续记录多条 `failed deserialization ... "code":402`，随后 `RKLB异动监控`、`ORCL 大事件监控`、`Cerebras IPO与业务进展心跳监控` 等 heartbeat job 落成 `runner_error`，错误统一为 `upstream HTTP 402 ... can only afford 10032 ... (code: 402)`。
+- 同窗存在正常送达的非 heartbeat 任务，说明当前不是 scheduler 全局停摆；故障仍集中在 heartbeat 调用 `moonshotai/kimi-k2.5` 的公共链路。
+- 到本轮巡检时，`2026-05-05 12:30` 到 `21:00` 已连续 `12` 个整点/半点 heartbeat 窗口、累计 `132` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
