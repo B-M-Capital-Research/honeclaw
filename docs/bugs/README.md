@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 10:16 CST
+最后更新：2026-05-05 11:04 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：19
+- 活跃待修复：18
 - Later / 待复现：9
-- 已修复 / 已关闭：73
+- 已修复 / 已关闭：74
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 4 条 `P1`；最高待修优先级为 `P1`
 
@@ -29,11 +29,10 @@
 | Feishu 直聊 `session/update` 会把系统提示、skill prompt、绝对路径与工具原始输出直接外发 | P1 | New | 2026-05-05 04:09 新 actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 再次复现：live `session/update` 连续外发油价分析 chunk、`Approve MCP tool call`、`market_analysis` skill prompt、`/Users/.../skills/market_analysis` 绝对路径和 `web_search` 原始 JSON；Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 取票失效，生成完成的日报仍整批无法送达 | P1 | New | 2026-05-05 09:42-10:13 最近一小时再次批量复现：`run_id=15667/15668/15669/15670/15671/15672/15674/15675` 横跨 8 个不同 Feishu direct 任务统一落成 `execution_failed + target_resolution_failed + delivered=0`，错误同为 `Invalid access token for authorization`；Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) | [feishu_scheduler_tenant_access_token_request_failure.md](./feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | New | 2026-05-05 05:23 `run_id=15655`（`科技成长赛道大盘极值与情绪监控`）再次落成 `completed + target_resolution_failed + delivered=0`；最新错误从旧的 actor/open_id 不一致漂到 `Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`，说明 direct scheduler 目标解析链路仍未恢复；Issue [#34](https://github.com/B-M-Capital-Research/honeclaw/issues/34) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 05:23 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`；但真实 Feishu 会话源文件已继续刷新到 `05:23:45` / `05:21:58`，最新 user turn 与 assistant final 仍只写进 JSON、未同步进 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 11:04 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但真实 Feishu 会话源文件已继续刷新到 `10:57:51`，同窗 `acp-events.log` 也记录 `stopReason=end_turn`，最新 user turn 与 assistant final 仍只写进 JSON、未同步进 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-04 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=15530` 再次落成 `completed + send_failed`；同一 `job_id=j_183bee8d` 已连续 8 天在 `09:00` 窗口复现，说明“正文落库即送达”语义在线上仍未生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat actor 级跨 job 去重把 `ORCL` / `持仓` 新触发误判成上一窗 `Cerebras IPO` 重复内容并直接漏发 | P2 | New | 2026-05-04 23:10 最新窗口里 `run_id=15588`（持仓重大事件）与 `15591`（ORCL）都先落成 `parse_kind=JsonTriggered`，却被 `duplicate_suppressed` 压成 `noop + skipped_noop`；两条 `matched_preview` 都错误指向 `22:30` 已送达的 `Cerebras IPO重大进展` | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 02:10 最新 `01:35 / 01:52 / 02:09` 三轮窗口继续在 `empty_output / openrouter_transport_error / decode_error` 之间切换；`02:09` 同窗里 `Watchlist / CAI / RKLB / 持仓 / ORCL` 五条 heartbeat 批量落成 `skipped_error` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 11:04 最新 `10:30 / 11:00` 两轮窗口继续在 `Empty / JsonEmptyStatus / JsonNoop` 之间切换；`10:30` 同窗里 `RKLB / CAI / ORCL / ASTS / Cerebras / TEM大事件` 批量落成 `skipped_error`，`持仓重大事件` 继续回摆成 `raw_preview=\"{}\"` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-03 15:02 最近一小时 `run_id=14654`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`，`sidecar.log` 同窗先记录真实上游 `maximum context length ... code:400`，随后仍被压扁成 `invalid type: integer \`400\``；`15:02` 下一窗虽回落 `noop`，但根因仍属间歇复发 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-04 09:02 最新 `08:30`、`08:45`、`09:00` 三个窗口又新增 `33` 条 `running + pending` started 行且不被终态覆盖；即便同窗已有 `sent/noop` 终态，started 行仍悬挂；全库总量升到 `4375` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
@@ -116,6 +115,7 @@
 | Feishu 直聊遇到 Codex ACP 字符串权限请求 id 后整轮失败 | P1 | Fixed | 2026-04-26 已确认 Codex ACP 0.12.0 权限请求 id 为字符串 UUID；权限响应改为原样 echo JSON-RPC id，并补字符串 id 回归测试 | [feishu_codex_acp_permission_string_id.md](./feishu_codex_acp_permission_string_id.md) |
 | Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | Fixed | 2026-04-27 已在共享 ACP runner 增加 `unfinished tool` 成功门槛，并在 Feishu 失败收口中过滤 `我先核验...` 等过渡计划句；相关 `hone-channels` / `hone-feishu` 定向回归通过 | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | Fixed | 2026-04-27 已确认与 Feishu 共用同一 ACP 提前收口根因；共享 runner 改为 `unfinished tool => failure` 后，不再把过程句记成成功 final | [web_direct_partial_reply_before_tool_completion.md](./web_direct_partial_reply_before_tool_completion.md) |
+| Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | Fixed | 2026-05-05 10:13 最新 `run_id=15677` 已在 `console_event_sent=false` 条件下落成 `completed + sent + delivered=1`，说明“正文落库即送达”语义已在最新生产窗口生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Event-engine 收盘大幅波动永远不会即时推送 | P2 | Fixed | 2026-04-24 已让超过 high 阈值的 `price_close` 生成 High，并允许 per-actor price override 覆盖 close；普通 close 仍走 digest，`hone-event-engine` 相关测试与真实模型 baseline 通过 | [event_engine_close_price_alerts_never_immediate.md](./event_engine_close_price_alerts_never_immediate.md) |
 | Event-engine digest 省略项不可审计且低信号新闻/宏观/评级噪声挤入摘要 | P2 | Fixed | 2026-04-24 已把省略项写入 `digest_item omitted`，导出脚本新增 `digest_omitted`；同时过滤 Low news、opinion/pr-wire convergence、无标的低优先级社交、远期 macro 和 no-op analyst hold；baseline fixture 扩到 43 条 / 15 条 LLM | [event_engine_digest_omitted_items_and_low_signal_noise.md](./event_engine_digest_omitted_items_and_low_signal_noise.md) |
 | Event-engine trusted-source high 新闻缺少 sink 直送证据 | P2 | Fixed | 2026-04-26 已改由 `global_digest` 管道承接 trusted-source High/Medium news；原 `router|no_actor` 不再意味着静默漏投，只是不再走即时 sink | [event_engine_high_news_no_sink_delivery.md](./event_engine_high_news_no_sink_delivery.md) |

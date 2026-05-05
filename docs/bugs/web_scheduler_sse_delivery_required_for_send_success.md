@@ -3,9 +3,30 @@
 - **发现时间**: 2026-04-27 10:18 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
+
+- `2026-05-05 11:04 CST` 最近一小时真实窗口显示该缺陷在最新生产样本中已不再复现：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=15677`
+    - `job_id=j_183bee8d`
+    - `job_name=09:00 美股AI与航空科技晨报`
+    - `actor_channel=web`
+    - `executed_at=2026-05-05T10:13:48.561901+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `should_deliver=1`
+    - `detail_json={"console_event_sent":false,"delivery_channel":"web","delivery_key":"j_183bee8d:2026-05-05:09:00","scheduler":null}`
+    - `response_preview` 已包含完整晨报开头、结论段与 `最重要的 4 条`，且即使 `console_event_sent=false`，台账也不再把本轮记成 `send_failed`
+  - `data/sessions/Actor_web__direct__web-user-ba50cb9401c0.json`
+    - 同一 Web 会话 `updated_at=2026-05-05T10:13:48.555784+08:00`
+    - 末尾 assistant final 已完整写入 2026-05-05 晨报正文，时间锚点、核心结论与结构化条目齐全
+  - 对照结论：
+    - 旧缺陷的核心症状是“正文已落库但离线 SSE 无监听者时，`cron_job_runs` 仍落成 `completed + send_failed + delivered=0`”
+    - 最新 `run_id=15677` 在 `console_event_sent=false` 的同样离线条件下，已经改成 `completed + sent + delivered=1`
+    - 因此到 `2026-05-05 11:04` 为止，这条缺陷已具备最新生产窗口的修复证据，可从活跃队列移出
 
 - `2026-05-04 09:02` 最近一小时真实窗口显示该缺陷仍在最新生产窗口活跃：
   - `data/sessions.sqlite3` -> `cron_job_runs`
@@ -215,6 +236,8 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 
 ## 当前实现效果
 
+- `2026-05-05 10:13` 的最新样本显示，即使离线 Web 任务仍没有活跃 SSE 监听者（`console_event_sent=false`），`cron_job_runs` 也已经不再把这类任务记成 `send_failed`，而是正确落成 `completed + sent + delivered=1`。
+- 这说明“正文落库即可视为 Web scheduler 已送达”的台账语义在最新生产窗口已经生效，至少当前 `09:00 美股AI与航空科技晨报` 的主路径不再受旧缺陷影响。
 - `2026-05-04 09:02` 的 `09:00 美股AI与航空科技晨报` 说明，这条缺陷在最新生产窗口仍未退出活跃态：`cron_job_runs.run_id=15530` 再次落成 `completed + send_failed + delivered=0`，而 `response_preview` 已包含完整晨报开头、结论段与 `最重要的 4 条`，说明正文已生成完成但台账仍沿用离线 SSE 失败语义。
 - 同一 `job_id=j_183bee8d` 目前已连续八天（`2026-04-27`、`2026-04-28`、`2026-04-29`、`2026-04-30`、`2026-05-01`、`2026-05-02`、`2026-05-03`、`2026-05-04`）在 `09:00` 晨报窗口复现，说明当前线上行为仍未兑现“正文落库即可视为送达成功”的语义。
 - `2026-05-03 20:02` 的 `英伟达每日消息` 说明，这条缺陷在最新生产窗口仍未退出活跃态：正文已完整生成并写入 Web 会话，但 `cron_job_runs` 依旧再次记成 `completed + send_failed + console_event_sent=false`。
@@ -279,6 +302,12 @@ Web 用户创建 `09:00 美股AI与航空科技晨报` -> scheduler 到点触发
 - 真实生产样本 `run_id=14432` 再次落成 `completed + send_failed`，且 `response_preview` 已包含完整晨报正文开头，因此本缺陷继续维持 `New`。
 - `2026-05-03 20:02` 的 `run_id=14919` 又在 `英伟达每日消息` 晚间 job 上复现同样坏态，说明当前线上仍不是单个晨报任务在使用旧送达语义，而是 Web scheduler 的离线 SSE 判定整体没有收口。
 - 当前结论不变：代码里可能已有部分修复语义，但至少当前巡检看到的实际运行链路仍存在另一条活跃路径会把离线 SSE 视为发送失败。
+
+## 复核结论（2026-05-05）
+
+- 本轮继续优先按最近一小时真实运行窗口更新台账，而不是仅按仓库代码预期判定。
+- 真实生产样本 `run_id=15677` 已在 `console_event_sent=false` 条件下落成 `completed + sent + delivered=1`，且同一 Web 会话 JSON 已完整写入晨报正文。
+- 这直接击穿了本单旧定义里的失败条件，因此本单状态更新为 `Fixed`。若后续新的 Web 定时任务再次在 `console_event_sent=false` 下回落成 `send_failed`，应直接把本单改回 `New`。
 
 ## 回归验证（2026-04-30）
 

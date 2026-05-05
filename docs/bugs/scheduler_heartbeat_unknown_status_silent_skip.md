@@ -7,6 +7,14 @@
 
 ## 修复进展
 
+- `2026-05-05 11:04 CST` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `10:30-11:02` 的最新两轮继续在同窗混跑 `Empty / JsonEmptyStatus / JsonNoop / duplicate_suppressed`，结构化协议仍未收敛成稳定单一状态：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`10:30` 与 `11:00` 两个窗口继续在同一公共 heartbeat 链路里分裂成多种坏态与恢复态：
+    - `10:30` 窗口里，`run_id=15679`（`RKLB异动监控`）、`15680`（`CAI破位预警`）、`15686`（`ORCL 大事件监控`）、`15687`（`ASTS 重大异动心跳监控`）、`15688`（`Cerebras IPO与业务进展心跳监控`）、`15689`（`TEM大事件心跳监控`）全部落成 `execution_failed + skipped_error + delivered=0`，错误统一为 `heartbeat 输出为空，任务已标记失败`
+    - 同一 `10:30` 窗口里，`run_id=15681`（`持仓重大事件心跳检测`）又漂成 `execution_failed + skipped_error + delivered=0`，错误改为 `heartbeat 输出缺少状态字段，任务已标记失败`，`detail_json.parse_kind=JsonEmptyStatus`、`raw_preview="{}"`
+    - `11:00` 窗口里，`run_id=15696`（`小米30港元破位预警`）与 `15697`（`CAI破位预警`）继续回摆成 `execution_failed + skipped_error + delivered=0`，错误仍是 `heartbeat 输出为空，任务已标记失败`
+    - 但同一 `11:00` 窗口里，`run_id=15690/15691/15693/15694/15695/15698/15699/15700` 又分别回落成 `noop + skipped_noop`，`run_id=15692` 还继续带 `duplicate_suppressed=true`，说明同批 heartbeat 并没有恢复成稳定单一协议，而是在 `Empty / JsonEmptyStatus / JsonNoop` 之间继续漂移
+  - 结论：到 `2026-05-05 11:04` 为止，本单仍稳定活跃；最新窗口已经从 `02:10` 的 `empty_output / transport_error / decode_error` 切回 `empty_output / missing_status / noop` 混跑，但根因仍是 heartbeat 公共结构化状态契约未收敛，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-05 02:10 CST` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:35-02:09` 的最新三轮已经从此前的 `Empty / JsonNoop / JsonTriggered` 混跑，进一步回摆成“空输出 + OpenRouter 传输失败 + response body 解码失败”三种坏态在相邻窗口切换：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这三轮 heartbeat 终态继续没有收敛成稳定单一协议：
     - `01:35` 窗口里，`run_id=15645`（`小米30港元破位预警`）、`15648`（`TEM破位预警`）、`15649`（`TEM大事件心跳监控`）全部落成 `execution_failed + skipped_error + delivered=0`，错误统一为 `heartbeat 输出为空，任务已标记失败`
