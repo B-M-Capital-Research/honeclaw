@@ -3,7 +3,8 @@
 - **发现时间**: 2026-04-15 22:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
+- **GitHub Issue**: [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)
 - **证据来源**:
   - 最近一小时真实任务台账：`data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=1795`，`job_id=j_f02dfce5`，`job_name=OWALERT_PreMarket`，`executed_at=2026-04-15T21:04:28.730839+08:00`
@@ -75,6 +76,37 @@
   - direct 任务不再依赖历史 `channel_target` 二次解析后再做一致性校验
   - 发送时优先使用 `event.actor.user_id` 这一已绑定且稳定的 `open_id`
 - 这样既保留了历史上的防误投校验，又避免 direct 定时任务因为旧手机号/email target 漂移而长期卡在 `target_resolution_failed`。
+
+## 状态更新（2026-05-05 07:40 CST）
+
+- 本轮巡检确认该缺陷不能继续维持 `Fixed`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=15655`
+    - `job_id=j_240ef7aa`
+    - `job_name=科技成长赛道大盘极值与情绪监控`
+    - `actor_user_id=ou_895bed1573d53053e89bfc382b523a44`
+    - `channel_target=+8613067903569`
+    - `executed_at=2026-05-05T05:23:45.720309+08:00`
+    - `execution_status=completed`
+    - `message_send_status=target_resolution_failed`
+    - `delivered=0`
+    - `response_preview` 已是约 700+ 字完整监控结论开头，说明任务主体已跑完
+    - `error_message=集成错误: Feishu resolve mobile request failed: error sending request for url (https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id)`
+  - `data/runtime/logs/web.log.2026-05-04`
+    - `2026-05-05 05:23:45.716` 明确记录：`[Feishu] 定时任务目标解析失败: job=科技成长赛道大盘极值与情绪监控 target=+8613067903569 err=集成错误: Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`
+  - 历史台账复核：
+    - `run_id=626`（`2026-04-08T08:33:21.037181+08:00`，`创新药持仓每日动态推送`）也曾出现同一错误文案：`Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`
+    - 说明 contact lookup 传输失败不是单次孤立抖动，而是 direct scheduler 目标解析链路的已复现变体
+- 这次坏态与 2026-04-15/04-16 的旧样本不同：
+  - 旧样本主要是 `resolved receive_id ... does not match actor ...` 或 `No user found for mobile ...`
+  - 最新样本则是在 Feishu 联系人查询 `batch_get_id` 请求阶段直接传输失败
+  - 但三者的共同结果没有变：内容已经生成，最终仍在 target resolution 链路被拦截，用户收不到定时任务
+- 因此本单状态回退为 `New`，严重等级维持 `P1`。
+
+## GitHub Issue
+
+- [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) `[P1][hone-scanner] Feishu direct scheduler target resolution blocks delivery`
+- 旧的 [#34](https://github.com/B-M-Capital-Research/honeclaw/issues/34) 已关闭；当前活跃跟踪统一回挂到仍为 `OPEN` 的 #32，避免重复建单。
 
 ## 回归验证
 

@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-05-05 02:10 CST` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `01:35-02:09` 的最新三轮已经从此前的 `Empty / JsonNoop / JsonTriggered` 混跑，进一步回摆成“空输出 + OpenRouter 传输失败 + response body 解码失败”三种坏态在相邻窗口切换：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这三轮 heartbeat 终态继续没有收敛成稳定单一协议：
+    - `01:35` 窗口里，`run_id=15645`（`小米30港元破位预警`）、`15648`（`TEM破位预警`）、`15649`（`TEM大事件心跳监控`）全部落成 `execution_failed + skipped_error + delivered=0`，错误统一为 `heartbeat 输出为空，任务已标记失败`
+    - `01:52` 窗口里，`run_id=15643`（`ASTS 重大异动心跳监控`）与 `15644`（`Cerebras IPO与业务进展心跳监控`）继续落成 `execution_failed + skipped_error + delivered=0`，错误统一为 `http error: error sending request for url (https://openrouter.ai/api/v1/chat/completions)`
+    - `02:09` 窗口里，`run_id=15642`（`Monitor_Watchlist_11`）、`15647`（`CAI破位预警`）、`15650`（`RKLB异动监控`）、`15651`（`持仓重大事件心跳检测`）、`15652`（`ORCL 大事件监控`）又批量落成 `execution_failed + skipped_error + delivered=0`，错误统一回摆成 `http error: error decoding response body`
+  - `data/runtime/logs/web.log.2026-05-04` 证明这不是台账归类差异，而是 heartbeat 公共执行链路在相邻窗口继续漂移：
+    - `2026-05-05 01:52:28.664` 与 `01:52:36.605` 先记录 `chat_with_tools transport error, retrying: http error: error sending request for url (https://openrouter.ai/api/v1/chat/completions)`，随后 `01:52:30.833-01:52:38.777` 的 `ASTS / Cerebras` 两条 heartbeat 都落成 `runner_error`
+    - `2026-05-05 02:09:38.075-02:09:38.122` 同一批里 `Watchlist / CAI / RKLB / 持仓重大事件 / ORCL` 五条 heartbeat 又集中落成 `runner_error ... error="LLM 错误: http error: error decoding response body"`，每条后面仍直接收口成 `心跳任务未命中，本轮不发送`
+  - 结论：到 `2026-05-05 02:10` 为止，本单仍稳定活跃；最新窗口不再只是 `Empty / JsonNoop / JsonTriggered` 混跑，而是已经扩展成 `empty_output / openrouter_transport_error / decode_error` 三种坏态在同一公共 heartbeat 链路内相邻窗口切换，状态维持 `Fixing`、严重等级维持 `P2`。
+
 - `2026-05-04 08:04` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `07:30-08:01` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop`，结构化协议仍未收敛：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，这两轮 heartbeat started/terminal 仍继续双轨并存：
     - `07:30` 窗口先写入 `run_id=15423-15433` 共 `11` 条 heartbeat started 行；同窗终态随后另起为 `15434-15444`，全部回落成 `noop + skipped_noop`

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-05 07:03 CST
+最后更新：2026-05-05 08:00 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,26 +15,27 @@
 
 ## 当前概览
 
-- 活跃待修复：16
+- 活跃待修复：17
 - Later / 待复现：10
-- 已修复 / 已关闭：75
+- 已修复 / 已关闭：73
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 2 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-05 04:07 release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下 `rw.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-04 06:02 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`；但最近一小时真实 Feishu 直聊源文件仍刷新到 `05:00:52`，最新 `科技成长赛道大盘极值与情绪监控` user/assistant 两轮已完整写进 JSON | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Feishu 直聊 `session/update` 会把系统提示、skill prompt、绝对路径与工具原始输出直接外发 | P1 | New | 2026-05-05 04:09 新 actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 再次复现：live `session/update` 连续外发油价分析 chunk、`Approve MCP tool call`、`market_analysis` skill prompt、`/Users/.../skills/market_analysis` 绝对路径和 `web_search` 原始 JSON；Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |
+| Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | New | 2026-05-05 05:23 `run_id=15655`（`科技成长赛道大盘极值与情绪监控`）再次落成 `completed + target_resolution_failed + delivered=0`；最新错误从旧的 actor/open_id 不一致漂到 `Feishu resolve mobile request failed ... batch_get_id?user_id_type=open_id`，说明 direct scheduler 目标解析链路仍未恢复；Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-05 05:23 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`；但真实 Feishu 会话源文件已继续刷新到 `05:23:45` / `05:21:58`，最新 user turn 与 assistant final 仍只写进 JSON、未同步进 sqlite 镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | New | 2026-05-04 09:02 `09:00 美股AI与航空科技晨报` 的 `run_id=15530` 再次落成 `completed + send_failed`；同一 `job_id=j_183bee8d` 已连续 8 天在 `09:00` 窗口复现，说明“正文落库即送达”语义在线上仍未生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./web_scheduler_sse_delivery_required_for_send_success.md) |
 | Heartbeat actor 级跨 job 去重把 `ORCL` / `持仓` 新触发误判成上一窗 `Cerebras IPO` 重复内容并直接漏发 | P2 | New | 2026-05-04 23:10 最新窗口里 `run_id=15588`（持仓重大事件）与 `15591`（ORCL）都先落成 `parse_kind=JsonTriggered`，却被 `duplicate_suppressed` 压成 `noop + skipped_noop`；两条 `matched_preview` 都错误指向 `22:30` 已送达的 `Cerebras IPO重大进展` | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-04 08:04 最新 `07:30 / 08:01` 两轮窗口继续同步混跑 `Empty / JsonNoop / JsonTriggered / noop + skipped_noop`；`08:01` 同窗里只有 `ORCL / Cerebras / 持仓重大事件` 实际送达，其余 heartbeat 仍先记 `success=true` 再分裂成不同 `parse_kind` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 02:10 最新 `01:35 / 01:52 / 02:09` 三轮窗口继续在 `empty_output / openrouter_transport_error / decode_error` 之间切换；`02:09` 同窗里 `Watchlist / CAI / RKLB / 持仓 / ORCL` 五条 heartbeat 批量落成 `skipped_error` | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | New | 2026-05-03 15:02 最近一小时 `run_id=14654`（`持仓重大事件心跳检测`）再次落成 `execution_failed + skipped_error`，`sidecar.log` 同窗先记录真实上游 `maximum context length ... code:400`，随后仍被压扁成 `invalid type: integer \`400\``；`15:02` 下一窗虽回落 `noop`，但根因仍属间歇复发 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | New | 2026-05-04 09:02 最新 `08:30`、`08:45`、`09:00` 三个窗口又新增 `33` 条 `running + pending` started 行且不被终态覆盖；即便同窗已有 `sent/noop` 终态，started 行仍悬挂；全库总量升到 `4375` | [feishu_scheduler_running_rows_never_finalized.md](./feishu_scheduler_running_rows_never_finalized.md) |
-| Feishu 定时任务 `schedule` / prompt 时间错配虽然已阻断错时投递，但历史坏 job 仍持续 warning + skip | P2 | Approved | 2026-05-05 01:04 最近一小时 `web.log.2026-05-04` 在 `00:36`、`00:37`、`00:38`、`01:00` 连续记录 `job_id=j_acce16a6 schedule=08:30 prompt=20:45` mismatch warning；`data/cron_jobs/...995a704...json` 仍保留错配配置，说明 2026-04-28 只完成止血、未修复历史坏任务 | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
+| Feishu 定时任务 `schedule` / prompt 时间错配虽然已阻断错时投递，但历史坏 job 仍持续 warning + skip | P2 | Approved | 2026-05-05 07:59 最近一小时 `web.log.2026-05-04` 在 `06:39`、`06:55`、`07:12`、`07:23`、`07:40`、`07:41`、`07:42`、`07:58`、`07:59` 持续记录 `job_id=j_acce16a6 schedule=08:30 prompt=20:45` mismatch warning；历史坏 job 仍在生产配置里循环被扫描而未修复 | [feishu_scheduler_prompt_schedule_time_mismatch.md](./feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-04 09:01 `核心观察池早间简报` 的 `run_id=15533` 再次把 `MSFT / NVDA / GOOGL / AAPL` 等核心股统一降成“击球区：待确认”；同症状已从 `2026-04-30 21:35`、`2026-05-01 21:35/23:00`、`2026-05-02 09:01/21:35/23:01`、`2026-05-03 09:01/23:01` 延续到最新窗口 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | New | 2026-05-04 08:32 `Hone_AI_Morning_Briefing` 的 `run_id=15500` 已明确写出“底层行情数据链路暂时阻断”，并回退到先前已核验的 `2026-05-01` 收盘口径；同窗 `sidecar.log` 连续多次 `acp.tool_failed` 后只靠 `web_search` 收口，但台账仍记为 `completed + sent` | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
 | Feishu 直聊切到非金融新话题时，仍直接回答楼市/买房问题而未执行领域边界拒绝 | P3 | New | 2026-05-03 20:08-20:11 两轮真实 Feishu 会话都把“深圳楼市/是否适合买房”当成正常咨询直接回答；最新 prompt audit 仍保留“非金融问题应礼貌拒绝”的系统约束，说明 live 领域边界拒绝未真正生效 | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
@@ -103,7 +104,6 @@
 | 定时任务达到上限后，Agent 未经用户确认就批量删除已有任务 | P1 | Fixed | 2026-04-16 已为 `cron_job remove` 增加显式确认屏障；未确认前只返回候选任务与确认指引，不再直接删除 | [scheduler_task_limit_auto_cleanup_without_confirmation.md](./scheduler_task_limit_auto_cleanup_without_confirmation.md) |
 | 定时任务链路绕过统一输出净化，向用户投递内部思考与未清洗富文本 | P1 | Fixed | 2026-04-16 已为 scheduler 公共出站补统一可见文本净化，并为 Telegram scheduler 补 HTML 公共清洗 | [scheduled_output_sanitization_gap.md](./scheduled_output_sanitization_gap.md) |
 | 成功会话仍把原始 multi-agent transcript 落库到 assistant 历史，污染后续上下文 | P2 | Fixed | 2026-04-16 已让 assistant 持久化只写 `final` 文本，并把工具调用改存到 metadata，避免污染会话索引与 sqlite runtime 预览 | [session_persist_assistant_transcript_pollution.md](./session_persist_assistant_transcript_pollution.md) |
-| Feishu 定时任务目标校验长期失败，任务生成内容后仍无法送达 | P1 | Fixed | 2026-04-16 已让 direct scheduler 优先使用绑定 actor 的 `open_id`，并收紧 mobile 识别避免把 `open_id` 误判成手机号 | [feishu_scheduler_target_resolution_failed.md](./feishu_scheduler_target_resolution_failed.md) |
 | Feishu 图片附件会向用户发送内部 skill transcript，并夹带未清洗的中间协议 | P1 | Fixed | 2026-04-16 已让成功持久化统一只写最终可见文本与 tool-call metadata，不再把 runner `context_messages` 原样落库成 transcript | [feishu_attachment_internal_transcript_leak.md](./feishu_attachment_internal_transcript_leak.md) |
 | Feishu 直聊任务治理 / 定时汇总请求在搜索阶段耗尽迭代后整轮无回复 | P1 | Fixed | 2026-04-20 已将 `已达最大迭代次数 N` 改为机器可读 key `max_iterations_exceeded:N`，并在净化层过滤 | [feishu_direct_cron_job_iteration_exhaustion_no_reply.md](./feishu_direct_cron_job_iteration_exhaustion_no_reply.md) |
 | Feishu 直聊在处理中遭遇 runtime 重启风暴，placeholder 发出后整轮无最终回复 | P1 | Fixed | 2026-04-20 已在 `run()` 启动时扫描 30 分钟内 `last_message_role=user` 的直聊会话并补发失败提示，同时落库 assistant 失败消息防止重复 | [feishu_direct_runtime_restart_interrupts_inflight_reply.md](./feishu_direct_runtime_restart_interrupts_inflight_reply.md) |

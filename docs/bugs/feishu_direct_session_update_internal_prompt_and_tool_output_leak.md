@@ -5,6 +5,8 @@
 - **严重等级**: P1
 - **状态**: Fixed
 - **GitHub Issue**: [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)
+- **修复结论复核**:
+  - `2026-05-05 04:09 CST` 最近窗口再次复现，而且已从最初的 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 扩散到新的 direct actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`。`data/runtime/logs/acp-events.log` 在 `2026-05-04T20:09:19.773634+00:00` 先把整段油价分析以 `agent_message_chunk` 方式实时外发，随后在 `2026-05-04T20:09:35.598749+00:00` 暴露 `Approve MCP tool call` 权限请求，在 `2026-05-04T20:09:35.631817+00:00` 再次把 `【Invoked Skill Context】`、`Base directory for this skill: /Users/.../skills/market_analysis` 与完整 skill prompt 透传到 live `session/update`；到 `2026-05-04T21:24:12.634833+00:00` 又继续外发 `web_search` 原始 JSON。说明当前不是某个 stock skill 的单点问题，而是 Feishu live update 边界仍系统性失守。
 
 ## 证据来源
 
@@ -21,6 +23,11 @@
     - `2026-05-04T16:01:41.006991+00:00` 的 `tool_call_update.rawOutput` 继续外发 `data_fetch(snapshot, AAOI)` 返回的大段结构化 JSON，包含 quote/profile/news
     - `2026-05-04T16:01:41.113041+00:00` 的 `tool_call_update.rawOutput` 直接外发 `apply_patch verification failed` 原始工具报错
     - `2026-05-04T16:01:41.146593+00:00` 与 `2026-05-04T16:01:41.147039+00:00` 又继续外发 `web_search` 的原始返回，包含长篇抓取正文与 URL 列表
+  - `2026-05-05 04:09-05:24 CST` 新 actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595` 再次复现同类泄漏：
+    - `2026-05-04T20:09:19.773634+00:00` 的 `agent_message_chunk` 直接外发整段油价分析正文
+    - `2026-05-04T20:09:35.598749+00:00` 暴露 `Approve MCP tool call` 权限请求
+    - `2026-05-04T20:09:35.631817+00:00` 的 `tool_call_update.rawOutput` 再次外发 `【Invoked Skill Context】`、`Skill: Market Analysis (market_analysis)`、`Base directory for this skill: /Users/.../skills/market_analysis` 与整段 skill prompt
+    - `2026-05-04T21:24:12.634833+00:00` 的 `tool_call_update.rawOutput` 又外发 `web_search` 原始 JSON，包含 `request_id`、搜索命中摘要、长篇正文片段和 URL 列表
 - 与已有缺陷的去重结论：
   - [`web_direct_session_update_prompt_echo_leak.md`](./web_direct_session_update_prompt_echo_leak.md) 只覆盖 Web `agent_message_chunk` prompt echo
   - [`web_direct_tool_call_raw_output_leak.md`](./web_direct_tool_call_raw_output_leak.md) 只覆盖 Web `tool_call_update.rawOutput`
@@ -44,10 +51,13 @@
 ## 当前实现效果
 
 - 最近一小时真实 Feishu direct session 已证明，当前线上并非只有 Web 会发生 `session/update` 泄漏；Feishu 也会在 live 事件流中重放系统提示与工具原始输出。
+- 最近窗口的新样本证明，泄漏已覆盖 `market_analysis`、权限审批提示和 `web_search` 原始结果，不再局限于早先的 `stock_research` 场景。
 - 泄漏内容同时覆盖：
   - `### System Instructions ###` 与 `turn-0 可用技能索引`
   - `【Invoked Skill Context】` 与完整 `stock_research` skill prompt
+  - `Skill: Market Analysis (market_analysis)` 与完整 market skill prompt
   - `Base directory for this skill: /Users/.../skills/stock_research`
+  - `Approve MCP tool call`
   - `data_fetch` / `web_search` 原始结构化结果
   - `apply_patch verification failed` 这类原始工具错误
 - 同一会话 JSON 最终 assistant final 仍能保持正常，说明问题集中在“实时外发边界”而非最终持久化层。
