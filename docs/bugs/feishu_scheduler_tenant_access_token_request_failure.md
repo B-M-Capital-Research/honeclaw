@@ -3,7 +3,8 @@
 - **发现时间**: 2026-04-21 08:04 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Later
+- **状态**: New
+- **GitHub Issue**: [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35)
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
   - 2026-04-21 11:22 用户侧最新反馈：
@@ -48,6 +49,37 @@
 4. 当前发送侧没有把这类取票失败吸收为自动重试或统一降级，因此整轮直接记为 `send_failed`。
 5. 用户侧即使面对“已生成完成的日报”或“已命中的 heartbeat 告警”，最终也完全收不到消息。
 
+## 状态更新（2026-05-05 10:13 CST）
+
+- 本轮巡检确认该缺陷已从 `Later` 回退为活跃 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=15667` `美股AI产业链盘后报告`
+    - `run_id=15668` `Hone_AI_Morning_Briefing`
+    - `run_id=15669` `每日有色化工标的新闻追踪`
+    - `run_id=15670` `港股持仓与关注股早间行情研判`
+    - `run_id=15671` `创新药持仓每日动态推送`
+    - `run_id=15672` `闪迪(SNDK)每日行情与行业简报`
+    - `run_id=15674` `早9点市场复盘(XME及加密ETF)`
+    - `run_id=15675` `特斯拉与火箭实验室新闻日报`
+  - 上述 8 条 run 全部位于 `2026-05-05 09:42:28` 到 `10:13:14` 的最近一小时窗口，并且统一满足：
+    - `execution_status=execution_failed`
+    - `message_send_status=target_resolution_failed`
+    - `delivered=0`
+    - `response_preview=抱歉，处理超时了。请稍后再试。`
+    - `error_message=集成错误: Feishu resolve mobile api error 99991663: Invalid access token for authorization. Please make a request with token attached.`
+  - 同窗另有 `run_id=15676`（`核心观察池早间简报`）继续落成 `target_resolution_failed`，但错误是 `batch_get_id` 联系人查询传输失败，已继续归入 [`feishu_scheduler_target_resolution_failed.md`](./feishu_scheduler_target_resolution_failed.md) 跟踪，不与本单混档。
+- `data/runtime/logs/web.log.2026-05-05` 同时给出对应链路日志：
+  - `2026-05-05 09:42:33.599` `每日有色化工标的新闻追踪` 首次记录 `[Feishu] 定时任务目标解析失败 ... Invalid access token for authorization`
+  - `2026-05-05 09:42:34.261` `闪迪(SNDK)每日行情与行业简报` 同样报错
+  - `2026-05-05 09:42:34.742` `Hone_AI_Morning_Briefing` 同样报错
+  - `2026-05-05 09:42:35.492` `美股AI产业链盘后报告` 同样报错
+  - `2026-05-05 10:13:14.478` `早9点市场复盘(XME及加密ETF)` 同样报错
+  - `2026-05-05 10:13:14.978` `特斯拉与火箭实验室新闻日报` 同样报错
+- 结论：
+  - 2026-04-26 的短重试只吸收了传输错误、`429` 与 `5xx`，并没有覆盖当前这轮 `99991663 Invalid access token` 的认证失效。
+  - 本轮异常已经同时覆盖多个不同 actor / target / 任务模板，且全部发生在 Feishu 发送前置共享链路，不是单个 direct task 的局部坏态。
+  - 因此本单必须重新回到活跃 P1 队列。
+
 ## 期望效果
 
 - Feishu scheduler 在最终发送前请求 `tenant_access_token/internal` 时，应至少具备基本重试与可恢复策略，而不是一次网络抖动就让整轮 `send_failed`。
@@ -74,6 +106,7 @@
 - 直接触发点是 Feishu 发送链路在请求 `https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal` 时发生 HTTP 发送失败。
 - 由于同类错误在多个 target、多个 job、不同任务类型（普通日报与 heartbeat 告警）上统一出现，根因更接近 Feishu 公共取票/网络可达性缺口，而不是单个任务 payload 或 receive_id 构造问题。
 - 该问题与 `open_id cross app` 的 `HTTP 400` 不同：后者说明已经拿到 token 并走到了发送接口；本次样本显示请求在更早的 token 获取阶段就已经失败。
+- `2026-05-05 09:42-10:13` 的最新回归表明，这条公共取票链路现在还会进入更明确的认证失效分支：`resolve mobile api error 99991663: Invalid access token for authorization`。这说明 2026-04-26 的止血并没有覆盖 token 失效/刷新异常场景。
 
 ## 下一步建议
 
@@ -93,4 +126,5 @@
   - `4xx` 认证/配置错误仍立即返回，避免掩盖真实配置问题。
 - 同一重试封装也用于 Feishu 发送、回复、更新消息请求，保证 token 获取恢复后后续出站阶段也具备基本吸震。
 - 已验证：`cargo test -p hone-feishu`。
-- 状态调整为 `Later`：代码止血已落地；若下一轮真实 scheduler / heartbeat 投递窗口仍出现 `tenant_access_token/internal` 抖动并整批打成 `send_failed`，再改回 `New`。
+- 当时状态曾调整为 `Later`，因为代码止血已落地。
+- `2026-05-05 10:13 CST` 最近窗口已确认认证失效场景再次整批复现，因此状态重新调回 `New`。
