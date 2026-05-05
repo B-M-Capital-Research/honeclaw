@@ -6,6 +6,7 @@
 - **状态**: New
 - **GitHub Issue**: [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)
 - **修复结论复核**:
+  - `2026-05-05 09:16 CST` 最近一小时又在新的 direct actor `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 复现。`data/runtime/logs/acp-events.log` 在 `2026-05-05T01:16:49.095634+00:00`、`01:16:49.106394+00:00`、`01:16:49.336787+00:00` 至少 3 次把 `【Invoked Skill Context】`、`Skill: Stock Research (stock_research)`、`Base directory for this skill: /Users/.../skills/stock_research` 作为 `tool_call_update.rawOutput` 外发；同一分钟内 `01:16:49.098245+00:00`、`01:16:49.110104+00:00`、`01:16:49.325351+00:00`、`01:16:49.341390+00:00` 又继续外发 `company_profiles` 原始目录查询结果。说明 05:04 的所谓修复结论并未进入当前运行态，泄漏仍在当前小时活跃。
   - `2026-05-05 04:09 CST` 最近窗口再次复现，而且已从最初的 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 扩散到新的 direct actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`。`data/runtime/logs/acp-events.log` 在 `2026-05-04T20:09:19.773634+00:00` 先把整段油价分析以 `agent_message_chunk` 方式实时外发，随后在 `2026-05-04T20:09:35.598749+00:00` 暴露 `Approve MCP tool call` 权限请求，在 `2026-05-04T20:09:35.631817+00:00` 再次把 `【Invoked Skill Context】`、`Base directory for this skill: /Users/.../skills/market_analysis` 与完整 skill prompt 透传到 live `session/update`；到 `2026-05-04T21:24:12.634833+00:00` 又继续外发 `web_search` 原始 JSON。说明当前不是某个 stock skill 的单点问题，而是 Feishu live update 边界仍系统性失守。
 
 ## 证据来源
@@ -28,6 +29,10 @@
     - `2026-05-04T20:09:35.598749+00:00` 暴露 `Approve MCP tool call` 权限请求
     - `2026-05-04T20:09:35.631817+00:00` 的 `tool_call_update.rawOutput` 再次外发 `【Invoked Skill Context】`、`Skill: Market Analysis (market_analysis)`、`Base directory for this skill: /Users/.../skills/market_analysis` 与整段 skill prompt
     - `2026-05-04T21:24:12.634833+00:00` 的 `tool_call_update.rawOutput` 又外发 `web_search` 原始 JSON，包含 `request_id`、搜索命中摘要、长篇正文片段和 URL 列表
+  - `2026-05-05 09:16 CST` 新 actor `Actor_feishu__direct__ou_5f95ab3697246ded86446fcc260e27e1e2` 再次复现：
+    - `2026-05-05T01:16:49.095634+00:00`、`01:16:49.106394+00:00`、`01:16:49.336787+00:00` 的 `tool_call_update.rawOutput` 连续外发 `【Invoked Skill Context】`、`Skill: Stock Research (stock_research)` 与 `Base directory for this skill: /Users/.../skills/stock_research`
+    - `2026-05-05T01:16:49.098245+00:00`、`01:16:49.110104+00:00`、`01:16:49.325351+00:00`、`01:16:49.341390+00:00` 又把 `company_profiles` 目录查询原始结果直接外发到 live `session/update`
+    - 同一轮没有看到“只剩最终 answer、live update 已净化”的迹象，反而表现为同一分钟内多次重复重放内部 skill context 与工具原始结果
 - 与已有缺陷的去重结论：
   - [`web_direct_session_update_prompt_echo_leak.md`](./web_direct_session_update_prompt_echo_leak.md) 只覆盖 Web `agent_message_chunk` prompt echo
   - [`web_direct_tool_call_raw_output_leak.md`](./web_direct_tool_call_raw_output_leak.md) 只覆盖 Web `tool_call_update.rawOutput`
@@ -52,6 +57,7 @@
 
 - 最近一小时真实 Feishu direct session 已证明，当前线上并非只有 Web 会发生 `session/update` 泄漏；Feishu 也会在 live 事件流中重放系统提示与工具原始输出。
 - 最近窗口的新样本证明，泄漏已覆盖 `market_analysis`、权限审批提示和 `web_search` 原始结果，不再局限于早先的 `stock_research` 场景。
+- `2026-05-05 09:16 CST` 的新样本进一步说明，即使没有油价分析或权限审批场景，单纯的 `stock_research + company_profiles` 组合也会在当前小时重复把内部 skill context 和工具目录查询结果外发。
 - 泄漏内容同时覆盖：
   - `### System Instructions ###` 与 `turn-0 可用技能索引`
   - `【Invoked Skill Context】` 与完整 `stock_research` skill prompt
@@ -101,4 +107,4 @@
 ## 后续建议
 
 - 该修复是本地可验证的共享边界加固，不依赖生产日志或线上 Feishu 运行态。
-- GitHub Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) 建议在本轮提交推送后复测并关闭。
+- 当前真实运行窗口已经再次复现，不应继续视为 `Fixed`；GitHub Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) 应维持打开，直到新的 live Feishu 样本证明 `session/update` 不再泄漏。
