@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 00:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31)
 - **修复结论复核**:
   - `2026-05-05 04:09 CST` 最近窗口再次复现，而且已从最初的 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 扩散到新的 direct actor `Actor_feishu__direct__ou_5f3f69c84593eccd71142ed767a885f595`。`data/runtime/logs/acp-events.log` 在 `2026-05-04T20:09:19.773634+00:00` 先把整段油价分析以 `agent_message_chunk` 方式实时外发，随后在 `2026-05-04T20:09:35.598749+00:00` 暴露 `Approve MCP tool call` 权限请求，在 `2026-05-04T20:09:35.631817+00:00` 再次把 `【Invoked Skill Context】`、`Base directory for this skill: /Users/.../skills/market_analysis` 与完整 skill prompt 透传到 live `session/update`；到 `2026-05-04T21:24:12.634833+00:00` 又继续外发 `web_search` 原始 JSON。说明当前不是某个 stock skill 的单点问题，而是 Feishu live update 边界仍系统性失守。
