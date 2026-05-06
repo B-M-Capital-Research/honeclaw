@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -194,3 +194,17 @@
   - 通过：`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
   - 通过：`cargo check -p hone-channels --tests`
   - 通过：`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`
+
+## 状态更新（2026-05-06 23:10 CST）
+
+- 本轮巡检确认：`2026-05-06 19:04 CST` 的修复结论在 live 窗口里再次失效，状态从 `Fixed` 回调为 `New`。
+- `data/sessions.sqlite3` -> `cron_job_runs` 在最近四小时继续出现多轮 heartbeat 整批失败：
+  - `2026-05-06T22:00:02-22:00:04+08:00`：`11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`
+  - `2026-05-06T22:30:02-22:30:05+08:00`：`11/11` 条 heartbeat 再次落成同类失败
+  - `2026-05-06T23:00:02-23:00:10+08:00`：`run_id=16146-16157` 中 heartbeat `11/11` 条继续全部失败
+- `data/runtime/logs/web.log.2026-05-06` 与 `data/runtime/logs/launch_web.latest` 在 `22:00` 与 `23:00` 窗口仍记录 `HeartbeatDiag run_start ... max_tokens=8192`，随后 OpenRouter 返回 `HTTP 402`：
+  - `22:00` 窗口提示 `can only afford 4774`
+  - `23:00` 窗口提示 `can only afford 4455`
+- 这说明“heartbeat 专用 completion token 上限从 `8192` 收紧到 `4096`”尚未在当前 live 进程生效，或仍有路径继续用 `8192` 发起 heartbeat function-calling 请求。
+- 同窗非 heartbeat 任务 `run_id=16148`（`核心观察股池晚间快报`）仍 `completed + sent + delivered=1`，说明不是 scheduler 全局停摆；故障继续集中在 heartbeat provider quota / token budget 链路。
+- 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，本轮不重复创建 issue。

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 09:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 - **证据来源**:
   - 首次命中时的真实会话与消息落库：`data/sessions.sqlite3` -> `session_messages`
@@ -200,3 +200,13 @@
   - `cargo test -p hone-memory prompt_schedule_time_mismatch --lib -- --nocapture`
   - `cargo check -p hone-memory --tests`
   - `rustfmt --edition 2024 --check memory/src/cron_job/storage.rs memory/src/cron_job/mod.rs`
+
+## 状态更新（2026-05-06 23:10 CST）
+
+- 本轮巡检确认：上述修复结论在 live 日志里仍未成立，状态从 `Fixed` 回调为 `New`。
+- `data/runtime/logs/web.log.2026-05-06` 在最近四小时继续记录同一历史坏 job 的 `schedule/prompt mismatch`：
+  - `2026-05-06 21:42:00-22:00:00 CST` 几乎逐分钟出现 `skipping cron job with schedule/prompt mismatch: job_id=j_acce16a6 job=美股盘后AI及高景气产业链推演 schedule=08:30 prompt=20:45`
+  - `2026-05-06 23:01:00`、`23:02:00`、`23:03:00`、`23:04:00` 继续出现同一 warning
+- `data/runtime/logs/launch_web.latest` 同窗也记录 `2026-05-06T15:03:00Z` 的同类 skip warning，说明不是单个日志文件残留。
+- 当前坏态仍是历史 `08:30` 槽没有被迁移出活跃扫描；止血避免错时发送，但用户声明的 `20:45` 任务仍未恢复可用，且调度器继续分钟级扫描并跳过。
+- 这仍是功能性 bug：它影响 scheduler 任务正确触发与历史坏配置收敛，不属于 P3 质量波动；影响范围仍限单条历史 job，因此严重等级维持 `P2`。
