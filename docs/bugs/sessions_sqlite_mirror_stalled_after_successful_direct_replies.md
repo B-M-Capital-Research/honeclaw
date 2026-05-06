@@ -715,3 +715,12 @@
 - 本轮再次确认 sqlite 会话镜像仍完全无增量：`sessions.max(updated_at)` / `sessions.max(last_message_at)` 与 `session_messages.max(timestamp)` / `session_messages.max(imported_at)` 继续共同停在 `2026-04-27T16:54:20.03xxxx+08:00`，最近一小时 `sessions_last_hour=0`、`messages_last_hour=0`。
 - 但同窗 `data/runtime/logs/web.log.2026-05-05` 已记录同一条 Feishu direct 会话 `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 在 `21:54:59` 与 `22:02:10` 两轮连续完成 `step=session.persist_assistant detail=done -> done success=true`，并分别在 `21:55:03`、`22:02:12` 完成 `reply.send`。
 - 这说明 sqlite 文件本身和 live 会话主链路仍在持续写别的表/日志，但 `sessions` / `session_messages` 镜像链路依旧完全卡死，没有任何追平迹象；本单继续维持活跃 `New`。
+
+## 状态更新（2026-05-06 08:02 CST）
+
+- 本轮再次确认 sqlite 会话镜像仍完全无增量：`sessions.max(updated_at)`、`sessions.max(last_message_at)`、`session_messages.max(timestamp)` 与 `session_messages.max(imported_at)` 继续共同停在 `2026-04-27T16:54:20.03xxxx+08:00`；最近一小时 `sessions_last_hour=0`、`messages_last_hour=0`。
+- 但同窗真实主链路已继续前进：
+  - `data/runtime/logs/web.log.2026-05-06` 在 `08:01:08.291` 记录 Feishu direct 会话 `Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b` 完成 `step=session.persist_assistant detail=done -> done success=true`；
+  - 同一会话随后在 `08:01:10.297` 完成 `reply.send detail=segments.sent=1/1`；
+  - `data/sessions/Actor_feishu__direct__ou_5fa8018fa4a74b5594223b48d579b2a33b.json` 已推进到 `updated_at=2026-05-06T08:01:08.285573+08:00`，末尾最新 user turn 为 `Tempus 为什么大跌？它的财报不好吗？哪里没达预期？`。
+- 同一 sqlite 文件里 `cron_job_runs.max(executed_at)` 已推进到 `2026-05-06T08:00:03.352034+08:00` 且最近一小时有 `15` 条新 run，说明数据库文件本身仍在持续写别的表，而 `sessions` / `session_messages` 镜像链路继续完全停摆；本单继续维持活跃 `New`。

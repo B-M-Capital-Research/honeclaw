@@ -287,3 +287,10 @@
   - `2026-05-05 22:01:58.028`：同一错误再次出现，紧接着只剩 `[dryrun sink]` 的 `SNDK 跨过 +8% 档` 事件卡片。
 - 同窗还有大量 `sink delivered` 样本，说明不是 Feishu 出站全局不可用，而是某类 event-engine / scheduler 直达目标仍稳定命中 `open_id cross app`。
 - 该缺陷继续维持活跃 `New`，并沿用 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
+
+## 状态更新（2026-05-06 08:02 CST）
+
+- 本轮巡检确认：该缺陷跨日后仍继续活跃，最近一小时又新增多次 live Feishu sink `open_id cross app` 失败。
+- `data/runtime/logs/web.log.2026-05-06` 在 `08:01:15.713`、`08:01:18.725`、`08:01:19.430`、`08:01:20.163`、`08:01:24.732`、`08:01:27.374` 连续记录 `channel sink failed, falling back to log: feishu send HTTP 400 Bad Request`，返回体都明确为 `code=99992361`、`msg="open_id cross app"`。
+- 每次失败后都只剩 `[dryrun sink]` 事件卡片，最新样本覆盖 `【要闻】 $TEM · 📊 财报发布` 与 `【要闻】 $TEM · 📄 SEC 8-K` 两类不同正文；同窗还持续存在大量 `sink delivered`，说明不是 Feishu 出站全局不可用，而是同一类 event-engine / scheduler 直达目标继续稳定命中跨 app 标识域错误。
+- 这也说明 `2026-05-01 bug-2` 记录为 `Fixed` 的本地 fallback 收口并未闭合当前生产发送路径；本单继续维持活跃 `New`，并沿用 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。

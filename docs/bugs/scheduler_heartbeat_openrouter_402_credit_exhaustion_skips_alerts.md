@@ -158,3 +158,13 @@
   - 通过：`cargo test -p hone-channels heartbeat_provider_ --lib -- --nocapture`
   - 通过：`cargo test -p hone-channels execution::tests::prepare_ --lib -- --nocapture`
   - 通过：`cargo check -p hone-channels --tests`
+
+## 状态更新（2026-05-06 08:02 CST）
+
+- 本轮巡检确认：故障跨日后仍持续活跃，`08:00` 窗口再次出现 `11/11` 条 heartbeat 全量失败。
+- `data/sessions.sqlite3` -> `cron_job_runs` 最近一小时汇总：
+  - `2026-05-06T08:00:02-08:00:03+08:00`：`run_id=15955-15965` 共 `11` 条 heartbeat 全部落成 `execution_failed + skipped_error + delivered=0`
+  - 覆盖 `TEM破位预警`、`TEM大事件心跳监控`、`RKLB异动监控`、`Monitor_Watchlist_11`、`ORCL 大事件监控`、`持仓重大事件心跳检测`、`全天原油价格3小时播报`、`Cerebras IPO与业务进展心跳监控`、`ASTS 重大异动心跳监控`、`小米30港元破位预警`、`CAI破位预警`
+- 同批 `error_message` 与 `detail_json.failure_kind` 已统一收敛为 `upstream HTTP 402 ... can only afford 6268` + `provider_quota_exhausted`，说明前一轮修复仅改善可观测字段，未消除 live provider 配额故障本身。
+- 同窗 `cron_job_runs` 里 `run_id=15951-15954` 四条非 heartbeat 定时任务仍在 `07:56-07:58` 正常 `completed + sent + delivered=1`，说明当前不是 scheduler 全局停摆；故障继续集中在 heartbeat 公共链路。
+- 到本轮巡检时，`2026-05-05 12:30` 到 `2026-05-06 08:00` 已累计 `17` 个整点/半点 heartbeat 故障窗口、至少 `187` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
