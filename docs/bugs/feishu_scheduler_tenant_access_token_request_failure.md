@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-21 08:04 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35)
 - **证据来源**:
   - `data/sessions.sqlite3` -> `cron_job_runs`
@@ -162,3 +162,8 @@
   - `cargo check -p hone-feishu`
   - `git diff --check`
 - 状态调整为 `Fixed`：本轮修复的是可本地闭环的 cached invalid-token 通用恢复路径；当前机器不再用生产 Feishu 窗口作为判定依据。
+
+## 状态同步（2026-05-07 bug-2）
+
+- 本轮复核确认文档后半段已记录 2026-05-05 的代码修复与回归验证，但文件头与 `docs/bugs/README.md` 仍停留在 `New`，导致自动化继续把已闭环的 cached invalid-token 子类当作活跃 P1。
+- 已将本文件与导航表同步为 `Fixed`；关联 GitHub Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) 仍建议人工复测后再关闭。

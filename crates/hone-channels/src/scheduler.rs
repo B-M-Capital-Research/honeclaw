@@ -862,12 +862,19 @@ fn is_scheduler_protocol_residue(line: &str) -> bool {
 /// 检测定时任务正文中是否包含明确的"跳过推送"信号。
 /// 仅匹配直接声明"本次跳过推送"或"无需发送"的短语，避免误拦截合法内容。
 pub(crate) fn has_skip_delivery_signal(text: &str) -> bool {
+    let normalized = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
     let patterns = [
         "按规则应跳过正式推送",
         "按规则可跳过正式推送",
         "按规则可跳过",
         "无新增催化，跳过推送",
         "无新增催化,跳过推送",
+        "不触发重大催化或风险证伪推送",
+        "不触发新增重大催化或风险证伪推送",
+        "不触发新增重大推送",
         "可跳过正式推送",
         "按规则跳过推送",
         "跳过本次推送",
@@ -879,7 +886,9 @@ pub(crate) fn has_skip_delivery_signal(text: &str) -> bool {
         "无需正式推送",
         "无需推送",
     ];
-    patterns.iter().any(|pat| text.contains(pat))
+    patterns
+        .iter()
+        .any(|pat| text.contains(pat) || normalized.contains(pat))
 }
 
 pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
@@ -1992,6 +2001,16 @@ mod tests {
         ));
         assert!(has_skip_delivery_signal(
             "TEM 今日无新增公司级催化，不触发正式推送。"
+        ));
+        assert!(has_skip_delivery_signal(
+            "RKLB 今日不触发重大催化或风险证伪推送。"
+        ));
+        assert!(has_skip_delivery_signal(
+            "TEM 今日不触发新增重大催化或风险证伪推送。"
+        ));
+        assert!(has_skip_delivery_signal("AAOI 今日不触发新增重大推送。"));
+        assert!(has_skip_delivery_signal(
+            "今日不触发新增重大\n推送，保留观察即可。"
         ));
         assert!(has_skip_delivery_signal("当前行情平稳，跳过本次推送。"));
         assert!(!has_skip_delivery_signal("AAOI 今日出现重大利好，建议关注"));

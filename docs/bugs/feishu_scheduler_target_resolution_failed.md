@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-15 22:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32)
 - **证据来源**:
   - 最近一小时真实任务台账：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -148,3 +148,8 @@
   - `contact_lookup_json_request_is_cloneable_for_retry`
   - `retry_status_only_matches_transient_feishu_failures`
   - `invalid_access_token_errors_trigger_one_cache_refresh`
+
+## 状态同步（2026-05-07 bug-2）
+
+- 本轮复核确认 2026-05-05 已完成代码修复与回归说明，但文件头与 `docs/bugs/README.md` 仍停留在 `New`。
+- 已将本文件与导航表同步为 `Fixed`；关联 GitHub Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) 仍建议人工复测后再关闭。
