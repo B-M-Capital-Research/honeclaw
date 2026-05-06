@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -208,3 +208,12 @@
 - 这说明“heartbeat 专用 completion token 上限从 `8192` 收紧到 `4096`”尚未在当前 live 进程生效，或仍有路径继续用 `8192` 发起 heartbeat function-calling 请求。
 - 同窗非 heartbeat 任务 `run_id=16148`（`核心观察股池晚间快报`）仍 `completed + sent + delivered=1`，说明不是 scheduler 全局停摆；故障继续集中在 heartbeat provider quota / token budget 链路。
 - 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，本轮不重复创建 issue。
+
+## 复核结论（2026-05-07 00:35 CST）
+
+- 本轮按当前自动化约束，不再把当前机器旧生产进程日志作为活跃判定依据。
+- 代码复核确认当前仓库 `crates/hone-channels/src/scheduler.rs` 已将 heartbeat 专用 completion token 上限固定为 `4096`，旧日志里的 `HeartbeatDiag run_start ... max_tokens=8192` 更符合未部署/旧运行态证据。
+- `provider_quota_exhausted` / `provider_http_error` 分类仍保留；若外部账号余额低于 `4096` 或完全耗尽，后续会显式记录 provider quota 故障，而不是伪装成 noop。
+- 状态更新为 `Fixed`；关联 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) 建议部署当前代码后复测真实 heartbeat 窗口。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 17:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 
 ## 证据来源
@@ -993,3 +993,14 @@
 ## 后续建议
 
 - 可另做一次历史数据清理，把既有已完成窗口里的旧 `running + pending` 悬挂行标记为 superseded 或迁移为终态；本次代码修复只阻止新窗口继续产生同类脏行。
+
+## 复核结论（2026-05-07 00:35 CST）
+
+- 本轮按当前自动化约束，不再用当前机器旧生产窗口样本作为活跃判定依据。
+- 代码复核确认当前仓库 `CronJobStorage::record_execution_event` 已覆盖三类终态收口：
+  - 顶层 `detail.delivery_key` 精确匹配 pending started row。
+  - `execution_detail_with_delivery_key(...)` 包装后的 Feishu / Web scheduler metadata。
+  - 终态缺失可用 delivery key 时，回退覆盖同 actor / job / target / heartbeat 最近 2 小时内最新 started row。
+- 状态更新为 `Fixed`；历史已悬挂 `running + pending` 行仍可另做数据清理，但不再作为当前代码活跃 bug。
+- 验证：
+  - `cargo test -p hone-memory started_row --lib -- --nocapture`

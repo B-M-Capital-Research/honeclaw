@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 11:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
 - 最近一小时真实调度窗口：`data/sessions.sqlite3` -> `cron_job_runs`
   - `2026-05-03 15:00-15:02` 最新窗口里，`run_id=14654`（`持仓重大事件心跳检测`）在 `14:00:37` 仍再次落成 `execution_failed + skipped_error + delivered=0`，错误维持同一形态：`LLM 错误: failed to deserialize api response: invalid type: integer \`400\`, expected a string at line 1 column 316`
@@ -180,3 +180,11 @@
 
 - 本轮未做运行态复验，因为任务约束明确不重启服务；真实进程仍需在下一个 heartbeat 窗口验证是否已拿到新的 provider 错误保留形态。
 - 若上游后续再返回更非标准的错误体（例如既不是 OpenAI error wrapper，也没有 `message/msg/detail`），当前逻辑仍只保证不再把数值 `code` 重新压扁为 serde 整数类型错误。
+
+## 复核结论（2026-05-07 00:35 CST）
+
+- 本轮按当前自动化约束，不再用当前机器旧生产窗口样本作为活跃判定依据。
+- 代码复核确认当前仓库已在 OpenAI-compatible provider 与 OpenRouter provider 两条路径覆盖 `JSONDeserialize | ApiError` raw HTTP fallback，能够保留上游 `HTTP 400` 与 numeric `code` 诊断，而不是二次压成 `invalid type: integer 400`。
+- 状态更新为 `Fixed`；若部署当前代码后的新窗口仍出现同一 serde 整数错误，再按新的 provider 路径证据重开。
+- 验证：
+  - `cargo test -p hone-llm numeric_provider_error_body --lib -- --nocapture`

@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 09:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 - **证据来源**:
   - 首次命中时的真实会话与消息落库：`data/sessions.sqlite3` -> `session_messages`
@@ -210,3 +210,12 @@
 - `data/runtime/logs/launch_web.latest` 同窗也记录 `2026-05-06T15:03:00Z` 的同类 skip warning，说明不是单个日志文件残留。
 - 当前坏态仍是历史 `08:30` 槽没有被迁移出活跃扫描；止血避免错时发送，但用户声明的 `20:45` 任务仍未恢复可用，且调度器继续分钟级扫描并跳过。
 - 这仍是功能性 bug：它影响 scheduler 任务正确触发与历史坏配置收敛，不属于 P3 质量波动；影响范围仍限单条历史 job，因此严重等级维持 `P2`。
+
+## 复核结论（2026-05-07 00:35 CST）
+
+- 本轮按当前自动化约束，不再用当前机器旧生产进程日志维持活跃判定。
+- 代码复核确认当前仓库 `CronJobStorage::get_due_jobs` 会在扫描时修复历史非 heartbeat job 的 prompt/schedule 时间错配，并把结构化 `schedule.hour/minute` 持久化对齐到 `【触发时间】` 行声明的 `HH:MM`。
+- 新写入 / 更新路径仍保留一致性校验，避免继续产生 schedule/prompt 分裂。
+- 状态更新为 `Fixed`；若部署当前代码后仍出现 `j_acce16a6 schedule=08:30 prompt=20:45` 的新 warning，再按新证据重开。
+- 验证：
+  - `cargo test -p hone-memory prompt_schedule_time_mismatch --lib -- --nocapture`

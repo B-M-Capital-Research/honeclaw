@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-17 15:08 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions/Actor_feishu__direct__ou_5f6ac070b0b574f2bc3ba49f9678b675a3.json`
     - `2026-05-05T12:58:25.420258+08:00` 用户上传图片，消息正文只包含附件描述和“图片默认处理策略”
@@ -81,3 +81,14 @@
 - 为“板块级问题进入旧 ticker 定向检索”的场景补回归，至少锁住 `DRAM`、`光模块`、`机器人` 这类行业词不能直接退化成上一轮个股。
 - 为“图片问答后短句追问 `回答问题/继续/展开`”补回归，锁住它必须承接最近一轮显式主题，而不是跳回更早的证券分析。
 - 在 search 阶段增加主题一致性检查：若当前 user turn 不包含 `SNDK` 等 ticker，但首轮工具调用已经锁定旧标的，应触发重写或澄清。
+
+## 修复记录（2026-05-07 00:35 CST）
+
+- 状态更新为 `Fixed`。
+- `crates/hone-channels/src/runners/multi_agent.rs` 的 search-stage guidance 补充当前 turn 主题优先约束：
+  - 当前 user message 是搜索目标真相源；首个 `data_fetch` / `web_search` 的 ticker、公司、行业或 query 必须直接来自当前 user turn，或来自其明确承接的最近显式主题。
+  - 行业 / 板块请求（如 DRAM、机器人、光模块、软件基础设施）必须先围绕板块关键词与代表公司检索，不得在当前输入未命名旧 ticker 时退化成旧个股。
+  - 图片或上一答后的短承接句优先继续最近主题；若多个历史主题都可能匹配，应先澄清而不是选择更早证券。
+- 这次加固不依赖某个生产样本或某个 ticker 特判，而是把 search 阶段的工具首目标绑定到当前意图，降低 compact/reseed 后旧证券上下文重新劫持检索的概率。
+- 验证：
+  - `cargo test -p hone-channels multi_agent::tests::search_input_guidance_allows_direct_replies_for_greetings --lib -- --nocapture`
