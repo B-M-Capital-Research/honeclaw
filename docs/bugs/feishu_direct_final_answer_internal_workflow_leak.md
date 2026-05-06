@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-06 10:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - 最近一小时真实会话：`data/runtime/logs/acp-events.log`
     - `session_id=Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652`
@@ -66,3 +66,19 @@
 - 后续巡检重点看：
   - Feishu 直聊长答是否还会以 `我先...`、`当前会话 todo...`、`不落盘...` 开头
   - 同类污染是否已经扩散到 Web / Discord / scheduler 成功链路
+
+## 修复记录（2026-05-06 15:08 CST）
+
+- 状态更新为 `Fixed`。
+- 在 `crates/hone-channels/src/runtime.rs` 的共享 `sanitize_user_visible_output(...)` 增加成功答复首段/首句工作流前言剥离：
+  - 命中 `todo`、`current-plan`、`动态计划`、`不落盘`、`任务计划`、内部工作流等明显 agent 协作术语时，会移除首段并保留后续正式答案。
+  - 对 `我先/我会先/先...再...` 这类执行步骤式开头，若后面还有实质答案，会移除该工作稿前言。
+  - 保留 `我先给结论`、`核心判断`、`直接说` 等用户可见结论型开头，避免误删正常表达。
+- 该修复位于共享净化层，覆盖 Feishu direct final，也同步保护 Web / Discord / Telegram 等复用同一最终输出净化的成功链路；未改模块边界、入口或长期运行方式。
+- 关联 GitHub Issue：无。
+- 验证：
+  - `cargo test -p hone-channels sanitize_user_visible_output_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/runtime.rs`
+  - `git diff --check`
+  - `bash scripts/ci/check_fmt_changed.sh` 未通过：当前 macOS 系统 Bash 3.2 缺少 `mapfile`，脚本在执行前置阶段退出；本轮已用定向 `rustfmt --check` 覆盖改动文件格式。

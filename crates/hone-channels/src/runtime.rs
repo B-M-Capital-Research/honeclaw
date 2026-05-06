@@ -315,6 +315,10 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
     }
 
     sanitized = kept_lines.join("\n");
+    if let Some(stripped) = strip_internal_workflow_prelude(&sanitized) {
+        removed_internal = true;
+        sanitized = stripped;
+    }
     sanitized = RE_WS.replace_all(&sanitized, " ").to_string();
     sanitized = RE_NL.replace_all(&sanitized, "\n\n").to_string();
     sanitized = sanitized.trim().to_string();
@@ -395,6 +399,104 @@ fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
         || lowered.contains("codex acp")
         || lowered.contains("stream closed before response")
         || lowered.contains("acp stream")
+}
+
+fn strip_internal_workflow_prelude(text: &str) -> Option<String> {
+    let trimmed = text.trim_start();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(paragraph_end) = trimmed.find("\n\n") {
+        let first_paragraph = &trimmed[..paragraph_end];
+        let rest = trimmed[paragraph_end..].trim_start();
+        if !rest.is_empty() && looks_like_internal_workflow_prelude(first_paragraph) {
+            return Some(rest.to_string());
+        }
+    }
+
+    let first_sentence_end = trimmed.char_indices().find_map(|(idx, ch)| {
+        matches!(ch, '。' | '！' | '!' | '\n').then_some(idx + ch.len_utf8())
+    });
+    if let Some(sentence_end) = first_sentence_end {
+        let first_sentence = &trimmed[..sentence_end];
+        let rest = trimmed[sentence_end..].trim_start();
+        if rest.chars().count() >= 30 && looks_like_internal_workflow_prelude(first_sentence) {
+            return Some(rest.to_string());
+        }
+    }
+
+    None
+}
+
+fn looks_like_internal_workflow_prelude(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed.chars().count() > 320 {
+        return false;
+    }
+
+    let lowered = trimmed.to_ascii_lowercase();
+    if [
+        "todo",
+        "current-plan",
+        "current plan",
+        "动态计划",
+        "任务计划",
+        "不落盘",
+        "文档方面",
+        "工作流",
+        "检查本地是否已有相关公司画像",
+        "检查本地公司画像",
+    ]
+    .iter()
+    .any(|marker| lowered.contains(marker) || trimmed.contains(marker))
+    {
+        return true;
+    }
+
+    let starts_like_workflow = [
+        "我先",
+        "我会先",
+        "我接下来",
+        "接下来我",
+        "先",
+        "先按",
+        "先对齐",
+        "先检查",
+    ]
+    .iter()
+    .any(|marker| trimmed.starts_with(marker));
+    if !starts_like_workflow {
+        return false;
+    }
+
+    if ["结论", "答案", "核心判断", "直接说", "简短说"]
+        .iter()
+        .any(|marker| trimmed.contains(marker))
+    {
+        return false;
+    }
+
+    let has_workflow_verb = [
+        "核验",
+        "检查",
+        "对齐",
+        "拆成",
+        "整理",
+        "补查",
+        "调取",
+        "检索",
+        "看本地",
+        "拉取",
+        "搜索",
+        "梳理",
+    ]
+    .iter()
+    .any(|marker| trimmed.contains(marker));
+    let has_sequence = ["再", "然后", "最后", "之后"]
+        .iter()
+        .any(|marker| trimmed.contains(marker));
+    has_workflow_verb && has_sequence
 }
 
 /// 检测文本是否包含工具调用标记
@@ -688,6 +790,36 @@ mod tests {
             );
             assert!(sanitized.removed_internal);
         }
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_internal_workflow_prelude() {
+        let raw = "我先把任务计划压缩成当前会话 todo，文档方面只在结论有长期变化时更新公司画像，否则说明无需更新，不落盘到 current-plan。\n\nASTS 最近下跌，核心还是发射节奏、融资预期和风险偏好三件事同时压估值。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "ASTS 最近下跌，核心还是发射节奏、融资预期和风险偏好三件事同时压估值。"
+        );
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_strips_planning_prelude_before_answer() {
+        let raw = "我先对齐今天的市场口径，再把软件被压的原因拆成四条线。\n\n核心原因是利率预期、AI capex 分流、企业预算放缓和高估值久期资产折现率上行。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(sanitized.removed_internal);
+        assert_eq!(
+            sanitized.content,
+            "核心原因是利率预期、AI capex 分流、企业预算放缓和高估值久期资产折现率上行。"
+        );
+    }
+
+    #[test]
+    fn sanitize_user_visible_output_keeps_user_facing_conclusion_prelude() {
+        let raw = "我先给结论：软件股被压不是单一基本面恶化，而是利率、预算和 AI 资金偏好的共同作用。\n\n后面再看个股分化。";
+        let sanitized = sanitize_user_visible_output(raw);
+        assert!(!sanitized.removed_internal);
+        assert_eq!(sanitized.content, raw);
     }
 
     #[test]
