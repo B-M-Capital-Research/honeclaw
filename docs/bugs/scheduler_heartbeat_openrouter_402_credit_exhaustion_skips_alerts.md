@@ -229,3 +229,15 @@
 - `data/runtime/logs/web.log.2026-05-06` 在 `05:32` 窗口继续记录 `failure_kind=provider_quota_exhausted`，错误统一为 OpenRouter `HTTP 402`，且 live 请求仍显示 `max_tokens=8192`、`can only afford 4434`。
 - 最近四小时另有 3 条非 heartbeat Feishu scheduler run 落成 `execution_failed + sent + delivered=1`，说明 scheduler 进程仍在运行；本单仍集中在 heartbeat provider quota / token budget 链路，不是全局调度停摆。
 - 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，本轮不重复创建 issue。
+
+## 状态更新（2026-05-07 07:56 CST）
+
+- 本轮补充确认：`07:43` 之后最新台账又出现两个 heartbeat 全量失败窗口，本单继续维持 `New`。
+- `data/sessions.sqlite3` -> `cron_job_runs` 自上次自动化运行后的增量汇总：
+  - `2026-05-07T03:03:57-03:04:01+08:00`：`11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`，错误为 OpenRouter `HTTP 402`。
+  - `2026-05-07T05:32:26-05:32:27+08:00`：`11/11` 条 heartbeat 再次落成同类 `HTTP 402`。
+  - `2026-05-07T06:41:35+08:00`：`11/11` 条 heartbeat 全量失败，错误统一为 `http error: error sending request for url (https://openrouter.ai/api/v1/chat/completions)`。
+  - `2026-05-07T07:32:22-07:32:23+08:00`：`11/11` 条 heartbeat 又回到 OpenRouter `HTTP 402`，可负担 token 预算为 `4434`。
+- `06:41` 的 transport failure 与 `07:32` 的 quota failure 都发生在同一批 heartbeat job 集合，仍覆盖 `ORCL`、`ASTS`、`Monitor_Watchlist_11`、`持仓重大事件`、`TEM`、`RKLB`、`CAI`、`Cerebras IPO`、`全天原油价格3小时播报`、`小米30港元破位预警`。
+- 这不是新的独立缺陷：影响链路、用户面结果和受影响 job 集合均与本单一致，区别只是 provider 失败形态在 `HTTP 402` 与 transport send failure 之间漂移。
+- 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，本轮不重复创建 issue。

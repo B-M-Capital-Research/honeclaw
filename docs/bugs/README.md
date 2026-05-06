@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-07 07:43 CST
+最后更新：2026-05-07 07:56 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,7 +27,7 @@
 | --- | --- | --- | --- | --- |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-06 04:26 在 `301c5f3` 复现：release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下新的 `rw.8748.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | New | 2026-05-06 08:02 `web.log.2026-05-06` 在 `08:01:15-08:01:27` 连续 6 次记录 `code=99992361 / open_id cross app`，失败后只剩 `$TEM` 财报/8-K 的 `[dryrun sink]` 事件卡片，说明 live Feishu sink 仍未恢复；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | New | 2026-05-07 07:43 最近四小时继续活跃：`02:30`、`03:03`、`05:32` 三个窗口各有 `11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`；live 日志仍显示 `max_tokens=8192`，并触发 `can only afford 4434/4750` 的 `provider_quota_exhausted`；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
+| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | New | 2026-05-07 07:56 最近四小时/上次运行后继续活跃：`03:03`、`05:32`、`06:41`、`07:32` 四个窗口各有 `11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`；其中 `06:41` 为 OpenRouter transport failure，其余仍是 `max_tokens=8192` 触发的 `HTTP 402 / provider_quota_exhausted`；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Feishu 定时任务内部失败仍会外发通用失败提示，且 direct session 不回写失败记录 | P1 | New | 2026-05-07 07:43 `2026-05-06` 的 Fixed 结论被最近四小时推翻：`run_id=16250/16251/16252` 三条非 heartbeat Feishu scheduler 任务在 Codex ACP idle timeout 后仍落成 `execution_failed + sent + delivered=1 + should_deliver=1`，且文案均为 `抱歉，处理超时了。请稍后再试。`；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-06 09:04 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但同窗 `09:01` 已有 Feishu 与 Web 会话完成 `session.persist_assistant + reply.send`，说明 sqlite 文件仍在写别的表而会话镜像继续完全停摆 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
