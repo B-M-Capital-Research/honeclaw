@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -217,3 +217,15 @@
 - 状态更新为 `Fixed`；关联 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) 建议部署当前代码后复测真实 heartbeat 窗口。
 - 验证：
   - `cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`
+
+## 状态更新（2026-05-07 07:43 CST）
+
+- 本轮巡检确认：最近四小时该缺陷继续活跃，`02:30`、`03:03`、`05:32` 三个 heartbeat 窗口再次全量失败。
+- `data/sessions.sqlite3` -> `cron_job_runs` 最近四小时汇总：
+  - `2026-05-07T02:30:02-02:30:06+08:00`：`11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`
+  - `2026-05-07T03:03:57-03:04:01+08:00`：`11/11` 条 heartbeat 再次落成同类失败
+  - `2026-05-07T05:32:26-05:32:27+08:00`：`11/11` 条 heartbeat 继续全部失败
+- 三个窗口覆盖 `ORCL 大事件监控`、`ASTS 重大异动心跳监控`、`Monitor_Watchlist_11`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`TEM破位预警`、`RKLB异动监控`、`CAI破位预警`、`Cerebras IPO与业务进展心跳监控`、`全天原油价格3小时播报`、`小米30港元破位预警`。
+- `data/runtime/logs/web.log.2026-05-06` 在 `05:32` 窗口继续记录 `failure_kind=provider_quota_exhausted`，错误统一为 OpenRouter `HTTP 402`，且 live 请求仍显示 `max_tokens=8192`、`can only afford 4434`。
+- 最近四小时另有 3 条非 heartbeat Feishu scheduler run 落成 `execution_failed + sent + delivered=1`，说明 scheduler 进程仍在运行；本单仍集中在 heartbeat provider quota / token budget 链路，不是全局调度停摆。
+- 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，本轮不重复创建 issue。

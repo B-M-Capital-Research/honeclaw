@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 21:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -179,3 +179,15 @@
 - 验证：
   - `cargo test -p hone-channels suppressed_scheduler_failure_persists_single_transcript_marker --lib -- --nocapture`
   - `cargo test -p hone-channels user_visible_error_message_or_none --lib -- --nocapture`
+
+## 状态更新（2026-05-07 07:43 CST）
+
+- 本轮巡检确认：`2026-05-06` 的 `Fixed` 结论已被最近四小时真实窗口推翻，状态从 `Fixed` 回调为 `New`。
+- `data/sessions.sqlite3` -> `cron_job_runs` 在最近四小时出现 3 条非 heartbeat Feishu scheduler 任务落成 `execution_failed + sent + delivered=1`，且 `should_deliver=1`：
+  - `run_id=16250` / `Oil_Price_Monitor_Closing` / `2026-05-07T05:13:58+08:00`
+  - `run_id=16252` / `科技成长赛道大盘极值与情绪监控` / `2026-05-07T06:13:23+08:00`
+  - `run_id=16251` / `OWALERT_PostMarket` / `2026-05-07T06:13:26+08:00`
+- 三条 run 的 `error_message` / `response_preview` 都是 `抱歉，处理超时了。请稍后再试。`，`detail_json.scheduler.failure_kind=internal_error_suppressed`，说明 live 链路仍会把内部失败转成用户侧通用失败提示并记为已送达。
+- 同窗 `data/runtime/logs/web.log.2026-05-06` 记录对应 Feishu scheduler session 在 Codex ACP 阶段触发 `TimeoutPerLine` / `codex acp session/prompt idle timeout (180s)`，并带有 MCP process group 终止失败等内部 stderr；这些内部细节没有直接外发，但调度台账的“内部错误应 suppressed”契约没有生效。
+- 由于 `sessions` / `session_messages` 镜像仍停在 `2026-04-27T16:54:20+08:00`，本轮无法用 sqlite transcript 验证补偿 marker 是否落库；但 `cron_job_runs` 已足以证明“内部错误仍被登记为可投递并 delivered=1”的主缺陷复发。
+- 该缺陷已有 GitHub Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)，本轮不重复创建 issue。
