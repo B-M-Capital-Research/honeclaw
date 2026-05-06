@@ -365,11 +365,11 @@ pub fn user_visible_error_message_or_none(raw: Option<&str>) -> Option<String> {
         return Some(message);
     }
     let lowered = sanitized.to_ascii_lowercase();
-    if lowered.contains("timeout") || lowered.contains("timed out") {
-        return Some(TIMEOUT_USER_ERROR_MESSAGE.to_string());
-    }
     if looks_internal_error_detail(&sanitized, &lowered) {
         return None;
+    }
+    if lowered.contains("timeout") || lowered.contains("timed out") {
+        return Some(TIMEOUT_USER_ERROR_MESSAGE.to_string());
     }
     Some(sanitized)
 }
@@ -870,9 +870,17 @@ mod tests {
     }
 
     #[test]
-    fn user_visible_error_message_or_none_keeps_timeout_errors() {
+    fn user_visible_error_message_or_none_suppresses_internal_idle_timeout() {
         let err = user_visible_error_message_or_none(Some(
             "codex acp session/prompt idle timeout (180s)",
+        ));
+        assert!(err.is_none());
+    }
+
+    #[test]
+    fn user_visible_error_message_or_none_keeps_generic_timeout_errors() {
+        let err = user_visible_error_message_or_none(Some(
+            "request timed out while waiting for upstream response",
         ));
         assert_eq!(err.as_deref(), Some(TIMEOUT_USER_ERROR_MESSAGE));
     }

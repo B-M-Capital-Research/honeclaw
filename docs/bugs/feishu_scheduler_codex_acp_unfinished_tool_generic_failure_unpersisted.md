@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 21:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -191,3 +191,20 @@
 - 同窗 `data/runtime/logs/web.log.2026-05-06` 记录对应 Feishu scheduler session 在 Codex ACP 阶段触发 `TimeoutPerLine` / `codex acp session/prompt idle timeout (180s)`，并带有 MCP process group 终止失败等内部 stderr；这些内部细节没有直接外发，但调度台账的“内部错误应 suppressed”契约没有生效。
 - 由于 `sessions` / `session_messages` 镜像仍停在 `2026-04-27T16:54:20+08:00`，本轮无法用 sqlite transcript 验证补偿 marker 是否落库；但 `cron_job_runs` 已足以证明“内部错误仍被登记为可投递并 delivered=1”的主缺陷复发。
 - 该缺陷已有 GitHub Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)，本轮不重复创建 issue。
+
+## 修复记录（2026-05-07 08:05 CST）
+
+- 状态更新为 `Fixed`。
+- 本轮复核确认，最近四小时复发样本的直接根因是共享净化函数 `user_visible_error_message_or_none(...)` 的判断顺序错误：
+  - 旧逻辑先匹配任意 `timeout` / `timed out` 文本，再判断是否属于 `codex acp` / `session/prompt` 等内部错误。
+  - 因此 `codex acp session/prompt idle timeout (180s)` 被错误转成用户态文案 `抱歉，处理超时了。请稍后再试。`，进而让 scheduler 继续把内部失败记成 `should_deliver=true`。
+- 本轮修复将 `looks_internal_error_detail(...)` 提前到 timeout 判断之前：
+  - `codex acp session/prompt idle timeout`、`stream closed before response`、provider/protocol 等内部错误现在会继续返回 `None`，由 scheduler 走 `internal_error_suppressed` 分支，不再外发通用失败提示。
+  - 非内部的普通超时文本仍会保留 `抱歉，处理超时了。请稍后再试。`，避免影响真正需要面向用户暴露的超时场景。
+- 说明：
+  - 本轮只修复“内部 idle timeout 被误当成用户可见超时”的判定顺序缺陷。
+  - `sessions.sqlite3` 镜像停摆属于另一条活跃缺陷，未在本单内一起修改；但当前 scheduler 至少不会再把这类内部错误登记为 `sent + delivered=1`。
+- 验证：
+  - `cargo test -p hone-channels user_visible_error_message_or_none --lib -- --nocapture`
+  - `cargo test -p hone-channels suppressed_scheduler_failure_persists_single_transcript_marker --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
