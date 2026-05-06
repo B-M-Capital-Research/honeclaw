@@ -1,6 +1,6 @@
 # Bug: event-engine price poller sends the full watch pool in one FMP quote request
 
-状态：`New`
+状态：`Fixed`
 
 严重等级：`P0`
 
@@ -35,9 +35,20 @@ FMP does support multi-symbol quote requests, but Hone currently treats the watc
 
 - Reproduced from local runtime logs only; no live FMP request was sent during this triage.
 - Code inspection confirms the current request construction has no batch-size or URL-length guard.
+- 2026-05-06 23:15 CST：已补代码修复与回归验证；未依赖线上 FMP 请求或生产健康状态。
 
 ## Risks
 
 - Missed price alerts / 52-week events for all watched symbols during a failed tick.
 - Repeated task-health noise as the watch pool grows.
 - Higher latency and timeout probability when one request asks FMP for too many or unsupported symbols at once.
+
+## Fix Record
+
+- 2026-05-06 23:15 CST：`PricePoller::fetch` 改为先过滤 FMP equity quote path 不支持的 symbol（空值、超长、含空格/斜杠的 option-style 条目），再按固定批量与 URL path 长度上限拆分 `/v3/quote/{symbols}` 请求。
+- 同轮修复让单个 quote batch 失败只记录 warning 并保留同一 tick 中其它成功 batch 的事件；只有所有 batch 都失败时才让 poller tick 返回错误，避免一个超长/坏请求丢弃整池 quote。
+- 回归验证：
+  - `cargo test -p hone-event-engine quote_symbol_batches_filter_unsupported_symbols_and_split --lib -- --nocapture`
+  - `cargo test -p hone-event-engine quote_batch_collection --lib -- --nocapture`
+  - `cargo check -p hone-event-engine --tests`
+- 关联 GitHub Issue：无。

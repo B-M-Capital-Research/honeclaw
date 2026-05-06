@@ -30,6 +30,7 @@ pub(super) const CONTEXT_OVERFLOW_RECOVERY_LIMIT: usize = 1;
 pub(super) const DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT: usize = 20;
 pub(super) const CONTEXT_OVERFLOW_POST_COMPACT_RESTORE_LIMIT: usize = 6;
 pub(super) const CONTEXT_OVERFLOW_FALLBACK_MESSAGE: &str = "当前会话上下文过长。我已经自动尝试压缩历史，但这次仍无法继续。请直接继续提问重点、发送 /compact，或开启一个新会话后再试。";
+pub(super) const NON_FINANCE_BOUNDARY_REPLY: &str = "我只能处理金融、市场、投资研究、公司基本面、宏观行业和风险管理相关问题。这个问题不属于当前支持范围；如果你想分析相关资产、行业或上市公司影响，可以按金融问题重新问我。";
 
 /// 决定一次 run 在送去 runner 前,restore_context 时保留多少条历史。
 ///
@@ -63,6 +64,94 @@ pub(super) fn should_return_runner_result(result: &AgentRunnerResult) -> bool {
 
 pub(super) fn is_context_overflow_error_text(text: &str) -> bool {
     crate::runtime::is_context_overflow_error(text)
+}
+
+pub(super) fn non_finance_boundary_reply(user_input: &str) -> Option<&'static str> {
+    let normalized = user_input.trim().to_lowercase();
+    if normalized.is_empty() || contains_finance_anchor(&normalized) {
+        return None;
+    }
+
+    if contains_any(
+        &normalized,
+        &[
+            "买房",
+            "卖房",
+            "租房",
+            "房贷",
+            "按揭",
+            "学区房",
+            "装修",
+            "深圳楼市",
+            "北京楼市",
+            "上海楼市",
+            "广州楼市",
+            "房价",
+            "置换",
+            "首付",
+        ],
+    ) || contains_any(
+        &normalized,
+        &[
+            "电脑cpu",
+            "cpu是什么",
+            "cpu 叫什么",
+            "cpu叫什么",
+            "处理器是什么",
+            "显卡型号",
+            "手机型号",
+            "配置怎么样",
+        ],
+    ) {
+        Some(NON_FINANCE_BOUNDARY_REPLY)
+    } else {
+        None
+    }
+}
+
+fn contains_finance_anchor(text: &str) -> bool {
+    contains_any(
+        text,
+        &[
+            "金融",
+            "市场",
+            "投资",
+            "股票",
+            "股价",
+            "美股",
+            "港股",
+            "a股",
+            "财报",
+            "估值",
+            "基本面",
+            "宏观",
+            "行业",
+            "资产",
+            "组合",
+            "持仓",
+            "仓位",
+            "买点",
+            "卖点",
+            "营收",
+            "利润",
+            "pe",
+            "eps",
+            "etf",
+            "债券",
+            "利率",
+            "风险回报",
+            "上市公司",
+            "房地产股",
+            "地产股",
+            "房企",
+            "银行股",
+            "产业链",
+        ],
+    )
+}
+
+fn contains_any(text: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| text.contains(needle))
 }
 
 pub(super) fn should_persist_tool_result(call: &ToolCallMade) -> bool {

@@ -45,8 +45,8 @@ use super::core::AgentSession;
 use super::emitter::SessionEventEmitter;
 use super::helpers::{
     CONTEXT_OVERFLOW_FALLBACK_MESSAGE, DIRECT_SESSION_PRE_COMPACT_RESTORE_LIMIT,
-    persistable_turn_from_response, sanitize_assistant_context_content, should_persist_tool_result,
-    should_return_runner_result,
+    NON_FINANCE_BOUNDARY_REPLY, non_finance_boundary_reply, persistable_turn_from_response,
+    sanitize_assistant_context_content, should_persist_tool_result, should_return_runner_result,
 };
 use super::restore::restore_context;
 use super::types::{
@@ -315,6 +315,30 @@ fn should_return_runner_result_does_not_treat_tool_calls_only_as_success() {
     };
 
     assert!(!should_return_runner_result(&result));
+}
+
+#[test]
+fn non_finance_boundary_rejects_obvious_consumer_topics_without_finance_anchor() {
+    assert_eq!(
+        non_finance_boundary_reply("Hi hone，你了解深圳楼市吗？我现在是否适合买房？"),
+        Some(NON_FINANCE_BOUNDARY_REPLY)
+    );
+    assert_eq!(
+        non_finance_boundary_reply("AMD的电脑CPU是什么名字"),
+        Some(NON_FINANCE_BOUNDARY_REPLY)
+    );
+}
+
+#[test]
+fn non_finance_boundary_allows_finance_framed_adjacent_topics() {
+    assert_eq!(
+        non_finance_boundary_reply("深圳楼市会影响哪些地产股？"),
+        None
+    );
+    assert_eq!(
+        non_finance_boundary_reply("AMD CPU业务对股价和财报有什么影响？"),
+        None
+    );
 }
 
 #[test]
@@ -1624,6 +1648,57 @@ async fn run_zero_daily_conversation_limit_bypasses_quota() {
         .snapshot_for_date(&actor, &today)
         .expect("snapshot");
     assert!(snapshot.is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn run_short_circuits_obvious_non_finance_direct_query_without_llm_or_quota() {
+    let root = make_temp_dir("hone_channels_domain_boundary");
+    std::fs::create_dir_all(&root).expect("create root");
+    let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
+        content: "should not be called".to_string(),
+        tool_calls: None,
+        usage: None,
+    }]);
+    let core = make_test_core(&root, llm.clone());
+    let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
+    let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+
+    let result = session
+        .run(
+            "Hi hone，你了解深圳楼市吗？我现在是否适合买房？",
+            AgentRunOptions::default(),
+        )
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert_eq!(result.response.content, NON_FINANCE_BOUNDARY_REPLY);
+    assert_eq!(llm.chat_calls(), 0);
+    assert_eq!(llm.chat_with_tools_calls(), 0);
+
+    let today = hone_core::beijing_now().format("%F").to_string();
+    let snapshot = core
+        .conversation_quota_storage
+        .snapshot_for_date(&actor, &today)
+        .expect("snapshot");
+    assert!(snapshot.is_none());
+
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .expect("messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].role, "user");
+    assert_eq!(messages[1].role, "assistant");
+    assert_eq!(
+        session_message_text(&messages[0]),
+        "Hi hone，你了解深圳楼市吗？我现在是否适合买房？"
+    );
+    assert_eq!(
+        session_message_text(&messages[1]),
+        NON_FINANCE_BOUNDARY_REPLY
+    );
+
     let _ = std::fs::remove_dir_all(root);
 }
 

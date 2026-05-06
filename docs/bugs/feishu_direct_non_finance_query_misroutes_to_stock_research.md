@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-30 19:08 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
   - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
     - `2026-05-03T20:08:56.147849+08:00` 用户真实输入：`Hi hone，你了解深圳楼市吗？我现在是否适合买房？...`
@@ -77,3 +77,9 @@
 - 回归验证：`cargo test -p hone-channels prompt::tests:: --lib -- --nocapture`、`cargo test -p hone-channels turn_builder::tests::runtime_input_with_recv_extra_keeps_current_turn_last --lib -- --nocapture`。
 - 关联 GitHub Issue：无。
 - 2026-05-03 20:11 CST：真实 Feishu 会话再次复发。最新样本不再体现旧 `LITE` / `stock_research` 串扰，但仍直接回答非金融“深圳楼市/买房”问题，说明 live 领域边界拒绝未真正生效；状态回退为 `New`。
+- 2026-05-06 23:15 CST：在 `AgentSession::run` 的 quota reservation 与 runner 准备前增加直聊非金融短路；对明显生活/消费硬件问题且没有金融锚点的输入，直接持久化 user turn 与领域边界回复，不调用 LLM、`stock_research` 或其它工具，也不消耗 daily conversation quota。为避免阻断运维/调度类内部任务，短路不作用于 scheduled-task mode 或 admin actor。
+- 回归验证：
+  - `cargo test -p hone-channels non_finance_boundary --lib -- --nocapture`
+  - `cargo test -p hone-channels run_short_circuits_obvious_non_finance_direct_query_without_llm_or_quota --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 关联 GitHub Issue：无。

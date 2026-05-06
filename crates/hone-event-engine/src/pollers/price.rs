@@ -21,6 +21,11 @@ use crate::subscription::SharedRegistry;
 const FRESH_QUOTE_MAX_AGE_SECS: i64 = 15 * 60;
 const CLOSING_QUOTE_MAX_AGE_SECS: i64 = 20 * 60 * 60;
 const FUTURE_QUOTE_MAX_SKEW_SECS: i64 = 5 * 60;
+#[cfg(not(test))]
+const FMP_QUOTE_BATCH_SIZE: usize = 25;
+#[cfg(test)]
+const FMP_QUOTE_BATCH_SIZE: usize = 3;
+const FMP_QUOTE_MAX_PATH_CHARS: usize = 700;
 
 pub struct PricePoller {
     client: FmpClient,
@@ -64,18 +69,115 @@ impl PricePoller {
         if symbols.is_empty() {
             return Ok(vec![]);
         }
-        let joined = symbols.join(",");
-        let path = format!("/v3/quote/{joined}");
-        let raw = self.client.get_json(&path).await?;
-        Ok(events_from_quotes_at(
-            &raw,
+        let batches = fmp_quote_symbol_batches(symbols);
+        if batches.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut batch_results = Vec::new();
+        for batch in &batches {
+            let joined = batch.join(",");
+            let path = format!("/v3/quote/{joined}");
+            match self.client.get_json(&path).await {
+                Ok(raw) => batch_results.push(Ok(raw)),
+                Err(err) => {
+                    tracing::warn!(
+                        poller = "fmp.price",
+                        batch_size = batch.len(),
+                        first_symbol = batch.first().map(String::as_str).unwrap_or(""),
+                        "FMP quote batch failed: {err:#}"
+                    );
+                    batch_results.push(Err(err));
+                }
+            }
+        }
+
+        collect_quote_batch_events(
+            batch_results,
             self.low_pct,
             self.high_pct,
             self.realert_step_pct,
             self.near_hi_lo_tolerance,
             Utc::now(),
-        ))
+        )
     }
+}
+
+fn fmp_quote_symbol_batches(symbols: &[String]) -> Vec<Vec<String>> {
+    let mut seen = std::collections::HashSet::new();
+    let mut batches: Vec<Vec<String>> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
+    let mut current_path_chars = "/v3/quote/".len();
+
+    for symbol in symbols {
+        let symbol = symbol.trim().to_ascii_uppercase();
+        if !is_fmp_quote_symbol(&symbol) || !seen.insert(symbol.clone()) {
+            continue;
+        }
+
+        let separator = usize::from(!current.is_empty());
+        let next_path_chars = current_path_chars + separator + symbol.len();
+        if !current.is_empty()
+            && (current.len() >= FMP_QUOTE_BATCH_SIZE || next_path_chars > FMP_QUOTE_MAX_PATH_CHARS)
+        {
+            batches.push(std::mem::take(&mut current));
+            current_path_chars = "/v3/quote/".len();
+        }
+
+        current_path_chars += usize::from(!current.is_empty()) + symbol.len();
+        current.push(symbol);
+    }
+
+    if !current.is_empty() {
+        batches.push(current);
+    }
+    batches
+}
+
+fn is_fmp_quote_symbol(symbol: &str) -> bool {
+    !symbol.is_empty()
+        && symbol.len() <= 32
+        && symbol
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | '^'))
+}
+
+fn collect_quote_batch_events<I>(
+    batch_results: I,
+    low_pct: f64,
+    high_pct: f64,
+    realert_step_pct: f64,
+    near_hi_lo_tolerance: f64,
+    now: DateTime<Utc>,
+) -> anyhow::Result<Vec<MarketEvent>>
+where
+    I: IntoIterator<Item = anyhow::Result<Value>>,
+{
+    let mut events = Vec::new();
+    let mut successful_batches = 0usize;
+    let mut last_err: Option<anyhow::Error> = None;
+
+    for result in batch_results {
+        match result {
+            Ok(raw) => {
+                successful_batches += 1;
+                events.extend(events_from_quotes_at(
+                    &raw,
+                    low_pct,
+                    high_pct,
+                    realert_step_pct,
+                    near_hi_lo_tolerance,
+                    now,
+                ));
+            }
+            Err(err) => last_err = Some(err),
+        }
+    }
+
+    if successful_batches == 0 {
+        return Err(last_err.unwrap_or_else(|| anyhow::anyhow!("FMP quote batches failed")));
+    }
+    Ok(events)
 }
 
 #[async_trait]
@@ -657,6 +759,81 @@ mod tests {
         ]);
         let events = events_from_quotes_at(&raw, 2.5, 6.0, 2.0, 0.001, now);
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn quote_symbol_batches_filter_unsupported_symbols_and_split() {
+        let symbols = vec![
+            "aapl".to_string(),
+            "MSFT".to_string(),
+            "MU 2026-06-18 C 520".to_string(),
+            "0700.HK".to_string(),
+            "RXRX 2026-06-18 C 7/9".to_string(),
+            "BRK-B".to_string(),
+            "AAPL".to_string(),
+            "NVDA".to_string(),
+        ];
+
+        let batches = fmp_quote_symbol_batches(&symbols);
+        assert_eq!(
+            batches,
+            vec![
+                vec![
+                    "AAPL".to_string(),
+                    "MSFT".to_string(),
+                    "0700.HK".to_string()
+                ],
+                vec!["BRK-B".to_string(), "NVDA".to_string()],
+            ]
+        );
+        assert!(
+            batches
+                .iter()
+                .all(|batch| batch.len() <= FMP_QUOTE_BATCH_SIZE)
+        );
+        assert!(
+            batches
+                .iter()
+                .flatten()
+                .all(|symbol| is_fmp_quote_symbol(symbol))
+        );
+    }
+
+    #[test]
+    fn quote_batch_collection_keeps_successful_batches_when_one_fails() {
+        let now = Utc.with_ymd_and_hms(2026, 4, 22, 13, 32, 40).unwrap();
+        let raw = serde_json::json!([
+            {"symbol": "AAPL", "price": 200.0, "changesPercentage": 7.0,
+             "timestamp": now.timestamp(), "yearHigh": 250.0, "yearLow": 150.0}
+        ]);
+
+        let events = collect_quote_batch_events(
+            vec![Ok(raw), Err(anyhow::anyhow!("batch timeout"))],
+            5.0,
+            10.0,
+            2.0,
+            0.001,
+            now,
+        )
+        .expect("partial batch success should return events");
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].symbols, vec!["AAPL".to_string()]);
+    }
+
+    #[test]
+    fn quote_batch_collection_fails_when_all_batches_fail() {
+        let err = collect_quote_batch_events(
+            vec![Err(anyhow::anyhow!("batch timeout"))],
+            5.0,
+            10.0,
+            2.0,
+            0.001,
+            Utc::now(),
+        )
+        .expect_err("all failed batches should fail the poller tick");
+
+        assert!(err.to_string().contains("batch timeout"));
     }
 
     #[tokio::test]
