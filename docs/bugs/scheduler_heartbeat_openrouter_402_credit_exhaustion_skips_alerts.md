@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -168,3 +168,14 @@
 - 同批 `error_message` 与 `detail_json.failure_kind` 已统一收敛为 `upstream HTTP 402 ... can only afford 6268` + `provider_quota_exhausted`，说明前一轮修复仅改善可观测字段，未消除 live provider 配额故障本身。
 - 同窗 `cron_job_runs` 里 `run_id=15951-15954` 四条非 heartbeat 定时任务仍在 `07:56-07:58` 正常 `completed + sent + delivered=1`，说明当前不是 scheduler 全局停摆；故障继续集中在 heartbeat 公共链路。
 - 到本轮巡检时，`2026-05-05 12:30` 到 `2026-05-06 08:00` 已累计 `17` 个整点/半点 heartbeat 故障窗口、至少 `187` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
+
+## 状态更新（2026-05-06 09:04 CST）
+
+- 本轮巡检确认：故障在最近一小时继续活跃，`08:30` 与 `09:00` 两个窗口再次各有 `11/11` 条 heartbeat 全量失败。
+- `data/sessions.sqlite3` -> `cron_job_runs` 最近一小时汇总：
+  - `2026-05-06T08:30:02-08:30:04+08:00`：`run_id=15967-15979` 中 heartbeat `11/11` 条全部落成 `execution_failed + skipped_error + delivered=0`
+  - `2026-05-06T09:00:03-09:00:04+08:00`：`run_id=15986-15998` 中 heartbeat `11/11` 条再次全部落成 `execution_failed + skipped_error + delivered=0`
+  - 同一小时另有 `run_id=15983-15985` 与 `15990/15997` 等 `11` 条非 heartbeat 定时任务正常 `completed + sent + delivered=1`
+- `data/runtime/logs/web.log.2026-05-06` 在 `08:00:02-08:00:03` 与 `09:00:03-09:00:04` 连续记录对应 `HeartbeatDiag run_finish` / `runner_error`，错误统一为 `upstream HTTP 402 ... provider_quota_exhausted`；可负担 token 预算还从 `6268` 进一步下滑到 `4596`。
+- 同窗 `09:00:16-09:00:47` 还新增 `event_dedupe LLM call failed`、`pass2 baseline failed`、`pass2 personalize failed`，说明 OpenRouter credits 枯竭已开始外溢到 event-engine 摘要链路；但当前最直接的用户面故障仍是 heartbeat 整批漏发。
+- 到本轮巡检时，`2026-05-05 12:30` 到 `2026-05-06 09:00` 已累计 `19` 个整点/半点 heartbeat 故障窗口、至少 `209` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
