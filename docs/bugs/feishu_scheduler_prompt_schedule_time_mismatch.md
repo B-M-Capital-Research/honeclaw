@@ -3,7 +3,8 @@
 - **发现时间**: 2026-04-27 09:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Approved
+- **状态**: Fixed
+- **GitHub Issue**: 无
 - **证据来源**:
   - 首次命中时的真实会话与消息落库：`data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5f995a704ab20334787947a366d62192f7`
@@ -187,3 +188,15 @@
 - 本轮巡检确认：坏 job `j_acce16a6` 在最近一小时仍未退出活跃调度扫描。
 - `data/runtime/logs/web.log.2026-05-05` 在 `21:42:03.444` 之后到 `22:02:00.569` 之间继续几乎逐分钟记录同一 warning：`skipping cron job with schedule/prompt mismatch: job_id=j_acce16a6 ... schedule=08:30 prompt=20:45`。
 - 这说明历史坏配置在盘后窗口继续以分钟级重复进入 due 集合并被跳过；止血仍只拦住了错时投递，没有恢复用户声明的 `20:45` 任务可用性，也没有把坏配置迁出生产扫描路径。
+
+## 修复情况（2026-05-06）
+
+- `CronJobStorage::get_due_jobs` 在扫描历史 cron JSON 时不再对 schedule/prompt 时间错配任务无限 warning + skip。
+- 对非 heartbeat 且 `task_prompt` 的 `【触发时间】` 行可解析出 `HH:MM` 的历史 job，扫描阶段会一次性把结构化 `schedule.hour/minute` 对齐到 prompt 声明时间并写回 cron JSON。
+- 修复后的任务随后按新 schedule 继续参与正常 due 判定：旧 `08:30` 槽不再反复进入活跃扫描，用户声明的 `20:45` 任务可在对应窗口恢复可用。
+- 新写入和更新路径既有一致性校验保持不变，仍会拒绝新产生的 schedule/prompt 错配。
+- 回归测试：`due_jobs_repair_existing_prompt_schedule_time_mismatch` 覆盖历史坏配置会被修复、持久化并按修复后的时间触发。
+- 验证：
+  - `cargo test -p hone-memory prompt_schedule_time_mismatch --lib -- --nocapture`
+  - `cargo check -p hone-memory --tests`
+  - `rustfmt --edition 2024 --check memory/src/cron_job/storage.rs memory/src/cron_job/mod.rs`

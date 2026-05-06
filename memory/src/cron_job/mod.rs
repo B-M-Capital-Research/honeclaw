@@ -608,13 +608,14 @@ mod tests {
     }
 
     #[test]
-    fn due_jobs_skip_existing_prompt_schedule_time_mismatch() {
+    fn due_jobs_repair_existing_prompt_schedule_time_mismatch() {
         let dir = make_temp_dir("hone_cron_storage_prompt_mismatch_due");
         let storage = CronJobStorage::new(&dir);
         let actor = actor("feishu", "ou_real", None);
         let now_bj = chrono::Utc::now().with_timezone(&beijing_offset());
         let hour = now_bj.hour() as u32;
         let minute = now_bj.minute() as u32;
+        let stale_hour = (hour + 1) % 24;
 
         let data = CronJobData {
             actor: Some(actor.clone()),
@@ -623,13 +624,13 @@ mod tests {
                 id: "j_mismatch".to_string(),
                 name: "错配任务".to_string(),
                 schedule: CronSchedule {
-                    hour,
+                    hour: stale_hour,
                     minute,
                     repeat: "daily".to_string(),
                     weekday: None,
                     date: None,
                 },
-                task_prompt: "【触发时间】每天 20:45\n执行任务".to_string(),
+                task_prompt: format!("【触发时间】每天 {hour:02}:{minute:02}\n执行任务"),
                 push: serde_json::json!({"type": "analysis"}),
                 enabled: true,
                 channel: "feishu".to_string(),
@@ -650,7 +651,23 @@ mod tests {
             now_bj.weekday().num_days_from_monday(),
             &["feishu"],
         );
-        assert!(due.is_empty());
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].1.id, "j_mismatch");
+        assert_eq!(
+            (due[0].1.schedule.hour, due[0].1.schedule.minute),
+            (hour, minute)
+        );
+
+        let saved = storage.load_jobs(&actor);
+        let repaired = saved
+            .jobs
+            .into_iter()
+            .find(|job| job.id == "j_mismatch")
+            .expect("repaired job");
+        assert_eq!(
+            (repaired.schedule.hour, repaired.schedule.minute),
+            (hour, minute)
+        );
     }
 
     #[test]

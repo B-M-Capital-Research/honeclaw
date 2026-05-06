@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-27 21:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22)
 - **证据来源**:
   - 最近一小时真实窗口：`data/sessions.sqlite3` -> `cron_job_runs`
@@ -164,3 +164,18 @@
   - `cargo test -p hone-channels scheduler::tests --lib -- --nocapture`
   - `cargo check -p hone-channels`
 - 当前结论：`2026-04-30` 的补偿方案曾尝试收口该问题，但 `2026-05-05 05:21/06:22` 的真实窗口表明“内部失败仍记 sent 且 transcript 无痕迹”已复发，因此本单状态改回 `New`，继续沿用 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) 跟踪。
+
+## 复核结论（2026-05-06）
+
+- 本轮按当前自动化约束，不再用这台机器的旧生产窗口日志作为活跃判定依据；以当前仓库代码和本地回归为准。
+- 代码复核确认非 heartbeat scheduler 失败分支已经通过 `user_visible_error_message_or_none(...)` 区分用户可见业务拒绝与内部错误：
+  - `codex acp prompt ended before tool completion` 等内部错误不会再作为通用失败提示外发。
+  - 内部错误会落成 `should_deliver=false`，metadata 保留 `failure_kind=internal_error_suppressed`。
+  - `persist_suppressed_scheduler_failure_turn(...)` 会向 direct session 写入脱敏 assistant marker，避免 transcript 对本轮失败完全无痕迹。
+- 回归测试确认当前代码满足修复契约：
+  - `suppressed_scheduler_failure_persists_single_transcript_marker`
+  - `user_visible_error_message_or_none_suppresses_internal_acp_errors`
+- 因此本单从 `New` 更新为 `Fixed`；关联 GitHub Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) 建议部署后复测再关闭。
+- 验证：
+  - `cargo test -p hone-channels suppressed_scheduler_failure_persists_single_transcript_marker --lib -- --nocapture`
+  - `cargo test -p hone-channels user_visible_error_message_or_none --lib -- --nocapture`

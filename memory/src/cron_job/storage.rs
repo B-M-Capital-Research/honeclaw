@@ -373,7 +373,7 @@ impl CronJobStorage {
                 Ok(c) => c,
                 Err(_) => continue,
             };
-            let data: CronJobData = match serde_json::from_str(&content) {
+            let mut data: CronJobData = match serde_json::from_str(&content) {
                 Ok(d) => d,
                 Err(_) => continue,
             };
@@ -389,6 +389,17 @@ impl CronJobStorage {
                 );
                 continue;
             }
+            let repaired_mismatches = repair_legacy_prompt_schedule_mismatches(&mut data);
+            if repaired_mismatches > 0
+                && let Err(err) = self.save_jobs(&actor, &data)
+            {
+                warn!(
+                    "failed to persist repaired cron schedule/prompt mismatches actor={} repairs={} error={}",
+                    actor.storage_key(),
+                    repaired_mismatches,
+                    err
+                );
+            }
 
             for job in &data.jobs {
                 if !job.enabled {
@@ -398,18 +409,6 @@ impl CronJobStorage {
                 // Channel 过滤：每个 scheduler 只处理属于自己渠道的任务，
                 // 避免多进程共享存储时跨渠道误标记（cross-process mark race）。
                 if !channels.is_empty() && !channels.contains(&job.channel.as_str()) {
-                    continue;
-                }
-                if let Some((declared_hour, declared_minute)) = prompt_schedule_conflict(job) {
-                    warn!(
-                        "skipping cron job with schedule/prompt mismatch: job_id={} job={} schedule={:02}:{:02} prompt={:02}:{:02}",
-                        job.id,
-                        job.name,
-                        job.schedule.hour,
-                        job.schedule.minute,
-                        declared_hour,
-                        declared_minute
-                    );
                     continue;
                 }
 
@@ -624,4 +623,26 @@ fn cron_filename_storage_key(path: &Path) -> Option<String> {
             .strip_suffix(".json")?
             .to_string(),
     )
+}
+
+fn repair_legacy_prompt_schedule_mismatches(data: &mut CronJobData) -> usize {
+    let mut repaired = 0;
+    for job in &mut data.jobs {
+        let Some((declared_hour, declared_minute)) = prompt_schedule_conflict(job) else {
+            continue;
+        };
+        warn!(
+            "repairing legacy cron job schedule/prompt mismatch: job_id={} job={} schedule={:02}:{:02} prompt={:02}:{:02}",
+            job.id,
+            job.name,
+            job.schedule.hour,
+            job.schedule.minute,
+            declared_hour,
+            declared_minute
+        );
+        job.schedule.hour = declared_hour;
+        job.schedule.minute = declared_minute;
+        repaired += 1;
+    }
+    repaired
 }
