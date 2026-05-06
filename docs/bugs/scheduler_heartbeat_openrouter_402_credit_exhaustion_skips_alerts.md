@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -179,3 +179,18 @@
 - `data/runtime/logs/web.log.2026-05-06` 在 `08:00:02-08:00:03` 与 `09:00:03-09:00:04` 连续记录对应 `HeartbeatDiag run_finish` / `runner_error`，错误统一为 `upstream HTTP 402 ... provider_quota_exhausted`；可负担 token 预算还从 `6268` 进一步下滑到 `4596`。
 - 同窗 `09:00:16-09:00:47` 还新增 `event_dedupe LLM call failed`、`pass2 baseline failed`、`pass2 personalize failed`，说明 OpenRouter credits 枯竭已开始外溢到 event-engine 摘要链路；但当前最直接的用户面故障仍是 heartbeat 整批漏发。
 - 到本轮巡检时，`2026-05-05 12:30` 到 `2026-05-06 09:00` 已累计 `19` 个整点/半点 heartbeat 故障窗口、至少 `209` 条 job 落成同根因失败；本单继续维持活跃 `P1`。
+
+## 修复记录（2026-05-06 19:04 CST）
+
+- 状态更新为 `Fixed`。
+- 本轮修复继续沿通用后台短任务预算加固处理，不依赖生产日志或当前机器线上状态：
+  - heartbeat 专用 auxiliary function-calling completion token 上限从 `8192` 收紧到 `4096`。
+  - 普通对话、长报告、非 heartbeat scheduler 与全局 `llm.openrouter.max_tokens` / `llm.auxiliary.max_tokens` 不受影响。
+  - 继续保留既有 `provider_quota_exhausted` / `provider_http_error` 失败分类，若 provider credits 已低于 `4096` 或账号余额完全耗尽，后续仍会明确记录为 provider quota 故障，而不是伪装成 noop。
+- 这次修复覆盖最新证据中的 `can only afford 4596 ... max_tokens ... (code: 402)`：heartbeat 后续请求不会再以高于该预算的 completion cap 打到同一 provider 边界。
+- 验证：
+  - 通过：`cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`
+  - 通过：`cargo test -p hone-channels heartbeat_provider_ --lib -- --nocapture`
+  - 通过：`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+  - 通过：`cargo check -p hone-channels --tests`
+  - 通过：`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs`

@@ -26,7 +26,7 @@ use crate::{AgentSession, HoneBotCore};
 const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
 const HEARTBEAT_MAX_ITERATIONS: u32 = 10;
-const HEARTBEAT_MAX_TOKENS: u16 = 8192;
+const HEARTBEAT_MAX_TOKENS: u16 = 4096;
 
 fn heartbeat_runner_selection() -> ExecutionRunnerSelection {
     ExecutionRunnerSelection::AuxiliaryFunctionCalling {
@@ -1799,7 +1799,7 @@ mod tests {
                 max_tokens_override,
             } => {
                 assert_eq!(max_iterations, 10);
-                assert_eq!(max_tokens_override, Some(8192));
+                assert_eq!(max_tokens_override, Some(4096));
             }
             ExecutionRunnerSelection::Configured => {
                 panic!("heartbeat must use auxiliary function-calling runner")
