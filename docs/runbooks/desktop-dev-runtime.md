@@ -1,6 +1,6 @@
 # Runbook: Desktop Dev Runtime Isolation
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 
 ## Why This Exists
 
@@ -126,6 +126,78 @@ Use this as the primary workflow.
 This is the only workflow that fully satisfies the requirement that code edits must not disturb running services unless we choose a whole restart.
 
 If we specifically want a desktop build that is insulated from source edits while still reusing project-local runtime data, prefer `./launch.sh --release`.
+
+### Incident Stopgap: Enable Feishu On A Test Machine
+
+Use this when production Feishu handling is down and a test machine must temporarily carry the live channel.
+
+1. Enable Feishu in the local `config.yaml`
+
+   ```yaml
+   feishu:
+     enabled: true
+   ```
+
+2. Prefer remote desktop mode so backend, workflow scheduler, channel listeners, and the desktop shell have explicit process boundaries:
+
+   ```bash
+   env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH ./launch.sh --desktop --remote
+   ```
+
+3. Start the public user frontend separately when the user-side UI must be reachable from local smoke tests:
+
+   ```bash
+   env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
+   ```
+
+4. Verify the important surfaces:
+
+   ```bash
+   curl -fsS http://127.0.0.1:8077/api/meta
+   curl -fsS http://127.0.0.1:8077/api/channels
+   curl -fsSI http://127.0.0.1:3000/
+   curl -fsSI http://127.0.0.1:3001/
+   ```
+
+5. Confirm `/api/channels` reports:
+   - `web` is `running`
+   - `feishu` is `enabled` and `running`
+   - disabled channels stay `disabled`
+
+If `codex_acp` is the active runner, verify both binaries used by the service process, not only the binary visible from an interactive shell:
+
+```bash
+which -a codex
+/opt/homebrew/bin/codex --version
+/Applications/Codex.app/Contents/Resources/codex --version
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH npm list -g @zed-industries/codex-acp --depth=0
+```
+
+Observed pitfall on 2026-05-06:
+
+- `PATH` preferred `/opt/homebrew/bin/codex`, which was Homebrew `codex-cli 0.115.0`, while the Codex desktop app bundled `0.126.0-alpha.8`.
+- `codex_acp` rejected the old CLI because Hone requires `codex >= 0.125.0`.
+- `npm install -g @openai/codex@latest` may fail with `EEXIST` if Homebrew already owns `/opt/homebrew/bin/codex`.
+- For an emergency stopgap, set `agent.codex_acp.codex_command` in local `config.yaml` to the known-good app binary path instead of overwriting the Homebrew symlink:
+
+  ```yaml
+  agent:
+    codex_acp:
+      codex_command: /Applications/Codex.app/Contents/Resources/codex
+  ```
+
+- `codex-acp` itself can also be too old. Upgrade it with:
+
+  ```bash
+  env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH npm install -g @zed-industries/codex-acp@latest
+  ```
+
+Restart the runtime after either `codex_command` or `codex-acp` changes. Existing channel processes keep their already-loaded config and binary resolution state.
+
+After Feishu comes online, the scheduler may immediately consume overdue Feishu jobs. Watch the first few minutes of logs for two different classes of failures:
+
+- runner bootstrap failures such as Codex / adapter version rejection block live replies and must be fixed immediately
+- heartbeat output parsing failures such as "output is not structured JSON" usually mean the job executed but the model response violated the heartbeat contract; these should be triaged as scheduler / prompt quality issues, not as channel startup failures
 
 ### Bundled validation workflow
 
