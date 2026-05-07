@@ -74,8 +74,8 @@
     <g transform="translate(1380, 0)">
       <rect x="0" y="6" width="280" height="98" fill="#fdfaf2" stroke="#d8cdb8"/>
       <text x="14" y="26" class="section-meta">CURRENT RELEASE</text>
-      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.6.0</text>
-      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·02 — extended hours · LLM filings</text>
+      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.8.0</text>
+      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·07 — cloud runner · scheduler hardening</text>
       <text x="14" y="92" font-size="10" fill="#8a8497" letter-spacing="0.05em">github · B-M-Capital-Research/honeclaw · MIT</text>
       <rect x="270" y="6" width="6" height="98" fill="#e85d04"/>
     </g>
@@ -546,10 +546,10 @@
           <text x="10" y="44" font-size="9.5" fill="#b8b0a0">claude-opus-4.1</text>
         </g>
         <g transform="translate(172, 64)">
-          <rect x="0" y="0" width="148" height="48" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
-          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">Gemini ACP</text>
-          <text x="10" y="32" font-size="9.5" fill="#5a5a6e">gemini_acp.rs</text>
-          <text x="10" y="44" font-size="9.5" fill="#5a5a6e">gemini-2.0</text>
+          <rect x="0" y="0" width="148" height="48" rx="3" fill="#fff0d6" stroke="#e85d04"/>
+          <text x="10" y="18" font-size="12" font-weight="700" fill="#1a1a2e">Hone Cloud</text>
+          <text x="10" y="32" font-size="9.5" fill="#5a5a6e">hone_cloud.rs · REST</text>
+          <text x="10" y="44" font-size="9.5" fill="#b8542a">API key auth · v0.8 NEW</text>
         </g>
         <g transform="translate(328, 64)">
           <rect x="0" y="0" width="148" height="48" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
@@ -913,41 +913,41 @@
   <g transform="translate(72, 1948)">
     <text x="0" y="0" class="section-meta" letter-spacing="0.18em">RECENT MILESTONES</text>
     <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
-    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.6.0 · 2026·05·02</text>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.8.0 · 2026·05·07</text>
 
     <g transform="translate(0, 14)">
       <g transform="translate(0, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.6.0 · PRE/POST-MARKET</text>
-        <text x="14" y="38" class="card-title">ExtendedHoursPoller</text>
-        <text x="14" y="54" class="card-detail">FMP /v3/historical-chart/1min · 30-min cron</text>
-        <text x="14" y="68" class="card-detail">ET 04–09:30 / 16–20:00 · 30-min amplitude alert</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.8.0 · HONE CLOUD RUNNER</text>
+        <text x="14" y="38" class="card-title">HoneCloudRunner · API key auth</text>
+        <text x="14" y="54" class="card-detail">hone_cloud.rs · REST · managed credentials</text>
+        <text x="14" y="68" class="card-detail">Admin Settings API Key panel · /public/v1/cloud-runner/*</text>
       </g>
       <g transform="translate(416, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.6.0 · SINGLE RULE PRICE BAND</text>
-        <text x="14" y="38" class="card-title">price_band_min_advance_pct</text>
-        <text x="14" y="54" class="card-detail">replaces 3-knob cap+gap+bypass</text>
-        <text x="14" y="68" class="card-detail">advance ≥ N pct vs last sent · default 2.0</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.8.0 · SCHEDULER HARDENING</text>
+        <text x="14" y="38" class="card-title">cron mismatch · heartbeat dedup · skip signals</text>
+        <text x="14" y="54" class="card-detail">legacy cron prompt time fix · heartbeat budget cap</text>
+        <text x="14" y="68" class="card-detail">watchlist hit zone ctx · idle timeout suppression</text>
       </g>
       <g transform="translate(832, 0)">
-        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
-        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.6.0 · SEC FILINGS + LLM</text>
-        <text x="14" y="38" class="card-title">5-form whitelist + thesis summary</text>
-        <text x="14" y="54" class="card-detail">8-K · 10-Q · 10-K · S-1 · DEF 14A</text>
-        <text x="14" y="68" class="card-detail">grok-4.1-fast · ~$0.82/yr per 11 holdings</text>
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.7.0 · BILINGUAL ADMIN + i18n</text>
+        <text x="14" y="38" class="card-title">Admin console zh/en · CLI onboard bilingual</text>
+        <text x="14" y="54" class="card-detail">admin-content/ · 15 modules · i18n.ts helpers</text>
+        <text x="14" y="68" class="card-detail">sidebar locale switcher · PUT /api/language</text>
       </g>
       <g transform="translate(1248, 0)">
         <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.5 · v0.4 · v0.3 BACKBONE</text>
-        <text x="14" y="36" class="card-title">UnifiedDigest · Quiet Hours · Global Pipeline</text>
-        <text x="14" y="50" class="card-detail">v0.5: unified digest + EventKind cleanup</text>
-        <text x="14" y="62" class="card-detail">v0.4: rich-card sinks · shelf-life · per-channel schedule</text>
-        <text x="14" y="74" class="card-detail">v0.3: global digest · RSS · public auth + argon2</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.3 – v0.6 BACKBONE</text>
+        <text x="14" y="36" class="card-title">ExtendedHours · SEC+LLM · UnifiedDigest · Auth</text>
+        <text x="14" y="50" class="card-detail">v0.6: extended hours · sec filings · price band rule</text>
+        <text x="14" y="62" class="card-detail">v0.5: unified digest + EventKind cleanup</text>
+        <text x="14" y="74" class="card-detail">v0.3-v0.4: global digest · RSS · rich-card sinks</text>
       </g>
     </g>
   </g>

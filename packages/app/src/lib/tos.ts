@@ -2,5 +2,5 @@
 // Bumping this version forces re-acknowledgement at next set/change-password.
 // Backend mirrors this in crates/hone-web-api/src/routes/public.rs `TOS_VERSION`.
 
-export const TOS_VERSION = "1.0";
-export const TOS_EFFECTIVE_DATE = "2026-04-25";
+export const TOS_VERSION = "2.0";
+export const TOS_EFFECTIVE_DATE = "2026-05-07";

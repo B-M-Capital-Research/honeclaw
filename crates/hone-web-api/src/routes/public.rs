@@ -46,7 +46,7 @@ const SESSION_TTL_DAYS_SHORT: i64 = hone_memory::SESSION_TTL_DAYS_SHORT;
 
 /// 当前生效的协议版本。改动 /terms /privacy 文本时手动 bump,
 /// 并让已登录用户重新勾选接受(可后续增强)。
-pub(crate) const TOS_VERSION: &str = "1.0";
+pub(crate) const TOS_VERSION: &str = "2.0";
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAiChatCompletionRequest {

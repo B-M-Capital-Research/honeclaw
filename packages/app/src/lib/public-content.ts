@@ -599,7 +599,7 @@ const CONTENT_ZH = {
         {
           title: "1. 协议接受与生效",
           body: [
-            { kind: "p", parts: ["欢迎使用 Hone（以下简称“本服务”）。本服务由 ", { strong: "杭州巴芒科技有限责任公司" }, "（以下简称“我们”）运营。本《用户协议》（以下简称“本协议”）是您与我们之间就您使用本服务所订立的有效合同。"] },
+            { kind: "p", parts: ["欢迎使用 Hone（以下简称“本服务”）。本服务由 ", { strong: "Snowdrift Capital LLC" }, "（一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）运营。本《用户协议》（以下简称“本协议”）是您与我们之间就您使用本服务所订立的有效合同。"] },
             { kind: "p", parts: ["您在勾选同意或继续使用本服务时，即视为您已充分阅读并同意本协议全部条款。若您不同意本协议任何条款，请立即停止使用本服务。"] },
           ],
         },
@@ -620,22 +620,22 @@ const CONTENT_ZH = {
         {
           title: "4. 用户行为规范",
           body: [
-            { kind: "p", parts: ["使用本服务时，您承诺不从事下列行为，包括但不限于："] },
+            { kind: "p", parts: ["使用本服务时，您承诺不从事以下行为，包括但不限于："] },
             {
               kind: "ul",
               items: [
-                ["违反中华人民共和国法律法规、社会主义核心价值观或公序良俗；"],
-                ["危害国家安全、国家荣誉与利益，煽动颠覆国家政权、推翻社会主义制度，或破坏国家统一与领土完整；"],
-                ["煽动民族仇恨、民族歧视，破坏民族团结，或宣扬恐怖主义、极端主义、暴力；"],
-                ["制作、复制、传播淫秽色情、赌博、毒品或其他违法信息；"],
-                ["通过提示词或其他方式诱导本服务输出违反前述规定的内容，包括但不限于政治敏感、反华、虚假信息、歧视性或仇恨性言论；"],
-                ["侵犯他人合法权益，包括知识产权、隐私权、名誉权、商业秘密等；"],
-                ["对本服务进行反向工程、爬取、批量自动化访问、漏洞利用或其他形式的滥用；"],
-                ["上传或传播恶意代码、垃圾信息、违法或不良信息；"],
-                ["冒用他人身份或伪造账号信息。"],
+                ["违反您所在地或任何其他相关司法管辖区适用的法律或法规；"],
+                ["侵犯他人合法权益，包括知识产权、隐私权、名誉权、商业秘密、肖像权或其他财产或人身权利；"],
+                ["发布或传播威胁、骚扰、仇恨、歧视性、欺诈性或诽谤性内容；"],
+                ["发布、传播或索取淫秽色情、儿童性剥削材料、毒品交易、暴力或其他非法内容；"],
+                ["通过提示词或其他方式诱导本服务输出违反前述规定的内容；"],
+                ["对本服务进行反向工程、爬取、批量自动化访问、漏洞利用、规避访问控制或其他形式的滥用；"],
+                ["上传、传播或部署恶意代码、垃圾信息、钓鱼链接或其他有害技术；"],
+                ["冒用他人身份、伪造账号信息或从事任何形式的欺诈行为；"],
+                ["利用本服务从事违反美国出口管制法律、OFAC 制裁、反洗钱法律或其他经济制裁规定的行为。"],
               ],
             },
-            { kind: "p", parts: ["若您违反前述规定，我们有权立即暂停或终止您的账号、保留相关证据，必要时向有权机关报告。由此产生的全部法律责任由您本人承担。"] },
+            { kind: "p", parts: ["若您违反前述规定，我们有权立即暂停或终止您的账号、保留相关证据，并依法配合执法或司法机关的合法请求。由此产生的全部法律责任由您本人承担。"] },
           ],
         },
         {
@@ -674,17 +674,25 @@ const CONTENT_ZH = {
           ],
         },
         {
-          title: "10. 争议解决与法律适用",
+          title: "10. 适用法律与争议解决",
           body: [
-            { kind: "p", parts: ["本协议的订立、效力、解释、履行及争议解决，均适用中华人民共和国大陆地区法律（不含港澳台地区法律）。"] },
-            { kind: "p", parts: ["因本协议引起的或与之相关的任何争议，双方应首先协商解决；协商不成的，任何一方均可向运营方所在地（浙江省杭州市）有管辖权的人民法院提起诉讼。"] },
+            { kind: "p", parts: ["本协议的订立、效力、解释、履行及争议解决，均适用 ", { strong: "美国怀俄明州（State of Wyoming, USA）法律" }, "（不含其法律冲突规则）。《联合国国际货物销售合同公约》（CISG）不适用于本协议。"] },
+            { kind: "p", parts: ["因本协议引起的或与之相关的任何争议，双方应首先以诚信原则协商解决；协商不成的，任一方可在美国怀俄明州 Sheridan 县有管辖权的州法院或联邦法院提起诉讼，双方对该等法院具有专属管辖权并放弃任何管辖权异议。"] },
+            { kind: "p", parts: ["在适用法律允许的最大范围内，您同意以个人名义而非作为任何集体诉讼或代表诉讼成员的身份与我们解决争议。"] },
           ],
         },
         {
           title: "11. 联系方式",
           body: [
-            { kind: "p", parts: ["若您对本协议有任何疑问、意见或建议，请在本项目 GitHub 仓库提交 issue 联系我们："] },
-            { kind: "p", parts: [{ code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }] },
+            { kind: "p", parts: ["若您对本协议有任何疑问、意见或建议，请通过以下方式联系我们："] },
+            {
+              kind: "ul",
+              items: [
+                [{ strong: "电子邮件：" }, { code: "bm@hone-claw.com" }],
+                [{ strong: "GitHub Issue：" }, { code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }],
+                [{ strong: "邮寄地址：" }, "Snowdrift Capital LLC, 30 N Gould St, Ste N, Sheridan, WY 82801, United States"],
+              ],
+            },
             { kind: "p", parts: ["我们将在合理时间内回复并处理。"] },
           ],
         },
@@ -697,7 +705,7 @@ const CONTENT_ZH = {
         {
           title: "1. 引言与适用范围",
           body: [
-            { kind: "p", parts: ["本《隐私政策》说明 Hone（运营方为 ", { strong: "杭州巴芒科技有限责任公司" }, "，以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 Hone 网站及客户端使用本服务的全部场景。"] },
+            { kind: "p", parts: ["本《隐私政策》说明 Hone（运营方为 ", { strong: "Snowdrift Capital LLC" }, "，一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 Hone 网站及客户端使用本服务的全部场景。"] },
             { kind: "p", parts: ["请您在使用本服务前完整阅读本政策。继续使用本服务即视为您已充分了解并同意本政策。"] },
           ],
         },
@@ -766,25 +774,30 @@ const CONTENT_ZH = {
           ],
         },
         {
-          title: "8. 跨境传输",
+          title: "8. 数据处理地点与跨境传输",
           body: [
-            { kind: "p", parts: ["若我们调用的语言模型或数据源服务器位于中华人民共和国大陆地区以外，您的相关查询内容可能被传输至境外。我们会选择具备合规资质的合作方，并采取必要的安全措施。"] },
+            { kind: "p", parts: ["我们的数据处理基础设施位于 ", { strong: "美国" }, "（运营方所在地）。我们调用的语言模型与数据源服务商主要位于美国及其他司法管辖区。在您使用本服务时，您的相关个人信息和查询内容将被传输至并存储于美国。"] },
+            { kind: "p", parts: ["若您位于美国境外（包括欧洲经济区、英国、中华人民共和国大陆地区或其他任何司法管辖区），您理解并同意您的个人信息将跨境传输至美国进行处理。我们将选择具备合规资质的合作方，并采取必要的技术与组织措施保护信息安全。"] },
           ],
         },
         {
-          title: "9. 用户权利",
+          title: "9. 您的权利",
           body: [
-            { kind: "p", parts: ["就您的个人信息，您依法享有下列权利："] },
+            { kind: "p", parts: ["就您的个人信息，您依据适用法律享有下列权利："] },
             {
               kind: "ul",
               items: [
                 ["访问、更正您的账号资料；"],
                 ["修改您的登录密码；"],
                 ["请求删除您的账号及关联数据；"],
-                ["撤回您此前给出的同意。"],
+                ["撤回您此前给出的同意；"],
+                ["请求获取您提供给我们的个人信息副本（数据可携带权）；"],
+                ["反对或限制特定的个人信息处理活动。"],
               ],
             },
-            { kind: "p", parts: ["您可在“个人页面”中行使前三项权利，或通过下文联系方式与我们联系。撤回同意可能导致您无法继续使用部分功能。"] },
+            { kind: "p", parts: ["如您是 ", { strong: "美国加州居民" }, "，根据《加州消费者隐私法》（CCPA / CPRA），您还享有了解我们收集与共享个人信息类别的权利、请求删除已收集信息的权利，以及不因行使权利而受到歧视的权利。我们 ", { strong: "不向第三方“出售”" }, " 您的个人信息。"] },
+            { kind: "p", parts: ["如您位于 ", { strong: "欧洲经济区或英国" }, "，根据《通用数据保护条例》（GDPR / UK GDPR），您还享有向所在地数据保护监管机构投诉的权利。"] },
+            { kind: "p", parts: ["您可在“个人页面”中行使前三项权利，或通过下文联系方式与我们联系。撤回同意可能导致您无法继续使用部分功能。我们将在合理时间内（通常 30 日内）回应您的请求。"] },
           ],
         },
         {
@@ -796,8 +809,15 @@ const CONTENT_ZH = {
         {
           title: "11. 联系方式",
           body: [
-            { kind: "p", parts: ["若您对本政策或您的个人信息处理有任何疑问、意见或投诉，请在本项目 GitHub 仓库提交 issue 联系我们："] },
-            { kind: "p", parts: [{ code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }] },
+            { kind: "p", parts: ["若您对本政策或您的个人信息处理有任何疑问、意见或投诉，请通过以下方式联系我们："] },
+            {
+              kind: "ul",
+              items: [
+                [{ strong: "电子邮件：" }, { code: "bm@hone-claw.com" }],
+                [{ strong: "GitHub Issue：" }, { code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }],
+                [{ strong: "邮寄地址：" }, "Snowdrift Capital LLC, Attn: Privacy, 30 N Gould St, Ste N, Sheridan, WY 82801, United States"],
+              ],
+            },
             { kind: "p", parts: ["我们将在合理时间内回复并妥善处理。"] },
           ],
         },
@@ -808,7 +828,7 @@ const CONTENT_ZH = {
   footer: {
     tagline: "磨砺认知，剔除噪音",
     mantra: "磨砺认知 · 剔除噪音 · OPEN FINANCIAL CONSOLE",
-    copyright: "© 2026 杭州巴芒科技有限责任公司. Open source, MIT License.",
+    copyright: "© 2026 Snowdrift Capital LLC · Sheridan, WY, USA · 开源代码遵循 MIT License。",
     columns: {
       product: {
         title: "产品",
@@ -1423,7 +1443,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "1. Acceptance & effective date",
           body: [
-            { kind: "p", parts: ["Welcome to Hone (\"the service\"). The service is operated by ", { strong: "Hangzhou Bamang Technology Co., Ltd." }, " (\"we\"). These Terms of Service (\"Terms\") form a binding agreement between you and us regarding your use of the service."] },
+            { kind: "p", parts: ["Welcome to Hone (\"the service\"). The service is operated by ", { strong: "Snowdrift Capital LLC" }, ", a limited liability company organized under the laws of the State of Wyoming, United States (\"we,\" \"us,\" or \"our\"). These Terms of Service (\"Terms\") form a binding agreement between you and us regarding your use of the service."] },
             { kind: "p", parts: ["By checking the agreement box or continuing to use the service, you confirm that you have read and accept these Terms in full. If you disagree with any clause, stop using the service immediately."] },
           ],
         },
@@ -1448,18 +1468,18 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             {
               kind: "ul",
               items: [
-                ["violate the laws and regulations of the People's Republic of China, the core socialist values, or public order and morals;"],
-                ["endanger national security, honor, or interests; incite subversion of state power or the socialist system; or undermine national unity or territorial integrity;"],
-                ["incite ethnic hatred or discrimination, undermine ethnic unity, or promote terrorism, extremism, or violence;"],
-                ["produce, reproduce, or distribute pornographic, gambling, drug-related, or other unlawful content;"],
-                ["use prompts or any other means to induce the service to produce content that violates the above (including but not limited to politically sensitive material, anti-China content, disinformation, or discriminatory or hateful speech);"],
-                ["infringe on others' rights, including intellectual property, privacy, reputation, or trade secrets;"],
-                ["reverse-engineer, scrape, bulk-automate, exploit vulnerabilities, or otherwise abuse the service;"],
-                ["upload or distribute malware, spam, or unlawful or harmful content;"],
-                ["impersonate others or falsify account information."],
+                ["violate any law or regulation applicable in your location or any other relevant jurisdiction;"],
+                ["infringe on others' rights, including intellectual property, privacy, publicity, reputation, trade secrets, or other proprietary or personal rights;"],
+                ["post or transmit content that is threatening, harassing, hateful, discriminatory, fraudulent, or defamatory;"],
+                ["produce, reproduce, distribute, or solicit pornographic content, child sexual abuse material, drug trafficking, violence, or other unlawful content;"],
+                ["use prompts or any other means to induce the service to produce content that violates the above;"],
+                ["reverse-engineer, scrape, bulk-automate, exploit vulnerabilities, circumvent access controls, or otherwise abuse the service;"],
+                ["upload, distribute, or deploy malware, spam, phishing links, or other harmful technologies;"],
+                ["impersonate others, falsify account information, or engage in any form of fraud;"],
+                ["use the service to violate U.S. export-control laws, OFAC sanctions, anti-money-laundering laws, or other economic-sanctions regulations."],
               ],
             },
-            { kind: "p", parts: ["If you violate the above, we may immediately suspend or terminate your account, preserve relevant evidence, and report to competent authorities where necessary. You bear sole legal responsibility for any consequences."] },
+            { kind: "p", parts: ["If you violate the above, we may immediately suspend or terminate your account, preserve relevant evidence, and cooperate with lawful requests from law-enforcement or judicial authorities. You bear sole legal responsibility for any consequences."] },
           ],
         },
         {
@@ -1500,15 +1520,23 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "10. Governing law & dispute resolution",
           body: [
-            { kind: "p", parts: ["The formation, validity, interpretation, performance, and dispute resolution of these Terms are governed by the laws of mainland China (excluding Hong Kong SAR, Macao SAR, and Taiwan)."] },
-            { kind: "p", parts: ["Any dispute arising from or related to these Terms should first be addressed by good-faith negotiation. If negotiation fails, either party may bring a claim before the competent people's court at the operator's place of registration (Hangzhou, Zhejiang Province)."] },
+            { kind: "p", parts: ["The formation, validity, interpretation, performance, and dispute resolution of these Terms are governed by the ", { strong: "laws of the State of Wyoming, United States" }, ", without regard to its conflict-of-laws principles. The United Nations Convention on Contracts for the International Sale of Goods (CISG) does not apply to these Terms."] },
+            { kind: "p", parts: ["Any dispute arising from or related to these Terms shall first be addressed in good faith through negotiation. Failing that, either party may bring a claim in the state or federal courts located in Sheridan County, Wyoming, USA, and both parties consent to the exclusive jurisdiction of those courts and waive any objection to venue."] },
+            { kind: "p", parts: ["To the maximum extent permitted by applicable law, you agree to resolve disputes with us individually, and not as part of any class or representative action."] },
           ],
         },
         {
           title: "11. Contact",
           body: [
-            { kind: "p", parts: ["If you have any questions, comments, or suggestions about these Terms, please open an issue on the project's GitHub repository:"] },
-            { kind: "p", parts: [{ code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }] },
+            { kind: "p", parts: ["If you have any questions, comments, or suggestions about these Terms, please contact us:"] },
+            {
+              kind: "ul",
+              items: [
+                [{ strong: "Email:" }, " ", { code: "bm@hone-claw.com" }],
+                [{ strong: "GitHub Issues:" }, " ", { code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }],
+                [{ strong: "Mailing address:" }, " Snowdrift Capital LLC, 30 N Gould St, Ste N, Sheridan, WY 82801, United States"],
+              ],
+            },
             { kind: "p", parts: ["We will respond within a reasonable period."] },
           ],
         },
@@ -1521,7 +1549,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "1. Introduction & scope",
           body: [
-            { kind: "p", parts: ["This Privacy Policy describes how Hone (operated by ", { strong: "Hangzhou Bamang Technology Co., Ltd." }, ", \"we\") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the Hone website or client."] },
+            { kind: "p", parts: ["This Privacy Policy describes how Hone (operated by ", { strong: "Snowdrift Capital LLC" }, ", a Wyoming limited liability company, \"we,\" \"us,\" or \"our\") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the Hone website or client."] },
             { kind: "p", parts: ["Please read this policy in full before using the service. Continuing to use it means you have understood and accepted the policy."] },
           ],
         },
@@ -1590,25 +1618,30 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           ],
         },
         {
-          title: "8. Cross-border transfers",
+          title: "8. Data processing location & cross-border transfers",
           body: [
-            { kind: "p", parts: ["If the language model or data source servers we call are located outside mainland China, the related query content may be transmitted overseas. We will choose partners with appropriate compliance credentials and apply necessary security measures."] },
+            { kind: "p", parts: ["Our data processing infrastructure is located in the ", { strong: "United States" }, " (where the operator is registered). The language models and data sources we call are primarily located in the United States and other jurisdictions. When you use the service, your personal information and query content will be transmitted to and stored in the United States."] },
+            { kind: "p", parts: ["If you are located outside the United States (including the European Economic Area, the United Kingdom, mainland China, or any other jurisdiction), you understand and consent that your personal information will be transferred across borders to the United States for processing. We choose partners with appropriate compliance credentials and apply technical and organizational measures to protect the information."] },
           ],
         },
         {
           title: "9. Your rights",
           body: [
-            { kind: "p", parts: ["You have the following rights regarding your personal information:"] },
+            { kind: "p", parts: ["Subject to applicable law, you have the following rights regarding your personal information:"] },
             {
               kind: "ul",
               items: [
                 ["access and correct your account details;"],
                 ["change your sign-in password;"],
                 ["request deletion of your account and associated data;"],
-                ["withdraw a consent you previously granted."],
+                ["withdraw a consent you previously granted;"],
+                ["request a copy of the personal information you provided to us (data portability);"],
+                ["object to or restrict certain processing of your personal information."],
               ],
             },
-            { kind: "p", parts: ["You can exercise the first three rights on the \"Account\" page, or contact us via the channel below. Withdrawing consent may render parts of the service unavailable."] },
+            { kind: "p", parts: ["If you are a ", { strong: "California resident" }, ", under the California Consumer Privacy Act (CCPA / CPRA) you also have the right to know the categories of personal information we collect and share, the right to request deletion of collected information, and the right not to be discriminated against for exercising your rights. We do ", { strong: "not \"sell\"" }, " your personal information to third parties."] },
+            { kind: "p", parts: ["If you are located in the ", { strong: "European Economic Area or the United Kingdom" }, ", under the GDPR / UK GDPR you also have the right to lodge a complaint with your local data protection authority."] },
+            { kind: "p", parts: ["You can exercise the first three rights on the \"Account\" page, or contact us via the channels below. Withdrawing consent may render parts of the service unavailable. We will respond to your request within a reasonable time, typically within 30 days."] },
           ],
         },
         {
@@ -1620,8 +1653,15 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "11. Contact",
           body: [
-            { kind: "p", parts: ["If you have questions, comments, or complaints about this policy or how your data is handled, please open an issue on the project's GitHub repository:"] },
-            { kind: "p", parts: [{ code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }] },
+            { kind: "p", parts: ["If you have questions, comments, or complaints about this policy or how your data is handled, please contact us:"] },
+            {
+              kind: "ul",
+              items: [
+                [{ strong: "Email:" }, " ", { code: "bm@hone-claw.com" }],
+                [{ strong: "GitHub Issues:" }, " ", { code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }],
+                [{ strong: "Mailing address:" }, " Snowdrift Capital LLC, Attn: Privacy, 30 N Gould St, Ste N, Sheridan, WY 82801, United States"],
+              ],
+            },
             { kind: "p", parts: ["We will respond and address them within a reasonable period."] },
           ],
         },
@@ -1632,7 +1672,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   footer: {
     tagline: "Sharpen cognition, strip the noise.",
     mantra: "SHARPEN COGNITION · STRIP THE NOISE · OPEN FINANCIAL CONSOLE",
-    copyright: "© 2026 Hangzhou Bamang Technology Co., Ltd. Open source, MIT License.",
+    copyright: "© 2026 Snowdrift Capital LLC · Sheridan, WY, USA · Open source under MIT License.",
     columns: {
       product: {
         title: "Product",
