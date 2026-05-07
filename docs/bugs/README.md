@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-07 15:07 CST
+最后更新：2026-05-07 19:07 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,9 +15,9 @@
 
 ## 当前概览
 
-- 活跃待修复：7
+- 活跃待修复：6
 - Later / 待复现：9
-- 已修复 / 已关闭：89
+- 已修复 / 已关闭：90
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
@@ -30,7 +30,6 @@
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 12:02 最新 `11:30 / 12:00` 两轮窗口继续在 `Empty / JsonNoop / JsonTriggered` 之间切换；`11:30` 同窗里 `ORCL / TEM破位 / CAI / 持仓 / RKLB / ASTS` 批量落成 `skipped_error`，`12:00` 又出现 `小米 triggered + sent` 与 `ORCL parse_kind=JsonTriggered` 后被压成 `noop + skipped_noop` 的收口矛盾 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | New | 2026-05-04 08:32 `Hone_AI_Morning_Briefing` 的 `run_id=15500` 已明确写出“底层行情数据链路暂时阻断”，并回退到先前已核验的 `2026-05-01` 收盘口径；同窗 `sidecar.log` 连续多次 `acp.tool_failed` 后只靠 `web_search` 收口，但台账仍记为 `completed + sent` | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-04 03:02 `run_id=15240` 再次把“OPEC+ 供应政策不确定性”“全球经济增速担忧”组织成确定性油价主因送达；`sidecar.log` 同窗记录 `JsonTriggered + deliver`，说明这不是中间草稿 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 
 ## Later / 待复现
@@ -51,6 +50,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixed | 2026-05-07 原油 / WTI / Brent / 大宗商品类 heartbeat 外发正文增加输出侧归因 guard：高风险宏观、地缘、供需、库存、OPEC、航运、关税等因果归因若没有“未核验 / 待确认 / 仅供参考 / 同窗来源核验”等口径，会自动加用户可见未核验提示并记录 `commodity_causality_guarded=true`；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | Fixed | 2026-05-07 本机打包缓存已生成最终 `Hone Financial_0.7.0_aarch64.dmg`，`hdiutil verify` 返回 checksum valid；本轮未改代码，原阻断按当前本机验证链路关闭；无关联 GitHub Issue | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-07 复核当前代码已覆盖 scheduler 历史 `ou_...` current-app open_id 重解析与 event-engine 单用户联系人唯一解析 fallback；不再以当前机器旧 live 日志作为活跃证据；`cargo test -p hone-feishu scheduler_resolution_target -- --nocapture` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
 | Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-07 复核当前代码仍将 heartbeat completion token 上限固定为 `4096`，且保留 `provider_quota_exhausted` / `provider_http_error` 分类；不再以旧生产进程 `max_tokens=8192` 日志作为活跃证据；`cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture` 通过；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |

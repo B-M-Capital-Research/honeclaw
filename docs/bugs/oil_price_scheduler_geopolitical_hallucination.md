@@ -3,7 +3,19 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复进展（2026-05-07 19:07 CST）
+
+- 本轮不再依赖当前机器旧生产窗口、线上 Feishu 投递或真实市场数据状态判定缺陷活跃性，只基于既有 bug 证据与本地可测代码路径做通用加固。
+- `crates/hone-channels/src/scheduler.rs` 为原油 / WTI / Brent / 大宗商品类 heartbeat 外发正文增加输出侧归因 guard：
+  - 若正文包含宏观、地缘、供需、库存、OPEC、航运、关税等高风险因果归因，并且没有明确写出“未核验 / 待确认 / 仅供参考 / 同窗来源核验”等不确定性口径，会自动在消息前加上“原因归因未完成同窗来源核验”的用户可见提示。
+  - guarded 消息的 metadata 会记录 `commodity_causality_guarded=true` 与 `guarded_preview`，便于后续审计这类降级是否频繁发生。
+  - 已经主动标注“仅供参考 / 需继续确认”等口径的原油播报不会被重复加前缀；非大宗商品 heartbeat 不受影响。
+- 这不是针对某一次 OPEC / 霍尔木兹 / 关税叙述的特判，而是对高风险大宗商品因果归因的通用输出边界：模型若仍要外发这类归因，必须带不确定性提示，不能继续包装成已确认油价主因。
+- 验证：
+  - `cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_prompt_requires_source_grounding_for_geopolitics --lib -- --nocapture`
 
 ## 最新进展（2026-05-04 06:02 CST）
 

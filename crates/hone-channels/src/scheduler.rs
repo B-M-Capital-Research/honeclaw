@@ -690,6 +690,120 @@ fn heartbeat_execution_from_content(
     }
 }
 
+fn scheduler_event_is_commodity_heartbeat(event: &SchedulerEvent) -> bool {
+    if !event.heartbeat {
+        return false;
+    }
+    let haystack = format!("{} {}", event.job_name, event.task_prompt).to_ascii_lowercase();
+    event.job_name.contains("原油")
+        || event.job_name.contains("油价")
+        || event.job_name.contains("布伦特")
+        || event.job_name.contains("大宗商品")
+        || event.task_prompt.contains("原油")
+        || event.task_prompt.contains("油价")
+        || event.task_prompt.contains("布伦特")
+        || event.task_prompt.contains("大宗商品")
+        || haystack.contains("crude")
+        || haystack.contains("wti")
+        || haystack.contains("brent")
+        || haystack.contains("oil price")
+}
+
+fn text_has_commodity_causality_claim(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if compact.is_empty() {
+        return false;
+    }
+
+    let causality_terms = [
+        "主因",
+        "主要受",
+        "受",
+        "驱动",
+        "导致",
+        "支撑",
+        "承压",
+        "影响",
+        "背景",
+        "因素",
+        "because",
+        "dueto",
+        "drivenby",
+        "causedby",
+    ];
+    let high_risk_terms = [
+        "地缘",
+        "宏观",
+        "供应",
+        "需求",
+        "库存",
+        "航运",
+        "谈判",
+        "军事",
+        "战争",
+        "关税",
+        "中东",
+        "伊朗",
+        "霍尔木兹",
+        "opec",
+        "geopolitical",
+        "supply",
+        "demand",
+        "inventory",
+        "shipping",
+        "sanction",
+        "tariff",
+    ];
+
+    causality_terms.iter().any(|term| compact.contains(term))
+        && high_risk_terms.iter().any(|term| compact.contains(term))
+}
+
+fn text_has_causality_uncertainty_qualifier(text: &str) -> bool {
+    let compact = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    [
+        "未核验",
+        "待核验",
+        "待确认",
+        "需继续确认",
+        "仅供参考",
+        "暂不归因",
+        "原因未确认",
+        "原因未核验",
+        "来源不足",
+        "同窗来源",
+        "同窗核验",
+        "本轮工具",
+        "notverified",
+        "unverified",
+        "unconfirmed",
+    ]
+    .iter()
+    .any(|term| compact.contains(term))
+}
+
+fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Option<String> {
+    if !scheduler_event_is_commodity_heartbeat(event)
+        || !text_has_commodity_causality_claim(text)
+        || text_has_causality_uncertainty_qualifier(text)
+    {
+        return None;
+    }
+
+    Some(format!(
+        "【归因口径】原因归因未完成同窗来源核验，以下宏观、地缘、供需表述仅作待确认线索，不能视为已确认油价主因。\n{}",
+        text.trim()
+    ))
+}
+
 fn heartbeat_runner_failure_kind(error: &str) -> &'static str {
     let lower = error.to_ascii_lowercase();
     if lower.contains("upstream http 402")
@@ -1155,6 +1269,25 @@ pub async fn execute_scheduler_event(
             }
             let mut execution = heartbeat_execution_from_content(&content, &heartbeat_model);
             if execution.should_deliver
+                && let Some(guarded_content) =
+                    guard_commodity_causality_for_event(&execution.content, event)
+            {
+                tracing::info!(
+                    "[HeartbeatDiag] commodity_causality_guarded job_id={} job={} target={}",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                );
+                execution.content = guarded_content;
+                if let Value::Object(map) = &mut execution.metadata {
+                    map.insert("commodity_causality_guarded".to_string(), Value::Bool(true));
+                    map.insert(
+                        "guarded_preview".to_string(),
+                        Value::String(truncate_for_log(execution.content.trim(), 200)),
+                    );
+                }
+            }
+            if execution.should_deliver
                 && let Some(matched_preview) = heartbeat_duplicate_preview_match(
                     &execution.content,
                     &event.last_delivered_previews,
@@ -1327,12 +1460,12 @@ async fn run_heartbeat_task(
 mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
-        build_scheduled_prompt, execute_scheduler_event, has_skip_delivery_signal,
-        heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
-        heartbeat_execution_from_runner_error, heartbeat_runner_selection,
-        inspect_heartbeat_result, is_empty_success_fallback, load_actor_quiet_hours,
-        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
-        sanitize_scheduler_delivery_text,
+        build_scheduled_prompt, execute_scheduler_event, guard_commodity_causality_for_event,
+        has_skip_delivery_signal, heartbeat_duplicate_preview_match,
+        heartbeat_execution_from_content, heartbeat_execution_from_runner_error,
+        heartbeat_runner_selection, inspect_heartbeat_result, is_empty_success_fallback,
+        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
+        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -2094,6 +2227,100 @@ mod tests {
         assert!(prompt.contains("来源归因约束"));
         assert!(prompt.contains("必须确认本轮工具结果明确出现该来源"));
         assert!(prompt.contains("未核验/市场传闻/需继续确认"));
+    }
+
+    #[test]
+    fn commodity_heartbeat_causality_claim_gets_uncertainty_guard() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "播报 WTI/Brent，并说明地缘政治影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "近期变动背景：油价承压主要受 OPEC+ 供应政策不确定性及全球经济增速担忧影响。",
+            &event,
+        )
+        .expect("commodity causal claim should be guarded");
+
+        assert!(guarded.contains("原因归因未完成同窗来源核验"));
+        assert!(guarded.contains("不能视为已确认油价主因"));
+    }
+
+    #[test]
+    fn commodity_heartbeat_keeps_already_qualified_causality() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "播报 WTI/Brent，并说明地缘政治影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "近期变动背景：OPEC+ 供应政策不确定性仅供参考，原因仍需继续确认。",
+                &event,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn non_commodity_heartbeat_does_not_get_causality_guard() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_rklb", None::<String>).expect("actor"),
+            job_id: "job-rklb".to_string(),
+            job_name: "RKLB异动监控".to_string(),
+            task_prompt: "监控 RKLB 订单与价格异动".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_rklb".to_string(),
+            delivery_key: "delivery-rklb".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        assert!(
+            guard_commodity_causality_for_event(
+                "近期变动背景：股价承压主要受供应链不确定性影响。",
+                &event,
+            )
+            .is_none()
+        );
     }
 
     #[test]
