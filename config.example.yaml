@@ -517,7 +517,13 @@ agent:
     sandbox_mode: "workspace-write"
     approval_policy: "never"
     dangerously_bypass_approvals_and_sandbox: false
-    sandbox_permissions: []
+    # Open network inside the workspace-write sandbox; without this, curl/git inside
+    # the actor sandbox will hit DNS timeouts (codex defaults network_access=false).
+    # NOTE: must use the legacy sandbox_permissions array, not
+    # `extra_config_overrides: ["sandbox_workspace_write.network_access=true"]`,
+    # because codex 0.128's `-c` does not merge dotted keys into the profile table
+    # and silently keeps network closed.
+    sandbox_permissions: ["network-full-access"]
     extra_config_overrides: []
   opencode:
     command: "opencode"

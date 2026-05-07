@@ -155,8 +155,10 @@ Runner install references shown by onboarding:
       codex_acp:
         model: gpt-5.5
         variant: high
+        sandbox_permissions: ["network-full-access"]
     ```
 
+  - Keep `sandbox_permissions: ["network-full-access"]` when `sandbox_mode: workspace-write` is used; Codex CLI otherwise keeps network access closed inside the actor sandbox, which can make `curl`, `git`, and DNS look broken during tool execution.
   - Restart the Hone runtime after changing this config; existing processes keep their previous effective config snapshot.
   - Official adapter repo: [zed-industries/codex-acp](https://github.com/zed-industries/codex-acp)
 - `OpenCode ACP`
