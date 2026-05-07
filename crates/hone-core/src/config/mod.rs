@@ -39,7 +39,8 @@ pub use event_engine::{
 };
 pub use materialize::{
     canonical_config_candidate, effective_config_path, generate_effective_config,
-    promote_legacy_runtime_agent_settings, seed_canonical_config_from_source,
+    normalize_runtime_storage_rollout_settings, promote_legacy_runtime_agent_settings,
+    seed_canonical_config_from_source,
 };
 pub use mutation::{
     ConfigApplyPlan, ConfigMutation, ConfigMutationResult, apply_config_mutations,

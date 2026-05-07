@@ -1,7 +1,7 @@
 use super::*;
 use hone_core::config::{
-    generate_effective_config, promote_legacy_runtime_agent_settings, read_yaml_value,
-    seed_canonical_config_from_source,
+    generate_effective_config, normalize_runtime_storage_rollout_settings,
+    promote_legacy_runtime_agent_settings, read_yaml_value, seed_canonical_config_from_source,
 };
 use std::path::Component;
 
@@ -441,6 +441,12 @@ pub(super) fn ensure_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, Stri
             )
         },
     )?;
+    normalize_runtime_storage_rollout_settings(&config_path).map_err(|e| {
+        format!(
+            "无法规范化 runtime storage rollout config（目标: {}）: {e}",
+            config_path.display()
+        )
+    })?;
     ensure_desktop_system_prompt_asset(app, &config_path)?;
 
     let effective_config_path = runtime_dir.join("effective-config.yaml");

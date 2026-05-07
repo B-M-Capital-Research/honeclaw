@@ -354,6 +354,48 @@ pub fn promote_legacy_runtime_agent_settings(
     Ok(changed_paths)
 }
 
+/// Normalize long-lived rollout settings that must not be inherited from old seeded configs.
+///
+/// Older desktop installs can carry an explicit
+/// `storage.session_sqlite_shadow_write_enabled: false` in their canonical config because that
+/// value was copied from an old generated runtime snapshot. During the SQLite mirror rollout the
+/// JSON session files remain the source of truth, but every runtime must dual-write the SQLite
+/// mirror so recovery, listing, and bug triage do not see stale session state.
+pub fn normalize_runtime_storage_rollout_settings(
+    canonical_config_path: &Path,
+) -> crate::HoneResult<Vec<String>> {
+    if !canonical_config_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut canonical = read_yaml_value(canonical_config_path)?;
+    if canonical.is_null() {
+        canonical = Value::Mapping(Mapping::new());
+    }
+
+    let mut changed_paths = Vec::new();
+    if !matches!(
+        get_value_at_path(&canonical, "storage.session_sqlite_shadow_write_enabled")?,
+        Some(Value::Bool(true))
+    ) {
+        set_value_at_path(
+            &mut canonical,
+            "storage.session_sqlite_shadow_write_enabled",
+            Value::Bool(true),
+        )?;
+        changed_paths.push("storage.session_sqlite_shadow_write_enabled".to_string());
+    }
+
+    if changed_paths.is_empty() {
+        return Ok(changed_paths);
+    }
+
+    let yaml = serde_yaml::to_string(&canonical)
+        .map_err(|e| crate::HoneError::Config(format!("canonical 配置序列化失败: {e}")))?;
+    atomic_write_yaml(canonical_config_path, &yaml)?;
+    Ok(changed_paths)
+}
+
 pub fn generate_effective_config(
     canonical_config_path: &Path,
     effective_config_path: &Path,

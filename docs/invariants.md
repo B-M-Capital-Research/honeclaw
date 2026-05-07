@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-05-04
+Last updated: 2026-05-07
 
 ## Source of Truth and Document Priority
 
@@ -72,6 +72,7 @@ Last updated: 2026-05-04
   - `json`: `data/sessions/*.json` is the source of truth
   - `sqlite`: `storage.session_sqlite_db_path` is the source of truth
 - During the current rollout, even when `session_runtime_backend=sqlite`, JSON should continue to dual-write as a rollback mirror until SQLite stability is proven over time
+- Desktop runtime config materialization must normalize historical canonical configs so `storage.session_sqlite_shadow_write_enabled` remains `true`; old generated runtime snapshots or seeded configs must not silently disable JSON -> SQLite session mirror writes
 
 ## Agent Runtime Constraints
 

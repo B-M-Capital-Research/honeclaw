@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
 - `2026-05-06 09:04 CST` 本轮再次确认 sqlite 会话镜像仍完全无增量：`sessions.max(updated_at)` / `sessions.max(last_message_at)` 与 `session_messages.max(timestamp)` / `session_messages.max(imported_at)` 继续共同停在 `2026-04-27T16:54:20.03xxxx+08:00`，最近一小时 `sessions_last_hour=0`、`messages_last_hour=0`。但同窗 `data/runtime/logs/web.log.2026-05-06` 已记录新的 Feishu direct 会话 `Actor_feishu__direct__ou_5f0bdff19e3e341fbbbffe811abecaac61` 在 `09:01:09` 落成 `session.persist_assistant -> done success=true` 并于 `09:01:13` 完成 `reply.send`，另有 Web 会话 `Actor_web__direct__web-user-ba50cb9401c0` 在 `09:01:02` 落成 `session.persist_assistant -> done success=true`。同时 `cron_job_runs` 最近一小时仍新增 33 条任务终态记录。说明 sqlite 文件本身和其它表仍在持续写入，但 `sessions` / `session_messages` 镜像链路依旧完全卡死，没有任何追平迹象。
@@ -624,6 +624,10 @@
 
 ## 修复与验证
 
+- 2026-05-07: 修复 Desktop runtime config 物化的剩余旧种子缺口：`bins/hone-desktop/src/sidecar/runtime_env.rs` 在生成 `data/runtime/effective-config.yaml` 前会调用 `normalize_runtime_storage_rollout_settings(...)`，把 canonical config 中历史遗留的 `storage.session_sqlite_shadow_write_enabled: false` 规范化为 `true`。这样即使用户配置曾由旧模板或旧 generated snapshot 种下显式 `false`，Desktop 下一次启动也会恢复 JSON -> SQLite 会话镜像双写。
+- 2026-05-07: `crates/hone-core/src/config/materialize.rs` 新增幂等配置规范化方法，并补回归测试 `test_normalize_runtime_storage_rollout_settings_enables_session_shadow_write`，覆盖旧 canonical 显式关闭 shadow write 时会被迁回 `true`，第二次运行不重复改写。
+- 2026-05-07: 验证通过：`rustfmt --edition 2024 --check crates/hone-core/src/config/materialize.rs crates/hone-core/src/config/mod.rs crates/hone-core/src/config/tests.rs bins/hone-desktop/src/sidecar/runtime_env.rs`、`cargo test -p hone-core test_normalize_runtime_storage_rollout_settings_enables_session_shadow_write -- --nocapture`、`cargo test -p hone-core test_promote_legacy_runtime_agent_settings_keeps_configured_canonical_values -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env::tests::desktop_canonical_config_path_ -- --nocapture`。
+- 2026-05-07: 当前机器不是生产机器，本轮不以旧线上日志或 live runtime 状态作为修复判定；状态依据代码路径与本地回归切回 `Fixed`。后续若新启动后的本地 runtime 仍出现 `session.shadow_sqlite.enabled=false` 或新 turn 未推进 `sessions/session_messages`，再用新样本重开。
 - 2026-04-29: 复核发现 `config.yaml` 中 `storage.session_sqlite_shadow_write_enabled=true`，但 `data/runtime/effective-config.yaml` 仍为 `false`；这会让 Desktop / sidecar 子进程在读取旧 runtime 快照时继续禁用会话 SQLite shadow write，解释了 JSON 会话主链路正常而 `sessions` / `session_messages` 镜像停在旧时间点的症状。
 - 2026-04-29: `bins/hone-desktop/src/sidecar/runtime_env.rs` 已禁止 Desktop 把 `data/runtime/effective-config.yaml` 当作 canonical config 输入；若环境变量误指向 generated runtime config，会回退到真正的用户配置或 desktop canonical config，再重新生成 fresh `effective-config.yaml`，避免旧快照把 SQLite mirror 开关回退为关闭。
 - 2026-04-29: 验证通过：`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env::tests::desktop_canonical_config_path_ -- --nocapture`。

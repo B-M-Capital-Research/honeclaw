@@ -1093,6 +1093,34 @@ agent:
 }
 
 #[test]
+fn test_normalize_runtime_storage_rollout_settings_enables_session_shadow_write() {
+    let dir = temp_test_dir("runtime-storage-rollout");
+    let canonical = dir.join("config.yaml");
+    std::fs::write(
+        &canonical,
+        r#"
+storage:
+  session_sqlite_shadow_write_enabled: false
+  session_runtime_backend: "json"
+"#,
+    )
+    .unwrap();
+
+    let changed = normalize_runtime_storage_rollout_settings(&canonical).unwrap();
+    assert_eq!(
+        changed,
+        vec!["storage.session_sqlite_shadow_write_enabled".to_string()]
+    );
+
+    let config = HoneConfig::from_file(&canonical).unwrap();
+    assert!(config.storage.session_sqlite_shadow_write_enabled);
+
+    let second = normalize_runtime_storage_rollout_settings(&canonical).unwrap();
+    assert!(second.is_empty());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn test_agent_runner_timeouts_default_to_step_plus_overall() {
     let yaml = r#"
 agent:
