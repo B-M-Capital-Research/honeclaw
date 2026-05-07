@@ -144,6 +144,14 @@ Use this when production Feishu handling is down and a test machine must tempora
    env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH ./launch.sh --desktop --remote
    ```
 
+   If the machine is recovering from production downtime and Feishu has many overdue cron jobs, start with Feishu cron delivery paused so live messages are not starved by the backlog:
+
+   ```bash
+   env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH HONE_FEISHU_DISABLE_SCHEDULER=1 ./launch.sh --desktop --remote
+   ```
+
+   This keeps the Feishu websocket listener online but skips the Feishu cron scheduler in `hone-feishu`. Use it only as an incident stopgap; scheduled Feishu jobs will not fire until the runtime is restarted without this variable.
+
 3. Start the public user frontend separately when the user-side UI must be reachable from local smoke tests:
 
    ```bash
@@ -198,6 +206,32 @@ After Feishu comes online, the scheduler may immediately consume overdue Feishu 
 
 - runner bootstrap failures such as Codex / adapter version rejection block live replies and must be fixed immediately
 - heartbeat output parsing failures such as "output is not structured JSON" usually mean the job executed but the model response violated the heartbeat contract; these should be triaged as scheduler / prompt quality issues, not as channel startup failures
+
+If many due jobs appear at once and live service starts timing out:
+
+1. Stop the launcher and clear old runner children:
+
+   ```bash
+   ./launch.sh stop
+   pkill -f '/Users/ecohnoch/Library/Caches/honeclaw/target/debug/hone-' || true
+   pkill -f '@zed-industries/codex-acp|/bin/codex-acp' || true
+   pkill -f 'packages/app/node_modules/.bin/vite|bun --filter @hone-financial/app dev|node .*tauri dev' || true
+   ```
+
+2. Restart with Feishu cron paused:
+
+   ```bash
+   env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH HONE_FEISHU_DISABLE_SCHEDULER=1 ./launch.sh --desktop --remote
+   env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
+   ```
+
+3. Confirm the log contains:
+
+   ```text
+   HONE_FEISHU_DISABLE_SCHEDULER is set; Feishu cron scheduler is disabled
+   ```
+
+4. Verify `feishu` is `running` in `/api/channels`, then run a single `/api/chat` smoke before letting users retry.
 
 ### Bundled validation workflow
 

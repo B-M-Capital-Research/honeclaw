@@ -302,15 +302,22 @@ pub(crate) async fn run() {
 
     let stream_handle = stream_client.spawn();
 
-    let (scheduler, event_rx) = core.create_scheduler(vec!["feishu".to_string()]);
-    tokio::spawn(async move {
-        scheduler.start().await;
-    });
+    if std::env::var("HONE_FEISHU_DISABLE_SCHEDULER")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+    {
+        warn!("HONE_FEISHU_DISABLE_SCHEDULER is set; Feishu cron scheduler is disabled");
+    } else {
+        let (scheduler, event_rx) = core.create_scheduler(vec!["feishu".to_string()]);
+        tokio::spawn(async move {
+            scheduler.start().await;
+        });
 
-    let scheduler_state = state.clone();
-    tokio::spawn(async move {
-        handle_scheduler_events(scheduler_state, event_rx).await;
-    });
+        let scheduler_state = state.clone();
+        tokio::spawn(async move {
+            handle_scheduler_events(scheduler_state, event_rx).await;
+        });
+    }
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {},
