@@ -891,6 +891,21 @@ pub(crate) fn has_skip_delivery_signal(text: &str) -> bool {
         .any(|pat| text.contains(pat) || normalized.contains(pat))
 }
 
+fn scheduled_prompt_needs_stable_local_context(event: &SchedulerEvent) -> bool {
+    let haystack = format!("{} {}", event.job_name, event.task_prompt).to_ascii_lowercase();
+    let has_hit_zone = event.job_name.contains("击球区")
+        || event.task_prompt.contains("击球区")
+        || haystack.contains("hit zone")
+        || haystack.contains("hit-zone");
+    let has_watch_pool = event.job_name.contains("观察池")
+        || event.job_name.contains("观察股池")
+        || event.task_prompt.contains("观察池")
+        || event.task_prompt.contains("观察股池")
+        || haystack.contains("watchlist")
+        || haystack.contains("watch pool");
+    has_hit_zone && has_watch_pool
+}
+
 pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
     if event.heartbeat {
         let history_section = if event.last_delivered_previews.is_empty() {
@@ -944,7 +959,15 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
         event.schedule_hour,
         event.schedule_minute
     );
-    format!("{}\n\n{}", trigger_note, event.task_prompt)
+    let stable_context_note = if scheduled_prompt_needs_stable_local_context(event) {
+        "\n\n稳定本地字段约束：本任务里的观察池、击球区、策略纪律等固定配置属于用户本地状态，不属于 `data_fetch` 行情结果。涉及击球区时，先使用任务正文、已恢复会话上下文、portfolio/local state 或本地文件中的既有区间；`data_fetch` 只校验最新价格和财报日期。不要因为行情工具没有返回击球区字段，就把已经存在于上下文或本地状态里的区间统一降级为“待确认”。只有本轮任务正文和已恢复上下文都没有给出某个标的的区间时，才可标注该标的击球区待确认。"
+    } else {
+        ""
+    };
+    format!(
+        "{}\n\n{}{}",
+        trigger_note, event.task_prompt, stable_context_note
+    )
 }
 
 pub async fn run_scheduled_task(
@@ -2071,6 +2094,37 @@ mod tests {
         assert!(prompt.contains("来源归因约束"));
         assert!(prompt.contains("必须确认本轮工具结果明确出现该来源"));
         assert!(prompt.contains("未核验/市场传闻/需继续确认"));
+    }
+
+    #[test]
+    fn scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_watch", None::<String>).expect("actor"),
+            job_id: "job-watch".to_string(),
+            job_name: "核心观察股池晚间快报".to_string(),
+            task_prompt:
+                "按当前25支观察池发送日报，每个标的列出当前价格、击球区区间值、下一次财报时间。涉及价格和财报日期必须调用 data_fetch 校验。"
+                    .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_watch".to_string(),
+            delivery_key: "delivery-watch".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 23,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("稳定本地字段约束"));
+        assert!(prompt.contains("data_fetch` 只校验最新价格和财报日期"));
+        assert!(prompt.contains("不要因为行情工具没有返回击球区字段"));
+        assert!(prompt.contains("统一降级为“待确认”"));
     }
 
     fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {

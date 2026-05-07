@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-29 23:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **修复结论复核**:
   - `2026-05-06 23:10 CST` 同链路缺陷在最近一小时真实窗口再次复现：
     - `data/sessions.sqlite3` -> `cron_job_runs`
@@ -266,8 +266,23 @@
   - `cargo check -p hone-tools --tests`
 - 当前回看 `2026-04-30 21:35` 与 `2026-05-01 21:35` 两个真实晚间窗口，这组修复并没有恢复固定击球区输出；它至多解释了 `2026-04-29` 的单一放大器，但没有覆盖当前仍在生产中出现的退化形态。
 
+## 修复情况（2026-05-07 11:06 CST）
+
+- 本轮确认当前坏态已经不再只由 `local_search_files` 的单文件检索失败触发：多个最新样本只有高频 `data_fetch`，但最终仍把既有击球区统一降级为 `待确认`。
+- `crates/hone-channels/src/scheduler.rs` 对包含“观察池 + 击球区 / hit zone”的普通定时任务补充稳定本地字段契约：
+  - 观察池、击球区、策略纪律等固定配置属于用户本地状态，不属于行情工具结果。
+  - `data_fetch` 只校验最新价格和财报日期，不应因为行情工具没有返回击球区字段而覆盖或清空已存在的本地区间。
+  - 只有任务正文和已恢复上下文都没有给出某个标的区间时，才允许标注该标的击球区待确认。
+- `crates/hone-channels/src/runners/multi_agent.rs` 的 search-stage guidance 同步要求 watchlist 报告优先保留当前任务正文、恢复上下文、portfolio/local state 或本地文件里的稳定字段，再用 `data_fetch` 补新鲜行情与财报日期。
+- 新增/更新回归测试：
+  - `scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields`
+  - `search_input_guidance_allows_direct_replies_for_greetings`
+- 验证通过：
+  - `cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields -- --nocapture`
+  - `cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings -- --nocapture`
+- 状态更新为 `Fixed`；后续若仍出现“任务正文或恢复上下文已有区间，但最终答复仍统一写待确认”，应优先检查该轮是否实际恢复了历史 compact summary / session context，而不是继续修改行情工具。
+
 ## 下一步建议
 
-- 优先检查 `科技核心股池 · 晚间击球区快报` 与 `核心观察池早间简报` 当前从何处读取固定击球区；重点确认最近两晚是否已经不再走 `local_search_files`，而是直接丢失了观察池区间注入步骤。
-- 对 `2026-04-30 21:35` 与 `2026-05-01 21:35` 两个样本回放 prompt / tool transcript，确认 `skill_tool` 是否仍能读到观察池配置，还是 answer 阶段忽略了已存在的区间数据。
-- 若 `skipped_non_utf8_files` 长期非零，清理或隔离 actor sandbox 内的坏编码文件，降低检索噪声。
+- 下个早间/晚间观察池窗口复核最终答复是否保留历史区间，同时只刷新价格与财报日期。
+- 若 `skipped_non_utf8_files` 长期非零，仍建议清理或隔离 actor sandbox 内的坏编码文件，降低本地检索噪声。
