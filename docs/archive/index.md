@@ -915,3 +915,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: `cargo test -p hone-memory web_auth -- --nocapture`, `cargo check -p hone-web-api -p hone-memory`, `cargo test -p hone-web-api public -- --nocapture`
 - Current conclusion: public web 普通登录不再清除同一用户其它活跃 session，避免每小时健康检查自动化、用户浏览器和多设备登录互相踢掉 `hone_web_session`
 - Next entry point: `memory/src/web_auth.rs`
+
+### SEC Enrichment OpenRouter Token Cap
+
+- Status: done
+- Date: 2026-05-07
+- Plan: `docs/archive/plans/sec-enrichment-openrouter-token-cap.md`
+- Handoff: `docs/handoffs/2026-05-07-sec-enrichment-openrouter-token-cap.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-web-api sec_filings_enrichment --lib`, `cargo test -p hone-event-engine sec_filings_enrichment --lib`, `cargo check -p hone-web-api`
+- Current conclusion: SEC filing enrichment now uses a dedicated OpenRouter provider capped by `event_engine.sec_filings.enrichment.max_summary_tokens`, so long filing input remains available while short summary output no longer inherits the global 30k completion budget that triggered OpenRouter `HTTP 402`.
+- Next entry point: `crates/hone-web-api/src/lib.rs`

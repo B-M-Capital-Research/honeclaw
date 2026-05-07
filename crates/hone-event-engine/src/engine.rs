@@ -55,6 +55,9 @@ pub struct EventEngine {
     /// 缺省 None → global_digest 调度器不会启动,即使 config.global_digest.enabled=true
     /// 也只 warn 不报错。
     global_digest_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
+    /// SEC filing enrichment 的独立 LLM provider。允许调用方用更小的
+    /// completion budget 装配该短摘要路径,避免复用 global_digest 的长输出预算。
+    sec_filings_enrichment_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
     retention_days: i64,
 }
 
@@ -74,6 +77,7 @@ impl EventEngine {
             polisher: Arc::new(NoopPolisher),
             news_classifier: None,
             global_digest_provider: None,
+            sec_filings_enrichment_provider: None,
             retention_days: 30,
         }
     }
@@ -151,6 +155,18 @@ impl EventEngine {
     /// 缺省 None → global_digest 不会启动(即使 config.global_digest.enabled=true 也只 warn)。
     pub fn with_global_digest_provider(mut self, provider: Arc<dyn hone_llm::LlmProvider>) -> Self {
         self.global_digest_provider = Some(provider);
+        self
+    }
+
+    /// 注入 SEC filing enrichment 专用 LLM provider。
+    ///
+    /// 该路径只生成短摘要,调用方应按 `sec_filings.enrichment.max_summary_tokens`
+    /// 构建 provider,不要复用全局长输出预算。
+    pub fn with_sec_filings_enrichment_provider(
+        mut self,
+        provider: Arc<dyn hone_llm::LlmProvider>,
+    ) -> Self {
+        self.sec_filings_enrichment_provider = Some(provider);
         self
     }
 
@@ -550,7 +566,11 @@ impl EventEngine {
             // 任一条件不满足都只是降级到原 form/link body,不影响 filing 推送本身。
             let enr = &self.engine_cfg.sec_filings.enrichment;
             if enr.enabled {
-                if let Some(provider) = self.global_digest_provider.clone() {
+                let provider = self
+                    .sec_filings_enrichment_provider
+                    .clone()
+                    .or_else(|| self.global_digest_provider.clone());
+                if let Some(provider) = provider {
                     let summarizer: Arc<dyn crate::pollers::sec_enrichment::SecFilingSummarizer> =
                         Arc::new(crate::pollers::sec_enrichment::LlmSecFilingSummarizer::new(
                             provider,
@@ -561,6 +581,7 @@ impl EventEngine {
                     poller = poller.with_summarizer(summarizer);
                     info!(
                         model = %enr.model,
+                        max_summary_tokens = enr.max_summary_tokens,
                         ua = %enr.user_agent,
                         "sec_filings enrichment enabled (LLM 摘要)"
                     );
@@ -733,5 +754,75 @@ impl EventEngine {
         // 这里不能 spawn 是因为 hone-event-engine 不依赖 hone-channels(避免循环)。
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::StreamExt;
+    use futures::stream;
+    use hone_llm::provider::ChatResult;
+    use hone_llm::{ChatResponse, LlmProvider, Message};
+    use serde_json::Value;
+
+    struct StubProvider;
+
+    #[async_trait::async_trait]
+    impl LlmProvider for StubProvider {
+        async fn chat(
+            &self,
+            _messages: &[Message],
+            _model: Option<&str>,
+        ) -> hone_core::HoneResult<ChatResult> {
+            Ok(ChatResult {
+                content: String::new(),
+                usage: None,
+            })
+        }
+
+        async fn chat_with_tools(
+            &self,
+            _messages: &[Message],
+            _tools: &[Value],
+            _model: Option<&str>,
+        ) -> hone_core::HoneResult<ChatResponse> {
+            Ok(ChatResponse {
+                content: String::new(),
+                tool_calls: None,
+                usage: None,
+            })
+        }
+
+        fn chat_stream<'a>(
+            &'a self,
+            _messages: &'a [Message],
+            _model: Option<&'a str>,
+        ) -> futures::stream::BoxStream<'a, hone_core::HoneResult<String>> {
+            stream::empty().boxed()
+        }
+    }
+
+    #[test]
+    fn sec_filings_enrichment_provider_is_wired_separately_from_global_digest() {
+        let global: Arc<dyn LlmProvider> = Arc::new(StubProvider);
+        let sec: Arc<dyn LlmProvider> = Arc::new(StubProvider);
+
+        let engine = EventEngine::new(EventEngineConfig::default(), FmpConfig::default())
+            .with_global_digest_provider(global.clone())
+            .with_sec_filings_enrichment_provider(sec.clone());
+
+        assert!(Arc::ptr_eq(
+            engine.global_digest_provider.as_ref().unwrap(),
+            &global
+        ));
+        assert!(Arc::ptr_eq(
+            engine.sec_filings_enrichment_provider.as_ref().unwrap(),
+            &sec
+        ));
+        assert!(!Arc::ptr_eq(
+            engine.global_digest_provider.as_ref().unwrap(),
+            engine.sec_filings_enrichment_provider.as_ref().unwrap()
+        ));
     }
 }

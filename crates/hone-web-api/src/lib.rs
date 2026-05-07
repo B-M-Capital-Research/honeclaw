@@ -91,6 +91,44 @@ fn build_event_engine_news_classifier(
     }
 }
 
+fn sec_filings_enrichment_max_tokens(core_cfg: &HoneConfig) -> u16 {
+    let requested = core_cfg
+        .event_engine
+        .sec_filings
+        .enrichment
+        .max_summary_tokens;
+    requested.clamp(1, u16::MAX as u32) as u16
+}
+
+/// SEC filing enrichment 只生成短摘要,必须使用独立 completion budget。
+///
+/// 不能复用 `llm.openrouter.max_tokens`:SEC filing 的 input 可以很长,但 output
+/// 目标只有约 200 字。复用全局 30k 预算会触发 OpenRouter 对单次请求做过高
+/// 预授权,在 key 周限额仍有余额时也可能返回 402。
+fn build_sec_filings_enrichment_provider(core_cfg: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
+    let enrichment = &core_cfg.event_engine.sec_filings.enrichment;
+    if !core_cfg.event_engine.sources.sec_filings || !enrichment.enabled {
+        return None;
+    }
+    let max_tokens = sec_filings_enrichment_max_tokens(core_cfg);
+    match OpenRouterProvider::from_config_with_max_tokens(core_cfg, max_tokens) {
+        Ok(provider) => {
+            info!(
+                max_tokens,
+                model = %enrichment.model,
+                "event engine: sec_filings enrichment LLM provider 装配"
+            );
+            Some(Arc::new(provider) as Arc<dyn LlmProvider>)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "event engine: sec_filings enrichment LLM provider 不可用,filing 摘要将降级: {e}"
+            );
+            None
+        }
+    }
+}
+
 /// 按 config 组装真实 OutboundSink(事件引擎的渠道出口)。
 ///
 /// - 按每个 channel 的 `enabled` 以及必要凭据是否就绪,逐个 attach 真 sink
@@ -410,6 +448,8 @@ pub async fn start_server(
         let polisher = build_event_engine_polisher(&state.core.config, &engine_cfg);
         let sink = build_event_engine_sink(&state.core.config);
         let news_classifier = build_event_engine_news_classifier(&state.core.config);
+        let sec_filings_enrichment_provider =
+            build_sec_filings_enrichment_provider(&state.core.config);
         // global_digest 也走 OpenRouter,与 news_classifier 用同一 provider
         let global_digest_provider: Option<Arc<dyn LlmProvider>> =
             match OpenRouterProvider::from_config(&state.core.config) {
@@ -487,6 +527,9 @@ pub async fn start_server(
             }
             if let Some(p) = global_digest_provider {
                 engine = engine.with_global_digest_provider(p);
+            }
+            if let Some(p) = sec_filings_enrichment_provider {
+                engine = engine.with_sec_filings_enrichment_provider(p);
             }
             if let Err(e) = engine.start().await {
                 tracing::warn!("event engine start failed: {e}");
@@ -568,4 +611,28 @@ pub async fn start_server(
         public_port,
         task_handles,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sec_filings_enrichment_max_tokens_uses_configured_cap() {
+        let mut cfg = HoneConfig::default();
+        cfg.event_engine.sec_filings.enrichment.max_summary_tokens = 800;
+
+        assert_eq!(sec_filings_enrichment_max_tokens(&cfg), 800);
+    }
+
+    #[test]
+    fn sec_filings_enrichment_max_tokens_clamps_to_valid_u16_range() {
+        let mut cfg = HoneConfig::default();
+
+        cfg.event_engine.sec_filings.enrichment.max_summary_tokens = 0;
+        assert_eq!(sec_filings_enrichment_max_tokens(&cfg), 1);
+
+        cfg.event_engine.sec_filings.enrichment.max_summary_tokens = 70_000;
+        assert_eq!(sec_filings_enrichment_max_tokens(&cfg), u16::MAX);
+    }
 }

@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-07 11:06 CST
+最后更新：2026-05-07 11:26 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,7 +17,7 @@
 
 - 活跃待修复：10
 - Later / 待复现：9
-- 已修复 / 已关闭：85
+- 已修复 / 已关闭：86
 - 历史分析 / 部分止血：5
 - 当前活跃队列含 3 条 `P1`；最高待修优先级为 `P1`
 
@@ -54,6 +54,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| SEC filing enrichment 复用全局 OpenRouter max_tokens 触发 `HTTP 402` | P2 | Fixed | 2026-05-07 SEC filing 摘要改用独立 capped OpenRouter provider，completion cap 来自 `event_engine.sec_filings.enrichment.max_summary_tokens`；live smoke 已确认 `max_tokens=800` 成功而 `30000` 失败，定向 web-api / event-engine 测试和 `cargo check -p hone-web-api` 通过；无关联 GitHub Issue | [sec_enrichment_openrouter_max_tokens_402.md](./sec_enrichment_openrouter_max_tokens_402.md) |
 | Event-engine price poller 将全量 watch pool 拼成单个 FMP quote 请求，池子变大后整 tick 超时/隧道失败 | P0 | Fixed | 2026-05-06 `PricePoller::fetch` 改为过滤不适合 FMP equity quote path 的 option-style symbol，并按 batch size / URL path 长度拆分 `/v3/quote/{symbols}`；单 batch 失败不再丢弃同 tick 其它成功 batch，仅所有 batch 都失败时返回 poller 错误；无关联 GitHub Issue | [event_engine_price_poller_unbounded_quote_batch.md](./event_engine_price_poller_unbounded_quote_batch.md) |
 | Feishu 直聊切到非金融新话题时，仍直接回答楼市/买房问题而未执行领域边界拒绝 | P3 | Fixed | 2026-05-06 `AgentSession::run` 在 quota/runner 前增加直聊非金融短路：明显生活/硬件问题且无金融锚点时直接持久化领域边界回复，不调用 LLM / `stock_research` / 工具且不消耗 daily quota；scheduled-task 与 admin actor 不受影响；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
 | Feishu 直聊成功长答首段仍混入 `todo` / `current-plan` / 画像维护等内部工作流文本 | P3 | Fixed | 2026-05-06 共享 `sanitize_user_visible_output` 会剥离成功答复首段/首句里的内部工作流前言，覆盖 `todo`、`current-plan`、`动态计划`、`不落盘` 与 `我先...再...` 执行步骤式开头，同时保留 `我先给结论` 等正常用户可见结论；无关联 GitHub Issue | [feishu_direct_final_answer_internal_workflow_leak.md](./feishu_direct_final_answer_internal_workflow_leak.md) |
