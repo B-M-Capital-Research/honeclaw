@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-07 19:07 CST
+最后更新：2026-05-07 23:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,16 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：6
-- Later / 待复现：9
+- 活跃待修复：7
+- Later / 待复现：8
 - 已修复 / 已关闭：90
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
+- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | New | 2026-05-07 23:02 复发确认：最近四小时新增 5 条 `execution_status=running + message_send_status=pending`，均为 `20:30` Feishu 定时任务 started row；`20:42` runtime 重启后后续直聊与 scheduler 可正常收口，但这 5 条没有终态覆盖，说明台账缺失虽已止血，长任务超时终结/失败收口仍缺失；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-06 09:04 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但同窗 `09:01` 已有 Feishu 与 Web 会话完成 `session.persist_assistant + reply.send`，说明 sqlite 文件仍在写别的表而会话镜像继续完全停摆 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 12:02 最新 `11:30 / 12:00` 两轮窗口继续在 `Empty / JsonNoop / JsonTriggered` 之间切换；`11:30` 同窗里 `ORCL / TEM破位 / CAI / 持仓 / RKLB / ASTS` 批量落成 `skipped_error`，`12:00` 又出现 `小米 triggered + sent` 与 `ORCL parse_kind=JsonTriggered` 后被压成 `noop + skipped_noop` 的收口矛盾 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
@@ -38,7 +39,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Feishu scheduler 部分定时任务已进入执行和工具调用，但长期卡住且没有 `cron_job_runs` 记录 | P1 | Later | 2026-04-26 已在 Feishu scheduler 触发入口立即写入 `running + pending` 台账；作为已止血待复现项移出活跃队列，若后续仍卡住或需要 watchdog 再改回 `New` | [feishu_scheduler_run_stuck_without_cron_job_run.md](./archive/feishu_scheduler_run_stuck_without_cron_job_run.md) |
 | Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Later | 2026-04-26 已把 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 与 `empty_success_exhausted` 提升为失败信号；若 scheduler 仍把同类 fallback 记为完成再改回 `New` | [feishu_scheduler_empty_reply_false_success.md](./archive/feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | Later | 2026-04-26 已为 Feishu send/reply/update 出站请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；若真实出站窗口继续复现再改回 `New` | [feishu_send_message_request_transport_failure.md](./archive/feishu_send_message_request_transport_failure.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Later | 2026-04-26 已在共享净化层剥离独立 `Context compacted` / `Conversation compacted` marker 行并保留真实正文；若 marker 或 summary 污染再次复现再改回 `New` | [session_compact_summary_report_hallucination.md](./archive/session_compact_summary_report_hallucination.md) |

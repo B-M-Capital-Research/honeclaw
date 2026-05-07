@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-24 09:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Later
+- **状态**: New
 
 ## 观测落地（2026-04-24）
 
@@ -134,3 +134,24 @@
 - 这样即使后续 agent run 卡住、进程中断或收尾逻辑没有执行，台账也能看到“本轮确实触发并进入运行中”，不再表现为完全缺失。
 - 已验证：`cargo test -p hone-feishu failed_reply_text`（同包编译通过；完整 Feishu 回归见本轮批次计划）。
 - 状态调整为 `Later`：台账缺失已代码止血；后续若真实长任务窗口仍停在 `running/pending`，或证明需要补超时终结器，再改回 `New`。
+
+## 复发证据（2026-05-07）
+
+- **2026-05-07 23:02 CST 巡检结论**：本缺陷从 `Later` 重新调整为 `New`。最新真实窗口里，台账缺失已被 2026-04-26 的 started 行止血覆盖，但 Feishu scheduler 仍能留下长时间不收口的 `running/pending` 任务，说明“需要超时终结器 / 失败收口”的后半段问题仍活跃。
+- **证据来源**：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - 截至 `2026-05-07 23:02 CST`，最近四小时共有 `5` 条 `execution_status=running + message_send_status=pending`，且当天全库新增 pending 也只有这 5 条，说明不是历史脏行误读。
+    - `run_id=16416`：`持仓与关注股交易日晚间合并研判`，`executed_at=2026-05-07T20:30:00.652439+08:00`，`detail_json={"delivery_key":"j_917c1c2e:2026-05-07:20:30","phase":"started"}`。
+    - `run_id=16418`：`每日仓位复盘`，`executed_at=2026-05-07T20:30:00.661211+08:00`，`phase=started`。
+    - `run_id=16421`：`美股盘前宏观与财报日历梳理`，`executed_at=2026-05-07T20:30:00.652664+08:00`，`phase=started`。
+    - `run_id=16423`：`老王说事与巴芒投资美股财报季个股判断`，`executed_at=2026-05-07T20:30:00.661616+08:00`，`phase=started`。
+    - `run_id=16424`：`持仓重大事件心跳检测`，`executed_at=2026-05-07T20:30:00.661492+08:00`，`delivery_key` 含 `heartbeat`，`phase=started`。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-07 20:42:17-20:42:18` 当前 runtime 重新拉起 `hone-discord` 与 `hone-feishu`。
+    - 重启后同一日志中可见后续 `20:45`、`20:48`、`21:00` 之后的 Feishu 任务正常 `session.persist_assistant` / `reply.send`，但没有看到上述 20:30 五条 started row 被终态覆盖。
+  - `data/sessions/*.json`
+    - 受影响的 `20:30` 任务至少包含真实 `[定时任务触发]` user turn；例如 `Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1.json` 在 `2026-05-07T20:30:00.660111+08:00` 记录 `持仓与关注股交易日晚间合并研判` 的触发正文，随后同会话在 `20:48` 与 `22:09` 有新的人工直聊成功收口，证明会话文件本身仍可写，而 20:30 定时任务没有完成态。
+
+## GitHub Issue
+
+- 2026-05-07 本轮巡检确认该 P1 缺陷重新活跃；已创建脱敏 GitHub Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
