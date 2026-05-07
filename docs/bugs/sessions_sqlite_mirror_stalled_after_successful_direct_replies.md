@@ -3,9 +3,10 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-05-08 07:05 CST` 本轮确认 `2026-05-07` 的 `Fixed` 结论在当前 live runtime 中再次失效，状态从 `Fixed` 调回 `New`。`data/runtime/logs/web.log.2026-05-07` 与 `data/runtime/logs/desktop_release_app.log` 均记录 Web direct 会话 `Actor_web__direct__web-user-e05f5e5f74a3` 在 `2026-05-08 07:02:57-07:03:07 CST` 完成 `session.persist_user -> agent.run -> session.persist_assistant -> done success=true`，输入为“心跳检测，请简短回复 OK”，最终 `reply.chars=2`。真实源文件 `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 已推进到 `updated_at=2026-05-08T07:03:07.456918+08:00`，但 `data/sessions.sqlite3` 的 `sessions.max(updated_at)` / `sessions.max(last_message_at)` 与 `session_messages.max(timestamp)` / `session_messages.max(imported_at)` 仍共同停在 `2026-04-27T16:54:20.03xxxx+08:00`；同库 `cron_job_runs` 已推进到 `2026-05-08T07:01:15+08:00`。同时当前 `config.yaml` 与 `data/runtime/effective-config.yaml` 仍显示 `storage.session_sqlite_shadow_write_enabled: false`，说明数据库本身仍可写，停滞仍集中在会话 shadow writer 未启用。
 - `2026-05-06 09:04 CST` 本轮再次确认 sqlite 会话镜像仍完全无增量：`sessions.max(updated_at)` / `sessions.max(last_message_at)` 与 `session_messages.max(timestamp)` / `session_messages.max(imported_at)` 继续共同停在 `2026-04-27T16:54:20.03xxxx+08:00`，最近一小时 `sessions_last_hour=0`、`messages_last_hour=0`。但同窗 `data/runtime/logs/web.log.2026-05-06` 已记录新的 Feishu direct 会话 `Actor_feishu__direct__ou_5f0bdff19e3e341fbbbffe811abecaac61` 在 `09:01:09` 落成 `session.persist_assistant -> done success=true` 并于 `09:01:13` 完成 `reply.send`，另有 Web 会话 `Actor_web__direct__web-user-ba50cb9401c0` 在 `09:01:02` 落成 `session.persist_assistant -> done success=true`。同时 `cron_job_runs` 最近一小时仍新增 33 条任务终态记录。说明 sqlite 文件本身和其它表仍在持续写入，但 `sessions` / `session_messages` 镜像链路依旧完全卡死，没有任何追平迹象。
 - `2026-05-05 23:02 CST` 本轮再次确认 sqlite 会话镜像仍完全无增量：`sessions.max(updated_at)` / `sessions.max(last_message_at)` 与 `session_messages.max(timestamp)` / `session_messages.max(imported_at)` 继续共同停在 `2026-04-27T16:54:20.03xxxx+08:00`，最近一小时 `sessions_last_hour=0`、`messages_last_hour=0`。但同窗 `data/runtime/logs/web.log.2026-05-05` 已记录新的 Feishu direct 会话 `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 在 `23:01:22` 落成 `session.persist_assistant -> done success=true`，另有 `cron_job_runs.run_id=15923` 在 `23:01:27` 落成 `核心观察股池晚间快报 completed + sent + delivered=1`。这说明 sqlite 文件本身和其它台账表仍在持续写入，但 `sessions` / `session_messages` 镜像链路依旧完全卡死，没有任何追平迹象。
 - `2026-05-05 21:02 CST` 本轮再次确认 sqlite 会话镜像仍完全无增量：`sessions.max(updated_at)` / `sessions.max(last_message_at)` 与 `session_messages.max(timestamp)` / `session_messages.max(imported_at)` 继续共同停在 `2026-04-27T16:54:20.03xxxx+08:00`，最近一小时 `sessions_last_hour=0`、`messages_last_hour=0`。但同窗 `data/runtime/logs/web.log.2026-05-05` 已记录新的 Feishu direct 会话 `Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda` 在 `21:01:29` 落成 `session.persist_assistant -> done success=true`，另一条 direct 会话 `Actor_feishu__direct__ou_5f62439dbed2b381c0023e70a381dbd768` 又在 `21:01:46` 完成同样收口；同库 `cron_job_runs` 也在 `21:01` 新增两条非 heartbeat 任务 `completed + sent`。这说明 sqlite 文件本身和其它台账表仍在持续写入，但 `sessions` / `session_messages` 镜像链路依旧完全卡死，没有任何追平迹象。
@@ -649,7 +650,7 @@
 - 2026-04-29 修复后，Desktop canonical config 解析不再接受 `effective-config.yaml` 这种 generated runtime 快照作为源配置；旧快照里的 `session_sqlite_shadow_write_enabled=false` 不会继续覆盖 canonical 配置。
 - 到 `2026-04-29 03:03 CST` 为止，`sessions` / `session_messages` 的最新时间戳仍停在 `2026-04-27T16:54:20+08:00`，距离当前已超过 34 小时。
 - 最近一小时 `cron_job_runs` 继续新增 `48` 条调度记录，并且 `02:30` 窗口仍有 `run_id=9443` 成功送达；说明 sqlite 文件本身还在持续写入，但会话镜像表完全没有跟上。
-- 这已经不只是“直聊成功但镜像缺失”，而是任何依赖 `sessions` / `session_messages` 的最近窗口巡检都会被迫失明；本轮已从 runtime config 物化路径修复旧快照覆盖根因，状态切为 `Fixed`，严重等级维持 `P2`。
+- 这已经不只是“直聊成功但镜像缺失”，而是任何依赖 `sessions` / `session_messages` 的最近窗口巡检都会被迫失明；`2026-05-08 07:05 CST` 新样本证明当前 live runtime 仍未追平，状态回到 `New`，严重等级维持 `P2`。
 
 ## 期望效果
 
@@ -704,8 +705,8 @@
 
 ## 根因判断
 
-- 根因收敛为 Desktop runtime config 物化路径可能把旧的 `data/runtime/effective-config.yaml` 当作 canonical config 继续使用；该旧快照里 `storage.session_sqlite_shadow_write_enabled=false`，导致运行态 `SessionStorage` 没有初始化 SQLite shadow writer。
-- 因此 `sessions` / `session_messages` 并不是异步 writer 卡死，而是运行态配置继续关闭了会话镜像写入。
+- 既有修复曾把根因收敛为 Desktop runtime config 物化路径可能把旧的 `data/runtime/effective-config.yaml` 当作 canonical config 继续使用；该旧快照里 `storage.session_sqlite_shadow_write_enabled=false`，导致运行态 `SessionStorage` 没有初始化 SQLite shadow writer。
+- `2026-05-08 07:05 CST` 的新样本说明，至少当前 live runtime 仍未恢复 JSON -> SQLite 会话镜像双写；当前 `config.yaml` 与 `data/runtime/effective-config.yaml` 均仍是 `storage.session_sqlite_shadow_write_enabled: false`，因此更可能是配置规范化没有覆盖当前 canonical 配置，或修复尚未部署/重启到当前运行态。
 - `cron_job_runs` 仍能持续写入同一个 sqlite 文件，说明数据库文件可写、进程也未整体失活；结合 runtime effective config 差异，问题集中在会话镜像写入开关被旧快照关闭。
 - 这与 [`web_scheduler_codex_acp_unfinished_tool_send_failed.md`](./web_scheduler_codex_acp_unfinished_tool_send_failed.md) 不同：那条缺陷是单轮 scheduler 既未落库也未送达；本条证据里 direct 会话已经成功送达，但 sqlite 镜像整体没有跟上。
 
