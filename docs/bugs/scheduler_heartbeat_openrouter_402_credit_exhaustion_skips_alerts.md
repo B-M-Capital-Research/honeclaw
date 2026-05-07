@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -262,3 +262,14 @@
 - 同窗非 heartbeat 任务 `英伟达每日消息` 与 `A股盘后高景气产业链推演` 在 `20:02` 正常完成送达，说明不是 scheduler 全局停摆；故障仍集中在 heartbeat provider quota / token budget 链路。
 - `data/runtime/logs/web.log.2026-05-07` 还在 `2026-05-08 02:42:19-02:42:25 CST` 记录多条 mainline distill / style distill 的 OpenRouter `HTTP 402`，请求 `max_tokens=30000`、可负担 `539`，说明 OpenRouter credits 枯竭仍在外溢到后台摘要链路；本单继续以 heartbeat 漏发作为 P1 用户面主故障跟踪。
 - 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，且当前状态为 `OPEN`；本轮不重复创建 issue。
+
+## 复核结论（2026-05-08 07:04 CST）
+
+- 状态更新为 `Fixed`。
+- 本轮按当前自动化约束，不再把当前机器旧生产进程日志、旧 sqlite 台账或 OpenRouter 账号实时额度作为活跃判定依据。
+- 代码复核确认当前仓库仍将 heartbeat 专用 completion token 上限固定为 `4096`，并通过 `ExecutionRunnerSelection::AuxiliaryFunctionCalling.max_tokens_override` 进入 `create_auxiliary_llm_provider_with_max_tokens`；`run_start` 日志也会记录 `max_tokens=4096`。
+- `provider_quota_exhausted` / `provider_http_error` 分类仍保留；如果外部 OpenRouter credits 低于 `4096` 或完全耗尽，后续会显式记录 provider quota 故障，而不是伪装成 noop。
+- 2026-05-08 03:05 的复活证据仍来自当前机器旧运行态 / 外部额度状态，且 `can only afford 217` 已低于任何可维护的 heartbeat completion budget；继续降低到单次异常额度会让提醒质量不可解释，不符合本任务“不针对外部额度单次状态写脆弱特判”的约束。
+- 本轮未新增代码给 #36，因为可本地验证的通用加固已经存在；建议部署当前代码后复测 heartbeat 窗口，若仍出现当前代码 `run_start max_tokens=4096` 下的系统性失败，再以新证据重开。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`

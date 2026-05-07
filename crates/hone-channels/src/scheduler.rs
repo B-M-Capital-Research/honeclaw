@@ -36,6 +36,8 @@ fn heartbeat_runner_selection() -> ExecutionRunnerSelection {
 }
 const SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE: &str =
     "本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。";
+const STALE_MARKET_DATA_FAILURE_MESSAGE: &str =
+    "本轮定时任务未能完成：关键行情数据获取失败，系统已跳过旧价格版本，并将在下一次触发时重试。";
 
 static RE_HEARTBEAT_CURRENT_BEFORE_TRIGGER_PRICE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
@@ -942,6 +944,61 @@ fn is_empty_success_fallback(text: &str) -> bool {
     text.trim() == EMPTY_SUCCESS_FALLBACK_MESSAGE
 }
 
+fn is_stale_market_data_success_fallback(text: &str) -> bool {
+    let normalized = text
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if normalized.is_empty() {
+        return false;
+    }
+    if [
+        "不复用旧价格",
+        "不使用旧价格",
+        "不沿用旧价格",
+        "已跳过旧价格",
+        "跳过旧价格版本",
+    ]
+    .iter()
+    .any(|term| normalized.contains(term))
+    {
+        return false;
+    }
+
+    let market_data_failed = [
+        "底层行情数据链路暂时阻断",
+        "行情数据链路暂时阻断",
+        "行情链路暂时阻断",
+        "数据链路暂时阻断",
+        "报价接口触及限额",
+        "行情数据获取失败",
+        "实时行情获取失败",
+        "拉取持仓实时行情时",
+        "data_fetch失败",
+        "data_fetchfailed",
+    ]
+    .iter()
+    .any(|term| normalized.contains(&term.to_ascii_lowercase()));
+
+    let stale_price_reused = [
+        "使用本会话此前已核验",
+        "采用同一会话",
+        "采用此前",
+        "沿用此前",
+        "先前已核验",
+        "此前已核验",
+        "旧价格",
+        "旧价",
+        "上一交易日收盘",
+        "收盘口径",
+    ]
+    .iter()
+    .any(|term| normalized.contains(&term.to_ascii_lowercase()));
+
+    market_data_failed && stale_price_reused
+}
+
 fn is_scheduler_protocol_residue(line: &str) -> bool {
     let trimmed = line.trim();
     if trimmed.is_empty() || !(trimmed.starts_with('{') && trimmed.ends_with('}')) {
@@ -1154,6 +1211,30 @@ pub async fn execute_scheduler_event(
                     error: Some(sanitized),
                     metadata: json!({
                         "failure_kind": "empty_success_fallback",
+                    }),
+                    session_id: Some(session_id),
+                }
+            } else if is_stale_market_data_success_fallback(&sanitized) {
+                let suppressed_preview = truncate_for_log(sanitized.trim(), 200);
+                tracing::warn!(
+                    "[SchedulerDiag] stale_market_data_fallback job_id={} job={} chars={} preview=\"{}\"",
+                    event.job_id,
+                    event.job_name,
+                    sanitized.chars().count(),
+                    suppressed_preview.replace('\n', "\\n"),
+                );
+                rollback_skipped_scheduler_assistant_turn(
+                    &core.session_storage,
+                    &session_id,
+                    &sanitized,
+                );
+                ScheduledTaskExecution {
+                    should_deliver: true,
+                    content: String::new(),
+                    error: Some(STALE_MARKET_DATA_FAILURE_MESSAGE.to_string()),
+                    metadata: json!({
+                        "failure_kind": "stale_market_data_fallback",
+                        "suppressed_preview": suppressed_preview,
                     }),
                     session_id: Some(session_id),
                 }
@@ -1464,8 +1545,9 @@ mod tests {
         has_skip_delivery_signal, heartbeat_duplicate_preview_match,
         heartbeat_execution_from_content, heartbeat_execution_from_runner_error,
         heartbeat_runner_selection, inspect_heartbeat_result, is_empty_success_fallback,
-        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
-        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
+        is_stale_market_data_success_fallback, load_actor_quiet_hours,
+        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
+        sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -1731,6 +1813,22 @@ mod tests {
             EMPTY_SUCCESS_FALLBACK_MESSAGE
         )));
         assert!(!is_empty_success_fallback("这是正常的定时任务输出"));
+    }
+
+    #[test]
+    fn scheduler_detects_stale_market_data_success_fallback() {
+        assert!(is_stale_market_data_success_fallback(
+            "说明：本轮重新拉取持仓实时行情时，底层行情数据链路暂时阻断。\n以下价格使用本会话此前已核验的美股5月1日收盘口径；新闻、评级与产业动态使用本轮搜索核验。"
+        ));
+        assert!(is_stale_market_data_success_fallback(
+            "本轮报价接口触及限额，以下持仓价格采用同一会话04:30已校验的美股4月29日收盘口径。"
+        ));
+        assert!(!is_stale_market_data_success_fallback(
+            "本轮新闻检索正常，以下价格使用同窗 data_fetch 返回的最新行情。"
+        ));
+        assert!(!is_stale_market_data_success_fallback(
+            "行情数据获取失败，已跳过报价表，不复用旧价格。"
+        ));
     }
 
     #[test]

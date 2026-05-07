@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-04 21:25 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 
 ## 证据来源
 
@@ -86,3 +86,17 @@
 - 为这类要求“最新/实时/当日动态”的 scheduler 任务增加硬约束：关键 `data_fetch` 失败时，不得直接落成 `completed + sent`。
 - 在调度台账中区分“完整成功”和“旧价格 fallback 的部分完成态”，避免巡检把这类样本误当作正常成功。
 - 为 `Hone_AI_Morning_Briefing` 增加回归：当 `data_fetch` 连续失败且只剩 `web_search` 可用时，应输出明确失败/部分完成态，而不是正式成功晨报。
+
+## 修复记录（2026-05-08 07:04 CST）
+
+- 状态更新为 `Fixed`。
+- `crates/hone-channels/src/scheduler.rs` 的非 heartbeat scheduler 成功路径新增 `stale_market_data_fallback` 边界：
+  - 如果输出同时明确声明关键行情 / 报价 / `data_fetch` 链路失败，并继续复用旧价格、旧收盘或“此前已核验”口径，不再落成普通成功态。
+  - 已落库的旧价格正文会被回滚，避免污染 direct session 后续上下文。
+  - 用户可见投递改为失败提示：系统已跳过旧价格版本，并将在下一次触发时重试。
+  - 台账 metadata 写入 `failure_kind=stale_market_data_fallback` 与脱敏 `suppressed_preview`，便于后续巡检区分“完整成功”和“旧价格 fallback 被拦截”。
+- 本修复不针对单次行情接口异常写特判，只拦截模型自己承认“关键行情失败且仍复用旧价格”的通用坏态；若任务明确“跳过旧价格 / 不复用旧价格”，不会误拦截。
+- 验证：
+  - `cargo test -p hone-channels scheduler_detects_stale_market_data_success_fallback --lib -- --nocapture`
+  - `cargo test -p hone-channels scheduler::tests::scheduler_detects_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
