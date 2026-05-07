@@ -937,5 +937,5 @@ Use this file as the historical entry point for completed or paused work that sh
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
 - Related runbooks / regressions: `cargo test -p hone-event-engine sec_enrichment --lib`
-- Current conclusion: SEC filing enrichment now selects filing-aware excerpts before the LLM call. 10-Q/10-K prioritize MD&A, strategic/capital/risk/legal windows and Risk Factors; 8-K prioritizes the front-loaded exhibit/news-release narrative. This fixes the follow-up OpenRouter `HTTP 402` where TEM 10-Q full input hit `54381 > 6713` prompt tokens.
+- Current conclusion: SEC filing enrichment now selects filing-aware excerpts before the LLM call. 10-Q/10-K prioritize MD&A, strategic/capital/risk/legal windows and Risk Factors; 8-K prioritizes the front-loaded exhibit/news-release narrative. The default excerpt budget is now `10_000` chars, with `7_000` / `4_500` / `2_800` retries on `Prompt tokens limit exceeded`, covering the follow-up OpenRouter failures where TEM filings still hit `5198 > 3256` and `3956 > 3256` after the first section-aware pass.
 - Next entry point: `crates/hone-event-engine/src/pollers/sec_enrichment.rs`

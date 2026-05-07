@@ -22,6 +22,8 @@ SEC filing enrichment is now wired through its own OpenRouter provider with a co
 
 Follow-up on the same day fixed the second `HTTP 402` mode: full 10-Q prompt input could still exceed the current key's prompt budget even after output tokens were capped. SEC enrichment now sends selected filing excerpts, not the entire cleaned filing text.
 
+Another same-day production window showed the key prompt budget had dropped further to 3,256 tokens. The selected excerpts were working directionally, but some TEM filings still landed at 3,956-5,198 prompt tokens, so the extractor now starts more conservatively and retries smaller semantic excerpts on prompt-budget `HTTP 402`.
+
 ## What Changed
 
 - Added `EventEngine::with_sec_filings_enrichment_provider(...)`.
@@ -30,6 +32,7 @@ Follow-up on the same day fixed the second `HTTP 402` mode: full 10-Q prompt inp
 - Added tests for token-cap selection and separate provider wiring.
 - Added `extract_filing_llm_context(...)` in `sec_enrichment`, which drops hidden inline XBRL/header noise and selects MD&A, strategic/capital/risk windows, Risk Factors, legal proceedings, or front-loaded 8-K exhibit narratives before the LLM call.
 - Updated the SEC enrichment prompt/user message to say the input is selected excerpts rather than a full filing.
+- Lowered default selected excerpt size to `10_000` chars and added prompt-budget retries at `7_000`, `4_500`, and `2_800` chars when OpenRouter returns `Prompt tokens limit exceeded`.
 
 ## Verification
 
@@ -44,6 +47,8 @@ Follow-up on the same day fixed the second `HTTP 402` mode: full 10-Q prompt inp
 Live OpenRouter smoke before the fix confirmed the boundary: `x-ai/grok-4.1-fast` succeeds with `max_tokens=800` and fails with `max_tokens=30000` under the current key limit.
 
 Follow-up real-data POC used TEM/AMD/COHR 10-Q and TEM 8-K. TEM 10-Q selected excerpts succeeded live on `x-ai/grok-4.1-fast` with 3,170 prompt tokens, 798 completion tokens, and reported cost about `$0.0010`; the earlier full-input failure was `54381 > 6713` prompt tokens.
+
+Later production logs at `2026-05-07 19:59 CST` showed selected excerpts still failing at `5198 > 3256` and `3956 > 3256`, which is why the default budget was tightened and retry budgets were added.
 
 ## Risks / Follow-ups
 

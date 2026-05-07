@@ -46,9 +46,14 @@ use crate::event::MarketEvent;
 /// OpenRouter 会按当前 key 可承担的 prompt/output 预算做预授权。2026-05-07
 /// 生产日志显示同一 TEM 10-Q 全文抽取约 54k prompt tokens,而当前 key 当时只能
 /// 承担约 6.7k prompt tokens。POC 用 TEM/AMD/COHR 真实 10-Q 与 TEM 8-K 验证后,
-/// 改为 section-aware 摘抄:18k chars 通常落在 3k-5k prompt tokens,给 system
+/// 改为 section-aware 摘抄:10k chars 通常落在 2k-3k prompt tokens,给 system
 /// prompt 和 800 completion tokens 留余量。
-pub const MAX_FILING_CHARS: usize = 18_000;
+pub const MAX_FILING_CHARS: usize = 10_000;
+
+/// OpenRouter key 的可承受 prompt budget 会随 weekly limit 余额继续下降。
+/// 如果默认摘抄仍触发 `Prompt tokens limit exceeded`,按同一语义选择逻辑继续
+/// 压缩上下文重试,而不是把整条 enrichment 放弃。
+const RETRY_FILING_CHARS: &[usize] = &[7_000, 4_500, 2_800];
 
 /// LLM 摘要默认 system prompt —— **不要随意改**。
 pub const DEFAULT_SYSTEM_PROMPT: &str = "你是一个长期主线投资者的分析助手。我会给你一份 SEC filing(10-Q 季报 / 10-K 年报 / 8-K / S-1 / DEF 14A 等)的精选摘抄,不是全文。你需要只根据摘抄用中文写一段 ~200 字核心要点摘要,**严格遵守**以下原则:\n\n1. **不要重复 GAAP 数字**(收入 X 亿、净利润 Y 亿等),这些用户从财报新闻已知道\n2. **重点抓业务驱动信号**:大客户 / 大订单 / backlog 变化、产能 / 工厂进展、产品 line 节奏(新品发布 / 量产 ramp)、地区 mix 变化、定价 / 毛利结构性变化\n3. **重点抓新增风险**:Risk Factors 章节里**本次新增或显著修改**的条目(不要把模板风险全列一遍)、监管 / 诉讼 / 供应链异常、stock-based comp 大幅波动等隐藏信号\n4. **重点抓资本配置变化**:大额回购 / 派息变化、新债 / 偿债、并购 / 资产剥离、capex 节奏\n5. 不分点,自然段。开头一句直接讲「这份 filing 最值得长期主线投资者关注的是 X」\n6. 保持克制。如果摘抄没有显示显著新信号,直接说「无显著新信号,routine」一行就够";
@@ -168,49 +173,50 @@ impl SecFilingSummarizer for LlmSecFilingSummarizer {
         }
 
         let html = self.fetch_filing_html(url).await?;
-        let context = extract_filing_llm_context(&html, &form, &ticker, MAX_FILING_CHARS);
-        if context.trim().is_empty() {
-            warn!(event_id = %event.id, "sec_enrichment: extracted text empty after parsing");
-            return None;
-        }
-
-        let user_msg = format!(
-            "以下是 {ticker} 的 {form} 文件精选摘抄,请按 system prompt 规则输出摘要:\n\n{context}"
-        );
-        let messages = vec![
-            Message {
-                role: "system".into(),
-                content: Some(self.system_prompt.clone()),
-                tool_calls: None,
-                tool_call_id: None,
-                name: None,
-            },
-            Message {
-                role: "user".into(),
-                content: Some(user_msg),
-                tool_calls: None,
-                tool_call_id: None,
-                name: None,
-            },
-        ];
-
-        // 注:LlmProvider trait 当前没暴露 max_tokens 旋钮 —— OpenRouterProvider 内部
-        // 用其默认。max_summary_tokens 字段保留在配置里供后续扩展(若要换 provider
-        // 或者拓展 trait 增加 generation params 时使用),目前是 dead config knob。
-        // 不删字段是为了 config 兼容性 —— 用户设过 max_summary_tokens=2000 想改默认
-        // 的时候,trait 升级后可以直接生效。
-        let _ = self.max_summary_tokens;
-        let result = match self.provider.chat(&messages, Some(&self.model)).await {
-            Ok(r) => r,
-            Err(e) => {
-                warn!(
-                    event_id = %event.id,
-                    model = %self.model,
-                    "sec_enrichment LLM call failed: {e}"
-                );
+        let mut result = None;
+        let budgets = filing_context_char_budgets();
+        for (idx, max_context_chars) in budgets.iter().copied().enumerate() {
+            let context = extract_filing_llm_context(&html, &form, &ticker, max_context_chars);
+            if context.trim().is_empty() {
+                warn!(event_id = %event.id, "sec_enrichment: extracted text empty after parsing");
                 return None;
             }
-        };
+
+            let messages = build_summary_messages(&self.system_prompt, &ticker, &form, &context);
+
+            // 注:LlmProvider trait 当前没暴露 per-call max_tokens 旋钮。输出 cap 已由
+            // hone-web-api 为 SEC enrichment 注入专用 provider 解决;这里处理 input
+            // prompt budget,遇到 OpenRouter 明确的 prompt-token 402 时缩小摘抄重试。
+            let _ = self.max_summary_tokens;
+            match self.provider.chat(&messages, Some(&self.model)).await {
+                Ok(r) => {
+                    result = Some(r);
+                    break;
+                }
+                Err(e) => {
+                    let err = e.to_string();
+                    let can_retry = is_prompt_token_budget_error(&err) && idx + 1 < budgets.len();
+                    if can_retry {
+                        warn!(
+                            event_id = %event.id,
+                            model = %self.model,
+                            context_chars = context.chars().count(),
+                            next_context_max_chars = budgets[idx + 1],
+                            "sec_enrichment prompt budget exceeded; retrying with smaller filing excerpts"
+                        );
+                        continue;
+                    }
+                    warn!(
+                        event_id = %event.id,
+                        model = %self.model,
+                        context_chars = context.chars().count(),
+                        "sec_enrichment LLM call failed: {e}"
+                    );
+                    return None;
+                }
+            }
+        }
+        let result = result?;
         let summary = result.content.trim().to_string();
         if summary.is_empty() {
             warn!(event_id = %event.id, "sec_enrichment LLM returned empty content");
@@ -222,6 +228,52 @@ impl SecFilingSummarizer for LlmSecFilingSummarizer {
         }
         Some(summary)
     }
+}
+
+fn filing_context_char_budgets() -> Vec<usize> {
+    let mut budgets = vec![MAX_FILING_CHARS];
+    for budget in RETRY_FILING_CHARS {
+        if *budget < MAX_FILING_CHARS && !budgets.contains(budget) {
+            budgets.push(*budget);
+        }
+    }
+    budgets
+}
+
+fn build_summary_messages(
+    system_prompt: &str,
+    ticker: &str,
+    form: &str,
+    context: &str,
+) -> Vec<Message> {
+    let user_msg = format!(
+        "以下是 {ticker} 的 {form} 文件精选摘抄,请按 system prompt 规则输出摘要:\n\n{context}"
+    );
+    vec![
+        Message {
+            role: "system".into(),
+            content: Some(system_prompt.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        },
+        Message {
+            role: "user".into(),
+            content: Some(user_msg),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        },
+    ]
+}
+
+fn is_prompt_token_budget_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("prompt tokens limit exceeded")
+        || (lower.contains("prompt")
+            && lower.contains("token")
+            && lower.contains("exceeded")
+            && lower.contains("402"))
 }
 
 /// 从 SEC EDGAR HTML 抽取送给 LLM 的精选摘抄。
@@ -847,6 +899,26 @@ mod tests {
         assert!(context.contains("raises guidance"));
         assert!(context.contains("Recent Operational Highlights"));
         assert!(context.chars().count() <= 900);
+    }
+
+    #[test]
+    fn filing_context_budgets_retry_with_stricter_excerpts() {
+        assert_eq!(
+            filing_context_char_budgets(),
+            vec![10_000, 7_000, 4_500, 2_800]
+        );
+    }
+
+    #[test]
+    fn prompt_token_budget_error_is_retryable() {
+        let err = "LLM 错误: upstream HTTP 402: Prompt tokens limit exceeded: 5198 > 3256";
+        assert!(is_prompt_token_budget_error(err));
+        assert!(!is_prompt_token_budget_error(
+            "upstream HTTP 402: insufficient credits"
+        ));
+        assert!(!is_prompt_token_budget_error(
+            "maximum context length exceeded"
+        ));
     }
 
     #[tokio::test]

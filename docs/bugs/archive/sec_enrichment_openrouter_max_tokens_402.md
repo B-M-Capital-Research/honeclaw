@@ -22,6 +22,11 @@
   - `2026-05-07 15:23:00 CST` 同一链路在 TEM 10-Q 上继续失败：
     - `Prompt tokens limit exceeded: 54381 > 6713`
   - 这次不是 output `max_tokens` 过大，而是 filing input 本身过长。
+  - `2026-05-07 19:59:00-19:59:04 CST` 摘抄逻辑部署后继续出现更小一档 prompt budget 失败：
+    - TEM 8-K: `Prompt tokens limit exceeded: 5198 > 3256`
+    - TEM 10-Q: `Prompt tokens limit exceeded: 3956 > 3256`
+    - 另一条 filing: `Prompt tokens limit exceeded: 5129 > 3256`
+  - 这说明 section-aware 摘抄已经把 10-Q 从 54k prompt tokens 降到约 4k,但当前 OpenRouter key 的可承受 prompt budget 会随 weekly limit 余额继续下降,不能依赖单个固定字符上限。
 
 ## 根因判断
 
@@ -58,6 +63,16 @@
 - 送 LLM 的最大输入从“约 300k 字符全文截断”改为 `18_000` 字符的 section-aware 摘抄；这是语义筛选后的预算边界，不是盲截断。
 - 默认 system prompt 改为说明输入是“精选摘抄，不是全文”，避免模型假设自己看到了完整 filing。
 
+## 追补修复记录（2026-05-07 20:10 CST）
+
+- 将默认 section-aware 摘抄上限从 `18_000` 字符收紧到 `10_000` 字符,让 TEM 8-K / 10-Q 这类样本默认落入当前约 3.2k prompt-token 预算附近。
+- 对 OpenRouter 明确返回的 `Prompt tokens limit exceeded` / `HTTP 402` 增加同类语义摘抄重试:
+  - 默认 `10_000` 字符；
+  - 第一次重试 `7_000` 字符；
+  - 第二次重试 `4_500` 字符；
+  - 第三次重试 `2_800` 字符。
+- 重试仍走同一个 filing-aware extractor,优先保留 MD&A / 战略合作 / 资本配置 / 风险法律窗口或 8-K 前置 narrative；不是把全文盲目截短。
+
 ## 验证
 
 - 通过：`cargo test -p hone-web-api sec_filings_enrichment --lib`
@@ -69,8 +84,10 @@
   - TEM/AMD/COHR 10-Q 与 TEM 8-K 真实文件确认：摘要信号集中在 MD&A、财务附注中的战略/资本配置窗口、风险/法律变化和 8-K exhibit 新闻稿前段；全文并非都同等有用。
   - TEM 10-Q live smoke 使用 15k 字符精选摘抄调用 `x-ai/grok-4.1-fast` 成功，OpenRouter 返回 `prompt_tokens=3170`、`completion_tokens=798`、成本约 `$0.0010`。
 - 追补通过：`cargo test -p hone-event-engine sec_enrichment --lib`
+- 追补通过：`cargo test -p hone-event-engine sec_enrichment --lib`，覆盖 `Prompt tokens limit exceeded` 识别与 `10_000 -> 7_000 -> 4_500 -> 2_800` 重试预算序列。
 
 ## 后续
 
 - Global digest / mainline distill 仍复用全局 OpenRouter provider；如果后续在这些短摘要/结构化输出路径继续出现 `HTTP 402`，应先区分 output budget 与 prompt input 两类失败，再按路径做独立 cap 或语义摘抄。
 - SEC S-1 / DEF 14A 目前走通用 front narrative + keyword-window 摘抄路径；本次 POC 样本主要覆盖 10-Q 与 8-K，后续若这些 form 触发质量问题，应补真实样本再调 extractor。
+- 如果 OpenRouter key 的 prompt 可承受预算继续低于约 2.8k 字符摘抄对应的 token 量,当前链路仍会 best-effort 降级为无 LLM 摘要；那已经不是“文件选择”问题,而是需要补额度、换更便宜模型或改为本地/离线规则摘要。
