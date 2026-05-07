@@ -31,6 +31,45 @@ pub struct ExecutionFilter {
 }
 
 impl CronJobStorage {
+    pub fn finalize_interrupted_pending_runs_for_channel(
+        &self,
+        channel: &str,
+        reason: &str,
+    ) -> HoneResult<usize> {
+        let Some(conn) = self.open_execution_conn()? else {
+            return Ok(0);
+        };
+        let interrupted_at = hone_core::beijing_now_rfc3339();
+        let error_message = truncate_chars_append(reason, 500, "...");
+        let updated = conn
+            .execute(
+                "
+                UPDATE cron_job_runs
+                SET
+                    executed_at = ?1,
+                    execution_status = 'execution_failed',
+                    message_send_status = 'skipped_error',
+                    should_deliver = 0,
+                    delivered = 0,
+                    response_preview = NULL,
+                    error_message = ?2,
+                    detail_json = json_object(
+                        'phase', 'interrupted_runtime_restart',
+                        'interrupted_at', ?1,
+                        'delivery_key', json_extract(detail_json, '$.delivery_key'),
+                        'previous_phase', json_extract(detail_json, '$.phase')
+                    )
+                WHERE actor_channel = ?3
+                  AND execution_status = 'running'
+                  AND message_send_status = 'pending'
+                  AND json_extract(detail_json, '$.phase') = 'started'
+                ",
+                params![interrupted_at, error_message, channel],
+            )
+            .map_err(sqlite_err)?;
+        Ok(updated)
+    }
+
     pub fn record_execution_event(
         &self,
         actor: &ActorIdentity,

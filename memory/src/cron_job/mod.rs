@@ -829,6 +829,99 @@ mod tests {
         assert_eq!(records[0].detail["phase"], "terminal");
     }
 
+    #[test]
+    fn interrupted_pending_runs_are_finalized_by_channel() {
+        let dir = make_temp_dir("hone_cron_storage_interrupted_pending");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let feishu_actor = actor("feishu", "ou_interrupted", None);
+        let discord_actor = actor("discord", "du_interrupted", None);
+
+        for (actor, job_id, channel_target, phase) in [
+            (
+                &feishu_actor,
+                "j_feishu_started",
+                "ou_interrupted",
+                "started",
+            ),
+            (
+                &feishu_actor,
+                "j_feishu_other",
+                "ou_interrupted",
+                "progress",
+            ),
+            (
+                &discord_actor,
+                "j_discord_started",
+                "du_interrupted",
+                "started",
+            ),
+        ] {
+            storage
+                .record_execution_event(
+                    actor,
+                    job_id,
+                    "pending job",
+                    channel_target,
+                    false,
+                    CronJobExecutionInput {
+                        execution_status: "running".to_string(),
+                        message_send_status: "pending".to_string(),
+                        should_deliver: true,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: None,
+                        detail: serde_json::json!({
+                            "phase": phase,
+                            "delivery_key": format!("{job_id}:2026-05-08:08:00"),
+                        }),
+                    },
+                )
+                .expect("record pending");
+        }
+
+        let updated = storage
+            .finalize_interrupted_pending_runs_for_channel(
+                "feishu",
+                "Feishu scheduler runtime restarted before this run reached a terminal status",
+            )
+            .expect("finalize pending");
+        assert_eq!(updated, 1);
+
+        let finalized = storage
+            .list_execution_records("j_feishu_started", 10)
+            .expect("list finalized");
+        assert_eq!(finalized.len(), 1);
+        assert_eq!(finalized[0].execution_status, "execution_failed");
+        assert_eq!(finalized[0].message_send_status, "skipped_error");
+        assert!(!finalized[0].should_deliver);
+        assert!(!finalized[0].delivered);
+        assert_eq!(finalized[0].detail["phase"], "interrupted_runtime_restart");
+        assert_eq!(
+            finalized[0].detail["delivery_key"],
+            "j_feishu_started:2026-05-08:08:00"
+        );
+        assert!(
+            finalized[0]
+                .error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("runtime restarted")
+        );
+
+        let feishu_other = storage
+            .list_execution_records("j_feishu_other", 10)
+            .expect("list feishu other");
+        assert_eq!(feishu_other[0].execution_status, "running");
+        assert_eq!(feishu_other[0].message_send_status, "pending");
+
+        let discord = storage
+            .list_execution_records("j_discord_started", 10)
+            .expect("list discord");
+        assert_eq!(discord[0].execution_status, "running");
+        assert_eq!(discord[0].message_send_status, "pending");
+    }
+
     /// Reproduce production sequence: 12 heartbeat jobs, two consecutive 30-min
     /// windows each. Every (job, window) pair writes a started row then a noop
     /// terminal — production observes started rows persisting as

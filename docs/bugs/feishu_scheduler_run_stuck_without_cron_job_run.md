@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-24 09:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 
 ## 观测落地（2026-04-24）
 
@@ -155,3 +155,12 @@
 ## GitHub Issue
 
 - 2026-05-07 本轮巡检确认该 P1 缺陷重新活跃；已创建脱敏 GitHub Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
+
+## 修复进展（2026-05-08）
+
+- 已在 `memory/src/cron_job/history.rs` 新增 `finalize_interrupted_pending_runs_for_channel(...)`：按渠道把上一进程遗留的 `execution_status=running + message_send_status=pending + detail.phase=started` 台账收口为 `execution_failed + skipped_error`，并保留原 `delivery_key`、写入 `phase=interrupted_runtime_restart` 与失败原因。
+- 已在 `bins/hone-feishu/src/scheduler.rs` 启动调度事件处理器时调用上述收口逻辑。Feishu runtime 重启后，前一进程里已开始但未进入终态的 scheduler run 不会继续无限停留在 `running/pending`。
+- 本轮没有补发历史消息：进程重启后的旧任务是否生成过可见正文不可可靠判断，自动补发容易造成重复投递；本修复只做通用、可审计的失败收口，避免运维台账继续悬挂。
+- 回归测试：
+  - `cargo test -p hone-memory interrupted_pending_runs_are_finalized_by_channel -- --nocapture`
+  - `cargo fmt --check -p hone-memory -p hone-feishu`

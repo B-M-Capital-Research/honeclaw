@@ -19,6 +19,15 @@ pub(crate) async fn handle_scheduler_events(
     mut event_rx: tokio::sync::mpsc::Receiver<SchedulerEvent>,
 ) {
     info!("⏰ 调度事件处理器已启动（渠道: feishu）");
+    let storage = state.core.cron_job_storage();
+    match storage.finalize_interrupted_pending_runs_for_channel(
+        "feishu",
+        "Feishu scheduler runtime restarted before this run reached a terminal status",
+    ) {
+        Ok(0) => {}
+        Ok(count) => warn!("[Feishu] 已收口上一进程遗留的 pending 定时任务: count={count}"),
+        Err(err) => warn!("[Feishu] 收口上一进程 pending 定时任务失败: err={}", err),
+    }
     while let Some(event) = event_rx.recv().await {
         if event.channel != "feishu" {
             continue;
