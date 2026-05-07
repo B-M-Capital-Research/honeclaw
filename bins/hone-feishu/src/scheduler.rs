@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use hone_channels::agent_session::AgentRunOptions;
 use hone_channels::prompt::PromptOptions;
 use hone_channels::scheduler;
 use hone_memory::cron_job::CronJobExecutionInput;
+use hone_memory::session_message_text;
 use hone_scheduler::{SchedulerEvent, execution_detail_with_delivery_key};
 use serde_json::json;
 use tracing::{error, info, warn};
@@ -14,20 +15,17 @@ use crate::handler::{
 use crate::outbound::{scheduled_send_idempotency, send_rendered_messages};
 use crate::types::AppState;
 
+const SCHEDULER_EXECUTION_GRACE_SECS: u64 = 30;
+const SCHEDULER_STALE_RECOVERY_GRACE_SECS: u64 = 30;
+const SCHEDULER_TIMEOUT_FAILURE_TRANSCRIPT_MESSAGE: &str =
+    "本轮定时任务未能完成，系统已记录失败并将在下一次触发时重试。";
+
 pub(crate) async fn handle_scheduler_events(
     state: Arc<AppState>,
     mut event_rx: tokio::sync::mpsc::Receiver<SchedulerEvent>,
 ) {
     info!("⏰ 调度事件处理器已启动（渠道: feishu）");
-    let storage = state.core.cron_job_storage();
-    match storage.finalize_interrupted_pending_runs_for_channel(
-        "feishu",
-        "Feishu scheduler runtime restarted before this run reached a terminal status",
-    ) {
-        Ok(0) => {}
-        Ok(count) => warn!("[Feishu] 已收口上一进程遗留的 pending 定时任务: count={count}"),
-        Err(err) => warn!("[Feishu] 收口上一进程 pending 定时任务失败: err={}", err),
-    }
+    recover_stale_started_rows(&state);
     while let Some(event) = event_rx.recv().await {
         if event.channel != "feishu" {
             continue;
@@ -294,6 +292,89 @@ pub(crate) async fn handle_scheduler_events(
     }
 }
 
+fn scheduler_execution_timeout(state: &AppState) -> Duration {
+    state
+        .core
+        .config
+        .agent
+        .overall_timeout()
+        .saturating_add(Duration::from_secs(SCHEDULER_EXECUTION_GRACE_SECS))
+}
+
+fn recover_stale_started_rows(state: &AppState) {
+    let recovery_window = scheduler_execution_timeout(state)
+        .saturating_add(Duration::from_secs(SCHEDULER_STALE_RECOVERY_GRACE_SECS));
+    let Ok(recovery_delta) = chrono::TimeDelta::from_std(recovery_window) else {
+        warn!("[Feishu] scheduler 启动恢复：非法恢复窗口");
+        return;
+    };
+    let stale_before = (chrono::Utc::now() - recovery_delta).to_rfc3339();
+    match state
+        .core
+        .cron_job_storage()
+        .recover_stale_started_executions(
+            "feishu",
+            &stale_before,
+            "feishu_scheduler_startup",
+            "Feishu scheduler runtime restarted before this run reached a terminal status",
+        ) {
+        Ok(0) => {}
+        Ok(count) => warn!("[Feishu] 已回收上一进程遗留的 stale pending 定时任务: count={count}"),
+        Err(err) => warn!(
+            "[Feishu] 回收上一进程 stale pending 定时任务失败: err={}",
+            err
+        ),
+    }
+}
+
+fn persist_scheduler_timeout_failure_turn(
+    storage: &hone_memory::SessionStorage,
+    session_id: &str,
+    failure_kind: &str,
+) {
+    if session_id.is_empty() {
+        return;
+    }
+    match storage.get_messages(session_id, Some(1)) {
+        Ok(messages) => {
+            if messages.last().is_some_and(|message| {
+                message.role == "assistant"
+                    && session_message_text(message) == SCHEDULER_TIMEOUT_FAILURE_TRANSCRIPT_MESSAGE
+            }) {
+                return;
+            }
+        }
+        Err(err) => {
+            warn!(
+                "[Feishu] scheduler timeout: failed to inspect session tail session_id={} err={}",
+                session_id, err
+            );
+            return;
+        }
+    }
+
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "scheduler_failure".to_string(),
+        serde_json::Value::Bool(true),
+    );
+    metadata.insert(
+        "failure_kind".to_string(),
+        serde_json::Value::String(failure_kind.to_string()),
+    );
+    if let Err(err) = storage.add_message(
+        session_id,
+        "assistant",
+        SCHEDULER_TIMEOUT_FAILURE_TRANSCRIPT_MESSAGE,
+        Some(metadata),
+    ) {
+        warn!(
+            "[Feishu] scheduler timeout: failed to persist failure transcript session_id={} err={}",
+            session_id, err
+        );
+    }
+}
+
 async fn run_scheduled_task(
     state: &Arc<AppState>,
     event: &SchedulerEvent,
@@ -310,5 +391,89 @@ async fn run_scheduled_task(
         quota_mode: hone_channels::agent_session::AgentRunQuotaMode::ScheduledTask,
         model_override: None,
     };
-    scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options).await
+    let timeout = scheduler_execution_timeout(state);
+    match tokio::time::timeout(
+        timeout,
+        scheduler::execute_scheduler_event(state.core.clone(), event, prompt_options, run_options),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            let session_id = actor.session_id();
+            warn!(
+                "[Feishu] scheduler 执行超时: job={} target={} timeout_secs={}",
+                event.job_name,
+                event.channel_target,
+                timeout.as_secs()
+            );
+            persist_scheduler_timeout_failure_turn(
+                &state.core.session_storage,
+                &session_id,
+                "scheduler_handler_timeout",
+            );
+            scheduler::ScheduledTaskExecution {
+                should_deliver: false,
+                content: String::new(),
+                error: Some(format!("scheduler_handler_timeout:{}s", timeout.as_secs())),
+                metadata: json!({
+                    "failure_kind": "scheduler_handler_timeout",
+                    "timeout_secs": timeout.as_secs(),
+                }),
+                session_id: Some(session_id),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::persist_scheduler_timeout_failure_turn;
+
+    #[test]
+    fn persist_scheduler_timeout_failure_turn_is_idempotent() {
+        let root = std::env::temp_dir().join(format!(
+            "hone_feishu_scheduler_timeout_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp dir");
+        let storage = hone_memory::SessionStorage::new(root.join("sessions"));
+        let actor =
+            hone_core::ActorIdentity::new("feishu", "ou_timeout", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+
+        storage
+            .create_session(Some(&session_id), Some(actor.clone()), None)
+            .expect("create session");
+        storage
+            .add_message(&session_id, "user", "[定时任务触发] test", None)
+            .expect("add user");
+
+        persist_scheduler_timeout_failure_turn(&storage, &session_id, "scheduler_handler_timeout");
+        persist_scheduler_timeout_failure_turn(&storage, &session_id, "scheduler_handler_timeout");
+
+        let messages = storage.get_messages(&session_id, None).expect("messages");
+        let assistant_messages = messages
+            .iter()
+            .filter(|message| message.role == "assistant")
+            .count();
+        assert_eq!(assistant_messages, 1);
+
+        let metadata = messages
+            .last()
+            .and_then(|message| message.metadata.as_ref())
+            .expect("assistant metadata");
+        assert_eq!(
+            metadata
+                .get("failure_kind")
+                .and_then(|value| value.as_str()),
+            Some("scheduler_handler_timeout")
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

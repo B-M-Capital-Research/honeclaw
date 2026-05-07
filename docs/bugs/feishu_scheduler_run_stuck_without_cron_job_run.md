@@ -156,11 +156,24 @@
 
 - 2026-05-07 本轮巡检确认该 P1 缺陷重新活跃；已创建脱敏 GitHub Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39)。
 
-## 修复进展（2026-05-08）
+## 修复与验证（2026-05-08）
 
-- 已在 `memory/src/cron_job/history.rs` 新增 `finalize_interrupted_pending_runs_for_channel(...)`：按渠道把上一进程遗留的 `execution_status=running + message_send_status=pending + detail.phase=started` 台账收口为 `execution_failed + skipped_error`，并保留原 `delivery_key`、写入 `phase=interrupted_runtime_restart` 与失败原因。
-- 已在 `bins/hone-feishu/src/scheduler.rs` 启动调度事件处理器时调用上述收口逻辑。Feishu runtime 重启后，前一进程里已开始但未进入终态的 scheduler run 不会继续无限停留在 `running/pending`。
-- 本轮没有补发历史消息：进程重启后的旧任务是否生成过可见正文不可可靠判断，自动补发容易造成重复投递；本修复只做通用、可审计的失败收口，避免运维台账继续悬挂。
-- 回归测试：
-  - `cargo test -p hone-memory interrupted_pending_runs_are_finalized_by_channel -- --nocapture`
-  - `cargo fmt --check -p hone-memory -p hone-feishu`
+- `memory/src/cron_job/history.rs`
+  - 新增 `recover_stale_started_executions(...)`：按渠道扫描上一进程遗留的 `execution_status=running + message_send_status=pending + detail.phase=started` row，并统一收口为 `execution_failed + send_failed`。
+  - 恢复时会保留原 `delivery_key`，并在 `detail_json` 写入 `phase=recovered_stale_pending`、`recovered_by=feishu_scheduler_startup`、`recovered_at=...`，便于后续巡检和审计。
+- `bins/hone-feishu/src/scheduler.rs`
+  - Feishu scheduler 启动时会按 `agent.overall_timeout + 60s` 恢复窗口调用上述回收逻辑，确保 runtime 重启后旧的 started row 不再永久卡在 `running/pending`。
+  - 单次 `execute_scheduler_event(...)` 外层再包一层 `tokio::time::timeout`，deadline 为 `agent.overall_timeout + 30s`。超过 deadline 后，本轮 run 会立即落成 `scheduler_handler_timeout`，不再依赖底层 runner 自己收口。
+  - 超时分支会向对应 direct session 追加一次内部失败 transcript（`scheduler_failure=true`），保证会话中至少留下一条失败痕迹；该 transcript 做了尾部幂等保护，不会重复追加。
+- 本轮没有自动补发历史消息：对于已被 runtime 中断的旧 run，无法可靠判断是否曾经生成用户可见正文；自动补发存在重复投递风险，因此本修复只做可审计的失败收口。
+
+## 验证
+
+- `cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`
+- `cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`
+- `cargo check -p hone-feishu --tests`
+
+## 剩余观察点
+
+- 本轮没有重启 live Feishu runtime，也没有做人肉补跑；因此“真实 20:30 长任务在下一次窗口是否按 timeout/启动恢复闭环”仍需后续巡检确认。
+- 当前修复优先保证“started row 必有终态、direct session 至少有失败痕迹”；如果后续发现 timeout 取消后仍残留底层 runner 子进程或重复副作用，应另立缺陷继续收口。

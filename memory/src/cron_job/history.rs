@@ -31,9 +31,11 @@ pub struct ExecutionFilter {
 }
 
 impl CronJobStorage {
-    pub fn finalize_interrupted_pending_runs_for_channel(
+    pub fn recover_stale_started_executions(
         &self,
         channel: &str,
+        stale_before_rfc3339: &str,
+        recovered_by: &str,
         reason: &str,
     ) -> HoneResult<usize> {
         let Some(conn) = self.open_execution_conn()? else {
@@ -48,23 +50,31 @@ impl CronJobStorage {
                 SET
                     executed_at = ?1,
                     execution_status = 'execution_failed',
-                    message_send_status = 'skipped_error',
+                    message_send_status = 'send_failed',
                     should_deliver = 0,
                     delivered = 0,
                     response_preview = NULL,
                     error_message = ?2,
                     detail_json = json_object(
-                        'phase', 'interrupted_runtime_restart',
-                        'interrupted_at', ?1,
+                        'phase', 'recovered_stale_pending',
+                        'recovered_at', ?1,
+                        'recovered_by', ?3,
                         'delivery_key', json_extract(detail_json, '$.delivery_key'),
                         'previous_phase', json_extract(detail_json, '$.phase')
                     )
-                WHERE actor_channel = ?3
+                WHERE actor_channel = ?4
                   AND execution_status = 'running'
                   AND message_send_status = 'pending'
                   AND json_extract(detail_json, '$.phase') = 'started'
+                  AND executed_at < ?5
                 ",
-                params![interrupted_at, error_message, channel],
+                params![
+                    interrupted_at,
+                    error_message,
+                    recovered_by,
+                    channel,
+                    stale_before_rfc3339,
+                ],
             )
             .map_err(sqlite_err)?;
         Ok(updated)

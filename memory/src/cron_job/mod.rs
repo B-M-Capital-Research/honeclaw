@@ -830,7 +830,7 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_pending_runs_are_finalized_by_channel() {
+    fn stale_started_rows_can_be_recovered_as_failed() {
         let dir = make_temp_dir("hone_cron_storage_interrupted_pending");
         let sqlite_path = dir.join("sessions.sqlite3");
         let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
@@ -880,9 +880,18 @@ mod tests {
                 .expect("record pending");
         }
 
+        let conn = rusqlite::Connection::open(&sqlite_path).expect("open conn");
+        conn.execute(
+            "UPDATE cron_job_runs SET executed_at = ?1 WHERE job_id = ?2",
+            rusqlite::params!["2026-05-07T20:30:00+08:00", "j_feishu_started"],
+        )
+        .expect("make started row stale");
+
         let updated = storage
-            .finalize_interrupted_pending_runs_for_channel(
+            .recover_stale_started_executions(
                 "feishu",
+                "2026-05-07T20:45:00+08:00",
+                "feishu_scheduler_startup",
                 "Feishu scheduler runtime restarted before this run reached a terminal status",
             )
             .expect("finalize pending");
@@ -893,13 +902,17 @@ mod tests {
             .expect("list finalized");
         assert_eq!(finalized.len(), 1);
         assert_eq!(finalized[0].execution_status, "execution_failed");
-        assert_eq!(finalized[0].message_send_status, "skipped_error");
+        assert_eq!(finalized[0].message_send_status, "send_failed");
         assert!(!finalized[0].should_deliver);
         assert!(!finalized[0].delivered);
-        assert_eq!(finalized[0].detail["phase"], "interrupted_runtime_restart");
+        assert_eq!(finalized[0].detail["phase"], "recovered_stale_pending");
         assert_eq!(
             finalized[0].detail["delivery_key"],
             "j_feishu_started:2026-05-08:08:00"
+        );
+        assert_eq!(
+            finalized[0].detail["recovered_by"],
+            "feishu_scheduler_startup"
         );
         assert!(
             finalized[0]
