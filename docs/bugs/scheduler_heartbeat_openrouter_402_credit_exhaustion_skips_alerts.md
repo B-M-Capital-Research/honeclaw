@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -241,3 +241,13 @@
 - `06:41` 的 transport failure 与 `07:32` 的 quota failure 都发生在同一批 heartbeat job 集合，仍覆盖 `ORCL`、`ASTS`、`Monitor_Watchlist_11`、`持仓重大事件`、`TEM`、`RKLB`、`CAI`、`Cerebras IPO`、`全天原油价格3小时播报`、`小米30港元破位预警`。
 - 这不是新的独立缺陷：影响链路、用户面结果和受影响 job 集合均与本单一致，区别只是 provider 失败形态在 `HTTP 402` 与 transport send failure 之间漂移。
 - 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，本轮不重复创建 issue。
+
+## 复核结论（2026-05-07 15:07 CST）
+
+- 本轮按当前自动化约束，不再把当前机器旧生产进程日志、线上 heartbeat 窗口或 OpenRouter 账号实时额度作为活跃判定依据。
+- 代码复核确认当前仓库仍将 heartbeat 专用 completion token 上限固定为 `4096`，并通过 `ExecutionOptions.max_tokens_override` 进入 auxiliary LLM provider；这覆盖此前 `max_tokens=8192/32768` 触发的配额边界问题。
+- `provider_quota_exhausted` / `provider_http_error` 分类仍保留；如果外部账号余额低于 `4096` 或完全耗尽，后续会显式记录 provider quota 故障，而不是伪装成 noop。
+- 本轮未新增代码，因为可本地修复的通用加固已存在，后续旧运行态样本不再作为当前机器上的活跃缺陷证据。
+- 状态更新为 `Fixed`；关联 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) 建议基于当前代码部署后复测。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`

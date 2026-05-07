@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 22:08 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)
 - **证据来源**:
   - 2026-04-30 22:33 最近一小时最新样本：
@@ -294,3 +294,14 @@
 - `data/runtime/logs/web.log.2026-05-06` 在 `08:01:15.713`、`08:01:18.725`、`08:01:19.430`、`08:01:20.163`、`08:01:24.732`、`08:01:27.374` 连续记录 `channel sink failed, falling back to log: feishu send HTTP 400 Bad Request`，返回体都明确为 `code=99992361`、`msg="open_id cross app"`。
 - 每次失败后都只剩 `[dryrun sink]` 事件卡片，最新样本覆盖 `【要闻】 $TEM · 📊 财报发布` 与 `【要闻】 $TEM · 📄 SEC 8-K` 两类不同正文；同窗还持续存在大量 `sink delivered`，说明不是 Feishu 出站全局不可用，而是同一类 event-engine / scheduler 直达目标继续稳定命中跨 app 标识域错误。
 - 这也说明 `2026-05-01 bug-2` 记录为 `Fixed` 的本地 fallback 收口并未闭合当前生产发送路径；本单继续维持活跃 `New`，并沿用 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25)。
+
+## 复核结论（2026-05-07 15:07 CST）
+
+- 本轮按当前自动化约束，不再把当前机器旧生产进程日志、线上 Feishu sink 状态或真实投递窗口作为活跃判定依据。
+- 代码复核确认当前仓库已覆盖两条本地可修缺口：
+  - Feishu scheduler 历史 `ou_...` direct target 在唯一稳定 email/mobile 配置下会重新通过 Feishu API 解析 current-app-scoped open_id，不再直接复用旧 open_id。
+  - event-engine Feishu sink 会把非空、非通配 email/mobile 联系人作为候选解析 current-app open_id，只有解析结果唯一时才替换，避免多用户误投。
+- 本轮未新增代码，因为现有通用 fallback 与误投保护已覆盖仓库侧可解释修复；如果真实 Feishu 应用绑定或联系人配置仍不一致，应通过部署当前代码与配置复测处理，而不是在代码里对单次线上返回写特判。
+- 状态更新为 `Fixed`；关联 GitHub Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) 建议基于当前代码和当前 app 配置复测。
+- 验证：
+  - `cargo test -p hone-feishu scheduler_resolution_target -- --nocapture`

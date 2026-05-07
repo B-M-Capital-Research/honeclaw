@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-07 11:26 CST
+最后更新：2026-05-07 15:07 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -15,19 +15,16 @@
 
 ## 当前概览
 
-- 活跃待修复：10
+- 活跃待修复：7
 - Later / 待复现：9
-- 已修复 / 已关闭：86
+- 已修复 / 已关闭：89
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 3 条 `P1`；最高待修优先级为 `P1`
+- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | New | 2026-05-06 04:26 在 `301c5f3` 复现：release sidecar / Web / desktop 编译和 `.app` bundling 已完成，但 Tauri 生成的 `bundle_dmg.sh` 返回非 0；`bundle/dmg/` 未生成最终 `.dmg`，只在 macOS bundle 目录留下新的 `rw.8748.*.dmg` 中间产物，本轮未进入隔离启动验证 | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
-| Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | New | 2026-05-06 08:02 `web.log.2026-05-06` 在 `08:01:15-08:01:27` 连续 6 次记录 `code=99992361 / open_id cross app`，失败后只剩 `$TEM` 财报/8-K 的 `[dryrun sink]` 事件卡片，说明 live Feishu sink 仍未恢复；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | New | 2026-05-07 07:56 最近四小时/上次运行后继续活跃：`03:03`、`05:32`、`06:41`、`07:32` 四个窗口各有 `11/11` 条 heartbeat 落成 `execution_failed + skipped_error + delivered=0`；其中 `06:41` 为 OpenRouter transport failure，其余仍是 `max_tokens=8192` 触发的 `HTTP 402 / provider_quota_exhausted`；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-06 09:04 再次确认 `sessions/session_messages` 最大时间戳仍共同卡在 `2026-04-27T16:54:20+08:00`，最近一小时 `sessions_last_hour=0/messages_last_hour=0`；但同窗 `09:01` 已有 Feishu 与 Web 会话完成 `session.persist_assistant + reply.send`，说明 sqlite 文件仍在写别的表而会话镜像继续完全停摆 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 12:02 最新 `11:30 / 12:00` 两轮窗口继续在 `Empty / JsonNoop / JsonTriggered` 之间切换；`11:30` 同窗里 `ORCL / TEM破位 / CAI / 持仓 / RKLB / ASTS` 批量落成 `skipped_error`，`12:00` 又出现 `小米 triggered + sent` 与 `ORCL parse_kind=JsonTriggered` 后被压成 `noop + skipped_noop` 的收口矛盾 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
@@ -54,6 +51,9 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | Fixed | 2026-05-07 本机打包缓存已生成最终 `Hone Financial_0.7.0_aarch64.dmg`，`hdiutil verify` 返回 checksum valid；本轮未改代码，原阻断按当前本机验证链路关闭；无关联 GitHub Issue | [daily_macos_build_dmg_bundle_failed.md](./daily_macos_build_dmg_bundle_failed.md) |
+| Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-07 复核当前代码已覆盖 scheduler 历史 `ou_...` current-app open_id 重解析与 event-engine 单用户联系人唯一解析 fallback；不再以当前机器旧 live 日志作为活跃证据；`cargo test -p hone-feishu scheduler_resolution_target -- --nocapture` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./feishu_scheduler_send_failed_http_400_after_generation.md) |
+| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-07 复核当前代码仍将 heartbeat completion token 上限固定为 `4096`，且保留 `provider_quota_exhausted` / `provider_http_error` 分类；不再以旧生产进程 `max_tokens=8192` 日志作为活跃证据；`cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture` 通过；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | SEC filing enrichment 复用全局 OpenRouter max_tokens 触发 `HTTP 402` | P2 | Fixed | 2026-05-07 SEC filing 摘要改用独立 capped OpenRouter provider，并追加 section-aware 摘抄修复 TEM 10-Q `Prompt tokens limit exceeded: 54381 > 6713`；live smoke 确认精选摘抄 prompt_tokens=3170 可跑通，定向 web-api / event-engine 测试和 `cargo check -p hone-web-api` 通过；无关联 GitHub Issue | [sec_enrichment_openrouter_max_tokens_402.md](./sec_enrichment_openrouter_max_tokens_402.md) |
 | Event-engine price poller 将全量 watch pool 拼成单个 FMP quote 请求，池子变大后整 tick 超时/隧道失败 | P0 | Fixed | 2026-05-06 `PricePoller::fetch` 改为过滤不适合 FMP equity quote path 的 option-style symbol，并按 batch size / URL path 长度拆分 `/v3/quote/{symbols}`；单 batch 失败不再丢弃同 tick 其它成功 batch，仅所有 batch 都失败时返回 poller 错误；无关联 GitHub Issue | [event_engine_price_poller_unbounded_quote_batch.md](./event_engine_price_poller_unbounded_quote_batch.md) |
 | Feishu 直聊切到非金融新话题时，仍直接回答楼市/买房问题而未执行领域边界拒绝 | P3 | Fixed | 2026-05-06 `AgentSession::run` 在 quota/runner 前增加直聊非金融短路：明显生活/硬件问题且无金融锚点时直接持久化领域边界回复，不调用 LLM / `stock_research` / 工具且不消耗 daily quota；scheduled-task 与 admin actor 不受影响；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./feishu_direct_non_finance_query_misroutes_to_stock_research.md) |

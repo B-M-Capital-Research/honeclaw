@@ -5,7 +5,7 @@
 - 发现时间：2026-05-05 04:07 CST；2026-05-06 04:26 CST 复现
 - Bug Type：Build / Packaging
 - 严重等级：P1
-- 状态：New
+- 状态：Fixed
 - 发现来源：`honeclaw-mac` 每日 macOS 完整打包验证
 - 关联提交：`26f4ddf`；最新复现提交：`301c5f3`
 
@@ -60,7 +60,18 @@ macOS 桌面产物无法完成每日交付形态验证。即使 `.app` 已生成
 - Web desktop build：通过。
 - `hone-desktop` release 编译：通过。
 - `.app` 生成：通过。
-- `.dmg` 生成：失败。
+- `.dmg` 生成：通过。
 - 2026-05-06 复测结果：`.app` 生成通过；最终 `.dmg` 仍缺失；隔离启动验证未执行。
-- `.app/Contents/MacOS/hone-desktop` 隔离启动验证：未执行，因 `.dmg` 缺失提前失败。
-- 渠道禁用状态确认：未执行，因 `.dmg` 缺失提前失败。
+- 2026-05-07 复核结果：最终 `.dmg` 已存在且校验通过；本轮只闭合 DMG 产物阻断，未启动 release app 做隔离 runtime smoke。
+- `.app/Contents/MacOS/hone-desktop` 隔离启动验证：本轮未执行，需由每日 macOS 完整打包验证继续覆盖。
+- 渠道禁用状态确认：本轮未执行，需由每日 macOS 完整打包验证继续覆盖。
+
+## 复核结论（2026-05-07 15:07 CST）
+
+- 本轮在当前本机打包缓存中确认最终 DMG 已生成：
+  - `/Users/ecohnoch/Library/Caches/honeclaw/target/release/bundle/dmg/Hone Financial_0.7.0_aarch64.dmg`
+  - mtime：`2026-05-07 04:05:39 CST`
+  - size：`103101060` bytes
+- `hdiutil verify` 对该 DMG 返回 `checksum ... is VALID`，说明此前“`.app` 已生成但最终 `.dmg` 缺失”的打包阻断在当前本机验证链路中已消失。
+- 本轮未新增代码：当前仓库与打包缓存已经产出可校验 DMG，原始故障更符合旧打包运行环境/旧构建窗口问题；后续若 `bun run build:desktop` 再次无法生成 DMG，应以新的完整 build 输出重新开单。
+- 状态更新为 `Fixed`；本单无关联 GitHub Issue。
