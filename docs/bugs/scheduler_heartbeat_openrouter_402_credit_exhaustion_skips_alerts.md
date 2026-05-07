@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-05 13:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P1
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)
 
 ## 证据来源
@@ -238,6 +238,7 @@
   - `2026-05-07T05:32:26-05:32:27+08:00`：`11/11` 条 heartbeat 再次落成同类 `HTTP 402`。
   - `2026-05-07T06:41:35+08:00`：`11/11` 条 heartbeat 全量失败，错误统一为 `http error: error sending request for url (https://openrouter.ai/api/v1/chat/completions)`。
   - `2026-05-07T07:32:22-07:32:23+08:00`：`11/11` 条 heartbeat 又回到 OpenRouter `HTTP 402`，可负担 token 预算为 `4434`。
+
 - `06:41` 的 transport failure 与 `07:32` 的 quota failure 都发生在同一批 heartbeat job 集合，仍覆盖 `ORCL`、`ASTS`、`Monitor_Watchlist_11`、`持仓重大事件`、`TEM`、`RKLB`、`CAI`、`Cerebras IPO`、`全天原油价格3小时播报`、`小米30港元破位预警`。
 - 这不是新的独立缺陷：影响链路、用户面结果和受影响 job 集合均与本单一致，区别只是 provider 失败形态在 `HTTP 402` 与 transport send failure 之间漂移。
 - 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，本轮不重复创建 issue。
@@ -251,3 +252,13 @@
 - 状态更新为 `Fixed`；关联 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) 建议基于当前代码部署后复测。
 - 验证：
   - `cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture`
+
+## 状态更新（2026-05-08 03:05 CST）
+
+- 本轮巡检确认：该缺陷在最近四小时再次活跃，且先前 `Fixed` 归档状态不成立，状态回调为 `New` 并移回活跃台账。
+- `data/sessions.sqlite3` -> `cron_job_runs` 在 `2026-05-07T20:00:40-20:00:43+08:00` 出现 `11/11` 条 heartbeat 全量失败，全部落成 `execution_failed + skipped_error + should_deliver=0 + delivered=0`。
+- 失败覆盖 `ORCL 大事件监控`、`TEM破位预警`、`RKLB异动监控`、`小米30港元破位预警`、`持仓重大事件心跳检测`、`全天原油价格3小时播报`、`CAI破位预警`、`Monitor_Watchlist_11`、`TEM大事件心跳监控`、`Cerebras IPO与业务进展心跳监控`、`ASTS 重大异动心跳监控`。
+- 同批 `error_message` 统一为 OpenRouter `HTTP 402`，并明确显示 `You requested up to 8192 tokens, but can only afford 217`；`detail_json.failure_kind=provider_quota_exhausted`，`heartbeat_model=moonshotai/kimi-k2.5`。
+- 同窗非 heartbeat 任务 `英伟达每日消息` 与 `A股盘后高景气产业链推演` 在 `20:02` 正常完成送达，说明不是 scheduler 全局停摆；故障仍集中在 heartbeat provider quota / token budget 链路。
+- `data/runtime/logs/web.log.2026-05-07` 还在 `2026-05-08 02:42:19-02:42:25 CST` 记录多条 mainline distill / style distill 的 OpenRouter `HTTP 402`，请求 `max_tokens=30000`、可负担 `539`，说明 OpenRouter credits 枯竭仍在外溢到后台摘要链路；本单继续以 heartbeat 漏发作为 P1 用户面主故障跟踪。
+- 该缺陷已有 GitHub Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36)，且当前状态为 `OPEN`；本轮不重复创建 issue。

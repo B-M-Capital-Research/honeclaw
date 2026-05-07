@@ -17,16 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：5
+- 活跃待修复：6
 - Later / 待复现：8
-- 已修复 / 已关闭：92
+- 已修复 / 已关闭：91
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
+- 当前活跃队列含 1 条 `P1`；最高待修优先级为 `P1`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | New | 2026-05-08 03:05 复发确认：`2026-05-07T20:00:40-20:00:43+08:00` 心跳窗口 `11/11` 条 heartbeat 全部落成 `execution_failed + skipped_error + delivered=0`，错误统一为 OpenRouter `HTTP 402`，且 live 请求仍显示 `max_tokens=8192`、`can only afford 217`；`detail_json.failure_kind=provider_quota_exhausted`；同窗非 heartbeat 任务正常送达，说明不是 scheduler 全局停摆；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 12:02 最新 `11:30 / 12:00` 两轮窗口继续在 `Empty / JsonNoop / JsonTriggered` 之间切换；`11:30` 同窗里 `ORCL / TEM破位 / CAI / 持仓 / RKLB / ASTS` 批量落成 `skipped_error`，`12:00` 又出现 `小米 triggered + sent` 与 `ORCL parse_kind=JsonTriggered` 后被压成 `noop + skipped_noop` 的收口矛盾 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
@@ -55,7 +56,6 @@
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixed | 2026-05-07 原油 / WTI / Brent / 大宗商品类 heartbeat 外发正文增加输出侧归因 guard：高风险宏观、地缘、供需、库存、OPEC、航运、关税等因果归因若没有“未核验 / 待确认 / 仅供参考 / 同窗来源核验”等口径，会自动加用户可见未核验提示并记录 `commodity_causality_guarded=true`；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./archive/oil_price_scheduler_geopolitical_hallucination.md) |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | Fixed | 2026-05-07 本机打包缓存已生成最终 `Hone Financial_0.7.0_aarch64.dmg`，`hdiutil verify` 返回 checksum valid；本轮未改代码，原阻断按当前本机验证链路关闭；无关联 GitHub Issue | [daily_macos_build_dmg_bundle_failed.md](./archive/daily_macos_build_dmg_bundle_failed.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-07 复核当前代码已覆盖 scheduler 历史 `ou_...` current-app open_id 重解析与 event-engine 单用户联系人唯一解析 fallback；不再以当前机器旧 live 日志作为活跃证据；`cargo test -p hone-feishu scheduler_resolution_target -- --nocapture` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./archive/feishu_scheduler_send_failed_http_400_after_generation.md) |
-| Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-07 复核当前代码仍将 heartbeat completion token 上限固定为 `4096`，且保留 `provider_quota_exhausted` / `provider_http_error` 分类；不再以旧生产进程 `max_tokens=8192` 日志作为活跃证据；`cargo test -p hone-channels heartbeat_runner_uses_capped_completion_budget --lib -- --nocapture` 通过；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./archive/scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | SEC filing enrichment 复用全局 OpenRouter max_tokens 触发 `HTTP 402` | P2 | Fixed | 2026-05-07 SEC filing 摘要改用独立 capped OpenRouter provider，并追加 section-aware 摘抄修复 TEM 10-Q `54381 > 6713`；随后对 `5198/3956 > 3256` 增加 `10k -> 7k -> 4.5k -> 2.8k` 语义摘抄重试；定向 web-api / event-engine 测试和 `cargo check -p hone-web-api` 通过；无关联 GitHub Issue | [sec_enrichment_openrouter_max_tokens_402.md](./archive/sec_enrichment_openrouter_max_tokens_402.md) |
 | Event-engine price poller 将全量 watch pool 拼成单个 FMP quote 请求，池子变大后整 tick 超时/隧道失败 | P0 | Fixed | 2026-05-06 `PricePoller::fetch` 改为过滤不适合 FMP equity quote path 的 option-style symbol，并按 batch size / URL path 长度拆分 `/v3/quote/{symbols}`；单 batch 失败不再丢弃同 tick 其它成功 batch，仅所有 batch 都失败时返回 poller 错误；无关联 GitHub Issue | [event_engine_price_poller_unbounded_quote_batch.md](./archive/event_engine_price_poller_unbounded_quote_batch.md) |
 | Feishu 直聊切到非金融新话题时，仍直接回答楼市/买房问题而未执行领域边界拒绝 | P3 | Fixed | 2026-05-06 `AgentSession::run` 在 quota/runner 前增加直聊非金融短路：明显生活/硬件问题且无金融锚点时直接持久化领域边界回复，不调用 LLM / `stock_research` / 工具且不消耗 daily quota；scheduled-task 与 admin actor 不受影响；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./archive/feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
