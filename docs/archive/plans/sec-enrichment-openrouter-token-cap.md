@@ -12,6 +12,7 @@
   - docs/bugs/sec_enrichment_openrouter_max_tokens_402.md
 - related_docs:
   - docs/handoffs/2026-05-07-sec-enrichment-openrouter-token-cap.md
+  - docs/archive/plans/sec-enrichment-section-excerpts.md
   - docs/archive/index.md
 
 ## Goal
@@ -43,5 +44,6 @@ Live LLM smoke confirmed `x-ai/grok-4.1-fast` succeeds with `max_tokens=800` and
 
 ## Risks / Open Questions
 
-- This fix only caps SEC filing enrichment output tokens. Global digest and mainline distill still use the global OpenRouter provider unless separately capped later.
+- This fix only capped SEC filing enrichment output tokens. A same-day follow-up, `docs/archive/plans/sec-enrichment-section-excerpts.md`, fixed the separate prompt-input budget failure by selecting filing-aware excerpts before the LLM call.
+- Global digest and mainline distill still use the global OpenRouter provider unless separately capped later.
 - A live SEC filing tick after deployment is still useful as production confirmation.

@@ -925,5 +925,17 @@ Use this file as the historical entry point for completed or paused work that sh
 - Decision / ADR: N/A
 - Related PRs / commits: N/A
 - Related runbooks / regressions: `cargo test -p hone-web-api sec_filings_enrichment --lib`, `cargo test -p hone-event-engine sec_filings_enrichment --lib`, `cargo check -p hone-web-api`
-- Current conclusion: SEC filing enrichment now uses a dedicated OpenRouter provider capped by `event_engine.sec_filings.enrichment.max_summary_tokens`, so long filing input remains available while short summary output no longer inherits the global 30k completion budget that triggered OpenRouter `HTTP 402`.
+- Current conclusion: SEC filing enrichment now uses a dedicated OpenRouter provider capped by `event_engine.sec_filings.enrichment.max_summary_tokens`, so short summary output no longer inherits the global 30k completion budget that triggered OpenRouter `HTTP 402`.
 - Next entry point: `crates/hone-web-api/src/lib.rs`
+
+### SEC Enrichment Section Excerpts
+
+- Status: done
+- Date: 2026-05-07
+- Plan: `docs/archive/plans/sec-enrichment-section-excerpts.md`
+- Handoff: `docs/handoffs/2026-05-07-sec-enrichment-openrouter-token-cap.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-event-engine sec_enrichment --lib`
+- Current conclusion: SEC filing enrichment now selects filing-aware excerpts before the LLM call. 10-Q/10-K prioritize MD&A, strategic/capital/risk/legal windows and Risk Factors; 8-K prioritizes the front-loaded exhibit/news-release narrative. This fixes the follow-up OpenRouter `HTTP 402` where TEM 10-Q full input hit `54381 > 6713` prompt tokens.
+- Next entry point: `crates/hone-event-engine/src/pollers/sec_enrichment.rs`
