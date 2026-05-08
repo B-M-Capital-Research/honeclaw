@@ -152,6 +152,39 @@ fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> 
         .find_map(|candidate| serde_json::from_str::<HeartbeatJsonResponse>(candidate).ok())
 }
 
+fn recover_malformed_triggered_heartbeat_message(content: &str) -> Option<String> {
+    let trimmed = content.trim();
+    if !trimmed.starts_with('{') {
+        return None;
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    let status_idx = lower.find("\"status\"")?;
+    let triggered_idx = lower[status_idx..].find("\"triggered\"")? + status_idx;
+    let message_idx = lower[triggered_idx..].find("\"message\"")? + triggered_idx;
+    let colon_idx = trimmed[message_idx..].find(':')? + message_idx;
+    let value_quote_idx = trimmed[colon_idx + 1..].find('"')? + colon_idx + 1;
+    let mut message = &trimmed[value_quote_idx + 1..];
+
+    if let Some(end_idx) = message.rfind('}') {
+        message = &message[..end_idx];
+    }
+    message = message.trim().trim_end_matches(',').trim();
+    if let Some(stripped) = message.strip_suffix('"') {
+        message = stripped.trim_end();
+    }
+
+    let message = message.replace("\\n", "\n").replace("\\\"", "\"");
+    let message = unwrap_nested_json_message(message.trim())
+        .trim()
+        .to_string();
+    if message.is_empty() || heartbeat_internal_marker_prefix(&message) {
+        None
+    } else {
+        Some(message)
+    }
+}
+
 fn heartbeat_internal_marker_prefix(text: &str) -> bool {
     let trimmed = text.trim_start();
     let upper = trimmed.to_ascii_uppercase();
@@ -563,6 +596,13 @@ pub fn inspect_heartbeat_result(content: &str) -> (HeartbeatOutcome, HeartbeatPa
         return (
             HeartbeatOutcome::Noop,
             HeartbeatParseKind::JsonUnknownStatus,
+        );
+    }
+
+    if let Some(message) = recover_malformed_triggered_heartbeat_message(trimmed) {
+        return (
+            HeartbeatOutcome::Deliver(message),
+            HeartbeatParseKind::JsonTriggered,
         );
     }
 
@@ -1625,6 +1665,38 @@ mod tests {
             .0,
             HeartbeatOutcome::Deliver(
                 "闪迪股价已低于 520，当前 519.7（检查时间：09:30）".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn heartbeat_malformed_triggered_json_recovers_unescaped_message_quotes() {
+        assert_eq!(
+            inspect_heartbeat_result(
+                r#"{"status":"triggered","message":"【Cerebras IPO 心跳监控】IPO 认购需求强劲，"市场报道/未核验" 仍需关注。"}"#
+            ),
+            (
+                HeartbeatOutcome::Deliver(
+                    "【Cerebras IPO 心跳监控】IPO 认购需求强劲，\"市场报道/未核验\" 仍需关注。"
+                        .to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+    }
+
+    #[test]
+    fn heartbeat_malformed_triggered_json_recovers_truncated_message() {
+        assert_eq!(
+            inspect_heartbeat_result(
+                r#"{"status":"triggered","message":"【持仓重大事件】ASTS 大股东减持、BlueBird 7 发射异常，触发条件已满足"#
+            ),
+            (
+                HeartbeatOutcome::Deliver(
+                    "【持仓重大事件】ASTS 大股东减持、BlueBird 7 发射异常，触发条件已满足"
+                        .to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
             )
         );
     }

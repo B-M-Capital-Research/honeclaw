@@ -3,9 +3,19 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-05-08 19:09 CST` 本轮修复 `JsonMalformed` 中已生成 triggered 正文但整轮不投递的问题：
+  - `crates/hone-channels/src/scheduler.rs` 增加 malformed-triggered 恢复边界：只有在坏 JSON 明确包含 `status: triggered` 且包含 `message` 字段时，才从 `message` 起点提取用户可见正文并按 `JsonTriggered` 继续进入既有投递、近阈值抑制、重复抑制和出站净化链路。
+  - 普通坏 JSON、无 `triggered` 状态、无 `message` 字段或内部 marker 内容仍保持 `JsonMalformed + execution_failed`，不会把 think 示例或任意自由文本当作触发提醒。
+  - 新增回归覆盖两类最新坏态：message 内部未转义引号导致 JSON 解析失败、以及 `{"status":"triggered","message":"...` 被截断但正文已存在。
+  - 验证通过：
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+    - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+    - `cargo check -p hone-channels --tests`
+  - 状态更新为 `Fixed`。后续若已部署当前代码后仍出现 `JsonMalformed` 中明确包含 `status=triggered` 与可见 `message` 正文但未投递，应重新打开并附脱敏 raw_preview。
 
 - `2026-05-08 19:06 CST` 修复结论回退：最近四小时真实窗口再次证明 heartbeat 结构化输出漂移仍会吞掉本应发送的提醒，而不只是“显式失败可审计”。
   - `data/sessions.sqlite3` -> `cron_job_runs`
