@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-04
+Last updated: 2026-05-09
 
 ## Purpose
 
@@ -40,7 +40,7 @@ Last updated: 2026-05-04
   - Local storage abstractions for sessions, identity quotas, portfolios, cron jobs, and LLM audit logs
   - `memory/src/company_profile/{mod,types,markdown,storage,transfer,tests}.rs` now splits company portraits into stable public types, Markdown/template parsing, actor-scoped storage CRUD, zip transfer helpers, and colocated regression tests; portraits still live under `company_profiles/<profile_id>/profile.md` plus append-only `events/*.md`, and both storage reads and transfer/import paths tolerate legacy plain Markdown files without frontmatter by synthesizing minimal metadata from titles, filenames, file mtimes, and bundle manifest timestamps
   - `memory/src/web_auth.rs` keeps web invite users, hashed per-user Hone Cloud API keys, and public-login cookie sessions in the shared SQLite DB; one invite code maps to one stable `channel=web` actor
-  - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间"
+  - `memory/src/session.rs` currently stores versioned session JSON (v3) and explicitly persists `summary`, legacy `runtime.prompt.frozen_time_beijing`, recoverable `tool` result messages, and the session ownership field `session_identity`; current prompt assembly no longer uses that legacy frozen timestamp as the displayed "当前时间". When JSON is the runtime backend and `storage.session_sqlite_shadow_write_enabled=true`, `SessionStorage` also performs a best-effort startup JSON -> SQLite shadow backfill so old disabled-shadow windows do not leave `sessions.sqlite3` permanently stale.
   - `memory/src/session_sqlite.rs` hosts the SQLite-backed session persistence used by both shadow backfill and runtime reads/writes when `storage.session_runtime_backend=sqlite`
   - `memory/src/cron_job.rs` keeps cron definitions in per-actor JSON files and mirrors cron execution history into the shared SQLite DB so task detail can query per-run records
   - `memory/src/quota.rs` stores `success_count` / `in_flight` in JSON files by `ActorIdentity` and by Beijing date

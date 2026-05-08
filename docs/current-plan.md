@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-08
+最后更新：2026-05-09
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-07 修复观察池击球区退化为“待确认”的 scheduler / multi-agent 契约，稳定本地字段不再被 `data_fetch` 空缺覆盖；剩余活跃项继续按共享契约加固，不对不可控网络、凭据或模型波动做脆弱特判
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-09 通过 `hone-cli` rollout 配置归一化与 `SessionStorage` 启动 JSON -> SQLite shadow 回填修复最后一条会话镜像停滞缺陷，当前活跃缺陷队列为空；open GitHub Issues 中的历史 fixed bug 仍待复测/关闭跟进
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

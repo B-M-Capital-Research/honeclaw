@@ -6,7 +6,8 @@
 //! - SQLite 是可选的「索引/加速」层，通过 `SessionIndex` trait 抽象：
 //!   * `runtime_backend=Sqlite`：读路径先查 index，未命中再读 JSON 并回填 index
 //!   * `runtime_backend=Json` + `shadow_sqlite_enabled`：写 JSON 后把同一份
-//!     session 镜像到 index（异步一致性可接受，读路径仍走 JSON）
+//!     session 镜像到 index（异步一致性可接受，读路径仍走 JSON）；启动时还会
+//!     best-effort 回填既有 JSON，修复 shadow writer 曾被关闭期间留下的缺口
 //! - 当前只有 `SqliteSessionMirror` 一种实现；抽成 trait 的原因是让
 //!   runtime 层（`AgentSession`、tests）能接受任意实现（例如 mock、
 //!   或将来要接的远程索引），而不用硬绑定到 SQLite
@@ -739,12 +740,14 @@ impl SessionStorage {
             None
         };
 
-        Self {
+        let storage = Self {
             data_dir: dir,
             sqlite_storage,
             runtime_backend: options.runtime_backend,
             shadow_sqlite_enabled: options.shadow_sqlite_enabled,
-        }
+        };
+        storage.backfill_shadow_from_json_dir();
+        storage
     }
 
     /// 测试 / runtime 层可以注入自定义的 `SessionIndex`（例如 mock）。
@@ -1134,6 +1137,79 @@ impl SessionStorage {
         let session: Session = serde_json::from_str(&content)
             .map_err(|e| hone_core::HoneError::Serialization(e.to_string()))?;
         Ok(Some(session))
+    }
+
+    fn backfill_shadow_from_json_dir(&self) {
+        if self.runtime_backend != SessionRuntimeBackend::Json || !self.shadow_sqlite_enabled {
+            return;
+        }
+
+        let Some(shadow_sqlite) = &self.sqlite_storage else {
+            return;
+        };
+
+        let entries = match std::fs::read_dir(&self.data_dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
+            Err(err) => {
+                tracing::warn!(
+                    path = %self.data_dir.display(),
+                    "failed to scan session json dir for sqlite shadow backfill: {err}"
+                );
+                return;
+            }
+        };
+
+        let mut imported = 0usize;
+        let mut failed = 0usize;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+
+            let content = match std::fs::read_to_string(&path) {
+                Ok(content) => content,
+                Err(err) => {
+                    failed += 1;
+                    tracing::warn!(
+                        path = %path.display(),
+                        "failed to read session json during sqlite shadow backfill: {err}"
+                    );
+                    continue;
+                }
+            };
+            let session: Session = match serde_json::from_str(&content) {
+                Ok(session) => session,
+                Err(err) => {
+                    failed += 1;
+                    tracing::warn!(
+                        path = %path.display(),
+                        "failed to parse session json during sqlite shadow backfill: {err}"
+                    );
+                    continue;
+                }
+            };
+
+            if let Err(err) = shadow_sqlite.upsert(&path, &session) {
+                failed += 1;
+                tracing::warn!(
+                    session_id = %session.id,
+                    path = %path.display(),
+                    "failed to backfill session into sqlite shadow: {err}"
+                );
+                continue;
+            }
+            imported += 1;
+        }
+
+        if imported > 0 || failed > 0 {
+            tracing::info!(
+                sessions_imported = imported,
+                sessions_failed = failed,
+                "completed sqlite shadow backfill from session json dir"
+            );
+        }
     }
 
     fn list_sessions_from_json(&self) -> hone_core::HoneResult<Vec<Session>> {
@@ -1655,6 +1731,81 @@ mod tests {
 
         assert_eq!(session_count, 1);
         assert_eq!(message_count, 1);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shadow_sqlite_backfills_existing_json_on_startup() {
+        let root = make_temp_dir("hone_memory_test_shadow_sqlite_backfill");
+        let sessions_dir = root.join("sessions");
+        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
+        let db_path = root.join("sessions.sqlite3");
+
+        let actor = ActorIdentity::new("feishu", "alice", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+        let session = Session {
+            version: default_session_version(),
+            id: session_id.clone(),
+            actor: Some(actor.clone()),
+            session_identity: SessionIdentity::from_actor(&actor).ok(),
+            created_at: "2026-05-09T09:00:00+08:00".to_string(),
+            updated_at: "2026-05-09T09:05:00+08:00".to_string(),
+            messages: vec![
+                session_message_from_text(
+                    "user",
+                    "hello before shadow",
+                    "2026-05-09T09:00:00+08:00",
+                    None,
+                ),
+                session_message_from_text(
+                    "assistant",
+                    "world after shadow",
+                    "2026-05-09T09:05:00+08:00",
+                    None,
+                ),
+            ],
+            metadata: HashMap::new(),
+            runtime: SessionRuntimeState::default(),
+            summary: None,
+        };
+        std::fs::write(
+            sessions_dir.join(format!("{session_id}.json")),
+            serde_json::to_string_pretty(&session).expect("session json"),
+        )
+        .expect("write session json");
+
+        let _storage = SessionStorage::with_options(
+            &sessions_dir,
+            SessionStorageOptions {
+                shadow_sqlite_db_path: Some(db_path.clone()),
+                shadow_sqlite_enabled: true,
+                runtime_backend: SessionRuntimeBackend::Json,
+            },
+        );
+
+        let conn = rusqlite::Connection::open(&db_path).expect("sqlite");
+        let session_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .expect("session count");
+        let message_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
+                [&session_id],
+                |row| row.get(0),
+            )
+            .expect("message count");
+        let latest_update: String = conn
+            .query_row(
+                "SELECT updated_at FROM sessions WHERE session_id = ?1",
+                [&session_id],
+                |row| row.get(0),
+            )
+            .expect("latest update");
+
+        assert_eq!(session_count, 1);
+        assert_eq!(message_count, 2);
+        assert_eq!(latest_update, "2026-05-09T09:05:00+08:00");
 
         let _ = std::fs::remove_dir_all(root);
     }

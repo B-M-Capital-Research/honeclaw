@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-07 11:06 CST
+- updated_at: 2026-05-09 03:28 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -76,6 +76,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-05 10:15: Re-closed the active Feishu `session/update` live leak at the shared boundary after the bug ledger re-opened on newer runtime samples. `SessionEventEmitter` now sanitizes `StreamDelta` with the same user-visible contract as `ToolStatus`, keeping visible prefixes while trimming suffixes that start at `### System Instructions ###` / `【Invoked Skill Context】` / `Base directory for this skill:` and dropping structured JSON payloads entirely. ACP chunk ingest also now suppresses `【Invoked Skill Context】` / `Base directory for this skill:` before they enter the session stream. Targeted `hone-channels` emitter + `acp_common` tests and `cargo check -p hone-channels --tests` passed. Live post-fix Feishu verification is still pending because this automation does not restart services.
 - 2026-05-06 07:07: Closed the reopened P1 Feishu `session/update` live leak by tightening the Feishu channel boundary itself. `FeishuStreamListener` no longer writes ACP `StreamDelta` chunks into placeholder cards, so analysis drafts / prompt echoes / raw stream fragments cannot be pushed live through Feishu; final replies still use `response.content`, and placeholder/tool-progress buffers are rejected as failed partials or success finals. `hone-feishu` unit tests, `cargo check -p hone-feishu --tests`, and direct rustfmt checks passed. Live deployment verification remains a follow-up because this machine is not production and the automation does not restart services.
 - 2026-05-07 11:06: Closed the active P3 watchlist hit-zone degradation by tightening the shared scheduled-task contract rather than adding another data-source special case. `build_scheduled_prompt` now injects a stable-local-field rule for ordinary scheduled tasks that mention both watchlists/观察池 and hit zones/击球区, and `multi_agent` search-stage guidance now preserves hit zones from task text, restored context, portfolio/local state, or local files while using `data_fetch` only for fresh prices, fundamentals, and earnings dates. Targeted `hone-channels` prompt/guidance regressions passed. No GitHub issue was linked for this bug.
+- 2026-05-09 03:28: Closed the remaining active P2 `sessions.sqlite3` mirror stall by combining two rollout fixes: `hone-cli` config generation/writeback now normalizes `storage.session_sqlite_shadow_write_enabled=true`, and `SessionStorage` now performs startup JSON -> SQLite shadow backfill when JSON remains the runtime backend and shadow write is enabled. This covers both non-desktop launch paths that could keep the writer disabled and historical windows where the writer was disabled: restarting with the corrected config now repairs the existing JSON session mirror instead of waiting for each session to receive another turn. Active `docs/bugs/README.md` queue is now empty; open GitHub Issues from older fixed docs still need human/automation follow-up comments or closure review.
 
 ## Validation
 
@@ -162,6 +163,15 @@ Completed this round:
 - `rustfmt --edition 2024 --check bins/hone-feishu/src/listener.rs bins/hone-feishu/src/handler.rs`
 - `cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields -- --nocapture`
 - `cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings -- --nocapture`
+- `cargo test -p hone-cli cli_effective_config_generation_normalizes_session_shadow_write -- --nocapture`
+- `cargo test -p hone-cli apply_mutations_and_generate_keeps_session_shadow_write_enabled -- --nocapture`
+- `cargo check -p hone-cli --tests`
+- `rustfmt --edition 2024 --check bins/hone-cli/src/common.rs bins/hone-cli/src/yaml_io.rs`
+- `rustfmt --edition 2024 memory/src/session.rs --check`
+- `cargo test -p hone-memory shadow_sqlite_backfills_existing_json_on_startup --lib -- --nocapture`
+- `cargo test -p hone-memory shadow_sqlite_writes_without_affecting_json_flow --lib -- --nocapture`
+- `bash tests/regression/ci/test_session_sqlite_migration.sh`
+- `cargo check -p hone-memory --tests`
 
 Known verification limitation:
 
