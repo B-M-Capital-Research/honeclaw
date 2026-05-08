@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-08 23:02 CST
+最后更新：2026-05-09 03:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,7 +27,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-08 23:02 修复结论回退：`sessions` / `session_messages` 仍停在 `2026-04-27T16:54:20+08:00`，但最近四小时 Feishu 直聊在 `22:52`、`22:59`、`23:01 CST` 连续完成 `session.persist_assistant` / `reply.send`；同库 `cron_job_runs` 已推进到 `run_id=17071 @ 23:00:16`，说明数据库可写但会话镜像链路仍停滞 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-09 03:02 最新巡检确认仍活跃：`sessions` / `session_messages` 继续停在 `2026-04-27T16:54:20+08:00`；最近四小时真实 JSON 会话仍持续更新，`02:30 CST` Feishu 直聊 `Actor_feishu__direct__ou_5fb47bd113e7776b05e7a5c2c56e310652` 完成 `session.persist_assistant -> done success=true -> reply.send segments.sent=1/1`；同库 `cron_job_runs` 已推进到 `run_id=17171 @ 03:00:21`，说明数据库可写但会话镜像链路仍停滞 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 
 ## Later / 待复现
 
