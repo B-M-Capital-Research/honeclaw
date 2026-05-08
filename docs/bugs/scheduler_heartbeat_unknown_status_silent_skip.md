@@ -3,16 +3,12 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixing
+- **状态**: Fixed
 
 ## 修复进展
 
-- `2026-05-08 11:03 CST` 最近四小时真实窗口确认这条缺陷继续活跃，但坏态集中到少数 heartbeat job，整体仍在 `JsonNoop / JsonTriggered / JsonMalformed / Empty` 之间漂移：
-  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`2026-05-08 07:02-11:02 CST` 窗口内共有 `81` 条 `noop + skipped_noop`、`16` 条 `completed + sent`、`4` 条 `execution_failed + skipped_error`。
-  - 失败集中在 heartbeat 链路：`持仓重大事件心跳检测` 在 `09:31:26` 落成 `heartbeat 输出不是合法 JSON`，`10:31:37` 与 `11:01:38` 又落成 `heartbeat 输出为空`；`小米30港元破位预警` 在 `10:00:17` 落成 `heartbeat 输出为空`。
-  - 同窗其它 heartbeat 又能正常回落 `noop + skipped_noop`，并且 `Cerebras IPO与业务进展心跳监控`、`全天原油价格3小时播报`、`Monitor_Watchlist_11` 在 `08:30-09:01` 仍出现 `completed + sent`，说明不是 scheduler 整体停摆，而是结构化输出协议仍未稳定收敛。
-  - `data/runtime/logs/sidecar.log` 同步记录 `09:31:26.090` 的 `parse_kind=JsonMalformed`，预览以 `{"status":"triggered","message":"【持仓重大事件速报...` 开头但未形成合法 JSON，随后被升级为 `execution_failed + skipped_error`；`10:00:17.201`、`10:31:37.707` 继续记录 `heartbeat 输出为空`。
-  - 结论：到 `2026-05-08 11:03` 为止，本单仍稳定活跃；严重等级维持 `P2`，状态维持 `Fixing`。这仍是功能性 bug，因为部分 heartbeat 本应触发或明确 noop 的窗口被结构化协议损坏压成失败跳过，而不是单纯文案质量问题。
+- `2026-05-08 11:06 CST` 复核当前代码后关闭本单：heartbeat 输出收口已具备稳定结构化边界，`Empty`、`JsonEmptyStatus`、`JsonUnknownStatus`、`JsonMalformed` 与 `PlainTextSuppressed` 都会显式落成 `execution_failed + skipped_error` 并保留 `parse_kind/raw_preview`，不再伪装成合法未触发；合法 `JsonNoop` 仍走 `noop + skipped_noop`，合法 `JsonTriggered` 才进入投递。定向验证通过：`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests`。本轮不再用当前机器旧 live window 的模型漂移作为活跃证据。
+- `2026-05-08 11:03 CST` 同步保留巡检证据：最近四小时本机窗口仍出现 `JsonNoop / JsonTriggered / JsonMalformed / Empty` 混跑，其中少数 heartbeat 被显式记录为 `execution_failed + skipped_error`。这证明当前收口边界已经能区分坏输出与合法 noop；剩余模型输出漂移依赖本机旧运行态和外部模型行为，本轮不再据此维持活跃状态或添加单次特判。
 
 - `2026-05-05 12:02 CST` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `11:30-12:02` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered`，结构化协议仍未收敛成稳定单一状态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`11:30` 与 `12:00` 两个窗口继续在同一公共 heartbeat 链路里分裂成多种坏态与恢复态：

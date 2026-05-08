@@ -3,9 +3,11 @@
 - **发现时间**: 2026-04-20 06:01 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展（2026-04-28）
+
+- `2026-05-08 11:06 CST` 复核当前仓库代码后关闭本单：heartbeat auxiliary function-calling 当前固定使用 `HEARTBEAT_MAX_ITERATIONS=10` 与 `max_tokens_override=4096`，触顶、provider quota、HTTP 4xx/5xx 等 runner error 均通过 `heartbeat_execution_from_runner_error(...)` 显式保留失败态与 `failure_kind`，不会再被收口成正常 `noop`。定向验证通过：`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests`。旧窗口里仍出现 `max_iterations_exceeded:6` 更符合未重启/未部署旧运行态或外部 runner 状态，不再作为当前仓库活跃 bug。
 
 - 已在 `crates/hone-channels/src/scheduler.rs` 将 heartbeat auxiliary function-calling 的最大迭代预算从固定 `6` 提升到 `10`：
   - 这是 heartbeat 公共执行预算加固，不针对某个 provider、模型或单个 job 做特殊兼容。

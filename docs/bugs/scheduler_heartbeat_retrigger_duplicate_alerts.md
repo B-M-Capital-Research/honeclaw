@@ -3,8 +3,9 @@
 - **发现时间**: 2026-04-19 10:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **证据来源**:
+  - `2026-05-08 11:06 CST` 复核当前代码后关闭本单：heartbeat 调度事件已加载同 actor 最近送达历史，且 `heartbeat_duplicate_preview_match(...)` 会基于事实 token 与实体 anchor 抑制跨 job / 跨窗口的同一旧事件重复投递，同时保留不同实体与同 ticker 新事件的通过路径。定向验证通过：`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests`。当前机器旧窗口重复样本不再作为仓库活跃判据。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `2026-05-04 08:04 CST` 最新巡检样本：
       - `job_name=ORCL 大事件监控`

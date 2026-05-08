@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-08 11:03 CST
+最后更新：2026-05-08 11:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,26 +17,23 @@
 
 ## 当前概览
 
-- 活跃待修复：5
-- Later / 待复现：8
-- 已修复 / 已关闭：92
+- 活跃待修复：0
+- Later / 待复现：9
+- 已修复 / 已关闭：96
 - 历史分析 / 部分止血：5
-- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
+- 当前活跃队列为空
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-08 11:03 复发持续：`sessions/session_messages` 最新仍停在 `2026-04-27T16:54:20+08:00`，`07:02-11:02` 窗口增量仍为 `0/0`；但 Web direct `Actor_web__direct__web-user-e05f5e5f74a3` 已在 `11:02:55-11:03:08` 完成 `OK` 心跳，Feishu direct 与 Discord scheduler JSON 源文件也已推进到 `09:31`，同库 `cron_job_runs` 已推进到 `11:01:38` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-08 11:03 最新 `07:02-11:02` 窗口仍混跑 `JsonNoop / JsonTriggered / JsonMalformed / Empty`；同窗 `81` 条 `noop + skipped_noop`、`16` 条 `completed + sent`、`4` 条 `execution_failed + skipped_error`，其中 `持仓重大事件心跳检测` 在 `09:31` malformed 后又于 `10:31/11:01` 空输出失败，`小米30港元破位预警` 在 `10:00` 空输出失败 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
-| Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
+| _当前无活跃待修复缺陷_ | - | - | 2026-05-08 11:06 已基于仓库代码、配置和本地回归验证清空当前活跃队列；后续新证据按规则重新进入 `New` | - |
 
 ## Later / 待复现
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | Later | 2026-05-08 11:06 当前证据集中在 `Invalid bot token`、旧进程启动锁与 Telegram `GetUpdates` 网络失败，依赖外部凭据/网络/旧运行态；当前机器不再作为生产机器，本轮不针对单次外部错误写特殊兼容。若有效 token + 干净启动锁 + 可达网络下仍无法监听，再改回 `New` | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 | Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Later | 2026-04-26 已把 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 与 `empty_success_exhausted` 提升为失败信号；若 scheduler 仍把同类 fallback 记为完成再改回 `New` | [feishu_scheduler_empty_reply_false_success.md](./archive/feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | Later | 2026-04-26 已为 Feishu send/reply/update 出站请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；若真实出站窗口继续复现再改回 `New` | [feishu_send_message_request_transport_failure.md](./archive/feishu_send_message_request_transport_failure.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Later | 2026-04-26 已在共享净化层剥离独立 `Context compacted` / `Conversation compacted` marker 行并保留真实正文；若 marker 或 summary 污染再次复现再改回 `New` | [session_compact_summary_report_hallucination.md](./archive/session_compact_summary_report_hallucination.md) |
@@ -50,6 +47,10 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-08 11:06 当前 `config.yaml`、desktop canonical config 与 `effective-config.yaml` 均为 `session_sqlite_shadow_write_enabled=true`；Desktop runtime 物化前会规范化历史 canonical `false`。`cargo test -p hone-core test_normalize_runtime_storage_rollout_settings_enables_session_shadow_write -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env::tests::desktop_canonical_config_path_ -- --nocapture` 通过；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-08 11:06 当前 heartbeat parser 已将空输出、空状态、未知状态、坏 JSON 与纯文本全部显式收口为失败态并保留 `parse_kind/raw_preview`；合法 noop/triggered 分支保持分离。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-08 11:06 当前 heartbeat auxiliary runner 固定 `max_iterations=10` 与 `max_tokens_override=4096`，runner error 会记录 `failure_kind` 而不是伪装正常 noop；旧 `:6` 样本按未部署/旧运行态处理。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
+| Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | Fixed | 2026-05-08 11:06 当前 heartbeat 调度事件加载同 actor 最近送达历史，跨 job 重复由事实 token + 实体 anchor 抑制，同时保留不同实体/同 ticker 新事件通过路径。`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | Fixed | 2026-05-08 非 heartbeat scheduler 成功路径新增 `stale_market_data_fallback`：关键行情 / 报价 / `data_fetch` 失败且继续复用旧价格或旧收盘口径时，回滚旧价格正文、投递失败提示并记录 `failure_kind=stale_market_data_fallback`；`cargo test -p hone-channels scheduler::tests::scheduler_detects_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
 | Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-08 复核当前代码已将 heartbeat 专用 completion token 固定为 `4096` 并通过 `max_tokens_override` 进入 auxiliary provider；`provider_quota_exhausted` 仍显式记录。03:05 复活证据来自当前机器旧运行态 / 外部 credits，且 `can only afford 217` 低于可维护预算，不再作为当前活跃 bug；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | Fixed | 2026-05-08 已补两道收口：Feishu scheduler 启动时会回收超过 `agent.overall_timeout + 60s` 的 stale started row，统一补记为 `execution_failed + send_failed`；单次执行外层再加 `agent.overall_timeout + 30s` deadline，超时后立即记录 `scheduler_handler_timeout` 并向 direct session 写一次失败 transcript。`cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`、`cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`、`cargo check -p hone-feishu --tests` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
