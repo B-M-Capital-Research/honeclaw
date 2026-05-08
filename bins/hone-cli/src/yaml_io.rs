@@ -14,7 +14,6 @@ use serde_yaml::Value;
 
 use hone_core::config::{
     ConfigApplyPlan, ConfigMutation, ConfigMutationResult, apply_config_mutations,
-    generate_effective_config,
 };
 
 use crate::common;
@@ -41,9 +40,11 @@ pub(crate) fn apply_mutations_and_generate(
 ) -> Result<ConfigMutationResult, String> {
     let mut result = apply_config_mutations(&paths.canonical_config_path, mutations)
         .map_err(|e| e.to_string())?;
-    result.config_revision =
-        generate_effective_config(&paths.canonical_config_path, &paths.effective_config_path)
-            .map_err(|e| e.to_string())?;
+    result.config_revision = common::normalize_runtime_rollout_and_generate_effective_config(
+        &paths.canonical_config_path,
+        &paths.effective_config_path,
+    )
+    .map_err(|e| e.to_string())?;
     Ok(result)
 }
 
@@ -68,4 +69,68 @@ pub(crate) fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
     let rendered = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
     println!("{rendered}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::ResolvedRuntimePaths;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}_{}_{}", std::process::id(), nanos))
+    }
+
+    #[test]
+    fn apply_mutations_and_generate_keeps_session_shadow_write_enabled() {
+        let root = temp_dir("hone_cli_yaml_io");
+        let runtime_dir = root.join("data/runtime");
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+        let canonical = root.join("config.yaml");
+        let effective = runtime_dir.join("effective-config.yaml");
+        std::fs::write(
+            &canonical,
+            r#"
+storage:
+  session_sqlite_shadow_write_enabled: false
+  session_runtime_backend: "json"
+agent:
+  runner: codex_acp
+"#,
+        )
+        .unwrap();
+
+        let paths = ResolvedRuntimePaths {
+            canonical_config_path: canonical.clone(),
+            effective_config_path: effective.clone(),
+            data_dir: root.join("data"),
+            runtime_dir: runtime_dir.clone(),
+            skills_dir: root.join("skills"),
+            root_dir: root.clone(),
+            web_port: 8077,
+        };
+
+        let result = apply_mutations_and_generate(
+            &paths,
+            &[ConfigMutation::Set {
+                path: "agent.runner".to_string(),
+                value: Value::String("opencode_acp".to_string()),
+            }],
+        )
+        .unwrap();
+
+        assert!(!result.config_revision.is_empty());
+        let canonical_config = hone_core::HoneConfig::from_file(&canonical).unwrap();
+        assert_eq!(canonical_config.agent.runner, "opencode_acp");
+        assert!(canonical_config.storage.session_sqlite_shadow_write_enabled);
+        let effective_config = hone_core::HoneConfig::from_file(&effective).unwrap();
+        assert!(effective_config.storage.session_sqlite_shadow_write_enabled);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

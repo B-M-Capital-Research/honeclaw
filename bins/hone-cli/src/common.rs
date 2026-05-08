@@ -5,7 +5,7 @@ use std::sync::Arc;
 use hone_channels::HoneBotCore;
 use hone_core::config::{
     canonical_config_candidate, effective_config_path, generate_effective_config,
-    seed_canonical_config_from_source,
+    normalize_runtime_storage_rollout_settings, seed_canonical_config_from_source,
 };
 use hone_core::{HoneConfig, HoneResult};
 
@@ -106,6 +106,14 @@ pub(crate) fn resolve_runtime_paths(
     })
 }
 
+pub(crate) fn normalize_runtime_rollout_and_generate_effective_config(
+    canonical_config_path: &Path,
+    effective_config_path: &Path,
+) -> HoneResult<String> {
+    normalize_runtime_storage_rollout_settings(canonical_config_path)?;
+    generate_effective_config(canonical_config_path, effective_config_path)
+}
+
 pub(crate) fn load_cli_config(
     explicit_config: Option<&Path>,
     for_write: bool,
@@ -120,8 +128,10 @@ pub(crate) fn load_cli_config(
         seed_canonical_config_from_source(&paths.canonical_config_path, seed_source)?;
     }
     if for_write {
-        let _ =
-            generate_effective_config(&paths.canonical_config_path, &paths.effective_config_path)?;
+        let _ = normalize_runtime_rollout_and_generate_effective_config(
+            &paths.canonical_config_path,
+            &paths.effective_config_path,
+        )?;
     }
     let mut config = HoneConfig::from_file(&paths.canonical_config_path)?;
     config.apply_runtime_overrides(
@@ -138,4 +148,48 @@ pub(crate) fn load_cli_core(
 ) -> HoneResult<(Arc<HoneBotCore>, ResolvedRuntimePaths)> {
     let (config, paths) = load_cli_config(explicit_config, false)?;
     Ok((Arc::new(HoneBotCore::new(config)), paths))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}_{}_{}", std::process::id(), nanos))
+    }
+
+    #[test]
+    fn cli_effective_config_generation_normalizes_session_shadow_write() {
+        let root = temp_dir("hone_cli_runtime_rollout");
+        let runtime_dir = root.join("data/runtime");
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+        let canonical = root.join("config.yaml");
+        let effective = runtime_dir.join("effective-config.yaml");
+        std::fs::write(
+            &canonical,
+            r#"
+storage:
+  session_sqlite_shadow_write_enabled: false
+  session_runtime_backend: "json"
+"#,
+        )
+        .unwrap();
+
+        let revision =
+            normalize_runtime_rollout_and_generate_effective_config(&canonical, &effective)
+                .unwrap();
+
+        assert!(!revision.is_empty());
+        let canonical_config = HoneConfig::from_file(&canonical).unwrap();
+        assert!(canonical_config.storage.session_sqlite_shadow_write_enabled);
+        let effective_config = HoneConfig::from_file(&effective).unwrap();
+        assert!(effective_config.storage.session_sqlite_shadow_write_enabled);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 }
