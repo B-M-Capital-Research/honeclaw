@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-04-30
+Last updated: 2026-05-08
+
+## 2026-05-08
+
+### Event-engine Push Quality Hardening
+
+- Status: done
+- Date: 2026-05-08
+- Plan: `docs/archive/plans/event-engine-push-quality-hardening.md`
+- Handoff: `docs/handoffs/2026-04-23-event-engine-push-quality.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-event-engine --lib`, `cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`, `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`, changed-file `rustfmt --edition 2024 --check`; full `cargo fmt --all -- --check` currently blocked by unrelated formatting debt
+- Current conclusion: 基于近期 event review 与 POC 结论，event engine 已补 analyst 同源文章 fanout 降噪、RSS 标题级保守实体链接，以及 Zacks 泛化模板回归证明；本轮没有新增 LLM 调用或 summary/body 宽匹配
+- Next entry point: `docs/handoffs/2026-04-23-event-engine-push-quality.md#2026-05-08-poc-后续收口`
 
 ## 2026-04-30
 

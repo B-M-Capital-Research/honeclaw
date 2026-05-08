@@ -12,6 +12,7 @@
 //! id 稳定：`grade:{SYMBOL}:{publishedDate}:{gradingCompany}`。FMP 同一条评级
 //! 记录在后续拉取中 `publishedDate`+`gradingCompany` 基本不变，去重安全。
 
+use std::cmp::Reverse;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -85,7 +86,8 @@ fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<M
         Some(a) => a,
         None => return vec![],
     };
-    arr.iter()
+    let events: Vec<MarketEvent> = arr
+        .iter()
         .filter_map(|item| {
             let published = item.get("publishedDate").and_then(|v| v.as_str())?;
             let occurred_at = parse_fmp_datetime(published)?;
@@ -138,7 +140,93 @@ fn events_from_grades(raw: &Value, ticker: &str, cutoff: DateTime<Utc>) -> Vec<M
                 payload: item.clone(),
             })
         })
-        .collect()
+        .collect();
+    order_analyst_fanout_groups(events)
+}
+
+fn order_analyst_fanout_groups(events: Vec<MarketEvent>) -> Vec<MarketEvent> {
+    let mut ordered = Vec::with_capacity(events.len());
+    let mut used = vec![false; events.len()];
+
+    for i in 0..events.len() {
+        if used[i] {
+            continue;
+        }
+        let Some(key) = analyst_fanout_key(&events[i]) else {
+            used[i] = true;
+            ordered.push(events[i].clone());
+            continue;
+        };
+        let mut group = Vec::new();
+        for j in i..events.len() {
+            if !used[j] && analyst_fanout_key(&events[j]).as_deref() == Some(key.as_str()) {
+                group.push(j);
+            }
+        }
+        group.sort_by_key(|idx| Reverse(analyst_signal_rank(&events[*idx])));
+        for idx in group {
+            used[idx] = true;
+            ordered.push(events[idx].clone());
+        }
+    }
+
+    ordered
+}
+
+fn analyst_fanout_key(event: &MarketEvent) -> Option<String> {
+    let symbol = event.symbols.first()?.trim().to_ascii_uppercase();
+    let url = event
+        .payload
+        .get("newsURL")
+        .and_then(|v| v.as_str())
+        .or(event.url.as_deref())?
+        .trim();
+    if symbol.is_empty() || url.is_empty() {
+        return None;
+    }
+    Some(format!("{symbol}\n{url}"))
+}
+
+fn analyst_signal_rank(event: &MarketEvent) -> i32 {
+    let action = event
+        .payload
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let previous = event
+        .payload
+        .get("previousGrade")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let new = event
+        .payload
+        .get("newGrade")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let changed_rating =
+        !previous.is_empty() && !new.is_empty() && !previous.eq_ignore_ascii_case(new);
+    let has_target_change = target_change_from_news_title(
+        event
+            .payload
+            .get("newsTitle")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    )
+    .is_some();
+
+    match action.as_str() {
+        "downgrade" if changed_rating => 500,
+        "upgrade" if changed_rating => 450,
+        _ if has_target_change => 400,
+        "downgrade" | "upgrade" if previous.is_empty() && !new.is_empty() => 300,
+        "initiated" | "initialise" if !new.is_empty() => 250,
+        _ if changed_rating => 200,
+        _ => 0,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -356,6 +444,44 @@ mod tests {
             events[0].title
         );
         assert_eq!(events[0].summary, "目标价 $360 → $405 · 评级 Overweight");
+    }
+
+    #[test]
+    fn same_news_url_fanout_is_ordered_by_signal_strength() {
+        let published = Utc::now().format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
+        let row = |firm: &str, action: &str, previous: Option<&str>, new: &str| {
+            serde_json::json!({
+                "symbol": "AMD",
+                "publishedDate": published,
+                "newsURL": "https://thefly.com/ajax/news_get.php?id=4346982",
+                "newsTitle": "AMD upgraded, Reddit downgraded: Wall Street's top analyst calls",
+                "newGrade": new,
+                "previousGrade": previous,
+                "gradingCompany": firm,
+                "action": action,
+            })
+        };
+        let raw = serde_json::json!([
+            row("Needham", "upgrade", None, "Buy"),
+            row("Citigroup", "initialise", Some("Neutral"), "Neutral"),
+            row("Jefferies", "downgrade", Some("Buy"), "Hold"),
+            row("Oppenheimer", "downgrade", Some("Perform"), "Perform"),
+            row("BTIG", "upgrade", None, "Buy")
+        ]);
+
+        let events = events_from_grades(&raw, "AMD", Utc::now() - chrono::Duration::days(7));
+
+        assert_eq!(events.len(), 5);
+        assert!(
+            events[0].id.ends_with(":Jefferies"),
+            "changed downgrade should be the representative sent first, got {}",
+            events[0].id
+        );
+        assert!(
+            events.last().unwrap().id.ends_with(":Citigroup")
+                || events.last().unwrap().id.ends_with(":Oppenheimer"),
+            "same-grade rows should sort to the end"
+        );
     }
 
     #[test]

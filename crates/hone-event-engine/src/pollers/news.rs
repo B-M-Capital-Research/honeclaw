@@ -540,6 +540,29 @@ mod tests {
     }
 
     #[test]
+    fn zacks_generic_stock_template_is_low_opinion_blog() {
+        let raw = serde_json::json!([{
+            "symbol": "VST",
+            "publishedDate": "2026-04-30 01:04:00",
+            "title": "Vistra Corp. (VST) is Attracting Investor Attention: Here is What You Should Know",
+            "site": "zacks.com",
+            "text": "A template-style stock attention article.",
+            "url": "https://www.zacks.com/stock/news/2910545/vistra-corp-vst-is-attracting-investor-attention-here-is-what-you-should-know?cid=CS-STOCKNEWSAPI-FT-tale_of_the_tape|most_searched_stocks-2910545"
+        }]);
+        let events = events_from_stock_news(&raw, &default_kws());
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].severity, Severity::Low);
+        assert_eq!(
+            events[0]
+                .payload
+                .get("source_class")
+                .and_then(|v| v.as_str()),
+            Some("opinion_blog")
+        );
+    }
+
+    #[test]
     fn defenseworld_13f_classified_as_opinion_blog() {
         let raw = serde_json::json!([{
             "symbol": "TSLA",

@@ -405,6 +405,26 @@ fn curation_omits_low_opinion_blog_news() {
 }
 
 #[test]
+fn curation_omits_generic_zacks_template_news() {
+    let mut event = ev("news-zacks-vst", "VST");
+    event.kind = EventKind::NewsCritical;
+    event.severity = Severity::Low;
+    event.source = "fmp.stock_news:zacks.com".into();
+    event.title =
+        "Vistra Corp. (VST) is Attracting Investor Attention: Here is What You Should Know".into();
+    event.url = Some("https://www.zacks.com/stock/news/2910545/vistra-corp-vst-is-attracting-investor-attention-here-is-what-you-should-know".into());
+    event.payload = serde_json::json!({"source_class": "opinion_blog"});
+
+    let curation = curate_digest_events_with_omitted_at(
+        vec![event],
+        Utc.with_ymd_and_hms(2026, 4, 30, 1, 0, 0).unwrap(),
+    );
+
+    assert!(curation.kept.is_empty());
+    assert_eq!(curation.omitted.len(), 1);
+}
+
+#[test]
 fn curation_omits_low_news_after_importance_arbitration() {
     let mut event = ev("news-low", "AAPL");
     event.kind = EventKind::NewsCritical;

@@ -3,7 +3,7 @@
 - title: Event Engine 推送质量全量修复
 - status: done
 - created_at: 2026-04-23
-- updated_at: 2026-04-23
+- updated_at: 2026-05-08
 - owner: Codex
 - related_files:
   - `crates/hone-event-engine/src/router.rs`
@@ -17,12 +17,17 @@
   - `tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
   - `scripts/diagnose_event_engine_daily_pushes.py`
   - `.agents/skills/event-engine-baseline-testing/SKILL.md`
+  - `crates/hone-event-engine/src/pollers/analyst_grade.rs`
+  - `crates/hone-event-engine/src/router/dispatch.rs`
+  - `crates/hone-event-engine/src/store.rs`
+  - `crates/hone-event-engine/src/pollers/rss.rs`
 - related_docs:
   - `docs/archive/plans/event-engine-push-quality.md`
   - `docs/archive/index.md`
   - `docs/bugs/event_engine_high_macro_events_unrouted.md`
   - `docs/bugs/event_engine_social_source_decode_failures.md`
   - `docs/bugs/event_engine_window_convergence_upgrade_burst.md`
+  - `docs/archive/plans/event-engine-push-quality-hardening.md`
 - related_prs:
   - N/A
 
@@ -57,3 +62,28 @@
 ## Next Entry Point
 
 - `docs/archive/plans/event-engine-push-quality.md`
+- `docs/archive/plans/event-engine-push-quality-hardening.md`
+
+## 2026-05-08 POC 后续收口
+
+近期 event review 的共性问题进一步收敛为三类：同一个 TheFly analyst 聚合页拆出多投行即时推送、Zacks 泛化模板混入候选、可信 RSS 因缺 ticker 落到 `no_actor`。本轮只落确定性 guardrail，没有引入新的 LLM 调用。
+
+### What Changed
+
+- AnalystGrade poller 会把同一 ticker + `newsURL` 的 fanout 按信号强度排序，优先让真实评级变化或目标价变化作为代表事件进入路由。
+- Router 新增同 ticker + 同 analyst source article 的 cooldown 查询：第一条 High sink 送达后，同源文章后续投行行降级进 digest，避免一篇聚合页制造多条 immediate。
+- RSS 只做标题级实体链接，覆盖 CoreWeave / Rocket Lab / Nebius / Broadcom / Nvidia / SanDisk / Micron / Vistra / AMD / Tempus AI / Coherent 等高置信 alias；summary-only 和 URL-only 命中不链接，链接到 ticker 的 RSS 事件保持 digest 级别。
+- Zacks 泛化 stock attention 模板新增 poller 与 digest curation 回归测试，锁住 `opinion_blog -> Low -> omitted` 行为。
+
+### Verification
+
+- `cargo test -p hone-event-engine --lib`
+- `cargo test -p hone-event-engine pollers::news::tests::live_news_classifier_baseline_source_policy_is_stable --lib`
+- `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
+- `rustfmt --edition 2024 --check` on the changed event-engine Rust files
+- `cargo fmt --all -- --check` was attempted but is blocked by unrelated existing formatting debt outside this task scope
+
+### Risks / Follow-ups
+
+- RSS alias 表保持小而保守；新增公司名应先从 event review 的真实 `no_actor` 证据或 POC fixture 出发。
+- Analyst fanout guardrail 依赖 FMP 行里存在 `newsURL` 或 `event.url`；无 URL 行仍走既有 firm-aware cooldown。

@@ -221,6 +221,44 @@ impl NotificationRouter {
             // High+sink+sent 的时间戳,若在冷却窗口内则降级进 digest。
             // AnalystGrade 额外按 gradingCompany 拆冷却 key —— 同 ticker 不同投行
             // 同分钟到达视为独立信号,不互相冷却(同投行同 ticker 仍受 60min 冷却约束)。
+            // 但同一来源文章(newsURL)拆出的多投行 fanout 仍视为同一批信号,保留
+            // 第一条代表即可,后续降级进 digest。
+            if matches!(effective_sev, Severity::High)
+                && self.same_symbol_cooldown_minutes > 0
+                && matches!(event.kind, EventKind::AnalystGrade)
+            {
+                if let Some((symbol, news_url)) = analyst_grade_source_article_key(event) {
+                    let cutoff = chrono::Utc::now()
+                        - chrono::Duration::minutes(self.same_symbol_cooldown_minutes as i64);
+                    match self.store.last_high_sink_send_for_analyst_news_url(
+                        &actor_key(&actor),
+                        symbol,
+                        news_url,
+                        cutoff,
+                    ) {
+                        Ok(Some(ts)) => {
+                            tracing::info!(
+                                actor = %actor_key(&actor),
+                                event_id = %event.id,
+                                source = %event.source,
+                                symbol = %symbol,
+                                news_url = %news_url,
+                                last_sent_at = %ts,
+                                cooldown_min = self.same_symbol_cooldown_minutes,
+                                "AnalystGrade fanout demoted to digest(same source article already sent)"
+                            );
+                            demoted_by_cooldown = true;
+                            effective_sev = Severity::Medium;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            tracing::warn!(
+                                "last_high_sink_send_for_analyst_news_url failed for {symbol}: {e:#}"
+                            );
+                        }
+                    }
+                }
+            }
             if matches!(effective_sev, Severity::High)
                 && self.same_symbol_cooldown_minutes > 0
                 && !event.symbols.is_empty()
@@ -410,4 +448,24 @@ impl NotificationRouter {
         }
         Ok((sent, pending))
     }
+}
+
+fn analyst_grade_source_article_key(event: &MarketEvent) -> Option<(&str, &str)> {
+    if !matches!(event.kind, EventKind::AnalystGrade) {
+        return None;
+    }
+    let symbol = event.symbols.first()?.trim();
+    if symbol.is_empty() {
+        return None;
+    }
+    let news_url = event
+        .payload
+        .get("newsURL")
+        .and_then(|v| v.as_str())
+        .or(event.url.as_deref())?
+        .trim();
+    if news_url.is_empty() {
+        return None;
+    }
+    Some((symbol, news_url))
 }

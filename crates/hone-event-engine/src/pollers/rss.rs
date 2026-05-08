@@ -6,10 +6,11 @@
 //! - SpaceNews 命中 RKLB 同行(SpaceX/Astrobotic/Pentagon contracts)
 //! - STAT News 命中 CAI / TEM 医疗 AI 监管事件
 //!
-//! 输出:`MarketEvent { kind: NewsCritical, severity: High, source: "rss:{handle}",
+//! 输出:`MarketEvent { kind: NewsCritical, source: "rss:{handle}",
 //! payload: { source_class: "trusted", legal_ad_template: false, fmp: { site, text,
 //! title, url } } }` —— payload 模拟成 FMP 形态以便 collector / curator 复用同一
-//! 解析路径,不区分 RSS 与 FMP 来源。
+//! 解析路径,不区分 RSS 与 FMP 来源。少量高精度公司名会从标题映射到 ticker,
+//! 只做 title-level 匹配并降为 digest 级别,避免 summary / URL-only 宽匹配制造误发。
 //!
 //! 反爬:大部分主流 RSS 通过浏览器 UA + 跟随重定向即可访问;Cloudflare / 401 失败
 //! 由本 poller 容忍,下一 tick 重试,不冒泡 error。
@@ -107,11 +108,18 @@ impl RssNewsPoller {
             return None;
         }
         let occurred_at = item.pub_date.unwrap_or(now);
+        let symbols = infer_symbols_from_rss_title(&item.title);
+        let severity = if symbols.is_empty() {
+            Severity::High
+        } else {
+            Severity::Medium
+        };
         // payload 模拟 FMP shape,让 collector / curator 复用同一解析路径
         let payload = json!({
             "source_class": "trusted",
             "legal_ad_template": false,
             "earnings_call_transcript": false,
+            "rss_title_entity_linked_symbols": symbols,
             "fmp": {
                 "site": self.handle,
                 "text": item.summary,
@@ -123,8 +131,8 @@ impl RssNewsPoller {
         Some(MarketEvent {
             id: format!("news:{}", item.link),
             kind: EventKind::NewsCritical,
-            severity: Severity::High,
-            symbols: Vec::new(), // RSS 不提取 ticker;curator 按 title + summary 推断
+            severity,
+            symbols,
             occurred_at,
             title: item.title,
             summary: item.summary.chars().take(400).collect(),
@@ -133,6 +141,59 @@ impl RssNewsPoller {
             payload,
         })
     }
+}
+
+const RSS_TITLE_ENTITY_ALIASES: &[(&str, &[&str])] = &[
+    ("CRWV", &["coreweave"]),
+    ("RKLB", &["rocket lab"]),
+    ("NBIS", &["nebius"]),
+    ("AVGO", &["broadcom"]),
+    ("NVDA", &["nvidia"]),
+    ("SNDK", &["sandisk"]),
+    ("MU", &["micron"]),
+    ("VST", &["vistra"]),
+    ("AMD", &["advanced micro devices"]),
+    ("TEM", &["tempus ai"]),
+    ("COHR", &["coherent corp", "coherent inc"]),
+];
+
+fn infer_symbols_from_rss_title(title: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (symbol, aliases) in RSS_TITLE_ENTITY_ALIASES {
+        if aliases
+            .iter()
+            .any(|alias| contains_ascii_phrase_ci(title, alias))
+        {
+            out.push((*symbol).to_string());
+        }
+    }
+    out
+}
+
+fn contains_ascii_phrase_ci(text: &str, phrase: &str) -> bool {
+    let text = text.to_ascii_lowercase();
+    let phrase = phrase.to_ascii_lowercase();
+    let mut start = 0usize;
+    while let Some(pos) = text[start..].find(&phrase) {
+        let abs = start + pos;
+        let before = abs
+            .checked_sub(1)
+            .and_then(|i| text.as_bytes().get(i).copied())
+            .map(|b| b.is_ascii_alphanumeric())
+            .unwrap_or(false);
+        let after_idx = abs + phrase.len();
+        let after = text
+            .as_bytes()
+            .get(after_idx)
+            .copied()
+            .map(|b| b.is_ascii_alphanumeric())
+            .unwrap_or(false);
+        if !before && !after {
+            return true;
+        }
+        start = after_idx;
+    }
+    false
 }
 
 fn is_low_signal_video_item(item: &RssItem) -> bool {
@@ -391,6 +452,93 @@ mod tests {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .contains("satellite crosslink")
+        );
+    }
+
+    #[test]
+    fn into_event_links_conservative_title_entities_to_symbols() {
+        let poller = RssNewsPoller::new(
+            "bloomberg_markets",
+            "https://feeds.bloomberg.com/markets/news.rss",
+            Duration::from_secs(3600),
+        );
+        let event = poller
+            .into_event(
+                RssItem {
+                    title: "CoreWeave’s Stunning Rally Creates Prove-It Moment for Earnings".into(),
+                    link: "https://www.bloomberg.com/news/articles/2026-05-07/coreweave-story"
+                        .into(),
+                    pub_date: Some(Utc::now()),
+                    summary: "Neo-cloud provider results are due.".into(),
+                },
+                Utc::now(),
+            )
+            .unwrap();
+
+        assert_eq!(event.symbols, vec!["CRWV"]);
+        assert_eq!(event.severity, Severity::Medium);
+    }
+
+    #[test]
+    fn into_event_links_rocket_lab_title_but_not_spacex_peer_news() {
+        let poller = RssNewsPoller::new(
+            "spacenews",
+            "https://spacenews.com/feed/",
+            Duration::from_secs(3600),
+        );
+        let rocket_lab = poller
+            .into_event(
+                RssItem {
+                    title: "Rocket Lab joins Raytheon on space interceptor program for Golden Dome"
+                        .into(),
+                    link: "https://spacenews.com/rocket-lab-golden-dome/".into(),
+                    pub_date: Some(Utc::now()),
+                    summary: String::new(),
+                },
+                Utc::now(),
+            )
+            .unwrap();
+        let spacex = poller
+            .into_event(
+                RssItem {
+                    title: "SpaceX wins $57M contract".into(),
+                    link: "https://spacenews.com/spacex-wins-57-million".into(),
+                    pub_date: Some(Utc::now()),
+                    summary: String::new(),
+                },
+                Utc::now(),
+            )
+            .unwrap();
+
+        assert_eq!(rocket_lab.symbols, vec!["RKLB"]);
+        assert_eq!(rocket_lab.severity, Severity::Medium);
+        assert!(spacex.symbols.is_empty());
+        assert_eq!(spacex.severity, Severity::High);
+    }
+
+    #[test]
+    fn title_entity_linker_ignores_summary_and_url_only_mentions() {
+        let poller = RssNewsPoller::new(
+            "bloomberg_markets",
+            "https://feeds.bloomberg.com/markets/news.rss",
+            Duration::from_secs(3600),
+        );
+        let premarket = poller
+            .into_event(
+                RssItem {
+                    title: "US Premarket Movers for May 1, 2026".into(),
+                    link: "https://www.bloomberg.com/news/articles/2026-05-01/us-stock-futures-today-amgen-apple-moderna-roblox-sandisk"
+                        .into(),
+                    pub_date: Some(Utc::now()),
+                    summary: "Apple and SanDisk are among many premarket movers.".into(),
+                },
+                Utc::now(),
+            )
+            .unwrap();
+
+        assert!(
+            premarket.symbols.is_empty(),
+            "URL-only or summary-only company mentions are too broad for direct RSS entity linking"
         );
     }
 

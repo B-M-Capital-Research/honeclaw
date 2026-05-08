@@ -127,6 +127,15 @@ pub fn is_noop_analyst_grade(event: &MarketEvent) -> bool {
     if !matches!(event.kind, EventKind::AnalystGrade) {
         return false;
     }
+    if analyst_grade_has_target_change(event) {
+        return false;
+    }
+    let previous = normalized_grade(event.payload.get("previousGrade").and_then(|v| v.as_str()));
+    let new = normalized_grade(event.payload.get("newGrade").and_then(|v| v.as_str()));
+    if new.is_empty() || previous != new {
+        return false;
+    }
+
     let action = event
         .payload
         .get("action")
@@ -134,15 +143,10 @@ pub fn is_noop_analyst_grade(event: &MarketEvent) -> bool {
         .unwrap_or("")
         .trim()
         .to_ascii_lowercase();
-    if !matches!(action.as_str(), "hold" | "maintained" | "reiterated") {
-        return false;
-    }
-    if analyst_grade_has_target_change(event) {
-        return false;
-    }
-    let previous = normalized_grade(event.payload.get("previousGrade").and_then(|v| v.as_str()));
-    let new = normalized_grade(event.payload.get("newGrade").and_then(|v| v.as_str()));
-    !new.is_empty() && previous == new
+    matches!(
+        action.as_str(),
+        "hold" | "maintained" | "reiterated" | "downgrade" | "upgrade" | "initiated" | "initialise"
+    )
 }
 
 fn analyst_grade_has_target_change(event: &MarketEvent) -> bool {
@@ -315,6 +319,32 @@ mod tests {
         };
 
         assert!(is_noop_analyst_grade(&ev));
+    }
+
+    #[test]
+    fn detects_noop_analyst_grade_dirty_downgrade_label() {
+        let ev = MarketEvent {
+            id: "grade:AMD:test".into(),
+            kind: EventKind::AnalystGrade,
+            severity: Severity::High,
+            symbols: vec!["AMD".into()],
+            occurred_at: Utc::now(),
+            title: "AMD · Oppenheimer 下调至 Perform（原 Perform）".into(),
+            summary: "Perform → Perform".into(),
+            url: Some("https://thefly.com/ajax/news_get.php?id=4346982".into()),
+            source: "fmp.upgrades_downgrades".into(),
+            payload: serde_json::json!({
+                "action": "downgrade",
+                "previousGrade": "Perform",
+                "newGrade": "Perform",
+                "newsURL": "https://thefly.com/ajax/news_get.php?id=4346982"
+            }),
+        };
+
+        assert!(
+            is_noop_analyst_grade(&ev),
+            "same-rating dirty downgrade rows should not force immediate delivery"
+        );
     }
 
     #[test]

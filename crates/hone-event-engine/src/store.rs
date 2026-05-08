@@ -500,6 +500,44 @@ impl EventStore {
         Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
     }
 
+    /// 该 actor 针对同一 ticker + analyst source article 最近一次 High sink 成功送达。
+    /// AnalystGrade 的通用 cooldown 按投行拆 key；这个查询补上同一 TheFly article
+    /// fanout 的批次防护，避免一个聚合页拆成 5-10 条不同 firm immediate。
+    pub fn last_high_sink_send_for_analyst_news_url(
+        &self,
+        actor: &str,
+        symbol: &str,
+        news_url: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<Option<DateTime<Utc>>> {
+        let news_url = news_url.trim();
+        if news_url.is_empty() {
+            return Ok(None);
+        }
+        let needle = format!("%\"{}\"%", symbol.to_uppercase());
+        let conn = self.conn.lock().unwrap();
+        let row: Option<i64> = conn.query_row(
+            r#"
+            SELECT MAX(d.sent_at_ts) FROM delivery_log d
+            JOIN events e ON d.event_id = e.id
+            WHERE d.actor = ?1
+              AND d.severity = 'high'
+              AND d.status = 'sent'
+              AND d.channel = 'sink'
+              AND d.sent_at_ts >= ?2
+              AND e.symbols_json LIKE ?3
+              AND e.kind_json LIKE '%"analyst_grade"%'
+              AND (
+                    json_extract(e.payload_json, '$.newsURL') = ?4
+                    OR e.url = ?4
+                  )
+            "#,
+            params![actor, since.timestamp(), needle, news_url],
+            |row| row.get::<_, Option<i64>>(0),
+        )?;
+        Ok(row.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0)))
+    }
+
     /// 返回 `since` 之后 actor 在 (symbol, direction) 上**已被 sink 推过的最大
     /// band bps**(从 `price_band:SYM:DATE:up:BPS` 的 id 末段解析)。供 dispatch
     /// 的「monotone 新高 + N」单一推送规则用 —— 新档 pct 必须比该值高出
@@ -1580,6 +1618,71 @@ mod tests {
                 )
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn last_high_sink_send_for_analyst_news_url_matches_same_article_fanout() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let actor = "tg::::u1";
+        let url = "https://thefly.com/ajax/news_get.php?id=4346982";
+
+        let mk = |id: &str, firm: &str, news_url: &str| MarketEvent {
+            id: id.into(),
+            kind: EventKind::AnalystGrade,
+            severity: Severity::High,
+            symbols: vec!["AMD".into()],
+            occurred_at: Utc::now(),
+            title: format!("AMD {firm} action"),
+            summary: String::new(),
+            url: Some(news_url.to_string()),
+            source: "fmp.upgrades_downgrades".into(),
+            payload: serde_json::json!({
+                "gradingCompany": firm,
+                "newsURL": news_url
+            }),
+        };
+        let needham = mk("grade:AMD:t:Needham", "Needham", url);
+        let jefferies = mk("grade:AMD:t:Jefferies", "Jefferies", url);
+        let other_url = mk(
+            "grade:AMD:t:RBC",
+            "RBC Capital",
+            "https://thefly.com/ajax/news_get.php?id=4346812",
+        );
+        store.insert_event(&needham).unwrap();
+        store.insert_event(&jefferies).unwrap();
+        store.insert_event(&other_url).unwrap();
+        store
+            .log_delivery(&needham.id, actor, "sink", Severity::High, "sent", None)
+            .unwrap();
+
+        let since = Utc::now() - chrono::Duration::minutes(5);
+        assert!(
+            store
+                .last_high_sink_send_for_analyst_news_url(actor, "AMD", url, since)
+                .unwrap()
+                .is_some(),
+            "same ticker + same newsURL fanout should be found"
+        );
+        assert!(
+            store
+                .last_high_sink_send_for_analyst_news_url(
+                    actor,
+                    "AMD",
+                    "https://thefly.com/ajax/news_get.php?id=4346812",
+                    since,
+                )
+                .unwrap()
+                .is_none(),
+            "different source article should not be cooled"
+        );
+        assert!(
+            store
+                .last_high_sink_send_for_analyst_news_url(actor, "NVDA", url, since)
+                .unwrap()
+                .is_none(),
+            "same URL for another ticker should not match"
         );
     }
 

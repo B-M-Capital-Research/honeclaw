@@ -300,6 +300,59 @@ async fn analyst_grade_two_firms_same_symbol_both_pass() {
 }
 
 #[tokio::test]
+async fn analyst_grade_same_news_url_fanout_demotes_second_firm() {
+    let mut reg = SubscriptionRegistry::new();
+    reg.register(Box::new(PortfolioSubscription::new(
+        actor("u1"),
+        vec!["AMD".into()],
+    )));
+    let sink = Arc::new(CapturingSink::default());
+    let dir = tempdir().unwrap();
+    let store = Arc::new(EventStore::open(dir.path().join("e.db")).unwrap());
+    let digest = Arc::new(DigestBuffer::new(dir.path().join("digest")).unwrap());
+    let router = NotificationRouter::new(
+        Arc::new(SharedRegistry::from_registry(reg)),
+        sink.clone(),
+        store.clone(),
+        digest.clone(),
+    )
+    .with_same_symbol_cooldown_minutes(60);
+
+    let url = "https://thefly.com/ajax/news_get.php?id=4346982";
+    let mut jefferies = analyst_grade_ev("grade:AMD:t:Jefferies", "AMD", "Jefferies");
+    jefferies.url = Some(url.into());
+    jefferies.payload = serde_json::json!({
+        "gradingCompany": "Jefferies",
+        "action": "downgrade",
+        "previousGrade": "Buy",
+        "newGrade": "Hold",
+        "newsURL": url
+    });
+    let mut btig = analyst_grade_ev("grade:AMD:t:BTIG", "AMD", "BTIG");
+    btig.url = Some(url.into());
+    btig.payload = serde_json::json!({
+        "gradingCompany": "BTIG",
+        "action": "upgrade",
+        "previousGrade": null,
+        "newGrade": "Buy",
+        "newsURL": url
+    });
+    store.insert_event(&jefferies).unwrap();
+    store.insert_event(&btig).unwrap();
+
+    assert_eq!(router.dispatch(&jefferies).await.unwrap(), (1, 0));
+    assert_eq!(
+        router.dispatch(&btig).await.unwrap(),
+        (0, 1),
+        "same ticker + same analyst source article should not fan out as multiple sink pushes"
+    );
+    assert_eq!(sink.calls.lock().unwrap().len(), 1);
+    let drained = digest.drain_actor(&actor("u1")).unwrap();
+    assert_eq!(drained.len(), 1);
+    assert_eq!(drained[0].id, btig.id);
+}
+
+#[tokio::test]
 async fn analyst_grade_same_firm_same_symbol_demotes() {
     let mut reg = SubscriptionRegistry::new();
     reg.register(Box::new(PortfolioSubscription::new(
