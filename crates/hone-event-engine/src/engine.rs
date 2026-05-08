@@ -19,6 +19,7 @@ use crate::fmp::FmpClient;
 use crate::news_classifier;
 use crate::pipeline;
 use crate::polisher::{BodyPolisher, NoopPolisher};
+use crate::pollers::earnings_quality::LlmEarningsQualityReviewer;
 use crate::pollers::{
     AnalystGradePoller, CorpActionCalendarPoller, EarningsPoller, EarningsSurprisePoller,
     ExtendedHoursPoller, MacroPoller, NewsPoller, PricePoller, RssNewsPoller, SecFilingsPoller,
@@ -58,6 +59,9 @@ pub struct EventEngine {
     /// SEC filing enrichment 的独立 LLM provider。允许调用方用更小的
     /// completion budget 装配该短摘要路径,避免复用 global_digest 的长输出预算。
     sec_filings_enrichment_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
+    /// EarningsReleased 综合质量 review 的独立 LLM provider。该路径输出 JSON
+    /// judgement,completion budget 介于短摘要和 global_digest 之间。
+    earnings_quality_review_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
     retention_days: i64,
 }
 
@@ -78,6 +82,7 @@ impl EventEngine {
             news_classifier: None,
             global_digest_provider: None,
             sec_filings_enrichment_provider: None,
+            earnings_quality_review_provider: None,
             retention_days: 30,
         }
     }
@@ -167,6 +172,18 @@ impl EventEngine {
         provider: Arc<dyn hone_llm::LlmProvider>,
     ) -> Self {
         self.sec_filings_enrichment_provider = Some(provider);
+        self
+    }
+
+    /// 注入 EarningsReleased 综合质量 review 专用 LLM provider。
+    ///
+    /// 该路径只在 earnings surprise 事件有近期 8-K 上下文时 best-effort 调用。
+    /// provider 不可用或 review 解析失败时,跳过 EPS-only candidate。
+    pub fn with_earnings_quality_review_provider(
+        mut self,
+        provider: Arc<dyn hone_llm::LlmProvider>,
+    ) -> Self {
+        self.earnings_quality_review_provider = Some(provider);
         self
     }
 
@@ -684,20 +701,49 @@ impl EventEngine {
             info!("analyst_grade poller disabled by config.sources.analyst_grade=false");
         }
         if fmp_available && sources.earnings_surprise {
-            let poller = EarningsSurprisePoller::new(
-                client.clone(),
-                registry.clone(),
-                SourceSchedule::CronAligned {
-                    prefetch_at: prefetch_at.clone(),
-                    tz_offset,
-                },
-            );
-            spawn_event_source(
-                Arc::new(poller),
-                store.clone(),
-                router.clone(),
-                task_runs_dir.clone(),
-            );
+            let review_cfg = &self.engine_cfg.earnings.quality_review;
+            let poller = if review_cfg.enabled {
+                if let Some(provider) = self.earnings_quality_review_provider.clone() {
+                    let reviewer = Arc::new(LlmEarningsQualityReviewer::new(
+                        provider,
+                        review_cfg.model.clone(),
+                    ));
+                    Some(
+                        EarningsSurprisePoller::new(
+                            client.clone(),
+                            registry.clone(),
+                            SourceSchedule::CronAligned {
+                                prefetch_at: prefetch_at.clone(),
+                                tz_offset,
+                            },
+                        )
+                        .with_quality_reviewer(
+                            reviewer,
+                            review_cfg.sec_recent_hours,
+                            review_cfg.context_max_chars,
+                            review_cfg.min_review_confidence,
+                            review_cfg.min_immediate_confidence,
+                            self.engine_cfg.sec_filings.enrichment.user_agent.clone(),
+                        ),
+                    )
+                } else {
+                    warn!(
+                        "earnings quality_review.enabled=true 但未注入 LlmProvider —— earnings_surprise poller 不启动"
+                    );
+                    None
+                }
+            } else {
+                warn!("earnings quality_review.enabled=false —— earnings_surprise poller 不启动");
+                None
+            };
+            if let Some(poller) = poller {
+                spawn_event_source(
+                    Arc::new(poller),
+                    store.clone(),
+                    router.clone(),
+                    task_runs_dir.clone(),
+                );
+            }
         } else if fmp_available {
             info!("earnings_surprise poller disabled by config.sources.earnings_surprise=false");
         }
@@ -804,13 +850,15 @@ mod tests {
     }
 
     #[test]
-    fn sec_filings_enrichment_provider_is_wired_separately_from_global_digest() {
+    fn short_budget_llm_providers_are_wired_separately_from_global_digest() {
         let global: Arc<dyn LlmProvider> = Arc::new(StubProvider);
         let sec: Arc<dyn LlmProvider> = Arc::new(StubProvider);
+        let earnings: Arc<dyn LlmProvider> = Arc::new(StubProvider);
 
         let engine = EventEngine::new(EventEngineConfig::default(), FmpConfig::default())
             .with_global_digest_provider(global.clone())
-            .with_sec_filings_enrichment_provider(sec.clone());
+            .with_sec_filings_enrichment_provider(sec.clone())
+            .with_earnings_quality_review_provider(earnings.clone());
 
         assert!(Arc::ptr_eq(
             engine.global_digest_provider.as_ref().unwrap(),
@@ -823,6 +871,14 @@ mod tests {
         assert!(!Arc::ptr_eq(
             engine.global_digest_provider.as_ref().unwrap(),
             engine.sec_filings_enrichment_provider.as_ref().unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            engine.earnings_quality_review_provider.as_ref().unwrap(),
+            &earnings
+        ));
+        assert!(!Arc::ptr_eq(
+            engine.global_digest_provider.as_ref().unwrap(),
+            engine.earnings_quality_review_provider.as_ref().unwrap()
         ));
     }
 }

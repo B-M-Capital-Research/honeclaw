@@ -16,6 +16,18 @@ Last updated: 2026-05-08
 - Current conclusion: 基于近期 event review 与 POC 结论，event engine 已补 analyst 同源文章 fanout 降噪、RSS 标题级保守实体链接，以及 Zacks 泛化模板回归证明；本轮没有新增 LLM 调用或 summary/body 宽匹配
 - Next entry point: `docs/handoffs/2026-04-23-event-engine-push-quality.md#2026-05-08-poc-后续收口`
 
+### Event Engine Earnings Quality Review
+
+- Status: done
+- Date: 2026-05-08
+- Plan: `docs/archive/plans/event-engine-earnings-quality-review.md`
+- Handoff: `docs/handoffs/2026-05-08-event-engine-earnings-quality-review.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-event-engine pollers::earnings_surprise`, `cargo test -p hone-event-engine pollers::earnings_quality`, `cargo test -p hone-event-engine --lib`, `cargo test -p hone-core --lib`, `cargo check -p hone-web-api`, changed-file `rustfmt --edition 2024 --check`; full `cargo fmt --all -- --check` currently blocked by unrelated formatting debt
+- Current conclusion: `EarningsReleased` 已移除 EPS-only 推送，并新增 best-effort LLM 综合财报 review；AAOI / CAI / CRWV POC 结论落地为 SEC 8-K 上下文 + `x-ai/grok-4.1-fast` 风格 JSON judgement，失败、缺上下文或低置信时跳过 candidate
+- Next entry point: `docs/handoffs/2026-05-08-event-engine-earnings-quality-review.md`
+
 ## 2026-04-30
 
 ### Feishu P1 直聊与定时任务可靠性修复批次

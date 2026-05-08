@@ -91,18 +91,83 @@ fn default_news_classifier_model() -> String {
 pub struct EarningsConfig {
     #[serde(default = "default_earnings_window_days")]
     pub window_days: i64,
+    #[serde(default)]
+    pub quality_review: EarningsQualityReviewConfig,
 }
 
 impl Default for EarningsConfig {
     fn default() -> Self {
         Self {
             window_days: default_earnings_window_days(),
+            quality_review: EarningsQualityReviewConfig::default(),
         }
     }
 }
 
 fn default_earnings_window_days() -> i64 {
     14
+}
+
+/// 财报发布后的综合质量判断配置。
+///
+/// `EarningsSurprisePoller` 的原始数据只有 EPS actual vs estimate。该 review
+/// 路径会在存在近期 SEC 8-K 财报新闻稿上下文时,用 LLM 综合收入、指引、backlog、
+/// GAAP/non-GAAP 利润、EBIT/EBITA/EBITDA、现金流与风险,决定是否保持即时推或降入
+/// digest。失败、缺少上下文或低置信时直接跳过 candidate,不再产出 EPS-only 推送。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarningsQualityReviewConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_earnings_quality_review_model")]
+    pub model: String,
+    #[serde(default = "default_earnings_quality_review_max_tokens")]
+    pub max_review_tokens: u32,
+    #[serde(default = "default_earnings_quality_review_min_confidence")]
+    pub min_review_confidence: f64,
+    #[serde(default = "default_earnings_quality_review_min_immediate_confidence")]
+    pub min_immediate_confidence: f64,
+    #[serde(default = "default_earnings_quality_review_sec_recent_hours")]
+    pub sec_recent_hours: i64,
+    #[serde(default = "default_earnings_quality_review_context_max_chars")]
+    pub context_max_chars: usize,
+}
+
+impl Default for EarningsQualityReviewConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            model: default_earnings_quality_review_model(),
+            max_review_tokens: default_earnings_quality_review_max_tokens(),
+            min_review_confidence: default_earnings_quality_review_min_confidence(),
+            min_immediate_confidence: default_earnings_quality_review_min_immediate_confidence(),
+            sec_recent_hours: default_earnings_quality_review_sec_recent_hours(),
+            context_max_chars: default_earnings_quality_review_context_max_chars(),
+        }
+    }
+}
+
+fn default_earnings_quality_review_model() -> String {
+    "x-ai/grok-4.1-fast".into()
+}
+
+fn default_earnings_quality_review_max_tokens() -> u32 {
+    1800
+}
+
+fn default_earnings_quality_review_min_confidence() -> f64 {
+    0.65
+}
+
+fn default_earnings_quality_review_min_immediate_confidence() -> f64 {
+    0.90
+}
+
+fn default_earnings_quality_review_sec_recent_hours() -> i64 {
+    72
+}
+
+fn default_earnings_quality_review_context_max_chars() -> usize {
+    9_000
 }
 
 /// SEC filings poller 配置。

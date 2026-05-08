@@ -264,8 +264,21 @@ event_engine:
   #   共享 `earnings_upcoming` kind,把它加进 `blocked_kinds` 即全程静音。
   #   典型取值:7(仅本周)、14(两周,默认)、21(三周,但信号老化)。小于 3 会让 T-3
   #   倒计时失效(因为 poller 看不到 T-3 的财报)。
+  # quality_review: EarningsSurprisePoller 原始数据只有 EPS actual vs estimate。
+  #   对亏损公司或 EPS 接近 0 的公司,百分比 surprise 会非常误导。开启后,若近期
+  #   SEC 8-K 财报新闻稿可抓取且 OpenRouter 可用,会用 LLM 综合收入、指引、backlog、
+  #   GAAP/non-GAAP 利润、EBIT/EBITA/EBITDA、现金流与风险来判断 immediate / digest。
+  #   失败、缺少上下文或低置信时直接跳过 candidate,不再产出 EPS-only 推送。
   earnings:
     window_days: 14
+    quality_review:
+      enabled: true
+      model: x-ai/grok-4.1-fast
+      max_review_tokens: 1800
+      min_review_confidence: 0.65
+      min_immediate_confidence: 0.9
+      sec_recent_hours: 72
+      context_max_chars: 9000
 
   # SEC filings poller 配置。
   # forms: 每 tick 对每只 watchlist ticker 拉哪些 form 类型。FMP 的 /v3/sec_filings

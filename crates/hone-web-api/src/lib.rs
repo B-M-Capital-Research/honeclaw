@@ -100,6 +100,15 @@ fn sec_filings_enrichment_max_tokens(core_cfg: &HoneConfig) -> u16 {
     requested.clamp(1, u16::MAX as u32) as u16
 }
 
+fn earnings_quality_review_max_tokens(core_cfg: &HoneConfig) -> u16 {
+    let requested = core_cfg
+        .event_engine
+        .earnings
+        .quality_review
+        .max_review_tokens;
+    requested.clamp(1, u16::MAX as u32) as u16
+}
+
 /// SEC filing enrichment 只生成短摘要,必须使用独立 completion budget。
 ///
 /// 不能复用 `llm.openrouter.max_tokens`:SEC filing 的 input 可以很长,但 output
@@ -123,6 +132,32 @@ fn build_sec_filings_enrichment_provider(core_cfg: &HoneConfig) -> Option<Arc<dy
         Err(e) => {
             tracing::warn!(
                 "event engine: sec_filings enrichment LLM provider 不可用,filing 摘要将降级: {e}"
+            );
+            None
+        }
+    }
+}
+
+/// EarningsReleased 综合质量 review 输出结构化 JSON judgement,同样使用独立
+/// completion budget。provider 不可用时 review 关闭,engine 不启动 EPS-only poller。
+fn build_earnings_quality_review_provider(core_cfg: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
+    let review = &core_cfg.event_engine.earnings.quality_review;
+    if !core_cfg.event_engine.sources.earnings_surprise || !review.enabled {
+        return None;
+    }
+    let max_tokens = earnings_quality_review_max_tokens(core_cfg);
+    match OpenRouterProvider::from_config_with_max_tokens(core_cfg, max_tokens) {
+        Ok(provider) => {
+            info!(
+                max_tokens,
+                model = %review.model,
+                "event engine: earnings quality review LLM provider 装配"
+            );
+            Some(Arc::new(provider) as Arc<dyn LlmProvider>)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "event engine: earnings quality review LLM provider 不可用,earnings_surprise 将跳过 EPS-only candidates: {e}"
             );
             None
         }
@@ -450,6 +485,8 @@ pub async fn start_server(
         let news_classifier = build_event_engine_news_classifier(&state.core.config);
         let sec_filings_enrichment_provider =
             build_sec_filings_enrichment_provider(&state.core.config);
+        let earnings_quality_review_provider =
+            build_earnings_quality_review_provider(&state.core.config);
         // global_digest 也走 OpenRouter,与 news_classifier 用同一 provider
         let global_digest_provider: Option<Arc<dyn LlmProvider>> =
             match OpenRouterProvider::from_config(&state.core.config) {
@@ -530,6 +567,9 @@ pub async fn start_server(
             }
             if let Some(p) = sec_filings_enrichment_provider {
                 engine = engine.with_sec_filings_enrichment_provider(p);
+            }
+            if let Some(p) = earnings_quality_review_provider {
+                engine = engine.with_earnings_quality_review_provider(p);
             }
             if let Err(e) = engine.start().await {
                 tracing::warn!("event engine start failed: {e}");

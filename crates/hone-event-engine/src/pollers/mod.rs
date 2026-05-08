@@ -6,6 +6,7 @@
 pub mod analyst_grade;
 pub mod corp_action;
 pub mod earnings;
+pub mod earnings_quality;
 pub mod earnings_surprise;
 pub mod extended_hours;
 pub mod macro_events;
