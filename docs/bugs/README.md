@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-08 07:05 CST
+最后更新：2026-05-08 11:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,9 +27,9 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-08 07:05 复发确认：Web direct `Actor_web__direct__web-user-e05f5e5f74a3` 在 `07:02:57-07:03:07` 完成 `persist_user + persist_assistant + success=true`，真实 JSON 已推进到 `2026-05-08T07:03:07+08:00`，但 `sessions/session_messages` 最新仍停在 `2026-04-27T16:54:20+08:00`；同库 `cron_job_runs` 已推进到 `07:01:15`，且当前 config/effective-config 仍为 `session_sqlite_shadow_write_enabled=false` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-08 11:03 复发持续：`sessions/session_messages` 最新仍停在 `2026-04-27T16:54:20+08:00`，`07:02-11:02` 窗口增量仍为 `0/0`；但 Web direct `Actor_web__direct__web-user-e05f5e5f74a3` 已在 `11:02:55-11:03:08` 完成 `OK` 心跳，Feishu direct 与 Discord scheduler JSON 源文件也已推进到 `09:31`，同库 `cron_job_runs` 已推进到 `11:01:38` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | New | 2026-05-04 08:04 `ORCL / Cerebras / 持仓重大事件` 在 `07:30` 刚回落 `noop + skipped_noop`，`08:00-08:01` 又把同一停盘静态价格与旧催化重新送达；期间没有新的开盘、收盘或独立催化 | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-05 12:02 最新 `11:30 / 12:00` 两轮窗口继续在 `Empty / JsonNoop / JsonTriggered` 之间切换；`11:30` 同窗里 `ORCL / TEM破位 / CAI / 持仓 / RKLB / ASTS` 批量落成 `skipped_error`，`12:00` 又出现 `小米 triggered + sent` 与 `ORCL parse_kind=JsonTriggered` 后被压成 `noop + skipped_noop` 的收口矛盾 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixing | 2026-05-08 11:03 最新 `07:02-11:02` 窗口仍混跑 `JsonNoop / JsonTriggered / JsonMalformed / Empty`；同窗 `81` 条 `noop + skipped_noop`、`16` 条 `completed + sent`、`4` 条 `execution_failed + skipped_error`，其中 `持仓重大事件心跳检测` 在 `09:31` malformed 后又于 `10:31/11:01` 空输出失败，`小米30港元破位预警` 在 `10:00` 空输出失败 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | New | 2026-05-03 20:31 `Cerebras IPO与业务进展心跳监控` 的 `run_id=14942` 再次落成 `execution_failed + skipped_error + delivered=0`，`error_message=max_iterations_exceeded:6`；`21:01` 下一窗同一 job 又直接回摆成 `completed + sent`，说明 live heartbeat 仍在触顶失败与后续回摆之间抖动 | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Telegram update listener 持续不可用，近一个月没有新消息入库 | P2 | New | 2026-04-27 17:34/18:02 两轮 runtime restart 都再次命中 `bot.get_me(): Invalid bot token` 并立即退出；最近 Telegram 会话仍停留在 2026-03-18 | [telegram_update_listener_connection_refused.md](./telegram_update_listener_connection_refused.md) |
 

@@ -7,6 +7,13 @@
 
 ## 修复进展
 
+- `2026-05-08 11:03 CST` 最近四小时真实窗口确认这条缺陷继续活跃，但坏态集中到少数 heartbeat job，整体仍在 `JsonNoop / JsonTriggered / JsonMalformed / Empty` 之间漂移：
+  - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`2026-05-08 07:02-11:02 CST` 窗口内共有 `81` 条 `noop + skipped_noop`、`16` 条 `completed + sent`、`4` 条 `execution_failed + skipped_error`。
+  - 失败集中在 heartbeat 链路：`持仓重大事件心跳检测` 在 `09:31:26` 落成 `heartbeat 输出不是合法 JSON`，`10:31:37` 与 `11:01:38` 又落成 `heartbeat 输出为空`；`小米30港元破位预警` 在 `10:00:17` 落成 `heartbeat 输出为空`。
+  - 同窗其它 heartbeat 又能正常回落 `noop + skipped_noop`，并且 `Cerebras IPO与业务进展心跳监控`、`全天原油价格3小时播报`、`Monitor_Watchlist_11` 在 `08:30-09:01` 仍出现 `completed + sent`，说明不是 scheduler 整体停摆，而是结构化输出协议仍未稳定收敛。
+  - `data/runtime/logs/sidecar.log` 同步记录 `09:31:26.090` 的 `parse_kind=JsonMalformed`，预览以 `{"status":"triggered","message":"【持仓重大事件速报...` 开头但未形成合法 JSON，随后被升级为 `execution_failed + skipped_error`；`10:00:17.201`、`10:31:37.707` 继续记录 `heartbeat 输出为空`。
+  - 结论：到 `2026-05-08 11:03` 为止，本单仍稳定活跃；严重等级维持 `P2`，状态维持 `Fixing`。这仍是功能性 bug，因为部分 heartbeat 本应触发或明确 noop 的窗口被结构化协议损坏压成失败跳过，而不是单纯文案质量问题。
+
 - `2026-05-05 12:02 CST` 最近一小时真实窗口确认这条缺陷继续活跃，而且 `11:30-12:02` 的最新两轮继续在同窗混跑 `Empty / JsonNoop / JsonTriggered`，结构化协议仍未收敛成稳定单一状态：
   - `data/sessions.sqlite3` 的 `cron_job_runs` 显示，`11:30` 与 `12:00` 两个窗口继续在同一公共 heartbeat 链路里分裂成多种坏态与恢复态：
     - `11:30` 窗口里，`run_id=15702`（`ORCL 大事件监控`）、`15705`（`TEM破位预警`）、`15708`（`CAI破位预警`）、`15709`（`持仓重大事件心跳检测`）、`15710`（`RKLB异动监控`）、`15711`（`ASTS 重大异动心跳监控`）全部落成 `execution_failed + skipped_error + delivered=0`，错误统一为 `heartbeat 输出为空，任务已标记失败`
