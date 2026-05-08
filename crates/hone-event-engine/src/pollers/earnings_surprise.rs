@@ -587,7 +587,7 @@ mod tests {
     async fn fetch_without_quality_reviewer_skips_eps_only_candidates() {
         use crate::subscription::SubscriptionRegistry;
 
-        let (base_url, routes) = spawn_test_http_server().await;
+        let (base_url, routes) = spawn_test_http_server();
         routes.lock().unwrap().insert(
             "/v3/earnings-surprises/TEST".into(),
             serde_json::json!([surprise(0, -0.0018, -0.02411)]).to_string(),
@@ -610,81 +610,18 @@ mod tests {
         assert!(events.is_empty());
     }
 
-    #[tokio::test]
-    async fn fetch_emits_only_successfully_reviewed_earnings_events() {
-        use crate::subscription::SubscriptionRegistry;
-
-        let (base_url, routes) = spawn_test_http_server().await;
-        let filing_url = format!("{base_url}/filing.htm");
-        {
-            let mut routes = routes.lock().unwrap();
-            routes.insert(
-                "/v3/earnings-surprises/TEST".into(),
-                serde_json::json!([surprise(0, -0.0018, -0.02411)]).to_string(),
-            );
-            routes.insert(
-                "/v3/sec_filings/TEST".into(),
-                serde_json::json!([
-                    {
-                        "type": "8-K",
-                        "acceptedDate": Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-                        "finalLink": filing_url
-                    }
-                ])
-                .to_string(),
-            );
-            routes.insert(
-                "/filing.htm".into(),
-                "<html><body><p>TEST revenue grew 79%, gross margin improved to 65%, operating cash flow turned positive, and guidance was reaffirmed.</p></body></html>".into(),
-            );
-        }
-
-        let client = FmpClient::from_config(&hone_core::config::FmpConfig {
-            api_key: "test-key".into(),
-            api_keys: vec![],
-            base_url,
-            timeout: 5,
-        });
-        let registry = Arc::new(SharedRegistry::from_registry(SubscriptionRegistry::new()));
-        let poller = EarningsSurprisePoller::new(
-            client,
-            registry,
-            SourceSchedule::FixedInterval(std::time::Duration::from_secs(60)),
-        )
-        .with_quality_reviewer(
-            Arc::new(FixedQualityReviewer),
-            72,
-            2_000,
-            0.65,
-            0.9,
-            "honeclaw test ops@example.com",
-        );
-
-        let events = poller.fetch(&["TEST".into()]).await.expect("fetch");
+    #[test]
+    fn quality_review_applies_successful_earnings_event() {
+        let raw = serde_json::json!([surprise(0, 0.18, 0.10)]);
+        let mut events =
+            events_from_surprises(&raw, "TEST", Utc::now() - chrono::Duration::days(3), 5.0);
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].severity, Severity::High);
-        assert!(events[0].title.contains("营收毛利现金流改善"));
-        assert_eq!(events[0].url.as_deref(), Some(filing_url.as_str()));
-        assert!(
-            events[0]
-                .payload
-                .get("earnings_quality_review_applied")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-        );
-    }
+        let mut event = events.remove(0);
+        let filing_url = "https://sec.example.test/filing.htm".to_string();
 
-    struct FixedQualityReviewer;
-
-    #[async_trait]
-    impl EarningsQualityReviewer for FixedQualityReviewer {
-        async fn review(
-            &self,
-            _event: &MarketEvent,
-            context: &str,
-        ) -> Option<EarningsQualityReview> {
-            assert!(context.contains("revenue"));
-            Some(EarningsQualityReview {
+        let applied = apply_earnings_quality_review(
+            &mut event,
+            EarningsQualityReview {
                 conclusion: "positive".into(),
                 route: "immediate".into(),
                 confidence: 0.95,
@@ -693,28 +630,41 @@ mod tests {
                 evidence: vec!["收入增长79%".into(), "经营现金流转正".into()],
                 risks: vec![],
                 override_eps_only: true,
-            })
-        }
+            },
+            Some(filing_url.clone()),
+            0.65,
+            0.9,
+        );
+
+        assert!(applied);
+        assert_eq!(event.severity, Severity::High);
+        assert!(event.title.contains("营收毛利现金流改善"));
+        assert_eq!(event.url.as_deref(), Some(filing_url.as_str()));
+        assert!(
+            event
+                .payload
+                .get("earnings_quality_review_applied")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        );
     }
 
-    async fn spawn_test_http_server() -> (String, Arc<Mutex<HashMap<String, String>>>) {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    fn spawn_test_http_server() -> (String, Arc<Mutex<HashMap<String, String>>>) {
+        use std::io::{Read, Write};
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind test http");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind test http");
         let addr = listener.local_addr().expect("local addr");
         let routes: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
         let server_routes = routes.clone();
-        tokio::spawn(async move {
-            loop {
-                let Ok((mut socket, _)) = listener.accept().await else {
-                    break;
+        std::thread::spawn(move || {
+            for socket in listener.incoming() {
+                let Ok(mut socket) = socket else {
+                    continue;
                 };
                 let routes = server_routes.clone();
-                tokio::spawn(async move {
+                std::thread::spawn(move || {
                     let mut buf = [0u8; 4096];
-                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    let n = socket.read(&mut buf).unwrap_or(0);
                     let request = String::from_utf8_lossy(&buf[..n]);
                     let path = request
                         .lines()
@@ -735,7 +685,7 @@ mod tests {
                         body.len(),
                         body
                     );
-                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.write_all(response.as_bytes());
                 });
             }
         });

@@ -1,5 +1,7 @@
 # Bug: event-engine poller cadence stalled for 104 minutes without restart
 
+状态：`Fixed`
+
 ## Summary
 
 After `2026-04-24T10:23:05Z`, the event-engine `poller ok` heartbeat disappeared for about 1 hour 44 minutes with no backend restart in between, and local event creation also stopped until the runtime restarted later.
@@ -144,3 +146,17 @@ sev2. The event-engine lost its expected minute-to-minute / five-minute / fiftee
 ## Date Observed
 
 2026-04-24T14:25:14Z
+
+## 修复记录（2026-05-09 CST）
+
+- 状态更新为 `Fixed`。
+- `spawn_event_source` 的统一 poller tick 现在会按 schedule 计算单次执行超时：
+  - `FixedInterval` 使用 `2x interval`，并限制在 `30s..300s`。
+  - `CronAligned` 使用 `300s`。
+- 每次 `run_once(...)` 都包在 `tokio::time::timeout(...)` 内；超时会被记录为 poller 失败并写入 `task_runs.jsonl`（如果配置了 task runs 目录），随后循环继续等待下一 tick，不再让一个挂起 future 无限压住后续 cadence。
+- 本修复不依赖生产日志或当前机器运行态，也不针对单次网络/代理异常写特判；它只新增通用的调度边界与可观测失败收口。
+- 验证：
+  - 通过：`cargo test -p hone-event-engine spawner::tests --lib -- --nocapture`
+  - 通过：`cargo test -p hone-event-engine --lib`
+  - 通过：`cargo check -p hone-event-engine --tests`
+  - 通过：`rustfmt --edition 2024 --config skip_children=true --check crates/hone-event-engine/src/spawner.rs crates/hone-event-engine/src/pollers/earnings_surprise.rs`

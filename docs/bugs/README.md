@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-09 07:03 CST
+最后更新：2026-05-09 07:20 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -148,8 +148,8 @@
 
 | 主题 | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Event-engine logged dryrun high sends while config dryrun was false | P2 | Approved | 2026-04-22 最新进程已装配 `MultiChannelSink` 且无新增 `[dryrun sink]`，但历史高优先级事件可能只打印却被记 `sent`，未自动重放 | [event_engine_dryrun_sink_under_non_dryrun_config.md](./archive/event_engine_dryrun_sink_under_non_dryrun_config.md) |
-| Event-engine enabled channel heartbeat write hit ENOSPC | P2 | Approved | 2026-04-22 后续 heartbeat 与磁盘空间恢复，原始 `No space left on device` 写失败仍缺持久 degraded 状态与容量根因 | [event_engine_heartbeat_enospc_write_failure.md](./archive/event_engine_heartbeat_enospc_write_failure.md) |
-| Event-engine poller cadence 曾无重启静默停摆 104 分钟 | P2 | Approved | 2026-04-24 已确认存在长达 104 分钟无 `poller ok` 且无新事件入库的停摆窗口；当前仍缺 per-source timeout / supervisor，因此保留为历史分析项 | [event_engine_poller_cadence_stall_without_restart.md](./archive/event_engine_poller_cadence_stall_without_restart.md) |
+| Event-engine logged dryrun high sends while config dryrun was false | P2 | Closed | 2026-05-09 复核入口文档已在 2026-04-25 关闭：`LogSink.success_status()` 已返回 `dryrun`，后续未再出现 `[dryrun sink]` 活跃流；本轮仅同步导航表旧状态 | [event_engine_dryrun_sink_under_non_dryrun_config.md](./archive/event_engine_dryrun_sink_under_non_dryrun_config.md) |
+| Event-engine enabled channel heartbeat write hit ENOSPC | P2 | Closed | 2026-05-09 复核入口文档已在 2026-04-25 关闭：原始 ENOSPC 为宿主机磁盘瞬时问题，后续 heartbeat 与磁盘空间已恢复；本轮仅同步导航表旧状态 | [event_engine_heartbeat_enospc_write_failure.md](./archive/event_engine_heartbeat_enospc_write_failure.md) |
+| Event-engine poller cadence 曾无重启静默停摆 104 分钟 | P2 | Fixed | 2026-05-09 `spawn_event_source` 统一为 poller tick 增加 schedule-aware timeout：fixed interval 使用 `2x` interval 并 clamp 到 `30s..300s`，cron-aligned 使用 `300s`；超时记失败后进入下一 tick，避免一个挂起 future 无限压住 cadence。`cargo test -p hone-event-engine --lib`、`cargo check -p hone-event-engine --tests` 通过 | [event_engine_poller_cadence_stall_without_restart.md](./archive/event_engine_poller_cadence_stall_without_restart.md) |
 | opencode ACP `session/prompt timeout (300s)` 问题分析 | - | Fixed | 2026-04-13 已收口到 ACP runners 公共等待逻辑 | [opencode_acp_prompt_timeout.md](./archive/opencode_acp_prompt_timeout.md) |
 | opencode ACP 相关的 Prompt 泄露与缓存失效问题分析 | - | Partial | Prompt Echo 已止血；完整多轮 message 级缓存复用仍未实现 | [opencode_prompt_issues.md](./archive/opencode_prompt_issues.md) |

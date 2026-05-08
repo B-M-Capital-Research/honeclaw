@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-05-08
+Last updated: 2026-05-09
+
+## 2026-05-09
+
+### Event Engine Poller Timeout Boundary
+
+- Status: done
+- Date: 2026-05-09
+- Plan: `docs/archive/plans/event-engine-poller-timeout-boundary.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-event-engine spawner::tests --lib -- --nocapture`, `cargo test -p hone-event-engine pollers::earnings_surprise::tests::quality_review_applies_successful_earnings_event --lib -- --nocapture`, `cargo test -p hone-event-engine --lib`, `cargo check -p hone-event-engine --tests`, changed-file `rustfmt --edition 2024 --check`
+- Current conclusion: event-engine unified poller ticks now have a bounded timeout, so a stuck `poll().await` / `run_once().await` records a failed tick and releases the loop for the next scheduled cadence instead of suppressing `poller ok` indefinitely
+- Next entry point: `docs/bugs/archive/event_engine_poller_cadence_stall_without_restart.md`
 
 ## 2026-05-08
 
