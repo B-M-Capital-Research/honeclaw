@@ -3,7 +3,26 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复进展（2026-05-08 19:05 CST）
+
+- 本轮复核 `2026-05-08 15:00` 最新坏样本后确认，上一轮输出侧 guard 的问题不是执行链路缺失，而是启发式边界过窄：
+  - “美伊在霍尔木兹海峡发生交火事件，推高风险溢价”“供应中断担忧”“关停风险”等写法没有稳定命中 causality trigger。
+  - 泛化的“仅供参考”会被当成原因归因已降级，从而可能让“行情报价仅供参考”误替代“原因归因未核验”。
+- `crates/hone-channels/src/scheduler.rs` 本轮继续沿 commodity heartbeat 公共出站边界加固：
+  - 高风险大宗商品归因识别扩展到 `原因 / 归因 / 推高 / 推升 / 风险溢价 / 担忧 / 供应中断 / 关停风险 / 美伊` 等表达。
+  - 不确定性放行条件改为原因/归因相关口径，例如 `原因未核验`、`归因待确认`、`暂不归因`、`来源不足`、`同窗核验`、`原因仅供参考`；单独的行情级 `仅供参考` 不再跳过原因 guard。
+  - 继续保持非大宗商品 heartbeat 不受影响，已明确标注原因归因待确认的原油播报不重复加前缀。
+- 新增回归覆盖：
+  - 最新同型 `美伊 / 霍尔木兹 / 推高风险溢价 / 供应中断担忧 / 关停风险` 坏样本会被自动加上用户可见归因口径。
+  - “价格为市场参考数据，仅供参考”这类泛化 disclaimer 不会绕过未核验原因归因 guard。
+- 验证：
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+  - `cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_prompt_requires_source_grounding_for_geopolitics --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 状态更新为 `Fixed`。后续若已部署当前代码后仍出现原油 / WTI / Brent heartbeat 将未核验宏观、地缘、供需或库存原因写成确定性主因，且没有 `commodity_causality_guarded=true` 或原因归因提示，应重新打开并优先核对新的归因措辞是否仍未被识别。
 
 ## 最新进展（2026-05-08 15:02 CST）
 

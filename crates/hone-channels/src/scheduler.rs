@@ -723,6 +723,8 @@ fn text_has_commodity_causality_claim(text: &str) -> bool {
 
     let causality_terms = [
         "主因",
+        "原因",
+        "归因",
         "主要受",
         "受",
         "驱动",
@@ -732,10 +734,22 @@ fn text_has_commodity_causality_claim(text: &str) -> bool {
         "影响",
         "背景",
         "因素",
+        "推高",
+        "推升",
+        "拉动",
+        "压制",
+        "担忧",
+        "风险",
+        "风险溢价",
+        "中断",
+        "关停",
+        "升级",
         "because",
         "dueto",
         "drivenby",
         "causedby",
+        "pushhigher",
+        "riskpremium",
     ];
     let high_risk_terms = [
         "地缘",
@@ -748,9 +762,13 @@ fn text_has_commodity_causality_claim(text: &str) -> bool {
         "军事",
         "战争",
         "关税",
+        "风险溢价",
+        "供应中断",
+        "关停风险",
         "中东",
         "伊朗",
         "霍尔木兹",
+        "美伊",
         "opec",
         "geopolitical",
         "supply",
@@ -759,6 +777,8 @@ fn text_has_commodity_causality_claim(text: &str) -> bool {
         "shipping",
         "sanction",
         "tariff",
+        "riskpremium",
+        "supplydisruption",
     ];
 
     causality_terms.iter().any(|term| compact.contains(term))
@@ -772,18 +792,25 @@ fn text_has_causality_uncertainty_qualifier(text: &str) -> bool {
         .collect::<String>()
         .to_ascii_lowercase();
     [
-        "未核验",
-        "待核验",
-        "待确认",
-        "需继续确认",
-        "仅供参考",
-        "暂不归因",
-        "原因未确认",
         "原因未核验",
+        "原因待核验",
+        "原因未确认",
+        "原因待确认",
+        "归因未核验",
+        "归因待核验",
+        "归因未确认",
+        "归因待确认",
+        "因果未核验",
+        "因果待核验",
+        "需继续确认",
+        "暂不归因",
         "来源不足",
         "同窗来源",
         "同窗核验",
         "本轮工具",
+        "原因仅供参考",
+        "归因仅供参考",
+        "线索仅供参考",
         "notverified",
         "unverified",
         "unconfirmed",
@@ -2357,6 +2384,69 @@ mod tests {
 
         assert!(guarded.contains("原因归因未完成同窗来源核验"));
         assert!(guarded.contains("不能视为已确认油价主因"));
+    }
+
+    #[test]
+    fn commodity_heartbeat_geopolitical_risk_premium_gets_guard() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "播报 WTI/Brent，并说明地缘政治影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "WTI 原油：$95.79/桶。地缘政治升级：美伊在霍尔木兹海峡发生交火事件，推高风险溢价。供应中断担忧：中东约 670 万桶/日产能存在关停风险。",
+            &event,
+        )
+        .expect("geopolitical risk-premium claim should be guarded");
+
+        assert!(guarded.contains("原因归因未完成同窗来源核验"));
+        assert!(guarded.contains("美伊在霍尔木兹海峡发生交火事件"));
+    }
+
+    #[test]
+    fn commodity_heartbeat_generic_market_disclaimer_does_not_bypass_causality_guard() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "播报 WTI/Brent，并说明地缘政治影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "注：价格为市场参考数据，仅供参考。近期变动主因：中东地缘风险溢价持续消退，OPEC+ 延续增产节奏。",
+            &event,
+        )
+        .expect("generic market disclaimer should not qualify causal claims");
+
+        assert!(guarded.contains("原因归因未完成同窗来源核验"));
     }
 
     #[test]
