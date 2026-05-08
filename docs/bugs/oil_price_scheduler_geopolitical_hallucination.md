@@ -3,7 +3,24 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
+
+## 最新进展（2026-05-08 15:02 CST）
+
+- `全天原油价格3小时播报` 在最近四小时真实窗口再次成功送达，且正文继续把未核验的地缘 / 供应归因写成确定性事实；这说明 `2026-05-07` 的输出侧 guard 修复结论在 live heartbeat 中再次失效：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=16863`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-05-08T15:00:51.341030+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `response_preview` 直接向用户发送 `WTI 原油：$95.79/桶（前收 $94.81，日内涨幅 +1.03%）`、`布伦特原油：$101.43/桶（前收 $100.06，日内涨幅 +1.37%）`。
+    - 同条正文把 `地缘政治升级：美伊在霍尔木兹海峡发生交火事件，推高风险溢价`、`供应中断担忧：中东约 670 万桶/日产能存在关停风险`、`EIA 数据显示 2026 年 Q1 原油和成品油价格大幅上涨` 写成价格变动原因。
+    - 正文没有看到 `未核验 / 待确认 / 仅供参考 / 同窗来源核验` 等不确定性口径；`detail_json.scheduler` 只有 `parse_kind=JsonTriggered`、`raw_preview`、`deliver_preview` 等字段，未看到 `commodity_causality_guarded=true`。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-08 15:00:51.341 CST` 对应 `parse_kind=JsonTriggered` 并成功 deliver，说明这不是中间草稿，而是已外发的最终可见播报。
+- 结论：到 `2026-05-08 15:02` 为止，这条功能性质量缺陷重新进入活跃态；最新样本同时包含具体未核验地缘事件、供应中断规模和价格数字，且缺少 guard 元数据与用户可见不确定性提示。严重等级维持 `P2`，状态从 `Fixed` 回退为 `New`。
 
 ## 修复进展（2026-05-07 19:07 CST）
 

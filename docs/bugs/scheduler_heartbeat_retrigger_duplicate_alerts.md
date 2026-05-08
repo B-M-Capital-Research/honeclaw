@@ -7,6 +7,15 @@
 - **证据来源**:
   - `2026-05-08 11:06 CST` 复核当前代码后关闭本单：heartbeat 调度事件已加载同 actor 最近送达历史，且 `heartbeat_duplicate_preview_match(...)` 会基于事实 token 与实体 anchor 抑制跨 job / 跨窗口的同一旧事件重复投递，同时保留不同实体与同 ticker 新事件的通过路径。定向验证通过：`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests`。当前机器旧窗口重复样本不再作为仓库活跃判据。
   - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `2026-05-08 15:02 CST` 最新巡检样本：
+      - `job_name=Cerebras IPO与业务进展心跳监控`
+      - `run_id=16783`，`executed_at=2026-05-08T11:30:56.951260+08:00`，落成 `completed + sent + delivered=1`，正文围绕 `S-1/A / OpenAI MRA / 路演启动 / 发行区间 / 预计 5月13日定价 / 5月14日挂牌` 发送。
+      - `run_id=16852`，`executed_at=2026-05-08T14:31:08.289558+08:00`，同一 job 再次落成 `completed + sent + delivered=1`，继续发送 `路演已启动、S-1 Amendment No.1、发行 2800 万股、$115-$125 区间、5月13日前后定价、5月14日最早交易` 这一组已在 `11:30` 送达的事实。
+      - `job_name=持仓重大事件心跳检测` 与 `job_name=RKLB异动监控`
+      - `run_id=16846`，`executed_at=2026-05-08T14:30:57.207608+08:00`，聚合持仓 heartbeat 发送 `RKLB Q1财报超预期 / backlog $22亿 / Motiv Space Systems / Anduril $3000万 HASTE / Raytheon Space Based Interceptor / Neutron + Electron 订单`。
+      - `run_id=16842`，`executed_at=2026-05-08T14:31:05.863720+08:00`，单标的 `RKLB异动监控` 在 9 秒后再次发送同一组 RKLB Q1、backlog、Motiv、Anduril、Raytheon 和发射订单事实。
+      - 这说明本机旧 live window 在 `2026-05-08 15:02` 仍能看到重复提醒样本；但当前代码已在 `11:06` 增加跨 job 送达历史加载与事实 token / 实体 anchor 去重，本轮不把该旧运行态证据重新登记为活跃缺陷。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
     - `2026-05-04 08:04 CST` 最新巡检样本：
       - `job_name=ORCL 大事件监控`
       - `run_id=15464`，`executed_at=2026-05-04T08:00:45.191722+08:00`，再次落成 `completed + sent + delivered=1`

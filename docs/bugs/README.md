@@ -17,17 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
 - 已修复 / 已关闭：96
 - 历史分析 / 部分止血：5
-- 当前活跃队列为空
+- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| _当前无活跃待修复缺陷_ | - | - | 2026-05-08 11:06 已基于仓库代码、配置和本地回归验证清空当前活跃队列；后续新证据按规则重新进入 `New` | - |
+| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | New | 2026-05-08 15:02 修复结论回退：`全天原油价格3小时播报` `run_id=16863` 已外发 `WTI $95.79 / Brent $101.43`，并把“美伊在霍尔木兹海峡发生交火”“中东约 670 万桶/日产能存在关停风险”作为确定性价格原因；正文没有看到“未核验 / 待确认 / 仅供参考 / 同窗来源核验”提示，`detail_json` 也未见 `commodity_causality_guarded=true` | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 
 ## Later / 待复现
 
@@ -54,7 +54,6 @@
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | Fixed | 2026-05-08 非 heartbeat scheduler 成功路径新增 `stale_market_data_fallback`：关键行情 / 报价 / `data_fetch` 失败且继续复用旧价格或旧收盘口径时，回滚旧价格正文、投递失败提示并记录 `failure_kind=stale_market_data_fallback`；`cargo test -p hone-channels scheduler::tests::scheduler_detects_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
 | Heartbeat 监控批量触发 OpenRouter `HTTP 402` 后整轮跳过并漏发告警 | P1 | Fixed | 2026-05-08 复核当前代码已将 heartbeat 专用 completion token 固定为 `4096` 并通过 `max_tokens_override` 进入 auxiliary provider；`provider_quota_exhausted` 仍显式记录。03:05 复活证据来自当前机器旧运行态 / 外部 credits，且 `can only afford 217` 低于可维护预算，不再作为当前活跃 bug；关联 Issue [#36](https://github.com/B-M-Capital-Research/honeclaw/issues/36) | [scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md](./scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md) |
 | Feishu scheduler 部分定时任务已进入执行和工具调用，但长期停在 `running/pending` 且无最终回复 | P1 | Fixed | 2026-05-08 已补两道收口：Feishu scheduler 启动时会回收超过 `agent.overall_timeout + 60s` 的 stale started row，统一补记为 `execution_failed + send_failed`；单次执行外层再加 `agent.overall_timeout + 30s` deadline，超时后立即记录 `scheduler_handler_timeout` 并向 direct session 写一次失败 transcript。`cargo test -p hone-memory stale_started_rows_can_be_recovered_as_failed -- --nocapture`、`cargo test -p hone-feishu persist_scheduler_timeout_failure_turn_is_idempotent -- --nocapture`、`cargo check -p hone-feishu --tests` 通过；关联 Issue [#39](https://github.com/B-M-Capital-Research/honeclaw/issues/39) | [feishu_scheduler_run_stuck_without_cron_job_run.md](./feishu_scheduler_run_stuck_without_cron_job_run.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixed | 2026-05-07 原油 / WTI / Brent / 大宗商品类 heartbeat 外发正文增加输出侧归因 guard：高风险宏观、地缘、供需、库存、OPEC、航运、关税等因果归因若没有“未核验 / 待确认 / 仅供参考 / 同窗来源核验”等口径，会自动加用户可见未核验提示并记录 `commodity_causality_guarded=true`；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./archive/oil_price_scheduler_geopolitical_hallucination.md) |
 | Daily macOS build 在 `.app` 生成后 DMG bundling 失败，最终 `.dmg` 缺失 | P1 | Fixed | 2026-05-07 本机打包缓存已生成最终 `Hone Financial_0.7.0_aarch64.dmg`，`hdiutil verify` 返回 checksum valid；本轮未改代码，原阻断按当前本机验证链路关闭；无关联 GitHub Issue | [daily_macos_build_dmg_bundle_failed.md](./archive/daily_macos_build_dmg_bundle_failed.md) |
 | Feishu 直达定时任务已生成最终播报，但 event-engine / scheduler 发送阶段再次稳定返回 `open_id cross app` | P1 | Fixed | 2026-05-07 复核当前代码已覆盖 scheduler 历史 `ou_...` current-app open_id 重解析与 event-engine 单用户联系人唯一解析 fallback；不再以当前机器旧 live 日志作为活跃证据；`cargo test -p hone-feishu scheduler_resolution_target -- --nocapture` 通过；关联 Issue [#25](https://github.com/B-M-Capital-Research/honeclaw/issues/25) | [feishu_scheduler_send_failed_http_400_after_generation.md](./archive/feishu_scheduler_send_failed_http_400_after_generation.md) |
 | SEC filing enrichment 复用全局 OpenRouter max_tokens 触发 `HTTP 402` | P2 | Fixed | 2026-05-07 SEC filing 摘要改用独立 capped OpenRouter provider，并追加 section-aware 摘抄修复 TEM 10-Q `54381 > 6713`；随后对 `5198/3956 > 3256` 增加 `10k -> 7k -> 4.5k -> 2.8k` 语义摘抄重试；定向 web-api / event-engine 测试和 `cargo check -p hone-web-api` 通过；无关联 GitHub Issue | [sec_enrichment_openrouter_max_tokens_402.md](./archive/sec_enrichment_openrouter_max_tokens_402.md) |
