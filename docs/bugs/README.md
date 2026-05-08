@@ -17,17 +17,15 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：97
+- 已修复 / 已关闭：98
 - 历史分析 / 部分止血：5
-- 当前活跃队列优先处理 event-engine mainline distill 的 OpenRouter token budget 问题
+- 当前活跃队列为空
 
 ## 活跃待修复
 
-| Bug | 严重等级 | 状态 | 修复情况 | 入口 |
-| --- | --- | --- | --- | --- |
-| Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | New | 2026-05-09 07:03 最近四小时 `mainline distill cron` 因 `missing_holdings` 批量触发，但 OpenRouter 返回 `requested up to 30000 tokens, but can only afford 539`，多个 actor 落成 `distilled=0`；需为 global digest / mainline distill 增加独立短摘要 cap 或语义摘抄 | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |
+当前无活跃待修复缺陷。
 
 ## Later / 待复现
 
@@ -47,6 +45,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-09 07:03 只读复核显示当前 live runtime 仍未追平：`sessions/session_messages` 最大时间仍停在 `2026-04-27T16:54:20+08:00`，但 06:52-06:58 Feishu direct 已完成 `persist_user -> persist_assistant -> reply.send`；鉴于 03:28 代码修复已覆盖 CLI config 生成/写回路径并补 `SessionStorage` 启动 best-effort JSON -> SQLite shadow 回填，暂不把旧 live runtime 证据回退为 `New`，下次重启后继续复核 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-08 19:09 新增 malformed-triggered 恢复边界：坏 JSON 明确包含 `status=triggered` 与 `message` 时提取正文继续进入既有投递/抑制/净化链路；普通坏 JSON 仍失败审计。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixed | 2026-05-08 19:05 commodity heartbeat 归因 guard 扩展覆盖“推高风险溢价 / 供应中断担忧 / 关停风险 / 美伊”等最新坏样本，并收紧泛化 `仅供参考` 放行条件；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_prompt_requires_source_grounding_for_geopolitics --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |

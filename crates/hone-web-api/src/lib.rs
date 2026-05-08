@@ -62,6 +62,7 @@ fn build_event_engine_polisher(
 }
 
 const DEFAULT_EVENT_ENGINE_NEWS_CLASSIFIER_MODEL: &str = "amazon/nova-lite-v1";
+const DEFAULT_MAINLINE_DISTILL_MAX_TOKENS: u16 = 1200;
 
 /// 装配"不确定来源 NewsCritical → LLM 仲裁"分类器。
 /// 走 OpenRouter,key 复用 llm.openrouter.api_key。
@@ -107,6 +108,10 @@ fn earnings_quality_review_max_tokens(core_cfg: &HoneConfig) -> u16 {
         .quality_review
         .max_review_tokens;
     requested.clamp(1, u16::MAX as u32) as u16
+}
+
+fn mainline_distill_max_tokens(_core_cfg: &HoneConfig) -> u16 {
+    DEFAULT_MAINLINE_DISTILL_MAX_TOKENS
 }
 
 /// SEC filing enrichment 只生成短摘要,必须使用独立 completion budget。
@@ -159,6 +164,31 @@ fn build_earnings_quality_review_provider(core_cfg: &HoneConfig) -> Option<Arc<d
             tracing::warn!(
                 "event engine: earnings quality review LLM provider 不可用,earnings_surprise 将跳过 EPS-only candidates: {e}"
             );
+            None
+        }
+    }
+}
+
+/// Mainline distill 只输出 1-2 句投资主线,不能复用全局长输出 budget。
+///
+/// 复用 `llm.openrouter.max_tokens` 会让 OpenRouter 在低余额时按 30k completion
+/// tokens 预授权,导致短摘要任务也触发 HTTP 402。
+fn build_mainline_distill_provider(core_cfg: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
+    if !core_cfg.event_engine.global_digest.enabled {
+        return None;
+    }
+    let max_tokens = mainline_distill_max_tokens(core_cfg);
+    match OpenRouterProvider::from_config_with_max_tokens(core_cfg, max_tokens) {
+        Ok(provider) => {
+            info!(
+                max_tokens,
+                model = %core_cfg.event_engine.global_digest.event_dedupe_model,
+                "event engine: mainline distill LLM provider 装配"
+            );
+            Some(Arc::new(provider) as Arc<dyn LlmProvider>)
+        }
+        Err(e) => {
+            tracing::warn!("mainline distill LLM provider 不可用: {e}");
             None
         }
     }
@@ -487,6 +517,7 @@ pub async fn start_server(
             build_sec_filings_enrichment_provider(&state.core.config);
         let earnings_quality_review_provider =
             build_earnings_quality_review_provider(&state.core.config);
+        let mainline_distill_provider = build_mainline_distill_provider(&state.core.config);
         // global_digest 也走 OpenRouter,与 news_classifier 用同一 provider
         let global_digest_provider: Option<Arc<dyn LlmProvider>> =
             match OpenRouterProvider::from_config(&state.core.config) {
@@ -498,7 +529,7 @@ pub async fn start_server(
             };
 
         // ── 投资主线蒸馏 cron(每 7 天扫一次,独立 task,挂掉不影响 digest)──
-        if let Some(p) = global_digest_provider.clone() {
+        if let Some(p) = mainline_distill_provider {
             let distill_model = state
                 .core
                 .config
@@ -674,5 +705,13 @@ mod tests {
 
         cfg.event_engine.sec_filings.enrichment.max_summary_tokens = 70_000;
         assert_eq!(sec_filings_enrichment_max_tokens(&cfg), u16::MAX);
+    }
+
+    #[test]
+    fn mainline_distill_uses_short_completion_budget() {
+        let mut cfg = HoneConfig::default();
+        cfg.llm.openrouter.max_tokens = 30_000;
+
+        assert_eq!(mainline_distill_max_tokens(&cfg), 1200);
     }
 }

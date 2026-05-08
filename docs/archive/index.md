@@ -16,6 +16,18 @@ Last updated: 2026-05-09
 - Current conclusion: event-engine unified poller ticks now have a bounded timeout, so a stuck `poll().await` / `run_once().await` records a failed tick and releases the loop for the next scheduled cadence instead of suppressing `poller ok` indefinitely
 - Next entry point: `docs/bugs/archive/event_engine_poller_cadence_stall_without_restart.md`
 
+### Event Engine Mainline Distill Token Cap
+
+- Status: done
+- Date: 2026-05-09
+- Plan: `docs/archive/plans/event-engine-mainline-distill-token-cap.md`
+- Handoff: N/A
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`, `cargo check -p hone-web-api --tests`, changed-file `rustfmt --edition 2024 --check`
+- Current conclusion: mainline distill cron now uses its own OpenRouter provider capped at 1200 completion tokens instead of inheriting global `llm.openrouter.max_tokens`, closing the HTTP 402 preauthorization failure for short investment-mainline summaries
+- Next entry point: `docs/bugs/event_engine_mainline_distill_openrouter_402.md`
+
 ## 2026-05-08
 
 ### Event-engine Push Quality Hardening

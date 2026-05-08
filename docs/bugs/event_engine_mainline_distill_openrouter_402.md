@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-09 07:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 - **证据来源**:
   - `data/runtime/logs/desktop_release_app.log`
@@ -54,3 +54,19 @@
 - 为 global digest / mainline distill 创建独立 capped provider，默认 completion cap 可从 `800-1500` token 起步，并增加配置项或复用 event-engine 下的短摘要 cap。
 - 对 profile markdown 先做语义摘抄或长度上限，避免 prompt input 也在低额度时触发 provider 预授权失败。
 - 在 `distill_and_persist_one` 或 cron 观测字段中区分 `provider_quota_exhausted`、`missing_profile`、`profile_parse_failed`，避免所有失败都只体现为 skipped ticker。
+
+## 修复记录（2026-05-09 CST）
+
+- 状态更新为 `Fixed`。
+- `hone-web-api` 启动 event-engine 时，mainline distill cron 不再复用 `global_digest_provider` / 全局 `llm.openrouter.max_tokens`。
+- 新增 `build_mainline_distill_provider(...)`，通过 `OpenRouterProvider::from_config_with_max_tokens(...)` 装配独立短输出 provider，completion cap 固定为 `1200` tokens；global digest curator 仍保留原 provider。
+- 该修复不针对单次 OpenRouter 余额波动写特判，只收窄后台短摘要任务的通用 completion budget，避免 1-2 句主线蒸馏申请 30k completion tokens。
+- 验证：
+  - 通过：`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`
+  - 通过：`cargo check -p hone-web-api --tests`
+  - 通过：`rustfmt --edition 2024 --config skip_children=true --check crates/hone-web-api/src/lib.rs`
+
+## 后续建议
+
+- 如后续低额度下仍出现 prompt/input 预算相关 402，再对 profile markdown 增加 section-aware excerpt 或字符预算分档重试。
+- `distill_and_persist_one` 的失败分类仍可继续增强，但不阻塞本轮 completion budget 根因闭环。
