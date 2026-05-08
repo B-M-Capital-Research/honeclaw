@@ -3,9 +3,10 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-05-08 23:02 CST` 修复结论回退为 `New`：本轮巡检确认当前 `data/sessions.sqlite3` 的 `sessions.max(updated_at)` / `sessions.max(last_message_at)` 与 `session_messages.max(timestamp)` / `session_messages.max(imported_at)` 仍共同停在 `2026-04-27T16:54:20.03xxxx+08:00`。但最近四小时运行日志显示真实 Feishu 直聊仍在成功收口：`2026-05-08 22:52 CST` 会话 `Actor_feishu__direct__ou_5fa9f9c5a4ffae3447aea8af48be37119a` 完成 `session.persist_assistant -> done success=true -> reply.send segments.sent=2/2`；`22:59 CST` 会话 `Actor_feishu__direct__ou_5f175714e91a60d34339460cdd1268f8fb` 完成 `session.persist_user -> session.persist_assistant -> done success=true -> reply.send segments.sent=1/1`；`23:01 CST` 会话 `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773` 完成 `session.persist_assistant -> done success=true`。同一 sqlite 库的 `cron_job_runs` 已推进到 `run_id=17071 @ 2026-05-08T23:00:16+08:00`，说明数据库仍可写，停滞范围继续集中在 `sessions` / `session_messages` 会话镜像链路。该问题影响巡检和后续 agent 读取真实最近会话，因此继续按功能性 P2 跟踪。
 - `2026-05-08 11:06 CST` 复核当前仓库与本机生成态配置后关闭本单：`config.yaml`、`data/runtime/desktop-config/config.yaml` 与 `data/runtime/effective-config.yaml` 均已为 `storage.session_sqlite_shadow_write_enabled: true`，当前代码也已在 Desktop runtime config 物化前调用 `normalize_runtime_storage_rollout_settings(...)`，会把历史 canonical 显式 `false` 迁回 `true`。定向验证通过：`cargo test -p hone-core test_normalize_runtime_storage_rollout_settings_enables_session_shadow_write -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env::tests::desktop_canonical_config_path_ -- --nocapture`。本轮不再依赖当前机器旧 live runtime / 生产日志判定活跃，结论为仓库代码与本机配置层已恢复 JSON -> SQLite shadow write。
 - `2026-05-08 11:03 CST` 同步保留巡检证据：最近四小时本机 `data/sessions.sqlite3` 的 `sessions/session_messages` 仍无增量，而 JSON 会话源文件和 `cron_job_runs` 继续推进。这说明当时运行中的本地 runtime 可能仍未重启到最新配置/代码；按本任务约束，当前机器旧 live runtime 不再作为生产判定来源，因此不再用该证据维持活跃状态。
 - `2026-05-08 15:02 CST` 同步保留本轮只读巡检证据：当前本机 `data/sessions.sqlite3` 的 `sessions/session_messages` 仍停在 `2026-04-27T16:54:20+08:00`，而 `11:02-15:02` 窗口内 10 个真实 JSON 会话文件继续更新，`cron_job_runs` 也新增 `89` 条并推进到 `15:01:56`。这与 `11:03` 证据一致，仍指向当前运行态未追平；但鉴于 `11:06` 已有代码与本机配置层修复验证，本轮不把该旧 live runtime 证据重新登记为 `New`。

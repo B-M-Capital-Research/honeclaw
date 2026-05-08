@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-08 19:09 CST
+最后更新：2026-05-08 23:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,17 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：97
+- 已修复 / 已关闭：96
 - 历史分析 / 部分止血：5
-- 当前活跃队列为空。
+- 当前活跃队列含 0 条 `P1`；最高待修优先级为 `P2`
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 暂无 | - | - | - | - |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-08 23:02 修复结论回退：`sessions` / `session_messages` 仍停在 `2026-04-27T16:54:20+08:00`，但最近四小时 Feishu 直聊在 `22:52`、`22:59`、`23:01 CST` 连续完成 `session.persist_assistant` / `reply.send`；同库 `cron_job_runs` 已推进到 `run_id=17071 @ 23:00:16`，说明数据库可写但会话镜像链路仍停滞 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 
 ## Later / 待复现
 
@@ -49,7 +49,6 @@
 | --- | --- | --- | --- | --- |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-08 19:09 新增 malformed-triggered 恢复边界：坏 JSON 明确包含 `status=triggered` 与 `message` 时提取正文继续进入既有投递/抑制/净化链路；普通坏 JSON 仍失败审计。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixed | 2026-05-08 19:05 commodity heartbeat 归因 guard 扩展覆盖“推高风险溢价 / 供应中断担忧 / 关停风险 / 美伊”等最新坏样本，并收紧泛化 `仅供参考` 放行条件；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_prompt_requires_source_grounding_for_geopolitics --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-08 11:06 当前 `config.yaml`、desktop canonical config 与 `effective-config.yaml` 均为 `session_sqlite_shadow_write_enabled=true`；Desktop runtime 物化前会规范化历史 canonical `false`。`cargo test -p hone-core test_normalize_runtime_storage_rollout_settings_enables_session_shadow_write -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env::tests::desktop_canonical_config_path_ -- --nocapture` 通过；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-08 11:06 当前 heartbeat auxiliary runner 固定 `max_iterations=10` 与 `max_tokens_override=4096`，runner error 会记录 `failure_kind` 而不是伪装正常 noop；旧 `:6` 样本按未部署/旧运行态处理。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | Fixed | 2026-05-08 11:06 当前 heartbeat 调度事件加载同 actor 最近送达历史，跨 job 重复由事实 token + 实体 anchor 抑制，同时保留不同实体/同 ticker 新事件通过路径。`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | Fixed | 2026-05-08 非 heartbeat scheduler 成功路径新增 `stale_market_data_fallback`：关键行情 / 报价 / `data_fetch` 失败且继续复用旧价格或旧收盘口径时，回滚旧价格正文、投递失败提示并记录 `failure_kind=stale_market_data_fallback`；`cargo test -p hone-channels scheduler::tests::scheduler_detects_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
