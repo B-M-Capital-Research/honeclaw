@@ -3,9 +3,20 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-05-08 19:06 CST` 修复结论回退：最近四小时真实窗口再次证明 heartbeat 结构化输出漂移仍会吞掉本应发送的提醒，而不只是“显式失败可审计”。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=16917`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-05-08T17:31:32.198587+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`。
+    - `detail_json.parse_kind=JsonMalformed`，`raw_chars=1043`，`raw_preview` 以 `{"status":"triggered","message":"【Cerebras IPO 心跳监控 · 2026-05-08 17:30 北京时间】...` 开头，正文已包含“IPO 认购需求强劲”“市场报道/未核验”等可见提醒内容。
+    - `run_id=16956`，`job_name=持仓重大事件心跳检测`，`executed_at=2026-05-08T19:00:57.170280+08:00`，同样落成 `execution_failed + skipped_error + delivered=0`。
+    - `detail_json.parse_kind=JsonMalformed`，`raw_chars=511`，`raw_preview` 以 `{"status":"triggered","message":"【持仓重大事件 · 2026-05-08 19:00 北京】...` 开头，正文已列出 ASTS 大股东减持、内部人减持、BlueBird 7 发射异常等触发条件。
+  - `data/runtime/logs/sidecar.log` 与 `data/runtime/logs/web.log.2026-05-08`
+    - `2026-05-08 17:31:32` 与 `19:00:57` 均记录 `parse_kind=JsonMalformed` 后直接 `parse failure escalated`，随后 Feishu scheduler 记录“定时任务执行失败，本轮不发送”。
+  - 同一窗口还存在 `run_id=16893/16902/16947` 的 `Empty + skipped_error`，但这些只证明空输出被显式失败收口；真正导致状态回退的是 `JsonMalformed` 样本已经包含 `triggered` 消息正文，却因 JSON 引号 / 截断问题整轮未投递。
+  - 结论：当前修复只能把坏结构输出归为失败并留审计字段，仍不能恢复或降级投递“明显已经生成的 triggered 消息”。这已经影响 heartbeat 自动提醒主功能链路，因此严重等级维持 `P2`，状态从 `Fixed` 回退为 `New`。
 
 - `2026-05-08 11:06 CST` 复核当前代码后关闭本单：heartbeat 输出收口已具备稳定结构化边界，`Empty`、`JsonEmptyStatus`、`JsonUnknownStatus`、`JsonMalformed` 与 `PlainTextSuppressed` 都会显式落成 `execution_failed + skipped_error` 并保留 `parse_kind/raw_preview`，不再伪装成合法未触发；合法 `JsonNoop` 仍走 `noop + skipped_noop`，合法 `JsonTriggered` 才进入投递。定向验证通过：`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests`。本轮不再用当前机器旧 live window 的模型漂移作为活跃证据。
 - `2026-05-08 11:03 CST` 同步保留巡检证据：最近四小时本机窗口仍出现 `JsonNoop / JsonTriggered / JsonMalformed / Empty` 混跑，其中少数 heartbeat 被显式记录为 `execution_failed + skipped_error`。这证明当前收口边界已经能区分坏输出与合法 noop；剩余模型输出漂移依赖本机旧运行态和外部模型行为，本轮不再据此维持活跃状态或添加单次特判。
