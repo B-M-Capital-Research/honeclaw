@@ -844,12 +844,15 @@ fn scheduler_event_is_commodity_heartbeat(event: &SchedulerEvent) -> bool {
         || haystack.contains("oil price")
 }
 
-fn text_has_commodity_causality_claim(text: &str) -> bool {
-    let compact = text
-        .chars()
+fn compact_lowercase_text(text: &str) -> String {
+    text.chars()
         .filter(|ch| !ch.is_whitespace())
         .collect::<String>()
-        .to_ascii_lowercase();
+        .to_ascii_lowercase()
+}
+
+fn text_has_commodity_causality_claim(text: &str) -> bool {
+    let compact = compact_lowercase_text(text);
     if compact.is_empty() {
         return false;
     }
@@ -918,52 +921,161 @@ fn text_has_commodity_causality_claim(text: &str) -> bool {
         && high_risk_terms.iter().any(|term| compact.contains(term))
 }
 
-fn text_has_causality_uncertainty_qualifier(text: &str) -> bool {
-    let compact = text
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect::<String>()
-        .to_ascii_lowercase();
+fn split_commodity_message_segments(text: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        current.push(ch);
+        if matches!(ch, '\n' | '。' | '；' | ';' | '!' | '！' | '?' | '？') {
+            let trimmed = current.trim();
+            if !trimmed.is_empty() {
+                segments.push(trimmed.to_string());
+            }
+            current.clear();
+        }
+    }
+    let trimmed = current.trim();
+    if !trimmed.is_empty() {
+        segments.push(trimmed.to_string());
+    }
+    segments
+}
+
+fn text_has_speculative_commodity_price(text: &str) -> bool {
+    let compact = compact_lowercase_text(text);
     [
-        "原因未核验",
-        "原因待核验",
-        "原因未确认",
-        "原因待确认",
-        "归因未核验",
-        "归因待核验",
-        "归因未确认",
-        "归因待确认",
-        "因果未核验",
-        "因果待核验",
-        "需继续确认",
-        "暂不归因",
-        "来源不足",
-        "同窗来源",
-        "同窗核验",
-        "本轮工具",
-        "原因仅供参考",
-        "归因仅供参考",
-        "线索仅供参考",
-        "notverified",
-        "unverified",
-        "unconfirmed",
+        "估算",
+        "推算",
+        "预测",
+        "预测区间",
+        "通常较",
+        "贴水",
+        "未独立校验",
+        "精确收盘价未",
+        "assume",
+        "estimated",
+        "forecast",
     ]
     .iter()
     .any(|term| compact.contains(term))
 }
 
+fn text_looks_like_commodity_price_observation(text: &str) -> bool {
+    let compact = compact_lowercase_text(text);
+    let mentions_commodity = ["原油", "油价", "布伦特", "wti", "brent", "crude", "oil"]
+        .iter()
+        .any(|term| compact.contains(term));
+    let has_numeric_quote = text.chars().any(|ch| ch.is_ascii_digit())
+        && ["$", "美元", "桶"].iter().any(|term| text.contains(term));
+
+    mentions_commodity
+        && has_numeric_quote
+        && !text_has_commodity_causality_claim(text)
+        && !text_has_speculative_commodity_price(text)
+}
+
+fn rewrite_commodity_causality_message(text: &str) -> String {
+    let mut retained_segments = Vec::new();
+    for segment in split_commodity_message_segments(text) {
+        if text_looks_like_commodity_price_observation(&segment)
+            && !retained_segments
+                .iter()
+                .any(|existing| existing == &segment)
+        {
+            retained_segments.push(segment);
+        }
+        if retained_segments.len() >= 4 {
+            break;
+        }
+    }
+
+    let mut rewritten = "【归因口径】本轮原油/大宗商品播报包含未完成同窗来源核验的原因归因，已移除原正文中的宏观、地缘、供需、库存等主因叙述；不能视为已确认油价主因。"
+        .to_string();
+    if retained_segments.is_empty() {
+        rewritten.push_str(
+            "\n本轮未保留原正文中的价格或归因句；请等待下一轮核验或手动查询交易所/官方数据。",
+        );
+    } else {
+        rewritten.push_str("\n【已保留的价格口径】");
+        for segment in retained_segments {
+            rewritten.push_str("\n- ");
+            rewritten.push_str(segment.trim());
+        }
+    }
+    rewritten
+}
+
 fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Option<String> {
-    if !scheduler_event_is_commodity_heartbeat(event)
-        || !text_has_commodity_causality_claim(text)
-        || text_has_causality_uncertainty_qualifier(text)
-    {
+    if !scheduler_event_is_commodity_heartbeat(event) || !text_has_commodity_causality_claim(text) {
         return None;
     }
 
-    Some(format!(
-        "【归因口径】原因归因未完成同窗来源核验，以下宏观、地缘、供需表述仅作待确认线索，不能视为已确认油价主因。\n{}",
-        text.trim()
-    ))
+    let rewritten = rewrite_commodity_causality_message(text);
+    if rewritten.trim() == text.trim() {
+        None
+    } else {
+        Some(rewritten)
+    }
+}
+
+fn text_has_direct_trade_instruction(text: &str) -> bool {
+    let compact = compact_lowercase_text(text);
+    [
+        "无条件止损",
+        "必须止损",
+        "必须卖出",
+        "必须清仓",
+        "立即止损",
+        "立即卖出",
+        "立即清仓",
+        "马上止损",
+        "马上卖出",
+        "马上清仓",
+        "立即买入",
+        "马上买入",
+        "全仓买入",
+        "无条件买入",
+        "无条件卖出",
+        "mustsell",
+        "sellimmediately",
+        "liquidateimmediately",
+        "buyimmediately",
+        "stoplossimmediately",
+    ]
+    .iter()
+    .any(|term| compact.contains(term))
+}
+
+fn rewrite_direct_trade_instruction_message(text: &str) -> String {
+    let retained_segments = split_commodity_message_segments(text)
+        .into_iter()
+        .filter(|segment| !text_has_direct_trade_instruction(segment))
+        .take(6)
+        .collect::<Vec<_>>();
+
+    let mut rewritten = "【风险提示】本轮自动预警只确认触发条件与风险事实，不构成买卖、止损、加仓或清仓指令。若你原本以该阈值作为风控线，请结合仓位、成本、流动性和风险承受能力复核；需要动作时应按你预先设定的条件执行。"
+        .to_string();
+    if !retained_segments.is_empty() {
+        rewritten.push_str("\n【触发事实】");
+        for segment in retained_segments {
+            rewritten.push_str("\n- ");
+            rewritten.push_str(segment.trim());
+        }
+    }
+    rewritten
+}
+
+fn guard_direct_trade_instruction_for_event(text: &str, event: &SchedulerEvent) -> Option<String> {
+    if !event.heartbeat || !text_has_direct_trade_instruction(text) {
+        return None;
+    }
+
+    let rewritten = rewrite_direct_trade_instruction_message(text);
+    if rewritten.trim() == text.trim() {
+        None
+    } else {
+        Some(rewritten)
+    }
 }
 
 fn heartbeat_runner_failure_kind(error: &str) -> &'static str {
@@ -1391,7 +1503,8 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
 10. 若最新可得价格相对昨收尚未达到阈值，但日内高点、日内低点或盘中振幅达到阈值，且任务没有明确要求这些口径，本轮必须返回 noop，不允许触发。\n\
 11. 重复事件约束：若某条件（如某只股票的某次发射或某次事件）已经在前一轮被判定为 noop 或 triggered，本轮如果没有获取到新的独立行情时间戳或新的独立事件窗口，就不允许改变结论，也不允许重复 triggered。\n\
-12. 来源归因约束：引用 Reuters、WSJ、Bloomberg、官方公告等来源时，必须确认本轮工具结果明确出现该来源与对应事实；没有明确来源时，只能写“未核验/市场传闻/需继续确认”，不得把地缘政治、谈判、航运限制等叙述写成已被权威媒体共同确认的事实。\
+12. 来源归因约束：引用 Reuters、WSJ、Bloomberg、官方公告等来源时，必须确认本轮工具结果明确出现该来源与对应事实；没有明确来源时，只能写“未核验/市场传闻/需继续确认”，不得把地缘政治、谈判、航运限制等叙述写成已被权威媒体共同确认的事实。\n\
+13. 交易动作边界：预警只能报告触发事实、价格/成交量/时间口径和条件化风险管理框架，不得输出“无条件止损”“必须卖出”“立即清仓”“马上买入”等直接交易指令；涉及买卖、止损、加仓、减仓时必须明确这是分析参考，并要求用户结合仓位、成本、流动性和风险承受能力复核。\n\
 {}\
 \n以下是需要检查的用户条件：\n{}",
             event.job_name, history_section, event.task_prompt
@@ -1630,6 +1743,28 @@ pub async fn execute_scheduler_event(
             let mut execution = heartbeat_execution_from_content(&content, &heartbeat_model);
             if execution.should_deliver
                 && let Some(guarded_content) =
+                    guard_direct_trade_instruction_for_event(&execution.content, event)
+            {
+                tracing::info!(
+                    "[HeartbeatDiag] direct_trade_instruction_guarded job_id={} job={} target={}",
+                    event.job_id,
+                    event.job_name,
+                    event.channel_target,
+                );
+                execution.content = guarded_content;
+                if let Value::Object(map) = &mut execution.metadata {
+                    map.insert(
+                        "direct_trade_instruction_guarded".to_string(),
+                        Value::Bool(true),
+                    );
+                    map.insert(
+                        "guarded_preview".to_string(),
+                        Value::String(truncate_for_log(execution.content.trim(), 200)),
+                    );
+                }
+            }
+            if execution.should_deliver
+                && let Some(guarded_content) =
                     guard_commodity_causality_for_event(&execution.content, event)
             {
                 tracing::info!(
@@ -1823,7 +1958,8 @@ mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
         build_scheduled_prompt, build_scheduled_prompt_with_recovered_local_context,
-        execute_scheduler_event, guard_commodity_causality_for_event, has_skip_delivery_signal,
+        execute_scheduler_event, guard_commodity_causality_for_event,
+        guard_direct_trade_instruction_for_event, has_skip_delivery_signal,
         heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
         heartbeat_execution_from_runner_error, heartbeat_runner_selection,
         inspect_heartbeat_result, is_empty_success_fallback, is_stale_market_data_success_fallback,
@@ -2008,6 +2144,69 @@ mod tests {
         assert!(!execution.should_deliver);
         assert_eq!(execution.error, None);
         assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+    }
+
+    #[test]
+    fn heartbeat_prompt_rejects_direct_trade_instructions() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_cai", None::<String>).expect("actor"),
+            job_id: "job-cai".to_string(),
+            job_name: "CAI破位预警".to_string(),
+            task_prompt: "CAI 跌破 52 周低点时提醒".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_cai".to_string(),
+            delivery_key: "delivery-cai".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("交易动作边界"));
+        assert!(prompt.contains("不得输出“无条件止损”"));
+        assert!(prompt.contains("结合仓位、成本、流动性和风险承受能力复核"));
+    }
+
+    #[test]
+    fn heartbeat_direct_trade_instruction_gets_risk_guard() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_cai", None::<String>).expect("actor"),
+            job_id: "job-cai".to_string(),
+            job_name: "CAI破位预警".to_string(),
+            task_prompt: "CAI 跌破 52 周低点时提醒".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_cai".to_string(),
+            delivery_key: "delivery-cai".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_direct_trade_instruction_for_event(
+            "【CAI破位预警】CAI 跌破 52 周低点，当前价 $12.30，成交量放大。建议动作：无条件止损，不建议抄底或持有等待反弹。",
+            &event,
+        )
+        .expect("direct trade instruction should be guarded");
+
+        assert!(guarded.contains("不构成买卖、止损、加仓或清仓指令"));
+        assert!(guarded.contains("CAI 跌破 52 周低点"));
+        assert!(guarded.contains("当前价 $12.30"));
+        assert!(!guarded.contains("无条件止损"));
+        assert!(!guarded.contains("不建议抄底或持有等待反弹"));
     }
 
     #[test]
@@ -2725,8 +2924,10 @@ mod tests {
         )
         .expect("commodity causal claim should be guarded");
 
-        assert!(guarded.contains("原因归因未完成同窗来源核验"));
+        assert!(guarded.contains("未完成同窗来源核验"));
         assert!(guarded.contains("不能视为已确认油价主因"));
+        assert!(!guarded.contains("OPEC+"));
+        assert!(!guarded.contains("全球经济增速担忧"));
     }
 
     #[test]
@@ -2757,8 +2958,11 @@ mod tests {
         )
         .expect("geopolitical risk-premium claim should be guarded");
 
-        assert!(guarded.contains("原因归因未完成同窗来源核验"));
-        assert!(guarded.contains("美伊在霍尔木兹海峡发生交火事件"));
+        assert!(guarded.contains("未完成同窗来源核验"));
+        assert!(guarded.contains("【已保留的价格口径】"));
+        assert!(guarded.contains("WTI 原油：$95.79/桶"));
+        assert!(!guarded.contains("美伊在霍尔木兹海峡发生交火事件"));
+        assert!(!guarded.contains("670 万桶"));
     }
 
     #[test]
@@ -2789,7 +2993,8 @@ mod tests {
         )
         .expect("generic market disclaimer should not qualify causal claims");
 
-        assert!(guarded.contains("原因归因未完成同窗来源核验"));
+        assert!(guarded.contains("未完成同窗来源核验"));
+        assert!(!guarded.contains("中东地缘风险溢价"));
     }
 
     #[test]
@@ -2816,11 +3021,46 @@ mod tests {
 
         assert!(
             guard_commodity_causality_for_event(
-                "近期变动背景：OPEC+ 供应政策不确定性仅供参考，原因仍需继续确认。",
+                "原因暂不归因；仅报告 WTI 原油当前 $95.79/桶。",
                 &event,
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn commodity_heartbeat_guard_rewrites_prefixed_bad_body() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "播报 WTI/Brent，并说明地缘政治影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "【归因口径】原因归因未完成同窗来源核验，以下宏观、地缘、供需表述仅作待确认线索，不能视为已确认油价主因。\nWTI 6月合约估算收盘约 $95.9/桶（精确收盘价未独立校验）。中东霍尔木兹海峡近封锁状态持续推高地缘风险溢价。5月5日中东直接军事冲突消息曾令油价单日飙升超6%。2026年以来布伦特累计涨幅约 59%-80%。",
+            &event,
+        )
+        .expect("prefixed but unsafe commodity claim should be rewritten");
+
+        assert!(guarded.contains("已移除原正文中的宏观、地缘、供需、库存等主因叙述"));
+        assert!(!guarded.contains("霍尔木兹海峡近封锁"));
+        assert!(!guarded.contains("中东直接军事冲突"));
+        assert!(!guarded.contains("59%-80%"));
+        assert!(!guarded.contains("估算收盘约 $95.9"));
     }
 
     #[test]

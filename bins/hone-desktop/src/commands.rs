@@ -1,3 +1,5 @@
+use std::fmt;
+
 use tauri::{AppHandle, State};
 
 use crate::sidecar::{
@@ -146,7 +148,7 @@ pub(crate) async fn set_tavily_settings(
 pub(crate) fn run_desktop_app() {
     crate::tray::setup_tray();
 
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .manage(DesktopState::default())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
@@ -179,6 +181,27 @@ pub(crate) fn run_desktop_app() {
             get_tavily_settings,
             set_tavily_settings
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running hone desktop");
+        .run(tauri::generate_context!());
+
+    if let Err(error) = result {
+        eprintln!("{}", desktop_run_error_message(error));
+        std::process::exit(1);
+    }
+}
+
+fn desktop_run_error_message(error: impl fmt::Display) -> String {
+    format!("Hone Desktop exited with error: {error}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_run_error_message_is_nonpanic_diagnostic() {
+        let message = desktop_run_error_message("setup failed");
+
+        assert_eq!(message, "Hone Desktop exited with error: setup failed");
+        assert!(!message.contains("error while running hone desktop"));
+    }
 }

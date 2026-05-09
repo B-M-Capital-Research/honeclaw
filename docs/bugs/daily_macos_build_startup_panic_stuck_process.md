@@ -5,9 +5,21 @@
 - 发现时间：2026-05-10 04:18 CST
 - Bug Type：Desktop Startup / Runtime Cleanup
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - 发现来源：`honeclaw-mac` 每日 macOS 完整打包验证
 - 关联提交：`ea573565`
+
+## 修复进展（2026-05-10 07:05 CST）
+
+- `bins/hone-desktop/src/commands.rs` 不再用 `.expect("error while running hone desktop")` 处理 Tauri `run(...)` 返回的 setup 错误。
+- setup 阶段的无效配置仍会走现有 `record_startup_error(...)` 与 `show_startup_error_dialog(...)` 诊断路径，但 `run(...)` 返回错误后现在只打印 `Hone Desktop exited with error: ...` 并以非 0 状态退出，不再把输入配置错误升级为 Rust panic。
+- 新增 `desktop_run_error_message_is_nonpanic_diagnostic` 回归，锁住 release app setup 错误的顶层收口不再依赖旧 panic 文案。
+- 验证：
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs bins/hone-desktop/src/commands.rs`
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_run_error_message_is_nonpanic_diagnostic -- --nocapture`
+  - `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests`
+
+说明：本轮修复覆盖 setup error -> top-level run error 的 panic 收口；未重启或重新打包 `.app`，也不把当前机器旧 `UE` 进程状态作为线上恢复证据。后续每日 macOS 完整验证仍应复测无效隔离配置路径是否自然退出且不再留下不可回收进程。
 
 ## 证据来源
 

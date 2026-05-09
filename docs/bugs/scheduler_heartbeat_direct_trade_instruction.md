@@ -3,7 +3,19 @@
 - **发现时间**: 2026-05-10 07:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复进展（2026-05-10 07:05 CST）
+
+- `crates/hone-channels/src/scheduler.rs` 为 heartbeat prompt 增加“交易动作边界”：自动预警只能报告触发事实、价格 / 成交量 / 时间口径和条件化风险管理框架，不得输出 `无条件止损`、`必须卖出`、`立即清仓`、`马上买入` 等直接交易指令。
+- 同时在 scheduler 出站前增加通用 guard：命中直接交易指令时，会把正文改写为风险提示，保留价格与触发事实片段，移除无条件买卖 / 止损 / 清仓动作句。
+- 新增回归：
+  - `heartbeat_prompt_rejects_direct_trade_instructions`
+  - `heartbeat_direct_trade_instruction_gets_risk_guard`
+- 验证：
+  - `cargo test -p hone-channels heartbeat_direct_trade_instruction --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_prompt_rejects_direct_trade_instructions --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
 
 ## 证据来源
 

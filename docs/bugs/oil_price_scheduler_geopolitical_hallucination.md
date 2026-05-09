@@ -3,7 +3,21 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复进展（2026-05-10 07:05 CST）
+
+- 本轮修复不再依赖当前机器生产日志或真实 Feishu 投递状态，只基于既有坏样本和本地可测 `hone-channels` heartbeat 出站边界做通用加固。
+- `crates/hone-channels/src/scheduler.rs` 的原油 / 大宗商品 heartbeat guard 从“给原正文加归因提示”改为“重写高风险正文”：
+  - 检测到宏观、地缘、供需、库存、OPEC、航运等原因归因时，不再把原正文原样外发。
+  - guard 会移除原正文中的未核验主因叙述，只保留明显是价格口径、带价格单位、且不含归因/估算/预测/未独立校验的片段。
+  - 如果原文只有估算价格、预测区间、经验贴水或高风险原因叙述，则只发送安全说明，提示本轮未保留原正文中的价格或归因句。
+  - 这覆盖了 2026-05-10 03:03 的复发形态：即使正文已带 `原因归因未完成同窗来源核验` 前缀，只要后文仍包含 `霍尔木兹`、直接军事冲突、累计涨幅或估算收盘价，仍会被重写，不再继续外发原始高风险正文。
+- 新增回归：`commodity_heartbeat_guard_rewrites_prefixed_bad_body` 锁住“已有归因提示但正文仍含未核验高风险叙述”的复发样本。
+- 验证：
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs bins/hone-desktop/src/commands.rs`
+  - `cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
 
 ## 最新进展（2026-05-10 03:03 CST）
 
