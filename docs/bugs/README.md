@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-09 11:03 CST
+最后更新：2026-05-09 15:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,7 +27,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-09 11:03 最近四小时 `run_id=17356`（`RKLB异动监控`）已生成 `status=triggered` 与可见提醒正文，但 message 内部未转义引号导致 `JsonMalformed`，仍被 `execution_failed + skipped_error` 跳过；说明 2026-05-08 malformed-triggered 恢复边界仍未覆盖真实样本 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-09 15:02 最近四小时 `run_id=17474`（`Cerebras IPO与业务进展心跳监控`）再次生成 `status=triggered` 与可见提醒正文，但因 `JsonMalformed` 被 `execution_failed + skipped_error` 跳过；同窗多条 heartbeat 正常送达，说明 2026-05-08 malformed-triggered 恢复边界仍未覆盖当前 live 样本 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 
 ## Later / 待复现
 

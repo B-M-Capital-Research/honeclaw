@@ -7,6 +7,16 @@
 
 ## 修复进展
 
+- `2026-05-09 15:02 CST` 本轮巡检继续确认本单活跃：最近四小时内同一 malformed-triggered 漏投形态再次复现，且这次命中 `Cerebras IPO与业务进展心跳监控`。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=17474`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-05-09T15:01:01.459568+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`。
+    - 同窗 `run_id=17468`（`持仓重大事件心跳检测`）、`17464`（`全天原油价格3小时播报`）和 `17466`（`CAI破位预警`）均成功 `completed + sent`，说明不是 Feishu 出站整体不可用。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-09 15:01:01.458` 记录 `job_id=j_9ee85d42` 输出 `raw_chars=1295`、`starts_with_json=true`、`parse_kind=JsonMalformed`，`raw_preview` 以 `{"status":"triggered","message":"【Cerebras IPO 认购超热 · 2026-05-09 15:00 北京时间】...` 开头，正文已包含 Bloomberg 报道、IPO 定价区间上调、认购需求超过 20 倍等可见提醒内容。
+    - 随后同一秒连续记录 `malformed heartbeat json suppressed`、`parse failure escalated`，Feishu scheduler 又记录 `定时任务执行失败，本轮不发送 ... err=heartbeat 输出不是合法 JSON，任务已标记失败`。
+  - 本轮还看到 `run_id=17455`（`CAI破位预警`，`14:30`）与 `run_id=17404`（`小米30港元破位预警`，`12:30`）为空输出并被 `execution_failed + skipped_error` 收口；这些没有可恢复的可见正文，暂不作为新根因建档。
+  - 结论：`2026-05-08 19:09` 的 malformed-triggered 恢复边界仍未覆盖当前 live 样本；本问题继续影响 heartbeat 自动提醒主功能链路，维持功能性 `P2 / New`。
+
 - `2026-05-09 11:03 CST` 状态再次从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口证明，已生成 triggered 正文但 JSON 因 message 内部未转义引号而 malformed 的样本仍会被整轮跳过。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=17356`，`job_name=RKLB异动监控`，`executed_at=2026-05-09T10:30:26.795073+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`。
