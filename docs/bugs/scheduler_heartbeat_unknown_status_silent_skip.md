@@ -3,9 +3,21 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-05-09 11:03 CST` 状态再次从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口证明，已生成 triggered 正文但 JSON 因 message 内部未转义引号而 malformed 的样本仍会被整轮跳过。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=17356`，`job_name=RKLB异动监控`，`executed_at=2026-05-09T10:30:26.795073+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`。
+    - `detail_json.parse_kind=JsonMalformed`，`raw_chars=390`，`raw_preview` 以 `{"status":"triggered","message":"【RKLB 异动提醒 — 2026-05-09 北京时间 10:30】...` 开头，正文已经包含“重大基本面利好”“单日涨跌幅”等触发条件。
+    - 该 `raw_preview` 里 `CEO 称需求"超级健康"` 的内部引号破坏了 JSON 字符串，和 2026-05-08 修复说明里“message 内部未转义引号导致 JSON 解析失败也应恢复 triggered 正文”的覆盖目标一致。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-09 10:30:26.794` 记录 `parse_kind=JsonMalformed` 后紧跟 `malformed heartbeat json suppressed` 与 `parse failure escalated`。
+    - 同一时间 Feishu scheduler 记录 `定时任务执行失败，本轮不发送: job=RKLB异动监控 ... err=heartbeat 输出不是合法 JSON，任务已标记失败`。
+  - 同窗 `run_id=17357`（`ASTS 重大异动心跳监控`）、`17355`（`持仓重大事件心跳检测`）和 `17351`（`CAI破位预警`）均成功 `completed + sent`，说明故障不是 Feishu 出站不可用，而是 heartbeat malformed-triggered 恢复边界仍未覆盖该真实坏样本。
+  - `run_id=17358`（`小米30港元破位预警`）同窗为空输出并被显式失败收口，本轮不单独作为新缺陷登记；真正需要回退状态的是 `JsonMalformed` 中已有可见 triggered 正文却未投递。
+  - 这会导致满足触发条件的 heartbeat 提醒漏发，影响自动告警主功能链路，因此维持 `P2`，不是单纯输出质量 `P3`。
 
 - `2026-05-08 19:09 CST` 本轮修复 `JsonMalformed` 中已生成 triggered 正文但整轮不投递的问题：
   - `crates/hone-channels/src/scheduler.rs` 增加 malformed-triggered 恢复边界：只有在坏 JSON 明确包含 `status: triggered` 且包含 `message` 字段时，才从 `message` 起点提取用户可见正文并按 `JsonTriggered` 继续进入既有投递、近阈值抑制、重复抑制和出站净化链路。
