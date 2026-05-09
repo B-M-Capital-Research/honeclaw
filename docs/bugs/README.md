@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-10 03:07 CST
+最后更新：2026-05-10 04:20 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,16 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：9
 - 已修复 / 已关闭：97
 - 历史分析 / 部分止血：5
-- 当前活跃队列优先处理原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题；观察池击球区固定字段退化已在本轮补到 scheduler 输入构造层，等待下一真实窗口只读复核；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
+- 当前活跃队列优先处理原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题；新增每日 macOS release app setup 失败路径的清理异常；观察池击球区固定字段退化已在本轮补到 scheduler 输入构造层，等待下一真实窗口只读复核；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Daily macOS build release app setup panic 后残留不可回收 `hone-desktop` 进程 | P2 | New | 2026-05-10 每日验证中无效隔离配置触发 `Hone Startup Blocked` 后 Tauri setup hook panic，并残留 `pid=51996 stat=UE`，`kill -9` 未回收；修正配置后的 `.app` smoke、`/api/meta`、用户端 `/chat` 和渠道 disabled 验证均通过 | [daily_macos_build_startup_panic_stuck_process.md](./daily_macos_build_startup_panic_stuck_process.md) |
 | 原油定时播报在 `commodity_causality_guarded` 后仍保留未核验地缘 / 供需叙述与高风险价格推算 | P2 | New | 2026-05-10 03:03 最近四小时复现：`run_id=17790`（`全天原油价格3小时播报`）`completed + sent + delivered=1`，最终 `response_preview` 已加 `原因归因未完成同窗来源核验` 前缀，但正文仍继续发送 `霍尔木兹海峡近封锁`、`5月5日中东直接军事冲突`、`布伦特累计涨幅约 59%-80%` 与 WTI 估算收盘价等未核验内容；日志同窗记录 `commodity_causality_guarded`，说明当前 guard 只加提示，未阻断或改写高风险正文 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 
 ## Later / 待复现
