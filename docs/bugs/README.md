@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-09 19:06 CST
+最后更新：2026-05-09 19:12 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,17 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：97
+- 已修复 / 已关闭：98
 - 历史分析 / 部分止血：5
-- 当前活跃队列优先处理 heartbeat 跨 job duplicate_suppressed 误吞不同标的触发的问题；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
+- 当前活跃队列为空；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 跨 job 预览去重把不同标的误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-09 19:05 最近四小时复现：`run_id=17575`（ASTS）、`17568`（TEM）、`17576`（持仓重大事件）都先产出 `JsonTriggered` 与可投递正文，却被 `duplicate_suppressed` 匹配到上一小时 `RKLB 单日暴涨34%`，最终落成 `noop + skipped_noop`；18:30 同一聚合持仓链路也被同一 RKLB preview 误抑制 | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
+| _无_ | - | - | - | - |
 
 ## Later / 待复现
 
@@ -47,6 +47,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 跨 job 预览去重把不同标的误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-09 duplicate suppression 增加 ticker 级硬门槛：本轮 message 与历史 preview 都有明确 ticker 且无交集时，不再进入宽松 token overlap 去重；同时把 `Q1/Q2/Q3/Q4`、`CEO`、`SEC`、`FDA` 等通用英文片段排除出实体锚点。新增 `RKLB -> ASTS/TEM/持仓ASTS` 复发回归；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-09 malformed-triggered recovery 改为 lossy JSON string field scanner，覆盖 `message` 内部未转义引号且对象后续仍带字段的复发形态；只恢复 `status=triggered + message` 的用户可见正文，普通坏 JSON / 空输出 / 内部 marker 仍不投递。`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-09 07:03 只读复核显示当前 live runtime 仍未追平：`sessions/session_messages` 最大时间仍停在 `2026-04-27T16:54:20+08:00`，但 06:52-06:58 Feishu direct 已完成 `persist_user -> persist_assistant -> reply.send`；鉴于 03:28 代码修复已覆盖 CLI config 生成/写回路径并补 `SessionStorage` 启动 best-effort JSON -> SQLite shadow 回填，暂不把旧 live runtime 证据回退为 `New`，下次重启后继续复核 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |

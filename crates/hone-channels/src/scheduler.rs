@@ -538,19 +538,27 @@ fn heartbeat_entity_anchor_stop_token(token: &str) -> bool {
             | "app"
             | "aws"
             | "bedrock"
+            | "ceo"
             | "cloud"
             | "current"
             | "daily"
             | "event"
             | "events"
+            | "fda"
+            | "fy"
             | "ipo"
             | "market"
             | "monitor"
             | "news"
             | "openai"
             | "price"
+            | "q1"
+            | "q2"
+            | "q3"
+            | "q4"
             | "report"
             | "research"
+            | "sec"
             | "stock"
             | "the"
             | "update"
@@ -571,7 +579,39 @@ fn heartbeat_entity_anchor_tokens(text: &str) -> std::collections::BTreeSet<Stri
     tokens
 }
 
+fn heartbeat_ticker_anchor_tokens(text: &str) -> std::collections::BTreeSet<String> {
+    let mut tokens = std::collections::BTreeSet::new();
+    for matched in RE_HEARTBEAT_ENTITY_ANCHOR.find_iter(text) {
+        let raw = matched.as_str();
+        let normalized = raw.trim_matches(|ch: char| ch == '.' || ch == '-');
+        let lower = normalized.to_ascii_lowercase();
+        if normalized.chars().count() < 2
+            || normalized.chars().count() > 6
+            || heartbeat_entity_anchor_stop_token(&lower)
+            || !normalized
+                .chars()
+                .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '.' || ch == '-')
+        {
+            continue;
+        }
+        tokens.insert(lower);
+    }
+    tokens
+}
+
 fn heartbeat_entity_anchors_compatible(message: &str, preview: &str) -> bool {
+    let message_tickers = heartbeat_ticker_anchor_tokens(message);
+    let preview_tickers = heartbeat_ticker_anchor_tokens(preview);
+    if !message_tickers.is_empty()
+        && !preview_tickers.is_empty()
+        && message_tickers
+            .intersection(&preview_tickers)
+            .next()
+            .is_none()
+    {
+        return false;
+    }
+
     let message_entities = heartbeat_entity_anchor_tokens(message);
     let preview_entities = heartbeat_entity_anchor_tokens(preview);
     message_entities.is_empty()
@@ -2345,6 +2385,44 @@ mod tests {
         let previews = vec![(
             "2026-04-25T23:01:00+08:00".to_string(),
             "【RKLB 重大事件提醒】Blue Origin Blue Ring 与 Rocket Lab 相关合作已触发提醒"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_asts_after_rklb_move() {
+        let message =
+            "【ASTS 单日涨跌幅超阈值】ASTS 单日上涨 14.8%，Rakuten 退出完成，Q1 财报临近。";
+        let previews = vec![(
+            "2026-05-09T18:00:31+08:00".to_string(),
+            "【RKLB 单日暴涨34% · 2026-05-09 18:00 北京时间】RKLB 因新合同与财报预期出现单日大幅上涨。"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_tem_after_rklb_move() {
+        let message =
+            "【TEM Q1财报超预期 + 可转债发行 + 新合作】TEM 披露 Q1 收入增长，并宣布新的战略合作。";
+        let previews = vec![(
+            "2026-05-09T18:00:31+08:00".to_string(),
+            "【RKLB 单日暴涨34% · 2026-05-09 18:00 北京时间】RKLB 因新合同与 Q1 财报预期出现单日大幅上涨。"
+                .to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_portfolio_asts_after_rklb_move() {
+        let message = "【ASTS 单日暴涨近15%】持仓重大事件：ASTS 单日涨幅接近 15%，Rakuten 退出完成，Q1 财报临近。";
+        let previews = vec![(
+            "2026-05-09T18:00:31+08:00".to_string(),
+            "【RKLB 单日暴涨34% · 2026-05-09 18:00 北京时间】RKLB 因新合同与财报预期出现单日大幅上涨。"
                 .to_string(),
         )];
 

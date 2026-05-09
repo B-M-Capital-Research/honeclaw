@@ -3,9 +3,20 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 
 ## 证据来源
+
+- `2026-05-09 19:12 CST` 本轮重新修复并关闭复发：
+  - `crates/hone-channels/src/scheduler.rs` 在既有实体锚点兼容检查前新增 ticker 级硬门槛：若本轮 message 与历史 preview 都能抽取到明确 ticker，且 ticker 集合没有交集，直接禁止进入宽松 token overlap 去重。
+  - 同时把 `Q1/Q2/Q3/Q4`、`CEO`、`SEC`、`FDA` 等通用英文片段排除出实体锚点，避免不同公司因季度、监管或职位词产生假交集。
+  - 新增回归覆盖本次复发三类样本：`RKLB` 历史 preview 后的 `ASTS`、`TEM`、聚合持仓 `ASTS` 触发均不得被 duplicate suppression 吞掉；既有同一事件改写样本仍保持抑制。
+  - 验证通过：
+    - `cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+    - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+    - `cargo check -p hone-channels --tests`
+  - 无关联 GitHub Issue。本单状态更新为 `Fixed`；当前机器不是生产机器，本轮不以旧 live runtime 是否已重启作为闭环门槛。
 
 - `2026-05-09 19:05 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口再次出现同根因，且这次不是单个 job，而是同一目标下多个不同标的 / 不同主题被上一小时 `RKLB` preview 误抑制。
 - `data/sessions.sqlite3` -> `cron_job_runs`

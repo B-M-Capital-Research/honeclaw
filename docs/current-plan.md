@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-09 通过 `hone-cli` rollout 配置归一化、`SessionStorage` 启动 JSON -> SQLite shadow 回填，以及 heartbeat malformed-triggered 恢复加固清理会话镜像与 malformed-triggered 两项；当前剩余 heartbeat 跨 job duplicate_suppressed 误吞不同标的触发；open GitHub Issues 中的历史 fixed bug 仍待复测/关闭跟进
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-09 通过 `hone-cli` rollout 配置归一化、`SessionStorage` 启动 JSON -> SQLite shadow 回填、heartbeat malformed-triggered 恢复加固与 ticker 级去重门槛清理当前活跃队列；open GitHub Issues 中的历史 fixed bug 仍待复测/关闭跟进
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`
