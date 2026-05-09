@@ -152,29 +152,82 @@ fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> 
         .find_map(|candidate| serde_json::from_str::<HeartbeatJsonResponse>(candidate).ok())
 }
 
+fn find_json_string_field_value_start(content: &str, field: &str) -> Option<usize> {
+    let needle = format!("\"{field}\"");
+    let field_idx = content.find(&needle)?;
+    let colon_idx = content[field_idx + needle.len()..].find(':')? + field_idx + needle.len();
+    let value_quote_idx = content[colon_idx + 1..].find('"')? + colon_idx + 1;
+    Some(value_quote_idx + 1)
+}
+
+fn looks_like_json_string_field_end(content: &str, quote_idx: usize) -> bool {
+    let rest = content[quote_idx + 1..].trim_start();
+    if rest.is_empty() || rest.starts_with('}') {
+        return true;
+    }
+    let Some(after_comma) = rest.strip_prefix(',') else {
+        return false;
+    };
+    let after_comma = after_comma.trim_start();
+    if !after_comma.starts_with('"') {
+        return false;
+    }
+    let Some(end_quote) = after_comma[1..].find('"') else {
+        return false;
+    };
+    after_comma[1 + end_quote + 1..]
+        .trim_start()
+        .starts_with(':')
+}
+
+fn recover_lossy_json_string_field(content: &str, field: &str) -> Option<String> {
+    let start = find_json_string_field_value_start(content, field)?;
+    let mut value = String::new();
+    let mut chars = content[start..].char_indices().peekable();
+
+    while let Some((rel_idx, ch)) = chars.next() {
+        let abs_idx = start + rel_idx;
+        match ch {
+            '\\' => {
+                let Some((_, escaped)) = chars.next() else {
+                    value.push(ch);
+                    break;
+                };
+                match escaped {
+                    'n' => value.push('\n'),
+                    'r' => value.push('\r'),
+                    't' => value.push('\t'),
+                    '"' => value.push('"'),
+                    '\\' => value.push('\\'),
+                    other => {
+                        value.push('\\');
+                        value.push(other);
+                    }
+                }
+            }
+            '"' if looks_like_json_string_field_end(content, abs_idx) => break,
+            '"' => value.push('"'),
+            '}' if content[abs_idx + ch.len_utf8()..].trim().is_empty() => break,
+            _ => value.push(ch),
+        }
+    }
+
+    let value = value.trim().trim_end_matches(',').trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
+}
+
 fn recover_malformed_triggered_heartbeat_message(content: &str) -> Option<String> {
     let trimmed = content.trim();
     if !trimmed.starts_with('{') {
         return None;
     }
 
-    let lower = trimmed.to_ascii_lowercase();
-    let status_idx = lower.find("\"status\"")?;
-    let triggered_idx = lower[status_idx..].find("\"triggered\"")? + status_idx;
-    let message_idx = lower[triggered_idx..].find("\"message\"")? + triggered_idx;
-    let colon_idx = trimmed[message_idx..].find(':')? + message_idx;
-    let value_quote_idx = trimmed[colon_idx + 1..].find('"')? + colon_idx + 1;
-    let mut message = &trimmed[value_quote_idx + 1..];
-
-    if let Some(end_idx) = message.rfind('}') {
-        message = &message[..end_idx];
-    }
-    message = message.trim().trim_end_matches(',').trim();
-    if let Some(stripped) = message.strip_suffix('"') {
-        message = stripped.trim_end();
+    let status = recover_lossy_json_string_field(trimmed, "status")?;
+    if !status.eq_ignore_ascii_case("triggered") {
+        return None;
     }
 
-    let message = message.replace("\\n", "\n").replace("\\\"", "\"");
+    let message = recover_lossy_json_string_field(trimmed, "message")?;
     let message = unwrap_nested_json_message(message.trim())
         .trim()
         .to_string();
@@ -1678,6 +1731,22 @@ mod tests {
             (
                 HeartbeatOutcome::Deliver(
                     "【Cerebras IPO 心跳监控】IPO 认购需求强劲，\"市场报道/未核验\" 仍需关注。"
+                        .to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+    }
+
+    #[test]
+    fn heartbeat_malformed_triggered_json_recovers_message_before_extra_fields() {
+        assert_eq!(
+            inspect_heartbeat_result(
+                r#"{"status":"triggered","message":"【Cerebras IPO 认购超热 · 2026-05-09 15:00 北京时间】Bloomberg 报道称 IPO 认购需求超过 20 倍，CEO 称需求"超级健康"，触发业务进展提醒。","source":"Bloomberg","confidence":"medium"}"#
+            ),
+            (
+                HeartbeatOutcome::Deliver(
+                    "【Cerebras IPO 认购超热 · 2026-05-09 15:00 北京时间】Bloomberg 报道称 IPO 认购需求超过 20 倍，CEO 称需求\"超级健康\"，触发业务进展提醒。"
                         .to_string()
                 ),
                 HeartbeatParseKind::JsonTriggered

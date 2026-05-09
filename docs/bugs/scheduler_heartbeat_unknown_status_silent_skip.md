@@ -3,9 +3,20 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-05-09 19:06 CST` 本轮代码加固并重新修复最近复发的 malformed-triggered 漏投形态：
+  - `crates/hone-channels/src/scheduler.rs` 将 malformed triggered recovery 从单次 `rfind('}')` 字符串切片改为 lossy JSON string field scanner：先确认 `status=triggered`，再从 `message` 字段开头向后扫描，遇到真正的字段分隔符 / 对象结尾 / 截断边界时停止。
+  - 新边界覆盖最近 `Cerebras IPO` / `RKLB` / `TSLA` 复发形态：`message` 内部未转义引号破坏 JSON，同时对象后面仍可能带 `source/confidence` 等字段；恢复时只投递用户可见 message，不把后续字段拼进正文。
+  - 仍保持负向边界：无 `triggered`、无 `message`、内部 heartbeat marker、普通坏 JSON、plain text 与空输出继续落成失败或 noop，不把任意自由文本当成提醒发送。
+  - 验证通过：
+    - `cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+    - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+    - `cargo check -p hone-channels --tests`
+  - 无关联 GitHub Issue。本单状态更新为 `Fixed`；当前机器不是生产机器，本轮不以旧 live runtime 是否已重启作为闭环门槛。
 
 - `2026-05-09 19:05 CST` 本轮巡检继续确认本单活跃：最近四小时内除 15:01 Cerebras 样本外，18:30 又出现 `TSLA 正负触发条件心跳监控` 的 malformed-triggered 漏投。
   - `data/sessions.sqlite3` -> `cron_job_runs`

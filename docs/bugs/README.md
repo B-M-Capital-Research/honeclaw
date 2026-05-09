@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-09 19:05 CST
+最后更新：2026-05-09 19:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,17 +17,16 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：96
+- 已修复 / 已关闭：97
 - 历史分析 / 部分止血：5
-- 当前活跃队列优先处理 heartbeat malformed-triggered 仍漏投，以及跨 job duplicate_suppressed 误吞不同标的触发的问题
+- 当前活跃队列优先处理 heartbeat 跨 job duplicate_suppressed 误吞不同标的触发的问题；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-09 19:05 最近四小时 `run_id=17474`（`Cerebras IPO与业务进展心跳监控`）与 `run_id=17554`（`TSLA 正负触发条件心跳监控`）均生成 `status=triggered` 与可见提醒正文，但因 `JsonMalformed` 被 `execution_failed + skipped_error` 跳过；同窗多条 heartbeat 正常送达，说明 2026-05-08 malformed-triggered 恢复边界仍未覆盖当前 live 样本 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 跨 job 预览去重把不同标的误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-09 19:05 最近四小时复现：`run_id=17575`（ASTS）、`17568`（TEM）、`17576`（持仓重大事件）都先产出 `JsonTriggered` 与可投递正文，却被 `duplicate_suppressed` 匹配到上一小时 `RKLB 单日暴涨34%`，最终落成 `noop + skipped_noop`；18:30 同一聚合持仓链路也被同一 RKLB preview 误抑制 | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 
 ## Later / 待复现
@@ -48,6 +47,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-09 malformed-triggered recovery 改为 lossy JSON string field scanner，覆盖 `message` 内部未转义引号且对象后续仍带字段的复发形态；只恢复 `status=triggered + message` 的用户可见正文，普通坏 JSON / 空输出 / 内部 marker 仍不投递。`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-09 07:03 只读复核显示当前 live runtime 仍未追平：`sessions/session_messages` 最大时间仍停在 `2026-04-27T16:54:20+08:00`，但 06:52-06:58 Feishu direct 已完成 `persist_user -> persist_assistant -> reply.send`；鉴于 03:28 代码修复已覆盖 CLI config 生成/写回路径并补 `SessionStorage` 启动 best-effort JSON -> SQLite shadow 回填，暂不把旧 live runtime 证据回退为 `New`，下次重启后继续复核 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixed | 2026-05-08 19:05 commodity heartbeat 归因 guard 扩展覆盖“推高风险溢价 / 供应中断担忧 / 关停风险 / 美伊”等最新坏样本，并收紧泛化 `仅供参考` 放行条件；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_prompt_requires_source_grounding_for_geopolitics --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |

@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-09 03:28 CST
+- updated_at: 2026-05-09 19:06 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -77,6 +77,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-06 07:07: Closed the reopened P1 Feishu `session/update` live leak by tightening the Feishu channel boundary itself. `FeishuStreamListener` no longer writes ACP `StreamDelta` chunks into placeholder cards, so analysis drafts / prompt echoes / raw stream fragments cannot be pushed live through Feishu; final replies still use `response.content`, and placeholder/tool-progress buffers are rejected as failed partials or success finals. `hone-feishu` unit tests, `cargo check -p hone-feishu --tests`, and direct rustfmt checks passed. Live deployment verification remains a follow-up because this machine is not production and the automation does not restart services.
 - 2026-05-07 11:06: Closed the active P3 watchlist hit-zone degradation by tightening the shared scheduled-task contract rather than adding another data-source special case. `build_scheduled_prompt` now injects a stable-local-field rule for ordinary scheduled tasks that mention both watchlists/观察池 and hit zones/击球区, and `multi_agent` search-stage guidance now preserves hit zones from task text, restored context, portfolio/local state, or local files while using `data_fetch` only for fresh prices, fundamentals, and earnings dates. Targeted `hone-channels` prompt/guidance regressions passed. No GitHub issue was linked for this bug.
 - 2026-05-09 03:28: Closed the remaining active P2 `sessions.sqlite3` mirror stall by combining two rollout fixes: `hone-cli` config generation/writeback now normalizes `storage.session_sqlite_shadow_write_enabled=true`, and `SessionStorage` now performs startup JSON -> SQLite shadow backfill when JSON remains the runtime backend and shadow write is enabled. This covers both non-desktop launch paths that could keep the writer disabled and historical windows where the writer was disabled: restarting with the corrected config now repairs the existing JSON session mirror instead of waiting for each session to receive another turn. Active `docs/bugs/README.md` queue is now empty; open GitHub Issues from older fixed docs still need human/automation follow-up comments or closure review.
+- 2026-05-09 19:06: Re-closed the reopened P2 heartbeat malformed-triggered leak. `recover_malformed_triggered_heartbeat_message` now uses a lossy JSON string-field scanner that confirms `status=triggered`, extracts only the `message` value, tolerates unescaped quotes inside the message, and stops before subsequent fields such as `source/confidence`. The latest `Cerebras IPO` / `RKLB` / `TSLA` shape is covered without turning ordinary malformed JSON, empty output, internal markers, or free text into delivered alerts. Active `docs/bugs/README.md` queue is down to one remaining heartbeat duplicate-suppression bug; no GitHub Issue is linked to the malformed-triggered bug.
 
 ## Validation
 
@@ -172,6 +173,10 @@ Completed this round:
 - `cargo test -p hone-memory shadow_sqlite_writes_without_affecting_json_flow --lib -- --nocapture`
 - `bash tests/regression/ci/test_session_sqlite_migration.sh`
 - `cargo check -p hone-memory --tests`
+- `cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`
+- `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+- `cargo check -p hone-channels --tests`
 
 Known verification limitation:
 
