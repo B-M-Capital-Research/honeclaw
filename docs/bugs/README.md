@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-09 19:12 CST
+最后更新：2026-05-09 23:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,17 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：98
+- 已修复 / 已关闭：97
 - 历史分析 / 部分止血：5
-- 当前活跃队列为空；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
+- 当前活跃队列优先处理观察池击球区固定字段再次退化的问题；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| _无_ | - | - | - | - |
+| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-09 23:03 最近四小时复现：`run_id=17647`（`科技核心股池 · 晚间击球区快报`）与 `run_id=17674`（`核心观察股池晚间快报`）均 `completed + sent + delivered=1`，但核心股和拓展股继续批量输出 `击球区：待确认`；同会话历史 compact summary 与最新任务输入已保留稳定本地字段约束，说明 2026-05-07 提示/search guidance 修复未恢复 live 输出 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 
 ## Later / 待复现
 
@@ -64,7 +64,6 @@
 | Feishu 直聊切到非金融新话题时，仍直接回答楼市/买房问题而未执行领域边界拒绝 | P3 | Fixed | 2026-05-06 `AgentSession::run` 在 quota/runner 前增加直聊非金融短路：明显生活/硬件问题且无金融锚点时直接持久化领域边界回复，不调用 LLM / `stock_research` / 工具且不消耗 daily quota；scheduled-task 与 admin actor 不受影响；无关联 GitHub Issue | [feishu_direct_non_finance_query_misroutes_to_stock_research.md](./archive/feishu_direct_non_finance_query_misroutes_to_stock_research.md) |
 | Feishu 直聊成功长答首段仍混入 `todo` / `current-plan` / 画像维护等内部工作流文本 | P3 | Fixed | 2026-05-06 共享 `sanitize_user_visible_output` 会剥离成功答复首段/首句里的内部工作流前言，覆盖 `todo`、`current-plan`、`动态计划`、`不落盘` 与 `我先...再...` 执行步骤式开头，同时保留 `我先给结论` 等正常用户可见结论；无关联 GitHub Issue | [feishu_direct_final_answer_internal_workflow_leak.md](./archive/feishu_direct_final_answer_internal_workflow_leak.md) |
 | Feishu 每日动态监控在“今日不触发新增重大推送”口径下再次把无新增长文照常发送 | P3 | Fixed | 2026-05-07 `has_skip_delivery_signal` 新增覆盖“今日不触发重大催化或风险证伪推送”“今日不触发新增重大催化或风险证伪推送”“今日不触发新增重大推送”等复发措辞，并移除空白后匹配；`cargo test -p hone-channels skip_delivery_signal_detected -- --nocapture` 通过；无关联 GitHub Issue | [feishu_scheduler_daily_monitor_skip_rule_broken.md](./archive/feishu_scheduler_daily_monitor_skip_rule_broken.md) |
-| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | Fixed | 2026-05-07 scheduler 对“观察池 + 击球区 / hit zone”定时任务补稳定本地字段契约，multi-agent 搜索阶段同步要求保留任务正文、恢复上下文、portfolio/local state 或本地文件里的既有区间，`data_fetch` 只刷新价格和财报日期；定向 `hone-channels` 回归通过；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./archive/watchlist_hit_zone_config_lookup_degraded.md) |
 | Feishu scheduler 发送前统一卡在 `tenant_access_token` 取票失效，生成完成的日报仍整批无法送达 | P1 | Fixed | 2026-05-07 复核 2026-05-05 修复已覆盖 cached invalid-token 恢复：`send_message_with_receive_id_type`、`resolve_email`、`resolve_mobile` 遇到 Feishu invalid access token 会清 token cache 并重试一次；本轮同步修正导航表旧 `New` 状态；关联 Issue [#35](https://github.com/B-M-Capital-Research/honeclaw/issues/35) | [feishu_scheduler_tenant_access_token_request_failure.md](./archive/feishu_scheduler_tenant_access_token_request_failure.md) |
 | Feishu 定时任务目标解析链路再次失败，内容已生成但在 contact `batch_get_id` 阶段被拦截未送达 | P1 | Fixed | 2026-05-07 复核 2026-05-05 修复已覆盖 contact lookup 传输失败：`resolve_email` / `resolve_mobile` 的 `batch_get_id` 请求接入公共出站重试，传输错误、`429` 与 `5xx` 会短重试；本轮同步修正导航表旧 `New` 状态；关联 Issue [#32](https://github.com/B-M-Capital-Research/honeclaw/issues/32) | [feishu_scheduler_target_resolution_failed.md](./archive/feishu_scheduler_target_resolution_failed.md) |
 | Heartbeat 定时任务在多 provider 下仍会把上游 `HTTP 400` 误解析成 `invalid type: integer 400` 并整轮失败 | P2 | Fixed | 2026-05-07 复核当前 `hone-llm` 已覆盖 OpenAI-compatible / OpenRouter numeric provider error raw HTTP fallback，`numeric_provider_error_body` 回归通过；旧生产样本不再作为当前活跃判定 | [scheduler_heartbeat_deepseek_deserialize_400_failures.md](./archive/scheduler_heartbeat_deepseek_deserialize_400_failures.md) |
