@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-09 23:03 CST
+最后更新：2026-05-10 03:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,16 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：9
-- 已修复 / 已关闭：97
+- 已修复 / 已关闭：96
 - 历史分析 / 部分止血：5
-- 当前活跃队列优先处理观察池击球区固定字段再次退化的问题；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
+- 当前活跃队列优先处理原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题，以及观察池击球区固定字段再次退化的问题；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 原油定时播报在 `commodity_causality_guarded` 后仍保留未核验地缘 / 供需叙述与高风险价格推算 | P2 | New | 2026-05-10 03:03 最近四小时复现：`run_id=17790`（`全天原油价格3小时播报`）`completed + sent + delivered=1`，最终 `response_preview` 已加 `原因归因未完成同窗来源核验` 前缀，但正文仍继续发送 `霍尔木兹海峡近封锁`、`5月5日中东直接军事冲突`、`布伦特累计涨幅约 59%-80%` 与 WTI 估算收盘价等未核验内容；日志同窗记录 `commodity_causality_guarded`，说明当前 guard 只加提示，未阻断或改写高风险正文 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-09 23:03 最近四小时复现：`run_id=17647`（`科技核心股池 · 晚间击球区快报`）与 `run_id=17674`（`核心观察股池晚间快报`）均 `completed + sent + delivered=1`，但核心股和拓展股继续批量输出 `击球区：待确认`；同会话历史 compact summary 与最新任务输入已保留稳定本地字段约束，说明 2026-05-07 提示/search guidance 修复未恢复 live 输出 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 
 ## Later / 待复现
@@ -51,7 +52,6 @@
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-09 malformed-triggered recovery 改为 lossy JSON string field scanner，覆盖 `message` 内部未转义引号且对象后续仍带字段的复发形态；只恢复 `status=triggered + message` 的用户可见正文，普通坏 JSON / 空输出 / 内部 marker 仍不投递。`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-09 07:03 只读复核显示当前 live runtime 仍未追平：`sessions/session_messages` 最大时间仍停在 `2026-04-27T16:54:20+08:00`，但 06:52-06:58 Feishu direct 已完成 `persist_user -> persist_assistant -> reply.send`；鉴于 03:28 代码修复已覆盖 CLI config 生成/写回路径并补 `SessionStorage` 启动 best-effort JSON -> SQLite shadow 回填，暂不把旧 live runtime 证据回退为 `New`，下次重启后继续复核 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| 原油定时播报把未核验地缘叙述当作油价事实送达用户 | P2 | Fixed | 2026-05-08 19:05 commodity heartbeat 归因 guard 扩展覆盖“推高风险溢价 / 供应中断担忧 / 关停风险 / 美伊”等最新坏样本，并收紧泛化 `仅供参考` 放行条件；`rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`、`cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_prompt_requires_source_grounding_for_geopolitics --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-08 11:06 当前 heartbeat auxiliary runner 固定 `max_iterations=10` 与 `max_tokens_override=4096`，runner error 会记录 `failure_kind` 而不是伪装正常 noop；旧 `:6` 样本按未部署/旧运行态处理。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
 | Heartbeat 已触发事件在无新增增量时跨窗口重复提醒 | P3 | Fixed | 2026-05-08 11:06 当前 heartbeat 调度事件加载同 actor 最近送达历史，跨 job 重复由事实 token + 实体 anchor 抑制，同时保留不同实体/同 ticker 新事件通过路径。`cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_retrigger_duplicate_alerts.md](./scheduler_heartbeat_retrigger_duplicate_alerts.md) |
 | Feishu 晨报在 `data_fetch` 连续失败后仍以成功态发送旧价格早报 | P3 | Fixed | 2026-05-08 非 heartbeat scheduler 成功路径新增 `stale_market_data_fallback`：关键行情 / 报价 / `data_fetch` 失败且继续复用旧价格或旧收盘口径时，回滚旧价格正文、投递失败提示并记录 `failure_kind=stale_market_data_fallback`；`cargo test -p hone-channels scheduler::tests::scheduler_detects_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md](./feishu_scheduler_stale_price_fallback_after_data_fetch_failure.md) |
