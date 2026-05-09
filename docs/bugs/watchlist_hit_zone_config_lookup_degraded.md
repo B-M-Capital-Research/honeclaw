@@ -3,8 +3,21 @@
 - **发现时间**: 2026-04-29 23:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **修复结论复核**:
+  - `2026-05-10 03:07 CST` 本轮修复不再只靠 prompt/guidance 提醒模型“自己去恢复区间”，而是在 scheduler 构造任务输入时显式把当前 actor 会话里已保存的观察池击球区恢复进本轮 prompt：
+    - `crates/hone-channels/src/scheduler.rs`
+      - 对命中“观察池 + 击球区 / hit zone”的普通定时任务，新增从当前 session `compact summary` / `session.summary` 提取 ticker -> 击球区的恢复逻辑。
+      - 若 summary 里存在如 `| MSFT | ... | $335–$350 |`、`| TSM | ... | 保守$290–$310 / 合理$320–$340 / 激进$345–$355 |` 这类稳定本地字段，会在本轮 prompt 追加 `【已恢复的本地击球区参考】`，避免 answer 阶段继续把已知区间写成 `待确认`。
+      - 该恢复链路只接受带 `$` 且形如区间/分档区间的值，并显式忽略 `待确认`，避免把最新坏样本再次当成真值回灌。
+    - 新增回归测试：
+      - `scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary`
+      - `scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields`
+    - 验证通过：
+      - `cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields -- --nocapture`
+      - `cargo test -p hone-channels scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary -- --nocapture`
+      - `cargo check -p hone-channels --tests`
+    - 状态更新为 `Fixed`：本轮已把“已恢复的本地击球区没有可靠进入最终答案”收口到 scheduler 输入构造层；由于本任务不重启服务、不制造新运行态样本，是否在下一个 `21:35 / 23:00 / 09:00` 真实窗口完全恢复，仍需后续只读复核。
   - `2026-05-09 23:03 CST` 本轮确认 `2026-05-07 11:06 CST` 的 `Fixed` 结论在最新真实窗口再次失效，状态从 `Fixed` 调回 `New`：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=17647`
@@ -306,6 +319,25 @@
   - `cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields -- --nocapture`
   - `cargo test -p hone-channels search_input_guidance_allows_direct_replies_for_greetings -- --nocapture`
 - 状态更新为 `Fixed`；后续若仍出现“任务正文或恢复上下文已有区间，但最终答复仍统一写待确认”，应优先检查该轮是否实际恢复了历史 compact summary / session context，而不是继续修改行情工具。
+
+## 修复情况（2026-05-10 03:07 CST）
+
+- 本轮把修复点从“继续提示模型保留本地字段”下沉到 scheduler 输入构造层：
+  - `build_scheduled_prompt_with_recovered_local_context(...)` 会在普通观察池击球区任务上，从当前 actor session 的 `compact summary` / `session.summary` 里恢复本地击球区。
+  - 恢复结果以显式 bullet 列表追加到本轮 prompt，减少 search/answer 阶段遗漏历史区间的概率，不再依赖模型自行翻历史或自行决定是否读取本地文件。
+  - 恢复逻辑优先匹配 compact summary 里的表格行（例如 `| MSFT | ... | $335–$350 |`），并兼容 `MSFT ... 击球区：...` 这类行内表述；`待确认` 和非区间值不会被当作稳定字段回灌。
+- 新增回归证明：
+  - `scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary`：验证 scheduler 能把 compact summary 中的 `MSFT / TSM / LITE` 击球区恢复到本轮 prompt。
+  - `scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields`：继续覆盖 2026-05-07 的稳定字段契约。
+- 验证通过：
+  - `cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields -- --nocapture`
+  - `cargo test -p hone-channels scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 本轮未做：
+  - 不重启服务，不重建 desktop，不制造新的晚间/早间运行态窗口。
+- 当前结论：
+  - 代码层已补上“显式恢复稳定击球区”的缺口，因此状态先更新为 `Fixed`。
+  - 下一次 `核心观察池早间简报` / `科技核心股池 · 晚间击球区快报` / `核心观察股池晚间快报` 的真实窗口若仍把已知区间批量写成 `待确认`，应优先检查 live runtime 是否已加载本轮代码，而不是继续追加 prompt 约束。
 
 ## 下一步建议
 

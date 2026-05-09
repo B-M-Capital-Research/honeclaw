@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-10 03:03 CST
+最后更新：2026-05-10 03:07 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,18 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：96
+- 已修复 / 已关闭：97
 - 历史分析 / 部分止血：5
-- 当前活跃队列优先处理原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题，以及观察池击球区固定字段再次退化的问题；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
+- 当前活跃队列优先处理原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题；观察池击球区固定字段退化已在本轮补到 scheduler 输入构造层，等待下一真实窗口只读复核；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | 原油定时播报在 `commodity_causality_guarded` 后仍保留未核验地缘 / 供需叙述与高风险价格推算 | P2 | New | 2026-05-10 03:03 最近四小时复现：`run_id=17790`（`全天原油价格3小时播报`）`completed + sent + delivered=1`，最终 `response_preview` 已加 `原因归因未完成同窗来源核验` 前缀，但正文仍继续发送 `霍尔木兹海峡近封锁`、`5月5日中东直接军事冲突`、`布伦特累计涨幅约 59%-80%` 与 WTI 估算收盘价等未核验内容；日志同窗记录 `commodity_causality_guarded`，说明当前 guard 只加提示，未阻断或改写高风险正文 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
-| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | New | 2026-05-09 23:03 最近四小时复现：`run_id=17647`（`科技核心股池 · 晚间击球区快报`）与 `run_id=17674`（`核心观察股池晚间快报`）均 `completed + sent + delivered=1`，但核心股和拓展股继续批量输出 `击球区：待确认`；同会话历史 compact summary 与最新任务输入已保留稳定本地字段约束，说明 2026-05-07 提示/search guidance 修复未恢复 live 输出 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 
 ## Later / 待复现
 
@@ -48,6 +47,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | Fixed | 2026-05-10 03:07 scheduler 对“观察池 + 击球区”任务新增 `compact summary/session.summary -> ticker 击球区` 恢复链路，把 `MSFT/TSM/LITE` 等本地稳定区间显式追加到 `【已恢复的本地击球区参考】`，不再只靠 prompt/guidance 让模型自行回忆；`cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields -- --nocapture`、`cargo test -p hone-channels scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary -- --nocapture`、`cargo check -p hone-channels --tests` 通过；下一真实窗口仍需只读复核 live runtime 是否已加载本轮代码 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Heartbeat 跨 job 预览去重把不同标的误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-09 duplicate suppression 增加 ticker 级硬门槛：本轮 message 与历史 preview 都有明确 ticker 且无交集时，不再进入宽松 token overlap 去重；同时把 `Q1/Q2/Q3/Q4`、`CEO`、`SEC`、`FDA` 等通用英文片段排除出实体锚点。新增 `RKLB -> ASTS/TEM/持仓ASTS` 复发回归；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-09 malformed-triggered recovery 改为 lossy JSON string field scanner，覆盖 `message` 内部未转义引号且对象后续仍带字段的复发形态；只恢复 `status=triggered + message` 的用户可见正文，普通坏 JSON / 空输出 / 内部 marker 仍不投递。`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |

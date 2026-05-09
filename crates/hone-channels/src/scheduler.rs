@@ -1237,6 +1237,125 @@ fn scheduled_prompt_needs_stable_local_context(event: &SchedulerEvent) -> bool {
     has_hit_zone && has_watch_pool
 }
 
+fn extract_watchlist_tickers(task_prompt: &str) -> Vec<String> {
+    let mut tickers = Vec::new();
+    for matched in regex::Regex::new(r"\b[A-Z]{2,5}\b")
+        .expect("valid watchlist ticker regex")
+        .find_iter(task_prompt)
+    {
+        let ticker = matched.as_str();
+        if !tickers.iter().any(|existing| existing == ticker) {
+            tickers.push(ticker.to_string());
+        }
+    }
+    tickers
+}
+
+fn normalize_recovered_hit_zone(zone: &str) -> Option<String> {
+    let zone = zone
+        .trim()
+        .trim_matches(|ch: char| matches!(ch, '|' | ',' | '，' | '。' | ';' | '；'))
+        .trim_start_matches("击球区：")
+        .trim_start_matches("击球区:")
+        .trim();
+    if zone.is_empty() || zone.contains("待确认") || !zone.contains('$') {
+        return None;
+    }
+    let looks_like_zone = zone.contains('-')
+        || zone.contains('–')
+        || zone.contains('/')
+        || zone.contains("保守")
+        || zone.contains("合理")
+        || zone.contains("激进");
+    if !looks_like_zone || zone.chars().count() > 120 {
+        return None;
+    }
+    Some(zone.to_string())
+}
+
+fn extract_ticker_hit_zone_from_source(source: &str, ticker: &str) -> Option<String> {
+    let table_pattern = format!(
+        r"(?m)^\|\s*{}\s*\|\s*[^|\n]*\|\s*[^|\n]*\|\s*(?P<zone>[^|\n]+?)\s*\|",
+        regex::escape(ticker)
+    );
+    if let Some(zone) = regex::Regex::new(&table_pattern)
+        .ok()
+        .and_then(|re| re.captures(source))
+        .and_then(|caps| caps.name("zone"))
+        .and_then(|zone| normalize_recovered_hit_zone(zone.as_str()))
+    {
+        return Some(zone);
+    }
+
+    let inline_pattern = format!(
+        r"(?m)\b{}\b[^\n]{{0,80}}?击球区[:：]?\s*(?P<zone>[^\n]+)",
+        regex::escape(ticker)
+    );
+    regex::Regex::new(&inline_pattern)
+        .ok()
+        .and_then(|re| re.captures(source))
+        .and_then(|caps| caps.name("zone"))
+        .and_then(|zone| normalize_recovered_hit_zone(zone.as_str()))
+}
+
+fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent) -> Vec<String> {
+    if !scheduled_prompt_needs_stable_local_context(event) {
+        return Vec::new();
+    }
+    let tickers = extract_watchlist_tickers(&event.task_prompt);
+    if tickers.is_empty() {
+        return Vec::new();
+    }
+    let session_id = event.actor.session_id();
+    let Some(session) = core
+        .session_storage
+        .load_session(&session_id)
+        .ok()
+        .flatten()
+    else {
+        return Vec::new();
+    };
+
+    let mut sources = Vec::new();
+    if let Some(message) = hone_memory::latest_compact_summary(&session.messages) {
+        let text = hone_memory::session_message_text(message);
+        if !text.trim().is_empty() {
+            sources.push(text);
+        }
+    }
+    if let Some(summary) = session.summary {
+        if !summary.content.trim().is_empty() {
+            sources.push(summary.content);
+        }
+    }
+
+    let mut recovered = Vec::new();
+    for ticker in tickers {
+        if let Some(zone) = sources
+            .iter()
+            .find_map(|source| extract_ticker_hit_zone_from_source(source, &ticker))
+        {
+            recovered.push(format!("- {ticker}: {zone}"));
+        }
+    }
+    recovered
+}
+
+fn build_scheduled_prompt_with_recovered_local_context(
+    core: &HoneBotCore,
+    event: &SchedulerEvent,
+) -> String {
+    let prompt = build_scheduled_prompt(event);
+    let recovered = recover_watchlist_hit_zone_context(core, event);
+    if recovered.is_empty() {
+        return prompt;
+    }
+    format!(
+        "{prompt}\n\n【已恢复的本地击球区参考】\n以下区间来自当前会话已保存的 compact summary / 本地观察池上下文；除非本轮任务正文显式改动，否则沿用这些区间，不要因为 `data_fetch` 未返回击球区字段而删除或改写为“待确认”。\n{}",
+        recovered.join("\n")
+    )
+}
+
 pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
     if event.heartbeat {
         let history_section = if event.last_delivered_previews.is_empty() {
@@ -1307,7 +1426,7 @@ pub async fn run_scheduled_task(
     prompt_options: PromptOptions,
     mut run_options: AgentRunOptions,
 ) -> AgentSessionResult {
-    let full_prompt = build_scheduled_prompt(event);
+    let full_prompt = build_scheduled_prompt_with_recovered_local_context(&core, event);
     run_options.quota_mode = AgentRunQuotaMode::ScheduledTask;
     let session = AgentSession::new(core, event.actor.clone(), event.channel_target.clone())
         .with_prompt_options(prompt_options);
@@ -1632,7 +1751,9 @@ async fn run_heartbeat_task(
         channel_target: event.channel_target.clone(),
         allow_cron: false,
         system_prompt: bundle.system_prompt(),
-        runtime_input: bundle.compose_user_input(&build_scheduled_prompt(event)),
+        runtime_input: bundle.compose_user_input(
+            &build_scheduled_prompt_with_recovered_local_context(&core, event),
+        ),
         context: hone_core::agent::AgentContext::new(transient_session_id),
         timeout,
         gemini_stream: timeout
@@ -1701,13 +1822,13 @@ async fn run_heartbeat_task(
 mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
-        build_scheduled_prompt, execute_scheduler_event, guard_commodity_causality_for_event,
-        has_skip_delivery_signal, heartbeat_duplicate_preview_match,
-        heartbeat_execution_from_content, heartbeat_execution_from_runner_error,
-        heartbeat_runner_selection, inspect_heartbeat_result, is_empty_success_fallback,
-        is_stale_market_data_success_fallback, load_actor_quiet_hours,
-        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
-        sanitize_scheduler_delivery_text,
+        build_scheduled_prompt, build_scheduled_prompt_with_recovered_local_context,
+        execute_scheduler_event, guard_commodity_causality_for_event, has_skip_delivery_signal,
+        heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
+        heartbeat_execution_from_runner_error, heartbeat_runner_selection,
+        inspect_heartbeat_result, is_empty_success_fallback, is_stale_market_data_success_fallback,
+        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
+        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -1716,7 +1837,10 @@ mod tests {
     use crate::response_finalizer::EMPTY_SUCCESS_FALLBACK_MESSAGE;
     use hone_core::config::HoneConfig;
     use hone_core::{ActorIdentity, quiet::QuietHours};
-    use hone_memory::{SessionStorage, session_message_text};
+    use hone_memory::{
+        SessionStorage, build_compact_summary_metadata, session_message_from_text,
+        session_message_text,
+    };
     use hone_scheduler::SchedulerEvent;
     use serde_json::Value;
     use std::sync::Arc;
@@ -2759,6 +2883,63 @@ mod tests {
         assert!(prompt.contains("data_fetch` 只校验最新价格和财报日期"));
         assert!(prompt.contains("不要因为行情工具没有返回击球区字段"));
         assert!(prompt.contains("统一降级为“待确认”"));
+    }
+
+    #[test]
+    fn scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary() {
+        let root = std::env::temp_dir().join(format!(
+            "scheduler_hit_zone_prompt_{}_{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        let prefs_dir = root.join("prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("feishu", "ou_watch", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+        core.session_storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        core.session_storage
+            .append_session_messages(
+                &session_id,
+                vec![session_message_from_text(
+                    "system",
+                    "【Compact Summary】\n| 股票代码 | 公司名 | 当前价 | 击球区 | 财报时间 |\n| --- | --- | --- | --- | --- |\n| MSFT | 微软 | $416.97 | $335–$350 | 2026-04-29 |\n| TSM | 台积电 | $367.09 | 保守$290–$310 / 合理$320–$340 / 激进$345–$355 | 2026-07-16 |\n| LITE | Lumentum | $881.64 | 保守$520–$580 / 合理$600–$650 / 激进观察$680–$720 | 2026-05-05 |",
+                    hone_core::beijing_now_rfc3339(),
+                    Some(build_compact_summary_metadata("test")),
+                )],
+            )
+            .expect("append summary");
+
+        let event = SchedulerEvent {
+            actor,
+            job_id: "job-watch".to_string(),
+            job_name: "核心观察股池晚间快报".to_string(),
+            task_prompt:
+                "按当前25支观察池发送日报，每个标的列出当前价格、击球区区间值、下一次财报时间。核心股包含 MSFT；拓展股包含 TSM、LITE。涉及价格和财报日期必须调用 data_fetch 校验。"
+                    .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_watch".to_string(),
+            delivery_key: "delivery-watch".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 23,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        assert!(prompt.contains("【已恢复的本地击球区参考】"));
+        assert!(prompt.contains("- MSFT: $335–$350"));
+        assert!(prompt.contains("- TSM: 保守$290–$310 / 合理$320–$340 / 激进$345–$355"));
+        assert!(prompt.contains("- LITE: 保守$520–$580 / 合理$600–$650 / 激进观察$680–$720"));
     }
 
     fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {

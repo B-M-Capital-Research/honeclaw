@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-09
+最后更新：2026-05-10
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-09 通过 `hone-cli` rollout 配置归一化、`SessionStorage` 启动 JSON -> SQLite shadow 回填、heartbeat malformed-triggered 恢复加固与 ticker 级去重门槛清理当前活跃队列；open GitHub Issues 中的历史 fixed bug 仍待复测/关闭跟进
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-10 已把观察池击球区恢复下沉到 scheduler 输入构造层，当前活跃队列只剩原油 heartbeat guard 仍发送未核验高风险正文；open GitHub Issues 中的历史 fixed bug 仍待复测/关闭跟进
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

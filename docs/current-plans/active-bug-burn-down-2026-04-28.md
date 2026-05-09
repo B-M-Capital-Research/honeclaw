@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-09 19:06 CST
+- updated_at: 2026-05-10 03:07 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -79,6 +79,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-09 03:28: Closed the remaining active P2 `sessions.sqlite3` mirror stall by combining two rollout fixes: `hone-cli` config generation/writeback now normalizes `storage.session_sqlite_shadow_write_enabled=true`, and `SessionStorage` now performs startup JSON -> SQLite shadow backfill when JSON remains the runtime backend and shadow write is enabled. This covers both non-desktop launch paths that could keep the writer disabled and historical windows where the writer was disabled: restarting with the corrected config now repairs the existing JSON session mirror instead of waiting for each session to receive another turn. Active `docs/bugs/README.md` queue is now empty; open GitHub Issues from older fixed docs still need human/automation follow-up comments or closure review.
 - 2026-05-09 19:06: Re-closed the reopened P2 heartbeat malformed-triggered leak. `recover_malformed_triggered_heartbeat_message` now uses a lossy JSON string-field scanner that confirms `status=triggered`, extracts only the `message` value, tolerates unescaped quotes inside the message, and stops before subsequent fields such as `source/confidence`. The latest `Cerebras IPO` / `RKLB` / `TSLA` shape is covered without turning ordinary malformed JSON, empty output, internal markers, or free text into delivered alerts. No GitHub Issue is linked to the malformed-triggered bug.
 - 2026-05-09 19:12: Re-closed the reopened P2 heartbeat cross-job duplicate suppression false skip. `heartbeat_entity_anchors_compatible` now applies a ticker-level hard gate before loose token overlap: if both the current message and prior preview contain explicit ticker anchors and there is no intersection, the preview cannot suppress delivery. Generic English anchors such as `Q1/Q2/Q3/Q4`, `CEO`, `SEC`, and `FDA` are excluded from entity compatibility. Added regressions for `RKLB -> ASTS`, `RKLB -> TEM`, and `RKLB -> portfolio ASTS`; active `docs/bugs/README.md` queue is now empty again. No GitHub Issue is linked to this bug.
+- 2026-05-10 03:07: Re-closed the reopened P3 watchlist hit-zone degradation again, this time by moving the fix from prompt-only guidance into scheduler input construction. Watchlist tasks that mention hit zones now recover ticker -> zone mappings from the current actor session's `compact summary` / `session.summary` and append them as explicit `【已恢复的本地击球区参考】` bullets before execution, so the answer stage no longer has to rediscover or remember the stable local ranges on its own. Added `scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary` and re-ran the existing stable-local-field regression; active queue is now reduced to the oil heartbeat causality-guard bug.
 
 ## Validation
 
@@ -179,6 +180,9 @@ Completed this round:
 - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
 - `cargo check -p hone-channels --tests`
 - `cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`
+- `cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields -- --nocapture`
+- `cargo test -p hone-channels scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary -- --nocapture`
+- `cargo check -p hone-channels --tests`
 
 Known verification limitation:
 
