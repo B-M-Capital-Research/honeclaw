@@ -7,6 +7,15 @@
 
 ## 修复进展
 
+- `2026-05-09 19:05 CST` 本轮巡检继续确认本单活跃：最近四小时内除 15:01 Cerebras 样本外，18:30 又出现 `TSLA 正负触发条件心跳监控` 的 malformed-triggered 漏投。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=17554`，`job_name=TSLA 正负触发条件心跳监控`，`executed_at=2026-05-09T18:30:35.108983+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`。
+    - 同窗 `run_id=17558`（`Cerebras IPO与业务进展心跳监控`）成功 `completed + sent + delivered=1`，说明不是 Feishu 出站整体不可用。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-09 18:30:35.107` 记录 `job_id=j_f9642c78` 输出 `raw_chars=384`、`starts_with_json=true`、`parse_kind=JsonMalformed`，`raw_preview` 以 `{"status":"triggered","message":"【负向触发 · TSLA】法官拒绝快速批准Musk与SEC和解...` 开头，正文已经包含 Reuters 报道、SEC 和解、治理争议和影响方向。
+    - 随后同一秒连续记录 `malformed heartbeat json suppressed`、`parse failure escalated`，Feishu scheduler 记录 `定时任务执行失败，本轮不发送 ... err=heartbeat 输出不是合法 JSON，任务已标记失败`。
+  - 结论：当前 live 样本已经跨 `Cerebras / RKLB / TSLA` 多条 heartbeat 复现，都是已有可见 `triggered` 正文却因 JSON 字符串内部引号或截断导致整轮漏投；继续维持功能性 `P2 / New`。
+
 - `2026-05-09 15:02 CST` 本轮巡检继续确认本单活跃：最近四小时内同一 malformed-triggered 漏投形态再次复现，且这次命中 `Cerebras IPO与业务进展心跳监控`。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=17474`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-05-09T15:01:01.459568+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`。

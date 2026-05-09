@@ -3,9 +3,21 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：Fixed
+- 状态：New
 
 ## 证据来源
+
+- `2026-05-09 19:05 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口再次出现同根因，且这次不是单个 job，而是同一目标下多个不同标的 / 不同主题被上一小时 `RKLB` preview 误抑制。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=17548`，`job_id=j_1241aad0`，`job_name=RKLB异动监控`，`executed_at=2026-05-09T18:00:31.741748+08:00`，`execution_status=completed`，`message_send_status=sent`，`delivered=1`，`response_preview` 为 `【RKLB 单日暴涨34% · 2026-05-09 18:00 北京时间】...`。
+  - `run_id=17557`，`job_id=j_db12f27f`，`job_name=持仓重大事件心跳检测`，`executed_at=2026-05-09T18:31:00.776206+08:00`，终态为 `noop + skipped_noop + delivered=0`；同一日志窗口先生成了 `ASTS 单日+14.8% / Rakuten退出完成 / Q1财报临近` 的 `JsonTriggered` 正文，随后被 `duplicate_suppressed` 命中上一条 `RKLB 单日暴涨34%` preview。
+  - `run_id=17575`，`job_id=j_fc7749ca`，`job_name=ASTS 重大异动心跳监控`，`executed_at=2026-05-09T19:00:49.804086+08:00`，终态为 `noop + skipped_noop + delivered=0`；日志先记录 `parse_kind=JsonTriggered` 与 `deliver_preview="【ASTS 单日涨跌幅超阈值】..."`，随后 `duplicate_suppressed` 的 `matched_preview` 指向 `RKLB 单日暴涨34%`。
+  - `run_id=17568`，`job_id=j_818f0150`，`job_name=TEM大事件心跳监控`，`executed_at=2026-05-09T19:00:59.933459+08:00`，终态为 `noop + skipped_noop + delivered=0`；日志先记录 `parse_kind=JsonTriggered` 与 `deliver_preview="【TEM Q1财报超预期 + 可转债发行 + 新合作】..."`，随后同样被 `RKLB 单日暴涨34%` preview 抑制。
+  - `run_id=17576`，`job_id=j_db12f27f`，`job_name=持仓重大事件心跳检测`，`executed_at=2026-05-09T19:01:05.555661+08:00`，终态为 `noop + skipped_noop + delivered=0`；日志先记录 `parse_kind=JsonTriggered` 与 `deliver_preview="【ASTS 单日暴涨近15%】..."`，随后同样被上一小时 `RKLB` preview 抑制。
+- `data/runtime/logs/sidecar.log`
+  - `2026-05-09 19:00:49.801-19:01:05.555 CST` 连续记录 `ASTS`、`TEM`、`持仓重大事件` 三条不同 heartbeat 的 `parse_kind=JsonTriggered -> deliver_preview -> duplicate_suppressed`。
+  - 三次 `matched_preview` 都是 `【RKLB 单日暴涨34% · 2026-05-09 18:00 北京时间】...`，而本轮被抑制内容分别是 ASTS、TEM 与聚合持仓中的 ASTS，实体 / ticker 明显不同。
+  - 同窗 `run_id=17567`（`CAI破位预警`）成功 `completed + sent + delivered=1`，说明不是 Feishu 出站或整轮 scheduler 不可用，而是去重层把已触发内容转成未发送。
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=15576`
@@ -65,6 +77,9 @@
 
 ## 当前实现效果
 
+- `2026-05-09 18:30-19:01` 最新真实窗口里，ASTS、TEM、持仓重大事件都先通过模型侧触发，日志已经记录 `parse_kind=JsonTriggered` 与可见 `deliver_preview`。
+- 但最终台账把这些任务落成 `noop + skipped_noop`，`matched_preview` 指向前一小时同 actor 的 `RKLB 单日暴涨34%`。
+- 这说明 2026-05-06 的实体 / ticker 锚点兼容检查仍存在漏网路径：不同标的的新触发仍可能被 actor 级 preview 去重误吞。
 - `2026-05-04 23:00` 最新真实窗口里，`ORCL 大事件监控` 与 `持仓重大事件心跳检测` 都先通过模型侧触发，`detail_json.parse_kind` 明确为 `JsonTriggered`。
 - 但最终台账没有记录原始触发正文，只剩 `duplicate_suppressed=true` 和一个错误的 `matched_preview=Cerebras IPO重大进展`。
 - 这说明当前去重逻辑在 actor 级跨 job 复用时过于宽松，已经从“抑制旧事件重复提醒”退化成“误吞不同主题的新提醒”。
@@ -104,4 +119,6 @@
 
 ## 下一步建议
 
+- 优先复核 `heartbeat_duplicate_preview_match(...)` 在 `matched_preview=RKLB`、`suppressed_preview=ASTS/TEM/持仓ASTS` 时为什么仍返回 true，重点检查实体锚点抽取是否被通用 token、中文标题或聚合持仓文本稀释。
+- 在回归里补入本轮 `RKLB -> ASTS`、`RKLB -> TEM`、`RKLB -> 持仓ASTS` 三类样本，并断言不同 ticker / 不同事件主题不得进入 duplicate suppression。
 - 部署后观察下一轮 heartbeat：若仍出现 `duplicate_suppressed=true` 且 `matched_preview` 与 `suppressed_preview` 属于不同 ticker / 主题，应继续扩展实体锚点或把去重键提升到更结构化的事件签名。

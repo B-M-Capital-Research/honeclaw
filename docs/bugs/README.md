@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-09 15:02 CST
+最后更新：2026-05-09 19:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,17 +17,18 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：9
-- 已修复 / 已关闭：97
+- 已修复 / 已关闭：96
 - 历史分析 / 部分止血：5
-- 当前活跃队列优先处理 heartbeat malformed-triggered 仍漏投的问题
+- 当前活跃队列优先处理 heartbeat malformed-triggered 仍漏投，以及跨 job duplicate_suppressed 误吞不同标的触发的问题
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-09 15:02 最近四小时 `run_id=17474`（`Cerebras IPO与业务进展心跳监控`）再次生成 `status=triggered` 与可见提醒正文，但因 `JsonMalformed` 被 `execution_failed + skipped_error` 跳过；同窗多条 heartbeat 正常送达，说明 2026-05-08 malformed-triggered 恢复边界仍未覆盖当前 live 样本 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-09 19:05 最近四小时 `run_id=17474`（`Cerebras IPO与业务进展心跳监控`）与 `run_id=17554`（`TSLA 正负触发条件心跳监控`）均生成 `status=triggered` 与可见提醒正文，但因 `JsonMalformed` 被 `execution_failed + skipped_error` 跳过；同窗多条 heartbeat 正常送达，说明 2026-05-08 malformed-triggered 恢复边界仍未覆盖当前 live 样本 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 跨 job 预览去重把不同标的误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-09 19:05 最近四小时复现：`run_id=17575`（ASTS）、`17568`（TEM）、`17576`（持仓重大事件）都先产出 `JsonTriggered` 与可投递正文，却被 `duplicate_suppressed` 匹配到上一小时 `RKLB 单日暴涨34%`，最终落成 `noop + skipped_noop`；18:30 同一聚合持仓链路也被同一 RKLB preview 误抑制 | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 
 ## Later / 待复现
 
@@ -69,7 +70,6 @@
 | Feishu 定时任务 `schedule` / prompt 时间错配修复后，历史坏 job 仍持续 warning + skip | P2 | Fixed | 2026-05-07 复核当前 `CronJobStorage::get_due_jobs` 会修复历史 prompt/schedule 时间错配并持久化；`prompt_schedule_time_mismatch` 回归通过，旧进程日志不再维持活跃状态 | [feishu_scheduler_prompt_schedule_time_mismatch.md](./archive/feishu_scheduler_prompt_schedule_time_mismatch.md) |
 | Feishu scheduler 预写的 `running/pending` 台账再次不会被终态覆盖，悬挂 started 行仍在持续堆积 | P3 | Fixed | 2026-05-07 复核当前 `record_execution_event` 会按 `delivery_key` 或最近 started row 覆盖终态；5 条 started-row 回归通过，后续若新终态仍另起行再重开 | [feishu_scheduler_running_rows_never_finalized.md](./archive/feishu_scheduler_running_rows_never_finalized.md) |
 | Feishu 直聊沿用旧证券上下文，图片问答后的追问再次被更早 `HROW` 旧话题劫持 | P3 | Fixed | 2026-05-07 multi-agent search-stage guidance 明确当前 user turn / 最近显式主题是首个工具目标真相源，行业请求先搜行业与代表公司，短承接追问优先最近主题；`search_input_guidance_allows_direct_replies_for_greetings` 回归通过 | [feishu_direct_stale_symbol_context_hijacks_new_query.md](./archive/feishu_direct_stale_symbol_context_hijacks_new_query.md) |
-| Heartbeat actor 级跨 job 去重把 `ORCL` / `持仓` 新触发误判成上一窗 `Cerebras IPO` 重复内容并直接漏发 | P2 | Fixed | 2026-05-06 heartbeat preview 去重新增实体 / ticker 锚点兼容检查：两边都有明确英文实体且无交集时不再进入宽松 overlap 抑制；`duplicate_suppressed` metadata 同步保留本轮 `suppressed_preview`，便于审计误抑制；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./archive/scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | Feishu 定时任务内部失败仍会外发通用失败提示，且 direct session 不回写失败记录 | P1 | Fixed | 2026-05-07 修正 `user_visible_error_message_or_none(...)` 的判断顺序：`codex acp session/prompt idle timeout` 这类内部错误先走 `internal_error_suppressed`，不再被错误转成 `抱歉，处理超时了。请稍后再试。` 并登记为 `should_deliver=1`；`cargo test -p hone-channels user_visible_error_message_or_none --lib -- --nocapture`、`cargo test -p hone-channels suppressed_scheduler_failure_persists_single_transcript_marker --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#22](https://github.com/B-M-Capital-Research/honeclaw/issues/22) | [feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md](./archive/feishu_scheduler_codex_acp_unfinished_tool_generic_failure_unpersisted.md) |
 | Feishu 直聊 `session/update` 会把系统提示、skill prompt、绝对路径与工具原始输出直接外发 | P1 | Fixed | 2026-05-06 07:07 Feishu live listener 不再把 ACP `StreamDelta` 草稿写入占位卡片；最终用户回复仍走 `response.content` 收口，placeholder / 工具进度缓冲不会被当作失败 partial 或成功 final 外发；`cargo test -p hone-feishu -- --nocapture`、`cargo check -p hone-feishu --tests`、`rustfmt --edition 2024 --check bins/hone-feishu/src/listener.rs bins/hone-feishu/src/handler.rs` 通过；关联 Issue [#31](https://github.com/B-M-Capital-Research/honeclaw/issues/31) | [feishu_direct_session_update_internal_prompt_and_tool_output_leak.md](./archive/feishu_direct_session_update_internal_prompt_and_tool_output_leak.md) |
 | Feishu 直聊 Answer 阶段持续出现空/无效回复，真实任务被 fallback 遮蔽为“未成功产出完整回复” | P1 | Fixed | 2026-05-05 07:03 `multi_agent` 搜索阶段直返判定补充用户可见澄清识别；`请先确认具体是哪只股票/资产的 ticker？...` 这类澄清句不再因 `先确认` / `我再` 被当作内部工作笔记而送入 answer 阶段，减少已可消费澄清被 fallback 遮蔽的剩余入口；关联 Issue [#29](https://github.com/B-M-Capital-Research/honeclaw/issues/29) | [feishu_direct_empty_reply_false_success.md](./archive/feishu_direct_empty_reply_false_success.md) |
