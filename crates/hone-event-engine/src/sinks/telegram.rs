@@ -13,6 +13,7 @@ use crate::digest::{DigestItem, DigestPayload, group_by_kind_bucket};
 use crate::event::Severity;
 use crate::renderer::{RenderFormat, link_label};
 use crate::router::OutboundSink;
+use crate::sinks::http_error::format_upstream_http_error;
 
 pub struct TelegramSink {
     bot_token: String,
@@ -58,7 +59,12 @@ impl TelegramSink {
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();
-            anyhow::bail!("telegram sendMessage {status}: {detail}");
+            anyhow::bail!(format_upstream_http_error(
+                "telegram",
+                "sendMessage",
+                status,
+                &detail
+            ));
         }
         Ok(())
     }

@@ -25,6 +25,7 @@ use crate::digest::DigestPayload;
 use crate::renderer::RenderFormat;
 use crate::router::OutboundSink;
 use crate::sinks::feishu_card::build_feishu_card;
+use crate::sinks::http_error::format_upstream_http_error;
 
 const FEISHU_TOKEN_URL: &str =
     "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
@@ -103,7 +104,10 @@ impl FeishuSink {
             .await?;
         let status = resp.status();
         if !status.is_success() {
-            anyhow::bail!("feishu token HTTP {status}");
+            let detail = resp.text().await.unwrap_or_default();
+            anyhow::bail!(format_upstream_http_error(
+                "feishu", "token", status, &detail
+            ));
         }
         let parsed: TokenResp = resp.json().await?;
         if parsed.code != 0 {
@@ -173,7 +177,12 @@ impl FeishuSink {
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();
-            anyhow::bail!("feishu resolve direct contact HTTP {status}: {detail}");
+            anyhow::bail!(format_upstream_http_error(
+                "feishu",
+                "resolve direct contact",
+                status,
+                &detail
+            ));
         }
         let parsed: BatchGetIdResp = resp.json().await?;
         if parsed.code != 0 {
@@ -268,7 +277,9 @@ impl FeishuSink {
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();
-            anyhow::bail!("feishu send HTTP {status}: {detail}");
+            anyhow::bail!(format_upstream_http_error(
+                "feishu", "send", status, &detail
+            ));
         }
         let parsed: SendResp = resp.json().await?;
         if parsed.code != 0 {

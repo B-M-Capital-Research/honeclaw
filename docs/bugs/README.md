@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-11 07:03 CST
+最后更新：2026-05-11 07:29 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -27,7 +27,7 @@
 
 | 方向 | 状态 | 入口 |
 | --- | --- | --- |
-| 复杂度热点 | open | [code-quality-patrol.md](./code-quality-patrol.md) |
+| 复杂度热点 / 错误与日志质量 | open | [code-quality-patrol.md](./code-quality-patrol.md) |
 
 ## 活跃待修复
 

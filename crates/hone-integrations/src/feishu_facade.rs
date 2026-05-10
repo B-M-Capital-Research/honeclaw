@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use hone_core::{HoneError, HoneResult};
+use reqwest::StatusCode;
+use serde_json::Value;
+
+const MAX_FACADE_ERROR_CHARS: usize = 500;
 
 #[derive(Debug, Serialize)]
 struct JsonRpcRequest<T> {
@@ -166,10 +170,10 @@ impl FeishuFacadeClient {
             .map_err(|e| HoneError::Integration(format!("Feishu facade 请求失败: {e}")))?;
 
         if !resp.status().is_success() {
-            let status = resp.status().as_u16();
+            let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(HoneError::Integration(format!(
-                "Feishu facade HTTP {status}: {body}"
+            return Err(HoneError::Integration(format_facade_http_error(
+                status, &body,
             )));
         }
 
@@ -191,6 +195,55 @@ impl FeishuFacadeClient {
     }
 }
 
+fn format_facade_http_error(status: StatusCode, body: &str) -> String {
+    let detail = extract_facade_error_detail(body);
+    if detail.is_empty() {
+        format!("Feishu facade HTTP {status} (empty response body)")
+    } else {
+        format!("Feishu facade HTTP {status}: {detail}")
+    }
+}
+
+fn extract_facade_error_detail(body: &str) -> String {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        return truncate_facade_error_body(trimmed);
+    };
+    let message = value
+        .get("error")
+        .unwrap_or(&value)
+        .get("message")
+        .or_else(|| value.get("message"))
+        .or_else(|| value.get("msg"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| truncate_facade_error_body(trimmed));
+    let code = value
+        .get("error")
+        .and_then(|error| error.get("code"))
+        .or_else(|| value.get("code"));
+    match code {
+        Some(Value::String(code)) if !code.is_empty() => format!("{message} (code: {code})"),
+        Some(Value::Number(code)) => format!("{message} (code: {code})"),
+        _ => message,
+    }
+}
+
+fn truncate_facade_error_body(text: &str) -> String {
+    if text.chars().count() <= MAX_FACADE_ERROR_CHARS {
+        return text.to_string();
+    }
+    text.chars()
+        .take(MAX_FACADE_ERROR_CHARS)
+        .collect::<String>()
+        + "..."
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,15 +251,16 @@ mod tests {
     use std::net::TcpListener;
     use std::thread;
 
-    fn spawn_json_server(body: String) -> String {
+    fn spawn_response_server(status: &str, body: String) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("local addr");
+        let status = status.to_string();
         thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
                 let mut buf = [0u8; 4096];
                 let _ = stream.read(&mut buf);
                 let resp = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     body.len(),
                     body
                 );
@@ -214,6 +268,10 @@ mod tests {
             }
         });
         format!("http://{addr}")
+    }
+
+    fn spawn_json_server(body: String) -> String {
+        spawn_response_server("200 OK", body)
     }
 
     #[tokio::test]
@@ -257,5 +315,23 @@ mod tests {
             .await
             .expect_err("rpc error");
         assert!(err.to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn http_error_extracts_message_and_code_without_full_body() {
+        let url = spawn_response_server(
+            "502 Bad Gateway",
+            r#"{"error":{"code":32002,"message":"upstream offline"},"debug":"ignored"}"#
+                .to_string(),
+        );
+        let client = FeishuFacadeClient::new(url);
+        let err = client
+            .resolve_email("alice@example.com")
+            .await
+            .expect_err("http error");
+        assert_eq!(
+            err.to_string(),
+            "集成错误: Feishu facade HTTP 502 Bad Gateway: upstream offline (code: 32002)"
+        );
     }
 }

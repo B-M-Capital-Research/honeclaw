@@ -11,6 +11,7 @@ const FEISHU_REQUEST_MAX_ATTEMPTS: usize = 3;
 const FEISHU_RETRY_DELAYS: [Duration; FEISHU_REQUEST_MAX_ATTEMPTS - 1] =
     [Duration::from_millis(500), Duration::from_millis(1500)];
 const FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS: usize = 2;
+const FEISHU_ERROR_BODY_MAX_CHARS: usize = 500;
 
 #[derive(Clone)]
 pub struct FeishuApiClient {
@@ -81,7 +82,13 @@ impl FeishuApiClient {
         .map_err(|e| format!("Feishu token request failed: {e}"))?;
 
         if !resp.status().is_success() {
-            return Err(format!("Feishu token auth failed: HTTP {}", resp.status()));
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format_feishu_http_error(
+                "Feishu token auth failed",
+                status,
+                &body,
+            ));
         }
 
         let token_resp: TokenResponse = resp
@@ -182,9 +189,10 @@ impl FeishuApiClient {
                     self.clear_token_cache().await;
                     continue;
                 }
-                return Err(format!(
-                    "Feishu send message failed: HTTP {} - {}",
-                    status, error_body
+                return Err(format_feishu_http_error(
+                    "Feishu send message failed",
+                    status,
+                    error_body,
                 ));
             }
 
@@ -251,9 +259,10 @@ impl FeishuApiClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let error_body = resp.text().await.unwrap_or_default();
-            return Err(format!(
-                "Feishu reply message failed: HTTP {} - {}",
-                status, error_body
+            return Err(format_feishu_http_error(
+                "Feishu reply message failed",
+                status,
+                error_body,
             ));
         }
 
@@ -303,9 +312,10 @@ impl FeishuApiClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let error_body = resp.text().await.unwrap_or_default();
-            return Err(format!(
-                "Feishu update message failed: HTTP {} - {}",
-                status, error_body
+            return Err(format_feishu_http_error(
+                "Feishu update message failed",
+                status,
+                error_body,
             ));
         }
 
@@ -374,9 +384,10 @@ impl FeishuApiClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let error_body = resp.text().await.unwrap_or_default();
-            return Err(format!(
-                "Feishu upload image failed: HTTP {} - {}",
-                status, error_body
+            return Err(format_feishu_http_error(
+                "Feishu upload image failed",
+                status,
+                error_body,
             ));
         }
 
@@ -430,9 +441,10 @@ impl FeishuApiClient {
                     self.clear_token_cache().await;
                     continue;
                 }
-                return Err(format!(
-                    "Feishu resolve email failed: HTTP {} - {}",
-                    status, body
+                return Err(format_feishu_http_error(
+                    "Feishu resolve email failed",
+                    status,
+                    body,
                 ));
             }
 
@@ -500,9 +512,10 @@ impl FeishuApiClient {
                     self.clear_token_cache().await;
                     continue;
                 }
-                return Err(format!(
-                    "Feishu resolve mobile failed: HTTP {} - {}",
-                    status, body
+                return Err(format_feishu_http_error(
+                    "Feishu resolve mobile failed",
+                    status,
+                    body,
                 ));
             }
 
@@ -616,7 +629,13 @@ impl FeishuApiClient {
         }
 
         if !resp.status().is_success() {
-            return Err(format!("CardKit create card HTTP {}", resp.status()));
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format_feishu_http_error(
+                "CardKit create card failed",
+                status,
+                body,
+            ));
         }
 
         let create_resp: CreateResp = resp
@@ -669,9 +688,10 @@ impl FeishuApiClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body_text = resp.text().await.unwrap_or_default();
-            return Err(format!(
-                "CardKit update element HTTP {} - {}",
-                status, body_text
+            return Err(format_feishu_http_error(
+                "CardKit update element failed",
+                status,
+                body_text,
             ));
         }
 
@@ -728,9 +748,10 @@ impl FeishuApiClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body_text = resp.text().await.unwrap_or_default();
-            return Err(format!(
-                "CardKit close streaming HTTP {} - {}",
-                status, body_text
+            return Err(format_feishu_http_error(
+                "CardKit close streaming failed",
+                status,
+                body_text,
             ));
         }
 
@@ -763,7 +784,13 @@ impl FeishuApiClient {
             .map_err(|e| format!("Feishu get user request failed: {e}"))?;
 
         if !resp.status().is_success() {
-            return Err(format!("Feishu get user failed: HTTP {}", resp.status()));
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format_feishu_http_error(
+                "Feishu get user failed",
+                status,
+                body,
+            ));
         }
 
         let json: serde_json::Value = resp
@@ -872,6 +899,53 @@ fn contains_invalid_access_token_text(value: &str) -> bool {
         || normalized.contains("tenant_access_token invalid")
 }
 
+fn format_feishu_http_error(action: &str, status: StatusCode, body: impl AsRef<str>) -> String {
+    let detail = extract_feishu_error_detail(body.as_ref());
+    if detail.is_empty() {
+        format!("{action}: HTTP {status} (empty response body)")
+    } else {
+        format!("{action}: HTTP {status} - {detail}")
+    }
+}
+
+fn extract_feishu_error_detail(body: &str) -> String {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        return truncate_feishu_error_body(trimmed);
+    };
+    let error = value.get("error").unwrap_or(&value);
+    let message = error
+        .get("message")
+        .or_else(|| error.get("msg"))
+        .or_else(|| error.get("detail"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| truncate_feishu_error_body(trimmed));
+    let code = error.get("code").or_else(|| value.get("code"));
+    match code {
+        Some(serde_json::Value::String(code)) if !code.is_empty() => {
+            format!("{message} (code: {code})")
+        }
+        Some(serde_json::Value::Number(code)) => format!("{message} (code: {code})"),
+        _ => message,
+    }
+}
+
+fn truncate_feishu_error_body(text: &str) -> String {
+    if text.chars().count() <= FEISHU_ERROR_BODY_MAX_CHARS {
+        return text.to_string();
+    }
+    text.chars()
+        .take(FEISHU_ERROR_BODY_MAX_CHARS)
+        .collect::<String>()
+        + "..."
+}
+
 fn image_mime_type(path: &str) -> &'static str {
     match Path::new(path)
         .extension()
@@ -903,7 +977,8 @@ fn first_batch_get_open_id(data: Option<serde_json::Value>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        feishu_retry_delay, first_batch_get_open_id, is_feishu_invalid_access_token_error,
+        FEISHU_ERROR_BODY_MAX_CHARS, feishu_retry_delay, first_batch_get_open_id,
+        format_feishu_http_error, is_feishu_invalid_access_token_error,
         should_refresh_feishu_token_for_http_error, should_retry_feishu_status,
         should_retry_invalid_token_refresh,
     };
@@ -986,5 +1061,42 @@ mod tests {
             99992361,
             "open_id cross app"
         ));
+    }
+
+    #[test]
+    fn feishu_http_error_extracts_message_and_code() {
+        let message = format_feishu_http_error(
+            "Feishu send message failed",
+            StatusCode::BAD_REQUEST,
+            r#"{"code":99991663,"msg":"Invalid access token","debug":"ignored"}"#,
+        );
+        assert_eq!(
+            message,
+            "Feishu send message failed: HTTP 400 Bad Request - Invalid access token (code: 99991663)"
+        );
+    }
+
+    #[test]
+    fn feishu_http_error_marks_empty_body() {
+        let message =
+            format_feishu_http_error("CardKit create card failed", StatusCode::BAD_GATEWAY, " ");
+        assert_eq!(
+            message,
+            "CardKit create card failed: HTTP 502 Bad Gateway (empty response body)"
+        );
+    }
+
+    #[test]
+    fn feishu_http_error_truncates_unstructured_body() {
+        let body = "x".repeat(FEISHU_ERROR_BODY_MAX_CHARS + 10);
+        let message =
+            format_feishu_http_error("Feishu upload image failed", StatusCode::BAD_REQUEST, body);
+        assert_eq!(
+            message,
+            format!(
+                "Feishu upload image failed: HTTP 400 Bad Request - {}...",
+                "x".repeat(FEISHU_ERROR_BODY_MAX_CHARS)
+            )
+        );
     }
 }

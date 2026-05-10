@@ -19,6 +19,7 @@ use crate::digest::DigestPayload;
 use crate::renderer::RenderFormat;
 use crate::router::OutboundSink;
 use crate::sinks::discord_embed::build_discord_embed_message;
+use crate::sinks::http_error::format_upstream_http_error;
 
 const DISCORD_API_BASE: &str = "https://discord.com/api/v10";
 
@@ -66,7 +67,12 @@ impl DiscordSink {
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();
-            anyhow::bail!("discord create DM {status}: {detail}");
+            anyhow::bail!(format_upstream_http_error(
+                "discord",
+                "create DM",
+                status,
+                &detail
+            ));
         }
         let parsed: CreateDmResp = resp.json().await?;
         self.dm_channel_cache
@@ -91,7 +97,9 @@ impl DiscordSink {
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();
-            anyhow::bail!("discord send {status}: {detail}");
+            anyhow::bail!(format_upstream_http_error(
+                "discord", "send", status, &detail
+            ));
         }
         Ok(())
     }
@@ -111,7 +119,9 @@ impl DiscordSink {
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();
-            anyhow::bail!("discord send {status}: {detail}");
+            anyhow::bail!(format_upstream_http_error(
+                "discord", "send", status, &detail
+            ));
         }
         Ok(())
     }

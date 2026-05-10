@@ -12,6 +12,7 @@ pub mod discord;
 pub mod discord_embed;
 pub mod feishu;
 pub mod feishu_card;
+mod http_error;
 pub mod imessage;
 pub mod multi;
 pub mod telegram;
