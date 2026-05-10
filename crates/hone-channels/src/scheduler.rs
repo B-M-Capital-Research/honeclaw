@@ -127,6 +127,9 @@ fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> 
             '"' => in_string = true,
             '{' => {
                 if depth == 0 {
+                    if previous_visible_char(content, idx) == Some('`') {
+                        continue;
+                    }
                     start = Some(idx);
                 }
                 depth += 1;
@@ -152,6 +155,10 @@ fn parse_heartbeat_json_payload(content: &str) -> Option<HeartbeatJsonResponse> 
         .find_map(|candidate| serde_json::from_str::<HeartbeatJsonResponse>(candidate).ok())
 }
 
+fn previous_visible_char(content: &str, idx: usize) -> Option<char> {
+    content[..idx].chars().rev().find(|ch| !ch.is_whitespace())
+}
+
 fn find_json_string_field_value_start(content: &str, field: &str) -> Option<usize> {
     let needle = format!("\"{field}\"");
     let field_idx = content.find(&needle)?;
@@ -160,24 +167,46 @@ fn find_json_string_field_value_start(content: &str, field: &str) -> Option<usiz
     Some(value_quote_idx + 1)
 }
 
-fn looks_like_json_string_field_end(content: &str, quote_idx: usize) -> bool {
+fn json_field_name_after_comma(rest: &str) -> Option<&str> {
+    let after_comma = rest.strip_prefix(',')?.trim_start();
+    let after_quote = after_comma.strip_prefix('"')?;
+    let end_quote = after_quote.find('"')?;
+    if !after_quote[end_quote + 1..].trim_start().starts_with(':') {
+        return None;
+    }
+    Some(&after_quote[..end_quote])
+}
+
+fn heartbeat_message_trailing_field(field: &str) -> bool {
+    matches!(
+        field,
+        "source"
+            | "sources"
+            | "confidence"
+            | "reason"
+            | "timestamp"
+            | "time"
+            | "checked_at"
+            | "check_time"
+            | "symbol"
+            | "ticker"
+            | "price"
+            | "severity"
+            | "risk"
+            | "trigger"
+            | "metadata"
+    )
+}
+
+fn looks_like_json_string_field_end(content: &str, quote_idx: usize, field: &str) -> bool {
     let rest = content[quote_idx + 1..].trim_start();
     if rest.is_empty() || rest.starts_with('}') {
         return true;
     }
-    let Some(after_comma) = rest.strip_prefix(',') else {
+    let Some(next_field) = json_field_name_after_comma(rest) else {
         return false;
     };
-    let after_comma = after_comma.trim_start();
-    if !after_comma.starts_with('"') {
-        return false;
-    }
-    let Some(end_quote) = after_comma[1..].find('"') else {
-        return false;
-    };
-    after_comma[1 + end_quote + 1..]
-        .trim_start()
-        .starts_with(':')
+    field != "message" || heartbeat_message_trailing_field(next_field)
 }
 
 fn recover_lossy_json_string_field(content: &str, field: &str) -> Option<String> {
@@ -205,7 +234,7 @@ fn recover_lossy_json_string_field(content: &str, field: &str) -> Option<String>
                     }
                 }
             }
-            '"' if looks_like_json_string_field_end(content, abs_idx) => break,
+            '"' if looks_like_json_string_field_end(content, abs_idx, field) => break,
             '"' => value.push('"'),
             '}' if content[abs_idx + ch.len_utf8()..].trim().is_empty() => break,
             _ => value.push(ch),
@@ -216,26 +245,49 @@ fn recover_lossy_json_string_field(content: &str, field: &str) -> Option<String>
     if value.is_empty() { None } else { Some(value) }
 }
 
+fn json_status_candidate_starts(content: &str) -> Vec<usize> {
+    let mut starts = Vec::new();
+    for (idx, _) in content.match_indices('{') {
+        let candidate = &content[idx..];
+        let after_brace = candidate[1..].trim_start();
+        if !after_brace.starts_with("\"status\"") {
+            continue;
+        }
+        if previous_visible_char(content, idx) == Some('`') {
+            continue;
+        }
+        starts.push(idx);
+    }
+    starts
+}
+
 fn recover_malformed_triggered_heartbeat_message(content: &str) -> Option<String> {
     let trimmed = content.trim();
-    if !trimmed.starts_with('{') {
-        return None;
-    }
-
-    let status = recover_lossy_json_string_field(trimmed, "status")?;
-    if !status.eq_ignore_ascii_case("triggered") {
-        return None;
-    }
-
-    let message = recover_lossy_json_string_field(trimmed, "message")?;
-    let message = unwrap_nested_json_message(message.trim())
-        .trim()
-        .to_string();
-    if message.is_empty() || heartbeat_internal_marker_prefix(&message) {
-        None
+    let candidate_starts = if trimmed.starts_with('{') {
+        vec![0]
     } else {
-        Some(message)
+        json_status_candidate_starts(trimmed)
+    };
+
+    for start in candidate_starts {
+        let candidate = &trimmed[start..];
+        let Some(status) = recover_lossy_json_string_field(candidate, "status") else {
+            continue;
+        };
+        if !status.eq_ignore_ascii_case("triggered") {
+            continue;
+        }
+
+        let message = recover_lossy_json_string_field(candidate, "message")?;
+        let message = unwrap_nested_json_message(message.trim())
+            .trim()
+            .to_string();
+        if message.is_empty() || message == "..." || heartbeat_internal_marker_prefix(&message) {
+            continue;
+        }
+        return Some(message);
     }
+    None
 }
 
 fn heartbeat_internal_marker_prefix(text: &str) -> bool {
@@ -1498,6 +1550,7 @@ pub fn build_scheduled_prompt(event: &SchedulerEvent) -> String {
 5. 不要输出 Markdown 代码块，不要输出额外解释，不要暴露任何内部控制标记。\n\
 6. 如果你不确定是否满足条件，或者输出格式不是严格 JSON，就必须返回 noop，不允许发送自由文本。\n\
 6a. 输出契约：整条回复必须是单段 JSON，第一个可见字符必须是 `{{`。严禁使用 `<think>...</think>`、```json ... ```、`## 分析`、分步解释或任何前置/收尾的自由文本。推理过程不要对外展示；需要推理时在内部完成后，直接给出最终 JSON。\n\
+6b. 如果你发现用户条件、交易动作边界、来源归因或输出契约之间存在冲突，不要解释冲突、不要复述规则、不要输出空文本；必须返回 `{{\"status\":\"noop\"}}`，除非你能用合规的 `triggered` JSON 只报告触发事实和条件化风险提示。\n\
 7. 时间一致性约束：对于发射、财报、业绩会等有明确时间窗口的事件，必须先判断当前时间是否已越过事件预定时间，才能输出完成态结论。若当前时间早于事件计划时间，必须返回 noop，不允许把未来计划误报成已完成。\n\
 8. 价格时间口径约束：引用股价时，必须核实价格的时间戳。若市场已停盘、股票停牌或价格来自上一交易日，必须在 message 中明确标注（最新可得价格为停牌前/上一交易日），不允许把旧价格包装成事件发生后的即时市场反应。\n\
 9. 价格阈值口径约束：除非用户条件里明确写的是“日内最高/最低/振幅/区间波动”，否则“盘中涨跌幅超过 X%”一律按最新可得价格相对昨收的涨跌幅判断；不允许用日内高点相对昨收、日内低点相对昨收，或高低点振幅去替代当前涨跌幅。\n\
@@ -2055,6 +2108,38 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_malformed_triggered_json_keeps_quoted_colon_text_inside_message() {
+        assert_eq!(
+            inspect_heartbeat_result(
+                r#"{"status":"triggered","message":"【RKLB 异动提醒 | 检查时间：2026-05-10 11:30 北京时间】管理层称"公司史上最强一季度","订单需求":持续强劲，单日涨跌幅超过 8%，触发提醒。","source":"earnings call"}"#
+            ),
+            (
+                HeartbeatOutcome::Deliver(
+                    "【RKLB 异动提醒 | 检查时间：2026-05-10 11:30 北京时间】管理层称\"公司史上最强一季度\",\"订单需求\":持续强劲，单日涨跌幅超过 8%，触发提醒。"
+                        .to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+    }
+
+    #[test]
+    fn heartbeat_prefixed_malformed_triggered_json_is_recovered() {
+        assert_eq!(
+            inspect_heartbeat_result(
+                r#"最终输出如下：
+{"status":"triggered","message":"【RKLB 异动提醒】管理层称"公司史上最强一季度"，触发提醒。"}"#
+            ),
+            (
+                HeartbeatOutcome::Deliver(
+                    "【RKLB 异动提醒】管理层称\"公司史上最强一季度\"，触发提醒。".to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+    }
+
+    #[test]
     fn heartbeat_malformed_triggered_json_recovers_truncated_message() {
         assert_eq!(
             inspect_heartbeat_result(
@@ -2172,6 +2257,35 @@ mod tests {
         assert!(prompt.contains("交易动作边界"));
         assert!(prompt.contains("不得输出“无条件止损”"));
         assert!(prompt.contains("结合仓位、成本、流动性和风险承受能力复核"));
+    }
+
+    #[test]
+    fn heartbeat_prompt_requires_noop_json_for_contract_conflicts() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "如果当前小时符合条件，播报原油价格。".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 15,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt(&event);
+        assert!(prompt.contains("不要解释冲突"));
+        assert!(prompt.contains("不要复述规则"));
+        assert!(prompt.contains("不要输出空文本"));
+        assert!(prompt.contains(r#"必须返回 `{"status":"noop"}`"#));
     }
 
     #[test]
@@ -2298,6 +2412,18 @@ mod tests {
         let content = "<think>\n如果条件满足，我应该输出 `{\"status\":\"triggered\",\"message\":\"小米跌破 30 港元\"}`。\n当前小米股价 31.2 港元，未跌破 30，所以不触发。\n</think>";
         let (outcome, parse_kind) = inspect_heartbeat_result(content);
         assert_eq!(outcome, HeartbeatOutcome::Noop, "parse_kind={parse_kind:?}");
+    }
+
+    #[test]
+    fn heartbeat_backticked_triggered_json_example_is_not_recovered() {
+        let content = "如果条件满足，应输出 `{\"status\":\"triggered\",\"message\":\"小米跌破 30 港元\"}`；当前条件未满足。";
+        assert_eq!(
+            inspect_heartbeat_result(content),
+            (
+                HeartbeatOutcome::Noop,
+                HeartbeatParseKind::PlainTextSuppressed
+            )
+        );
     }
 
     #[test]

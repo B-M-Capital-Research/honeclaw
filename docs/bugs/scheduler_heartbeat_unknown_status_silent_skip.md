@@ -3,9 +3,24 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-05-10 15:09 CST` 本轮修复并重新关闭本单：
+  - `crates/hone-channels/src/scheduler.rs` 的 heartbeat JSON 扫描现在会跳过 markdown 反引号里的示例 JSON，避免把“如果满足应输出 `{"status":"triggered",...}`”这类说明误恢复为真实触发提醒。
+  - malformed-triggered 恢复的 `message` 字段扫描改为只把明确的后续元数据字段（如 `source/confidence/ticker/price`）当作字段边界；正文里出现 `管理层称"公司史上最强一季度","订单需求":...` 这类引号 + 逗号 + 冒号组合时，会继续作为用户可见正文恢复，不再提前截断或漏投。
+  - 对前置说明后跟 malformed triggered JSON 的输出增加恢复路径，但仍跳过反引号示例与空/占位 message，避免把契约示例或内部 marker 当成告警。
+  - heartbeat prompt 增加冲突收口规则：当用户条件、交易动作边界、来源归因或输出契约互相冲突时，模型必须返回 `{"status":"noop"}`，不得输出规则自述、冲突解释或空文本；若能合规触发，只允许输出报告触发事实与条件化风险提示的 `triggered` JSON。
+  - 本轮没有针对单次外部模型异常写特殊分支；修复集中在结构化解析边界、示例 JSON 误恢复防护和通用输出契约加固。
+  - 验证通过：
+    - `cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_prompt --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_backticked --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_prefixed --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 无关联 GitHub Issue。当前机器不再作为生产运行态判定来源；若部署当前代码后仍出现 `JsonMalformed` 中明确包含真实 `status=triggered + message` 却未投递，再以新 raw_preview 回调为 `New`。
 
 - `2026-05-10 15:01 CST` 本轮巡检继续确认本单活跃，且坏态从 malformed-triggered 漏投扩展到 plain text 内部指令冲突文本与空输出在同一 heartbeat 链路内并存：
   - `data/sessions.sqlite3` -> `cron_job_runs`

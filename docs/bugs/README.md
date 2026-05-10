@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-10 15:01 CST
+最后更新：2026-05-10 15:09 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,17 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：102
+- 已修复 / 已关闭：103
 - 历史分析 / 部分止血：5
-- 当前活跃队列只剩 heartbeat malformed / plain-text / empty 结构化输出漏投复发；15:01 原油 heartbeat 返回被抑制的内部指令冲突文本并落成 `PlainTextSuppressed + skipped_error`，11:30 RKLB malformed-triggered 仍漏投，13:30/15:00 小米破位预警继续空输出失败；破位预警直接输出无条件止损交易指令已改为出站风险提示 guard；原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题已改为重写高风险正文；每日 macOS release app setup 错误不再通过顶层 `.expect(...)` 触发 panic；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
+- 当前活跃队列已清空；heartbeat malformed / plain-text / empty 结构化输出漏投复发已通过解析边界和输出契约加固重新关闭；破位预警直接输出无条件止损交易指令已改为出站风险提示 guard；原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题已改为重写高风险正文；每日 macOS release app setup 错误不再通过顶层 `.expect(...)` 触发 panic；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-10 15:01 继续活跃：`run_id=18013`（11:30 RKLB）已有 `status=triggered + message` 可见正文但内部引号破坏 JSON 后漏投；`run_id=18104`（15:01 原油）返回内部指令冲突 / 输出契约自述，被 `PlainTextSuppressed + skipped_error` 抑制未送达；`run_id=18070/18108`（13:30/15:00 小米）继续空输出失败；同窗仍有正常 noop/送达，说明故障集中在 heartbeat 结构化输出收口 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| _当前无_ | - | - | - | - |
 
 ## Later / 待复现
 
@@ -47,6 +47,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-10 15:09 heartbeat JSON 扫描跳过 markdown 反引号示例，malformed-triggered `message` 恢复只把明确元数据字段当作边界，覆盖 RKLB `管理层称"公司史上最强一季度","订单需求":...` 这类内部引号/冒号正文；前置说明后的 malformed triggered JSON 可恢复，prompt 同步要求规则冲突时返回 noop JSON 而不是自述或空输出。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-10 heartbeat prompt 增加交易动作边界，scheduler 出站前命中 `无条件止损` / `必须卖出` / `立即清仓` / `马上买入` 等直接交易指令时改写为条件化风险提示并保留触发事实；`cargo test -p hone-channels heartbeat_direct_trade_instruction --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_prompt_rejects_direct_trade_instructions --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
 | Daily macOS build release app setup panic 后残留不可回收 `hone-desktop` 进程 | P2 | Fixed | 2026-05-10 顶层 Tauri `run(...)` 错误不再通过 `.expect("error while running hone desktop")` 触发 panic，改为打印诊断并非 0 退出；`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_run_error_message_is_nonpanic_diagnostic -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests` 通过；无关联 GitHub Issue | [daily_macos_build_startup_panic_stuck_process.md](./daily_macos_build_startup_panic_stuck_process.md) |
 | 原油定时播报在 `commodity_causality_guarded` 后仍保留未核验地缘 / 供需叙述与高风险价格推算 | P2 | Fixed | 2026-05-10 commodity heartbeat guard 从“加提示并保留原正文”改为“重写高风险正文”，只保留明确价格口径且不含归因/估算/预测的片段；新增 prefixed bad body 复发回归；`cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
