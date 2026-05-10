@@ -99,7 +99,7 @@ Hone-Financial/
 
 #### `crates/hone-core`
 
-- Defines `HoneConfig` plus the config façade in `src/config.rs` and its `config/{agent,channels,server}.rs` submodules
+- Defines `HoneConfig` plus the config façade in `src/config/mod.rs` and its `config/{agent,channels,event_engine,server}.rs` submodules
 - Defines `ActorIdentity`
 - Defines error types, logging initialization, the agent abstraction, and context types
 
