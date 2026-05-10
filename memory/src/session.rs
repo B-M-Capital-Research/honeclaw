@@ -5,9 +5,8 @@
 //!   每次都会写 `{data_dir}/{session_id}.json`，不管有没有启用 SQLite
 //! - SQLite 是可选的「索引/加速」层，通过 `SessionIndex` trait 抽象：
 //!   * `runtime_backend=Sqlite`：读路径先查 index，未命中再读 JSON 并回填 index
-//!   * `runtime_backend=Json` + `shadow_sqlite_enabled`：写 JSON 后把同一份
-//!     session 镜像到 index（异步一致性可接受，读路径仍走 JSON）；启动时还会
-//!     best-effort 回填既有 JSON，修复 shadow writer 曾被关闭期间留下的缺口
+//!   * 只要配置了 SQLite index，启动时都会 best-effort 回填既有 JSON，修复
+//!     index 曾被关闭或未追平期间留下的缺口
 //! - 当前只有 `SqliteSessionMirror` 一种实现；抽成 trait 的原因是让
 //!   runtime 层（`AgentSession`、tests）能接受任意实现（例如 mock、
 //!   或将来要接的远程索引），而不用硬绑定到 SQLite
@@ -1140,10 +1139,6 @@ impl SessionStorage {
     }
 
     fn backfill_shadow_from_json_dir(&self) {
-        if self.runtime_backend != SessionRuntimeBackend::Json || !self.shadow_sqlite_enabled {
-            return;
-        }
-
         let Some(shadow_sqlite) = &self.sqlite_storage else {
             return;
         };
@@ -1806,6 +1801,77 @@ mod tests {
         assert_eq!(session_count, 1);
         assert_eq!(message_count, 2);
         assert_eq!(latest_update, "2026-05-09T09:05:00+08:00");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn sqlite_runtime_backend_backfills_existing_json_on_startup() {
+        let root = make_temp_dir("hone_memory_test_sqlite_runtime_backfill");
+        let sessions_dir = root.join("sessions");
+        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
+        let db_path = root.join("sessions.sqlite3");
+
+        let actor = ActorIdentity::new("feishu", "sqlite-backfill", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+        let session = Session {
+            version: default_session_version(),
+            id: session_id.clone(),
+            actor: Some(actor.clone()),
+            session_identity: SessionIdentity::from_actor(&actor).ok(),
+            created_at: "2026-05-10T18:00:00+08:00".to_string(),
+            updated_at: "2026-05-10T18:03:00+08:00".to_string(),
+            messages: vec![
+                session_message_from_text(
+                    "user",
+                    "hello before sqlite index",
+                    "2026-05-10T18:00:00+08:00",
+                    None,
+                ),
+                session_message_from_text(
+                    "assistant",
+                    "world after sqlite index",
+                    "2026-05-10T18:03:00+08:00",
+                    None,
+                ),
+            ],
+            metadata: HashMap::new(),
+            runtime: SessionRuntimeState::default(),
+            summary: None,
+        };
+        std::fs::write(
+            sessions_dir.join(format!("{session_id}.json")),
+            serde_json::to_string_pretty(&session).expect("session json"),
+        )
+        .expect("write session json");
+
+        let _storage = SessionStorage::with_options(
+            &sessions_dir,
+            SessionStorageOptions {
+                shadow_sqlite_db_path: Some(db_path.clone()),
+                shadow_sqlite_enabled: true,
+                runtime_backend: SessionRuntimeBackend::Sqlite,
+            },
+        );
+
+        let conn = rusqlite::Connection::open(&db_path).expect("sqlite");
+        let message_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
+                [&session_id],
+                |row| row.get(0),
+            )
+            .expect("message count");
+        let latest_update: String = conn
+            .query_row(
+                "SELECT updated_at FROM sessions WHERE session_id = ?1",
+                [&session_id],
+                |row| row.get(0),
+            )
+            .expect("latest update");
+
+        assert_eq!(message_count, 2);
+        assert_eq!(latest_update, "2026-05-10T18:03:00+08:00");
 
         let _ = std::fs::remove_dir_all(root);
     }

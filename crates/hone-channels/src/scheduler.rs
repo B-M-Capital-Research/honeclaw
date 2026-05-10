@@ -4,6 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use chrono::Datelike;
 use hone_scheduler::SchedulerEvent;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -674,6 +675,45 @@ fn heartbeat_entity_anchors_compatible(message: &str, preview: &str) -> bool {
             .is_some()
 }
 
+fn heartbeat_same_ticker_reworded_fact_match(message: &str, preview: &str) -> bool {
+    let message_tickers = heartbeat_ticker_anchor_tokens(message);
+    let preview_tickers = heartbeat_ticker_anchor_tokens(preview);
+    if message_tickers.is_empty()
+        || preview_tickers.is_empty()
+        || message_tickers
+            .intersection(&preview_tickers)
+            .next()
+            .is_none()
+    {
+        return false;
+    }
+
+    let message_entities = heartbeat_entity_anchor_tokens(message)
+        .into_iter()
+        .filter(|token| !message_tickers.contains(token))
+        .collect::<std::collections::BTreeSet<_>>();
+    let preview_entities = heartbeat_entity_anchor_tokens(preview)
+        .into_iter()
+        .filter(|token| !preview_tickers.contains(token))
+        .collect::<std::collections::BTreeSet<_>>();
+    if message_entities.intersection(&preview_entities).count() >= 2 {
+        return true;
+    }
+
+    let message_tokens = normalized_similarity_tokens(message);
+    let preview_tokens = normalized_similarity_tokens(preview);
+    message_tokens
+        .intersection(&preview_tokens)
+        .filter(|token| {
+            token.contains('月')
+                || token.contains("美元")
+                || token.contains('%')
+                || token.contains('.')
+        })
+        .count()
+        >= 1
+}
+
 fn heartbeat_duplicate_preview_match(
     message: &str,
     delivered_previews: &[(String, String)],
@@ -683,6 +723,14 @@ fn heartbeat_duplicate_preview_match(
         return None;
     }
     for (_, preview) in delivered_previews {
+        let message_tickers = heartbeat_ticker_anchor_tokens(message);
+        let preview_tickers = heartbeat_ticker_anchor_tokens(preview);
+        let same_explicit_ticker = !message_tickers.is_empty()
+            && !preview_tickers.is_empty()
+            && message_tickers
+                .intersection(&preview_tickers)
+                .next()
+                .is_some();
         if !heartbeat_entity_anchors_compatible(message, preview) {
             continue;
         }
@@ -693,7 +741,9 @@ fn heartbeat_duplicate_preview_match(
         let shared = message_tokens.intersection(&preview_tokens).count();
         let smaller = message_tokens.len().min(preview_tokens.len());
         let strong_match = shared >= 4 && shared * 100 >= smaller * 70;
-        let reworded_fact_match = shared >= 5;
+        let reworded_fact_match = shared >= 5
+            && (!same_explicit_ticker
+                || heartbeat_same_ticker_reworded_fact_match(message, preview));
         if strong_match || reworded_fact_match {
             return Some(truncate_for_log(preview.trim(), 200));
         }
@@ -1004,12 +1054,86 @@ fn text_has_speculative_commodity_price(text: &str) -> bool {
         "贴水",
         "未独立校验",
         "精确收盘价未",
+        "无法证明",
+        "未核验",
         "assume",
         "estimated",
         "forecast",
     ]
     .iter()
     .any(|term| compact.contains(term))
+}
+
+fn chinese_weekday_number(label: &str) -> Option<u32> {
+    match label {
+        "一" | "1" => Some(1),
+        "二" | "2" => Some(2),
+        "三" | "3" => Some(3),
+        "四" | "4" => Some(4),
+        "五" | "5" => Some(5),
+        "六" | "6" => Some(6),
+        "日" | "天" | "7" | "0" => Some(7),
+        _ => None,
+    }
+}
+
+fn text_has_date_weekday_mismatch(text: &str) -> bool {
+    static RE_DATE_WEEKDAY: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"(?x)
+            (?P<year>20\d{2})[-年/](?P<month>\d{1,2})[-月/](?P<day>\d{1,2})日?
+            [^\n。；;，,]{0,12}
+            (?:周|星期)(?P<weekday>[一二三四五六日天0-7])
+            ",
+        )
+        .expect("valid date weekday regex")
+    });
+
+    for captures in RE_DATE_WEEKDAY.captures_iter(text) {
+        let year = captures
+            .name("year")
+            .and_then(|m| m.as_str().parse::<i32>().ok());
+        let month = captures
+            .name("month")
+            .and_then(|m| m.as_str().parse::<u32>().ok());
+        let day = captures
+            .name("day")
+            .and_then(|m| m.as_str().parse::<u32>().ok());
+        let weekday = captures
+            .name("weekday")
+            .and_then(|m| chinese_weekday_number(m.as_str()));
+        let (Some(year), Some(month), Some(day), Some(weekday)) = (year, month, day, weekday)
+        else {
+            continue;
+        };
+        let Some(date) = chrono::NaiveDate::from_ymd_opt(year, month, day) else {
+            continue;
+        };
+        if date.weekday().number_from_monday() != weekday {
+            return true;
+        }
+    }
+    false
+}
+
+fn text_has_unverified_commodity_market_claim(text: &str) -> bool {
+    let compact = compact_lowercase_text(text);
+    text_has_speculative_commodity_price(text)
+        || text_has_date_weekday_mismatch(text)
+        || [
+            "近一个月",
+            "累计上涨",
+            "累计下跌",
+            "bloomberg",
+            "reuters",
+            "wsj",
+            "eia",
+            "截至",
+            "5月8日",
+            "5月9日",
+        ]
+        .iter()
+        .any(|term| compact.contains(term))
 }
 
 fn text_looks_like_commodity_price_observation(text: &str) -> bool {
@@ -1024,6 +1148,18 @@ fn text_looks_like_commodity_price_observation(text: &str) -> bool {
         && has_numeric_quote
         && !text_has_commodity_causality_claim(text)
         && !text_has_speculative_commodity_price(text)
+        && !text_has_date_weekday_mismatch(text)
+        && ![
+            "bloomberg",
+            "reuters",
+            "wsj",
+            "eia",
+            "近一个月",
+            "累计上涨",
+            "累计下跌",
+        ]
+        .iter()
+        .any(|term| compact.contains(term))
 }
 
 fn rewrite_commodity_causality_message(text: &str) -> String {
@@ -1058,7 +1194,10 @@ fn rewrite_commodity_causality_message(text: &str) -> String {
 }
 
 fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Option<String> {
-    if !scheduler_event_is_commodity_heartbeat(event) || !text_has_commodity_causality_claim(text) {
+    if !scheduler_event_is_commodity_heartbeat(event)
+        || !(text_has_commodity_causality_claim(text)
+            || text_has_unverified_commodity_market_claim(text))
+    {
         return None;
     }
 
@@ -1072,7 +1211,7 @@ fn guard_commodity_causality_for_event(text: &str, event: &SchedulerEvent) -> Op
 
 fn text_has_direct_trade_instruction(text: &str) -> bool {
     let compact = compact_lowercase_text(text);
-    [
+    let has_direct_phrase = [
         "无条件止损",
         "必须止损",
         "必须卖出",
@@ -1095,7 +1234,24 @@ fn text_has_direct_trade_instruction(text: &str) -> bool {
         "stoplossimmediately",
     ]
     .iter()
-    .any(|term| compact.contains(term))
+    .any(|term| compact.contains(term));
+    if has_direct_phrase {
+        return true;
+    }
+
+    (compact.contains("建议动作") || compact.contains("操作建议"))
+        && ["止损", "清仓", "卖出", "买入", "抄底", "持有等待反弹"]
+            .iter()
+            .any(|term| compact.contains(term))
+}
+
+fn update_heartbeat_delivery_preview_metadata(metadata: &mut Value, content: &str) {
+    if let Value::Object(map) = metadata {
+        map.insert(
+            "deliver_preview".to_string(),
+            Value::String(truncate_for_log(content.trim(), 200)),
+        );
+    }
 }
 
 fn rewrite_direct_trade_instruction_message(text: &str) -> String {
@@ -1805,6 +1961,10 @@ pub async fn execute_scheduler_event(
                     event.channel_target,
                 );
                 execution.content = guarded_content;
+                update_heartbeat_delivery_preview_metadata(
+                    &mut execution.metadata,
+                    &execution.content,
+                );
                 if let Value::Object(map) = &mut execution.metadata {
                     map.insert(
                         "direct_trade_instruction_guarded".to_string(),
@@ -1827,6 +1987,10 @@ pub async fn execute_scheduler_event(
                     event.channel_target,
                 );
                 execution.content = guarded_content;
+                update_heartbeat_delivery_preview_metadata(
+                    &mut execution.metadata,
+                    &execution.content,
+                );
                 if let Value::Object(map) = &mut execution.metadata {
                     map.insert("commodity_causality_guarded".to_string(), Value::Bool(true));
                     map.insert(
@@ -2320,6 +2484,39 @@ mod tests {
         assert!(guarded.contains("CAI 跌破 52 周低点"));
         assert!(guarded.contains("当前价 $12.30"));
         assert!(!guarded.contains("无条件止损"));
+        assert!(!guarded.contains("不建议抄底或持有等待反弹"));
+    }
+
+    #[test]
+    fn heartbeat_direct_trade_instruction_detects_action_heading() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_cai", None::<String>).expect("actor"),
+            job_id: "job-cai".to_string(),
+            job_name: "CAI破位预警".to_string(),
+            task_prompt: "CAI 跌破 52 周低点时提醒".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_cai".to_string(),
+            delivery_key: "delivery-cai".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_direct_trade_instruction_for_event(
+            "【CAI破位预警】当前价跌破阈值。建议动作：止损，不建议抄底或持有等待反弹。",
+            &event,
+        )
+        .expect("action heading should be guarded");
+
+        assert!(guarded.contains("不构成买卖、止损、加仓或清仓指令"));
+        assert!(!guarded.contains("建议动作：止损"));
         assert!(!guarded.contains("不建议抄底或持有等待反弹"));
     }
 
@@ -2914,6 +3111,30 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_duplicate_preview_match_allows_tsla_distinct_same_ticker_events() {
+        let message =
+            "【TSLA 负向触发】TSLA 因 FSD 诉讼风险扩大和车辆召回事件触发提醒，检查时间 19:02。";
+        let previews = vec![(
+            "2026-05-10T15:00:00+08:00".to_string(),
+            "【TSLA 重大事件】Tesla Semi 新订单披露，SEC 与 Musk 和解进展继续发酵。".to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
+    fn heartbeat_duplicate_preview_match_allows_cerebras_after_portfolio_summary() {
+        let message =
+            "【Cerebras IPO与业务进展心跳监控】Cerebras IPO 定价区间上调，上市时间线出现新进展。";
+        let previews = vec![(
+            "2026-05-10T18:30:00+08:00".to_string(),
+            "【持仓重大事件】RKLB 与 TEM 本轮均有重要更新，持仓摘要已提醒。".to_string(),
+        )];
+
+        assert!(heartbeat_duplicate_preview_match(message, &previews).is_none());
+    }
+
+    #[test]
     fn heartbeat_prompt_no_history_section_when_empty() {
         let event = SchedulerEvent {
             actor: ActorIdentity::new("feishu", "ou_abc", None::<String>).expect("actor"),
@@ -3187,6 +3408,40 @@ mod tests {
         assert!(!guarded.contains("中东直接军事冲突"));
         assert!(!guarded.contains("59%-80%"));
         assert!(!guarded.contains("估算收盘约 $95.9"));
+    }
+
+    #[test]
+    fn commodity_heartbeat_guard_rewrites_wrong_weekday_and_unverified_prices() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "播报 WTI/Brent，并说明地缘政治影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 0,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "【2026-05-10 周六 18:00 北京时间】WTI 原油（近月合约）：约 $95.42/桶（5月8日 Bloomberg 数据）。布伦特原油（近月合约）：约 $100.49-$101.29/桶；近一个月布伦特累计上涨约4.76%。",
+            &event,
+        )
+        .expect("wrong weekday and unverified commodity market claims should be guarded");
+
+        assert!(guarded.contains("未完成同窗来源核验"));
+        assert!(!guarded.contains("2026-05-10 周六"));
+        assert!(!guarded.contains("Bloomberg 数据"));
+        assert!(!guarded.contains("累计上涨约4.76%"));
     }
 
     #[test]

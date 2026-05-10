@@ -3,7 +3,21 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-05-10 23:11 CST）
+
+- `crates/hone-channels/src/scheduler.rs` 将原油 / 大宗商品 heartbeat guard 从“只识别因果归因”扩展到事实口径错误：
+  - 检测显式日期与中文星期不一致，例如 `2026-05-10 周六`。
+  - 检测 Bloomberg / Reuters / WSJ / EIA 等外部来源口径、累计涨跌、近一个月表现、估算 / 推算 / 预测 / 未核验价格等无法由当前出站层证明同窗核验的片段。
+  - 这类片段不会再作为 `【已保留的价格口径】` 原样保留；guard 会改写为“未完成同窗来源核验”的安全说明。
+- 新增回归：`commodity_heartbeat_guard_rewrites_wrong_weekday_and_unverified_prices`。
+- 验证：
+  - `cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`
+- 关联 GitHub Issue：无。
 
 ## 最新进展（2026-05-10 19:02 CST）
 

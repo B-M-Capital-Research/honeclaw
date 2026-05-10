@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-10 23:10 CST
+最后更新：2026-05-10 23:18 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,22 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：6
+- 活跃待修复：1
 - Later / 待复现：9
-- 已修复 / 已关闭：98
+- 已修复 / 已关闭：103
 - 历史分析 / 部分止血：5
-- 当前活跃队列新增/确认 6 条：19:30 CAI 破位预警继续送达 `无条件止损`；19:30-23:00 ASTS/Cerebras 多条 `JsonTriggered` 仍被 `duplicate_suppressed` 压成 noop，且 21:00 ASTS/持仓重大事件继续把周末静态行情重复包装为触发；`sessions/session_messages` 仍停在 2026-04-27 而真实 JSON 会话文件最近四小时继续更新；原油播报本轮未再触发但保留 19:02 fixed 回退；21:35/23:00 观察池击球区修复再次回退；Web direct quota 拒绝后只落 user turn、无可见额度回复。
+- 本轮修复 5 条活跃回退：heartbeat 直接交易指令 guard 漏网、heartbeat 预览去重同 ticker 不同事件误抑制、原油播报错误星期 / 未核验价格口径保留、SQLite 会话索引在 `runtime_backend=sqlite` 下不主动回填既有 JSON 的缺口，以及 Web direct quota 拒绝只落 user turn 的收口问题。仍保留 1 条远端新增活跃项：观察池击球区恢复回退。
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | New | 2026-05-10 23:10 继续活跃：`run_id=18222`（19:30 CAI）`JsonTriggered` 成功送达，`response_preview` 与 `detail_json.scheduler.deliver_preview` 仍包含 `建议动作：无条件止损`，说明出站交易指令 guard 未覆盖当前真实窗口 | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
-| Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-10 23:10 继续活跃：`run_id=18231/18259` ASTS 分别被持仓/RKLB/Cerebras preview 抑制，`run_id=18296/18308` Cerebras 被 21:00 持仓重大事件抑制；均为 `parse_kind=JsonTriggered + duplicate_suppressed=true + delivered=0` | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-10 23:10 继续活跃：`sessions/session_messages` 最大时间仍停在 `2026-04-27T16:54:20+08:00`，最近四小时 `session_messages=0`；但 `data/sessions/` 有 6 个 JSON 会话文件更新，`cron_job_runs` 推进到 `2026-05-10T23:01:14+08:00` | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-10 19:02 fixed 回退：`run_id=18186`（18:02 原油）成功送达，正文把 `2026-05-10` 写成周六，并继续发送 `WTI $95.42`、`Brent $100.49-$101.29`、`近一个月布伦特累计上涨约4.76%` 等当前台账无法证明同窗核验的价格/背景口径；未见 `commodity_causality_guarded` 重写元数据 | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-10 23:10 fixed 回退：`run_id=18313`（23:00 核心观察股池晚间快报）`completed + sent + delivered=1`，正文明确“保留任务正文里唯一确认的 LITE 击球区”，核心股继续批量 `击球区：待确认`；21:35 同会话也复现 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
-| Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | New | 2026-05-10 23:10 新增：`Actor_web__direct__web-user-e05f5e5f74a3` 在 19:05、20:04、21:05、22:04 四次“心跳检测，请简短回复 OK”均只落 user turn；日志 `session.persist_user detail=quota_rejected`，会话无 assistant quota 文案 | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
 
 ## Later / 待复现
 
@@ -52,6 +47,11 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-10 23:18 quota 拒绝分支会在落 user turn 后同步落 assistant 业务拒绝文案，并让早退失败分支发出 Done 事件；`run_rejects_over_daily_limit_with_user_turn_and_friendly_error` 回归覆盖返回友好错误、无 LLM 调用、会话历史 user+assistant 成对落库且不消耗额外 quota；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
+| Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-10 23:11 直接交易 guard 扩展覆盖 `建议动作/操作建议 + 止损/清仓/买卖/抄底` 等动作标题，guard 后同步刷新 `deliver_preview`，避免台账仍保留旧直接交易指令；`cargo test -p hone-channels heartbeat_direct_trade_instruction --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
+| Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-10 23:11 同 ticker 宽松重写去重增加非 ticker 实体 / 日期金额交集门槛，TSLA 召回/FSD 诉讼不再被旧 Semi/SEC preview 抑制，Cerebras IPO 更新不再被持仓摘要误抑制；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-10 23:11 `SessionStorage` 只要配置 SQLite index 就会在启动时 best-effort 回填既有 JSON，不再只限 `runtime_backend=json + shadow`；覆盖 `runtime_backend=sqlite` 下 JSON 权威源已更新但 SQLite 索引未追平的入口；`cargo test -p hone-memory backfills_existing_json --lib -- --nocapture`、`cargo check -p hone-memory --tests` 通过；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-10 23:11 商品 heartbeat guard 扩展到错误日期星期、外部来源口径、累计涨跌和未核验 / 估算价格，并禁止这类片段作为“已保留价格口径”继续外发；`cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-10 15:09 heartbeat JSON 扫描跳过 markdown 反引号示例，malformed-triggered `message` 恢复只把明确元数据字段当作边界，覆盖 RKLB `管理层称"公司史上最强一季度","订单需求":...` 这类内部引号/冒号正文；前置说明后的 malformed triggered JSON 可恢复，prompt 同步要求规则冲突时返回 noop JSON 而不是自述或空输出。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Daily macOS build release app setup panic 后残留不可回收 `hone-desktop` 进程 | P2 | Fixed | 2026-05-10 顶层 Tauri `run(...)` 错误不再通过 `.expect("error while running hone desktop")` 触发 panic，改为打印诊断并非 0 退出；`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_run_error_message_is_nonpanic_diagnostic -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests` 通过；无关联 GitHub Issue | [daily_macos_build_startup_panic_stuck_process.md](./daily_macos_build_startup_panic_stuck_process.md) |
 | Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |

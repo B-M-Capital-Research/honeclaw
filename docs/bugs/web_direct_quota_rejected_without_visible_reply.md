@@ -3,7 +3,7 @@
 - 发现时间：2026-05-10 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无
 
 ## 证据来源
@@ -45,11 +45,18 @@
 
 ## 根因判断
 
-- 初步判断是 Web direct 的 quota 拒绝分支只执行了 `session.persist_user=quota_rejected` 审计落库，没有把业务拒绝文案持久化成 assistant turn 或返回给 Web transcript。
+- 已确认是 `AgentSession::run()` 的 quota 拒绝分支只执行了 `session.persist_user=quota_rejected` 审计落库，没有把业务拒绝文案持久化成 assistant turn。
 - 这与历史 Feishu quota 缺陷同属业务拒绝收口问题，但受影响渠道不同；Feishu 历史缺陷关注 placeholder 后无最终提示和 user turn 不落库，本单的最新坏态是 Web direct user turn 已落库但没有可见 quota reply。
 
-## 下一步建议
+## 修复记录
 
-- 复核 Web chat API 在 `AgentSession::run()` 返回 quota rejection 时是否把失败文本写入 response 和 session assistant turn。
-- 为 Web direct 增加回归：quota 触顶后应返回明确 quota 文案，并在会话历史中写入 assistant 业务拒绝消息。
+- 2026-05-10 23:18 CST：quota 拒绝分支在落 user turn 后同步落一条 assistant 业务拒绝文案，并记录 `session.persist_assistant=quota_rejected`，避免 transcript 只出现孤立 user turn。
+- 同步让 `fail_run()` 对早退失败分支发出 `Done` 事件，保持 streaming / listener 侧也能收到终态失败信号。
+
+## 验证
+
+- `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error --lib -- --nocapture`
+
+## 后续建议
+
 - 若前端根据 remaining quota 禁用发送，后端仍需保持一致的保护语义，防止自动心跳或绕过 UI 的请求制造无回复 user turn。

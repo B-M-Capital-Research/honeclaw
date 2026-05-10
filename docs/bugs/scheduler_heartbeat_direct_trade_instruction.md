@@ -3,7 +3,20 @@
 - **发现时间**: 2026-05-10 07:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-05-10 23:11 CST）
+
+- `crates/hone-channels/src/scheduler.rs` 扩展 heartbeat 直接交易指令 guard：
+  - 除了 `无条件止损` / `必须卖出` / `立即清仓` 等硬词，也覆盖 `建议动作` / `操作建议` 标题下的止损、清仓、买卖、抄底、持有等待反弹等动作措辞。
+  - guard 改写后同步刷新 `metadata.deliver_preview`，避免台账里的最终可见 preview 仍保留被替换前的直接交易指令。
+- 新增回归：`heartbeat_direct_trade_instruction_detects_action_heading`。
+- 验证：
+  - `cargo test -p hone-channels heartbeat_direct_trade_instruction --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`
+- 关联 GitHub Issue：无。
 
 ## 最新进展（2026-05-10 19:02 CST）
 

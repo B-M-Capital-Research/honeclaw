@@ -1603,9 +1603,17 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
         .session_storage
         .get_messages(&actor.session_id(), None)
         .expect("messages");
-    assert_eq!(messages.len(), 1);
+    assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
     assert_eq!(messages[0].content[0].text.as_deref(), Some("hello"));
+    assert_eq!(messages[1].role, "assistant");
+    assert!(
+        messages[1].content[0]
+            .text
+            .as_deref()
+            .unwrap_or_default()
+            .contains("已达到今日对话上限")
+    );
     let snapshot = core
         .conversation_quota_storage
         .snapshot_for_date(&actor, &today)

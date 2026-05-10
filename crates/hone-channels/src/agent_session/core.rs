@@ -777,14 +777,19 @@ impl AgentSession {
             message: message.clone(),
         };
         self.emit(session_error_event(error.clone())).await;
+        let response = AgentResponse {
+            content: String::new(),
+            tool_calls_made: Vec::new(),
+            iterations: 0,
+            success: false,
+            error: Some(message),
+        };
+        self.emit(AgentSessionEvent::Done {
+            response: response.clone(),
+        })
+        .await;
         AgentSessionResult {
-            response: AgentResponse {
-                content: String::new(),
-                tool_calls_made: Vec::new(),
-                iterations: 0,
-                success: false,
-                error: Some(message),
-            },
+            response,
             elapsed_ms: 0,
             session_id,
         }
@@ -874,6 +879,7 @@ impl AgentSession {
         let quota_guard = match self.reserve_conversation_quota(options.quota_mode) {
             Ok(reservation) => QuotaReservationGuard::new(self.core.clone(), reservation),
             Err(err) => {
+                let quota_message = err.to_string();
                 let _ = self.core.session_storage.add_message(
                     &session_id,
                     "user",
@@ -893,6 +899,21 @@ impl AgentSession {
                     self.message_id.as_deref(),
                     None,
                 );
+                let _ = self.core.session_storage.add_message(
+                    &session_id,
+                    "assistant",
+                    &quota_message,
+                    self.message_metadata.assistant.clone(),
+                );
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &session_id,
+                    "session.persist_assistant",
+                    "quota_rejected",
+                    self.message_id.as_deref(),
+                    None,
+                );
                 self.core.log_message_received(
                     &self.actor.channel,
                     &self.actor.user_id,
@@ -906,7 +927,7 @@ impl AgentSession {
                     .fail_run(
                         session_id,
                         AgentSessionErrorKind::AgentFailed,
-                        err.to_string(),
+                        quota_message,
                     )
                     .await;
             }

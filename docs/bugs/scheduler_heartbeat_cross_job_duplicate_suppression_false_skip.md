@@ -3,7 +3,22 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
+
+## 修复记录（2026-05-10 23:11 CST）
+
+- `crates/hone-channels/src/scheduler.rs` 收紧 heartbeat preview 去重：
+  - 同 ticker 的宽松 `shared >= 5` 重写匹配现在必须额外满足“非 ticker 实体交集 >= 2”或“日期 / 金额 / 百分比等事实 token 交集”，避免只因 `TSLA`、通用监控词或财经模板词重合就把不同事件压成 duplicate。
+  - 跨 ticker / 不同实体的硬门槛继续保留。
+- 新增回归覆盖本轮复发：
+  - `heartbeat_duplicate_preview_match_allows_tsla_distinct_same_ticker_events`
+  - `heartbeat_duplicate_preview_match_allows_cerebras_after_portfolio_summary`
+- 验证：
+  - `cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+  - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`
+- 关联 GitHub Issue：无。
 
 ## 证据来源
 
