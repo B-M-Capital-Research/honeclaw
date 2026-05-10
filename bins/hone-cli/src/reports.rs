@@ -166,7 +166,7 @@ pub(crate) fn build_model_status(config: &hone_core::HoneConfig) -> ModelStatusR
         opencode_inherits_local_config,
         auxiliary_base_url: config.llm.auxiliary.base_url.clone(),
         auxiliary_model: config.llm.auxiliary.model.clone(),
-        auxiliary_api_key_configured: !config.llm.auxiliary.resolved_api_key().is_empty(),
+        auxiliary_api_key_configured: non_empty(&config.llm.auxiliary.api_key),
         search_base_url: config.agent.multi_agent.search.base_url.clone(),
         search_model: config.agent.multi_agent.search.model.clone(),
         search_api_key_configured: non_empty(&config.agent.multi_agent.search.api_key),
@@ -250,9 +250,9 @@ pub(crate) fn build_channel_reports(config: &hone_core::HoneConfig) -> Vec<Chann
 
 pub(crate) fn build_api_key_summary(config: &hone_core::HoneConfig) -> ApiKeySummary {
     ApiKeySummary {
-        openrouter: !config.llm.openrouter.effective_key_pool().is_empty(),
+        openrouter: !config.llm.openrouter_key_pool().is_empty(),
         primary_route: non_empty(&config.agent.opencode.api_key),
-        auxiliary: !config.llm.auxiliary.resolved_api_key().is_empty(),
+        auxiliary: non_empty(&config.llm.auxiliary.api_key),
         multi_agent_search: non_empty(&config.agent.multi_agent.search.api_key),
         multi_agent_answer: non_empty(&config.agent.multi_agent.answer.api_key),
         fmp: !config.fmp.effective_key_pool().is_empty(),

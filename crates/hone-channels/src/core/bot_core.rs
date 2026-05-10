@@ -190,7 +190,7 @@ impl HoneBotCore {
     ) -> hone_core::config::MultiAgentSearchConfig {
         let mut search_config = self.config.agent.multi_agent.search.clone();
         if search_config.api_key.trim().is_empty() {
-            let fallback_key = self.config.llm.auxiliary.resolved_api_key();
+            let fallback_key = self.config.llm.auxiliary.api_key.trim().to_string();
             if !fallback_key.trim().is_empty() {
                 search_config.api_key = fallback_key;
             }
@@ -534,7 +534,7 @@ impl HoneBotCore {
                     || !opencode_config.api_base_url.trim().is_empty()
                     || !opencode_config.api_key.trim().is_empty();
                 if hone_manages_opencode_route && opencode_config.api_key.trim().is_empty() {
-                    let pool = self.config.llm.openrouter.effective_key_pool();
+                    let pool = self.config.llm.openrouter_key_pool();
                     if let Some(key) = pool.first() {
                         opencode_config.openrouter_api_key = Some(key.to_string());
                     }
@@ -549,7 +549,7 @@ impl HoneBotCore {
                 runner_timeouts,
             ))),
             AgentRunnerKind::MultiAgent => {
-                let pool = self.config.llm.openrouter.effective_key_pool();
+                let pool = self.config.llm.openrouter_key_pool();
                 let mut answer_config = self.config.agent.opencode.clone();
                 let multi_answer = &self.config.agent.multi_agent.answer;
                 if !multi_answer.api_base_url.trim().is_empty() {

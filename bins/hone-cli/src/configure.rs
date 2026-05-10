@@ -397,9 +397,14 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                     prompt_secret(&theme, lang, "OpenRouter API keys（逗号分隔）", true)?
                 {
                     mutations.push(provider_key_mutation(
-                        "llm.openrouter.api_keys",
+                        "llm.providers.openrouter.api_keys",
                         parse_csv_values(&keys),
                     ));
+                    mutations.push(ConfigMutation::Set {
+                        path: "llm.providers.openrouter.api_key".to_string(),
+                        value: Value::String(String::new()),
+                    });
+                    mutations.push(provider_key_mutation("llm.openrouter.api_keys", Vec::new()));
                     mutations.push(ConfigMutation::Set {
                         path: "llm.openrouter.api_key".to_string(),
                         value: Value::String(String::new()),

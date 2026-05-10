@@ -248,7 +248,7 @@ export type CliCheckResult = {
   message: string;
 };
 
-/** OpenRouter API Key 设置（保存在运行时覆盖层的 llm.openrouter.api_keys，支持多 Key fallback） */
+/** OpenRouter API Key 设置（保存在 config.yaml 的 llm.providers.openrouter.api_keys，支持多 Key fallback） */
 export type OpenRouterSettings = {
   /** 多 Key 列表，按顺序 fallback */
   apiKeys: string[];

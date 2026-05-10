@@ -192,7 +192,24 @@ pub fn promote_legacy_runtime_agent_settings(
         changed_paths.push("llm.auxiliary".to_string());
     }
 
-    if string_path_is_blank(&canonical, "llm.openrouter.api_key")?
+    if string_path_is_blank(&canonical, "llm.providers.openrouter.api_key")?
+        && sequence_path_is_empty(&canonical, "llm.providers.openrouter.api_keys")?
+        && string_path_is_blank(&canonical, "llm.openrouter.api_key")?
+        && sequence_path_is_empty(&canonical, "llm.openrouter.api_keys")?
+        && let Some(legacy_openrouter_keys) = get_value_at_path(&legacy, "llm.openrouter.api_keys")?
+    {
+        set_value_at_path(
+            &mut canonical,
+            "llm.providers.openrouter.api_keys",
+            legacy_openrouter_keys.clone(),
+        )?;
+        changed_paths.push("llm.providers.openrouter.api_keys".to_string());
+    }
+
+    if string_path_is_blank(&canonical, "llm.providers.openrouter.api_key")?
+        && sequence_path_is_empty(&canonical, "llm.providers.openrouter.api_keys")?
+        && string_path_is_blank(&canonical, "llm.openrouter.api_key")?
+        && sequence_path_is_empty(&canonical, "llm.openrouter.api_keys")?
         && let Some(legacy_openrouter_key) = get_value_at_path(&legacy, "llm.openrouter.api_key")?
         && legacy_openrouter_key
             .as_str()
@@ -201,21 +218,10 @@ pub fn promote_legacy_runtime_agent_settings(
     {
         set_value_at_path(
             &mut canonical,
-            "llm.openrouter.api_key",
+            "llm.providers.openrouter.api_key",
             legacy_openrouter_key.clone(),
         )?;
-        changed_paths.push("llm.openrouter.api_key".to_string());
-    }
-
-    if sequence_path_is_empty(&canonical, "llm.openrouter.api_keys")?
-        && let Some(legacy_openrouter_keys) = get_value_at_path(&legacy, "llm.openrouter.api_keys")?
-    {
-        set_value_at_path(
-            &mut canonical,
-            "llm.openrouter.api_keys",
-            legacy_openrouter_keys.clone(),
-        )?;
-        changed_paths.push("llm.openrouter.api_keys".to_string());
+        changed_paths.push("llm.providers.openrouter.api_key".to_string());
     }
 
     for channel in ["feishu", "telegram", "discord", "imessage"] {

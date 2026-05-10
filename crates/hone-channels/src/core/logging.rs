@@ -43,7 +43,7 @@ impl HoneBotCore {
 
         let llm_api_key_source = if match llm_provider {
             "kimi" => !self.config.llm.kimi.api_key.trim().is_empty(),
-            _ => !self.config.llm.openrouter.api_key.trim().is_empty(),
+            _ => !self.config.llm.openrouter_key_pool().is_empty(),
         } {
             "config.yaml"
         } else {

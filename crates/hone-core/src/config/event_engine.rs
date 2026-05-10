@@ -80,7 +80,7 @@ fn default_news_importance_prompt() -> String {
 }
 
 fn default_news_classifier_model() -> String {
-    "amazon/nova-lite-v1".to_string()
+    "x-ai/grok-4.1-fast".to_string()
 }
 
 /// 财报 poller 特有参数。

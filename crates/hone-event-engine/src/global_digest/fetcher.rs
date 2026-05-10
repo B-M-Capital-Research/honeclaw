@@ -97,24 +97,22 @@ impl ArticleFetcher {
 
         // —— 第 1 段:直抓原文 ——
         match self.client.get(url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.text().await {
-                    Ok(html) => {
-                        let text = extract_article_text(&html, MAX_ARTICLE_CHARS);
-                        if !text.trim().is_empty() {
-                            return ArticleBody {
-                                url: url.into(),
-                                text,
-                                source: ArticleSource::Fetched,
-                            };
-                        }
-                        tracing::info!(url, "global_digest direct fetch empty body");
+            Ok(resp) if resp.status().is_success() => match resp.text().await {
+                Ok(html) => {
+                    let text = extract_article_text(&html, MAX_ARTICLE_CHARS);
+                    if !text.trim().is_empty() {
+                        return ArticleBody {
+                            url: url.into(),
+                            text,
+                            source: ArticleSource::Fetched,
+                        };
                     }
-                    Err(e) => {
-                        tracing::warn!(url, "global_digest direct fetch body decode failed: {e}");
-                    }
+                    tracing::info!(url, "global_digest direct fetch empty body");
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(url, "global_digest direct fetch body decode failed: {e}");
+                }
+            },
             Ok(resp) => {
                 let status = resp.status();
                 if paywall {
@@ -152,13 +150,7 @@ impl ArticleFetcher {
     /// "Warning: Target URL returned error N",由 `parse_jina_markdown` 识别。
     async fn fetch_via_jina(&self, url: &str, key: &str) -> Option<String> {
         let target = format!("{JINA_BASE_URL}{url}");
-        let resp = match self
-            .jina_client
-            .get(&target)
-            .bearer_auth(key)
-            .send()
-            .await
-        {
+        let resp = match self.jina_client.get(&target).bearer_auth(key).send().await {
             Ok(r) => r,
             Err(e) => {
                 tracing::warn!(url, "global_digest jina fetch failed: {e}");
@@ -206,7 +198,9 @@ fn is_paywall_domain(url: &str) -> bool {
         .unwrap_or("")
         .trim_start_matches("www.")
         .to_ascii_lowercase();
-    PAYWALL_DOMAINS.iter().any(|d| host == *d || host.ends_with(&format!(".{d}")))
+    PAYWALL_DOMAINS
+        .iter()
+        .any(|d| host == *d || host.ends_with(&format!(".{d}")))
 }
 
 /// 解析 Jina Reader 返回的 markdown。
@@ -675,9 +669,7 @@ mod tests {
         assert!(is_image_only_line(
             "![Image 1](https://t.co/x) ![Image 2](https://t.co/y)"
         ));
-        assert!(!is_image_only_line(
-            "Real text ![Image 1](https://t.co/x)"
-        ));
+        assert!(!is_image_only_line("Real text ![Image 1](https://t.co/x)"));
         assert!(!is_image_only_line(""));
         assert!(!is_image_only_line("Just plain text"));
         assert!(!is_image_only_line("![incomplete"));

@@ -218,12 +218,12 @@ export async function testDesktopOpenAiChannel(url: string, model: string, apiKe
 
 // ── OpenRouter API Key 设置 ─────────────────────────────────────────────────
 
-/** 读取运行时覆盖层中的 OpenRouter API Key */
+/** 读取 config.yaml 中的 OpenRouter API Key */
 export async function loadDesktopOpenRouterSettings() {
   return invokeDesktop<OpenRouterSettings>("get_openrouter_settings")
 }
 
-/** 保存 OpenRouter API Keys 到运行时覆盖层，内置后端模式下立即重启生效 */
+/** 保存 OpenRouter API Keys 到 config.yaml，内置后端模式下立即重启生效 */
 export async function saveDesktopOpenRouterSettings(settings: OpenRouterSettings) {
   return invokeDesktop<void>("set_openrouter_settings", { settings })
 }

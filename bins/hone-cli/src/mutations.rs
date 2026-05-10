@@ -400,17 +400,16 @@ pub(crate) fn provider_key_mutation(path: &str, keys: Vec<String>) -> ConfigMuta
     }
 }
 
-/// 同时写 `*.api_keys` 数组,并在有 `legacy_single_key_path` 时清空它,防止
-/// 老字段残留值被运行时当成真 key 使用。
+/// 同时写 `*.api_keys` 数组,并清空指定的单 key 字段,防止老字段残留值被运行时当成真 key 使用。
 pub(crate) fn build_provider_api_key_mutations(
     key_path: &str,
-    legacy_single_key_path: Option<&str>,
+    clear_single_key_paths: &[&str],
     keys: Vec<String>,
 ) -> Vec<ConfigMutation> {
     let mut mutations = vec![provider_key_mutation(key_path, keys)];
-    if let Some(path) = legacy_single_key_path {
+    for path in clear_single_key_paths {
         mutations.push(ConfigMutation::Set {
-            path: path.to_string(),
+            path: (*path).to_string(),
             value: Value::String(String::new()),
         });
     }
@@ -651,7 +650,7 @@ mod tests {
     fn build_provider_api_key_mutations_clears_legacy_fmp_single_key() {
         let mutations = build_provider_api_key_mutations(
             "fmp.api_keys",
-            Some("fmp.api_key"),
+            &["fmp.api_key"],
             vec!["key-a".to_string(), "key-b".to_string()],
         );
 
@@ -679,7 +678,7 @@ mod tests {
     #[test]
     fn build_provider_api_key_mutations_sets_tavily_keys_without_legacy_field() {
         let mutations =
-            build_provider_api_key_mutations("search.api_keys", None, vec!["tvly-1".to_string()]);
+            build_provider_api_key_mutations("search.api_keys", &[], vec!["tvly-1".to_string()]);
 
         assert_eq!(mutations.len(), 1);
         assert!(matches!(

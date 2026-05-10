@@ -137,7 +137,7 @@ Completed this round:
 - `cargo test -p hone-llm openrouter -- --nocapture`
 - `cargo test -p hone-event-engine --lib`
 - `bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`
-- `OPENROUTER_API_KEY=<config value> env RUN_EVENT_ENGINE_LLM_BASELINE=1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`；15/15 live OpenRouter baseline matched, reported cost `0.000640`.
+- `RUN_EVENT_ENGINE_LLM_BASELINE=1 bash tests/regression/manual/test_event_engine_news_classifier_baseline.sh`（OpenRouter key 从 `config.yaml` 读取）；15/15 live OpenRouter baseline matched, reported cost `0.000640`.
 - `HONE_FMP_API_KEY=<config value> cargo test -p hone-event-engine pollers::news::tests::live_fmp_news_smoke --lib -- --ignored --nocapture`
 - `HONE_FMP_API_KEY=<config value> cargo test -p hone-event-engine pollers::macro_events::tests::live_fmp_macro_smoke --lib -- --ignored --nocapture`
 - Live FMP digest probe against `telegram::::8039067465` holdings (`TEM,RKLB,MU,CAI,COHR,GOOGL,AAPL,SNDK,GEV,AAOI,VST,BE,AMD`) produced 50 news events, 737 macro events, 5 holding-matched news rows, and channel-rendered source-host links.

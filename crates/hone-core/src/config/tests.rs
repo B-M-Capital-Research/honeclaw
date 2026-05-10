@@ -15,7 +15,7 @@ fn test_default_config() {
     assert_eq!(config.llm.provider, "openrouter");
     assert_eq!(config.llm.openrouter.model, "moonshotai/kimi-k2.5");
     assert_eq!(config.llm.openrouter.sub_model, "moonshotai/kimi-k2.5");
-    assert_eq!(config.llm.auxiliary.api_key_env, "MINIMAX_API_KEY");
+    assert!(config.llm.auxiliary.api_key.is_empty());
     assert!(config.llm.auxiliary.base_url.is_empty());
     assert_eq!(config.llm.openrouter.timeout, 120);
     assert_eq!(config.llm.openrouter.max_tokens, 32768);
@@ -45,7 +45,7 @@ llm:
     openrouter:
       kind: openai_compatible
       base_url: https://openrouter.ai/api/v1
-      api_key_env: OPENROUTER_API_KEY
+      api_key: test-openrouter
       timeout: 60
       max_retries: 1
   auxiliary_profile: digest_strong
@@ -75,6 +75,7 @@ llm:
     assert_eq!(config.llm.auxiliary_profile, "digest_strong");
     let provider = config.llm.providers.get("openrouter").unwrap();
     assert_eq!(provider.kind, "openai_compatible");
+    assert_eq!(provider.effective_key_pool().keys(), &["test-openrouter"]);
     assert_eq!(provider.timeout, Some(60));
 
     let profile = config.llm.profiles.get("digest_strong").unwrap();
@@ -413,12 +414,12 @@ agent:
   runner: gemini_acp
   gemini_acp:
     model: "gemini-2.5-pro"
-    api_key_env: "GEMINI_API_KEY"
+    api_key: "gemini-key"
 "#;
     let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(config.agent.runner, "gemini_acp");
     assert_eq!(config.agent.gemini_acp.model, "gemini-2.5-pro");
-    assert_eq!(config.agent.gemini_acp.api_key_env, "GEMINI_API_KEY");
+    assert_eq!(config.agent.gemini_acp.api_key, "gemini-key");
 }
 
 #[test]
@@ -978,8 +979,7 @@ discord:
     assert!(changed.contains(&"agent.multi_agent".to_string()));
     assert!(changed.contains(&"agent.opencode".to_string()));
     assert!(changed.contains(&"llm.auxiliary".to_string()));
-    assert!(changed.contains(&"llm.openrouter.api_key".to_string()));
-    assert!(changed.contains(&"llm.openrouter.api_keys".to_string()));
+    assert!(changed.contains(&"llm.providers.openrouter.api_keys".to_string()));
     assert!(changed.contains(&"agent.runner".to_string()));
     assert!(changed.contains(&"search.api_keys".to_string()));
     assert!(changed.contains(&"fmp.api_key".to_string()));
@@ -994,9 +994,10 @@ discord:
     assert_eq!(config.agent.multi_agent.answer.api_key, "legacy-answer");
     assert_eq!(config.agent.opencode.api_key, "legacy-answer");
     assert_eq!(config.llm.auxiliary.api_key, "legacy-search");
-    assert_eq!(config.llm.openrouter.api_key, "legacy-openrouter");
+    assert_eq!(config.llm.openrouter.api_key, "");
+    let provider = config.llm.providers.get("openrouter").unwrap();
     assert_eq!(
-        config.llm.openrouter.api_keys,
+        provider.api_keys,
         vec![
             "legacy-openrouter-1".to_string(),
             "legacy-openrouter-2".to_string()
@@ -1049,19 +1050,23 @@ llm:
     .unwrap();
 
     let changed = promote_legacy_runtime_agent_settings(&canonical, &legacy).unwrap();
-    assert_eq!(changed, vec!["llm.openrouter.api_keys".to_string()]);
+    assert_eq!(
+        changed,
+        vec!["llm.providers.openrouter.api_keys".to_string()]
+    );
 
     let config = HoneConfig::from_file(&canonical).unwrap();
     assert_eq!(config.llm.openrouter.api_key, "");
+    let provider = config.llm.providers.get("openrouter").unwrap();
     assert_eq!(
-        config.llm.openrouter.api_keys,
+        provider.api_keys,
         vec![
             "legacy-openrouter-1".to_string(),
             "legacy-openrouter-2".to_string()
         ]
     );
     assert_eq!(
-        config.llm.openrouter.effective_key_pool().keys(),
+        config.llm.openrouter_key_pool().keys(),
         &["legacy-openrouter-1", "legacy-openrouter-2"]
     );
 }

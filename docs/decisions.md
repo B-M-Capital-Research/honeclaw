@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-05-04
+Last updated: 2026-05-11
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -138,3 +138,14 @@ Last updated: 2026-05-04
   - Close price alerts are digest-only by default through `price_close_direct_enabled=false`.
   - Digest buffering treats price alerts as latest-state rows per actor/symbol/date/window, replacing older queued price rows instead of appending duplicates.
 - Note: This preserves old event rows in SQLite; it only changes ids and routing for new price observations.
+
+## D-2026-05-11-01 Make LLM Credentials Config-Only
+
+- Status: Accepted
+- Decision: LLM provider/profile/auxiliary/agent credentials are configured only through `config.yaml`; runtime must not use `*_API_KEY`, `*_BASE_URL`, or `api_key_env` fallback as a second truth source
+- Impact:
+  - `llm.providers.<symbol>.api_key/api_keys` is the preferred provider credential path, and `llm.profiles.*.provider` references that symbol
+  - Legacy `llm.openrouter.api_key/api_keys` remains readable only as config-owned migration fallback, not as an env bridge
+  - CLI/Desktop settings should write inline config keys and mask API-key fields in display/logs
+  - Missing credentials should fail with a migration hint pointing to `config.yaml`
+- Note: Child-process bridges such as passing a config-owned OpenRouter key into `opencode` are allowed when the underlying CLI has no config API, but Hone must not read parent process env vars as user LLM config.

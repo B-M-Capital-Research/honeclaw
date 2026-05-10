@@ -39,6 +39,21 @@ impl Default for LlmConfig {
     }
 }
 
+impl LlmConfig {
+    /// Config-only OpenRouter key pool. New configs should write
+    /// `llm.providers.openrouter.api_key/api_keys`; legacy
+    /// `llm.openrouter.api_key/api_keys` remains readable as a config-only
+    /// fallback during migration.
+    pub fn openrouter_key_pool(&self) -> crate::api_key_pool::ApiKeyPool {
+        let mut keys = Vec::new();
+        if let Some(provider) = self.providers.get("openrouter") {
+            keys.extend(provider.effective_key_pool().keys().iter().cloned());
+        }
+        keys.extend(self.openrouter.effective_key_pool().keys().iter().cloned());
+        crate::api_key_pool::ApiKeyPool::new(keys)
+    }
+}
+
 fn default_provider() -> String {
     "openrouter".to_string()
 }
@@ -51,8 +66,6 @@ pub struct OpenRouterConfig {
     /// 多 Key 列表，支持多账号 fallback（与 api_key 合并后去重使用）
     #[serde(default)]
     pub api_keys: Vec<String>,
-    #[serde(default = "default_api_key_env")]
-    pub api_key_env: String,
     #[serde(default = "default_model")]
     pub model: String,
     #[serde(default = "default_sub_model")]
@@ -70,7 +83,6 @@ impl Default for OpenRouterConfig {
         Self {
             api_key: String::new(),
             api_keys: Vec::new(),
-            api_key_env: default_api_key_env(),
             model: default_model(),
             sub_model: default_sub_model(),
             timeout: default_timeout(),
@@ -102,8 +114,6 @@ pub struct AuxiliaryLlmConfig {
     pub base_url: String,
     #[serde(default)]
     pub api_key: String,
-    #[serde(default = "default_auxiliary_api_key_env")]
-    pub api_key_env: String,
     #[serde(default)]
     pub model: String,
     #[serde(default = "default_timeout")]
@@ -119,7 +129,6 @@ impl Default for AuxiliaryLlmConfig {
         Self {
             base_url: default_auxiliary_base_url(),
             api_key: String::new(),
-            api_key_env: default_auxiliary_api_key_env(),
             model: String::new(),
             timeout: default_timeout(),
             max_retries: default_max_retries(),
@@ -132,35 +141,12 @@ impl AuxiliaryLlmConfig {
     pub fn is_configured(&self) -> bool {
         !self.base_url.trim().is_empty()
             && !self.model.trim().is_empty()
-            && (!self.api_key.trim().is_empty() || !self.api_key_env.trim().is_empty())
-    }
-
-    pub fn resolved_api_key(&self) -> String {
-        let direct = self.api_key.trim();
-        if !direct.is_empty() {
-            return direct.to_string();
-        }
-
-        let env_name = self.api_key_env.trim();
-        if env_name.is_empty() {
-            return String::new();
-        }
-
-        std::env::var(env_name)
-            .unwrap_or_default()
-            .trim()
-            .to_string()
+            && !self.api_key.trim().is_empty()
     }
 }
 
-fn default_api_key_env() -> String {
-    "OPENROUTER_API_KEY".to_string()
-}
 fn default_auxiliary_base_url() -> String {
     String::new()
-}
-fn default_auxiliary_api_key_env() -> String {
-    "MINIMAX_API_KEY".to_string()
 }
 fn default_model() -> String {
     "moonshotai/kimi-k2.5".to_string()
@@ -189,8 +175,6 @@ pub struct LlmProviderEntryConfig {
     #[serde(default)]
     pub api_keys: Vec<String>,
     #[serde(default)]
-    pub api_key_env: String,
-    #[serde(default)]
     pub timeout: Option<u64>,
     #[serde(default)]
     pub max_retries: Option<u32>,
@@ -205,11 +189,16 @@ impl Default for LlmProviderEntryConfig {
             base_url: String::new(),
             api_key: String::new(),
             api_keys: Vec::new(),
-            api_key_env: String::new(),
             timeout: None,
             max_retries: None,
             extra: BTreeMap::new(),
         }
+    }
+}
+
+impl LlmProviderEntryConfig {
+    pub fn effective_key_pool(&self) -> crate::api_key_pool::ApiKeyPool {
+        crate::api_key_pool::ApiKeyPool::merged(&self.api_key, &self.api_keys)
     }
 }
 
@@ -277,8 +266,6 @@ pub struct LlmProviderOptionsConfig {
 pub struct KimiConfig {
     #[serde(default)]
     pub api_key: String,
-    #[serde(default)]
-    pub api_key_env: String,
     #[serde(default)]
     pub model: String,
     #[serde(default = "default_timeout")]
@@ -545,8 +532,8 @@ pub struct GeminiAcpConfig {
     pub args: Vec<String>,
     #[serde(default)]
     pub model: String,
-    #[serde(default = "default_gemini_api_key_env")]
-    pub api_key_env: String,
+    #[serde(default)]
+    pub api_key: String,
 }
 
 impl Default for GeminiAcpConfig {
@@ -555,7 +542,7 @@ impl Default for GeminiAcpConfig {
             command: default_gemini_acp_command(),
             args: default_gemini_acp_args(),
             model: String::new(),
-            api_key_env: default_gemini_api_key_env(),
+            api_key: String::new(),
         }
     }
 }
@@ -617,7 +604,7 @@ pub struct OpencodeAcpConfig {
     /// 可选的 Hone 侧 API key 覆盖；留空则继承用户本机 opencode 登录态 / provider 配置
     #[serde(default)]
     pub api_key: String,
-    /// OpenRouter API Key（运行时注入，来自 llm.openrouter.api_key 配置，不写入 YAML）
+    /// OpenRouter API Key（运行时注入，来自 config.yaml 的 OpenRouter key pool，不写入 YAML）
     #[serde(skip)]
     pub openrouter_api_key: Option<String>,
 }
@@ -792,10 +779,6 @@ fn default_gemini_acp_args() -> Vec<String> {
         "--approval-mode".to_string(),
         "plan".to_string(),
     ]
-}
-
-fn default_gemini_api_key_env() -> String {
-    "GEMINI_API_KEY".to_string()
 }
 
 fn default_codex_acp_command() -> String {

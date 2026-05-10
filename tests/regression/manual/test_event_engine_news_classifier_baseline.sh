@@ -39,19 +39,27 @@ if os.environ.get("RUN_EVENT_ENGINE_LLM_BASELINE") != "1":
 
 
 def openrouter_key() -> str:
-    if os.environ.get("OPENROUTER_API_KEY"):
-        return os.environ["OPENROUTER_API_KEY"]
     cfg = Path("config.yaml")
     if not cfg.exists():
-        raise SystemExit("[FAIL] OPENROUTER_API_KEY unset and config.yaml missing")
+        raise SystemExit("[FAIL] config.yaml missing")
     text = cfg.read_text()
-    match = re.search(
+
+    patterns = [
+        r"(?ms)^llm:\s+.*?^\s+providers:\s+.*?^\s+openrouter:\s+.*?^\s+api_key:\s*[\"']?([^\"'\n#]+)",
+        r"(?ms)^llm:\s+.*?^\s+providers:\s+.*?^\s+openrouter:\s+.*?^\s+api_keys:\s*\n\s*-\s*[\"']?([^\"'\n#]+)",
         r"(?ms)^llm:\s+.*?^\s+openrouter:\s+.*?^\s+api_key:\s*[\"']?([^\"'\n#]+)",
-        text,
+        r"(?ms)^llm:\s+.*?^\s+openrouter:\s+.*?^\s+api_keys:\s*\n\s*-\s*[\"']?([^\"'\n#]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            key = match.group(1).strip().strip("\"'")
+            if key:
+                return key
+    raise SystemExit(
+        "[FAIL] unable to read OpenRouter key from config.yaml "
+        "(llm.providers.openrouter.api_key/api_keys)"
     )
-    if not match:
-        raise SystemExit("[FAIL] unable to read llm.openrouter.api_key from config.yaml")
-    return match.group(1).strip()
 
 
 model = (

@@ -35,34 +35,6 @@ fn normalize_base_url(configured: &str, fallback: &str) -> String {
     }
 }
 
-fn openrouter_key_pool(
-    api_key: &str,
-    api_keys: &[String],
-    api_key_env: &str,
-) -> hone_core::api_key_pool::ApiKeyPool {
-    let mut keys = Vec::new();
-    if !api_key.trim().is_empty() {
-        keys.push(api_key.trim().to_string());
-    }
-    keys.extend(
-        api_keys
-            .iter()
-            .map(|key| key.trim())
-            .filter(|key| !key.is_empty())
-            .map(str::to_string),
-    );
-    let env_name = api_key_env.trim();
-    if !env_name.is_empty() {
-        if let Ok(value) = std::env::var(env_name) {
-            let value = value.trim().to_string();
-            if !value.is_empty() {
-                keys.push(value);
-            }
-        }
-    }
-    hone_core::api_key_pool::ApiKeyPool::new(keys)
-}
-
 struct OpenRouterClient {
     sdk: Client<OpenAIConfig>,
     http_client: reqwest::Client,
@@ -134,15 +106,11 @@ impl OpenRouterProvider {
         max_tokens: u16,
         request_options: LlmRequestOptions,
     ) -> hone_core::HoneResult<Self> {
-        let pool = openrouter_key_pool(
-            &config.llm.openrouter.api_key,
-            &config.llm.openrouter.api_keys,
-            &config.llm.openrouter.api_key_env,
-        );
+        let pool = config.llm.openrouter_key_pool();
 
         if pool.is_empty() {
             return Err(hone_core::HoneError::Config(
-                "LLM API key 未配置（环境变量或 config.yaml）".to_string(),
+                "LLM API key 未配置：请在 config.yaml 的 llm.providers.openrouter.api_key/api_keys 或 legacy llm.openrouter.api_key/api_keys 中填写；运行时不再读取 *_API_KEY 环境变量".to_string(),
             ));
         }
 
@@ -169,7 +137,7 @@ impl OpenRouterProvider {
 
         if pool.is_empty() {
             return Err(hone_core::HoneError::Config(
-                "LLM API key 未配置（环境变量或 config.yaml）".to_string(),
+                "LLM API key 未配置：请在 config.yaml 的 llm.providers.<name>.api_key 或 api_keys 中填写；运行时不再读取 *_API_KEY 环境变量".to_string(),
             ));
         }
 

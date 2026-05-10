@@ -44,7 +44,12 @@ impl NanoBananaClient {
             model: config.nano_banana.model.clone(),
             default_image_count: config.nano_banana.default_image_count,
             timeout_seconds: 90,
-            api_key: config.llm.openrouter.api_key.trim().to_string(),
+            api_key: config
+                .llm
+                .openrouter_key_pool()
+                .first()
+                .unwrap_or_default()
+                .to_string(),
             max_tokens: 2048,
             output_dir,
             http: reqwest::Client::new(),
@@ -136,7 +141,7 @@ impl NanoBananaClient {
         if api_key.is_empty() {
             return serde_json::json!({
                 "success": false,
-                "error": "未配置 OpenRouter API Key，请在 config.yaml 中设置 llm.openrouter.api_key"
+                "error": "未配置 OpenRouter API Key，请在 config.yaml 中设置 llm.providers.openrouter.api_key/api_keys"
             });
         }
 

@@ -104,7 +104,7 @@ export function defaultLlmProfileSettings(): LlmProfileSettings {
       {
         id: "news_classifier",
         provider: "openrouter",
-        model: "amazon/nova-lite-v1",
+        model: "x-ai/grok-4.1-fast",
         maxTokens: 64,
         temperature: 0,
         responseFormatJson: false,
@@ -128,7 +128,7 @@ export function defaultLlmProfileSettings(): LlmProfileSettings {
       {
         id: "digest_fast",
         provider: "openrouter",
-        model: "amazon/nova-lite-v1",
+        model: "x-ai/grok-4.1-fast",
         maxTokens: 1200,
         temperature: 0.2,
         responseFormatJson: false,

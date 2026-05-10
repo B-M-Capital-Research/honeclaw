@@ -3,7 +3,7 @@ llm:
     openrouter:
       kind: openai_compatible
       base_url: https://openrouter.ai/api/v1
-      api_key_env: OPENROUTER_API_KEY
+      api_key: ""
       timeout: 60
       max_retries: 1
 

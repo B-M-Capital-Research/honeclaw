@@ -5,6 +5,11 @@
 //!
 //! Live OpenRouter request:
 //!   RUN_LLM_PROFILE_POC=1 cargo run -p hone-llm --example llm_profile_poc
+//!
+//! Credential note: the live request reads API keys only from config.yaml
+//! (`llm.providers.<name>.api_key/api_keys`, or legacy
+//! `llm.openrouter.api_key/api_keys` for OpenRouter). It does not read
+//! `OPENROUTER_API_KEY`.
 
 use hone_core::config::{HoneConfig, LlmProfileEntryConfig, LlmProviderEntryConfig};
 use serde_json::{Map, Value, json};
@@ -63,8 +68,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let secrets_config = load_secrets_config();
-    let api_key = resolve_api_key(provider_name, provider, secrets_config.as_ref())?;
+    let runtime_config = load_runtime_config();
+    let api_key = resolve_api_key(provider_name, provider, runtime_config.as_ref())?;
     let base_url = resolve_base_url(provider_name, provider)?;
     let timeout = provider.timeout.unwrap_or(60).max(1);
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
@@ -183,7 +188,7 @@ fn build_chat_body(profile: &LlmProfileEntryConfig, provider_name: &str) -> Map<
     body
 }
 
-fn load_secrets_config() -> Option<HoneConfig> {
+fn load_runtime_config() -> Option<HoneConfig> {
     let path = env::var("HONE_CONFIG_PATH").unwrap_or_else(|_| "config.yaml".to_string());
     let path = PathBuf::from(path);
     if path.exists() {
@@ -196,7 +201,7 @@ fn load_secrets_config() -> Option<HoneConfig> {
 fn resolve_api_key(
     provider_name: &str,
     provider: &LlmProviderEntryConfig,
-    secrets_config: Option<&HoneConfig>,
+    runtime_config: Option<&HoneConfig>,
 ) -> Result<String, Box<dyn Error>> {
     let direct = provider.api_key.trim();
     if !direct.is_empty() {
@@ -205,36 +210,18 @@ fn resolve_api_key(
     if let Some(key) = provider.api_keys.iter().find(|key| !key.trim().is_empty()) {
         return Ok(key.trim().to_string());
     }
-    let env_name = provider.api_key_env.trim();
-    if !env_name.is_empty() {
-        if let Ok(key) = env::var(env_name) {
-            let key = key.trim().to_string();
-            if !key.is_empty() {
-                return Ok(key);
-            }
-        }
-    }
 
     if provider_name == "openrouter" {
-        if let Some(config) = secrets_config {
+        if let Some(config) = runtime_config {
             let pool = config.llm.openrouter.effective_key_pool();
             if let Some(key) = pool.keys().iter().find(|key| !key.trim().is_empty()) {
                 return Ok(key.trim().to_string());
-            }
-            let env_name = config.llm.openrouter.api_key_env.trim();
-            if !env_name.is_empty() {
-                if let Ok(key) = env::var(env_name) {
-                    let key = key.trim().to_string();
-                    if !key.is_empty() {
-                        return Ok(key);
-                    }
-                }
             }
         }
     }
 
     Err(boxed_err(format!(
-        "missing API key for provider {provider_name}"
+        "missing API key for provider {provider_name}; put it in config.yaml llm.providers.{provider_name}.api_key/api_keys"
     )))
 }
 

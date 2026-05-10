@@ -22,9 +22,7 @@ use super::codex_acp::{
     configured_codex_reasoning_effort, patch_codex_session_update_params, render_codex_tool_status,
     reusable_codex_acp_session_id, validate_codex_version_matrix,
 };
-use super::gemini_acp::{
-    configured_gemini_api_key_env, gemini_acp_effective_args, validate_gemini_version,
-};
+use super::gemini_acp::{gemini_acp_effective_args, validate_gemini_version};
 use super::gemini_cli::{
     GeminiCliToolRenderPhase, append_gemini_cli_tool_context_messages,
     render_gemini_cli_tool_status,
@@ -541,12 +539,6 @@ fn gemini_version_guard_rejects_old_binary() {
         patch: 0,
     });
     assert!(result.unwrap_err().contains("@google/gemini-cli@latest"));
-}
-
-#[test]
-fn gemini_api_key_env_defaults_to_standard_name() {
-    let config = GeminiAcpConfig::default();
-    assert_eq!(configured_gemini_api_key_env(&config), "GEMINI_API_KEY");
 }
 
 #[test]

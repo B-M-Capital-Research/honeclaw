@@ -64,8 +64,8 @@ fn local_hm(tz_name: Option<&str>, fallback_offset_hours: i32, now: DateTime<Utc
             return (local.hour(), local.minute());
         }
     }
-    let offset =
-        FixedOffset::east_opt(fallback_offset_hours * 3600).unwrap_or(FixedOffset::east_opt(0).unwrap());
+    let offset = FixedOffset::east_opt(fallback_offset_hours * 3600)
+        .unwrap_or(FixedOffset::east_opt(0).unwrap());
     let local = offset.from_utc_datetime(&now.naive_utc());
     (local.hour(), local.minute())
 }

@@ -87,3 +87,49 @@ The live OpenRouter smoke accepted a profile-derived request with `reasoning_pre
 - Streaming paths still use the existing SDK request shape and do not yet apply every profile request option.
 - Runner-specific configuration (`codex_acp`, `opencode`, `gemini_cli`, `hone_cloud`) remains intentionally separate from this profile registry.
 - The desktop UI edits the default profile set; custom hand-written profile IDs are preserved in the loaded draft but there is not yet an add/remove UI for arbitrary profiles.
+
+## Config-Only Credential Addendum
+
+- status: done
+- updated_at: 2026-05-11
+- related_plan: `docs/archive/plans/llm-config-env-removal.md`
+- related_decision: `docs/decisions.md#d-2026-05-11-01-make-llm-credentials-config-only`
+
+### Summary
+
+LLM credentials are now config-only. `api_key_env` is no longer part of the LLM config structs, resolver, OpenRouter provider construction, auxiliary route, or Gemini ACP user config. Missing keys now point users to `config.yaml` instead of suggesting env fallback.
+
+### What Changed
+
+- `llm.providers.openrouter.api_key/api_keys` is the preferred OpenRouter credential path; legacy `llm.openrouter.api_key/api_keys` remains readable only as config fallback.
+- `hone-cli configure/onboard` and desktop OpenRouter settings write `llm.providers.openrouter.api_keys` and clear legacy OpenRouter fields on save.
+- `llm.auxiliary.api_key` is the only auxiliary key source; `MINIMAX_API_KEY` is ignored at runtime.
+- `agent.gemini_acp.api_key` replaces `api_key_env`; if set, Hone bridges that config-owned key to the Gemini child process.
+- Default news/global-digest example models have been aligned to `x-ai/grok-4.1-fast`.
+
+### Verification
+
+- `cargo test -p hone-core config::tests`
+- `cargo test -p hone-llm resolver`
+- `cargo test -p hone-cli mutations`
+- `cargo check -p hone-cli --tests`
+- `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop --bin hone-desktop sidecar`
+- `cargo check -p hone-channels -p hone-integrations -p hone-web-api --tests --examples`
+- `cargo test -p hone-web-api validate_global_digest`
+- `bun run test:web`
+- `bun run typecheck:web`
+- `cargo run -p hone-llm --example llm_profile_poc`
+- `RUN_LLM_PROFILE_POC=1 cargo run -p hone-llm --example llm_profile_poc`
+- `cargo run -p hone-cli -- config validate --json`
+- `cargo run -p hone-cli -- status --json`
+- `cargo run -p hone-cli -- config --config /tmp/hone-cli-config-smoke.<id>/config.yaml set llm.providers.openrouter.api_keys '["sk-test-a","sk-test-b"]'`
+- `cargo run -p hone-cli -- config --config /tmp/hone-cli-config-smoke.<id>/config.yaml get llm.providers.openrouter.api_keys`
+- `cargo run -p hone-cli -- status --config /tmp/hone-cli-config-smoke.<id>/config.yaml --json`
+- `cargo run -p hone-cli -- probe --channel cli --user-id cli_smoke --query '只输出 HONE_CLI_LLM_OK' --show-events false`
+- `cargo fmt --all --check`
+- `git diff --check`
+
+### Risks / Follow-ups
+
+- Existing configs with only `api_key_env` will parse but fail when a real LLM provider is needed; the fix is to copy the key into `config.yaml`.
+- `opencode_acp` still passes a config-owned OpenRouter key to the child process as `OPENROUTER_API_KEY` because opencode does not expose an equivalent inline provider key in the generated session config.

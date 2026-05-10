@@ -444,8 +444,9 @@ async fn run_opencode_acp(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    // 通过环境变量传递 OpenRouter API Key（opencode 的 provider.openrouter 配置不支持 apiKey 字段）
-    // 若 Hone 未显式注入，则继续使用用户本机 opencode 的 auth / provider 配置。
+    // opencode 的 provider.openrouter 配置不支持 apiKey 字段；Hone 只在用户把 key
+    // 写入 config.yaml 时把它桥接给子进程。若 Hone 未显式注入，则继续使用用户本机
+    // opencode 的 auth / provider 配置。
     if let Some(api_key) = injected_openrouter_api_key {
         command.env("OPENROUTER_API_KEY", api_key);
     }

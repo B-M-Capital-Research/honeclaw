@@ -28,6 +28,18 @@ Last updated: 2026-05-11
 - Current conclusion: `llm.providers` + `llm.profiles` is now a runtime-supported profile registry for event-engine and auxiliary LLM paths; Settings UI can edit profile routing and profile params; legacy OpenRouter/Auxiliary fields remain fallback-compatible.
 - Next entry point: `crates/hone-llm/src/resolver.rs`, `crates/hone-web-api/src/lib.rs`, and `packages/app/src/pages/settings.tsx`
 
+### LLM Config Env Removal
+
+- Status: done
+- Date: 2026-05-11
+- Plan: `docs/archive/plans/llm-config-env-removal.md`
+- Handoff: `docs/handoffs/2026-05-11-llm-profile-poc.md`
+- Decision / ADR: `docs/decisions.md#d-2026-05-11-01-make-llm-credentials-config-only`
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-core config::tests`, `cargo test -p hone-llm resolver`, `cargo test -p hone-cli mutations`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop --bin hone-desktop sidecar`, `bun run test:web`, `bun run typecheck:web`, `cargo run -p hone-cli -- config validate --json`, `cargo run -p hone-cli -- status --json`, `cargo run -p hone-cli -- probe --channel cli --user-id cli_smoke --query '只输出 HONE_CLI_LLM_OK' --show-events false`, `RUN_LLM_PROFILE_POC=1 cargo run -p hone-llm --example llm_profile_poc`
+- Current conclusion: LLM credentials are now config-only. Runtime no longer consumes `api_key_env` or parent-process `*_API_KEY` fallback for LLM provider/profile/auxiliary paths; CLI/Desktop OpenRouter writes now target `llm.providers.openrouter.api_keys`, while legacy `llm.openrouter.*` remains a config-only fallback/migration path.
+- Next entry point: `crates/hone-core/src/config/agent.rs`, `crates/hone-llm/src/resolver.rs`, and `config.example.yaml`
+
 ## 2026-05-10
 
 ### Source CLI Start And Launch Retirement

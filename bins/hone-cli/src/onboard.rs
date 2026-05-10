@@ -135,7 +135,7 @@ struct ChannelOnboardSpec {
 struct ProviderOnboardSpec {
     label_key: &'static str,
     key_path: &'static str,
-    legacy_single_key_path: Option<&'static str>,
+    clear_single_key_paths: &'static [&'static str],
     prompt_key: &'static str,
     note_keys: &'static [&'static str],
 }
@@ -252,8 +252,8 @@ fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
         // 「openrouter.api_key 为空」,体验很差。
         ProviderOnboardSpec {
             label_key: "provider.openrouter.label",
-            key_path: "llm.openrouter.api_keys",
-            legacy_single_key_path: Some("llm.openrouter.api_key"),
+            key_path: "llm.providers.openrouter.api_keys",
+            clear_single_key_paths: &["llm.providers.openrouter.api_key", "llm.openrouter.api_key"],
             prompt_key: "provider.openrouter.prompt",
             note_keys: &[
                 "provider.openrouter.note_1",
@@ -264,14 +264,14 @@ fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
         ProviderOnboardSpec {
             label_key: "provider.fmp.label",
             key_path: "fmp.api_keys",
-            legacy_single_key_path: Some("fmp.api_key"),
+            clear_single_key_paths: &["fmp.api_key"],
             prompt_key: "provider.fmp.prompt",
             note_keys: &["provider.fmp.note_1", "provider.fmp.note_2"],
         },
         ProviderOnboardSpec {
             label_key: "provider.tavily.label",
             key_path: "search.api_keys",
-            legacy_single_key_path: None,
+            clear_single_key_paths: &[],
             prompt_key: "provider.tavily.prompt",
             note_keys: &["provider.tavily.note_1", "provider.tavily.note_2"],
         },
@@ -533,7 +533,7 @@ fn has_configured_provider_keys(
     match spec.key_path {
         "fmp.api_keys" => !config.fmp.effective_key_pool().is_empty(),
         "search.api_keys" => has_configured_search_keys(config),
-        "llm.openrouter.api_keys" => !config.llm.openrouter.effective_key_pool().is_empty(),
+        "llm.providers.openrouter.api_keys" => !config.llm.openrouter_key_pool().is_empty(),
         _ => false,
     }
 }
@@ -1190,9 +1190,15 @@ pub(crate) fn build_provider_onboard_mutations(
         )? {
             mutations.extend(build_provider_api_key_mutations(
                 spec.key_path,
-                spec.legacy_single_key_path,
+                spec.clear_single_key_paths,
                 keys,
             ));
+            if spec.key_path == "llm.providers.openrouter.api_keys" {
+                mutations.push(crate::mutations::provider_key_mutation(
+                    "llm.openrouter.api_keys",
+                    Vec::new(),
+                ));
+            }
             ok_line(&tpl(
                 t(lang, "provider.saved_message"),
                 &[("label", &label)],

@@ -310,7 +310,7 @@ pub(crate) struct CliCheckResult {
     message: String,
 }
 
-/// OpenRouter API Key 设置（写入运行时覆盖层的 llm.openrouter.api_keys）
+/// OpenRouter API Key 设置（写入 canonical config 的 llm.providers.openrouter.api_keys）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OpenRouterSettings {
@@ -1049,10 +1049,6 @@ fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(String, serde_y
             setting(
                 "llm.auxiliary.api_key",
                 serde_yaml::Value::String(auxiliary.api_key.clone()),
-            ),
-            setting(
-                "llm.auxiliary.api_key_env",
-                serde_yaml::Value::String("MINIMAX_API_KEY".to_string()),
             ),
             setting(
                 "llm.auxiliary.model",
@@ -1828,6 +1824,35 @@ fmp:
     }
 
     #[test]
+    fn build_agent_setting_updates_persists_auxiliary_key_without_env_field() {
+        let settings = AgentSettings {
+            runner: "opencode_acp".to_string(),
+            codex_model: String::new(),
+            openai_url: String::new(),
+            openai_model: String::new(),
+            openai_api_key: String::new(),
+            auxiliary: Some(AuxiliarySettings {
+                base_url: "https://api.minimaxi.com/v1".to_string(),
+                api_key: "sk-cp-aux".to_string(),
+                model: "MiniMax-M2.7-highspeed".to_string(),
+            }),
+            hone_cloud: None,
+            multi_agent: None,
+            llm_profiles: None,
+        };
+
+        let updates = build_agent_setting_updates(&settings);
+        assert!(updates.iter().any(|(path, value)| {
+            path == "llm.auxiliary.api_key" && value.as_str() == Some("sk-cp-aux")
+        }));
+        assert!(
+            updates
+                .iter()
+                .all(|(path, _)| path != "llm.auxiliary.api_key_env")
+        );
+    }
+
+    #[test]
     fn agent_settings_require_save_skips_identical_runner_payloads() {
         let settings = AgentSettings {
             runner: "opencode_acp".to_string(),
@@ -2073,18 +2098,17 @@ pub(crate) async fn check_agent_cli_impl(runner: String) -> Result<CliCheckResul
     }
 }
 
-/// 读取运行时覆盖层中的 OpenRouter API Key 设置（多 Key）
+/// 读取 config.yaml 中的 OpenRouter API Key 设置（多 Key）
 pub(crate) fn get_openrouter_settings_impl(app: AppHandle) -> Result<OpenRouterSettings, String> {
     let runtime = ensure_runtime_paths(&app)?;
     let config = HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
-    // 合并 api_key（旧格式）和 api_keys（新格式）
-    let pool = config.llm.openrouter.effective_key_pool();
+    let pool = config.llm.openrouter_key_pool();
     Ok(OpenRouterSettings {
         api_keys: pool.keys().to_vec(),
     })
 }
 
-/// 保存 OpenRouter API Keys 到运行时覆盖层，并重启内置后端立即生效
+/// 保存 OpenRouter API Keys 到 config.yaml，并重启内置后端立即生效
 pub(crate) async fn set_openrouter_settings_impl(
     app: AppHandle,
     state: State<'_, DesktopState>,
@@ -2102,7 +2126,7 @@ pub(crate) async fn set_openrouter_settings_impl(
             &runtime.effective_config_path,
             vec![
                 (
-                    "llm.openrouter.api_keys",
+                    "llm.providers.openrouter.api_keys",
                     serde_yaml::Value::Sequence(
                         valid_keys
                             .iter()
@@ -2110,6 +2134,14 @@ pub(crate) async fn set_openrouter_settings_impl(
                             .map(serde_yaml::Value::String)
                             .collect(),
                     ),
+                ),
+                (
+                    "llm.providers.openrouter.api_key",
+                    serde_yaml::Value::String(String::new()),
+                ),
+                (
+                    "llm.openrouter.api_keys",
+                    serde_yaml::Value::Sequence(Vec::new()),
                 ),
                 (
                     "llm.openrouter.api_key",

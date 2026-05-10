@@ -64,11 +64,23 @@ impl<'a> LlmResolver<'a> {
             return self.provider_for_profile(profile_name, max_tokens_override);
         }
 
-        if self.config.llm.auxiliary.is_configured() {
-            let api_key = self.config.llm.auxiliary.resolved_api_key();
+        if !self.config.llm.auxiliary.base_url.trim().is_empty()
+            || !self.config.llm.auxiliary.model.trim().is_empty()
+        {
+            let api_key = self.config.llm.auxiliary.api_key.trim().to_string();
             if api_key.trim().is_empty() {
                 return Err(hone_core::HoneError::Config(
-                    "auxiliary API key is empty".to_string(),
+                    "llm.auxiliary.api_key 未配置：请在 config.yaml 中填写；运行时不再读取 MINIMAX_API_KEY 等环境变量".to_string(),
+                ));
+            }
+            if self.config.llm.auxiliary.base_url.trim().is_empty() {
+                return Err(hone_core::HoneError::Config(
+                    "llm.auxiliary.base_url 不能为空".to_string(),
+                ));
+            }
+            if self.config.llm.auxiliary.model.trim().is_empty() {
+                return Err(hone_core::HoneError::Config(
+                    "llm.auxiliary.model 不能为空".to_string(),
                 ));
             }
             let max_tokens =
@@ -135,50 +147,51 @@ impl<'a> LlmResolver<'a> {
             .clamp(1, u16::MAX as u32) as u16;
 
         let provider_kind = provider_cfg.kind.trim().to_ascii_lowercase();
-        let provider: Arc<dyn LlmProvider> =
-            if provider_name == OPENROUTER_PROVIDER || provider_kind == OPENROUTER_PROVIDER {
-                let pool = self.provider_key_pool(provider_name, provider_cfg);
-                let base_url = if provider_cfg.base_url.trim().is_empty() {
-                    DEFAULT_OPENROUTER_BASE_URL
-                } else {
-                    provider_cfg.base_url.trim()
-                };
-                Arc::new(OpenRouterProvider::from_key_pool(
-                    pool.keys(),
-                    base_url,
-                    model,
-                    provider_cfg
-                        .timeout
-                        .unwrap_or(self.config.llm.openrouter.timeout),
-                    max_tokens,
-                    options,
-                )?)
+        let provider: Arc<dyn LlmProvider> = if provider_name == OPENROUTER_PROVIDER
+            || provider_kind == OPENROUTER_PROVIDER
+        {
+            let pool = self.provider_key_pool(provider_name, provider_cfg);
+            let base_url = if provider_cfg.base_url.trim().is_empty() {
+                DEFAULT_OPENROUTER_BASE_URL
             } else {
-                let key = self
+                provider_cfg.base_url.trim()
+            };
+            Arc::new(OpenRouterProvider::from_key_pool(
+                pool.keys(),
+                base_url,
+                model,
+                provider_cfg
+                    .timeout
+                    .unwrap_or(self.config.llm.openrouter.timeout),
+                max_tokens,
+                options,
+            )?)
+        } else {
+            let key = self
                     .provider_key_pool(provider_name, provider_cfg)
                     .first()
                     .map(str::to_string)
                     .ok_or_else(|| {
                         hone_core::HoneError::Config(format!(
-                            "llm.providers.{provider_name} API key 未配置"
+                            "llm.providers.{provider_name} API key 未配置：请在 config.yaml 的 llm.providers.{provider_name}.api_key 或 api_keys 中填写；运行时不再读取 *_API_KEY 环境变量"
                         ))
                     })?;
-                if provider_cfg.base_url.trim().is_empty() {
-                    return Err(hone_core::HoneError::Config(format!(
-                        "llm.providers.{provider_name}.base_url 不能为空"
-                    )));
-                }
-                Arc::new(
-                    OpenAiCompatibleProvider::new(
-                        &key,
-                        provider_cfg.base_url.trim(),
-                        model,
-                        provider_cfg.timeout.unwrap_or(120),
-                        max_tokens,
-                    )?
-                    .with_request_options(options),
-                )
-            };
+            if provider_cfg.base_url.trim().is_empty() {
+                return Err(hone_core::HoneError::Config(format!(
+                    "llm.providers.{provider_name}.base_url 不能为空"
+                )));
+            }
+            Arc::new(
+                OpenAiCompatibleProvider::new(
+                    &key,
+                    provider_cfg.base_url.trim(),
+                    model,
+                    provider_cfg.timeout.unwrap_or(120),
+                    max_tokens,
+                )?
+                .with_request_options(options),
+            )
+        };
 
         Ok(CreatedLlmProvider {
             provider,
@@ -193,46 +206,9 @@ impl<'a> LlmResolver<'a> {
         provider_name: &str,
         provider: &LlmProviderEntryConfig,
     ) -> ApiKeyPool {
-        let mut keys = Vec::new();
-        if !provider.api_key.trim().is_empty() {
-            keys.push(provider.api_key.trim().to_string());
-        }
-        keys.extend(
-            provider
-                .api_keys
-                .iter()
-                .map(|key| key.trim())
-                .filter(|key| !key.is_empty())
-                .map(str::to_string),
-        );
-        let env_name = provider.api_key_env.trim();
-        if !env_name.is_empty() {
-            if let Ok(value) = std::env::var(env_name) {
-                let value = value.trim().to_string();
-                if !value.is_empty() {
-                    keys.push(value);
-                }
-            }
-        }
+        let mut keys = provider.effective_key_pool().keys().to_vec();
         if keys.is_empty() && provider_name == OPENROUTER_PROVIDER {
-            keys.extend(
-                self.config
-                    .llm
-                    .openrouter
-                    .effective_key_pool()
-                    .keys()
-                    .iter()
-                    .cloned(),
-            );
-            let env_name = self.config.llm.openrouter.api_key_env.trim();
-            if !env_name.is_empty() {
-                if let Ok(value) = std::env::var(env_name) {
-                    let value = value.trim().to_string();
-                    if !value.is_empty() {
-                        keys.push(value);
-                    }
-                }
-            }
+            keys.extend(self.config.llm.openrouter_key_pool().keys().iter().cloned());
         }
         ApiKeyPool::new(keys)
     }
@@ -298,6 +274,9 @@ fn is_empty_json_value(value: &Value) -> bool {
 mod tests {
     use super::*;
     use hone_core::config::HoneConfig;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn resolves_profile_params_into_request_options() {
@@ -325,5 +304,63 @@ llm:
             .unwrap();
         assert_eq!(created.model, "x-ai/grok-4.1-fast");
         assert_eq!(created.profile_name.as_deref(), Some("digest"));
+    }
+
+    #[test]
+    fn profile_provider_ignores_legacy_api_key_env() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        unsafe {
+            std::env::set_var("OPENROUTER_API_KEY", "sk-env-ignored");
+        }
+        let yaml = r#"
+llm:
+  providers:
+    openrouter:
+      kind: openrouter
+      api_key_env: OPENROUTER_API_KEY
+  profiles:
+    digest:
+      provider: openrouter
+      model: x-ai/grok-4.1-fast
+"#;
+        let cfg: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = match LlmResolver::new(&cfg).provider_for_profile("digest", None) {
+            Ok(_) => panic!("env-only provider key should not resolve"),
+            Err(err) => err,
+        };
+        unsafe {
+            std::env::remove_var("OPENROUTER_API_KEY");
+        }
+        assert!(
+            err.to_string().contains("config.yaml"),
+            "expected config-only migration error, got {err}"
+        );
+    }
+
+    #[test]
+    fn auxiliary_provider_ignores_env_only_key() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        unsafe {
+            std::env::set_var("MINIMAX_API_KEY", "sk-env-ignored");
+        }
+        let yaml = r#"
+llm:
+  auxiliary:
+    base_url: https://api.minimaxi.com/v1
+    api_key_env: MINIMAX_API_KEY
+    model: MiniMax-M2.7-highspeed
+"#;
+        let cfg: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = match LlmResolver::new(&cfg).auxiliary_provider(None, None) {
+            Ok(_) => panic!("env-only auxiliary key should not resolve"),
+            Err(err) => err,
+        };
+        unsafe {
+            std::env::remove_var("MINIMAX_API_KEY");
+        }
+        assert!(
+            err.to_string().contains("llm.auxiliary.api_key"),
+            "expected inline-key error, got {err}"
+        );
     }
 }

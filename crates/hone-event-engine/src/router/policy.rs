@@ -103,8 +103,7 @@ impl NotificationRouter {
         if let Some(kinds) = prefs.immediate_kinds.as_deref() {
             let tag = kind_tag(&event.kind);
             if kinds.iter().any(|k| k == tag) {
-                if matches!(event.kind, EventKind::NewsCritical) && matches!(sev, Severity::Low)
-                {
+                if matches!(event.kind, EventKind::NewsCritical) && matches!(sev, Severity::Low) {
                     tracing::info!(
                         event_id = %event.id,
                         kind = %tag,

@@ -636,7 +636,7 @@ mod tests {
             timezone: "Asia/Shanghai".into(),
             lookback_hours: 24,
             pass1_llm: String::new(),
-            pass1_model: "amazon/nova-lite-v1".into(),
+            pass1_model: "x-ai/grok-4.1-fast".into(),
             pass2_llm: String::new(),
             pass2_model: "x-ai/grok-4.1-fast".into(),
             pass2_top_n: top_n,

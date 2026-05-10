@@ -3,7 +3,6 @@ use hone_core::agent::AgentResponse;
 use hone_core::config::GeminiAcpConfig;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::env;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
@@ -79,15 +78,6 @@ impl AgentRunner for GeminiAcpRunner {
     }
 }
 
-pub(crate) fn configured_gemini_api_key_env(config: &GeminiAcpConfig) -> &str {
-    let env_name = config.api_key_env.trim();
-    if env_name.is_empty() {
-        "GEMINI_API_KEY"
-    } else {
-        env_name
-    }
-}
-
 pub(crate) fn validate_gemini_version(version: CliVersion) -> Result<(), String> {
     if version < MIN_GEMINI_ACP_VERSION {
         return Err(format!(
@@ -126,18 +116,12 @@ pub(crate) fn gemini_acp_effective_args(config: &GeminiAcpConfig) -> Vec<String>
 async fn validate_gemini_acp_environment(
     config: &GeminiAcpConfig,
 ) -> Result<(), AgentSessionError> {
-    let api_key_env = configured_gemini_api_key_env(config);
-    let api_key = env::var(api_key_env).unwrap_or_default();
-    if api_key.trim().is_empty() {
+    if config.api_key.trim().is_empty() {
         tracing::info!(
-            "[AgentRunner/gemini_acp] `{}` not set; reusing local gemini-cli login state",
-            api_key_env
+            "[AgentRunner/gemini_acp] api_key not configured; reusing local gemini-cli login state"
         );
     } else {
-        tracing::info!(
-            "[AgentRunner/gemini_acp] using explicit API key from `{}`",
-            api_key_env
-        );
+        tracing::info!("[AgentRunner/gemini_acp] using explicit API key from config.yaml");
     }
 
     let version_output = tokio::process::Command::new(&config.command)
@@ -194,6 +178,12 @@ async fn run_gemini_acp(
         .stderr(std::process::Stdio::piped());
     if !config.model.trim().is_empty() {
         command.arg("--model").arg(config.model.trim());
+    }
+    // gemini-cli accepts API credentials through GEMINI_API_KEY. Hone still
+    // treats config.yaml as the only user source; this child env var is only a
+    // process bridge for the CLI.
+    if !config.api_key.trim().is_empty() {
+        command.env("GEMINI_API_KEY", config.api_key.trim());
     }
 
     let mut child = command.spawn().map_err(|e| AgentSessionError {

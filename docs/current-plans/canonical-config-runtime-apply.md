@@ -48,7 +48,7 @@
   - `hone-cli onboard` channel 向导新增“重试当前字段 / 返回并禁用该渠道”恢复路径，误开 channel 不再只能 `Ctrl-C`
   - release / install bundle 现在会携带 `share/honeclaw/web` 静态资源目录，wrapper 导出 `HONE_WEB_DIST_DIR`，安装态 smoke 也会校验 `/` 页面可打开
   - `opencode_acp` 默认继承本机 OpenCode config，不再由 Hone 隐式强推 OpenRouter 默认路由
-  - `promote_legacy_runtime_agent_settings(...)` 已补齐 `llm.openrouter.api_keys` 的 legacy 补迁，并新增回归测试覆盖“legacy 仅持有 OpenRouter key 池”的 desktop 升级场景
+  - `promote_legacy_runtime_agent_settings(...)` 已补齐 legacy OpenRouter key 池向 `llm.providers.openrouter.api_keys` 的补迁，并新增回归测试覆盖“legacy 仅持有 OpenRouter key 池”的 desktop 升级场景
   - `v0.1.1` 起 release workflow 只构建 CLI bundle 所需 bins，并能成功产出可用于 `curl | bash` 的 darwin/linux 发行资产
   - 标准 Homebrew tap 仓库 `B-M-Capital-Research/homebrew-honeclaw` 已建立；release workflow 改为向该 tap 推送 `honeclaw.rb`，`brew install B-M-Capital-Research/honeclaw/honeclaw` 可直接安装
   - 本地 repo working copy 已按 canonical 语义清理：确认 `config.yaml` 覆盖 legacy `config_runtime.yaml` 的有效设置差异，修正根配置头部说明，并移除本地 legacy `data/runtime/config_runtime.yaml`

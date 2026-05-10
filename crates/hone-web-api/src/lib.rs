@@ -68,11 +68,11 @@ fn build_event_engine_polisher(
     }
 }
 
-const DEFAULT_EVENT_ENGINE_NEWS_CLASSIFIER_MODEL: &str = "amazon/nova-lite-v1";
+const DEFAULT_EVENT_ENGINE_NEWS_CLASSIFIER_MODEL: &str = "x-ai/grok-4.1-fast";
 const DEFAULT_MAINLINE_DISTILL_MAX_TOKENS: u16 = 1200;
 
 /// 装配"不确定来源 NewsCritical → LLM 仲裁"分类器。
-/// 走 OpenRouter,key 复用 llm.openrouter.api_key。
+/// 走 LLM profile resolver；OpenRouter key 来自 config.yaml 的 provider key pool。
 /// 失败一律退化为 `None`(router 跳过 LLM 路径,uncertain 源新闻保持 Low)。
 fn build_event_engine_news_classifier(
     core_cfg: &HoneConfig,

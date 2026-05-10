@@ -74,8 +74,8 @@
     <g transform="translate(1380, 0)">
       <rect x="0" y="6" width="280" height="98" fill="#fdfaf2" stroke="#d8cdb8"/>
       <text x="14" y="26" class="section-meta">CURRENT RELEASE</text>
-      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.9.1</text>
-      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·11 — LLM profiles · settings UI</text>
+      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.10.0</text>
+      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·11 — config-only LLM keys</text>
       <text x="14" y="92" font-size="10" fill="#8a8497" letter-spacing="0.05em">github · B-M-Capital-Research/honeclaw · MIT</text>
       <rect x="270" y="6" width="6" height="98" fill="#e85d04"/>
     </g>
@@ -915,10 +915,18 @@
   <g transform="translate(72, 1948)">
     <text x="0" y="0" class="section-meta" letter-spacing="0.18em">RECENT MILESTONES</text>
     <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
-    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.9.1 · 2026·05·11</text>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.10.0 · 2026·05·11</text>
 
     <g transform="translate(0, 14)">
       <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
+        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.10.0 · CONFIG KEYS</text>
+        <text x="14" y="38" class="card-title">LLM credentials live in config.yaml</text>
+        <text x="14" y="54" class="card-detail">CLI/Web write provider key pools directly</text>
+        <text x="14" y="68" class="card-detail">env-only LLM fallback removed</text>
+      </g>
+      <g transform="translate(416, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
         <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.9.1 · LLM PROFILES</text>
@@ -926,21 +934,13 @@
         <text x="14" y="54" class="card-detail">Settings UI edits model params + reasoning</text>
         <text x="14" y="68" class="card-detail">event-engine stages resolve named profiles</text>
       </g>
-      <g transform="translate(416, 0)">
-        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
-        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.9.0 · CHANNEL CONFIG</text>
-        <text x="14" y="38" class="card-title">Origin-bound delivery · CLI/Web settings</text>
-        <text x="14" y="54" class="card-detail">allowlists · chat_scope · iMessage target handles</text>
-        <text x="14" y="68" class="card-detail">/channel-settings · hone-cli channels targets</text>
-      </g>
       <g transform="translate(832, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.9.0 · PUSH QUALITY</text>
-        <text x="14" y="38" class="card-title">earnings quality review · bounded pollers</text>
-        <text x="14" y="54" class="card-detail">SEC excerpt retry · mainline token cap</text>
-        <text x="14" y="68" class="card-detail">heartbeat recovery · duplicate suppression hardening</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.9.0 · CHANNEL CONFIG</text>
+        <text x="14" y="38" class="card-title">Origin-bound delivery · CLI/Web settings</text>
+        <text x="14" y="54" class="card-detail">allowlists · chat_scope · iMessage target handles</text>
+        <text x="14" y="68" class="card-detail">/channel-settings · hone-cli channels targets</text>
       </g>
       <g transform="translate(1248, 0)">
         <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>

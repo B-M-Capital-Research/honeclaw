@@ -127,16 +127,13 @@ async fn main() -> Result<()> {
             "llm.auxiliary 未配置（base_url/model/api_key 至少缺一项），heartbeat 生产路径不可用"
         );
     }
-    let api_key = aux.resolved_api_key();
+    let api_key = aux.api_key.trim();
     if api_key.is_empty() {
-        bail!(
-            "llm.auxiliary.api_key 解析为空（含 env {}）",
-            aux.api_key_env
-        );
+        bail!("llm.auxiliary.api_key 为空；请写入 config.yaml，运行时不再读取 MINIMAX_API_KEY");
     }
     let max_tokens: u16 = aux.max_tokens.min(u16::MAX as u32) as u16;
     let provider =
-        OpenAiCompatibleProvider::new(&api_key, &aux.base_url, &aux.model, aux.timeout, max_tokens)
+        OpenAiCompatibleProvider::new(api_key, &aux.base_url, &aux.model, aux.timeout, max_tokens)
             .with_context(
                 || "构造 OpenAiCompatibleProvider (heartbeat smoke, MiniMax auxiliary)",
             )?;

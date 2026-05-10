@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
 
 ## Source of Truth and Document Priority
 
@@ -66,6 +66,7 @@ Last updated: 2026-05-10
 - Global finance-domain constraints are injected at runtime by `crates/hone-channels/src/prompt.rs`: no stock-picking recommendations, reject non-finance questions, warn users not to blindly follow buy or sell advice, keep greetings short, and require macro / market narrative analysis to distinguish noise from investment mainline-changing evidence. Do not flip between conflicting narratives on a few days of price action or a single headline unless the prior hypoinvestment mainline has been explicitly falsified, and do not override these core rules only in a single channel or in a local config.
 - Runtime prompt time anchoring is a core behavior contract: Hone must keep the session-provided current time as the source of truth for macro / news / event-driven analysis, must state the current time first on clearly time-sensitive macro answers, and must rewrite relative-time macro searches into absolute-date queries before calling search tools.
 - `config.yaml` is the only long-lived user-writable config source
+- LLM credentials are config-only: runtime LLM provider/profile/auxiliary/agent paths must not read `*_API_KEY`, `*_BASE_URL`, or `api_key_env` as a fallback. User-facing setup should write inline `api_key` / `api_keys` under `config.yaml` and mask those fields in UI/log output.
 - `data/runtime/effective-config.yaml` is the generated runtime input for child processes, and deleting `data/runtime/` must be a safe runtime reset that does not remove user config
 - No steady-state runtime path should read or write legacy `data/runtime/config_runtime.yaml` or sibling `.overrides.yaml` files anymore; the only allowed exception is one-way startup migration that promotes still-missing user settings into canonical `config.yaml`
 - `storage.session_runtime_backend` decides the production session read path:
@@ -86,7 +87,7 @@ Last updated: 2026-05-10
 - Channel attachments must be written to `uploads/<session_id>/` inside the actor sandbox; do not point the underlying runner `cwd` back at the repo root or at a shared upload directory inside the repo
 - 用户可见的运行进度允许保留执行细节，但如果文案中包含 actor sandbox 内的绝对路径，必须改写为相对 sandbox 根目录的路径；sandbox 外绝对路径不得原样透出
 - Runner timeout config must stay converged at `agent.step_timeout_seconds` and `agent.overall_timeout_seconds`; do not reintroduce runner-specific timeout knobs in channel/runtime config.
-- `gemini_acp` currently uses `gemini --experimental-acp` over stdio / JSON-RPC; startup must verify `gemini >= 0.30.0`. Authentication should prefer the local `gemini-cli` login state; if an environment variable such as `GEMINI_API_KEY` is present, prefer the explicit API key.
+- `gemini_acp` currently uses `gemini --experimental-acp` over stdio / JSON-RPC; startup must verify `gemini >= 0.30.0`. Authentication should prefer the local `gemini-cli` login state unless `agent.gemini_acp.api_key` is explicitly set in `config.yaml`; do not read `GEMINI_API_KEY` from the parent runtime environment as a user config fallback.
 - `gemini_cli` in channel runtime must default to sandboxed execution and `approval-mode=plan`; it must no longer default to `yolo`
 - `gemini_acp` in channel runtime must also default to `approval-mode=plan`, but it must not force `--sandbox` right now: local Gemini CLI 0.33.1 exits before `initialize` when run with `--experimental-acp --sandbox`
 - `codex_acp` currently uses `codex-acp` over stdio / JSON-RPC; startup must verify the local runtime version first. The minimum validated combination for `gpt-5.5` is `codex >= 0.125.0` and `codex-acp >= 0.12.0`; otherwise fail fast with a clear upgrade command.
