@@ -21,6 +21,22 @@
 
 ## 旧运行态复核（2026-05-11 03:02 CST）
 
+- `2026-05-11 07:03 CST` 本轮最近四小时巡检继续看到旧运行态坏样本，但仍不足以推翻仓库代码层面的 `Fixed` 结论：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18507`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-05-11T06:01:03.587167+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` / `deliver_preview` 继续发送 `WTI 原油：约 $109.76/桶`、`布伦特原油：约 $100-101/桶`、`WTI 与布伦特价差出现异常倒挂`，并保留霍尔木兹 / 美伊交火、IEA 上调需求、CNBC 油价突破 `$110` 等未核验归因。
+    - 同条 `detail_json.scheduler` 未见 `commodity_causality_guarded=true` 或重写后的安全说明。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-11 06:01:01 CST` 同一任务记录 `parse_kind=JsonTriggered` 后直接 `deliver`，`deliver_preview` 保留上述价格和归因正文。
+  - `2026-05-11 06:30` 与 `07:00` 同任务已回到 `noop / skipped_noop`，没有新增原油坏播报送达。
+  - 结论：这仍按当前本机旧运行态 / 未确认重启后的 live 窗口处理；仓库 HEAD 已包含 `1d405f2` 的商品 heartbeat guard 修复，本轮不把状态从 `Fixed` 回退为 `New`。后续若确认部署新代码后仍出现同样 `deliver_preview`，再重新打开。
+
 - 本轮在本机 live 数据中仍看到修复前原油播报坏态延续，且形态从“未触发 guard”变化为“guard 触发后仍保留高风险正文”：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=18350`
