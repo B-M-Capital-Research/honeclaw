@@ -7,6 +7,18 @@
 
 ## 最新进展（2026-05-10 19:02 CST）
 
+- `2026-05-10 23:10 CST` 本轮继续确认同一缺陷活跃：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18222`
+    - `job_name=CAI破位预警`
+    - `executed_at=2026-05-10T19:30:40.801091+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` 与 `detail_json.scheduler.deliver_preview` 继续包含 `建议动作：无条件止损`。
+  - 结论：直接交易指令 guard 在 19:30 真实窗口仍未覆盖 live 出站路径，维持 `P2 / New`。
+
 - 本轮缺陷巡检确认该缺陷在最近四小时真实 heartbeat 窗口复发，状态从 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=18117`

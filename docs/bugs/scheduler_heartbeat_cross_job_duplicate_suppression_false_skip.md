@@ -7,6 +7,14 @@
 
 ## 证据来源
 
+- `2026-05-10 23:10 CST` 本轮继续确认同一 duplicate suppression 漏发链路活跃：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18231`，`job_name=ASTS 重大异动心跳监控`，`executed_at=2026-05-10T19:30:31.921457+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`suppressed_preview` 为 ASTS 单日涨幅触发，`matched_preview` 指向上一窗持仓重大事件。
+    - `run_id=18259`，`job_name=ASTS 重大异动心跳监控`，`executed_at=2026-05-10T20:31:07.474435+08:00`，同样 `parse_kind=JsonTriggered + duplicate_suppressed=true + delivered=0`；本轮 ASTS 异动被 Cerebras / 持仓类旧 preview 抑制。
+    - `run_id=18296` 与 `run_id=18308`，`job_name=Cerebras IPO与业务进展心跳监控`，分别在 `22:01` 与 `22:31` 生成 Cerebras IPO 定价区间 / 时间线更新后，被 `21:00` 的持仓重大事件 preview 抑制为 `noop + skipped_noop`。
+  - 同窗也能看到正常送达的 `run_id=18314` Cerebras 和正常 `JsonNoop`，说明不是 Feishu 出站或 scheduler 全局不可用，而是去重策略仍会把不同主题的已触发正文吞掉。
+  - 结论：本轮证据仍属于同一根因/同一影响范围，不新建重复文档，维持功能性 `P2 / New`。
+
 - `2026-05-10 19:02 CST` 本轮巡检确认同一 duplicate suppression 漏发链路继续活跃，状态从 `Fixed` 回退为 `New`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=18196`，`job_name=ASTS 重大异动心跳监控`，`executed_at=2026-05-10T18:30:28.285273+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`matched_preview` 指向 `Cerebras IPO 价格区间上调`，`suppressed_preview` 为 ASTS 涨幅、Rakuten 减持完成与财报预期。

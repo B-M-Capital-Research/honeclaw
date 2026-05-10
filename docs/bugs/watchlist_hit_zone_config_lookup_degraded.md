@@ -3,8 +3,23 @@
 - **发现时间**: 2026-04-29 23:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **修复结论复核**:
+  - `2026-05-10 23:10 CST` 本轮确认 `2026-05-10 03:07 CST` 的 `Fixed` 结论在最新真实窗口再次失效，状态从 `Fixed` 调回 `New`：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=18313`
+      - `job_name=核心观察股池晚间快报`
+      - `executed_at=2026-05-10T23:01:14.750714+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 开头写出 `25 支 quote 已返回...保留任务正文里唯一确认的 LITE 击球区`，随后 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN` 等核心股继续统一显示 `击球区：待确认`。
+    - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
+      - `2026-05-10T21:35:01.878225+08:00` 的 `科技核心股池 · 晚间击球区快报` 也继续要求 25 支观察池列出击球区。
+      - `2026-05-10T21:37:08.407798+08:00` assistant final 仍把核心股批量写成 `击球区：待确认`。
+    - 结论：
+      - 这是同一根因/同一影响范围的复发，不新建重复文档。
+      - 仍定为 `P3`：任务按时完成并送达，价格与财报字段仍可读；受损的是固定观察池字段恢复与报告参考价值，没有阻断主投递链路。
   - `2026-05-10 03:07 CST` 本轮修复不再只靠 prompt/guidance 提醒模型“自己去恢复区间”，而是在 scheduler 构造任务输入时显式把当前 actor 会话里已保存的观察池击球区恢复进本轮 prompt：
     - `crates/hone-channels/src/scheduler.rs`
       - 对命中“观察池 + 击球区 / hit zone”的普通定时任务，新增从当前 session `compact summary` / `session.summary` 提取 ticker -> 击球区的恢复逻辑。
@@ -263,6 +278,7 @@
 
 ## 当前实现效果
 
+- `2026-05-10 21:35` 与 `23:00` 两个最新真实窗口证明，本缺陷在 `2026-05-10 03:07` 的 scheduler 输入恢复修复后仍复现：两条任务均成功送达，但最终答复继续只保留或声称只保留 `LITE` 击球区，核心股与大部分拓展股仍显示 `击球区：待确认`。
 - `2026-05-09 21:35` 与 `23:00` 两个最新真实窗口证明，本缺陷在 `2026-05-07` 提示与 search guidance 修复后仍复现：两条任务均 `completed + sent + delivered=1`，但核心股与大部分拓展股继续显示 `击球区：待确认`。
 - 最新任务输入已经带有“稳定本地字段约束”，且会话历史 compact summary 中仍保存完整击球区，说明当前坏态不再只是“提示缺约束”，而是已恢复的本地/历史稳定字段没有可靠进入最终答案或被答案阶段忽略。
 - 当前任务主链路没有中断，`cron_job_runs` 与日志都显示这轮任务成功送达。
