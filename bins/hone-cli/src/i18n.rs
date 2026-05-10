@@ -155,15 +155,11 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "apply.run_doctor",
-        "Run `hone-cli doctor` now?",
+        "现在运行 `hone-cli doctor` 吗？",
         "Run `hone-cli doctor` now?",
     ),
-    ("apply.start_now", "Start Hone now?", "Start Hone now?"),
-    (
-        "apply.complete",
-        "Onboarding complete",
-        "Onboarding complete",
-    ),
+    ("apply.start_now", "现在启动 Hone 吗？", "Start Hone now?"),
+    ("apply.complete", "首装向导完成", "Onboarding complete"),
     ("apply.next_steps", "下一步:", "Next steps:"),
     (
         "apply.tip_status",
@@ -199,24 +195,20 @@ const STRINGS: &[(&str, &str, &str)] = &[
     // ── Runner step ──────────────────────────────────────────────────────
     (
         "runner.choose_default",
-        "Choose the default runner",
+        "选择默认 runner",
         "Choose the default runner",
     ),
     (
         "runner.badge_no_binary",
-        "no binary needed",
+        "无需本机 binary",
         "no binary needed",
     ),
     (
         "runner.badge_installed",
-        "{binary} installed",
+        "{binary} 已安装",
         "{binary} installed",
     ),
-    (
-        "runner.badge_missing",
-        "{binary} missing",
-        "{binary} missing",
-    ),
+    ("runner.badge_missing", "{binary} 缺失", "{binary} missing"),
     (
         "runner.binary_detected",
         "{binary} 已检测到可用。",
@@ -229,7 +221,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.keep_without_binary",
-        "缺少 binary,仍然保留这个 runner?(no = 返回重新选择 runner)",
+        "缺少 binary，仍然保留这个 runner 吗？(no = 返回重新选择 runner)",
         "Binary missing — keep this runner anyway? (no = pick another runner)",
     ),
     (
@@ -299,8 +291,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.codex_acp.note_3",
-        "安装：先装 `codex`，再装 `codex-acp`；Hone 当前最低要求是 `codex-acp >= 0.9.5`。",
-        "Install `codex` first, then `codex-acp`. Hone requires `codex-acp >= 0.9.5`.",
+        "安装：先装 `codex`，再装 `codex-acp`；gpt-5.5 路线最低要求 `codex >= 0.125.0` 且 `codex-acp >= 0.12.0`。",
+        "Install `codex` first, then `codex-acp`. The gpt-5.5 route requires `codex >= 0.125.0` and `codex-acp >= 0.12.0`.",
     ),
     (
         "runner.codex_acp.note_4",
@@ -349,7 +341,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.multi_agent.setup_title",
-        "Multi-Agent setup",
+        "Multi-Agent 设置",
         "Multi-Agent setup",
     ),
     (
@@ -374,17 +366,17 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.codex_acp.model_prompt",
-        "Codex ACP model",
+        "Codex ACP 模型",
         "Codex ACP model",
     ),
     (
         "runner.codex_acp.variant_prompt",
-        "Codex ACP variant",
+        "Codex ACP 推理档位",
         "Codex ACP variant",
     ),
     (
         "runner.opencode_acp.setup_title",
-        "OpenCode ACP setup",
+        "OpenCode ACP 设置",
         "OpenCode ACP setup",
     ),
     (
@@ -425,12 +417,12 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "channel.enable_prompt",
-        "Enable {label} channel?",
+        "启用 {label} 渠道？",
         "Enable {label} channel?",
     ),
     (
         "channel.prerequisites_title",
-        "{label} prerequisites",
+        "{label} 前置条件",
         "{label} prerequisites",
     ),
     (
@@ -455,7 +447,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "channel.chat_scope_prompt",
-        "{label} chat scope",
+        "{label} 会话范围",
         "{label} chat scope",
     ),
     ("channel.imessage.label", "iMessage", "iMessage"),
@@ -663,12 +655,12 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.api_keys_title",
-        "{label} API keys",
+        "{label} API key",
         "{label} API keys",
     ),
     (
         "provider.configure_prompt",
-        "Configure {label} API keys now?",
+        "现在配置 {label} API key 吗？",
         "Configure {label} API keys now?",
     ),
     (
@@ -678,7 +670,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.saved_message",
-        "已保存 {label} API keys。",
+        "已保存 {label} API key。",
         "Saved {label} API keys.",
     ),
     (
@@ -694,7 +686,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.openrouter.label", "OpenRouter", "OpenRouter"),
     (
         "provider.openrouter.prompt",
-        "OpenRouter API keys（逗号分隔）",
+        "OpenRouter API key（逗号分隔，可填多个）",
         "OpenRouter API keys (comma-separated)",
     ),
     (
@@ -715,7 +707,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.fmp.label", "FMP", "FMP"),
     (
         "provider.fmp.prompt",
-        "FMP API keys（逗号分隔）",
+        "FMP API key（逗号分隔，可填多个）",
         "FMP API keys (comma-separated)",
     ),
     (
@@ -731,7 +723,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("provider.tavily.label", "Tavily", "Tavily"),
     (
         "provider.tavily.prompt",
-        "Tavily API keys（逗号分隔）",
+        "Tavily API key（逗号分隔，可填多个）",
         "Tavily API keys (comma-separated)",
     ),
     (

@@ -8,9 +8,9 @@ const ZH = {
     not_scheduled: "未调度",
     empty_title: "目前没有定时任务",
     empty_description: "点击右上角新建任务可以开始使用。",
-    every_30_minutes: "每30分钟",
+    every_30_minutes: "每 30 分钟",
     heartbeat_badge: "心跳检测",
-    next_run_label: "下一次:",
+    next_run_label: "下一次：",
     next_run_heartbeat: "每 30 分钟检查一次",
   },
   detail: {

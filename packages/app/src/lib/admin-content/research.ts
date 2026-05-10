@@ -4,7 +4,7 @@ const ZH = {
   list: {
     title: "个股深度研究",
     subtitle: "输入公司名启动 AI 研究报告",
-    input_placeholder: "直接输入 公司的名字",
+    input_placeholder: "直接输入公司名称",
     start_button: "研究",
     starting_button: "启动中",
     confirm_title: "确认启动深度研究",
