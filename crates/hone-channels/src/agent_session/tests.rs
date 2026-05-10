@@ -1607,12 +1607,14 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     assert_eq!(messages[0].role, "user");
     assert_eq!(messages[0].content[0].text.as_deref(), Some("hello"));
     assert_eq!(messages[1].role, "assistant");
-    assert!(
-        messages[1].content[0]
-            .text
-            .as_deref()
-            .unwrap_or_default()
-            .contains("已达到今日对话上限")
+    assert_eq!(messages[1].content[0].text.as_deref(), Some(error.as_str()));
+    assert_eq!(
+        messages[1]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("quota_rejected"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
     );
     let snapshot = core
         .conversation_quota_storage

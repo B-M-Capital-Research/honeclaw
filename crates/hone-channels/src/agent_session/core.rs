@@ -22,6 +22,7 @@ use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
 use crate::response_finalizer::{EMPTY_SUCCESS_FALLBACK_MESSAGE, finalize_agent_response};
 use crate::runners::{AgentRunnerEmitter, AgentRunnerRequest, AgentRunnerResult};
+use crate::runtime::user_visible_error_message;
 use crate::session_compactor::SessionCompactor;
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
@@ -320,6 +321,33 @@ impl AgentSession {
             return;
         };
 
+        let _ = self.core.session_storage.append_session_messages(
+            session_id,
+            vec![session_message_from_normalized(
+                &message,
+                hone_core::beijing_now_rfc3339(),
+            )],
+        );
+    }
+
+    fn persist_assistant_text_turn(
+        &self,
+        session_id: &str,
+        content: &str,
+        metadata_extra: HashMap<String, Value>,
+    ) {
+        let response = AgentResponse {
+            content: content.to_string(),
+            tool_calls_made: Vec::new(),
+            iterations: 0,
+            success: false,
+            error: None,
+        };
+        let metadata =
+            merge_message_metadata(self.message_metadata.assistant.clone(), metadata_extra);
+        let Some(message) = persistable_turn_from_response(&response, metadata) else {
+            return;
+        };
         let _ = self.core.session_storage.append_session_messages(
             session_id,
             vec![session_message_from_normalized(
@@ -879,7 +907,8 @@ impl AgentSession {
         let quota_guard = match self.reserve_conversation_quota(options.quota_mode) {
             Ok(reservation) => QuotaReservationGuard::new(self.core.clone(), reservation),
             Err(err) => {
-                let quota_message = err.to_string();
+                let raw_error = err.to_string();
+                let quota_message = user_visible_error_message(Some(raw_error.as_str()));
                 let _ = self.core.session_storage.add_message(
                     &session_id,
                     "user",
@@ -899,21 +928,6 @@ impl AgentSession {
                     self.message_id.as_deref(),
                     None,
                 );
-                let _ = self.core.session_storage.add_message(
-                    &session_id,
-                    "assistant",
-                    &quota_message,
-                    self.message_metadata.assistant.clone(),
-                );
-                self.core.log_message_step(
-                    &self.actor.channel,
-                    &self.actor.user_id,
-                    &session_id,
-                    "session.persist_assistant",
-                    "quota_rejected",
-                    self.message_id.as_deref(),
-                    None,
-                );
                 self.core.log_message_received(
                     &self.actor.channel,
                     &self.actor.user_id,
@@ -922,6 +936,18 @@ impl AgentSession {
                     user_input,
                     self.recv_extra.as_deref(),
                     self.message_id.as_deref(),
+                );
+                let mut metadata = HashMap::new();
+                metadata.insert("quota_rejected".to_string(), Value::Bool(true));
+                self.persist_assistant_text_turn(&session_id, &quota_message, metadata);
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &session_id,
+                    "session.persist_assistant",
+                    "quota_rejected",
+                    self.message_id.as_deref(),
+                    None,
                 );
                 return self
                     .fail_run(

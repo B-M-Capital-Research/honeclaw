@@ -50,12 +50,14 @@
 
 ## 修复记录
 
-- 2026-05-10 23:18 CST：quota 拒绝分支在落 user turn 后同步落一条 assistant 业务拒绝文案，并记录 `session.persist_assistant=quota_rejected`，避免 transcript 只出现孤立 user turn。
+- 2026-05-11 03:05 CST：quota 拒绝分支在落 user turn 后同步落一条 assistant 业务拒绝文案，并记录 `session.persist_assistant=quota_rejected`，避免 transcript 只出现孤立 user turn。
+- assistant quota 回复现在附带 `quota_rejected=true` metadata，便于后续审计 / 排查“额度拒绝 vs 普通失败”。
 - 同步让 `fail_run()` 对早退失败分支发出 `Done` 事件，保持 streaming / listener 侧也能收到终态失败信号。
 
 ## 验证
 
 - `cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
 
 ## 后续建议
 
