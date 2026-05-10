@@ -3,9 +3,19 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-05-10 11:01 CST` 状态从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口再次证明，已生成 triggered 正文但 JSON 因 message 内部未转义引号而 malformed 的样本仍会被整轮漏投。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18004`，`job_name=RKLB异动监控`，`executed_at=2026-05-10T11:00:37.311998+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`。
+    - `detail_json.scheduler.parse_kind=JsonMalformed`，`raw_chars=453`，`raw_preview` 以 `{"status":"triggered","message":"【RKLB 异动提醒 · 2026-05-10 11:00 北京时间】...` 开头，正文已经包含“单日涨跌幅超 8%”与多项基本面事件。
+    - 该 `raw_preview` 中 `管理层称"公司史上最强 Q1"` 的内部引号破坏了 JSON 字符串，和本单既有 malformed-triggered 漏投根因一致。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-10 11:00:37.310-11:00:37.312` 记录 `parse_kind=JsonMalformed`，随后连续记录 `malformed heartbeat json suppressed`、`parse failure escalated`，Feishu scheduler 记录 `定时任务执行失败，本轮不发送 ... err=heartbeat 输出不是合法 JSON，任务已标记失败`。
+  - 同一最近四小时窗口内，`run_id=17929` 的 `RKLB异动监控` 在 `08:30` 成功 `completed + sent + delivered=1`，说明不是 Feishu 出站整体不可用；这次漏投集中在 heartbeat malformed-triggered 恢复边界。
+  - 结论：这是同一根因/同一影响范围的复发，不新建重复文档。它会导致满足触发条件的 heartbeat 提醒漏发，影响自动告警主功能链路，维持功能性 `P2 / New`。
 
 - `2026-05-09 19:06 CST` 本轮代码加固并重新修复最近复发的 malformed-triggered 漏投形态：
   - `crates/hone-channels/src/scheduler.rs` 将 malformed triggered recovery 从单次 `rfind('}')` 字符串切片改为 lossy JSON string field scanner：先确认 `status=triggered`，再从 `message` 字段开头向后扫描，遇到真正的字段分隔符 / 对象结尾 / 截断边界时停止。

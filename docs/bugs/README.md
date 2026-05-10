@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-10 07:05 CST
+最后更新：2026-05-10 11:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,17 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
 - 已修复 / 已关闭：102
 - 历史分析 / 部分止血：5
-- 当前活跃队列已清空；破位预警直接输出无条件止损交易指令已改为出站风险提示 guard；原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题已改为重写高风险正文；每日 macOS release app setup 错误不再通过顶层 `.expect(...)` 触发 panic；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
+- 当前活跃队列只剩 heartbeat malformed-triggered 漏投复发；破位预警直接输出无条件止损交易指令已改为出站风险提示 guard；原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题已改为重写高风险正文；每日 macOS release app setup 错误不再通过顶层 `.expect(...)` 触发 panic；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| _当前无_ | - | - | - | - |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-10 11:01 状态从 `Fixed` 回退：`run_id=18004`（`RKLB异动监控`）已有 `status=triggered + message` 可见正文，但 `管理层称"公司史上最强 Q1"` 内部引号破坏 JSON，最终 `execution_failed + skipped_error + delivered=0`；同窗其它 heartbeat 可正常 noop/送达，说明 malformed-triggered 恢复边界仍漏投 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 
 ## Later / 待复现
 
@@ -52,7 +52,6 @@
 | 原油定时播报在 `commodity_causality_guarded` 后仍保留未核验地缘 / 供需叙述与高风险价格推算 | P2 | Fixed | 2026-05-10 commodity heartbeat guard 从“加提示并保留原正文”改为“重写高风险正文”，只保留明确价格口径且不含归因/估算/预测的片段；新增 prefixed bad body 复发回归；`cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | 核心观察池简报在本地击球区配置检索退化后，除 `LITE` 外几乎所有标的都被降成“待确认” | P3 | Fixed | 2026-05-10 03:07 scheduler 对“观察池 + 击球区”任务新增 `compact summary/session.summary -> ticker 击球区` 恢复链路，把 `MSFT/TSM/LITE` 等本地稳定区间显式追加到 `【已恢复的本地击球区参考】`，不再只靠 prompt/guidance 让模型自行回忆；`cargo test -p hone-channels scheduled_watchlist_hit_zone_prompt_keeps_stable_local_fields -- --nocapture`、`cargo test -p hone-channels scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary -- --nocapture`、`cargo check -p hone-channels --tests` 通过；下一真实窗口仍需只读复核 live runtime 是否已加载本轮代码 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Heartbeat 跨 job 预览去重把不同标的误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-09 duplicate suppression 增加 ticker 级硬门槛：本轮 message 与历史 preview 都有明确 ticker 且无交集时，不再进入宽松 token overlap 去重；同时把 `Q1/Q2/Q3/Q4`、`CEO`、`SEC`、`FDA` 等通用英文片段排除出实体锚点。新增 `RKLB -> ASTS/TEM/持仓ASTS` 复发回归；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-09 malformed-triggered recovery 改为 lossy JSON string field scanner，覆盖 `message` 内部未转义引号且对象后续仍带字段的复发形态；只恢复 `status=triggered + message` 的用户可见正文，普通坏 JSON / 空输出 / 内部 marker 仍不投递。`cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-09 07:03 只读复核显示当前 live runtime 仍未追平：`sessions/session_messages` 最大时间仍停在 `2026-04-27T16:54:20+08:00`，但 06:52-06:58 Feishu direct 已完成 `persist_user -> persist_assistant -> reply.send`；鉴于 03:28 代码修复已覆盖 CLI config 生成/写回路径并补 `SessionStorage` 启动 best-effort JSON -> SQLite shadow 回填，暂不把旧 live runtime 证据回退为 `New`，下次重启后继续复核 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-08 11:06 当前 heartbeat auxiliary runner 固定 `max_iterations=10` 与 `max_tokens_override=4096`，runner error 会记录 `failure_kind` 而不是伪装正常 noop；旧 `:6` 样本按未部署/旧运行态处理。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
