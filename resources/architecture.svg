@@ -74,8 +74,8 @@
     <g transform="translate(1380, 0)">
       <rect x="0" y="6" width="280" height="98" fill="#fdfaf2" stroke="#d8cdb8"/>
       <text x="14" y="26" class="section-meta">CURRENT RELEASE</text>
-      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.8.0</text>
-      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·07 — cloud runner · scheduler hardening</text>
+      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.9.0</text>
+      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·11 — channel routing · earnings quality</text>
       <text x="14" y="92" font-size="10" fill="#8a8497" letter-spacing="0.05em">github · B-M-Capital-Research/honeclaw · MIT</text>
       <rect x="270" y="6" width="6" height="98" fill="#e85d04"/>
     </g>
@@ -302,10 +302,12 @@
       </g>
       <g transform="translate(574, 0)">
         <rect x="0" y="0" width="200" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
+        <rect x="166" y="-7" width="42" height="14" fill="#fff0d6" stroke="#e85d04"/>
+        <text x="171" y="3" class="new-tag-text">v0.9</text>
         <text x="12" y="18" class="card-title">EarningsSurprisePoller</text>
         <text x="12" y="32" class="card-mono">earnings_surprise.rs</text>
-        <text x="12" y="46" class="card-detail">EarningsReleased</text>
-        <text x="12" y="56" class="card-detail">|surprise%| ≥ 5 → High</text>
+        <text x="12" y="46" class="card-detail">EarningsReleased · quality review</text>
+        <text x="12" y="56" class="card-detail">OpenRouter confidence gate</text>
       </g>
       <g transform="translate(786, 0)">
         <rect x="0" y="0" width="186" height="60" rx="3" fill="#fdf6e3" stroke="#d4aa70"/>
@@ -400,7 +402,7 @@
       <rect x="-4" y="-12" width="22" height="22" fill="#c1633a"/>
       <text x="2" y="4" class="section-num">03</text>
       <text x="32" y="4" class="section-label">EVENT ENGINE CORE · classify · polish · route · digest</text>
-      <text x="640" y="4" class="section-meta">crates/hone-event-engine/src/{engine,pipeline,router,unified_digest,store,polisher}</text>
+      <text x="640" y="4" class="section-meta">crates/hone-event-engine/src/{engine,pipeline,router,unified_digest,store,polisher,pollers/earnings_quality}</text>
     </g>
 
     <!-- Pipeline stages -->
@@ -819,10 +821,10 @@
         <g transform="translate(338, 26)"><rect x="0" y="0" width="84" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/events</text></g>
         <g transform="translate(428, 26)"><rect x="0" y="0" width="84" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/users</text></g>
 
-        <g transform="translate(0, 52)"><rect x="0" y="0" width="148" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/notification_prefs</text></g>
-        <g transform="translate(154, 52)"><rect x="0" y="0" width="148" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/event_engine_admin</text></g>
-        <g transform="translate(308, 52)"><rect x="0" y="0" width="120" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/llm_audit</text></g>
-        <g transform="translate(434, 52)"><rect x="0" y="0" width="78" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/files</text></g>
+        <g transform="translate(0, 52)"><rect x="0" y="0" width="132" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/notification-prefs</text></g>
+        <g transform="translate(138, 52)"><rect x="0" y="0" width="120" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/event-engine</text></g>
+        <g transform="translate(264, 52)"><rect x="0" y="0" width="130" height="20" rx="2" fill="#fff0d6" stroke="#e85d04"/><text x="6" y="14" font-size="9.5" fill="#b8542a" font-family="monospace">/channel-settings</text></g>
+        <g transform="translate(400, 52)"><rect x="0" y="0" width="70" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/files</text></g>
 
         <g transform="translate(0, 78)"><rect x="0" y="0" width="200" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/company_profiles · /task_runs</text></g>
         <g transform="translate(206, 78)"><rect x="0" y="0" width="160" height="20" rx="2" fill="#e9eef9" stroke="#7d97c2"/><text x="6" y="14" font-size="9.5" fill="#1a3a70" font-family="monospace">/imessage · webhook</text></g>
@@ -913,41 +915,41 @@
   <g transform="translate(72, 1948)">
     <text x="0" y="0" class="section-meta" letter-spacing="0.18em">RECENT MILESTONES</text>
     <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
-    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.8.0 · 2026·05·07</text>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.9.0 · 2026·05·11</text>
 
     <g transform="translate(0, 14)">
       <g transform="translate(0, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.8.0 · HONE CLOUD RUNNER</text>
-        <text x="14" y="38" class="card-title">HoneCloudRunner · API key auth</text>
-        <text x="14" y="54" class="card-detail">hone_cloud.rs · REST · managed credentials</text>
-        <text x="14" y="68" class="card-detail">Admin Settings API Key panel · /public/v1/cloud-runner/*</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.9.0 · CHANNEL CONFIG</text>
+        <text x="14" y="38" class="card-title">Origin-bound delivery · CLI/Web settings</text>
+        <text x="14" y="54" class="card-detail">allowlists · chat_scope · iMessage target handles</text>
+        <text x="14" y="68" class="card-detail">/channel-settings · hone-cli channels targets</text>
       </g>
       <g transform="translate(416, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.8.0 · SCHEDULER HARDENING</text>
-        <text x="14" y="38" class="card-title">cron mismatch · heartbeat dedup · skip signals</text>
-        <text x="14" y="54" class="card-detail">legacy cron prompt time fix · heartbeat budget cap</text>
-        <text x="14" y="68" class="card-detail">watchlist hit zone ctx · idle timeout suppression</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.9.0 · PUSH QUALITY</text>
+        <text x="14" y="38" class="card-title">earnings quality review · bounded pollers</text>
+        <text x="14" y="54" class="card-detail">SEC excerpt retry · mainline token cap</text>
+        <text x="14" y="68" class="card-detail">heartbeat recovery · duplicate suppression hardening</text>
       </g>
       <g transform="translate(832, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.7.0 · BILINGUAL ADMIN + i18n</text>
-        <text x="14" y="38" class="card-title">Admin console zh/en · CLI onboard bilingual</text>
-        <text x="14" y="54" class="card-detail">admin-content/ · 15 modules · i18n.ts helpers</text>
-        <text x="14" y="68" class="card-detail">sidebar locale switcher · PUT /api/language</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.8.0 · HONE CLOUD RUNNER</text>
+        <text x="14" y="38" class="card-title">HoneCloudRunner · API key auth</text>
+        <text x="14" y="54" class="card-detail">hone_cloud.rs · REST · managed credentials</text>
+        <text x="14" y="68" class="card-detail">Admin Settings API Key panel · /public/v1/cloud-runner/*</text>
       </g>
       <g transform="translate(1248, 0)">
         <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.3 – v0.6 BACKBONE</text>
-        <text x="14" y="36" class="card-title">ExtendedHours · SEC+LLM · UnifiedDigest · Auth</text>
-        <text x="14" y="50" class="card-detail">v0.6: extended hours · sec filings · price band rule</text>
-        <text x="14" y="62" class="card-detail">v0.5: unified digest + EventKind cleanup</text>
-        <text x="14" y="74" class="card-detail">v0.3-v0.4: global digest · RSS · rich-card sinks</text>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.7 – v0.8 PLATFORM</text>
+        <text x="14" y="36" class="card-title">bilingual admin · cloud runner · scheduler hardening</text>
+        <text x="14" y="50" class="card-detail">v0.7: admin zh/en · CLI onboard bilingual</text>
+        <text x="14" y="62" class="card-detail">v0.8: cloud API keys · TOS 2.0 · Feishu fixes</text>
+        <text x="14" y="74" class="card-detail">backbone: unified digest · SEC+LLM · rich-card sinks</text>
       </g>
     </g>
   </g>
