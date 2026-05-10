@@ -22,6 +22,15 @@
 
 ## 证据来源
 
+- `2026-05-11 03:02 CST` 本轮在本机 live 数据中仍看到修复前 duplicate suppression 漏发形态延续：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18331`，`job_name=持仓重大事件心跳检测`，`executed_at=2026-05-10T23:31:02.108624+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`suppressed_preview` 为持仓重大事件中的 RKLB / TEM / ASTS 等聚合触发，`matched_preview` 指向上一窗 Cerebras IPO preview。
+    - `run_id=18360`，`job_name=持仓重大事件心跳检测`，`executed_at=2026-05-11T00:30:44.816270+08:00`，同样 `parse_kind=JsonTriggered + duplicate_suppressed=true + delivered=0`；`suppressed_preview` 为 TEM 可转债等重大资本事件，`matched_preview` 指向 ASTS 23:30 preview。
+    - `run_id=18399` 与 `run_id=18422`，`job_name=Cerebras IPO与业务进展心跳监控`，分别在 `02:00` 与 `03:00` 生成 Cerebras IPO 定价区间上修 / 定价时间线更新后，被 `01:30` Cerebras preview 抑制为 `noop + skipped_noop`。
+    - `run_id=18410`，`job_name=持仓重大事件心跳检测`，`executed_at=2026-05-11T02:31:51.988661+08:00`，`suppressed_preview` 为 TEM Q1 / 可转债等事件，`matched_preview` 却指向 RKLB 01:30 preview。
+  - 同窗仍有 `RKLB`、`ASTS`、`Cerebras`、`TSLA` 等任务成功送达，说明不是 Feishu 出站或 scheduler 全局不可用，而是去重策略继续把已触发正文转成未发送。
+  - 结论：该样本来自当前本机旧运行态 / 未确认重启后的 live 窗口；由于仓库代码已在 `2026-05-10 23:11 CST` 修复同 ticker / 跨 job 去重边界，本轮不把状态从 `Fixed` 回退为 `New`。后续若部署新代码后仍复现，再重新打开。
+
 - `2026-05-10 23:10 CST` 本轮继续确认同一 duplicate suppression 漏发链路活跃：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=18231`，`job_name=ASTS 重大异动心跳监控`，`executed_at=2026-05-10T19:30:31.921457+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`suppressed_preview` 为 ASTS 单日涨幅触发，`matched_preview` 指向上一窗持仓重大事件。

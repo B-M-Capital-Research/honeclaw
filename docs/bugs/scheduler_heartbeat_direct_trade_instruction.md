@@ -18,6 +18,20 @@
   - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`
 - 关联 GitHub Issue：无。
 
+## 旧运行态复核（2026-05-11 03:02 CST）
+
+- `2026-05-11 03:02 CST` 本轮在本机 live 数据中仍看到修复前坏态延续：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18335`
+    - `job_name=CAI破位预警`
+    - `executed_at=2026-05-10T23:30:22.811640+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` 与 `detail_json.scheduler.deliver_preview` 继续包含 `建议动作：无条件止损`。
+  - 结论：该样本来自当前本机旧运行态 / 未确认重启后的 live 窗口；由于仓库代码已在 `2026-05-10 23:11 CST` 修复直接交易指令 guard，本轮不把状态从 `Fixed` 回退为 `New`。后续若部署新代码后仍复现，再重新打开。
+
 ## 最新进展（2026-05-10 19:02 CST）
 
 - `2026-05-10 23:10 CST` 本轮继续确认同一缺陷活跃：

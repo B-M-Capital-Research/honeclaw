@@ -19,6 +19,21 @@
   - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`
 - 关联 GitHub Issue：无。
 
+## 旧运行态复核（2026-05-11 03:02 CST）
+
+- 本轮在本机 live 数据中仍看到修复前原油播报坏态延续，且形态从“未触发 guard”变化为“guard 触发后仍保留高风险正文”：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18350`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-05-11T00:01:15.404631+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `detail_json.scheduler.commodity_causality_guarded=true`
+    - `response_preview` 已加 `【归因口径】原因归因未完成同窗来源核验...` 前缀，但后文仍发送 `WTI 原油（CLM26）：约 $96-98/桶`、`布伦特原油：约 $101-103/桶`、`近两周原油价格从4月中旬 $110+ 回落至当前区间`，并继续保留中东及南亚地缘局势、全球经济放缓、汽油期货上涨等归因线索。
+  - 结论：该样本来自当前本机旧运行态 / 未确认重启后的 live 窗口；由于仓库代码已在 `2026-05-10 23:11 CST` 扩展商品 heartbeat guard 覆盖未核验价格、错误日期星期与外部来源口径，本轮不把状态从 `Fixed` 回退为 `New`。后续若部署新代码后仍复现，再重新打开。
+
 ## 最新进展（2026-05-10 19:02 CST）
 
 - 本轮缺陷巡检确认原油定时播报质量问题在最近四小时真实窗口仍有用户可见复发，状态从 `Fixed` 回退为 `New`：
