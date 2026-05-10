@@ -261,8 +261,8 @@ fn default_sec_user_agent() -> String {
     "honeclaw event-engine ops@honeclaw.local".into()
 }
 
-/// 全局 digest LLM 子配置 —— 从 commit 3 起,unified pipeline 复用本配置承载
-/// curator / fetcher / event_dedupe 旋钮。触发改由 per-actor `prefs.digest_slots` 驱动。
+/// 全局 digest LLM 子配置,由 unified pipeline 复用来承载 curator / fetcher /
+/// event_dedupe 旋钮。触发由 per-actor `prefs.digest_slots` 驱动。
 ///
 /// 候选池(trusted-source High/Medium news + macro_event)由 unified scheduler
 /// 在每个 slot 触发时拉取,经 Pass 1 聚类 + Pass 2 精读后,与 buffer/synth 候选
@@ -309,7 +309,7 @@ pub struct GlobalDigestConfig {
     #[serde(default = "default_true")]
     pub fetch_full_text: bool,
 
-    /// **事件级去重**(POC 验证 2026-04-26 修):collector 之后、Pass1 之前,用强
+    /// **事件级去重**(POC 验证 2026-04-26):collector 之后、Pass1 之前,用强
     /// LLM 把同一具体事件的多源报道合成 1 条代表,避免 picks 被同事件不同包装挤满。
     /// 关闭(false)时退回 Pass1 自带的 cluster id dedup(已知不可靠)。
     #[serde(default = "default_true")]

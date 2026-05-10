@@ -1,4 +1,4 @@
-//! Hone LLM — LLM Provider trait + OpenRouter 实现
+//! Hone LLM — provider trait, profile resolver, and OpenAI-compatible backends
 //!
 //! 提供与大语言模型交互的抽象层。
 

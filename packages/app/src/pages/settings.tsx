@@ -150,7 +150,7 @@ export default function SettingsPage() {
   const [agentMessage, setAgentMessage] = createSignal("");
   const [agentError, setAgentError] = createSignal("");
 
-  // OpenAI 协议渠道测试状态
+  // OpenAI-compatible endpoint test state
   const [openaiTestStatus, setOpenaiTestStatus] = createSignal<
     "idle" | "checking" | "ok" | "error"
   >("idle");
@@ -334,7 +334,7 @@ export default function SettingsPage() {
     showSetter((prev) => toggleApiKeyVisibility(prev, index));
   }
 
-  // ── OpenAI 协议渠道测试 ──────────────────────────────────────────────────────
+  // ── OpenAI-compatible endpoint tests ───────────────────────────────────────
   const handleTestOpenAi = async () => {
     setOpenaiTestStatus("checking");
     setOpenaiTestMessage("");
@@ -389,7 +389,7 @@ export default function SettingsPage() {
     }
   };
 
-  // ── Gemini CLI 检测 ──────────────────────────────────────────────────────────
+  // ── CLI / ACP checks ───────────────────────────────────────────────────────
   const handleCheckGemini = async () => {
     setGeminiCheckStatus("checking");
     setGeminiCheckMessage("");
