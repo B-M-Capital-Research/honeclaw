@@ -1,6 +1,6 @@
 # Hone Wiki
 
-Last updated: 2026-05-05
+Last updated: 2026-05-11
 
 This page is the practical wiki entry for Honeclaw. It explains the repository layout, the main runtime pieces, and the common ways to install, configure, start, stop, and verify the project.
 
@@ -279,12 +279,15 @@ Important config areas:
 
 - `agent.*`: runner choice, model routing, timeout behavior.
 - `llm.*`: provider keys and OpenAI-compatible/OpenRouter routes.
-- `channels.*`: Feishu, Discord, Telegram, and iMessage enablement and credentials.
-- `web.*`: admin/public ports and host behavior.
+- `imessage.*`, `feishu.*`, `telegram.*`, `discord.*`: channel enablement, credentials, allowlists, and chat scope.
+- `web.*`: Web console auth token and workflow/research integration settings.
 - `storage.*`: JSON/SQLite session backend and data paths.
-- `scheduler.*`: scheduled task and heartbeat behavior.
+- `admins.*`: channel admin identities and runtime admin registration passphrase.
 - `event_engine.*`: market/news event monitoring and delivery.
 - `search.*`, `fmp.*`: external data/search providers.
+- `language`: UI / CLI display language (`zh` or `en`).
+
+Admin/public Web ports are runtime environment settings, primarily `HONE_WEB_PORT` and `HONE_PUBLIC_WEB_PORT`, rather than `config.yaml` keys.
 
 Never commit local secrets in `config.yaml`.
 

@@ -1295,3 +1295,110 @@ fn test_language_mutation_round_trip() {
     assert!(!result.apply.restart_required);
     assert!(result.apply.restarted_components.is_empty());
 }
+
+#[test]
+fn test_config_example_avoids_stale_config_knobs() {
+    fn get_key<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
+        mapping.get(&Value::String(key.to_string()))
+    }
+
+    fn has_key(mapping: &serde_yaml::Mapping, key: &str) -> bool {
+        mapping.contains_key(&Value::String(key.to_string()))
+    }
+
+    let example_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../config.example.yaml");
+    let example = std::fs::read_to_string(example_path).unwrap();
+    let root_value: Value = serde_yaml::from_str(&example).unwrap();
+    HoneConfig::from_merged_value(root_value.clone()).unwrap();
+    let root = root_value.as_mapping().unwrap();
+    let actual_roots = root
+        .keys()
+        .map(|key| key.as_str().unwrap_or_default())
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected_roots = [
+        "admins",
+        "agent",
+        "discord",
+        "event_engine",
+        "feishu",
+        "fmp",
+        "group_context",
+        "imessage",
+        "language",
+        "llm",
+        "logging",
+        "nano_banana",
+        "search",
+        "security",
+        "storage",
+        "telegram",
+        "web",
+    ]
+    .into_iter()
+    .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(actual_roots, expected_roots);
+
+    assert!(
+        !has_key(root, "discord_watch"),
+        "discord watcher belongs under discord.watch"
+    );
+    assert!(!has_key(root, "tools"));
+    assert!(!has_key(root, "server"));
+
+    let imessage = get_key(root, "imessage").unwrap().as_mapping().unwrap();
+    assert!(has_key(imessage, "listen_addr"));
+
+    let discord = get_key(root, "discord").unwrap().as_mapping().unwrap();
+    let discord_watch = get_key(discord, "watch").unwrap().as_mapping().unwrap();
+    assert!(has_key(discord_watch, "enabled"));
+    assert!(has_key(discord_watch, "channel_ids"));
+    assert!(has_key(discord_watch, "loop"));
+    assert!(has_key(discord_watch, "verbose"));
+
+    let nano_banana = get_key(root, "nano_banana").unwrap().as_mapping().unwrap();
+    for stale_key in [
+        "timeout_seconds",
+        "download_timeout_seconds",
+        "max_retries",
+        "max_tokens",
+        "temperature",
+        "http_referrer",
+        "x_title",
+        "extra_params",
+    ] {
+        assert!(
+            !has_key(nano_banana, stale_key),
+            "nano_banana.{stale_key} is not a YAML config field"
+        );
+    }
+
+    let fmp = get_key(root, "fmp").unwrap().as_mapping().unwrap();
+    assert!(has_key(fmp, "api_keys"));
+
+    let event_engine = get_key(root, "event_engine").unwrap().as_mapping().unwrap();
+    let sources = get_key(event_engine, "sources")
+        .unwrap()
+        .as_mapping()
+        .unwrap();
+    assert!(has_key(sources, "extended_hours"));
+
+    let storage = get_key(root, "storage").unwrap().as_mapping().unwrap();
+    assert!(!has_key(storage, "base_path"));
+    assert!(has_key(storage, "gen_images_dir"));
+    assert!(has_key(storage, "notif_prefs_dir"));
+
+    let logging = get_key(root, "logging").unwrap().as_mapping().unwrap();
+    for stale_key in [
+        "colorize",
+        "enqueue",
+        "rotation",
+        "retention",
+        "compression",
+    ] {
+        assert!(
+            !has_key(logging, stale_key),
+            "logging.{stale_key} is not a YAML config field"
+        );
+    }
+    assert!(has_key(logging, "udp_port"));
+}

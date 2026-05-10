@@ -1,6 +1,6 @@
 # Hone-Financial Technical Specification
 
-Last updated: 2026-03-31
+Last updated: 2026-05-11
 Status: Aligned with the current implementation
 
 ## 1. Document Purpose
@@ -331,9 +331,13 @@ The backend currently uses local JSON files by default and does not depend on a 
 Main directories come from `config.storage.*`:
 
 - `./data/sessions`
+- `./data/sessions.sqlite3`
 - `./data/portfolio`
 - `./data/cron_jobs`
 - `./data/gen_images`
+- `./data/notif_prefs`
+- `./data/conversation_quota`
+- `./data/llm_audit.sqlite3`
 
 ### 6.2 Session
 
@@ -493,20 +497,25 @@ Key config sections:
 - `feishu`
 - `telegram`
 - `discord`
-- `x`
+- `group_context`
 - `nano_banana`
 - `fmp`
+- `search`
 - `storage`
 - `logging`
 - `admins`
+- `web`
+- `security`
+- `event_engine`
+- `language`
 
 Implementation note:
 
-- The config loader lives in `crates/hone-core/src/config.rs` as a façade, with the concrete type definitions split into `src/config/{agent,channels,server}.rs`
+- The config loader lives in `crates/hone-core/src/config/mod.rs` as a façade, with the concrete type definitions split into `src/config/{agent,channels,event_engine,server}.rs`
 
 Important constraints:
 
-- LLM keys are read from environment variables first and fall back to the config file
+- LLM provider/profile credentials are config-owned. Prefer `llm.providers.<symbol>.api_key/api_keys`; legacy `llm.openrouter.*` remains readable only as a config fallback during migration.
 - External-account capabilities must not enter the default CI gate
 - iMessage is treated as a local privileged capability by default
 - Admin tools are exposed by channel allowlist
@@ -572,7 +581,7 @@ Testing organization follows `AGENTS.md`:
 - Feishu: `bins/hone-feishu/src/main.rs` plus sibling modules
 - Telegram: `bins/hone-telegram/src/main.rs` plus sibling modules
 - Core assembly: `crates/hone-channels/src/core.rs`
-- Config structure: `crates/hone-core/src/config.rs` and `crates/hone-core/src/config/{agent,channels,server}.rs`
+- Config structure: `crates/hone-core/src/config/mod.rs` and `crates/hone-core/src/config/{agent,channels,event_engine,server}.rs`
 - Actor isolation: `crates/hone-core/src/actor.rs`
 - Session storage: `memory/src/session.rs`
 - Scheduled task storage: `memory/src/cron_job.rs`

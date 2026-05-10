@@ -6,7 +6,7 @@
 - related_files:
   - config.yaml
   - launch.sh
-  - crates/hone-core/src/config.rs
+  - crates/hone-core/src/config/mod.rs
   - bins/hone-cli/src/common.rs
   - bins/hone-cli/src/main.rs
   - bins/hone-cli/src/start.rs

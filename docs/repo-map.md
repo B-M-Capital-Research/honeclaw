@@ -93,7 +93,7 @@ Last updated: 2026-05-11
 - Shared ingress model: `crates/hone-channels/src/ingress.rs`
 - Shared outbound model: `crates/hone-channels/src/outbound.rs`
   - 同时也是 canonical 本地图片 marker 解析入口；Web 历史提取与外部通道图片投递都复用这里的 `file:///abs/path.png` 分段规则
-- Runtime config override source of truth: `crates/hone-core/src/{config.rs,config/server.rs}`
+- Runtime config override source of truth: `crates/hone-core/src/config/{mod.rs,server.rs}`
 - ACP MCP bridge: `crates/hone-channels/src/mcp_bridge.rs`
 - Actor sandbox: `crates/hone-channels/src/sandbox.rs`
 - Attachment ingest / preview helpers: `crates/hone-channels/src/attachments.rs` and `crates/hone-channels/src/attachments/{ingest,vision,vector_store}.rs`
