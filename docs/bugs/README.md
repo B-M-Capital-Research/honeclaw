@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-10 23:18 CST
+最后更新：2026-05-11 03:06 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,17 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：103
+- 已修复 / 已关闭：104
 - 历史分析 / 部分止血：5
-- 本轮修复 5 条活跃回退：heartbeat 直接交易指令 guard 漏网、heartbeat 预览去重同 ticker 不同事件误抑制、原油播报错误星期 / 未核验价格口径保留、SQLite 会话索引在 `runtime_backend=sqlite` 下不主动回填既有 JSON 的缺口，以及 Web direct quota 拒绝只落 user turn 的收口问题。仍保留 1 条远端新增活跃项：观察池击球区恢复回退。
+- 本轮修复 1 条活跃回退：观察池击球区恢复逻辑在任务正文不显式列 ticker 时提前空返回，导致“当前 25 支观察池”类简报未注入 compact summary 中已有击球区。当前活跃缺陷队列为空；open GitHub Issues 中仍有若干历史 fixed bug 待复测 / 关闭跟进。
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | New | 2026-05-10 23:10 fixed 回退：`run_id=18313`（23:00 核心观察股池晚间快报）`completed + sent + delivered=1`，正文明确“保留任务正文里唯一确认的 LITE 击球区”，核心股继续批量 `击球区：待确认`；21:35 同会话也复现 | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
+| （暂无） | - | - | - | - |
 
 ## Later / 待复现
 
@@ -47,6 +47,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-11 03:06 修复任务正文不显式列 ticker 时的恢复早退：`recover_watchlist_hit_zone_context` 会从当前会话 compact summary / session summary 的观察池表格和行内文本批量恢复所有 ticker -> 击球区，再注入 `【已恢复的本地击球区参考】`；`scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers` 覆盖“当前 25 支观察池”形态；`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、定向 rustfmt 通过；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-10 23:18 quota 拒绝分支会在落 user turn 后同步落 assistant 业务拒绝文案，并让早退失败分支发出 Done 事件；`run_rejects_over_daily_limit_with_user_turn_and_friendly_error` 回归覆盖返回友好错误、无 LLM 调用、会话历史 user+assistant 成对落库且不消耗额外 quota；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
 | Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-10 23:11 直接交易 guard 扩展覆盖 `建议动作/操作建议 + 止损/清仓/买卖/抄底` 等动作标题，guard 后同步刷新 `deliver_preview`，避免台账仍保留旧直接交易指令；`cargo test -p hone-channels heartbeat_direct_trade_instruction --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
 | Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-10 23:11 同 ticker 宽松重写去重增加非 ticker 实体 / 日期金额交集门槛，TSLA 召回/FSD 诉讼不再被旧 Semi/SEC preview 抑制，Cerebras IPO 更新不再被持仓摘要误抑制；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |

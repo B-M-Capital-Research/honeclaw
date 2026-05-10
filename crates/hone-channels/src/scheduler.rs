@@ -1618,14 +1618,60 @@ fn extract_ticker_hit_zone_from_source(source: &str, ticker: &str) -> Option<Str
         .and_then(|zone| normalize_recovered_hit_zone(zone.as_str()))
 }
 
+fn push_recovered_hit_zone(recovered: &mut Vec<(String, String)>, ticker: &str, zone: &str) {
+    if !recovered
+        .iter()
+        .any(|(existing_ticker, _)| existing_ticker == ticker)
+    {
+        recovered.push((ticker.to_string(), zone.to_string()));
+    }
+}
+
+fn extract_all_ticker_hit_zones_from_source(source: &str) -> Vec<(String, String)> {
+    let mut recovered = Vec::new();
+
+    let table_re = regex::Regex::new(
+        r"(?m)^\|\s*(?P<ticker>[A-Z]{2,5})\s*\|\s*[^|\n]*\|\s*[^|\n]*\|\s*(?P<zone>[^|\n]+?)\s*\|",
+    )
+    .expect("valid watchlist hit-zone table regex");
+    for caps in table_re.captures_iter(source) {
+        let Some(ticker) = caps.name("ticker").map(|matched| matched.as_str()) else {
+            continue;
+        };
+        let Some(zone) = caps
+            .name("zone")
+            .and_then(|matched| normalize_recovered_hit_zone(matched.as_str()))
+        else {
+            continue;
+        };
+        push_recovered_hit_zone(&mut recovered, ticker, &zone);
+    }
+
+    let inline_re = regex::Regex::new(
+        r"(?m)\b(?P<ticker>[A-Z]{2,5})\b[^\n]{0,80}?击球区[:：]?\s*(?P<zone>[^\n]+)",
+    )
+    .expect("valid watchlist inline hit-zone regex");
+    for caps in inline_re.captures_iter(source) {
+        let Some(ticker) = caps.name("ticker").map(|matched| matched.as_str()) else {
+            continue;
+        };
+        let Some(zone) = caps
+            .name("zone")
+            .and_then(|matched| normalize_recovered_hit_zone(matched.as_str()))
+        else {
+            continue;
+        };
+        push_recovered_hit_zone(&mut recovered, ticker, &zone);
+    }
+
+    recovered
+}
+
 fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent) -> Vec<String> {
     if !scheduled_prompt_needs_stable_local_context(event) {
         return Vec::new();
     }
     let tickers = extract_watchlist_tickers(&event.task_prompt);
-    if tickers.is_empty() {
-        return Vec::new();
-    }
     let session_id = event.actor.session_id();
     let Some(session) = core
         .session_storage
@@ -1650,15 +1696,26 @@ fn recover_watchlist_hit_zone_context(core: &HoneBotCore, event: &SchedulerEvent
     }
 
     let mut recovered = Vec::new();
-    for ticker in tickers {
-        if let Some(zone) = sources
-            .iter()
-            .find_map(|source| extract_ticker_hit_zone_from_source(source, &ticker))
-        {
-            recovered.push(format!("- {ticker}: {zone}"));
+    if tickers.is_empty() {
+        for source in &sources {
+            for (ticker, zone) in extract_all_ticker_hit_zones_from_source(source) {
+                push_recovered_hit_zone(&mut recovered, &ticker, &zone);
+            }
+        }
+    } else {
+        for ticker in tickers {
+            if let Some(zone) = sources
+                .iter()
+                .find_map(|source| extract_ticker_hit_zone_from_source(source, &ticker))
+            {
+                push_recovered_hit_zone(&mut recovered, &ticker, &zone);
+            }
         }
     }
     recovered
+        .into_iter()
+        .map(|(ticker, zone)| format!("- {ticker}: {zone}"))
+        .collect()
 }
 
 fn build_scheduled_prompt_with_recovered_local_context(
@@ -3561,6 +3618,64 @@ mod tests {
         assert!(prompt.contains("- MSFT: $335–$350"));
         assert!(prompt.contains("- TSM: 保守$290–$310 / 合理$320–$340 / 激进$345–$355"));
         assert!(prompt.contains("- LITE: 保守$520–$580 / 合理$600–$650 / 激进观察$680–$720"));
+    }
+
+    #[test]
+    fn scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers() {
+        let root = std::env::temp_dir().join(format!(
+            "scheduler_hit_zone_prompt_all_{}_{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        let prefs_dir = root.join("prefs");
+        let core = make_test_core(&prefs_dir);
+        let actor = ActorIdentity::new("feishu", "ou_watch_all", None::<String>).expect("actor");
+        let session_id = actor.session_id();
+        core.session_storage
+            .create_session_for_actor(&actor)
+            .expect("create session");
+        core.session_storage
+            .append_session_messages(
+                &session_id,
+                vec![session_message_from_text(
+                    "system",
+                    "【Compact Summary】\n| 股票代码 | 公司名 | 当前价 | 击球区 | 财报时间 |\n| --- | --- | --- | --- | --- |\n| MSFT | 微软 | $416.97 | $335-$350 | 2026-04-29 |\n| NVDA | 英伟达 | $183.40 | $150-$165 | 2026-05-28 |\n| GOOGL | Alphabet | $285.14 | $255-$275 | 2026-07-24 |\n| LITE | Lumentum | $881.64 | 保守$520-$580 / 合理$600-$650 / 激进观察$680-$720 | 2026-05-05 |",
+                    hone_core::beijing_now_rfc3339(),
+                    Some(build_compact_summary_metadata("test")),
+                )],
+            )
+            .expect("append summary");
+
+        let event = SchedulerEvent {
+            actor,
+            job_id: "job-watch".to_string(),
+            job_name: "核心观察股池晚间快报".to_string(),
+            task_prompt:
+                "按当前25支观察池发送日报，每个标的列出当前价格、击球区区间值、下一次财报时间。涉及价格和财报日期必须调用 data_fetch 校验。"
+                    .to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_watch_all".to_string(),
+            delivery_key: "delivery-watch".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: false,
+            schedule_hour: 23,
+            schedule_minute: 0,
+            schedule_repeat: "daily".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let prompt = build_scheduled_prompt_with_recovered_local_context(&core, &event);
+        assert!(prompt.contains("【已恢复的本地击球区参考】"));
+        assert!(prompt.contains("- MSFT: $335-$350"));
+        assert!(prompt.contains("- NVDA: $150-$165"));
+        assert!(prompt.contains("- GOOGL: $255-$275"));
+        assert!(prompt.contains("- LITE: 保守$520-$580 / 合理$600-$650 / 激进观察$680-$720"));
     }
 
     fn make_test_core(prefs_dir: &std::path::Path) -> Arc<HoneBotCore> {

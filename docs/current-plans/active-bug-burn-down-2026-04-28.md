@@ -3,7 +3,7 @@
 - title: Active Bug Burn-down 2026-04-28
 - status: in_progress
 - created_at: 2026-04-28
-- updated_at: 2026-05-10 03:07 CST
+- updated_at: 2026-05-11 03:06 CST
 - owner: Codex
 - related_files:
   - `docs/bugs/README.md`
@@ -80,6 +80,7 @@ Clear the current active bug queue as far as software changes can responsibly do
 - 2026-05-09 19:06: Re-closed the reopened P2 heartbeat malformed-triggered leak. `recover_malformed_triggered_heartbeat_message` now uses a lossy JSON string-field scanner that confirms `status=triggered`, extracts only the `message` value, tolerates unescaped quotes inside the message, and stops before subsequent fields such as `source/confidence`. The latest `Cerebras IPO` / `RKLB` / `TSLA` shape is covered without turning ordinary malformed JSON, empty output, internal markers, or free text into delivered alerts. No GitHub Issue is linked to the malformed-triggered bug.
 - 2026-05-09 19:12: Re-closed the reopened P2 heartbeat cross-job duplicate suppression false skip. `heartbeat_entity_anchors_compatible` now applies a ticker-level hard gate before loose token overlap: if both the current message and prior preview contain explicit ticker anchors and there is no intersection, the preview cannot suppress delivery. Generic English anchors such as `Q1/Q2/Q3/Q4`, `CEO`, `SEC`, and `FDA` are excluded from entity compatibility. Added regressions for `RKLB -> ASTS`, `RKLB -> TEM`, and `RKLB -> portfolio ASTS`; active `docs/bugs/README.md` queue is now empty again. No GitHub Issue is linked to this bug.
 - 2026-05-10 03:07: Re-closed the reopened P3 watchlist hit-zone degradation again, this time by moving the fix from prompt-only guidance into scheduler input construction. Watchlist tasks that mention hit zones now recover ticker -> zone mappings from the current actor session's `compact summary` / `session.summary` and append them as explicit `【已恢复的本地击球区参考】` bullets before execution, so the answer stage no longer has to rediscover or remember the stable local ranges on its own. Added `scheduled_watchlist_prompt_recovers_hit_zones_from_compact_summary` and re-ran the existing stable-local-field regression; active queue is now reduced to the oil heartbeat causality-guard bug.
+- 2026-05-11 03:06: Re-closed the reopened P3 watchlist hit-zone degradation after the latest recurrence showed that “current 25-stock watchlist” task text can omit explicit tickers. `recover_watchlist_hit_zone_context` no longer returns early when the task prompt has no ticker; in that shape it scans the current compact summary / session summary for watchlist table and inline hit-zone entries, restores every valid ticker -> zone mapping, and still rejects `待确认` or non-dollar values. Added `scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers`; active bug queue is now empty again. No GitHub Issue is linked to this bug.
 
 ## Validation
 
@@ -108,6 +109,9 @@ Completed this round:
 - `cargo check -p hone-memory -p hone-llm -p hone-channels --tests`
 - `bash -n launch.sh`
 - `cargo test -p hone-memory execution_terminal_event_updates_matching_pending_row -- --nocapture`
+- `cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`
+- `cargo check -p hone-channels --tests`
+- `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
 - `cargo test -p hone-channels heartbeat_near_threshold_trigger_is_suppressed -- --nocapture`
 - `cargo test -p hone-channels heartbeat_watchlist_above_trigger_price_is_suppressed -- --nocapture`
 - `cargo test -p hone-scheduler heartbeat_history_includes_actor_cross_job_deliveries -- --nocapture`

@@ -3,8 +3,20 @@
 - **发现时间**: 2026-04-29 23:06 CST
 - **Bug Type**: System Error
 - **严重等级**: P3
-- **状态**: New
+- **状态**: Fixed
 - **修复结论复核**:
+  - `2026-05-11 03:06 CST` 本轮修复 `2026-05-10 23:10 CST` 复发根因，状态从 `New` 更新为 `Fixed`：
+    - 复核代码后确认上一轮恢复逻辑仍有一个早退缺口：`recover_watchlist_hit_zone_context` 只有在任务正文显式列出 ticker 时才会恢复击球区；而最新复发任务正文是“按当前 25 支观察池...”，没有列出 `MSFT / NVDA / GOOGL...`，因此虽然 session compact summary 里保存了观察池表，恢复链路仍直接返回空。
+    - `crates/hone-channels/src/scheduler.rs` 现在在任务正文没有显式 ticker 时，会从当前会话 `compact summary` / `session.summary` 的观察池表格和行内文本中批量恢复所有形如 `ticker -> 击球区` 的稳定本地字段，再注入 `【已恢复的本地击球区参考】`。
+    - 该逻辑仍只接受带 `$` 且形如区间/分档区间的值，并继续忽略 `待确认`，避免把坏样本回灌成真值。
+    - 新增回归测试：
+      - `scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers`
+    - 验证通过：
+      - `cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`
+      - `cargo check -p hone-channels --tests`
+      - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+    - 全仓 `cargo fmt --all --check` 未作为通过项：它暴露了 `bins/hone-cli/**`、`crates/hone-core/src/quiet.rs`、`crates/hone-event-engine/**` 等本轮未改文件的既有格式差异；本轮只对改动文件执行了定向 rustfmt。
+    - 无关联 GitHub Issue。
   - `2026-05-10 23:10 CST` 本轮确认 `2026-05-10 03:07 CST` 的 `Fixed` 结论在最新真实窗口再次失效，状态从 `Fixed` 调回 `New`：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=18313`
