@@ -276,45 +276,66 @@ fn events_from_surprises(
         None => return vec![],
     };
     arr.iter()
-        .filter_map(|item| {
-            let date = item.get("date").and_then(|v| v.as_str())?.to_string();
-            let naive = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()?;
-            let occurred_at = Utc.from_utc_datetime(&naive.and_hms_opt(0, 0, 0)?);
-            if occurred_at < cutoff {
-                return None;
-            }
-            let actual = item.get("actualEarningResult").and_then(|v| v.as_f64())?;
-            let est = item.get("estimatedEarning").and_then(|v| v.as_f64())?;
-            let eps = eps_surprise_presentation(actual, est, high_pct)?;
-            // FMP /v3/earnings-surprises 本身不返回 press release 链接;
-            // 指向 Yahoo 的 press-releases 页面作为通用兜底 —— 用户点进去就能看到
-            // 该公司最新(通常就是当日)的财报新闻稿,无需注册且免费。
-            let url = Some(format!(
-                "https://finance.yahoo.com/quote/{ticker}/press-releases/"
-            ));
-            let mut payload = item.clone();
-            if let Some(obj) = payload.as_object_mut() {
-                obj.insert("computed_eps_delta".into(), json!(eps.delta));
-                obj.insert("computed_eps_surprise_pct".into(), json!(eps.pct));
-                obj.insert(
-                    "computed_eps_title_uses_pct".into(),
-                    json!(eps.title_uses_pct),
-                );
-            }
-            Some(MarketEvent {
-                id: format!("earnings_surprise:{ticker}:{date}"),
-                kind: EventKind::EarningsReleased,
-                severity: eps.severity,
-                symbols: vec![ticker.to_string()],
-                occurred_at,
-                title: format!("{ticker} 财报 {}", eps.title_fragment),
-                summary: eps.summary,
-                url,
-                source: "fmp.earnings_surprises".into(),
-                payload,
-            })
-        })
+        .filter_map(|item| event_from_surprise_item(item, ticker, cutoff, high_pct))
         .collect()
+}
+
+fn event_from_surprise_item(
+    item: &Value,
+    ticker: &str,
+    cutoff: DateTime<Utc>,
+    high_pct: f64,
+) -> Option<MarketEvent> {
+    let (date, occurred_at) = surprise_item_date(item)?;
+    if occurred_at < cutoff {
+        return None;
+    }
+    let eps = eps_surprise_from_item(item, high_pct)?;
+    let payload = eps_annotated_payload(item, &eps);
+    Some(MarketEvent {
+        id: format!("earnings_surprise:{ticker}:{date}"),
+        kind: EventKind::EarningsReleased,
+        severity: eps.severity,
+        symbols: vec![ticker.to_string()],
+        occurred_at,
+        title: format!("{ticker} 财报 {}", eps.title_fragment),
+        summary: eps.summary,
+        url: Some(press_release_fallback_url(ticker)),
+        source: "fmp.earnings_surprises".into(),
+        payload,
+    })
+}
+
+fn surprise_item_date(item: &Value) -> Option<(String, DateTime<Utc>)> {
+    let date = item.get("date").and_then(|v| v.as_str())?.to_string();
+    let naive = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()?;
+    let occurred_at = Utc.from_utc_datetime(&naive.and_hms_opt(0, 0, 0)?);
+    Some((date, occurred_at))
+}
+
+fn eps_surprise_from_item(item: &Value, high_pct: f64) -> Option<EpsSurprisePresentation> {
+    let actual = item.get("actualEarningResult").and_then(|v| v.as_f64())?;
+    let est = item.get("estimatedEarning").and_then(|v| v.as_f64())?;
+    eps_surprise_presentation(actual, est, high_pct)
+}
+
+fn press_release_fallback_url(ticker: &str) -> String {
+    // FMP /v3/earnings-surprises 本身不返回 press release 链接;
+    // 指向 Yahoo 的 press-releases 页面作为通用兜底。
+    format!("https://finance.yahoo.com/quote/{ticker}/press-releases/")
+}
+
+fn eps_annotated_payload(item: &Value, eps: &EpsSurprisePresentation) -> Value {
+    let mut payload = item.clone();
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("computed_eps_delta".into(), json!(eps.delta));
+        obj.insert("computed_eps_surprise_pct".into(), json!(eps.pct));
+        obj.insert(
+            "computed_eps_title_uses_pct".into(),
+            json!(eps.title_uses_pct),
+        );
+    }
+    payload
 }
 
 #[derive(Debug, Clone)]
@@ -404,33 +425,42 @@ fn select_recent_8k_url(
     let arr = raw.as_array()?;
     let max_delta_secs = recent_hours.max(1) * 60 * 60;
     arr.iter()
-        .filter_map(|item| {
-            let form = item.get("type").and_then(Value::as_str).unwrap_or("");
-            if form != "8-K" {
-                return None;
-            }
-            let url = item
-                .get("finalLink")
-                .and_then(Value::as_str)
-                .or_else(|| item.get("link").and_then(Value::as_str))?
-                .to_string();
-            if url.trim().is_empty() {
-                return None;
-            }
-            let accepted = item
-                .get("acceptedDate")
-                .and_then(Value::as_str)
-                .or_else(|| item.get("fillingDate").and_then(Value::as_str))
-                .or_else(|| item.get("date").and_then(Value::as_str))?;
-            let accepted_at = parse_fmp_datetime(accepted)?;
-            let delta_secs = (accepted_at - occurred_at).num_seconds().abs();
-            if delta_secs > max_delta_secs {
-                return None;
-            }
-            Some((url, accepted_at, delta_secs))
-        })
+        .filter_map(|item| recent_8k_candidate(item, occurred_at, max_delta_secs))
         .min_by_key(|(_, _, delta_secs)| *delta_secs)
         .map(|(url, accepted_at, _)| (url, accepted_at))
+}
+
+fn recent_8k_candidate(
+    item: &Value,
+    occurred_at: DateTime<Utc>,
+    max_delta_secs: i64,
+) -> Option<(String, DateTime<Utc>, i64)> {
+    if item.get("type").and_then(Value::as_str).unwrap_or("") != "8-K" {
+        return None;
+    }
+    let url = sec_filing_url(item)?;
+    let accepted = item
+        .get("acceptedDate")
+        .and_then(Value::as_str)
+        .or_else(|| item.get("fillingDate").and_then(Value::as_str))
+        .or_else(|| item.get("date").and_then(Value::as_str))?;
+    let accepted_at = parse_fmp_datetime(accepted)?;
+    let delta_secs = (accepted_at - occurred_at).num_seconds().abs();
+    if delta_secs > max_delta_secs {
+        return None;
+    }
+    Some((url, accepted_at, delta_secs))
+}
+
+fn sec_filing_url(item: &Value) -> Option<String> {
+    let url = item
+        .get("finalLink")
+        .and_then(Value::as_str)
+        .or_else(|| item.get("link").and_then(Value::as_str))?;
+    if url.trim().is_empty() {
+        return None;
+    }
+    Some(url.to_string())
 }
 
 fn parse_fmp_datetime(s: &str) -> Option<DateTime<Utc>> {
