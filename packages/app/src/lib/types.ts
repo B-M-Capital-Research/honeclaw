@@ -189,6 +189,32 @@ export type HoneCloudSettings = {
   model: string;
 };
 
+export type LlmProfileEntrySettings = {
+  id: string;
+  provider: string;
+  model: string;
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  reasoningEffort?: string;
+  reasoningMaxTokens?: number;
+  responseFormatJson: boolean;
+};
+
+export type LlmProfileSettings = {
+  defaultProfile: string;
+  auxiliaryProfile: string;
+  polishProfile: string;
+  newsClassifierProfile: string;
+  filingSummaryProfile: string;
+  earningsQualityProfile: string;
+  digestPass1Profile: string;
+  digestPass2Profile: string;
+  digestEventDedupeProfile: string;
+  mainlineDistillProfile: string;
+  profiles: LlmProfileEntrySettings[];
+};
+
 export type AgentSettings = {
   /** function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent | hone_cloud */
   runner: AgentProvider;
@@ -206,6 +232,8 @@ export type AgentSettings = {
   honeCloud?: HoneCloudSettings;
   /** multi-agent 双阶段设置 */
   multiAgent?: MultiAgentSettings;
+  /** Named LLM profiles used by runtime subsystems */
+  llmProfiles?: LlmProfileSettings;
 };
 
 export type AgentSettingsUpdateResult = {

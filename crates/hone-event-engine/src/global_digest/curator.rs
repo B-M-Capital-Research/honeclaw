@@ -171,8 +171,9 @@ struct Pass2PersonalizeResponse {
 
 /// Curator —— 把 LLM provider + 两个模型名包起来,所有 Pass 共享。
 pub struct Curator {
-    provider: Arc<dyn LlmProvider>,
+    pass1_provider: Arc<dyn LlmProvider>,
     pass1_model: String,
+    pass2_provider: Arc<dyn LlmProvider>,
     /// Pass 2 模型(baseline 与 personalize 共用)。本文件不直接读它,
     /// 留给同模块的 pass2_baseline / pass2_personalize。
     pub(super) pass2_model: String,
@@ -184,9 +185,19 @@ impl Curator {
         pass1_model: impl Into<String>,
         pass2_model: impl Into<String>,
     ) -> Self {
+        Self::new_with_providers(provider.clone(), pass1_model, provider, pass2_model)
+    }
+
+    pub fn new_with_providers(
+        pass1_provider: Arc<dyn LlmProvider>,
+        pass1_model: impl Into<String>,
+        pass2_provider: Arc<dyn LlmProvider>,
+        pass2_model: impl Into<String>,
+    ) -> Self {
         Self {
-            provider,
+            pass1_provider,
             pass1_model: pass1_model.into(),
+            pass2_provider,
             pass2_model: pass2_model.into(),
         }
     }
@@ -204,7 +215,7 @@ impl Curator {
         }
         let messages = build_pass1_messages(candidates, audience);
         let resp = self
-            .provider
+            .pass1_provider
             .chat(&messages, Some(&self.pass1_model))
             .await
             .map_err(|e| anyhow::anyhow!("pass1 LLM call failed: {e}"))?;
@@ -240,7 +251,7 @@ impl Curator {
             final_n,
         );
         let resp = self
-            .provider
+            .pass2_provider
             .chat(&messages, Some(&self.pass2_model))
             .await
             .map_err(|e| anyhow::anyhow!("pass2 personalize LLM call failed: {e}"))?;
@@ -278,7 +289,7 @@ impl Curator {
         }
         let messages = build_pass2_baseline_messages(&picks_with_bodies, audience, final_n);
         let resp = self
-            .provider
+            .pass2_provider
             .chat(&messages, Some(&self.pass2_model))
             .await
             .map_err(|e| anyhow::anyhow!("pass2 baseline LLM call failed: {e}"))?;

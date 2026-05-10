@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use hone_core::config::{AgentRunnerKind, HoneConfig};
 use hone_core::{ActorIdentity, LlmAuditSink};
-use hone_llm::{LlmProvider, OpenAiCompatibleProvider, OpenRouterProvider};
+use hone_llm::{LlmProvider, LlmResolver};
 use hone_memory::{
     CompanyProfileStorage, ConversationQuotaStorage, CronJobStorage, LlmAuditStorage,
     SessionStorage,
@@ -104,73 +104,62 @@ impl HoneBotCore {
 
     /// 创建 LLM Provider
     fn create_llm_provider(config: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
-        match config.llm.provider.as_str() {
-            _ => {
-                // Default to OpenRouter
-                match OpenRouterProvider::from_config(config) {
-                    Ok(provider) => Some(Arc::new(provider)),
-                    Err(e) => {
-                        tracing::warn!("Failed to create OpenRouter provider: {}", e);
-                        None
-                    }
-                }
-            }
-        }
-    }
-
-    fn create_auxiliary_llm_provider(config: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
-        if config.llm.auxiliary.is_configured() {
-            let api_key = config.llm.auxiliary.resolved_api_key();
-            if api_key.trim().is_empty() {
-                tracing::warn!("Failed to create auxiliary provider: auxiliary API key is empty");
-                return None;
-            }
-
-            return match OpenAiCompatibleProvider::new(
-                &api_key,
-                config.llm.auxiliary.base_url.trim(),
-                config.llm.auxiliary.model.trim(),
-                config.llm.auxiliary.timeout,
-                config.llm.auxiliary.max_tokens as u16,
-            ) {
-                Ok(provider) => Some(Arc::new(provider)),
-                Err(err) => {
-                    tracing::warn!("Failed to create auxiliary provider: {}", err);
+        if !config.llm.default_profile.trim().is_empty() {
+            return match LlmResolver::new(config)
+                .provider_for_profile(&config.llm.default_profile, None)
+            {
+                Ok(created) => Some(created.provider),
+                Err(e) => {
+                    tracing::warn!("Failed to create default LLM profile provider: {}", e);
                     None
                 }
             };
         }
 
-        Self::create_llm_provider(config)
+        match LlmResolver::new(config).provider_for_profile_or_openrouter_model(
+            None,
+            &config.llm.openrouter.model,
+            &config.llm.openrouter.model,
+            None,
+        ) {
+            Ok(created) => Some(created.provider),
+            Err(e) => {
+                tracing::warn!("Failed to create OpenRouter provider: {}", e);
+                None
+            }
+        }
+    }
+
+    fn create_auxiliary_llm_provider(config: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
+        match LlmResolver::new(config).auxiliary_provider(Some(&config.llm.auxiliary_profile), None)
+        {
+            Ok(created) => Some(created.provider),
+            Err(err) => {
+                tracing::warn!("Failed to create auxiliary provider: {}", err);
+                Self::create_llm_provider(config)
+            }
+        }
     }
 
     pub(crate) fn create_auxiliary_llm_provider_with_max_tokens(
         &self,
         max_tokens: u16,
     ) -> Result<Arc<dyn LlmProvider>, String> {
-        if self.config.llm.auxiliary.is_configured() {
-            let api_key = self.config.llm.auxiliary.resolved_api_key();
-            if api_key.trim().is_empty() {
-                return Err("execution prepare failed: auxiliary API key is empty".to_string());
-            }
-
-            return OpenAiCompatibleProvider::new(
-                &api_key,
-                self.config.llm.auxiliary.base_url.trim(),
-                self.config.llm.auxiliary.model.trim(),
-                self.config.llm.auxiliary.timeout,
-                max_tokens,
-            )
-            .map(|provider| Arc::new(provider) as Arc<dyn LlmProvider>)
-            .map_err(|err| format!("execution prepare failed: auxiliary llm unavailable: {err}"));
-        }
-
-        OpenRouterProvider::from_config_with_max_tokens(&self.config, max_tokens)
-            .map(|provider| Arc::new(provider) as Arc<dyn LlmProvider>)
+        LlmResolver::new(&self.config)
+            .auxiliary_provider(Some(&self.config.llm.auxiliary_profile), Some(max_tokens))
+            .map(|created| created.provider)
             .map_err(|err| format!("execution prepare failed: auxiliary llm unavailable: {err}"))
     }
 
     pub fn auxiliary_model_name(&self) -> String {
+        let auxiliary_profile = self.config.llm.auxiliary_profile.trim();
+        if !auxiliary_profile.is_empty() {
+            if let Some(profile) = self.config.llm.profiles.get(auxiliary_profile) {
+                if !profile.model.trim().is_empty() {
+                    return profile.model.trim().to_string();
+                }
+            }
+        }
         let configured = self.config.llm.auxiliary.model.trim();
         if !configured.is_empty() {
             configured.to_string()
@@ -180,6 +169,12 @@ impl HoneBotCore {
     }
 
     pub fn auxiliary_provider_hint(&self) -> (String, String) {
+        let auxiliary_profile = self.config.llm.auxiliary_profile.trim();
+        if !auxiliary_profile.is_empty() {
+            if let Some(profile) = self.config.llm.profiles.get(auxiliary_profile) {
+                return (profile.provider.clone(), self.auxiliary_model_name());
+            }
+        }
         if self.config.llm.auxiliary.is_configured() {
             ("openai-compatible".to_string(), self.auxiliary_model_name())
         } else {

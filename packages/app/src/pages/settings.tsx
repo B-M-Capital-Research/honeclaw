@@ -79,6 +79,16 @@ function parseCsv(value: string) {
     .filter(Boolean);
 }
 
+type LlmProfileSettingsDraft = NonNullable<AgentSettings["llmProfiles"]>;
+type LlmProfileEntryDraft = LlmProfileSettingsDraft["profiles"][number];
+
+function optionalNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export default function SettingsPage() {
   const backend = useBackend();
   const [draft, setDraft] = createSignal<BackendConfig>(backend.state.config);
@@ -156,6 +166,12 @@ export default function SettingsPage() {
   >("idle");
   const [auxiliaryTestMessage, setAuxiliaryTestMessage] = createSignal("");
   const [showAuxiliaryKey, setShowAuxiliaryKey] = createSignal(false);
+  const profileIdOptions = createMemo(
+    () =>
+      agentDraft()
+        .llmProfiles?.profiles.map((profile) => profile.id.trim())
+        .filter(Boolean) ?? [],
+  );
   const [showFeishuSecret, setShowFeishuSecret] = createSignal(false);
   const [showTelegramToken, setShowTelegramToken] = createSignal(false);
   const [showDiscordToken, setShowDiscordToken] = createSignal(false);
@@ -441,6 +457,37 @@ export default function SettingsPage() {
     } finally {
       setAgentSaving(false);
     }
+  };
+
+  const updateLlmProfiles = (
+    updater: (current: LlmProfileSettingsDraft) => LlmProfileSettingsDraft,
+  ) => {
+    setAgentDraft((prev) => ({
+      ...prev,
+      llmProfiles: updater(prev.llmProfiles ?? defaultAgentSettings().llmProfiles!),
+    }));
+  };
+
+  const updateLlmProfileBinding = (
+    key: keyof Omit<LlmProfileSettingsDraft, "profiles">,
+    value: string,
+  ) => {
+    updateLlmProfiles((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const updateLlmProfileEntry = (
+    index: number,
+    patch: Partial<LlmProfileEntryDraft>,
+  ) => {
+    updateLlmProfiles((current) => ({
+      ...current,
+      profiles: current.profiles.map((profile, i) =>
+        i === index ? { ...profile, ...patch } : profile,
+      ),
+    }));
   };
 
   createEffect(() => {
@@ -1140,6 +1187,254 @@ export default function SettingsPage() {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <div class="border-t border-[color:var(--border)] pt-4">
+                <p class="text-xs font-medium text-[color:var(--text-primary)]">
+                  {SETTINGS.agent.openai.profiles_title}
+                </p>
+                <p class="mt-1 text-[11px] text-[color:var(--text-muted)]">
+                  {SETTINGS.agent.openai.profiles_subtitle}
+                </p>
+
+                <div class="mt-3 grid gap-2 md:grid-cols-2">
+                  <For
+                    each={[
+                      {
+                        key: "defaultProfile",
+                        label: SETTINGS.agent.openai.profiles_default_label,
+                      },
+                      {
+                        key: "auxiliaryProfile",
+                        label: SETTINGS.agent.openai.profiles_auxiliary_label,
+                      },
+                      {
+                        key: "polishProfile",
+                        label: SETTINGS.agent.openai.profiles_polish_label,
+                      },
+                      {
+                        key: "newsClassifierProfile",
+                        label: SETTINGS.agent.openai.profiles_news_label,
+                      },
+                      {
+                        key: "filingSummaryProfile",
+                        label: SETTINGS.agent.openai.profiles_filing_label,
+                      },
+                      {
+                        key: "earningsQualityProfile",
+                        label: SETTINGS.agent.openai.profiles_earnings_label,
+                      },
+                      {
+                        key: "digestPass1Profile",
+                        label: SETTINGS.agent.openai.profiles_digest_pass1_label,
+                      },
+                      {
+                        key: "digestPass2Profile",
+                        label: SETTINGS.agent.openai.profiles_digest_pass2_label,
+                      },
+                      {
+                        key: "digestEventDedupeProfile",
+                        label: SETTINGS.agent.openai.profiles_digest_dedupe_label,
+                      },
+                      {
+                        key: "mainlineDistillProfile",
+                        label: SETTINGS.agent.openai.profiles_mainline_label,
+                      },
+                    ]}
+                  >
+                    {(row) => (
+                      <label class="block">
+                        <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
+                          {row.label}
+                        </span>
+                        <select
+                          class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                          value={
+                            agentDraft().llmProfiles?.[
+                              row.key as keyof Omit<
+                                LlmProfileSettingsDraft,
+                                "profiles"
+                              >
+                            ] ?? ""
+                          }
+                          onChange={(e) =>
+                            updateLlmProfileBinding(
+                              row.key as keyof Omit<
+                                LlmProfileSettingsDraft,
+                                "profiles"
+                              >,
+                              e.currentTarget.value,
+                            )
+                          }
+                        >
+                          <For each={profileIdOptions()}>
+                            {(profileId) => (
+                              <option value={profileId}>{profileId}</option>
+                            )}
+                          </For>
+                        </select>
+                      </label>
+                    )}
+                  </For>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                  <For each={agentDraft().llmProfiles?.profiles ?? []}>
+                    {(profile, index) => (
+                      <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-soft)] p-3">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                          <div class="font-mono text-xs font-semibold text-[color:var(--text-primary)]">
+                            {profile.id}
+                          </div>
+                          <label class="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--text-secondary)]">
+                            <input
+                              type="checkbox"
+                              class="h-3.5 w-3.5 rounded border-[color:var(--border)]"
+                              checked={profile.responseFormatJson}
+                              onChange={(e) =>
+                                updateLlmProfileEntry(index(), {
+                                  responseFormatJson: e.currentTarget.checked,
+                                })
+                              }
+                            />
+                            {SETTINGS.agent.openai.profiles_json_label}
+                          </label>
+                        </div>
+
+                        <div class="mt-3 grid gap-2 md:grid-cols-2">
+                          <label class="block">
+                            <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
+                              {SETTINGS.agent.openai.profiles_provider_label}
+                            </span>
+                            <input
+                              type="text"
+                              class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                              value={profile.provider}
+                              onInput={(e) =>
+                                updateLlmProfileEntry(index(), {
+                                  provider: e.currentTarget.value,
+                                })
+                              }
+                            />
+                          </label>
+                          <label class="block">
+                            <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
+                              {SETTINGS.agent.openai.profiles_model_label}
+                            </span>
+                            <input
+                              type="text"
+                              class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                              value={profile.model}
+                              onInput={(e) =>
+                                updateLlmProfileEntry(index(), {
+                                  model: e.currentTarget.value,
+                                })
+                              }
+                            />
+                          </label>
+                          <label class="block">
+                            <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
+                              {SETTINGS.agent.openai.profiles_max_tokens_label}
+                            </span>
+                            <input
+                              type="number"
+                              min="1"
+                              class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                              value={profile.maxTokens ?? ""}
+                              onInput={(e) =>
+                                updateLlmProfileEntry(index(), {
+                                  maxTokens: optionalNumber(
+                                    e.currentTarget.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </label>
+                          <label class="block">
+                            <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
+                              {SETTINGS.agent.openai.profiles_temperature_label}
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                              value={profile.temperature ?? ""}
+                              onInput={(e) =>
+                                updateLlmProfileEntry(index(), {
+                                  temperature: optionalNumber(
+                                    e.currentTarget.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </label>
+                          <label class="block">
+                            <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
+                              {SETTINGS.agent.openai.profiles_top_p_label}
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="1"
+                              step="0.05"
+                              class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                              value={profile.topP ?? ""}
+                              onInput={(e) =>
+                                updateLlmProfileEntry(index(), {
+                                  topP: optionalNumber(e.currentTarget.value),
+                                })
+                              }
+                            />
+                          </label>
+                          <label class="block">
+                            <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
+                              {SETTINGS.agent.openai.profiles_reasoning_label}
+                            </span>
+                            <select
+                              class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                              value={profile.reasoningEffort ?? ""}
+                              onChange={(e) =>
+                                updateLlmProfileEntry(index(), {
+                                  reasoningEffort:
+                                    e.currentTarget.value || undefined,
+                                })
+                              }
+                            >
+                              <option value="">default</option>
+                              <option value="low">low</option>
+                              <option value="medium">medium</option>
+                              <option value="high">high</option>
+                              <option value="xhigh">xhigh</option>
+                            </select>
+                          </label>
+                          <label class="block md:col-span-2">
+                            <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
+                              {
+                                SETTINGS.agent.openai
+                                  .profiles_reasoning_tokens_label
+                              }
+                            </span>
+                            <input
+                              type="number"
+                              min="1"
+                              class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                              value={profile.reasoningMaxTokens ?? ""}
+                              onInput={(e) =>
+                                updateLlmProfileEntry(index(), {
+                                  reasoningMaxTokens: optionalNumber(
+                                    e.currentTarget.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </For>
                 </div>
               </div>
 

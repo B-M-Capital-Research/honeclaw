@@ -249,8 +249,9 @@ event_engine:
     macro_immediate_grace_hours: 2
   renderer:
     # Severity list that goes through LLM polish. Empty list = pure template.
-    # Requires llm.openrouter to be configured.
+    # Uses llm.profiles.<polish_llm> when set, otherwise the auxiliary model.
     llm_polish_for: []
+    polish_llm: aux
     template_dir: "./data/event_templates"
 
   # 财报 poller 参数。
@@ -273,6 +274,7 @@ event_engine:
     window_days: 14
     quality_review:
       enabled: true
+      llm: earnings_quality
       model: x-ai/grok-4.1-fast
       max_review_tokens: 1800
       min_review_confidence: 0.65
@@ -301,6 +303,7 @@ event_engine:
       - DEF 14A
     enrichment:
       enabled: true
+      llm: filing_summary
       model: x-ai/grok-4.1-fast
       max_summary_tokens: 800
       # SEC EDGAR 强制要求 User-Agent 包含联系邮箱,否则会被限流或拒绝。
@@ -321,7 +324,9 @@ event_engine:
     enabled: false
     timezone: Asia/Shanghai
     lookback_hours: 24 # 候选池回看窗口
+    pass1_llm: digest_fast
     pass1_model: amazon/nova-lite-v1 # 便宜模型,~$0.06/M input
+    pass2_llm: digest_strong
     pass2_model: x-ai/grok-4.1-fast # 价格 $0.20/$0.50 per M,2M context,带 reasoning
     pass2_top_n: 15 # Pass 1 排序后送 Pass 2 精读的候选数上限
     final_pick_n: 8 # 单次推送最终保留的条数上限
@@ -334,6 +339,8 @@ event_engine:
     # 把同事件多源报道合并成 1 条代表,避免 picks 被 5 条 Hormuz 这种重复挤满。
     # 必须用强模型,nova-lite 这种会过度归类成 theme(把不同事件合到大筐里)。
     event_dedupe_enabled: true
+    event_dedupe_llm: digest_strong
+    mainline_distill_llm: mainline_short
     event_dedupe_model: x-ai/grok-4.1-fast
 
   # Per-poller 开关。每个字段对应 hone-event-engine 内一个 spawn_*_poller 调用,
@@ -373,10 +380,13 @@ event_engine:
   # OpenRouter model used by the uncertain-source news classifier. Empty falls
   # back to the code default. Keep CI/tests mocked; use real API only for manual
   # live-quality checks.
+  news_classifier_llm: news_classifier
   news_classifier_model: "amazon/nova-lite-v1"
 
 llm:
   provider: openrouter
+  default_profile: main
+  auxiliary_profile: aux
   openrouter:
     # OpenRouter API key
     api_key: ""
@@ -386,6 +396,66 @@ llm:
     timeout: 120
     max_retries: 3
     max_tokens: 32768
+  providers:
+    openrouter:
+      kind: openrouter
+      base_url: "https://openrouter.ai/api/v1"
+      api_key_env: "OPENROUTER_API_KEY"
+      timeout: 120
+      max_retries: 3
+  profiles:
+    main:
+      provider: openrouter
+      model: "moonshotai/kimi-k2.5"
+      params:
+        max_tokens: 32768
+    aux:
+      provider: openrouter
+      model: "moonshotai/kimi-k2.5"
+      params:
+        max_tokens: 4096
+    news_classifier:
+      provider: openrouter
+      model: "amazon/nova-lite-v1"
+      params:
+        max_tokens: 64
+        temperature: 0
+    filing_summary:
+      provider: openrouter
+      model: "x-ai/grok-4.1-fast"
+      params:
+        max_tokens: 800
+        temperature: 0.2
+        response_format:
+          type: json_object
+    earnings_quality:
+      provider: openrouter
+      model: "x-ai/grok-4.1-fast"
+      params:
+        max_tokens: 1800
+        temperature: 0.2
+        response_format:
+          type: json_object
+    digest_fast:
+      provider: openrouter
+      model: "amazon/nova-lite-v1"
+      params:
+        max_tokens: 1200
+        temperature: 0.2
+    digest_strong:
+      provider: openrouter
+      model: "x-ai/grok-4.1-fast"
+      params:
+        max_tokens: 1600
+        temperature: 0.2
+        reasoning:
+          effort: low
+    mainline_short:
+      provider: openrouter
+      model: "x-ai/grok-4.1-fast"
+      params:
+        max_tokens: 1200
+        temperature: 0.2
   auxiliary:
     # Optional OpenAI-compatible auxiliary path for heartbeats / session compression.
     # When configured, it overrides the legacy openrouter.sub_model route.

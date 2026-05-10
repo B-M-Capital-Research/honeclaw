@@ -56,6 +56,44 @@ describe("settings-model", () => {
     expect(defaultAgentSettings().honeCloud?.model).toBe("hone-cloud")
   })
 
+  it("defaults and merges LLM profile settings", () => {
+    const defaults = defaultAgentSettings().llmProfiles
+    expect(defaults?.defaultProfile).toBe("main")
+    expect(defaults?.digestPass2Profile).toBe("digest_strong")
+    expect(
+      defaults?.profiles.find((profile) => profile.id === "digest_strong")
+        ?.reasoningEffort,
+    ).toBe("low")
+
+    const merged = mergeAgentSettings({
+      ...defaultAgentSettings(),
+      llmProfiles: {
+        ...defaultAgentSettings().llmProfiles!,
+        defaultProfile: "custom_main",
+        profiles: [
+          {
+            id: "main",
+            provider: "openrouter",
+            model: "openai/gpt-5.4",
+            maxTokens: 2048,
+            responseFormatJson: false,
+          },
+        ],
+      },
+    })
+
+    expect(merged.llmProfiles?.defaultProfile).toBe("custom_main")
+    expect(
+      merged.llmProfiles?.profiles.find((profile) => profile.id === "main")
+        ?.model,
+    ).toBe("openai/gpt-5.4")
+    expect(
+      merged.llmProfiles?.profiles.find(
+        (profile) => profile.id === "digest_strong",
+      )?.model,
+    ).toBe("x-ai/grok-4.1-fast")
+  })
+
   it("normalizes key lists and visibility lists", () => {
     expect(normalizeApiKeys([])).toEqual([""])
     expect(hiddenApiKeys([])).toEqual([false])

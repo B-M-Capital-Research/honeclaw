@@ -165,24 +165,31 @@ pub(crate) async fn handle_refresh_digest_context(
         return json_error(StatusCode::BAD_REQUEST, "portfolio 持仓为空");
     }
 
-    let provider: Arc<dyn hone_llm::LlmProvider> =
-        match hone_llm::OpenRouterProvider::from_config(&state.core.config) {
-            Ok(p) => Arc::new(p),
-            Err(e) => {
-                return json_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("OpenRouter provider 不可用: {e}"),
-                );
-            }
-        };
-    let model = state
-        .core
-        .config
-        .event_engine
-        .global_digest
-        .event_dedupe_model
-        .clone();
-    let distiller = hone_event_engine::global_digest::LlmMainlineDistiller::new(provider, model);
+    let gd = &state.core.config.event_engine.global_digest;
+    let profile_ref = if gd.mainline_distill_llm.trim().is_empty() {
+        &gd.event_dedupe_llm
+    } else {
+        &gd.mainline_distill_llm
+    };
+    let created = match hone_llm::LlmResolver::new(&state.core.config)
+        .provider_for_profile_or_openrouter_model(
+            Some(profile_ref),
+            &gd.event_dedupe_model,
+            &gd.event_dedupe_model,
+            Some(1200),
+        ) {
+        Ok(created) => created,
+        Err(e) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("LLM provider 不可用: {e}"),
+            );
+        }
+    };
+    let distiller = hone_event_engine::global_digest::LlmMainlineDistiller::new(
+        created.provider,
+        created.model,
+    );
 
     let prefs_storage = match hone_event_engine::prefs::FilePrefsStorage::new(
         &state.core.config.storage.notif_prefs_dir,

@@ -74,8 +74,8 @@
     <g transform="translate(1380, 0)">
       <rect x="0" y="6" width="280" height="98" fill="#fdfaf2" stroke="#d8cdb8"/>
       <text x="14" y="26" class="section-meta">CURRENT RELEASE</text>
-      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.9.0</text>
-      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·11 — channel routing · earnings quality</text>
+      <text x="14" y="56" class="serif" font-size="34" font-weight="700" fill="#1a1a2e">v0.9.1</text>
+      <text x="14" y="76" font-size="11" fill="#6a6478">2026·05·11 — LLM profiles · settings UI</text>
       <text x="14" y="92" font-size="10" fill="#8a8497" letter-spacing="0.05em">github · B-M-Capital-Research/honeclaw · MIT</text>
       <rect x="270" y="6" width="6" height="98" fill="#e85d04"/>
     </g>
@@ -612,20 +612,20 @@
         <rect x="0" y="0" width="428" height="180" rx="4" fill="#f3edf8" stroke="#9b85c2"/>
         <rect x="0" y="0" width="3" height="180" fill="#6b4f9c"/>
         <text x="16" y="22" class="card-title">LLM Provider · hone-llm</text>
-        <text x="16" y="37" class="card-mono">provider.rs · LlmProvider trait</text>
-        <text x="16" y="51" class="card-detail">chat() · chat_with_tools() · OpenAI msg fmt</text>
+        <text x="16" y="37" class="card-mono">provider.rs · resolver.rs · LlmProvider trait</text>
+        <text x="16" y="51" class="card-detail">profile registry · request options · OpenAI msg fmt</text>
 
         <g transform="translate(16, 64)">
           <rect x="0" y="0" width="396" height="44" rx="3" fill="#fff0d6" stroke="#e85d04"/>
-          <text x="14" y="16" font-size="11" font-weight="700" fill="#1a1a2e">OpenRouter (main · default)</text>
-          <text x="14" y="30" font-size="10" fill="#5a5a6e">openrouter.rs · grok-4.1-fast (filings)</text>
-          <text x="14" y="42" font-size="10" fill="#5a5a6e">GPT · Claude · Gemini · per-task routing</text>
+          <text x="14" y="16" font-size="11" font-weight="700" fill="#1a1a2e">Profiles: main · aux · digest · filings</text>
+          <text x="14" y="30" font-size="10" fill="#5a5a6e">model + max_tokens + reasoning + JSON output</text>
+          <text x="14" y="42" font-size="10" fill="#5a5a6e">event-engine stages resolve by profile symbol</text>
         </g>
 
         <g transform="translate(16, 116)">
           <rect x="0" y="0" width="396" height="32" rx="3" fill="#fdfaf2" stroke="#9b85c2"/>
-          <text x="14" y="14" font-size="10.5" font-weight="700" fill="#1a1a2e">Auxiliary · OpenAI-compatible</text>
-          <text x="14" y="28" font-size="9.5" fill="#5a5a6e">openai_compatible.rs · base_url + key + model</text>
+          <text x="14" y="14" font-size="10.5" font-weight="700" fill="#1a1a2e">Providers · OpenRouter / compatible</text>
+          <text x="14" y="28" font-size="9.5" fill="#5a5a6e">provider registry + legacy OpenRouter/Aux fallback</text>
         </g>
 
         <g transform="translate(16, 152)">
@@ -915,10 +915,18 @@
   <g transform="translate(72, 1948)">
     <text x="0" y="0" class="section-meta" letter-spacing="0.18em">RECENT MILESTONES</text>
     <line x1="200" y1="-4" x2="1656" y2="-4" class="footer-line"/>
-    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.9.0 · 2026·05·11</text>
+    <text x="1660" y="0" class="section-meta" text-anchor="end">v0.9.1 · 2026·05·11</text>
 
     <g transform="translate(0, 14)">
       <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
+        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.9.1 · LLM PROFILES</text>
+        <text x="14" y="38" class="card-title">provider registry · profile symbols</text>
+        <text x="14" y="54" class="card-detail">Settings UI edits model params + reasoning</text>
+        <text x="14" y="68" class="card-detail">event-engine stages resolve named profiles</text>
+      </g>
+      <g transform="translate(416, 0)">
         <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
         <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
         <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.9.0 · CHANNEL CONFIG</text>
@@ -926,30 +934,21 @@
         <text x="14" y="54" class="card-detail">allowlists · chat_scope · iMessage target handles</text>
         <text x="14" y="68" class="card-detail">/channel-settings · hone-cli channels targets</text>
       </g>
-      <g transform="translate(416, 0)">
-        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fff0d6" stroke="#e85d04"/>
-        <rect x="0" y="0" width="3" height="76" fill="#e85d04"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#b8542a" letter-spacing="0.08em">v0.9.0 · PUSH QUALITY</text>
+      <g transform="translate(832, 0)">
+        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+        <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
+        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.9.0 · PUSH QUALITY</text>
         <text x="14" y="38" class="card-title">earnings quality review · bounded pollers</text>
         <text x="14" y="54" class="card-detail">SEC excerpt retry · mainline token cap</text>
         <text x="14" y="68" class="card-detail">heartbeat recovery · duplicate suppression hardening</text>
       </g>
-      <g transform="translate(832, 0)">
-        <rect x="0" y="0" width="404" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
+      <g transform="translate(1248, 0)">
+        <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
         <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
         <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.8.0 · HONE CLOUD RUNNER</text>
         <text x="14" y="38" class="card-title">HoneCloudRunner · API key auth</text>
         <text x="14" y="54" class="card-detail">hone_cloud.rs · REST · managed credentials</text>
         <text x="14" y="68" class="card-detail">Admin Settings API Key panel · /public/v1/cloud-runner/*</text>
-      </g>
-      <g transform="translate(1248, 0)">
-        <rect x="0" y="0" width="408" height="76" rx="4" fill="#fdfaf2" stroke="#d8cdb8"/>
-        <rect x="0" y="0" width="3" height="76" fill="#7a6a52"/>
-        <text x="14" y="20" font-size="10" font-weight="800" fill="#5a5a6e" letter-spacing="0.08em">v0.7 – v0.8 PLATFORM</text>
-        <text x="14" y="36" class="card-title">bilingual admin · cloud runner · scheduler hardening</text>
-        <text x="14" y="50" class="card-detail">v0.7: admin zh/en · CLI onboard bilingual</text>
-        <text x="14" y="62" class="card-detail">v0.8: cloud API keys · TOS 2.0 · Feishu fixes</text>
-        <text x="14" y="74" class="card-detail">backbone: unified digest · SEC+LLM · rich-card sinks</text>
       </g>
     </g>
   </g>

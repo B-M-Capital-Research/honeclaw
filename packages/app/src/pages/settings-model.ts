@@ -5,6 +5,7 @@ import type {
   DesktopChannelSettings,
   DesktopChannelSettingsInput,
   FmpSettings,
+  LlmProfileSettings,
   MetaInfo,
   TavilySettings,
 } from "@/lib/types"
@@ -69,6 +70,109 @@ export function defaultAgentSettings(): AgentSettings {
         maxToolCalls: 3,
       },
     },
+    llmProfiles: defaultLlmProfileSettings(),
+  }
+}
+
+export function defaultLlmProfileSettings(): LlmProfileSettings {
+  return {
+    defaultProfile: "main",
+    auxiliaryProfile: "aux",
+    polishProfile: "aux",
+    newsClassifierProfile: "news_classifier",
+    filingSummaryProfile: "filing_summary",
+    earningsQualityProfile: "earnings_quality",
+    digestPass1Profile: "digest_fast",
+    digestPass2Profile: "digest_strong",
+    digestEventDedupeProfile: "digest_strong",
+    mainlineDistillProfile: "mainline_short",
+    profiles: [
+      {
+        id: "main",
+        provider: "openrouter",
+        model: "moonshotai/kimi-k2.5",
+        maxTokens: 32768,
+        responseFormatJson: false,
+      },
+      {
+        id: "aux",
+        provider: "openrouter",
+        model: "moonshotai/kimi-k2.5",
+        maxTokens: 4096,
+        responseFormatJson: false,
+      },
+      {
+        id: "news_classifier",
+        provider: "openrouter",
+        model: "amazon/nova-lite-v1",
+        maxTokens: 64,
+        temperature: 0,
+        responseFormatJson: false,
+      },
+      {
+        id: "filing_summary",
+        provider: "openrouter",
+        model: "x-ai/grok-4.1-fast",
+        maxTokens: 800,
+        temperature: 0.2,
+        responseFormatJson: true,
+      },
+      {
+        id: "earnings_quality",
+        provider: "openrouter",
+        model: "x-ai/grok-4.1-fast",
+        maxTokens: 1800,
+        temperature: 0.2,
+        responseFormatJson: true,
+      },
+      {
+        id: "digest_fast",
+        provider: "openrouter",
+        model: "amazon/nova-lite-v1",
+        maxTokens: 1200,
+        temperature: 0.2,
+        responseFormatJson: false,
+      },
+      {
+        id: "digest_strong",
+        provider: "openrouter",
+        model: "x-ai/grok-4.1-fast",
+        maxTokens: 1600,
+        temperature: 0.2,
+        reasoningEffort: "low",
+        responseFormatJson: false,
+      },
+      {
+        id: "mainline_short",
+        provider: "openrouter",
+        model: "x-ai/grok-4.1-fast",
+        maxTokens: 1200,
+        temperature: 0.2,
+        responseFormatJson: false,
+      },
+    ],
+  }
+}
+
+function mergeLlmProfileSettings(settings: AgentSettings["llmProfiles"]) {
+  const defaults = defaultLlmProfileSettings()
+  if (!settings) return defaults
+  const incomingProfiles = new Map(
+    (settings.profiles ?? []).map((profile) => [profile.id, profile]),
+  )
+  const mergedProfiles = defaults.profiles.map((profile) => ({
+    ...profile,
+    ...(incomingProfiles.get(profile.id) ?? {}),
+  }))
+  for (const profile of settings.profiles ?? []) {
+    if (!mergedProfiles.some((item) => item.id === profile.id)) {
+      mergedProfiles.push(profile)
+    }
+  }
+  return {
+    ...defaults,
+    ...settings,
+    profiles: mergedProfiles,
   }
 }
 
@@ -81,6 +185,7 @@ export function mergeAgentSettings(settings?: AgentSettings): AgentSettings {
     auxiliary: settings.auxiliary ?? defaults.auxiliary,
     honeCloud: settings.honeCloud ?? defaults.honeCloud,
     multiAgent: settings.multiAgent ?? defaults.multiAgent,
+    llmProfiles: mergeLlmProfileSettings(settings.llmProfiles),
   }
 }
 

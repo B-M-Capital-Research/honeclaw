@@ -50,6 +50,9 @@ pub struct EventEngineConfig {
     /// 留空时装配层回退到默认值。
     #[serde(default = "default_news_classifier_model")]
     pub news_classifier_model: String,
+    /// 可选 LLM profile 名称。配置后优先于 `news_classifier_model`。
+    #[serde(default)]
+    pub news_classifier_llm: String,
 }
 
 impl Default for EventEngineConfig {
@@ -67,6 +70,7 @@ impl Default for EventEngineConfig {
             disabled_kinds: Vec::new(),
             news_importance_prompt: default_news_importance_prompt(),
             news_classifier_model: default_news_classifier_model(),
+            news_classifier_llm: String::new(),
         }
     }
 }
@@ -118,6 +122,9 @@ fn default_earnings_window_days() -> i64 {
 pub struct EarningsQualityReviewConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// 可选 LLM profile 名称。配置后优先于 `model`。
+    #[serde(default)]
+    pub llm: String,
     #[serde(default = "default_earnings_quality_review_model")]
     pub model: String,
     #[serde(default = "default_earnings_quality_review_max_tokens")]
@@ -136,6 +143,7 @@ impl Default for EarningsQualityReviewConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            llm: String::new(),
             model: default_earnings_quality_review_model(),
             max_review_tokens: default_earnings_quality_review_max_tokens(),
             min_review_confidence: default_earnings_quality_review_min_confidence(),
@@ -212,6 +220,9 @@ pub struct SecFilingsEnrichmentConfig {
     /// 是否给 SEC filing 事件调 LLM 生成业务摘要;关闭则只走原始 form/link body。
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// 可选 LLM profile 名称。配置后优先于 `model`。
+    #[serde(default)]
+    pub llm: String,
     /// LLM 模型名(OpenRouter 风格)。POC 验证 `x-ai/grok-4.1-fast` 质量、成本、延迟均最佳。
     #[serde(default = "default_sec_summary_model")]
     pub model: String,
@@ -228,6 +239,7 @@ impl Default for SecFilingsEnrichmentConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            llm: String::new(),
             model: default_sec_summary_model(),
             max_summary_tokens: default_sec_summary_max_tokens(),
             user_agent: default_sec_user_agent(),
@@ -273,10 +285,16 @@ pub struct GlobalDigestConfig {
     /// Pass 1 模型 —— 候选池批量打分 + cluster + 一句话 takeaway。便宜模型即可。
     #[serde(default = "default_global_digest_pass1_model")]
     pub pass1_model: String,
+    /// 可选 Pass 1 LLM profile 名称。配置后优先于 `pass1_model`。
+    #[serde(default)]
+    pub pass1_llm: String,
 
     /// Pass 2 模型 —— 抓原文后精读、最终排序、写短评。需要相对聪明。
     #[serde(default = "default_global_digest_pass2_model")]
     pub pass2_model: String,
+    /// 可选 Pass 2 LLM profile 名称。配置后优先于 `pass2_model`。
+    #[serde(default)]
+    pub pass2_llm: String,
 
     /// Pass 1 排序后送 Pass 2 精读的候选数上限。
     #[serde(default = "default_global_digest_pass2_top_n")]
@@ -301,6 +319,13 @@ pub struct GlobalDigestConfig {
     /// 稳定保守(只合明显同事件)。务必用强模型,nova-lite 这种会过度归类成 theme。
     #[serde(default = "default_event_dedupe_model")]
     pub event_dedupe_model: String,
+    /// 可选 event-dedupe LLM profile 名称。配置后优先于 `event_dedupe_model`。
+    #[serde(default)]
+    pub event_dedupe_llm: String,
+
+    /// 可选投资主线蒸馏 LLM profile 名称。留空时复用 event-dedupe 的 profile/model。
+    #[serde(default)]
+    pub mainline_distill_llm: String,
 
     /// Jina Reader API key。Pass 2 直抓原文返回非 2xx(典型 reuters/wsj/barrons 401)
     /// 时,带 key 走 `https://r.jina.ai/<url>` 二次抓取;Jina 用无头浏览器渲染 + 抽
@@ -318,12 +343,16 @@ impl Default for GlobalDigestConfig {
             timezone: default_global_digest_tz(),
             lookback_hours: default_global_digest_lookback_hours(),
             pass1_model: default_global_digest_pass1_model(),
+            pass1_llm: String::new(),
             pass2_model: default_global_digest_pass2_model(),
+            pass2_llm: String::new(),
             pass2_top_n: default_global_digest_pass2_top_n(),
             final_pick_n: default_global_digest_final_pick_n(),
             fetch_full_text: true,
             event_dedupe_enabled: true,
             event_dedupe_model: default_event_dedupe_model(),
+            event_dedupe_llm: String::new(),
+            mainline_distill_llm: String::new(),
             jina_api_key: None,
         }
     }
@@ -617,6 +646,9 @@ fn default_macro_immediate_grace_hours() -> i64 {
 pub struct RendererConfig {
     #[serde(default)]
     pub llm_polish_for: Vec<String>,
+    /// 可选 LLM profile 名称。留空时沿用 legacy auxiliary model。
+    #[serde(default)]
+    pub polish_llm: String,
     #[serde(default)]
     pub template_dir: Option<String>,
 }

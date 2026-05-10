@@ -13,9 +13,11 @@ use async_openai::{
 use async_trait::async_trait;
 use futures::StreamExt;
 use futures::stream::BoxStream;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::provider::{ChatResponse, ChatResult, FunctionCall, LlmProvider, Message, ToolCall};
+use crate::provider::{
+    ChatResponse, ChatResult, FunctionCall, LlmProvider, LlmRequestOptions, Message, ToolCall,
+};
 
 #[derive(Clone)]
 pub struct OpenAiCompatibleProvider {
@@ -25,6 +27,7 @@ pub struct OpenAiCompatibleProvider {
     base_url: String,
     pub model: String,
     pub max_tokens: u16,
+    request_options: LlmRequestOptions,
 }
 
 impl OpenAiCompatibleProvider {
@@ -57,7 +60,13 @@ impl OpenAiCompatibleProvider {
             base_url,
             model: model.to_string(),
             max_tokens,
+            request_options: LlmRequestOptions::default(),
         })
+    }
+
+    pub fn with_request_options(mut self, request_options: LlmRequestOptions) -> Self {
+        self.request_options = request_options;
+        self
     }
 
     fn convert_messages(
@@ -197,6 +206,60 @@ impl OpenAiCompatibleProvider {
                 truncate_error_body(&body, 500)
             ))
         })
+    }
+
+    async fn post_chat_completion_value(&self, request: &Value) -> hone_core::HoneResult<Value> {
+        let response = self
+            .http_client
+            .post(format!("{}/chat/completions", self.base_url))
+            .bearer_auth(&self.api_key)
+            .json(request)
+            .send()
+            .await
+            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+        if !status.is_success() {
+            return Err(hone_core::HoneError::Llm(format!(
+                "upstream HTTP {}: {}",
+                status.as_u16(),
+                extract_error_message(&body)
+            )));
+        }
+        serde_json::from_str::<Value>(&body).map_err(|e| {
+            hone_core::HoneError::Llm(format!(
+                "failed to deserialize api response: {}; body_prefix={}",
+                e,
+                truncate_error_body(&body, 500)
+            ))
+        })
+    }
+
+    fn build_profile_request_body(
+        &self,
+        messages: Vec<ChatCompletionRequestMessage>,
+        tools: Option<Vec<ChatCompletionTool>>,
+        model: &str,
+    ) -> hone_core::HoneResult<Value> {
+        let mut body = Map::new();
+        body.insert("model".to_string(), Value::String(model.to_string()));
+        body.insert(
+            "messages".to_string(),
+            serde_json::to_value(messages).map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
+        );
+        if let Some(tools) = tools {
+            body.insert(
+                "tools".to_string(),
+                serde_json::to_value(tools)
+                    .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
+            );
+        }
+        self.request_options
+            .apply_to_body(&mut body, self.max_tokens);
+        Ok(Value::Object(body))
     }
 
     fn usage_from_value(value: &Value) -> Option<crate::provider::TokenUsage> {
@@ -426,8 +489,17 @@ impl LlmProvider for OpenAiCompatibleProvider {
         model: Option<&str>,
     ) -> hone_core::HoneResult<ChatResult> {
         let converted = Self::convert_messages(messages)?;
+        let model = model.unwrap_or(&self.model);
+        if !self.request_options.is_empty() {
+            let request = self.build_profile_request_body(converted, None, model)?;
+            let value = self.post_chat_completion_value(&request).await?;
+            return Ok(ChatResult {
+                content: Self::content_from_value(&value),
+                usage: Self::usage_from_value(&value),
+            });
+        }
         let request = CreateChatCompletionRequestArgs::default()
-            .model(model.unwrap_or(&self.model))
+            .model(model)
             .messages(converted)
             .max_tokens(self.max_tokens)
             .build()
@@ -482,8 +554,18 @@ impl LlmProvider for OpenAiCompatibleProvider {
     ) -> hone_core::HoneResult<ChatResponse> {
         let converted = Self::convert_messages(messages)?;
         let tool_defs = Self::convert_tools(tools)?;
+        let model = model.unwrap_or(&self.model);
+        if !self.request_options.is_empty() {
+            let request = self.build_profile_request_body(converted, Some(tool_defs), model)?;
+            let value = self.post_chat_completion_value(&request).await?;
+            return Ok(ChatResponse {
+                content: Self::content_from_value(&value),
+                tool_calls: Self::tool_calls_from_value(&value),
+                usage: Self::usage_from_value(&value),
+            });
+        }
         let request = CreateChatCompletionRequestArgs::default()
-            .model(model.unwrap_or(&self.model))
+            .model(model)
             .messages(converted)
             .tools(tool_defs)
             .max_tokens(self.max_tokens)

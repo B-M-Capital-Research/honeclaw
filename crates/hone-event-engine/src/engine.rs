@@ -56,6 +56,9 @@ pub struct EventEngine {
     /// 缺省 None → global_digest 调度器不会启动,即使 config.global_digest.enabled=true
     /// 也只 warn 不报错。
     global_digest_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
+    global_digest_pass1_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
+    global_digest_pass2_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
+    global_digest_event_dedupe_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
     /// SEC filing enrichment 的独立 LLM provider。允许调用方用更小的
     /// completion budget 装配该短摘要路径,避免复用 global_digest 的长输出预算。
     sec_filings_enrichment_provider: Option<Arc<dyn hone_llm::LlmProvider>>,
@@ -81,6 +84,9 @@ impl EventEngine {
             polisher: Arc::new(NoopPolisher),
             news_classifier: None,
             global_digest_provider: None,
+            global_digest_pass1_provider: None,
+            global_digest_pass2_provider: None,
+            global_digest_event_dedupe_provider: None,
             sec_filings_enrichment_provider: None,
             earnings_quality_review_provider: None,
             retention_days: 30,
@@ -160,6 +166,18 @@ impl EventEngine {
     /// 缺省 None → global_digest 不会启动(即使 config.global_digest.enabled=true 也只 warn)。
     pub fn with_global_digest_provider(mut self, provider: Arc<dyn hone_llm::LlmProvider>) -> Self {
         self.global_digest_provider = Some(provider);
+        self
+    }
+
+    pub fn with_global_digest_providers(
+        mut self,
+        pass1: Arc<dyn hone_llm::LlmProvider>,
+        pass2: Arc<dyn hone_llm::LlmProvider>,
+        event_dedupe: Arc<dyn hone_llm::LlmProvider>,
+    ) -> Self {
+        self.global_digest_pass1_provider = Some(pass1);
+        self.global_digest_pass2_provider = Some(pass2);
+        self.global_digest_event_dedupe_provider = Some(event_dedupe);
         self
     }
 
@@ -410,17 +428,30 @@ impl EventEngine {
         .with_fetch_full_text(self.engine_cfg.global_digest.fetch_full_text)
         .with_event_dedupe_enabled(self.engine_cfg.global_digest.event_dedupe_enabled);
         if self.engine_cfg.global_digest.enabled {
-            if let Some(provider) = self.global_digest_provider.clone() {
-                let curator = Arc::new(crate::global_digest::Curator::new(
-                    provider.clone(),
+            let pass1_provider = self
+                .global_digest_pass1_provider
+                .clone()
+                .or_else(|| self.global_digest_provider.clone());
+            let pass2_provider = self
+                .global_digest_pass2_provider
+                .clone()
+                .or_else(|| self.global_digest_provider.clone());
+            if let (Some(pass1_provider), Some(pass2_provider)) = (pass1_provider, pass2_provider) {
+                let curator = Arc::new(crate::global_digest::Curator::new_with_providers(
+                    pass1_provider,
                     self.engine_cfg.global_digest.pass1_model.clone(),
+                    pass2_provider.clone(),
                     self.engine_cfg.global_digest.pass2_model.clone(),
                 ));
                 unified = unified.with_curator(curator);
                 if self.engine_cfg.global_digest.event_dedupe_enabled {
+                    let event_dedupe_provider = self
+                        .global_digest_event_dedupe_provider
+                        .clone()
+                        .unwrap_or_else(|| pass2_provider.clone());
                     let event_deduper: Arc<dyn crate::global_digest::EventDeduper> =
                         Arc::new(crate::global_digest::LlmEventDeduper::new(
-                            provider.clone(),
+                            event_dedupe_provider,
                             self.engine_cfg.global_digest.event_dedupe_model.clone(),
                         ));
                     unified = unified.with_event_deduper(event_deduper);
@@ -879,6 +910,29 @@ mod tests {
         assert!(!Arc::ptr_eq(
             engine.global_digest_provider.as_ref().unwrap(),
             engine.earnings_quality_review_provider.as_ref().unwrap()
+        ));
+    }
+
+    #[test]
+    fn global_digest_llm_providers_can_be_wired_per_stage() {
+        let pass1: Arc<dyn LlmProvider> = Arc::new(StubProvider);
+        let pass2: Arc<dyn LlmProvider> = Arc::new(StubProvider);
+        let dedupe: Arc<dyn LlmProvider> = Arc::new(StubProvider);
+
+        let engine = EventEngine::new(EventEngineConfig::default(), FmpConfig::default())
+            .with_global_digest_providers(pass1.clone(), pass2.clone(), dedupe.clone());
+
+        assert!(Arc::ptr_eq(
+            engine.global_digest_pass1_provider.as_ref().unwrap(),
+            &pass1
+        ));
+        assert!(Arc::ptr_eq(
+            engine.global_digest_pass2_provider.as_ref().unwrap(),
+            &pass2
+        ));
+        assert!(Arc::ptr_eq(
+            engine.global_digest_event_dedupe_provider.as_ref().unwrap(),
+            &dedupe
         ));
     }
 }

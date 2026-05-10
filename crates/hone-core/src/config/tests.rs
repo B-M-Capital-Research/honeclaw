@@ -37,6 +37,113 @@ llm:
 }
 
 #[test]
+fn test_llm_profile_registry_accepts_generation_params() {
+    let yaml = r#"
+llm:
+  default_profile: main
+  providers:
+    openrouter:
+      kind: openai_compatible
+      base_url: https://openrouter.ai/api/v1
+      api_key_env: OPENROUTER_API_KEY
+      timeout: 60
+      max_retries: 1
+  auxiliary_profile: digest_strong
+  profiles:
+    digest_strong:
+      provider: openrouter
+      model: x-ai/grok-4.1-fast
+      params:
+        max_tokens: 1200
+        temperature: 0.2
+        top_p: 0.9
+        reasoning:
+          effort: medium
+          max_tokens: 2048
+        response_format:
+          type: json_object
+        extra_body:
+          custom_flag: true
+      provider_options:
+        openrouter:
+          extra_body:
+            usage:
+              include: true
+"#;
+    let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(config.llm.default_profile, "main");
+    assert_eq!(config.llm.auxiliary_profile, "digest_strong");
+    let provider = config.llm.providers.get("openrouter").unwrap();
+    assert_eq!(provider.kind, "openai_compatible");
+    assert_eq!(provider.timeout, Some(60));
+
+    let profile = config.llm.profiles.get("digest_strong").unwrap();
+    assert_eq!(profile.provider, "openrouter");
+    assert_eq!(profile.model, "x-ai/grok-4.1-fast");
+    assert_eq!(profile.params.max_tokens, Some(1200));
+    assert_eq!(profile.params.temperature, Some(0.2));
+    assert_eq!(
+        profile.params.reasoning.as_ref().unwrap().effort.as_deref(),
+        Some("medium")
+    );
+    assert_eq!(
+        profile
+            .params
+            .response_format
+            .as_ref()
+            .and_then(|value| value.get("type"))
+            .and_then(|value| value.as_str()),
+        Some("json_object")
+    );
+    assert_eq!(
+        profile
+            .provider_options
+            .get("openrouter")
+            .and_then(|options| options.extra_body.get("usage"))
+            .and_then(|value| value.get("include"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+}
+
+#[test]
+fn test_event_engine_llm_profile_refs_are_optional() {
+    let yaml = r#"
+event_engine:
+  news_classifier_llm: news_classifier
+  renderer:
+    polish_llm: aux
+  earnings:
+    quality_review:
+      llm: earnings_quality
+  sec_filings:
+    enrichment:
+      llm: filing_summary
+  global_digest:
+    pass1_llm: digest_fast
+    pass2_llm: digest_strong
+    event_dedupe_llm: digest_strong
+    mainline_distill_llm: mainline_short
+"#;
+    let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(config.event_engine.news_classifier_llm, "news_classifier");
+    assert_eq!(config.event_engine.renderer.polish_llm, "aux");
+    assert_eq!(
+        config.event_engine.earnings.quality_review.llm,
+        "earnings_quality"
+    );
+    assert_eq!(
+        config.event_engine.sec_filings.enrichment.llm,
+        "filing_summary"
+    );
+    assert_eq!(config.event_engine.global_digest.pass1_llm, "digest_fast");
+    assert_eq!(
+        config.event_engine.global_digest.mainline_distill_llm,
+        "mainline_short"
+    );
+}
+
+#[test]
 fn test_runtime_overlay_path() {
     let path = Path::new("/tmp/config.yaml");
     let overlay = runtime_overlay_path(path);

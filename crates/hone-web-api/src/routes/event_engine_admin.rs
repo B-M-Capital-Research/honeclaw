@@ -92,16 +92,25 @@ fn validate_global_digest(cfg: &GlobalDigestConfig) -> Result<(), Response> {
             "global_digest.lookback_hours 必须 > 0",
         ));
     }
-    if cfg.pass1_model.trim().is_empty() || cfg.pass2_model.trim().is_empty() {
+    if cfg.pass1_model.trim().is_empty() && cfg.pass1_llm.trim().is_empty() {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
-            "global_digest.pass1_model / pass2_model 不能为空",
+            "global_digest.pass1_model 或 pass1_llm 不能为空",
         ));
     }
-    if cfg.event_dedupe_enabled && cfg.event_dedupe_model.trim().is_empty() {
+    if cfg.pass2_model.trim().is_empty() && cfg.pass2_llm.trim().is_empty() {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
-            "global_digest.event_dedupe_enabled=true 时 event_dedupe_model 不能为空",
+            "global_digest.pass2_model 或 pass2_llm 不能为空",
+        ));
+    }
+    if cfg.event_dedupe_enabled
+        && cfg.event_dedupe_model.trim().is_empty()
+        && cfg.event_dedupe_llm.trim().is_empty()
+    {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "global_digest.event_dedupe_enabled=true 时 event_dedupe_model 或 event_dedupe_llm 不能为空",
         ));
     }
     Ok(())
@@ -527,24 +536,31 @@ pub(crate) async fn handle_distill_mainline_now(
     }
 
     // LLM provider
-    let provider: Arc<dyn hone_llm::LlmProvider> =
-        match hone_llm::OpenRouterProvider::from_config(&state.core.config) {
-            Ok(p) => Arc::new(p),
-            Err(e) => {
-                return json_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("OpenRouter provider 不可用: {e}"),
-                );
-            }
-        };
-    let model = state
-        .core
-        .config
-        .event_engine
-        .global_digest
-        .event_dedupe_model
-        .clone();
-    let distiller = hone_event_engine::global_digest::LlmMainlineDistiller::new(provider, model);
+    let gd = &state.core.config.event_engine.global_digest;
+    let profile_ref = if gd.mainline_distill_llm.trim().is_empty() {
+        &gd.event_dedupe_llm
+    } else {
+        &gd.mainline_distill_llm
+    };
+    let created = match hone_llm::LlmResolver::new(&state.core.config)
+        .provider_for_profile_or_openrouter_model(
+            Some(profile_ref),
+            &gd.event_dedupe_model,
+            &gd.event_dedupe_model,
+            Some(1200),
+        ) {
+        Ok(created) => created,
+        Err(e) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("LLM provider 不可用: {e}"),
+            );
+        }
+    };
+    let distiller = hone_event_engine::global_digest::LlmMainlineDistiller::new(
+        created.provider,
+        created.model,
+    );
 
     let prefs_storage = match hone_event_engine::prefs::FilePrefsStorage::new(
         &state.core.config.storage.notif_prefs_dir,
@@ -619,13 +635,17 @@ mod tests {
             enabled: true,
             timezone: "Asia/Shanghai".into(),
             lookback_hours: 24,
+            pass1_llm: String::new(),
             pass1_model: "amazon/nova-lite-v1".into(),
+            pass2_llm: String::new(),
             pass2_model: "x-ai/grok-4.1-fast".into(),
             pass2_top_n: top_n,
             final_pick_n: pick_n,
             fetch_full_text: true,
             event_dedupe_enabled: true,
+            event_dedupe_llm: String::new(),
             event_dedupe_model: "x-ai/grok-4.1-fast".into(),
+            mainline_distill_llm: String::new(),
             jina_api_key: None,
         }
     }

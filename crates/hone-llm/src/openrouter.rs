@@ -18,11 +18,50 @@ use async_openai::{
 use async_trait::async_trait;
 use futures::StreamExt;
 use futures::stream::BoxStream;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::provider::{ChatResponse, ChatResult, FunctionCall, LlmProvider, Message, ToolCall};
+use crate::provider::{
+    ChatResponse, ChatResult, FunctionCall, LlmProvider, LlmRequestOptions, Message, ToolCall,
+};
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+
+fn normalize_base_url(configured: &str, fallback: &str) -> String {
+    let configured = configured.trim();
+    if configured.is_empty() {
+        fallback.trim_end_matches('/').to_string()
+    } else {
+        configured.trim_end_matches('/').to_string()
+    }
+}
+
+fn openrouter_key_pool(
+    api_key: &str,
+    api_keys: &[String],
+    api_key_env: &str,
+) -> hone_core::api_key_pool::ApiKeyPool {
+    let mut keys = Vec::new();
+    if !api_key.trim().is_empty() {
+        keys.push(api_key.trim().to_string());
+    }
+    keys.extend(
+        api_keys
+            .iter()
+            .map(|key| key.trim())
+            .filter(|key| !key.is_empty())
+            .map(str::to_string),
+    );
+    let env_name = api_key_env.trim();
+    if !env_name.is_empty() {
+        if let Ok(value) = std::env::var(env_name) {
+            let value = value.trim().to_string();
+            if !value.is_empty() {
+                keys.push(value);
+            }
+        }
+    }
+    hone_core::api_key_pool::ApiKeyPool::new(keys)
+}
 
 struct OpenRouterClient {
     sdk: Client<OpenAIConfig>,
@@ -37,6 +76,7 @@ pub struct OpenRouterProvider {
     clients: Vec<OpenRouterClient>,
     pub model: String,
     pub max_tokens: u16,
+    request_options: LlmRequestOptions,
 }
 
 impl OpenRouterProvider {
@@ -54,7 +94,12 @@ impl OpenRouterProvider {
 
     /// 从配置创建 Provider（支持多 Key）
     pub fn from_config(config: &hone_core::config::HoneConfig) -> hone_core::HoneResult<Self> {
-        Self::from_config_with_max_tokens(config, config.llm.openrouter.max_tokens as u16)
+        Self::from_config_with_model_and_options(
+            config,
+            &config.llm.openrouter.model,
+            config.llm.openrouter.max_tokens as u16,
+            LlmRequestOptions::default(),
+        )
     }
 
     /// 从配置创建 Provider，并为本次用途覆盖 completion token 上限。
@@ -62,7 +107,38 @@ impl OpenRouterProvider {
         config: &hone_core::config::HoneConfig,
         max_tokens: u16,
     ) -> hone_core::HoneResult<Self> {
-        let pool = config.llm.openrouter.effective_key_pool();
+        Self::from_config_with_model_and_options(
+            config,
+            &config.llm.openrouter.model,
+            max_tokens,
+            LlmRequestOptions::default(),
+        )
+    }
+
+    pub fn from_config_with_model_and_max_tokens(
+        config: &hone_core::config::HoneConfig,
+        model: &str,
+        max_tokens: u16,
+    ) -> hone_core::HoneResult<Self> {
+        Self::from_config_with_model_and_options(
+            config,
+            model,
+            max_tokens,
+            LlmRequestOptions::default(),
+        )
+    }
+
+    pub fn from_config_with_model_and_options(
+        config: &hone_core::config::HoneConfig,
+        model: &str,
+        max_tokens: u16,
+        request_options: LlmRequestOptions,
+    ) -> hone_core::HoneResult<Self> {
+        let pool = openrouter_key_pool(
+            &config.llm.openrouter.api_key,
+            &config.llm.openrouter.api_keys,
+            &config.llm.openrouter.api_key_env,
+        );
 
         if pool.is_empty() {
             return Err(hone_core::HoneError::Config(
@@ -70,7 +146,35 @@ impl OpenRouterProvider {
             ));
         }
 
-        let http_client = Self::build_http_client(config.llm.openrouter.timeout)?;
+        Self::from_key_pool(
+            pool.keys(),
+            OPENROUTER_BASE_URL,
+            model,
+            config.llm.openrouter.timeout,
+            max_tokens,
+            request_options,
+        )
+    }
+
+    pub fn from_key_pool(
+        keys: &[String],
+        base_url: &str,
+        model: &str,
+        timeout_secs: u64,
+        max_tokens: u16,
+        request_options: LlmRequestOptions,
+    ) -> hone_core::HoneResult<Self> {
+        let pool =
+            hone_core::api_key_pool::ApiKeyPool::new(keys.iter().map(|key| key.trim().to_string()));
+
+        if pool.is_empty() {
+            return Err(hone_core::HoneError::Config(
+                "LLM API key 未配置（环境变量或 config.yaml）".to_string(),
+            ));
+        }
+
+        let base_url = normalize_base_url(base_url, OPENROUTER_BASE_URL);
+        let http_client = Self::build_http_client(timeout_secs)?;
 
         let clients: Vec<OpenRouterClient> = pool
             .keys()
@@ -78,20 +182,21 @@ impl OpenRouterProvider {
             .map(|key| {
                 let openai_config = OpenAIConfig::new()
                     .with_api_key(key)
-                    .with_api_base(OPENROUTER_BASE_URL);
+                    .with_api_base(&base_url);
                 OpenRouterClient {
                     sdk: Client::with_config(openai_config).with_http_client(http_client.clone()),
                     http_client: http_client.clone(),
                     api_key: key.clone(),
-                    base_url: OPENROUTER_BASE_URL.to_string(),
+                    base_url: base_url.clone(),
                 }
             })
             .collect();
 
         Ok(Self {
             clients,
-            model: config.llm.openrouter.model.clone(),
+            model: model.to_string(),
             max_tokens,
+            request_options,
         })
     }
 
@@ -116,7 +221,13 @@ impl OpenRouterProvider {
             }],
             model: model.to_string(),
             max_tokens,
+            request_options: LlmRequestOptions::default(),
         }
+    }
+
+    pub fn with_request_options(mut self, request_options: LlmRequestOptions) -> Self {
+        self.request_options = request_options;
+        self
     }
 
     /// 将我们的 Message 转换为 async-openai 的请求消息
@@ -219,6 +330,63 @@ impl OpenRouterProvider {
                 truncate_error_body(&body, 500)
             ))
         })
+    }
+
+    async fn post_chat_completion_value(
+        client: &OpenRouterClient,
+        request: &Value,
+    ) -> hone_core::HoneResult<Value> {
+        let response = client
+            .http_client
+            .post(format!("{}/chat/completions", client.base_url))
+            .bearer_auth(&client.api_key)
+            .json(request)
+            .send()
+            .await
+            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+        if !status.is_success() {
+            return Err(hone_core::HoneError::Llm(format!(
+                "upstream HTTP {}: {}",
+                status.as_u16(),
+                extract_error_message(&body)
+            )));
+        }
+        serde_json::from_str::<Value>(&body).map_err(|e| {
+            hone_core::HoneError::Llm(format!(
+                "failed to deserialize api response: {}; body_prefix={}",
+                e,
+                truncate_error_body(&body, 500)
+            ))
+        })
+    }
+
+    fn build_profile_request_body(
+        &self,
+        messages: Vec<ChatCompletionRequestMessage>,
+        tools: Option<Vec<ChatCompletionTool>>,
+        model: &str,
+    ) -> hone_core::HoneResult<Value> {
+        let mut body = Map::new();
+        body.insert("model".to_string(), Value::String(model.to_string()));
+        body.insert(
+            "messages".to_string(),
+            serde_json::to_value(messages).map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
+        );
+        if let Some(tools) = tools {
+            body.insert(
+                "tools".to_string(),
+                serde_json::to_value(tools)
+                    .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
+            );
+        }
+        self.request_options
+            .apply_to_body(&mut body, self.max_tokens);
+        Ok(Value::Object(body))
     }
 
     fn usage_from_value(value: &Value) -> Option<crate::provider::TokenUsage> {
@@ -382,6 +550,21 @@ impl LlmProvider for OpenRouterProvider {
 
         for client in &self.clients {
             let converted = Self::convert_messages(messages)?;
+            if !self.request_options.is_empty() {
+                let request = self.build_profile_request_body(converted, None, model_str)?;
+                match Self::post_chat_completion_value(client, &request).await {
+                    Ok(value) => {
+                        return Ok(ChatResult {
+                            content: Self::content_from_value(&value),
+                            usage: Self::usage_from_value(&value),
+                        });
+                    }
+                    Err(e) => {
+                        last_err = e.to_string();
+                        continue;
+                    }
+                }
+            }
             let request = CreateChatCompletionRequestArgs::default()
                 .model(model_str)
                 .messages(converted)
@@ -443,6 +626,23 @@ impl LlmProvider for OpenRouterProvider {
 
         for client in &self.clients {
             let converted = Self::convert_messages(messages)?;
+            if !self.request_options.is_empty() {
+                let request =
+                    self.build_profile_request_body(converted, Some(tool_defs.clone()), model_str)?;
+                match Self::post_chat_completion_value(client, &request).await {
+                    Ok(value) => {
+                        return Ok(ChatResponse {
+                            content: Self::content_from_value(&value),
+                            tool_calls: Self::tool_calls_from_value(&value),
+                            usage: Self::usage_from_value(&value),
+                        });
+                    }
+                    Err(e) => {
+                        last_err = e.to_string();
+                        continue;
+                    }
+                }
+            }
             let request = CreateChatCompletionRequestArgs::default()
                 .model(model_str)
                 .messages(converted)

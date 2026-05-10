@@ -1,6 +1,32 @@
 # Archive Index
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
+
+## 2026-05-11
+
+### LLM Profile Registry POC
+
+- Status: done
+- Date: 2026-05-11
+- Plan: N/A, single-session POC did not need active plan tracking
+- Handoff: `docs/handoffs/2026-05-11-llm-profile-poc.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `tests/regression/manual/test_llm_profile_poc.sh`, `cargo test -p hone-core config::tests`, `RUN_LLM_PROFILE_POC=1 cargo run -p hone-llm --example llm_profile_poc`
+- Current conclusion: The proposed `llm.providers` + `llm.profiles` shape can parse model profiles with `reasoning`, `response_format`, and other generation params, and OpenRouter accepted a live profile-derived request with `reasoning_present=true`.
+- Next entry point: Runtime migration is tracked in `docs/archive/plans/llm-profile-runtime-migration.md`.
+
+### LLM Profile Runtime Migration
+
+- Status: done
+- Date: 2026-05-11
+- Plan: `docs/archive/plans/llm-profile-runtime-migration.md`
+- Handoff: `docs/handoffs/2026-05-11-llm-profile-poc.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-core config::tests`, `cargo check -p hone-channels --tests`, `cargo check -p hone-web-api --tests`, `cargo test -p hone-llm resolver`, `cargo test -p hone-event-engine global_digest_llm_providers_can_be_wired_per_stage`, `cargo test -p hone-web-api validate_global_digest`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop --bin hone-desktop sidecar`, `bun run typecheck:web`, `bun run test:web`, `RUN_LLM_PROFILE_POC=1 cargo run -p hone-llm --example llm_profile_poc`
+- Current conclusion: `llm.providers` + `llm.profiles` is now a runtime-supported profile registry for event-engine and auxiliary LLM paths; Settings UI can edit profile routing and profile params; legacy OpenRouter/Auxiliary fields remain fallback-compatible.
+- Next entry point: `crates/hone-llm/src/resolver.rs`, `crates/hone-web-api/src/lib.rs`, and `packages/app/src/pages/settings.tsx`
 
 ## 2026-05-10
 

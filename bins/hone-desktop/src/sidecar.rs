@@ -216,7 +216,67 @@ pub(crate) struct HoneCloudSettings {
     model: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+const LLM_PROFILE_UI_IDS: &[&str] = &[
+    "main",
+    "aux",
+    "news_classifier",
+    "filing_summary",
+    "earnings_quality",
+    "digest_fast",
+    "digest_strong",
+    "mainline_short",
+];
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LlmProfileEntrySettings {
+    id: String,
+    #[serde(default)]
+    provider: String,
+    #[serde(default)]
+    model: String,
+    #[serde(default)]
+    max_tokens: Option<u32>,
+    #[serde(default)]
+    temperature: Option<f32>,
+    #[serde(default)]
+    top_p: Option<f32>,
+    #[serde(default)]
+    reasoning_effort: Option<String>,
+    #[serde(default)]
+    reasoning_max_tokens: Option<u32>,
+    #[serde(default)]
+    response_format_json: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LlmProfileSettings {
+    #[serde(default)]
+    default_profile: String,
+    #[serde(default)]
+    auxiliary_profile: String,
+    #[serde(default)]
+    polish_profile: String,
+    #[serde(default)]
+    news_classifier_profile: String,
+    #[serde(default)]
+    filing_summary_profile: String,
+    #[serde(default)]
+    earnings_quality_profile: String,
+    #[serde(default)]
+    digest_pass1_profile: String,
+    #[serde(default)]
+    digest_pass2_profile: String,
+    #[serde(default)]
+    digest_event_dedupe_profile: String,
+    #[serde(default)]
+    mainline_distill_profile: String,
+    #[serde(default)]
+    profiles: Vec<LlmProfileEntrySettings>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSettings {
     /// function_calling | gemini_cli | gemini_acp | codex_cli | codex_acp | opencode_acp | multi-agent | hone_cloud
@@ -238,6 +298,8 @@ pub(crate) struct AgentSettings {
     hone_cloud: Option<HoneCloudSettings>,
     #[serde(default)]
     multi_agent: Option<MultiAgentSettings>,
+    #[serde(default)]
+    llm_profiles: Option<LlmProfileSettings>,
 }
 
 /// CLI 联通检测结果
@@ -931,43 +993,48 @@ pub(crate) fn get_agent_settings_impl(app: AppHandle) -> Result<AgentSettings, S
             model: config.agent.hone_cloud.model.clone(),
         }),
         multi_agent: Some(seed_multi_agent_settings(&config)),
+        llm_profiles: Some(seed_llm_profile_settings(&config)),
     })
 }
 
-fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(&'static str, serde_yaml::Value)> {
+fn setting(path: impl Into<String>, value: serde_yaml::Value) -> (String, serde_yaml::Value) {
+    (path.into(), value)
+}
+
+fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(String, serde_yaml::Value)> {
     let mut updates = vec![
-        (
+        setting(
             "agent.runner",
             serde_yaml::Value::String(settings.runner.clone()),
         ),
-        (
+        setting(
             "agent.codex_model",
             serde_yaml::Value::String(settings.codex_model.clone()),
         ),
-        (
+        setting(
             "agent.opencode.api_base_url",
             serde_yaml::Value::String(settings.openai_url.clone()),
         ),
-        (
+        setting(
             "agent.opencode.model",
             serde_yaml::Value::String(settings.openai_model.clone()),
         ),
-        (
+        setting(
             "agent.opencode.api_key",
             serde_yaml::Value::String(settings.openai_api_key.clone()),
         ),
     ];
     if let Some(hone_cloud) = &settings.hone_cloud {
         updates.extend([
-            (
+            setting(
                 "agent.hone_cloud.base_url",
                 serde_yaml::Value::String(hone_cloud.base_url.clone()),
             ),
-            (
+            setting(
                 "agent.hone_cloud.api_key",
                 serde_yaml::Value::String(hone_cloud.api_key.clone()),
             ),
-            (
+            setting(
                 "agent.hone_cloud.model",
                 serde_yaml::Value::String(hone_cloud.model.clone()),
             ),
@@ -975,23 +1042,23 @@ fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(&'static str, s
     }
     if let Some(auxiliary) = &settings.auxiliary {
         updates.extend([
-            (
+            setting(
                 "llm.auxiliary.base_url",
                 serde_yaml::Value::String(auxiliary.base_url.clone()),
             ),
-            (
+            setting(
                 "llm.auxiliary.api_key",
                 serde_yaml::Value::String(auxiliary.api_key.clone()),
             ),
-            (
+            setting(
                 "llm.auxiliary.api_key_env",
                 serde_yaml::Value::String("MINIMAX_API_KEY".to_string()),
             ),
-            (
+            setting(
                 "llm.auxiliary.model",
                 serde_yaml::Value::String(auxiliary.model.clone()),
             ),
-            (
+            setting(
                 "llm.openrouter.sub_model",
                 serde_yaml::Value::String(auxiliary.model.clone()),
             ),
@@ -999,41 +1066,41 @@ fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(&'static str, s
     }
     if let Some(multi_agent) = &settings.multi_agent {
         updates.extend([
-            (
+            setting(
                 "agent.multi_agent.search.base_url",
                 serde_yaml::Value::String(multi_agent.search.base_url.clone()),
             ),
-            (
+            setting(
                 "agent.multi_agent.search.api_key",
                 serde_yaml::Value::String(multi_agent.search.api_key.clone()),
             ),
-            (
+            setting(
                 "agent.multi_agent.search.model",
                 serde_yaml::Value::String(multi_agent.search.model.clone()),
             ),
-            (
+            setting(
                 "agent.multi_agent.search.max_iterations",
                 serde_yaml::Value::Number(serde_yaml::Number::from(
                     multi_agent.search.max_iterations,
                 )),
             ),
-            (
+            setting(
                 "agent.multi_agent.answer.api_base_url",
                 serde_yaml::Value::String(multi_agent.answer.base_url.clone()),
             ),
-            (
+            setting(
                 "agent.multi_agent.answer.api_key",
                 serde_yaml::Value::String(multi_agent.answer.api_key.clone()),
             ),
-            (
+            setting(
                 "agent.multi_agent.answer.model",
                 serde_yaml::Value::String(multi_agent.answer.model.clone()),
             ),
-            (
+            setting(
                 "agent.multi_agent.answer.variant",
                 serde_yaml::Value::String(multi_agent.answer.variant.clone()),
             ),
-            (
+            setting(
                 "agent.multi_agent.answer.max_tool_calls",
                 serde_yaml::Value::Number(serde_yaml::Number::from(
                     multi_agent.answer.max_tool_calls,
@@ -1041,6 +1108,125 @@ fn build_agent_setting_updates(settings: &AgentSettings) -> Vec<(&'static str, s
             ),
         ]);
     }
+    if let Some(llm_profiles) = &settings.llm_profiles {
+        updates.extend(build_llm_profile_setting_updates(llm_profiles));
+    }
+    updates
+}
+
+fn optional_string_value(value: &Option<String>) -> serde_yaml::Value {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| serde_yaml::Value::String(value.to_string()))
+        .unwrap_or(serde_yaml::Value::Null)
+}
+
+fn optional_u32_value(value: Option<u32>) -> serde_yaml::Value {
+    value
+        .map(|value| serde_yaml::Value::Number(serde_yaml::Number::from(value)))
+        .unwrap_or(serde_yaml::Value::Null)
+}
+
+fn optional_f32_value(value: Option<f32>) -> serde_yaml::Value {
+    value
+        .and_then(|value| serde_yaml::to_value(value).ok())
+        .unwrap_or(serde_yaml::Value::Null)
+}
+
+fn build_llm_profile_setting_updates(
+    settings: &LlmProfileSettings,
+) -> Vec<(String, serde_yaml::Value)> {
+    let mut updates = vec![
+        setting(
+            "llm.default_profile",
+            serde_yaml::Value::String(settings.default_profile.clone()),
+        ),
+        setting(
+            "llm.auxiliary_profile",
+            serde_yaml::Value::String(settings.auxiliary_profile.clone()),
+        ),
+        setting(
+            "event_engine.renderer.polish_llm",
+            serde_yaml::Value::String(settings.polish_profile.clone()),
+        ),
+        setting(
+            "event_engine.news_classifier_llm",
+            serde_yaml::Value::String(settings.news_classifier_profile.clone()),
+        ),
+        setting(
+            "event_engine.sec_filings.enrichment.llm",
+            serde_yaml::Value::String(settings.filing_summary_profile.clone()),
+        ),
+        setting(
+            "event_engine.earnings.quality_review.llm",
+            serde_yaml::Value::String(settings.earnings_quality_profile.clone()),
+        ),
+        setting(
+            "event_engine.global_digest.pass1_llm",
+            serde_yaml::Value::String(settings.digest_pass1_profile.clone()),
+        ),
+        setting(
+            "event_engine.global_digest.pass2_llm",
+            serde_yaml::Value::String(settings.digest_pass2_profile.clone()),
+        ),
+        setting(
+            "event_engine.global_digest.event_dedupe_llm",
+            serde_yaml::Value::String(settings.digest_event_dedupe_profile.clone()),
+        ),
+        setting(
+            "event_engine.global_digest.mainline_distill_llm",
+            serde_yaml::Value::String(settings.mainline_distill_profile.clone()),
+        ),
+    ];
+
+    for profile in &settings.profiles {
+        let id = profile.id.trim();
+        if id.is_empty() {
+            continue;
+        }
+        let prefix = format!("llm.profiles.{id}");
+        updates.extend([
+            setting(
+                format!("{prefix}.provider"),
+                serde_yaml::Value::String(profile.provider.clone()),
+            ),
+            setting(
+                format!("{prefix}.model"),
+                serde_yaml::Value::String(profile.model.clone()),
+            ),
+            setting(
+                format!("{prefix}.params.max_tokens"),
+                optional_u32_value(profile.max_tokens),
+            ),
+            setting(
+                format!("{prefix}.params.temperature"),
+                optional_f32_value(profile.temperature),
+            ),
+            setting(
+                format!("{prefix}.params.top_p"),
+                optional_f32_value(profile.top_p),
+            ),
+            setting(
+                format!("{prefix}.params.reasoning.effort"),
+                optional_string_value(&profile.reasoning_effort),
+            ),
+            setting(
+                format!("{prefix}.params.reasoning.max_tokens"),
+                optional_u32_value(profile.reasoning_max_tokens),
+            ),
+            setting(
+                format!("{prefix}.params.response_format.type"),
+                if profile.response_format_json {
+                    serde_yaml::Value::String("json_object".to_string())
+                } else {
+                    serde_yaml::Value::Null
+                },
+            ),
+        ]);
+    }
+
     updates
 }
 
@@ -1519,6 +1705,7 @@ fmp:
                     max_tool_calls: 2,
                 },
             }),
+            llm_profiles: None,
         };
 
         let updates = build_agent_setting_updates(&settings);
@@ -1573,6 +1760,74 @@ fmp:
     }
 
     #[test]
+    fn build_agent_setting_updates_persists_llm_profile_bindings_and_params() {
+        let settings = AgentSettings {
+            runner: "hone_cloud".to_string(),
+            codex_model: String::new(),
+            openai_url: String::new(),
+            openai_model: String::new(),
+            openai_api_key: String::new(),
+            auxiliary: None,
+            hone_cloud: None,
+            multi_agent: None,
+            llm_profiles: Some(LlmProfileSettings {
+                default_profile: "main".to_string(),
+                auxiliary_profile: "aux".to_string(),
+                polish_profile: "aux".to_string(),
+                news_classifier_profile: "news_classifier".to_string(),
+                filing_summary_profile: "filing_summary".to_string(),
+                earnings_quality_profile: "earnings_quality".to_string(),
+                digest_pass1_profile: "digest_fast".to_string(),
+                digest_pass2_profile: "digest_strong".to_string(),
+                digest_event_dedupe_profile: "digest_strong".to_string(),
+                mainline_distill_profile: "mainline_short".to_string(),
+                profiles: vec![LlmProfileEntrySettings {
+                    id: "digest_strong".to_string(),
+                    provider: "openrouter".to_string(),
+                    model: "x-ai/grok-4.1-fast".to_string(),
+                    max_tokens: Some(1600),
+                    temperature: Some(0.2),
+                    top_p: None,
+                    reasoning_effort: Some("low".to_string()),
+                    reasoning_max_tokens: Some(512),
+                    response_format_json: true,
+                }],
+            }),
+        };
+
+        let updates = build_agent_setting_updates(&settings);
+        let update_map = updates
+            .into_iter()
+            .map(|(path, value)| (path, value))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        assert_eq!(
+            update_map
+                .get("event_engine.global_digest.pass2_llm")
+                .and_then(serde_yaml::Value::as_str),
+            Some("digest_strong")
+        );
+        assert_eq!(
+            update_map
+                .get("llm.profiles.digest_strong.model")
+                .and_then(serde_yaml::Value::as_str),
+            Some("x-ai/grok-4.1-fast")
+        );
+        assert_eq!(
+            update_map
+                .get("llm.profiles.digest_strong.params.reasoning.effort")
+                .and_then(serde_yaml::Value::as_str),
+            Some("low")
+        );
+        assert_eq!(
+            update_map
+                .get("llm.profiles.digest_strong.params.response_format.type")
+                .and_then(serde_yaml::Value::as_str),
+            Some("json_object")
+        );
+    }
+
+    #[test]
     fn agent_settings_require_save_skips_identical_runner_payloads() {
         let settings = AgentSettings {
             runner: "opencode_acp".to_string(),
@@ -1605,6 +1860,7 @@ fmp:
                     max_tool_calls: 1,
                 },
             }),
+            llm_profiles: None,
         };
 
         assert!(
@@ -1633,6 +1889,7 @@ fmp:
             auxiliary: None,
             hone_cloud: None,
             multi_agent: None,
+            llm_profiles: None,
         };
         let status = BackendStatusInfo {
             config: BackendConfig {

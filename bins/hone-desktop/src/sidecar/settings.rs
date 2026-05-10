@@ -144,6 +144,58 @@ pub(super) fn seed_auxiliary_settings(config: &HoneConfig) -> AuxiliarySettings 
     }
 }
 
+pub(super) fn seed_llm_profile_settings(config: &HoneConfig) -> LlmProfileSettings {
+    LlmProfileSettings {
+        default_profile: config.llm.default_profile.clone(),
+        auxiliary_profile: config.llm.auxiliary_profile.clone(),
+        polish_profile: config.event_engine.renderer.polish_llm.clone(),
+        news_classifier_profile: config.event_engine.news_classifier_llm.clone(),
+        filing_summary_profile: config.event_engine.sec_filings.enrichment.llm.clone(),
+        earnings_quality_profile: config.event_engine.earnings.quality_review.llm.clone(),
+        digest_pass1_profile: config.event_engine.global_digest.pass1_llm.clone(),
+        digest_pass2_profile: config.event_engine.global_digest.pass2_llm.clone(),
+        digest_event_dedupe_profile: config.event_engine.global_digest.event_dedupe_llm.clone(),
+        mainline_distill_profile: config
+            .event_engine
+            .global_digest
+            .mainline_distill_llm
+            .clone(),
+        profiles: LLM_PROFILE_UI_IDS
+            .iter()
+            .map(|id| seed_llm_profile_entry(config, id))
+            .collect(),
+    }
+}
+
+fn seed_llm_profile_entry(config: &HoneConfig, id: &str) -> LlmProfileEntrySettings {
+    let profile = config.llm.profiles.get(id);
+    let params = profile.map(|profile| &profile.params);
+    LlmProfileEntrySettings {
+        id: id.to_string(),
+        provider: profile
+            .map(|profile| profile.provider.clone())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "openrouter".to_string()),
+        model: profile
+            .map(|profile| profile.model.clone())
+            .unwrap_or_default(),
+        max_tokens: params.and_then(|params| params.max_tokens),
+        temperature: params.and_then(|params| params.temperature),
+        top_p: params.and_then(|params| params.top_p),
+        reasoning_effort: params
+            .and_then(|params| params.reasoning.as_ref())
+            .and_then(|reasoning| reasoning.effort.clone()),
+        reasoning_max_tokens: params
+            .and_then(|params| params.reasoning.as_ref())
+            .and_then(|reasoning| reasoning.max_tokens),
+        response_format_json: params
+            .and_then(|params| params.response_format.as_ref())
+            .and_then(|value| value.get("type"))
+            .and_then(|value| value.as_str())
+            == Some("json_object"),
+    }
+}
+
 pub(super) fn load_persisted_config(app: &AppHandle) -> Result<BackendConfig, String> {
     let path = config_store_path(app)?;
     if !path.exists() {
@@ -162,12 +214,12 @@ pub(super) fn save_persisted_config(app: &AppHandle, config: &BackendConfig) -> 
 pub(super) fn apply_setting_updates(
     config_path: &Path,
     effective_config_path: &Path,
-    updates: Vec<(&str, serde_yaml::Value)>,
+    updates: Vec<(impl AsRef<str>, serde_yaml::Value)>,
 ) -> Result<HoneConfig, String> {
     let mutations = updates
         .into_iter()
         .map(|(path, value)| ConfigMutation::Set {
-            path: path.to_string(),
+            path: path.as_ref().to_string(),
             value,
         })
         .collect::<Vec<_>>();

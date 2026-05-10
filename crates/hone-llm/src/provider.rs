@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// OpenAI 兼容的消息格式
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +56,79 @@ pub struct ChatResponse {
     pub content: String,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub usage: Option<TokenUsage>,
+}
+
+/// Per-request generation options resolved from an LLM profile.
+///
+/// Legacy callers still pass only `model` through the trait. Providers created
+/// from `llm.profiles.*` carry these options internally and merge them into
+/// OpenAI-compatible request bodies.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LlmRequestOptions {
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub stop: Vec<String>,
+    pub seed: Option<u64>,
+    pub reasoning: Option<Value>,
+    pub response_format: Option<Value>,
+    pub tool_choice: Option<Value>,
+    pub parallel_tool_calls: Option<bool>,
+    pub extra_body: Map<String, Value>,
+}
+
+impl LlmRequestOptions {
+    pub fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
+        self.max_tokens = max_tokens;
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.max_tokens.is_none()
+            && self.temperature.is_none()
+            && self.top_p.is_none()
+            && self.stop.is_empty()
+            && self.seed.is_none()
+            && self.reasoning.is_none()
+            && self.response_format.is_none()
+            && self.tool_choice.is_none()
+            && self.parallel_tool_calls.is_none()
+            && self.extra_body.is_empty()
+    }
+
+    pub fn apply_to_body(&self, body: &mut Map<String, Value>, fallback_max_tokens: u16) {
+        body.insert(
+            "max_tokens".to_string(),
+            Value::from(self.max_tokens.unwrap_or(fallback_max_tokens as u32)),
+        );
+        if let Some(value) = self.temperature {
+            body.insert("temperature".to_string(), Value::from(value));
+        }
+        if let Some(value) = self.top_p {
+            body.insert("top_p".to_string(), Value::from(value));
+        }
+        if !self.stop.is_empty() {
+            body.insert("stop".to_string(), Value::from(self.stop.clone()));
+        }
+        if let Some(value) = self.seed {
+            body.insert("seed".to_string(), Value::from(value));
+        }
+        if let Some(value) = &self.reasoning {
+            body.insert("reasoning".to_string(), value.clone());
+        }
+        if let Some(value) = &self.response_format {
+            body.insert("response_format".to_string(), value.clone());
+        }
+        if let Some(value) = &self.tool_choice {
+            body.insert("tool_choice".to_string(), value.clone());
+        }
+        if let Some(value) = self.parallel_tool_calls {
+            body.insert("parallel_tool_calls".to_string(), Value::from(value));
+        }
+        for (key, value) in &self.extra_body {
+            body.insert(key.clone(), value.clone());
+        }
+    }
 }
 
 /// LLM Provider trait
