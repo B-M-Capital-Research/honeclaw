@@ -1,6 +1,32 @@
 # Archive Index
 
-Last updated: 2026-05-09
+Last updated: 2026-05-10
+
+## 2026-05-10
+
+### Source CLI Start And Launch Retirement
+
+- Status: done
+- Date: 2026-05-10
+- Plan: `docs/archive/plans/source-cli-start-retire-launch.md`
+- Handoff: `docs/handoffs/source-cli-start-retire-launch-2026-05-10.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `docs/runbooks/hone-cli-install-and-start.md`, `docs/runbooks/source-web-startup.md`, `docs/runbooks/desktop-dev-runtime.md`, `cargo test -p hone-cli start`, `bash tests/regression/ci/test_source_cli_start_contract.sh`, `bash tests/regression/ci/test_install_hone_cli_path_resolution.sh`, CLI channel configuration smoke, source startup smoke with `/api/meta` on port `19077`, `cargo test -p hone-cli`, `cargo check --workspace --all-targets --exclude hone-desktop`, `bun run typecheck:web`, `bun run test:web`, `bash tests/regression/run_ci.sh`
+- Current conclusion: Source checkout startup now uses `cargo run -p hone-cli -- start --build`, installed users continue with packaged `hone-cli start`, active docs no longer recommend source launcher flows, and the previous channel configuration changes were verified through real CLI commands against a temporary config.
+- Next entry point: `docs/runbooks/hone-cli-install-and-start.md` for install/source startup and `docs/runbooks/desktop-dev-runtime.md` for desktop dev lanes.
+
+### Channel Delivery Config Borrowing
+
+- Status: done
+- Date: 2026-05-10
+- Plan: `docs/archive/plans/channel-delivery-config-borrowing.md`
+- Handoff: `docs/handoffs/channel-delivery-config-borrowing-2026-05-10.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-tools cron_job_tool_add_preserves_origin_channel_target`, `cargo test -p hone-cli build_channel_mutations_supports_allowlists`, `HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_channel_settings`, `cargo test -p hone-cli`, `bun run test:web`, `cargo test -p hone-memory channel_target`, `cargo test -p hone-scheduler scheduler_records_missing_channel_target_without_dispatching`, `cargo test -p hone-cli cli_parses_channels_targets_command`, `cargo test -p hone-memory`, `cargo test -p hone-scheduler`, `cargo test -p hone-web-api cron`, `bun run typecheck:web`, `cargo check --workspace --all-targets --exclude hone-desktop`
+- Current conclusion: Hermes-style channel improvements were borrowed without adding platforms or a `home_channel` default. Honeclaw now keeps origin-bound delivery, exposes existing allowlists / `chat_scope` / iMessage `target_handle` through CLI and Desktop/Web settings, rejects or records missing scheduled delivery targets deterministically, and provides a typed cron-backed channel-target directory through `hone-cli channels targets`.
+- Next entry point: Add a Web/Desktop selector backed by `CronJobStorage::list_channel_targets()` if users need clickable target discovery; do not introduce `home_channel` unless a separate no-origin system task flow is designed.
 
 ## 2026-05-09
 

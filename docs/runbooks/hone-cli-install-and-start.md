@@ -1,12 +1,13 @@
 # Runbook: Hone CLI Install And Start
 
-Last updated: 2026-04-30
+Last updated: 2026-05-10
 
 ## When To Use
 
 - Install Hone from GitHub release assets without cloning the repo
 - Prepare a local runtime that starts with `hone-cli start`
 - Verify the installed bundle layout and wrapper environment
+- Start a source checkout through the local CLI build path
 
 ## Install From GitHub
 
@@ -53,7 +54,7 @@ On first run, the wrapper:
 
 - Seeds `~/.honeclaw/config.yaml` and `~/.honeclaw/soul.md` if they do not exist
 - Uses the same default `HONE_HOME`, `HONE_USER_CONFIG_PATH`, `HONE_DATA_DIR`, and `HONE_SKILLS_DIR` semantics as the `curl | bash` install
-- Lets `hone-cli start` reuse the bundled runtime binaries from the Homebrew cellar without requiring `./launch.sh` or `hone-desktop`
+- Lets `hone-cli start` reuse the bundled runtime binaries from the Homebrew cellar without requiring the desktop host
 
 ## Uninstall
 
@@ -199,9 +200,36 @@ What `hone-cli start` does in the current MVP:
 - Starts enabled channel listeners for iMessage / Discord / Feishu / Telegram
 - Keeps the process tree in the foreground until `Ctrl-C`
 
-Current limitation:
+## Start From Source Checkout
 
-- `hone-cli start` is runtime-only. It does not replace all `launch.sh` desktop/web dev modes yet.
+Use this path when you cloned the repository and want to run the source tree directly:
+
+```bash
+git clone https://github.com/B-M-Capital-Research/honeclaw.git
+cd honeclaw
+cp config.example.yaml config.yaml
+cargo run -p hone-cli -- start --build
+```
+
+What `--build` adds:
+
+- Builds `hone-cli`, `hone-console-page`, `hone-mcp`, and the channel binaries into the local Cargo target dir
+- Starts the runtime from those freshly built local binaries
+- Writes `data/runtime/current.pid` after startup so restart tooling can find the active CLI supervisor
+
+For Web UI development, keep the CLI backend running and start frontends separately:
+
+```bash
+bun run dev:web
+bun run dev:web:public
+```
+
+For desktop development, prepare the Tauri sidecars and run Tauri directly:
+
+```bash
+bun run tauri:prep:dev -- --skip-dev-command
+bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json
+```
 
 ## Troubleshooting
 
@@ -229,6 +257,7 @@ eval "$($(command -v brew) shellenv)"
 
 - Reinstall with the latest GitHub bundle
 - Confirm that `~/.honeclaw/current/bin/` contains `hone-console-page`, `hone-mcp`, and any enabled channel binaries
+- In a source checkout, use `cargo run -p hone-cli -- start --build` so the local runtime binaries are built before startup
 
 ### The backend starts but the web page says assets are missing
 

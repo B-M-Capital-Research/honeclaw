@@ -18,13 +18,22 @@ export function defaultLanguageDraft(meta?: MetaInfo | null): LanguageDraft {
 export function defaultChannelDraft(): DesktopChannelSettingsInput {
   return {
     imessageEnabled: false,
+    imessageTargetHandle: "",
     feishuEnabled: false,
     feishuAppId: "",
     feishuAppSecret: "",
+    feishuChatScope: "DM_ONLY",
+    feishuAllowEmails: [],
+    feishuAllowMobiles: [],
+    feishuAllowOpenIds: [],
     telegramEnabled: false,
     telegramBotToken: "",
+    telegramChatScope: "DM_ONLY",
+    telegramAllowFrom: [],
     discordEnabled: false,
     discordBotToken: "",
+    discordChatScope: "DM_ONLY",
+    discordAllowFrom: [],
   }
 }
 
@@ -149,12 +158,21 @@ export function appendMaskedKey(prev: boolean[]): boolean[] {
 export function toChannelDraft(settings: DesktopChannelSettings): DesktopChannelSettingsInput {
   return {
     imessageEnabled: settings.imessageEnabled,
+    imessageTargetHandle: settings.imessageTargetHandle || "",
     feishuEnabled: settings.feishuEnabled,
     feishuAppId: settings.feishuAppId || "",
     feishuAppSecret: settings.feishuAppSecret || "",
+    feishuChatScope: settings.feishuChatScope || "DM_ONLY",
+    feishuAllowEmails: settings.feishuAllowEmails || [],
+    feishuAllowMobiles: settings.feishuAllowMobiles || [],
+    feishuAllowOpenIds: settings.feishuAllowOpenIds || [],
     telegramEnabled: settings.telegramEnabled,
     telegramBotToken: settings.telegramBotToken || "",
+    telegramChatScope: settings.telegramChatScope || "DM_ONLY",
+    telegramAllowFrom: settings.telegramAllowFrom || [],
     discordEnabled: settings.discordEnabled,
     discordBotToken: settings.discordBotToken || "",
+    discordChatScope: settings.discordChatScope || "DM_ONLY",
+    discordAllowFrom: settings.discordAllowFrom || [],
   }
 }

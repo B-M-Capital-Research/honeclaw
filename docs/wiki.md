@@ -51,7 +51,7 @@ Top-level layout:
 | `Cargo.toml` | Rust workspace manifest. |
 | `package.json` | Bun workspace scripts for Web and desktop frontend flows. |
 | `config.example.yaml` | Canonical example config. Copy to `config.yaml` for source runs. |
-| `launch.sh` | Source checkout launcher for backend, Web, desktop, and release-desktop modes. |
+| `launch.sh` | Compatibility shim that points to the CLI startup path. Source checkout startup goes through `cargo run -p hone-cli -- start --build`. |
 | `crates/` | Shared Rust libraries. |
 | `bins/` | Runnable Rust binaries. |
 | `agents/` | Agent adapters and runner implementations. |
@@ -109,7 +109,7 @@ Source checkout defaults:
 | `data/` | Runtime data root. |
 | `data/runtime/effective-config.yaml` | Generated runtime config snapshot for spawned processes. |
 | `data/runtime/logs/` | Runtime log files. |
-| `data/runtime/*.pid` | Launcher pid files. |
+| `data/runtime/*.pid` | Runtime supervisor pid files. |
 | `data/runtime/locks/` | Process lock files. |
 | `data/sessions.sqlite3` | SQLite session runtime store when enabled. |
 | `agent-sandboxes/` | Actor-scoped workspaces and company profile docs. |
@@ -184,42 +184,45 @@ cp config.example.yaml config.yaml
 bun install
 ```
 
-Start backend and enabled channel listeners only:
+Build the local CLI/runtime binaries and start backend plus enabled channel listeners:
 
 ```bash
-./launch.sh
+cargo run -p hone-cli -- start --build
 ```
 
-Start backend, enabled channels, and both admin/public Vite frontends:
+Start admin/public Vite frontends after the backend is ready:
 
 ```bash
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH ./launch.sh --web
+bun run dev:web
+bun run dev:web:public
 ```
 
 For the full source Web startup checklist and macOS Rollup/Node signing pitfall, see [`docs/runbooks/source-web-startup.md`](./runbooks/source-web-startup.md).
 
-Start desktop development mode where the desktop owns bundled backend/channel sidecars:
+Desktop development uses explicit Tauri commands:
 
 ```bash
-./launch.sh --desktop
+bun run tauri:prep:dev -- --skip-dev-command
+bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json
 ```
 
-Start backend/channels outside the desktop host, then launch desktop in remote mode:
+For desktop work against an already running CLI backend, prepare only the shell side and then run Tauri:
 
 ```bash
-./launch.sh --desktop --remote
+bun run tauri:prep:dev -- --skip-dev-command --shell-only
+bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json
 ```
 
-Start release desktop mode without Tauri dev hot reload:
+Build release desktop assets directly when needed:
 
 ```bash
-./launch.sh --release
+bun run build:desktop
 ```
 
-Stop launcher-managed processes:
+Stop a foreground source runtime:
 
 ```bash
-./launch.sh stop
+Ctrl-C
 ```
 
 ## Desktop Startup Modes
@@ -228,25 +231,24 @@ Use the mode that matches what you are testing:
 
 | Command | Best For | What It Starts |
 | --- | --- | --- |
-| `./launch.sh --desktop` | Bundled desktop integration checks. | Vite + Tauri dev; desktop starts embedded backend and enabled channels. |
-| `./launch.sh --desktop --remote` | Daily desktop UI work while keeping backend/channels stable. | Backend + channels + Vite + Tauri dev connected to remote backend config. |
-| `./launch.sh --release` | Long-running desktop verification without Rust hot reload. | Builds release desktop assets and runs the release desktop binary. |
+| `bun run tauri:prep:dev -- --skip-dev-command` + `bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json` | Bundled desktop integration checks. | Vite + Tauri dev; desktop starts embedded backend and enabled channels. |
+| `bun run tauri:prep:dev -- --skip-dev-command --shell-only` + Tauri dev | Daily desktop UI work while keeping backend/channels stable. | Tauri dev shell connected to an existing CLI-started backend. |
+| `bun run build:desktop` | Long-running desktop verification / packaging prep. | Builds release desktop assets and bundled sidecars. |
 
-For daily development, prefer `--desktop --remote` when backend/channel processes should not restart on every desktop shell rebuild. Use `--desktop` when validating bundled sidecar startup, process locks, and desktop-managed runtime behavior.
+For daily development, keep `cargo run -p hone-cli -- start --build` running in one terminal and use Tauri dev in another when backend/channel processes should not restart on every desktop shell rebuild.
 
 ## Web Startup Modes
 
 | Command | Best For |
 | --- | --- |
-| `./launch.sh` | Runtime-only backend/channel smoke. |
-| `./launch.sh --web` | Browser UI development against local backend/channels. |
+| `cargo run -p hone-cli -- start --build` | Runtime-only backend/channel smoke from source. |
 | `bun run dev:web` | Frontend-only admin UI work when backend is already running. |
 | `bun run dev:web:public` | Frontend-only public chat UI work when public backend is already running. |
 | `bun run build:web` | Build admin Web assets. |
 | `bun run build:web:public` | Build public Web assets. |
 | `bun run build:web:desktop` | Build desktop Web assets with relative asset paths. |
 
-`./launch.sh --web` starts both the admin and public Vite servers after the backend is ready.
+Run the CLI backend and Vite frontends as separate foreground processes.
 
 ## Configuration
 
@@ -350,18 +352,12 @@ Defaults in source checkout:
 Override ports with environment variables:
 
 ```bash
-HONE_WEB_PORT=8078 HONE_PUBLIC_WEB_PORT=8089 ./launch.sh --web
+HONE_WEB_PORT=8078 HONE_PUBLIC_WEB_PORT=8089 cargo run -p hone-cli -- start --build
 ```
 
 ## Stop, Restart, And Cleanup
 
-Stop processes started by `launch.sh`:
-
-```bash
-./launch.sh stop
-```
-
-Stop a foreground `hone-cli start`:
+Stop a foreground `hone-cli start` or source runtime:
 
 ```bash
 Ctrl-C
@@ -431,7 +427,7 @@ command -v hone-cli || ls -l ~/.local/bin/hone-cli
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### `./launch.sh` says `config.yaml` is missing
+### Source startup says `config.yaml` is missing
 
 ```bash
 cp config.example.yaml config.yaml
@@ -451,23 +447,17 @@ bun install
 
 ### Vite fails with Rollup native addon code-signing errors on macOS
 
-If `bun run dev:web` or `./launch.sh --web` fails with `@rollup/rollup-darwin-arm64`, `ERR_DLOPEN_FAILED`, or a Team ID code-signing mismatch, make sure Homebrew Node comes before app-bundled Node in `PATH`:
+If `bun run dev:web` fails with `@rollup/rollup-darwin-arm64`, `ERR_DLOPEN_FAILED`, or a Team ID code-signing mismatch, make sure Homebrew Node comes before app-bundled Node in `PATH`:
 
 ```bash
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH ./launch.sh --web
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
 ```
 
 See the detailed source Web startup runbook: [`docs/runbooks/source-web-startup.md`](./runbooks/source-web-startup.md).
 
 ### Port already occupied
 
-Try the managed stop first:
-
-```bash
-./launch.sh stop
-```
-
-If a process is still holding a port, inspect it:
+Inspect the process holding the port before stopping it:
 
 ```bash
 lsof -nP -iTCP:8077 -sTCP:LISTEN
@@ -506,13 +496,14 @@ For source desktop release mode, rebuild desktop Web assets with the desktop-spe
 
 ```bash
 bun run build:web:desktop
-./launch.sh --release
+bun run build:desktop
 ```
 
 For desktop dev, prefer:
 
 ```bash
-./launch.sh --desktop --remote
+bun run tauri:prep:dev -- --skip-dev-command --shell-only
+bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json
 ```
 
 ## Contributor Reading Map

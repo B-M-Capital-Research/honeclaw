@@ -19,6 +19,9 @@ import type {
   PortfolioSummary,
   HoldingUpsertInput,
   LogEntry,
+  DesktopChannelSettings,
+  DesktopChannelSettingsInput,
+  DesktopChannelSettingsUpdateResult,
   WebInviteActionResult,
   WebInviteInfo,
 } from "./types";
@@ -42,6 +45,7 @@ export function isUnauthorizedApiError(error: unknown) {
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type") ?? "";
   if (!response.ok) {
     const text = await response.text();
     let message = "";
@@ -52,6 +56,16 @@ async function parseJson<T>(response: Response): Promise<T> {
       message = "";
     }
     throw new ApiError(message || text || response.statusText, response);
+  }
+  if (!contentType.toLowerCase().includes("application/json")) {
+    const text = await response.text();
+    const snippet = text.trim().slice(0, 80);
+    throw new ApiError(
+      `Expected JSON response but received ${contentType || "unknown content type"}${
+        snippet ? `: ${snippet}` : ""
+      }`,
+      response,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -64,6 +78,22 @@ export async function getMeta() {
 export async function getChannels() {
   const response = await apiFetch("/api/channels");
   return parseJson<ChannelStatusInfo[]>(response);
+}
+
+export async function getChannelSettings() {
+  const response = await apiFetch("/api/channel-settings");
+  return parseJson<DesktopChannelSettings>(response);
+}
+
+export async function putChannelSettings(settings: DesktopChannelSettingsInput) {
+  const response = await apiFetch("/api/channel-settings", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(settings),
+  });
+  return parseJson<DesktopChannelSettingsUpdateResult>(response);
 }
 
 export async function getUsers() {

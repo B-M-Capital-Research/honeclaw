@@ -197,42 +197,53 @@ pub(crate) fn build_channel_reports(config: &hone_core::HoneConfig) -> Vec<Chann
             auth_configured: non_empty(&config.feishu.app_id)
                 && non_empty(&config.feishu.app_secret),
             chat_scope: Some(chat_scope_label(config.feishu.chat_scope)),
-            details: vec![format!(
-                "app_id={}",
-                if non_empty(&config.feishu.app_id) {
-                    "<set>"
-                } else {
-                    "<empty>"
-                }
-            )],
+            details: vec![
+                format!(
+                    "app_id={}",
+                    if non_empty(&config.feishu.app_id) {
+                        "<set>"
+                    } else {
+                        "<empty>"
+                    }
+                ),
+                format!("allow_emails={}", config.feishu.allow_emails.len()),
+                format!("allow_mobiles={}", config.feishu.allow_mobiles.len()),
+                format!("allow_open_ids={}", config.feishu.allow_open_ids.len()),
+            ],
         },
         ChannelStatusReport {
             channel: "telegram".to_string(),
             enabled: config.telegram.enabled,
             auth_configured: non_empty(&config.telegram.bot_token),
             chat_scope: Some(chat_scope_label(config.telegram.chat_scope)),
-            details: vec![format!(
-                "bot_token={}",
-                if non_empty(&config.telegram.bot_token) {
-                    "<set>"
-                } else {
-                    "<empty>"
-                }
-            )],
+            details: vec![
+                format!(
+                    "bot_token={}",
+                    if non_empty(&config.telegram.bot_token) {
+                        "<set>"
+                    } else {
+                        "<empty>"
+                    }
+                ),
+                format!("allow_from={}", config.telegram.allow_from.len()),
+            ],
         },
         ChannelStatusReport {
             channel: "discord".to_string(),
             enabled: config.discord.enabled,
             auth_configured: non_empty(&config.discord.bot_token),
             chat_scope: Some(chat_scope_label(config.discord.chat_scope)),
-            details: vec![format!(
-                "bot_token={}",
-                if non_empty(&config.discord.bot_token) {
-                    "<set>"
-                } else {
-                    "<empty>"
-                }
-            )],
+            details: vec![
+                format!(
+                    "bot_token={}",
+                    if non_empty(&config.discord.bot_token) {
+                        "<set>"
+                    } else {
+                        "<empty>"
+                    }
+                ),
+                format!("allow_from={}", config.discord.allow_from.len()),
+            ],
         },
     ]
 }

@@ -4,8 +4,11 @@
 
 use chrono::{Datelike, FixedOffset, Timelike, Utc};
 use hone_core::ActorIdentity;
-use hone_memory::{CronJobStorage, cron_job::ExecutionFilter};
-use serde_json::Value;
+use hone_memory::{
+    CronJobStorage,
+    cron_job::{CronJobExecutionInput, ExecutionFilter},
+};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
@@ -135,6 +138,37 @@ impl HoneScheduler {
         );
 
         for (actor, job) in due_jobs {
+            let delivery_key = scheduled_delivery_key(&job, &now);
+            if job.channel_target.trim().is_empty() {
+                warn!(
+                    "⏰ 定时任务缺少 channel_target，跳过投递并记录失败: actor={} job={}",
+                    actor.storage_key(),
+                    job.id
+                );
+                let _ = self.storage.record_execution_event(
+                    &actor,
+                    &job.id,
+                    &job.name,
+                    "",
+                    job.is_heartbeat(),
+                    CronJobExecutionInput {
+                        execution_status: "execution_failed".to_string(),
+                        message_send_status: "target_missing".to_string(),
+                        should_deliver: true,
+                        delivered: false,
+                        response_preview: None,
+                        error_message: Some(
+                            "定时任务缺少 channel_target，无法确认来源渠道投递目标".to_string(),
+                        ),
+                        detail: json!({
+                            "phase": "target_missing",
+                            "delivery_key": delivery_key,
+                        }),
+                    },
+                );
+                self.storage.mark_job_run(&actor, &job.id);
+                continue;
+            }
             let last_delivered_previews = if job.is_heartbeat() {
                 load_heartbeat_delivery_history(&self.storage, &actor)
             } else {
@@ -148,7 +182,7 @@ impl HoneScheduler {
                 channel: job.channel.clone(),
                 channel_scope: job.channel_scope.clone(),
                 channel_target: job.channel_target.clone(),
-                delivery_key: scheduled_delivery_key(&job, &now),
+                delivery_key,
                 push: job.push.clone(),
                 tags: job.tags.clone(),
                 heartbeat: job.is_heartbeat(),
@@ -228,7 +262,7 @@ fn scheduled_delivery_key(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hone_memory::cron_job::CronJobExecutionInput;
+    use hone_memory::cron_job::{CronJob, CronJobData, CronSchedule};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -288,6 +322,72 @@ mod tests {
         let history = load_heartbeat_delivery_history(&storage, &actor);
         assert_eq!(history.len(), 1);
         assert!(history[0].1.contains("小米跌破 30 港元"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn scheduler_records_missing_channel_target_without_dispatching() {
+        let dir = make_temp_dir("hone_scheduler_missing_target");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = Arc::new(CronJobStorage::with_sqlite(&dir, &sqlite_path));
+        let actor = ActorIdentity::new("telegram", "user_missing", None::<String>).expect("actor");
+        let now = Utc::now().with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
+        let job = CronJob {
+            id: "j_missing_target".to_string(),
+            name: "missing target".to_string(),
+            schedule: CronSchedule {
+                hour: now.hour(),
+                minute: now.minute(),
+                repeat: "daily".to_string(),
+                weekday: None,
+                date: None,
+            },
+            task_prompt: "task".to_string(),
+            push: json!({"type": "analysis"}),
+            enabled: true,
+            channel: "telegram".to_string(),
+            channel_scope: None,
+            channel_target: String::new(),
+            tags: Vec::new(),
+            created_at: None,
+            last_run_at: None,
+            bypass_quiet_hours: false,
+        };
+        storage
+            .save_jobs(
+                &actor,
+                &CronJobData {
+                    actor: Some(actor.clone()),
+                    user_id: actor.user_id.clone(),
+                    jobs: vec![job],
+                    pending_updates: Vec::new(),
+                },
+            )
+            .expect("save invalid legacy job");
+
+        let (tx, mut rx) = mpsc::channel(4);
+        let scheduler = HoneScheduler::new(storage.clone(), tx, vec!["telegram".to_string()]);
+        scheduler.check_due_jobs().await;
+
+        assert!(rx.try_recv().is_err());
+        let records = storage
+            .list_recent_executions(&ExecutionFilter {
+                job_id: Some("j_missing_target".to_string()),
+                limit: 10,
+                ..ExecutionFilter::default()
+            })
+            .expect("list executions");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].execution_status, "execution_failed");
+        assert_eq!(records[0].message_send_status, "target_missing");
+        assert!(
+            records[0]
+                .error_message
+                .as_deref()
+                .unwrap_or("")
+                .contains("channel_target")
+        );
 
         let _ = std::fs::remove_dir_all(dir);
     }

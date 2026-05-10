@@ -259,7 +259,7 @@ const CONTENT_ZH = {
       tabs: [
         { key: "curl" as const, label: "curl | bash", badge: "推荐" as string | null },
         { key: "brew" as const, label: "Homebrew", badge: null as string | null },
-        { key: "source" as const, label: "源码 / launch.sh", badge: null as string | null },
+        { key: "source" as const, label: "源码 / CLI", badge: null as string | null },
       ],
       requirements_prefix: "系统要求：",
       curl: [
@@ -267,22 +267,24 @@ const CONTENT_ZH = {
         "$ curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash",
         "$ hone-cli doctor",
         "$ hone-cli onboard",
+        "$ hone-cli start",
       ],
       brew: [
         "# Homebrew tap (macOS / Linux)",
         "$ brew install B-M-Capital-Research/honeclaw/honeclaw",
         "$ hone-cli doctor",
         "$ hone-cli onboard",
+        "$ hone-cli start",
       ],
       source: [
-        "# 源码开发模式（含桌面端 hot reload）",
+        "# 源码开发模式（本地 CLI 构建启动）",
         "$ git clone https://github.com/B-M-Capital-Research/honeclaw",
         "$ cd honeclaw",
-        "$ ./launch.sh --desktop",
+        "$ cargo run -p hone-cli -- start --build",
       ],
     },
 
-    requirements: "macOS 13+ / Linux x86_64 / arm64 · 首次源码启动约 10 分钟（自动装 bun + rustup）",
+    requirements: "macOS 13+ / Linux x86_64 / arm64 · 首次源码构建约 10 分钟（需本机已有 Rust / Bun）",
 
     capability_matrix: [
       {
@@ -449,7 +451,7 @@ const CONTENT_ZH = {
       },
       {
         q: "需要自己部署吗？",
-        a: "三种方式任选：①「curl | bash」一键装 hone-cli;②Homebrew tap;③clone 仓库 ./launch.sh --desktop 启动桌面端。前两种共享同一份 GitHub release bundle，不需要自己编译 Rust。",
+        a: "三种方式任选：①「curl | bash」一键装 hone-cli;②Homebrew tap;③clone 仓库后用本地 CLI 构建启动。前两种共享同一份 GitHub release bundle，不需要自己编译 Rust。",
       },
       {
         q: "支持哪些 LLM？",
@@ -1103,7 +1105,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       tabs: [
         { key: "curl" as const, label: "curl | bash", badge: "Recommended" },
         { key: "brew" as const, label: "Homebrew", badge: null },
-        { key: "source" as const, label: "Source / launch.sh", badge: null },
+        { key: "source" as const, label: "Source / CLI", badge: null },
       ],
       requirements_prefix: "Requirements:",
       curl: [
@@ -1111,22 +1113,24 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "$ curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash",
         "$ hone-cli doctor",
         "$ hone-cli onboard",
+        "$ hone-cli start",
       ],
       brew: [
         "# Homebrew tap (macOS / Linux)",
         "$ brew install B-M-Capital-Research/honeclaw/honeclaw",
         "$ hone-cli doctor",
         "$ hone-cli onboard",
+        "$ hone-cli start",
       ],
       source: [
-        "# Source dev mode (desktop hot reload included)",
+        "# Source dev mode (local CLI build-and-start)",
         "$ git clone https://github.com/B-M-Capital-Research/honeclaw",
         "$ cd honeclaw",
-        "$ ./launch.sh --desktop",
+        "$ cargo run -p hone-cli -- start --build",
       ],
     },
 
-    requirements: "macOS 13+ / Linux x86_64 / arm64 · first source build ~10 min (bun + rustup auto-installed)",
+    requirements: "macOS 13+ / Linux x86_64 / arm64 · first source build ~10 min (Rust / Bun required locally)",
 
     capability_matrix: [
       {
@@ -1293,7 +1297,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "Do I have to self-host?",
-        a: "Three options: (1) the `curl | bash` installer for hone-cli; (2) a Homebrew tap; (3) clone the repo and run `./launch.sh --desktop`. The first two share the same GitHub release bundle — no Rust compile needed.",
+        a: "Three options: (1) the `curl | bash` installer for hone-cli; (2) a Homebrew tap; (3) clone the repo and start through the local CLI build path. The first two share the same GitHub release bundle — no Rust compile needed.",
       },
       {
         q: "Which LLMs are supported?",

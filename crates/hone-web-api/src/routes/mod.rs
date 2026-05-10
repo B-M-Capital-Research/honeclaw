@@ -1,4 +1,5 @@
 pub(crate) mod auth;
+pub(crate) mod channel_settings;
 pub(crate) mod chat;
 pub(crate) mod company_profiles;
 pub(crate) mod cron;
@@ -44,6 +45,10 @@ async fn handle_not_found() -> Response {
     StatusCode::NOT_FOUND.into_response()
 }
 
+async fn handle_api_not_found() -> Response {
+    common::json_error(StatusCode::NOT_FOUND, "api route not found")
+}
+
 pub fn build_admin_app(state: Arc<AppState>) -> Router {
     let web_dist = web_dist_dir();
     let index_path = web_dist.join("index.html");
@@ -58,6 +63,11 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
         .route("/auth/sse-ticket", post(auth::handle_sse_ticket))
         .route("/runtime/heartbeat", post(meta::handle_runtime_heartbeat))
         .route("/channels", get(meta::handle_channels))
+        .route(
+            "/channel-settings",
+            get(channel_settings::handle_get_channel_settings)
+                .put(channel_settings::handle_put_channel_settings),
+        )
         .route("/history", get(history::handle_history))
         .route("/events", get(events::handle_events))
         .route("/image", get(files::handle_image))
@@ -200,6 +210,7 @@ pub fn build_admin_app(state: Arc<AppState>) -> Router {
             state.clone(),
             auth::require_api_auth,
         ))
+        .fallback(handle_api_not_found)
         .layer(cors.clone())
         .with_state(state.clone());
 

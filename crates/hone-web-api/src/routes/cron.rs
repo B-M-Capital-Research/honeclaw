@@ -93,7 +93,16 @@ pub(crate) async fn handle_create_cron_job(
         Err(error) => return error,
     };
     let repeat = req.repeat.unwrap_or_else(|| "daily".to_string());
-    let channel_target = req.channel_target.unwrap_or_else(|| actor.user_id.clone());
+    let channel_target = match normalize_optional_string(req.channel_target) {
+        Some(target) => target,
+        None if actor.channel == "web" => actor.user_id.clone(),
+        None => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "channel_target 不能为空；聊天渠道任务必须保存创建它的来源渠道目标",
+            );
+        }
+    };
     let enabled = req.enabled.unwrap_or(true);
     let admin_bypass = state.core.is_admin_actor(&actor);
 

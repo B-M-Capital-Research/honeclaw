@@ -116,7 +116,7 @@ hone-cli start
 ```shell
 git clone https://github.com/B-M-Capital-Research/honeclaw.git
 cd honeclaw
-./launch.sh --desktop
+cargo run -p hone-cli -- start --build
 ```
 
 ---

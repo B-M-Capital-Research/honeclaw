@@ -36,7 +36,7 @@ feishu:
   facade_url: "http://127.0.0.1:18115/rpc"
   # Listener address for callback events from the Go facade to Rust
   callback_addr: "127.0.0.1:18116"
-  # The Go facade's own listener address; launch.sh uses it for health checks
+  # The Go facade's own listener address; used for local health checks
   facade_addr: "127.0.0.1:18115"
   # Timeout, in seconds, for waiting on the facade long connection at startup
   startup_timeout_seconds: 20

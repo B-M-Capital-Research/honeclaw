@@ -128,13 +128,22 @@ export type BackendStatusInfo = {
 export type DesktopChannelSettings = {
   configPath: string;
   imessageEnabled: boolean;
+  imessageTargetHandle?: string;
   feishuEnabled: boolean;
   feishuAppId?: string;
   feishuAppSecret?: string;
+  feishuChatScope?: string;
+  feishuAllowEmails?: string[];
+  feishuAllowMobiles?: string[];
+  feishuAllowOpenIds?: string[];
   telegramEnabled: boolean;
   telegramBotToken?: string;
+  telegramChatScope?: string;
+  telegramAllowFrom?: string[];
   discordEnabled: boolean;
   discordBotToken?: string;
+  discordChatScope?: string;
+  discordAllowFrom?: string[];
 };
 
 /** agent.runner 可选执行器 */

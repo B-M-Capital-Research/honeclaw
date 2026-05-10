@@ -145,6 +145,15 @@ const ZH = {
     title: "渠道设置",
     subtitle: "开启后 Hone 会通过对应渠道监听消息并进行 Agent 响应。",
     refresh: "刷新配置",
+    common: {
+      chat_scope_label: "会话范围",
+      allow_from_label: "允许用户",
+      allow_emails_label: "允许邮箱",
+      allow_mobiles_label: "允许手机号",
+      allow_open_ids_label: "允许 open_id",
+      target_handle_label: "监听对象",
+      csv_placeholder: "逗号分隔；留空表示全部允许",
+    },
     feishu: {
       name: "飞书 (Feishu)",
       app_id_label: "App ID",
@@ -172,7 +181,7 @@ const ZH = {
       name: "iMessage",
       warning: "⚠️ Needs Full Disk Access",
     },
-    sync_note: "同步设置将立即生效。",
+    sync_note: "保存后配置文件立即更新；CLI 启动的监听进程需重启后应用启停变化。",
     save: "同步全部渠道",
     saving: "同步中...",
   },
@@ -376,6 +385,15 @@ const EN: typeof ZH = {
     subtitle:
       "When enabled, Hone listens for messages on the channel and replies via the agent.",
     refresh: "Refresh",
+    common: {
+      chat_scope_label: "Chat scope",
+      allow_from_label: "Allowed users",
+      allow_emails_label: "Allowed emails",
+      allow_mobiles_label: "Allowed mobiles",
+      allow_open_ids_label: "Allowed open_ids",
+      target_handle_label: "Tracked handle",
+      csv_placeholder: "Comma-separated; empty means allow all",
+    },
     feishu: {
       name: "Feishu (Lark)",
       app_id_label: "App ID",
@@ -403,7 +421,8 @@ const EN: typeof ZH = {
       name: "iMessage",
       warning: "⚠️ Needs Full Disk Access",
     },
-    sync_note: "Changes apply immediately.",
+    sync_note:
+      "Saving updates the config file immediately; CLI-started listeners need a restart to apply enable/disable changes.",
     save: "Sync all channels",
     saving: "Syncing...",
   },

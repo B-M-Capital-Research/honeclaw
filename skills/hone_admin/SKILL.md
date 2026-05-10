@@ -17,7 +17,7 @@ tools:
 ```text
 <PROJECT_ROOT>/               <- project root (current working directory)
 ├── config.yaml               <- main config file (LLM, channels, admin list, and so on)
-├── launch.sh                 <- the only startup script; it builds and then launches
+├── bins/hone-cli/            <- canonical CLI startup path (`hone-cli start --build`)
 ├── bins/
 │   ├── hone-imessage/        <- iMessage channel entrypoint
 │   ├── hone-discord/         <- Discord channel entrypoint
@@ -35,7 +35,7 @@ tools:
 ├── skills/                   <- built-in system skills (`.md` files)
 │   └── hone_admin/SKILL.md   <- this file
 ├── data/
-│   ├── runtime/current.pid   <- PID of the current `launch.sh` process
+│   ├── runtime/current.pid   <- PID of the current `hone-cli start` supervisor
 │   └── logs/restart.log      <- restart log
 └── Cargo.toml                <- Rust workspace config
 ```
@@ -80,9 +80,9 @@ Gemini CLI runs in `--yolo` mode and can read and write files directly. Tell the
    - "The service will recover automatically after the restart; if it is still unresponsive after 5 minutes, check the machine manually"
 
 **Restart mechanism:**
-- The tool reads `data/runtime/current.pid` to get the current `launch.sh` PID
+- The tool reads `data/runtime/current.pid` to get the current `hone-cli start` PID
 - It waits 3 seconds in the background so the reply can be sent first, then kills the process
-- It immediately runs `nohup bash launch.sh &` in the project root, including rebuild
+- It immediately runs the source CLI build-and-start path in the project root
 - The new PID is written to `data/runtime/current.pid`
 
 ---
@@ -100,6 +100,6 @@ You can use the following to check the current Hone state:
 
 1. **Confirm before changing**: show a diff or summary before restarting
 2. **Restart is risky**: during restart, iMessage and Discord replies may be unavailable
-3. **Do not delete critical files**: never delete `config.yaml`, `launch.sh`, or the `data/` directory
+3. **Do not delete critical files**: never delete `config.yaml`, `Cargo.toml`, or the `data/` directory
 4. **You must use the tool**: restarts must go through `restart_hone`; do not kill the process directly
 5. **Admins only**: if the user is not in the admin list, refuse all admin actions politely

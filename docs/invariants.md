@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-05-09
+Last updated: 2026-05-10
 
 ## Source of Truth and Document Priority
 
@@ -107,6 +107,7 @@ Last updated: 2026-05-09
 - Session summaries must be stored in the explicit `summary` field instead of relying on a fake `system` summary message
 - SQLite-backed session persistence must preserve the original `session_id` and source JSON semantics; do not silently normalize historical `Actor_*`, `Session_*`, or `User_*` identities during mirror writes or cutover reads
 - Heartbeat tasks are first-class cron jobs: they must stay visible in the normal cron list, carry an explicit heartbeat marker, and poll on 30-minute slots without pretending to be a fixed daily time
+- Cron jobs created from a channel session must preserve that session's origin `channel` and `channel_target`; scheduled or proactive delivery should return to the same target instead of falling back to a platform-level default destination. Missing targets must be rejected at creation time or recorded as `target_missing` execution failures at runtime, never silently replaced with a platform-level home/default channel.
 - Skill runtime stays two-phase:
   - Turn-0 / discovery prompt text may expose only compact skill summaries
   - Full `SKILL.md` bodies must be injected only when `skill_tool(...)` or a user slash skill actually invokes that skill

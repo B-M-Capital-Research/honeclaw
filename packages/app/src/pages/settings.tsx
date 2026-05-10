@@ -68,6 +68,17 @@ function normalizePhoneNumber(value: string) {
   return hasLeadingPlus ? `+${digits}` : digits;
 }
 
+function formatCsv(values?: string[]) {
+  return (values ?? []).join(", ");
+}
+
+function parseCsv(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export default function SettingsPage() {
   const backend = useBackend();
   const [draft, setDraft] = createSignal<BackendConfig>(backend.state.config);
@@ -76,6 +87,7 @@ export default function SettingsPage() {
   const [channelMessage, setChannelMessage] = createSignal("");
   const [channelError, setChannelError] = createSignal("");
   const capabilities = createMemo(() => backend.state.meta?.capabilities ?? []);
+  const chatScopes = ["DM_ONLY", "GROUPCHAT_ONLY", "ALL"];
   const [
     desktopChannelSettings,
     {
@@ -83,9 +95,9 @@ export default function SettingsPage() {
       mutate: setDesktopChannelSettings,
     },
   ] = createResource(
-    () => backend.state.isDesktop,
-    async (isDesktop) => {
-      if (!isDesktop) return undefined;
+    () => backend.state.connected,
+    async (connected) => {
+      if (!connected) return undefined;
       return backend.loadChannelSettings();
     },
   );
@@ -2076,7 +2088,7 @@ export default function SettingsPage() {
         <form onSubmit={(event) => void submitChannels(event)}>
           <fieldset
             disabled={
-              !backend.state.isDesktop || desktopChannelSettings.loading
+              !backend.state.connected || desktopChannelSettings.loading
             }
             class="space-y-6 disabled:opacity-60"
           >
@@ -2191,8 +2203,84 @@ export default function SettingsPage() {
                         </button>
                       </div>
                     </div>
-                  </div>
-                </Show>
+                      <div class="grid gap-3 md:grid-cols-2">
+                        <div class="space-y-1">
+                          <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                            {SETTINGS.channel.common.chat_scope_label}
+                          </label>
+                          <select
+                            class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                            value={channelDraft().feishuChatScope || "DM_ONLY"}
+                            onChange={(e) =>
+                              setChannelDraft((p) => ({
+                                ...p,
+                                feishuChatScope: e.currentTarget.value,
+                              }))
+                            }
+                          >
+                            <For each={chatScopes}>
+                              {(scope) => <option value={scope}>{scope}</option>}
+                            </For>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="grid gap-3 md:grid-cols-2">
+                        <div class="space-y-1">
+                          <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                            {SETTINGS.channel.common.allow_emails_label}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder={SETTINGS.channel.common.csv_placeholder}
+                            class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                            value={formatCsv(channelDraft().feishuAllowEmails)}
+                            onChange={(e) =>
+                              setChannelDraft((p) => ({
+                                ...p,
+                                feishuAllowEmails: parseCsv(e.currentTarget.value),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div class="space-y-1">
+                          <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                            {SETTINGS.channel.common.allow_open_ids_label}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder={SETTINGS.channel.common.csv_placeholder}
+                            class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                            value={formatCsv(channelDraft().feishuAllowOpenIds)}
+                            onChange={(e) =>
+                              setChannelDraft((p) => ({
+                                ...p,
+                                feishuAllowOpenIds: parseCsv(e.currentTarget.value),
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div class="grid gap-3 md:grid-cols-2">
+                        <div class="space-y-1">
+                          <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                            {SETTINGS.channel.common.allow_mobiles_label}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder={SETTINGS.channel.common.csv_placeholder}
+                            class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                            value={formatCsv(channelDraft().feishuAllowMobiles)}
+                            onChange={(e) =>
+                              setChannelDraft((p) => ({
+                                ...p,
+                                feishuAllowMobiles: parseCsv(e.currentTarget.value),
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </Show>
               </div>
 
               {/* Discord */}
@@ -2255,8 +2343,48 @@ export default function SettingsPage() {
                           : SETTINGS.channel.discord.show}
                       </button>
                     </div>
-                  </div>
-                </Show>
+                      <div class="grid gap-3 md:grid-cols-2">
+                        <div class="space-y-1">
+                          <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                            {SETTINGS.channel.common.chat_scope_label}
+                          </label>
+                          <select
+                            class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                            value={channelDraft().discordChatScope || "DM_ONLY"}
+                            onChange={(e) =>
+                              setChannelDraft((p) => ({
+                                ...p,
+                                discordChatScope: e.currentTarget.value,
+                              }))
+                            }
+                          >
+                            <For each={chatScopes}>
+                              {(scope) => <option value={scope}>{scope}</option>}
+                            </For>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="grid gap-3 md:grid-cols-2">
+                        <div class="space-y-1">
+                          <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                            {SETTINGS.channel.common.allow_from_label}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder={SETTINGS.channel.common.csv_placeholder}
+                            class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                            value={formatCsv(channelDraft().discordAllowFrom)}
+                            onChange={(e) =>
+                              setChannelDraft((p) => ({
+                                ...p,
+                                discordAllowFrom: parseCsv(e.currentTarget.value),
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </Show>
               </div>
 
               {/* Telegram */}
@@ -2319,8 +2447,48 @@ export default function SettingsPage() {
                           : SETTINGS.channel.telegram.show}
                       </button>
                     </div>
-                  </div>
-                </Show>
+                      <div class="grid gap-3 md:grid-cols-2">
+                        <div class="space-y-1">
+                          <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                            {SETTINGS.channel.common.chat_scope_label}
+                          </label>
+                          <select
+                            class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                            value={channelDraft().telegramChatScope || "DM_ONLY"}
+                            onChange={(e) =>
+                              setChannelDraft((p) => ({
+                                ...p,
+                                telegramChatScope: e.currentTarget.value,
+                              }))
+                            }
+                          >
+                            <For each={chatScopes}>
+                              {(scope) => <option value={scope}>{scope}</option>}
+                            </For>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="grid gap-3 md:grid-cols-2">
+                        <div class="space-y-1">
+                          <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                            {SETTINGS.channel.common.allow_from_label}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder={SETTINGS.channel.common.csv_placeholder}
+                            class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                            value={formatCsv(channelDraft().telegramAllowFrom)}
+                            onChange={(e) =>
+                              setChannelDraft((p) => ({
+                                ...p,
+                                telegramAllowFrom: parseCsv(e.currentTarget.value),
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </Show>
               </div>
 
               {/* iMessage */}
@@ -2360,6 +2528,27 @@ export default function SettingsPage() {
                     <div class="peer h-5 w-9 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full dark:bg-gray-700"></div>
                   </label>
                 </div>
+                <Show when={channelDraft().imessageEnabled}>
+                  <div class="mt-4 space-y-3">
+                    <div class="space-y-1">
+                      <label class="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-secondary)]">
+                        {SETTINGS.channel.common.target_handle_label}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="+15551234567"
+                        class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
+                        value={channelDraft().imessageTargetHandle || ""}
+                        onInput={(e) =>
+                          setChannelDraft((p) => ({
+                            ...p,
+                            imessageTargetHandle: e.currentTarget.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </Show>
               </div>
             </div>
 

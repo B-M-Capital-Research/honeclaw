@@ -59,34 +59,70 @@ impl Default for BackendConfig {
 pub(crate) struct DesktopChannelSettings {
     config_path: String,
     imessage_enabled: bool,
+    #[serde(default)]
+    imessage_target_handle: String,
     feishu_enabled: bool,
     #[serde(default)]
     feishu_app_id: String,
     #[serde(default)]
     feishu_app_secret: String,
+    #[serde(default)]
+    feishu_chat_scope: String,
+    #[serde(default)]
+    feishu_allow_emails: Vec<String>,
+    #[serde(default)]
+    feishu_allow_mobiles: Vec<String>,
+    #[serde(default)]
+    feishu_allow_open_ids: Vec<String>,
     telegram_enabled: bool,
     #[serde(default)]
     telegram_bot_token: String,
+    #[serde(default)]
+    telegram_chat_scope: String,
+    #[serde(default)]
+    telegram_allow_from: Vec<String>,
     discord_enabled: bool,
     #[serde(default)]
     discord_bot_token: String,
+    #[serde(default)]
+    discord_chat_scope: String,
+    #[serde(default)]
+    discord_allow_from: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DesktopChannelSettingsInput {
     imessage_enabled: bool,
+    #[serde(default)]
+    imessage_target_handle: String,
     feishu_enabled: bool,
     #[serde(default)]
     feishu_app_id: String,
     #[serde(default)]
     feishu_app_secret: String,
+    #[serde(default)]
+    feishu_chat_scope: String,
+    #[serde(default)]
+    feishu_allow_emails: Vec<String>,
+    #[serde(default)]
+    feishu_allow_mobiles: Vec<String>,
+    #[serde(default)]
+    feishu_allow_open_ids: Vec<String>,
     telegram_enabled: bool,
     #[serde(default)]
     telegram_bot_token: String,
+    #[serde(default)]
+    telegram_chat_scope: String,
+    #[serde(default)]
+    telegram_allow_from: Vec<String>,
     discord_enabled: bool,
     #[serde(default)]
     discord_bot_token: String,
+    #[serde(default)]
+    discord_chat_scope: String,
+    #[serde(default)]
+    discord_allow_from: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1649,13 +1685,17 @@ fmp:
         .expect("desktop channel payload should deserialize");
 
         assert!(input.imessage_enabled);
+        assert_eq!(input.imessage_target_handle, "");
         assert!(input.feishu_enabled);
         assert_eq!(input.feishu_app_id, "cli_test");
         assert_eq!(input.feishu_app_secret, "secret-value");
+        assert_eq!(input.feishu_chat_scope, "");
         assert!(input.telegram_enabled);
         assert_eq!(input.telegram_bot_token, "tg-token");
+        assert_eq!(input.telegram_allow_from, Vec::<String>::new());
         assert!(input.discord_enabled);
         assert_eq!(input.discord_bot_token, "discord-token");
+        assert_eq!(input.discord_allow_from, Vec::<String>::new());
     }
 
     #[test]
@@ -1663,21 +1703,34 @@ fmp:
         let settings = DesktopChannelSettings {
             config_path: "/tmp/config.yaml".to_string(),
             imessage_enabled: false,
+            imessage_target_handle: "+15551234567".to_string(),
             feishu_enabled: true,
             feishu_app_id: "cli_test".to_string(),
             feishu_app_secret: "secret-value".to_string(),
+            feishu_chat_scope: "ALL".to_string(),
+            feishu_allow_emails: vec!["admin@example.com".to_string()],
+            feishu_allow_mobiles: vec![],
+            feishu_allow_open_ids: vec!["ou_abc".to_string()],
             telegram_enabled: true,
             telegram_bot_token: "tg-token".to_string(),
+            telegram_chat_scope: "DM_ONLY".to_string(),
+            telegram_allow_from: vec!["123".to_string()],
             discord_enabled: true,
             discord_bot_token: "discord-token".to_string(),
+            discord_chat_scope: "GROUPCHAT_ONLY".to_string(),
+            discord_allow_from: vec!["456".to_string()],
         };
 
         let json =
             serde_json::to_value(&settings).expect("desktop channel settings should serialize");
         assert_eq!(json["feishuAppId"], "cli_test");
         assert_eq!(json["feishuAppSecret"], "secret-value");
+        assert_eq!(json["imessageTargetHandle"], "+15551234567");
+        assert_eq!(json["feishuAllowOpenIds"][0], "ou_abc");
         assert_eq!(json["telegramBotToken"], "tg-token");
+        assert_eq!(json["telegramAllowFrom"][0], "123");
         assert_eq!(json["discordBotToken"], "discord-token");
+        assert_eq!(json["discordAllowFrom"][0], "456");
     }
 
     #[test]

@@ -30,6 +30,22 @@ pub struct CronJobUpdate {
     pub bypass_quiet_hours: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChannelTargetRecord {
+    pub channel: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_scope: Option<String>,
+    pub target: String,
+    #[serde(default)]
+    pub actor_user_ids: Vec<String>,
+    #[serde(default)]
+    pub sources: Vec<String>,
+    pub scheduled_jobs: usize,
+    pub enabled_jobs: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen_at: Option<String>,
+}
+
 /// Cron 任务数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CronJobData {

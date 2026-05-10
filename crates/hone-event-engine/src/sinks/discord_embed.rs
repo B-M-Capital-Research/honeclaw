@@ -1,5 +1,5 @@
 //! Discord embed 渲染:把 `DigestPayload` 投影成 Discord webhook/bot 接受的
-//! `embeds` JSON 数组,外加消息级 flags(SUPPRESS_EMBEDS=4) 抑制自动 URL unfurl。
+//! `embeds` JSON 数组。
 //!
 //! 设计选择:
 //! - **单条 message + 单个 embed**:digest 语义上就是"一次推送",不拆分。
@@ -8,8 +8,8 @@
 //!   (黄) / Low=0x5865F2(Blurple),让用户扫一眼就知道这批有没有要紧条目。
 //! - **embed.fields**:每个非空 KindBucket 一个 inline=false field,name 是 emoji
 //!   header + bucket 内 dedup 后的条目数,value 是逐条 markdown 文本。
-//! - **链接处理**:每条尾部追加 ` [host](url)`(短锚文本),`flags=4` 抑制消息文字
-//!   里 URL 的 unfurl 大卡片;embed 内手填 link 不受影响。
+//! - **链接处理**:每条尾部追加 ` [host](url)`(短锚文本)。digest 只发显式 embed,
+//!   不携带 `SUPPRESS_EMBEDS`,避免 embed-only 消息在 Discord 客户端显示为空。
 //! - **长度边界**:Discord 单 field value ≤1024,embed 总和 ≤6000——greedy 装箱,
 //!   超出在 field 末尾追加 `…还有 N 条`,全局溢出落到 footer。
 //!
@@ -25,17 +25,13 @@ use crate::renderer::link_label;
 const FIELD_VALUE_MAX: usize = 1024;
 /// Discord 单 embed 字符总和上限(title+description+fields+footer)。
 const EMBED_TOTAL_MAX: usize = 6000;
-/// SUPPRESS_EMBEDS bit:抑制消息中 URL 的自动 unfurl 卡片,不影响 embeds 数组。
-const FLAG_SUPPRESS_EMBEDS: u64 = 4;
-
-/// 构造完整的 Discord message body —— `{ flags, embeds: [...] }`,直接 POST。
+/// 构造完整的 Discord message body —— `{ embeds: [...] }`,直接 POST。
 pub fn build_discord_embed_message(
     payload: &DigestPayload,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Value {
     let embed = build_discord_embed(payload, now);
     json!({
-        "flags": FLAG_SUPPRESS_EMBEDS,
         "embeds": [embed],
     })
 }
@@ -221,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn embed_carries_suppress_embeds_flag() {
+    fn embed_payload_does_not_suppress_its_own_embed() {
         let p = payload_with(
             vec![item(
                 EventKind::NewsCritical,
@@ -234,7 +230,11 @@ mod tests {
             0,
         );
         let msg = build_discord_embed_message(&p, Utc::now());
-        assert_eq!(msg["flags"].as_u64().unwrap(), 4);
+        assert!(
+            msg.get("flags").is_none(),
+            "embed-only digest must not set SUPPRESS_EMBEDS"
+        );
+        assert_eq!(msg["embeds"].as_array().unwrap().len(), 1);
     }
 
     #[test]

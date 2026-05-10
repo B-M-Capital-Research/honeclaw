@@ -101,11 +101,7 @@ fn leak(key: &str) -> &'static str {
 /// `lang.*` for the language step itself, `apply.*` for the apply summary.
 const STRINGS: &[(&str, &str, &str)] = &[
     // ── Banner / chrome ──────────────────────────────────────────────────
-    (
-        "banner.title",
-        "Hone onboarding",
-        "Hone onboarding",
-    ),
+    ("banner.title", "Hone onboarding", "Hone onboarding"),
     (
         "banner.subtitle",
         "约 3–5 分钟,全程键盘即可。Ctrl+C 可安全退出:mutation 只在最后一步才写盘。",
@@ -117,7 +113,11 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "Every step can be skipped; you can rerun `hone-cli onboard` or use other CLI subcommands later.",
     ),
     // ── Step 1 — Language ────────────────────────────────────────────────
-    ("step.language", "Language / 界面语言", "Language / 界面语言"),
+    (
+        "step.language",
+        "Language / 界面语言",
+        "Language / 界面语言",
+    ),
     (
         "lang.prompt",
         "请选择控制台与 CLI 默认语言 / Choose console + CLI default language",
@@ -458,21 +458,13 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "{label} chat scope",
         "{label} chat scope",
     ),
-    (
-        "channel.imessage.label",
-        "iMessage",
-        "iMessage",
-    ),
+    ("channel.imessage.label", "iMessage", "iMessage"),
     (
         "channel.imessage.status_note",
         "仅 macOS 可用。",
         "macOS only.",
     ),
-    (
-        "channel.imessage.note_1",
-        "需要 macOS。",
-        "Requires macOS.",
-    ),
+    ("channel.imessage.note_1", "需要 macOS。", "Requires macOS."),
     (
         "channel.imessage.note_2",
         "需要给运行 hone-cli 的终端应用授予“完全磁盘访问权限”。",
@@ -488,11 +480,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "iMessage target handle（可选；留空表示监听所有会话）",
         "iMessage target handle (optional; leave blank to watch all conversations)",
     ),
-    (
-        "channel.feishu.label",
-        "Feishu",
-        "Feishu",
-    ),
+    ("channel.feishu.label", "Feishu", "Feishu"),
     (
         "channel.feishu.note_1",
         "需要飞书开放平台应用的 `app_id` 与 `app_secret`。",
@@ -519,10 +507,21 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "Feishu app secret",
     ),
     (
-        "channel.telegram.label",
-        "Telegram",
-        "Telegram",
+        "channel.feishu.allow_emails_prompt",
+        "Feishu allow_emails（逗号分隔；留空表示允许全部邮箱）",
+        "Feishu allow_emails (comma-separated; empty means allow all emails)",
     ),
+    (
+        "channel.feishu.allow_mobiles_prompt",
+        "Feishu allow_mobiles（逗号分隔；留空表示允许全部手机号）",
+        "Feishu allow_mobiles (comma-separated; empty means allow all mobile numbers)",
+    ),
+    (
+        "channel.feishu.allow_open_ids_prompt",
+        "Feishu allow_open_ids（逗号分隔；留空表示允许全部 open_id）",
+        "Feishu allow_open_ids (comma-separated; empty means allow all open_ids)",
+    ),
+    ("channel.telegram.label", "Telegram", "Telegram"),
     (
         "channel.telegram.status_note",
         "当前仍偏实验/placeholder 模式，不建议当成熟生产渠道使用。",
@@ -549,10 +548,11 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "Telegram bot token",
     ),
     (
-        "channel.discord.label",
-        "Discord",
-        "Discord",
+        "channel.telegram.allow_from_prompt",
+        "Telegram allow_from（逗号分隔；留空表示允许全部用户）",
+        "Telegram allow_from (comma-separated; empty means allow all users)",
     ),
+    ("channel.discord.label", "Discord", "Discord"),
     (
         "channel.discord.note_1",
         "需要 Discord bot token。",
@@ -572,6 +572,11 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "channel.discord.bot_token_prompt",
         "Discord bot token",
         "Discord bot token",
+    ),
+    (
+        "channel.discord.allow_from_prompt",
+        "Discord allow_from（逗号分隔；留空表示允许全部用户）",
+        "Discord allow_from (comma-separated; empty means allow all users)",
     ),
     // ── Admin step ───────────────────────────────────────────────────────
     (
@@ -624,11 +629,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "open_id(ou_xxx)",
         "open_id (ou_xxx)",
     ),
-    (
-        "admin.feishu.choice_skip",
-        "跳过",
-        "Skip",
-    ),
+    ("admin.feishu.choice_skip", "跳过", "Skip"),
     (
         "admin.feishu.kind_prompt",
         "Feishu admin 用哪种 id 添加?",
@@ -690,11 +691,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "请至少输入一个有效 key，或选择跳过。",
         "Provide at least one valid key, or choose to skip.",
     ),
-    (
-        "provider.openrouter.label",
-        "OpenRouter",
-        "OpenRouter",
-    ),
+    ("provider.openrouter.label", "OpenRouter", "OpenRouter"),
     (
         "provider.openrouter.prompt",
         "OpenRouter API keys（逗号分隔）",
@@ -715,11 +712,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "支持一次填写多个 key,运行时会自动 fallback。",
         "Multiple keys are supported; runtime will fall back automatically.",
     ),
-    (
-        "provider.fmp.label",
-        "FMP",
-        "FMP",
-    ),
+    ("provider.fmp.label", "FMP", "FMP"),
     (
         "provider.fmp.prompt",
         "FMP API keys（逗号分隔）",
@@ -735,11 +728,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "支持一次填写多个 key，运行时会自动 fallback。",
         "Multiple keys are supported; runtime will fall back automatically.",
     ),
-    (
-        "provider.tavily.label",
-        "Tavily",
-        "Tavily",
-    ),
+    ("provider.tavily.label", "Tavily", "Tavily"),
     (
         "provider.tavily.prompt",
         "Tavily API keys（逗号分隔）",
@@ -812,11 +801,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "This step is informational only — no config is written. Next step: Apply.",
     ),
     // ── Recovery prompts ─────────────────────────────────────────────────
-    (
-        "recovery.option_retry",
-        "重试当前字段",
-        "Retry this field",
-    ),
+    ("recovery.option_retry", "重试当前字段", "Retry this field"),
     (
         "recovery.option_disable_channel",
         "返回并禁用 {label} 渠道",

@@ -18,11 +18,28 @@ use serde_yaml::Value;
 
 use hone_core::config::{ConfigMutation, is_sensitive_config_path};
 
+use crate::CliChatScope;
 use crate::common::load_cli_config;
 use crate::discord_token::prompt_optional_discord_token;
 use crate::mutations::{parse_csv_values, provider_key_mutation};
 use crate::prompts::{prompt_bool, prompt_secret, prompt_text, prompt_visible_credential};
 use crate::yaml_io::{apply_message, apply_mutations_and_generate};
+
+fn csv_default(values: &[String]) -> String {
+    values.join(",")
+}
+
+fn sequence_mutation(path: &str, csv: &str) -> ConfigMutation {
+    ConfigMutation::Set {
+        path: path.to_string(),
+        value: Value::Sequence(
+            parse_csv_values(csv)
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    }
+}
 
 #[derive(Args, Debug)]
 pub(crate) struct ConfigureArgs {
@@ -235,7 +252,15 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                     path: "imessage.enabled".to_string(),
                     value: Value::Bool(imessage_enabled),
                 });
-
+                let imessage_target = prompt_text(
+                    &theme,
+                    "iMessage tracked handle",
+                    &config.imessage.target_handle,
+                )?;
+                mutations.push(ConfigMutation::Set {
+                    path: "imessage.target_handle".to_string(),
+                    value: Value::String(imessage_target),
+                });
                 let feishu_enabled =
                     prompt_bool(&theme, "Enable Feishu channel?", config.feishu.enabled)?;
                 mutations.push(ConfigMutation::Set {
@@ -253,7 +278,44 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                         value: Value::String(secret),
                     });
                 }
-
+                let feishu_scope = prompt_text(
+                    &theme,
+                    "Feishu chat scope (DM_ONLY/GROUPCHAT_ONLY/ALL)",
+                    &CliChatScope::from_chat_scope(config.feishu.chat_scope)
+                        .label()
+                        .to_string(),
+                )?;
+                mutations.push(ConfigMutation::Set {
+                    path: "feishu.chat_scope".to_string(),
+                    value: Value::String(feishu_scope),
+                });
+                let feishu_allow_emails = prompt_text(
+                    &theme,
+                    "Feishu allow emails (comma-separated; empty means allow all)",
+                    &csv_default(&config.feishu.allow_emails),
+                )?;
+                mutations.push(sequence_mutation(
+                    "feishu.allow_emails",
+                    &feishu_allow_emails,
+                ));
+                let feishu_allow_mobiles = prompt_text(
+                    &theme,
+                    "Feishu allow mobiles (comma-separated; empty means allow all)",
+                    &csv_default(&config.feishu.allow_mobiles),
+                )?;
+                mutations.push(sequence_mutation(
+                    "feishu.allow_mobiles",
+                    &feishu_allow_mobiles,
+                ));
+                let feishu_allow_open_ids = prompt_text(
+                    &theme,
+                    "Feishu allow open_ids (comma-separated; empty means allow all)",
+                    &csv_default(&config.feishu.allow_open_ids),
+                )?;
+                mutations.push(sequence_mutation(
+                    "feishu.allow_open_ids",
+                    &feishu_allow_open_ids,
+                ));
                 let telegram_enabled =
                     prompt_bool(&theme, "Enable Telegram channel?", config.telegram.enabled)?;
                 mutations.push(ConfigMutation::Set {
@@ -272,7 +334,26 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                         value: Value::String(token),
                     });
                 }
-
+                let telegram_scope = prompt_text(
+                    &theme,
+                    "Telegram chat scope (DM_ONLY/GROUPCHAT_ONLY/ALL)",
+                    &CliChatScope::from_chat_scope(config.telegram.chat_scope)
+                        .label()
+                        .to_string(),
+                )?;
+                mutations.push(ConfigMutation::Set {
+                    path: "telegram.chat_scope".to_string(),
+                    value: Value::String(telegram_scope),
+                });
+                let telegram_allow_from = prompt_text(
+                    &theme,
+                    "Telegram allow_from (comma-separated; empty means allow all)",
+                    &csv_default(&config.telegram.allow_from),
+                )?;
+                mutations.push(sequence_mutation(
+                    "telegram.allow_from",
+                    &telegram_allow_from,
+                ));
                 let discord_enabled =
                     prompt_bool(&theme, "Enable Discord channel?", config.discord.enabled)?;
                 mutations.push(ConfigMutation::Set {
@@ -291,6 +372,23 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                         value: Value::String(token),
                     });
                 }
+                let discord_scope = prompt_text(
+                    &theme,
+                    "Discord chat scope (DM_ONLY/GROUPCHAT_ONLY/ALL)",
+                    &CliChatScope::from_chat_scope(config.discord.chat_scope)
+                        .label()
+                        .to_string(),
+                )?;
+                mutations.push(ConfigMutation::Set {
+                    path: "discord.chat_scope".to_string(),
+                    value: Value::String(discord_scope),
+                });
+                let discord_allow_from = prompt_text(
+                    &theme,
+                    "Discord allow_from (comma-separated; empty means allow all)",
+                    &csv_default(&config.discord.allow_from),
+                )?;
+                mutations.push(sequence_mutation("discord.allow_from", &discord_allow_from));
             }
             ConfigureSection::Providers => {
                 // Provider keys 走 `*.api_keys` 数组格式;一次性粘贴逗号分隔的多个 key,

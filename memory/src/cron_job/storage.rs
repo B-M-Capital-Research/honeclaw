@@ -1,6 +1,6 @@
 //! CronJobStorage JSON 存储层：按 actor 的定时任务 CRUD + 触发判定。
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, Timelike};
@@ -15,9 +15,25 @@ use super::schedule::{
     validate_schedule, validate_schedule_date,
 };
 use super::types::{
-    CronJob, CronJobData, CronJobUpdate, CronSchedule, MAX_ENABLED_JOBS_PER_ACTOR,
-    cron_enabled_limit_error,
+    ChannelTargetRecord, CronJob, CronJobData, CronJobUpdate, CronSchedule,
+    MAX_ENABLED_JOBS_PER_ACTOR, cron_enabled_limit_error,
 };
+
+fn push_unique(values: &mut Vec<String>, value: &str) {
+    let trimmed = value.trim();
+    if !trimmed.is_empty() && !values.iter().any(|existing| existing == trimmed) {
+        values.push(trimmed.to_string());
+    }
+}
+
+fn newer_optional_string(left: Option<String>, right: Option<String>) -> Option<String> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
+}
 
 impl CronJobStorage {
     pub(super) fn get_actor_file(&self, actor: &ActorIdentity) -> PathBuf {
@@ -115,6 +131,85 @@ impl CronJobStorage {
             .find(|(_, job)| job.id == job_id)
     }
 
+    pub fn list_channel_targets(&self) -> Vec<ChannelTargetRecord> {
+        let mut records: BTreeMap<(String, Option<String>, String), ChannelTargetRecord> =
+            BTreeMap::new();
+
+        for (actor, job) in self.list_all_jobs() {
+            let target = job.channel_target.trim();
+            if target.is_empty() {
+                continue;
+            }
+            let channel = if job.channel.trim().is_empty() {
+                actor.channel.clone()
+            } else {
+                job.channel.trim().to_string()
+            };
+            let channel_scope = job
+                .channel_scope
+                .clone()
+                .or_else(|| actor.channel_scope.clone())
+                .filter(|scope| !scope.trim().is_empty());
+            let key = (channel.clone(), channel_scope.clone(), target.to_string());
+            let record = records.entry(key).or_insert_with(|| ChannelTargetRecord {
+                channel,
+                channel_scope,
+                target: target.to_string(),
+                actor_user_ids: Vec::new(),
+                sources: Vec::new(),
+                scheduled_jobs: 0,
+                enabled_jobs: 0,
+                last_seen_at: None,
+            });
+            push_unique(&mut record.actor_user_ids, &actor.user_id);
+            push_unique(&mut record.sources, "cron_job");
+            record.scheduled_jobs += 1;
+            if job.enabled {
+                record.enabled_jobs += 1;
+            }
+            record.last_seen_at =
+                newer_optional_string(record.last_seen_at.clone(), job.created_at);
+        }
+
+        let executions = self
+            .list_recent_executions(&super::ExecutionFilter {
+                limit: 1000,
+                ..super::ExecutionFilter::default()
+            })
+            .unwrap_or_default();
+        for execution in executions {
+            let target = execution.channel_target.trim();
+            if target.is_empty() {
+                continue;
+            }
+            let channel = execution.channel.trim().to_string();
+            if channel.is_empty() {
+                continue;
+            }
+            let channel_scope = execution
+                .channel_scope
+                .clone()
+                .filter(|scope| !scope.trim().is_empty());
+            let key = (channel.clone(), channel_scope.clone(), target.to_string());
+            let record = records.entry(key).or_insert_with(|| ChannelTargetRecord {
+                channel,
+                channel_scope,
+                target: target.to_string(),
+                actor_user_ids: Vec::new(),
+                sources: Vec::new(),
+                scheduled_jobs: 0,
+                enabled_jobs: 0,
+                last_seen_at: None,
+            });
+            push_unique(&mut record.actor_user_ids, &execution.user_id);
+            push_unique(&mut record.sources, "cron_execution");
+            record.last_seen_at =
+                newer_optional_string(record.last_seen_at.clone(), Some(execution.executed_at));
+        }
+
+        records.into_values().collect()
+    }
+
     /// 添加定时任务
     pub fn add_job(
         &self,
@@ -133,6 +228,13 @@ impl CronJobStorage {
         bypass_limits: bool,
     ) -> serde_json::Value {
         let mut data = self.load_jobs(actor);
+        let channel_target = channel_target.trim();
+        if channel_target.is_empty() {
+            return serde_json::json!({
+                "success": false,
+                "error": "channel_target 不能为空；定时任务必须保存创建它的来源渠道目标"
+            });
+        }
 
         let enabled_count = data.jobs.iter().filter(|j| j.enabled).count();
         if enabled && !bypass_limits && enabled_count >= MAX_ENABLED_JOBS_PER_ACTOR {
@@ -178,11 +280,7 @@ impl CronJobStorage {
             enabled,
             channel: actor.channel.clone(),
             channel_scope: actor.channel_scope.clone(),
-            channel_target: if channel_target.is_empty() {
-                actor.user_id.clone()
-            } else {
-                channel_target.to_string()
-            },
+            channel_target: channel_target.to_string(),
             tags,
             created_at: Some(now),
             last_run_at: None,

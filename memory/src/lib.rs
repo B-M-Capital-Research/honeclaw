@@ -25,7 +25,7 @@ pub use company_profile::{
     ProfileEventMetadata, ProfileMetadata, ProfileSpaceSummary, ProfileSummary, RawProfileDocument,
     RawProfileEventDocument, RawProfileSummary, TrackingConfig,
 };
-pub use cron_job::CronJobStorage;
+pub use cron_job::{ChannelTargetRecord, CronJobStorage};
 pub use llm_audit::{AuditQueryFilter, AuditRecordSummary, LlmAuditStorage};
 pub use portfolio::PortfolioStorage;
 pub use quota::{

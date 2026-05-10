@@ -118,29 +118,27 @@ hone-cli start
 ```shell
 git clone https://github.com/B-M-Capital-Research/honeclaw.git
 cd honeclaw
-./launch.sh --desktop
+cargo run -p hone-cli -- start --build
 ```
 
 ### What the first startup does
 
-Running `./launch.sh --desktop` walks through **environment prep → builds → process bring-up** in order. The **first** full run usually takes about **10 minutes** (depends on network and CPU).
+Source checkouts use the local CLI build path. Release and Homebrew installs use the packaged `hone-cli start` command. The first source build can take about **10 minutes** depending on network and CPU.
 
-1. **Runtimes & dependencies**: Ensures tools like `bun` and `rustup` are available and installs/syncs project dependencies.
-2. **Build**
-   - **Rust backend**: `hone-desktop` (shell), `hone-web-api` (core API), and per-channel **sidecars**.
-   - **Frontend**: SolidJS + Vite desktop UI, loaded by the shell.
-3. **Bring-up**: Starts the local web stack and data layer under a supervisor and **opens** the desktop window.
+1. **Build**: Compiles `hone-cli`, `hone-console-page`, `hone-mcp`, and enabled channel runtime binaries into the local Cargo target dir.
+2. **Config**: Loads `config.yaml` and generates `data/runtime/effective-config.yaml`.
+3. **Bring-up**: Starts the backend and enabled channel listeners in the foreground.
 
-### After the window opens: choose the Agent’s inference backend
+### Choose the Agent’s inference backend
 
-You now decide whether the Agent uses a **local CLI** or an **OpenAI-compatible cloud API**.
+Run the guided setup before starting, or reopen it later:
 
-1. Click **⚙️ Settings** in the lower-left of the main window.
-2. In the **Agent / inference** section, pick one path:
-   - **Local engine (zero config)**: If `gemini cli` or `codex` is installed and running, Hone can discover it—select it from the dropdown; usually no extra fields.
-   - **Cloud API (recommended)**: Otherwise, configure any **OpenAI-compatible** HTTP API (base URL, API key, etc., per provider).
-     - **Suggested pairing**: `OpenRouter` + `Gemini 3.1 Pro` or `Gemini 3.1 Flash`.
-     - **Note**: In our testing, this pairing balances reasoning depth, latency, and context throughput well.
+```shell
+hone-cli onboard
+hone-cli configure --section agent --section channels --section providers
+```
+
+Pick either a local CLI runner such as Codex/OpenCode/Gemini, or an OpenAI-compatible provider such as OpenRouter.
 
 The next section’s screenshots show the full **model and channel** setup.
 

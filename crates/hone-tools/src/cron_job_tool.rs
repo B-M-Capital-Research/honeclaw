@@ -576,6 +576,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cron_job_tool_add_preserves_origin_channel_target() {
+        let data_dir = make_temp_dir("hone_cron_tool_origin_target");
+        let actor = ActorIdentity::new("telegram", "user_42", None::<String>).expect("actor");
+        let tool = CronJobTool::new(&data_dir, Some(actor), "-1001234567890", false);
+
+        let add_resp = tool
+            .execute(serde_json::json!({
+                "action":"add",
+                "name":"group heartbeat",
+                "repeat":"heartbeat",
+                "task_prompt":"check conditions"
+            }))
+            .await
+            .expect("add job");
+
+        assert_eq!(add_resp["success"], true);
+        assert_eq!(add_resp["job"]["channel"], "telegram");
+        assert_eq!(add_resp["job"]["channel_target"], "-1001234567890");
+    }
+
+    #[tokio::test]
     async fn update_by_name_no_match_returns_error() {
         let data_dir = make_temp_dir("hone_cron_tool_nomatch");
         let actor = ActorIdentity::new("imessage", "u1", None::<String>).expect("actor");

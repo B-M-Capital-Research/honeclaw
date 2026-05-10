@@ -19,9 +19,9 @@ pub mod types;
 
 pub use history::ExecutionFilter;
 pub use types::{
-    CronJob, CronJobData, CronJobExecutionInput, CronJobExecutionRecord, CronJobUpdate,
-    CronSchedule, MAX_ENABLED_JOBS_PER_ACTOR, PendingUpdate, cron_enabled_limit_error,
-    is_cron_enabled_limit_error,
+    ChannelTargetRecord, CronJob, CronJobData, CronJobExecutionInput, CronJobExecutionRecord,
+    CronJobUpdate, CronSchedule, MAX_ENABLED_JOBS_PER_ACTOR, PendingUpdate,
+    cron_enabled_limit_error, is_cron_enabled_limit_error,
 };
 
 /// 定时任务存储管理器
@@ -134,6 +134,101 @@ mod tests {
             false,
         );
         assert_eq!(bad_weekly["success"], false);
+    }
+
+    #[test]
+    fn add_job_rejects_empty_channel_target() {
+        let dir = make_temp_dir("hone_cron_storage_empty_target");
+        let storage = CronJobStorage::new(&dir);
+        let actor = actor("telegram", "user_1", None);
+
+        let result = storage.add_job(
+            &actor,
+            "missing target",
+            Some(9),
+            Some(0),
+            "daily",
+            "task",
+            "   ",
+            None,
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+
+        assert_eq!(result["success"], false);
+        assert!(
+            result["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("channel_target 不能为空")
+        );
+        assert!(storage.list_jobs(&actor).is_empty());
+    }
+
+    #[test]
+    fn channel_target_directory_aggregates_jobs_and_execution_history() {
+        let dir = make_temp_dir("hone_cron_storage_target_directory");
+        let sqlite_path = dir.join("sessions.sqlite3");
+        let storage = CronJobStorage::with_sqlite(&dir, &sqlite_path);
+        let actor = actor("telegram", "user_1", Some("g:1:c:2"));
+
+        let add = storage.add_job(
+            &actor,
+            "group heartbeat",
+            Some(9),
+            Some(0),
+            "heartbeat",
+            "task",
+            "-100123",
+            None,
+            None,
+            None,
+            true,
+            None,
+            false,
+        );
+        assert_eq!(add["success"], true);
+        let job_id = add["job"]["id"].as_str().unwrap_or_default();
+
+        storage
+            .record_execution_event(
+                &actor,
+                job_id,
+                "group heartbeat",
+                "-100123",
+                true,
+                CronJobExecutionInput {
+                    execution_status: "completed".to_string(),
+                    message_send_status: "sent".to_string(),
+                    should_deliver: true,
+                    delivered: true,
+                    response_preview: Some("ok".to_string()),
+                    error_message: None,
+                    detail: serde_json::json!({"delivery_key": "target-directory-test"}),
+                },
+            )
+            .expect("record execution");
+
+        let targets = storage.list_channel_targets();
+        let target = targets
+            .iter()
+            .find(|target| target.target == "-100123")
+            .expect("target should be discoverable");
+        assert_eq!(target.channel, "telegram");
+        assert_eq!(target.channel_scope.as_deref(), Some("g:1:c:2"));
+        assert_eq!(target.scheduled_jobs, 1);
+        assert_eq!(target.enabled_jobs, 1);
+        assert!(target.sources.iter().any(|source| source == "cron_job"));
+        assert!(
+            target
+                .sources
+                .iter()
+                .any(|source| source == "cron_execution")
+        );
+        assert!(target.actor_user_ids.iter().any(|user| user == "user_1"));
     }
 
     #[test]

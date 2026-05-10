@@ -17,7 +17,7 @@ import {
   supportsApiVersion,
 } from "@/lib/backend"
 import { hasLocaleOverride, setLocale } from "@/lib/i18n"
-import { putLanguage } from "@/lib/api"
+import { getChannelSettings, putChannelSettings, putLanguage } from "@/lib/api"
 import type {
   AgentSettings,
   AgentSettingsUpdateResult,
@@ -320,7 +320,7 @@ function createBackendState() {
     },
     async loadChannelSettings() {
       if (!state.isDesktop) {
-        throw new Error("desktop runtime unavailable")
+        return getChannelSettings()
       }
       return loadDesktopChannelSettings()
     },
@@ -346,11 +346,11 @@ function createBackendState() {
       return stored
     },
     async saveChannelSettings(settings: DesktopChannelSettingsInput): Promise<DesktopChannelSettingsUpdateResult> {
-      if (!state.isDesktop) {
-        throw new Error("desktop runtime unavailable")
-      }
       setState("saving", true)
       try {
+        if (!state.isDesktop) {
+          return await putChannelSettings(settings)
+        }
         const result = await saveDesktopChannelSettings(settings)
         if (result.backendStatus) {
           await applyDesktopStatusWithRemoteFallback(result.backendStatus)

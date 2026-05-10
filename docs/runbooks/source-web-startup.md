@@ -1,11 +1,11 @@
 # Runbook: Source Web Startup
 
-Last updated: 2026-05-05
+Last updated: 2026-05-10
 
-This runbook covers starting the full local source checkout Web stack with `./launch.sh --web`.
+This runbook covers starting the full local source checkout Web stack with the local CLI build path.
 Use it when you need the backend, enabled channel listeners, admin Vite frontend, and public Vite frontend running from the latest local code.
 
-## What `./launch.sh --web` Starts
+## What The Source Web Stack Starts
 
 - `hone-console-page` on the admin backend port, default `http://127.0.0.1:8077`.
 - `hone-console-page` on the public backend port, default `http://127.0.0.1:8088`.
@@ -30,10 +30,10 @@ If there are local changes, inspect them before pulling or restarting. Do not di
 
 An already-open desktop app can own the same backend ports. The common symptom is `hone-desktop` or `hone-console-page` listening on `8077` and `8088`.
 
-Try the managed stop first:
+If the runtime is in a foreground terminal, stop it with `Ctrl-C`. Otherwise inspect the supervisor pid:
 
 ```bash
-./launch.sh stop
+cat data/runtime/current.pid
 ```
 
 Then inspect ports:
@@ -49,18 +49,25 @@ If a packaged desktop app still owns `8077/8088`, close the app or terminate tha
 
 ## Start The Full Web Stack
 
-Use Homebrew Node before app-bundled Node on macOS:
+Start the backend and enabled channels from source:
 
 ```bash
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH ./launch.sh --web
+cargo run -p hone-cli -- start --build
+```
+
+In separate terminals, start the frontends:
+
+```bash
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
 ```
 
 Why this shape matters:
 
-- `launch.sh --web` builds the Rust runtime binaries before starting services.
-- The first cold build can take several minutes; later starts should reuse the shared cache under the launcher-selected `CARGO_TARGET_DIR`.
-- The launcher starts the backend first, waits for `/api/meta`, then starts channel listeners and both Vite frontends.
-- If a required frontend process exits during readiness checks, the launcher stops the backend and child processes. Fix the frontend problem, then rerun the whole launcher.
+- `hone-cli start --build` builds the Rust runtime binaries before starting services.
+- The first cold build can take several minutes; later starts reuse the Cargo target dir.
+- The CLI starts the backend first, waits for `/api/meta`, then starts enabled channel listeners.
+- Vite frontends stay as separate foreground processes, so frontend crashes do not silently tear down the runtime backend.
 
 ## macOS Rollup Native Addon Failure
 
@@ -90,7 +97,7 @@ Preferred fix:
 
 ```bash
 env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH ./launch.sh --web
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
 ```
 
 Notes:
@@ -121,10 +128,9 @@ Expected URLs:
 
 ## Stop
 
-Stop the launcher-managed process tree:
+Stop foreground processes with `Ctrl-C` in each terminal. If a background runtime remains, inspect and terminate the recorded supervisor pid after confirming it is the stale Hone process:
 
 ```bash
-./launch.sh stop
+cat data/runtime/current.pid
+ps -p "$(cat data/runtime/current.pid)" -o pid,command
 ```
-
-If the process was started in a foreground terminal, `Ctrl-C` should also trigger the launcher's cleanup trap.

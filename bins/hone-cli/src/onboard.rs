@@ -37,7 +37,7 @@ use crate::display::{
     banner, bullet, fail_line, hint_line, ok_line, step_header, subsection, warn_line,
 };
 use crate::i18n::{Lang, detect_initial_lang, t, tpl};
-use crate::mutations::{ChannelKind, build_provider_api_key_mutations};
+use crate::mutations::{ChannelKind, build_provider_api_key_mutations, parse_csv_values};
 use crate::prompts::{
     ProviderEmptyAction, RequiredFieldEmptyAction, RequiredFieldResolution,
     normalize_credential_value, prompt_bool, prompt_channel_recovery_action,
@@ -283,6 +283,19 @@ fn print_onboard_block(title: &str, lines: &[&str]) {
     for line in lines {
         bullet(line);
     }
+}
+
+fn csv_default(values: &[String]) -> String {
+    values.join(",")
+}
+
+fn csv_sequence_value(raw: &str) -> Value {
+    Value::Sequence(
+        parse_csv_values(raw)
+            .into_iter()
+            .map(Value::String)
+            .collect(),
+    )
 }
 
 // 让部署者明确感知到「新用户被静默订阅了什么」——目前没有可配置入口,
@@ -693,7 +706,11 @@ pub(crate) fn build_runner_onboard_mutations(
                 ],
             );
             // 不写入任何东西,只是给用户一个"我意识到你可能还没 /connect" 的心理反馈。
-            if !prompt_bool(theme, t(lang, "runner.opencode_acp.confirm_connected"), true)? {
+            if !prompt_bool(
+                theme,
+                t(lang, "runner.opencode_acp.confirm_connected"),
+                true,
+            )? {
                 println!("{}", t(lang, "runner.opencode_acp.warn_not_connected"));
             }
         }
@@ -785,7 +802,10 @@ pub(crate) fn build_channel_onboard_mutations(
                     else {
                         println!(
                             "{}",
-                            tpl(t(lang, "channel.disabled_via_recovery"), &[("label", &label)])
+                            tpl(
+                                t(lang, "channel.disabled_via_recovery"),
+                                &[("label", &label)]
+                            )
                         );
                         channel_mutations = vec![ConfigMutation::Set {
                             path: enabled_path.to_string(),
@@ -809,7 +829,10 @@ pub(crate) fn build_channel_onboard_mutations(
                     else {
                         println!(
                             "{}",
-                            tpl(t(lang, "channel.disabled_via_recovery"), &[("label", &label)])
+                            tpl(
+                                t(lang, "channel.disabled_via_recovery"),
+                                &[("label", &label)]
+                            )
                         );
                         channel_mutations = vec![ConfigMutation::Set {
                             path: enabled_path.to_string(),
@@ -833,7 +856,10 @@ pub(crate) fn build_channel_onboard_mutations(
                     else {
                         println!(
                             "{}",
-                            tpl(t(lang, "channel.disabled_via_recovery"), &[("label", &label)])
+                            tpl(
+                                t(lang, "channel.disabled_via_recovery"),
+                                &[("label", &label)]
+                            )
                         );
                         channel_mutations = vec![ConfigMutation::Set {
                             path: enabled_path.to_string(),
@@ -857,7 +883,10 @@ pub(crate) fn build_channel_onboard_mutations(
                     else {
                         println!(
                             "{}",
-                            tpl(t(lang, "channel.disabled_via_recovery"), &[("label", &label)])
+                            tpl(
+                                t(lang, "channel.disabled_via_recovery"),
+                                &[("label", &label)]
+                            )
                         );
                         channel_mutations = vec![ConfigMutation::Set {
                             path: enabled_path.to_string(),
@@ -911,6 +940,61 @@ pub(crate) fn build_channel_onboard_mutations(
                 path: scope_path.to_string(),
                 value: Value::String(scope.as_config_value().to_string()),
             });
+        }
+
+        match spec.kind {
+            ChannelKind::Feishu => {
+                let emails = prompt_text(
+                    theme,
+                    t(lang, "channel.feishu.allow_emails_prompt"),
+                    &csv_default(&config.feishu.allow_emails),
+                )?;
+                channel_mutations.push(ConfigMutation::Set {
+                    path: "feishu.allow_emails".to_string(),
+                    value: csv_sequence_value(&emails),
+                });
+                let mobiles = prompt_text(
+                    theme,
+                    t(lang, "channel.feishu.allow_mobiles_prompt"),
+                    &csv_default(&config.feishu.allow_mobiles),
+                )?;
+                channel_mutations.push(ConfigMutation::Set {
+                    path: "feishu.allow_mobiles".to_string(),
+                    value: csv_sequence_value(&mobiles),
+                });
+                let open_ids = prompt_text(
+                    theme,
+                    t(lang, "channel.feishu.allow_open_ids_prompt"),
+                    &csv_default(&config.feishu.allow_open_ids),
+                )?;
+                channel_mutations.push(ConfigMutation::Set {
+                    path: "feishu.allow_open_ids".to_string(),
+                    value: csv_sequence_value(&open_ids),
+                });
+            }
+            ChannelKind::Telegram => {
+                let allow_from = prompt_text(
+                    theme,
+                    t(lang, "channel.telegram.allow_from_prompt"),
+                    &csv_default(&config.telegram.allow_from),
+                )?;
+                channel_mutations.push(ConfigMutation::Set {
+                    path: "telegram.allow_from".to_string(),
+                    value: csv_sequence_value(&allow_from),
+                });
+            }
+            ChannelKind::Discord => {
+                let allow_from = prompt_text(
+                    theme,
+                    t(lang, "channel.discord.allow_from_prompt"),
+                    &csv_default(&config.discord.allow_from),
+                )?;
+                channel_mutations.push(ConfigMutation::Set {
+                    path: "discord.allow_from".to_string(),
+                    value: csv_sequence_value(&allow_from),
+                });
+            }
+            ChannelKind::Imessage => {}
         }
 
         if spec.kind == ChannelKind::Imessage {
@@ -1047,8 +1131,7 @@ pub(crate) fn build_admin_onboard_mutations(
                         }
                     }
                     2 => {
-                        let value =
-                            prompt_text(theme, t(lang, "admin.feishu.open_id_prompt"), "")?;
+                        let value = prompt_text(theme, t(lang, "admin.feishu.open_id_prompt"), "")?;
                         if !value.trim().is_empty() {
                             mutations.push(append_admin_mutation(
                                 "admins.feishu_open_ids",
@@ -1110,7 +1193,10 @@ pub(crate) fn build_provider_onboard_mutations(
                 spec.legacy_single_key_path,
                 keys,
             ));
-            ok_line(&tpl(t(lang, "provider.saved_message"), &[("label", &label)]));
+            ok_line(&tpl(
+                t(lang, "provider.saved_message"),
+                &[("label", &label)],
+            ));
         } else if current_configured {
             hint_line(&tpl(
                 t(lang, "provider.keep_existing_message"),
@@ -1219,7 +1305,9 @@ pub(crate) async fn run_onboard(
     }];
 
     let runner = prompt_onboard_runner(&theme, lang, &config)?;
-    mutations.extend(build_runner_onboard_mutations(&theme, lang, &config, runner)?);
+    mutations.extend(build_runner_onboard_mutations(
+        &theme, lang, &config, runner,
+    )?);
 
     // channel 里真正被 enable 的记一份,供 admin 环节按渠道收集对应 id。
     let mut enabled_channels: Vec<ChannelKind> = Vec::new();
@@ -1265,7 +1353,7 @@ pub(crate) async fn run_onboard(
 
     if prompt_bool(&theme, t(lang, "apply.start_now"), false)? {
         println!();
-        return start::run_start(config_path).await;
+        return start::run_start(config_path, start::StartArgs::default()).await;
     }
 
     banner(t(lang, "apply.complete"), t(lang, "apply.next_steps"));

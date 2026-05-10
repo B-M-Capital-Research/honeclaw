@@ -114,9 +114,10 @@ hone-cli start
 ```shell
 git clone https://github.com/B-M-Capital-Research/honeclaw.git
 cd honeclaw
-chmod +x launch.sh
-./launch.sh --desktop
+cargo run -p hone-cli -- start --build
 ```
+
+源码 checkout 走本地 CLI 构建启动路径；Homebrew / release 安装用户使用安装好的 `hone-cli start`。
 
 ---
 

@@ -6,10 +6,10 @@
 #
 # 流程：
 #   1. 等待 3 秒（让当前对话回复发出去）
-#   2. 向旧 launch.sh 发送 SIGTERM（触发其 cleanup 钩子）
+#   2. 向旧 hone-cli start supervisor 发送 SIGTERM
 #   3. 等待旧进程退出（最多 10 秒）
-#   4. 在项目根目录重新启动 launch.sh（后台持久运行）
-#   5. launch.sh 自身在就绪后会写入 data/runtime/current.pid
+#   4. 在项目根目录通过本地 CLI build-and-start 路径重启
+#   5. hone-cli start 在就绪后写入 data/runtime/current.pid
 
 set -uo pipefail
 
@@ -31,7 +31,7 @@ echo "[restart_hone] $(date '+%Y-%m-%d %H:%M:%S') 重启任务开始，OLD_PID=$
 # 等待 3 秒，让当前对话回复有时间发出
 sleep 3
 
-# 向旧 launch.sh 发送 SIGTERM，触发其 cleanup 钩子（优雅关闭子进程）
+# 向旧 hone-cli start supervisor 发送 SIGTERM，触发其 cleanup 钩子（优雅关闭子进程）
 if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
     echo "[restart_hone] $(date '+%Y-%m-%d %H:%M:%S') 发送 SIGTERM → PID ${OLD_PID}"
     kill -TERM "$OLD_PID" 2>/dev/null || true
@@ -57,18 +57,29 @@ fi
 # 再等 1 秒，让文件系统状态稳定
 sleep 1
 
-# 切换到项目根目录并启动新的 launch.sh
+# 切换到项目根目录并通过本地 CLI build-and-start 路径启动
 cd "$PROJECT_ROOT" || {
     echo "[restart_hone] 错误：无法 cd 到 ${PROJECT_ROOT}" >&2
     exit 1
 }
 
-echo "[restart_hone] $(date '+%Y-%m-%d %H:%M:%S') 启动新的 launch.sh..."
+echo "[restart_hone] $(date '+%Y-%m-%d %H:%M:%S') 启动新的 hone-cli start --build..."
 
-# 启动新 launch.sh，输出写入 launch.log
-# current.pid 将由 launch.sh 自身在进程就绪后写入
-nohup bash launch.sh >> "$LOG_DIR/launch.log" 2>&1 &
-NEW_LAUNCH_PID=$!
+# 启动新 hone-cli，输出写入 hone-cli-start.log
+# current.pid 将由 hone-cli start 在进程就绪后写入
+export HONE_SOURCE_ROOT="$PROJECT_ROOT"
+TARGET_ROOT="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}"
+case "$TARGET_ROOT" in
+    /*) ;;
+    *) TARGET_ROOT="$PROJECT_ROOT/$TARGET_ROOT" ;;
+esac
+CLI_BIN="$TARGET_ROOT/debug/hone-cli"
+if [[ -x "$CLI_BIN" ]]; then
+    nohup "$CLI_BIN" start --build >> "$LOG_DIR/hone-cli-start.log" 2>&1 &
+else
+    nohup cargo run -q -p hone-cli -- start --build >> "$LOG_DIR/hone-cli-start.log" 2>&1 &
+fi
+NEW_START_PID=$!
 
-echo "[restart_hone] $(date '+%Y-%m-%d %H:%M:%S') 新 launch.sh 已在后台启动 (PID=${NEW_LAUNCH_PID})"
+echo "[restart_hone] $(date '+%Y-%m-%d %H:%M:%S') 新 hone-cli start 已在后台启动 (starter PID=${NEW_START_PID})"
 echo "[restart_hone] 日志：${LOG_DIR}/restart.log"
