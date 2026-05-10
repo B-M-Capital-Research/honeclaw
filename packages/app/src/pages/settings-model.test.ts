@@ -2,19 +2,19 @@ import { describe, expect, it } from "bun:test"
 
 import {
   appendApiKey,
-  appendMaskedKey,
+  appendApiKeyVisibility,
   canSelectRunner,
   defaultAgentSettings,
   defaultLanguageDraft,
   resolveHoneCloudOpenAiBaseUrl,
-  hiddenApiKeys,
+  initialApiKeyVisibility,
   isAgentSettingsRuntimeMismatch,
   mergeAgentSettings,
   normalizeApiKeys,
   removeApiKey,
-  removeMaskedKey,
+  removeApiKeyVisibility,
   toChannelDraft,
-  toggleMaskedKey,
+  toggleApiKeyVisibility,
   updateApiKeyList,
 } from "./settings-model"
 import type { MetaInfo } from "@/lib/types"
@@ -96,7 +96,7 @@ describe("settings-model", () => {
 
   it("normalizes key lists and visibility lists", () => {
     expect(normalizeApiKeys([])).toEqual([""])
-    expect(hiddenApiKeys([])).toEqual([false])
+    expect(initialApiKeyVisibility([])).toEqual([false])
   })
 
   it("updates and mutates api key lists immutably", () => {
@@ -107,11 +107,11 @@ describe("settings-model", () => {
     expect(removeApiKey({ apiKeys: ["only"] }, 0).apiKeys).toEqual([""])
   })
 
-  it("updates masked key visibility consistently", () => {
-    expect(toggleMaskedKey([false, true], 1)).toEqual([false, false])
-    expect(appendMaskedKey([false])).toEqual([false, false])
-    expect(removeMaskedKey([false, true], 0)).toEqual([true])
-    expect(removeMaskedKey([false], 0)).toEqual([false])
+  it("updates api key visibility consistently", () => {
+    expect(toggleApiKeyVisibility([false, true], 1)).toEqual([false, false])
+    expect(appendApiKeyVisibility([false])).toEqual([false, false])
+    expect(removeApiKeyVisibility([false, true], 0)).toEqual([true])
+    expect(removeApiKeyVisibility([false], 0)).toEqual([false])
   })
 
   it("converts persisted channel settings into editable draft", () => {

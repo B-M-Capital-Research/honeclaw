@@ -224,7 +224,7 @@ export function normalizeApiKeys(keys?: string[]): string[] {
   return keys && keys.length > 0 ? keys : [""]
 }
 
-export function hiddenApiKeys(keys?: string[]): boolean[] {
+export function initialApiKeyVisibility(keys?: string[]): boolean[] {
   return normalizeApiKeys(keys).map(() => false)
 }
 
@@ -247,16 +247,16 @@ export function removeApiKey<T extends { apiKeys: string[] }>(prev: T, index: nu
   return { ...prev, apiKeys: keys.length > 0 ? keys : [""] }
 }
 
-export function toggleMaskedKey(prev: boolean[], index: number): boolean[] {
+export function toggleApiKeyVisibility(prev: boolean[], index: number): boolean[] {
   return prev.map((value, currentIndex) => (currentIndex === index ? !value : value))
 }
 
-export function removeMaskedKey(prev: boolean[], index: number): boolean[] {
+export function removeApiKeyVisibility(prev: boolean[], index: number): boolean[] {
   const next = prev.filter((_, currentIndex) => currentIndex !== index)
   return next.length > 0 ? next : [false]
 }
 
-export function appendMaskedKey(prev: boolean[]): boolean[] {
+export function appendApiKeyVisibility(prev: boolean[]): boolean[] {
   return [...prev, false]
 }
 

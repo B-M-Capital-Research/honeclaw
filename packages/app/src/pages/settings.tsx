@@ -39,22 +39,22 @@ import type {
 } from "@/lib/types";
 import {
   appendApiKey,
-  appendMaskedKey,
+  appendApiKeyVisibility,
   canSelectRunner,
   defaultAgentSettings,
   defaultChannelDraft,
   defaultFmpSettings,
   defaultLanguageDraft,
   defaultTavilySettings,
-  hiddenApiKeys,
+  initialApiKeyVisibility,
   isAgentSettingsRuntimeMismatch,
   mergeAgentSettings,
   normalizeApiKeys,
   removeApiKey,
-  removeMaskedKey,
+  removeApiKeyVisibility,
   resolveHoneCloudOpenAiBaseUrl,
   toChannelDraft,
-  toggleMaskedKey,
+  toggleApiKeyVisibility,
   updateApiKeyList,
   type LanguageDraft,
 } from "@/pages/settings-model";
@@ -237,7 +237,7 @@ export default function SettingsPage() {
     if (s) {
       const keys = normalizeApiKeys(s.apiKeys);
       setFmpDraft({ apiKeys: keys });
-      setShowFmpKeys(hiddenApiKeys(keys));
+      setShowFmpKeys(initialApiKeyVisibility(keys));
     }
   });
 
@@ -278,7 +278,7 @@ export default function SettingsPage() {
     if (s) {
       const keys = normalizeApiKeys(s.apiKeys);
       setTavilyDraft({ apiKeys: keys });
-      setShowTavilyKeys(hiddenApiKeys(keys));
+      setShowTavilyKeys(initialApiKeyVisibility(keys));
     }
   });
 
@@ -313,7 +313,7 @@ export default function SettingsPage() {
     showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
   ) {
     setter((prev) => appendApiKey(prev));
-    showSetter((prev) => appendMaskedKey(prev));
+    showSetter((prev) => appendApiKeyVisibility(prev));
   }
 
   /** 删除指定索引的 key */
@@ -323,7 +323,7 @@ export default function SettingsPage() {
     index: number,
   ) {
     setter((prev) => removeApiKey(prev, index));
-    showSetter((prev) => removeMaskedKey(prev, index));
+    showSetter((prev) => removeApiKeyVisibility(prev, index));
   }
 
   /** 切换指定索引的 key 显示/隐藏 */
@@ -331,7 +331,7 @@ export default function SettingsPage() {
     showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
     index: number,
   ) {
-    showSetter((prev) => toggleMaskedKey(prev, index));
+    showSetter((prev) => toggleApiKeyVisibility(prev, index));
   }
 
   // ── OpenAI 协议渠道测试 ──────────────────────────────────────────────────────
