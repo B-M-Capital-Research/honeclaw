@@ -7,6 +7,18 @@
 
 ## 修复进展
 
+- `2026-05-10 15:01 CST` 本轮巡检继续确认本单活跃，且坏态从 malformed-triggered 漏投扩展到 plain text 内部指令冲突文本与空输出在同一 heartbeat 链路内并存：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18013`，`job_name=RKLB异动监控`，`executed_at=2026-05-10T11:30:29.190247+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`；`detail_json.parse_kind=JsonMalformed`，`raw_chars=424`，`raw_preview` 已包含 `{"status":"triggered","message":"【RKLB 异动提醒 | 检查时间：2026-05-10 11:30 北京时间】...`，但 `管理层称"公司史上最强一季度"` 的内部引号继续破坏 JSON 字符串。
+    - `run_id=18104`，`job_name=全天原油价格3小时播报`，`executed_at=2026-05-10T15:01:23.436941+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`；`detail_json.parse_kind=PlainTextSuppressed`，`raw_chars=2095`，`raw_preview` 开头为模型对输出契约和禁止 think tag 的自述，说明 heartbeat 模型已产出非 JSON 内部指令冲突文本，当前被抑制未外发。
+    - `run_id=18070` 与 `run_id=18108`，`job_name=小米30港元破位预警`，分别在 `2026-05-10T13:30:12.559063+08:00` 与 `2026-05-10T15:00:17.611917+08:00` 落成 `execution_failed + skipped_error + delivered=0`，`parse_kind=Empty`，`raw_chars=0`。
+  - `data/runtime/logs/web.log.2026-05-10`
+    - `2026-05-10 11:30:29.188` 对 RKLB 记录 `parse_kind=JsonMalformed`，随后 `malformed heartbeat json suppressed`、`parse failure escalated` 与 Feishu scheduler `本轮不发送`。
+    - `2026-05-10 15:01:23.436` 对原油任务记录 `parse_kind=PlainTextSuppressed raw_chars=2095 starts_with_json=false`，随后 Feishu scheduler 记录 `heartbeat 输出不是结构化 JSON，任务已标记失败`。
+    - `2026-05-10 13:30:12.557` 与 `15:00:17.610` 对小米破位任务记录空输出失败。
+  - 同一 `2026-05-10 11:01-15:01 CST` 窗口内，`cron_job_runs` 另有 `93` 条合法 `noop + skipped_noop`、`8` 条 `completed + sent`，说明不是 Feishu 出站整体不可用；问题仍集中在 heartbeat 公共结构化输出契约与恢复边界。
+  - 结论：这是同一根因/同一影响范围的持续复发，不新建重复文档。`PlainTextSuppressed` 中的内部指令冲突文本没有外泄给用户，但会导致本轮提醒不送达；`JsonMalformed` 样本仍有可见 triggered 正文却漏投，因此继续按影响自动告警主功能链路的功能性 `P2 / New` 跟踪。
+
 - `2026-05-10 11:01 CST` 状态从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口再次证明，已生成 triggered 正文但 JSON 因 message 内部未转义引号而 malformed 的样本仍会被整轮漏投。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=18004`，`job_name=RKLB异动监控`，`executed_at=2026-05-10T11:00:37.311998+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`。

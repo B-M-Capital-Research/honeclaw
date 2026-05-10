@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-10 11:01 CST
+最后更新：2026-05-10 15:01 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,13 +21,13 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：102
 - 历史分析 / 部分止血：5
-- 当前活跃队列只剩 heartbeat malformed-triggered 漏投复发；破位预警直接输出无条件止损交易指令已改为出站风险提示 guard；原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题已改为重写高风险正文；每日 macOS release app setup 错误不再通过顶层 `.expect(...)` 触发 panic；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
+- 当前活跃队列只剩 heartbeat malformed / plain-text / empty 结构化输出漏投复发；15:01 原油 heartbeat 返回被抑制的内部指令冲突文本并落成 `PlainTextSuppressed + skipped_error`，11:30 RKLB malformed-triggered 仍漏投，13:30/15:00 小米破位预警继续空输出失败；破位预警直接输出无条件止损交易指令已改为出站风险提示 guard；原油 heartbeat guard 后仍保留未核验地缘 / 供需叙述的问题已改为重写高风险正文；每日 macOS release app setup 错误不再通过顶层 `.expect(...)` 触发 panic；open GitHub Issues 中仍有历史 fixed bug 待复测 / 关闭跟进
 
 ## 活跃待修复
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-10 11:01 状态从 `Fixed` 回退：`run_id=18004`（`RKLB异动监控`）已有 `status=triggered + message` 可见正文，但 `管理层称"公司史上最强 Q1"` 内部引号破坏 JSON，最终 `execution_failed + skipped_error + delivered=0`；同窗其它 heartbeat 可正常 noop/送达，说明 malformed-triggered 恢复边界仍漏投 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-10 15:01 继续活跃：`run_id=18013`（11:30 RKLB）已有 `status=triggered + message` 可见正文但内部引号破坏 JSON 后漏投；`run_id=18104`（15:01 原油）返回内部指令冲突 / 输出契约自述，被 `PlainTextSuppressed + skipped_error` 抑制未送达；`run_id=18070/18108`（13:30/15:00 小米）继续空输出失败；同窗仍有正常 noop/送达，说明故障集中在 heartbeat 结构化输出收口 | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 
 ## Later / 待复现
 
