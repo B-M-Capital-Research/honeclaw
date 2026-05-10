@@ -3,7 +3,22 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
+
+## 最新进展（2026-05-10 19:02 CST）
+
+- 本轮缺陷巡检确认原油定时播报质量问题在最近四小时真实窗口仍有用户可见复发，状态从 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18186`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-05-10T18:02:05.545515+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` 以 `2026-05-10 周六 18:00 北京时间` 开头，但 2026-05-10 是周日；正文还继续发送 `WTI 原油（近月合约）：约 $95.42/桶（5月8日 Bloomberg 数据）`、`布伦特原油（近月合约）：约 $100.49-$101.29/桶`、`近一个月布伦特累计上涨约4.76%` 等无法从当前台账证明同窗核验的价格 / 背景口径。
+  - 同条 `detail_json.scheduler` 未看到 `commodity_causality_guarded` 或重写后的安全说明，`deliver_preview` 与用户可见正文一致。
+- 结论：这是同一原油 heartbeat 事实/口径质量链路复发，不新建重复文档。该问题不只是表达风格：日期口径错误和未核验价格/背景会影响用户对自动播报的可信度与风险判断，因此继续按功能性质量缺陷 `P2 / New` 跟踪。
 
 ## 修复进展（2026-05-10 07:05 CST）
 

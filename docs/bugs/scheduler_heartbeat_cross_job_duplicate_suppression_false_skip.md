@@ -3,9 +3,18 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：Fixed
+- 状态：New
 
 ## 证据来源
+
+- `2026-05-10 19:02 CST` 本轮巡检确认同一 duplicate suppression 漏发链路继续活跃，状态从 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18196`，`job_name=ASTS 重大异动心跳监控`，`executed_at=2026-05-10T18:30:28.285273+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`matched_preview` 指向 `Cerebras IPO 价格区间上调`，`suppressed_preview` 为 ASTS 涨幅、Rakuten 减持完成与财报预期。
+    - `run_id=18207`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-05-10T19:00:42.244389+08:00`，同样被 `duplicate_suppressed=true` 压成 `noop`；`matched_preview` 指向 `持仓重大事件`，`suppressed_preview` 为 Cerebras IPO 定价区间和上市时间线更新。
+    - `run_id=18214`，`job_name=ASTS 重大异动心跳监控`，`executed_at=2026-05-10T19:00:46.581912+08:00`，`matched_preview` 指向 `持仓重大事件` 中的 RKLB/TEM 聚合摘要，`suppressed_preview` 为 ASTS 单独异动提醒。
+    - `run_id=18163` 与 `run_id=18212`，`job_name=TSLA 正负触发条件心跳监控`，分别在 `17:01` 和 `19:02` 把召回 / FSD 诉讼等不同负向触发压成 `noop + skipped_noop`；`matched_preview` 是 `15:00` 的 Tesla Semi 订单与 SEC/Musk 和解主题。
+  - 同一窗口内还有多条正常 `completed + sent` 和 `noop + skipped_noop`，说明不是 Feishu 出站失败，而是 heartbeat 去重层把已生成的新触发正文转成未发送。
+  - 结论：这仍是同一根因/同一影响范围，不新建重复文档。与 2026-05-09 的跨 ticker 复发相比，本轮还覆盖同 ticker 不同事件主题被旧 preview 误抑制的形态；用户会漏收本应送达的真实 heartbeat，维持功能性 `P2 / New`。
 
 - `2026-05-09 19:12 CST` 本轮重新修复并关闭复发：
   - `crates/hone-channels/src/scheduler.rs` 在既有实体锚点兼容检查前新增 ticker 级硬门槛：若本轮 message 与历史 preview 都能抽取到明确 ticker，且 ticker 集合没有交集，直接禁止进入宽松 token overlap 去重。

@@ -3,7 +3,22 @@
 - **发现时间**: 2026-05-10 07:04 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
+
+## 最新进展（2026-05-10 19:02 CST）
+
+- 本轮缺陷巡检确认该缺陷在最近四小时真实 heartbeat 窗口复发，状态从 `Fixed` 回退为 `New`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18117`
+    - `job_name=CAI破位预警`
+    - `executed_at=2026-05-10T15:30:30.441923+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` 继续向用户送达 `建议动作：无条件止损`。
+  - 同条 `detail_json.scheduler.deliver_preview` 与 `raw_preview` 都保留了相同直接交易指令，说明这是模型结构化触发后进入最终出站的用户可见内容，不是中间草稿。
+- 结论：这是同一根因/同一链路复发，不新建重复文档。主发送链路成功，但自动化金融预警仍越过“只报告事实和条件化风险边界”的要求，影响投研输出安全性，因此继续按功能性 `P2 / New` 跟踪。
 
 ## 修复进展（2026-05-10 07:05 CST）
 
