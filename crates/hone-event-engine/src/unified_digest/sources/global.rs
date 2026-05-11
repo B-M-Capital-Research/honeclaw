@@ -81,10 +81,10 @@ mod tests {
     }
 
     fn open_store() -> EventStore {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("test.sqlite3");
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("test.sqlite3");
         let store = EventStore::open(&path).unwrap();
-        std::mem::forget(dir);
+        std::mem::forget(temp_dir);
         store
     }
 
@@ -95,15 +95,21 @@ mod tests {
         store
             .insert_event(&news("n1", "trusted", now - chrono::Duration::hours(2)))
             .unwrap();
-        let src = GlobalNewsSource::new(&store);
-        let out = src.collect(now, 24, 24).unwrap();
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].origin, ItemOrigin::Global);
-        assert_eq!(out[0].source_class, Some(NewsSourceClass::Trusted));
-        assert_eq!(out[0].site.as_deref(), Some("reuters.com"));
-        assert!(out[0].fmp_text.as_deref().unwrap_or("").contains("body n1"));
+        let global_source = GlobalNewsSource::new(&store);
+        let candidates = global_source.collect(now, 24, 24).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].origin, ItemOrigin::Global);
+        assert_eq!(candidates[0].source_class, Some(NewsSourceClass::Trusted));
+        assert_eq!(candidates[0].site.as_deref(), Some("reuters.com"));
+        assert!(
+            candidates[0]
+                .fmp_text
+                .as_deref()
+                .unwrap_or("")
+                .contains("body n1")
+        );
         // seen_at = occurred_at(global 源不取 now)
-        assert_eq!(out[0].seen_at, now - chrono::Duration::hours(2));
+        assert_eq!(candidates[0].seen_at, now - chrono::Duration::hours(2));
     }
 
     #[test]
@@ -113,8 +119,8 @@ mod tests {
         store
             .insert_event(&news("n1", "pr_wire", now - chrono::Duration::hours(2)))
             .unwrap();
-        let src = GlobalNewsSource::new(&store);
-        let out = src.collect(now, 24, 24).unwrap();
-        assert!(out.is_empty());
+        let global_source = GlobalNewsSource::new(&store);
+        let candidates = global_source.collect(now, 24, 24).unwrap();
+        assert!(candidates.is_empty());
     }
 }

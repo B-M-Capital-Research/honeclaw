@@ -34,10 +34,10 @@ async fn live_engine_e2e() {
     // earnings poller 在 v0.1.46 起改为 cron-aligned,冷启动会立即跑一次然后
     // 等到下一个 prefetch 窗口。8 秒 sleep 只会命中冷启动那一次 poll,足够做 e2e 校验。
 
-    let tmp = tempfile::tempdir().unwrap();
-    let store_path = tmp.path().join("events.db");
-    let jsonl_path = tmp.path().join("events.jsonl");
-    let portfolio_dir = tmp.path().join("portfolio");
+    let temp_dir = tempfile::tempdir().unwrap();
+    let store_path = temp_dir.path().join("events.db");
+    let jsonl_path = temp_dir.path().join("events.jsonl");
+    let portfolio_dir = temp_dir.path().join("portfolio");
     let engine = EventEngine::new(engine_cfg, fmp_cfg)
         .with_store_path(store_path.clone())
         .with_events_jsonl_path(Some(jsonl_path.clone()))
@@ -48,15 +48,15 @@ async fn live_engine_e2e() {
     tokio::time::sleep(std::time::Duration::from_secs(8)).await;
 
     let store = EventStore::open(&store_path).unwrap();
-    let n = store.count_events().unwrap();
+    let stored_event_count = store.count_events().unwrap();
     let jsonl_lines = std::fs::read_to_string(&jsonl_path)
         .map(|s| s.lines().filter(|l| !l.is_empty()).count() as i64)
         .unwrap_or(-1);
-    println!("e2e count_events = {n} jsonl_lines = {jsonl_lines}");
-    assert!(n > 0, "SQLite 应写入事件");
+    println!("e2e count_events = {stored_event_count} jsonl_lines = {jsonl_lines}");
+    assert!(stored_event_count > 0, "SQLite 应写入事件");
     assert!(jsonl_lines > 0, "JSONL 镜像应同步写入事件");
     assert_eq!(
-        jsonl_lines, n,
+        jsonl_lines, stored_event_count,
         "JSONL 行数应与 SQLite events 行数一致（单次冷启，无去重丢失）"
     );
 }
@@ -931,12 +931,12 @@ async fn daily_report_roundtrip() {
     use crate::store::EventStore;
     use chrono::TimeZone;
 
-    let tmp = tempfile::tempdir().unwrap();
-    let store = Arc::new(EventStore::open(tmp.path().join("events.db")).unwrap());
-    let report_dir = tmp.path().join("reports");
+    let temp_dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(EventStore::open(temp_dir.path().join("events.db")).unwrap());
+    let report_dir = temp_dir.path().join("reports");
 
     let now_utc = chrono::Utc::now();
-    let fake = vec![
+    let seeded_events = vec![
         ("fmp.stock_news", EventKind::NewsCritical, 5),
         ("fmp.earning_calendar", EventKind::EarningsUpcoming, 2),
         (
@@ -947,11 +947,11 @@ async fn daily_report_roundtrip() {
         ("fmp.stock_split_calendar", EventKind::Split, 1),
         ("fmp.upgrades_downgrades", EventKind::AnalystGrade, 1),
     ];
-    let mut idx = 0;
-    for (src, kind, n) in fake {
-        for _ in 0..n {
+    let mut event_idx = 0;
+    for (src, kind, event_count) in seeded_events {
+        for _ in 0..event_count {
             let ev = MarketEvent {
-                id: format!("fake-{idx}"),
+                id: format!("fake-{event_idx}"),
                 kind: kind.clone(),
                 severity: Severity::Medium,
                 symbols: vec!["AAPL".into()],
@@ -963,23 +963,44 @@ async fn daily_report_roundtrip() {
                 payload: serde_json::Value::Null,
             };
             store.insert_event(&ev).unwrap();
-            idx += 1;
+            event_idx += 1;
         }
     }
-    let ak_main = "telegram::::8039067465";
+    let primary_actor_key = "telegram::::8039067465";
     for _ in 0..3 {
         store
-            .log_delivery("f-s", ak_main, "sink", Severity::High, "sent", None)
+            .log_delivery(
+                "f-s",
+                primary_actor_key,
+                "sink",
+                Severity::High,
+                "sent",
+                None,
+            )
             .unwrap();
     }
     for _ in 0..8 {
         store
-            .log_delivery("f-q", ak_main, "digest", Severity::Medium, "queued", None)
+            .log_delivery(
+                "f-q",
+                primary_actor_key,
+                "digest",
+                Severity::Medium,
+                "queued",
+                None,
+            )
             .unwrap();
     }
     for _ in 0..2 {
         store
-            .log_delivery("f-f", ak_main, "prefs", Severity::Low, "filtered", None)
+            .log_delivery(
+                "f-f",
+                primary_actor_key,
+                "prefs",
+                Severity::Low,
+                "filtered",
+                None,
+            )
             .unwrap();
     }
     store
@@ -1009,17 +1030,17 @@ async fn daily_report_roundtrip() {
         .with_tz_offset_hours(tz_offset)
         .with_trigger_time("22:00");
     let mut fired = std::collections::HashSet::new();
-    let n = report.tick_once(trigger_utc, &mut fired).await.unwrap();
-    assert_eq!(n, 1);
+    let generated_report_count = report.tick_once(trigger_utc, &mut fired).await.unwrap();
+    assert_eq!(generated_report_count, 1);
 
     let date_str = local_today.format("%Y-%m-%d").to_string();
-    let file = report_dir.join(format!("{date_str}.md"));
-    let body = std::fs::read_to_string(&file).expect("日报文件未生成");
+    let report_path = report_dir.join(format!("{date_str}.md"));
+    let body = std::fs::read_to_string(&report_path).expect("日报文件未生成");
     println!("\n=== daily_report {date_str}.md ===\n{body}");
     assert!(body.contains("# Hone 日报 · "));
     assert!(body.contains("合计 **10** 条"));
     // 两个 actor 行都在
-    assert!(body.contains(&format!("| `{ak_main}` |")));
+    assert!(body.contains(&format!("| `{primary_actor_key}` |")));
     assert!(body.contains("| `feishu::::ghost` |"));
 }
 
@@ -1039,13 +1060,13 @@ async fn live_social_engine_e2e() {
     use hone_memory::PortfolioStorage;
     use hone_memory::portfolio::{Holding, Portfolio};
 
-    let tmp = tempfile::tempdir().unwrap();
-    let store_path = tmp.path().join("events.db");
-    let jsonl_path = tmp.path().join("events.jsonl");
-    let portfolio_dir = tmp.path().join("portfolio");
-    let digest_dir = tmp.path().join("digest");
-    let prefs_dir = tmp.path().join("prefs");
-    let daily_report_dir = tmp.path().join("daily_reports");
+    let temp_dir = tempfile::tempdir().unwrap();
+    let store_path = temp_dir.path().join("events.db");
+    let jsonl_path = temp_dir.path().join("events.jsonl");
+    let portfolio_dir = temp_dir.path().join("portfolio");
+    let digest_dir = temp_dir.path().join("digest");
+    let prefs_dir = temp_dir.path().join("prefs");
+    let daily_report_dir = temp_dir.path().join("daily_reports");
     std::fs::create_dir_all(&portfolio_dir).unwrap();
 
     // seed 一个 direct-actor 持仓,让 social_global GlobalSub 有 fanout 目标
@@ -1109,7 +1130,7 @@ async fn live_social_engine_e2e() {
     tokio::time::sleep(std::time::Duration::from_secs(20)).await;
 
     let store = EventStore::open(&store_path).unwrap();
-    let n = store.count_events().unwrap();
+    let stored_event_count = store.count_events().unwrap();
     let jsonl = std::fs::read_to_string(&jsonl_path).unwrap_or_default();
     let tg_lines: Vec<&str> = jsonl
         .lines()
@@ -1117,13 +1138,13 @@ async fn live_social_engine_e2e() {
         .collect();
 
     println!("=== live_social_engine_e2e ===");
-    println!("count_events = {n}");
+    println!("count_events = {stored_event_count}");
     println!("telegram.watcherguru 事件数 = {}", tg_lines.len());
     if let Some(first) = tg_lines.first() {
         println!("第一条:{first}");
     }
 
-    assert!(n > 0, "events SQLite 应有至少 1 条事件");
+    assert!(stored_event_count > 0, "events SQLite 应有至少 1 条事件");
     assert!(
         !tg_lines.is_empty(),
         "应至少有 1 条 source=telegram.watcherguru 事件(若 Telegram 改版或网络问题请另查)"

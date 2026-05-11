@@ -133,13 +133,13 @@ pub fn purge_old_task_runs(runtime_dir: &Path, retention_days: i64) {
     };
     for entry in read.flatten() {
         let name = entry.file_name();
-        let s = match name.to_str() {
-            Some(s) => s,
+        let file_name = match name.to_str() {
+            Some(file_name) => file_name,
             None => continue,
         };
-        let date_str = match s
+        let date_str = match file_name
             .strip_prefix("task_runs.")
-            .and_then(|s| s.strip_suffix(".jsonl"))
+            .and_then(|name| name.strip_suffix(".jsonl"))
         {
             Some(d) => d,
             None => continue,
@@ -271,13 +271,13 @@ mod tests {
 
     #[test]
     fn append_creates_file_and_writes_one_line_per_record() {
-        let tmp = tempdir().unwrap();
-        let dir = tmp.path();
-        record_ok(dir, "poller.test", Utc::now(), 5);
-        record_skipped(dir, "mainline_cron", Utc::now());
-        record_failed(dir, "internal.cleanup", Utc::now(), "disk full");
+        let temp_dir = tempdir().unwrap();
+        let runtime_dir = temp_dir.path();
+        record_ok(runtime_dir, "poller.test", Utc::now(), 5);
+        record_skipped(runtime_dir, "mainline_cron", Utc::now());
+        record_failed(runtime_dir, "internal.cleanup", Utc::now(), "disk full");
 
-        let path = task_runs_path(dir, Utc::now().date_naive());
+        let path = task_runs_path(runtime_dir, Utc::now().date_naive());
         let content = std::fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
         assert_eq!(lines.len(), 3, "应写入 3 行");
@@ -296,16 +296,16 @@ mod tests {
 
     #[test]
     fn read_recent_returns_records_in_reverse_chrono() {
-        let tmp = tempdir().unwrap();
-        let dir = tmp.path();
-        let t0 = Utc::now() - chrono::Duration::seconds(3);
-        let t1 = Utc::now() - chrono::Duration::seconds(2);
-        let t2 = Utc::now() - chrono::Duration::seconds(1);
-        record_ok(dir, "a", t0, 1);
-        record_ok(dir, "b", t1, 1);
-        record_ok(dir, "c", t2, 1);
+        let temp_dir = tempdir().unwrap();
+        let runtime_dir = temp_dir.path();
+        let oldest_started_at = Utc::now() - chrono::Duration::seconds(3);
+        let middle_started_at = Utc::now() - chrono::Duration::seconds(2);
+        let newest_started_at = Utc::now() - chrono::Duration::seconds(1);
+        record_ok(runtime_dir, "a", oldest_started_at, 1);
+        record_ok(runtime_dir, "b", middle_started_at, 1);
+        record_ok(runtime_dir, "c", newest_started_at, 1);
 
-        let recent = read_recent_task_runs(dir, 1, 10);
+        let recent = read_recent_task_runs(runtime_dir, 1, 10);
         assert_eq!(recent.len(), 3);
         // 倒序:最近写入的在最前
         assert_eq!(recent[0].task, "c");
@@ -315,39 +315,39 @@ mod tests {
 
     #[test]
     fn read_recent_respects_limit() {
-        let tmp = tempdir().unwrap();
-        let dir = tmp.path();
+        let temp_dir = tempdir().unwrap();
+        let runtime_dir = temp_dir.path();
         for i in 0..5 {
-            record_ok(dir, &format!("task_{i}"), Utc::now(), i);
+            record_ok(runtime_dir, &format!("task_{i}"), Utc::now(), i);
         }
-        let recent = read_recent_task_runs(dir, 0, 3);
+        let recent = read_recent_task_runs(runtime_dir, 0, 3);
         assert_eq!(recent.len(), 3);
     }
 
     #[test]
     fn purge_removes_files_older_than_cutoff() {
-        let tmp = tempdir().unwrap();
-        let dir = tmp.path();
+        let temp_dir = tempdir().unwrap();
+        let runtime_dir = temp_dir.path();
         // 模拟 30 天前一个文件
         let old_date = Utc::now().date_naive() - chrono::Duration::days(30);
-        let old_path = task_runs_path(dir, old_date);
+        let old_path = task_runs_path(runtime_dir, old_date);
         std::fs::write(&old_path, "{}\n").unwrap();
         // 今天一个文件
-        record_ok(dir, "today", Utc::now(), 1);
+        record_ok(runtime_dir, "today", Utc::now(), 1);
 
-        purge_old_task_runs(dir, 14);
+        purge_old_task_runs(runtime_dir, 14);
 
         assert!(!old_path.exists(), "30 天前的文件应被清理");
-        let today_path = task_runs_path(dir, Utc::now().date_naive());
+        let today_path = task_runs_path(runtime_dir, Utc::now().date_naive());
         assert!(today_path.exists(), "今天的文件应保留");
     }
 
     #[test]
     fn long_error_is_truncated() {
-        let tmp = tempdir().unwrap();
+        let temp_dir = tempdir().unwrap();
         let long = "x".repeat(2000);
-        record_failed(tmp.path(), "task", Utc::now(), &long);
-        let recent = read_recent_task_runs(tmp.path(), 0, 1);
+        record_failed(temp_dir.path(), "task", Utc::now(), &long);
+        let recent = read_recent_task_runs(temp_dir.path(), 0, 1);
         let err = recent[0].error.as_deref().unwrap();
         assert!(err.len() < 1000, "超长错误应截断");
         assert!(err.ends_with("…(truncated)"));

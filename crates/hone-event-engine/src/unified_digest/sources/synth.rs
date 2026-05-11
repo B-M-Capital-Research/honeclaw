@@ -43,10 +43,10 @@ impl<'a> SynthSource<'a> {
             .unwrap_or(FixedOffset::east_opt(0).unwrap());
         let local_today = offset.from_utc_datetime(&now.naive_utc()).date_naive();
         let synth_pool = synthesize_countdowns(&teasers, local_today);
-        let reg = self.registry.load();
+        let registry = self.registry.load();
         let mut out = Vec::new();
         for ev in synth_pool {
-            if reg
+            if registry
                 .resolve(&ev)
                 .into_iter()
                 .any(|(a, _sev)| &a == actor && a.is_direct())
@@ -86,20 +86,20 @@ mod tests {
     }
 
     fn open_store() -> EventStore {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("test.sqlite3");
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("test.sqlite3");
         let store = EventStore::open(&path).unwrap();
-        std::mem::forget(dir);
+        std::mem::forget(temp_dir);
         store
     }
 
-    fn registry_with_holding(symbol: &str, a: &ActorIdentity) -> SharedRegistry {
-        let mut reg = SubscriptionRegistry::new();
-        reg.register(Box::new(PortfolioSubscription::new(
-            a.clone(),
+    fn registry_with_holding(symbol: &str, actor: &ActorIdentity) -> SharedRegistry {
+        let mut registry = SubscriptionRegistry::new();
+        registry.register(Box::new(PortfolioSubscription::new(
+            actor.clone(),
             [symbol.to_string()],
         )));
-        SharedRegistry::from_registry(reg)
+        SharedRegistry::from_registry(registry)
     }
 
     #[test]
@@ -119,14 +119,14 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 5, 4, 20, 0, 0).unwrap(),
             ))
             .unwrap();
-        let a = actor();
-        let reg = registry_with_holding("GOOGL", &a);
-        let src = SynthSource::new(&store, &reg, 0); // UTC
+        let test_actor = actor();
+        let registry = registry_with_holding("GOOGL", &test_actor);
+        let synth_source = SynthSource::new(&store, &registry, 0); // UTC
 
-        let out = src.synthesize_for_actor(&a, now).unwrap();
-        assert_eq!(out.len(), 1);
-        assert!(out[0].event.id.starts_with("synth:earnings:GOOGL:"));
-        assert_eq!(out[0].origin, ItemOrigin::Synth);
+        let candidates = synth_source.synthesize_for_actor(&test_actor, now).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert!(candidates[0].event.id.starts_with("synth:earnings:GOOGL:"));
+        assert_eq!(candidates[0].origin, ItemOrigin::Synth);
     }
 
     #[test]
@@ -139,22 +139,22 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 4, 29, 20, 0, 0).unwrap(),
             ))
             .unwrap();
-        let a = actor();
-        // 只持有 NVDA;GOOGL 倒计时不应推 a
-        let reg = registry_with_holding("NVDA", &a);
-        let src = SynthSource::new(&store, &reg, 0);
-        let out = src.synthesize_for_actor(&a, now).unwrap();
-        assert!(out.is_empty());
+        let test_actor = actor();
+        // 只持有 NVDA;GOOGL 倒计时不应推 test_actor
+        let registry = registry_with_holding("NVDA", &test_actor);
+        let synth_source = SynthSource::new(&store, &registry, 0);
+        let candidates = synth_source.synthesize_for_actor(&test_actor, now).unwrap();
+        assert!(candidates.is_empty());
     }
 
     #[test]
     fn empty_store_returns_empty() {
         let store = open_store();
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
-        let a = actor();
-        let reg = registry_with_holding("GOOGL", &a);
-        let src = SynthSource::new(&store, &reg, 0);
-        let out = src.synthesize_for_actor(&a, now).unwrap();
-        assert!(out.is_empty());
+        let test_actor = actor();
+        let registry = registry_with_holding("GOOGL", &test_actor);
+        let synth_source = SynthSource::new(&store, &registry, 0);
+        let candidates = synth_source.synthesize_for_actor(&test_actor, now).unwrap();
+        assert!(candidates.is_empty());
     }
 }

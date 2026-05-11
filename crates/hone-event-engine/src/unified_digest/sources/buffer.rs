@@ -64,62 +64,70 @@ mod tests {
 
     #[test]
     fn drain_returns_empty_when_no_buffer_file() {
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
-        let src = BufferSource::new(&buf);
-        let out = src.drain(&actor()).unwrap();
-        assert!(out.is_empty());
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
+        let buffer_source = BufferSource::new(&digest_buffer);
+        let candidates = buffer_source.drain(&actor()).unwrap();
+        assert!(candidates.is_empty());
     }
 
     #[test]
     fn drain_wraps_each_event_with_buffered_origin() {
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
-        let a = actor();
-        buf.enqueue(&a, &news("e1")).unwrap();
-        buf.enqueue(&a, &news("e2")).unwrap();
-        let src = BufferSource::new(&buf);
-        let out = src.drain(&a).unwrap();
-        assert_eq!(out.len(), 2);
-        assert!(out.iter().all(|c| c.origin == ItemOrigin::Buffered));
-        assert!(out.iter().all(|c| c.fmp_text.is_none() && c.site.is_none()));
-        let ids: Vec<_> = out.iter().map(|c| c.event.id.as_str()).collect();
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
+        let test_actor = actor();
+        digest_buffer.enqueue(&test_actor, &news("e1")).unwrap();
+        digest_buffer.enqueue(&test_actor, &news("e2")).unwrap();
+        let buffer_source = BufferSource::new(&digest_buffer);
+        let candidates = buffer_source.drain(&test_actor).unwrap();
+        assert_eq!(candidates.len(), 2);
+        assert!(candidates.iter().all(|c| c.origin == ItemOrigin::Buffered));
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.fmp_text.is_none() && c.site.is_none())
+        );
+        let ids: Vec<_> = candidates.iter().map(|c| c.event.id.as_str()).collect();
         assert!(ids.contains(&"e1") && ids.contains(&"e2"));
     }
 
     #[test]
     fn drain_consumes_buffer_and_second_drain_is_empty() {
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
-        let a = actor();
-        buf.enqueue(&a, &news("e1")).unwrap();
-        let src = BufferSource::new(&buf);
-        assert_eq!(src.drain(&a).unwrap().len(), 1);
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
+        let test_actor = actor();
+        digest_buffer.enqueue(&test_actor, &news("e1")).unwrap();
+        let buffer_source = BufferSource::new(&digest_buffer);
+        assert_eq!(buffer_source.drain(&test_actor).unwrap().len(), 1);
         // drain 是破坏性的:第二次应空。
-        assert!(src.drain(&a).unwrap().is_empty());
+        assert!(buffer_source.drain(&test_actor).unwrap().is_empty());
     }
 
     #[test]
     fn price_alert_latest_dedup_carries_through() {
         // 同 symbol 同日两条 PriceAlert,buffer 只留最新一条;BufferSource 不增加额外去重。
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
-        let a = actor();
-        let mut e1 = news("p1");
-        e1.kind = EventKind::PriceAlert {
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
+        let test_actor = actor();
+        let mut stale_price_alert = news("p1");
+        stale_price_alert.kind = EventKind::PriceAlert {
             pct_change_bps: 500,
             window: "1d".into(),
         };
-        let mut e2 = news("p2");
-        e2.kind = EventKind::PriceAlert {
+        let mut latest_price_alert = news("p2");
+        latest_price_alert.kind = EventKind::PriceAlert {
             pct_change_bps: 800,
             window: "close".into(),
         };
-        buf.enqueue(&a, &e1).unwrap();
-        buf.enqueue(&a, &e2).unwrap();
-        let src = BufferSource::new(&buf);
-        let out = src.drain(&a).unwrap();
-        assert_eq!(out.len(), 1, "buffer 应保留最后一条 PriceAlert");
-        assert_eq!(out[0].event.id, "p2");
+        digest_buffer
+            .enqueue(&test_actor, &stale_price_alert)
+            .unwrap();
+        digest_buffer
+            .enqueue(&test_actor, &latest_price_alert)
+            .unwrap();
+        let buffer_source = BufferSource::new(&digest_buffer);
+        let candidates = buffer_source.drain(&test_actor).unwrap();
+        assert_eq!(candidates.len(), 1, "buffer 应保留最后一条 PriceAlert");
+        assert_eq!(candidates[0].event.id, "p2");
     }
 }

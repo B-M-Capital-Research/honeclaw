@@ -223,9 +223,9 @@ impl UnifiedDigestScheduler {
                 };
                 let synth_pool =
                     crate::pollers::earnings::synthesize_countdowns(&teasers, local_today);
-                let reg = self.registry.load();
+                let registry_snapshot = self.registry.load();
                 for ev in &synth_pool {
-                    for (actor, _sev) in reg.resolve(ev) {
+                    for (actor, _sev) in registry_snapshot.resolve(ev) {
                         if actor.is_direct() {
                             synth_by_actor.entry(actor).or_default().push(ev.clone());
                         }
@@ -1137,8 +1137,8 @@ mod tests {
 
     #[test]
     fn actor_focus_symbols_include_portfolio_and_theses() {
-        let dir = tempdir().unwrap();
-        let storage = PortfolioStorage::new(dir.path());
+        let temp_dir = tempdir().unwrap();
+        let storage = PortfolioStorage::new(temp_dir.path());
         let actor = actor();
         storage.upsert_watch(&actor, "AAPL", "stock").unwrap();
         let mut prefs = NotificationPrefs::default();

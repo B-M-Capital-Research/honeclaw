@@ -307,24 +307,24 @@ mod tests {
 
     #[test]
     fn metrics_record_and_recover() {
-        let m = HeartbeatMetrics::default();
-        assert!(!m.is_degraded());
+        let metrics = HeartbeatMetrics::default();
+        assert!(!metrics.is_degraded());
         let when = Utc::now();
-        assert_eq!(m.record_failure("disk full", when), 1);
-        assert_eq!(m.record_failure("disk full", when), 2);
-        assert!(m.is_degraded());
-        assert_eq!(m.consecutive_failures(), 2);
-        assert_eq!(m.last_error().as_deref(), Some("disk full"));
-        m.record_success();
-        assert!(!m.is_degraded());
-        assert_eq!(m.consecutive_failures(), 0);
-        assert!(m.last_error().is_none());
+        assert_eq!(metrics.record_failure("disk full", when), 1);
+        assert_eq!(metrics.record_failure("disk full", when), 2);
+        assert!(metrics.is_degraded());
+        assert_eq!(metrics.consecutive_failures(), 2);
+        assert_eq!(metrics.last_error().as_deref(), Some("disk full"));
+        metrics.record_success();
+        assert!(!metrics.is_degraded());
+        assert_eq!(metrics.consecutive_failures(), 0);
+        assert!(metrics.last_error().is_none());
     }
 
     #[test]
     fn read_heartbeat_error_roundtrip() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = runtime_heartbeat_error_path(dir.path(), "telegram");
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = runtime_heartbeat_error_path(temp_dir.path(), "telegram");
         let record = HeartbeatErrorRecord {
             channel: "telegram".into(),
             pid: 4242,
@@ -342,8 +342,8 @@ mod tests {
 
     #[test]
     fn read_heartbeat_error_missing_returns_none() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = runtime_heartbeat_error_path(dir.path(), "telegram");
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = runtime_heartbeat_error_path(temp_dir.path(), "telegram");
         assert!(read_heartbeat_error(&path).is_none());
     }
 }

@@ -163,31 +163,33 @@ mod tests {
     }
 
     fn open_store() -> EventStore {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("test.sqlite3");
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("test.sqlite3");
         let store = EventStore::open(&path).unwrap();
-        std::mem::forget(dir);
+        std::mem::forget(temp_dir);
         store
     }
 
-    fn registry_with_holding(symbol: &str, a: &ActorIdentity) -> SharedRegistry {
-        let mut reg = SubscriptionRegistry::new();
-        reg.register(Box::new(PortfolioSubscription::new(
-            a.clone(),
+    fn registry_with_holding(symbol: &str, actor: &ActorIdentity) -> SharedRegistry {
+        let mut registry = SubscriptionRegistry::new();
+        registry.register(Box::new(PortfolioSubscription::new(
+            actor.clone(),
             [symbol.to_string()],
         )));
-        SharedRegistry::from_registry(reg)
+        SharedRegistry::from_registry(registry)
     }
 
     #[test]
     fn buffer_only_skips_synth_and_global() {
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
-        let a = actor();
-        buf.enqueue(&a, &buffered_event("e1")).unwrap();
-        let collector = UnifiedCollector::buffer_only(&buf);
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
+        let test_actor = actor();
+        digest_buffer
+            .enqueue(&test_actor, &buffered_event("e1"))
+            .unwrap();
+        let collector = UnifiedCollector::buffer_only(&digest_buffer);
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
-        let per_actor = collector.collect_per_actor(&a, now);
+        let per_actor = collector.collect_per_actor(&test_actor, now);
         assert_eq!(per_actor.len(), 1);
         assert_eq!(per_actor[0].origin, ItemOrigin::Buffered);
         let global = collector.collect_global(now, 24, 24);
@@ -196,11 +198,13 @@ mod tests {
 
     #[test]
     fn full_collector_merges_buffer_and_synth_per_actor() {
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
         let store = open_store();
-        let a = actor();
-        buf.enqueue(&a, &buffered_event("e1")).unwrap();
+        let test_actor = actor();
+        digest_buffer
+            .enqueue(&test_actor, &buffered_event("e1"))
+            .unwrap();
         // GOOGL T-2 倒计时(now=4-27,event=4-29)
         store
             .insert_event(&earnings_teaser(
@@ -208,10 +212,10 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 4, 29, 20, 0, 0).unwrap(),
             ))
             .unwrap();
-        let reg = registry_with_holding("GOOGL", &a);
-        let collector = UnifiedCollector::new(&buf, &store, &reg, 0);
+        let registry = registry_with_holding("GOOGL", &test_actor);
+        let collector = UnifiedCollector::new(&digest_buffer, &store, &registry, 0);
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
-        let per_actor = collector.collect_per_actor(&a, now);
+        let per_actor = collector.collect_per_actor(&test_actor, now);
 
         assert_eq!(per_actor.len(), 2);
         let origins: Vec<ItemOrigin> = per_actor.iter().map(|c| c.origin).collect();
@@ -221,16 +225,16 @@ mod tests {
 
     #[test]
     fn full_collector_pulls_global_news_independently() {
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
         let store = open_store();
-        let a = actor();
+        let test_actor = actor();
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
         store
             .insert_event(&global_news("g1", now - chrono::Duration::hours(2)))
             .unwrap();
-        let reg = registry_with_holding("AAPL", &a);
-        let collector = UnifiedCollector::new(&buf, &store, &reg, 0);
+        let registry = registry_with_holding("AAPL", &test_actor);
+        let collector = UnifiedCollector::new(&digest_buffer, &store, &registry, 0);
 
         let global = collector.collect_global(now, 24, 24);
         assert_eq!(global.len(), 1);
@@ -244,7 +248,7 @@ mod tests {
         );
 
         // per-actor 不应混入 global news
-        let per_actor = collector.collect_per_actor(&a, now);
+        let per_actor = collector.collect_per_actor(&test_actor, now);
         assert!(
             per_actor.iter().all(|c| c.origin != ItemOrigin::Global),
             "global news 必须只走 collect_global,per-actor 池里不能出现 Global origin"
@@ -253,16 +257,17 @@ mod tests {
 
     #[test]
     fn without_global_returns_empty_global_pool() {
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
         let store = open_store();
-        let a = actor();
+        let test_actor = actor();
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
         store
             .insert_event(&global_news("g1", now - chrono::Duration::hours(2)))
             .unwrap();
-        let reg = registry_with_holding("AAPL", &a);
-        let collector = UnifiedCollector::new(&buf, &store, &reg, 0).without_global();
+        let registry = registry_with_holding("AAPL", &test_actor);
+        let collector =
+            UnifiedCollector::new(&digest_buffer, &store, &registry, 0).without_global();
 
         let global = collector.collect_global(now, 24, 24);
         assert!(global.is_empty());
@@ -272,24 +277,28 @@ mod tests {
     fn price_alert_latest_dedup_preserved_in_per_actor_pool() {
         // buffer 自带"同 symbol 同日 PriceAlert 只留最新"的去重,
         // UnifiedCollector 不应抹掉这条语义。
-        let dir = tempdir().unwrap();
-        let buf = DigestBuffer::new(dir.path()).unwrap();
-        let a = actor();
-        let mut e1 = buffered_event("p1");
-        e1.kind = EventKind::PriceAlert {
+        let temp_dir = tempdir().unwrap();
+        let digest_buffer = DigestBuffer::new(temp_dir.path()).unwrap();
+        let test_actor = actor();
+        let mut stale_price_alert = buffered_event("p1");
+        stale_price_alert.kind = EventKind::PriceAlert {
             pct_change_bps: 500,
             window: "1d".into(),
         };
-        let mut e2 = buffered_event("p2");
-        e2.kind = EventKind::PriceAlert {
+        let mut latest_price_alert = buffered_event("p2");
+        latest_price_alert.kind = EventKind::PriceAlert {
             pct_change_bps: 800,
             window: "close".into(),
         };
-        buf.enqueue(&a, &e1).unwrap();
-        buf.enqueue(&a, &e2).unwrap();
-        let collector = UnifiedCollector::buffer_only(&buf);
+        digest_buffer
+            .enqueue(&test_actor, &stale_price_alert)
+            .unwrap();
+        digest_buffer
+            .enqueue(&test_actor, &latest_price_alert)
+            .unwrap();
+        let collector = UnifiedCollector::buffer_only(&digest_buffer);
         let now = Utc.with_ymd_and_hms(2026, 4, 27, 13, 0, 0).unwrap();
-        let per_actor = collector.collect_per_actor(&a, now);
+        let per_actor = collector.collect_per_actor(&test_actor, now);
         assert_eq!(per_actor.len(), 1);
         assert_eq!(per_actor[0].event.id, "p2");
     }
