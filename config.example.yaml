@@ -329,6 +329,9 @@ event_engine:
       - handle: stat_news
         url: https://www.statnews.com/feed/
         interval_secs: 3600
+    # Telegram 公开频道监听(web preview `t.me/s/<handle>`),产出 social_post。
+    # 空数组表示不启用;开启时每条配置会启动一个独立 poller loop。
+    telegram_channels: []
   # 全局 event kind 黑名单。router 在 per-user NotificationPrefs 之前先过一遍;
   # 入库仍然发生(便于日报 / 统计),只是不再分发给任何 actor。即使用户把某个
   # kind 放进 allow_kinds,在这里禁用后仍然不会推。合法 tag:
@@ -535,8 +538,7 @@ agent:
   step_timeout_seconds: 180
   # Full-run timeout used for one complete answer round
   overall_timeout_seconds: 1200
-  # Verbose logging: print the model name, each iteration, and redacted summaries of tool-call inputs / outputs
-  debug_log: false
+  # Verbose runner debug logging is controlled by HONE_AGENT_DEBUG, not by a config field.
 
   system_prompt_path: "./soul.md"
   gemini_acp:

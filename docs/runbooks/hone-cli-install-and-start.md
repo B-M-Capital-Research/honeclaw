@@ -163,6 +163,8 @@ Runner install references shown by onboarding:
       codex_acp:
         model: gpt-5.5
         variant: high
+        sandbox_mode: workspace-write
+        approval_policy: never
         sandbox_permissions: ["network-full-access"]
     ```
 

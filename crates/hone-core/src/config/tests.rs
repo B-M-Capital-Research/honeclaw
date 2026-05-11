@@ -1399,6 +1399,17 @@ fn config_example_avoids_stale_config_knobs() {
         .as_mapping()
         .unwrap();
     assert!(has_key(sources, "extended_hours"));
+    assert!(has_key(sources, "telegram_channels"));
+
+    let agent = get_key(root, "agent").unwrap().as_mapping().unwrap();
+    assert!(
+        !has_key(agent, "debug_log"),
+        "agent.debug_log is controlled by HONE_AGENT_DEBUG, not YAML"
+    );
+    let codex_acp = get_key(agent, "codex_acp").unwrap().as_mapping().unwrap();
+    assert!(has_key(codex_acp, "sandbox_mode"));
+    assert!(has_key(codex_acp, "approval_policy"));
+    assert!(has_key(codex_acp, "sandbox_permissions"));
 
     let storage = get_key(root, "storage").unwrap().as_mapping().unwrap();
     assert!(!has_key(storage, "base_path"));
