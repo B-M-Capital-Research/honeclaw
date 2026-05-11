@@ -1317,11 +1317,11 @@ fn language_mutation_round_trip() {
 #[test]
 fn config_example_avoids_stale_config_knobs() {
     fn get_key<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
-        mapping.get(&Value::String(key.to_string()))
+        mapping.get(Value::String(key.to_string()))
     }
 
     fn has_key(mapping: &serde_yaml::Mapping, key: &str) -> bool {
-        mapping.contains_key(&Value::String(key.to_string()))
+        mapping.contains_key(Value::String(key.to_string()))
     }
 
     let example_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../config.example.yaml");
