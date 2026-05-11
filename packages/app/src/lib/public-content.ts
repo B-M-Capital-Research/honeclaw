@@ -182,7 +182,7 @@ const CONTENT_ZH = {
     hero_sub: "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.11.0",
+    version: "v0.11.1",
 
     toc: [
       { id: "quick-start", label: "快速开始", sub: "Quick Start" },
@@ -1035,7 +1035,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     hero_sub: "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.11.0",
+    version: "v0.11.1",
 
     toc: [
       { id: "quick-start", label: "Quick Start", sub: "Quick Start" },
