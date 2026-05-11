@@ -25,7 +25,7 @@ use crate::digest::DigestPayload;
 use crate::renderer::RenderFormat;
 use crate::router::OutboundSink;
 use crate::sinks::feishu_card::build_feishu_card;
-use crate::sinks::http_error::format_upstream_http_error;
+use crate::sinks::http_error::{format_transport_error, format_upstream_http_error};
 
 const FEISHU_TOKEN_URL: &str =
     "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
@@ -101,7 +101,8 @@ impl FeishuSink {
                 "app_secret": &self.app_secret,
             }))
             .send()
-            .await?;
+            .await
+            .map_err(|err| anyhow::anyhow!(format_transport_error("feishu", "token", &err)))?;
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();
@@ -173,7 +174,14 @@ impl FeishuSink {
             .bearer_auth(&token)
             .json(&Value::Object(body))
             .send()
-            .await?;
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!(format_transport_error(
+                    "feishu",
+                    "resolve direct contact",
+                    &err
+                ))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();
@@ -273,7 +281,8 @@ impl FeishuSink {
                 "content": content,
             }))
             .send()
-            .await?;
+            .await
+            .map_err(|err| anyhow::anyhow!(format_transport_error("feishu", "send", &err)))?;
         let status = resp.status();
         if !status.is_success() {
             let detail = resp.text().await.unwrap_or_default();

@@ -11,6 +11,8 @@ use serde_json::Value;
 
 use crate::base::{Tool, ToolParameter};
 
+const MAX_FMP_TRANSPORT_ERROR_CHARS: usize = 300;
+
 /// DataFetchTool — 金融数据获取（FMP，多 Key fallback）
 pub struct DataFetchTool {
     /// 有效 API Key 列表（过滤空值、去重后）
@@ -52,13 +54,13 @@ impl DataFetchTool {
             .timeout(std::time::Duration::from_secs(self.timeout))
             .send()
             .await
-            .map_err(|e| format!("FMP API 请求失败: {e}"))?;
+            .map_err(|e| format_fmp_transport_error("请求", &e))?;
 
         let status = resp.status();
         let body = resp
             .text()
             .await
-            .map_err(|e| format!("FMP 响应读取失败: {e}"))?;
+            .map_err(|e| format_fmp_transport_error("响应读取", &e))?;
         let data: Value = serde_json::from_str(&body).map_err(|e| {
             let prefix = body.chars().take(200).collect::<String>();
             format!("FMP JSON 解析失败: {e}; body_prefix={prefix}")
@@ -243,6 +245,45 @@ impl DataFetchTool {
     }
 }
 
+fn format_fmp_transport_error(operation: &str, error: &reqwest::Error) -> String {
+    let detail = sanitize_fmp_transport_error_detail(&error.to_string());
+    if detail.is_empty() {
+        format!("FMP {operation}失败")
+    } else {
+        format!("FMP {operation}失败: {detail}")
+    }
+}
+
+fn sanitize_fmp_transport_error_detail(text: &str) -> String {
+    let redacted = redact_query_value(text, "apikey");
+    if redacted.chars().count() <= MAX_FMP_TRANSPORT_ERROR_CHARS {
+        return redacted;
+    }
+    redacted
+        .chars()
+        .take(MAX_FMP_TRANSPORT_ERROR_CHARS)
+        .collect::<String>()
+        + "..."
+}
+
+fn redact_query_value(text: &str, key: &str) -> String {
+    let needle = format!("{key}=");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&needle) {
+        let value_start = index + needle.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch == ' ').then_some(idx))
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
 #[async_trait]
 impl Tool for DataFetchTool {
     fn name(&self) -> &str {
@@ -376,7 +417,7 @@ impl Tool for DataFetchTool {
 
 #[cfg(test)]
 mod tests {
-    use super::DataFetchTool;
+    use super::{DataFetchTool, sanitize_fmp_transport_error_detail};
     use crate::base::Tool;
     use chrono::{Duration, NaiveDate};
     use serde_json::json;
@@ -399,6 +440,17 @@ mod tests {
         assert_eq!(
             full_url2,
             "https://example.com/api/v3/income-statement/AAPL?limit=4&apikey=test_key"
+        );
+    }
+
+    #[test]
+    fn fmp_transport_error_detail_redacts_apikey_query_param() {
+        let detail = sanitize_fmp_transport_error_detail(
+            "error sending request for url (https://example.com/api/v3/quote/AAPL?apikey=test_key)",
+        );
+        assert_eq!(
+            detail,
+            "error sending request for url (https://example.com/api/v3/quote/AAPL?apikey=<redacted>)"
         );
     }
 

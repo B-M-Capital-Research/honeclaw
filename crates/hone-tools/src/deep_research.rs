@@ -9,6 +9,8 @@ use serde_json::Value;
 
 use crate::base::{Tool, ToolParameter};
 
+const MAX_DEEP_RESEARCH_ERROR_CHARS: usize = 300;
+
 /// DeepResearchTool — 启动深度个股研究任务
 pub struct DeepResearchTool {
     /// 研究 API 端点（POST）
@@ -71,10 +73,11 @@ impl Tool for DeepResearchTool {
             }));
         }
 
+        let safe_api_url = sanitize_deep_research_error_detail(&self.api_url);
         tracing::info!(
             "[DeepResearchTool] 启动深度研究 company={} api_url={}",
             company_name,
-            self.api_url
+            safe_api_url
         );
 
         let body = serde_json::json!({
@@ -95,10 +98,11 @@ impl Tool for DeepResearchTool {
         let resp = match req.send().await {
             Ok(r) => r,
             Err(e) => {
-                tracing::error!("[DeepResearchTool] API 请求失败: {}", e);
+                let safe_error = sanitize_deep_research_error_detail(&e.to_string());
+                tracing::error!("[DeepResearchTool] API 请求失败: {}", safe_error);
                 return Ok(serde_json::json!({
                     "success": false,
-                    "error": format!("研究 API 请求失败: {e}。请确认 DEEP_RESEARCH_API_URL 已正确配置（当前: {}）", self.api_url)
+                    "error": format!("研究 API 请求失败: {safe_error}。请确认 DEEP_RESEARCH_API_URL 已正确配置（当前: {safe_api_url}）")
                 }));
             }
         };
@@ -107,10 +111,11 @@ impl Tool for DeepResearchTool {
         let raw: Value = match resp.json().await {
             Ok(v) => v,
             Err(e) => {
-                tracing::error!("[DeepResearchTool] 响应解析失败: {}", e);
+                let safe_error = sanitize_deep_research_error_detail(&e.to_string());
+                tracing::error!("[DeepResearchTool] 响应解析失败: {}", safe_error);
                 return Ok(serde_json::json!({
                     "success": false,
-                    "error": format!("研究 API 响应解析失败: {e}")
+                    "error": format!("研究 API 响应解析失败: {safe_error}")
                 }));
             }
         };
@@ -158,6 +163,77 @@ impl Tool for DeepResearchTool {
     }
 }
 
+fn sanitize_deep_research_error_detail(text: &str) -> String {
+    let redacted = redact_query_secrets(&redact_url_userinfo(text));
+    if redacted.chars().count() <= MAX_DEEP_RESEARCH_ERROR_CHARS {
+        return redacted;
+    }
+    redacted
+        .chars()
+        .take(MAX_DEEP_RESEARCH_ERROR_CHARS)
+        .collect::<String>()
+        + "..."
+}
+
+fn redact_url_userinfo(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    let mut remaining = text;
+    while let Some(scheme_index) = remaining.find("://") {
+        let after_scheme = scheme_index + 3;
+        output.push_str(&remaining[..after_scheme]);
+        let tail = &remaining[after_scheme..];
+        let auth_end = tail
+            .char_indices()
+            .find_map(|(idx, ch)| (ch == '/' || ch == '?' || ch == ')' || ch == ' ').then_some(idx))
+            .unwrap_or(tail.len());
+        let authority = &tail[..auth_end];
+        if let Some(at_index) = authority.rfind('@') {
+            output.push_str("<redacted>@");
+            output.push_str(&authority[at_index + 1..]);
+        } else {
+            output.push_str(authority);
+        }
+        remaining = &tail[auth_end..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_query_secrets(text: &str) -> String {
+    let mut output = text.to_string();
+    for key in [
+        "access_token",
+        "accessToken",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "token",
+        "secret",
+        "password",
+    ] {
+        output = redact_query_value(&output, key);
+    }
+    output
+}
+
+fn redact_query_value(text: &str, key: &str) -> String {
+    let needle = format!("{key}=");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&needle) {
+        let value_start = index + needle.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch == ' ').then_some(idx))
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,7 +273,10 @@ mod tests {
     #[tokio::test]
     async fn execute_network_failure_returns_structured_error() {
         // 使用一个必然失败的端口
-        let tool = DeepResearchTool::new("http://127.0.0.1:19", "");
+        let tool = DeepResearchTool::new(
+            "http://user:pass@127.0.0.1:19/api/research/start?token=secret&ok=1",
+            "",
+        );
         let result = tool
             .execute(serde_json::json!({"company_name": "NVIDIA"}))
             .await
@@ -205,5 +284,20 @@ mod tests {
         assert_eq!(result["success"], false);
         let err = result["error"].as_str().unwrap_or_default();
         assert!(!err.is_empty(), "error should have message");
+        assert!(!err.contains("secret"));
+        assert!(!err.contains("user:pass"));
+        assert!(err.contains("token=<redacted>"));
+        assert!(err.contains("<redacted>@127.0.0.1"));
+    }
+
+    #[test]
+    fn deep_research_error_detail_redacts_url_credentials() {
+        let detail = sanitize_deep_research_error_detail(
+            "request failed for https://user:pass@example.test/path?api_key=abc&ok=1",
+        );
+        assert_eq!(
+            detail,
+            "request failed for https://<redacted>@example.test/path?api_key=<redacted>&ok=1"
+        );
     }
 }
