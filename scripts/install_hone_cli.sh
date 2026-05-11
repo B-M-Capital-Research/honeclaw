@@ -122,6 +122,22 @@ pick_bin_dir() {
 
 BIN_DIR="$(pick_bin_dir)"
 
+ensure_bin_dir_ready() {
+  local dir="$1"
+  if ! mkdir -p "$dir" 2>/dev/null; then
+    echo "failed to create wrapper bin dir: $dir" >&2
+    echo "set HONE_BIN_DIR to a writable directory or add a writable user bin directory to PATH" >&2
+    exit 1
+  fi
+  if [[ ! -w "$dir" ]]; then
+    echo "wrapper bin dir is not writable: $dir" >&2
+    echo "set HONE_BIN_DIR to a writable directory or adjust directory permissions" >&2
+    exit 1
+  fi
+}
+
+ensure_bin_dir_ready "$BIN_DIR"
+
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH_RAW="$(uname -m)"
 
@@ -194,7 +210,7 @@ fi
 
 RELEASES_DIR="$INSTALL_ROOT/releases"
 DEST_DIR="$RELEASES_DIR/$TOP_DIR"
-mkdir -p "$RELEASES_DIR" "$BIN_DIR"
+mkdir -p "$RELEASES_DIR"
 rm -rf "$DEST_DIR"
 tar -xzf "$ARCHIVE_PATH" -C "$RELEASES_DIR"
 

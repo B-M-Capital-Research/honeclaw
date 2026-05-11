@@ -17,6 +17,8 @@ PROJECT_ROOT="${1:-}"
 OLD_PID="${2:-}"
 
 if [[ -z "$PROJECT_ROOT" ]]; then
+    echo "[restart_hone] error: missing project root argument" >&2
+    echo "usage: nohup bash scripts/restart_hone.sh <project_root> <old_pid> >> data/logs/restart.log 2>&1 &" >&2
     exit 1
 fi
 

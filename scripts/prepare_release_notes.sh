@@ -18,6 +18,11 @@ if [[ ! -f "$NOTES_TEMPLATE" ]]; then
   exit 1
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required to render release notes templates" >&2
+  exit 1
+fi
+
 PREVIOUS_TAG="$(
   git -C "$ROOT_DIR" tag --sort=-v:refname \
     | awk -v current="$TAG" '$0 != current { print; exit }'

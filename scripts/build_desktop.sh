@@ -27,7 +27,8 @@ if [[ -x "$HOME/.bun/bin/bun" ]]; then
 fi
 
 if ! command -v bun >/dev/null 2>&1; then
-  echo "[FAIL] bun not found in PATH"
+  echo "[FAIL] bun not found in PATH" >&2
+  echo "Install Bun or add it to PATH, then rerun: bash scripts/build_desktop.sh" >&2
   exit 1
 fi
 

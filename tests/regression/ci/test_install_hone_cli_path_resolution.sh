@@ -182,11 +182,44 @@ run_fallback_case() {
   fi
 }
 
+run_explicit_bin_dir_failure_case() {
+  local home_dir="$TMP_ROOT/home-bad-bin"
+  local blocked_parent="$TMP_ROOT/not-a-directory"
+  touch "$blocked_parent"
+  mkdir -p "$home_dir"
+
+  local output
+  if output="$(
+    env \
+      HOME="$home_dir" \
+      PATH="$TOOLS_DIR:/usr/bin:/bin" \
+      HONE_BIN_DIR="$blocked_parent/hone-bin" \
+      HONE_RUN_ONBOARD=0 \
+      HONE_GITHUB_REPO="example/honeclaw" \
+      MOCK_ARCHIVE_PATH="$ARCHIVE_PATH" \
+      bash "$INSTALL_SCRIPT" 2>&1
+  )"; then
+    echo "[FAIL] installer succeeded despite an uncreatable HONE_BIN_DIR" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *"failed to create wrapper bin dir: $blocked_parent/hone-bin"* ]]; then
+    echo "[FAIL] installer did not explain the uncreatable HONE_BIN_DIR" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *"set HONE_BIN_DIR to a writable directory"* ]]; then
+    echo "[FAIL] installer did not provide HONE_BIN_DIR recovery guidance" >&2
+    exit 1
+  fi
+}
+
 run_path_hit_case
 
 run_fallback_case "/bin/zsh" "$TMP_ROOT/home-fallback-zsh" "$TMP_ROOT/home-fallback-zsh/.zshrc"
 mkdir -p "$TMP_ROOT/home-fallback-bash"
 touch "$TMP_ROOT/home-fallback-bash/.bashrc"
 run_fallback_case "/bin/bash" "$TMP_ROOT/home-fallback-bash" "$TMP_ROOT/home-fallback-bash/.bashrc"
+run_explicit_bin_dir_failure_case
 
 echo "[PASS] hone-cli install path resolution regression passed"

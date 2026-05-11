@@ -43,12 +43,24 @@ if [ ! -x "$BIN_PATH" ]; then
   ARCHIVE_PATH="$TMP_DIR/$ARCHIVE_NAME"
 
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$DOWNLOAD_URL" -o "$ARCHIVE_PATH"
-  else
-    python3 - <<PY
+    if ! curl --retry 3 --retry-delay 1 -fsSL "$DOWNLOAD_URL" -o "$ARCHIVE_PATH"; then
+      echo "failed to download gitleaks archive: $DOWNLOAD_URL" >&2
+      echo "check network access or set GITLEAKS_VERSION to an available release" >&2
+      exit 1
+    fi
+  elif command -v python3 >/dev/null 2>&1; then
+    if ! python3 - <<PY
 import urllib.request
 urllib.request.urlretrieve("${DOWNLOAD_URL}", "${ARCHIVE_PATH}")
 PY
+    then
+      echo "failed to download gitleaks archive: $DOWNLOAD_URL" >&2
+      echo "check network access or set GITLEAKS_VERSION to an available release" >&2
+      exit 1
+    fi
+  else
+    echo "curl or python3 is required to download gitleaks: $DOWNLOAD_URL" >&2
+    exit 1
   fi
 
   tar -xzf "$ARCHIVE_PATH" -C "$INSTALL_DIR"
