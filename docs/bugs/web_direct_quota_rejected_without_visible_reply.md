@@ -8,6 +8,7 @@
 
 ## 修复结论复核
 
+- 2026-05-11 23:02 CST：本轮在当前机器未重启 live 数据中继续看到 20:09 / 21:04 CST 两条 `quota_rejected` 孤立 user turn，尾部仍无 assistant quota 提示；同一会话 20:00 scheduler 任务仍正常写入 assistant final。该证据保留为旧运行态观察；鉴于当前仓库代码已在 Web actor 回归中覆盖 assistant quota 文案和失败 `Done` 事件，本轮不据此重新打开，状态维持 `Fixed`。
 - 2026-05-11 19:02 CST：本轮在当前机器未重启 live 数据中继续看到 15:04 / 16:07 / 17:05 / 18:06 CST 四条 `quota_rejected` 孤立 user turn，尾部仍无 assistant quota 提示。该证据保留为旧运行态观察；鉴于当前仓库代码已在 Web actor 回归中覆盖 assistant quota 文案和失败 `Done` 事件，本轮不据此重新打开，状态维持 `Fixed`。
 - 2026-05-11 15:05 CST：本轮按当前自动化约束重新复核：当前机器旧运行态 / 未重启进程的 live 数据不再作为重新打开本单的依据。仓库代码层面已覆盖 Web direct 复发条件：
   - `AgentSession::run()` 的 quota 拒绝分支会先持久化 user turn，再持久化 assistant 业务拒绝文案，并附带 `quota_rejected=true` metadata。

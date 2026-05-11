@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-11 19:02 CST
+最后更新：2026-05-11 23:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -21,10 +21,11 @@
 - Later / 待复现：9
 - 已修复 / 已关闭：100
 - 历史分析 / 部分止血：5
-- 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件，最近坏态来自当前机器旧运行态 / 未重启进程，不再作为重新打开依据。
-- 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前机器旧运行态 / 未重启进程证据不再作为重新打开依据。
-- 本轮不重新打开 Heartbeat 直接交易指令缺陷：15:30 CST `run_id=18752` 的 CAI 破位预警仍送达 `建议动作：无条件止损`，但当前仓库代码已有出站 guard 修复；该证据按当前机器旧运行态 / 未确认重启进程处理，仅补充到已修复文档。
-- 本轮观察到若干旧运行态 / 已有修复相关噪声：17:00 / 18:30 / 19:01 CST heartbeat 空输出被显式落为 `execution_failed/skipped_error`，没有可恢复 triggered 正文；19:00 前后 Feishu 直聊主链路仍有 `persist_assistant + reply.send` 成功样本。本轮不为这些单独建档。
+- 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
+- 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
+- 本轮不重新打开 Heartbeat 直接交易指令缺陷：19:30 CST `run_id=18842` 的 CAI 破位预警仍送达 `建议动作：无条件止损`，但当前仓库代码已有出站 guard 修复；该证据按当前机器旧运行态 / 未确认重启进程处理，仅补充到已修复文档。
+- 本轮不重新打开观察池击球区缺陷：21:35 / 23:00 CST `run_id=18907/18940` 仍把除 LITE 外 24 支观察池统一写成 `击球区：待确认`，且持久化 user prompt 未出现 `【已恢复的本地击球区参考】`，说明当前 live 仍未跑到仓库内的恢复注入逻辑；该证据补充到已修复文档，待确认部署 / 重启后再复核。
+- 本轮观察到若干旧运行态 / 已有修复相关噪声：19:01 / 21:00 CST heartbeat 空输出被显式落为 `execution_failed/skipped_error`，没有可恢复 triggered 正文；19:00-23:00 CST Feishu 直聊和 scheduler 主链路仍有多条 `persist_assistant + reply.send` 成功样本。本轮不为这些单独建档。
 
 ## 代码质量巡检发现
 
@@ -56,10 +57,10 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-11 19:02 复核 15:04-18:06 CST 旧运行态仍有孤立 quota user turn，但当前代码已覆盖 Web actor 的 assistant quota 文案和失败 `Done`；该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-11 19:02 复核当前 sqlite 会话镜像仍停在 2026-04-27，但当前代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填；该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
-| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-11 03:06 修复任务正文不显式列 ticker 时的恢复早退：`recover_watchlist_hit_zone_context` 会从当前会话 compact summary / session summary 的观察池表格和行内文本批量恢复所有 ticker -> 击球区，再注入 `【已恢复的本地击球区参考】`；`scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers` 覆盖“当前 25 支观察池”形态；`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、定向 rustfmt 通过；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
-| Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-11 19:02 复核当前机器 15:30 CST 仍有旧运行态样本：`run_id=18752` 送达 `建议动作：无条件止损`，但仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`；本轮仅补充证据，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
+| Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-11 23:02 复核当前机器 20:09 / 21:04 CST 旧运行态仍有孤立 quota user turn，但当前代码已覆盖 Web actor 的 assistant quota 文案和失败 `Done`；该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-11 23:02 复核当前 sqlite 会话镜像仍停在 2026-04-27，但 `cron_job_runs` 已推进到 23:01 CST；当前代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-11 23:02 当前机器 21:35 / 23:00 CST 旧运行态仍批量输出 `击球区：待确认`，且持久化 user prompt 未出现 `【已恢复的本地击球区参考】`；仓库代码已包含恢复注入与回归测试，本轮仅补充未重启 live 证据，不回退状态；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
+| Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-11 23:02 复核当前机器 19:30 CST 仍有旧运行态样本：`run_id=18842` 送达 `建议动作：无条件止损`，但仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`；本轮仅补充证据，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
 | Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-10 23:11 同 ticker 宽松重写去重增加非 ticker 实体 / 日期金额交集门槛，TSLA 召回/FSD 诉讼不再被旧 Semi/SEC preview 抑制，Cerebras IPO 更新不再被持仓摘要误抑制；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-11 07:03 复核最近四小时仍有本机旧运行态样本：`run_id=18507` 在 06:01 送达 `WTI 原油：约 $109.76/桶`、WTI/Brent 异常倒挂和霍尔木兹 / 美伊交火等未核验归因，且未见 `commodity_causality_guarded`；仓库代码已在 `1d405f2` 扩展商品 heartbeat guard，本轮仅补充旧运行态证据，不回退状态；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-10 15:09 heartbeat JSON 扫描跳过 markdown 反引号示例，malformed-triggered `message` 恢复只把明确元数据字段当作边界，覆盖 RKLB `管理层称"公司史上最强一季度","订单需求":...` 这类内部引号/冒号正文；前置说明后的 malformed triggered JSON 可恢复，prompt 同步要求规则冲突时返回 noop JSON 而不是自述或空输出。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |

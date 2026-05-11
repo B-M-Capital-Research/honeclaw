@@ -6,6 +6,7 @@
 - **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-05-11 23:02 CST` 本轮在当前机器未重启 live 数据中继续看到 `sessions/session_messages` 镜像停在 `2026-04-27T16:54:20+08:00`，而同一 sqlite 库的 `cron_job_runs` 已推进到 `2026-05-11T23:01:45.296030+08:00`，最近四小时真实 JSON 会话也继续更新到 `23:01 CST`。该证据保留为旧运行态观察；鉴于当前仓库代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，本轮不据此重新打开，状态维持 `Fixed`。
 - `2026-05-11 19:02 CST` 本轮在当前机器未重启 live 数据中继续看到 `sessions/session_messages` 镜像停在 `2026-04-27T16:54:20+08:00`，而同一 sqlite 库的 `cron_job_runs` 已推进到 `2026-05-11T19:01:38.264435+08:00`，最近四小时真实 JSON 会话也继续更新到 `19:01 CST`。该证据保留为旧运行态观察；鉴于当前仓库代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，本轮不据此重新打开，状态维持 `Fixed`。
 - `2026-05-11 15:05 CST` 本轮按当前自动化约束重新复核：当前机器旧运行态 / 未重启进程的 live 数据不再作为重新打开本单的依据。仓库代码层面已满足本单的可维护闭环：
   - `SessionStorage::with_options(...)` 在 `runtime_backend=sqlite` 时会实例化 `SqliteSessionMirror`，不依赖 `session_sqlite_shadow_write_enabled=true`。

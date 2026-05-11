@@ -5,9 +5,18 @@
 - **严重等级**: P2
 - **状态**: Fixed
 
-## 修复结论复核（2026-05-11 19:02 CST）
+## 修复结论复核（2026-05-11 23:02 CST）
 
 - 本轮最近四小时巡检继续看到当前机器旧运行态坏样本，但仍不足以推翻仓库代码层面的 `Fixed` 结论：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18842`
+    - `job_name=CAI破位预警`
+    - `executed_at=2026-05-11T19:30:41.153099+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `response_preview` 继续包含 `建议动作：无条件止损`，并写出 `不宜持有等待反弹`。
+  - `2026-05-11 23:02 CST` 结论：该样本晚于上一轮 15:30 CST 旧运行态样本，但当前仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`，本轮没有证明 live 进程已经部署 / 重启到该修复后仍复现；因此仅补充证据，不把状态从 `Fixed` 回退为 `New`。
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=18752`
     - `job_name=CAI破位预警`

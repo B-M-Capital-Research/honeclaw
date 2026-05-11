@@ -5,6 +5,29 @@
 - **严重等级**: P3
 - **状态**: Fixed
 - **修复结论复核**:
+  - `2026-05-11 23:02 CST` 本轮在当前机器未重启 live 数据中继续看到坏样本，但仍不足以推翻仓库代码层面的 `Fixed` 结论：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=18907`
+      - `job_name=科技核心股池 · 晚间击球区快报`
+      - `executed_at=2026-05-11T21:36:11.296971+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 把 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 等核心股继续写成 `击球区：待确认`，拓展股同样批量缺失固定区间。
+      - `run_id=18940`
+      - `job_name=核心观察股池晚间快报`
+      - `executed_at=2026-05-11T23:01:45.296030+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 再次把除 `LITE` 外的 24 支观察池统一写成 `击球区：待确认`。
+    - `data/sessions/Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json`
+      - `2026-05-11T21:35:02.377561+08:00` 与 `2026-05-11T23:00:02.469583+08:00` 的持久化 user prompt 仍只有通用“稳定本地字段约束”，未出现当前仓库代码应注入的 `【已恢复的本地击球区参考】`。
+      - 对应 assistant final 在 `21:36:08` 与 `23:01:39` 继续写出“除 LITE 外，其余 24 支击球区区间未在本轮任务正文或已恢复上下文中给出”。
+    - 结论：
+      - 这是同一根因 / 同一影响范围的旧运行态复现，不新建重复文档。
+      - 当前仓库代码已包含 `recover_watchlist_hit_zone_context` 的批量恢复逻辑与 `scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers` 回归；最新持久化 prompt 未出现注入段，更像 live 进程未部署 / 未重启到该修复，而不是当前代码路径重新失效。
+      - 仍定为 `P3 / Fixed`：任务按时完成并送达，价格与财报字段仍可读；受损的是固定观察池字段恢复与报告参考价值，没有阻断主投递链路。后续若确认部署当前代码后仍无 `【已恢复的本地击球区参考】` 或仍批量 `待确认`，再重新打开。
   - `2026-05-11 03:06 CST` 本轮修复 `2026-05-10 23:10 CST` 复发根因，状态从 `New` 更新为 `Fixed`：
     - 复核代码后确认上一轮恢复逻辑仍有一个早退缺口：`recover_watchlist_hit_zone_context` 只有在任务正文显式列出 ticker 时才会恢复击球区；而最新复发任务正文是“按当前 25 支观察池...”，没有列出 `MSFT / NVDA / GOOGL...`，因此虽然 session compact summary 里保存了观察池表，恢复链路仍直接返回空。
     - `crates/hone-channels/src/scheduler.rs` 现在在任务正文没有显式 ticker 时，会从当前会话 `compact summary` / `session.summary` 的观察池表格和行内文本中批量恢复所有形如 `ticker -> 击球区` 的稳定本地字段，再注入 `【已恢复的本地击球区参考】`。
