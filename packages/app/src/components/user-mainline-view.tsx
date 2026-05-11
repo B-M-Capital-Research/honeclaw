@@ -49,16 +49,16 @@ function ProfileMarkdownModal(props: {
   const [error, setError] = createSignal<string | null>(null)
 
   createEffect(() => {
-    const t = props.ticker
-    if (!props.open || !t) {
+    const selectedTicker = props.ticker
+    if (!props.open || !selectedTicker) {
       setMarkdown(null)
       return
     }
     setLoading(true)
     setError(null)
     setMarkdown(null)
-    getAdminCompanyProfile(props.actor, t)
-      .then((d) => setMarkdown(d.markdown))
+    getAdminCompanyProfile(props.actor, selectedTicker)
+      .then((profile) => setMarkdown(profile.markdown))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
   })
@@ -112,7 +112,7 @@ function ProfileMarkdownModal(props: {
 }
 
 export function UserMainlineView(props: { actor: ActorRef }) {
-  const [ctx, setCtx] = createSignal<AdminMainlineContext | null>(null)
+  const [mainlineContext, setMainlineContext] = createSignal<AdminMainlineContext | null>(null)
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal<string | null>(null)
   const [refreshing, setRefreshing] = createSignal(false)
@@ -124,8 +124,8 @@ export function UserMainlineView(props: { actor: ActorRef }) {
     setLoading(true)
     setError(null)
     try {
-      const data = await getAdminMainlineContext(props.actor)
-      setCtx(data)
+      const context = await getAdminMainlineContext(props.actor)
+      setMainlineContext(context)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -145,11 +145,11 @@ export function UserMainlineView(props: { actor: ActorRef }) {
     setRefreshing(true)
     setRefreshMsg(null)
     try {
-      const r = await adminTriggerMainlineDistill(props.actor)
+      const refreshResult = await adminTriggerMainlineDistill(props.actor)
       setRefreshMsg(
         tpl(USERS.mainline.distill_success, {
-          count: r.mainline_count,
-          skipped: r.skipped_tickers.length,
+          count: refreshResult.mainline_count,
+          skipped: refreshResult.skipped_tickers.length,
         }),
       )
       await load()
@@ -165,13 +165,13 @@ export function UserMainlineView(props: { actor: ActorRef }) {
   }
 
   const profileTickers = () => {
-    const c = ctx()
-    if (!c) return new Set<string>()
-    const set = new Set<string>()
-    for (const p of c.profile_list) {
-      for (const t of p.tickers) set.add(t)
+    const context = mainlineContext()
+    if (!context) return new Set<string>()
+    const tickers = new Set<string>()
+    for (const profile of context.profile_list) {
+      for (const ticker of profile.tickers) tickers.add(ticker)
     }
-    return set
+    return tickers
   }
 
   const openProfile = (ticker: string) => {
@@ -190,21 +190,21 @@ export function UserMainlineView(props: { actor: ActorRef }) {
         </div>
       </Show>
 
-      <Show when={ctx()}>
-        {(c) => (
+      <Show when={mainlineContext()}>
+        {(context) => (
           <>
             {/* meta + 刷新 */}
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div class="text-xs text-[color:var(--text-muted)]">
                 {USERS.mainline.last_distilled_label}
                 <span class="text-[color:var(--text-primary)]">
-                  {formatTimestamp(c().last_mainline_distilled_at)}
+                  {formatTimestamp(context().last_mainline_distilled_at)}
                 </span>
-                <Show when={c().mainline_distill_skipped.length > 0}>
+                <Show when={context().mainline_distill_skipped.length > 0}>
                   <span class="ml-4">
-                    {tpl(USERS.mainline.skipped_prefix, { count: c().mainline_distill_skipped.length })}
+                    {tpl(USERS.mainline.skipped_prefix, { count: context().mainline_distill_skipped.length })}
                     <span class="ml-1 font-mono text-amber-400">
-                      {c().mainline_distill_skipped.join(", ")}
+                      {context().mainline_distill_skipped.join(", ")}
                     </span>
                   </span>
                 </Show>
@@ -231,24 +231,24 @@ export function UserMainlineView(props: { actor: ActorRef }) {
               </div>
               <div class="text-sm leading-7 text-[color:var(--text-primary)]">
                 <Show
-                  when={c().mainline_style}
+                  when={context().mainline_style}
                   fallback={
                     <span class="text-[color:var(--text-muted)]">
                       {USERS.mainline.style_empty}
                     </span>
                   }
                 >
-                  {c().mainline_style}
+                  {context().mainline_style}
                 </Show>
               </div>
             </div>
 
             {/* 持仓投资主线卡片 */}
             <div class="mb-2 text-sm font-semibold">
-              {tpl(USERS.mainline.holdings_title, { count: c().holdings.length })}
+              {tpl(USERS.mainline.holdings_title, { count: context().holdings.length })}
             </div>
             <Show
-              when={c().holdings.length > 0}
+              when={context().holdings.length > 0}
               fallback={
                 <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
                   {USERS.mainline.holdings_empty}
@@ -256,11 +256,11 @@ export function UserMainlineView(props: { actor: ActorRef }) {
               }
             >
               <div class="mb-6 grid gap-3" style={{ "grid-template-columns": "repeat(auto-fill, minmax(280px, 1fr))" }}>
-                <For each={c().holdings}>
+                <For each={context().holdings}>
                   {(ticker) => {
-                    const mainline = c().mainline_by_ticker[ticker]
+                    const mainline = context().mainline_by_ticker[ticker]
                     const hasProfile = profileTickers().has(ticker)
-                    const isSkipped = c().mainline_distill_skipped.includes(ticker)
+                    const isSkipped = context().mainline_distill_skipped.includes(ticker)
                     return (
                       <div
                         class="flex flex-col gap-2 rounded-md border p-4"
@@ -315,10 +315,10 @@ export function UserMainlineView(props: { actor: ActorRef }) {
 
             {/* 画像 inventory */}
             <div class="mb-2 text-sm font-semibold">
-              {tpl(USERS.mainline.profile_inventory_title, { count: c().profile_list.length })}
+              {tpl(USERS.mainline.profile_inventory_title, { count: context().profile_list.length })}
             </div>
             <Show
-              when={c().profile_list.length > 0}
+              when={context().profile_list.length > 0}
               fallback={
                 <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
                   {USERS.mainline.profile_inventory_empty}
@@ -326,25 +326,25 @@ export function UserMainlineView(props: { actor: ActorRef }) {
               }
             >
               <div class="space-y-2">
-                <For each={c().profile_list}>
-                  {(p) => (
+                <For each={context().profile_list}>
+                  {(profile) => (
                     <div class="flex items-center justify-between gap-3 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-3">
                       <div class="flex-1 min-w-0">
                         <div class="text-sm font-medium">
-                          {p.title || p.dir}
+                          {profile.title || profile.dir}
                           <span class="ml-2 font-mono text-xs text-[color:var(--text-muted)]">
-                            {p.tickers.join(" / ")}
+                            {profile.tickers.join(" / ")}
                           </span>
                         </div>
                         <div class="mt-0.5 text-[11px] text-[color:var(--text-muted)]">
-                          {(p.bytes / 1024).toFixed(1)} KB · {p.dir}
+                          {(profile.bytes / 1024).toFixed(1)} KB · {profile.dir}
                         </div>
                       </div>
-                      <Show when={p.tickers.length > 0}>
+                      <Show when={profile.tickers.length > 0}>
                         <button
                           type="button"
                           class="rounded border border-[color:var(--border)] px-2 py-1 text-[11px]"
-                          onClick={() => openProfile(p.tickers[0])}
+                          onClick={() => openProfile(profile.tickers[0])}
                         >
                           {USERS.mainline.view}
                         </button>

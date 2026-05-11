@@ -74,9 +74,9 @@ export function ResearchDetail() {
 
   // 1 = 研究中，2 = 完成（有 answer_markdown）
   const currentStep = () => {
-    const t = task()
-    if (!t) return 0
-    if (t.answer_markdown) return 2
+    const selectedTask = task()
+    if (!selectedTask) return 0
+    if (selectedTask.answer_markdown) return 2
     return 1
   }
 
@@ -100,20 +100,20 @@ export function ResearchDetail() {
         />
       }
     >
-      {(t) => (
+      {(selectedTask) => (
         <div class="flex h-full min-h-0 flex-col rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm overflow-hidden">
           {/* 顶部标题栏 */}
           <div class="flex items-center justify-between border-b border-[color:var(--border)] px-6 py-4 shrink-0">
             <div>
-              <div class="text-xl font-semibold">{t().company_name}{RESEARCH.detail.title_suffix}</div>
+              <div class="text-xl font-semibold">{selectedTask().company_name}{RESEARCH.detail.title_suffix}</div>
               <div class="mt-1 text-xs text-[color:var(--text-muted)] font-mono">
-                {tpl(RESEARCH.detail.task_id_prefix, { id: t().task_id })}
+                {tpl(RESEARCH.detail.task_id_prefix, { id: selectedTask().task_id })}
               </div>
             </div>
-            <Show when={t().status === "running" || t().status === "pending"}>
+            <Show when={selectedTask().status === "running" || selectedTask().status === "pending"}>
               <Button
                 class="h-8 px-3 text-xs"
-                onClick={() => research.refreshTask(t().task_id)}
+                onClick={() => research.refreshTask(selectedTask().task_id)}
               >
                 {RESEARCH.detail.refresh_button}
               </Button>
@@ -122,7 +122,7 @@ export function ResearchDetail() {
 
           {/* 内容区：有 Markdown 时直接渲染，否则显示进度 */}
           <Show
-            when={t().answer_markdown}
+            when={selectedTask().answer_markdown}
             fallback={
               /* 进度状态面板 */
               <div class="flex-1 overflow-y-auto hf-scrollbar p-6 flex flex-col gap-6">
@@ -135,10 +135,10 @@ export function ResearchDetail() {
                       current={currentStep()}
                       label={RESEARCH.detail.step_1_label}
                       sublabel={
-                        t().status === "running" || t().status === "pending"
-                          ? tpl(RESEARCH.detail.step_1_running, { progress: t().progress || "0%" })
-                          : t().status === "completed"
-                            ? tpl(RESEARCH.detail.step_1_completed, { time: formatTime(t().completed_at) })
+                        selectedTask().status === "running" || selectedTask().status === "pending"
+                          ? tpl(RESEARCH.detail.step_1_running, { progress: selectedTask().progress || "0%" })
+                          : selectedTask().status === "completed"
+                            ? tpl(RESEARCH.detail.step_1_completed, { time: formatTime(selectedTask().completed_at) })
                             : undefined
                       }
                     />
@@ -151,25 +151,25 @@ export function ResearchDetail() {
                 </div>
 
                 {/* 进度条（研究中时显示） */}
-                <Show when={t().status === "running" || t().status === "pending"}>
+                <Show when={selectedTask().status === "running" || selectedTask().status === "pending"}>
                   <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
                     <div class="flex items-center justify-between mb-3">
                       <div class="text-sm font-medium">{RESEARCH.detail.progress_card_title}</div>
-                      <div class="text-sm font-bold text-[color:var(--accent)]">{t().progress || "0%"}</div>
+                      <div class="text-sm font-bold text-[color:var(--accent)]">{selectedTask().progress || "0%"}</div>
                     </div>
-                    <ProgressBar progress={t().progress || "0%"} />
+                    <ProgressBar progress={selectedTask().progress || "0%"} />
                     <div class="mt-3 text-xs text-[color:var(--text-muted)]">
-                      {tpl(RESEARCH.detail.progress_auto_refresh, { time: formatTime(t().created_at) })}
+                      {tpl(RESEARCH.detail.progress_auto_refresh, { time: formatTime(selectedTask().created_at) })}
                     </div>
                   </div>
                 </Show>
 
                 {/* 错误状态 */}
-                <Show when={t().status === "error"}>
+                <Show when={selectedTask().status === "error"}>
                   <div class="rounded-lg border border-rose-200 bg-rose-50 p-5">
                     <div class="text-sm font-semibold text-rose-600 mb-1">{RESEARCH.detail.error_title}</div>
                     <div class="text-xs text-rose-500">
-                      {t().error_message || RESEARCH.detail.error_default}
+                      {selectedTask().error_message || RESEARCH.detail.error_default}
                     </div>
                   </div>
                 </Show>
@@ -180,24 +180,24 @@ export function ResearchDetail() {
                   <dl class="space-y-2 text-xs">
                     <div class="flex justify-between">
                       <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_company_name}</dt>
-                      <dd class="font-medium">{t().company_name}</dd>
+                      <dd class="font-medium">{selectedTask().company_name}</dd>
                     </div>
                     <div class="flex justify-between">
                       <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_task_name}</dt>
-                      <dd class="font-mono text-[10px] truncate max-w-[220px]">{t().task_name}</dd>
+                      <dd class="font-mono text-[10px] truncate max-w-[220px]">{selectedTask().task_name}</dd>
                     </div>
                     <div class="flex justify-between">
                       <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_started_at}</dt>
-                      <dd>{formatTime(t().created_at)}</dd>
+                      <dd>{formatTime(selectedTask().created_at)}</dd>
                     </div>
                     <div class="flex justify-between">
                       <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_updated_at}</dt>
-                      <dd>{formatTime(t().updated_at)}</dd>
+                      <dd>{formatTime(selectedTask().updated_at)}</dd>
                     </div>
-                    <Show when={t().completed_at}>
+                    <Show when={selectedTask().completed_at}>
                       <div class="flex justify-between">
                         <dt class="text-[color:var(--text-muted)]">{RESEARCH.detail.info_completed_at}</dt>
-                        <dd>{formatTime(t().completed_at)}</dd>
+                        <dd>{formatTime(selectedTask().completed_at)}</dd>
                       </div>
                     </Show>
                   </dl>
@@ -217,7 +217,7 @@ export function ResearchDetail() {
                 >
                   <ResearchPreview
                     markdown={markdown()}
-                    companyName={t().company_name}
+                    companyName={selectedTask().company_name}
                   />
                 </Suspense>
               </div>

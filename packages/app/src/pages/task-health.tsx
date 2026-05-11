@@ -18,17 +18,17 @@ const DAYS_OPTIONS = [1, 3, 7, 14] as const
 function shortTime(iso: string | null | undefined): string {
   if (!iso) return "—"
   // "2026-04-26T12:34:56.789Z" → "12:34:56"
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
+  const date = new Date(iso)
+  if (isNaN(date.getTime())) return iso
   const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
-  return d.toLocaleTimeString(loc, { hour12: false })
+  return date.toLocaleTimeString(loc, { hour12: false })
 }
 
 function relativeTime(iso: string | null | undefined): string {
   if (!iso) return "—"
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
-  const secAgo = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000))
+  const date = new Date(iso)
+  if (isNaN(date.getTime())) return iso
+  const secAgo = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
   if (secAgo < 60) return tpl(TASK_HEALTH.relative.seconds_ago, { count: secAgo })
   if (secAgo < 3600) return tpl(TASK_HEALTH.relative.minutes_ago, { count: Math.floor(secAgo / 60) })
   if (secAgo < 86400) return tpl(TASK_HEALTH.relative.hours_ago, { count: Math.floor(secAgo / 3600) })
@@ -36,10 +36,10 @@ function relativeTime(iso: string | null | undefined): string {
 }
 
 function durationMs(start: string, end: string): number {
-  const a = new Date(start).getTime()
-  const b = new Date(end).getTime()
-  if (isNaN(a) || isNaN(b)) return 0
-  return Math.max(0, b - a)
+  const startMs = new Date(start).getTime()
+  const endMs = new Date(end).getTime()
+  if (isNaN(startMs) || isNaN(endMs)) return 0
+  return Math.max(0, endMs - startMs)
 }
 
 function outcomeColor(outcome: string): string {
@@ -55,11 +55,11 @@ function outcomeColor(outcome: string): string {
   }
 }
 
-function successRate(s: TaskSummary): string {
+function successRate(summary: TaskSummary): string {
   // skipped 是"主动跳过",不算分母里的失败,只算 ok / (ok+failed)。
-  const denom = s.ok_24h + s.failed_24h
-  if (denom === 0) return "—"
-  const pct = (s.ok_24h / denom) * 100
+  const denominator = summary.ok_24h + summary.failed_24h
+  if (denominator === 0) return "—"
+  const pct = (summary.ok_24h / denominator) * 100
   return `${pct.toFixed(0)}%`
 }
 
@@ -72,22 +72,22 @@ export default function TaskHealthPage() {
   const [summary, setSummary] = createSignal<Record<string, TaskSummary>>({})
   const [runtimeDir, setRuntimeDir] = createSignal<string>("")
   const [loading, setLoading] = createSignal(false)
-  const [err, setErr] = createSignal<string | null>(null)
+  const [loadError, setLoadError] = createSignal<string | null>(null)
 
   async function refresh() {
     setLoading(true)
-    setErr(null)
+    setLoadError(null)
     try {
-      const resp = await getTaskRuns({
+      const response = await getTaskRuns({
         days: days(),
         limit: 500,
         task: taskFilter() || undefined,
       })
-      setRuns(resp.runs)
-      setSummary(resp.summary_by_task)
-      setRuntimeDir(resp.runtime_dir)
+      setRuns(response.runs)
+      setSummary(response.summary_by_task)
+      setRuntimeDir(response.runtime_dir)
     } catch (e) {
-      setErr(String(e))
+      setLoadError(String(e))
     } finally {
       setLoading(false)
     }
@@ -103,7 +103,7 @@ export default function TaskHealthPage() {
   // 把 summary map 排成数组按 task 字典序
   const summaryRows = createMemo(() => {
     return Object.entries(summary())
-      .map(([task, s]) => ({ task, ...s }))
+      .map(([task, taskSummary]) => ({ task, ...taskSummary }))
       .sort((a, b) => a.task.localeCompare(b.task))
   })
 
@@ -129,7 +129,7 @@ export default function TaskHealthPage() {
             }}
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
           >
-            <For each={DAYS_OPTIONS}>{(d) => <option value={d}>{d}d</option>}</For>
+            <For each={DAYS_OPTIONS}>{(optionDays) => <option value={optionDays}>{optionDays}d</option>}</For>
           </select>
         </div>
         <div class="flex items-center gap-1 text-xs text-[color:var(--text-muted)]">
@@ -144,7 +144,7 @@ export default function TaskHealthPage() {
           >
             <option value="">{TASK_HEALTH.page.filter_all}</option>
             <For each={taskOptions()}>
-              {(t) => <option value={t}>{t}</option>}
+              {(taskName) => <option value={taskName}>{taskName}</option>}
             </For>
           </select>
         </div>
@@ -165,9 +165,9 @@ export default function TaskHealthPage() {
         </Show>
       </div>
 
-      <Show when={err()}>
+      <Show when={loadError()}>
         <div class="rounded border border-rose-500/40 bg-rose-500/10 p-3 text-rose-300">
-          {err()}
+          {loadError()}
         </div>
       </Show>
 
@@ -302,31 +302,31 @@ export default function TaskHealthPage() {
                 }
               >
                 <For each={runs()}>
-                  {(r) => (
+                  {(run) => (
                     <tr class="border-t border-[color:var(--border)] hover:bg-white/[0.02]">
                       <td
                         class="px-3 py-1.5 font-mono text-[10px] text-[color:var(--text-muted)]"
-                        title={r.started_at}
+                        title={run.started_at}
                       >
-                        {shortTime(r.started_at)}
+                        {shortTime(run.started_at)}
                       </td>
-                      <td class="px-3 py-1.5 font-mono text-[11px]">{r.task}</td>
+                      <td class="px-3 py-1.5 font-mono text-[11px]">{run.task}</td>
                       <td class="px-3 py-1.5">
                         <span
-                          class={`inline-block rounded px-1.5 py-0.5 text-[10px] uppercase ${outcomeColor(r.outcome)}`}
+                          class={`inline-block rounded px-1.5 py-0.5 text-[10px] uppercase ${outcomeColor(run.outcome)}`}
                         >
-                          {r.outcome}
+                          {run.outcome}
                         </span>
                       </td>
-                      <td class="px-3 py-1.5 text-right">{r.items}</td>
+                      <td class="px-3 py-1.5 text-right">{run.items}</td>
                       <td class="px-3 py-1.5 text-right text-[color:var(--text-muted)]">
-                        {durationMs(r.started_at, r.ended_at)}ms
+                        {durationMs(run.started_at, run.ended_at)}ms
                       </td>
                       <td
                         class="max-w-[28rem] truncate px-3 py-1.5 text-rose-300/80"
-                        title={r.error ?? ""}
+                        title={run.error ?? ""}
                       >
-                        {r.error ?? ""}
+                        {run.error ?? ""}
                       </td>
                     </tr>
                   )}

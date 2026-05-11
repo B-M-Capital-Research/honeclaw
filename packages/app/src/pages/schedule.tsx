@@ -10,8 +10,8 @@ import { actorKey as uiActorKey, type ActorRef } from "@/lib/actors"
 import { SCHEDULE } from "@/lib/admin-content/schedule"
 import { tpl } from "@/lib/i18n"
 
-function sourceLabel(s: ScheduleSource): string {
-  switch (s) {
+function sourceLabel(source: ScheduleSource): string {
+  switch (source) {
     case "digest":
       return SCHEDULE.source.digest
     case "cron_job":
@@ -19,8 +19,8 @@ function sourceLabel(s: ScheduleSource): string {
   }
 }
 
-function sourceBadgeClass(s: ScheduleSource): string {
-  switch (s) {
+function sourceBadgeClass(source: ScheduleSource): string {
+  switch (source) {
     case "digest":
       return "text-purple-300 bg-purple-500/15"
     case "cron_job":
@@ -42,21 +42,21 @@ export default function SchedulePage() {
   const [selectedActor, setSelectedActor] = createSignal<ActorRef | null>(null)
   const [overview, setOverview] = createSignal<ScheduleOverview | null>(null)
   const [loading, setLoading] = createSignal(false)
-  const [err, setErr] = createSignal<string | null>(null)
+  const [loadError, setLoadError] = createSignal<string | null>(null)
 
   async function refresh(actor = selectedActor()) {
     if (!actor) {
-      setErr(SCHEDULE.page.err_pick_user)
+      setLoadError(SCHEDULE.page.err_pick_user)
       setOverview(null)
       return
     }
     setLoading(true)
-    setErr(null)
+    setLoadError(null)
     try {
-      const data = await getSchedule(scheduleActorKey(actor))
-      setOverview(data)
+      const nextOverview = await getSchedule(scheduleActorKey(actor))
+      setOverview(nextOverview)
     } catch (e) {
-      setErr(String(e))
+      setLoadError(String(e))
       setOverview(null)
     } finally {
       setLoading(false)
@@ -90,43 +90,43 @@ export default function SchedulePage() {
         </button>
       </div>
 
-      <Show when={err()}>
+      <Show when={loadError()}>
         <div class="rounded border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
-          {err()}
+          {loadError()}
         </div>
       </Show>
 
       <Show when={overview()}>
-        {(data) => (
+        {(scheduleOverview) => (
           <div class="flex flex-col gap-4">
             <div class="flex flex-wrap gap-3 text-xs">
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
                 <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.actor}</div>
                 <div class="font-mono text-[color:var(--text-primary)]">
-                  {data().actor}
+                  {scheduleOverview().actor}
                 </div>
               </div>
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
                 <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.timezone}</div>
                 <div class="text-[color:var(--text-primary)]">
-                  {data().timezone}
+                  {scheduleOverview().timezone}
                 </div>
               </div>
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
                 <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.quiet_hours}</div>
                 <div class="text-[color:var(--text-primary)]">
                   <Show
-                    when={data().quiet_hours}
+                    when={scheduleOverview().quiet_hours}
                     fallback={
                       <span class="text-[color:var(--text-muted)]">{SCHEDULE.card.quiet_disabled}</span>
                     }
                   >
-                    {(qh) => (
+                    {(quietHours) => (
                       <>
-                        🌙 {qh().from} – {qh().to}
-                        <Show when={qh().exempt_kinds.length > 0}>
+                        🌙 {quietHours().from} – {quietHours().to}
+                        <Show when={quietHours().exempt_kinds.length > 0}>
                           <span class="ml-2 text-[color:var(--text-muted)]">
-                            {tpl(SCHEDULE.card.quiet_exempt_prefix, { kinds: qh().exempt_kinds.join(", ") })}
+                            {tpl(SCHEDULE.card.quiet_exempt_prefix, { kinds: quietHours().exempt_kinds.join(", ") })}
                           </span>
                         </Show>
                       </>
@@ -137,14 +137,14 @@ export default function SchedulePage() {
               <div class="rounded border border-[color:var(--border)] bg-white/5 px-3 py-2">
                 <div class="text-[color:var(--text-muted)]">{SCHEDULE.card.immediate}</div>
                 <div class="text-[color:var(--text-primary)]">
-                  {data().immediate.enabled ? SCHEDULE.card.immediate_enabled : SCHEDULE.card.immediate_disabled}
+                  {scheduleOverview().immediate.enabled ? SCHEDULE.card.immediate_enabled : SCHEDULE.card.immediate_disabled}
                   {SCHEDULE.card.immediate_min_prefix}
-                  {data().immediate.min_severity}
-                  <Show when={data().immediate.portfolio_only}>
+                  {scheduleOverview().immediate.min_severity}
+                  <Show when={scheduleOverview().immediate.portfolio_only}>
                     {SCHEDULE.card.immediate_only_portfolio}
                   </Show>
-                  <Show when={data().immediate.price_high_pct != null}>
-                    {tpl(SCHEDULE.card.immediate_price_threshold, { pct: data().immediate.price_high_pct ?? "" })}
+                  <Show when={scheduleOverview().immediate.price_high_pct != null}>
+                    {tpl(SCHEDULE.card.immediate_price_threshold, { pct: scheduleOverview().immediate.price_high_pct ?? "" })}
                   </Show>
                 </div>
               </div>
@@ -164,7 +164,7 @@ export default function SchedulePage() {
                 </thead>
                 <tbody>
                   <Show
-                    when={data().schedule.length > 0}
+                    when={scheduleOverview().schedule.length > 0}
                     fallback={
                       <tr>
                         <td
@@ -176,38 +176,38 @@ export default function SchedulePage() {
                       </tr>
                     }
                   >
-                    <For each={data().schedule}>
-                      {(e: ScheduleEntry) => (
+                    <For each={scheduleOverview().schedule}>
+                      {(entry: ScheduleEntry) => (
                         <tr class="border-t border-[color:var(--border)]">
                           <td class="px-3 py-2 font-mono text-[color:var(--text-primary)]">
-                            {e.time_local}
+                            {entry.time_local}
                           </td>
                           <td class="px-3 py-2">
                             <span
-                              class={`rounded px-2 py-0.5 text-xs ${sourceBadgeClass(e.source)}`}
+                              class={`rounded px-2 py-0.5 text-xs ${sourceBadgeClass(entry.source)}`}
                             >
-                              {sourceLabel(e.source)}
+                              {sourceLabel(entry.source)}
                             </span>
                           </td>
                           <td class="px-3 py-2 text-[color:var(--text-primary)]">
-                            {e.content_hint}
+                            {entry.content_hint}
                           </td>
                           <td class="px-3 py-2 text-[color:var(--text-muted)]">
-                            {e.frequency}
+                            {entry.frequency}
                           </td>
                           <td class="px-3 py-2">
                             <span
-                              class={`rounded px-2 py-0.5 text-xs ${activeCellClass(e.will_be_held_by_quiet)}`}
+                              class={`rounded px-2 py-0.5 text-xs ${activeCellClass(entry.will_be_held_by_quiet)}`}
                             >
-                              {e.will_be_held_by_quiet
+                              {entry.will_be_held_by_quiet
                                 ? SCHEDULE.table.cell_quiet_held
-                                : e.bypass_quiet_hours
+                                : entry.bypass_quiet_hours
                                   ? SCHEDULE.table.cell_bypass_quiet
                                   : SCHEDULE.table.cell_active}
                             </span>
                           </td>
                           <td class="px-3 py-2 font-mono text-[10px] text-[color:var(--text-muted)]">
-                            {e.edit_hint}
+                            {entry.edit_hint}
                           </td>
                         </tr>
                       )}
@@ -219,39 +219,39 @@ export default function SchedulePage() {
 
             <Show
               when={
-                data().immediate.blocked_kinds.length > 0 ||
-                (data().immediate.allow_kinds &&
-                  data().immediate.allow_kinds!.length > 0) ||
-                data().immediate.exempt_in_quiet.length > 0
+                scheduleOverview().immediate.blocked_kinds.length > 0 ||
+                (scheduleOverview().immediate.allow_kinds &&
+                  scheduleOverview().immediate.allow_kinds!.length > 0) ||
+                scheduleOverview().immediate.exempt_in_quiet.length > 0
               }
             >
               <div class="rounded border border-[color:var(--border)] bg-white/5 p-3 text-xs text-[color:var(--text-muted)]">
-                <Show when={data().immediate.blocked_kinds.length > 0}>
+                <Show when={scheduleOverview().immediate.blocked_kinds.length > 0}>
                   <div>
                     {SCHEDULE.filters.blocked_kinds}
                     <span class="text-[color:var(--text-primary)]">
-                      {data().immediate.blocked_kinds.join(", ")}
+                      {scheduleOverview().immediate.blocked_kinds.join(", ")}
                     </span>
                   </div>
                 </Show>
                 <Show
                   when={
-                    data().immediate.allow_kinds &&
-                    data().immediate.allow_kinds!.length > 0
+                    scheduleOverview().immediate.allow_kinds &&
+                    scheduleOverview().immediate.allow_kinds!.length > 0
                   }
                 >
                   <div>
                     {SCHEDULE.filters.allow_kinds}
                     <span class="text-[color:var(--text-primary)]">
-                      {data().immediate.allow_kinds!.join(", ")}
+                      {scheduleOverview().immediate.allow_kinds!.join(", ")}
                     </span>
                   </div>
                 </Show>
-                <Show when={data().immediate.exempt_in_quiet.length > 0}>
+                <Show when={scheduleOverview().immediate.exempt_in_quiet.length > 0}>
                   <div>
                     {SCHEDULE.filters.exempt_in_quiet}
                     <span class="text-[color:var(--text-primary)]">
-                      {data().immediate.exempt_in_quiet.join(", ")}
+                      {scheduleOverview().immediate.exempt_in_quiet.join(", ")}
                     </span>
                   </div>
                 </Show>

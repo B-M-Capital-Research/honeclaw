@@ -22,35 +22,35 @@ import { tpl, useLocale } from "@/lib/i18n"
 // ── 状态映射(对齐 task-detail.tsx 的 sendStatusLabel/executionStatusLabel) ──
 
 function sendStatusOptions(): Array<{ value: string; label: string }> {
-  const t = NOTIFICATIONS.send_status
+  const labels = NOTIFICATIONS.send_status
   return [
-    { value: "", label: t.all },
-    { value: "sent", label: t.sent },
-    { value: "dryrun", label: t.dryrun },
-    { value: "queued", label: t.queued },
-    { value: "quiet_held", label: t.quiet_held },
-    { value: "filtered", label: t.filtered },
-    { value: "capped", label: t.capped },
-    { value: "cooled_down", label: t.cooled_down },
-    { value: "price_capped", label: t.price_capped },
-    { value: "price_cooled_down", label: t.price_cooled_down },
-    { value: "omitted", label: t.omitted },
-    { value: "skipped_noop", label: t.skipped_noop },
-    { value: "skipped_error", label: t.skipped_error },
-    { value: "send_failed", label: t.send_failed },
-    { value: "failed", label: t.failed },
-    { value: "target_resolution_failed", label: t.target_resolution_failed },
-    { value: "duplicate_suppressed", label: t.duplicate_suppressed },
+    { value: "", label: labels.all },
+    { value: "sent", label: labels.sent },
+    { value: "dryrun", label: labels.dryrun },
+    { value: "queued", label: labels.queued },
+    { value: "quiet_held", label: labels.quiet_held },
+    { value: "filtered", label: labels.filtered },
+    { value: "capped", label: labels.capped },
+    { value: "cooled_down", label: labels.cooled_down },
+    { value: "price_capped", label: labels.price_capped },
+    { value: "price_cooled_down", label: labels.price_cooled_down },
+    { value: "omitted", label: labels.omitted },
+    { value: "skipped_noop", label: labels.skipped_noop },
+    { value: "skipped_error", label: labels.skipped_error },
+    { value: "send_failed", label: labels.send_failed },
+    { value: "failed", label: labels.failed },
+    { value: "target_resolution_failed", label: labels.target_resolution_failed },
+    { value: "duplicate_suppressed", label: labels.duplicate_suppressed },
   ]
 }
 
 function execStatusOptions(): Array<{ value: string; label: string }> {
-  const t = NOTIFICATIONS.exec_status
+  const labels = NOTIFICATIONS.exec_status
   return [
-    { value: "", label: t.all },
-    { value: "completed", label: t.completed },
-    { value: "noop", label: t.noop },
-    { value: "execution_failed", label: t.execution_failed },
+    { value: "", label: labels.all },
+    { value: "completed", label: labels.completed },
+    { value: "noop", label: labels.noop },
+    { value: "execution_failed", label: labels.execution_failed },
   ]
 }
 
@@ -64,15 +64,15 @@ function channelOptions(): Array<{ value: string; label: string }> {
   ]
 }
 
-function sendLabel(s: string): string {
-  return sendStatusOptions().find((o) => o.value === s)?.label ?? s ?? "—"
+function sendLabel(status: string): string {
+  return sendStatusOptions().find((option) => option.value === status)?.label ?? status ?? "—"
 }
-function execLabel(s: string): string {
-  return execStatusOptions().find((o) => o.value === s)?.label ?? s ?? "—"
+function execLabel(status: string): string {
+  return execStatusOptions().find((option) => option.value === status)?.label ?? status ?? "—"
 }
 
-function sendBadgeClass(s: string): string {
-  switch (s) {
+function sendBadgeClass(status: string): string {
+  switch (status) {
     case "sent":
     case "dryrun":
       return "text-emerald-300 bg-emerald-500/15"
@@ -99,10 +99,10 @@ function sendBadgeClass(s: string): string {
 }
 
 function bucketHourLabel(iso: string): string {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
+  const date = new Date(iso)
+  if (isNaN(date.getTime())) return iso
   const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
-  return d.toLocaleString(loc, {
+  return date.toLocaleString(loc, {
     timeZone: "Asia/Shanghai",
     hour: "2-digit",
     hour12: false,
@@ -176,18 +176,18 @@ export default function NotificationsPage() {
     distinct_users: 0,
   })
   const [loading, setLoading] = createSignal(false)
-  const [err, setErr] = createSignal<string | null>(null)
+  const [loadError, setLoadError] = createSignal<string | null>(null)
   const [openRecord, setOpenRecord] = createSignal<NotificationRecord | null>(
     null,
   )
 
   async function refresh() {
     setLoading(true)
-    setErr(null)
+    setLoadError(null)
     try {
       const sinceDate = new Date(Date.now() - hours() * 3600 * 1000)
       const actor = selectedActor()
-      const q: NotificationsQuery = {
+      const query: NotificationsQuery = {
         since: sinceDate.toISOString(),
         channel: actor?.channel ?? (channel() || undefined),
         user_id: actor?.user_id,
@@ -196,12 +196,12 @@ export default function NotificationsPage() {
         message_send_status: sendStatus() || undefined,
         limit: limit(),
       }
-      const resp = await getNotifications(q)
-      setRecords(resp.records)
-      setHistogram(resp.histogram_24h)
-      setSummary(resp.summary_24h)
+      const response = await getNotifications(query)
+      setRecords(response.records)
+      setHistogram(response.histogram_24h)
+      setSummary(response.summary_24h)
     } catch (e) {
-      setErr(String(e))
+      setLoadError(String(e))
     } finally {
       setLoading(false)
     }
@@ -215,8 +215,8 @@ export default function NotificationsPage() {
 
   const peakBucket = createMemo(() => {
     let max = 0
-    for (const b of histogram()) {
-      if (b.total > max) max = b.total
+    for (const bucket of histogram()) {
+      if (bucket.total > max) max = bucket.total
     }
     return max
   })
@@ -257,7 +257,7 @@ export default function NotificationsPage() {
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)] disabled:opacity-50"
           >
             <For each={channelOptions()}>
-              {(o) => <option value={o.value}>{o.label}</option>}
+              {(option) => <option value={option.value}>{option.label}</option>}
             </For>
           </select>
         </div>
@@ -283,7 +283,7 @@ export default function NotificationsPage() {
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
           >
             <For each={sendStatusOptions()}>
-              {(o) => <option value={o.value}>{o.label}</option>}
+              {(option) => <option value={option.value}>{option.label}</option>}
             </For>
           </select>
         </div>
@@ -297,7 +297,7 @@ export default function NotificationsPage() {
             class="rounded border border-[color:var(--border)] bg-transparent px-2 py-1 text-xs text-[color:var(--text-primary)]"
           >
             <For each={execStatusOptions()}>
-              {(o) => <option value={o.value}>{o.label}</option>}
+              {(option) => <option value={option.value}>{option.label}</option>}
             </For>
           </select>
         </div>
@@ -310,9 +310,9 @@ export default function NotificationsPage() {
         </button>
       </div>
 
-      <Show when={err()}>
+      <Show when={loadError()}>
         <div class="rounded border border-rose-500/40 bg-rose-500/10 p-3 text-rose-300">
-          {err()}
+          {loadError()}
         </div>
       </Show>
 
@@ -338,26 +338,26 @@ export default function NotificationsPage() {
         <div class="rounded border border-[color:var(--border)] p-3">
           <div class="flex h-24 items-end gap-[2px]">
             <For each={histogram()}>
-              {(b) => {
+              {(bucket) => {
                 const peak = peakBucket()
-                const heightPct = peak > 0 ? (b.total / peak) * 100 : 0
-                const sentPct = b.total > 0 ? (b.sent / b.total) * 100 : 0
+                const heightPct = peak > 0 ? (bucket.total / peak) * 100 : 0
+                const sentPct = bucket.total > 0 ? (bucket.sent / bucket.total) * 100 : 0
                 const failedPct =
-                  b.total > 0 ? (b.failed / b.total) * 100 : 0
+                  bucket.total > 0 ? (bucket.failed / bucket.total) * 100 : 0
                 return (
                   <div
                     class="group relative flex flex-1 flex-col justify-end"
                     title={tpl(NOTIFICATIONS.page.histogram_tooltip, {
-                      ts: formatShanghaiDateTime(b.bucket_start),
-                      total: b.total,
-                      sent: b.sent,
-                      failed: b.failed,
-                      skipped: b.skipped,
+                      ts: formatShanghaiDateTime(bucket.bucket_start),
+                      total: bucket.total,
+                      sent: bucket.sent,
+                      failed: bucket.failed,
+                      skipped: bucket.skipped,
                     })}
                   >
                     <div
                       class="flex w-full flex-col-reverse overflow-hidden rounded-sm bg-white/[0.04]"
-                      style={{ height: `${heightPct}%`, "min-height": b.total > 0 ? "2px" : "0" }}
+                      style={{ height: `${heightPct}%`, "min-height": bucket.total > 0 ? "2px" : "0" }}
                     >
                       <div
                         class="bg-emerald-500/70"
@@ -431,44 +431,44 @@ export default function NotificationsPage() {
                 }
               >
                 <For each={records()}>
-                  {(r) => (
+                  {(record) => (
                     <tr
                       class="cursor-pointer border-t border-[color:var(--border)] hover:bg-white/[0.03]"
-                      onClick={() => setOpenRecord(r)}
+                      onClick={() => setOpenRecord(record)}
                     >
                       <td
                         class="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-[color:var(--text-muted)]"
-                        title={r.executed_at}
+                        title={record.executed_at}
                       >
-                        {formatShanghaiDateTime(r.executed_at)}
+                        {formatShanghaiDateTime(record.executed_at)}
                       </td>
                       <td class="px-3 py-2 font-mono text-[11px]">
-                        {r.user_id}
-                        <Show when={r.channel_scope}>
+                        {record.user_id}
+                        <Show when={record.channel_scope}>
                           <span class="ml-1 text-[10px] text-[color:var(--text-muted)]">
-                            {r.channel_scope}
+                            {record.channel_scope}
                           </span>
                         </Show>
                       </td>
                       <td class="px-3 py-2 text-[11px] text-[color:var(--text-secondary)]">
-                        {r.channel}
+                        {record.channel}
                         <div class="font-mono text-[10px] text-[color:var(--text-muted)]">
-                          {r.channel_target}
+                          {record.channel_target}
                         </div>
                       </td>
                       <td class="px-3 py-2">
                         <span class="inline-block rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-[color:var(--text-secondary)]">
-                          {eventKindLabel(r.event_kind)}
+                          {eventKindLabel(record.event_kind)}
                         </span>
                       </td>
                       <td class="px-3 py-2">
                         <div class="font-medium text-[color:var(--text-primary)]">
-                          {r.job_name}
+                          {record.job_name}
                         </div>
                         <div class="text-[10px] text-[color:var(--text-muted)]">
-                          {recordSourceLabel(r.record_source)} ·{" "}
-                          {execLabel(r.execution_status)}
-                          <Show when={r.heartbeat}>
+                          {recordSourceLabel(record.record_source)} ·{" "}
+                          {execLabel(record.execution_status)}
+                          <Show when={record.heartbeat}>
                             <span class="ml-1 rounded bg-white/5 px-1 py-[1px] text-[9px] uppercase">
                               heartbeat
                             </span>
@@ -477,20 +477,20 @@ export default function NotificationsPage() {
                       </td>
                       <td class="px-3 py-2">
                         <span
-                          class={`inline-block rounded px-1.5 py-0.5 text-[10px] ${sendBadgeClass(r.message_send_status)}`}
+                          class={`inline-block rounded px-1.5 py-0.5 text-[10px] ${sendBadgeClass(record.message_send_status)}`}
                         >
-                          {sendLabel(r.message_send_status)}
+                          {sendLabel(record.message_send_status)}
                         </span>
                       </td>
                       <td class="max-w-[28rem] px-3 py-2">
-                        <Show when={r.response_preview}>
+                        <Show when={record.response_preview}>
                           <div class="line-clamp-2 break-words text-[color:var(--text-secondary)]">
-                            {r.response_preview}
+                            {record.response_preview}
                           </div>
                         </Show>
-                        <Show when={r.error_message}>
+                        <Show when={record.error_message}>
                           <div class="line-clamp-2 break-words text-rose-300/80">
-                            {r.error_message}
+                            {record.error_message}
                           </div>
                         </Show>
                       </td>
@@ -504,8 +504,8 @@ export default function NotificationsPage() {
       </section>
 
       <Show when={openRecord()}>
-        {(rec) => (
-          <RecordDrawer record={rec()} onClose={() => setOpenRecord(null)} />
+        {(record) => (
+          <RecordDrawer record={record()} onClose={() => setOpenRecord(null)} />
         )}
       </Show>
     </div>

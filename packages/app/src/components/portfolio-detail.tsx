@@ -11,7 +11,7 @@ import { tpl, useLocale } from "@/lib/i18n"
 
 export function PortfolioDetail() {
     const portfolio = usePortfolio()
-    const data = () => portfolio.portfolioData()
+    const portfolioData = () => portfolio.portfolioData()
 
     const isEditing = () => !!portfolio.state.editingSymbol
     const isNew = () => portfolio.state.editingSymbol === "new"
@@ -20,21 +20,21 @@ export function PortfolioDetail() {
     const handleSubmit = async (e: Event) => {
         e.preventDefault()
         const draft = portfolio.state.draft
-        const tracking = !!draft.tracking_only
+        const trackingOnly = !!draft.tracking_only
         await portfolio.saveHolding({
             symbol: draft.symbol,
-            shares: tracking ? 0 : Number(draft.shares),
-            avg_cost: tracking ? 0 : Number(draft.avg_cost),
+            shares: trackingOnly ? 0 : Number(draft.shares),
+            avg_cost: trackingOnly ? 0 : Number(draft.avg_cost),
             holding_horizon: draft.holding_horizon || "",
             strategy_notes: draft.strategy_notes,
             notes: draft.notes,
-            tracking_only: tracking,
+            tracking_only: trackingOnly,
         })
     }
 
-    const formatMoney = (val: number) => {
+    const formatMoney = (amount: number) => {
         const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
-        return new Intl.NumberFormat(loc, { style: 'currency', currency: 'USD' }).format(val)
+        return new Intl.NumberFormat(loc, { style: 'currency', currency: 'USD' }).format(amount)
     }
 
     const horizonLabel = (value?: string) => {
@@ -191,21 +191,21 @@ export function PortfolioDetail() {
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div>
                                         <div class="text-xs text-[color:var(--text-muted)]">{PORTFOLIO.detail.summary_holdings_count}</div>
-                                        <div class="text-lg font-medium">{data()?.summary.holdings_count ?? 0}</div>
+                                        <div class="text-lg font-medium">{portfolioData()?.summary.holdings_count ?? 0}</div>
                                     </div>
                                     <div>
                                         <div class="text-xs text-[color:var(--text-muted)]">{PORTFOLIO.detail.summary_watchlist_count}</div>
-                                        <div class="text-lg font-medium">{data()?.summary.watchlist_count ?? 0}</div>
+                                        <div class="text-lg font-medium">{portfolioData()?.summary.watchlist_count ?? 0}</div>
                                     </div>
                                     <div>
                                         <div class="text-xs text-[color:var(--text-muted)]">{PORTFOLIO.detail.summary_total_shares}</div>
-                                        <div class="text-lg font-medium">{data()?.summary.total_shares ?? 0}</div>
+                                        <div class="text-lg font-medium">{portfolioData()?.summary.total_shares ?? 0}</div>
                                     </div>
                                     <div>
                                         <div class="text-xs text-[color:var(--text-muted)]">{PORTFOLIO.detail.summary_updated_at}</div>
                                         <div class="text-sm font-medium mt-1 truncate">
-                                            {data()?.summary.updated_at
-                                                ? new Date(data()!.summary.updated_at!).toLocaleString(useLocale() === "zh" ? "zh-CN" : "en-US")
+                                            {portfolioData()?.summary.updated_at
+                                                ? new Date(portfolioData()!.summary.updated_at!).toLocaleString(useLocale() === "zh" ? "zh-CN" : "en-US")
                                                 : PORTFOLIO.detail.summary_unknown}
                                         </div>
                                     </div>

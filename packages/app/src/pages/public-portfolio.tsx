@@ -125,8 +125,8 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
     setError(null)
     setMarkdown(null)
     try {
-      const data = await getCompanyProfileMarkdown(ticker)
-      setMarkdown(data.markdown)
+      const profile = await getCompanyProfileMarkdown(ticker)
+      setMarkdown(profile.markdown)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -137,10 +137,10 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
   // 监听 ticker 变化(使用 createEffect 风格)
   let lastTicker = ""
   const maybeFetch = () => {
-    const t = props.ticker
-    if (props.open && t && t !== lastTicker) {
-      lastTicker = t
-      fetchProfile(t)
+    const selectedTicker = props.ticker
+    if (props.open && selectedTicker && selectedTicker !== lastTicker) {
+      lastTicker = selectedTicker
+      fetchProfile(selectedTicker)
     }
     if (!props.open) {
       lastTicker = ""
@@ -247,7 +247,7 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
 }
 
 function PortfolioContextView() {
-  const [ctx, setCtx] = createSignal<DigestContext | null>(null)
+  const [digestContext, setDigestContext] = createSignal<DigestContext | null>(null)
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal<string | null>(null)
   const [refreshing, setRefreshing] = createSignal(false)
@@ -259,8 +259,8 @@ function PortfolioContextView() {
     setLoading(true)
     setError(null)
     try {
-      const data = await getDigestContext()
-      setCtx(data)
+      const context = await getDigestContext()
+      setDigestContext(context)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -274,9 +274,9 @@ function PortfolioContextView() {
     setRefreshing(true)
     setRefreshMsg(null)
     try {
-      const r = await refreshDigestContext()
+      const refreshResult = await refreshDigestContext()
       setRefreshMsg(
-        `蒸馏完成:${r.mainline_count} 条投资主线,跳过 ${r.skipped_tickers.length} 只`,
+        `蒸馏完成:${refreshResult.mainline_count} 条投资主线,跳过 ${refreshResult.skipped_tickers.length} 只`,
       )
       await load()
     } catch (e) {
@@ -292,13 +292,13 @@ function PortfolioContextView() {
   }
 
   const profileTickers = () => {
-    const c = ctx()
-    if (!c) return new Set<string>()
-    const set = new Set<string>()
-    for (const p of c.profile_list) {
-      for (const t of p.tickers) set.add(t)
+    const context = digestContext()
+    if (!context) return new Set<string>()
+    const tickers = new Set<string>()
+    for (const profile of context.profile_list) {
+      for (const ticker of profile.tickers) tickers.add(ticker)
     }
-    return set
+    return tickers
   }
 
   return (
@@ -352,8 +352,8 @@ function PortfolioContextView() {
           </div>
         </Show>
 
-        <Show when={ctx()}>
-          {(c) => (
+        <Show when={digestContext()}>
+          {(context) => (
             <>
               {/* Meta + 操作 */}
               <div
@@ -367,12 +367,12 @@ function PortfolioContextView() {
                 }}
               >
                 <div style={{ "font-size": "13px", color: "#64748b" }}>
-                  上次蒸馏:<strong style={{ color: "#0f172a" }}>{formatTimestamp(c().last_mainline_distilled_at)}</strong>
-                  <Show when={c().mainline_distill_skipped.length > 0}>
+                  上次蒸馏:<strong style={{ color: "#0f172a" }}>{formatTimestamp(context().last_mainline_distilled_at)}</strong>
+                  <Show when={context().mainline_distill_skipped.length > 0}>
                     <span style={{ "margin-left": "16px" }}>
-                      跳过 {c().mainline_distill_skipped.length} 只:
+                      跳过 {context().mainline_distill_skipped.length} 只:
                       <span style={{ color: "#d97706", "font-family": "monospace" }}>
-                        {c().mainline_distill_skipped.join(", ")}
+                        {context().mainline_distill_skipped.join(", ")}
                       </span>
                     </span>
                   </Show>
@@ -436,14 +436,14 @@ function PortfolioContextView() {
                 </div>
                 <div style={{ "font-size": "14px", color: "#0f172a", "line-height": "1.7" }}>
                   <Show
-                    when={c().mainline_style}
+                    when={context().mainline_style}
                     fallback={
                       <span style={{ color: "#94a3b8" }}>
                         尚未蒸馏 —— 至少要有 1 个公司画像才能产出整体风格。
                       </span>
                     }
                   >
-                    {c().mainline_style}
+                    {context().mainline_style}
                   </Show>
                 </div>
               </div>
@@ -457,10 +457,10 @@ function PortfolioContextView() {
                   margin: "24px 0 12px",
                 }}
               >
-                各持仓投资主线 ({c().holdings.length} 只)
+                各持仓投资主线 ({context().holdings.length} 只)
               </h2>
               <Show
-                when={c().holdings.length > 0}
+                when={context().holdings.length > 0}
                 fallback={
                   <div
                     style={{
@@ -484,13 +484,13 @@ function PortfolioContextView() {
                     "margin-bottom": "32px",
                   }}
                 >
-                  <For each={c().holdings}>
+                  <For each={context().holdings}>
                     {(ticker) => (
                       <MainlineCard
                         ticker={ticker}
-                        mainline={c().mainline_by_ticker[ticker]}
+                        mainline={context().mainline_by_ticker[ticker]}
                         hasProfile={profileTickers().has(ticker)}
-                        isSkipped={c().mainline_distill_skipped.includes(ticker)}
+                        isSkipped={context().mainline_distill_skipped.includes(ticker)}
                         onView={() => openProfile(ticker)}
                       />
                     )}
@@ -507,10 +507,10 @@ function PortfolioContextView() {
                   margin: "32px 0 12px",
                 }}
               >
-                公司画像 inventory ({c().profile_list.length})
+                公司画像 inventory ({context().profile_list.length})
               </h2>
               <Show
-                when={c().profile_list.length > 0}
+                when={context().profile_list.length > 0}
                 fallback={
                   <div
                     style={{
@@ -527,8 +527,8 @@ function PortfolioContextView() {
                 }
               >
                 <div style={{ display: "flex", "flex-direction": "column", gap: "10px" }}>
-                  <For each={c().profile_list}>
-                    {(p) => (
+                  <For each={context().profile_list}>
+                    {(profile) => (
                       <div
                         style={{
                           padding: "14px 18px",
@@ -543,7 +543,7 @@ function PortfolioContextView() {
                       >
                         <div style={{ flex: "1" }}>
                           <div style={{ "font-size": "14px", "font-weight": "600", color: "#0f172a" }}>
-                            {p.title || p.dir}
+                            {profile.title || profile.dir}
                             <span
                               style={{
                                 "margin-left": "8px",
@@ -552,7 +552,7 @@ function PortfolioContextView() {
                                 color: "#64748b",
                               }}
                             >
-                              {p.tickers.join(" / ")}
+                              {profile.tickers.join(" / ")}
                             </span>
                           </div>
                           <div
@@ -562,13 +562,13 @@ function PortfolioContextView() {
                               "margin-top": "4px",
                             }}
                           >
-                            {(p.bytes / 1024).toFixed(1)} KB · {p.dir}
+                            {(profile.bytes / 1024).toFixed(1)} KB · {profile.dir}
                           </div>
                         </div>
-                        <Show when={p.tickers.length > 0}>
+                        <Show when={profile.tickers.length > 0}>
                           <button
                             type="button"
-                            onClick={() => openProfile(p.tickers[0])}
+                            onClick={() => openProfile(profile.tickers[0])}
                             style={{
                               padding: "6px 12px",
                               "border-radius": "6px",
