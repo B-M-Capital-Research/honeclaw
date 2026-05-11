@@ -80,12 +80,106 @@ function parseCsv(value: string) {
 
 type LlmProfileSettingsDraft = NonNullable<AgentSettings["llmProfiles"]>;
 type LlmProfileEntryDraft = LlmProfileSettingsDraft["profiles"][number];
+type LlmProfileBindingKey = keyof Omit<LlmProfileSettingsDraft, "profiles">;
+type LlmProfileBindingRow = { key: LlmProfileBindingKey; label: string };
+type CheckStatus = "idle" | "checking" | "ok" | "error";
+type CheckProbeResult = { ok: boolean; message: string };
 
 function optionalNumber(value: string): number | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+async function runCheckState(
+  setStatus: (value: CheckStatus) => void,
+  setMessage: (value: string) => void,
+  probe: () => Promise<CheckProbeResult>,
+) {
+  setStatus("checking");
+  setMessage("");
+  try {
+    const result = await probe();
+    setStatus(result.ok ? "ok" : "error");
+    setMessage(result.message);
+  } catch (e) {
+    setStatus("error");
+    setMessage(e instanceof Error ? e.message : String(e));
+  }
+}
+
+function checkFeedbackClass(status: CheckStatus) {
+  return [
+    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+    status === "checking"
+      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
+      : status === "ok"
+        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
+        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
+  ].join(" ");
+}
+
+function CheckStatusBanner(props: {
+  status: CheckStatus;
+  checkingMessage: string;
+  message: string;
+  showIcon?: boolean;
+}) {
+  return (
+    <div class={checkFeedbackClass(props.status)}>
+      <Show when={props.showIcon && props.status === "checking"}>
+        <svg
+          class="h-3.5 w-3.5 shrink-0 animate-spin"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          />
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
+        </svg>
+      </Show>
+      <Show when={props.showIcon && props.status === "ok"}>
+        <svg
+          class="h-3.5 w-3.5 shrink-0"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </Show>
+      <Show when={props.showIcon && props.status === "error"}>
+        <svg
+          class="h-3.5 w-3.5 shrink-0"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </Show>
+      <span>
+        {props.status === "checking" ? props.checkingMessage : props.message}
+      </span>
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -146,19 +240,16 @@ export default function SettingsPage() {
   const [agentError, setAgentError] = createSignal("");
 
   // OpenAI-compatible endpoint test state
-  const [openaiTestStatus, setOpenaiTestStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
+  const [openaiTestStatus, setOpenaiTestStatus] =
+    createSignal<CheckStatus>("idle");
   const [openaiTestMessage, setOpenaiTestMessage] = createSignal("");
-  const [honeCloudTestStatus, setHoneCloudTestStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
+  const [honeCloudTestStatus, setHoneCloudTestStatus] =
+    createSignal<CheckStatus>("idle");
   const [honeCloudTestMessage, setHoneCloudTestMessage] = createSignal("");
   const [showHoneCloudKey, setShowHoneCloudKey] = createSignal(false);
   const [showOpenaiKey, setShowOpenaiKey] = createSignal(false);
-  const [auxiliaryTestStatus, setAuxiliaryTestStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
+  const [auxiliaryTestStatus, setAuxiliaryTestStatus] =
+    createSignal<CheckStatus>("idle");
   const [auxiliaryTestMessage, setAuxiliaryTestMessage] = createSignal("");
   const [showAuxiliaryKey, setShowAuxiliaryKey] = createSignal(false);
   const profileIdOptions = createMemo(
@@ -167,6 +258,48 @@ export default function SettingsPage() {
         .llmProfiles?.profiles.map((profile) => profile.id.trim())
         .filter(Boolean) ?? [],
   );
+  const llmProfileBindingRows: LlmProfileBindingRow[] = [
+    {
+      key: "defaultProfile",
+      label: SETTINGS.agent.openai.profiles_default_label,
+    },
+    {
+      key: "auxiliaryProfile",
+      label: SETTINGS.agent.openai.profiles_auxiliary_label,
+    },
+    {
+      key: "polishProfile",
+      label: SETTINGS.agent.openai.profiles_polish_label,
+    },
+    {
+      key: "newsClassifierProfile",
+      label: SETTINGS.agent.openai.profiles_news_label,
+    },
+    {
+      key: "filingSummaryProfile",
+      label: SETTINGS.agent.openai.profiles_filing_label,
+    },
+    {
+      key: "earningsQualityProfile",
+      label: SETTINGS.agent.openai.profiles_earnings_label,
+    },
+    {
+      key: "digestPass1Profile",
+      label: SETTINGS.agent.openai.profiles_digest_pass1_label,
+    },
+    {
+      key: "digestPass2Profile",
+      label: SETTINGS.agent.openai.profiles_digest_pass2_label,
+    },
+    {
+      key: "digestEventDedupeProfile",
+      label: SETTINGS.agent.openai.profiles_digest_dedupe_label,
+    },
+    {
+      key: "mainlineDistillProfile",
+      label: SETTINGS.agent.openai.profiles_mainline_label,
+    },
+  ];
   const [showFeishuSecret, setShowFeishuSecret] = createSignal(false);
   const [showTelegramToken, setShowTelegramToken] = createSignal(false);
   const [showDiscordToken, setShowDiscordToken] = createSignal(false);
@@ -186,14 +319,12 @@ export default function SettingsPage() {
     );
 
   // Gemini CLI 检测状态
-  const [geminiCheckStatus, setGeminiCheckStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
+  const [geminiCheckStatus, setGeminiCheckStatus] =
+    createSignal<CheckStatus>("idle");
   const [geminiCheckMessage, setGeminiCheckMessage] = createSignal("");
 
-  const [codexAcpCheckStatus, setCodexAcpCheckStatus] = createSignal<
-    "idle" | "checking" | "ok" | "error"
-  >("idle");
+  const [codexAcpCheckStatus, setCodexAcpCheckStatus] =
+    createSignal<CheckStatus>("idle");
   const [codexAcpCheckMessage, setCodexAcpCheckMessage] = createSignal("");
 
   const [agentSettingsRes] = createResource(
@@ -317,86 +448,85 @@ export default function SettingsPage() {
     showSetter((prev) => toggleApiKeyVisibility(prev, index));
   }
 
+  const updateHoneCloudDraft = (
+    patch: Partial<NonNullable<AgentSettings["honeCloud"]>>,
+  ) => {
+    setAgentDraft((prev) => ({
+      ...prev,
+      honeCloud: {
+        ...defaultAgentSettings().honeCloud!,
+        ...prev.honeCloud,
+        ...patch,
+      },
+    }));
+  };
+
+  const updateAuxiliaryDraft = (
+    patch: Partial<NonNullable<AgentSettings["auxiliary"]>>,
+  ) => {
+    setAgentDraft((prev) => ({
+      ...prev,
+      auxiliary: {
+        ...defaultAgentSettings().auxiliary!,
+        ...prev.auxiliary,
+        ...patch,
+      },
+    }));
+  };
+
   // ── OpenAI-compatible endpoint tests ───────────────────────────────────────
   const handleTestOpenAi = async () => {
-    setOpenaiTestStatus("checking");
-    setOpenaiTestMessage("");
-    try {
+    await runCheckState(setOpenaiTestStatus, setOpenaiTestMessage, async () => {
       const d = agentDraft();
-      const result = await testDesktopOpenAiChannel(
+      return testDesktopOpenAiChannel(
         d.openaiUrl,
         d.openaiModel,
         d.openaiApiKey,
       );
-      setOpenaiTestStatus(result.ok ? "ok" : "error");
-      setOpenaiTestMessage(result.message);
-    } catch (e) {
-      setOpenaiTestStatus("error");
-      setOpenaiTestMessage(e instanceof Error ? e.message : String(e));
-    }
+    });
   };
 
   const handleTestHoneCloud = async () => {
-    setHoneCloudTestStatus("checking");
-    setHoneCloudTestMessage("");
-    try {
-      const d = agentDraft().honeCloud;
-      const result = await testDesktopOpenAiChannel(
-        resolveHoneCloudOpenAiBaseUrl(d?.baseUrl),
-        d?.model || "hone-cloud",
-        d?.apiKey ?? "",
-      );
-      setHoneCloudTestStatus(result.ok ? "ok" : "error");
-      setHoneCloudTestMessage(result.message);
-    } catch (e) {
-      setHoneCloudTestStatus("error");
-      setHoneCloudTestMessage(e instanceof Error ? e.message : String(e));
-    }
+    await runCheckState(
+      setHoneCloudTestStatus,
+      setHoneCloudTestMessage,
+      async () => {
+        const d = agentDraft().honeCloud;
+        return testDesktopOpenAiChannel(
+          resolveHoneCloudOpenAiBaseUrl(d?.baseUrl),
+          d?.model || "hone-cloud",
+          d?.apiKey ?? "",
+        );
+      },
+    );
   };
 
   const handleTestAuxiliary = async () => {
-    setAuxiliaryTestStatus("checking");
-    setAuxiliaryTestMessage("");
-    try {
-      const auxiliary = agentDraft().auxiliary;
-      const result = await testDesktopOpenAiChannel(
-        auxiliary?.baseUrl ?? "",
-        auxiliary?.model ?? "",
-        auxiliary?.apiKey ?? "",
-      );
-      setAuxiliaryTestStatus(result.ok ? "ok" : "error");
-      setAuxiliaryTestMessage(result.message);
-    } catch (e) {
-      setAuxiliaryTestStatus("error");
-      setAuxiliaryTestMessage(e instanceof Error ? e.message : String(e));
-    }
+    await runCheckState(
+      setAuxiliaryTestStatus,
+      setAuxiliaryTestMessage,
+      async () => {
+        const auxiliary = agentDraft().auxiliary;
+        return testDesktopOpenAiChannel(
+          auxiliary?.baseUrl ?? "",
+          auxiliary?.model ?? "",
+          auxiliary?.apiKey ?? "",
+        );
+      },
+    );
   };
 
   // ── CLI / ACP checks ───────────────────────────────────────────────────────
   const handleCheckGemini = async () => {
-    setGeminiCheckStatus("checking");
-    setGeminiCheckMessage("");
-    try {
-      const result = await checkDesktopAgentCli("gemini_cli");
-      setGeminiCheckStatus(result.ok ? "ok" : "error");
-      setGeminiCheckMessage(result.message);
-    } catch (e) {
-      setGeminiCheckStatus("error");
-      setGeminiCheckMessage(e instanceof Error ? e.message : String(e));
-    }
+    await runCheckState(setGeminiCheckStatus, setGeminiCheckMessage, () =>
+      checkDesktopAgentCli("gemini_cli"),
+    );
   };
 
   const handleCheckCodexAcp = async () => {
-    setCodexAcpCheckStatus("checking");
-    setCodexAcpCheckMessage("");
-    try {
-      const result = await checkDesktopAgentCli("codex_acp");
-      setCodexAcpCheckStatus(result.ok ? "ok" : "error");
-      setCodexAcpCheckMessage(result.message);
-    } catch (e) {
-      setCodexAcpCheckStatus("error");
-      setCodexAcpCheckMessage(e instanceof Error ? e.message : String(e));
-    }
+    await runCheckState(setCodexAcpCheckStatus, setCodexAcpCheckMessage, () =>
+      checkDesktopAgentCli("codex_acp"),
+    );
   };
 
   // ── 选中某个 runner 并立即保存 ───────────────────────────────────────────────
@@ -452,7 +582,7 @@ export default function SettingsPage() {
   };
 
   const updateLlmProfileBinding = (
-    key: keyof Omit<LlmProfileSettingsDraft, "profiles">,
+    key: LlmProfileBindingKey,
     value: string,
   ) => {
     updateLlmProfiles((current) => ({
@@ -853,17 +983,7 @@ export default function SettingsPage() {
                   class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                   value={agentDraft().honeCloud?.baseUrl ?? ""}
                   onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      honeCloud: {
-                        ...(prev.honeCloud ?? {
-                          baseUrl: "https://hone-claw.com",
-                          apiKey: "",
-                          model: "hone-cloud",
-                        }),
-                        baseUrl: e.currentTarget.value,
-                      },
-                    }))
+                    updateHoneCloudDraft({ baseUrl: e.currentTarget.value })
                   }
                 />
               </div>
@@ -881,17 +1001,7 @@ export default function SettingsPage() {
                   class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                   value={agentDraft().honeCloud?.model ?? ""}
                   onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      honeCloud: {
-                        ...(prev.honeCloud ?? {
-                          baseUrl: "https://hone-claw.com",
-                          apiKey: "",
-                          model: "hone-cloud",
-                        }),
-                        model: e.currentTarget.value,
-                      },
-                    }))
+                    updateHoneCloudDraft({ model: e.currentTarget.value })
                   }
                 />
               </div>
@@ -910,17 +1020,7 @@ export default function SettingsPage() {
                     class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                     value={agentDraft().honeCloud?.apiKey ?? ""}
                     onInput={(e) =>
-                      setAgentDraft((prev) => ({
-                        ...prev,
-                        honeCloud: {
-                          ...(prev.honeCloud ?? {
-                            baseUrl: "https://hone-claw.com",
-                            apiKey: "",
-                            model: "hone-cloud",
-                          }),
-                          apiKey: e.currentTarget.value,
-                        },
-                      }))
+                      updateHoneCloudDraft({ apiKey: e.currentTarget.value })
                     }
                   />
                   <button
@@ -938,22 +1038,13 @@ export default function SettingsPage() {
                 {SETTINGS.agent.hone_cloud.contact_note}
               </div>
               <Show when={honeCloudTestStatus() !== "idle"}>
-                <div
-                  class={[
-                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-                    honeCloudTestStatus() === "checking"
-                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
-                      : honeCloudTestStatus() === "ok"
-                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
-                  ].join(" ")}
-                >
-                  <span>
-                    {honeCloudTestStatus() === "checking"
-                      ? SETTINGS.agent.hone_cloud.connection_testing_status
-                      : honeCloudTestMessage()}
-                  </span>
-                </div>
+                <CheckStatusBanner
+                  status={honeCloudTestStatus()}
+                  checkingMessage={
+                    SETTINGS.agent.hone_cloud.connection_testing_status
+                  }
+                  message={honeCloudTestMessage()}
+                />
               </Show>
               <div class="flex gap-2 pt-1">
                 <button
@@ -1076,17 +1167,7 @@ export default function SettingsPage() {
                       class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                       value={agentDraft().auxiliary?.baseUrl ?? ""}
                       onInput={(e) =>
-                        setAgentDraft((prev) => ({
-                          ...prev,
-                          auxiliary: {
-                            ...(prev.auxiliary ?? {
-                              baseUrl: "",
-                              apiKey: "",
-                              model: "",
-                            }),
-                            baseUrl: e.currentTarget.value,
-                          },
-                        }))
+                        updateAuxiliaryDraft({ baseUrl: e.currentTarget.value })
                       }
                     />
                   </div>
@@ -1104,17 +1185,7 @@ export default function SettingsPage() {
                       class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                       value={agentDraft().auxiliary?.model ?? ""}
                       onInput={(e) =>
-                        setAgentDraft((prev) => ({
-                          ...prev,
-                          auxiliary: {
-                            ...(prev.auxiliary ?? {
-                              baseUrl: "",
-                              apiKey: "",
-                              model: "",
-                            }),
-                            model: e.currentTarget.value,
-                          },
-                        }))
+                        updateAuxiliaryDraft({ model: e.currentTarget.value })
                       }
                     />
                   </div>
@@ -1133,17 +1204,9 @@ export default function SettingsPage() {
                         class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                         value={agentDraft().auxiliary?.apiKey ?? ""}
                         onInput={(e) =>
-                          setAgentDraft((prev) => ({
-                            ...prev,
-                            auxiliary: {
-                              ...(prev.auxiliary ?? {
-                                baseUrl: "",
-                                apiKey: "",
-                                model: "",
-                              }),
-                              apiKey: e.currentTarget.value,
-                            },
-                          }))
+                          updateAuxiliaryDraft({
+                            apiKey: e.currentTarget.value,
+                          })
                         }
                       />
                       <button
@@ -1169,50 +1232,7 @@ export default function SettingsPage() {
                 </p>
 
                 <div class="mt-3 grid gap-2 md:grid-cols-2">
-                  <For
-                    each={[
-                      {
-                        key: "defaultProfile",
-                        label: SETTINGS.agent.openai.profiles_default_label,
-                      },
-                      {
-                        key: "auxiliaryProfile",
-                        label: SETTINGS.agent.openai.profiles_auxiliary_label,
-                      },
-                      {
-                        key: "polishProfile",
-                        label: SETTINGS.agent.openai.profiles_polish_label,
-                      },
-                      {
-                        key: "newsClassifierProfile",
-                        label: SETTINGS.agent.openai.profiles_news_label,
-                      },
-                      {
-                        key: "filingSummaryProfile",
-                        label: SETTINGS.agent.openai.profiles_filing_label,
-                      },
-                      {
-                        key: "earningsQualityProfile",
-                        label: SETTINGS.agent.openai.profiles_earnings_label,
-                      },
-                      {
-                        key: "digestPass1Profile",
-                        label: SETTINGS.agent.openai.profiles_digest_pass1_label,
-                      },
-                      {
-                        key: "digestPass2Profile",
-                        label: SETTINGS.agent.openai.profiles_digest_pass2_label,
-                      },
-                      {
-                        key: "digestEventDedupeProfile",
-                        label: SETTINGS.agent.openai.profiles_digest_dedupe_label,
-                      },
-                      {
-                        key: "mainlineDistillProfile",
-                        label: SETTINGS.agent.openai.profiles_mainline_label,
-                      },
-                    ]}
-                  >
+                  <For each={llmProfileBindingRows}>
                     {(row) => (
                       <label class="block">
                         <span class="mb-1 block text-[11px] font-medium text-[color:var(--text-secondary)]">
@@ -1220,20 +1240,10 @@ export default function SettingsPage() {
                         </span>
                         <select
                           class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-2 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
-                          value={
-                            agentDraft().llmProfiles?.[
-                              row.key as keyof Omit<
-                                LlmProfileSettingsDraft,
-                                "profiles"
-                              >
-                            ] ?? ""
-                          }
+                          value={agentDraft().llmProfiles?.[row.key] ?? ""}
                           onChange={(e) =>
                             updateLlmProfileBinding(
-                              row.key as keyof Omit<
-                                LlmProfileSettingsDraft,
-                                "profiles"
-                              >,
+                              row.key,
                               e.currentTarget.value,
                             )
                           }
@@ -1444,88 +1454,22 @@ export default function SettingsPage() {
 
               {/* 测试联通状态 */}
               <Show when={openaiTestStatus() !== "idle"}>
-                <div
-                  class={[
-                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-                    openaiTestStatus() === "checking"
-                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
-                      : openaiTestStatus() === "ok"
-                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
-                  ].join(" ")}
-                >
-                  <Show when={openaiTestStatus() === "checking"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0 animate-spin"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        class="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        stroke-width="4"
-                      />
-                      <path
-                        class="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={openaiTestStatus() === "ok"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={openaiTestStatus() === "error"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </Show>
-                  <span>
-                    {openaiTestStatus() === "checking"
-                      ? SETTINGS.agent.openai.connection_testing_status
-                      : openaiTestMessage()}
-                  </span>
-                </div>
+                <CheckStatusBanner
+                  status={openaiTestStatus()}
+                  checkingMessage={
+                    SETTINGS.agent.openai.connection_testing_status
+                  }
+                  message={openaiTestMessage()}
+                  showIcon
+                />
               </Show>
 
               <Show when={auxiliaryTestStatus() !== "idle"}>
-                <div
-                  class={[
-                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-                    auxiliaryTestStatus() === "checking"
-                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
-                      : auxiliaryTestStatus() === "ok"
-                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
-                  ].join(" ")}
-                >
-                  <span>
-                    {auxiliaryTestStatus() === "checking"
-                      ? SETTINGS.agent.openai.auxiliary_testing_status
-                      : auxiliaryTestMessage()}
-                  </span>
-                </div>
+                <CheckStatusBanner
+                  status={auxiliaryTestStatus()}
+                  checkingMessage={SETTINGS.agent.openai.auxiliary_testing_status}
+                  message={auxiliaryTestMessage()}
+                />
               </Show>
 
               {/* 反馈 */}
@@ -1608,69 +1552,12 @@ export default function SettingsPage() {
 
             <div class="mt-4 space-y-3" onClick={(e) => e.stopPropagation()}>
               <Show when={codexAcpCheckStatus() !== "idle"}>
-                <div
-                  class={[
-                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-                    codexAcpCheckStatus() === "checking"
-                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
-                      : codexAcpCheckStatus() === "ok"
-                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
-                  ].join(" ")}
-                >
-                  <Show when={codexAcpCheckStatus() === "checking"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0 animate-spin"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        class="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        stroke-width="4"
-                      />
-                      <path
-                        class="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={codexAcpCheckStatus() === "ok"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={codexAcpCheckStatus() === "error"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </Show>
-                  <span>
-                    {codexAcpCheckStatus() === "checking"
-                      ? SETTINGS.agent.codex_acp.checking_status
-                      : codexAcpCheckMessage()}
-                  </span>
-                </div>
+                <CheckStatusBanner
+                  status={codexAcpCheckStatus()}
+                  checkingMessage={SETTINGS.agent.codex_acp.checking_status}
+                  message={codexAcpCheckMessage()}
+                  showIcon
+                />
               </Show>
 
               <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-3 text-xs text-[color:var(--text-secondary)]">
@@ -1725,69 +1612,12 @@ export default function SettingsPage() {
             <div class="mt-4 space-y-3" onClick={(e) => e.stopPropagation()}>
               {/* 检测状态 */}
               <Show when={geminiCheckStatus() !== "idle"}>
-                <div
-                  class={[
-                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-                    geminiCheckStatus() === "checking"
-                      ? "border-amber-300/40 bg-amber-500/10 text-amber-300"
-                      : geminiCheckStatus() === "ok"
-                        ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-rose-300/40 bg-rose-500/10 text-rose-300",
-                  ].join(" ")}
-                >
-                  <Show when={geminiCheckStatus() === "checking"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0 animate-spin"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        class="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        stroke-width="4"
-                      />
-                      <path
-                        class="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={geminiCheckStatus() === "ok"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={geminiCheckStatus() === "error"}>
-                    <svg
-                      class="h-3.5 w-3.5 shrink-0"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </Show>
-                  <span>
-                    {geminiCheckStatus() === "checking"
-                      ? SETTINGS.agent.gemini_cli.checking_status
-                      : geminiCheckMessage()}
-                  </span>
-                </div>
+                <CheckStatusBanner
+                  status={geminiCheckStatus()}
+                  checkingMessage={SETTINGS.agent.gemini_cli.checking_status}
+                  message={geminiCheckMessage()}
+                  showIcon
+                />
               </Show>
 
               <div class="flex gap-2 pt-1">

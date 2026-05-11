@@ -50,15 +50,12 @@ export function ChannelStatusBadge() {
 
   const successCount = createMemo(() => channels().filter((c) => c.running).length)
   const failCount    = createMemo(() => channels().filter((c) => c.enabled && !c.running).length)
-  const totalListeningCount = createMemo(() => successCount())
   const backendConnected = createMemo(() => backend.state.connected)
-  const frontendConnected = createMemo(() => true)
   const backendLabel = createMemo(() => {
     if (backend.state.initializing) return "后端连接中"
     if (backendConnected()) return "管理端后端正常连接中"
     return "管理端后端未连接"
   })
-  const frontendLabel = createMemo(() => frontendConnected() ? "管理端前端正常连接中" : "管理端前端未连接")
 
   const dotColor = createMemo(() => {
     if (!backendConnected() && !backend.state.initializing) return "bg-rose-500"
@@ -70,8 +67,8 @@ export function ChannelStatusBadge() {
   })
 
   const summaryText = createMemo(() => {
-    const channelText = hasData() ? `${totalListeningCount()} 个渠道监听中` : "渠道加载中"
-    return [channelText, backendLabel(), frontendLabel()].join("，")
+    const channelText = hasData() ? `${successCount()} 个渠道监听中` : "渠道加载中"
+    return [channelText, backendLabel(), "管理端前端正常连接中"].join("，")
   })
 
   const backendStatus = createMemo(() => {
@@ -106,12 +103,12 @@ export function ChannelStatusBadge() {
       typeof window !== "undefined" && window.location?.origin && window.location.origin !== "null"
         ? window.location.origin
         : "desktop shell"
-    return {
-      label: "管理端前端",
-      detail: backend.state.isDesktop
-        ? `desktop · ${target}`
-        : `browser · ${target}（管理端页面）`,
-      status: frontendConnected() ? "running" : "stopped",
+      return {
+        label: "管理端前端",
+        detail: backend.state.isDesktop
+          ? `desktop · ${target}`
+          : `browser · ${target}（管理端页面）`,
+      status: "running",
     }
   })
 
