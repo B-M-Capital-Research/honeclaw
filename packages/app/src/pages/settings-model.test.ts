@@ -6,11 +6,15 @@ import {
   canSelectRunner,
   defaultAgentSettings,
   defaultLanguageDraft,
+  formatCsv,
   resolveHoneCloudOpenAiBaseUrl,
   initialApiKeyVisibility,
   isAgentSettingsRuntimeMismatch,
   mergeAgentSettings,
+  normalizePhoneNumber,
   normalizeApiKeys,
+  optionalNumber,
+  parseCsv,
   removeApiKey,
   removeApiKeyVisibility,
   toChannelDraft,
@@ -99,6 +103,24 @@ describe("settings-model", () => {
     expect(normalizeApiKeys(["a", "b"])).toEqual(["a", "b"])
     expect(initialApiKeyVisibility([])).toEqual([false])
     expect(initialApiKeyVisibility(["a", "b"])).toEqual([false, false])
+  })
+
+  it("normalizes settings form draft inputs", () => {
+    expect(normalizePhoneNumber(" +1 (555) 123-4567 ")).toBe("+15551234567")
+    expect(normalizePhoneNumber(" 555-123-4567 ")).toBe("5551234567")
+
+    expect(formatCsv(["alice@example.com", "bob@example.com"])).toBe(
+      "alice@example.com, bob@example.com",
+    )
+    expect(formatCsv(undefined)).toBe("")
+    expect(parseCsv(" alice@example.com, , bob@example.com ")).toEqual([
+      "alice@example.com",
+      "bob@example.com",
+    ])
+
+    expect(optionalNumber(" 42 ")).toBe(42)
+    expect(optionalNumber("")).toBeUndefined()
+    expect(optionalNumber("not-a-number")).toBeUndefined()
   })
 
   it("updates api key lists without mutating the previous settings", () => {

@@ -197,6 +197,31 @@ export function canSelectRunner(
   return !isSaving && currentRunner !== nextRunner
 }
 
+export function normalizePhoneNumber(value: string): string {
+  const trimmed = value.trim()
+  const hasLeadingPlus = trimmed.startsWith("+")
+  const digits = trimmed.replace(/\D+/g, "")
+  return hasLeadingPlus ? `+${digits}` : digits
+}
+
+export function formatCsv(values?: string[]): string {
+  return (values ?? []).join(", ")
+}
+
+export function parseCsv(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+export function optionalNumber(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
 export function resolveHoneCloudOpenAiBaseUrl(baseUrl?: string): string {
   const trimmed = (baseUrl ?? "").trim().replace(/\/+$/, "") || "https://hone-claw.com"
   if (trimmed.endsWith("/chat/completions")) {

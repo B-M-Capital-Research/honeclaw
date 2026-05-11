@@ -45,10 +45,14 @@ import {
   defaultFmpSettings,
   defaultLanguageDraft,
   defaultTavilySettings,
+  formatCsv,
   initialApiKeyVisibility,
   isAgentSettingsRuntimeMismatch,
   mergeAgentSettings,
+  normalizePhoneNumber,
   normalizeApiKeys,
+  optionalNumber,
+  parseCsv,
   removeApiKey,
   removeApiKeyVisibility,
   resolveHoneCloudOpenAiBaseUrl,
@@ -60,37 +64,12 @@ import {
 import { SETTINGS } from "@/lib/admin-content/settings";
 import { tpl } from "@/lib/i18n";
 
-function normalizePhoneNumber(value: string) {
-  const trimmed = value.trim();
-  const hasLeadingPlus = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D+/g, "");
-  return hasLeadingPlus ? `+${digits}` : digits;
-}
-
-function formatCsv(values?: string[]) {
-  return (values ?? []).join(", ");
-}
-
-function parseCsv(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 type LlmProfileSettingsDraft = NonNullable<AgentSettings["llmProfiles"]>;
 type LlmProfileEntryDraft = LlmProfileSettingsDraft["profiles"][number];
 type LlmProfileBindingKey = keyof Omit<LlmProfileSettingsDraft, "profiles">;
 type LlmProfileBindingRow = { key: LlmProfileBindingKey; label: string };
 type CheckStatus = "idle" | "checking" | "ok" | "error";
 type CheckProbeResult = { ok: boolean; message: string };
-
-function optionalNumber(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 async function runCheckState(
   setStatus: (value: CheckStatus) => void,

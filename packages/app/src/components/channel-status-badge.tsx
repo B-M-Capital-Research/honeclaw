@@ -2,37 +2,13 @@ import { For, Show, createMemo, createSignal } from "solid-js"
 import { useConsole } from "@/context/console"
 import { useBackend } from "@/context/backend"
 import { cleanupDesktopChannelProcesses } from "@/lib/backend"
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case "running":     return "运行中"
-    case "degraded":    return "部分异常"
-    case "disabled":    return "已禁用"
-    case "stopped":     return "已停止"
-    case "unsupported": return "不支持"
-    default:            return status
-  }
-}
-
-function statusDotClass(status: string): string {
-  switch (status) {
-    case "running":     return "bg-[color:var(--success)]"
-    case "degraded":    return "bg-amber-400"
-    case "disabled":    return "bg-[color:var(--text-muted)] opacity-40"
-    case "unsupported": return "bg-amber-400"
-    default:            return "bg-rose-500"
-  }
-}
-
-function statusTextClass(status: string): string {
-  switch (status) {
-    case "running":     return "text-[color:var(--success)]"
-    case "degraded":    return "text-amber-300"
-    case "disabled":
-    case "unsupported": return "text-[color:var(--text-muted)]"
-    default:            return "text-rose-400"
-  }
-}
+import {
+  channelBadgeDotClass,
+  statusDotClass,
+  statusLabel,
+  statusTextClass,
+  summarizeChannelStatuses,
+} from "./channel-status-badge-model"
 
 export function ChannelStatusBadge() {
   const consoleState = useConsole()
@@ -41,15 +17,9 @@ export function ChannelStatusBadge() {
   const [cleanupBusy, setCleanupBusy] = createSignal(false)
   const [cleanupMessage, setCleanupMessage] = createSignal("")
 
-  const channels    = () => consoleState.channels() ?? []
+  const channels = () => consoleState.channels() ?? []
   const channelError = () => consoleState.channelError()
-  const hasData     = () => channels().length > 0
-  const duplicateProcessCount = createMemo(() =>
-    channels().filter((channel) => (channel.processes?.length ?? 0) > 1).length,
-  )
-
-  const successCount = createMemo(() => channels().filter((c) => c.running).length)
-  const failCount    = createMemo(() => channels().filter((c) => c.enabled && !c.running).length)
+  const channelCounts = createMemo(() => summarizeChannelStatuses(channels()))
   const backendConnected = createMemo(() => backend.state.connected)
   const backendLabel = createMemo(() => {
     if (backend.state.initializing) return "后端连接中"
@@ -58,16 +28,17 @@ export function ChannelStatusBadge() {
   })
 
   const dotColor = createMemo(() => {
-    if (!backendConnected() && !backend.state.initializing) return "bg-rose-500"
-    if (channelError())         return "bg-amber-400"
-    if (!hasData())             return "bg-[color:var(--text-muted)]"
-    if (failCount() > 0)        return "bg-rose-500"
-    if (successCount() > 0)     return "bg-[color:var(--success)]"
-    return "bg-[color:var(--text-muted)]"
+    return channelBadgeDotClass({
+      backendConnected: backendConnected(),
+      backendInitializing: backend.state.initializing,
+      channelError: channelError(),
+      counts: channelCounts(),
+    })
   })
 
   const summaryText = createMemo(() => {
-    const channelText = hasData() ? `${successCount()} 个渠道监听中` : "渠道加载中"
+    const counts = channelCounts()
+    const channelText = counts.hasData ? `${counts.successCount} 个渠道监听中` : "渠道加载中"
     return [channelText, backendLabel(), "管理端前端正常连接中"].join("，")
   })
 
@@ -176,7 +147,7 @@ export function ChannelStatusBadge() {
           <Show when={backend.state.isDesktop}>
             <div class="mb-2.5 flex items-center justify-between gap-2">
               <div class="text-[10px] text-[color:var(--text-muted)]">
-                {duplicateProcessCount() > 0 ? `${duplicateProcessCount()} 个渠道存在重复进程` : "每个渠道当前最多保留 1 个主进程"}
+                {channelCounts().duplicateProcessCount > 0 ? `${channelCounts().duplicateProcessCount} 个渠道存在重复进程` : "每个渠道当前最多保留 1 个主进程"}
               </div>
               <button
                 type="button"

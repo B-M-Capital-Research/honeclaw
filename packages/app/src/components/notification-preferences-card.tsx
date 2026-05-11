@@ -10,9 +10,7 @@ import {
   getUsers,
   listPortfolioActors,
   putNotificationPrefs,
-  type DigestSlot,
   type NotificationPrefs,
-  type QuietHoursPrefs,
 } from "@/lib/api";
 import {
   actorKey,
@@ -23,52 +21,20 @@ import {
 import type { UserInfo } from "@/lib/types";
 import { NOTIFICATIONS } from "@/lib/admin-content/notifications";
 import { tpl } from "@/lib/i18n";
-
-const DEFAULT_PREFS: NotificationPrefs = {
-  enabled: true,
-  portfolio_only: false,
-  min_severity: "low",
-  allow_kinds: null,
-  blocked_kinds: [],
-  timezone: null,
-  digest_slots: null,
-  price_high_pct_override: null,
-  immediate_kinds: null,
-  quiet_hours: null,
-};
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  isValidDigestSlotTime,
+  sameActor,
+  sortDigestSlots,
+  timeFallsInQuiet,
+  toggleTag,
+} from "./notification-preferences-model";
 
 type RosterEntry = {
   actor: ActorRef;
   prefs: NotificationPrefs;
   kindTags: string[];
 };
-
-/** 与后端 schedule_view::time_in_quiet 的语义一致:from==to 视为空区间(永远 false);
- *  from<to 同日区间 [from,to);from>to 跨午夜 [from,24)∪[0,to)。纯 HH:MM 比较,
- *  不依赖 now/timezone(slot 时间和 quiet 区间用同一时区解释)。 */
-function timeFallsInQuiet(hhmm: string, qh: QuietHoursPrefs | null): boolean {
-  if (!qh) return false;
-  const toMin = (s: string) => {
-    const [h, m] = s.split(":").map(Number);
-    if (Number.isNaN(h) || Number.isNaN(m)) return -1;
-    return h * 60 + m;
-  };
-  const t = toMin(hhmm);
-  const f = toMin(qh.from);
-  const o = toMin(qh.to);
-  if (t < 0 || f < 0 || o < 0) return false;
-  if (f === o) return false;
-  return f < o ? t >= f && t < o : t >= f || t < o;
-}
-
-function sameActor(a?: ActorRef, b?: ActorRef) {
-  if (!a || !b) return false;
-  return (
-    a.channel === b.channel &&
-    a.user_id === b.user_id &&
-    (a.channel_scope ?? "") === (b.channel_scope ?? "")
-  );
-}
 
 async function loadActorsList(): Promise<ActorRef[]> {
   const [portfolioList, userList] = await Promise.all([
@@ -142,7 +108,7 @@ export function NotificationPreferencesCard() {
     return roster().find((e) => sameActor(e.actor, a));
   });
   const currentPrefs = createMemo(
-    () => currentEntry()?.prefs ?? DEFAULT_PREFS,
+    () => currentEntry()?.prefs ?? DEFAULT_NOTIFICATION_PREFS,
   );
   const currentKindTags = createMemo(() => currentEntry()?.kindTags ?? []);
 
@@ -187,7 +153,7 @@ export function NotificationPreferencesCard() {
           } catch {
             return {
               actor,
-              prefs: { ...DEFAULT_PREFS },
+              prefs: { ...DEFAULT_NOTIFICATION_PREFS },
               kindTags: [],
             } satisfies RosterEntry;
           }
@@ -250,7 +216,7 @@ export function NotificationPreferencesCard() {
         upsertEntry(await fetchEntry(actor));
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
-        upsertEntry({ actor, prefs: { ...DEFAULT_PREFS }, kindTags: [] });
+        upsertEntry({ actor, prefs: { ...DEFAULT_NOTIFICATION_PREFS }, kindTags: [] });
       }
     }
   };
@@ -273,9 +239,6 @@ export function NotificationPreferencesCard() {
     patchEntry(a, (e) => ({ ...e, prefs: updater(e.prefs) }));
     setDetailDirty(true);
   };
-
-  const toggleTag = (list: string[], tag: string) =>
-    list.includes(tag) ? list.filter((t) => t !== tag) : [...list, tag];
 
   const handleAllowToggle = (tag: string) => {
     editCurrent((p) => {
@@ -303,19 +266,16 @@ export function NotificationPreferencesCard() {
   // `slot_<n>`,label/floor_macro 留空(后端默认即可),已存在 slot 的 label/floor_macro
   // 如果是后端蒸馏出来的会原样透传不破坏。
   const [slotDraft, setSlotDraft] = createSignal("");
-  const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-  const sortedSlots = (list: DigestSlot[]): DigestSlot[] =>
-    [...list].sort((a, b) => a.time.localeCompare(b.time));
   const addSlot = () => {
     const v = slotDraft().trim();
-    if (!HHMM_RE.test(v)) return;
+    if (!isValidDigestSlotTime(v)) return;
     editCurrent((p) => {
       const existing = p.digest_slots ?? [];
       if (existing.some((s) => s.time === v)) return p; // 同时刻去重
       const id = `slot_${existing.length}`;
       return {
         ...p,
-        digest_slots: sortedSlots([...existing, { id, time: v }]),
+        digest_slots: sortDigestSlots([...existing, { id, time: v }]),
       };
     });
     setSlotDraft("");
@@ -337,7 +297,7 @@ export function NotificationPreferencesCard() {
   // 全天静音的歧义形式,后端会拒绝(空区间永远 false),UI 提示用户避免。
   const setQuietFrom = (raw: string) => {
     const v = raw.trim();
-    if (!HHMM_RE.test(v)) return;
+    if (!isValidDigestSlotTime(v)) return;
     editCurrent((p) => ({
       ...p,
       quiet_hours: {
@@ -349,7 +309,7 @@ export function NotificationPreferencesCard() {
   };
   const setQuietTo = (raw: string) => {
     const v = raw.trim();
-    if (!HHMM_RE.test(v)) return;
+    if (!isValidDigestSlotTime(v)) return;
     editCurrent((p) => ({
       ...p,
       quiet_hours: {
@@ -707,7 +667,7 @@ export function NotificationPreferencesCard() {
                 <button
                   type="button"
                   class="rounded-md border border-emerald-500 px-2 py-1 text-[11px] text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-40"
-                  disabled={!HHMM_RE.test(slotDraft().trim())}
+                  disabled={!isValidDigestSlotTime(slotDraft().trim())}
                   onClick={addSlot}
                 >
                   {NOTIFICATIONS.prefs.digest_add_button}
