@@ -319,7 +319,7 @@ mod tests {
     use chrono::Utc;
     use futures::stream::{self, BoxStream};
     use hone_core::{HoneError, HoneResult};
-    use hone_llm::{ChatResponse, FunctionCall, ToolCall};
+    use hone_llm::ChatResponse;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn ev() -> MarketEvent {
@@ -434,12 +434,6 @@ mod tests {
         ) -> BoxStream<'a, HoneResult<String>> {
             Box::pin(stream::empty())
         }
-    }
-
-    // Silence dead-code warnings on mock fields not touched in every test.
-    #[allow(dead_code)]
-    fn _force_use(t: &(ToolCall, FunctionCall)) {
-        let _ = (&t.0, &t.1);
     }
 
     #[tokio::test]

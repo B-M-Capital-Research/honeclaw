@@ -1,10 +1,5 @@
 // public-roadmap.tsx — Hone Public Site Roadmap (Synced with Landing v4 Style)
 
-import {
-  createSignal,
-  onCleanup,
-  onMount,
-} from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { CONTENT } from "@/lib/public-content"
 import { setLocale, useLocale } from "@/lib/i18n"

@@ -93,10 +93,6 @@ export function setBackendRuntime(next: Partial<RuntimeState>) {
   }
 }
 
-export function getBackendRuntime() {
-  return runtimeState
-}
-
 export function hasRuntimeCapability(capability: string) {
   if (!runtimeState.meta) {
     return runtimeState.mode === "browser" && capability === "local_file_proxy"

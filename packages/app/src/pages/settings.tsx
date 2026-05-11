@@ -31,7 +31,6 @@ import { NotificationPreferencesCard } from "@/components/notification-preferenc
 import type {
   AgentProvider,
   AgentSettings,
-  BackendConfig,
   DesktopChannelSettingsInput,
   FmpSettings,
   TavilySettings,
@@ -91,12 +90,8 @@ function optionalNumber(value: string): number | undefined {
 
 export default function SettingsPage() {
   const backend = useBackend();
-  const [draft, setDraft] = createSignal<BackendConfig>(backend.state.config);
   const [channelDraft, setChannelDraft] =
     createSignal<DesktopChannelSettingsInput>(defaultChannelDraft());
-  const [channelMessage, setChannelMessage] = createSignal("");
-  const [channelError, setChannelError] = createSignal("");
-  const capabilities = createMemo(() => backend.state.meta?.capabilities ?? []);
   const chatScopes = ["DM_ONLY", "GROUPCHAT_ONLY", "ALL"];
   const [
     desktopChannelSettings,
@@ -220,8 +215,6 @@ export default function SettingsPage() {
   const [fmpDraft, setFmpDraft] =
     createSignal<FmpSettings>(defaultFmpSettings());
   const [fmpSaving, setFmpSaving] = createSignal(false);
-  const [fmpMessage, setFmpMessage] = createSignal("");
-  const [fmpError, setFmpError] = createSignal("");
   const [showFmpKeys, setShowFmpKeys] = createSignal<boolean[]>([false]);
 
   const [fmpSettingsRes] = createResource(
@@ -244,13 +237,9 @@ export default function SettingsPage() {
   const submitFmpSettings = async (event: Event) => {
     event.preventDefault();
     setFmpSaving(true);
-    setFmpMessage("");
-    setFmpError("");
     try {
       await saveDesktopFmpSettings(fmpDraft());
-      setFmpMessage(SETTINGS.data.fmp.saved);
-    } catch (e) {
-      setFmpError(e instanceof Error ? e.message : String(e));
+    } catch {
     } finally {
       setFmpSaving(false);
     }
@@ -261,8 +250,6 @@ export default function SettingsPage() {
     defaultTavilySettings(),
   );
   const [tavilySaving, setTavilySaving] = createSignal(false);
-  const [tavilyMessage, setTavilyMessage] = createSignal("");
-  const [tavilyError, setTavilyError] = createSignal("");
   const [showTavilyKeys, setShowTavilyKeys] = createSignal<boolean[]>([false]);
 
   const [tavilySettingsRes] = createResource(
@@ -285,13 +272,9 @@ export default function SettingsPage() {
   const submitTavilySettings = async (event: Event) => {
     event.preventDefault();
     setTavilySaving(true);
-    setTavilyMessage("");
-    setTavilyError("");
     try {
       await saveDesktopTavilySettings(tavilyDraft());
-      setTavilyMessage(SETTINGS.data.tavily.saved);
-    } catch (e) {
-      setTavilyError(e instanceof Error ? e.message : String(e));
+    } catch {
     } finally {
       setTavilySaving(false);
     }
@@ -491,30 +474,17 @@ export default function SettingsPage() {
   };
 
   createEffect(() => {
-    setDraft(backend.state.config);
-  });
-
-  createEffect(() => {
     const settings = desktopChannelSettings();
     if (!settings) return;
     setChannelDraft(toChannelDraft(settings));
   });
 
-  const submit = async (event: Event) => {
-    event.preventDefault();
-    await backend.saveConfig(draft());
-  };
-
   const submitChannels = async (event: Event) => {
     event.preventDefault();
-    setChannelMessage("");
-    setChannelError("");
     try {
       const result = await backend.saveChannelSettings(channelDraft());
       setDesktopChannelSettings(result.settings);
-      setChannelMessage(result.message);
-    } catch (error) {
-      setChannelError(error instanceof Error ? error.message : String(error));
+    } catch {
     }
   };
 

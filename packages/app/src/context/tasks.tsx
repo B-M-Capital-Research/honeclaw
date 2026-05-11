@@ -2,7 +2,7 @@ import { createContext, createEffect, createResource, useContext, type ParentPro
 import { createStore } from "solid-js/store"
 import { getCronJobs, getCronJob, createCronJob, updateCronJob, toggleCronJob, deleteCronJob } from "@/lib/api"
 import { actorFromJob } from "@/lib/actors"
-import type { CronJobDetailInfo, CronJobInfo, CronJobUpsertInput } from "@/lib/types"
+import type { CronJobDetailInfo, CronJobUpsertInput } from "@/lib/types"
 import { useBackend } from "./backend"
 
 type TasksContextValue = ReturnType<typeof createTasksState>

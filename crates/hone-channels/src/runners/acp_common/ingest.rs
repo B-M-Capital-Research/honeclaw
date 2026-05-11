@@ -25,7 +25,7 @@ pub(crate) fn acp_prompt_succeeded(stop_reason: Option<&str>) -> bool {
     matches!(stop_reason, Some(reason) if reason != "cancelled")
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) async fn handle_acp_session_update(
     params: &Value,
     emitter: &Arc<dyn AgentRunnerEmitter>,

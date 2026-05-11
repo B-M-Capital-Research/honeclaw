@@ -115,7 +115,7 @@ function UserSessionsView(props: { actor: ActorRef }) {
   )
 }
 
-function UserResearchView(props: { actor: ActorRef }) {
+function UserResearchView() {
   const navigate = useNavigate()
   const portfolio = usePortfolio()
   const research = useResearch()
@@ -311,7 +311,7 @@ export default function UsersPage() {
                 <UserSessionsView actor={actor()} />
               </Show>
               <Show when={tab() === "research"}>
-                <UserResearchView actor={actor()} />
+                <UserResearchView />
               </Show>
             </div>
           </>

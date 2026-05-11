@@ -161,7 +161,7 @@ export default function NotificationsPage() {
   const [execStatus, setExecStatus] = createSignal("")
   const [sendStatus, setSendStatus] = createSignal("")
   const [hours, setHours] = createSignal<number>(24)
-  const [limit, setLimit] = createSignal<number>(200)
+  const [limit] = createSignal<number>(200)
 
   const [records, setRecords] = createSignal<NotificationRecord[]>([])
   const [histogram, setHistogram] = createSignal<NotificationHistogramBucket[]>(

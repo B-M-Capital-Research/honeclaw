@@ -138,41 +138,10 @@ export function tpl(s: string, vars: Record<string, string | number> = {}): stri
   })
 }
 
-const PLURAL_RULES_CACHE = new Map<Locale, Intl.PluralRules>()
-function pluralRulesFor(loc: Locale): Intl.PluralRules {
-  let rules = PLURAL_RULES_CACHE.get(loc)
-  if (!rules) {
-    rules = new Intl.PluralRules(loc === "zh" ? "zh-CN" : "en-US")
-    PLURAL_RULES_CACHE.set(loc, rules)
-  }
-  return rules
-}
-
-/**
- * Pick from a `{ one, other }` tuple based on Intl.PluralRules in the current
- * locale, then run `tpl` to substitute `{count}` and any other vars. zh-CN
- * always returns "other" — pluralization only matters in English.
- */
-export function plural(
-  forms: { one: string; other: string },
-  count: number,
-  vars: Record<string, string | number> = {},
-): string {
-  const cat = pluralRulesFor(useLocale()).select(count)
-  const tmpl = cat === "one" ? forms.one : forms.other
-  return tpl(tmpl, { count, ...vars })
-}
-
 /** Format a Date in the current locale (zh-CN / en-US). */
 export function formatDate(d: Date | string | number, opts?: Intl.DateTimeFormatOptions): string {
   const date = d instanceof Date ? d : new Date(d)
   if (Number.isNaN(date.getTime())) return ""
   const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
   return new Intl.DateTimeFormat(loc, opts).format(date)
-}
-
-/** Format a number in the current locale. */
-export function formatNumber(n: number, opts?: Intl.NumberFormatOptions): string {
-  const loc = useLocale() === "zh" ? "zh-CN" : "en-US"
-  return new Intl.NumberFormat(loc, opts).format(n)
 }

@@ -144,7 +144,7 @@ mod tests {
     use crate::event::{EventKind, MarketEvent, Severity};
     use chrono::Utc;
     use hone_llm::provider::ChatResult;
-    use hone_llm::{ChatResponse, Message, ToolCall};
+    use hone_llm::{ChatResponse, Message};
     use std::sync::Mutex;
 
     fn ev(sev: Severity) -> MarketEvent {
@@ -202,10 +202,6 @@ mod tests {
         ) -> futures::stream::BoxStream<'a, hone_core::HoneResult<String>> {
             unimplemented!("not used")
         }
-    }
-
-    fn _unused_tool_call() -> ToolCall {
-        unimplemented!("present to keep ToolCall imported when test only compiles")
     }
 
     #[tokio::test]

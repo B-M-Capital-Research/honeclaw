@@ -19,9 +19,8 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use hone_memory::portfolio::PortfolioStorage;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -282,21 +281,6 @@ pub fn extract_one_liner(desc: &str, max_chars: usize) -> String {
     }
     cut.push('…');
     cut
-}
-
-/// SystemTime → 秒(unused 但 _SystemTime 留给后续测试)。
-#[allow(dead_code)]
-fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-/// 工具:DateTime<Utc> → 秒。
-#[allow(dead_code)]
-fn dt_secs(dt: DateTime<Utc>) -> i64 {
-    dt.timestamp()
 }
 
 #[cfg(test)]

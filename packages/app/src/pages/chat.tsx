@@ -1,6 +1,5 @@
 // chat.tsx — Hone Public Site Chat (v4 - Styled to match Landing Page)
 
-import { Logo } from "@hone-financial/ui/logo";
 import { Markdown } from "@hone-financial/ui/markdown";
 import {
   createMemo,
@@ -26,7 +25,6 @@ import {
   publicTheme,
   setPublicFontScale,
   setPublicTheme,
-  type PublicFontScale,
   type PublicTheme,
 } from "@/lib/public-prefs";
 import "./public-site.css";
@@ -82,7 +80,6 @@ const ICONS = {
 }
 
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
-const MAX_ATTACHMENTS = 4;
 const HISTORY_PAGE_SIZE = 24;
 
 function AnimatedBackground() {
@@ -254,12 +251,6 @@ function fileExtension(name: string) {
   return parts.length > 1
     ? parts[parts.length - 1]!.toUpperCase().slice(0, 4)
     : "FILE";
-}
-
-function classifyKind(file: File) {
-  if (file.type.startsWith("image/")) return "image";
-  if (file.type === "application/pdf") return "pdf";
-  return "file";
 }
 
 function renamePasteFile(file: File) {

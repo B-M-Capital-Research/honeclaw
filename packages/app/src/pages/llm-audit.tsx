@@ -1,6 +1,6 @@
 import { createResource, createSignal, For, Show } from "solid-js"
 import { getAuditRecordDetail, getAuditRecords } from "@/lib/api"
-import type { AuditQueryFilter, AuditRecordSummary, LlmAuditRecord } from "@/lib/types"
+import type { AuditQueryFilter } from "@/lib/types"
 import { useBackend } from "@/context/backend"
 import { EntityRefLink } from "@/components/entity-ref-link"
 import { LLM_AUDIT } from "@/lib/admin-content/llm-audit"

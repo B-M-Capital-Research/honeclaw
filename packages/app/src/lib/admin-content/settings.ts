@@ -526,7 +526,6 @@ const EN: typeof ZH = {
 }
 
 export const SETTINGS = makeContentProxy(ZH, EN)
-export type SettingsContent = typeof ZH
 
 // Internal — exported only for the structure parity test.
 export const __SETTINGS_TREES__ = { zh: ZH, en: EN } as const

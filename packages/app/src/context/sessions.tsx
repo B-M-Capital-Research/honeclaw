@@ -726,10 +726,6 @@ function createSessionsState() {
     isActivePending(key: string) {
       return isPendingPhaseActive(state.pendingByKey[key]?.phase);
     },
-    /** @deprecated 请用 isActivePending，语义已改为仅「活跃」阶段 */
-    isPending(key: string) {
-      return isPendingPhaseActive(state.pendingByKey[key]?.phase);
-    },
     /** 关闭指定会话的错误/超时 pending 状态（用户主动 dismiss） */
     dismissPending(key: string) {
       const p = state.pendingByKey[key];

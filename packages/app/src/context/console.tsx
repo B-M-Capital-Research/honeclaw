@@ -1,4 +1,4 @@
-import { createContext, createEffect, createResource, createSignal, onCleanup, useContext, type ParentProps } from "solid-js"
+import { createContext, createEffect, createSignal, onCleanup, useContext, type ParentProps } from "solid-js"
 import { createStore } from "solid-js/store"
 import { getChannels } from "@/lib/api"
 import {

@@ -304,7 +304,6 @@ const EN: typeof ZH = {
 }
 
 export const SHARED = makeContentProxy(ZH, EN)
-export type SharedContent = typeof ZH
 
 // Internal — exported only for the structure parity test in structure.test.ts.
 export const __SHARED_TREES__ = { zh: ZH, en: EN } as const

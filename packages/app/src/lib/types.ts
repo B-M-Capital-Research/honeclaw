@@ -347,12 +347,6 @@ export type PendingState = {
   partialContent: string; // 流式累积的 assistant 文本
 };
 
-export type PushScheduledMessageEvent = {
-  text?: string;
-  job_name?: string;
-  job_id?: string;
-};
-
 export type TimelineMessage =
   | {
       id: string;
@@ -600,33 +594,6 @@ export type AuditQueryFilter = {
 
 // ── Company Profiles ────────────────────────────────────────────────────────
 
-export type IndustryTemplate =
-  | "general"
-  | "saas"
-  | "semiconductor_hardware"
-  | "consumer"
-  | "industrial_defense"
-  | "financials";
-
-export type ProfileTrackingConfig = {
-  enabled: boolean;
-  cadence: string;
-  focus_metrics: string[];
-};
-
-export type ProfileMetadata = {
-  company_name: string;
-  stock_code: string;
-  aliases: string[];
-  sector: string;
-  industry_template: IndustryTemplate;
-  status: string;
-  tracking: ProfileTrackingConfig;
-  created_at: string;
-  updated_at: string;
-  last_reviewed_at?: string;
-};
-
 export type CompanyProfileEvent = {
   id: string;
   filename: string;
@@ -656,18 +623,6 @@ export type CompanyProfileSpaceSummary = {
   channel_scope?: string;
   profile_count: number;
   updated_at?: string;
-};
-
-export type CompanyProfileCreateInput = {
-  channel?: string;
-  user_id?: string;
-  channel_scope?: string;
-  company_name: string;
-  stock_code?: string;
-  sector?: string;
-  aliases?: string[];
-  industry_template?: IndustryTemplate;
-  sections?: Record<string, string>;
 };
 
 export type CompanyProfileConflictDecision = "skip" | "replace";
