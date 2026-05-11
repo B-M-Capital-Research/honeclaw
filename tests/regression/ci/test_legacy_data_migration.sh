@@ -10,7 +10,8 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 SESSIONS_DIR="$TMP_DIR/sessions"
 CRON_DIR="$TMP_DIR/cron_jobs"
 SKILLS_DIR="$TMP_DIR/skills"
-mkdir -p "$SESSIONS_DIR" "$CRON_DIR" "$SKILLS_DIR"
+LOG_DIR="$TMP_DIR/logs"
+mkdir -p "$SESSIONS_DIR" "$CRON_DIR" "$SKILLS_DIR" "$LOG_DIR"
 
 cat > "$SESSIONS_DIR/legacy_web_session.json" <<'JSON'
 {
@@ -58,19 +59,19 @@ YAML
 python3 scripts/migrate_legacy_data.py \
   --sessions-dir "$SESSIONS_DIR" \
   --cron-jobs-dir "$CRON_DIR" \
-  --skills-dir "$SKILLS_DIR" >/tmp/hone_legacy_migrate_dry_run.log
+  --skills-dir "$SKILLS_DIR" >"$LOG_DIR/dry_run.log"
 
 python3 scripts/migrate_legacy_data.py \
   --sessions-dir "$SESSIONS_DIR" \
   --cron-jobs-dir "$CRON_DIR" \
   --skills-dir "$SKILLS_DIR" \
-  --write >/tmp/hone_legacy_migrate_write.log
+  --write >"$LOG_DIR/write.log"
 
 python3 scripts/migrate_legacy_data.py \
   --sessions-dir "$SESSIONS_DIR" \
   --cron-jobs-dir "$CRON_DIR" \
   --skills-dir "$SKILLS_DIR" \
-  --validate-only >/tmp/hone_legacy_migrate_validate.log
+  --validate-only >"$LOG_DIR/validate.log"
 
 python3 - <<'PY' "$SESSIONS_DIR" "$CRON_DIR" "$SKILLS_DIR"
 import json, sys

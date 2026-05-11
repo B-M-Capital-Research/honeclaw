@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
 TMP_DIR="$(mktemp -d)"
+LOG_DIR="$TMP_DIR/logs"
+mkdir -p "$LOG_DIR"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 cat > "$TMP_DIR/legacy_summary_string.json" <<'JSON'
@@ -50,9 +52,9 @@ cat > "$TMP_DIR/Actor_web_5ftest__direct__alice.json" <<'JSON'
 }
 JSON
 
-python3 scripts/migrate_sessions.py --sessions-dir "$TMP_DIR" >/tmp/hone_migrate_dry_run.log
-python3 scripts/migrate_sessions.py --sessions-dir "$TMP_DIR" --write >/tmp/hone_migrate_write.log
-python3 scripts/migrate_sessions.py --sessions-dir "$TMP_DIR" --validate-only >/tmp/hone_migrate_validate.log
+python3 scripts/migrate_sessions.py --sessions-dir "$TMP_DIR" >"$LOG_DIR/dry_run.log"
+python3 scripts/migrate_sessions.py --sessions-dir "$TMP_DIR" --write >"$LOG_DIR/write.log"
+python3 scripts/migrate_sessions.py --sessions-dir "$TMP_DIR" --validate-only >"$LOG_DIR/validate.log"
 
 python3 - <<'PY' "$TMP_DIR"
 import json, sys
