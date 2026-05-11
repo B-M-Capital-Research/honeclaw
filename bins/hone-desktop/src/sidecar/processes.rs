@@ -14,12 +14,8 @@ pub(super) fn preflight_bundled_runtime_locks(app: &AppHandle) -> Result<(), Str
     let lock_names = hone_core::enabled_process_lock_names(&runtime_config);
 
     let mut on_warn = |message: &str| log_desktop(app, "WARN", message.to_string());
-    hone_core::preflight_process_locks_with_cleanup(
-        &runtime.runtime_dir,
-        &lock_names,
-        &mut on_warn,
-    )
-    .map_err(|error| bundled_lock_failure_message(&error))
+    hone_core::preflight_process_locks_with_cleanup(&runtime.runtime_dir, &lock_names, &mut on_warn)
+        .map_err(|error| bundled_lock_failure_message(&error))
 }
 
 fn ensure_desktop_process_lock(app: &AppHandle) -> Result<(), String> {
