@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-11 23:02 CST
+最后更新：2026-05-12 07:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,7 +17,7 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：1
 - Later / 待复现：9
 - 已修复 / 已关闭：100
 - 历史分析 / 部分止血：5
@@ -25,7 +25,8 @@
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
 - 本轮不重新打开 Heartbeat 直接交易指令缺陷：19:30 CST `run_id=18842` 的 CAI 破位预警仍送达 `建议动作：无条件止损`，但当前仓库代码已有出站 guard 修复；该证据按当前机器旧运行态 / 未确认重启进程处理，仅补充到已修复文档。
 - 本轮不重新打开观察池击球区缺陷：21:35 / 23:00 CST `run_id=18907/18940` 仍把除 LITE 外 24 支观察池统一写成 `击球区：待确认`，且持久化 user prompt 未出现 `【已恢复的本地击球区参考】`，说明当前 live 仍未跑到仓库内的恢复注入逻辑；该证据补充到已修复文档，待确认部署 / 重启后再复核。
-- 本轮观察到若干旧运行态 / 已有修复相关噪声：19:01 / 21:00 CST heartbeat 空输出被显式落为 `execution_failed/skipped_error`，没有可恢复 triggered 正文；19:00-23:00 CST Feishu 直聊和 scheduler 主链路仍有多条 `persist_assistant + reply.send` 成功样本。本轮不为这些单独建档。
+- 本轮新增 Feishu 直聊 Codex runner usage limit 缺陷：06:39 / 06:41 CST 同一 ASTS 财报分析请求连续两次进入 agent 主链路后命中 Codex ACP `usage_limit_exceeded`，系统已发送 failure fallback 但只给通用失败文案，没有把可解释的 runner 额度耗尽和恢复时间映射给用户；按 P1 活跃登记。
+- 本轮观察到若干旧运行态 / 已有修复相关噪声：04:02 / 04:31 / 07:00 CST heartbeat 空输出或非法 JSON 被显式落为 `execution_failed/skipped_error`，没有被伪装成 noop；`sessions/session_messages` 镜像仍停在 2026-04-27，继续按已知 fixed-but-live-old 证据处理。本轮不为这些单独建档。
 
 ## 代码质量巡检发现
 
@@ -37,7 +38,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| _暂无_ | - | - | - | - |
+| Feishu 直聊命中 Codex usage limit 后只返回通用失败，用户请求连续无法完成 | P1 | New | 2026-05-12 07:03 新增：06:39 / 06:41 CST 同一 ASTS 财报分析请求连续两次命中 Codex ACP `usage_limit_exceeded`，Feishu 只发送通用 failure fallback；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40) | [feishu_direct_codex_usage_limit_generic_failure.md](./feishu_direct_codex_usage_limit_generic_failure.md) |
 
 ## Later / 待复现
 
