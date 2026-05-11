@@ -645,14 +645,7 @@ fn rebalance_html_segments(raw_segments: Vec<String>) -> Vec<String> {
     let mut segments = Vec::new();
 
     for raw in raw_segments {
-        let prefix = reopen_html_tags(&stack);
-        let mut next_stack = stack.clone();
-        scan_html_tags(&raw, &mut next_stack);
-
-        let mut segment = String::new();
-        segment.push_str(&prefix);
-        segment.push_str(&raw);
-        segment.push_str(&close_html_tags(&next_stack));
+        let (segment, next_stack) = rebalance_html_segment(&raw, &stack);
         segments.push(segment);
         stack = next_stack;
     }
@@ -660,33 +653,77 @@ fn rebalance_html_segments(raw_segments: Vec<String>) -> Vec<String> {
     segments
 }
 
+fn rebalance_html_segment(raw: &str, stack: &[HtmlOpenTag]) -> (String, Vec<HtmlOpenTag>) {
+    let mut next_stack = stack.to_vec();
+    scan_html_tags(raw, &mut next_stack);
+
+    (
+        balanced_segment(raw, &reopen_html_tags(stack), &close_html_tags(&next_stack)),
+        next_stack,
+    )
+}
+
 fn rebalance_markdown_segments(raw_segments: Vec<String>) -> Vec<String> {
     let mut open_fence: Option<MarkdownFence> = None;
     let mut segments = Vec::new();
 
     for raw in raw_segments {
-        let prefix = open_fence
-            .as_ref()
-            .map(|fence| format!("{}\n", fence.opening_line))
-            .unwrap_or_default();
-
-        let mut next_fence = open_fence.clone();
-        scan_markdown_fences(&raw, &mut next_fence);
-
-        let mut segment = String::new();
-        segment.push_str(&prefix);
-        segment.push_str(&raw);
-        if let Some(fence) = &next_fence {
-            if !segment.ends_with('\n') {
-                segment.push('\n');
-            }
-            segment.push_str(&fence.closing_line());
-        }
+        let (segment, next_fence) = rebalance_markdown_segment(&raw, open_fence.as_ref());
         segments.push(segment);
         open_fence = next_fence;
     }
 
     segments
+}
+
+fn rebalance_markdown_segment(
+    raw: &str,
+    open_fence: Option<&MarkdownFence>,
+) -> (String, Option<MarkdownFence>) {
+    let prefix = open_fence
+        .map(|fence| format!("{}\n", fence.opening_line))
+        .unwrap_or_default();
+
+    let mut next_fence = open_fence.cloned();
+    scan_markdown_fences(raw, &mut next_fence);
+
+    let suffix = markdown_fence_suffix(
+        segment_body_ends_with_newline(&prefix, raw),
+        next_fence.as_ref(),
+    );
+    (balanced_segment(raw, &prefix, &suffix), next_fence)
+}
+
+fn balanced_segment(raw: &str, prefix: &str, suffix: &str) -> String {
+    let mut segment = String::new();
+    segment.push_str(prefix);
+    segment.push_str(raw);
+    segment.push_str(suffix);
+    segment
+}
+
+fn segment_body_ends_with_newline(prefix: &str, raw: &str) -> bool {
+    if raw.is_empty() {
+        prefix.ends_with('\n')
+    } else {
+        raw.ends_with('\n')
+    }
+}
+
+fn markdown_fence_suffix(
+    body_ends_with_newline: bool,
+    open_fence: Option<&MarkdownFence>,
+) -> String {
+    let Some(fence) = open_fence else {
+        return String::new();
+    };
+
+    let mut suffix = String::new();
+    if !body_ends_with_newline {
+        suffix.push('\n');
+    }
+    suffix.push_str(&fence.closing_line());
+    suffix
 }
 
 fn reopen_html_tags(stack: &[HtmlOpenTag]) -> String {
@@ -730,13 +767,12 @@ fn scan_html_tags(segment: &str, stack: &mut Vec<HtmlOpenTag>) {
             continue;
         }
 
-        let char_len = remainder
-            .chars()
-            .next()
-            .map(|ch| ch.len_utf8())
-            .unwrap_or(1);
-        cursor += char_len;
+        cursor += next_char_len(remainder);
     }
+}
+
+fn next_char_len(input: &str) -> usize {
+    input.chars().next().map(char::len_utf8).unwrap_or(1)
 }
 
 fn parse_html_tag(input: &str) -> Option<(usize, HtmlTagKind, String, String)> {
@@ -932,15 +968,7 @@ mod tests {
 
         assert!(segments.len() > 1);
         assert!(segments.iter().any(|segment| segment.contains("</pre>")));
-
-        for segment in &segments {
-            let mut stack = Vec::new();
-            scan_html_tags(segment, &mut stack);
-            assert!(
-                stack.is_empty(),
-                "segment html tags should be balanced: {segment}"
-            );
-        }
+        assert_html_segments_balanced(&segments);
     }
 
     #[test]
@@ -956,8 +984,22 @@ mod tests {
                 .skip(1)
                 .any(|segment| segment.starts_with("```rust\n"))
         );
+        assert_markdown_segments_balanced(&segments);
+    }
 
-        for segment in &segments {
+    fn assert_html_segments_balanced(segments: &[String]) {
+        for segment in segments {
+            let mut stack = Vec::new();
+            scan_html_tags(segment, &mut stack);
+            assert!(
+                stack.is_empty(),
+                "segment html tags should be balanced: {segment}"
+            );
+        }
+    }
+
+    fn assert_markdown_segments_balanced(segments: &[String]) {
+        for segment in segments {
             let mut open_fence = None;
             scan_markdown_fences(segment, &mut open_fence);
             assert!(

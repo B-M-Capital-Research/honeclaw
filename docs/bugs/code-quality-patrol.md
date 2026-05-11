@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-12 - 复杂度热点
+
+### `crates/hone-channels/src/agent_session/core.rs` agent run path is too broad for local cleanup
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-channels --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `AgentSession::run` at cognitive complexity `51/25` and `431/100` lines.
+- risk: the run path currently owns quota/domain short-circuiting, persisted message repair, runner execution, stream delivery, final response persistence, and audit emission in one async function. A drive-by extraction could change message ordering, quota semantics, or streamed-vs-final delivery behavior.
+- suggested_fix: split behavior-preserving private helpers around pre-run guard decisions, execution request assembly, stream/final response delivery, and persistence/audit finalization. Add focused tests for domain short-circuit, streamed output, and final message persistence before moving side effects.
+
 ## 2026-05-11 - 死代码与废弃路径
 
 ### `crates/hone-channels` exposes internal runner and execution types as unreachable `pub`
