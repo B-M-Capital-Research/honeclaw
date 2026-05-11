@@ -166,12 +166,11 @@ impl EventHandler for FeishuEventHandler {
                     });
                     if let Err(err) = join.await {
                         error!("[Feishu] message handler join failed: {}", err);
-                        if err.is_panic() {
-                            if let Err(fallback_err) =
+                        if err.is_panic()
+                            && let Err(fallback_err) =
                                 send_panic_fallback(&panic_state, &panic_msg).await
-                            {
-                                warn!("[Feishu] panic fallback send failed: {}", fallback_err);
-                            }
+                        {
+                            warn!("[Feishu] panic fallback send failed: {}", fallback_err);
                         }
                     }
                 });
@@ -1140,14 +1139,12 @@ async fn parse_feishu_event(state: &Arc<AppState>, event: Event) -> Option<Feish
             if let Some(t) = content.get("text").and_then(|v| v.as_str()) {
                 text = t.to_string();
             }
-            if content
+            let content_has_mentions = content
                 .get("mentions")
                 .and_then(|v| v.as_array())
                 .map(|list| !list.is_empty())
-                .unwrap_or(false)
-            {
-                has_mention = true;
-            } else if text.contains("<at ") {
+                .unwrap_or(false);
+            if content_has_mentions || text.contains("<at ") {
                 has_mention = true;
             }
         }
@@ -1317,19 +1314,17 @@ async fn download_attachment(
             attachment.content_type = content_type.clone();
 
             let mut final_filename = fallback_name.to_string();
-            if let Some(ct) = &content_type {
-                if let Some(ext) = preferred_extension_for_content_type(ct) {
-                    if final_filename.ends_with(".bin")
-                        || final_filename.ends_with(".dat")
-                        || final_filename.ends_with(".tmp")
-                        || !final_filename.contains('.')
-                    {
-                        if let Some(dot_idx) = final_filename.rfind('.') {
-                            final_filename = format!("{}{}", &final_filename[..dot_idx], ext);
-                        } else {
-                            final_filename = format!("{}{}", final_filename, ext);
-                        }
-                    }
+            if let Some(ct) = &content_type
+                && let Some(ext) = preferred_extension_for_content_type(ct)
+                && (final_filename.ends_with(".bin")
+                    || final_filename.ends_with(".dat")
+                    || final_filename.ends_with(".tmp")
+                    || !final_filename.contains('.'))
+            {
+                if let Some(dot_idx) = final_filename.rfind('.') {
+                    final_filename = format!("{}{}", &final_filename[..dot_idx], ext);
+                } else {
+                    final_filename = format!("{}{}", final_filename, ext);
                 }
             }
             attachment.filename = final_filename.clone();
@@ -1418,23 +1413,21 @@ fn is_allowed_contact(
         return true;
     }
 
-    if let Some(email) = email {
-        if allow_emails
+    if let Some(email) = email
+        && allow_emails
             .iter()
             .any(|item| item.trim().eq_ignore_ascii_case(email))
-        {
-            return true;
-        }
+    {
+        return true;
     }
 
-    if let Some(mobile) = mobile {
-        if allow_mobiles
+    if let Some(mobile) = mobile
+        && allow_mobiles
             .iter()
             .map(|item| normalize_mobile(item))
             .any(|item| !item.is_empty() && item == mobile)
-        {
-            return true;
-        }
+    {
+        return true;
     }
 
     false
@@ -1476,7 +1469,7 @@ pub(crate) async fn resolve_scheduler_receive_id(
     allow_mobiles: &[String],
 ) -> hone_core::HoneResult<String> {
     let target = scheduler_resolution_target(channel_target, allow_emails, allow_mobiles);
-    resolve_receive_id(facade, target.as_deref().unwrap_or(channel_target)).await
+    resolve_receive_id(facade, target.unwrap_or(channel_target)).await
 }
 
 fn scheduler_resolution_target<'a>(

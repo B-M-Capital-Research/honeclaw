@@ -18,27 +18,10 @@ pub(crate) async fn send_plain_text(
     receive_id_type: &str,
     text: &str,
 ) -> hone_core::HoneResult<usize> {
-    if receive_id_type == "chat_id" {
-        facade
-            .send_chat_message(
-                receive_id,
-                "text",
-                &json!({ "text": text }).to_string(),
-                None,
-            )
-            .await
-            .map_err(hone_core::HoneError::Integration)?;
-    } else {
-        facade
-            .send_message(
-                receive_id,
-                "text",
-                &json!({ "text": text }).to_string(),
-                None,
-            )
-            .await
-            .map_err(hone_core::HoneError::Integration)?;
-    }
+    let content = json!({ "text": text }).to_string();
+    send_segment_direct(facade, receive_id, receive_id_type, "text", &content, None)
+        .await
+        .map_err(hone_core::HoneError::Integration)?;
     Ok(1)
 }
 
@@ -78,25 +61,15 @@ pub(crate) async fn send_placeholder_message(
         }
     })
     .to_string();
-    let result = if receive_id_type == "chat_id" {
-        facade
-            .send_chat_message(
-                receive_id,
-                "interactive",
-                &card_content,
-                Some(&request_uuid),
-            )
-            .await
-    } else {
-        facade
-            .send_message(
-                receive_id,
-                "interactive",
-                &card_content,
-                Some(&request_uuid),
-            )
-            .await
-    }
+    let result = send_segment_direct(
+        facade,
+        receive_id,
+        receive_id_type,
+        "interactive",
+        &card_content,
+        Some(&request_uuid),
+    )
+    .await
     .map_err(hone_core::HoneError::Integration)?;
     Ok((result.message_id, None))
 }
@@ -152,20 +125,7 @@ pub(crate) async fn update_or_send_plain_text(
         return Ok(1);
     }
 
-    if receive_id_type == "chat_id" {
-        facade
-            .send_chat_message(
-                receive_id,
-                "text",
-                &json!({ "text": text }).to_string(),
-                None,
-            )
-            .await
-            .map_err(hone_core::HoneError::Integration)?;
-        Ok(1)
-    } else {
-        send_plain_text(facade, receive_id, receive_id_type, text).await
-    }
+    send_plain_text(facade, receive_id, receive_id_type, text).await
 }
 
 pub(crate) async fn send_rendered_messages(
@@ -399,39 +359,37 @@ async fn send_message_with_optional_thread(
     previous_message_id: Option<&str>,
     request_uuid: &str,
 ) -> hone_core::HoneResult<FeishuSendResult> {
-    if should_thread_followups {
-        if let Some(parent_id) = previous_message_id {
-            return match facade
-                .reply_message(
+    if let (true, Some(parent_id)) = (should_thread_followups, previous_message_id) {
+        return match facade
+            .reply_message(
+                parent_id,
+                message.msg_type,
+                &message.content,
+                Some(request_uuid),
+            )
+            .await
+        {
+            Ok(sent) => Ok(sent),
+            Err(err) if is_feishu_bad_request(&err) => {
+                tracing::warn!(
+                    "[Feishu/outbound] reply_message failed with bad request, fallback to standalone send: parent_id={} receive_id_type={} err={}",
                     parent_id,
+                    receive_id_type,
+                    err
+                );
+                send_segment_direct(
+                    facade,
+                    receive_id,
+                    receive_id_type,
                     message.msg_type,
                     &message.content,
                     Some(request_uuid),
                 )
                 .await
-            {
-                Ok(sent) => Ok(sent),
-                Err(err) if is_feishu_bad_request(&err) => {
-                    tracing::warn!(
-                        "[Feishu/outbound] reply_message failed with bad request, fallback to standalone send: parent_id={} receive_id_type={} err={}",
-                        parent_id,
-                        receive_id_type,
-                        err
-                    );
-                    send_segment_direct(
-                        facade,
-                        receive_id,
-                        receive_id_type,
-                        message.msg_type,
-                        &message.content,
-                        Some(request_uuid),
-                    )
-                    .await
-                    .map_err(hone_core::HoneError::Integration)
-                }
-                Err(err) => Err(hone_core::HoneError::Integration(err)),
-            };
-        }
+                .map_err(hone_core::HoneError::Integration)
+            }
+            Err(err) => Err(hone_core::HoneError::Integration(err)),
+        };
     }
 
     send_segment_direct(
@@ -456,11 +414,17 @@ fn coerce_placeholder_message_content(message: &RenderedMessage) -> Option<Strin
 
     let parsed = serde_json::from_str::<serde_json::Value>(&message.content).ok()?;
     let zh_cn = parsed.get("zh_cn")?;
+    let text_lines = rendered_post_text_lines(zh_cn);
+
+    Some(placeholder_card_content(&text_lines.join("\n")))
+}
+
+fn rendered_post_text_lines(zh_cn: &serde_json::Value) -> Vec<String> {
     let mut text_lines = Vec::new();
-    if let Some(title) = zh_cn.get("title").and_then(|t| t.as_str()) {
-        if !title.is_empty() {
-            text_lines.push(format!("**{}**", title));
-        }
+    if let Some(title) = zh_cn.get("title").and_then(|t| t.as_str())
+        && !title.is_empty()
+    {
+        text_lines.push(format!("**{}**", title));
     }
     if let Some(content) = zh_cn.get("content").and_then(|c| c.as_array()) {
         for row in content {
@@ -476,22 +440,24 @@ fn coerce_placeholder_message_content(message: &RenderedMessage) -> Option<Strin
         }
     }
 
-    Some(
-        json!({
-            "schema": "2.0",
-            "config": {"wide_screen_mode": true},
-            "body": {
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": preprocess_markdown_for_feishu(&text_lines.join("\n"), true),
-                        "text_size": "heading"
-                    }
-                ]
-            }
-        })
-        .to_string(),
-    )
+    text_lines
+}
+
+fn placeholder_card_content(markdown: &str) -> String {
+    json!({
+        "schema": "2.0",
+        "config": {"wide_screen_mode": true},
+        "body": {
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": preprocess_markdown_for_feishu(markdown, true),
+                    "text_size": "heading"
+                }
+            ]
+        }
+    })
+    .to_string()
 }
 
 fn file_label_from_path(path: &str) -> String {
@@ -586,6 +552,28 @@ mod tests {
         let third = stable_message_uuid(Some("delivery-1"), 1, "interactive", "hello");
         assert_eq!(first, second);
         assert_ne!(first, third);
+    }
+
+    #[test]
+    fn post_placeholder_content_preserves_title_and_rows() {
+        let message = RenderedMessage {
+            msg_type: "post",
+            content: json!({
+                "zh_cn": {
+                    "title": "日报",
+                    "content": [
+                        [{"text": "第一行"}, {"text": " 补充"}],
+                        [{"text": "第二行"}]
+                    ]
+                }
+            })
+            .to_string(),
+        };
+
+        let content = coerce_placeholder_message_content(&message).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let markdown = parsed["body"]["elements"][0]["content"].as_str().unwrap();
+        assert_eq!(markdown, "**日报**\n第一行 补充\n第二行");
     }
 
     #[test]
