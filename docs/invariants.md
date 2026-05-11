@@ -74,7 +74,7 @@ Last updated: 2026-05-11
   - `sqlite`: `storage.session_sqlite_db_path` is the source of truth
 - During the current rollout, even when `session_runtime_backend=sqlite`, JSON should continue to dual-write as a rollback mirror until SQLite stability is proven over time
 - Desktop runtime config materialization must normalize historical canonical configs so `storage.session_sqlite_shadow_write_enabled` remains `true`; old generated runtime snapshots or seeded configs must not silently disable JSON -> SQLite session mirror writes
-- When JSON is the runtime backend and SQLite shadow write is enabled, `SessionStorage` should best-effort backfill existing JSON sessions into the SQLite shadow during startup; this keeps mirror lag recoverable after any historical window where shadow write was disabled, while preserving JSON as the authority
+- `SessionStorage` should best-effort backfill existing JSON sessions into the SQLite index during startup whenever an index is configured, including `session_runtime_backend=sqlite` even if `session_sqlite_shadow_write_enabled=false`; this keeps mirror lag recoverable after any historical window where shadow write was disabled, while preserving the configured runtime read authority
 
 ## Agent Runtime Constraints
 

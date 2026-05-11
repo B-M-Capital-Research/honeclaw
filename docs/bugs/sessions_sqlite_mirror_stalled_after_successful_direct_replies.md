@@ -3,10 +3,16 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 - **修复结论复核**:
-- `2026-05-11 15:02 CST` 本轮继续确认活跃 `New`：
+- `2026-05-11 15:05 CST` 本轮按当前自动化约束重新复核：当前机器旧运行态 / 未重启进程的 live 数据不再作为重新打开本单的依据。仓库代码层面已满足本单的可维护闭环：
+  - `SessionStorage::with_options(...)` 在 `runtime_backend=sqlite` 时会实例化 `SqliteSessionMirror`，不依赖 `session_sqlite_shadow_write_enabled=true`。
+  - `SessionStorage::with_options(...)` 初始化后会执行 best-effort JSON -> SQLite 回填；因此历史 JSON 会话源文件可在新进程启动时追平 `sessions.sqlite3`。
+  - 本轮新增回归 `sqlite_runtime_backend_backfills_existing_json_even_when_shadow_write_disabled`，专门覆盖 `runtime_backend=sqlite + shadow_write=false` 这一复发条件，避免之后误把 shadow 开关当成 SQLite 主后端回填前置条件。
+  - 验证：`cargo test -p hone-memory sqlite_runtime_backend_backfills_existing_json_even_when_shadow_write_disabled --lib -- --nocapture`、`cargo test -p hone-memory backfills_existing_json --lib -- --nocapture`、`cargo check -p hone-memory --tests`。
+  - 结论：本单维持 `Fixed`；后续只有在部署/重启到当前代码后，仍能用本地可复现测试或新代码路径证明 SQLite index 不回填/不写入时，才应重新打开。
+- `2026-05-11 15:02 CST` `bug` 巡检基于当前机器旧运行态再次观察到镜像未追平；本轮仅保留为旧运行态证据，不再据此维持活跃 `New`：
   - `data/sessions.sqlite3`
     - `sessions.max(updated_at)=2026-04-27T16:54:20.034097+08:00`
     - `sessions.max(last_message_at)=2026-04-27T16:54:20.033926+08:00`
@@ -14,7 +20,7 @@
     - `session_messages.max(imported_at)=2026-04-27T16:54:20.034386+08:00`
   - 同一 sqlite 库的 `cron_job_runs` 在 `2026-05-11 11:00-15:00 CST` 继续新增，聚合为 `completed/sent/delivered=9`、`noop/skipped_noop=94`、`execution_failed/skipped_error=1`，最新已推进到 `2026-05-11T15:00:54.143640+08:00`。
   - `data/sessions/` 最近四小时仍有真实会话 JSON 前进，例如 `Actor_web__direct__web-user-e05f5e5f74a3.json` 更新到 `2026-05-11 14:06 CST`，多条 Feishu direct JSON 更新到 `12:00-13:50 CST`。
-  - 结论不变：数据库文件本身仍可写，停滞集中在 `sessions` / `session_messages` 会话镜像；该问题继续削弱最近真实会话巡检和后续 agent 排障能力，维持功能性 `P2 / New`。
+  - 本轮结论：数据库文件本身仍可写、旧进程仍未追平，但该证据来自当前机器旧运行态 / 未重启进程，不再覆盖代码层面的 `Fixed` 结论。
 - `2026-05-11 11:02 CST` 本轮确认 `2026-05-10 23:11 CST` 的 `Fixed` 结论在当前真实窗口仍未恢复，状态从 `Fixed` 调回 `New`：
   - `data/sessions.sqlite3`
     - `sessions.max(updated_at)=2026-04-27T16:54:20.034097+08:00`

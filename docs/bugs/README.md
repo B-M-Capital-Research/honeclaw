@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-11 15:02 CST
+最后更新：2026-05-11 15:05 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,12 +17,12 @@
 
 ## 当前概览
 
-- 活跃待修复：2
+- 活跃待修复：0
 - Later / 待复现：9
-- 已修复 / 已关闭：98
+- 已修复 / 已关闭：100
 - 历史分析 / 部分止血：5
-- 本轮重新打开 1 条活跃缺陷：Web direct quota 拒绝在 11:09-14:06 CST 再次只落 user turn，没有 assistant quota 提示，原 `Fixed` 结论不再成立。
-- 本轮继续确认 1 条活跃缺陷：`sessions.sqlite3` 的 `sessions/session_messages` 仍停在 2026-04-27，但最近四小时真实 JSON 会话文件与 `cron_job_runs` 继续推进，说明会话镜像仍未追平。
+- 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件，最近坏态来自当前机器旧运行态 / 未重启进程，不再作为重新打开依据。
+- 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前机器旧运行态 / 未重启进程证据不再作为重新打开依据。
 - 本轮观察到若干旧运行态 / 已有修复相关噪声：14:42 CST mainline distill 仍出现 `max_tokens=30000` 的 OpenRouter 402，但当前仓库代码已有 `1200` cap；12:00 原油 heartbeat 非法 JSON 被标记 `execution_failed/skipped_error`，15:00 后恢复 guarded delivery。二者本轮不新开缺陷。
 
 ## 代码质量巡检发现
@@ -35,8 +35,7 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | New | 2026-05-11 15:02 复核最近四小时再次复发：`Actor_web__direct__web-user-e05f5e5f74a3.json` 在 11:09 / 12:06 / 13:06 / 14:06 CST 连续留下孤立 `心跳检测，请简短回复 OK` user turn；`desktop_release_app.log` 仅见 `session.persist_user=quota_rejected`，未见 `session.persist_assistant=quota_rejected` 或失败 Done。当前代码含 03:05 修复，坏态疑似 live runtime 未切换或仍有未覆盖早退入口 | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-11 15:02 复核确认 `sessions.max(updated_at)`、`session_messages.max(timestamp)` 仍停在 2026-04-27；但最近四小时 JSON 会话继续更新，`cron_job_runs` 已推进到 15:00 且同一库可写，缺口仍集中在会话镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| _暂无_ | - | - | - | - |
 
 ## Later / 待复现
 
@@ -56,6 +55,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
+| Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-11 15:05 复核当前代码确认 quota 拒绝分支会落 user turn、落 assistant 业务拒绝文案并发出失败 `Done`；回归改用 `web` actor 并断言 listener 收到含“已达到今日对话上限”的 `Done`，覆盖 Web direct 复发条件。当前机器旧运行态 / 未重启进程证据不再作为重新打开依据；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-11 15:05 复核当前代码确认 `SessionStorage::with_options(...)` 在 `runtime_backend=sqlite` 时即使 `session_sqlite_shadow_write_enabled=false` 也会实例化 SQLite index 并执行启动 JSON -> SQLite 回填；新增 `sqlite_runtime_backend_backfills_existing_json_even_when_shadow_write_disabled` 锁住该复发条件。当前机器旧运行态 / 未重启进程证据不再作为重新打开依据；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-11 03:06 修复任务正文不显式列 ticker 时的恢复早退：`recover_watchlist_hit_zone_context` 会从当前会话 compact summary / session summary 的观察池表格和行内文本批量恢复所有 ticker -> 击球区，再注入 `【已恢复的本地击球区参考】`；`scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers` 覆盖“当前 25 支观察池”形态；`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、定向 rustfmt 通过；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-11 11:02 复核最近四小时仍有本机旧运行态尾部样本：`run_id=18544` 在 07:30 送达 `建议动作：无条件止损...第一时间执行卖出`，但 08:00 / 08:30 / 10:00 / 10:30 / 11:00 同任务均为 noop；仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`，本轮仅补充证据，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
 | Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-10 23:11 同 ticker 宽松重写去重增加非 ticker 实体 / 日期金额交集门槛，TSLA 召回/FSD 诉讼不再被旧 Semi/SEC preview 抑制，Cerebras IPO 更新不再被持仓摘要误抑制；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |

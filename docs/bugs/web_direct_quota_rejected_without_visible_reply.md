@@ -3,11 +3,17 @@
 - 发现时间：2026-05-10 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无
 
 ## 修复结论复核
 
+- 2026-05-11 15:05 CST：本轮按当前自动化约束重新复核：当前机器旧运行态 / 未重启进程的 live 数据不再作为重新打开本单的依据。仓库代码层面已覆盖 Web direct 复发条件：
+  - `AgentSession::run()` 的 quota 拒绝分支会先持久化 user turn，再持久化 assistant 业务拒绝文案，并附带 `quota_rejected=true` metadata。
+  - 同一分支返回前走 `fail_run(...)`，会向 listener 发出失败 `Done` 事件，Web streaming / listener 侧能够收到终态失败信号。
+  - 本轮将 `run_rejects_over_daily_limit_with_user_turn_and_friendly_error` 回归改为 `web` actor，并新增断言 listener 收到包含“已达到今日对话上限”的失败 `Done`，锁住 Web direct 入口。
+  - 验证：`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 结论：本单维持 `Fixed`；后续只有在部署/重启到当前代码后，仍能用本地可复现测试或新代码路径证明 Web quota 拒绝不落 assistant / 不发 Done 时，才应重新打开。
 - 2026-05-11 15:02 CST：本轮确认 2026-05-11 03:05 CST 的 `Fixed` 结论在最近四小时真实 Web direct 窗口再次失效，状态从 `Fixed` 调回 `New`。
   - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 最新尾部显示：
     - `2026-05-11T11:09:25.513867+08:00` user：`心跳检测，请简短回复 OK`

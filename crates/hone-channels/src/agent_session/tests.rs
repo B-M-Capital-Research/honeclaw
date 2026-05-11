@@ -471,7 +471,7 @@ fn restore_context_filters_and_limits_messages() {
 fn restore_context_rehydrates_assistant_tool_calls() {
     let root = make_temp_dir("hone_channels_restore_tool_calls");
     let storage = SessionStorage::new(&root);
-    let actor = ActorIdentity::new("discord", "alice", None::<String>).expect("actor");
+    let actor = ActorIdentity::new("web", "alice", None::<String>).expect("actor");
     let session_id = storage
         .create_session_for_actor(&actor)
         .expect("create session");
@@ -1588,7 +1588,9 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
             .expect("commit");
     }
 
-    let session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+    let listener = Arc::new(RecordingListener::default());
+    let mut session = AgentSession::new(core.clone(), actor.clone(), actor.user_id.clone());
+    session.add_listener(listener.clone());
     let result = session.run("hello", AgentRunOptions::default()).await;
 
     assert!(!result.response.success);
@@ -1608,6 +1610,18 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     assert_eq!(messages[0].content[0].text.as_deref(), Some("hello"));
     assert_eq!(messages[1].role, "assistant");
     assert_eq!(messages[1].content[0].text.as_deref(), Some(error.as_str()));
+    let events = listener.events.lock().await.clone();
+    assert!(events.iter().any(|event| {
+        matches!(
+            event,
+            AgentSessionEvent::Done { response }
+                if !response.success
+                    && response
+                        .error
+                        .as_deref()
+                        .is_some_and(|err| err.contains("已达到今日对话上限"))
+        )
+    }));
     assert_eq!(
         messages[1]
             .metadata

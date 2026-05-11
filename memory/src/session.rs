@@ -1806,7 +1806,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_runtime_backend_backfills_existing_json_on_startup() {
+    fn sqlite_runtime_backend_backfills_existing_json_even_when_shadow_write_disabled() {
         let root = make_temp_dir("hone_memory_test_sqlite_runtime_backfill");
         let sessions_dir = root.join("sessions");
         std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
@@ -1849,7 +1849,7 @@ mod tests {
             &sessions_dir,
             SessionStorageOptions {
                 shadow_sqlite_db_path: Some(db_path.clone()),
-                shadow_sqlite_enabled: true,
+                shadow_sqlite_enabled: false,
                 runtime_backend: SessionRuntimeBackend::Sqlite,
             },
         );
