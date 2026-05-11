@@ -35,8 +35,9 @@ pub use heartbeat::{
 pub use process_lock::{
     PROCESS_LOCK_CONSOLE_PAGE, PROCESS_LOCK_DESKTOP, PROCESS_LOCK_DISCORD, PROCESS_LOCK_FEISHU,
     PROCESS_LOCK_IMESSAGE, PROCESS_LOCK_TELEGRAM, ProcessLockError, ProcessLockGuard,
-    acquire_process_lock, acquire_runtime_process_lock, format_lock_failure_message,
-    preflight_process_locks, process_lock_path, runtime_lock_dir,
+    acquire_process_lock, acquire_runtime_process_lock, enabled_process_lock_names,
+    format_lock_failure_message, preflight_process_locks, preflight_process_locks_with_cleanup,
+    process_lock_path, runtime_lock_dir, try_cleanup_conflicting_process,
 };
 pub use task_observer::{
     TASK_RUNS_RETENTION_DAYS, TaskOutcome, TaskRunRecord, purge_old_task_runs,

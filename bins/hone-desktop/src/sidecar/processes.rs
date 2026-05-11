@@ -1,22 +1,5 @@
 use super::*;
 
-fn bundled_process_lock_names(config: &HoneConfig) -> Vec<&'static str> {
-    let mut names = vec![hone_core::PROCESS_LOCK_CONSOLE_PAGE];
-    if cfg!(target_os = "macos") && config.imessage.enabled {
-        names.push(hone_core::PROCESS_LOCK_IMESSAGE);
-    }
-    if config.discord.enabled {
-        names.push(hone_core::PROCESS_LOCK_DISCORD);
-    }
-    if config.feishu.enabled {
-        names.push(hone_core::PROCESS_LOCK_FEISHU);
-    }
-    if config.telegram.enabled {
-        names.push(hone_core::PROCESS_LOCK_TELEGRAM);
-    }
-    names
-}
-
 fn bundled_lock_failure_message(error: &hone_core::ProcessLockError) -> String {
     format!(
         "检测到旧的 Hone bundled runtime 进程仍占用启动锁，桌面主进程不会继续启动相关 backend/listener。请先清理之前的进程后再重试。\n冲突组件: {}\n锁文件: {}",
@@ -28,23 +11,15 @@ fn bundled_lock_failure_message(error: &hone_core::ProcessLockError) -> String {
 pub(super) fn preflight_bundled_runtime_locks(app: &AppHandle) -> Result<(), String> {
     let runtime = ensure_runtime_paths(app)?;
     let runtime_config = HoneConfig::from_file(&runtime.config_path).map_err(|e| e.to_string())?;
-    let lock_names = bundled_process_lock_names(&runtime_config);
-    let mut cleanup_attempts = 0usize;
+    let lock_names = hone_core::enabled_process_lock_names(&runtime_config);
 
-    loop {
-        match hone_core::preflight_process_locks(&runtime.runtime_dir, &lock_names) {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                if cleanup_attempts < lock_names.len()
-                    && try_cleanup_conflicting_process(app, &error)
-                {
-                    cleanup_attempts += 1;
-                    continue;
-                }
-                return Err(bundled_lock_failure_message(&error));
-            }
-        }
-    }
+    let mut on_warn = |message: &str| log_desktop(app, "WARN", message.to_string());
+    hone_core::preflight_process_locks_with_cleanup(
+        &runtime.runtime_dir,
+        &lock_names,
+        &mut on_warn,
+    )
+    .map_err(|error| bundled_lock_failure_message(&error))
 }
 
 fn ensure_desktop_process_lock(app: &AppHandle) -> Result<(), String> {
@@ -113,113 +88,6 @@ fn clear_runtime_heartbeats(runtime_dir: &std::path::Path) {
     for channel in ["imessage", "discord", "feishu", "telegram"] {
         remove_runtime_heartbeat(runtime_dir, channel);
     }
-}
-
-fn read_lock_pid(path: &Path) -> Option<u32> {
-    let content = fs::read_to_string(path).ok()?;
-    content.lines().find_map(|line| {
-        line.strip_prefix("pid=")
-            .and_then(|raw| raw.trim().parse::<u32>().ok())
-    })
-}
-
-fn pid_command_line(pid: u32) -> Option<String> {
-    let output = StdCommand::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "args="])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let rendered = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if rendered.is_empty() {
-        None
-    } else {
-        Some(rendered)
-    }
-}
-
-fn pid_matches_expected_process(pid: u32, process: &str) -> bool {
-    let Some(command) = pid_command_line(pid) else {
-        return false;
-    };
-    let executable = command.split_whitespace().next().unwrap_or_default();
-    Path::new(executable)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .map(|value| value == process)
-        .unwrap_or(false)
-        || command.contains(process)
-}
-
-fn pid_is_alive(pid: u32) -> bool {
-    StdCommand::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "pid="])
-        .output()
-        .map(|output| {
-            output.status.success() && !String::from_utf8_lossy(&output.stdout).trim().is_empty()
-        })
-        .unwrap_or(false)
-}
-
-fn wait_for_pid_exit(pid: u32, timeout_ms: u64) -> bool {
-    let polls = timeout_ms / 100;
-    for _ in 0..polls.max(1) {
-        if !pid_is_alive(pid) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    !pid_is_alive(pid)
-}
-
-fn terminate_pid_with_retry(pid: u32) -> bool {
-    let _ = StdCommand::new("kill")
-        .arg("-TERM")
-        .arg(pid.to_string())
-        .status();
-    if wait_for_pid_exit(pid, 2_000) {
-        return true;
-    }
-    let _ = StdCommand::new("kill")
-        .arg("-KILL")
-        .arg(pid.to_string())
-        .status();
-    wait_for_pid_exit(pid, 1_500)
-}
-
-fn try_cleanup_conflicting_process(app: &AppHandle, error: &hone_core::ProcessLockError) -> bool {
-    let Some(pid) = read_lock_pid(&error.path) else {
-        return false;
-    };
-    if !pid_matches_expected_process(pid, &error.process) {
-        log_desktop(
-            app,
-            "WARN",
-            format!(
-                "startup lock conflict for {} has pid={} but command no longer matches expected process",
-                error.process, pid
-            ),
-        );
-        return false;
-    }
-
-    log_desktop(
-        app,
-        "WARN",
-        format!(
-            "attempting automatic cleanup for startup lock conflict process={} pid={} path={}",
-            error.process,
-            pid,
-            error.path.display()
-        ),
-    );
-
-    let stopped = terminate_pid_with_retry(pid);
-    if stopped {
-        let _ = fs::remove_file(&error.path);
-    }
-    stopped
 }
 
 fn start_logged_sidecar(

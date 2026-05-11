@@ -307,6 +307,21 @@ pub(crate) async fn run_start(
     let (config, paths) = load_cli_config(explicit_config, true).map_err(|e| e.to_string())?;
     let _ = resolve_runtime_paths(explicit_config, true).map_err(|e| e.to_string())?;
 
+    let lock_names = hone_core::enabled_process_lock_names(&config);
+    let mut on_warn = |message: &str| println!("[WARN] {message}");
+    if let Err(error) = hone_core::preflight_process_locks_with_cleanup(
+        &paths.runtime_dir,
+        &lock_names,
+        &mut on_warn,
+    ) {
+        return Err(hone_core::format_lock_failure_message(
+            &error.process,
+            &error.path,
+            &error.source,
+            "Hone CLI",
+        ));
+    }
+
     let mut children = Vec::new();
     let mut labels = Vec::new();
 

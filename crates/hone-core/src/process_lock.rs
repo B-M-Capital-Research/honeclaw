@@ -1,6 +1,9 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
+use std::thread;
+use std::time::Duration;
 
 use chrono::Utc;
 use fs2::FileExt;
@@ -135,6 +138,159 @@ pub fn format_lock_failure_message(
             path.display()
         )
     }
+}
+
+fn read_lock_pid(path: &Path) -> Option<u32> {
+    let content = fs::read_to_string(path).ok()?;
+    content.lines().find_map(|line| {
+        line.strip_prefix("pid=")
+            .and_then(|raw| raw.trim().parse::<u32>().ok())
+    })
+}
+
+fn pid_command_line(pid: u32) -> Option<String> {
+    let output = StdCommand::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "args="])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let rendered = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if rendered.is_empty() {
+        None
+    } else {
+        Some(rendered)
+    }
+}
+
+fn pid_matches_expected_process(pid: u32, process: &str) -> bool {
+    let Some(command) = pid_command_line(pid) else {
+        return false;
+    };
+    let executable = command.split_whitespace().next().unwrap_or_default();
+    Path::new(executable)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value == process)
+        .unwrap_or(false)
+        || command.contains(process)
+}
+
+fn pid_is_alive(pid: u32) -> bool {
+    StdCommand::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "pid="])
+        .output()
+        .map(|output| {
+            output.status.success() && !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+        })
+        .unwrap_or(false)
+}
+
+fn wait_for_pid_exit(pid: u32, timeout_ms: u64) -> bool {
+    let polls = timeout_ms / 100;
+    for _ in 0..polls.max(1) {
+        if !pid_is_alive(pid) {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    !pid_is_alive(pid)
+}
+
+fn terminate_pid_with_retry(pid: u32) -> bool {
+    let _ = StdCommand::new("kill")
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .status();
+    if wait_for_pid_exit(pid, 2_000) {
+        return true;
+    }
+    let _ = StdCommand::new("kill")
+        .arg("-KILL")
+        .arg(pid.to_string())
+        .status();
+    wait_for_pid_exit(pid, 1_500)
+}
+
+/// Try to free a stuck startup lock by terminating the PID recorded in the
+/// lock file, when that PID still matches the expected process name.
+///
+/// `on_warn` receives one-line, human-readable progress notes so callers can
+/// route them into whatever logger they use (println, tauri event log, etc.).
+/// Returns `true` if the conflicting process was terminated and the stale
+/// lock file was removed; `false` if the conflict could not be resolved.
+pub fn try_cleanup_conflicting_process(
+    error: &ProcessLockError,
+    on_warn: &mut dyn FnMut(&str),
+) -> bool {
+    let Some(pid) = read_lock_pid(&error.path) else {
+        return false;
+    };
+    if !pid_matches_expected_process(pid, &error.process) {
+        on_warn(&format!(
+            "startup lock conflict for {} has pid={} but command no longer matches expected process",
+            error.process, pid
+        ));
+        return false;
+    }
+
+    on_warn(&format!(
+        "attempting automatic cleanup for startup lock conflict process={} pid={} path={}",
+        error.process,
+        pid,
+        error.path.display()
+    ));
+
+    let stopped = terminate_pid_with_retry(pid);
+    if stopped {
+        let _ = fs::remove_file(&error.path);
+    }
+    stopped
+}
+
+/// Like [`preflight_process_locks`], but on conflict tries to clean up the
+/// stale owner once per lock name before giving up.
+pub fn preflight_process_locks_with_cleanup(
+    runtime_dir: &Path,
+    names: &[&str],
+    on_warn: &mut dyn FnMut(&str),
+) -> Result<(), ProcessLockError> {
+    let mut cleanup_attempts = 0usize;
+    loop {
+        match preflight_process_locks(runtime_dir, names) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                if cleanup_attempts < names.len()
+                    && try_cleanup_conflicting_process(&error, on_warn)
+                {
+                    cleanup_attempts += 1;
+                    continue;
+                }
+                return Err(error);
+            }
+        }
+    }
+}
+
+/// Returns the list of bundled-runtime process lock names that should be held
+/// for a given config (console-page is always required; channel listeners are
+/// included only when enabled and supported on the current OS).
+pub fn enabled_process_lock_names(config: &HoneConfig) -> Vec<&'static str> {
+    let mut names = vec![PROCESS_LOCK_CONSOLE_PAGE];
+    if cfg!(target_os = "macos") && config.imessage.enabled {
+        names.push(PROCESS_LOCK_IMESSAGE);
+    }
+    if config.discord.enabled {
+        names.push(PROCESS_LOCK_DISCORD);
+    }
+    if config.feishu.enabled {
+        names.push(PROCESS_LOCK_FEISHU);
+    }
+    if config.telegram.enabled {
+        names.push(PROCESS_LOCK_TELEGRAM);
+    }
+    names
 }
 
 #[cfg(test)]
