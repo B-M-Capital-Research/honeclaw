@@ -150,7 +150,14 @@ impl NotificationRouter {
                     }
                     Ok(_) => sev,
                     Err(e) => {
-                        tracing::warn!("count_high_sent_since failed: {e:#}");
+                        tracing::warn!(
+                            actor = %actor_key(&actor),
+                            event_id = %event.id,
+                            source = %event.source,
+                            category = %category,
+                            since = %since,
+                            "count_high_sent_since failed: {e:#}"
+                        );
                         sev
                     }
                 }
@@ -432,7 +439,15 @@ impl NotificationRouter {
                             pending += 1;
                         }
                         Err(e) => {
-                            tracing::warn!("digest enqueue failed: {e:#}");
+                            tracing::warn!(
+                                actor = %actor_key(&actor),
+                                event_id = %event.id,
+                                kind = %kind_tag(&event.kind),
+                                source = %event.source,
+                                symbols = ?event.symbols,
+                                severity = ?sev,
+                                "digest enqueue failed: {e:#}"
+                            );
                             let _ = self.store.log_delivery(
                                 &event.id,
                                 &actor_key(&actor),

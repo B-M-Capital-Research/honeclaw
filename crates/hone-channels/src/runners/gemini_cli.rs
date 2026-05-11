@@ -702,7 +702,11 @@ pub(crate) async fn stream_gemini_prompt(
         let stderr = String::from_utf8_lossy(&out.stderr);
         let stderr_trimmed = stderr.trim();
         if !stderr_trimmed.is_empty() {
-            tracing::warn!("[AgentRunner/gemini] stderr: {}", stderr_trimmed);
+            tracing::warn!(
+                stderr_chars = stderr_trimmed.chars().count(),
+                stderr_preview = %truncate_gemini_cli_detail(stderr_trimmed, 400),
+                "[AgentRunner/gemini] stderr"
+            );
         }
         if !out.status.success() && iter_buf.is_empty() {
             return Err(AgentSessionError {

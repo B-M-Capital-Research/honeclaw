@@ -291,7 +291,14 @@ impl AgentSession {
                 }),
             })
             .map_err(|err| {
-                tracing::error!("[AgentSession] execution prepare failed: {}", err);
+                tracing::error!(
+                    session_id = %session_id,
+                    channel = %self.actor.channel,
+                    user_id = %self.actor.user_id,
+                    channel_target = %self.channel_target,
+                    "[AgentSession] execution prepare failed: {}",
+                    err
+                );
                 let kind = if err.contains("sandbox") {
                     AgentSessionErrorKind::Io
                 } else {
@@ -621,7 +628,14 @@ impl AgentSession {
                 }
             }
             Err(err) => {
-                tracing::error!("[AgentSession] manual compact failed: {}", err);
+                tracing::error!(
+                    session_id = %session_id,
+                    channel = %self.actor.channel,
+                    user_id = %self.actor.user_id,
+                    channel_target = %self.channel_target,
+                    "[AgentSession] manual compact failed: {}",
+                    err
+                );
                 self.emit(session_progress_event(
                     "session.compress",
                     Some("failed".to_string()),
@@ -1038,7 +1052,14 @@ impl AgentSession {
         .await;
 
         if let Err(err) = self.core.maybe_compress_session(&session_id).await {
-            tracing::error!("[AgentSession] compress failed: {}", err);
+            tracing::error!(
+                session_id = %session_id,
+                channel = %self.actor.channel,
+                user_id = %self.actor.user_id,
+                channel_target = %self.channel_target,
+                "[AgentSession] compress failed: {}",
+                err
+            );
             self.emit(session_progress_event(
                 "session.compress",
                 Some("failed".to_string()),
@@ -1067,7 +1088,14 @@ impl AgentSession {
                 .core
                 .strict_actor_sandbox_guard_message()
                 .unwrap_or("当前 runner 不支持严格 actor sandbox。");
-            tracing::error!("[AgentSession] strict actor sandbox guard: {}", message);
+            tracing::error!(
+                session_id = %session_id,
+                channel = %self.actor.channel,
+                user_id = %self.actor.user_id,
+                channel_target = %self.channel_target,
+                "[AgentSession] strict actor sandbox guard: {}",
+                message
+            );
             drop(quota_guard);
             return self
                 .fail_run(
@@ -1151,11 +1179,14 @@ impl AgentSession {
             }
 
             tracing::warn!(
-                "[AgentSession] context overflow detected, compacting and retrying runner={} session_id={} attempt={}/{}",
-                execution.runner_name,
-                session_id,
-                recovery_idx + 1,
-                CONTEXT_OVERFLOW_RECOVERY_LIMIT
+                session_id = %session_id,
+                channel = %self.actor.channel,
+                user_id = %self.actor.user_id,
+                channel_target = %self.channel_target,
+                runner = %execution.runner_name,
+                attempt = recovery_idx + 1,
+                max_attempts = CONTEXT_OVERFLOW_RECOVERY_LIMIT,
+                "[AgentSession] context overflow detected, compacting and retrying"
             );
             self.core.log_message_step(
                 &self.actor.channel,
@@ -1184,15 +1215,21 @@ impl AgentSession {
             match self.force_compact_for_context_overflow(&session_id).await {
                 Ok(compacted) => {
                     tracing::info!(
-                        "[AgentSession] context overflow recovery compacted={} session_id={}",
+                        session_id = %session_id,
+                        channel = %self.actor.channel,
+                        user_id = %self.actor.user_id,
+                        channel_target = %self.channel_target,
                         compacted,
-                        session_id
+                        "[AgentSession] context overflow recovery compacted"
                     );
                 }
                 Err(err) => {
                     tracing::error!(
-                        "[AgentSession] context overflow recovery compact failed session_id={} err={}",
-                        session_id,
+                        session_id = %session_id,
+                        channel = %self.actor.channel,
+                        user_id = %self.actor.user_id,
+                        channel_target = %self.channel_target,
+                        "[AgentSession] context overflow recovery compact failed: {}",
                         err
                     );
                     response.error = Some(CONTEXT_OVERFLOW_FALLBACK_MESSAGE.to_string());
@@ -1210,8 +1247,11 @@ impl AgentSession {
                 Ok(execution) => execution,
                 Err((_kind, err)) => {
                     tracing::error!(
-                        "[AgentSession] context overflow recovery prepare failed session_id={} err={}",
-                        session_id,
+                        session_id = %session_id,
+                        channel = %self.actor.channel,
+                        user_id = %self.actor.user_id,
+                        channel_target = %self.channel_target,
+                        "[AgentSession] context overflow recovery prepare failed: {}",
                         err
                     );
                     response.success = false;

@@ -91,7 +91,12 @@ impl<'a> UnifiedCollector<'a> {
         match g.collect(until, lookback_hours, dedup_lookback_hours) {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!("global news collect failed: {e:#}");
+                tracing::warn!(
+                    until = %until,
+                    lookback_hours,
+                    dedup_lookback_hours,
+                    "global news collect failed: {e:#}"
+                );
                 Vec::new()
             }
         }

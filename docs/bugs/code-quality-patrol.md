@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-12 - 错误与日志质量
+
+### `crates/hone-channels/src/runners/gemini_cli.rs` exit errors can still surface full stderr upstream
+
+- status: open
+- direction: 错误与日志质量
+- evidence: `stream_gemini_prompt` now truncates the warning log for non-empty stderr, but the `ExitFailure` error still formats `stderr_trimmed` into `AgentSessionError.message` when Gemini exits unsuccessfully before producing streamed output.
+- risk: stderr is useful for operator diagnosis, but CLI stderr can also include verbose provider diagnostics, local paths, or copied request context. Changing the user-visible error string directly in a patrol could remove needed recovery detail or break tests/ops expectations, so this needs an explicit split between user-safe failure text and operator diagnostics.
+- suggested_fix: introduce a small helper that returns both a user-safe stderr summary and a bounded operator stderr preview. Use the safe summary in `AgentSessionError.message`, emit the bounded preview through tracing or audit, and add tests for long stderr plus empty-output exit failures.
+
 ## 2026-05-12 - 复杂度热点
 
 ### `crates/hone-channels/src/agent_session/core.rs` agent run path is too broad for local cleanup

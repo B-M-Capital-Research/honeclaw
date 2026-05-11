@@ -232,7 +232,11 @@ impl UnifiedDigestScheduler {
                     }
                 }
             }
-            Err(e) => warn!("unified digest: list_upcoming_earnings failed: {e:#}"),
+            Err(e) => warn!(
+                now = %now,
+                lookahead_days = 4,
+                "unified digest: list_upcoming_earnings failed: {e:#}"
+            ),
         }
 
         // ── actor 集合 = buffer 待 flush ∪ synth 命中 ∪ quiet_held ─────
@@ -257,7 +261,10 @@ impl UnifiedDigestScheduler {
                     }
                 }
             }
-            Err(e) => warn!("list_actors_with_quiet_held_since failed: {e:#}"),
+            Err(e) => warn!(
+                since = %since,
+                "list_actors_with_quiet_held_since failed: {e:#}"
+            ),
         }
 
         for actor in actors {
@@ -333,7 +340,11 @@ impl UnifiedDigestScheduler {
                         }
                         Ok(_) => {}
                         Err(e) => {
-                            warn!(actor = %actor_key_str, "last_digest_success_at failed: {e:#}")
+                            warn!(
+                                actor = %actor_key_str,
+                                slot = %slot.id,
+                                "last_digest_success_at failed: {e:#}"
+                            )
                         }
                     }
                 }
@@ -342,7 +353,11 @@ impl UnifiedDigestScheduler {
                 let buffered = match self.buffer.drain_actor(&actor) {
                     Ok(v) => v,
                     Err(e) => {
-                        warn!("drain_actor failed: {e:#}");
+                        warn!(
+                            actor = %actor_key_str,
+                            slot = %slot.id,
+                            "drain_actor failed: {e:#}"
+                        );
                         Vec::new()
                     }
                 };
@@ -395,6 +410,7 @@ impl UnifiedDigestScheduler {
                             Err(e) => {
                                 warn!(
                                     actor = %actor_key_str,
+                                    slot = %slot.id,
                                     "pass2 personalize failed: {e:#}"
                                 );
                                 Vec::new()
@@ -680,6 +696,8 @@ impl UnifiedDigestScheduler {
         if dedupe_stats.fell_back_to_pass_through {
             warn!(
                 input = dedupe_stats.input,
+                slot = %slot.id,
+                cache_key = %cache_key,
                 "event_dedupe pass-through fallback"
             );
         }
@@ -845,7 +863,10 @@ impl UnifiedDigestScheduler {
         let buffered = match self.buffer.drain_actor(actor) {
             Ok(v) => v,
             Err(e) => {
-                warn!("drain_actor failed in quiet_flush: {e:#}");
+                warn!(
+                    actor = %actor_key_str,
+                    "drain_actor failed in quiet_flush: {e:#}"
+                );
                 Vec::new()
             }
         };

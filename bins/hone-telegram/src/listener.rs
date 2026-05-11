@@ -165,7 +165,10 @@ pub(crate) async fn send_response_segments(
                     }
                     Ok(None) => {}
                     Err(err) => {
-                        warn!("[Telegram] 发送图片失败: {err}");
+                        warn!(
+                            image_name = %file_label_from_path(&marker.path),
+                            "[Telegram] 发送图片失败: {err}"
+                        );
                         let note = sanitize_telegram_html_public(&format!(
                             "（图表发送失败：{}）",
                             file_label_from_path(&marker.path)

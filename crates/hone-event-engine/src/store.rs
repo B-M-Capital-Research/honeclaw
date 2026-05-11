@@ -184,7 +184,12 @@ impl EventStore {
         let is_new = affected > 0;
         if is_new {
             if let Err(e) = self.append_jsonl_mirror(ev) {
-                tracing::warn!("events jsonl mirror append failed: {e:#}");
+                tracing::warn!(
+                    event_id = %ev.id,
+                    source = %ev.source,
+                    symbols = ?ev.symbols,
+                    "events jsonl mirror append failed: {e:#}"
+                );
             }
         }
         Ok(is_new)

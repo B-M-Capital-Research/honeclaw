@@ -198,7 +198,11 @@ pub(crate) async fn send_rendered_messages(
                 {
                     Ok(count) => sent += count,
                     Err(err) => {
-                        tracing::warn!("[Feishu/outbound] send local image failed: {}", err);
+                        tracing::warn!(
+                            image_name = %file_label_from_path(&marker.path),
+                            "[Feishu/outbound] send local image failed: {}",
+                            err
+                        );
                         let note =
                             format!("（图表发送失败：{}）", file_label_from_path(&marker.path));
                         sent += send_rendered_sequence(

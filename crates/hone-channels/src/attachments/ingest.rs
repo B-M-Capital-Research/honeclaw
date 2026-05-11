@@ -166,8 +166,18 @@ pub fn spawn_attachment_persist_pipeline(
     request: AttachmentPersistRequest,
 ) {
     tokio::spawn(async move {
+        let channel = request.channel.clone();
+        let user_id = request.user_id.clone();
+        let session_id = request.session_id.clone();
+        let attachment_count = request.attachments.len();
         if let Err(err) = persist_attachment_manifest(core, request).await {
-            warn!("[Attachments] persist manifest failed: {err}");
+            warn!(
+                channel = %channel,
+                user_id = %user_id,
+                session_id = %session_id,
+                attachment_count,
+                "[Attachments] persist manifest failed: {err}"
+            );
         }
     });
 }

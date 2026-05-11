@@ -271,14 +271,16 @@ impl EventEngine {
                     match store_cleanup.purge_events_older_than(days) {
                         Ok(n) if n > 0 => info!(removed = n, days, "events retention sweep"),
                         Ok(_) => {}
-                        Err(e) => warn!("events purge failed: {e:#}"),
+                        Err(e) => warn!(retention_days = days, "events purge failed: {e:#}"),
                     }
                     match store_cleanup.purge_delivery_log_older_than(days) {
                         Ok(n) if n > 0 => {
                             info!(removed = n, days, "delivery_log retention sweep")
                         }
                         Ok(_) => {}
-                        Err(e) => warn!("delivery_log purge failed: {e:#}"),
+                        Err(e) => {
+                            warn!(retention_days = days, "delivery_log purge failed: {e:#}")
+                        }
                     }
                 }
             });

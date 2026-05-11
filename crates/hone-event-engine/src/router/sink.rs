@@ -61,7 +61,9 @@ impl OutboundSink for LogSink {
     async fn send(&self, actor: &ActorIdentity, body: &str) -> anyhow::Result<()> {
         info!(
             actor = %actor_key(actor),
-            "[dryrun sink] {body}"
+            body_len = body.chars().count(),
+            body_preview = %body_preview(body),
+            "[dryrun sink]"
         );
         Ok(())
     }
