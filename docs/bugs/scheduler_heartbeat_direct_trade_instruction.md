@@ -20,6 +20,19 @@
 
 ## 旧运行态复核（2026-05-11 03:02 CST）
 
+- `2026-05-11 11:02 CST` 本轮最近四小时巡检继续看到一条旧运行态尾部坏样本，但后续窗口已连续恢复为 `noop`，仍不足以推翻仓库代码层面的 `Fixed` 结论：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18544`
+    - `job_name=CAI破位预警`
+    - `executed_at=2026-05-11T07:30:34.678118+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` 与 `detail_json.scheduler.deliver_preview` 继续包含 `建议动作：无条件止损...周一盘前或开盘后第一时间执行卖出`
+  - 同任务在 `2026-05-11 08:00 / 08:30 / 10:00 / 10:30 / 11:00 CST` 均落成 `noop / skipped_noop`，没有继续送达直接交易指令。
+  - 结论：该样本仍按当前本机旧运行态 / 未确认重启后的 live 尾部窗口处理；仓库 HEAD 已包含 `1d405f2` 的 guard 修复，本轮不把状态从 `Fixed` 回退为 `New`。后续若确认部署新代码后仍出现同样 `deliver_preview`，再重新打开。
+
 - `2026-05-11 07:03 CST` 本轮最近四小时巡检继续看到旧运行态坏样本，但仍不足以推翻仓库代码层面的 `Fixed` 结论：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=18444`

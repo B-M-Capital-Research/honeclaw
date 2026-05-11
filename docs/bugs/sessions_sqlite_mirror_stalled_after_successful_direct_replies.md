@@ -3,9 +3,23 @@
 - **发现时间**: 2026-04-28 01:05 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-05-11 11:02 CST` 本轮确认 `2026-05-10 23:11 CST` 的 `Fixed` 结论在当前真实窗口仍未恢复，状态从 `Fixed` 调回 `New`：
+  - `data/sessions.sqlite3`
+    - `sessions.max(updated_at)=2026-04-27T16:54:20.034097+08:00`
+    - `sessions.max(last_message_at)=2026-04-27T16:54:20.033926+08:00`
+    - `session_messages.max(timestamp)=2026-04-27T16:54:20.033926+08:00`
+    - `session_messages.max(imported_at)=2026-04-27T16:54:20.034386+08:00`
+  - 同一 sqlite 库的 `cron_job_runs.max(executed_at)` 已推进到 `2026-05-11T11:01:00.976898+08:00`，最近四小时聚合为 `completed/sent=20`、`noop/skipped_noop=97`，说明数据库文件本身仍可写。
+  - `data/sessions/` 最近四小时仍有真实会话 JSON 前进，例如：
+    - `Actor_feishu__direct__ou_5f680322a6dcbc688a7db633545beae42c.json` `2026-05-11 08:22:51 CST`
+    - `Actor_feishu__direct__ou_5f2ccd43e67b89664af3a72e13f9d48773.json` `2026-05-11 09:01:27 CST`
+    - `Session_discord__group__g_3a1469549745654468692_3ac_3a1469549746518622371.json` `2026-05-11 09:31:01 CST`
+    - `Actor_web__direct__web-user-e05f5e5f74a3.json` `2026-05-11 10:07:35 CST`
+  - `data/runtime/logs/acp-events.log` 在 `2026-05-11T02:07:26Z` 记录 Web direct 心跳会话上下文中多轮 user/assistant `OK` 成对存在，说明真实 direct 会话已经在 JSON / runner 层收口，但 sqlite `sessions/session_messages` 仍没有追平。
+  - 结论：这是同一根因 / 同一影响范围的复发，不新建重复文档。它直接削弱本巡检任务“优先看最近四小时真实会话”的主数据源，也影响后续 agent 依赖 sqlite 会话索引排查最近用户问题，因此维持功能性 `P2 / New`；这不是 `P3`，因为问题不只是内容质量，而是会话索引数据链路继续停滞。
 - `2026-05-11 03:02 CST` 本轮在本机 live 数据中仍看到 sqlite 会话镜像未追平：`sessions.max(updated_at)=2026-04-27T16:54:20.034097+08:00`、`sessions.max(last_message_at)=2026-04-27T16:54:20.033926+08:00`，`session_messages.max(timestamp)=2026-04-27T16:54:20.033926+08:00`、`session_messages.max(imported_at)=2026-04-27T16:54:20.034386+08:00`。最近四小时 `session_messages` 增量仍为 0，但 `data/sessions/` 下有 6 个 JSON 会话文件在 `2026-05-10 23:02 CST` 后更新，同一 sqlite 库的 `cron_job_runs` 已推进到 `2026-05-11T03:01:04.533135+08:00`。该证据来自当前本机旧运行态 / 未确认重启后的 live 窗口；由于仓库代码已在 `2026-05-10 23:11 CST` 扩展 SQLite index 启动回填，本轮不把状态从 `Fixed` 回退为 `New`。后续若部署新代码并重启后仍不追平，再重新打开。
 - `2026-05-10 23:10 CST` 本轮继续确认 sqlite 会话镜像未追平：`sessions.max(updated_at)=2026-04-27T16:54:20.034097+08:00`、`sessions.max(last_message_at)=2026-04-27T16:54:20.033926+08:00`，`session_messages.max(timestamp)=2026-04-27T16:54:20.033926+08:00`、`session_messages.max(imported_at)=2026-04-27T16:54:20.034386+08:00`。最近四小时 `session_messages` 增量仍为 0，但 `data/sessions/` 下有 6 个 JSON 会话文件在 `2026-05-10 19:03 CST` 后更新，同一 sqlite 库的 `cron_job_runs` 已推进到 `2026-05-10T23:01:14.750714+08:00`。这说明数据库仍在接收调度台账，停滞继续集中在 `sessions` / `session_messages` 镜像链路，维持功能性 `P2 / New`。
 - `2026-05-10 23:11 CST` 修复完成：`memory/src/session.rs` 的启动回填不再只限 `runtime_backend=json + shadow_sqlite_enabled=true`。由于本模块约定 JSON 始终是 session 权威源，只要配置了 SQLite index（包括 `runtime_backend=sqlite`），`SessionStorage::with_options(...)` 都会 best-effort 扫描 `data/sessions/*.json` 并 upsert 到 SQLite 索引。这样可覆盖 desktop / runtime effective config 切到 `runtime_backend=sqlite` 后，JSON 会话源持续更新但索引未主动追平的入口。新增 `sqlite_runtime_backend_backfills_existing_json_on_startup` 回归；验证通过：`cargo test -p hone-memory backfills_existing_json --lib -- --nocapture`、`cargo check -p hone-memory --tests`、`rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`。
