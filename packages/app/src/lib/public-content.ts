@@ -171,7 +171,7 @@ const CONTENT_ZH = {
       { title: "GitHub 仓库", desc: "Star、Fork、提 Issue，参与开源建设", url: "https://github.com/B-M-Capital-Research/honeclaw", tag: "开源", icon: "⌘" },
       { title: "中文文档", desc: "README、使用说明、案例示范", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", tag: "文档", icon: "◈" },
       { title: "安装方式", desc: "macOS 桌面端 + 服务端自部署指南", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动", tag: "安装", icon: "⚡" },
-      { title: "架构图", desc: "系统模块结构与技术架构说明", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md", tag: "技术", icon: "∞" },
+      { title: "代码库地图", desc: "模块结构、数据流与运行时边界说明", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md", tag: "技术", icon: "∞" },
       { title: "案例集", desc: "真实投研场景使用示例", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", tag: "案例", icon: "✦" },
       { title: "贡献指南", desc: "参与开发、提交 PR、讨论功能方向", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md", tag: "贡献", icon: "ℹ" },
     ],
@@ -182,7 +182,7 @@ const CONTENT_ZH = {
     hero_sub: "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.2.6",
+    version: "v0.11.0",
 
     toc: [
       { id: "quick-start", label: "快速开始", sub: "Quick Start" },
@@ -216,15 +216,15 @@ const CONTENT_ZH = {
       architecture: {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "系统架构",
-        intro: "Rust 核心引擎 · 多 Runner 抽象 · SolidJS 前端。设计目标：长时间运行不掉线、多渠道状态隔离、Skill 可热插拔。",
+        intro: "Rust 核心引擎 · 多 Runner 抽象 · SolidJS 前端。公开 user-ui、管理后台和渠道进程共用同一套后端能力，但按 surface、端口和进程边界隔离。",
         footnote_prefix: "完整模块说明见",
-        footnote_link: "AGENTS.md ↗",
+        footnote_link: "docs/repo-map.md ↗",
       },
       skills: {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "内置 Skill",
         intro_prefix: "Hone 的 Skill 由模型根据上下文自动调用。下面是仓库",
-        intro_suffix: "目录下的 19 个公开 Skill。",
+        intro_suffix: "目录下的 16 个公开 Skill。",
       },
       roadmap: {
         eyebrow: "§ 06 · ROADMAP",
@@ -286,6 +286,14 @@ const CONTENT_ZH = {
 
     requirements: "macOS 13+ / Linux x86_64 / arm64 · 首次源码构建约 10 分钟（需本机已有 Rust / Bun）",
 
+    architecture_points: [
+      { title: "CLI 启动", desc: "`hone-cli doctor / onboard / start` 负责体检、首装向导、启动 hone-console-page 与已启用渠道；源码模式使用 `cargo run -p hone-cli -- start --build`。" },
+      { title: "公开 user-ui", desc: "public surface 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；后端只暴露 `/api/public/*` 与公开聊天入口。" },
+      { title: "管理后台", desc: "admin surface 提供 dashboard、sessions、skills、tasks、users、research、notifications、schedule、settings、logs 等维护入口。" },
+      { title: "Runner 层", desc: "支持 OpenAI 兼容协议、Gemini CLI、Codex CLI / ACP、OpenCode ACP、multi-agent，以及 Hone Cloud 兼容 API 路由。" },
+      { title: "事件与任务", desc: "Cron 任务、事件引擎 digest、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和 actor 归属。" },
+    ],
+
     capability_matrix: [
       {
         group: "投研核心",
@@ -294,7 +302,7 @@ const CONTENT_ZH = {
           { name: "公司画像 & 长期记忆", status: "stable", note: "company_portrait skill" },
           { name: "个股研究 / 深度研究", status: "stable", note: "stock_research + deep_stock_research" },
           { name: "持仓追踪与提醒", status: "stable", note: "portfolio_management + cron" },
-          { name: "估值 / 选股 / 仓位建议", status: "stable", note: "valuation / stock_selection / position_advice" },
+          { name: "估值 / 选股 / 仓位建议", status: "stable", note: "stock_research 覆盖估值与筛选，position_advice 覆盖仓位建议" },
           { name: "图表 & 图像生成", status: "stable", note: "chart_visualization / image_generation" },
           { name: "向量检索增强记忆", status: "planned", note: "规划中" },
         ],
@@ -317,6 +325,7 @@ const CONTENT_ZH = {
           { name: "MCP 协议", status: "stable", note: "hone-mcp 二进制可作为 MCP server" },
           { name: "HTTP + SSE 内部 API", status: "stable", note: "hone-web-api 路由全开" },
           { name: "按用户细粒度推送偏好", status: "stable", note: "notification_preferences skill + 设置页 + config 全局节流" },
+          { name: "漏推 / 截断事件回查", status: "stable", note: "missed skill + missed_events tool" },
           { name: "公开 Skill 市场", status: "planned", note: "社区共享" },
         ],
       },
@@ -338,13 +347,10 @@ const CONTENT_ZH = {
       { name: "company_portrait", desc: "维护公司画像、投资主线、事件时间线" },
       { name: "portfolio_management", desc: "持仓增减、再平衡、Ticker 校验" },
       { name: "position_advice", desc: "结合行情与持仓给出加减仓建议" },
-      { name: "valuation", desc: "估值方法选择与区间推断" },
-      { name: "stock_selection", desc: "按条件筛选潜在标的" },
       { name: "market_analysis", desc: "宏观、政策、行业动量与指数判断" },
-      { name: "gold_analysis", desc: "黄金、金 ETF、金矿股的宏观与持仓分析" },
+      { name: "gold-analysis", desc: "黄金、金 ETF、金矿股的宏观与持仓分析" },
       { name: "scheduled_task", desc: "注册 / 修改 / 取消用户定时推送任务" },
-      { name: "major_alert", desc: "重大事件 / 新闻预警推送" },
-      { name: "one_sentence_memory", desc: "把对话沉淀成一句长期记忆" },
+      { name: "missed", desc: "查询 digest 被截断、冷却、过滤或折叠的漏推事件" },
       { name: "chart_visualization", desc: "趋势 / 对比 / 分布 / 散点研究图" },
       { name: "image_generation", desc: "持仓截图、研究图卡、说明图" },
       { name: "image_understanding", desc: "解析用户上传的 K 线 / 持仓截图" },
@@ -360,7 +366,7 @@ const CONTENT_ZH = {
         "Web 聊天界面（邀请制）+ 公开门面站",
         "Tauri macOS 桌面端 + 内置后端",
         "7 个渠道：Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
-        "19 个内置 Skill（个股、持仓、估值、图表、PDF、Cron、推送偏好…）",
+        "16 个公开 Skill（个股、持仓、估值/筛选入口、图表、PDF、Cron、漏推回查、推送偏好…）",
         "投研纪律约束 & 零幻觉协议",
         "公司画像与跨会话长期记忆",
         "Cron 定时任务系统",
@@ -396,7 +402,7 @@ const CONTENT_ZH = {
         "Rust 核心引擎 (hone-core / hone-channels / hone-llm / hone-tools)",
         "前端 UI (SolidJS + Tailwind v4)",
         "Tauri 桌面端壳",
-        "全部 19 个公开 Skill",
+        "全部 16 个公开 Skill",
         "全部渠道集成代码 (Web / iMessage / Lark / Discord / Telegram / CLI / MCP)",
       ],
       closed: [
@@ -409,7 +415,8 @@ const CONTENT_ZH = {
     docs: [
       { title: "README（English）", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README.md", desc: "Project overview, install, quick start" },
       { title: "README（中文）", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", desc: "项目总览、安装、快速上手" },
-      { title: "AGENTS.md", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md", desc: "Agent / Runner 架构与运行时约束" },
+      { title: "Wiki", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md", desc: "安装、启动、端口、配置、验证与排障入口" },
+      { title: "Repo Map", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md", desc: "模块边界、运行时数据流与常见联动改动" },
       { title: "Cases (中文)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", desc: "真实投研场景使用示例集" },
       { title: "Cases (English)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_EN.md", desc: "Real-world case studies" },
       { title: "Skills 目录", url: "https://github.com/B-M-Capital-Research/honeclaw/tree/main/skills", desc: "全部公开 Skill 的源码与说明" },
@@ -459,7 +466,7 @@ const CONTENT_ZH = {
       },
       {
         q: "开源协议？能商用吗？",
-        a: "MIT 协议，可商用。开源仓库包含完整可运行的核心引擎、UI、桌面端、全部 19 个公开 Skill 和 7 个渠道集成。私域高级 Skill 与付费数据源接入不在仓库中，不影响主流程。",
+        a: "MIT 协议，可商用。开源仓库包含完整可运行的核心引擎、UI、桌面端、全部 16 个公开 Skill 和 7 个渠道集成。私域高级 Skill 与付费数据源接入不在仓库中，不影响主流程。",
       },
       {
         q: "数据存在哪里？",
@@ -849,7 +856,7 @@ const CONTENT_ZH = {
           { label: "GitHub", href: "https://github.com/B-M-Capital-Research/honeclaw" },
           { label: "中文文档", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md" },
           { label: "安装方式", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动" },
-          { label: "架构图", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md" },
+          { label: "代码库地图", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md" },
         ],
       },
       community: {
@@ -1017,7 +1024,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       { title: "GitHub repo", desc: "Star, fork, open issues, help build in the open", url: "https://github.com/B-M-Capital-Research/honeclaw", tag: "Source", icon: "⌘" },
       { title: "Chinese docs", desc: "README, usage guide, case studies", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", tag: "Docs", icon: "◈" },
       { title: "Install guide", desc: "macOS desktop + self-hosted server setup", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动", tag: "Install", icon: "⚡" },
-      { title: "Architecture", desc: "Module structure and runtime constraints", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md", tag: "Tech", icon: "∞" },
+      { title: "Repository map", desc: "Module structure, data flow, and runtime boundaries", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md", tag: "Tech", icon: "∞" },
       { title: "Case studies", desc: "Real-world research scenarios", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", tag: "Cases", icon: "✦" },
       { title: "Contributing", desc: "How to contribute code, ideas, and skills", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md", tag: "Contribute", icon: "ℹ" },
     ],
@@ -1028,7 +1035,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     hero_sub: "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.2.6",
+    version: "v0.11.0",
 
     toc: [
       { id: "quick-start", label: "Quick Start", sub: "Quick Start" },
@@ -1062,14 +1069,14 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       architecture: {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "Architecture",
-        intro: "Rust core · multi-runner abstraction · SolidJS frontend. Designed for long uptime, per-channel isolation, and hot-pluggable skills.",
+        intro: "Rust core · multi-runner abstraction · SolidJS frontend. The public user-ui, admin console, and channel processes share backend capabilities while staying separated by surface, port, and process boundary.",
         footnote_prefix: "Full module walkthrough in",
-        footnote_link: "AGENTS.md ↗",
+        footnote_link: "docs/repo-map.md ↗",
       },
       skills: {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "Built-in Skills",
-        intro_prefix: "Hone's skills are invoked by the model from context. Below are the 19 public skills in the",
+        intro_prefix: "Hone's skills are invoked by the model from context. Below are the 16 public skills in the",
         intro_suffix: "directory.",
       },
       roadmap: {
@@ -1132,6 +1139,14 @@ const CONTENT_EN: typeof CONTENT_ZH = {
 
     requirements: "macOS 13+ / Linux x86_64 / arm64 · first source build ~10 min (Rust / Bun required locally)",
 
+    architecture_points: [
+      { title: "CLI startup", desc: "`hone-cli doctor / onboard / start` handles health checks, guided setup, and starting hone-console-page plus enabled channels; source mode uses `cargo run -p hone-cli -- start --build`." },
+      { title: "Public user-ui", desc: "The public surface routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; the backend exposes only `/api/public/*` plus public chat entrypoints." },
+      { title: "Admin console", desc: "The admin surface includes dashboard, sessions, skills, tasks, users, research, notifications, schedule, settings, and logs for operators." },
+      { title: "Runner layer", desc: "Supports OpenAI-compatible APIs, Gemini CLI, Codex CLI / ACP, OpenCode ACP, multi-agent, and a Hone Cloud compatible API route." },
+      { title: "Events and tasks", desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and actor ownership model." },
+    ],
+
     capability_matrix: [
       {
         group: "Research core",
@@ -1140,7 +1155,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           { name: "Company profiles & long memory", status: "stable", note: "company_portrait skill" },
           { name: "Stock research / deep research", status: "stable", note: "stock_research + deep_stock_research" },
           { name: "Portfolio tracking & alerts", status: "stable", note: "portfolio_management + cron" },
-          { name: "Valuation / selection / position advice", status: "stable", note: "valuation / stock_selection / position_advice" },
+          { name: "Valuation / selection / position advice", status: "stable", note: "stock_research covers valuation and screening; position_advice covers sizing changes" },
           { name: "Chart & image generation", status: "stable", note: "chart_visualization / image_generation" },
           { name: "Vector-augmented memory", status: "planned", note: "planned" },
         ],
@@ -1163,6 +1178,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           { name: "MCP protocol", status: "stable", note: "hone-mcp binary can act as an MCP server" },
           { name: "HTTP + SSE internal API", status: "stable", note: "hone-web-api fully exposed" },
           { name: "Per-actor notification prefs", status: "stable", note: "notification_preferences skill + settings page + config-level mute" },
+          { name: "Missed / truncated event recovery", status: "stable", note: "missed skill + missed_events tool" },
           { name: "Public skill marketplace", status: "planned", note: "community sharing" },
         ],
       },
@@ -1184,13 +1200,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       { name: "company_portrait", desc: "Maintain company profiles, theses, and event timelines" },
       { name: "portfolio_management", desc: "Add, trim, rebalance, validate tickers" },
       { name: "position_advice", desc: "Suggest adds / trims from market + position context" },
-      { name: "valuation", desc: "Pick valuation methods and derive price ranges" },
-      { name: "stock_selection", desc: "Screen candidates by your criteria" },
       { name: "market_analysis", desc: "Macro, policy, sector momentum, index calls" },
-      { name: "gold_analysis", desc: "Gold, gold ETFs, and miners — macro and positioning" },
+      { name: "gold-analysis", desc: "Gold, gold ETFs, and miners — macro and positioning" },
       { name: "scheduled_task", desc: "Register / modify / cancel scheduled pushes" },
-      { name: "major_alert", desc: "Send major-event / news alerts" },
-      { name: "one_sentence_memory", desc: "Distill a conversation into one durable sentence" },
+      { name: "missed", desc: "Inspect digest items that were capped, cooled down, filtered, or folded" },
       { name: "chart_visualization", desc: "Trend, comparison, distribution, scatter charts" },
       { name: "image_generation", desc: "Portfolio screenshots, research visuals, explainers" },
       { name: "image_understanding", desc: "Parse K-line / portfolio screenshots from users" },
@@ -1206,7 +1219,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Web chat (invite-only) + public landing site",
         "Tauri macOS desktop with bundled backend",
         "7 channels: Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
-        "19 built-in skills (stocks, portfolio, valuation, charts, PDF, cron, notification prefs…)",
+        "16 public skills (stocks, portfolio, valuation/screening entrypoints, charts, PDF, cron, missed-event recovery, notification prefs…)",
         "Research discipline & zero-hallucination protocol",
         "Company profiles + cross-session long memory",
         "Cron-driven scheduled tasks",
@@ -1242,7 +1255,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         "Rust core engine (hone-core / hone-channels / hone-llm / hone-tools)",
         "Frontend UI (SolidJS + Tailwind v4)",
         "Tauri desktop shell",
-        "All 19 public skills",
+        "All 16 public skills",
         "All channel integrations (Web / iMessage / Lark / Discord / Telegram / CLI / MCP)",
       ],
       closed: [
@@ -1255,7 +1268,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     docs: [
       { title: "README (English)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README.md", desc: "Project overview, install, quick start" },
       { title: "README (中文)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", desc: "Overview, install, quick start in Chinese" },
-      { title: "AGENTS.md", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md", desc: "Agent / runner architecture and runtime rules" },
+      { title: "Wiki", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md", desc: "Install, startup, ports, configuration, verification, and troubleshooting" },
+      { title: "Repo Map", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md", desc: "Module boundaries, runtime data flow, and linked change areas" },
       { title: "Cases (中文)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", desc: "Real-world research scenario examples" },
       { title: "Cases (English)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_EN.md", desc: "Real-world case studies" },
       { title: "Skills directory", url: "https://github.com/B-M-Capital-Research/honeclaw/tree/main/skills", desc: "Source and notes for every public skill" },
@@ -1305,7 +1319,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         q: "What license? Commercial use?",
-        a: "MIT, commercial use allowed. The repo ships a fully-working core engine, UI, desktop, all 19 public skills, and 7 channel integrations. Private premium skills and paid data sources live outside the repo and don't block the main flow.",
+        a: "MIT, commercial use allowed. The repo ships a fully-working core engine, UI, desktop, all 16 public skills, and 7 channel integrations. Private premium skills and paid data sources live outside the repo and don't block the main flow.",
       },
       {
         q: "Where is data stored?",
@@ -1695,7 +1709,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           { label: "GitHub", href: "https://github.com/B-M-Capital-Research/honeclaw" },
           { label: "Chinese docs", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md" },
           { label: "Install", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动" },
-          { label: "Architecture", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/AGENTS.md" },
+          { label: "Repository map", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md" },
         ],
       },
       community: {
