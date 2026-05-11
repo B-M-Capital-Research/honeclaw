@@ -1,6 +1,6 @@
 //! NewsPoller — 拉取 FMP `v3/stock_news`，产出 `NewsCritical` 事件。
 //!
-//! MVP 行为：
+//! 当前行为：
 //! - `poll()` 从 FMP 拉一页最新新闻（可选 ticker 过滤，`None` 表示全局流）
 //! - 默认 severity = Low；title/text 命中关键词库 → 升级为 High
 //! - id 直接用文章 URL 做稳定去重；缺 URL 则回落到 "title+date" 组合

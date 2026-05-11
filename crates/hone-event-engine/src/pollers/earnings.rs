@@ -134,8 +134,8 @@ fn events_from_calendar(raw: &Value) -> Vec<MarketEvent> {
 /// - 同一天同一场财报只会产一条倒计时(render 侧 dedup 依赖 id)
 ///
 /// Severity 统一 Medium:T-1 不再升 High,因为 digest flush 本身就是在用户
-/// 配置的 pre_market/post_market 时刻触发——T-1 teaser 在 pre_market 那晚的
-/// 19:00 CN flush 里恰好是"明早盘前提醒",不需要再绕过 digest。
+/// 配置的 digest slot 触发——T-1 teaser 会出现在对应 slot 的摘要里,
+/// 不需要再绕过 digest。
 pub fn synthesize_countdowns(teasers: &[MarketEvent], today: NaiveDate) -> Vec<MarketEvent> {
     let mut out = Vec::new();
     for t in teasers {

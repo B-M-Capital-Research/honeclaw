@@ -1,6 +1,6 @@
 //! `hone-cli configure` —— 按 section 驱动的交互式配置编辑器。
 //!
-//! 与 [`onboard`] 的差别：
+//! 与 `hone-cli onboard` 的差别：
 //! - `onboard` 是首次入门的**线性流程**,所有默认 section 顺序跑一遍,
 //!   每个字段都要用户作出「现在填 / 跳过 / 禁用」三选一的决定
 //! - `configure` 是**按需修改**：调用方可以用 `--section agent/channels/providers`

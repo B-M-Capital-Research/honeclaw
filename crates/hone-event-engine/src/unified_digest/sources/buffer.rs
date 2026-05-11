@@ -1,8 +1,7 @@
 //! `BufferSource` —— 从 per-actor `DigestBuffer` 抽事件成 `UnifiedCandidate`。
 //!
-//! commit 2 仅是 thin wrapper:`drain_actor` 仍由旧 `DigestBuffer` 实现,本层
-//! 只负责把 `MarketEvent` 包成 `UnifiedCandidate { origin: Buffered, .. }`。
-//! commit 3 起才由 `UnifiedDigestScheduler` 调用。
+//! 本层复用 `DigestBuffer::drain_actor`,只负责把 `MarketEvent` 包成
+//! `UnifiedCandidate { origin: Buffered, .. }`,供 `UnifiedDigestScheduler` 调用。
 
 use chrono::Utc;
 use hone_core::ActorIdentity;
@@ -24,7 +23,7 @@ impl<'a> BufferSource<'a> {
     ///
     /// `seen_at` 取调用时的 `Utc::now()` —— buffer 里没有 enqueued_at 字段对外
     /// 暴露,且 floor 排序仅看 `event.severity` / `event.kind`,seen_at 只参与
-    /// 同优先级条目的 tie-break(commit 3 引入),近似为 drain 时刻足矣。
+    /// 同优先级条目的 tie-break,近似为 drain 时刻足矣。
     pub fn drain(&self, actor: &ActorIdentity) -> anyhow::Result<Vec<UnifiedCandidate>> {
         let now = Utc::now();
         let events = self.buffer.drain_actor(actor)?;

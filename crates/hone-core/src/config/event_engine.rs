@@ -388,8 +388,8 @@ fn default_enabled() -> bool {
 /// **v0.1.46 破坏性简化**:只保留 `news_secs` / `price_secs` 这两类**真实时效性敏感**
 /// 的 poller 配置。原来的 `earnings_secs` / `corp_action_secs` / `macro_secs` /
 /// `analyst_grade_secs` / `earnings_surprise_secs` 5 个 24h 间隔字段被删除——对应
-/// poller 改成 **cron-aligned**:在 `digest.pre_market` / `digest.post_market` 的前
-/// `digest.prefetch_offset_mins` 分钟各执行一次拉取,这样推送的数据永远是 flush 之前
+/// poller 改成 **cron-aligned**:在 `digest.default_slots` 各 slot 前
+/// `digest.prefetch_offset_mins` 分钟执行一次拉取,这样推送的数据永远是 flush 之前
 /// 刚拉的,不会因为用户重启时机而漂到几小时前。
 ///
 /// 旧 config 里这 5 个字段即使仍存在也会被 `#[serde(default)]` + unknown-field tolerant
@@ -493,7 +493,7 @@ fn default_max_items_per_batch() -> u32 {
 }
 
 /// 粗粒度 IANA 时区名 → UTC 偏移小时数。不识别的名字返回 0（UTC）。
-/// MVP 阶段不接 chrono-tz，夏令时按常用区域做固定近似。
+/// 这是 config 层的轻量 fallback helper；夏令时按常用区域做固定近似。
 pub fn tz_offset_hours(tz: &str) -> i32 {
     match tz.trim() {
         "Asia/Shanghai" | "Asia/Hong_Kong" | "Asia/Singapore" | "Asia/Taipei" | "PRC" => 8,

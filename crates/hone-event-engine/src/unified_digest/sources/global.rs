@@ -2,8 +2,8 @@
 //! 内核 + 把产物包成 `UnifiedCandidate { origin: Global, fmp_text, site, source_class }`。
 //!
 //! 这一层不做任何额外过滤,只把"已经过 trusted / legal_ad / 跨批次去重"的
-//! `GlobalDigestCandidate` 平铺成 unified pipeline 的统一候选类型。
-//! commit 2 暂不接 scheduler;commit 3 起由 `UnifiedDigestScheduler` 调用。
+//! `GlobalDigestCandidate` 平铺成 unified pipeline 的统一候选类型,由
+//! `UnifiedDigestScheduler` 调用。
 
 use chrono::{DateTime, Utc};
 

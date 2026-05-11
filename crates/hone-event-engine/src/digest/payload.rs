@@ -20,8 +20,7 @@ use crate::unified_digest::{FloorTag, ItemOrigin, MainlineRelation};
 /// 大写化后的 cashtag 内容(不含 `$` 前缀)。
 ///
 /// `origin` / `floor` / `comment` / `mainline_relation` 是 unified digest pipeline
-/// commit 1 加入的字段——旧 `DigestScheduler` 产物默认 `Buffered + None`,
-/// commit 3 起由 `unified_digest::collector` / `curator` 填充。
+/// 填充的扩展字段;旧 buffer-only 路径默认 `Buffered + None`。
 #[derive(Debug, Clone)]
 pub struct DigestItem {
     pub id: String,
@@ -31,7 +30,7 @@ pub struct DigestItem {
     pub headline: String,
     pub url: Option<String>,
     pub occurred_at: DateTime<Utc>,
-    /// 来源标签——决定渲染层 emoji / 排序。旧 pipeline 全部 `Buffered`。
+    /// 来源标签——决定渲染层 emoji / 排序。buffer-only 路径全部 `Buffered`。
     pub origin: ItemOrigin,
     /// 命中 floor 时填充,绕过 LLM 排序、永远 prepend。
     pub floor: Option<FloorTag>,

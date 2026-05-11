@@ -138,8 +138,8 @@ event_engine:
   enabled: false
   # v0.1.46 破坏性简化: poll_intervals 只保留 news / price 两个真正时效敏感的 poller。
   # earnings / corp_action / macro / analyst_grade / earnings_surprise 原本 5 个 24h 节奏
-  # 的 poller 改为 **cron-aligned** —— 在 digest.pre_market / post_market 前
-  # `prefetch_offset_mins` 分钟各跑一次,保证 flush 推送的数据永远是刚拉的,不受用户重启
+  # 的 poller 改为 **cron-aligned** —— 在 digest.default_slots 各 slot 前
+  # `prefetch_offset_mins` 分钟跑一次,保证 flush 推送的数据永远是刚拉的,不受用户重启
   # 时机漂移。冷启动时每个 poller 立即跑一次。旧 YAML 里残留的 earnings_secs /
   # corp_action_secs / macro_secs / analyst_grade_secs / earnings_surprise_secs 会被 serde
   # 悄悄忽略,不用删也能继续启动(但已经无效,建议清理)。

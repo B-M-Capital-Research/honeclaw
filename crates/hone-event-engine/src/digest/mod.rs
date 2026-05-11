@@ -1,6 +1,6 @@
 //! Digest 内核基座 —— `UnifiedDigestScheduler` 共享的 buffer / curation / render
-//! 模块。从 commit 3 起,本目录不再有自己的 scheduler;`unified_digest::scheduler`
-//! 在每个 slot 触发时复用这里的 `DigestBuffer` / `digest_score` / `render_digest`。
+//! 模块。本目录不再有自己的 scheduler;`unified_digest::scheduler` 在每个 slot
+//! 触发时复用这里的 `DigestBuffer` / `digest_score` / `render_digest`。
 //!
 //! 按职责切成 4 个 sibling module:
 //!

@@ -9,7 +9,7 @@
 //! - 构造时绑定 `actor` —— 不允许查别人的;
 //! - `events_db_path` 直接指向 sqlite 文件,每次 `execute` 打开一次。EventStore
 //!   open 是 idempotent + 快的(<1ms),不开常驻连接是为了简单 + 避免 tool 持有
-//!   跨进程 lock(BotCore 不持有 Arc<EventStore>);
+//!   跨进程 lock(BotCore 不持有 `Arc<EventStore>`);
 //! - 返回结构化 JSON 列表,LLM 自行渲染中文文案给用户。
 
 use async_trait::async_trait;

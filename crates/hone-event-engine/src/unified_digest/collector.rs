@@ -5,9 +5,9 @@
 //! - **shared pool**:`GlobalNewsSource.collect(until, lookback, dedup_lookback)`,
 //!   一次 slot 只取一次,所有 actor 共享,后续在 scheduler 里再做 per-actor `prefs` 过滤。
 //!
-//! commit 2 没有 scheduler 接入,本类型只提供组合 API + 测试覆盖三 source 的合并。
-//! Synth / Global 两个 source 都是可选的——`SynthSource` 需要 store + registry 才有意义,
-//! `GlobalNewsSource` 在 `prefs.blocked_origins` 或 dryrun 关闭全球新闻时不创建。
+//! Scheduler 已接入该组合 API;Synth / Global 两个 source 都是可选的——`SynthSource`
+//! 需要 store + registry 才有意义,`GlobalNewsSource` 在 `prefs.blocked_origins`
+//! 或 dryrun 关闭全球新闻时不创建。
 
 use chrono::{DateTime, Utc};
 use hone_core::ActorIdentity;
@@ -35,7 +35,7 @@ impl<'a> UnifiedCollector<'a> {
         }
     }
 
-    /// 完整三源 —— commit 3 起 `UnifiedDigestScheduler` 走这条。
+    /// 完整三源 —— `UnifiedDigestScheduler` 走这条。
     pub fn new(
         buffer: &'a DigestBuffer,
         store: &'a EventStore,

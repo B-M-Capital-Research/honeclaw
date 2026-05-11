@@ -4,7 +4,7 @@
 //! severity，则调用 `polish()`，用返回文本替代默认模板。Polisher 返回 `None`
 //! 表示"保持原文"（例如 LLM 调用失败），路由器照常发送默认模板。
 //!
-//! MVP 提供两种实现：
+//! 当前提供两种实现：
 //! - `NoopPolisher`：什么都不做，始终返回 `None`
 //! - `LlmPolisher`：调用 hone-llm 的 `LlmProvider` 做短提示润色
 
@@ -114,7 +114,7 @@ impl BodyPolisher for LlmPolisher {
     }
 }
 
-/// 把 config 里的字符串 severity 列表转换为 HashSet<Severity>。
+/// 把 config 里的字符串 severity 列表转换为 `HashSet<Severity>`。
 /// 不识别的字符串被忽略（记一条 warn）。
 pub fn parse_polish_levels(names: &[String]) -> HashSet<Severity> {
     let mut out = HashSet::new();

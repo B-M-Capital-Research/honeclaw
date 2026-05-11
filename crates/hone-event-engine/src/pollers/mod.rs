@@ -1,7 +1,7 @@
 //! Pollers：事件源适配器。
 //!
-//! 每个 poller 拉取一类数据并产出 `MarketEvent`。当前仅实现 earnings；
-//! 后续 news / price / corp_action / macro / snapshot 将陆续加入。
+//! 每个 poller 拉取一类数据并产出 `MarketEvent`。固定间隔源和 cron-aligned
+//! 源都通过 `EventSource::schedule()` 交给统一 spawner 驱动。
 
 pub mod analyst_grade;
 pub mod corp_action;

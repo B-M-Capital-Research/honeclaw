@@ -1,7 +1,7 @@
 //! `EventSource` trait —— 事件源的统一抽象。
 //!
 //! 所有产出 `MarketEvent` 的上游(FMP poller / Telegram 频道 / RSS feed 等)
-//! 都实现此 trait,由 [`crate::lib::spawn_event_source`] 按 `schedule()` 统一拉起。
+//! 都实现此 trait,由 `crate::spawner::spawn_event_source` 按 `schedule()` 统一拉起。
 //!
 //! 关键设计:
 //! - 调度策略(fixed interval vs cron-aligned)从 trait method 返回,而不是写死在

@@ -21,8 +21,8 @@ pub enum ItemOrigin {
 
 impl Default for ItemOrigin {
     fn default() -> Self {
-        // 旧 pipeline 产出的 `DigestItem` 都来自 buffer;commit 1 不改行为,
-        // 默认 Buffered 维持现有 fixture / 测试断言。
+        // buffer-only 路径产出的 `DigestItem` 都来自 buffer;默认 Buffered
+        // 维持现有 fixture / 测试断言。
         ItemOrigin::Buffered
     }
 }
@@ -55,7 +55,7 @@ pub enum MainlineRelation {
 }
 
 /// 用户自定义的 digest 触发槽位。一条 slot = 一次 push;`time` 按
-/// `prefs.timezone`(回退全局 unified_digest.timezone)解释为本地时刻。
+/// `prefs.timezone`(回退全局 `digest.timezone`)解释为本地时刻。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DigestSlot {
     /// 稳定 ID,用于在 NL tool 里指定要改哪个 slot(例 `"premarket"` / `"postmarket"`)。

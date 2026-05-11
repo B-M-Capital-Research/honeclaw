@@ -13,7 +13,7 @@ use hone_tools::ToolRegistry;
 use crate::core::HoneBotCore;
 use crate::runners::AgentRunner;
 
-/// 根据配置生产 [`AgentRunner`]。
+/// 根据配置生产 agent runner。
 pub trait RunnerFactory: Send + Sync {
     /// 当前 runner 是否支持「每个 actor 一份 sandbox cwd」的强隔离模型。
     /// 目前所有实现都返回 `true`;历史上曾有 gemini_acp 返回 `false`,

@@ -1,8 +1,7 @@
 //! `spawn_event_source` —— 唯一的 EventSource 任务驱动入口。
 //!
-//! Stage 1 重构完成后(2026-04-26),所有 FMP / RSS / 社交源都用同一条
-//! 路径接入:`impl EventSource` → 调一次 `spawn_event_source(Arc::new(poller),
-//! store, router)` 即可。FixedInterval / CronAligned 两种调度策略由
+//! 所有 FMP / RSS / 社交源都用同一条路径接入:`impl EventSource` → 调一次
+//! `spawn_event_source(Arc::new(poller), store, router)` 即可。FixedInterval / CronAligned 两种调度策略由
 //! `source.schedule()` 返回值决定,本函数内嵌两条循环,不再有专属
 //! `spawn_*_poller` 函数。
 //!

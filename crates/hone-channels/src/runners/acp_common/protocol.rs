@@ -4,7 +4,7 @@
 //!
 //! 所有 ACP runner(codex / gemini / opencode)都走这里的 `wait_for_response*`
 //! 入口;也就是说,`process_acp_payload` 是整个 ACP ingest 流的**唯一**驱动。
-//! 保持这里是「拿到一行 stdout → 分发 → 回 Option<Value>」的简单形状,
+//! 保持这里是「拿到一行 stdout → 分发 → 回 `Option<Value>`」的简单形状,
 //! 复杂的 tool/usage/summary 检测全部塞在 `super::ingest`。
 
 use std::sync::Arc;

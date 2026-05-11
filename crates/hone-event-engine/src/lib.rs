@@ -4,7 +4,7 @@
 //! 1. Pollers（纯 Rust、无 LLM）从数据源拉取市场事件
 //! 2. 去重（EventStore）后发布到订阅分发层
 //! 3. 按持仓/订阅分发，按 severity 分流（高优实时、低/中优先进每日摘要）
-//! 4. 复用 hone-channels 的 outbound 派发渠道消息（MVP 用 LogSink，后续替换）
+//! 4. 通过 `OutboundSink` / `MultiChannelSink` 派发到 Log、Feishu、Discord 等渠道
 
 pub mod daily_report;
 pub mod digest;

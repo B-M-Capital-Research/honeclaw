@@ -60,7 +60,7 @@ fn default_provider() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterConfig {
-    /// 单 Key 向后兼容字段（优先于 api_keys[0]）
+    /// 单 Key 向后兼容字段（优先于 `api_keys[0]`）
     #[serde(default)]
     pub api_key: String,
     /// 多 Key 列表，支持多账号 fallback（与 api_key 合并后去重使用）

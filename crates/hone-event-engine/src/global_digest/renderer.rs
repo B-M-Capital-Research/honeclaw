@@ -3,7 +3,7 @@
 //!
 //! 设计:
 //! - 每条带 category emoji 标识(🎯 印证 / ⚠️ 证伪 / 🌍 宏观),让用户秒识"为什么我看到这条"
-//! - 支持 TelegramHtml(<b><a>) / Plain(纯文本) / DiscordMarkdown(**[ ]())/ FeishuPost(降级 plain)
+//! - 支持 TelegramHtml(`<b><a>`) / Plain(纯文本) / DiscordMarkdown(`**[ ]()`) / FeishuPost(降级 plain)
 //! - 长度截断到 ~3800 chars,避免 Telegram 单条 4096 上限被超
 //! - 空列表 → 占位文本 + 简短解释,不静默
 

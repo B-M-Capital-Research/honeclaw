@@ -18,8 +18,7 @@ pub struct SynthSource<'a> {
     store: &'a EventStore,
     registry: &'a SharedRegistry,
     /// 当 prefs.timezone 缺失时用的全局回退时区(小时整数偏移)。`SynthSource`
-    /// 内部不知道 prefs,所以由调用方在 commit 3 把 `EffectiveTz` 算好的
-    /// `today` 传进来更干净——本字段仅用于 `synthesize_for_today` 兜底。
+    /// 内部不知道 prefs,所以只在 actor 没有独立时区时用它计算本地日期。
     tz_offset_hours: i32,
 }
 
