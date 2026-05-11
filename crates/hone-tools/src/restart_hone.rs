@@ -181,14 +181,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tool_name_and_description() {
+    fn tool_metadata_exposes_restart_command() {
         let tool = RestartHoneTool::new(PathBuf::from("/tmp/test"));
         assert_eq!(tool.name(), "restart_hone");
         assert!(!tool.description().is_empty());
     }
 
     #[test]
-    fn test_parameters() {
+    fn parameters_require_explicit_confirmation() {
         let tool = RestartHoneTool::new(PathBuf::from("/tmp/test"));
         let params = tool.parameters();
         assert_eq!(params.len(), 1);
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execute_without_confirm() {
+    async fn execute_without_confirm_returns_user_error() {
         let tool = RestartHoneTool::new(PathBuf::from("/tmp/test"));
         let result = tool
             .execute(serde_json::json!({ "confirm": "no" }))
