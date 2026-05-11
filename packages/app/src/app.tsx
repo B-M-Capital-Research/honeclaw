@@ -123,7 +123,7 @@ function AdminSurface() {
               <Route path="/skills/:skillId?" component={SkillsPage} />
               <Route path="/tasks/:taskId?" component={TasksPage} />
               <Route path="/users/:actorKey?/:tab?" component={UsersPage} />
-              {/* 旧路径兼容:推迟到下一个版本删除 */}
+              {/* 旧路径兼容:/memory 已并入用户视图,保留跳转给旧书签。 */}
               <Route path="/memory" component={() => <Navigate href="/users" />} />
               <Route
                 path="/portfolio/:userId?"

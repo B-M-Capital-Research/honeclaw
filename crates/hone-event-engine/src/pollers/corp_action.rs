@@ -86,7 +86,7 @@ impl EventSource for CorpActionCalendarPoller {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SecFilingsPoller —— per-symbol 8-K 拉取
+// SecFilingsPoller —— per-symbol SEC filing forms whitelist 拉取
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub struct SecFilingsPoller {

@@ -385,12 +385,12 @@ fn default_enabled() -> bool {
     false
 }
 
-/// **v0.1.46 破坏性简化**:只保留 `news_secs` / `price_secs` 这两类**真实时效性敏感**
+/// 只保留 `news_secs` / `price_secs` 这两类**真实时效性敏感**
 /// 的 poller 配置。原来的 `earnings_secs` / `corp_action_secs` / `macro_secs` /
-/// `analyst_grade_secs` / `earnings_surprise_secs` 5 个 24h 间隔字段被删除——对应
-/// poller 改成 **cron-aligned**:在 `digest.default_slots` 各 slot 前
-/// `digest.prefetch_offset_mins` 分钟执行一次拉取,这样推送的数据永远是 flush 之前
-/// 刚拉的,不会因为用户重启时机而漂到几小时前。
+/// `analyst_grade_secs` / `earnings_surprise_secs` 5 个 24h 间隔字段已被删除；这些日频来源
+/// （后来拆出的 sec filings 也一样）改成 **cron-aligned**:在 `digest.default_slots` 各 slot
+/// 前 `digest.prefetch_offset_mins` 分钟执行一次拉取,这样推送的数据永远是 flush 之前刚拉的,
+/// 不会因为用户重启时机而漂到几小时前。
 ///
 /// 旧 config 里这 5 个字段即使仍存在也会被 `#[serde(default)]` + unknown-field tolerant
 /// 悄悄忽略(serde 默认 deny_unknown_fields=false),YAML 不用改就能继续工作。
@@ -441,10 +441,9 @@ pub struct DigestConfig {
     /// 单条摘要最多渲染多少事件，超出截断并附"另 N 条已省略"。0 = 不限制。
     #[serde(default = "default_max_items_per_batch")]
     pub max_items_per_batch: u32,
-    /// **cron-aligned poller** 在 flush 窗口前多少分钟执行拉取。v0.1.46 新增:
-    /// earnings / corp_action / macro / analyst_grade / earnings_surprise 这 5 个
-    /// 24h 节奏的 poller 不再用固定 interval 轮询,而是在每个 default slot - offset 跑一次,
-    /// 保证推送数据永远是 flush 前刚拉的。默认 30min。
+    /// **cron-aligned poller** 在 flush 窗口前多少分钟执行拉取。日频来源不再用
+    /// 固定 24h interval 轮询,而是在每个 default slot - offset 跑一次,保证推送数据
+    /// 永远是 flush 前刚拉的。默认 30min。
     #[serde(default = "default_prefetch_offset_mins")]
     pub prefetch_offset_mins: u32,
     /// 同一 actor 两次 digest 之间的最小间隔。用于用户配置了很多窗口时避免
@@ -653,41 +652,41 @@ pub struct RendererConfig {
     pub template_dir: Option<String>,
 }
 
-/// Per-poller 开关。每个字段对应 `crates/hone-event-engine/src/lib.rs::start`
-/// 里的一个 spawn_*_poller 调用,关闭即直接 skip 该 poller 的 tick(最省 FMP 配额)。
+/// Per-source 开关。每个字段对应 `crates/hone-event-engine/src/engine.rs`
+/// 里构造的一个 `EventSource`;关闭即不 spawn 该 source(最省 FMP 配额)。
 ///
 /// 想要更细粒度的"跑 poller 但不分发某 kind"的兜底关法,用 `EventEngineConfig.disabled_kinds`。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sources {
-    /// `spawn_news_poller` —— FMP /v3/stock_news,产出 NewsCritical
+    /// `NewsPoller` —— FMP /v3/stock_news,产出 NewsCritical
     #[serde(default = "default_true")]
     pub news: bool,
-    /// `spawn_price_poller` —— FMP /v3/quote 按 watch pool 拉,产出 PriceAlert/52W
+    /// `PricePoller` —— FMP /v3/quote 按 watch pool 拉,产出 PriceAlert/52W
     #[serde(default = "default_true")]
     pub price: bool,
-    /// `spawn_extended_hours_poller` —— FMP /v3/historical-chart/1min?extended=true 按
+    /// `ExtendedHoursPoller` —— FMP /v3/historical-chart/1min?extended=true 按
     /// watch pool 拉,30min cadence,只在 ET 04:00-09:30 / 16:00-20:00 工作。盘前/盘后
     /// 振幅 ≥ 用户阈值时产出 PriceAlert{window: "pre"|"post"}。FMP 常规 quote endpoint
     /// 不在 extended hours 更新 timestamp,会被 PricePoller 判 stale 跳过(根因:GOOGL
     /// 财报夜整夜无推送),本通道补这块盲区。
     #[serde(default = "default_true")]
     pub extended_hours: bool,
-    /// `spawn_earnings_poller` —— FMP /v3/earning_calendar,产出 EarningsUpcoming
+    /// `EarningsPoller` —— FMP /v3/earning_calendar,产出 EarningsUpcoming
     #[serde(default = "default_true")]
     pub earnings_calendar: bool,
-    /// `corp_action_poller` 内部的 dividend/split 全局日历分支
+    /// `CorpActionCalendarPoller` —— dividend/split 全局日历分支
     #[serde(default = "default_true")]
     pub corp_action: bool,
-    /// `corp_action_poller` 内部的 SEC 8-K per-ticker 分支
+    /// `SecFilingsPoller` —— 按 watch pool 拉 SEC filing forms whitelist
     #[serde(default = "default_true")]
     pub sec_filings: bool,
-    /// `spawn_macro_poller` —— FMP /v3/economic_calendar,产出 MacroEvent
+    /// `MacroPoller` —— FMP /v3/economic_calendar,产出 MacroEvent
     #[serde(default = "default_true")]
     pub macro_calendar: bool,
-    /// `spawn_analyst_grade_poller` —— 按 watch pool 拉,产出 AnalystGrade
+    /// `AnalystGradePoller` —— 按 watch pool 拉,产出 AnalystGrade
     #[serde(default = "default_true")]
     pub analyst_grade: bool,
-    /// `spawn_earnings_surprise_poller` —— 按 watch pool 拉,产出 EarningsReleased
+    /// `EarningsSurprisePoller` —— 按 watch pool 拉,产出 EarningsReleased
     #[serde(default = "default_true")]
     pub earnings_surprise: bool,
 

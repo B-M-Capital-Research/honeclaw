@@ -136,11 +136,12 @@ fmp:
 event_engine:
   # Master switch. Default off — enable only when you want proactive pushes.
   enabled: false
-  # v0.1.46 破坏性简化: poll_intervals 只保留 news / price 两个真正时效敏感的 poller。
+  # poll_intervals 只保留 news / price 两个真正时效敏感的 poller。
   # earnings / corp_action / macro / analyst_grade / earnings_surprise 原本 5 个 24h 节奏
-  # 的 poller 改为 **cron-aligned** —— 在 digest.default_slots 各 slot 前
-  # `prefetch_offset_mins` 分钟跑一次,保证 flush 推送的数据永远是刚拉的,不受用户重启
-  # 时机漂移。冷启动时每个 poller 立即跑一次。旧 YAML 里残留的 earnings_secs /
+  # 的 poller 已改为 **cron-aligned**；后来拆出的 sec_filings 也走同一调度方式 ——
+  # 在 digest.default_slots 各 slot 前 `prefetch_offset_mins` 分钟跑一次,
+  # 保证 flush 推送的数据永远是刚拉的,不受用户重启时机漂移。
+  # 冷启动时每个 poller 立即跑一次。旧 YAML 里残留的 earnings_secs /
   # corp_action_secs / macro_secs / analyst_grade_secs / earnings_surprise_secs 会被 serde
   # 悄悄忽略,不用删也能继续启动(但已经无效,建议清理)。
   poll_intervals:
@@ -165,9 +166,8 @@ event_engine:
     # desc, occurred_at desc) are dropped with a "…… 另 N 条已省略" footer so a
     # Low-severity storm can't bury the user. 0 disables the cap.
     max_items_per_batch: 20
-    # v0.1.46 新增:cron-aligned poller 在每个 default slot 时刻前多少分钟执行拉取。
-    # earnings / corp_action / macro / analyst_grade / earnings_surprise 5 个 24h 节奏
-    # 的 poller 不再按固定 interval 轮询,而是在 default_slots 各 slot 前 offset 跑一次,
+    # cron-aligned poller 在每个 default slot 时刻前多少分钟执行拉取。
+    # 日频来源不再按固定 24h interval 轮询,而是在 default_slots 各 slot 前 offset 跑一次,
     # 保证推送数据永远是 flush 前刚拉的。
     # 默认 30:数值越小数据越新,但留给 EventStore/Router 的缓冲越紧;低于 5 不推荐。
     prefetch_offset_mins: 30
@@ -303,8 +303,8 @@ event_engine:
     mainline_distill_llm: mainline_short
     event_dedupe_model: x-ai/grok-4.1-fast
 
-  # Per-poller 开关。每个字段对应 hone-event-engine 内一个 spawn_*_poller 调用,
-  # 设成 false 即直接 skip 该 poller 的 tick(最省 FMP 配额)。
+  # Per-source 开关。每个字段对应 hone-event-engine 内一个 EventSource,
+  # 设成 false 即不 spawn 该 source(最省 FMP 配额)。
   # 想要"poller 仍跑、只是 router 丢弃某 kind"的兜底关法,改用下方 disabled_kinds。
   sources:
     news: true # /v3/stock_news → NewsCritical
