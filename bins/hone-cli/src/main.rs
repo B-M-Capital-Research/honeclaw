@@ -529,14 +529,18 @@ async fn run_cli() -> Result<(), String> {
             } else {
                 println!("canonical_config={}", report.canonical_config_path);
                 println!("effective_config={}", report.effective_config_path);
-                let primary_model = if report.models.opencode_inherits_local_config {
+                let primary_model = if report.models.runner == "hone_cloud" {
+                    report.models.hone_cloud_model.as_str()
+                } else if report.models.opencode_inherits_local_config {
                     "<opencode default>"
                 } else if non_empty(&report.models.opencode_model) {
                     report.models.opencode_model.as_str()
                 } else {
                     "<unset>"
                 };
-                let primary_variant = if report.models.opencode_inherits_local_config {
+                let primary_variant = if report.models.runner == "hone_cloud" {
+                    "<n/a>"
+                } else if report.models.opencode_inherits_local_config {
                     "<inherited>"
                 } else if non_empty(&report.models.opencode_variant) {
                     report.models.opencode_variant.as_str()

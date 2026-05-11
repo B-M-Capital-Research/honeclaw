@@ -1,7 +1,7 @@
 //! `hone-cli onboard` —— 首次安装后的向导式配置流程。
 //!
 //! 整体结构:
-//! 1. 展示当前 runner 选项(multi-agent / codex_cli / codex_acp / opencode_acp)+
+//! 1. 展示当前 runner 选项(hone_cloud / multi-agent / codex_cli / codex_acp / opencode_acp)+
 //!    binary 可用性,让用户选一种默认 runner
 //!    ([`prompt_onboard_runner`] + [`build_runner_onboard_mutations`])
 //! 2. 对每个渠道 (iMessage / Feishu / Telegram / Discord) 询问是否启用,
@@ -59,6 +59,8 @@ pub(crate) struct OnboardArgs {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OnboardRunnerKind {
+    /// 默认推荐:托管 Hone Cloud 服务,不需要本机 CLI runner。
+    HoneCloud,
     /// 默认推荐:纯 OpenRouter 路由,不需要本机 CLI。
     MultiAgent,
     CodexCli,
@@ -69,6 +71,7 @@ pub(crate) enum OnboardRunnerKind {
 impl OnboardRunnerKind {
     pub(crate) fn config_value(&self) -> &'static str {
         match self {
+            Self::HoneCloud => "hone_cloud",
             Self::MultiAgent => "multi-agent",
             Self::CodexCli => "codex_cli",
             Self::CodexAcp => "codex_acp",
@@ -78,6 +81,7 @@ impl OnboardRunnerKind {
 
     fn title(&self) -> &'static str {
         match self {
+            Self::HoneCloud => "Hone Cloud",
             Self::MultiAgent => "Multi-Agent (OpenRouter)",
             Self::CodexCli => "Codex CLI",
             Self::CodexAcp => "Codex ACP",
@@ -89,7 +93,7 @@ impl OnboardRunnerKind {
     /// 返回 `None` 表示该 runner 不依赖本机 binary(例如 multi-agent 纯走 HTTP)。
     fn binary_probe(&self) -> Option<(&'static str, &'static str)> {
         match self {
-            Self::MultiAgent => None,
+            Self::HoneCloud | Self::MultiAgent => None,
             Self::CodexCli => Some(("codex", "--version")),
             Self::CodexAcp => Some(("codex-acp", "--help")),
             Self::OpencodeAcp => Some(("opencode", "--version")),
@@ -142,6 +146,15 @@ struct ProviderOnboardSpec {
 
 fn runner_onboard_specs() -> &'static [RunnerOnboardSpec] {
     &[
+        RunnerOnboardSpec {
+            kind: OnboardRunnerKind::HoneCloud,
+            description_key: "runner.hone_cloud.description",
+            note_keys: &[
+                "runner.hone_cloud.note_1",
+                "runner.hone_cloud.note_2",
+                "runner.hone_cloud.note_3",
+            ],
+        },
         RunnerOnboardSpec {
             kind: OnboardRunnerKind::MultiAgent,
             description_key: "runner.multi_agent.description",
@@ -247,7 +260,7 @@ fn channel_onboard_specs() -> &'static [ChannelOnboardSpec] {
 fn provider_onboard_specs() -> &'static [ProviderOnboardSpec] {
     &[
         // OpenRouter 放最前。对 multi-agent / codex_acp / codex_cli / nano_banana 都是
-        // 硬依赖,只有 opencode_acp (且用户已在 opencode 里配好 provider)可以跳过。
+        // 硬依赖；hone_cloud 和已在 opencode 里配好 provider 的 opencode_acp 可以跳过。
         // 早期版本的 onboard 完全没问这个 key,新用户跑完向导发消息立刻报
         // 「openrouter.api_key 为空」,体验很差。
         ProviderOnboardSpec {
@@ -646,6 +659,19 @@ pub(crate) fn build_runner_onboard_mutations(
     }];
 
     match runner {
+        OnboardRunnerKind::HoneCloud => {
+            if let Some(api_key) = prompt_secret(
+                theme,
+                lang,
+                t(lang, "runner.hone_cloud.api_key_prompt"),
+                !config.agent.hone_cloud.api_key.is_empty(),
+            )? {
+                mutations.push(ConfigMutation::Set {
+                    path: "agent.hone_cloud.api_key".to_string(),
+                    value: Value::String(api_key),
+                });
+            }
+        }
         OnboardRunnerKind::MultiAgent => {
             // Multi-agent 不需要本机 binary,也不在这里填 OpenRouter key
             // (留给统一的 Providers 环节处理,避免 key 散布在多个地方)。
@@ -1252,10 +1278,21 @@ mod tests {
     }
 
     #[test]
-    fn onboard_runner_kind_multi_agent_config_value() {
+    fn onboard_runner_kind_config_values_and_probe_requirements() {
+        assert_eq!(OnboardRunnerKind::HoneCloud.config_value(), "hone_cloud");
+        assert!(OnboardRunnerKind::HoneCloud.binary_probe().is_none());
         assert_eq!(OnboardRunnerKind::MultiAgent.config_value(), "multi-agent");
         assert!(OnboardRunnerKind::MultiAgent.binary_probe().is_none());
         assert!(OnboardRunnerKind::CodexCli.binary_probe().is_some());
+    }
+
+    #[test]
+    fn onboard_runner_specs_include_seeded_config_runner() {
+        assert!(
+            runner_onboard_specs()
+                .iter()
+                .any(|spec| spec.kind.config_value() == "hone_cloud")
+        );
     }
 }
 

@@ -37,6 +37,24 @@ llm:
 }
 
 #[test]
+fn config_example_yaml_matches_current_schema() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("hone-core crate lives under crates/");
+    let raw = std::fs::read_to_string(repo_root.join("config.example.yaml")).unwrap();
+    let config: HoneConfig = serde_yaml::from_str(&raw).unwrap();
+
+    assert_eq!(config.agent.runner, "hone_cloud");
+    assert_eq!(config.agent.hone_cloud.base_url, "https://hone-claw.com");
+    assert_eq!(config.agent.hone_cloud.model, "hone-cloud");
+    assert!(config.agent.hone_cloud.api_key.is_empty());
+    assert!(config.agent.opencode.model.is_empty());
+    assert!(config.agent.opencode.api_base_url.is_empty());
+    assert!(config.agent.opencode.api_key.is_empty());
+}
+
+#[test]
 fn test_llm_profile_registry_accepts_generation_params() {
     let yaml = r#"
 llm:

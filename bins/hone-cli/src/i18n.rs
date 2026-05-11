@@ -225,6 +225,31 @@ const STRINGS: &[(&str, &str, &str)] = &[
         "Binary missing — keep this runner anyway? (no = pick another runner)",
     ),
     (
+        "runner.hone_cloud.description",
+        "默认推荐：托管 Hone Cloud 服务，不需要本机 Codex / OpenCode runner。",
+        "Recommended default: hosted Hone Cloud service; no local Codex / OpenCode runner required.",
+    ),
+    (
+        "runner.hone_cloud.note_1",
+        "前置：一把 Hone Cloud API key。",
+        "Requires: one Hone Cloud API key.",
+    ),
+    (
+        "runner.hone_cloud.note_2",
+        "配置字段：`agent.hone_cloud.api_key`，runner 保持 `hone_cloud`。",
+        "Config fields: keep `agent.runner=hone_cloud` and set `agent.hone_cloud.api_key`.",
+    ),
+    (
+        "runner.hone_cloud.note_3",
+        "如果你想完全使用本机模型/CLI，返回后改选 Codex ACP 或 OpenCode ACP。",
+        "If you want a fully local CLI-backed route, go back and choose Codex ACP or OpenCode ACP.",
+    ),
+    (
+        "runner.hone_cloud.api_key_prompt",
+        "Hone Cloud API key",
+        "Hone Cloud API key",
+    ),
+    (
         "runner.multi_agent.description",
         "默认推荐：search + answer 两段式，纯 HTTP 走 OpenRouter，不需要本机 CLI。",
         "Recommended default: two-stage search + answer over OpenRouter HTTP, no local CLI required.",
@@ -696,8 +721,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.openrouter.note_2",
-        "如果你 runner=opencode_acp 且已在 opencode 里配好 provider，可以在下一步跳过。",
-        "If your runner is opencode_acp and the provider is already configured inside opencode, you can skip this step.",
+        "如果你 runner=hone_cloud，或 runner=opencode_acp 且已在 opencode 里配好 provider，可以在下一步跳过。",
+        "If your runner is hone_cloud, or opencode_acp with the provider already configured inside opencode, you can skip this step.",
     ),
     (
         "provider.openrouter.note_3",

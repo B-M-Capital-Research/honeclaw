@@ -20,6 +20,9 @@ use crate::{non_empty, start};
 #[derive(Debug, Serialize)]
 pub(crate) struct ModelStatusReport {
     pub runner: String,
+    pub hone_cloud_base_url: String,
+    pub hone_cloud_model: String,
+    pub hone_cloud_api_key_configured: bool,
     pub codex_model: String,
     pub codex_acp_model: String,
     pub codex_acp_variant: String,
@@ -72,6 +75,7 @@ pub(crate) struct StatusReport {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct ApiKeySummary {
+    pub hone_cloud: bool,
     pub openrouter: bool,
     pub primary_route: bool,
     pub auxiliary: bool,
@@ -156,6 +160,9 @@ pub(crate) fn build_model_status(config: &hone_core::HoneConfig) -> ModelStatusR
         && !non_empty(&config.agent.opencode.api_key);
     ModelStatusReport {
         runner: config.agent.runner.clone(),
+        hone_cloud_base_url: config.agent.hone_cloud.base_url.clone(),
+        hone_cloud_model: config.agent.hone_cloud.model.clone(),
+        hone_cloud_api_key_configured: non_empty(&config.agent.hone_cloud.api_key),
         codex_model: config.agent.codex_model.clone(),
         codex_acp_model: config.agent.codex_acp.model.clone(),
         codex_acp_variant: config.agent.codex_acp.variant.clone(),
@@ -250,6 +257,7 @@ pub(crate) fn build_channel_reports(config: &hone_core::HoneConfig) -> Vec<Chann
 
 pub(crate) fn build_api_key_summary(config: &hone_core::HoneConfig) -> ApiKeySummary {
     ApiKeySummary {
+        hone_cloud: non_empty(&config.agent.hone_cloud.api_key),
         openrouter: !config.llm.openrouter_key_pool().is_empty(),
         primary_route: non_empty(&config.agent.opencode.api_key),
         auxiliary: non_empty(&config.llm.auxiliary.api_key),
@@ -261,6 +269,33 @@ pub(crate) fn build_api_key_summary(config: &hone_core::HoneConfig) -> ApiKeySum
             .api_keys
             .iter()
             .all(|key| key.trim().is_empty()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_key_summary_reports_hone_cloud_key() {
+        let mut config = hone_core::HoneConfig::default();
+        assert!(!build_api_key_summary(&config).hone_cloud);
+
+        config.agent.hone_cloud.api_key = "hc-test".to_string();
+        assert!(build_api_key_summary(&config).hone_cloud);
+    }
+
+    #[test]
+    fn model_status_reports_hone_cloud_route() {
+        let mut config = hone_core::HoneConfig::default();
+        config.agent.runner = "hone_cloud".to_string();
+        config.agent.hone_cloud.api_key = "hc-test".to_string();
+
+        let report = build_model_status(&config);
+        assert_eq!(report.runner, "hone_cloud");
+        assert_eq!(report.hone_cloud_base_url, "https://hone-claw.com");
+        assert_eq!(report.hone_cloud_model, "hone-cloud");
+        assert!(report.hone_cloud_api_key_configured);
     }
 }
 

@@ -126,6 +126,7 @@ hone-cli onboard
 
 The onboarding flow will:
 
+- Preserve the seeded `agent.runner: hone_cloud` route unless you switch to a local runner; set `agent.hone_cloud.api_key` before relying on Hone Cloud
 - Detect local runner binaries such as `codex`, `codex-acp`, and `opencode`
 - Let you choose the default runner
 - If you choose `opencode_acp`, tell you to finish provider / model setup in local `opencode` first
@@ -141,6 +142,10 @@ The onboarding flow will:
 
 Runner install references shown by onboarding:
 
+- `Hone Cloud`
+  - No local runner binary is required
+  - Recommended config keeps `agent.runner: hone_cloud`
+  - Required key lives at `agent.hone_cloud.api_key`
 - `Codex CLI`
   - Install: `npm install -g @openai/codex`
   - Update: `codex --upgrade`
@@ -177,6 +182,7 @@ hone-cli configure --section agent --section channels --section providers
 You can also edit individual values non-interactively:
 
 ```bash
+hone-cli config set agent.hone_cloud.api_key "<api-key>"
 hone-cli config set agent.runner opencode_acp
 hone-cli channels set telegram --enabled true --bot-token "<token>"
 ```

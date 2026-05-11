@@ -523,9 +523,10 @@ security:
 
 agent:
   # Recommended: hone_cloud | codex_acp | opencode_acp. Legacy: multi-agent | function_calling | gemini_cli | codex_cli.
+  # This example seeds hone_cloud for first-time installs; switch to codex_acp/opencode_acp when you want local runners.
   # gemini_acp is disabled at runtime and kept below only for migration/reference.
   runner: "hone_cloud"
-  # Only used when provider=codex_cli; empty means use the codex-cli default model
+  # Only used when runner=codex_cli; empty means use the codex-cli default model
   codex_model: "gpt-5.3-codex"
   max_iterations: 100
   # Daily successful-reply quota for user conversations. Set to 0 to disable the limit.

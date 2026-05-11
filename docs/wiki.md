@@ -275,6 +275,7 @@ hone-cli doctor
 hone-cli onboard
 hone-cli configure --section agent --section channels --section providers
 hone-cli config get agent.runner
+hone-cli config set agent.hone_cloud.api_key "<api-key>"
 hone-cli config set agent.runner opencode_acp
 hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.4 --variant medium
 ```
@@ -297,12 +298,13 @@ Never commit local secrets in `config.yaml`.
 
 ## Model And Runner Setup
 
-Hone can use local CLI/ACP runners or OpenAI-compatible cloud APIs.
+Hone can use Hone Cloud, local CLI/ACP runners, or OpenAI-compatible cloud APIs.
 
 Common runner choices:
 
 | Runner | Use When |
 | --- | --- |
+| `hone_cloud` | You want the default hosted Hone service from `config.example.yaml`; set `agent.hone_cloud.api_key` before starting. |
 | `opencode_acp` | You want Hone to inherit local OpenCode provider/model config. |
 | `codex_acp` | You use Codex ACP and want ACP session integration. |
 | `codex_cli` | You use Codex CLI directly. |
@@ -323,7 +325,7 @@ Typical model override:
 hone-cli models set --runner opencode_acp --model openrouter/openai/gpt-5.4 --variant medium
 ```
 
-If using cloud APIs, configure keys through `hone-cli onboard`, `hone-cli configure`, or direct config edits.
+If using Hone Cloud, keep `agent.runner=hone_cloud` and set `agent.hone_cloud.api_key`. If using other cloud APIs, configure keys through `hone-cli onboard`, `hone-cli configure`, or direct config edits.
 
 ## Channel Setup
 
