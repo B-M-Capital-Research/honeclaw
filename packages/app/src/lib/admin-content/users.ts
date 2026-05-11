@@ -23,7 +23,7 @@ const ZH = {
     manual_scope_placeholder: "范围，可选",
     manual_submit: "打开",
     empty_search_title: "没有匹配的用户",
-    empty_search_description: "试试切换搜索词，或用上方手动输入定位特定 actor。",
+    empty_search_description: "试试切换搜索词，或用上方手动输入定位特定用户主体。",
     empty_title: "暂无用户",
     empty_description:
       "还没有人产生持仓 / 画像 / 会话，先让 IM 渠道接收消息或手动添加。",
@@ -49,7 +49,7 @@ const ZH = {
   },
   research: {
     empty_title: "该用户暂无关注的标的",
-    empty_description: "先在「持仓」tab 里添加持仓或关注，这里会列出关联的研究任务。",
+    empty_description: "先在「持仓」页里添加持仓或关注，这里会列出关联的研究任务。",
     symbols_title: "该用户的标的",
     start_for_title: "为 {symbol} 启动研究",
     symbols_hint: "点击标的可在个股研究模块直接启动新任务",
@@ -73,19 +73,19 @@ const ZH = {
     style_title: "整体投资风格",
     style_empty: "尚未蒸馏 — 至少需要一个公司画像。",
     holdings_title: "各持仓投资主线 ({count})",
-    holdings_empty: "该 actor 持仓为空。",
+    holdings_empty: "该用户主体持仓为空。",
     view_profile: "查看画像",
     view: "查看",
     no_profile_label: "没有公司画像",
-    no_profile_hint: " — 用户需在 chat 里建档。",
+    no_profile_hint: " — 用户需在聊天里建档。",
     profile_distill_failed: "画像存在但投资主线蒸馏失败",
     skipped_last_run: "（上次跳过）",
     retry_hint: "，点\"立即触发蒸馏\"重试。",
-    profile_inventory_title: "公司画像 inventory ({count})",
-    profile_inventory_empty: "该 actor sandbox 里还没有任何公司画像。",
+    profile_inventory_title: "公司画像清单 ({count})",
+    profile_inventory_empty: "该用户主体的沙盒里还没有任何公司画像。",
     modal_title_suffix: " · 公司画像",
     modal_footer:
-      "画像由用户在 chat 里通过 company_portrait skill 维护，read-only。",
+      "画像由用户在聊天里通过 company_portrait skill 维护，此处只读。",
   },
 }
 

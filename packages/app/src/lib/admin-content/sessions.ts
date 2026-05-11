@@ -4,7 +4,7 @@ const ZH = {
   shell: {
     current_user: "当前用户",
     portfolio_button: "持仓",
-    portfolio_title: "跳到该用户的持仓 tab",
+    portfolio_title: "跳到该用户的持仓页",
     profiles_button: "画像",
     profiles_title: "跳到该用户的公司画像",
     new_task_button: "推送任务",
@@ -12,7 +12,7 @@ const ZH = {
   },
   list: {
     title: "会话",
-    subtitle: "按渠道查看 session，并打开对应历史",
+    subtitle: "按渠道查看会话，并打开对应历史",
     isolation_hint: "不同渠道的用户 ID 相互独立，无法共享上下文。",
     search_placeholder: "搜索用户名",
     channel_all: "全部渠道",
@@ -33,7 +33,7 @@ const ZH = {
   chat: {
     empty_open_title: "从左侧打开一个会话",
     empty_open_description: "你可以查看共享会话历史，或者新建一个用户会话开始和 Hone 对话。",
-    header_subtitle_group: "共享群 session 历史（当前为只读浏览）",
+    header_subtitle_group: "共享群会话历史（当前为只读浏览）",
     header_subtitle_direct: "实时流式响应与定时消息推送",
     status_online: "在线",
     status_processing: "处理中",
@@ -49,7 +49,7 @@ const ZH = {
     stop_button: "停止",
     stop_title: "停止",
     dismiss_title: "关闭",
-    conversation_compacted: "Conversation compacted",
+    conversation_compacted: "会话已压缩",
     scheduled_label: "定时任务",
     pending: {
       queued: "发送中",
