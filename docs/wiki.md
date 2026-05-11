@@ -190,12 +190,14 @@ Build the local CLI/runtime binaries and start backend plus enabled channel list
 cargo run -p hone-cli -- start --build
 ```
 
-Start admin/public Vite frontends after the backend is ready:
+Start admin/public Vite frontends through the CLI wrapper after the backend is ready:
 
 ```bash
-bun run dev:web
-bun run dev:web:public
+cargo run -p hone-cli -- web admin-ui --dev
+cargo run -p hone-cli -- web user-ui --dev
 ```
+
+The direct Bun scripts remain available for frontend-only work: `bun run dev:web` and `bun run dev:web:public`.
 
 For the full source Web startup checklist and macOS Rollup/Node signing pitfall, see [`docs/runbooks/source-web-startup.md`](./runbooks/source-web-startup.md).
 
@@ -242,6 +244,8 @@ For daily development, keep `cargo run -p hone-cli -- start --build` running in 
 | Command | Best For |
 | --- | --- |
 | `cargo run -p hone-cli -- start --build` | Runtime-only backend/channel smoke from source. |
+| `cargo run -p hone-cli -- web admin-ui --dev` | CLI-managed admin Vite frontend when backend is already running. |
+| `cargo run -p hone-cli -- web user-ui --dev` | CLI-managed public/user Vite frontend when public backend is already running. |
 | `bun run dev:web` | Frontend-only admin UI work when backend is already running. |
 | `bun run dev:web:public` | Frontend-only public chat UI work when public backend is already running. |
 | `bun run build:web` | Build admin Web assets. |
@@ -453,7 +457,7 @@ bun install
 If `bun run dev:web` fails with `@rollup/rollup-darwin-arm64`, `ERR_DLOPEN_FAILED`, or a Team ID code-signing mismatch, make sure Homebrew Node comes before app-bundled Node in `PATH`:
 
 ```bash
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH cargo run -p hone-cli -- web admin-ui --dev
 ```
 
 See the detailed source Web startup runbook: [`docs/runbooks/source-web-startup.md`](./runbooks/source-web-startup.md).
@@ -480,6 +484,7 @@ For installed release, reinstall the latest bundle and confirm:
 
 ```bash
 ls ~/.honeclaw/current/share/honeclaw/web/index.html
+ls ~/.honeclaw/current/share/honeclaw/web-public/index.html
 ```
 
 ### A channel exits during startup

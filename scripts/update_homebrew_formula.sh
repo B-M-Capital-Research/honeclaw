@@ -94,6 +94,7 @@ class Honeclaw < Formula
       HONE_USER_CONFIG_PATH="\${HONE_USER_CONFIG_PATH:-\$HONE_HOME/config.yaml}"
       HONE_SKILLS_DIR="\${HONE_SKILLS_DIR:-#{libexec}/share/honeclaw/skills}"
       HONE_WEB_DIST_DIR="\${HONE_WEB_DIST_DIR:-#{libexec}/share/honeclaw/web}"
+      HONE_PUBLIC_WEB_DIST_DIR="\${HONE_PUBLIC_WEB_DIST_DIR:-#{libexec}/share/honeclaw/web-public}"
 
       mkdir -p "\$HONE_DATA_DIR/runtime"
 
@@ -111,6 +112,7 @@ class Honeclaw < Formula
       export HONE_DATA_DIR
       export HONE_SKILLS_DIR
       export HONE_WEB_DIST_DIR
+      export HONE_PUBLIC_WEB_DIST_DIR
 
       exec "#{libexec}/bin/hone-cli" "\$@"
     EOS
@@ -132,6 +134,7 @@ class Honeclaw < Formula
         hone-cli doctor
         hone-cli onboard
         hone-cli start
+        hone-cli web admin-ui
     EOS
   end
 

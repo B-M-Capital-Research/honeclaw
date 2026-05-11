@@ -100,6 +100,9 @@ curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/
 hone-cli doctor
 hone-cli onboard
 hone-cli start
+# In another terminal, open or start the bundled Web surfaces:
+hone-cli web admin-ui
+hone-cli web user-ui
 ```
 
 ### Option B. Homebrew (macOS/Linux)
@@ -109,6 +112,9 @@ brew install B-M-Capital-Research/honeclaw/honeclaw
 hone-cli doctor
 hone-cli onboard
 hone-cli start
+# In another terminal, open or start the bundled Web surfaces:
+hone-cli web admin-ui
+hone-cli web user-ui
 ```
 
 ### Option C. Development Mode
@@ -117,6 +123,9 @@ hone-cli start
 git clone https://github.com/B-M-Capital-Research/honeclaw.git
 cd honeclaw
 cargo run -p hone-cli -- start --build
+# In separate terminals:
+cargo run -p hone-cli -- web admin-ui --dev
+cargo run -p hone-cli -- web user-ui --dev
 ```
 
 ---

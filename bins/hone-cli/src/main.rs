@@ -11,6 +11,7 @@ mod prompts;
 mod repl;
 mod reports;
 mod start;
+mod web;
 mod yaml_io;
 
 use cleanup::{CleanupArgs, run_cleanup};
@@ -25,6 +26,7 @@ use reports::{
     print_doctor_report_text,
 };
 use start::StartArgs;
+use web::{WebCommands, run_web_command};
 use yaml_io::{
     apply_message, apply_mutations_and_generate, print_json, value_to_pretty_text,
     yaml_value_from_cli,
@@ -84,6 +86,11 @@ enum Commands {
     Doctor(DoctorArgs),
     /// 启动 hone-console-page + 各启用渠道。
     Start(StartArgs),
+    /// 启动 Web 前端入口：admin-ui / user-ui。
+    Web {
+        #[command(subcommand)]
+        command: WebCommands,
+    },
     /// 启动渠道协议 probe,方便排查外部渠道连接问题。
     Probe(ProbeArgs),
 }
@@ -580,6 +587,7 @@ async fn run_cli() -> Result<(), String> {
             }
         }
         Some(Commands::Start(args)) => start::run_start(cli.config.as_deref(), args).await,
+        Some(Commands::Web { command }) => run_web_command(cli.config.as_deref(), command).await,
         Some(Commands::Probe(args)) => {
             let (core, paths) = load_cli_core(cli.config.as_deref()).map_err(|e| e.to_string())?;
             probe::run_probe(core, &paths.canonical_config_path.to_string_lossy(), args).await
@@ -661,6 +669,50 @@ mod tests {
             Some(Commands::Start(args)) => {
                 assert!(args.build);
                 assert_eq!(args.source_root, Some(PathBuf::from("/tmp/hone-source")));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_web_admin_ui_source_mode() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "web",
+            "admin-ui",
+            "--dev",
+            "--port",
+            "3010",
+            "--backend-url",
+            "http://127.0.0.1:8077",
+            "--source-root",
+            "/tmp/hone-source",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Web {
+                command: WebCommands::AdminUi(args),
+            }) => {
+                assert!(args.dev);
+                assert_eq!(args.port, Some(3010));
+                assert_eq!(args.backend_url.as_deref(), Some("http://127.0.0.1:8077"));
+                assert_eq!(args.source_root, Some(PathBuf::from("/tmp/hone-source")));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_web_user_ui_preview_mode() {
+        let cli =
+            Cli::try_parse_from(["hone-cli", "web", "user-ui", "--no-build", "--port", "3011"])
+                .unwrap();
+        match cli.command {
+            Some(Commands::Web {
+                command: WebCommands::UserUi(args),
+            }) => {
+                assert!(args.no_build);
+                assert_eq!(args.port, Some(3011));
             }
             other => panic!("unexpected command: {other:?}"),
         }

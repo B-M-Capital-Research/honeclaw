@@ -223,6 +223,7 @@ export HONE_USER_CONFIG_PATH="${HONE_USER_CONFIG_PATH:-$HONE_HOME/config.yaml}"
 export HONE_DATA_DIR="${HONE_DATA_DIR:-$HONE_HOME/data}"
 export HONE_SKILLS_DIR="${HONE_SKILLS_DIR:-$CURRENT_ROOT/share/honeclaw/skills}"
 export HONE_WEB_DIST_DIR="${HONE_WEB_DIST_DIR:-$CURRENT_ROOT/share/honeclaw/web}"
+export HONE_PUBLIC_WEB_DIST_DIR="${HONE_PUBLIC_WEB_DIST_DIR:-$CURRENT_ROOT/share/honeclaw/web-public}"
 
 exec "$CURRENT_ROOT/bin/hone-cli" "$@"
 EOF
@@ -264,6 +265,7 @@ Next steps:
   hone-cli onboard
   hone-cli configure --section agent --section channels --section providers
   hone-cli start
+  hone-cli web admin-ui
 EOF
 
 if ! path_contains_dir "$BIN_DIR"; then

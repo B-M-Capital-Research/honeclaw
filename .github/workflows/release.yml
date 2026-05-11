@@ -101,7 +101,9 @@ jobs:
 
       - name: Build web assets
         shell: bash
-        run: bun run build:web
+        run: |
+          bun run build:web
+          bun run build:web:public
 
       - name: Add target
         run: rustup target add ${{ matrix.target }}
@@ -152,6 +154,7 @@ jobs:
           cp soul.md "${PKG_DIR}/share/honeclaw/"
           cp -R skills "${PKG_DIR}/share/honeclaw/skills"
           cp -R packages/app/dist "${PKG_DIR}/share/honeclaw/web"
+          cp -R packages/app/dist-public "${PKG_DIR}/share/honeclaw/web-public"
 
           case "${{ matrix.target }}" in
             aarch64-apple-darwin) ASSET_NAME="honeclaw-darwin-aarch64.tar.gz" ;;

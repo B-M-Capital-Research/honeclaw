@@ -1,6 +1,6 @@
 # Runbook: Hone CLI Install And Start
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
 
 ## When To Use
 
@@ -37,7 +37,7 @@ The installer:
   - Preferred matches are `~/.local/bin`, `~/bin`, `~/.cargo/bin`, `~/.bun/bin`, then other writable `~/...` PATH entries
   - If none of those are available, it falls back to `~/.local/bin/hone-cli` and prints both the immediate `export PATH=...` command and a shell-specific `~/.zshrc` or `~/.bashrc` / `~/.bash_profile` persistence hint when it can identify the login shell
 - Seeds `~/.honeclaw/config.yaml` and `~/.honeclaw/soul.md` if they do not already exist
-- Ships built Web assets under the install bundle and points the runtime at them through `HONE_WEB_DIST_DIR`
+- Ships built admin and user Web assets under the install bundle and points the runtime at them through `HONE_WEB_DIST_DIR` / `HONE_PUBLIC_WEB_DIST_DIR`
 - In an interactive terminal, asks whether to run `hone-cli onboard` immediately
   - `HONE_RUN_ONBOARD=0` skips the prompt
   - `HONE_RUN_ONBOARD=1` forces onboarding immediately
@@ -95,7 +95,8 @@ rm -rf ~/.honeclaw
 - Generated effective config: `~/.honeclaw/data/runtime/effective-config.yaml`
 - Runtime data: `~/.honeclaw/data`
 - Skills dir: `~/.honeclaw/current/share/honeclaw/skills`
-- Web assets: `~/.honeclaw/current/share/honeclaw/web`
+- Admin Web assets: `~/.honeclaw/current/share/honeclaw/web`
+- User Web assets: `~/.honeclaw/current/share/honeclaw/web-public`
 
 The wrapper exports:
 
@@ -105,6 +106,7 @@ The wrapper exports:
 - `HONE_DATA_DIR=~/.honeclaw/data`
 - `HONE_SKILLS_DIR=~/.honeclaw/current/share/honeclaw/skills`
 - `HONE_WEB_DIST_DIR=~/.honeclaw/current/share/honeclaw/web`
+- `HONE_PUBLIC_WEB_DIST_DIR=~/.honeclaw/current/share/honeclaw/web-public`
 
 `HONE_CONFIG_PATH` is no longer exported globally by the wrapper. It is generated and injected only for spawned runtime processes.
 
@@ -200,6 +202,22 @@ What `hone-cli start` does in the current MVP:
 - Starts enabled channel listeners for iMessage / Discord / Feishu / Telegram
 - Keeps the process tree in the foreground until `Ctrl-C`
 
+## Start The Web UIs
+
+Installed users should prefer the CLI Web commands over Bun commands. They use the bundled release assets and do not require a source checkout:
+
+```bash
+hone-cli web admin-ui
+hone-cli web user-ui
+```
+
+If `hone-cli start` is already running, these commands detect the live backend and print the matching URL. If the backend is not running, they start `hone-console-page` in a web-only foreground lane:
+
+- `hone-cli web admin-ui`: management console, default `http://127.0.0.1:8077`
+- `hone-cli web user-ui`: user-facing page, default `http://127.0.0.1:8088`
+
+For the full runtime with enabled chat channels, keep using `hone-cli start`. Use the `web` commands in another terminal when you want the Web URL / Web-only lane managed by the CLI.
+
 ## Start From Source Checkout
 
 Use this path when you cloned the repository and want to run the source tree directly:
@@ -217,7 +235,14 @@ What `--build` adds:
 - Starts the runtime from those freshly built local binaries
 - Writes `data/runtime/current.pid` after startup so restart tooling can find the active CLI supervisor
 
-For Web UI development, keep the CLI backend running and start frontends separately:
+For Web UI development, keep the CLI backend running and start the Vite frontends through the CLI:
+
+```bash
+cargo run -p hone-cli -- web admin-ui --dev
+cargo run -p hone-cli -- web user-ui --dev
+```
+
+Direct Bun scripts remain available when you specifically want to operate outside the CLI wrapper:
 
 ```bash
 bun run dev:web
@@ -263,7 +288,9 @@ eval "$($(command -v brew) shellenv)"
 
 - Reinstall with the latest GitHub bundle or the latest Homebrew formula
 - Confirm that the install root contains `share/honeclaw/web/index.html`
+- Confirm that the install root contains `share/honeclaw/web-public/index.html`
 - Confirm that `HONE_WEB_DIST_DIR` points at the bundled `share/honeclaw/web`
+- Confirm that `HONE_PUBLIC_WEB_DIST_DIR` points at the bundled `share/honeclaw/web-public`
 
 ### Config edits seem to affect the wrong file
 

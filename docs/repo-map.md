@@ -79,7 +79,7 @@ Last updated: 2026-05-11
   - 管理端与用户端现在按端口和构建产物分离：管理端默认走 `HONE_WEB_PORT` + `packages/app/dist`，用户端默认走 `HONE_PUBLIC_WEB_PORT` + `packages/app/dist-public`
   - 用户可见的长期研究记忆入口现只保留 `/memory` 下的公司画像视图；KB 页面与知识记忆 tab 已移除
 - CLI: `bins/hone-cli/src/main.rs`
-  - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, and `start`; `channels targets [--json]` inspects the typed cron-backed channel-target directory; no-subcommand mode still drops into the local chat REPL
+  - `hone-cli` now has explicit subcommands for `chat`, `config`, `configure`, `models`, `channels`, `status`, `doctor`, `start`, and `web`; `web admin-ui` / `web user-ui` start or locate the admin and user Web surfaces; `channels targets [--json]` inspects the typed cron-backed channel-target directory; no-subcommand mode still drops into the local chat REPL
 - Channel runtime export: `crates/hone-channels/src/lib.rs`
 - Shared channel bootstrap: `crates/hone-channels/src/bootstrap.rs`
 - `AgentSession` abstraction: `crates/hone-channels/src/agent_session.rs`

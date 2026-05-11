@@ -1,6 +1,6 @@
 # Runbook: Source Web Startup
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
 
 This runbook covers starting the full local source checkout Web stack with the local CLI build path.
 Use it when you need the backend, enabled channel listeners, admin Vite frontend, and public Vite frontend running from the latest local code.
@@ -55,11 +55,11 @@ Start the backend and enabled channels from source:
 cargo run -p hone-cli -- start --build
 ```
 
-In separate terminals, start the frontends:
+In separate terminals, start the frontends through the CLI wrapper:
 
 ```bash
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH cargo run -p hone-cli -- web admin-ui --dev
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH cargo run -p hone-cli -- web user-ui --dev
 ```
 
 Why this shape matters:
@@ -67,7 +67,14 @@ Why this shape matters:
 - `hone-cli start --build` builds the Rust runtime binaries before starting services.
 - The first cold build can take several minutes; later starts reuse the Cargo target dir.
 - The CLI starts the backend first, waits for `/api/meta`, then starts enabled channel listeners.
-- Vite frontends stay as separate foreground processes, so frontend crashes do not silently tear down the runtime backend.
+- `hone-cli web admin-ui --dev` and `hone-cli web user-ui --dev` keep Vite frontends as separate foreground processes, so frontend crashes do not silently tear down the runtime backend.
+
+Direct Bun scripts remain supported when you want to bypass the CLI wrapper:
+
+```bash
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
+```
 
 ## macOS Rollup Native Addon Failure
 
@@ -96,8 +103,8 @@ codesign -dv node_modules/.bun/@rollup+rollup-darwin-arm64@*/node_modules/@rollu
 Preferred fix:
 
 ```bash
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web
-env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH bun run dev:web:public
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH cargo run -p hone-cli -- web admin-ui --dev
+env PATH=/opt/homebrew/bin:$HOME/.bun/bin:$PATH cargo run -p hone-cli -- web user-ui --dev
 ```
 
 Notes:
@@ -105,6 +112,7 @@ Notes:
 - Running `bun install` may be harmless, but it may report "no changes" and leave the code-signing problem unchanged.
 - Re-signing the Rollup native addon alone may not fix the mismatch if the wrong host Node remains first in `PATH`.
 - Prefer changing `PATH` for the startup command instead of deleting `node_modules` as a first response.
+- Direct `bun run dev:web` / `bun run dev:web:public` is still valid when you want the shortest frontend-only command.
 
 ## Verify Startup
 

@@ -41,12 +41,14 @@ bunx tauri dev --config bins/hone-desktop/tauri.generated.conf.json
 
 ### Web Frontend Lane
 
-Use these in separate terminals when browser UI hot reload is needed:
+Use these in separate terminals when browser UI hot reload is needed. Prefer the CLI wrapper so the admin and user surfaces use the same ports and backend URL defaults as the installed path:
 
 ```bash
-bun run dev:web
-bun run dev:web:public
+cargo run -p hone-cli -- web admin-ui --dev
+cargo run -p hone-cli -- web user-ui --dev
 ```
+
+Direct Bun scripts remain available for frontend-only work: `bun run dev:web` and `bun run dev:web:public`.
 
 ## Stop And Restart
 
@@ -78,7 +80,7 @@ HONE_FEISHU_DISABLE_SCHEDULER=1 cargo run -p hone-cli -- start --build
 Then start the public frontend if local user-side smoke tests need it:
 
 ```bash
-bun run dev:web:public
+cargo run -p hone-cli -- web user-ui --dev
 ```
 
 After Feishu comes online, watch logs for:

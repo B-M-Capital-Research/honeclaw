@@ -20,6 +20,7 @@ const SOURCE_RUNTIME_PACKAGES: &[&str] = &[
     "hone-feishu",
     "hone-telegram",
 ];
+const DEFAULT_PUBLIC_WEB_PORT: u16 = 8088;
 
 #[derive(Args, Debug, Clone, Default)]
 pub(crate) struct StartArgs {
@@ -39,7 +40,7 @@ fn executable_name(binary: &str) -> String {
     }
 }
 
-fn source_root_from_env_or_cwd(explicit: Option<&Path>) -> Option<PathBuf> {
+pub(crate) fn source_root_from_env_or_cwd(explicit: Option<&Path>) -> Option<PathBuf> {
     if let Some(path) = explicit {
         return Some(path.to_path_buf());
     }
@@ -67,6 +68,13 @@ fn source_target_debug_dir(source_root: &Path) -> PathBuf {
         source_root.join(target_dir)
     };
     target_dir.join("debug")
+}
+
+fn public_web_port_from_env() -> u16 {
+    env::var("HONE_PUBLIC_WEB_PORT")
+        .ok()
+        .and_then(|raw| raw.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_PUBLIC_WEB_PORT)
 }
 
 fn binary_search_dirs(source_root: Option<&Path>) -> Vec<PathBuf> {
@@ -102,7 +110,10 @@ pub(crate) fn locate_binary(binary: &str) -> Option<PathBuf> {
     locate_binary_with_source(binary, None)
 }
 
-fn locate_binary_with_source(binary: &str, source_root: Option<&Path>) -> Option<PathBuf> {
+pub(crate) fn locate_binary_with_source(
+    binary: &str,
+    source_root: Option<&Path>,
+) -> Option<PathBuf> {
     let name = executable_name(binary);
     for dir in binary_search_dirs(source_root) {
         let candidate = dir.join(&name);
@@ -113,7 +124,7 @@ fn locate_binary_with_source(binary: &str, source_root: Option<&Path>) -> Option
     None
 }
 
-fn child_envs(paths: &ResolvedRuntimePaths) -> Vec<(String, String)> {
+pub(crate) fn child_envs(paths: &ResolvedRuntimePaths) -> Vec<(String, String)> {
     let mut envs = vec![
         (
             "HONE_CONFIG_PATH".to_string(),
@@ -143,7 +154,7 @@ fn child_envs(paths: &ResolvedRuntimePaths) -> Vec<(String, String)> {
     envs
 }
 
-async fn wait_for_http_ready(url: &str) -> Result<(), String> {
+pub(crate) async fn wait_for_http_ready(url: &str) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
         .build()
@@ -158,7 +169,7 @@ async fn wait_for_http_ready(url: &str) -> Result<(), String> {
     Err(format!("服务未在预期时间内就绪: {url}"))
 }
 
-async fn spawn_binary(
+pub(crate) async fn spawn_binary(
     binary: &str,
     paths: &ResolvedRuntimePaths,
     extra_envs: &[(String, String)],
@@ -199,7 +210,7 @@ async fn spawn_channel(
     Ok(child)
 }
 
-async fn ensure_child_alive(binary: &str, child: &mut Child) -> Result<(), String> {
+pub(crate) async fn ensure_child_alive(binary: &str, child: &mut Child) -> Result<(), String> {
     tokio::time::sleep(Duration::from_secs(1)).await;
     match child.try_wait() {
         Ok(Some(status)) => Err(format!("{binary} 启动后立即退出（status={status}）")),
@@ -369,7 +380,17 @@ pub(crate) async fn run_start(
     }
 
     write_current_pid(&paths)?;
-    println!("[INFO] frontend disabled. use the web console or desktop separately if needed.");
+    println!(
+        "[INFO] admin UI available at http://127.0.0.1:{}",
+        paths.web_port
+    );
+    println!(
+        "[INFO] user UI available at http://127.0.0.1:{}",
+        public_web_port_from_env()
+    );
+    println!(
+        "[INFO] source frontend helpers: hone-cli web admin-ui --dev / hone-cli web user-ui --dev"
+    );
     println!("[INFO] press Ctrl-C to stop.");
 
     tokio::select! {
