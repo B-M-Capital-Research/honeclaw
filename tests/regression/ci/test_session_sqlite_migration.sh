@@ -7,7 +7,8 @@ cd "$ROOT_DIR"
 TMP_DIR="$(mktemp -d)"
 SESSIONS_DIR="$TMP_DIR/sessions"
 DB_PATH="$TMP_DIR/sessions.sqlite3"
-mkdir -p "$SESSIONS_DIR"
+LOG_DIR="$TMP_DIR/logs"
+mkdir -p "$SESSIONS_DIR" "$LOG_DIR"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 cat > "$SESSIONS_DIR/Actor_feishu__direct__alice.json" <<'JSON'
@@ -67,17 +68,17 @@ JSON
 
 python3 scripts/migrate_sessions_to_sqlite.py \
   --sessions-dir "$SESSIONS_DIR" \
-  --db-path "$DB_PATH" >/tmp/hone_session_sqlite_dry_run.log
+  --db-path "$DB_PATH" >"$LOG_DIR/dry_run.log"
 
 python3 scripts/migrate_sessions_to_sqlite.py \
   --sessions-dir "$SESSIONS_DIR" \
   --db-path "$DB_PATH" \
-  --write >/tmp/hone_session_sqlite_write1.log
+  --write >"$LOG_DIR/write1.log"
 
 python3 scripts/migrate_sessions_to_sqlite.py \
   --sessions-dir "$SESSIONS_DIR" \
   --db-path "$DB_PATH" \
-  --write >/tmp/hone_session_sqlite_write2.log
+  --write >"$LOG_DIR/write2.log"
 
 python3 - <<'PY' "$SESSIONS_DIR/Actor_feishu__direct__alice.json"
 from pathlib import Path
@@ -99,7 +100,7 @@ PY
 python3 scripts/migrate_sessions_to_sqlite.py \
   --sessions-dir "$SESSIONS_DIR" \
   --db-path "$DB_PATH" \
-  --write >/tmp/hone_session_sqlite_write3.log
+  --write >"$LOG_DIR/write3.log"
 
 python3 - <<'PY' "$DB_PATH"
 import sqlite3
@@ -128,16 +129,16 @@ assert tool_name == "demo_tool", tool_name
 PY
 
 python3 scripts/diagnose_session_sqlite.py \
-  --db-path "$DB_PATH" summary >/tmp/hone_session_sqlite_summary.log
+  --db-path "$DB_PATH" summary >"$LOG_DIR/summary.log"
 python3 scripts/diagnose_session_sqlite.py \
-  --db-path "$DB_PATH" sessions --limit 5 >/tmp/hone_session_sqlite_sessions.log
+  --db-path "$DB_PATH" sessions --limit 5 >"$LOG_DIR/sessions.log"
 python3 scripts/diagnose_session_sqlite.py \
-  --db-path "$DB_PATH" messages --session-id Actor_feishu__direct__alice >/tmp/hone_session_sqlite_messages.log
+  --db-path "$DB_PATH" messages --session-id Actor_feishu__direct__alice >"$LOG_DIR/messages.log"
 
-grep -q "skipped=2" /tmp/hone_session_sqlite_write2.log
-grep -q "imported=1" /tmp/hone_session_sqlite_write3.log
-grep -q "sessions: 2" /tmp/hone_session_sqlite_summary.log
-grep -q "Actor_feishu__direct__alice" /tmp/hone_session_sqlite_sessions.log
-grep -q "second message" /tmp/hone_session_sqlite_messages.log
+grep -q "skipped=2" "$LOG_DIR/write2.log"
+grep -q "imported=1" "$LOG_DIR/write3.log"
+grep -q "sessions: 2" "$LOG_DIR/summary.log"
+grep -q "Actor_feishu__direct__alice" "$LOG_DIR/sessions.log"
+grep -q "second message" "$LOG_DIR/messages.log"
 
 echo "session sqlite migration regression passed"

@@ -368,7 +368,7 @@ logging:
 }
 
 #[test]
-fn test_deserialize_agent_codex_model() {
+fn agent_codex_cli_deserializes_runner_and_model() {
     let yaml = r#"
 agent:
   runner: codex_cli
@@ -380,7 +380,7 @@ agent:
 }
 
 #[test]
-fn test_deserialize_agent_opencode_model_and_variant() {
+fn agent_opencode_acp_deserializes_model_and_variant() {
     let yaml = r#"
 agent:
   runner: opencode_acp
@@ -395,7 +395,7 @@ agent:
 }
 
 #[test]
-fn test_default_agent_opencode_inherits_local_config_when_unset() {
+fn default_agent_opencode_keeps_local_config_inheritance() {
     let config = HoneConfig::default();
     assert!(config.agent.opencode.model.is_empty());
     assert!(config.agent.opencode.variant.is_empty());
@@ -408,7 +408,7 @@ fn test_default_agent_opencode_inherits_local_config_when_unset() {
 }
 
 #[test]
-fn test_deserialize_agent_gemini_acp() {
+fn agent_gemini_acp_deserializes_model_and_api_key() {
     let yaml = r#"
 agent:
   runner: gemini_acp
@@ -423,7 +423,7 @@ agent:
 }
 
 #[test]
-fn test_deserialize_agent_codex_acp_sandbox_controls() {
+fn agent_codex_acp_deserializes_sandbox_controls() {
     let yaml = r#"
 agent:
   runner: codex_acp
@@ -453,7 +453,7 @@ agent:
 }
 
 #[test]
-fn test_deserialize_agent_multi_agent() {
+fn agent_multi_agent_deserializes_search_and_answer_settings() {
     let yaml = r#"
 agent:
   runner: multi-agent
@@ -496,7 +496,7 @@ agent:
 }
 
 #[test]
-fn test_deserialize_feishu_config() {
+fn feishu_config_deserializes_allowlists_and_admins() {
     let yaml = r#"
 feishu:
   enabled: true
@@ -537,7 +537,7 @@ admins:
 }
 
 #[test]
-fn test_deserialize_discord_group_reply() {
+fn discord_group_reply_deserializes_pretrigger_window() {
     let yaml = r#"
 group_context:
   pretrigger_window_enabled: false

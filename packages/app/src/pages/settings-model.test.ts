@@ -94,23 +94,51 @@ describe("settings-model", () => {
     ).toBe("x-ai/grok-4.1-fast")
   })
 
-  it("normalizes key lists and visibility lists", () => {
+  it("normalizes empty key lists and derives matching visibility state", () => {
     expect(normalizeApiKeys([])).toEqual([""])
+    expect(normalizeApiKeys(["a", "b"])).toEqual(["a", "b"])
     expect(initialApiKeyVisibility([])).toEqual([false])
+    expect(initialApiKeyVisibility(["a", "b"])).toEqual([false, false])
   })
 
-  it("updates and mutates api key lists immutably", () => {
-    const updated = updateApiKeyList({ apiKeys: ["a", "b"] }, 1, "next")
+  it("updates api key lists without mutating the previous settings", () => {
+    const previous = { apiKeys: ["a", "b"], label: "fmp" }
+    const updated = updateApiKeyList(previous, 1, "next")
     expect(updated.apiKeys).toEqual(["a", "next"])
-    expect(appendApiKey(updated).apiKeys).toEqual(["a", "next", ""])
-    expect(removeApiKey(updated, 0).apiKeys).toEqual(["next"])
+    expect(updated.label).toBe("fmp")
+    expect(previous.apiKeys).toEqual(["a", "b"])
+    expect(updated).not.toBe(previous)
+    expect(updated.apiKeys).not.toBe(previous.apiKeys)
+
+    const appended = appendApiKey(updated)
+    expect(appended.apiKeys).toEqual(["a", "next", ""])
+    expect(appended).not.toBe(updated)
+    expect(appended.apiKeys).not.toBe(updated.apiKeys)
+    expect(updated.apiKeys).toEqual(["a", "next"])
+
+    const removed = removeApiKey(updated, 0)
+    expect(removed.apiKeys).toEqual(["next"])
+    expect(removed).not.toBe(updated)
+    expect(removed.apiKeys).not.toBe(updated.apiKeys)
+    expect(updated.apiKeys).toEqual(["a", "next"])
+
     expect(removeApiKey({ apiKeys: ["only"] }, 0).apiKeys).toEqual([""])
   })
 
-  it("updates api key visibility consistently", () => {
-    expect(toggleApiKeyVisibility([false, true], 1)).toEqual([false, false])
-    expect(appendApiKeyVisibility([false])).toEqual([false, false])
-    expect(removeApiKeyVisibility([false, true], 0)).toEqual([true])
+  it("updates api key visibility without mutating the previous list", () => {
+    const visibility = [false, true]
+    const toggled = toggleApiKeyVisibility(visibility, 1)
+    expect(toggled).toEqual([false, false])
+    expect(visibility).toEqual([false, true])
+    expect(toggled).not.toBe(visibility)
+
+    const appended = appendApiKeyVisibility(visibility)
+    expect(appended).toEqual([false, true, false])
+    expect(appended).not.toBe(visibility)
+
+    const removed = removeApiKeyVisibility(visibility, 0)
+    expect(removed).toEqual([true])
+    expect(removed).not.toBe(visibility)
     expect(removeApiKeyVisibility([false], 0)).toEqual([false])
   })
 
