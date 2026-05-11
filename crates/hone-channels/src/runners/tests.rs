@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::acp_common::{
     AcpPromptState, AcpToolRenderPhase, CliVersion, extract_finished_tool_calls,
@@ -42,8 +42,52 @@ impl AgentRunnerEmitter for NoopEmitter {
     async fn emit(&self, _event: AgentRunnerEvent) {}
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct CapturedToolEvent {
+    tool: String,
+    status: String,
+    message: Option<String>,
+    reasoning: Option<String>,
+}
+
+#[derive(Default)]
+struct CaptureEmitter {
+    events: Mutex<Vec<AgentRunnerEvent>>,
+}
+
+#[async_trait]
+impl AgentRunnerEmitter for CaptureEmitter {
+    async fn emit(&self, event: AgentRunnerEvent) {
+        self.events.lock().expect("events lock").push(event);
+    }
+}
+
+impl CaptureEmitter {
+    fn tool_events(&self) -> Vec<CapturedToolEvent> {
+        self.events
+            .lock()
+            .expect("events lock")
+            .iter()
+            .filter_map(|event| match event {
+                AgentRunnerEvent::ToolStatus {
+                    tool,
+                    status,
+                    message,
+                    reasoning,
+                } => Some(CapturedToolEvent {
+                    tool: tool.clone(),
+                    status: status.clone(),
+                    message: message.clone(),
+                    reasoning: reasoning.clone(),
+                }),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
 #[test]
-fn configured_model_id_appends_variant() {
+fn configured_opencode_model_id_appends_variant() {
     let config = OpencodeAcpConfig {
         model: "openrouter/openai/gpt-5.4".to_string(),
         variant: "medium".to_string(),
@@ -56,7 +100,7 @@ fn configured_model_id_appends_variant() {
 }
 
 #[test]
-fn configured_model_id_does_not_duplicate_variant_suffix() {
+fn configured_opencode_model_id_does_not_duplicate_variant_suffix() {
     let config = OpencodeAcpConfig {
         model: "openrouter/openai/gpt-5.4/medium".to_string(),
         variant: "medium".to_string(),
@@ -1168,20 +1212,6 @@ async fn opencode_updates_preserve_tool_names_and_raw_io_in_transcript() {
 
 #[tokio::test]
 async fn opencode_tool_status_uses_rendered_labels_from_raw_input() {
-    use std::sync::Mutex;
-
-    #[derive(Default)]
-    struct CaptureEmitter {
-        events: Mutex<Vec<AgentRunnerEvent>>,
-    }
-
-    #[async_trait]
-    impl AgentRunnerEmitter for CaptureEmitter {
-        async fn emit(&self, event: AgentRunnerEvent) {
-            self.events.lock().expect("events lock").push(event);
-        }
-    }
-
     let emitter = Arc::new(CaptureEmitter::default());
     let emitter_trait: Arc<dyn AgentRunnerEmitter> = emitter.clone();
     let mut state = AcpPromptState::default();
@@ -1236,70 +1266,33 @@ async fn opencode_tool_status_uses_rendered_labels_from_raw_input() {
     )
     .await;
 
-    let events = emitter.events.lock().expect("events lock");
-    let tool_events = events
-        .iter()
-        .filter_map(|event| match event {
-            AgentRunnerEvent::ToolStatus {
-                tool,
-                status,
-                message,
-                reasoning,
-            } => Some((
-                tool.clone(),
-                status.clone(),
-                message.clone(),
-                reasoning.clone(),
-            )),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
     assert_eq!(
-        tool_events[0],
-        (
-            "read uploads".to_string(),
-            "start".to_string(),
-            None,
-            Some("正在执行：read uploads".to_string()),
-        )
-    );
-    assert_eq!(
-        tool_events[1],
-        (
-            "read uploads".to_string(),
-            "done".to_string(),
-            Some("执行完成：read uploads".to_string()),
-            None,
-        )
-    );
-    assert_eq!(
-        tool_events[2],
-        (
-            "grep \"AAOI|COHR\" in runtime".to_string(),
-            "start".to_string(),
-            None,
-            Some("正在执行：grep \"AAOI|COHR\" in runtime".to_string()),
-        )
+        emitter.tool_events(),
+        vec![
+            CapturedToolEvent {
+                tool: "read uploads".to_string(),
+                status: "start".to_string(),
+                message: None,
+                reasoning: Some("正在执行：read uploads".to_string()),
+            },
+            CapturedToolEvent {
+                tool: "read uploads".to_string(),
+                status: "done".to_string(),
+                message: Some("执行完成：read uploads".to_string()),
+                reasoning: None,
+            },
+            CapturedToolEvent {
+                tool: "grep \"AAOI|COHR\" in runtime".to_string(),
+                status: "start".to_string(),
+                message: None,
+                reasoning: Some("正在执行：grep \"AAOI|COHR\" in runtime".to_string()),
+            },
+        ]
     );
 }
 
 #[tokio::test]
 async fn opencode_tool_status_labels_workspace_root_explicitly() {
-    use std::sync::Mutex;
-
-    #[derive(Default)]
-    struct CaptureEmitter {
-        events: Mutex<Vec<AgentRunnerEvent>>,
-    }
-
-    #[async_trait]
-    impl AgentRunnerEmitter for CaptureEmitter {
-        async fn emit(&self, event: AgentRunnerEvent) {
-            self.events.lock().expect("events lock").push(event);
-        }
-    }
-
     let emitter = Arc::new(CaptureEmitter::default());
     let emitter_trait: Arc<dyn AgentRunnerEmitter> = emitter.clone();
     let mut state = AcpPromptState::default();
@@ -1340,42 +1333,22 @@ async fn opencode_tool_status_labels_workspace_root_explicitly() {
     )
     .await;
 
-    let events = emitter.events.lock().expect("events lock");
-    let tool_events = events
-        .iter()
-        .filter_map(|event| match event {
-            AgentRunnerEvent::ToolStatus {
-                tool,
-                status,
-                message,
-                reasoning,
-            } => Some((
-                tool.clone(),
-                status.clone(),
-                message.clone(),
-                reasoning.clone(),
-            )),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
     assert_eq!(
-        tool_events[0],
-        (
-            "read workspace root".to_string(),
-            "start".to_string(),
-            None,
-            Some("正在执行：read workspace root".to_string()),
-        )
-    );
-    assert_eq!(
-        tool_events[1],
-        (
-            "grep \"AAOI|COHR\" in workspace root".to_string(),
-            "start".to_string(),
-            None,
-            Some("正在执行：grep \"AAOI|COHR\" in workspace root".to_string()),
-        )
+        emitter.tool_events(),
+        vec![
+            CapturedToolEvent {
+                tool: "read workspace root".to_string(),
+                status: "start".to_string(),
+                message: None,
+                reasoning: Some("正在执行：read workspace root".to_string()),
+            },
+            CapturedToolEvent {
+                tool: "grep \"AAOI|COHR\" in workspace root".to_string(),
+                status: "start".to_string(),
+                message: None,
+                reasoning: Some("正在执行：grep \"AAOI|COHR\" in workspace root".to_string()),
+            },
+        ]
     );
 }
 

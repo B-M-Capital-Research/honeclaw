@@ -111,7 +111,7 @@ describe("mergeActorSummaries", () => {
     expect(result[1].actor.user_id).toBe("alice")
   })
 
-  it("handles empty input", () => {
+  it("returns an empty list when no source summaries are provided", () => {
     expect(mergeActorSummaries({})).toEqual([])
   })
 })
