@@ -3,8 +3,20 @@
 - 发现时间：2026-05-10 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：Fixed
+- 状态：New
 - GitHub Issue：无
+
+## 修复结论复核
+
+- 2026-05-11 15:02 CST：本轮确认 2026-05-11 03:05 CST 的 `Fixed` 结论在最近四小时真实 Web direct 窗口再次失效，状态从 `Fixed` 调回 `New`。
+  - `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 最新尾部显示：
+    - `2026-05-11T11:09:25.513867+08:00` user：`心跳检测，请简短回复 OK`
+    - `2026-05-11T12:06:01.426717+08:00` user：`心跳检测，请简短回复 OK`
+    - `2026-05-11T13:06:04.150328+08:00` user：`心跳检测，请简短回复 OK`
+    - `2026-05-11T14:06:50.605559+08:00` user：`心跳检测，请简短回复 OK`
+    - 这四条 user turn 后仍没有对应 assistant final 或 quota 提示；同一文件此前 `00:08-10:07 CST` 的心跳请求均能成对收到 `OK`。
+  - `data/runtime/logs/desktop_release_app.log` 在 `2026-05-11T03:09:25Z`、`04:06:01Z`、`05:06:04Z`、`06:06:50Z` 均记录同一 session 的 `step=session.persist_user ... detail=quota_rejected` 与 `recv ... input.preview="心跳检测，请简短回复 OK"`，但未见同一窗口的 `session.persist_assistant=quota_rejected` 或 `done success=false`。
+  - 当前仓库代码已包含 `persist_assistant_text_turn(... quota_rejected=true ...)` 与 `run_rejects_over_daily_limit_with_user_turn_and_friendly_error` 回归，因此最新坏态更像 live runtime 未切到已修复实现，或 Web quota 拒绝早退路径仍有未覆盖入口。由于最近四小时用户可见会话仍持续出现孤立 user turn，本轮按真实链路重新打开为功能性 `P2 / New`。
 
 ## 证据来源
 

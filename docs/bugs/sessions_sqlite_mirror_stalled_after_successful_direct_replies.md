@@ -6,6 +6,15 @@
 - **状态**: New
 - **GitHub Issue**: 无
 - **修复结论复核**:
+- `2026-05-11 15:02 CST` 本轮继续确认活跃 `New`：
+  - `data/sessions.sqlite3`
+    - `sessions.max(updated_at)=2026-04-27T16:54:20.034097+08:00`
+    - `sessions.max(last_message_at)=2026-04-27T16:54:20.033926+08:00`
+    - `session_messages.max(timestamp)=2026-04-27T16:54:20.033926+08:00`
+    - `session_messages.max(imported_at)=2026-04-27T16:54:20.034386+08:00`
+  - 同一 sqlite 库的 `cron_job_runs` 在 `2026-05-11 11:00-15:00 CST` 继续新增，聚合为 `completed/sent/delivered=9`、`noop/skipped_noop=94`、`execution_failed/skipped_error=1`，最新已推进到 `2026-05-11T15:00:54.143640+08:00`。
+  - `data/sessions/` 最近四小时仍有真实会话 JSON 前进，例如 `Actor_web__direct__web-user-e05f5e5f74a3.json` 更新到 `2026-05-11 14:06 CST`，多条 Feishu direct JSON 更新到 `12:00-13:50 CST`。
+  - 结论不变：数据库文件本身仍可写，停滞集中在 `sessions` / `session_messages` 会话镜像；该问题继续削弱最近真实会话巡检和后续 agent 排障能力，维持功能性 `P2 / New`。
 - `2026-05-11 11:02 CST` 本轮确认 `2026-05-10 23:11 CST` 的 `Fixed` 结论在当前真实窗口仍未恢复，状态从 `Fixed` 调回 `New`：
   - `data/sessions.sqlite3`
     - `sessions.max(updated_at)=2026-04-27T16:54:20.034097+08:00`

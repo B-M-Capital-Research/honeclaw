@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-11 11:02 CST
+最后更新：2026-05-11 15:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,11 +17,13 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：2
 - Later / 待复现：9
-- 已修复 / 已关闭：99
+- 已修复 / 已关闭：98
 - 历史分析 / 部分止血：5
-- 本轮重新打开 1 条活跃缺陷：`sessions.sqlite3` 的 `sessions/session_messages` 仍停在 2026-04-27，但最近四小时真实 JSON 会话文件、ACP 日志与 `cron_job_runs` 继续推进，说明会话镜像仍未追平。`CAI破位预警` 07:30 又送达一次直接止损动作，但 08:00-11:00 同任务已连续回到 noop，仍按旧运行态尾部样本记录，不回退 `Fixed`。
+- 本轮重新打开 1 条活跃缺陷：Web direct quota 拒绝在 11:09-14:06 CST 再次只落 user turn，没有 assistant quota 提示，原 `Fixed` 结论不再成立。
+- 本轮继续确认 1 条活跃缺陷：`sessions.sqlite3` 的 `sessions/session_messages` 仍停在 2026-04-27，但最近四小时真实 JSON 会话文件与 `cron_job_runs` 继续推进，说明会话镜像仍未追平。
+- 本轮观察到若干旧运行态 / 已有修复相关噪声：14:42 CST mainline distill 仍出现 `max_tokens=30000` 的 OpenRouter 402，但当前仓库代码已有 `1200` cap；12:00 原油 heartbeat 非法 JSON 被标记 `execution_failed/skipped_error`，15:00 后恢复 guarded delivery。二者本轮不新开缺陷。
 
 ## 代码质量巡检发现
 
@@ -33,7 +35,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-11 11:02 复核确认 `sessions.max(updated_at)`、`session_messages.max(timestamp)` 仍停在 2026-04-27；但 `data/sessions/Actor_web__direct__web-user-e05f5e5f74a3.json` 已更新到 10:07，`cron_job_runs` 已推进到 11:01，同一库可写，缺口仍集中在会话镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
+| Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | New | 2026-05-11 15:02 复核最近四小时再次复发：`Actor_web__direct__web-user-e05f5e5f74a3.json` 在 11:09 / 12:06 / 13:06 / 14:06 CST 连续留下孤立 `心跳检测，请简短回复 OK` user turn；`desktop_release_app.log` 仅见 `session.persist_user=quota_rejected`，未见 `session.persist_assistant=quota_rejected` 或失败 Done。当前代码含 03:05 修复，坏态疑似 live runtime 未切换或仍有未覆盖早退入口 | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
+| Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | New | 2026-05-11 15:02 复核确认 `sessions.max(updated_at)`、`session_messages.max(timestamp)` 仍停在 2026-04-27；但最近四小时 JSON 会话继续更新，`cron_job_runs` 已推进到 15:00 且同一库可写，缺口仍集中在会话镜像 | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 
 ## Later / 待复现
 
@@ -54,7 +57,6 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-11 03:06 修复任务正文不显式列 ticker 时的恢复早退：`recover_watchlist_hit_zone_context` 会从当前会话 compact summary / session summary 的观察池表格和行内文本批量恢复所有 ticker -> 击球区，再注入 `【已恢复的本地击球区参考】`；`scheduled_watchlist_prompt_recovers_all_hit_zones_when_task_omits_tickers` 覆盖“当前 25 支观察池”形态；`cargo test -p hone-channels scheduled_watchlist_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`、定向 rustfmt 通过；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
-| Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-11 03:05 quota 拒绝分支会在落 user turn 后同步落 assistant 业务拒绝文案，并补 `quota_rejected=true` metadata；早退失败分支继续发出 Done 事件。`run_rejects_over_daily_limit_with_user_turn_and_friendly_error` 回归覆盖返回友好错误、无 LLM 调用、会话历史 user+assistant 成对落库与 metadata 标记；`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
 | Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-11 11:02 复核最近四小时仍有本机旧运行态尾部样本：`run_id=18544` 在 07:30 送达 `建议动作：无条件止损...第一时间执行卖出`，但 08:00 / 08:30 / 10:00 / 10:30 / 11:00 同任务均为 noop；仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`，本轮仅补充证据，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
 | Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-10 23:11 同 ticker 宽松重写去重增加非 ticker 实体 / 日期金额交集门槛，TSLA 召回/FSD 诉讼不再被旧 Semi/SEC preview 抑制，Cerebras IPO 更新不再被持仓摘要误抑制；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-11 07:03 复核最近四小时仍有本机旧运行态样本：`run_id=18507` 在 06:01 送达 `WTI 原油：约 $109.76/桶`、WTI/Brent 异常倒挂和霍尔木兹 / 美伊交火等未核验归因，且未见 `commodity_causality_guarded`；仓库代码已在 `1d405f2` 扩展商品 heartbeat guard，本轮仅补充旧运行态证据，不回退状态；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
