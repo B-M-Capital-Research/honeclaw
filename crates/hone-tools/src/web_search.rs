@@ -248,10 +248,14 @@ mod tests {
     use super::*;
     use hone_core::config::HoneConfig;
 
+    fn owned_keys(keys: &[&str]) -> Vec<String> {
+        keys.iter().map(|key| (*key).to_string()).collect()
+    }
+
     #[test]
-    fn test_from_config() {
+    fn from_config_keeps_configured_search_limits() {
         let mut config = HoneConfig::default();
-        config.search.api_keys = vec!["config_key".to_string()];
+        config.search.api_keys = owned_keys(&["config_key"]);
         config.search.max_results = 10;
 
         let tool = WebSearchTool::from_config(&config);
@@ -260,20 +264,21 @@ mod tests {
     }
 
     #[test]
-    fn test_from_config_multi_keys() {
+    fn from_config_filters_empty_api_keys() {
         let mut config = HoneConfig::default();
-        config.search.api_keys = vec!["key1".to_string(), "key2".to_string(), "".to_string()];
+        config.search.api_keys = owned_keys(&["key1", "key2", ""]);
         config.search.max_results = 5;
 
         let tool = WebSearchTool::from_config(&config);
-        // 空 key 被过滤
         assert_eq!(tool.keys, vec!["key1", "key2"]);
+        assert_eq!(tool.max_results, 5);
     }
 
     #[test]
-    fn test_empty_keys() {
+    fn new_records_empty_key_pool() {
         let tool = WebSearchTool::new(vec![], 5);
         assert!(tool.keys.is_empty());
+        assert_eq!(tool.max_results, 5);
     }
 
     #[test]

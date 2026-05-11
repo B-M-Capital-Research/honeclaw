@@ -422,9 +422,13 @@ mod tests {
     use chrono::{Duration, NaiveDate};
     use serde_json::json;
 
+    fn tool_with_test_key() -> DataFetchTool {
+        DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30)
+    }
+
     #[test]
-    fn test_url_building() {
-        let tool = DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30);
+    fn build_url_supports_plain_and_existing_query_paths() {
+        let tool = tool_with_test_key();
 
         let url1 = tool.build_url("quote", "AAPL").expect("quote url");
         let full_url1 = format!("{}?apikey=test_key", url1);
@@ -456,7 +460,7 @@ mod tests {
 
     #[test]
     fn snapshot_is_exposed_in_tool_schema() {
-        let tool = DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30);
+        let tool = tool_with_test_key();
         let parameters = tool.parameters();
         let data_type = parameters
             .iter()
@@ -468,7 +472,7 @@ mod tests {
 
     #[test]
     fn snapshot_response_aggregates_quote_profile_and_news() {
-        let tool = DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30);
+        let tool = tool_with_test_key();
         let payload = tool.build_snapshot_response(
             "AAPL",
             Ok(json!([{ "symbol": "AAPL", "price": 100.0 }])),
@@ -486,7 +490,7 @@ mod tests {
 
     #[test]
     fn snapshot_response_keeps_partial_errors_visible() {
-        let tool = DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30);
+        let tool = tool_with_test_key();
         let payload = tool.build_snapshot_response(
             "AAPL",
             Ok(json!([{ "symbol": "AAPL" }])),
@@ -504,7 +508,7 @@ mod tests {
 
     #[test]
     fn resolve_earnings_window_defaults_to_today_plus_14_days() {
-        let tool = DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30);
+        let tool = tool_with_test_key();
         let (from, to) = tool
             .resolve_earnings_window(&json!({ "data_type": "earnings_calendar" }))
             .expect("default earnings window");
@@ -515,7 +519,7 @@ mod tests {
 
     #[test]
     fn resolve_earnings_window_respects_explicit_dates() {
-        let tool = DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30);
+        let tool = tool_with_test_key();
         let (from, to) = tool
             .resolve_earnings_window(&json!({
                 "data_type": "earnings_calendar",
@@ -529,7 +533,7 @@ mod tests {
 
     #[test]
     fn build_earnings_calendar_url_uses_dynamic_dates() {
-        let tool = DataFetchTool::new(vec!["test_key".to_string()], "https://example.com/api", 30);
+        let tool = tool_with_test_key();
         let from = NaiveDate::from_ymd_opt(2026, 4, 9).unwrap();
         let to = NaiveDate::from_ymd_opt(2026, 4, 23).unwrap();
         let url = tool.build_earnings_calendar_url(from, to);

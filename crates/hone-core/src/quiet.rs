@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn iana_timezone_works() {
+    fn valid_iana_timezone_overrides_fallback_offset() {
         // America/New_York EDT (UTC-4) on 2026-04-28
         // UTC 03:00 = EDT 23:00 → 在 23:00-07:00 内
         assert!(quiet_window_active(
@@ -143,10 +143,11 @@ mod tests {
     }
 
     #[test]
-    fn is_kind_exempt_basic() {
+    fn kind_exemptions_match_exact_kind_tags_only() {
         let kinds = vec!["earnings_released".to_string(), "sec_filing".to_string()];
         assert!(is_kind_exempt(&kinds, "earnings_released"));
         assert!(is_kind_exempt(&kinds, "sec_filing"));
+        assert!(!is_kind_exempt(&kinds, "EARNINGS_RELEASED"));
         assert!(!is_kind_exempt(&kinds, "price_alert"));
         assert!(!is_kind_exempt(&[], "earnings_released"));
     }

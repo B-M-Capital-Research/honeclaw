@@ -98,43 +98,65 @@ impl From<Vec<String>> for ApiKeyPool {
 mod tests {
     use super::*;
 
+    fn owned_keys(keys: &[&str]) -> Vec<String> {
+        keys.iter().map(|key| (*key).to_string()).collect()
+    }
+
     #[test]
-    fn test_filters_empty_keys() {
-        let pool = ApiKeyPool::new(vec!["".to_string(), "key1".to_string(), "".to_string()]);
+    fn new_filters_empty_keys() {
+        let pool = ApiKeyPool::new(owned_keys(&["", "key1", ""]));
         assert_eq!(pool.keys(), &["key1"]);
         assert_eq!(pool.len(), 1);
     }
 
     #[test]
-    fn test_deduplication() {
-        let pool = ApiKeyPool::new(vec!["a".to_string(), "b".to_string(), "a".to_string()]);
+    fn new_preserves_first_occurrence_when_deduplicating() {
+        let pool = ApiKeyPool::new(owned_keys(&["a", "b", "a"]));
         assert_eq!(pool.keys(), &["a", "b"]);
     }
 
     #[test]
-    fn test_merged_compat() {
-        let pool = ApiKeyPool::merged("primary", &["extra1".to_string(), "extra2".to_string()]);
+    fn merged_keeps_primary_before_extra_keys() {
+        let extras = owned_keys(&["extra1", "extra2"]);
+        let pool = ApiKeyPool::merged("primary", &extras);
         assert_eq!(pool.keys(), &["primary", "extra1", "extra2"]);
     }
 
     #[test]
-    fn test_merged_dedup() {
-        let pool = ApiKeyPool::merged("key1", &["key1".to_string(), "key2".to_string()]);
+    fn merged_deduplicates_primary_and_extra_keys() {
+        let extras = owned_keys(&["key1", "key2"]);
+        let pool = ApiKeyPool::merged("key1", &extras);
         assert_eq!(pool.keys(), &["key1", "key2"]);
     }
 
     #[test]
-    fn test_empty_primary_with_extras() {
-        let pool = ApiKeyPool::merged("", &["key1".to_string(), "key2".to_string()]);
+    fn merged_uses_extra_keys_when_primary_is_empty() {
+        let extras = owned_keys(&["key1", "key2"]);
+        let pool = ApiKeyPool::merged("", &extras);
         assert_eq!(pool.keys(), &["key1", "key2"]);
     }
 
     #[test]
-    fn test_is_empty() {
+    fn from_single_drops_empty_key() {
+        let pool = ApiKeyPool::from_single("");
+        assert!(pool.is_empty());
+        assert_eq!(pool.first(), None);
+    }
+
+    #[test]
+    fn from_single_keeps_key_as_first_key() {
+        let pool = ApiKeyPool::from_single("solo");
+        assert_eq!(pool.keys(), &["solo"]);
+        assert_eq!(pool.first(), Some("solo"));
+        assert_eq!(pool.len(), 1);
+    }
+
+    #[test]
+    fn is_empty_tracks_available_keys() {
         let pool = ApiKeyPool::new(vec![]);
         assert!(pool.is_empty());
 
-        let pool = ApiKeyPool::new(vec!["k".to_string()]);
+        let pool = ApiKeyPool::new(owned_keys(&["k"]));
         assert!(!pool.is_empty());
     }
 }

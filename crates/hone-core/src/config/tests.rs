@@ -10,7 +10,7 @@ fn temp_test_dir(prefix: &str) -> PathBuf {
 }
 
 #[test]
-fn test_default_config() {
+fn default_config_sets_current_llm_defaults() {
     let config = HoneConfig::default();
     assert_eq!(config.llm.provider, "openrouter");
     assert_eq!(config.llm.openrouter.model, "moonshotai/kimi-k2.5");
@@ -22,7 +22,7 @@ fn test_default_config() {
 }
 
 #[test]
-fn test_deserialize_minimal_yaml() {
+fn minimal_yaml_deserializes_with_defaults() {
     let yaml = r#"
 llm:
   provider: openrouter
@@ -55,7 +55,7 @@ fn config_example_yaml_matches_current_schema() {
 }
 
 #[test]
-fn test_llm_profile_registry_accepts_generation_params() {
+fn llm_profile_registry_accepts_generation_params() {
     let yaml = r#"
 llm:
   default_profile: main
@@ -126,7 +126,7 @@ llm:
 }
 
 #[test]
-fn test_event_engine_llm_profile_refs_are_optional() {
+fn event_engine_llm_profile_refs_are_optional() {
     let yaml = r#"
 event_engine:
   news_classifier_llm: news_classifier
@@ -163,14 +163,14 @@ event_engine:
 }
 
 #[test]
-fn test_runtime_overlay_path() {
+fn runtime_overlay_path_uses_config_stem() {
     let path = Path::new("/tmp/config.yaml");
     let overlay = runtime_overlay_path(path);
     assert_eq!(overlay, PathBuf::from("/tmp/config.overrides.yaml"));
 }
 
 #[test]
-fn test_merge_yaml_value_recursively() {
+fn merge_yaml_value_recursively_overlays_nested_mappings() {
     let mut base: Value = serde_yaml::from_str(
         r#"
 imessage:
@@ -226,7 +226,7 @@ new_section:
 }
 
 #[test]
-fn test_read_merged_yaml_value_applies_runtime_overlay() {
+fn read_merged_yaml_value_applies_runtime_overlay() {
     let dir = temp_test_dir("from-file");
     let config_path = dir.join("config.yaml");
     let overlay_path = runtime_overlay_path(&config_path);
@@ -289,7 +289,7 @@ custom_section:
 }
 
 #[test]
-fn test_from_file_applies_runtime_overlay() {
+fn from_file_applies_runtime_overlay() {
     let dir = temp_test_dir("from-file-runtime-overlay");
     let config_path = dir.join("config.yaml");
     let overlay_path = runtime_overlay_path(&config_path);
@@ -321,7 +321,7 @@ feishu:
 }
 
 #[test]
-fn test_diff_yaml_value_keeps_only_changes() {
+fn diff_yaml_value_keeps_only_changed_branches() {
     let base: Value = serde_yaml::from_str(
         r#"
 imessage:
@@ -574,7 +574,7 @@ discord:
 }
 
 #[test]
-fn test_chat_scope_defaults_to_dm_only() {
+fn chat_scope_defaults_to_dm_only() {
     let config = HoneConfig::default();
     assert_eq!(config.feishu.chat_scope, ChatScope::DmOnly);
     assert_eq!(config.telegram.chat_scope, ChatScope::DmOnly);
@@ -582,7 +582,7 @@ fn test_chat_scope_defaults_to_dm_only() {
 }
 
 #[test]
-fn test_legacy_dm_only_false_maps_to_all() {
+fn legacy_dm_only_false_maps_to_all() {
     let yaml = r#"
 telegram:
   dm_only: false
@@ -592,7 +592,7 @@ telegram:
 }
 
 #[test]
-fn test_chat_scope_overrides_legacy_dm_only() {
+fn chat_scope_overrides_legacy_dm_only() {
     let yaml = r#"
 discord:
   chat_scope: GROUPCHAT_ONLY
@@ -603,7 +603,7 @@ discord:
 }
 
 #[test]
-fn test_read_config_path_value_supports_nested_mapping_and_sequence() {
+fn read_config_path_value_supports_nested_mapping_and_sequence() {
     let dir = temp_test_dir("path-get");
     let config_path = dir.join("config.yaml");
     std::fs::write(
@@ -639,7 +639,7 @@ agent:
 }
 
 #[test]
-fn test_apply_config_mutations_updates_canonical_config_directly() {
+fn apply_config_mutations_updates_canonical_config_directly() {
     let dir = temp_test_dir("mutations");
     let config_path = dir.join("config.yaml");
     let overlay_path = runtime_overlay_path(&config_path);
@@ -694,7 +694,7 @@ search:
 }
 
 #[test]
-fn test_apply_config_mutations_rejects_invalid_path_shape() {
+fn apply_config_mutations_rejects_invalid_path_shape() {
     let dir = temp_test_dir("mutations-error");
     let config_path = dir.join("config.yaml");
     std::fs::write(
@@ -722,7 +722,7 @@ agent:
 }
 
 #[test]
-fn test_apply_overlay_mutations_writes_only_to_overlay() {
+fn apply_overlay_mutations_writes_only_to_overlay() {
     let dir = temp_test_dir("overlay-mutations");
     let config_path = dir.join("config.yaml");
     let overlay_path = runtime_overlay_path(&config_path);
@@ -770,7 +770,7 @@ event_engine:
 }
 
 #[test]
-fn test_apply_overlay_mutations_unset_removes_from_overlay() {
+fn apply_overlay_mutations_unset_removes_from_overlay() {
     let dir = temp_test_dir("overlay-unset");
     let config_path = dir.join("config.yaml");
     let overlay_path = runtime_overlay_path(&config_path);
@@ -806,7 +806,7 @@ fn test_apply_overlay_mutations_unset_removes_from_overlay() {
 }
 
 #[test]
-fn test_apply_overlay_mutations_rejects_invalid_merged_config() {
+fn apply_overlay_mutations_rejects_invalid_merged_config() {
     let dir = temp_test_dir("overlay-invalid");
     let config_path = dir.join("config.yaml");
     std::fs::write(&config_path, "feishu:\n  chat_scope: ALL\n").unwrap();
@@ -832,7 +832,7 @@ fn test_apply_overlay_mutations_rejects_invalid_merged_config() {
 }
 
 #[test]
-fn test_redact_sensitive_value_masks_scalars_and_sequences() {
+fn redact_sensitive_value_masks_scalars_and_sequences() {
     assert_eq!(
         redact_sensitive_value(
             "agent.opencode.api_key",
@@ -860,7 +860,7 @@ fn test_redact_sensitive_value_masks_scalars_and_sequences() {
 }
 
 #[test]
-fn test_generate_effective_config_copies_relative_prompt_asset() {
+fn generate_effective_config_copies_relative_prompt_asset() {
     let dir = temp_test_dir("effective-config");
     let canonical = dir.join("config.yaml");
     let runtime_dir = dir.join("data/runtime");
@@ -888,7 +888,7 @@ agent:
 }
 
 #[test]
-fn test_promote_legacy_runtime_agent_settings_migrates_blank_multi_agent_and_runner() {
+fn promote_legacy_runtime_agent_settings_migrates_blank_multi_agent_and_runner() {
     let dir = temp_test_dir("legacy-agent-migrate");
     let canonical = dir.join("config.yaml");
     let legacy = dir.join("data/runtime/config_runtime.yaml");
@@ -1039,7 +1039,7 @@ discord:
 }
 
 #[test]
-fn test_promote_legacy_runtime_agent_settings_migrates_openrouter_key_pool() {
+fn promote_legacy_runtime_agent_settings_migrates_openrouter_key_pool() {
     let dir = temp_test_dir("legacy-openrouter-pool");
     let canonical = dir.join("config.yaml");
     let legacy = dir.join("data/runtime/config_runtime.yaml");
@@ -1090,7 +1090,7 @@ llm:
 }
 
 #[test]
-fn test_promote_legacy_runtime_agent_settings_keeps_configured_canonical_values() {
+fn promote_legacy_runtime_agent_settings_keeps_configured_canonical_values() {
     let dir = temp_test_dir("legacy-agent-preserve");
     let canonical = dir.join("config.yaml");
     let legacy = dir.join("data/runtime/config_runtime.yaml");
@@ -1177,7 +1177,7 @@ discord:
 }
 
 #[test]
-fn test_promote_legacy_runtime_agent_settings_preserves_blank_opencode_key_inheritance() {
+fn promote_legacy_runtime_agent_settings_preserves_blank_opencode_key_inheritance() {
     let dir = temp_test_dir("legacy-agent-opencode-inheritance");
     let canonical = dir.join("config.yaml");
     let legacy = dir.join("data/runtime/config_runtime.yaml");
@@ -1223,7 +1223,7 @@ agent:
 }
 
 #[test]
-fn test_normalize_runtime_storage_rollout_settings_enables_session_shadow_write() {
+fn normalize_runtime_storage_rollout_settings_enables_session_shadow_write() {
     let dir = temp_test_dir("runtime-storage-rollout");
     let canonical = dir.join("config.yaml");
     std::fs::write(
@@ -1251,7 +1251,7 @@ storage:
 }
 
 #[test]
-fn test_agent_runner_timeouts_default_to_step_plus_overall() {
+fn agent_runner_timeouts_default_to_step_plus_overall() {
     let yaml = r#"
 agent:
   runner: codex_acp
@@ -1262,7 +1262,7 @@ agent:
 }
 
 #[test]
-fn test_agent_runner_timeout_override_preserves_explicit_values() {
+fn agent_runner_timeout_override_preserves_explicit_values() {
     let yaml = r#"
 agent:
   runner: codex_acp
@@ -1275,27 +1275,27 @@ agent:
 }
 
 #[test]
-fn test_default_language_is_zh() {
+fn default_language_is_zh() {
     let config = HoneConfig::default();
     assert_eq!(config.language, super::Locale::Zh);
 }
 
 #[test]
-fn test_language_parses_en() {
+fn language_parses_en() {
     let yaml = "language: en\n";
     let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(config.language, super::Locale::En);
 }
 
 #[test]
-fn test_language_parses_zh() {
+fn language_parses_zh() {
     let yaml = "language: zh\n";
     let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(config.language, super::Locale::Zh);
 }
 
 #[test]
-fn test_language_mutation_round_trip() {
+fn language_mutation_round_trip() {
     let dir = temp_test_dir("language-mutation");
     let config_path = dir.join("config.yaml");
     std::fs::write(&config_path, "llm:\n  provider: openrouter\n").unwrap();
@@ -1315,7 +1315,7 @@ fn test_language_mutation_round_trip() {
 }
 
 #[test]
-fn test_config_example_avoids_stale_config_knobs() {
+fn config_example_avoids_stale_config_knobs() {
     fn get_key<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
         mapping.get(&Value::String(key.to_string()))
     }
