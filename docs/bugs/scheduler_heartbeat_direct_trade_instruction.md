@@ -5,6 +5,23 @@
 - **严重等级**: P2
 - **状态**: Fixed
 
+## 修复结论复核（2026-05-11 19:02 CST）
+
+- 本轮最近四小时巡检继续看到当前机器旧运行态坏样本，但仍不足以推翻仓库代码层面的 `Fixed` 结论：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=18752`
+    - `job_name=CAI破位预警`
+    - `executed_at=2026-05-11T15:30:23.885121+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `detail_json.scheduler.heartbeat_model=mimo-v2.5-pro`
+    - `response_preview` 与 `detail_json.scheduler.deliver_preview` 均包含 `建议动作：无条件止损`。
+  - `data/runtime/logs/web.log.2026-05-11` 在 `2026-05-11 15:30 CST` 同窗记录 `parse_kind=JsonTriggered` 后进入 `deliver`，`deliver_preview` 仍保留直接交易指令，说明问题发生在用户可见最终出站内容，不是中间草稿。
+  - 该样本晚于上轮 `2026-05-11 15:02 CST` 巡检，但当前仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`，本轮没有证明 live 进程已经部署 / 重启到该修复后仍复现。
+- 结论：保留为旧运行态补充证据，不新建重复文档，也不把状态从 `Fixed` 回退为 `New`。后续若确认部署当前代码后仍出现同样 `deliver_preview`，再重新打开。
+
 ## 修复记录（2026-05-10 23:11 CST）
 
 - `crates/hone-channels/src/scheduler.rs` 扩展 heartbeat 直接交易指令 guard：
