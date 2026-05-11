@@ -14,7 +14,7 @@ const FEISHU_INVALID_TOKEN_REFRESH_ATTEMPTS: usize = 2;
 const FEISHU_ERROR_BODY_MAX_CHARS: usize = 500;
 
 #[derive(Clone)]
-pub struct FeishuApiClient {
+pub(crate) struct FeishuApiClient {
     app_id: String,
     app_secret: String,
     http: Client,
@@ -36,21 +36,21 @@ struct TokenRequest<'a> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct FeishuResolvedUser {
+pub(crate) struct FeishuResolvedUser {
     #[serde(default)]
-    pub email: String,
+    pub(crate) email: String,
     #[serde(default)]
-    pub mobile: String,
-    pub open_id: String,
+    pub(crate) mobile: String,
+    pub(crate) open_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct FeishuSendResult {
-    pub message_id: String,
+pub(crate) struct FeishuSendResult {
+    pub(crate) message_id: String,
 }
 
 impl FeishuApiClient {
-    pub fn new(app_id: String, app_secret: String) -> Self {
+    pub(crate) fn new(app_id: String, app_secret: String) -> Self {
         Self {
             app_id,
             app_secret,
@@ -117,7 +117,7 @@ impl FeishuApiClient {
         *self.token_cache.write().await = None;
     }
 
-    pub async fn send_message(
+    pub(crate) async fn send_message(
         &self,
         receive_id: &str,
         msg_type: &str,
@@ -128,7 +128,7 @@ impl FeishuApiClient {
             .await
     }
 
-    pub async fn send_chat_message(
+    pub(crate) async fn send_chat_message(
         &self,
         chat_id: &str,
         msg_type: &str,
@@ -221,7 +221,7 @@ impl FeishuApiClient {
         Err("Feishu send message invalid token refresh exhausted".to_string())
     }
 
-    pub async fn reply_message(
+    pub(crate) async fn reply_message(
         &self,
         message_id: &str,
         msg_type: &str,
@@ -282,7 +282,7 @@ impl FeishuApiClient {
             .ok_or_else(|| "No data in reply message response".to_string())
     }
 
-    pub async fn update_message(
+    pub(crate) async fn update_message(
         &self,
         message_id: &str,
         msg_type: &str,
@@ -342,7 +342,7 @@ impl FeishuApiClient {
         })
     }
 
-    pub async fn upload_image(&self, path: &str) -> Result<String, String> {
+    pub(crate) async fn upload_image(&self, path: &str) -> Result<String, String> {
         let token = self.get_token().await?;
         let filename = Path::new(path)
             .file_name()
@@ -408,7 +408,7 @@ impl FeishuApiClient {
             .ok_or_else(|| "No image_key in Feishu upload image response".to_string())
     }
 
-    pub async fn resolve_email(&self, email: &str) -> Result<FeishuResolvedUser, String> {
+    pub(crate) async fn resolve_email(&self, email: &str) -> Result<FeishuResolvedUser, String> {
         let url =
             "https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id";
 
@@ -479,7 +479,7 @@ impl FeishuApiClient {
         Err("Feishu resolve email invalid token refresh exhausted".to_string())
     }
 
-    pub async fn resolve_mobile(&self, mobile: &str) -> Result<FeishuResolvedUser, String> {
+    pub(crate) async fn resolve_mobile(&self, mobile: &str) -> Result<FeishuResolvedUser, String> {
         let url =
             "https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id";
 
@@ -550,7 +550,7 @@ impl FeishuApiClient {
         Err("Feishu resolve mobile invalid token refresh exhausted".to_string())
     }
 
-    pub async fn download_resource(
+    pub(crate) async fn download_resource(
         &self,
         message_id: &str,
         file_key: &str,
@@ -591,73 +591,12 @@ impl FeishuApiClient {
 
     // ── CardKit API ──────────────────────────────────────────────────────────
     // 飞书 CardKit 是独立的流式卡片 API，与普通消息更新 API 完全分离：
-    //   POST   /cardkit/v1/cards                          — 创建卡片实体
     //   PUT    /cardkit/v1/cards/{id}/elements/{eid}/content — 更新单个元素内容
     //   PATCH  /cardkit/v1/cards/{id}/settings            — 修改卡片配置（关闭流式）
 
-    /// 创建 CardKit 卡片实体，返回 `card_id`。
-    /// `card_json` 为完整卡片 JSON 字符串（schema 2.0）。
-    /// 当前流程已改为直接发普通卡片+ticker，此方法预留供后续 CardKit 流式迭代使用。
-    #[allow(dead_code)]
-    pub async fn create_card(&self, card_json: &str) -> Result<String, String> {
-        let token = self.get_token().await?;
-        let url = "https://open.feishu.cn/open-apis/cardkit/v1/cards";
-
-        let body = serde_json::json!({
-            "type": "card_json",
-            "data": card_json,
-        });
-
-        let resp = self
-            .http
-            .post(url)
-            .bearer_auth(&token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("CardKit create card request failed: {e}"))?;
-
-        #[derive(Deserialize)]
-        struct CreateResp {
-            code: i64,
-            msg: String,
-            data: Option<CardCreateData>,
-        }
-        #[derive(Deserialize)]
-        struct CardCreateData {
-            card_id: String,
-        }
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(format_feishu_http_error(
-                "CardKit create card failed",
-                status,
-                body,
-            ));
-        }
-
-        let create_resp: CreateResp = resp
-            .json()
-            .await
-            .map_err(|e| format!("CardKit create card json err: {e}"))?;
-        if create_resp.code != 0 {
-            return Err(format!(
-                "CardKit create card api error {}: {}",
-                create_resp.code, create_resp.msg
-            ));
-        }
-
-        create_resp
-            .data
-            .map(|d| d.card_id)
-            .ok_or_else(|| "CardKit create card: no card_id in response".to_string())
-    }
-
     /// 更新 CardKit 卡片中指定元素（`element_id`）的 `content` 字段。
     /// `sequence` 必须严格递增；`uuid` 用于幂等去重。
-    pub async fn update_card_element(
+    pub(crate) async fn update_card_element(
         &self,
         card_id: &str,
         element_id: &str,
@@ -711,7 +650,7 @@ impl FeishuApiClient {
     }
 
     /// 关闭 CardKit 卡片的流式模式，并设置 summary（用于折叠预览）。
-    pub async fn close_card_streaming(
+    pub(crate) async fn close_card_streaming(
         &self,
         card_id: &str,
         summary: &str,
@@ -769,7 +708,10 @@ impl FeishuApiClient {
         }
     }
 
-    pub async fn get_user_by_open_id(&self, open_id: &str) -> Result<FeishuResolvedUser, String> {
+    pub(crate) async fn get_user_by_open_id(
+        &self,
+        open_id: &str,
+    ) -> Result<FeishuResolvedUser, String> {
         let token = self.get_token().await?;
         let url = format!(
             "https://open.feishu.cn/open-apis/contact/v3/users/{open_id}?user_id_type=open_id"

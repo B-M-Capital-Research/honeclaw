@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-11 - 死代码与废弃路径
+
+### `crates/hone-channels` exposes internal runner and execution types as unreachable `pub`
+
+- status: open
+- direction: 死代码与废弃路径
+- evidence: `RUSTFLAGS='-W unreachable-pub' cargo check --workspace --all-targets --exclude hone-desktop` reports 43 unreachable `pub` warnings in `crates/hone-channels`, concentrated in `execution.rs`, `prompt_audit.rs`, `runners.rs`, runner implementations, `runners/types.rs`, and `session_compactor.rs`.
+- risk: these items are not externally reachable today, but the `pub` surface makes internal runner/execution boundaries look broader than they are. Drive-by fixes are risky because the warnings span runner factory wiring, prompt audit persistence, session compaction, and tests that may rely on current module visibility.
+- suggested_fix: handle as a focused `hone-channels` visibility pass: first map which items are used only by sibling modules or tests, then narrow them to `pub(crate)` or `pub(super)` in coherent groups and validate with `cargo check -p hone-channels --tests` plus the runner/session focused tests.
+
 ## 2026-05-11 - 复杂度热点
 
 ### `crates/hone-event-engine/src/engine.rs` event-engine startup orchestration is oversized

@@ -451,16 +451,9 @@ fn prompt_onboard_required_discord_token(
     loop {
         let attempted =
             prompt_visible_credential(theme, lang, prompt, !current.trim().is_empty(), current)?;
-        let resolution = match attempted {
-            Some(value) => RequiredFieldResolution::Value(value),
-            _ if !current.trim().is_empty() => {
-                RequiredFieldResolution::Value(normalize_credential_value(current))
-            }
-            _ => match prompt_channel_recovery_action(theme, lang, channel_label, prompt)? {
-                RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
-                RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
-            },
-        };
+        let resolution = resolve_required_secret_attempt(attempted, current, || {
+            prompt_channel_recovery_action(theme, lang, channel_label, prompt)
+        })?;
         match resolution {
             RequiredFieldResolution::Value(value) => {
                 let normalized_value = normalize_credential_value(&value);

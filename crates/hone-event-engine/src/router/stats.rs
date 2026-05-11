@@ -16,11 +16,11 @@ pub(crate) struct NewsUpgradeTickStats {
 }
 
 impl NewsUpgradeTickStats {
-    pub fn has_activity(&self) -> bool {
+    pub(crate) fn has_activity(&self) -> bool {
         self.upgraded > 0 || self.skipped_per_tick_cap > 0 || self.skipped_per_symbol_cap > 0
     }
 
-    pub fn top_symbols(&self, limit: usize) -> Vec<(String, u32)> {
+    pub(crate) fn top_symbols(&self, limit: usize) -> Vec<(String, u32)> {
         let mut items: Vec<_> = self
             .symbol_counts
             .iter()

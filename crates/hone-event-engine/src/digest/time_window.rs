@@ -51,13 +51,13 @@ pub fn local_date_key(now: DateTime<Utc>, offset_hours: i32) -> String {
 /// FixedOffset。这层抽象让 actor 的 prefs.timezone 与全局 `digest.timezone` 共用同
 /// 一套窗口/日期判断函数,不必双份实现。
 #[derive(Debug, Clone)]
-pub enum EffectiveTz {
+pub(crate) enum EffectiveTz {
     Iana(chrono_tz::Tz),
     Fixed(FixedOffset),
 }
 
 impl EffectiveTz {
-    pub fn from_actor_prefs(prefs_tz: Option<&str>, fallback_offset_hours: i32) -> Self {
+    pub(crate) fn from_actor_prefs(prefs_tz: Option<&str>, fallback_offset_hours: i32) -> Self {
         if let Some(name) = prefs_tz {
             if let Ok(tz) = name.parse::<chrono_tz::Tz>() {
                 return EffectiveTz::Iana(tz);
@@ -71,7 +71,7 @@ impl EffectiveTz {
         EffectiveTz::Fixed(offset)
     }
 
-    pub fn local_hm(&self, now: DateTime<Utc>) -> (u32, u32) {
+    pub(crate) fn local_hm(&self, now: DateTime<Utc>) -> (u32, u32) {
         match self {
             EffectiveTz::Iana(tz) => {
                 let local = tz.from_utc_datetime(&now.naive_utc());
@@ -98,7 +98,7 @@ impl EffectiveTz {
         format!("{y:04}-{m:02}-{d:02}")
     }
 
-    pub fn in_window(&self, now: DateTime<Utc>, hhmm: &str) -> bool {
+    pub(crate) fn in_window(&self, now: DateTime<Utc>, hhmm: &str) -> bool {
         let Ok(target) = NaiveTime::parse_from_str(hhmm, "%H:%M") else {
             return false;
         };
@@ -108,7 +108,7 @@ impl EffectiveTz {
 
     /// 当前 `now` 对应本地时刻是否落在 `[from, to)` 区间内。`from > to` 视为跨午夜。
     /// `from == to` 视为空区间（永远 false），避免"全天静音"被表达成歧义形式。
-    pub fn in_quiet_window(&self, now: DateTime<Utc>, from: &str, to: &str) -> bool {
+    pub(crate) fn in_quiet_window(&self, now: DateTime<Utc>, from: &str, to: &str) -> bool {
         let Ok(from_t) = NaiveTime::parse_from_str(from, "%H:%M") else {
             return false;
         };
@@ -132,7 +132,7 @@ impl EffectiveTz {
     }
 
     /// 当前 `now` 对应本地时刻是否正好命中 `to` 这一分钟（用于触发 quiet_flush）。
-    pub fn at_quiet_to_minute(&self, now: DateTime<Utc>, to: &str) -> bool {
+    pub(crate) fn at_quiet_to_minute(&self, now: DateTime<Utc>, to: &str) -> bool {
         self.in_window(now, to)
     }
 }

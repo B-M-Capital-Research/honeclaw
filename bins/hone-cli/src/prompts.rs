@@ -5,8 +5,8 @@
 //!   / `prompt_select_index` —— dialoguer 的薄包装,统一错误类型
 //! - `RequiredFieldEmptyAction` / `RequiredFieldResolution` / `ProviderEmptyAction`
 //!   —— 通用「必填项空值 / Provider key 空值」恢复决策类型
-//! - `resolve_required_field_attempt` / `resolve_required_secret_attempt` ——
-//!   把用户输入 + 已有配置值 + 恢复动作组合成最终 resolution
+//! - `resolve_required_secret_attempt` ——
+//!   把用户输入 + 已有配置值 + 延迟恢复动作组合成最终 resolution
 //! - `prompt_channel_recovery_action` / `prompt_provider_recovery_action` ——
 //!   面对空必填项 / 空 provider key 时让用户选择「重试 / 放弃」
 //! - `normalize_credential_value` / `normalize_credential_value_opt` ——
@@ -55,31 +55,7 @@ pub(crate) fn normalize_credential_value_opt(raw: Option<&str>) -> Option<String
         .filter(|value| !value.is_empty())
 }
 
-/// 统一解析「必填项输入」。
-///
-/// 优先使用本次 prompt 的返回值;若为空则退回到已有配置值;若仍为空则按
-/// `on_empty` 决定重试或禁用。用于同步(非交互)上下文;interactive 场景
-/// 见 [`resolve_required_secret_attempt`] 接 FnOnce 的版本。
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn resolve_required_field_attempt(
-    attempted: Option<String>,
-    current: &str,
-    on_empty: RequiredFieldEmptyAction,
-) -> RequiredFieldResolution {
-    if let Some(value) = normalize_credential_value_opt(attempted.as_deref()) {
-        return RequiredFieldResolution::Value(value);
-    }
-    if let Some(value) = normalize_credential_value_opt(Some(current)) {
-        return RequiredFieldResolution::Value(value);
-    }
-    match on_empty {
-        RequiredFieldEmptyAction::Retry => RequiredFieldResolution::Retry,
-        RequiredFieldEmptyAction::DisableChannel => RequiredFieldResolution::DisableChannel,
-    }
-}
-
-/// [`resolve_required_field_attempt`] 的 interactive 变体：`on_empty` 是一个
-/// 在真的需要决策时才被调用的 `FnOnce`,避免无意义地 prompt。
+/// `on_empty` 在真的需要决策时才被调用,避免无意义地 prompt。
 pub(crate) fn resolve_required_secret_attempt<F>(
     attempted: Option<String>,
     current: &str,
@@ -249,34 +225,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolve_required_field_attempt_disables_channel_when_empty_and_no_current_value() {
-        let resolution = resolve_required_field_attempt(
-            Some(String::new()),
-            "",
-            RequiredFieldEmptyAction::DisableChannel,
-        );
+    fn resolve_required_secret_attempt_disables_channel_when_empty_and_no_current_value() {
+        let resolution = resolve_required_secret_attempt(Some(String::new()), "", || {
+            Ok(RequiredFieldEmptyAction::DisableChannel)
+        })
+        .unwrap();
 
         assert_eq!(resolution, RequiredFieldResolution::DisableChannel);
     }
 
     #[test]
-    fn resolve_required_field_attempt_retries_when_empty_and_no_current_value() {
-        let resolution = resolve_required_field_attempt(
-            Some(String::new()),
-            "",
-            RequiredFieldEmptyAction::Retry,
-        );
+    fn resolve_required_secret_attempt_retries_when_empty_and_no_current_value() {
+        let resolution = resolve_required_secret_attempt(Some(String::new()), "", || {
+            Ok(RequiredFieldEmptyAction::Retry)
+        })
+        .unwrap();
 
         assert_eq!(resolution, RequiredFieldResolution::Retry);
     }
 
     #[test]
-    fn resolve_required_field_attempt_keeps_existing_value_on_empty_input() {
-        let resolution = resolve_required_field_attempt(
-            Some(String::new()),
-            "existing-secret",
-            RequiredFieldEmptyAction::DisableChannel,
-        );
+    fn resolve_required_secret_attempt_keeps_existing_value_on_empty_input() {
+        let resolution =
+            resolve_required_secret_attempt(Some(String::new()), "existing-secret", || {
+                Ok(RequiredFieldEmptyAction::DisableChannel)
+            })
+            .unwrap();
 
         assert_eq!(
             resolution,
@@ -285,12 +259,12 @@ mod tests {
     }
 
     #[test]
-    fn resolve_required_field_attempt_trims_secret_values() {
-        let resolution = resolve_required_field_attempt(
-            Some("  new-secret  ".to_string()),
-            "",
-            RequiredFieldEmptyAction::DisableChannel,
-        );
+    fn resolve_required_secret_attempt_trims_secret_values() {
+        let resolution =
+            resolve_required_secret_attempt(Some("  new-secret  ".to_string()), "", || {
+                Ok(RequiredFieldEmptyAction::DisableChannel)
+            })
+            .unwrap();
 
         assert_eq!(
             resolution,
