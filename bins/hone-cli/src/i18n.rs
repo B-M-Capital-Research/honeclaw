@@ -104,12 +104,12 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("banner.title", "Hone onboarding", "Hone onboarding"),
     (
         "banner.subtitle",
-        "约 3–5 分钟,全程键盘即可。Ctrl+C 可安全退出:mutation 只在最后一步才写盘。",
+        "约 3–5 分钟，全程键盘即可。Ctrl+C 可安全退出：mutation 只在最后一步才写盘。",
         "About 3–5 minutes, fully keyboard-driven. Ctrl+C is safe — mutations only write on the final step.",
     ),
     (
         "banner.hint",
-        "每个环节都可以跳过,之后再通过 `hone-cli onboard` 或其他 CLI 子命令补配。",
+        "每个环节都可以跳过，之后再通过 `hone-cli onboard` 或其他 CLI 子命令补配。",
         "Every step can be skipped; you can rerun `hone-cli onboard` or use other CLI subcommands later.",
     ),
     // ── Step 1 — Language ────────────────────────────────────────────────
@@ -127,7 +127,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("lang.option_en", "English (en)", "English (en)"),
     (
         "lang.note",
-        "保存后写入 config.yaml.language;Web 控制台首次加载使用此默认值,各设备仍可单独覆盖。",
+        "保存后写入 config.yaml.language；Web 控制台首次加载使用此默认值，各设备仍可单独覆盖。",
         "Saved into config.yaml.language. The web console picks this up on first load; devices can still override locally.",
     ),
     // ── Step labels (shifted by +1 due to language step at front) ────────
@@ -216,37 +216,37 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.binary_missing_detail",
-        "{binary} 未检测到({detail})。",
+        "{binary} 未检测到（{detail}）。",
         "{binary} not detected ({detail}).",
     ),
     (
         "runner.keep_without_binary",
-        "缺少 binary，仍然保留这个 runner 吗？(no = 返回重新选择 runner)",
+        "缺少 binary，仍然保留这个 runner 吗？（no = 返回重新选择 runner）",
         "Binary missing — keep this runner anyway? (no = pick another runner)",
     ),
     (
         "runner.multi_agent.description",
-        "默认推荐:search + answer 两段式,纯 HTTP 走 OpenRouter,不需要本机 CLI。",
+        "默认推荐：search + answer 两段式，纯 HTTP 走 OpenRouter，不需要本机 CLI。",
         "Recommended default: two-stage search + answer over OpenRouter HTTP, no local CLI required.",
     ),
     (
         "runner.multi_agent.note_1",
-        "前置:一把可用的 OpenRouter API key(后面 Providers 环节会让你填)。",
+        "前置：一把可用的 OpenRouter API key（后面 Providers 环节会让你填）。",
         "Requires: one working OpenRouter API key (collected later in the Providers step).",
     ),
     (
         "runner.multi_agent.note_2",
-        "原理:第一段 search 用小模型拉证据,第二段 answer 用主模型总结。",
+        "原理：第一段 search 用小模型拉证据，第二段 answer 用主模型总结。",
         "How it works: stage 1 (search) pulls evidence with a small model; stage 2 (answer) summarizes with the primary model.",
     ),
     (
         "runner.multi_agent.note_3",
-        "适合:只有 API key、不想装 CLI 的用户。",
+        "适合：只有 API key、不想装 CLI 的用户。",
         "Best for: users who only have an API key and don't want to install a local CLI.",
     ),
     (
         "runner.multi_agent.note_4",
-        "需要在本机切换模型时,之后用 `hone-cli models set ...` 即可,不必重跑 onboard。",
+        "需要在本机切换模型时，之后用 `hone-cli models set ...` 即可，不必重跑 onboard。",
         "To switch models later, run `hone-cli models set ...` — no need to rerun onboard.",
     ),
     (
@@ -346,17 +346,17 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.multi_agent.setup_note_1",
-        "本 runner 只会写入 `agent.runner = \"multi-agent\"`;",
+        "本 runner 只会写入 `agent.runner = \"multi-agent\"`。",
         "This runner only writes `agent.runner = \"multi-agent\"`.",
     ),
     (
         "runner.multi_agent.setup_note_2",
-        "实际跑起来需要一把 OpenRouter API key,Providers 环节会让你填。",
+        "实际跑起来需要一把 OpenRouter API key，Providers 环节会让你填。",
         "It needs an OpenRouter API key to actually run — you'll fill it in during the Providers step.",
     ),
     (
         "runner.multi_agent.setup_note_3",
-        "进阶:`multi-agent.search` / `answer` 两段模型可用 `hone-cli models set ...` 微调。",
+        "进阶：`multi-agent.search` / `answer` 两段模型可用 `hone-cli models set ...` 微调。",
         "Advanced: tune the `multi-agent.search` / `answer` stage models via `hone-cli models set ...`.",
     ),
     (
@@ -396,23 +396,23 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "runner.opencode_acp.confirm_connected",
-        "你已经在 opencode 里 `/connect` 并选好默认模型了吗?",
+        "你已经在 opencode 里 `/connect` 并选好默认模型了吗？",
         "Have you already run `/connect` in opencode and picked a default model?",
     ),
     (
         "runner.opencode_acp.warn_not_connected",
-        "继续写入 runner 配置;请记得稍后执行 `opencode` 并 `/connect` 配好 provider,否则 Hone 起 chat 会立刻失败。",
+        "继续写入 runner 配置；请记得稍后执行 `opencode` 并 `/connect` 配好 provider，否则 Hone 起 chat 会立刻失败。",
         "Writing the runner config anyway. Remember to run `opencode` and `/connect` later — Hone chat will fail immediately otherwise.",
     ),
     // ── Channels step ────────────────────────────────────────────────────
     (
         "channel.hint_skip",
-        "每个渠道可以先跳过,之后用 `hone-cli onboard` / `hone-cli configure` / `hone-cli channels ...` 补配。",
+        "每个渠道可以先跳过，之后用 `hone-cli onboard` / `hone-cli configure` / `hone-cli channels ...` 补配。",
         "Channels can be skipped now and configured later via `hone-cli onboard` / `hone-cli configure` / `hone-cli channels ...`.",
     ),
     (
         "channel.imessage.skipped_non_macos",
-        "iMessage 渠道仅 macOS 可用,当前平台跳过。",
+        "iMessage 渠道仅 macOS 可用，当前平台跳过。",
         "iMessage is macOS-only — skipping on this platform.",
     ),
     (
@@ -427,12 +427,12 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "channel.allow_warn",
-        "{label} 渠道默认 allow 白名单为空,即所有联系人都能触发 Hone。",
+        "{label} 渠道默认 allow 白名单为空，即所有联系人都能触发 Hone。",
         "{label} channel ships with an empty allowlist, so any contact can trigger Hone.",
     ),
     (
         "channel.allow_hint",
-        "如需限定,onboard 完成后用 `hone-cli configure --section channels` 或直接编辑 config.yaml。",
+        "如需限定，onboard 完成后用 `hone-cli configure --section channels` 或直接编辑 config.yaml。",
         "To restrict access, run `hone-cli configure --section channels` after onboarding or edit config.yaml directly.",
     ),
     (
@@ -516,7 +516,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("channel.telegram.label", "Telegram", "Telegram"),
     (
         "channel.telegram.status_note",
-        "当前仍偏实验/placeholder 模式，不建议当成熟生产渠道使用。",
+        "当前仍偏实验/占位模式，不建议当成熟生产渠道使用。",
         "Currently experimental / placeholder — not yet recommended for production.",
     ),
     (
@@ -578,53 +578,53 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "admin.hint_empty",
-        "不配就没人是 admin,本机所有人都触发不到管理能力。",
+        "不配就没人是 admin，本机所有人都触发不到管理能力。",
         "Leave it empty and nobody will be admin — no one can invoke admin commands.",
     ),
     (
         "admin.add_self_prompt",
-        "把自己加为已启用渠道的 admin 白名单?",
+        "把自己加为已启用渠道的 admin 白名单？",
         "Add yourself to the admin allowlist for the enabled channels?",
     ),
     (
         "admin.skipped_hint",
-        "已跳过 admin 配置;之后可用 `hone-cli configure` 或直接编辑 config.yaml 的 `admins.*`。",
+        "已跳过 admin 配置；之后可用 `hone-cli configure` 或直接编辑 config.yaml 的 `admins.*`。",
         "Skipped admin setup. Run `hone-cli configure` later or edit `admins.*` in config.yaml.",
     ),
     (
         "admin.imessage.handle_prompt",
-        "iMessage admin handle(手机号带国家码,如 +8613800138000 或 Apple ID 邮箱;留空跳过)",
+        "iMessage admin handle（手机号带国家码，如 +8613800138000 或 Apple ID 邮箱；留空跳过）",
         "iMessage admin handle (phone number with country code, e.g. +8613800138000, or Apple ID email; blank to skip)",
     ),
     (
         "admin.telegram.user_id_prompt",
-        "Telegram admin user id(数字 ID,如 8039067465;可通过 @userinfobot 获取;留空跳过)",
+        "Telegram admin user id（数字 ID，如 8039067465；可通过 @userinfobot 获取；留空跳过）",
         "Telegram admin user id (numeric ID, e.g. 8039067465; get it from @userinfobot; blank to skip)",
     ),
     (
         "admin.discord.user_id_prompt",
-        "Discord admin user id(数字 ID,18 位数,可在 Discord 开发者模式下右键用户头像复制;留空跳过)",
+        "Discord admin user id（18 位数字 ID，可在 Discord 开发者模式下右键用户头像复制；留空跳过）",
         "Discord admin user id (18-digit numeric ID, copy via right-click on the user avatar in Developer Mode; blank to skip)",
     ),
     (
         "admin.feishu.choice_email",
-        "邮箱(admin@example.com)",
+        "邮箱（admin@example.com）",
         "Email (admin@example.com)",
     ),
     (
         "admin.feishu.choice_mobile",
-        "手机号(+8613800138000)",
+        "手机号（+8613800138000）",
         "Mobile number (+8613800138000)",
     ),
     (
         "admin.feishu.choice_open_id",
-        "open_id(ou_xxx)",
+        "open_id（ou_xxx）",
         "open_id (ou_xxx)",
     ),
     ("admin.feishu.choice_skip", "跳过", "Skip"),
     (
         "admin.feishu.kind_prompt",
-        "Feishu admin 用哪种 id 添加?",
+        "Feishu admin 用哪种 id 添加？",
         "Which kind of id should be used for the Feishu admin?",
     ),
     (
@@ -634,7 +634,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "admin.feishu.mobile_prompt",
-        "Feishu admin 手机号(推荐带国家码,如 +8613800138000)",
+        "Feishu admin 手机号（推荐带国家码，如 +8613800138000）",
         "Feishu admin mobile (country code recommended, e.g. +8613800138000)",
     ),
     (
@@ -645,12 +645,12 @@ const STRINGS: &[(&str, &str, &str)] = &[
     // ── Provider step ────────────────────────────────────────────────────
     (
         "provider.hint_explicit",
-        "OpenRouter / FMP / Tavily 都会要求你明确选择:现在填写,或本轮跳过。",
+        "OpenRouter / FMP / Tavily 都会要求你明确选择：现在填写，或本轮跳过。",
         "OpenRouter / FMP / Tavily each require an explicit choice: fill now, or skip for this run.",
     ),
     (
         "provider.hint_skip_later",
-        "跳过不会阻塞 onboarding,之后仍可用 `hone-cli configure --section providers` 补配。",
+        "跳过不会阻塞 onboarding，之后仍可用 `hone-cli configure --section providers` 补配。",
         "Skipping won't block onboarding — you can configure providers later via `hone-cli configure --section providers`.",
     ),
     (
@@ -696,12 +696,12 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "provider.openrouter.note_2",
-        "如果你 runner=opencode_acp 且已在 opencode 里配好 provider,可以在下一步跳过。",
+        "如果你 runner=opencode_acp 且已在 opencode 里配好 provider，可以在下一步跳过。",
         "If your runner is opencode_acp and the provider is already configured inside opencode, you can skip this step.",
     ),
     (
         "provider.openrouter.note_3",
-        "支持一次填写多个 key,运行时会自动 fallback。",
+        "支持一次填写多个 key，运行时会自动 fallback。",
         "Multiple keys are supported; runtime will fall back automatically.",
     ),
     ("provider.fmp.label", "FMP", "FMP"),
@@ -744,17 +744,17 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "notifications.defaults_1",
-        "Global digest:默认对所有新用户**开启**,LLM 精读后每天按窗口推送到 chat。",
+        "Global digest：默认对所有新用户**开启**，LLM 精读后每天按窗口推送到 chat。",
         "Global digest: enabled by default for all new users — an LLM curates and pushes it to chat once per window.",
     ),
     (
         "notifications.defaults_2",
-        "Per-event 通知:默认开启(Severity::Low 起、不限 portfolio)。",
+        "Per-event 通知：默认开启（Severity::Low 起、不限 portfolio）。",
         "Per-event notifications: enabled by default (from Severity::Low, all portfolios).",
     ),
     (
         "notifications.defaults_3",
-        "投资主线自动蒸馏:后台 cron 周扫 sandbox `company_profiles/*/profile.md`,无需用户操作。",
+        "投资主线自动蒸馏：后台 cron 周扫 sandbox `company_profiles/*/profile.md`，无需用户操作。",
         "Investment mainline auto-distillation: a background cron weekly-scans sandbox `company_profiles/*/profile.md` — no user action needed.",
     ),
     (
@@ -764,7 +764,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "notifications.user_adjust_1",
-        "用自然语言告诉 bot 即可,例如「关闭 digest」「不要每天推送」「只看 portfolio」。",
+        "用自然语言告诉 bot 即可，例如「关闭 digest」「不要每天推送」「只看 portfolio」。",
         "Tell the bot in natural language, e.g. \"disable digest\", \"stop daily pushes\", \"portfolio only\".",
     ),
     (
@@ -784,12 +784,12 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "notifications.change_default_2",
-        "目前没有 config.yaml 入口;想改默认只能改源码后重新编译。",
+        "目前没有 config.yaml 入口；想改默认只能改源码后重新编译。",
         "There's no config.yaml entry yet; changing the defaults requires editing source and rebuilding.",
     ),
     (
         "notifications.advance_hint",
-        "此步骤纯告知,不写任何配置;下一步进入 Apply。",
+        "此步骤纯告知，不写任何配置；下一步进入 Apply。",
         "This step is informational only — no config is written. Next step: Apply.",
     ),
     // ── Recovery prompts ─────────────────────────────────────────────────
@@ -857,27 +857,27 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "discord_token.valid_with_len",
-        "Token 格式有效(长度={len})。",
+        "Token 格式有效（长度={len}）。",
         "Token format is valid (length={len}).",
     ),
     (
         "discord_token.message_with_len",
-        "{message}(长度={len})。",
+        "{message}（长度={len}）。",
         "{message} (length={len}).",
     ),
     (
         "discord_token.confirm_use",
-        "仍然使用这个 Discord token?",
+        "仍然使用这个 Discord token？",
         "Use this Discord token anyway?",
     ),
     (
         "discord_token.confirm_save",
-        "仍然保存这个 Discord token?",
+        "仍然保存这个 Discord token？",
         "Save this Discord token anyway?",
     ),
     (
         "discord_token.confirm_retry",
-        "Token 格式异常,重新输入?",
+        "Token 格式异常，重新输入？",
         "Token format looks invalid — re-enter?",
     ),
     (

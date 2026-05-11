@@ -44,7 +44,7 @@ const ZH = {
     slash_skill_search_hint: "搜索并触发技能",
     slash_no_match: "没有找到匹配技能，继续输入更准确的关键词。",
     slash_aliases_prefix: "aliases:",
-    composer_placeholder: '给 Hone 发消息，或输入 "/skill 关键词" 搜索并触发技能...',
+    composer_placeholder: '给 Hone 发消息，或输入 "/skill 关键词" 搜索并触发技能…',
     send_button: "发送",
     stop_button: "停止",
     stop_title: "停止",

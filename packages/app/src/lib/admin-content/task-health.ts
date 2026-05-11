@@ -10,7 +10,7 @@ const ZH = {
     refreshing_button: "刷新中…",
   },
   summary: {
-    eyebrow: "24h 汇总(每个 task 一行)",
+    eyebrow: "24h 汇总（每个 task 一行）",
     col_task: "任务",
     col_last_seen: "最近一次",
     col_runs_24h: "24h 总",
@@ -24,7 +24,7 @@ const ZH = {
     badge_recovered: "已恢复 +{count}",
   },
   runs: {
-    eyebrow: "最近运行(最多 500 条,倒序)",
+    eyebrow: "最近运行（最多 500 条，倒序）",
     col_started: "起始",
     col_task: "任务",
     col_outcome: "结果",

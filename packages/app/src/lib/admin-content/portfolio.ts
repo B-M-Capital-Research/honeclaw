@@ -50,7 +50,7 @@ const ZH = {
     field_notes: "备注 (Notes)",
     field_notes_placeholder: "选填",
     save_button: "保存",
-    saving_button: "保存中...",
+    saving_button: "保存中…",
   },
 }
 

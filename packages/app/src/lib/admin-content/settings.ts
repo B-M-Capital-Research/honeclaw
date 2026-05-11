@@ -144,7 +144,7 @@ const ZH = {
       remove: "删除",
       add_key: "+ 添加 Key",
       save: "保存 FMP",
-      saving: "保存中...",
+      saving: "保存中…",
       saved: "已保存 FMP API key，内置后端已重启生效",
     },
     tavily: {
@@ -154,7 +154,7 @@ const ZH = {
       remove: "删除",
       add_key: "+ 添加 Key",
       save: "保存 Tavily",
-      saving: "保存中...",
+      saving: "保存中…",
       saved: "已保存 Tavily API key，内置后端已重启生效",
     },
   },
@@ -204,7 +204,7 @@ const ZH = {
     },
     sync_note: "保存后配置文件立即更新；CLI 启动的监听进程需重启后应用启停变化。",
     save: "同步全部渠道",
-    saving: "同步中...",
+    saving: "同步中…",
   },
   invite: {
     title: "Web 用户邀请码",
@@ -403,7 +403,7 @@ const EN: typeof ZH = {
       remove: "Remove",
       add_key: "+ Add key",
       save: "Save FMP",
-      saving: "Saving...",
+      saving: "Saving…",
       saved: "FMP API keys saved; the embedded backend has restarted.",
     },
     tavily: {
@@ -413,7 +413,7 @@ const EN: typeof ZH = {
       remove: "Remove",
       add_key: "+ Add key",
       save: "Save Tavily",
-      saving: "Saving...",
+      saving: "Saving…",
       saved: "Tavily API keys saved; the embedded backend has restarted.",
     },
   },
@@ -466,7 +466,7 @@ const EN: typeof ZH = {
     sync_note:
       "Saving updates the config file immediately; CLI-started listeners need a restart to apply enable/disable changes.",
     save: "Sync all channels",
-    saving: "Syncing...",
+    saving: "Syncing…",
   },
   invite: {
     title: "Web user invite codes",

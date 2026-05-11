@@ -8,7 +8,7 @@ const ZH = {
     title: "日志",
     search_placeholder: "搜索日志…",
     user_filter_placeholder: "按 user_id 筛选…",
-    user_filter_title: "只显示与该用户相关的日志(匹配结构化 actor 或 message 文本)",
+    user_filter_title: "只显示与该用户相关的日志（匹配结构化 actor 或 message 文本）",
     pause_button: "暂停",
     resume_button: "继续",
     clear_button: "清空",

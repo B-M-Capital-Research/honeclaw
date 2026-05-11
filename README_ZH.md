@@ -98,6 +98,9 @@ curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/
 hone-cli doctor
 hone-cli onboard
 hone-cli start
+# 另开一个终端，打开或启动内置 Web 界面：
+hone-cli web admin-ui
+hone-cli web user-ui
 ```
 
 ### 方案 B：通过 Homebrew 安装
@@ -107,6 +110,9 @@ brew install B-M-Capital-Research/honeclaw/honeclaw
 hone-cli doctor
 hone-cli onboard
 hone-cli start
+# 另开一个终端，打开或启动内置 Web 界面：
+hone-cli web admin-ui
+hone-cli web user-ui
 ```
 
 ### 方案 C：源码开发模式
@@ -115,9 +121,12 @@ hone-cli start
 git clone https://github.com/B-M-Capital-Research/honeclaw.git
 cd honeclaw
 cargo run -p hone-cli -- start --build
+# 另开终端：
+cargo run -p hone-cli -- web admin-ui --dev
+cargo run -p hone-cli -- web user-ui --dev
 ```
 
-源码 checkout 走本地 CLI 构建启动路径；Homebrew / release 安装用户使用安装好的 `hone-cli start`。
+源码检出使用本地 CLI 构建启动路径；Homebrew / release 安装用户使用安装好的 `hone-cli start`。
 
 ---
 

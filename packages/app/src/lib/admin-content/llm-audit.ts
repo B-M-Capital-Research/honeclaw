@@ -34,7 +34,7 @@ const ZH = {
   },
   detail: {
     title: "记录详情",
-    loading: "加载中...",
+    loading: "加载中…",
     load_failed_title: "加载失败",
     related_entities: "关联实体",
     error_section: "错误信息",
