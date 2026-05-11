@@ -398,7 +398,7 @@ pub(crate) async fn handle_get_mainline_context(
 ///
 /// 管理端查看任意 actor 任意 ticker 的完整画像 markdown。read-only。
 pub(crate) async fn handle_get_actor_company_profile(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<AdminProfileQuery>,
 ) -> Response {
     let actor = match require_actor(
@@ -413,7 +413,6 @@ pub(crate) async fn handle_get_actor_company_profile(
     if target.is_empty() {
         return json_error(StatusCode::BAD_REQUEST, "ticker 不能为空");
     }
-    let _ = &state; // silence unused
     let sandbox_base = hone_channels::sandbox_base_dir();
     let sandbox_root = hone_event_engine::global_digest::actor_sandbox_dir(&sandbox_base, &actor);
     let profiles = hone_event_engine::global_digest::scan_profiles(&sandbox_root, None);

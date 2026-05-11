@@ -8,8 +8,6 @@
 //!
 //! Run:  cargo run --example push_smoke -p hone-event-engine
 
-use std::path::Path;
-
 use anyhow::{Context, Result};
 use chrono::Utc;
 use hone_core::ActorIdentity;
@@ -197,9 +195,4 @@ async fn main() -> Result<()> {
         std::process::exit(2);
     }
     Ok(())
-}
-
-fn _assert_prefs_dir_exists() {
-    // 保留静态断言占位,不让 unused lint 挂
-    let _ = Path::new(PREFS_DIR);
 }

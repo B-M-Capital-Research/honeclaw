@@ -74,7 +74,7 @@ export function defaultAgentSettings(): AgentSettings {
   }
 }
 
-export function defaultLlmProfileSettings(): LlmProfileSettings {
+function defaultLlmProfileSettings(): LlmProfileSettings {
   return {
     defaultProfile: "main",
     auxiliaryProfile: "aux",

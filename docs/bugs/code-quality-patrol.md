@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-12 - 死代码与废弃路径
+
+### Desktop OpenRouter settings commands appear orphaned after frontend settings consolidation
+
+- status: open
+- direction: 死代码与废弃路径
+- evidence: `packages/app/src/lib/backend.ts` no longer has callers for `loadDesktopOpenRouterSettings` / `saveDesktopOpenRouterSettings`, and `rg` finds no frontend references to those wrappers. The Desktop sidecar still registers `get_openrouter_settings` / `set_openrouter_settings` in `bins/hone-desktop/src/commands.rs` and keeps `OpenRouterSettings` plus the implementation pair in `bins/hone-desktop/src/sidecar.rs`.
+- risk: removing the Rust commands directly could break older Desktop bundles or any external automation still invoking those Tauri command names. Keeping them indefinitely leaves a stale config-write path beside the newer agent/profile settings flow.
+- suggested_fix: decide whether Desktop command compatibility for `get_openrouter_settings` / `set_openrouter_settings` is still required. If not, remove the commands, sidecar helpers, and tests/docs in one Desktop-focused cleanup; if compatibility is required, mark them as deprecated and route operators to the current agent/profile settings flow.
+
 ## 2026-05-12 - 错误与日志质量
 
 ### `crates/hone-channels/src/runners/gemini_cli.rs` exit errors can still surface full stderr upstream

@@ -3,8 +3,8 @@
 
 import { CONTENT } from "./public-content";
 
-export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 128;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
 
 export type PasswordCheck = {
   ok: boolean;

@@ -8,7 +8,7 @@ export type PublicChatAuthState =
   | "needs_password"
   | "ready";
 
-export type PublicChatView = "loading" | "login" | "chat";
+type PublicChatView = "loading" | "login" | "chat";
 
 export type PublicChatAttachment = {
   /** Absolute server-side path returned by `/api/public/upload` or carried in history. */

@@ -2,7 +2,7 @@
 //
 // The public site (hone-claw.com) and admin console both run as the same
 // Solid SPA. Locale state lives here as a single signal: read via `useLocale()`
-// inside any reactive scope, mutated via `setLocale()` / `toggleLocale()`.
+// inside any reactive scope, mutated via `setLocale()`.
 // Persisted to localStorage so a per-device override survives reloads. First
 // visit on the public surface falls back to navigator.language; the admin
 // surface bootstraps from the backend `/api/meta` `language` field
@@ -51,10 +51,6 @@ export function setLocale(next: Locale): void {
       // ignore
     }
   }
-}
-
-export function toggleLocale(): void {
-  setLocale(locale() === "zh" ? "en" : "zh")
 }
 
 /** True iff the user has an explicit per-device locale override stored. */

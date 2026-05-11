@@ -5,7 +5,7 @@ type ChannelStatusCountsInput = Pick<
   "enabled" | "running" | "processes"
 >
 
-export type ChannelStatusCounts = {
+type ChannelStatusCounts = {
   hasData: boolean
   successCount: number
   failCount: number

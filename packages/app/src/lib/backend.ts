@@ -10,11 +10,10 @@ import type {
   DesktopChannelSettingsUpdateResult,
   FmpSettings,
   MetaInfo,
-  OpenRouterSettings,
   TavilySettings,
 } from "./types"
 
-export const SUPPORTED_API_VERSION = "desktop-v1"
+const SUPPORTED_API_VERSION = "desktop-v1"
 
 type RuntimeMode = BackendConfig["mode"] | "browser"
 
@@ -210,18 +209,6 @@ export async function checkDesktopAgentCli(
 /** 测试 OpenAI 协议渠道连通性（发送最小请求到 {url}/chat/completions） */
 export async function testDesktopOpenAiChannel(url: string, model: string, apiKey: string) {
   return invokeDesktop<CliCheckResult>("test_openai_channel", { url, model, apiKey })
-}
-
-// ── OpenRouter API Key 设置 ─────────────────────────────────────────────────
-
-/** 读取 config.yaml 中的 OpenRouter API Key */
-export async function loadDesktopOpenRouterSettings() {
-  return invokeDesktop<OpenRouterSettings>("get_openrouter_settings")
-}
-
-/** 保存 OpenRouter API Keys 到 config.yaml，内置后端模式下立即重启生效 */
-export async function saveDesktopOpenRouterSettings(settings: OpenRouterSettings) {
-  return invokeDesktop<void>("set_openrouter_settings", { settings })
 }
 
 // ── FMP API Key 设置 ────────────────────────────────────────────────────────
