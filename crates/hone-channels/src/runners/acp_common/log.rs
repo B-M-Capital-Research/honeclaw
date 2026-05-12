@@ -195,15 +195,76 @@ pub(crate) async fn timeout_message_with_stderr(
     base: &str,
     stderr_buf: &std::sync::Arc<tokio::sync::Mutex<String>>,
 ) -> String {
+    message_with_bounded_stderr(base, stderr_buf).await
+}
+
+pub(crate) async fn message_with_bounded_stderr(
+    base: &str,
+    stderr_buf: &std::sync::Arc<tokio::sync::Mutex<String>>,
+) -> String {
     let captured = stderr_buf.lock().await.clone();
-    if captured.trim().is_empty() {
-        base.to_string()
-    } else {
-        format!(
-            "{base} stderr={}",
-            tail_for_log(captured.trim(), ACP_STDERR_DETAIL_CHARS)
-        )
+    let Some(stderr_detail) = stderr_detail_for_message(&captured) else {
+        return base.to_string();
+    };
+    format!("{base} stderr={stderr_detail}")
+}
+
+fn stderr_detail_for_message(stderr: &str) -> Option<String> {
+    let trimmed = stderr.trim();
+    if trimmed.is_empty() {
+        return None;
     }
+    Some(tail_for_log(
+        &redact_common_stderr_secrets(trimmed),
+        ACP_STDERR_DETAIL_CHARS,
+    ))
+}
+
+fn redact_common_stderr_secrets(text: &str) -> String {
+    let mut output = redact_bearer_tokens(text);
+    for key in [
+        "access_token",
+        "accessToken",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "token",
+        "app_secret",
+        "appSecret",
+        "secret",
+        "password",
+    ] {
+        output = redact_key_value(&output, key);
+    }
+    output
+}
+
+fn redact_bearer_tokens(text: &str) -> String {
+    redact_marker_value(text, "Bearer ")
+}
+
+fn redact_key_value(text: &str, key: &str) -> String {
+    redact_marker_value(text, &format!("{key}="))
+}
+
+fn redact_marker_value(text: &str, marker: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
+                    .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
 }
 
 // ── 格式化 helper ──────────────────────────────────────────────
@@ -299,6 +360,19 @@ mod tests {
                 "codex acp request timed out stderr=…{}",
                 "x".repeat(ACP_STDERR_DETAIL_CHARS)
             )
+        );
+    }
+
+    #[tokio::test]
+    async fn timeout_message_redacts_common_stderr_secrets() {
+        let stderr = std::sync::Arc::new(tokio::sync::Mutex::new(
+            "request failed https://api.test/path?api_key=abc&token=def auth=Bearer bearer-secret"
+                .to_string(),
+        ));
+        let message = timeout_message_with_stderr("codex acp request timed out", &stderr).await;
+        assert_eq!(
+            message,
+            "codex acp request timed out stderr=request failed https://api.test/path?api_key=<redacted>&token=<redacted> auth=Bearer <redacted>"
         );
     }
 }

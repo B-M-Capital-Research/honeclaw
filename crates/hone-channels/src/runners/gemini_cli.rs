@@ -14,6 +14,8 @@ use super::types::{
     RunnerTimeouts,
 };
 
+const GEMINI_CLI_STDERR_DETAIL_CHARS: usize = 400;
+
 pub struct GeminiCliRunner {
     system_prompt: String,
     tool_registry: Arc<ToolRegistry>,
@@ -292,6 +294,65 @@ fn truncate_gemini_cli_detail(text: &str, max_chars: usize) -> String {
     let keep = max_chars.saturating_sub(1);
     let prefix = trimmed.chars().take(keep).collect::<String>();
     format!("{prefix}…")
+}
+
+fn gemini_cli_exit_error_message(code: Option<i32>, stderr: &str) -> String {
+    match gemini_cli_stderr_detail(stderr) {
+        Some(stderr_detail) => {
+            format!("gemini exited with error (code={code:?}; stderr={stderr_detail})")
+        }
+        None => format!("gemini exited with error (code={code:?}; stderr=<empty>)"),
+    }
+}
+
+fn gemini_cli_stderr_detail(stderr: &str) -> Option<String> {
+    let trimmed = stderr.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(truncate_gemini_cli_detail(
+        &redact_common_stderr_secrets(trimmed),
+        GEMINI_CLI_STDERR_DETAIL_CHARS,
+    ))
+}
+
+fn redact_common_stderr_secrets(text: &str) -> String {
+    let mut output = redact_marker_value(text, "Bearer ");
+    for key in [
+        "access_token",
+        "accessToken",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "token",
+        "app_secret",
+        "appSecret",
+        "secret",
+        "password",
+    ] {
+        output = redact_marker_value(&output, &format!("{key}="));
+    }
+    output
+}
+
+fn redact_marker_value(text: &str, marker: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
+                    .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
 }
 
 #[async_trait]
@@ -704,18 +765,14 @@ pub(crate) async fn stream_gemini_prompt(
         if !stderr_trimmed.is_empty() {
             tracing::warn!(
                 stderr_chars = stderr_trimmed.chars().count(),
-                stderr_preview = %truncate_gemini_cli_detail(stderr_trimmed, 400),
+                stderr_preview = %gemini_cli_stderr_detail(stderr_trimmed).unwrap_or_default(),
                 "[AgentRunner/gemini] stderr"
             );
         }
         if !out.status.success() && iter_buf.is_empty() {
             return Err(AgentSessionError {
                 kind: AgentSessionErrorKind::ExitFailure,
-                message: format!(
-                    "gemini exited with error (code={:?}): {}",
-                    out.status.code(),
-                    stderr_trimmed
-                ),
+                message: gemini_cli_exit_error_message(out.status.code(), stderr_trimmed),
             });
         }
     }

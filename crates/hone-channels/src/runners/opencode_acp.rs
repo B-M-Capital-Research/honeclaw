@@ -19,7 +19,8 @@ use super::acp_common::{
     ACP_NEEDS_SP_RESEED_KEY, ACP_PREV_PROMPT_PEAK_KEY, AcpEventLogContext, AcpPromptState,
     AcpResponseTimeouts, AcpToolCallRecord, acp_prompt_succeeded, create_acp_session,
     log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
-    set_acp_session_model, timeout_message_with_stderr, wait_for_response, write_jsonrpc_request,
+    message_with_bounded_stderr, set_acp_session_model, timeout_message_with_stderr,
+    wait_for_response, write_jsonrpc_request,
 };
 use super::types::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
@@ -664,20 +665,16 @@ async fn run_opencode_acp(
 
     // 若回复为空且运行"成功"，打印 stderr 帮助诊断（鉴权失败、模型未找到等）
     if reply_chars == 0 {
-        let stderr_captured = stderr_buf.lock().await.clone();
-        if stderr_captured.trim().is_empty() {
-            tracing::warn!(
-                "[AgentRunner/opencode] session={} empty reply (stop_reason={stop_reason}), no stderr captured. \
-                 Possible causes: API key not set, model not found, or ACP protocol mismatch.",
-                request.session_id,
-            );
-        } else {
-            tracing::warn!(
+        let warning = message_with_bounded_stderr(
+            &format!(
                 "[AgentRunner/opencode] session={} empty reply (stop_reason={stop_reason}). \
-                 opencode stderr:\n{stderr_captured}",
-                request.session_id,
-            );
-        }
+                 Possible causes: API key not set, model not found, or ACP protocol mismatch.",
+                request.session_id
+            ),
+            &stderr_buf,
+        )
+        .await;
+        tracing::warn!("{warning}");
     }
 
     Ok((
@@ -1270,15 +1267,14 @@ async fn process_opencode_payload(
             .and_then(|value| value.as_str())
             .unwrap_or("unknown acp error")
             .to_string();
-        let stderr = stderr_buf.lock().await.clone();
-        let stderr = if stderr.trim().is_empty() {
-            String::new()
-        } else {
-            format!(" stderr={stderr}")
-        };
+        let message = message_with_bounded_stderr(
+            &format!("opencode acp request failed: {message}"),
+            stderr_buf,
+        )
+        .await;
         return Err(AgentSessionError {
             kind: AgentSessionErrorKind::AgentFailed,
-            message: format!("opencode acp request failed: {message}{stderr}"),
+            message,
         });
     }
 

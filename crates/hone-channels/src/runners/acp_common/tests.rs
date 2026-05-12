@@ -430,6 +430,57 @@ async fn acp_permission_request_preserves_string_jsonrpc_id() {
     assert!(stdout.contains("\"optionId\":\"approved-for-session\""));
 }
 
+#[tokio::test]
+async fn acp_error_response_uses_bounded_redacted_stderr() {
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn cat");
+    let mut stdin = child.stdin.take().expect("child stdin");
+    let stderr = Arc::new(Mutex::new(
+        "request failed https://api.test/path?api_key=secret&token=secret2 auth=Bearer bearer-secret"
+            .to_string(),
+    ));
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "error": {
+            "message": "upstream failed"
+        }
+    })
+    .to_string();
+
+    let err = process_acp_payload(
+        "codex",
+        &mut stdin,
+        4,
+        &line,
+        None,
+        None,
+        Some(&stderr),
+        None,
+        None,
+        AcpPermissionDecision::RejectOnce,
+        None,
+    )
+    .await
+    .expect_err("error response should fail");
+
+    assert!(err.message.contains("codex acp request failed"));
+    assert!(err.message.contains("api_key=<redacted>"));
+    assert!(err.message.contains("token=<redacted>"));
+    assert!(err.message.contains("Bearer <redacted>"));
+    assert!(!err.message.contains("secret"));
+    assert!(
+        err.message.chars().count() < 540,
+        "stderr detail should be bounded: {}",
+        err.message
+    );
+    drop(stdin);
+    let _ = child.kill().await;
+}
+
 #[test]
 fn acp_prompt_success_requires_explicit_non_cancelled_stop_reason() {
     assert!(acp_prompt_succeeded(Some("end_turn")));

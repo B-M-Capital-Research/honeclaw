@@ -18,7 +18,8 @@ use crate::runners::types::AgentRunnerEmitter;
 
 use super::ingest::handle_acp_session_update_with_renderer;
 use super::log::{
-    AcpEventLogContext, log_acp_payload, log_acp_raw_parse_error, timeout_message_with_stderr,
+    AcpEventLogContext, log_acp_payload, log_acp_raw_parse_error, message_with_bounded_stderr,
+    timeout_message_with_stderr,
 };
 use super::state::{
     AcpPermissionDecision, AcpPromptState, AcpResponseTimeouts, AcpSessionUpdateTransformer,
@@ -404,24 +405,20 @@ pub(super) async fn process_acp_payload(
 
     if payload.get("id").and_then(|value| value.as_u64()) == Some(expected_id) {
         if let Some(error) = payload.get("error") {
-            let message = error
+            let error_message = error
                 .get("message")
                 .and_then(|value| value.as_str())
                 .unwrap_or("unknown acp error")
                 .to_string();
-            let stderr = if let Some(buf) = stderr_buf {
-                let captured = buf.lock().await.clone();
-                if captured.trim().is_empty() {
-                    String::new()
-                } else {
-                    format!(" stderr={captured}")
-                }
+            let base = format!("{runner_label} acp request failed: {error_message}");
+            let message = if let Some(buf) = stderr_buf {
+                message_with_bounded_stderr(&base, buf).await
             } else {
-                String::new()
+                base
             };
             return Err(AgentSessionError {
                 kind: AgentSessionErrorKind::AgentFailed,
-                message: format!("{runner_label} acp request failed: {message}{stderr}"),
+                message,
             });
         }
         return Ok(Some(payload.get("result").cloned().unwrap_or(Value::Null)));

@@ -378,6 +378,49 @@ fn value_excerpt_for_log(value: &Value, max_chars: usize) -> String {
     truncate_for_log(&encoded, max_chars)
 }
 
+fn text_excerpt_for_log(text: &str, max_chars: usize) -> String {
+    truncate_for_log(&redact_text_for_log(text), max_chars)
+}
+
+fn redact_text_for_log(text: &str) -> String {
+    let mut output = redact_marker_value(text, "Bearer ");
+    for key in [
+        "access_token",
+        "accessToken",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "token",
+        "app_secret",
+        "appSecret",
+        "secret",
+        "password",
+    ] {
+        output = redact_marker_value(&output, &format!("{key}="));
+    }
+    output
+}
+
+fn redact_marker_value(text: &str, marker: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
+                    .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
 fn mcp_actor_label_for_log() -> String {
     let channel = env::var("HONE_MCP_ACTOR_CHANNEL").unwrap_or_default();
     let user_id = env::var("HONE_MCP_ACTOR_USER_ID").unwrap_or_default();
@@ -520,7 +563,7 @@ async fn handle_tools_call(registry: &ToolRegistry, params: &Value) -> Value {
                 actor,
                 name,
                 started_at.elapsed().as_millis(),
-                truncate_for_log(&err.to_string(), 320)
+                text_excerpt_for_log(&err.to_string(), 320)
             );
             json!({
                 "content": [{ "type": "text", "text": err.to_string() }],
@@ -736,6 +779,18 @@ mod tests {
         assert!(env_bool("HONE_MCP_ALLOW_CRON"));
         unsafe { env::set_var("HONE_MCP_ALLOW_CRON", "0") };
         assert!(!env_bool("HONE_MCP_ALLOW_CRON"));
+    }
+
+    #[test]
+    fn text_excerpt_for_log_redacts_common_secrets() {
+        let excerpt = text_excerpt_for_log(
+            "request failed https://api.test/path?api_key=abc&token=def auth=Bearer bearer-secret",
+            320,
+        );
+        assert_eq!(
+            excerpt,
+            "request failed https://api.test/path?api_key=<redacted>&token=<redacted> auth=Bearer <redacted>"
+        );
     }
 
     #[test]

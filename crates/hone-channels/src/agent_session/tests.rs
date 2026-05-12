@@ -240,16 +240,32 @@ fn make_test_core_with_config(
 
 #[cfg(unix)]
 fn write_mock_gemini_script(lines: &[&str]) -> (std::path::PathBuf, std::path::PathBuf) {
+    write_mock_gemini_script_with_stderr(lines, "", 0)
+}
+
+#[cfg(unix)]
+fn write_mock_gemini_script_with_stderr(
+    lines: &[&str],
+    stderr: &str,
+    exit_code: i32,
+) -> (std::path::PathBuf, std::path::PathBuf) {
     use std::os::unix::fs::PermissionsExt;
 
     let root = make_temp_dir("hone_gemini_mock");
     let data_path = root.join("stream.txt");
+    let stderr_path = root.join("stderr.txt");
     let content = lines.join("\n");
     std::fs::create_dir_all(&root).expect("create mock root");
     std::fs::write(&data_path, content).expect("write mock data");
+    std::fs::write(&stderr_path, stderr).expect("write mock stderr");
 
     let script_path = root.join("gemini-mock.sh");
-    let script = format!("#!/bin/sh\ncat \"{}\"\n", data_path.display());
+    let script = format!(
+        "#!/bin/sh\ncat \"{}\"\ncat \"{}\" >&2\nexit {}\n",
+        data_path.display(),
+        stderr_path.display(),
+        exit_code
+    );
     std::fs::write(&script_path, script).expect("write mock script");
     let mut perms = std::fs::metadata(&script_path)
         .expect("stat mock script")
@@ -2149,6 +2165,50 @@ async fn stream_gemini_prompt_handles_context_overflow() {
             err.kind,
             AgentSessionErrorKind::ContextWindowOverflow
         ));
+    })
+    .await;
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn stream_gemini_prompt_bounds_exit_stderr() {
+    let long_tail = "x".repeat(600);
+    let stderr = format!(
+        "request failed https://api.test/path?api_key=secret&token=secret2 auth=Bearer bearer-secret {long_tail}"
+    );
+    let (root, script_path) = write_mock_gemini_script_with_stderr(&[], &stderr, 7);
+    with_temp_env_var("HONE_GEMINI_BIN", script_path.as_os_str(), || async {
+        let mut full = String::new();
+        let mut raw_lines = 0u32;
+        let options = GeminiStreamOptions {
+            max_iterations: 1,
+            overall_timeout: Duration::from_secs(3),
+            per_line_timeout: Duration::from_secs(3),
+        };
+
+        let err = stream_gemini_prompt(
+            "hi",
+            "tester",
+            &root.to_string_lossy(),
+            1,
+            &options,
+            &mut full,
+            &mut raw_lines,
+            Arc::new(NoopEmitter),
+        )
+        .await
+        .expect_err("should fail");
+        assert!(matches!(err.kind, AgentSessionErrorKind::ExitFailure));
+        assert!(err.message.contains("api_key=<redacted>"));
+        assert!(err.message.contains("token=<redacted>"));
+        assert!(err.message.contains("Bearer <redacted>"));
+        assert!(!err.message.contains("secret"));
+        assert!(
+            err.message.chars().count() < 520,
+            "stderr detail should be bounded: {}",
+            err.message
+        );
     })
     .await;
     let _ = std::fs::remove_dir_all(root);

@@ -32,7 +32,7 @@ mod tests;
 pub(crate) use ingest::{acp_prompt_succeeded, ingest_acp_message_chunk, ingest_acp_usage_update};
 pub(crate) use log::{
     AcpEventLogContext, log_acp_payload, log_acp_prompt_stop_diagnostics, log_acp_raw_parse_error,
-    timeout_message_with_stderr,
+    message_with_bounded_stderr, timeout_message_with_stderr,
 };
 pub(crate) use protocol::{
     build_acp_prompt_text, create_acp_session, set_acp_session_model, wait_for_response,
