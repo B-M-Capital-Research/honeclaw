@@ -291,7 +291,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 });
                 let feishu_allow_emails = prompt_text(
                     &theme,
-                    "Feishu allow emails (comma-separated; empty means allow all)",
+                    "Feishu allowed emails (comma-separated; empty means allow all)",
                     &csv_default(&config.feishu.allow_emails),
                 )?;
                 mutations.push(sequence_mutation(
@@ -300,7 +300,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 ));
                 let feishu_allow_mobiles = prompt_text(
                     &theme,
-                    "Feishu allow mobiles (comma-separated; empty means allow all)",
+                    "Feishu allowed mobile numbers (comma-separated; empty means allow all)",
                     &csv_default(&config.feishu.allow_mobiles),
                 )?;
                 mutations.push(sequence_mutation(
@@ -309,7 +309,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 ));
                 let feishu_allow_open_ids = prompt_text(
                     &theme,
-                    "Feishu allow open_ids (comma-separated; empty means allow all)",
+                    "Feishu allowed open IDs (comma-separated; empty means allow all)",
                     &csv_default(&config.feishu.allow_open_ids),
                 )?;
                 mutations.push(sequence_mutation(
@@ -347,7 +347,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 });
                 let telegram_allow_from = prompt_text(
                     &theme,
-                    "Telegram allow_from (comma-separated; empty means allow all)",
+                    "Telegram allowed users (comma-separated; empty means allow all)",
                     &csv_default(&config.telegram.allow_from),
                 )?;
                 mutations.push(sequence_mutation(
@@ -385,7 +385,7 @@ pub(crate) fn run_configure(config_path: Option<&Path>, args: ConfigureArgs) -> 
                 });
                 let discord_allow_from = prompt_text(
                     &theme,
-                    "Discord allow_from (comma-separated; empty means allow all)",
+                    "Discord allowed users (comma-separated; empty means allow all)",
                     &csv_default(&config.discord.allow_from),
                 )?;
                 mutations.push(sequence_mutation("discord.allow_from", &discord_allow_from));

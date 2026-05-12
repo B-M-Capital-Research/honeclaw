@@ -525,18 +525,18 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "channel.feishu.allow_emails_prompt",
-        "Feishu allow_emails（逗号分隔；留空表示允许全部邮箱）",
-        "Feishu allow_emails (comma-separated; empty means allow all emails)",
+        "Feishu 允许邮箱（逗号分隔；留空表示允许全部邮箱）",
+        "Feishu allowed emails (comma-separated; empty means allow all emails)",
     ),
     (
         "channel.feishu.allow_mobiles_prompt",
-        "Feishu allow_mobiles（逗号分隔；留空表示允许全部手机号）",
-        "Feishu allow_mobiles (comma-separated; empty means allow all mobile numbers)",
+        "Feishu 允许手机号（逗号分隔；留空表示允许全部手机号）",
+        "Feishu allowed mobile numbers (comma-separated; empty means allow all mobile numbers)",
     ),
     (
         "channel.feishu.allow_open_ids_prompt",
-        "Feishu allow_open_ids（逗号分隔；留空表示允许全部 open_id）",
-        "Feishu allow_open_ids (comma-separated; empty means allow all open_ids)",
+        "Feishu 允许 open ID（逗号分隔；留空表示允许全部 open ID）",
+        "Feishu allowed open IDs (comma-separated; empty means allow all open IDs)",
     ),
     ("channel.telegram.label", "Telegram", "Telegram"),
     (
@@ -566,8 +566,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "channel.telegram.allow_from_prompt",
-        "Telegram allow_from（逗号分隔；留空表示允许全部用户）",
-        "Telegram allow_from (comma-separated; empty means allow all users)",
+        "Telegram 允许用户（逗号分隔；留空表示允许全部用户）",
+        "Telegram allowed users (comma-separated; empty means allow all users)",
     ),
     ("channel.discord.label", "Discord", "Discord"),
     (
@@ -592,8 +592,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "channel.discord.allow_from_prompt",
-        "Discord allow_from（逗号分隔；留空表示允许全部用户）",
-        "Discord allow_from (comma-separated; empty means allow all users)",
+        "Discord 允许用户（逗号分隔；留空表示允许全部用户）",
+        "Discord allowed users (comma-separated; empty means allow all users)",
     ),
     // ── Admin step ───────────────────────────────────────────────────────
     (
@@ -623,13 +623,13 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "admin.telegram.user_id_prompt",
-        "Telegram admin user id（数字 ID，如 8039067465；可通过 @userinfobot 获取；留空跳过）",
-        "Telegram admin user id (numeric ID, e.g. 8039067465; get it from @userinfobot; blank to skip)",
+        "Telegram admin user ID（数字 ID，如 8039067465；可通过 @userinfobot 获取；留空跳过）",
+        "Telegram admin user ID (numeric ID, e.g. 8039067465; get it from @userinfobot; blank to skip)",
     ),
     (
         "admin.discord.user_id_prompt",
-        "Discord admin user id（18 位数字 ID，可在 Discord 开发者模式下右键用户头像复制；留空跳过）",
-        "Discord admin user id (18-digit numeric ID, copy via right-click on the user avatar in Developer Mode; blank to skip)",
+        "Discord admin user ID（18 位数字 ID，可在 Discord 开发者模式下右键用户头像复制；留空跳过）",
+        "Discord admin user ID (18-digit numeric ID, copy via right-click on the user avatar in Developer Mode; blank to skip)",
     ),
     (
         "admin.feishu.choice_email",
@@ -643,14 +643,14 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "admin.feishu.choice_open_id",
-        "open_id（ou_xxx）",
-        "open_id (ou_xxx)",
+        "open ID（ou_xxx）",
+        "open ID (ou_xxx)",
     ),
     ("admin.feishu.choice_skip", "跳过", "Skip"),
     (
         "admin.feishu.kind_prompt",
-        "Feishu admin 用哪种 id 添加？",
-        "Which kind of id should be used for the Feishu admin?",
+        "Feishu admin 用哪种 ID 添加？",
+        "Which ID type should be used for the Feishu admin?",
     ),
     (
         "admin.feishu.email_prompt",
@@ -664,8 +664,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "admin.feishu.open_id_prompt",
-        "Feishu admin open_id",
-        "Feishu admin open_id",
+        "Feishu admin open ID",
+        "Feishu admin open ID",
     ),
     // ── Provider step ────────────────────────────────────────────────────
     (

@@ -178,7 +178,7 @@ The next section’s screenshots show the full **model and channel** setup.
 
 These screenshots are illustrative only—Honeclaw supports **many more workflows and setups** you can unlock as you go.
 
-[`CASES_EN.md`](CASES_EN.md) collects **real-style Q&A examples** from Hone (single-stock logic, follow-up questions, daily portfolio-aware suggestions, deep dives, scheduled tasks, theme scouting, and macro). They are laid out as a two-column table on GitHub for quick reading.
+[`CASES_EN.md`](CASES_EN.md) collects **real-world Q&A examples** from Hone (single-stock logic, follow-up questions, daily portfolio-aware suggestions, deep dives, scheduled tasks, theme scouting, and macro). They are laid out as a two-column table on GitHub for quick reading.
 
 # 5. 💡 A Note from the Maintainer
 

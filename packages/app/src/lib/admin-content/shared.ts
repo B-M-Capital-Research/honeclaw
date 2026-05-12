@@ -158,7 +158,7 @@ const ZH = {
 const EN: typeof ZH = {
   brand: {
     eyebrow: "OPEN FINANCIAL CONSOLE",
-    public_chat_aria: "Open public surface (port 8088)",
+    public_chat_aria: "Open public chat (port 8088)",
   },
 
   nav: {

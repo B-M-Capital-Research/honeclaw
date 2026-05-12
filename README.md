@@ -100,7 +100,7 @@ curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/
 hone-cli doctor
 hone-cli onboard
 hone-cli start
-# In another terminal, open or start the bundled Web surfaces:
+# In another terminal, open or start the bundled Web interfaces:
 hone-cli web admin-ui
 hone-cli web user-ui
 ```
@@ -112,7 +112,7 @@ brew install B-M-Capital-Research/honeclaw/honeclaw
 hone-cli doctor
 hone-cli onboard
 hone-cli start
-# In another terminal, open or start the bundled Web surfaces:
+# In another terminal, open or start the bundled Web interfaces:
 hone-cli web admin-ui
 hone-cli web user-ui
 ```
@@ -161,7 +161,7 @@ If you are interested in accessing these capabilities, feel free to reach out to
 
 # 6. 🤝 Contributing
 
-We welcome all forms of contributions! Whether it's Rust backend dev, LLM prompt engineering, or financial data analysis.
+We welcome all forms of contributions, including Rust backend development, LLM prompt engineering, and financial data analysis.
 
 📄 License
 

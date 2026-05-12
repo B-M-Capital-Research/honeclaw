@@ -308,7 +308,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "系统架构",
         intro:
-          "Rust 核心引擎 · 多 Runner 抽象 · SolidJS 前端。公开 user-ui、管理后台和渠道进程共用同一套后端能力，但按 surface、端口和进程边界隔离。",
+          "Rust 核心引擎 · 多 Runner 抽象 · SolidJS 前端。公开 user-ui、管理后台和渠道进程共用同一套后端能力，但按界面、端口和进程边界隔离。",
         footnote_prefix: "完整模块说明见",
         footnote_link: "docs/repo-map.md ↗",
       },
@@ -399,11 +399,11 @@ const CONTENT_ZH = {
       },
       {
         title: "公开 user-ui",
-        desc: "public surface 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用手机号 + 短信验证码登录，管理端 Web 白名单是准入来源，后端只暴露 `/api/public/*` 与公开聊天入口。",
+        desc: "公开 user-ui 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用手机号 + 短信验证码登录，管理端 Web 白名单是准入来源，后端只暴露 `/api/public/*` 与公开聊天入口。",
       },
       {
         title: "管理后台",
-        desc: "admin surface 提供 dashboard、sessions、skills、tasks、users、research、notifications、schedule、settings、logs 等维护入口。",
+        desc: "管理后台提供 dashboard、sessions、skills、tasks、users、research、notifications、schedule、settings、logs 等维护入口。",
       },
       {
         title: "Runner 层",
@@ -1435,7 +1435,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       {
         tag: "Cross-platform notifications",
         title: "Get Hone in iMessage / Lark",
-        body: "Not just the web. Hone reaches you through iMessage, Lark, Discord and more — in whatever surface you're already using.",
+        body: "Not just the web. Hone reaches you through iMessage, Lark, Discord and more — in whatever channel you're already using.",
         image: "/hone_channels.jpg",
       },
     ],
@@ -1474,8 +1474,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         symbol: "✦",
-        title: "Multi-surface access",
-        body: "Web, iMessage, Lark / Feishu, Discord, Telegram, CLI — Hone on whichever surface you already live in.",
+        title: "Multi-channel access",
+        body: "Web, iMessage, Lark / Feishu, Discord, Telegram, CLI — Hone on whichever channel you already live in.",
       },
       {
         symbol: "⌘",
@@ -1634,13 +1634,13 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 03 · CHANNELS",
         title: "Channels",
         intro:
-          "Hone is a multi-surface research agent. Each channel is an independent process — start, stop, and configure them on their own.",
+          "Hone is a multi-channel research agent. Each channel is an independent process — start, stop, and configure them on their own.",
       },
       architecture: {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "Architecture",
         intro:
-          "Rust core · multi-runner abstraction · SolidJS frontend. The public user-ui, admin console, and channel processes share backend capabilities while staying separated by surface, port, and process boundary.",
+          "Rust core · multi-runner abstraction · SolidJS frontend. The public user-ui, admin console, and channel processes share backend capabilities while staying separated by interface, port, and process boundary.",
         footnote_prefix: "Full module walkthrough in",
         footnote_link: "docs/repo-map.md ↗",
       },
@@ -1721,11 +1721,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user-ui",
-        desc: "The public surface routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with phone + SMS verification, the admin Web whitelist is the admission source, and the backend exposes only `/api/public/*` plus public chat entrypoints.",
+        desc: "The public user-ui routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with phone + SMS verification, the admin Web whitelist is the admission source, and the backend exposes only `/api/public/*` plus public chat entrypoints.",
       },
       {
         title: "Admin console",
-        desc: "The admin surface includes dashboard, sessions, skills, tasks, users, research, notifications, schedule, settings, and logs for operators.",
+        desc: "The admin console includes dashboard, sessions, skills, tasks, users, research, notifications, schedule, settings, and logs for operators.",
       },
       {
         title: "Runner layer",
