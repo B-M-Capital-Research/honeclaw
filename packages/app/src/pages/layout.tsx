@@ -16,6 +16,7 @@ import { useBackend } from "@/context/backend"
 import { TaskList } from "@/components/task-list"
 import { ResearchList } from "@/components/research-list"
 import { actorKey } from "@/lib/actors"
+import { resolveUsersTab } from "@/pages/users-model"
 
 export default function ConsoleLayout(props: ParentProps) {
   const location = useLocation()
@@ -92,7 +93,7 @@ export default function ConsoleLayout(props: ParentProps) {
   const onSelectUserActor = (actor: { channel: string; user_id: string; channel_scope?: string }) => {
     const k = encodeURIComponent(actorKey(actor))
     // 保留当前 tab,默认 portfolio
-    const tab = (params.tab as string) || "portfolio"
+    const tab = resolveUsersTab(params.tab)
     navigate(`/users/${k}/${tab}`)
   }
 

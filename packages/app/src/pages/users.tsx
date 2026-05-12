@@ -13,16 +13,11 @@ import { useSessions } from "@/context/sessions"
 import { actorFromUser, actorKey, parseActorKey, type ActorRef } from "@/lib/actors"
 import { USERS } from "@/lib/admin-content/users"
 import { tpl } from "@/lib/i18n"
-
-type UsersTab = "portfolio" | "profiles" | "mainline" | "sessions" | "research"
-
-const TAB_LIST: { id: UsersTab; labelKey: keyof typeof USERS.page; capability?: string }[] = [
-  { id: "portfolio", labelKey: "tab_portfolio" },
-  { id: "profiles", labelKey: "tab_profiles", capability: "company_profiles" },
-  { id: "mainline", labelKey: "tab_mainline" },
-  { id: "sessions", labelKey: "tab_sessions" },
-  { id: "research", labelKey: "tab_research", capability: "research" },
-]
+import {
+  availableUsersTabs,
+  resolveUsersTab,
+  type UsersTab,
+} from "@/pages/users-model"
 
 function TabBtn(props: { label: string; active: boolean; onClick: () => void }) {
   return (
@@ -223,14 +218,10 @@ export default function UsersPage() {
     parseActorKey(params.actorKey ? decodeURIComponent(params.actorKey) : undefined),
   )
 
-  const tab = createMemo<UsersTab>(() => {
-    const t = params.tab as UsersTab | undefined
-    if (t === "profiles" || t === "sessions" || t === "research" || t === "mainline") return t
-    return "portfolio"
-  })
+  const tab = createMemo<UsersTab>(() => resolveUsersTab(params.tab))
 
   const tabsAvailable = createMemo(() =>
-    TAB_LIST.filter((t) => !t.capability || backend.hasCapability(t.capability)),
+    availableUsersTabs((capability) => backend.hasCapability(capability)),
   )
 
   // URL → context 单向同步:把当前 actor 推到 portfolio 和 companyProfiles 两个 store

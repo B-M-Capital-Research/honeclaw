@@ -2,15 +2,34 @@ import type {
   AgentSettings,
   AgentSettingsUpdateResult,
   AgentProvider,
+  AuxiliarySettings,
   DesktopChannelSettings,
   DesktopChannelSettingsInput,
   FmpSettings,
+  HoneCloudSettings,
   LlmProfileSettings,
   MetaInfo,
   TavilySettings,
 } from "@/lib/types"
 
 export type LanguageDraft = "zh" | "en"
+export type SettingsTabKey = "agent" | "data" | "notify" | "channel" | "invite"
+export type LlmProfileBindingKey = keyof Omit<LlmProfileSettings, "profiles">
+export type InviteAction =
+  | "disable"
+  | "enable"
+  | "reset"
+  | "api-key"
+  | "api-key-reset"
+
+export const SETTINGS_TAB_KEYS: SettingsTabKey[] = [
+  "agent",
+  "data",
+  "notify",
+  "channel",
+  "invite",
+]
+export const CHANNEL_CHAT_SCOPES = ["DM_ONLY", "GROUPCHAT_ONLY", "ALL"] as const
 
 export function defaultLanguageDraft(meta?: MetaInfo | null): LanguageDraft {
   return meta?.language === "en" ? "en" : "zh"
@@ -189,12 +208,89 @@ export function mergeAgentSettings(settings?: AgentSettings): AgentSettings {
   }
 }
 
+export function updateLlmProfileBinding(
+  current: LlmProfileSettings,
+  key: LlmProfileBindingKey,
+  value: string,
+): LlmProfileSettings {
+  return {
+    ...current,
+    [key]: value,
+  }
+}
+
+export function updateLlmProfileEntry(
+  current: LlmProfileSettings,
+  index: number,
+  patch: Partial<LlmProfileSettings["profiles"][number]>,
+): LlmProfileSettings {
+  return {
+    ...current,
+    profiles: current.profiles.map((profile, i) =>
+      i === index ? { ...profile, ...patch } : profile,
+    ),
+  }
+}
+
 export function canSelectRunner(
   currentRunner: AgentProvider,
   nextRunner: AgentProvider,
   isSaving: boolean,
 ): boolean {
   return !isSaving && currentRunner !== nextRunner
+}
+
+export function resolveSettingsTab(raw?: string | null): SettingsTabKey {
+  return SETTINGS_TAB_KEYS.includes(raw as SettingsTabKey)
+    ? (raw as SettingsTabKey)
+    : "agent"
+}
+
+export function canShowSettingsTab(
+  key: SettingsTabKey,
+  hasWebInvites: boolean,
+): boolean {
+  return key !== "invite" || hasWebInvites
+}
+
+export function inviteActionKey(userId: string, action: InviteAction): string {
+  return `${userId}:${action}`
+}
+
+export function isInviteActionRunning(
+  currentKey: string,
+  userId: string,
+  action: InviteAction,
+): boolean {
+  return currentKey === inviteActionKey(userId, action)
+}
+
+export function mergeHoneCloudDraft(
+  current: AgentSettings,
+  patch: Partial<HoneCloudSettings>,
+): AgentSettings {
+  return {
+    ...current,
+    honeCloud: {
+      ...defaultAgentSettings().honeCloud!,
+      ...current.honeCloud,
+      ...patch,
+    },
+  }
+}
+
+export function mergeAuxiliaryDraft(
+  current: AgentSettings,
+  patch: Partial<AuxiliarySettings>,
+): AgentSettings {
+  return {
+    ...current,
+    auxiliary: {
+      ...defaultAgentSettings().auxiliary!,
+      ...current.auxiliary,
+      ...patch,
+    },
+  }
 }
 
 export function normalizePhoneNumber(value: string): string {

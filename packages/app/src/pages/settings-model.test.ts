@@ -4,22 +4,32 @@ import {
   appendApiKey,
   appendApiKeyVisibility,
   canSelectRunner,
+  canShowSettingsTab,
+  CHANNEL_CHAT_SCOPES,
   defaultAgentSettings,
   defaultLanguageDraft,
   formatCsv,
+  inviteActionKey,
   resolveHoneCloudOpenAiBaseUrl,
   initialApiKeyVisibility,
   isAgentSettingsRuntimeMismatch,
+  isInviteActionRunning,
+  mergeAuxiliaryDraft,
   mergeAgentSettings,
+  mergeHoneCloudDraft,
   normalizePhoneNumber,
   normalizeApiKeys,
   optionalNumber,
   parseCsv,
   removeApiKey,
   removeApiKeyVisibility,
+  resolveSettingsTab,
+  SETTINGS_TAB_KEYS,
   toChannelDraft,
   toggleApiKeyVisibility,
   updateApiKeyList,
+  updateLlmProfileBinding,
+  updateLlmProfileEntry,
 } from "./settings-model"
 import type { MetaInfo } from "@/lib/types"
 
@@ -209,6 +219,68 @@ describe("settings-model", () => {
   it("skips runner auto-save while a runner switch is already saving", () => {
     expect(canSelectRunner("opencode_acp", "multi-agent", true)).toBe(false)
     expect(canSelectRunner("opencode_acp", "multi-agent", false)).toBe(true)
+  })
+
+  it("keeps settings navigation state rules in the model layer", () => {
+    expect(SETTINGS_TAB_KEYS).toEqual(["agent", "data", "notify", "channel", "invite"])
+    expect(resolveSettingsTab("channel")).toBe("channel")
+    expect(resolveSettingsTab("unknown")).toBe("agent")
+    expect(resolveSettingsTab(undefined)).toBe("agent")
+    expect(canShowSettingsTab("agent", false)).toBe(true)
+    expect(canShowSettingsTab("invite", false)).toBe(false)
+    expect(canShowSettingsTab("invite", true)).toBe(true)
+  })
+
+  it("derives invite action keys outside the settings page component", () => {
+    expect(inviteActionKey("user-1", "api-key-reset")).toBe("user-1:api-key-reset")
+    expect(isInviteActionRunning("user-1:disable", "user-1", "disable")).toBe(true)
+    expect(isInviteActionRunning("user-1:disable", "user-1", "enable")).toBe(false)
+  })
+
+  it("keeps channel scope options centralized", () => {
+    expect(CHANNEL_CHAT_SCOPES).toEqual(["DM_ONLY", "GROUPCHAT_ONLY", "ALL"])
+  })
+
+  it("merges agent sub-drafts without dropping default fields", () => {
+    const withoutNestedDefaults = {
+      ...defaultAgentSettings(),
+      honeCloud: undefined,
+      auxiliary: undefined,
+    }
+
+    expect(
+      mergeHoneCloudDraft(withoutNestedDefaults, { apiKey: "hck_test" }).honeCloud,
+    ).toEqual({
+      baseUrl: "https://hone-claw.com",
+      apiKey: "hck_test",
+      model: "hone-cloud",
+    })
+    expect(
+      mergeAuxiliaryDraft(withoutNestedDefaults, { model: "next-model" })
+        .auxiliary,
+    ).toEqual({
+      baseUrl: "https://api.minimaxi.com/v1",
+      apiKey: "",
+      model: "next-model",
+    })
+  })
+
+  it("updates LLM profile draft slices immutably", () => {
+    const current = defaultAgentSettings().llmProfiles!
+    const withBinding = updateLlmProfileBinding(current, "defaultProfile", "aux")
+    expect(withBinding.defaultProfile).toBe("aux")
+    expect(current.defaultProfile).toBe("main")
+    expect(withBinding.profiles).toBe(current.profiles)
+
+    const withEntry = updateLlmProfileEntry(current, 0, {
+      model: "openai/gpt-5.4",
+      maxTokens: 2048,
+    })
+    expect(withEntry.profiles[0].model).toBe("openai/gpt-5.4")
+    expect(withEntry.profiles[0].maxTokens).toBe(2048)
+    expect(current.profiles[0].model).toBe("moonshotai/kimi-k2.5")
+    expect(withEntry.profiles).not.toBe(current.profiles)
+    expect(withEntry.profiles[1]).toBe(current.profiles[1])
   })
 
   it("resolves Hone Cloud URLs as OpenAI-compatible bases", () => {

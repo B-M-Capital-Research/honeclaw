@@ -40,6 +40,8 @@ import {
   appendApiKey,
   appendApiKeyVisibility,
   canSelectRunner,
+  canShowSettingsTab,
+  CHANNEL_CHAT_SCOPES,
   defaultAgentSettings,
   defaultChannelDraft,
   defaultFmpSettings,
@@ -47,26 +49,36 @@ import {
   defaultTavilySettings,
   formatCsv,
   initialApiKeyVisibility,
+  inviteActionKey as buildInviteActionKey,
   isAgentSettingsRuntimeMismatch,
+  isInviteActionRunning as isInviteActionKeyRunning,
+  mergeAuxiliaryDraft,
   mergeAgentSettings,
+  mergeHoneCloudDraft,
   normalizePhoneNumber,
   normalizeApiKeys,
   optionalNumber,
   parseCsv,
   removeApiKey,
   removeApiKeyVisibility,
+  resolveSettingsTab,
   resolveHoneCloudOpenAiBaseUrl,
+  SETTINGS_TAB_KEYS,
   toChannelDraft,
   toggleApiKeyVisibility,
   updateApiKeyList,
+  updateLlmProfileBinding as updateLlmProfileBindingDraft,
+  updateLlmProfileEntry as updateLlmProfileEntryDraft,
+  type InviteAction,
   type LanguageDraft,
+  type LlmProfileBindingKey,
+  type SettingsTabKey,
 } from "@/pages/settings-model";
 import { SETTINGS } from "@/lib/admin-content/settings";
 import { tpl } from "@/lib/i18n";
 
 type LlmProfileSettingsDraft = NonNullable<AgentSettings["llmProfiles"]>;
 type LlmProfileEntryDraft = LlmProfileSettingsDraft["profiles"][number];
-type LlmProfileBindingKey = keyof Omit<LlmProfileSettingsDraft, "profiles">;
 type LlmProfileBindingRow = { key: LlmProfileBindingKey; label: string };
 type CheckStatus = "idle" | "checking" | "ok" | "error";
 type CheckProbeResult = { ok: boolean; message: string };
@@ -165,7 +177,6 @@ export default function SettingsPage() {
   const backend = useBackend();
   const [channelDraft, setChannelDraft] =
     createSignal<DesktopChannelSettingsInput>(defaultChannelDraft());
-  const chatScopes = ["DM_ONLY", "GROUPCHAT_ONLY", "ALL"];
   const [
     desktopChannelSettings,
     {
@@ -430,27 +441,13 @@ export default function SettingsPage() {
   const updateHoneCloudDraft = (
     patch: Partial<NonNullable<AgentSettings["honeCloud"]>>,
   ) => {
-    setAgentDraft((prev) => ({
-      ...prev,
-      honeCloud: {
-        ...defaultAgentSettings().honeCloud!,
-        ...prev.honeCloud,
-        ...patch,
-      },
-    }));
+    setAgentDraft((prev) => mergeHoneCloudDraft(prev, patch));
   };
 
   const updateAuxiliaryDraft = (
     patch: Partial<NonNullable<AgentSettings["auxiliary"]>>,
   ) => {
-    setAgentDraft((prev) => ({
-      ...prev,
-      auxiliary: {
-        ...defaultAgentSettings().auxiliary!,
-        ...prev.auxiliary,
-        ...patch,
-      },
-    }));
+    setAgentDraft((prev) => mergeAuxiliaryDraft(prev, patch));
   };
 
   // ── OpenAI-compatible endpoint tests ───────────────────────────────────────
@@ -564,22 +561,18 @@ export default function SettingsPage() {
     key: LlmProfileBindingKey,
     value: string,
   ) => {
-    updateLlmProfiles((current) => ({
-      ...current,
-      [key]: value,
-    }));
+    updateLlmProfiles((current) =>
+      updateLlmProfileBindingDraft(current, key, value),
+    );
   };
 
   const updateLlmProfileEntry = (
     index: number,
     patch: Partial<LlmProfileEntryDraft>,
   ) => {
-    updateLlmProfiles((current) => ({
-      ...current,
-      profiles: current.profiles.map((profile, i) =>
-        i === index ? { ...profile, ...patch } : profile,
-      ),
-    }));
+    updateLlmProfiles((current) =>
+      updateLlmProfileEntryDraft(current, index, patch),
+    );
   };
 
   createEffect(() => {
@@ -668,8 +661,8 @@ export default function SettingsPage() {
 
   const isInviteActionRunning = (
     userId: string,
-    action: "disable" | "enable" | "reset" | "api-key" | "api-key-reset",
-  ) => inviteActionKey() === `${userId}:${action}`;
+    action: InviteAction,
+  ) => isInviteActionKeyRunning(inviteActionKey(), userId, action);
 
   const handleDisableInvite = async (invite: WebInviteInfo) => {
     if (typeof window !== "undefined") {
@@ -680,7 +673,7 @@ export default function SettingsPage() {
     }
     setInviteMessage("");
     setInviteError("");
-    setInviteActionKey(`${invite.user_id}:disable`);
+    setInviteActionKey(buildInviteActionKey(invite.user_id, "disable"));
     try {
       const result = await disableWebInvite(invite.user_id);
       replaceInvite(result.invite);
@@ -695,7 +688,7 @@ export default function SettingsPage() {
   const handleEnableInvite = async (invite: WebInviteInfo) => {
     setInviteMessage("");
     setInviteError("");
-    setInviteActionKey(`${invite.user_id}:enable`);
+    setInviteActionKey(buildInviteActionKey(invite.user_id, "enable"));
     try {
       const result = await enableWebInvite(invite.user_id);
       replaceInvite(result.invite);
@@ -716,7 +709,7 @@ export default function SettingsPage() {
     }
     setInviteMessage("");
     setInviteError("");
-    setInviteActionKey(`${invite.user_id}:reset`);
+    setInviteActionKey(buildInviteActionKey(invite.user_id, "reset"));
     try {
       const result = await resetWebInvite(invite.user_id);
       replaceInvite(result.invite);
@@ -751,7 +744,7 @@ export default function SettingsPage() {
   const handleGetInviteApiKey = async (invite: WebInviteInfo) => {
     setInviteMessage("");
     setInviteError("");
-    setInviteActionKey(`${invite.user_id}:api-key`);
+    setInviteActionKey(buildInviteActionKey(invite.user_id, "api-key"));
     try {
       const result = await getWebInviteApiKey(invite.user_id);
       replaceInvite(result.invite);
@@ -775,7 +768,7 @@ export default function SettingsPage() {
     }
     setInviteMessage("");
     setInviteError("");
-    setInviteActionKey(`${invite.user_id}:api-key-reset`);
+    setInviteActionKey(buildInviteActionKey(invite.user_id, "api-key-reset"));
     try {
       const result = await resetWebInviteApiKey(invite.user_id);
       replaceInvite(result.invite);
@@ -790,24 +783,17 @@ export default function SettingsPage() {
     }
   };
 
-  type TabKey = "agent" | "data" | "notify" | "channel" | "invite";
-  const TAB_KEYS: TabKey[] = ["agent", "data", "notify", "channel", "invite"];
-  const tabLabel = (key: TabKey): string => SETTINGS.tabs[key];
+  const tabLabel = (key: SettingsTabKey): string => SETTINGS.tabs[key];
   const [searchParams, setSearchParams] = useSearchParams<{ tab?: string }>();
-  const activeTab = (): TabKey => {
-    const raw = searchParams.tab;
-    return (TAB_KEYS as string[]).includes(raw ?? "")
-      ? (raw as TabKey)
-      : "agent";
-  };
-  const selectTab = (key: TabKey) => setSearchParams({ tab: key });
+  const activeTab = (): SettingsTabKey => resolveSettingsTab(searchParams.tab);
+  const selectTab = (key: SettingsTabKey) => setSearchParams({ tab: key });
   let contentRef: HTMLDivElement | undefined;
   createEffect(() => {
     // track active tab and reset scroll on change
     activeTab();
     if (contentRef) contentRef.scrollTop = 0;
   });
-  const isTab = (key: TabKey) => activeTab() === key;
+  const isTab = (key: SettingsTabKey) => activeTab() === key;
 
   return (
     <div class="mx-auto flex h-full max-w-4xl flex-col">
@@ -875,10 +861,13 @@ export default function SettingsPage() {
         </Show>
       </form>
       <nav class="sticky top-0 z-10 -mx-1 flex gap-1 overflow-x-auto border-b border-[color:var(--border)] bg-[color:var(--surface)]/95 px-1 py-2 backdrop-blur">
-        <For each={TAB_KEYS}>
+        <For each={SETTINGS_TAB_KEYS}>
           {(key) => (
             <Show
-              when={key !== "invite" || backend.hasCapability("web_invites")}
+              when={canShowSettingsTab(
+                key,
+                backend.hasCapability("web_invites"),
+              )}
             >
               <button
                 type="button"
@@ -2292,7 +2281,7 @@ export default function SettingsPage() {
                               }))
                             }
                           >
-                            <For each={chatScopes}>
+                            <For each={CHANNEL_CHAT_SCOPES}>
                               {(scope) => <option value={scope}>{scope}</option>}
                             </For>
                           </select>
@@ -2432,7 +2421,7 @@ export default function SettingsPage() {
                               }))
                             }
                           >
-                            <For each={chatScopes}>
+                            <For each={CHANNEL_CHAT_SCOPES}>
                               {(scope) => <option value={scope}>{scope}</option>}
                             </For>
                           </select>
@@ -2536,7 +2525,7 @@ export default function SettingsPage() {
                               }))
                             }
                           >
-                            <For each={chatScopes}>
+                            <For each={CHANNEL_CHAT_SCOPES}>
                               {(scope) => <option value={scope}>{scope}</option>}
                             </For>
                           </select>
