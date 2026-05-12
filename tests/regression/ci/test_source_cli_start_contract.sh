@@ -47,4 +47,10 @@ if ! contains 'hone-cli start --build' "$RESTART_SCRIPT"; then
   exit 1
 fi
 
+restart_usage="$(bash "$RESTART_SCRIPT" 2>&1 || true)"
+if [[ "$restart_usage" != *'scripts/restart_hone.sh <project_root> [old_pid]'* ]]; then
+  echo "[FAIL] restart_hone missing-argument usage should show old_pid as optional" >&2
+  exit 1
+fi
+
 echo "[PASS] source CLI start contract regression passed"

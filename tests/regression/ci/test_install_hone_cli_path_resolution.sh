@@ -38,8 +38,12 @@ esac
 ASSET_NAME="honeclaw-${OS_SLUG}-${ARCH_SLUG}.tar.gz"
 BUNDLE_NAME="${ASSET_NAME%.tar.gz}"
 ARCHIVE_PATH="$TMP_ROOT/$ASSET_NAME"
+INCOMPLETE_ARCHIVE_PATH="$TMP_ROOT/incomplete-$ASSET_NAME"
 
-mkdir -p "$TMP_ROOT/$BUNDLE_NAME/bin" "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw"
+mkdir -p \
+  "$TMP_ROOT/$BUNDLE_NAME/bin" \
+  "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/web" \
+  "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/web-public"
 cat > "$TMP_ROOT/$BUNDLE_NAME/bin/hone-cli" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -53,7 +57,23 @@ EOF
 cat > "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/soul.md" <<'EOF'
 # mock soul
 EOF
+cat > "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/web/index.html" <<'EOF'
+<!DOCTYPE html>
+EOF
+cat > "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/web-public/index.html" <<'EOF'
+<!DOCTYPE html>
+EOF
 tar -czf "$ARCHIVE_PATH" -C "$TMP_ROOT" "$BUNDLE_NAME"
+
+BROKEN_BUNDLE_NAME="${BUNDLE_NAME}-broken"
+mkdir -p \
+  "$TMP_ROOT/$BROKEN_BUNDLE_NAME/bin" \
+  "$TMP_ROOT/$BROKEN_BUNDLE_NAME/share/honeclaw/web"
+cp "$TMP_ROOT/$BUNDLE_NAME/bin/hone-cli" "$TMP_ROOT/$BROKEN_BUNDLE_NAME/bin/hone-cli"
+cp "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/config.example.yaml" "$TMP_ROOT/$BROKEN_BUNDLE_NAME/share/honeclaw/config.example.yaml"
+cp "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/soul.md" "$TMP_ROOT/$BROKEN_BUNDLE_NAME/share/honeclaw/soul.md"
+cp "$TMP_ROOT/$BUNDLE_NAME/share/honeclaw/web/index.html" "$TMP_ROOT/$BROKEN_BUNDLE_NAME/share/honeclaw/web/index.html"
+tar -czf "$INCOMPLETE_ARCHIVE_PATH" -C "$TMP_ROOT" "$BROKEN_BUNDLE_NAME"
 
 cat > "$TOOLS_DIR/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -122,6 +142,11 @@ run_path_hit_case() {
 
   if [[ "$output" == *'Current shell PATH does not include'* ]]; then
     echo "[FAIL] installer printed fallback PATH warning despite using a PATH dir" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *'hone-cli web user-ui'* ]]; then
+    echo "[FAIL] installer next steps should include the public Web UI command" >&2
     exit 1
   fi
 }
@@ -214,6 +239,30 @@ run_explicit_bin_dir_failure_case() {
   fi
 }
 
+run_missing_bundle_path_case() {
+  local home_dir="$TMP_ROOT/home-incomplete-bundle"
+  mkdir -p "$home_dir"
+
+  local output
+  if output="$(
+    env \
+      HOME="$home_dir" \
+      PATH="$TOOLS_DIR:/usr/bin:/bin" \
+      HONE_RUN_ONBOARD=0 \
+      HONE_GITHUB_REPO="example/honeclaw" \
+      MOCK_ARCHIVE_PATH="$INCOMPLETE_ARCHIVE_PATH" \
+      bash "$INSTALL_SCRIPT" 2>&1
+  )"; then
+    echo "[FAIL] installer accepted an incomplete release bundle" >&2
+    exit 1
+  fi
+
+  if [[ "$output" != *"release asset is missing required bundle path: share/honeclaw/web-public/index.html"* ]]; then
+    echo "[FAIL] installer did not explain the missing public Web bundle path" >&2
+    exit 1
+  fi
+}
+
 run_path_hit_case
 
 run_fallback_case "/bin/zsh" "$TMP_ROOT/home-fallback-zsh" "$TMP_ROOT/home-fallback-zsh/.zshrc"
@@ -221,5 +270,6 @@ mkdir -p "$TMP_ROOT/home-fallback-bash"
 touch "$TMP_ROOT/home-fallback-bash/.bashrc"
 run_fallback_case "/bin/bash" "$TMP_ROOT/home-fallback-bash" "$TMP_ROOT/home-fallback-bash/.bashrc"
 run_explicit_bin_dir_failure_case
+run_missing_bundle_path_case
 
 echo "[PASS] hone-cli install path resolution regression passed"

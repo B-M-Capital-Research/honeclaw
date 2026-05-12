@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TARGET_FILE="$ROOT_DIR/AGENTS.md"
 EXPECTED_FIRST_LINE="$(head -n 1 "$TARGET_FILE" | tr -d '\r')"
 

@@ -2,7 +2,7 @@
 # scripts/restart_hone.sh — Hone 后台重启辅助脚本
 #
 # 由 RestartHoneTool (Rust) 在后台以 nohup 调用，不要手动运行。
-# 使用方式：nohup bash scripts/restart_hone.sh <project_root> <old_pid> >> data/logs/restart.log 2>&1 &
+# 使用方式：nohup bash scripts/restart_hone.sh <project_root> [old_pid] >> data/logs/restart.log 2>&1 &
 #
 # 流程：
 #   1. 等待 3 秒（让当前对话回复发出去）
@@ -18,7 +18,7 @@ OLD_PID="${2:-}"
 
 if [[ -z "$PROJECT_ROOT" ]]; then
     echo "[restart_hone] error: missing project root argument" >&2
-    echo "usage: nohup bash scripts/restart_hone.sh <project_root> <old_pid> >> data/logs/restart.log 2>&1 &" >&2
+    echo "usage: nohup bash scripts/restart_hone.sh <project_root> [old_pid] >> data/logs/restart.log 2>&1 &" >&2
     exit 1
 fi
 

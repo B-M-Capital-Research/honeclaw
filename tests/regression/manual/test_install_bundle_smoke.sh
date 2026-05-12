@@ -24,6 +24,7 @@ cargo build -p hone-cli -p hone-console-page -p hone-mcp -p hone-imessage -p hon
 echo "[INFO] building web assets..."
 bun install --frozen-lockfile
 bun run build:web
+bun run build:web:public
 
 echo "[INFO] assembling install-like layout under $TMP_ROOT"
 mkdir -p "$CURRENT_ROOT/bin" "$CURRENT_ROOT/share/honeclaw" "$BIN_DIR" "$INSTALL_ROOT/data/runtime"
@@ -34,6 +35,7 @@ cp config.example.yaml "$CURRENT_ROOT/share/honeclaw/config.example.yaml"
 cp soul.md "$CURRENT_ROOT/share/honeclaw/soul.md"
 cp -R skills "$CURRENT_ROOT/share/honeclaw/skills"
 cp -R packages/app/dist "$CURRENT_ROOT/share/honeclaw/web"
+cp -R packages/app/dist-public "$CURRENT_ROOT/share/honeclaw/web-public"
 cp "$CURRENT_ROOT/share/honeclaw/config.example.yaml" "$INSTALL_ROOT/config.yaml"
 cp "$CURRENT_ROOT/share/honeclaw/soul.md" "$INSTALL_ROOT/soul.md"
 
@@ -50,6 +52,7 @@ export HONE_USER_CONFIG_PATH="${HONE_USER_CONFIG_PATH:-$HONE_HOME/config.yaml}"
 export HONE_DATA_DIR="${HONE_DATA_DIR:-$HONE_HOME/data}"
 export HONE_SKILLS_DIR="${HONE_SKILLS_DIR:-$CURRENT_ROOT/share/honeclaw/skills}"
 export HONE_WEB_DIST_DIR="${HONE_WEB_DIST_DIR:-$CURRENT_ROOT/share/honeclaw/web}"
+export HONE_PUBLIC_WEB_DIST_DIR="${HONE_PUBLIC_WEB_DIST_DIR:-$CURRENT_ROOT/share/honeclaw/web-public}"
 
 exec "$CURRENT_ROOT/bin/hone-cli" "$@"
 EOF
@@ -91,6 +94,13 @@ fi
 echo "[INFO] root page smoke"
 if ! curl -fsS http://127.0.0.1:8077/ | grep -Eq '<!DOCTYPE html>|<html'; then
   echo "[FAIL] hone-cli start did not serve bundled web assets" >&2
+  cat "$TMP_ROOT/start.log" >&2
+  exit 1
+fi
+
+echo "[INFO] public root page smoke"
+if ! curl -fsS http://127.0.0.1:8088/ | grep -Eq '<!DOCTYPE html>|<html'; then
+  echo "[FAIL] hone-cli start did not serve bundled public web assets" >&2
   cat "$TMP_ROOT/start.log" >&2
   exit 1
 fi

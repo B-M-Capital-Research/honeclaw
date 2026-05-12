@@ -69,4 +69,11 @@ if ! curl -fsS http://127.0.0.1:8077/ | grep -Eq '<!DOCTYPE html>|<html'; then
   exit 1
 fi
 
+echo "[INFO] public root page smoke"
+if ! curl -fsS http://127.0.0.1:8088/ | grep -Eq '<!DOCTYPE html>|<html'; then
+  echo "[FAIL] hone-cli start did not serve bundled public web assets" >&2
+  cat "$TMP_HOME/start.log" >&2
+  exit 1
+fi
+
 echo "[PASS] brew install smoke passed"

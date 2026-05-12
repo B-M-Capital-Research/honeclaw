@@ -214,6 +214,21 @@ mkdir -p "$RELEASES_DIR"
 rm -rf "$DEST_DIR"
 tar -xzf "$ARCHIVE_PATH" -C "$RELEASES_DIR"
 
+required_bundle_paths=(
+  "bin/hone-cli"
+  "share/honeclaw/config.example.yaml"
+  "share/honeclaw/soul.md"
+  "share/honeclaw/web/index.html"
+  "share/honeclaw/web-public/index.html"
+)
+for relative_path in "${required_bundle_paths[@]}"; do
+  if [[ ! -e "$DEST_DIR/$relative_path" ]]; then
+    echo "release asset is missing required bundle path: $relative_path" >&2
+    echo "downloaded asset: $DOWNLOAD_URL" >&2
+    exit 1
+  fi
+done
+
 CURRENT_LINK="$INSTALL_ROOT/current"
 ln -sfn "$DEST_DIR" "$CURRENT_LINK"
 
@@ -282,6 +297,7 @@ Next steps:
   hone-cli configure --section agent --section channels --section providers
   hone-cli start
   hone-cli web admin-ui
+  hone-cli web user-ui
 EOF
 
 if ! path_contains_dir "$BIN_DIR"; then

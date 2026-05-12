@@ -147,6 +147,7 @@ class Honeclaw < Formula
         hone-cli onboard
         hone-cli start
         hone-cli web admin-ui
+        hone-cli web user-ui
     EOS
   end
 

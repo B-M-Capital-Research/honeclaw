@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "usage: $0 <tag> [output-path]" >&2
+  echo "usage: scripts/prepare_release_notes.sh <tag> [output-path]" >&2
   exit 1
 fi
 

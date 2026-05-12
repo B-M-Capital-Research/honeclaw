@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
 CONFIG_PATH="${HONE_LLM_PROFILE_POC_CONFIG:-tests/fixtures/llm/profile_poc.yaml}"

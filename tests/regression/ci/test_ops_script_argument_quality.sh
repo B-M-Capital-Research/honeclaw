@@ -51,6 +51,7 @@ run_homebrew_formula_generation_case() {
   fi
 
   assert_contains "$(cat "$output_path")" 'version "1.2.3"' "formula should include requested version"
+  assert_contains "$(cat "$output_path")" "hone-cli web user-ui" "formula caveats should include the public Web UI command"
 }
 
 run_changed_fmt_bash3_compatible_case() {
@@ -94,8 +95,29 @@ EOF
   assert_contains "$(cat "$rustfmt_log")" "src/main.rs" "rustfmt args should include changed Rust file"
 }
 
+run_script_self_path_quality_case() {
+  local matches=""
+  local script
+
+  while IFS= read -r script; do
+    while IFS= read -r match; do
+      matches="${matches}${script}:${match}"$'\n'
+    done < <(grep -n 'dirname "[$]0"' "$script" || true)
+    while IFS= read -r match; do
+      matches="${matches}${script}:${match}"$'\n'
+    done < <(grep -n 'usage: [$]0' "$script" || true)
+  done < <(find "$ROOT_DIR/scripts" "$ROOT_DIR/tests/regression" -type f -name '*.sh' | sort)
+
+  if [[ -n "$matches" ]]; then
+    echo "[FAIL] scripts should use BASH_SOURCE[0] or stable usage names instead of \$0" >&2
+    printf '%s' "$matches" >&2
+    exit 1
+  fi
+}
+
 run_missing_homebrew_formula_value_case
 run_homebrew_formula_generation_case
 run_changed_fmt_bash3_compatible_case
+run_script_self_path_quality_case
 
 echo "[PASS] ops script argument quality regression passed"
