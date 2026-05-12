@@ -291,7 +291,7 @@ const CONTENT_ZH = {
         eyebrow: "§ 01 · QUICK START",
         title: "快速开始",
         intro:
-          "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。任选其一即可开始。",
+          "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。安装后可用 `hone-cli start` 跑完整运行时，也可用 `hone-cli web admin-ui` / `hone-cli web user-ui` 单独打开 Web 界面。",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -395,19 +395,19 @@ const CONTENT_ZH = {
     architecture_points: [
       {
         title: "CLI 启动",
-        desc: "`hone-cli doctor / onboard / start` 负责体检、首装向导、启动 hone-console-page 与已启用渠道；源码模式使用 `cargo run -p hone-cli -- start --build`。",
+        desc: "`hone-cli doctor / onboard / start` 负责体检、首装向导、启动 hone-console-page 与已启用渠道；`hone-cli web admin-ui` / `hone-cli web user-ui` 可定位或启动管理端与用户端 Web；源码模式使用 `cargo run -p hone-cli -- start --build`。",
       },
       {
         title: "公开 user-ui",
-        desc: "公开 user-ui 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用手机号 + 短信验证码登录，管理端 Web 白名单是准入来源，后端只暴露 `/api/public/*` 与公开聊天入口。",
+        desc: "公开 user-ui 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用手机号 + 短信验证码登录，管理端 Web 白名单是准入来源；`/portfolio` 只读展示 digest context 与公司画像入口，后端公开面收敛在 `/api/public/*`。",
       },
       {
         title: "管理后台",
-        desc: "管理后台提供 dashboard、sessions、skills、tasks、users、research、notifications、schedule、settings、logs 等维护入口。",
+        desc: "管理后台提供 dashboard、sessions、skills、tasks、users、research、llm-audit、task-health、notifications、schedule、settings、logs 等维护入口。",
       },
       {
         title: "Runner 层",
-        desc: "支持 OpenAI-compatible 协议、Gemini CLI、Codex CLI / ACP、OpenCode ACP、multi-agent，以及 Hone Cloud API 兼容路由。",
+        desc: "推荐 runner 是 Hone Cloud、Codex ACP 和 OpenCode ACP；同时保留 OpenAI-compatible function calling、Gemini CLI、Codex CLI 与 multi-agent。`gemini_acp` 仅保留为迁移配置，不作为运行时入口。",
       },
       {
         title: "事件与任务",
@@ -1623,7 +1623,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         eyebrow: "§ 01 · QUICK START",
         title: "Quick Start",
         intro:
-          "Three paths to run Hone: the one-line installer, Homebrew, or source. Pick whichever fits.",
+          "Three paths to run Hone: the one-line installer, Homebrew, or source. After install, use `hone-cli start` for the full runtime or `hone-cli web admin-ui` / `hone-cli web user-ui` to open a specific Web surface.",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -1717,19 +1717,19 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     architecture_points: [
       {
         title: "CLI startup",
-        desc: "`hone-cli doctor / onboard / start` handles health checks, guided setup, and starting hone-console-page plus enabled channels; source mode uses `cargo run -p hone-cli -- start --build`.",
+        desc: "`hone-cli doctor / onboard / start` handles health checks, guided setup, and starting hone-console-page plus enabled channels; `hone-cli web admin-ui` / `hone-cli web user-ui` can locate or start the admin and public Web surfaces; source mode uses `cargo run -p hone-cli -- start --build`.",
       },
       {
         title: "Public user-ui",
-        desc: "The public user-ui routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with phone + SMS verification, the admin Web whitelist is the admission source, and the backend exposes only `/api/public/*` plus public chat entrypoints.",
+        desc: "The public user-ui routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with phone + SMS verification from the admin Web whitelist; `/portfolio` is a read-only investment context surface for digest context and company-profile entrypoints, and the public backend is scoped to `/api/public/*`.",
       },
       {
         title: "Admin console",
-        desc: "The admin console includes dashboard, sessions, skills, tasks, users, research, notifications, schedule, settings, and logs for operators.",
+        desc: "The admin console includes dashboard, sessions, skills, tasks, users, research, llm-audit, task-health, notifications, schedule, settings, and logs for operators.",
       },
       {
         title: "Runner layer",
-        desc: "Supports OpenAI-compatible APIs, Gemini CLI, Codex CLI / ACP, OpenCode ACP, multi-agent, and a Hone Cloud API-compatible route.",
+        desc: "Recommended runners are Hone Cloud, Codex ACP, and OpenCode ACP; OpenAI-compatible function calling, Gemini CLI, Codex CLI, and multi-agent remain supported. `gemini_acp` is kept only as migration config, not a runtime entrypoint.",
       },
       {
         title: "Events and tasks",
