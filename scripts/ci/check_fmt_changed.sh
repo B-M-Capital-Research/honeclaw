@@ -29,7 +29,12 @@ if [[ -z "${DIFF_RANGE}" ]]; then
   DIFF_RANGE="${BASE_REF}...HEAD"
 fi
 
-mapfile -t rs_files < <(git diff --name-only "${DIFF_RANGE}" -- '*.rs')
+rs_files=()
+while IFS= read -r rs_file; do
+  [ -n "$rs_file" ] && rs_files+=("$rs_file")
+done <<EOF
+$(git diff --name-only "${DIFF_RANGE}" -- '*.rs')
+EOF
 
 if [[ ${#rs_files[@]} -eq 0 ]]; then
   echo "[INFO] no changed Rust files; skip rustfmt check"

@@ -15,6 +15,18 @@ EOF
   exit 1
 }
 
+require_value() {
+  local flag="$1"
+  local value="${2:-}"
+
+  if [[ -z "$value" || "$value" == --* ]]; then
+    echo "missing value for $flag" >&2
+    usage
+  fi
+
+  printf '%s\n' "$value"
+}
+
 VERSION=""
 DARWIN_AARCH64_SHA=""
 DARWIN_X86_64_SHA=""
@@ -24,23 +36,23 @@ OUTPUT_PATH=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version)
-      VERSION="${2:-}"
+      VERSION="$(require_value "$1" "${2:-}")"
       shift 2
       ;;
     --darwin-aarch64-sha)
-      DARWIN_AARCH64_SHA="${2:-}"
+      DARWIN_AARCH64_SHA="$(require_value "$1" "${2:-}")"
       shift 2
       ;;
     --darwin-x86_64-sha)
-      DARWIN_X86_64_SHA="${2:-}"
+      DARWIN_X86_64_SHA="$(require_value "$1" "${2:-}")"
       shift 2
       ;;
     --linux-x86_64-sha)
-      LINUX_X86_64_SHA="${2:-}"
+      LINUX_X86_64_SHA="$(require_value "$1" "${2:-}")"
       shift 2
       ;;
     --output)
-      OUTPUT_PATH="${2:-}"
+      OUTPUT_PATH="$(require_value "$1" "${2:-}")"
       shift 2
       ;;
     *)
