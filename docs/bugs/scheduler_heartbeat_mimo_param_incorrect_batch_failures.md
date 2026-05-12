@@ -9,6 +9,11 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-13 07:08 CST` 复核：当前 HEAD 已是 `d3dffd6 Fix heartbeat mimo reasoning transcript replay`，但 live channel/backend 仍未确认重启到修复代码；本轮按旧运行态 / 未部署证据补充，不把状态从 `Fixed` 回退为 `New`。
+  - 从 `2026-05-13T03:30:09+08:00` 到 `2026-05-13T07:00:18+08:00`，继续新增 `80` 条同类 heartbeat 失败，覆盖 `11` 个 job；终态均为 `execution_failed + skipped_error + delivered=0`，错误均为 `LLM 错误: upstream HTTP 400: Param Incorrect (code: 400)`。
+  - 失败覆盖 `DRAM 心跳监控`、`TEM破位预警`、`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控`、`伦敦金跌破4500提醒`、`小米30港元破位预警`、`RKLB异动监控` 与 `全天原油价格3小时播报`。
+  - 同窗仍有 `Oil_Price_Monitor_Closing`、`OWALERT_PostMarket`、`科技成长赛道大盘极值与情绪监控` 等非 heartbeat / 普通 scheduler 成功 `completed + sent`，故障仍集中在 heartbeat `mimo-v2.5-pro` function-calling 路径，而不是 Feishu 出站或 scheduler 全局停摆。
+  - `data/runtime/logs/web.log.2026-05-12` 在 `2026-05-13 07:00 CST` 仍记录多个 `[HeartbeatDiag] runner_error ... model=mimo-v2.5-pro failure_kind=provider_http_error error="LLM 错误: upstream HTTP 400: Param Incorrect (code: 400)"`。
   - `2026-05-13 03:02 CST` 复核：该缺陷仍为活跃 `New`。从 `2026-05-12T23:30:12+08:00` 到 `2026-05-13T03:00:25+08:00`，最近四小时继续新增 `82` 条同类 heartbeat 失败，覆盖 `11` 个 job；其中 10 个核心 heartbeat job 在 23:30、00:00、00:30、01:00、01:30、02:00、02:30、03:00 窗口基本连续失败。
   - `2026-05-12T22:30 CST`：`7` 条 heartbeat 同窗失败，覆盖 `DRAM 心跳监控`、`TEM破位预警`、`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控`。
   - `2026-05-12T23:00 CST`：`9` 条 heartbeat 同窗失败，覆盖 `Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`伦敦金跌破4500提醒`、`TEM大事件心跳监控`、`TEM破位预警`、`RKLB异动监控`、`小米30港元破位预警`、`TSLA 正负触发条件心跳监控`。
@@ -66,5 +71,5 @@
 
 ## 未验证项 / 后续建议
 
-- 本轮没有重启现有 live channel/backend 进程，因而未直接复核下一次 30 分钟 heartbeat 窗口是否已经消失 `Param Incorrect`。当前文档状态更新为 `Fixed` 而非 `Closed`。
+- 本轮没有重启现有 live channel/backend 进程；03:30-07:00 CST 仍继续出现旧运行态 `Param Incorrect`，因此当前文档状态保持 `Fixed` 而非 `Closed`。
 - 下一轮允许观察运行态时，优先检查 `cron_job_runs` 与 `data/runtime/logs/web.log*` 中 heartbeat 窗口是否不再出现 `The reasoning_content in the thinking mode must be passed back to the API` / `Param Incorrect`。

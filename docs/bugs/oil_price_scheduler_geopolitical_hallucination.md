@@ -19,6 +19,21 @@
   - `cargo check -p hone-channels --tests`
 - 关联 GitHub Issue：无。
 
+## 旧运行态复核（2026-05-13 07:08 CST）
+
+- 本轮巡检在当前机器 live 数据中继续看到同类用户可见坏样本，但仍不足以推翻 `2026-05-12 19:12 CST` 的仓库代码修复结论；当前按旧运行态 / 未确认重启证据补充，不把状态从 `Fixed` 回退为 `New`。
+- `data/sessions.sqlite3` -> `cron_job_runs`
+  - `run_id=19614`
+  - `job_name=Oil_Price_Monitor_Closing`
+  - `executed_at=2026-05-13T04:01:25.195462+08:00`
+  - `execution_status=completed`
+  - `message_send_status=sent`
+  - `delivered=1`
+  - `response_preview` 向用户发送 `Brent 最新可核验约 107.8-107.9 美元`、`WTI 约 102.2 美元`，并把伊朗 / 霍尔木兹风险、油价 + CPI + 利率共同压制高估值科技股、COHR / RKLB 尾盘防守线等组织成确定性判断。
+  - 同条记录没有看到商品 guard 元数据或“未完成同窗来源核验”的安全改写痕迹。
+- 最近四小时同名 `全天原油价格3小时播报` heartbeat 主要因 `mimo-v2.5-pro` `Param Incorrect` 失败或返回 `noop`，没有新增三小时原油 heartbeat 成功坏播报；本次用户可见样本来自同类原油 scheduler 的 `Oil_Price_Monitor_Closing`。
+- 结论：04:01 样本说明 live 运行态仍会把无法从台账证明的价格区间与地缘归因外发为风险判断；但仓库 HEAD 已包含 19:12 CST 的 commodity guard 加固与回归测试。本轮仅补充证据，后续应在重启 / 部署后复核是否消失。
+
 ## 修复记录（2026-05-10 23:11 CST）
 
 - `crates/hone-channels/src/scheduler.rs` 将原油 / 大宗商品 heartbeat guard 从“只识别因果归因”扩展到事实口径错误：
