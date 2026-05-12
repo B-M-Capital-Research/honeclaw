@@ -32,14 +32,14 @@ pub fn restore_context(
     max_messages: Option<usize>,
     skill_runtime: Option<&hone_tools::SkillRuntime>,
 ) -> AgentContext {
-    let mut ctx = AgentContext::new(session_id.to_string());
+    let mut restored_context = AgentContext::new(session_id.to_string());
 
     let Ok(Some(session)) = storage.load_session(session_id) else {
-        return ctx;
+        return restored_context;
     };
 
     if let Some(actor) = &session.actor {
-        ctx.set_actor_identity(actor);
+        restored_context.set_actor_identity(actor);
     }
 
     let messages = select_messages_after_compact_boundary(&session.messages, max_messages);
@@ -59,7 +59,7 @@ pub fn restore_context(
                     .unwrap_or(true)
             })
         {
-            ctx.add_user_message(&skill.prompt);
+            restored_context.add_user_message(&skill.prompt);
         }
     }
 
@@ -71,7 +71,7 @@ pub fn restore_context(
                 {
                     let content = session_message_text(message);
                     if !content.trim().is_empty() {
-                        ctx.messages.push(AgentMessage {
+                        restored_context.messages.push(AgentMessage {
                             role: "user".to_string(),
                             content: Some(content),
                             tool_calls: None,
@@ -110,7 +110,7 @@ pub fn restore_context(
                     {
                         continue;
                     }
-                    ctx.messages.push(restored);
+                    restored_context.messages.push(restored);
                 }
             }
             "system" => {
@@ -124,5 +124,5 @@ pub fn restore_context(
         }
     }
 
-    ctx
+    restored_context
 }

@@ -465,13 +465,13 @@ async fn run_opencode_acp(
     })?;
     let stderr = child.stderr.take();
 
-    let stderr_buf = Arc::new(tokio::sync::Mutex::new(String::new()));
+    let stderr_buffer = Arc::new(tokio::sync::Mutex::new(String::new()));
     let stderr_task = stderr.map(|stderr| {
-        let stderr_buf = stderr_buf.clone();
+        let stderr_buffer = stderr_buffer.clone();
         tokio::spawn(async move {
             let mut lines = tokio::io::BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let mut guard = stderr_buf.lock().await;
+                let mut guard = stderr_buffer.lock().await;
                 if !guard.is_empty() {
                     guard.push('\n');
                 }
@@ -503,7 +503,7 @@ async fn run_opencode_acp(
             next_id,
             None,
             None,
-            Some(stderr_buf.clone()),
+            Some(stderr_buffer.clone()),
             Some(&acp_log),
         ),
     )
@@ -530,7 +530,7 @@ async fn run_opencode_acp(
         &request.working_directory,
         mcp_servers.clone(),
         startup_timeout,
-        stderr_buf.clone(),
+        stderr_buffer.clone(),
         Some(&acp_log),
     )
     .await?;
@@ -558,7 +558,7 @@ async fn run_opencode_acp(
             &opencode_session_id,
             &model_id,
             model_timeout,
-            stderr_buf.clone(),
+            stderr_buffer.clone(),
             Some(&acp_log),
         )
         .await?;
@@ -605,7 +605,7 @@ async fn run_opencode_acp(
         next_id,
         emitter.clone(),
         &mut opencode_state,
-        stderr_buf.clone(),
+        stderr_buffer.clone(),
         AcpResponseTimeouts {
             idle: prompt_idle_timeout,
             overall: prompt_overall_timeout,
@@ -626,7 +626,7 @@ async fn run_opencode_acp(
             stop_reason,
             &prompt_result,
             &opencode_state,
-            &stderr_buf,
+            &stderr_buffer,
         )
         .await;
     }
@@ -671,7 +671,7 @@ async fn run_opencode_acp(
                  Possible causes: API key not set, model not found, or ACP protocol mismatch.",
                 request.session_id
             ),
-            &stderr_buf,
+            &stderr_buffer,
         )
         .await;
         tracing::warn!("{warning}");
@@ -1176,7 +1176,7 @@ async fn wait_for_opencode_response_with_timeouts(
     expected_id: u64,
     emitter: Arc<dyn AgentRunnerEmitter>,
     state: &mut AcpPromptState,
-    stderr_buf: Arc<tokio::sync::Mutex<String>>,
+    stderr_buffer: Arc<tokio::sync::Mutex<String>>,
     timeouts: AcpResponseTimeouts,
     log_ctx: &AcpEventLogContext,
 ) -> Result<Value, AgentSessionError> {
@@ -1186,10 +1186,10 @@ async fn wait_for_opencode_response_with_timeouts(
     loop {
         let now = tokio::time::Instant::now();
         if now >= overall_deadline {
-            return Err(opencode_timeout_error("overall", timeouts.overall, &stderr_buf).await);
+            return Err(opencode_timeout_error("overall", timeouts.overall, &stderr_buffer).await);
         }
         if now >= idle_deadline {
-            return Err(opencode_timeout_error("idle", timeouts.idle, &stderr_buf).await);
+            return Err(opencode_timeout_error("idle", timeouts.idle, &stderr_buffer).await);
         }
 
         let deadline = std::cmp::min(idle_deadline, overall_deadline);
@@ -1214,7 +1214,7 @@ async fn wait_for_opencode_response_with_timeouts(
                 } else {
                     ("idle", timeouts.idle)
                 };
-                return Err(opencode_timeout_error(phase, duration, &stderr_buf).await);
+                return Err(opencode_timeout_error(phase, duration, &stderr_buffer).await);
             }
         };
 
@@ -1226,7 +1226,7 @@ async fn wait_for_opencode_response_with_timeouts(
             &line,
             &emitter,
             state,
-            &stderr_buf,
+            &stderr_buffer,
             log_ctx,
         )
         .await?
@@ -1242,7 +1242,7 @@ async fn process_opencode_payload(
     line: &str,
     emitter: &Arc<dyn AgentRunnerEmitter>,
     state: &mut AcpPromptState,
-    stderr_buf: &Arc<tokio::sync::Mutex<String>>,
+    stderr_buffer: &Arc<tokio::sync::Mutex<String>>,
     log_ctx: &AcpEventLogContext,
 ) -> Result<Option<Value>, AgentSessionError> {
     let payload: Value = match serde_json::from_str(line) {
@@ -1269,7 +1269,7 @@ async fn process_opencode_payload(
             .to_string();
         let message = message_with_bounded_stderr(
             &format!("opencode acp request failed: {message}"),
-            stderr_buf,
+            stderr_buffer,
         )
         .await;
         return Err(AgentSessionError {
@@ -1302,13 +1302,13 @@ async fn process_opencode_payload(
 async fn opencode_timeout_error(
     phase: &'static str,
     duration: std::time::Duration,
-    stderr_buf: &Arc<tokio::sync::Mutex<String>>,
+    stderr_buffer: &Arc<tokio::sync::Mutex<String>>,
 ) -> AgentSessionError {
     let base = format!(
         "opencode acp session/prompt {phase} timeout ({}s)",
         duration.as_secs()
     );
-    let message = timeout_message_with_stderr(&base, stderr_buf).await;
+    let message = timeout_message_with_stderr(&base, stderr_buffer).await;
     let kind = if phase == "idle" {
         AgentSessionErrorKind::TimeoutPerLine
     } else {

@@ -280,9 +280,9 @@ fn write_mock_gemini_script_with_stderr(
 fn restore_context_missing_session_returns_empty() {
     let root = make_temp_dir("hone_channels_restore_missing");
     let storage = SessionStorage::new(&root);
-    let ctx = restore_context(&storage, "missing", Some(5), None);
-    assert!(ctx.messages.is_empty());
-    assert!(ctx.actor_identity().is_none());
+    let restored_context = restore_context(&storage, "missing", Some(5), None);
+    assert!(restored_context.messages.is_empty());
+    assert!(restored_context.actor_identity().is_none());
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -468,17 +468,23 @@ fn restore_context_filters_and_limits_messages() {
         .add_message(&session_id, "assistant", "a2", None)
         .expect("add a2");
 
-    let ctx = restore_context(&storage, &session_id, Some(4), None);
-    let contents: Vec<_> = ctx
+    let restored_context = restore_context(&storage, &session_id, Some(4), None);
+    let contents: Vec<_> = restored_context
         .messages
         .iter()
         .filter_map(|m| m.content.as_deref())
         .collect();
     assert_eq!(contents, vec!["a1", "t1", "u2", "a2"]);
-    assert_eq!(ctx.messages[1].role, "tool");
-    assert_eq!(ctx.messages[1].name.as_deref(), Some("web_search"));
-    assert_eq!(ctx.messages[1].tool_call_id.as_deref(), Some("call_1"));
-    assert_eq!(ctx.actor_identity(), Some(actor));
+    assert_eq!(restored_context.messages[1].role, "tool");
+    assert_eq!(
+        restored_context.messages[1].name.as_deref(),
+        Some("web_search")
+    );
+    assert_eq!(
+        restored_context.messages[1].tool_call_id.as_deref(),
+        Some("call_1")
+    );
+    assert_eq!(restored_context.actor_identity(), Some(actor));
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -523,18 +529,21 @@ fn restore_context_rehydrates_assistant_tool_calls() {
         )
         .expect("add tool");
 
-    let ctx = restore_context(&storage, &session_id, None, None);
-    assert_eq!(ctx.messages.len(), 3);
-    assert_eq!(ctx.messages[1].role, "assistant");
-    let tool_calls = ctx.messages[1]
+    let restored_context = restore_context(&storage, &session_id, None, None);
+    assert_eq!(restored_context.messages.len(), 3);
+    assert_eq!(restored_context.messages[1].role, "assistant");
+    let tool_calls = restored_context.messages[1]
         .tool_calls
         .as_ref()
         .expect("assistant tool calls");
     assert_eq!(tool_calls.len(), 1);
     assert_eq!(tool_calls[0]["id"], "call_1");
     assert_eq!(tool_calls[0]["function"]["name"], "local_search_files");
-    assert_eq!(ctx.messages[2].role, "tool");
-    assert_eq!(ctx.messages[2].tool_call_id.as_deref(), Some("call_1"));
+    assert_eq!(restored_context.messages[2].role, "tool");
+    assert_eq!(
+        restored_context.messages[2].tool_call_id.as_deref(),
+        Some("call_1")
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -604,10 +613,10 @@ fn restore_context_preserves_message_metadata() {
         )
         .expect("add tool");
 
-    let ctx = restore_context(&storage, &session_id, None, None);
-    assert_eq!(ctx.messages.len(), 2);
+    let restored_context = restore_context(&storage, &session_id, None, None);
+    assert_eq!(restored_context.messages.len(), 2);
     assert_eq!(
-        ctx.messages[0]
+        restored_context.messages[0]
             .metadata
             .as_ref()
             .and_then(|metadata| metadata.get("codex_acp")),
@@ -619,7 +628,7 @@ fn restore_context_preserves_message_metadata() {
         }))
     );
     assert_eq!(
-        ctx.messages[1]
+        restored_context.messages[1]
             .metadata
             .as_ref()
             .and_then(|metadata| metadata.get("codex_acp")),
@@ -959,8 +968,8 @@ fn restore_context_sanitizes_polluted_assistant_history() {
         )
         .expect("add polluted");
 
-    let ctx = restore_context(&storage, &session_id, None, None);
-    let contents: Vec<_> = ctx
+    let restored_context = restore_context(&storage, &session_id, None, None);
+    let contents: Vec<_> = restored_context
         .messages
         .iter()
         .filter_map(|message| message.content.as_deref())
@@ -1312,8 +1321,8 @@ fn restore_context_injects_invoked_skills_before_message_window() {
         .update_metadata(&session_id, metadata)
         .expect("metadata");
 
-    let ctx = restore_context(&storage, &session_id, Some(5), None);
-    let contents: Vec<_> = ctx
+    let restored_context = restore_context(&storage, &session_id, Some(5), None);
+    let contents: Vec<_> = restored_context
         .messages
         .iter()
         .filter_map(|m| m.content.as_deref())
@@ -1370,8 +1379,8 @@ fn restore_context_skips_invoked_skill_when_registry_disables_it() {
     let runtime =
         hone_tools::SkillRuntime::new(root.join("system"), root.join("custom"), root.clone())
             .with_registry_path(root.join("runtime").join("skill_registry.json"));
-    let ctx = restore_context(&storage, &session_id, Some(5), Some(&runtime));
-    let contents: Vec<_> = ctx
+    let restored_context = restore_context(&storage, &session_id, Some(5), Some(&runtime));
+    let contents: Vec<_> = restored_context
         .messages
         .iter()
         .filter_map(|m| m.content.as_deref())
@@ -1411,8 +1420,8 @@ fn restore_context_uses_only_messages_after_latest_compact_boundary() {
         .add_message(&session_id, "assistant", "after-compact", None)
         .expect("add assistant");
 
-    let ctx = restore_context(&storage, &session_id, Some(10), None);
-    let contents: Vec<_> = ctx
+    let restored_context = restore_context(&storage, &session_id, Some(10), None);
+    let contents: Vec<_> = restored_context
         .messages
         .iter()
         .filter_map(|m| m.content.as_deref())
@@ -1468,8 +1477,8 @@ fn restore_context_keeps_invoked_skill_context_across_compact_boundary() {
         )
         .expect("add summary");
 
-    let ctx = restore_context(&storage, &session_id, Some(10), None);
-    let contents: Vec<_> = ctx
+    let restored_context = restore_context(&storage, &session_id, Some(10), None);
+    let contents: Vec<_> = restored_context
         .messages
         .iter()
         .filter_map(|m| m.content.as_deref())
@@ -1533,8 +1542,8 @@ fn restore_context_avoids_duplicate_skill_prompt_when_compact_snapshot_exists() 
         )
         .expect("add skill snapshot");
 
-    let ctx = restore_context(&storage, &session_id, Some(10), None);
-    let contents: Vec<_> = ctx
+    let restored_context = restore_context(&storage, &session_id, Some(10), None);
+    let contents: Vec<_> = restored_context
         .messages
         .iter()
         .filter_map(|m| m.content.as_deref())
@@ -2079,7 +2088,7 @@ async fn stream_gemini_prompt_collects_content() {
             per_line_timeout: Duration::from_secs(3),
         };
 
-        let buf = stream_gemini_prompt(
+        let streamed_output = stream_gemini_prompt(
             "hi",
             "tester",
             &root.to_string_lossy(),
@@ -2091,7 +2100,7 @@ async fn stream_gemini_prompt_collects_content() {
         )
         .await
         .expect("stream ok");
-        assert!(buf.contains("第一段"));
+        assert!(streamed_output.contains("第一段"));
         assert!(full.contains("第一段"));
         assert!(full.contains("\n\n第二段开始。"));
     })

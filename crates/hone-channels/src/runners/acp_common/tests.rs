@@ -291,7 +291,7 @@ async fn acp_event_log_records_identity_for_grep() {
         std::process::id(),
         chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
     ));
-    let ctx = AcpEventLogContext {
+    let log_context = AcpEventLogContext {
         runner_label: "codex",
         log_path: acp_event_log_path(&temp_root.to_string_lossy()),
         session_id: "session-1".to_string(),
@@ -302,7 +302,7 @@ async fn acp_event_log_records_identity_for_grep() {
     };
 
     log_acp_payload(
-        Some(&ctx),
+        Some(&log_context),
         "recv",
         &json!({
             "jsonrpc": "2.0",
@@ -312,7 +312,7 @@ async fn acp_event_log_records_identity_for_grep() {
     )
     .await;
 
-    let content = tokio::fs::read_to_string(&ctx.log_path)
+    let content = tokio::fs::read_to_string(&log_context.log_path)
         .await
         .expect("read log");
     assert!(content.contains("\"identity\":\"Actor_feishu__group-1__alice\""));

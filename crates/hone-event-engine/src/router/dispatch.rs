@@ -73,11 +73,11 @@ impl NotificationRouter {
             let user_prefs = self.prefs.load(&actor);
             // LLM 仲裁:不确定来源的 Low NewsCritical,按 actor 重要性 prompt
             // 决定是否升 Medium。结果只影响本 actor 的本次分发,不污染原 event。
-            let actor_event_buf;
+            let actor_upgraded_event;
             let (event, sev) = match self.maybe_llm_upgrade_for_actor(event, &user_prefs).await {
                 Some(upgraded) => {
-                    actor_event_buf = upgraded;
-                    (&actor_event_buf, Severity::Medium)
+                    actor_upgraded_event = upgraded;
+                    (&actor_upgraded_event, Severity::Medium)
                 }
                 None => (event, sev),
             };

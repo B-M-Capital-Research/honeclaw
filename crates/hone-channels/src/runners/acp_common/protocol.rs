@@ -34,7 +34,7 @@ pub(crate) async fn create_acp_session(
     working_directory: &str,
     mcp_servers: Value,
     timeout: Duration,
-    stderr_buf: Arc<tokio::sync::Mutex<String>>,
+    stderr_buffer: Arc<tokio::sync::Mutex<String>>,
     log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<String, AgentSessionError> {
     write_jsonrpc_request(
@@ -57,7 +57,7 @@ pub(crate) async fn create_acp_session(
             request_id,
             None,
             None,
-            Some(stderr_buf.clone()),
+            Some(stderr_buffer.clone()),
             log_ctx,
         ),
     )
@@ -69,7 +69,7 @@ pub(crate) async fn create_acp_session(
                 kind: AgentSessionErrorKind::TimeoutOverall,
                 message: timeout_message_with_stderr(
                     &format!("{runner_label} acp session/new timeout"),
-                    &stderr_buf,
+                    &stderr_buffer,
                 )
                 .await,
             });
@@ -106,7 +106,7 @@ pub(crate) async fn set_acp_session_model(
     session_id: &str,
     model_id: &str,
     timeout: Duration,
-    stderr_buf: Arc<tokio::sync::Mutex<String>>,
+    stderr_buffer: Arc<tokio::sync::Mutex<String>>,
     log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<(), AgentSessionError> {
     write_jsonrpc_request(
@@ -129,7 +129,7 @@ pub(crate) async fn set_acp_session_model(
             request_id,
             None,
             None,
-            Some(stderr_buf.clone()),
+            Some(stderr_buffer.clone()),
             log_ctx,
         ),
     )
@@ -141,7 +141,7 @@ pub(crate) async fn set_acp_session_model(
                 kind: AgentSessionErrorKind::TimeoutOverall,
                 message: timeout_message_with_stderr(
                     &format!("{runner_label} acp session/set_model timeout for {model_id}"),
-                    &stderr_buf,
+                    &stderr_buffer,
                 )
                 .await,
             });
@@ -196,7 +196,7 @@ pub(crate) async fn wait_for_response(
     expected_id: u64,
     emitter: Option<Arc<dyn AgentRunnerEmitter>>,
     mut state: Option<&mut AcpPromptState>,
-    stderr_buf: Option<Arc<tokio::sync::Mutex<String>>>,
+    stderr_buffer: Option<Arc<tokio::sync::Mutex<String>>>,
     log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<Value, AgentSessionError> {
     while let Ok(Some(line)) = reader.next_line().await {
@@ -207,7 +207,7 @@ pub(crate) async fn wait_for_response(
             &line,
             emitter.as_ref(),
             state.as_deref_mut(),
-            stderr_buf.as_ref(),
+            stderr_buffer.as_ref(),
             None,
             None,
             AcpPermissionDecision::RejectOnce,
@@ -232,7 +232,7 @@ pub(crate) async fn wait_for_response_with_timeouts(
     expected_id: u64,
     emitter: Option<Arc<dyn AgentRunnerEmitter>>,
     state: Option<&mut AcpPromptState>,
-    stderr_buf: Option<Arc<tokio::sync::Mutex<String>>>,
+    stderr_buffer: Option<Arc<tokio::sync::Mutex<String>>>,
     timeouts: AcpResponseTimeouts,
     log_ctx: Option<&AcpEventLogContext>,
 ) -> Result<Value, AgentSessionError> {
@@ -243,7 +243,7 @@ pub(crate) async fn wait_for_response_with_timeouts(
         expected_id,
         emitter,
         state,
-        stderr_buf,
+        stderr_buffer,
         timeouts,
         None,
         None,
@@ -260,7 +260,7 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
     expected_id: u64,
     emitter: Option<Arc<dyn AgentRunnerEmitter>>,
     mut state: Option<&mut AcpPromptState>,
-    stderr_buf: Option<Arc<tokio::sync::Mutex<String>>>,
+    stderr_buffer: Option<Arc<tokio::sync::Mutex<String>>>,
     timeouts: AcpResponseTimeouts,
     tool_status_renderer: Option<AcpToolStatusRenderer>,
     session_update_transformer: Option<AcpSessionUpdateTransformer>,
@@ -278,7 +278,7 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
                 runner_label,
                 "overall",
                 timeouts.overall,
-                stderr_buf.as_ref(),
+                stderr_buffer.as_ref(),
             )
             .await);
         }
@@ -287,7 +287,7 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
                 runner_label,
                 "idle",
                 timeouts.idle,
-                stderr_buf.as_ref(),
+                stderr_buffer.as_ref(),
             )
             .await);
         }
@@ -314,9 +314,13 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
                 } else {
                     ("idle", timeouts.idle)
                 };
-                return Err(
-                    acp_timeout_error(runner_label, phase, duration, stderr_buf.as_ref()).await,
-                );
+                return Err(acp_timeout_error(
+                    runner_label,
+                    phase,
+                    duration,
+                    stderr_buffer.as_ref(),
+                )
+                .await);
             }
         };
 
@@ -329,7 +333,7 @@ pub(crate) async fn wait_for_response_with_timeouts_and_renderer(
             &line,
             emitter.as_ref(),
             state.as_deref_mut(),
-            stderr_buf.as_ref(),
+            stderr_buffer.as_ref(),
             tool_status_renderer,
             session_update_transformer,
             permission_decision,
@@ -349,7 +353,7 @@ pub(super) async fn process_acp_payload(
     line: &str,
     emitter: Option<&Arc<dyn AgentRunnerEmitter>>,
     mut state: Option<&mut AcpPromptState>,
-    stderr_buf: Option<&Arc<tokio::sync::Mutex<String>>>,
+    stderr_buffer: Option<&Arc<tokio::sync::Mutex<String>>>,
     tool_status_renderer: Option<AcpToolStatusRenderer>,
     session_update_transformer: Option<AcpSessionUpdateTransformer>,
     permission_decision: AcpPermissionDecision,
@@ -411,8 +415,8 @@ pub(super) async fn process_acp_payload(
                 .unwrap_or("unknown acp error")
                 .to_string();
             let base = format!("{runner_label} acp request failed: {error_message}");
-            let message = if let Some(buf) = stderr_buf {
-                message_with_bounded_stderr(&base, buf).await
+            let message = if let Some(captured_stderr) = stderr_buffer {
+                message_with_bounded_stderr(&base, captured_stderr).await
             } else {
                 base
             };
@@ -513,14 +517,14 @@ async fn acp_timeout_error(
     runner_label: &'static str,
     phase: &'static str,
     duration: Duration,
-    stderr_buf: Option<&Arc<tokio::sync::Mutex<String>>>,
+    stderr_buffer: Option<&Arc<tokio::sync::Mutex<String>>>,
 ) -> AgentSessionError {
     let base = format!(
         "{runner_label} acp session/prompt {phase} timeout ({}s)",
         duration.as_secs()
     );
-    let message = if let Some(buf) = stderr_buf {
-        timeout_message_with_stderr(&base, buf).await
+    let message = if let Some(captured_stderr) = stderr_buffer {
+        timeout_message_with_stderr(&base, captured_stderr).await
     } else {
         base
     };

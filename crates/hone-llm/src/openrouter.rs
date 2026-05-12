@@ -434,30 +434,30 @@ impl OpenRouterProvider {
     /// 将 serde_json::Value (OpenAI tool schema) 转换为 ChatCompletionTool
     fn convert_tools(tools: &[Value]) -> hone_core::HoneResult<Vec<ChatCompletionTool>> {
         let mut out = Vec::with_capacity(tools.len());
-        for tool_val in tools {
-            let func = tool_val
+        for tool_schema in tools {
+            let function_schema = tool_schema
                 .get("function")
                 .ok_or_else(|| hone_core::HoneError::Llm("工具缺少 function 字段".to_string()))?;
 
-            let name = func
+            let name = function_schema
                 .get("name")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let description = func
+            let description = function_schema
                 .get("description")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let parameters = func.get("parameters").cloned();
+            let parameters = function_schema.get("parameters").cloned();
 
-            let mut fo = FunctionObject {
+            let mut function_object = FunctionObject {
                 name,
                 description,
                 parameters: None,
                 strict: None,
             };
             if let Some(params) = parameters {
-                fo.parameters = Some(
+                function_object.parameters = Some(
                     serde_json::from_value(params)
                         .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
                 );
@@ -465,7 +465,7 @@ impl OpenRouterProvider {
 
             out.push(ChatCompletionTool {
                 r#type: ChatCompletionToolType::Function,
-                function: fo,
+                function: function_object,
             });
         }
         Ok(out)

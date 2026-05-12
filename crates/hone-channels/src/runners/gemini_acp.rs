@@ -201,13 +201,13 @@ async fn run_gemini_acp(
     })?;
     let stderr = child.stderr.take();
 
-    let stderr_buf = Arc::new(tokio::sync::Mutex::new(String::new()));
+    let stderr_buffer = Arc::new(tokio::sync::Mutex::new(String::new()));
     let stderr_task = stderr.map(|stderr| {
-        let stderr_buf = stderr_buf.clone();
+        let stderr_buffer = stderr_buffer.clone();
         tokio::spawn(async move {
             let mut lines = tokio::io::BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let mut guard = stderr_buf.lock().await;
+                let mut guard = stderr_buffer.lock().await;
                 if !guard.is_empty() {
                     guard.push('\n');
                 }
@@ -239,7 +239,7 @@ async fn run_gemini_acp(
             next_id,
             None,
             None,
-            Some(stderr_buf.clone()),
+            Some(stderr_buffer.clone()),
             Some(&acp_log),
         ),
     )
@@ -279,7 +279,7 @@ async fn run_gemini_acp(
                 next_id,
                 None,
                 None,
-                Some(stderr_buf.clone()),
+                Some(stderr_buffer.clone()),
                 Some(&acp_log),
             ),
         )
@@ -303,7 +303,7 @@ async fn run_gemini_acp(
                     &request.working_directory,
                     mcp_servers.clone(),
                     startup_timeout,
-                    stderr_buf.clone(),
+                    stderr_buffer.clone(),
                     Some(&acp_log),
                 )
                 .await?;
@@ -323,7 +323,7 @@ async fn run_gemini_acp(
                     &request.working_directory,
                     mcp_servers.clone(),
                     startup_timeout,
-                    stderr_buf.clone(),
+                    stderr_buffer.clone(),
                     Some(&acp_log),
                 )
                 .await?;
@@ -340,7 +340,7 @@ async fn run_gemini_acp(
             &request.working_directory,
             mcp_servers.clone(),
             startup_timeout,
-            stderr_buf.clone(),
+            stderr_buffer.clone(),
             Some(&acp_log),
         )
         .await?;
@@ -378,7 +378,7 @@ async fn run_gemini_acp(
         next_id,
         Some(emitter.clone()),
         Some(&mut gemini_state),
-        Some(stderr_buf.clone()),
+        Some(stderr_buffer.clone()),
         AcpResponseTimeouts {
             idle: prompt_idle_timeout,
             overall: prompt_overall_timeout,
@@ -399,7 +399,7 @@ async fn run_gemini_acp(
             stop_reason,
             &prompt_result,
             &gemini_state,
-            &stderr_buf,
+            &stderr_buffer,
         )
         .await;
     }

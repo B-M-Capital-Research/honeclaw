@@ -374,7 +374,7 @@ impl AgentRunner for GeminiCliRunner {
         let mut iteration = 0u32;
         let mut hit_max_iterations = false;
         let mut total_raw_lines_seen = 0u32;
-        let mut last_iter_buf = String::new();
+        let mut last_iteration_output = String::new();
         let mut final_assistant_content: Option<String> = None;
         let mut stream_options = request.gemini_stream.clone();
         stream_options.overall_timeout = self.timeouts.overall;
@@ -405,7 +405,7 @@ impl AgentRunner for GeminiCliRunner {
                 })
                 .await;
 
-            let iter_buf = match stream_gemini_prompt(
+            let iteration_output = match stream_gemini_prompt(
                 &prompt,
                 &request.actor_label,
                 &request.working_directory,
@@ -417,7 +417,7 @@ impl AgentRunner for GeminiCliRunner {
             )
             .await
             {
-                Ok(buf) => buf,
+                Ok(output) => output,
                 Err(error) => {
                     emitter
                         .emit(AgentRunnerEvent::Error {
@@ -440,7 +440,8 @@ impl AgentRunner for GeminiCliRunner {
                 }
             };
 
-            let (visible_text, maybe_tool_call) = GeminiCliAgent::parse_tool_call(&iter_buf);
+            let (visible_text, maybe_tool_call) =
+                GeminiCliAgent::parse_tool_call(&iteration_output);
 
             if let Some((tool_name, tool_args, tool_reasoning)) = maybe_tool_call {
                 let call_id = format!("gemini_cli_call_{iteration}_{}", tool_calls_made.len() + 1);
@@ -469,12 +470,12 @@ impl AgentRunner for GeminiCliRunner {
                     })
                     .await;
 
-                let tool_result_val = self
+                let tool_result_value = self
                     .tool_registry
                     .execute_tool(&tool_name, tool_args.clone())
                     .await
                     .unwrap_or_else(|e| serde_json::json!({ "error": e.to_string() }));
-                let tool_result_str = tool_result_val.to_string();
+                let tool_result_str = tool_result_value.to_string();
                 append_gemini_cli_tool_context_messages(
                     &mut context_messages,
                     &call_id,
@@ -503,17 +504,17 @@ impl AgentRunner for GeminiCliRunner {
                 tool_calls_made.push(ToolCallMade {
                     name: tool_name.clone(),
                     arguments: tool_args,
-                    result: tool_result_val,
+                    result: tool_result_value,
                     tool_call_id: Some(call_id.clone()),
                 });
 
                 pending_tool_results.push((call_id, tool_name, tool_result_str));
-                last_iter_buf = iter_buf;
+                last_iteration_output = iteration_output;
                 continue;
             }
 
             final_assistant_content = Some(visible_text);
-            last_iter_buf = iter_buf;
+            last_iteration_output = iteration_output;
             break;
         }
 
@@ -577,7 +578,7 @@ impl AgentRunner for GeminiCliRunner {
             tracing::warn!(
                 "[AgentRunner/gemini] empty stream response (raw_lines_seen={}, last_buf_preview={})",
                 total_raw_lines_seen,
-                last_iter_buf.chars().take(200).collect::<String>()
+                last_iteration_output.chars().take(200).collect::<String>()
             );
         }
         if final_assistant_content.is_none() && !full_reply.trim().is_empty() {
@@ -637,7 +638,7 @@ pub(crate) async fn stream_gemini_prompt(
     })?;
 
     let mut reader = tokio::io::BufReader::new(stdout).lines();
-    let mut iter_buf = String::new();
+    let mut iteration_output = String::new();
     let mut visible_emitted_len = 0usize;
     let mut raw_line_count = 0u32;
     let overall_start = Instant::now();
@@ -670,10 +671,10 @@ pub(crate) async fn stream_gemini_prompt(
                 }
                 match parse_stream_event(&line) {
                     Some(GeminiStreamEvent::Content(chunk)) => {
-                        iter_buf.push_str(&chunk);
-                        let visible_prefix = match iter_buf.find("<tool_call") {
-                            Some(idx) => &iter_buf[..idx],
-                            None => iter_buf.as_str(),
+                        iteration_output.push_str(&chunk);
+                        let visible_prefix = match iteration_output.find("<tool_call") {
+                            Some(idx) => &iteration_output[..idx],
+                            None => iteration_output.as_str(),
                         };
                         if visible_prefix.len() > visible_emitted_len {
                             let delta = &visible_prefix[visible_emitted_len..];
@@ -769,7 +770,7 @@ pub(crate) async fn stream_gemini_prompt(
                 "[AgentRunner/gemini] stderr"
             );
         }
-        if !out.status.success() && iter_buf.is_empty() {
+        if !out.status.success() && iteration_output.is_empty() {
             return Err(AgentSessionError {
                 kind: AgentSessionErrorKind::ExitFailure,
                 message: gemini_cli_exit_error_message(out.status.code(), stderr_trimmed),
@@ -777,7 +778,7 @@ pub(crate) async fn stream_gemini_prompt(
         }
     }
 
-    Ok(iter_buf)
+    Ok(iteration_output)
 }
 
 fn gemini_command() -> tokio::process::Command {

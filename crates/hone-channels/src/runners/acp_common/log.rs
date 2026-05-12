@@ -171,9 +171,9 @@ pub(crate) async fn log_acp_prompt_stop_diagnostics(
     stop_reason: &str,
     prompt_result: &Value,
     state: &AcpPromptState,
-    stderr_buf: &std::sync::Arc<tokio::sync::Mutex<String>>,
+    stderr_buffer: &std::sync::Arc<tokio::sync::Mutex<String>>,
 ) {
-    let stderr_captured = stderr_buf.lock().await.clone();
+    let stderr_captured = stderr_buffer.lock().await.clone();
     let stderr_tail = if stderr_captured.trim().is_empty() {
         "<empty>".to_string()
     } else {
@@ -193,16 +193,16 @@ pub(crate) async fn log_acp_prompt_stop_diagnostics(
 
 pub(crate) async fn timeout_message_with_stderr(
     base: &str,
-    stderr_buf: &std::sync::Arc<tokio::sync::Mutex<String>>,
+    stderr_buffer: &std::sync::Arc<tokio::sync::Mutex<String>>,
 ) -> String {
-    message_with_bounded_stderr(base, stderr_buf).await
+    message_with_bounded_stderr(base, stderr_buffer).await
 }
 
 pub(crate) async fn message_with_bounded_stderr(
     base: &str,
-    stderr_buf: &std::sync::Arc<tokio::sync::Mutex<String>>,
+    stderr_buffer: &std::sync::Arc<tokio::sync::Mutex<String>>,
 ) -> String {
-    let captured = stderr_buf.lock().await.clone();
+    let captured = stderr_buffer.lock().await.clone();
     let Some(stderr_detail) = stderr_detail_for_message(&captured) else {
         return base.to_string();
     };
