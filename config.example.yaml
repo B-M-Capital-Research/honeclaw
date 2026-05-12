@@ -210,7 +210,7 @@ event_engine:
     macro_immediate_grace_hours: 2
   renderer:
     # Severity list that goes through LLM polish. Empty list = pure template.
-    # Uses llm.profiles.<polish_llm> when set, otherwise the auxiliary model.
+    # polish_llm names an llm.profiles entry; empty falls back to legacy llm.openrouter.sub_model/model.
     llm_polish_for: []
     polish_llm: aux
     template_dir: "./data/event_templates"
@@ -276,8 +276,8 @@ event_engine:
   # 这里不再有调度时刻。
   # 候选池流水:
   # - 候选池 = trusted-source High/Medium news + 临近 high macro_event(不挂 ticker 也算)
-  # - Pass 1 (pass1_model) 廉价模型批量打分 + cluster + 一句话 takeaway
-  # - Pass 2 (pass2_model) 抓原文(若 fetch_full_text=true) + 强模型精读 + 短评 + 排序
+  # - Pass 1 (pass1_llm/pass1_model) 批量打分 + cluster + 一句话 takeaway
+  # - Pass 2 (pass2_llm/pass2_model) 抓原文(若 fetch_full_text=true) + 精读 + 短评 + 排序
   # 输出经 unified scheduler per-actor fan-out,与 buffer/synth 候选合流后渲染。
   # 默认 enabled=false。`enabled=false` 时 GlobalNewsSource 直接返回空池,
   # unified pipeline 仍按 buffer/synth 候选推送 actor。
@@ -285,6 +285,7 @@ event_engine:
     enabled: false
     timezone: Asia/Shanghai
     lookback_hours: 24 # 候选池回看窗口
+    # *_llm fields name llm.profiles entries; matching *_model fields are legacy OpenRouter fallbacks.
     pass1_llm: digest_fast
     pass1_model: x-ai/grok-4.1-fast
     pass2_llm: digest_strong
@@ -342,9 +343,9 @@ event_engine:
   #   dividend, split, sec_filing, analyst_grade,
   #   macro_event, social_post
   disabled_kinds: []
-  # OpenRouter model used by the uncertain-source news classifier. Empty falls
-  # back to the code default. Keep CI/tests mocked; use real API only for manual
-  # live-quality checks.
+  # news_classifier_llm names an llm.profiles entry; news_classifier_model is the
+  # legacy OpenRouter fallback when that profile is empty. Keep CI/tests mocked;
+  # use real API only for manual live-quality checks.
   news_classifier_llm: news_classifier
   news_classifier_model: "x-ai/grok-4.1-fast"
 
@@ -355,7 +356,8 @@ llm:
   openrouter:
     # Legacy config-only fallback. Prefer llm.providers.openrouter.api_key/api_keys.
     model: "moonshotai/kimi-k2.5"
-    # Cheap auxiliary model for heartbeats / session compression / other background checks
+    # Legacy auxiliary fallback model for heartbeats / session compression / other background checks.
+    # The default config uses llm.auxiliary_profile instead.
     sub_model: "moonshotai/kimi-k2.5"
     timeout: 120
     max_retries: 3

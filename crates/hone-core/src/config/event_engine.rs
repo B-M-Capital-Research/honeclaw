@@ -46,8 +46,8 @@ pub struct EventEngineConfig {
     #[serde(default = "default_news_importance_prompt")]
     pub news_importance_prompt: String,
 
-    /// 不确定来源新闻 LLM 仲裁模型。走 OpenRouter 兼容 chat completions。
-    /// 留空时装配层回退到默认值。
+    /// 不确定来源新闻 LLM 仲裁的 legacy OpenRouter 模型。
+    /// 仅在 `news_classifier_llm` 留空时使用;留空则装配层回退到默认值。
     #[serde(default = "default_news_classifier_model")]
     pub news_classifier_model: String,
     /// 可选 LLM profile 名称。配置后优先于 `news_classifier_model`。
@@ -282,14 +282,16 @@ pub struct GlobalDigestConfig {
     #[serde(default = "default_global_digest_lookback_hours")]
     pub lookback_hours: u32,
 
-    /// Pass 1 模型 —— 候选池批量打分 + cluster + 一句话 takeaway。便宜模型即可。
+    /// Pass 1 legacy OpenRouter 模型 —— 仅在 `pass1_llm` 留空时使用。
+    /// 候选池批量打分 + cluster + 一句话 takeaway,便宜模型即可。
     #[serde(default = "default_global_digest_pass1_model")]
     pub pass1_model: String,
     /// 可选 Pass 1 LLM profile 名称。配置后优先于 `pass1_model`。
     #[serde(default)]
     pub pass1_llm: String,
 
-    /// Pass 2 模型 —— 抓原文后精读、最终排序、写短评。需要相对聪明。
+    /// Pass 2 legacy OpenRouter 模型 —— 仅在 `pass2_llm` 留空时使用。
+    /// 抓原文后精读、最终排序、写短评,需要相对聪明。
     #[serde(default = "default_global_digest_pass2_model")]
     pub pass2_model: String,
     /// 可选 Pass 2 LLM profile 名称。配置后优先于 `pass2_model`。
@@ -315,8 +317,9 @@ pub struct GlobalDigestConfig {
     #[serde(default = "default_true")]
     pub event_dedupe_enabled: bool,
 
-    /// 事件级 dedup 用的 LLM 模型。POC 验证 grok-4.1-fast 在 17-236 候选量级上
-    /// 稳定保守(只合明显同事件)。务必用强模型,nova-lite 这种会过度归类成 theme。
+    /// 事件级 dedup 的 legacy OpenRouter 模型 —— 仅在 `event_dedupe_llm` 留空时使用。
+    /// POC 验证 grok-4.1-fast 在 17-236 候选量级上稳定保守(只合明显同事件)。
+    /// 务必用强模型,nova-lite 这种会过度归类成 theme。
     #[serde(default = "default_event_dedupe_model")]
     pub event_dedupe_model: String,
     /// 可选 event-dedupe LLM profile 名称。配置后优先于 `event_dedupe_model`。
@@ -645,7 +648,7 @@ fn default_macro_immediate_grace_hours() -> i64 {
 pub struct RendererConfig {
     #[serde(default)]
     pub llm_polish_for: Vec<String>,
-    /// 可选 LLM profile 名称。留空时沿用 legacy auxiliary model。
+    /// 可选 LLM profile 名称。留空时沿用 legacy OpenRouter auxiliary model。
     #[serde(default)]
     pub polish_llm: String,
     #[serde(default)]

@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 ## Purpose
 
@@ -167,7 +167,7 @@ Last updated: 2026-05-11
   - `remote`: Tauri does not start a local backend; the frontend connects directly to a remote HTTP base URL
 - Persistent user config now lives in canonical `config.yaml`; CLI/start flows and desktop-managed sidecars export the generated `data/runtime/effective-config.yaml`, while settings surfaces mutate the canonical file through shared config services. Browser Web mode uses `/api/channel-settings` for channel config; Desktop/Tauri uses sidecar commands. Desktop dev/runtime uses the desktop config dir as the canonical location and may only promote missing values one-way from legacy `data/runtime/config_runtime.yaml`, including runner, multi-agent, enabled channels, Tavily search keys, and FMP keys
 - In packaged desktop mode, runtime data, locks, logs, and actor sandboxes live under the app sandbox data directory by default; the desktop host also hydrates key login-shell environment variables and exports bundled binary paths (`HONE_MCP_BIN`, bundled `opencode`, `HONE_AGENT_SANDBOX_DIR`) before starting the embedded backend or channel sidecars
-- Desktop agent settings now expose Hone Cloud (`agent.hone_cloud.base_url/api_key/model`), the primary opencode/OpenRouter model, a dedicated `llm.auxiliary` OpenAI-compatible background route for heartbeat/session compression, and the nested legacy `multi-agent` search/answer config. `llm.openrouter.sub_model` remains only as the legacy fallback model name for the auxiliary path; it is not reused as the `multi-agent` search model
+- Desktop agent settings now expose Hone Cloud (`agent.hone_cloud.base_url/api_key/model`), the primary opencode/OpenRouter model, `llm.profiles` bindings for background/event-engine routes, the direct `llm.auxiliary` OpenAI-compatible fallback for heartbeat/session compression, and the nested legacy `multi-agent` search/answer config. `llm.openrouter.sub_model` remains only as the final legacy fallback model name for the auxiliary path; it is not reused as the `multi-agent` search model
 - In `bundled` mode, Tauri also starts or stops `hone-imessage` / `hone-discord` / `hone-feishu` / `hone-telegram` according to the layered runtime config in the application data directory; each channel process now posts heartbeat snapshots carrying `channel + pid` back to the console backend via `HONE_CONSOLE_URL`, and `/api/channels` aggregates those live registrations into per-channel multi-process status. Desktop channel status also merges OS process scanning so duplicate listener processes are visible even when an older instance is not bound to the current backend heartbeat registry, and the desktop shell exposes a cleanup command that keeps only one process per channel. The legacy `runtime/*.heartbeat.json` files still exist as a compatibility fallback for non-desktop paths
 - Desktop log pages read from `/api/logs`; the backend route now merges the in-memory log ring with recent `data/runtime/logs/*.log` tails so bundled desktop mode can display channel/runtime logs even when they were written by sibling processes instead of the current web process
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`
