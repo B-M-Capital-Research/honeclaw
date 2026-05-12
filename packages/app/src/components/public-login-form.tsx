@@ -30,6 +30,10 @@ export function PublicLoginForm(props: Props) {
   const [cooldown, setCooldown] = createSignal(0);
   const [error, setError] = createSignal("");
   const [notice, setNotice] = createSignal("");
+  const clearFeedback = () => {
+    setError("");
+    setNotice("");
+  };
 
   const phoneOk = createMemo(
     () => normalizePhoneNumber(phoneNumber()).length >= 5,
@@ -67,8 +71,7 @@ export function PublicLoginForm(props: Props) {
   const sendCode = async () => {
     if (!sendReady()) return;
     setSending(true);
-    setError("");
-    setNotice("");
+    clearFeedback();
     try {
       await publicSendSmsCode(normalizePhoneNumber(phoneNumber()));
       setNotice(CONTENT.auth.login.code_sent);
@@ -83,8 +86,7 @@ export function PublicLoginForm(props: Props) {
   const submitLogin = async () => {
     if (!loginReady()) return;
     setSubmitting(true);
-    setError("");
-    setNotice("");
+    clearFeedback();
     try {
       const user = await publicSmsLogin({
         phone_number: normalizePhoneNumber(phoneNumber()),

@@ -104,10 +104,18 @@
 
 ## 2026-05-11 - 前端状态复杂度
 
+### Public/admin mainline views duplicate parallel state machines
+
+- status: open
+- direction: 前端状态复杂度
+- evidence: `packages/app/src/pages/public-portfolio.tsx` `PortfolioContextView` and `packages/app/src/components/user-mainline-view.tsx` `UserMainlineView` both maintain the same shape of state: context payload, loading/error, refresh progress/message, profile modal open state, selected ticker, load/refresh handlers, and derived profile ticker sets. The public view is session-scoped while the admin view is actor-scoped, so the duplication is not a safe one-file cleanup.
+- risk: future changes to mainline refresh, profile modal loading, skipped ticker handling, or error presentation can drift between public and admin surfaces. Direct extraction in a patrol could accidentally mix session auth with actor-scoped admin APIs.
+- suggested_fix: introduce a small shared model/helper for the pure view state and ticker derivation first, then consider a shared presentational panel that receives API callbacks for public vs admin data sources. Keep API/auth boundaries explicit and cover both public and admin refresh paths with smoke or model tests before extracting the UI.
+
 ### `packages/app/src/pages/settings.tsx` still combines several independent state machines in one page component
 
 - status: open
 - direction: 前端状态复杂度
-- evidence: after the low-risk check-status cleanup, `settings.tsx` is still `2670` lines and owns language saves, agent runner/config edits, web invite CRUD, data API key lists, notification preferences, and channel settings in one Solid component. The web invite flow alone has six action handlers around lines 621-790, while channel settings repeatedly patch `channelDraft` for Feishu, Discord, Telegram, and iMessage around lines 2243-2636.
+- evidence: after two low-risk cleanup passes, `settings.tsx` is still `2600` lines and owns language saves, agent runner/config edits, web invite CRUD, data API key lists, notification preferences, and channel settings in one Solid component. The web invite flow still has six action handlers around lines 589-765, while channel settings still keep Feishu, Discord, Telegram, and iMessage field state in the same page even though simple draft patches now flow through `updateChannelDraft`.
 - risk: small UI edits now require reasoning across unrelated state machines, shared message/error signals, clipboard side effects, backend saving state, and tab visibility. Directly extracting everything in one patrol would be high risk because invite CRUD and channel settings touch externally visible configuration and secrets/tokens.
 - suggested_fix: split the page into behavior-preserving child components by tab (`AgentSettingsPanel`, `DataApiKeysPanel`, `WebInvitePanel`, `ChannelSettingsPanel`) and move local state/helpers with each panel. Start with tests or smoke coverage around runner selection, invite action state, and channel draft round-trip before changing component boundaries.

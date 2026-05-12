@@ -100,6 +100,14 @@ async function runCheckState(
   }
 }
 
+function createCheckState() {
+  const [status, setStatus] = createSignal<CheckStatus>("idle");
+  const [message, setMessage] = createSignal("");
+  const run = (probe: () => Promise<CheckProbeResult>) =>
+    runCheckState(setStatus, setMessage, probe);
+  return { status, message, run };
+}
+
 function checkFeedbackClass(status: CheckStatus) {
   return [
     "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
@@ -177,6 +185,9 @@ export default function SettingsPage() {
   const backend = useBackend();
   const [channelDraft, setChannelDraft] =
     createSignal<DesktopChannelSettingsInput>(defaultChannelDraft());
+  const updateChannelDraft = (patch: Partial<DesktopChannelSettingsInput>) => {
+    setChannelDraft((prev) => ({ ...prev, ...patch }));
+  };
   const [
     desktopChannelSettings,
     {
@@ -225,22 +236,20 @@ export default function SettingsPage() {
   const [agentDraft, setAgentDraft] = createSignal<AgentSettings>(
     defaultAgentSettings(),
   );
+  const updateAgentDraft = (patch: Partial<AgentSettings>) => {
+    setAgentDraft((prev) => ({ ...prev, ...patch }));
+  };
   const [agentSaving, setAgentSaving] = createSignal(false);
   const [agentMessage, setAgentMessage] = createSignal("");
   const [agentError, setAgentError] = createSignal("");
 
-  // OpenAI-compatible endpoint test state
-  const [openaiTestStatus, setOpenaiTestStatus] =
-    createSignal<CheckStatus>("idle");
-  const [openaiTestMessage, setOpenaiTestMessage] = createSignal("");
-  const [honeCloudTestStatus, setHoneCloudTestStatus] =
-    createSignal<CheckStatus>("idle");
-  const [honeCloudTestMessage, setHoneCloudTestMessage] = createSignal("");
+  const openaiCheck = createCheckState();
+  const honeCloudCheck = createCheckState();
+  const auxiliaryCheck = createCheckState();
+  const geminiCheck = createCheckState();
+  const codexAcpCheck = createCheckState();
   const [showHoneCloudKey, setShowHoneCloudKey] = createSignal(false);
   const [showOpenaiKey, setShowOpenaiKey] = createSignal(false);
-  const [auxiliaryTestStatus, setAuxiliaryTestStatus] =
-    createSignal<CheckStatus>("idle");
-  const [auxiliaryTestMessage, setAuxiliaryTestMessage] = createSignal("");
   const [showAuxiliaryKey, setShowAuxiliaryKey] = createSignal(false);
   const profileIdOptions = createMemo(
     () =>
@@ -298,6 +307,10 @@ export default function SettingsPage() {
   const [inviteCreating, setInviteCreating] = createSignal(false);
   const [inviteActionKey, setInviteActionKey] = createSignal("");
   const [invitePhoneNumber, setInvitePhoneNumber] = createSignal("");
+  const clearInviteFeedback = () => {
+    setInviteMessage("");
+    setInviteError("");
+  };
 
   const [webInvites, { refetch: refetchWebInvites, mutate: setWebInvites }] =
     createResource(
@@ -307,15 +320,6 @@ export default function SettingsPage() {
         return getWebInvites();
       },
     );
-
-  // Gemini CLI 检测状态
-  const [geminiCheckStatus, setGeminiCheckStatus] =
-    createSignal<CheckStatus>("idle");
-  const [geminiCheckMessage, setGeminiCheckMessage] = createSignal("");
-
-  const [codexAcpCheckStatus, setCodexAcpCheckStatus] =
-    createSignal<CheckStatus>("idle");
-  const [codexAcpCheckMessage, setCodexAcpCheckMessage] = createSignal("");
 
   const [agentSettingsRes] = createResource(
     () => backend.state.isDesktop,
@@ -452,7 +456,7 @@ export default function SettingsPage() {
 
   // ── OpenAI-compatible endpoint tests ───────────────────────────────────────
   const handleTestOpenAi = async () => {
-    await runCheckState(setOpenaiTestStatus, setOpenaiTestMessage, async () => {
+    await openaiCheck.run(async () => {
       const d = agentDraft();
       return testDesktopOpenAiChannel(
         d.openaiUrl,
@@ -463,9 +467,7 @@ export default function SettingsPage() {
   };
 
   const handleTestHoneCloud = async () => {
-    await runCheckState(
-      setHoneCloudTestStatus,
-      setHoneCloudTestMessage,
+    await honeCloudCheck.run(
       async () => {
         const d = agentDraft().honeCloud;
         return testDesktopOpenAiChannel(
@@ -478,9 +480,7 @@ export default function SettingsPage() {
   };
 
   const handleTestAuxiliary = async () => {
-    await runCheckState(
-      setAuxiliaryTestStatus,
-      setAuxiliaryTestMessage,
+    await auxiliaryCheck.run(
       async () => {
         const auxiliary = agentDraft().auxiliary;
         return testDesktopOpenAiChannel(
@@ -494,15 +494,11 @@ export default function SettingsPage() {
 
   // ── CLI / ACP checks ───────────────────────────────────────────────────────
   const handleCheckGemini = async () => {
-    await runCheckState(setGeminiCheckStatus, setGeminiCheckMessage, () =>
-      checkDesktopAgentCli("gemini_cli"),
-    );
+    await geminiCheck.run(() => checkDesktopAgentCli("gemini_cli"));
   };
 
   const handleCheckCodexAcp = async () => {
-    await runCheckState(setCodexAcpCheckStatus, setCodexAcpCheckMessage, () =>
-      checkDesktopAgentCli("codex_acp"),
-    );
+    await codexAcpCheck.run(() => checkDesktopAgentCli("codex_acp"));
   };
 
   // ── 选中某个 runner 并立即保存 ───────────────────────────────────────────────
@@ -598,8 +594,7 @@ export default function SettingsPage() {
       return;
     }
     setInviteCreating(true);
-    setInviteMessage("");
-    setInviteError("");
+    clearInviteFeedback();
     try {
       const created = await createWebInvite(phoneNumber);
       setWebInvites((current = []) => [created, ...current]);
@@ -638,8 +633,7 @@ export default function SettingsPage() {
   };
 
   const copyInviteCode = async (code: string) => {
-    setInviteMessage("");
-    setInviteError("");
+    clearInviteFeedback();
     try {
       if (!navigator.clipboard?.writeText) {
         throw new Error(SETTINGS.invite.copy_unsupported);
@@ -671,8 +665,7 @@ export default function SettingsPage() {
       );
       if (!confirmed) return;
     }
-    setInviteMessage("");
-    setInviteError("");
+    clearInviteFeedback();
     setInviteActionKey(buildInviteActionKey(invite.user_id, "disable"));
     try {
       const result = await disableWebInvite(invite.user_id);
@@ -686,8 +679,7 @@ export default function SettingsPage() {
   };
 
   const handleEnableInvite = async (invite: WebInviteInfo) => {
-    setInviteMessage("");
-    setInviteError("");
+    clearInviteFeedback();
     setInviteActionKey(buildInviteActionKey(invite.user_id, "enable"));
     try {
       const result = await enableWebInvite(invite.user_id);
@@ -707,8 +699,7 @@ export default function SettingsPage() {
       );
       if (!confirmed) return;
     }
-    setInviteMessage("");
-    setInviteError("");
+    clearInviteFeedback();
     setInviteActionKey(buildInviteActionKey(invite.user_id, "reset"));
     try {
       const result = await resetWebInvite(invite.user_id);
@@ -728,8 +719,7 @@ export default function SettingsPage() {
   };
 
   const copyInviteApiKey = async (apiKey: string) => {
-    setInviteMessage("");
-    setInviteError("");
+    clearInviteFeedback();
     try {
       if (!navigator.clipboard?.writeText) {
         throw new Error(SETTINGS.invite.copy_unsupported);
@@ -742,8 +732,7 @@ export default function SettingsPage() {
   };
 
   const handleGetInviteApiKey = async (invite: WebInviteInfo) => {
-    setInviteMessage("");
-    setInviteError("");
+    clearInviteFeedback();
     setInviteActionKey(buildInviteActionKey(invite.user_id, "api-key"));
     try {
       const result = await getWebInviteApiKey(invite.user_id);
@@ -766,8 +755,7 @@ export default function SettingsPage() {
       );
       if (!confirmed) return;
     }
-    setInviteMessage("");
-    setInviteError("");
+    clearInviteFeedback();
     setInviteActionKey(buildInviteActionKey(invite.user_id, "api-key-reset"));
     try {
       const result = await resetWebInviteApiKey(invite.user_id);
@@ -1005,23 +993,23 @@ export default function SettingsPage() {
               <div class="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-soft)] p-3 text-xs text-[color:var(--text-secondary)]">
                 {SETTINGS.agent.hone_cloud.contact_note}
               </div>
-              <Show when={honeCloudTestStatus() !== "idle"}>
+              <Show when={honeCloudCheck.status() !== "idle"}>
                 <CheckStatusBanner
-                  status={honeCloudTestStatus()}
+                  status={honeCloudCheck.status()}
                   checkingMessage={
                     SETTINGS.agent.hone_cloud.connection_testing_status
                   }
-                  message={honeCloudTestMessage()}
+                  message={honeCloudCheck.message()}
                 />
               </Show>
               <div class="flex gap-2 pt-1">
                 <button
                   type="button"
                   class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
-                  disabled={honeCloudTestStatus() === "checking"}
+                  disabled={honeCloudCheck.status() === "checking"}
                   onClick={() => void handleTestHoneCloud()}
                 >
-                  {honeCloudTestStatus() === "checking"
+                  {honeCloudCheck.status() === "checking"
                     ? SETTINGS.agent.hone_cloud.testing
                     : SETTINGS.agent.hone_cloud.test_connection}
                 </button>
@@ -1082,10 +1070,7 @@ export default function SettingsPage() {
                   class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                   value={agentDraft().openaiUrl}
                   onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      openaiUrl: e.currentTarget.value,
-                    }))
+                    updateAgentDraft({ openaiUrl: e.currentTarget.value })
                   }
                 />
               </div>
@@ -1105,10 +1090,7 @@ export default function SettingsPage() {
                   class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                   value={agentDraft().openaiModel}
                   onInput={(e) =>
-                    setAgentDraft((prev) => ({
-                      ...prev,
-                      openaiModel: e.currentTarget.value,
-                    }))
+                    updateAgentDraft({ openaiModel: e.currentTarget.value })
                   }
                 />
               </div>
@@ -1402,10 +1384,7 @@ export default function SettingsPage() {
                     class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 pr-16 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                     value={agentDraft().openaiApiKey}
                     onInput={(e) =>
-                      setAgentDraft((prev) => ({
-                        ...prev,
-                        openaiApiKey: e.currentTarget.value,
-                      }))
+                      updateAgentDraft({ openaiApiKey: e.currentTarget.value })
                     }
                   />
                   <button
@@ -1421,22 +1400,22 @@ export default function SettingsPage() {
               </div>
 
               {/* 测试联通状态 */}
-              <Show when={openaiTestStatus() !== "idle"}>
+              <Show when={openaiCheck.status() !== "idle"}>
                 <CheckStatusBanner
-                  status={openaiTestStatus()}
+                  status={openaiCheck.status()}
                   checkingMessage={
                     SETTINGS.agent.openai.connection_testing_status
                   }
-                  message={openaiTestMessage()}
+                  message={openaiCheck.message()}
                   showIcon
                 />
               </Show>
 
-              <Show when={auxiliaryTestStatus() !== "idle"}>
+              <Show when={auxiliaryCheck.status() !== "idle"}>
                 <CheckStatusBanner
-                  status={auxiliaryTestStatus()}
+                  status={auxiliaryCheck.status()}
                   checkingMessage={SETTINGS.agent.openai.auxiliary_testing_status}
-                  message={auxiliaryTestMessage()}
+                  message={auxiliaryCheck.message()}
                 />
               </Show>
 
@@ -1457,20 +1436,20 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
-                  disabled={openaiTestStatus() === "checking"}
+                  disabled={openaiCheck.status() === "checking"}
                   onClick={() => void handleTestOpenAi()}
                 >
-                  {openaiTestStatus() === "checking"
+                  {openaiCheck.status() === "checking"
                     ? SETTINGS.agent.openai.testing
                     : SETTINGS.agent.openai.test_connection}
                 </button>
                 <button
                   type="button"
                   class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
-                  disabled={auxiliaryTestStatus() === "checking"}
+                  disabled={auxiliaryCheck.status() === "checking"}
                   onClick={() => void handleTestAuxiliary()}
                 >
-                  {auxiliaryTestStatus() === "checking"
+                  {auxiliaryCheck.status() === "checking"
                     ? SETTINGS.agent.openai.testing
                     : SETTINGS.agent.openai.test_auxiliary}
                 </button>
@@ -1519,11 +1498,11 @@ export default function SettingsPage() {
             </div>
 
             <div class="mt-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-              <Show when={codexAcpCheckStatus() !== "idle"}>
+              <Show when={codexAcpCheck.status() !== "idle"}>
                 <CheckStatusBanner
-                  status={codexAcpCheckStatus()}
+                  status={codexAcpCheck.status()}
                   checkingMessage={SETTINGS.agent.codex_acp.checking_status}
-                  message={codexAcpCheckMessage()}
+                  message={codexAcpCheck.message()}
                   showIcon
                 />
               </Show>
@@ -1536,10 +1515,10 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
-                  disabled={codexAcpCheckStatus() === "checking"}
+                  disabled={codexAcpCheck.status() === "checking"}
                   onClick={() => void handleCheckCodexAcp()}
                 >
-                  {codexAcpCheckStatus() === "checking"
+                  {codexAcpCheck.status() === "checking"
                     ? SETTINGS.agent.codex_acp.checking
                     : SETTINGS.agent.codex_acp.test_connection}
                 </button>
@@ -1579,11 +1558,11 @@ export default function SettingsPage() {
 
             <div class="mt-4 space-y-3" onClick={(e) => e.stopPropagation()}>
               {/* 检测状态 */}
-              <Show when={geminiCheckStatus() !== "idle"}>
+              <Show when={geminiCheck.status() !== "idle"}>
                 <CheckStatusBanner
-                  status={geminiCheckStatus()}
+                  status={geminiCheck.status()}
                   checkingMessage={SETTINGS.agent.gemini_cli.checking_status}
-                  message={geminiCheckMessage()}
+                  message={geminiCheck.message()}
                   showIcon
                 />
               </Show>
@@ -1592,10 +1571,10 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   class="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-xs text-[color:var(--text-primary)] transition hover:border-[color:var(--accent)]/60 disabled:opacity-50"
-                  disabled={geminiCheckStatus() === "checking"}
+                  disabled={geminiCheck.status() === "checking"}
                   onClick={() => void handleCheckGemini()}
                 >
-                  {geminiCheckStatus() === "checking"
+                  {geminiCheck.status() === "checking"
                     ? SETTINGS.agent.gemini_cli.checking
                     : SETTINGS.agent.gemini_cli.test_connection}
                 </button>
@@ -2210,10 +2189,9 @@ export default function SettingsPage() {
                       class="peer sr-only"
                       checked={channelDraft().feishuEnabled}
                       onChange={(e) =>
-                        setChannelDraft((p) => ({
-                          ...p,
+                        updateChannelDraft({
                           feishuEnabled: e.currentTarget.checked,
-                        }))
+                        })
                       }
                     />
                     <div class="peer h-5 w-9 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full dark:bg-gray-700"></div>
@@ -2231,10 +2209,9 @@ export default function SettingsPage() {
                         class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                         value={channelDraft().feishuAppId || ""}
                         onInput={(e) =>
-                          setChannelDraft((p) => ({
-                            ...p,
+                          updateChannelDraft({
                             feishuAppId: e.currentTarget.value,
-                          }))
+                          })
                         }
                       />
                     </div>
@@ -2249,10 +2226,9 @@ export default function SettingsPage() {
                           class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                           value={channelDraft().feishuAppSecret || ""}
                           onInput={(e) =>
-                            setChannelDraft((p) => ({
-                              ...p,
+                            updateChannelDraft({
                               feishuAppSecret: e.currentTarget.value,
-                            }))
+                            })
                           }
                         />
                         <button
@@ -2275,10 +2251,9 @@ export default function SettingsPage() {
                             class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                             value={channelDraft().feishuChatScope || "DM_ONLY"}
                             onChange={(e) =>
-                              setChannelDraft((p) => ({
-                                ...p,
+                              updateChannelDraft({
                                 feishuChatScope: e.currentTarget.value,
-                              }))
+                              })
                             }
                           >
                             <For each={CHANNEL_CHAT_SCOPES}>
@@ -2298,10 +2273,9 @@ export default function SettingsPage() {
                             class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                             value={formatCsv(channelDraft().feishuAllowEmails)}
                             onChange={(e) =>
-                              setChannelDraft((p) => ({
-                                ...p,
+                              updateChannelDraft({
                                 feishuAllowEmails: parseCsv(e.currentTarget.value),
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -2315,10 +2289,9 @@ export default function SettingsPage() {
                             class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                             value={formatCsv(channelDraft().feishuAllowOpenIds)}
                             onChange={(e) =>
-                              setChannelDraft((p) => ({
-                                ...p,
+                              updateChannelDraft({
                                 feishuAllowOpenIds: parseCsv(e.currentTarget.value),
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -2334,10 +2307,9 @@ export default function SettingsPage() {
                             class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                             value={formatCsv(channelDraft().feishuAllowMobiles)}
                             onChange={(e) =>
-                              setChannelDraft((p) => ({
-                                ...p,
+                              updateChannelDraft({
                                 feishuAllowMobiles: parseCsv(e.currentTarget.value),
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -2369,10 +2341,9 @@ export default function SettingsPage() {
                       class="peer sr-only"
                       checked={channelDraft().discordEnabled}
                       onChange={(e) =>
-                        setChannelDraft((p) => ({
-                          ...p,
+                        updateChannelDraft({
                           discordEnabled: e.currentTarget.checked,
-                        }))
+                        })
                       }
                     />
                     <div class="peer h-5 w-9 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full dark:bg-gray-700"></div>
@@ -2390,10 +2361,9 @@ export default function SettingsPage() {
                         class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                         value={channelDraft().discordBotToken || ""}
                         onInput={(e) =>
-                          setChannelDraft((p) => ({
-                            ...p,
+                          updateChannelDraft({
                             discordBotToken: e.currentTarget.value,
-                          }))
+                          })
                         }
                       />
                       <button
@@ -2415,10 +2385,9 @@ export default function SettingsPage() {
                             class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                             value={channelDraft().discordChatScope || "DM_ONLY"}
                             onChange={(e) =>
-                              setChannelDraft((p) => ({
-                                ...p,
+                              updateChannelDraft({
                                 discordChatScope: e.currentTarget.value,
-                              }))
+                              })
                             }
                           >
                             <For each={CHANNEL_CHAT_SCOPES}>
@@ -2438,10 +2407,9 @@ export default function SettingsPage() {
                             class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                             value={formatCsv(channelDraft().discordAllowFrom)}
                             onChange={(e) =>
-                              setChannelDraft((p) => ({
-                                ...p,
+                              updateChannelDraft({
                                 discordAllowFrom: parseCsv(e.currentTarget.value),
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -2473,10 +2441,9 @@ export default function SettingsPage() {
                       class="peer sr-only"
                       checked={channelDraft().telegramEnabled}
                       onChange={(e) =>
-                        setChannelDraft((p) => ({
-                          ...p,
+                        updateChannelDraft({
                           telegramEnabled: e.currentTarget.checked,
-                        }))
+                        })
                       }
                     />
                     <div class="peer h-5 w-9 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full dark:bg-gray-700"></div>
@@ -2494,10 +2461,9 @@ export default function SettingsPage() {
                         class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 pr-14 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                         value={channelDraft().telegramBotToken || ""}
                         onInput={(e) =>
-                          setChannelDraft((p) => ({
-                            ...p,
+                          updateChannelDraft({
                             telegramBotToken: e.currentTarget.value,
-                          }))
+                          })
                         }
                       />
                       <button
@@ -2519,10 +2485,9 @@ export default function SettingsPage() {
                             class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                             value={channelDraft().telegramChatScope || "DM_ONLY"}
                             onChange={(e) =>
-                              setChannelDraft((p) => ({
-                                ...p,
+                              updateChannelDraft({
                                 telegramChatScope: e.currentTarget.value,
-                              }))
+                              })
                             }
                           >
                             <For each={CHANNEL_CHAT_SCOPES}>
@@ -2542,10 +2507,9 @@ export default function SettingsPage() {
                             class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                             value={formatCsv(channelDraft().telegramAllowFrom)}
                             onChange={(e) =>
-                              setChannelDraft((p) => ({
-                                ...p,
+                              updateChannelDraft({
                                 telegramAllowFrom: parseCsv(e.currentTarget.value),
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -2582,10 +2546,9 @@ export default function SettingsPage() {
                       class="peer sr-only"
                       checked={channelDraft().imessageEnabled}
                       onChange={(e) =>
-                        setChannelDraft((p) => ({
-                          ...p,
+                        updateChannelDraft({
                           imessageEnabled: e.currentTarget.checked,
-                        }))
+                        })
                       }
                     />
                     <div class="peer h-5 w-9 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full dark:bg-gray-700"></div>
@@ -2603,10 +2566,9 @@ export default function SettingsPage() {
                         class="w-full rounded border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                         value={channelDraft().imessageTargetHandle || ""}
                         onInput={(e) =>
-                          setChannelDraft((p) => ({
-                            ...p,
+                          updateChannelDraft({
                             imessageTargetHandle: e.currentTarget.value,
-                          }))
+                          })
                         }
                       />
                     </div>

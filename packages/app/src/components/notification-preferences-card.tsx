@@ -95,6 +95,10 @@ export function NotificationPreferencesCard() {
   const [detailDirty, setDetailDirty] = createSignal(false);
   const [message, setMessage] = createSignal("");
   const [error, setError] = createSignal("");
+  const clearFeedback = () => {
+    setMessage("");
+    setError("");
+  };
   const [manual, setManual] = createSignal<ActorRef>({
     channel: "",
     user_id: "",
@@ -174,8 +178,7 @@ export function NotificationPreferencesCard() {
   const savePrefs = async (actor: ActorRef, prefs: NotificationPrefs) => {
     const k = actorKey(actor);
     setSavingKey(k);
-    setMessage("");
-    setError("");
+    clearFeedback();
     try {
       const saved = await putNotificationPrefs(actor, prefs);
       patchEntry(actor, (e) => ({ ...e, prefs: saved }));
@@ -207,8 +210,7 @@ export function NotificationPreferencesCard() {
   };
 
   const chooseActor = async (actor: ActorRef) => {
-    setMessage("");
-    setError("");
+    clearFeedback();
     setSelectedKey(actorKey(actor));
     setDetailDirty(false);
     if (!roster().some((e) => sameActor(e.actor, actor))) {
