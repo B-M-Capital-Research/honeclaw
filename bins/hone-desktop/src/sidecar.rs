@@ -158,7 +158,7 @@ pub(crate) struct ChannelProcessCleanupResult {
     message: String,
 }
 
-/// Agent 基础设置（写入运行时覆盖层）
+/// Agent 设置 payload；保存时写入 canonical config.yaml 并重新生成 effective config。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MultiAgentSearchSettings {
@@ -2060,8 +2060,8 @@ fmp:
     }
 }
 
-/// 检测本地 CLI/ACP runner 是否可用（运行 --version）。
-/// 仅检查二进制是否存在且可执行，不发送真实请求，通常在 1～2s 内完成。
+/// 检测本地 runner 依赖的 CLI 二进制是否可用。
+/// 仅运行 `AgentRunnerKind::cli_probe()` 提供的轻量参数，不发送真实请求。
 pub(crate) async fn check_agent_cli_impl(runner: String) -> Result<CliCheckResult, String> {
     let probe = hone_core::config::AgentRunnerKind::from_config_value(&runner)
         .cli_probe()

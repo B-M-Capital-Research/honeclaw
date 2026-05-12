@@ -1,6 +1,7 @@
 //! 通用 Agent 接口定义
 //!
-//! 将 function_calling / gemini_cli / codex_cli 抽象为统一接口。
+//! 保存会话历史、工具调用和 legacy [`Agent`] 适配器共享的响应形状。
+//! 渠道运行时的主抽象在 `hone-channels::runners::AgentRunner`。
 
 use crate::ActorIdentity;
 use async_trait::async_trait;
@@ -18,7 +19,10 @@ pub struct ToolCallMade {
     pub tool_call_id: Option<String>,
 }
 
-/// Agent 流式事件（预留给未来的流式输出）
+/// Legacy Agent 流式事件形状。
+///
+/// 现代渠道运行时使用 `AgentRunnerEvent` 做流式输出；这里保留为旧 API 的
+/// 兼容类型。
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
     /// 文本 token
@@ -44,7 +48,10 @@ pub enum AgentEvent {
     },
 }
 
-/// Agent 同步响应
+/// Agent 单轮响应。
+///
+/// 即使底层 runner 已经流式输出，收尾阶段也会归并成这个结构用于持久化、
+/// 审计和调用方状态判断。
 #[derive(Debug, Clone)]
 pub struct AgentResponse {
     pub content: String,
@@ -171,7 +178,7 @@ impl AgentContext {
             .and_then(|value| serde_json::from_value(value).ok())
     }
 
-    /// 转换为 LLM 消息格式 (如果需要)
+    /// 转换为旧版通用 JSON 消息格式。
     pub fn to_messages(&self) -> Vec<Value> {
         self.messages
             .iter()
@@ -575,7 +582,9 @@ pub fn denormalize_normalized_message(
     }
 }
 
-/// 可插拔 Agent 接口
+/// Legacy 可插拔 Agent 接口。
+///
+/// 新的渠道执行路径应实现 `hone-channels::runners::AgentRunner`。
 #[async_trait]
 pub trait Agent: Send + Sync {
     /// 运行单次交互

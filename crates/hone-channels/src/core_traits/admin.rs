@@ -35,9 +35,9 @@ pub trait AdminIntercept: Send + Sync {
         input: &str,
     ) -> Option<String>;
 
-    /// 拦截所有 `/xxx` 开头的 runtime 内建命令（目前包括 register-admin 和
-    /// report）。返回 `Some(reply)` 表示命令已被本地处理,调用方不应再进
-    /// 入 AgentSession。
+    /// 尝试拦截已知 runtime 内建命令（目前包括 `/register-admin` 和
+    /// `/report`）。返回 `Some(reply)` 表示命令已被本地处理,调用方不应再
+    /// 进入 AgentSession；未知 slash 输入返回 `None` 并继续正常流程。
     async fn try_handle_intercept_command(
         &self,
         actor: &ActorIdentity,
