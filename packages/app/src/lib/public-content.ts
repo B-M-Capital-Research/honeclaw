@@ -815,11 +815,6 @@ const CONTENT_ZH = {
     },
   },
 
-  common: {
-    cancel: "取消",
-    close_aria: "关闭",
-  },
-
   legal: {
     version_banner_template: "v{version} · {date} 生效",
     terms: {
@@ -2177,11 +2172,6 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       privacy: "Privacy Policy",
       version_template: " (v{version})",
     },
-  },
-
-  common: {
-    cancel: "Cancel",
-    close_aria: "Close",
   },
 
   legal: {
