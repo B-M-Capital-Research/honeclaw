@@ -11,6 +11,8 @@ use hone_tools::ToolRegistry;
 use serde_json::Value;
 use std::sync::Arc;
 
+const REASONING_CONTENT_METADATA_KEY: &str = "reasoning_content";
+
 /// Function Calling Agent
 pub struct FunctionCallingAgent {
     pub llm: Arc<dyn LlmProvider>,
@@ -64,6 +66,7 @@ impl FunctionCallingAgent {
             messages.push(Message {
                 role: "system".to_string(),
                 content: Some(self.system_prompt.clone()),
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
@@ -74,6 +77,12 @@ impl FunctionCallingAgent {
             messages.push(Message {
                 role: msg.role.clone(),
                 content: msg.content.clone(),
+                reasoning_content: msg
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get(REASONING_CONTENT_METADATA_KEY))
+                    .and_then(|value| value.as_str())
+                    .map(ToString::to_string),
                 tool_calls: msg.tool_calls.as_ref().map(|tcs| {
                     tcs.iter()
                         .filter_map(|tc| serde_json::from_value(tc.clone()).ok())
@@ -199,6 +208,7 @@ impl Agent for FunctionCallingAgent {
                 match self.llm.chat(&messages, None).await {
                     Ok(r) => ChatResponse {
                         content: r.content,
+                        reasoning_content: None,
                         tool_calls: None,
                         usage: r.usage,
                     },
@@ -249,7 +259,17 @@ impl Agent for FunctionCallingAgent {
                         .iter()
                         .filter_map(|tc| serde_json::to_value(tc).ok())
                         .collect();
-                    context.add_assistant_message(&result.content, Some(tc_values));
+                    let metadata = result.reasoning_content.as_ref().map(|reasoning| {
+                        std::collections::HashMap::from([(
+                            REASONING_CONTENT_METADATA_KEY.to_string(),
+                            Value::String(reasoning.clone()),
+                        )])
+                    });
+                    context.add_assistant_message_with_metadata(
+                        &result.content,
+                        Some(tc_values),
+                        metadata,
+                    );
 
                     // 逐个执行工具
                     for tc in tcs {
@@ -328,7 +348,13 @@ impl Agent for FunctionCallingAgent {
 
             // 没有工具调用 — 最终回复
             self.dbg("[Agent] done (no more tool_calls)");
-            context.add_assistant_message(&result.content, None);
+            let metadata = result.reasoning_content.as_ref().map(|reasoning| {
+                std::collections::HashMap::from([(
+                    REASONING_CONTENT_METADATA_KEY.to_string(),
+                    Value::String(reasoning.clone()),
+                )])
+            });
+            context.add_assistant_message_with_metadata(&result.content, None, metadata);
             return AgentResponse {
                 content: result.content,
                 tool_calls_made,
@@ -362,6 +388,7 @@ mod tests {
         chat_with_tools_calls: usize,
         next_chat_response: Option<String>,
         next_tool_responses: VecDeque<ChatResponse>,
+        seen_tool_messages: Vec<Vec<Message>>,
     }
 
     impl MockLlmProvider {
@@ -372,6 +399,7 @@ mod tests {
                     chat_with_tools_calls: 0,
                     next_chat_response: Some(content.to_string()),
                     next_tool_responses: VecDeque::new(),
+                    seen_tool_messages: Vec::new(),
                 })),
             }
         }
@@ -383,6 +411,7 @@ mod tests {
                     chat_with_tools_calls: 0,
                     next_chat_response: None,
                     next_tool_responses: responses.into(),
+                    seen_tool_messages: Vec::new(),
                 })),
             }
         }
@@ -408,12 +437,13 @@ mod tests {
 
         async fn chat_with_tools(
             &self,
-            _messages: &[Message],
+            messages: &[Message],
             _tools: &[Value],
             _model: Option<&str>,
         ) -> hone_core::HoneResult<ChatResponse> {
             let mut state = self.state.lock().expect("mock state lock");
             state.chat_with_tools_calls += 1;
+            state.seen_tool_messages.push(messages.to_vec());
             match state.next_tool_responses.pop_front() {
                 Some(resp) => Ok(resp),
                 None => Err(hone_core::HoneError::Llm(
@@ -521,11 +551,13 @@ mod tests {
         let llm = MockLlmProvider::with_tool_responses(vec![
             ChatResponse {
                 content: "let me call tool".to_string(),
+                reasoning_content: None,
                 tool_calls: Some(vec![tool_call]),
                 usage: None,
             },
             ChatResponse {
                 content: "done".to_string(),
+                reasoning_content: None,
                 tool_calls: None,
                 usage: None,
             },
@@ -569,11 +601,13 @@ mod tests {
         let llm = MockLlmProvider::with_tool_responses(vec![
             ChatResponse {
                 content: "try tool".to_string(),
+                reasoning_content: None,
                 tool_calls: Some(vec![invalid_tool_call]),
                 usage: None,
             },
             ChatResponse {
                 content: "fallback final".to_string(),
+                reasoning_content: None,
                 tool_calls: None,
                 usage: None,
             },
@@ -613,11 +647,13 @@ mod tests {
         let llm = MockLlmProvider::with_tool_responses(vec![
             ChatResponse {
                 content: "let me call tool".to_string(),
+                reasoning_content: None,
                 tool_calls: Some(vec![tool_call]),
                 usage: None,
             },
             ChatResponse {
                 content: "done".to_string(),
+                reasoning_content: None,
                 tool_calls: None,
                 usage: None,
             },
@@ -643,5 +679,56 @@ mod tests {
         assert!(response.success);
         let events = observer.events.lock().expect("observer lock").clone();
         assert_eq!(events, vec!["start:echo_tool", "done:echo_tool:true"]);
+    }
+
+    #[tokio::test]
+    async fn run_replays_reasoning_content_into_followup_tool_round() {
+        let tool_call = hone_llm::ToolCall {
+            id: "tc_reason".to_string(),
+            call_type: "function".to_string(),
+            function: hone_llm::FunctionCall {
+                name: "echo_tool".to_string(),
+                arguments: r#"{"text":"abc"}"#.to_string(),
+            },
+        };
+        let llm = MockLlmProvider::with_tool_responses(vec![
+            ChatResponse {
+                content: String::new(),
+                reasoning_content: Some("need tool lookup first".to_string()),
+                tool_calls: Some(vec![tool_call]),
+                usage: None,
+            },
+            ChatResponse {
+                content: "done".to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                usage: None,
+            },
+        ]);
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(EchoTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm.clone()),
+            Arc::new(registry),
+            String::new(),
+            4,
+            None,
+        );
+        let mut context = AgentContext::new("s_reason".to_string());
+
+        let response = agent.run("trigger tool", &mut context).await;
+
+        assert!(response.success);
+        let state = llm.state.lock().expect("mock state lock");
+        assert_eq!(state.seen_tool_messages.len(), 2);
+        let assistant = state.seen_tool_messages[1]
+            .iter()
+            .find(|message| message.role == "assistant")
+            .expect("assistant followup message");
+        assert_eq!(
+            assistant.reasoning_content.as_deref(),
+            Some("need tool lookup first")
+        );
     }
 }

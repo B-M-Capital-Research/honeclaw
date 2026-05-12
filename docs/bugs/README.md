@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-13 03:02 CST
+最后更新：2026-05-13 04:36 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,9 @@
 
 ## 当前概览
 
-- 活跃待修复：3
+- 活跃待修复：2
 - Later / 待复现：9
-- 已修复 / 已关闭：99
+- 已修复 / 已关闭：100
 - 历史分析 / 部分止血：5
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
@@ -42,6 +42,7 @@
 - 本轮 03:02 CST 确认 Heartbeat `mimo-v2.5-pro` provider 参数兼容缺陷仍活跃：23:30-03:00 CST 继续新增 82 条 `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 仍有 5 条成功送达，故障仍集中在 heartbeat provider 参数 / 模型兼容路径。
 - 本轮 03:02 CST 重新打开 Feishu 公司画像路径外泄缺陷：23:48 CST 用户要求建 PDD 公司画像，23:53 CST assistant final 在“已建好”回复里直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；同一根因复发，状态从 `Fixed` 调回 `New`。
 - 本轮 03:02 CST 重新打开 Feishu 直聊半成品收口缺陷：23:30 CST 用户要求为当前持仓中未建画像的公司建档，23:34 CST assistant final 只包含 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整` 等工具进度/失败尾注，没有给出画像建档结果；状态从 `Fixed` 调回 `New`。
+- 本轮 04:36 CST 已修复 Heartbeat `mimo-v2.5-pro` thinking transcript 兼容缺陷：根因不是基础 `chat/completions` 参数无效，而是 auxiliary function-calling 第二轮未回传上一轮 assistant `reasoning_content`，被上游以 `The reasoning_content in the thinking mode must be passed back to the API` / `Param Incorrect` 拒绝；现已补 transcript 回传、OpenAI-compatible raw body 透传与 heartbeat 窄工具白名单回归。当前未重启 live 进程，先记为 `Fixed`。
 
 ## 代码质量巡检发现
 
@@ -53,7 +54,6 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-13 03:02 仍活跃：23:30-03:00 CST 新增 82 条 heartbeat 因 `upstream HTTP 400: Param Incorrect` 落成 `execution_failed + skipped_error + delivered=0`；覆盖 11 个 job；同窗普通 scheduler 仍可送达；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
 | Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
 | Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-05-13 03:02 复发：23:48 CST PDD 公司画像建档回复直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；主功能完成但输出边界失守；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 
@@ -65,6 +65,7 @@
 | Feishu 定时任务在 Answer 阶段返回空/无效回复后，调度台账仍记为 `completed + sent` | P1 | Later | 2026-04-26 已把 `EMPTY_SUCCESS_FALLBACK_MESSAGE` 与 `empty_success_exhausted` 提升为失败信号；若 scheduler 仍把同类 fallback 记为完成再改回 `New` | [feishu_scheduler_empty_reply_false_success.md](./archive/feishu_scheduler_empty_reply_false_success.md) |
 | Feishu 出站 `send/update message` 请求传输失败，定时任务和直聊回复都已生成但无法送达 | P1 | Later | 2026-04-26 已为 Feishu send/reply/update 出站请求补 3 次短重试，仅吸收传输错误、`429` 与 `5xx`；若真实出站窗口继续复现再改回 `New` | [feishu_send_message_request_transport_failure.md](./archive/feishu_send_message_request_transport_failure.md) |
 | 会话压缩摘要曾以 `role=user` 的 `Compact Summary` 回灌真实 transcript，且压缩标记会进入最终可见文本 | P1 | Later | 2026-04-26 已在共享净化层剥离独立 `Context compacted` / `Conversation compacted` marker 行并保留真实正文；若 marker 或 summary 污染再次复现再改回 `New` | [session_compact_summary_report_hallucination.md](./archive/session_compact_summary_report_hallucination.md) |
+| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | Fixed | 2026-05-13 已确认根因是 thinking mode 多轮 tool transcript 丢失 assistant `reasoning_content`；现已补 function-calling 回传、OpenAI-compatible raw body 透传与 heartbeat 窄工具白名单，`hone-llm` / `hone-agent` / `hone-channels` 定向回归通过。未重启 live 进程，待后续 heartbeat 窗口复核后可 `Closed` | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
 | Feishu 直聊自动 compact 后仍无法完成新话题回答，旧会话会反复卡在“仍无法继续” | P2 | Later | 2026-04-26 已把 compact fallback 固定为用户态 `/compact` 文案，并将 answer 空成功重试耗尽改为失败态；若旧会话新话题仍稳定失败再改回 `New` | [feishu_direct_compact_retry_still_cannot_answer_new_topic.md](./archive/feishu_direct_compact_retry_still_cannot_answer_new_topic.md) |
 | Feishu 定时汇总旧会话在自动 compact 后仍无法完成日报，最终退化为“当前会话上下文过长”失败提示 | P2 | Later | 2026-04-26 已统一 overflow fallback 文案并保留执行失败态；若真实日报窗口继续只投失败提示再改回 `New` | [feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md](./archive/feishu_scheduler_compact_retry_still_cannot_finish_company_digest.md) |
 | Discord 定时任务在 Answer 阶段返回空/无效回复后，仍被记为成功执行 | P2 | Later | 2026-04-26 已通过共享 `empty_success_exhausted -> success=false + error` 修复，Discord scheduler 后续会把通用 fallback 记为 `execution_failed` 而不是 `completed + sent`；若再次伪成功再改回 `New` | [discord_scheduler_empty_reply_send_failed.md](./archive/discord_scheduler_empty_reply_send_failed.md) |

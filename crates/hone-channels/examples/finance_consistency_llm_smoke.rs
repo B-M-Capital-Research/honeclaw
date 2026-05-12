@@ -128,6 +128,7 @@ async fn run_case(spec: &ModelSpec, case: &CaseSpec) -> Result<CaseResult> {
         Message {
             role: "system".into(),
             content: Some(system_prompt),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -135,6 +136,7 @@ async fn run_case(spec: &ModelSpec, case: &CaseSpec) -> Result<CaseResult> {
         Message {
             role: "user".into(),
             content: Some(case.user_prompt.to_string()),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,

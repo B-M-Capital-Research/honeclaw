@@ -66,6 +66,7 @@ impl LlmPolisher {
                  4) 不做任何投资建议；5) 直接输出润色后的正文，不要添加前缀/后缀。"
                     .into(),
             ),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -82,6 +83,7 @@ impl LlmPolisher {
         let user = Message {
             role: "user".into(),
             content: Some(user_payload.to_string()),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,

@@ -6,8 +6,7 @@ use async_openai::{
     types::{
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
-        ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolType,
-        CreateChatCompletionRequestArgs, FunctionObject,
+        ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
     },
 };
 use async_trait::async_trait;
@@ -137,44 +136,6 @@ impl OpenAiCompatibleProvider {
         Ok(out)
     }
 
-    fn convert_tools(tools: &[Value]) -> hone_core::HoneResult<Vec<ChatCompletionTool>> {
-        let mut out = Vec::with_capacity(tools.len());
-        for tool_schema in tools {
-            let function_schema = tool_schema
-                .get("function")
-                .ok_or_else(|| hone_core::HoneError::Llm("工具缺少 function 字段".to_string()))?;
-            let name = function_schema
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let description = function_schema
-                .get("description")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let parameters = function_schema.get("parameters").cloned();
-
-            let mut function_object = FunctionObject {
-                name,
-                description,
-                parameters: None,
-                strict: None,
-            };
-            if let Some(params) = parameters {
-                function_object.parameters = Some(
-                    serde_json::from_value(params)
-                        .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
-                );
-            }
-
-            out.push(ChatCompletionTool {
-                r#type: ChatCompletionToolType::Function,
-                function: function_object,
-            });
-        }
-        Ok(out)
-    }
-
     async fn post_chat_completion(
         &self,
         request: &async_openai::types::CreateChatCompletionRequest,
@@ -238,10 +199,14 @@ impl OpenAiCompatibleProvider {
         })
     }
 
-    fn build_profile_request_body(
+    fn build_profile_request_body(&self, body: &mut Map<String, Value>) {
+        self.request_options.apply_to_body(body, self.max_tokens);
+    }
+
+    fn build_request_body(
         &self,
-        messages: Vec<ChatCompletionRequestMessage>,
-        tools: Option<Vec<ChatCompletionTool>>,
+        messages: &[Message],
+        tools: Option<&[Value]>,
         model: &str,
     ) -> hone_core::HoneResult<Value> {
         let mut body = Map::new();
@@ -251,14 +216,9 @@ impl OpenAiCompatibleProvider {
             serde_json::to_value(messages).map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
         );
         if let Some(tools) = tools {
-            body.insert(
-                "tools".to_string(),
-                serde_json::to_value(tools)
-                    .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
-            );
+            body.insert("tools".to_string(), Value::Array(tools.to_vec()));
         }
-        self.request_options
-            .apply_to_body(&mut body, self.max_tokens);
+        self.build_profile_request_body(&mut body);
         Ok(Value::Object(body))
     }
 
@@ -290,6 +250,17 @@ impl OpenAiCompatibleProvider {
             .and_then(|content| content.as_str())
             .unwrap_or_default()
             .to_string()
+    }
+
+    fn reasoning_content_from_value(value: &Value) -> Option<String> {
+        value
+            .get("choices")
+            .and_then(|v| v.as_array())
+            .and_then(|choices| choices.first())
+            .and_then(|choice| choice.get("message"))
+            .and_then(|message| message.get("reasoning_content"))
+            .and_then(|content| content.as_str())
+            .map(ToString::to_string)
     }
 
     fn tool_calls_from_value(value: &Value) -> Option<Vec<ToolCall>> {
@@ -408,6 +379,7 @@ mod tests {
                 &[Message {
                     role: "user".to_string(),
                     content: Some("hello".to_string()),
+                    reasoning_content: None,
                     tool_calls: None,
                     tool_call_id: None,
                     name: None,
@@ -436,6 +408,104 @@ mod tests {
             requests.load(Ordering::SeqCst) >= 2,
             "SDK path plus raw HTTP fallback should both hit the mock server"
         );
+    }
+
+    #[tokio::test]
+    async fn chat_with_tools_replays_reasoning_content_in_raw_request_body() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0_u8; 65536];
+            let n = socket.read(&mut buf).await.expect("read request");
+            let request = String::from_utf8_lossy(&buf[..n]);
+            let body = request
+                .split("\r\n\r\n")
+                .nth(1)
+                .expect("http body present")
+                .trim_matches(char::from(0));
+            let payload: Value = serde_json::from_str(body).expect("json payload");
+            assert_eq!(
+                payload["messages"][1]["reasoning_content"].as_str(),
+                Some("need tool lookup first")
+            );
+            let body = r#"{"id":"resp","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"done","tool_calls":null}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        });
+
+        let provider = OpenAiCompatibleProvider::new(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            30,
+            64,
+        )
+        .expect("provider");
+
+        let response = provider
+            .chat_with_tools(
+                &[
+                    Message {
+                        role: "user".to_string(),
+                        content: Some("find data".to_string()),
+                        reasoning_content: None,
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    },
+                    Message {
+                        role: "assistant".to_string(),
+                        content: Some(String::new()),
+                        reasoning_content: Some("need tool lookup first".to_string()),
+                        tool_calls: Some(vec![ToolCall {
+                            id: "call_1".to_string(),
+                            call_type: "function".to_string(),
+                            function: FunctionCall {
+                                name: "demo_tool".to_string(),
+                                arguments: r#"{"symbol":"NVDA"}"#.to_string(),
+                            },
+                        }]),
+                        tool_call_id: None,
+                        name: None,
+                    },
+                    Message {
+                        role: "tool".to_string(),
+                        content: Some(r#"{"ok":true}"#.to_string()),
+                        reasoning_content: None,
+                        tool_calls: None,
+                        tool_call_id: Some("call_1".to_string()),
+                        name: Some("demo_tool".to_string()),
+                    },
+                ],
+                &[serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "demo_tool",
+                        "description": "demo",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "symbol": { "type": "string" }
+                            }
+                        }
+                    }
+                })],
+                None,
+            )
+            .await
+            .expect("chat_with_tools");
+
+        assert_eq!(response.content, "done");
     }
 
     async fn spawn_numeric_error_server() -> (String, Arc<AtomicUsize>) {
@@ -490,57 +560,80 @@ impl LlmProvider for OpenAiCompatibleProvider {
     ) -> hone_core::HoneResult<ChatResult> {
         let converted = Self::convert_messages(messages)?;
         let model = model.unwrap_or(&self.model);
-        if !self.request_options.is_empty() {
-            let request = self.build_profile_request_body(converted, None, model)?;
-            let value = self.post_chat_completion_value(&request).await?;
-            return Ok(ChatResult {
-                content: Self::content_from_value(&value),
-                usage: Self::usage_from_value(&value),
-            });
-        }
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(model)
-            .messages(converted)
-            .max_tokens(self.max_tokens)
-            .build()
-            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+        if self.request_options.is_empty()
+            && !messages.iter().any(|msg| msg.reasoning_content.is_some())
+        {
+            let request = CreateChatCompletionRequestArgs::default()
+                .model(model)
+                .messages(converted)
+                .max_tokens(self.max_tokens)
+                .build()
+                .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
 
+            let mut last_err: Option<hone_core::HoneError> = None;
+            for attempt in 0..=1 {
+                if attempt > 0 {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+                match self.client.chat().create(request.clone()).await {
+                    Ok(response) => {
+                        let content = response
+                            .choices
+                            .first()
+                            .and_then(|c| c.message.content.clone())
+                            .unwrap_or_default();
+                        let usage = response.usage.map(|u| crate::provider::TokenUsage {
+                            prompt_tokens: Some(u.prompt_tokens),
+                            completion_tokens: Some(u.completion_tokens),
+                            total_tokens: Some(u.total_tokens),
+                        });
+                        return Ok(ChatResult { content, usage });
+                    }
+                    Err(err) => {
+                        let msg = err.to_string();
+                        let hone_err = hone_core::HoneError::Llm(msg.clone());
+                        if should_retry_with_raw_http(&err) {
+                            let value = self.post_chat_completion(&request).await?;
+                            return Ok(ChatResult {
+                                content: Self::content_from_value(&value),
+                                usage: Self::usage_from_value(&value),
+                            });
+                        }
+                        if attempt == 0 && is_retryable_transport_error(&msg) {
+                            tracing::warn!(
+                                "[openai_compatible] chat transport error, retrying: {msg}"
+                            );
+                            last_err = Some(hone_err);
+                        } else {
+                            return Err(hone_err);
+                        }
+                    }
+                }
+            }
+            return Err(last_err.unwrap());
+        }
+
+        let request = self.build_request_body(messages, None, model)?;
         let mut last_err: Option<hone_core::HoneError> = None;
         for attempt in 0..=1 {
             if attempt > 0 {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
-            match self.client.chat().create(request.clone()).await {
-                Ok(response) => {
-                    let content = response
-                        .choices
-                        .first()
-                        .and_then(|c| c.message.content.clone())
-                        .unwrap_or_default();
-                    let usage = response.usage.map(|u| crate::provider::TokenUsage {
-                        prompt_tokens: Some(u.prompt_tokens),
-                        completion_tokens: Some(u.completion_tokens),
-                        total_tokens: Some(u.total_tokens),
+            match self.post_chat_completion_value(&request).await {
+                Ok(value) => {
+                    return Ok(ChatResult {
+                        content: Self::content_from_value(&value),
+                        usage: Self::usage_from_value(&value),
                     });
-                    return Ok(ChatResult { content, usage });
                 }
-                Err(err) => {
-                    let msg = err.to_string();
-                    let hone_err = hone_core::HoneError::Llm(msg.clone());
-                    if should_retry_with_raw_http(&err) {
-                        let value = self.post_chat_completion(&request).await?;
-                        return Ok(ChatResult {
-                            content: Self::content_from_value(&value),
-                            usage: Self::usage_from_value(&value),
-                        });
-                    }
-                    if attempt == 0 && is_retryable_transport_error(&msg) {
-                        tracing::warn!("[openai_compatible] chat transport error, retrying: {msg}");
-                        last_err = Some(hone_err);
-                    } else {
-                        return Err(hone_err);
-                    }
+                Err(err) if attempt == 0 && is_retryable_transport_error(&err.to_string()) => {
+                    tracing::warn!(
+                        "[openai_compatible] raw chat transport error, retrying: {}",
+                        err
+                    );
+                    last_err = Some(err);
                 }
+                Err(err) => return Err(err),
             }
         }
         Err(last_err.unwrap())
@@ -552,80 +645,30 @@ impl LlmProvider for OpenAiCompatibleProvider {
         tools: &[Value],
         model: Option<&str>,
     ) -> hone_core::HoneResult<ChatResponse> {
-        let converted = Self::convert_messages(messages)?;
-        let tool_defs = Self::convert_tools(tools)?;
         let model = model.unwrap_or(&self.model);
-        if !self.request_options.is_empty() {
-            let request = self.build_profile_request_body(converted, Some(tool_defs), model)?;
-            let value = self.post_chat_completion_value(&request).await?;
-            return Ok(ChatResponse {
-                content: Self::content_from_value(&value),
-                tool_calls: Self::tool_calls_from_value(&value),
-                usage: Self::usage_from_value(&value),
-            });
-        }
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(model)
-            .messages(converted)
-            .tools(tool_defs)
-            .max_tokens(self.max_tokens)
-            .build()
-            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
-
+        let request = self.build_request_body(messages, Some(tools), model)?;
         let mut last_err: Option<hone_core::HoneError> = None;
         for attempt in 0..=1 {
             if attempt > 0 {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
-            match self.client.chat().create(request.clone()).await {
-                Ok(response) => {
-                    let choice = response.choices.first().ok_or_else(|| {
-                        hone_core::HoneError::Llm("LLM 返回空 choices".to_string())
-                    })?;
-                    let content = choice.message.content.clone().unwrap_or_default();
-                    let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
-                        tcs.iter()
-                            .map(|tc| ToolCall {
-                                id: tc.id.clone(),
-                                call_type: "function".to_string(),
-                                function: FunctionCall {
-                                    name: tc.function.name.clone(),
-                                    arguments: tc.function.arguments.clone(),
-                                },
-                            })
-                            .collect()
-                    });
-                    let usage = response.usage.map(|u| crate::provider::TokenUsage {
-                        prompt_tokens: Some(u.prompt_tokens),
-                        completion_tokens: Some(u.completion_tokens),
-                        total_tokens: Some(u.total_tokens),
-                    });
+            match self.post_chat_completion_value(&request).await {
+                Ok(value) => {
                     return Ok(ChatResponse {
-                        content,
-                        tool_calls,
-                        usage,
+                        content: Self::content_from_value(&value),
+                        reasoning_content: Self::reasoning_content_from_value(&value),
+                        tool_calls: Self::tool_calls_from_value(&value),
+                        usage: Self::usage_from_value(&value),
                     });
                 }
-                Err(err) => {
-                    let msg = err.to_string();
-                    let hone_err = hone_core::HoneError::Llm(msg.clone());
-                    if should_retry_with_raw_http(&err) {
-                        let value = self.post_chat_completion(&request).await?;
-                        return Ok(ChatResponse {
-                            content: Self::content_from_value(&value),
-                            tool_calls: Self::tool_calls_from_value(&value),
-                            usage: Self::usage_from_value(&value),
-                        });
-                    }
-                    if attempt == 0 && is_retryable_transport_error(&msg) {
-                        tracing::warn!(
-                            "[openai_compatible] chat_with_tools transport error, retrying: {msg}"
-                        );
-                        last_err = Some(hone_err);
-                    } else {
-                        return Err(hone_err);
-                    }
+                Err(err) if attempt == 0 && is_retryable_transport_error(&err.to_string()) => {
+                    tracing::warn!(
+                        "[openai_compatible] raw chat_with_tools transport error, retrying: {}",
+                        err
+                    );
+                    last_err = Some(err);
                 }
+                Err(err) => return Err(err),
             }
         }
         Err(last_err.unwrap())

@@ -160,6 +160,7 @@ impl LlmNewsClassifier {
                      - ETF/基金推销、'Magnificent Seven' 等组合性回顾。"
                         .into(),
                 ),
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
@@ -167,6 +168,7 @@ impl LlmNewsClassifier {
             Message {
                 role: "user".into(),
                 content: Some(user),
+                reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,

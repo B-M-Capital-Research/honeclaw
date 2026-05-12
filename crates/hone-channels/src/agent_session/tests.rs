@@ -1558,6 +1558,7 @@ async fn run_success_commits_daily_conversation_quota() {
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
         content: "ok".to_string(),
+        reasoning_content: None,
         tool_calls: None,
         usage: None,
     }]);
@@ -1591,6 +1592,7 @@ async fn run_rejects_over_daily_limit_with_user_turn_and_friendly_error() {
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
         content: "unused".to_string(),
+        reasoning_content: None,
         tool_calls: None,
         usage: None,
     }]);
@@ -1673,6 +1675,7 @@ async fn run_zero_daily_conversation_limit_bypasses_quota() {
         (0..15)
             .map(|_| ChatResponse {
                 content: "ok".to_string(),
+                reasoning_content: None,
                 tool_calls: None,
                 usage: None,
             })
@@ -1706,6 +1709,7 @@ async fn run_short_circuits_obvious_non_finance_direct_query_without_llm_or_quot
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
         content: "should not be called".to_string(),
+        reasoning_content: None,
         tool_calls: None,
         usage: None,
     }]);
@@ -1767,6 +1771,7 @@ async fn context_overflow_auto_compacts_and_retries_successfully() {
             )),
             Ok(ChatResponse {
                 content: "恢复后的正常回复".to_string(),
+                reasoning_content: None,
                 tool_calls: None,
                 usage: None,
             }),
@@ -1901,6 +1906,7 @@ async fn auto_compact_uses_low_group_threshold_and_keeps_recent_window() {
         })],
         vec![Ok(ChatResponse {
             content: "after-compact".to_string(),
+            reasoning_content: None,
             tool_calls: None,
             usage: None,
         })],
@@ -1977,6 +1983,7 @@ async fn auto_compact_summary_excludes_latest_user_turn_from_prompt() {
         })],
         vec![Ok(ChatResponse {
             content: "after-compact".to_string(),
+            reasoning_content: None,
             tool_calls: None,
             usage: None,
         })],
@@ -2027,6 +2034,7 @@ async fn scheduled_task_mode_skips_daily_quota() {
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_tool_responses(vec![ChatResponse {
         content: "scheduled ok".to_string(),
+        reasoning_content: None,
         tool_calls: None,
         usage: None,
     }]);

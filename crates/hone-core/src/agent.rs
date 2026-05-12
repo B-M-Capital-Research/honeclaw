@@ -127,13 +127,22 @@ impl AgentContext {
     }
 
     pub fn add_assistant_message(&mut self, content: &str, tool_calls: Option<Vec<Value>>) {
+        self.add_assistant_message_with_metadata(content, tool_calls, None);
+    }
+
+    pub fn add_assistant_message_with_metadata(
+        &mut self,
+        content: &str,
+        tool_calls: Option<Vec<Value>>,
+        metadata: Option<HashMap<String, Value>>,
+    ) {
         self.messages.push(AgentMessage {
             role: "assistant".to_string(),
             content: Some(content.to_string()),
             tool_calls,
             tool_call_id: None,
             name: None,
-            metadata: None,
+            metadata,
         });
     }
 

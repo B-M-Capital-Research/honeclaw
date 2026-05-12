@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-05-11
+最后更新：2026-05-13
 状态：有 6 个活跃任务
 
 ## 说明
@@ -19,7 +19,7 @@
 - **Active Bug Burn-down 2026-04-28**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/active-bug-burn-down-2026-04-28.md`
-  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-11 修复观察池击球区恢复在任务正文不显式列 ticker 时提前空返回的问题，当前活跃队列为空；open GitHub Issues 中的历史 fixed bug 仍待复测/关闭跟进
+  - 摘要：集中清理 `docs/bugs/README.md` 活跃缺陷；2026-05-13 已修复 heartbeat `mimo-v2.5-pro` thinking transcript 兼容问题，当前仍剩 2 个活跃 Feishu 输出边界/半成品收口缺陷待下一轮优先处理
 - **Chart Visualization Skill 与多通道 PNG 投递**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/chart-visualization-skill.md`

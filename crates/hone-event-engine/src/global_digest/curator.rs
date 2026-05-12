@@ -350,6 +350,7 @@ fn build_pass2_baseline_messages(
         Message {
             role: "system".into(),
             content: Some(system),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -357,6 +358,7 @@ fn build_pass2_baseline_messages(
         Message {
             role: "user".into(),
             content: Some(user),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -460,6 +462,7 @@ fn build_pass2_personalize_messages(
         Message {
             role: "system".into(),
             content: Some(system),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -467,6 +470,7 @@ fn build_pass2_personalize_messages(
         Message {
             role: "user".into(),
             content: Some(user),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -612,6 +616,7 @@ cluster id 用英文短词,同事件不同媒体一定要合并(merger/recall/la
         Message {
             role: "system".into(),
             content: Some(system.into()),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -619,6 +624,7 @@ cluster id 用英文短词,同事件不同媒体一定要合并(merger/recall/la
         Message {
             role: "user".into(),
             content: Some(user),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,

@@ -37,6 +37,7 @@ async fn one_long_chat(
     let messages = vec![Message {
         role: "user".into(),
         content: Some(prompt.into()),
+        reasoning_content: None,
         tool_calls: None,
         tool_call_id: None,
         name: None,

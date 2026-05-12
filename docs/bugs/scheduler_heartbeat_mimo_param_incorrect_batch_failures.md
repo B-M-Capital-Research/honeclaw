@@ -3,7 +3,7 @@
 - **发现时间**: 2026-05-12 23:03 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 - **GitHub Issue**: 无
 
 ## 证据来源
@@ -45,12 +45,26 @@
 
 ## 根因判断
 
-- 直接触发点是 heartbeat 当前使用的 `mimo-v2.5-pro` 对请求参数或调用格式返回 `Param Incorrect`。
+- 直接触发点不是基础 `chat/completions` contract 本身损坏：同一 `mimo-v2.5-pro` 在单轮 text-only 与最小 tools 请求下仍可 `HTTP 200` 返回。
+- 真正根因出在 heartbeat 共享的 auxiliary function-calling 多轮 transcript：`mimo-v2.5-pro` 在 thinking mode 下会返回 `reasoning_content`，而 Hone 进入下一轮 tool-result 回传时只保留了 `content/tool_calls`，没有把上一轮 `reasoning_content` 一并回传，导致上游在第二轮开始拒绝请求并报 `Param Incorrect`。
+- 活跃窗口里所有失败 heartbeat 都走 `runner=function_calling`，与上述多轮工具调用链路一致；同一时间普通非 heartbeat 定时任务仍可送达，也与“heartbeat 独有 transcript 兼容问题”相符。
 - 既有 `scheduler_heartbeat_openrouter_402_credit_exhaustion_skips_alerts.md` 关注 OpenRouter credits / `HTTP 402` 额度问题；本单是不同 provider / model 的 `HTTP 400` 参数兼容问题。
 - 既有 `scheduler_heartbeat_unknown_status_silent_skip.md` 关注模型已产出 triggered 正文但 JSON 结构坏掉导致漏发；本单在模型输出前就被 provider 拒绝，根因不同。
 
-## 下一步建议
+## 修复情况
 
-- 检查 `mimo-v2.5-pro` heartbeat 请求参数，确认是否包含该 provider 不支持的字段、工具配置、response format 或 token 参数。
-- 对 `provider_http_error + Param Incorrect` 增加短路保护：同窗第一次失败后暂停同一 provider 参数组合，避免继续批量失败。
-- 若存在备用 heartbeat provider，优先补自动 failover 或手动配置切换路径，并用 `cron_job_runs` 复核下一轮半点 / 整点窗口。
+- 2026-05-13 已在 `agents/function_calling/src/lib.rs` 保留 assistant `reasoning_content`，并通过 `AgentMessage.metadata -> hone_llm::Message.reasoning_content` 在多轮 tool loop 中回传给上游。
+- 2026-05-13 已在 `crates/hone-llm/src/openai_compatible.rs` 收口 OpenAI-compatible 非流式请求：一旦消息里出现 `reasoning_content`，改走原始 JSON 请求体并显式携带该字段；同时从响应里提取 `reasoning_content` 供下一轮继续使用。
+- 2026-05-13 已把 heartbeat auxiliary function-calling 工具集收窄为 `data_fetch` / `web_search` / `portfolio` / `missed_events` / `local_*`，移除 `skill_tool`、`load_skill`、`notification_prefs`、`deep_research` 等与 heartbeat 无关的 schema，降低同类 provider 兼容风险与请求体膨胀。
+
+## 验证
+
+- `cargo test -p hone-llm chat_with_tools_replays_reasoning_content_in_raw_request_body -- --nocapture`
+- `cargo test -p hone-agent run_replays_reasoning_content_into_followup_tool_round -- --nocapture`
+- `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+- `cargo test -p hone-llm -p hone-agent -p hone-channels --no-run`
+
+## 未验证项 / 后续建议
+
+- 本轮没有重启现有 live channel/backend 进程，因而未直接复核下一次 30 分钟 heartbeat 窗口是否已经消失 `Param Incorrect`。当前文档状态更新为 `Fixed` 而非 `Closed`。
+- 下一轮允许观察运行态时，优先检查 `cron_job_runs` 与 `data/runtime/logs/web.log*` 中 heartbeat 窗口是否不再出现 `The reasoning_content in the thinking mode must be passed back to the API` / `Param Incorrect`。

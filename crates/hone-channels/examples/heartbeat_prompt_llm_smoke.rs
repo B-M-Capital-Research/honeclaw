@@ -93,6 +93,7 @@ async fn run_case(
     let messages = vec![Message {
         role: "user".into(),
         content: Some(prompt),
+        reasoning_content: None,
         tool_calls: None,
         tool_call_id: None,
         name: None,

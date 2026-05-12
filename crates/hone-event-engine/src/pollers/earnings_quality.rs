@@ -211,6 +211,7 @@ fn build_review_messages(system_prompt: &str, event: &MarketEvent, context: &str
         Message {
             role: "system".into(),
             content: Some(system_prompt.to_string()),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -218,6 +219,7 @@ fn build_review_messages(system_prompt: &str, event: &MarketEvent, context: &str
         Message {
             role: "user".into(),
             content: Some(user),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,

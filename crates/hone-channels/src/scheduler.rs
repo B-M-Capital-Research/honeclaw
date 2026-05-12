@@ -28,6 +28,15 @@ const HEARTBEAT_NOOP_SENTINEL: &str = "[[HEARTBEAT_NOOP]]";
 const HEARTBEAT_INTERNAL_PREFIX: &str = "[[HEART";
 const HEARTBEAT_MAX_ITERATIONS: u32 = 10;
 const HEARTBEAT_MAX_TOKENS: u16 = 4096;
+const HEARTBEAT_ALLOWED_TOOLS: &[&str] = &[
+    "data_fetch",
+    "web_search",
+    "portfolio",
+    "missed_events",
+    "local_list_files",
+    "local_search_files",
+    "local_read_file",
+];
 
 fn heartbeat_runner_selection() -> ExecutionRunnerSelection {
     ExecutionRunnerSelection::AuxiliaryFunctionCalling {
@@ -2254,7 +2263,12 @@ async fn run_heartbeat_task(
         session_metadata: std::collections::HashMap::new(),
         model_override: run_options.model_override.clone(),
         runner_selection: heartbeat_runner_selection(),
-        allowed_tools: None,
+        allowed_tools: Some(
+            HEARTBEAT_ALLOWED_TOOLS
+                .iter()
+                .map(|tool| (*tool).to_string())
+                .collect(),
+        ),
         max_tool_calls: None,
         prompt_audit: None,
     })?;
@@ -3099,6 +3113,22 @@ mod tests {
                 panic!("heartbeat must use auxiliary function-calling runner")
             }
         }
+    }
+
+    #[test]
+    fn heartbeat_tool_allowlist_stays_narrow() {
+        assert_eq!(
+            super::HEARTBEAT_ALLOWED_TOOLS,
+            &[
+                "data_fetch",
+                "web_search",
+                "portfolio",
+                "missed_events",
+                "local_list_files",
+                "local_search_files",
+                "local_read_file",
+            ]
+        );
     }
 
     #[test]

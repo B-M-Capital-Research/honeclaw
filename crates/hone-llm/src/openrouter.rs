@@ -602,6 +602,7 @@ impl LlmProvider for OpenRouterProvider {
                     Ok(value) => {
                         return Ok(ChatResponse {
                             content: Self::content_from_value(&value),
+                            reasoning_content: None,
                             tool_calls: Self::tool_calls_from_value(&value),
                             usage: Self::usage_from_value(&value),
                         });
@@ -649,6 +650,7 @@ impl LlmProvider for OpenRouterProvider {
 
                     return Ok(ChatResponse {
                         content,
+                        reasoning_content: None,
                         tool_calls,
                         usage,
                     });
@@ -660,6 +662,7 @@ impl LlmProvider for OpenRouterProvider {
                             Ok(value) => {
                                 return Ok(ChatResponse {
                                     content: Self::content_from_value(&value),
+                                    reasoning_content: None,
                                     tool_calls: Self::tool_calls_from_value(&value),
                                     usage: Self::usage_from_value(&value),
                                 });
@@ -767,6 +770,7 @@ mod tests {
                 &[Message {
                     role: "user".to_string(),
                     content: Some("hello".to_string()),
+                    reasoning_content: None,
                     tool_calls: None,
                     tool_call_id: None,
                     name: None,
@@ -797,6 +801,7 @@ mod tests {
                 &[Message {
                     role: "user".to_string(),
                     content: Some("hello".to_string()),
+                    reasoning_content: None,
                     tool_calls: None,
                     tool_call_id: None,
                     name: None,

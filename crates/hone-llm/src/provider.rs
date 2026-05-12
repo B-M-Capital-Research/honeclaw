@@ -12,6 +12,8 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
@@ -54,6 +56,7 @@ pub struct ChatResult {
 #[derive(Debug, Clone)]
 pub struct ChatResponse {
     pub content: String,
+    pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub usage: Option<TokenUsage>,
 }

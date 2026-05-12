@@ -214,6 +214,7 @@ impl<'a> SessionCompactor<'a> {
         let messages = vec![hone_llm::Message {
             role: "user".to_string(),
             content: Some(prompt),
+            reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
