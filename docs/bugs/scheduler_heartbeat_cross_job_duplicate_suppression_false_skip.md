@@ -3,7 +3,7 @@
 - 发现时间：2026-05-04 23:10 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：Fixed
+- 状态：New
 
 ## 修复记录（2026-05-10 23:11 CST）
 
@@ -21,6 +21,18 @@
 - 关联 GitHub Issue：无。
 
 ## 证据来源
+
+- `2026-05-12 11:02 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口再次出现同根因，`DRAM 心跳监控` 连续把已生成的 `JsonTriggered` 正文误匹配到上一条 `Cerebras IPO` 预览后压成 `noop + skipped_noop`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=19171`，`job_name=DRAM 心跳监控`，`executed_at=2026-05-12T09:01:19.854287+08:00`，终态为 `noop + skipped_noop + delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`matched_preview` 指向 `Cerebras IPO 重大更新 | 2026-05-12 08:30 北京时间`。
+    - `run_id=19187`，`executed_at=2026-05-12T09:30:58.652684+08:00`，同样 `JsonTriggered + duplicate_suppressed=true + delivered=0`，被同一 Cerebras IPO preview 抑制。
+    - `run_id=19203`，`executed_at=2026-05-12T10:01:16.414754+08:00`，同样先生成 DRAM 创上市以来新高提醒，再被 Cerebras IPO preview 抑制。
+    - `run_id=19211`，`executed_at=2026-05-12T10:31:24.338973+08:00`，同样被 Cerebras IPO preview 抑制。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-12 09:01:19 / 09:30:58 / 10:01:16 / 10:31:24 CST` 连续记录 `DRAM 心跳监控` 的 `parse_kind=JsonTriggered -> deliver_preview -> duplicate_suppressed`。
+    - 四次 `matched_preview` 都是 `Cerebras IPO 重大更新`，而本轮被抑制内容是 `DRAM ETF 创上市以来新高`，标的、主题和触发条件明显不同。
+  - 同一窗口 `run_id=19161` 的 Cerebras IPO 已正常 `completed + sent + delivered=1`，说明不是 Feishu 出站或 scheduler 全局不可用，而是 actor 级 preview 去重继续把已触发正文转成未发送。
+  - 结论：这仍是同一根因/同一影响范围，不新建重复文档；由于证据来自 2026-05-12 09:00-10:31 CST 的真实运行窗口，且当前台账仍会漏发用户应收到的 heartbeat，本单恢复为功能性 `P2 / New`。
 
 - `2026-05-11 03:02 CST` 本轮在本机 live 数据中仍看到修复前 duplicate suppression 漏发形态延续：
   - `data/sessions.sqlite3` -> `cron_job_runs`

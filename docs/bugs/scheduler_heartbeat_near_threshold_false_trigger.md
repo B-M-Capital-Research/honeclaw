@@ -1,11 +1,27 @@
-# Bug: 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户
+# Bug: 单标的 heartbeat near-threshold guard 会误判触发状态并导致误发或漏发
 
 - **发现时间**: 2026-04-29 10:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 证据来源
+
+- `2026-05-12 11:02 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口出现相反方向的坏态，模型已返回 `JsonTriggered` 且正文明确说 `DRAM 盘中创历史新高（满足条件2）`，但送达前 near-threshold guard 把它压成 `noop + skipped_noop`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=19216`
+    - `job_name=DRAM 心跳监控`
+    - `executed_at=2026-05-12T11:00:57.141816+08:00`
+    - `execution_status=noop`
+    - `message_send_status=skipped_noop`
+    - `delivered=0`
+    - `detail_json.parse_kind=JsonTriggered`
+    - `detail_json.near_threshold_suppressed=true`
+    - `detail_json.deliver_preview` 写明：`触发条件：DRAM 盘中创历史新高（满足条件2）`，并列出 `盘中最高 $56.38 = 上市以来历史最高价`。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-12 11:00:57 CST` 记录 `DRAM 心跳监控` 先完成 `parse_kind=JsonTriggered` 与 `deliver_preview`，随后 Feishu scheduler 仍以“心跳任务未命中，本轮不发送”收口。
+  - 对照同一任务 `09:01 / 09:30 / 10:01 / 10:31 CST` 窗口，DRAM 创新高触发还被跨 job duplicate suppression 漏发；`11:00 CST` 不再命中 duplicate，但又被 near-threshold guard 抑制，说明当前单标的送达前保险闸仍会在真实触发条件成立时造成漏发。
+  - 结论：这仍属于单标的 heartbeat 的送达前阈值语义判断缺陷，只是从“接近阈值误发”扩展为“真实触发误抑制”；损害点是用户漏收本应送达的 DRAM 创历史新高提醒，因此维持功能性 `P2 / New`。
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
   - `run_id=12511`
@@ -136,8 +152,8 @@
   - `2026-04-29 09:31:25.539` 记录同一 `job_id=j_fc7749ca` 收口为 `parse_kind=JsonNoop`，并写出 `心跳任务未命中，本轮不发送`。
   - `2026-04-29 10:01:17.536` 同一 job 又记录 `parse_kind=JsonTriggered`，`raw_preview` 与 `deliver_preview` 都把 `跌幅 -6.89%` 包装成“接近 8% 警戒阈值”，随后实际投递。
 - 相关缺陷对照：
-  - [`scheduler_heartbeat_orcl_intraday_range_false_trigger.md`](./scheduler_heartbeat_orcl_intraday_range_false_trigger.md) 已修复的是“把日内高低点/振幅误当成涨跌幅阈值”。
-  - [`scheduler_watchlist_near_threshold_false_trigger.md`](./scheduler_watchlist_near_threshold_false_trigger.md) 是多标的 watchlist 把“接近阈值”包装成触发。
+  - [`scheduler_heartbeat_orcl_intraday_range_false_trigger.md`](./archive/scheduler_heartbeat_orcl_intraday_range_false_trigger.md) 已修复的是“把日内高低点/振幅误当成涨跌幅阈值”。
+  - [`scheduler_watchlist_near_threshold_false_trigger.md`](./archive/scheduler_watchlist_near_threshold_false_trigger.md) 是多标的 watchlist 把“接近阈值”包装成触发。
   - 本次样本已覆盖两个单标的 heartbeat：`ASTS 重大异动心跳监控` 把 `-6.89%` 包装成“接近 8%”，`ORCL 大事件监控` 把 `-4.07%` 包装成“接近 5%”；两者都属于同一条“接近阈值 => triggered”链路。
 
 ## 端到端链路

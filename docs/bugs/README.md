@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-12 07:03 CST
+最后更新：2026-05-12 11:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,15 +17,17 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：3
 - Later / 待复现：9
-- 已修复 / 已关闭：100
+- 已修复 / 已关闭：98
 - 历史分析 / 部分止血：5
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
 - 本轮不重新打开 Heartbeat 直接交易指令缺陷：19:30 CST `run_id=18842` 的 CAI 破位预警仍送达 `建议动作：无条件止损`，但当前仓库代码已有出站 guard 修复；该证据按当前机器旧运行态 / 未确认重启进程处理，仅补充到已修复文档。
 - 本轮不重新打开观察池击球区缺陷：21:35 / 23:00 CST `run_id=18907/18940` 仍把除 LITE 外 24 支观察池统一写成 `击球区：待确认`，且持久化 user prompt 未出现 `【已恢复的本地击球区参考】`，说明当前 live 仍未跑到仓库内的恢复注入逻辑；该证据补充到已修复文档，待确认部署 / 重启后再复核。
 - 本轮新增 Feishu 直聊 Codex runner usage limit 缺陷：06:39 / 06:41 CST 同一 ASTS 财报分析请求连续两次进入 agent 主链路后命中 Codex ACP `usage_limit_exceeded`，系统已发送 failure fallback 但只给通用失败文案，没有把可解释的 runner 额度耗尽和恢复时间映射给用户；按 P1 活跃登记。
+- 本轮回退 Heartbeat 跨 job 预览去重缺陷：09:01 / 09:30 / 10:01 / 10:31 CST `DRAM 心跳监控` 已生成创上市以来新高触发正文，却连续误匹配到 08:30 Cerebras IPO preview 并落成 `noop + skipped_noop`；同一根因仍会漏发真实 heartbeat，按 P2 活跃恢复。
+- 本轮回退单标的 near-threshold guard 缺陷：11:00 CST `DRAM 心跳监控` 已返回 `JsonTriggered` 且正文写明“盘中创历史新高（满足条件2）”，但被 `near_threshold_suppressed=true` 压成 `noop + skipped_noop`；该缺陷从“近阈值误发”扩展为“真实触发误抑制”，按 P2 活跃恢复。
 - 本轮观察到若干旧运行态 / 已有修复相关噪声：04:02 / 04:31 / 07:00 CST heartbeat 空输出或非法 JSON 被显式落为 `execution_failed/skipped_error`，没有被伪装成 noop；`sessions/session_messages` 镜像仍停在 2026-04-27，继续按已知 fixed-but-live-old 证据处理。本轮不为这些单独建档。
 
 ## 代码质量巡检发现
@@ -39,6 +41,8 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu 直聊命中 Codex usage limit 后只返回通用失败，用户请求连续无法完成 | P1 | New | 2026-05-12 07:03 新增：06:39 / 06:41 CST 同一 ASTS 财报分析请求连续两次命中 Codex ACP `usage_limit_exceeded`，Feishu 只发送通用 failure fallback；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40) | [feishu_direct_codex_usage_limit_generic_failure.md](./feishu_direct_codex_usage_limit_generic_failure.md) |
+| Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | New | 2026-05-12 11:02 回退：09:01 / 09:30 / 10:01 / 10:31 CST `DRAM 心跳监控` 连续把 `JsonTriggered` 的创上市以来新高提醒误匹配到 08:30 Cerebras IPO preview，最终 `noop + skipped_noop + delivered=0`；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
+| 单标的 heartbeat near-threshold guard 会误判触发状态并导致误发或漏发 | P2 | New | 2026-05-12 11:02 从归档恢复：11:00 CST `DRAM 心跳监控` 已返回 `JsonTriggered`，正文写明 `盘中创历史新高（满足条件2）`，但 `near_threshold_suppressed=true` 导致 `noop + skipped_noop + delivered=0`；无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 
 ## Later / 待复现
 
@@ -62,7 +66,6 @@
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-11 23:02 复核当前 sqlite 会话镜像仍停在 2026-04-27，但 `cron_job_runs` 已推进到 23:01 CST；当前代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-11 23:02 当前机器 21:35 / 23:00 CST 旧运行态仍批量输出 `击球区：待确认`，且持久化 user prompt 未出现 `【已恢复的本地击球区参考】`；仓库代码已包含恢复注入与回归测试，本轮仅补充未重启 live 证据，不回退状态；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-11 23:02 复核当前机器 19:30 CST 仍有旧运行态样本：`run_id=18842` 送达 `建议动作：无条件止损`，但仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`；本轮仅补充证据，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
-| Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-10 23:11 同 ticker 宽松重写去重增加非 ticker 实体 / 日期金额交集门槛，TSLA 召回/FSD 诉讼不再被旧 Semi/SEC preview 抑制，Cerebras IPO 更新不再被持仓摘要误抑制；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-11 07:03 复核最近四小时仍有本机旧运行态样本：`run_id=18507` 在 06:01 送达 `WTI 原油：约 $109.76/桶`、WTI/Brent 异常倒挂和霍尔木兹 / 美伊交火等未核验归因，且未见 `commodity_causality_guarded`；仓库代码已在 `1d405f2` 扩展商品 heartbeat guard，本轮仅补充旧运行态证据，不回退状态；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 | Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-10 15:09 heartbeat JSON 扫描跳过 markdown 反引号示例，malformed-triggered `message` 恢复只把明确元数据字段当作边界，覆盖 RKLB `管理层称"公司史上最强一季度","订单需求":...` 这类内部引号/冒号正文；前置说明后的 malformed triggered JSON 可恢复，prompt 同步要求规则冲突时返回 noop JSON 而不是自述或空输出。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Daily macOS build release app setup panic 后残留不可回收 `hone-desktop` 进程 | P2 | Fixed | 2026-05-10 顶层 Tauri `run(...)` 错误不再通过 `.expect("error while running hone desktop")` 触发 panic，改为打印诊断并非 0 退出；`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_run_error_message_is_nonpanic_diagnostic -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests` 通过；无关联 GitHub Issue | [daily_macos_build_startup_panic_stuck_process.md](./daily_macos_build_startup_panic_stuck_process.md) |
@@ -91,7 +94,6 @@
 | Web 直聊流式 `session/update` 会把完整系统提示与技能索引当成正文 chunk 外发，最终落库虽为 `OK` 但实时链路已泄露内部 prompt | P1 | Fixed | 2026-05-04 Codex ACP 不再复用旧远端 `session/load`，每轮新建 ACP session 并用 Hone 本地 transcript/context 重建 prompt，切断历史 `agent_message_chunk` prompt 包回放入口；`cargo test -p hone-channels codex_acp_does_not_reuse_remote_session_metadata -- --nocapture`、`cargo test -p hone-channels acp_common --lib -- --nocapture`、`cargo test -p hone-channels session_event_emitter_ -- --nocapture`、`cargo check -p hone-channels --tests` 通过；关联 Issue [#28](https://github.com/B-M-Capital-Research/honeclaw/issues/28) | [web_direct_session_update_prompt_echo_leak.md](./archive/web_direct_session_update_prompt_echo_leak.md) |
 | Web 直聊 `session/update` 把 skill prompt、工具原始回显与绝对路径作为 `tool_call_update.rawOutput` 外发 | P1 | Fixed | 2026-05-04 Codex ACP 禁用旧远端 `session/load` 复用，避免历史 tool updates、skill prompt、绝对路径与 raw payload 在新一轮回放；既有 `SessionEventEmitter` 用户态 ToolStatus 净化继续覆盖 live 事件；同组 `hone-channels` 回归与 `cargo check -p hone-channels --tests` 通过；关联 Issue [#30](https://github.com/B-M-Capital-Research/honeclaw/issues/30) | [web_direct_tool_call_raw_output_leak.md](./archive/web_direct_tool_call_raw_output_leak.md) |
 | Daily macOS build 隔离配置目录缺少 `soul.md` 时 release app setup panic | P3 | Fixed | 2026-05-02 desktop runtime path 物料化会在 canonical config 指向安全相对 `system_prompt_path` 且同级文件缺失时，从 bundle/repo 资源补齐 `soul.md`；同时跳过 `../` 逃逸路径；修复提交 `5bf2ccb`；`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop runtime_env -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests` 通过；无关联 GitHub Issue | [daily_macos_build_isolated_config_missing_soul.md](./archive/daily_macos_build_isolated_config_missing_soul.md) |
-| 单标的 heartbeat 会把“接近阈值”直接当作已触发并送达用户 | P2 | Fixed | 2026-05-02 heartbeat 已送达预览去重新增日期、金额、英文实体与 CJK n-gram 事实 token，覆盖 `RKLB 4月29日 1.9 亿美元国防合同` 这类旧催化换写法后叠加近阈值价格观察再次触发的路径；既有近阈值硬拦截仍覆盖 `接近但未达 / 未超过 / 未触及` 等否认越线文案；`cargo test -p hone-channels heartbeat_duplicate_preview_match --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_ --lib -- --nocapture` 通过；无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./archive/scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Feishu 用户触发日对话额度上限后，placeholder 发出后仍无最终额度提示，且最新 user turn 不落库 | P1 | Fixed | 2026-05-01 23:05 共享错误净化层将“已达到今日对话上限”提升为业务拒绝优先级，即使被 `工具执行错误` / `渠道错误` 等内部前缀包裹也会保留 quota 文案；Feishu 失败兜底成功更新 placeholder / 发送后会记录 `reply.send failure_fallback`，避免巡检再误判为无最终发送；`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text -- --nocapture`、`cargo test -p hone-channels run_rejects_over_daily_limit_with_user_turn_and_friendly_error -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#26](https://github.com/B-M-Capital-Research/honeclaw/issues/26) | [feishu_conversation_quota_masked_as_generic_failure.md](./archive/feishu_conversation_quota_masked_as_generic_failure.md) |
 | Watchlist heartbeat 会把“接近阈值”误判成已触发，价格仍高于配置线也会发提醒 | P2 | Fixed | 2026-05-01 watchlist 送达前数值自检补齐“跌至 69.85，已触及或低于触发价 69.83”变体；当前价仍高于下行触发价时会落成 `near_threshold_suppressed`；`cargo test -p hone-channels heartbeat_watchlist_ --lib -- --nocapture` 通过 | [scheduler_watchlist_near_threshold_false_trigger.md](./archive/scheduler_watchlist_near_threshold_false_trigger.md) |
 | Daily macOS build release app 启动阶段被 startup dialog 阻塞，embedded backend 未拉起 | P1 | Fixed | 2026-04-30 startup error dialog 改为后台线程显示，并在 setup preflight 失败时写入 `desktop.log` 与 stderr；新增无交互抑制开关和 hone-desktop 定向回归，避免每日 `.app` smoke test 再卡在 `CFUserNotificationDisplayAlert` | [daily_macos_build_release_app_startup_blocked.md](./archive/daily_macos_build_release_app_startup_blocked.md) |
