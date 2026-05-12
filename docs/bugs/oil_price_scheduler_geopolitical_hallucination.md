@@ -33,6 +33,27 @@
   - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`
 - 关联 GitHub Issue：无。
 
+## 旧运行态复核（2026-05-12 23:03 CST）
+
+- 本轮巡检在当前机器 live 数据中继续看到同类坏样本，但仍不足以推翻 `2026-05-12 19:12 CST` 的仓库代码修复结论。最近四小时内同名 `全天原油价格3小时播报` 没有新增已送达坏播报，但相关原油 scheduler 仍成功外发未核验价格区间与地缘归因：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=19471`
+    - `job_name=Oil_Price_Monitor_Premarket`
+    - `executed_at=2026-05-12T21:31:21.956860+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `response_preview` 向用户发送 `Brent 约 105-108 美元`、`WTI 约 98-102 美元`，并把中东 / 伊朗局势、霍尔木兹风险写成油价支撑和高估值科技股压力来源。
+    - `detail_json` 只有 `delivery_key`、`receive_id` 与 `scheduler:null`，未见可审计同窗来源字段，也未见商品 guard 元数据。
+    - `run_id=19499`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-05-12T23:00:09.831204+08:00`
+    - `execution_status=noop`
+    - `message_send_status=skipped_noop`
+    - `delivered=0`
+    - `detail_json.parse_kind=JsonNoop`，没有新增用户可见三小时播报。
+- 结论：21:31 样本说明当前机器运行态仍会把无法从台账证明的价格区间和地缘归因组织成确定性风险判断并发送；但仓库代码已在 19:12 CST 针对战争紧张、霍尔木兹、沙特阿美、战略储备与未核验近似报价补 guard 和回归测试。本轮仅作为旧运行态 / 未确认重启证据补充到原文档，不把状态从 `Fixed` 回退为 `New`。
+
 ## 最新进展（2026-05-12 19:03 CST）
 
 - 本轮巡检继续保持本单 `P2 / New`，但最近四小时内没有新增已送达的原油坏播报；最新模型坏输出被 preview 去重压成未发送：

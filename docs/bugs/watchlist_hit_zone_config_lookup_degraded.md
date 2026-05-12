@@ -5,6 +5,26 @@
 - **严重等级**: P3
 - **状态**: Fixed
 - **修复结论复核**:
+  - `2026-05-12 23:03 CST` 本轮在当前机器 live 数据中继续看到坏样本，但仍按旧运行态 / 未确认重启证据处理，不推翻仓库代码层面的 `Fixed` 结论：
+    - `data/sessions.sqlite3` -> `cron_job_runs`
+      - `run_id=19472`
+      - `job_name=科技核心股池 · 晚间击球区快报`
+      - `executed_at=2026-05-12T21:38:28.341966+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 把 `MSFT / NVDA / GOOGL / AAPL / AVGO / AMZN / META` 等核心股继续写成 `击球区：待确认`，拓展股同样批量缺失固定区间。
+      - `run_id=19503`
+      - `job_name=核心观察股池晚间快报`
+      - `executed_at=2026-05-12T23:02:38.094520+08:00`
+      - `execution_status=completed`
+      - `message_send_status=sent`
+      - `delivered=1`
+      - `response_preview` 再次把核心 7 支与拓展股批量写成 `击球区：待确认`。
+    - 结论：
+      - 这是同一根因 / 同一影响范围的持续 live 证据，不新建重复文档。
+      - 当前仓库代码已包含观察池击球区恢复注入与回归测试；本轮没有证据证明 live 进程已重启到该实现后仍失败，因此维持 `P3 / Fixed`。
+      - 仍定为 `P3` 的原因：任务按时完成并送达，价格与财报字段仍可读；受损的是固定观察池字段恢复和报告参考价值，没有阻断主投递链路。
   - `2026-05-11 23:02 CST` 本轮在当前机器未重启 live 数据中继续看到坏样本，但仍不足以推翻仓库代码层面的 `Fixed` 结论：
     - `data/sessions.sqlite3` -> `cron_job_runs`
       - `run_id=18907`
