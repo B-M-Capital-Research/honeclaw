@@ -119,6 +119,296 @@ fn canonical_opencode_block_is_blank(current: &Value) -> crate::HoneResult<bool>
     Ok(true)
 }
 
+fn promote_legacy_multi_agent(
+    canonical: &mut Value,
+    legacy: &Value,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<bool> {
+    if string_path_is_blank(canonical, "agent.multi_agent.search.api_key")?
+        && string_path_is_blank(canonical, "agent.multi_agent.answer.api_key")?
+        && let Some(legacy_multi_agent) = get_value_at_path(legacy, "agent.multi_agent")?
+    {
+        set_value_at_path(canonical, "agent.multi_agent", legacy_multi_agent.clone())?;
+        changed_paths.push("agent.multi_agent".to_string());
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+fn promote_legacy_opencode(
+    canonical: &mut Value,
+    legacy: &Value,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<bool> {
+    let Some(legacy_opencode) = get_value_at_path(legacy, "agent.opencode")? else {
+        return Ok(false);
+    };
+
+    if canonical_opencode_block_is_blank(canonical)? {
+        set_value_at_path(canonical, "agent.opencode", legacy_opencode.clone())?;
+        changed_paths.push("agent.opencode".to_string());
+        return Ok(true);
+    }
+
+    let mut migrated = false;
+    for path in [
+        "agent.opencode.api_base_url",
+        "agent.opencode.model",
+        "agent.opencode.variant",
+    ] {
+        if string_path_is_blank(canonical, path)?
+            && let Some(legacy_value) = get_value_at_path(legacy, path)?
+            && legacy_value
+                .as_str()
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false)
+        {
+            set_value_at_path(canonical, path, legacy_value.clone())?;
+            changed_paths.push(path.to_string());
+            migrated = true;
+        }
+    }
+
+    Ok(migrated)
+}
+
+fn promote_legacy_llm_settings(
+    canonical: &mut Value,
+    legacy: &Value,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    if string_path_is_blank(canonical, "llm.auxiliary.api_key")?
+        && let Some(legacy_auxiliary) = get_value_at_path(legacy, "llm.auxiliary")?
+    {
+        set_value_at_path(canonical, "llm.auxiliary", legacy_auxiliary.clone())?;
+        changed_paths.push("llm.auxiliary".to_string());
+    }
+
+    if !openrouter_key_targets_are_blank(canonical)? {
+        return Ok(());
+    }
+
+    if let Some(legacy_openrouter_keys) = get_value_at_path(legacy, "llm.openrouter.api_keys")? {
+        set_value_at_path(
+            canonical,
+            "llm.providers.openrouter.api_keys",
+            legacy_openrouter_keys.clone(),
+        )?;
+        changed_paths.push("llm.providers.openrouter.api_keys".to_string());
+        return Ok(());
+    }
+
+    if let Some(legacy_openrouter_key) = get_value_at_path(legacy, "llm.openrouter.api_key")?
+        && legacy_openrouter_key
+            .as_str()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+    {
+        set_value_at_path(
+            canonical,
+            "llm.providers.openrouter.api_key",
+            legacy_openrouter_key.clone(),
+        )?;
+        changed_paths.push("llm.providers.openrouter.api_key".to_string());
+    }
+
+    Ok(())
+}
+
+fn openrouter_key_targets_are_blank(canonical: &Value) -> crate::HoneResult<bool> {
+    Ok(
+        string_path_is_blank(canonical, "llm.providers.openrouter.api_key")?
+            && sequence_path_is_empty(canonical, "llm.providers.openrouter.api_keys")?
+            && string_path_is_blank(canonical, "llm.openrouter.api_key")?
+            && sequence_path_is_empty(canonical, "llm.openrouter.api_keys")?,
+    )
+}
+
+fn promote_legacy_channel_settings(
+    canonical: &mut Value,
+    legacy: &Value,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    for channel in ["feishu", "telegram", "discord", "imessage"] {
+        promote_legacy_channel_enabled(canonical, legacy, channel, changed_paths)?;
+        promote_legacy_channel_scope(canonical, legacy, channel, changed_paths)?;
+        promote_legacy_channel_credentials(canonical, legacy, channel, changed_paths)?;
+    }
+
+    Ok(())
+}
+
+fn promote_legacy_channel_enabled(
+    canonical: &mut Value,
+    legacy: &Value,
+    channel: &str,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    let enabled_path = format!("{channel}.enabled");
+    if bool_path_is_false_or_missing(canonical, &enabled_path)?
+        && let Some(Value::Bool(true)) = get_value_at_path(legacy, &enabled_path)?
+    {
+        set_value_at_path(canonical, &enabled_path, Value::Bool(true))?;
+        changed_paths.push(enabled_path);
+    }
+
+    Ok(())
+}
+
+fn promote_legacy_channel_scope(
+    canonical: &mut Value,
+    legacy: &Value,
+    channel: &str,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    let chat_scope_path = format!("{channel}.chat_scope");
+    let canonical_chat_scope = get_string_at_path(canonical, &chat_scope_path)?.unwrap_or_default();
+
+    if !canonical_chat_scope_looks_seeded(&canonical_chat_scope) {
+        return Ok(());
+    }
+
+    let legacy_chat_scope = match get_value_at_path(legacy, &chat_scope_path)? {
+        Some(value) => Some(value.clone()),
+        None => match get_value_at_path(legacy, &format!("{channel}.dm_only"))? {
+            Some(Value::Bool(false)) => Some(Value::String("ALL".to_string())),
+            Some(Value::Bool(true)) => Some(Value::String("DM_ONLY".to_string())),
+            _ => None,
+        },
+    };
+
+    if let Some(legacy_chat_scope) = legacy_chat_scope {
+        set_value_at_path(canonical, &chat_scope_path, legacy_chat_scope)?;
+        changed_paths.push(chat_scope_path);
+    }
+
+    Ok(())
+}
+
+fn promote_legacy_channel_credentials(
+    canonical: &mut Value,
+    legacy: &Value,
+    channel: &str,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    match channel {
+        "feishu" => {
+            for field in ["app_id", "app_secret"] {
+                promote_legacy_string_path(
+                    canonical,
+                    legacy,
+                    &format!("{channel}.{field}"),
+                    changed_paths,
+                )?;
+            }
+        }
+        "telegram" | "discord" => {
+            promote_legacy_string_path(
+                canonical,
+                legacy,
+                &format!("{channel}.bot_token"),
+                changed_paths,
+            )?;
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn promote_legacy_search_settings(
+    canonical: &mut Value,
+    legacy: &Value,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    if sequence_path_is_empty(canonical, "search.api_keys")?
+        && let Some(legacy_search_keys) = get_value_at_path(legacy, "search.api_keys")?
+    {
+        set_value_at_path(canonical, "search.api_keys", legacy_search_keys.clone())?;
+        changed_paths.push("search.api_keys".to_string());
+    }
+    for path in ["search.provider", "search.search_depth", "search.topic"] {
+        promote_legacy_string_path(canonical, legacy, path, changed_paths)?;
+    }
+    if get_value_at_path(canonical, "search.max_results")?.is_none()
+        && let Some(legacy_max_results) = get_value_at_path(legacy, "search.max_results")?
+    {
+        set_value_at_path(canonical, "search.max_results", legacy_max_results.clone())?;
+        changed_paths.push("search.max_results".to_string());
+    }
+
+    Ok(())
+}
+
+fn promote_legacy_fmp_settings(
+    canonical: &mut Value,
+    legacy: &Value,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    promote_legacy_string_path(canonical, legacy, "fmp.api_key", changed_paths)?;
+    if sequence_path_is_empty(canonical, "fmp.api_keys")?
+        && let Some(legacy_fmp_api_keys) = get_value_at_path(legacy, "fmp.api_keys")?
+    {
+        set_value_at_path(canonical, "fmp.api_keys", legacy_fmp_api_keys.clone())?;
+        changed_paths.push("fmp.api_keys".to_string());
+    }
+    promote_legacy_string_path(canonical, legacy, "fmp.base_url", changed_paths)?;
+    if get_value_at_path(canonical, "fmp.timeout")?.is_none()
+        && let Some(Value::Number(_)) = get_value_at_path(legacy, "fmp.timeout")?
+        && let Some(legacy_fmp_timeout) = get_value_at_path(legacy, "fmp.timeout")?
+    {
+        set_value_at_path(canonical, "fmp.timeout", legacy_fmp_timeout.clone())?;
+        changed_paths.push("fmp.timeout".to_string());
+    }
+
+    Ok(())
+}
+
+fn promote_legacy_string_path(
+    canonical: &mut Value,
+    legacy: &Value,
+    path: &str,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    if string_path_is_blank(canonical, path)?
+        && let Some(legacy_value) = get_value_at_path(legacy, path)?
+    {
+        set_value_at_path(canonical, path, legacy_value.clone())?;
+        changed_paths.push(path.to_string());
+    }
+
+    Ok(())
+}
+
+fn promote_legacy_runner(
+    canonical: &mut Value,
+    legacy: &Value,
+    migrated_multi_agent: bool,
+    migrated_opencode: bool,
+    changed_paths: &mut Vec<String>,
+) -> crate::HoneResult<()> {
+    let canonical_runner = get_string_at_path(canonical, "agent.runner")?.unwrap_or_default();
+    let legacy_runner = get_string_at_path(legacy, "agent.runner")?.unwrap_or_default();
+    let should_promote_runner = !legacy_runner.is_empty()
+        && canonical_runner != legacy_runner
+        && canonical_runner_looks_seeded(&canonical_runner)
+        && ((legacy_runner == "multi-agent" && migrated_multi_agent)
+            || (legacy_runner == "opencode_acp" && migrated_opencode)
+            || canonical_runner.is_empty());
+
+    if should_promote_runner {
+        set_value_at_path(
+            canonical,
+            "agent.runner",
+            Value::String(legacy_runner.clone()),
+        )?;
+        changed_paths.push("agent.runner".to_string());
+    }
+
+    Ok(())
+}
+
 /// 从 legacy runtime config 中补迁仍未进入 canonical config 的关键用户设置字段。
 ///
 /// 迁移策略是保守的：
@@ -142,213 +432,20 @@ pub fn promote_legacy_runtime_agent_settings(
     }
 
     let mut changed_paths = Vec::new();
-    let mut migrated_multi_agent = false;
-    let mut migrated_opencode = false;
-
-    if string_path_is_blank(&canonical, "agent.multi_agent.search.api_key")?
-        && string_path_is_blank(&canonical, "agent.multi_agent.answer.api_key")?
-    {
-        if let Some(legacy_multi_agent) = get_value_at_path(&legacy, "agent.multi_agent")? {
-            set_value_at_path(
-                &mut canonical,
-                "agent.multi_agent",
-                legacy_multi_agent.clone(),
-            )?;
-            changed_paths.push("agent.multi_agent".to_string());
-            migrated_multi_agent = true;
-        }
-    }
-
-    if let Some(legacy_opencode) = get_value_at_path(&legacy, "agent.opencode")? {
-        if canonical_opencode_block_is_blank(&canonical)? {
-            set_value_at_path(&mut canonical, "agent.opencode", legacy_opencode.clone())?;
-            changed_paths.push("agent.opencode".to_string());
-            migrated_opencode = true;
-        } else {
-            for path in [
-                "agent.opencode.api_base_url",
-                "agent.opencode.model",
-                "agent.opencode.variant",
-            ] {
-                if string_path_is_blank(&canonical, path)?
-                    && let Some(legacy_value) = get_value_at_path(&legacy, path)?
-                    && legacy_value
-                        .as_str()
-                        .map(|value| !value.trim().is_empty())
-                        .unwrap_or(false)
-                {
-                    set_value_at_path(&mut canonical, path, legacy_value.clone())?;
-                    changed_paths.push(path.to_string());
-                    migrated_opencode = true;
-                }
-            }
-        }
-    }
-
-    if string_path_is_blank(&canonical, "llm.auxiliary.api_key")?
-        && let Some(legacy_auxiliary) = get_value_at_path(&legacy, "llm.auxiliary")?
-    {
-        set_value_at_path(&mut canonical, "llm.auxiliary", legacy_auxiliary.clone())?;
-        changed_paths.push("llm.auxiliary".to_string());
-    }
-
-    if string_path_is_blank(&canonical, "llm.providers.openrouter.api_key")?
-        && sequence_path_is_empty(&canonical, "llm.providers.openrouter.api_keys")?
-        && string_path_is_blank(&canonical, "llm.openrouter.api_key")?
-        && sequence_path_is_empty(&canonical, "llm.openrouter.api_keys")?
-        && let Some(legacy_openrouter_keys) = get_value_at_path(&legacy, "llm.openrouter.api_keys")?
-    {
-        set_value_at_path(
-            &mut canonical,
-            "llm.providers.openrouter.api_keys",
-            legacy_openrouter_keys.clone(),
-        )?;
-        changed_paths.push("llm.providers.openrouter.api_keys".to_string());
-    }
-
-    if string_path_is_blank(&canonical, "llm.providers.openrouter.api_key")?
-        && sequence_path_is_empty(&canonical, "llm.providers.openrouter.api_keys")?
-        && string_path_is_blank(&canonical, "llm.openrouter.api_key")?
-        && sequence_path_is_empty(&canonical, "llm.openrouter.api_keys")?
-        && let Some(legacy_openrouter_key) = get_value_at_path(&legacy, "llm.openrouter.api_key")?
-        && legacy_openrouter_key
-            .as_str()
-            .map(|value| !value.trim().is_empty())
-            .unwrap_or(false)
-    {
-        set_value_at_path(
-            &mut canonical,
-            "llm.providers.openrouter.api_key",
-            legacy_openrouter_key.clone(),
-        )?;
-        changed_paths.push("llm.providers.openrouter.api_key".to_string());
-    }
-
-    for channel in ["feishu", "telegram", "discord", "imessage"] {
-        let enabled_path = format!("{channel}.enabled");
-        if bool_path_is_false_or_missing(&canonical, &enabled_path)?
-            && let Some(Value::Bool(true)) = get_value_at_path(&legacy, &enabled_path)?
-        {
-            set_value_at_path(&mut canonical, &enabled_path, Value::Bool(true))?;
-            changed_paths.push(enabled_path);
-        }
-
-        let chat_scope_path = format!("{channel}.chat_scope");
-        let canonical_chat_scope =
-            get_string_at_path(&canonical, &chat_scope_path)?.unwrap_or_default();
-        if canonical_chat_scope_looks_seeded(&canonical_chat_scope) {
-            let legacy_chat_scope = match get_value_at_path(&legacy, &chat_scope_path)? {
-                Some(value) => Some(value.clone()),
-                None => match get_value_at_path(&legacy, &format!("{channel}.dm_only"))? {
-                    Some(Value::Bool(false)) => Some(Value::String("ALL".to_string())),
-                    Some(Value::Bool(true)) => Some(Value::String("DM_ONLY".to_string())),
-                    _ => None,
-                },
-            };
-            if let Some(legacy_chat_scope) = legacy_chat_scope {
-                set_value_at_path(&mut canonical, &chat_scope_path, legacy_chat_scope)?;
-                changed_paths.push(chat_scope_path);
-            }
-        }
-
-        match channel {
-            "feishu" => {
-                for field in ["app_id", "app_secret"] {
-                    let field_path = format!("{channel}.{field}");
-                    if string_path_is_blank(&canonical, &field_path)?
-                        && let Some(legacy_value) = get_value_at_path(&legacy, &field_path)?
-                    {
-                        set_value_at_path(&mut canonical, &field_path, legacy_value.clone())?;
-                        changed_paths.push(field_path);
-                    }
-                }
-            }
-            "telegram" | "discord" => {
-                let token_path = format!("{channel}.bot_token");
-                if string_path_is_blank(&canonical, &token_path)?
-                    && let Some(legacy_token) = get_value_at_path(&legacy, &token_path)?
-                {
-                    set_value_at_path(&mut canonical, &token_path, legacy_token.clone())?;
-                    changed_paths.push(token_path);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if sequence_path_is_empty(&canonical, "search.api_keys")?
-        && let Some(legacy_search_keys) = get_value_at_path(&legacy, "search.api_keys")?
-    {
-        set_value_at_path(
-            &mut canonical,
-            "search.api_keys",
-            legacy_search_keys.clone(),
-        )?;
-        changed_paths.push("search.api_keys".to_string());
-    }
-    for path in ["search.provider", "search.search_depth", "search.topic"] {
-        if string_path_is_blank(&canonical, path)?
-            && let Some(legacy_value) = get_value_at_path(&legacy, path)?
-        {
-            set_value_at_path(&mut canonical, path, legacy_value.clone())?;
-            changed_paths.push(path.to_string());
-        }
-    }
-    if get_value_at_path(&canonical, "search.max_results")?.is_none()
-        && let Some(legacy_max_results) = get_value_at_path(&legacy, "search.max_results")?
-    {
-        set_value_at_path(
-            &mut canonical,
-            "search.max_results",
-            legacy_max_results.clone(),
-        )?;
-        changed_paths.push("search.max_results".to_string());
-    }
-
-    if string_path_is_blank(&canonical, "fmp.api_key")?
-        && let Some(legacy_fmp_api_key) = get_value_at_path(&legacy, "fmp.api_key")?
-    {
-        set_value_at_path(&mut canonical, "fmp.api_key", legacy_fmp_api_key.clone())?;
-        changed_paths.push("fmp.api_key".to_string());
-    }
-    if sequence_path_is_empty(&canonical, "fmp.api_keys")?
-        && let Some(legacy_fmp_api_keys) = get_value_at_path(&legacy, "fmp.api_keys")?
-    {
-        set_value_at_path(&mut canonical, "fmp.api_keys", legacy_fmp_api_keys.clone())?;
-        changed_paths.push("fmp.api_keys".to_string());
-    }
-    if string_path_is_blank(&canonical, "fmp.base_url")?
-        && let Some(legacy_fmp_base_url) = get_value_at_path(&legacy, "fmp.base_url")?
-    {
-        set_value_at_path(&mut canonical, "fmp.base_url", legacy_fmp_base_url.clone())?;
-        changed_paths.push("fmp.base_url".to_string());
-    }
-    if let Some(Value::Number(_)) = get_value_at_path(&legacy, "fmp.timeout")?
-        && get_value_at_path(&canonical, "fmp.timeout")?.is_none()
-    {
-        if let Some(legacy_fmp_timeout) = get_value_at_path(&legacy, "fmp.timeout")? {
-            set_value_at_path(&mut canonical, "fmp.timeout", legacy_fmp_timeout.clone())?;
-            changed_paths.push("fmp.timeout".to_string());
-        }
-    }
-
-    let canonical_runner = get_string_at_path(&canonical, "agent.runner")?.unwrap_or_default();
-    let legacy_runner = get_string_at_path(&legacy, "agent.runner")?.unwrap_or_default();
-    let should_promote_runner = !legacy_runner.is_empty()
-        && canonical_runner != legacy_runner
-        && canonical_runner_looks_seeded(&canonical_runner)
-        && ((legacy_runner == "multi-agent" && migrated_multi_agent)
-            || (legacy_runner == "opencode_acp" && migrated_opencode)
-            || canonical_runner.is_empty());
-
-    if should_promote_runner {
-        set_value_at_path(
-            &mut canonical,
-            "agent.runner",
-            Value::String(legacy_runner.clone()),
-        )?;
-        changed_paths.push("agent.runner".to_string());
-    }
+    let migrated_multi_agent =
+        promote_legacy_multi_agent(&mut canonical, &legacy, &mut changed_paths)?;
+    let migrated_opencode = promote_legacy_opencode(&mut canonical, &legacy, &mut changed_paths)?;
+    promote_legacy_llm_settings(&mut canonical, &legacy, &mut changed_paths)?;
+    promote_legacy_channel_settings(&mut canonical, &legacy, &mut changed_paths)?;
+    promote_legacy_search_settings(&mut canonical, &legacy, &mut changed_paths)?;
+    promote_legacy_fmp_settings(&mut canonical, &legacy, &mut changed_paths)?;
+    promote_legacy_runner(
+        &mut canonical,
+        &legacy,
+        migrated_multi_agent,
+        migrated_opencode,
+        &mut changed_paths,
+    )?;
 
     if changed_paths.is_empty() {
         return Ok(changed_paths);

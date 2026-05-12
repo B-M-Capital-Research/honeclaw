@@ -9,6 +9,281 @@ fn temp_test_dir(prefix: &str) -> PathBuf {
     dir
 }
 
+fn yaml_key<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
+    mapping.get(Value::String(key.to_string()))
+}
+
+fn yaml_has_key(mapping: &serde_yaml::Mapping, key: &str) -> bool {
+    mapping.contains_key(Value::String(key.to_string()))
+}
+
+fn assert_config_example_roots(root: &serde_yaml::Mapping) {
+    let actual_roots = root
+        .keys()
+        .map(|key| key.as_str().unwrap_or_default())
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected_roots = [
+        "admins",
+        "agent",
+        "discord",
+        "event_engine",
+        "feishu",
+        "fmp",
+        "group_context",
+        "imessage",
+        "language",
+        "llm",
+        "logging",
+        "nano_banana",
+        "search",
+        "security",
+        "storage",
+        "telegram",
+        "web",
+    ]
+    .into_iter()
+    .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(actual_roots, expected_roots);
+}
+
+fn assert_yaml_omits_keys(mapping: &serde_yaml::Mapping, prefix: &str, keys: &[&str]) {
+    for stale_key in keys {
+        assert!(
+            !yaml_has_key(mapping, stale_key),
+            "{prefix}.{stale_key} is not a YAML config field"
+        );
+    }
+}
+
+fn assert_config_example_channel_sections(root: &serde_yaml::Mapping) {
+    let imessage = yaml_key(root, "imessage").unwrap().as_mapping().unwrap();
+    assert!(yaml_has_key(imessage, "listen_addr"));
+
+    let discord = yaml_key(root, "discord").unwrap().as_mapping().unwrap();
+    let discord_watch = yaml_key(discord, "watch").unwrap().as_mapping().unwrap();
+    assert!(yaml_has_key(discord_watch, "enabled"));
+    assert!(yaml_has_key(discord_watch, "channel_ids"));
+    assert!(yaml_has_key(discord_watch, "loop"));
+    assert!(yaml_has_key(discord_watch, "verbose"));
+}
+
+fn assert_config_example_event_sections(root: &serde_yaml::Mapping) {
+    let nano_banana = yaml_key(root, "nano_banana").unwrap().as_mapping().unwrap();
+    assert_yaml_omits_keys(
+        nano_banana,
+        "nano_banana",
+        &[
+            "timeout_seconds",
+            "download_timeout_seconds",
+            "max_retries",
+            "max_tokens",
+            "temperature",
+            "http_referrer",
+            "x_title",
+            "extra_params",
+        ],
+    );
+
+    let fmp = yaml_key(root, "fmp").unwrap().as_mapping().unwrap();
+    assert!(yaml_has_key(fmp, "api_keys"));
+
+    let event_engine = yaml_key(root, "event_engine")
+        .unwrap()
+        .as_mapping()
+        .unwrap();
+    assert!(yaml_has_key(event_engine, "news_importance_prompt"));
+    let sources = yaml_key(event_engine, "sources")
+        .unwrap()
+        .as_mapping()
+        .unwrap();
+    assert!(yaml_has_key(sources, "extended_hours"));
+    assert!(yaml_has_key(sources, "rss_feeds"));
+    assert!(yaml_has_key(sources, "telegram_channels"));
+}
+
+fn assert_config_example_agent_section(root: &serde_yaml::Mapping) {
+    let agent = yaml_key(root, "agent").unwrap().as_mapping().unwrap();
+    assert!(
+        !yaml_has_key(agent, "debug_log"),
+        "agent.debug_log is controlled by HONE_AGENT_DEBUG, not YAML"
+    );
+    let codex_acp = yaml_key(agent, "codex_acp").unwrap().as_mapping().unwrap();
+    assert!(yaml_has_key(codex_acp, "sandbox_mode"));
+    assert!(yaml_has_key(codex_acp, "approval_policy"));
+    assert!(yaml_has_key(codex_acp, "sandbox_permissions"));
+    assert!(yaml_has_key(agent, "gemini_acp"));
+    assert!(yaml_has_key(agent, "opencode"));
+    assert!(yaml_has_key(agent, "hone_cloud"));
+    assert!(yaml_has_key(agent, "multi_agent"));
+}
+
+fn assert_config_example_storage_and_logging(root: &serde_yaml::Mapping) {
+    let storage = yaml_key(root, "storage").unwrap().as_mapping().unwrap();
+    assert!(!yaml_has_key(storage, "base_path"));
+    assert!(yaml_has_key(storage, "gen_images_dir"));
+    assert!(yaml_has_key(storage, "notif_prefs_dir"));
+
+    let logging = yaml_key(root, "logging").unwrap().as_mapping().unwrap();
+    assert_yaml_omits_keys(
+        logging,
+        "logging",
+        &[
+            "colorize",
+            "enqueue",
+            "rotation",
+            "retention",
+            "compression",
+        ],
+    );
+    assert!(yaml_has_key(logging, "udp_port"));
+}
+
+fn legacy_agent_migration_canonical_yaml() -> &'static str {
+    r#"
+agent:
+  runner: codex_cli
+  multi_agent:
+    search:
+      api_key: ""
+    answer:
+      api_key: ""
+  opencode:
+    api_key: ""
+llm:
+  auxiliary:
+    api_key: ""
+  openrouter:
+    api_key: ""
+    api_keys: []
+search:
+  api_keys: []
+fmp:
+  api_key: ""
+  api_keys: []
+feishu:
+  enabled: false
+  app_id: ""
+  app_secret: ""
+telegram:
+  enabled: false
+  bot_token: ""
+  chat_scope: DM_ONLY
+discord:
+  enabled: false
+  bot_token: ""
+  chat_scope: DM_ONLY
+"#
+}
+
+fn legacy_agent_migration_runtime_yaml() -> &'static str {
+    r#"
+agent:
+  runner: multi-agent
+  multi_agent:
+    search:
+      base_url: "https://api.minimaxi.com/v1"
+      api_key: "legacy-search"
+      model: "MiniMax-M2.7-highspeed"
+      max_iterations: 8
+    answer:
+      api_base_url: "https://openrouter.ai/api/v1"
+      api_key: "legacy-answer"
+      model: "google/gemini-3.1-pro-preview"
+      variant: "high"
+      max_tool_calls: 1
+  opencode:
+    api_base_url: "https://openrouter.ai/api/v1"
+    api_key: "legacy-answer"
+    model: "google/gemini-3.1-pro-preview"
+    variant: "high"
+llm:
+  auxiliary:
+    base_url: "https://api.minimaxi.com/v1"
+    api_key: "legacy-search"
+    model: "MiniMax-M2.7-highspeed"
+  openrouter:
+    api_key: "legacy-openrouter"
+    api_keys:
+      - legacy-openrouter-1
+      - legacy-openrouter-2
+search:
+  provider: tavily
+  api_keys:
+    - tvly-one
+    - tvly-two
+  search_depth: advanced
+  topic: finance
+fmp:
+  api_key: "legacy-fmp"
+  api_keys:
+    - legacy-fmp-2
+  base_url: "https://financialmodelingprep.com/api"
+  timeout: 30
+feishu:
+  enabled: true
+  app_id: "cli_test"
+  app_secret: "secret"
+telegram:
+  enabled: true
+  bot_token: "tg-token"
+  dm_only: false
+discord:
+  enabled: true
+  bot_token: "discord-token"
+  dm_only: false
+"#
+}
+
+fn assert_legacy_agent_migration_changed_paths(changed: &[String]) {
+    for path in [
+        "agent.multi_agent",
+        "agent.opencode",
+        "llm.auxiliary",
+        "llm.providers.openrouter.api_keys",
+        "agent.runner",
+        "search.api_keys",
+        "fmp.api_key",
+        "fmp.api_keys",
+        "feishu.enabled",
+        "telegram.enabled",
+        "discord.enabled",
+    ] {
+        assert!(changed.contains(&path.to_string()), "missing {path}");
+    }
+}
+
+fn assert_legacy_agent_migration_config(config: &HoneConfig) {
+    assert_eq!(config.agent.runner, "multi-agent");
+    assert_eq!(config.agent.multi_agent.search.api_key, "legacy-search");
+    assert_eq!(config.agent.multi_agent.answer.api_key, "legacy-answer");
+    assert_eq!(config.agent.opencode.api_key, "legacy-answer");
+    assert_eq!(config.llm.auxiliary.api_key, "legacy-search");
+    assert_eq!(config.llm.openrouter.api_key, "");
+    let provider = config.llm.providers.get("openrouter").unwrap();
+    assert_eq!(
+        provider.api_keys,
+        vec![
+            "legacy-openrouter-1".to_string(),
+            "legacy-openrouter-2".to_string()
+        ]
+    );
+    assert_eq!(
+        config.search.api_keys,
+        vec!["tvly-one".to_string(), "tvly-two".to_string()]
+    );
+    assert_eq!(config.fmp.api_key, "legacy-fmp");
+    assert_eq!(config.fmp.api_keys, vec!["legacy-fmp-2".to_string()]);
+    assert!(config.feishu.enabled);
+    assert_eq!(config.feishu.app_id, "cli_test");
+    assert_eq!(config.feishu.app_secret, "secret");
+    assert!(config.telegram.enabled);
+    assert_eq!(config.telegram.bot_token, "tg-token");
+    assert_eq!(config.telegram.chat_scope, ChatScope::All);
+    assert!(config.discord.enabled);
+    assert_eq!(config.discord.bot_token, "discord-token");
+    assert_eq!(config.discord.chat_scope, ChatScope::All);
+}
+
 #[test]
 fn default_config_sets_current_llm_defaults() {
     let config = HoneConfig::default();
@@ -904,149 +1179,14 @@ fn promote_legacy_runtime_agent_settings_migrates_blank_multi_agent_and_runner()
     let canonical = dir.join("config.yaml");
     let legacy = dir.join("data/runtime/config_runtime.yaml");
     std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-    std::fs::write(
-        &canonical,
-        r#"
-agent:
-  runner: codex_cli
-  multi_agent:
-    search:
-      api_key: ""
-    answer:
-      api_key: ""
-  opencode:
-    api_key: ""
-llm:
-  auxiliary:
-    api_key: ""
-  openrouter:
-    api_key: ""
-    api_keys: []
-search:
-  api_keys: []
-fmp:
-  api_key: ""
-  api_keys: []
-feishu:
-  enabled: false
-  app_id: ""
-  app_secret: ""
-telegram:
-  enabled: false
-  bot_token: ""
-  chat_scope: DM_ONLY
-discord:
-  enabled: false
-  bot_token: ""
-  chat_scope: DM_ONLY
-"#,
-    )
-    .unwrap();
-    std::fs::write(
-        &legacy,
-        r#"
-agent:
-  runner: multi-agent
-  multi_agent:
-    search:
-      base_url: "https://api.minimaxi.com/v1"
-      api_key: "legacy-search"
-      model: "MiniMax-M2.7-highspeed"
-      max_iterations: 8
-    answer:
-      api_base_url: "https://openrouter.ai/api/v1"
-      api_key: "legacy-answer"
-      model: "google/gemini-3.1-pro-preview"
-      variant: "high"
-      max_tool_calls: 1
-  opencode:
-    api_base_url: "https://openrouter.ai/api/v1"
-    api_key: "legacy-answer"
-    model: "google/gemini-3.1-pro-preview"
-    variant: "high"
-llm:
-  auxiliary:
-    base_url: "https://api.minimaxi.com/v1"
-    api_key: "legacy-search"
-    model: "MiniMax-M2.7-highspeed"
-  openrouter:
-    api_key: "legacy-openrouter"
-    api_keys:
-      - legacy-openrouter-1
-      - legacy-openrouter-2
-search:
-  provider: tavily
-  api_keys:
-    - tvly-one
-    - tvly-two
-  search_depth: advanced
-  topic: finance
-fmp:
-  api_key: "legacy-fmp"
-  api_keys:
-    - legacy-fmp-2
-  base_url: "https://financialmodelingprep.com/api"
-  timeout: 30
-feishu:
-  enabled: true
-  app_id: "cli_test"
-  app_secret: "secret"
-telegram:
-  enabled: true
-  bot_token: "tg-token"
-  dm_only: false
-discord:
-  enabled: true
-  bot_token: "discord-token"
-  dm_only: false
-"#,
-    )
-    .unwrap();
+    std::fs::write(&canonical, legacy_agent_migration_canonical_yaml()).unwrap();
+    std::fs::write(&legacy, legacy_agent_migration_runtime_yaml()).unwrap();
 
     let changed = promote_legacy_runtime_agent_settings(&canonical, &legacy).unwrap();
-
-    assert!(changed.contains(&"agent.multi_agent".to_string()));
-    assert!(changed.contains(&"agent.opencode".to_string()));
-    assert!(changed.contains(&"llm.auxiliary".to_string()));
-    assert!(changed.contains(&"llm.providers.openrouter.api_keys".to_string()));
-    assert!(changed.contains(&"agent.runner".to_string()));
-    assert!(changed.contains(&"search.api_keys".to_string()));
-    assert!(changed.contains(&"fmp.api_key".to_string()));
-    assert!(changed.contains(&"fmp.api_keys".to_string()));
-    assert!(changed.contains(&"feishu.enabled".to_string()));
-    assert!(changed.contains(&"telegram.enabled".to_string()));
-    assert!(changed.contains(&"discord.enabled".to_string()));
+    assert_legacy_agent_migration_changed_paths(&changed);
 
     let config = HoneConfig::from_file(&canonical).unwrap();
-    assert_eq!(config.agent.runner, "multi-agent");
-    assert_eq!(config.agent.multi_agent.search.api_key, "legacy-search");
-    assert_eq!(config.agent.multi_agent.answer.api_key, "legacy-answer");
-    assert_eq!(config.agent.opencode.api_key, "legacy-answer");
-    assert_eq!(config.llm.auxiliary.api_key, "legacy-search");
-    assert_eq!(config.llm.openrouter.api_key, "");
-    let provider = config.llm.providers.get("openrouter").unwrap();
-    assert_eq!(
-        provider.api_keys,
-        vec![
-            "legacy-openrouter-1".to_string(),
-            "legacy-openrouter-2".to_string()
-        ]
-    );
-    assert_eq!(
-        config.search.api_keys,
-        vec!["tvly-one".to_string(), "tvly-two".to_string()]
-    );
-    assert_eq!(config.fmp.api_key, "legacy-fmp");
-    assert_eq!(config.fmp.api_keys, vec!["legacy-fmp-2".to_string()]);
-    assert!(config.feishu.enabled);
-    assert_eq!(config.feishu.app_id, "cli_test");
-    assert_eq!(config.feishu.app_secret, "secret");
-    assert!(config.telegram.enabled);
-    assert_eq!(config.telegram.bot_token, "tg-token");
-    assert_eq!(config.telegram.chat_scope, ChatScope::All);
-    assert!(config.discord.enabled);
-    assert_eq!(config.discord.bot_token, "discord-token");
-    assert_eq!(config.discord.chat_scope, ChatScope::All);
+    assert_legacy_agent_migration_config(&config);
 }
 
 #[test]
@@ -1327,124 +1467,21 @@ fn language_mutation_round_trip() {
 
 #[test]
 fn config_example_avoids_stale_config_knobs() {
-    fn get_key<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
-        mapping.get(Value::String(key.to_string()))
-    }
-
-    fn has_key(mapping: &serde_yaml::Mapping, key: &str) -> bool {
-        mapping.contains_key(Value::String(key.to_string()))
-    }
-
     let example_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../config.example.yaml");
     let example = std::fs::read_to_string(example_path).unwrap();
     let root_value: Value = serde_yaml::from_str(&example).unwrap();
     HoneConfig::from_merged_value(root_value.clone()).unwrap();
     let root = root_value.as_mapping().unwrap();
-    let actual_roots = root
-        .keys()
-        .map(|key| key.as_str().unwrap_or_default())
-        .collect::<std::collections::BTreeSet<_>>();
-    let expected_roots = [
-        "admins",
-        "agent",
-        "discord",
-        "event_engine",
-        "feishu",
-        "fmp",
-        "group_context",
-        "imessage",
-        "language",
-        "llm",
-        "logging",
-        "nano_banana",
-        "search",
-        "security",
-        "storage",
-        "telegram",
-        "web",
-    ]
-    .into_iter()
-    .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(actual_roots, expected_roots);
+    assert_config_example_roots(root);
 
     assert!(
-        !has_key(root, "discord_watch"),
+        !yaml_has_key(root, "discord_watch"),
         "discord watcher belongs under discord.watch"
     );
-    assert!(!has_key(root, "tools"));
-    assert!(!has_key(root, "server"));
-
-    let imessage = get_key(root, "imessage").unwrap().as_mapping().unwrap();
-    assert!(has_key(imessage, "listen_addr"));
-
-    let discord = get_key(root, "discord").unwrap().as_mapping().unwrap();
-    let discord_watch = get_key(discord, "watch").unwrap().as_mapping().unwrap();
-    assert!(has_key(discord_watch, "enabled"));
-    assert!(has_key(discord_watch, "channel_ids"));
-    assert!(has_key(discord_watch, "loop"));
-    assert!(has_key(discord_watch, "verbose"));
-
-    let nano_banana = get_key(root, "nano_banana").unwrap().as_mapping().unwrap();
-    for stale_key in [
-        "timeout_seconds",
-        "download_timeout_seconds",
-        "max_retries",
-        "max_tokens",
-        "temperature",
-        "http_referrer",
-        "x_title",
-        "extra_params",
-    ] {
-        assert!(
-            !has_key(nano_banana, stale_key),
-            "nano_banana.{stale_key} is not a YAML config field"
-        );
-    }
-
-    let fmp = get_key(root, "fmp").unwrap().as_mapping().unwrap();
-    assert!(has_key(fmp, "api_keys"));
-
-    let event_engine = get_key(root, "event_engine").unwrap().as_mapping().unwrap();
-    assert!(has_key(event_engine, "news_importance_prompt"));
-    let sources = get_key(event_engine, "sources")
-        .unwrap()
-        .as_mapping()
-        .unwrap();
-    assert!(has_key(sources, "extended_hours"));
-    assert!(has_key(sources, "rss_feeds"));
-    assert!(has_key(sources, "telegram_channels"));
-
-    let agent = get_key(root, "agent").unwrap().as_mapping().unwrap();
-    assert!(
-        !has_key(agent, "debug_log"),
-        "agent.debug_log is controlled by HONE_AGENT_DEBUG, not YAML"
-    );
-    let codex_acp = get_key(agent, "codex_acp").unwrap().as_mapping().unwrap();
-    assert!(has_key(codex_acp, "sandbox_mode"));
-    assert!(has_key(codex_acp, "approval_policy"));
-    assert!(has_key(codex_acp, "sandbox_permissions"));
-    assert!(has_key(agent, "gemini_acp"));
-    assert!(has_key(agent, "opencode"));
-    assert!(has_key(agent, "hone_cloud"));
-    assert!(has_key(agent, "multi_agent"));
-
-    let storage = get_key(root, "storage").unwrap().as_mapping().unwrap();
-    assert!(!has_key(storage, "base_path"));
-    assert!(has_key(storage, "gen_images_dir"));
-    assert!(has_key(storage, "notif_prefs_dir"));
-
-    let logging = get_key(root, "logging").unwrap().as_mapping().unwrap();
-    for stale_key in [
-        "colorize",
-        "enqueue",
-        "rotation",
-        "retention",
-        "compression",
-    ] {
-        assert!(
-            !has_key(logging, stale_key),
-            "logging.{stale_key} is not a YAML config field"
-        );
-    }
-    assert!(has_key(logging, "udp_port"));
+    assert!(!yaml_has_key(root, "tools"));
+    assert!(!yaml_has_key(root, "server"));
+    assert_config_example_channel_sections(root);
+    assert_config_example_event_sections(root);
+    assert_config_example_agent_section(root);
+    assert_config_example_storage_and_logging(root);
 }
