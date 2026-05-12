@@ -173,7 +173,7 @@ Last updated: 2026-05-11
 - Frontend backend runtime lives in `packages/app/src/context/backend.tsx` and `packages/app/src/lib/backend.ts`
 - Assistant message parser for inline local images: `packages/app/src/lib/messages.ts`
 - `hone-console-page` `/api/meta` handles version and capability negotiation
-- `hone-console-page` admin app only serves `/api/*` and console SPA on the admin port; the public app only serves `/api/public/*` plus `/chat` on the public port for SMS-verified whitelist web users. `/api/public/auth/sms/send` and `/api/public/auth/sms/login` use Aliyun SMS verification while the admin invite table remains the whitelist source. `/api/public/v1/chat/completions` is the API-key-authenticated OpenAI-compatible public chat endpoint used by Hone Cloud clients.
+- `hone-console-page` admin app only serves `/api/*` and console SPA on the admin port; the public app serves the public SPA routes (`/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, `/privacy`) plus `/api/public/*` on the public port. `/chat` uses SMS-verified whitelist web users. `/api/public/auth/sms/send` and `/api/public/auth/sms/login` use Aliyun SMS verification while the admin invite table remains the whitelist source. `/api/public/v1/chat/completions` is the API-key-authenticated OpenAI-compatible public chat endpoint used by Hone Cloud clients.
 - `hone-console-page` `/api/skills*` serves the skill management surface: registered listing, detail view, enable/disable mutation, and reset
 - `hone-console-page` `/api/company-profiles*` now serves actor-space listing, portrait detail, full deletion, and actor-scoped portrait bundle transfer (`export`, `import/preview`, `import/apply`) for actor-local portrait docs; portrait creation and section/event updates still rely on runner-native file operations inside the actor sandbox rather than dedicated mutation APIs
 - `packages/app/src/context/company-profiles.tsx` now acts as the memory-page transfer orchestrator: it merges portrait actor spaces with recent session users into one target-selector model, supports manual target entry for first-time imports, runs bundle preview/apply, keeps post-import highlights plus optional pre-import backup blobs, and auto-selects the first company in the current target space so the right panel does not fall back to a false empty state
@@ -183,7 +183,7 @@ Last updated: 2026-05-11
 - Route entrypoint: `packages/app/src/app.tsx`
 - Pages: `packages/app/src/pages/`
   - admin surface keeps `/start` and the management console routes
-  - public surface only exposes `/` and `/chat`, both pointing at the phone + SMS-code login chat experience
+  - public surface exposes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` and account views use the phone + SMS-code whitelist login experience
 - Settings page state helpers: `packages/app/src/pages/settings-model.ts`
 - Domain state: `packages/app/src/context/`
 - Composite components: `packages/app/src/components/`

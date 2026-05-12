@@ -271,7 +271,7 @@ const CONTENT_ZH = {
       "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.11.1",
+    version: "v0.11.2",
 
     toc: [
       { id: "quick-start", label: "快速开始", sub: "Quick Start" },
@@ -399,7 +399,7 @@ const CONTENT_ZH = {
       },
       {
         title: "公开 user-ui",
-        desc: "public surface 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；后端只暴露 `/api/public/*` 与公开聊天入口。",
+        desc: "public surface 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；`/chat` 使用手机号 + 短信验证码登录，管理端 Web 白名单是准入来源，后端只暴露 `/api/public/*` 与公开聊天入口。",
       },
       {
         title: "管理后台",
@@ -502,6 +502,11 @@ const CONTENT_ZH = {
             note: "hone-web-api 路由全开",
           },
           {
+            name: "公开用户 SMS 登录",
+            status: "stable",
+            note: "Aliyun SMS + 管理端 Web 白名单",
+          },
+          {
             name: "按用户细粒度推送偏好",
             status: "stable",
             note: "notification_preferences skill + 设置页 + config 全局节流",
@@ -521,7 +526,7 @@ const CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "邀请制聊天页，浏览器直开（hone-web-api）",
+        desc: "手机号 + 短信验证码登录的白名单聊天页（hone-web-api）",
       },
       {
         name: "iMessage",
@@ -595,7 +600,7 @@ const CONTENT_ZH = {
     now: {
       label: "当前已有",
       items: [
-        "Web 聊天界面（邀请制）+ 公开门面站",
+        "Web 聊天界面（手机号 + 短信验证码，管理端白名单准入）+ 公开门面站",
         "Tauri macOS 桌面端 + 内置后端",
         "7 个渠道：Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
         "16 个公开 Skill（个股、持仓、估值/筛选入口、图表、PDF、Cron、漏推回查、推送偏好…）",
@@ -753,7 +758,7 @@ const CONTENT_ZH = {
     logged_out_title: "请先登录",
     logged_out_desc: "登录后查看你的使用额度、历史记录和账号信息。",
     logged_out_cta: "前往对话页登录",
-    invite_note: "需要邀请码才能进入对话",
+    invite_note: "需要手机号加入白名单后才能进入对话",
     loading: "加载中…",
     account_info_title: "账号信息",
     usage_today_label: "今日用量",
@@ -1598,7 +1603,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
-    version: "v0.11.1",
+    version: "v0.11.2",
 
     toc: [
       { id: "quick-start", label: "Quick Start", sub: "Quick Start" },
@@ -1716,7 +1721,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
       {
         title: "Public user-ui",
-        desc: "The public surface routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; the backend exposes only `/api/public/*` plus public chat entrypoints.",
+        desc: "The public surface routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; `/chat` signs users in with phone + SMS verification, the admin Web whitelist is the admission source, and the backend exposes only `/api/public/*` plus public chat entrypoints.",
       },
       {
         title: "Admin console",
@@ -1823,6 +1828,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
             note: "hone-web-api fully exposed",
           },
           {
+            name: "Public SMS login",
+            status: "stable",
+            note: "Aliyun SMS + admin Web whitelist",
+          },
+          {
             name: "Per-actor notification prefs",
             status: "stable",
             note: "notification_preferences skill + settings page + config-level mute",
@@ -1846,7 +1856,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         name: "Web",
         icon: "⚡",
         status: "stable",
-        desc: "Invite-only chat, opens in browser (hone-web-api)",
+        desc: "Whitelist chat with phone + SMS-code login (hone-web-api)",
       },
       {
         name: "iMessage",
@@ -1953,7 +1963,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     now: {
       label: "Shipping today",
       items: [
-        "Web chat (invite-only) + public landing site",
+        "Web chat (phone + SMS verification, admitted by the admin whitelist) + public landing site",
         "Tauri macOS desktop with bundled backend",
         "7 channels: Web / iMessage / Lark / Discord / Telegram / CLI / MCP",
         "16 public skills (stocks, portfolio, valuation/screening entrypoints, charts, PDF, cron, missed-event recovery, notification prefs…)",
@@ -2111,7 +2121,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     logged_out_title: "Sign in first",
     logged_out_desc: "Sign in to see your usage, history, and account info.",
     logged_out_cta: "Go to chat to sign in",
-    invite_note: "An invite code is required to enter chat",
+    invite_note: "Your phone number must be whitelisted before you can enter chat",
     loading: "Loading…",
     account_info_title: "Account info",
     usage_today_label: "Today's usage",
