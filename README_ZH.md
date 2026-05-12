@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>简体中文</strong> | <a href="./README.md">English</a> | <strong>官网：</strong><a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>💬 社群:</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
+  <strong>简体中文</strong> | <a href="./README.md">English</a> | <strong>官网：</strong><a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>💬 社群：</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
 </p>
 
 ---
@@ -76,22 +76,22 @@ Honeclaw（或称 Hone）是一个使用 **Rust** 编写的开源个人投研辅
 
 ### 技术栈
 
-- **系统主体**：Rust (Tokio, Axum, SSE)
+- **系统主体**：Rust（Tokio, Axum, SSE）
 - **后端**：Rust
-- **客户端**（桌面端）：Rust (Tauri)
-- **前端**：TypeScript (SolidJS + Tailwind v4)
+- **客户端**（桌面端）：Rust（Tauri）
+- **前端**：TypeScript（SolidJS + Tailwind v4）
 
 ### 支持渠道
 
-- **Web Console**: 现代化的浏览器交互界面。
-- **Mac App**: 原生 macOS 桌面体验。
-- **IM 集成**: 飞书 (Feishu / Lark)、Discord、Telegram、iMessage。
+- **Web Console**：现代化的浏览器交互界面。
+- **Mac App**：原生 macOS 桌面体验。
+- **IM 集成**：飞书（Feishu / Lark）、Discord、Telegram、iMessage。
 
 ## 安装与启动
 
 完整启动矩阵、目录说明、端口、配置和排障请看 [Hone Wiki](./docs/wiki.md)。
 
-### 方案 A：通过 `curl | bash` 安装 (macOS/Linux)
+### 方案 A：通过 `curl | bash` 安装（macOS/Linux）
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash

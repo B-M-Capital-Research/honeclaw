@@ -138,7 +138,7 @@ const ZH = {
     title: "API 配置",
     subtitle: "配置各类数据源和搜索服务的密钥。支持多 Key 轮换及自动重试。",
     fmp: {
-      name: "金融数据 API (Financial Modeling Prep)",
+      name: "金融数据 API（Financial Modeling Prep）",
       description: "用于获取实时股票、报表等金融核心数据",
       key_placeholder: "FMP API Key",
       remove: "删除",
@@ -148,7 +148,7 @@ const ZH = {
       saved: "已保存 FMP API key，内置后端已重启生效",
     },
     tavily: {
-      name: "搜索 API (Tavily)",
+      name: "搜索 API（Tavily）",
       description: "用于联网获取最新信息、文章、网页内容",
       key_placeholder: "tvly-...",
       remove: "删除",
@@ -176,7 +176,7 @@ const ZH = {
       csv_placeholder: "逗号分隔；留空表示全部允许",
     },
     feishu: {
-      name: "飞书 (Feishu)",
+      name: "飞书（Feishu）",
       app_id_label: "App ID",
       app_id_placeholder: "cli_...",
       app_secret_label: "App Secret",

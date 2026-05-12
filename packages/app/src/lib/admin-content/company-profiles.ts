@@ -25,7 +25,7 @@ const ZH = {
     delete_confirm: "确定彻底删除 {title} 的公司画像吗？",
     deleting_button: "删除中…",
     delete_button: "删除画像",
-    company_list_label: "公司画像 ({count})",
+    company_list_label: "公司画像（{count}）",
     updated_badge: "更新",
     import_done_title: "导入完成",
     import_done_summary: "新增 {imported} 家，替换 {replaced} 家，跳过 {skipped} 家。",

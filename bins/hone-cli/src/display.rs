@@ -76,21 +76,21 @@ mod tests {
     fn onboarding_preview_smoke() {
         banner(
             "Hone onboarding",
-            "约 3–5 分钟,Ctrl+C 安全退出:mutation 只在最后一步才写盘。",
+            "约 3–5 分钟，Ctrl+C 安全退出：mutation 只在最后一步才写盘。",
         );
-        hint_line("每个环节都可以跳过,之后再通过 `hone-cli onboard` 补配。");
+        hint_line("每个环节都可以跳过，之后再通过 `hone-cli onboard` 补配。");
 
         step_header(1, 5, "Runner");
         subsection("Multi-Agent (OpenRouter)");
-        bullet("前置:一把可用的 OpenRouter API key。");
-        bullet("原理:第一段 search 用小模型拉证据,第二段 answer 用主模型总结。");
+        bullet("前置：一把可用的 OpenRouter API key。");
+        bullet("原理：第一段 search 用小模型拉证据，第二段 answer 用主模型总结。");
         ok_line("codex 已检测到可用。");
 
         step_header(2, 5, "Channels");
         subsection("Feishu prerequisites");
         bullet("需要飞书开放平台应用的 `app_id` 与 `app_secret`。");
-        warn_line("Feishu 渠道默认 allow 白名单为空,即所有联系人都能触发 Hone。");
-        hint_line("如需限定,onboard 完成后用 `hone-cli configure --section channels`。");
+        warn_line("Feishu 渠道默认 allow 白名单为空，即所有联系人都能触发 Hone。");
+        hint_line("如需限定，onboard 完成后用 `hone-cli configure --section channels`。");
 
         step_header(3, 5, "Admins");
         hint_line("管理员白名单决定谁能触发 /register-admin /report 等管理指令。");
@@ -102,7 +102,7 @@ mod tests {
         fail_line("Token 必须是三段结构(长度=12)。");
 
         step_header(5, 5, "Apply");
-        ok_line("配置已保存,已立即生效(共写入 6 条字段)");
+        ok_line("配置已保存，已立即生效（共写入 6 条字段）");
         hint_line("canonical config → /Users/you/.honeclaw/config.yaml");
 
         banner("Onboarding complete", "下一步:");

@@ -49,7 +49,7 @@ function ProfileTab(props: { symbol: string; actor?: ActorRef }) {
       when={props.actor}
       fallback={
         <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-          先在用户档案页选定一个用户,这里才能列出该用户的相关画像。
+          先在用户档案页选定一个用户，这里才能列出该用户的相关画像。
         </div>
       }
     >
@@ -105,7 +105,7 @@ function ResearchTab(props: { symbol: string }) {
       when={matched().length > 0}
       fallback={
         <div class="rounded-md border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--text-muted)]">
-          没有 company_name 匹配 {props.symbol} 的研究任务。可在"操作"tab 启动一个。
+          没有 company_name 匹配 {props.symbol} 的研究任务。可在“操作”tab 启动一个。
         </div>
       }
     >
@@ -175,7 +175,7 @@ function SessionsTab(props: { actor?: ActorRef }) {
           }
         >
           <div class="mb-3 text-[11px] text-[color:var(--text-muted)]">
-            后端尚无消息全文搜索 — 这里列出该用户最近 6 个会话,可点入查找上下文。
+            后端尚无消息全文搜索 — 这里列出该用户最近 6 个会话，可点入查找上下文。
           </div>
           <div class="space-y-2">
             <For each={userSessions()}>
@@ -268,7 +268,7 @@ function ActionsTab(props: { symbol: string; actor?: ActorRef; onDone: () => voi
         <div class="text-sm font-semibold mb-2">加到 watchlist</div>
         <div class="text-[11px] text-[color:var(--text-muted)] mb-3">
           <Show when={props.actor} fallback={<span>当前未选定用户。</span>}>
-            {(a) => <span>目标用户: {a().user_id} · {a().channel}</span>}
+            {(a) => <span>目标用户：{a().user_id} · {a().channel}</span>}
           </Show>
         </div>
         <Show when={!inWatchlist() && !inHolding()} fallback={
@@ -289,7 +289,7 @@ function ActionsTab(props: { symbol: string; actor?: ActorRef; onDone: () => voi
       <div class="rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
         <div class="text-sm font-semibold mb-2">启动深度研究</div>
         <div class="text-[11px] text-[color:var(--text-muted)] mb-3">
-          预填 {props.symbol} 跳到个股研究模块,你需要确认才会真正启动。
+          预填 {props.symbol} 跳到个股研究模块，你需要确认才会真正启动。
         </div>
         <Button
           variant="ghost"

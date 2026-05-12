@@ -160,7 +160,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     ("apply.start_now", "现在启动 Hone 吗？", "Start Hone now?"),
     ("apply.complete", "首装向导完成", "Onboarding complete"),
-    ("apply.next_steps", "下一步:", "Next steps:"),
+    ("apply.next_steps", "下一步：", "Next steps:"),
     (
         "apply.tip_status",
         "`hone-cli status`   快速查当前配置",
@@ -168,7 +168,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "apply.tip_doctor",
-        "`hone-cli doctor`   深度体检(路径 / binary / auth)",
+        "`hone-cli doctor`   深度体检（路径 / binary / auth）",
         "`hone-cli doctor`   deep healthcheck (paths / binaries / auth)",
     ),
     (
@@ -794,7 +794,7 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "notifications.user_adjust_2",
-        "对应 `notification_prefs_tool`,无需 Web UI。",
+        "对应 `notification_prefs_tool`，无需 Web UI。",
         "Backed by `notification_prefs_tool` — no web UI required.",
     ),
     (

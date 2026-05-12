@@ -45,7 +45,7 @@ pub(crate) async fn run_chat(core: Arc<HoneBotCore>, config_path: &str) -> Resul
             .with_restore_max_messages(None)
             .with_prompt_options(prompt_options);
 
-        println!("🤔 思考中...");
+        println!("🤔 思考中…");
         let result = session.run(input, AgentRunOptions::default()).await;
         let response = result.response;
 
@@ -53,7 +53,7 @@ pub(crate) async fn run_chat(core: Arc<HoneBotCore>, config_path: &str) -> Resul
             println!("\nHone > {}", response.content);
         } else {
             let err = response.error.clone().unwrap_or_default();
-            println!("\n❌ 错误: {}", err);
+            println!("\n❌ 错误：{}", err);
         }
 
         if !response.tool_calls_made.is_empty() {

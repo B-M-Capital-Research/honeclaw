@@ -111,7 +111,7 @@ export function EntityRefLink(props: EntityRefLinkProps) {
         type="button"
         onClick={onClick}
         class="inline-flex items-center gap-1 rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--accent)] hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
-        title={`跳转到${KIND_LABEL[props.kind]}:${text()}`}
+        title={`跳转到${KIND_LABEL[props.kind]}：${text()}`}
       >
         <Show when={!props.compact}>
           <span class="opacity-60">{KIND_LABEL[props.kind]}</span>

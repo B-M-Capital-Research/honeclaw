@@ -90,12 +90,12 @@ function MainlineCard(props: {
               fallback={
                 <>
                   <strong style={{ color: "#d97706" }}>没有公司画像</strong> —— 在 chat 里对 agent 说
-                  "建立 {props.ticker} 的公司画像",蒸馏会在下次 cron 自动跑。
+                  “建立 {props.ticker} 的公司画像”，蒸馏会在下次 cron 自动跑。
                 </>
               }
             >
               <strong style={{ color: "#d97706" }}>画像存在但投资主线蒸馏失败 / 跳过</strong>
-              {props.isSkipped ? "(上次跳过)" : ""}—— 点"立即刷新"重试。
+              {props.isSkipped ? "（上次跳过）" : ""}—— 点“立即刷新”重试。
             </Show>
           </div>
         }
@@ -238,7 +238,7 @@ function ProfileModal(props: { open: boolean; ticker: string | null; onClose: ()
               color: "#64748b",
             }}
           >
-            画像由 chat 里 company_portrait skill 维护。如需修改,请在 /chat 与 agent 对话。
+            画像由 chat 里 company_portrait skill 维护。如需修改，请在 /chat 与 agent 对话。
           </div>
         </div>
       </div>
@@ -276,11 +276,11 @@ function PortfolioContextView() {
     try {
       const refreshResult = await refreshDigestContext()
       setRefreshMsg(
-        `蒸馏完成:${refreshResult.mainline_count} 条投资主线,跳过 ${refreshResult.skipped_tickers.length} 只`,
+        `蒸馏完成：${refreshResult.mainline_count} 条投资主线，跳过 ${refreshResult.skipped_tickers.length} 只`,
       )
       await load()
     } catch (e) {
-      setRefreshMsg(`蒸馏失败:${e instanceof Error ? e.message : String(e)}`)
+      setRefreshMsg(`蒸馏失败：${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setRefreshing(false)
     }
@@ -329,7 +329,7 @@ function PortfolioContextView() {
             投资上下文
           </h1>
           <p style={{ "font-size": "13px", color: "#64748b", "margin-top": "8px", "line-height": "1.7" }}>
-            系统每周自动从你的公司画像蒸馏投资主线,用于过滤全球 digest 的相关性。画像编辑请通过 /chat。
+            系统每周自动从你的公司画像蒸馏投资主线，用于过滤全球 digest 的相关性。画像编辑请通过 /chat。
           </p>
         </div>
 
@@ -348,7 +348,7 @@ function PortfolioContextView() {
               "margin-bottom": "16px",
             }}
           >
-            加载失败:{error()}
+            加载失败：{error()}
           </div>
         </Show>
 
@@ -367,10 +367,10 @@ function PortfolioContextView() {
                 }}
               >
                 <div style={{ "font-size": "13px", color: "#64748b" }}>
-                  上次蒸馏:<strong style={{ color: "#0f172a" }}>{formatTimestamp(context().last_mainline_distilled_at)}</strong>
+                  上次蒸馏：<strong style={{ color: "#0f172a" }}>{formatTimestamp(context().last_mainline_distilled_at)}</strong>
                   <Show when={context().mainline_distill_skipped.length > 0}>
                     <span style={{ "margin-left": "16px" }}>
-                      跳过 {context().mainline_distill_skipped.length} 只:
+                      跳过 {context().mainline_distill_skipped.length} 只：
                       <span style={{ color: "#d97706", "font-family": "monospace" }}>
                         {context().mainline_distill_skipped.join(", ")}
                       </span>
@@ -522,7 +522,7 @@ function PortfolioContextView() {
                       "font-size": "13px",
                     }}
                   >
-                    sandbox 里还没有任何公司画像。在 /chat 里说"建立 X 的公司画像"开始。
+                    sandbox 里还没有任何公司画像。在 /chat 里说“建立 X 的公司画像”开始。
                   </div>
                 }
               >

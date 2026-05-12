@@ -1170,7 +1170,7 @@ export default function PublicChatPage() {
               <div ref={messagesInnerRef} style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}>
                 <Show when={hasOlderMessages()}>
                   <div style={{ "text-align": "center", color: "#94a3b8", "font-size": "12px", "font-weight": "700", padding: "4px 0 18px" }}>
-                    {loadingOlderMessages() ? "加载中..." : "上滑加载更早消息"}
+                    {loadingOlderMessages() ? "加载中…" : "上滑加载更早消息"}
                   </div>
                 </Show>
                 <For each={visibleMessages()}>

@@ -399,11 +399,11 @@ const CONTENT_ZH = {
     boundary: {
       label: "开源边界",
       open: [
-        "Rust 核心引擎 (hone-core / hone-channels / hone-llm / hone-tools)",
-        "前端 UI (SolidJS + Tailwind v4)",
+        "Rust 核心引擎（hone-core / hone-channels / hone-llm / hone-tools）",
+        "前端 UI（SolidJS + Tailwind v4）",
         "Tauri 桌面端壳",
         "全部 16 个公开 Skill",
-        "全部渠道集成代码 (Web / iMessage / Lark / Discord / Telegram / CLI / MCP)",
+        "全部渠道集成代码（Web / iMessage / Lark / Discord / Telegram / CLI / MCP）",
       ],
       closed: [
         "私域高级 Skill 库",
@@ -458,7 +458,7 @@ const CONTENT_ZH = {
       },
       {
         q: "需要自己部署吗？",
-        a: "三种方式任选：①「curl | bash」一键装 hone-cli;②Homebrew tap;③clone 仓库后用本地 CLI 构建启动。前两种共享同一份 GitHub release bundle，不需要自己编译 Rust。",
+        a: "三种方式任选：①「curl | bash」一键装 hone-cli；② Homebrew tap；③ clone 仓库后用本地 CLI 构建启动。前两种共享同一份 GitHub release bundle，不需要自己编译 Rust。",
       },
       {
         q: "支持哪些 LLM？",
