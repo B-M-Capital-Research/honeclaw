@@ -748,13 +748,13 @@ mod tests {
     }
 
     /// Mock LLM:返回固定 content,记录调用次数。
-    struct MockProvider {
+    struct StaticResponseProvider {
         content: String,
         calls: Mutex<usize>,
     }
 
     #[async_trait]
-    impl LlmProvider for MockProvider {
+    impl LlmProvider for StaticResponseProvider {
         async fn chat(&self, _m: &[Message], _model: Option<&str>) -> HoneResult<ChatResult> {
             *self.calls.lock().unwrap() += 1;
             Ok(ChatResult {
@@ -779,13 +779,13 @@ mod tests {
         }
     }
 
-    fn make_curator(content: &str) -> (Curator, Arc<MockProvider>) {
-        let mock = Arc::new(MockProvider {
+    fn make_curator_with_response(content: &str) -> (Curator, Arc<StaticResponseProvider>) {
+        let response_provider = Arc::new(StaticResponseProvider {
             content: content.into(),
             calls: Mutex::new(0),
         });
-        let curator = Curator::new(mock.clone(), "p1-model", "p2-model");
-        (curator, mock)
+        let curator = Curator::new(response_provider.clone(), "p1-model", "p2-model");
+        (curator, response_provider)
     }
 
     #[test]
@@ -931,7 +931,7 @@ mod tests {
     #[tokio::test]
     async fn pass1_select_calls_llm_and_returns_ranked() {
         let json = r#"{"items":[{"idx":0,"score":5,"cluster":"x","takeaway":"hot"}]}"#;
-        let (curator, mock) = make_curator(json);
+        let (curator, response_provider) = make_curator_with_response(json);
         let candidates = vec![fixture_candidate("a", "Big news")];
         let ranked_candidates = curator
             .pass1_select(&candidates, &audience(), 10)
@@ -939,18 +939,18 @@ mod tests {
             .unwrap();
         assert_eq!(ranked_candidates.len(), 1);
         assert_eq!(ranked_candidates[0].pass1_score, 5);
-        assert_eq!(*mock.calls.lock().unwrap(), 1);
+        assert_eq!(*response_provider.calls.lock().unwrap(), 1);
     }
 
     #[tokio::test]
     async fn pass1_select_empty_candidates_skips_llm() {
-        let (curator, mock) = make_curator("");
+        let (curator, response_provider) = make_curator_with_response("");
         let ranked_candidates = curator.pass1_select(&[], &audience(), 10).await.unwrap();
         assert!(ranked_candidates.is_empty());
-        assert_eq!(*mock.calls.lock().unwrap(), 0);
+        assert_eq!(*response_provider.calls.lock().unwrap(), 0);
     }
 
-    fn body(text: &str) -> ArticleBody {
+    fn fetched_article_body(text: &str) -> ArticleBody {
         ArticleBody {
             url: "https://x/y".into(),
             text: text.into(),
@@ -964,7 +964,7 @@ mod tests {
             {"idx":1,"rank":1,"title":"Story B","url":"https://x/b","comment":"nice"},
             {"idx":0,"rank":2,"title":"Story A","url":"https://x/a","comment":"ok"}
         ]}"#;
-        let (curator, _mock) = make_curator(json);
+        let (curator, _response_provider) = make_curator_with_response(json);
         let candidates = vec![
             fixture_candidate("a", "Story A"),
             fixture_candidate("b", "Story B"),
@@ -980,7 +980,7 @@ mod tests {
                         pass1_cluster: format!("c{i}"),
                         pass1_takeaway: "t".into(),
                     },
-                    body("article body"),
+                    fetched_article_body("article body"),
                 )
             })
             .collect();
@@ -999,7 +999,7 @@ mod tests {
             {"idx":99,"rank":1,"title":"fake","url":"x","comment":"c"},
             {"idx":0,"rank":2,"title":"real","url":"x","comment":"r"}
         ]}"#;
-        let (curator, _) = make_curator(json);
+        let (curator, _) = make_curator_with_response(json);
         let candidates = vec![fixture_candidate("a", "T")];
         let picks: Vec<_> = candidates
             .into_iter()
@@ -1011,7 +1011,7 @@ mod tests {
                         pass1_cluster: "x".into(),
                         pass1_takeaway: "".into(),
                     },
-                    body("b"),
+                    fetched_article_body("b"),
                 )
             })
             .collect();
@@ -1022,13 +1022,13 @@ mod tests {
 
     #[tokio::test]
     async fn pass2_baseline_empty_picks_skips_llm() {
-        let (curator, mock) = make_curator("");
+        let (curator, response_provider) = make_curator_with_response("");
         let baseline_picks = curator
             .pass2_baseline(vec![], &audience(), 8)
             .await
             .unwrap();
         assert!(baseline_picks.is_empty());
-        assert_eq!(*mock.calls.lock().unwrap(), 0);
+        assert_eq!(*response_provider.calls.lock().unwrap(), 0);
     }
 
     fn picks() -> Vec<(RankedCandidate, ArticleBody)> {
@@ -1040,7 +1040,7 @@ mod tests {
                     pass1_cluster: "google-anthropic".into(),
                     pass1_takeaway: "google invests".into(),
                 },
-                body("Google commits up to $40 billion in Anthropic..."),
+                fetched_article_body("Google commits up to $40 billion in Anthropic..."),
             ),
             (
                 RankedCandidate {
@@ -1049,7 +1049,7 @@ mod tests {
                     pass1_cluster: "semi-rally".into(),
                     pass1_takeaway: "warning of overheat".into(),
                 },
-                body("Unprecedented semi rally triggers warnings..."),
+                fetched_article_body("Unprecedented semi rally triggers warnings..."),
             ),
             (
                 RankedCandidate {
@@ -1058,7 +1058,7 @@ mod tests {
                     pass1_cluster: "hormuz".into(),
                     pass1_takeaway: "macron diplomacy".into(),
                 },
-                body("Macron reaffirms efforts to reopen Strait of Hormuz..."),
+                fetched_article_body("Macron reaffirms efforts to reopen Strait of Hormuz..."),
             ),
         ]
     }
@@ -1070,7 +1070,7 @@ mod tests {
             {"idx":0,"rank":1,"title":"GOOGL Anthropic","url":"u","comment":"印证 Gemini 飞轮","category":"mainline_aligned","mainline_relation":"印证"},
             {"idx":2,"rank":2,"title":"Hormuz","url":"u","comment":"波及电力叙事","category":"macro_floor","mainline_relation":"N/A"}
         ],"floor_satisfied":true}"#;
-        let (curator, _) = make_curator(json);
+        let (curator, _) = make_curator_with_response(json);
         let mut by_ticker = HashMap::new();
         by_ticker.insert("GOOGL".into(), "看 Gemini 生态飞轮".into());
         let mainline = UserMainline {
@@ -1104,7 +1104,7 @@ mod tests {
         let json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"}
         ]}"#;
-        let (curator, _) = make_curator(json);
+        let (curator, _) = make_curator_with_response(json);
         let mainline = UserMainline::default(); // 全 None
         let personalized_picks = curator
             .pass2_personalize(picks(), &audience(), mainline, 0, 8)
@@ -1123,7 +1123,7 @@ mod tests {
         let json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"weird_value","mainline_relation":"???"}
         ]}"#;
-        let (curator, _) = make_curator(json);
+        let (curator, _) = make_curator_with_response(json);
         let personalized_picks = curator
             .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
             .await
@@ -1144,7 +1144,7 @@ mod tests {
             {"idx":99,"rank":1,"title":"x","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"},
             {"idx":1,"rank":2,"title":"y","url":"u","comment":"c","category":"mainline_aligned","mainline_relation":"中立"}
         ]}"#;
-        let (curator, _) = make_curator(json);
+        let (curator, _) = make_curator_with_response(json);
         let personalized_picks = curator
             .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
             .await
@@ -1159,7 +1159,7 @@ mod tests {
         let json = r#"{"picks":[
             {"idx":0,"rank":1,"title":"T","url":"u","comment":"c","category":"thesis_counter","thesis_relation":"反证"}
         ]}"#;
-        let (curator, _) = make_curator(json);
+        let (curator, _) = make_curator_with_response(json);
         let personalized_picks = curator
             .pass2_personalize(picks(), &audience(), UserMainline::default(), 0, 8)
             .await

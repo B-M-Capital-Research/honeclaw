@@ -482,17 +482,17 @@ mod tests {
     #[test]
     fn scan_profiles_finds_all_in_directory() {
         let dir = tempdir().unwrap();
-        let cp = dir.path().join("company_profiles");
-        std::fs::create_dir(&cp).unwrap();
+        let profiles_dir = dir.path().join("company_profiles");
+        std::fs::create_dir(&profiles_dir).unwrap();
         for (name, content) in &[
             ("micron-technology", "# MU\n\nticker: MU\n\n投资主线"),
             ("rocket-lab", "# Rocket Lab (RKLB)\n\n投资主线"),
             ("alphabet", "ticker: GOOGL / GOOG\n"),
             ("garbage-no-ticker", "Just text without ticker marker"),
         ] {
-            let sub = cp.join(name);
-            std::fs::create_dir(&sub).unwrap();
-            std::fs::write(sub.join("profile.md"), content).unwrap();
+            let profile_dir = profiles_dir.join(name);
+            std::fs::create_dir(&profile_dir).unwrap();
+            std::fs::write(profile_dir.join("profile.md"), content).unwrap();
         }
         let profiles = scan_profiles(dir.path(), None);
         let tickers: Vec<&str> = profiles.iter().map(|p| p.ticker.as_str()).collect();
@@ -507,16 +507,16 @@ mod tests {
     #[test]
     fn scan_profiles_filters_by_holdings() {
         let dir = tempdir().unwrap();
-        let cp = dir.path().join("company_profiles");
-        std::fs::create_dir(&cp).unwrap();
+        let profiles_dir = dir.path().join("company_profiles");
+        std::fs::create_dir(&profiles_dir).unwrap();
         for (name, content) in &[
             ("mu", "ticker: MU\n"),
             ("rklb", "ticker: RKLB\n"),
             ("aaoi", "ticker: AAOI\n"),
         ] {
-            let sub = cp.join(name);
-            std::fs::create_dir(&sub).unwrap();
-            std::fs::write(sub.join("profile.md"), content).unwrap();
+            let profile_dir = profiles_dir.join(name);
+            std::fs::create_dir(&profile_dir).unwrap();
+            std::fs::write(profile_dir.join("profile.md"), content).unwrap();
         }
         let holdings = vec!["MU".to_string(), "RKLB".to_string()];
         let profiles = scan_profiles(dir.path(), Some(&holdings));
@@ -534,14 +534,14 @@ mod tests {
         assert!(profiles.is_empty());
     }
 
-    // Mock distiller
-    struct MockDistiller {
+    // Counting test distiller
+    struct CountingDistiller {
         mainline_calls: AtomicUsize,
         style_calls: AtomicUsize,
         fail_for_ticker: Option<String>,
     }
     #[async_trait]
-    impl MainlineDistiller for MockDistiller {
+    impl MainlineDistiller for CountingDistiller {
         async fn distill_mainline(&self, ticker: &str, _profile: &str) -> anyhow::Result<String> {
             self.mainline_calls.fetch_add(1, Ordering::SeqCst);
             if self.fail_for_ticker.as_deref() == Some(ticker) {
@@ -558,49 +558,49 @@ mod tests {
     #[tokio::test]
     async fn distill_for_actor_happy_path() {
         let dir = tempdir().unwrap();
-        let cp = dir.path().join("company_profiles");
-        std::fs::create_dir(&cp).unwrap();
+        let profiles_dir = dir.path().join("company_profiles");
+        std::fs::create_dir(&profiles_dir).unwrap();
         for (name, content) in &[
             ("mu", "ticker: MU\n# Micron\nlong mainline content"),
             ("rklb", "ticker: RKLB\n# Rocket Lab"),
         ] {
-            let sub = cp.join(name);
-            std::fs::create_dir(&sub).unwrap();
-            std::fs::write(sub.join("profile.md"), content).unwrap();
+            let profile_dir = profiles_dir.join(name);
+            std::fs::create_dir(&profile_dir).unwrap();
+            std::fs::write(profile_dir.join("profile.md"), content).unwrap();
         }
-        let mock = MockDistiller {
+        let distiller = CountingDistiller {
             mainline_calls: AtomicUsize::new(0),
             style_calls: AtomicUsize::new(0),
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string(), "RKLB".to_string()];
-        let result = distill_for_actor(&mock, dir.path(), &holdings).await;
+        let result = distill_for_actor(&distiller, dir.path(), &holdings).await;
         assert_eq!(result.by_ticker.len(), 2);
         assert_eq!(result.by_ticker["MU"], "mainline for MU");
         assert!(result.style.is_some());
         assert!(result.last_distilled_at.is_some());
         assert!(result.skipped_tickers.is_empty());
-        assert_eq!(mock.mainline_calls.load(Ordering::SeqCst), 2);
-        assert_eq!(mock.style_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(distiller.style_calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn distill_for_actor_skips_failing_ticker_keeps_others() {
         let dir = tempdir().unwrap();
-        let cp = dir.path().join("company_profiles");
-        std::fs::create_dir(&cp).unwrap();
+        let profiles_dir = dir.path().join("company_profiles");
+        std::fs::create_dir(&profiles_dir).unwrap();
         for (name, content) in &[("mu", "ticker: MU\n"), ("rklb", "ticker: RKLB\n")] {
-            let sub = cp.join(name);
-            std::fs::create_dir(&sub).unwrap();
-            std::fs::write(sub.join("profile.md"), content).unwrap();
+            let profile_dir = profiles_dir.join(name);
+            std::fs::create_dir(&profile_dir).unwrap();
+            std::fs::write(profile_dir.join("profile.md"), content).unwrap();
         }
-        let mock = MockDistiller {
+        let distiller = CountingDistiller {
             mainline_calls: AtomicUsize::new(0),
             style_calls: AtomicUsize::new(0),
             fail_for_ticker: Some("MU".into()),
         };
         let holdings = vec!["MU".to_string(), "RKLB".to_string()];
-        let result = distill_for_actor(&mock, dir.path(), &holdings).await;
+        let result = distill_for_actor(&distiller, dir.path(), &holdings).await;
         assert_eq!(result.by_ticker.len(), 1);
         assert_eq!(result.by_ticker["RKLB"], "mainline for RKLB");
         assert!(result.skipped_tickers.contains(&"MU".to_string()));
@@ -609,19 +609,19 @@ mod tests {
     #[tokio::test]
     async fn distill_for_actor_marks_holding_without_profile_as_skipped() {
         let dir = tempdir().unwrap();
-        let cp = dir.path().join("company_profiles");
-        std::fs::create_dir(&cp).unwrap();
-        let sub = cp.join("mu");
-        std::fs::create_dir(&sub).unwrap();
-        std::fs::write(sub.join("profile.md"), "ticker: MU\n").unwrap();
+        let profiles_dir = dir.path().join("company_profiles");
+        std::fs::create_dir(&profiles_dir).unwrap();
+        let profile_dir = profiles_dir.join("mu");
+        std::fs::create_dir(&profile_dir).unwrap();
+        std::fs::write(profile_dir.join("profile.md"), "ticker: MU\n").unwrap();
 
-        let mock = MockDistiller {
+        let distiller = CountingDistiller {
             mainline_calls: AtomicUsize::new(0),
             style_calls: AtomicUsize::new(0),
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string(), "AAPL".to_string()];
-        let result = distill_for_actor(&mock, dir.path(), &holdings).await;
+        let result = distill_for_actor(&distiller, dir.path(), &holdings).await;
         assert_eq!(result.by_ticker.len(), 1);
         assert!(result.skipped_tickers.contains(&"AAPL".to_string()));
     }
@@ -629,28 +629,29 @@ mod tests {
     #[tokio::test]
     async fn distill_for_actor_empty_dir_returns_empty_result() {
         let dir = tempdir().unwrap();
-        let mock = MockDistiller {
+        let distiller = CountingDistiller {
             mainline_calls: AtomicUsize::new(0),
             style_calls: AtomicUsize::new(0),
             fail_for_ticker: None,
         };
         let holdings = vec!["MU".to_string()];
-        let result = distill_for_actor(&mock, dir.path(), &holdings).await;
+        let result = distill_for_actor(&distiller, dir.path(), &holdings).await;
         assert!(result.by_ticker.is_empty());
         assert!(result.style.is_none());
         assert!(result.skipped_tickers.contains(&"MU".to_string()));
-        assert_eq!(mock.mainline_calls.load(Ordering::SeqCst), 0);
-        assert_eq!(mock.style_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(distiller.mainline_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(distiller.style_calls.load(Ordering::SeqCst), 0);
     }
 
-    /// 用真实 LlmMainlineDistiller 但用 mock provider,验证 prompt 构造正确。
-    struct CapturePromptProvider {
-        last_prompt: std::sync::Mutex<Option<String>>,
+    /// 用真实 LlmMainlineDistiller 但用 capturing provider,验证 prompt 构造正确。
+    struct CapturingPromptProvider {
+        captured_prompt: std::sync::Mutex<Option<String>>,
     }
     #[async_trait]
-    impl LlmProvider for CapturePromptProvider {
+    impl LlmProvider for CapturingPromptProvider {
         async fn chat(&self, messages: &[Message], _model: Option<&str>) -> HoneResult<ChatResult> {
-            *self.last_prompt.lock().unwrap() = messages.first().and_then(|m| m.content.clone());
+            *self.captured_prompt.lock().unwrap() =
+                messages.first().and_then(|m| m.content.clone());
             Ok(ChatResult {
                 content: "蒸馏出的 mainline".into(),
                 usage: None,
@@ -737,8 +738,8 @@ mod tests {
 
     #[tokio::test]
     async fn llm_distiller_substitutes_ticker_and_profile_into_prompt() {
-        let provider = Arc::new(CapturePromptProvider {
-            last_prompt: std::sync::Mutex::new(None),
+        let provider = Arc::new(CapturingPromptProvider {
+            captured_prompt: std::sync::Mutex::new(None),
         });
         let distiller = LlmMainlineDistiller::new(provider.clone(), "test-model");
         let result = distiller
@@ -746,7 +747,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result, "蒸馏出的 mainline");
-        let prompt = provider.last_prompt.lock().unwrap().clone().unwrap();
+        let prompt = provider.captured_prompt.lock().unwrap().clone().unwrap();
         assert!(prompt.contains("RKLB"));
         assert!(prompt.contains("long profile content"));
         assert!(!prompt.contains("{{TICKER}}")); // template var 应已替换

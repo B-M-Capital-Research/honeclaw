@@ -407,7 +407,7 @@ export default function SettingsPage() {
 
   // ── 多 Key 输入辅助函数 ──────────────────────────────────────────────────────
   /** 更新指定索引的 key 值 */
-  function updateKey<T extends { apiKeys: string[] }>(
+  function updateApiKeyDraft<T extends { apiKeys: string[] }>(
     setter: (fn: (prev: T) => T) => void,
     index: number,
     value: string,
@@ -416,7 +416,7 @@ export default function SettingsPage() {
   }
 
   /** 追加一个空 key 输入行 */
-  function addKey<T extends { apiKeys: string[] }>(
+  function addApiKeyDraftRow<T extends { apiKeys: string[] }>(
     setter: (fn: (prev: T) => T) => void,
     showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
   ) {
@@ -425,7 +425,7 @@ export default function SettingsPage() {
   }
 
   /** 删除指定索引的 key */
-  function removeKey<T extends { apiKeys: string[] }>(
+  function removeApiKeyDraftRow<T extends { apiKeys: string[] }>(
     setter: (fn: (prev: T) => T) => void,
     showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
     index: number,
@@ -435,7 +435,7 @@ export default function SettingsPage() {
   }
 
   /** 切换指定索引的 key 显示/隐藏 */
-  function toggleShowKey(
+  function toggleApiKeyDraftVisibility(
     showSetter: (fn: (prev: boolean[]) => boolean[]) => void,
     index: number,
   ) {
@@ -1873,13 +1873,19 @@ export default function SettingsPage() {
                           class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                           value={key()}
                           onInput={(e) =>
-                            updateKey(setFmpDraft, index, e.currentTarget.value)
+                            updateApiKeyDraft(
+                              setFmpDraft,
+                              index,
+                              e.currentTarget.value,
+                            )
                           }
                         />
                         <button
                           type="button"
                           class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
-                          onClick={() => toggleShowKey(setShowFmpKeys, index)}
+                          onClick={() =>
+                            toggleApiKeyDraftVisibility(setShowFmpKeys, index)
+                          }
                         >
                           <Show
                             when={showFmpKeys()[index]}
@@ -1926,7 +1932,11 @@ export default function SettingsPage() {
                           type="button"
                           class="text-xs text-rose-500 px-2 font-medium"
                           onClick={() =>
-                            removeKey(setFmpDraft, setShowFmpKeys, index)
+                            removeApiKeyDraftRow(
+                              setFmpDraft,
+                              setShowFmpKeys,
+                              index,
+                            )
                           }
                         >
                           {SETTINGS.data.fmp.remove}
@@ -1939,7 +1949,9 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     class="text-[10px] font-bold text-[color:var(--accent)]"
-                    onClick={() => addKey(setFmpDraft, setShowFmpKeys)}
+                    onClick={() =>
+                      addApiKeyDraftRow(setFmpDraft, setShowFmpKeys)
+                    }
                   >
                     {SETTINGS.data.fmp.add_key}
                   </button>
@@ -1996,7 +2008,7 @@ export default function SettingsPage() {
                           class="w-full rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--text-primary)] outline-none focus:border-[color:var(--accent)]"
                           value={key()}
                           onInput={(e) =>
-                            updateKey(
+                            updateApiKeyDraft(
                               setTavilyDraft,
                               index,
                               e.currentTarget.value,
@@ -2007,7 +2019,10 @@ export default function SettingsPage() {
                           type="button"
                           class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
                           onClick={() =>
-                            toggleShowKey(setShowTavilyKeys, index)
+                            toggleApiKeyDraftVisibility(
+                              setShowTavilyKeys,
+                              index,
+                            )
                           }
                         >
                           <Show
@@ -2055,7 +2070,11 @@ export default function SettingsPage() {
                           type="button"
                           class="text-xs text-rose-500 px-2 font-medium"
                           onClick={() =>
-                            removeKey(setTavilyDraft, setShowTavilyKeys, index)
+                            removeApiKeyDraftRow(
+                              setTavilyDraft,
+                              setShowTavilyKeys,
+                              index,
+                            )
                           }
                         >
                           {SETTINGS.data.tavily.remove}
@@ -2068,7 +2087,9 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     class="text-[10px] font-bold text-[color:var(--accent)]"
-                    onClick={() => addKey(setTavilyDraft, setShowTavilyKeys)}
+                    onClick={() =>
+                      addApiKeyDraftRow(setTavilyDraft, setShowTavilyKeys)
+                    }
                   >
                     {SETTINGS.data.tavily.add_key}
                   </button>
