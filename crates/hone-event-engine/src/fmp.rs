@@ -78,7 +78,10 @@ impl FmpClient {
             .await
             .map_err(|err| format_fmp_transport_error("读取响应", &err))?;
         let data: Value = serde_json::from_str(&body).map_err(|e| {
-            let prefix: String = body.chars().take(200).collect();
+            let prefix = sanitize_fmp_error_detail(&body)
+                .chars()
+                .take(200)
+                .collect::<String>();
             anyhow::anyhow!("FMP JSON 解析失败: {e}; body_prefix={prefix}")
         })?;
 
@@ -92,7 +95,7 @@ impl FmpClient {
                 || lower.contains("limit reach")
                 || lower.contains("upgrade")
             {
-                anyhow::bail!("FMP Key 被拒绝: {err_msg}");
+                anyhow::bail!("FMP Key 被拒绝: {}", sanitize_fmp_error_detail(err_msg));
             }
         }
         Ok(data)
@@ -100,7 +103,7 @@ impl FmpClient {
 }
 
 fn format_fmp_transport_error(operation: &str, error: &reqwest::Error) -> anyhow::Error {
-    let detail = sanitize_fmp_transport_error_detail(&error.to_string());
+    let detail = sanitize_fmp_error_detail(&error.to_string());
     if detail.is_empty() {
         anyhow::anyhow!("FMP {operation}失败")
     } else {
@@ -108,8 +111,8 @@ fn format_fmp_transport_error(operation: &str, error: &reqwest::Error) -> anyhow
     }
 }
 
-fn sanitize_fmp_transport_error_detail(text: &str) -> String {
-    let redacted = redact_query_value(text, "apikey");
+fn sanitize_fmp_error_detail(text: &str) -> String {
+    let redacted = redact_fmp_query_secrets(text);
     if redacted.chars().count() <= MAX_FMP_TRANSPORT_ERROR_CHARS {
         return redacted;
     }
@@ -118,6 +121,14 @@ fn sanitize_fmp_transport_error_detail(text: &str) -> String {
         .take(MAX_FMP_TRANSPORT_ERROR_CHARS)
         .collect::<String>()
         + "..."
+}
+
+fn redact_fmp_query_secrets(text: &str) -> String {
+    let mut output = text.to_string();
+    for key in ["apikey", "api_key", "apiKey"] {
+        output = redact_query_value(&output, key);
+    }
+    output
 }
 
 fn redact_query_value(text: &str, key: &str) -> String {
@@ -144,12 +155,23 @@ mod tests {
 
     #[test]
     fn fmp_transport_error_detail_redacts_apikey_query_param() {
-        let detail = sanitize_fmp_transport_error_detail(
+        let detail = sanitize_fmp_error_detail(
             "error sending request for url (https://fmp.test/v3/quote/AAPL?limit=1&apikey=secret)",
         );
         assert_eq!(
             detail,
             "error sending request for url (https://fmp.test/v3/quote/AAPL?limit=1&apikey=<redacted>)"
+        );
+    }
+
+    #[test]
+    fn fmp_error_detail_redacts_api_key_aliases() {
+        let detail = sanitize_fmp_error_detail(
+            "https://fmp.test/v3/quote/AAPL?api_key=one&apiKey=two&apikey=three",
+        );
+        assert_eq!(
+            detail,
+            "https://fmp.test/v3/quote/AAPL?api_key=<redacted>&apiKey=<redacted>&apikey=<redacted>"
         );
     }
 }

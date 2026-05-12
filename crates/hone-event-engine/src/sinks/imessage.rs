@@ -15,6 +15,8 @@ use hone_core::ActorIdentity;
 use crate::renderer::RenderFormat;
 use crate::router::OutboundSink;
 
+const MAX_OSASCRIPT_STDERR_CHARS: usize = 300;
+
 pub struct IMessageSink;
 
 impl IMessageSink {
@@ -57,7 +59,10 @@ impl OutboundSink for IMessageSink {
         .await??;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            anyhow::bail!("osascript failed: {stderr}");
+            anyhow::bail!(format_osascript_failure(
+                &output.status.to_string(),
+                &stderr
+            ));
         }
         Ok(())
     }
@@ -65,6 +70,26 @@ impl OutboundSink for IMessageSink {
     fn format(&self) -> RenderFormat {
         RenderFormat::Plain
     }
+}
+
+fn format_osascript_failure(status: &str, stderr: &str) -> String {
+    let detail = truncate_osascript_stderr(stderr.trim());
+    if detail.is_empty() {
+        format!("osascript failed with status {status}")
+    } else {
+        format!("osascript failed with status {status}: {detail}")
+    }
+}
+
+fn truncate_osascript_stderr(stderr: &str) -> String {
+    if stderr.chars().count() <= MAX_OSASCRIPT_STDERR_CHARS {
+        return stderr.to_string();
+    }
+    stderr
+        .chars()
+        .take(MAX_OSASCRIPT_STDERR_CHARS)
+        .collect::<String>()
+        + "..."
 }
 
 #[cfg(test)]
@@ -81,5 +106,26 @@ mod tests {
     fn script_escapes_quotes_in_body() {
         let script = IMessageSink::build_script("+12025550100", r#"hi "world""#);
         assert!(script.contains(r#"send "hi \"world\"""#));
+    }
+
+    #[test]
+    fn osascript_failure_includes_status_when_stderr_is_empty() {
+        assert_eq!(
+            format_osascript_failure("exit status: 1", " \n"),
+            "osascript failed with status exit status: 1"
+        );
+    }
+
+    #[test]
+    fn osascript_failure_truncates_long_stderr() {
+        let stderr = "x".repeat(MAX_OSASCRIPT_STDERR_CHARS + 10);
+        let message = format_osascript_failure("exit status: 1", &stderr);
+        assert_eq!(
+            message,
+            format!(
+                "osascript failed with status exit status: 1: {}...",
+                "x".repeat(MAX_OSASCRIPT_STDERR_CHARS)
+            )
+        );
     }
 }

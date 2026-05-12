@@ -39,6 +39,7 @@ fn console_event_url() -> String {
 
 /// AppleScript 发送后的间隔，避免过快连发
 const SEND_DELAY_MS: u64 = 800;
+const MAX_APPLESCRIPT_STDERR_CHARS: usize = 300;
 
 const RECENT_MESSAGE_TTL_SECS: u64 = 120;
 const RECENT_MESSAGE_MAX_ENTRIES: usize = 200;
@@ -119,7 +120,10 @@ end tell"#
                 true
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                warn!("AppleScript 发送失败: {}", stderr.trim());
+                warn!(
+                    "AppleScript 发送失败: {}",
+                    format_applescript_failure(&output.status.to_string(), stderr.trim())
+                );
                 false
             }
         }
@@ -128,6 +132,26 @@ end tell"#
             false
         }
     }
+}
+
+fn format_applescript_failure(status: &str, stderr: &str) -> String {
+    let detail = truncate_applescript_stderr(stderr.trim());
+    if detail.is_empty() {
+        format!("status={status}")
+    } else {
+        format!("status={status} stderr={detail}")
+    }
+}
+
+fn truncate_applescript_stderr(stderr: &str) -> String {
+    if stderr.chars().count() <= MAX_APPLESCRIPT_STDERR_CHARS {
+        return stderr.to_string();
+    }
+    stderr
+        .chars()
+        .take(MAX_APPLESCRIPT_STDERR_CHARS)
+        .collect::<String>()
+        + "..."
 }
 
 fn imessage_admin_prompt(project_root: &str) -> String {
@@ -843,4 +867,29 @@ pub fn start_http_server(listen_addr: String) {
             error!("[iMessage/HTTP] 服务异常退出: {}", e);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn applescript_failure_includes_status_when_stderr_is_empty() {
+        assert_eq!(
+            format_applescript_failure("exit status: 1", " \n"),
+            "status=exit status: 1"
+        );
+    }
+
+    #[test]
+    fn applescript_failure_truncates_long_stderr() {
+        let stderr = "x".repeat(MAX_APPLESCRIPT_STDERR_CHARS + 10);
+        assert_eq!(
+            format_applescript_failure("exit status: 1", &stderr),
+            format!(
+                "status=exit status: 1 stderr={}...",
+                "x".repeat(MAX_APPLESCRIPT_STDERR_CHARS)
+            )
+        );
+    }
 }

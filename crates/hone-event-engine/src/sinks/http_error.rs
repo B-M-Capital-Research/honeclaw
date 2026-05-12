@@ -69,7 +69,7 @@ fn sanitize_upstream_error_detail(text: &str) -> String {
 }
 
 fn redact_sensitive_error_detail(text: &str) -> String {
-    redact_query_secrets(&redact_telegram_bot_tokens(text))
+    redact_query_secrets(&redact_bearer_tokens(&redact_telegram_bot_tokens(text)))
 }
 
 fn redact_telegram_bot_tokens(text: &str) -> String {
@@ -105,6 +105,26 @@ fn redact_query_secrets(text: &str) -> String {
     ] {
         output = redact_query_value(&output, key);
     }
+    output
+}
+
+fn redact_bearer_tokens(text: &str) -> String {
+    const MARKER: &str = "Bearer ";
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(MARKER) {
+        let value_start = index + MARKER.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, ')' | ',' | '"')).then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
     output
 }
 
@@ -213,6 +233,13 @@ mod tests {
             detail,
             "error sending request for url (https://example.test/callback?access_token=<redacted>&appSecret=<redacted>&apiKey=<redacted>&ok=1)"
         );
+    }
+
+    #[test]
+    fn redacts_bearer_token_from_transport_error_detail() {
+        let detail =
+            sanitize_transport_error_detail("upstream rejected Authorization: Bearer secret-token");
+        assert_eq!(detail, "upstream rejected Authorization: Bearer <redacted>");
     }
 
     #[test]

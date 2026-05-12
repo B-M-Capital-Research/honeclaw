@@ -198,8 +198,11 @@ pub fn read_recent_task_runs(
 }
 
 /// 给 caller 一个把 `started_at` / `ended_at` / `outcome` 一次塞好的 helper,
-/// 减少调用点的样板。失败的 error 字符串截断到 `MAX_ERROR_LEN` 防止 jsonl 行过长。
+/// 减少调用点的样板。失败的 error 字符串会先脱敏再截断,防止 jsonl 行过长或
+/// 持久化常见 URL 凭证。
 const MAX_ERROR_LEN: usize = 500;
+const REDACTED_SECRET: &str = "<redacted>";
+const TRUNCATED_SUFFIX: &str = "…(truncated)";
 
 pub fn record_ok(runtime_dir: &Path, task: &str, started_at: DateTime<Utc>, items: u64) {
     record_task_run(
@@ -230,13 +233,7 @@ pub fn record_skipped(runtime_dir: &Path, task: &str, started_at: DateTime<Utc>)
 }
 
 pub fn record_failed(runtime_dir: &Path, task: &str, started_at: DateTime<Utc>, error: &str) {
-    let truncated = if error.len() > MAX_ERROR_LEN {
-        let mut s = error.chars().take(MAX_ERROR_LEN).collect::<String>();
-        s.push_str("…(truncated)");
-        s
-    } else {
-        error.to_string()
-    };
+    let sanitized = sanitize_task_error(error);
     record_task_run(
         runtime_dir,
         &TaskRunRecord {
@@ -245,9 +242,78 @@ pub fn record_failed(runtime_dir: &Path, task: &str, started_at: DateTime<Utc>, 
             ended_at: Utc::now(),
             outcome: TaskOutcome::Failed,
             items: 0,
-            error: Some(truncated),
+            error: Some(sanitized),
         },
     );
+}
+
+fn sanitize_task_error(error: &str) -> String {
+    truncate_task_error(&redact_common_secret_details(error))
+}
+
+fn truncate_task_error(error: &str) -> String {
+    if error.chars().count() <= MAX_ERROR_LEN {
+        return error.to_string();
+    }
+    let mut s = error.chars().take(MAX_ERROR_LEN).collect::<String>();
+    s.push_str(TRUNCATED_SUFFIX);
+    s
+}
+
+fn redact_common_secret_details(text: &str) -> String {
+    let mut output = redact_bearer_tokens(text);
+    for key in [
+        "access_token",
+        "accessToken",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "token",
+        "app_secret",
+        "appSecret",
+        "password",
+    ] {
+        output = redact_query_value(&output, key);
+    }
+    output
+}
+
+fn redact_bearer_tokens(text: &str) -> String {
+    const MARKER: &str = "Bearer ";
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(MARKER) {
+        let value_start = index + MARKER.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str(REDACTED_SECRET);
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch.is_whitespace() || matches!(ch, ')' | ',' | '"')).then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_query_value(text: &str, key: &str) -> String {
+    let needle = format!("{key}=");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&needle) {
+        let value_start = index + needle.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str(REDACTED_SECRET);
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| (ch == '&' || ch == ')' || ch.is_whitespace()).then_some(idx))
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
 }
 
 /// 仅在测试 / 自检时使用。把单条记录格式化成 jsonl 行,方便比对。
@@ -350,6 +416,23 @@ mod tests {
         let recent = read_recent_task_runs(temp_dir.path(), 0, 1);
         let err = recent[0].error.as_deref().unwrap();
         assert!(err.len() < 1000, "超长错误应截断");
-        assert!(err.ends_with("…(truncated)"));
+        assert!(err.ends_with(TRUNCATED_SUFFIX));
+    }
+
+    #[test]
+    fn failed_error_redacts_common_secret_details() {
+        let temp_dir = tempdir().unwrap();
+        record_failed(
+            temp_dir.path(),
+            "poller.secret",
+            Utc::now(),
+            "request failed https://api.test/path?access_token=abc&apiKey=def auth=Bearer bearer-secret",
+        );
+        let recent = read_recent_task_runs(temp_dir.path(), 0, 1);
+        let err = recent[0].error.as_deref().unwrap();
+        assert_eq!(
+            err,
+            "request failed https://api.test/path?access_token=<redacted>&apiKey=<redacted> auth=Bearer <redacted>"
+        );
     }
 }

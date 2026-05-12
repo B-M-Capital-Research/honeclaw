@@ -17,6 +17,8 @@ use crate::common::{load_cli_config, resolve_runtime_paths};
 use crate::discord_token::discord_token_doctor_check;
 use crate::{non_empty, start};
 
+const MAX_BINARY_CHECK_DETAIL_CHARS: usize = 300;
+
 #[derive(Debug, Serialize)]
 pub(crate) struct ModelStatusReport {
     pub runner: String,
@@ -106,13 +108,7 @@ pub(crate) fn binary_check(name: &str, help_arg: &str) -> BinaryStatus {
         Ok(result) => {
             let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
             let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-            let detail = if !stdout.is_empty() {
-                stdout
-            } else if !stderr.is_empty() {
-                stderr
-            } else {
-                "命令可执行".to_string()
-            };
+            let detail = command_output_detail(&stdout, &stderr);
             BinaryStatus {
                 name: name.to_string(),
                 available: true,
@@ -125,6 +121,28 @@ pub(crate) fn binary_check(name: &str, help_arg: &str) -> BinaryStatus {
             detail: error.to_string(),
         },
     }
+}
+
+fn command_output_detail(stdout: &str, stderr: &str) -> String {
+    let detail = if !stdout.is_empty() {
+        stdout
+    } else if !stderr.is_empty() {
+        stderr
+    } else {
+        return "命令可执行".to_string();
+    };
+    truncate_binary_check_detail(detail)
+}
+
+fn truncate_binary_check_detail(detail: &str) -> String {
+    if detail.chars().count() <= MAX_BINARY_CHECK_DETAIL_CHARS {
+        return detail.to_string();
+    }
+    detail
+        .chars()
+        .take(MAX_BINARY_CHECK_DETAIL_CHARS)
+        .collect::<String>()
+        + "..."
 }
 
 /// 查 hone 自己发布的 sidecar 二进制(hone-console-page / hone-mcp / 各 channel bin)
@@ -296,6 +314,15 @@ mod tests {
         assert_eq!(report.hone_cloud_base_url, "https://hone-claw.com");
         assert_eq!(report.hone_cloud_model, "hone-cloud");
         assert!(report.hone_cloud_api_key_configured);
+    }
+
+    #[test]
+    fn command_output_detail_is_bounded() {
+        let detail = command_output_detail(&"x".repeat(MAX_BINARY_CHECK_DETAIL_CHARS + 10), "");
+        assert_eq!(
+            detail,
+            format!("{}...", "x".repeat(MAX_BINARY_CHECK_DETAIL_CHARS))
+        );
     }
 }
 

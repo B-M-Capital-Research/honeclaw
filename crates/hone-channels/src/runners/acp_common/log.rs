@@ -20,6 +20,7 @@ use super::state::AcpPromptState;
 use crate::runners::types::AgentRunnerRequest;
 
 const ACP_EVENT_LOG_FILENAME: &str = "acp-events.log";
+const ACP_STDERR_DETAIL_CHARS: usize = 400;
 
 static ACP_EVENT_LOG_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
@@ -176,7 +177,7 @@ pub(crate) async fn log_acp_prompt_stop_diagnostics(
     let stderr_tail = if stderr_captured.trim().is_empty() {
         "<empty>".to_string()
     } else {
-        tail_for_log(&stderr_captured, 400)
+        tail_for_log(&stderr_captured, ACP_STDERR_DETAIL_CHARS)
     };
     tracing::warn!(
         "[AgentRunner/{runner_label}] session={} stop_reason={} reply_chars={} prompt_result={} finished_tools={} pending_tools={} stderr_tail={}",
@@ -198,7 +199,10 @@ pub(crate) async fn timeout_message_with_stderr(
     if captured.trim().is_empty() {
         base.to_string()
     } else {
-        format!("{base} stderr={captured}")
+        format!(
+            "{base} stderr={}",
+            tail_for_log(captured.trim(), ACP_STDERR_DETAIL_CHARS)
+        )
     }
 }
 
@@ -267,4 +271,34 @@ fn summarize_pending_tool_calls_for_log(state: &AcpPromptState) -> String {
         state.pending_tool_calls.len(),
         entries.join(", ")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn timeout_message_omits_empty_stderr() {
+        let stderr = std::sync::Arc::new(tokio::sync::Mutex::new(" \n".to_string()));
+        assert_eq!(
+            timeout_message_with_stderr("codex acp request timed out", &stderr).await,
+            "codex acp request timed out"
+        );
+    }
+
+    #[tokio::test]
+    async fn timeout_message_uses_bounded_stderr_tail() {
+        let stderr = std::sync::Arc::new(tokio::sync::Mutex::new(format!(
+            "prefix{}",
+            "x".repeat(ACP_STDERR_DETAIL_CHARS + 10)
+        )));
+        let message = timeout_message_with_stderr("codex acp request timed out", &stderr).await;
+        assert_eq!(
+            message,
+            format!(
+                "codex acp request timed out stderr=…{}",
+                "x".repeat(ACP_STDERR_DETAIL_CHARS)
+            )
+        );
+    }
 }
