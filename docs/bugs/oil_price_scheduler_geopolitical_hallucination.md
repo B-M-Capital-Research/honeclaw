@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复记录（2026-05-10 23:11 CST）
 
@@ -18,6 +18,23 @@
   - `cargo check -p hone-channels --tests`
   - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`
 - 关联 GitHub Issue：无。
+
+## 最新进展（2026-05-12 15:03 CST）
+
+- 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实窗口中，`全天原油价格3小时播报` 再次成功送达未核验或高风险归因正文，且未见商品 heartbeat guard 元数据。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=19314`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-05-12T15:01:07.295257+08:00`
+    - `execution_status=completed`
+    - `message_send_status=sent`
+    - `delivered=1`
+    - `detail_json.scheduler.parse_kind=JsonTriggered`
+    - `response_preview` / `deliver_preview` 继续发送 `WTI原油约$99.02/桶`、`布伦特原油约$105.27/桶`，并把战争紧张、霍尔木兹海峡、沙特阿美 CEO 警告、美国战略储备贷款等写成价格上涨原因。
+    - 同条 `detail_json.scheduler` 未见 `commodity_causality_guarded=true` 或重写后的安全说明。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-12 15:01:04.495-15:01:04.496 CST` 记录同一任务 `parse_kind=JsonTriggered` 后直接 `deliver`，`deliver_preview` 与用户可见正文一致。
+- 结论：该样本不是单纯格式问题，也不是仅内部日志噪声；它已经成功外发到用户侧，并继续把无法从当前台账证明的价格与地缘/供给归因组织成确定性播报，影响用户对自动播报可信度和风险判断，因此按功能性质量缺陷 `P2 / New` 跟踪。
 
 ## 旧运行态复核（2026-05-11 03:02 CST）
 

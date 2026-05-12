@@ -34,6 +34,15 @@
 
 ## 证据来源
 
+- `2026-05-12 15:03 CST` 本轮补充当前机器旧运行态证据：最近四小时内 live `duplicate_suppressed` 仍把不同标的 / 不同事件的真实触发压成 `noop + skipped_noop`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=19234`，`job_name=DRAM 心跳监控`，`executed_at=2026-05-12T11:30:41.862828+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`suppressed_preview` 为 DRAM 创上市以来新高，`matched_preview` 却指向 `2026-05-12 10:00` 的 `持仓重大事件`。
+    - `run_id=19262`，`job_name=Cerebras IPO与业务进展心跳监控`，`executed_at=2026-05-12T13:01:04.951490+08:00`，`suppressed_preview` 为 Cerebras IPO 定价与上市日期确认，`matched_preview` 却指向 `12:30` 的 DRAM ETF 创上市以来新高。
+    - `run_id=19273`，`executed_at=2026-05-12T13:30:50.187416+08:00`，Cerebras IPO 重大变化被 `12:30` 的持仓重大事件 preview 抑制。
+    - `run_id=19283`，`executed_at=2026-05-12T14:00:47.571485+08:00`，Cerebras IPO 定价区间 / 股份数变化被 `12:30` 的 RKLB 异动 preview 抑制。
+  - 同一时间窗也存在 `run_id=19259/19255/19260/19309/19312` 等成功 `completed + sent` heartbeat，说明不是 Feishu 出站或 scheduler 全局不可用，而是当前 live preview 去重仍在误吞已触发正文。
+  - 结论：这是同一根因/同一影响范围的旧运行态证据，不新建重复文档；由于当前仓库代码已在 `2026-05-12 11:16 CST` 复核修复相关实体 / ticker 锚点路径，本轮不把本单从 `Fixed` 回退。后续只有在部署 / 重启到当前代码后仍复现，才重新打开。
+
 - `2026-05-12 11:02 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口再次出现同根因，`DRAM 心跳监控` 连续把已生成的 `JsonTriggered` 正文误匹配到上一条 `Cerebras IPO` 预览后压成 `noop + skipped_noop`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=19171`，`job_name=DRAM 心跳监控`，`executed_at=2026-05-12T09:01:19.854287+08:00`，终态为 `noop + skipped_noop + delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`matched_preview` 指向 `Cerebras IPO 重大更新 | 2026-05-12 08:30 北京时间`。

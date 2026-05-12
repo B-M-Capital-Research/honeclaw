@@ -3,9 +3,18 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 
 ## 修复进展
+
+- `2026-05-12 15:03 CST` 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实 heartbeat 窗口再次出现 `JsonMalformed` 中已经包含 `status=triggered + message` 正文、但整轮被标记失败并漏投的坏态。
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=19238`，`job_name=DRAM 心跳监控`，`executed_at=2026-05-12T12:00:46.626934+08:00`，`execution_status=execution_failed`，`message_send_status=skipped_error`，`delivered=0`；`detail_json.parse_kind=JsonMalformed`，`raw_preview` 以 `{"status":"triggered","message":"【DRAM 创上市以来新高 | 2026-05-12 12:00 北京时间】...` 开头，正文已明确写出盘中触及上市以来新高和价格事实。
+    - `run_id=19305`，`job_name=持仓重大事件心跳检测`，`executed_at=2026-05-12T15:00:56.581245+08:00`，同样 `execution_failed + skipped_error + delivered=0`；`raw_preview` 以 `{"status":"triggered","message":"【持仓心跳检测 | 2026-05-12 15:00 北京时间】...` 开头，正文已列出 ASTS Q1 财报、EPS miss、盘后到盘中走势等可见提醒内容。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-12 15:00:56.580-15:00:56.581 CST` 记录 `持仓重大事件心跳检测` 的 `parse_kind=JsonMalformed`，随后 `malformed heartbeat json suppressed`、`parse failure escalated`，Feishu scheduler 记录 `定时任务执行失败，本轮不发送 ... err=heartbeat 输出不是合法 JSON，任务已标记失败`。
+  - 同一 `15:00` 窗口内 `RKLB异动监控`、`DRAM 心跳监控`、`全天原油价格3小时播报` 均成功 `completed + sent`，说明不是 Feishu 出站整体不可用；故障集中在 heartbeat 结构化输出恢复边界。
+  - 结论：这是同一根因/同一影响范围的复发，不新建重复文档。它会导致已生成的真实 heartbeat 提醒漏发，影响自动告警主功能链路，因此维持功能性 `P2 / New`，不是单纯格式质量 `P3`。
 
 - `2026-05-10 15:09 CST` 本轮修复并重新关闭本单：
   - `crates/hone-channels/src/scheduler.rs` 的 heartbeat JSON 扫描现在会跳过 markdown 反引号里的示例 JSON，避免把“如果满足应输出 `{"status":"triggered",...}`”这类说明误恢复为真实触发提醒。

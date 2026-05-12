@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-12 11:16 CST
+最后更新：2026-05-12 15:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,9 @@
 
 ## 当前概览
 
-- 活跃待修复：0
+- 活跃待修复：2
 - Later / 待复现：9
-- 已修复 / 已关闭：101
+- 已修复 / 已关闭：99
 - 历史分析 / 部分止血：5
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
@@ -28,7 +28,10 @@
 - 本轮已修复 Feishu 直聊 Codex runner usage limit 缺陷：06:39 / 06:41 CST 同一 ASTS 财报分析请求连续两次命中 Codex ACP `usage_limit_exceeded`，共享错误净化层现会映射成可解释的“执行额度已用尽，请稍后再试”文案，Feishu direct 失败回复也会优先展示该错误；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40)。
 - 本轮复核后不保留 Heartbeat 跨 job 预览去重缺陷为活跃项：当前仓库代码的实体 / ticker 锚点兼容检查已覆盖 `DRAM 创历史新高` 被 `Cerebras IPO` preview 抑制的形态，新增回归锁住该路径；当前机器 09:01-10:31 CST 证据按旧运行态 / 未确认重启进程处理。
 - 本轮复核后不保留单标的 near-threshold guard 缺陷为活跃项：当前仓库代码不会把 `DRAM 盘中创历史新高（满足条件2）` 误判为 near-threshold，新增回归锁住真实触发不被抑制；当前机器 11:00 CST 证据按旧运行态 / 未确认重启进程处理。
-- 本轮观察到若干旧运行态 / 已有修复相关噪声：04:02 / 04:31 / 07:00 CST heartbeat 空输出或非法 JSON 被显式落为 `execution_failed/skipped_error`，没有被伪装成 noop；`sessions/session_messages` 镜像仍停在 2026-04-27，继续按已知 fixed-but-live-old 证据处理。本轮不为这些单独建档。
+- 本轮 15:03 CST 继续观察到 Heartbeat 跨 job 预览去重旧运行态证据：11:30 CST `DRAM 心跳监控` 被 10:00 `持仓重大事件` preview 抑制，13:00 / 13:30 / 14:00 CST `Cerebras IPO` 又分别被 DRAM / 持仓 / RKLB preview 抑制；因当前仓库代码已在 11:16 CST 复核修复，本轮仅补充到原文档，不回退为活跃。
+- 本轮 15:03 CST 回退 Heartbeat 结构化状态退化缺陷：12:00 CST `DRAM 心跳监控`、15:00 CST `持仓重大事件心跳检测` 都已生成 `status=triggered + message` 正文，但 `JsonMalformed` 导致 `execution_failed + skipped_error + delivered=0`，仍会漏发真实 heartbeat。
+- 本轮 15:03 CST 回退原油定时播报缺陷：15:00 CST `全天原油价格3小时播报` 成功送达 WTI/Brent 价格、战争/霍尔木兹/战略储备等未核验归因，且未见 `commodity_causality_guarded`；按 P2 活跃恢复。
+- 本轮观察到若干已知噪声：14:00 CST 伦敦金 / 小米破位为空输出并被显式落为 `execution_failed/skipped_error`，没有被伪装成 noop；`sessions/session_messages` 镜像仍停在 2026-04-27，继续按已知 fixed-but-live-old 证据处理。本轮不为这些单独建档。
 
 ## 代码质量巡检发现
 
@@ -40,7 +43,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| _暂无_ | - | - | - | - |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-12 15:03 回退：12:00 CST `DRAM 心跳监控`、15:00 CST `持仓重大事件心跳检测` 都已生成 `status=triggered + message` 正文，但 `JsonMalformed` 导致 `execution_failed + skipped_error + delivered=0`；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-12 15:03 回退：15:00 CST 原油播报成功送达 WTI/Brent 价格与战争、霍尔木兹、战略储备等未核验归因，且未见 `commodity_causality_guarded`；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 
 ## Later / 待复现
 
@@ -67,8 +71,6 @@
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-11 23:02 复核当前 sqlite 会话镜像仍停在 2026-04-27，但 `cron_job_runs` 已推进到 23:01 CST；当前代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |
 | 核心观察池简报在本地击球区配置恢复后仍把多数标的降成“待确认” | P3 | Fixed | 2026-05-11 23:02 当前机器 21:35 / 23:00 CST 旧运行态仍批量输出 `击球区：待确认`，且持久化 user prompt 未出现 `【已恢复的本地击球区参考】`；仓库代码已包含恢复注入与回归测试，本轮仅补充未重启 live 证据，不回退状态；无关联 GitHub Issue | [watchlist_hit_zone_config_lookup_degraded.md](./watchlist_hit_zone_config_lookup_degraded.md) |
 | Heartbeat 破位预警直接输出无条件止损交易指令 | P2 | Fixed | 2026-05-11 23:02 复核当前机器 19:30 CST 仍有旧运行态样本：`run_id=18842` 送达 `建议动作：无条件止损`，但仓库代码已在 `1d405f2` 扩展 guard 并刷新 `deliver_preview`；本轮仅补充证据，不回退状态；无关联 GitHub Issue | [scheduler_heartbeat_direct_trade_instruction.md](./scheduler_heartbeat_direct_trade_instruction.md) |
-| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | Fixed | 2026-05-11 07:03 复核最近四小时仍有本机旧运行态样本：`run_id=18507` 在 06:01 送达 `WTI 原油：约 $109.76/桶`、WTI/Brent 异常倒挂和霍尔木兹 / 美伊交火等未核验归因，且未见 `commodity_causality_guarded`；仓库代码已在 `1d405f2` 扩展商品 heartbeat guard，本轮仅补充旧运行态证据，不回退状态；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | Fixed | 2026-05-10 15:09 heartbeat JSON 扫描跳过 markdown 反引号示例，malformed-triggered `message` 恢复只把明确元数据字段当作边界，覆盖 RKLB `管理层称"公司史上最强一季度","订单需求":...` 这类内部引号/冒号正文；前置说明后的 malformed triggered JSON 可恢复，prompt 同步要求规则冲突时返回 noop JSON 而不是自述或空输出。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-channels --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
 | Daily macOS build release app setup panic 后残留不可回收 `hone-desktop` 进程 | P2 | Fixed | 2026-05-10 顶层 Tauri `run(...)` 错误不再通过 `.expect("error while running hone desktop")` 触发 panic，改为打印诊断并非 0 退出；`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo test -p hone-desktop desktop_run_error_message_is_nonpanic_diagnostic -- --nocapture`、`HONE_SKIP_BUNDLED_RESOURCE_CHECK=1 cargo check -p hone-desktop --tests` 通过；无关联 GitHub Issue | [daily_macos_build_startup_panic_stuck_process.md](./daily_macos_build_startup_panic_stuck_process.md) |
 | Event-engine mainline distill 复用全局 OpenRouter max_tokens 触发 HTTP 402 | P2 | Fixed | 2026-05-09 mainline distill cron 改用独立短输出 OpenRouter provider，completion cap 固定为 `1200`，不再复用全局 `llm.openrouter.max_tokens=30000`；`cargo test -p hone-web-api mainline_distill_uses_short_completion_budget --lib -- --nocapture`、`cargo check -p hone-web-api --tests` 通过；无关联 GitHub Issue | [event_engine_mainline_distill_openrouter_402.md](./event_engine_mainline_distill_openrouter_402.md) |
 | Heartbeat 重大事件监控触发 `max_iterations_exceeded:6` 后整轮跳过，下一窗又回摆成 `noop/sent` | P2 | Fixed | 2026-05-08 11:06 当前 heartbeat auxiliary runner 固定 `max_iterations=10` 与 `max_tokens_override=4096`，runner error 会记录 `failure_kind` 而不是伪装正常 noop；旧 `:6` 样本按未部署/旧运行态处理。`cargo test -p hone-channels heartbeat_ --lib -- --nocapture`、`cargo check -p hone-core -p hone-channels -p hone-scheduler --tests` 通过；无关联 GitHub Issue | [scheduler_heartbeat_iteration_exhaustion_skips_alert.md](./scheduler_heartbeat_iteration_exhaustion_skips_alert.md) |
