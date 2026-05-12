@@ -1,19 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import {
   nextVisibleMessageCount,
-  normalizeInviteCode,
   normalizePhoneNumber,
   resolvePublicChatView,
   selectVisibleRecentMessages,
   toPublicChatMessages,
 } from "@/lib/public-chat";
 import type { HistoryMsg } from "@/lib/types";
-
-describe("normalizeInviteCode", () => {
-  it("strips whitespace and normalizes to uppercase", () => {
-    expect(normalizeInviteCode(" hone-a77b3f-\nc162dd \t")).toBe("HONE-A77B3F-C162DD");
-  });
-});
 
 describe("normalizePhoneNumber", () => {
   it("keeps a leading plus and strips non-digits", () => {
@@ -29,9 +22,6 @@ describe("resolvePublicChatView", () => {
     expect(resolvePublicChatView("logging_in")).toBe("login");
   });
 
-  it("renders the chat shell so the password-setup overlay can sit above it", () => {
-    expect(resolvePublicChatView("needs_password")).toBe("chat");
-  });
 });
 
 describe("toPublicChatMessages", () => {

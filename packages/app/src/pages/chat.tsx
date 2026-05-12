@@ -1790,9 +1790,7 @@ export default function PublicChatPage() {
             onLogin={() => restoreSession({ resetWindow: true })}
           />
         </Match>
-        <Match
-          when={authState() === "ready" || authState() === "needs_password"}
-        >
+        <Match when={authState() === "ready"}>
           <Show when={currentUser()} fallback={<LoadingCard />}>
             {(_user) => (
               <div

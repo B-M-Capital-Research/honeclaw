@@ -25,20 +25,6 @@ pub struct CreateWebInviteRequest {
 }
 
 #[derive(Deserialize)]
-pub struct PublicInviteLoginRequest {
-    pub invite_code: Option<String>,
-    pub phone_number: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct PublicPasswordLoginRequest {
-    pub phone_number: Option<String>,
-    pub password: Option<String>,
-    #[serde(default)]
-    pub remember: bool,
-}
-
-#[derive(Deserialize)]
 pub struct PublicSmsSendRequest {
     pub phone_number: Option<String>,
 }
@@ -50,18 +36,6 @@ pub struct PublicSmsLoginRequest {
     pub tos_version: Option<String>,
     #[serde(default)]
     pub remember: bool,
-}
-
-#[derive(Deserialize)]
-pub struct PublicSetPasswordRequest {
-    pub new_password: Option<String>,
-    pub tos_version: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct PublicChangePasswordRequest {
-    pub current_password: Option<String>,
-    pub new_password: Option<String>,
 }
 
 #[derive(Deserialize)]

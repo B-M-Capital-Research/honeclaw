@@ -27,9 +27,8 @@ use crate::routes::chat::build_chat_sse;
 use crate::routes::history::history_from_messages;
 use crate::state::{AppState, PushEvent};
 use crate::types::{
-    PublicAuthUserInfo, PublicChangePasswordRequest, PublicChatRequest, PublicInviteLoginRequest,
-    PublicPasswordLoginRequest, PublicSetPasswordRequest, PublicSmsLoginRequest,
-    PublicSmsSendRequest, PublicUploadedAttachment,
+    PublicAuthUserInfo, PublicChatRequest, PublicSmsLoginRequest, PublicSmsSendRequest,
+    PublicUploadedAttachment,
 };
 
 /// Upper bounds enforced when users upload files through the public chat.
@@ -97,18 +96,6 @@ impl AgentSessionListener for OpenAiStreamListener {
                 .await;
         }
     }
-}
-
-fn validate_password_strength(value: &str) -> Result<(), &'static str> {
-    if !(8..=128).contains(&value.chars().count()) {
-        return Err("密码长度需在 8-128 之间");
-    }
-    let has_digit = value.chars().any(|ch| ch.is_ascii_digit());
-    let has_letter = value.chars().any(|ch| ch.is_ascii_alphabetic());
-    if !(has_digit && has_letter) {
-        return Err("密码需同时包含字母和数字");
-    }
-    Ok(())
 }
 
 pub(crate) async fn handle_sms_send_code(
@@ -318,372 +305,6 @@ fn sms_provider_error_response(prefix: &str, error: crate::aliyun_sms::AliyunSms
         crate::aliyun_sms::AliyunSmsErrorKind::Provider => {
             crate::routes::json_error(StatusCode::BAD_GATEWAY, format!("{prefix}: {error}"))
         }
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) async fn handle_invite_login(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(request): Json<PublicInviteLoginRequest>,
-) -> Response {
-    let invite_code = request
-        .invite_code
-        .as_deref()
-        .map(normalize_invite_code)
-        .filter(|value| !value.is_empty());
-    let Some(invite_code) = invite_code else {
-        return crate::routes::json_error(StatusCode::BAD_REQUEST, "缺少邀请码");
-    };
-    let phone_number = match crate::routes::require_phone_number(request.phone_number, "手机号")
-    {
-        Ok(phone_number) => phone_number,
-        Err(response) => return response,
-    };
-
-    // Rate-limit by phone number + IP (best-effort). The phone number comes
-    // from the request body, but it still helps throttle attempts that target
-    // a known phone number even if the IP headers are spoofed.
-    let ip_key = public_client_key(&headers);
-    let phone_key = format!("phone:{phone_number}");
-    for key in [&ip_key, &phone_key] {
-        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
-            state.public_auth_limiter.check(key)
-        {
-            return json_rate_limited(retry_after_secs);
-        }
-    }
-
-    match state
-        .web_auth
-        .create_session_for_invite(&invite_code, &phone_number)
-    {
-        Ok(Some(session)) => {
-            state.public_auth_limiter.record_success(&ip_key);
-            state.public_auth_limiter.record_success(&phone_key);
-            match state.web_auth.find_invite_user(&session.user_id) {
-                Ok(Some(user)) => {
-                    let user_id = user.user_id.clone();
-                    let mut response = Json(json!({
-                        "user": to_public_auth_user(&state, &user_id, user),
-                    }))
-                    .into_response();
-                    response.headers_mut().append(
-                        header::SET_COOKIE,
-                        build_session_cookie(
-                            &session.session_token,
-                            &headers,
-                            WEB_SESSION_MAX_AGE_LONG_SECS,
-                        ),
-                    );
-                    response
-                }
-                Ok(None) => {
-                    crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "邀请码用户不存在")
-                }
-                Err(error) => crate::routes::json_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("读取邀请码用户失败: {error}"),
-                ),
-            }
-        }
-        Ok(None) => {
-            let mut rate_limited_response = None;
-            for key in [&ip_key, &phone_key] {
-                if let Some(retry_after_secs) = state.public_auth_limiter.record_failure(key) {
-                    rate_limited_response = Some(json_rate_limited(retry_after_secs));
-                }
-            }
-            if let Some(response) = rate_limited_response {
-                response
-            } else {
-                crate::routes::json_error(
-                    StatusCode::UNAUTHORIZED,
-                    "邀请码或手机号不正确，或邀请码已失效",
-                )
-            }
-        }
-        Err(error) => crate::routes::json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("邀请码登录失败: {error}"),
-        ),
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) async fn handle_password_login(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(request): Json<PublicPasswordLoginRequest>,
-) -> Response {
-    let phone_number = match crate::routes::require_phone_number(request.phone_number, "手机号")
-    {
-        Ok(value) => value,
-        Err(response) => return response,
-    };
-    let password = request
-        .password
-        .map(|value| value.to_string())
-        .unwrap_or_default();
-    if password.is_empty() {
-        return crate::routes::json_error(StatusCode::BAD_REQUEST, "缺少密码");
-    }
-
-    let ip_key = public_client_key(&headers);
-    let phone_key = format!("phone:{phone_number}");
-    for key in [&ip_key, &phone_key] {
-        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
-            state.public_auth_limiter.check(key)
-        {
-            return json_rate_limited(retry_after_secs);
-        }
-    }
-
-    let user = match state.web_auth.find_by_phone_password_ready(&phone_number) {
-        Ok(value) => value,
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("查询用户失败: {error}"),
-            );
-        }
-    };
-
-    let Some(user) = user else {
-        return password_login_failed(&state, &ip_key, &phone_key);
-    };
-    let hash = user.password_hash.as_deref().unwrap_or_default();
-    let verified = match hone_memory::password::verify_password(&password, hash) {
-        Ok(value) => value,
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("验证密码失败: {error}"),
-            );
-        }
-    };
-    if !verified {
-        return password_login_failed(&state, &ip_key, &phone_key);
-    }
-
-    let ttl_days = if request.remember {
-        SESSION_TTL_DAYS_LONG
-    } else {
-        SESSION_TTL_DAYS_SHORT
-    };
-    let max_age_secs = if request.remember {
-        WEB_SESSION_MAX_AGE_LONG_SECS
-    } else {
-        WEB_SESSION_MAX_AGE_SHORT_SECS
-    };
-    let session = match state
-        .web_auth
-        .create_session_for_user(&user.user_id, ttl_days)
-    {
-        Ok(Some(session)) => session,
-        Ok(None) => {
-            return crate::routes::json_error(StatusCode::UNAUTHORIZED, "账号不可用，请联系管理员");
-        }
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("创建登录态失败: {error}"),
-            );
-        }
-    };
-
-    state.public_auth_limiter.record_success(&ip_key);
-    state.public_auth_limiter.record_success(&phone_key);
-    let refreshed = match state.web_auth.find_invite_user(&session.user_id) {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "用户已丢失");
-        }
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("读取用户失败: {error}"),
-            );
-        }
-    };
-    let user_id = refreshed.user_id.clone();
-    let mut response = Json(json!({
-        "user": to_public_auth_user(&state, &user_id, refreshed),
-    }))
-    .into_response();
-    response.headers_mut().append(
-        header::SET_COOKIE,
-        build_session_cookie(&session.session_token, &headers, max_age_secs),
-    );
-    response
-}
-
-#[allow(dead_code)]
-fn password_login_failed(state: &AppState, ip_key: &str, phone_key: &str) -> Response {
-    let mut rate_limited = None;
-    for key in [ip_key, phone_key] {
-        if let Some(retry_after_secs) = state.public_auth_limiter.record_failure(key) {
-            rate_limited = Some(json_rate_limited(retry_after_secs));
-        }
-    }
-    rate_limited.unwrap_or_else(|| {
-        crate::routes::json_error(StatusCode::UNAUTHORIZED, "手机号或密码不正确")
-    })
-}
-
-#[allow(dead_code)]
-pub(crate) async fn handle_set_password(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(request): Json<PublicSetPasswordRequest>,
-) -> Response {
-    let user = match require_public_user(&state, &headers) {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-    if user.password_hash.is_some() {
-        return crate::routes::json_error(
-            StatusCode::CONFLICT,
-            "账号已设置过密码，请走修改密码流程",
-        );
-    }
-    let new_password = request.new_password.unwrap_or_default();
-    if let Err(msg) = validate_password_strength(&new_password) {
-        return crate::routes::json_error(StatusCode::BAD_REQUEST, msg);
-    }
-    let tos_version = request.tos_version.unwrap_or_default();
-    if tos_version.trim().is_empty() {
-        return crate::routes::json_error(StatusCode::BAD_REQUEST, "需同意用户协议与隐私政策");
-    }
-    if tos_version.trim() != TOS_VERSION {
-        return crate::routes::json_error(
-            StatusCode::BAD_REQUEST,
-            "协议版本已更新，请刷新页面后重新确认",
-        );
-    }
-
-    let hash = match hone_memory::password::hash_password(&new_password) {
-        Ok(value) => value,
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("密码加密失败: {error}"),
-            );
-        }
-    };
-    let updated = match state
-        .web_auth
-        .set_password(&user.user_id, &hash, TOS_VERSION)
-    {
-        Ok(value) => value,
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("保存密码失败: {error}"),
-            );
-        }
-    };
-    if !updated {
-        return crate::routes::json_error(StatusCode::CONFLICT, "账号状态异常，请重新登录");
-    }
-
-    // 轮换当前 session token 防会话固定。普通登录允许多设备/自动化并存,
-    // 所以这里只清理当前 cookie 对应的旧 session,不踢掉其它活跃设备。
-    let session = match state
-        .web_auth
-        .create_session_for_user(&user.user_id, SESSION_TTL_DAYS_LONG)
-    {
-        Ok(Some(session)) => session,
-        Ok(None) => {
-            return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "刷新登录态失败");
-        }
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("刷新登录态失败: {error}"),
-            );
-        }
-    };
-    if let Some(old_token) = read_session_token(&headers)
-        && let Err(error) = state.web_auth.delete_session(&old_token)
-    {
-        warn!(%error, "failed to delete old public session after password setup");
-    }
-    let refreshed = state
-        .web_auth
-        .find_invite_user(&session.user_id)
-        .ok()
-        .flatten();
-    let body = match refreshed {
-        Some(user) => {
-            let user_id = user.user_id.clone();
-            json!({ "user": to_public_auth_user(&state, &user_id, user) })
-        }
-        None => json!({ "ok": true }),
-    };
-    let mut response = Json(body).into_response();
-    response.headers_mut().append(
-        header::SET_COOKIE,
-        build_session_cookie(
-            &session.session_token,
-            &headers,
-            WEB_SESSION_MAX_AGE_LONG_SECS,
-        ),
-    );
-    response
-}
-
-#[allow(dead_code)]
-pub(crate) async fn handle_change_password(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(request): Json<PublicChangePasswordRequest>,
-) -> Response {
-    let user = match require_public_user(&state, &headers) {
-        Ok(user) => user,
-        Err(response) => return response,
-    };
-    let current_password = request.current_password.unwrap_or_default();
-    let new_password = request.new_password.unwrap_or_default();
-    let Some(existing_hash) = user.password_hash.clone() else {
-        return crate::routes::json_error(StatusCode::CONFLICT, "账号尚未设置密码");
-    };
-
-    let verified = match hone_memory::password::verify_password(&current_password, &existing_hash) {
-        Ok(value) => value,
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("验证密码失败: {error}"),
-            );
-        }
-    };
-    if !verified {
-        return crate::routes::json_error(StatusCode::UNAUTHORIZED, "当前密码不正确");
-    }
-    if let Err(msg) = validate_password_strength(&new_password) {
-        return crate::routes::json_error(StatusCode::BAD_REQUEST, msg);
-    }
-    if new_password == current_password {
-        return crate::routes::json_error(StatusCode::BAD_REQUEST, "新密码不能与当前密码相同");
-    }
-
-    let new_hash = match hone_memory::password::hash_password(&new_password) {
-        Ok(value) => value,
-        Err(error) => {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("密码加密失败: {error}"),
-            );
-        }
-    };
-    match state.web_auth.change_password(&user.user_id, &new_hash) {
-        Ok(true) => Json(json!({ "ok": true })).into_response(),
-        Ok(false) => crate::routes::json_error(StatusCode::CONFLICT, "账号状态异常，请重新登录"),
-        Err(error) => crate::routes::json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("保存新密码失败: {error}"),
-        ),
     }
 }
 
@@ -1454,15 +1075,6 @@ fn forwarded_proto_is_https(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
-fn normalize_invite_code(value: &str) -> String {
-    value
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect::<String>()
-        .trim()
-        .to_uppercase()
-}
-
 fn public_client_key(headers: &HeaderMap) -> String {
     if let Some(forwarded_for) = headers
         .get("x-forwarded-for")
@@ -1539,7 +1151,7 @@ fn to_public_auth_user(
 mod tests {
     use super::{
         WEB_SESSION_MAX_AGE_LONG_SECS, WEB_SESSION_MAX_AGE_SHORT_SECS, build_session_cookie,
-        clear_session_cookie, normalize_invite_code, public_client_key, validate_password_strength,
+        clear_session_cookie, public_client_key,
     };
     use axum::http::{HeaderMap, HeaderValue, header};
     const SECURE_COOKIE_ENV: &str = "HONE_PUBLIC_SECURE_COOKIE";
@@ -1572,11 +1184,6 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn invite_code_normalization_removes_spaces_and_uppercases() {
-        assert_eq!(normalize_invite_code(" hone-abc 123 \n"), "HONE-ABC123");
     }
 
     #[test]
@@ -1658,18 +1265,6 @@ mod tests {
         assert!(short_cookie.contains(&format!("Max-Age={WEB_SESSION_MAX_AGE_SHORT_SECS}")));
         assert_eq!(WEB_SESSION_MAX_AGE_SHORT_SECS, 86_400);
         assert_eq!(WEB_SESSION_MAX_AGE_LONG_SECS, 30 * 86_400);
-    }
-
-    #[test]
-    fn password_strength_rules() {
-        assert!(validate_password_strength("abc12345").is_ok());
-        assert!(validate_password_strength("abcdefgh").is_err(), "no digit");
-        assert!(validate_password_strength("12345678").is_err(), "no letter");
-        assert!(validate_password_strength("aB1").is_err(), "too short");
-        assert!(
-            validate_password_strength(&"a1".repeat(70)).is_err(),
-            "too long"
-        );
     }
 
     #[test]

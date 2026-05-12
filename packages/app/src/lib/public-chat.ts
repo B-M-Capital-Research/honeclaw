@@ -5,7 +5,6 @@ export type PublicChatAuthState =
   | "loading"
   | "logged_out"
   | "logging_in"
-  | "needs_password"
   | "ready";
 
 type PublicChatView = "loading" | "login" | "chat";
@@ -34,10 +33,6 @@ export type PublicChatMessage = {
   attachments?: PublicChatAttachment[];
 };
 
-export function normalizeInviteCode(value: string) {
-  return value.replace(/\s+/g, "").trim().toUpperCase();
-}
-
 export function normalizePhoneNumber(value: string) {
   const trimmed = value.trim();
   const hasLeadingPlus = trimmed.startsWith("+");
@@ -48,7 +43,7 @@ export function normalizePhoneNumber(value: string) {
 export function resolvePublicChatView(
   authState: PublicChatAuthState,
 ): PublicChatView {
-  if (authState === "ready" || authState === "needs_password") return "chat";
+  if (authState === "ready") return "chat";
   if (authState === "loading") return "loading";
   return "login";
 }

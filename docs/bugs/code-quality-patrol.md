@@ -2,6 +2,16 @@
 
 ## 2026-05-12 - 死代码与废弃路径
 
+### Public password storage helpers remain after public SMS login replaced password flows
+
+- status: open
+- direction: 死代码与废弃路径
+- evidence: after the public app moved to `/api/public/auth/sms/send` and `/api/public/auth/sms/login`, `rg` finds no routed backend handler or frontend caller for password login, set-password, or change-password. The remaining password surface is now deeper compatibility/storage code: `memory/src/password.rs`, `memory/src/web_auth.rs` methods `find_by_phone_password_ready` / `set_password` / `change_password`, the `password_hash` / `password_set_at` columns, `PublicAuthUserInfo.has_password`, and the `argon2` / `password-hash` dependencies.
+- risk: removing this directly could break existing databases with historical password columns, public API consumers that still read `has_password`, or downstream users of the public `hone_memory::password` module. Keeping it indefinitely leaves a stale auth model beside the SMS-only public login path.
+- suggested_fix: make an explicit compatibility decision for historical password accounts. If password login is no longer supported, document the migration, stop exposing `has_password`, remove the public password module and web_auth password helpers in one focused change, and keep a SQLite migration/compatibility test for old databases. If compatibility is still required, reintroduce an explicit routed legacy endpoint or mark the storage helpers as retained compatibility code.
+
+## 2026-05-12 - 死代码与废弃路径
+
 ### Desktop OpenRouter settings commands appear orphaned after frontend settings consolidation
 
 - status: open
