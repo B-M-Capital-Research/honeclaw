@@ -3,9 +3,22 @@
 - **发现时间**: 2026-04-15 14:05 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
 
 ## 修复进展
+
+- `2026-05-12 19:12 CST` 本轮重新修复：
+  - `crates/hone-channels/src/scheduler.rs` 的 malformed-triggered 恢复不再只接受严格双引号字符串状态；当 heartbeat 返回 JSON-ish 结构但 `status` 未加引号、或 `message` 使用中文智能引号等非标准引号时，仍会在确认 `status=triggered` 后提取用户可见 `message` 并进入既有投递、去重、近阈值和出站净化链路。
+  - 恢复边界仍要求出现 `status=triggered + message`，普通坏 JSON、示例 JSON、内部 marker、plain text 和空输出继续落成失败或 noop，不把任意自由文本当成提醒发送。
+  - 新增回归：
+    - `heartbeat_malformed_triggered_json_recovers_unquoted_status`
+    - `heartbeat_malformed_triggered_json_recovers_smart_quoted_message`
+  - 验证通过：
+    - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+    - `cargo test -p hone-channels heartbeat_malformed --lib -- --nocapture`
+    - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+    - `cargo check -p hone-channels --tests`
+  - 无关联 GitHub Issue。
 
 - `2026-05-12 19:03 CST` 本轮巡检继续确认本单活跃：最近四小时内 `持仓重大事件心跳检测` 又两次生成真实 `status=triggered + message` 正文，但因 `JsonMalformed` 被整轮标记失败并漏投。
   - `data/sessions.sqlite3` -> `cron_job_runs`

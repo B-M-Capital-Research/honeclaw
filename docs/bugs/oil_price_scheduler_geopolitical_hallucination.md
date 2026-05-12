@@ -3,7 +3,21 @@
 - **发现时间**: 2026-04-22 07:00 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 修复记录（2026-05-12 19:12 CST）
+
+- `crates/hone-channels/src/scheduler.rs` 继续加固原油 / 大宗商品 heartbeat guard：
+  - 高风险归因识别补充 `冲突`、`紧张`、`战略储备`、`石油储备`、`沙特`、`阿美`、`警告` 等复发措辞，覆盖 `战争紧张 / 霍尔木兹 / 沙特阿美 CEO 警告 / 美国战略储备` 组合。
+  - 未核验价格识别补充 `约$`、`约为$`、`约每桶` 等近似报价写法；这类价格不再被当作可保留的“已核验价格口径”。
+  - 当正文包含未核验归因或市场口径时，guard 只保留明确写出“本轮工具 / 同窗来源 / 同窗核验 / 已核验 / 交易所 / 官方报价”等来源核验语义的价格句；否则只发送安全说明，避免把模型生成的 WTI/Brent 价格继续包装成可用报价。
+- 新增回归：`commodity_heartbeat_guard_rewrites_unverified_price_and_war_claims`。
+- 验证：
+  - `rustfmt --edition 2024 --check crates/hone-channels/src/scheduler.rs`
+  - `cargo test -p hone-channels commodity_heartbeat_ --lib -- --nocapture`
+  - `cargo test -p hone-channels heartbeat_ --lib -- --nocapture`
+  - `cargo check -p hone-channels --tests`
+- 关联 GitHub Issue：无。
 
 ## 修复记录（2026-05-10 23:11 CST）
 

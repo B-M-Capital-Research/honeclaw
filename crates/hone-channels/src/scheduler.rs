@@ -160,12 +160,29 @@ fn previous_visible_char(content: &str, idx: usize) -> Option<char> {
     content[..idx].chars().rev().find(|ch| !ch.is_whitespace())
 }
 
-fn find_json_string_field_value_start(content: &str, field: &str) -> Option<usize> {
-    let needle = format!("\"{field}\"");
-    let field_idx = content.find(&needle)?;
+fn find_jsonish_field_value_start(content: &str, needle: &str) -> Option<usize> {
+    let field_idx = content.find(needle)?;
     let colon_idx = content[field_idx + needle.len()..].find(':')? + field_idx + needle.len();
-    let value_quote_idx = content[colon_idx + 1..].find('"')? + colon_idx + 1;
-    Some(value_quote_idx + 1)
+    content[colon_idx + 1..]
+        .char_indices()
+        .find_map(|(idx, ch)| (!ch.is_whitespace()).then_some(colon_idx + 1 + idx))
+}
+
+fn jsonish_quote_closer(ch: char) -> Option<char> {
+    match ch {
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        '“' => Some('”'),
+        '‘' => Some('’'),
+        _ => None,
+    }
+}
+
+fn find_jsonish_field_value_quote_start(content: &str, needle: &str) -> Option<(usize, char)> {
+    let value_idx = find_jsonish_field_value_start(content, needle)?;
+    let ch = content[value_idx..].chars().next()?;
+    let closer = jsonish_quote_closer(ch)?;
+    Some((value_idx + ch.len_utf8(), closer))
 }
 
 fn json_field_name_after_comma(rest: &str) -> Option<&str> {
@@ -211,7 +228,8 @@ fn looks_like_json_string_field_end(content: &str, quote_idx: usize, field: &str
 }
 
 fn recover_lossy_json_string_field(content: &str, field: &str) -> Option<String> {
-    let start = find_json_string_field_value_start(content, field)?;
+    let needle = format!("\"{field}\"");
+    let (start, closer) = find_jsonish_field_value_quote_start(content, &needle)?;
     let mut value = String::new();
     let mut chars = content[start..].char_indices().peekable();
 
@@ -235,8 +253,11 @@ fn recover_lossy_json_string_field(content: &str, field: &str) -> Option<String>
                     }
                 }
             }
-            '"' if looks_like_json_string_field_end(content, abs_idx, field) => break,
-            '"' => value.push('"'),
+            '"' if closer == '"' && looks_like_json_string_field_end(content, abs_idx, field) => {
+                break;
+            }
+            '"' if closer == '"' => value.push('"'),
+            ch if ch == closer => break,
             '}' if content[abs_idx + ch.len_utf8()..].trim().is_empty() => break,
             _ => value.push(ch),
         }
@@ -244,6 +265,27 @@ fn recover_lossy_json_string_field(content: &str, field: &str) -> Option<String>
 
     let value = value.trim().trim_end_matches(',').trim().to_string();
     if value.is_empty() { None } else { Some(value) }
+}
+
+fn recover_lossy_json_status_field(content: &str) -> Option<String> {
+    if let Some(status) = recover_lossy_json_string_field(content, "status") {
+        return Some(status);
+    }
+
+    let value_idx = find_jsonish_field_value_start(content, "\"status\"")?;
+    let status = content[value_idx..]
+        .trim_start()
+        .split(|ch: char| ch == ',' || ch == '}' || ch.is_whitespace())
+        .next()
+        .unwrap_or_default()
+        .trim_matches(|ch| matches!(ch, '"' | '\'' | '“' | '”' | '‘' | '’'))
+        .trim()
+        .to_string();
+    if status.is_empty() {
+        None
+    } else {
+        Some(status)
+    }
 }
 
 fn json_status_candidate_starts(content: &str) -> Vec<usize> {
@@ -272,7 +314,7 @@ fn recover_malformed_triggered_heartbeat_message(content: &str) -> Option<String
 
     for start in candidate_starts {
         let candidate = &trimmed[start..];
-        let Some(status) = recover_lossy_json_string_field(candidate, "status") else {
+        let Some(status) = recover_lossy_json_status_field(candidate) else {
             continue;
         };
         if !status.eq_ignore_ascii_case("triggered") {
@@ -999,10 +1041,17 @@ fn text_has_commodity_causality_claim(text: &str) -> bool {
         "谈判",
         "军事",
         "战争",
+        "冲突",
+        "紧张",
         "关税",
         "风险溢价",
         "供应中断",
         "关停风险",
+        "战略储备",
+        "石油储备",
+        "沙特",
+        "阿美",
+        "警告",
         "中东",
         "伊朗",
         "霍尔木兹",
@@ -1047,12 +1096,17 @@ fn text_has_speculative_commodity_price(text: &str) -> bool {
     let compact = compact_lowercase_text(text);
     [
         "估算",
+        "约$",
+        "约为$",
+        "约每桶",
+        "约人民币",
         "推算",
         "预测",
         "预测区间",
         "通常较",
         "贴水",
         "未独立校验",
+        "未完成同窗",
         "精确收盘价未",
         "无法证明",
         "未核验",
@@ -1150,6 +1204,11 @@ fn text_looks_like_commodity_price_observation(text: &str) -> bool {
         && !text_has_speculative_commodity_price(text)
         && !text_has_date_weekday_mismatch(text)
         && ![
+            "未完成同窗",
+            "未核验",
+            "未校验",
+            "未验证",
+            "无法证明",
             "bloomberg",
             "reuters",
             "wsj",
@@ -1162,10 +1221,31 @@ fn text_looks_like_commodity_price_observation(text: &str) -> bool {
         .any(|term| compact.contains(term))
 }
 
+fn text_has_explicit_grounded_commodity_source(text: &str) -> bool {
+    let compact = compact_lowercase_text(text);
+    [
+        "本轮工具",
+        "本轮检索",
+        "本轮来源",
+        "同窗来源",
+        "同窗核验",
+        "已核验",
+        "已校验",
+        "交易所",
+        "官方报价",
+        "official",
+        "exchange",
+        "verified",
+    ]
+    .iter()
+    .any(|term| compact.contains(term))
+}
+
 fn rewrite_commodity_causality_message(text: &str) -> String {
     let mut retained_segments = Vec::new();
     for segment in split_commodity_message_segments(text) {
         if text_looks_like_commodity_price_observation(&segment)
+            && text_has_explicit_grounded_commodity_source(&segment)
             && !retained_segments
                 .iter()
                 .any(|existing| existing == &segment)
@@ -2386,6 +2466,36 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_malformed_triggered_json_recovers_unquoted_status() {
+        assert_eq!(
+            inspect_heartbeat_result(
+                r#"{"status": triggered, "message": "【DRAM 心跳监控】盘中触及上市以来新高，触发提醒。"}"#
+            ),
+            (
+                HeartbeatOutcome::Deliver(
+                    "【DRAM 心跳监控】盘中触及上市以来新高，触发提醒。".to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+    }
+
+    #[test]
+    fn heartbeat_malformed_triggered_json_recovers_smart_quoted_message() {
+        assert_eq!(
+            inspect_heartbeat_result(
+                r#"{"status":"triggered","message":“【持仓心跳检测】ASTS Q1 财报与盘中走势触发提醒。”}"#
+            ),
+            (
+                HeartbeatOutcome::Deliver(
+                    "【持仓心跳检测】ASTS Q1 财报与盘中走势触发提醒。".to_string()
+                ),
+                HeartbeatParseKind::JsonTriggered
+            )
+        );
+    }
+
+    #[test]
     fn heartbeat_near_threshold_trigger_is_suppressed() {
         let execution = heartbeat_execution_from_content(
             r#"{"status":"triggered","message":"ASTS 最新价格 $71.88，相对昨收 $77.20 跌幅 -6.89%，触发原因：单日涨跌幅（跌）接近 8% 警戒阈值，且距离 8% 仅差约 1.1 个百分点。"}"#,
@@ -3385,8 +3495,8 @@ mod tests {
         .expect("geopolitical risk-premium claim should be guarded");
 
         assert!(guarded.contains("未完成同窗来源核验"));
-        assert!(guarded.contains("【已保留的价格口径】"));
-        assert!(guarded.contains("WTI 原油：$95.79/桶"));
+        assert!(!guarded.contains("【已保留的价格口径】"));
+        assert!(!guarded.contains("WTI 原油：$95.79/桶"));
         assert!(!guarded.contains("美伊在霍尔木兹海峡发生交火事件"));
         assert!(!guarded.contains("670 万桶"));
     }
@@ -3521,6 +3631,42 @@ mod tests {
         assert!(!guarded.contains("2026-05-10 周六"));
         assert!(!guarded.contains("Bloomberg 数据"));
         assert!(!guarded.contains("累计上涨约4.76%"));
+    }
+
+    #[test]
+    fn commodity_heartbeat_guard_rewrites_unverified_price_and_war_claims() {
+        let event = SchedulerEvent {
+            actor: ActorIdentity::new("feishu", "ou_oil", None::<String>).expect("actor"),
+            job_id: "job-oil".to_string(),
+            job_name: "全天原油价格3小时播报".to_string(),
+            task_prompt: "播报 WTI/Brent，并说明地缘政治影响".to_string(),
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "ou_oil".to_string(),
+            delivery_key: "delivery-oil".to_string(),
+            push: Value::Null,
+            tags: vec![],
+            heartbeat: true,
+            schedule_hour: 15,
+            schedule_minute: 0,
+            schedule_repeat: "heartbeat".to_string(),
+            schedule_date: None,
+            last_delivered_previews: vec![],
+            bypass_quiet_hours: false,
+        };
+
+        let guarded = guard_commodity_causality_for_event(
+            "WTI原油约$99.02/桶，布伦特原油约$105.27/桶。价格上涨原因包括战争紧张、霍尔木兹海峡、沙特阿美 CEO 警告、美国战略储备贷款等。",
+            &event,
+        )
+        .expect("unverified price and war causality should be guarded");
+
+        assert!(guarded.contains("未完成同窗来源核验"));
+        assert!(guarded.contains("本轮未保留原正文中的价格或归因句"));
+        assert!(!guarded.contains("$99.02"));
+        assert!(!guarded.contains("$105.27"));
+        assert!(!guarded.contains("战争紧张"));
+        assert!(!guarded.contains("战略储备"));
     }
 
     #[test]
