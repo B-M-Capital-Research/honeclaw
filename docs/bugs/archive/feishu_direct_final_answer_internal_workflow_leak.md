@@ -24,7 +24,7 @@
     - final 首段仍写出：`我先对齐今天的市场口径，再把“软件被压”的原因拆成...`
     - 该样本未泄露 `current-plan`，但继续暴露了明显属于内部执行顺序的回答草稿式前言
   - 对照缺陷：
-    - [`docs/bugs/feishu_direct_partial_reply_before_tool_completion.md`](./feishu_direct_partial_reply_before_tool_completion.md)
+    - [`docs/bugs/feishu_direct_partial_reply_before_tool_completion.md`](../feishu_direct_partial_reply_before_tool_completion.md)
     - 上述旧缺陷已在 `2026-04-27` 修复为“未完成工具不得收口成功”；本轮样本里工具均已完成，说明这是独立的残留质量问题，而不是旧缺陷回归
 
 ## 端到端链路

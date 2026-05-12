@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-24 19:03 CST
 - **Bug Type**: Business Error
 - **严重等级**: P3
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
   - `session_id=Actor_feishu__direct__ou_5f6ac070b0b574f2bc3ba49f9678b675a3`
@@ -13,6 +13,18 @@
     - `初始化事件：[/Users/ecohnoch/Desktop/honeclaw/data/agent-sandboxes/feishu/direct__ou_5f6ac070b0b574f2bc3ba49f9678b675a3/company_profiles/ccld/events/2026-04-24-init-profile.md](...)`
   - `sessions.last_message_preview` 同样保留 `/Users/ecohnoch/Desktop/honeclaw/data/agent-sandboxes/...` 绝对路径，说明这不是单次渲染误差，而是最终出站文本本身带了本机路径。
   - `data/runtime/logs/acp-events.log` 同时显示该轮正常 `stopReason=end_turn` 收口，没有证据表明系统把这类路径识别为内部实现细节并在出站前剥离。
+
+## 2026-05-13 复发证据
+
+- 本轮巡检确认该缺陷在最近四小时真实 Feishu direct 会话中复发，状态从 `Fixed` 调回 `New`。
+- `data/sessions/Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1.json`
+  - `2026-05-12T23:48:33.273558+08:00` 用户要求：`帮我建PDD的公司画像`。
+  - `2026-05-12T23:53:47.706234+08:00` assistant final 返回“PDD 公司画像已建好”，但同时把 `[profile.md](/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/feishu/direct__.../company_profiles/pdd/profile.md)` 这类本机 Markdown 文件链接直接放进用户可见文本。
+  - 路径中包含本机仓库根目录、`data/agent-sandboxes/feishu` 存储布局、direct actor sandbox 标识与公司画像内部目录结构。
+- 结论：
+  - 这是同一根因 / 同一影响范围的复发，不新建重复文档。
+  - 主功能“画像已创建”看起来完成，但回复继续暴露本机路径和内部文件落点；因此仍按质量与信息边界缺陷定级为 `P3`。
+  - 为何不定为 `P1/P2`：本轮证据没有显示画像创建失败、跨用户错投、消息投递失败或数据损坏；受损的是外部渠道输出边界和可读性，因此不影响主功能链路完成度。
 
 ## 端到端链路
 

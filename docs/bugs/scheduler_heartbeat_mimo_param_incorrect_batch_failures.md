@@ -9,12 +9,13 @@
 ## 证据来源
 
 - `data/sessions.sqlite3` -> `cron_job_runs`
+  - `2026-05-13 03:02 CST` 复核：该缺陷仍为活跃 `New`。从 `2026-05-12T23:30:12+08:00` 到 `2026-05-13T03:00:25+08:00`，最近四小时继续新增 `82` 条同类 heartbeat 失败，覆盖 `11` 个 job；其中 10 个核心 heartbeat job 在 23:30、00:00、00:30、01:00、01:30、02:00、02:30、03:00 窗口基本连续失败。
   - `2026-05-12T22:30 CST`：`7` 条 heartbeat 同窗失败，覆盖 `DRAM 心跳监控`、`TEM破位预警`、`Cerebras IPO与业务进展心跳监控`、`持仓重大事件心跳检测`、`TEM大事件心跳监控`、`Monitor_Watchlist_11`、`TSLA 正负触发条件心跳监控`。
   - `2026-05-12T23:00 CST`：`9` 条 heartbeat 同窗失败，覆盖 `Cerebras IPO与业务进展心跳监控`、`DRAM 心跳监控`、`Monitor_Watchlist_11`、`伦敦金跌破4500提醒`、`TEM大事件心跳监控`、`TEM破位预警`、`RKLB异动监控`、`小米30港元破位预警`、`TSLA 正负触发条件心跳监控`。
   - 上述失败均落成 `execution_failed + skipped_error + delivered=0`。
   - `error_message` 均为 `LLM 错误: upstream HTTP 400: Param Incorrect (code: 400)`。
   - `detail_json.failure_kind=provider_http_error`，`detail_json.heartbeat_model=mimo-v2.5-pro`。
-- 最近四小时同窗仍有非 heartbeat 定时任务成功送达，例如 `run_id=19503` 的 `核心观察股池晚间快报` 为 `completed + sent + delivered=1`，说明不是 scheduler 或 Feishu 出站全局停摆。
+- 最近四小时同窗仍有非 heartbeat 定时任务成功送达，例如 `run_id=19503` 的 `核心观察股池晚间快报`、`run_id=19517` 的 `科技成长股持仓买卖点日内预警`、`run_id=19521/19526/19528` 的每日动态监控均为 `completed + sent + delivered=1`，说明不是 scheduler 或 Feishu 出站全局停摆。
 
 ## 端到端链路
 
@@ -32,7 +33,7 @@
 
 ## 当前实现效果
 
-- 最近四小时内两个窗口累计 `16` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败。
+- 最新四小时内已累计 `82` 条 heartbeat 因同一 `mimo-v2.5-pro` 上游 `HTTP 400 Param Incorrect` 失败。
 - 失败已被正确记为 `provider_http_error`，没有被伪装成 noop；但业务效果仍是本轮监控漏发。
 - 同窗普通 scheduler 仍可送达，故障集中在 heartbeat provider 参数 / 模型兼容路径。
 

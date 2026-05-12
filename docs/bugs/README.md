@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-12 23:03 CST
+最后更新：2026-05-13 03:02 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -17,9 +17,9 @@
 
 ## 当前概览
 
-- 活跃待修复：1
+- 活跃待修复：3
 - Later / 待复现：9
-- 已修复 / 已关闭：101
+- 已修复 / 已关闭：99
 - 历史分析 / 部分止血：5
 - 本轮不再保留 Web direct quota 拒绝为活跃缺陷：仓库代码已覆盖 Web actor 的 quota 拒绝 assistant transcript 与失败 `Done` 事件；当前机器 JSON 会话在 20:09 / 21:04 CST 仍新增孤立 heartbeat user turn，但按旧运行态 / 未重启进程证据处理，不重新打开。
 - 本轮复核后不再保留 `sessions.sqlite3` 会话镜像为活跃缺陷：仓库代码已覆盖 `runtime_backend=sqlite` 且 shadow 写开关为 `false` 的启动 JSON -> SQLite 回填路径；当前 `sessions/session_messages` 仍停在 2026-04-27、`cron_job_runs` 已推进到 23:01 CST，仍按当前机器旧运行态 / 未重启进程证据处理。
@@ -39,6 +39,10 @@
 - 本轮 23:03 CST 仅补充原油旧运行态证据：21:31 CST `Oil_Price_Monitor_Premarket` 成功外发 Brent / WTI 区间与美伊 / 霍尔木兹归因，未见可审计同窗来源或商品 guard 元数据；但仓库代码已在 19:12 CST 修复 commodity guard，本轮不重新打开。
 - 本轮 23:03 CST 观察池击球区缺陷仍按旧运行态证据处理：21:38 / 23:02 CST 两条观察池快报继续把 25 支标的批量写成 `击球区：待确认`，但当前仓库代码已有恢复注入与回归；本轮仅补充到 fixed 文档，不回退为活跃。
 
+- 本轮 03:02 CST 确认 Heartbeat `mimo-v2.5-pro` provider 参数兼容缺陷仍活跃：23:30-03:00 CST 继续新增 82 条 `Param Incorrect` heartbeat 失败，覆盖 11 个 job；同窗普通 scheduler 仍有 5 条成功送达，故障仍集中在 heartbeat provider 参数 / 模型兼容路径。
+- 本轮 03:02 CST 重新打开 Feishu 公司画像路径外泄缺陷：23:48 CST 用户要求建 PDD 公司画像，23:53 CST assistant final 在“已建好”回复里直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；同一根因复发，状态从 `Fixed` 调回 `New`。
+- 本轮 03:02 CST 重新打开 Feishu 直聊半成品收口缺陷：23:30 CST 用户要求为当前持仓中未建画像的公司建档，23:34 CST assistant final 只包含 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整` 等工具进度/失败尾注，没有给出画像建档结果；状态从 `Fixed` 调回 `New`。
+
 ## 代码质量巡检发现
 
 | 方向 | 状态 | 入口 |
@@ -49,7 +53,9 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-12 23:03 新增：22:30 / 23:00 CST 两个窗口累计 16 条 heartbeat 因 `upstream HTTP 400: Param Incorrect` 落成 `execution_failed + skipped_error + delivered=0`；同窗普通 scheduler 仍可送达；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
+| Heartbeat 监控使用 `mimo-v2.5-pro` 时批量命中 `Param Incorrect` 并漏发 | P2 | New | 2026-05-13 03:02 仍活跃：23:30-03:00 CST 新增 82 条 heartbeat 因 `upstream HTTP 400: Param Incorrect` 落成 `execution_failed + skipped_error + delivered=0`；覆盖 11 个 job；同窗普通 scheduler 仍可送达；无关联 GitHub Issue | [scheduler_heartbeat_mimo_param_incorrect_batch_failures.md](./scheduler_heartbeat_mimo_param_incorrect_batch_failures.md) |
+| Feishu 直聊在工具尚未跑完时提前把工具进度 / 不完整错误当成最终回复 | P2 | New | 2026-05-13 03:02 复发：23:30 CST 用户要求为当前持仓未建画像公司建档，23:34 CST assistant final 只返回 `本地命令`、`Searching the Web`、`处理中发生错误，内容可能不完整`，没有交代建档结果；无关联 GitHub Issue | [feishu_direct_partial_reply_before_tool_completion.md](./feishu_direct_partial_reply_before_tool_completion.md) |
+| Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | New | 2026-05-13 03:02 复发：23:48 CST PDD 公司画像建档回复直接包含 `/Users/fengming2/Desktop/honeclaw/data/agent-sandboxes/.../company_profiles/pdd/profile.md` 本机路径；主功能完成但输出边界失守；无关联 GitHub Issue | [feishu_company_profile_absolute_path_leak.md](./feishu_company_profile_absolute_path_leak.md) |
 
 ## Later / 待复现
 
@@ -149,7 +155,6 @@
 | OpenAI-compatible 搜索阶段出现 tool-call 协议错位，`invalid params` 失败被统一收口成通用失败提示 | P1 | Fixed | 2026-04-16 已补齐搜索上下文清洗：同时移除历史 `tool` 与残留 assistant `tool_calls`，定向回归测试与 desktop release build 已通过 | [openai_compatible_tool_call_protocol_mismatch_invalid_params.md](./archive/openai_compatible_tool_call_protocol_mismatch_invalid_params.md) |
 | Feishu scheduler 命中 `skip_signal` 后仍把未发送长文落进 direct session，污染后续上下文 | P2 | Fixed | 2026-04-27 00:02 最新 `RKLB 每日动态监控` 已先触发 `skip_signal`，随后日志记录 `rolled back skipped assistant turn`；同一 direct session 最新 `ordinal=35/36` 只剩 scheduler user turn，不再新增未送达 assistant final | [feishu_scheduler_noop_reply_persisted_to_direct_session.md](./archive/feishu_scheduler_noop_reply_persisted_to_direct_session.md) |
 | Feishu 直聊遇到 Codex ACP 字符串权限请求 id 后整轮失败 | P1 | Fixed | 2026-04-26 已确认 Codex ACP 0.12.0 权限请求 id 为字符串 UUID；权限响应改为原样 echo JSON-RPC id，并补字符串 id 回归测试 | [feishu_codex_acp_permission_string_id.md](./archive/feishu_codex_acp_permission_string_id.md) |
-| Feishu 直聊在工具尚未跑完时提前把过渡句或内部 todo 当成最终答复发送，且任务治理变更可能未生效 | P2 | Fixed | 2026-04-27 已在共享 ACP runner 增加 `unfinished tool` 成功门槛，并在 Feishu 失败收口中过滤 `我先核验...` 等过渡计划句；相关 `hone-channels` / `hone-feishu` 定向回归通过 | [feishu_direct_partial_reply_before_tool_completion.md](./archive/feishu_direct_partial_reply_before_tool_completion.md) |
 | Web 直聊把投研过程句当成最终回复，用户需要二次追问才拿到正式答案 | P3 | Fixed | 2026-04-27 已确认与 Feishu 共用同一 ACP 提前收口根因；共享 runner 改为 `unfinished tool => failure` 后，不再把过程句记成成功 final | [web_direct_partial_reply_before_tool_completion.md](./archive/web_direct_partial_reply_before_tool_completion.md) |
 | Web 定时任务在离线 SSE 无监听者时，正文已落库但台账仍记为 `completed + send_failed` | P2 | Fixed | 2026-05-05 10:13 最新 `run_id=15677` 已在 `console_event_sent=false` 条件下落成 `completed + sent + delivered=1`，说明“正文落库即送达”语义已在最新生产窗口生效 | [web_scheduler_sse_delivery_required_for_send_success.md](./archive/web_scheduler_sse_delivery_required_for_send_success.md) |
 | Event-engine 收盘大幅波动永远不会即时推送 | P2 | Fixed | 2026-04-24 已让超过 high 阈值的 `price_close` 生成 High，并允许 per-actor price override 覆盖 close；普通 close 仍走 digest，`hone-event-engine` 相关测试与真实模型 baseline 通过 | [event_engine_close_price_alerts_never_immediate.md](./archive/event_engine_close_price_alerts_never_immediate.md) |
@@ -168,7 +173,6 @@
 | Feishu 直聊纯文本 15 支股票池请求误触 `image_understanding`，最终只分析 9 支并要求用户补 6 支代码 | P3 | Fixed | 2026-04-20 在 image_understanding SKILL.md 补 when_to_use 约束（仅在有图片附件时触发）；在 SkillTool 系统提示补全局约束：纯文本请求禁止调用图片/PDF 附件类 skill | [feishu_direct_watchlist_text_request_misfires_image_skill.md](./archive/feishu_direct_watchlist_text_request_misfires_image_skill.md) |
 | Feishu 直聊已拿到行情工具结果，但 Answer 仍谎报链路阻断并退化成空泛建议 | P3 | Fixed | 2026-04-20 在 multi-agent handoff 文本中添加 CRITICAL 约束：search transcript 中有成功 data_fetch/quote 结果时，answer 禁止输出"链路阻断/数据未完成校验"等降级文案 | [feishu_direct_quote_tool_result_ignored.md](./archive/feishu_direct_quote_tool_result_ignored.md) |
 | Feishu 直聊询问 skill 时误报"没有该 skill"，并把内部约束直接当答案返回 | P3 | Fixed | 2026-04-20 扩展 handoff CRITICAL 约束覆盖 discover_skills/skill_tool 结果；在 DEFAULT_FINANCE_DOMAIN_POLICY 补内部策略外泄约束：禁止以「系统纪律」口吻暴露内部规则 | [feishu_direct_skill_query_internal_policy_leak.md](./archive/feishu_direct_skill_query_internal_policy_leak.md) |
-| Feishu 公司画像建档成功后向用户暴露本机绝对路径与内部文件落点 | P3 | Fixed | 2026-04-26 已在共享出站净化层收口本地 Markdown 文件链接与绝对路径，渠道回复不再暴露 repo/sandbox/open_id 路径；相关 `hone-channels` 定向测试通过 | [feishu_company_profile_absolute_path_leak.md](./archive/feishu_company_profile_absolute_path_leak.md) |
 | Feishu 定时汇总已送达但未执行最新资讯检索，静默退化为非实时摘要 | P3 | Closed | 2026-04-19 12:00 同一任务已不再复现 `tool_calls=0 + completed`；本轮改为执行 15 次 `data_fetch` 后触发 overflow fallback，旧伪完成形态关闭并转由新缺陷跟踪 | [feishu_scheduler_daily_company_digest_skips_realtime_research.md](./archive/feishu_scheduler_daily_company_digest_skips_realtime_research.md) |
 
 ## 历史分析 / 部分止血

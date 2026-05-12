@@ -3,7 +3,7 @@
 - **发现时间**: 2026-04-16 16:12 CST
 - **Bug Type**: Business Error
 - **严重等级**: P2
-- **状态**: Fixed
+- **状态**: New
 - **证据来源**:
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe09f5f16b20c06ee5962d1b6ca7a4cda`
@@ -14,6 +14,18 @@
     - `2026-04-23 13:28:53` 同一会话记录 `done ... success=true ... tools=6(Tool: hone/data_fetch,Tool: hone/local_list_files,Tool: hone/skill_tool,Tool: hone/web_search) reply.chars=96`，随后 `reply.send ... segments.sent=1/1`。
     - ACP 事件显示同轮用户上下文明确为 `【本轮用户输入】攜程，價值分析`，且系统已执行多次搜索/行情/财报查询；最终仍只外发核验摘要，没有进入正式分析结构。
     - 同轮在 `session.persist_assistant/done` 之后还继续出现 `local_list_files path="company_profiles"` 和 `local_search_files query="Trip.com" path="company_profiles"` 的工具调用请求与结果，说明收口与后续画像检索动作之间仍存在时序错位。
+
+## 2026-05-13 复发证据
+
+- 本轮巡检确认该缺陷在最近四小时真实 Feishu direct 会话中复发，状态从 `Fixed` 调回 `New`。
+- `data/sessions/Actor_feishu__direct__ou_5f44eaaa05cec98860b5336c3bddcc22d1.json`
+  - `2026-05-12T23:30:12.730157+08:00` 用户要求：`我当前持仓股中还未建立公司画像的，帮我建一下`。
+  - `2026-05-12T23:34:53.820728+08:00` assistant 最终可见文本只包含工具进度与失败尾注：`执行完成：本地命令`、`正在调用 Searching the Web...`、`工具执行完成`、`处理中发生错误，内容可能不完整`。
+  - 该回复没有告诉用户哪些持仓缺画像、哪些画像已创建、哪些失败、失败原因是什么、下一步如何补救。
+- 结论：
+  - 这是同一根因 / 同一影响范围的复发，不新建重复文档。
+  - 本轮不是单纯表达质量问题：用户明确要求批量补建公司画像，但系统把工具轨迹和不完整错误当成最终回复，任务完成情况不可判定，影响直聊工作流正确性。
+  - 严重等级维持 `P2`：它会导致用户无法确认画像维护任务是否完成，但当前证据没有显示跨用户错投、全渠道不可用或数据破坏，因此不升为 `P1`。
   - `data/sessions.sqlite3` -> `session_messages`
     - `session_id=Actor_feishu__direct__ou_5fe31244b1208749f16773dce0c822801a`
     - `2026-04-22T22:43:47.623958+08:00` 用户提问：`分析LRCX公司，基本面，护城河，财务，估值，及最新的一些情况`
