@@ -1,6 +1,6 @@
 # Bugs Navigation
 
-最后更新：2026-05-12 15:03 CST
+最后更新：2026-05-12 19:03 CST
 
 这个文件是 `docs/bugs/` 的导航页，也是后续 agent / 人工协作时优先查看的缺陷台账入口。
 
@@ -32,6 +32,9 @@
 - 本轮 15:03 CST 回退 Heartbeat 结构化状态退化缺陷：12:00 CST `DRAM 心跳监控`、15:00 CST `持仓重大事件心跳检测` 都已生成 `status=triggered + message` 正文，但 `JsonMalformed` 导致 `execution_failed + skipped_error + delivered=0`，仍会漏发真实 heartbeat。
 - 本轮 15:03 CST 回退原油定时播报缺陷：15:00 CST `全天原油价格3小时播报` 成功送达 WTI/Brent 价格、战争/霍尔木兹/战略储备等未核验归因，且未见 `commodity_causality_guarded`；按 P2 活跃恢复。
 - 本轮观察到若干已知噪声：14:00 CST 伦敦金 / 小米破位为空输出并被显式落为 `execution_failed/skipped_error`，没有被伪装成 noop；`sessions/session_messages` 镜像仍停在 2026-04-27，继续按已知 fixed-but-live-old 证据处理。本轮不为这些单独建档。
+- 本轮 19:03 CST 继续确认 Heartbeat 结构化状态退化为活跃：15:30 / 17:02 CST `持仓重大事件心跳检测` 均已生成 ASTS Q1 财报相关 `status=triggered + message` 正文，但因 `JsonMalformed` 落成 `execution_failed + skipped_error + delivered=0`。
+- 本轮 19:03 CST 原油缺陷仍保持活跃但未新增已送达坏播报：18:01 CST 同任务又生成 WTI/Brent 与霍尔木兹 / 美伊归因正文，但被 duplicate suppression 压成 `noop + skipped_noop`，没有新的用户可见发送；活跃依据仍是 15:00 CST 已送达坏播报。
+- 本轮 19:03 CST 继续观察到 Heartbeat preview 去重旧运行态证据：16:00 / 16:30 / 18:00 / 18:30 / 19:00 CST `持仓重大事件心跳检测` 多次把 ASTS Q1 财报提醒匹配到 RKLB / Cerebras preview 后漏发，19:00 CST `TSLA 负向触发` 又被 17:00 `TSLA 正向触发` 抑制；因当前仓库代码已有 `heartbeat_duplicate_preview_match_allows_tsla_distinct_same_ticker_events` 等回归，本轮仅补充到 fixed 文档，不回退为活跃。
 
 ## 代码质量巡检发现
 
@@ -43,8 +46,8 @@
 
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
-| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-12 15:03 回退：12:00 CST `DRAM 心跳监控`、15:00 CST `持仓重大事件心跳检测` 都已生成 `status=triggered + message` 正文，但 `JsonMalformed` 导致 `execution_failed + skipped_error + delivered=0`；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
-| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-12 15:03 回退：15:00 CST 原油播报成功送达 WTI/Brent 价格与战争、霍尔木兹、战略储备等未核验归因，且未见 `commodity_causality_guarded`；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
+| Heartbeat 定时任务结构化状态退化在静默跳过与误发失败提示之间漂移 | P2 | New | 2026-05-12 19:03 继续活跃：15:30 / 17:02 CST `持仓重大事件心跳检测` 都已生成 ASTS Q1 财报相关 `status=triggered + message` 正文，但 `JsonMalformed` 导致 `execution_failed + skipped_error + delivered=0`；无关联 GitHub Issue | [scheduler_heartbeat_unknown_status_silent_skip.md](./scheduler_heartbeat_unknown_status_silent_skip.md) |
+| 原油定时播报在价格 / 日期 / 背景口径上继续输出未核验或错误事实 | P2 | New | 2026-05-12 19:03 保持活跃：18:01 CST 又生成未核验 WTI/Brent 与地缘归因正文但被 duplicate suppression 压成未发送；活跃依据仍是 15:00 CST 已送达坏播报；无关联 GitHub Issue | [oil_price_scheduler_geopolitical_hallucination.md](./oil_price_scheduler_geopolitical_hallucination.md) |
 
 ## Later / 待复现
 
@@ -65,7 +68,7 @@
 | Bug | 严重等级 | 状态 | 修复情况 | 入口 |
 | --- | --- | --- | --- | --- |
 | Feishu direct 命中 Codex runner usage limit 后只返回通用失败兜底 | P1 | Fixed | 2026-05-12 11:04 共享错误净化层新增 Codex / runner / ACP usage-limit 识别，统一返回“当前执行额度已用尽，暂时无法继续处理。请稍后再试。”；Feishu direct 失败回复优先展示该错误，不再被 placeholder 或 partial stream 遮蔽。`cargo test -p hone-channels user_visible_error_message --lib -- --nocapture`、`cargo test -p hone-feishu failed_reply_text_keeps_codex_usage_limit_over_partial_stream -- --nocapture`、`cargo check -p hone-channels -p hone-feishu --tests` 通过；关联 Issue [#40](https://github.com/B-M-Capital-Research/honeclaw/issues/40) | [feishu_direct_codex_usage_limit_generic_failure.md](./feishu_direct_codex_usage_limit_generic_failure.md) |
-| Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-12 11:16 复核当前仓库代码确认 `heartbeat_duplicate_preview_match` 不会把 `DRAM 创历史新高` 与上一窗 `Cerebras IPO` preview 判重；新增 `heartbeat_duplicate_preview_match_allows_dram_record_high_after_cerebras_ipo` 锁住 09:01-10:31 CST 复发形态。当前机器旧运行态 / 未重启进程证据不再作为重新打开依据；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
+| Heartbeat 预览去重把不同标的或同标的不同事件误判为重复，导致真实触发被压成 noop 漏发 | P2 | Fixed | 2026-05-12 19:03 补充旧运行态证据：16:00-19:00 CST ASTS Q1 财报提醒多次被 RKLB / Cerebras preview 抑制，19:00 CST `TSLA 负向触发` 被 17:00 `TSLA 正向触发` 抑制；当前仓库代码已有同 ticker / 跨实体回归覆盖，不回退为活跃；无关联 GitHub Issue | [scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md](./scheduler_heartbeat_cross_job_duplicate_suppression_false_skip.md) |
 | 单标的 heartbeat near-threshold guard 会误判触发状态并导致误发或漏发 | P2 | Fixed | 2026-05-12 11:16 复核当前仓库代码确认 `DRAM 盘中创历史新高（满足条件2）` 不会命中 near-threshold suppression；新增 `heartbeat_record_high_trigger_is_not_near_threshold_suppressed` 锁住真实创新高触发不被误抑制。当前机器旧运行态 / 未重启进程证据不再作为重新打开依据；无关联 GitHub Issue | [scheduler_heartbeat_near_threshold_false_trigger.md](./scheduler_heartbeat_near_threshold_false_trigger.md) |
 | Web direct 触发对话额度拒绝后只写入 user turn，没有可见额度回复 | P2 | Fixed | 2026-05-11 23:02 复核当前机器 20:09 / 21:04 CST 旧运行态仍有孤立 quota user turn，但当前代码已覆盖 Web actor 的 assistant quota 文案和失败 `Done`；该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [web_direct_quota_rejected_without_visible_reply.md](./web_direct_quota_rejected_without_visible_reply.md) |
 | Direct / Web / Discord 成功会话已完成 `persist_* + reply.send`，但 `sessions.sqlite3` 会话镜像整体仍停留在前一日下午 | P2 | Fixed | 2026-05-11 23:02 复核当前 sqlite 会话镜像仍停在 2026-04-27，但 `cron_job_runs` 已推进到 23:01 CST；当前代码已覆盖 `runtime_backend=sqlite + shadow_write=false` 的启动 JSON -> SQLite 回填，该证据仅作为未重启 live 观察，不重新打开；无关联 GitHub Issue | [sessions_sqlite_mirror_stalled_after_successful_direct_replies.md](./sessions_sqlite_mirror_stalled_after_successful_direct_replies.md) |

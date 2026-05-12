@@ -34,6 +34,19 @@
 
 ## 证据来源
 
+- `2026-05-12 19:03 CST` 本轮补充当前机器旧运行态证据：最近四小时内 live `duplicate_suppressed` 仍把不同标的或同 ticker 不同事件的真实触发压成 `noop + skipped_noop`：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=19331`，`job_name=持仓重大事件心跳检测`，`executed_at=2026-05-12T16:01:31.340173+08:00`，`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`；本轮 `suppressed_preview` 为 ASTS Q1 财报提醒，`matched_preview` 却指向 `15:00` 的 RKLB 多重异动。
+    - `run_id=19339`，`executed_at=2026-05-12T16:31:11.094929+08:00`，同样把 ASTS / TEM 持仓重大事件提醒匹配到 RKLB preview 后落成未发送。
+    - `run_id=19379` 与 `run_id=19391`，分别在 `18:01` 与 `18:31 CST` 生成 ASTS Q1 财报相关 `JsonTriggered` 正文，却被 `17:30` 的 `Cerebras IPO 重大增量` preview 抑制。
+    - `run_id=19398`，`executed_at=2026-05-12T19:01:53.087315+08:00`，本轮 ASTS Q1 业绩提醒被 `17:30` 的 RKLB 异动 preview 抑制。
+    - `run_id=19403`，`job_name=TSLA 正负触发条件心跳监控`，`executed_at=2026-05-12T19:00:52.242165+08:00`，`suppressed_preview` 为 `TSLA 负向触发` 中 Robotaxi 运营等待问题，`matched_preview` 却指向 `17:00` 的 `TSLA 正向触发`（Musk/高管随访华）。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-12 19:00:52.240-19:00:52.241 CST` 记录 `TSLA 正负触发条件心跳监控` 的 `parse_kind=JsonTriggered -> deliver_preview -> duplicate_suppressed`，其中正负触发主题明显不同。
+    - `2026-05-12 19:01:53.083-19:01:53.085 CST` 记录 `持仓重大事件心跳检测` 的 ASTS Q1 业绩提醒先生成 `deliver_preview`，随后被 RKLB preview 抑制。
+  - 同一窗口存在 `run_id=19354`（TSLA 正向触发）、`run_id=19361`（Cerebras IPO）、`run_id=19365`（DRAM 心跳监控）等成功 `completed + sent`，说明不是 Feishu 出站或 scheduler 全局不可用。
+  - 结论：这些证据仍与本单同根因 / 同影响范围一致，不新建重复文档。当前仓库代码已经有 `heartbeat_duplicate_preview_match_allows_tsla_distinct_same_ticker_events`、`heartbeat_duplicate_preview_match_allows_dram_record_high_after_cerebras_ipo` 等回归覆盖同 ticker 不同事件与跨实体误判路径；本轮按当前机器旧运行态 / 未确认重启处理，不把状态从 `Fixed` 回退。若部署 / 重启到当前代码后仍复现，再重新打开。
+
 - `2026-05-12 15:03 CST` 本轮补充当前机器旧运行态证据：最近四小时内 live `duplicate_suppressed` 仍把不同标的 / 不同事件的真实触发压成 `noop + skipped_noop`：
   - `data/sessions.sqlite3` -> `cron_job_runs`
     - `run_id=19234`，`job_name=DRAM 心跳监控`，`executed_at=2026-05-12T11:30:41.862828+08:00`，`execution_status=noop`，`message_send_status=skipped_noop`，`delivered=0`；`detail_json.parse_kind=JsonTriggered` 且 `duplicate_suppressed=true`，`suppressed_preview` 为 DRAM 创上市以来新高，`matched_preview` 却指向 `2026-05-12 10:00` 的 `持仓重大事件`。

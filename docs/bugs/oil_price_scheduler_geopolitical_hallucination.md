@@ -19,6 +19,24 @@
   - `rustfmt --edition 2024 --config skip_children=true --check crates/hone-channels/src/scheduler.rs memory/src/session.rs`
 - 关联 GitHub Issue：无。
 
+## 最新进展（2026-05-12 19:03 CST）
+
+- 本轮巡检继续保持本单 `P2 / New`，但最近四小时内没有新增已送达的原油坏播报；最新模型坏输出被 preview 去重压成未发送：
+  - `data/sessions.sqlite3` -> `cron_job_runs`
+    - `run_id=19371`
+    - `job_name=全天原油价格3小时播报`
+    - `executed_at=2026-05-12T18:01:25.543984+08:00`
+    - `execution_status=noop`
+    - `message_send_status=skipped_noop`
+    - `delivered=0`
+    - `detail_json.parse_kind=JsonTriggered`
+    - `detail_json.duplicate_suppressed=true`
+    - `suppressed_preview` 仍生成 `WTI原油（CLM26）约$100.98/桶`、`布伦特原油（CBK26）约$108.35/桶`，并继续把霍尔木兹封锁风险、美伊紧张局势写成油价驱动。
+    - `matched_preview` 指向 `2026-05-12 15:00` 已送达的同类原油播报。
+  - `data/runtime/logs/sidecar.log`
+    - `2026-05-12 18:01:25.543 CST` 记录同一任务 `duplicate_suppressed`，没有进入 Feishu send。
+- 结论：18:01 样本证明模型侧仍会生成同类未核验归因正文，但它没有实际送达用户；因此本轮不新增严重等级变化，不把该样本单独作为新的缺陷根因。当前活跃依据仍是 15:00 CST 已成功外发、且未见 `commodity_causality_guarded` 的坏播报。
+
 ## 最新进展（2026-05-12 15:03 CST）
 
 - 本轮巡检把本单从 `Fixed` 回退为 `New`：最近四小时真实窗口中，`全天原油价格3小时播报` 再次成功送达未核验或高风险归因正文，且未见商品 heartbeat guard 元数据。
