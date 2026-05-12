@@ -28,7 +28,8 @@ use crate::routes::history::history_from_messages;
 use crate::state::{AppState, PushEvent};
 use crate::types::{
     PublicAuthUserInfo, PublicChangePasswordRequest, PublicChatRequest, PublicInviteLoginRequest,
-    PublicPasswordLoginRequest, PublicSetPasswordRequest, PublicUploadedAttachment,
+    PublicPasswordLoginRequest, PublicSetPasswordRequest, PublicSmsLoginRequest,
+    PublicSmsSendRequest, PublicUploadedAttachment,
 };
 
 /// Upper bounds enforced when users upload files through the public chat.
@@ -110,6 +111,217 @@ fn validate_password_strength(value: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
+pub(crate) async fn handle_sms_send_code(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<PublicSmsSendRequest>,
+) -> Response {
+    let phone_number = match crate::routes::require_phone_number(request.phone_number, "手机号")
+    {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+
+    let ip_key = public_client_key(&headers);
+    let phone_key = format!("sms-send:{phone_number}");
+    for key in [&ip_key, &phone_key] {
+        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
+            state.public_auth_limiter.check(key)
+        {
+            return json_rate_limited(retry_after_secs);
+        }
+    }
+
+    let user = match state
+        .web_auth
+        .find_active_invite_user_by_phone(&phone_number)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询白名单失败: {error}"),
+            );
+        }
+    };
+    if user.is_none() {
+        let _ = state.public_auth_limiter.record_failure(&phone_key);
+        return crate::routes::json_error(
+            StatusCode::FORBIDDEN,
+            "目前是邀请制，请联系 bm@hone-claw.com 加入白名单",
+        );
+    }
+
+    match crate::aliyun_sms::send_verify_code(&state.http_client, &phone_number).await {
+        Ok(()) => {
+            state.public_auth_limiter.record_success(&phone_key);
+            Json(json!({ "ok": true })).into_response()
+        }
+        Err(error) => sms_provider_error_response("发送验证码失败", error),
+    }
+}
+
+pub(crate) async fn handle_sms_login(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<PublicSmsLoginRequest>,
+) -> Response {
+    let phone_number = match crate::routes::require_phone_number(request.phone_number, "手机号")
+    {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let verify_code = request
+        .verify_code
+        .unwrap_or_default()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect::<String>();
+    if !(4..=8).contains(&verify_code.len()) {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, "验证码格式不正确");
+    }
+    let tos_version = request.tos_version.unwrap_or_default();
+    if tos_version.trim().is_empty() {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, "需同意用户协议与隐私政策");
+    }
+    if tos_version.trim() != TOS_VERSION {
+        return crate::routes::json_error(
+            StatusCode::BAD_REQUEST,
+            "协议版本已更新，请刷新页面后重新确认",
+        );
+    }
+
+    let ip_key = public_client_key(&headers);
+    let phone_key = format!("sms-login:{phone_number}");
+    for key in [&ip_key, &phone_key] {
+        if let PublicAuthLimitStatus::Blocked { retry_after_secs } =
+            state.public_auth_limiter.check(key)
+        {
+            return json_rate_limited(retry_after_secs);
+        }
+    }
+
+    let user = match state
+        .web_auth
+        .find_active_invite_user_by_phone(&phone_number)
+    {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            let _ = state.public_auth_limiter.record_failure(&phone_key);
+            return crate::routes::json_error(
+                StatusCode::FORBIDDEN,
+                "目前是邀请制，请联系 bm@hone-claw.com 加入白名单",
+            );
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("查询白名单失败: {error}"),
+            );
+        }
+    };
+
+    let verified =
+        match crate::aliyun_sms::check_verify_code(&state.http_client, &phone_number, &verify_code)
+            .await
+        {
+            Ok(value) => value,
+            Err(error) => return sms_provider_error_response("核验验证码失败", error),
+        };
+    if !verified {
+        return sms_login_failed(&state, &ip_key, &phone_key);
+    }
+
+    if let Err(error) = state
+        .web_auth
+        .record_tos_acceptance(&user.user_id, TOS_VERSION)
+    {
+        return crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("记录协议接受失败: {error}"),
+        );
+    }
+
+    let ttl_days = if request.remember {
+        SESSION_TTL_DAYS_LONG
+    } else {
+        SESSION_TTL_DAYS_SHORT
+    };
+    let max_age_secs = if request.remember {
+        WEB_SESSION_MAX_AGE_LONG_SECS
+    } else {
+        WEB_SESSION_MAX_AGE_SHORT_SECS
+    };
+    let session = match state
+        .web_auth
+        .create_session_for_user(&user.user_id, ttl_days)
+    {
+        Ok(Some(session)) => session,
+        Ok(None) => {
+            return crate::routes::json_error(StatusCode::UNAUTHORIZED, "账号不可用，请联系管理员");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("创建登录态失败: {error}"),
+            );
+        }
+    };
+
+    state.public_auth_limiter.record_success(&ip_key);
+    state.public_auth_limiter.record_success(&phone_key);
+    let refreshed = match state.web_auth.find_invite_user(&session.user_id) {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return crate::routes::json_error(StatusCode::INTERNAL_SERVER_ERROR, "用户已丢失");
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取用户失败: {error}"),
+            );
+        }
+    };
+    let user_id = refreshed.user_id.clone();
+    let mut response = Json(json!({
+        "user": to_public_auth_user(&state, &user_id, refreshed),
+    }))
+    .into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        build_session_cookie(&session.session_token, &headers, max_age_secs),
+    );
+    response
+}
+
+fn sms_login_failed(state: &AppState, ip_key: &str, phone_key: &str) -> Response {
+    let mut rate_limited = None;
+    for key in [ip_key, phone_key] {
+        if let Some(retry_after_secs) = state.public_auth_limiter.record_failure(key) {
+            rate_limited = Some(json_rate_limited(retry_after_secs));
+        }
+    }
+    rate_limited.unwrap_or_else(|| {
+        crate::routes::json_error(StatusCode::UNAUTHORIZED, "验证码不正确或已过期")
+    })
+}
+
+fn sms_provider_error_response(prefix: &str, error: crate::aliyun_sms::AliyunSmsError) -> Response {
+    match error.kind {
+        crate::aliyun_sms::AliyunSmsErrorKind::Config => crate::routes::json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!("{prefix}: 短信服务未配置"),
+        ),
+        crate::aliyun_sms::AliyunSmsErrorKind::Transport => {
+            crate::routes::json_error(StatusCode::BAD_GATEWAY, format!("{prefix}: {error}"))
+        }
+        crate::aliyun_sms::AliyunSmsErrorKind::Provider => {
+            crate::routes::json_error(StatusCode::BAD_GATEWAY, format!("{prefix}: {error}"))
+        }
+    }
+}
+
+#[allow(dead_code)]
 pub(crate) async fn handle_invite_login(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -198,6 +410,7 @@ pub(crate) async fn handle_invite_login(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) async fn handle_password_login(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -305,6 +518,7 @@ pub(crate) async fn handle_password_login(
     response
 }
 
+#[allow(dead_code)]
 fn password_login_failed(state: &AppState, ip_key: &str, phone_key: &str) -> Response {
     let mut rate_limited = None;
     for key in [ip_key, phone_key] {
@@ -317,6 +531,7 @@ fn password_login_failed(state: &AppState, ip_key: &str, phone_key: &str) -> Res
     })
 }
 
+#[allow(dead_code)]
 pub(crate) async fn handle_set_password(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -418,6 +633,7 @@ pub(crate) async fn handle_set_password(
     response
 }
 
+#[allow(dead_code)]
 pub(crate) async fn handle_change_password(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -1270,7 +1486,7 @@ fn public_client_key(headers: &HeaderMap) -> String {
 fn json_rate_limited(retry_after_secs: u64) -> Response {
     let mut response = crate::routes::json_error(
         StatusCode::TOO_MANY_REQUESTS,
-        format!("邀请码尝试过于频繁，请在 {} 秒后重试", retry_after_secs),
+        format!("登录尝试过于频繁，请在 {} 秒后重试", retry_after_secs),
     );
     if let Ok(value) = HeaderValue::from_str(&retry_after_secs.to_string()) {
         response.headers_mut().insert(header::RETRY_AFTER, value);

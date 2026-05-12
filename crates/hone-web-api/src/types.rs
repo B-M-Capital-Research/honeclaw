@@ -39,6 +39,20 @@ pub struct PublicPasswordLoginRequest {
 }
 
 #[derive(Deserialize)]
+pub struct PublicSmsSendRequest {
+    pub phone_number: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PublicSmsLoginRequest {
+    pub phone_number: Option<String>,
+    pub verify_code: Option<String>,
+    pub tos_version: Option<String>,
+    #[serde(default)]
+    pub remember: bool,
+}
+
+#[derive(Deserialize)]
 pub struct PublicSetPasswordRequest {
     pub new_password: Option<String>,
     pub tos_version: Option<String>,

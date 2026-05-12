@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
+
+## 2026-05-12
+
+### Public SMS Verification Login
+
+- Status: done
+- Date: 2026-05-12
+- Plan: `docs/archive/plans/public-sms-login.md`
+- Handoff: `docs/handoffs/2026-05-12-public-sms-login.md`
+- Decision / ADR: N/A
+- Related PRs / commits: N/A
+- Related runbooks / regressions: `cargo test -p hone-memory web_auth::tests::active_invite_user_by_phone_is_sms_login_whitelist`, `cargo test -p hone-memory web_auth::tests::record_tos_acceptance_updates_public_login_terms`, `cargo test -p hone-web-api aliyun_sms::tests`, `cargo check -p hone-web-api`, `bun run --cwd packages/app typecheck`, `bun run --cwd packages/app test:e2e -- --project=public public-sms-login.spec.ts`, optional live SMS smoke `HONE_ALIYUN_SMS_LIVE_PHONE=13871396421 cargo test -p hone-web-api aliyun_sms::tests::live_send_verify_code_smoke -- --ignored --nocapture`
+- Current conclusion: 用户端登录已切换为手机号 + 阿里云短信验证码；管理端现有 Web invite 用户手机号作为白名单来源，旧邀请码仅保留为兼容管理字段。
+- Next entry point: `crates/hone-web-api/src/aliyun_sms.rs`, `crates/hone-web-api/src/routes/public.rs`, and `packages/app/src/components/public-login-form.tsx`
 
 ## 2026-05-11
 

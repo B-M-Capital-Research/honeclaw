@@ -41,7 +41,9 @@ export class ApiError extends Error {
 }
 
 export function isUnauthorizedApiError(error: unknown) {
-  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+  return (
+    error instanceof ApiError && (error.status === 401 || error.status === 403)
+  );
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -85,7 +87,9 @@ export async function getChannelSettings() {
   return parseJson<DesktopChannelSettings>(response);
 }
 
-export async function putChannelSettings(settings: DesktopChannelSettingsInput) {
+export async function putChannelSettings(
+  settings: DesktopChannelSettingsInput,
+) {
   const response = await apiFetch("/api/channel-settings", {
     method: "PUT",
     headers: {
@@ -235,56 +239,22 @@ export async function connectEvents(actor: ActorRef) {
   return createEventSource(`/api/events?${actorQuery(actor)}`);
 }
 
-export async function publicInviteLogin(
-  inviteCode: string,
-  phoneNumber: string,
-) {
-  const response = await apiFetch("/api/public/auth/invite-login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      invite_code: inviteCode,
-      phone_number: phoneNumber,
-    }),
-  });
-  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
-  return payload.user;
-}
-
-export async function publicPasswordLogin(input: {
-  phone_number: string;
-  password: string;
-  remember: boolean;
-}) {
-  const response = await apiFetch("/api/public/auth/password-login", {
+export async function publicSendSmsCode(phoneNumber: string) {
+  const response = await apiFetch("/api/public/auth/sms/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ phone_number: phoneNumber }),
   });
-  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
-  return payload.user;
+  await parseJson<{ ok: boolean }>(response);
 }
 
-export async function setPublicPassword(input: {
-  new_password: string;
+export async function publicSmsLogin(input: {
+  phone_number: string;
+  verify_code: string;
+  remember: boolean;
   tos_version: string;
 }) {
-  const response = await apiFetch("/api/public/auth/set-password", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
-  return payload.user;
-}
-
-export async function changePublicPassword(input: {
-  current_password: string;
-  new_password: string;
-}) {
-  const response = await apiFetch("/api/public/auth/change-password", {
+  const response = await apiFetch("/api/public/auth/sms/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

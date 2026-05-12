@@ -1,5 +1,5 @@
 // Terms of Service / Privacy Policy version constants.
-// Bumping this version forces re-acknowledgement at next set/change-password.
+// Bumping this version forces re-acknowledgement at next SMS login.
 // Backend mirrors this in crates/hone-web-api/src/routes/public.rs `TOS_VERSION`.
 
 export const TOS_VERSION = "2.0";

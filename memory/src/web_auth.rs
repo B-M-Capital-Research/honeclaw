@@ -229,6 +229,32 @@ impl WebAuthStorage {
         .map_err(sql_err)
     }
 
+    /// Public SMS login whitelist lookup. Admin-created invite users are the
+    /// current whitelist source; revoked users cannot receive or verify codes.
+    pub fn find_active_invite_user_by_phone(
+        &self,
+        phone_number: &str,
+    ) -> HoneResult<Option<WebInviteUser>> {
+        let phone = normalize_phone_number(phone_number);
+        if phone.is_empty() {
+            return Ok(None);
+        }
+        let conn = self.conn.lock().map_err(lock_err)?;
+        conn.query_row(
+            "
+            SELECT user_id, invite_code, phone_number, created_at, last_login_at, revoked_at,
+                   password_hash, password_set_at, tos_accepted_at, tos_version,
+                   api_key_prefix, api_key_created_at, api_key_last_used_at
+            FROM web_invite_users
+            WHERE phone_number = ?1 AND revoked_at IS NULL
+            ",
+            params![phone],
+            map_invite_user,
+        )
+        .optional()
+        .map_err(sql_err)
+    }
+
     pub fn find_invite_user(&self, user_id: &str) -> HoneResult<Option<WebInviteUser>> {
         let conn = self.conn.lock().map_err(lock_err)?;
         conn.query_row(
@@ -680,6 +706,23 @@ impl WebAuthStorage {
         Ok(updated > 0)
     }
 
+    pub fn record_tos_acceptance(&self, user_id: &str, tos_version: &str) -> HoneResult<bool> {
+        let now = beijing_now_rfc3339();
+        let conn = self.conn.lock().map_err(lock_err)?;
+        let updated = conn
+            .execute(
+                "
+                UPDATE web_invite_users
+                SET tos_accepted_at = ?2,
+                    tos_version = ?3
+                WHERE user_id = ?1 AND revoked_at IS NULL
+                ",
+                params![user_id, now, tos_version],
+            )
+            .map_err(sql_err)?;
+        Ok(updated > 0)
+    }
+
     /// 按 user_id 创建 session,TTL 由调用方指定(密码登录根据"保持登录"勾选
     /// 选择 long / short)。普通登录不清理该用户的其它活跃 session,避免
     /// 用户浏览器、自动化健康检查和多设备登录互相踢掉登录态。
@@ -1035,6 +1078,46 @@ mod tests {
         );
         assert!(listed[0].api_key_plaintext.is_none());
         assert_eq!(listed[0].api_key_prefix, created.api_key_prefix);
+    }
+
+    #[test]
+    fn active_invite_user_by_phone_is_sms_login_whitelist() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+
+        let found = storage
+            .find_active_invite_user_by_phone("138-0013-8000")
+            .expect("lookup")
+            .expect("user");
+        assert_eq!(found.user_id, created.user_id);
+
+        storage
+            .set_invite_revoked(&created.user_id, true)
+            .expect("revoke");
+        assert!(
+            storage
+                .find_active_invite_user_by_phone("13800138000")
+                .expect("lookup revoked")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn record_tos_acceptance_updates_public_login_terms() {
+        let storage = test_storage();
+        let created = storage.create_invite_user("13800138000").expect("create");
+
+        assert!(
+            storage
+                .record_tos_acceptance(&created.user_id, "2.0")
+                .expect("record")
+        );
+        let refreshed = storage
+            .find_invite_user(&created.user_id)
+            .expect("lookup")
+            .expect("user");
+        assert_eq!(refreshed.tos_version.as_deref(), Some("2.0"));
+        assert!(refreshed.tos_accepted_at.is_some());
     }
 
     #[test]

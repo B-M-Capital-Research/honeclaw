@@ -84,6 +84,10 @@ quick-xml = "0.36"
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["getrandom"] }
 sha2 = "0.10"
+base64 = "0.22"
+hmac = "0.12"
+sha1 = "0.10"
+percent-encoding = "2"
 
 # Internal crates
 hone-core = { path = "crates/hone-core" }

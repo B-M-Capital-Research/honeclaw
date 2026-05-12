@@ -490,6 +490,12 @@ web:
   local_workflow_validate_code: ""
   # Env var name used when local_workflow_validate_code is empty
   local_workflow_validate_code_env: "HONE_REPORT_VALIDATE_CODE"
+  # Public SMS login uses Aliyun PNVS VerifyCode APIs and is configured by env:
+  # - ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET (required)
+  # - HONE_ALIYUN_SMS_SIGN_NAME (default: 速通互联验证码)
+  # - HONE_ALIYUN_SMS_TEMPLATE_CODE (default: 100001)
+  # - HONE_ALIYUN_SMS_TEMPLATE_PARAM (default: {"code":"##code##","min":"5"})
+  # Existing admin-created Web invite users are treated as the public login whitelist.
 
 security:
   # Whether KB queries are isolated by actor/session (recommended to avoid cross-user retrieval)

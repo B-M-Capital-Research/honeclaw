@@ -33,6 +33,10 @@ reqwest        = { workspace = true }
 async-trait    = { workspace = true }
 subtle         = { workspace = true }
 url            = "2"
+base64         = { workspace = true }
+hmac           = { workspace = true }
+sha1           = { workspace = true }
+percent-encoding = { workspace = true }
 
 [dev-dependencies]
 tower = "0.5"

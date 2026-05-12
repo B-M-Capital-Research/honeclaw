@@ -3,12 +3,13 @@
 // Only strings consumed by `pages/settings.tsx` belong here. Both ZH and EN
 // trees share the exact same shape — `structure.test.ts` enforces parity.
 
-import { makeContentProxy } from "../i18n"
+import { makeContentProxy } from "../i18n";
 
 const ZH = {
   language: {
     title: "界面语言",
-    subtitle: "选择控制台语言。保存后写入 config.yaml，所有连接到该后端的设备首次加载使用此语言。",
+    subtitle:
+      "选择控制台语言。保存后写入 config.yaml，所有连接到该后端的设备首次加载使用此语言。",
     option_zh: "中文",
     option_en: "English",
     save: "保存",
@@ -16,15 +17,14 @@ const ZH = {
     saved: "已保存",
     save_failed: "保存失败",
     no_change: "未更改",
-    note:
-      "侧边栏切换器只影响当前设备，本设置才会写入 config.yaml 决定其他设备的默认语言。",
+    note: "侧边栏切换器只影响当前设备，本设置才会写入 config.yaml 决定其他设备的默认语言。",
   },
   tabs: {
     agent: "Agent",
     data: "数据源",
     notify: "通知",
     channel: "渠道",
-    invite: "邀请码",
+    invite: "白名单",
   },
   agent: {
     title: "基础设置",
@@ -37,7 +37,7 @@ const ZH = {
       base_url_label: "服务地址",
       model_label: "模型",
       api_key_label: "API Key",
-      contact_note: "如需邀请码或 API Key，请联系 bm@hone-claw.com。",
+      contact_note: "如需加入白名单或获取 API Key，请联系 bm@hone-claw.com。",
       hide: "隐藏",
       show: "显示",
       test_connection: "测试连通",
@@ -108,7 +108,8 @@ const ZH = {
       name: "Codex ACP",
       description_prefix: "使用 ",
       description_code: "codex-acp",
-      description_suffix: " 驱动当前 Agent，会话实际走 ACP 链路而不是 multi-agent。",
+      description_suffix:
+        " 驱动当前 Agent，会话实际走 ACP 链路而不是 multi-agent。",
       runtime_note:
         "运行时配置当前来自 desktop canonical / effective config；如果 live listener 仍显示旧 runner，应继续核对 release sidecar 是否已按新配置重启。",
       checking_status: "检测中，请稍候…",
@@ -160,7 +161,8 @@ const ZH = {
   },
   notify: {
     title: "通知推送偏好",
-    subtitle: "代任意用户主体调整事件推送策略。终端用户自己也可以在渠道里用自然语言调整。",
+    subtitle:
+      "代任意用户主体调整事件推送策略。终端用户自己也可以在渠道里用自然语言调整。",
   },
   channel: {
     title: "渠道设置",
@@ -202,29 +204,33 @@ const ZH = {
       name: "iMessage",
       warning: "⚠️ Needs Full Disk Access",
     },
-    sync_note: "保存后配置文件立即更新；CLI 启动的监听进程需重启后应用启停变化。",
+    sync_note:
+      "保存后配置文件立即更新；CLI 启动的监听进程需重启后应用启停变化。",
     save: "同步全部渠道",
     saving: "同步中…",
   },
   invite: {
-    title: "Web 用户邀请码",
+    title: "Web 用户白名单",
     subtitle:
-      "生成邀请码时会同步创建一个 `web` 用户，并将邀请码与手机号强绑定。用户通过 `/chat` 输入邀请码和手机号登录后，复用现有 12 次对话额度限制。",
+      "新增手机号会同步创建一个 `web` 用户。用户通过 `/chat` 使用手机号和短信验证码登录后，复用现有 12 次对话额度限制；历史邀请码保留用于兼容和管理。",
     refresh: "刷新",
     phone_label: "手机号",
-    phone_placeholder: "生成邀请码前先输入手机号",
-    create: "生成邀请码",
+    phone_placeholder: "输入要加入白名单的手机号",
+    create: "加入白名单",
     creating: "生成中…",
     phone_required: "请输入手机号",
-    created: "已为 {phone} 生成邀请码 {code}",
-    created_copied: "已为 {phone} 生成并复制邀请码 {code}",
-    created_with_api_key: "已为 {phone} 生成邀请码 {code} 和 API Key {apiKey}",
-    created_with_api_key_copied: "已为 {phone} 生成邀请码 {code} 和 API Key，并已复制",
+    created: "已将 {phone} 加入白名单（兼容邀请码 {code}）",
+    created_copied: "已将 {phone} 加入白名单，并复制兼容邀请码 {code}",
+    created_with_api_key:
+      "已将 {phone} 加入白名单，并生成兼容邀请码 {code} 和 API Key {apiKey}",
+    created_with_api_key_copied:
+      "已将 {phone} 加入白名单，并生成兼容邀请码 {code} 和 API Key；均已复制",
     copied: "已复制邀请码 {code}",
     copy_unsupported: "当前环境不支持复制",
-    disable_confirm: "停用 {userId} 的邀请码后，现有 Web 登录态会立即失效。继续吗？",
+    disable_confirm:
+      "停用 {userId} 的白名单后，现有 Web 登录态会立即失效。继续吗？",
     reset_confirm:
-      "将为 {userId} 生成新邀请码，并让旧邀请码和现有 Web 登录态立即失效。继续吗？",
+      "将为 {userId} 生成新兼容邀请码，并让旧邀请码和现有 Web 登录态立即失效。继续吗？",
     api_key_reset_confirm:
       "将为 {userId} 生成新的 API Key，旧 API Key 会立即失效，但不会清理登录态。继续吗？",
     reset_copied_suffix: "{message}，新邀请码已复制",
@@ -239,7 +245,7 @@ const ZH = {
       remaining: "剩余次数",
       last_login: "最近登录",
       actions: "操作",
-      empty: "还没有生成任何邀请码。",
+      empty: "还没有加入任何白名单用户。",
       phone_unbound: "未绑定",
       enabled: "已启用",
       disabled: "已停用",
@@ -259,7 +265,7 @@ const ZH = {
       disabling: "停用中…",
     },
   },
-}
+};
 
 const EN: typeof ZH = {
   language: {
@@ -273,15 +279,14 @@ const EN: typeof ZH = {
     saved: "Saved",
     save_failed: "Save failed",
     no_change: "No change",
-    note:
-      "The sidebar switcher only affects the current device. This setting writes to config.yaml and decides the default language on other devices.",
+    note: "The sidebar switcher only affects the current device. This setting writes to config.yaml and decides the default language on other devices.",
   },
   tabs: {
     agent: "Agent",
     data: "Data sources",
     notify: "Notifications",
     channel: "Channels",
-    invite: "Invite codes",
+    invite: "Whitelist",
   },
   agent: {
     title: "Core settings",
@@ -295,7 +300,8 @@ const EN: typeof ZH = {
       base_url_label: "Service URL",
       model_label: "Model",
       api_key_label: "API Key",
-      contact_note: "Contact bm@hone-claw.com for an invite code or API key.",
+      contact_note:
+        "Contact bm@hone-claw.com to join the whitelist or get an API key.",
       hide: "Hide",
       show: "Show",
       test_connection: "Test connection",
@@ -366,7 +372,8 @@ const EN: typeof ZH = {
       name: "Codex ACP",
       description_prefix: "Drives the current agent via ",
       description_code: "codex-acp",
-      description_suffix: ". Sessions run over the ACP link instead of multi-agent.",
+      description_suffix:
+        ". Sessions run over the ACP link instead of multi-agent.",
       runtime_note:
         "Runtime config currently comes from desktop canonical / effective config. If the live listener still shows the old runner, double-check that the release sidecar restarted with the new config.",
       checking_status: "Checking, please wait…",
@@ -398,7 +405,8 @@ const EN: typeof ZH = {
       "Configure keys for data sources and search services. Multi-key rotation and auto retry are supported.",
     fmp: {
       name: "Financial data API (Financial Modeling Prep)",
-      description: "Real-time quotes, fundamentals, and other core financial data.",
+      description:
+        "Real-time quotes, fundamentals, and other core financial data.",
       key_placeholder: "FMP API Key",
       remove: "Remove",
       add_key: "+ Add key",
@@ -408,7 +416,8 @@ const EN: typeof ZH = {
     },
     tavily: {
       name: "Search API (Tavily)",
-      description: "Live web search for fresh news, articles, and page content.",
+      description:
+        "Live web search for fresh news, articles, and page content.",
       key_placeholder: "tvly-...",
       remove: "Remove",
       add_key: "+ Add key",
@@ -469,30 +478,33 @@ const EN: typeof ZH = {
     saving: "Syncing…",
   },
   invite: {
-    title: "Web user invite codes",
+    title: "Web user whitelist",
     subtitle:
-      "Generating an invite code also creates a `web` user bound to the phone number. After signing in via `/chat` with the invite code and phone number, the user shares the existing 12-message daily quota.",
+      "Adding a phone number creates a `web` user. Users sign in from `/chat` with phone + SMS code and share the existing 12-message daily quota. Historical invite codes are kept for compatibility and management.",
     refresh: "Refresh",
     phone_label: "Phone number",
-    phone_placeholder: "Enter the phone number before generating",
-    create: "Generate invite code",
+    phone_placeholder: "Phone number to whitelist",
+    create: "Add to whitelist",
     creating: "Generating…",
     phone_required: "Enter a phone number",
-    created: "Generated invite code {code} for {phone}",
-    created_copied: "Generated and copied invite code {code} for {phone}",
-    created_with_api_key: "Generated invite code {code} and API key {apiKey} for {phone}",
+    created: "Added {phone} to the whitelist (compat invite {code})",
+    created_copied:
+      "Added {phone} to the whitelist and copied compat invite {code}",
+    created_with_api_key:
+      "Added {phone} to the whitelist with compat invite {code} and API key {apiKey}",
     created_with_api_key_copied:
-      "Generated invite code {code} and API key for {phone}; both copied",
+      "Added {phone} to the whitelist with compat invite {code} and API key; both copied",
     copied: "Copied invite code {code}",
     copy_unsupported: "Clipboard not available in this environment",
     disable_confirm:
-      "Disabling the invite for {userId} will immediately log out the existing web session. Continue?",
+      "Disabling the whitelist entry for {userId} will immediately log out the existing web session. Continue?",
     reset_confirm:
-      "This will issue a new invite code for {userId} and immediately invalidate the old code and any active web session. Continue?",
+      "This will issue a new compat invite code for {userId} and immediately invalidate the old code and any active web session. Continue?",
     api_key_reset_confirm:
       "This will issue a new API key for {userId}. The old API key stops working, but web sessions stay signed in. Continue?",
     reset_copied_suffix: "{message}; new invite code copied",
-    api_key_copied: "API key copied. Plaintext is shown only once; store it securely.",
+    api_key_copied:
+      "API key copied. Plaintext is shown only once; store it securely.",
     table: {
       code: "Invite code",
       phone: "Phone",
@@ -503,7 +515,7 @@ const EN: typeof ZH = {
       remaining: "Remaining",
       last_login: "Last login",
       actions: "Actions",
-      empty: "No invite codes generated yet.",
+      empty: "No whitelisted web users yet.",
       phone_unbound: "Not bound",
       enabled: "Enabled",
       disabled: "Disabled",
@@ -523,9 +535,9 @@ const EN: typeof ZH = {
       disabling: "Disabling…",
     },
   },
-}
+};
 
-export const SETTINGS = makeContentProxy(ZH, EN)
+export const SETTINGS = makeContentProxy(ZH, EN);
 
 // Internal — exported only for the structure parity test.
-export const __SETTINGS_TREES__ = { zh: ZH, en: EN } as const
+export const __SETTINGS_TREES__ = { zh: ZH, en: EN } as const;

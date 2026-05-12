@@ -1,28 +1,33 @@
 // public-me.tsx — Hone Public Site Account / Me page
 
-import { createMemo, createSignal, onMount, Show, type ParentProps } from "solid-js"
-import { useNavigate } from "@solidjs/router"
-import { PublicNav, PublicFooter } from "@/components/public-nav"
-import { PublicModal } from "@/components/public-modal"
-import { PublicPasswordField } from "@/components/public-password-field"
-import { PasswordSetupGuard } from "@/components/password-setup-guard"
-import { PublicLoginForm } from "@/components/public-login-form"
-import { CONTENT } from "@/lib/public-content"
-import { changePublicPassword, getPublicAuthMe, publicLogout } from "@/lib/api"
-import { checkPasswordStrength } from "@/lib/password"
-import type { PublicAuthUserInfo } from "@/lib/types"
-import "./public-site.css"
+import { createSignal, onMount, Show, type ParentProps } from "solid-js";
+import { useNavigate } from "@solidjs/router";
+import { PublicNav, PublicFooter } from "@/components/public-nav";
+import { PublicLoginForm } from "@/components/public-login-form";
+import { CONTENT } from "@/lib/public-content";
+import { getPublicAuthMe, publicLogout } from "@/lib/api";
+import type { PublicAuthUserInfo } from "@/lib/types";
+import "./public-site.css";
 
 function formatDate(iso: string | undefined): string {
-  if (!iso) return CONTENT.me.date_placeholder
+  if (!iso) return CONTENT.me.date_placeholder;
   try {
-    return new Date(iso).toLocaleDateString(CONTENT.me.date_locale, { year: "numeric", month: "long", day: "numeric" })
+    return new Date(iso).toLocaleDateString(CONTENT.me.date_locale, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
   } catch {
-    return iso
+    return iso;
   }
 }
 
-function StatCard(props: { label: string; value: string | number; sub?: string; accent?: boolean }) {
+function StatCard(props: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  accent?: boolean;
+}) {
   return (
     <div
       style={{
@@ -56,10 +61,14 @@ function StatCard(props: { label: string; value: string | number; sub?: string; 
         {props.value}
       </div>
       <Show when={props.sub}>
-        <div style={{ "font-size": "12px", color: "#94a3b8", "margin-top": "6px" }}>{props.sub}</div>
+        <div
+          style={{ "font-size": "12px", color: "#94a3b8", "margin-top": "6px" }}
+        >
+          {props.sub}
+        </div>
       </Show>
     </div>
-  )
+  );
 }
 
 function InfoRow(props: { label: string; value: string }) {
@@ -73,7 +82,11 @@ function InfoRow(props: { label: string; value: string }) {
         "border-bottom": "1px solid rgba(0,0,0,0.06)",
       }}
     >
-      <span style={{ "font-size": "13px", color: "#94a3b8", "font-weight": "500" }}>{props.label}</span>
+      <span
+        style={{ "font-size": "13px", color: "#94a3b8", "font-weight": "500" }}
+      >
+        {props.label}
+      </span>
       <span
         style={{
           "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
@@ -85,17 +98,19 @@ function InfoRow(props: { label: string; value: string }) {
         {props.value}
       </span>
     </div>
-  )
+  );
 }
 
-type ActionBtnVariant = "default" | "primary" | "ghost" | "danger"
+type ActionBtnVariant = "default" | "primary" | "ghost" | "danger";
 
-function ActionBtn(props: ParentProps<{
-  onClick?: () => void
-  href?: string
-  variant?: ActionBtnVariant
-}>) {
-  const variant = () => props.variant ?? "default"
+function ActionBtn(
+  props: ParentProps<{
+    onClick?: () => void;
+    href?: string;
+    variant?: ActionBtnVariant;
+  }>,
+) {
+  const variant = () => props.variant ?? "default";
 
   const getStyle = () => {
     const base = {
@@ -111,18 +126,39 @@ function ActionBtn(props: ParentProps<{
       "align-items": "center",
       gap: "6px",
       "text-decoration": "none",
-    }
+    };
     if (variant() === "primary") {
-      return { ...base, background: "#f59e0b", border: "1px solid #f59e0b", color: "#fff", "box-shadow": "0 2px 8px rgba(245,158,11,0.25)" }
+      return {
+        ...base,
+        background: "#f59e0b",
+        border: "1px solid #f59e0b",
+        color: "#fff",
+        "box-shadow": "0 2px 8px rgba(245,158,11,0.25)",
+      };
     }
     if (variant() === "ghost") {
-      return { ...base, background: "transparent", border: "1px solid rgba(0,0,0,0.08)", color: "#94a3b8" }
+      return {
+        ...base,
+        background: "transparent",
+        border: "1px solid rgba(0,0,0,0.08)",
+        color: "#94a3b8",
+      };
     }
     if (variant() === "danger") {
-      return { ...base, background: "transparent", border: "1px solid rgba(239,68,68,0.20)", color: "#ef4444" }
+      return {
+        ...base,
+        background: "transparent",
+        border: "1px solid rgba(239,68,68,0.20)",
+        color: "#ef4444",
+      };
     }
-    return { ...base, background: "#fff", border: "1px solid rgba(0,0,0,0.10)", color: "#475569" }
-  }
+    return {
+      ...base,
+      background: "#fff",
+      border: "1px solid rgba(0,0,0,0.10)",
+      color: "#475569",
+    };
+  };
 
   return (
     <Show
@@ -137,56 +173,32 @@ function ActionBtn(props: ParentProps<{
         {props.children}
       </button>
     </Show>
-  )
-}
-
-// ── Local helpers for ChangePasswordModal ─────────────────────────────────────
-
-function FieldLabel(props: ParentProps) {
-  return (
-    <span
-      style={{
-        "font-size": "12px",
-        "font-weight": "600",
-        color: "#475569",
-        "letter-spacing": "0.02em",
-        "margin-bottom": "6px",
-      }}
-    >
-      {props.children}
-    </span>
-  )
-}
-
-function ErrorBox(props: { message: string }) {
-  return (
-    <div
-      style={{
-        padding: "10px 12px",
-        "border-radius": "8px",
-        background: "rgba(220,38,38,0.06)",
-        border: "1px solid rgba(220,38,38,0.2)",
-        color: "#b91c1c",
-        "font-size": "12.5px",
-      }}
-    >
-      {props.message}
-    </div>
-  )
+  );
 }
 
 // ── Logged in ─────────────────────────────────────────────────────────────────
-function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void }) {
-  const navigate = useNavigate()
-  const C = CONTENT.me
-  const [changeOpen, setChangeOpen] = createSignal(false)
+function LoggedInView(props: {
+  user: PublicAuthUserInfo;
+  onLogout: () => void;
+}) {
+  const navigate = useNavigate();
+  const C = CONTENT.me;
 
-  const usedToday = () => props.user.daily_limit - props.user.remaining_today
-  const pct = () => Math.min(100, Math.round((usedToday() / props.user.daily_limit) * 100))
+  const usedToday = () => props.user.daily_limit - props.user.remaining_today;
+  const pct = () =>
+    Math.min(100, Math.round((usedToday() / props.user.daily_limit) * 100));
 
   return (
-    <div style={{ "padding-top": "56px", "min-height": "100vh", background: "#f8fafc" }}>
-      <div style={{ "max-width": "800px", margin: "0 auto", padding: "56px 32px" }}>
+    <div
+      style={{
+        "padding-top": "56px",
+        "min-height": "100vh",
+        background: "#f8fafc",
+      }}
+    >
+      <div
+        style={{ "max-width": "800px", margin: "0 auto", padding: "56px 32px" }}
+      >
         {/* Header */}
         <div
           style={{
@@ -249,11 +261,22 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
           <StatCard
             label={C.stats.remaining_today_label}
             value={props.user.remaining_today}
-            sub={C.stats.remaining_today_sub_template.replace("{daily}", String(props.user.daily_limit))}
+            sub={C.stats.remaining_today_sub_template.replace(
+              "{daily}",
+              String(props.user.daily_limit),
+            )}
             accent
           />
-          <StatCard label={C.stats.total_label} value={props.user.success_count} sub={C.stats.total_sub} />
-          <StatCard label={C.stats.daily_limit_label} value={props.user.daily_limit} sub={C.stats.daily_limit_sub} />
+          <StatCard
+            label={C.stats.total_label}
+            value={props.user.success_count}
+            sub={C.stats.total_sub}
+          />
+          <StatCard
+            label={C.stats.daily_limit_label}
+            value={props.user.daily_limit}
+            sub={C.stats.daily_limit_sub}
+          />
         </div>
 
         {/* Usage bar */}
@@ -274,7 +297,15 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
               "margin-bottom": "10px",
             }}
           >
-            <span style={{ "font-size": "13px", "font-weight": "600", color: "#0f172a" }}>{C.usage_today_label}</span>
+            <span
+              style={{
+                "font-size": "13px",
+                "font-weight": "600",
+                color: "#0f172a",
+              }}
+            >
+              {C.usage_today_label}
+            </span>
             <span
               style={{
                 "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
@@ -285,7 +316,14 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
               {usedToday()} / {props.user.daily_limit}
             </span>
           </div>
-          <div style={{ height: "6px", "border-radius": "999px", background: "#f1f5f9", overflow: "hidden" }}>
+          <div
+            style={{
+              height: "6px",
+              "border-radius": "999px",
+              background: "#f1f5f9",
+              overflow: "hidden",
+            }}
+          >
             <div
               style={{
                 height: "100%",
@@ -322,13 +360,26 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
           </h3>
           <div>
             <InfoRow label={C.fields.user_id} value={props.user.user_id} />
-            <InfoRow label={C.fields.created_at} value={formatDate(props.user.created_at)} />
-            <InfoRow label={C.fields.last_login} value={formatDate(props.user.last_login_at)} />
+            <InfoRow
+              label={C.fields.created_at}
+              value={formatDate(props.user.created_at)}
+            />
+            <InfoRow
+              label={C.fields.last_login}
+              value={formatDate(props.user.last_login_at)}
+            />
           </div>
         </div>
 
         {/* Actions */}
-        <div style={{ display: "flex", "flex-wrap": "wrap", gap: "10px", "margin-bottom": "40px" }}>
+        <div
+          style={{
+            display: "flex",
+            "flex-wrap": "wrap",
+            gap: "10px",
+            "margin-bottom": "40px",
+          }}
+        >
           <ActionBtn variant="primary" onClick={() => navigate("/chat")}>
             {C.actions.chat}
           </ActionBtn>
@@ -338,17 +389,10 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
           <ActionBtn variant="ghost" href="#">
             {C.actions.community}
           </ActionBtn>
-          <Show when={props.user.has_password}>
-            <ActionBtn variant="default" onClick={() => setChangeOpen(true)}>
-              {CONTENT.auth.change_password.open_button}
-            </ActionBtn>
-          </Show>
           <ActionBtn variant="danger" onClick={props.onLogout}>
             {C.actions.logout}
           </ActionBtn>
         </div>
-
-        <ChangePasswordModal open={changeOpen()} onClose={() => setChangeOpen(false)} />
 
         {/* Membership placeholder */}
         <div
@@ -359,7 +403,9 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
             background: "rgba(245,158,11,0.03)",
           }}
         >
-          <div style={{ display: "flex", "align-items": "center", gap: "12px" }}>
+          <div
+            style={{ display: "flex", "align-items": "center", gap: "12px" }}
+          >
             <span
               style={{
                 "font-family": "var(--font-mono, 'JetBrains Mono', monospace)",
@@ -371,7 +417,14 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
               ∞
             </span>
             <div>
-              <div style={{ "font-size": "13px", "font-weight": "700", color: "#0f172a", "margin-bottom": "4px" }}>
+              <div
+                style={{
+                  "font-size": "13px",
+                  "font-weight": "700",
+                  color: "#0f172a",
+                  "margin-bottom": "4px",
+                }}
+              >
                 {C.membership.title}
               </div>
               <div style={{ "font-size": "12px", color: "#94a3b8" }}>
@@ -382,204 +435,44 @@ function LoggedInView(props: { user: PublicAuthUserInfo; onLogout: () => void })
         </div>
       </div>
     </div>
-  )
-}
-
-function ChangePasswordModal(props: { open: boolean; onClose: () => void }) {
-  const [current, setCurrent] = createSignal("")
-  const [next, setNext] = createSignal("")
-  const [confirmPwd, setConfirmPwd] = createSignal("")
-  const [submitting, setSubmitting] = createSignal(false)
-  const [error, setError] = createSignal<string | null>(null)
-  const [done, setDone] = createSignal(false)
-
-  const reset = () => {
-    setCurrent("")
-    setNext("")
-    setConfirmPwd("")
-    setError(null)
-    setDone(false)
-  }
-
-  const close = () => {
-    if (submitting()) return
-    reset()
-    props.onClose()
-  }
-
-  const strength = createMemo(() => checkPasswordStrength(next()))
-  const matches = createMemo(() => confirmPwd().length > 0 && confirmPwd() === next())
-  const canSubmit = createMemo(
-    () => current().length > 0 && strength().ok && matches() && !submitting(),
-  )
-
-  const submit = async () => {
-    if (!canSubmit()) return
-    setSubmitting(true)
-    setError(null)
-    try {
-      await changePublicPassword({
-        current_password: current(),
-        new_password: next(),
-      })
-      setDone(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const CP = CONTENT.auth.change_password
-  return (
-    <PublicModal open={props.open} title={CP.title} onClose={close}>
-      <Show
-        when={!done()}
-        fallback={
-          <div style={{ display: "flex", "flex-direction": "column", gap: "16px" }}>
-            <p
-              style={{
-                margin: "0",
-                "font-size": "14px",
-                color: "#15803d",
-                "line-height": "1.6",
-              }}
-            >
-              {CP.success}
-            </p>
-            <div style={{ display: "flex", "justify-content": "flex-end" }}>
-              <button
-                type="button"
-                onClick={close}
-                style={{
-                  padding: "9px 18px",
-                  "border-radius": "8px",
-                  border: "none",
-                  background: "#f59e0b",
-                  color: "#fff",
-                  cursor: "pointer",
-                  "font-family": "inherit",
-                  "font-size": "13px",
-                  "font-weight": "600",
-                }}
-              >
-                {CP.button_ok}
-              </button>
-            </div>
-          </div>
-        }
-      >
-        <div style={{ display: "flex", "flex-direction": "column", gap: "14px" }}>
-          <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-            <FieldLabel>{CP.current_label}</FieldLabel>
-            <PublicPasswordField
-              value={current()}
-              onInput={setCurrent}
-              autoComplete="current-password"
-              ariaLabel={CP.current_aria}
-              placeholder={CP.current_placeholder}
-            />
-          </div>
-          <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-            <FieldLabel>{CP.new_label}</FieldLabel>
-            <PublicPasswordField
-              value={next()}
-              onInput={setNext}
-              autoComplete="new-password"
-              ariaLabel={CP.new_aria}
-              placeholder={CP.new_placeholder}
-              showRules
-            />
-          </div>
-          <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-            <FieldLabel>{CP.confirm_label}</FieldLabel>
-            <PublicPasswordField
-              value={confirmPwd()}
-              onInput={setConfirmPwd}
-              autoComplete="new-password"
-              ariaLabel={CP.confirm_aria}
-              placeholder={CP.confirm_placeholder}
-              onEnter={submit}
-            />
-            <Show when={confirmPwd().length > 0 && !matches()}>
-              <span style={{ "font-size": "11.5px", color: "#dc2626" }}>{CP.error_mismatch}</span>
-            </Show>
-          </div>
-          <Show when={error()}>
-            <ErrorBox message={error()!} />
-          </Show>
-          <div style={{ display: "flex", "justify-content": "flex-end", gap: "10px" }}>
-            <button
-              type="button"
-              onClick={close}
-              disabled={submitting()}
-              style={{
-                padding: "9px 16px",
-                "border-radius": "8px",
-                border: "1px solid rgba(15,23,42,0.14)",
-                background: "#fff",
-                color: "#475569",
-                cursor: submitting() ? "not-allowed" : "pointer",
-                "font-family": "inherit",
-                "font-size": "13px",
-              }}
-            >
-              {CONTENT.common.cancel}
-            </button>
-            <button
-              type="button"
-              onClick={submit}
-              disabled={!canSubmit()}
-              style={{
-                padding: "9px 18px",
-                "border-radius": "8px",
-                border: "none",
-                background: canSubmit() ? "#f59e0b" : "rgba(245,158,11,0.5)",
-                color: "#fff",
-                cursor: canSubmit() ? "pointer" : "not-allowed",
-                "font-family": "inherit",
-                "font-size": "13px",
-                "font-weight": "600",
-              }}
-            >
-              {submitting() ? CP.loading : CP.button_submit}
-            </button>
-          </div>
-        </div>
-      </Show>
-    </PublicModal>
-  )
+  );
 }
 
 // ── PublicMePage ──────────────────────────────────────────────────────────────
 export default function PublicMePage() {
-  const navigate = useNavigate()
-  const [user, setUser] = createSignal<PublicAuthUserInfo | null>(null)
-  const [loading, setLoading] = createSignal(true)
+  const navigate = useNavigate();
+  const [user, setUser] = createSignal<PublicAuthUserInfo | null>(null);
+  const [loading, setLoading] = createSignal(true);
 
   onMount(async () => {
     try {
-      const me = await getPublicAuthMe()
-      setUser(me)
+      const me = await getPublicAuthMe();
+      setUser(me);
     } catch {
-      setUser(null)
+      setUser(null);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  })
+  });
 
   const handleLogout = async () => {
     try {
-      await publicLogout()
+      await publicLogout();
     } catch {
       // ignore
     }
-    setUser(null)
-    navigate("/chat")
-  }
+    setUser(null);
+    navigate("/chat");
+  };
 
   return (
-    <div class="pub-page" style={{ "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)", "-webkit-font-smoothing": "antialiased" }}>
+    <div
+      class="pub-page"
+      style={{
+        "font-family": "var(--font-sans, 'Plus Jakarta Sans', sans-serif)",
+        "-webkit-font-smoothing": "antialiased",
+      }}
+    >
       <PublicNav />
       <Show
         when={!loading()}
@@ -594,19 +487,17 @@ export default function PublicMePage() {
               "justify-content": "center",
             }}
           >
-            <div style={{ "font-size": "13px", color: "#94a3b8" }}>{CONTENT.me.loading}</div>
+            <div style={{ "font-size": "13px", color: "#94a3b8" }}>
+              {CONTENT.me.loading}
+            </div>
           </div>
         }
       >
         <Show when={user()} fallback={<PublicLoginForm onLogin={setUser} />}>
-          {(u) => (
-            <PasswordSetupGuard user={u()} onPasswordSet={setUser}>
-              <LoggedInView user={u()} onLogout={handleLogout} />
-            </PasswordSetupGuard>
-          )}
+          {(u) => <LoggedInView user={u()} onLogout={handleLogout} />}
         </Show>
       </Show>
       <PublicFooter />
     </div>
-  )
+  );
 }

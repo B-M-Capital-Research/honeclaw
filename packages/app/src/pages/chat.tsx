@@ -15,7 +15,6 @@ import {
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { useNavigate } from "@solidjs/router";
-import { PasswordSetupGuard } from "@/components/password-setup-guard";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { CONTENT } from "@/lib/public-content";
 import { setLocale, useLocale } from "@/lib/i18n";
@@ -55,29 +54,48 @@ import type {
 // ── GitHub Star Fetching ─────────────────────────────────────────────────────
 async function fetchGithubStars() {
   try {
-    const res = await fetch("https://api.github.com/repos/B-M-Capital-Research/honeclaw")
-    const data = await res.json()
-    return data.stargazers_count || "..."
+    const res = await fetch(
+      "https://api.github.com/repos/B-M-Capital-Research/honeclaw",
+    );
+    const data = await res.json();
+    return data.stargazers_count || "...";
   } catch (e) {
-    return "..."
+    return "...";
   }
 }
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ICONS = {
   Chat: () => (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
   ),
   Github: () => (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+    </svg>
   ),
   Youtube: () => (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.016 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.016 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.016 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.016 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+    </svg>
   ),
   Bilibili: () => (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.883 0 17.373v-7.36c.036-1.51.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.277 1.277 0 0 1-.388-.933c0-.346.138-.64.414-.88a1.277 1.277 0 0 1 .906-.36c.345 0 .647.127.906.38l2.227 2.12h4.72l2.227-2.12c.27-.253.57-.38.906-.38.365 0 .65.12.853.36.277.24.414.534.414.88 0 .346-.13.653-.387.92zm-12.48 5.387c-.331.03-.593.15-.786.36-.193.21-.29.473-.29.787v3.507c0 .313.097.576.29.786.193.21.455.33.786.36.331-.03.593-.15.786-.36.193-.21.29-.473.29-.786v-3.507c0-.314-.097-.577-.29-.787-.193-.21-.455-.33-.786-.36zm10.707 0c-.331.03-.593.15-.786.36-.193.21-.29.473-.29.787v3.507c0 .313.097.576.29.786.193.21.455.33.786.36.345-.03.607-.15.786-.36.193-.21.29-.473.29-.786v-3.507c0-.314-.097-.577-.29-.787-.193-.21-.455-.33-.786-.36zM18 19.04H6.013c-.113 0-.17.053-.17.16 0 .12.057.18.17.18H18c.113 0 .17-.06.17-.18 0-.107-.057-.16-.17-.16z"/></svg>
-  )
-}
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.883 0 17.373v-7.36c.036-1.51.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.277 1.277 0 0 1-.388-.933c0-.346.138-.64.414-.88a1.277 1.277 0 0 1 .906-.36c.345 0 .647.127.906.38l2.227 2.12h4.72l2.227-2.12c.27-.253.57-.38.906-.38.365 0 .65.12.853.36.277.24.414.534.414.88 0 .346-.13.653-.387.92zm-12.48 5.387c-.331.03-.593.15-.786.36-.193.21-.29.473-.29.787v3.507c0 .313.097.576.29.786.193.21.455.33.786.36.331-.03.593-.15.786-.36.193-.21.29-.473.29-.786v-3.507c0-.314-.097-.577-.29-.787-.193-.21-.455-.33-.786-.36zm10.707 0c-.331.03-.593.15-.786.36-.193.21-.29.473-.29.787v3.507c0 .313.097.576.29.786.193.21.455.33.786.36.345-.03.607-.15.786-.36.193-.21.29-.473.29-.786v-3.507c0-.314-.097-.577-.29-.787-.193-.21-.455-.33-.786-.36zM18 19.04H6.013c-.113 0-.17.053-.17.16 0 .12.057.18.17.18H18c.113 0 .17-.06.17-.18 0-.107-.057-.16-.17-.16z" />
+    </svg>
+  ),
+};
 
 const PUBLIC_IMAGE_ENDPOINT = "/api/public/image";
 const HISTORY_PAGE_SIZE = 24;
@@ -89,7 +107,7 @@ function AnimatedBackground() {
       <div class="circle circle-2"></div>
       <div class="circle circle-3"></div>
     </div>
-  )
+  );
 }
 
 function PrefsButton() {
@@ -110,7 +128,9 @@ function PrefsButton() {
     const onPointer = (e: PointerEvent) => {
       if (rootRef && !rootRef.contains(e.target as Node)) close();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
     document.addEventListener("pointerdown", onPointer, true);
     document.addEventListener("keydown", onKey);
     onCleanup(() => {
@@ -128,7 +148,16 @@ function PrefsButton() {
         aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <path d="M4 19l5.5-13 5.5 13M6.5 14h6M16 19h4M16 13h4M16 7h4" />
         </svg>
       </button>
@@ -141,10 +170,15 @@ function PrefsButton() {
                 {(size) => (
                   <button
                     type="button"
-                    class={"hone-prefs-seg" + (publicFontScale() === size ? " is-active" : "")}
+                    class={
+                      "hone-prefs-seg" +
+                      (publicFontScale() === size ? " is-active" : "")
+                    }
                     data-size={size}
                     onClick={() => setPublicFontScale(size)}
-                  >A</button>
+                  >
+                    A
+                  </button>
                 )}
               </For>
             </div>
@@ -156,9 +190,14 @@ function PrefsButton() {
                 {(opt) => (
                   <button
                     type="button"
-                    class={"hone-prefs-seg hone-prefs-seg--text" + (publicTheme() === opt.value ? " is-active" : "")}
+                    class={
+                      "hone-prefs-seg hone-prefs-seg--text" +
+                      (publicTheme() === opt.value ? " is-active" : "")
+                    }
                     onClick={() => setPublicTheme(opt.value)}
-                  >{opt.label}</button>
+                  >
+                    {opt.label}
+                  </button>
                 )}
               </For>
             </div>
@@ -170,9 +209,9 @@ function PrefsButton() {
 }
 
 function Header() {
-  const navigate = useNavigate()
-  const [stars] = createResource(fetchGithubStars)
-  const C = CONTENT.nav
+  const navigate = useNavigate();
+  const [stars] = createResource(fetchGithubStars);
+  const C = CONTENT.nav;
 
   return (
     <header class="page-header">
@@ -183,9 +222,25 @@ function Header() {
 
       <div class="header-actions">
         <div class="header-socials mobile-hide">
-          <a href="https://www.youtube.com/@HoneFinancial" target="_blank" class="icon-btn-ghost"><ICONS.Youtube /></a>
-          <a href="https://www.bilibili.com/video/BV1ByXNBGET5/" target="_blank" class="icon-btn-ghost"><ICONS.Bilibili /></a>
-          <a href="https://github.com/B-M-Capital-Research/honeclaw" target="_blank" class="star-badge">
+          <a
+            href="https://www.youtube.com/@HoneFinancial"
+            target="_blank"
+            class="icon-btn-ghost"
+          >
+            <ICONS.Youtube />
+          </a>
+          <a
+            href="https://www.bilibili.com/video/BV1ByXNBGET5/"
+            target="_blank"
+            class="icon-btn-ghost"
+          >
+            <ICONS.Bilibili />
+          </a>
+          <a
+            href="https://github.com/B-M-Capital-Research/honeclaw"
+            target="_blank"
+            class="star-badge"
+          >
             <ICONS.Github />
             <span>{stars() || "..."}</span>
           </a>
@@ -215,21 +270,36 @@ function Header() {
         </a>
 
         <div class="lang-switch">
-          <button onClick={() => setLocale("zh")} class={useLocale() === "zh" ? "active" : ""}>中</button>
-          <button onClick={() => setLocale("en")} class={useLocale() === "en" ? "active" : ""}>EN</button>
+          <button
+            onClick={() => setLocale("zh")}
+            class={useLocale() === "zh" ? "active" : ""}
+          >
+            中
+          </button>
+          <button
+            onClick={() => setLocale("en")}
+            class={useLocale() === "en" ? "active" : ""}
+          >
+            EN
+          </button>
         </div>
 
         <PrefsButton />
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <button onClick={() => navigate("/roadmap")} class="btn-roadmap-nav mobile-hide">
-            {useLocale() === 'zh' ? '产品路线图' : 'Roadmap'}
+          <button
+            onClick={() => navigate("/roadmap")}
+            class="btn-roadmap-nav mobile-hide"
+          >
+            {useLocale() === "zh" ? "产品路线图" : "Roadmap"}
           </button>
-          <button onClick={() => navigate("/chat")} class="btn-chat-nav">{C.chat}</button>
+          <button onClick={() => navigate("/chat")} class="btn-chat-nav">
+            {C.chat}
+          </button>
         </div>
       </div>
     </header>
-  )
+  );
 }
 
 function publicAttachmentUrl(att: PublicChatAttachment): string {
@@ -310,10 +380,24 @@ function LoadingCard() {
           >
             <div class="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" />
           </div>
-          <h1 style={{ "font-size": "22px", "font-weight": "800", color: "#0f172a", margin: "0 0 12px" }}>
+          <h1
+            style={{
+              "font-size": "22px",
+              "font-weight": "800",
+              color: "#0f172a",
+              margin: "0 0 12px",
+            }}
+          >
             正在恢复对话
           </h1>
-          <p style={{ "font-size": "15px", color: "#64748b", margin: "0", "line-height": "1.6" }}>
+          <p
+            style={{
+              "font-size": "15px",
+              color: "#64748b",
+              margin: "0",
+              "line-height": "1.6",
+            }}
+          >
             正在校验当前会话并恢复聊天历史
           </p>
         </div>
@@ -446,7 +530,10 @@ function ImageMosaic(props: {
   );
 }
 
-function FileCard(props: { file: PublicChatAttachment; inUserBubble?: boolean }) {
+function FileCard(props: {
+  file: PublicChatAttachment;
+  inUserBubble?: boolean;
+}) {
   const ext = () => fileExtension(props.file.name);
   const iconBg = () =>
     props.inUserBubble ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.05)";
@@ -462,9 +549,7 @@ function FileCard(props: { file: PublicChatAttachment; inUserBubble?: boolean })
         "align-items": "center",
         gap: "14px",
         padding: "12px 14px",
-        background: props.inUserBubble
-          ? "rgba(255,255,255,0.12)"
-          : "#fff",
+        background: props.inUserBubble ? "rgba(255,255,255,0.12)" : "#fff",
         border: props.inUserBubble
           ? "1.5px solid rgba(255,255,255,0.2)"
           : "1.5px solid #f1f5f9",
@@ -563,7 +648,11 @@ function UserBubble(props: {
         }}
       >
         <Show when={images().length > 0}>
-          <div style={{ "margin-bottom": hasText() || files().length > 0 ? "10px" : "0" }}>
+          <div
+            style={{
+              "margin-bottom": hasText() || files().length > 0 ? "10px" : "0",
+            }}
+          >
             <ImageMosaic
               images={images()}
               inUserBubble
@@ -572,7 +661,14 @@ function UserBubble(props: {
           </div>
         </Show>
         <Show when={files().length > 0}>
-          <div style={{ display: "flex", "flex-direction": "column", gap: "8px", "margin-bottom": hasText() ? "10px" : "0" }}>
+          <div
+            style={{
+              display: "flex",
+              "flex-direction": "column",
+              gap: "8px",
+              "margin-bottom": hasText() ? "10px" : "0",
+            }}
+          >
             <For each={files()}>
               {(file) => <FileCard file={file} inUserBubble />}
             </For>
@@ -614,15 +710,46 @@ function AssistantBubble(props: {
           "box-shadow": "0 4px 20px rgba(0,0,0,0.02)",
         }}
       >
-        <div class="pub-msg-bubble__brand" style={{ display: "flex", "align-items": "center", gap: "8px", "margin-bottom": "12px" }}>
-          <span style={{ width: "8px", height: "8px", "border-radius": "50%", background: "#f59e0b", display: "inline-block" }} />
-          <span style={{ "font-size": "13px", "font-weight": "800", "letter-spacing": "0.1em", "text-transform": "uppercase", color: "#64748b" }}>
+        <div
+          class="pub-msg-bubble__brand"
+          style={{
+            display: "flex",
+            "align-items": "center",
+            gap: "8px",
+            "margin-bottom": "12px",
+          }}
+        >
+          <span
+            style={{
+              width: "8px",
+              height: "8px",
+              "border-radius": "50%",
+              background: "#f59e0b",
+              display: "inline-block",
+            }}
+          />
+          <span
+            style={{
+              "font-size": "13px",
+              "font-weight": "800",
+              "letter-spacing": "0.1em",
+              "text-transform": "uppercase",
+              color: "#64748b",
+            }}
+          >
             HONE
           </span>
         </div>
         <AssistantBody content={props.content} />
         <Show when={nonImageAttachments().length > 0}>
-          <div style={{ display: "flex", "flex-direction": "column", gap: "8px", "margin-top": "16px" }}>
+          <div
+            style={{
+              display: "flex",
+              "flex-direction": "column",
+              gap: "8px",
+              "margin-top": "16px",
+            }}
+          >
             <For each={nonImageAttachments()}>
               {(file) => <FileCard file={file} />}
             </For>
@@ -653,7 +780,8 @@ function PendingBubble(props: {
       setElapsed(seconds);
     };
     tick();
-    if (props.message.phase === "done" || props.message.phase === "error") return;
+    if (props.message.phase === "done" || props.message.phase === "error")
+      return;
     const timer = setInterval(tick, 1000);
     onCleanup(() => clearInterval(timer));
   });
@@ -661,20 +789,33 @@ function PendingBubble(props: {
   const terminal = () => props.message.phase === "error";
   const labelText = () => {
     switch (props.message.phase) {
-      case "error": return "HONE 出错了";
-      case "streaming": return "HONE 输出中";
-      case "running": return "HONE 执行中";
-      default: return "HONE 思考中";
+      case "error":
+        return "HONE 出错了";
+      case "streaming":
+        return "HONE 输出中";
+      case "running":
+        return "HONE 执行中";
+      default:
+        return "HONE 思考中";
     }
   };
   return (
-    <div class="pub-msg-in pub-msg-row" style={{ display: "flex", "justify-content": "flex-start", "margin-bottom": "20px" }}>
+    <div
+      class="pub-msg-in pub-msg-row"
+      style={{
+        display: "flex",
+        "justify-content": "flex-start",
+        "margin-bottom": "20px",
+      }}
+    >
       <div
         class="pub-msg-bubble pub-msg-bubble--assistant"
         style={{
           "max-width": "85%",
           background: "#fff",
-          border: terminal() ? "2px solid rgba(239,68,68,0.2)" : "1.5px solid #f1f5f9",
+          border: terminal()
+            ? "2px solid rgba(239,68,68,0.2)"
+            : "1.5px solid #f1f5f9",
           "border-radius": "4px 24px 24px 24px",
           padding: "16px 20px",
           "box-shadow": "0 10px 30px rgba(0,0,0,0.03)",
@@ -684,26 +825,84 @@ function PendingBubble(props: {
             normal thinking/streaming flow the composer-side status strip
             is the single source of truth (avoids duplicate "HONE 思考中"). */}
         <Show when={terminal()}>
-          <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", gap: "10px", "margin-bottom": props.message.content ? "12px" : "0" }}>
-            <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
-              <span style={{ width: "8px", height: "8px", "border-radius": "50%", background: "#ef4444" }} />
-              <span style={{ "font-size": "13px", "font-weight": "800", "letter-spacing": "0.1em", "text-transform": "uppercase", color: "#64748b" }}>
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "space-between",
+              gap: "10px",
+              "margin-bottom": props.message.content ? "12px" : "0",
+            }}
+          >
+            <div
+              style={{ display: "flex", "align-items": "center", gap: "8px" }}
+            >
+              <span
+                style={{
+                  width: "8px",
+                  height: "8px",
+                  "border-radius": "50%",
+                  background: "#ef4444",
+                }}
+              />
+              <span
+                style={{
+                  "font-size": "13px",
+                  "font-weight": "800",
+                  "letter-spacing": "0.1em",
+                  "text-transform": "uppercase",
+                  color: "#64748b",
+                }}
+              >
                 {labelText()}
               </span>
-              <span style={{ "font-family": "var(--font-mono)", "font-size": "12px", color: "rgba(0,0,0,0.35)" }}>
+              <span
+                style={{
+                  "font-family": "var(--font-mono)",
+                  "font-size": "12px",
+                  color: "rgba(0,0,0,0.35)",
+                }}
+              >
                 {elapsed()}s
               </span>
             </div>
-            <button onClick={props.onDismiss} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", "font-size": "14px" }}>✕</button>
+            <button
+              onClick={props.onDismiss}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#64748b",
+                "font-size": "14px",
+              }}
+            >
+              ✕
+            </button>
           </div>
         </Show>
 
         <Show when={(props.message.steps?.length ?? 0) > 0}>
-          <ul style={{ margin: props.message.content ? "0 0 12px" : "8px 0 0", padding: "0", "list-style": "none", "font-size": "13px", "line-height": "1.8", color: "#64748b" }}>
+          <ul
+            style={{
+              margin: props.message.content ? "0 0 12px" : "8px 0 0",
+              padding: "0",
+              "list-style": "none",
+              "font-size": "13px",
+              "line-height": "1.8",
+              color: "#64748b",
+            }}
+          >
             <For each={props.message.steps}>
               {(step) => (
-                <li style={{ display: "flex", "align-items": "flex-start", gap: "8px" }}>
-                  <span style={{ color: "#f59e0b" }}>•</span><span>{step}</span>
+                <li
+                  style={{
+                    display: "flex",
+                    "align-items": "flex-start",
+                    gap: "8px",
+                  }}
+                >
+                  <span style={{ color: "#f59e0b" }}>•</span>
+                  <span>{step}</span>
                 </li>
               )}
             </For>
@@ -713,12 +912,21 @@ function PendingBubble(props: {
         <Show when={props.message.content}>
           <div style={{ "white-space": "pre-wrap" }}>
             <AssistantBody content={props.message.content} />
-            <Show when={props.message.phase === "streaming"}><span class="pub-cursor" /></Show>
+            <Show when={props.message.phase === "streaming"}>
+              <span class="pub-cursor" />
+            </Show>
           </div>
         </Show>
 
         <Show when={terminal()}>
-          <div style={{ "font-size": "14px", color: "#ef4444", "margin-top": "6px", "font-weight": "600" }}>
+          <div
+            style={{
+              "font-size": "14px",
+              color: "#ef4444",
+              "margin-top": "6px",
+              "font-weight": "600",
+            }}
+          >
             {props.message.statusText || "请求出错，请重试。"}
           </div>
         </Show>
@@ -727,27 +935,126 @@ function PendingBubble(props: {
   );
 }
 
-function AttachPreview(props: { items: PublicChatAttachment[]; onRemove: (index: number) => void; }) {
+function AttachPreview(props: {
+  items: PublicChatAttachment[];
+  onRemove: (index: number) => void;
+}) {
   return (
     <Show when={props.items.length > 0}>
-      <div data-testid="composer-attach-preview" style={{ display: "flex", gap: "10px", padding: "12px 16px", "flex-wrap": "wrap", "border-bottom": "1.5px solid #f8fafc" }}>
+      <div
+        data-testid="composer-attach-preview"
+        style={{
+          display: "flex",
+          gap: "10px",
+          padding: "12px 16px",
+          "flex-wrap": "wrap",
+          "border-bottom": "1.5px solid #f8fafc",
+        }}
+      >
         <For each={props.items}>
           {(item, index) => (
             <div style={{ position: "relative" }}>
-              <Show when={item.kind === "image"} fallback={
-                <div style={{ width: "200px", height: "72px", padding: "0 12px", display: "flex", "align-items": "center", gap: "12px", "border-radius": "12px", border: "1.5px solid #f1f5f9", background: "#fcfdfe" }}>
-                  <div style={{ width: "40px", height: "40px", "border-radius": "8px", background: "rgba(245,158,11,0.1)", display: "flex", "align-items": "center", "justify-content": "center", "font-family": "var(--font-mono)", "font-size": "11px", "font-weight": "800", color: "#d97706" }}>{fileExtension(item.name)}</div>
-                  <div style={{ flex: "1", "min-width": "0" }}>
-                    <div style={{ "font-size": "13px", "font-weight": "700", color: "#0f172a", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{item.name}</div>
-                    <div style={{ "font-family": "var(--font-mono)", "font-size": "11px", color: "#94a3b8" }}>{formatBytes(item.size)}</div>
+              <Show
+                when={item.kind === "image"}
+                fallback={
+                  <div
+                    style={{
+                      width: "200px",
+                      height: "72px",
+                      padding: "0 12px",
+                      display: "flex",
+                      "align-items": "center",
+                      gap: "12px",
+                      "border-radius": "12px",
+                      border: "1.5px solid #f1f5f9",
+                      background: "#fcfdfe",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "40px",
+                        height: "40px",
+                        "border-radius": "8px",
+                        background: "rgba(245,158,11,0.1)",
+                        display: "flex",
+                        "align-items": "center",
+                        "justify-content": "center",
+                        "font-family": "var(--font-mono)",
+                        "font-size": "11px",
+                        "font-weight": "800",
+                        color: "#d97706",
+                      }}
+                    >
+                      {fileExtension(item.name)}
+                    </div>
+                    <div style={{ flex: "1", "min-width": "0" }}>
+                      <div
+                        style={{
+                          "font-size": "13px",
+                          "font-weight": "700",
+                          color: "#0f172a",
+                          overflow: "hidden",
+                          "text-overflow": "ellipsis",
+                          "white-space": "nowrap",
+                        }}
+                      >
+                        {item.name}
+                      </div>
+                      <div
+                        style={{
+                          "font-family": "var(--font-mono)",
+                          "font-size": "11px",
+                          color: "#94a3b8",
+                        }}
+                      >
+                        {formatBytes(item.size)}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              }>
-                <div style={{ width: "72px", height: "72px", "border-radius": "12px", overflow: "hidden", border: "1.5px solid #f1f5f9" }}>
-                  <img src={publicAttachmentUrl(item)} alt={item.name} style={{ width: "100%", height: "100%", "object-fit": "cover" }} />
+                }
+              >
+                <div
+                  style={{
+                    width: "72px",
+                    height: "72px",
+                    "border-radius": "12px",
+                    overflow: "hidden",
+                    border: "1.5px solid #f1f5f9",
+                  }}
+                >
+                  <img
+                    src={publicAttachmentUrl(item)}
+                    alt={item.name}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      "object-fit": "cover",
+                    }}
+                  />
                 </div>
               </Show>
-              <button onClick={() => props.onRemove(index())} style={{ position: "absolute", top: "-8px", right: "-8px", width: "24px", height: "24px", "border-radius": "12px", background: "#000", color: "#fff", border: "2.5px solid #fff", cursor: "pointer", "font-size": "12px", display: "flex", "align-items": "center", "justify-content": "center", "box-shadow": "0 4px 10px rgba(0,0,0,0.2)" }}>✕</button>
+              <button
+                onClick={() => props.onRemove(index())}
+                style={{
+                  position: "absolute",
+                  top: "-8px",
+                  right: "-8px",
+                  width: "24px",
+                  height: "24px",
+                  "border-radius": "12px",
+                  background: "#000",
+                  color: "#fff",
+                  border: "2.5px solid #fff",
+                  cursor: "pointer",
+                  "font-size": "12px",
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  "box-shadow": "0 4px 10px rgba(0,0,0,0.2)",
+                }}
+              >
+                ✕
+              </button>
             </div>
           )}
         </For>
@@ -756,29 +1063,103 @@ function AttachPreview(props: { items: PublicChatAttachment[]; onRemove: (index:
   );
 }
 
-function AttachMenu(props: { open: boolean; onClose: () => void; onPickImage: () => void; onPickFile: () => void; }) {
+function AttachMenu(props: {
+  open: boolean;
+  onClose: () => void;
+  onPickImage: () => void;
+  onPickFile: () => void;
+}) {
   return (
     <Show when={props.open}>
       <div class="pub-attach-backdrop" onClick={props.onClose} />
-      <div class="pub-attach-menu" style={{ "border-radius": "20px", padding: "8px", "min-width": "240px", bottom: "80px", "box-shadow": "0 20px 50px rgba(0,0,0,0.15)" }}>
-        <button type="button" class="pub-attach-item" onClick={() => { props.onPickImage(); props.onClose(); }}>
-          <span class="pub-attach-icon" style={{ "background": "#f1f5f9" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="8.5" cy="10" r="1.5" /><path d="M21 15l-5-5-8 9" /></svg>
+      <div
+        class="pub-attach-menu"
+        style={{
+          "border-radius": "20px",
+          padding: "8px",
+          "min-width": "240px",
+          bottom: "80px",
+          "box-shadow": "0 20px 50px rgba(0,0,0,0.15)",
+        }}
+      >
+        <button
+          type="button"
+          class="pub-attach-item"
+          onClick={() => {
+            props.onPickImage();
+            props.onClose();
+          }}
+        >
+          <span class="pub-attach-icon" style={{ background: "#f1f5f9" }}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="5" width="18" height="14" rx="2.5" />
+              <circle cx="8.5" cy="10" r="1.5" />
+              <path d="M21 15l-5-5-8 9" />
+            </svg>
           </span>
-          <span class="pub-attach-label"><span class="pub-attach-label-title" style={{ "font-size": "15px" }}>图片</span><span class="pub-attach-label-sub">照片与截图</span></span>
+          <span class="pub-attach-label">
+            <span
+              class="pub-attach-label-title"
+              style={{ "font-size": "15px" }}
+            >
+              图片
+            </span>
+            <span class="pub-attach-label-sub">照片与截图</span>
+          </span>
         </button>
-        <button type="button" class="pub-attach-item" onClick={() => { props.onPickFile(); props.onClose(); }}>
-          <span class="pub-attach-icon" style={{ "background": "#f1f5f9" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h4" /></svg>
+        <button
+          type="button"
+          class="pub-attach-item"
+          onClick={() => {
+            props.onPickFile();
+            props.onClose();
+          }}
+        >
+          <span class="pub-attach-icon" style={{ background: "#f1f5f9" }}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+              <path d="M14 3v5h5" />
+              <path d="M9 13h6M9 17h4" />
+            </svg>
           </span>
-          <span class="pub-attach-label"><span class="pub-attach-label-title" style={{ "font-size": "15px" }}>文件</span><span class="pub-attach-label-sub">PDF · 文档 · 其他</span></span>
+          <span class="pub-attach-label">
+            <span
+              class="pub-attach-label-title"
+              style={{ "font-size": "15px" }}
+            >
+              文件
+            </span>
+            <span class="pub-attach-label-sub">PDF · 文档 · 其他</span>
+          </span>
         </button>
       </div>
     </Show>
   );
 }
 
-function ComposerStatus(props: { message: ChatMessage | undefined; onStop: () => void; justFinished: boolean }) {
+function ComposerStatus(props: {
+  message: ChatMessage | undefined;
+  onStop: () => void;
+  justFinished: boolean;
+}) {
   const [elapsed, setElapsed] = createSignal(0);
 
   createEffect(() => {
@@ -787,7 +1168,10 @@ function ComposerStatus(props: { message: ChatMessage | undefined; onStop: () =>
       setElapsed(0);
       return;
     }
-    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - (m.startedAt ?? 0)) / 1000)));
+    const tick = () =>
+      setElapsed(
+        Math.max(0, Math.floor((Date.now() - (m.startedAt ?? 0)) / 1000)),
+      );
     tick();
     const timer = setInterval(tick, 1000);
     onCleanup(() => clearInterval(timer));
@@ -795,31 +1179,47 @@ function ComposerStatus(props: { message: ChatMessage | undefined; onStop: () =>
 
   const labelText = (m: ChatMessage) => {
     switch (m.phase) {
-      case "streaming": return "HONE 输出中";
-      case "running": return "HONE 执行中";
-      default: return "HONE 思考中";
+      case "streaming":
+        return "HONE 输出中";
+      case "running":
+        return "HONE 执行中";
+      default:
+        return "HONE 思考中";
     }
   };
 
   return (
     <Show when={props.message || props.justFinished}>
       <div
-        class={"public-chat-composer-status" + (props.justFinished ? " is-done" : "")}
+        class={
+          "public-chat-composer-status" + (props.justFinished ? " is-done" : "")
+        }
         role="status"
         aria-live="polite"
       >
-        <Show when={props.message} fallback={
-          <>
-            <span class="public-chat-composer-status-dot done" />
-            <span class="public-chat-composer-status-label">本轮已完成</span>
-          </>
-        }>
+        <Show
+          when={props.message}
+          fallback={
+            <>
+              <span class="public-chat-composer-status-dot done" />
+              <span class="public-chat-composer-status-label">本轮已完成</span>
+            </>
+          }
+        >
           {(m) => (
             <>
               <span class="public-chat-composer-status-dot pulsing" />
-              <span class="public-chat-composer-status-label">{labelText(m())}</span>
+              <span class="public-chat-composer-status-label">
+                {labelText(m())}
+              </span>
               <span class="public-chat-composer-status-time">{elapsed()}s</span>
-              <button type="button" class="public-chat-composer-status-stop" onClick={props.onStop}>停止</button>
+              <button
+                type="button"
+                class="public-chat-composer-status-stop"
+                onClick={props.onStop}
+              >
+                停止
+              </button>
             </>
           )}
         </Show>
@@ -829,13 +1229,21 @@ function ComposerStatus(props: { message: ChatMessage | undefined; onStop: () =>
 }
 
 function Composer(props: {
-  draft: string; onDraftChange: (v: string) => void;
-  attachments: PublicChatAttachment[]; onRemoveAttachment: (index: number) => void;
+  draft: string;
+  onDraftChange: (v: string) => void;
+  attachments: PublicChatAttachment[];
+  onRemoveAttachment: (index: number) => void;
   onPickFiles: (files: File[], kind: "image" | "file") => void;
-  uploadError: string; onDismissUploadError: () => void;
-  uploading: boolean; onSend: () => void; onStop: () => void;
-  isSending: boolean; remaining: number | undefined; dailyLimit: number | undefined;
-  pendingMessage: ChatMessage | undefined; justFinished: boolean;
+  uploadError: string;
+  onDismissUploadError: () => void;
+  uploading: boolean;
+  onSend: () => void;
+  onStop: () => void;
+  isSending: boolean;
+  remaining: number | undefined;
+  dailyLimit: number | undefined;
+  pendingMessage: ChatMessage | undefined;
+  justFinished: boolean;
 }) {
   const [focused, setFocused] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -846,7 +1254,11 @@ function Composer(props: {
   // dailyLimit falsy (0/undefined) means unlimited — see session strip.
   const isCapped = () => !!props.dailyLimit && props.dailyLimit > 0;
   const quotaExhausted = () => isCapped() && props.remaining === 0;
-  const canSend = () => !props.isSending && !props.uploading && (!!props.draft.trim() || props.attachments.length > 0) && !quotaExhausted();
+  const canSend = () =>
+    !props.isSending &&
+    !props.uploading &&
+    (!!props.draft.trim() || props.attachments.length > 0) &&
+    !quotaExhausted();
   const handlePaste = (e: ClipboardEvent) => {
     const items = Array.from(e.clipboardData?.items ?? []);
     const files = items
@@ -859,29 +1271,172 @@ function Composer(props: {
     props.onPickFiles(files, "image");
   };
 
-  createEffect(() => { if (!props.isSending && taRef) taRef.focus(); });
+  createEffect(() => {
+    if (!props.isSending && taRef) taRef.focus();
+  });
 
   return (
-    <div class="public-chat-composer" style={{ padding: "16px 24px 32px", background: "transparent", "flex-shrink": "0", position: "relative", "z-index": "20" }}>
-      <ComposerStatus message={props.pendingMessage} onStop={props.onStop} justFinished={props.justFinished} />
-      <input data-testid="composer-image-input" ref={imgInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "image"); }} />
-      <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []; e.currentTarget.value = ""; if (files.length) props.onPickFiles(files, "file"); }} />
+    <div
+      class="public-chat-composer"
+      style={{
+        padding: "16px 24px 32px",
+        background: "transparent",
+        "flex-shrink": "0",
+        position: "relative",
+        "z-index": "20",
+      }}
+    >
+      <ComposerStatus
+        message={props.pendingMessage}
+        onStop={props.onStop}
+        justFinished={props.justFinished}
+      />
+      <input
+        data-testid="composer-image-input"
+        ref={imgInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const files = e.currentTarget.files
+            ? Array.from(e.currentTarget.files)
+            : [];
+          e.currentTarget.value = "";
+          if (files.length) props.onPickFiles(files, "image");
+        }}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const files = e.currentTarget.files
+            ? Array.from(e.currentTarget.files)
+            : [];
+          e.currentTarget.value = "";
+          if (files.length) props.onPickFiles(files, "file");
+        }}
+      />
 
-      <AttachMenu open={menuOpen()} onClose={() => setMenuOpen(false)} onPickImage={() => imgInputRef?.click()} onPickFile={() => fileInputRef?.click()} />
+      <AttachMenu
+        open={menuOpen()}
+        onClose={() => setMenuOpen(false)}
+        onPickImage={() => imgInputRef?.click()}
+        onPickFile={() => fileInputRef?.click()}
+      />
 
-      <div class="public-chat-composer-box" style={{ position: "relative", "max-width": "900px", margin: "0 auto", "border-radius": "22px", border: focused() ? "2px solid #000" : "2px solid #f1f5f9", background: "#fff", "box-shadow": focused() ? "0 20px 60px rgba(0,0,0,0.08)" : "0 10px 30px rgba(0,0,0,0.03)", transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
-        <AttachPreview items={props.attachments} onRemove={props.onRemoveAttachment} />
-        <div class="public-chat-composer-row" style={{ display: "flex", "align-items": "center", gap: "6px", padding: "6px 10px" }}>
-          <button data-testid="composer-attach-button" type="button" class="pub-attach-btn" style={{ width: "36px", height: "36px", "flex-shrink": "0" }} onClick={() => setMenuOpen(!menuOpen())}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" /></svg>
+      <div
+        class="public-chat-composer-box"
+        style={{
+          position: "relative",
+          "max-width": "900px",
+          margin: "0 auto",
+          "border-radius": "22px",
+          border: focused() ? "2px solid #000" : "2px solid #f1f5f9",
+          background: "#fff",
+          "box-shadow": focused()
+            ? "0 20px 60px rgba(0,0,0,0.08)"
+            : "0 10px 30px rgba(0,0,0,0.03)",
+          transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+          overflow: "hidden",
+        }}
+      >
+        <AttachPreview
+          items={props.attachments}
+          onRemove={props.onRemoveAttachment}
+        />
+        <div
+          class="public-chat-composer-row"
+          style={{
+            display: "flex",
+            "align-items": "center",
+            gap: "6px",
+            padding: "6px 10px",
+          }}
+        >
+          <button
+            data-testid="composer-attach-button"
+            type="button"
+            class="pub-attach-btn"
+            style={{ width: "36px", height: "36px", "flex-shrink": "0" }}
+            onClick={() => setMenuOpen(!menuOpen())}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" />
+            </svg>
           </button>
-          <textarea ref={taRef} class="public-chat-composer-input" rows={1} placeholder={quotaExhausted() ? "今日额度已用完" : "向 Hone 提问…"} value={props.draft} disabled={props.isSending} onInput={(e) => props.onDraftChange(e.currentTarget.value)}
-            onKeyDown={(e) => { if (!e.isComposing && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend()) props.onSend(); } }}
+          <textarea
+            ref={taRef}
+            class="public-chat-composer-input"
+            rows={1}
+            placeholder={quotaExhausted() ? "今日额度已用完" : "向 Hone 提问…"}
+            value={props.draft}
+            disabled={props.isSending}
+            onInput={(e) => props.onDraftChange(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (!e.isComposing && e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (canSend()) props.onSend();
+              }
+            }}
             onPaste={handlePaste}
-            onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-            style={{ flex: "1", resize: "none", border: "none", outline: "none", background: "transparent", padding: "6px 6px", "font-size": "15px", "font-weight": "500", "line-height": "1.5", color: "#0f172a", "max-height": "180px", "min-height": "32px", overflow: "hidden auto" }} />
-          <button data-testid="composer-send-button" type="button" class="public-chat-send-button" onClick={() => canSend() && props.onSend()} disabled={!canSend()} style={{ width: "36px", height: "36px", "border-radius": "12px", background: canSend() ? "#000" : "#f1f5f9", border: "none", cursor: canSend() ? "pointer" : "default", display: "flex", "align-items": "center", "justify-content": "center", "flex-shrink": "0", transition: "all 0.2s" }}>
-            <svg viewBox="0 0 20 20" width="16" height="16" fill={canSend() ? "white" : "#94a3b8"}><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={{
+              flex: "1",
+              resize: "none",
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              padding: "6px 6px",
+              "font-size": "15px",
+              "font-weight": "500",
+              "line-height": "1.5",
+              color: "#0f172a",
+              "max-height": "180px",
+              "min-height": "32px",
+              overflow: "hidden auto",
+            }}
+          />
+          <button
+            data-testid="composer-send-button"
+            type="button"
+            class="public-chat-send-button"
+            onClick={() => canSend() && props.onSend()}
+            disabled={!canSend()}
+            style={{
+              width: "36px",
+              height: "36px",
+              "border-radius": "12px",
+              background: canSend() ? "#000" : "#f1f5f9",
+              border: "none",
+              cursor: canSend() ? "pointer" : "default",
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              "flex-shrink": "0",
+              transition: "all 0.2s",
+            }}
+          >
+            <svg
+              viewBox="0 0 20 20"
+              width="16"
+              height="16"
+              fill={canSend() ? "white" : "#94a3b8"}
+            >
+              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+            </svg>
           </button>
         </div>
       </div>
@@ -892,23 +1447,37 @@ function Composer(props: {
 export default function PublicChatPage() {
   const navigate = useNavigate();
   const [authState, setAuthState] = createSignal<AuthState>("loading");
-  const [currentUser, setCurrentUser] = createSignal<PublicAuthUserInfo | null>(null);
+  const [currentUser, setCurrentUser] = createSignal<PublicAuthUserInfo | null>(
+    null,
+  );
   const [messages, setMessages] = createStore<ChatMessage[]>([]);
   const [draft, setDraft] = createSignal("");
   const [isSending, setIsSending] = createSignal(false);
-  const [pendingAttachments, setPendingAttachments] = createStore<PublicChatAttachment[]>([]);
+  const [pendingAttachments, setPendingAttachments] = createStore<
+    PublicChatAttachment[]
+  >([]);
   const [uploadError, setUploadError] = createSignal("");
   const [uploading, setUploading] = createSignal(false);
-  const [lightbox, setLightbox] = createSignal<{ images: PublicChatAttachment[]; index: number; } | null>(null);
-  const [sessionInfo, setSessionInfo] = createSignal<{ userId: string; remainingToday: number; dailyLimit: number; } | null>(null);
-  const [visibleMessageCount, setVisibleMessageCount] = createSignal(HISTORY_PAGE_SIZE);
+  const [lightbox, setLightbox] = createSignal<{
+    images: PublicChatAttachment[];
+    index: number;
+  } | null>(null);
+  const [sessionInfo, setSessionInfo] = createSignal<{
+    userId: string;
+    remainingToday: number;
+    dailyLimit: number;
+  } | null>(null);
+  const [visibleMessageCount, setVisibleMessageCount] =
+    createSignal(HISTORY_PAGE_SIZE);
   const [loadingOlderMessages, setLoadingOlderMessages] = createSignal(false);
   const [justFinished, setJustFinished] = createSignal(false);
   // When set, the server has an in-flight assistant run for which we have
   // no local streaming context — typically because the page was refreshed
   // mid-response. Until the answer arrives, show the same "思考中" status
   // and poll history so the reply lands without manual refresh.
-  const [backgroundPending, setBackgroundPending] = createSignal<{ since: number } | null>(null);
+  const [backgroundPending, setBackgroundPending] = createSignal<{
+    since: number;
+  } | null>(null);
   let activeController: AbortController | null = null;
   let scrollRef: HTMLDivElement | undefined;
   let messagesInnerRef: HTMLDivElement | undefined;
@@ -926,13 +1495,24 @@ export default function PublicChatPage() {
       lastScrollTop = scrollRef.scrollTop;
     });
   };
-  const distanceFromBottom = () => scrollRef ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight : 0;
-  const visibleMessages = createMemo(() => selectVisibleRecentMessages(messages, visibleMessageCount()));
+  const distanceFromBottom = () =>
+    scrollRef
+      ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight
+      : 0;
+  const visibleMessages = createMemo(() =>
+    selectVisibleRecentMessages(messages, visibleMessageCount()),
+  );
   const hasOlderMessages = () => visibleMessageCount() < messages.length;
   const pendingAssistantMessage = createMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (m.role === "assistant" && m.phase && m.phase !== "done" && m.phase !== "error") return m;
+      if (
+        m.role === "assistant" &&
+        m.phase &&
+        m.phase !== "done" &&
+        m.phase !== "error"
+      )
+        return m;
     }
     return undefined;
   });
@@ -940,7 +1520,14 @@ export default function PublicChatPage() {
     const local = pendingAssistantMessage();
     if (local) return local;
     const bg = backgroundPending();
-    if (bg) return { id: "_background", role: "assistant", content: "", phase: "thinking", startedAt: bg.since };
+    if (bg)
+      return {
+        id: "_background",
+        role: "assistant",
+        content: "",
+        phase: "thinking",
+        startedAt: bg.since,
+      };
     return undefined;
   });
 
@@ -949,10 +1536,13 @@ export default function PublicChatPage() {
     const previousScrollHeight = scrollRef.scrollHeight;
     const previousScrollTop = scrollRef.scrollTop;
     setLoadingOlderMessages(true);
-    setVisibleMessageCount((current) => nextVisibleMessageCount(messages.length, current, HISTORY_PAGE_SIZE));
+    setVisibleMessageCount((current) =>
+      nextVisibleMessageCount(messages.length, current, HISTORY_PAGE_SIZE),
+    );
     requestAnimationFrame(() => {
       if (scrollRef) {
-        scrollRef.scrollTop = previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
+        scrollRef.scrollTop =
+          previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
         lastScrollTop = scrollRef.scrollTop;
       }
       setLoadingOlderMessages(false);
@@ -964,7 +1554,11 @@ export default function PublicChatPage() {
     const top = scrollRef.scrollTop;
     const dist = distanceFromBottom();
     // Skip the synthetic scroll event we just produced via scrollToBottom.
-    if (suppressScrollDetect && Math.abs(scrollRef.scrollHeight - suppressScrollDetect) < 2 && dist < 4) {
+    if (
+      suppressScrollDetect &&
+      Math.abs(scrollRef.scrollHeight - suppressScrollDetect) < 2 &&
+      dist < 4
+    ) {
       lastScrollTop = top;
       suppressScrollDetect = 0;
       return;
@@ -989,11 +1583,15 @@ export default function PublicChatPage() {
   // Keep the composer pinned to the visible viewport when the user pinch-zooms
   // or the soft keyboard opens, so it remains reachable without zooming back out.
   createEffect(() => {
-    const vv = typeof window !== "undefined" ? window.visualViewport : undefined;
+    const vv =
+      typeof window !== "undefined" ? window.visualViewport : undefined;
     if (!vv) return;
     const update = () => {
-      const delta = (vv.offsetTop + vv.height) - window.innerHeight;
-      document.documentElement.style.setProperty("--composer-vv-shift", `${Math.min(0, delta)}px`);
+      const delta = vv.offsetTop + vv.height - window.innerHeight;
+      document.documentElement.style.setProperty(
+        "--composer-vv-shift",
+        `${Math.min(0, delta)}px`,
+      );
     };
     update();
     vv.addEventListener("scroll", update);
@@ -1009,15 +1607,21 @@ export default function PublicChatPage() {
   // viewport glued to the bottom unless the user has explicitly scrolled away.
   createEffect(() => {
     if (!messagesInnerRef || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => { if (stickToBottom) scrollToBottom(); });
+    const ro = new ResizeObserver(() => {
+      if (stickToBottom) scrollToBottom();
+    });
     ro.observe(messagesInnerRef);
     onCleanup(() => ro.disconnect());
   });
 
   const applyPublicUser = (user: PublicAuthUserInfo) => {
-    setSessionInfo({ userId: user.user_id, remainingToday: user.remaining_today, dailyLimit: user.daily_limit });
+    setSessionInfo({
+      userId: user.user_id,
+      remainingToday: user.remaining_today,
+      dailyLimit: user.daily_limit,
+    });
     setCurrentUser(user);
-    setAuthState(user.has_password ? "ready" : "needs_password");
+    setAuthState("ready");
   };
 
   const restoreSession = async (options: { resetWindow?: boolean } = {}) => {
@@ -1033,13 +1637,16 @@ export default function PublicChatPage() {
         setVisibleMessageCount(HISTORY_PAGE_SIZE);
       } else {
         // Preserve user's current viewing window; never shrink it on a sync.
-        setVisibleMessageCount((c) => Math.max(c, Math.min(next.length, HISTORY_PAGE_SIZE)));
+        setVisibleMessageCount((c) =>
+          Math.max(c, Math.min(next.length, HISTORY_PAGE_SIZE)),
+        );
       }
       setMessages(reconcile(next, { key: "id" }));
       // If the server has a run in flight and we're not the one streaming
       // it (e.g. page was just refreshed mid-answer), surface a "思考中"
       // status until the reply lands.
-      const lastIsUser = next.length > 0 && next[next.length - 1]!.role === "user";
+      const lastIsUser =
+        next.length > 0 && next[next.length - 1]!.role === "user";
       if (user.in_flight > 0 && lastIsUser && !isSending()) {
         setBackgroundPending((prev) => prev ?? { since: Date.now() });
       } else {
@@ -1057,7 +1664,9 @@ export default function PublicChatPage() {
   // Poll while the server still owes us an answer we can't stream locally.
   createEffect(() => {
     if (!backgroundPending() || isSending()) return;
-    const id = window.setInterval(() => { void restoreSession(); }, 3000);
+    const id = window.setInterval(() => {
+      void restoreSession();
+    }, 3000);
     onCleanup(() => clearInterval(id));
   });
 
@@ -1085,15 +1694,34 @@ export default function PublicChatPage() {
   const handleSend = async () => {
     const text = draft().trim();
     const atts = [...pendingAttachments];
-    if ((!text && atts.length === 0) || authState() !== "ready" || isSending() || uploading()) return;
-    
+    if (
+      (!text && atts.length === 0) ||
+      authState() !== "ready" ||
+      isSending() ||
+      uploading()
+    )
+      return;
+
     const assistantId = messageId();
     setDraft("");
     setIsSending(true);
     // Send action is an explicit user intent to follow the new content.
     stickToBottom = true;
-    setMessages(messages.length, { id: messageId(), role: "user", content: text, attachments: atts });
-    setMessages(messages.length, { id: assistantId, role: "assistant", content: "", phase: "thinking", statusText: "Hone 思考中", startedAt: Date.now(), steps: [] });
+    setMessages(messages.length, {
+      id: messageId(),
+      role: "user",
+      content: text,
+      attachments: atts,
+    });
+    setMessages(messages.length, {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      phase: "thinking",
+      statusText: "Hone 思考中",
+      startedAt: Date.now(),
+      steps: [],
+    });
     // Keep all existing + new messages in view; never shrink the visible window.
     setVisibleMessageCount((c) => Math.max(c + 2, HISTORY_PAGE_SIZE));
     setPendingAttachments(reconcile([], { key: "path" }));
@@ -1102,7 +1730,11 @@ export default function PublicChatPage() {
     const controller = new AbortController();
     activeController = controller;
     try {
-      const stream = await sendPublicChat(text, atts.map(a => ({ path: a.path, name: a.name })), controller.signal);
+      const stream = await sendPublicChat(
+        text,
+        atts.map((a) => ({ path: a.path, name: a.name })),
+        controller.signal,
+      );
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let pendingSse = "";
@@ -1114,22 +1746,26 @@ export default function PublicChatPage() {
         pendingSse = parsed.pending;
         for (const ev of parsed.events) {
           if (ev.event === "assistant_delta") {
-            const index = messages.findIndex(m => m.id === assistantId);
+            const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) {
-              setMessages(index, { content: messages[index].content + (ev.data.content ?? ""), phase: "streaming" });
+              setMessages(index, {
+                content: messages[index].content + (ev.data.content ?? ""),
+                phase: "streaming",
+              });
             }
             if (stickToBottom) scrollToBottom();
           }
           if (ev.event === "run_finished") {
-            const index = messages.findIndex(m => m.id === assistantId);
+            const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) setMessages(index, "phase", "done");
             flashJustFinished();
           }
         }
       }
     } catch (e) {
-      const index = messages.findIndex(m => m.id === assistantId);
-      if (index >= 0) setMessages(index, { phase: "error", statusText: String(e) });
+      const index = messages.findIndex((m) => m.id === assistantId);
+      if (index >= 0)
+        setMessages(index, { phase: "error", statusText: String(e) });
     } finally {
       setIsSending(false);
       flashJustFinished();
@@ -1138,7 +1774,10 @@ export default function PublicChatPage() {
   };
 
   return (
-    <div class="hone-landing-v4 public-chat-page" style={{ height: "100vh", display: "flex", "flex-direction": "column" }}>
+    <div
+      class="hone-landing-v4 public-chat-page"
+      style={{ height: "100vh", display: "flex", "flex-direction": "column" }}
+    >
       <AnimatedBackground />
       <Header />
 
@@ -1147,67 +1786,195 @@ export default function PublicChatPage() {
           <LoadingCard />
         </Match>
         <Match when={authState() === "logged_out"}>
-          <PublicLoginForm onLogin={() => restoreSession({ resetWindow: true })} />
+          <PublicLoginForm
+            onLogin={() => restoreSession({ resetWindow: true })}
+          />
         </Match>
-        <Match when={authState() === "ready" || authState() === "needs_password"}>
+        <Match
+          when={authState() === "ready" || authState() === "needs_password"}
+        >
           <Show when={currentUser()} fallback={<LoadingCard />}>
-            {(user) => (
-              <PasswordSetupGuard user={user()} onPasswordSet={applyPublicUser}>
-                <div class="public-chat-shell" style={{ flex: "1", display: "flex", "flex-direction": "column", "padding-top": "80px", position: "relative", "z-index": "10", overflow: "hidden" }}>
-            
-            {/* Session Strip */}
-            <div class="public-chat-session-strip" style={{ display: "flex", "justify-content": "center", padding: "12px" }}>
-               <div style={{ background: "rgba(255,255,255,0.7)", "backdrop-filter": "blur(10px)", padding: "6px 20px", "border-radius": "100px", border: "1.5px solid #f1f5f9", display: "flex", gap: "20px", "align-items": "center", "font-size": "13px", "font-weight": "700" }}>
-                 <span style={{ color: "#64748b" }}>{sessionInfo()?.dailyLimit ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}` : "无限额度"}</span>
-                 <div style={{ width: "1px", height: "12px", background: "#e2e8f0" }} />
-                 <button onClick={() => navigate("/me")} style={{ border: "none", background: "none", cursor: "pointer", color: "#000", "font-weight": "800" }}>{sessionInfo()?.userId}</button>
-                 <button onClick={() => { publicLogout(); setAuthState("logged_out"); }} style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444" }}>退出</button>
-               </div>
-            </div>
-
-            {/* Message List */}
-            <div ref={scrollRef} class="public-chat-messages" onScroll={handleMessagesScroll} style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}>
-              <div ref={messagesInnerRef} style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}>
-                <Show when={hasOlderMessages()}>
-                  <div style={{ "text-align": "center", color: "#94a3b8", "font-size": "12px", "font-weight": "700", padding: "4px 0 18px" }}>
-                    {loadingOlderMessages() ? "加载中…" : "上滑加载更早消息"}
-                  </div>
-                </Show>
-                <For each={visibleMessages()}>
-                  {(msg) => (
-                    <Switch>
-                      <Match when={msg.role === "user"}>
-                        <UserBubble content={msg.content} attachments={msg.attachments} onOpenImage={(imgs, i) => setLightbox({ images: imgs, index: i })} />
-                      </Match>
-                      <Match when={msg.role === "assistant" && msg.phase === "done"}>
-                        <AssistantBubble content={msg.content} attachments={msg.attachments} />
-                      </Match>
-                      <Match when={msg.role === "assistant" && msg.phase !== "done" && (msg.content || msg.phase === "error")}>
-                        <PendingBubble message={msg} onStop={() => activeController?.abort()} onDismiss={() => {}} />
-                      </Match>
-                    </Switch>
-                  )}
-                </For>
-              </div>
-            </div>
-
-                  <Composer
-                    draft={draft()} onDraftChange={setDraft}
-                    attachments={pendingAttachments} onRemoveAttachment={(i) => setPendingAttachments(pendingAttachments.filter((_, j) => j !== i))}
-                    onPickFiles={async (files) => {
-                      setUploading(true);
-                      try {
-                        const uploaded = await uploadPublicAttachments(files);
-                        setPendingAttachments([...pendingAttachments, ...uploaded.map(u => ({ ...u, kind: u.kind as any }))]);
-                      } finally { setUploading(false); }
+            {(_user) => (
+              <div
+                class="public-chat-shell"
+                style={{
+                  flex: "1",
+                  display: "flex",
+                  "flex-direction": "column",
+                  "padding-top": "80px",
+                  position: "relative",
+                  "z-index": "10",
+                  overflow: "hidden",
+                }}
+              >
+                {/* Session Strip */}
+                <div
+                  class="public-chat-session-strip"
+                  style={{
+                    display: "flex",
+                    "justify-content": "center",
+                    padding: "12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "rgba(255,255,255,0.7)",
+                      "backdrop-filter": "blur(10px)",
+                      padding: "6px 20px",
+                      "border-radius": "100px",
+                      border: "1.5px solid #f1f5f9",
+                      display: "flex",
+                      gap: "20px",
+                      "align-items": "center",
+                      "font-size": "13px",
+                      "font-weight": "700",
                     }}
-                    uploadError={uploadError()} onDismissUploadError={() => setUploadError("")}
-                    uploading={uploading()} onSend={handleSend} onStop={() => activeController?.abort()}
-                    isSending={isSending()} remaining={sessionInfo()?.remainingToday} dailyLimit={sessionInfo()?.dailyLimit}
-                    pendingMessage={composerPendingMessage()} justFinished={justFinished()}
-                  />
+                  >
+                    <span style={{ color: "#64748b" }}>
+                      {sessionInfo()?.dailyLimit
+                        ? `今日剩余 ${sessionInfo()?.remainingToday}/${sessionInfo()?.dailyLimit}`
+                        : "无限额度"}
+                    </span>
+                    <div
+                      style={{
+                        width: "1px",
+                        height: "12px",
+                        background: "#e2e8f0",
+                      }}
+                    />
+                    <button
+                      onClick={() => navigate("/me")}
+                      style={{
+                        border: "none",
+                        background: "none",
+                        cursor: "pointer",
+                        color: "#000",
+                        "font-weight": "800",
+                      }}
+                    >
+                      {sessionInfo()?.userId}
+                    </button>
+                    <button
+                      onClick={() => {
+                        publicLogout();
+                        setAuthState("logged_out");
+                      }}
+                      style={{
+                        border: "none",
+                        background: "none",
+                        cursor: "pointer",
+                        color: "#ef4444",
+                      }}
+                    >
+                      退出
+                    </button>
+                  </div>
                 </div>
-              </PasswordSetupGuard>
+
+                {/* Message List */}
+                <div
+                  ref={scrollRef}
+                  class="public-chat-messages"
+                  onScroll={handleMessagesScroll}
+                  style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}
+                >
+                  <div
+                    ref={messagesInnerRef}
+                    style={{
+                      "max-width": "900px",
+                      margin: "0 auto",
+                      padding: "0 24px",
+                    }}
+                  >
+                    <Show when={hasOlderMessages()}>
+                      <div
+                        style={{
+                          "text-align": "center",
+                          color: "#94a3b8",
+                          "font-size": "12px",
+                          "font-weight": "700",
+                          padding: "4px 0 18px",
+                        }}
+                      >
+                        {loadingOlderMessages()
+                          ? "加载中..."
+                          : "上滑加载更早消息"}
+                      </div>
+                    </Show>
+                    <For each={visibleMessages()}>
+                      {(msg) => (
+                        <Switch>
+                          <Match when={msg.role === "user"}>
+                            <UserBubble
+                              content={msg.content}
+                              attachments={msg.attachments}
+                              onOpenImage={(imgs, i) =>
+                                setLightbox({ images: imgs, index: i })
+                              }
+                            />
+                          </Match>
+                          <Match
+                            when={
+                              msg.role === "assistant" && msg.phase === "done"
+                            }
+                          >
+                            <AssistantBubble
+                              content={msg.content}
+                              attachments={msg.attachments}
+                            />
+                          </Match>
+                          <Match
+                            when={
+                              msg.role === "assistant" &&
+                              msg.phase !== "done" &&
+                              (msg.content || msg.phase === "error")
+                            }
+                          >
+                            <PendingBubble
+                              message={msg}
+                              onStop={() => activeController?.abort()}
+                              onDismiss={() => {}}
+                            />
+                          </Match>
+                        </Switch>
+                      )}
+                    </For>
+                  </div>
+                </div>
+
+                <Composer
+                  draft={draft()}
+                  onDraftChange={setDraft}
+                  attachments={pendingAttachments}
+                  onRemoveAttachment={(i) =>
+                    setPendingAttachments(
+                      pendingAttachments.filter((_, j) => j !== i),
+                    )
+                  }
+                  onPickFiles={async (files) => {
+                    setUploading(true);
+                    try {
+                      const uploaded = await uploadPublicAttachments(files);
+                      setPendingAttachments([
+                        ...pendingAttachments,
+                        ...uploaded.map((u) => ({ ...u, kind: u.kind as any })),
+                      ]);
+                    } finally {
+                      setUploading(false);
+                    }
+                  }}
+                  uploadError={uploadError()}
+                  onDismissUploadError={() => setUploadError("")}
+                  uploading={uploading()}
+                  onSend={handleSend}
+                  onStop={() => activeController?.abort()}
+                  isSending={isSending()}
+                  remaining={sessionInfo()?.remainingToday}
+                  dailyLimit={sessionInfo()?.dailyLimit}
+                  pendingMessage={composerPendingMessage()}
+                  justFinished={justFinished()}
+                />
+              </div>
             )}
           </Show>
         </Match>
@@ -1215,7 +1982,10 @@ export default function PublicChatPage() {
 
       <Show when={lightbox()}>
         <div class="lightbox-overlay" onClick={() => setLightbox(null)}>
-          <img src={publicAttachmentUrl(lightbox()!.images[lightbox()!.index]!)} class="lightbox-img" />
+          <img
+            src={publicAttachmentUrl(lightbox()!.images[lightbox()!.index]!)}
+            class="lightbox-img"
+          />
           <button class="lightbox-close">×</button>
         </div>
       </Show>

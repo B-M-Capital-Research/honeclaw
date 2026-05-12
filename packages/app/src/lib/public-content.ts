@@ -8,16 +8,16 @@
 //
 // Adding a key: add it to BOTH trees with parallel shape.
 
-import { makeContentProxy } from "./i18n"
+import { makeContentProxy } from "./i18n";
 
 // ── Legal copy structured nodes (terms & privacy) ────────────────────────────
 // Rich prose is modeled as a typed block tree so ZH/EN stay parallel and the
 // pages render via a tiny interpreter instead of embedding JSX in content.
-export type LegalInline = string | { strong: string } | { code: string }
+export type LegalInline = string | { strong: string } | { code: string };
 export type LegalBlock =
   | { kind: "p"; parts: LegalInline[] }
-  | { kind: "ul"; items: LegalInline[][] }
-export type LegalSection = { title: string; body: LegalBlock[] }
+  | { kind: "ul"; items: LegalInline[][] };
+export type LegalSection = { title: string; body: LegalBlock[] };
 
 const CONTENT_ZH = {
   nav: {
@@ -125,12 +125,36 @@ const CONTENT_ZH = {
   capabilities: {
     section_label: "核心能力",
     items: [
-      { symbol: "⚡", title: "投研纪律约束", body: "对话时主动约束情绪决策，帮你坚守原则。不是复读你的想法，而是质疑它。" },
-      { symbol: "◈", title: "公司画像 & 长期记忆", body: "对每家公司建立持久档案，跨会话积累研究成果，形成真正的知识资产。" },
-      { symbol: "∞", title: "定时任务与自动提醒", body: "Cron 驱动的定时工作流，让复盘、持仓检查、重要节点提醒全自动运行。" },
-      { symbol: "✦", title: "多端接入", body: "Web、iMessage、Lark / Feishu、Discord、Telegram、CLI——在你最顺手的地方使用 Hone。" },
-      { symbol: "⌘", title: "Rust 驱动的稳定性", body: "核心引擎用 Rust 构建，低延迟、高可靠，长期运行不掉线、不崩溃。" },
-      { symbol: "ℹ", title: "可编程投研操作系统", body: "自定义 Skill、动态任务链、跨会话记忆调用，构建完全属于你的投研工作流。" },
+      {
+        symbol: "⚡",
+        title: "投研纪律约束",
+        body: "对话时主动约束情绪决策，帮你坚守原则。不是复读你的想法，而是质疑它。",
+      },
+      {
+        symbol: "◈",
+        title: "公司画像 & 长期记忆",
+        body: "对每家公司建立持久档案，跨会话积累研究成果，形成真正的知识资产。",
+      },
+      {
+        symbol: "∞",
+        title: "定时任务与自动提醒",
+        body: "Cron 驱动的定时工作流，让复盘、持仓检查、重要节点提醒全自动运行。",
+      },
+      {
+        symbol: "✦",
+        title: "多端接入",
+        body: "Web、iMessage、Lark / Feishu、Discord、Telegram、CLI——在你最顺手的地方使用 Hone。",
+      },
+      {
+        symbol: "⌘",
+        title: "Rust 驱动的稳定性",
+        body: "核心引擎用 Rust 构建，低延迟、高可靠，长期运行不掉线、不崩溃。",
+      },
+      {
+        symbol: "ℹ",
+        title: "可编程投研操作系统",
+        body: "自定义 Skill、动态任务链、跨会话记忆调用，构建完全属于你的投研工作流。",
+      },
     ],
   },
 
@@ -157,10 +181,38 @@ const CONTENT_ZH = {
       },
     ],
     tier2: [
-      { key: "discord", name: "Discord", desc: "英文社区讨论", url: "#", label: "开放", symbol: "⚡" },
-      { key: "zsxq", name: "知识星球", desc: "付费深度内容", url: "#", label: "付费", symbol: "◈" },
-      { key: "vip", name: "VIP 群", desc: "私域高级功能体验", url: "#", label: "邀请制", symbol: "✦" },
-      { key: "content", name: "内容号", desc: "投研方法论 & 产品更新", url: "#", label: "关注", symbol: "∞" },
+      {
+        key: "discord",
+        name: "Discord",
+        desc: "英文社区讨论",
+        url: "#",
+        label: "开放",
+        symbol: "⚡",
+      },
+      {
+        key: "zsxq",
+        name: "知识星球",
+        desc: "付费深度内容",
+        url: "#",
+        label: "付费",
+        symbol: "◈",
+      },
+      {
+        key: "vip",
+        name: "VIP 群",
+        desc: "私域高级功能体验",
+        url: "#",
+        label: "邀请制",
+        symbol: "✦",
+      },
+      {
+        key: "content",
+        name: "内容号",
+        desc: "投研方法论 & 产品更新",
+        url: "#",
+        label: "关注",
+        symbol: "∞",
+      },
     ],
   },
 
@@ -168,18 +220,55 @@ const CONTENT_ZH = {
     section_label: "开源",
     section_sub: "B&M Capital Research 出品，MIT 协议开放",
     items: [
-      { title: "GitHub 仓库", desc: "Star、Fork、提 Issue，参与开源建设", url: "https://github.com/B-M-Capital-Research/honeclaw", tag: "开源", icon: "⌘" },
-      { title: "中文文档", desc: "README、使用说明、案例示范", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", tag: "文档", icon: "◈" },
-      { title: "安装方式", desc: "macOS 桌面端 + 服务端自部署指南", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动", tag: "安装", icon: "⚡" },
-      { title: "代码库地图", desc: "模块结构、数据流与运行时边界说明", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md", tag: "技术", icon: "∞" },
-      { title: "案例集", desc: "真实投研场景使用示例", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", tag: "案例", icon: "✦" },
-      { title: "贡献指南", desc: "参与开发、提交 PR、讨论功能方向", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md", tag: "贡献", icon: "ℹ" },
+      {
+        title: "GitHub 仓库",
+        desc: "Star、Fork、提 Issue，参与开源建设",
+        url: "https://github.com/B-M-Capital-Research/honeclaw",
+        tag: "开源",
+        icon: "⌘",
+      },
+      {
+        title: "中文文档",
+        desc: "README、使用说明、案例示范",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
+        tag: "文档",
+        icon: "◈",
+      },
+      {
+        title: "安装方式",
+        desc: "macOS 桌面端 + 服务端自部署指南",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动",
+        tag: "安装",
+        icon: "⚡",
+      },
+      {
+        title: "代码库地图",
+        desc: "模块结构、数据流与运行时边界说明",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md",
+        tag: "技术",
+        icon: "∞",
+      },
+      {
+        title: "案例集",
+        desc: "真实投研场景使用示例",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md",
+        tag: "案例",
+        icon: "✦",
+      },
+      {
+        title: "贡献指南",
+        desc: "参与开发、提交 PR、讨论功能方向",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md",
+        tag: "贡献",
+        icon: "ℹ",
+      },
     ],
   },
 
   roadmap: {
     hero_title: "路线图与文档",
-    hero_sub: "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
+    hero_sub:
+      "透明、务实、长期主义。下面是 Hone 目前能做什么、接下来做什么、以及如何接入你的投研工作流。",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
     version: "v0.11.1",
@@ -201,7 +290,8 @@ const CONTENT_ZH = {
       quick_start: {
         eyebrow: "§ 01 · QUICK START",
         title: "快速开始",
-        intro: "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。任选其一即可开始。",
+        intro:
+          "三种方式接入 Hone：一键安装脚本、Homebrew、或源码开发。任选其一即可开始。",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -211,12 +301,14 @@ const CONTENT_ZH = {
       channels: {
         eyebrow: "§ 03 · CHANNELS",
         title: "渠道接入",
-        intro: "Hone 是多端接入的投研 agent。每个渠道都是独立进程，可独立启停、独立配置。",
+        intro:
+          "Hone 是多端接入的投研 agent。每个渠道都是独立进程，可独立启停、独立配置。",
       },
       architecture: {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "系统架构",
-        intro: "Rust 核心引擎 · 多 Runner 抽象 · SolidJS 前端。公开 user-ui、管理后台和渠道进程共用同一套后端能力，但按 surface、端口和进程边界隔离。",
+        intro:
+          "Rust 核心引擎 · 多 Runner 抽象 · SolidJS 前端。公开 user-ui、管理后台和渠道进程共用同一套后端能力，但按 surface、端口和进程边界隔离。",
         footnote_prefix: "完整模块说明见",
         footnote_link: "docs/repo-map.md ↗",
       },
@@ -236,7 +328,8 @@ const CONTENT_ZH = {
       boundary: {
         eyebrow: "§ 07 · OPEN SOURCE BOUNDARY",
         title: "开源边界",
-        intro: "MIT 协议开源。开源仓库包含完整可运行的核心系统，私域增强能力不公开但不影响主流程可用性。",
+        intro:
+          "MIT 协议开源。开源仓库包含完整可运行的核心系统，私域增强能力不公开但不影响主流程可用性。",
         open_label: "开源公开",
         closed_label: "私域 / 付费",
       },
@@ -257,9 +350,21 @@ const CONTENT_ZH = {
 
     install: {
       tabs: [
-        { key: "curl" as const, label: "curl | bash", badge: "推荐" as string | null },
-        { key: "brew" as const, label: "Homebrew", badge: null as string | null },
-        { key: "source" as const, label: "源码 / CLI", badge: null as string | null },
+        {
+          key: "curl" as const,
+          label: "curl | bash",
+          badge: "推荐" as string | null,
+        },
+        {
+          key: "brew" as const,
+          label: "Homebrew",
+          badge: null as string | null,
+        },
+        {
+          key: "source" as const,
+          label: "源码 / CLI",
+          badge: null as string | null,
+        },
       ],
       requirements_prefix: "系统要求：",
       curl: [
@@ -284,79 +389,206 @@ const CONTENT_ZH = {
       ],
     },
 
-    requirements: "macOS 13+ / Linux x86_64 / arm64 · 首次源码构建约 10 分钟（需本机已有 Rust / Bun）",
+    requirements:
+      "macOS 13+ / Linux x86_64 / arm64 · 首次源码构建约 10 分钟（需本机已有 Rust / Bun）",
 
     architecture_points: [
-      { title: "CLI 启动", desc: "`hone-cli doctor / onboard / start` 负责体检、首装向导、启动 hone-console-page 与已启用渠道；源码模式使用 `cargo run -p hone-cli -- start --build`。" },
-      { title: "公开 user-ui", desc: "public surface 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；后端只暴露 `/api/public/*` 与公开聊天入口。" },
-      { title: "管理后台", desc: "admin surface 提供 dashboard、sessions、skills、tasks、users、research、notifications、schedule、settings、logs 等维护入口。" },
-      { title: "Runner 层", desc: "支持 OpenAI 兼容协议、Gemini CLI、Codex CLI / ACP、OpenCode ACP、multi-agent，以及 Hone Cloud 兼容 API 路由。" },
-      { title: "事件与任务", desc: "Cron 任务、事件引擎 digest、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和 actor 归属。" },
+      {
+        title: "CLI 启动",
+        desc: "`hone-cli doctor / onboard / start` 负责体检、首装向导、启动 hone-console-page 与已启用渠道；源码模式使用 `cargo run -p hone-cli -- start --build`。",
+      },
+      {
+        title: "公开 user-ui",
+        desc: "public surface 路由包含 `/`、`/roadmap`、`/chat`、`/me`、`/portfolio`、`/terms`、`/privacy`；后端只暴露 `/api/public/*` 与公开聊天入口。",
+      },
+      {
+        title: "管理后台",
+        desc: "admin surface 提供 dashboard、sessions、skills、tasks、users、research、notifications、schedule、settings、logs 等维护入口。",
+      },
+      {
+        title: "Runner 层",
+        desc: "支持 OpenAI 兼容协议、Gemini CLI、Codex CLI / ACP、OpenCode ACP、multi-agent，以及 Hone Cloud 兼容 API 路由。",
+      },
+      {
+        title: "事件与任务",
+        desc: "Cron 任务、事件引擎 digest、`/missed` 回查、通知偏好与渠道投递共享 Rust 后端、SQLite/JSON 存储和 actor 归属。",
+      },
     ],
 
     capability_matrix: [
       {
         group: "投研核心",
         rows: [
-          { name: "投研纪律约束 & 零幻觉协议", status: "stable", note: "system prompt 强约束" },
-          { name: "公司画像 & 长期记忆", status: "stable", note: "company_portrait skill" },
-          { name: "个股研究 / 深度研究", status: "stable", note: "stock_research + deep_stock_research" },
-          { name: "持仓追踪与提醒", status: "stable", note: "portfolio_management + cron" },
-          { name: "估值 / 选股 / 仓位建议", status: "stable", note: "stock_research 覆盖估值与筛选，position_advice 覆盖仓位建议" },
-          { name: "图表 & 图像生成", status: "stable", note: "chart_visualization / image_generation" },
+          {
+            name: "投研纪律约束 & 零幻觉协议",
+            status: "stable",
+            note: "system prompt 强约束",
+          },
+          {
+            name: "公司画像 & 长期记忆",
+            status: "stable",
+            note: "company_portrait skill",
+          },
+          {
+            name: "个股研究 / 深度研究",
+            status: "stable",
+            note: "stock_research + deep_stock_research",
+          },
+          {
+            name: "持仓追踪与提醒",
+            status: "stable",
+            note: "portfolio_management + cron",
+          },
+          {
+            name: "估值 / 选股 / 仓位建议",
+            status: "stable",
+            note: "stock_research 覆盖估值与筛选，position_advice 覆盖仓位建议",
+          },
+          {
+            name: "图表 & 图像生成",
+            status: "stable",
+            note: "chart_visualization / image_generation",
+          },
           { name: "向量检索增强记忆", status: "planned", note: "规划中" },
         ],
       },
       {
         group: "运行时",
         rows: [
-          { name: "Rust 核心引擎", status: "stable", note: "Tokio · axum · SSE" },
-          { name: "SolidJS 前端", status: "stable", note: "Vite · Tailwind v4" },
+          {
+            name: "Rust 核心引擎",
+            status: "stable",
+            note: "Tokio · axum · SSE",
+          },
+          {
+            name: "SolidJS 前端",
+            status: "stable",
+            note: "Vite · Tailwind v4",
+          },
           { name: "Tauri 桌面端", status: "stable", note: "macOS 已发布" },
-          { name: "多 Runner 抽象", status: "stable", note: "OpenAI · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent" },
-          { name: "Windows / Linux 桌面端", status: "planned", note: "Tauri 多平台打包" },
+          {
+            name: "多 Runner 抽象",
+            status: "stable",
+            note: "OpenAI · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
+          },
+          {
+            name: "Windows / Linux 桌面端",
+            status: "planned",
+            note: "Tauri 多平台打包",
+          },
         ],
       },
       {
         group: "扩展",
         rows: [
-          { name: "Cron 定时任务", status: "stable", note: "scheduled_task skill + /api/cron-jobs" },
-          { name: "自定义 Skill", status: "stable", note: "skill_manager · create_skill.sh" },
-          { name: "MCP 协议", status: "stable", note: "hone-mcp 二进制可作为 MCP server" },
-          { name: "HTTP + SSE 内部 API", status: "stable", note: "hone-web-api 路由全开" },
-          { name: "按用户细粒度推送偏好", status: "stable", note: "notification_preferences skill + 设置页 + config 全局节流" },
-          { name: "漏推 / 截断事件回查", status: "stable", note: "missed skill + missed_events tool" },
+          {
+            name: "Cron 定时任务",
+            status: "stable",
+            note: "scheduled_task skill + /api/cron-jobs",
+          },
+          {
+            name: "自定义 Skill",
+            status: "stable",
+            note: "skill_manager · create_skill.sh",
+          },
+          {
+            name: "MCP 协议",
+            status: "stable",
+            note: "hone-mcp 二进制可作为 MCP server",
+          },
+          {
+            name: "HTTP + SSE 内部 API",
+            status: "stable",
+            note: "hone-web-api 路由全开",
+          },
+          {
+            name: "按用户细粒度推送偏好",
+            status: "stable",
+            note: "notification_preferences skill + 设置页 + config 全局节流",
+          },
+          {
+            name: "漏推 / 截断事件回查",
+            status: "stable",
+            note: "missed skill + missed_events tool",
+          },
           { name: "公开 Skill 市场", status: "planned", note: "社区共享" },
         ],
       },
     ],
 
     channels: [
-      { name: "Web", icon: "⚡", status: "stable", desc: "邀请制聊天页，浏览器直开（hone-web-api）" },
-      { name: "iMessage", icon: "✦", status: "stable", desc: "macOS 原生短信集成（hone-imessage）" },
-      { name: "Lark / Feishu", icon: "◈", status: "stable", desc: "飞书机器人双向通信（hone-feishu）" },
-      { name: "Discord", icon: "∞", status: "stable", desc: "Bot 应用集成（hone-discord）" },
-      { name: "Telegram", icon: "⌘", status: "stable", desc: "Bot API 接入（hone-telegram）" },
-      { name: "CLI", icon: "ℹ", status: "stable", desc: "命令行流式对话（hone-cli）" },
-      { name: "MCP", icon: "✧", status: "stable", desc: "作为 MCP server 嵌入 Claude / Cursor 等（hone-mcp）" },
+      {
+        name: "Web",
+        icon: "⚡",
+        status: "stable",
+        desc: "邀请制聊天页，浏览器直开（hone-web-api）",
+      },
+      {
+        name: "iMessage",
+        icon: "✦",
+        status: "stable",
+        desc: "macOS 原生短信集成（hone-imessage）",
+      },
+      {
+        name: "Lark / Feishu",
+        icon: "◈",
+        status: "stable",
+        desc: "飞书机器人双向通信（hone-feishu）",
+      },
+      {
+        name: "Discord",
+        icon: "∞",
+        status: "stable",
+        desc: "Bot 应用集成（hone-discord）",
+      },
+      {
+        name: "Telegram",
+        icon: "⌘",
+        status: "stable",
+        desc: "Bot API 接入（hone-telegram）",
+      },
+      {
+        name: "CLI",
+        icon: "ℹ",
+        status: "stable",
+        desc: "命令行流式对话（hone-cli）",
+      },
+      {
+        name: "MCP",
+        icon: "✧",
+        status: "stable",
+        desc: "作为 MCP server 嵌入 Claude / Cursor 等（hone-mcp）",
+      },
     ],
 
     skills: [
       { name: "stock_research", desc: "单只个股研究、估值框架、按条件筛选" },
-      { name: "deep_stock_research", desc: "约 1–2 小时的深度研究任务（管理员）" },
+      {
+        name: "deep_stock_research",
+        desc: "约 1–2 小时的深度研究任务（管理员）",
+      },
       { name: "company_portrait", desc: "维护公司画像、投资主线、事件时间线" },
       { name: "portfolio_management", desc: "持仓增减、再平衡、Ticker 校验" },
       { name: "position_advice", desc: "结合行情与持仓给出加减仓建议" },
       { name: "market_analysis", desc: "宏观、政策、行业动量与指数判断" },
       { name: "gold-analysis", desc: "黄金、金 ETF、金矿股的宏观与持仓分析" },
       { name: "scheduled_task", desc: "注册 / 修改 / 取消用户定时推送任务" },
-      { name: "missed", desc: "查询 digest 被截断、冷却、过滤或折叠的漏推事件" },
+      {
+        name: "missed",
+        desc: "查询 digest 被截断、冷却、过滤或折叠的漏推事件",
+      },
       { name: "chart_visualization", desc: "趋势 / 对比 / 分布 / 散点研究图" },
       { name: "image_generation", desc: "持仓截图、研究图卡、说明图" },
       { name: "image_understanding", desc: "解析用户上传的 K 线 / 持仓截图" },
-      { name: "pdf_understanding", desc: "解析 PDF（财报、研报）输出要点与风险" },
+      {
+        name: "pdf_understanding",
+        desc: "解析 PDF（财报、研报）输出要点与风险",
+      },
       { name: "skill_manager", desc: "查看 / 新建 / 修改 Hone Skill" },
-      { name: "notification_preferences", desc: "用自然语言调整自己的推送偏好（严重度、持仓过滤、kind 白/黑名单）" },
+      {
+        name: "notification_preferences",
+        desc: "用自然语言调整自己的推送偏好（严重度、持仓过滤、kind 白/黑名单）",
+      },
       { name: "hone_admin", desc: "查看修改 Hone 源码与配置（管理员）" },
     ],
 
@@ -413,15 +645,51 @@ const CONTENT_ZH = {
     },
 
     docs: [
-      { title: "README（English）", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README.md", desc: "Project overview, install, quick start" },
-      { title: "README（中文）", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", desc: "项目总览、安装、快速上手" },
-      { title: "Wiki", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md", desc: "安装、启动、端口、配置、验证与排障入口" },
-      { title: "Repo Map", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md", desc: "模块边界、运行时数据流与常见联动改动" },
-      { title: "Cases (中文)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", desc: "真实投研场景使用示例集" },
-      { title: "Cases (English)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_EN.md", desc: "Real-world case studies" },
-      { title: "Skills 目录", url: "https://github.com/B-M-Capital-Research/honeclaw/tree/main/skills", desc: "全部公开 Skill 的源码与说明" },
-      { title: "CONTRIBUTING.md", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md", desc: "贡献指南" },
-      { title: "SECURITY.md", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/SECURITY.md", desc: "漏洞披露策略" },
+      {
+        title: "README（English）",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README.md",
+        desc: "Project overview, install, quick start",
+      },
+      {
+        title: "README（中文）",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
+        desc: "项目总览、安装、快速上手",
+      },
+      {
+        title: "Wiki",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md",
+        desc: "安装、启动、端口、配置、验证与排障入口",
+      },
+      {
+        title: "Repo Map",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md",
+        desc: "模块边界、运行时数据流与常见联动改动",
+      },
+      {
+        title: "Cases (中文)",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md",
+        desc: "真实投研场景使用示例集",
+      },
+      {
+        title: "Cases (English)",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_EN.md",
+        desc: "Real-world case studies",
+      },
+      {
+        title: "Skills 目录",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/tree/main/skills",
+        desc: "全部公开 Skill 的源码与说明",
+      },
+      {
+        title: "CONTRIBUTING.md",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md",
+        desc: "贡献指南",
+      },
+      {
+        title: "SECURITY.md",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/SECURITY.md",
+        desc: "漏洞披露策略",
+      },
     ],
 
     contributing: [
@@ -522,15 +790,18 @@ const CONTENT_ZH = {
   auth: {
     login: {
       title: "登录 Hone",
-      subtitle: "老用户请使用密码登录；新用户请用邀请码激活账号。",
-      tab_password: "密码登录",
-      tab_invite: "邀请码激活",
-      hint_password: "已有账号：使用手机号 + 个人密码登录。",
-      hint_invite:
-        "新用户首次进入：凭邀请码激活账号。没有邀请码？可加微信 xiaobamang6677 或发邮件到 bm@hone-claw.com 获取；也务必帮忙点一个 Star。",
+      subtitle: "使用手机号和短信验证码登录。",
+      hint_sms: "目前是邀请制，请联系 bm@hone-claw.com 加入白名单。",
       phone_label: "手机号",
       phone_placeholder: "例如 13800138000",
       phone_aria: "手机号",
+      code_label: "验证码",
+      code_placeholder: "短信验证码",
+      code_aria: "短信验证码",
+      send_code: "获取验证码",
+      sending_code: "发送中",
+      resend_in: "{seconds}秒后重发",
+      code_sent: "验证码已发送，请查看短信。",
       password_label: "密码",
       password_placeholder: "您的密码",
       password_aria: "密码",
@@ -538,6 +809,7 @@ const CONTENT_ZH = {
       invite_placeholder: "HONE-XXXXXX-XXXXXX",
       invite_aria: "邀请码",
       remember_30d: "保持登录（30 天）",
+      submit_sms: "登录",
       submit_password: "登录",
       submit_invite: "激活并登录",
       loading: "登录中…",
@@ -608,98 +880,229 @@ const CONTENT_ZH = {
         {
           title: "1. 协议接受与生效",
           body: [
-            { kind: "p", parts: ["欢迎使用 Hone（以下简称“本服务”）。本服务由 ", { strong: "Snowdrift Capital LLC" }, "（一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）运营。本《用户协议》（以下简称“本协议”）是您与我们之间就您使用本服务所订立的有效合同。"] },
-            { kind: "p", parts: ["您在勾选同意或继续使用本服务时，即视为您已充分阅读并同意本协议全部条款。若您不同意本协议任何条款，请立即停止使用本服务。"] },
+            {
+              kind: "p",
+              parts: [
+                "欢迎使用 Hone（以下简称“本服务”）。本服务由 ",
+                { strong: "Snowdrift Capital LLC" },
+                "（一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）运营。本《用户协议》（以下简称“本协议”）是您与我们之间就您使用本服务所订立的有效合同。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "您在勾选同意或继续使用本服务时，即视为您已充分阅读并同意本协议全部条款。若您不同意本协议任何条款，请立即停止使用本服务。",
+              ],
+            },
           ],
         },
         {
           title: "2. 服务说明",
           body: [
-            { kind: "p", parts: ["Hone 是一款面向个人投资者的研究与决策辅助工具，提供资料检索、对话式研究、投资笔记、定时提醒等能力。"] },
-            { kind: "p", parts: [{ strong: "本服务不构成任何形式的投资建议、要约或推荐。" }, "本服务输出的全部内容仅供参考，任何投资决策均应由您本人独立作出并自行承担相应风险与后果。"] },
+            {
+              kind: "p",
+              parts: [
+                "Hone 是一款面向个人投资者的研究与决策辅助工具，提供资料检索、对话式研究、投资笔记、定时提醒等能力。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                { strong: "本服务不构成任何形式的投资建议、要约或推荐。" },
+                "本服务输出的全部内容仅供参考，任何投资决策均应由您本人独立作出并自行承担相应风险与后果。",
+              ],
+            },
           ],
         },
         {
-          title: "3. 账号与密码",
+          title: "3. 账号与验证",
           body: [
-            { kind: "p", parts: ["您需要使用经我们登记的手机号作为账号，并设置个人密码用于身份验证。您应妥善保管账号密码，不得将账号借予他人使用。"] },
-            { kind: "p", parts: ["您应对在您账号下发生的所有行为负责。若发现账号被未经授权使用，您应立即通知我们并修改密码。"] },
+            {
+              kind: "p",
+              parts: [
+                "您需要使用经我们登记的手机号作为账号，并通过短信验证码完成身份验证。本服务目前为邀请制，未进入白名单的手机号无法登录。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "您应妥善保管手机号码、短信验证码与登录设备，不得将账号借予他人使用。若发现账号被未经授权使用，您应立即通知我们。",
+              ],
+            },
           ],
         },
         {
           title: "4. 用户行为规范",
           body: [
-            { kind: "p", parts: ["使用本服务时，您承诺不从事以下行为，包括但不限于："] },
+            {
+              kind: "p",
+              parts: ["使用本服务时，您承诺不从事以下行为，包括但不限于："],
+            },
             {
               kind: "ul",
               items: [
                 ["违反您所在地或任何其他相关司法管辖区适用的法律或法规；"],
-                ["侵犯他人合法权益，包括知识产权、隐私权、名誉权、商业秘密、肖像权或其他财产或人身权利；"],
+                [
+                  "侵犯他人合法权益，包括知识产权、隐私权、名誉权、商业秘密、肖像权或其他财产或人身权利；",
+                ],
                 ["发布或传播威胁、骚扰、仇恨、歧视性、欺诈性或诽谤性内容；"],
-                ["发布、传播或索取淫秽色情、儿童性剥削材料、毒品交易、暴力或其他非法内容；"],
+                [
+                  "发布、传播或索取淫秽色情、儿童性剥削材料、毒品交易、暴力或其他非法内容；",
+                ],
                 ["通过提示词或其他方式诱导本服务输出违反前述规定的内容；"],
-                ["对本服务进行反向工程、爬取、批量自动化访问、漏洞利用、规避访问控制或其他形式的滥用；"],
-                ["上传、传播或部署恶意代码、垃圾信息、钓鱼链接或其他有害技术；"],
+                [
+                  "对本服务进行反向工程、爬取、批量自动化访问、漏洞利用、规避访问控制或其他形式的滥用；",
+                ],
+                [
+                  "上传、传播或部署恶意代码、垃圾信息、钓鱼链接或其他有害技术；",
+                ],
                 ["冒用他人身份、伪造账号信息或从事任何形式的欺诈行为；"],
-                ["利用本服务从事违反美国出口管制法律、OFAC 制裁、反洗钱法律或其他经济制裁规定的行为。"],
+                [
+                  "利用本服务从事违反美国出口管制法律、OFAC 制裁、反洗钱法律或其他经济制裁规定的行为。",
+                ],
               ],
             },
-            { kind: "p", parts: ["若您违反前述规定，我们有权立即暂停或终止您的账号、保留相关证据，并依法配合执法或司法机关的合法请求。由此产生的全部法律责任由您本人承担。"] },
+            {
+              kind: "p",
+              parts: [
+                "若您违反前述规定，我们有权立即暂停或终止您的账号、保留相关证据，并依法配合执法或司法机关的合法请求。由此产生的全部法律责任由您本人承担。",
+              ],
+            },
           ],
         },
         {
           title: "5. 内容与知识产权",
           body: [
-            { kind: "p", parts: ["本服务及其相关界面、文案、代码、商标等所有相关知识产权归我们或合法权利人所有，受著作权法及相关法律法规保护。"] },
-            { kind: "p", parts: ["您在本服务中输入的内容（包括对话、笔记、附件等）的著作权归您本人所有。您授予我们必要的、为提供和改进本服务所需的非排他性使用权。"] },
+            {
+              kind: "p",
+              parts: [
+                "本服务及其相关界面、文案、代码、商标等所有相关知识产权归我们或合法权利人所有，受著作权法及相关法律法规保护。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "您在本服务中输入的内容（包括对话、笔记、附件等）的著作权归您本人所有。您授予我们必要的、为提供和改进本服务所需的非排他性使用权。",
+              ],
+            },
           ],
         },
         {
           title: "6. 第三方服务与数据源",
           body: [
-            { kind: "p", parts: ["本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎等第三方服务以完成功能交付。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。"] },
-            { kind: "p", parts: ["您理解并同意，在调用第三方服务的过程中，我们可能向第三方传递必要的请求内容。我们将依照第三方服务条款选择正规、可信的合作方。"] },
+            {
+              kind: "p",
+              parts: [
+                "本服务可能调用第三方大型语言模型（LLM）、行情数据、搜索引擎等第三方服务以完成功能交付。第三方服务由其运营方独立提供，其稳定性、准确性及合规性以其官方声明为准。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "您理解并同意，在调用第三方服务的过程中，我们可能向第三方传递必要的请求内容。我们将依照第三方服务条款选择正规、可信的合作方。",
+              ],
+            },
           ],
         },
         {
           title: "7. 服务变更、中断与终止",
           body: [
-            { kind: "p", parts: ["我们可能因升级维护、安全事件、不可抗力或经营调整等原因暂停、变更或终止部分或全部服务。我们将在合理范围内事先通过本服务内通知或其他方式告知。"] },
-            { kind: "p", parts: ["若您严重违反本协议，我们有权立即暂停或终止向您提供服务，并保留依法追究责任的权利。"] },
+            {
+              kind: "p",
+              parts: [
+                "我们可能因升级维护、安全事件、不可抗力或经营调整等原因暂停、变更或终止部分或全部服务。我们将在合理范围内事先通过本服务内通知或其他方式告知。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "若您严重违反本协议，我们有权立即暂停或终止向您提供服务，并保留依法追究责任的权利。",
+              ],
+            },
           ],
         },
         {
           title: "8. 免责与责任限制",
           body: [
-            { kind: "p", parts: ["在适用法律允许的最大范围内，本服务以“现状”和“现有”方式提供。我们不对服务的连续性、准确性、完整性、及时性作出任何明示或默示保证。"] },
-            { kind: "p", parts: ["本服务目前以免费形式提供。在适用法律允许的最大范围内，我们不对您因使用或无法使用本服务而遭受的任何直接或间接损失（包括但不限于投资或交易损失、数据丢失、利润损失等）承担金钱赔偿责任。"] },
+            {
+              kind: "p",
+              parts: [
+                "在适用法律允许的最大范围内，本服务以“现状”和“现有”方式提供。我们不对服务的连续性、准确性、完整性、及时性作出任何明示或默示保证。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "本服务目前以免费形式提供。在适用法律允许的最大范围内，我们不对您因使用或无法使用本服务而遭受的任何直接或间接损失（包括但不限于投资或交易损失、数据丢失、利润损失等）承担金钱赔偿责任。",
+              ],
+            },
           ],
         },
         {
           title: "9. 协议变更与通知",
           body: [
-            { kind: "p", parts: ["我们可能根据法律法规或业务调整需要修改本协议。修改后的协议将在本服务内公布，并标明版本号与生效日期。"] },
-            { kind: "p", parts: ["重大修改将以站内提醒等方式提示您再次确认。若您在协议变更后继续使用本服务，即视为您接受修改后的协议。"] },
+            {
+              kind: "p",
+              parts: [
+                "我们可能根据法律法规或业务调整需要修改本协议。修改后的协议将在本服务内公布，并标明版本号与生效日期。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "重大修改将以站内提醒等方式提示您再次确认。若您在协议变更后继续使用本服务，即视为您接受修改后的协议。",
+              ],
+            },
           ],
         },
         {
           title: "10. 适用法律与争议解决",
           body: [
-            { kind: "p", parts: ["本协议的订立、效力、解释、履行及争议解决，均适用 ", { strong: "美国怀俄明州（State of Wyoming, USA）法律" }, "（不含其法律冲突规则）。《联合国国际货物销售合同公约》（CISG）不适用于本协议。"] },
-            { kind: "p", parts: ["因本协议引起的或与之相关的任何争议，双方应首先以诚信原则协商解决；协商不成的，任一方可在美国怀俄明州 Sheridan 县有管辖权的州法院或联邦法院提起诉讼，双方对该等法院具有专属管辖权并放弃任何管辖权异议。"] },
-            { kind: "p", parts: ["在适用法律允许的最大范围内，您同意以个人名义而非作为任何集体诉讼或代表诉讼成员的身份与我们解决争议。"] },
+            {
+              kind: "p",
+              parts: [
+                "本协议的订立、效力、解释、履行及争议解决，均适用 ",
+                { strong: "美国怀俄明州（State of Wyoming, USA）法律" },
+                "（不含其法律冲突规则）。《联合国国际货物销售合同公约》（CISG）不适用于本协议。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "因本协议引起的或与之相关的任何争议，双方应首先以诚信原则协商解决；协商不成的，任一方可在美国怀俄明州 Sheridan 县有管辖权的州法院或联邦法院提起诉讼，双方对该等法院具有专属管辖权并放弃任何管辖权异议。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "在适用法律允许的最大范围内，您同意以个人名义而非作为任何集体诉讼或代表诉讼成员的身份与我们解决争议。",
+              ],
+            },
           ],
         },
         {
           title: "11. 联系方式",
           body: [
-            { kind: "p", parts: ["若您对本协议有任何疑问、意见或建议，请通过以下方式联系我们："] },
+            {
+              kind: "p",
+              parts: [
+                "若您对本协议有任何疑问、意见或建议，请通过以下方式联系我们：",
+              ],
+            },
             {
               kind: "ul",
               items: [
                 [{ strong: "电子邮件：" }, { code: "bm@hone-claw.com" }],
-                [{ strong: "GitHub Issue：" }, { code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }],
-                [{ strong: "邮寄地址：" }, "Snowdrift Capital LLC, 30 N Gould St, Ste N, Sheridan, WY 82801, United States"],
+                [
+                  { strong: "GitHub Issue：" },
+                  {
+                    code: "https://github.com/B-M-Capital-Research/honeclaw/issues",
+                  },
+                ],
+                [
+                  { strong: "邮寄地址：" },
+                  "Snowdrift Capital LLC, 30 N Gould St, Ste N, Sheridan, WY 82801, United States",
+                ],
               ],
             },
             { kind: "p", parts: ["我们将在合理时间内回复并处理。"] },
@@ -714,21 +1117,48 @@ const CONTENT_ZH = {
         {
           title: "1. 引言与适用范围",
           body: [
-            { kind: "p", parts: ["本《隐私政策》说明 Hone（运营方为 ", { strong: "Snowdrift Capital LLC" }, "，一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 Hone 网站及客户端使用本服务的全部场景。"] },
-            { kind: "p", parts: ["请您在使用本服务前完整阅读本政策。继续使用本服务即视为您已充分了解并同意本政策。"] },
+            {
+              kind: "p",
+              parts: [
+                "本《隐私政策》说明 Hone（运营方为 ",
+                { strong: "Snowdrift Capital LLC" },
+                "，一家依据美国怀俄明州法律设立的有限责任公司，以下简称“我们”）在提供服务过程中如何收集、使用、存储、共享和保护您的个人信息。本政策适用于您通过 Hone 网站及客户端使用本服务的全部场景。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "请您在使用本服务前完整阅读本政策。继续使用本服务即视为您已充分了解并同意本政策。",
+              ],
+            },
           ],
         },
         {
           title: "2. 我们收集的信息",
           body: [
-            { kind: "p", parts: ["为提供服务，我们会按最小必要原则收集下列类别的信息："] },
+            {
+              kind: "p",
+              parts: ["为提供服务，我们会按最小必要原则收集下列类别的信息："],
+            },
             {
               kind: "ul",
               items: [
-                [{ strong: "账号信息：" }, "手机号（作为账号识别）、邀请码（用于初次注册）、密码哈希（我们仅存储 Argon2id 哈希，绝不存储明文密码）；"],
-                [{ strong: "使用数据：" }, "对话记录、提问与回复内容、上传的附件、笔记与定时任务；"],
-                [{ strong: "设备与日志：" }, "IP 地址、浏览器类型、访问时间戳、错误日志、Cookie 标识；"],
-                [{ strong: "授权事件：" }, "用户协议与隐私政策的接受版本与时间。"],
+                [
+                  { strong: "账号信息：" },
+                  "手机号（作为账号识别与白名单判断）、短信验证码核验结果、历史邀请码用户记录（作为白名单来源）；",
+                ],
+                [
+                  { strong: "使用数据：" },
+                  "对话记录、提问与回复内容、上传的附件、笔记与定时任务；",
+                ],
+                [
+                  { strong: "设备与日志：" },
+                  "IP 地址、浏览器类型、访问时间戳、错误日志、Cookie 标识；",
+                ],
+                [
+                  { strong: "授权事件：" },
+                  "用户协议与隐私政策的接受版本与时间。",
+                ],
               ],
             },
           ],
@@ -751,14 +1181,29 @@ const CONTENT_ZH = {
         {
           title: "4. 存储、保留期与安全",
           body: [
-            { kind: "p", parts: ["您的账号与对话数据默认存储于本服务的本地 SQLite 数据库中。密码采用 ", { strong: "Argon2id" }, " 算法配合随机盐进行哈希存储，我们无法恢复您的明文密码。"] },
-            { kind: "p", parts: ["我们采用 HTTPS 加密传输、最小权限访问控制、密码哈希等技术与管理措施，保护您的信息安全。在法律允许范围内，我们将在为完成相应目的所必需的期间内保留您的信息。"] },
+            {
+              kind: "p",
+              parts: [
+                "您的账号与对话数据默认存储于本服务的本地 SQLite 数据库中。短信验证码由第三方短信认证服务发送与核验，我们不会存储验证码明文。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "我们采用 HTTPS 加密传输、最小权限访问控制、服务端会话 Cookie 等技术与管理措施，保护您的信息安全。在法律允许范围内，我们将在为完成相应目的所必需的期间内保留您的信息。",
+              ],
+            },
           ],
         },
         {
           title: "5. 信息共享与第三方",
           body: [
-            { kind: "p", parts: ["为完成您发起的查询，我们可能将您输入的相关内容传递给以下类别的第三方服务方："] },
+            {
+              kind: "p",
+              parts: [
+                "为完成您发起的查询，我们可能将您输入的相关内容传递给以下类别的第三方服务方：",
+              ],
+            },
             {
               kind: "ul",
               items: [
@@ -766,33 +1211,65 @@ const CONTENT_ZH = {
                 ["行情数据与搜索数据源（用于补充查询所需的市场或公开信息）。"],
               ],
             },
-            { kind: "p", parts: ["除上述必要场景以及法律法规另有规定外，我们不会向任何第三方出售或出租您的个人信息。"] },
+            {
+              kind: "p",
+              parts: [
+                "除上述必要场景以及法律法规另有规定外，我们不会向任何第三方出售或出租您的个人信息。",
+              ],
+            },
           ],
         },
         {
           title: "6. Cookie 与追踪",
           body: [
-            { kind: "p", parts: ["我们使用名为 ", { code: "hone_web_session" }, " 的 HTTP-only Cookie 维持登录态。该 Cookie 在您勾选“保持登录”时有效期为 30 天，否则为 1 天。"] },
+            {
+              kind: "p",
+              parts: [
+                "我们使用名为 ",
+                { code: "hone_web_session" },
+                " 的 HTTP-only Cookie 维持登录态。该 Cookie 在您勾选“保持登录”时有效期为 30 天，否则为 1 天。",
+              ],
+            },
             { kind: "p", parts: ["我们不使用第三方广告追踪 Cookie。"] },
           ],
         },
         {
           title: "7. 未成年人保护",
           body: [
-            { kind: "p", parts: ["本服务面向 18 周岁以上具有完全民事行为能力的成年人。若您是未成年人，请在监护人指导下使用本服务。我们不会主动收集未成年人的个人信息。"] },
+            {
+              kind: "p",
+              parts: [
+                "本服务面向 18 周岁以上具有完全民事行为能力的成年人。若您是未成年人，请在监护人指导下使用本服务。我们不会主动收集未成年人的个人信息。",
+              ],
+            },
           ],
         },
         {
           title: "8. 数据处理地点与跨境传输",
           body: [
-            { kind: "p", parts: ["我们的数据处理基础设施位于 ", { strong: "美国" }, "（运营方所在地）。我们调用的语言模型与数据源服务商主要位于美国及其他司法管辖区。在您使用本服务时，您的相关个人信息和查询内容将被传输至并存储于美国。"] },
-            { kind: "p", parts: ["若您位于美国境外（包括欧洲经济区、英国、中华人民共和国大陆地区或其他任何司法管辖区），您理解并同意您的个人信息将跨境传输至美国进行处理。我们将选择具备合规资质的合作方，并采取必要的技术与组织措施保护信息安全。"] },
+            {
+              kind: "p",
+              parts: [
+                "我们的数据处理基础设施位于 ",
+                { strong: "美国" },
+                "（运营方所在地）。我们调用的语言模型与数据源服务商主要位于美国及其他司法管辖区。在您使用本服务时，您的相关个人信息和查询内容将被传输至并存储于美国。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "若您位于美国境外（包括欧洲经济区、英国、中华人民共和国大陆地区或其他任何司法管辖区），您理解并同意您的个人信息将跨境传输至美国进行处理。我们将选择具备合规资质的合作方，并采取必要的技术与组织措施保护信息安全。",
+              ],
+            },
           ],
         },
         {
           title: "9. 您的权利",
           body: [
-            { kind: "p", parts: ["就您的个人信息，您依据适用法律享有下列权利："] },
+            {
+              kind: "p",
+              parts: ["就您的个人信息，您依据适用法律享有下列权利："],
+            },
             {
               kind: "ul",
               items: [
@@ -804,27 +1281,66 @@ const CONTENT_ZH = {
                 ["反对或限制特定的个人信息处理活动。"],
               ],
             },
-            { kind: "p", parts: ["如您是 ", { strong: "美国加州居民" }, "，根据《加州消费者隐私法》（CCPA / CPRA），您还享有了解我们收集与共享个人信息类别的权利、请求删除已收集信息的权利，以及不因行使权利而受到歧视的权利。我们 ", { strong: "不向第三方“出售”" }, " 您的个人信息。"] },
-            { kind: "p", parts: ["如您位于 ", { strong: "欧洲经济区或英国" }, "，根据《通用数据保护条例》（GDPR / UK GDPR），您还享有向所在地数据保护监管机构投诉的权利。"] },
-            { kind: "p", parts: ["您可在“个人页面”中行使前三项权利，或通过下文联系方式与我们联系。撤回同意可能导致您无法继续使用部分功能。我们将在合理时间内（通常 30 日内）回应您的请求。"] },
+            {
+              kind: "p",
+              parts: [
+                "如您是 ",
+                { strong: "美国加州居民" },
+                "，根据《加州消费者隐私法》（CCPA / CPRA），您还享有了解我们收集与共享个人信息类别的权利、请求删除已收集信息的权利，以及不因行使权利而受到歧视的权利。我们 ",
+                { strong: "不向第三方“出售”" },
+                " 您的个人信息。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "如您位于 ",
+                { strong: "欧洲经济区或英国" },
+                "，根据《通用数据保护条例》（GDPR / UK GDPR），您还享有向所在地数据保护监管机构投诉的权利。",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "您可在“个人页面”中行使前三项权利，或通过下文联系方式与我们联系。撤回同意可能导致您无法继续使用部分功能。我们将在合理时间内（通常 30 日内）回应您的请求。",
+              ],
+            },
           ],
         },
         {
           title: "10. 政策更新",
           body: [
-            { kind: "p", parts: ["我们可能根据法律法规变化或业务调整需要更新本政策。更新后的政策将在本服务内公布，并标明版本号与生效日期；重大变更将以站内提醒等方式向您提示。"] },
+            {
+              kind: "p",
+              parts: [
+                "我们可能根据法律法规变化或业务调整需要更新本政策。更新后的政策将在本服务内公布，并标明版本号与生效日期；重大变更将以站内提醒等方式向您提示。",
+              ],
+            },
           ],
         },
         {
           title: "11. 联系方式",
           body: [
-            { kind: "p", parts: ["若您对本政策或您的个人信息处理有任何疑问、意见或投诉，请通过以下方式联系我们："] },
+            {
+              kind: "p",
+              parts: [
+                "若您对本政策或您的个人信息处理有任何疑问、意见或投诉，请通过以下方式联系我们：",
+              ],
+            },
             {
               kind: "ul",
               items: [
                 [{ strong: "电子邮件：" }, { code: "bm@hone-claw.com" }],
-                [{ strong: "GitHub Issue：" }, { code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }],
-                [{ strong: "邮寄地址：" }, "Snowdrift Capital LLC, Attn: Privacy, 30 N Gould St, Ste N, Sheridan, WY 82801, United States"],
+                [
+                  { strong: "GitHub Issue：" },
+                  {
+                    code: "https://github.com/B-M-Capital-Research/honeclaw/issues",
+                  },
+                ],
+                [
+                  { strong: "邮寄地址：" },
+                  "Snowdrift Capital LLC, Attn: Privacy, 30 N Gould St, Ste N, Sheridan, WY 82801, United States",
+                ],
               ],
             },
             { kind: "p", parts: ["我们将在合理时间内回复并妥善处理。"] },
@@ -837,7 +1353,8 @@ const CONTENT_ZH = {
   footer: {
     tagline: "磨砺认知，剔除噪音",
     mantra: "磨砺认知 · 剔除噪音 · OPEN FINANCIAL CONSOLE",
-    copyright: "© 2026 Snowdrift Capital LLC · Sheridan, WY, USA · 开源代码遵循 MIT License。",
+    copyright:
+      "© 2026 Snowdrift Capital LLC · Sheridan, WY, USA · 开源代码遵循 MIT License。",
     columns: {
       product: {
         title: "产品",
@@ -853,10 +1370,22 @@ const CONTENT_ZH = {
       resources: {
         title: "资源",
         items: [
-          { label: "GitHub", href: "https://github.com/B-M-Capital-Research/honeclaw" },
-          { label: "中文文档", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md" },
-          { label: "安装方式", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动" },
-          { label: "代码库地图", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md" },
+          {
+            label: "GitHub",
+            href: "https://github.com/B-M-Capital-Research/honeclaw",
+          },
+          {
+            label: "中文文档",
+            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
+          },
+          {
+            label: "安装方式",
+            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动",
+          },
+          {
+            label: "代码库地图",
+            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md",
+          },
         ],
       },
       community: {
@@ -870,7 +1399,7 @@ const CONTENT_ZH = {
       },
     },
   },
-}
+};
 
 const CONTENT_EN: typeof CONTENT_ZH = {
   nav: {
@@ -971,19 +1500,44 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     video_url: "https://www.youtube.com/watch?v=hJr-81OdYcQ",
     thumbnail: "/hone_introduction.jpg",
     duration: "~10 min",
-    coverage: "Covered: deep single-stock research, portfolio tracking, scheduled tasks, multi-channel demo",
+    coverage:
+      "Covered: deep single-stock research, portfolio tracking, scheduled tasks, multi-channel demo",
     url_placeholder: "Video link not configured yet (set video_url)",
   },
 
   capabilities: {
     section_label: "CORE CAPABILITIES",
     items: [
-      { symbol: "⚡", title: "Research discipline", body: "Constrains emotional decisions in-conversation. It doesn't echo your thinking — it questions it." },
-      { symbol: "◈", title: "Company profiles & long memory", body: "A persistent dossier per company; research compounds across sessions into a real knowledge asset." },
-      { symbol: "∞", title: "Scheduled tasks & alerts", body: "Cron-driven workflows: reviews, portfolio checks, key-moment alerts — all running on their own." },
-      { symbol: "✦", title: "Multi-surface access", body: "Web, iMessage, Lark / Feishu, Discord, Telegram, CLI — Hone on whichever surface you already live in." },
-      { symbol: "⌘", title: "Rust-powered stability", body: "Core engine built in Rust — low latency, high reliability, no drift or crash on long runs." },
-      { symbol: "ℹ", title: "Programmable research OS", body: "Custom skills, dynamic task chains, cross-session memory — compose a workflow that's fully yours." },
+      {
+        symbol: "⚡",
+        title: "Research discipline",
+        body: "Constrains emotional decisions in-conversation. It doesn't echo your thinking — it questions it.",
+      },
+      {
+        symbol: "◈",
+        title: "Company profiles & long memory",
+        body: "A persistent dossier per company; research compounds across sessions into a real knowledge asset.",
+      },
+      {
+        symbol: "∞",
+        title: "Scheduled tasks & alerts",
+        body: "Cron-driven workflows: reviews, portfolio checks, key-moment alerts — all running on their own.",
+      },
+      {
+        symbol: "✦",
+        title: "Multi-surface access",
+        body: "Web, iMessage, Lark / Feishu, Discord, Telegram, CLI — Hone on whichever surface you already live in.",
+      },
+      {
+        symbol: "⌘",
+        title: "Rust-powered stability",
+        body: "Core engine built in Rust — low latency, high reliability, no drift or crash on long runs.",
+      },
+      {
+        symbol: "ℹ",
+        title: "Programmable research OS",
+        body: "Custom skills, dynamic task chains, cross-session memory — compose a workflow that's fully yours.",
+      },
     ],
   },
 
@@ -1010,10 +1564,38 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
     ],
     tier2: [
-      { key: "discord", name: "Discord", desc: "English community discussion", url: "#", label: "Open", symbol: "⚡" },
-      { key: "zsxq", name: "Zhishixingqiu", desc: "Paid deep-dive content", url: "#", label: "Paid", symbol: "◈" },
-      { key: "vip", name: "VIP group", desc: "Premium / private feature preview", url: "#", label: "Invite", symbol: "✦" },
-      { key: "content", name: "Content channel", desc: "Research methodology & product updates", url: "#", label: "Follow", symbol: "∞" },
+      {
+        key: "discord",
+        name: "Discord",
+        desc: "English community discussion",
+        url: "#",
+        label: "Open",
+        symbol: "⚡",
+      },
+      {
+        key: "zsxq",
+        name: "Zhishixingqiu",
+        desc: "Paid deep-dive content",
+        url: "#",
+        label: "Paid",
+        symbol: "◈",
+      },
+      {
+        key: "vip",
+        name: "VIP group",
+        desc: "Premium / private feature preview",
+        url: "#",
+        label: "Invite",
+        symbol: "✦",
+      },
+      {
+        key: "content",
+        name: "Content channel",
+        desc: "Research methodology & product updates",
+        url: "#",
+        label: "Follow",
+        symbol: "∞",
+      },
     ],
   },
 
@@ -1021,18 +1603,55 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     section_label: "OPEN SOURCE",
     section_sub: "Made by B&M Capital Research. MIT licensed.",
     items: [
-      { title: "GitHub repo", desc: "Star, fork, open issues, help build in the open", url: "https://github.com/B-M-Capital-Research/honeclaw", tag: "Source", icon: "⌘" },
-      { title: "Chinese docs", desc: "README, usage guide, case studies", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", tag: "Docs", icon: "◈" },
-      { title: "Install guide", desc: "macOS desktop + self-hosted server setup", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动", tag: "Install", icon: "⚡" },
-      { title: "Repository map", desc: "Module structure, data flow, and runtime boundaries", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md", tag: "Tech", icon: "∞" },
-      { title: "Case studies", desc: "Real-world research scenarios", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", tag: "Cases", icon: "✦" },
-      { title: "Contributing", desc: "How to contribute code, ideas, and skills", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md", tag: "Contribute", icon: "ℹ" },
+      {
+        title: "GitHub repo",
+        desc: "Star, fork, open issues, help build in the open",
+        url: "https://github.com/B-M-Capital-Research/honeclaw",
+        tag: "Source",
+        icon: "⌘",
+      },
+      {
+        title: "Chinese docs",
+        desc: "README, usage guide, case studies",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
+        tag: "Docs",
+        icon: "◈",
+      },
+      {
+        title: "Install guide",
+        desc: "macOS desktop + self-hosted server setup",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动",
+        tag: "Install",
+        icon: "⚡",
+      },
+      {
+        title: "Repository map",
+        desc: "Module structure, data flow, and runtime boundaries",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md",
+        tag: "Tech",
+        icon: "∞",
+      },
+      {
+        title: "Case studies",
+        desc: "Real-world research scenarios",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md",
+        tag: "Cases",
+        icon: "✦",
+      },
+      {
+        title: "Contributing",
+        desc: "How to contribute code, ideas, and skills",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md",
+        tag: "Contribute",
+        icon: "ℹ",
+      },
     ],
   },
 
   roadmap: {
     hero_title: "Roadmap & Docs",
-    hero_sub: "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
+    hero_sub:
+      "Transparent, pragmatic, long-term. Here's what Hone does today, what's next, and how to bring it into your research workflow.",
     hero_meta: "ROADMAP · DOCS · API",
     sidebar_title: "ON THIS PAGE",
     version: "v0.11.1",
@@ -1054,7 +1673,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       quick_start: {
         eyebrow: "§ 01 · QUICK START",
         title: "Quick Start",
-        intro: "Three paths to run Hone: the one-line installer, Homebrew, or source. Pick whichever fits.",
+        intro:
+          "Three paths to run Hone: the one-line installer, Homebrew, or source. Pick whichever fits.",
       },
       capabilities: {
         eyebrow: "§ 02 · CAPABILITY MATRIX",
@@ -1064,19 +1684,22 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       channels: {
         eyebrow: "§ 03 · CHANNELS",
         title: "Channels",
-        intro: "Hone is a multi-surface research agent. Each channel is an independent process — start, stop, and configure them on their own.",
+        intro:
+          "Hone is a multi-surface research agent. Each channel is an independent process — start, stop, and configure them on their own.",
       },
       architecture: {
         eyebrow: "§ 04 · ARCHITECTURE",
         title: "Architecture",
-        intro: "Rust core · multi-runner abstraction · SolidJS frontend. The public user-ui, admin console, and channel processes share backend capabilities while staying separated by surface, port, and process boundary.",
+        intro:
+          "Rust core · multi-runner abstraction · SolidJS frontend. The public user-ui, admin console, and channel processes share backend capabilities while staying separated by surface, port, and process boundary.",
         footnote_prefix: "Full module walkthrough in",
         footnote_link: "docs/repo-map.md ↗",
       },
       skills: {
         eyebrow: "§ 05 · BUILT-IN SKILLS",
         title: "Built-in Skills",
-        intro_prefix: "Hone's skills are invoked by the model from context. Below are the 16 public skills in the",
+        intro_prefix:
+          "Hone's skills are invoked by the model from context. Below are the 16 public skills in the",
         intro_suffix: "directory.",
       },
       roadmap: {
@@ -1089,7 +1712,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       boundary: {
         eyebrow: "§ 07 · OPEN SOURCE BOUNDARY",
         title: "Open Source Boundary",
-        intro: "MIT licensed. The repo contains a fully-working core; premium additions stay closed but don't block the main flow.",
+        intro:
+          "MIT licensed. The repo contains a fully-working core; premium additions stay closed but don't block the main flow.",
         open_label: "Open source",
         closed_label: "Private / paid",
       },
@@ -1100,7 +1724,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       contributing: {
         eyebrow: "§ 09 · CONTRIBUTING",
         title: "Contributing",
-        intro: "Hone is open source. Every kind of contribution is welcome — not just code.",
+        intro:
+          "Hone is open source. Every kind of contribution is welcome — not just code.",
       },
       faq: {
         eyebrow: "§ 10 · FAQ",
@@ -1137,80 +1762,248 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       ],
     },
 
-    requirements: "macOS 13+ / Linux x86_64 / arm64 · first source build ~10 min (Rust / Bun required locally)",
+    requirements:
+      "macOS 13+ / Linux x86_64 / arm64 · first source build ~10 min (Rust / Bun required locally)",
 
     architecture_points: [
-      { title: "CLI startup", desc: "`hone-cli doctor / onboard / start` handles health checks, guided setup, and starting hone-console-page plus enabled channels; source mode uses `cargo run -p hone-cli -- start --build`." },
-      { title: "Public user-ui", desc: "The public surface routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; the backend exposes only `/api/public/*` plus public chat entrypoints." },
-      { title: "Admin console", desc: "The admin surface includes dashboard, sessions, skills, tasks, users, research, notifications, schedule, settings, and logs for operators." },
-      { title: "Runner layer", desc: "Supports OpenAI-compatible APIs, Gemini CLI, Codex CLI / ACP, OpenCode ACP, multi-agent, and a Hone Cloud compatible API route." },
-      { title: "Events and tasks", desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and actor ownership model." },
+      {
+        title: "CLI startup",
+        desc: "`hone-cli doctor / onboard / start` handles health checks, guided setup, and starting hone-console-page plus enabled channels; source mode uses `cargo run -p hone-cli -- start --build`.",
+      },
+      {
+        title: "Public user-ui",
+        desc: "The public surface routes `/`, `/roadmap`, `/chat`, `/me`, `/portfolio`, `/terms`, and `/privacy`; the backend exposes only `/api/public/*` plus public chat entrypoints.",
+      },
+      {
+        title: "Admin console",
+        desc: "The admin surface includes dashboard, sessions, skills, tasks, users, research, notifications, schedule, settings, and logs for operators.",
+      },
+      {
+        title: "Runner layer",
+        desc: "Supports OpenAI-compatible APIs, Gemini CLI, Codex CLI / ACP, OpenCode ACP, multi-agent, and a Hone Cloud compatible API route.",
+      },
+      {
+        title: "Events and tasks",
+        desc: "Cron jobs, event-engine digests, `/missed` recovery, notification preferences, and channel delivery share the Rust backend, SQLite/JSON storage, and actor ownership model.",
+      },
     ],
 
     capability_matrix: [
       {
         group: "Research core",
         rows: [
-          { name: "Research discipline & zero-hallucination protocol", status: "stable", note: "hardened system prompt" },
-          { name: "Company profiles & long memory", status: "stable", note: "company_portrait skill" },
-          { name: "Stock research / deep research", status: "stable", note: "stock_research + deep_stock_research" },
-          { name: "Portfolio tracking & alerts", status: "stable", note: "portfolio_management + cron" },
-          { name: "Valuation / selection / position advice", status: "stable", note: "stock_research covers valuation and screening; position_advice covers sizing changes" },
-          { name: "Chart & image generation", status: "stable", note: "chart_visualization / image_generation" },
-          { name: "Vector-augmented memory", status: "planned", note: "planned" },
+          {
+            name: "Research discipline & zero-hallucination protocol",
+            status: "stable",
+            note: "hardened system prompt",
+          },
+          {
+            name: "Company profiles & long memory",
+            status: "stable",
+            note: "company_portrait skill",
+          },
+          {
+            name: "Stock research / deep research",
+            status: "stable",
+            note: "stock_research + deep_stock_research",
+          },
+          {
+            name: "Portfolio tracking & alerts",
+            status: "stable",
+            note: "portfolio_management + cron",
+          },
+          {
+            name: "Valuation / selection / position advice",
+            status: "stable",
+            note: "stock_research covers valuation and screening; position_advice covers sizing changes",
+          },
+          {
+            name: "Chart & image generation",
+            status: "stable",
+            note: "chart_visualization / image_generation",
+          },
+          {
+            name: "Vector-augmented memory",
+            status: "planned",
+            note: "planned",
+          },
         ],
       },
       {
         group: "Runtime",
         rows: [
-          { name: "Rust core engine", status: "stable", note: "Tokio · axum · SSE" },
-          { name: "SolidJS frontend", status: "stable", note: "Vite · Tailwind v4" },
+          {
+            name: "Rust core engine",
+            status: "stable",
+            note: "Tokio · axum · SSE",
+          },
+          {
+            name: "SolidJS frontend",
+            status: "stable",
+            note: "Vite · Tailwind v4",
+          },
           { name: "Tauri desktop", status: "stable", note: "macOS released" },
-          { name: "Multi-runner abstraction", status: "stable", note: "OpenAI · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent" },
-          { name: "Windows / Linux desktop", status: "planned", note: "Tauri multi-platform packaging" },
+          {
+            name: "Multi-runner abstraction",
+            status: "stable",
+            note: "OpenAI · Gemini CLI · Codex CLI/ACP · OpenCode ACP · multi-agent",
+          },
+          {
+            name: "Windows / Linux desktop",
+            status: "planned",
+            note: "Tauri multi-platform packaging",
+          },
         ],
       },
       {
         group: "Extensions",
         rows: [
-          { name: "Cron scheduled tasks", status: "stable", note: "scheduled_task skill + /api/cron-jobs" },
-          { name: "Custom skills", status: "stable", note: "skill_manager · create_skill.sh" },
-          { name: "MCP protocol", status: "stable", note: "hone-mcp binary can act as an MCP server" },
-          { name: "HTTP + SSE internal API", status: "stable", note: "hone-web-api fully exposed" },
-          { name: "Per-actor notification prefs", status: "stable", note: "notification_preferences skill + settings page + config-level mute" },
-          { name: "Missed / truncated event recovery", status: "stable", note: "missed skill + missed_events tool" },
-          { name: "Public skill marketplace", status: "planned", note: "community sharing" },
+          {
+            name: "Cron scheduled tasks",
+            status: "stable",
+            note: "scheduled_task skill + /api/cron-jobs",
+          },
+          {
+            name: "Custom skills",
+            status: "stable",
+            note: "skill_manager · create_skill.sh",
+          },
+          {
+            name: "MCP protocol",
+            status: "stable",
+            note: "hone-mcp binary can act as an MCP server",
+          },
+          {
+            name: "HTTP + SSE internal API",
+            status: "stable",
+            note: "hone-web-api fully exposed",
+          },
+          {
+            name: "Per-actor notification prefs",
+            status: "stable",
+            note: "notification_preferences skill + settings page + config-level mute",
+          },
+          {
+            name: "Missed / truncated event recovery",
+            status: "stable",
+            note: "missed skill + missed_events tool",
+          },
+          {
+            name: "Public skill marketplace",
+            status: "planned",
+            note: "community sharing",
+          },
         ],
       },
     ],
 
     channels: [
-      { name: "Web", icon: "⚡", status: "stable", desc: "Invite-only chat, opens in browser (hone-web-api)" },
-      { name: "iMessage", icon: "✦", status: "stable", desc: "Native macOS SMS integration (hone-imessage)" },
-      { name: "Lark / Feishu", icon: "◈", status: "stable", desc: "Two-way Feishu bot (hone-feishu)" },
-      { name: "Discord", icon: "∞", status: "stable", desc: "Bot application integration (hone-discord)" },
-      { name: "Telegram", icon: "⌘", status: "stable", desc: "Bot API integration (hone-telegram)" },
-      { name: "CLI", icon: "ℹ", status: "stable", desc: "Streaming CLI chat (hone-cli)" },
-      { name: "MCP", icon: "✧", status: "stable", desc: "Run as MCP server inside Claude / Cursor, etc. (hone-mcp)" },
+      {
+        name: "Web",
+        icon: "⚡",
+        status: "stable",
+        desc: "Invite-only chat, opens in browser (hone-web-api)",
+      },
+      {
+        name: "iMessage",
+        icon: "✦",
+        status: "stable",
+        desc: "Native macOS SMS integration (hone-imessage)",
+      },
+      {
+        name: "Lark / Feishu",
+        icon: "◈",
+        status: "stable",
+        desc: "Two-way Feishu bot (hone-feishu)",
+      },
+      {
+        name: "Discord",
+        icon: "∞",
+        status: "stable",
+        desc: "Bot application integration (hone-discord)",
+      },
+      {
+        name: "Telegram",
+        icon: "⌘",
+        status: "stable",
+        desc: "Bot API integration (hone-telegram)",
+      },
+      {
+        name: "CLI",
+        icon: "ℹ",
+        status: "stable",
+        desc: "Streaming CLI chat (hone-cli)",
+      },
+      {
+        name: "MCP",
+        icon: "✧",
+        status: "stable",
+        desc: "Run as MCP server inside Claude / Cursor, etc. (hone-mcp)",
+      },
     ],
 
     skills: [
-      { name: "stock_research", desc: "Single-stock research, valuation, conditional screening" },
-      { name: "deep_stock_research", desc: "1–2 hour deep research tasks (admin only)" },
-      { name: "company_portrait", desc: "Maintain company profiles, theses, and event timelines" },
-      { name: "portfolio_management", desc: "Add, trim, rebalance, validate tickers" },
-      { name: "position_advice", desc: "Suggest adds / trims from market + position context" },
-      { name: "market_analysis", desc: "Macro, policy, sector momentum, index calls" },
-      { name: "gold-analysis", desc: "Gold, gold ETFs, and miners — macro and positioning" },
-      { name: "scheduled_task", desc: "Register / modify / cancel scheduled pushes" },
-      { name: "missed", desc: "Inspect digest items that were capped, cooled down, filtered, or folded" },
-      { name: "chart_visualization", desc: "Trend, comparison, distribution, scatter charts" },
-      { name: "image_generation", desc: "Portfolio screenshots, research visuals, explainers" },
-      { name: "image_understanding", desc: "Parse K-line / portfolio screenshots from users" },
-      { name: "pdf_understanding", desc: "Parse PDFs (filings, reports) into key points and risks" },
+      {
+        name: "stock_research",
+        desc: "Single-stock research, valuation, conditional screening",
+      },
+      {
+        name: "deep_stock_research",
+        desc: "1–2 hour deep research tasks (admin only)",
+      },
+      {
+        name: "company_portrait",
+        desc: "Maintain company profiles, theses, and event timelines",
+      },
+      {
+        name: "portfolio_management",
+        desc: "Add, trim, rebalance, validate tickers",
+      },
+      {
+        name: "position_advice",
+        desc: "Suggest adds / trims from market + position context",
+      },
+      {
+        name: "market_analysis",
+        desc: "Macro, policy, sector momentum, index calls",
+      },
+      {
+        name: "gold-analysis",
+        desc: "Gold, gold ETFs, and miners — macro and positioning",
+      },
+      {
+        name: "scheduled_task",
+        desc: "Register / modify / cancel scheduled pushes",
+      },
+      {
+        name: "missed",
+        desc: "Inspect digest items that were capped, cooled down, filtered, or folded",
+      },
+      {
+        name: "chart_visualization",
+        desc: "Trend, comparison, distribution, scatter charts",
+      },
+      {
+        name: "image_generation",
+        desc: "Portfolio screenshots, research visuals, explainers",
+      },
+      {
+        name: "image_understanding",
+        desc: "Parse K-line / portfolio screenshots from users",
+      },
+      {
+        name: "pdf_understanding",
+        desc: "Parse PDFs (filings, reports) into key points and risks",
+      },
       { name: "skill_manager", desc: "View / create / edit Hone skills" },
-      { name: "notification_preferences", desc: "Tune your own push prefs in natural language (severity, portfolio-only, kind allow/block)" },
-      { name: "hone_admin", desc: "Inspect and modify Hone source & config (admin)" },
+      {
+        name: "notification_preferences",
+        desc: "Tune your own push prefs in natural language (severity, portfolio-only, kind allow/block)",
+      },
+      {
+        name: "hone_admin",
+        desc: "Inspect and modify Hone source & config (admin)",
+      },
     ],
 
     now: {
@@ -1266,15 +2059,51 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     },
 
     docs: [
-      { title: "README (English)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README.md", desc: "Project overview, install, quick start" },
-      { title: "README (中文)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md", desc: "Overview, install, quick start in Chinese" },
-      { title: "Wiki", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md", desc: "Install, startup, ports, configuration, verification, and troubleshooting" },
-      { title: "Repo Map", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md", desc: "Module boundaries, runtime data flow, and linked change areas" },
-      { title: "Cases (中文)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md", desc: "Real-world research scenario examples" },
-      { title: "Cases (English)", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_EN.md", desc: "Real-world case studies" },
-      { title: "Skills directory", url: "https://github.com/B-M-Capital-Research/honeclaw/tree/main/skills", desc: "Source and notes for every public skill" },
-      { title: "CONTRIBUTING.md", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md", desc: "Contribution guide" },
-      { title: "SECURITY.md", url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/SECURITY.md", desc: "Vulnerability disclosure policy" },
+      {
+        title: "README (English)",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README.md",
+        desc: "Project overview, install, quick start",
+      },
+      {
+        title: "README (中文)",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
+        desc: "Overview, install, quick start in Chinese",
+      },
+      {
+        title: "Wiki",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md",
+        desc: "Install, startup, ports, configuration, verification, and troubleshooting",
+      },
+      {
+        title: "Repo Map",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md",
+        desc: "Module boundaries, runtime data flow, and linked change areas",
+      },
+      {
+        title: "Cases (中文)",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md",
+        desc: "Real-world research scenario examples",
+      },
+      {
+        title: "Cases (English)",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_EN.md",
+        desc: "Real-world case studies",
+      },
+      {
+        title: "Skills directory",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/tree/main/skills",
+        desc: "Source and notes for every public skill",
+      },
+      {
+        title: "CONTRIBUTING.md",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md",
+        desc: "Contribution guide",
+      },
+      {
+        title: "SECURITY.md",
+        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/SECURITY.md",
+        desc: "Vulnerability disclosure policy",
+      },
     ],
 
     contributing: [
@@ -1375,15 +2204,19 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   auth: {
     login: {
       title: "Sign in to Hone",
-      subtitle: "Existing users sign in with a password; new users activate with an invite code.",
-      tab_password: "Password",
-      tab_invite: "Invite code",
-      hint_password: "Already have an account: sign in with phone + password.",
-      hint_invite:
-        "First time in: activate your account with an invite code. Need one? Add WeChat xiaobamang6677 or email bm@hone-claw.com; please also star us on GitHub.",
+      subtitle: "Sign in with your phone number and SMS code.",
+      hint_sms:
+        "Hone is currently invite-only. Contact bm@hone-claw.com to join the whitelist.",
       phone_label: "Phone",
       phone_placeholder: "e.g. +1 555 0134",
       phone_aria: "Phone",
+      code_label: "Code",
+      code_placeholder: "SMS code",
+      code_aria: "SMS code",
+      send_code: "Send code",
+      sending_code: "Sending",
+      resend_in: "{seconds}s",
+      code_sent: "Code sent. Please check your SMS.",
       password_label: "Password",
       password_placeholder: "Your password",
       password_aria: "Password",
@@ -1391,6 +2224,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       invite_placeholder: "HONE-XXXXXX-XXXXXX",
       invite_aria: "Invite code",
       remember_30d: "Keep me signed in (30 days)",
+      submit_sms: "Sign in",
       submit_password: "Sign in",
       submit_invite: "Activate & sign in",
       loading: "Signing in…",
@@ -1428,7 +2262,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       confirm_placeholder: "Type it again",
       confirm_aria: "Confirm new password",
       error_mismatch: "Passwords do not match",
-      success: "✓ Password updated. Use the new password next time you sign in.",
+      success:
+        "✓ Password updated. Use the new password next time you sign in.",
       button_ok: "Got it",
       button_submit: "Save",
       loading: "Saving…",
@@ -1456,132 +2291,311 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     version_banner_template: "v{version} · effective {date}",
     terms: {
       page_title: "Terms of Service",
-      intro: "Please read the following carefully. Continuing to use Hone means you accept these terms.",
+      intro:
+        "Please read the following carefully. Continuing to use Hone means you accept these terms.",
       sections: [
         {
           title: "1. Acceptance & effective date",
           body: [
-            { kind: "p", parts: ["Welcome to Hone (\"the service\"). The service is operated by ", { strong: "Snowdrift Capital LLC" }, ", a limited liability company organized under the laws of the State of Wyoming, United States (\"we,\" \"us,\" or \"our\"). These Terms of Service (\"Terms\") form a binding agreement between you and us regarding your use of the service."] },
-            { kind: "p", parts: ["By checking the agreement box or continuing to use the service, you confirm that you have read and accept these Terms in full. If you disagree with any clause, stop using the service immediately."] },
+            {
+              kind: "p",
+              parts: [
+                'Welcome to Hone ("the service"). The service is operated by ',
+                { strong: "Snowdrift Capital LLC" },
+                ', a limited liability company organized under the laws of the State of Wyoming, United States ("we," "us," or "our"). These Terms of Service ("Terms") form a binding agreement between you and us regarding your use of the service.',
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "By checking the agreement box or continuing to use the service, you confirm that you have read and accept these Terms in full. If you disagree with any clause, stop using the service immediately.",
+              ],
+            },
           ],
         },
         {
           title: "2. Service description",
           body: [
-            { kind: "p", parts: ["Hone is a research and decision-assistant tool for individual investors, offering information retrieval, conversational research, investment notes, and scheduled reminders."] },
-            { kind: "p", parts: [{ strong: "The service does not constitute investment advice, an offer, or a recommendation of any kind." }, " All output from the service is for reference only; every investment decision is yours to make and yours to bear."] },
+            {
+              kind: "p",
+              parts: [
+                "Hone is a research and decision-assistant tool for individual investors, offering information retrieval, conversational research, investment notes, and scheduled reminders.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                {
+                  strong:
+                    "The service does not constitute investment advice, an offer, or a recommendation of any kind.",
+                },
+                " All output from the service is for reference only; every investment decision is yours to make and yours to bear.",
+              ],
+            },
           ],
         },
         {
-          title: "3. Account & password",
+          title: "3. Account & verification",
           body: [
-            { kind: "p", parts: ["You sign in with a phone number we have registered and set a personal password for authentication. Keep your credentials safe and do not share your account with others."] },
-            { kind: "p", parts: ["You are responsible for everything that happens under your account. If you notice unauthorized access, notify us and change your password immediately."] },
+            {
+              kind: "p",
+              parts: [
+                "You sign in with a phone number we have registered and verify your identity with an SMS code. Hone is currently invite-only, and phone numbers outside the whitelist cannot sign in.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "Keep your phone number, SMS codes, and signed-in devices secure. Do not share your account with others. If you notice unauthorized access, notify us immediately.",
+              ],
+            },
           ],
         },
         {
           title: "4. Acceptable use",
           body: [
-            { kind: "p", parts: ["When using the service, you agree not to (including but not limited to):"] },
+            {
+              kind: "p",
+              parts: [
+                "When using the service, you agree not to (including but not limited to):",
+              ],
+            },
             {
               kind: "ul",
               items: [
-                ["violate any law or regulation applicable in your location or any other relevant jurisdiction;"],
-                ["infringe on others' rights, including intellectual property, privacy, publicity, reputation, trade secrets, or other proprietary or personal rights;"],
-                ["post or transmit content that is threatening, harassing, hateful, discriminatory, fraudulent, or defamatory;"],
-                ["produce, reproduce, distribute, or solicit pornographic content, child sexual abuse material, drug trafficking, violence, or other unlawful content;"],
-                ["use prompts or any other means to induce the service to produce content that violates the above;"],
-                ["reverse-engineer, scrape, bulk-automate, exploit vulnerabilities, circumvent access controls, or otherwise abuse the service;"],
-                ["upload, distribute, or deploy malware, spam, phishing links, or other harmful technologies;"],
-                ["impersonate others, falsify account information, or engage in any form of fraud;"],
-                ["use the service to violate U.S. export-control laws, OFAC sanctions, anti-money-laundering laws, or other economic-sanctions regulations."],
+                [
+                  "violate any law or regulation applicable in your location or any other relevant jurisdiction;",
+                ],
+                [
+                  "infringe on others' rights, including intellectual property, privacy, publicity, reputation, trade secrets, or other proprietary or personal rights;",
+                ],
+                [
+                  "post or transmit content that is threatening, harassing, hateful, discriminatory, fraudulent, or defamatory;",
+                ],
+                [
+                  "produce, reproduce, distribute, or solicit pornographic content, child sexual abuse material, drug trafficking, violence, or other unlawful content;",
+                ],
+                [
+                  "use prompts or any other means to induce the service to produce content that violates the above;",
+                ],
+                [
+                  "reverse-engineer, scrape, bulk-automate, exploit vulnerabilities, circumvent access controls, or otherwise abuse the service;",
+                ],
+                [
+                  "upload, distribute, or deploy malware, spam, phishing links, or other harmful technologies;",
+                ],
+                [
+                  "impersonate others, falsify account information, or engage in any form of fraud;",
+                ],
+                [
+                  "use the service to violate U.S. export-control laws, OFAC sanctions, anti-money-laundering laws, or other economic-sanctions regulations.",
+                ],
               ],
             },
-            { kind: "p", parts: ["If you violate the above, we may immediately suspend or terminate your account, preserve relevant evidence, and cooperate with lawful requests from law-enforcement or judicial authorities. You bear sole legal responsibility for any consequences."] },
+            {
+              kind: "p",
+              parts: [
+                "If you violate the above, we may immediately suspend or terminate your account, preserve relevant evidence, and cooperate with lawful requests from law-enforcement or judicial authorities. You bear sole legal responsibility for any consequences.",
+              ],
+            },
           ],
         },
         {
           title: "5. Content & intellectual property",
           body: [
-            { kind: "p", parts: ["All intellectual property rights in the service — interface, copy, code, marks, and related materials — belong to us or our lawful rights holders, protected by copyright and related laws."] },
-            { kind: "p", parts: ["Content you input (conversations, notes, attachments, etc.) remains yours. You grant us a non-exclusive license, limited to what is necessary to operate and improve the service."] },
+            {
+              kind: "p",
+              parts: [
+                "All intellectual property rights in the service — interface, copy, code, marks, and related materials — belong to us or our lawful rights holders, protected by copyright and related laws.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "Content you input (conversations, notes, attachments, etc.) remains yours. You grant us a non-exclusive license, limited to what is necessary to operate and improve the service.",
+              ],
+            },
           ],
         },
         {
           title: "6. Third-party services & data sources",
           body: [
-            { kind: "p", parts: ["The service may call third-party large language models (LLMs), market data, search engines, and similar providers to deliver features. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements."] },
-            { kind: "p", parts: ["You understand and agree that, when calling a third-party service, we may transmit the necessary request content. We will choose reputable and trustworthy partners in line with their terms."] },
+            {
+              kind: "p",
+              parts: [
+                "The service may call third-party large language models (LLMs), market data, search engines, and similar providers to deliver features. Third-party services are operated independently; their stability, accuracy, and compliance are governed by their own official statements.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "You understand and agree that, when calling a third-party service, we may transmit the necessary request content. We will choose reputable and trustworthy partners in line with their terms.",
+              ],
+            },
           ],
         },
         {
           title: "7. Service changes, suspension & termination",
           body: [
-            { kind: "p", parts: ["We may suspend, change, or terminate part or all of the service for upgrades, maintenance, security incidents, force majeure, or business adjustments. We will give reasonable prior notice through in-service messages or other channels."] },
-            { kind: "p", parts: ["If you materially breach these Terms, we may suspend or terminate your access immediately and reserve the right to pursue remedies under the law."] },
+            {
+              kind: "p",
+              parts: [
+                "We may suspend, change, or terminate part or all of the service for upgrades, maintenance, security incidents, force majeure, or business adjustments. We will give reasonable prior notice through in-service messages or other channels.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "If you materially breach these Terms, we may suspend or terminate your access immediately and reserve the right to pursue remedies under the law.",
+              ],
+            },
           ],
         },
         {
           title: "8. Disclaimers & limitation of liability",
           body: [
-            { kind: "p", parts: ["To the maximum extent permitted by applicable law, the service is provided \"as is\" and \"as available.\" We make no express or implied warranty of continuity, accuracy, completeness, or timeliness."] },
-            { kind: "p", parts: ["The service is currently provided free of charge. To the maximum extent permitted by applicable law, we are not liable for any direct or indirect monetary loss you suffer from using or being unable to use the service (including but not limited to investment or trading losses, data loss, or lost profits)."] },
+            {
+              kind: "p",
+              parts: [
+                'To the maximum extent permitted by applicable law, the service is provided "as is" and "as available." We make no express or implied warranty of continuity, accuracy, completeness, or timeliness.',
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "The service is currently provided free of charge. To the maximum extent permitted by applicable law, we are not liable for any direct or indirect monetary loss you suffer from using or being unable to use the service (including but not limited to investment or trading losses, data loss, or lost profits).",
+              ],
+            },
           ],
         },
         {
           title: "9. Changes to these Terms",
           body: [
-            { kind: "p", parts: ["We may revise these Terms to reflect changes in law or our business. Updated Terms will be published in-service with a version number and effective date."] },
-            { kind: "p", parts: ["Material changes will be surfaced via in-service notice for reconfirmation. Continuing to use the service after an update means you accept the revised Terms."] },
+            {
+              kind: "p",
+              parts: [
+                "We may revise these Terms to reflect changes in law or our business. Updated Terms will be published in-service with a version number and effective date.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "Material changes will be surfaced via in-service notice for reconfirmation. Continuing to use the service after an update means you accept the revised Terms.",
+              ],
+            },
           ],
         },
         {
           title: "10. Governing law & dispute resolution",
           body: [
-            { kind: "p", parts: ["The formation, validity, interpretation, performance, and dispute resolution of these Terms are governed by the ", { strong: "laws of the State of Wyoming, United States" }, ", without regard to its conflict-of-laws principles. The United Nations Convention on Contracts for the International Sale of Goods (CISG) does not apply to these Terms."] },
-            { kind: "p", parts: ["Any dispute arising from or related to these Terms shall first be addressed in good faith through negotiation. Failing that, either party may bring a claim in the state or federal courts located in Sheridan County, Wyoming, USA, and both parties consent to the exclusive jurisdiction of those courts and waive any objection to venue."] },
-            { kind: "p", parts: ["To the maximum extent permitted by applicable law, you agree to resolve disputes with us individually, and not as part of any class or representative action."] },
+            {
+              kind: "p",
+              parts: [
+                "The formation, validity, interpretation, performance, and dispute resolution of these Terms are governed by the ",
+                { strong: "laws of the State of Wyoming, United States" },
+                ", without regard to its conflict-of-laws principles. The United Nations Convention on Contracts for the International Sale of Goods (CISG) does not apply to these Terms.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "Any dispute arising from or related to these Terms shall first be addressed in good faith through negotiation. Failing that, either party may bring a claim in the state or federal courts located in Sheridan County, Wyoming, USA, and both parties consent to the exclusive jurisdiction of those courts and waive any objection to venue.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "To the maximum extent permitted by applicable law, you agree to resolve disputes with us individually, and not as part of any class or representative action.",
+              ],
+            },
           ],
         },
         {
           title: "11. Contact",
           body: [
-            { kind: "p", parts: ["If you have any questions, comments, or suggestions about these Terms, please contact us:"] },
+            {
+              kind: "p",
+              parts: [
+                "If you have any questions, comments, or suggestions about these Terms, please contact us:",
+              ],
+            },
             {
               kind: "ul",
               items: [
                 [{ strong: "Email:" }, " ", { code: "bm@hone-claw.com" }],
-                [{ strong: "GitHub Issues:" }, " ", { code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }],
-                [{ strong: "Mailing address:" }, " Snowdrift Capital LLC, 30 N Gould St, Ste N, Sheridan, WY 82801, United States"],
+                [
+                  { strong: "GitHub Issues:" },
+                  " ",
+                  {
+                    code: "https://github.com/B-M-Capital-Research/honeclaw/issues",
+                  },
+                ],
+                [
+                  { strong: "Mailing address:" },
+                  " Snowdrift Capital LLC, 30 N Gould St, Ste N, Sheridan, WY 82801, United States",
+                ],
               ],
             },
-            { kind: "p", parts: ["We will respond within a reasonable period."] },
+            {
+              kind: "p",
+              parts: ["We will respond within a reasonable period."],
+            },
           ],
         },
       ] as LegalSection[],
     },
     privacy: {
       page_title: "Privacy Policy",
-      intro: "We care about your data. This policy explains how Hone handles your personal information.",
+      intro:
+        "We care about your data. This policy explains how Hone handles your personal information.",
       sections: [
         {
           title: "1. Introduction & scope",
           body: [
-            { kind: "p", parts: ["This Privacy Policy describes how Hone (operated by ", { strong: "Snowdrift Capital LLC" }, ", a Wyoming limited liability company, \"we,\" \"us,\" or \"our\") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the Hone website or client."] },
-            { kind: "p", parts: ["Please read this policy in full before using the service. Continuing to use it means you have understood and accepted the policy."] },
+            {
+              kind: "p",
+              parts: [
+                "This Privacy Policy describes how Hone (operated by ",
+                { strong: "Snowdrift Capital LLC" },
+                ', a Wyoming limited liability company, "we," "us," or "our") collects, uses, stores, shares, and protects your personal information while providing the service. It applies to every scenario in which you use the service through the Hone website or client.',
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "Please read this policy in full before using the service. Continuing to use it means you have understood and accepted the policy.",
+              ],
+            },
           ],
         },
         {
           title: "2. Information we collect",
           body: [
-            { kind: "p", parts: ["To provide the service, we collect the following categories of information under the principle of data minimization:"] },
+            {
+              kind: "p",
+              parts: [
+                "To provide the service, we collect the following categories of information under the principle of data minimization:",
+              ],
+            },
             {
               kind: "ul",
               items: [
-                [{ strong: "Account info:" }, " phone number (as account identifier), invite code (for initial registration), and a password hash (we only store the Argon2id hash; we never store plaintext passwords);"],
-                [{ strong: "Usage data:" }, " conversation history, prompts and responses, uploaded attachments, notes, and scheduled tasks;"],
-                [{ strong: "Device & logs:" }, " IP address, browser type, access timestamps, error logs, cookie identifiers;"],
-                [{ strong: "Consent events:" }, " the version and time at which you accepted the Terms and this policy."],
+                [
+                  { strong: "Account info:" },
+                  " phone number (as account identifier and whitelist key), SMS verification result, and historical invite-user records used as the whitelist source;",
+                ],
+                [
+                  { strong: "Usage data:" },
+                  " conversation history, prompts and responses, uploaded attachments, notes, and scheduled tasks;",
+                ],
+                [
+                  { strong: "Device & logs:" },
+                  " IP address, browser type, access timestamps, error logs, cookie identifiers;",
+                ],
+                [
+                  { strong: "Consent events:" },
+                  " the version and time at which you accepted the Terms and this policy.",
+                ],
               ],
             },
           ],
@@ -1589,14 +2603,27 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "3. How we use it",
           body: [
-            { kind: "p", parts: ["We use the above information for the following purposes:"] },
+            {
+              kind: "p",
+              parts: [
+                "We use the above information for the following purposes:",
+              ],
+            },
             {
               kind: "ul",
               items: [
-                ["authentication, session maintenance, account risk control, and rate limiting;"],
-                ["calling large language models and external data sources to fulfill your queries;"],
-                ["recording session context to enable continuous conversation;"],
-                ["troubleshooting, security incident response, and service optimization."],
+                [
+                  "authentication, session maintenance, account risk control, and rate limiting;",
+                ],
+                [
+                  "calling large language models and external data sources to fulfill your queries;",
+                ],
+                [
+                  "recording session context to enable continuous conversation;",
+                ],
+                [
+                  "troubleshooting, security incident response, and service optimization.",
+                ],
               ],
             },
           ],
@@ -1604,83 +2631,188 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         {
           title: "4. Storage, retention & security",
           body: [
-            { kind: "p", parts: ["Your account and conversation data are stored in the service's local SQLite database by default. Passwords are hashed with ", { strong: "Argon2id" }, " and a random salt; we cannot recover plaintext passwords."] },
-            { kind: "p", parts: ["We protect your information with HTTPS in transit, least-privilege access controls, password hashing, and other technical and organizational measures. Within the limits of applicable law, we retain information only for as long as necessary to meet the stated purposes."] },
+            {
+              kind: "p",
+              parts: [
+                "Your account and conversation data are stored in the service's local SQLite database by default. SMS codes are sent and checked by a third-party SMS verification provider; we do not store plaintext verification codes.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "We protect your information with HTTPS in transit, least-privilege access controls, server-side session cookies, and other technical and organizational measures. Within the limits of applicable law, we retain information only for as long as necessary to meet the stated purposes.",
+              ],
+            },
           ],
         },
         {
           title: "5. Sharing & third parties",
           body: [
-            { kind: "p", parts: ["To fulfill your queries we may transmit relevant input to the following categories of third-party service providers:"] },
+            {
+              kind: "p",
+              parts: [
+                "To fulfill your queries we may transmit relevant input to the following categories of third-party service providers:",
+              ],
+            },
             {
               kind: "ul",
               items: [
                 ["large language model providers (to generate responses);"],
-                ["market data and search data sources (to supplement queries with market or public information)."],
+                [
+                  "market data and search data sources (to supplement queries with market or public information).",
+                ],
               ],
             },
-            { kind: "p", parts: ["Except for the necessary scenarios above or as otherwise required by law, we do not sell or lease your personal information to any third party."] },
+            {
+              kind: "p",
+              parts: [
+                "Except for the necessary scenarios above or as otherwise required by law, we do not sell or lease your personal information to any third party.",
+              ],
+            },
           ],
         },
         {
           title: "6. Cookies & tracking",
           body: [
-            { kind: "p", parts: ["We use an HTTP-only cookie named ", { code: "hone_web_session" }, " to maintain your sign-in state. Its lifetime is 30 days when you check \"Keep me signed in,\" otherwise 1 day."] },
-            { kind: "p", parts: ["We do not use third-party advertising tracking cookies."] },
+            {
+              kind: "p",
+              parts: [
+                "We use an HTTP-only cookie named ",
+                { code: "hone_web_session" },
+                ' to maintain your sign-in state. Its lifetime is 30 days when you check "Keep me signed in," otherwise 1 day.',
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "We do not use third-party advertising tracking cookies.",
+              ],
+            },
           ],
         },
         {
           title: "7. Minors",
           body: [
-            { kind: "p", parts: ["The service is intended for adults aged 18 or older with full legal capacity. If you are a minor, please use the service under a guardian's supervision. We do not actively collect personal information from minors."] },
+            {
+              kind: "p",
+              parts: [
+                "The service is intended for adults aged 18 or older with full legal capacity. If you are a minor, please use the service under a guardian's supervision. We do not actively collect personal information from minors.",
+              ],
+            },
           ],
         },
         {
           title: "8. Data processing location & cross-border transfers",
           body: [
-            { kind: "p", parts: ["Our data processing infrastructure is located in the ", { strong: "United States" }, " (where the operator is registered). The language models and data sources we call are primarily located in the United States and other jurisdictions. When you use the service, your personal information and query content will be transmitted to and stored in the United States."] },
-            { kind: "p", parts: ["If you are located outside the United States (including the European Economic Area, the United Kingdom, mainland China, or any other jurisdiction), you understand and consent that your personal information will be transferred across borders to the United States for processing. We choose partners with appropriate compliance credentials and apply technical and organizational measures to protect the information."] },
+            {
+              kind: "p",
+              parts: [
+                "Our data processing infrastructure is located in the ",
+                { strong: "United States" },
+                " (where the operator is registered). The language models and data sources we call are primarily located in the United States and other jurisdictions. When you use the service, your personal information and query content will be transmitted to and stored in the United States.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "If you are located outside the United States (including the European Economic Area, the United Kingdom, mainland China, or any other jurisdiction), you understand and consent that your personal information will be transferred across borders to the United States for processing. We choose partners with appropriate compliance credentials and apply technical and organizational measures to protect the information.",
+              ],
+            },
           ],
         },
         {
           title: "9. Your rights",
           body: [
-            { kind: "p", parts: ["Subject to applicable law, you have the following rights regarding your personal information:"] },
+            {
+              kind: "p",
+              parts: [
+                "Subject to applicable law, you have the following rights regarding your personal information:",
+              ],
+            },
             {
               kind: "ul",
               items: [
                 ["access and correct your account details;"],
-                ["change your sign-in password;"],
+                ["manage your signed-in session;"],
                 ["request deletion of your account and associated data;"],
                 ["withdraw a consent you previously granted;"],
-                ["request a copy of the personal information you provided to us (data portability);"],
-                ["object to or restrict certain processing of your personal information."],
+                [
+                  "request a copy of the personal information you provided to us (data portability);",
+                ],
+                [
+                  "object to or restrict certain processing of your personal information.",
+                ],
               ],
             },
-            { kind: "p", parts: ["If you are a ", { strong: "California resident" }, ", under the California Consumer Privacy Act (CCPA / CPRA) you also have the right to know the categories of personal information we collect and share, the right to request deletion of collected information, and the right not to be discriminated against for exercising your rights. We do ", { strong: "not \"sell\"" }, " your personal information to third parties."] },
-            { kind: "p", parts: ["If you are located in the ", { strong: "European Economic Area or the United Kingdom" }, ", under the GDPR / UK GDPR you also have the right to lodge a complaint with your local data protection authority."] },
-            { kind: "p", parts: ["You can exercise the first three rights on the \"Account\" page, or contact us via the channels below. Withdrawing consent may render parts of the service unavailable. We will respond to your request within a reasonable time, typically within 30 days."] },
+            {
+              kind: "p",
+              parts: [
+                "If you are a ",
+                { strong: "California resident" },
+                ", under the California Consumer Privacy Act (CCPA / CPRA) you also have the right to know the categories of personal information we collect and share, the right to request deletion of collected information, and the right not to be discriminated against for exercising your rights. We do ",
+                { strong: 'not "sell"' },
+                " your personal information to third parties.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                "If you are located in the ",
+                { strong: "European Economic Area or the United Kingdom" },
+                ", under the GDPR / UK GDPR you also have the right to lodge a complaint with your local data protection authority.",
+              ],
+            },
+            {
+              kind: "p",
+              parts: [
+                'You can exercise the first three rights on the "Account" page, or contact us via the channels below. Withdrawing consent may render parts of the service unavailable. We will respond to your request within a reasonable time, typically within 30 days.',
+              ],
+            },
           ],
         },
         {
           title: "10. Policy updates",
           body: [
-            { kind: "p", parts: ["We may update this policy to reflect legal or business changes. Updated policies will be published in-service with a version number and effective date; material changes will be surfaced via in-service notice."] },
+            {
+              kind: "p",
+              parts: [
+                "We may update this policy to reflect legal or business changes. Updated policies will be published in-service with a version number and effective date; material changes will be surfaced via in-service notice.",
+              ],
+            },
           ],
         },
         {
           title: "11. Contact",
           body: [
-            { kind: "p", parts: ["If you have questions, comments, or complaints about this policy or how your data is handled, please contact us:"] },
+            {
+              kind: "p",
+              parts: [
+                "If you have questions, comments, or complaints about this policy or how your data is handled, please contact us:",
+              ],
+            },
             {
               kind: "ul",
               items: [
                 [{ strong: "Email:" }, " ", { code: "bm@hone-claw.com" }],
-                [{ strong: "GitHub Issues:" }, " ", { code: "https://github.com/B-M-Capital-Research/honeclaw/issues" }],
-                [{ strong: "Mailing address:" }, " Snowdrift Capital LLC, Attn: Privacy, 30 N Gould St, Ste N, Sheridan, WY 82801, United States"],
+                [
+                  { strong: "GitHub Issues:" },
+                  " ",
+                  {
+                    code: "https://github.com/B-M-Capital-Research/honeclaw/issues",
+                  },
+                ],
+                [
+                  { strong: "Mailing address:" },
+                  " Snowdrift Capital LLC, Attn: Privacy, 30 N Gould St, Ste N, Sheridan, WY 82801, United States",
+                ],
               ],
             },
-            { kind: "p", parts: ["We will respond and address them within a reasonable period."] },
+            {
+              kind: "p",
+              parts: [
+                "We will respond and address them within a reasonable period.",
+              ],
+            },
           ],
         },
       ] as LegalSection[],
@@ -1690,7 +2822,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   footer: {
     tagline: "Sharpen cognition, strip the noise.",
     mantra: "SHARPEN COGNITION · STRIP THE NOISE · OPEN FINANCIAL CONSOLE",
-    copyright: "© 2026 Snowdrift Capital LLC · Sheridan, WY, USA · Open source under MIT License.",
+    copyright:
+      "© 2026 Snowdrift Capital LLC · Sheridan, WY, USA · Open source under MIT License.",
     columns: {
       product: {
         title: "Product",
@@ -1706,10 +2839,22 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       resources: {
         title: "Resources",
         items: [
-          { label: "GitHub", href: "https://github.com/B-M-Capital-Research/honeclaw" },
-          { label: "Chinese docs", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md" },
-          { label: "Install", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动" },
-          { label: "Repository map", href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md" },
+          {
+            label: "GitHub",
+            href: "https://github.com/B-M-Capital-Research/honeclaw",
+          },
+          {
+            label: "Chinese docs",
+            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
+          },
+          {
+            label: "Install",
+            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动",
+          },
+          {
+            label: "Repository map",
+            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md",
+          },
         ],
       },
       community: {
@@ -1723,6 +2868,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       },
     },
   },
-}
+};
 
-export const CONTENT = makeContentProxy(CONTENT_ZH, CONTENT_EN as typeof CONTENT_ZH)
+export const CONTENT = makeContentProxy(
+  CONTENT_ZH,
+  CONTENT_EN as typeof CONTENT_ZH,
+);
