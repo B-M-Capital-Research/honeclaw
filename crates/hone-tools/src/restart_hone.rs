@@ -203,6 +203,6 @@ mod tests {
             .execute(serde_json::json!({ "confirm": "no" }))
             .await
             .unwrap();
-        assert_eq!(result["success"], false);
+        assert_eq!(result["success"].as_bool(), Some(false));
     }
 }

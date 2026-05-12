@@ -166,11 +166,11 @@ mod tests {
         let path = root.join("runtime").join("skill_registry.json");
 
         let registry = set_skill_enabled(&path, "alpha", false).expect("disable alpha");
-        assert_eq!(registry.is_enabled("alpha"), false);
+        assert!(!registry.is_enabled("alpha"));
         assert!(path.exists());
 
         let registry = set_skill_enabled(&path, "alpha", true).expect("enable alpha");
-        assert_eq!(registry.is_enabled("alpha"), true);
+        assert!(registry.is_enabled("alpha"));
         assert!(!registry.entries.contains_key("alpha"));
     }
 

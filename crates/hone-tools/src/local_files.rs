@@ -771,7 +771,7 @@ mod tests {
             .expect("read");
         assert_eq!(read["start_line"], 1);
         assert_eq!(read["end_line"], 200);
-        assert_eq!(read["truncated"], true);
+        assert_eq!(read["truncated"].as_bool(), Some(true));
 
         let _ = fs::remove_dir_all(base);
     }

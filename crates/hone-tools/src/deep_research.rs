@@ -261,7 +261,7 @@ mod tests {
             .execute(serde_json::json!({"company_name": ""}))
             .await
             .expect("execute should not panic");
-        assert_eq!(result["success"], false);
+        assert_eq!(result["success"].as_bool(), Some(false));
         assert!(
             result["error"]
                 .as_str()
@@ -281,7 +281,7 @@ mod tests {
             .execute(serde_json::json!({"company_name": "NVIDIA"}))
             .await
             .expect("execute should not panic");
-        assert_eq!(result["success"], false);
+        assert_eq!(result["success"].as_bool(), Some(false));
         let err = result["error"].as_str().unwrap_or_default();
         assert!(!err.is_empty(), "error should have message");
         assert!(!err.contains("secret"));

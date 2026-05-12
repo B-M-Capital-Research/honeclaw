@@ -313,7 +313,7 @@ mod tests {
         };
 
         let value = serde_json::to_value(settings).expect("settings should serialize");
-        assert_eq!(value["discordEnabled"], true);
+        assert_eq!(value["discordEnabled"].as_bool(), Some(true));
         assert_eq!(value["discordChatScope"], "ALL");
         assert_eq!(value["discordAllowFrom"][0], "123");
         assert!(value.get("discord_enabled").is_none());

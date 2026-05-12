@@ -146,7 +146,7 @@ fn report_intercept_parses_company_name_and_progress() {
         parse_report_intercept("/report progress"),
         Some(ReportIntercept::Progress)
     );
-    assert_eq!(parse_report_intercept("/report"), None);
+    assert!(parse_report_intercept("/report").is_none());
 }
 
 #[test]

@@ -719,7 +719,7 @@ mod tests {
             }))
             .await
             .expect("add");
-        assert_eq!(add_resp["success"], true);
+        assert_eq!(add_resp["success"].as_bool(), Some(true));
 
         let view_after_add = tool
             .execute(serde_json::json!({"action":"view"}))
@@ -748,7 +748,7 @@ mod tests {
             }))
             .await
             .expect("update");
-        assert_eq!(update_resp["success"], true);
+        assert_eq!(update_resp["success"].as_bool(), Some(true));
 
         let view_after_update = tool
             .execute(serde_json::json!({"action":"view"}))
@@ -772,7 +772,7 @@ mod tests {
             }))
             .await
             .expect("remove");
-        assert_eq!(remove_resp["success"], true);
+        assert_eq!(remove_resp["success"].as_bool(), Some(true));
 
         let view_after_remove = tool
             .execute(serde_json::json!({"action":"view"}))
@@ -806,7 +806,7 @@ mod tests {
             }))
             .await
             .expect("add option");
-        assert_eq!(add_resp["success"], true);
+        assert_eq!(add_resp["success"].as_bool(), Some(true));
         assert_eq!(add_resp["ticker"], "AAPL 2026-06-19 C 200");
 
         let view_resp = tool
@@ -834,7 +834,7 @@ mod tests {
             }))
             .await
             .expect("remove option");
-        assert_eq!(remove_resp["success"], true);
+        assert_eq!(remove_resp["success"].as_bool(), Some(true));
     }
 
     #[tokio::test]
@@ -871,7 +871,7 @@ mod tests {
             .await
             .expect("batch add");
 
-        assert_eq!(add_resp["success"], true);
+        assert_eq!(add_resp["success"].as_bool(), Some(true));
         assert_eq!(add_resp["count"], 2);
 
         let view_resp = tool
@@ -935,7 +935,7 @@ mod tests {
             }))
             .await
             .expect("batch remove");
-        assert_eq!(remove_resp["success"], true);
+        assert_eq!(remove_resp["success"].as_bool(), Some(true));
         assert_eq!(remove_resp["count"], 2);
 
         let view_resp = tool
@@ -998,7 +998,7 @@ mod tests {
             }))
             .await
             .expect("watch");
-        assert_eq!(watch_resp["success"], true);
+        assert_eq!(watch_resp["success"].as_bool(), Some(true));
         assert_eq!(watch_resp["ticker"], "NVDA");
         assert_eq!(watch_resp["kind"], "watchlist");
         assert_eq!(watch_resp["result"], "watching");
@@ -1031,7 +1031,7 @@ mod tests {
             .execute(serde_json::json!({"action":"unwatch","ticker":"NVDA"}))
             .await
             .expect("unwatch");
-        assert_eq!(unwatch_resp["success"], true);
+        assert_eq!(unwatch_resp["success"].as_bool(), Some(true));
         assert_eq!(unwatch_resp["result"], "unwatched");
 
         let view_after = tool
@@ -1093,7 +1093,7 @@ mod tests {
             .execute(serde_json::json!({"action":"unwatch","ticker":"AAPL"}))
             .await
             .expect("unwatch real holding");
-        assert_eq!(unwatch_resp["success"], false);
+        assert_eq!(unwatch_resp["success"].as_bool(), Some(false));
         assert_eq!(unwatch_resp["result"], "not_watchlist");
 
         let view_after = tool
@@ -1128,13 +1128,13 @@ mod tests {
             }))
             .await
             .expect("promote");
-        assert_eq!(add_resp["success"], true);
+        assert_eq!(add_resp["success"].as_bool(), Some(true));
         let first = add_resp["holdings"]
             .as_array()
             .and_then(|items| items.first())
             .cloned()
             .expect("promoted entry");
-        assert_eq!(first["promoted_from_watchlist"], true);
+        assert_eq!(first["promoted_from_watchlist"].as_bool(), Some(true));
 
         let view_resp = tool
             .execute(serde_json::json!({"action":"view"}))

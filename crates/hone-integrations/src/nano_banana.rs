@@ -365,7 +365,7 @@ mod tests {
         let client = make_test_client(output_dir, "");
 
         let result = client.generate_images("test prompt", Some(1)).await;
-        assert_eq!(result["success"], false);
+        assert_eq!(result["success"].as_bool(), Some(false));
         let err = result["error"].as_str().unwrap_or_default();
         assert!(!err.is_empty());
     }

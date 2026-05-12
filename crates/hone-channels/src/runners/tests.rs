@@ -159,7 +159,7 @@ fn codex_acp_does_not_reuse_remote_session_metadata() {
         Value::String("old-remote-session".to_string()),
     );
 
-    assert_eq!(reusable_codex_acp_session_id(&metadata), None);
+    assert!(reusable_codex_acp_session_id(&metadata).is_none());
 }
 
 fn make_temp_exec(dir: &Path, name: &str) -> PathBuf {
@@ -358,7 +358,7 @@ fn gemini_cli_tool_status_renders_argument_summary_and_reasoning() {
         rendered.tool,
         "web_search query=\"AAOI COHR after hours move and sector sympathy\""
     );
-    assert_eq!(rendered.message, None);
+    assert!(rendered.message.is_none());
     assert_eq!(
         rendered.reasoning.as_deref(),
         Some(
@@ -380,7 +380,7 @@ fn gemini_cli_tool_status_renders_argument_summary_and_reasoning() {
         done.message.as_deref(),
         Some("执行完成：data_fetch quote NVDA")
     );
-    assert_eq!(done.reasoning, None);
+    assert!(done.reasoning.is_none());
 }
 
 #[test]
@@ -650,7 +650,7 @@ fn extract_finished_tool_calls_returns_collected_records() {
     let calls = extract_finished_tool_calls(state);
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "web_search");
-    assert_eq!(calls[0].result["ok"], true);
+    assert_eq!(calls[0].result["ok"].as_bool(), Some(true));
 }
 
 #[test]
@@ -742,7 +742,7 @@ async fn acp_updates_build_restorable_transcript_sequence() {
     assert_eq!(messages.len(), 4);
     assert_eq!(messages[0].role, "assistant");
     assert_eq!(messages[0].content.as_deref(), Some("先查本地画像。"));
-    assert_eq!(messages[0].tool_calls, None);
+    assert!(messages[0].tool_calls.is_none());
     let tool_calls = messages[1]
         .tool_calls
         .as_ref()
@@ -1007,7 +1007,7 @@ fn codex_execute_renderer_hides_command_and_appends_purpose() {
     );
 
     assert_eq!(rendered.tool, "本地命令");
-    assert_eq!(rendered.message, None);
+    assert!(rendered.message.is_none());
     assert!(
         rendered
             .reasoning
@@ -1039,7 +1039,7 @@ fn codex_execute_renderer_formats_done_message() {
 
     assert_eq!(rendered.tool, "本地命令");
     assert_eq!(rendered.message.as_deref(), Some("执行完成：本地命令"));
-    assert_eq!(rendered.reasoning, None);
+    assert!(rendered.reasoning.is_none());
 }
 
 #[tokio::test]

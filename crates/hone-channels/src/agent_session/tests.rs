@@ -882,8 +882,8 @@ fn finalize_agent_response_keeps_user_facing_clarification_question() {
 
     assert!(response.success);
     assert_eq!(response.content, clarification);
-    assert_eq!(response.error, None);
-    assert_eq!(outcome.fallback_reason, None);
+    assert!(response.error.is_none());
+    assert!(outcome.fallback_reason.is_none());
 
     let _ = std::fs::remove_dir_all(root);
 }

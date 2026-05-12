@@ -180,7 +180,7 @@ mod tests {
     fn feishu_progress_transcript_skips_duplicate_entries() {
         let mut transcript = FeishuProgressTranscript::new("正在思考中...");
         assert!(transcript.push("正在搜索公告", true).is_some());
-        assert_eq!(transcript.push("正在搜索公告", true), None);
+        assert!(transcript.push("正在搜索公告", true).is_none());
     }
 
     #[test]

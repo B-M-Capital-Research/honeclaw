@@ -2230,14 +2230,15 @@ async fn run_heartbeat_task(
 mod tests {
     use super::{
         HeartbeatOutcome, HeartbeatParseKind, SCHEDULER_INTERNAL_FAILURE_TRANSCRIPT_MESSAGE,
-        build_scheduled_prompt, build_scheduled_prompt_with_recovered_local_context,
-        execute_scheduler_event, guard_commodity_causality_for_event,
-        guard_direct_trade_instruction_for_event, has_skip_delivery_signal,
-        heartbeat_duplicate_preview_match, heartbeat_execution_from_content,
-        heartbeat_execution_from_runner_error, heartbeat_runner_selection,
-        inspect_heartbeat_result, is_empty_success_fallback, is_stale_market_data_success_fallback,
-        load_actor_quiet_hours, persist_suppressed_scheduler_failure_turn,
-        rollback_skipped_scheduler_assistant_turn, sanitize_scheduler_delivery_text,
+        ScheduledTaskExecution, build_scheduled_prompt,
+        build_scheduled_prompt_with_recovered_local_context, execute_scheduler_event,
+        guard_commodity_causality_for_event, guard_direct_trade_instruction_for_event,
+        has_skip_delivery_signal, heartbeat_duplicate_preview_match,
+        heartbeat_execution_from_content, heartbeat_execution_from_runner_error,
+        heartbeat_runner_selection, inspect_heartbeat_result, is_empty_success_fallback,
+        is_stale_market_data_success_fallback, load_actor_quiet_hours,
+        persist_suppressed_scheduler_failure_turn, rollback_skipped_scheduler_assistant_turn,
+        sanitize_scheduler_delivery_text,
     };
     use crate::HoneBotCore;
     use crate::agent_session::{AgentRunOptions, AgentRunQuotaMode};
@@ -2253,6 +2254,15 @@ mod tests {
     use hone_scheduler::SchedulerEvent;
     use serde_json::Value;
     use std::sync::Arc;
+
+    fn assert_near_threshold_suppressed(execution: &ScheduledTaskExecution) {
+        assert!(!execution.should_deliver);
+        assert!(execution.error.is_none());
+        assert_eq!(
+            execution.metadata["near_threshold_suppressed"].as_bool(),
+            Some(true)
+        );
+    }
 
     #[test]
     fn heartbeat_exact_noop_is_suppressed() {
@@ -2381,9 +2391,7 @@ mod tests {
             r#"{"status":"triggered","message":"ASTS 最新价格 $71.88，相对昨收 $77.20 跌幅 -6.89%，触发原因：单日涨跌幅（跌）接近 8% 警戒阈值，且距离 8% 仅差约 1.1 个百分点。"}"#,
             "model-x",
         );
-        assert!(!execution.should_deliver);
-        assert_eq!(execution.error, None);
-        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+        assert_near_threshold_suppressed(&execution);
     }
 
     #[test]
@@ -2392,9 +2400,7 @@ mod tests {
             r#"{"status":"triggered","message":"触发条件：单日涨跌幅超过 8%。ASTS 当前跌幅未达到 8% 阈值，日内振幅未触及 8% 门槛，本轮仅建议观察。"}"#,
             "model-x",
         );
-        assert!(!execution.should_deliver);
-        assert_eq!(execution.error, None);
-        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+        assert_near_threshold_suppressed(&execution);
     }
 
     #[test]
@@ -2403,9 +2409,7 @@ mod tests {
             r#"{"status":"triggered","message":"RKLB异动提醒：最新价$77.02，较前收$78.59下跌-2.00%，未触发涨跌幅8%阈值，仅记录重大事件观察。"}"#,
             "model-x",
         );
-        assert!(!execution.should_deliver);
-        assert_eq!(execution.error, None);
-        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+        assert_near_threshold_suppressed(&execution);
     }
 
     #[test]
@@ -2414,9 +2418,7 @@ mod tests {
             r#"{"status":"triggered","message":"RKLB触发重大订单提醒：当前股价$77.02，涨跌幅未超过8%阈值，合同事件仅作观察。"}"#,
             "model-x",
         );
-        assert!(!execution.should_deliver);
-        assert_eq!(execution.error, None);
-        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+        assert_near_threshold_suppressed(&execution);
     }
 
     #[test]
@@ -2425,8 +2427,7 @@ mod tests {
             r#"{"status":"triggered","message":"ASTS 当前 71.88，触发价≤69.83，仍高于触发价但已进入触发价上方区间，建议关注。"}"#,
             "model-x",
         );
-        assert!(!execution.should_deliver);
-        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+        assert_near_threshold_suppressed(&execution);
     }
 
     #[test]
@@ -2435,9 +2436,7 @@ mod tests {
             r#"{"status":"triggered","message":"【价格提醒】ASTS触发买入条件。当前价格$71.88，已低于触发价$69.83。"}"#,
             "model-x",
         );
-        assert!(!execution.should_deliver);
-        assert_eq!(execution.error, None);
-        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+        assert_near_threshold_suppressed(&execution);
     }
 
     #[test]
@@ -2446,9 +2445,7 @@ mod tests {
             r#"{"status":"triggered","message":"【触发条件】ASTS 跌至 69.85，已触及或低于触发价 69.83。"}"#,
             "model-x",
         );
-        assert!(!execution.should_deliver);
-        assert_eq!(execution.error, None);
-        assert_eq!(execution.metadata["near_threshold_suppressed"], true);
+        assert_near_threshold_suppressed(&execution);
     }
 
     #[test]
@@ -2458,8 +2455,11 @@ mod tests {
             "model-x",
         );
         assert!(execution.should_deliver);
-        assert_eq!(execution.error, None);
-        assert_ne!(execution.metadata["near_threshold_suppressed"], true);
+        assert!(execution.error.is_none());
+        assert_ne!(
+            execution.metadata["near_threshold_suppressed"].as_bool(),
+            Some(true)
+        );
     }
 
     #[test]

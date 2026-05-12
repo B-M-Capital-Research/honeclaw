@@ -505,7 +505,7 @@ mod tests {
             }))
             .await
             .expect("add job");
-        assert_eq!(add_resp["success"], true);
+        assert_eq!(add_resp["success"].as_bool(), Some(true));
         let job_id = add_resp["job"]["id"]
             .as_str()
             .unwrap_or_default()
@@ -529,7 +529,7 @@ mod tests {
             }))
             .await
             .expect("update job by id");
-        assert_eq!(update_resp["success"], true);
+        assert_eq!(update_resp["success"].as_bool(), Some(true));
         assert_eq!(update_resp["job"]["schedule"]["hour"], 10);
 
         // Update by name fuzzy match (no job_id)
@@ -542,7 +542,8 @@ mod tests {
             .await
             .expect("update job by name");
         assert_eq!(
-            update_by_name["success"], true,
+            update_by_name["success"].as_bool(),
+            Some(true),
             "name fuzzy update failed: {update_by_name}"
         );
         assert_eq!(update_by_name["job"]["schedule"]["minute"], 45);
@@ -554,8 +555,8 @@ mod tests {
             }))
             .await
             .expect("remove job");
-        assert_eq!(remove_preview["success"], false);
-        assert_eq!(remove_preview["needs_confirmation"], true);
+        assert_eq!(remove_preview["success"].as_bool(), Some(false));
+        assert_eq!(remove_preview["needs_confirmation"].as_bool(), Some(true));
 
         let remove_resp = tool
             .execute(serde_json::json!({
@@ -565,7 +566,7 @@ mod tests {
             }))
             .await
             .expect("remove job with confirm");
-        assert_eq!(remove_resp["success"], true);
+        assert_eq!(remove_resp["success"].as_bool(), Some(true));
 
         let list_resp = tool
             .execute(serde_json::json!({"action":"list"}))
@@ -591,7 +592,7 @@ mod tests {
             .await
             .expect("add job");
 
-        assert_eq!(add_resp["success"], true);
+        assert_eq!(add_resp["success"].as_bool(), Some(true));
         assert_eq!(add_resp["job"]["channel"], "telegram");
         assert_eq!(add_resp["job"]["channel_target"], "-1001234567890");
     }
@@ -621,7 +622,7 @@ mod tests {
             }))
             .await
             .expect("update nonexistent");
-        assert_eq!(resp["success"], false);
+        assert_eq!(resp["success"].as_bool(), Some(false));
         assert!(resp["error"].as_str().unwrap_or("").contains("未找到"));
     }
 
@@ -654,8 +655,8 @@ mod tests {
             }))
             .await
             .expect("preview remove");
-        assert_eq!(preview_resp["success"], false);
-        assert_eq!(preview_resp["needs_confirmation"], true);
+        assert_eq!(preview_resp["success"].as_bool(), Some(false));
+        assert_eq!(preview_resp["needs_confirmation"].as_bool(), Some(true));
         assert_eq!(preview_resp["job"]["id"], add_resp["job"]["id"]);
 
         let jobs_after_preview = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
@@ -669,7 +670,7 @@ mod tests {
             }))
             .await
             .expect("confirmed remove");
-        assert_eq!(confirmed_resp["success"], true);
+        assert_eq!(confirmed_resp["success"].as_bool(), Some(true));
 
         let jobs_after_confirm = hone_memory::CronJobStorage::new(&data_dir).list_jobs(&actor);
         assert!(jobs_after_confirm.is_empty());
@@ -701,8 +702,8 @@ mod tests {
             }))
             .await
             .expect("remove by ambiguous name");
-        assert_eq!(resp["success"], false);
-        assert_eq!(resp["needs_confirmation"], true);
+        assert_eq!(resp["success"].as_bool(), Some(false));
+        assert_eq!(resp["needs_confirmation"].as_bool(), Some(true));
         assert_eq!(
             resp["candidates"].as_array().map(|items| items.len()),
             Some(2)
@@ -730,7 +731,11 @@ mod tests {
             }))
             .await
             .expect("add weekly job");
-        assert_eq!(add_resp["success"], true, "weekly add failed: {add_resp}");
+        assert_eq!(
+            add_resp["success"].as_bool(),
+            Some(true),
+            "weekly add failed: {add_resp}"
+        );
         assert_eq!(add_resp["job"]["schedule"]["weekday"], 6);
         let job_id = add_resp["job"]["id"]
             .as_str()
@@ -748,7 +753,8 @@ mod tests {
             .await
             .expect("update weekly job");
         assert_eq!(
-            update_resp["success"], true,
+            update_resp["success"].as_bool(),
+            Some(true),
             "weekly update failed: {update_resp}"
         );
         assert_eq!(update_resp["job"]["schedule"]["weekday"], 0);
@@ -762,7 +768,7 @@ mod tests {
             }))
             .await
             .expect("change weekly to daily");
-        assert_eq!(clear_weekday_resp["success"], true);
+        assert_eq!(clear_weekday_resp["success"].as_bool(), Some(true));
         assert!(clear_weekday_resp["job"]["schedule"]["weekday"].is_null());
         assert_eq!(clear_weekday_resp["job"]["schedule"]["repeat"], "daily");
     }
