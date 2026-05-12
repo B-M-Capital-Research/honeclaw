@@ -375,10 +375,10 @@ impl<'a> SessionCompactor<'a> {
     }
 
     fn record_llm_audit(&self, record: LlmAuditRecord) {
-        if let Some(sink) = &self.core.llm_audit {
-            if let Err(err) = sink.record(record) {
-                tracing::warn!("[LlmAudit] failed to persist record: {}", err);
-            }
+        if let Some(sink) = &self.core.llm_audit
+            && let Err(err) = sink.record(record)
+        {
+            tracing::warn!("[LlmAudit] failed to persist record: {}", err);
         }
     }
 }

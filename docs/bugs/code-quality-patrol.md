@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-13 - 复杂度热点
+
+### `crates/hone-channels/src/session_compactor.rs` session compaction orchestration is oversized
+
+- status: open
+- direction: 复杂度热点
+- evidence: `cargo clippy -p hone-channels --tests -- -W clippy::cognitive_complexity -W clippy::too_many_lines` reports `SessionCompactor::compact_session` at `329/100` lines.
+- risk: the function owns eligibility checks, transcript loading, prompt construction, auxiliary LLM execution, persistence, audit recording, and fallback/error handling in one async path. A patrol-sized extraction could change compaction trigger semantics, stored summary content, or audit side effects.
+- suggested_fix: first split behavior-preserving private helpers for transcript selection, prompt/message assembly, summary persistence, and audit emission. Keep the public orchestration return type unchanged, then add focused tests around forced compaction, no-op eligibility, audit failure handling, and summary sanitization before larger refactors.
+
 ## 2026-05-12 - 死代码与废弃路径
 
 ### Public password storage helpers remain after public SMS login replaced password flows

@@ -536,12 +536,8 @@ impl AgentRunner for MultiAgentRunner {
         }
 
         let answer_prompt = format!(
-            "{}\n\n{}",
-            self.system_prompt,
-            format!(
-                "You are in the final answer stage. Prefer the provided verified search results. If absolutely necessary, you may use at most {} extra tool call(s). Follow the active system/channel output format exactly, and do not inherit formatting from search-stage notes unless the system/channel instructions require it.",
-                self.answer_max_tool_calls
-            )
+            "{}\n\nYou are in the final answer stage. Prefer the provided verified search results. If absolutely necessary, you may use at most {} extra tool call(s). Follow the active system/channel output format exactly, and do not inherit formatting from search-stage notes unless the system/channel instructions require it.",
+            self.system_prompt, self.answer_max_tool_calls
         );
         let answer_runtime_input = self.stage_handoff_text(
             &request.runtime_input,

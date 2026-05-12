@@ -109,7 +109,7 @@ pub fn relativize_user_visible_paths(text: &str, sandbox_root: &str) -> String {
 }
 
 fn trim_trailing_path_separators(value: &str) -> &str {
-    value.trim_end_matches(|ch| ch == '/' || ch == '\\')
+    value.trim_end_matches(['/', '\\'])
 }
 
 fn split_trailing_path_punctuation(raw: &str) -> (&str, &str) {
@@ -266,12 +266,7 @@ pub fn clean_msg_markers(text: &str) -> String {
 /// 「什么算内部 reasoning」在全链路单一来源。
 pub fn strip_internal_reasoning_blocks(text: &str) -> String {
     let normalized = text.replace("\r\n", "\n");
-    let block_stripped = RE_INTERNAL_BLOCK
-        .replace_all(&normalized, "\n")
-        .into_owned();
-    RE_BRACKET_INTERNAL_BLOCK
-        .replace_all(&block_stripped, "")
-        .into_owned()
+    strip_internal_protocol_blocks(normalized).0
 }
 
 pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
@@ -283,20 +278,8 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
         };
     }
 
-    let mut removed_internal = false;
-    let mut sanitized = text.replace("\r\n", "\n");
-
-    let block_stripped = RE_INTERNAL_BLOCK.replace_all(&sanitized, "\n");
-    if block_stripped != sanitized {
-        removed_internal = true;
-        sanitized = block_stripped.into_owned();
-    }
-
-    let bracket_stripped = RE_BRACKET_INTERNAL_BLOCK.replace_all(&sanitized, "");
-    if bracket_stripped != sanitized {
-        removed_internal = true;
-        sanitized = bracket_stripped.into_owned();
-    }
+    let (mut sanitized, mut removed_internal) =
+        strip_internal_protocol_blocks(text.replace("\r\n", "\n"));
 
     let mut kept_lines = Vec::new();
     for line in sanitized.lines() {
@@ -332,29 +315,36 @@ pub fn sanitize_user_visible_output(text: &str) -> SanitizedUserVisibleOutput {
     }
 }
 
-pub fn user_visible_error_message(raw: Option<&str>) -> String {
-    let sanitized = raw
-        .map(sanitize_user_visible_output)
-        .map(|value| value.content.trim().to_string())
-        .filter(|value| !value.is_empty());
+fn strip_internal_protocol_blocks(mut value: String) -> (String, bool) {
+    let mut removed_internal = false;
 
-    let Some(sanitized) = sanitized else {
+    let block_stripped = RE_INTERNAL_BLOCK.replace_all(&value, "\n");
+    if block_stripped != value {
+        removed_internal = true;
+        value = block_stripped.into_owned();
+    }
+
+    let bracket_stripped = RE_BRACKET_INTERNAL_BLOCK.replace_all(&value, "");
+    if bracket_stripped != value {
+        removed_internal = true;
+        value = bracket_stripped.into_owned();
+    }
+
+    (value, removed_internal)
+}
+
+pub fn user_visible_error_message(raw: Option<&str>) -> String {
+    let Some(sanitized) = sanitized_non_empty_user_visible(raw) else {
         return GENERIC_USER_ERROR_MESSAGE.to_string();
     };
 
-    if let Some(message) = quota_rejection_user_message(&sanitized) {
+    let lowered = sanitized.to_ascii_lowercase();
+    if let Some(message) = user_actionable_error_message(&sanitized, &lowered) {
         return message;
     }
-
-    let lowered = sanitized.to_ascii_lowercase();
-    if looks_runner_usage_limit_error_lowered(&lowered) {
-        return RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE.to_string();
-    }
-
-    if lowered.contains("timeout") || lowered.contains("timed out") {
+    if looks_timeout_error_lowered(&lowered) {
         return TIMEOUT_USER_ERROR_MESSAGE.to_string();
     }
-
     if looks_internal_error_detail(&sanitized, &lowered) {
         return GENERIC_USER_ERROR_MESSAGE.to_string();
     }
@@ -363,24 +353,31 @@ pub fn user_visible_error_message(raw: Option<&str>) -> String {
 }
 
 pub fn user_visible_error_message_or_none(raw: Option<&str>) -> Option<String> {
-    let sanitized = raw
-        .map(sanitize_user_visible_output)
-        .map(|value| value.content.trim().to_string())
-        .filter(|value| !value.is_empty())?;
-    if let Some(message) = quota_rejection_user_message(&sanitized) {
-        return Some(message);
-    }
+    let sanitized = sanitized_non_empty_user_visible(raw)?;
     let lowered = sanitized.to_ascii_lowercase();
-    if looks_runner_usage_limit_error_lowered(&lowered) {
-        return Some(RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE.to_string());
+    if let Some(message) = user_actionable_error_message(&sanitized, &lowered) {
+        return Some(message);
     }
     if looks_internal_error_detail(&sanitized, &lowered) {
         return None;
     }
-    if lowered.contains("timeout") || lowered.contains("timed out") {
+    if looks_timeout_error_lowered(&lowered) {
         return Some(TIMEOUT_USER_ERROR_MESSAGE.to_string());
     }
     Some(sanitized)
+}
+
+fn sanitized_non_empty_user_visible(raw: Option<&str>) -> Option<String> {
+    raw.map(sanitize_user_visible_output)
+        .map(|value| value.content.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn user_actionable_error_message(sanitized: &str, lowered: &str) -> Option<String> {
+    quota_rejection_user_message(sanitized).or_else(|| {
+        looks_runner_usage_limit_error_lowered(lowered)
+            .then(|| RUNNER_USAGE_LIMIT_USER_ERROR_MESSAGE.to_string())
+    })
 }
 
 fn quota_rejection_user_message(sanitized: &str) -> Option<String> {
@@ -403,6 +400,10 @@ fn looks_runner_usage_limit_error_lowered(lowered: &str) -> bool {
             || lowered.contains("quota exhausted")
             || lowered.contains("insufficient quota")
             || lowered.contains("try again later"))
+}
+
+fn looks_timeout_error_lowered(lowered: &str) -> bool {
+    lowered.contains("timeout") || lowered.contains("timed out")
 }
 
 fn looks_internal_error_detail(sanitized: &str, lowered: &str) -> bool {
@@ -460,66 +461,64 @@ fn looks_like_internal_workflow_prelude(text: &str) -> bool {
     }
 
     let lowered = trimmed.to_ascii_lowercase();
-    if [
-        "todo",
-        "current-plan",
-        "current plan",
-        "动态计划",
-        "任务计划",
-        "不落盘",
-        "文档方面",
-        "工作流",
-        "检查本地是否已有相关公司画像",
-        "检查本地公司画像",
-    ]
-    .iter()
-    .any(|marker| lowered.contains(marker) || trimmed.contains(marker))
-    {
+    if contains_any_casefolded(
+        trimmed,
+        &lowered,
+        &[
+            "todo",
+            "current-plan",
+            "current plan",
+            "动态计划",
+            "任务计划",
+            "不落盘",
+            "文档方面",
+            "工作流",
+            "检查本地是否已有相关公司画像",
+            "检查本地公司画像",
+        ],
+    ) {
         return true;
     }
 
-    let starts_like_workflow = [
-        "我先",
-        "我会先",
-        "我接下来",
-        "接下来我",
-        "先",
-        "先按",
-        "先对齐",
-        "先检查",
-    ]
-    .iter()
-    .any(|marker| trimmed.starts_with(marker));
+    let starts_like_workflow = starts_with_any(
+        trimmed,
+        &[
+            "我先",
+            "我会先",
+            "我接下来",
+            "接下来我",
+            "先",
+            "先按",
+            "先对齐",
+            "先检查",
+        ],
+    );
     if !starts_like_workflow {
         return false;
     }
 
-    if ["结论", "答案", "核心判断", "直接说", "简短说"]
-        .iter()
-        .any(|marker| trimmed.contains(marker))
-    {
+    if contains_any(trimmed, &["结论", "答案", "核心判断", "直接说", "简短说"]) {
         return false;
     }
 
-    let has_workflow_verb = [
-        "核验",
-        "检查",
-        "对齐",
-        "拆成",
-        "整理",
-        "补查",
-        "调取",
-        "检索",
-        "看本地",
-        "拉取",
-        "搜索",
-        "梳理",
-    ]
-    .iter()
-    .any(|marker| trimmed.contains(marker));
-    let has_sequence = ["再", "然后", "最后", "之后"]
-        .iter()
-        .any(|marker| trimmed.contains(marker));
+    let has_workflow_verb = contains_any(
+        trimmed,
+        &[
+            "核验",
+            "检查",
+            "对齐",
+            "拆成",
+            "整理",
+            "补查",
+            "调取",
+            "检索",
+            "看本地",
+            "拉取",
+            "搜索",
+            "梳理",
+        ],
+    );
+    let has_sequence = contains_any(trimmed, &["再", "然后", "最后", "之后"]);
     has_workflow_verb && has_sequence
 }
 
@@ -585,38 +584,39 @@ pub(crate) fn is_transitional_planning_sentence(text: &str) -> bool {
         return false;
     }
     let trimmed = text.trim_start();
-    let starts_like_internal_planning = [
-        "我先",
-        "我再",
-        "我需要先",
-        "我还缺",
-        "我需要补",
-        "先看本地",
-        "先补查",
-        "先调取",
-        "先核验",
-        "先抓取",
-        "还缺一件事",
-        "我还需要先",
-    ]
-    .iter()
-    .any(|pat| trimmed.starts_with(pat));
+    let starts_like_internal_planning = starts_with_any(
+        trimmed,
+        &[
+            "我先",
+            "我再",
+            "我需要先",
+            "我还缺",
+            "我需要补",
+            "先看本地",
+            "先补查",
+            "先调取",
+            "先核验",
+            "先抓取",
+            "还缺一件事",
+            "我还需要先",
+        ],
+    );
     if !starts_like_internal_planning {
         return false;
     }
-    if [
-        "请先确认",
-        "请确认",
-        "先确认",
-        "请先提供",
-        "请提供",
-        "告诉我",
-        "发我",
-        "补充一下",
-    ]
-    .iter()
-    .any(|marker| text.contains(marker))
-    {
+    if contains_any(
+        text,
+        &[
+            "请先确认",
+            "请确认",
+            "先确认",
+            "请先提供",
+            "请提供",
+            "告诉我",
+            "发我",
+            "补充一下",
+        ],
+    ) {
         return false;
     }
     let patterns = [
@@ -638,7 +638,21 @@ pub(crate) fn is_transitional_planning_sentence(text: &str) -> bool {
         "还缺一件事",
         "我还需要先",
     ];
-    patterns.iter().any(|pat| text.contains(pat))
+    contains_any(text, &patterns)
+}
+
+fn contains_any(text: &str, markers: &[&str]) -> bool {
+    markers.iter().any(|marker| text.contains(marker))
+}
+
+fn contains_any_casefolded(text: &str, lowered: &str, markers: &[&str]) -> bool {
+    markers
+        .iter()
+        .any(|marker| lowered.contains(marker) || text.contains(marker))
+}
+
+fn starts_with_any(text: &str, prefixes: &[&str]) -> bool {
+    prefixes.iter().any(|prefix| text.starts_with(prefix))
 }
 
 /// 检测缓冲区内容是否应该跳过发送
