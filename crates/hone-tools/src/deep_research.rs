@@ -121,20 +121,17 @@ impl Tool for DeepResearchTool {
         };
 
         if !status.is_success() {
-            let err_msg = raw
-                .get("error")
-                .or_else(|| raw.get("message"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("未知错误");
+            let err_msg = deep_research_error_message(&raw);
+            let raw_preview = deep_research_payload_preview(&raw);
             tracing::error!(
-                "[DeepResearchTool] API 返回错误 status={} error={}",
+                "[DeepResearchTool] API 返回错误 status={} error={} response_preview={}",
                 status,
-                err_msg
+                err_msg,
+                raw_preview
             );
             return Ok(serde_json::json!({
                 "success": false,
-                "error": format!("研究 API 返回错误 (HTTP {}): {}", status, err_msg),
-                "raw": raw
+                "error": format!("研究 API 返回错误 (HTTP {}): {}", status, err_msg)
             }));
         }
 
@@ -164,7 +161,7 @@ impl Tool for DeepResearchTool {
 }
 
 fn sanitize_deep_research_error_detail(text: &str) -> String {
-    let redacted = redact_query_secrets(&redact_url_userinfo(text));
+    let redacted = redact_query_secrets(&redact_bearer_secret(&redact_url_userinfo(text)));
     if redacted.chars().count() <= MAX_DEEP_RESEARCH_ERROR_CHARS {
         return redacted;
     }
@@ -173,6 +170,75 @@ fn sanitize_deep_research_error_detail(text: &str) -> String {
         .take(MAX_DEEP_RESEARCH_ERROR_CHARS)
         .collect::<String>()
         + "..."
+}
+
+fn deep_research_error_message(raw: &Value) -> String {
+    raw.get("error")
+        .or_else(|| raw.get("message"))
+        .and_then(|v| v.as_str())
+        .map(sanitize_deep_research_error_detail)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "未知错误".to_string())
+}
+
+fn deep_research_payload_preview(raw: &Value) -> String {
+    let redacted = redact_json_secrets(raw);
+    let encoded = serde_json::to_string(&redacted).unwrap_or_else(|_| redacted.to_string());
+    sanitize_deep_research_error_detail(&encoded)
+}
+
+fn redact_json_secrets(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(key, value)| {
+                    let lower = key.to_ascii_lowercase();
+                    let redacted = matches!(
+                        lower.as_str(),
+                        "access_token"
+                            | "apikey"
+                            | "api_keys"
+                            | "api_key"
+                            | "apikeys"
+                            | "authorization"
+                            | "password"
+                            | "secret"
+                            | "token"
+                    );
+                    let sanitized = if redacted {
+                        Value::String("<redacted>".to_string())
+                    } else {
+                        redact_json_secrets(value)
+                    };
+                    (key.clone(), sanitized)
+                })
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(values.iter().map(redact_json_secrets).collect()),
+        Value::String(text) => Value::String(sanitize_deep_research_error_detail(text)),
+        _ => value.clone(),
+    }
+}
+
+fn redact_bearer_secret(text: &str) -> String {
+    let marker = "Bearer ";
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
+                    .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
 }
 
 fn redact_url_userinfo(text: &str) -> String {
@@ -299,5 +365,79 @@ mod tests {
             detail,
             "request failed for https://<redacted>@example.test/path?api_key=<redacted>&ok=1"
         );
+    }
+
+    #[test]
+    fn deep_research_error_detail_redacts_bearer_credentials() {
+        let detail =
+            sanitize_deep_research_error_detail("request failed with Authorization: Bearer abc123");
+        assert_eq!(
+            detail,
+            "request failed with Authorization: Bearer <redacted>"
+        );
+    }
+
+    #[test]
+    fn deep_research_payload_preview_redacts_secret_fields() {
+        let detail = deep_research_payload_preview(&serde_json::json!({
+            "error": "backend rejected token=abc and Bearer xyz",
+            "debug": {
+                "api_key": "key",
+                "token": "tok",
+                "safe": "kept"
+            }
+        }));
+
+        assert!(detail.contains("backend rejected token=<redacted>"));
+        assert!(detail.contains("Bearer <redacted>"));
+        assert!(detail.contains("\"api_key\":\"<redacted>\""));
+        assert!(detail.contains("\"token\":\"<redacted>\""));
+        assert!(detail.contains("\"safe\":\"kept\""));
+        assert!(!detail.contains("abc"));
+        assert!(!detail.contains("xyz"));
+        assert!(!detail.contains(":\"key\""));
+        assert!(!detail.contains(":\"tok\""));
+    }
+
+    #[tokio::test]
+    async fn execute_http_error_hides_raw_payload() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0_u8; 4096];
+            let _ = socket.read(&mut buf).await;
+            let body = r#"{"error":"backend failed token=abc with Bearer xyz","debug":{"api_key":"key","trace_id":"trace-1"}}"#;
+            let response = format!(
+                "HTTP/1.1 502 Bad Gateway\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        });
+
+        let tool = DeepResearchTool::new(&format!("http://{addr}/api/research/start"), "");
+        let result = tool
+            .execute(serde_json::json!({"company_name": "NVIDIA"}))
+            .await
+            .expect("execute should return structured error");
+
+        assert_eq!(result["success"].as_bool(), Some(false));
+        assert!(result.get("raw").is_none());
+        let error = result["error"].as_str().expect("error message");
+        assert!(error.contains("HTTP 502"), "{error}");
+        assert!(error.contains("token=<redacted>"), "{error}");
+        assert!(error.contains("Bearer <redacted>"), "{error}");
+        assert!(!error.contains("abc"), "{error}");
+        assert!(!error.contains("xyz"), "{error}");
+        assert!(!error.contains("trace-1"), "{error}");
     }
 }

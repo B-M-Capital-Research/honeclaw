@@ -1,5 +1,15 @@
 # Code Quality Patrol Findings
 
+## 2026-05-13 - 错误与日志质量
+
+### ACP parse-error audit records keep full raw protocol lines
+
+- status: open
+- direction: 错误与日志质量
+- evidence: `crates/hone-channels/src/runners/acp_common/log.rs` documents `acp-events.log` as storing request/response/notification originals, and `log_acp_raw_parse_error` writes `"raw_line": raw_line` without redaction or length bounding. The same module already redacts and bounds stderr details for user-visible timeout/error messages through `redact_common_stderr_secrets` and `tail_for_log`.
+- risk: parse-error lines can include malformed JSON-RPC payloads, tool arguments, paths, or copied provider diagnostics; changing this directly would alter the operator audit contract and may reduce replay/debug value for ACP runner incidents.
+- suggested_fix: introduce an explicit audit policy for ACP event logs: either keep raw protocol payloads in a restricted artifact and add a separate redacted preview field, or replace parse-error `raw_line` with bounded/redacted text plus a documented opt-in raw capture mode. Cover with tests for Bearer/query/JSON secret redaction and long malformed lines.
+
 ## 2026-05-13 - 复杂度热点
 
 ### `crates/hone-channels/src/session_compactor.rs` session compaction orchestration is oversized
@@ -107,11 +117,12 @@
 
 ### `crates/hone-tools/src/deep_research.rs` returns raw backend error payloads to the tool caller
 
-- status: open
+- status: done
 - direction: 错误与日志质量
 - evidence: `DeepResearchTool::execute` returns `{ "success": false, "error": "...", "raw": raw }` when the configured research API responds with a non-2xx status.
 - risk: the research API is an external/internal service boundary, and raw error payloads can contain backend-only diagnostics, request metadata, or provider-specific details that are not meant for the final chat response. Removing `raw` directly could break an operator debugging workflow, so this needs an explicit UX/logging split rather than a drive-by patch.
 - suggested_fix: keep the user/tool result to a sanitized status/message and move the full raw payload to an operator-only trace or debug log with size limits and secret redaction; add tests for non-2xx responses that assert the tool response omits backend-only fields while logs retain enough diagnostics.
+- resolution: 2026-05-13 patrol removed the non-2xx `raw` tool response, added bounded/redacted operator response previews, redacted Bearer/query/JSON secret fields, and covered the HTTP error path with `execute_http_error_hides_raw_payload`.
 
 ## 2026-05-11 - 前端状态复杂度
 

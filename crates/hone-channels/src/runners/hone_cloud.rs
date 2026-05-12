@@ -9,6 +9,8 @@ use super::{
     AgentRunner, AgentRunnerEmitter, AgentRunnerRequest, AgentRunnerResult, RunnerTimeouts,
 };
 
+const HONE_CLOUD_ERROR_DETAIL_CHARS: usize = 500;
+
 pub struct HoneCloudRunner {
     config: HoneCloudConfig,
     timeouts: RunnerTimeouts,
@@ -101,23 +103,23 @@ async fn call_hone_cloud(
         .json(&body)
         .send()
         .await
-        .map_err(|error| format!("Hone Cloud 请求失败: {error}"))?;
+        .map_err(|error| format_hone_cloud_transport_error("请求", &error))?;
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|error| format!("读取 Hone Cloud 响应失败: {error}"))?;
+        .map_err(|error| format_hone_cloud_transport_error("响应读取", &error))?;
     if !status.is_success() {
         return Err(format!(
             "Hone Cloud HTTP {}: {}",
             status.as_u16(),
-            truncate(&text, 500)
+            sanitize_hone_cloud_error_detail(&text)
         ));
     }
     let value: Value = serde_json::from_str(&text).map_err(|error| {
         format!(
             "解析 Hone Cloud 响应失败: {error}; body={}",
-            truncate(&text, 500)
+            sanitize_hone_cloud_error_detail(&text)
         )
     })?;
     value
@@ -131,7 +133,7 @@ async fn call_hone_cloud(
         .ok_or_else(|| {
             format!(
                 "Hone Cloud 响应缺少 choices[0].message.content: {}",
-                truncate(&text, 500)
+                sanitize_hone_cloud_error_detail(&text)
             )
         })
 }
@@ -180,18 +182,109 @@ fn build_hone_cloud_messages(request: &AgentRunnerRequest) -> Vec<Value> {
     messages
 }
 
-fn truncate(value: &str, max_chars: usize) -> String {
-    if value.chars().count() <= max_chars {
-        return value.to_string();
+fn format_hone_cloud_transport_error(operation: &str, error: &reqwest::Error) -> String {
+    let detail = sanitize_hone_cloud_error_detail(&error.to_string());
+    if detail.is_empty() {
+        format!("Hone Cloud {operation}失败")
+    } else {
+        format!("Hone Cloud {operation}失败: {detail}")
     }
-    let mut out = value.chars().take(max_chars).collect::<String>();
-    out.push_str("...");
-    out
+}
+
+fn sanitize_hone_cloud_error_detail(text: &str) -> String {
+    let redacted = redact_common_hone_cloud_secrets(text);
+    if redacted.chars().count() <= HONE_CLOUD_ERROR_DETAIL_CHARS {
+        return redacted;
+    }
+    redacted
+        .chars()
+        .take(HONE_CLOUD_ERROR_DETAIL_CHARS)
+        .collect::<String>()
+        + "..."
+}
+
+fn redact_common_hone_cloud_secrets(text: &str) -> String {
+    let mut output = redact_marker_value(text, "Bearer ");
+    for key in [
+        "access_token",
+        "accessToken",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "token",
+        "secret",
+        "password",
+    ] {
+        output = redact_marker_value(&output, &format!("{key}="));
+        output = redact_json_string_field(&output, key);
+    }
+    output
+}
+
+fn redact_marker_value(text: &str, marker: &str) -> String {
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(marker) {
+        let value_start = index + marker.len();
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| {
+                (ch == '&' || ch == ')' || ch == ',' || ch == '"' || ch.is_whitespace())
+                    .then_some(idx)
+            })
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
+}
+
+fn redact_json_string_field(text: &str, key: &str) -> String {
+    let key_marker = format!("\"{key}\"");
+    let mut remaining = text;
+    let mut output = String::with_capacity(text.len());
+    while let Some(index) = remaining.find(&key_marker) {
+        let after_key = index + key_marker.len();
+        let tail = &remaining[after_key..];
+        let Some((value_quote_offset, _)) = tail.char_indices().find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !tail[value_quote_offset..].starts_with(':') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let after_colon = &tail[value_quote_offset + 1..];
+        let Some((quote_offset, _)) = after_colon
+            .char_indices()
+            .find(|(_, ch)| !ch.is_whitespace())
+        else {
+            break;
+        };
+        if !after_colon[quote_offset..].starts_with('"') {
+            output.push_str(&remaining[..after_key]);
+            remaining = &remaining[after_key..];
+            continue;
+        }
+        let value_start = after_key + value_quote_offset + 1 + quote_offset + 1;
+        output.push_str(&remaining[..value_start]);
+        output.push_str("<redacted>");
+        let value_tail = remaining[value_start..]
+            .char_indices()
+            .find_map(|(idx, ch)| (ch == '"').then_some(idx))
+            .unwrap_or(remaining[value_start..].len());
+        remaining = &remaining[value_start + value_tail..];
+    }
+    output.push_str(remaining);
+    output
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_hone_cloud_chat_url;
+    use super::{resolve_hone_cloud_chat_url, sanitize_hone_cloud_error_detail};
 
     #[test]
     fn resolves_hone_cloud_chat_url_without_duplicate_path() {
@@ -207,5 +300,20 @@ mod tests {
             resolve_hone_cloud_chat_url("https://hone-claw.com/api/public/v1/chat/completions"),
             "https://hone-claw.com/api/public/v1/chat/completions"
         );
+    }
+
+    #[test]
+    fn hone_cloud_error_detail_redacts_common_credentials() {
+        let detail = sanitize_hone_cloud_error_detail(
+            r#"request failed for https://example.test/chat?api_key=abc&ok=1 Authorization: Bearer xyz {"token": "tok","safe":"kept"}"#,
+        );
+
+        assert!(detail.contains("api_key=<redacted>"));
+        assert!(detail.contains("Bearer <redacted>"));
+        assert!(detail.contains("\"token\": \"<redacted>\""));
+        assert!(detail.contains("\"safe\":\"kept\""));
+        assert!(!detail.contains("abc"));
+        assert!(!detail.contains("xyz"));
+        assert!(!detail.contains(":\"tok\""));
     }
 }
